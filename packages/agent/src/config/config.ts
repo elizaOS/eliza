@@ -135,14 +135,13 @@ export function loadElizaConfig(): ElizaConfig {
   // The automatic bind-mount overlay extends only the canonical file. An
   // explicitly configured persistence path disables it entirely, preventing
   // stale overlay keys from leaking into an operator-selected store.
-  const resolved = (
-    baseConfig || persistedConfig || bindMountOverlay
-      ? mergeConfigRecords(
-          mergeConfigRecords(baseConfig ?? {}, bindMountOverlay ?? {}),
-          persistedConfig ?? {},
-        )
-      : { logging: { level: "error" } }
-  ) as ElizaConfig;
+  // Automatic overlays contain a complete sanitized snapshot. Treating that
+  // snapshot as authoritative preserves deletions from the read-only base;
+  // merging it as a patch would resurrect removed settings after restart.
+  const resolved = (bindMountOverlay ??
+    (baseConfig || persistedConfig
+      ? mergeConfigRecords(baseConfig ?? {}, persistedConfig ?? {})
+      : { logging: { level: "error" } })) as ElizaConfig;
   migrateLegacyRuntimeConfig(resolved as Record<string, unknown>);
   normalizeModelMetadataInConfig(resolved);
 
@@ -277,6 +276,17 @@ function syncDirectory(dir: string): void {
   }
 }
 
+type RenameSync = (from: fs.PathLike, to: fs.PathLike) => void;
+
+let renameConfigFile: RenameSync = fs.renameSync.bind(fs);
+
+/** Replaces the atomic rename operation for deterministic filesystem tests. */
+export function __setConfigRenameSyncForTests(
+  renameSync: RenameSync | null,
+): void {
+  renameConfigFile = renameSync ?? fs.renameSync.bind(fs);
+}
+
 function writeFileAtomically(targetPath: string, content: string): void {
   const dir = path.dirname(targetPath);
   if (!fs.existsSync(dir)) {
@@ -294,7 +304,7 @@ function writeFileAtomically(targetPath: string, content: string): void {
     fs.fsyncSync(fd);
     fs.closeSync(fd);
     fd = undefined;
-    fs.renameSync(tmpPath, targetPath);
+    renameConfigFile(tmpPath, targetPath);
     syncDirectory(dir);
   } catch (error) {
     if (fd !== undefined) fs.closeSync(fd);

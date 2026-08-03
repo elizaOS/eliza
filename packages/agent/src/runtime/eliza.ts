@@ -3800,21 +3800,18 @@ export async function startEliza(
     process.env.LOG_LEVEL = config.logging?.level ?? "error";
   }
 
-  // 2. Push channel secrets into process.env for plugin discovery
-  applyConnectorSecretsToEnv(config);
-  // Cloud sandbox (Path A / double-connect): in a provisioned container that
-  // does NOT own its connectors, strip the connector bot tokens so the
-  // container does not also connect to Discord/Telegram while the gateway
-  // holds the connection. MUST run AFTER applyConnectorSecretsToEnv (which can
-  // repopulate the tokens from config.connectors) and BEFORE plugin
-  // auto-enable / resolvePlugins below. Also clears the matching config
-  // connector blocks so nothing downstream re-derives the token. Skipped
-  // outside a provisioned container or when ELIZA_SANDBOX_OWNS_CONNECTORS=1.
+  // Provisioned identity, connector projection, and ownership form one ordered
+  // transformation shared with hot reload. It must complete before plugin
+  // discovery so gateway-owned containers cannot connect directly.
+  let sandboxRouteAgentId: string | null = null;
   {
-    const { applySandboxConnectorOwnership } = await import(
+    const { prepareSandboxRuntimeConfig } = await import(
       "./sandbox-character.ts"
     );
-    applySandboxConnectorOwnership(process.env, config);
+    sandboxRouteAgentId = prepareSandboxRuntimeConfig(
+      config,
+      applyConnectorSecretsToEnv,
+    );
   }
   ensureProvisionedCloudContainerConfig(config);
   // 2b. Propagate cloud config into process.env before boot prefetches. A
@@ -4146,18 +4143,6 @@ export async function startEliza(
   }
 
   // 3. Build elizaOS Character from Eliza config
-  // Cloud sandbox (Path A): if the provisioner injected the assigned
-  // character via ELIZA_AGENT_CHARACTER_JSON, merge it onto the config so the
-  // container boots AS that character (e.g. "Nyx") instead of the bundled
-  // default preset. Skipped when the env var is absent.
-  let sandboxRouteAgentId: string | null = null;
-  {
-    const { applySandboxIdentityFromEnv } = await import(
-      "./sandbox-character.ts"
-    );
-    sandboxRouteAgentId = applySandboxIdentityFromEnv(config);
-  }
-
   // 3b. Canonical file boot (sovereign identity): when configured via
   // ELIZA_CANONICAL_BOOT_ROOT / ELIZA_CANONICAL_BOOT_MANIFEST, read the
   // operator's allowlisted files (SOUL.md, IDENTITY.md, AGENTS.md, USER.md,
@@ -5759,18 +5744,16 @@ export async function startEliza(
           // must re-apply their injected character on every hot reload: the
           // injection is intentionally not serialized into eliza.json.
           const freshConfig = loadElizaConfig();
-          const { applySandboxIdentityFromEnv } = await import(
+          const { prepareSandboxRuntimeConfig } = await import(
             "./sandbox-character.ts"
           );
-          const freshSandboxRouteAgentId =
-            applySandboxIdentityFromEnv(freshConfig);
+          const freshSandboxRouteAgentId = prepareSandboxRuntimeConfig(
+            freshConfig,
+            applyConnectorSecretsToEnv,
+          );
 
-          // Propagate secrets & cloud config into process.env so plugins
-          // (especially plugin-elizacloud) can discover them.  The initial
-          // startup does this in startEliza(); the hot-reload must repeat it
-          // because the config may have changed (e.g. cloud enabled during
-          // first-run setup).
-          applyConnectorSecretsToEnv(freshConfig);
+          // Continue the same secret and cloud preparation used at initial
+          // startup because either source may have changed before this reload.
           const freshConnectorSecretsOverlay =
             await resolveConnectorSecretsOverlayForBoot(freshConfig);
           await autoResolveDiscordAppId(
