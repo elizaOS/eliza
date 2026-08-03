@@ -6,15 +6,17 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
 import {
   ASSET_CAPACITY_THRESHOLD,
   attach,
   createOverflowReleaseIfAbsent,
   fetchPrEvidenceReleases,
+  findTrailingAttributionFooterStart,
   isReleaseFullError,
   MAX_ASSETS_PER_RELEASE,
   patchEvidenceHead,
@@ -25,6 +27,28 @@ import {
   selectPrEvidenceTarget,
   uploadAssets,
 } from "./pr-evidence.mjs";
+
+// Real repository content, not a mock: the PR template every contributor
+// starts from, plus the exact trailing footer shape
+// ~/.claude/skills/contribute-to-eliza/SKILL.md instructs every contributor
+// to append last.
+const PR_TEMPLATE = readFileSync(
+  fileURLToPath(new URL("../.github/pull_request_template.md", import.meta.url)),
+  "utf8",
+);
+
+function attributionFooter({ separator = true } = {}) {
+  const lines = [
+    ...(separator ? ["---", ""] : []),
+    "AI provider/model: anthropic / claude-sonnet-5",
+    "Client / agent tooling: claude-code",
+    "Contribution skill revision: elizaOS/eliza@229b23342000000000000000000000000000ab:packages/skills/skills/contribute-to-eliza",
+    "Attribution status: self-reported",
+    "— [claude-code-ss251]",
+    '<!-- eliza-computer-attribution:v1 {"provider":"anthropic","model":"claude-sonnet-5","client":"claude-code","skill_revision":"elizaOS/eliza@229b23342000000000000000000000000000ab:packages/skills/skills/contribute-to-eliza"} -->',
+  ];
+  return lines.join("\n");
+}
 
 describe("pr-evidence tag <-> sequence index", () => {
   it("maps the primary tag to index 1 and overflow tags to their number", () => {
@@ -433,5 +457,124 @@ describe("row rendering and body patching", () => {
     assert.match(refreshed, new RegExp(`<!-- evidence-head:${next} -->`));
     assert.ok(!refreshed.includes(first));
     assert.throws(() => patchEvidenceHead(inserted, "short"), /full 40/);
+  });
+
+  describe("findTrailingAttributionFooterStart", () => {
+    it("finds a real trailing footer built from the SKILL.md shape", () => {
+      const footer = attributionFooter();
+      const body = `${PR_TEMPLATE.trimEnd()}\n\n${footer}\n`;
+      const start = findTrailingAttributionFooterStart(body);
+      assert.notEqual(start, null);
+      assert.equal(body.slice(start).trimEnd(), footer);
+    });
+
+    it("finds a trailing footer with no leading --- separator", () => {
+      const footer = attributionFooter({ separator: false });
+      const body = `${PR_TEMPLATE.trimEnd()}\n\n${footer}\n`;
+      const start = findTrailingAttributionFooterStart(body);
+      assert.notEqual(start, null);
+      assert.equal(body.slice(start).trimEnd(), footer);
+    });
+
+    it("does not match a footer that is not trailing", () => {
+      const footer = attributionFooter();
+      const body = `${PR_TEMPLATE.trimEnd()}\n\n${footer}\n\n## Trailing note added after the footer\n`;
+      assert.equal(findTrailingAttributionFooterStart(body), null);
+    });
+
+    it("does not match a bare marker with no lane signature above it", () => {
+      const body = `${PR_TEMPLATE.trimEnd()}\n\n<!-- eliza-computer-attribution:v1 {"provider":"anthropic","model":"claude-sonnet-5"} -->\n`;
+      assert.equal(findTrailingAttributionFooterStart(body), null);
+    });
+  });
+
+  describe("footer-aware insertion (issue #17610)", () => {
+    // A body with no `# Evidence Gate` heading at all (an earlier revision of
+    // the real template, or a PR opened before that section existed) has
+    // neither an evidence-row nor an evidence-head marker, which is exactly
+    // the "old template" case both patch functions append for.
+    const oldTemplateBody = PR_TEMPLATE.slice(
+      0,
+      PR_TEMPLATE.indexOf("# Evidence Gate"),
+    ).trimEnd();
+
+    it("patchRow inserts a fresh row BEFORE a trailing attribution footer", () => {
+      const footer = attributionFooter();
+      const body = `${oldTemplateBody}\n\n${footer}\n`;
+      const patched = patchRow(
+        body,
+        "environment-variables",
+        "- [x] N/A - no new environment variables",
+      );
+      // The fresh marker + row land before the footer, not after it.
+      const rowIndex = patched.indexOf(
+        "<!-- evidence-row:environment-variables -->",
+      );
+      const footerIndex = patched.indexOf(footer.split("\n")[0]);
+      assert.notEqual(rowIndex, -1);
+      assert.ok(rowIndex < footerIndex);
+      // The attribution marker is still the final non-whitespace content.
+      assert.equal(patched.trimEnd().endsWith(footer.split("\n").at(-1)), true);
+      assert.equal(findTrailingAttributionFooterStart(patched) !== null, true);
+    });
+
+    it("patchEvidenceHead inserts the head marker BEFORE a trailing attribution footer", () => {
+      const footer = attributionFooter();
+      const body = `${oldTemplateBody}\n\n${footer}\n`;
+      const sha = "c".repeat(40);
+      const patched = patchEvidenceHead(body, sha);
+      const headIndex = patched.indexOf(`<!-- evidence-head:${sha} -->`);
+      const footerIndex = patched.indexOf(footer.split("\n")[0]);
+      assert.notEqual(headIndex, -1);
+      assert.ok(headIndex < footerIndex);
+      assert.equal(patched.trimEnd().endsWith(footer.split("\n").at(-1)), true);
+      assert.equal(findTrailingAttributionFooterStart(patched) !== null, true);
+    });
+
+    it("does not change append behavior when there is no trailing footer", () => {
+      // Byte-identical to the exact assertions the pre-existing test above
+      // makes against these same fixtures.
+      const appendedRow = patchRow(
+        "no markers here",
+        "llm-trajectory",
+        "- [x] t",
+      );
+      assert.equal(
+        appendedRow,
+        "no markers here\n\n<!-- evidence-row:llm-trajectory -->\n- [x] t\n",
+      );
+      const appendedHead = patchEvidenceHead(
+        "# Evidence Gate\n\nRows",
+        "a".repeat(40),
+      );
+      assert.equal(
+        appendedHead,
+        `# Evidence Gate\n\n<!-- evidence-head:${"a".repeat(40)} -->\n\nRows`,
+      );
+    });
+
+    it("composes: patchRow then patchEvidenceHead both keep the marker final", () => {
+      const footer = attributionFooter();
+      const body = `${oldTemplateBody}\n\n${footer}\n`;
+      const afterRow = patchRow(
+        body,
+        "environment-variables",
+        "- [x] N/A - no new environment variables",
+      );
+      assert.notEqual(findTrailingAttributionFooterStart(afterRow), null);
+      const afterHead = patchEvidenceHead(afterRow, "d".repeat(40));
+      const finalFooterStart = findTrailingAttributionFooterStart(afterHead);
+      assert.notEqual(finalFooterStart, null);
+      assert.equal(afterHead.slice(finalFooterStart).trimEnd(), footer);
+      // Both insertions actually landed, and both precede the footer.
+      assert.ok(
+        afterHead.indexOf("<!-- evidence-row:environment-variables -->") <
+          finalFooterStart,
+      );
+      assert.ok(
+        afterHead.indexOf(`<!-- evidence-head:${"d".repeat(40)} -->`) <
+          finalFooterStart,
+      );
+    });
   });
 });
