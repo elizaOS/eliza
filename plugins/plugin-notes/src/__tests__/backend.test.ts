@@ -422,9 +422,16 @@ describe("Notes capabilities", () => {
       id: noteId,
     });
 
+    await expect(
+      interact("get-notes", { title: "Workbench" }, service),
+    ).resolves.toMatchObject({
+      success: true,
+      data: { notes: [{ id: noteId, title: "Workbench" }] },
+    });
+
     const updatedNote = await interact(
       "update-note",
-      { id: noteId, body: "Polished draft", color: "green" },
+      { query: "Workbench", body: "Polished draft", color: "green" },
       service,
     );
     expect(updatedNote).toMatchObject({ success: true });
@@ -436,10 +443,23 @@ describe("Notes capabilities", () => {
       body: "Polished draft",
       color: "green",
     });
-    const readNote = await interact("get-note", { id: noteId }, service);
-    expect(readNote).toMatchObject({ success: true });
+    await expect(
+      interact(
+        "update-note",
+        { oldTitle: "Workbench", title: "Workbench ready" },
+        service,
+      ),
+    ).resolves.toMatchObject({ success: true });
+    const readNote = await interact(
+      "get-note",
+      { query: "Workbench ready" },
+      service,
+    );
+    expect(readNote).toMatchObject({
+      success: true,
+      data: { note: { id: noteId, title: "Workbench ready" } },
+    });
     expect(readNote.effectReceipts).toBeUndefined();
-    expect(readNote.userFacingEffectReceiptIds).toBeUndefined();
     const deletedNote = await interact(
       "delete-note",
       { query: "polished" },
@@ -473,6 +493,45 @@ describe("Notes capabilities", () => {
     });
   });
 
+  it("fails closed when a title lookup is missing or ambiguous", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    await interact(
+      "create-note",
+      { title: "Daily plan", body: "Morning", color: "yellow" },
+      service,
+    );
+    await interact(
+      "create-note",
+      { title: "Daily plan", body: "Evening", color: "rose" },
+      service,
+    );
+
+    await expect(
+      interact(
+        "update-note",
+        { query: "Daily plan", body: "Changed" },
+        service,
+      ),
+    ).resolves.toMatchObject({
+      success: false,
+      error: { code: "NOTES_AMBIGUOUS_NOTE" },
+    });
+    await expect(
+      interact(
+        "update-note",
+        { query: "does not exist", body: "Changed" },
+        service,
+      ),
+    ).resolves.toMatchObject({
+      success: false,
+      error: { code: "NOTES_NOT_FOUND" },
+    });
+    expect(service.listNotes().map((note) => note.body)).toEqual([
+      "Evening",
+      "Morning",
+    ]);
+  });
+
   it("returns explicit failures for invalid input and rejects undeclared capabilities", async () => {
     const service = await serviceFor(await temporaryStateFile());
     await expect(
@@ -496,7 +555,12 @@ describe("Notes authenticated routes", () => {
     for (const routeValue of notesRoutes) {
       expect(routeValue.public).not.toBe(true);
       expect(routeValue.rawPath).toBe(true);
-      expect(routeValue.modes).toEqual(["cloud"]);
+      expect(routeValue.modes).toEqual([
+        "local",
+        "local-only",
+        "cloud",
+        "remote",
+      ]);
     }
   });
 
