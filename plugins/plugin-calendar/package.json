@@ -126,7 +126,6 @@
   },
   "elizaos": {
     "app": {
-      "visibleInAppStore": false,
       "permissions": [
         "calendar"
       ]
