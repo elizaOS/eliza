@@ -1,17 +1,15 @@
 /**
- * Verifies the Notes and Calendar state labels plus Calendar month navigation
- * without replacing their real rendered component structure.
+ * Verifies that Notes and Calendar are read-only projections of authoritative
+ * capability state across loading, empty, populated, and error conditions.
  */
 
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { SimpleViewsSnapshot, StickyNote } from "../types.js";
+import type {
+  SimpleCalendarEvent,
+  SimpleViewsSnapshot,
+  StickyNote,
+} from "../types.js";
 import type { SimpleViewsState } from "./useSimpleViewsState.js";
 
 const stateHook = vi.hoisted(() => vi.fn());
@@ -46,6 +44,22 @@ function stickyNote(overrides: Partial<StickyNote> = {}): StickyNote {
   };
 }
 
+function calendarEvent(
+  overrides: Partial<SimpleCalendarEvent> = {},
+): SimpleCalendarEvent {
+  return {
+    id: "event-1",
+    title: "Cloud review",
+    date: "2026-07-15",
+    time: "15:00",
+    notes: "Verify the signed native build",
+    color: "green",
+    createdAt: "2026-07-22T12:00:00.000Z",
+    updatedAt: "2026-07-22T12:00:00.000Z",
+    ...overrides,
+  };
+}
+
 function hookState(
   overrides: Partial<SimpleViewsState> = {},
 ): SimpleViewsState {
@@ -60,11 +74,19 @@ function hookState(
   };
 }
 
+function expectNoDirectControls(container: HTMLElement): void {
+  expect(container.querySelector("form")).toBeNull();
+  expect(container.querySelector("button")).toBeNull();
+  expect(container.querySelector("input")).toBeNull();
+  expect(container.querySelector("textarea")).toBeNull();
+  expect(container.querySelector("select")).toBeNull();
+}
+
 beforeEach(() => stateHook.mockReset());
 afterEach(cleanup);
 
 describe("Simple Views state labels", () => {
-  it("uses accessible view names without rendering redundant summary headings", () => {
+  it("uses accessible view names without redundant summary headings", () => {
     const notesSnapshot = snapshot(4);
     notesSnapshot.notes = [stickyNote()];
     stateHook.mockReturnValue(hookState({ snapshot: notesSnapshot }));
@@ -77,12 +99,7 @@ describe("Simple Views state labels", () => {
     expect(
       screen.queryByRole("heading", { level: 1, name: "Notes" }),
     ).toBeNull();
-    expect(
-      screen
-        .getByRole("button", { name: "Clear" })
-        .closest("section")
-        ?.getAttribute("aria-label"),
-    ).toBe("Notes");
+    expect(screen.getByRole("region", { name: "Notes" })).toBeTruthy();
     notes.unmount();
 
     render(<SimpleCalendarView />);
@@ -96,23 +113,11 @@ describe("Simple Views state labels", () => {
     ).toBeNull();
   });
 
-  it("gives compact note controls native accessible names", () => {
-    stateHook.mockReturnValue(hookState({ snapshot: snapshot(1) }));
-
-    const notes = render(<NotesView />);
-    const yellow = notes.container.querySelector(
-      '[aria-label="Use yellow color"]',
-    );
-
-    expect(yellow).toBeTruthy();
-    expect(yellow?.textContent).toBe("");
-  });
-
   it.each([
     { height: 499, label: "compact", width: 315 },
     { height: 800, label: "desktop", width: 1280 },
   ])(
-    "lets each view own scrolling inside the overflow-hidden host at $label size",
+    "extends each scroll surface beneath chat while keeping its tail reachable at $label size",
     ({ height, width }) => {
       Object.defineProperties(window, {
         innerHeight: { configurable: true, value: height },
@@ -129,11 +134,16 @@ describe("Simple Views state labels", () => {
       const notesScroll = notes.getByTestId("simple-notes-scroll-region");
       expect(notesScroll.style.position).toBe("absolute");
       expect(notesScroll.style.overflowY).toBe("auto");
-      expect(notesScroll.style.insetBlockEnd).toContain(
+      expect(notesScroll.style.insetBlockEnd).toBe("0px");
+      expect(notesScroll.style.insetInlineEnd).toBe("0px");
+      expect(notesScroll.style.paddingBottom).toContain(
         "--eliza-chat-clearance",
       );
-      expect(notesScroll.style.insetInlineEnd).toContain(
+      expect(notesScroll.style.paddingInlineEnd).toContain(
         "--eliza-chat-side-clearance",
+      );
+      expect(notesScroll.style.scrollPaddingBottom).toContain(
+        "--eliza-chat-clearance",
       );
       notes.unmount();
 
@@ -149,11 +159,16 @@ describe("Simple Views state labels", () => {
       );
       expect(calendarScroll.style.position).toBe("absolute");
       expect(calendarScroll.style.overflowY).toBe("auto");
-      expect(calendarScroll.style.insetBlockEnd).toContain(
+      expect(calendarScroll.style.insetBlockEnd).toBe("0px");
+      expect(calendarScroll.style.insetInlineEnd).toBe("0px");
+      expect(calendarScroll.style.paddingBottom).toContain(
         "--eliza-chat-clearance",
       );
-      expect(calendarScroll.style.insetInlineEnd).toContain(
+      expect(calendarScroll.style.paddingInlineEnd).toContain(
         "--eliza-chat-side-clearance",
+      );
+      expect(calendarScroll.style.scrollPaddingBottom).toContain(
+        "--eliza-chat-clearance",
       );
     },
   );
@@ -180,7 +195,7 @@ describe("Simple Views state labels", () => {
     expect(screen.queryByText(/0 events/)).toBeNull();
   });
 
-  it("does not report healthy zero counts while synchronization is in error", () => {
+  it("distinguishes synchronization errors from healthy empty state", () => {
     stateHook.mockReturnValue(
       hookState({ snapshot: snapshot(4), error: "Agent disconnected" }),
     );
@@ -229,111 +244,49 @@ describe("Simple Views state labels", () => {
   });
 });
 
-describe("Notes direct interactions", () => {
-  it("creates a colored note and resets an abandoned draft", async () => {
-    const mutate = vi.fn().mockResolvedValue(undefined);
-    stateHook.mockReturnValue(hookState({ snapshot: snapshot(1), mutate }));
-    render(<NotesView />);
-
-    const title = screen.getByLabelText<HTMLInputElement>("Note title");
-    const details = screen.getByLabelText<HTMLTextAreaElement>("Note details");
-    fireEvent.change(title, { target: { value: "Throw this away" } });
-    fireEvent.change(details, { target: { value: "Temporary draft" } });
-    fireEvent.click(screen.getByTitle("Reset draft"));
-    expect(title.value).toBe("");
-    expect(details.value).toBe("");
-
-    fireEvent.change(title, { target: { value: "  Demo notes  " } });
-    fireEvent.change(details, {
-      target: { value: "Keep this across view switches" },
-    });
-    fireEvent.click(screen.getByTitle("Green"));
-    const form = title.closest("form");
-    if (!form) throw new Error("Notes form is required.");
-    fireEvent.submit(form);
-
-    await waitFor(() =>
-      expect(mutate).toHaveBeenCalledWith("create-note", {
-        title: "Demo notes",
-        body: "Keep this across view switches",
-        color: "green",
-      }),
-    );
-    await waitFor(() => expect(title.value).toBe(""));
-  });
-
-  it("renders, edits, deletes, and clears authoritative notes", async () => {
-    const mutate = vi.fn().mockResolvedValue(undefined);
+describe("chat-only presentation", () => {
+  it("renders authoritative notes without direct mutation controls", () => {
     const populated = snapshot(4);
     populated.notes = [stickyNote()];
+    const mutate = vi.fn();
     stateHook.mockReturnValue(hookState({ snapshot: populated, mutate }));
-    render(<NotesView />);
+
+    const notes = render(<NotesView />);
 
     expect(screen.getByText("Release checklist")).toBeTruthy();
     expect(screen.getByText("Verify the signed build")).toBeTruthy();
-    fireEvent.click(screen.getByTitle("Edit note"));
-    const title = screen.getByLabelText<HTMLInputElement>("Note title");
-    expect(title.value).toBe("Release checklist");
-    fireEvent.change(title, { target: { value: "Release ready" } });
-    fireEvent.click(screen.getByTitle("Rose"));
-    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
-
-    await waitFor(() =>
-      expect(mutate).toHaveBeenCalledWith("update-note", {
-        id: "note-1",
-        title: "Release ready",
-        body: "Verify the signed build",
-        color: "rose",
-      }),
-    );
-
-    fireEvent.click(screen.getByTitle("Delete note"));
-    await waitFor(() =>
-      expect(mutate).toHaveBeenCalledWith("delete-note", { id: "note-1" }),
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
-    fireEvent.click(screen.getByRole("button", { name: "Confirm clear" }));
-    await waitFor(() => expect(mutate).toHaveBeenCalledWith("clear-notes"));
+    expectNoDirectControls(notes.container);
+    expect(mutate).not.toHaveBeenCalled();
   });
-});
 
-describe("Simple Calendar month cursor", () => {
-  it("preserves manual month navigation across unrelated snapshot revisions", async () => {
+  it("renders the capability-selected date and events without direct controls", () => {
+    const populated = snapshot(5);
+    populated.events = [calendarEvent()];
+    const mutate = vi.fn();
+    stateHook.mockReturnValue(hookState({ snapshot: populated, mutate }));
+
+    const calendar = render(<SimpleCalendarView />);
+
+    expect(screen.getByRole("heading", { name: "July 2026" })).toBeTruthy();
+    expect(screen.getByText("Cloud review")).toBeTruthy();
+    expect(screen.getByText("Verify the signed native build")).toBeTruthy();
+    expectNoDirectControls(calendar.container);
+    expect(mutate).not.toHaveBeenCalled();
+  });
+
+  it("follows a selected-date capability update without local cursor state", () => {
     stateHook.mockReturnValue(hookState({ snapshot: snapshot(1) }));
     const view = render(<SimpleCalendarView />);
-
-    fireEvent.click(screen.getByTitle("Next month"));
-    expect(screen.getByRole("heading", { name: "August 2026" })).toBeTruthy();
-
-    stateHook.mockReturnValue(hookState({ snapshot: snapshot(2) }));
-    view.rerender(<SimpleCalendarView />);
-    expect(screen.getByRole("heading", { name: "August 2026" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "July 2026" })).toBeTruthy();
 
     stateHook.mockReturnValue(
-      hookState({ snapshot: snapshot(3, "2026-09-08") }),
+      hookState({ snapshot: snapshot(2, "2026-09-08") }),
     );
     view.rerender(<SimpleCalendarView />);
-    await waitFor(() =>
-      expect(
-        screen.getByRole("heading", { name: "September 2026" }),
-      ).toBeTruthy(),
-    );
-  });
 
-  it("stacks native date controls before their values can truncate", () => {
-    stateHook.mockReturnValue(hookState({ snapshot: snapshot(7) }));
-    render(<SimpleCalendarView />);
-
-    const fields = screen.getByTestId("calendar-event-schedule-fields");
-    expect(fields.style.gridTemplateColumns).toBe(
-      "repeat(auto-fit, minmax(min(100%, 180px), 1fr))",
-    );
     expect(
-      screen.getByLabelText<HTMLInputElement>("Calendar event date").value,
-    ).toBe("2026-07-15");
-    expect(
-      screen.getByLabelText<HTMLInputElement>("Calendar event time").value,
-    ).toBe("09:00");
+      screen.getByRole("heading", { name: "September 2026" }),
+    ).toBeTruthy();
+    expectNoDirectControls(view.container);
   });
 });
