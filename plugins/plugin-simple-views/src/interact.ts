@@ -12,11 +12,7 @@ import {
   isElizaError,
   toElizaError,
 } from "@elizaos/core";
-import {
-  type CalendarEventLookupSelector,
-  getSimpleViewsService,
-  type SimpleViewsService,
-} from "./service.js";
+import { getSimpleViewsService, type SimpleViewsService } from "./service.js";
 import type {
   SimpleCalendarEvent,
   SimpleViewsSnapshot,
@@ -90,10 +86,86 @@ function assertOnlyParams(
   }
 }
 
-function withoutId(params: Record<string, unknown>): Record<string, unknown> {
+function withoutParams(
+  params: Record<string, unknown>,
+  excluded: readonly string[],
+): Record<string, unknown> {
+  const excludedKeys = new Set(excluded);
   return Object.fromEntries(
-    Object.entries(params).filter(([key]) => key !== "id"),
+    Object.entries(params).filter(([key]) => !excludedKeys.has(key)),
   );
+}
+
+function updatePatch(
+  params: Record<string, unknown>,
+  selectors: readonly string[],
+): Record<string, unknown> {
+  const patch = withoutParams(params, [...selectors, "newTitle"]);
+  if (Object.hasOwn(params, "newTitle")) patch.title = params.newTitle;
+  return patch;
+}
+
+function calendarUpdatePatch(
+  params: Record<string, unknown>,
+  selectors: readonly string[],
+): Record<string, unknown> {
+  return normalizeCalendarDetails(updatePatch(params, selectors));
+}
+
+function normalizeCalendarDetails(
+  params: Record<string, unknown>,
+): Record<string, unknown> {
+  if (Object.hasOwn(params, "notes") && Object.hasOwn(params, "details")) {
+    throw new ElizaError(
+      "Calendar capabilities accept either details or notes, not both.",
+      {
+        code: "SIMPLE_VIEWS_VALIDATION_FAILED",
+        context: { fields: ["details", "notes"] },
+        severity: "ephemeral",
+      },
+    );
+  }
+  if (!Object.hasOwn(params, "details")) return params;
+  const normalized: Record<string, unknown> = {
+    ...params,
+    notes: params.details,
+  };
+  delete normalized.details;
+  return normalized;
+}
+
+function normalizeRenameParams(
+  params: Record<string, unknown>,
+  capability: string,
+): Record<string, unknown> {
+  if (!Object.hasOwn(params, "oldTitle")) return params;
+  if (Object.hasOwn(params, "id") || Object.hasOwn(params, "query")) {
+    throw new ElizaError(
+      `${capability} oldTitle cannot be combined with id or query.`,
+      {
+        code: "SIMPLE_VIEWS_VALIDATION_FAILED",
+        context: { fields: ["oldTitle", "id", "query"] },
+        severity: "ephemeral",
+      },
+    );
+  }
+  if (Object.hasOwn(params, "title") && Object.hasOwn(params, "newTitle")) {
+    throw new ElizaError(
+      `${capability} accepts title or newTitle as the replacement, not both.`,
+      {
+        code: "SIMPLE_VIEWS_VALIDATION_FAILED",
+        context: { fields: ["title", "newTitle"] },
+        severity: "ephemeral",
+      },
+    );
+  }
+  const normalized: Record<string, unknown> = {
+    ...params,
+    title: params.oldTitle,
+  };
+  if (Object.hasOwn(params, "title")) normalized.newTitle = params.title;
+  delete normalized.oldTitle;
+  return normalized;
 }
 
 function summarizeNotes(notes: StickyNote[]): string {
@@ -132,83 +204,19 @@ function summarizeEvents(events: SimpleCalendarEvent[], date?: string): string {
   return visible.join("\n");
 }
 
-function normalizedLookup(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-function resolveNoteTarget(
-  notes: StickyNote[],
+function parseLookupTarget(
   params: Record<string, unknown>,
-): string {
-  if (typeof params.id === "string" && params.id.trim().length > 0) {
-    return params.id;
-  }
-  const targetValue =
-    typeof params.title === "string"
-      ? params.title
-      : typeof params.query === "string"
-        ? params.query
-        : "";
-  const target = normalizedLookup(targetValue);
-  if (target.length === 0) {
-    throw new ElizaError("delete-note requires id, title, or query.", {
-      code: "SIMPLE_VIEWS_VALIDATION_FAILED",
-      context: { field: "id" },
-      severity: "ephemeral",
-    });
-  }
-
-  const exact = notes.filter((note) => normalizedLookup(note.title) === target);
-  const candidates =
-    exact.length > 0
-      ? exact
-      : notes.filter((note) =>
-          normalizedLookup(`${note.title} ${note.body}`).includes(target),
-        );
-  if (candidates.length === 0) {
-    throw new ElizaError(`No sticky note matches "${targetValue}".`, {
-      code: "SIMPLE_VIEWS_NOT_FOUND",
-      context: { kind: "note", target: targetValue },
-      severity: "ephemeral",
-    });
-  }
-  if (candidates.length > 1) {
-    throw new ElizaError(
-      `"${targetValue}" matches multiple sticky notes: ${candidates
-        .map((note) => note.title)
-        .join(", ")}.`,
-      {
-        code: "SIMPLE_VIEWS_AMBIGUOUS_NOTE",
-        context: {
-          target: targetValue,
-          candidateIds: candidates.map((note) => note.id),
-        },
-        severity: "ephemeral",
-      },
-    );
-  }
-  const candidate = candidates[0];
-  if (!candidate) {
-    throw new ElizaError("Resolved sticky note was missing.", {
-      code: "SIMPLE_VIEWS_NOTE_RESOLUTION_FAILED",
-      severity: "fatal",
-    });
-  }
-  return candidate.id;
-}
-
-function parseCalendarEventTarget(
-  params: Record<string, unknown>,
+  capability: string,
+  selectorNames: readonly ("id" | "title" | "query")[],
 ):
   | { selector: "id"; value: string }
-  | { selector: CalendarEventLookupSelector; value: string } {
-  const selectorNames = ["id", "title", "query"] as const;
+  | { selector: "title" | "query"; value: string } {
   const providedSelectors = selectorNames.filter((name) =>
     Object.hasOwn(params, name),
   );
   if (providedSelectors.length !== 1) {
     throw new ElizaError(
-      "delete-calendar-event requires exactly one of id, title, or query.",
+      `${capability} requires exactly one of ${selectorNames.join(", ")}.`,
       {
         code: "SIMPLE_VIEWS_VALIDATION_FAILED",
         context: {
@@ -227,7 +235,7 @@ function parseCalendarEventTarget(
     selectorValue.trim().length === 0
   ) {
     throw new ElizaError(
-      `delete-calendar-event ${selector ?? "selector"} must be a nonblank string.`,
+      `${capability} ${selector ?? "selector"} must be a nonblank string.`,
       {
         code: "SIMPLE_VIEWS_VALIDATION_FAILED",
         context: { field: selector ?? "selector" },
@@ -235,7 +243,23 @@ function parseCalendarEventTarget(
       },
     );
   }
-  return { selector, value: selectorValue.trim() };
+  const value = selectorValue.trim();
+  return selector === "id" ? { selector, value } : { selector, value };
+}
+
+function parseNamedLookupTarget(
+  params: Record<string, unknown>,
+  capability: string,
+): { selector: "title" | "query"; value: string } {
+  const target = parseLookupTarget(params, capability, ["title", "query"]);
+  if (target.selector === "id") {
+    throw new ElizaError("Named lookup unexpectedly resolved an id selector.", {
+      code: "SIMPLE_VIEWS_LOOKUP_RESOLUTION_FAILED",
+      context: { capability },
+      severity: "fatal",
+    });
+  }
+  return target;
 }
 
 function success(
@@ -292,13 +316,27 @@ async function dispatchCapability(
 ): Promise<SimpleViewsInteractResult> {
   const params = paramsRecord(paramsValue);
   if (capability === "get-notes") {
-    assertOnlyParams(params, []);
-    const notes = service.listNotes();
+    assertOnlyParams(params, ["title", "query"]);
+    const target =
+      Object.keys(params).length === 0
+        ? null
+        : parseNamedLookupTarget(params, capability);
+    const notes = target
+      ? [service.getNoteByLookup(target.selector, target.value)]
+      : service.listNotes();
     return success(service, summarizeNotes(notes), { notes });
   }
   if (capability === "get-note") {
-    assertOnlyParams(params, ["id"]);
-    const note = service.getNote(requiredParam(params, "id"));
+    assertOnlyParams(params, ["id", "title", "query"]);
+    const target = parseLookupTarget(params, capability, [
+      "id",
+      "title",
+      "query",
+    ]);
+    const note =
+      target.selector === "id"
+        ? service.getNote(target.value)
+        : service.getNoteByLookup(target.selector, target.value);
     return success(service, `Read sticky note "${note.title}".`, { note });
   }
   if (capability === "create-note") {
@@ -313,10 +351,27 @@ async function dispatchCapability(
     );
   }
   if (capability === "update-note") {
-    const { value: note, snapshot } = await service.updateNoteWithCommit(
-      requiredParam(params, "id"),
-      withoutId(params),
-    );
+    assertOnlyParams(params, [
+      "id",
+      "oldTitle",
+      "title",
+      "query",
+      "newTitle",
+      "body",
+      "color",
+    ]);
+    const normalized = normalizeRenameParams(params, capability);
+    const selectors = ["id", "title", "query"] as const;
+    const target = parseLookupTarget(normalized, capability, selectors);
+    const patch = updatePatch(normalized, selectors);
+    const { value: note, snapshot } =
+      target.selector === "id"
+        ? await service.updateNoteWithCommit(target.value, patch)
+        : await service.updateNoteByLookupWithCommit(
+            target.selector,
+            target.value,
+            patch,
+          );
     return mutationSuccess(
       snapshot,
       capability,
@@ -327,8 +382,18 @@ async function dispatchCapability(
   }
   if (capability === "delete-note") {
     assertOnlyParams(params, ["id", "title", "query"]);
-    const id = resolveNoteTarget(service.listNotes(), params);
-    const { value: note, snapshot } = await service.deleteNoteWithCommit(id);
+    const target = parseLookupTarget(params, capability, [
+      "id",
+      "title",
+      "query",
+    ]);
+    const { value: note, snapshot } =
+      target.selector === "id"
+        ? await service.deleteNoteWithCommit(target.value)
+        : await service.deleteNoteByLookupWithCommit(
+            target.selector,
+            target.value,
+          );
     return mutationSuccess(
       snapshot,
       capability,
@@ -349,19 +414,39 @@ async function dispatchCapability(
     );
   }
   if (capability === "get-calendar-state") {
-    assertOnlyParams(params, ["date"]);
+    assertOnlyParams(params, ["date", "title", "query"]);
     const date =
       params.date === undefined ? undefined : parseDateKey(params.date);
     const selectedDate = service.selectedDate();
-    const events = service.listCalendarEvents(date);
+    const lookupParams = withoutParams(params, ["date"]);
+    const target =
+      Object.keys(lookupParams).length === 0
+        ? null
+        : parseNamedLookupTarget(lookupParams, capability);
+    const matchedEvent = target
+      ? service.getCalendarEventByLookup(target.selector, target.value)
+      : null;
+    const events = matchedEvent
+      ? date === undefined || matchedEvent.date === date
+        ? [matchedEvent]
+        : []
+      : service.listCalendarEvents(date);
     return success(service, summarizeEvents(events, date), {
       selectedDate,
       events,
     });
   }
   if (capability === "get-calendar-event") {
-    assertOnlyParams(params, ["id"]);
-    const event = service.getCalendarEvent(requiredParam(params, "id"));
+    assertOnlyParams(params, ["id", "title", "query"]);
+    const target = parseLookupTarget(params, capability, [
+      "id",
+      "title",
+      "query",
+    ]);
+    const event =
+      target.selector === "id"
+        ? service.getCalendarEvent(target.value)
+        : service.getCalendarEventByLookup(target.selector, target.value);
     return success(service, `Read calendar event "${event.title}".`, {
       event,
     });
@@ -381,7 +466,9 @@ async function dispatchCapability(
   }
   if (capability === "create-calendar-event") {
     const { value: event, snapshot } =
-      await service.createCalendarEventWithCommit(params);
+      await service.createCalendarEventWithCommit(
+        normalizeCalendarDetails(params),
+      );
     return mutationSuccess(
       snapshot,
       capability,
@@ -391,11 +478,30 @@ async function dispatchCapability(
     );
   }
   if (capability === "update-calendar-event") {
+    assertOnlyParams(params, [
+      "id",
+      "oldTitle",
+      "title",
+      "query",
+      "newTitle",
+      "date",
+      "time",
+      "notes",
+      "details",
+      "color",
+    ]);
+    const normalized = normalizeRenameParams(params, capability);
+    const selectors = ["id", "title", "query"] as const;
+    const target = parseLookupTarget(normalized, capability, selectors);
+    const patch = calendarUpdatePatch(normalized, selectors);
     const { value: event, snapshot } =
-      await service.updateCalendarEventWithCommit(
-        requiredParam(params, "id"),
-        withoutId(params),
-      );
+      target.selector === "id"
+        ? await service.updateCalendarEventWithCommit(target.value, patch)
+        : await service.updateCalendarEventByLookupWithCommit(
+            target.selector,
+            target.value,
+            patch,
+          );
     return mutationSuccess(
       snapshot,
       capability,
@@ -406,7 +512,11 @@ async function dispatchCapability(
   }
   if (capability === "delete-calendar-event") {
     assertOnlyParams(params, ["id", "title", "query"]);
-    const target = parseCalendarEventTarget(params);
+    const target = parseLookupTarget(params, capability, [
+      "id",
+      "title",
+      "query",
+    ]);
     const { value: event, snapshot } =
       target.selector === "id"
         ? await service.deleteCalendarEventWithCommit(target.value)

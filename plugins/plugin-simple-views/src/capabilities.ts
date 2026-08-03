@@ -52,12 +52,33 @@ const ID_PARAM = {
 export const NOTES_CAPABILITIES: ViewCapability[] = [
   {
     id: "get-notes",
-    description: "List every sticky note as structured data.",
+    description:
+      "List sticky notes as structured data, optionally narrowed by exact title or unique query.",
+    params: {
+      title: { ...TITLE_PARAM, description: "Optional exact note title." },
+      query: {
+        type: "string",
+        description: "Optional unique title/body search text.",
+        minLength: 1,
+        maxLength: 20_000,
+        pattern: "\\S",
+      },
+    },
   },
   {
     id: "get-note",
-    description: "Read one sticky note by id.",
-    params: ID_PARAM,
+    description: "Read one sticky note by id, exact title, or unique query.",
+    params: {
+      id: { ...ID_PARAM.id, required: false },
+      title: { ...TITLE_PARAM, description: "Exact note title." },
+      query: {
+        type: "string",
+        description: "Unique title/body search text.",
+        minLength: 1,
+        maxLength: 20_000,
+        pattern: "\\S",
+      },
+    },
   },
   {
     id: "create-note",
@@ -74,10 +95,29 @@ export const NOTES_CAPABILITIES: ViewCapability[] = [
   },
   {
     id: "update-note",
-    description: "Update one or more fields on a sticky note.",
+    description:
+      "Update one or more fields on a sticky note identified by id, exact title, or unique query.",
     params: {
-      ...ID_PARAM,
-      title: { ...TITLE_PARAM, description: "Replacement note title." },
+      id: { ...ID_PARAM.id, description: "Stable note id.", required: false },
+      oldTitle: {
+        ...TITLE_PARAM,
+        description:
+          "Current exact title when title supplies the replacement title.",
+      },
+      title: {
+        ...TITLE_PARAM,
+        description:
+          "Current exact title, or replacement title when oldTitle is supplied.",
+      },
+      query: {
+        type: "string",
+        description:
+          "Current exact title or unique title/body text identifying the note to update.",
+        minLength: 1,
+        maxLength: 20_000,
+        pattern: "\\S",
+      },
+      newTitle: { ...TITLE_PARAM, description: "Replacement note title." },
       body: { ...BODY_PARAM, description: "Replacement note body." },
       color: {
         ...COLOR_PARAM,
@@ -109,18 +149,38 @@ export const NOTES_CAPABILITIES: ViewCapability[] = [
 export const CALENDAR_CAPABILITIES: ViewCapability[] = [
   {
     id: "get-calendar-state",
-    description: "Read selected date and calendar events as structured data.",
+    description:
+      "Read selected date and calendar events, optionally narrowed by date, exact title, or unique query.",
     params: {
       date: {
         ...DATE_PARAM,
         description: "Optional YYYY-MM-DD filter.",
       },
+      title: { ...TITLE_PARAM, description: "Optional exact event title." },
+      query: {
+        type: "string",
+        description: "Optional unique title/date/time/notes search text.",
+        minLength: 1,
+        maxLength: 20_000,
+        pattern: "\\S",
+      },
     },
   },
   {
     id: "get-calendar-event",
-    description: "Read one Simple Calendar event by id.",
-    params: ID_PARAM,
+    description:
+      "Read one Simple Calendar event by id, exact title, or unique query.",
+    params: {
+      id: { ...ID_PARAM.id, required: false },
+      title: { ...TITLE_PARAM, description: "Exact event title." },
+      query: {
+        type: "string",
+        description: "Unique title/date/time/notes search text.",
+        minLength: 1,
+        maxLength: 20_000,
+        pattern: "\\S",
+      },
+    },
   },
   {
     id: "select-calendar-date",
@@ -150,19 +210,44 @@ export const CALENDAR_CAPABILITIES: ViewCapability[] = [
         ...TIME_PARAM,
         description: "Optional HH:mm 24-hour time; defaults to 09:00.",
       },
+      details: { ...BODY_PARAM, description: "Optional event details." },
       notes: { ...BODY_PARAM, description: "Optional event notes." },
       color: COLOR_PARAM,
     },
   },
   {
     id: "update-calendar-event",
-    description: "Update one or more fields on a Simple Calendar event.",
+    description:
+      "Update one or more fields on a Simple Calendar event identified by id, exact title, or unique query.",
     params: {
-      ...ID_PARAM,
-      title: { ...TITLE_PARAM, description: "Replacement event title." },
+      id: {
+        ...ID_PARAM.id,
+        description: "Stable calendar event id.",
+        required: false,
+      },
+      oldTitle: {
+        ...TITLE_PARAM,
+        description:
+          "Current exact title when title supplies the replacement title.",
+      },
+      title: {
+        ...TITLE_PARAM,
+        description:
+          "Current exact title, or replacement title when oldTitle is supplied.",
+      },
+      query: {
+        type: "string",
+        description:
+          "Current exact title or unique title/date/time/notes text identifying the event to update.",
+        minLength: 1,
+        maxLength: 20_000,
+        pattern: "\\S",
+      },
+      newTitle: { ...TITLE_PARAM, description: "Replacement event title." },
       date: { ...DATE_PARAM, description: "Replacement YYYY-MM-DD date." },
       time: { ...TIME_PARAM, description: "Replacement HH:mm time." },
-      notes: { ...BODY_PARAM, description: "Replacement event notes." },
+      details: { ...BODY_PARAM, description: "Replacement event details." },
+      notes: { ...BODY_PARAM, description: "Replacement event details." },
       color: {
         ...COLOR_PARAM,
         description: "Replacement color: yellow, green, rose, or slate.",

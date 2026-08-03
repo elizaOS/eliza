@@ -1,6 +1,6 @@
 /**
- * Drives the real Notes and Calendar React surfaces through the production
- * browser contracts into one filesystem-backed service, including view switches.
+ * Drives planner-visible Notes and Calendar capabilities into the real React
+ * views through one filesystem-backed service, including view switches.
  *
  * @vitest-environment jsdom
  */
@@ -8,13 +8,7 @@
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const transportFetch = vi.hoisted(() => vi.fn());
@@ -56,6 +50,11 @@ function jsonResponse(value: unknown, status = 200): Response {
   });
 }
 
+function activeService(): SimpleViewsService {
+  if (!service) throw new Error("Simple Views E2E service is unavailable.");
+  return service;
+}
+
 beforeEach(async () => {
   stateDirectory = await fs.mkdtemp(
     path.join(os.tmpdir(), "simple-views-ui-e2e-"),
@@ -72,9 +71,9 @@ beforeEach(async () => {
   transportFetch.mockReset();
   transportFetch.mockImplementation(
     async (url: string, init?: RequestInit): Promise<Response> => {
-      if (!service) throw new Error("Simple Views E2E service is unavailable.");
+      const currentService = activeService();
       if (url === "/api/simple-views/state") {
-        return jsonResponse({ success: true, data: service.snapshot() });
+        return jsonResponse({ success: true, data: currentService.snapshot() });
       }
       if (url.startsWith("/api/views/") && init?.method === "POST") {
         const body = JSON.parse(String(init.body)) as {
@@ -84,7 +83,7 @@ beforeEach(async () => {
         const result = await interactWithService(
           body.capability,
           body.params,
-          service,
+          currentService,
         );
         return jsonResponse({
           requestId: `simple-views-e2e-${body.capability}`,
@@ -104,76 +103,85 @@ afterEach(async () => {
   await fs.rm(stateDirectory, { recursive: true, force: true });
 });
 
-describe("Simple Views deterministic UI-to-service journey", () => {
-  it("creates, edits, and preserves a note while creating an event across view switches", async () => {
+describe("Simple Views capability-to-UI journey", () => {
+  it("projects note and event mutations across read-only view switches", async () => {
     const notes = render(<NotesView />);
     expect(
       await screen.findByRole("main", {
         name: "Notes. 0 notes · revision 0",
       }),
     ).toBeTruthy();
-
-    fireEvent.change(screen.getByLabelText("Note title"), {
-      target: { value: "Demo briefing" },
-    });
-    fireEvent.change(screen.getByLabelText("Note details"), {
-      target: { value: "Show Calendar and Notes together" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Use green color" }));
-    fireEvent.click(screen.getByRole("button", { name: "Create note" }));
-
-    expect(await screen.findByText("Demo briefing")).toBeTruthy();
-    expect(screen.getByText("Show Calendar and Notes together")).toBeTruthy();
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Edit note Demo briefing" }),
-    );
-    fireEvent.change(screen.getByLabelText("Note title"), {
-      target: { value: "Demo briefing ready" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Save note changes" }));
-    expect(await screen.findByText("Demo briefing ready")).toBeTruthy();
-
+    expect(
+      notes.container.querySelector("button, input, textarea, form"),
+    ).toBeNull();
     notes.unmount();
+
+    await interactWithService(
+      "create-note",
+      {
+        title: "Demo briefing",
+        body: "Show Calendar and Notes together",
+        color: "green",
+      },
+      activeService(),
+    );
+    await interactWithService(
+      "update-note",
+      { query: "Demo briefing", newTitle: "Demo briefing ready" },
+      activeService(),
+    );
+
+    const populatedNotes = render(<NotesView />);
+    expect(await screen.findByText("Demo briefing ready")).toBeTruthy();
+    expect(screen.getByText("Show Calendar and Notes together")).toBeTruthy();
+    expect(
+      populatedNotes.container.querySelector("button, input, textarea, form"),
+    ).toBeNull();
+    populatedNotes.unmount();
+
+    await interactWithService(
+      "select-calendar-date",
+      { date: "2026-08-12" },
+      activeService(),
+    );
+    await interactWithService(
+      "create-calendar-event",
+      {
+        title: "Cloud review",
+        date: "2026-08-12",
+        time: "15:00",
+        notes: "Verify the signed native build",
+        color: "green",
+      },
+      activeService(),
+    );
+
     const calendar = render(<SimpleCalendarView />);
     expect(
       await screen.findByRole("main", {
-        name: "Calendar. 0 events · revision 2",
+        name: "Calendar. 1 event · revision 4",
       }),
     ).toBeTruthy();
-    const selectedDate = service?.snapshot().selectedDate;
-    if (!selectedDate) throw new Error("Calendar selected date is required.");
-
-    fireEvent.change(screen.getByLabelText("Calendar event title"), {
-      target: { value: "Cloud review" },
-    });
-    fireEvent.change(screen.getByLabelText("Calendar event date"), {
-      target: { value: selectedDate },
-    });
-    fireEvent.change(screen.getByLabelText("Calendar event time"), {
-      target: { value: "15:00" },
-    });
-    fireEvent.change(screen.getByLabelText("Calendar event details"), {
-      target: { value: "Verify the signed native build" },
-    });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Create calendar event" }),
-    );
+    expect(screen.getByRole("heading", { name: "August 2026" })).toBeTruthy();
     expect(await screen.findByText("Cloud review")).toBeTruthy();
     expect(screen.getByText("Verify the signed native build")).toBeTruthy();
+    expect(
+      calendar.container.querySelector("button, input, textarea, form"),
+    ).toBeNull();
 
     calendar.unmount();
     render(<NotesView />);
     expect(await screen.findByText("Demo briefing ready")).toBeTruthy();
 
     await waitFor(() => {
-      expect(service?.snapshot()).toMatchObject({
-        revision: 3,
+      expect(activeService().snapshot()).toMatchObject({
+        revision: 4,
+        selectedDate: "2026-08-12",
         notes: [{ title: "Demo briefing ready", color: "green" }],
         events: [
           {
             title: "Cloud review",
-            date: selectedDate,
+            date: "2026-08-12",
             time: "15:00",
           },
         ],

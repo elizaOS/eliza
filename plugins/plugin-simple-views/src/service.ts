@@ -13,6 +13,8 @@ import type {
   SimpleViewsSnapshot,
   SimpleViewsStoreStatus,
   StickyNote,
+  UpdateCalendarEventInput,
+  UpdateNoteInput,
 } from "./types.js";
 import {
   parseCreateCalendarEventInput,
@@ -46,6 +48,7 @@ function notFound(kind: "note" | "calendar event", id: string): ElizaError {
 }
 
 export type CalendarEventLookupSelector = "title" | "query";
+export type NoteLookupSelector = "title" | "query";
 
 export interface SimpleViewsCommittedMutation<T> {
   value: T;
@@ -54,6 +57,86 @@ export interface SimpleViewsCommittedMutation<T> {
 
 function normalizedLookup(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function resolveNoteIndex(
+  notes: StickyNote[],
+  selector: NoteLookupSelector,
+  value: string,
+): number {
+  const target = normalizedLookup(value);
+  const exactIndexes = notes.flatMap((note, index) =>
+    normalizedLookup(note.title) === target ? [index] : [],
+  );
+  const candidateIndexes =
+    selector === "title" || exactIndexes.length > 0
+      ? exactIndexes
+      : notes.flatMap((note, index) =>
+          normalizedLookup(`${note.title} ${note.body}`).includes(target)
+            ? [index]
+            : [],
+        );
+  if (candidateIndexes.length === 0) {
+    throw new ElizaError(`No sticky note matches "${value}".`, {
+      code: "SIMPLE_VIEWS_NOT_FOUND",
+      context: { kind: "note", selector, target: value },
+      severity: "ephemeral",
+    });
+  }
+  if (candidateIndexes.length > 1) {
+    const candidates = candidateIndexes.flatMap((index) => {
+      const note = notes[index];
+      return note ? [note] : [];
+    });
+    throw new ElizaError(
+      `"${value}" matches multiple sticky notes: ${candidates
+        .map((note) => note.title)
+        .join(", ")}.`,
+      {
+        code: "SIMPLE_VIEWS_AMBIGUOUS_NOTE",
+        context: {
+          selector,
+          target: value,
+          candidateIds: candidates.map((note) => note.id),
+        },
+        severity: "ephemeral",
+      },
+    );
+  }
+  const candidateIndex = candidateIndexes[0];
+  if (candidateIndex === undefined) {
+    throw new ElizaError("Resolved sticky note was missing.", {
+      code: "SIMPLE_VIEWS_NOTE_RESOLUTION_FAILED",
+      severity: "fatal",
+    });
+  }
+  return candidateIndex;
+}
+
+function applyNotePatch(
+  existing: StickyNote,
+  patch: UpdateNoteInput,
+  updatedAt: string,
+): StickyNote {
+  const updated: StickyNote = { ...existing, updatedAt };
+  if (patch.title !== undefined) updated.title = patch.title;
+  if (patch.body !== undefined) updated.body = patch.body;
+  if (patch.color !== undefined) updated.color = patch.color;
+  return updated;
+}
+
+function applyCalendarEventPatch(
+  existing: SimpleCalendarEvent,
+  patch: UpdateCalendarEventInput,
+  updatedAt: string,
+): SimpleCalendarEvent {
+  const updated: SimpleCalendarEvent = { ...existing, updatedAt };
+  if (patch.title !== undefined) updated.title = patch.title;
+  if (patch.date !== undefined) updated.date = patch.date;
+  if (patch.time !== undefined) updated.time = patch.time;
+  if (patch.notes !== undefined) updated.notes = patch.notes;
+  if (patch.color !== undefined) updated.color = patch.color;
+  return updated;
 }
 
 function resolveCalendarEventIndex(
@@ -190,6 +273,18 @@ export class SimpleViewsService extends Service {
     return note;
   }
 
+  getNoteByLookup(selector: NoteLookupSelector, value: string): StickyNote {
+    const notes = this.snapshot().notes;
+    const note = notes[resolveNoteIndex(notes, selector, value)];
+    if (!note) {
+      throw new ElizaError("Resolved sticky note was missing.", {
+        code: "SIMPLE_VIEWS_NOTE_RESOLUTION_FAILED",
+        severity: "fatal",
+      });
+    }
+    return note;
+  }
+
   async createNote(inputValue: unknown): Promise<StickyNote> {
     return (await this.createNoteWithCommit(inputValue)).value;
   }
@@ -241,13 +336,44 @@ export class SimpleViewsService extends Service {
       const index = draft.notes.findIndex((note) => note.id === id);
       const existing = draft.notes[index];
       if (index < 0 || !existing) throw notFound("note", id);
-      const updated: StickyNote = {
-        ...existing,
-        updatedAt,
-      };
-      if (patch.title !== undefined) updated.title = patch.title;
-      if (patch.body !== undefined) updated.body = patch.body;
-      if (patch.color !== undefined) updated.color = patch.color;
+      const updated = applyNotePatch(existing, patch, updatedAt);
+      draft.notes[index] = updated;
+      return updated;
+    });
+    await this.emitStateUpdated(transaction.snapshot, "note:updated");
+    return transaction;
+  }
+
+  async updateNoteByLookupWithCommit(
+    selector: NoteLookupSelector,
+    value: string,
+    patchValue: unknown,
+  ): Promise<SimpleViewsCommittedMutation<StickyNote>> {
+    const lookup = value.trim();
+    if (lookup.length === 0) {
+      throw new ElizaError(
+        `update-note ${selector} must be a nonblank string.`,
+        {
+          code: "SIMPLE_VIEWS_VALIDATION_FAILED",
+          context: { field: selector },
+          severity: "ephemeral",
+        },
+      );
+    }
+    const patch = parseUpdateNoteInput(patchValue);
+    const updatedAt = this.now().toISOString();
+    const transaction = await this.store.transact((draft) => {
+      // Resolution and mutation share the write barrier so the uniqueness proof
+      // cannot be invalidated by a concurrent rename or duplicate creation.
+      const index = resolveNoteIndex(draft.notes, selector, lookup);
+      const existing = draft.notes[index];
+      if (!existing) {
+        throw new ElizaError("Resolved sticky note was missing.", {
+          code: "SIMPLE_VIEWS_NOTE_RESOLUTION_FAILED",
+          severity: "fatal",
+        });
+      }
+      const updated = applyNotePatch(existing, patch, updatedAt);
       draft.notes[index] = updated;
       return updated;
     });
@@ -267,6 +393,37 @@ export class SimpleViewsService extends Service {
       const index = draft.notes.findIndex((note) => note.id === id);
       const existing = draft.notes[index];
       if (index < 0 || !existing) throw notFound("note", id);
+      draft.notes.splice(index, 1);
+      return existing;
+    });
+    await this.emitStateUpdated(transaction.snapshot, "note:deleted");
+    return transaction;
+  }
+
+  async deleteNoteByLookupWithCommit(
+    selector: NoteLookupSelector,
+    value: string,
+  ): Promise<SimpleViewsCommittedMutation<StickyNote>> {
+    const lookup = value.trim();
+    if (lookup.length === 0) {
+      throw new ElizaError(
+        `delete-note ${selector} must be a nonblank string.`,
+        {
+          code: "SIMPLE_VIEWS_VALIDATION_FAILED",
+          context: { field: selector },
+          severity: "ephemeral",
+        },
+      );
+    }
+    const transaction = await this.store.transact((draft) => {
+      const index = resolveNoteIndex(draft.notes, selector, lookup);
+      const existing = draft.notes[index];
+      if (!existing) {
+        throw new ElizaError("Resolved sticky note was missing.", {
+          code: "SIMPLE_VIEWS_NOTE_RESOLUTION_FAILED",
+          severity: "fatal",
+        });
+      }
       draft.notes.splice(index, 1);
       return existing;
     });
@@ -321,6 +478,21 @@ export class SimpleViewsService extends Service {
       (candidate) => candidate.id === id,
     );
     if (!event) throw notFound("calendar event", id);
+    return event;
+  }
+
+  getCalendarEventByLookup(
+    selector: CalendarEventLookupSelector,
+    value: string,
+  ): SimpleCalendarEvent {
+    const events = this.snapshot().events;
+    const event = events[resolveCalendarEventIndex(events, selector, value)];
+    if (!event) {
+      throw new ElizaError("Resolved calendar event was missing.", {
+        code: "SIMPLE_VIEWS_EVENT_RESOLUTION_FAILED",
+        severity: "fatal",
+      });
+    }
     return event;
   }
 
@@ -385,15 +557,43 @@ export class SimpleViewsService extends Service {
       const index = draft.events.findIndex((event) => event.id === id);
       const existing = draft.events[index];
       if (index < 0 || !existing) throw notFound("calendar event", id);
-      const updated: SimpleCalendarEvent = {
-        ...existing,
-        updatedAt,
-      };
-      if (patch.title !== undefined) updated.title = patch.title;
-      if (patch.date !== undefined) updated.date = patch.date;
-      if (patch.time !== undefined) updated.time = patch.time;
-      if (patch.notes !== undefined) updated.notes = patch.notes;
-      if (patch.color !== undefined) updated.color = patch.color;
+      const updated = applyCalendarEventPatch(existing, patch, updatedAt);
+      draft.events[index] = updated;
+      if (patch.date !== undefined) draft.selectedDate = patch.date;
+      return updated;
+    });
+    await this.emitStateUpdated(transaction.snapshot, "calendar:event-updated");
+    return transaction;
+  }
+
+  async updateCalendarEventByLookupWithCommit(
+    selector: CalendarEventLookupSelector,
+    value: string,
+    patchValue: unknown,
+  ): Promise<SimpleViewsCommittedMutation<SimpleCalendarEvent>> {
+    const lookup = value.trim();
+    if (lookup.length === 0) {
+      throw new ElizaError(
+        `update-calendar-event ${selector} must be a nonblank string.`,
+        {
+          code: "SIMPLE_VIEWS_VALIDATION_FAILED",
+          context: { field: selector },
+          severity: "ephemeral",
+        },
+      );
+    }
+    const patch = parseUpdateCalendarEventInput(patchValue);
+    const updatedAt = this.now().toISOString();
+    const transaction = await this.store.transact((draft) => {
+      const index = resolveCalendarEventIndex(draft.events, selector, lookup);
+      const existing = draft.events[index];
+      if (!existing) {
+        throw new ElizaError("Resolved calendar event was missing.", {
+          code: "SIMPLE_VIEWS_EVENT_RESOLUTION_FAILED",
+          severity: "fatal",
+        });
+      }
+      const updated = applyCalendarEventPatch(existing, patch, updatedAt);
       draft.events[index] = updated;
       if (patch.date !== undefined) draft.selectedDate = patch.date;
       return updated;
