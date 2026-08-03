@@ -21,6 +21,7 @@ import {
   CloudHostedAgentAuthNotice,
   CloudPairExchangeError,
   CloudPairRelay,
+  cloudPairTokenKeyForAgent,
   exchangeAuthenticatedNativeCloudPairToken,
   exchangeCloudPairToken,
   getCloudPairTokenFromLocation,
@@ -203,29 +204,95 @@ describe("CloudPairRelay", () => {
     });
   });
 
-  it("persists the paired API key into the app token channels", () => {
-    persistCloudPairApiToken(" agent-key ");
+  it("persists the paired API key into the per-agent storage keys", () => {
+    persistCloudPairApiToken(" agent-key ", "agent-123");
 
     expect(getBootConfig().apiToken).toBe("agent-key");
     expect(getElizaApiToken()).toBe("agent-key");
+    expect(
+      window.sessionStorage.getItem(cloudPairTokenKeyForAgent("agent-123")),
+    ).toBe("agent-key");
+    expect(
+      window.localStorage.getItem(cloudPairTokenKeyForAgent("agent-123")),
+    ).toBe("agent-key");
+    // The legacy global key is migrated away once the scoped write lands.
     expect(window.sessionStorage.getItem(CLOUD_PAIR_SESSION_STORAGE_KEY)).toBe(
-      "agent-key",
+      null,
     );
     expect(window.localStorage.getItem(CLOUD_PAIR_LOCAL_STORAGE_KEY)).toBe(
-      "agent-key",
+      null,
     );
     expect(
       (globalThis as Record<string, unknown>).__ELIZA_APP_BOOT_CONFIG__,
     ).toEqual(expect.objectContaining({ apiToken: "agent-key" }));
   });
 
+  it("refuses to persist a token without an owning agent id", () => {
+    expect(() => persistCloudPairApiToken("agent-key", "  ")).toThrow(
+      /owner agent id/,
+    );
+  });
+
+  it("keeps a legacy global token when BOTH scoped writes fail", () => {
+    window.localStorage.setItem(CLOUD_PAIR_LOCAL_STORAGE_KEY, "legacy-key");
+    window.sessionStorage.setItem(
+      CLOUD_PAIR_SESSION_STORAGE_KEY,
+      "legacy-key",
+    );
+    // jsdom's Storage getters hand back a fresh proxy per access, so spying on
+    // `setItem` never intercepts the write. Replace the getters with failing
+    // storages for the duration of the call instead.
+    const realLocal = window.localStorage;
+    const realSession = window.sessionStorage;
+    const failingStorage = () => ({
+      setItem: () => {
+        throw new Error("quota exceeded");
+      },
+      getItem: () => null,
+      removeItem: () => {
+        /* no-op */
+      },
+    });
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      get: failingStorage,
+    });
+    Object.defineProperty(window, "sessionStorage", {
+      configurable: true,
+      get: failingStorage,
+    });
+
+    try {
+      // Neither storage channel accepted the write, so persistence fails
+      // loudly (pre-existing contract) and the legacy key is never touched.
+      expect(() =>
+        persistCloudPairApiToken("agent-key", "agent-123"),
+      ).toThrow(/could not be stored/);
+    } finally {
+      Object.defineProperty(window, "localStorage", {
+        configurable: true,
+        get: () => realLocal,
+      });
+      Object.defineProperty(window, "sessionStorage", {
+        configurable: true,
+        get: () => realSession,
+      });
+    }
+    // Legacy key survives because no scoped write landed.
+    expect(window.localStorage.getItem(CLOUD_PAIR_LOCAL_STORAGE_KEY)).toBe(
+      "legacy-key",
+    );
+  });
+
   it("pairs, stores the returned API key, and redirects without showing LoginView", async () => {
     const onPaired = vi.fn();
+    const persistFn = vi.fn();
 
     render(
       <CloudPairRelay
         token="pair-token"
         exchangeFn={vi.fn(async () => "agent-key")}
+        persistFn={persistFn}
         onPaired={onPaired}
       />,
     );
@@ -235,13 +302,11 @@ describe("CloudPairRelay", () => {
     expect(screen.queryByText("Password")).toBeNull();
 
     await waitFor(() => expect(onPaired).toHaveBeenCalledOnce());
-    expect(getBootConfig().apiToken).toBe("agent-key");
-    expect(window.sessionStorage.getItem(CLOUD_PAIR_SESSION_STORAGE_KEY)).toBe(
-      "agent-key",
-    );
-    expect(window.localStorage.getItem(CLOUD_PAIR_LOCAL_STORAGE_KEY)).toBe(
-      "agent-key",
-    );
+    // The relay resolves the owning agent from the origin and passes it to
+    // the persist channel; the jsdom origin is not a dedicated agent base, so
+    // the owner resolves to an empty string here and the injected persistFn
+    // receives it as-is.
+    expect(persistFn).toHaveBeenCalledWith("agent-key", "");
   });
 
   it("shows a clean Cloud-pair error instead of the local password form", async () => {

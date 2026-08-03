@@ -18,6 +18,7 @@
 import {
   CLOUD_PAIR_LOCAL_STORAGE_KEY,
   CLOUD_PAIR_SESSION_STORAGE_KEY,
+  cloudPairTokenKeyForAgent,
 } from "../components/auth/CloudPairRelay";
 import { shellLocalStorage } from "../surface-realm-channel";
 import {
@@ -50,19 +51,29 @@ function tryRemoveFromStorage(remove: () => void): boolean {
 }
 
 /**
- * Remove the durable pair token from BOTH storages the write channel targets.
+ * Remove the durable pair token from BOTH storages the write channel targets,
+ * for the given owning agent (per-agent key) plus the legacy global key.
  * Storage-scoped on purpose — the live bearer/boot-config are left alone so
  * in-flight requests are not broken; the auth wall renders next and the next
  * boot finds nothing to re-adopt. sessionStorage is addressed raw (mirroring
  * the write channel, which uses raw window storage; there is no
  * shellSessionStorage wrapper).
  */
-export function clearCloudPairApiToken(): void {
+export function clearCloudPairApiToken(agentId?: string): void {
+  const scopedKey =
+    agentId && agentId.trim()
+      ? cloudPairTokenKeyForAgent(agentId.trim())
+      : null;
   tryRemoveFromStorage(() => {
+    if (scopedKey) shellLocalStorage.removeItem(scopedKey);
+    // Legacy single-key format — cleared unconditionally so a pre-#17579
+    // global bearer cannot be re-adopted by ANY agent after an explicit
+    // disconnect/sign-out.
     shellLocalStorage.removeItem(CLOUD_PAIR_LOCAL_STORAGE_KEY);
   });
   tryRemoveFromStorage(() => {
     if (typeof window !== "undefined") {
+      if (scopedKey) window.sessionStorage.removeItem(scopedKey);
       window.sessionStorage.removeItem(CLOUD_PAIR_SESSION_STORAGE_KEY);
     }
   });
@@ -101,7 +112,9 @@ export function clearStalePairCredentialsForAgent(agentId: string): void {
 
   const activeServer = loadPersistedActiveServer();
   if (activeServer && resolveDedicatedAgentId(activeServer) === target) {
-    clearCloudPairApiToken();
+    // Clears the per-agent key for THIS agent plus the legacy global key; a
+    // different agent's per-agent key is never touched.
+    clearCloudPairApiToken(target);
     scrubPersistedActiveServerToken();
   }
 

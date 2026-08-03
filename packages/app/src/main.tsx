@@ -146,6 +146,7 @@ import { AppProvider } from "@elizaos/ui/state";
 import { upsertAndActivateAgentProfile } from "@elizaos/ui/state/agent-profiles";
 import { initOcrBridge } from "@elizaos/ui/state/ocr-bridge";
 import {
+  loadPersistedActiveServer,
   applyUiTheme,
   createPersistedActiveServer,
   loadUiLanguage,
@@ -165,6 +166,8 @@ import {
   dedicatedCloudAgentIdFromBase,
   isDedicatedCloudAgentBase,
 } from "@elizaos/ui/utils/cloud-agent-base";
+import { cloudPairTokenKeyForAgent } from "@elizaos/ui/components/auth/CloudPairRelay";
+import { resolveDedicatedAgentId } from "@elizaos/ui/state/agent-session-recovery";
 // biome-ignore lint/correctness/noUnusedImports: classic JSX output in this app bundle expects React in module scope.
 import * as React from "react";
 import { type ComponentType, lazy, StrictMode, Suspense } from "react";
@@ -446,29 +449,75 @@ function applyCloudPairSessionToken(): void {
   // path #16666 is closing.
   const agentId = dedicatedCloudAgentIdFromBase(apiBase);
   if (!agentId) return;
+  // Gate 3 — owner-bound read. The durable credential is stored under a
+  // per-agent key (`eliza:cloud-pair:api-token:<agentId>`), so this boot only
+  // ever reads the key belonging to the agent it resolved. A token persisted
+  // for agent A is invisible to a boot targeting agent B — it can never be
+  // adopted or mirrored across agents (#17579).
+  const agentTokenKey = cloudPairTokenKeyForAgent(agentId);
   let token: string | null = null;
   try {
-    token =
-      window.localStorage.getItem(CLOUD_PAIR_SESSION_TOKEN_KEY)?.trim() || null;
+    token = window.localStorage.getItem(agentTokenKey)?.trim() || null;
   } catch {
     // error-policy:J4 localStorage can be unavailable in hardened browser
     // contexts — sessionStorage remains the compatibility handoff.
   }
   if (!token) {
     try {
-      token =
-        window.sessionStorage.getItem(CLOUD_PAIR_SESSION_TOKEN_KEY)?.trim() ||
-        null;
+      token = window.sessionStorage.getItem(agentTokenKey)?.trim() || null;
     } catch {
       // error-policy:J4 sessionStorage can be unavailable in hardened browser
       // contexts — the pairing token is simply not adopted.
     }
     if (token) {
       try {
-        shellLocalStorage.setItem(CLOUD_PAIR_SESSION_TOKEN_KEY, token);
+        shellLocalStorage.setItem(agentTokenKey, token);
       } catch {
         // error-policy:J4 migration is best-effort; the same-tab token still
         // authenticates this launch.
+      }
+    }
+  }
+  // Gate 4 — legacy single-key migration with target equality. A pre-#17579
+  // install stored the bearer under the global `eliza:cloud-pair:api-token`
+  // key with no owner binding. That key is adopted ONLY when the persisted
+  // active server for THIS agent still carries the identical bearer — i.e.
+  // the local record proves the legacy credential belongs to the agent being
+  // booted. Without that proof the legacy key is left untouched (never
+  // mirrored onto an agent that cannot claim it) and the pairing flow writes
+  // the scoped key on the next explicit pair.
+  if (!token) {
+    let legacyToken: string | null = null;
+    try {
+      legacyToken =
+        window.localStorage.getItem(CLOUD_PAIR_SESSION_TOKEN_KEY)?.trim() ||
+        null;
+    } catch {
+      // error-policy:J4 unreadable legacy storage — no adoption.
+    }
+    if (legacyToken) {
+      try {
+        const activeServer = loadPersistedActiveServer();
+        const ownedByTarget =
+          activeServer !== null &&
+          resolveDedicatedAgentId(activeServer) === agentId &&
+          activeServer.accessToken === legacyToken;
+        if (ownedByTarget) {
+          token = legacyToken;
+          try {
+            shellLocalStorage.setItem(agentTokenKey, token);
+          } catch {
+            // error-policy:J4 best-effort migration write.
+          }
+          try {
+            shellLocalStorage.removeItem(CLOUD_PAIR_SESSION_TOKEN_KEY);
+          } catch {
+            // error-policy:J3 best-effort legacy cleanup.
+          }
+        }
+      } catch {
+        // error-policy:J4 unreadable active-server record — legacy key stays
+        // unadopted rather than being stamped onto an unproven target.
       }
     }
   }

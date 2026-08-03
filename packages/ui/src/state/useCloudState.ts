@@ -47,6 +47,7 @@ import {
   yieldHttpAfterNativeMessageBox,
 } from "../utils";
 import { scrubPersistedAgentProfileTokens } from "./agent-profiles";
+import { dedicatedCloudAgentIdFromBase } from "../utils/cloud-agent-base";
 import {
   CLOUD_LOGIN_POPUP_NAME,
   navigateToSameTabCloudLogin,
@@ -1356,8 +1357,13 @@ export function useCloudState({
         // The durable cloud-pair API token (localStorage + sessionStorage,
         // written by CloudPairRelay and re-adopted at every boot) is a third
         // at-rest credential: without this, a rotated/revoked pair key
-        // survives disconnect and gets re-adopted on the next launch.
-        clearCloudPairApiToken();
+        // survives disconnect and gets re-adopted on the next launch. Clear
+        // the per-agent key for the agent being disconnected plus the legacy
+        // global key, so a token persisted for this agent can never be
+        // adopted by another agent's boot (#17579).
+        const disconnectAgentId =
+          dedicatedCloudAgentIdFromBase(client.getBaseUrl()) ?? undefined;
+        clearCloudPairApiToken(disconnectAgentId);
         if (wasConnected) {
           setActionNotice("Disconnected from Eliza Cloud.", "success");
         }

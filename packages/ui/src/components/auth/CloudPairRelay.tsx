@@ -5,9 +5,20 @@
 import { useEffect, useState } from "react";
 import { getBootConfig, setBootConfig } from "../../config/boot-config";
 import { setElizaApiToken } from "../../utils/eliza-globals";
+import { dedicatedCloudAgentIdFromBase } from "../../utils/cloud-agent-base";
 
 export const CLOUD_PAIR_SESSION_STORAGE_KEY = "eliza:cloud-pair:api-token";
 export const CLOUD_PAIR_LOCAL_STORAGE_KEY = CLOUD_PAIR_SESSION_STORAGE_KEY;
+
+/**
+ * Per-agent storage key for the durable cloud-pair credential (#17579). The
+ * key embeds the owning agent id so a token persisted for agent A can never be
+ * read, adopted, or mirrored by a boot targeting agent B — the boot adopter
+ * only ever looks up the key for the agent it resolved from the origin.
+ */
+export function cloudPairTokenKeyForAgent(agentId: string): string {
+  return `eliza:cloud-pair:api-token:${agentId}`;
+}
 
 interface PairExchangeResponse {
   apiKey?: unknown;
@@ -171,11 +182,12 @@ export async function exchangeAuthenticatedNativeCloudPairToken(
 
 function tryPersistBrowserStorage(
   storage: Storage | undefined,
+  agentKey: string,
   apiToken: string,
 ): boolean {
   if (!storage) return false;
   try {
-    storage.setItem(CLOUD_PAIR_SESSION_STORAGE_KEY, apiToken);
+    storage.setItem(agentKey, apiToken);
     return true;
   } catch (_storageError) {
     // Browser storage can be disabled by hardened settings. Boot config still
@@ -184,16 +196,37 @@ function tryPersistBrowserStorage(
   }
 }
 
-export function persistCloudPairApiToken(apiToken: string): void {
+/**
+ * Persist the durable cloud-pair API token scoped to its owning agent.
+ *
+ * The token is written under the per-agent key (`eliza:cloud-pair:api-token:
+ * <agentId>`) in BOTH storages, so a later boot of a DIFFERENT agent never
+ * reads it: the boot adopter only looks up the key for the agent it resolved
+ * from the origin (#17579 — previously a single global key let a token
+ * persisted for agent A be adopted and mirrored as agent B).
+ *
+ * The legacy global key is removed once the per-agent write succeeds, so an
+ * older install that only ever wrote the global key is migrated forward
+ * exactly once, and only while the pairing flow knows the true owner.
+ */
+export function persistCloudPairApiToken(
+  apiToken: string,
+  agentId: string,
+): void {
   const token = apiToken.trim();
   if (!token) throw new Error("Missing cloud pair API token.");
+  const owner = agentId.trim();
+  if (!owner) throw new Error("Missing cloud pair token owner agent id.");
 
+  const agentKey = cloudPairTokenKeyForAgent(owner);
   const persistedInSession = tryPersistBrowserStorage(
     typeof window === "undefined" ? undefined : window.sessionStorage,
+    agentKey,
     token,
   );
   const persistedDurably = tryPersistBrowserStorage(
     typeof window === "undefined" ? undefined : window.localStorage,
+    agentKey,
     token,
   );
 
@@ -202,6 +235,23 @@ export function persistCloudPairApiToken(apiToken: string): void {
   setElizaApiToken(token);
   (globalThis as Record<string, unknown>).__ELIZA_APP_BOOT_CONFIG__ =
     nextConfig;
+
+  if (persistedInSession || persistedDurably) {
+    // Legacy single-key format is now superseded by the per-agent key. Only
+    // remove it after the scoped write landed, so a failed storage channel
+    // never destroys the only credential the user has.
+    for (const storage of [
+      typeof window === "undefined" ? undefined : window.localStorage,
+      typeof window === "undefined" ? undefined : window.sessionStorage,
+    ]) {
+      try {
+        storage?.removeItem(CLOUD_PAIR_LOCAL_STORAGE_KEY);
+      } catch (_storageError) {
+        // error-policy:J3 best-effort legacy cleanup; the per-agent key is the
+        // authority now.
+      }
+    }
+  }
 
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent("steward-token-sync"));
@@ -255,7 +305,7 @@ export type CloudPairExchangeFn = (
 export interface CloudPairRelayProps {
   token: string;
   exchangeFn?: CloudPairExchangeFn;
-  persistFn?: (apiToken: string) => void;
+  persistFn?: (apiToken: string, agentId: string) => void;
   onPaired?: () => void;
 }
 
@@ -418,7 +468,16 @@ export function CloudPairRelay({
     exchangeFn(token, { signal: controller.signal })
       .then((apiToken) => {
         if (!active) return;
-        persistFn(apiToken);
+        // The pairing flow runs on the dedicated agent origin (or the native
+        // in-process exchange that pins the agent id), so the owning agent is
+        // resolvable from the current origin. Binding the persisted token to
+        // that agent id prevents a later boot of a different agent from
+        // adopting it (#17579).
+        const owner =
+          dedicatedCloudAgentIdFromBase(
+            typeof window === "undefined" ? null : window.location.origin,
+          ) ?? "";
+        persistFn(apiToken, owner);
         onPaired();
       })
       .catch((error) => {
