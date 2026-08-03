@@ -13,9 +13,10 @@ import {
 import { calendarAction } from "./actions/calendar.js";
 import { calendarSourcesAction } from "./actions/calendar-sources.js";
 import { conflictDetectAction } from "./actions/conflict-detect.js";
+import { isGoogleCalendarWebhookRouteConfigured } from "./google-watch/index.js";
 import { createMicrosoftConnectorAccountProvider } from "./microsoft/connector-account-provider.js";
 import { calendarSourcesProvider } from "./providers/calendar-sources.js";
-import { calendarHttpRoutes } from "./routes/plugin-routes.js";
+import { buildCalendarHttpRoutes } from "./routes/plugin-routes.js";
 import { CalendarService } from "./service/CalendarService.js";
 import { CalendarMigrationService } from "./service/migration.js";
 import { calendarSchema } from "./service/schema.js";
@@ -36,11 +37,14 @@ export const calendarPlugin: Plugin = {
   services: [CalendarMigrationService, CalendarService],
   actions: [calendarAction, calendarSourcesAction, conflictDetectAction],
   providers: [calendarSourcesProvider],
-  routes: calendarHttpRoutes,
+  routes: [],
   init: async (
     _config: Record<string, string>,
     runtime: IAgentRuntime,
   ): Promise<void> => {
+    calendarPlugin.routes = buildCalendarHttpRoutes({
+      googleWebhookEnabled: isGoogleCalendarWebhookRouteConfigured(runtime),
+    });
     const manager = getConnectorAccountManager(runtime);
     manager.registerProvider(createMicrosoftConnectorAccountProvider(runtime));
     logger.info(

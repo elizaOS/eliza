@@ -8,7 +8,7 @@
  */
 import {
   createHash,
-  randomBytes,
+  createHmac,
   randomUUID,
   timingSafeEqual,
 } from "node:crypto";
@@ -50,8 +50,45 @@ const STALE_CREATION_MS = 10 * 60 * 1000;
 const MAX_MESSAGE_NUMBER_DIGITS = 40;
 const GOOGLE_RESOURCE_URI_HOST = "www.googleapis.com";
 const GOOGLE_RESOURCE_URI_PATH_PREFIX = "/calendar/v3/";
+const WEBHOOK_TOKEN_PREFIX = "gcalwh.v1";
+const WEBHOOK_RATE_LIMIT_WINDOW_MS = 60_000;
+const WEBHOOK_PRINCIPAL_RATE_LIMIT = 120;
+const WEBHOOK_DESTINATION_RATE_LIMIT = 60;
 
 type WatchStopFinalState = "stopped" | "revoked";
+
+export interface GoogleCalendarWebhookSigningKey {
+  kid: string;
+  secret: Buffer;
+}
+
+export interface GoogleCalendarWebhookKeyRing {
+  current: GoogleCalendarWebhookSigningKey;
+  previous: GoogleCalendarWebhookSigningKey[];
+  revoked: Set<string>;
+}
+
+interface GoogleCalendarWebhookClaims {
+  v: 1;
+  k: string;
+  a: string;
+  c: string;
+  g: string;
+  x: string;
+  s: LifeOpsConnectorSide;
+  l: string;
+  w: string;
+  r: string;
+  i: number;
+  e: number;
+}
+
+interface VerifiedGoogleCalendarWebhookToken {
+  keyId: string;
+  claims: GoogleCalendarWebhookClaims;
+  principalKey: string;
+  destinationKey: string;
+}
 
 export interface GoogleCalendarWatchSource {
   grantId: string;
@@ -75,7 +112,7 @@ export interface GoogleCalendarNotificationHeaders {
 }
 
 export interface GoogleCalendarWebhookResult {
-  status: 204 | 400 | 404 | 503;
+  status: 204 | 400 | 404 | 429 | 503;
   retryAfterSeconds?: number;
   outcome:
     | "processed"
@@ -93,12 +130,14 @@ export interface GoogleCalendarWatchConfig {
   syncLeaseMs: number;
   maxWatchesPerAccount: number;
   maxConcurrentSyncsPerAccount: number;
+  keyRing: GoogleCalendarWebhookKeyRing;
 }
 
 export interface GoogleCalendarWatchLifecycleOptions {
   now?: () => Date;
   random?: () => number;
   config?: GoogleCalendarWatchConfig | null;
+  authorizeChannel?(channel: GoogleCalendarWatchChannel): Promise<void>;
   syncChannel(channel: GoogleCalendarWatchChannel): Promise<void>;
 }
 
@@ -202,6 +241,103 @@ function boundedIntegerSetting(
   return parsed;
 }
 
+function parseBase64Url(value: string): Buffer | null {
+  if (!/^[A-Za-z0-9_-]+$/.test(value)) return null;
+  try {
+    return Buffer.from(value, "base64url");
+  } catch {
+    // error-policy:J3 Operator-provided key material must decode as base64url.
+    return null;
+  }
+}
+
+function parseWebhookKeyRing(
+  runtime: IAgentRuntime,
+): GoogleCalendarWebhookKeyRing | null {
+  const raw = setting(runtime, "GOOGLE_CALENDAR_WEBHOOK_HMAC_KEYS");
+  if (!raw) return null;
+  const entries = raw
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  if (entries.length < 1 || entries.length > 2) {
+    throw new ElizaError(
+      "GOOGLE_CALENDAR_WEBHOOK_HMAC_KEYS must contain a current key and at most one previous key.",
+      {
+        code: "GOOGLE_CALENDAR_WATCH_INVALID_CONFIG",
+        context: { key: "GOOGLE_CALENDAR_WEBHOOK_HMAC_KEYS" },
+        severity: "fatal",
+      },
+    );
+  }
+  const parsed = entries.map((entry) => {
+    const separator = entry.indexOf(":");
+    const kid = separator > 0 ? entry.slice(0, separator) : "";
+    const secret =
+      separator > 0 ? parseBase64Url(entry.slice(separator + 1)) : null;
+    if (!/^[A-Za-z0-9_-]{1,32}$/.test(kid) || !secret || secret.length < 32) {
+      throw new ElizaError(
+        "GOOGLE_CALENDAR_WEBHOOK_HMAC_KEYS contains an invalid signing key.",
+        {
+          code: "GOOGLE_CALENDAR_WATCH_INVALID_CONFIG",
+          context: { key: "GOOGLE_CALENDAR_WEBHOOK_HMAC_KEYS", kid },
+          severity: "fatal",
+        },
+      );
+    }
+    return { kid, secret };
+  });
+  if (new Set(parsed.map((key) => key.kid)).size !== parsed.length) {
+    throw new ElizaError(
+      "GOOGLE_CALENDAR_WEBHOOK_HMAC_KEYS must not repeat key identifiers.",
+      {
+        code: "GOOGLE_CALENDAR_WATCH_INVALID_CONFIG",
+        context: { key: "GOOGLE_CALENDAR_WEBHOOK_HMAC_KEYS" },
+        severity: "fatal",
+      },
+    );
+  }
+  const revokedEntries = (
+    setting(runtime, "GOOGLE_CALENDAR_WEBHOOK_REVOKED_KEY_IDS") ?? ""
+  )
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (
+    revokedEntries.length > 16 ||
+    revokedEntries.some((kid) => !/^[A-Za-z0-9_-]{1,32}$/.test(kid))
+  ) {
+    throw new ElizaError(
+      "GOOGLE_CALENDAR_WEBHOOK_REVOKED_KEY_IDS contains invalid or too many key identifiers.",
+      {
+        code: "GOOGLE_CALENDAR_WATCH_INVALID_CONFIG",
+        context: { key: "GOOGLE_CALENDAR_WEBHOOK_REVOKED_KEY_IDS" },
+        severity: "fatal",
+      },
+    );
+  }
+  const revoked = new Set(revokedEntries);
+  const current = parsed[0];
+  if (!current) {
+    throw new ElizaError("GOOGLE_CALENDAR_WEBHOOK_HMAC_KEYS is empty.", {
+      code: "GOOGLE_CALENDAR_WATCH_INVALID_CONFIG",
+      context: { key: "GOOGLE_CALENDAR_WEBHOOK_HMAC_KEYS" },
+      severity: "fatal",
+    });
+  }
+  if (revoked.has(current.kid)) {
+    throw new ElizaError(
+      "GOOGLE_CALENDAR_WEBHOOK_REVOKED_KEY_IDS revokes the current signing key.",
+      {
+        code: "GOOGLE_CALENDAR_WATCH_INVALID_CONFIG",
+        context: { key: "GOOGLE_CALENDAR_WEBHOOK_REVOKED_KEY_IDS" },
+        severity: "fatal",
+      },
+    );
+  }
+  return { current, previous: parsed.slice(1), revoked };
+}
+
 function validateConfiguredWebhookUrl(value: string): string {
   let url: URL;
   try {
@@ -247,6 +383,8 @@ function runtimeWatchConfig(
   if (!isGoogleCalendarWebhookEnabled(runtime)) return null;
   const webhookUrl = setting(runtime, "GOOGLE_CALENDAR_WEBHOOK_URL");
   if (!webhookUrl) return null;
+  const keyRing = parseWebhookKeyRing(runtime);
+  if (!keyRing) return null;
   return {
     webhookUrl: validateConfiguredWebhookUrl(webhookUrl),
     ttlSeconds: boundedIntegerSetting(
@@ -286,7 +424,57 @@ function runtimeWatchConfig(
       1,
       16,
     ),
+    keyRing,
   };
+}
+
+export function isGoogleCalendarWebhookRouteConfigured(
+  runtime: IAgentRuntime,
+): boolean {
+  return runtimeWatchConfig(runtime) !== null;
+}
+
+export function preflightGoogleCalendarWebhookNotification(
+  runtime: IAgentRuntime | null,
+  headers: GoogleCalendarNotificationHeaders,
+  now: Date = new Date(),
+): GoogleCalendarWebhookResult | null {
+  if (
+    !headers.channelId ||
+    headers.channelId.length > 64 ||
+    !headers.channelToken ||
+    headers.channelToken.length > 1024 ||
+    !headers.resourceId ||
+    headers.resourceId.length > 512 ||
+    !validResourceUri(headers.resourceUri) ||
+    !validMessageNumber(headers.messageNumber) ||
+    !["sync", "exists", "not_exists"].includes(headers.resourceState) ||
+    (headers.resourceState === "sync" && headers.messageNumber !== "1")
+  ) {
+    return { status: 400, outcome: "invalid" };
+  }
+  if (!runtime) {
+    return { status: 404, outcome: "unauthorized" };
+  }
+  const config = runtimeWatchConfig(runtime);
+  if (!config) {
+    return { status: 404, outcome: "unauthorized" };
+  }
+  const verified = verifyWebhookToken({
+    token: headers.channelToken,
+    keyRing: config.keyRing,
+    now,
+  });
+  if (
+    !verified ||
+    verified.claims.a !== runtime.agentId ||
+    verified.claims.c !== headers.channelId ||
+    verified.claims.w !== hashBase64Url(config.webhookUrl) ||
+    verified.claims.r !== hashBase64Url(headers.resourceUri)
+  ) {
+    return { status: 404, outcome: "unauthorized" };
+  }
+  return null;
 }
 
 function tokenDigest(value: string): string {
@@ -299,6 +487,135 @@ function tokenMatches(value: string, digest: string): boolean {
   return (
     received.length === expected.length && timingSafeEqual(received, expected)
   );
+}
+
+function stableClaimsJson(value: GoogleCalendarWebhookClaims): string {
+  return JSON.stringify({
+    a: value.a,
+    c: value.c,
+    e: value.e,
+    g: value.g,
+    i: value.i,
+    k: value.k,
+    l: value.l,
+    r: value.r,
+    s: value.s,
+    v: value.v,
+    w: value.w,
+    x: value.x,
+  });
+}
+
+function signWebhookPayload(payload: string, secret: Buffer): string {
+  return createHmac("sha256", secret).update(payload).digest("base64url");
+}
+
+function hashBase64Url(value: string): string {
+  return createHash("sha256").update(value).digest("base64url");
+}
+
+function expectedCalendarResourceUri(calendarId: string): string {
+  return `https://${GOOGLE_RESOURCE_URI_HOST}${GOOGLE_RESOURCE_URI_PATH_PREFIX}calendars/${encodeURIComponent(calendarId)}/events`;
+}
+
+function createWebhookToken(args: {
+  keyRing: GoogleCalendarWebhookKeyRing;
+  agentId: string;
+  channelId: string;
+  source: GoogleCalendarWatchSource;
+  webhookUrl: string;
+  issuedAt: Date;
+  expiresAt: Date;
+}): { token: string; keyId: string } {
+  const claims: GoogleCalendarWebhookClaims = {
+    v: 1,
+    k: args.keyRing.current.kid,
+    a: args.agentId,
+    c: args.channelId,
+    g: args.source.grantId,
+    x: args.source.connectorAccountId,
+    s: args.source.side,
+    l: args.source.calendarId,
+    w: hashBase64Url(args.webhookUrl),
+    r: hashBase64Url(expectedCalendarResourceUri(args.source.calendarId)),
+    i: Math.floor(args.issuedAt.getTime() / 1000),
+    e: Math.floor(args.expiresAt.getTime() / 1000),
+  };
+  const payload = Buffer.from(stableClaimsJson(claims)).toString("base64url");
+  const signature = signWebhookPayload(payload, args.keyRing.current.secret);
+  return {
+    token: `${WEBHOOK_TOKEN_PREFIX}.${payload}.${signature}`,
+    keyId: args.keyRing.current.kid,
+  };
+}
+
+function asWebhookClaims(value: unknown): GoogleCalendarWebhookClaims | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const claims = value as Record<string, unknown>;
+  if (
+    claims.v !== 1 ||
+    typeof claims.k !== "string" ||
+    typeof claims.a !== "string" ||
+    typeof claims.c !== "string" ||
+    typeof claims.g !== "string" ||
+    typeof claims.x !== "string" ||
+    !["owner", "agent"].includes(String(claims.s)) ||
+    typeof claims.l !== "string" ||
+    typeof claims.w !== "string" ||
+    typeof claims.r !== "string" ||
+    typeof claims.i !== "number" ||
+    typeof claims.e !== "number"
+  ) {
+    return null;
+  }
+  return claims as unknown as GoogleCalendarWebhookClaims;
+}
+
+function verifyWebhookToken(args: {
+  token: string;
+  keyRing: GoogleCalendarWebhookKeyRing;
+  now: Date;
+}): VerifiedGoogleCalendarWebhookToken | null {
+  const parts = args.token.split(".");
+  if (
+    parts.length !== 4 ||
+    `${parts[0]}.${parts[1]}` !== WEBHOOK_TOKEN_PREFIX
+  ) {
+    return null;
+  }
+  const payload = parts[2] ?? "";
+  const signature = parts[3] ?? "";
+  const payloadBuffer = parseBase64Url(payload);
+  if (!payloadBuffer || payloadBuffer.length > 768 || !signature) return null;
+  let claims: GoogleCalendarWebhookClaims | null = null;
+  try {
+    claims = asWebhookClaims(JSON.parse(payloadBuffer.toString("utf8")));
+  } catch {
+    // error-policy:J3 Provider-controlled capability text is explicitly
+    // invalid when the payload is not parseable JSON.
+    return null;
+  }
+  if (!claims || args.keyRing.revoked.has(claims.k)) return null;
+  const keys = [args.keyRing.current, ...args.keyRing.previous];
+  let matched = false;
+  for (const key of keys) {
+    const expected = Buffer.from(signWebhookPayload(payload, key.secret));
+    const received = Buffer.from(signature);
+    const sameLength = received.length === expected.length;
+    const comparable = sameLength ? received : expected;
+    const signatureMatches =
+      timingSafeEqual(comparable, expected) && sameLength;
+    matched = matched || (key.kid === claims.k && signatureMatches);
+  }
+  if (!matched) return null;
+  const nowSeconds = Math.floor(args.now.getTime() / 1000);
+  if (claims.i > nowSeconds + 300 || claims.e <= nowSeconds) return null;
+  return {
+    keyId: claims.k,
+    claims,
+    principalKey: `${claims.a}:${claims.g}:${claims.x}`,
+    destinationKey: `${claims.a}:${claims.g}:${claims.x}:${claims.s}:${claims.l}:${claims.c}`,
+  };
 }
 
 function validMessageNumber(value: string): boolean {
@@ -602,16 +919,25 @@ export class GoogleCalendarWatchLifecycle {
     }
 
     const channelId = randomUUID();
-    const token = randomBytes(32).toString("base64url");
     const provisionalExpirationAt = new Date(
       now.getTime() + config.ttlSeconds * 1000,
     ).toISOString();
+    const capability = createWebhookToken({
+      keyRing: config.keyRing,
+      agentId: this.runtime.agentId,
+      channelId,
+      source,
+      webhookUrl: config.webhookUrl,
+      issuedAt: now,
+      expiresAt: new Date(Date.parse(provisionalExpirationAt)),
+    });
     await this.repo.createProvisional({
       ...source,
       channelId,
       agentId: this.runtime.agentId,
       webhookUrl: config.webhookUrl,
-      tokenSha256: tokenDigest(token),
+      tokenSha256: tokenDigest(capability.token),
+      tokenKeyId: capability.keyId,
       provisionalExpirationAt,
       createdAt: nowIso,
     });
@@ -626,10 +952,10 @@ export class GoogleCalendarWatchLifecycle {
         calendarId: source.calendarId,
         channelId,
         address: config.webhookUrl,
-        token,
+        token: capability.token,
         ttlSeconds: config.ttlSeconds,
       });
-      if (!watchResponseMatchesRequest(response, channelId, token)) {
+      if (!watchResponseMatchesRequest(response, channelId, capability.token)) {
         throw new ElizaError(
           "Google Calendar watch response did not match the requested channel.",
           {
@@ -689,7 +1015,7 @@ export class GoogleCalendarWatchLifecycle {
       !headers.channelId ||
       headers.channelId.length > 64 ||
       !headers.channelToken ||
-      headers.channelToken.length > 256 ||
+      headers.channelToken.length > 1024 ||
       !headers.resourceId ||
       headers.resourceId.length > 512 ||
       !validResourceUri(headers.resourceUri) ||
@@ -706,15 +1032,54 @@ export class GoogleCalendarWatchLifecycle {
     }
     const now = this.now();
     const nowIso = now.toISOString();
+    const verified = verifyWebhookToken({
+      token: headers.channelToken,
+      keyRing: config.keyRing,
+      now,
+    });
+    if (!verified) {
+      return { status: 404, outcome: "unauthorized" };
+    }
+    if (
+      verified.claims.a !== this.runtime.agentId ||
+      verified.claims.c !== headers.channelId ||
+      verified.claims.w !== hashBase64Url(config.webhookUrl) ||
+      verified.claims.r !== hashBase64Url(headers.resourceUri)
+    ) {
+      return { status: 404, outcome: "unauthorized" };
+    }
     let channel = await this.repo.get(this.runtime.agentId, headers.channelId);
     if (
       !channel ||
+      channel.grantId !== verified.claims.g ||
+      channel.connectorAccountId !== verified.claims.x ||
+      channel.side !== verified.claims.s ||
+      channel.calendarId !== verified.claims.l ||
+      channel.tokenKeyId !== verified.keyId ||
       !tokenMatches(headers.channelToken, channel.tokenSha256) ||
       !["creating", "active"].includes(channel.state) ||
       (channel.expirationAt !== null &&
         Date.parse(channel.expirationAt) <= now.getTime())
     ) {
       return { status: 404, outcome: "unauthorized" };
+    }
+    if (this.options.authorizeChannel) {
+      try {
+        await this.options.authorizeChannel(channel);
+      } catch (error) {
+        // error-policy:J1 The ingress boundary maps failed grant/audience
+        // authorization to deny before any notification state is written.
+        this.runtime.reportError?.(
+          "calendar:google-watch-ingress-authz",
+          error,
+          {
+            channelId: channel.channelId,
+            grantId: channel.grantId,
+            connectorAccountId: channel.connectorAccountId,
+          },
+        );
+        return { status: 404, outcome: "unauthorized" };
+      }
     }
 
     if (!channel.resourceId || !channel.resourceUri) {
@@ -742,13 +1107,69 @@ export class GoogleCalendarWatchLifecycle {
     if (BigInt(headers.messageNumber) <= BigInt(channel.lastMessageNumber)) {
       return { status: 204, outcome: "duplicate" };
     }
-    const enqueued = await this.repo.enqueueNotification({
+
+    for (const limiter of [
+      {
+        bucketKey: `google-calendar-webhook:principal:${verified.principalKey}`,
+        maxCount: WEBHOOK_PRINCIPAL_RATE_LIMIT,
+      },
+      {
+        bucketKey: `google-calendar-webhook:destination:${verified.destinationKey}`,
+        maxCount: WEBHOOK_DESTINATION_RATE_LIMIT,
+      },
+    ]) {
+      const limited = await this.repo.consumeIngressRateLimit({
+        bucketKey: limiter.bucketKey,
+        nowIso,
+        windowMs: WEBHOOK_RATE_LIMIT_WINDOW_MS,
+        maxCount: limiter.maxCount,
+      });
+      if (!limited.allowed) {
+        return {
+          status: 429,
+          outcome: "retry",
+          retryAfterSeconds: limited.retryAfterSeconds,
+        };
+      }
+    }
+
+    const accepted = await this.repo.createReceiptAndEnqueue({
+      receiptId: tokenDigest(
+        [
+          "google-calendar-ingress-receipt-v1",
+          this.runtime.agentId,
+          channel.channelId,
+          headers.messageNumber,
+        ].join(":"),
+      ),
       agentId: this.runtime.agentId,
       channelId: channel.channelId,
       messageNumber: headers.messageNumber,
-      notifiedAt: nowIso,
+      principalKey: verified.principalKey,
+      destinationKey: verified.destinationKey,
+      grantId: channel.grantId,
+      connectorAccountId: channel.connectorAccountId,
+      side: channel.side,
+      calendarId: channel.calendarId,
+      keyId: verified.keyId,
+      resourceIdHash: hashBase64Url(headers.resourceId),
+      resourceUriHash: hashBase64Url(headers.resourceUri),
+      resourceState: headers.resourceState,
+      receivedAt: nowIso,
+      metadata: {
+        tokenVersion: 1,
+        resourceState: headers.resourceState,
+        headerNames: [
+          "x-goog-channel-id",
+          "x-goog-channel-token",
+          "x-goog-resource-id",
+          "x-goog-resource-uri",
+          "x-goog-resource-state",
+          "x-goog-message-number",
+        ],
+      },
     });
-    if (!enqueued) {
+    if (accepted.kind !== "enqueued") {
       const current = await this.repo.get(
         this.runtime.agentId,
         channel.channelId,

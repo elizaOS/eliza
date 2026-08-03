@@ -353,6 +353,7 @@ export async function ensureGoogleCalendarWatchChannelTable(
       window_end_at TEXT NOT NULL,
       webhook_url TEXT NOT NULL,
       token_sha256 TEXT NOT NULL,
+      token_key_id TEXT,
       resource_id TEXT,
       resource_uri TEXT,
       expiration_at TEXT,
@@ -382,6 +383,103 @@ export async function ensureGoogleCalendarWatchChannelTable(
       ON ${TARGET_SCHEMA}.google_calendar_watch_channels (
         agent_id, state, expiration_at
       )`);
+  await exec(`
+    ALTER TABLE ${TARGET_SCHEMA}.google_calendar_watch_channels
+      ADD COLUMN IF NOT EXISTS token_key_id TEXT`);
+  await exec(`
+    CREATE TABLE IF NOT EXISTS ${TARGET_SCHEMA}.google_calendar_ingress_receipts (
+      receipt_id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      channel_id TEXT NOT NULL,
+      message_number TEXT NOT NULL,
+      principal_key TEXT NOT NULL,
+      destination_key TEXT NOT NULL,
+      grant_id TEXT NOT NULL,
+      connector_account_id TEXT NOT NULL,
+      side TEXT NOT NULL,
+      calendar_id TEXT NOT NULL,
+      key_id TEXT NOT NULL,
+      resource_id_hash TEXT NOT NULL,
+      resource_uri_hash TEXT NOT NULL,
+      resource_state TEXT NOT NULL,
+      outcome TEXT NOT NULL,
+      enqueued BOOLEAN NOT NULL,
+      received_at TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      CONSTRAINT calendar_ingress_receipts_side_check
+        CHECK (side IN ('owner', 'agent')),
+      CONSTRAINT calendar_ingress_receipts_resource_state_check
+        CHECK (resource_state IN ('sync', 'exists', 'not_exists')),
+      CONSTRAINT calendar_ingress_receipts_outcome_check
+        CHECK (outcome IN ('received', 'enqueued')),
+      CONSTRAINT calendar_ingress_receipts_message_unique
+        UNIQUE (agent_id, channel_id, message_number)
+    )`);
+  await exec(`
+    CREATE INDEX IF NOT EXISTS calendar_ingress_receipts_destination_idx
+      ON ${TARGET_SCHEMA}.google_calendar_ingress_receipts (
+        agent_id, destination_key, received_at
+      )`);
+  await exec(`
+    DO $calendar_ingress_receipt_constraints$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+         WHERE conrelid =
+               '${TARGET_SCHEMA}.google_calendar_ingress_receipts'::regclass
+           AND conname = 'calendar_ingress_receipts_side_check'
+      ) THEN
+        ALTER TABLE ${TARGET_SCHEMA}.google_calendar_ingress_receipts
+          ADD CONSTRAINT calendar_ingress_receipts_side_check
+          CHECK (side IN ('owner', 'agent'));
+      END IF;
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+         WHERE conrelid =
+               '${TARGET_SCHEMA}.google_calendar_ingress_receipts'::regclass
+           AND conname = 'calendar_ingress_receipts_resource_state_check'
+      ) THEN
+        ALTER TABLE ${TARGET_SCHEMA}.google_calendar_ingress_receipts
+          ADD CONSTRAINT calendar_ingress_receipts_resource_state_check
+          CHECK (resource_state IN ('sync', 'exists', 'not_exists'));
+      END IF;
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+         WHERE conrelid =
+               '${TARGET_SCHEMA}.google_calendar_ingress_receipts'::regclass
+           AND conname = 'calendar_ingress_receipts_outcome_check'
+      ) THEN
+        ALTER TABLE ${TARGET_SCHEMA}.google_calendar_ingress_receipts
+          ADD CONSTRAINT calendar_ingress_receipts_outcome_check
+          CHECK (outcome IN ('received', 'enqueued'));
+      END IF;
+    END
+    $calendar_ingress_receipt_constraints$`);
+  await exec(`
+    CREATE TABLE IF NOT EXISTS ${TARGET_SCHEMA}.google_calendar_ingress_rate_limits (
+      bucket_key TEXT PRIMARY KEY,
+      window_start_at TEXT NOT NULL,
+      count INTEGER NOT NULL,
+      updated_at TEXT NOT NULL,
+      CONSTRAINT calendar_ingress_rate_limits_count_nonnegative
+        CHECK (count >= 0)
+    )`);
+  await exec(`
+    DO $calendar_ingress_rate_limit_constraints$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+         WHERE conrelid =
+               '${TARGET_SCHEMA}.google_calendar_ingress_rate_limits'::regclass
+           AND conname = 'calendar_ingress_rate_limits_count_nonnegative'
+      ) THEN
+        ALTER TABLE ${TARGET_SCHEMA}.google_calendar_ingress_rate_limits
+          ADD CONSTRAINT calendar_ingress_rate_limits_count_nonnegative
+          CHECK (count >= 0);
+      END IF;
+    END
+    $calendar_ingress_rate_limit_constraints$`);
 }
 
 function quoteIdent(name: string): string {

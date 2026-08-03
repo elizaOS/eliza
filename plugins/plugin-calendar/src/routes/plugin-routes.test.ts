@@ -75,6 +75,14 @@ const webhookHeaders = {
   "x-goog-message-number": "2",
 };
 
+const webhookEnabledSettings = {
+  GOOGLE_CALENDAR_WEBHOOK_ENABLED: "true",
+  GOOGLE_CALENDAR_WEBHOOK_URL:
+    "https://calendar.example.test/api/lifeops/calendar/google/webhook",
+  GOOGLE_CALENDAR_WEBHOOK_HMAC_KEYS:
+    "cur:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+};
+
 function createWebhookRequest(
   overrides: Partial<http.IncomingMessage> & {
     headers?: http.IncomingHttpHeaders;
@@ -150,7 +158,7 @@ describe("calendarRouteHandler", () => {
   it("rejects bounded and streaming bodies without resolving the service", async () => {
     const notification = vi.fn();
     const runtime = createRuntime({
-      settings: { GOOGLE_CALENDAR_WEBHOOK_ENABLED: "true" },
+      settings: webhookEnabledSettings,
       service: { handleGoogleCalendarNotification: notification },
     });
     const oversized = createResponse();
@@ -183,13 +191,13 @@ describe("calendarRouteHandler", () => {
     expect(notification).not.toHaveBeenCalled();
   });
 
-  it("rate-limits a public flood before resolving the service", async () => {
+  it("rate-limits a same-source public flood before resolving the service", async () => {
     const notification = vi.fn(async () => ({
       status: 204,
       outcome: "processed",
     }));
     const runtime = createRuntime({
-      settings: { GOOGLE_CALENDAR_WEBHOOK_ENABLED: "true" },
+      settings: webhookEnabledSettings,
       service: { handleGoogleCalendarNotification: notification },
     });
     const handler = calendarRouteHandler();
@@ -200,12 +208,12 @@ describe("calendarRouteHandler", () => {
       await handler(createWebhookRequest(), response, runtime);
     }
 
-    expect(responses.slice(0, 60).every((res) => res.statusCode === 204)).toBe(
+    expect(responses.slice(0, 60).every((res) => res.statusCode === 404)).toBe(
       true,
     );
     expect(responses[60]?.statusCode).toBe(429);
-    expect(notification).toHaveBeenCalledTimes(60);
-    expect(runtime.getService).toHaveBeenCalledTimes(60);
+    expect(notification).not.toHaveBeenCalled();
+    expect(runtime.getService).not.toHaveBeenCalled();
   });
 
   it("bounds distributed source buckets with oldest-entry eviction", async () => {
@@ -214,7 +222,7 @@ describe("calendarRouteHandler", () => {
       outcome: "processed",
     }));
     const runtime = createRuntime({
-      settings: { GOOGLE_CALENDAR_WEBHOOK_ENABLED: "true" },
+      settings: webhookEnabledSettings,
       service: { handleGoogleCalendarNotification: notification },
     });
     const handler = calendarRouteHandler();
@@ -229,10 +237,11 @@ describe("calendarRouteHandler", () => {
         response,
         runtime,
       );
-      expect(response.statusCode).toBe(204);
+      expect(response.statusCode).toBe(404);
     }
 
     expect(__calendarRouteRateLimitBucketCountForTests(runtime)).toBe(256);
-    expect(notification).toHaveBeenCalledTimes(300);
+    expect(notification).not.toHaveBeenCalled();
+    expect(runtime.getService).not.toHaveBeenCalled();
   });
 });

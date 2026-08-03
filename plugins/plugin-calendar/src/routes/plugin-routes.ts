@@ -23,7 +23,7 @@ import {
   GOOGLE_CALENDAR_WEBHOOK_PATH,
   type GoogleCalendarNotificationHeaders,
   type GoogleCalendarWebhookResult,
-  isGoogleCalendarWebhookEnabled,
+  preflightGoogleCalendarWebhookNotification,
 } from "../google-watch/index.js";
 import { CalendarServiceError } from "../internal/errors.js";
 import {
@@ -257,11 +257,6 @@ async function handleGoogleCalendarWebhook(args: {
   res: http.ServerResponse;
 }): Promise<void> {
   const { runtime, req, res } = args;
-  if (!isGoogleCalendarWebhookEnabled(runtime)) {
-    res.writeHead(404);
-    res.end();
-    return;
-  }
   if (
     rateLimitRequest({
       runtime,
@@ -293,6 +288,20 @@ async function handleGoogleCalendarWebhook(args: {
     resourceState: singleHeader(req, "x-goog-resource-state") ?? "",
     messageNumber: singleHeader(req, "x-goog-message-number") ?? "",
   };
+  const preflight = preflightGoogleCalendarWebhookNotification(
+    runtime,
+    headers,
+  );
+  if (preflight) {
+    res.writeHead(
+      preflight.status,
+      preflight.retryAfterSeconds
+        ? { "Retry-After": String(preflight.retryAfterSeconds) }
+        : undefined,
+    );
+    res.end();
+    return;
+  }
   const service = await resolveGoogleCalendarWebhookService(runtime);
   if (!service) {
     res.writeHead(503, { "Retry-After": "60" });
@@ -630,20 +639,27 @@ export function calendarRouteHandler(): LegacyRouteHandler {
 
 const handler = calendarRouteHandler();
 
-export const calendarHttpRoutes: Route[] = [
-  // Owner calendar data, preferences, and mutations are mounted by the
-  // personal-assistant host after its OWNER/ADMIN role gate. The only route
-  // this provider plugin can authenticate independently is its webhook.
-  {
-    type: "POST",
-    path: "/api/lifeops/calendar/google/webhook",
-    rawPath: true,
-    public: true,
-    name: "google-calendar-push-notification",
-    publicReason:
-      "Google Calendar must deliver provider-originated change notifications without a user session.",
-    publicWrite:
-      "An explicit runtime setting enables the route; bounded body checks and rate limiting precede service access, then an unguessable per-channel capability token plus durable resource bindings authorize a refetch.",
-    handler,
-  },
-];
+export function buildCalendarHttpRoutes(args: {
+  googleWebhookEnabled: boolean;
+}): Route[] {
+  if (!args.googleWebhookEnabled) return [];
+  return [
+    // Owner calendar data, preferences, and mutations are mounted by the
+    // personal-assistant host after its OWNER/ADMIN role gate. The only route
+    // this provider plugin can authenticate independently is its webhook.
+    {
+      type: "POST",
+      path: "/api/lifeops/calendar/google/webhook",
+      rawPath: true,
+      public: true,
+      name: "google-calendar-push-notification",
+      publicReason:
+        "Google Calendar must deliver provider-originated change notifications without a user session.",
+      publicWrite:
+        "Explicit runtime settings enable the route; bounded body checks precede service access, then a versioned HMAC capability, grant authorization, durable rate limits, and an atomic ingress receipt authorize a refetch.",
+      handler,
+    },
+  ];
+}
+
+export const calendarHttpRoutes: Route[] = [];

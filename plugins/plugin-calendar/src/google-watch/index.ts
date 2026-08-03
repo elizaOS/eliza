@@ -9,6 +9,8 @@ export {
   type GoogleCalendarWatchSource,
   type GoogleCalendarWebhookResult,
   isGoogleCalendarWebhookEnabled,
+  isGoogleCalendarWebhookRouteConfigured,
+  preflightGoogleCalendarWebhookNotification,
 } from "./lifecycle.js";
 export {
   type CreateGoogleCalendarWatchChannel,

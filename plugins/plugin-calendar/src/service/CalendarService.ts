@@ -1104,6 +1104,8 @@ export class CalendarService extends Service {
     this.gate = createDefaultCalendarHostGate(this.runtime);
     this.microsoftPort = new DefaultMicrosoftGraphCalendarPort(this.runtime);
     this.googleWatch = new GoogleCalendarWatchLifecycle(this.runtime, {
+      authorizeChannel: (channel) =>
+        this.authorizeGoogleCalendarWatchChannel(channel),
       syncChannel: (channel) => this.syncGoogleCalendarWatchChannel(channel),
     });
   }
@@ -3245,6 +3247,33 @@ export class CalendarService extends Service {
   private async syncGoogleCalendarWatchChannel(
     channel: GoogleCalendarWatchChannel,
   ): Promise<void> {
+    await this.authorizeGoogleCalendarWatchChannel(channel);
+    const requestUrl = new URL(channel.webhookUrl);
+    const key = [
+      this.agentId(),
+      channel.side,
+      channel.grantId,
+      channel.calendarId,
+    ].join(":");
+    await this.withGoogleSyncLock(key, () =>
+      this.syncGoogleCalendarFeedUnlocked({
+        requestUrl,
+        requestedMode: "local",
+        requestedSide: channel.side,
+        grantId: channel.grantId,
+        calendarId: channel.calendarId,
+        calendarSummary: channel.calendarSummary,
+        calendarAccessRole: channel.calendarAccessRole,
+        timeMin: channel.windowStartAt,
+        timeMax: channel.windowEndAt,
+        timeZone: channel.timeZone,
+      }),
+    );
+  }
+
+  private async authorizeGoogleCalendarWatchChannel(
+    channel: GoogleCalendarWatchChannel,
+  ): Promise<void> {
     const requestUrl = new URL(channel.webhookUrl);
     const grant = await this.gate.requireGoogleCalendarGrant(
       requestUrl,
@@ -3270,26 +3299,6 @@ export class CalendarService extends Service {
         },
       );
     }
-    const key = [
-      this.agentId(),
-      channel.side,
-      channel.grantId,
-      channel.calendarId,
-    ].join(":");
-    await this.withGoogleSyncLock(key, () =>
-      this.syncGoogleCalendarFeedUnlocked({
-        requestUrl,
-        requestedMode: "local",
-        requestedSide: channel.side,
-        grantId: channel.grantId,
-        calendarId: channel.calendarId,
-        calendarSummary: channel.calendarSummary,
-        calendarAccessRole: channel.calendarAccessRole,
-        timeMin: channel.windowStartAt,
-        timeMax: channel.windowEndAt,
-        timeZone: channel.timeZone,
-      }),
-    );
   }
 
   async handleGoogleCalendarNotification(

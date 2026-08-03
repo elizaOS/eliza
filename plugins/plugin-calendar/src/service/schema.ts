@@ -207,6 +207,7 @@ export const googleCalendarWatchChannels = calendarPgSchema.table(
     windowEndAt: text("window_end_at").notNull(),
     webhookUrl: text("webhook_url").notNull(),
     tokenSha256: text("token_sha256").notNull(),
+    tokenKeyId: text("token_key_id"),
     resourceId: text("resource_id"),
     resourceUri: text("resource_uri"),
     expirationAt: text("expiration_at"),
@@ -248,4 +249,67 @@ export const calendarSchema = {
   calendarSecretCleanup,
   calendarFeedPreferences,
   googleCalendarWatchChannels,
+  googleCalendarIngressReceipts: calendarPgSchema.table(
+    "google_calendar_ingress_receipts",
+    {
+      receiptId: text("receipt_id").primaryKey(),
+      agentId: text("agent_id").notNull(),
+      channelId: text("channel_id").notNull(),
+      messageNumber: text("message_number").notNull(),
+      principalKey: text("principal_key").notNull(),
+      destinationKey: text("destination_key").notNull(),
+      grantId: text("grant_id").notNull(),
+      connectorAccountId: text("connector_account_id").notNull(),
+      side: text("side").notNull(),
+      calendarId: text("calendar_id").notNull(),
+      keyId: text("key_id").notNull(),
+      resourceIdHash: text("resource_id_hash").notNull(),
+      resourceUriHash: text("resource_uri_hash").notNull(),
+      resourceState: text("resource_state").notNull(),
+      outcome: text("outcome").notNull(),
+      enqueued: boolean("enqueued").notNull(),
+      receivedAt: text("received_at").notNull(),
+      createdAt: text("created_at").notNull(),
+      metadataJson: text("metadata_json").notNull().default("{}"),
+    },
+    (t) => [
+      unique("calendar_ingress_receipts_message_unique").on(
+        t.agentId,
+        t.channelId,
+        t.messageNumber,
+      ),
+      index("calendar_ingress_receipts_destination_idx").on(
+        t.agentId,
+        t.destinationKey,
+        t.receivedAt,
+      ),
+      check(
+        "calendar_ingress_receipts_side_check",
+        sql`${t.side} IN ('owner', 'agent')`,
+      ),
+      check(
+        "calendar_ingress_receipts_resource_state_check",
+        sql`${t.resourceState} IN ('sync', 'exists', 'not_exists')`,
+      ),
+      check(
+        "calendar_ingress_receipts_outcome_check",
+        sql`${t.outcome} IN ('received', 'enqueued')`,
+      ),
+    ],
+  ),
+  googleCalendarIngressRateLimits: calendarPgSchema.table(
+    "google_calendar_ingress_rate_limits",
+    {
+      bucketKey: text("bucket_key").primaryKey(),
+      windowStartAt: text("window_start_at").notNull(),
+      count: integer("count").notNull(),
+      updatedAt: text("updated_at").notNull(),
+    },
+    (t) => [
+      check(
+        "calendar_ingress_rate_limits_count_nonnegative",
+        sql`${t.count} >= 0`,
+      ),
+    ],
+  ),
 };

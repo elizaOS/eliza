@@ -121,6 +121,18 @@
         "description": "Public HTTPS callback URL ending in /api/lifeops/calendar/google/webhook.",
         "required": false,
         "sensitive": false
+      },
+      "GOOGLE_CALENDAR_WEBHOOK_HMAC_KEYS": {
+        "type": "string",
+        "description": "Comma-separated current[:previous] Google Calendar webhook HMAC key ring entries as kid:base64url-secret.",
+        "required": false,
+        "sensitive": true
+      },
+      "GOOGLE_CALENDAR_WEBHOOK_REVOKED_KEY_IDS": {
+        "type": "string",
+        "description": "Comma-separated emergency-revoked Google Calendar webhook signing key ids.",
+        "required": false,
+        "sensitive": false
       }
     }
   },

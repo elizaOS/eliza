@@ -42,6 +42,8 @@ const RESOURCE_URI =
 const TIME_MIN = "2026-07-27T00:00:00.000Z";
 const TIME_MAX = "2026-07-28T00:00:00.000Z";
 const PUBLIC_WEBHOOK_URL = `https://calendar.example.com${GOOGLE_CALENDAR_WEBHOOK_PATH}`;
+const WEBHOOK_KEY_CURRENT = "cur:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+const WEBHOOK_KEY_PREVIOUS = "prev:BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
 
 const CREATE_EVENTS_TABLE = `CREATE TABLE app_calendar.life_calendar_events (
   id TEXT PRIMARY KEY,
@@ -172,6 +174,7 @@ class FakeGoogleCalendar {
   failNextIncrementalWith503 = false;
   failNextIncrementalWith403Quota = false;
   expireNextIncrementalCursor = false;
+  beforeEarlySync?: () => void;
   private syncGeneration = 0;
 
   async listCalendars() {
@@ -255,6 +258,7 @@ class FakeGoogleCalendar {
           "Loopback route must be running before watch creation.",
         );
       }
+      this.beforeEarlySync?.();
       const response = await postNotification(this.loopbackBaseUrl, {
         channelId: request.channelId,
         channelToken: request.token,
@@ -350,6 +354,8 @@ async function createHarness(
     google?: FakeGoogleCalendar;
     initialize?: boolean;
     webhookEnabled?: boolean;
+    webhookKeys?: string;
+    revokedKeyIds?: string;
   } = {},
 ): Promise<Harness> {
   const pg = args.pg ?? new PGlite();
@@ -371,6 +377,11 @@ async function createHarness(
       const values: Record<string, string> = {
         GOOGLE_CALENDAR_WEBHOOK_ENABLED: String(args.webhookEnabled ?? true),
         GOOGLE_CALENDAR_WEBHOOK_URL: PUBLIC_WEBHOOK_URL,
+        GOOGLE_CALENDAR_WEBHOOK_HMAC_KEYS:
+          args.webhookKeys ?? WEBHOOK_KEY_CURRENT,
+        ...(args.revokedKeyIds
+          ? { GOOGLE_CALENDAR_WEBHOOK_REVOKED_KEY_IDS: args.revokedKeyIds }
+          : {}),
         GOOGLE_CALENDAR_WATCH_TTL_SECONDS: "3600",
         GOOGLE_CALENDAR_WATCH_RENEWAL_LEAD_MINUTES: "1440",
         GOOGLE_CALENDAR_WATCH_SYNC_LEASE_SECONDS: "300",
@@ -485,6 +496,24 @@ async function watchRows(pg: PGlite) {
   ).rows;
 }
 
+async function ingressReceiptRows(pg: PGlite) {
+  return (
+    await pg.query<Record<string, unknown>>(
+      `SELECT * FROM app_calendar.google_calendar_ingress_receipts
+       ORDER BY created_at ASC`,
+    )
+  ).rows;
+}
+
+async function ingressRateLimitRows(pg: PGlite) {
+  return (
+    await pg.query<Record<string, unknown>>(
+      `SELECT * FROM app_calendar.google_calendar_ingress_rate_limits
+       ORDER BY bucket_key ASC`,
+    )
+  ).rows;
+}
+
 async function waitForMaintenanceTask(harness: Harness): Promise<string> {
   const runner = getScheduledTaskRunner(harness.runtime, {
     agentId: AGENT_ID,
@@ -585,6 +614,19 @@ describe("Google Calendar push lifecycle", { timeout: 30_000 }, () => {
       pending_message_number: null,
     });
     expect(JSON.stringify(rows[0])).not.toContain(request?.token);
+    expect(await ingressReceiptRows(harness.pg)).toEqual([
+      expect.objectContaining({
+        agent_id: AGENT_ID,
+        channel_id: request?.channelId,
+        message_number: "1",
+        grant_id: GRANT_ID,
+        connector_account_id: ACCOUNT_ID,
+        calendar_id: "primary",
+        key_id: "cur",
+        outcome: "enqueued",
+        enqueued: true,
+      }),
+    ]);
     expect(feed.sources[0]?.changeDelivery).toMatchObject({
       mode: "push",
       status: "active",
@@ -676,6 +718,8 @@ describe("Google Calendar push lifecycle", { timeout: 30_000 }, () => {
     const request = harness.google.watchRequests[0];
     expect(request).toBeDefined();
     const beforeRows = await watchRows(harness.pg);
+    const beforeReceipts = await ingressReceiptRows(harness.pg);
+    const beforeLimits = await ingressRateLimitRows(harness.pg);
     const beforeProviderCalls = harness.google.eventPageRequests.length;
 
     const response = await postNotification(harness.baseUrl, {
@@ -689,7 +733,116 @@ describe("Google Calendar push lifecycle", { timeout: 30_000 }, () => {
 
     expect(response.status).toBe(404);
     expect(await watchRows(harness.pg)).toEqual(beforeRows);
+    expect(await ingressReceiptRows(harness.pg)).toEqual(beforeReceipts);
+    expect(await ingressRateLimitRows(harness.pg)).toEqual(beforeLimits);
     expect(harness.google.eventPageRequests).toHaveLength(beforeProviderCalls);
+  });
+
+  it("authorizes an initial sync callback before binding provider resource state", async () => {
+    const harness = await createHarness();
+    harnesses.push(harness);
+    harness.google.beforeEarlySync = () =>
+      harness.setBindingAccount("wrong-account");
+
+    const feed = await forceInitialSync(harness);
+
+    const rows = await watchRows(harness.pg);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      connector_account_id: ACCOUNT_ID,
+      grant_id: GRANT_ID,
+      resource_id: null,
+      resource_uri: null,
+      state: "error",
+    });
+    expect(await ingressReceiptRows(harness.pg)).toEqual([]);
+    expect(harness.google.eventPageRequests).toHaveLength(1);
+    expect(feed.sources[0]?.changeDelivery).toMatchObject({
+      mode: "push",
+      status: "degraded",
+    });
+  });
+
+  it("accepts a previous signing key during bounded rotation and rejects it after revocation", async () => {
+    const first = await createHarness({
+      webhookKeys: WEBHOOK_KEY_PREVIOUS,
+    });
+    await forceInitialSync(first);
+    const request = first.google.watchRequests[0];
+    expect(request).toBeDefined();
+    await first.close({ closeDatabase: false });
+
+    const rotated = await createHarness({
+      pg: first.pg,
+      google: first.google,
+      initialize: false,
+      webhookKeys: `${WEBHOOK_KEY_CURRENT},${WEBHOOK_KEY_PREVIOUS}`,
+    });
+    const accepted = await postNotification(rotated.baseUrl, {
+      channelId: request?.channelId ?? "",
+      channelToken: request?.token ?? "",
+      resourceId: "resource-1",
+      resourceUri: RESOURCE_URI,
+      resourceState: "exists",
+      messageNumber: "2",
+    });
+    await rotated.close({ closeDatabase: false });
+
+    const revoked = await createHarness({
+      pg: first.pg,
+      google: first.google,
+      initialize: false,
+      webhookKeys: `${WEBHOOK_KEY_CURRENT},${WEBHOOK_KEY_PREVIOUS}`,
+      revokedKeyIds: "prev",
+    });
+    harnesses.push(revoked);
+    const before = revoked.google.eventPageRequests.length;
+    const denied = await postNotification(revoked.baseUrl, {
+      channelId: request?.channelId ?? "",
+      channelToken: request?.token ?? "",
+      resourceId: "resource-1",
+      resourceUri: RESOURCE_URI,
+      resourceState: "exists",
+      messageNumber: "3",
+    });
+
+    expect(accepted.status).toBe(204);
+    expect(denied.status).toBe(404);
+    expect(revoked.google.eventPageRequests).toHaveLength(before);
+    expect((await watchRows(revoked.pg))[0]?.last_message_number).toBe("2");
+  });
+
+  it("durably rate-limits an authenticated destination without receipts or sync calls", async () => {
+    const harness = await createHarness();
+    harnesses.push(harness);
+    await forceInitialSync(harness);
+    const request = harness.google.watchRequests[0];
+    expect(request).toBeDefined();
+    const beforeProviderCalls = harness.google.eventPageRequests.length;
+    const beforeReceipts = await ingressReceiptRows(harness.pg);
+    await harness.pg.query(
+      `UPDATE app_calendar.google_calendar_ingress_rate_limits
+          SET count = 60,
+              updated_at = window_start_at
+        WHERE bucket_key = $1`,
+      [
+        `google-calendar-webhook:destination:${AGENT_ID}:${GRANT_ID}:${ACCOUNT_ID}:owner:primary:${request?.channelId}`,
+      ],
+    );
+
+    const response = await postNotification(harness.baseUrl, {
+      channelId: request?.channelId ?? "",
+      channelToken: request?.token ?? "",
+      resourceId: "resource-1",
+      resourceUri: RESOURCE_URI,
+      resourceState: "exists",
+      messageNumber: "2",
+    });
+
+    expect(response.status).toBe(429);
+    expect(await ingressReceiptRows(harness.pg)).toEqual(beforeReceipts);
+    expect(harness.google.eventPageRequests).toHaveLength(beforeProviderCalls);
+    expect(await ingressRateLimitRows(harness.pg)).toHaveLength(2);
   });
 
   it("rejects stale tokens, wrong resources, and changed account bindings", async () => {
@@ -699,6 +852,8 @@ describe("Google Calendar push lifecycle", { timeout: 30_000 }, () => {
     const request = harness.google.watchRequests[0];
     expect(request).toBeDefined();
     const before = harness.google.eventPageRequests.length;
+    const beforeRows = await watchRows(harness.pg);
+    const beforeReceipts = await ingressReceiptRows(harness.pg);
 
     const staleToken = await postNotification(harness.baseUrl, {
       channelId: request?.channelId ?? "",
@@ -733,7 +888,8 @@ describe("Google Calendar push lifecycle", { timeout: 30_000 }, () => {
     ]).toEqual([404, 404, 404]);
     expect(harness.google.eventPageRequests).toHaveLength(before);
     const rows = await watchRows(harness.pg);
-    expect(rows[0]?.state).toBe("revoked");
+    expect(rows).toEqual(beforeRows);
+    expect(await ingressReceiptRows(harness.pg)).toEqual(beforeReceipts);
     expect(rows[0]?.last_message_number).toBe("1");
   });
 

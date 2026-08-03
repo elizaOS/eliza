@@ -6,28 +6,9 @@ import type http from "node:http";
 import type { IAgentRuntime, LegacyRouteHandler } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 
-const MockCalendarService = vi.hoisted(() =>
-  Object.assign(function CalendarService() {}, {
-    serviceType: "calendar",
-  }),
-);
-const MockCalendarMigrationService = vi.hoisted(() =>
-  Object.assign(function CalendarMigrationService() {}, {
-    serviceType: "calendar_migration",
-  }),
-);
-
-vi.mock("../src/service/CalendarService.js", () => ({
-  CalendarService: MockCalendarService,
-}));
-
-vi.mock("../src/service/migration.js", () => ({
-  CALENDAR_MIGRATION_SERVICE_TYPE: "calendar_migration",
-  CalendarMigrationService: MockCalendarMigrationService,
-}));
-
 import { calendarPlugin } from "../src/plugin.js";
 import {
+  buildCalendarHttpRoutes,
   calendarHttpRoutes,
   calendarRouteHandler,
 } from "../src/routes/plugin-routes.js";
@@ -113,20 +94,50 @@ function makeCalendarService() {
 function makeRuntime(service: ReturnType<typeof makeCalendarService>) {
   return {
     agentId: "agent-1",
+    getSetting: vi.fn((key: string) => {
+      const settings: Record<string, string> = {
+        GOOGLE_CALENDAR_WEBHOOK_ENABLED: "true",
+        GOOGLE_CALENDAR_WEBHOOK_URL:
+          "https://calendar.example.test/api/lifeops/calendar/google/webhook",
+        GOOGLE_CALENDAR_WEBHOOK_HMAC_KEYS:
+          "cur:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      };
+      return settings[key] ?? null;
+    }),
     getService: vi.fn(() => service),
     getServiceLoadPromise: vi.fn(async () => service),
   } as unknown as IAgentRuntime;
 }
 
 describe("calendar plugin HTTP routes", () => {
-  it("registers only the provider-authenticated webhook directly", () => {
+  it("does not statically register the public webhook by default", () => {
     expect(calendarPlugin.routes).toEqual(calendarHttpRoutes);
-    expect(calendarHttpRoutes).toHaveLength(1);
-    expect(calendarHttpRoutes[0]).toMatchObject({
+    expect(calendarHttpRoutes).toEqual([]);
+  });
+
+  it("builds the provider-authenticated webhook only when enabled", () => {
+    const routes = buildCalendarHttpRoutes({ googleWebhookEnabled: true });
+    expect(routes).toHaveLength(1);
+    expect(routes[0]).toMatchObject({
       type: "POST",
       public: true,
       rawPath: true,
       handler: expect.any(Function),
+    });
+  });
+
+  it("registers the public webhook from runtime settings during plugin init", async () => {
+    const service = makeCalendarService();
+    const runtime = makeRuntime(service);
+
+    await calendarPlugin.init?.({}, runtime);
+
+    expect(calendarPlugin.routes).toHaveLength(1);
+    expect(calendarPlugin.routes?.[0]).toMatchObject({
+      type: "POST",
+      path: "/api/lifeops/calendar/google/webhook",
+      public: true,
+      rawPath: true,
     });
   });
 

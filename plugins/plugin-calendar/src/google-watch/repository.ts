@@ -12,9 +12,13 @@ import {
 } from "@elizaos/shared";
 import {
   executeRawSql,
+  executeRawSqlTx,
   sqlBoolean,
+  sqlJson,
   sqlQuote,
   sqlText,
+  type TransactionalDb,
+  withCalendarTransaction,
 } from "../internal/sql.js";
 
 export type GoogleCalendarWatchState =
@@ -40,6 +44,7 @@ export interface GoogleCalendarWatchChannel {
   windowEndAt: string;
   webhookUrl: string;
   tokenSha256: string;
+  tokenKeyId: string | null;
   resourceId: string | null;
   resourceUri: string | null;
   expirationAt: string | null;
@@ -76,6 +81,7 @@ export interface CreateGoogleCalendarWatchChannel {
   windowEndAt: string;
   webhookUrl: string;
   tokenSha256: string;
+  tokenKeyId: string;
   provisionalExpirationAt: string;
   createdAt: string;
 }
@@ -180,6 +186,7 @@ function parseWatchChannel(
     windowEndAt: requiredText(row, "window_end_at"),
     webhookUrl: requiredText(row, "webhook_url"),
     tokenSha256: requiredText(row, "token_sha256"),
+    tokenKeyId: nullableText(row, "token_key_id"),
     resourceId: nullableText(row, "resource_id"),
     resourceUri: nullableText(row, "resource_uri"),
     expirationAt: nullableText(row, "expiration_at"),
@@ -236,6 +243,7 @@ export class GoogleCalendarWatchRepository {
         channel_id, agent_id, grant_id, connector_account_id, side,
         calendar_id, calendar_summary, calendar_access_role, time_zone,
         window_start_at, window_end_at, webhook_url, token_sha256,
+        token_key_id,
         expiration_at, state, created_at, updated_at
       ) VALUES (
         ${sqlQuote(channel.channelId)},
@@ -251,6 +259,7 @@ export class GoogleCalendarWatchRepository {
         ${sqlQuote(channel.windowEndAt)},
         ${sqlQuote(channel.webhookUrl)},
         ${sqlQuote(channel.tokenSha256)},
+        ${sqlQuote(channel.tokenKeyId)},
         ${sqlQuote(channel.provisionalExpirationAt)},
         'creating',
         ${sqlQuote(channel.createdAt)},
@@ -402,6 +411,183 @@ export class GoogleCalendarWatchRepository {
   }): Promise<GoogleCalendarWatchChannel | null> {
     const rows = await executeRawSql(
       this.runtime,
+      `UPDATE app_calendar.google_calendar_watch_channels
+          SET pending_message_number = CASE
+                WHEN pending_message_number IS NULL
+                  OR pending_message_number::numeric < ${sqlQuote(args.messageNumber)}::numeric
+                THEN ${sqlQuote(args.messageNumber)}
+                ELSE pending_message_number
+              END,
+              last_notification_at = ${sqlQuote(args.notifiedAt)},
+              updated_at = ${sqlQuote(args.notifiedAt)}
+        WHERE agent_id = ${sqlQuote(args.agentId)}
+          AND channel_id = ${sqlQuote(args.channelId)}
+          AND state IN ('creating', 'active')
+          AND last_message_number::numeric < ${sqlQuote(args.messageNumber)}::numeric
+        RETURNING *`,
+    );
+    return rows[0] ? parseWatchChannel(rows[0]) : null;
+  }
+
+  async consumeIngressRateLimit(args: {
+    bucketKey: string;
+    nowIso: string;
+    windowMs: number;
+    maxCount: number;
+  }): Promise<
+    { allowed: true } | { allowed: false; retryAfterSeconds: number }
+  > {
+    const windowStartAt = new Date(
+      Date.parse(args.nowIso) - args.windowMs,
+    ).toISOString();
+    const rows = await executeRawSql(
+      this.runtime,
+      `INSERT INTO app_calendar.google_calendar_ingress_rate_limits (
+          bucket_key, window_start_at, count, updated_at
+        ) VALUES (
+          ${sqlQuote(args.bucketKey)},
+          ${sqlQuote(args.nowIso)},
+          1,
+          ${sqlQuote(args.nowIso)}
+        )
+        ON CONFLICT (bucket_key) DO UPDATE
+          SET count = CASE
+                WHEN app_calendar.google_calendar_ingress_rate_limits.window_start_at
+                     <= ${sqlQuote(windowStartAt)}
+                THEN 1
+                ELSE app_calendar.google_calendar_ingress_rate_limits.count + 1
+              END,
+              window_start_at = CASE
+                WHEN app_calendar.google_calendar_ingress_rate_limits.window_start_at
+                     <= ${sqlQuote(windowStartAt)}
+                THEN ${sqlQuote(args.nowIso)}
+                ELSE app_calendar.google_calendar_ingress_rate_limits.window_start_at
+              END,
+              updated_at = ${sqlQuote(args.nowIso)}
+        RETURNING count::text AS count, window_start_at`,
+    );
+    const row = rows[0];
+    if (!row) {
+      throw new ElizaError(
+        "Google Calendar ingress limiter did not return state.",
+        {
+          code: "GOOGLE_CALENDAR_INGRESS_RATE_LIMIT_STATE_MISSING",
+          context: { bucketKey: args.bucketKey },
+          severity: "fatal",
+        },
+      );
+    }
+    const count = requiredNonnegativeInteger(row, "count");
+    if (count <= args.maxCount) return { allowed: true };
+    const start = requiredText(row, "window_start_at");
+    const retryAfterSeconds = Math.max(
+      1,
+      Math.ceil(
+        (Date.parse(start) + args.windowMs - Date.parse(args.nowIso)) / 1000,
+      ),
+    );
+    return { allowed: false, retryAfterSeconds };
+  }
+
+  async createReceiptAndEnqueue(args: {
+    receiptId: string;
+    agentId: string;
+    channelId: string;
+    messageNumber: string;
+    principalKey: string;
+    destinationKey: string;
+    grantId: string;
+    connectorAccountId: string;
+    side: LifeOpsConnectorSide;
+    calendarId: string;
+    keyId: string;
+    resourceIdHash: string;
+    resourceUriHash: string;
+    resourceState: string;
+    receivedAt: string;
+    metadata: Record<string, unknown>;
+  }): Promise<
+    | { kind: "enqueued"; channel: GoogleCalendarWatchChannel }
+    | { kind: "duplicate" }
+    | { kind: "unauthorized" }
+  > {
+    return withCalendarTransaction(this.runtime, async (tx) => {
+      const inserted = await executeRawSqlTx(
+        tx,
+        `INSERT INTO app_calendar.google_calendar_ingress_receipts (
+            receipt_id, agent_id, channel_id, message_number, principal_key,
+            destination_key, grant_id, connector_account_id, side, calendar_id,
+            key_id, resource_id_hash, resource_uri_hash, resource_state,
+            outcome, enqueued, received_at, created_at, metadata_json
+          ) VALUES (
+            ${sqlQuote(args.receiptId)},
+            ${sqlQuote(args.agentId)},
+            ${sqlQuote(args.channelId)},
+            ${sqlQuote(args.messageNumber)},
+            ${sqlQuote(args.principalKey)},
+            ${sqlQuote(args.destinationKey)},
+            ${sqlQuote(args.grantId)},
+            ${sqlQuote(args.connectorAccountId)},
+            ${sqlQuote(args.side)},
+            ${sqlQuote(args.calendarId)},
+            ${sqlQuote(args.keyId)},
+            ${sqlQuote(args.resourceIdHash)},
+            ${sqlQuote(args.resourceUriHash)},
+            ${sqlQuote(args.resourceState)},
+            'received',
+            FALSE,
+            ${sqlQuote(args.receivedAt)},
+            ${sqlQuote(args.receivedAt)},
+            ${sqlJson(args.metadata)}
+          )
+          ON CONFLICT (agent_id, channel_id, message_number) DO NOTHING
+          RETURNING receipt_id`,
+      );
+      if (!inserted[0]) return { kind: "duplicate" };
+
+      const enqueued = await this.enqueueNotificationTx(tx, {
+        agentId: args.agentId,
+        channelId: args.channelId,
+        messageNumber: args.messageNumber,
+        notifiedAt: args.receivedAt,
+      });
+      if (!enqueued) {
+        throw new ElizaError(
+          "Google Calendar ingress receipt could not atomically enqueue.",
+          {
+            code: "GOOGLE_CALENDAR_INGRESS_ENQUEUE_RACE",
+            context: {
+              agentId: args.agentId,
+              channelId: args.channelId,
+              messageNumber: args.messageNumber,
+            },
+            severity: "ephemeral",
+          },
+        );
+      }
+
+      await executeRawSqlTx(
+        tx,
+        `UPDATE app_calendar.google_calendar_ingress_receipts
+            SET outcome = 'enqueued',
+                enqueued = TRUE
+          WHERE receipt_id = ${sqlQuote(args.receiptId)}`,
+      );
+      return { kind: "enqueued", channel: enqueued };
+    });
+  }
+
+  private async enqueueNotificationTx(
+    tx: TransactionalDb,
+    args: {
+      agentId: string;
+      channelId: string;
+      messageNumber: string;
+      notifiedAt: string;
+    },
+  ): Promise<GoogleCalendarWatchChannel | null> {
+    const rows = await executeRawSqlTx(
+      tx,
       `UPDATE app_calendar.google_calendar_watch_channels
           SET pending_message_number = CASE
                 WHEN pending_message_number IS NULL
