@@ -69,6 +69,7 @@ export interface DiscordServiceInternals {
 	allowAllSlashCommands: Set<string>;
 	slashCommands: DiscordSlashCommand[];
 	timeouts: ReturnType<typeof setTimeout>[];
+	clientReadyPromise?: Promise<void> | null;
 
 	// Methods
 	isChannelAllowed(channelId: string): boolean;
@@ -336,6 +337,28 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 				"Ignoring message from bot or self",
 			);
 			return;
+		}
+
+		// `messageCreate` may arrive as soon as the gateway reports ClientReady,
+		// while the async ready sequence is still hydrating canonical owner aliases.
+		// Gate every ingress branch here, including listen-only ingestion, and keep
+		// the MessageManager gate as defense for direct/replay callers.
+		const ready = service.clientReadyPromise;
+		if (ready) {
+			try {
+				await ready;
+			} catch (error) {
+				service.runtime.reportError(
+					"discord:gateway-message-before-ready",
+					error,
+					{
+						accountId,
+						messageId: message.id,
+						channelId: message.channel.id,
+					},
+				);
+				return;
+			}
 		}
 
 		if (service.messageManager) {

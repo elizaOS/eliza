@@ -1288,6 +1288,27 @@ export class MessageManager {
 			return;
 		}
 
+		// Discord can emit messageCreate immediately after ClientReady while the
+		// async onReady sequence is still resolving application-owner aliases.
+		// Ingesting before that boundary permanently attributes an owner message to
+		// a platform-derived entity, which makes owner-private recall fail closed
+		// for the wrong reason and leaves split identity in memory. Wait before the
+		// dedupe reservation or any room/entity write. A failed ready sequence is a
+		// fail-closed connector state: ordinary chat must not race ahead of it.
+		const ready = this.discordService.clientReadyPromise;
+		if (ready) {
+			try {
+				await ready;
+			} catch (error) {
+				this.runtime.reportError("discord:message-before-ready", error, {
+					accountId: this.accountId,
+					messageId: message.id,
+					channelId: message.channel.id,
+				});
+				return;
+			}
+		}
+
 		if (message.id && !this.markMessageAsProcessing(message.id)) {
 			this.runtime.logger.debug(
 				{
