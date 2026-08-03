@@ -531,7 +531,6 @@ export class SimpleViewsService extends Service {
         updatedAt: now,
       };
       draft.events.push(event);
-      draft.selectedDate = event.date;
       return event;
     });
     await this.emitStateUpdated(transaction.snapshot, "calendar:event-created");
@@ -559,7 +558,6 @@ export class SimpleViewsService extends Service {
       if (index < 0 || !existing) throw notFound("calendar event", id);
       const updated = applyCalendarEventPatch(existing, patch, updatedAt);
       draft.events[index] = updated;
-      if (patch.date !== undefined) draft.selectedDate = patch.date;
       return updated;
     });
     await this.emitStateUpdated(transaction.snapshot, "calendar:event-updated");
@@ -595,7 +593,6 @@ export class SimpleViewsService extends Service {
       }
       const updated = applyCalendarEventPatch(existing, patch, updatedAt);
       draft.events[index] = updated;
-      if (patch.date !== undefined) draft.selectedDate = patch.date;
       return updated;
     });
     await this.emitStateUpdated(transaction.snapshot, "calendar:event-updated");
