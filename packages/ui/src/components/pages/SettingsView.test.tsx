@@ -338,6 +338,30 @@ describe("SettingsView", () => {
     }
   });
 
+
+  it("syncs active section on popstate from a same-page pushState", () => {
+    // Regression guard (#17618): agent navigation can pushState from one
+    // hash to another; the view must pick up the new hash on popstate.
+    render(<SettingsView initialSection="identity" />);
+
+    window.history.pushState(null, "", "#runtime");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+
+    expect(screen.getByTestId("stub-runtime")).toBeTruthy();
+    expect(screen.queryByTestId("stub-identity")).toBeNull();
+  });
+
+  it("syncs active section on popstate when hash points to an invisible section", () => {
+    render(<SettingsView initialSection="identity" />);
+
+    window.history.pushState(null, "", "#nonexistent");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+
+    expect(screen.queryByTestId("stub-identity")).toBeNull();
+    expect(screen.queryByTestId("stub-runtime")).toBeNull();
+    expect(screen.getByTestId("settings-hub-list")).toBeTruthy();
+  });
+
   // ── Responsive settings workspace ─────────────────────────────────────────
 
   /** Mock matchMedia so each query resolves by the supplied predicate. */
