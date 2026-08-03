@@ -14,6 +14,7 @@ import { streamText } from "ai";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { UserCharacter } from "@/db/repositories/characters";
+import { UntrustedA2AChatMessagesSchema } from "@/lib/api/a2a/chat-messages";
 import { safeUnknownErrorMessage } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { CORS_ALLOW_HEADERS, CORS_ALLOW_METHODS } from "@/lib/cors-constants";
@@ -60,18 +61,10 @@ const ProviderUsageSchema = z.object({
 
 const A2AChatParamsSchema = z.object({
   model: z.string().trim().min(1).default("gpt-5-mini"),
-  messages: z
-    .array(
-      z.object({
-        // The public A2A caller is an input principal, never a policy author.
-        // Until agent-signed role provenance exists, accepting `system` here
-        // would let an authenticated caller inject instructions beside the
-        // destination agent's operator-owned system prompt.
-        role: z.enum(["user", "assistant"]),
-        content: z.string().min(1),
-      }),
-    )
-    .min(1),
+  // The public caller is an input principal, never a policy author. This shared
+  // DTO is also consumed by the platform A2A chat-completion skill, preventing
+  // either production ingress from accepting unsigned `system` policy.
+  messages: UntrustedA2AChatMessagesSchema,
 });
 
 export function generateAgentCard(character: UserCharacter, baseUrl: string) {
@@ -196,13 +189,25 @@ app.post("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
     );
   }
 
-  const body = await c.req.json();
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json(
+      {
+        jsonrpc: "2.0",
+        error: { code: -32700, message: "Parse error" },
+        id: null,
+      },
+      400,
+    );
+  }
   const validation = JsonRpcRequestSchema.safeParse(body);
   if (!validation.success) {
     return c.json(
       {
         jsonrpc: "2.0",
-        error: { code: -32700, message: "Parse error" },
+        error: { code: -32600, message: "Invalid Request" },
         id: null,
       },
       400,
