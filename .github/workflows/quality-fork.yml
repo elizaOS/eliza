@@ -233,6 +233,15 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Upload homepage browser failure artifacts
+        if: failure() && steps.homepage-scope.outputs.run == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: homepage-playwright-failures-${{ github.run_id }}-${{ github.run_attempt }}
+          path: packages/homepage/test-results
+          if-no-files-found: error
+          retention-days: 7
+
   elizaos-cli-global-smoke:
     name: elizaos CLI global-install smoke (#8000)
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true)

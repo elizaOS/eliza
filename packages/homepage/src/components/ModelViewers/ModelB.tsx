@@ -47,6 +47,7 @@ export interface ModelBHandle {
 interface ModelBProps {
   tryActive?: boolean;
   switcherOpen?: boolean;
+  onIntroReady?: () => void;
   onWaitingChange?: (waiting: boolean) => void;
   onBackClick?: () => void;
   onVideoClick?: () => void;
@@ -81,6 +82,8 @@ interface ModelRuntime {
   invalidate: (() => void) | null;
   tryActive: boolean;
   stopMessageAnimation: (() => void) | null;
+  onIntroReady: (() => void) | null;
+  introReadyFired: boolean;
   onWaitingChange: ((waiting: boolean) => void) | null;
   onBackClick: (() => void) | null;
   onVideoClick: (() => void) | null;
@@ -116,6 +119,8 @@ function createModelRuntime(): ModelRuntime {
     invalidate: null,
     tryActive: false,
     stopMessageAnimation: null,
+    onIntroReady: null,
+    introReadyFired: false,
     onWaitingChange: null,
     onBackClick: null,
     onVideoClick: null,
@@ -373,6 +378,7 @@ function Model({ runtime }: { runtime: ModelRuntime }) {
     avatarImg.src = "/elizapfp.webp";
     let cancelled = false;
     let animFrame = 0;
+    let introReadyFrame = 0;
     let initialized = false;
 
     const setup = () => {
@@ -520,6 +526,13 @@ function Model({ runtime }: { runtime: ModelRuntime }) {
               msgAnimFrameRef.current = requestAnimationFrame(tick);
             } else if (count < getMessageCount() && !runtime.tryActive) {
               msgTimeoutRef.current = window.setTimeout(animateMessage, 700);
+            } else if (!runtime.introReadyFired && !runtime.tryActive) {
+              runtime.introReadyFired = true;
+              // The next animation frame follows the Three.js texture upload,
+              // so consumers never treat an updated canvas buffer as painted.
+              introReadyFrame = requestAnimationFrame(() => {
+                if (!cancelled) runtime.onIntroReady?.();
+              });
             }
           };
 
@@ -689,6 +702,7 @@ function Model({ runtime }: { runtime: ModelRuntime }) {
     return () => {
       cancelled = true;
       cancelAnimationFrame(animFrame);
+      cancelAnimationFrame(introReadyFrame);
       clearTimeout(spinTimeoutRef.current);
       clearTimeout(msgTimeoutRef.current);
       clearTimeout(typingTimeoutRef.current);
@@ -945,6 +959,7 @@ const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
   {
     tryActive = false,
     switcherOpen = false,
+    onIntroReady,
     onWaitingChange,
     onBackClick,
     onVideoClick,
@@ -971,6 +986,10 @@ const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
     }
     runtime.invalidate?.();
   }, [runtime, tryActive]);
+
+  useEffect(() => {
+    runtime.onIntroReady = onIntroReady ?? null;
+  }, [onIntroReady, runtime]);
 
   useEffect(() => {
     runtime.onWaitingChange = onWaitingChange ?? null;

@@ -231,4 +231,7 @@ test("landing page renders its animated shell and primary entrypoint", async ({
   await expect(page.getByRole("button", { name: "Try Now" })).toBeVisible({
     timeout: 20_000,
   });
+  await expect(page.locator('[data-intro-ready="true"]')).toBeVisible({
+    timeout: 30_000,
+  });
 });

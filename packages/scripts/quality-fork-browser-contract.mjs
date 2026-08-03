@@ -16,6 +16,7 @@ const DEFAULT_REPO_ROOT = resolve(
   "..",
 );
 const WORKFLOW_PATH = ".github/workflows/quality-fork.yml";
+const UPLOAD_ARTIFACT_SHA = "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a";
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -37,6 +38,10 @@ export function runContract(repoRoot = DEFAULT_REPO_ROOT) {
   const workflow = readFileSync(resolve(repoRoot, WORKFLOW_PATH), "utf8");
   const install = stepBody(workflow, "Install homepage browser");
   const browserTest = stepBody(workflow, "Test homepage downloads");
+  const failureUpload = stepBody(
+    workflow,
+    "Upload homepage browser failure artifacts",
+  );
 
   assert(
     /^\s*run:\s*\.\/node_modules\/\.bin\/playwright install chromium\s*$/m.test(
@@ -49,12 +54,28 @@ export function runContract(repoRoot = DEFAULT_REPO_ROOT) {
     `${WORKFLOW_PATH}: browser install must not use --with-deps on self-hosted runners`,
   );
   assert(
-    /^\s*run:\s*bun run test:e2e(?: --workers=[1-9]\d*)?\s*$/m.test(browserTest),
+    /^\s*run:\s*bun run test:e2e(?: --workers=[1-9]\d*)?\s*$/m.test(
+      browserTest,
+    ),
     `${WORKFLOW_PATH}: the real homepage browser test must remain enabled; only a positive worker cap is allowed`,
   );
   assert(
     workflow.indexOf(install) < workflow.indexOf(browserTest),
     `${WORKFLOW_PATH}: Chromium must be installed before the homepage browser test`,
+  );
+  assert(
+    failureUpload.includes(`actions/upload-artifact@${UPLOAD_ARTIFACT_SHA}`),
+    `${WORKFLOW_PATH}: browser failure artifacts must use the reviewed upload-artifact revision`,
+  );
+  assert(
+    /if:\s*failure\(\)\s*&&\s*steps\.homepage-scope\.outputs\.run\s*==\s*'true'/.test(
+      failureUpload,
+    ),
+    `${WORKFLOW_PATH}: browser artifacts must upload only after an in-scope failure`,
+  );
+  assert(
+    workflow.indexOf(browserTest) < workflow.indexOf(failureUpload),
+    `${WORKFLOW_PATH}: browser failure artifacts must upload after the browser test`,
   );
 
   return { workflow: WORKFLOW_PATH };

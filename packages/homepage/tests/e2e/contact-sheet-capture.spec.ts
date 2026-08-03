@@ -17,6 +17,7 @@
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { expect, type Page, test } from "playwright/test";
+import { waitForLandingIntro } from "./landing-readiness";
 import { captureScreenshotWithQualityRetry } from "./screenshot-quality";
 
 const TEST_TOKEN = "homepage-contact-sheet-token";
@@ -99,14 +100,10 @@ for (const viewport of VIEWPORTS) {
 
         await page.goto(route.path, { waitUntil: "domcontentloaded" });
         await page.evaluate(() => document.fonts.ready);
-        // The animated landing keeps long-lived shader and model requests in
-        // flight, so its primary action is a more reliable readiness boundary
-        // than the browser's network-idle heuristic.
+        // The landing's long-lived shader/model requests make network-idle
+        // meaningless; its own final-paint signal is the stable boundary.
         if (route.path === "/" || route.path === "/leaderboard") {
-          await expect(
-            page.getByRole("button", { name: "Try Now" }),
-          ).toBeVisible({ timeout: 30_000 });
-          await page.waitForTimeout(2500);
+          await waitForLandingIntro(page);
         } else {
           await page
             .waitForSelector("header", { timeout: 20_000 })
