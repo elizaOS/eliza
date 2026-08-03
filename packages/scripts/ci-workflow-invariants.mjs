@@ -465,6 +465,7 @@ export function run(repoRoot = REPO_ROOT) {
       path.join(repoRoot, WORKFLOW_PATHS.gitleaks),
       "utf8",
     ),
+    nightly: readFileSync(path.join(repoRoot, WORKFLOW_PATHS.nightly), "utf8"),
     qualityFork: readFileSync(
       path.join(repoRoot, WORKFLOW_PATHS.qualityFork),
       "utf8",

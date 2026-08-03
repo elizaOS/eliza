@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import { validateWorkflowSources } from "./ci-workflow-invariants.mjs";
+import { run, validateWorkflowSources } from "./ci-workflow-invariants.mjs";
 
 const root = path.resolve(import.meta.dirname, "../..");
 const sources = {
@@ -51,6 +51,10 @@ const sources = {
 
 test("accepts the repository workflow graph", () => {
   assert.deepEqual(validateWorkflowSources(sources), { ok: true });
+});
+
+test("loads every repository workflow source from disk", () => {
+  assert.deepEqual(run(root), { ok: true });
 });
 
 for (const fixture of [
