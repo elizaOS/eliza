@@ -28,6 +28,11 @@ interface ReplayEntry {
   expiresAt: number;
 }
 
+interface ReplayCleanupState {
+  startAfter?: string;
+  nextExpiry?: number;
+}
+
 interface LegacyCoordinatorLedger {
   session: OnboardingSession;
 }
@@ -39,10 +44,14 @@ interface StoredSession extends Omit<OnboardingSession, "history"> {
 const SESSION_KEY_PREFIX = "session:";
 const HISTORY_KEY_PREFIX = "history:";
 const REPLAY_KEY_PREFIX = "replay:";
+const REPLAY_CLEANUP_STATE_KEY = "replay-cleanup-state";
 const LEGACY_LEDGER_KEY = "ledger";
 const REDIRECT_KEY = "continuation-session-id";
 const HISTORY_CHUNK_SIZE = 10;
 const REPLAY_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
+// Durable Object storage batches are capped at 128 keys. Keep each alarm
+// invocation at that limit and retain a cursor for the next invocation.
+const REPLAY_CLEANUP_BATCH_SIZE = 128;
 
 function storageComponent(value: string): string {
   return encodeURIComponent(value);
@@ -353,22 +362,41 @@ export class OnboardingSessionCoordinator {
   async alarm(): Promise<void> {
     await this.serialize(async () => {
       const now = Date.now();
+      const cleanup = await this.state.storage.get<ReplayCleanupState>(
+        REPLAY_CLEANUP_STATE_KEY,
+      );
       const replays = await this.state.storage.list<ReplayEntry>({
         prefix: REPLAY_KEY_PREFIX,
+        startAfter: cleanup?.startAfter,
+        limit: REPLAY_CLEANUP_BATCH_SIZE,
       });
-      const expired = [...replays.entries()]
+      const entries = [...replays.entries()];
+      const expired = entries
         .filter(([, replay]) => replay.expiresAt <= now)
         .map(([key]) => key);
-      const nextExpiry = [...replays.values()]
-        .filter((replay) => replay.expiresAt > now)
+      const nextExpiry = entries
+        .filter(([, replay]) => replay.expiresAt > now)
         .reduce<number | undefined>(
-          (earliest, replay) =>
+          (earliest, [, replay]) =>
             Math.min(earliest ?? replay.expiresAt, replay.expiresAt),
-          undefined,
+          cleanup?.nextExpiry,
         );
+      const hasMore = entries.length === REPLAY_CLEANUP_BATCH_SIZE;
+      const lastKey = entries.at(-1)?.[0];
       await this.state.storage.transaction(async (transaction) => {
-        for (const key of expired) await transaction.delete(key);
-        if (nextExpiry) await transaction.setAlarm(nextExpiry);
+        if (expired.length > 0) await transaction.delete(expired);
+        if (hasMore && lastKey) {
+          await transaction.put(REPLAY_CLEANUP_STATE_KEY, {
+            startAfter: lastKey,
+            nextExpiry,
+          } satisfies ReplayCleanupState);
+          // Continue in a fresh alarm turn so the full replay namespace is
+          // never materialized or deleted in one Durable Object invocation.
+          await transaction.setAlarm(now + 1);
+          return;
+        }
+        await transaction.delete(REPLAY_CLEANUP_STATE_KEY);
+        if (nextExpiry !== undefined) await transaction.setAlarm(nextExpiry);
         else await transaction.deleteAlarm();
       });
     });

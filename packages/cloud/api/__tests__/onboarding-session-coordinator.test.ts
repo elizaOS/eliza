@@ -59,10 +59,21 @@ class TestStorage {
     return keys.map((entry) => this.values.delete(entry)).some(Boolean);
   }
 
-  async list<T>({ prefix }: { prefix: string }): Promise<Map<string, T>> {
+  async list<T>({
+    prefix,
+    startAfter,
+    limit,
+  }: {
+    prefix: string;
+    startAfter?: string;
+    limit?: number;
+  }): Promise<Map<string, T>> {
     return new Map(
       [...this.values.entries()]
         .filter(([key]) => key.startsWith(prefix))
+        .filter(([key]) => !startAfter || key > startAfter)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .slice(0, limit)
         .map(([key, value]) => [key, structuredClone(value) as T]),
     );
   }
@@ -318,6 +329,43 @@ describe("OnboardingSessionCoordinator", () => {
 
     expect(await storage.get(replayKey)).toBeUndefined();
     expect(await storage.getAlarm()).toBeNull();
+  });
+
+  test("sweeps replay expiry in bounded resumable batches", async () => {
+    const harness = createCoordinatorHarness();
+    const storage = harness.storageFor(harness.sessionId);
+    const now = Date.now();
+    const futureExpiry = now + 60_000;
+
+    for (let index = 0; index < 129; index += 1) {
+      await storage.put(
+        `replay:platform:test:expired-${String(index).padStart(3, "0")}`,
+        {
+          expiresAt: now - 1,
+        },
+      );
+    }
+    await storage.put("replay:platform:test:future", {
+      expiresAt: futureExpiry,
+    });
+
+    await harness.coordinator.alarm();
+
+    expect(
+      await storage.list({ prefix: "replay:platform:test:" }),
+    ).toHaveLength(2);
+    expect(await storage.getAlarm()).toBeGreaterThanOrEqual(now);
+    expect(
+      await storage.get<{ startAfter: string }>("replay-cleanup-state"),
+    ).toEqual(expect.objectContaining({ startAfter: expect.any(String) }));
+
+    await harness.coordinator.alarm();
+
+    expect(await storage.list({ prefix: "replay:platform:test:" })).toEqual(
+      new Map([["replay:platform:test:future", { expiresAt: futureExpiry }]]),
+    );
+    expect(await storage.get("replay-cleanup-state")).toBeUndefined();
+    expect(await storage.getAlarm()).toBe(futureExpiry);
   });
 
   test("fails instead of silently dropping a missing history chunk", async () => {
