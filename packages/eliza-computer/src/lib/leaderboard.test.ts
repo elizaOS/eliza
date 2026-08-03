@@ -316,6 +316,68 @@ describe("model attribution", () => {
     });
   });
 
+  it("accepts the PR template's attribution checklist above the appended footer (#17610)", () => {
+    // The shipped template carries `Client / agent tooling`, `Skill revision`,
+    // and `Attribution status` rows, and SKILL.md instructs appending the
+    // footer after the template. Counting labels across the whole body made
+    // those two documents mutually exclusive and invalidated 64 of 67
+    // eligible sources; only the terminal block is a footer.
+    const source = textSource(
+      "PR_TEMPLATE:body",
+      [
+        "<!-- attribution-row:client -->",
+        "- Client / agent tooling: `client-name` / `None - human-only contribution`",
+        "<!-- attribution-row:skill-revision -->",
+        "- Skill revision: `owner/repo@full-commit-sha:path` / `N/A - no contribution skill used`",
+        "<!-- attribution-row:status -->",
+        "- Attribution status: `self-reported`",
+        "",
+        "## Summary",
+        "",
+        "Body content between the checklist and the footer.",
+        "",
+        "---",
+        "",
+        machineAttribution("OpenAI", "gpt-5.6-sol"),
+      ].join("\n"),
+    );
+
+    const result = assessModelAttribution([source]);
+
+    expect(result.invalidMarkers).toEqual([]);
+    expect(result.declarations).toHaveLength(1);
+    expect(result.declarations[0]).toMatchObject({
+      provider: "openai",
+      model: "gpt-5.6-sol",
+      format: "machine-marker",
+    });
+  });
+
+  it("still rejects duplicated footer rows adjacent to the marker", () => {
+    // Scoping the count to the terminal block must not let a second, genuinely
+    // ambiguous footer through: rows abutting the lane signature are all part
+    // of that block, so the duplicate is still caught.
+    const source = textSource(
+      "PR_ADJACENT:body",
+      [
+        "AI provider/model: OpenAI / gpt-5.6-sol",
+        "Client / agent tooling: codex-desktop",
+        "Contribution skill revision: N/A - unit test does not invoke the contribution skill",
+        "Attribution status: self-reported",
+        machineAttribution("Anthropic", "claude-opus-5"),
+      ].join("\n"),
+    );
+
+    const result = assessModelAttribution([source]);
+
+    expect(result.invalidMarkers).toEqual([
+      expect.objectContaining({
+        sourceId: "PR_ADJACENT:body",
+        reason: "marker requires exactly one complete visible attribution footer",
+      }),
+    ]);
+  });
+
   it("rejects vague names and reports malformed markers without guessing", () => {
     const source = textSource(
       "COMMENT_2",

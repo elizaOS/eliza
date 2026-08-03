@@ -1002,6 +1002,38 @@ function attributionLineValues(body: string, label: string): string[] {
     .filter((value): value is string => value !== undefined);
 }
 
+const ATTRIBUTION_LABEL_PATTERN =
+  /^(?:AI provider\/model|Client \/ agent tooling|Contribution skill revision|Skill revision|Attribution status)\s*:/i;
+
+/**
+ * The contiguous run of attribution label lines that terminates at the lane
+ * signature, returned as the slice of `body` they occupy. Walking backwards
+ * from the lane and stopping at the first non-label line bounds the footer to
+ * the block a contributor actually appended, so unrelated rows elsewhere in
+ * the body (notably the PR template's attribution checklist) cannot be
+ * mistaken for a second footer.
+ */
+function terminalAttributionBlock(
+  body: string,
+  beforeMarker: AttributionDeclarationLine[],
+  markerRecord: AttributionMarkerRecord,
+): string {
+  // beforeMarker ends with the validated lane signature; anchor there and
+  // collect the label lines above it, requiring only blank space between
+  // adjacent members (the lane itself sits between the last label and the
+  // marker, so anchoring at the marker would break the walk immediately).
+  const terminalLane = beforeMarker.at(-1);
+  if (terminalLane === undefined) return "";
+  let start = terminalLane.start;
+  for (let index = beforeMarker.length - 2; index >= 0; index -= 1) {
+    const record = beforeMarker[index];
+    if (!ATTRIBUTION_LABEL_PATTERN.test(record.normalized)) break;
+    if (body.slice(record.end, start).trim().length !== 0) break;
+    start = record.start;
+  }
+  return body.slice(start, markerRecord.start);
+}
+
 function markerFooterError(
   body: string,
   markerRecord: AttributionMarkerRecord,
@@ -1031,13 +1063,33 @@ function markerFooterError(
   if (body.slice(markerRecord.end).trim()) {
     return "marker must be the final source content";
   }
-  const providerModelLines = attributionLineValues(body, "AI provider/model");
-  const clientLines = attributionLineValues(body, "Client / agent tooling");
-  const skillRevisionLines = attributionLineValues(
+  // Count rows in the TERMINAL attribution block only — the run of label lines
+  // immediately preceding the validated lane signature — not across the whole
+  // body. The rule means "exactly one footer", and the repository PR template
+  // ships `Client / agent tooling`, `Skill revision`, and `Attribution status`
+  // as checklist rows far above it; a checklist row is not a competing footer.
+  // Scanning the whole body made the template and SKILL.md ("append this
+  // footer after the template") mutually exclusive and invalidated 64 of 67
+  // eligible sources (#17610). Two genuinely adjacent footers still collide
+  // here, so duplicate-footer detection is unweakened.
+  const footerBlock = terminalAttributionBlock(
     body,
+    beforeMarker,
+    markerRecord,
+  );
+  const providerModelLines = attributionLineValues(
+    footerBlock,
+    "AI provider/model",
+  );
+  const clientLines = attributionLineValues(
+    footerBlock,
+    "Client / agent tooling",
+  );
+  const skillRevisionLines = attributionLineValues(
+    footerBlock,
     "(?:Contribution skill revision|Skill revision)",
   );
-  const statusLines = attributionLineValues(body, "Attribution status");
+  const statusLines = attributionLineValues(footerBlock, "Attribution status");
   if (
     providerModelLines.length !== 1 ||
     clientLines.length !== 1 ||
