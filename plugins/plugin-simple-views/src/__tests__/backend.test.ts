@@ -477,10 +477,20 @@ describe("Simple Views capabilities", () => {
       kind: "simple-views.note",
       id: noteId,
     });
+    await expect(interact("get-notes", {}, service)).resolves.toMatchObject({
+      success: true,
+      data: { notes: [{ id: noteId, title: "Workbench" }] },
+    });
+    await expect(
+      interact("get-notes", { title: "Workbench" }, service),
+    ).resolves.toMatchObject({
+      success: true,
+      data: { notes: [{ id: noteId, title: "Workbench" }] },
+    });
 
     const updatedNote = await interact(
       "update-note",
-      { id: noteId, body: "Polished draft", color: "green" },
+      { query: "Workbench", body: "Polished draft", color: "green" },
       service,
     );
     expect(updatedNote).toMatchObject({ success: true });
@@ -492,8 +502,22 @@ describe("Simple Views capabilities", () => {
       body: "Polished draft",
       color: "green",
     });
-    const readNote = await interact("get-note", { id: noteId }, service);
-    expect(readNote).toMatchObject({ success: true });
+    await expect(
+      interact(
+        "update-note",
+        { oldTitle: "Workbench", title: "Workbench ready" },
+        service,
+      ),
+    ).resolves.toMatchObject({ success: true });
+    const readNote = await interact(
+      "get-note",
+      { query: "Workbench ready" },
+      service,
+    );
+    expect(readNote).toMatchObject({
+      success: true,
+      data: { note: { title: "Workbench ready" } },
+    });
     expect(readNote.effectReceipts).toBeUndefined();
     expect(readNote.userFacingEffectReceiptIds).toBeUndefined();
     const deletedNote = await interact(
@@ -543,7 +567,7 @@ describe("Simple Views capabilities", () => {
       {
         title: "Calendar demo",
         time: "10:15",
-        notes: "Created on the selected date",
+        details: "Created on the selected date",
         color: "rose",
       },
       service,
@@ -557,15 +581,32 @@ describe("Simple Views capabilities", () => {
     });
     expect(service.getCalendarEvent(eventId)).toMatchObject({
       date: "2026-08-03",
+      notes: "Created on the selected date",
+    });
+    await expect(
+      interact("get-calendar-state", { date: "2026-08-03" }, service),
+    ).resolves.toMatchObject({
+      success: true,
+      data: {
+        selectedDate: "2026-08-03",
+        events: [{ id: eventId, title: "Calendar demo" }],
+      },
+    });
+    await expect(
+      interact("get-calendar-state", { title: "Calendar demo" }, service),
+    ).resolves.toMatchObject({
+      success: true,
+      data: { events: [{ id: eventId, title: "Calendar demo" }] },
     });
 
     const updatedEvent = await interact(
       "update-calendar-event",
       {
-        id: eventId,
+        oldTitle: "Calendar demo",
+        title: "Updated demo",
         date: "2026-08-04",
         time: "11:45",
-        title: "Updated demo",
+        details: "Updated capability details",
       },
       service,
     );
@@ -575,9 +616,16 @@ describe("Simple Views capabilities", () => {
       id: eventId,
     });
     expect(service.selectedDate()).toBe("2026-08-04");
+    expect(service.getCalendarEvent(eventId)).toMatchObject({
+      title: "Updated demo",
+      notes: "Updated capability details",
+    });
     await expect(
-      interact("get-calendar-event", { id: eventId }, service),
-    ).resolves.toMatchObject({ success: true });
+      interact("get-calendar-event", { query: "capability details" }, service),
+    ).resolves.toMatchObject({
+      success: true,
+      data: { event: { id: eventId, title: "Updated demo" } },
+    });
     const deletedEvent = await interact(
       "delete-calendar-event",
       { id: eventId },
@@ -619,6 +667,45 @@ describe("Simple Views capabilities", () => {
       interact("delete-calendar-event", { query: "launch notes" }, service),
     ).resolves.toMatchObject({ success: true });
     expect(service.listCalendarEvents()).toEqual([]);
+  });
+
+  it("fails closed when a note update lookup is missing or ambiguous", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    await interact(
+      "create-note",
+      { title: "Daily plan", body: "Morning", color: "yellow" },
+      service,
+    );
+    await interact(
+      "create-note",
+      { title: "Daily plan", body: "Evening", color: "rose" },
+      service,
+    );
+
+    await expect(
+      interact(
+        "update-note",
+        { query: "Daily plan", body: "Changed" },
+        service,
+      ),
+    ).resolves.toMatchObject({
+      success: false,
+      error: { code: "SIMPLE_VIEWS_AMBIGUOUS_NOTE" },
+    });
+    await expect(
+      interact(
+        "update-note",
+        { query: "does not exist", body: "Changed" },
+        service,
+      ),
+    ).resolves.toMatchObject({
+      success: false,
+      error: { code: "SIMPLE_VIEWS_NOT_FOUND" },
+    });
+    expect(service.listNotes().map((note) => note.body)).toEqual([
+      "Evening",
+      "Morning",
+    ]);
   });
 
   it("fails closed when a calendar delete lookup is missing or ambiguous", async () => {
