@@ -3,6 +3,12 @@ import { SOLANA_DEX_PROTOCOLS } from "./solana/dex";
 import { SOLANA_LAUNCHPAD_PROTOCOLS } from "./solana/launchpad";
 import { SOLANA_LENDING_PROTOCOLS } from "./solana/lending";
 import { SOLANA_STAKING_PROTOCOLS } from "./solana/staking";
+import { ETHEREUM_DEX_PROTOCOLS } from "./ethereum/dex";
+import { ETHEREUM_LENDING_PROTOCOLS } from "./ethereum/lending";
+import { ETHEREUM_STAKING_PROTOCOLS } from "./ethereum/staking";
+import { ETHEREUM_YIELD_PROTOCOLS } from "./ethereum/yield";
+import { ETHEREUM_NFT_PROTOCOLS } from "./ethereum/nft";
+import { ETHEREUM_INFRASTRUCTURE_PROTOCOLS } from "./ethereum/infrastructure";
 
 export type ChainProtocol = {
   programId: string;
@@ -49,10 +55,20 @@ const SOLANA_PROTOCOLS: Readonly<Record<string, ChainProtocol>> = {
   ...SOLANA_STAKING_PROTOCOLS,
 };
 
+const ETHEREUM_PROTOCOLS: Readonly<Record<string, ChainProtocol>> = {
+  ...ETHEREUM_DEX_PROTOCOLS,
+  ...ETHEREUM_LENDING_PROTOCOLS,
+  ...ETHEREUM_STAKING_PROTOCOLS,
+  ...ETHEREUM_YIELD_PROTOCOLS,
+  ...ETHEREUM_NFT_PROTOCOLS,
+  ...ETHEREUM_INFRASTRUCTURE_PROTOCOLS,
+};
+
 const CHAIN_PROTOCOL_REGISTRIES: Partial<
   Record<SupportedChain, Readonly<Record<string, ChainProtocol>>>
 > = {
   solana: SOLANA_PROTOCOLS,
+  ethereum: ETHEREUM_PROTOCOLS,
 };
 
 export function lookupProtocol(
