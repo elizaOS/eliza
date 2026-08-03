@@ -264,7 +264,7 @@ describe("answer-clobber rescue", () => {
 
 		const { finalText, earlyReplies } = await runTurn({ runtime });
 
-		expect(earlyReplies).toContain(PROGRESS_ACK);
+		expect(earlyReplies).toEqual([]);
 		expect(finalText ?? "").not.toBe(ungroundedClaim);
 	});
 
