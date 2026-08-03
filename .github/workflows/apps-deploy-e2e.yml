@@ -41,7 +41,7 @@ concurrency:
 jobs:
   apps-deploy-e2e:
     name: Apps deploy + per-tenant DB isolation (real docker)
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -61,7 +61,7 @@ jobs:
 
   tenant-db-isolation:
     name: Tenant-DB isolation — cross-tenant REVOKE CONNECT (throwaway Postgres) (#9853)
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 15
     # Lightweight pg-only proof (no docker): provision two tenants through the
     # real SqlTenantDbProvisioner against a throwaway Postgres and assert tenant

@@ -35,7 +35,7 @@ permissions:
 
 jobs:
   build-iso:
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 300
     permissions:
       # contents: write covers softprops/action-gh-release (release upload)

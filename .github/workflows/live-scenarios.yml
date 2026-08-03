@@ -131,7 +131,7 @@ jobs:
   shard:
     name: Live scenarios (${{ matrix.shard }})
     needs: plan
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     # Shards run as independent jobs because a GitHub-hosted runner caps a
     # single job at six hours: the four shards run serially exceed that ceiling,
     # so no workflow-level timeout could ever let the serial lane finish. Each
