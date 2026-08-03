@@ -26,6 +26,10 @@ import {
   saveCompanionMessageCutoffTs,
 } from "./persistence";
 import type { ChatTurnUsage } from "./types";
+import {
+  applyStreamingTextModificationsToMessages,
+  type StreamingTextModification,
+} from "./useStreamingText";
 
 // ── State shape ────────────────────────────────────────────────────────
 
@@ -241,6 +245,13 @@ export interface ChatStateHook {
     React.SetStateAction<ConversationMessage[]>
   >;
   /**
+   * Apply in-flight turn mutations without revalidating transcript-wide
+   * greeting invariants. Streaming mutations cannot insert a greeting.
+   */
+  applyStreamingMessageModifications: (
+    modifications: readonly StreamingTextModification[],
+  ) => void;
+  /**
    * Merge an older page in front of the current thread for infinite upward
    * scroll (#13532). Dedupes by id and keeps the synchronous
    * `conversationMessagesRef` in step with the reducer. Never trims the newest
@@ -394,6 +405,20 @@ export function useChatState(): ChatStateHook {
     [],
   ) as React.Dispatch<React.SetStateAction<ConversationMessage[]>>;
 
+  const applyStreamingMessageModifications = useCallback(
+    (modifications: readonly StreamingTextModification[]) => {
+      const current = conversationMessagesRef.current;
+      const next = applyStreamingTextModificationsToMessages(
+        current,
+        modifications,
+      );
+      if (next === current) return;
+      conversationMessagesRef.current = next;
+      dispatch({ type: "SET_MESSAGES", value: next });
+    },
+    [],
+  );
+
   const prependConversationMessages = useCallback(
     (older: ConversationMessage[]) => {
       if (older.length === 0) return;
@@ -504,6 +529,7 @@ export function useChatState(): ChatStateHook {
     setActiveConversationId,
     setCompanionMessageCutoffTs,
     setConversationMessages,
+    applyStreamingMessageModifications,
     prependConversationMessages,
     setAutonomousEvents,
     setAutonomousLatestEventId,

@@ -19,16 +19,17 @@
 //
 // STREAMING DRIVER: the harness also exposes `window.__ELIZA_PERF_STREAM__` — a
 // function the perf gate calls once per simulated token to append characters
-// to the tail assistant message. The driver receives token events at rAF speed
-// but paints cumulative snapshots at the same bounded cadence as useChatSend,
-// so the gate measures the production hot path instead of an impossible
-// per-token paint loop. Driving it here keeps ChatOverlay itself untouched.
+// to the tail assistant message. Cumulative snapshots coalesce on the browser
+// frame boundary through the same scheduler as useChatSend.
 
 import * as React from "react";
 import { createRoot } from "react-dom/client";
 
 import { MockAppProvider } from "../../../storybook/mock-providers";
-import { streamingRenderDelayMs } from "../../../state/streaming-render-cadence";
+import {
+  cancelStreamingRenderFrame,
+  requestStreamingRenderFrame,
+} from "../../../state/streaming-render-cadence";
 import { ChatOverlay } from "../ChatOverlay";
 import type { ConversationNav } from "../conversation-nav";
 import type { ShellMessage } from "../shell-state";
@@ -90,8 +91,8 @@ function Harness(): React.JSX.Element {
   const [responding, setResponding] = React.useState(false);
   // The streamed tail turn is appended once, then grows character-by-character.
   const streamedRef = React.useRef("");
-  const lastStreamPaintRef = React.useRef<number | null>(null);
-  const pendingStreamPaintRef = React.useRef<number | null>(null);
+  const streamPaintScheduledRef = React.useRef(false);
+  const streamPaintFrameRef = React.useRef<number | null>(null);
 
   // Expose the transport-facing token driver. Calls append to the cumulative
   // body immediately; trailing paints overwrite the parked snapshot, matching
@@ -116,36 +117,35 @@ function Harness(): React.JSX.Element {
       ];
     });
     const paintStream = () => {
-      pendingStreamPaintRef.current = null;
-      lastStreamPaintRef.current = performance.now();
+      streamPaintScheduledRef.current = false;
+      streamPaintFrameRef.current = null;
       const nextContent = TAIL_WIDGET_PREFIX + streamedRef.current;
       setResponding(true);
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === tailId ? { ...m, content: nextContent } : m,
-        ),
-      );
+      setMessages((prev) => {
+        const tailIndex = prev.length - 1;
+        const tail = prev[tailIndex];
+        if (!tail || tail.id !== tailId || tail.content === nextContent) {
+          return prev;
+        }
+        const next = prev.slice();
+        next[tailIndex] = { ...tail, content: nextContent };
+        return next;
+      });
     };
     window.__ELIZA_PERF_STREAM__ = (chars = 1) => {
       streamedRef.current = streamedBody.slice(
         0,
         Math.min(streamedBody.length, streamedRef.current.length + chars),
       );
-      if (pendingStreamPaintRef.current !== null) return;
-      const delayMs = streamingRenderDelayMs(
-        lastStreamPaintRef.current,
-        performance.now(),
-      );
-      if (delayMs === 0) {
-        paintStream();
-        return;
-      }
-      pendingStreamPaintRef.current = window.setTimeout(paintStream, delayMs);
+      if (streamPaintScheduledRef.current) return;
+      streamPaintScheduledRef.current = true;
+      streamPaintFrameRef.current = requestStreamingRenderFrame(paintStream);
     };
     return () => {
-      if (pendingStreamPaintRef.current !== null) {
-        window.clearTimeout(pendingStreamPaintRef.current);
+      if (streamPaintFrameRef.current !== null) {
+        cancelStreamingRenderFrame(streamPaintFrameRef.current);
       }
+      streamPaintScheduledRef.current = false;
       window.__ELIZA_PERF_STREAM__ = undefined;
     };
   }, []);
