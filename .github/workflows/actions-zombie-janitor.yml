@@ -69,6 +69,8 @@ name: Actions Zombie Janitor
 #
 # Tuning (repo variables, no code change needed):
 #   ACTIONS_JANITOR_DISABLED=true          — kill switch (both lanes)
+#   HETZNER_FLEET_ONLINE=true              — explicit opt-in for the robot lane;
+#     absent, empty, false, and noncanonical values re-home it to ubuntu-latest
 #   ACTIONS_JANITOR_ROBOT_LANE_DISABLED    — =true remaps the robot lane onto
 #     ubuntu-latest (a harmless idempotent duplicate; `matrix` is not a legal
 #     context in a job-level `if`, so the lane is disabled by re-homing it)
@@ -113,7 +115,7 @@ jobs:
           - lane: github-hosted
             runner: '["ubuntu-latest"]'
           - lane: robot-fleet
-            runner: ${{ vars.ACTIONS_JANITOR_ROBOT_LANE_DISABLED == 'true' && '["ubuntu-latest"]' || vars.ACTIONS_JANITOR_ROBOT_RUNNER_JSON || '["self-hosted","Linux","X64","hetzner-robot"]' }}
+            runner: ${{ vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-latest"]' || vars.ACTIONS_JANITOR_ROBOT_LANE_DISABLED == 'true' && '["ubuntu-latest"]' || vars.ACTIONS_JANITOR_ROBOT_RUNNER_JSON || '["self-hosted","Linux","X64","hetzner-robot"]' }}
     runs-on: ${{ fromJSON(matrix.runner) }}
     if: github.repository == 'elizaOS/eliza' && vars.ACTIONS_JANITOR_DISABLED != 'true'
     timeout-minutes: 10
