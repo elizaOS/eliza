@@ -73,6 +73,8 @@ export type StreamingTextModification =
       accountConnect?: AccountConnectRequest;
       /** Optional agent reasoning/thought to stamp on the completed turn. */
       reasoning?: string;
+      /** The server intentionally did not persist this assistant turn. */
+      assistantEphemeral?: boolean;
       /** Persisted server id replacing the optimistic temp-resp-* stream id. */
       persistedMessageId?: string;
     }
@@ -128,6 +130,8 @@ function computeNextMessage(
       const sameAccountConnect = message.accountConnect === mod.accountConnect;
       const sameReasoning =
         mod.reasoning === undefined || message.reasoning === mod.reasoning;
+      const sameAssistantEphemeral =
+        message.assistantEphemeral === mod.assistantEphemeral;
       const sameId =
         mod.persistedMessageId === undefined ||
         message.id === mod.persistedMessageId;
@@ -136,6 +140,7 @@ function computeNextMessage(
         sameFailure &&
         sameAccountConnect &&
         sameReasoning &&
+        sameAssistantEphemeral &&
         sameId
       ) {
         return null;
@@ -157,6 +162,11 @@ function computeNextMessage(
       }
       if (mod.reasoning) {
         next.reasoning = mod.reasoning;
+      }
+      if (mod.assistantEphemeral) {
+        next.assistantEphemeral = true;
+      } else if (message.assistantEphemeral !== undefined) {
+        delete next.assistantEphemeral;
       }
       return next;
     }

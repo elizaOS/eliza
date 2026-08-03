@@ -113,6 +113,23 @@ describe("applyStreamingTextModification", () => {
     expect(harness.current[0].failureKind).toBeUndefined();
   });
 
+  it("complete marks an intentionally non-persisted assistant turn", () => {
+    const initial = [assistantMsg("a1", "partial")];
+    const harness = makeSetter(initial);
+
+    applyStreamingTextModification(harness.setter, {
+      messageId: "a1",
+      mode: "complete",
+      fullText: "Please try that again.",
+      assistantEphemeral: true,
+    });
+
+    expect(harness.current[0]).toMatchObject({
+      text: "Please try that again.",
+      assistantEphemeral: true,
+    });
+  });
+
   it("complete stamps reasoning alongside the final text", () => {
     const initial = [assistantMsg("a1", "partial")];
     const harness = makeSetter(initial);
