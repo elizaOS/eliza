@@ -40,16 +40,38 @@ const ID_PARAM = {
 export const NOTES_CAPABILITIES: ViewCapability[] = [
   {
     id: "get-notes",
-    description: "List every sticky note as structured data.",
+    description:
+      "List sticky notes as structured data, optionally narrowed by exact title or unique query.",
+    params: {
+      title: { ...TITLE_PARAM, description: "Optional exact note title." },
+      query: {
+        type: "string",
+        description: "Optional unique title/body search text.",
+        minLength: 1,
+        maxLength: 20_000,
+        pattern: "\\S",
+      },
+    },
   },
   {
     id: "get-note",
-    description: "Read one sticky note by id.",
-    params: ID_PARAM,
+    description: "Read one sticky note by id, exact title, or unique query.",
+    params: {
+      id: { ...ID_PARAM.id, required: false },
+      title: { ...TITLE_PARAM, description: "Exact note title." },
+      query: {
+        type: "string",
+        description: "Unique title/body search text.",
+        minLength: 1,
+        maxLength: 20_000,
+        pattern: "\\S",
+      },
+    },
   },
   {
     id: "create-note",
-    description: "Create a durable sticky note.",
+    description:
+      "Create a durable sticky note. Use this whenever the user explicitly asks to make, create, write, or save a note; dates and times inside the requested note remain note content unless the user also asks to schedule a calendar event or reminder.",
     params: {
       title: {
         ...TITLE_PARAM,
@@ -62,10 +84,29 @@ export const NOTES_CAPABILITIES: ViewCapability[] = [
   },
   {
     id: "update-note",
-    description: "Update one or more fields on a sticky note.",
+    description:
+      "Update one or more fields on a sticky note identified by id, exact title, or unique query.",
     params: {
-      ...ID_PARAM,
-      title: { ...TITLE_PARAM, description: "Replacement note title." },
+      id: { ...ID_PARAM.id, description: "Stable note id.", required: false },
+      oldTitle: {
+        ...TITLE_PARAM,
+        description:
+          "Current exact title when title supplies the replacement title.",
+      },
+      title: {
+        ...TITLE_PARAM,
+        description:
+          "Current exact title, or replacement title when oldTitle is supplied.",
+      },
+      query: {
+        type: "string",
+        description:
+          "Current exact title or unique title/body text identifying the note to update.",
+        minLength: 1,
+        maxLength: 20_000,
+        pattern: "\\S",
+      },
+      newTitle: { ...TITLE_PARAM, description: "Replacement note title." },
       body: { ...BODY_PARAM, description: "Replacement note body." },
       color: {
         ...COLOR_PARAM,

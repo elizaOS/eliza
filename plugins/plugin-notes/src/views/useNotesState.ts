@@ -92,7 +92,6 @@ export function useNotesState(): NotesState {
   useViewEvent(VIEW_EVENTS.VIEW_REFRESH, () => {
     void refresh();
   }, [refresh]);
-
   useEffect(() => {
     const refreshAfterReconnect = () => {
       void refresh();
