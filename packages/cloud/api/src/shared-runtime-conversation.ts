@@ -9,10 +9,8 @@
 import type { BridgeRequest } from "@/lib/services/eliza-sandbox";
 import type { CachedAgentSandbox } from "@/lib/services/shared-runtime/cached-agent-dates";
 import type { SharedTurnMessage } from "@/lib/services/shared-runtime/run-shared-agent-turn";
-import {
-  MAX_HISTORY_MESSAGES,
-  type SharedRuntimeHistoryStore,
-} from "@/lib/services/shared-runtime/shared-runtime-chat";
+import type { SharedRuntimeHistoryStore } from "@/lib/services/shared-runtime/shared-runtime-chat";
+import { MAX_HISTORY_MESSAGES } from "@/lib/services/shared-runtime/shared-runtime-history-policy";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 // The agent row crosses the Durable Object boundary as JSON, so its Drizzle

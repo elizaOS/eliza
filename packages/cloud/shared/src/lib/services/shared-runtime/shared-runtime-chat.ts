@@ -48,8 +48,10 @@ import {
 } from "./run-shared-agent-turn";
 import { navIntentActionResult } from "./shared-nav-intent";
 import { SharedRuntimeCacheWarmingError } from "./shared-runtime-errors";
+import { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
 
-export const MAX_HISTORY_MESSAGES = 40;
+export { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
+
 const BRIDGE_INSUFFICIENT_CREDITS_CODE = -32002;
 
 export type BridgeExecutionContext = {
