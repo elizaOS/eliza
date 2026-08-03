@@ -6796,6 +6796,43 @@ async function emitInteractionEvent(
 	}
 }
 
+const INTERMEDIATE_CALLBACK_METADATA_KEYS = new Set([
+	"actions",
+	"agentVoiced",
+	"channelType",
+	"effectReceiptIds",
+	"inReplyTo",
+	"mentionContext",
+	"merge",
+	"providers",
+	"reactedMessageText",
+	"responseId",
+	"responseMessageId",
+	"source",
+	"target",
+	"thought",
+	"transcriptVisibility",
+]);
+
+function hasIntermediateCallbackPayload(content: Content): boolean {
+	return Object.entries(content).some(([key, value]) => {
+		if (key === "text" || INTERMEDIATE_CALLBACK_METADATA_KEYS.has(key)) {
+			return false;
+		}
+		if (value === undefined || value === null) return false;
+		if (typeof value === "string") return value.trim().length > 0;
+		if (Array.isArray(value)) return value.length > 0;
+		if (typeof value === "object") return Object.keys(value).length > 0;
+		return true;
+	});
+}
+
+function withoutIntermediateVisibleText(content: Content): Content | null {
+	const filtered = { ...content };
+	delete filtered.text;
+	return hasIntermediateCallbackPayload(filtered) ? filtered : null;
+}
+
 export async function runV5MessageRuntimeStage1(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
@@ -7997,6 +8034,14 @@ export async function runV5MessageRuntimeStage1(args: {
 		const recordingCallback: HandlerCallback | undefined = args.callback
 			? async (content, ...rest) => args.callback?.(content, ...rest) ?? []
 			: undefined;
+		const intermediateCallback: HandlerCallback | undefined = recordingCallback
+			? async (content, ...rest) => {
+					const nonTextContent = withoutIntermediateVisibleText(content);
+					return nonTextContent
+						? recordingCallback(nonTextContent, ...rest)
+						: [];
+				}
+			: undefined;
 
 		const invokePlannerLoop = (
 			loopContext: typeof plannerContextAfterEarlyReply,
@@ -8072,12 +8117,15 @@ export async function runV5MessageRuntimeStage1(args: {
 											ctx.trajectory,
 											exposedPlannerActions,
 										),
-										// A batch marked more_work_pending has not earned a
-										// transcript reply yet. Its result remains in the planner
-										// trajectory, while the eventual terminal action/failure
-										// owns the one visible callback.
-										...(recordingCallback && ctx.plannerCompleted !== false
-											? { callback: recordingCallback }
+										// A pending batch has not earned transcript prose, but its
+										// media and interactive payloads still belong to the user.
+										...(recordingCallback
+											? {
+													callback:
+														ctx.plannerCompleted === false
+															? intermediateCallback
+															: recordingCallback,
+												}
 											: {}),
 									}),
 									plannerRuntime,
