@@ -11,6 +11,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  extractLocalStoryImports,
+  findStoryCoverageRegressions,
+  resolveLocalStoryImport,
+} from "./story-coverage-ratchet.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const pkgRoot = path.resolve(here, "..");
@@ -49,6 +54,22 @@ function* walk(dir) {
   }
 }
 
+function* walkStoryFiles(dir) {
+  if (!fs.existsSync(dir)) return;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) yield* walkStoryFiles(full);
+    else if (
+      entry.isFile() &&
+      (entry.name.endsWith(".stories.tsx") ||
+        entry.name.endsWith(".stories.ts"))
+    ) {
+      yield full;
+    }
+  }
+}
+
 const root = onlyComponents ? componentsRoot : path.resolve(pkgRoot, "src");
 
 const files = [...walk(root)];
@@ -77,11 +98,29 @@ for (const f of files) {
   componentFiles.push(f);
 }
 
+const storyImports = new Set();
+for (const storyRoot of [
+  path.resolve(pkgRoot, "src"),
+  path.resolve(pkgRoot, "stories"),
+]) {
+  for (const storyFile of walkStoryFiles(storyRoot)) {
+    const source = fs.readFileSync(storyFile, "utf8");
+    for (const specifier of extractLocalStoryImports(source)) {
+      const resolved = resolveLocalStoryImport(
+        storyFile,
+        specifier,
+        fs.existsSync,
+      );
+      if (resolved) storyImports.add(path.normalize(resolved));
+    }
+  }
+}
+
 const missing = [];
 const present = [];
 for (const f of componentFiles) {
   const stories = f.replace(/\.tsx$/, ".stories.tsx");
-  if (fs.existsSync(stories)) {
+  if (fs.existsSync(stories) || storyImports.has(path.normalize(f))) {
     present.push(path.relative(pkgRoot, f));
   } else {
     missing.push(path.relative(pkgRoot, f));
@@ -95,7 +134,7 @@ const report = {
   componentFiles: componentFiles.length,
   withStories: present.length,
   missingStories: missing.length,
-  coverage: ((present.length / componentFiles.length) * 100).toFixed(1) + "%",
+  coverage: `${((present.length / componentFiles.length) * 100).toFixed(1)}%`,
   missing,
   present,
 };
@@ -138,17 +177,16 @@ const baseline = {
   componentFiles: report.componentFiles,
   withStories: report.withStories,
   missingStories: report.missingStories,
+  missing: report.missing,
 };
 if (updateBaseline) {
   fs.writeFileSync(baselinePath, `${JSON.stringify(baseline, null, 2)}\n`);
 } else {
   const previous = JSON.parse(fs.readFileSync(baselinePath, "utf8"));
-  if (
-    report.missingStories > previous.missingStories ||
-    report.withStories < previous.withStories
-  ) {
+  const regressions = findStoryCoverageRegressions(report, previous);
+  if (regressions.length > 0) {
     throw new Error(
-      `Story coverage regressed: ${report.withStories} covered / ${report.missingStories} missing; baseline is ${previous.withStories} covered / ${previous.missingStories} missing.`,
+      `Story coverage regressed with ${regressions.length} newly uncovered component${regressions.length === 1 ? "" : "s"}:\n${regressions.map((file) => `- ${file}`).join("\n")}`,
     );
   }
 }

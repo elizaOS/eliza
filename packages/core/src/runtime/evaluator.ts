@@ -233,8 +233,7 @@ async function recordEvaluationStage(args: {
 			model: {
 				modelType: args.modelType,
 				modelName,
-				provider:
-					extractEvaluatorProviderName(args.raw) ?? args.provider ?? "default",
+				provider: extractEvaluatorProviderName(args.raw) ?? args.provider,
 				messages: args.messages,
 				tools: [],
 				toolCalls: [],
@@ -312,16 +311,16 @@ function extractEvaluatorUsage(
 		| Record<string, unknown>
 		| undefined;
 	if (!usage) return undefined;
-	const promptTokens = (usage.promptTokens as number | undefined) ?? 0;
-	const completionTokens = (usage.completionTokens as number | undefined) ?? 0;
-	const totalTokens =
-		(usage.totalTokens as number | undefined) ??
-		promptTokens + completionTokens;
-	const out: RecordedUsage = {
-		promptTokens,
-		completionTokens,
-		totalTokens,
-	};
+	const out: RecordedUsage = {};
+	for (const key of [
+		"promptTokens",
+		"completionTokens",
+		"totalTokens",
+	] as const) {
+		if (typeof usage[key] === "number" && Number.isFinite(usage[key])) {
+			out[key] = usage[key];
+		}
+	}
 	if (typeof usage.cacheReadInputTokens === "number") {
 		out.cacheReadInputTokens = usage.cacheReadInputTokens;
 	} else if (typeof usage.cachedPromptTokens === "number") {
@@ -330,7 +329,7 @@ function extractEvaluatorUsage(
 	if (typeof usage.cacheCreationInputTokens === "number") {
 		out.cacheCreationInputTokens = usage.cacheCreationInputTokens;
 	}
-	return out;
+	return Object.keys(out).length > 0 ? out : undefined;
 }
 
 function renderEvaluatorModelInput(params: {

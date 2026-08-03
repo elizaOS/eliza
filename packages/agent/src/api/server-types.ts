@@ -178,7 +178,6 @@ export interface ServerState {
   sandboxManager: SandboxManager | null;
   /** App manager for launching and managing elizaOS apps. */
   appManager: AppManagerLike;
-  /** Fine-tuning/training orchestration service. */
   /** In-memory queue for share ingest items. */
   shareIngestQueue: ShareIngestItem[];
   /** Broadcast current agent status to all WebSocket clients. Set by startApiServer. */

@@ -1962,7 +1962,10 @@ async function callPlanner(params: {
 	// stage-level usages.
 	if (params.onUsage) {
 		const usage = extractUsage(raw);
-		if (usage) {
+		if (
+			usage?.promptTokens !== undefined &&
+			usage.completionTokens !== undefined
+		) {
 			params.onUsage({
 				promptTokens: usage.promptTokens,
 				completionTokens: usage.completionTokens,
@@ -2331,7 +2334,7 @@ async function recordPlannerStage(args: {
 			model: {
 				modelType: String(args.modelType),
 				modelName,
-				provider: extractProviderName(args.raw) ?? args.provider ?? "default",
+				provider: extractProviderName(args.raw) ?? args.provider,
 				messages: args.modelParams.messages,
 				tools: args.modelParams.tools,
 				toolChoice: args.modelParams.toolChoice,

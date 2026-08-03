@@ -13,9 +13,7 @@ describe("app-core publish asset manifest", () => {
       "test/scripts",
       "test/helpers",
     ]);
-    expect(new Set(PUBLISH_ASSET_PATHS).size).toBe(
-      PUBLISH_ASSET_PATHS.length,
-    );
+    expect(new Set(PUBLISH_ASSET_PATHS).size).toBe(PUBLISH_ASSET_PATHS.length);
   });
 
   it("does not publish generated or dependency roots", () => {

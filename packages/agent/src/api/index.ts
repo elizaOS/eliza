@@ -80,7 +80,6 @@ export {
 export { hasPersistedFirstRunState } from "./server-helpers.ts";
 export * from "./subscription-routes.ts";
 export * from "./terminal-run-limits.ts";
-export * from "./training-backend-check.ts";
 export * from "./tx-service.ts";
 export * from "./wallet.ts";
 export * from "./wallet-evm-balance.ts";

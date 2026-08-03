@@ -3,6 +3,7 @@
   "entry": [
     "src/index.ts",
     "src/styles.ts",
+    "src/styles/theme.css",
     "src/App.tsx",
     "src/app-navigate-view.ts",
     "src/app-shell-registry.ts",
@@ -39,7 +40,6 @@
     "src/platform/empty-node-module.ts",
     "src/platform/is-native-server.ts",
     "src/services/local-inference/index.ts",
-    "src/types/host-external-modules.ts",
     "src/views/view-interact-protocol.ts",
     "scripts/scan-reserved-storage-writers.d.mts",
     "src/components/apps/useRegistryCatalog.ts",
@@ -58,16 +58,17 @@
   },
   "project": [
     "src/**/*.{ts,tsx,mts,mjs}",
+    "src/**/*.{css,mdx}",
     "test/**/*.{ts,tsx,mts,mjs}",
     "stories/**/*.{ts,tsx,mts,mjs}",
+    "stories/**/*.{css,mdx}",
+    ".storybook/**/*.{css,mdx}",
     "*.config.{ts,mts,mjs}",
     "scripts/**/*.{ts,mts,mjs}"
   ],
   "ignoreDependencies": [
-    "@fontsource/poppins",
     "@metamask/connect-evm",
-    "pixelmatch",
-    "tailwindcss"
+    "pixelmatch"
   ],
   "vitest": false
 }

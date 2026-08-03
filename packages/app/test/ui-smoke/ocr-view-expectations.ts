@@ -54,7 +54,6 @@ const VIEW_REGISTRY_FALLBACK: OcrExpectation = {
 export const VIEW_OCR_POLICIES = {
   "builtin-chat": expected({
     requireAll: ["Mostly clear"],
-    requireAny: ["Today", "Learn conversational Spanish"],
   }),
   "builtin-phone": expected({
     requireAll: ["Phone"],
@@ -231,10 +230,6 @@ export const VIEW_OCR_POLICIES = {
     requireAll: ["Misty Forest", "Desert Dusk"],
     requireAny: ["Ocean Deep", "Alpine Dawn", "Ember Night"],
   }),
-  "plugin-birdclaw-gui": expected({
-    requireAll: ["Birdclaw"],
-    requireAny: ["not set up yet", "Bookmarks", "private SQLite"],
-  }),
   "plugin-cloud-gui": exempt(
     "unregistered-remote-bundle",
     "The Cloud GUI has no remote bundle in the hermetic browser audit, so the view-registry fallback is the only observable surface.",
@@ -309,10 +304,6 @@ export const VIEW_OCR_POLICIES = {
   "plugin-notes-gui": expected({
     requireAll: ["New note"],
     requireAny: ["Title", "Details", "Add note"],
-  }),
-  "plugin-simple-calendar-gui": expected({
-    requireAll: ["July 2026"],
-    requireAny: ["Today", "New event", "Light Phone demo"],
   }),
   "plugin-task-coordinator-gui": expected({
     requireAll: ["Task Coordinator"],

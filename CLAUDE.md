@@ -100,6 +100,48 @@ Reservations live in `~/.eliza/dev-server-registry.json` and may be redirected
 with `ELIZA_DEV_SERVER_REGISTRY`. See
 [`packages/docs/development/shared-dev-server.md`](packages/docs/development/shared-dev-server.md).
 
+### Removed root command migrations
+
+| Removed command | Use instead |
+| --- | --- |
+| `bun run test:ci` | `bun run test` |
+| `bun run test:cloud:playwright` | `bun run --cwd packages/app test:e2e` |
+| `bun run test:ui:playwright` | `bun run --cwd packages/app test:e2e` |
+| `bun run test:lifeops` | `bun run test:plugin 'plugin-personal-assistant'` |
+| `bun run trajectory:inspect:test` | `bun test packages/scripts/__tests__/trajectory-validate.test.ts` |
+| `bun run audit:e2e-coverage:test` | `bun test packages/scripts/e2e-coverage/check-e2e-coverage.test.ts` |
+| `bun run test:browser-bridge` | `bun run --cwd packages/browser-extension test` |
+| `bun run test:browser-bridge:safari` | `bun run --cwd packages/browser-extension test:smoke:safari` |
+| `bun run voice:latency-report` | `bun run --cwd packages/app-core voice:latency-report` |
+| `bun run voice:interactive` | `bun run --cwd packages/app-core voice:interactive` |
+| `bun run voice:duet` | `bun run --cwd packages/app-core voice:duet` |
+| `bun run voice:create-profile` | `bun run --cwd packages/app-core voice:create-profile` |
+| `bun run smartglasses:hardware:doctor` | `bun run --cwd packages/examples/smartglasses hardware:doctor` |
+| `bun run smartglasses:hardware:status` | `bun run --cwd packages/examples/smartglasses hardware:status-latest` |
+| `bun run smartglasses:hardware:validate` | `bun run --cwd packages/examples/smartglasses hardware:validate-latest` |
+| `bun run smartglasses:hardware:prove` | `bun run --cwd packages/examples/smartglasses hardware:prove:bleak` |
+| `bun run smartglasses:hardware:prove:watch` | `bun run --cwd packages/examples/smartglasses hardware:prove:bleak:watch` |
+| `bun run smartglasses:hardware:prove:noble` | `bun run --cwd packages/examples/smartglasses hardware:prove:noble` |
+| `bun run smartglasses:hardware:prove:noble:watch` | `bun run --cwd packages/examples/smartglasses hardware:prove:noble:watch` |
+| `bun run smartglasses:dev:hardware` | `bun run --cwd packages/examples/smartglasses dev:hardware` |
+| `bun run smartglasses:dev:simulator` | `bun run --cwd packages/examples/smartglasses dev:simulator` |
+| `bun run smartglasses:simulator` | `bun run --cwd packages/examples/smartglasses simulator` |
+| `bun run smartglasses:smoke:simulator` | `bun run --cwd packages/examples/smartglasses smoke:simulator` |
+| `bun run test:ci:live` | `bun run test:live` |
+| `bun run test:lint` | retired with its aggregate tooling; no direct replacement |
+| `bun run test:lint:no-vi-mocks` | `bun run audit:test-integrity:no-vi-mocks` |
+| `bun run test:lint:lane-coverage` | retired with its tooling; no replacement |
+| `bun run test:lint:test-integrity` | retired with its tooling; no replacement |
+| `bun run test:lint:test-integrity:self-test` | retired with its tooling; no replacement |
+| `bun run verify:smartglasses-software` | `bun run audit:smartglasses-software` |
+| `bun run personality:judge` | `bun run bench:personality` |
+| `bun run personality:bench:calibrate` | `bun run bench:personality:calibrate` |
+| `bun run lint:all` | `bun run verify` |
+| `bun run build:typescript` | `node packages/scripts/run-turbo.mjs run build` |
+| `bun run audit:mvp-board` | `bun run mvp:closeout-audit` |
+| `bun run mvp:board-readiness` | `bun run mvp:closeout-audit` |
+| `bun run mvp:evidence-matrix` | `bun run mvp:closeout-audit` |
+
 ## Repository map
 
 ```text

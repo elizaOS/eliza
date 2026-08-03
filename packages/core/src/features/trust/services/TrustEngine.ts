@@ -13,6 +13,7 @@
  * `TrustEngineServiceWrapper` that registers it with the runtime.
  */
 
+import { ElizaError } from "../../../errors.ts";
 import { logger } from "../../../logger.ts";
 import {
 	type Component,
@@ -121,6 +122,39 @@ function isTrustProfile(value: unknown): value is TrustProfile {
 		typeof trend.lastChangeAt === "number" &&
 		isUuidValue(value.evaluatorId)
 	);
+}
+
+function trustEvidenceFromDbRow(row: Record<string, unknown>): TrustEvidence {
+	const timestamp =
+		row.timestamp instanceof Date
+			? row.timestamp.getTime()
+			: typeof row.timestamp === "number"
+				? row.timestamp
+				: undefined;
+	const candidate: unknown = {
+		type: row.type,
+		timestamp,
+		impact: row.impact,
+		weight: row.weight,
+		description: row.description,
+		reportedBy: row.sourceEntityId,
+		targetEntityId: row.targetEntityId,
+		verified: row.verified,
+		context: row.context,
+		evaluatorId: row.evaluatorId,
+	};
+	if (!isTrustEvidence(candidate)) {
+		throw new ElizaError("Stored trust evidence is malformed", {
+			code: "INVALID_STORED_TRUST_EVIDENCE",
+			context: {
+				targetEntityId:
+					typeof row.targetEntityId === "string"
+						? row.targetEntityId
+						: undefined,
+			},
+		});
+	}
+	return candidate;
 }
 
 function toMetadataValue(value: unknown): MetadataValue {
@@ -458,16 +492,18 @@ export class TrustEngine extends Service {
 		// Persist to database
 		try {
 			const db = getDb(this.runtime);
+			const evaluatorId =
+				interaction.context?.evaluatorId ?? this.runtime.agentId;
 			await insertTrustEvidence(db, {
 				targetEntityId: interaction.targetEntityId,
 				sourceEntityId: interaction.sourceEntityId,
-				evaluatorId: interaction.context?.evaluatorId || this.runtime.agentId,
+				evaluatorId,
 				type: interaction.type,
 				impact: interaction.impact,
 				weight: rateCheck.weight,
-				description: interaction.details?.description || "",
+				description: interaction.details?.description ?? "",
 				verified: true,
-				context: (interaction.context ?? {}) as Record<string, unknown>,
+				context: { ...(interaction.context ?? {}), evaluatorId },
 			});
 		} catch (err: unknown) {
 			// error-policy:J2 Trust evidence persistence is authoritative; report
@@ -734,9 +770,14 @@ export class TrustEngine extends Service {
 				(c) => c.type === "trust_profile" && c.agentId === context.evaluatorId,
 			)
 			.map((c) => c.data as unknown);
-		const historicalProfiles: TrustProfile[] = (
-			candidateProfiles.filter(isTrustProfile) as TrustProfile[]
-		)
+		if (candidateProfiles.some((profile) => !isTrustProfile(profile))) {
+			throw new ElizaError("Stored trust profile is malformed", {
+				code: "INVALID_STORED_TRUST_PROFILE",
+				context: { entityId, evaluatorId: context.evaluatorId },
+			});
+		}
+		const historicalProfiles: TrustProfile[] = candidateProfiles
+			.filter(isTrustProfile)
 			.sort((a, b) => b.lastCalculated - a.lastCalculated)
 			.slice(0, 10);
 
@@ -802,7 +843,10 @@ export class TrustEngine extends Service {
 		const evidence: TrustEvidence[] = [];
 		for (const component of evidenceComponents) {
 			if (!isTrustEvidence(component.data)) {
-				continue;
+				throw new ElizaError("Stored trust evidence component is malformed", {
+					code: "INVALID_STORED_TRUST_EVIDENCE",
+					context: { entityId, componentId: component.id },
+				});
 			}
 			const ev = component.data;
 
@@ -827,26 +871,10 @@ export class TrustEngine extends Service {
 				evidence.map((e) => `${e.timestamp}-${e.type}`),
 			);
 			for (const row of dbRows) {
-				const rowTimestamp =
-					row.timestamp instanceof Date
-						? row.timestamp.getTime()
-						: (row.timestamp as number);
-				const key = `${rowTimestamp}-${row.type as string}`;
+				const storedEvidence = trustEvidenceFromDbRow(row);
+				const key = `${storedEvidence.timestamp}-${storedEvidence.type}`;
 				if (!existingKeys.has(key)) {
-					evidence.push({
-						type: row.type as TrustEvidenceType,
-						timestamp: rowTimestamp,
-						impact: row.impact as number,
-						weight: (row.weight as number) ?? 1.0,
-						description: (row.description as string) ?? "",
-						reportedBy: row.sourceEntityId as UUID,
-						targetEntityId: row.targetEntityId as UUID,
-						verified: (row.verified as boolean) ?? false,
-						context: (row.context as TrustContext) ?? {
-							evaluatorId: context.evaluatorId,
-						},
-						evaluatorId: (row.evaluatorId as UUID) ?? context.evaluatorId,
-					});
+					evidence.push(storedEvidence);
 					existingKeys.add(key);
 				}
 			}
@@ -877,7 +905,7 @@ export class TrustEngine extends Service {
 			`trust-profile-${profile.entityId}-${context.evaluatorId}`,
 		);
 
-		const worldId = context.worldId || stringToUuid("trust-world");
+		const worldId = context.worldId ?? stringToUuid("trust-world");
 		await this.runtime.ensureWorldExists({
 			id: worldId,
 			name: "trust-world",
@@ -899,11 +927,11 @@ export class TrustEngine extends Service {
 			type: "trust_profile",
 			agentId: context.evaluatorId,
 			entityId: profile.entityId,
-			roomId: context.roomId || stringToUuid("trust-global"),
+			roomId: context.roomId ?? stringToUuid("trust-global"),
 			worldId,
 			sourceEntityId: context.evaluatorId,
 			data: trustProfileToMetadata(profile),
-			createdAt: existingComponent?.createdAt || Date.now(),
+			createdAt: existingComponent?.createdAt ?? Date.now(),
 		};
 
 		if (existingComponent) {

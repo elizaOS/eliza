@@ -56,11 +56,11 @@ export type RecordedStageKind =
 	| "factsAndRelationships";
 
 export interface RecordedUsage {
-	promptTokens: number;
-	completionTokens: number;
+	promptTokens?: number;
+	completionTokens?: number;
 	cacheReadInputTokens?: number;
 	cacheCreationInputTokens?: number;
-	totalTokens: number;
+	totalTokens?: number;
 }
 
 export interface RecordedToolCall {
@@ -86,8 +86,8 @@ export interface RecordedModelCall {
 	 * USD cost of this LLM call computed from the price table identified by
 	 * `priceTableId`. Local-inference providers (Ollama / LM Studio /
 	 * llama.cpp) record a real `0` — not "missing". The recorder emits a
-	 * warning log when a hosted-provider model has no price entry; the
-	 * field defaults to `0` in that case so cost roll-ups stay numeric.
+	 * warning log when a hosted-provider model has no price entry and omits the
+	 * field so unknown spend cannot be mistaken for free inference.
 	 */
 	costUsd?: number;
 	/**
@@ -629,7 +629,7 @@ function renderTrajectoryMarkdown(trajectory: RecordedTrajectory): string {
 			);
 			if (stage.model.usage) {
 				lines.push(
-					`- usage: ${stage.model.usage.promptTokens} input · ${stage.model.usage.completionTokens} output · ${stage.model.usage.cacheReadInputTokens ?? 0} cache-read · ${stage.model.usage.cacheCreationInputTokens ?? 0} cache-created`,
+					`- usage: ${stage.model.usage.promptTokens ?? "n/a"} input · ${stage.model.usage.completionTokens ?? "n/a"} output · ${stage.model.usage.cacheReadInputTokens ?? "n/a"} cache-read · ${stage.model.usage.cacheCreationInputTokens ?? "n/a"} cache-created`,
 				);
 			}
 			if (typeof stage.model.costUsd === "number") {
@@ -740,8 +740,12 @@ function applyMetricsForStage(
 		: 0;
 
 	if (stage.model?.usage) {
-		metrics.totalPromptTokens += stage.model.usage.promptTokens;
-		metrics.totalCompletionTokens += stage.model.usage.completionTokens;
+		if (stage.model.usage.promptTokens !== undefined) {
+			metrics.totalPromptTokens += stage.model.usage.promptTokens;
+		}
+		if (stage.model.usage.completionTokens !== undefined) {
+			metrics.totalCompletionTokens += stage.model.usage.completionTokens;
+		}
 		metrics.totalCacheReadTokens += stage.model.usage.cacheReadInputTokens ?? 0;
 		metrics.totalCacheCreationTokens +=
 			stage.model.usage.cacheCreationInputTokens ?? 0;
@@ -1162,8 +1166,10 @@ export function annotateStageCost(
 		provider: stage.model.provider,
 		logger,
 	});
-	stage.model.costUsd = cost;
-	stage.model.priceTableId = PRICE_TABLE_ID;
+	if (cost !== undefined) {
+		stage.model.costUsd = cost;
+		stage.model.priceTableId = PRICE_TABLE_ID;
+	}
 }
 
 // ---------------------------------------------------------------------------

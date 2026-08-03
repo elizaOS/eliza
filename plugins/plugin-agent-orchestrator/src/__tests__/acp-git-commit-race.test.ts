@@ -62,13 +62,13 @@ function gitAsync(
       invocation.args,
       { env },
       (err, _stdout, stderr) => {
-      const code =
-        err && typeof (err as { code?: unknown }).code === "number"
-          ? ((err as { code: number }).code ?? 1)
-          : err
-            ? 1
-            : 0;
-      resolveRun({ code, stderr: stderr ?? "" });
+        const code =
+          err && typeof (err as { code?: unknown }).code === "number"
+            ? ((err as { code: number }).code ?? 1)
+            : err
+              ? 1
+              : 0;
+        resolveRun({ code, stderr: stderr ?? "" });
       },
     );
   });

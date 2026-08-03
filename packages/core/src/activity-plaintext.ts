@@ -1009,7 +1009,7 @@ export function trajectoryToPlaintext(
 	meta.push(`provider accesses: ${providerAccessCount}`);
 	if (promptTokens !== undefined || completionTokens !== undefined) {
 		meta.push(
-			`tokens: ${promptTokens ?? 0} prompt / ${completionTokens ?? 0} completion`,
+			`tokens: ${promptTokens ?? "unknown"} prompt / ${completionTokens ?? "unknown"} completion`,
 		);
 	}
 	lines.push(meta.join("; "));

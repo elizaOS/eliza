@@ -47,6 +47,7 @@ import {
   isVaultRef,
   resolveConfigEnvForProcess,
   resolveConnectorSecretSettings,
+  resolveOptimizedPromptIntegrityKey,
 } from "./operations/vault-bridge.ts";
 import { OPTIONAL_PLUGIN_IMPORTERS } from "./optional-plugin-imports.generated.ts";
 import {
@@ -3927,10 +3928,16 @@ export async function startEliza(
   if (!isMobilePlatform() && !isCloudProvisioned) {
     importAppCoreRuntime().captureWalletEnvBootBaseline();
     const { sharedVault } = await importAppCoreRuntime();
+    const vault = sharedVault();
+
+    if (!process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY) {
+      process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY =
+        await resolveOptimizedPromptIntegrityKey(vault);
+    }
 
     const { resolved, missing } = await resolveConfigEnvForProcess(
       config.env as Record<string, unknown> | undefined,
-      sharedVault(),
+      vault,
     );
     if (missing.length > 0) {
       logger.warn(
@@ -3950,7 +3957,7 @@ export async function startEliza(
     if (varsBag && typeof varsBag === "object" && !Array.isArray(varsBag)) {
       const varsResult = await resolveConfigEnvForProcess(
         varsBag as Record<string, unknown>,
-        sharedVault(),
+        vault,
       );
       for (const [key, value] of Object.entries(varsResult.resolved)) {
         (varsBag as Record<string, unknown>)[key] = value;
@@ -3997,19 +4004,28 @@ export async function startEliza(
 
   normalizeOpenAiCompatibleProviderConfig(config);
 
-  // Log active database configuration for debugging persistence issues
+  // Log the endpoint identity needed to diagnose persistence without exposing
+  // credentials or query parameters embedded in the connection string.
   {
     const dbProvider = resolveEffectiveDbProvider(config);
     const pgliteDir = process.env.PGLITE_DATA_DIR;
     const postgresUrl = process.env.POSTGRES_URL;
+    let postgresEndpoint = "";
+    if (dbProvider === "postgres" && postgresUrl) {
+      try {
+        const parsedUrl = new URL(postgresUrl);
+        postgresEndpoint = `${parsedUrl.host}${parsedUrl.pathname}`;
+      } catch {
+        // error-policy:J3 malformed configuration is reported without echoing secrets.
+        postgresEndpoint = "invalid URL";
+      }
+    }
     logger.info(
       `[eliza] Database provider: ${dbProvider}` +
         (dbProvider === "pglite" && pgliteDir
           ? ` | data dir: ${pgliteDir}`
           : "") +
-        (dbProvider === "postgres" && postgresUrl
-          ? ` | connection: ${(postgresUrl.length > 4096 ? postgresUrl.slice(0, 4096) : postgresUrl).replace(/:\/\/([^:@]{1,1024}):([^@]{1,1024})@/, "://$1:***@")}`
-          : ""),
+        (postgresEndpoint ? ` | endpoint: ${postgresEndpoint}` : ""),
     );
   }
 
@@ -5845,14 +5861,15 @@ export async function startEliza(
     console.error(apiErrMsg);
     logger.error(apiErrMsg);
 
-    // In server-only mode (Electrobun desktop), a missing API server is fatal
-    // — nothing else can serve requests. Exit so the parent process sees a
-    // non-zero exit code instead of the misleading "Server running" message.
+    // error-policy:J2 server-only callers cannot operate without the API;
+    // preserve the transport failure for the CLI/process boundary to translate.
     if (opts?.serverOnly) {
-      logger.error(
-        "[eliza] Exiting: API server is required in server-only mode.",
-      );
-      process.exit(1);
+      throw new ElizaError("API server is required in server-only mode", {
+        code: "AGENT_API_START_FAILED",
+        cause: apiErr,
+        context: { mode: "server-only" },
+        severity: "fatal",
+      });
     }
     // Non-fatal in CLI mode — the interactive chat loop still works.
     // Still load deferred capabilities even though the API failed.

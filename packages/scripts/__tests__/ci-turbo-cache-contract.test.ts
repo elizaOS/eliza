@@ -292,6 +292,7 @@ describe("ci-turbo-cache-contract", () => {
     // build+homepage worst case that the old 32m ceiling kept cancelling.
     expect(buildJob).toMatch(/timeout-minutes:\s*45/);
     expect(buildJob).toMatch(/run:\s*bun run build/);
+    expect(buildJob).toMatch(/run:\s*bun run test:e2e --workers=1/);
     expect(buildJob).not.toMatch(/continue-on-error|\|\| true/);
 
     const setup = readFileSync(

@@ -111,8 +111,6 @@ jobs:
           # reference was never configured, which left every @claude mention
           # silently dead behind continue-on-error.
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          # Permit the repository's Cursor automation to request a review.
-          allowed_bots: "cursor"
           github_token: ${{ secrets.GITHUB_TOKEN }}
           # Signed file operations keep repository mutations inside the
           # action's scoped GitHub MCP instead of injecting shell-based git

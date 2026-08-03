@@ -4,6 +4,8 @@
  */
 import type { Meta, StoryObj } from "@storybook/react";
 import { mockApp, withMockApp } from "../../storybook/mock-providers.helpers";
+import { PairingView } from "./PairingView";
+import { StartupFailureView } from "./StartupFailureView";
 import { StartupScreen } from "./StartupScreen";
 import { StartupShell } from "./StartupShell";
 import type { StartupShellView } from "./startup-shell-types";
@@ -131,6 +133,20 @@ export const Pairing: Story = {
   parameters: { viewport: { defaultViewport: "mobile1" } },
 };
 
+export const PairingViewDirect: Story = {
+  decorators: [
+    mockApp({
+      pairingEnabled: true,
+      pairingExpiresAt: null,
+      pairingCodeInput: "",
+      pairingError: null,
+      pairingBusy: false,
+    }),
+  ],
+  render: () => <PairingView />,
+  parameters: { viewport: { defaultViewport: "mobile1" } },
+};
+
 export const ErrorState: Story = {
   render: () => (
     <ShellStory
@@ -144,6 +160,20 @@ export const ErrorState: Story = {
           detail: "ECONNREFUSED 127.0.0.1:7777",
         },
       }}
+    />
+  ),
+};
+
+export const FailureViewDirect: Story = {
+  render: () => (
+    <StartupFailureView
+      error={{
+        reason: "backend-unreachable",
+        message: "Could not reach the local agent backend.",
+        phase: "starting-backend",
+        detail: "ECONNREFUSED 127.0.0.1:7777",
+      }}
+      onRetry={() => {}}
     />
   ),
 };

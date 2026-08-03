@@ -441,22 +441,12 @@ function normalizeEnvironmentState(value: unknown): EnvironmentState | null {
 	const agentPoints = numberValue(value.agentPoints);
 	const agentPnL = numberValue(value.agentPnL);
 	const openPositions = numberValue(value.openPositions);
-	if (
-		timestamp === null ||
-		agentBalance === null ||
-		agentPoints === null ||
-		agentPnL === null ||
-		openPositions === null
-	) {
-		return null;
-	}
-	const state: EnvironmentState = {
-		timestamp,
-		agentBalance,
-		agentPoints,
-		agentPnL,
-		openPositions,
-	};
+	if (timestamp === null) return null;
+	const state: EnvironmentState = { timestamp };
+	if (agentBalance !== null) state.agentBalance = agentBalance;
+	if (agentPoints !== null) state.agentPoints = agentPoints;
+	if (agentPnL !== null) state.agentPnL = agentPnL;
+	if (openPositions !== null) state.openPositions = openPositions;
 	for (const key of [
 		"activeMarkets",
 		"portfolioValue",
@@ -492,8 +482,6 @@ function normalizeLlmCall(value: unknown): LLMCall | null {
 		systemPrompt === null ||
 		userPrompt === null ||
 		response === null ||
-		temperature === null ||
-		maxTokens === null ||
 		!purpose
 	) {
 		return null;
@@ -505,8 +493,8 @@ function normalizeLlmCall(value: unknown): LLMCall | null {
 		systemPrompt,
 		userPrompt,
 		response,
-		temperature,
-		maxTokens,
+		...(temperature !== null ? { temperature } : {}),
+		...(maxTokens !== null ? { maxTokens } : {}),
 		maxTokensOmitted: value.maxTokensOmitted === true ? true : undefined,
 		purpose,
 	};
@@ -1388,13 +1376,7 @@ export class TrajectoriesService extends Service {
 	}
 
 	private defaultEnvironmentState(timestamp = Date.now()): EnvironmentState {
-		return {
-			timestamp,
-			agentBalance: 0,
-			agentPoints: 0,
-			agentPnL: 0,
-			openPositions: 0,
-		};
+		return { timestamp };
 	}
 
 	private createPendingAction(stepTimestamp: number): ActionAttempt {
@@ -1849,8 +1831,8 @@ export class TrajectoriesService extends Service {
 			userPrompt: string;
 			response: string;
 			reasoning?: string;
-			temperature: number;
-			maxTokens: number;
+			temperature?: number;
+			maxTokens?: number;
 			purpose: string;
 			actionType?: string;
 			latencyMs?: number;
@@ -1869,8 +1851,8 @@ export class TrajectoriesService extends Service {
 			temperature: details.temperature,
 			maxTokens: details.maxTokens,
 			purpose: details.purpose,
-			actionType: details.actionType ?? "",
-			latencyMs: details.latencyMs ?? 0,
+			actionType: details.actionType,
+			latencyMs: details.latencyMs,
 			promptTokens: details.promptTokens,
 			completionTokens: details.completionTokens,
 		});

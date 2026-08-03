@@ -6990,8 +6990,10 @@ export class AgentRuntime implements IAgentRuntime {
 						? resultRecord.finishReason
 						: undefined,
 				providerMetadata: resultRecord.providerMetadata,
-				temperature: typeof tempRaw === "number" ? tempRaw : 0,
-				maxTokens: typeof maxTokensRaw === "number" ? maxTokensRaw : 0,
+				...(typeof tempRaw === "number" ? { temperature: tempRaw } : {}),
+				...(typeof maxTokensRaw === "number"
+					? { maxTokens: maxTokensRaw }
+					: {}),
 				purpose: trajCtx.purpose ?? "action",
 				actionType: "runtime.useModel",
 				latencyMs: Math.max(0, Math.round(args.elapsedTime)),

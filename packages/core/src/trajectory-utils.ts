@@ -79,8 +79,8 @@ export type TrajectoryLlmCallDetails = {
 	finishReason?: string;
 	providerMetadata?: unknown;
 	reasoning?: string;
-	temperature: number;
-	maxTokens: number;
+	temperature?: number;
+	maxTokens?: number;
 	maxTokensOmitted?: boolean;
 	/**
 	 * High-level model-call category. Prefer the canonical taxonomy in
@@ -92,8 +92,8 @@ export type TrajectoryLlmCallDetails = {
 	 * Precise call-site label, e.g. `runtime.useModel`, `ai.generateText`,
 	 * or `openai.chat.completions.create`.
 	 */
-	actionType: string;
-	latencyMs: number;
+	actionType?: string;
+	latencyMs?: number;
 	promptTokens?: number;
 	completionTokens?: number;
 	cacheReadInputTokens?: number;
@@ -438,10 +438,10 @@ type TrajectoryStartOptions = {
 
 type TrajectoryStepState = {
 	timestamp: number;
-	agentBalance: number;
-	agentPoints: number;
-	agentPnL: number;
-	openPositions: number;
+	agentBalance?: number;
+	agentPoints?: number;
+	agentPnL?: number;
+	openPositions?: number;
 };
 
 type TrajectoryStepKindLike = "llm" | "action";
@@ -984,10 +984,6 @@ export async function withStandaloneTrajectory<T>(
 			? String(
 					trajectoryLogger.startStep(trajectoryId, {
 						timestamp: Date.now(),
-						agentBalance: 0,
-						agentPoints: 0,
-						agentPnL: 0,
-						openPositions: 0,
 					}),
 				).trim() || trajectoryId
 			: trajectoryId;
@@ -1176,10 +1172,6 @@ async function withChildTrajectoryStep<T>(
 		try {
 			const startedStepId = trajectoryLogger.startStep(trajectoryId, {
 				timestamp: Date.now(),
-				agentBalance: 0,
-				agentPoints: 0,
-				agentPnL: 0,
-				openPositions: 0,
 			});
 			const normalizedStartedStepId =
 				typeof startedStepId === "string" ? startedStepId.trim() : "";

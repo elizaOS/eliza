@@ -624,8 +624,8 @@ describe("JsonFileTrajectoryRecorder", () => {
 		await recorder.endTrajectory(id, "finished");
 
 		const trajectory = await recorder.load(id);
-		// cost_usd defaults to 0 — observability must never crash.
-		expect(trajectory?.stages[0]?.model?.costUsd).toBe(0);
+		// Unknown hosted pricing is omitted rather than recorded as free inference.
+		expect(trajectory?.stages[0]?.model?.costUsd).toBeUndefined();
 		// And the recorder logged a structured warning so the operator can
 		// see that pricing was missing.
 		const pricingWarns = warn.mock.calls.filter(

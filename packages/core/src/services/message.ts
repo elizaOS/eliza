@@ -8482,9 +8482,9 @@ function extractMessageHandlerUsage(raw: GenerateTextResult):
 	| undefined {
 	const usage = raw.usage;
 	if (!usage) return undefined;
-	const promptTokens = usage.promptTokens ?? 0;
-	const completionTokens = usage.completionTokens ?? 0;
-	const totalTokens = usage.totalTokens ?? promptTokens + completionTokens;
+	const promptTokens = usage.promptTokens;
+	const completionTokens = usage.completionTokens;
+	const totalTokens = usage.totalTokens;
 	const out: {
 		promptTokens: number;
 		completionTokens: number;

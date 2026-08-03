@@ -1,9 +1,6 @@
-/**
- * Action-Level Instrumentation
- *
- * Wraps actions and providers with trajectory logging.
- */
+/** Adds trajectory steps around action and provider execution. */
 
+import { ElizaError } from "../../errors";
 import { logger } from "../../logger";
 import type {
 	Action,
@@ -46,6 +43,46 @@ export function clearTrajectoryContext(runtime: IAgentRuntime): void {
 }
 
 type ErrorLike = { message?: string };
+
+function requiredTrajectoryString(
+	context: Record<string, JsonValue | undefined>,
+	field: string,
+	options: { allowEmpty?: boolean } = {},
+): string {
+	const value = context[field];
+	if (
+		typeof value !== "string" ||
+		(!options.allowEmpty && value.trim().length === 0)
+	) {
+		throw new ElizaError(`Trajectory action context requires ${field}`, {
+			code: "INVALID_TRAJECTORY_ACTION_CONTEXT",
+			context: { field },
+		});
+	}
+	return value;
+}
+
+function optionalTrajectoryNumber(
+	context: Record<string, JsonValue | undefined>,
+	field: string,
+): number | undefined {
+	const value = context[field];
+	return typeof value === "number" && Number.isFinite(value)
+		? value
+		: undefined;
+}
+
+function requiredTrajectoryData(
+	context: Record<string, JsonValue | undefined>,
+): Record<string, JsonValue> {
+	const value = context.data;
+	if (!value || typeof value !== "object" || Array.isArray(value)) {
+		throw new ElizaError("Trajectory provider context requires data", {
+			code: "INVALID_TRAJECTORY_PROVIDER_CONTEXT",
+		});
+	}
+	return value;
+}
 
 export function wrapActionWithLogging(
 	action: Action,
@@ -205,13 +242,26 @@ export function logLLMCallFromAction(
 	}
 
 	trajectoryLogger.logLLMCall(stepId, {
-		model: (actionContext.model as string) || "unknown",
-		systemPrompt: (actionContext.systemPrompt as string) || "",
-		userPrompt: (actionContext.userPrompt as string) || "",
-		response: (actionContext.response as string) || "",
-		reasoning: (actionContext.reasoning as string) || undefined,
-		temperature: (actionContext.temperature as number) || 0.7,
-		maxTokens: (actionContext.maxTokens as number) || 8192,
+		model: requiredTrajectoryString(actionContext, "model"),
+		systemPrompt: requiredTrajectoryString(actionContext, "systemPrompt", {
+			allowEmpty: true,
+		}),
+		userPrompt: requiredTrajectoryString(actionContext, "userPrompt", {
+			allowEmpty: true,
+		}),
+		response: requiredTrajectoryString(actionContext, "response", {
+			allowEmpty: true,
+		}),
+		reasoning:
+			typeof actionContext.reasoning === "string"
+				? actionContext.reasoning
+				: undefined,
+		...(typeof actionContext.temperature === "number"
+			? { temperature: actionContext.temperature }
+			: {}),
+		...(typeof actionContext.maxTokens === "number"
+			? { maxTokens: actionContext.maxTokens }
+			: {}),
 		purpose:
 			(actionContext.purpose as
 				| "action"
@@ -220,9 +270,12 @@ export function logLLMCallFromAction(
 				| "response"
 				| "other") || "action",
 		actionType: (actionContext.actionType as string) || undefined,
-		promptTokens: (actionContext.promptTokens as number) || undefined,
-		completionTokens: (actionContext.completionTokens as number) || undefined,
-		latencyMs: (actionContext.latencyMs as number) || undefined,
+		promptTokens: optionalTrajectoryNumber(actionContext, "promptTokens"),
+		completionTokens: optionalTrajectoryNumber(
+			actionContext,
+			"completionTokens",
+		),
+		latencyMs: optionalTrajectoryNumber(actionContext, "latencyMs"),
 	});
 }
 
@@ -241,10 +294,15 @@ export function logProviderFromAction(
 	}
 
 	trajectoryLogger.logProviderAccess(stepId, {
-		providerName: (actionContext.providerName as string) || "unknown",
-		data: (actionContext.data as Record<string, JsonValue>) || {},
+		providerName: requiredTrajectoryString(actionContext, "providerName"),
+		data: requiredTrajectoryData(actionContext),
 		purpose: (actionContext.purpose as string) || "action",
-		query: (actionContext.query as Record<string, JsonValue>) || undefined,
+		query:
+			actionContext.query &&
+			typeof actionContext.query === "object" &&
+			!Array.isArray(actionContext.query)
+				? actionContext.query
+				: undefined,
 	});
 }
 

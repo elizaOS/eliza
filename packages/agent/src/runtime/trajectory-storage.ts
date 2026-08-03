@@ -727,13 +727,6 @@ export async function installDatabaseTrajectoryLogger(
           stepId: stepIdOrTrajectoryId,
           status: status as TrajectoryStatus,
         });
-
-        // Notify the auto-train trigger service (registered by app-core when
-        // app-training is installed). Optional — the chain resolves without
-        // work if the service was never registered, which is the case for slim
-        // installs.
-        if (status === "completed") {
-        }
       },
     );
 

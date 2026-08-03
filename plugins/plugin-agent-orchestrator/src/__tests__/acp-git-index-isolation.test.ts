@@ -9,8 +9,8 @@ import { execFileSync } from "node:child_process";
 import {
   existsSync,
   mkdtempSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";

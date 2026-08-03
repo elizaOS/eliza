@@ -290,10 +290,6 @@ export const trajectoriesPlugin: Plugin = {
 						meta.trajectoryId = normalizedTrajectoryId;
 						const runtimeStepId = logger.startStep(normalizedTrajectoryId, {
 							timestamp: Date.now(),
-							agentBalance: 0,
-							agentPoints: 0,
-							agentPnL: 0,
-							openPositions: 0,
 						});
 
 						const normalizedStepId =

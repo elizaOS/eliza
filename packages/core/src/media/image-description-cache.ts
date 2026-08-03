@@ -97,14 +97,7 @@ export async function getCachedImageDescription(
 			runtime.reportError("ImageDescriptionCache.get", err, { imageUrl });
 			return undefined;
 		});
-	if (cached && (cached.description || cached.text)) {
-		return {
-			title: cached.title || "Image",
-			description: cached.description ?? "",
-			text: cached.text ?? cached.description ?? "",
-		};
-	}
-	return undefined;
+	return cached ? (normalizeImageDescription(cached) ?? undefined) : undefined;
 }
 
 export async function setCachedImageDescription(

@@ -814,9 +814,9 @@ async function handleBuiltinOptionalRoutes(
 
   // Pure-fabrication "capability unavailable" stubs are declared once in the
   // absent-plugin route stub registry (see absent-plugin-route-stubs.ts /
-  // arch-audit #12089 item 12). Anything that reads live runtime state (wallet
-  // addresses, on-disk training config) is handled above and is intentionally
-  // NOT in the registry, because those are not fabrications.
+  // arch-audit #12089 item 12). Anything that reads live runtime state, such as
+  // wallet addresses, is handled above and is intentionally NOT in the registry,
+  // because those responses are not fabrications.
   const absentPluginStub = resolveAbsentPluginRouteStub(method, pathname);
   if (absentPluginStub) {
     // POST stubs still drain the request body so the socket is not left with a
