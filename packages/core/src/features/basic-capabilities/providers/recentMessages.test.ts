@@ -600,13 +600,19 @@ describe("recentMessages window disclosure", () => {
 
 		const result = await recentMessagesProvider.get(
 			makeRuntime(memories),
-			makeMemory("current", USER_ID, "how many times did i say bitcoin", "discord", 3000),
+			makeMemory(
+				"current",
+				USER_ID,
+				"how many times did i say bitcoin",
+				"discord",
+				3000,
+			),
 			{ values: {}, data: {}, text: "" },
 		);
 
 		const text = result.text ?? "";
 		expect(text).toContain("# Conversation Messages (most recent");
 		expect(text).toContain("older history is not shown here");
-		expect(text).toContain("MEMORY op:search");
+		expect(text).not.toContain("MEMORY op:search");
 	});
 });

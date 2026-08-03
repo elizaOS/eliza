@@ -518,15 +518,13 @@ export const recentMessagesProvider: Provider = {
 				.filter(Boolean)
 				.join("\n\n");
 
-			// Name the window in the header. Without it the model reads this block
-			// as the whole conversation and answers history questions ("how many
-			// times have I mentioned X") with a confident "never" — the block is
-			// the last N turns, not the archive. Searching the full record is a
-			// separate tool (MEMORY op:search).
+			// Name the bounded window without advertising an action. Providers run
+			// on runtimes with different plugin and role surfaces; the Stage-1
+			// boundary is the authority that says whether older history is searchable.
 			const recentMessagesBody =
 				formattedRecentMessages && formattedRecentMessages.length > 0
 					? addHeader(
-							`# Conversation Messages (most recent ${dialogueMessages.length}; older history is not shown here — search it with MEMORY op:search)`,
+							`# Conversation Messages (most recent ${dialogueMessages.length}; older history is not shown here)`,
 							formattedRecentMessages,
 						)
 					: "";
