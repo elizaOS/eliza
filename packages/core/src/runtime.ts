@@ -378,10 +378,55 @@ interface CachedProviderResult extends ProviderResult {
 
 interface InFlightProviderExecution {
 	promise: Promise<ProviderResult>;
+	// The execution owns its abort authority: callers race the shared promise
+	// against their OWN turn signal and this controller fires only when the
+	// last interested caller has aborted (#17602). Wiring the work directly to
+	// the first caller's signal let a later coalesced waiter's "stop" be
+	// swallowed entirely, and pushed the first caller's abort reason into
+	// turns that never requested it.
+	controller: AbortController;
+	waiters: number;
 	startedAt: number;
 	startedAtMonotonic: number;
 	timeoutMs?: number;
 	timeoutMode: "fail" | "degrade";
+}
+
+// Per-waiter cancellation boundary for a (possibly coalesced) provider
+// execution. Each caller observes its own signal: an aborting waiter rejects
+// immediately with ITS reason while the shared work keeps running for the
+// remaining callers, and the shared work is aborted exactly when the caller
+// count drops to zero — so a lone caller's abort still reaches the provider.
+function awaitProviderExecution(
+	execution: InFlightProviderExecution,
+	signal: AbortSignal | undefined,
+): Promise<ProviderResult> {
+	if (!signal) return execution.promise;
+	execution.waiters += 1;
+	let settled = false;
+	return new Promise<ProviderResult>((resolve, reject) => {
+		const settle = <V>(handler: (value: V) => void) => {
+			return (value: V) => {
+				if (settled) return;
+				settled = true;
+				signal.removeEventListener("abort", onAbort);
+				execution.waiters -= 1;
+				handler(value);
+			};
+		};
+		const onAbort = settle(() => {
+			if (execution.waiters === 0) {
+				execution.controller.abort(signal.reason);
+			}
+			reject(signal.reason ?? new Error("Provider execution aborted"));
+		});
+		if (signal.aborted) {
+			onAbort(undefined);
+			return;
+		}
+		signal.addEventListener("abort", onAbort, { once: true });
+		execution.promise.then(settle(resolve), settle(reject));
+	});
 }
 
 export function calculateProviderOverlaps(
@@ -4724,6 +4769,11 @@ export class AgentRuntime implements IAgentRuntime {
 					const timeoutMode = provider.timeoutMode ?? "fail";
 					const startedAt = Date.now();
 					const startedAtMonotonic = performance.now();
+					// The work is deliberately NOT wired to this caller's signal:
+					// coalesced waiters each race the shared promise against their own
+					// signal in awaitProviderExecution, and the dedicated controller
+					// aborts the provider only when no interested caller remains.
+					const workController = new AbortController();
 					const promise = withProviderDeadline(
 						(signal) =>
 							withProviderStep(providerRuntime, provider.name, () =>
@@ -4733,10 +4783,12 @@ export class AgentRuntime implements IAgentRuntime {
 							),
 						providerBudgetMs,
 						provider.name,
-						providerSignal,
+						workController.signal,
 					);
 					execution = {
 						promise,
+						controller: workController,
+						waiters: 0,
 						startedAt,
 						startedAtMonotonic,
 						timeoutMs: providerBudgetMs,
@@ -4755,7 +4807,10 @@ export class AgentRuntime implements IAgentRuntime {
 					}
 				}
 				try {
-					const result = await execution.promise;
+					const result = await awaitProviderExecution(
+						execution,
+						providerSignal,
+					);
 					const endedAt = Date.now();
 					const duration = performance.now() - execution.startedAtMonotonic;
 					recordInferenceSpan(`provider:${provider.name}`, duration, {

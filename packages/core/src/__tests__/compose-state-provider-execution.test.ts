@@ -231,4 +231,59 @@ describe("composeState provider execution", () => {
 			]),
 		);
 	});
+
+	it("lets a coalesced waiter cancel its own turn without killing the owner (#17602)", async () => {
+		const runtime = new AgentRuntime({
+			character: { name: "provider-coalesced-abort" } as Character,
+		});
+		const release = deferred();
+		const started = deferred();
+		let calls = 0;
+		runtime.registerProvider({
+			name: "SLOW",
+			get: async () => {
+				calls += 1;
+				started.resolve();
+				await release.promise;
+				return { text: "slow" };
+			},
+		});
+		const message = makeMessage("ffffffff-ffff-ffff-ffff-ffffffffffff");
+
+		// Turn A owns the execution; turn B (a re-delivery of the same message
+		// while A is still streaming) coalesces onto it. The registry maps the
+		// room to B's controller, so the user's stop aborts B — and B must stop
+		// promptly instead of silently riding A's execution to completion.
+		const first = runtime.turnControllers.runWith(ROOM_ID, () =>
+			runtime.composeState(message, ["SLOW"], true),
+		);
+		await started.promise;
+		const second = runtime.turnControllers.runWith(ROOM_ID, () =>
+			runtime.composeState(message, ["SLOW"], true),
+		);
+		await new Promise((resolve) => setTimeout(resolve, 10));
+		expect(calls).toBe(1);
+
+		expect(runtime.turnControllers.abortTurn(ROOM_ID, "user stopped")).toBe(
+			true,
+		);
+		const secondOutcome = await Promise.race([
+			second.then(
+				() => "completed",
+				(cause: unknown) => cause,
+			),
+			new Promise((resolve) => setTimeout(() => resolve("swallowed"), 250)),
+		]);
+		// On the broken path the stop is swallowed: `second` neither rejects nor
+		// resolves until the owner's provider settles ("swallowed"), and then
+		// completes as if never cancelled.
+		expect(secondOutcome).toBeInstanceOf(TurnAbortedError);
+		expect((secondOutcome as TurnAbortedError).reason).toBe("user stopped");
+
+		// The owner's turn is unaffected by the waiter's cancellation.
+		release.resolve();
+		const firstState = await first;
+		expect(firstState.text).toBe("slow");
+		expect(calls).toBe(1);
+	});
 });
