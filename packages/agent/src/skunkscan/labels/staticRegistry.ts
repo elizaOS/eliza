@@ -102,16 +102,12 @@ export function lookupStaticSolanaWalletLabel(
 
 // Ethereum addresses are stored lowercase, same convention as the DeFi
 // protocol and exposure registries: EIP-55 checksum casing is
-// display-only. lookupStaticEthereumWalletLabel() below does an exact
-// string match with no normalization of its own.
-//
-// FIXME: neither funding.ts's funding-counterparty address nor
-// relationships.ts's counterparty addresses are lowercased before
-// reaching lookupWalletLabel() today, so real matches against this
-// registry will silently miss until that's fixed - needs its own
-// follow-up PR, scoped to chain === "ethereum" only (Solana addresses
-// are base58 and case-sensitive, so blanket-lowercasing would corrupt
-// Solana label lookups). Flagged, not fixed here.
+// display-only. lookupStaticEthereumWalletLabel() below lowercases its
+// input before the lookup - safe to do unconditionally here (unlike
+// lookupStaticExposure, which is chain-generic and has to check
+// chain === "ethereum" first) because this function is only ever called
+// from labelEngine.ts's "ethereum" switch case; it never sees a Solana
+// address, so there's no base58 case-sensitivity concern to guard against.
 const STATIC_ETHEREUM_LABELS: Record<string, WalletLabel> = {
   "0x71660c4005ba85c37ccec55d0c4493e66fe775d3": {
     address: "0x71660c4005ba85c37ccec55d0c4493e66fe775d3",
@@ -185,5 +181,5 @@ export function lookupStaticEthereumWalletLabel(
     return null;
   }
 
-  return STATIC_ETHEREUM_LABELS[address] ?? null;
+  return STATIC_ETHEREUM_LABELS[address.toLowerCase()] ?? null;
 }
