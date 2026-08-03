@@ -63,7 +63,11 @@ const A2AChatParamsSchema = z.object({
   messages: z
     .array(
       z.object({
-        role: z.enum(["user", "assistant", "system"]),
+        // The public A2A caller is an input principal, never a policy author.
+        // Until agent-signed role provenance exists, accepting `system` here
+        // would let an authenticated caller inject instructions beside the
+        // destination agent's operator-owned system prompt.
+        role: z.enum(["user", "assistant"]),
         content: z.string().min(1),
       }),
     )
