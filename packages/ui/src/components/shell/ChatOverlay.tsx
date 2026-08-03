@@ -1163,6 +1163,98 @@ function shellToChatMessageData(m: ShellMessage): ChatMessageData {
   return data;
 }
 
+interface ThreadLineProps {
+  message: ShellMessage;
+  isLastAssistant: boolean;
+  responding: boolean;
+  turnStatus: ChatTurnStatus | null;
+  firstRunOffset: boolean;
+  speakingSource: boolean;
+  agentName: string;
+  reduceMotion: boolean;
+  playing: boolean;
+  onCopy: (text: string) => void;
+  onLongPressCopy: (text: string) => void;
+  onSpeak: (messageId: string, text: string) => void;
+  onEdit: (messageId: string, text: string) => Promise<boolean> | boolean;
+  onReply: (message: ChatMessageData) => void;
+  onRetry: (messageId: string) => void;
+  renderContent: (
+    message: ChatMessageData,
+    context: ChatMessageRenderContext | undefined,
+  ) => React.ReactNode;
+  onAcceptSuggestion: (message: ChatMessageData) => void;
+  onDismissSuggestion: (messageId: string) => void;
+}
+
+/**
+ * Keeps the scroller item and its context subscriptions out of historical
+ * stream commits. useShellController preserves ShellMessage identity, so only
+ * the growing tail row crosses this memo boundary for each transcript snapshot.
+ */
+const ThreadLine = React.memo(function ThreadLine({
+  message,
+  isLastAssistant,
+  responding,
+  turnStatus,
+  firstRunOffset,
+  speakingSource,
+  agentName,
+  reduceMotion,
+  playing,
+  onCopy,
+  onLongPressCopy,
+  onSpeak,
+  onEdit,
+  onReply,
+  onRetry,
+  renderContent,
+  onAcceptSuggestion,
+  onDismissSuggestion,
+}: ThreadLineProps) {
+  const isInFlight =
+    isLastAssistant &&
+    responding &&
+    !message.content.trim() &&
+    !message.attachments?.length &&
+    !message.failureKind &&
+    !message.secretRequest;
+  const renderContext: ChatMessageRenderContext | undefined = isLastAssistant
+    ? { turnStatus: isInFlight ? turnStatus : null }
+    : undefined;
+
+  return (
+    <MessageScrollerItem
+      messageId={message.id}
+      className={cn("w-full", firstRunOffset && "mt-2")}
+    >
+      <ChatMessage
+        actionAccessory={
+          speakingSource ? <SpeakingStatusAccessory /> : undefined
+        }
+        appearance="glass"
+        enterOnMount={message.id.startsWith("temp-")}
+        agentName={agentName}
+        message={shellToChatMessageData(message)}
+        reduceMotion={reduceMotion}
+        onCopy={onCopy}
+        onLongPressCopy={onLongPressCopy}
+        onSpeak={onSpeak}
+        onEdit={onEdit}
+        onReply={isInFlight ? undefined : onReply}
+        onRetry={onRetry}
+        playing={playing}
+        renderContent={renderContent}
+        renderContext={renderContext}
+        onAcceptSuggestion={onAcceptSuggestion}
+        onDismissSuggestion={onDismissSuggestion}
+      />
+    </MessageScrollerItem>
+  );
+});
+
+export const __OverlayThreadLineForTests = ThreadLine;
+
 const FIRST_RUN_SIGN_IN_FALLBACK_MESSAGES: ShellMessage[] = [
   {
     id: "first-run:greeting-fallback",
@@ -2322,51 +2414,28 @@ export function ChatOverlay({
     (m: ShellMessage, index: number) => {
       const isLastAssistant =
         index === visibleMessages.length - 1 && m.role === "assistant";
-      const isInFlight =
-        isLastAssistant &&
-        responding &&
-        !m.content.trim() &&
-        !m.attachments?.length &&
-        !m.failureKind &&
-        !m.secretRequest;
-      // Only the last assistant turn reads volatile status; every settled row
-      // gets no renderContext so its memo identity is unchanged.
-      const renderContext: ChatMessageRenderContext | undefined =
-        isLastAssistant
-          ? {
-              turnStatus: isInFlight ? turnStatus : null,
-            }
-          : undefined;
       return (
-        <MessageScrollerItem
+        <ThreadLine
           key={m.id}
-          messageId={m.id}
-          className={cn("w-full", firstRunOpen && index > 0 && "mt-2")}
-        >
-          <ChatMessage
-            actionAccessory={
-              m.id === speakingSourceMessageId ? (
-                <SpeakingStatusAccessory />
-              ) : undefined
-            }
-            appearance="glass"
-            enterOnMount={m.id.startsWith("temp-")}
-            agentName={agentName}
-            message={shellToChatMessageData(m)}
-            reduceMotion={reduce}
-            onCopy={handleCopyMessage}
-            onLongPressCopy={handleLongPressCopy}
-            onSpeak={handleSpeakMessage}
-            onEdit={handleEditMessage}
-            onReply={isInFlight ? undefined : handleReplyMessage}
-            onRetry={handleRetry}
-            playing={speaking && playingMessageId === m.id}
-            renderContent={renderRowBody}
-            renderContext={renderContext}
-            onAcceptSuggestion={handleAcceptSuggestion}
-            onDismissSuggestion={handleDismissSuggestion}
-          />
-        </MessageScrollerItem>
+          message={m}
+          isLastAssistant={isLastAssistant}
+          responding={isLastAssistant && responding}
+          turnStatus={isLastAssistant ? turnStatus : null}
+          firstRunOffset={firstRunOpen && index > 0}
+          speakingSource={m.id === speakingSourceMessageId}
+          agentName={agentName}
+          reduceMotion={reduce}
+          onCopy={handleCopyMessage}
+          onLongPressCopy={handleLongPressCopy}
+          onSpeak={handleSpeakMessage}
+          onEdit={handleEditMessage}
+          onReply={handleReplyMessage}
+          onRetry={handleRetry}
+          playing={speaking && playingMessageId === m.id}
+          renderContent={renderRowBody}
+          onAcceptSuggestion={handleAcceptSuggestion}
+          onDismissSuggestion={handleDismissSuggestion}
+        />
       );
     },
     [
