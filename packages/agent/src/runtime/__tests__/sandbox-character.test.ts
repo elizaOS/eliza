@@ -146,14 +146,31 @@ describe("prepareSandboxRuntimeConfig", () => {
       ELIZA_AGENT_CHARACTER_JSON: JSON.stringify({
         name: "Sol",
         system: "You are Sol.",
+        settings: {
+          telegram: { botToken: "identity-telegram-secret" },
+          secrets: { DISCORD_BOT_TOKEN: "identity-discord-secret" },
+        },
       }),
       SANDBOX_ROUTE_AGENT_ID: "route-id",
     };
     const reloaded = {
-      agents: { list: [{ name: "Eliza", default: true }] },
+      agents: {
+        list: [
+          { name: "Secondary", system: "Secondary system.", default: false },
+          { name: "Eliza", system: "Old primary system.", default: true },
+        ],
+      },
       connectors: {
         discord: { token: "discord-secret" },
         telegram: { botToken: "telegram-secret" },
+      },
+      channels: {
+        discord: { token: "legacy-discord-secret" },
+        telegram: { botToken: "legacy-telegram-secret" },
+      },
+      env: {
+        DISCORD_API_TOKEN: "env-discord-secret",
+        vars: { TELEGRAM_BOT_TOKEN: "vars-telegram-secret" },
       },
     };
 
@@ -177,11 +194,21 @@ describe("prepareSandboxRuntimeConfig", () => {
     expect(env.TELEGRAM_BOT_TOKEN).toBeUndefined();
     expect(reloaded.connectors.discord).toBeUndefined();
     expect(reloaded.connectors.telegram).toBeUndefined();
+    expect(reloaded.channels.discord).toBeUndefined();
+    expect(reloaded.channels.telegram).toBeUndefined();
+    expect(reloaded.env.DISCORD_API_TOKEN).toBeUndefined();
+    expect(reloaded.env.vars.TELEGRAM_BOT_TOKEN).toBeUndefined();
     expect(reloaded.agents.list[0]).toMatchObject({
       id: "route-id",
       name: "Sol",
+      system: "You are Sol.",
       default: true,
     });
+    expect(reloaded.agents.list[0]?.settings?.telegram).toBeUndefined();
+    expect(
+      reloaded.agents.list[0]?.settings?.secrets?.DISCORD_BOT_TOKEN,
+    ).toBeUndefined();
+    expect(reloaded.agents.list[1]?.name).toBe("Secondary");
   });
 });
 

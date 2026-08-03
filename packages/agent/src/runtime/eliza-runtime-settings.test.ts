@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { ElizaConfig } from "../config/config.ts";
 import { buildRuntimeSettingsProjection } from "./runtime-settings.ts";
+import { applySandboxConnectorOwnership } from "./sandbox-character.ts";
 
 const ENV_KEYS = ["SECRET_SALT"] as const;
 
@@ -27,6 +28,35 @@ afterEach(() => {
 });
 
 describe("buildRuntimeSettingsProjection", () => {
+  it("cannot restore gateway-owned credentials from legacy or env config", () => {
+    const config = {
+      channels: {
+        discord: { token: "legacy-discord-token" },
+        telegram: { botToken: "legacy-telegram-token" },
+      },
+      env: {
+        DISCORD_API_TOKEN: "env-discord-token",
+        vars: { TELEGRAM_BOT_TOKEN: "vars-telegram-token" },
+      },
+    } as unknown as ElizaConfig;
+    const env: NodeJS.ProcessEnv = {
+      ELIZA_CLOUD_PROVISIONED: "1",
+      DISCORD_API_TOKEN: "projected-discord-token",
+      DISCORD_BOT_TOKEN: "projected-discord-token",
+      TELEGRAM_BOT_TOKEN: "projected-telegram-token",
+    };
+
+    applySandboxConnectorOwnership(env, config);
+    const settings = buildRuntimeSettingsProjection(config, { env });
+
+    expect(env.DISCORD_API_TOKEN).toBeUndefined();
+    expect(env.DISCORD_BOT_TOKEN).toBeUndefined();
+    expect(env.TELEGRAM_BOT_TOKEN).toBeUndefined();
+    expect(settings.DISCORD_API_TOKEN).toBeUndefined();
+    expect(settings.DISCORD_BOT_TOKEN).toBeUndefined();
+    expect(settings.TELEGRAM_BOT_TOKEN).toBeUndefined();
+  });
+
   it("projects connector config and startup-only settings for runtime rebuilds", () => {
     const config = {
       env: {
