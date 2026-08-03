@@ -135,7 +135,20 @@ export type {
 	PlannerTrajectory,
 } from "./planner-types";
 
-const DEFAULT_PLANNER_MAX_TOKENS = 1024;
+/**
+ * Chat-lane planner output budget. Reasoning models spend completion tokens on
+ * deliberation BEFORE the tool call, and with `toolChoice: required` a budget
+ * exhausted mid-reasoning means the required call is never emitted — Cerebras
+ * then terminates the stream with an in-stream "server error", which reads as
+ * a transient provider failure but reproduces 100% on any ask ambiguous
+ * enough to burn the budget (live 2026-08-03: nine identical failures on one
+ * build-and-host ask; wire capture showed the entire old 1024-token budget
+ * consumed by reasoning deltas with no tool call). 4096 leaves deliberation
+ * headroom while staying chat-sized; `ELIZA_PLANNER_MAX_TOKENS` overrides.
+ * The coding lane's larger budget below exists for the same failure class
+ * (#10132).
+ */
+const DEFAULT_PLANNER_MAX_TOKENS = 4096;
 
 /**
  * Coding/full-surface mode is on when the eliza-code sub-agent sets
@@ -168,7 +181,12 @@ const DEFAULT_CODING_PLANNER_MAX_TOKENS = 16384;
  * `ELIZA_CODING_PLANNER_MAX_TOKENS`).
  */
 function resolvePlannerMaxTokens(): number {
-	if (!isCodingFullSurfaceMode()) return DEFAULT_PLANNER_MAX_TOKENS;
+	if (!isCodingFullSurfaceMode()) {
+		const chatRaw = Number(process.env.ELIZA_PLANNER_MAX_TOKENS);
+		return Number.isFinite(chatRaw) && chatRaw > 0
+			? Math.floor(chatRaw)
+			: DEFAULT_PLANNER_MAX_TOKENS;
+	}
 	const raw = Number(process.env.ELIZA_CODING_PLANNER_MAX_TOKENS);
 	return Number.isFinite(raw) && raw > 0
 		? Math.floor(raw)
