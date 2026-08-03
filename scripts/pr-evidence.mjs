@@ -349,7 +349,11 @@ function bodyLineRecords(body) {
   while (offset <= body.length) {
     const newline = body.indexOf("\n", offset);
     const end = newline === -1 ? body.length : newline;
-    records.push({ start: offset, end, trimmed: body.slice(offset, end).trim() });
+    records.push({
+      start: offset,
+      end,
+      trimmed: body.slice(offset, end).trim(),
+    });
     if (newline === -1) break;
     offset = newline + 1;
   }

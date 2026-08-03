@@ -33,7 +33,9 @@ import {
 // ~/.claude/skills/contribute-to-eliza/SKILL.md instructs every contributor
 // to append last.
 const PR_TEMPLATE = readFileSync(
-  fileURLToPath(new URL("../.github/pull_request_template.md", import.meta.url)),
+  fileURLToPath(
+    new URL("../.github/pull_request_template.md", import.meta.url),
+  ),
   "utf8",
 );
 

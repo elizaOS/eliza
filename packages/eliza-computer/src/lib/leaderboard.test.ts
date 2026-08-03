@@ -373,7 +373,8 @@ describe("model attribution", () => {
     expect(result.invalidMarkers).toEqual([
       expect.objectContaining({
         sourceId: "PR_ADJACENT:body",
-        reason: "marker requires exactly one complete visible attribution footer",
+        reason:
+          "marker requires exactly one complete visible attribution footer",
       }),
     ]);
   });
