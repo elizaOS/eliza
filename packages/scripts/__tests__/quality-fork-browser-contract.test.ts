@@ -1,3 +1,6 @@
+/**
+ * Guards fork-safe homepage browser CI and its reviewed visual-diff ceilings.
+ */
 import { describe, expect, test } from "bun:test";
 import {
   mkdirSync,
@@ -15,6 +18,7 @@ const { runContract } = await import(
 );
 
 const REAL_REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
+const NUMBER_LITERAL = String.raw`(0(?:\.\d+)?)`;
 const VALID_WORKFLOW = `name: Quality (Fork)
 jobs:
   build:
@@ -123,7 +127,7 @@ describe("quality-fork-browser-contract", () => {
     }
   });
 
-  test("bounds only the measured mobile visual renderer variance", () => {
+  test("keeps visual diff tolerances within reviewed renderer ceilings", () => {
     const config = readFileSync(
       join(REAL_REPO_ROOT, "packages", "homepage", "playwright.config.ts"),
       "utf8",
@@ -139,10 +143,34 @@ describe("quality-fork-browser-contract", () => {
       ),
       "utf8",
     );
-    expect(config).toMatch(/maxDiffPixelRatio:\s*0\.05/);
-    expect(visual).toMatch(
-      /maxDiffPixelRatio:\s*viewport\.name === ["']mobile["'] \? 0\.08 : 0\.05/,
+    const configMatch = config.match(
+      new RegExp(`maxDiffPixelRatio:\\s*${NUMBER_LITERAL}`),
     );
+    if (!configMatch) {
+      throw new Error("Homepage Playwright config must set maxDiffPixelRatio");
+    }
+
+    const globalTolerance = Number(configMatch[1]);
+    expect(globalTolerance).toBeLessThanOrEqual(0.05);
+
+    const viewportMatch = visual.match(
+      new RegExp(
+        `maxDiffPixelRatio:\\s*viewport\\.name === ["']mobile["']\\s*\\?\\s*${NUMBER_LITERAL}\\s*:\\s*${NUMBER_LITERAL}`,
+      ),
+    );
+    if (viewportMatch) {
+      expect(Number(viewportMatch[1])).toBeLessThanOrEqual(0.08);
+      expect(Number(viewportMatch[2])).toBeLessThanOrEqual(globalTolerance);
+      return;
+    }
+
+    const uniformMatch = visual.match(
+      new RegExp(`maxDiffPixelRatio:\\s*${NUMBER_LITERAL}`),
+    );
+    if (!uniformMatch) {
+      throw new Error("Homepage visual suite must set maxDiffPixelRatio");
+    }
+    expect(Number(uniformMatch[1])).toBeLessThanOrEqual(globalTolerance);
   });
 
   test("the checked-in Quality (Fork) workflow satisfies the contract", () => {
