@@ -1523,6 +1523,101 @@ describe("useChatSend freeze-on-shared during handoff (PR2)", () => {
     expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
   });
 
+  it("restores only the visible conversation draft when Stop races a conversation switch", async () => {
+    const activeStarted = deferred();
+    let sendCount = 0;
+    mocks.client.sendConversationMessageStream.mockImplementation(
+      (
+        _id: string,
+        text: string,
+        _onToken: (token: string, accumulatedText?: string) => void,
+        _channelType: string,
+        signal?: AbortSignal,
+      ) => {
+        sendCount += 1;
+        if (sendCount > 1) {
+          return Promise.resolve({ text: `reply:${text}`, completed: true });
+        }
+        activeStarted.resolve();
+        return new Promise((_resolve, reject) => {
+          signal?.addEventListener("abort", () => reject(abortError()), {
+            once: true,
+          });
+        });
+      },
+    );
+    const deps = makeDeps({
+      activeConversationId: "conv-A",
+      conversations: [
+        conversation("conv-A", "room-A"),
+        conversation("conv-B", "room-B"),
+      ],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+    const imageA: ImageAttachment = {
+      data: "AAAA",
+      mimeType: "image/png",
+      name: "a.png",
+    };
+    const imageB: ImageAttachment = {
+      data: "BBBB",
+      mimeType: "image/png",
+      name: "b.png",
+    };
+
+    let activeSend!: Promise<void>;
+    await act(async () => {
+      activeSend = result.current.sendChatText("active A", {
+        conversationId: "conv-A",
+      });
+      await activeStarted.promise;
+    });
+
+    let queuedA!: Promise<void>;
+    await act(async () => {
+      queuedA = result.current.sendChatText("queued A", {
+        conversationId: "conv-A",
+        images: [imageA],
+      });
+      await Promise.resolve();
+    });
+
+    const visibleBMessages: ConversationMessage[] = [
+      { id: "b-existing", role: "user", text: "B stays", timestamp: 1 },
+    ];
+    deps.activeConversationIdRef.current = "conv-B";
+    deps.conversationMessagesRef.current = visibleBMessages;
+    let queuedB!: Promise<void>;
+    await act(async () => {
+      queuedB = result.current.sendChatText("queued B", {
+        conversationId: "conv-B",
+        images: [imageB],
+      });
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      result.current.handleChatStop();
+      await Promise.all([activeSend, queuedA, queuedB]);
+    });
+
+    expect(deps.conversationMessagesRef.current).toEqual(visibleBMessages);
+    expect(deps.setChatInput).toHaveBeenCalledWith("queued B");
+    expect(deps.setChatInput).not.toHaveBeenCalledWith(
+      expect.stringContaining("queued A"),
+    );
+    expect(deps.setChatPendingImages).toHaveBeenCalledWith([imageB]);
+    expect(deps.setChatPendingImages).not.toHaveBeenCalledWith([imageA]);
+    expect(
+      mocks.client.sendConversationMessageStream.mock.calls.map(
+        ([conversationId, text]) => [conversationId, text],
+      ),
+    ).toEqual([
+      ["conv-A", "active A"],
+      ["conv-A", "queued A"],
+    ]);
+  });
+
   it("queues a message sent during the handoff window and delivers it to the dedicated agent after switch (not lost, not sent to shared)", async () => {
     // The bug this proves we fixed: while the handoff is migrating the user is
     // still on the SHARED agent, whose transcript was already snapshotted. The
