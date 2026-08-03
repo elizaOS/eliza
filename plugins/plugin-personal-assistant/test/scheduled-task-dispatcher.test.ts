@@ -30,6 +30,7 @@ import {
   registerChannelRegistry,
 } from "../src/lifeops/channels/index.js";
 import type { DispatchResult } from "../src/lifeops/connectors/contract.js";
+import { SCHEDULED_TASK_DELIVERY_BINDING_KEY } from "../src/lifeops/scheduled-task/delivery-binding.js";
 import { createProductionScheduledTaskDispatcher } from "../src/lifeops/scheduled-task/runtime-wiring.js";
 import {
   createSendPolicyRegistry,
@@ -357,6 +358,101 @@ describe("scheduled task production dispatcher", () => {
       ok: false,
       reason: "auth_expired",
       userActionable: true,
+    });
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("revalidates a persisted chat destination and preserves privacy metadata on egress", async () => {
+    let participants = [
+      "00000000-0000-0000-0000-0000000000aa",
+      "00000000-0000-0000-0000-0000000000bb",
+    ];
+    const runtime = {
+      ...(makeDispatchRuntime() as unknown as Record<string, unknown>),
+      getRoom: vi.fn(async () => ({
+        id: "00000000-0000-0000-0000-0000000000cc",
+        source: "telegram",
+        channelId: "owner-chat-42",
+      })),
+      getParticipantsForRoom: vi.fn(async () => participants),
+    } as unknown as IAgentRuntime;
+    const send = vi.fn(async () => ({
+      ok: true as const,
+      messageId: "telegram-provider-1",
+    }));
+    const registry = createChannelRegistry();
+    registry.register(sendCapableChannel(send));
+    registerChannelRegistry(runtime, registry);
+    const metadata = {
+      [SCHEDULED_TASK_DELIVERY_BINDING_KEY]: {
+        version: 1,
+        source: "telegram",
+        roomId: "00000000-0000-0000-0000-0000000000cc",
+        channelId: "owner-chat-42",
+        accountId: "personal",
+        audience: {
+          kind: "direct",
+          provenance: "canonical_room",
+          ownerEntityId: "00000000-0000-0000-0000-0000000000aa",
+          agentEntityId: "00000000-0000-0000-0000-0000000000bb",
+          participantEntityIds: participants,
+          membershipVersion: participants.join("\u0000"),
+        },
+      },
+    };
+    const dispatcher = createProductionScheduledTaskDispatcher({ runtime });
+    const record = {
+      taskId: "task_bound",
+      firedAtIso: "2026-05-10T12:00:00.000Z",
+      channelKey: "telegram",
+      promptInstructions: "private request",
+      contextRequest: undefined,
+      output: {
+        destination: "channel" as const,
+        target: "telegram:owner-chat-42",
+      },
+      metadata,
+    };
+
+    await expect(dispatcher.dispatch(record)).resolves.toMatchObject({
+      ok: true,
+      channelKey: "telegram",
+      target: "owner-chat-42",
+    });
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target: "owner-chat-42",
+        metadata: expect.objectContaining({
+          accountId: "personal",
+          roomId: "00000000-0000-0000-0000-0000000000cc",
+          audience: {
+            kind: "direct",
+            provenance: "canonical_room",
+            membershipVersion: participants.join("\u0000"),
+            ownerOnly: true,
+          },
+        }),
+      }),
+    );
+
+    send.mockClear();
+    await expect(
+      dispatcher.dispatch({
+        ...record,
+        output: { destination: "channel", target: "telegram:other-chat" },
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      reason: "auth_expired",
+      message: "delivery_channel_changed",
+    });
+    expect(send).not.toHaveBeenCalled();
+
+    participants = [...participants, "00000000-0000-0000-0000-0000000000dd"];
+    await expect(dispatcher.dispatch(record)).resolves.toMatchObject({
+      ok: false,
+      reason: "auth_expired",
+      message: "delivery_audience_changed",
     });
     expect(send).not.toHaveBeenCalled();
   });

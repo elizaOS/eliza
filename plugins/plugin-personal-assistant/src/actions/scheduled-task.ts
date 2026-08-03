@@ -49,6 +49,10 @@ import {
 import { messageText } from "../lifeops/google/format-helpers.js";
 import { resolvePendingPromptsStore } from "../lifeops/pending-prompts/store.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
+import {
+  bindScheduledTaskToInboundChat,
+  SCHEDULED_TASK_DELIVERY_BINDING_KEY,
+} from "../lifeops/scheduled-task/delivery-binding.js";
 import type {
   ScheduledTask,
   ScheduledTaskFilter,
@@ -1107,6 +1111,7 @@ async function handleGet(
 async function handleCreate(
   scope: RunnerScope,
   params: ScheduledTaskParams,
+  message: Memory,
 ): Promise<ActionResult> {
   const promptInstructions =
     typeof params.promptInstructions === "string"
@@ -1206,11 +1211,26 @@ async function handleCreate(
       },
     };
   }
-  const output = normalizeOutputInput(scope, params.output);
+  const chatDeliveryBinding = await bindScheduledTaskToInboundChat(
+    scope.runtime,
+    message,
+  );
+  // A verified connector DM is bound to its canonical external channel. The
+  // model cannot redirect a future reminder by inventing output.target. Other
+  // turn kinds retain the in-app/default normalization above.
+  const output = chatDeliveryBinding
+    ? {
+        destination: "channel" as const,
+        target: `${chatDeliveryBinding.source}:${chatDeliveryBinding.channelId}`,
+      }
+    : normalizeOutputInput(scope, params.output);
   const completionCheck = normalizeCompletionCheckInput(params.completionCheck);
   const metadata = {
     ...(params.metadata ?? {}),
     ...(requestedTaskId ? { plannerTaskId: requestedTaskId } : {}),
+    ...(chatDeliveryBinding
+      ? { [SCHEDULED_TASK_DELIVERY_BINDING_KEY]: chatDeliveryBinding }
+      : {}),
     ...(scope.roomId && params.completionCheck
       ? { pendingPromptRoomId: scope.roomId }
       : {}),
@@ -1938,7 +1958,7 @@ export const scheduledTaskAction: Action & {
         result = await handleGet(scope, params);
         break;
       case "create":
-        result = await handleCreate(scope, params);
+        result = await handleCreate(scope, params, message);
         break;
       case "update":
         result = await handleUpdate(scope, params);

@@ -13,15 +13,18 @@ import type {
   EffectReceipt,
   HandlerCallback,
   Memory,
+  Room,
   UUID,
 } from "@elizaos/core";
 import {
   attestDeliveryAudienceFromCanonicalRoom,
+  ChannelType,
   executePlannedToolCall,
 } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { scheduledTaskAction } from "../src/actions/scheduled-task.ts";
 import type { ScheduledTask } from "../src/lifeops/scheduled-task/index.ts";
+import { getScheduledTaskRunner } from "../src/lifeops/scheduled-task/service.ts";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
@@ -330,6 +333,106 @@ describe("SCHEDULED_TASK action", () => {
       outcome: "noop",
       operation: "lifeops.scheduled_task.cancel",
     });
+  }, 120_000);
+
+  it("authorizes before storage and binds a connector task to the attested chat destination", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    const ownerId = crypto.randomUUID() as UUID;
+    const roomId = crypto.randomUUID() as UUID;
+    runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", ownerId);
+    await runtime.createEntity({
+      id: ownerId,
+      names: ["Owner"],
+      agentId: runtime.agentId,
+    });
+    await runtime.createRoom({
+      id: roomId,
+      source: "telegram",
+      channelId: "owner-chat-42",
+      type: ChannelType.DM,
+      worldId: runtime.agentId,
+      metadata: { accountId: "personal" },
+    } as Room);
+    await runtime.addParticipant(ownerId, roomId);
+    await runtime.addParticipant(runtime.agentId, roomId);
+
+    const message = {
+      id: crypto.randomUUID() as UUID,
+      entityId: ownerId,
+      roomId,
+      agentId: runtime.agentId,
+      content: { text: "run my private check later", source: "telegram" },
+      createdAt: Date.now(),
+    } as Memory;
+    await attestDeliveryAudienceFromCanonicalRoom(runtime, message);
+    const result = await executePlannedToolCall(
+      runtime,
+      { message, userRoles: ["OWNER"], activeContexts: ["tasks"] },
+      {
+        name: "SCHEDULED_TASKS",
+        params: {
+          action: "create",
+          kind: "custom",
+          promptInstructions: "Run the private check and report the result.",
+          trigger: { kind: "manual" },
+          output: { destination: "channel", target: "discord:public-room" },
+          idempotencyKey: `bound-${crypto.randomUUID()}`,
+        },
+      },
+    );
+    expect(result.success).toBe(true);
+    const task = (result.data as { task?: ScheduledTask } | undefined)?.task;
+    expect(task?.output).toEqual({
+      destination: "channel",
+      target: "telegram:owner-chat-42",
+    });
+    expect(task?.metadata?.chatDeliveryBinding).toMatchObject({
+      version: 1,
+      source: "telegram",
+      roomId,
+      channelId: "owner-chat-42",
+      audience: {
+        kind: "direct",
+        provenance: "canonical_room",
+        ownerEntityId: ownerId,
+        agentEntityId: runtime.agentId,
+      },
+    });
+
+    const runner = getScheduledTaskRunner(runtime, {
+      agentId: runtime.agentId,
+    });
+    const before = (await runner.list()).length;
+    const deniedMessage = { ...message, id: crypto.randomUUID() as UUID };
+    await attestDeliveryAudienceFromCanonicalRoom(runtime, deniedMessage);
+    const guestId = crypto.randomUUID() as UUID;
+    await runtime.createEntity({
+      id: guestId,
+      names: ["Guest"],
+      agentId: runtime.agentId,
+    });
+    await runtime.addParticipant(guestId, roomId);
+    const denied = await executePlannedToolCall(
+      runtime,
+      {
+        message: deniedMessage,
+        userRoles: ["OWNER"],
+        activeContexts: ["tasks"],
+      },
+      {
+        name: "SCHEDULED_TASKS",
+        params: {
+          action: "create",
+          kind: "custom",
+          promptInstructions: "Must not persist.",
+          trigger: { kind: "manual" },
+          idempotencyKey: `denied-${crypto.randomUUID()}`,
+        },
+      },
+    );
+    expect(denied.success).toBe(false);
+    expect((await runner.list()).length).toBe(before);
   }, 120_000);
 
   it("binds one callback to the validated receipt through the canonical executor", async () => {

@@ -78,6 +78,10 @@ import {
   readActivityProfile,
   registerActivityProfileGates,
 } from "./activity-gates.js";
+import {
+  readScheduledTaskChatDeliveryBinding,
+  revalidateScheduledTaskChatDeliveryBinding,
+} from "./delivery-binding.js";
 import { registerModelMomentCheckGate } from "./moment-judge.js";
 import { createLifeOpsSubjectStoreView } from "./subject-store.js";
 
@@ -459,6 +463,21 @@ export function createProductionScheduledTaskDispatcher(opts: {
     async dispatch(
       record: ScheduledTaskDispatchRecord,
     ): Promise<DispatchResult> {
+      // Connector reminders created from chat carry a durable binding minted
+      // from canonical room state. Re-read that state before any composition or
+      // send so restart cannot turn stale owner-only data into a shared-room
+      // disclosure.
+      const deliveryBindingDecision =
+        await revalidateScheduledTaskChatDeliveryBinding(opts.runtime, record);
+      if (deliveryBindingDecision && !deliveryBindingDecision.ok) {
+        return applyDispatchPolicy({
+          ok: false,
+          reason: "auth_expired",
+          userActionable: true,
+          message: deliveryBindingDecision.reason,
+        });
+      }
+
       if (isLocalAgentBackupDispatch(record)) {
         const backup = await createLocalAgentBackup(
           opts.runtime,
@@ -630,12 +649,28 @@ export function createProductionScheduledTaskDispatcher(opts: {
         });
       }
 
+      const chatDeliveryBinding = readScheduledTaskChatDeliveryBinding(
+        record.metadata,
+      );
       const payload = {
         target,
         message,
         metadata: {
           taskId: record.taskId,
           firedAtIso: record.firedAtIso,
+          ...(chatDeliveryBinding
+            ? {
+                accountId: chatDeliveryBinding.accountId,
+                roomId: chatDeliveryBinding.roomId,
+                audience: {
+                  kind: chatDeliveryBinding.audience.kind,
+                  provenance: chatDeliveryBinding.audience.provenance,
+                  membershipVersion:
+                    chatDeliveryBinding.audience.membershipVersion,
+                  ownerOnly: true,
+                },
+              }
+            : {}),
           ...(record.intensity ? { intensity: record.intensity } : {}),
           ...(record.contextRequest
             ? { contextRequest: record.contextRequest }
