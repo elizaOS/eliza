@@ -865,6 +865,7 @@ export function useChatSend(deps: UseChatSendDeps) {
           ...(options.includeReasoning && data.reasoning
             ? { reasoning: data.reasoning }
             : {}),
+          ...(data.assistantEphemeral ? { assistantEphemeral: true } : {}),
           ...(data.messageId ? { persistedMessageId: data.messageId } : {}),
         });
       } else if (data.failureKind) {
@@ -879,6 +880,7 @@ export function useChatSend(deps: UseChatSendDeps) {
           mode: "complete",
           fullText: data.text,
           accountConnect: data.accountConnect,
+          ...(data.assistantEphemeral ? { assistantEphemeral: true } : {}),
           ...(data.messageId ? { persistedMessageId: data.messageId } : {}),
         });
       }
@@ -1451,7 +1453,11 @@ export function useChatSend(deps: UseChatSendDeps) {
   // no reply for this turn). When the server DID persist a reply the reload
   // already carries it, so it is kept as-is and never duplicated.
   const reattachInterruptedPartial = useCallback(
-    (conversationId: string | null, partialText: string) => {
+    (
+      conversationId: string | null,
+      partialText: string,
+      assistantEphemeral = false,
+    ) => {
       const text = partialText.trim();
       if (!text) return;
       setConversationMessagesForConversation(conversationId, (prev) => {
@@ -1467,6 +1473,7 @@ export function useChatSend(deps: UseChatSendDeps) {
             text,
             timestamp: Date.now(),
             interrupted: true,
+            ...(assistantEphemeral ? { assistantEphemeral: true } : {}),
           },
         ];
       });
@@ -1809,7 +1816,11 @@ export function useChatSend(deps: UseChatSendDeps) {
           // NOT persisted server-side, so re-attach the partial the user watched
           // stream in (no-op / no duplicate when the server kept it).
           if (interruptedPartial) {
-            reattachInterruptedPartial(convId, interruptedPartial);
+            reattachInterruptedPartial(
+              convId,
+              interruptedPartial,
+              data.assistantEphemeral === true,
+            );
           }
           // Same full-replace hazard for the USER turn: a send during agent
           // warm-up can complete with nothing persisted, and the reload then
@@ -2306,10 +2317,20 @@ export function useChatSend(deps: UseChatSendDeps) {
         setCompanionMessageCutoffTs(optimisticTurn.timestamp);
         setConversationMessagesForConversation(
           conversationId,
-          (prev: ConversationMessage[]) =>
-            prev.some((message) => message.id === optimisticTurn.userMsgId)
-              ? prev
-              : [...prev, optimisticUserMessage],
+          (prev: ConversationMessage[]) => {
+            // A server-ephemeral terminal failure is useful until the user acts
+            // on it. The next send is that boundary: retire only those local
+            // replies before painting the new turn, while preserving durable
+            // failures and user-stopped partial responses.
+            const current = prev.filter(
+              (message) => message.assistantEphemeral !== true,
+            );
+            return current.some(
+              (message) => message.id === optimisticTurn.userMsgId,
+            )
+              ? current
+              : [...current, optimisticUserMessage];
+          },
         );
       }
 
@@ -2550,7 +2571,11 @@ export function useChatSend(deps: UseChatSendDeps) {
           if (activeConversationIdRef.current === convId) {
             await loadConversationMessages(convId);
             if (interruptedPartial) {
-              reattachInterruptedPartial(convId, interruptedPartial);
+              reattachInterruptedPartial(
+                convId,
+                interruptedPartial,
+                data.assistantEphemeral === true,
+              );
             }
             // The reload full-replaces the thread; when the server never
             // persisted this turn (agent warm-up), re-attach the user's
