@@ -1773,9 +1773,15 @@ export function useChatSend(deps: UseChatSendDeps) {
                   message.id !== userMsgId && message.id !== assistantMsgId,
               ),
           );
+          chatInputRef.current = rawText;
           setChatInput(rawText);
+          if (imagesToSend?.length) {
+            const restoredImages = [...imagesToSend];
+            chatPendingImagesRef.current = restoredImages;
+            setChatPendingImages(restoredImages);
+          }
           setActionNotice(
-            "Couldn't start the conversation — check your connection and try again. Your message was restored.",
+            `Couldn't start the conversation — check your connection and try again. ${imagesToSend?.length ? "Your message and attachments were restored." : "Your message was restored."}`,
             "error",
             8_000,
           );
@@ -2285,6 +2291,8 @@ export function useChatSend(deps: UseChatSendDeps) {
       tryHandlePrefixedChatCommand,
       activeConversationIdRef,
       chatAbortRef,
+      chatInputRef,
+      chatPendingImagesRef,
       conversationMessagesRef.current.filter,
       conversationsRef,
       isConversationCommitActive,

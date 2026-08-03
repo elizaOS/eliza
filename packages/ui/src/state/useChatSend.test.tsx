@@ -2448,6 +2448,61 @@ describe("useChatSend 4xx validation reject — honest notice + no-loss restore"
   });
 });
 
+describe("useChatSend cold-conversation attachment recovery", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.client.getBaseUrl.mockReturnValue("");
+  });
+
+  it("restores the exact composer payload when creation fails and sends it once on retry", async () => {
+    const images: ImageAttachment[] = [
+      { data: "AAAA", mimeType: "image/png", name: "cold-start.png" },
+    ];
+    mocks.client.createConversation
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce({
+        conversation: conversation("conv-created", "room-created"),
+      });
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "received",
+      completed: true,
+    });
+
+    const deps = makeDeps();
+    deps.chatInputRef.current = "review this";
+    deps.chatPendingImagesRef.current = images;
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.handleChatSend();
+    });
+
+    expect(mocks.client.sendConversationMessageStream).not.toHaveBeenCalled();
+    expect(deps.chatInputRef.current).toBe("review this");
+    expect(deps.chatPendingImagesRef.current).toEqual(images);
+    expect(deps.setChatPendingImages).toHaveBeenNthCalledWith(1, []);
+    expect(deps.setChatPendingImages).toHaveBeenNthCalledWith(2, images);
+    expect(deps.setActionNotice).toHaveBeenCalledWith(
+      expect.stringContaining("message and attachments were restored"),
+      "error",
+      8_000,
+    );
+
+    await act(async () => {
+      await result.current.handleChatSend();
+    });
+
+    expect(mocks.client.createConversation).toHaveBeenCalledTimes(2);
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
+    expect(mocks.client.sendConversationMessageStream.mock.calls[0]?.[1]).toBe(
+      "review this",
+    );
+    expect(
+      mocks.client.sendConversationMessageStream.mock.calls[0]?.[5],
+    ).toEqual(images);
+  });
+});
+
 describe("useChatSend — user turn sent during agent warm-up is never evicted (#11670)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
