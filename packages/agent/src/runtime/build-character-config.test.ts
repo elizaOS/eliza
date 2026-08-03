@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ElizaConfig } from "../config/config.ts";
 import { buildCharacterFromConfig } from "./build-character-config.ts";
 import { applySandboxCharacterFromEnv } from "./sandbox-character.ts";
+import { buildRuntimeSettingsProjection } from "./runtime-settings.ts";
 
 // Locks the secret/settings boundary for Matrix connector env vars. Putting a
 // public identifier (e.g. MATRIX_VERIFY_ALLOWLIST = a user id) into
@@ -112,6 +113,77 @@ describe("agent entry character passthrough", () => {
     expect(character.name).toBe("Sol");
     expect(character.system).toContain("You are Sol.");
     expect(character.system).not.toContain("Secondary system.");
+  });
+
+  it("projects standard Telegram policy without copying connector secrets", () => {
+    const telegram = {
+      botToken: "telegram-token",
+      webhookSecret: "webhook-secret",
+      dmPolicy: "allowlist",
+      allowFrom: ["42"],
+      groupPolicy: "allowlist",
+      groupAllowFrom: ["42"],
+      groups: {
+        "-1001": {
+          requireMention: true,
+          topics: { "77": { requireMention: true } },
+        },
+      },
+      accounts: {
+        ops: {
+          botToken: "ops-token",
+          groupPolicy: "disabled",
+        },
+      },
+    };
+
+    const config = {
+      connectors: { telegram },
+      agents: { list: [{ id: "nyx", name: "Nyx", system: "You are Nyx." }] },
+    } as ElizaConfig;
+    const character = buildCharacterFromConfig(config);
+    const runtimeSettings = buildRuntimeSettingsProjection(config, { env: {} });
+
+    expect(runtimeSettings.TELEGRAM_BOT_TOKEN).toBe("telegram-token");
+    expect(runtimeSettings.TELEGRAM_ACCOUNT_TOKENS_JSON).toBe(
+      JSON.stringify({ ops: "ops-token" }),
+    );
+    expect(character.settings?.telegram).toEqual({
+      dmPolicy: "allowlist",
+      allowFrom: ["42"],
+      groupPolicy: "allowlist",
+      groupAllowFrom: ["42"],
+      groups: telegram.groups,
+      accounts: { ops: { groupPolicy: "disabled" } },
+    });
+    expect(JSON.stringify(character.settings?.telegram)).not.toContain(
+      "telegram-token",
+    );
+    expect(JSON.stringify(character.settings?.telegram)).not.toContain(
+      "ops-token",
+    );
+  });
+
+  it("keeps the standard connector policy authoritative over stale agent settings", () => {
+    const character = buildCharacterFromConfig({
+      connectors: {
+        telegram: { botToken: "connector-token", groupPolicy: "disabled" },
+      },
+      agents: {
+        list: [
+          {
+            id: "nyx",
+            name: "Nyx",
+            system: "You are Nyx.",
+            settings: {
+              telegram: { botToken: "agent-token", groupPolicy: "open" },
+            },
+          },
+        ],
+      },
+    } as ElizaConfig);
+
+    expect(character.settings?.telegram).toEqual({ groupPolicy: "disabled" });
   });
 
   it("preserves injected Discord auto-reply settings", () => {

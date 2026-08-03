@@ -11,7 +11,9 @@
 import {
   type Character,
   type CharacterInput,
+  type CharacterSettings,
   defaultCharacterSystemTemplate,
+  type JsonValue,
   mergeCharacterDefaults,
 } from "@elizaos/core";
 import {
@@ -26,6 +28,44 @@ import {
   applyAdvancedCapabilitySettings,
   resolveAdvancedCapabilitiesEnabled,
 } from "./advanced-capabilities-config.ts";
+
+function projectTelegramConnectorSettings(
+  connector: unknown,
+): CharacterSettings {
+  if (!connector || typeof connector !== "object" || Array.isArray(connector)) {
+    return {};
+  }
+
+  const {
+    botToken: _botToken,
+    tokenFile: _tokenFile,
+    webhookSecret: _webhookSecret,
+    accounts,
+    ...safeConnector
+  } = connector as Record<string, unknown>;
+  const safeAccounts: Record<string, unknown> = {};
+
+  if (accounts && typeof accounts === "object" && !Array.isArray(accounts)) {
+    for (const [accountId, account] of Object.entries(accounts)) {
+      if (!account || typeof account !== "object" || Array.isArray(account)) {
+        continue;
+      }
+      const {
+        botToken: _accountBotToken,
+        tokenFile: _accountTokenFile,
+        webhookSecret: _accountWebhookSecret,
+        ...safeAccount
+      } = account as Record<string, unknown>;
+      safeAccounts[accountId] = safeAccount;
+    }
+  }
+
+  const telegram = {
+    ...safeConnector,
+    ...(Object.keys(safeAccounts).length > 0 ? { accounts: safeAccounts } : {}),
+  } as JsonValue;
+  return { telegram };
+}
 
 /**
  * Build a Character object from the runtime ElizaConfig.
@@ -269,8 +309,12 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     capabilityHints.length > 0
       ? `${systemPrompt}\n\n${capabilityHints.join("\n")}`
       : systemPrompt;
+  const connectorSettings = projectTelegramConnectorSettings(
+    config.connectors?.telegram,
+  );
   const mergedSettings = {
     ...(agentEntry?.settings ?? {}),
+    ...connectorSettings,
     ...settings,
   };
 

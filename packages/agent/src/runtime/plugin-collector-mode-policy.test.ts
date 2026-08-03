@@ -21,6 +21,8 @@ const ENV_KEYS = [
   "ELIZA_BUILD_VARIANT",
   "ELIZA_AGENT_ORCHESTRATOR",
   "ELIZA_PLUGIN_SET",
+  "ELIZA_LIFEOPS_PASSIVE_CONNECTORS",
+  "ELIZA_TELEGRAM_STANDALONE_BOT",
   "ELIZA_DEFAULT_AGENT_TYPE",
   "ELIZA_ACP_DEFAULT_AGENT",
   "ELIZA_AGENT_SELECTION_STRATEGY",
@@ -137,6 +139,34 @@ describe("collectPluginNames runtime mode provider policy", () => {
     expect(names.has("@elizaos/plugin-local-inference")).toBe(true);
     expect(names.has("@elizaos/plugin-ollama")).toBe(true);
     expect(names.has("@elizaos/plugin-elizacloud")).toBe(false);
+  });
+
+  it("keeps the typed Telegram connector as the sole owner when the standalone flag is stale", () => {
+    process.env.ELIZA_LIFEOPS_PASSIVE_CONNECTORS = "false";
+    process.env.ELIZA_TELEGRAM_STANDALONE_BOT = "true";
+
+    const names = collectPluginNames({
+      connectors: {
+        telegram: {
+          botToken: "telegram-token",
+          groupPolicy: "allowlist",
+          groups: { "-1001": { requireMention: true } },
+        },
+      },
+    } as ElizaConfig);
+
+    expect(names.has("@elizaos/plugin-telegram")).toBe(true);
+    expect(names.has("@elizaos/plugin-telegram-standalone")).toBe(false);
+  });
+
+  it("uses standalone Telegram as the sole owner for legacy env-only mode", () => {
+    process.env.ELIZA_LIFEOPS_PASSIVE_CONNECTORS = "false";
+    process.env.ELIZA_TELEGRAM_STANDALONE_BOT = "true";
+
+    const names = collectPluginNames({} as ElizaConfig);
+
+    expect(names.has("@elizaos/plugin-telegram-standalone")).toBe(true);
+    expect(names.has("@elizaos/plugin-telegram")).toBe(false);
   });
 
   it("keeps plugin-local-inference when only local embeddings are disabled", () => {

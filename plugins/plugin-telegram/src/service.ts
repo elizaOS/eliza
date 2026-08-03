@@ -57,6 +57,7 @@ import {
 } from "./command-registration";
 import { TELEGRAM_SERVICE_NAME } from "./constants";
 import { MessageManager } from "./messageManager";
+import { hasTypedTelegramPolicyConfig } from "./policy";
 import { registerTelegramTaskBoardCommand } from "./task-board";
 import {
   type TelegramEntityPayload,
@@ -1178,6 +1179,14 @@ export class TelegramService extends Service {
       this.getAccountState(accountId)?.account.config.allowedChats;
     if (accountAllowedChats?.length) {
       return accountAllowedChats.includes(chatId);
+    }
+
+    const accountConfig = resolveTelegramAccount(
+      this.runtime,
+      accountId,
+    ).config;
+    if (hasTypedTelegramPolicyConfig(accountConfig)) {
+      return true;
     }
 
     const allowedChats = this.runtime.getSetting("TELEGRAM_ALLOWED_CHATS");

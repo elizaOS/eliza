@@ -36,11 +36,18 @@ import type {
   Message,
   ReactionType,
   Update,
+  User,
 } from "@telegraf/types";
 import type { Context, NarrowedContext, Telegraf } from "telegraf";
 import { Markup } from "telegraf";
+import {
+  getTelegramMultiAccountConfig,
+  resolveTelegramAccount,
+  type TelegramAccountConfig,
+} from "./accounts";
 import { resolveTelegramSenderAuth } from "./command-registration";
 import { renderTelegramInteractions } from "./interactions";
+import { evaluateTelegramPolicy, hasTypedTelegramPolicyConfig } from "./policy";
 import {
   type TelegramContent,
   TelegramEventTypes,
@@ -89,6 +96,16 @@ function contentTypeForMime(mime?: string): ContentType {
   if (mime?.startsWith("video/")) return "video";
   if (mime?.startsWith("audio/")) return "audio";
   return "document";
+}
+
+function telegramMessagePlainText(message: Message): string | undefined {
+  if ("text" in message && typeof message.text === "string") {
+    return message.text;
+  }
+  if ("caption" in message && typeof message.caption === "string") {
+    return message.caption;
+  }
+  return undefined;
 }
 
 const MAX_MESSAGE_LENGTH = 4096; // Telegram's max message length
@@ -1027,6 +1044,11 @@ export class MessageManager {
       // lookup) and attached to the final chunk only, alongside any other
       // interaction controls.
       const embedLaunchRow = await this.buildEmbedLaunchRow(ctx);
+      const telegramConfig = getTelegramMultiAccountConfig(this.runtime);
+      const replyToMode =
+        telegramConfig.accounts?.[this.accountId]?.replyToMode ??
+        telegramConfig.replyToMode ??
+        "first";
 
       for (let i = 0; i < chunks.length; i++) {
         const chunk = convertMarkdownToTelegram(chunks[i]);
@@ -1054,11 +1076,14 @@ export class MessageManager {
             : undefined;
 
         const chatId = ctx.chat.id;
+        const shouldReplyToSource =
+          replyToMessageId !== undefined &&
+          replyToMode !== "off" &&
+          (replyToMode === "all" || i === 0);
         const sendOptions = {
-          reply_parameters:
-            i === 0 && replyToMessageId
-              ? { message_id: replyToMessageId }
-              : undefined,
+          reply_parameters: shouldReplyToSource
+            ? { message_id: replyToMessageId }
+            : undefined,
           message_thread_id: messageThreadId,
           reply_markup: replyMarkup,
         };
@@ -1295,10 +1320,9 @@ export class MessageManager {
    * Handle incoming messages from Telegram and process them accordingly.
    * @param {Context} ctx - The context object containing information about the message.
    * @param {object} [options] - Handling options.
-   * @param {boolean} [options.forceReply] - When true, always route the message
-   *   through the agent and force a reply, bypassing the TELEGRAM_AUTO_REPLY gate.
-   *   Used for explicit slash-command invocations where the user intent to get a
-   *   response is unambiguous.
+   * @param {boolean} [options.forceReply] - Marks an explicit slash-command
+   *   invocation. It bypasses only the legacy TELEGRAM_AUTO_REPLY gate; typed
+   *   DM/group authorization still applies.
    * @returns {Promise<void>}
    */
   public async handleMessage(
@@ -1343,13 +1367,78 @@ export class MessageManager {
         this.runtime,
         this.scopedTelegramKey(telegramMessageId),
       );
+      const chat = message.chat as Chat;
+
+      const telegramAutoReplyRaw = this.runtime.getSetting(
+        "TELEGRAM_AUTO_REPLY",
+      );
+      const telegramAutoReply =
+        !lifeOpsPassiveConnectorsEnabled(this.runtime) &&
+        (telegramAutoReplyRaw === true || telegramAutoReplyRaw === "true");
+      const accountConfig = resolveTelegramAccount(
+        this.runtime,
+        this.accountId,
+      ).config;
+      const policyDecision = await evaluateTelegramPolicy({
+        runtime: this.runtime,
+        config: accountConfig,
+        message,
+        from: ctx.from,
+        chatType: chat.type,
+        chatId: telegramChatId,
+        threadId,
+        botInfo: (this.bot as unknown as { botInfo?: User }).botInfo,
+        forceReply: options?.forceReply,
+        legacyAutoReply: telegramAutoReply,
+      });
+      const typedPolicyConfigured = hasTypedTelegramPolicyConfig(accountConfig);
+      if (!policyDecision.shouldDispatch && typedPolicyConfigured) {
+        if (policyDecision.denialMessage && chat.type === "private") {
+          try {
+            await this.bot.telegram.sendMessage(
+              chat.id,
+              policyDecision.denialMessage,
+            );
+          } catch (error) {
+            logger.warn(
+              {
+                src: "plugin:telegram",
+                agentId: this.runtime.agentId,
+                accountId: this.accountId,
+                chatId: telegramChatId,
+                error: error instanceof Error ? error.message : String(error),
+              },
+              "Failed to send Telegram pairing response",
+            );
+          }
+        }
+        logger.debug(
+          {
+            src: "plugin:telegram",
+            agentId: this.runtime.agentId,
+            accountId: this.accountId,
+            chatId: telegramChatId,
+            reason: policyDecision.reason,
+          },
+          "Telegram message skipped by typed activation policy",
+        );
+        return;
+      }
 
       // Process message content and attachments
       const { processedContent, attachments } =
         await this.processMessage(message);
 
+      const rawMessageText = telegramMessagePlainText(message);
+      const policyAdjustedContent =
+        policyDecision.textOverride !== undefined && rawMessageText
+          ? processedContent.startsWith(rawMessageText)
+            ? `${policyDecision.textOverride}${processedContent.slice(rawMessageText.length)}`
+            : policyDecision.textOverride
+          : processedContent;
+
       // Clean processedContent and attachments to avoid NULL characters
-      const cleanedContent = cleanText(processedContent);
+      const cleanedContent = cleanText(policyAdjustedContent);
       const cleanedAttachments = attachments.map((att) => ({
         ...att,
         text: cleanText(att.text),
@@ -1362,7 +1451,6 @@ export class MessageManager {
       }
 
       // Get chat type and determine channel type
-      const chat = message.chat as Chat;
       const channelType = getChannelType(chat);
 
       await this.runtime.ensureConnection({
@@ -1484,6 +1572,7 @@ export class MessageManager {
               ctx,
               content,
               message.message_id,
+              threadIdNum,
             );
           }
 
@@ -1519,19 +1608,11 @@ export class MessageManager {
         threadId: threadIdNum,
       });
 
-      // Inbound messages are always persisted to memory above. The agent only
-      // auto-generates a reply when TELEGRAM_AUTO_REPLY is explicitly enabled —
-      // default-off prevents the runtime from speaking on the user's behalf.
-      // A forced reply (explicit slash-command invocation) always routes to the
-      // agent regardless of the auto-reply gate, since the user explicitly asked
-      // for a response by typing a command.
-      const telegramAutoReplyRaw = this.runtime.getSetting(
-        "TELEGRAM_AUTO_REPLY",
-      );
-      const telegramAutoReply =
-        !lifeOpsPassiveConnectorsEnabled(this.runtime) &&
-        (telegramAutoReplyRaw === true || telegramAutoReplyRaw === "true");
-      const shouldReply = options?.forceReply === true || telegramAutoReply;
+      // Without typed Telegram policy, legacy deployments keep their historical
+      // passive ingestion plus TELEGRAM_AUTO_REPLY gate.
+      // A forced reply (explicit slash-command invocation) bypasses the legacy
+      // auto-reply gate, but typed route and sender authorization still applies.
+      const shouldReply = policyDecision.shouldDispatch;
 
       if (!shouldReply) {
         try {
@@ -1584,6 +1665,35 @@ export class MessageManager {
     }
   }
 
+  private async isExplicitUpdateAuthorized(params: {
+    message: Message;
+    from: User;
+    chat: Chat;
+    threadId?: string;
+  }): Promise<boolean> {
+    const telegramConfig = getTelegramMultiAccountConfig(this.runtime);
+    const accountConfig: TelegramAccountConfig = {
+      ...telegramConfig,
+      ...telegramConfig.accounts?.[this.accountId],
+    };
+    if (!hasTypedTelegramPolicyConfig(accountConfig)) {
+      return true;
+    }
+
+    const decision = await evaluateTelegramPolicy({
+      runtime: this.runtime,
+      config: accountConfig,
+      message: params.message,
+      from: params.from,
+      chatType: params.chat.type,
+      chatId: params.chat.id.toString(),
+      threadId: params.threadId,
+      botInfo: (this.bot as unknown as { botInfo?: User }).botInfo,
+      forceReply: true,
+    });
+    return decision.shouldDispatch;
+  }
+
   /**
    * Handle an inline-keyboard button tap whose payload was produced by the
    * shared interaction codec (a choice or followup answer). The chosen value is
@@ -1631,6 +1741,21 @@ export class MessageManager {
     const telegramRoomid = threadId
       ? `${telegramChatId}-${threadId}`
       : telegramChatId;
+    if (
+      !(await this.isExplicitUpdateAuthorized({
+        message: sourceMessage as Message,
+        from: ctx.from,
+        chat,
+        threadId,
+      }))
+    ) {
+      try {
+        await ctx.answerCbQuery();
+      } catch {
+        // best-effort: a stale callback may already have expired
+      }
+      return;
+    }
     const roomId = createUniqueUuid(
       this.runtime,
       this.scopedTelegramKey(telegramRoomid),
@@ -1962,6 +2087,15 @@ export class MessageManager {
 
     const firstReaction = reaction.new_reaction[0];
     if (!firstReaction) {
+      return;
+    }
+    if (
+      !(await this.isExplicitUpdateAuthorized({
+        message: syntheticReactionMessage,
+        from: ctx.from,
+        chat: reaction.chat as Chat,
+      }))
+    ) {
       return;
     }
     // Emoji reactions carry the glyph on `.emoji`; non-emoji reactions

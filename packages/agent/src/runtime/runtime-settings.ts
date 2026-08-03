@@ -62,6 +62,32 @@ export function isEnvKeyAllowedForForwarding(key: string): boolean {
   return true;
 }
 
+function collectTelegramAccountTokenSettings(
+  config: ElizaConfig,
+): Record<string, string> {
+  const connector = config.connectors?.telegram as
+    | { accounts?: Record<string, { botToken?: unknown } | undefined> }
+    | undefined;
+  const accountTokens: Record<string, string> = {};
+
+  for (const [accountId, account] of Object.entries(
+    connector?.accounts ?? {},
+  )) {
+    const token = account?.botToken;
+    const normalizedToken = typeof token === "string" ? token.trim() : "";
+    if (
+      normalizedToken.length > 0 &&
+      !normalizedToken.toLowerCase().startsWith("vault://")
+    ) {
+      accountTokens[accountId] = normalizedToken;
+    }
+  }
+
+  return Object.keys(accountTokens).length > 0
+    ? { TELEGRAM_ACCOUNT_TOKENS_JSON: JSON.stringify(accountTokens) }
+    : {};
+}
+
 export function buildRuntimeSettingsProjection(
   config: ElizaConfig,
   options: RuntimeSettingsProjectionOptions = {},
@@ -84,6 +110,7 @@ export function buildRuntimeSettingsProjection(
       ),
     ),
     ...(options.connectorSecretsOverlay ?? {}),
+    ...collectTelegramAccountTokenSettings(config),
     ...(options.preferredProviderId
       ? { MODEL_PROVIDER: options.preferredProviderId }
       : {}),

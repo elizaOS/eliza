@@ -16,6 +16,29 @@ export interface TelegramAccountConfig {
   apiRoot?: string;
   allowedChats?: string[];
   autoReply?: boolean;
+  dmPolicy?: "pairing" | "allowlist" | "open" | "disabled";
+  groupPolicy?: "open" | "disabled" | "allowlist";
+  allowFrom?: Array<string | number>;
+  groupAllowFrom?: Array<string | number>;
+  replyToMode?: "off" | "first" | "all";
+  groups?: Record<
+    string,
+    | {
+        requireMention?: boolean;
+        enabled?: boolean;
+        allowFrom?: Array<string | number>;
+        topics?: Record<
+          string,
+          | {
+              requireMention?: boolean;
+              enabled?: boolean;
+              allowFrom?: Array<string | number>;
+            }
+          | undefined
+        >;
+      }
+    | undefined
+  >;
   personal?: {
     phone?: string;
     appId?: string;
@@ -29,6 +52,12 @@ export interface TelegramMultiAccountConfig {
   enabled?: boolean;
   botToken?: string;
   apiRoot?: string;
+  dmPolicy?: "pairing" | "allowlist" | "open" | "disabled";
+  groupPolicy?: "open" | "disabled" | "allowlist";
+  allowFrom?: Array<string | number>;
+  groupAllowFrom?: Array<string | number>;
+  replyToMode?: "off" | "first" | "all";
+  groups?: TelegramAccountConfig["groups"];
   accounts?: Record<string, TelegramAccountConfig>;
 }
 
@@ -45,6 +74,31 @@ function readNonEmptyString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
+function getRuntimeAccountTokens(
+  runtime: IAgentRuntime,
+): Record<string, string> {
+  const raw = runtime.getSetting("TELEGRAM_ACCOUNT_TOKENS_JSON");
+  if (typeof raw !== "string" || !raw.trim()) {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+    return Object.fromEntries(
+      Object.entries(parsed as Record<string, unknown>).flatMap(
+        ([accountId, token]) => {
+          const value = readNonEmptyString(token);
+          return value ? [[accountId, value]] : [];
+        },
+      ),
+    );
+  } catch {
+    return {};
+  }
+}
+
 export function normalizeTelegramAccountId(accountId?: string | null): string {
   return readNonEmptyString(accountId) ?? DEFAULT_ACCOUNT_ID;
 }
@@ -52,7 +106,7 @@ export function normalizeTelegramAccountId(accountId?: string | null): string {
 export function getTelegramMultiAccountConfig(
   runtime: IAgentRuntime,
 ): TelegramMultiAccountConfig {
-  const characterTelegram = runtime.character.settings?.telegram as
+  const characterTelegram = runtime.character?.settings?.telegram as
     | TelegramMultiAccountConfig
     | undefined;
 
@@ -60,6 +114,12 @@ export function getTelegramMultiAccountConfig(
     enabled: characterTelegram?.enabled,
     botToken: characterTelegram?.botToken,
     apiRoot: characterTelegram?.apiRoot,
+    dmPolicy: characterTelegram?.dmPolicy,
+    groupPolicy: characterTelegram?.groupPolicy,
+    allowFrom: characterTelegram?.allowFrom,
+    groupAllowFrom: characterTelegram?.groupAllowFrom,
+    replyToMode: characterTelegram?.replyToMode,
+    groups: characterTelegram?.groups,
     accounts: characterTelegram?.accounts,
   };
 }
@@ -103,6 +163,12 @@ function resolveTelegramBotToken(
   if (configToken) {
     return configToken;
   }
+  const accountToken = readNonEmptyString(
+    getRuntimeAccountTokens(runtime)[accountId],
+  );
+  if (accountToken) {
+    return accountToken;
+  }
   if (accountId !== DEFAULT_ACCOUNT_ID) {
     return undefined;
   }
@@ -123,6 +189,12 @@ export function resolveTelegramAccount(
     enabled: multi.enabled,
     botToken: multi.botToken,
     apiRoot: multi.apiRoot,
+    dmPolicy: multi.dmPolicy,
+    groupPolicy: multi.groupPolicy,
+    allowFrom: multi.allowFrom,
+    groupAllowFrom: multi.groupAllowFrom,
+    replyToMode: multi.replyToMode,
+    groups: multi.groups,
     ...accountConfig,
   };
   const apiRoot =

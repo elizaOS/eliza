@@ -410,6 +410,24 @@ export function collectPluginNames(
     | undefined;
   const pluginEntries = (config.plugins as Record<string, unknown> | undefined)
     ?.entries as Record<string, { enabled?: boolean }> | undefined;
+  const telegramConnector =
+    config.connectors?.telegram ??
+    (
+      (config as Record<string, unknown>).channels as
+        | Record<string, unknown>
+        | undefined
+    )?.telegram;
+  const hasStandardTelegramConnector = Boolean(
+    telegramConnector &&
+      typeof telegramConnector === "object" &&
+      !Array.isArray(telegramConnector) &&
+      (telegramConnector as Record<string, unknown>).enabled !== false,
+  );
+  // A persisted connector config is authoritative because only the full plugin
+  // consumes its typed DM/group/topic policy. The legacy standalone flag is a
+  // fallback for env-only deployments, never a second polling owner.
+  const useTelegramStandalone =
+    telegramStandaloneRequested() && !hasStandardTelegramConnector;
 
   const isPluginExplicitlyDisabled = (pluginPackageName: string): boolean => {
     const marker = "/plugin-";
@@ -562,11 +580,11 @@ export function collectPluginNames(
   // Opt-in standalone Telegram polling bot. Loaded only when passive connectors
   // are disabled and ELIZA_TELEGRAM_STANDALONE_BOT is set; its service owns the
   // Telegraf long-poll lifecycle (previously inlined in the app-core boot tail).
-  if (telegramStandaloneRequested()) {
+  if (useTelegramStandalone) {
     pluginsToLoad.add("@elizaos/plugin-telegram-standalone");
     track(
       "@elizaos/plugin-telegram-standalone",
-      "telegram standalone bot (gate ELIZA_TELEGRAM_STANDALONE_BOT)",
+      "telegram standalone bot (env-only fallback owner)",
     );
   }
   // Allow list is additive — extra plugins on top of auto-detection,
@@ -606,6 +624,9 @@ export function collectPluginNames(
     }
     const pluginName = CHANNEL_PLUGIN_MAP[channelName];
     if (pluginName) {
+      if (useTelegramStandalone && pluginName === "@elizaos/plugin-telegram") {
+        continue;
+      }
       pluginsToLoad.add(pluginName);
       track(pluginName, `connectors.${channelName}`);
     }
@@ -830,6 +851,10 @@ export function collectPluginNames(
       }
       pluginsToLoad.delete(name);
     }
+  }
+
+  if (useTelegramStandalone) {
+    pluginsToLoad.delete("@elizaos/plugin-telegram");
   }
 
   return pluginsToLoad;

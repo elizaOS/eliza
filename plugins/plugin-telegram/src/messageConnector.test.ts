@@ -176,6 +176,39 @@ describe("Telegram message connector adapter", () => {
     expect(manager.sendMessage).not.toHaveBeenCalled();
   });
 
+  it("does not let TELEGRAM_ALLOWED_CHATS override typed Telegram policy", async () => {
+    const getSetting = vi.fn((key: string) =>
+      key === "TELEGRAM_ALLOWED_CHATS" ? '["-999"]' : undefined,
+    );
+    const runtime = {
+      agentId: "agent-1",
+      character: {
+        settings: {
+          telegram: {
+            botToken: "token",
+            groupPolicy: "open",
+            groups: { "-100123": { requireMention: true } },
+          },
+        },
+      },
+      getSetting,
+    } as unknown as IAgentRuntime;
+    const service = createTelegramService({
+      runtime,
+      defaultAccountId: "default",
+      accountStates: new Map(),
+    }) as unknown as {
+      isGroupAuthorized(ctx: unknown, accountId?: string): Promise<boolean>;
+    };
+
+    await expect(
+      service.isGroupAuthorized({
+        chat: { id: -100123, type: "supergroup" },
+      }),
+    ).resolves.toBe(true);
+    expect(getSetting).not.toHaveBeenCalledWith("TELEGRAM_ALLOWED_CHATS");
+  });
+
   it("resolves known chats into connector targets", async () => {
     const runtime = createRuntime();
     const service = createTelegramService({
