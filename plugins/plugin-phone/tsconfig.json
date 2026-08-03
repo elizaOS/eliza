@@ -38,9 +38,6 @@
       ],
       "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
       "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
-      "@elizaos/app-core/agent-bridge": [
-        "../../packages/app-core/src/agent-bridge.ts"
-      ],
       "@elizaos/core": ["../../packages/core/src/index.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/logger": ["../../packages/logger/src/index.ts"],
@@ -64,15 +61,6 @@
       "@elizaos/plugin-wallet/*": ["../../plugins/plugin-wallet/src/*"],
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
-      "@elizaos/import-conversations": [
-        "../../packages/import-conversations/src/index.ts"
-      ],
-      "@elizaos/import-conversations/*": [
-        "../../packages/import-conversations/src/*"
-      ],
-      "@elizaos/import-conversations/browser": [
-        "../../packages/import-conversations/src/browser.ts"
-      ],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["../../packages/shared/src/*"],
       "@elizaos/plugin-signal": ["../plugin-signal/src/index.ts"],

@@ -213,3 +213,4 @@ The two tracked `.d.ts` files are not deletion candidates without replacement be
   pressure without sharing mock state between files.
 - The updated mobile documentation passes all 23 documentation integrity, navigation, and link tests.
 - No `packages/app` UI code changed, so the app screenshot audit is not applicable to this cleanup.
+

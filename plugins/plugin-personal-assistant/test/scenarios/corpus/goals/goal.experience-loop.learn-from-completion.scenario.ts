@@ -1,8 +1,8 @@
 /** Scenario fixture for goal experience loop learn from completion; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 import type { IAgentRuntime } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { LifeOpsRepository } from "../../../../plugins/plugin-personal-assistant/src/lifeops/repository.ts";
-import { LifeOpsService } from "../../../../plugins/plugin-personal-assistant/src/lifeops/service.ts";
+import { LifeOpsRepository } from "../../../../src/lifeops/repository.ts";
+import { LifeOpsService } from "../../../../src/lifeops/service.ts";
 
 function scenarioNow(ctx: { now?: string | Date }): Date {
   return typeof ctx.now === "string" && Number.isFinite(Date.parse(ctx.now))

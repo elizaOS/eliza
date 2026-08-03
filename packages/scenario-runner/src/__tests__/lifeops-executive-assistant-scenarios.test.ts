@@ -35,7 +35,6 @@ const EXPECTED_EXECUTIVE_SCENARIO_IDS = [
   "executive.outage-recovery",
   "executive.people-cadence",
   "executive.privacy-redaction",
-  "executive.remote-agent-stuck",
   "executive.renewals-keep-cancel",
   "executive.status-compression",
   "executive.travel-disruption",

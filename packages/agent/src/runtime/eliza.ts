@@ -1782,9 +1782,8 @@ async function installPromptOptimizationLayer(
  * the async "trajectories" service registration, default its enabled state,
  * and bridge it to the SQL trajectory_steps tables that the viewer +
  * collection read. Without the bridge the core service captures LLM calls
- * only into its own trajectory_step_index store, so every platform without
- * the plugin-training log-backfill (mobile, cloud) shows a trajectory with
- * zero recorded LLM calls. It starts in the background and is joined by the
+ * only into its own trajectory_step_index store, while the viewer reads SQL
+ * trajectory_steps. It starts in the background and is joined by the
  * deferred wave instead of blocking runtime readiness; capture of an LLM call
  * that lands before this settles may be lost, which is the accepted latency
  * tradeoff.

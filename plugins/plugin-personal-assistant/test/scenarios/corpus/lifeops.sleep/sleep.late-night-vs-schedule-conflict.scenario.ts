@@ -9,11 +9,8 @@ import {
   type ScenarioContext,
   scenario,
 } from "@elizaos/scenario-runner/schema";
-import { LifeOpsRepository } from "../../../../plugins/plugin-personal-assistant/src/lifeops/repository.ts";
-import {
-  executeRawSql,
-  sqlQuote,
-} from "../../../../plugins/plugin-personal-assistant/src/lifeops/sql.ts";
+import { LifeOpsRepository } from "../../../../src/lifeops/repository.ts";
+import { executeRawSql, sqlQuote } from "../../../../src/lifeops/sql.ts";
 import { seedCalendarCache } from "../../../scenario-support/lifeops-seeds.ts";
 
 const LATE_BEDTIME_UTC = "2025-11-04T08:00:00.000Z"; // 01:00 Pacific

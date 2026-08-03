@@ -567,16 +567,6 @@ export default defineConfig({
         ),
       },
       {
-        find: /^@elizaos\/plugin-remote-desktop$/,
-        replacement: path.join(
-          elizaRoot,
-          "plugins",
-          "plugin-remote-desktop",
-          "src",
-          "index.ts",
-        ),
-      },
-      {
         find: /^@elizaos\/plugin-scheduling$/,
         replacement: path.join(
           elizaRoot,
@@ -669,16 +659,6 @@ export default defineConfig({
         ),
       },
       { find: /^telegram\/sessions$/, replacement: telegramSessionsEntry },
-      {
-        find: /^@elizaos\/plugin-calendly$/,
-        replacement: path.join(
-          elizaRoot,
-          "plugins",
-          "plugin-calendly",
-          "src",
-          "index.ts",
-        ),
-      },
       {
         find: /^@elizaos\/plugin-browser\/password-manager-bridge$/,
         replacement: path.join(

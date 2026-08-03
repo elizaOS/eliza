@@ -113,18 +113,6 @@ declare module "@elizaos/app-trajectory-logger" {
   export {};
 }
 
-declare module "@elizaos/app-shopify" {
-  export {};
-}
-
-declare module "@elizaos/app-hyperliquid" {
-  export {};
-}
-
-declare module "@elizaos/app-polymarket" {
-  export {};
-}
-
 declare module "@elizaos/app-wallet" {
   export {};
 }

@@ -23,8 +23,8 @@ cp "$source_verify_script" "$target_verify_script"
 chmod 755 "$target_script"
 chmod 755 "$target_verify_script"
 
-dry_run_url="$("$target_script" --dry-run "remind me to test Eliza Shortcuts")"
-verify_summary="$("$target_verify_script" --helper "$target_script" --no-shortcuts-warning)"
+dry_run_url="$(sh "$target_script" --dry-run "remind me to test Eliza Shortcuts")"
+verify_summary="$(sh "$target_verify_script" --helper "$target_script" --no-shortcuts-warning)"
 
 cat <<EOF
 Installed Eliza macOS Shortcuts handoff helper:

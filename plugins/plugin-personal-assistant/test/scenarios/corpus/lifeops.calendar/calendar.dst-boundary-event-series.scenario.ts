@@ -18,8 +18,8 @@ import {
   type ScenarioContext,
   scenario,
 } from "@elizaos/scenario-runner/schema";
-import { LifeOpsRepository } from "../../../../plugins/plugin-personal-assistant/src/lifeops/repository.ts";
-import { seedGoogleConnectorGrant } from "../../../../plugins/plugin-personal-assistant/test/support/helpers/seed-grants.ts";
+import { LifeOpsRepository } from "../../../../src/lifeops/repository.ts";
+import { seedGoogleConnectorGrant } from "../../../../test/support/helpers/seed-grants.ts";
 
 const PACIFIC_TZ = "America/Los_Angeles";
 

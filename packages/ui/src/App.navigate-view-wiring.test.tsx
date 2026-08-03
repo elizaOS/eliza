@@ -131,18 +131,18 @@ const viewsManagerView = {
   viewType: "gui" as const,
 };
 
-const shopifyView = {
-  id: "shopify",
-  label: "Shopify",
+const projectBoardView = {
+  id: "project-board",
+  label: "Project Board",
   available: true,
-  pluginName: "@elizaos/plugin-shopify",
-  path: "/shopify",
-  bundleUrl: "/api/views/shopify/bundle.js",
+  pluginName: "@local/plugin-project-board",
+  path: "/apps/project-board",
+  bundleUrl: "/api/views/project-board/bundle.js",
   viewType: "gui" as const,
 };
 
-const shopifyAgentSurfaceView = {
-  ...shopifyView,
+const projectBoardAgentSurfaceView = {
+  ...projectBoardView,
   surface: { capabilities: ["agent-surface" as const] },
 };
 
@@ -219,7 +219,7 @@ const sandboxedFrameView = {
 const mockAvailableViews: ViewRegistryEntry[] = [
   remoteLedgerView,
   viewsManagerView,
-  shopifyView,
+  projectBoardView,
   calendarView,
   sharedCanvasView,
   documentsView,
@@ -231,7 +231,7 @@ function resetMockAvailableViews() {
     mockAvailableViews.length,
     remoteLedgerView,
     viewsManagerView,
-    shopifyView,
+    projectBoardView,
     calendarView,
     sharedCanvasView,
     documentsView,
@@ -744,7 +744,7 @@ describe("App navigate-view event wiring", () => {
     ).toBe("Refresh wallet");
   });
 
-  it.each(["/inventory", "/hyperliquid", "/polymarket"])(
+  it.each(["/inventory", "/wallet/activity", "/wallet/markets"])(
     "does not canonicalize a cold exact wallet-family route through tab affinity: %s",
     async (path) => {
       appState.tab = "views";
@@ -757,16 +757,16 @@ describe("App navigate-view event wiring", () => {
           path: "/inventory",
         },
         {
-          id: "hyperliquid",
-          pluginId: "@elizaos/plugin-hyperliquid",
-          label: "Perps",
-          path: "/hyperliquid",
+          id: "wallet.activity",
+          pluginId: "@elizaos/plugin-wallet:ui",
+          label: "Activity",
+          path: "/wallet/activity",
         },
         {
-          id: "polymarket",
-          pluginId: "@elizaos/plugin-polymarket",
-          label: "Predictions",
-          path: "/polymarket",
+          id: "wallet.markets",
+          pluginId: "@elizaos/plugin-wallet:ui",
+          label: "Markets",
+          path: "/wallet/markets",
         },
       ];
       const owningRegistration = registrations.find(
@@ -936,13 +936,13 @@ describe("App navigate-view event wiring", () => {
 
     const { getAllByTestId, getByTestId } = render(<App />);
 
-    const splitViews = [shopifyAgentSurfaceView, calendarView];
+    const splitViews = [projectBoardAgentSurfaceView, calendarView];
     mockAvailableViews.splice(0, mockAvailableViews.length, ...splitViews);
 
     navigateView({
       action: "split-view",
-      viewId: "shopify",
-      views: ["shopify", "calendar"],
+      viewId: "project-board",
+      views: ["project-board", "calendar"],
       layout: "horizontal",
       placement: "right",
     });
@@ -950,18 +950,18 @@ describe("App navigate-view event wiring", () => {
     await waitFor(() => {
       expect(getByTestId("view-layout-surface")).toBeTruthy();
     });
-    expect(getByTestId("view-layout-pane-shopify")).toBeTruthy();
+    expect(getByTestId("view-layout-pane-project-board")).toBeTruthy();
     expect(getByTestId("view-layout-pane-calendar")).toBeTruthy();
     const loaders = getAllByTestId("dynamic-view-loader");
     expect(
       loaders.map((loader) => loader.getAttribute("data-view-id")),
-    ).toEqual(["shopify", "calendar"]);
+    ).toEqual(["project-board", "calendar"]);
     expect(loaders[0]?.getAttribute("data-surface-capabilities")).toBe(
       "agent-surface",
     );
     expect(loaders[1]?.getAttribute("data-surface-capabilities")).toBe("");
     expect(desktopTabsMock.openTab).toHaveBeenCalledWith(
-      shopifyAgentSurfaceView,
+      projectBoardAgentSurfaceView,
       {
         pinned: false,
       },

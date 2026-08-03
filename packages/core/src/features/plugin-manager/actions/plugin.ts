@@ -1,7 +1,5 @@
 /**
- * @module features/plugin-manager/actions/plugin
- *
- * Unified MANAGE_PLUGINS action with subactions (`install`, `eject`,
+ * Unified plugin-management action with subactions (`install`, `eject`,
  * `sync`, `reinject`, `list`, `list_ejected`, `search`, `details`,
  * `status`, `enable`, `disable`, `core_status`, `create`).
  *
@@ -715,12 +713,12 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 			[
 				{
 					name: "{{user1}}",
-					content: { text: "eject @elizaos/plugin-shopify" },
+					content: { text: "eject @elizaos/plugin-pdf" },
 				},
 				{
 					name: "{{agentName}}",
 					content: {
-						text: "Ejected @elizaos/plugin-shopify to /…/plugins/ejected/@elizaos_plugin-shopify (commit 1234abcd)\nRestart required to load the local copy.",
+						text: "Ejected @elizaos/plugin-pdf to /…/plugins/ejected/@elizaos_plugin-pdf (commit 1234abcd)\nRestart required to load the local copy.",
 						action: "MANAGE_PLUGINS",
 					},
 				},
@@ -728,12 +726,12 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 			[
 				{
 					name: "{{user1}}",
-					content: { text: "sync plugin-shopify" },
+					content: { text: "sync plugin-pdf" },
 				},
 				{
 					name: "{{agentName}}",
 					content: {
-						text: "Synced @elizaos/plugin-shopify: 3 new upstream commit(s) at deadbeef\nRestart required.",
+						text: "Synced @elizaos/plugin-pdf: 3 new upstream commit(s) at deadbeef\nRestart required.",
 						action: "MANAGE_PLUGINS",
 					},
 				},
@@ -741,12 +739,12 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 			[
 				{
 					name: "{{user1}}",
-					content: { text: "reinject plugin-shopify" },
+					content: { text: "reinject plugin-pdf" },
 				},
 				{
 					name: "{{agentName}}",
 					content: {
-						text: "Reinjected plugin-shopify (removed /…/plugins/ejected/plugin-shopify)\nRestart required.",
+						text: "Reinjected plugin-pdf (removed /…/plugins/ejected/plugin-pdf)\nRestart required.",
 						action: "MANAGE_PLUGINS",
 					},
 				},
@@ -772,7 +770,7 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 				{
 					name: "{{agentName}}",
 					content: {
-						text: "Ejected plugins (1):\n  - @elizaos/plugin-shopify (v2.0.0) at /…/plugins/ejected/@elizaos_plugin-shopify",
+						text: "Ejected plugins (1):\n  - @elizaos/plugin-pdf (v2.0.0) at /…/plugins/ejected/@elizaos_plugin-pdf",
 						action: "MANAGE_PLUGINS",
 					},
 				},

@@ -62,13 +62,11 @@ vi.mock("@elizaos/ui/agent-surface", () => ({
   useAgentElement: () => ({ ref: () => {}, agentProps: {} }),
 }));
 
-// Partial mock: keep every REAL @elizaos/ui export (TaskInspector renders
-// AlertDialog/DiffReviewPanel/… from the barrel) and override only `client`.
-vi.mock("@elizaos/ui", async (importOriginal) => {
+// Keep the real UI components while replacing the API client boundary.
+vi.mock("@elizaos/ui/api", async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
   return {
     ...actual,
-    ELIZA_CLOUD_TIER_MODEL: tierModels,
     client: {
       getOrchestratorStatus: () => calls.getOrchestratorStatus(),
       listCodingAgentTaskThreads: (o: unknown) =>
@@ -91,6 +89,11 @@ vi.mock("@elizaos/ui", async (importOriginal) => {
         calls.restartOrchestratorTask(id, input),
     },
   };
+});
+
+vi.mock("@elizaos/ui/components", async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return { ...actual, ELIZA_CLOUD_TIER_MODEL: tierModels };
 });
 
 import { getViewChatBinding } from "@elizaos/ui/state";

@@ -611,18 +611,8 @@ packages/inference/verify/vulkan_dispatch_smoke
 /packages/app-core/scripts/ffi-stub/libelizainference_stub.dll
 packages/training/vendor/
 
-# Generated run output — never source data. The #9299 GEPA archive is an
-# immutable exception: PR #9543 uses these files as its authored result record,
-# optimized-prompt artifacts, and real-model trajectories.
+# Generated run output — never source data.
 packages/app-core/collision-report.json
-/plugins/plugin-training/docs/audit/9299-gepa-live/*
-!/plugins/plugin-training/docs/audit/9299-gepa-live/RESULTS.md
-!/plugins/plugin-training/docs/audit/9299-gepa-live/calendar_extract.optimized.json
-!/plugins/plugin-training/docs/audit/9299-gepa-live/calendar_extract.run.log
-!/plugins/plugin-training/docs/audit/9299-gepa-live/inbox_triage.optimized.json
-!/plugins/plugin-training/docs/audit/9299-gepa-live/inbox_triage.run.log
-!/plugins/plugin-training/docs/audit/9299-gepa-live/schedule_plan.optimized.json
-!/plugins/plugin-training/docs/audit/9299-gepa-live/schedule_plan.run.log
 /plugins/plugin-personal-assistant/docs/audit/cerebras-journey-eval-results.json
 
 # Compiler output belongs in each package's dist directory, never beside source.
@@ -636,8 +626,6 @@ packages/app-core/collision-report.json
 /plugins/plugin-anthropic-proxy/index.d.ts.map
 /plugins/plugin-anthropic-proxy/src/**/*.js
 /plugins/plugin-anthropic-proxy/src/**/*.js.map
-/plugins/plugin-hyperliquid/src/**/*.js
-/plugins/plugin-hyperliquid/src/**/*.js.map
 
 .swarm/
 packages/training/out/
@@ -826,7 +814,6 @@ waifu.fun/
 /packages/app/public/brand/concepts/billboard_concept.jpg
 /packages/shared/assets-classic/concepts/billboard_concept.jpg
 /packages/shared/assets/concepts/billboard_concept.jpg
-/plugins/plugin-training/assets/hero.png
 /plugins/plugin-trajectory-logger/assets/hero.png
 /packages/docs/images/shakespeare-discord-screenshot.jpeg
 /plugins/plugin-documents/assets/hero.png
@@ -852,7 +839,6 @@ waifu.fun/
 /plugins/plugin-wifi/assets/hero.png
 /plugins/plugin-companion/public_src/animations/mixamo/Look Around.fbx
 /packages/shared/assets-classic/background/optimized/clouds_8x_720p.mp4
-/plugins/plugin-shopify/assets/hero.png
 /packages/shared/assets-classic/background/optimized/clouds_4x_1080p.webm
 /plugins/plugin-companion/public_src/animations/mixamo/Bashful.fbx
 /plugins/plugin-personal-assistant/assets/hero.png

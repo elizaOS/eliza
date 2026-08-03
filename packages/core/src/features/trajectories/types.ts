@@ -237,8 +237,8 @@ export interface Trajectory {
 
 	// Timing
 	startTime: number;
-	endTime: number;
-	durationMs: number;
+	endTime?: number;
+	durationMs?: number;
 
 	// Episode context
 	episodeId?: string;
@@ -255,7 +255,7 @@ export interface Trajectory {
 
 	metrics: {
 		episodeLength: number;
-		finalStatus: "completed" | "terminated" | "error" | "timeout";
+		finalStatus: "active" | "completed" | "terminated" | "error" | "timeout";
 		finalBalance?: number;
 		finalPnL?: number;
 		tradesExecuted?: number;

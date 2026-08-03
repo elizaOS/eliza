@@ -90,7 +90,6 @@ Legend for **Result**: `pass` · `fail` · `blocked (no creds)` · `n/a`.
 | Screen-time / Focus | `OWNER_SCREENTIME`, `BLOCK` (macOS-only) | macOS hosts/SelfControl admin; iOS Family Controls; Android Usage Access | | |
 | Finances | `OWNER_FINANCES` (subscription detect, import, approval) | Gmail billing corpus / CSV fixture / Plaid or PayPal sandbox | | |
 | Documents | `OWNER_DOCUMENTS` (search/review/signature) | document store + signature provider | | |
-| Remote desktop | `REMOTE_DESKTOP` | `ELIZA_REMOTE_ACCESS_TOKEN` / `ELIZA_REMOTE_LOCAL_MODE` | | |
 
 ## Split views (each on desktop + mobile)
 

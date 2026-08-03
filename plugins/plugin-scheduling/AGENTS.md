@@ -62,8 +62,8 @@ stays PA-side. ScheduledTask rows and state-log rows are scheduling-owned in
 Gate: `rg "@elizaos/(app-core|agent|plugin-personal-assistant|plugin-google-workspace)"
 plugins/plugin-scheduling/src` must return comments/strings only.
 
-See `plugins/plugin-personal-assistant/docs/lifeops-extraction-plan.md` for the
-full extraction sequence.
+The package boundary above and the scheduling architecture in the root guide
+are the canonical contracts for future changes.
 
 ## Commands
 

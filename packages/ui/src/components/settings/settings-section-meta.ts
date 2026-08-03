@@ -120,7 +120,7 @@ export const SETTINGS_SECTION_META: SettingsSectionMeta[] = [
     id: "advanced",
     defaultLabel: "Backups",
     group: "system",
-    aliases: ["fine-tuning", "backup", "backups"],
+    aliases: ["backup", "backups"],
   },
   // Security group: the everyday key/secret store (Vault) first, then the two
   // permission surfaces, then the host-only remote-access section last.

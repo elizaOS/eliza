@@ -1048,7 +1048,7 @@ export interface ViewDeclaration {
 	visibleInManager?: boolean;
 	/**
 	 * When true, this view is an internal-tool app (plugin viewer, inspector,
-	 * fine-tuning, automations) that the homescreen launcher may pin. The
+	 * automations) that the homescreen launcher may pin. The
 	 * launcher builds its pinnable list from this declared flag instead of a
 	 * hardcoded UI package-name table. Default false.
 	 */

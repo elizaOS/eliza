@@ -1335,11 +1335,16 @@ async function collectEntityCandidates(
 		return [];
 	}
 
-	const entity = await findEntityByName(
-		runtime,
-		{ ...message, content: { ...message.content, text: query } },
-		state ?? ({ values: {}, data: {}, text: "" } as State),
-	);
+	// An entity UUID is already an unambiguous identifier. Resolving it through
+	// the language model makes deterministic connector sends depend on provider
+	// availability and can reinterpret an exact target as a name.
+	const entity = isUuidLike(query)
+		? await runtime.getEntityById(query)
+		: await findEntityByName(
+				runtime,
+				{ ...message, content: { ...message.content, text: query } },
+				state ?? ({ values: {}, data: {}, text: "" } as State),
+			);
 	if (!entity?.id) return [];
 
 	const label = entity.names[0] ?? query;

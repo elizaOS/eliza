@@ -178,7 +178,7 @@ function getRegistryAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
  * `@elizaos/plugin-elizacloud:routes`). Tokens
  * are matched against BOTH the full id and a normalized short alias
  * (see {@link normalizeAppRoutePluginId}), so the ergonomic short forms work
- * too: `ELIZA_SKIP_APP_ROUTE_PLUGINS=lifeops,training,shopify`.
+ * too: `ELIZA_SKIP_APP_ROUTE_PLUGINS=lifeops,github,workflow`.
  */
 export function getSkippedAppRoutePluginIds(): Set<string> {
   return new Set(

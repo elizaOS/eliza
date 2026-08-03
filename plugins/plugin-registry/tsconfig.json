@@ -29,15 +29,6 @@
       "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
-      "@elizaos/import-conversations": [
-        "../../packages/import-conversations/src/index.ts"
-      ],
-      "@elizaos/import-conversations/*": [
-        "../../packages/import-conversations/src/*"
-      ],
-      "@elizaos/import-conversations/browser": [
-        "../../packages/import-conversations/src/browser.ts"
-      ],
       "@elizaos/core": ["../../packages/core/src/index.node.ts"],
       "@elizaos/logger": ["../../packages/logger/src/index.ts"],
       "@elizaos/logger/*": ["../../packages/logger/src/*"],
@@ -64,9 +55,6 @@
       "@elizaos/plugin-browser/*": ["../plugin-browser/src/*"],
       "@elizaos/plugin-health": ["../plugin-health/src/index.ts"],
       "@elizaos/plugin-health/*": ["../plugin-health/src/*"],
-      "@elizaos/plugin-training": [
-        "../../packages/ui/src/types/host-external-modules.ts"
-      ],
       "@elizaos/capacitor-bun-runtime": [
         "../plugin-native-bun-runtime/src/index.ts"
       ],

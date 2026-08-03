@@ -281,7 +281,6 @@ describe("evaluateOcrContent", () => {
       "builtin-browser",
       "< Browser\n@Notab © + OX EnteralRL Go\nAgent Browser Bridge\n+ Ask",
     ],
-    ["builtin-fine-tuning", "Fine-tuning requires the Training plugin"],
     [
       "plugin-notes-gui",
       "Newnote Clear\nCreate a note from here or through chat\nTitle\nDetails\n+ Add note",

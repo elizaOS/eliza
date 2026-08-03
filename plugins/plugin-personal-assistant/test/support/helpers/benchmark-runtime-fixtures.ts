@@ -288,8 +288,6 @@ export async function createBenchmarkRuntimeFixturesEnvironment(): Promise<Bench
     envVars: {
       ELIZA_TEST_PASSWORD_MANAGER_BACKEND: "fixture",
       ELIZA_TEST_COMPUTERUSE_BACKEND: "fixture",
-      ELIZA_TEST_REMOTE_DESKTOP_BACKEND: "fixture",
-      ELIZA_REMOTE_LOCAL_MODE: "1",
       ELIZA_DEVICE_BUS_URL: fixtureServer.baseUrl,
       ELIZA_DEVICE_BUS_TOKEN: "mock-device-bus-token",
       ELIZA_SUBSCRIPTION_FIXTURE_BASE_URL: fixtureServer.baseUrl,

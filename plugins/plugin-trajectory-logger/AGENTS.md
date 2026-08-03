@@ -6,7 +6,8 @@ Realtime trajectory inspector that surfaces an Eliza agent's last completed and 
 
 Adds a developer-facing overlay UI to elizaOS that renders the agent's active and most-recently-completed trajectory side-by-side, broken into HANDLE / PLAN / ACTION / EVALUATE phases. Loaded as an optional plugin; add it to the `plugins` array in your agent character file. No actions, providers, services, or evaluators are registered — this plugin contributes only `views` to the elizaOS plugin surface.
 
-Data is read from `GET /api/trajectories` and `GET /api/trajectories/:id`, which are served by `@elizaos/plugin-training`.
+Data is read from `GET /api/trajectories` and `GET /api/trajectories/:id`,
+which the agent API serves from core's `TrajectoriesService`.
 
 ## Plugin surface
 
@@ -77,7 +78,9 @@ bun run --cwd plugins/plugin-trajectory-logger clean       # rm -rf dist
 
 ## Config / env vars
 
-None. This plugin reads no env vars and requires no configuration. The only external dependency is the `/api/trajectories` route provided by `@elizaos/plugin-training`; if that plugin is absent the views display a fetch error.
+None. This plugin reads no env vars and requires no configuration. It expects a
+running agent API with core trajectory capture enabled; unavailable routes or
+services render as a fetch error.
 
 ## How to extend
 
@@ -97,7 +100,9 @@ Add a typed `fetch` wrapper to `src/api-client.ts` following the `readJson<T>` p
 
 - **Two build steps:** `build:js` (tsup — ESM plugin entry) and `build:views` (Vite — standalone view bundle at `dist/views/bundle.js`). Both must run; the plugin runtime imports the Vite bundle by `bundlePath`, not the tsup output.
 - **No SSR in views.** `TrajectoryLoggerView` is loaded by the overlay system in a browser context only; do not rely on Node APIs inside components.
-- **API server dependency.** All data comes from `/api/trajectories*`. The plugin does not write trajectory data — that is `@elizaos/plugin-training`'s responsibility.
+- **API server dependency.** All data comes from `/api/trajectories*`. The
+  plugin is read-only; core's `TrajectoriesService` owns trajectory capture and
+  persistence.
 - **Polling interval is 700 ms** (`POLL_MS` in `usePollingTrajectories.ts`). The hook uses `AbortController` to cancel in-flight requests on unmount; do not add `setInterval`-based polling alongside it.
 - **`register.ts` is a side-effect import.** Importing it calls `registerTrajectoryLoggerApp()` immediately. Guard with the `registered` flag in `trajectory-logger-app.ts` to prevent double registration.
 - **View bundle entry.** `vite.config.views.ts` points to `src/components/trajectory-logger-view-bundle.ts` (not `TrajectoryLoggerView.tsx` directly) and re-exports `TrajectoryLoggerView` and `interact` as named exports. If entry or export names change, update both the vite config and the `views` array in `src/index.ts`.

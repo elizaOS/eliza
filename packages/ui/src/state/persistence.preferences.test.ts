@@ -116,7 +116,7 @@ describe("shell preference persistence", () => {
     localStorage.setItem("eliza:last-native-tab", "advanced");
     expect(loadUiThemeMode()).toBe("dark");
     expect(loadUiTheme()).toBe("dark");
-    expect(loadLastNativeTab()).toBe("fine-tuning");
+    expect(loadLastNativeTab()).toBe("chat");
 
     saveUiThemeMode("dark");
     saveUiTheme("dark");

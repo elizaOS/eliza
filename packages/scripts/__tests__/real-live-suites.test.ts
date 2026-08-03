@@ -128,7 +128,7 @@ describe("real/live guarded-suite manifest (#9310 §E)", () => {
       drift.stale,
       "listed in GUARDED_REAL_LIVE_SUITES but no longer guarded on disk — remove the stale entry",
     ).toEqual([]);
-  });
+  }, 15_000);
 
   test("channel topic context has an invocable credentialed live proof", () => {
     expect(

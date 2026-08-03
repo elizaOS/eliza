@@ -23,7 +23,7 @@ import {
   acceptCanonicalIdentityMerge,
   assertCanonicalIdentityMerged,
   seedCanonicalIdentityFixture,
-} from "../../../../plugins/plugin-personal-assistant/test/helpers/lifeops-identity-merge-fixtures.ts";
+} from "../../../../test/helpers/lifeops-identity-merge-fixtures.ts";
 
 const PERSON_NAME = "Priya Rao";
 const EXPECTED_CHANNELS = ["gmail", "signal", "telegram", "discord"];

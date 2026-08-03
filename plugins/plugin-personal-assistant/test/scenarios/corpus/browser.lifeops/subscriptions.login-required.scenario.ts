@@ -5,7 +5,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   attachFakeSubscriptionComputerUse,
   FakeSubscriptionComputerUseService,
-} from "../../../../plugins/plugin-personal-assistant/test/support/helpers/subscription-computer-use-fixture.ts";
+} from "../../../../test/support/helpers/subscription-computer-use-fixture.ts";
 
 export default scenario({
   lane: "live-only",

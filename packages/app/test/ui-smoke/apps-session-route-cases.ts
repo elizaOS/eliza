@@ -70,12 +70,6 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
-    name: "fine tuning app window",
-    path: "/apps/fine-tuning",
-    readyChecks: [{ text: "Fine-tuning requires the Training plugin." }],
-    timeoutMs: 90_000,
-  },
-  {
     name: "trajectories app window",
     path: "/apps/trajectories",
     selector: '[data-testid="trajectories-view"]',
@@ -224,7 +218,7 @@ export const MANAGER_VISIBLE_VIEW_TILE_CASES: readonly SafeViewTileCase[] =
  * without turning all-pages click safety into a long game/app bootstrap loop.
  */
 export const SAFE_VIEW_TILE_CASES: readonly SafeViewTileCase[] = [
-  { viewId: "fine-tuning", path: "/apps/fine-tuning" },
+  { viewId: "notes", path: "/notes" },
 ].map(({ viewId, path }) => ({
   viewId,
   testId: launcherTileTestId(viewId),

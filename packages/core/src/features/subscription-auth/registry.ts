@@ -5,8 +5,6 @@
  * subscription product here; the host `auth/` layer drains it generically.
  * Registration is idempotent per id (last registration wins) so a plugin can
  * override a host built-in without an ordering constraint.
- *
- * @module features/subscription-auth
  */
 
 import type { SubscriptionAuthProvider } from "./types.ts";

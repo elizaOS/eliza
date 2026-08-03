@@ -59,8 +59,6 @@ const VIEW_CLASSIFICATION: Record<string, "system" | "developer"> = {
   // Developer / advanced surfaces.
   plugins: "developer",
   skills: "developer",
-  advanced: "developer",
-  "fine-tuning": "developer",
   trajectories: "developer",
   transcripts: "developer",
   relationships: "developer",

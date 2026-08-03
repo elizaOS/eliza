@@ -109,6 +109,7 @@
               "tracks/framework/overview",
               "tracks/framework/runtime",
               "tracks/framework/actions-providers-evaluators",
+              "action-catalog",
               "tracks/framework/services"
             ]
           },

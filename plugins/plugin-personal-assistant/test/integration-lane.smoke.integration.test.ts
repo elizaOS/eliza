@@ -6,8 +6,7 @@
  *
  *   1. the `@elizaos/core` string alias prefix-matched subpath imports, so
  *      `@elizaos/core/node` rewrote to `<core entry file>/node` (ENOTDIR) and
- *      the personal-assistant plugin barrel could not load (plugin-calendly's
- *      dist imports `@elizaos/core/node`);
+ *      the personal-assistant plugin barrel could not load;
  *   2. every config path was `eliza/`-prefixed and cwd-relative, so the lane
  *      matched zero files unless the checkout was nested as literally `eliza/`
  *      inside a consumer workspace.

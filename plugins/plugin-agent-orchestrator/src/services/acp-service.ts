@@ -411,8 +411,7 @@ const ACP_METADATA_GIT_WRAPPER_DIR = "gitWrapperDir";
 const ACP_METADATA_SPAWN_MODEL = "spawnModel";
 const MAX_CAPTURED_TOOL_OUTPUT_CHARS = 12_000;
 const TOOL_OUTPUT_END_MARKER = "[/tool output]";
-const SESSION_GIT_WRAPPER = `#!/usr/bin/env node
-const { spawn, spawnSync } = require("node:child_process");
+const SESSION_GIT_WRAPPER_BODY = `const { spawn, spawnSync } = require("node:child_process");
 const { randomUUID } = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -666,6 +665,24 @@ const result = run(args);
 if (result.signal) process.kill(process.pid, result.signal);
 process.exit(result.status ?? 1);
 `;
+
+function sessionGitWrapper(): string {
+  const interpreter = process.versions.bun
+    ? findExecutableOnPath("node")
+    : process.execPath;
+  if (!interpreter) {
+    throw new Error("Cannot create the ACP git wrapper without a Node runtime");
+  }
+  if (/\s/.test(interpreter)) {
+    throw new Error(
+      `Cannot create the ACP git wrapper with a whitespace-containing runtime path: ${interpreter}`,
+    );
+  }
+  // The wrapper nests synchronous git processes, which deadlocks if a Bun test
+  // process synchronously invokes another Bun process. A direct Node shebang
+  // also avoids an extra /usr/bin/env process at the command boundary.
+  return `#!${interpreter}\n${SESSION_GIT_WRAPPER_BODY}`;
+}
 const ACP_HEALTH_CHECK_INTERVAL_MS = 60_000;
 // Terminal (stopped/errored) sessions are kept this long for any post-completion
 // reference, then reclaimed by the health-check sweep so the durable session
@@ -1081,7 +1098,7 @@ export class AcpService extends Service {
     await mkdir(wrapperDir, { recursive: true });
     await copyFile(repoIndex, baseFile);
     await copyFile(repoIndex, indexFile);
-    await writeFile(wrapperFile, SESSION_GIT_WRAPPER, "utf8");
+    await writeFile(wrapperFile, sessionGitWrapper(), "utf8");
     await chmod(wrapperFile, 0o755);
     return {
       env: {

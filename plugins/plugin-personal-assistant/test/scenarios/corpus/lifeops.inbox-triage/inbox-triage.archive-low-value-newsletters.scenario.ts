@@ -23,11 +23,8 @@ import {
   type ScenarioContext,
   scenario,
 } from "@elizaos/scenario-runner/schema";
-import { LifeOpsRepository } from "../../../../plugins/plugin-personal-assistant/src/lifeops/repository.ts";
-import {
-  executeRawSql,
-  sqlQuote,
-} from "../../../../plugins/plugin-personal-assistant/src/lifeops/sql.ts";
+import { LifeOpsRepository } from "../../../../src/lifeops/repository.ts";
+import { executeRawSql, sqlQuote } from "../../../../src/lifeops/sql.ts";
 
 const PERSON_EMAIL_SENDER = "real-friend@example.com";
 

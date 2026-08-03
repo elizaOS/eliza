@@ -25,7 +25,6 @@ export const VIEW_ICONS: Record<string, string> = {
   documents: new URL("./view-icons/documents.png", import.meta.url).href,
   feed: new URL("./view-icons/feed.png", import.meta.url).href,
   files: new URL("./view-icons/files.png", import.meta.url).href,
-  "fine-tuning": new URL("./view-icons/fine-tuning.png", import.meta.url).href,
   focus: new URL("./view-icons/focus.png", import.meta.url).href,
   glasses: new URL("./view-icons/glasses.png", import.meta.url).href,
   health: new URL("./view-icons/health.png", import.meta.url).href,
@@ -40,7 +39,6 @@ export const VIEW_ICONS: Record<string, string> = {
   orchestrator: new URL("./view-icons/orchestrator.png", import.meta.url).href,
   phone: new URL("./view-icons/phone.png", import.meta.url).href,
   plugins: new URL("./view-icons/plugins.png", import.meta.url).href,
-  polymarket: new URL("./view-icons/polymarket.png", import.meta.url).href,
   relationships: new URL("./view-icons/relationships.png", import.meta.url)
     .href,
   rolodex: new URL("./view-icons/rolodex.png", import.meta.url).href,
@@ -52,7 +50,6 @@ export const VIEW_ICONS: Record<string, string> = {
   stream: new URL("./view-icons/stream.png", import.meta.url).href,
   tasks: new URL("./view-icons/tasks.png", import.meta.url).href,
   trade: new URL("./view-icons/trade.png", import.meta.url).href,
-  training: new URL("./view-icons/training.png", import.meta.url).href,
   trajectories: new URL("./view-icons/trajectories.png", import.meta.url).href,
   trajectory: new URL("./view-icons/trajectory.png", import.meta.url).href,
   transcripts: new URL("./view-icons/transcripts.png", import.meta.url).href,

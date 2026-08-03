@@ -26,7 +26,7 @@ export default defineConfig({
         "test/stubs/agent-registry-client-queries.ts",
       ),
       "@elizaos/core/atomic-json": fromHere(
-        "../../packages/auth/src/atomic-json.ts",
+        "../../packages/core/src/utils/atomic-json.ts",
       ),
       "@elizaos/plugin-registry": fromHere("../plugin-registry/src/index.ts"),
     },

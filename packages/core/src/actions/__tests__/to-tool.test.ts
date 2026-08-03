@@ -372,7 +372,7 @@ describe("buildPlannerToolsFromTieredActions", () => {
 			buildPlannerToolsFromTieredActions([parent], {
 				tierAParents: new Set(["PARENT"]),
 			}),
-		).toThrow(/Failed to expand sub-action 'lowercaseChild' of 'PARENT'/);
+		).toThrow("Failed to expand planner sub-action");
 	});
 
 	it("normalizes parent-name matching so Tier-A names case-fold against action names", () => {

@@ -101,15 +101,9 @@ const lifeOpsSourceTestFiles = collectTestFiles(
   "eliza/plugins/plugin-personal-assistant/src",
 );
 const appsAndPluginsSourceTestFiles = [
-  ...collectTestFiles(
-    "eliza/plugins/plugin-shopify/src",
-    "packages/plugin-wechat/src",
-  ),
-  ...[
-    "eliza/plugins/plugin-discord/__tests__/smoke.test.ts",
-    "eliza/plugins/plugin-discord/__tests__/draft-stream.test.ts",
-  ].filter((file) => fs.existsSync(path.join(repoRoot, file))),
-];
+  "eliza/plugins/plugin-discord/__tests__/smoke.test.ts",
+  "eliza/plugins/plugin-discord/__tests__/draft-stream.test.ts",
+].filter((file) => fs.existsSync(path.join(repoRoot, file)));
 const workspaceTestFiles = collectTestFiles(
   "src",
   "scripts",

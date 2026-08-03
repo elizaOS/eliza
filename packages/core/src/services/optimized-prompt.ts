@@ -1,9 +1,8 @@
 /**
  * OptimizedPromptService — runtime cache of native-optimizer artifacts.
  *
- * Native MIPRO/GEPA/bootstrap-fewshot optimizers (under
- * `plugins/plugin-training/src/optimizers/`) write a JSON artifact per task into
- * `<stateDir>/optimized-prompts/<task>/`. The runtime consults this service
+ * Offline MIPRO/GEPA/bootstrap-fewshot optimizers write a JSON artifact per task
+ * into `<stateDir>/optimized-prompts/<task>/`. The runtime consults this service
  * before constructing the system prompt for one of the core decision
  * tasks and substitutes the optimized prompt (plus any few-shot
  * demonstrations) when an artifact is available.
@@ -22,19 +21,16 @@
  *     next `vN.json`, repoints the `current` / `previous` / `previous2`
  *     symlinks, prunes to the last 5 versions, and refreshes the cache.
  *   - `rollback(task)` — flip `current` and `previous` symlinks, then
- *     refresh the cache. Used by `eliza training rollback-prompt <task>`.
+ *     refresh the cache.
  *   - `getMetadata(task)` — quick view of optimizer + score for diagnostics.
- *   - `refresh()` — re-scan the disk store. Called automatically by `start()`,
- *     also exposed for the `Settings → Auto-Training` panel.
+ *   - `refresh()` — re-scan the disk store. Called automatically by `start()`.
  *
  * Loading rule: for each task, the `current` symlink wins. When `current`
  * is missing (e.g. a corrupted store) we fall back to scanning the directory
  * and selecting the most recent `generatedAt`.
  *
- * The on-disk format intentionally mirrors `OptimizedPromptArtifact` from
- * `plugins/plugin-training/src/optimizers/types.ts`. We re-declare the type here
- * (instead of importing) because `@elizaos/core` is upstream of
- * `@elizaos/plugin-training` and adding the dependency would invert the layering.
+ * Core owns the on-disk artifact format so offline producers and every runtime
+ * consumer share one stable contract without a plugin dependency.
  */
 
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
@@ -123,7 +119,7 @@ export const OPTIMIZED_PROMPT_TASKS: readonly OptimizedPromptTask[] = [
 
 /**
  * The LifeOps subset of {@link OPTIMIZED_PROMPT_TASKS}. Exposed so LifeOps
- * plugins and the training optimizer can iterate the per-capability tasks
+ * plugins and offline optimizers can iterate the per-capability tasks
  * without re-declaring the list — keeps `@elizaos/core` the single source of
  * truth for the LifeOps optimization taxonomy.
  */
@@ -149,8 +145,8 @@ export type OptimizerName =
 	| "dspy-mipro";
 
 /**
- * Mirror of `OptimizationExample` from `plugins/plugin-training/src/optimizers/types.ts`.
- * Kept narrow on purpose — the runtime only renders these into the prompt.
+ * A narrow few-shot record because the runtime only renders these fields into
+ * the prompt.
  */
 export interface OptimizedPromptFewShotExample {
 	id?: string;
@@ -187,9 +183,8 @@ export interface OptimizedPromptContextConfig {
 
 /**
  * Snapshot of the noise-gate promotion decision that accepted this artifact,
- * mirrored from `PromotionDecision` in
- * `plugins/plugin-training/src/core/promotion-gate.ts` plus the two provenance
- * fields the write site adds (`incumbentSource` / `gateSource`). Persisted for
+ * including the two write-site provenance fields (`incumbentSource` /
+ * `gateSource`). Persisted for
  * diagnostics — every field is optional because older artifacts predate it.
  */
 export interface PromotionDecisionSummary {
@@ -708,9 +703,8 @@ export class OptimizedPromptService extends Service {
 	 * directory to the last `OPTIMIZED_PROMPT_RETAIN_VERSIONS` artifacts, and
 	 * refreshes the cache for the task.
 	 *
-	 * The same taxonomy is registered by both core basicServices and
-	 * plugin-training register-runtime, and trigger/CLI train also call this —
-	 * so two setPrompt calls for one task can overlap in-process. The version
+	 * More than one artifact producer can call this for the same task, so
+	 * setPrompt calls can overlap in-process. The version
 	 * claim is made cross-process-safe with O_EXCL; the symlink-repoint and
 	 * prune steps mutate shared `current`/`previous` links and the retention
 	 * window, so the whole write is serialized per task dir via an in-process
@@ -740,8 +734,7 @@ export class OptimizedPromptService extends Service {
 		const macHex = computeArtifactMac(payload);
 
 		// Atomically claim the next `vN.json` slot. Two concurrent setPrompt
-		// calls for the same task (e.g. basicServices + plugin-training, or a
-		// CLI/trigger train) read the same version list and would otherwise
+		// calls for the same task read the same version list and would otherwise
 		// both target the same vN — clobbering one artifact and/or leaving a
 		// vN.json without a matching .mac. Claiming a hidden lock filename with
 		// O_EXCL ('wx') serializes the race without exposing a final-looking
@@ -1000,8 +993,8 @@ function listClaimedVersionNumbers(dir: string): number[] {
 /**
  * Maximum O_EXCL retries when claiming a version slot. Each attempt is one
  * concurrent setPrompt losing the race; the number of contenders for a single
- * task dir is tiny (basicServices + plugin-training + at most one CLI/trigger
- * train), so this is comfortably above any real-world contention. Exhausting
+ * task directory is expected to be tiny, so this is comfortably above normal
+ * contention. Exhausting
  * it means the directory is genuinely wedged — surface that as an error rather
  * than spinning forever.
  */

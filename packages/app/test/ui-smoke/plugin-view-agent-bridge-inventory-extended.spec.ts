@@ -148,20 +148,6 @@ const PLUGIN_VIEW_TARGETS: readonly PluginViewTarget[] = [
   },
   // --- Tooling views ---
   {
-    label: "Training (fine-tuning)",
-    path: "/apps/fine-tuning",
-    viewId: "training",
-    ready: { testId: "fine-tuning-view" },
-    // The dataset / job sections mount together (not tab-gated) in FineTuningView,
-    // so their refresh + build/start controls always register.
-    requiredIds: [
-      "dataset-refresh",
-      "dataset-build",
-      "job-refresh",
-      "job-start",
-    ],
-  },
-  {
     label: "Vector Browser",
     path: "/vector-browser",
     viewId: "vector-browser",

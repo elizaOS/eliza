@@ -27,6 +27,20 @@ export default defineConfig({
         replacement: require.resolve("react-dom/client"),
       },
       {
+        find: /^@elizaos\/capacitor-contacts\/web$/,
+        replacement: resolve(
+          rootDir,
+          "../../plugins/plugin-native-contacts/src/web.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/capacitor-contacts$/,
+        replacement: resolve(
+          rootDir,
+          "../../plugins/plugin-native-contacts/src/index.ts",
+        ),
+      },
+      {
         // @elizaos/ui's DynamicViewLoader statically imports this plugin-health
         // subpath; the keyless contacts test env has no built plugin-health
         // dist to resolve it against, so collection of every Contacts view test

@@ -49,12 +49,6 @@ export type {
   StreamEventEnvelope,
   StreamEventType,
 } from "@elizaos/shared";
-export type {
-  TrainingServiceLike,
-  TrainingServiceWithRuntime,
-} from "./training-service-like.ts";
-
-import type { TrainingServiceWithRuntime } from "./training-service-like.ts";
 
 /** Metadata for a web-chat conversation. */
 export interface ConversationMeta {
@@ -185,7 +179,6 @@ export interface ServerState {
   /** App manager for launching and managing elizaOS apps. */
   appManager: AppManagerLike;
   /** Fine-tuning/training orchestration service. */
-  trainingService: TrainingServiceWithRuntime | null;
   /** In-memory queue for share ingest items. */
   shareIngestQueue: ShareIngestItem[];
   /** Broadcast current agent status to all WebSocket clients. Set by startApiServer. */

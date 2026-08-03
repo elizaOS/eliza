@@ -763,63 +763,6 @@ function error(res: http.ServerResponse, message: string, status = 400): void {
   sendJsonError(res, message, status);
 }
 
-function emptyTrainingTaskCounters(): Record<string, number> {
-  return {
-    should_respond: 0,
-    context_routing: 0,
-    action_planner: 0,
-    response: 0,
-    media_description: 0,
-  };
-}
-
-type OptionalTrainingConfig = {
-  autoTrain: boolean;
-  triggerThreshold: number;
-  triggerCooldownHours: number;
-  backends: string[];
-};
-
-type OptionalTrainingConfigApi = {
-  loadTrainingConfig: () => OptionalTrainingConfig;
-  normalizeTrainingConfig: (input: unknown) => OptionalTrainingConfig;
-  saveTrainingConfig: (config: OptionalTrainingConfig) => void;
-};
-
-const TRAINING_CONFIG_MODULE = "@elizaos/plugin-training";
-
-function defaultTrainingConfig(): OptionalTrainingConfig {
-  return {
-    autoTrain: true,
-    triggerThreshold: 100,
-    triggerCooldownHours: 12,
-    backends: ["native"],
-  };
-}
-
-async function loadOptionalTrainingConfigApi(): Promise<OptionalTrainingConfigApi | null> {
-  try {
-    const loaded = (await import(
-      /* @vite-ignore */ TRAINING_CONFIG_MODULE
-    )) as Partial<OptionalTrainingConfigApi>;
-    if (
-      typeof loaded.loadTrainingConfig === "function" &&
-      typeof loaded.normalizeTrainingConfig === "function" &&
-      typeof loaded.saveTrainingConfig === "function"
-    ) {
-      return loaded as OptionalTrainingConfigApi;
-    }
-  } catch {
-    // app-training is optional in this server path.
-  }
-  return null;
-}
-
-async function readOptionalTrainingConfig(): Promise<OptionalTrainingConfig> {
-  const api = await loadOptionalTrainingConfigApi();
-  return api?.loadTrainingConfig() ?? defaultTrainingConfig();
-}
-
 function parseBrowserBridgeKind(
   browserPlugin: BrowserPluginModule,
   value: string | undefined,
@@ -865,43 +808,6 @@ async function handleBuiltinOptionalRoutes(
       },
       evmAddress: addresses.evmAddress ?? undefined,
       vaultHealth: "degraded",
-    });
-    return true;
-  }
-
-  if (method === "GET" && pathname === "/api/training/auto/config") {
-    json(res, { config: await readOptionalTrainingConfig() });
-    return true;
-  }
-
-  if (method === "POST" && pathname === "/api/training/auto/config") {
-    const body =
-      (await readJsonBody<Record<string, unknown>>(req, res)) ?? null;
-    if (!body) return true;
-    const api = await loadOptionalTrainingConfigApi();
-    const currentConfig = api?.loadTrainingConfig() ?? defaultTrainingConfig();
-    const config = api
-      ? api.normalizeTrainingConfig({
-          ...currentConfig,
-          ...body,
-        })
-      : currentConfig;
-    api?.saveTrainingConfig(config);
-    json(res, { config });
-    return true;
-  }
-
-  if (method === "GET" && pathname === "/api/training/auto/status") {
-    const config = await readOptionalTrainingConfig();
-    json(res, {
-      autoTrainEnabled: config.autoTrain,
-      triggerThreshold: config.triggerThreshold,
-      cooldownHours: config.triggerCooldownHours,
-      counters: emptyTrainingTaskCounters(),
-      lastTrain: {},
-      perTaskThresholds: emptyTrainingTaskCounters(),
-      perTaskCooldownMs: emptyTrainingTaskCounters(),
-      serviceRegistered: false,
     });
     return true;
   }
@@ -1354,65 +1260,6 @@ interface RequestContext {
     activeRuntime: AgentRuntime,
   ) => void | Promise<void>;
   getAppManager?: () => Promise<AppManagerLike>;
-}
-
-import type { TrainingServiceWithRuntime } from "./server-types.ts";
-
-type TrainingServiceCtor = new (options: {
-  getRuntime: () => AgentRuntime | null;
-  getConfig: () => ElizaConfig;
-  setConfig: (nextConfig: ElizaConfig) => void;
-}) => TrainingServiceWithRuntime;
-
-const TRAINING_SERVICE_REGISTRY_MODULE: string = "@elizaos/plugin-training";
-
-async function resolveTrainingServiceCtor(): Promise<TrainingServiceCtor | null> {
-  if (isMobilePlatform()) {
-    logger.info("[eliza-api] Training service disabled on mobile platform");
-    return null;
-  }
-
-  const candidates = [
-    "../services/training-service",
-    "@elizaos/plugin-training",
-    "@elizaos/plugin-training",
-  ] as const;
-
-  for (const specifier of candidates) {
-    try {
-      const loaded = (await import(/* @vite-ignore */ specifier)) as Record<
-        string,
-        unknown
-      >;
-      const ctor = loaded.TrainingService;
-      if (typeof ctor === "function") {
-        return ctor as TrainingServiceCtor;
-      }
-    } catch {
-      // Keep trying fallbacks.
-    }
-  }
-
-  return null;
-}
-
-async function setActiveTrainingServiceIfAvailable(
-  service: TrainingServiceWithRuntime,
-): Promise<void> {
-  try {
-    const loaded = (await import(
-      /* @vite-ignore */ TRAINING_SERVICE_REGISTRY_MODULE
-    )) as {
-      setActiveTrainingService?: (
-        activeService: TrainingServiceWithRuntime,
-      ) => void;
-    };
-    loaded.setActiveTrainingService?.(service);
-  } catch (err) {
-    logger.debug(
-      `[eliza-api] Training service registry unavailable: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
 }
 
 const resolveMcpTerminalAuthorizationRejection =
@@ -2305,10 +2152,6 @@ async function handleRequest(
     }
   }
 
-  // Training routes (/api/training/*) and trajectory routes
-  // (/api/trajectories/*) are now provided by the @elizaos/plugin-training
-  // plugin via the runtime route registry.
-
   // Knowledge routes (/api/knowledge/*) are now provided by the
   // @elizaos/app-knowledge plugin via the runtime route registry.
 
@@ -2391,9 +2234,6 @@ async function handleRequest(
   ) {
     return;
   }
-
-  // Experience routes (/api/experiences/*, /api/character/experiences/*) are
-  // served by the @elizaos/plugin-training plugin via Plugin.routes.
 
   // Compatibility route used by legacy health probes and desktop name lookup.
   if (method === "GET" && pathname === "/api/agents") {
@@ -3101,9 +2941,6 @@ async function handleRequest(
     return;
   }
 
-  // Trajectory routes (/api/trajectories/*) are now provided by the
-  // @elizaos/plugin-training plugin via the runtime route registry.
-
   // Coding Agent API routes (/api/coding-agents/*, /api/workspace/*,
   // /api/issues/*) are now provided by the @elizaos/plugin-agent-orchestrator
   // plugin via the runtime route registry. Most of those paths genuinely need
@@ -3471,9 +3308,8 @@ async function handleRequest(
 
   // ── Trajectory read routes (owned by core TrajectoriesService) ──────────
   // Serves GET /api/trajectories[/:id|/stats] from the core TrajectoriesService
-  // when no plugin owns the route (mobile / training disabled), so the realtime
-  // trajectory viewer works without @elizaos/plugin-training. Runs AFTER the
-  // plugin routes above, so plugin-training's richer route wins when present.
+  // so the realtime trajectory viewer works from the core service on every
+  // platform.
   if (
     await tryHandleTrajectoryReadRoutes({
       pathname,
@@ -3745,31 +3581,6 @@ export async function startApiServer(opts?: {
     state.appManager = appManager;
     return appManager as AppManagerLike;
   };
-  const trainingServiceOptions = {
-    getRuntime: () => state.runtime,
-    getConfig: () => state.config,
-    setConfig: (nextConfig: ElizaConfig) => {
-      state.config = nextConfig;
-      saveElizaConfig(nextConfig);
-    },
-  };
-  const blockOnTrainingService =
-    process.env.ELIZA_API_TRAINING_BLOCKING?.trim() === "1";
-  const attachTrainingService = async (): Promise<void> => {
-    if (state.trainingService) return;
-    const trainingServiceCtor = await resolveTrainingServiceCtor();
-    if (trainingServiceCtor) {
-      state.trainingService = new trainingServiceCtor(trainingServiceOptions);
-      await setActiveTrainingServiceIfAvailable(state.trainingService);
-    } else {
-      logger.info(
-        "[eliza-api] Training service package unavailable; training routes will be disabled",
-      );
-    }
-  };
-  if (blockOnTrainingService) {
-    await attachTrainingService();
-  }
   const configuredAdminEntityId = config.agents?.defaults?.adminEntityId;
   if (configuredAdminEntityId && isUuidLike(configuredAdminEntityId)) {
     state.adminEntityId = configuredAdminEntityId;
@@ -3935,7 +3746,6 @@ export async function startApiServer(opts?: {
   const pushEvent = eventHub.publish;
 
   let detachRuntimeStreams: (() => void) | null = null;
-  let detachTrainingStream: (() => void) | null = null;
   const bindRuntimeStreams = (runtime: AgentRuntime | null) => {
     if (detachRuntimeStreams) {
       detachRuntimeStreams();
@@ -3983,23 +3793,6 @@ export async function startApiServer(opts?: {
       unsubAgentEvents();
       unsubHeartbeat();
     };
-  };
-
-  const bindTrainingStream = () => {
-    if (detachTrainingStream) {
-      detachTrainingStream();
-      detachTrainingStream = null;
-    }
-    if (!state.trainingService) return;
-    detachTrainingStream = state.trainingService.subscribe((event: unknown) => {
-      const payload =
-        typeof event === "object" && event !== null ? event : { value: event };
-      pushEvent({
-        type: "training_event",
-        ts: Date.now(),
-        payload,
-      });
-    });
   };
 
   // ── Deferred startup work (non-blocking) ────────────────────────────────
@@ -4056,24 +3849,6 @@ export async function startApiServer(opts?: {
       } catch (err) {
         logger.warn(
           `[eliza-api] Skill discovery failed during startup: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-    })();
-
-    void (async () => {
-      await attachTrainingService();
-      const trainingService = state.trainingService;
-      if (!trainingService) return;
-      try {
-        await trainingService.initialize();
-        bindTrainingStream();
-        addLog("info", "Training service initialised", "system", [
-          "system",
-          "training",
-        ]);
-      } catch (err) {
-        logger.error(
-          `[eliza-api] Training service init failed: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
     })();
@@ -4164,7 +3939,6 @@ export async function startApiServer(opts?: {
     return false;
   };
   bindRuntimeStreams(opts?.runtime ?? null);
-  bindTrainingStream();
 
   // Wire coding-agent bridges at initial boot (event-driven via getServiceLoadPromise)
   if (opts?.runtime) {
@@ -4944,13 +4718,6 @@ export async function startApiServer(opts?: {
       dispose: () => {
         detachRuntimeStreams?.();
         detachRuntimeStreams = null;
-      },
-    },
-    {
-      name: "training event stream",
-      dispose: () => {
-        detachTrainingStream?.();
-        detachTrainingStream = null;
       },
     },
     {

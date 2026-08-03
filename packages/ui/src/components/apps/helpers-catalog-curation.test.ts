@@ -116,7 +116,7 @@ describe("shouldShowAppInAppsView — declared default-hidden + wallet scope", (
     expect(
       shouldShowAppInAppsView(
         app({
-          name: "@elizaos/plugin-shopify",
+          name: "@elizaos/plugin-notes",
           catalogSection: "finance",
           defaultHidden: true,
         }),

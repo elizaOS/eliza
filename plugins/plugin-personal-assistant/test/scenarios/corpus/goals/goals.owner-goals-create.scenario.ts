@@ -14,8 +14,8 @@
 import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { executeRawSql } from "../../../../plugins/plugin-goals/src/db/sql.ts";
-import { createOwnerGoalsService } from "../../../../plugins/plugin-goals/src/goals-runtime.ts";
+import { executeRawSql } from "../../../../../../plugins/plugin-goals/src/db/sql.ts";
+import { createOwnerGoalsService } from "../../../../../../plugins/plugin-goals/src/goals-runtime.ts";
 
 // The create path is a preview->confirm handshake (#14459/#15055):
 // `shouldRequireLifeCreateConfirmation` commits only when the create params carry

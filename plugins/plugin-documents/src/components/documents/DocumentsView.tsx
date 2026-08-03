@@ -204,9 +204,10 @@ type SearchState =
 
 /** Route an open-document request through the assistant chat (no fabricated nav). */
 function requestOpenDocument(id: string): void {
-  const send = (client as { sendChatMessage?: (text: string) => void })
-    .sendChatMessage;
-  send?.(`Open the document ${id}.`);
+  const chatClient = client as {
+    sendChatMessage?: (text: string) => void;
+  };
+  chatClient.sendChatMessage?.(`Open the document ${id}.`);
 }
 
 export function DocumentsView(props: DocumentsViewProps = {}): ReactNode {

@@ -36,6 +36,7 @@
  *   notes     where else the suite runs (dedicated workflow / lane).
  */
 
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -364,6 +365,40 @@ export const GUARDED_REAL_LIVE_SUITES = [
  * guarded set. Returns repo-relative POSIX paths, sorted.
  */
 export function discoverGuardedRealLiveFiles(repoRoot) {
+  try {
+    const repositoryFiles = execFileSync(
+      "git",
+      [
+        "-C",
+        repoRoot,
+        "ls-files",
+        "-z",
+        "--cached",
+        "--others",
+        "--exclude-standard",
+      ],
+      {
+        encoding: "utf8",
+        maxBuffer: 64 * 1024 * 1024,
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    )
+      .split("\0")
+      .filter((file) => REAL_LIVE_FILE_PATTERN.test(file));
+    return repositoryFiles
+      .filter((file) => {
+        const absolute = path.join(repoRoot, ...file.split("/"));
+        return (
+          fs.lstatSync(absolute).isFile() &&
+          GUARD_CONTENT_PATTERN.test(fs.readFileSync(absolute, "utf8"))
+        );
+      })
+      .sort();
+  } catch {
+    // error-policy:J4 Source archives and synthetic fixtures have no Git metadata,
+    // so discovery falls back to the same bounded filesystem walk.
+  }
+
   const found = [];
   const stack = [repoRoot];
   while (stack.length > 0) {

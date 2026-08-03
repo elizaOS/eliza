@@ -228,17 +228,21 @@ function requestAddPerson(): void {
   // The add-a-person affordance routes through the assistant chat. `client` does
   // not type `sendChatMessage`, so read it through a narrow optional-method view
   // and call it only when present — no fabricated people, best-effort dispatch.
-  const send = (client as { sendChatMessage?: (text: string) => void })
-    .sendChatMessage;
-  send?.(
+  const chatClient = client as {
+    sendChatMessage?: (text: string) => void;
+  };
+  chatClient.sendChatMessage?.(
     "Add someone to my relationships graph — tell me who you'd like to remember.",
   );
 }
 
 function requestOpenEntity(entityId: string): void {
-  const send = (client as { sendChatMessage?: (text: string) => void })
-    .sendChatMessage;
-  send?.(`Tell me about ${entityId} in my relationships graph.`);
+  const chatClient = client as {
+    sendChatMessage?: (text: string) => void;
+  };
+  chatClient.sendChatMessage?.(
+    `Tell me about ${entityId} in my relationships graph.`,
+  );
 }
 
 export function RelationshipsView(

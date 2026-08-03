@@ -70,7 +70,6 @@ export const LEGACY_SETTINGS_SECTION_TOKEN_ALIASES: Readonly<
   updates: "updates",
   update: "updates",
   advanced: "advanced",
-  "fine-tuning": "advanced",
   backup: "advanced",
   backups: "advanced",
 };

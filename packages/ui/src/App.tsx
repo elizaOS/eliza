@@ -223,7 +223,7 @@ import {
   resolveBuiltinBackgroundPolicy,
   resolveBuiltinTabId,
 } from "./builtin-tab-registry";
-// DesktopTabBar and FineTuningView stay static: they are already pulled
+// DesktopTabBar stays static: it is already pulled
 // eagerly elsewhere in the app graph (plugin-loader / boot-config), so a
 // lazy() boundary here would only fold back into main. The remaining page
 // views are lazy-split below.
@@ -238,7 +238,6 @@ import {
   WalletSectionNav,
 } from "./components/pages/WalletSectionNav";
 import { ViewHeader } from "./components/shared/ViewHeader";
-import { FineTuningView } from "./components/training/injected";
 import { DynamicViewLoader } from "./components/views/DynamicViewLoader";
 import { registerSandboxProbeView } from "./components/views/sandbox-probe-view";
 import {
@@ -1195,7 +1194,7 @@ interface StaticTabRenderContext {
  * `builtinRouteBackgroundPolicy`; a tab added to one and forgotten in another
  * was an unobservable drift bug. Now every builtin surface (simple or one that
  * needs runtime context / a custom wrapper) is ONE keyed entry, and alias tabs
- * (`triggers` -> `automations`, `advanced` -> `fine-tuning`) resolve through
+ * (`triggers` -> `automations`) resolve through
  * the shared `builtin-tab-registry` so the router and the background resolver
  * read the same alias table.
  *
@@ -1310,7 +1309,6 @@ function buildStaticTabRenderers(): Record<
         <WalletInventoryPage />
       </TabScrollView>
     ),
-    "fine-tuning": wrap(<FineTuningView />),
   };
 }
 
@@ -1333,8 +1331,8 @@ function renderStaticViewRouterTab({
   walletNav?: ReactNode;
   characterNav?: ReactNode;
 }): ReactNode {
-  // Resolve legacy alias ids (e.g. `triggers` -> `automations`, `advanced` ->
-  // `fine-tuning`) onto their canonical builtin id via the shared registry, so
+  // Resolve legacy alias ids (for example, `triggers` -> `automations`) onto
+  // their canonical builtin id via the shared registry, so
   // the router and background resolver honor the same alias table.
   const canonicalTab = resolveBuiltinTabId(tab);
   const render = buildStaticTabRenderers()[canonicalTab];
@@ -1486,7 +1484,8 @@ function ViewRouter({
   const nativeOsSurfaceEnabled = isAospShellEnabled();
   // AppProvider owns late path-to-tab reconciliation through setTabRaw. Doing
   // it here through the public setTab command would rewrite exact plugin paths
-  // to a shared affinity's canonical path (for example /hyperliquid → /wallet).
+  // to a shared affinity's canonical path (for example a wallet sub-page to
+  // the wallet root).
   const dynamicPage = useResolvedDynamicPage(tab);
   const [navigationPath, setNavigationPath] = useState(
     () =>

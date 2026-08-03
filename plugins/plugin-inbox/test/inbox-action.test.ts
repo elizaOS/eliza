@@ -36,6 +36,7 @@ function makeRuntime(): IAgentRuntime {
       error: () => undefined,
       debug: () => undefined,
     },
+    reportError: vi.fn(),
   } as unknown as IAgentRuntime;
 }
 

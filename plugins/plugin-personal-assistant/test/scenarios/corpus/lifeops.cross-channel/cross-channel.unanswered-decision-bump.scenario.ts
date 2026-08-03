@@ -16,11 +16,8 @@ import {
   judgeRubric,
 } from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { LifeOpsRepository } from "../../../../plugins/plugin-personal-assistant/src/lifeops/repository.ts";
-import {
-  executeRawSql,
-  sqlQuote,
-} from "../../../../plugins/plugin-personal-assistant/src/lifeops/sql.ts";
+import { LifeOpsRepository } from "../../../../src/lifeops/repository.ts";
+import { executeRawSql, sqlQuote } from "../../../../src/lifeops/sql.ts";
 
 export default scenario({
   lane: "live-only",

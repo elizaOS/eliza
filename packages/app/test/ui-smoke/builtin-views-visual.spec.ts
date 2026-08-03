@@ -58,7 +58,6 @@ const BUILTIN_VIEW_CASES: Array<{
   { id: "files", path: "/apps/files" },
   { id: "plugins", path: "/apps/plugins" },
   { id: "skills", path: "/apps/skills" },
-  { id: "fine-tuning", path: "/apps/fine-tuning" },
   { id: "trajectories", path: "/apps/trajectories" },
   { id: "transcripts", path: "/apps/transcripts" },
   { id: "relationships", path: "/apps/relationships" },

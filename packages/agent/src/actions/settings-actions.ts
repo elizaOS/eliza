@@ -1,13 +1,12 @@
 /**
  * SETTINGS — single polymorphic owner-only action covering built-in settings
- * sections, provider, capability, training, owner-name, backend routing, and
+ * sections, provider, capability, owner-name, backend routing, and
  * worldSettings-registry mutations.
  *
  * Ops:
  *   - get/list           → section registry from @elizaos/plugin-app-control
  *   - update_ai_provider → applyFirstRunConnectionConfig + saveElizaConfig
  *   - toggle_capability  → config.ui.capabilities.{wallet|browser|computerUse}
- *   - toggle_training    → training plugin's TrainingConfigService (via registry)
  *   - set_owner_name     → config.ui.ownerName via owner-name service
  *   - set                → worldSettings registry write (key/value list)
  *
@@ -55,7 +54,6 @@ export const SETTINGS_OPS = [
   "list",
   "update_ai_provider",
   "toggle_capability",
-  "toggle_training",
   "set_owner_name",
   "set",
   "show_backends",
@@ -107,42 +105,6 @@ const CAPABILITY_KEYS = ["wallet", "browser", "computerUse"] as const;
 type CapabilityKey = (typeof CAPABILITY_KEYS)[number];
 
 const MODEL_SLOTS = ["nano", "small", "medium", "large", "mega"] as const;
-
-// `toggle_training` is contributed by the training plugin, which registers a
-// TrainingConfigService under this name. The host dispatches to the service
-// instead of importing the plugin (which @elizaos/agent does not depend on):
-// the op is available only when the plugin is loaded, and reports unavailable
-// otherwise. The structural shape below mirrors the plugin's
-// TrainingConfigCapability so no import edge is created.
-const TRAINING_CONFIG_SERVICE = "training_config_service";
-
-interface AutoTrainToggleInput {
-  enabled: boolean;
-  threshold?: number;
-  cooldownHours?: number;
-}
-
-interface TrainingConfigSummary {
-  autoTrain: boolean;
-  triggerThreshold: number;
-  triggerCooldownHours: number;
-}
-
-interface TrainingConfigCapability {
-  applyAutoTrainToggle: (
-    input: AutoTrainToggleInput,
-  ) => TrainingConfigSummary | Promise<TrainingConfigSummary>;
-}
-
-function isTrainingConfigCapability(
-  service: unknown,
-): service is TrainingConfigCapability {
-  return (
-    service != null &&
-    typeof (service as { applyAutoTrainToggle?: unknown })
-      .applyAutoTrainToggle === "function"
-  );
-}
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -345,82 +307,6 @@ function handleToggleCapability(params: Record<string, unknown>): ActionResult {
   return ok(
     `Capability ${capability} is now ${enabled ? "enabled" : "disabled"}.`,
     { op: "toggle_capability", capability, enabled },
-  );
-}
-
-// ── op: toggle_training ──────────────────────────────────────────────────
-
-async function handleToggleTraining(
-  runtime: IAgentRuntime,
-  params: Record<string, unknown>,
-): Promise<ActionResult> {
-  if (typeof params.enabled !== "boolean") {
-    return fail(
-      "MISSING_ENABLED",
-      "SETTINGS toggle_training requires `enabled: boolean`.",
-    );
-  }
-
-  const threshold = params.threshold;
-  if (
-    threshold !== undefined &&
-    (typeof threshold !== "number" ||
-      !Number.isFinite(threshold) ||
-      threshold <= 0)
-  ) {
-    return fail(
-      "INVALID_THRESHOLD",
-      "`threshold` must be a positive finite number when provided.",
-    );
-  }
-
-  const cooldownHours = params.cooldownHours;
-  if (
-    cooldownHours !== undefined &&
-    (typeof cooldownHours !== "number" ||
-      !Number.isFinite(cooldownHours) ||
-      cooldownHours < 0)
-  ) {
-    return fail(
-      "INVALID_COOLDOWN",
-      "`cooldownHours` must be a non-negative finite number when provided.",
-    );
-  }
-
-  const service = runtime.getService(TRAINING_CONFIG_SERVICE);
-  if (!isTrainingConfigCapability(service)) {
-    return fail(
-      "TRAINING_UNAVAILABLE",
-      "Auto-training is unavailable — the training plugin is not loaded.",
-    );
-  }
-
-  let summary: TrainingConfigSummary;
-  try {
-    summary = await service.applyAutoTrainToggle({
-      enabled: params.enabled,
-      ...(typeof threshold === "number" ? { threshold } : {}),
-      ...(typeof cooldownHours === "number" ? { cooldownHours } : {}),
-    });
-  } catch (err) {
-    logger.error(
-      { error: err instanceof Error ? err.stack : String(err) },
-      "[SETTINGS] toggle_training failed",
-    );
-    return fail(
-      "SETTINGS_TOGGLE_TRAINING_FAILED",
-      `Failed to update auto-training config: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
-
-  return ok(
-    `Auto-training is now ${summary.autoTrain ? "enabled" : "disabled"} (threshold ${summary.triggerThreshold}, cooldown ${summary.triggerCooldownHours}h).`,
-    {
-      op: "toggle_training",
-      autoTrain: summary.autoTrain,
-      triggerThreshold: summary.triggerThreshold,
-      triggerCooldownHours: summary.triggerCooldownHours,
-    },
   );
 }
 
@@ -870,7 +756,6 @@ export const settingsAction: Action = {
     // Old leaf action names
     "UPDATE_AI_PROVIDER",
     "TOGGLE_CAPABILITY",
-    "TOGGLE_AUTO_TRAINING",
     "SET_USER_NAME",
     "SET_OWNER_NAME",
     "UPDATE_OWNER_NAME",
@@ -886,11 +771,11 @@ export const settingsAction: Action = {
     "ROUTE_BACKEND",
   ],
   description:
-    "Owner-only polymorphic settings action. Dispatches on `action` to read/list/change built-in settings sections (`get|set|list` with `section`/`key`/`value`, including permissions, app permissions, backups, and auto-training), update AI provider, toggle a capability, toggle/configure auto-training, set the owner display name, write to the world's settings registry, show the current backend routing (show_backends), or change which backend handles coding sub-agents / the chat brain (set_backend) — e.g. 'turn off shell access', 'what settings can you change', 'use codex for simple tasks and claude for hard ones', 'switch the brain to cerebras'. Opening a settings page without changing or reading a value is VIEWS, not SETTINGS.",
+    "Owner-only polymorphic settings action. Dispatches on `action` to read/list/change built-in settings sections (`get|set|list` with `section`/`key`/`value`, including permissions, app permissions, and backups), update AI provider, toggle a capability, set the owner display name, write to the world's settings registry, show the current backend routing (show_backends), or change which backend handles coding sub-agents / the chat brain (set_backend) — e.g. 'turn off shell access', 'what settings can you change', 'use codex for simple tasks and claude for hard ones', 'switch the brain to cerebras'. Opening a settings page without changing or reading a value is VIEWS, not SETTINGS.",
   descriptionCompressed:
-    "owner settings action: get|set|list sections plus AI provider|capability|auto-train|display name|world registry|backend routing",
+    "owner settings action: get|set|list sections plus AI provider|capability|display name|world registry|backend routing",
   routingHint:
-    "Changing or reading a settings VALUE -> SETTINGS. Permissions/shell/app permissions/auto-training/backups use SETTINGS action=set section=<section> key=<key> value=on|off. Listing settings uses SETTINGS action=list. Legacy provider/capability/backend commands still use SETTINGS action=update_ai_provider|toggle_capability|toggle_training|set_owner_name|show_backends|set_backend. Pure navigation to a settings page is VIEWS.",
+    "Changing or reading a settings VALUE -> SETTINGS. Permissions/shell/app permissions/backups use SETTINGS action=set section=<section> key=<key> value=on|off. Listing settings uses SETTINGS action=list. Legacy provider/capability/backend commands still use SETTINGS action=update_ai_provider|toggle_capability|set_owner_name|show_backends|set_backend. Pure navigation to a settings page is VIEWS.",
 
   validate: async () => true,
 
@@ -964,23 +849,9 @@ export const settingsAction: Action = {
     },
     {
       name: "enabled",
-      description: "[toggle_capability | toggle_training] Boolean enable flag.",
+      description: "[toggle_capability] Boolean enable flag.",
       required: false,
       schema: { type: "boolean" as const },
-    },
-    {
-      name: "threshold",
-      description:
-        "[toggle_training] Optional positive integer — trajectories per task that triggers a run.",
-      required: false,
-      schema: { type: "number" as const },
-    },
-    {
-      name: "cooldownHours",
-      description:
-        "[toggle_training] Optional non-negative number — minimum hours between runs for the same task.",
-      required: false,
-      schema: { type: "number" as const },
     },
     {
       name: "name",
@@ -1053,8 +924,6 @@ export const settingsAction: Action = {
         return handleUpdateAiProvider(params);
       case "toggle_capability":
         return handleToggleCapability(params);
-      case "toggle_training":
-        return handleToggleTraining(runtime, params);
       case "set_owner_name":
         return handleSetOwnerName(params);
       case "set":
@@ -1093,18 +962,6 @@ export const settingsAction: Action = {
       {
         name: "{{agentName}}",
         content: { text: "Capability wallet is now disabled." },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "Turn on auto-training." },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Auto-training is now enabled (threshold 100, cooldown 12h).",
-        },
       },
     ],
     [

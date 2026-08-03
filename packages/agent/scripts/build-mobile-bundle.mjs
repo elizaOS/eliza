@@ -480,9 +480,9 @@ if (TARGET === "ios-jsc") {
 // boot). The narrow list below is exactly the packages whose dependency
 // closure pulls in `@elizaos/core@2.0.0-alpha.3` or `2.0.0-alpha.223`.
 //
-// Other packages — including `@elizaos/plugin-task-coordinator`,
-// `@elizaos/plugin-personal-assistant`, `@elizaos/plugin-training`
-// — are imported by `api/server.ts` as named functions (e.g.
+// Other packages — including `@elizaos/plugin-task-coordinator` and
+// `@elizaos/plugin-personal-assistant` — are imported by `api/server.ts` as
+// named functions (e.g.
 // `wireCoordinatorBridgesWhenReady`). Stubbing them with a Proxy doesn't
 // satisfy Bun's `__toESM` namespace builder (it iterates `ownKeys`), so we
 // let them bundle. The mobile plugin filter still strips them out of the

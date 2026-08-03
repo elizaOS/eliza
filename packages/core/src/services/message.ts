@@ -7108,21 +7108,16 @@ export async function runV5MessageRuntimeStage1(args: {
 				extract: messageHandler.extract,
 			})
 				.then((result) => ({ startedAt, endedAt: Date.now(), result }))
-				.catch((error) => ({
+				.catch((error) => {
 					// error-policy:J7 Facts persistence is detached from reply delivery;
 					// its explicit failed outcome is recorded in the trajectory below.
-					startedAt,
-					endedAt: Date.now(),
-					result: null,
-					error: (() => {
-						args.runtime.reportError(
-							"MessageService.factsAndRelationships",
-							error,
-							{ roomId: args.message.roomId },
-						);
-						return error;
-					})(),
-				}))
+					args.runtime.reportError(
+						"MessageService.factsAndRelationships",
+						error,
+						{ roomId: args.message.roomId },
+					);
+					return { startedAt, endedAt: Date.now(), result: null, error };
+				})
 				.then((outcome) => {
 					settledFactsOutcome = outcome;
 					return outcome;
@@ -7825,7 +7820,35 @@ export async function runV5MessageRuntimeStage1(args: {
 				}),
 			);
 
-		let plannerResult = await invokePlannerLoop(plannerContextAfterEarlyReply);
+		let plannerResult: Awaited<ReturnType<typeof invokePlannerLoop>>;
+		try {
+			plannerResult = await invokePlannerLoop(plannerContextAfterEarlyReply);
+		} catch (error) {
+			const preservedAnswer = prePatchStageOneReply?.trim();
+			if (
+				!preservedAnswer ||
+				PROGRESS_ONLY_ANSWER_REJECT.test(preservedAnswer)
+			) {
+				throw error;
+			}
+			// error-policy:J4 A completed Stage-1 answer is a designed degrade when
+			// later planning fails; report the planner failure and deliver known-good text.
+			endStatus = "errored";
+			args.runtime.reportError("MessageService.plannerLoop", error, {
+				roomId: args.message.roomId,
+			});
+			return {
+				kind: "direct_reply",
+				messageHandler,
+				result: createV5ReplyStrategyResult({
+					...args,
+					state: plannerState,
+					text: preservedAnswer,
+					thought: messageHandler.thought,
+					agentVoiced: true,
+				}),
+			};
+		}
 
 		// The planner's terminal prose may ship without executing REPLY. Validate
 		// state assertions against capability-specific results from this same

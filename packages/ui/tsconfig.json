@@ -21,14 +21,6 @@
       "@elizaos/plugin-health/screen-time/mobile-signal-setup": [
         "../../plugins/plugin-health/src/screen-time/mobile-signal-setup.ts"
       ],
-      "@elizaos/plugin-shopify": ["../../plugins/plugin-shopify/src/index.ts"],
-      "@elizaos/plugin-training": ["./src/types/host-external-modules.ts"],
-      "@elizaos/plugin-vector-browser": [
-        "./src/types/host-external-modules.ts"
-      ],
-      "@elizaos/plugin-personal-assistant-browser": [
-        "../../plugins/plugin-personal-assistant-browser/src/index.ts"
-      ],
       "@elizaos/plugin-video": ["../../plugins/plugin-video/dist/index.d.ts"],
       "@elizaos/plugin-elizacloud": [
         "../../plugins/plugin-elizacloud/src/index.node.ts"
@@ -69,10 +61,6 @@
       "@elizaos/skills/*": ["../skills/src/*"],
       "@elizaos/core": ["../core/src/index.ts"],
       "@elizaos/core/*": ["../core/src/*"],
-      "@elizaos/import-conversations": ["../import-conversations/src/index.ts"],
-      "@elizaos/import-conversations/browser": [
-        "../import-conversations/src/browser.ts"
-      ],
       "@elizaos/logger": ["../logger/src/index.ts"],
       "@elizaos/logger/*": ["../logger/src/*"],
       "@elizaos/plugin-wallet/ui": [

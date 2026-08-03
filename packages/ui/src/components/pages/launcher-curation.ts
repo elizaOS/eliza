@@ -16,7 +16,7 @@
  * declared, so the whole set hides together in production.
  *
  * Curation is a blocklist + canonical dedup, not a fixed allow-list: known apps
- * are ordered, removed apps are hidden, grouped sub-pages collapse under their
+ * are ordered, grouped sub-pages collapse under their
  * parent tile, duplicate registrations collapse to one tile, and everything else
  * that is genuinely loaded and visible still appears so installing a new plugin
  * app keeps working. Native-OS tiles (phone/messages/contacts/camera/files) only
@@ -61,10 +61,8 @@ export const LAUNCHER_APPS_ORDER: readonly string[] = [
 ];
 
 /** Developer-gated launcher surfaces, in display order. Shown on the same
- *  launcher page after the apps, only when Developer Mode is on. Mostly tools
- *  (trajectory viewer, database, runtime, logs, skills, plugins) plus
- *  `fine-tuning` (model training, a developer surface not an everyday app).
- *  The whole set hides together under the Developer Mode toggle. */
+ *  launcher page after the apps, only when Developer Mode is on. The whole set
+ *  hides together under the Developer Mode toggle. */
 export const LAUNCHER_DEVELOPER_ORDER: readonly string[] = [
   "trajectories",
   "database",
@@ -72,7 +70,6 @@ export const LAUNCHER_DEVELOPER_ORDER: readonly string[] = [
   "logs",
   "skills",
   "plugins",
-  "fine-tuning",
 ];
 
 /**
@@ -101,7 +98,8 @@ export const LAUNCHER_AOSP_ONLY_IDS: readonly string[] =
  * Views that never appear in the launcher grid:
  *  - shell surfaces reached another way (views/apps launchers; background +
  *    voice are set from Settings/chat; character-select is inline),
- *  - removed apps (companion, model tester, shopify).
+ *  - character and cloud sub-pages reached from their parent surface,
+ *  - retired app registrations that may still arrive from a stale runtime.
  */
 export const LAUNCHER_HIDDEN_IDS: ReadonlySet<string> = new Set([
   "views",
@@ -127,7 +125,6 @@ export const LAUNCHER_HIDDEN_IDS: ReadonlySet<string> = new Set([
   // row and by the /cloud-apps deep link, so a second tile next to My Apps
   // would double one destination.
   "cloud-apps",
-  // Removed apps.
   "companion",
   "model-tester",
   "shopify",
@@ -141,9 +138,9 @@ export const LAUNCHER_HIDDEN_IDS: ReadonlySet<string> = new Set([
  * tasks/todos surfaces into Automations.
  *
  * These are SHORT builtin-tab / view-id aliases only — NOT package names. The
- * package-name → canonical mapping (`@elizaos/plugin-training` →
- * `fine-tuning`, …) used to live here as a hand-maintained `@elizaos/...`
- * switch that silently drifted from the owning app declarations; it now derives
+ * Package-name → canonical mappings used to live here as a hand-maintained
+ * `@elizaos/...` switch that silently drifted from owning declarations; they
+ * now derive
  * from the internal-tool app declarations' own `targetTab` metadata via
  * {@link getInternalToolAppTargetTab} (see `canonicalLauncherId`). This map is
  * the covered legacy host-owned fallback for the remaining id aliases that have
@@ -175,13 +172,6 @@ const LEGACY_ID_ALIAS_FALLBACK: ReadonlyMap<string, string> = new Map([
   ["rolodex", "relationships"],
   ["log-viewer", "logs"],
   ["database-viewer", "database"],
-  // Triple "Fine-Tuning" tile: the `advanced` builtin tab alias, the
-  // `fine-tuning` builtin tab, and the plugin-training app registration
-  // (view id `training`) all route to /apps/fine-tuning — collapse to one
-  // tile (#10710). The `@elizaos/plugin-training` package name is handled by
-  // its declaration's `targetTab`, not a literal here.
-  ["advanced", "fine-tuning"],
-  ["training", "fine-tuning"],
 ]);
 
 /**

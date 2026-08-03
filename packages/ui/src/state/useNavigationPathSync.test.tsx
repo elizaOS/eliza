@@ -70,16 +70,16 @@ describe("useNavigationPathSync — app-shell registry reactivity", () => {
       path: "/inventory",
       registrations: [
         {
-          id: "hyperliquid",
-          pluginId: "@elizaos/plugin-hyperliquid",
-          label: "Perps",
-          path: "/hyperliquid",
+          id: "wallet.activity",
+          pluginId: "@elizaos/plugin-wallet:ui",
+          label: "Activity",
+          path: "/wallet/activity",
         },
         {
-          id: "polymarket",
-          pluginId: "@elizaos/plugin-polymarket",
-          label: "Predictions",
-          path: "/polymarket",
+          id: "wallet.markets",
+          pluginId: "@elizaos/plugin-wallet:ui",
+          label: "Markets",
+          path: "/wallet/markets",
         },
         {
           id: "wallet.inventory",
@@ -90,7 +90,7 @@ describe("useNavigationPathSync — app-shell registry reactivity", () => {
       ],
     },
     {
-      path: "/hyperliquid",
+      path: "/wallet/activity",
       registrations: [
         {
           id: "wallet.inventory",
@@ -99,27 +99,27 @@ describe("useNavigationPathSync — app-shell registry reactivity", () => {
           path: "/inventory",
         },
         {
-          id: "polymarket",
-          pluginId: "@elizaos/plugin-polymarket",
-          label: "Predictions",
-          path: "/polymarket",
+          id: "wallet.markets",
+          pluginId: "@elizaos/plugin-wallet:ui",
+          label: "Markets",
+          path: "/wallet/markets",
         },
         {
-          id: "hyperliquid",
-          pluginId: "@elizaos/plugin-hyperliquid",
-          label: "Perps",
-          path: "/hyperliquid",
+          id: "wallet.activity",
+          pluginId: "@elizaos/plugin-wallet:ui",
+          label: "Activity",
+          path: "/wallet/activity",
         },
       ],
     },
     {
-      path: "/polymarket",
+      path: "/wallet/markets",
       registrations: [
         {
-          id: "hyperliquid",
-          pluginId: "@elizaos/plugin-hyperliquid",
-          label: "Perps",
-          path: "/hyperliquid",
+          id: "wallet.activity",
+          pluginId: "@elizaos/plugin-wallet:ui",
+          label: "Activity",
+          path: "/wallet/activity",
         },
         {
           id: "wallet.inventory",
@@ -128,10 +128,10 @@ describe("useNavigationPathSync — app-shell registry reactivity", () => {
           path: "/inventory",
         },
         {
-          id: "polymarket",
-          pluginId: "@elizaos/plugin-polymarket",
-          label: "Predictions",
-          path: "/polymarket",
+          id: "wallet.markets",
+          pluginId: "@elizaos/plugin-wallet:ui",
+          label: "Markets",
+          path: "/wallet/markets",
         },
       ],
     },

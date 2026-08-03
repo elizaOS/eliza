@@ -13,7 +13,7 @@ import type {
   AppBlockerSettingsCardProps,
   WebsiteBlockerSettingsCardProps,
 } from "@elizaos/shared";
-import type { ComponentType, ReactNode } from "react";
+import type { ComponentType } from "react";
 import type { CodingAgentSession } from "../api/client-types-cloud";
 import type { BrandingConfig } from "./branding";
 
@@ -96,10 +96,6 @@ export interface PtyConsoleDrawerProps {
   onClose: () => void;
 }
 
-export interface FineTuningViewProps {
-  contentHeader?: ReactNode;
-}
-
 export interface AppBootConfig {
   /** Branding overrides (product name, URLs, etc.). */
   branding: Partial<BrandingConfig>;
@@ -149,8 +145,6 @@ export interface AppBootConfig {
   codingAgentControlChip?: ComponentType<Record<string, never>>;
   /** Coding-agent PTY drawer provided by the host app. */
   ptyConsoleDrawer?: ComponentType<PtyConsoleDrawerProps>;
-  /** Fine-tuning view provided by the host app. */
-  fineTuningView?: ComponentType<FineTuningViewProps>;
   /** LifeOps browser setup panel provided by the host app. */
   lifeOpsBrowserSetupPanel?: ComponentType<Record<string, never>>;
   /** App blocker settings card provided by the host app. */

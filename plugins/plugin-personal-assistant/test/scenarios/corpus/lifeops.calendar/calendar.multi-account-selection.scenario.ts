@@ -10,7 +10,7 @@ import {
   type ScenarioContext,
   scenario,
 } from "@elizaos/scenario-runner/schema";
-import { seedGoogleConnectorGrant } from "../../../../plugins/plugin-personal-assistant/test/support/helpers/seed-grants.ts";
+import { seedGoogleConnectorGrant } from "../../../../test/support/helpers/seed-grants.ts";
 
 function checkAgentAsksWhichAccount(ctx: ScenarioContext): string | undefined {
   const reply = String(ctx.turns?.[0]?.responseText ?? "").toLowerCase();

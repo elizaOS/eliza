@@ -21,7 +21,7 @@ The overlay UI surface (registered via `src/register.ts` side-effect):
 | Export | Description |
 |--------|-------------|
 | `wifiApp` | `OverlayApp` descriptor (name, displayName, category: "system", androidOnly: true). |
-| `registerWifiApp()` | Registers `wifiApp` with `@elizaos/ui`'s overlay app registry. Called automatically on elizaOS Android. |
+| `registerWifiApp()` | Registers `wifiApp` with the shared overlay app registry. Called automatically on elizaOS Android. |
 | `WifiAppView` | React component. Full-screen overlay: shows connected network, scans for nearby networks, connects/disconnects with optional password entry. |
 
 ## Layout

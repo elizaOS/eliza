@@ -163,9 +163,6 @@ export const VIEW_OCR_POLICIES = {
       "Search skills",
     ],
   }),
-  "builtin-fine-tuning": expected({
-    requireAll: ["Fine-tuning requires the Training plugin"],
-  }),
   "builtin-trajectories": expected({
     requireAll: ["Trajectories"],
     requireAny: ["No trajectories yet", "Browse"],

@@ -38,7 +38,8 @@ function makeRuntime(): IAgentRuntime {
 }
 
 function git(repo: string, args: string[], env?: NodeJS.ProcessEnv): string {
-  return execFileSync("git", ["-C", repo, ...args], {
+  const invocation = gitInvocation(repo, args, env);
+  return execFileSync(invocation.executable, invocation.args, {
     env: { ...process.env, ...(env ?? {}) },
     encoding: "utf8",
   }).trim();
@@ -50,7 +51,12 @@ function gitAsync(
   env: NodeJS.ProcessEnv,
 ): Promise<{ code: number; stderr: string }> {
   return new Promise((resolveRun) => {
-    execFile("git", ["-C", repo, ...args], { env }, (err, _stdout, stderr) => {
+    const invocation = gitInvocation(repo, args, env);
+    execFile(
+      invocation.executable,
+      invocation.args,
+      { env },
+      (err, _stdout, stderr) => {
       const code =
         err && typeof (err as { code?: unknown }).code === "number"
           ? ((err as { code: number }).code ?? 1)
@@ -58,8 +64,29 @@ function gitAsync(
             ? 1
             : 0;
       resolveRun({ code, stderr: stderr ?? "" });
-    });
+      },
+    );
   });
+}
+
+function gitInvocation(
+  repo: string,
+  args: string[],
+  env?: NodeJS.ProcessEnv,
+): { executable: string; args: string[] } {
+  const wrapperDir = env?.ACP_GIT_INDEX_FILE
+    ? env.PATH?.split(path.delimiter)[0]
+    : undefined;
+  const wrapper = wrapperDir ? path.join(wrapperDir, "git") : undefined;
+  const interpreter = wrapper
+    ? readFileSync(wrapper, "utf8").split("\n", 1)[0]?.slice(2)
+    : undefined;
+  return wrapper && interpreter
+    ? {
+        executable: interpreter,
+        args: [wrapper, "-C", repo, ...args],
+      }
+    : { executable: "git", args: ["-C", repo, ...args] };
 }
 
 function lockFile(repo: string): string {
@@ -100,13 +127,12 @@ type GitIndexPreparer = {
 describe("ACP per-session commit race on a shared worktree (#14183)", () => {
   let tmpRoot: string;
   let repo: string;
-  let oldHome: string | undefined;
+  let sessionPrefix: string;
 
   beforeEach(() => {
     tmpRoot = mkdtempSync(path.join(os.tmpdir(), "acp-commit-race-"));
     repo = path.join(tmpRoot, "repo");
-    oldHome = process.env.HOME;
-    process.env.HOME = path.join(tmpRoot, "home");
+    sessionPrefix = `${path.basename(tmpRoot)}-`;
 
     git(tmpRoot, ["init", repo]);
     git(repo, ["config", "user.email", "test@example.com"]);
@@ -117,8 +143,14 @@ describe("ACP per-session commit race on a shared worktree (#14183)", () => {
   });
 
   afterEach(() => {
-    if (oldHome === undefined) delete process.env.HOME;
-    else process.env.HOME = oldHome;
+    const indexRoot = path.join(os.homedir(), ".acpx", "git-indexes");
+    if (existsSync(indexRoot)) {
+      for (const name of readdirSync(indexRoot)) {
+        if (name.startsWith(sessionPrefix)) {
+          rmSync(path.join(indexRoot, name), { recursive: true, force: true });
+        }
+      }
+    }
     rmSync(tmpRoot, { recursive: true, force: true });
   });
 
@@ -131,8 +163,8 @@ describe("ACP per-session commit race on a shared worktree (#14183)", () => {
     ).prepareSessionGitIndex.bind(service);
 
     const baselineSha = git(repo, ["rev-parse", "HEAD"]);
-    const sessionA = await prepare(repo, "sess-a", baselineSha);
-    const sessionB = await prepare(repo, "sess-b", baselineSha);
+    const sessionA = await prepare(repo, `${sessionPrefix}sess-a`, baselineSha);
+    const sessionB = await prepare(repo, `${sessionPrefix}sess-b`, baselineSha);
     expect(sessionA?.env.GIT_INDEX_FILE).toBeTruthy();
     expect(sessionB?.env.GIT_INDEX_FILE).toBeTruthy();
     expect(sessionA?.env.GIT_INDEX_FILE).not.toBe(sessionB?.env.GIT_INDEX_FILE);
@@ -197,8 +229,16 @@ exit 0
     ).prepareSessionGitIndex.bind(service);
 
     const baselineSha = git(repo, ["rev-parse", "HEAD"]);
-    const sessionA = await prepare(repo, "sess-live-owner-a", baselineSha);
-    const sessionB = await prepare(repo, "sess-live-owner-b", baselineSha);
+    const sessionA = await prepare(
+      repo,
+      `${sessionPrefix}sess-live-owner-a`,
+      baselineSha,
+    );
+    const sessionB = await prepare(
+      repo,
+      `${sessionPrefix}sess-live-owner-b`,
+      baselineSha,
+    );
     expect(sessionA?.env.GIT_INDEX_FILE).toBeTruthy();
     expect(sessionB?.env.GIT_INDEX_FILE).toBeTruthy();
 
@@ -272,7 +312,11 @@ exit 0
     ).prepareSessionGitIndex.bind(service);
 
     const baselineSha = git(repo, ["rev-parse", "HEAD"]);
-    const session = await prepare(repo, "sess-stale", baselineSha);
+    const session = await prepare(
+      repo,
+      `${sessionPrefix}sess-stale`,
+      baselineSha,
+    );
     expect(session?.env.GIT_INDEX_FILE).toBeTruthy();
 
     const lockPath = path.join(repo, ".git", "eliza-acp-commit.lock");
@@ -316,7 +360,11 @@ exit 0
     ).prepareSessionGitIndex.bind(service);
 
     const baselineSha = git(repo, ["rev-parse", "HEAD"]);
-    const session = await prepare(repo, "sess-recycled", baselineSha);
+    const session = await prepare(
+      repo,
+      `${sessionPrefix}sess-recycled`,
+      baselineSha,
+    );
     expect(session?.env.GIT_INDEX_FILE).toBeTruthy();
 
     writeFileSync(path.join(repo, "recycled.txt"), "after recycled-pid lock\n");
@@ -368,7 +416,11 @@ exit 0
     ).prepareSessionGitIndex.bind(service);
 
     const baselineSha = git(repo, ["rev-parse", "HEAD"]);
-    const session = await prepare(repo, "sess-wait", baselineSha);
+    const session = await prepare(
+      repo,
+      `${sessionPrefix}sess-wait`,
+      baselineSha,
+    );
     expect(session?.env.GIT_INDEX_FILE).toBeTruthy();
 
     writeFileSync(

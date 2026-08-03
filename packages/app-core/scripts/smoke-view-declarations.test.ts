@@ -21,7 +21,7 @@ const repoRoot = path.resolve(
   "..",
 );
 
-const REMOVED_PLUGIN_IDS = ["shopify", "steward", "social-alpha"];
+const REMOVED_PLUGIN_IDS = ["removed-plugin-fixture"];
 
 describe("smoke view declaration parity (#15791)", () => {
   it("every shipped declaration maps to a plugin that still registers it", () => {
@@ -46,14 +46,22 @@ describe("smoke view declaration parity (#15791)", () => {
   it("fails parity when a deleted plugin id is (re)introduced", () => {
     const withRemoved = [
       ...smokeViewDeclarations,
-      ["shopify", "Shopify", "plugin-shopify", "/shopify", "ShopifyView"],
+      [
+        "removed-plugin-fixture",
+        "Removed Plugin",
+        "plugin-removed-fixture",
+        "/removed-plugin",
+        "RemovedPluginView",
+      ],
     ];
     const { ok, missing } = checkSmokeViewParity(repoRoot, withRemoved);
     expect(ok).toBe(false);
-    expect(missing.map((entry) => entry.id)).toContain("shopify");
-    expect(missing.find((entry) => entry.id === "shopify")?.reason).toBe(
-      "plugin-directory-missing",
+    expect(missing.map((entry) => entry.id)).toContain(
+      "removed-plugin-fixture",
     );
+    expect(
+      missing.find((entry) => entry.id === "removed-plugin-fixture")?.reason,
+    ).toBe("plugin-directory-missing");
   });
 
   it("fails parity when a live plugin no longer exports the declared component", () => {
@@ -71,7 +79,7 @@ describe("smoke view declaration parity (#15791)", () => {
 describe("view bundle provenance (#15791)", () => {
   it("serves the real built bundle when present", () => {
     const provenance = resolveBundleProvenance({
-      viewId: "polymarket",
+      viewId: "notes",
       realBundleExists: true,
       requireRealBundle: false,
     });
@@ -84,7 +92,7 @@ describe("view bundle provenance (#15791)", () => {
 
   it("audit mode fails observably instead of fabricating a bundle", () => {
     const provenance = resolveBundleProvenance({
-      viewId: "polymarket",
+      viewId: "notes",
       realBundleExists: false,
       requireRealBundle: true,
     });

@@ -371,21 +371,6 @@
       "ignore": ["build/**", "artifacts/**"],
       "ignoreDependencies": ["bonjour-service", "rcedit"]
     },
-    "packages/browser-extension": {
-      "entry": [
-        "entrypoints/**/*.ts",
-        "src/**/*.ts",
-        "scripts/**/*.{mjs,ts,js}",
-        "vitest.extension.config.ts"
-      ],
-      "project": [
-        "entrypoints/**/*.ts",
-        "src/**/*.ts",
-        "scripts/**/*.{mjs,ts,js}",
-        "vitest.extension.config.ts"
-      ],
-      "ignore": ["dist/**"]
-    },
     "plugins/plugin-native-gateway": {
       "ignoreBinaries": ["pod"]
     },

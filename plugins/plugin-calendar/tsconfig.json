@@ -41,12 +41,6 @@
       "@elizaos/plugin-anthropic/*": ["../plugin-anthropic/*"],
       "@elizaos/plugin-app-manager": ["../plugin-app-manager/src/index.ts"],
       "@elizaos/plugin-app-manager/*": ["../plugin-app-manager/src/*"],
-      "@elizaos/plugin-background-runner": [
-        "../plugin-background-runner/src/index.ts"
-      ],
-      "@elizaos/plugin-background-runner/*": [
-        "../plugin-background-runner/src/*"
-      ],
       "@elizaos/plugin-browser": ["../plugin-browser/src/index.ts"],
       "@elizaos/plugin-browser/*": ["../plugin-browser/src/*"],
       "@elizaos/plugin-coding-tools": ["../plugin-coding-tools/src/index.ts"],
@@ -75,7 +69,6 @@
       "@elizaos/plugin-scheduling/*": ["../plugin-scheduling/src/*"],
       "@elizaos/plugin-sql": ["../plugin-sql/src/index.node.ts"],
       "@elizaos/plugin-sql/*": ["../plugin-sql/src/*"],
-      "@elizaos/plugin-streaming": ["../plugin-streaming/src/index.ts"],
       "@elizaos/plugin-task-coordinator": [
         "../plugin-task-coordinator/src/index.ts"
       ],
@@ -91,12 +84,6 @@
       ],
       "@elizaos/core/node": ["../../packages/core/src/index.node.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
-      "@elizaos/import-conversations": [
-        "../../packages/import-conversations/src/index.ts"
-      ],
-      "@elizaos/import-conversations/browser": [
-        "../../packages/import-conversations/src/browser.ts"
-      ],
       "@elizaos/logger": ["../../packages/logger/src/index.ts"],
       "@elizaos/logger/*": ["../../packages/logger/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],

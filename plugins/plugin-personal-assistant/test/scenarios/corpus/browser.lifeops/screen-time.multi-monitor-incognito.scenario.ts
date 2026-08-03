@@ -26,7 +26,7 @@ import {
   type ScenarioContext,
   scenario,
 } from "@elizaos/scenario-runner/schema";
-import { recordBrowserSessionRegistration } from "../../../../plugins/plugin-personal-assistant/src/lifeops/browser-extension-store.ts";
+import { recordBrowserSessionRegistration } from "../../../../src/lifeops/browser-extension-store.ts";
 import { seedBrowserExtensionTelemetry } from "../../../scenario-support/lifeops-seeds.ts";
 
 function checkScreenTimeReportIsHonest(

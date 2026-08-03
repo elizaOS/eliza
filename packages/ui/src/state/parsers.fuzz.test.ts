@@ -67,11 +67,7 @@ function randomJson(rng: () => number, depth: number): string {
 describe("WS event parsers — fuzz", () => {
   it("never throw and honor their type contracts on arbitrary payloads", () => {
     const rng = makeRng(0xabcdef);
-    const ENVELOPE_TYPES = new Set([
-      "agent_event",
-      "heartbeat_event",
-      "training_event",
-    ]);
+    const ENVELOPE_TYPES = new Set(["agent_event", "heartbeat_event"]);
     for (let i = 0; i < 4000; i++) {
       const value = JSON.parse(randomJson(rng, 4));
 

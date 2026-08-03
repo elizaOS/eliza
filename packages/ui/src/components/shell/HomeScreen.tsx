@@ -201,7 +201,7 @@ export interface HomeScreenProps {
 export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
   // The live activity stream feeds the home ranker's attention signals.
   const { events, clearEvents } = useActivityEvents();
-  // The entrance fade plays once, on first mount only - never re-triggered by a
+  // The entrance rise plays once, on first mount only - never re-triggered by a
   // re-render or resize (issue 9304).
   const enterClass = useEnterOnceClass();
   // Dev/test-only: observe home layout shifts on the shared telemetry channel.

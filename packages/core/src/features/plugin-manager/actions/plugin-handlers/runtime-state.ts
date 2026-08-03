@@ -1,8 +1,4 @@
-/**
- * @module features/plugin-manager/actions/plugin-handlers/runtime-state
- *
- * Read and mutate runtime plugin state for the MANAGE_PLUGINS action.
- */
+/** Reads and mutates runtime plugin state for the plugin-management action. */
 
 import type {
 	ActionResult,

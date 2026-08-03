@@ -4,8 +4,6 @@
  * regeneration cannot erase product-level mappings.
  */
 export const VIEW_ICON_ALIASES: Record<string, string> = {
-  hyperliquid: "trade",
-  shopify: "shop",
   "trajectory-logger": "trajectory",
   "phone-companion": "companion",
   // Character-family views promoted out of the old Character hub reuse the

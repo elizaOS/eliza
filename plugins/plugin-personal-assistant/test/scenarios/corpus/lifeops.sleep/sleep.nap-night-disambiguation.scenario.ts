@@ -11,11 +11,8 @@ import {
   type ScenarioContext,
   scenario,
 } from "@elizaos/scenario-runner/schema";
-import { LifeOpsRepository } from "../../../../plugins/plugin-personal-assistant/src/lifeops/repository.ts";
-import {
-  executeRawSql,
-  sqlQuote,
-} from "../../../../plugins/plugin-personal-assistant/src/lifeops/sql.ts";
+import { LifeOpsRepository } from "../../../../src/lifeops/repository.ts";
+import { executeRawSql, sqlQuote } from "../../../../src/lifeops/sql.ts";
 
 const NIGHT_START_UTC = "2025-11-04T05:00:00.000Z"; // 22:00 Pacific Mon Nov 3
 const NAP_START_UTC = "2025-11-03T22:00:00.000Z"; // 14:00 Pacific Mon Nov 3

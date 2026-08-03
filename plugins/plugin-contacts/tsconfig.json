@@ -40,12 +40,6 @@
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
       "@elizaos/core": ["../../packages/core/src/index.node.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
-      "@elizaos/import-conversations": [
-        "../../packages/import-conversations/src/index.ts"
-      ],
-      "@elizaos/import-conversations/browser": [
-        "../../packages/import-conversations/src/browser.ts"
-      ],
       "@elizaos/logger": ["../../packages/logger/src/index.ts"],
       "@elizaos/logger/*": ["../../packages/logger/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],

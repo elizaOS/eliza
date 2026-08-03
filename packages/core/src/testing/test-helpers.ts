@@ -1,9 +1,4 @@
-/**
- * @fileoverview Test Helper Utilities
- *
- * Pure utility functions for testing that don't involve mocking.
- * These are helpers for creating test data, assertions, and common patterns.
- */
+/** Pure test-data and assertion helpers shared by core tests. */
 
 import { v4 as uuidv4 } from "uuid";
 import type { Character, Content, Memory, UUID } from "../types";

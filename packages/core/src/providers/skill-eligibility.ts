@@ -1,12 +1,4 @@
-/**
- * Skill Eligibility Provider
- *
- * Provides LLM context about which skills are eligible for use,
- * which are ineligible, and why. Helps the LLM make informed
- * decisions about skill usage and suggest fixes for missing deps.
- *
- * @module providers/skill-eligibility
- */
+/** Supplies the model with skill eligibility, rejection reasons, and dependency remedies. */
 
 import type {
 	IAgentRuntime,

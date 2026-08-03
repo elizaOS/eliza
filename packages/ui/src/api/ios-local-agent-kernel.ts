@@ -3453,33 +3453,6 @@ export async function handleIosLocalAgentRequest(
     return unavailableLocalBackendRoute("secrets_manager_unavailable");
   }
 
-  if (method === "GET" && pathname === "/api/training/auto/config") {
-    return json({ enabled: false });
-  }
-
-  if (method === "GET" && pathname === "/api/training/auto/status") {
-    return json({ enabled: false, running: false, jobs: [] });
-  }
-
-  if (
-    method === "GET" &&
-    (pathname === "/api/training/status" ||
-      pathname === "/api/training/datasets" ||
-      pathname === "/api/training/jobs" ||
-      pathname === "/api/training/models" ||
-      pathname === "/api/training/inference/endpoints")
-  ) {
-    if (pathname.endsWith("/status")) return json({ available: false });
-    if (pathname.endsWith("/datasets")) return json({ datasets: [] });
-    if (pathname.endsWith("/jobs")) return json({ jobs: [] });
-    if (pathname.endsWith("/models")) return json({ models: [] });
-    return json({ endpoints: [] });
-  }
-
-  if (pathname.startsWith("/api/training/")) {
-    return unavailableLocalBackendRoute("training_service_unavailable");
-  }
-
   if (
     method === "GET" &&
     (pathname === "/api/apps" || pathname === "/api/catalog/apps")

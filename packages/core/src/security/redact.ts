@@ -1,14 +1,4 @@
-/**
- * Sensitive text redaction utilities.
- *
- * Provides functions to mask sensitive data like API keys, tokens,
- * passwords, and PEM blocks in text output before logging or display.
- *
- * Also provides secrets-aware redaction to prevent character secrets
- * from appearing in agent outputs or memories.
- *
- * @module security/redact
- */
+/** Masks credential patterns and configured character secrets before logging or display. */
 
 /**
  * Mode for sensitive text redaction.

@@ -19,8 +19,6 @@
  *    SSRF guard (`@elizaos/core/network`) at the call site.
  *  - `env` is exposed as a **frozen snapshot** ({@link frozenEnv}) for the call
  *    to read instead of the ambient `process.env`.
- *
- * @module security/capability-manifest
  */
 
 import type { Action } from "../types/components.ts";

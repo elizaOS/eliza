@@ -14,12 +14,9 @@ import {
   type ScenarioContext,
   scenario,
 } from "@elizaos/scenario-runner/schema";
-import { updateLifeOpsMeetingPreferences } from "../../../../plugins/plugin-personal-assistant/src/lifeops/owner-profile.ts";
-import { LifeOpsRepository } from "../../../../plugins/plugin-personal-assistant/src/lifeops/repository.ts";
-import {
-  executeRawSql,
-  sqlQuote,
-} from "../../../../plugins/plugin-personal-assistant/src/lifeops/sql.ts";
+import { updateLifeOpsMeetingPreferences } from "../../../../src/lifeops/owner-profile.ts";
+import { LifeOpsRepository } from "../../../../src/lifeops/repository.ts";
+import { executeRawSql, sqlQuote } from "../../../../src/lifeops/sql.ts";
 
 const PACIFIC_TZ = "America/Los_Angeles";
 // 2025-11-01 23:30 PDT = 2025-11-02 06:30Z (pre fall-back; PDT is UTC-7).

@@ -203,10 +203,6 @@ const pluginBrowserBridgeSrcRoot = path.join(
   "plugins/plugin-browser/src",
 );
 const uiPkgRoot = path.join(elizaRoot, "packages/ui");
-const importConversationsPkgRoot = path.join(
-  elizaRoot,
-  "packages/import-conversations",
-);
 const capacitorCoreEntry = path.join(
   path.dirname(_require.resolve("@capacitor/core/package.json")),
   "dist/index.js",
@@ -2486,10 +2482,6 @@ export const INVALID_TRACER_PROVIDER = {};
           "plugins/plugin-contacts/src/register.ts",
         ],
         [
-          "@elizaos/plugin-messages/register",
-          "plugins/plugin-messages/src/register.ts",
-        ],
-        [
           "@elizaos/plugin-phone/register",
           "plugins/plugin-phone/src/register.ts",
         ],
@@ -2553,15 +2545,6 @@ export const INVALID_TRACER_PROVIDER = {};
         find: /^@elizaos\/logger$/,
         replacement: path.resolve(elizaRoot, "packages/logger/src/index.ts"),
       },
-      // Memory import UI uses the browser facade only; keep it on source so
-      // renderer audits do not require building the Node parser package dist.
-      {
-        find: /^@elizaos\/import-conversations\/browser$/,
-        replacement: path.resolve(
-          elizaRoot,
-          "packages/import-conversations/src/browser.ts",
-        ),
-      },
       // When the cloud surface is excluded (ELIZA_DISABLE_WEB_SHELL=1), redirect
       // the two lazy cloud entry points to passthrough stubs — placed BEFORE the
       // broad @elizaos/ui/* alias below (first match wins) so Rollup never
@@ -2596,17 +2579,6 @@ export const INVALID_TRACER_PROVIDER = {};
         find: /^@elizaos\/ui\/(.+)$/,
         replacement: path.join(uiPkgRoot, "src/$1"),
       },
-      // @elizaos/import-conversations is consumed by @elizaos/ui source during
-      // renderer builds. Resolve it to source so audit/app builds do not depend
-      // on a prebuilt local workspace dist.
-      {
-        find: /^@elizaos\/import-conversations$/,
-        replacement: path.join(importConversationsPkgRoot, "src/index.ts"),
-      },
-      {
-        find: /^@elizaos\/import-conversations\/browser$/,
-        replacement: path.join(importConversationsPkgRoot, "src/browser.ts"),
-      },
       {
         find: /^@elizaos\/shared\/brand$/,
         replacement: path.resolve(
@@ -2619,7 +2591,7 @@ export const INVALID_TRACER_PROVIDER = {};
       // domain views live in plugin-todos/inbox/goals/health/calendar/etc.
       // src/ui.ts is the browser-safe facade — it imports the side-effectful
       // HTTP client and re-exports the surviving settings-card components,
-      // without dragging discord/health/phone/calendly/native deps into the
+      // without dragging discord/health/phone/native deps into the
       // browser bundle (those are pulled in by src/index.ts / src/plugin.ts).
       {
         find: /^@elizaos\/plugin-personal-assistant$/,
@@ -2627,12 +2599,6 @@ export const INVALID_TRACER_PROVIDER = {};
           elizaRoot,
           "plugins/plugin-personal-assistant/src/ui.ts",
         ),
-      },
-      // Calendly is a server-side connector pulled through legacy
-      // personal-assistant service paths. The app renderer does not execute it.
-      {
-        find: /^@elizaos\/plugin-calendly$/,
-        replacement: path.join(appCoreSrcRoot, "platform/empty-node-module.ts"),
       },
       {
         find: /^@elizaos\/plugin-google-workspace$/,
@@ -2771,25 +2737,6 @@ export const INVALID_TRACER_PROVIDER = {};
             find: /^@elizaos\/ui\/(.+)$/,
             replacement: path.join(uiSource, "$1"),
           },
-          // @elizaos/import-conversations resolves from source for the same
-          // reason: the renderer (MemoryViewerView) imports its `/browser`
-          // subpath, whose export map points at dist/ — absent in renderer
-          // builds that don't pre-build the package, failing with "Rollup
-          // failed to resolve import '@elizaos/import-conversations/browser'".
-          {
-            find: /^@elizaos\/import-conversations$/,
-            replacement: path.resolve(
-              elizaRoot,
-              "packages/import-conversations/src/index.ts",
-            ),
-          },
-          {
-            find: /^@elizaos\/import-conversations\/(.+)$/,
-            replacement: path.resolve(
-              elizaRoot,
-              "packages/import-conversations/src/$1.ts",
-            ),
-          },
           {
             find: /^@elizaos\/app-core\/first-run\/first-run-config$/,
             replacement: path.join(
@@ -2823,13 +2770,6 @@ export const INVALID_TRACER_PROVIDER = {};
           // those names as no-ops (see `platform/empty-node-module.ts`).
           {
             find: /^@elizaos\/plugin-elizacloud$/,
-            replacement: path.join(
-              appCoreSrcRoot,
-              "platform/empty-node-module.ts",
-            ),
-          },
-          {
-            find: /^@elizaos\/plugin-calendly$/,
             replacement: path.join(
               appCoreSrcRoot,
               "platform/empty-node-module.ts",

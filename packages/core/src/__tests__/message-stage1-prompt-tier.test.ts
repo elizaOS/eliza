@@ -122,6 +122,8 @@ function makeRuntime(
 		character: { name: "Test Agent", system: "You are concise." },
 		actions: [],
 		providers: [],
+		getRoom: vi.fn(async () => null),
+		reportError: vi.fn(),
 		contexts: new ContextRegistry(FIXTURE_CONTEXTS),
 		getSetting: vi.fn((key: string) => settings[key]),
 		responseHandlerFieldRegistry,

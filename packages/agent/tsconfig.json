@@ -56,10 +56,6 @@
       "@elizaos/app-core/*": ["../app-core/src/*"],
       "@elizaos/ui": ["../ui/src/index.ts"],
       "@elizaos/ui/*": ["../ui/src/*"],
-      "@elizaos/import-conversations": ["../import-conversations/src/index.ts"],
-      "@elizaos/import-conversations/browser": [
-        "../import-conversations/src/browser.ts"
-      ],
       "@elizaos/ui/api/client-types-cloud": [
         "../ui/src/api/client-types-cloud.ts"
       ],
@@ -82,7 +78,6 @@
       "@elizaos/plugin-computeruse": [
         "../../plugins/plugin-computeruse/src/index.ts"
       ],
-      "@elizaos/plugin-music": ["../../plugins/plugin-music/src/index.ts"],
       "@elizaos/plugin-whatsapp": [
         "../../plugins/plugin-whatsapp/src/index.ts"
       ],

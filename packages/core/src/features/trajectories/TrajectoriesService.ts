@@ -161,13 +161,25 @@ function asString(value: SqlCell | undefined): string | null {
 	return null;
 }
 
-function asIsoString(value: SqlCell | undefined): string {
+function asIsoString(value: SqlCell | undefined): string | null {
 	if (value instanceof Date) return value.toISOString();
 	const asText = asString(value);
-	if (!asText) return new Date(0).toISOString();
+	if (!asText) return null;
 	const parsed = new Date(asText);
-	if (Number.isNaN(parsed.getTime())) return new Date(0).toISOString();
+	if (Number.isNaN(parsed.getTime())) return null;
 	return parsed.toISOString();
+}
+
+function requiredTrajectoryCell<T>(
+	value: T | null,
+	field: string,
+	rowId?: string | null,
+): T {
+	if (value !== null) return value;
+	throw new ElizaError(`Trajectory database row has an invalid ${field}`, {
+		code: "TRAJECTORY_ROW_INVALID",
+		context: { field, ...(rowId ? { rowId } : {}) },
+	});
 }
 
 function asEpochMs(value: SqlCell | undefined): number | null {
@@ -703,11 +715,21 @@ function normalizeTrajectoryStep(value: unknown): TrajectoryStep | null {
 
 function parseTrajectorySteps(cell: SqlCell | undefined): TrajectoryStep[] {
 	const value = parseJsonCell(cell);
-	if (!Array.isArray(value)) return [];
+	if (!Array.isArray(value)) {
+		throw new ElizaError("Trajectory steps must be a JSON array", {
+			code: "TRAJECTORY_ROW_INVALID",
+			context: { field: "steps_json" },
+		});
+	}
 	const steps: TrajectoryStep[] = [];
 	for (const stepValue of value) {
 		const step = normalizeTrajectoryStep(stepValue);
-		if (!step) return [];
+		if (!step) {
+			throw new ElizaError("Trajectory row contains an invalid step", {
+				code: "TRAJECTORY_ROW_INVALID",
+				context: { field: "steps_json", stepIndex: steps.length },
+			});
+		}
 		steps.push(step);
 	}
 	return steps;
@@ -716,7 +738,10 @@ function parseTrajectorySteps(cell: SqlCell | undefined): TrajectoryStep[] {
 function parseRewardComponents(cell: SqlCell | undefined): RewardComponents {
 	const value = parseJsonObjectCell(cell);
 	if (!value || typeof value.environmentReward !== "number") {
-		return { environmentReward: 0 };
+		throw new ElizaError("Trajectory reward components are invalid", {
+			code: "TRAJECTORY_ROW_INVALID",
+			context: { field: "reward_components_json" },
+		});
 	}
 	const reward: RewardComponents = {
 		environmentReward: value.environmentReward,
@@ -747,19 +772,29 @@ function parseTrajectoryMetrics(
 	cell: SqlCell | undefined,
 ): Trajectory["metrics"] {
 	const value = parseJsonObjectCell(cell);
+	if (!value || typeof value.episodeLength !== "number") {
+		throw new ElizaError("Trajectory metrics are invalid", {
+			code: "TRAJECTORY_ROW_INVALID",
+			context: { field: "metrics_json" },
+		});
+	}
 	const finalStatus = value?.finalStatus;
+	if (
+		finalStatus !== "active" &&
+		finalStatus !== "completed" &&
+		finalStatus !== "terminated" &&
+		finalStatus !== "error" &&
+		finalStatus !== "timeout"
+	) {
+		throw new ElizaError("Trajectory metrics have an invalid final status", {
+			code: "TRAJECTORY_ROW_INVALID",
+			context: { field: "metrics_json.finalStatus" },
+		});
+	}
 	const metrics: Trajectory["metrics"] = {
-		episodeLength:
-			typeof value?.episodeLength === "number" ? value.episodeLength : 0,
-		finalStatus:
-			finalStatus === "completed" ||
-			finalStatus === "terminated" ||
-			finalStatus === "error" ||
-			finalStatus === "timeout"
-				? finalStatus
-				: "completed",
+		episodeLength: value.episodeLength,
+		finalStatus,
 	};
-	if (!value) return metrics;
 	for (const [key, metricValue] of Object.entries(value)) {
 		metrics[key] = metricValue;
 	}
@@ -770,7 +805,13 @@ function parseTrajectoryMetadata(
 	cell: SqlCell | undefined,
 ): Trajectory["metadata"] {
 	const value = parseJsonObjectCell(cell);
-	return value ?? {};
+	if (!value) {
+		throw new ElizaError("Trajectory metadata must be a JSON object", {
+			code: "TRAJECTORY_ROW_INVALID",
+			context: { field: "metadata_json" },
+		});
+	}
+	return value;
 }
 
 function sqlLiteral(v: unknown): string {
@@ -2125,8 +2166,6 @@ export class TrajectoriesService extends Service {
 				trajectoryId as `${string}-${string}-${string}-${string}-${string}`,
 			agentId: agentId as `${string}-${string}-${string}-${string}-${string}`,
 			startTime: now,
-			endTime: now,
-			durationMs: 0,
 			scenarioId: options.scenarioId,
 			episodeId: options.episodeId,
 			batchId: options.batchId,
@@ -2136,7 +2175,7 @@ export class TrajectoriesService extends Service {
 			rewardComponents: { environmentReward: 0 },
 			metrics: {
 				episodeLength: 0,
-				finalStatus: "completed",
+				finalStatus: "active",
 			},
 			metadata: {
 				source: options.source ?? "chat",
@@ -2414,13 +2453,10 @@ export class TrajectoriesService extends Service {
 		const runtime = this.runtime as IAgentRuntime & {
 			adapter?: { db?: unknown };
 		};
-		if (!runtime.adapter) {
-			return { trajectories: [], total: 0, offset: 0, limit: 50 };
-		}
+		if (!runtime.adapter) throw this.storageUnavailableError();
 		const db = runtime.adapter.db as { execute?: unknown } | undefined;
-		if (!db || typeof db.execute !== "function") {
-			return { trajectories: [], total: 0, offset: 0, limit: 50 };
-		}
+		if (!db || typeof db.execute !== "function")
+			throw this.storageUnavailableError();
 		await this.ensureStorageReady();
 
 		const offset = Math.max(0, options.offset ?? 0);
@@ -2480,7 +2516,10 @@ export class TrajectoriesService extends Service {
 		const countResult = await this.executeRawSql(
 			`SELECT count(*)::int AS total FROM trajectories ${whereClause}`,
 		);
-		const total = asNumber(pickCell(countResult.rows[0] ?? {}, "total")) ?? 0;
+		const total = requiredTrajectoryCell(
+			asNumber(pickCell(countResult.rows[0] ?? {}, "total")),
+			"total",
+		);
 
 		const rowsResult = await this.executeRawSql(`
       SELECT
@@ -2495,10 +2534,23 @@ export class TrajectoriesService extends Service {
     `);
 
 		const trajectories: TrajectoryListItem[] = rowsResult.rows.map((row) => {
-			const status =
-				(asString(pickCell(row, "status")) as TrajectoryListItem["status"]) ??
-				"completed";
-			const startTime = asNumber(pickCell(row, "start_time")) ?? 0;
+			const id = requiredTrajectoryCell(asString(pickCell(row, "id")), "id");
+			const rawStatus = asString(pickCell(row, "status"));
+			const status = requiredTrajectoryCell(
+				rawStatus === "active" ||
+					rawStatus === "completed" ||
+					rawStatus === "error" ||
+					rawStatus === "timeout"
+					? rawStatus
+					: null,
+				"status",
+				id,
+			);
+			const startTime = requiredTrajectoryCell(
+				asNumber(pickCell(row, "start_time")),
+				"start_time",
+				id,
+			);
 			const timing = normalizeReadTrajectoryTiming({
 				status,
 				startTime,
@@ -2507,8 +2559,8 @@ export class TrajectoriesService extends Service {
 				createdAtMs: asEpochMs(pickCell(row, "created_at")),
 				updatedAtMs: asEpochMs(pickCell(row, "updated_at")),
 			});
-			const rawLlmCallCount = asNumber(pickCell(row, "llm_call_count")) ?? 0;
-			const llmCallCount = rawLlmCallCount;
+			const requiredNumber = (field: string): number =>
+				requiredTrajectoryCell(asNumber(pickCell(row, field)), field, id);
 			const metadata = parseTrajectoryMetadata(
 				pickCell(row, "metadata_json", "metadata"),
 			);
@@ -2516,9 +2568,17 @@ export class TrajectoriesService extends Service {
 				typeof value === "string" ? value : null;
 
 			return {
-				id: asString(pickCell(row, "id")) ?? "",
-				agentId: asString(pickCell(row, "agent_id")) ?? "",
-				source: asString(pickCell(row, "source")) ?? "chat",
+				id,
+				agentId: requiredTrajectoryCell(
+					asString(pickCell(row, "agent_id")),
+					"agent_id",
+					id,
+				),
+				source: requiredTrajectoryCell(
+					asString(pickCell(row, "source")),
+					"source",
+					id,
+				),
 				roomId: asNullableString(metadata.roomId),
 				entityId: asNullableString(metadata.entityId),
 				metadata,
@@ -2526,19 +2586,24 @@ export class TrajectoriesService extends Service {
 				startTime,
 				endTime: timing.endTime,
 				durationMs: timing.durationMs,
-				stepCount: asNumber(pickCell(row, "step_count")) ?? 0,
-				llmCallCount,
-				totalPromptTokens: asNumber(pickCell(row, "total_prompt_tokens")) ?? 0,
-				totalCompletionTokens:
-					asNumber(pickCell(row, "total_completion_tokens")) ?? 0,
-				totalCacheReadInputTokens:
-					asNumber(pickCell(row, "total_cache_read_input_tokens")) ?? 0,
-				totalCacheCreationInputTokens:
-					asNumber(pickCell(row, "total_cache_creation_input_tokens")) ?? 0,
-				totalReward: asNumber(pickCell(row, "total_reward")) ?? 0,
+				stepCount: requiredNumber("step_count"),
+				llmCallCount: requiredNumber("llm_call_count"),
+				totalPromptTokens: requiredNumber("total_prompt_tokens"),
+				totalCompletionTokens: requiredNumber("total_completion_tokens"),
+				totalCacheReadInputTokens: requiredNumber(
+					"total_cache_read_input_tokens",
+				),
+				totalCacheCreationInputTokens: requiredNumber(
+					"total_cache_creation_input_tokens",
+				),
+				totalReward: requiredNumber("total_reward"),
 				scenarioId: asString(pickCell(row, "scenario_id")),
 				batchId: asString(pickCell(row, "batch_id")),
-				createdAt: asIsoString(pickCell(row, "created_at")),
+				createdAt: requiredTrajectoryCell(
+					asIsoString(pickCell(row, "created_at")),
+					"created_at",
+					id,
+				),
 				updatedAt: normalizeReadTrajectoryUpdatedAt({
 					startTime,
 					endTime: timing.endTime,
@@ -2553,7 +2618,7 @@ export class TrajectoriesService extends Service {
 
 	async getTrajectoryDetail(trajectoryId: string): Promise<Trajectory | null> {
 		const runtime = this.runtime as IAgentRuntime & { adapter?: unknown };
-		if (!runtime.adapter) return null;
+		if (!runtime.adapter) throw this.storageUnavailableError();
 		await this.ensureStorageReady();
 
 		const safeId = trajectoryId.replace(/'/g, "''");
@@ -2570,22 +2635,7 @@ export class TrajectoriesService extends Service {
 
 	async getStats(): Promise<TrajectoryStats> {
 		const runtime = this.runtime as IAgentRuntime & { adapter?: unknown };
-		if (!runtime.adapter) {
-			return {
-				totalTrajectories: 0,
-				totalSteps: 0,
-				totalLlmCalls: 0,
-				totalPromptTokens: 0,
-				totalCompletionTokens: 0,
-				totalCacheReadInputTokens: 0,
-				totalCacheCreationInputTokens: 0,
-				averageDurationMs: 0,
-				averageReward: 0,
-				bySource: {},
-				byStatus: {},
-				byScenario: {},
-			};
-		}
+		if (!runtime.adapter) throw this.storageUnavailableError();
 		await this.ensureStorageReady();
 
 		const statsResult = await this.executeRawSql(`
@@ -2621,7 +2671,9 @@ export class TrajectoriesService extends Service {
       GROUP BY scenario_id
     `);
 
-		const stats = statsResult.rows[0] ?? {};
+		const stats = requiredTrajectoryCell(statsResult.rows[0] ?? null, "stats");
+		const requiredStat = (field: string): number =>
+			requiredTrajectoryCell(asNumber(pickCell(stats, field)), field);
 		const bySource: Record<string, number> = {};
 		const byStatus: Record<string, number> = {};
 		const byScenario: Record<string, number> = {};
@@ -2645,18 +2697,17 @@ export class TrajectoriesService extends Service {
 		}
 
 		return {
-			totalTrajectories: asNumber(pickCell(stats, "total_trajectories")) ?? 0,
-			totalSteps: asNumber(pickCell(stats, "total_steps")) ?? 0,
-			totalLlmCalls: asNumber(pickCell(stats, "total_llm_calls")) ?? 0,
-			totalPromptTokens: asNumber(pickCell(stats, "total_prompt_tokens")) ?? 0,
-			totalCompletionTokens:
-				asNumber(pickCell(stats, "total_completion_tokens")) ?? 0,
-			totalCacheReadInputTokens:
-				asNumber(pickCell(stats, "total_cache_read_input_tokens")) ?? 0,
-			totalCacheCreationInputTokens:
-				asNumber(pickCell(stats, "total_cache_creation_input_tokens")) ?? 0,
-			averageDurationMs: asNumber(pickCell(stats, "avg_duration_ms")) ?? 0,
-			averageReward: asNumber(pickCell(stats, "avg_reward")) ?? 0,
+			totalTrajectories: requiredStat("total_trajectories"),
+			totalSteps: requiredStat("total_steps"),
+			totalLlmCalls: requiredStat("total_llm_calls"),
+			totalPromptTokens: requiredStat("total_prompt_tokens"),
+			totalCompletionTokens: requiredStat("total_completion_tokens"),
+			totalCacheReadInputTokens: requiredStat("total_cache_read_input_tokens"),
+			totalCacheCreationInputTokens: requiredStat(
+				"total_cache_creation_input_tokens",
+			),
+			averageDurationMs: requiredStat("avg_duration_ms"),
+			averageReward: requiredStat("avg_reward"),
 			bySource,
 			byStatus,
 			byScenario,
@@ -2665,7 +2716,7 @@ export class TrajectoriesService extends Service {
 
 	async deleteTrajectories(trajectoryIds: string[]): Promise<number> {
 		const runtime = this.runtime as IAgentRuntime & { adapter?: unknown };
-		if (!runtime.adapter) return 0;
+		if (!runtime.adapter) throw this.storageUnavailableError();
 		if (trajectoryIds.length === 0) return 0;
 		await this.ensureStorageReady();
 
@@ -2678,16 +2729,28 @@ export class TrajectoriesService extends Service {
 
 	async clearAllTrajectories(): Promise<number> {
 		const runtime = this.runtime as IAgentRuntime & { adapter?: unknown };
-		if (!runtime.adapter) return 0;
+		if (!runtime.adapter) throw this.storageUnavailableError();
 		await this.ensureStorageReady();
 
 		const countResult = await this.executeRawSql(
 			`SELECT count(*)::int AS cnt FROM trajectories`,
 		);
-		const count = asNumber(pickCell(countResult.rows[0] ?? {}, "cnt")) ?? 0;
+		const count = requiredTrajectoryCell(
+			asNumber(pickCell(countResult.rows[0] ?? {}, "cnt")),
+			"cnt",
+		);
 
 		await this.executeRawSql(`DELETE FROM trajectories`);
 		return count;
+	}
+
+	private storageUnavailableError(): ElizaError {
+		return new ElizaError(
+			"Trajectory storage requires a SQL database adapter",
+			{
+				code: "TRAJECTORY_STORAGE_UNAVAILABLE",
+			},
+		);
 	}
 
 	private sanitizeZipFolderName(value: string): string {
@@ -2978,15 +3041,17 @@ export class TrajectoriesService extends Service {
 	// ─────────────────────────────────────────────────────────────────────────
 
 	private rowToTrajectory(row: SqlRow): Trajectory {
-		const startTime = asNumber(pickCell(row, "start_time")) ?? 0;
+		const id = requiredTrajectoryCell(asString(pickCell(row, "id")), "id");
+		const startTime = requiredTrajectoryCell(
+			asNumber(pickCell(row, "start_time")),
+			"start_time",
+			id,
+		);
 		const metrics = parseTrajectoryMetrics(
 			pickCell(row, "metrics_json", "metrics"),
 		);
 		const timing = normalizeReadTrajectoryTiming({
-			status:
-				asString(pickCell(row, "status")) ??
-				stringValue(metrics.finalStatus) ??
-				"completed",
+			status: asString(pickCell(row, "status")) ?? metrics.finalStatus,
 			startTime,
 			endTime: asNumber(pickCell(row, "end_time")),
 			durationMs: asNumber(pickCell(row, "duration_ms")),
@@ -2995,19 +3060,25 @@ export class TrajectoriesService extends Service {
 		});
 
 		return {
-			trajectoryId: (asString(pickCell(row, "id")) ??
-				"") as `${string}-${string}-${string}-${string}-${string}`,
-			agentId: (asString(pickCell(row, "agent_id")) ??
-				"") as `${string}-${string}-${string}-${string}-${string}`,
+			trajectoryId: id as `${string}-${string}-${string}-${string}-${string}`,
+			agentId: requiredTrajectoryCell(
+				asString(pickCell(row, "agent_id")),
+				"agent_id",
+				id,
+			) as `${string}-${string}-${string}-${string}-${string}`,
 			startTime,
-			endTime: timing.endTime ?? 0,
-			durationMs: timing.durationMs ?? 0,
+			...(timing.endTime === null ? {} : { endTime: timing.endTime }),
+			...(timing.durationMs === null ? {} : { durationMs: timing.durationMs }),
 			scenarioId: asString(pickCell(row, "scenario_id")) ?? undefined,
 			episodeId: asString(pickCell(row, "episode_id")) ?? undefined,
 			batchId: asString(pickCell(row, "batch_id")) ?? undefined,
 			groupIndex: asNumber(pickCell(row, "group_index")) ?? undefined,
 			steps: parseTrajectorySteps(pickCell(row, "steps_json", "steps")),
-			totalReward: asNumber(pickCell(row, "total_reward")) ?? 0,
+			totalReward: requiredTrajectoryCell(
+				asNumber(pickCell(row, "total_reward")),
+				"total_reward",
+				id,
+			),
 			rewardComponents: parseRewardComponents(
 				pickCell(row, "reward_components_json", "reward_components"),
 			),

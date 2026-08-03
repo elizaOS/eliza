@@ -77,7 +77,6 @@ export function createServerState(
     cloudManager: null,
     sandboxManager: null,
     appManager: null,
-    trainingService: null,
     shareIngestQueue: [],
     broadcastStatus: null,
     broadcastWs: null,

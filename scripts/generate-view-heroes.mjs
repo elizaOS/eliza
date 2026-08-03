@@ -63,13 +63,6 @@ function pluginHasHeroAsset(pluginDir) {
  */
 const views = [
   {
-    out: "plugins/app-model-tester/assets/hero.svg",
-    id: "model-tester",
-    label: "Model Tester",
-    hue: 25,
-    icon: VIEW_HERO_ICONS.modelTester,
-  },
-  {
     out: "plugins/plugin-app-control/assets/hero.svg",
     id: "views",
     label: "Views",

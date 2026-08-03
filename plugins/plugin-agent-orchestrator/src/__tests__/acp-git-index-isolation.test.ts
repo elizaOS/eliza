@@ -6,7 +6,14 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
@@ -23,7 +30,18 @@ function makeRuntime(): IAgentRuntime {
 }
 
 function git(repo: string, args: string[], env?: NodeJS.ProcessEnv): string {
-  return execFileSync("git", ["-C", repo, ...args], {
+  const wrapperDir = env?.ACP_GIT_INDEX_FILE
+    ? env.PATH?.split(path.delimiter)[0]
+    : undefined;
+  const wrapper = wrapperDir ? path.join(wrapperDir, "git") : undefined;
+  const interpreter = wrapper
+    ? readFileSync(wrapper, "utf8").split("\n", 1)[0]?.slice(2)
+    : undefined;
+  const executable = interpreter || "git";
+  const commandArgs = wrapper
+    ? [wrapper, "-C", repo, ...args]
+    : ["-C", repo, ...args];
+  return execFileSync(executable, commandArgs, {
     env: { ...process.env, ...(env ?? {}) },
     encoding: "utf8",
   }).trim();
@@ -46,13 +64,12 @@ type GitIndexPreparer = {
 describe("ACP per-session git index isolation (#13773)", () => {
   let tmpRoot: string;
   let repo: string;
-  let oldHome: string | undefined;
+  let sessionPrefix: string;
 
   beforeEach(() => {
     tmpRoot = mkdtempSync(path.join(os.tmpdir(), "acp-git-index-"));
     repo = path.join(tmpRoot, "repo");
-    oldHome = process.env.HOME;
-    process.env.HOME = path.join(tmpRoot, "home");
+    sessionPrefix = `${path.basename(tmpRoot)}-`;
 
     git(tmpRoot, ["init", repo]);
     git(repo, ["config", "user.email", "test@example.com"]);
@@ -63,8 +80,14 @@ describe("ACP per-session git index isolation (#13773)", () => {
   });
 
   afterEach(() => {
-    if (oldHome === undefined) delete process.env.HOME;
-    else process.env.HOME = oldHome;
+    const indexRoot = path.join(os.homedir(), ".acpx", "git-indexes");
+    if (existsSync(indexRoot)) {
+      for (const name of readdirSync(indexRoot)) {
+        if (name.startsWith(sessionPrefix)) {
+          rmSync(path.join(indexRoot, name), { recursive: true, force: true });
+        }
+      }
+    }
     rmSync(tmpRoot, { recursive: true, force: true });
   });
 
@@ -77,8 +100,8 @@ describe("ACP per-session git index isolation (#13773)", () => {
     ).prepareSessionGitIndex.bind(service);
 
     const baselineSha = git(repo, ["rev-parse", "HEAD"]);
-    const sessionA = await prepare(repo, "sess-a", baselineSha);
-    const sessionB = await prepare(repo, "sess-b", baselineSha);
+    const sessionA = await prepare(repo, `${sessionPrefix}sess-a`, baselineSha);
+    const sessionB = await prepare(repo, `${sessionPrefix}sess-b`, baselineSha);
 
     expect(sessionA?.env.GIT_INDEX_FILE).toBeTruthy();
     expect(sessionB?.env.GIT_INDEX_FILE).toBeTruthy();

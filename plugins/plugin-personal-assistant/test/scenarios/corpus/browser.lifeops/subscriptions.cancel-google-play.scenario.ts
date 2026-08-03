@@ -2,11 +2,11 @@
 
 import { expectScenarioBrowserTask } from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { browserPlugin } from "../../../../plugins/plugin-browser/src/plugin.ts";
+import { browserPlugin } from "../../../../../../plugins/plugin-browser/src/plugin.ts";
 import {
   __resetBrowserWorkspaceStateForTests,
   executeBrowserWorkspaceCommand,
-} from "../../../../plugins/plugin-browser/src/workspace/browser-workspace.ts";
+} from "../../../../../../plugins/plugin-browser/src/workspace/browser-workspace.ts";
 
 type RuntimeWithBrowserPlugin = {
   plugins?: Array<{ name?: string }>;

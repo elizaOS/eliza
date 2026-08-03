@@ -1,13 +1,4 @@
-/**
- * Retry and backoff utilities for robust async operations.
- *
- * Provides:
- * - Exponential backoff with jitter
- * - Configurable retry logic
- * - Abort signal support
- *
- * @module utils/retry
- */
+/** Runs abortable asynchronous retries with configurable exponential backoff and jitter. */
 
 // ============================================================================
 // Sleep Utilities

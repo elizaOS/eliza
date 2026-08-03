@@ -40,10 +40,6 @@ const pluginBrowserBridgeSrc = path.join(
   "plugins/plugin-browser/src",
 );
 const pluginAnthropicRoot = path.join(monorepoRoot, "plugins/plugin-anthropic");
-const pluginBackgroundRunnerSrc = path.join(
-  monorepoRoot,
-  "plugins/plugin-background-runner/src",
-);
 const pluginCommandsSrc = path.join(
   monorepoRoot,
   "plugins/plugin-commands/src",
@@ -75,7 +71,6 @@ const pluginNativeFilesystemSrc = path.join(
   monorepoRoot,
   "plugins/plugin-native-filesystem/src",
 );
-const pluginOllamaRoot = path.join(monorepoRoot, "plugins/plugin-ollama");
 const pluginOpenAiSrc = path.join(monorepoRoot, "plugins/plugin-openai");
 const pluginPdfSrc = path.join(monorepoRoot, "plugins/plugin-pdf");
 const pluginRegistrySrc = path.join(
@@ -366,10 +361,6 @@ export default defineConfig({
         replacement: `${toVitePath(appTaskCoordinatorSrc)}/$1`,
       },
       {
-        find: /^@elizaos\/plugin-background-runner$/,
-        replacement: path.join(pluginBackgroundRunnerSrc, "index.ts"),
-      },
-      {
         find: /^@elizaos\/plugin-scheduling$/,
         replacement: path.join(pluginSchedulingSrc, "index.ts"),
       },
@@ -444,14 +435,6 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-native-filesystem$/,
         replacement: path.join(pluginNativeFilesystemSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-ollama$/,
-        replacement: path.join(pluginOllamaRoot, "index.node.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-ollama\/(.+)$/,
-        replacement: path.join(pluginOllamaRoot, "$1"),
       },
       {
         find: /^@elizaos\/plugin-pdf$/,

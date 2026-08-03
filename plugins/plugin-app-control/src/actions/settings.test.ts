@@ -977,41 +977,16 @@ describe("SETTINGS action: set on an owned route section", () => {
 		});
 	});
 
-	it("dispatches capabilities auto-training through the training config route", async () => {
-		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
-		const { result, texts } = await invoke(
-			{
-				action: "set",
-				section: "capabilities",
-				key: "auto-training",
-				value: "on",
-			},
-			routeFetch,
-		);
-		expect(routeFetch).toHaveBeenCalledWith({
-			method: "POST",
-			path: "/api/training/auto/config",
-			body: { autoTrain: true },
-		});
-		expect(result?.success).toBe(true);
-		expect(result?.values).toMatchObject({
-			section: "capabilities",
-			key: "auto-training",
-			value: true,
-		});
-		expect(texts.join(" ")).toContain("Auto-training is on");
-	});
-
-	it("defaults capabilities to auto-training when key is omitted", async () => {
+	it("defaults capabilities to wallet when key is omitted", async () => {
 		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
 		await invoke(
 			{ action: "set", section: "capabilities", value: "off" },
 			routeFetch,
 		);
 		expect(routeFetch).toHaveBeenCalledWith({
-			method: "POST",
-			path: "/api/training/auto/config",
-			body: { autoTrain: false },
+			method: "PUT",
+			path: "/api/config",
+			body: { ui: { capabilities: { wallet: false } } },
 		});
 	});
 

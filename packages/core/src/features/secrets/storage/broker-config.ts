@@ -21,8 +21,6 @@
  * Mode is ON only when BOTH url and token are present and non-empty \u2014 the same
  * both-or-nothing rule the model gateway and credential proxy use, so a
  * half-configured broker never silently no-ops into local plaintext storage.
- *
- * @module features/secrets/storage/broker-config
  */
 
 import { isTruthyEnvValue } from "../../../env-utils.ts";
@@ -40,11 +38,8 @@ export interface SecretsBrokerConfig {
 	url: string;
 	token: string;
 	/**
-	 * Fail-closed. When `true` and the broker is configured-but-unreachable, the
-	 * store refuses (throws) instead of degrading to a local store. When
-	 * `false`, an unreachable broker is a soft failure (read returns `null`),
-	 * but the default LOCAL stores are still what serves keys the broker doesn't
-	 * cover \u2014 the broker never silently leaks plaintext either way.
+	 * Compatibility flag retained for deployment introspection. Configured broker
+	 * failures always surface; this flag never permits a plaintext local fallback.
 	 */
 	strict: boolean;
 }

@@ -5,7 +5,7 @@ import {
   expectTurnToCallAction,
 } from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { receivePendingIntents } from "../../../../plugins/plugin-personal-assistant/src/lifeops/intent-sync.ts";
+import { receivePendingIntents } from "../../../../src/lifeops/intent-sync.ts";
 
 export default scenario({
   lane: "live-only",

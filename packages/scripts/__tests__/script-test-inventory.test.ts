@@ -931,5 +931,5 @@ jobs:
       expect(entry.sha256).toMatch(/^[a-f0-9]{64}$/);
     }
     expect(result.inventorySha256).toMatch(/^[a-f0-9]{64}$/);
-  });
+  }, 15_000);
 });

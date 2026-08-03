@@ -48,7 +48,8 @@ Keep it aligned with
 [`packages/homepage/public/install.sh`](packages/homepage/public/install.sh)
 where the install flow is equivalent, and call out intentional platform
 differences near the branch that handles them. Installer security issues are in
-scope for `SECURITY.md` because these scripts bootstrap user machines.
+scope for [`packages/docs/security.md`](packages/docs/security.md) because these
+scripts bootstrap user machines.
 
 ## What works on Windows
 

@@ -39,7 +39,6 @@ const ROUTES = [
   ["/apps/database", "database"],
   ["/apps/logs", "logs"],
   ["/apps/tasks", "tasks"],
-  ["/apps/fine-tuning", "fine-tuning"],
   ["/character", "character"],
   ["/character/documents", "knowledge"],
   ["/wallet", "wallet"],

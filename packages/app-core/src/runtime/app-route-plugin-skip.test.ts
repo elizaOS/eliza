@@ -75,9 +75,7 @@ describe("normalizeAppRoutePluginId", () => {
     expect(normalizeAppRoutePluginId("@elizaos/plugin-wallet:ui")).toBe(
       "wallet",
     );
-    expect(normalizeAppRoutePluginId("@elizaos/plugin-shopify")).toBe(
-      "shopify",
-    );
+    expect(normalizeAppRoutePluginId("@elizaos/plugin-notes")).toBe("notes");
     expect(normalizeAppRoutePluginId("@elizaos/plugin-documents-routes")).toBe(
       "documents",
     );

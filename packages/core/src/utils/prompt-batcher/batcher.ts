@@ -308,25 +308,18 @@ export class PromptBatcher {
 		this.affinityLocks.clear();
 	}
 
-	invalidateCache(sectionId: string): void {
+	async invalidateCache(sectionId: string): Promise<void> {
 		const cacheKey = this._cacheKey(sectionId);
 		this.inMemoryCache.delete(cacheKey);
-		// error-policy:J7 best-effort DB cache invalidation — the in-memory entry is
-		// already cleared above and a stale DB cache row is harmless, so a delete
-		// failure (deleteCache throws on DB error, #12269) must NOT become an
-		// unhandled rejection that terminates one-shot CLI / embedded hosts. Surface
-		// via reportError, never rethrow.
-		void this.runtime
-			.deleteCache(cacheKey)
-			.catch((err) =>
-				this.runtime.reportError("PromptBatcher", err, { cacheKey }),
-			);
+		await this.runtime.deleteCache(cacheKey);
 	}
 
-	invalidateAllCaches(): void {
-		for (const section of this.sections.values()) {
-			this.invalidateCache(section.id);
-		}
+	async invalidateAllCaches(): Promise<void> {
+		await Promise.all(
+			[...this.sections.values()].map((section) =>
+				this.invalidateCache(section.id),
+			),
+		);
 	}
 
 	getStats(): BatcherStats {
@@ -790,7 +783,7 @@ export class PromptBatcher {
 						continue;
 					}
 				} else {
-					this.invalidateCache(section.id);
+					await this.invalidateCache(section.id);
 				}
 			}
 

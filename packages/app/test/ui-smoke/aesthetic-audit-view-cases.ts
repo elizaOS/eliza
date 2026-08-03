@@ -27,7 +27,6 @@ export const BUILTIN_TAB_PATHS: Record<string, string> = {
   files: "/apps/files",
   plugins: "/apps/plugins",
   skills: "/apps/skills",
-  "fine-tuning": "/apps/fine-tuning",
   trajectories: "/apps/trajectories",
   transcripts: "/apps/transcripts",
   relationships: "/apps/relationships",

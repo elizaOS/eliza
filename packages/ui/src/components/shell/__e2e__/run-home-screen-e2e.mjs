@@ -986,7 +986,7 @@ try {
   );
   // ── Removed / hidden surfaces never tile: removed apps, wallet sub-views,
   // and the deduped duplicate registrations.
-  for (const id of ["views", "shopify", "hyperliquid", "inventory", "triggers"]) {
+  for (const id of ["views", "wallet-trading", "inventory", "triggers"]) {
     assert(
       (await mobile.getByTestId(`launcher-tile-${id}`).count()) === 0,
       `"${id}" is absent from the launcher (removed/hidden/deduped)`,

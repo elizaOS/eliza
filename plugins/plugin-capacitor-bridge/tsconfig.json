@@ -21,9 +21,6 @@
 			"@elizaos/agent": ["../../packages/agent/src/index.ts"],
 			"@elizaos/agent/*": ["../../packages/agent/src/*"],
 			"@elizaos/app-core": ["./src/type-shims/app-core-root.ts"],
-			"@elizaos/app-core/agent-bridge": [
-				"../../packages/app-core/src/agent-bridge.ts"
-			],
 			"@elizaos/app-core/account-pool": [
 				"../../packages/app-core/src/account-pool.ts"
 			],
@@ -49,12 +46,6 @@
 				"../../plugins/plugin-native-camera/src/index.ts"
 			],
 			"@elizaos/core": ["../../packages/core/src/index.node.ts"],
-			"@elizaos/import-conversations": [
-				"../../packages/import-conversations/src/index.ts"
-			],
-			"@elizaos/import-conversations/browser": [
-				"../../packages/import-conversations/src/browser.ts"
-			],
 			"@elizaos/logger": ["../../packages/logger/src/index.ts"],
 			"@elizaos/shared": ["../../packages/shared/src/index.ts"],
 			"@elizaos/shared/*": ["../../packages/shared/src/*"],
@@ -130,9 +121,6 @@
 				"../../plugins/plugin-registry/src/index.ts"
 			],
 			"@elizaos/plugin-registry/*": ["../../plugins/plugin-registry/src/*"],
-			"@elizaos/plugin-streaming": [
-				"../../plugins/plugin-streaming/src/index.ts"
-			],
 			"@elizaos/plugin-scheduling": [
 				"../../plugins/plugin-scheduling/src/index.ts"
 			],
@@ -145,9 +133,7 @@
 				"../../plugins/plugin-task-coordinator/src/*"
 			],
 			"@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/src/index.ts"],
-			"@elizaos/plugin-wallet/*": ["../../plugins/plugin-wallet/src/*"],
-			"@elizaos/plugin-x402": ["../../plugins/plugin-x402/src/index.ts"],
-			"@elizaos/plugin-x402/*": ["../../plugins/plugin-x402/src/*"]
+			"@elizaos/plugin-wallet/*": ["../../plugins/plugin-wallet/src/*"]
 		}
 	},
 	"include": ["src/**/*"],

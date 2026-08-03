@@ -1,10 +1,10 @@
 /** Scenario fixture for activity context aware response; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { setScreenContextSamplerForTesting } from "../../../../plugins/plugin-personal-assistant/src/activity-profile/service.ts";
+import { setScreenContextSamplerForTesting } from "../../../../src/activity-profile/service.ts";
 import {
   LifeOpsScreenContextSampler,
   type LifeOpsScreenContextSummary,
-} from "../../../../plugins/plugin-personal-assistant/src/lifeops/screen-context.ts";
+} from "../../../../src/lifeops/screen-context.ts";
 
 class FixedScreenContextSampler extends LifeOpsScreenContextSampler {
   override async sample(

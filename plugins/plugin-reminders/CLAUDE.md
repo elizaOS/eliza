@@ -20,8 +20,6 @@ delivery/escalation ENGINE (`service-mixin-reminders.ts`) stays PA-resident,
 writing through the carved tables via the repointed repository — a later slice
 can lift the engine here behind the `@elizaos/plugin-scheduling` tick-hook ports.
 
-See `plugins/plugin-personal-assistant/docs/lifeops-extraction-plan.md`.
-
 ## Conventions / gotchas
 
 - **`@elizaos/plugin-sql` must be loaded first** — the schema is registered via

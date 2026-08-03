@@ -39,7 +39,6 @@ const SUBJECTS = {
   settings: "a single gear cog",
   shop: "a shopping bag",
   trade: "a candlestick trading chart",
-  training: "a dumbbell",
   trajectory: "a curved dotted flight path with an arrow",
   vectors: "three arrows pointing from a single origin",
   views: "a window divided into four equal square panes",
@@ -62,7 +61,6 @@ const SUBJECTS = {
   plugins: "a power plug",
   skills: "three sparkle stars",
   advanced: "a brain made of circuit lines",
-  "fine-tuning": "horizontal slider controls",
   trajectories: "several curved dotted paths",
   transcripts: "a document with an audio waveform",
   relationships: "connected people forming a network",
@@ -74,7 +72,6 @@ const SUBJECTS = {
   desktop: "a desktop monitor",
   logs: "a scroll with list lines",
   background: "a framed landscape picture",
-  polymarket: "a bar chart comparing two outcomes with an up arrow",
 };
 
 const STYLE =

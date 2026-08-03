@@ -231,7 +231,6 @@ const integrationResolveAlias: ModuleAlias[] = [
     "plugin-personal-assistant",
     "app-task-coordinator",
     "plugin-workflow",
-    "plugin-shopify",
   ]),
   ...getSharedSourceAliases(sharedSourceRoot),
   // Vite's SSR resolver does not consistently select custom export

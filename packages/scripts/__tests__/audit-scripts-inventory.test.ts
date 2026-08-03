@@ -182,7 +182,7 @@ describe("script inventory: packages/app surface (issue #10200)", () => {
     const byFile = (name: string) => inv.files.find((f) => f.file === name);
 
     expect(byFile("run-scenarios-isolated.mjs")?.category).toBe(
-      "reachable-from-docs",
+      "reachable-from-operator-script",
     );
     expect(inv.summary.filesByCategory.orphan).toBe(0);
     expect(inv.summary.orphanFiles).toBe(0);

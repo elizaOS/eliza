@@ -1,6 +1,6 @@
 /**
  * Agent domain methods — lifecycle, auth, config, connectors, triggers,
- * training, plugins, streaming, logs, character, permissions, updates.
+ * plugins, streaming, logs, character, permissions, updates.
  */
 
 import type {
@@ -64,8 +64,6 @@ import type {
   AgentSelfStatusSnapshot,
   AgentStatus,
   AppConfigResponse,
-  BuildTrainingAnalysisIndexOptions,
-  BuildTrainingReadinessReportOptions,
   CharacterData,
   CharacterHistoryResponse,
   CodingAgentAddAgentInput,
@@ -98,10 +96,7 @@ import type {
   ExperienceRecord,
   ExperienceUpdateInput,
   ExtensionStatus,
-  HuggingFaceDatasetIngestResponse,
-  IngestHuggingFaceDatasetOptions,
   LaunchSnapshot,
-  ListTrainingCollectionsResponse,
   LogsFilter,
   LogsResponse,
   ModelCatalog,
@@ -124,37 +119,13 @@ import type {
   RelationshipsMergeCandidate,
   RelationshipsPersonDetail,
   RelationshipsPersonSummary,
-  RunActionBenchmarkOptions,
-  RunActionBenchmarkResponse,
-  RunBenchmarkVsCerebrasOptions,
-  RunBenchmarkVsCerebrasResponse,
-  RunFeedGenerationOptions,
-  RunFeedGenerationResponse,
-  RunLocalEvalComparisonOptions,
-  RunLocalEvalComparisonResponse,
-  RunScenarioOptions,
-  RunScenarioResponse,
-  RunTrainingCollectionOptions,
-  RunTrainingCollectionPreflightResponse,
-  RunTrainingCollectionResponse,
   RuntimeDebugSnapshot,
   SecretInfo,
   SecurityAuditFilter,
   SecurityAuditResponse,
   SecurityAuditStreamEvent,
-  StageEliza1BundleOptions,
-  StageEliza1BundleResponse,
-  StartTrainingOptions,
   TradePermissionMode,
   TradePermissionModeResponse,
-  TrainingAnalysisIndexResponse,
-  TrainingDatasetRecord,
-  TrainingJobRecord,
-  TrainingModelRecord,
-  TrainingReadinessReportResponse,
-  TrainingStatus,
-  TrainingTrajectoryDetail,
-  TrainingTrajectoryList,
   TriggerEventDispatchResponse,
   TriggerHealthSnapshot,
   TriggerLastStatus,
@@ -524,92 +495,6 @@ declare module "./client-base" {
       payload?: Record<string, unknown>,
     ): Promise<TriggerEventDispatchResponse>;
     getTriggerHealth(): Promise<TriggerHealthSnapshot>;
-    getTrainingStatus(): Promise<TrainingStatus>;
-    listTrainingTrajectories(opts?: {
-      limit?: number;
-      offset?: number;
-    }): Promise<TrainingTrajectoryList>;
-    getTrainingTrajectory(
-      trajectoryId: string,
-    ): Promise<{ trajectory: TrainingTrajectoryDetail }>;
-    listTrainingDatasets(): Promise<{ datasets: TrainingDatasetRecord[] }>;
-    buildTrainingDataset(options?: {
-      limit?: number;
-      minLlmCallsPerTrajectory?: number;
-    }): Promise<{ dataset: TrainingDatasetRecord }>;
-    writeTrainingBenchmarkMatrix(options: {
-      rows: Array<{
-        modelId: string;
-        benchmark: string;
-        score: number;
-        variant: "reference" | "base" | "trained";
-      }>;
-      outputDir?: string;
-      referenceModelId?: string;
-    }): Promise<{ outputDir: string; artifactPath: string; artifact: unknown }>;
-    listTrainingJobs(): Promise<{ jobs: TrainingJobRecord[] }>;
-    startTrainingJob(
-      options?: StartTrainingOptions,
-    ): Promise<{ job: TrainingJobRecord }>;
-    getTrainingJob(jobId: string): Promise<{ job: TrainingJobRecord }>;
-    cancelTrainingJob(jobId: string): Promise<{ job: TrainingJobRecord }>;
-    listTrainingModels(): Promise<{ models: TrainingModelRecord[] }>;
-    importTrainingModelToOllama(
-      modelId: string,
-      options?: {
-        modelName?: string;
-        baseModel?: string;
-        ollamaUrl?: string;
-      },
-    ): Promise<{ model: TrainingModelRecord }>;
-    activateTrainingModel(
-      modelId: string,
-      providerModel?: string,
-    ): Promise<{
-      modelId: string;
-      providerModel: string;
-      needsRestart: boolean;
-    }>;
-    benchmarkTrainingModel(modelId: string): Promise<{
-      status: "passed" | "failed";
-      output: string;
-    }>;
-    buildTrainingAnalysisIndex(
-      options?: BuildTrainingAnalysisIndexOptions,
-    ): Promise<TrainingAnalysisIndexResponse>;
-    buildTrainingReadinessReport(
-      options?: BuildTrainingReadinessReportOptions,
-    ): Promise<TrainingReadinessReportResponse>;
-    ingestHuggingFaceTrainingDataset(
-      options?: IngestHuggingFaceDatasetOptions,
-    ): Promise<HuggingFaceDatasetIngestResponse>;
-    stageEliza1Bundle(
-      options?: StageEliza1BundleOptions,
-    ): Promise<StageEliza1BundleResponse>;
-    runFeedTrainingGeneration(
-      options?: RunFeedGenerationOptions,
-    ): Promise<RunFeedGenerationResponse>;
-    runTrainingScenarios(
-      options?: RunScenarioOptions,
-    ): Promise<RunScenarioResponse>;
-    runTrainingLocalEvalComparison(
-      options?: RunLocalEvalComparisonOptions,
-    ): Promise<RunLocalEvalComparisonResponse>;
-    runTrainingCollection(
-      options?: RunTrainingCollectionOptions,
-    ): Promise<
-      RunTrainingCollectionResponse | RunTrainingCollectionPreflightResponse
-    >;
-    runTrainingActionBenchmark(
-      options?: RunActionBenchmarkOptions,
-    ): Promise<RunActionBenchmarkResponse>;
-    runTrainingBenchmarkVsCerebras(
-      options?: RunBenchmarkVsCerebrasOptions,
-    ): Promise<RunBenchmarkVsCerebrasResponse>;
-    listTrainingCollections(options?: {
-      limit?: number;
-      root?: string;
-    }): Promise<ListTrainingCollectionsResponse>;
     getPlugins(): Promise<{ plugins: PluginInfo[] }>;
     fetchModels(
       provider: string,
@@ -2147,311 +2032,6 @@ ElizaClient.prototype.getTriggerHealth = async function (this: ElizaClient) {
     /* fall through */
   }
   return workflowSurfaceClient(this).fetch("/api/triggers/health");
-};
-
-ElizaClient.prototype.getTrainingStatus = async function (this: ElizaClient) {
-  return this.fetch("/api/training/status");
-};
-
-ElizaClient.prototype.listTrainingTrajectories = async function (
-  this: ElizaClient,
-  opts?,
-) {
-  const params = new URLSearchParams();
-  if (typeof opts?.limit === "number") params.set("limit", String(opts.limit));
-  if (typeof opts?.offset === "number")
-    params.set("offset", String(opts.offset));
-  const qs = params.toString();
-  return this.fetch(`/api/training/trajectories${qs ? `?${qs}` : ""}`);
-};
-
-ElizaClient.prototype.getTrainingTrajectory = async function (
-  this: ElizaClient,
-  trajectoryId,
-) {
-  return this.fetch(
-    `/api/training/trajectories/${encodeURIComponent(trajectoryId)}`,
-  );
-};
-
-ElizaClient.prototype.listTrainingDatasets = async function (
-  this: ElizaClient,
-) {
-  return this.fetch("/api/training/datasets");
-};
-
-ElizaClient.prototype.buildTrainingDataset = async function (
-  this: ElizaClient,
-  options?,
-) {
-  return this.fetch("/api/training/datasets/build", {
-    method: "POST",
-    body: JSON.stringify(options ?? {}),
-  });
-};
-
-ElizaClient.prototype.writeTrainingBenchmarkMatrix = async function (
-  this: ElizaClient,
-  options,
-) {
-  return this.fetch("/api/training/benchmarks/matrix", {
-    method: "POST",
-    body: JSON.stringify(options),
-  });
-};
-
-ElizaClient.prototype.listTrainingJobs = async function (this: ElizaClient) {
-  return this.fetch("/api/training/jobs");
-};
-
-ElizaClient.prototype.startTrainingJob = async function (
-  this: ElizaClient,
-  options?,
-) {
-  return this.fetch("/api/training/jobs", {
-    method: "POST",
-    body: JSON.stringify(options ?? {}),
-  });
-};
-
-ElizaClient.prototype.getTrainingJob = async function (
-  this: ElizaClient,
-  jobId,
-) {
-  return this.fetch(`/api/training/jobs/${encodeURIComponent(jobId)}`);
-};
-
-ElizaClient.prototype.cancelTrainingJob = async function (
-  this: ElizaClient,
-  jobId,
-) {
-  return this.fetch(`/api/training/jobs/${encodeURIComponent(jobId)}/cancel`, {
-    method: "POST",
-  });
-};
-
-type VastTrainingRegistryEntry = {
-  eliza_short_name?: string;
-  eliza_repo_id?: string;
-  gguf_repo_id?: string;
-  base_hf_id?: string;
-  tier?: string;
-  inference_max_context?: number;
-};
-
-type VastTrainingRegistryListing = {
-  short_name?: string;
-  entry?: VastTrainingRegistryEntry;
-};
-
-type VastTrainingRegistryResponse = {
-  loaded_at?: string | null;
-  entries?: VastTrainingRegistryListing[];
-};
-
-function trainingModelRecordFromVastRegistry(
-  item: VastTrainingRegistryListing,
-  loadedAt: string | null | undefined,
-): TrainingModelRecord | null {
-  const entry = item.entry;
-  const id = item.short_name ?? entry?.eliza_short_name;
-  if (!id || !entry) return null;
-  return {
-    id,
-    createdAt: loadedAt ?? "",
-    jobId: `vast-registry:${id}`,
-    outputDir: entry.gguf_repo_id ?? entry.eliza_repo_id ?? "",
-    modelPath: entry.gguf_repo_id ?? entry.eliza_repo_id ?? id,
-    adapterPath: null,
-    sourceModel: entry.base_hf_id ?? null,
-    backend: "cuda",
-    ollamaModel: null,
-    active: false,
-    benchmark: {
-      status: "not_run",
-      lastRunAt: null,
-      output: entry.tier
-        ? `Eliza-1 ${entry.tier} registry entry`
-        : "Eliza-1 registry entry",
-    },
-  };
-}
-
-ElizaClient.prototype.listTrainingModels = async function (this: ElizaClient) {
-  const listed = await this.fetch<{ models?: TrainingModelRecord[] }>(
-    "/api/training/models",
-  );
-  if (Array.isArray(listed.models) && listed.models.length > 0) {
-    return { models: listed.models };
-  }
-  try {
-    const registry = await this.fetch<VastTrainingRegistryResponse>(
-      "/api/training/vast/models",
-    );
-    const registryModels = (registry.entries ?? [])
-      .map((item) =>
-        trainingModelRecordFromVastRegistry(item, registry.loaded_at),
-      )
-      .filter((model): model is TrainingModelRecord => model !== null);
-    if (registryModels.length > 0) return { models: registryModels };
-  } catch {
-    // The legacy training service and Vast registry are optional independent
-    // surfaces; keep the legacy response when the registry is unavailable.
-  }
-  return { models: listed.models ?? [] };
-};
-
-ElizaClient.prototype.importTrainingModelToOllama = async function (
-  this: ElizaClient,
-  modelId,
-  options?,
-) {
-  return this.fetch(
-    `/api/training/models/${encodeURIComponent(modelId)}/import-ollama`,
-    {
-      method: "POST",
-      body: JSON.stringify(options ?? {}),
-    },
-  );
-};
-
-ElizaClient.prototype.activateTrainingModel = async function (
-  this: ElizaClient,
-  modelId,
-  providerModel?,
-) {
-  return this.fetch(
-    `/api/training/models/${encodeURIComponent(modelId)}/activate`,
-    {
-      method: "POST",
-      body: JSON.stringify({ providerModel }),
-    },
-  );
-};
-
-ElizaClient.prototype.benchmarkTrainingModel = async function (
-  this: ElizaClient,
-  modelId,
-) {
-  return this.fetch(
-    `/api/training/models/${encodeURIComponent(modelId)}/benchmark`,
-    { method: "POST" },
-  );
-};
-
-ElizaClient.prototype.buildTrainingAnalysisIndex = async function (
-  this: ElizaClient,
-  options?,
-) {
-  return this.fetch("/api/training/analysis/index", {
-    method: "POST",
-    body: JSON.stringify(options ?? {}),
-  });
-};
-
-ElizaClient.prototype.buildTrainingReadinessReport = async function (
-  this: ElizaClient,
-  options?,
-) {
-  return this.fetch("/api/training/analysis/readiness", {
-    method: "POST",
-    body: JSON.stringify(options ?? {}),
-  });
-};
-
-ElizaClient.prototype.ingestHuggingFaceTrainingDataset = async function (
-  this: ElizaClient,
-  options?,
-) {
-  return this.fetch("/api/training/datasets/ingest-hf", {
-    method: "POST",
-    body: JSON.stringify(options ?? {}),
-  });
-};
-
-ElizaClient.prototype.stageEliza1Bundle = async function (
-  this: ElizaClient,
-  options?,
-) {
-  return this.fetch("/api/training/models/stage-eliza1-bundle", {
-    method: "POST",
-    body: JSON.stringify(options ?? {}),
-  });
-};
-
-ElizaClient.prototype.runFeedTrainingGeneration = async function (
-  this: ElizaClient,
-  options?,
-) {
-  return this.fetch("/api/training/feed/generate", {
-    method: "POST",
-    body: JSON.stringify(options ?? {}),
-  });
-};
-
-ElizaClient.prototype.runTrainingScenarios = async function (
-  this: ElizaClient,
-  options?,
-) {
-  return this.fetch("/api/training/scenarios/run", {
-    method: "POST",
-    body: JSON.stringify(options ?? {}),
-  });
-};
-
-ElizaClient.prototype.runTrainingActionBenchmark = async function (
-  this: ElizaClient,
-  options?,
-) {
-  return this.fetch("/api/training/benchmarks/action-selection/run", {
-    method: "POST",
-    body: JSON.stringify(options ?? {}),
-  });
-};
-
-ElizaClient.prototype.runTrainingBenchmarkVsCerebras = async function (
-  this: ElizaClient,
-  options?,
-) {
-  return this.fetch("/api/training/benchmarks/run-vs-cerebras", {
-    method: "POST",
-    body: JSON.stringify(options ?? {}),
-  });
-};
-
-ElizaClient.prototype.runTrainingLocalEvalComparison = async function (
-  this: ElizaClient,
-  options?,
-) {
-  return this.fetch("/api/training/evals/run-local-comparison", {
-    method: "POST",
-    body: JSON.stringify(options ?? {}),
-  });
-};
-
-ElizaClient.prototype.runTrainingCollection = async function (
-  this: ElizaClient,
-  options?,
-) {
-  return this.fetch("/api/training/collect", {
-    method: "POST",
-    body: JSON.stringify(options ?? {}),
-  });
-};
-
-ElizaClient.prototype.listTrainingCollections = async function (
-  this: ElizaClient,
-  options?,
-) {
-  const params = new URLSearchParams();
-  if (options?.limit !== undefined) {
-    params.set("limit", String(options.limit));
-  }
-  if (options?.root) {
-    params.set("root", options.root);
-  }
-  const query = params.toString();
-  return this.fetch(`/api/training/collections${query ? `?${query}` : ""}`);
 };
 
 ElizaClient.prototype.getPlugins = async function (this: ElizaClient) {
