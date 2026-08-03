@@ -3027,21 +3027,36 @@ async function createV5MessageContextObject(args: {
 		includeOwnReplies: !args.includeTools,
 	});
 
-	// The recall-miss guidance in the boundary must reflect the turn's actual
-	// capability surface. When a role-visible `memory` context is registered,
-	// this runtime DOES have a chat-history search tool (the memory actions
-	// search the stored message record), so hardcoding "there is no separate
-	// chat-history search tool" is a false capability denial — live incident
-	// tj-69d82bb89ebb69: Stage 1 obeyed the denial verbatim and answered a
-	// beyond-window count question ("how many times have i mentioned bitcoin")
-	// from the bounded visible window. Branching on availableContexts (already
-	// role-filtered by every caller) is structural — no user message text is
-	// ever inspected — and runtimes without a memory surface keep the original
-	// sentence byte-identical, preserving the fabricated-search guard
-	// (2026-05-25, tj-b1ee98c2593f97).
-	const hasMemoryRecallSurface = (args.availableContexts ?? []).some(
-		(context) => context.id === "memory",
-	);
+	// Contexts are routing taxonomy, not proof that a handler exists. Promise
+	// beyond-window recall only when this role can execute the registered MEMORY
+	// action and its declared discriminator explicitly includes search; custom
+	// runtimes that register only the context must keep the honest bounded-window
+	// response instead of escalating to a tool the planner cannot expose.
+	const hasMemoryRecallSurface =
+		(args.availableContexts ?? []).some((context) => context.id === "memory") &&
+		(args.runtime.actions ?? []).some((action) => {
+			if (normalizeActionIdentifier(action.name) !== "MEMORY") {
+				return false;
+			}
+			const searchDiscriminator = action.parameters?.some((parameter) => {
+				const name = normalizeActionIdentifier(parameter.name);
+				if (name !== "ACTION" && name !== "OP") {
+					return false;
+				}
+				return [
+					...(parameter.schema.enum ?? []),
+					...(parameter.schema.enumValues ?? []),
+				].some((value) => normalizeActionIdentifier(value) === "SEARCH");
+			});
+			return (
+				searchDiscriminator === true &&
+				canActionRun(action, {
+					message: args.message,
+					activeContexts: ["memory"],
+					userRoles: args.userRoles,
+				})
+			);
+		});
 	events.push({
 		id: "current-turn-boundary",
 		type: "instruction",
@@ -3816,7 +3831,7 @@ direct/private rules:
 - Goals/todos/reminders/habits/routines are non-simple; goals -> tasks + OWNER_GOALS, never work threads.
 - Only use "simple" when you can answer directly from your static knowledge or the visible prior_message / reply_reference context. If a specific name/thing is unclear, choose general or memory.
 - Never claim searched/scanned/recalled unless tool returned it; includes "I scanned the chat" or "Spawning a sub-agent".
-- Never deny a capability (memory, tasks, scheduling, reminders) when a matching context is in available_contexts — route to it; deny only when nothing matches.
+- Never deny a capability when current_turn_boundary says a role-visible executable action can attempt it. available_contexts supplies routing domains but does not by itself prove a handler exists.
 - A tool that errored on an earlier turn may work now; on a repeated ask, retry it fresh and report this turn's result, not the old failure.
 - Crisis/legal/medical/self-harm/police/CPS: contexts=["simple"], replyText deferral only; no actions or conceal/evasion/testimony/contraband advice. Refer to lawyer/emergency services/poison control/doctor/therapist/crisis/DV hotline.
 - For tool/planning paths, replyText is only a brief ack ("On it."). Never refuse because tools may run after this stage.
