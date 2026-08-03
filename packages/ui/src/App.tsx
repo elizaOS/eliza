@@ -2081,7 +2081,9 @@ function AppContent() {
   const cloudPairToken = getCloudPairTokenFromLocation();
   const isElizaCloudHosted = isElizaCloudHostedLocation();
   const activeAgentProfile = useAppSelector((s) => s.activeAgentProfile);
-  const handleCloudLogin = useAppSelector((s) => s.handleCloudLogin);
+  const handleCloudLoginRecovery = useAppSelector(
+    (s) => s.handleCloudLoginRecovery,
+  );
   const showCloudAgentReauthNotice = shouldShowCloudAgentReauthNotice({
     isHostedLocation: isElizaCloudHosted,
     isNative,
@@ -2108,7 +2110,12 @@ function AppContent() {
       return;
     }
     const rejectedCloudToken = getCloudAuthToken();
-    await handleCloudLogin(null, {
+    // Deliberate non-interactive same-tab recovery: native hosted re-auth has
+    // no popup, so it must go through the separately named recovery entry
+    // point — never the interactive one (which would open a second window)
+    // and never the raw null-window path (which is unrepresentable from the
+    // app surface, #17129).
+    await handleCloudLoginRecovery({
       requireClientAuth: true,
       forceReauth: true,
     });
@@ -2119,7 +2126,7 @@ function AppContent() {
       );
     }
     window.location.reload();
-  }, [handleCloudLogin, nativeCloudRecoveryMode]);
+  }, [handleCloudLoginRecovery, nativeCloudRecoveryMode]);
   const retryManagedNativeAgent = useCallback(async () => {
     window.location.reload();
   }, []);

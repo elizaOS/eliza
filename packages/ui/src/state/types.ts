@@ -916,15 +916,21 @@ export interface AppActions {
   completeFirstRun: (landingTab?: Tab) => void;
 
   // Cloud
-  handleCloudLogin: (
-    prePoppedWindow?: Window | null,
-    options?: CloudLoginOptions,
-  ) => Promise<void>;
+  /**
+   * Deliberate same-tab recovery entry point (boot-recovery conductor,
+   * native re-auth). Non-interactive by construction: it never opens a popup
+   * and never accepts a pre-popped window, so a missed interactive caller
+   * cannot compile against it. Interactive call sites MUST use
+   * `handleInteractiveCloudLogin`, which pre-opens the named popup itself —
+   * the null-window defect #17129 is unrepresentable at the type level.
+   */
+  handleCloudLoginRecovery: (options?: CloudLoginOptions) => Promise<void>;
   /**
    * Interactive-only Cloud login entry point. Pre-opens the named popup
    * window itself, so interactive call sites cannot omit it (type-level
    * contract, #17129). Use this for user-facing login buttons; keep
-   * `handleCloudLogin` for the deliberate same-tab boot-recovery path.
+   * `handleCloudLoginRecovery` for the deliberate same-tab boot-recovery
+   * path.
    */
   handleInteractiveCloudLogin: (options?: CloudLoginOptions) => Promise<void>;
   handleCloudDisconnect: (opts?: {
