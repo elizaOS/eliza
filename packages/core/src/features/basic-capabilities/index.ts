@@ -15,6 +15,7 @@ import { withCanonicalActionDocs } from "../../action-docs.ts";
 import { createUniqueUuid } from "../../entities.ts";
 import { logger } from "../../logger.ts";
 import { fetchWithSsrfGuard } from "../../network/index.ts";
+import { containsExternalEnvelopeMarkers } from "../../security/external-content.ts";
 import {
 	imageDescriptionTemplate,
 	postCreationTemplate,
@@ -1026,6 +1027,23 @@ const events: PluginEvents = {
 				},
 				"Message sent",
 			);
+			// Tripwire, not a scrubber: the external-content security envelope
+			// must never reach a user, but silently rewriting outbound text
+			// would hide the bug that put it there. Detection only — the
+			// message ships as-is and the leak surfaces via reportError.
+			const sentText =
+				typeof payload.message.content.text === "string"
+					? payload.message.content.text
+					: "";
+			if (sentText && containsExternalEnvelopeMarkers(sentText)) {
+				payload.runtime.reportError(
+					"outbound-envelope-tripwire",
+					new Error(
+						"outbound message contains external-content envelope markers",
+					),
+					{ preview: sentText.slice(0, 120) },
+				);
+			}
 		},
 	],
 

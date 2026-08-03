@@ -10,6 +10,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	buildSafeExternalPrompt,
+	containsExternalEnvelopeMarkers,
 	detectSuspiciousPatterns,
 	extractWrappedExternalContent,
 	getHookType,
@@ -185,5 +186,25 @@ describe("wrapWebContent", () => {
 		const out = wrapWebContent("search result text", "web_search");
 		expect(out).toContain("<<<EXTERNAL_UNTRUSTED_CONTENT>>>");
 		expect(extractWrappedExternalContent(out)).toBe("search result text");
+	});
+});
+
+describe("containsExternalEnvelopeMarkers", () => {
+	it("detects wrapped output and the warning header, passes clean text", () => {
+		const wrapped = wrapExternalContent("hello there", {
+			source: "api",
+			includeWarning: true,
+		});
+		expect(containsExternalEnvelopeMarkers(wrapped)).toBe(true);
+		// A clamped fragment that kept only the warning's first line still trips.
+		expect(
+			containsExternalEnvelopeMarkers(
+				'I could not find "SECURITY NOTICE: The following content is from an EXTERNAL, UNTRUSTED source"',
+			),
+		).toBe(true);
+		expect(containsExternalEnvelopeMarkers("the page is live, enjoy")).toBe(
+			false,
+		);
+		expect(containsExternalEnvelopeMarkers("")).toBe(false);
 	});
 });

@@ -230,6 +230,22 @@ export function wrapExternalContent(
 }
 
 /**
+ * Whether text carries the wrap markers or warning header this module emits.
+ * Outbound tripwire predicate: user-facing text must never contain the
+ * envelope (a leaked echo shipped it to chat verbatim, tj-2dc95f75456876) —
+ * the MESSAGE_SENT tripwire in basic-capabilities reports, never rewrites.
+ */
+export function containsExternalEnvelopeMarkers(text: string): boolean {
+	return (
+		text.includes(EXTERNAL_CONTENT_START) ||
+		text.includes(EXTERNAL_CONTENT_END) ||
+		text.includes(
+			"SECURITY NOTICE: The following content is from an EXTERNAL",
+		)
+	);
+}
+
+/**
  * Returns the original payload from a string produced by
  * {@link wrapExternalContent}, or null when the text is not wrapped.
  */
