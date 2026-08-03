@@ -108,7 +108,7 @@ env:
 jobs:
   voice-platform-matrix-index:
     name: Canonical voice matrix index
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 20
     steps:
       - name: Checkout
@@ -643,7 +643,7 @@ jobs:
   voice-android-matrix:
     name: Android live-voice + native bridge matrix
     if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_android) || vars.ELIZA_VOICE_ANDROID_READY == '1' }}
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 120
     env:
       ELIZA_VOICE_ANDROID_READY: ${{ vars.ELIZA_VOICE_ANDROID_READY }}
