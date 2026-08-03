@@ -2228,11 +2228,8 @@ export function ChatOverlay({
     element: HTMLElement;
     fadeTimer: number;
     cleanupTimer: number;
-    display: string;
     boxShadow: string;
     filter: string;
-    maxWidth: string;
-    width: string;
     borderRadius: string;
     textShadow: string;
     transition: string;
@@ -2242,11 +2239,8 @@ export function ChatOverlay({
     if (!active) return;
     window.clearTimeout(active.fadeTimer);
     window.clearTimeout(active.cleanupTimer);
-    active.element.style.display = active.display;
     active.element.style.boxShadow = active.boxShadow;
     active.element.style.filter = active.filter;
-    active.element.style.maxWidth = active.maxWidth;
-    active.element.style.width = active.width;
     active.element.style.borderRadius = active.borderRadius;
     active.element.style.textShadow = active.textShadow;
     active.element.style.transition = active.transition;
@@ -2278,11 +2272,8 @@ export function ChatOverlay({
         bubble.querySelector<HTMLElement>('[data-chat-selectable="true"]') ??
         bubble;
       const previous = {
-        display: paintTarget.style.display,
         boxShadow: paintTarget.style.boxShadow,
         filter: paintTarget.style.filter,
-        maxWidth: paintTarget.style.maxWidth,
-        width: paintTarget.style.width,
         borderRadius: paintTarget.style.borderRadius,
         textShadow: paintTarget.style.textShadow,
         transition: paintTarget.style.transition,
@@ -2290,9 +2281,6 @@ export function ChatOverlay({
       paintTarget.setAttribute("data-chat-search-highlight", "true");
       // A drop shadow follows the painted bubble/text silhouette. An outline
       // follows the full assistant row, which reads as a rectangular box.
-      paintTarget.style.display = "inline-block";
-      paintTarget.style.maxWidth = "100%";
-      paintTarget.style.width = "fit-content";
       paintTarget.style.borderRadius = "0.75rem";
       paintTarget.style.boxShadow =
         "0 0 0 1px rgba(255, 255, 255, 0.12), 0 0 16px rgba(255, 255, 255, 0.28)";
