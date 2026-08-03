@@ -128,14 +128,17 @@ export function loadElizaConfig(): ElizaConfig {
   const persistedConfig =
     persistPath !== configPath ? readConfigFile(persistPath) : null;
   const bindMountOverlay =
-    bindMountOverlayPath !== configPath && bindMountOverlayPath !== persistPath
+    persistPath === configPath && bindMountOverlayPath !== configPath
       ? readConfigFile(bindMountOverlayPath)
       : null;
+  // The automatic bind-mount overlay extends only the canonical file. An
+  // explicitly configured persistence path disables it entirely, preventing
+  // stale overlay keys from leaking into an operator-selected store.
   const resolved = (
     baseConfig || persistedConfig || bindMountOverlay
       ? mergeConfigRecords(
-          mergeConfigRecords(baseConfig ?? {}, persistedConfig ?? {}),
-          bindMountOverlay ?? {},
+          mergeConfigRecords(baseConfig ?? {}, bindMountOverlay ?? {}),
+          persistedConfig ?? {},
         )
       : { logging: { level: "error" } }
   ) as ElizaConfig;
@@ -255,8 +258,18 @@ function syncDirectory(dir: string): void {
   try {
     fd = fs.openSync(dir, "r");
     fs.fsyncSync(fd);
-  } catch {
-    // Directory fsync is unsupported on some platforms (notably Windows).
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    // Directory fsync is unsupported on Windows and on a small set of
+    // filesystems. Real I/O failures must remain observable to the caller.
+    if (
+      process.platform !== "win32" &&
+      code !== "EINVAL" &&
+      code !== "ENOTSUP" &&
+      code !== "EISDIR"
+    ) {
+      throw error;
+    }
   } finally {
     if (fd !== undefined) fs.closeSync(fd);
   }
@@ -344,6 +357,7 @@ function stripWalletPrivateKeysFromConfig(config: ElizaConfig): void {
 
 export function saveElizaConfig(config: ElizaConfig): void {
   const configPath = resolveConfigWritePath();
+  const canonicalConfigPath = resolveConfigPath();
   const dir = path.dirname(configPath);
 
   if (!fs.existsSync(dir)) {
@@ -379,6 +393,7 @@ export function saveElizaConfig(config: ElizaConfig): void {
     ? fs.realpathSync(configPath)
     : configPath;
   const bindMountOverlayPath = resolveBindMountOverlayPath();
+  const mayUseBindMountOverlay = configPath === canonicalConfigPath;
   let writtenPath = realConfigPath;
 
   // A file bind mount cannot be replaced with rename(2): Linux returns EBUSY.
@@ -386,7 +401,7 @@ export function saveElizaConfig(config: ElizaConfig): void {
   // directory. The overlay is temp+fsync+rename committed and loaded last on
   // every subsequent boot. Keep using an existing overlay so stale state can
   // never override a later write to the read-only base file.
-  if (fs.existsSync(bindMountOverlayPath)) {
+  if (mayUseBindMountOverlay && fs.existsSync(bindMountOverlayPath)) {
     writeFileAtomically(bindMountOverlayPath, content);
     writtenPath = bindMountOverlayPath;
   } else {
@@ -394,7 +409,7 @@ export function saveElizaConfig(config: ElizaConfig): void {
       writeFileAtomically(realConfigPath, content);
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
-      if (code !== "EBUSY") throw error;
+      if (code !== "EBUSY" || !mayUseBindMountOverlay) throw error;
       try {
         writeFileAtomically(bindMountOverlayPath, content);
         writtenPath = bindMountOverlayPath;
@@ -415,8 +430,10 @@ export function saveElizaConfig(config: ElizaConfig): void {
   // (potentially world-readable) permissions.
   try {
     fs.chmodSync(writtenPath, 0o600);
-  } catch {
-    // chmodSync may fail on some platforms (e.g. Windows). Non-fatal.
+  } catch (error) {
+    // Windows does not implement POSIX permission bits. On POSIX, failure to
+    // enforce the config's secret-bearing 0600 contract is a real write error.
+    if (process.platform !== "win32") throw error;
   }
 
   if (!fs.existsSync(writtenPath)) {
@@ -454,5 +471,11 @@ export function configFileExists(): boolean {
   }
 
   const persistPath = resolveConfigWritePath();
-  return persistPath !== configPath && fs.existsSync(persistPath);
+  if (persistPath !== configPath && fs.existsSync(persistPath)) {
+    return true;
+  }
+
+  return (
+    persistPath === configPath && fs.existsSync(resolveBindMountOverlayPath())
+  );
 }

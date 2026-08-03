@@ -83,4 +83,56 @@ describe("saveElizaConfig bind-mount fallback", () => {
       fs.existsSync(path.join(stateDir, "eliza.config-overlay.json")),
     ).toBe(false);
   });
+
+  it("keeps an explicit persistence path authoritative over a stale overlay", () => {
+    const overlayPath = path.join(stateDir, "eliza.config-overlay.json");
+    const persistPath = path.join(root, "persist", "eliza.json");
+    fs.writeFileSync(
+      overlayPath,
+      `${JSON.stringify({ plugins: { entries: { stale: { enabled: true } } } })}\n`,
+      { mode: 0o600 },
+    );
+    process.env.ELIZA_PERSIST_CONFIG_PATH = persistPath;
+
+    saveElizaConfig({
+      plugins: { entries: { current: { enabled: true } } },
+    } as never);
+
+    expect(fs.existsSync(persistPath)).toBe(true);
+    expect(fs.statSync(persistPath).mode & 0o777).toBe(0o600);
+    expect(loadElizaConfig().plugins?.entries).toEqual({
+      original: { enabled: true },
+      current: { enabled: true },
+    });
+    expect(fs.readFileSync(overlayPath, "utf8")).toContain('"stale"');
+  });
+
+  it("sanitizes include directives and wallet keys in the overlay", () => {
+    const realRename = fs.renameSync.bind(fs);
+    vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+      if (String(to) === configPath) {
+        const error = new Error("resource busy") as NodeJS.ErrnoException;
+        error.code = "EBUSY";
+        throw error;
+      }
+      return realRename(from, to);
+    });
+
+    saveElizaConfig({
+      $include: "secrets.json",
+      env: {
+        ELIZA_WALLET_OS_STORE: "true",
+        EVM_PRIVATE_KEY: "secret",
+        SOLANA_PRIVATE_KEY: "secret",
+      },
+    } as never);
+
+    const persisted = fs.readFileSync(
+      path.join(stateDir, "eliza.config-overlay.json"),
+      "utf8",
+    );
+    expect(persisted).not.toContain("$include");
+    expect(persisted).not.toContain("PRIVATE_KEY");
+    expect(persisted).not.toContain("secret");
+  });
 });
