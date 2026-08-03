@@ -386,6 +386,15 @@ export default defineConfig({
         replacement: path.join(agentSourceRoot, "security", "access.ts"),
       },
       {
+        find: /^@elizaos\/agent\/services\/knowledge-graph$/,
+        replacement: path.join(
+          agentSourceRoot,
+          "services",
+          "knowledge-graph",
+          "index.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/agent\/services\/knowledge-graph\/service$/,
         replacement: path.join(
           agentSourceRoot,
@@ -397,6 +406,10 @@ export default defineConfig({
       {
         find: /^@elizaos\/agent\/config\/config$/,
         replacement: path.join(agentSourceRoot, "config", "config.ts"),
+      },
+      {
+        find: /^@elizaos\/agent\/config\/paths$/,
+        replacement: path.join(agentSourceRoot, "config", "paths.ts"),
       },
       {
         find: "@elizaos/agent",

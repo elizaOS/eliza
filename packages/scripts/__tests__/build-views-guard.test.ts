@@ -10,6 +10,7 @@ import {
   expectedBundlePath,
   missingBundleReport,
   parseViewFilter,
+  viewBuildConcurrency,
 } from "../build-views.mjs";
 
 const tempDirs: string[] = [];
@@ -90,5 +91,31 @@ describe("build-views bundle guard (#15791)", () => {
       parseViewFilter(["--filter=plugin-feed", "--filter", "plugin-todos"]),
     ).toThrow(/only once/);
     expect(() => parseViewFilter(["--ignored"])).toThrow(/unknown argument/);
+  });
+
+  test("bounds native bundler concurrency by host capacity", () => {
+    expect(
+      viewBuildConcurrency({
+        targetCount: 19,
+        cpuCount: 16,
+        platform: "darwin",
+      }),
+    ).toBe(1);
+    expect(
+      viewBuildConcurrency({
+        targetCount: 19,
+        cpuCount: 16,
+        platform: "linux",
+      }),
+    ).toBe(4);
+    expect(
+      viewBuildConcurrency({ targetCount: 2, cpuCount: 16, platform: "linux" }),
+    ).toBe(2);
+    expect(
+      viewBuildConcurrency({ targetCount: 19, cpuCount: 1, platform: "linux" }),
+    ).toBe(1);
+    expect(
+      viewBuildConcurrency({ targetCount: 0, cpuCount: 16, platform: "linux" }),
+    ).toBe(0);
   });
 });

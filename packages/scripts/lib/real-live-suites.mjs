@@ -146,36 +146,9 @@ export const GUARDED_REAL_LIVE_SUITES = [
     notes: "also runs nightly in external-api-live-drift.yml",
   },
   {
-    file: "plugins/plugin-browser/src/benchmark/__tests__/external-dataset-chromium.real.test.ts",
-    probe: "playwright Chromium install",
-    notes: "runs explicitly via the plugin's Chromium real-test script",
-  },
-  {
-    file: "plugins/plugin-browser/src/benchmark/__tests__/miniwob-chromium.real.test.ts",
-    probe: "playwright Chromium install",
-    notes: "runs explicitly via the plugin's Chromium real-test script",
-  },
-  {
-    file: "plugins/plugin-browser/src/benchmark/__tests__/web-grounding-chromium.real.test.ts",
-    probe: "playwright Chromium install",
-    notes: "runs explicitly via the plugin's Chromium real-test script",
-  },
-  {
     file: "plugins/plugin-calendar/test/google-calendar-connector.real.test.ts",
     requires: ["GOOGLE_CALENDAR_ACCESS_TOKEN"],
     notes: "also runs nightly in external-api-live-drift.yml",
-  },
-  {
-    file: "plugins/plugin-computeruse/src/__tests__/benchmark/osworld-local.real.test.ts",
-    blocked:
-      "plugin-computeruse vitest.config.ts excludes *.real.test.ts in every lane (desktop-control host required)",
-    probe: "desktop screenshot capability, non-CI",
-  },
-  {
-    file: "plugins/plugin-computeruse/src/__tests__/benchmark/osworld-tasks.real.test.ts",
-    blocked:
-      "plugin-computeruse vitest.config.ts excludes *.real.test.ts in every lane (desktop-control host required)",
-    optIn: "FORCE_OSWORLD_BENCHMARK",
   },
   {
     file: "plugins/plugin-computeruse/src/__tests__/service.real.test.ts",

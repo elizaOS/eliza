@@ -14,7 +14,7 @@ import {
   knowledgeGraphSchema,
   type RelationshipStore,
   resolveKnowledgeGraphService,
-} from "@elizaos/agent";
+} from "@elizaos/agent/services/knowledge-graph";
 import type { IAgentRuntime } from "@elizaos/core";
 import { ElizaError, logger } from "@elizaos/core";
 import type {

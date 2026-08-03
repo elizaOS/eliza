@@ -10,8 +10,6 @@
     "types": ["node", "bun", "react", "react-dom"],
     "typeRoots": [
       "./node_modules/@types",
-      "../app-core/node_modules/@types",
-      "../ui/node_modules/@types",
       "../../node_modules/@types"
     ],
     "declaration": false,
@@ -52,8 +50,6 @@
       "@elizaos/plugin-registry/*": ["../../plugins/plugin-registry/src/*"],
       "@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/src/index.ts"],
       "@elizaos/plugin-wifi": ["../../plugins/plugin-wifi/src/index.ts"],
-      "@elizaos/app-core": ["../app-core/src/index.ts"],
-      "@elizaos/app-core/*": ["../app-core/src/*"],
       "@elizaos/ui": ["../ui/src/index.ts"],
       "@elizaos/ui/*": ["../ui/src/*"],
       "@elizaos/ui/api/client-types-cloud": [
@@ -100,14 +96,6 @@
       "@elizaos/shared/*": ["../shared/src/*"],
       "@elizaos/vault": ["../vault/src/index.ts"],
       "@elizaos/skills": ["../skills/src/index.ts"],
-      "react": ["../app-core/node_modules/@types/react/index.d.ts"],
-      "react/jsx-runtime": [
-        "../app-core/node_modules/@types/react/jsx-runtime.d.ts"
-      ],
-      "react/jsx-dev-runtime": [
-        "../app-core/node_modules/@types/react/jsx-dev-runtime.d.ts"
-      ],
-      "react-dom": ["../app-core/node_modules/@types/react-dom/index.d.ts"],
       "@elizaos/plugin-discord": ["../../plugins/plugin-discord/index.ts"],
       "@elizaos/plugin-discord/*": ["../../plugins/plugin-discord/*"],
       "@elizaos/plugin-elizacloud": [
@@ -120,8 +108,6 @@
         "../../plugins/plugin-meetings/src/index.ts"
       ],
       "@elizaos/*": ["../../node_modules/@elizaos/*"],
-      "drizzle-orm": ["../app-core/node_modules/drizzle-orm"],
-      "drizzle-orm/*": ["../app-core/node_modules/drizzle-orm/*"],
       "@elizaos/native-activity-tracker": [
         "../../plugins/plugin-native-activity-tracker/src/index.ts"
       ],

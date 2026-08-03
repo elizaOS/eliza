@@ -1,9 +1,8 @@
 /**
  * Cross-platform accessibility tree extraction.
  *
- * OSWorld benchmarks expect an optional accessibility tree as part of the
- * observation. This module extracts a simplified a11y tree from the desktop
- * using native platform tools.
+ * Extracts a simplified accessibility tree for the desktop scene using native
+ * platform tools.
  *
  * macOS  — System Accessibility API via osascript / swift
  * Linux  — AT-SPI via python3-atspi (X11 + GNOME-Wayland). Wayland-only
@@ -66,7 +65,7 @@ export function extractA11yTree(): string | null {
     }
   } catch (err) {
     // error-policy:J4 null is the documented "a11y unavailable" contract for
-    // this OSWorld/benchmark surface; the failure is warned so a permission
+    // the desktop scene; the failure is warned so a permission
     // regression is distinguishable from an unsupported platform in the logs.
     logger.warn(
       `[a11y] extractA11yTree failed on ${os}: ${
@@ -154,7 +153,7 @@ function extractA11yDarwin(): string | null {
     return output.trim() || null;
   } catch (err) {
     // error-policy:J4 null is the documented "a11y unavailable" signal for
-    // this OSWorld/benchmark surface; the warn keeps a permission regression
+    // the desktop scene; the warn keeps a permission regression
     // distinguishable from an unsupported platform.
     logger.warn(
       `[a11y] macOS a11y extraction failed: ${
@@ -206,7 +205,7 @@ except Exception as e:
       return output.trim() || null;
     } catch (err) {
       // error-policy:J4 null is the documented "a11y unavailable" signal for
-      // this OSWorld/benchmark surface; the warn keeps a permission
+      // the desktop scene; the warn keeps a permission
       // regression distinguishable from an unsupported platform.
       logger.warn(
         `[a11y] Linux AT-SPI extraction failed: ${
@@ -256,7 +255,7 @@ $lines -join [Environment]::NewLine
     return output.trim() || null;
   } catch (err) {
     // error-policy:J4 null is the documented "a11y unavailable" signal for
-    // this OSWorld/benchmark surface; the warn keeps a permission regression
+    // the desktop scene; the warn keeps a permission regression
     // distinguishable from an unsupported platform.
     logger.warn(
       `[a11y] Windows UIA extraction failed: ${

@@ -23,8 +23,7 @@ platformTest(
       const model = path.join(root, "model.gguf");
       const report = path.join(root, "report.json");
       const out = path.join(root, "attestation.json");
-      fs.writeFileSync(binary, "#!/bin/sh\necho 'llama version fixture'\n");
-      fs.chmodSync(binary, 0o755);
+      fs.symlinkSync(process.execPath, binary);
       fs.writeFileSync(model, "model-bytes");
       fs.writeFileSync(
         report,
@@ -53,7 +52,7 @@ platformTest(
       assert.equal(manifest.report.executedVariants, 1);
       assert.equal(
         JSON.parse(fs.readFileSync(out, "utf8")).binary.version,
-        "llama version fixture",
+        process.version,
       );
       await assert.rejects(
         attest({ ...args, "expected-model-sha256": "0".repeat(64) }),

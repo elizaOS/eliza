@@ -13,12 +13,13 @@ import {
   spawn,
 } from "node:child_process";
 import {
-  chmodSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
@@ -28,6 +29,10 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AcpService } from "../services/acp-service.js";
 import { InMemorySessionStore } from "../services/session-store.js";
+
+const COMMIT_HOOK_IMPORT = `--import=${
+  new URL("./fixtures/acp-commit-hook.mjs", import.meta.url).href
+}`;
 
 function makeRuntime(): IAgentRuntime {
   return {
@@ -87,6 +92,27 @@ function gitInvocation(
         args: [wrapper, "-C", repo, ...args],
       }
     : { executable: "git", args: ["-C", repo, ...args] };
+}
+
+function configureCommitHook(repo: string, env: NodeJS.ProcessEnv): void {
+  const wrapperDir = env.PATH?.split(path.delimiter)[0];
+  if (!wrapperDir) throw new Error("ACP git wrapper directory is missing");
+  const wrapper = path.join(wrapperDir, "git");
+  const interpreter = readFileSync(wrapper, "utf8").split("\n", 1)[0]?.slice(2);
+  if (!interpreter) throw new Error("ACP git wrapper interpreter is missing");
+  const hooksDir = path.join(repo, ".git", "eliza-test-hooks");
+  mkdirSync(hooksDir, { recursive: true });
+  symlinkSync(interpreter, path.join(hooksDir, "pre-commit"));
+  git(repo, ["config", "core.hooksPath", hooksDir]);
+}
+
+function commitHookEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return {
+    ...env,
+    NODE_OPTIONS: [env.NODE_OPTIONS, COMMIT_HOOK_IMPORT]
+      .filter(Boolean)
+      .join(" "),
+  };
 }
 
 function lockFile(repo: string): string {
@@ -168,6 +194,7 @@ describe("ACP per-session commit race on a shared worktree (#14183)", () => {
     expect(sessionA?.env.GIT_INDEX_FILE).toBeTruthy();
     expect(sessionB?.env.GIT_INDEX_FILE).toBeTruthy();
     expect(sessionA?.env.GIT_INDEX_FILE).not.toBe(sessionB?.env.GIT_INDEX_FILE);
+    configureCommitHook(repo, sessionA?.env ?? {});
 
     writeFileSync(path.join(repo, "a.txt"), "from a\n");
     writeFileSync(path.join(repo, "b.txt"), "from b\n");
@@ -181,21 +208,18 @@ describe("ACP per-session commit race on a shared worktree (#14183)", () => {
     // silently reverts b.txt; with the lock, B blocks until A releases and both
     // land on a linear history.
     const signalFile = path.join(tmpRoot, "a-entered-precommit");
-    const hookPath = path.join(repo, ".git", "hooks", "pre-commit");
-    writeFileSync(
-      hookPath,
-      `#!/bin/sh
-if [ "$ACP_TEST_ROLE" = "A" ]; then
-  : > "${signalFile}"
-  sleep 1.5
-fi
-exit 0
-`,
-    );
-    chmodSync(hookPath, 0o755);
-
-    const envA = { ...process.env, ...sessionA?.env, ACP_TEST_ROLE: "A" };
-    const envB = { ...process.env, ...sessionB?.env, ACP_TEST_ROLE: "B" };
+    const envA = commitHookEnv({
+      ...process.env,
+      ...sessionA?.env,
+      ACP_TEST_ROLE: "A",
+      ACP_TEST_SIGNAL_FILE: signalFile,
+      ACP_TEST_SLEEP_SECONDS: "1.5",
+    });
+    const envB = commitHookEnv({
+      ...process.env,
+      ...sessionB?.env,
+      ACP_TEST_ROLE: "B",
+    });
 
     const commitA = gitAsync(repo, ["commit", "-m", "session a"], envA);
     await waitForFile(signalFile, 10_000);
@@ -241,6 +265,7 @@ exit 0
     );
     expect(sessionA?.env.GIT_INDEX_FILE).toBeTruthy();
     expect(sessionB?.env.GIT_INDEX_FILE).toBeTruthy();
+    configureCommitHook(repo, sessionA?.env ?? {});
 
     writeFileSync(path.join(repo, "live-a.txt"), "from live owner a\n");
     writeFileSync(path.join(repo, "live-b.txt"), "from live owner b\n");
@@ -248,36 +273,25 @@ exit 0
     git(repo, ["add", "live-b.txt"], sessionB?.env);
 
     const signalFile = path.join(tmpRoot, "a-live-lock-precommit");
-    const hookPath = path.join(repo, ".git", "hooks", "pre-commit");
-    writeFileSync(
-      hookPath,
-      `#!/bin/sh
-if [ "$ACP_TEST_ROLE" = "A" ]; then
-  : > "${signalFile}"
-  sleep 0.8
-fi
-exit 0
-`,
-    );
-    chmodSync(hookPath, 0o755);
-
     const lockRaceEnv = {
       ACP_COMMIT_LOCK_POLL_MS: "5",
       ACP_COMMIT_LOCK_STALE_MS: "120",
       ACP_COMMIT_LOCK_WAIT_MS: "5000",
     };
-    const envA = {
+    const envA = commitHookEnv({
       ...process.env,
       ...sessionA?.env,
       ...lockRaceEnv,
       ACP_TEST_ROLE: "A",
-    };
-    const envB = {
+      ACP_TEST_SIGNAL_FILE: signalFile,
+      ACP_TEST_SLEEP_SECONDS: "0.8",
+    });
+    const envB = commitHookEnv({
       ...process.env,
       ...sessionB?.env,
       ...lockRaceEnv,
       ACP_TEST_ROLE: "B",
-    };
+    });
 
     const commitA = gitAsync(repo, ["commit", "-m", "live owner a"], envA);
     await waitForFile(signalFile, 10_000);

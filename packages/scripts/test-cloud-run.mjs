@@ -141,7 +141,7 @@ export function computeTestRoots(root) {
   return {
     cloudSharedSrc: path.join(root, "packages", "cloud", "shared", "src"),
     cloudApiRoot: path.join(root, "packages", "cloud", "api"),
-    cloudScriptsTests: path.join(root, "packages", "scripts", "cloud"),
+    cloudScriptsTests: path.join(root, "packages", "cloud", "scripts"),
     cloudRoutingTests: path.join(root, "packages", "cloud", "routing", "src"),
     cloudInfraTests: path.join(root, "packages", "cloud", "infra", "tests"),
     cloudServicesRoot: path.join(root, "packages", "cloud", "services"),

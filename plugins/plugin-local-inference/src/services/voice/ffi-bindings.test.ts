@@ -390,6 +390,11 @@ describeGeneratedStub(
 			it.skip("bun not on PATH — skipping integration tests", () => {});
 			return;
 		}
+		const ffiProbe = probeBunFfi(bun);
+		if (!ffiProbe.available) {
+			it.skip(`Bun FFI loader unavailable — ${ffiProbe.reason}`, () => {});
+			return;
+		}
 
 		it("stub dylib exists and is non-empty", () => {
 			expect(statSync(STUB_DYLIB).size).toBeGreaterThan(1024);
@@ -507,6 +512,40 @@ function expectHarnessOk(report: HarnessReport): void {
 				`Bun FFI harness failed without diagnostic for ${report.scenario}`,
 		);
 	}
+}
+
+function bunSubprocessEnvironment(): NodeJS.ProcessEnv {
+	const childEnv = { ...process.env };
+	// NODE_OPTIONS configures the Node/Vitest host, and may contain Node-only
+	// preload hooks. Passing those hooks to nested Bun processes can alter
+	// module loading before the FFI contract is exercised.
+	delete childEnv.NODE_OPTIONS;
+	return childEnv;
+}
+
+function probeBunFfi(bun: string): { available: boolean; reason?: string } {
+	const probe = spawnSync(
+		bun,
+		[
+			"-e",
+			`const { dlopen, FFIType } = require("bun:ffi"); const lib = dlopen(${JSON.stringify(STUB_DYLIB)}, { eliza_inference_abi_version: { args: [], returns: FFIType.cstring } }); lib.close();`,
+		],
+		{
+			encoding: "utf8",
+			env: bunSubprocessEnvironment(),
+			timeout: 5_000,
+		},
+	);
+	if (probe.error) {
+		return { available: false, reason: probe.error.message };
+	}
+	if (probe.status !== 0) {
+		return {
+			available: false,
+			reason: `probe exited ${probe.status}: ${probe.stderr.trim()}`,
+		};
+	}
+	return { available: true };
 }
 
 function runBunHarness(opts: HarnessOptions): HarnessReport {
@@ -711,6 +750,7 @@ function asLifecycleErr(e) {
 	writeFileSync(scriptPath, script);
 	const result = spawnSync(bun, [scriptPath], {
 		encoding: "utf8",
+		env: bunSubprocessEnvironment(),
 		timeout: 30_000,
 	});
 

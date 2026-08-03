@@ -43,24 +43,6 @@ export default defineConfig({
         replacement: path.join(srcRoot, "$1"),
       },
       {
-        find: /^@elizaos\/app-core\/account-pool$/,
-        replacement: path.join(
-          monorepoRoot,
-          "packages/app-core/src/account-pool.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/app-core\/ui-compat$/,
-        replacement: path.join(
-          monorepoRoot,
-          "packages/app-core/src/ui-compat.ts",
-        ),
-      },
-      {
-        find: "@elizaos/app-core",
-        replacement: path.join(monorepoRoot, "packages/app-core/src/index.ts"),
-      },
-      {
         find: /^@elizaos\/ui$/,
         replacement: path.join(monorepoRoot, "packages/ui/src/index.ts"),
       },

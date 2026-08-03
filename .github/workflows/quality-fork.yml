@@ -159,7 +159,7 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
           python-version: "3.13"
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           cache-bun-install: "false"
 
       - name: Install pinned skill validator dependency

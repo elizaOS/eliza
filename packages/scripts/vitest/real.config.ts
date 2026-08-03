@@ -39,23 +39,13 @@ import {
 } from "./workspace-aliases";
 
 const elizaWorkspaceRoot = getElizaWorkspaceRoot(repoRoot);
-const failOnSilentSkipSetupFile = fs.existsSync(
-  path.join(
-    elizaWorkspaceRoot,
-    "packages",
-    "test",
-    "vitest",
-    "fail-on-silent-skip.setup.ts",
-  ),
-)
-  ? path.join(
-      elizaWorkspaceRoot,
-      "packages",
-      "test",
-      "vitest",
-      "fail-on-silent-skip.setup.ts",
-    )
-  : path.join(repoRoot, "test", "vitest", "fail-on-silent-skip.setup.ts");
+const failOnSilentSkipSetupFile = path.join(
+  elizaWorkspaceRoot,
+  "packages",
+  "scripts",
+  "vitest",
+  "fail-on-silent-skip.setup.ts",
+);
 const disabledElizaWorkspaceRoot = path.join(repoRoot, ".eliza.ci-disabled");
 const hiddenElizaWorkspaceGlob =
   fs.existsSync(elizaWorkspaceRoot) && fs.existsSync(disabledElizaWorkspaceRoot)

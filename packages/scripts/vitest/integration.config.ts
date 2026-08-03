@@ -1,7 +1,6 @@
 /** Configures the integration shared Vitest lane used by workspace package tests. */
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { defineConfig } from "vitest/config";
 import {
   getAppCoreSourceRoot,
   getAutonomousSourceRoot,
@@ -281,7 +280,7 @@ const integrationResolveAlias: ModuleAlias[] = [
   ]),
 ];
 
-export default defineConfig({
+const integrationConfig = {
   resolve: {
     // Prefer the workspace TypeScript branches in resolver paths that honor
     // custom export conditions. The explicit and comprehensive aliases above
@@ -371,4 +370,6 @@ export default defineConfig({
       },
     },
   },
-});
+} satisfies import("vitest/config").ViteUserConfig;
+
+export default integrationConfig;

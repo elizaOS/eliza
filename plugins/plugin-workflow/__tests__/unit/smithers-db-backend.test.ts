@@ -109,6 +109,7 @@ describe('Smithers worker isolation', () => {
       expect(env.OPENAI_API_KEY).toBeUndefined();
       expect(env.ELIZA_SMITHERS_RUN_PAYLOAD).toBeUndefined();
       expect(env.PATH).toBe(process.env.PATH);
+      expect(env.MSGPACKR_NATIVE_ACCELERATION_DISABLED).toBe('true');
     } finally {
       if (previousSecret === undefined) delete process.env.OPENAI_API_KEY;
       else process.env.OPENAI_API_KEY = previousSecret;
