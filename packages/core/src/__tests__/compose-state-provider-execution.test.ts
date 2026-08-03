@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { ElizaError } from "../errors";
 import { AgentRuntime } from "../runtime";
 import { TurnAbortedError } from "../runtime/turn-controller";
+import { runWithStreamingContext } from "../streaming-context";
 import type {
 	Character,
 	Memory,
@@ -341,6 +342,151 @@ describe("composeState provider execution", () => {
 		const firstState = await first;
 		expect(firstState.text).toBe("slow");
 		expect(providerAborted).toBe(false);
+		expect(calls).toBe(1);
+	});
+
+	it("keeps the shared provider alive when the owner aborts while a waiter remains (#17602)", async () => {
+		const runtime = new AgentRuntime({
+			character: { name: "provider-owner-abort" } as Character,
+		});
+		const release = deferred();
+		const started = deferred();
+		let calls = 0;
+		let providerAborted = false;
+		runtime.registerProvider({
+			name: "SLOW",
+			get: async (
+				_runtime,
+				_message,
+				_state,
+				context?: ProviderExecutionContext,
+			) => {
+				calls += 1;
+				context?.signal?.addEventListener(
+					"abort",
+					() => {
+						providerAborted = true;
+					},
+					{ once: true },
+				);
+				started.resolve();
+				await release.promise;
+				return { text: "slow" };
+			},
+		});
+		const message = makeMessage("88888888-8888-8888-8888-888888888888");
+
+		// The OWNER (the caller that started the execution) aborts while a
+		// coalesced waiter is still interested. The shared work must survive
+		// the owner's departure: ownership confers no special kill authority —
+		// the provider dies only when the last interested caller leaves.
+		const ownerController = new AbortController();
+		const owner = runWithStreamingContext(
+			{ onStreamChunk: async () => {}, abortSignal: ownerController.signal },
+			() => runtime.composeState(message, ["SLOW"], true),
+		);
+		await started.promise;
+		const waiter = runtime.turnControllers.runWith(ROOM_ID, () =>
+			runtime.composeState(message, ["SLOW"], true),
+		);
+		await new Promise((resolve) => setTimeout(resolve, 10));
+		expect(calls).toBe(1);
+
+		ownerController.abort("owner stopped");
+		const ownerError = await owner.catch((cause: unknown) => cause);
+		expect(ownerError).toBeInstanceOf(TurnAbortedError);
+		expect((ownerError as TurnAbortedError).reason).toBe("owner stopped");
+
+		expect(providerAborted).toBe(false);
+		release.resolve();
+		const waiterState = await waiter;
+		expect(waiterState.text).toBe("slow");
+		expect(providerAborted).toBe(false);
+		expect(calls).toBe(1);
+	});
+
+	it("aborts the shared provider exactly when the last interested caller aborts (#17602)", async () => {
+		const runtime = new AgentRuntime({
+			character: { name: "provider-last-abort" } as Character,
+		});
+		const started = deferred();
+		const providerSawAbort = deferred();
+		let calls = 0;
+		let providerAborted = false;
+		runtime.registerProvider({
+			name: "SLOW",
+			get: async (
+				_runtime,
+				_message,
+				_state,
+				context?: ProviderExecutionContext,
+			) => {
+				calls += 1;
+				started.resolve();
+				return new Promise((_, reject) => {
+					const signal = context?.signal;
+					if (!signal) {
+						reject(new Error("missing provider signal"));
+						return;
+					}
+					signal.addEventListener(
+						"abort",
+						() => {
+							providerAborted = true;
+							providerSawAbort.resolve();
+							reject(signal.reason);
+						},
+						{ once: true },
+					);
+				});
+			},
+		});
+		const message = makeMessage("77777777-7777-7777-7777-777777777777");
+
+		// Three callers coalesce onto one execution, then abort one at a time.
+		// After each of the first two aborts someone is still waiting, so the
+		// provider must keep running; the third abort leaves no interested
+		// caller and must reach the shared provider (a lone caller's stop may
+		// never strand work running for nobody).
+		const controllers = [
+			new AbortController(),
+			new AbortController(),
+			new AbortController(),
+		];
+		const compose = (controller: AbortController) =>
+			runWithStreamingContext(
+				{ onStreamChunk: async () => {}, abortSignal: controller.signal },
+				() => runtime.composeState(message, ["SLOW"], true),
+			);
+		const first = compose(controllers[0] as AbortController);
+		await started.promise;
+		const second = compose(controllers[1] as AbortController);
+		const third = compose(controllers[2] as AbortController);
+		await new Promise((resolve) => setTimeout(resolve, 10));
+		expect(calls).toBe(1);
+
+		controllers[0]?.abort("first caller stopped");
+		const firstError = await first.catch((cause: unknown) => cause);
+		expect(firstError).toBeInstanceOf(TurnAbortedError);
+		expect((firstError as TurnAbortedError).reason).toBe(
+			"first caller stopped",
+		);
+		expect(providerAborted).toBe(false);
+
+		controllers[1]?.abort("second caller stopped");
+		const secondError = await second.catch((cause: unknown) => cause);
+		expect(secondError).toBeInstanceOf(TurnAbortedError);
+		expect((secondError as TurnAbortedError).reason).toBe(
+			"second caller stopped",
+		);
+		expect(providerAborted).toBe(false);
+
+		controllers[2]?.abort("last caller stopped");
+		await providerSawAbort.promise;
+		expect(providerAborted).toBe(true);
+		const thirdError = await third.catch((cause: unknown) => cause);
+		expect(thirdError).toBeInstanceOf(TurnAbortedError);
+		expect((thirdError as TurnAbortedError).reason).toBe("last caller stopped");
 		expect(calls).toBe(1);
 	});
 });
