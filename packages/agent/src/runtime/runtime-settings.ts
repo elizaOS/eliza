@@ -3,6 +3,7 @@
  * `runtime.getSetting()`. The projection is intentionally pure so cold boot and
  * hot reload can share it without reintroducing drift between startup paths.
  */
+import { resolveServiceRoutingInConfig } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import {
   collectConfigEnvVars,
@@ -69,6 +70,10 @@ export function buildRuntimeSettingsProjection(
   options: RuntimeSettingsProjectionOptions = {},
 ): Record<string, string> {
   const env = options.env ?? process.env;
+  const hasCanonicalRouting = Object.hasOwn(config, "serviceRouting");
+  const canonicalRouting = hasCanonicalRouting
+    ? resolveServiceRoutingInConfig(config as Record<string, unknown>)
+    : undefined;
   return {
     VALIDATION_LEVEL: "fast",
     ...(env.SECRET_SALT ? { ENCRYPTION_SALT: env.SECRET_SALT } : {}),
@@ -98,6 +103,16 @@ export function buildRuntimeSettingsProjection(
       : {}),
     ...(options.embeddingProviderName
       ? { ELIZA_EMBEDDING_PROVIDER: options.embeddingProviderName }
+      : {}),
+    ...(hasCanonicalRouting
+      ? {
+          ELIZA_CANONICAL_LLM_TEXT_ENABLED: String(
+            Boolean(canonicalRouting?.llmText),
+          ),
+          ELIZA_CANONICAL_EMBEDDINGS_ENABLED: String(
+            Boolean(canonicalRouting?.embeddings),
+          ),
+        }
       : {}),
     ...(options.visionModeSetting
       ? { VISION_MODE: options.visionModeSetting }
