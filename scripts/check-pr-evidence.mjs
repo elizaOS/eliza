@@ -167,6 +167,15 @@ const LEGACY_REPO_ASSET_PATH_RE = new RegExp(
 );
 const PR_EVIDENCE_RELEASE_PATH_RE =
   /^\/elizaOS\/eliza\/releases\/download\/pr-evidence(?:-[1-9][0-9]*)?\/([^/]+)$/i;
+// GitHub's uploader mints `/user-attachments/assets/<uuid>` for media and
+// `/user-attachments/files/<id>/<name>` for text formats (.log/.txt/.json/…).
+// Fork contributors cannot upload to the pr-evidence release (push access
+// required), so the files path is the only first-party route for attaching a
+// document artifact (#17600). Unlike the opaque assets path, the filename here
+// carries a real extension, so acceptance is gated on the evidence-file
+// allowlist below — archives and binaries stay untrusted.
+const USER_ATTACHMENT_FILE_PATH_RE =
+  /^\/user-attachments\/files\/[0-9]+\/[^/]+$/i;
 const LEGACY_USER_IMAGE_PATH_RE = /^\/[0-9]+\/[^/].+$/;
 
 function extensionFromPath(pathname) {
@@ -247,6 +256,18 @@ function trustedArtifact(reference) {
       return {
         extension,
         kind: "opaque-upload",
+        ...normalizedReference,
+      };
+    }
+    // A distinct kind, NOT opaque-upload: visual rows treat linked opaque
+    // uploads as media, and a .log file must never satisfy a video row.
+    if (
+      USER_ATTACHMENT_FILE_PATH_RE.test(url.pathname) &&
+      EVIDENCE_FILE_EXTENSIONS.has(extension)
+    ) {
+      return {
+        extension,
+        kind: "file-upload",
         ...normalizedReference,
       };
     }
@@ -2382,7 +2403,7 @@ function buildFixtureBody(overrides = {}) {
     "walkthrough-video":
       "- [x] A video walkthrough: https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000000",
     "backend-logs":
-      "- [ ] Backend logs: [backend.txt](https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000001)",
+      "- [ ] Backend logs: [backend.txt](https://github.com/user-attachments/files/10000001/backend.txt)",
     "frontend-logs": "- [ ] Frontend logs `N/A - no frontend change`.",
     "llm-trajectory":
       "- [ ] Real-LLM trajectory: [report](https://github.com/elizaOS/eliza/releases/download/pr-evidence/fixture-trajectory.json)",
