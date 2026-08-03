@@ -14,6 +14,7 @@
   ],
   "globalEnv": [
     "BUN_PATH",
+    "ELIZA_APP_ROOT",
     "ELIZA_CERT_QUEUE_HOST",
     "ELIZA_GPU_VISION_CACHE",
     "ELIZA_GPU_VISION_PORT",

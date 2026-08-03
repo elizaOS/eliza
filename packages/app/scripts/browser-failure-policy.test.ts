@@ -1,9 +1,9 @@
 /**
- * Unit coverage for the live development smoke's narrow optional-capability
- * failure policy. Keeping this outside Playwright's test directory prevents
- * its Vitest API from being collected as a browser specification.
+ * Locks the live development smoke's optional-capability exception to one
+ * expected LifeOps 503 and its matching Chromium console event. This Vitest
+ * suite stays outside Playwright's dev-smoke directory so the browser runner
+ * cannot collect it as an incompatible test module.
  */
-
 import { describe, expect, it } from "vitest";
 import {
   ExpectedDevSmokeFailureMatcher,
@@ -12,103 +12,278 @@ import {
   isLifeOpsActivitySignals503,
 } from "../test/dev-smoke/browser-failure-policy";
 
+const LIFEOPS_PATH = "/api/lifeops/activity-signals";
 const INACTIVE_BODY = JSON.stringify({
   error:
     "LifeOps activity signals are unavailable because the personal-assistant runtime is not active",
 });
+const CHROME_CONSOLE_503 =
+  "Failed to load resource: the server responded with a status of 503 (Service Unavailable)";
 
-describe("development smoke browser failure policy", () => {
-  it("accepts only the inactive LifeOps activity-signal response", () => {
-    const endpoint = "http://127.0.0.1:2138/api/lifeops/activity-signals";
-    expect(isExpectedDevSmokeResponse(503, endpoint, INACTIVE_BODY)).toBe(true);
+describe("isLifeOpsActivitySignals503", () => {
+  it("matches 503 on the exact activity-signals path", () => {
     expect(
-      isExpectedDevSmokeResponse(503, `${endpoint}?probe=1`, INACTIVE_BODY),
+      isLifeOpsActivitySignals503(503, `http://localhost${LIFEOPS_PATH}`),
     ).toBe(true);
-    expect(isExpectedDevSmokeResponse(500, endpoint, INACTIVE_BODY)).toBe(
+  });
+
+  it("rejects non-503 status on the same path", () => {
+    expect(
+      isLifeOpsActivitySignals503(500, `http://localhost${LIFEOPS_PATH}`),
+    ).toBe(false);
+  });
+
+  it("rejects 503 on a different path", () => {
+    expect(isLifeOpsActivitySignals503(503, "http://localhost/api/other")).toBe(
       false,
     );
+  });
+
+  it("rejects 503 on a path that merely contains the suffix", () => {
+    expect(
+      isLifeOpsActivitySignals503(
+        503,
+        "http://localhost/api/lifeops/activity-signals-extra",
+      ),
+    ).toBe(false);
+  });
+
+  it("matches the exact path when a query and fragment are present", () => {
+    expect(
+      isLifeOpsActivitySignals503(
+        503,
+        `http://localhost${LIFEOPS_PATH}?source=smoke#result`,
+      ),
+    ).toBe(true);
+  });
+
+  it("matches the relative URL shape accepted by browser event sources", () => {
+    expect(isLifeOpsActivitySignals503(503, LIFEOPS_PATH)).toBe(true);
+  });
+
+  it("rejects a malformed URL instead of widening the exception", () => {
+    expect(isLifeOpsActivitySignals503(503, "http://[")).toBe(false);
+  });
+});
+
+describe("isExpectedDevSmokeResponse", () => {
+  it("matches the canonical inactive 503 body", () => {
     expect(
       isExpectedDevSmokeResponse(
         503,
-        "http://127.0.0.1:2138/api/status",
+        `http://localhost${LIFEOPS_PATH}`,
+        INACTIVE_BODY,
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects a body with an extra key", () => {
+    const body = JSON.stringify({ error: "unavailable", retry: true });
+    expect(
+      isExpectedDevSmokeResponse(503, `http://localhost${LIFEOPS_PATH}`, body),
+    ).toBe(false);
+  });
+
+  it.each(["null", "[]", JSON.stringify({})])(
+    "rejects the non-canonical JSON shape %s",
+    (body) => {
+      expect(
+        isExpectedDevSmokeResponse(
+          503,
+          `http://localhost${LIFEOPS_PATH}`,
+          body,
+        ),
+      ).toBe(false);
+    },
+  );
+
+  it("rejects a body with the wrong error message", () => {
+    const body = JSON.stringify({ error: "something else" });
+    expect(
+      isExpectedDevSmokeResponse(503, `http://localhost${LIFEOPS_PATH}`, body),
+    ).toBe(false);
+  });
+
+  it("rejects non-JSON body", () => {
+    expect(
+      isExpectedDevSmokeResponse(
+        503,
+        `http://localhost${LIFEOPS_PATH}`,
+        "not json",
+      ),
+    ).toBe(false);
+  });
+
+  it("rejects non-503 status even with correct body", () => {
+    expect(
+      isExpectedDevSmokeResponse(
+        500,
+        `http://localhost${LIFEOPS_PATH}`,
         INACTIVE_BODY,
       ),
     ).toBe(false);
   });
 
-  it("keeps same-route runtime and malformed failures fatal", () => {
-    const endpoint = "http://127.0.0.1:2138/api/lifeops/activity-signals";
-    expect(isLifeOpsActivitySignals503(503, endpoint)).toBe(true);
+  it("rejects correct body on wrong path", () => {
     expect(
       isExpectedDevSmokeResponse(
         503,
-        endpoint,
-        JSON.stringify({ error: "Agent runtime is not available" }),
-      ),
-    ).toBe(false);
-    expect(isExpectedDevSmokeResponse(503, endpoint, "not-json")).toBe(false);
-    expect(
-      isExpectedDevSmokeResponse(
-        503,
-        endpoint,
-        JSON.stringify({
-          error:
-            "LifeOps activity signals are unavailable because the personal-assistant runtime is not active",
-          hiddenFailure: true,
-        }),
+        "http://localhost/api/other",
+        INACTIVE_BODY,
       ),
     ).toBe(false);
   });
+});
 
-  it("uses Chromium's console location to avoid hiding unrelated 503s", () => {
-    const resourceError =
-      "Failed to load resource: the server responded with a status of 503 (Service Unavailable)";
-
+describe("isExpectedDevSmokeConsoleError", () => {
+  it("matches the Chromium 503 console error for the activity-signals path", () => {
     expect(
       isExpectedDevSmokeConsoleError(
-        resourceError,
-        "http://127.0.0.1:2138/api/lifeops/activity-signals",
+        CHROME_CONSOLE_503,
+        `http://localhost${LIFEOPS_PATH}`,
       ),
     ).toBe(true);
+  });
+
+  it.each([
+    "Some other error",
+    `${CHROME_CONSOLE_503} while loading another resource`,
+  ])("rejects the non-canonical error text %s", (text) => {
     expect(
-      isExpectedDevSmokeConsoleError(
-        resourceError,
-        "http://127.0.0.1:2138/api/status",
-      ),
+      isExpectedDevSmokeConsoleError(text, `http://localhost${LIFEOPS_PATH}`),
     ).toBe(false);
-    expect(isExpectedDevSmokeConsoleError(resourceError, "")).toBe(false);
+  });
+
+  it("rejects the canonical text without a resource location", () => {
+    expect(isExpectedDevSmokeConsoleError(CHROME_CONSOLE_503, "")).toBe(false);
+  });
+
+  it("rejects the correct text on a different path", () => {
     expect(
       isExpectedDevSmokeConsoleError(
-        "Application failed with 503",
-        "http://127.0.0.1:2138/api/lifeops/activity-signals",
-      ),
-    ).toBe(false);
-    expect(
-      isExpectedDevSmokeConsoleError(
-        `${resourceError} while loading another resource`,
-        "http://127.0.0.1:2138/api/lifeops/activity-signals",
+        CHROME_CONSOLE_503,
+        "http://localhost/api/other",
       ),
     ).toBe(false);
   });
 
-  it("pairs console noise one-for-one with a verified inactive response", () => {
-    const endpoint = "http://127.0.0.1:2138/api/lifeops/activity-signals";
-    const resourceError =
-      "Failed to load resource: the server responded with a status of 503 (Service Unavailable)";
+  it("rejects 501 console error on the activity-signals path", () => {
+    const text =
+      "Failed to load resource: the server responded with a status of 501 (Not Implemented)";
+    expect(
+      isExpectedDevSmokeConsoleError(text, `http://localhost${LIFEOPS_PATH}`),
+    ).toBe(false);
+  });
+});
+
+describe("ExpectedDevSmokeFailureMatcher", () => {
+  it("records a matching response and consumes the console error", () => {
     const matcher = new ExpectedDevSmokeFailureMatcher();
-
-    expect(matcher.consumeConsoleError(resourceError, endpoint)).toBe(false);
-    expect(matcher.recordResponse(503, endpoint, INACTIVE_BODY)).toBe(true);
-    expect(matcher.consumeConsoleError(resourceError, endpoint)).toBe(true);
-    expect(matcher.consumeConsoleError(resourceError, endpoint)).toBe(false);
-
     expect(
       matcher.recordResponse(
         503,
-        endpoint,
-        JSON.stringify({ error: "Agent runtime is not available" }),
+        `http://localhost${LIFEOPS_PATH}`,
+        INACTIVE_BODY,
+      ),
+    ).toBe(true);
+    expect(
+      matcher.consumeConsoleError(
+        CHROME_CONSOLE_503,
+        `http://localhost${LIFEOPS_PATH}`,
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects a console error when no response was recorded", () => {
+    const matcher = new ExpectedDevSmokeFailureMatcher();
+    expect(
+      matcher.consumeConsoleError(
+        CHROME_CONSOLE_503,
+        `http://localhost${LIFEOPS_PATH}`,
       ),
     ).toBe(false);
-    expect(matcher.consumeConsoleError(resourceError, endpoint)).toBe(false);
+  });
+
+  it("rejects a second console error after the first is consumed", () => {
+    const matcher = new ExpectedDevSmokeFailureMatcher();
+    matcher.recordResponse(
+      503,
+      `http://localhost${LIFEOPS_PATH}`,
+      INACTIVE_BODY,
+    );
+    expect(
+      matcher.consumeConsoleError(
+        CHROME_CONSOLE_503,
+        `http://localhost${LIFEOPS_PATH}`,
+      ),
+    ).toBe(true);
+    expect(
+      matcher.consumeConsoleError(
+        CHROME_CONSOLE_503,
+        `http://localhost${LIFEOPS_PATH}`,
+      ),
+    ).toBe(false);
+  });
+
+  it("tracks multiple independent responses", () => {
+    const matcher = new ExpectedDevSmokeFailureMatcher();
+    matcher.recordResponse(
+      503,
+      `http://localhost${LIFEOPS_PATH}`,
+      INACTIVE_BODY,
+    );
+    matcher.recordResponse(
+      503,
+      `http://localhost${LIFEOPS_PATH}`,
+      INACTIVE_BODY,
+    );
+    expect(
+      matcher.consumeConsoleError(
+        CHROME_CONSOLE_503,
+        `http://localhost${LIFEOPS_PATH}`,
+      ),
+    ).toBe(true);
+    expect(
+      matcher.consumeConsoleError(
+        CHROME_CONSOLE_503,
+        `http://localhost${LIFEOPS_PATH}`,
+      ),
+    ).toBe(true);
+    expect(
+      matcher.consumeConsoleError(
+        CHROME_CONSOLE_503,
+        `http://localhost${LIFEOPS_PATH}`,
+      ),
+    ).toBe(false);
+  });
+
+  it("does not correlate distinct request URLs that share the allowed path", () => {
+    const matcher = new ExpectedDevSmokeFailureMatcher();
+    matcher.recordResponse(
+      503,
+      `http://localhost${LIFEOPS_PATH}?request=one`,
+      INACTIVE_BODY,
+    );
+
+    expect(
+      matcher.consumeConsoleError(
+        CHROME_CONSOLE_503,
+        `http://localhost${LIFEOPS_PATH}?request=two`,
+      ),
+    ).toBe(false);
+  });
+
+  it("rejects a non-matching response", () => {
+    const matcher = new ExpectedDevSmokeFailureMatcher();
+    expect(
+      matcher.recordResponse(500, `http://localhost${LIFEOPS_PATH}`, "error"),
+    ).toBe(false);
+  });
+
+  it("rejects a matching response on a different path", () => {
+    const matcher = new ExpectedDevSmokeFailureMatcher();
+    expect(
+      matcher.recordResponse(503, "http://localhost/api/other", INACTIVE_BODY),
+    ).toBe(false);
   });
 });

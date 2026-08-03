@@ -27,6 +27,10 @@ jobs:
       - name: Test homepage downloads
         working-directory: packages/homepage
         run: bun run test:e2e
+
+      - name: Upload homepage browser failure artifacts
+        if: failure() && steps.homepage-scope.outputs.run == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
 `;
 
 function buildRepo(workflow = VALID_WORKFLOW) {
@@ -73,6 +77,36 @@ describe("quality-fork-browser-contract", () => {
       expect(() => runContract(root)).toThrow(
         /real homepage browser test must remain enabled/,
       );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects an unreviewed browser artifact uploader", () => {
+    const root = buildRepo(
+      VALID_WORKFLOW.replace(
+        "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+        "actions-upload-artifact-floating-tag",
+      ),
+    );
+    try {
+      expect(() => runContract(root)).toThrow(
+        /reviewed upload-artifact revision/,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects browser artifact upload outside the failure boundary", () => {
+    const root = buildRepo(
+      VALID_WORKFLOW.replace(
+        "failure() && steps.homepage-scope.outputs.run == 'true'",
+        "always()",
+      ),
+    );
+    try {
+      expect(() => runContract(root)).toThrow(/only after an in-scope failure/);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

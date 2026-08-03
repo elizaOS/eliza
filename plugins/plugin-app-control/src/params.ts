@@ -94,6 +94,22 @@ export function readStringOption(
 	return trimmed.length > 0 ? trimmed : null;
 }
 
+// Planner models emit stringified absent-values ("None", "null", "undefined")
+// for OPTIONAL parameters they do not use. Only reference-style options
+// (editTarget, runId, …) opt into this filter: a value like "none" is a
+// legitimate literal for settings values, colors, and search queries, so the
+// shared readStringOption must never swallow it.
+const ABSENT_SENTINELS = new Set(["none", "null", "undefined"]);
+
+export function readOptionalRefOption(
+	options: Record<string, unknown> | undefined,
+	key: string,
+): string | null {
+	const value = readStringOption(options, key);
+	if (value && ABSENT_SENTINELS.has(value.toLowerCase())) return null;
+	return value;
+}
+
 export function extractLaunchTarget(
 	message: Memory | undefined,
 	options: Record<string, unknown> | undefined,

@@ -114,6 +114,12 @@ export function runContract(repoRoot = DEFAULT_REPO_ROOT) {
     ),
     `${SETUP_WORKSPACE_PATH}: must retain the deterministic cross-lane restore prefix`,
   );
+  assert(
+    /name:\s*Setup Bun[\s\S]*?HOME:\s*\$\{\{\s*runner\.temp\s*\}\}\/bun-home-\$\{\{\s*github\.run_id\s*\}\}-\$\{\{\s*github\.run_attempt\s*\}\}-\$\{\{\s*github\.job\s*\}\}-\$\{\{\s*strategy\.job-index\s*\|\|\s*0\s*\}\}\s*[\r\n]+[\s\S]*?USERPROFILE:\s*\$\{\{\s*runner\.temp\s*\}\}\/bun-home-\$\{\{\s*github\.run_id\s*\}\}-\$\{\{\s*github\.run_attempt\s*\}\}-\$\{\{\s*github\.job\s*\}\}-\$\{\{\s*strategy\.job-index\s*\|\|\s*0\s*\}\}\s*[\r\n]+[\s\S]*?bun-version:[\s\S]*?no-cache:\s*true/.test(
+      workspaceSetup,
+    ),
+    `${SETUP_WORKSPACE_PATH}: setup-bun home must be isolated by run, attempt, job, matrix entry, and OS without caching the ephemeral executable path or using space-bearing runner metadata`,
+  );
 
   // --- Invariant 2: no adopting workflow also wires the SaaS remote cache. ---
   const workflowFiles = readdirSync(resolve(repoRoot, WORKFLOW_DIR)).filter(

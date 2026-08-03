@@ -72,6 +72,10 @@ function makeTx(txIndex: number) {
           return chain;
         },
         where: (_clause: SQL | undefined) => chain,
+        // The enqueue's sandbox read row-locks its ownership decision
+        // (`.for("update")`, lifecycle_revision fencing) — a no-op here since
+        // this seam only records statement ORDER, not locking semantics.
+        for: () => chain,
         orderBy: () => {
           state.hasOrderBy = true;
           return chain;

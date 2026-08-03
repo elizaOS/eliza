@@ -12,6 +12,7 @@
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { expect, type Page, test } from "playwright/test";
+import { waitForLandingIntro } from "./landing-readiness";
 import { captureScreenshotWithQualityRetry } from "./screenshot-quality";
 
 const TEST_TOKEN = "homepage-aesthetic-audit-token";
@@ -115,14 +116,10 @@ async function seedAuthed(page: Page) {
 
 async function settle(page: Page, routePath?: string) {
   await page.evaluate(() => document.fonts.ready);
-  // The animated landing keeps long-lived shader and model requests in
-  // flight. Its primary action appears only after the intro and Suspense
-  // boundaries settle, making it the stable screenshot boundary.
+  // The landing keeps long-lived shader and model requests in flight, so its
+  // explicit final-paint signal is the only reliable screenshot boundary.
   if (routePath === "/" || routePath === "/leaderboard") {
-    await expect(page.getByRole("button", { name: "Try Now" })).toBeVisible({
-      timeout: 30_000,
-    });
-    await page.waitForTimeout(3000);
+    await waitForLandingIntro(page);
     return;
   }
   // Wait for substantive content on all other routes.
@@ -158,7 +155,7 @@ for (const viewport of VIEWPORTS) {
 
     for (const route of ROUTES) {
       test(`${route.name} (${viewport.name})`, async ({ page }) => {
-        test.setTimeout(60_000);
+        test.setTimeout(90_000);
 
         const consoleErrors: string[] = [];
         page.on("console", (msg) => {

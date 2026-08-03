@@ -101,11 +101,11 @@ locking and linear probing so active lanes do not collide. See
 | `bun run smartglasses:simulator` | `bun run --cwd packages/examples/smartglasses simulator` |
 | `bun run smartglasses:smoke:simulator` | `bun run --cwd packages/examples/smartglasses smoke:simulator` |
 | `bun run test:ci:live` | `bun run test:live` |
-| `bun run test:lint` | `bun run audit:test-integrity:all` |
+| `bun run test:lint` | retired with its aggregate tooling; no direct replacement |
 | `bun run test:lint:no-vi-mocks` | `bun run audit:test-integrity:no-vi-mocks` |
-| `bun run test:lint:lane-coverage` | `bun run audit:test-integrity:lane-coverage` |
-| `bun run test:lint:test-integrity` | `bun run audit:test-integrity` |
-| `bun run test:lint:test-integrity:self-test` | `bun run audit:test-integrity:self-test` |
+| `bun run test:lint:lane-coverage` | retired with its tooling; no replacement |
+| `bun run test:lint:test-integrity` | retired with its tooling; no replacement |
+| `bun run test:lint:test-integrity:self-test` | retired with its tooling; no replacement |
 | `bun run verify:smartglasses-software` | `bun run audit:smartglasses-software` |
 | `bun run personality:judge` | `bun run bench:personality` |
 | `bun run personality:bench:calibrate` | `bun run bench:personality:calibrate` |
@@ -127,6 +127,7 @@ packages/        framework, shared libraries, and product surfaces
   shared/        cross-package utilities + brand assets
   ui/            shared React component library
   app/           web + desktop dashboard, desktop shell, and current cloud apex UI
+  eliza-computer/ eliza.army contribution hub, live work queue, leaderboard, and skill download
   tui/           terminal UI
   skills/        runtime skills knowledge base (USE_SKILL)
   scenario-runner/ scenario + eval harness

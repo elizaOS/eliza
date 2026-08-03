@@ -28,7 +28,6 @@ Commands:
 Benchmark options:
   --task <path>    Path to task JSON file
   --server         Keep runtime alive and accept tasks via stdin (line-delimited JSON)
-  --timeout <ms>   Timeout per task in milliseconds (default: 120000)
 `);
 }
 
@@ -116,22 +115,10 @@ export async function runAutonomousCli(
   }
 
   if (command === "benchmark") {
-    const { runBenchmark } = await import("./benchmark.ts");
-    // Parse benchmark-specific flags from argv
-    const opts = {
-      task: undefined as string | undefined,
-      server: false,
-      timeout: "120000",
-    };
-    for (let i = 3; i < argv.length; i++) {
-      if (argv[i] === "--task" && argv[i + 1]) {
-        opts.task = argv[++i];
-      } else if (argv[i] === "--server") {
-        opts.server = true;
-      } else if (argv[i] === "--timeout" && argv[i + 1]) {
-        opts.timeout = argv[++i];
-      }
-    }
+    const { parseBenchmarkCommandOptions, runBenchmark } = await import(
+      "./benchmark.ts"
+    );
+    const opts = parseBenchmarkCommandOptions(argv);
     await runBenchmark(opts);
     return;
   }

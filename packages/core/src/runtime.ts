@@ -2120,6 +2120,18 @@ export class AgentRuntime implements IAgentRuntime {
 			);
 			throw new Error(`registerPlugin: ${errorMsg}`);
 		}
+		const assertRuntimeActive = (): void => {
+			if (!this.stopped) return;
+			throw new ElizaError(
+				`Cannot register plugin "${plugin.name}" on a stopped runtime`,
+				{
+					code: "RUNTIME_STOPPED_DURING_PLUGIN_REGISTRATION",
+					severity: "ephemeral",
+					context: { agentId: this.agentId, plugin: plugin.name },
+				},
+			);
+		};
+		assertRuntimeActive();
 
 		// Check if a plugin with the same name is already registered.
 		const existingPlugin = this.plugins.find((p) => p.name === plugin.name);
@@ -2154,6 +2166,7 @@ export class AgentRuntime implements IAgentRuntime {
 				}
 			}
 			await pluginToRegister.init(config, this);
+			assertRuntimeActive();
 			this.logger.debug(
 				{ src: "agent", agentId: this.agentId, plugin: pluginToRegister.name },
 				"Plugin initialized",
@@ -2358,6 +2371,7 @@ export class AgentRuntime implements IAgentRuntime {
 			const adapter = await Promise.resolve(
 				pluginToRegister.adapter(this.agentId, basicCapabilitiesSettings),
 			);
+			assertRuntimeActive();
 			this.registerDatabaseAdapter(adapter);
 		}
 	}

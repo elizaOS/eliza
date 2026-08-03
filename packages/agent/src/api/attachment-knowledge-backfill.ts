@@ -133,10 +133,12 @@ export async function backfillTranscriptKnowledgeTags(
 }
 
 /**
- * Register the one-time backfill task. The worker is idempotent, so a duplicate
- * run is harmless; we also guard task creation so we don't enqueue it twice.
+ * Register the one-time backfill worker. Task-row creation is deliberately
+ * separate because plugin initialization runs before SQL migrations, while the
+ * awaited startup-maintenance boundary schedules the row after the database is
+ * ready.
  */
-export function registerAttachmentKnowledgeBackfillTask(
+export function registerAttachmentKnowledgeBackfillWorker(
   runtime: IAgentRuntime,
 ): void {
   runtime.registerTaskWorker({
@@ -150,43 +152,31 @@ export function registerAttachmentKnowledgeBackfillTask(
           );
         }
       } catch (err) {
-        // error-policy:J7 the one-time metadata sweep must not kill runtime
-        // startup, but the failure needs to reach RECENT_ERRORS/escalation.
+        // error-policy:J7 TaskService records the rejected run and applies its
+        // retry policy; reportError also makes the failure agent-visible.
         rt.reportError("knowledge-backfill", err);
-        rt.logger.warn(
-          `[knowledge-backfill] sweep failed: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
+        throw err;
       }
       return undefined;
     },
   });
+}
 
-  void (async () => {
-    try {
-      const existing = await runtime.getTasks({
-        agentIds: [runtime.agentId],
-        tags: BACKFILL_TAGS,
-      });
-      if (existing.some((task) => task.name === BACKFILL_TASK_NAME)) return;
-      await runtime.createTask({
-        name: BACKFILL_TASK_NAME,
-        description:
-          "One-time backfill of room/media-format tags on transcript-mirror knowledge records",
-        tags: [...BACKFILL_TAGS],
-        agentId: runtime.agentId,
-        metadata: { updatedAt: Date.now() },
-      });
-    } catch (err) {
-      // error-policy:J7 scheduling is diagnostic/background work; report it
-      // observably while allowing the agent to continue booting.
-      runtime.reportError("knowledge-backfill-schedule", err);
-      runtime.logger.warn(
-        `[knowledge-backfill] failed to schedule backfill task: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
-    }
-  })();
+/** Ensure the idempotent backfill has one queued task after SQL is ready. */
+export async function scheduleAttachmentKnowledgeBackfill(
+  runtime: IAgentRuntime,
+): Promise<void> {
+  const existing = await runtime.getTasks({
+    agentIds: [runtime.agentId],
+    tags: BACKFILL_TAGS,
+  });
+  if (existing.some((task) => task.name === BACKFILL_TASK_NAME)) return;
+  await runtime.createTask({
+    name: BACKFILL_TASK_NAME,
+    description:
+      "One-time backfill of room/media-format tags on transcript-mirror knowledge records",
+    tags: [...BACKFILL_TAGS],
+    agentId: runtime.agentId,
+    metadata: { updatedAt: Date.now() },
+  });
 }

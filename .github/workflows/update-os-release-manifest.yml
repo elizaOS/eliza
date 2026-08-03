@@ -273,7 +273,24 @@ jobs:
             --run-url "$run_url" \
             --log "$RECOVERY_LOG" \
             --output "$pr_body"
+          cat >> "$pr_body" <<'EOF'
+
+          ## Contribution provenance
+
+          <!-- contribution-attribution:v1 -->
+          <!-- attribution-row:ai-assistance -->
+          - AI assistance: no - deterministic workflow
+          <!-- attribution-row:models -->
+          - Model(s) used: None - deterministic workflow
+          <!-- attribution-row:client -->
+          - Client / agent tooling: None - deterministic workflow
+          <!-- attribution-row:skill-revision -->
+          - Skill revision: N/A - release inventory renderer does not invoke a contribution skill
+          <!-- attribution-row:status -->
+          - Attribution status: self-reported
+          EOF
           node scripts/check-pr-evidence.mjs --body-file "$pr_body"
+          node scripts/check-pr-agent-attribution.mjs --body-file "$pr_body"
 
           git switch -c "$BRANCH"
           git config user.name "elizaOS CI"

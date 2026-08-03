@@ -38,7 +38,6 @@ plugins/plugin-openai/
   index.node.ts          # Node entrypoint
   index.browser.ts       # Browser entrypoint
   auto-enable.ts         # shouldEnable(): true when OPENAI_API_KEY, CEREBRAS_API_KEY, or EVOLINK_API_KEY set
-  init.ts                # initializeOpenAI(): validates API key on startup; browser skips server-only validation
   build.ts               # Bun.build config (node ESM + browser ESM) + tsc declarations
   models/
     index.ts             # Re-exports all handlers

@@ -154,3 +154,52 @@ describe("sanitizeCompletionRelay", () => {
     expect(sanitizeCompletionRelay(null)).toBe("");
   });
 });
+
+describe("stripEnvelopeSummaryLines", () => {
+  it("strips summarizeEnvelope machine lines from a chat relay (live incident shape)", () => {
+    const relayed = [
+      "starfall is live.",
+      "",
+      "link: https://nubilio.org/apps/starfall/",
+      "workdir: /home/milady/.eliza/workspaces/task-241a6410",
+      "diff: 12 files changed",
+      "files: 12",
+      "tests: bun run test → exit 0",
+      "criteria: 3/3 met",
+    ].join("\n");
+    const out = sanitizeCompletionRelay(relayed);
+    expect(out).toContain("starfall is live.");
+    expect(out).toContain("link: https://nubilio.org/apps/starfall/");
+    expect(out).not.toContain("workdir:");
+    expect(out).not.toContain("diff:");
+    expect(out).not.toContain("criteria:");
+  });
+
+  it("leaves builder prose mentioning tests untouched", () => {
+    const prose = "All tests pass now; the tests: they were flaky before.";
+    expect(sanitizeCompletionRelay(prose)).toBe(prose);
+  });
+});
+
+describe("stripStructuredProofLines", () => {
+  it("strips APP_CREATE_DONE proof lines and surfaces liveUrl as prose", () => {
+    const relayed = [
+      "App verification passed.",
+      "",
+      'APP_CREATE_DONE {"appName":"ocean-wave-loop","files":["src/index.tsx"],"tests":{"passed":2,"failed":0},"liveUrl":"https://nubilio.org/apps/ocean-wave-loop/"}',
+    ].join("\n");
+    const out = sanitizeCompletionRelay(relayed);
+    expect(out).not.toContain("APP_CREATE_DONE");
+    expect(out).toContain("Live at https://nubilio.org/apps/ocean-wave-loop/");
+  });
+
+  it("does not duplicate a URL already stated in prose", () => {
+    const relayed = [
+      "The app is live at https://nubilio.org/apps/foo/",
+      'APP_CREATE_DONE {"appName":"foo","liveUrl":"https://nubilio.org/apps/foo/"}',
+    ].join("\n");
+    const out = sanitizeCompletionRelay(relayed);
+    expect(out.match(/nubilio\.org\/apps\/foo/g)).toHaveLength(1);
+    expect(out).not.toContain("APP_CREATE_DONE");
+  });
+});

@@ -178,6 +178,7 @@ export default function Leaderboard() {
   const [tryPlatform, setTryPlatform] = useState<Platform>("imessage");
   const [showUI, setShowUI] = useState(false);
   const [introDone, setIntroDone] = useState(false);
+  const [modelIntroReady, setModelIntroReady] = useState(false);
   const [tryInput, setTryInput] = useState("");
   const [loginMaxW, setLoginMaxW] = useState(440);
   const [loginBottom, setLoginBottom] = useState(240);
@@ -739,6 +740,7 @@ export default function Leaderboard() {
   return (
     <div
       {...bind()}
+      data-intro-ready={modelIntroReady ? "true" : undefined}
       className="theme-app min-h-screen"
       style={{
         touchAction: "pan-y",
@@ -756,6 +758,7 @@ export default function Leaderboard() {
           ref={modelRef}
           tryActive={platform === "try"}
           switcherOpen={switcherOpen}
+          onIntroReady={() => setModelIntroReady(true)}
           onWaitingChange={setWaiting}
           onVideoClick={handleVideoClick}
           onBackClick={handleLoginClick}

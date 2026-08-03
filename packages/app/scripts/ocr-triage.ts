@@ -31,11 +31,16 @@ import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { OVERLAY_NATIVE_OR_CANVAS_SLUGS } from "../test/ui-smoke/aesthetic-audit-rules";
 import {
   evaluateOcrContent,
+  type OcrExpectation,
   type OcrResult,
   type OcrVerdict,
 } from "../test/ui-smoke/ocr-content-rules";
-import { VIEW_EXPECTATIONS } from "../test/ui-smoke/ocr-view-expectations";
 import {
+  resolveViewOcrPolicy,
+  type ViewOcrPolicy,
+} from "../test/ui-smoke/ocr-view-expectations";
+import {
+  type AuditReportRow,
   buildAuditCaptureManifest,
   parseAuditReport,
   validateOcrRecordPaths,
@@ -59,12 +64,7 @@ const BLANK_EXEMPT_SLUGS = new Set<string>([
   "plugin-focus-gui",
 ]);
 
-export interface ReportEntry {
-  slug: string;
-  viewport: string;
-  viewType?: "gui" | "tui";
-  verdict?: string;
-}
+export type ReportEntry = AuditReportRow;
 
 interface OcrRecord extends OcrResult {
   path: string;
@@ -140,6 +140,33 @@ export interface TriageSummary {
 export interface TriageResult {
   summary: TriageSummary;
   entries: TriageEntry[];
+}
+
+interface PolicyEvaluationInput {
+  expectation: OcrExpectation;
+  semanticExemptionReason?: string;
+}
+
+function resolvePolicyEvaluationInput(
+  slug: string,
+  policy: ViewOcrPolicy,
+  report: ReportEntry,
+): PolicyEvaluationInput {
+  if (policy.kind === "expectation") {
+    return { expectation: policy.expectation };
+  }
+  if (
+    policy.applicability === "unregistered-remote-bundle" &&
+    report.bundleProvenance !== undefined
+  ) {
+    throw new Error(
+      `Semantic OCR exemption for ${slug} no longer applies: capture loaded remote bundle provenance ${report.bundleProvenance}`,
+    );
+  }
+  return {
+    expectation: policy.fallbackExpectation,
+    semanticExemptionReason: policy.reason,
+  };
 }
 
 function parseArgs(argv: string[]): Record<string, string> {
@@ -330,15 +357,20 @@ export async function runOcrTriage(argv: string[]): Promise<TriageResult> {
     }
     const slug = slugOf(rec.path);
     const viewport = viewportOf(rec.path);
-    const rep = reportByKey.get(`${slug}::${viewport}`) ?? null;
+    const rep = reportByKey.get(`${slug}::${viewport}`);
+    if (!rep) {
+      throw new Error(`OCR record ${slug}::${viewport} has no report row`);
+    }
+    const policy = resolveViewOcrPolicy(slug);
+    const policyInput = resolvePolicyEvaluationInput(slug, policy, rep);
     const exemptFromBlank =
-      rep?.viewType === "tui" || BLANK_EXEMPT_SLUGS.has(slug);
+      rep.viewType === "tui" || BLANK_EXEMPT_SLUGS.has(slug);
     const finding = evaluateOcrContent({
       ocr: rec,
-      expectation: VIEW_EXPECTATIONS[slug],
+      ...policyInput,
       exemptFromBlank,
     });
-    const domVerdict = rep?.verdict ?? null;
+    const domVerdict = rep.verdict ?? null;
     const domPassed = domVerdict === "good" || domVerdict === "needs-eyeball";
     entries.push({
       slug,
