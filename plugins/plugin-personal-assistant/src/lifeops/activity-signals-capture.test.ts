@@ -646,6 +646,33 @@ describe("startLifeOpsActivitySignalCapture", () => {
     expect(h.dispatchStatus).not.toHaveBeenCalled();
   });
 
+  it("backs off a capability-specific 503 and resumes after a bounded probe", async () => {
+    vi.useFakeTimers();
+    h.isApiError.mockImplementation(
+      (error) => typeof error === "object" && error !== null && "kind" in error,
+    );
+    h.captureLifeOpsActivitySignal.mockRejectedValue({
+      kind: "http",
+      status: 503,
+      path: "/api/lifeops/activity-signals",
+    });
+
+    stop = startLifeOpsActivitySignalCapture(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.captureLifeOpsActivitySignal).toHaveBeenCalled();
+
+    h.captureLifeOpsActivitySignal.mockClear();
+    await vi.advanceTimersByTimeAsync(55_000);
+    expect(h.getStatus.mock.calls.length).toBeGreaterThan(1);
+    expect(h.captureLifeOpsActivitySignal).not.toHaveBeenCalled();
+
+    h.captureLifeOpsActivitySignal.mockResolvedValue({
+      signal: { id: "sig-recovered" },
+    });
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(h.captureLifeOpsActivitySignal).toHaveBeenCalled();
+  });
+
   it("surfaces a persistent 5xx status-probe failure instead of reading it as not-ready forever", async () => {
     h.isApiError.mockImplementation(
       (error) => typeof error === "object" && error !== null && "kind" in error,

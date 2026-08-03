@@ -26,9 +26,10 @@
  *   each app resume so a grant made in Settings activates without a restart.
  *
  * Expected unavailability (runtime not yet running, transient network/timeout,
- * endpoint 503) quietly stands the capture down until the ready-poll recovers.
- * Anything else is an unexpected failure and is surfaced observably: a
- * `capture_error` status event plus a prefixed console.error.
+ * endpoint 503) quietly stands the capture down. Capability-specific 503s use
+ * a bounded retry interval because the global runtime status cannot prove that
+ * this optional plugin route is active. Anything else is surfaced observably:
+ * a `capture_error` status event plus a prefixed console.error.
  */
 import { Capacitor } from "@capacitor/core";
 import {
@@ -71,6 +72,7 @@ const LOG_PREFIX = "[LifeOpsActivitySignals]";
 
 const APP_SIGNAL_DEDUP_WINDOW_MS = 5_000;
 const RUNTIME_READY_POLL_MS = 5_000;
+const ACTIVITY_SIGNALS_CAPABILITY_RETRY_MS = 60_000;
 const PAGE_HEARTBEAT_MS = 60_000;
 const DESKTOP_POWER_POLL_MS = 60_000;
 // Health sleep data drives wake detection; five-minute polling keeps morning
@@ -212,7 +214,14 @@ export function startLifeOpsActivitySignalCapture(enabled = true): () => void {
   const platform = resolveActivityPlatform();
   const lastSent = new Map<string, SignalFingerprint>();
   let runtimeReady = false;
+  let activitySignalsRetryAtMs = 0;
   let mounted = true;
+
+  const standDownActivitySignals = (): void => {
+    runtimeReady = false;
+    activitySignalsRetryAtMs =
+      Date.now() + ACTIVITY_SIGNALS_CAPABILITY_RETRY_MS;
+  };
 
   const isRuntimeUnavailableError = (error: unknown): boolean =>
     isApiError(error) &&
@@ -225,7 +234,7 @@ export function startLifeOpsActivitySignalCapture(enabled = true): () => void {
 
   const reportCaptureError = (error: unknown): void => {
     if (isRuntimeUnavailableError(error)) {
-      runtimeReady = false;
+      standDownActivitySignals();
       return;
     }
     if (isExpectedTransientError(error)) {
@@ -254,7 +263,8 @@ export function startLifeOpsActivitySignalCapture(enabled = true): () => void {
   const refreshRuntimeReady = async (): Promise<boolean> => {
     try {
       const status = await client.getStatus();
-      const ready = status.state === "running";
+      const ready =
+        status.state === "running" && Date.now() >= activitySignalsRetryAtMs;
       runtimeReady = ready;
       return ready;
     } catch (error) {
@@ -297,7 +307,7 @@ export function startLifeOpsActivitySignalCapture(enabled = true): () => void {
     } catch (error) {
       lastSent.delete(dedupeKey);
       if (isRuntimeUnavailableError(error)) {
-        runtimeReady = false;
+        standDownActivitySignals();
         return null;
       }
       throw error;
