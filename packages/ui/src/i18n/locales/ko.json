@@ -2575,6 +2575,7 @@
   "documentsview.FailedToDeleteDocument": "문서를 삭제하지 못했습니다.",
   "documentsview.FailedToDeleteDocumentWithMessage": "문서 삭제 실패: {{message}}",
   "documentsview.FailedToLoadDocument": "문서를 로드하지 못했습니다.",
+  "documentsview.FailedToLoadDocumentsData": "지식 데이터를 불러오지 못했어요",
   "documentsview.FailedToReadFile": "파일을 읽지 못했습니다.",
   "documentsview.FailedToUpdateDocument": "문서 업데이트에 실패했어요",
   "documentsview.FragmentCountMany": "{{count}} 조각",

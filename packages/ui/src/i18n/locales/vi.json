@@ -2575,6 +2575,7 @@
   "documentsview.FailedToDeleteDocument": "Không thể xóa tài liệu",
   "documentsview.FailedToDeleteDocumentWithMessage": "Không xóa được tài liệu: {{message}}",
   "documentsview.FailedToLoadDocument": "Không tải được tài liệu",
+  "documentsview.FailedToLoadDocumentsData": "Không thể tải dữ liệu knowledge",
   "documentsview.FailedToReadFile": "Không đọc được tập tin",
   "documentsview.FailedToUpdateDocument": "Failed To Update Document",
   "documentsview.FragmentCountMany": "{{count}} mảnh vỡ",

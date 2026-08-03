@@ -2575,6 +2575,7 @@
   "documentsview.FailedToDeleteDocument": "删除文档失败",
   "documentsview.FailedToDeleteDocumentWithMessage": "删除文档失败：{{message}}",
   "documentsview.FailedToLoadDocument": "加载文档失败",
+  "documentsview.FailedToLoadDocumentsData": "加载知识数据失败",
   "documentsview.FailedToReadFile": "读取文件失败",
   "documentsview.FailedToUpdateDocument": "更新文档失败",
   "documentsview.FragmentCountMany": "{{count}} 片段",

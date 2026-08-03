@@ -3063,6 +3063,7 @@
   "documentsview.FailedToDeleteDocument": "Failed to delete document",
   "documentsview.FailedToDeleteDocumentWithMessage": "Failed to delete document: {{message}}",
   "documentsview.FailedToLoadDocument": "Failed to load document",
+  "documentsview.FailedToLoadDocumentsData": "Failed to load knowledge data",
   "documentsview.FailedToReadFile": "Failed to read file",
   "documentsview.FailedToUpdateDocument": "Failed to update knowledge document",
   "documentsview.FragmentCountMany": "{{count}} fragments",

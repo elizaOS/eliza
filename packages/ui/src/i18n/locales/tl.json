@@ -2575,6 +2575,7 @@
   "documentsview.FailedToDeleteDocument": "Nabigong tanggalin ang dokumento",
   "documentsview.FailedToDeleteDocumentWithMessage": "Nabigong tanggalin ang dokumento: {{message}}",
   "documentsview.FailedToLoadDocument": "Nabigong i-load ang dokumento",
+  "documentsview.FailedToLoadDocumentsData": "Hindi na-load ang knowledge data",
   "documentsview.FailedToReadFile": "Nabigong basahin ang file",
   "documentsview.FailedToUpdateDocument": "Hindi na-update ang dokumento",
   "documentsview.FragmentCountMany": "{{count}} fragment",

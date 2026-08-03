@@ -2575,6 +2575,7 @@
   "documentsview.FailedToDeleteDocument": "No se pudo eliminar el documento",
   "documentsview.FailedToDeleteDocumentWithMessage": "No se pudo eliminar el documento: {{message}}",
   "documentsview.FailedToLoadDocument": "No se pudo cargar el documento",
+  "documentsview.FailedToLoadDocumentsData": "No se pudieron cargar los datos de conocimiento",
   "documentsview.FailedToReadFile": "No se pudo leer el archivo",
   "documentsview.FailedToUpdateDocument": "Failed To Update Document",
   "documentsview.FragmentCountMany": "{{count}} fragmentos",

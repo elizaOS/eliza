@@ -2575,6 +2575,7 @@
   "documentsview.FailedToDeleteDocument": "ドキュメントを削除できませんでした",
   "documentsview.FailedToDeleteDocumentWithMessage": "ドキュメントを削除できませんでした: {{message}}",
   "documentsview.FailedToLoadDocument": "ドキュメントを読み込めませんでした",
+  "documentsview.FailedToLoadDocumentsData": "ナレッジデータを読み込めませんでした",
   "documentsview.FailedToReadFile": "ファイルを読み取れませんでした",
   "documentsview.FailedToUpdateDocument": "ナレッジドキュメントを更新できませんでした",
   "documentsview.FragmentCountMany": "{{count}}個のフラグメント",

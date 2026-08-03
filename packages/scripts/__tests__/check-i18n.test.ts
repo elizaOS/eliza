@@ -169,6 +169,35 @@ describe("check-i18n contract", () => {
     expect(result.errors.join("\n")).toMatch(/no longer used in source/);
   });
 
+  test("counts keys reached through the tRef.current stable-ref indirection", () => {
+    // `const tRef = useRef(t)` then `tRef.current("key")` is a real call site.
+    // Missing it made live keys look dead: the purge in this checker's own
+    // repair PR deleted documentsview.FailedToLoadDocumentsData from all eight
+    // locales because only `t("...")` was matched.
+    const result = run(
+      buildFixture({
+        en: { "app.title": "Hello", "app.viaRef": "Loaded through a ref" },
+        source:
+          'export const x = t("app.title");\nuseEffect(() => { tRef.current("app.viaRef", { defaultValue: "Loaded through a ref" }); });\n',
+      }),
+    );
+    // Neither unused (it IS referenced) nor missing (it IS catalogued).
+    expect(result.ok).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
+  test("flags a tRef.current key that is absent from the source catalog", () => {
+    const result = run(
+      buildFixture({
+        en: { "app.title": "Hello" },
+        source:
+          'export const x = t("app.title");\nexport const y = tRef.current("app.missingViaRef");\n',
+      }),
+    );
+    expect(result.ok).toBe(false);
+    expect(result.errors.join("\n")).toMatch(/en\.json missing 1 key/);
+  });
+
   test("template prefixes from source cover dynamically-built keys", () => {
     const result = run(
       buildFixture({

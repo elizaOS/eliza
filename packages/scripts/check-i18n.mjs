@@ -38,7 +38,14 @@ const SKIP_DIR_NAMES = new Set([
 ]);
 const SKIP_FILE_RE = /\.(d\.ts|test\.tsx?|spec\.tsx?|stories\.tsx?)$/;
 
-const LITERAL_KEY_RE = /\bt\(\s*["']([^"'\n]+)["']/g;
+// Matches `t("key")` and the stable-ref indirection `tRef.current("key")`
+// (`const tRef = useRef(t)`), which components use to call the translator from
+// effects without re-subscribing. The ref form was invisible to this scan, so
+// keys reached only through it looked unreferenced and were classified dead —
+// `documentsview.FailedToLoadDocumentsData` was purged from all eight locales
+// on that basis and caught in review. A translator reached through a ref is a
+// literal use like any other.
+const LITERAL_KEY_RE = /\bt(?:Ref\.current)?\(\s*["']([^"'\n]+)["']/g;
 const I18N_KEY_RE = /\bi18nKey:\s*["']([^"'\n]+)["']/g;
 const TEMPLATE_RE = /\bt\(\s*`([^`]*)`/g;
 const DYNAMIC_RE = /\bt\(\s*([^"'`\s)])/g;
