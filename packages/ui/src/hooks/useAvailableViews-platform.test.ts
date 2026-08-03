@@ -11,6 +11,7 @@ const signedInProcessView: ViewRegistryEntry = {
   label: "Settings",
   path: "/settings",
   pluginName: "@elizaos/builtin",
+  available: true,
 };
 const remoteNotes: ViewRegistryEntry = {
   id: "notes",
@@ -18,6 +19,7 @@ const remoteNotes: ViewRegistryEntry = {
   path: "/notes",
   pluginName: "@elizaos/plugin-simple-views",
   bundleUrl: "/api/views/notes/bundle.js",
+  available: true,
 };
 const remoteFrame: ViewRegistryEntry = {
   id: "remote-frame",
@@ -25,6 +27,7 @@ const remoteFrame: ViewRegistryEntry = {
   path: "/remote-frame",
   pluginName: "@local/remote-frame",
   frameUrl: "/api/views/remote-frame/frame.html",
+  available: true,
 };
 
 describe("enforceDynamicViewPolicy", () => {
