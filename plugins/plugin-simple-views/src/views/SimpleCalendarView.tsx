@@ -1,7 +1,8 @@
 /**
  * Read-only Calendar surface backed by the authoritative Simple Views snapshot.
- * The selected date and every event mutation come from planner-visible
- * capabilities so chat remains the only interactive control plane.
+ * The viewed date comes only from its explicit planner-visible selection
+ * capability; event mutations never move the calendar behind the user's back.
+ * Chat remains the only interactive control plane.
  */
 
 import { useAgentElement } from "@elizaos/ui/agent-surface";
@@ -123,7 +124,7 @@ function CalendarDay({
     <div
       ref={cell.ref}
       {...cell.agentProps}
-      aria-current={selected ? "date" : undefined}
+      aria-current={today ? "date" : undefined}
       style={{
         boxSizing: "border-box",
         minWidth: 0,
@@ -131,14 +132,14 @@ function CalendarDay({
         borderRadius: 11,
         padding: "6px clamp(4px, .8vw, 8px)",
         background: selected
-          ? "var(--accent-subtle, rgba(255,106,31,.15))"
+          ? "color-mix(in srgb, var(--surface, rgba(255,255,255,.08)) 88%, transparent)"
           : currentMonth
             ? "color-mix(in srgb, var(--surface, rgba(255,255,255,.06)) 78%, transparent)"
             : "transparent",
         color: currentMonth
           ? "var(--txt, #f5f5f5)"
           : "var(--muted, rgba(255,255,255,.5))",
-        boxShadow: selected ? "inset 0 0 0 2px var(--accent, #ff6a1f)" : "none",
+        boxShadow: selected ? "inset 0 0 0 1px rgba(255,255,255,.78)" : "none",
         textAlign: "left",
         display: "flex",
         flexDirection: "column",
@@ -170,30 +171,34 @@ function CalendarDay({
         ) : null}
       </span>
       {dayEvents.length > 0 ? (
-        <span style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
-          {dayEvents.slice(0, 4).map((event) => (
-            <span
-              key={event.id}
-              title={event.title}
-              style={{
-                width: 6,
-                height: 6,
-                borderRadius: 999,
-                background: COLOR_MATERIALS[event.color].dot,
-              }}
-            />
-          ))}
-          {dayEvents.length > 4 ? (
-            <span
-              style={{
-                fontSize: 9,
-                lineHeight: "6px",
-                color: "var(--muted-strong)",
-              }}
-            >
-              +{dayEvents.length - 4}
-            </span>
-          ) : null}
+        <span
+          role="img"
+          aria-label={`${dayEvents.length} ${dayEvents.length === 1 ? "event" : "events"} on ${formatSelectedDate(key)}`}
+          title={`${dayEvents.length} ${dayEvents.length === 1 ? "event" : "events"}`}
+          style={{
+            alignSelf: "flex-start",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 3,
+            minWidth: 0,
+            color: "var(--muted-strong, rgba(255,255,255,.76))",
+            fontSize: 9,
+            fontVariantNumeric: "tabular-nums",
+            fontWeight: 700,
+            lineHeight: 1,
+          }}
+        >
+          <span
+            aria-hidden
+            style={{
+              width: 6,
+              height: 6,
+              flex: "0 0 auto",
+              borderRadius: 999,
+              background: COLOR_MATERIALS[dayEvents[0].color].dot,
+            }}
+          />
+          <span aria-hidden>{dayEvents.length}</span>
         </span>
       ) : null}
     </div>

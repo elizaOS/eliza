@@ -385,6 +385,75 @@ describe("view management actions", () => {
 		const action = createViewsAction();
 		expect(action.routingHint).toContain("UI view/window/panel/app navigation");
 		expect(action.routingHint).toContain("Close/hide means VIEWS action=close");
+		expect(action.routingHint).toContain(
+			"agent-fill and agent-click are only for an explicitly requested form-control interaction",
+		);
+		expect(action.routingHint).toContain(
+			"For a dated calendar read, pass date to get-calendar-state",
+		);
+	});
+
+	it("repairs a date-shaped calendar title emitted by a small planner", async () => {
+		const { runtime } = createRuntime();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({
+						id: "simple-calendar",
+						label: "Calendar",
+						path: "/simple-calendar",
+						capabilities: [
+							{
+								id: "get-calendar-state",
+								description: "Read calendar events by date.",
+								params: {
+									date: { type: "string", description: "YYYY-MM-DD" },
+									title: { type: "string", description: "Exact title" },
+								},
+							},
+						],
+					}),
+				]),
+				getCurrentView: vi.fn(async () => null),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+		vi.mocked(globalThis.fetch).mockResolvedValue({
+			ok: true,
+			status: 200,
+			json: async () => ({
+				requestId: "calendar-read",
+				success: true,
+				result: { success: true, text: "Investor Demo" },
+			}),
+		} as Response);
+
+		const result = await action.handler(
+			runtime as never,
+			message("what's on my calendar today?") as never,
+			undefined,
+			{
+				action: "interact",
+				view: "simple-calendar",
+				capability: "get-calendar-state",
+				params: { title: "2026-08-03" },
+			},
+			vi.fn(),
+		);
+
+		expect(result?.success).toBe(true);
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/simple-calendar/interact?viewType=gui",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					capability: "get-calendar-state",
+					params: { date: "2026-08-03" },
+					timeoutMs: 5_000,
+					viewType: "gui",
+				}),
+			}),
+		);
 	});
 
 	it("stays available when stage 1 routes a view request to a domain context", () => {
