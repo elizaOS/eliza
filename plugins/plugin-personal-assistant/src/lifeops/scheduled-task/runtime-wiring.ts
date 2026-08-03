@@ -693,6 +693,25 @@ export function createProductionScheduledTaskDispatcher(opts: {
         if (denied) return applyDispatchPolicy(denied);
       }
 
+      // Composition and send-policy evaluation may perform async work after the
+      // first audience check. Close that TOCTOU window by reading canonical room
+      // membership again at the last possible point before connector egress.
+      if (chatDeliveryBinding) {
+        const finalBindingDecision =
+          await revalidateScheduledTaskChatDeliveryBinding(
+            opts.runtime,
+            record,
+          );
+        if (!finalBindingDecision?.ok) {
+          return applyDispatchPolicy({
+            ok: false,
+            reason: "auth_expired",
+            userActionable: true,
+            message: finalBindingDecision?.reason ?? "delivery_binding_missing",
+          });
+        }
+      }
+
       const result = await channel.send(payload);
       if (result.ok) {
         return applyDispatchPolicy({

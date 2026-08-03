@@ -455,6 +455,29 @@ describe("scheduled task production dispatcher", () => {
       message: "delivery_audience_changed",
     });
     expect(send).not.toHaveBeenCalled();
+
+    // The audience can change while composition or an async send policy runs.
+    // The final canonical read must catch that race before connector egress.
+    participants = metadata.chatDeliveryBinding.audience.participantEntityIds;
+    const policies = createSendPolicyRegistry();
+    policies.register({
+      kind: "audience_changes_during_policy",
+      describe: { label: "Audience changes during policy" },
+      evaluate: async () => {
+        participants = [
+          ...participants,
+          "00000000-0000-0000-0000-0000000000ee",
+        ];
+        return { kind: "allow" as const };
+      },
+    });
+    registerSendPolicyRegistry(runtime, policies);
+    await expect(dispatcher.dispatch(record)).resolves.toMatchObject({
+      ok: false,
+      reason: "auth_expired",
+      message: "delivery_audience_changed",
+    });
+    expect(send).not.toHaveBeenCalled();
   });
 
   it("fires a ScheduledTask through a fake channel sender", async () => {
