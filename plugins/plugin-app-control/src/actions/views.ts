@@ -2430,7 +2430,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			{
 				name: "capability",
 				description:
-					"Capability to invoke on the view (interact mode), e.g. 'create-note', 'get-notes', 'create-calendar-event', 'get-calendar-state', 'click-button', 'get-state', 'refresh', or 'focus-element'.",
+					"Declared capability to invoke on the view (interact mode), e.g. 'create-note', 'get-notes', 'create-calendar-event', 'get-calendar-state', 'click-button', 'get-state', 'refresh', or 'focus-element'. Use semantic capabilities for domain record mutations; agent-fill/agent-click are only for deliberate form-control interaction, not record creation, updates, or deletion.",
 				required: false,
 				schema: { type: "string" },
 			},

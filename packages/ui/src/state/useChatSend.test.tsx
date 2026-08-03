@@ -2589,6 +2589,89 @@ describe("useChatSend — user turn sent during agent warm-up is never evicted (
     expect(undeliveredTurns(deps)).toHaveLength(0);
   });
 
+  it("retires a server-ephemeral failed reply when the next user turn begins", async () => {
+    const failureText =
+      "sorry, something went wrong. would you mind trying again?";
+    const successText = 'Created sticky note "brush my teeth".';
+    mocks.client.sendConversationMessageStream
+      .mockImplementationOnce(
+        async (
+          _conversationId: string,
+          _text: string,
+          onToken: (token: string, accumulatedText?: string) => void,
+        ) => {
+          onToken(failureText, failureText);
+          return {
+            text: failureText,
+            completed: false,
+            assistantEphemeral: true,
+            userMessageId: "server-user-failed",
+          };
+        },
+      )
+      .mockImplementationOnce(
+        async (
+          _conversationId: string,
+          _text: string,
+          onToken: (token: string, accumulatedText?: string) => void,
+        ) => {
+          onToken(successText, successText);
+          return {
+            text: successText,
+            completed: true,
+            messageId: "server-assistant-success",
+            userMessageId: "server-user-success",
+          };
+        },
+      );
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    vi.mocked(deps.loadConversationMessages).mockImplementation(async () => {
+      const sentUser = deps.conversationMessagesRef.current.find(
+        (message) => message.role === "user",
+      );
+      deps.setConversationMessages(
+        sentUser ? [{ ...sentUser, id: "server-user-failed" }] : [],
+      );
+      return { ok: true };
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("create a note to brush my teeth", {
+        conversationId: "conv-1",
+      });
+    });
+
+    expect(
+      deps.conversationMessagesRef.current.find(
+        (message) => message.text === failureText,
+      ),
+    ).toMatchObject({
+      role: "assistant",
+      interrupted: true,
+      assistantEphemeral: true,
+    });
+
+    await act(async () => {
+      await result.current.sendChatText("try creating it again", {
+        conversationId: "conv-1",
+      });
+    });
+
+    const settled = deps.conversationMessagesRef.current;
+    expect(settled.some((message) => message.text === failureText)).toBe(false);
+    expect(
+      settled.filter(
+        (message) =>
+          message.role === "assistant" && message.text === successText,
+      ),
+    ).toHaveLength(1);
+  });
+
   it("Retry on the restored turn re-delivers the message once the model is ready, without duplicating it", async () => {
     // Full loop: warm-up 503 → restored bubble + failed turn → model comes
     // online → one tap on Retry delivers the message and the thread settles to

@@ -7866,6 +7866,13 @@ export async function runV5MessageRuntimeStage1(args: {
 		)
 			? ""
 			: routedResponseHandlerReply || parsedResponseHandlerReply;
+		// `replyEffectStatus: applied` is the model's prediction, not an effect
+		// receipt. Keep it buffered until the planner either produces a verified
+		// action result or returns the terminal failure; otherwise the client sees a
+		// fabricated success flash immediately before the real outcome replaces it.
+		if (prePatchStageOneReplyIsUngroundedAppliedClaim) {
+			earlyReplyText = "";
+		}
 		const onResponseHandlerEarlyReply = args.onResponseHandlerEarlyReply;
 		if (earlyReplyText.length > 0 && onResponseHandlerEarlyReply) {
 			const earlyReplyEgressDecision = evaluatePlannedReplyEgress({
