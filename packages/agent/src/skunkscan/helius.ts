@@ -190,8 +190,6 @@ export async function getSolanaRecentSignatures(
 
 export async function getSolanaOldestKnownSignature(
   address: string,
-  maxPages = 20,
-  pageSize = 1000,
 ): Promise<SolanaOldestSignatureResult> {
   if (!address || address.trim().length === 0) {
     throw new Error("Wallet address is required");
@@ -199,63 +197,31 @@ export async function getSolanaOldestKnownSignature(
 
   const walletAddress = address.trim();
 
-  let before: string | undefined;
-  let oldestSignature: SolanaSignatureResult | null =
-    null;
-  let scannedTransactionCount = 0;
-  let reachedOldestKnownTransaction = false;
+  const response = await fetch(
+    `${getHeliusApiUrl(`/v0/addresses/${walletAddress}/transactions`)}&sort-order=asc&limit=1`,
+  );
 
-  for (
-    let page = 0;
-    page < maxPages;
-    page += 1
-  ) {
-    const options: {
-      limit: number;
-      before?: string;
-    } = {
-      limit: pageSize,
-    };
-
-    if (before) {
-      options.before = before;
-    }
-
-    const signatures =
-      await callHeliusRpc<SolanaSignatureResult[]>(
-        `skunkscan-oldest-signature-${page + 1}`,
-        "getSignaturesForAddress",
-        [walletAddress, options],
-      );
-
-    if (
-      !Array.isArray(signatures) ||
-      signatures.length === 0
-    ) {
-      reachedOldestKnownTransaction = true;
-      break;
-    }
-
-    scannedTransactionCount += signatures.length;
-    oldestSignature =
-      signatures[signatures.length - 1];
-
-    if (signatures.length < pageSize) {
-      reachedOldestKnownTransaction = true;
-      break;
-    }
-
-    before = oldestSignature.signature;
+  if (!response.ok) {
+    throw new Error(
+      `Helius request failed with status ${response.status}`,
+    );
   }
 
+  const transactions =
+    (await response.json()) as SolanaParsedTransaction[];
+
+  const oldest = Array.isArray(transactions)
+    ? transactions[0]
+    : undefined;
+
   return {
-    signature: oldestSignature?.signature ?? null,
+    signature: oldest?.signature ?? null,
     blockTime:
-      typeof oldestSignature?.blockTime === "number"
-        ? oldestSignature.blockTime
+      typeof oldest?.timestamp === "number"
+        ? oldest.timestamp
         : null,
-    scannedTransactionCount,
-    reachedOldestKnownTransaction,
+    scannedTransactionCount: oldest ? 1 : 0,
+    reachedOldestKnownTransaction: true,
   };
 }
 
