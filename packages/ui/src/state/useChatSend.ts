@@ -309,6 +309,67 @@ function sentUserTurnPresent(
   );
 }
 
+interface AssistantTurnOrigin {
+  optimisticUserMessageId: string;
+  text: string;
+  sentAt: number;
+  persistedUserMessageId?: string;
+}
+
+/**
+ * Whether another user turn follows the turn that owns a local assistant row.
+ *
+ * A view navigation can remount the chat hook while the older request is still
+ * settling. History reconciliation then rekeys the optimistic user row and may
+ * append its unresolved assistant placeholder after newer server messages. The
+ * durable user id is authoritative; the text/time match only covers runtimes
+ * that omit that id from the terminal frame.
+ */
+function hasNewerUserTurn(
+  messages: readonly ConversationMessage[],
+  origin: AssistantTurnOrigin,
+): boolean {
+  const originIds = new Set([
+    origin.optimisticUserMessageId,
+    ...(origin.persistedUserMessageId ? [origin.persistedUserMessageId] : []),
+  ]);
+  let originIndex = messages.findIndex(
+    (message) =>
+      message.role === "user" &&
+      (originIds.has(message.id) ||
+        (message.clientRenderId
+          ? originIds.has(message.clientRenderId)
+          : false)),
+  );
+
+  if (originIndex < 0) {
+    let closestDelta = Number.POSITIVE_INFINITY;
+    messages.forEach((message, index) => {
+      if (
+        message.role !== "user" ||
+        message.text.trim() !== origin.text.trim()
+      ) {
+        return;
+      }
+      const delta = Math.abs(message.timestamp - origin.sentAt);
+      if (delta <= SENT_TURN_MATCH_SLACK_MS && delta < closestDelta) {
+        originIndex = index;
+        closestDelta = delta;
+      }
+    });
+  }
+
+  if (originIndex >= 0) {
+    return messages
+      .slice(originIndex + 1)
+      .some((message) => message.role === "user");
+  }
+
+  return messages.some(
+    (message) => message.role === "user" && message.timestamp > origin.sentAt,
+  );
+}
+
 function abortServerConversationTurn(
   roomId: string | null | undefined,
   reason: string,
@@ -832,6 +893,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       options: {
         includeReasoning: boolean;
         includeAccountConnect: boolean;
+        origin: Omit<AssistantTurnOrigin, "persistedUserMessageId">;
       },
     ): string | null => {
       if (data.transcriptVisibility === "internal") {
@@ -840,6 +902,38 @@ export function useChatSend(deps: UseChatSendDeps) {
           mode: "drop",
         });
         return null;
+      }
+
+      // A non-durable failure belongs only to the turn that produced it. If a
+      // later user turn already exists, this request settled out of order after
+      // a remount/history reload; dropping its placeholder prevents an old
+      // fallback from appearing beneath a newer successful reply.
+      if (
+        data.assistantEphemeral &&
+        hasNewerUserTurn(conversationMessagesRef.current, {
+          ...options.origin,
+          ...(data.userMessageId
+            ? { persistedUserMessageId: data.userMessageId }
+            : {}),
+        })
+      ) {
+        applyStreamingModificationForConversation(conversationId, {
+          messageId: assistantMessageId,
+          mode: "drop",
+        });
+        return null;
+      }
+
+      // A durable reply is the authoritative completion of a newer turn. Any
+      // already-rendered local-only failure has crossed its retirement boundary
+      // and must not survive beside the successful server transcript.
+      if (data.completed && data.messageId && !data.assistantEphemeral) {
+        setConversationMessagesForConversation(conversationId, (prev) => {
+          const next = prev.filter(
+            (message) => message.assistantEphemeral !== true,
+          );
+          return next.length === prev.length ? prev : next;
+        });
       }
 
       if (!data.text.trim()) {
@@ -897,7 +991,11 @@ export function useChatSend(deps: UseChatSendDeps) {
       }
       return interruptedPartial;
     },
-    [applyStreamingModificationForConversation],
+    [
+      applyStreamingModificationForConversation,
+      conversationMessagesRef,
+      setConversationMessagesForConversation,
+    ],
   );
 
   const setServerTurnStatusForConversation = useCallback(
@@ -1768,7 +1866,15 @@ export function useChatSend(deps: UseChatSendDeps) {
           assistantMsgId,
           streamedAssistantText,
           data,
-          { includeReasoning: true, includeAccountConnect: true },
+          {
+            includeReasoning: true,
+            includeAccountConnect: true,
+            origin: {
+              optimisticUserMessageId: userMsgId,
+              text,
+              sentAt: now,
+            },
+          },
         );
         if (data.usage) {
           setChatLastUsage({
@@ -1951,8 +2057,9 @@ export function useChatSend(deps: UseChatSendDeps) {
           // Seed ids live above the try so the failure handler below can
           // remove the replay's own placeholder (the original assistant id no
           // longer exists once the thread is re-seeded).
-          const replayUserId = `temp-${Date.now()}`;
-          const replayAssistantId = `temp-resp-${Date.now()}`;
+          const replayNow = Date.now();
+          const replayUserId = `temp-${replayNow}`;
+          const replayAssistantId = `temp-resp-${replayNow}`;
           try {
             const nextCutoffTs = Date.now();
             setConversations((prev) => [conversation, ...prev]);
@@ -1972,12 +2079,12 @@ export function useChatSend(deps: UseChatSendDeps) {
             // placeholder must survive so streamed tokens have a target;
             // filterRenderableConversationMessages would drop an empty turn.
             setConversationMessagesForConversation(conversation.id, [
-              { id: replayUserId, role: "user", text, timestamp: Date.now() },
+              { id: replayUserId, role: "user", text, timestamp: replayNow },
               {
                 id: replayAssistantId,
                 role: "assistant",
                 text: "",
-                timestamp: Date.now(),
+                timestamp: replayNow,
               },
             ]);
 
@@ -2030,7 +2137,15 @@ export function useChatSend(deps: UseChatSendDeps) {
               replayAssistantId,
               replayStreamedText,
               retryData,
-              { includeReasoning: true, includeAccountConnect: true },
+              {
+                includeReasoning: true,
+                includeAccountConnect: true,
+                origin: {
+                  optimisticUserMessageId: replayUserId,
+                  text,
+                  sentAt: replayNow,
+                },
+              },
             );
           } catch (replayErr) {
             // The re-seed above replaced the whole thread, so the ORIGINAL
@@ -2563,7 +2678,15 @@ export function useChatSend(deps: UseChatSendDeps) {
             assistantMsgId,
             streamedAssistantText,
             data,
-            { includeReasoning: false, includeAccountConnect: false },
+            {
+              includeReasoning: false,
+              includeAccountConnect: false,
+              origin: {
+                optimisticUserMessageId: userMsgId,
+                text: trimmed,
+                sentAt: now,
+              },
+            },
           );
 
           // Keep the visible thread authoritative when the server stores
