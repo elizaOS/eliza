@@ -98,5 +98,19 @@ export function lookupStaticExposure(
 
   const registry = CHAIN_EXPOSURE_REGISTRIES[chain];
 
-  return registry?.[address] ?? null;
+  if (!registry) {
+    return null;
+  }
+
+  // Ethereum addresses are checksummed (mixed-case) by convention from
+  // most providers including Moralis, but this registry's Ethereum keys
+  // are stored lowercase - normalize here, once, rather than at every
+  // caller (self-address, funding-wallet address, and any future
+  // counterparty check). Deliberately scoped to "ethereum" only, not
+  // "every non-Solana chain": Solana addresses are base58 and
+  // case-sensitive, so lowercasing them would corrupt the lookup.
+  const normalizedAddress =
+    chain === "ethereum" ? address.toLowerCase() : address;
+
+  return registry[normalizedAddress] ?? null;
 }
