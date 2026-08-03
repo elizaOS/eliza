@@ -30,6 +30,10 @@ const sources = {
     path.join(root, ".github/workflows/gitleaks.yml"),
     "utf8",
   ),
+  nightly: readFileSync(
+    path.join(root, ".github/workflows/nightly.yml"),
+    "utf8",
+  ),
   qualityFork: readFileSync(
     path.join(root, ".github/workflows/quality-fork.yml"),
     "utf8",
@@ -50,6 +54,23 @@ test("accepts the repository workflow graph", () => {
 });
 
 for (const fixture of [
+  {
+    name: "Nightly root build without Python 3.13",
+    key: "nightly",
+    mutate: (source) =>
+      source.replace('          python-version: "3.13"\n', ""),
+    pattern: /must provision Python 3.13 for the skill packager/,
+  },
+  {
+    name: "Nightly Windows build without Python 3.13",
+    key: "nightly",
+    mutate: (source) =>
+      source.replace(
+        '        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97\n        with:\n          python-version: "3.13"\n',
+        '        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97\n        with:\n          python-version: "3.12"\n',
+      ),
+    pattern: /every desktop build lane must provision Python 3.13/,
+  },
   {
     name: "generic runner admission for PostgreSQL e2e",
     key: "cloudTests",

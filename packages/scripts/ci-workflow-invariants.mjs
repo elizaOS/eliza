@@ -25,6 +25,7 @@ const WORKFLOW_PATHS = Object.freeze({
   cloudTests: ".github/workflows/cloud-tests.yml",
   develop: ".github/workflows/develop-pr.yml",
   gitleaks: ".github/workflows/gitleaks.yml",
+  nightly: ".github/workflows/nightly.yml",
   qualityFork: ".github/workflows/quality-fork.yml",
   setupWorkspace: ".github/actions/setup-bun-workspace/action.yml",
   skillRequirements: "packages/skills/skills/skill-creator/requirements.txt",
@@ -129,6 +130,7 @@ export function validateWorkflowSources(sources) {
   );
   const develop = parseWorkflow(WORKFLOW_PATHS.develop, sources.develop);
   const gitleaks = parseWorkflow(WORKFLOW_PATHS.gitleaks, sources.gitleaks);
+  const nightly = parseWorkflow(WORKFLOW_PATHS.nightly, sources.nightly);
   const qualityFork = parseWorkflow(
     WORKFLOW_PATHS.qualityFork,
     sources.qualityFork,
@@ -138,6 +140,34 @@ export function validateWorkflowSources(sources) {
     sources.setupWorkspace,
   );
   const tests = parseWorkflow(WORKFLOW_PATHS.tests, sources.tests);
+
+  for (const jobName of ["build-and-test", "publish-npm"]) {
+    const setup = nightly.jobs[jobName]?.steps?.find(
+      (step) => step?.uses === "./.github/actions/setup-bun-workspace",
+    );
+    invariant(
+      setup?.with?.["python-version"] === "3.13",
+      `${WORKFLOW_PATHS.nightly}: jobs.${jobName} must provision Python 3.13 for the skill packager`,
+    );
+  }
+  const desktopSteps = nightly.jobs["desktop-build-matrix"]?.steps;
+  invariant(
+    Array.isArray(desktopSteps),
+    `${WORKFLOW_PATHS.nightly}: jobs.desktop-build-matrix must contain steps`,
+  );
+  const desktopWorkspaceSetup = desktopSteps.find(
+    (step) => step?.uses === "./.github/actions/setup-bun-workspace",
+  );
+  const windowsPythonSetup = desktopSteps.find((step) =>
+    step?.uses?.startsWith("actions/setup-python@"),
+  );
+  invariant(
+    desktopWorkspaceSetup?.if === "runner.os != 'Windows'" &&
+      desktopWorkspaceSetup?.with?.["python-version"] === "3.13" &&
+      windowsPythonSetup?.if === "runner.os == 'Windows'" &&
+      windowsPythonSetup?.with?.["python-version"] === "3.13",
+    `${WORKFLOW_PATHS.nightly}: every desktop build lane must provision Python 3.13 for the skill packager`,
+  );
 
   const cloudE2e = requireJob(
     cloudTests,

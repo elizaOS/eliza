@@ -104,6 +104,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
+          python-version: "3.13"
           install-command: bun install --ignore-scripts --no-frozen-lockfile
 
       - name: Install Playwright Chromium
@@ -165,8 +166,15 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
+          python-version: "3.13"
           install-command: bun install --ignore-scripts --no-frozen-lockfile
           install-native-deps: ${{ runner.os == 'Linux' && 'true' || 'false' }}
+
+      - name: Setup Python (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.13"
 
       - name: Setup Bun (Windows)
         if: runner.os == 'Windows'
@@ -210,6 +218,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
+          python-version: "3.13"
           install-command: bun install --ignore-scripts --no-frozen-lockfile
 
       - name: Build
