@@ -54,9 +54,12 @@ interface PluginViewPin {
 // file is read from the monorepo and must still contain the exact id + path,
 // so a plugin rename fails here instead of shipping undetected drift.
 const PLUGIN_VIEW_TARGETS: Record<string, PluginViewPin> = {
-  calendar: {
-    path: "/calendar",
-    sources: ["plugins/plugin-calendar/src/plugin.ts"],
+  "simple-calendar": {
+    path: "/simple-calendar",
+    sources: [
+      "plugins/plugin-simple-views/src/plugin.ts",
+      "plugins/plugin-simple-views/src/register.ts",
+    ],
   },
   inbox: { path: "/inbox", sources: ["plugins/plugin-inbox/src/plugin.ts"] },
   finances: {
@@ -108,6 +111,17 @@ describe("shared-tier nav vocabulary contract", () => {
         ).toBe(BUILTIN_NAV_PATHS[target.viewId]);
       }
     }
+  });
+
+  it("translates Notes and Calendar matcher ids to their signed client views", () => {
+    expect(SHARED_NAV_TARGETS.notes).toEqual({
+      viewId: "notes",
+      label: "Notes",
+    });
+    expect(SHARED_NAV_TARGETS.calendar).toEqual({
+      viewId: "simple-calendar",
+      label: "Calendar",
+    });
   });
 
   it("routes the documents matcher id to the Knowledge builtin", () => {

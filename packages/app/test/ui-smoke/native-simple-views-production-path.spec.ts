@@ -66,29 +66,16 @@ test("restricted native catalog mounts signed Notes and Calendar renderers", asy
   const launcher = page.getByTestId("launcher");
   await expect(launcher).toBeVisible({ timeout: 60_000 });
 
+  // Transition after the web-shaped registry response and intentionally do not
+  // refetch it. The renderer must resolve the exact signed registration instead
+  // of importing the stale bundle URL through the native WebView origin.
   await page.evaluate(() => {
     const capacitor = Reflect.get(window, "Capacitor");
     if (!capacitor || typeof capacitor !== "object") {
       throw new Error("Capacitor platform bridge is unavailable");
     }
     Reflect.set(capacitor, "getPlatform", () => "android");
-    window.dispatchEvent(
-      new CustomEvent("elizaos-view-event", {
-        detail: {
-          type: "plugin_reloaded",
-          sourceViewId: "agent",
-          payload: { pluginName: "@elizaos/plugin-simple-views" },
-          timestamp: Date.now(),
-        },
-      }),
-    );
   });
-  await expect
-    .poll(() => registryPlatformHeaders.includes("android"), {
-      message: "plugin reload should refetch the registry as Android",
-      timeout: 30_000,
-    })
-    .toBe(true);
 
   dynamicBundleRequests.length = 0;
   const notesTile = launcher.getByTestId("launcher-tile-notes");
@@ -118,7 +105,7 @@ test("restricted native catalog mounts signed Notes and Calendar renderers", asy
   await page.waitForTimeout(500);
 
   expect(registryPlatformHeaders).toContain("web");
-  expect(registryPlatformHeaders).toContain("android");
+  expect(registryPlatformHeaders).not.toContain("android");
   expect(dynamicBundleRequests).toEqual([]);
   await expectNoPageDiagnostics(page, "restricted native Simple Views journey");
 });

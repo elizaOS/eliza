@@ -439,9 +439,13 @@ export async function runViewsShow({
 }: RunViewsShowInput): Promise<ActionResult> {
 	const messageText = getUserMessageText(message);
 	// Passive intent ("what's on my calendar", "muéstrame mi calendario") carries
-	// no explicit view name, so the verb scan yields nothing — the domain intent
-	// supplies the view id. Either source is enough to proceed.
-	const rigidIntentViewId = matchViewCommand(messageText);
+	// no explicit view name, so the verb scan yields nothing. Matcher ids and
+	// client view ids are separate namespaces: translate deterministic matches
+	// through the shared contract before resolving the live client catalog.
+	const rigidMatcherViewId = matchViewCommand(messageText);
+	const rigidIntentViewId = rigidMatcherViewId
+		? (SHARED_NAV_TARGETS[rigidMatcherViewId]?.viewId ?? rigidMatcherViewId)
+		: null;
 	const intentViewId = rigidIntentViewId ?? resolveIntentView(messageText);
 	let target = extractViewTarget(message, options) ?? intentViewId;
 	if (!target) {
@@ -452,6 +456,18 @@ export async function runViewsShow({
 	}
 
 	const views = await client.listViews({ viewType });
+	let effectiveIntentViewId = intentViewId;
+	if (
+		rigidMatcherViewId &&
+		rigidIntentViewId &&
+		rigidMatcherViewId !== rigidIntentViewId &&
+		resolveView(rigidIntentViewId, views).kind === "none"
+	) {
+		// Compatibility fallback for deployments that have not loaded the
+		// canonical client target yet but do register a view under the matcher id.
+		effectiveIntentViewId = rigidMatcherViewId;
+		if (target === rigidIntentViewId) target = rigidMatcherViewId;
+	}
 	let resolution = resolveView(target, views);
 	if (
 		isStandaloneNotesSurfaceRequest(messageText) &&
@@ -470,13 +486,13 @@ export async function runViewsShow({
 	// to a surface this build doesn't have (e.g. task-coordinator without the
 	// coding plugin loaded) leaves the planner's explicit, registered target in
 	// place. So the model never needs to correctly GUESS the surface.
-	if (intentViewId && intentViewId !== target) {
-		const intentResolution = resolveView(intentViewId, views);
+	if (effectiveIntentViewId && effectiveIntentViewId !== target) {
+		const intentResolution = resolveView(effectiveIntentViewId, views);
 		const intentRegistered =
 			intentResolution.kind !== "none" && intentResolution.kind !== "ambiguous";
 		if (intentRegistered || resolution.kind === "none") {
 			resolution = intentResolution;
-			target = intentViewId;
+			target = effectiveIntentViewId;
 		}
 	}
 
@@ -497,8 +513,8 @@ export async function runViewsShow({
 	const view = resolution.view;
 	const subview =
 		readStringOpt(options, "subview") ?? readStringOpt(options, "section");
-	const canonicalTarget = rigidIntentViewId
-		? SHARED_NAV_TARGETS[rigidIntentViewId]
+	const canonicalTarget = rigidMatcherViewId
+		? SHARED_NAV_TARGETS[rigidMatcherViewId]
 		: undefined;
 	const navigationLabel =
 		canonicalTarget?.viewId === view.id ? canonicalTarget.label : view.label;

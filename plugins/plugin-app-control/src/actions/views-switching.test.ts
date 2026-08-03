@@ -298,6 +298,35 @@ describe("view switching — VIEWS action resolver", () => {
 		expect(navigation?.verifiedUserFacing).toBe(true);
 	});
 
+	it("translates the calendar matcher id to the always-on simple-calendar client view", async () => {
+		const { navigated } = installNavigateCapture();
+		const withSimpleCalendar: ViewSummary[] = [
+			...REGISTRY,
+			{
+				id: "simple-calendar",
+				label: "Calendar",
+				description: "Always-on local calendar",
+				path: "/simple-calendar",
+				pluginName: "@elizaos/plugin-simple-views",
+				available: true,
+				viewType: "gui",
+				tags: ["calendar", "events"],
+				visibleInManager: true,
+			},
+		];
+
+		const { result } = await runShow(withSimpleCalendar, "open my calendar", {
+			action: "show",
+			view: "calendar",
+		});
+
+		expect(navigated).toEqual(["simple-calendar"]);
+		expect(result?.values).toMatchObject({
+			viewId: "simple-calendar",
+			label: "Calendar",
+		});
+	});
+
 	describe("ACTIVE navigation — every user-facing view reachable by an explicit command", () => {
 		// [phrase, expected view id]. These are the explicit-navigation commands a
 		// user would type. The resolver must dispatch a navigate POST to that id.

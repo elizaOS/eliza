@@ -65,7 +65,10 @@ export const SHARED_NAV_TARGETS: Readonly<Record<string, SharedNavTarget>> = {
   // inventory → /wallet in packages/ui/src/navigation); emitting the matcher's
   // raw "wallet" id would land in the client's not-found state.
   wallet: { viewId: "inventory", label: "Wallet" },
-  calendar: { viewId: "calendar", label: "Calendar" },
+  // The always-on lightweight calendar registers as "simple-calendar";
+  // "calendar" is the matcher namespace and may also name an optional
+  // connector-backed plugin, so deterministic shared navigation translates it.
+  calendar: { viewId: "simple-calendar", label: "Calendar" },
   inbox: { viewId: "inbox", label: "Inbox" },
   finances: { viewId: "finances", label: "Finances" },
   focus: { viewId: "focus", label: "Focus" },

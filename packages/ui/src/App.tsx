@@ -247,6 +247,7 @@ import {
   type ViewRegistryEntry,
 } from "./hooks/useAvailableViews";
 import { useDesktopTabs } from "./hooks/useDesktopTabs";
+import { isDynamicViewLoadingAllowed } from "./platform/platform-guards";
 import { useEnabledViewKinds } from "./state/useViewKinds";
 import { WidgetHost } from "./widgets";
 
@@ -1601,6 +1602,27 @@ function renderViewRouterContent({
       walletNav,
     });
   }
+  const appShellPageForRoute = findAppShellPageForRoute(navigationPath);
+  const visibleAppShellPage =
+    appShellPageForRoute && isViewVisible(appShellPageForRoute, enabledKinds)
+      ? appShellPageForRoute
+      : undefined;
+  const renderAppShellPage = (registration: AppShellPageRegistration) => (
+    <TabContentView
+      nav={walletNav}
+      reserveChatClearance={!surfaceOwnsViewport(registration)}
+    >
+      <RegisteredAppShellPage registration={registration} />
+    </TabContentView>
+  );
+
+  // Restricted native renderers cannot execute an agent-served bundle. Prefer
+  // an exact signed registration at the final renderer boundary even if a
+  // stale/web-shaped registry snapshot still carries bundleUrl for the same
+  // id/path. Web and desktop deliberately retain remote-bundle precedence.
+  if (visibleAppShellPage && !isDynamicViewLoadingAllowed()) {
+    return renderAppShellPage(visibleAppShellPage);
+  }
   const remoteView = findRemoteViewForRoute(
     availableViews,
     navigationPath,
@@ -1610,19 +1632,8 @@ function renderViewRouterContent({
   if (remoteView?.bundleUrl || remoteView?.frameUrl) {
     return renderRemoteView(remoteView, walletNav);
   }
-  const appShellPageForRoute = findAppShellPageForRoute(navigationPath);
-  if (
-    appShellPageForRoute &&
-    isViewVisible(appShellPageForRoute, enabledKinds)
-  ) {
-    return (
-      <TabContentView
-        nav={walletNav}
-        reserveChatClearance={!surfaceOwnsViewport(appShellPageForRoute)}
-      >
-        <RegisteredAppShellPage registration={appShellPageForRoute} />
-      </TabContentView>
-    );
+  if (visibleAppShellPage) {
+    return renderAppShellPage(visibleAppShellPage);
   }
 
   if (visibleDynamicPage(dynamicPage, enabledKinds)) {

@@ -6,6 +6,7 @@
  * config + desktop tabs mocked, no runtime.
  */
 
+import { Capacitor } from "@capacitor/core";
 import { createNavigateViewEvent } from "@elizaos/shared/events";
 import {
   cleanup,
@@ -55,6 +56,10 @@ const desktopTabsState = vi.hoisted(() => ({
 
 const mediaQueryState = vi.hoisted(() => ({
   matches: false,
+}));
+
+const electrobunRuntimeState = vi.hoisted(() => ({
+  enabled: true,
 }));
 
 const desktopBridgeMock = vi.hoisted(() => ({
@@ -243,7 +248,7 @@ vi.mock("@capacitor/keyboard", () => ({
 vi.mock("./bridge/electrobun-rpc", () => desktopBridgeMock);
 
 vi.mock("./bridge/electrobun-runtime", () => ({
-  isElectrobunRuntime: () => true,
+  isElectrobunRuntime: () => electrobunRuntimeState.enabled,
 }));
 
 vi.mock("./platform/init", () => ({
@@ -524,6 +529,7 @@ describe("App navigate-view event wiring", () => {
     authStatusMock.phase = "authenticated";
     cloudOriginMock.agentless = false;
     mediaQueryState.matches = false;
+    electrobunRuntimeState.enabled = true;
     desktopTabsState.tabs = [];
     resetMockAvailableViews();
     appState.setTab.mockClear();
@@ -685,6 +691,34 @@ describe("App navigate-view event wiring", () => {
     ).toBe(true);
     expect(getByTestId("app-opaque-background")).toBeTruthy();
     expect(queryByTestId("app-background-shader")).toBeNull();
+  });
+
+  it("mounts an exact signed native renderer when stale registry metadata still advertises a remote bundle", async () => {
+    electrobunRuntimeState.enabled = false;
+    const platform = vi
+      .spyOn(Capacitor, "getPlatform")
+      .mockReturnValue("android");
+    mockAvailableViews.push(simpleCalendarView);
+    registerAppShellPage({
+      id: "simple-calendar",
+      pluginId: "@elizaos/plugin-simple-views",
+      label: "Calendar",
+      path: "/simple-calendar",
+      surface: { header: "fullscreen" },
+      Component: () => <div data-testid="signed-simple-calendar" />,
+    });
+    appState.tab = "views";
+    window.history.replaceState(null, "", "/simple-calendar");
+
+    try {
+      const { getByTestId, queryByTestId } = render(<App />);
+
+      await waitFor(() => getByTestId("signed-simple-calendar"));
+      expect(queryByTestId("dynamic-view-loader")).toBeNull();
+      expect(dynamicViewLoaderMock.render).not.toHaveBeenCalled();
+    } finally {
+      platform.mockRestore();
+    }
   });
 
   it("prefers an exact remote plugin route over its native wallet fallback", async () => {
