@@ -20,7 +20,7 @@ import {
 import type { Action, HandlerCallback } from "../types/components";
 import type { Memory } from "../types/memory";
 import { ModelType } from "../types/model";
-import type { UUID } from "../types/primitives";
+import type { Content, Media, UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
 
@@ -269,10 +269,15 @@ describe("answer-clobber rescue", () => {
 	});
 
 	it("keeps callbacks from more-work-pending actions out of the transcript", async () => {
-		const delivered: string[] = [];
+		const delivered: Content[] = [];
 		const callback: HandlerCallback = async (content) => {
-			if (typeof content.text === "string") delivered.push(content.text);
+			delivered.push(content);
 			return [];
+		};
+		const attachment: Media = {
+			id: "intermediate-image",
+			url: "https://example.test/intermediate.png",
+			title: "Intermediate image",
 		};
 		const intermediateAction: Action = {
 			name: "INTERMEDIATE_LOOKUP",
@@ -282,7 +287,10 @@ describe("answer-clobber rescue", () => {
 			parameters: [],
 			validate: async () => true,
 			handler: async (_rt, _msg, _state, _opts, cb) => {
-				await cb?.({ text: "Intermediate implementation detail." });
+				await cb?.({
+					text: "Intermediate implementation detail.",
+					attachments: [attachment],
+				});
 				return { success: true, text: "First step complete." };
 			},
 		} as unknown as Action;
@@ -338,7 +346,10 @@ describe("answer-clobber rescue", () => {
 
 		const { finalText } = await runTurn({ runtime, callback });
 
-		expect(delivered).not.toContain("Intermediate implementation detail.");
+		expect(delivered.map((content) => content.text)).not.toContain(
+			"Intermediate implementation detail.",
+		);
+		expect(delivered).toContainEqual({ attachments: [attachment] });
 		expect(finalText).toBe(finalReply);
 	});
 
