@@ -56,6 +56,7 @@ const GATE_WORKFLOWS = [
   "develop-exhaustive.yml",
   "ci-full-matrix-proof.yml",
   "benchmark-tests.yml",
+  "windows-ci.yml",
   "windows-desktop-preload-smoke.yml",
   "feed-env-audit.yml",
 ];
