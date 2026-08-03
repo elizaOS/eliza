@@ -385,6 +385,9 @@ describe("view management actions", () => {
 		const action = createViewsAction();
 		expect(action.routingHint).toContain("UI view/window/panel/app navigation");
 		expect(action.routingHint).toContain("Close/hide means VIEWS action=close");
+		expect(action.routingHint).toContain(
+			"agent-fill and agent-click are only for an explicitly requested form-control interaction",
+		);
 	});
 
 	it("stays available when stage 1 routes a view request to a domain context", () => {
