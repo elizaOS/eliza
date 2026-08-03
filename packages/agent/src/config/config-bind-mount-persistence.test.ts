@@ -4,11 +4,16 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { loadElizaConfig, saveElizaConfig } from "./config.ts";
+import {
+  __setConfigRenameSyncForTests,
+  loadElizaConfig,
+  saveElizaConfig,
+} from "./config.ts";
 
 const originalEnv = { ...process.env };
 let root = "";
 let configPath = "";
+let realConfigPath = "";
 let stateDir = "";
 
 beforeEach(() => {
@@ -21,6 +26,7 @@ beforeEach(() => {
     configPath,
     `${JSON.stringify({ plugins: { entries: { original: { enabled: true } } } }, null, 2)}\n`,
   );
+  realConfigPath = fs.realpathSync(configPath);
   process.env.ELIZA_CONFIG_PATH = configPath;
   process.env.ELIZA_STATE_DIR = stateDir;
   delete process.env.ELIZA_PERSIST_CONFIG_PATH;
@@ -28,6 +34,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  __setConfigRenameSyncForTests(null);
   process.env = { ...originalEnv };
   fs.rmSync(root, { recursive: true, force: true });
 });
@@ -35,8 +42,8 @@ afterEach(() => {
 describe("saveElizaConfig bind-mount fallback", () => {
   it("commits a durable state overlay when rename onto the config returns EBUSY", () => {
     const realRename = fs.renameSync.bind(fs);
-    vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
-      if (String(to) === configPath) {
+    __setConfigRenameSyncForTests((from, to) => {
+      if (String(to) === realConfigPath) {
         const error = new Error("resource busy") as NodeJS.ErrnoException;
         error.code = "EBUSY";
         throw error;
@@ -69,10 +76,37 @@ describe("saveElizaConfig bind-mount fallback", () => {
     );
   });
 
+  it("keeps settings deleted from the full overlay absent after restart", () => {
+    const realRename = fs.renameSync.bind(fs);
+    __setConfigRenameSyncForTests((from, to) => {
+      if (String(to) === realConfigPath) {
+        const error = new Error("resource busy") as NodeJS.ErrnoException;
+        error.code = "EBUSY";
+        throw error;
+      }
+      return realRename(from, to);
+    });
+
+    const config = loadElizaConfig();
+    expect(config.plugins?.entries?.original?.enabled).toBe(true);
+    if (config.plugins?.entries) {
+      delete config.plugins.entries.original;
+      config.plugins.entries.simpleViews = { enabled: true };
+    }
+    saveElizaConfig(config);
+
+    expect(
+      fs.existsSync(path.join(stateDir, "eliza.config-overlay.json")),
+    ).toBe(true);
+    const reloaded = loadElizaConfig();
+    expect(reloaded.plugins?.entries?.original).toBeUndefined();
+    expect(reloaded.plugins?.entries?.simpleViews?.enabled).toBe(true);
+  });
+
   it("throws when both the bind-mounted target and durable overlay fail", () => {
-    vi.spyOn(fs, "renameSync").mockImplementation((_from, to) => {
+    __setConfigRenameSyncForTests((_from, to) => {
       const error = new Error("write refused") as NodeJS.ErrnoException;
-      error.code = String(to) === configPath ? "EBUSY" : "EACCES";
+      error.code = String(to) === realConfigPath ? "EBUSY" : "EACCES";
       throw error;
     });
 
@@ -109,8 +143,8 @@ describe("saveElizaConfig bind-mount fallback", () => {
 
   it("sanitizes include directives and wallet keys in the overlay", () => {
     const realRename = fs.renameSync.bind(fs);
-    vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
-      if (String(to) === configPath) {
+    __setConfigRenameSyncForTests((from, to) => {
+      if (String(to) === realConfigPath) {
         const error = new Error("resource busy") as NodeJS.ErrnoException;
         error.code = "EBUSY";
         throw error;
