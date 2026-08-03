@@ -815,8 +815,9 @@ function operationFamilyForTokens(tokens: Set<string>): OperationFamily | null {
 function operationFamilyForCapability(
 	capability: ViewCapability,
 ): OperationFamily | null {
-	return operationFamilyForTokens(
-		tokensFor(`${capability.id} ${capability.description ?? ""}`),
+	return (
+		operationFamilyForTokens(tokensFor(capability.id)) ??
+		operationFamilyForTokens(tokensFor(capability.description))
 	);
 }
 
@@ -1064,6 +1065,41 @@ function resolveViewCapability({
 	return best?.candidate ?? null;
 }
 
+function correctCapabilityOperationFamily(
+	view: ViewSummary,
+	capability: ViewCapability,
+	text: string,
+): ViewCapability {
+	const requestTokens = tokensFor(viewRequestText(text));
+	const requestedFamily = operationFamilyForTokens(requestTokens);
+	const selectedFamily = operationFamilyForCapability(capability);
+	if (
+		!requestedFamily ||
+		!selectedFamily ||
+		requestedFamily === selectedFamily
+	) {
+		return capability;
+	}
+
+	const familyMatches = (view.capabilities ?? []).filter(
+		(candidate) => operationFamilyForCapability(candidate) === requestedFamily,
+	);
+	if (familyMatches.length === 1 && familyMatches[0]) return familyMatches[0];
+
+	const ranked = familyMatches
+		.map((candidate) => ({
+			candidate,
+			score: countIntersection(requestTokens, capabilityTokens(candidate)),
+		}))
+		.sort((left, right) => right.score - left.score);
+	// Multiple semantic siblings are corrected only when the user's nouns make
+	// one a unique best match; a tie preserves the planner decision rather than
+	// guessing between collection and single-record reads.
+	return ranked[0] && ranked[0].score > (ranked[1]?.score ?? -1)
+		? ranked[0].candidate
+		: capability;
+}
+
 type CapabilityParamsResolution =
 	| { ok: true; params: Record<string, unknown> | undefined }
 	| { ok: false; error: string };
@@ -1304,6 +1340,19 @@ function extractIntentTextAfter(
 	return null;
 }
 
+function extractReferencedTitle(intent: string): string | null {
+	const quoted = /\b(?:titled?|named)\s+["']([^"']{1,240})["']/i.exec(
+		intent,
+	)?.[1];
+	if (quoted?.trim()) return quoted.trim();
+
+	const unquoted =
+		/\b(?:titled?|named)\s+(.+?)(?=\s*(?:[.,;]|\b(?:and|then|with|on|at|rename|change|update|move|delete|remove)\b|$))/i.exec(
+			intent,
+		)?.[1];
+	return unquoted?.trim() || null;
+}
+
 function deriveParamsFromMessageText(
 	text: string,
 	capability: ViewCapability,
@@ -1311,7 +1360,7 @@ function deriveParamsFromMessageText(
 	existing: Record<string, unknown>,
 ): Record<string, unknown> {
 	const derived: Record<string, unknown> = {};
-	const trimmed = text.trim();
+	const trimmed = viewRequestText(text).trim();
 	if (!trimmed) return derived;
 
 	const family = operationFamilyForCapability(capability);
@@ -1330,6 +1379,33 @@ function deriveParamsFromMessageText(
 		if (capabilityParamKeys.has("title") && !existing.title && title) {
 			derived.title = title;
 		}
+	}
+
+	if (
+		family === "read" &&
+		capabilityParamKeys.has("title") &&
+		existing.title === undefined
+	) {
+		const title = extractReferencedTitle(trimmed);
+		if (title) derived.title = title;
+	}
+
+	if (
+		family === "update" &&
+		capabilityParamKeys.has("oldTitle") &&
+		existing.oldTitle === undefined
+	) {
+		const oldTitle = extractReferencedTitle(trimmed);
+		if (oldTitle) derived.oldTitle = oldTitle;
+	}
+
+	if (
+		family === "select" &&
+		capabilityParamKeys.has("date") &&
+		existing.date === undefined
+	) {
+		const date = extractIsoDate(trimmed);
+		if (date) derived.date = date;
 	}
 
 	if (family === "delete") {
@@ -2217,7 +2293,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 		descriptionCompressed:
 			"views list|current|show|open|close|search|manager|broadcast|interact|pin|window|split|tile|create|edit|icon|delete; navigate/close UI views; invoke registered view capabilities for notes/events/dashboards/records; click/read/focus elements; split/tile layouts; scaffold/edit/remove view plugins; regenerate a view icon/hero",
 		routingHint:
-			"UI view/window/panel/app navigation and layout -> VIEWS. View switching is a COMMON, DEFAULT, PROACTIVE response while the user is in the app chat — strongly prefer opening the relevant view (action=show) whenever the user names an app surface, asks to see/check/open something, or expresses an intent that has a matching view, even when they don't say the word 'view'. Treat 'can you show me <X>', 'I want to <do X>', 'let me see <X>', 'pull up <X>', 'take me to <X>', 'go to <X>', 'open my <X>', and any reference to a domain (calendar, email/messages/inbox, wallet/balance/portfolio, finances/money/spending, focus/distractions, goals/routines/reminders, health/sleep/screen-time, todos/tasks, documents/files, registered notes views/capabilities, contacts/relationships/people, companion, the app builder/coding) as a navigation request and switch to that view by default. When in doubt and a matching view exists, action=show it rather than only answering in text. Use VIEWS for open/show/switch/close/hide view requests, view manager, list views, split/tile views, pin view, open view in a separate window, or invoking a capability declared by a registered plugin view, including view-backed content operations like creating/listing notes or calendar events. For add/create calendar-event requests, use action=interact view=calendar capability=create-calendar-event; do not answer by opening or splitting the calendar unless the user asked for layout. For standalone notes requests, only use a registered notes view or notes capability; do not route them to documents/Knowledge. For an implicit request to SEE a domain surface — 'what's on my calendar', 'check my messages'/'my email', 'show my wallet'/'my balance', 'how much did I spend', 'I need to focus', 'take me to my goals', 'show my todos', 'pull up my documents', 'who do I know at X', or 'I want to add a new feature to my app' — open that surface with action=show and the matching view id (calendar, inbox, wallet, finances, focus, goals, health, todos, documents, relationships, companion, task-coordinator). This applies in ANY language: a navigation/see request in Spanish, French, German, Chinese, Japanese, Korean, etc. routes to VIEWS the same way. Opening a surface to view it is action=show, only adding or creating a record inside it is action=interact. Close/hide means VIEWS action=close, not delete/remove. For view capabilities use action=interact with view=<view id> and capability=<capability id>, or pass a generated capability action name that can be resolved from the view catalog. Pass capability data as params={...} or top-level keys such as title/body/date/time/notes/color; never use dotted keys such as params.title. A message that is ONLY a bare surface/view name — 'settings', 'calendar', 'wallet', 'inbox' — is a navigation command (typically a voice-transcribed utterance): immediately use action=show with that view; never answer a bare view name with a clarifying question. When the user says 'view' ('open the wallet view', 'show the calendar view'), VIEWS action=show is the required response — do NOT substitute a domain data/dashboard action for an explicit view-navigation ask. EXCEPTION — installed applications themselves: listing installed/running apps ('show me the apps', 'what apps are installed/running'), launching/restarting an app, or building a new app is the APP action, not VIEWS (the user's own Eliza Cloud apps/sites are LIST_CLOUD_APPS); only the apps/views *page* (view manager) is VIEWS. EXCEPTION — changing a settings/permission VALUE is NOT navigation: 'turn off shell permissions', 'disable shell access', 'change my permissions', or toggling any settings value is the SETTINGS action (action=set), even though those controls live on a settings page; VIEWS only OPENS the settings page without changing a value.",
+			"UI view/window/panel/app navigation and layout -> VIEWS. View switching is a COMMON, DEFAULT, PROACTIVE response while the user is in the app chat — strongly prefer opening the relevant view (action=show) whenever the user names an app surface, asks to see/check/open something, or expresses an intent that has a matching view, even when they don't say the word 'view'. Treat 'can you show me <X>', 'I want to <do X>', 'let me see <X>', 'pull up <X>', 'take me to <X>', 'go to <X>', 'open my <X>', and any reference to a domain (calendar, email/messages/inbox, wallet/balance/portfolio, finances/money/spending, focus/distractions, deep-work, goals/routines/reminders, health/sleep/screen-time, todos/tasks, documents/files, registered notes views/capabilities, contacts/relationships/people, companion, the app builder/coding) as a navigation request and switch to that view by default. When in doubt and a matching view exists, action=show it rather than only answering in text. Use VIEWS for open/show/switch/close/hide view requests, view manager, list views, split/tile views, pin view, open view in a separate window, or invoking a capability declared by a registered plugin view, including view-backed content operations like creating/listing notes or calendar events. For add/create calendar-event requests, use action=interact view=calendar capability=create-calendar-event; do not answer by opening or splitting the calendar unless the user asked for layout. For standalone notes requests, only use a registered notes view or notes capability; do not route them to documents/Knowledge. For an implicit request to SEE a domain surface — 'what's on my calendar', 'check my messages'/'my email', 'show my wallet'/'my balance', 'how much did I spend', 'I need to focus', 'take me to my goals', 'show my todos', 'pull up my documents', 'who do I know at X', or 'I want to add a new feature to my app' — open that surface with action=show and the matching view id (calendar, inbox, wallet, finances, focus, goals, health, todos, documents, relationships, companion, task-coordinator). This applies in ANY language: a navigation/see request in Spanish, French, German, Chinese, Japanese, Korean, etc. routes to VIEWS the same way. Opening a surface to view it is action=show, only adding or creating a record inside it is action=interact. Close/hide means VIEWS action=close, not delete/remove. For view capabilities use action=interact with view=<view id> and capability=<capability id>, or pass a generated capability action name that can be resolved from the view catalog. For domain record creation, updates, or deletion, always choose the view's declared semantic capability such as create-note or create-calendar-event; agent-fill and agent-click are only for an explicitly requested form-control interaction after inspecting the surface, never a substitute for a declared domain capability. Pass capability data as params={...} or top-level keys such as title/body/date/time/notes/color; never use dotted keys such as params.title. For a rename/update, identify the existing record separately: params={oldTitle:'current title',title:'replacement title',...}. For a named read, pass title to get-notes or get-calendar-state instead of listing every record. A message that is ONLY a bare surface/view name — 'settings', 'calendar', 'wallet', 'inbox' — is a navigation command (typically a voice-transcribed utterance): immediately use action=show with that view; never answer a bare view name with a clarifying question. When the user says 'view' ('open the wallet view', 'show the calendar view'), VIEWS action=show is the required response — do NOT substitute a domain data/dashboard action for an explicit view-navigation ask. EXCEPTION — installed applications themselves: listing installed/running apps ('show me the apps', 'what apps are installed/running'), launching/restarting an app, or building a new app is the APP action, not VIEWS (the user's own Eliza Cloud apps/sites are LIST_CLOUD_APPS); only the apps/views *page* (view manager) is VIEWS. EXCEPTION — changing a settings/permission VALUE is NOT navigation: 'turn off shell permissions', 'disable shell access', 'change my permissions', or toggling any settings value is the SETTINGS action (action=set), even though those controls live on a settings page; VIEWS only OPENS the settings page without changing a value.",
 		allowAdditionalParameters: true,
 		toolSchemaStrict: false,
 		// Every mode reports its authoritative outcome through its handler
@@ -2349,7 +2425,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			{
 				name: "params",
 				description:
-					"Object parameters for the capability (interact mode), e.g. { title: 'launch checklist', body: 'test auth' } or { title: 'team sync', date: '2026-06-08', time: '17:00' }. Do not use dotted parameter names like 'params.title'.",
+					"Object parameters for the capability (interact mode), e.g. { title: 'launch checklist', body: 'test auth' }, { title: 'team sync', date: '2026-06-08', time: '17:00' }, or a rename { oldTitle: 'team sync', title: 'investor sync' }. Named reads pass title to get-notes/get-calendar-state. Do not use dotted parameter names like 'params.title'.",
 				required: false,
 				schema: { type: "object", additionalProperties: true },
 			},
@@ -2361,9 +2437,30 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				schema: { type: "string" },
 			},
 			{
+				name: "oldTitle",
+				description:
+					"Current exact title used to locate a note or event for a rename/update.",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "newTitle",
+				description:
+					"Replacement-title alias for registered view capabilities that expose newTitle.",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
 				name: "body",
 				description:
 					"Top-level passthrough for registered view capabilities that accept body/content text, such as create-note.",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "details",
+				description:
+					"Top-level passthrough for registered view capabilities that accept details text.",
 				required: false,
 				schema: { type: "string" },
 			},
@@ -2834,6 +2931,20 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						}
 						if (!resolvedCapability && standardCapability)
 							capability = standardCapability;
+						if (resolvedCapability) {
+							const correctedCapability = correctCapabilityOperationFamily(
+								resolvedCapability.view,
+								resolvedCapability.capability,
+								text,
+							);
+							if (correctedCapability.id !== resolvedCapability.capability.id) {
+								resolvedCapability = {
+									...resolvedCapability,
+									capability: correctedCapability,
+								};
+								capability = correctedCapability.id;
+							}
+						}
 						const paramsResolution = readCapabilityParams(
 							actionOptions,
 							resolvedCapability?.capability,
