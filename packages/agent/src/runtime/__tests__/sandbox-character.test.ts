@@ -204,10 +204,10 @@ describe("prepareSandboxRuntimeConfig", () => {
       system: "You are Sol.",
       default: true,
     });
-    expect(reloaded.agents.list[0]?.settings?.telegram).toBeUndefined();
-    expect(
-      reloaded.agents.list[0]?.settings?.secrets?.DISCORD_BOT_TOKEN,
-    ).toBeUndefined();
+    expect(reloaded.agents.list[0]).not.toHaveProperty("settings.telegram");
+    expect(reloaded.agents.list[0]).not.toHaveProperty(
+      "settings.secrets.DISCORD_BOT_TOKEN",
+    );
     expect(reloaded.agents.list[1]?.name).toBe("Secondary");
   });
 });

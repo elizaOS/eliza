@@ -276,6 +276,17 @@ function syncDirectory(dir: string): void {
   }
 }
 
+type RenameSync = (from: fs.PathLike, to: fs.PathLike) => void;
+
+let renameConfigFile: RenameSync = fs.renameSync.bind(fs);
+
+/** Replaces the atomic rename operation for deterministic filesystem tests. */
+export function __setConfigRenameSyncForTests(
+  renameSync: RenameSync | null,
+): void {
+  renameConfigFile = renameSync ?? fs.renameSync.bind(fs);
+}
+
 function writeFileAtomically(targetPath: string, content: string): void {
   const dir = path.dirname(targetPath);
   if (!fs.existsSync(dir)) {
@@ -293,7 +304,7 @@ function writeFileAtomically(targetPath: string, content: string): void {
     fs.fsyncSync(fd);
     fs.closeSync(fd);
     fd = undefined;
-    fs.renameSync(tmpPath, targetPath);
+    renameConfigFile(tmpPath, targetPath);
     syncDirectory(dir);
   } catch (error) {
     if (fd !== undefined) fs.closeSync(fd);
