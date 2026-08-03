@@ -46,7 +46,16 @@ const ETHEREUM_NATIVE_ASSET: UniversalAssetIdentifier = {
 
 // Partial support level, same spirit as Solana's descriptor: real balance/
 // token/NFT/transaction-list retrieval, but transaction contents aren't
-// decoded yet (transfers/programOrContractIds are empty) - that's PR 4.
+// decoded on THIS connector's own getTransactions/getTransaction/
+// getOldestTransaction path (createUniversalTransaction below still
+// hardcodes empty transfers/programOrContractIds).
+//
+// FIXME: transactionParsing/protocolDetection below are stale relative to
+// the actual investigateWallet pipeline (wallet.ts's "ethereum" branch),
+// which bypasses this connector's createUniversalTransaction entirely and
+// gets real parsing + protocol detection via parsers/ethereumTransaction.ts
+// + the protocols/ethereum registry. Flagged, not fixed here - out of
+// scope for the case-normalization fix this comment was added alongside.
 const ETHEREUM_CAPABILITIES: ChainAdapterCapabilities = {
   addressValidation: true,
   balanceRetrieval: true,
