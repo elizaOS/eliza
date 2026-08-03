@@ -7,7 +7,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
-import { AgentRuntime } from "../../runtime";
+import { AgentRuntime, NoModelProviderConfiguredError } from "../../runtime";
 import {
 	type Character,
 	EventType,
@@ -15,7 +15,7 @@ import {
 	ModelType,
 } from "../../types";
 
-function makeRuntime(): AgentRuntime {
+function makeRuntime(settings: Record<string, string> = {}): AgentRuntime {
 	return new AgentRuntime({
 		character: {
 			name: "ModelRegistrationsAgent",
@@ -23,6 +23,7 @@ function makeRuntime(): AgentRuntime {
 		} as Character,
 		adapter: new InMemoryDatabaseAdapter(),
 		logLevel: "fatal",
+		settings,
 	});
 }
 
@@ -150,5 +151,58 @@ describe("AgentRuntime model-registration observability", () => {
 		).resolves.toBe("backup response");
 		expect(exhausted).toHaveBeenCalledTimes(1);
 		expect(backup).toHaveBeenCalledTimes(1);
+	});
+
+	it("prevents a text-only canonical provider from claiming embeddings", async () => {
+		const runtime = makeRuntime({
+			ELIZA_CANONICAL_LLM_TEXT_ENABLED: "true",
+			ELIZA_CANONICAL_EMBEDDINGS_ENABLED: "false",
+		});
+		const textHandler = vi.fn(async () => "text-owner");
+		const embeddingHandler = vi.fn(async () => new Array(384).fill(0));
+
+		runtime.registerModel(ModelType.TEXT_SMALL, textHandler, "openai", 100);
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING,
+			embeddingHandler,
+			"openai",
+			100,
+		);
+
+		await expect(
+			runtime.useModel(ModelType.TEXT_SMALL, { prompt: "hello" }),
+		).resolves.toBe("text-owner");
+		expect(runtime.getModel(ModelType.TEXT_EMBEDDING)).toBeUndefined();
+		await expect(
+			runtime.useModel(ModelType.TEXT_EMBEDDING, null),
+		).rejects.toBeInstanceOf(NoModelProviderConfiguredError);
+		expect(embeddingHandler).not.toHaveBeenCalled();
+	});
+
+	it("prevents an embeddings-only canonical provider from claiming text", async () => {
+		const runtime = makeRuntime({
+			ELIZA_CANONICAL_LLM_TEXT_ENABLED: "false",
+			ELIZA_CANONICAL_EMBEDDINGS_ENABLED: "true",
+		});
+		const textHandler = vi.fn(async () => "wrong-owner");
+		const embeddingHandler = vi.fn(async () => new Array(384).fill(0));
+
+		runtime.registerModel(ModelType.TEXT_SMALL, textHandler, "openai", 100);
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING,
+			embeddingHandler,
+			"openai",
+			100,
+		);
+
+		expect(runtime.getModel(ModelType.TEXT_SMALL)).toBeUndefined();
+		await expect(
+			runtime.useModel(ModelType.TEXT_SMALL, { prompt: "hello" }),
+		).rejects.toBeInstanceOf(NoModelProviderConfiguredError);
+		await expect(
+			runtime.useModel(ModelType.TEXT_EMBEDDING, "hello"),
+		).resolves.toHaveLength(384);
+		expect(textHandler).not.toHaveBeenCalled();
+		expect(embeddingHandler).toHaveBeenCalledTimes(1);
 	});
 });
