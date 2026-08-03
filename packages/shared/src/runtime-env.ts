@@ -21,6 +21,7 @@ const WILDCARD_BIND_RE = /^(0\.0\.0\.0|::|0:0:0:0:0:0:0:0)$/i;
 
 const API_BIND_KEYS = ["ELIZA_API_BIND"] as const;
 const API_TOKEN_KEYS = ["ELIZA_API_TOKEN"] as const;
+const LEGACY_SELF_API_TOKEN_KEYS = ["ELIZA_API_AUTH_TOKEN"] as const;
 const API_ALLOWED_ORIGINS_KEYS = [
   "ELIZA_ALLOWED_ORIGINS",
   "CORS_ORIGINS",
@@ -330,6 +331,23 @@ export function resolveApiToken(
   env: RuntimeEnvRecord = process.env,
 ): string | null {
   return resolveApiSecurityConfig(env).token;
+}
+
+/**
+ * Bearer headers for requests a process makes back to its own elizaOS API.
+ * The server's canonical token wins over the documented compatibility key,
+ * brand aliases are honored, and callers never have to repeat Bearer parsing.
+ */
+export function createSelfApiRequestHeaders(
+  env: RuntimeEnvRecord = process.env,
+): Record<string, string> {
+  const token =
+    firstWinningEnvString(env, API_TOKEN_KEYS)?.value ??
+    firstWinningEnvString(env, LEGACY_SELF_API_TOKEN_KEYS)?.value;
+  if (!token) return {};
+
+  const credential = token.replace(/^Bearer\s+/i, "").trim();
+  return { Authorization: `Bearer ${credential}` };
 }
 
 export function isDevApiWatchEnabled(

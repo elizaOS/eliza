@@ -7,6 +7,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getBootConfig, setBootConfig } from "./config/boot-config";
 import {
+  createSelfApiRequestHeaders,
   firstWinningEnvString,
   isAndroidMobile,
   isDevApiWatchEnabled,
@@ -75,6 +76,43 @@ describe("runtime env host security helpers", () => {
       "http://localhost:2138",
     ]);
     expect(config.allowedHosts).toEqual(["app.example", "localhost"]);
+  });
+});
+
+describe("self API request authentication", () => {
+  it("normalizes raw and prefixed tokens to one Bearer header", () => {
+    expect(
+      createSelfApiRequestHeaders({ ELIZA_API_TOKEN: " canonical-token " }),
+    ).toEqual({ Authorization: "Bearer canonical-token" });
+    expect(
+      createSelfApiRequestHeaders({
+        ELIZA_API_TOKEN: " bearer    already-prefixed ",
+      }),
+    ).toEqual({ Authorization: "Bearer already-prefixed" });
+  });
+
+  it("prefers the canonical token and supports the legacy compatibility key", () => {
+    expect(
+      createSelfApiRequestHeaders({
+        ELIZA_API_TOKEN: "canonical-token",
+        ELIZA_API_AUTH_TOKEN: "legacy-token",
+      }),
+    ).toEqual({ Authorization: "Bearer canonical-token" });
+    expect(
+      createSelfApiRequestHeaders({
+        ELIZA_API_AUTH_TOKEN: " legacy-token ",
+      }),
+    ).toEqual({ Authorization: "Bearer legacy-token" });
+  });
+
+  it("omits Authorization when neither configured token is present", () => {
+    expect(createSelfApiRequestHeaders({})).toEqual({});
+    expect(
+      createSelfApiRequestHeaders({
+        ELIZA_API_TOKEN: "   ",
+        ELIZA_API_AUTH_TOKEN: "   ",
+      }),
+    ).toEqual({});
   });
 });
 
@@ -172,6 +210,9 @@ describe("runtime env alias resolution", () => {
     expect(firstWinningEnvString(env, ["ELIZA_API_TOKEN"])).toEqual({
       key: "ACME_API_TOKEN",
       value: "branded-token",
+    });
+    expect(createSelfApiRequestHeaders(env)).toEqual({
+      Authorization: "Bearer branded-token",
     });
   });
 

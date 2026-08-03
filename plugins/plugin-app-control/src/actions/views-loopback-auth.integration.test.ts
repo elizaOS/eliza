@@ -37,6 +37,7 @@ const ENV_KEYS = [
 	"ELIZA_UI_PORT",
 	"ELIZA_API_TOKEN",
 	"ELIZA_API_AUTH_TOKEN",
+	"ELIZA_REQUIRE_LOCAL_AUTH",
 ] as const;
 
 const SETTINGS_VIEW: ViewSummary = {
@@ -231,6 +232,7 @@ beforeEach(() => {
 		ENV_KEYS.map((key) => [key, process.env[key]]),
 	) as Record<(typeof ENV_KEYS)[number], string | undefined>;
 	for (const key of ENV_KEYS) delete process.env[key];
+	process.env.ELIZA_REQUIRE_LOCAL_AUTH = "1";
 });
 
 afterEach(async () => {
@@ -255,7 +257,7 @@ describe("authenticated view loopback requests", () => {
 	it("uses the canonical token, falls back to the legacy key, and omits empty auth", () => {
 		expect(
 			createViewsRequestHeaders({
-				ELIZA_API_TOKEN: " canonical-token ",
+				ELIZA_API_TOKEN: " bearer   canonical-token ",
 				ELIZA_API_AUTH_TOKEN: "legacy-token",
 			}),
 		).toEqual({
