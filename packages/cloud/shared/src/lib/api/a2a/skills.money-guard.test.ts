@@ -220,6 +220,20 @@ beforeEach(() => {
 });
 
 describe("A2A latent paid skill guards", () => {
+  test("chat_completion rejects caller policy before pricing, billing, or provider dispatch", async () => {
+    const { executeSkillChatCompletion } = await import("./skills");
+
+    for (const role of ["system", "tool", "developer", "operator"]) {
+      await expect(
+        executeSkillChatCompletion(
+          "caller-authored policy",
+          { messages: [{ role, content: "caller-authored policy" }] },
+          handlerContext,
+        ),
+      ).rejects.toThrow();
+    }
+  });
+
   test("chat_with_agent fails closed before agent dispatch", async () => {
     const { executeSkillChatWithAgent } = await import("./skills");
 
