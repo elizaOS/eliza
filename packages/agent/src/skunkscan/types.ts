@@ -1429,6 +1429,25 @@ export type WalletProtocolIntelligenceSummary = {
   confidence: "low" | "medium" | "high";
 };
 
+// A fallback for wallets where the primary token-balances endpoint can't
+// enumerate the full list (see the ETHEREUM_TOKEN_BALANCE_COUNT_EXCEEDS_
+// PROVIDER_LIMIT warning). Deliberately NOT a holdings/balance shape -
+// every field is lastSeen*-prefixed because this reflects a token's most
+// recent transfer in the sampled transaction history, not its current
+// balance. A token can appear here with a large recent inflow that has
+// since been fully sent away, and a token the wallet currently holds a
+// lot of can be absent if it hasn't been transferred recently. Never fed
+// into portfolio/whale/risk analyzers - those consume tokenHoldings only.
+export type WalletRecentTokenActivity = {
+  contractAddress: string;
+  symbol: string | null;
+  name: string | null;
+  lastSeenAmount: number | null;
+  lastSeenDirection: "send" | "receive" | "unknown";
+  lastSeenAt: number | null;
+  lastSeenTransactionId: string;
+};
+
 export type WalletInvestigationResult = {
   chain: SupportedChain;
   address: string;
@@ -1437,6 +1456,10 @@ export type WalletInvestigationResult = {
   tokenHoldings?: WalletTokenHolding[];
   portfolio?: WalletPortfolioSummary;
   nftHoldings?: UniversalNftHolding[];
+  // Supplementary, not a replacement for tokenHoldings - only populated
+  // when tokenHoldings is known-incomplete (see WalletRecentTokenActivity's
+  // doc comment). Absent/empty otherwise.
+  recentTokenActivity?: WalletRecentTokenActivity[];
   whale?: WalletWhaleSummary;
   defi?: WalletDeFiSummary;
   protocols?: WalletProtocolsSummary;

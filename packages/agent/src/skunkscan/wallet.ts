@@ -2,6 +2,7 @@ import {
   getSolanaParsedTransactions,
 } from "./helius";
 import {
+  EthereumTransaction,
   getEthereumOldestTransaction,
   getEthereumTransactions,
 } from "./moralis";
@@ -17,9 +18,77 @@ import {
   UniversalNftHolding,
   WalletBalance,
   WalletInvestigationResult,
+  WalletRecentTokenActivity,
   WalletRecentTransaction,
   WalletTokenHolding,
 } from "./types";
+
+const MAX_RECENT_TOKEN_ACTIVITY_ITEMS = 10;
+
+// Fallback for when getTokenBalances can't enumerate a wallet's full
+// token list (see the ETHEREUM_TOKEN_BALANCE_COUNT_EXCEEDS_PROVIDER_LIMIT
+// warning) - derives "tokens seen in recent transfers" from the same
+// rawTransactions already fetched for the transaction list, no extra API
+// call. Deliberately NOT a balance/holdings computation - see
+// WalletRecentTokenActivity's doc comment in types.ts.
+function deriveRecentEthereumTokenActivity(
+  walletAddress: string,
+  rawTransactions: EthereumTransaction[],
+): WalletRecentTokenActivity[] {
+  const normalizedAddress = walletAddress.toLowerCase();
+  const activityByContract = new Map<string, WalletRecentTokenActivity>();
+
+  for (const transaction of rawTransactions) {
+    for (const transfer of transaction.tokenTransfers) {
+      const contractAddress = transfer.address;
+
+      if (!contractAddress) {
+        continue;
+      }
+
+      const from = transfer.from_address?.toLowerCase();
+      const to = transfer.to_address?.toLowerCase();
+
+      if (from !== normalizedAddress && to !== normalizedAddress) {
+        continue;
+      }
+
+      const existing = activityByContract.get(contractAddress);
+      const transactionTimestamp = transaction.blockTimestamp;
+
+      if (
+        existing &&
+        existing.lastSeenAt !== null &&
+        transactionTimestamp !== null &&
+        existing.lastSeenAt >= transactionTimestamp
+      ) {
+        continue;
+      }
+
+      activityByContract.set(contractAddress, {
+        contractAddress,
+        symbol: transfer.token_symbol ?? null,
+        name: transfer.token_name ?? null,
+        lastSeenAmount:
+          typeof transfer.value_formatted === "string"
+            ? Number(transfer.value_formatted)
+            : null,
+        lastSeenDirection:
+          to === normalizedAddress
+            ? "receive"
+            : from === normalizedAddress
+              ? "send"
+              : "unknown",
+        lastSeenAt: transactionTimestamp,
+        lastSeenTransactionId: transaction.hash,
+      });
+    }
+  }
+
+  return Array.from(activityByContract.values())
+    .sort((a, b) => (b.lastSeenAt ?? 0) - (a.lastSeenAt ?? 0))
+    .slice(0, MAX_RECENT_TOKEN_ACTIVITY_ITEMS);
+}
 
 export async function investigateWallet(
   chain: SupportedChain,
@@ -449,6 +518,25 @@ warnings: [],
         const investigationWarnings: string[] =
           tokenBalancesResult.warnings.map((warning) => warning.message);
 
+        const tokenBalanceCountExceedsProviderLimit =
+          tokenBalancesResult.warnings.some(
+            (warning) =>
+              warning.code ===
+              "ETHEREUM_TOKEN_BALANCE_COUNT_EXCEEDS_PROVIDER_LIMIT",
+          );
+
+        // Supplementary fallback, not a replacement for tokenHoldings -
+        // only derived when tokenHoldings is already known-incomplete.
+        const recentTokenActivity = tokenBalanceCountExceedsProviderLimit
+          ? deriveRecentEthereumTokenActivity(walletAddress, rawTransactions)
+          : [];
+
+        if (recentTokenActivity.length > 0) {
+          investigationWarnings.push(
+            `Showing ${recentTokenActivity.length} token(s) seen in recent activity (not a complete holdings list) as a fallback, since the full token list couldn't be retrieved for this wallet - these reflect recent transfers, not current balances, and may not represent the wallet's largest actual holdings.`,
+          );
+        }
+
         const tokenHoldings: WalletTokenHolding[] =
           tokenBalancesResult.data.balances.map((tokenBalance) => {
             const contractAddress = tokenBalance.asset.contractAddress;
@@ -587,6 +675,8 @@ warnings: [],
           tokenHoldings,
           portfolio,
           nftHoldings,
+          recentTokenActivity:
+            recentTokenActivity.length > 0 ? recentTokenActivity : undefined,
           whale,
           defi,
           protocols,
