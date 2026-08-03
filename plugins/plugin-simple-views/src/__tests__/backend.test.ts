@@ -615,7 +615,7 @@ describe("Simple Views capabilities", () => {
       kind: "simple-views.calendar-event",
       id: eventId,
     });
-    expect(service.selectedDate()).toBe("2026-08-04");
+    expect(service.selectedDate()).toBe("2026-08-03");
     expect(service.getCalendarEvent(eventId)).toMatchObject({
       title: "Updated demo",
       notes: "Updated capability details",
@@ -667,6 +667,21 @@ describe("Simple Views capabilities", () => {
       interact("delete-calendar-event", { query: "launch notes" }, service),
     ).resolves.toMatchObject({ success: true });
     expect(service.listCalendarEvents()).toEqual([]);
+  });
+
+  it("keeps the viewed date stable when events are created or moved", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    await service.selectDate("2026-08-03");
+
+    const event = await service.createCalendarEvent({
+      title: "Tomorrow's demo",
+      date: "2026-08-04",
+      time: "15:00",
+    });
+    expect(service.selectedDate()).toBe("2026-08-03");
+
+    await service.updateCalendarEvent(event.id, { date: "2026-08-05" });
+    expect(service.selectedDate()).toBe("2026-08-03");
   });
 
   it("fails closed when a note update lookup is missing or ambiguous", async () => {
