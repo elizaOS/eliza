@@ -9,6 +9,7 @@
  * keystore is enabled — wallet private keys, then writes atomically via a temp
  * file + rename with 0600 permissions.
  */
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { logger } from "@elizaos/core";
@@ -266,6 +267,7 @@ function syncDirectory(dir: string): void {
       process.platform !== "win32" &&
       code !== "EINVAL" &&
       code !== "ENOTSUP" &&
+      code !== "EOPNOTSUPP" &&
       code !== "EISDIR"
     ) {
       throw error;
@@ -280,10 +282,14 @@ function writeFileAtomically(targetPath: string, content: string): void {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
-  const tmpPath = `${targetPath}.tmp.${process.pid}`;
+  const tmpPath = `${targetPath}.tmp.${process.pid}.${randomUUID()}`;
   let fd: number | undefined;
   try {
-    fd = fs.openSync(tmpPath, "w", 0o600);
+    fd = fs.openSync(
+      tmpPath,
+      fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL,
+      0o600,
+    );
     fs.writeFileSync(fd, content, "utf-8");
     fs.fsyncSync(fd);
     fs.closeSync(fd);
