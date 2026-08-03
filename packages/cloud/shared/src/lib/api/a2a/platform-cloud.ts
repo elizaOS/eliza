@@ -30,8 +30,11 @@ import {
 } from "../../types/a2a";
 import { logger } from "../../utils/logger";
 import { safeUnknownErrorMessage } from "../cloud-worker-errors";
-
-type JsonRpcId = string | number | null;
+import {
+  A2AJsonRpcRequestSchema,
+  jsonRpcIdFromUnknown,
+  UntrustedA2AMessageSendParamsSchema,
+} from "./request-validation";
 
 function getBaseUrl(c: AppContext): string {
   return c.env.NEXT_PUBLIC_APP_URL || new URL(c.req.url).origin;
@@ -205,9 +208,11 @@ async function executePlatformSkill(c: AppContext, skill: string, args: Record<s
   }
 }
 
-export async function handlePlatformMessageSend(c: AppContext, params: Record<string, unknown>) {
-  const message = params.message as Message | undefined;
-  const data = { ...extractData(message), ...asObject(params.metadata) };
+export async function handlePlatformMessageSend(c: AppContext, params: unknown) {
+  const validated = UntrustedA2AMessageSendParamsSchema.parse(params);
+  const { message } = validated;
+  const paramsMetadata = validated.metadata ?? {};
+  const data = { ...extractData(message), ...paramsMetadata };
   const skill =
     typeof data.skill === "string"
       ? data.skill
@@ -280,15 +285,20 @@ export async function handlePlatformTasksCancel(c: AppContext, params: Record<st
   return canceled;
 }
 
-export async function handlePlatformA2aJsonRpc(
-  c: AppContext,
-  request: { id?: JsonRpcId; method?: string; params?: Record<string, unknown> },
-) {
-  const id = request.id ?? null;
+export async function handlePlatformA2aJsonRpc(c: AppContext, input: unknown) {
+  const validation = A2AJsonRpcRequestSchema.safeParse(input);
+  if (!validation.success) {
+    return jsonRpcError(-32600, "Invalid Request", jsonRpcIdFromUnknown(input));
+  }
+  const request = validation.data;
+  const id = request.id;
   try {
     switch (request.method) {
-      case "message/send":
-        return jsonRpcSuccess(await handlePlatformMessageSend(c, request.params ?? {}), id);
+      case "message/send": {
+        const params = UntrustedA2AMessageSendParamsSchema.safeParse(request.params);
+        if (!params.success) return jsonRpcError(-32602, "Invalid params", id);
+        return jsonRpcSuccess(await handlePlatformMessageSend(c, params.data), id);
+      }
       case "tasks/get":
         return jsonRpcSuccess(await handlePlatformTasksGet(c, request.params ?? {}), id);
       case "tasks/cancel":

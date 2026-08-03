@@ -266,11 +266,11 @@ describe("Agent A2A billing", () => {
     const invalidEnvelope = await app.request("/agents/agent-1/a2a", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", method: "chat" }),
+      body: JSON.stringify({ jsonrpc: "2.0", method: 7, id: "keep-me" }),
     });
     expect(await invalidEnvelope.json()).toMatchObject({
       error: { code: -32600, message: "Invalid Request" },
-      id: null,
+      id: "keep-me",
     });
     expect(reserve).not.toHaveBeenCalled();
     expect(streamText).not.toHaveBeenCalled();

@@ -15,6 +15,11 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { UserCharacter } from "@/db/repositories/characters";
 import { UntrustedA2AChatMessagesSchema } from "@/lib/api/a2a/chat-messages";
+import {
+  A2AJsonRpcRequestSchema,
+  type JsonRpcId,
+  jsonRpcIdFromUnknown,
+} from "@/lib/api/a2a/request-validation";
 import { safeUnknownErrorMessage } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { CORS_ALLOW_HEADERS, CORS_ALLOW_METHODS } from "@/lib/cors-constants";
@@ -45,13 +50,6 @@ import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const A2A_TEXT_OUTPUT_TOKENS = 500;
-
-const JsonRpcRequestSchema = z.object({
-  jsonrpc: z.literal("2.0"),
-  method: z.string(),
-  params: z.record(z.string(), z.unknown()).optional(),
-  id: z.union([z.string(), z.number()]),
-});
 
 const ProviderUsageSchema = z.object({
   inputTokens: z.number().int().nonnegative(),
@@ -193,6 +191,8 @@ app.post("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
   try {
     body = await c.req.json();
   } catch {
+    // error-policy:J1 the JSON-RPC transport boundary distinguishes invalid
+    // JSON syntax from a syntactically valid but malformed request envelope.
     return c.json(
       {
         jsonrpc: "2.0",
@@ -202,13 +202,13 @@ app.post("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
       400,
     );
   }
-  const validation = JsonRpcRequestSchema.safeParse(body);
+  const validation = A2AJsonRpcRequestSchema.safeParse(body);
   if (!validation.success) {
     return c.json(
       {
         jsonrpc: "2.0",
         error: { code: -32600, message: "Invalid Request" },
-        id: null,
+        id: jsonRpcIdFromUnknown(body),
       },
       400,
     );
@@ -275,7 +275,7 @@ async function handleChat(
     settings: Record<string, unknown>;
   },
   params: Record<string, unknown>,
-  rpcId: string | number,
+  rpcId: JsonRpcId,
   authUser: { id: string; organization_id: string },
 ): Promise<Response> {
   const parsedParams = A2AChatParamsSchema.safeParse(params);
