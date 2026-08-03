@@ -3571,6 +3571,88 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(addressedPlannerContent).toContain("Recent runtime errors");
 	});
 
+	it("does not advertise chat-history search when the memory context has no executable action", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "I don't see bitcoin in the recent messages I can see.",
+			}),
+		]);
+		(runtime as { contexts?: ContextRegistry }).contexts = new ContextRegistry([
+			{ id: "simple", label: "Simple", description: "Direct reply." },
+			{
+				id: "memory",
+				label: "Memory",
+				description: "Stored memories.",
+				roleGate: { minRole: "USER" },
+			},
+		]);
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "how many times have i mentioned bitcoin in this channel?",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000008" as UUID,
+		});
+
+		const firstCallParams = useModelCalls(runtime)[0]?.[1] as
+			| {
+					messages?: Array<{ content?: string | null }>;
+			  }
+			| undefined;
+		const prompt = firstCallParams?.messages
+			?.map((message) => message.content ?? "")
+			.join("\n");
+		expect(prompt).toContain("there is no separate chat-history search tool");
+		expect(prompt).not.toContain("route it to the memory context");
+		expect(prompt).not.toContain("search it with MEMORY op:search");
+		expect(prompt).not.toContain(
+			"available_contexts lists a memory or recall context",
+		);
+	});
+
+	it("does not advertise chat-history search when the registered action is role-hidden", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "I don't see bitcoin in the recent messages I can see.",
+			}),
+		]);
+		(runtime as { contexts?: ContextRegistry }).contexts = new ContextRegistry([
+			{ id: "simple", label: "Simple", description: "Direct reply." },
+			{
+				id: "memory",
+				label: "Memory",
+				description: "Stored memories.",
+				roleGate: { minRole: "USER" },
+			},
+		]);
+		runtime.actions = [makeMemorySearchAction("OWNER")];
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "how many times have i mentioned bitcoin in this channel?",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000009" as UUID,
+		});
+
+		const firstCallParams = useModelCalls(runtime)[0]?.[1] as
+			| {
+					messages?: Array<{ content?: string | null }>;
+			  }
+			| undefined;
+		const prompt = firstCallParams?.messages
+			?.map((message) => message.content ?? "")
+			.join("\n");
+		expect(prompt).toContain("there is no separate chat-history search tool");
+		expect(prompt).not.toContain("route it to the memory context");
+		expect(prompt).not.toContain("search it with MEMORY op:search");
+	});
+
 	it("current_turn_boundary answers facts stated in the current message itself", async () => {
 		// Live regression: on 2026-05-28 the bot was asked "i told you my
 		// favorite color is teal, whats my favorite color?" and replied "I
