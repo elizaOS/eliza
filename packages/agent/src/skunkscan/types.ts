@@ -949,7 +949,8 @@ export type WalletLabelCategory =
   | "system_program"
   | "suspicious"
   | "scam"
-  | "rug_pull";
+  | "rug_pull"
+  | "burn_address";
 
 export type WalletLabel = {
   address: string;
