@@ -15,8 +15,10 @@ function createCallbackManager() {
   const ensureConnection = vi.fn(async () => undefined);
   const runtime = {
     agentId: "agent-1",
+    character: { name: "Agent", settings: {} },
     messageService: { handleMessage },
     ensureConnection,
+    getSetting: vi.fn(() => undefined),
   };
   const bot = { telegram: { sendMessage: vi.fn(), sendChatAction: vi.fn() } };
   return {

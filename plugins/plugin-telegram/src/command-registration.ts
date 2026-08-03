@@ -412,19 +412,20 @@ export function registerTelegramCommandHandlers(
       try {
         await handler(ctx);
       } catch (error) {
-        logger.error(
-          {
-            src: "plugin:telegram",
-            agentId: runtime.agentId,
+        // error-policy:J1 command boundary reports and returns an explicit failure.
+        runtime.reportError("telegram:command", error, {
+          accountId,
+          command: descriptor.name,
+        });
+        try {
+          await ctx.reply(`Could not run /${descriptor.name}.`);
+        } catch (replyError) {
+          // error-policy:J7 failed diagnostics must not terminate polling.
+          runtime.reportError("telegram:command-reply", replyError, {
             accountId,
             command: descriptor.name,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "Error handling slash command",
-        );
-        await ctx
-          .reply(`Could not run /${descriptor.name}.`)
-          .catch(() => undefined);
+          });
+        }
       }
     });
   }
@@ -461,14 +462,7 @@ export async function applyTelegramSetMyCommands(
       "Published slash-command menu to Telegram",
     );
   } catch (error) {
-    logger.warn(
-      {
-        src: "plugin:telegram",
-        agentId: runtime.agentId,
-        accountId,
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "setMyCommands failed; slash-command menu not published",
-    );
+    // error-policy:J7 menu publication is diagnostic, not required for polling.
+    runtime.reportError("telegram:command-menu", error, { accountId });
   }
 }

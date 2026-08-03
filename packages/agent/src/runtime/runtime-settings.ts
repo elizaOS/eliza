@@ -8,7 +8,11 @@ import {
   collectConfigEnvVars,
   collectConnectorEnvVars,
 } from "../config/env-vars.ts";
-import { isVaultRef } from "./operations/vault-bridge.ts";
+import {
+  isVaultRef,
+  resolveConnectorSecretSettings,
+  type VaultLike,
+} from "./operations/vault-bridge.ts";
 
 export interface RuntimeSettingsProjectionOptions {
   preferredProviderId?: string;
@@ -62,7 +66,7 @@ export function isEnvKeyAllowedForForwarding(key: string): boolean {
   return true;
 }
 
-function collectTelegramAccountTokenSettings(
+export function collectTelegramAccountTokenSettings(
   config: ElizaConfig,
 ): Record<string, string> {
   const connector = config.connectors?.telegram as
@@ -75,16 +79,104 @@ function collectTelegramAccountTokenSettings(
   )) {
     const token = account?.botToken;
     const normalizedToken = typeof token === "string" ? token.trim() : "";
-    if (
-      normalizedToken.length > 0 &&
-      !normalizedToken.toLowerCase().startsWith("vault://")
-    ) {
+    if (normalizedToken.length > 0 && !isVaultRef(normalizedToken)) {
       accountTokens[accountId] = normalizedToken;
     }
   }
 
   return Object.keys(accountTokens).length > 0
     ? { TELEGRAM_ACCOUNT_TOKENS_JSON: JSON.stringify(accountTokens) }
+    : {};
+}
+
+export function collectTelegramAccountTokenVaultRefs(
+  config: ElizaConfig,
+): Array<{ accountId: string; ref: string }> {
+  const connector = config.connectors?.telegram as
+    | { accounts?: Record<string, { botToken?: unknown } | undefined> }
+    | undefined;
+
+  return Object.entries(connector?.accounts ?? {}).flatMap(
+    ([accountId, account]) => {
+      const token = account?.botToken;
+      const normalizedToken = typeof token === "string" ? token.trim() : "";
+      return isVaultRef(normalizedToken)
+        ? [{ accountId, ref: normalizedToken }]
+        : [];
+    },
+  );
+}
+
+export async function resolveTelegramAccountTokenVaultSettings(
+  config: ElizaConfig,
+  vault: VaultLike,
+): Promise<{ resolved: Record<string, string>; failures: string[] }> {
+  const keyToAccountId = new Map<string, string>();
+  const refs: Record<string, string> = {};
+  for (const { accountId, ref } of collectTelegramAccountTokenVaultRefs(
+    config,
+  )) {
+    const key = `TELEGRAM_ACCOUNT_TOKENS_JSON[${JSON.stringify(accountId)}]`;
+    refs[key] = ref;
+    keyToAccountId.set(key, accountId);
+  }
+  const { resolved, failures } = await resolveConnectorSecretSettings(
+    refs,
+    vault,
+  );
+  const accountTokens: Record<string, string> = {};
+  for (const [key, accountId] of keyToAccountId) {
+    const token = resolved[key];
+    if (token) {
+      accountTokens[accountId] = token;
+    }
+  }
+  return {
+    resolved:
+      Object.keys(accountTokens).length > 0
+        ? { TELEGRAM_ACCOUNT_TOKENS_JSON: JSON.stringify(accountTokens) }
+        : {},
+    failures,
+  };
+}
+
+function parseTelegramAccountTokenSetting(
+  value: string | undefined,
+): Record<string, string> {
+  if (!value) {
+    return {};
+  }
+  const parsed = JSON.parse(value) as unknown;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new TypeError("TELEGRAM_ACCOUNT_TOKENS_JSON must be a JSON object");
+  }
+  return Object.fromEntries(
+    Object.entries(parsed as Record<string, unknown>).map(
+      ([accountId, token]) => {
+        if (typeof token !== "string" || token.trim().length === 0) {
+          throw new TypeError(
+            `TELEGRAM_ACCOUNT_TOKENS_JSON contains an invalid token for account ${JSON.stringify(accountId)}`,
+          );
+        }
+        return [accountId, token.trim()];
+      },
+    ),
+  );
+}
+
+function mergeTelegramAccountTokenSettings(
+  config: ElizaConfig,
+  connectorSecretsOverlay: Record<string, string> | undefined,
+): Record<string, string> {
+  const plain = parseTelegramAccountTokenSetting(
+    collectTelegramAccountTokenSettings(config).TELEGRAM_ACCOUNT_TOKENS_JSON,
+  );
+  const resolved = parseTelegramAccountTokenSetting(
+    connectorSecretsOverlay?.TELEGRAM_ACCOUNT_TOKENS_JSON,
+  );
+  const merged = { ...plain, ...resolved };
+  return Object.keys(merged).length > 0
+    ? { TELEGRAM_ACCOUNT_TOKENS_JSON: JSON.stringify(merged) }
     : {};
 }
 
@@ -110,7 +202,10 @@ export function buildRuntimeSettingsProjection(
       ),
     ),
     ...(options.connectorSecretsOverlay ?? {}),
-    ...collectTelegramAccountTokenSettings(config),
+    ...mergeTelegramAccountTokenSettings(
+      config,
+      options.connectorSecretsOverlay,
+    ),
     ...(options.preferredProviderId
       ? { MODEL_PROVIDER: options.preferredProviderId }
       : {}),

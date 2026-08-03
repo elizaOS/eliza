@@ -14,6 +14,7 @@ import {
   ChannelType,
   type Content,
   createUniqueUuid,
+  ElizaError,
   type Entity,
   EventType,
   type IAgentRuntime,
@@ -168,6 +169,27 @@ type TelegramAccountRuntime = {
 };
 
 const ACTIVE_TELEGRAM_POLLERS = new Map<string, ActiveTelegramPoller>();
+const RETIRED_TELEGRAM_POLLERS = new WeakSet<Telegraf<Context>>();
+
+function assertUniqueTelegramAccountTokens(
+  accounts: ResolvedTelegramAccount[],
+): void {
+  const owners = new Map<string, string>();
+  for (const account of accounts) {
+    if (!account.botToken) {
+      continue;
+    }
+    const existing = owners.get(account.botToken);
+    if (existing) {
+      throw new ElizaError("Telegram accounts must not share a bot token", {
+        code: "TELEGRAM_DUPLICATE_BOT_TOKEN",
+        context: { accountIds: [existing, account.accountId] },
+        severity: "fatal",
+      });
+    }
+    owners.set(account.botToken, account.accountId);
+  }
+}
 
 function getCanonicalOwnerId(runtime: IAgentRuntime): UUID | null {
   for (const key of CANONICAL_OWNER_SETTING_KEYS) {
@@ -298,6 +320,7 @@ export class TelegramService extends Service {
   private botToken: string | null;
   private defaultAccountId = DEFAULT_ACCOUNT_ID;
   private accountStates: Map<string, TelegramAccountRuntime> = new Map();
+  private configuredBots = new WeakSet<Telegraf<Context>>();
 
   /**
    * Constructor for TelegramService class.
@@ -333,29 +356,16 @@ export class TelegramService extends Service {
       return;
     }
 
-    try {
-      const state = this.createAccountRuntime(account);
-      this.setDefaultAccountState(state);
-      logger.debug(
-        {
-          src: "plugin:telegram",
-          agentId: runtime.agentId,
-          accountId: account.accountId,
-        },
-        "TelegramService constructor completed",
-      );
-    } catch (error) {
-      logger.error(
-        {
-          src: "plugin:telegram",
-          agentId: runtime.agentId,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        "Failed to initialize Telegram bot",
-      );
-      this.bot = null;
-      this.messageManager = null;
-    }
+    const state = this.createAccountRuntime(account);
+    this.setDefaultAccountState(state);
+    logger.debug(
+      {
+        src: "plugin:telegram",
+        agentId: runtime.agentId,
+        accountId: account.accountId,
+      },
+      "TelegramService constructor completed",
+    );
   }
 
   private createAccountRuntime(
@@ -518,9 +528,11 @@ export class TelegramService extends Service {
    * @returns {Promise<TelegramService>} A promise that resolves with the initialized TelegramService.
    */
   static async start(runtime: IAgentRuntime): Promise<TelegramService> {
+    const enabledAccounts = listEnabledTelegramAccounts(runtime);
+    assertUniqueTelegramAccountTokens(enabledAccounts);
     const service = new TelegramService(runtime);
 
-    for (const account of listEnabledTelegramAccounts(runtime)) {
+    for (const account of enabledAccounts) {
       if (!service.getAccountState(account.accountId)) {
         service.setDefaultAccountState(service.createAccountRuntime(account));
       }
@@ -539,6 +551,7 @@ export class TelegramService extends Service {
     for (const state of service.accountStates.values()) {
       let retryCount = 0;
       let lastError: Error | null = null;
+      let initialized = false;
 
       while (retryCount < maxRetries) {
         try {
@@ -552,8 +565,6 @@ export class TelegramService extends Service {
             "Starting Telegram bot",
           );
           await service.initializeBot(state);
-          service.setupMiddlewares(state);
-          service.setupMessageHandlers(state);
           await state.bot.telegram.getMe();
 
           logger.success(
@@ -565,6 +576,7 @@ export class TelegramService extends Service {
             },
             "Telegram bot started successfully",
           );
+          initialized = true;
           break;
         } catch (error) {
           lastError = error instanceof Error ? error : new Error(String(error));
@@ -613,17 +625,18 @@ export class TelegramService extends Service {
         }
       }
 
-      if (retryCount >= maxRetries) {
-        logger.error(
-          {
-            src: "plugin:telegram",
-            agentId: runtime.agentId,
+      if (!initialized) {
+        await service.stop();
+        throw new ElizaError("Telegram account failed to initialize", {
+          code: "TELEGRAM_ACCOUNT_INITIALIZATION_FAILED",
+          context: {
             accountId: state.accountId,
+            attempts: retryCount,
             maxRetries,
-            error: lastError?.message,
           },
-          "Initialization failed after all attempts",
-        );
+          cause: lastError ?? undefined,
+          severity: "fatal",
+        });
       }
     }
 
@@ -653,7 +666,21 @@ export class TelegramService extends Service {
         : [];
     if (states.length > 0) {
       for (const state of states) {
-        state.bot.stop("service-stop");
+        RETIRED_TELEGRAM_POLLERS.add(state.bot);
+        try {
+          state.bot.stop("service-stop");
+        } catch (error) {
+          // error-policy:J6 best-effort teardown must continue across accounts.
+          logger.debug(
+            {
+              src: "plugin:telegram",
+              agentId: this.runtime.agentId,
+              accountId: state.accountId,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            "Telegram bot was already stopped",
+          );
+        }
         const token = state.account.botToken;
         if (token) {
           const active = ACTIVE_TELEGRAM_POLLERS.get(token);
@@ -667,7 +694,20 @@ export class TelegramService extends Service {
 
     const bot = this.bot;
     if (bot) {
-      bot.stop("service-stop");
+      RETIRED_TELEGRAM_POLLERS.add(bot);
+      try {
+        bot.stop("service-stop");
+      } catch (error) {
+        // error-policy:J6 best-effort teardown for an already-stopped bot.
+        logger.debug(
+          {
+            src: "plugin:telegram",
+            agentId: this.runtime.agentId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "Telegram bot was already stopped",
+        );
+      }
       if (this.botToken) {
         const active = ACTIVE_TELEGRAM_POLLERS.get(this.botToken);
         if (active?.bot === bot) {
@@ -702,6 +742,7 @@ export class TelegramService extends Service {
           },
           "Stopping existing Telegram poller before launching a new one",
         );
+        RETIRED_TELEGRAM_POLLERS.add(active.bot);
         try {
           active.bot.stop("replaced-by-new-runtime");
         } catch (error) {
@@ -721,50 +762,52 @@ export class TelegramService extends Service {
       }
     }
 
-    bot.start((ctx) => {
-      const slashStartPayload = {
-        ctx,
-        runtime: this.runtime,
-        source: "telegram",
-        accountId,
-        metadata: { accountId },
-      };
-      this.runtime.emitEvent(
-        TelegramEventTypes.SLASH_START as string,
-        slashStartPayload,
-      );
-    });
+    if (!this.configuredBots.has(bot)) {
+      this.setupMiddlewares(activeState ?? undefined);
 
-    // Register universal slash-command handlers BEFORE launch. Telegraf accepts
-    // command registration any time before launch(), and a matched command
-    // handler that never calls next() terminates the middleware chain — so the
-    // catch-all message handler in setupMessageHandlers does not also process
-    // command messages (no double-processing).
-    const commandMessageManager =
-      activeState?.messageManager ?? this.messageManager ?? undefined;
-    if (commandMessageManager) {
-      const registered = registerTelegramCommandHandlers(
-        bot,
-        this.runtime,
-        commandMessageManager,
-        accountId,
-      );
-      logger.debug(
-        {
-          src: "plugin:telegram",
-          agentId: this.runtime.agentId,
+      bot.start((ctx) => {
+        const slashStartPayload = {
+          ctx,
+          runtime: this.runtime,
+          source: "telegram",
           accountId,
-          commandCount: registered.length,
-        },
-        "Registered universal slash-command handlers",
-      );
-      // #8902: the live, edited-in-place orchestrator task board (`/tasks`).
-      registerTelegramTaskBoardCommand(
-        bot,
-        this.runtime,
-        commandMessageManager,
-        accountId,
-      );
+          metadata: { accountId },
+        };
+        this.runtime.emitEvent(
+          TelegramEventTypes.SLASH_START as string,
+          slashStartPayload,
+        );
+      });
+
+      // Commands sit after policy/discovery middleware and before the catch-all
+      // message handler, so every command is admitted first and handled once.
+      const commandMessageManager =
+        activeState?.messageManager ?? this.messageManager ?? undefined;
+      if (commandMessageManager) {
+        const registered = registerTelegramCommandHandlers(
+          bot,
+          this.runtime,
+          commandMessageManager,
+          accountId,
+        );
+        logger.debug(
+          {
+            src: "plugin:telegram",
+            agentId: this.runtime.agentId,
+            accountId,
+            commandCount: registered.length,
+          },
+          "Registered universal slash-command handlers",
+        );
+        registerTelegramTaskBoardCommand(
+          bot,
+          this.runtime,
+          commandMessageManager,
+          accountId,
+        );
+      }
+      this.setupMessageHandlers(activeState ?? undefined);
+      this.configuredBots.add(bot);
     }
 
     // Telegraf v4's `bot.launch()` resolves only when polling STOPS — it awaits
@@ -796,6 +839,7 @@ export class TelegramService extends Service {
     // 409s against the lingering one. bot.stop() throws if already stopped, so
     // teardown is best-effort.
     const stopBot = (reason: string): void => {
+      RETIRED_TELEGRAM_POLLERS.add(bot);
       try {
         bot.stop(reason);
       } catch {
@@ -836,6 +880,9 @@ export class TelegramService extends Service {
     const stableRunMs = 60_000;
 
     const ownsToken = (): boolean => {
+      if (RETIRED_TELEGRAM_POLLERS.has(bot)) {
+        return false;
+      }
       if (!botToken) {
         return true;
       }
@@ -978,12 +1025,49 @@ export class TelegramService extends Service {
    */
   private setupMiddlewares(state?: TelegramAccountRuntime): void {
     const bot = state?.bot ?? this.bot;
+    const messageManager = state?.messageManager ?? this.messageManager;
     const accountId = state?.accountId ?? this.defaultAccountId;
-    // Register the authorization middleware
     bot?.use((ctx, next) => this.authorizationMiddleware(ctx, next, accountId));
-
-    // Register the chat and entity management middleware
+    bot?.use((ctx, next) =>
+      this.activationPolicyMiddleware(
+        ctx,
+        next,
+        messageManager ?? undefined,
+        accountId,
+      ),
+    );
     bot?.use((ctx, next) => this.chatAndEntityMiddleware(ctx, next, accountId));
+  }
+
+  private async activationPolicyMiddleware(
+    ctx: Context,
+    next: MiddlewareNext,
+    messageManager: MessageManager | undefined,
+    accountId: string,
+  ): Promise<void> {
+    if (!messageManager) {
+      throw new ElizaError("Telegram message manager is not initialized", {
+        code: "TELEGRAM_MESSAGE_MANAGER_MISSING",
+        context: { accountId },
+        severity: "fatal",
+      });
+    }
+    const admission = await messageManager.admitIngress(ctx);
+    if (!admission.admitted) {
+      await messageManager.sendIngressDenial(ctx, admission);
+      logger.debug(
+        {
+          src: "plugin:telegram",
+          agentId: this.runtime.agentId,
+          accountId,
+          chatId: ctx.chat?.id,
+          reason: admission.decision.reason,
+        },
+        "Telegram update denied before side effects",
+      );
+      return;
+    }
+    await next();
   }
 
   /**
@@ -1031,7 +1115,7 @@ export class TelegramService extends Service {
     next: MiddlewareNext,
     accountId = this.defaultAccountId,
   ): Promise<void> {
-    if (!ctx.chat) {
+    if (!ctx.chat || !ctx.message) {
       return next();
     }
 
@@ -1113,15 +1197,8 @@ export class TelegramService extends Service {
         // Preprocessing runs in the middleware chain; this only dispatches.
         await messageManager?.handleMessage(ctx);
       } catch (error) {
-        logger.error(
-          {
-            src: "plugin:telegram",
-            agentId: this.runtime.agentId,
-            accountId,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "Error handling message",
-        );
+        // error-policy:J7 Telegram's update loop must survive after reporting.
+        this.runtime.reportError("telegram:message", error, { accountId });
       }
     });
 
@@ -1130,15 +1207,8 @@ export class TelegramService extends Service {
       try {
         await messageManager?.handleReaction(ctx);
       } catch (error) {
-        logger.error(
-          {
-            src: "plugin:telegram",
-            agentId: this.runtime.agentId,
-            accountId,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "Error handling reaction",
-        );
+        // error-policy:J7 Telegram's update loop must survive after reporting.
+        this.runtime.reportError("telegram:reaction", error, { accountId });
       }
     });
 
@@ -1148,15 +1218,8 @@ export class TelegramService extends Service {
       try {
         await messageManager?.handleCallbackQuery(ctx);
       } catch (error) {
-        logger.error(
-          {
-            src: "plugin:telegram",
-            agentId: this.runtime.agentId,
-            accountId,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "Error handling callback query",
-        );
+        // error-policy:J7 Telegram's update loop must survive after reporting.
+        this.runtime.reportError("telegram:callback", error, { accountId });
       }
     });
   }

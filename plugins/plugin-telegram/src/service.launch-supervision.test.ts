@@ -167,4 +167,33 @@ describe("TelegramService.launchPollerSupervised", () => {
     expect(first.bot.launch).toHaveBeenCalledTimes(1);
     expect(second.bot.launch).toHaveBeenCalledTimes(1);
   });
+
+  it("does not relaunch a poller after its service is stopped", async () => {
+    const { bot, calls } = makeBot();
+    const { service } = makeService();
+    Object.assign(service as unknown as Record<string, unknown>, {
+      accountStates: new Map([
+        [
+          "acct",
+          {
+            accountId: "acct",
+            account: { accountId: "acct", botToken: "tok-stop" },
+            bot,
+          },
+        ],
+      ]),
+    });
+
+    const launched = callLaunch(service, bot, "tok-stop", "acct");
+    calls[0].onLaunch();
+    await launched;
+
+    await service.stop();
+    calls[0].reject(new Error(CONFLICT));
+    await flushMicrotasks();
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(bot.stop).toHaveBeenCalledWith("service-stop");
+    expect(bot.launch).toHaveBeenCalledTimes(1);
+  });
 });

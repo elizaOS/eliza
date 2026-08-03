@@ -29,40 +29,121 @@ import {
   resolveAdvancedCapabilitiesEnabled,
 } from "./advanced-capabilities-config.ts";
 
+const TELEGRAM_PUBLIC_POLICY_KEYS = [
+  "name",
+  "enabled",
+  "apiRoot",
+  "dmPolicy",
+  "groupPolicy",
+  "allowFrom",
+  "groupAllowFrom",
+  "replyToMode",
+  "groups",
+] as const;
+const TELEGRAM_LEGACY_PUBLIC_KEYS = [
+  ...TELEGRAM_PUBLIC_POLICY_KEYS,
+  "allowedChats",
+  "autoReply",
+] as const;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function projectTelegramKeys(
+  value: unknown,
+  keys: readonly string[],
+): Record<string, JsonValue> {
+  if (!isRecord(value)) {
+    return {};
+  }
+
+  const projected: Record<string, JsonValue> = {};
+  for (const key of keys) {
+    const entry = value[key];
+    if (entry !== undefined) {
+      projected[key] = entry as JsonValue;
+    }
+  }
+  return projected;
+}
+
+function projectTelegramPolicy(value: unknown): Record<string, JsonValue> {
+  const projected = projectTelegramKeys(value, TELEGRAM_PUBLIC_POLICY_KEYS);
+  if (typeof projected.apiRoot === "string") {
+    try {
+      const parsed = new URL(projected.apiRoot);
+      if (
+        (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+        parsed.username ||
+        parsed.password
+      ) {
+        delete projected.apiRoot;
+      }
+    } catch {
+      // error-policy:J3 invalid connector URLs are omitted from runtime config.
+      delete projected.apiRoot;
+    }
+  }
+  return projected;
+}
+
 function projectTelegramConnectorSettings(
   connector: unknown,
+  existingSettings: CharacterSettings | undefined,
 ): CharacterSettings {
   if (!connector || typeof connector !== "object" || Array.isArray(connector)) {
     return {};
   }
 
-  const {
-    botToken: _botToken,
-    tokenFile: _tokenFile,
-    webhookSecret: _webhookSecret,
-    accounts,
-    ...safeConnector
-  } = connector as Record<string, unknown>;
-  const safeAccounts: Record<string, unknown> = {};
+  const connectorRecord = connector as Record<string, unknown>;
+  const rawExistingTelegram = isRecord(existingSettings?.telegram)
+    ? existingSettings.telegram
+    : {};
+  const existingTelegram = projectTelegramKeys(
+    rawExistingTelegram,
+    TELEGRAM_LEGACY_PUBLIC_KEYS,
+  );
+  const projectedAccounts: Record<string, JsonValue> = {};
+  const existingAccounts = isRecord(rawExistingTelegram.accounts)
+    ? Object.fromEntries(
+        Object.entries(rawExistingTelegram.accounts).map(
+          ([accountId, account]) => [
+            accountId,
+            projectTelegramKeys(account, TELEGRAM_LEGACY_PUBLIC_KEYS),
+          ],
+        ),
+      )
+    : {};
 
-  if (accounts && typeof accounts === "object" && !Array.isArray(accounts)) {
-    for (const [accountId, account] of Object.entries(accounts)) {
-      if (!account || typeof account !== "object" || Array.isArray(account)) {
-        continue;
-      }
-      const {
-        botToken: _accountBotToken,
-        tokenFile: _accountTokenFile,
-        webhookSecret: _accountWebhookSecret,
-        ...safeAccount
-      } = account as Record<string, unknown>;
-      safeAccounts[accountId] = safeAccount;
+  if (isRecord(connectorRecord.accounts)) {
+    for (const [accountId, account] of Object.entries(
+      connectorRecord.accounts,
+    )) {
+      const projected = projectTelegramPolicy(account);
+      const existingAccount = projectTelegramKeys(
+        existingAccounts[accountId],
+        TELEGRAM_LEGACY_PUBLIC_KEYS,
+      );
+      projectedAccounts[accountId] = {
+        ...existingAccount,
+        ...projected,
+      } as JsonValue;
     }
   }
 
   const telegram = {
-    ...safeConnector,
-    ...(Object.keys(safeAccounts).length > 0 ? { accounts: safeAccounts } : {}),
+    ...existingTelegram,
+    ...projectTelegramPolicy(connectorRecord),
+    ...(Object.keys(existingAccounts).length > 0 ||
+    Object.keys(projectedAccounts).length > 0
+      ? {
+          accounts: {
+            ...existingAccounts,
+            ...projectedAccounts,
+          },
+        }
+      : {}),
   } as JsonValue;
   return { telegram };
 }
@@ -311,6 +392,7 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
       : systemPrompt;
   const connectorSettings = projectTelegramConnectorSettings(
     config.connectors?.telegram,
+    agentEntry?.settings,
   );
   const mergedSettings = {
     ...(agentEntry?.settings ?? {}),

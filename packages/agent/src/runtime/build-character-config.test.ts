@@ -8,8 +8,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { ElizaConfig } from "../config/config.ts";
 import { buildCharacterFromConfig } from "./build-character-config.ts";
-import { applySandboxCharacterFromEnv } from "./sandbox-character.ts";
 import { buildRuntimeSettingsProjection } from "./runtime-settings.ts";
+import { applySandboxCharacterFromEnv } from "./sandbox-character.ts";
 
 // Locks the secret/settings boundary for Matrix connector env vars. Putting a
 // public identifier (e.g. MATRIX_VERIFY_ALLOWLIST = a user id) into
@@ -119,6 +119,9 @@ describe("agent entry character passthrough", () => {
     const telegram = {
       botToken: "telegram-token",
       webhookSecret: "webhook-secret",
+      webhookUrl: "https://telegram.example/hook?token=secret",
+      proxy: "http://proxy-user:proxy-password@proxy.example",
+      apiRoot: "http://127.0.0.1:8081",
       dmPolicy: "allowlist",
       allowFrom: ["42"],
       groupPolicy: "allowlist",
@@ -132,6 +135,8 @@ describe("agent entry character passthrough", () => {
       accounts: {
         ops: {
           botToken: "ops-token",
+          apiRoot: "http://127.0.0.1:8082",
+          proxy: "http://ops:secret@proxy.example",
           groupPolicy: "disabled",
         },
       },
@@ -150,17 +155,29 @@ describe("agent entry character passthrough", () => {
     );
     expect(character.settings?.telegram).toEqual({
       dmPolicy: "allowlist",
+      apiRoot: "http://127.0.0.1:8081",
       allowFrom: ["42"],
       groupPolicy: "allowlist",
       groupAllowFrom: ["42"],
       groups: telegram.groups,
-      accounts: { ops: { groupPolicy: "disabled" } },
+      accounts: {
+        ops: {
+          apiRoot: "http://127.0.0.1:8082",
+          groupPolicy: "disabled",
+        },
+      },
     });
     expect(JSON.stringify(character.settings?.telegram)).not.toContain(
       "telegram-token",
     );
     expect(JSON.stringify(character.settings?.telegram)).not.toContain(
       "ops-token",
+    );
+    expect(JSON.stringify(character.settings?.telegram)).not.toContain(
+      "proxy-password",
+    );
+    expect(JSON.stringify(character.settings?.telegram)).not.toContain(
+      "webhook-secret",
     );
   });
 
@@ -176,14 +193,38 @@ describe("agent entry character passthrough", () => {
             name: "Nyx",
             system: "You are Nyx.",
             settings: {
-              telegram: { botToken: "agent-token", groupPolicy: "open" },
+              telegram: {
+                botToken: "agent-token",
+                groupPolicy: "open",
+                allowedChats: ["-1001"],
+                autoReply: true,
+              },
             },
           },
         ],
       },
     } as ElizaConfig);
 
-    expect(character.settings?.telegram).toEqual({ groupPolicy: "disabled" });
+    expect(character.settings?.telegram).toEqual({
+      groupPolicy: "disabled",
+      allowedChats: ["-1001"],
+      autoReply: true,
+    });
+  });
+
+  it("drops credential-bearing and invalid Telegram API roots", () => {
+    for (const apiRoot of [
+      "https://user:password@telegram.example",
+      "file:///tmp/telegram-api",
+      "not a URL",
+    ]) {
+      const character = buildCharacterFromConfig({
+        connectors: { telegram: { botToken: "token", apiRoot } },
+        agents: { list: [{ name: "Nyx", system: "You are Nyx." }] },
+      } as unknown as ElizaConfig);
+
+      expect(character.settings?.telegram).toEqual({});
+    }
   });
 
   it("preserves injected Discord auto-reply settings", () => {

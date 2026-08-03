@@ -159,6 +159,30 @@ describe("collectPluginNames runtime mode provider policy", () => {
     expect(names.has("@elizaos/plugin-telegram-standalone")).toBe(false);
   });
 
+  it("keeps additive plugin sources from restoring a second Telegram poller", () => {
+    process.env.ELIZA_LIFEOPS_PASSIVE_CONNECTORS = "false";
+    process.env.ELIZA_TELEGRAM_STANDALONE_BOT = "true";
+
+    const names = collectPluginNames({
+      connectors: {
+        telegram: { botToken: "telegram-token", groupPolicy: "disabled" },
+      },
+      plugins: {
+        allow: ["@elizaos/plugin-telegram-standalone"],
+        entries: { "telegram-standalone": { enabled: true } },
+        installs: {
+          "@elizaos/plugin-telegram-standalone": {
+            source: "npm",
+            spec: "latest",
+          },
+        },
+      },
+    } as ElizaConfig);
+
+    expect(names.has("@elizaos/plugin-telegram")).toBe(true);
+    expect(names.has("@elizaos/plugin-telegram-standalone")).toBe(false);
+  });
+
   it("uses standalone Telegram as the sole owner for legacy env-only mode", () => {
     process.env.ELIZA_LIFEOPS_PASSIVE_CONNECTORS = "false";
     process.env.ELIZA_TELEGRAM_STANDALONE_BOT = "true";

@@ -68,7 +68,9 @@ import { shouldLoadRemoteCodingRunnerForBoot } from "./remote-coding-runner-gate
 import { runRuntimeStartupMaintenance } from "./runtime-maintenance.ts";
 import {
   buildRuntimeSettingsProjection,
+  collectTelegramAccountTokenVaultRefs,
   type RuntimeSettingsProjectionOptions,
+  resolveTelegramAccountTokenVaultSettings,
 } from "./runtime-settings.ts";
 
 export { deduplicatePluginActions } from "./plugin-action-dedupe.ts";
@@ -2076,9 +2078,14 @@ export async function resolveConnectorSecretsOverlayForBoot(
   config: ElizaConfig,
 ): Promise<Record<string, string>> {
   const connectorEnvVars = collectConnectorEnvVars(config);
-  const refKeys = Object.entries(connectorEnvVars)
+  const connectorRefKeys = Object.entries(connectorEnvVars)
     .filter(([, value]) => isVaultRef(value))
     .map(([key]) => key);
+  const accountRefKeys = collectTelegramAccountTokenVaultRefs(config).map(
+    ({ accountId }) =>
+      `TELEGRAM_ACCOUNT_TOKENS_JSON[${JSON.stringify(accountId)}]`,
+  );
+  const refKeys = [...connectorRefKeys, ...accountRefKeys];
   if (refKeys.length === 0) return {};
 
   if (isMobilePlatform() || readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1") {
@@ -2089,17 +2096,23 @@ export async function resolveConnectorSecretsOverlayForBoot(
   }
 
   const { sharedVault } = importAppCoreRuntime();
-  const { resolved, failures } = await resolveConnectorSecretSettings(
+  const vault = sharedVault();
+  const connectorResult = await resolveConnectorSecretSettings(
     connectorEnvVars,
-    sharedVault(),
+    vault,
   );
+  const accountResult = await resolveTelegramAccountTokenVaultSettings(
+    config,
+    vault,
+  );
+  const failures = [...connectorResult.failures, ...accountResult.failures];
   if (failures.length > 0) {
     // Key names only — never values, never the underlying vault error.
     logger.error(
       `[vault-bootstrap] connector vault ref(s) failed to resolve (fail-closed): ${failures.join(", ")}`,
     );
   }
-  return resolved;
+  return { ...connectorResult.resolved, ...accountResult.resolved };
 }
 
 /**

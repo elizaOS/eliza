@@ -853,7 +853,9 @@ export function collectPluginNames(
     }
   }
 
-  if (useTelegramStandalone) {
+  if (hasStandardTelegramConnector) {
+    pluginsToLoad.delete("@elizaos/plugin-telegram-standalone");
+  } else if (useTelegramStandalone) {
     pluginsToLoad.delete("@elizaos/plugin-telegram");
   }
 

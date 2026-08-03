@@ -271,7 +271,7 @@ describe("MessageManager typed Telegram activation policy", () => {
       runtime.messageService.handleMessage.mock.calls[0][1].roomId,
     );
     expect(responseMemory.metadata.telegram).toMatchObject({
-      chatId: -1001,
+      chatId: "-1001",
       threadId: "77",
     });
   });

@@ -26,7 +26,10 @@ import {
   resolveConnectorSecretSettings,
   type VaultLike,
 } from "./operations/vault-bridge.ts";
-import { buildRuntimeSettingsProjection } from "./runtime-settings.ts";
+import {
+  buildRuntimeSettingsProjection,
+  resolveTelegramAccountTokenVaultSettings,
+} from "./runtime-settings.ts";
 
 const SECRET = "mfa.discord-bot-token-plaintext-1234567890";
 const VAULT_KEY = "connectors.discord.token";
@@ -232,6 +235,65 @@ describe("buildRuntimeSettingsProjection with connector refs", () => {
     // Unresolved ref → fail-closed: neither the sentinel literal nor any
     // partial value reaches a plugin.
     expect(settings.TELEGRAM_BOT_TOKEN).toBeUndefined();
+  });
+
+  it("merges vault-resolved and plain Telegram account tokens in settings only", async () => {
+    const accountSecret = "telegram-account-vault-secret";
+    const config = {
+      connectors: {
+        telegram: {
+          accounts: {
+            ops: { botToken: "plain-ops-token" },
+            alerts: {
+              botToken: formatVaultRef("connectors.telegram.alerts.token"),
+            },
+          },
+        },
+      },
+    } as unknown as ElizaConfig;
+
+    applyConnectorSecretsToEnv(config);
+    const { resolved, failures } =
+      await resolveTelegramAccountTokenVaultSettings(
+        config,
+        fakeVault({
+          "connectors.telegram.alerts.token": accountSecret,
+        }),
+      );
+    const settings = buildRuntimeSettingsProjection(config, {
+      env: {} as NodeJS.ProcessEnv,
+      connectorSecretsOverlay: resolved,
+    });
+
+    expect(failures).toEqual([]);
+    expect(JSON.parse(settings.TELEGRAM_ACCOUNT_TOKENS_JSON)).toEqual({
+      ops: "plain-ops-token",
+      alerts: accountSecret,
+    });
+    expect(process.env.TELEGRAM_BOT_TOKEN).toBeUndefined();
+    expect(Object.values(process.env)).not.toContain(accountSecret);
+  });
+
+  it("fails closed for a missing Telegram account vault ref", async () => {
+    const config = {
+      connectors: {
+        telegram: {
+          accounts: {
+            alerts: {
+              botToken: formatVaultRef("connectors.telegram.alerts.missing"),
+            },
+          },
+        },
+      },
+    } as unknown as ElizaConfig;
+
+    const { resolved, failures } =
+      await resolveTelegramAccountTokenVaultSettings(config, fakeVault({}));
+
+    expect(resolved).toEqual({});
+    expect(failures).toEqual([
+      'TELEGRAM_ACCOUNT_TOKENS_JSON["alerts"] (vault://connectors.telegram.alerts.missing)',
+    ]);
   });
 
   it("keeps plain connector values in settings unchanged (backward compat)", () => {

@@ -15,6 +15,7 @@ vi.mock("@elizaos/core", async () => {
   const interactions = await import(
     "../../../packages/core/src/messaging/interactions/index"
   );
+  const { ElizaError } = await import("../../../packages/core/src/errors");
 
   // The message-triage adapter base + service are equally pure (only `logger`
   // and type imports), so the mock delegates to the real submodules rather than
@@ -120,6 +121,7 @@ vi.mock("@elizaos/core", async () => {
     BaseMessageAdapter,
     ChannelType,
     CommandRegistryService,
+    ElizaError,
     EventType,
     getDefaultTriageService,
     ModelType,

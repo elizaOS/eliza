@@ -5,7 +5,7 @@
  * `ResolvedTelegramAccount` the service launches a bot for. `default` is the
  * synthetic id for the single-account configuration.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 
 export const DEFAULT_ACCOUNT_ID = "default";
 
@@ -81,22 +81,41 @@ function getRuntimeAccountTokens(
   if (typeof raw !== "string" || !raw.trim()) {
     return {};
   }
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return {};
-    }
-    return Object.fromEntries(
-      Object.entries(parsed as Record<string, unknown>).flatMap(
-        ([accountId, token]) => {
-          const value = readNonEmptyString(token);
-          return value ? [[accountId, value]] : [];
-        },
-      ),
-    );
-  } catch {
-    return {};
+    parsed = JSON.parse(raw) as unknown;
+  } catch (error) {
+    // error-policy:J2 runtime projection corruption must retain its parse cause.
+    throw new ElizaError("Telegram account token settings are not valid JSON", {
+      code: "TELEGRAM_ACCOUNT_TOKENS_INVALID",
+      cause: error,
+      severity: "fatal",
+    });
   }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new ElizaError("Telegram account token settings must be an object", {
+      code: "TELEGRAM_ACCOUNT_TOKENS_INVALID",
+      severity: "fatal",
+    });
+  }
+  return Object.fromEntries(
+    Object.entries(parsed as Record<string, unknown>).map(
+      ([accountId, token]) => {
+        const value = readNonEmptyString(token);
+        if (!value) {
+          throw new ElizaError(
+            `Telegram account token is missing for ${JSON.stringify(accountId)}`,
+            {
+              code: "TELEGRAM_ACCOUNT_TOKEN_MISSING",
+              context: { accountId },
+              severity: "fatal",
+            },
+          );
+        }
+        return [accountId, value];
+      },
+    ),
+  );
 }
 
 export function normalizeTelegramAccountId(accountId?: string | null): string {

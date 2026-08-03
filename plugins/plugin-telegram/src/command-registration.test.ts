@@ -90,6 +90,7 @@ function makeRuntime(settings: Record<string, string> = {}): IAgentRuntime {
       cache.set(key, value);
       return true;
     }),
+    reportError: vi.fn(),
     character: { name: "TestAgent" },
   } as unknown as IAgentRuntime;
 }
@@ -350,15 +351,21 @@ describe("applyTelegramSetMyCommands", () => {
     );
   });
 
-  it("swallows setMyCommands network failures without throwing", async () => {
+  it("reports setMyCommands network failures without stopping polling", async () => {
     const setMyCommands = vi.fn(async () => {
       throw new Error("ETELEGRAM 429: Too Many Requests");
     });
     const bot = { telegram: { setMyCommands } } as never;
+    const runtime = makeRuntime();
 
     await expect(
-      applyTelegramSetMyCommands(bot, makeRuntime(), "default"),
+      applyTelegramSetMyCommands(bot, runtime, "default"),
     ).resolves.toBeUndefined();
     expect(setMyCommands).toHaveBeenCalledTimes(1);
+    expect(runtime.reportError).toHaveBeenCalledWith(
+      "telegram:command-menu",
+      expect.any(Error),
+      { accountId: "default" },
+    );
   });
 });

@@ -17,6 +17,7 @@ import {
   type ContentType,
   createUniqueUuid,
   decodeCallback,
+  ElizaError,
   EventType,
   type HandlerCallback,
   type IAgentRuntime,
@@ -43,11 +44,14 @@ import { Markup } from "telegraf";
 import {
   getTelegramMultiAccountConfig,
   resolveTelegramAccount,
-  type TelegramAccountConfig,
 } from "./accounts";
 import { resolveTelegramSenderAuth } from "./command-registration";
 import { renderTelegramInteractions } from "./interactions";
-import { evaluateTelegramPolicy, hasTypedTelegramPolicyConfig } from "./policy";
+import {
+  evaluateTelegramPolicy,
+  hasTypedTelegramPolicyConfig,
+  type TelegramPolicyDecision,
+} from "./policy";
 import {
   type TelegramContent,
   TelegramEventTypes,
@@ -106,6 +110,50 @@ function telegramMessagePlainText(message: Message): string | undefined {
     return message.caption;
   }
   return undefined;
+}
+
+export type TelegramIngressAdmission = {
+  admitted: boolean;
+  typedPolicyConfigured: boolean;
+  decision: TelegramPolicyDecision;
+  sourceMemory?: Memory;
+  threadId?: string;
+};
+
+function telegramMetadata(memory: Memory): Record<string, unknown> | undefined {
+  const metadata = isRecord(memory.metadata) ? memory.metadata : undefined;
+  return metadata && isRecord(metadata.telegram)
+    ? metadata.telegram
+    : undefined;
+}
+
+function telegramThreadId(memory: Memory): string | undefined {
+  const value = telegramMetadata(memory)?.threadId;
+  return typeof value === "string" || typeof value === "number"
+    ? String(value)
+    : undefined;
+}
+
+function isTelegramCommandForBot(
+  message: Message,
+  botUsername: string | undefined,
+): boolean | null {
+  if (!("text" in message) || typeof message.text !== "string") {
+    return null;
+  }
+  const command = message.entities?.find(
+    (entity) => entity.type === "bot_command" && entity.offset === 0,
+  );
+  if (!command) {
+    return null;
+  }
+  const token = message.text.slice(0, command.length);
+  const target = token.split("@", 2)[1];
+  if (!target) {
+    return true;
+  }
+  const normalizedBot = botUsername?.replace(/^@/, "").trim().toLowerCase();
+  return Boolean(normalizedBot && target.toLowerCase() === normalizedBot);
 }
 
 const MAX_MESSAGE_LENGTH = 4096; // Telegram's max message length
@@ -337,6 +385,10 @@ export class MessageManager {
   public bot: Telegraf<Context>;
   protected runtime: IAgentRuntime;
   protected accountId: string;
+  private readonly ingressAdmissions = new WeakMap<
+    object,
+    TelegramIngressAdmission
+  >();
 
   /**
    * Constructor for creating a new instance of a BotAgent.
@@ -356,6 +408,282 @@ export class MessageManager {
 
   private scopedTelegramKey(key: string): string {
     return this.accountId === "default" ? key : `${this.accountId}:${key}`;
+  }
+
+  private telegramMessageKey(
+    chatId: number | string,
+    messageId: number | string,
+  ): string {
+    return this.scopedTelegramKey(`message:${chatId}:${messageId}`);
+  }
+
+  private telegramMessageMemoryId(
+    chatId: number | string,
+    messageId: number | string,
+  ): UUID {
+    return createUniqueUuid(
+      this.runtime,
+      this.telegramMessageKey(chatId, messageId),
+    ) as UUID;
+  }
+
+  private legacyTelegramMessageMemoryId(messageId: number | string): UUID {
+    return createUniqueUuid(
+      this.runtime,
+      this.scopedTelegramKey(String(messageId)),
+    ) as UUID;
+  }
+
+  private memoryMatchesTelegramMessage(
+    memory: Memory,
+    chatId: string,
+    messageId: string,
+  ): boolean {
+    const metadata = isRecord(memory.metadata) ? memory.metadata : {};
+    const telegram = telegramMetadata(memory);
+    const memoryAccountId =
+      typeof metadata.accountId === "string" ? metadata.accountId : "default";
+    return (
+      metadata.source === "telegram" &&
+      memoryAccountId === this.accountId &&
+      String(telegram?.chatId ?? "") === chatId &&
+      String(telegram?.messageId ?? metadata.messageIdFull ?? "") === messageId
+    );
+  }
+
+  private async resolveReactionSourceMemory(
+    chatId: string,
+    messageId: string,
+  ): Promise<Memory | null> {
+    const current = await this.runtime.getMemoryById(
+      this.telegramMessageMemoryId(chatId, messageId),
+    );
+    if (
+      current &&
+      this.memoryMatchesTelegramMessage(current, chatId, messageId)
+    ) {
+      return current;
+    }
+
+    const legacy = await this.runtime.getMemoryById(
+      this.legacyTelegramMessageMemoryId(messageId),
+    );
+    return legacy &&
+      this.memoryMatchesTelegramMessage(legacy, chatId, messageId)
+      ? legacy
+      : null;
+  }
+
+  private telegramAutoReplyEnabled(): boolean {
+    const raw = this.runtime.getSetting("TELEGRAM_AUTO_REPLY");
+    return (
+      !lifeOpsPassiveConnectorsEnabled(this.runtime) &&
+      (raw === true || raw === "true")
+    );
+  }
+
+  private async evaluateMessageAdmission(
+    ctx: Context,
+    forceReply?: boolean,
+  ): Promise<TelegramIngressAdmission> {
+    if (!ctx.message || !ctx.from || !ctx.chat) {
+      return {
+        admitted: false,
+        typedPolicyConfigured: false,
+        decision: { shouldDispatch: false, reason: "blocked" },
+      };
+    }
+    const message = ctx.message as Message;
+    const accountConfig = resolveTelegramAccount(
+      this.runtime,
+      this.accountId,
+    ).config;
+    const typedPolicyConfigured = hasTypedTelegramPolicyConfig(accountConfig);
+    const commandForBot = isTelegramCommandForBot(
+      message,
+      (this.bot as unknown as { botInfo?: User }).botInfo?.username,
+    );
+    if (commandForBot === false) {
+      return {
+        admitted: false,
+        typedPolicyConfigured,
+        decision: { shouldDispatch: false, reason: "blocked" },
+      };
+    }
+    const threadId =
+      "is_topic_message" in message && message.is_topic_message
+        ? message.message_thread_id?.toString()
+        : undefined;
+    const decision = await evaluateTelegramPolicy({
+      runtime: this.runtime,
+      config: accountConfig,
+      message,
+      from: ctx.from,
+      chatType: ctx.chat.type,
+      chatId: ctx.chat.id.toString(),
+      threadId,
+      botInfo: (this.bot as unknown as { botInfo?: User }).botInfo,
+      forceReply: forceReply ?? commandForBot === true,
+      legacyAutoReply: this.telegramAutoReplyEnabled(),
+    });
+    return {
+      admitted: !typedPolicyConfigured || decision.shouldDispatch,
+      typedPolicyConfigured,
+      decision,
+      threadId,
+    };
+  }
+
+  private async evaluateCallbackAdmission(
+    ctx: Context,
+  ): Promise<TelegramIngressAdmission> {
+    const query = ctx.callbackQuery;
+    if (!query?.message || !ctx.from) {
+      return {
+        admitted: false,
+        typedPolicyConfigured: false,
+        decision: { shouldDispatch: false, reason: "blocked" },
+      };
+    }
+    return this.evaluateExplicitAdmission(
+      query.message as Message,
+      ctx.from,
+      query.message.chat as Chat,
+    );
+  }
+
+  private async evaluateReactionAdmission(
+    ctx: Context,
+  ): Promise<TelegramIngressAdmission> {
+    const reaction =
+      "message_reaction" in ctx.update
+        ? ctx.update.message_reaction
+        : undefined;
+    if (!reaction || !ctx.from) {
+      return {
+        admitted: false,
+        typedPolicyConfigured: false,
+        decision: { shouldDispatch: false, reason: "blocked" },
+      };
+    }
+    const chatId = reaction.chat.id.toString();
+    const messageId = reaction.message_id.toString();
+    const accountConfig = resolveTelegramAccount(
+      this.runtime,
+      this.accountId,
+    ).config;
+    const typedPolicyConfigured = hasTypedTelegramPolicyConfig(accountConfig);
+    const topicPolicyConfigured = Boolean(
+      accountConfig.groups?.[chatId]?.topics &&
+        Object.keys(accountConfig.groups[chatId]?.topics ?? {}).length > 0,
+    );
+    const sourceMemory = await this.resolveReactionSourceMemory(
+      chatId,
+      messageId,
+    );
+    const threadId = sourceMemory ? telegramThreadId(sourceMemory) : undefined;
+    if (
+      typedPolicyConfigured &&
+      topicPolicyConfigured &&
+      (!sourceMemory || !threadId)
+    ) {
+      return {
+        admitted: false,
+        typedPolicyConfigured,
+        decision: { shouldDispatch: false, reason: "blocked" },
+      };
+    }
+    const syntheticMessage = {
+      message_id: reaction.message_id,
+      chat: reaction.chat,
+      from: ctx.from,
+      date: reaction.date,
+    } as Message;
+    const decision = await evaluateTelegramPolicy({
+      runtime: this.runtime,
+      config: accountConfig,
+      message: syntheticMessage,
+      from: ctx.from,
+      chatType: reaction.chat.type,
+      chatId,
+      threadId,
+      botInfo: (this.bot as unknown as { botInfo?: User }).botInfo,
+      forceReply: true,
+    });
+    return {
+      admitted: !typedPolicyConfigured || decision.shouldDispatch,
+      typedPolicyConfigured,
+      decision,
+      sourceMemory: sourceMemory ?? undefined,
+      threadId,
+    };
+  }
+
+  private async evaluateExplicitAdmission(
+    message: Message,
+    from: User,
+    chat: Chat,
+  ): Promise<TelegramIngressAdmission> {
+    const accountConfig = resolveTelegramAccount(
+      this.runtime,
+      this.accountId,
+    ).config;
+    const typedPolicyConfigured = hasTypedTelegramPolicyConfig(accountConfig);
+    const threadId =
+      "is_topic_message" in message && message.is_topic_message
+        ? message.message_thread_id?.toString()
+        : undefined;
+    const decision = await evaluateTelegramPolicy({
+      runtime: this.runtime,
+      config: accountConfig,
+      message,
+      from,
+      chatType: chat.type,
+      chatId: chat.id.toString(),
+      threadId,
+      botInfo: (this.bot as unknown as { botInfo?: User }).botInfo,
+      forceReply: true,
+    });
+    return {
+      admitted: !typedPolicyConfigured || decision.shouldDispatch,
+      typedPolicyConfigured,
+      decision,
+      threadId,
+    };
+  }
+
+  public async admitIngress(ctx: Context): Promise<TelegramIngressAdmission> {
+    const cached = this.ingressAdmissions.get(ctx);
+    if (cached) {
+      return cached;
+    }
+    let admission: TelegramIngressAdmission;
+    if ("message_reaction" in ctx.update) {
+      admission = await this.evaluateReactionAdmission(ctx);
+    } else if (ctx.callbackQuery) {
+      admission = await this.evaluateCallbackAdmission(ctx);
+    } else {
+      admission = await this.evaluateMessageAdmission(ctx);
+    }
+    this.ingressAdmissions.set(ctx, admission);
+    return admission;
+  }
+
+  public async sendIngressDenial(
+    ctx: Context,
+    admission: TelegramIngressAdmission,
+  ): Promise<void> {
+    if (
+      !admission.decision.denialMessage ||
+      ctx.chat?.type !== "private" ||
+      !ctx.chat
+    ) {
+      return;
+    }
+    await this.bot.telegram.sendMessage(
+      ctx.chat.id,
+      admission.decision.denialMessage,
+    );
   }
 
   /**
@@ -1120,9 +1448,9 @@ export class MessageManager {
     const memories: Memory[] = [];
     for (const sentMessage of args.sentMessages) {
       const responseMemory: Memory = {
-        id: createUniqueUuid(
-          this.runtime,
-          this.scopedTelegramKey(sentMessage.message_id.toString()),
+        id: this.telegramMessageMemoryId(
+          sentMessage.chat.id,
+          sentMessage.message_id,
         ),
         entityId: this.runtime.agentId,
         agentId: this.runtime.agentId,
@@ -1150,8 +1478,12 @@ export class MessageManager {
           sourceId: this.runtime.agentId,
           chatType: args.chatType,
           messageIdFull: sentMessage.message_id.toString(),
+          telegramMessageKey: this.telegramMessageKey(
+            sentMessage.chat.id,
+            sentMessage.message_id,
+          ),
           telegram: {
-            chatId: sentMessage.chat.id,
+            chatId: sentMessage.chat.id.toString(),
             messageId: sentMessage.message_id.toString(),
             threadId: args.threadId,
           },
@@ -1334,6 +1666,7 @@ export class MessageManager {
     }
 
     const message = ctx.message as Message.TextMessage;
+    const sender = ctx.from;
 
     try {
       const telegramUserId = ctx.from.id.toString();
@@ -1363,55 +1696,18 @@ export class MessageManager {
       const roomId = createUniqueUuid(this.runtime, scopedRoomKey) as UUID;
       const worldId = createUniqueUuid(this.runtime, scopedChatKey) as UUID;
       const telegramMessageId = message.message_id.toString();
-      const messageId = createUniqueUuid(
-        this.runtime,
-        this.scopedTelegramKey(telegramMessageId),
+      const messageId = this.telegramMessageMemoryId(
+        telegramChatId,
+        telegramMessageId,
       );
       const chat = message.chat as Chat;
 
-      const telegramAutoReplyRaw = this.runtime.getSetting(
-        "TELEGRAM_AUTO_REPLY",
-      );
-      const telegramAutoReply =
-        !lifeOpsPassiveConnectorsEnabled(this.runtime) &&
-        (telegramAutoReplyRaw === true || telegramAutoReplyRaw === "true");
-      const accountConfig = resolveTelegramAccount(
-        this.runtime,
-        this.accountId,
-      ).config;
-      const policyDecision = await evaluateTelegramPolicy({
-        runtime: this.runtime,
-        config: accountConfig,
-        message,
-        from: ctx.from,
-        chatType: chat.type,
-        chatId: telegramChatId,
-        threadId,
-        botInfo: (this.bot as unknown as { botInfo?: User }).botInfo,
-        forceReply: options?.forceReply,
-        legacyAutoReply: telegramAutoReply,
-      });
-      const typedPolicyConfigured = hasTypedTelegramPolicyConfig(accountConfig);
-      if (!policyDecision.shouldDispatch && typedPolicyConfigured) {
-        if (policyDecision.denialMessage && chat.type === "private") {
-          try {
-            await this.bot.telegram.sendMessage(
-              chat.id,
-              policyDecision.denialMessage,
-            );
-          } catch (error) {
-            logger.warn(
-              {
-                src: "plugin:telegram",
-                agentId: this.runtime.agentId,
-                accountId: this.accountId,
-                chatId: telegramChatId,
-                error: error instanceof Error ? error.message : String(error),
-              },
-              "Failed to send Telegram pairing response",
-            );
-          }
-        }
+      const admission =
+        this.ingressAdmissions.get(ctx) ??
+        (await this.evaluateMessageAdmission(ctx, options?.forceReply));
+      const policyDecision = admission.decision;
+      if (!admission.admitted) {
+        await this.sendIngressDenial(ctx, admission);
         logger.debug(
           {
             src: "plugin:telegram",
@@ -1489,11 +1785,9 @@ export class MessageManager {
           channelType,
           inReplyTo:
             "reply_to_message" in message && message.reply_to_message
-              ? createUniqueUuid(
-                  this.runtime,
-                  this.scopedTelegramKey(
-                    message.reply_to_message.message_id.toString(),
-                  ),
+              ? this.telegramMessageMemoryId(
+                  telegramChatId,
+                  message.reply_to_message.message_id,
                 )
               : undefined,
         },
@@ -1514,6 +1808,10 @@ export class MessageManager {
           sourceId: entityId,
           chatType: chat.type,
           messageIdFull: telegramMessageId,
+          telegramMessageKey: this.telegramMessageKey(
+            telegramChatId,
+            telegramMessageId,
+          ),
           sender: {
             id: telegramUserId,
             name: ctx.from.first_name,
@@ -1541,65 +1839,37 @@ export class MessageManager {
           : undefined;
 
       // Create callback for handling responses
-      const baseCallback: HandlerCallback = async (
-        content: Content,
-        _actionName?: string,
-      ) => {
-        try {
-          // If response is from reasoning do not send it.
-          if (!content.text) {
-            return [];
-          }
-
-          let sentMessages: boolean | Message.TextMessage[] = false;
-          // channelType target === 'telegram'
-          if (content.channelType === "DM") {
-            // Route through sendMessageInChunks so DM replies get the same
-            // markdown conversion + inline interactions as group replies. Target
-            // ctx.from.id (the user's private chat) via a ctx shim, since a DM
-            // response to a group message must not go to ctx.chat.id.
-            sentMessages = ctx.from
-              ? await this.sendMessageInChunks(
-                  {
-                    chat: { id: ctx.from.id },
-                    telegram: this.bot.telegram,
-                  } as Context,
-                  content,
-                )
-              : [];
-          } else {
-            sentMessages = await this.sendMessageInChunks(
-              ctx,
-              content,
-              message.message_id,
-              threadIdNum,
-            );
-          }
-
-          if (!Array.isArray(sentMessages)) {
-            return [];
-          }
-
-          return this.persistSentMessageMemories({
-            sentMessages,
-            content,
-            roomId,
-            channelType,
-            chatType: chat.type,
-            threadId,
-            inReplyTo: messageId,
-          });
-        } catch (error) {
-          logger.error(
-            {
-              src: "plugin:telegram",
-              agentId: this.runtime.agentId,
-              error: error instanceof Error ? error.message : String(error),
-            },
-            "Error in message callback",
-          );
+      const baseCallback: HandlerCallback = async (content: Content) => {
+        // A model response with no user-facing text is a legitimate no-op.
+        if (!content.text) {
           return [];
         }
+
+        const sentMessages =
+          content.channelType === "DM"
+            ? await this.sendMessageInChunks(
+                {
+                  chat: { id: sender.id },
+                  telegram: this.bot.telegram,
+                } as Context,
+                content,
+              )
+            : await this.sendMessageInChunks(
+                ctx,
+                content,
+                message.message_id,
+                threadIdNum,
+              );
+
+        return this.persistSentMessageMemories({
+          sentMessages,
+          content,
+          roomId,
+          channelType,
+          chatType: chat.type,
+          threadId,
+          inReplyTo: messageId,
+        });
       };
       const callback = createTelegramCompactProgressCallback({
         baseCallback,
@@ -1615,21 +1885,7 @@ export class MessageManager {
       const shouldReply = policyDecision.shouldDispatch;
 
       if (!shouldReply) {
-        try {
-          await this.runtime.createMemory(memory, "messages");
-        } catch (persistError) {
-          logger.warn(
-            {
-              src: "plugin:telegram",
-              agentId: this.runtime.agentId,
-              error:
-                persistError instanceof Error
-                  ? persistError.message
-                  : String(persistError),
-            },
-            "Failed to persist inbound memory while auto-reply is disabled",
-          );
-        }
+        await this.runtime.createMemory(memory, "messages");
         logger.debug(
           { src: "plugin:telegram", agentId: this.runtime.agentId },
           "Auto-reply disabled (TELEGRAM_AUTO_REPLY=false); message ingested without response",
@@ -1650,48 +1906,17 @@ export class MessageManager {
         );
       }
     } catch (error) {
-      logger.error(
-        {
-          src: "plugin:telegram",
-          agentId: this.runtime.agentId,
+      // error-policy:J2 retain connector identity on the propagated failure.
+      throw new ElizaError("Telegram message handling failed", {
+        code: "TELEGRAM_MESSAGE_HANDLING_FAILED",
+        context: {
+          accountId: this.accountId,
           chatId: ctx.chat?.id,
           messageId: ctx.message.message_id,
-          from: ctx.from.username || ctx.from.id,
-          error: error instanceof Error ? error.message : String(error),
         },
-        "Error handling Telegram message",
-      );
-      throw error;
+        cause: error,
+      });
     }
-  }
-
-  private async isExplicitUpdateAuthorized(params: {
-    message: Message;
-    from: User;
-    chat: Chat;
-    threadId?: string;
-  }): Promise<boolean> {
-    const telegramConfig = getTelegramMultiAccountConfig(this.runtime);
-    const accountConfig: TelegramAccountConfig = {
-      ...telegramConfig,
-      ...telegramConfig.accounts?.[this.accountId],
-    };
-    if (!hasTypedTelegramPolicyConfig(accountConfig)) {
-      return true;
-    }
-
-    const decision = await evaluateTelegramPolicy({
-      runtime: this.runtime,
-      config: accountConfig,
-      message: params.message,
-      from: params.from,
-      chatType: params.chat.type,
-      chatId: params.chat.id.toString(),
-      threadId: params.threadId,
-      botInfo: (this.bot as unknown as { botInfo?: User }).botInfo,
-      forceReply: true,
-    });
-    return decision.shouldDispatch;
   }
 
   /**
@@ -1741,19 +1966,10 @@ export class MessageManager {
     const telegramRoomid = threadId
       ? `${telegramChatId}-${threadId}`
       : telegramChatId;
-    if (
-      !(await this.isExplicitUpdateAuthorized({
-        message: sourceMessage as Message,
-        from: ctx.from,
-        chat,
-        threadId,
-      }))
-    ) {
-      try {
-        await ctx.answerCbQuery();
-      } catch {
-        // best-effort: a stale callback may already have expired
-      }
+    const admission =
+      this.ingressAdmissions.get(ctx) ??
+      (await this.evaluateCallbackAdmission(ctx));
+    if (!admission.admitted) {
       return;
     }
     const roomId = createUniqueUuid(
@@ -2078,26 +2294,28 @@ export class MessageManager {
     const reaction = ctx.update.message_reaction;
     const reactedToMessageId = reaction.message_id;
 
-    const syntheticReactionMessage = {
-      message_id: reactedToMessageId,
-      chat: reaction.chat,
-      from: ctx.from,
-      date: Math.floor(Date.now() / 1000),
-    } as Message;
-
     const firstReaction = reaction.new_reaction[0];
     if (!firstReaction) {
       return;
     }
-    if (
-      !(await this.isExplicitUpdateAuthorized({
-        message: syntheticReactionMessage,
-        from: ctx.from,
-        chat: reaction.chat as Chat,
-      }))
-    ) {
+    const admission =
+      this.ingressAdmissions.get(ctx) ??
+      (await this.evaluateReactionAdmission(ctx));
+    if (!admission.admitted) {
       return;
     }
+    const syntheticReactionMessage = {
+      message_id: reactedToMessageId,
+      chat: reaction.chat,
+      from: ctx.from,
+      date: reaction.date,
+      ...(admission.threadId
+        ? {
+            is_topic_message: true,
+            message_thread_id: Number(admission.threadId),
+          }
+        : {}),
+    } as Message;
     // Emoji reactions carry the glyph on `.emoji`; non-emoji reactions
     // (custom_emoji / paid) are identified by `.type`.
     const reactionLabel =
@@ -2108,10 +2326,12 @@ export class MessageManager {
         this.runtime,
         this.scopedTelegramKey(ctx.from.id.toString()),
       ) as UUID;
-      const roomId = createUniqueUuid(
-        this.runtime,
-        this.scopedTelegramKey(ctx.chat.id.toString()),
-      );
+      const roomId =
+        admission.sourceMemory?.roomId ??
+        createUniqueUuid(
+          this.runtime,
+          this.scopedTelegramKey(ctx.chat.id.toString()),
+        );
 
       const reactionId = createUniqueUuid(
         this.runtime,
@@ -2130,10 +2350,9 @@ export class MessageManager {
           channelType: getChannelType(reaction.chat as Chat),
           text: `Reacted with: ${reactionLabel}`,
           source: "telegram",
-          inReplyTo: createUniqueUuid(
-            this.runtime,
-            this.scopedTelegramKey(reaction.message_id.toString()),
-          ),
+          inReplyTo:
+            admission.sourceMemory?.id ??
+            this.telegramMessageMemoryId(reaction.chat.id, reaction.message_id),
           metadata: { accountId: this.accountId },
         },
         metadata: {
@@ -2160,6 +2379,7 @@ export class MessageManager {
             ),
             chatId: reaction.chat.id.toString(),
             messageId: reaction.message_id.toString(),
+            threadId: admission.threadId,
           },
           telegramUserId: ctx.from.id.toString(),
           telegramChatId: reaction.chat.id.toString(),
@@ -2169,43 +2389,28 @@ export class MessageManager {
 
       // Create callback for handling reaction responses
       const callback: HandlerCallback = async (content: Content) => {
-        try {
-          // Add null check for content.text
-          const replyText = content.text ?? "";
-          const sentMessage = await ctx.reply(replyText);
-          const responseMemory: Memory = {
-            id: createUniqueUuid(
-              this.runtime,
-              this.scopedTelegramKey(sentMessage.message_id.toString()),
-            ),
-            entityId: this.runtime.agentId,
-            agentId: this.runtime.agentId,
-            roomId,
-            content: {
-              ...content,
-              inReplyTo: reactionId,
-              metadata: { accountId: this.accountId },
-            },
-            metadata: {
-              type: "message",
-              source: "telegram",
-              accountId: this.accountId,
-              provider: "telegram",
-            } satisfies Memory["metadata"],
-            createdAt: sentMessage.date * 1000,
-          };
-          return [responseMemory];
-        } catch (error) {
-          logger.error(
-            {
-              src: "plugin:telegram",
-              agentId: this.runtime.agentId,
-              error: error instanceof Error ? error.message : String(error),
-            },
-            "Error in reaction callback",
-          );
-          return [];
-        }
+        const threadId = admission.threadId
+          ? Number(admission.threadId)
+          : undefined;
+        const sentMessages = await this.sendMessageInChunks(
+          {
+            chat: reaction.chat,
+            from: ctx.from,
+            telegram: this.bot.telegram,
+          } as Context,
+          content,
+          reaction.message_id,
+          threadId,
+        );
+        return this.persistSentMessageMemories({
+          sentMessages,
+          content,
+          roomId,
+          channelType: getChannelType(reaction.chat as Chat),
+          chatType: reaction.chat.type,
+          threadId: admission.threadId,
+          inReplyTo: reactionId,
+        });
       };
 
       // Let the bootstrap plugin handle the reaction
@@ -2236,14 +2441,16 @@ export class MessageManager {
         originalReaction: firstReaction as ReactionType,
       } as TelegramReactionReceivedPayload);
     } catch (error) {
-      logger.error(
-        {
-          src: "plugin:telegram",
-          agentId: this.runtime.agentId,
-          error: error instanceof Error ? error.message : String(error),
+      // error-policy:J2 retain connector identity on the propagated failure.
+      throw new ElizaError("Telegram reaction handling failed", {
+        code: "TELEGRAM_REACTION_HANDLING_FAILED",
+        context: {
+          accountId: this.accountId,
+          chatId: reaction.chat.id,
+          messageId: reaction.message_id,
         },
-        "Error handling reaction",
-      );
+        cause: error,
+      });
     }
   }
 
@@ -2372,9 +2579,9 @@ export class MessageManager {
           : {};
       for (const sentMessage of sentMessages) {
         const memory: Memory = {
-          id: createUniqueUuid(
-            this.runtime,
-            this.scopedTelegramKey(sentMessage.message_id.toString()),
+          id: this.telegramMessageMemoryId(
+            sentMessage.chat.id,
+            sentMessage.message_id,
           ),
           entityId: this.runtime.agentId,
           agentId: this.runtime.agentId,
@@ -2410,6 +2617,10 @@ export class MessageManager {
             fromId: this.runtime.agentId,
             sourceId: this.runtime.agentId,
             messageIdFull: sentMessage.message_id.toString(),
+            telegramMessageKey: this.telegramMessageKey(
+              sentMessage.chat.id,
+              sentMessage.message_id,
+            ),
             telegram: {
               chatId: sentMessage.chat.id.toString(),
               messageId: sentMessage.message_id.toString(),
