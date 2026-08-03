@@ -295,7 +295,11 @@ export function SettingsView({
       }
     };
     window.addEventListener("hashchange", handleHashChange);
-    return () => window.removeEventListener("hashchange", handleHashChange);
+    window.addEventListener("popstate", handleHashChange);
+    return () => {
+      window.removeEventListener("hashchange", handleHashChange);
+      window.removeEventListener("popstate", handleHashChange);
+    };
   }, [visibleSectionIds]);
 
   // Explicit navigation (hash / initialSection / agent anchor) resolves
