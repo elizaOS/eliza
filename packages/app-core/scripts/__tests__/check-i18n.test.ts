@@ -18,7 +18,7 @@ const { runI18nCheck } = await import(
   new URL("../check-i18n.mjs", import.meta.url).href
 );
 
-const REAL_REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
+const REAL_REPO_ROOT = fileURLToPath(new URL("../../../..", import.meta.url));
 
 interface CheckResult {
   ok: boolean;
@@ -116,15 +116,19 @@ describe("check-i18n contract", () => {
     expect(result.errors.join("\n")).toMatch(/es\.json missing 1 key/);
   });
 
-  test("fails on an unused source-locale key", () => {
+  test("reports an unreferenced source key as ADVISORY, never as grounds for deletion", () => {
+    // Deliberately not an error: a static scan cannot see metadata-driven or
+    // ref-wrapped call sites, and acting on this list once removed 86 live
+    // keys across eight locales. The checker nominates; a human verifies.
     const result = run(
       buildFixture({
         en: { "app.title": "Hello", "app.dead": "Never rendered" },
       }),
     );
-    expect(result.ok).toBe(false);
-    expect(result.errors.join("\n")).toMatch(/1 unused key/);
-    expect(result.errors.join("\n")).toMatch(/app\.dead/);
+    expect(result.ok).toBe(true);
+    expect(result.errors).toEqual([]);
+    expect(result.warnings.join("\n")).toMatch(/ADVISORY/);
+    expect(result.warnings.join("\n")).toMatch(/app\.dead/);
   });
 
   test("fails on an orphaned translation absent from the source catalog", () => {

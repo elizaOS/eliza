@@ -89,7 +89,7 @@ jobs:
       # key ships uncataloged); translation gaps print as warnings (#17605 —
       # this checker previously ran in no lane and en.json drifted 705 keys).
       - name: Validate i18n source catalog contract
-        run: node packages/scripts/check-i18n.mjs
+        run: node packages/app-core/scripts/check-i18n.mjs
 
       - name: Install workflow-invariants parser dependency
         run: npm install --prefix "$RUNNER_TEMP/workflow-invariants-deps" --no-save --no-package-lock --ignore-scripts yaml@2.9.0
