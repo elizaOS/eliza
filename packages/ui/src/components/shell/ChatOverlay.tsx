@@ -1650,16 +1650,13 @@ export function ChatOverlay({
   const openProgressAnimationRef = React.useRef<MotionControls | null>(null);
   const prefillFocusFrameRef = React.useRef<number | null>(null);
   const prefillFocusTimerRef = React.useRef<number | null>(null);
-  // A GPU-compositing hint scoped to an ACTIVE drag/settle only. While the
-  // finger drives the panel (`scale`/`flexBasis` change every frame) and while
-  // the release spring runs, we set `will-change: transform` on the panel (and
-  // suppress the thread's edge mask) so iOS Safari/WebKit promotes the morph to
-  // its own compositor layer up front — it then composites without a per-frame
-  // repaint of the frosted glass + content (the visible micro-stutter on the
-  // installed PWA). Deliberately NOT permanent: `will-change` keeps a promoted
-  // layer (and its memory) resident, so we drop it the instant the release
-  // spring settles. A ref mirrors it for the guarded setter so per-frame drag
-  // updates never cause a redundant re-render.
+  // Render-level motion state for the active drag and its release spring. The
+  // native-glass handoff and safe-area morph use this boundary, while the live
+  // height itself remains a MotionValue so pointer frames do not re-render.
+  // Do not turn this signal into `will-change` on the text-bearing fieldset:
+  // promoting and demoting that whole subtree re-rasterizes stationary glyphs
+  // at the gesture edges. The pill's real transform is composited by the
+  // browser when Framer Motion writes it; open-sheet drags change layout only.
   const [isDragging, setDragging] = React.useState(false);
   const isDraggingRef = React.useRef(false);
   // True only while the sheet is at TRUE rest: no finger down AND no height
@@ -5672,16 +5669,6 @@ export function ChatOverlay({
             scale: fullBleed ? 1 : panelScale,
             // Grow UP out of the pill at the bottom.
             transformOrigin: "bottom center",
-            // GPU-promote the panel ONLY while a drag/settle is live (#swipe-
-            // smoothness). The morph animates `scale` (a transform) here and the
-            // thread animates its `flexBasis` below; hinting `will-change:
-            // transform` for the duration of the gesture lets WebKit/iOS Safari
-            // rasterize the panel onto its own compositor layer up front, so the
-            // finger-tracked morph and the release spring composite without
-            // repainting the frosted glass each frame (the installed-PWA
-            // micro-stutter). Dropped on settle — a permanent hint keeps the
-            // layer (and its memory) resident for no benefit at rest.
-            willChange: isDragging ? "transform" : undefined,
             // Pilled: span the (invisible) input area but pass taps through to the
             // home screen — only the pill-capsule child re-enables pointer events.
             pointerEvents: pilled ? "none" : "auto",
