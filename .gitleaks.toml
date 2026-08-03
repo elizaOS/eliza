@@ -85,6 +85,38 @@ regexes = [
   '''capacity-proposal-key-1''',
 ]
 
+# Token-info uses the public USDC mainnet contract address as a deterministic
+# lookup key for a mocked DexScreener response. The generic-api-key rule keys on
+# the TOKEN_ADDRESS identifier even though Ethereum contract addresses are
+# public routing identifiers, not credentials. Match the exact public address
+# in the one keyless scenario so every other value remains scanned.
+[[allowlists]]
+description = "Wallet token-info scenario public USDC contract address"
+condition = "AND"
+paths = [
+  '''(^|/)plugins/plugin-wallet/test/scenarios/token-info\.scenario\.ts$''',
+]
+regexTarget = "line"
+regexes = [
+  '''TOKEN_ADDRESS\s*=\s*"0xA0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"''',
+]
+
+# The deterministic scenario scripts explicitly clear every Cerebras key. In
+# the historical command text, adjacent empty shell assignments make the
+# generic-api-key rule misread the next variable name as a value. Scope the
+# exact all-empty assignment sequence to the scenario-runner manifest; any
+# non-empty key or different command still fails the scan.
+[[allowlists]]
+description = "Scenario-runner deterministic lanes clear Cerebras credentials"
+condition = "AND"
+paths = [
+  '''(^|/)packages/scenario-runner/package\.json$''',
+]
+regexTarget = "line"
+regexes = [
+  '''CEREBRAS_API_KEY= EVAL_CEREBRAS_API_KEY= ELIZA_E2E_CEREBRAS_API_KEY=''',
+]
+
 [[allowlists]]
 description = "Headscale DEPLOY.md CLI examples (`headscale apikeys create` — not a credential)"
 paths = [

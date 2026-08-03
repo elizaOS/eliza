@@ -7,9 +7,9 @@
  * Run: bun run --cwd packages/ui test:home-screen-e2e
  */
 
-import { mkdir, readdir, rename, rm } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { chromium } from "playwright";
 import {
   createAssertGate,
@@ -121,6 +121,28 @@ const stubResolver = {
   },
 };
 
+// The production launcher resolves packaged PNGs relative to the generated
+// module with `new URL(..., import.meta.url)`. This fixture is intentionally an
+// inline IIFE, where esbuild otherwise replaces import.meta with an empty
+// object and every icon URL throws before React can mount. Preserve the real
+// icon module and assets by binding only that module's import.meta.url to its
+// source file URL during the fixture build.
+const fixtureViewIconUrls = {
+  name: "home-fixture-view-icon-urls",
+  setup(b) {
+    b.onLoad({ filter: /view-icons\.generated\.ts$/ }, async (args) => {
+      const source = await readFile(args.path, "utf8");
+      return {
+        contents: source.replaceAll(
+          "import.meta.url",
+          JSON.stringify(pathToFileURL(args.path).href),
+        ),
+        loader: "ts",
+      };
+    });
+  },
+};
+
 // @elizaos/core: the WidgetHost + the (dead-in-browser) @elizaos/shared graph
 // import a wide named surface from it. Satisfy ANY named import with a no-op
 // Proxy, but override the handful the render path actually uses with REAL
@@ -199,13 +221,23 @@ const url = await writeFixturePage({
   outDir,
   htmlName: "home-screen.html",
   title: "home screen e2e",
-  plugins: [stubResolver, stubElizaCore, stubNodeBuiltins()],
+  plugins: [
+    stubResolver,
+    fixtureViewIconUrls,
+    stubElizaCore,
+    stubNodeBuiltins(),
+  ],
   processShim: true,
   headHtml,
   background: "#0a0d16",
 });
 
 const sink = { errors: [] };
+const recordPageError = (error) => {
+  const message = String(error);
+  sink.errors.push(message);
+  console.error(`  ⚠ pageerror: ${message}`);
+};
 const browser = await chromium.launch();
 const gate = createAssertGate();
 const { assert } = gate;
@@ -533,7 +565,7 @@ try {
     },
   });
   const mobile = await mobileContext.newPage();
-  mobile.on("pageerror", (e) => sink.errors.push(String(e)));
+  mobile.on("pageerror", recordPageError);
   await installCoarsePointerMedia(mobile);
   // Install the shared layout-shift PerformanceObserver BEFORE any paint, so
   // every shift during the home settle lands in window.__ELIZA_LAYOUT_SHIFTS__
@@ -1156,7 +1188,7 @@ try {
     storageState: mobileStorageState,
   });
   const perfMobile = await perfContext.newPage();
-  perfMobile.on("pageerror", (e) => sink.errors.push(String(e)));
+  perfMobile.on("pageerror", recordPageError);
   await installCoarsePointerMedia(perfMobile);
   await perfMobile.addInitScript(FRAME_SAMPLER_INIT);
   await perfMobile.goto(`${url}?native&homeData=attention`);
@@ -1217,7 +1249,7 @@ try {
   const desktop = await browser.newPage({
     viewport: { width: 1180, height: 900 },
   });
-  desktop.on("pageerror", (e) => sink.errors.push(String(e)));
+  desktop.on("pageerror", recordPageError);
   await desktop.goto(url);
   await desktop.waitForSelector('[data-testid="home-launcher-surface"]');
   await desktop.waitForSelector('[data-testid="home-screen"]');
@@ -1270,7 +1302,7 @@ try {
   const finePointer = await browser.newPage({
     viewport: { width: 1180, height: 900 },
   });
-  finePointer.on("pageerror", (e) => sink.errors.push(String(e)));
+  finePointer.on("pageerror", recordPageError);
   await finePointer.addInitScript(() => {
     const real = window.matchMedia.bind(window);
     const stub = (query) => ({

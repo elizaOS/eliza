@@ -375,8 +375,11 @@ export function validateWorkflowSources(sources) {
   );
   invariant(
     changedPlugins?.run.includes("git diff --no-renames --name-only -z") &&
+      changedPlugins.run.includes('if [[ "$relative" != */* ]]') &&
+      changedPlugins.run.includes("__tests__/*) continue") &&
+      changedPlugins.run.includes('if [ ! -e "plugins/$pkg" ]') &&
       changedPlugins.run.includes('echo "count=$' + '{#selected[@]}"'),
-    `${WORKFLOW_PATHS.develop}: jobs.plugin-tests must select both sides of renames and emit an exact task floor`,
+    `${WORKFLOW_PATHS.develop}: jobs.plugin-tests must select both sides of renames, exclude repository-level and fully deleted plugin roots, and emit an exact task floor`,
   );
   const runPluginTests = pluginTests.steps.find(
     (step) =>

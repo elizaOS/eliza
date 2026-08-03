@@ -59,10 +59,12 @@ describe("useConversationRenderWindow (#15281)", () => {
       }),
     );
 
+    let revealResult: LoadOlderResult | undefined;
     await act(async () => {
-      await result.current.onLoadOlder();
+      revealResult = await result.current.onLoadOlder();
     });
     expect(result.current.windowSize).toBe(130);
+    expect(revealResult).toEqual({ hasMore: true, prependedCount: STEP });
     expect(fetchOlder).not.toHaveBeenCalled();
 
     await act(async () => {
@@ -271,7 +273,7 @@ describe("useConversationRenderWindow (#15281)", () => {
     expect(result.current.windowSize).toBe(90);
 
     // Start the fetch (still pending), then switch conversations underneath it.
-    let pending!: Promise<void>;
+    let pending!: Promise<LoadOlderResult>;
     act(() => {
       pending = result.current.onLoadOlder();
     });

@@ -202,8 +202,24 @@ jobs:
           trap 'rm -f "$changed_paths_file" "$sorted_packages_file"' EXIT
           git diff --no-renames --name-only -z "$BASE_SHA"...HEAD -- plugins > "$changed_paths_file"
           while IFS= read -r -d '' changed_path; do
-            pkg="${changed_path#plugins/}"
+            relative="${changed_path#plugins/}"
+            # Top-level build files and plugins/__tests__ are repository-level
+            # plugin contracts rather than package workspaces; the script lane
+            # owns them. Nested unknown directories still fail closed below.
+            if [[ "$relative" != */* ]]; then
+              continue
+            fi
+            case "$relative" in
+              __tests__/*) continue ;;
+            esac
+            pkg="$relative"
             pkg="${pkg%%/*}"
+            # A full package deletion has no current manifest or tests to run.
+            # This also permits cleanup of pre-convention legacy package names;
+            # malformed nested roots that still exist remain a hard failure.
+            if [ ! -e "plugins/$pkg" ]; then
+              continue
+            fi
             if [[ ! "$pkg" =~ ^plugin-[a-z0-9-]+$ ]]; then
               echo "Unsupported plugin workspace path: $changed_path" >&2
               exit 1
