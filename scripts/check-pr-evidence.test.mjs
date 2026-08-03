@@ -1021,6 +1021,25 @@ describe("check-pr-evidence row primitives", () => {
     }
   });
 
+  it("does not treat marker words inside command, path, or member identifiers as confessions", () => {
+    const backend = [
+      "- [x] Backend logs:",
+      "<details><summary>Backend logs</summary>",
+      "```text",
+      "$ bun run audit:test-integrity:no-vi-mocks",
+      "packages/fixtures/setup.ts:12 loaded fixture.json through object.mock",
+      String.raw`C:\fixtures\setup.ts completed test:mocks and todo.md`,
+      "2026-07-30T18:01:12Z INFO statusCode=200 count=313 duration_ms=84",
+      "```",
+      "</details>",
+    ].join("\n");
+
+    assert.equal(
+      evaluatePrEvidence(buildBody({ "backend-logs": backend })).ok,
+      true,
+    );
+  });
+
   it("accepts only structured inline trajectories with model, input, and output records", () => {
     const trajectory = [
       "- [x] Real-LLM trajectory:",

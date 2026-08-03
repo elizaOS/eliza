@@ -325,8 +325,12 @@ export function hasEvidenceFileReference(text) {
   return trustedArtifacts(text).some(artifactCanBeEvidenceFile);
 }
 
+// `\b` treats punctuation inside commands, paths, and member names as a word
+// boundary. A marker must therefore be separated from an identifier on both
+// sides; a dot only joins the following token when it actually starts an
+// extension/member, so sentence-ending punctuation remains detectable.
 const NON_REAL_EVIDENCE_RE =
-  /\b(?:placeholder|example output|logs? here|todo|tbd|fabricated|invented|fake|mocks?|fixtures?|synthetic|dummy)\b/i;
+  /(?<![\w/\\@:.-])(?:placeholder|example output|logs? here|todo|tbd|fabricated|invented|fake|mocks?|fixtures?|synthetic|dummy)(?![\w/\\@-]|:[\w-]|\.[\w-])/i;
 
 function hasSubstantiveInlineLog(text) {
   const source = String(text ?? "");
@@ -2424,6 +2428,49 @@ export function runSelfTest() {
   {
     const { ok } = evaluatePrEvidence(buildFixtureBody());
     if (!ok) failures.push("all-filled fixture should pass");
+  }
+
+  {
+    // Both directions of the fabrication-marker rule. A marker inside an
+    // identifier is not a fabrication claim; a bare one still is. Without the
+    // second half, tightening the boundaries could quietly disarm the check.
+    const naming = [
+      "- [x] Backend logs:",
+      "```",
+      "$ bun run audit:test-integrity:no-vi-mocks",
+      "packages/scripts/lint-no-vi-mocks.mjs:12: const json = vi.fn();",
+      "running fixtures/setup.ts against the real adapter",
+      "loaded fixture.json through object.mock and test:mocks",
+      String.raw`opened C:\fixtures\setup.ts and todo.md`,
+      "exit 0 after 41s",
+      "```",
+    ].join("\n");
+    const named = evaluatePrEvidence(buildFixtureBody({ "backend-logs": naming }));
+    const namedRow = named.findings.find((f) => f.id === "backend-logs");
+    if (namedRow?.status !== "ok") {
+      failures.push(
+        "a transcript naming a marker-bearing command or path should satisfy the gate",
+      );
+    }
+
+    const disclosed = [
+      "- [x] Backend logs:",
+      "```",
+      "this run uses mocks instead of the real service",
+      "TODO: logs here",
+      "the remaining output is a placeholder pending a real capture run",
+      "the artifact is fake.",
+      "```",
+    ].join("\n");
+    const fabricated = evaluatePrEvidence(
+      buildFixtureBody({ "backend-logs": disclosed }),
+    );
+    const fabricatedRow = fabricated.findings.find(
+      (f) => f.id === "backend-logs",
+    );
+    if (fabricatedRow?.status === "ok") {
+      failures.push("a disclosed placeholder/mocked run must still be rejected");
+    }
   }
 
   {
