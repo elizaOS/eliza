@@ -1,12 +1,27 @@
 /**
  * Resolves fork workflows that GitHub has held for maintainer approval. Both
  * base-trusted aggregate gates consume this exact-head view before deciding
- * whether absent check runs are genuinely pending.
+ * whether absent check runs are genuinely pending. Malformed API pages fail
+ * before an adapter error can be mistaken for an empty workflow inventory.
  */
 
 const ACTION_REQUIRED = "action_required";
 const PAGE_SIZE = 100;
 const MAX_PAGES = 10;
+
+function workflowRunsFromPage(payload, page, url) {
+  if (
+    typeof payload !== "object" ||
+    payload === null ||
+    Array.isArray(payload) ||
+    !Array.isArray(payload.workflow_runs)
+  ) {
+    throw new Error(
+      `invalid GitHub Actions workflow-runs response at page ${page} (${url}): expected an object with a workflow_runs array`,
+    );
+  }
+  return payload.workflow_runs;
+}
 
 export function actionRequiredWorkflowPaths(workflowRuns, headSha) {
   const newestByPath = new Map();
@@ -49,9 +64,7 @@ export async function loadActionRequiredWorkflowPaths({
       `?event=pull_request&head_sha=${encodeURIComponent(headSha)}` +
       `&per_page=${PAGE_SIZE}&page=${page}`;
     const payload = await requestJson(url);
-    const pageRuns = Array.isArray(payload.workflow_runs)
-      ? payload.workflow_runs
-      : [];
+    const pageRuns = workflowRunsFromPage(payload, page, url);
     workflowRuns.push(...pageRuns);
     if (pageRuns.length < PAGE_SIZE) break;
   }

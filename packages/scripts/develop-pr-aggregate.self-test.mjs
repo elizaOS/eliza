@@ -185,6 +185,38 @@ assert.equal(approvalPages.length, 2);
 assert.match(approvalPages[0], /[?&]page=1$/);
 assert.match(approvalPages[1], /[?&]page=2$/);
 
+for (const [label, payload] of [
+  ["non-object payload", null],
+  ["missing workflow_runs", {}],
+  ["null workflow_runs", { workflow_runs: null }],
+  ["non-array workflow_runs", { workflow_runs: {} }],
+]) {
+  await assert.rejects(
+    loadActionRequiredWorkflowPaths({
+      repository: "elizaOS/eliza",
+      headSha: HEAD_SHA,
+      requestJson: async () => payload,
+    }),
+    (error) => {
+      assert.match(
+        error.message,
+        /invalid GitHub Actions workflow-runs response/,
+      );
+      assert.match(error.message, /page 1/);
+      assert.match(
+        error.message,
+        /https:\/\/api\.github\.com\/repos\/elizaOS\/eliza\/actions\/runs/,
+      );
+      assert.match(
+        error.message,
+        /expected an object with a workflow_runs array/,
+      );
+      return true;
+    },
+    label,
+  );
+}
+
 for (const [scenario, code] of [
   ["cancelled", "terminal-cancelled"],
   ["timed-out", "terminal-timed_out"],
