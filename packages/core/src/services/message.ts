@@ -4019,10 +4019,36 @@ function renderMessageHandlerModelInput(
 	const dynamicSegments = rendered.promptSegments.filter(
 		(segment) => !segment.stable,
 	);
+	const currentTurnBoundary = dynamicSegments.filter(
+		(segment) => segment.id === "current-turn-boundary",
+	);
+	const remainingDynamicSegments = dynamicSegments.filter(
+		(segment) => segment.id !== "current-turn-boundary",
+	);
+	const priorDialogueSegments = remainingDynamicSegments.filter(
+		(segment) => segment.label?.startsWith("prior_message:") === true,
+	);
+	const dynamicProviderSegments = remainingDynamicSegments.filter(
+		(segment) => segment.label?.startsWith("provider:") === true,
+	);
+	const turnTailSegments = remainingDynamicSegments.filter(
+		(segment) =>
+			segment.label?.startsWith("prior_message:") !== true &&
+			segment.label?.startsWith("provider:") !== true,
+	);
+	// The boundary follows untrusted dialogue so stored messages cannot supersede
+	// it with structural-looking text. Providers remain adjacent after that
+	// boundary, preserving their reusable prefix before the current message.
+	const orderedDynamicSegments = [
+		...priorDialogueSegments,
+		...currentTurnBoundary,
+		...dynamicProviderSegments,
+		...turnTailSegments,
+	];
 	const promptSegments = normalizePromptSegments([
 		...stableSegments,
 		{ content: `message_handler_stage:\n${instructions}`, stable: true },
-		...dynamicSegments,
+		...orderedDynamicSegments,
 	]);
 	const systemContent = normalizePromptSegments([
 		...stableSegments,
@@ -4030,7 +4056,7 @@ function renderMessageHandlerModelInput(
 	])
 		.map(segmentBlock)
 		.join("\n\n");
-	const userContent = normalizePromptSegments(dynamicSegments)
+	const userContent = normalizePromptSegments(orderedDynamicSegments)
 		.map(segmentBlock)
 		.join("\n\n");
 	return {

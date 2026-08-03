@@ -77,6 +77,13 @@ test("buildOpenAiRequestBody omits rather than fabricates reasoning_effort", () 
     "private prompt",
   );
   assert.equal(disabled.reasoning_effort, "none");
+
+  const cached = buildOpenAiRequestBody(
+    parseProbeCase("gemma-4-31b@omit@512"),
+    "private prompt",
+    "stable-benchmark-session",
+  );
+  assert.equal(cached.prompt_cache_key, "stable-benchmark-session");
 });
 
 test("parseServerTiming returns only valid non-negative durations", () => {
@@ -124,7 +131,15 @@ test("consumeOpenAiEvent separates hidden reasoning from visible content", () =>
         prompt_tokens: 5,
         completion_tokens: 7,
         total_tokens: 12,
+        prompt_tokens_details: { cached_tokens: 4, private: 99 },
         private_internal_counter: 99,
+      },
+      time_info: {
+        queue_time: 0.001,
+        prompt_time: 0.02,
+        completion_time: 0.03,
+        total_time: 0.051,
+        private_internal_timing: 99,
       },
     }),
     {
@@ -135,6 +150,13 @@ test("consumeOpenAiEvent separates hidden reasoning from visible content", () =>
         prompt_tokens: 5,
         completion_tokens: 7,
         total_tokens: 12,
+        prompt_tokens_details: { cached_tokens: 4 },
+      },
+      providerTimeInfo: {
+        queue_time: 0.001,
+        prompt_time: 0.02,
+        completion_time: 0.03,
+        total_time: 0.051,
       },
       providerError: null,
     },
@@ -466,6 +488,7 @@ test("runPairedProbes reuses prompts, runs targets in parallel, and labels phase
       activeRequests++;
       maxActiveRequests = Math.max(maxActiveRequests, activeRequests);
       const body = JSON.parse(init.body);
+      assert.equal(body.prompt_cache_key, "fixed-seed");
       const prompt = body.messages[0].content;
       const proof = prompt.match(/latency-proof-[a-f0-9-]+/)?.[0];
       assert.ok(proof);
@@ -539,6 +562,11 @@ test("summarizeLatencyRecords reports warm p50, p90, and p95", () => {
       firstTokenMs,
       totalMs: firstTokenMs + 5,
       preforward: {},
+      usage: {
+        prompt_tokens: 100,
+        prompt_tokens_details: { cached_tokens: firstTokenMs },
+      },
+      providerTimeInfo: { prompt_time: firstTokenMs / 1_000 },
       sequence: index + 1,
     },
   ]);
@@ -551,6 +579,16 @@ test("summarizeLatencyRecords reports warm p50, p90, and p95", () => {
     p50: null,
     p90: null,
     p95: null,
+  });
+  assert.deepEqual(summary.cacheRatePercent, {
+    p50: 20,
+    p90: 28,
+    p95: 29,
+  });
+  assert.deepEqual(summary.providerPromptMs, {
+    p50: 20,
+    p90: 28,
+    p95: 29,
   });
 });
 
