@@ -20,11 +20,13 @@ import {
   matchesDocumentFilter as matchesSharedDocumentFilter,
   parseDocumentScope,
   type RouteActor,
+  type RouteActorRole,
   routeActorAddedByRole,
   type DocumentFilter as SharedDocumentFilter,
   trimString,
 } from "@elizaos/agent/api/document-access";
 import type {
+  AccessContext,
   AgentRuntime,
   IFileStorageService,
   Memory,
@@ -60,6 +62,7 @@ export type DocumentRouteHelpers = RouteHelpers;
 export interface DocumentRouteContext extends RouteRequestContext {
   url: URL;
   runtime: AgentRuntime | null;
+  accessContext?: AccessContext;
   decodePathComponent?: (
     raw: string,
     res: DocumentRouteContext["res"],
@@ -156,51 +159,38 @@ function getOwnerEntityId(runtime: AgentRuntime | null): UUID | undefined {
 }
 
 export function resolveRouteActor(
-  req: DocumentRouteContext["req"],
   agentId: UUID,
   ownerEntityId?: UUID,
   accessContext?: AccessContext,
 ): RouteActor | null {
-  const ctx =
-    accessContext ??
-    (req as unknown as { accessContext?: AccessContext }).accessContext;
-
-  if (ctx) {
-    if (!ctx.authenticated) return null;
-    const role: RouteActorRole = ctx.role ?? "USER";
-    const entityId =
-      ctx.entityId ??
-      (role === "OWNER"
-        ? (ownerEntityId ?? agentId)
-        : role === "AGENT"
-          ? agentId
-          : undefined);
-    if (!entityId) return null;
-    return { entityId, role, ownerEntityId };
+  // No accessContext means trunk-authorized owner boundary — preserve existing
+  // unfiltered behavior by returning OWNER.
+  if (!accessContext) {
+    return {
+      entityId: ownerEntityId ?? agentId,
+      role: "OWNER",
+      ownerEntityId,
+    };
   }
 
-  const reqAuth = req as unknown as {
-    authenticated?: boolean;
-    isAuthorized?: boolean;
-    role?: RouteActorRole;
-    entityId?: UUID;
-  };
+  const { requesterEntityId, role: accessRole, isOwner } = accessContext;
+  if (!requesterEntityId) return null;
 
-  if (reqAuth.authenticated === true || reqAuth.isAuthorized === true) {
-    const role: RouteActorRole = reqAuth.role ?? "OWNER";
-    const entityId =
-      reqAuth.entityId ??
-      (role === "OWNER"
-        ? (ownerEntityId ?? agentId)
-        : role === "AGENT"
-          ? agentId
-          : undefined);
-    if (!entityId) return null;
-    return { entityId, role, ownerEntityId };
+  // Map AccessContext.role (RoleName) to RouteActorRole.
+  // OWNER/ADMIN → OWNER; USER/GUEST → USER.
+  let routeRole: RouteActorRole;
+  if (isOwner || accessRole === "OWNER" || accessRole === "ADMIN") {
+    routeRole = "OWNER";
+  } else {
+    routeRole = "USER";
   }
 
-  // Public request headers alone MUST NOT mint OWNER, AGENT, or USER authority.
-  return null;
+  const entityId =
+    routeRole === "OWNER"
+      ? (requesterEntityId ?? ownerEntityId ?? agentId)
+      : requesterEntityId;
+
+  return { entityId, role: routeRole, ownerEntityId };
 }
 
 function parseSearchMode(value: unknown): DocumentSearchMode | undefined {
@@ -727,7 +717,6 @@ export async function handleDocumentsRoutes(
   const agentId = runtime.agentId as UUID;
   const ownerEntityId = getOwnerEntityId(runtime);
   const routeActor = resolveRouteActor(
-    req,
     agentId,
     ownerEntityId,
     ctx.accessContext,

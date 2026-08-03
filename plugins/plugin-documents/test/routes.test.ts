@@ -1,4 +1,5 @@
 /** Route-handler tests for the documents REST surface, driving handleDocumentsRoutes against a mocked document service and fetch impl. */
+import type { AccessContext, UUID } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DocumentRouteContext } from "../src/routes.js";
 import {
@@ -25,11 +26,14 @@ type MockResponse = {
   end: (chunk?: string) => void;
 };
 
+const OWNER_ENTITY_ID = "00000000-0000-0000-0000-0000000000b1" as UUID;
+
 function buildCtx(args: {
   method: string;
   pathname: string;
   body?: unknown;
   runtime?: Partial<NonNullable<DocumentRouteContext["runtime"]>>;
+  accessContext?: AccessContext;
 }): {
   ctx: DocumentRouteContext;
   res: MockResponse;
@@ -53,11 +57,13 @@ function buildCtx(args: {
     method: args.method,
     pathname: args.pathname,
     url: new URL(`http://localhost${args.pathname}`),
-    accessContext: {
-      authenticated: true,
-      role: "OWNER",
-      entityId: "owner-id" as never,
-    },
+    accessContext:
+      args.accessContext ??
+      ({
+        requesterEntityId: OWNER_ENTITY_ID,
+        role: "OWNER",
+        isOwner: true,
+      } satisfies AccessContext),
     runtime: {
       agentId: "agent-id",
       getSetting: () => undefined,
@@ -399,11 +405,22 @@ describe("document routes", () => {
             index: 0,
             ok: false,
             filename: "document-1",
-            error: "content and filename must be non-empty strings",
+            error: "Item 0 must be an object",
           },
         ],
       });
       expect(addDocument).not.toHaveBeenCalled();
     },
   );
+
+  it("preserves query string searchParams when search URL contains q parameter", async () => {
+    const { ctx, res } = buildCtx({
+      method: "GET",
+      pathname: "/api/documents/search",
+    });
+    ctx.url = new URL("http://localhost/api/documents/search?q=testquery");
+
+    await handleDocumentsRoutes(ctx);
+    expect(res.statusCode).not.toBe(400);
+  });
 });
