@@ -155,4 +155,22 @@ describe("buildRuntimeSettingsProjection", () => {
     expect(settings.EVM_PRIVATE_KEY).toBeUndefined();
     expect(settings.GENERIC_PASSWORD).toBeUndefined();
   });
+
+  it("projects explicit canonical routing omissions as disabled capabilities", () => {
+    const settings = buildRuntimeSettingsProjection({
+      serviceRouting: {
+        llmText: { backend: "cerebras", transport: "direct" },
+      },
+    } as ElizaConfig);
+
+    expect(settings.ELIZA_CANONICAL_LLM_TEXT_ENABLED).toBe("true");
+    expect(settings.ELIZA_CANONICAL_EMBEDDINGS_ENABLED).toBe("false");
+  });
+
+  it("preserves legacy plugin capabilities when canonical routing is absent", () => {
+    const settings = buildRuntimeSettingsProjection({} as ElizaConfig);
+
+    expect(settings.ELIZA_CANONICAL_LLM_TEXT_ENABLED).toBeUndefined();
+    expect(settings.ELIZA_CANONICAL_EMBEDDINGS_ENABLED).toBeUndefined();
+  });
 });
