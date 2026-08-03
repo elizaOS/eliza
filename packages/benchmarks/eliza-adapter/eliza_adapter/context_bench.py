@@ -36,11 +36,11 @@ def make_eliza_llm_query(
     The returned function has the same signature as ``openai_llm_query``
     and ``anthropic_llm_query`` in context-bench's ``run_benchmark.py``::
 
-        async def query(context: str, question: str) -> str: ...
+        async def query(context: str, question: str, task_id: str) -> str: ...
     """
     _client = client or ElizaClient()
 
-    async def eliza_llm_query(context: str, question: str) -> str:
+    async def eliza_llm_query(context: str, question: str, task_id: str) -> str:
         """Query eliza for an answer given context and question."""
         response = _client.send_message(
             text=(
@@ -52,7 +52,7 @@ def make_eliza_llm_query(
             ),
             context={
                 "benchmark": "context_bench",
-                "task_id": "context_query",
+                "task_id": task_id,
                 "question": question,
                 "passages": [context],
             },

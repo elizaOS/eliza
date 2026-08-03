@@ -35,7 +35,7 @@ class TestContextBenchRunner:
         """Test setting LLM query function."""
         runner = ContextBenchRunner()
 
-        async def mock_query(context: str, question: str) -> str:
+        async def mock_query(context: str, question: str, task_id: str) -> str:
             return "mock answer"
 
         runner.set_llm_query_fn(mock_query)
@@ -71,9 +71,12 @@ class TestContextBenchRunnerAsync:
         """Test quick evaluation run."""
         call_count = 0
 
-        async def mock_query(context: str, question: str) -> str:
+        task_ids: list[str] = []
+
+        async def mock_query(context: str, question: str, task_id: str) -> str:
             nonlocal call_count
             call_count += 1
+            task_ids.append(task_id)
             # Return the expected answer pattern for fact needles
             return "TEST123"
 
@@ -97,10 +100,11 @@ class TestContextBenchRunnerAsync:
         assert results is not None
         assert results.metrics.total_tasks > 0
         assert call_count > 0
+        assert task_ids == [result.task_id for result in results.results]
 
     async def test_run_position_sweep(self) -> None:
         """Test position sweep run."""
-        async def mock_query(context: str, question: str) -> str:
+        async def mock_query(context: str, question: str, task_id: str) -> str:
             # Extract the expected answer from the context
             # For this smoke test, a fixed answer is enough.
             return "answer"
@@ -127,7 +131,7 @@ class TestContextBenchRunnerAsync:
 
     async def test_results_contain_comparison(self) -> None:
         """Test that results contain leaderboard comparison."""
-        async def mock_query(context: str, question: str) -> str:
+        async def mock_query(context: str, question: str, task_id: str) -> str:
             return "answer"
 
         config = ContextBenchConfig(
@@ -151,7 +155,7 @@ class TestContextBenchRunnerAsync:
 
     async def test_results_contain_summary(self) -> None:
         """Test that results contain summary."""
-        async def mock_query(context: str, question: str) -> str:
+        async def mock_query(context: str, question: str, task_id: str) -> str:
             return "answer"
 
         config = ContextBenchConfig(

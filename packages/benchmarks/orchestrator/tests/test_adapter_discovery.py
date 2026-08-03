@@ -1532,6 +1532,9 @@ def test_taubench_extracts_pass_hat_k_dict_shape() -> None:
     )
 
     assert score.score == 0.25
+    assert score.metrics["avg_reward"] == 0.0
+    assert score.metrics["overall_tool_accuracy"] is None
+    assert score.metrics["overall_policy_compliance"] is None
 
 
 def test_personality_score_uses_task_pass_rate_not_calibration_score(
@@ -3777,6 +3780,7 @@ def test_action_calling_eliza_generation_uses_captured_runtime_calls() -> None:
         "eliza",
         "gpt-oss-120b",
         case,
+        "action-calling-test-case",
         128,
         0.0,
         "auto",

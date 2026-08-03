@@ -74,6 +74,7 @@ class Env(object):
             user_strategy=user_strategy, model=user_model, provider=user_provider
         )
         self.actions: List[Action] = []
+        self.benchmark_rollout_id: Optional[str] = None
 
     def reset(self, task_index: Optional[int] = None) -> EnvResetResponse:
         if task_index is None:

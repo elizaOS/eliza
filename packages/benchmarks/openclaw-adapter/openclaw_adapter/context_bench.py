@@ -2,7 +2,7 @@
 
 Mirrors :func:`eliza_adapter.context_bench.make_eliza_llm_query` and
 :func:`hermes_adapter.context_bench.make_hermes_llm_query`: returns an
-``async def query(context: str, question: str) -> str``.
+``async def query(context: str, question: str, task_id: str) -> str``.
 
 The adapter is intentionally thin because context-bench has no tool use or
 multi-turn state. The prompt still crosses OpenClaw's embedded runtime and the
@@ -25,7 +25,7 @@ def make_openclaw_llm_query(
     _client = client or OpenClawClient()
     _client.wait_until_ready(timeout=120)
 
-    async def openclaw_llm_query(context: str, question: str) -> str:
+    async def openclaw_llm_query(context: str, question: str, task_id: str) -> str:
         prompt = (
             "Given the following context, answer the question precisely "
             "and concisely.\n\n"
@@ -38,7 +38,7 @@ def make_openclaw_llm_query(
                 prompt,
                 context={
                     "benchmark": "context_bench",
-                    "task_id": "context_query",
+                    "task_id": task_id,
                     "messages": [{"role": "user", "content": prompt}],
                 },
             )

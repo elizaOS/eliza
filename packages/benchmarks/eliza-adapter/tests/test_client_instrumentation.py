@@ -171,6 +171,7 @@ def test_send_message_preserves_usage_tool_calls_metadata_and_telemetry(
         "snapshot_scope": "turn",
         "requested_step": 3,
         "total_steps": 1,
+        "outbox": [],
         "steps": [
             {
                 "step": 3,

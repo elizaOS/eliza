@@ -20,7 +20,7 @@ from elizaos_context_bench.types import (
     NeedlePosition,
 )
 
-LLMQueryFn = Callable[[str, str], Awaitable[str]]
+LLMQueryFn = Callable[[str, str, str], Awaitable[str]]
 
 
 class ContextBenchRunner:

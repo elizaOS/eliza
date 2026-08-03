@@ -1,7 +1,7 @@
 """Context-bench query function backed by hermes-agent.
 
 Mirrors :func:`eliza_adapter.context_bench.make_eliza_llm_query`: returns an
-``async def query(context: str, question: str) -> str`` that the
+``async def query(context: str, question: str, task_id: str) -> str`` that the
 ``ContextBenchRunner`` invokes for each needle-in-a-haystack task.
 
 The adapter is intentionally thin — context-bench has no tool use, no
@@ -28,7 +28,7 @@ def make_hermes_llm_query(
     except Exception as exc:  # pragma: no cover — surface but don't block import
         logger.debug("hermes wait_until_ready failed: %s", exc)
 
-    async def hermes_llm_query(context: str, question: str) -> str:
+    async def hermes_llm_query(context: str, question: str, task_id: str) -> str:
         prompt = (
             "Given the following context, answer the question precisely "
             "and concisely.\n\n"
@@ -41,7 +41,7 @@ def make_hermes_llm_query(
                 prompt,
                 context={
                     "benchmark": "context_bench",
-                    "task_id": "context_query",
+                    "task_id": task_id,
                     "messages": [{"role": "user", "content": prompt}],
                 },
             )

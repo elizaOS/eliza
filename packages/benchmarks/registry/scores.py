@@ -458,9 +458,9 @@ def _score_from_taubench_json(data: JSONValue) -> ScoreExtraction:
         higher_is_better=True,
         metrics={
             "overall_success_rate": overall,
-            "overall_tool_accuracy": root.get("overall_tool_accuracy") or 0,
-            "overall_policy_compliance": root.get("overall_policy_compliance") or 0,
-            "avg_reward": root.get("avg_reward") or 0,
+            "overall_tool_accuracy": root.get("overall_tool_accuracy"),
+            "overall_policy_compliance": root.get("overall_policy_compliance"),
+            "avg_reward": root.get("avg_reward"),
             "num_tasks": num_tasks,
             "judge_degraded_rollouts": judge_degraded_rollouts,
         },

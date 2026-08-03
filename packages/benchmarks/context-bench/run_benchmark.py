@@ -126,7 +126,8 @@ def _make_mock_llm_query():
         (r"The command to execute is ([^.]+)\.", "What command should be executed?"),
     ]
 
-    async def mock_llm_query(context: str, question: str) -> str:
+    async def mock_llm_query(context: str, question: str, task_id: str) -> str:
+        del task_id
         if question in semantic_answers:
             return semantic_answers[question]
         for pattern, pattern_question in patterns:

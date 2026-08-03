@@ -8,8 +8,10 @@ from types import SimpleNamespace
 import pytest
 
 from eliza_adapter.tau_bench import (
+    _compute_cost_usd,
     _eliza_reply_aliases_from_response,
     _message_to_action,
+    _rollout_session_id,
 )
 from elizaos_tau_bench.types import RESPOND_ACTION_FIELD_NAME, RESPOND_ACTION_NAME
 
@@ -92,6 +94,16 @@ def test_allowed_send_message_tool_wins_over_eliza_reply_alias() -> None:
     assert action.name == "send_message"
 
 
+def test_allowed_send_reply_tool_wins_over_eliza_reply_alias() -> None:
+    action = _message_to_action(
+        _tool_message("send_reply", {"text": "Use the Tau tool."}),
+        allowed_tool_names=frozenset({"send_reply"}),
+        eliza_reply_aliases=frozenset({"send_reply"}),
+    )
+
+    assert action.name == "send_reply"
+
+
 def test_reply_alias_requires_benchmark_action_provenance() -> None:
     proven = SimpleNamespace(
         params={
@@ -114,6 +126,43 @@ def test_reply_alias_requires_benchmark_action_provenance() -> None:
 
     assert _eliza_reply_aliases_from_response(proven) == frozenset({"send_message"})
     assert _eliza_reply_aliases_from_response(unrelated) == frozenset()
+
+
+@pytest.mark.parametrize(
+    ("command", "operation"),
+    [
+        ("send_message", "SEND_MESSAGE"),
+        ("send_reply", "TYPE"),
+        ("send_reply", "SEND_REPLY"),
+    ],
+)
+def test_live_send_reply_capture_is_proven_by_benchmark_action(
+    command: str, operation: str
+) -> None:
+    response = SimpleNamespace(
+        params={
+            "BENCHMARK_ACTION": {
+                "tool_name": "send_reply",
+                "command": command,
+                "operation": operation,
+            }
+        }
+    )
+
+    assert _eliza_reply_aliases_from_response(response) == frozenset({"send_reply"})
+
+
+def test_unknown_model_cost_is_unavailable_instead_of_zero() -> None:
+    assert _compute_cost_usd("gemma-4-31b", 10_000, 500) is None
+    assert _compute_cost_usd(None, 10_000, 500) is None
+
+
+def test_rollout_session_id_preserves_task_identity() -> None:
+    env = SimpleNamespace(benchmark_rollout_id="retail-4-trial-2-scenario-base")
+
+    session_id = _rollout_session_id(env, task_index=4)
+
+    assert session_id.startswith("tau-retail-4-trial-2-scenario-base-")
 
 
 def test_non_respond_tool_arguments_are_preserved() -> None:

@@ -79,6 +79,8 @@ def test_report_and_trajectories_json_contract(tmp_path):
         "agent_cost",
         "error",
     } <= set(report["domain_results"]["retail"][0])
+    assert report["domain_results"]["retail"][0]["user_cost"] == 0.0
+    assert report["domain_results"]["retail"][0]["agent_cost"] == 0.0
 
     assert len(trajectories) == 2
     assert {

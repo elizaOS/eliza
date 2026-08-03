@@ -42,12 +42,14 @@ _CEREBRAS_PRICING: dict[str, dict[str, float]] = {
 }
 
 
-def _cost_usd(model: str | None, prompt_tokens: int, completion_tokens: int) -> float:
+def _cost_usd(
+    model: str | None, prompt_tokens: int, completion_tokens: int
+) -> float | None:
     if not model:
-        return 0.0
+        return None
     pricing = _CEREBRAS_PRICING.get(model.rsplit("/", 1)[-1])
     if pricing is None:
-        return 0.0
+        return None
     return (
         (prompt_tokens / 1_000_000.0) * pricing["input_per_million_usd"]
         + (completion_tokens / 1_000_000.0) * pricing["output_per_million_usd"]
@@ -136,7 +138,7 @@ class _HarnessTauAgentBase(BaseTauAgent):
         reset = env.reset(task_index=task_index)
         info: dict[str, Any] = reset.info.model_dump()
         reward = 0.0
-        total_cost = 0.0
+        total_cost: float | None = None
         num_tool_calls = 0
         actions_taken: list[Action] = []
 
@@ -148,11 +150,13 @@ class _HarnessTauAgentBase(BaseTauAgent):
         try:
             for _step in range(max_num_steps):
                 text, tool_calls, usage = self._chat_step(messages, env.tools_info)
-                total_cost += _cost_usd(
+                step_cost = _cost_usd(
                     self.model,
                     int(usage.get("prompt_tokens") or 0),
                     int(usage.get("completion_tokens") or 0),
                 )
+                if step_cost is not None:
+                    total_cost = (total_cost or 0.0) + step_cost
 
                 action = _action_from_response(text, tool_calls)
                 actions_taken.append(action)

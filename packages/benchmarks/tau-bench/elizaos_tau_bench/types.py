@@ -49,8 +49,8 @@ class TaskRunResult:
     r_outputs: Optional[float] = None
     num_turns: int = 0
     num_tool_calls: int = 0
-    user_cost: float = 0.0
-    agent_cost: float = 0.0
+    user_cost: float | None = None
+    agent_cost: float | None = None
     error: Optional[str] = None
     messages: list[dict[str, Any]] = field(default_factory=list)
     info: dict[str, Any] = field(default_factory=dict)

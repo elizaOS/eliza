@@ -1,7 +1,7 @@
 """Context-bench query function backed by the Smithers harness.
 
 Mirrors ``hermes_adapter.context_bench`` / ``openclaw_adapter.context_bench``:
-returns an ``async def query(context, question) -> str`` the ContextBenchRunner
+returns an ``async def query(context, question, task_id) -> str`` the ContextBenchRunner
 invokes per needle-in-a-haystack task. No tools, no multi-turn state.
 """
 
@@ -22,7 +22,7 @@ def make_smithers_llm_query(client: SmithersClient | None = None):
     except Exception as exc:  # pragma: no cover — surface but don't block import
         logger.debug("smithers wait_until_ready failed: %s", exc)
 
-    async def smithers_llm_query(context: str, question: str) -> str:
+    async def smithers_llm_query(context: str, question: str, task_id: str) -> str:
         prompt = (
             "Given the following context, answer the question precisely "
             "and concisely.\n\n"
@@ -35,7 +35,7 @@ def make_smithers_llm_query(client: SmithersClient | None = None):
                 prompt,
                 context={
                     "benchmark": "context_bench",
-                    "task_id": "context_query",
+                    "task_id": task_id,
                     "messages": [{"role": "user", "content": prompt}],
                 },
             )

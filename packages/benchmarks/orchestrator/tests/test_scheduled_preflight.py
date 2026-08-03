@@ -121,11 +121,26 @@ def test_scheduled_profile_selects_complete_action_calling_workload(
     scheduled_preflight.verify_scheduled_profile()
 
     profile.write_text(
-        '{"extra":{"per_benchmark":{"action-calling":'
+        '{"extra":{"compare_to_high_score":false,"per_benchmark":{"action-calling":'
         '{"max_examples":2,"expected_examples":63,"expand_scenarios":true}}}}',
         encoding="utf-8",
     )
     with pytest.raises(RuntimeError, match="complete publication workload"):
+        scheduled_preflight.verify_scheduled_profile()
+
+
+def test_scheduled_profile_rejects_leaderboard_comparison(
+    tmp_path: Path, monkeypatch
+) -> None:
+    profile = tmp_path / "scheduled-core.json"
+    payload = json.loads(
+        scheduled_preflight.SCHEDULED_PROFILE.read_text(encoding="utf-8")
+    )
+    payload["extra"]["compare_to_high_score"] = True
+    profile.write_text(json.dumps(payload), encoding="utf-8")
+    monkeypatch.setattr(scheduled_preflight, "SCHEDULED_PROFILE", profile)
+
+    with pytest.raises(RuntimeError, match="disable full-corpus leaderboard"):
         scheduled_preflight.verify_scheduled_profile()
 
 
@@ -176,6 +191,7 @@ def test_scheduled_profile_replaces_action_calling_smoke_cap() -> None:
     assert effective.extra_config["max_examples"] is None
     assert effective.extra_config["expected_examples"] == 63
     assert effective.extra_config["expand_scenarios"] is True
+    assert effective.extra_config["compare_to_high_score"] is False
 
 
 def test_agentbench_is_not_a_scheduled_provisioner() -> None:

@@ -43,7 +43,7 @@ class AgentRunResult:
     actions_taken: list[Action] = field(default_factory=list)
     num_tool_calls: int = 0
     num_turns: int = 0
-    agent_cost: float = 0.0
+    agent_cost: float | None = None
     error: Optional[str] = None
 
 
@@ -89,7 +89,7 @@ class LiteLLMToolCallingAgent(BaseTauAgent):
         obs = reset.observation
         info: dict[str, Any] = reset.info.model_dump()
         reward = 0.0
-        total_cost = 0.0
+        total_cost: float | None = None
         num_tool_calls = 0
         actions_taken: list[Action] = []
 
@@ -111,8 +111,8 @@ class LiteLLMToolCallingAgent(BaseTauAgent):
                 step_cost = (
                     res._hidden_params.get("response_cost") if hasattr(res, "_hidden_params") else None
                 )
-                if step_cost:
-                    total_cost += step_cost
+                if isinstance(step_cost, (int, float)) and not isinstance(step_cost, bool):
+                    total_cost = (total_cost or 0.0) + float(step_cost)
 
                 action = _message_to_action(next_message)
                 actions_taken.append(action)
@@ -227,6 +227,7 @@ class MockTauAgent(BaseTauAgent):
             actions_taken=actions_taken,
             num_tool_calls=num_tool_calls,
             num_turns=len(messages),
+            agent_cost=0.0,
         )
 
 

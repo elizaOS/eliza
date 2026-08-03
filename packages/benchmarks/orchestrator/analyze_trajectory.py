@@ -891,7 +891,7 @@ def summarize(
             tokens = extract_tokens(obj)
             if tokens is None and not prompt_text and latency_ms is None:
                 continue
-            tokens = tokens or TurnTokens()
+            tokens = tokens or TurnTokens(llm_calls=0)
             records.append(
                 TurnRecord(
                     file=str(f.relative_to(run_dir)),

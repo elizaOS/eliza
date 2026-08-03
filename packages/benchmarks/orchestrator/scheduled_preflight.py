@@ -84,6 +84,10 @@ def verify_scheduled_profile() -> None:
     if not isinstance(profile, dict):
         raise RuntimeError("scheduled benchmark profile must be a JSON object")
     extra = profile.get("extra")
+    if not isinstance(extra, dict) or extra.get("compare_to_high_score") is not False:
+        raise RuntimeError(
+            "scheduled smoke workloads must disable full-corpus leaderboard comparisons"
+        )
     per_benchmark = extra.get("per_benchmark") if isinstance(extra, dict) else None
     action_config = (
         per_benchmark.get("action-calling") if isinstance(per_benchmark, dict) else None

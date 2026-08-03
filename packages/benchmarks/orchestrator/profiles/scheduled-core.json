@@ -1,5 +1,6 @@
 {
   "extra": {
+    "compare_to_high_score": false,
     "per_benchmark": {
       "action-calling": {
         "max_examples": null,

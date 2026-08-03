@@ -9,6 +9,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from benchmarks.orchestrator.analyze_trajectory import extract_tokens, summarize
+from benchmarks.orchestrator.runner import _collect_run_trajectory_metrics
 
 
 def test_extract_tokens_preserves_explicit_zero_cache_over_nested_fallback() -> None:
@@ -213,6 +214,44 @@ def test_summarize_eliza_core_trajectory_llm_calls(tmp_path: Path) -> None:
     assert summary.cached_tokens == 30
     assert summary.cache_creation_tokens == 5
     assert summary.turns_with_cached_field == 1
+
+
+def test_prompt_only_artifacts_do_not_inflate_model_call_count(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    output_dir = run_dir / "output"
+    output_dir.mkdir(parents=True)
+    (output_dir / "telemetry.jsonl").write_text(
+        json.dumps(
+            {
+                "prompt_text": "live request",
+                "usage": {
+                    "calls": [
+                        {"promptTokens": 100, "completionTokens": 10},
+                        {"promptTokens": 80, "completionTokens": 8},
+                    ]
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (output_dir / "report.json").write_text(
+        json.dumps({"task_id": "same-task", "prompt": "copied report prompt"}),
+        encoding="utf-8",
+    )
+
+    summary, records = summarize(run_dir)
+    _, token_metrics, _, performance_metrics, _ = _collect_run_trajectory_metrics(
+        run_dir, duration_seconds=2.0
+    )
+
+    assert len(records) == 2
+    assert summary.turns == 2
+    assert summary.llm_call_count == 2
+    assert token_metrics["llm_call_count"] == 2
+    assert token_metrics["avg_prompt_tokens"] == 90
+    assert token_metrics["avg_completion_tokens"] == 9
+    assert performance_metrics["throughput_per_second"] == 1
 
 
 def test_summarize_opencode_step_finish_part_tokens(tmp_path: Path) -> None:

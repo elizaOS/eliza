@@ -242,6 +242,9 @@ class TauBenchRunner:
         try:
             env = self._make_env(domain, task_index)
             self._apply_scenario_note(env, task_index, scenario_note)
+            env.benchmark_rollout_id = (
+                f"{domain}-{task_index}-trial-{trial}-scenario-{scenario_id}"
+            )
         except Exception as exc:
             # error-policy:J2 Attach the scheduled rollout identity before the
             # full-run boundary aborts without writing a partial report.
@@ -317,7 +320,7 @@ class TauBenchRunner:
             else:
                 success = bool(judge_passed and run.reward >= 1.0)
 
-        user_cost = 0.0
+        user_cost: float | None = None
         ri = run.info.get("user_cost") if isinstance(run.info, dict) else None
         if isinstance(ri, (int, float)):
             user_cost = float(ri)

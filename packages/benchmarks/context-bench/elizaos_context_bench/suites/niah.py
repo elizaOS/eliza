@@ -21,7 +21,7 @@ from elizaos_context_bench.types import (
 )
 
 # Type for the LLM query function
-LLMQueryFn = Callable[[str, str], Awaitable[str]]
+LLMQueryFn = Callable[[str, str, str], Awaitable[str]]
 
 # Include multiple needle types to avoid a single-template benchmark.
 _VALID_NIAH_NEEDLE_TYPES: list[NeedleType] = [
@@ -47,7 +47,8 @@ class NIAHBenchmarkSuite:
 
         Args:
             config: Benchmark configuration.
-            llm_query_fn: Async function to query LLM with (context, question) -> answer.
+            llm_query_fn: Async function to query LLM with
+                (context, question, task_id) -> answer.
             embedding_fn: Optional function for semantic similarity.
             seed: Random seed for reproducibility.
 
@@ -125,7 +126,7 @@ class NIAHBenchmarkSuite:
         try:
             # Query the LLM
             raw_answer = await asyncio.wait_for(
-                self.llm_query_fn(task.context, task.question),
+                self.llm_query_fn(task.context, task.question, task.id),
                 timeout=self.config.timeout_per_task_ms / 1000,
             )
             predicted_answer = str(raw_answer) if raw_answer is not None else ""

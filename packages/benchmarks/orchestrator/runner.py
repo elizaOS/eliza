@@ -1090,7 +1090,9 @@ def _collect_run_trajectory_metrics(
         total_tokens = (prompt_tokens or 0) + (completion_tokens or 0)
     else:
         total_tokens = None
-    llm_call_count: int | None = summary.turns if summary.turns else None
+    llm_call_count: int | None = (
+        summary.llm_call_count if summary.llm_call_count else None
+    )
     telemetry_missing = total_tokens in (None, 0) or llm_call_count in (None, 0)
     trajectory_summary = {
         "files": summary.files,
@@ -1107,11 +1109,11 @@ def _collect_run_trajectory_metrics(
         "completion_tokens": completion_tokens,
         "total_tokens": total_tokens,
         "cached_tokens": summary.cached_tokens,
-        "avg_prompt_tokens": (prompt_tokens / summary.turns)
-        if (prompt_tokens and summary.turns)
+        "avg_prompt_tokens": (prompt_tokens / summary.llm_call_count)
+        if (prompt_tokens and summary.llm_call_count)
         else None,
-        "avg_completion_tokens": (completion_tokens / summary.turns)
-        if (completion_tokens and summary.turns)
+        "avg_completion_tokens": (completion_tokens / summary.llm_call_count)
+        if (completion_tokens and summary.llm_call_count)
         else None,
         "telemetry_missing": telemetry_missing,
     }
@@ -1121,7 +1123,11 @@ def _collect_run_trajectory_metrics(
         "turns_with_cached_field": summary.turns_with_cached_field,
         "cache_hit_ratio": summary.cache_hit_ratio,
     }
-    throughput = (summary.turns / duration_seconds) if duration_seconds > 0 else None
+    throughput = (
+        summary.llm_call_count / duration_seconds
+        if duration_seconds > 0 and summary.llm_call_count
+        else None
+    )
     performance_metrics = {
         "duration_seconds": duration_seconds,
         "mean_latency_ms": summary.mean_latency_ms,
@@ -1207,17 +1213,18 @@ def _complete_token_metrics(
     total = tokens.get("total_tokens")
     calls = tokens.get("llm_call_count")
     cached = tokens.get("cached_tokens", tokens.get("cache_read_input_tokens"))
-    turns = summary.get("turns")
     prompt_chars = summary.get("prompt_chars")
 
     source: str | None = tokens.get("token_estimate_source")
-    if not isinstance(calls, (int, float)) or isinstance(calls, bool):
-        calls = (
-            turns
-            if isinstance(turns, (int, float)) and not isinstance(turns, bool)
-            else 0
-        )
-    calls = int(calls)
+    if (
+        not isinstance(calls, (int, float))
+        or isinstance(calls, bool)
+        or calls <= 0
+        or int(calls) != calls
+    ):
+        calls = None
+    else:
+        calls = int(calls)
 
     if not isinstance(prompt, (int, float)) or isinstance(prompt, bool):
         prompt = _estimated_tokens_from_chars(prompt_chars)
@@ -1258,9 +1265,9 @@ def _complete_token_metrics(
     tokens["output_tokens"] = int(completion)
     tokens["total_tokens"] = int(total)
     tokens["cached_tokens"] = int(cached)
-    tokens["avg_prompt_tokens"] = (int(prompt) / calls) if calls else 0
-    tokens["avg_completion_tokens"] = (int(completion) / calls) if calls else 0
-    tokens["telemetry_missing"] = source is not None or int(total) <= 0 or calls <= 0
+    tokens["avg_prompt_tokens"] = (int(prompt) / calls) if calls else None
+    tokens["avg_completion_tokens"] = (int(completion) / calls) if calls else None
+    tokens["telemetry_missing"] = source is not None or int(total) <= 0 or calls is None
     if source is not None:
         tokens["token_estimate_source"] = source
     return tokens
@@ -1279,6 +1286,17 @@ def _is_synthetic_agent(agent: str) -> bool:
 
 def _is_numeric_score(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _high_score_comparison(
+    benchmark_id: str,
+    score: float | None,
+    request: RunRequest,
+) -> tuple[str | None, float | None, float | None]:
+    """Compare only workloads that explicitly retain leaderboard comparability."""
+    if request.extra_config.get("compare_to_high_score") is False:
+        return None, None, None
+    return delta_to_high_score(benchmark_id, score)
 
 
 def _publication_quarantine_reason(
@@ -1460,6 +1478,12 @@ def _publication_warnings(
     total_questions = metrics.get("total_questions")
     if isinstance(total_questions, (int, float)) and total_questions <= 2:
         warnings.append(f"insufficient_total_questions:{total_questions!r}")
+    total_tests = metrics.get("total_tests")
+    if isinstance(total_tests, (int, float)) and total_tests <= 2:
+        warnings.append(f"insufficient_total_tests:{total_tests!r}")
+    num_tasks = metrics.get("num_tasks")
+    if isinstance(num_tasks, (int, float)) and num_tasks <= 1:
+        warnings.append(f"insufficient_num_tasks:{num_tasks!r}")
     scenario_count = metrics.get("scenario_count")
     if isinstance(scenario_count, (int, float)) and scenario_count <= 1:
         warnings.append(f"insufficient_scenario_count:{scenario_count!r}")
@@ -2904,7 +2928,9 @@ def _run_synthetic_harness_outcome(
             unit = "ratio"
             higher_is_better = True
 
-    high_label, high_value, delta = delta_to_high_score(adapter.id, score)
+    high_label, high_value, delta = _high_score_comparison(
+        adapter.id, score, effective_request
+    )
 
     update_run_result(
         conn,
@@ -3647,7 +3673,9 @@ def run_benchmarks(
             if canonical_error:
                 metrics["canonical_error"] = canonical_error
 
-        high_label, high_value, delta = delta_to_high_score(adapter.id, score)
+        high_label, high_value, delta = _high_score_comparison(
+            adapter.id, score, effective_request
+        )
 
         artifacts = [str(bench_output_root), str(progress_path)]
         update_run_result(

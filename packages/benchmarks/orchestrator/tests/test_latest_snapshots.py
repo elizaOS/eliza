@@ -24,6 +24,8 @@ from benchmarks.orchestrator.adapters import (
 from benchmarks.orchestrator.runner import (
     _build_latest_matrix_contract,
     _complete_token_metrics,
+    _high_score_comparison,
+    _publication_warnings,
     _promote_latest_comparable_real_cohorts,
     _rebuild_latest_result_snapshots,
     _subscription_group_quarantine_reason,
@@ -31,6 +33,7 @@ from benchmarks.orchestrator.runner import (
 from benchmarks.orchestrator.types import (
     BenchmarkAdapter,
     ExecutionContext,
+    RunRequest,
     ScoreSummary,
 )
 
@@ -146,8 +149,8 @@ def test_complete_token_metrics_marks_all_zero_telemetry_missing() -> None:
         result_json_path=None,
     )
 
-    assert metrics["llm_call_count"] == 0
-    assert metrics["call_count"] == 0
+    assert metrics["llm_call_count"] is None
+    assert metrics["call_count"] is None
     assert metrics["total_tokens"] == 0
     assert metrics["cached_tokens"] == 0
     assert metrics["telemetry_missing"] is True
@@ -242,11 +245,58 @@ def test_complete_token_metrics_marks_estimated_telemetry_missing() -> None:
         result_json_path=None,
     )
 
-    assert metrics["llm_call_count"] == 2
+    assert metrics["llm_call_count"] is None
     assert metrics["input_tokens"] == 100
     assert metrics["total_tokens"] == 100
     assert metrics["token_estimate_source"] == "prompt_chars_div_4"
     assert metrics["telemetry_missing"] is True
+
+
+def test_complete_token_metrics_rejects_fractional_call_count() -> None:
+    metrics = _complete_token_metrics(
+        token_metrics={
+            "llm_call_count": 0.5,
+            "prompt_tokens": 10,
+            "completion_tokens": 2,
+            "total_tokens": 12,
+        },
+        trajectory_summary={},
+        result_json_path=None,
+    )
+
+    assert metrics["llm_call_count"] is None
+    assert metrics["avg_prompt_tokens"] is None
+    assert metrics["telemetry_missing"] is True
+
+
+def test_smoke_profile_suppresses_full_corpus_high_score_comparison() -> None:
+    request = RunRequest(
+        benchmarks=("tau_bench",),
+        agent="eliza",
+        provider="cerebras",
+        model="gemma-4-31b",
+        extra_config={"compare_to_high_score": False},
+    )
+
+    assert _high_score_comparison("tau_bench", 1.0, request) == (None, None, None)
+
+
+def test_publication_warnings_cover_paid_smoke_count_shapes() -> None:
+    bfcl_warnings = _publication_warnings(
+        benchmark_id="bfcl",
+        status="succeeded",
+        token_metrics={"total_tokens": 800, "llm_call_count": 2},
+        metrics={"total_tests": 2},
+    )
+    tau_warnings = _publication_warnings(
+        benchmark_id="tau_bench",
+        status="succeeded",
+        token_metrics={"total_tokens": 294_200, "llm_call_count": 29},
+        metrics={"num_tasks": 1},
+    )
+
+    assert bfcl_warnings == ["insufficient_total_tests:2"]
+    assert tau_warnings == ["insufficient_num_tasks:1"]
 
 
 def test_subscription_latest_selection_uses_one_complete_run_group() -> None:

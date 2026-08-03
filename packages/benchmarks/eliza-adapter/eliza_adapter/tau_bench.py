@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import uuid
 from typing import Any, Final
 
@@ -45,7 +46,11 @@ logger = logging.getLogger(__name__)
 
 _TOOL_DESCRIPTION_LIMIT = 280
 _OBSERVATION_LIMIT = 2400
-_ELIZA_REPLY_TOOL_ALIASES = frozenset({"send_message"})
+_ELIZA_REPLY_TOOL_ALIASES = frozenset({"send_message", "send_reply"})
+_ELIZA_REPLY_COMMANDS = frozenset(
+    {"reply", "final_reply", "send_message", "send_reply"}
+)
+_ELIZA_REPLY_OPERATIONS = frozenset({"REPLY", "SEND_MESSAGE", "SEND_REPLY"})
 
 _TAU_RETAIL_TOOL_NUDGE = (
     "TauBench execution hint: after get_order_details for an exchange, do not "
@@ -65,13 +70,13 @@ _CEREBRAS_PRICING: Final[dict[str, dict[str, float]]] = {
 
 def _compute_cost_usd(
     model: str | None, prompt_tokens: int, completion_tokens: int
-) -> float:
+) -> float | None:
     if not model:
-        return 0.0
+        return None
     bare = model.rsplit("/", 1)[-1]
     pricing = _CEREBRAS_PRICING.get(bare)
     if pricing is None:
-        return 0.0
+        return None
     return (prompt_tokens / 1_000_000.0) * pricing["input_per_million_usd"] + (
         completion_tokens / 1_000_000.0
     ) * pricing["output_per_million_usd"]
@@ -303,9 +308,27 @@ def _eliza_reply_aliases_from_response(response: Any) -> frozenset[str]:
         return frozenset()
     operation = str(action.get("operation") or "").upper()
     command = str(action.get("command") or "").lower()
-    if operation != "REPLY" and command not in {"reply", "final_reply", "send_message"}:
+    if operation not in _ELIZA_REPLY_OPERATIONS and command not in _ELIZA_REPLY_COMMANDS:
         return frozenset()
     return frozenset({str(tool_name)})
+
+
+def _rollout_session_id(env: Env, task_index: int) -> str:
+    raw_identity = getattr(env, "benchmark_rollout_id", None)
+    if not isinstance(raw_identity, str) or not raw_identity.strip():
+        class_name = type(env).__name__.lower()
+        domain = (
+            "retail"
+            if "retail" in class_name
+            else "airline"
+            if "airline" in class_name
+            else "task"
+        )
+        raw_identity = f"{domain}-{task_index}"
+    slug = re.sub(r"[^a-zA-Z0-9_.-]+", "-", raw_identity).strip("-")
+    if not slug:
+        raise ValueError("tau-bench rollout identity cannot be empty")
+    return f"tau-{slug[:80]}-{uuid.uuid4().hex[:12]}"
 
 
 def _message_to_action(
@@ -428,14 +451,14 @@ class ElizaTauAgent(BaseTauAgent):
         obs = reset.observation
         info: dict[str, Any] = reset.info.model_dump()
         reward = 0.0
-        total_cost = 0.0
+        total_cost: float | None = None
         num_tool_calls = 0
         actions_taken: list[Action] = []
 
         # Fresh server session per task — this avoids the runtime carrying
         # stale state across tasks (relevant for retail/airline tools that
         # mutate shared data).
-        self._session_id = f"tau-{uuid.uuid4().hex[:12]}"
+        self._session_id = _rollout_session_id(env, task_index)
         self.client.reset(task_id=self._session_id, benchmark="tau_bench")
 
         messages: list[dict[str, Any]] = [
@@ -472,9 +495,11 @@ class ElizaTauAgent(BaseTauAgent):
                         or usage.get("output_tokens")
                         or 0
                     )
-                    total_cost += _compute_cost_usd(
+                    step_cost = _compute_cost_usd(
                         self.model, prompt_tokens, completion_tokens
                     )
+                    if step_cost is not None:
+                        total_cost = (total_cost or 0.0) + step_cost
 
                 action = _message_to_action(
                     next_message,
