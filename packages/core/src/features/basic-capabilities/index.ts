@@ -15,7 +15,6 @@ import { withCanonicalActionDocs } from "../../action-docs.ts";
 import { createUniqueUuid } from "../../entities.ts";
 import { logger } from "../../logger.ts";
 import { fetchWithSsrfGuard } from "../../network/index.ts";
-import { containsExternalEnvelopeMarkers } from "../../security/external-content.ts";
 import {
 	imageDescriptionTemplate,
 	postCreationTemplate,
@@ -26,6 +25,7 @@ import {
 	recordOwnerGrant,
 } from "../../roles.ts";
 import { TURN_CONTROL_ROUTES } from "../../runtime/turn-routes";
+import { containsExternalEnvelopeMarkers } from "../../security/external-content.ts";
 import { SensitiveRequestDispatchRegistryService } from "../../sensitive-requests/dispatch-registry.ts";
 import {
 	bridgeActionCompletedToStreams,

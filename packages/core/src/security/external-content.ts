@@ -239,9 +239,7 @@ export function containsExternalEnvelopeMarkers(text: string): boolean {
 	return (
 		text.includes(EXTERNAL_CONTENT_START) ||
 		text.includes(EXTERNAL_CONTENT_END) ||
-		text.includes(
-			"SECURITY NOTICE: The following content is from an EXTERNAL",
-		)
+		text.includes("SECURITY NOTICE: The following content is from an EXTERNAL")
 	);
 }
 
