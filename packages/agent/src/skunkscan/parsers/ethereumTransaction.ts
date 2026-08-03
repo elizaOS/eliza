@@ -36,15 +36,21 @@ export function parseEthereumTransaction(
     }),
   );
 
+  // Addresses are lowercased before being added: Moralis returns
+  // checksummed (mixed-case) addresses, but the protocol registry
+  // (protocols/ethereum/*.ts) stores its keys lowercase, and
+  // lookupProtocol() does an exact string match with no case
+  // normalization of its own - without this, every registry lookup
+  // would silently miss.
   const programOrContractIds = new Set<string>();
 
   if (transaction?.toAddress) {
-    programOrContractIds.add(transaction.toAddress);
+    programOrContractIds.add(transaction.toAddress.toLowerCase());
   }
 
   for (const transfer of transaction?.tokenTransfers ?? []) {
     if (transfer.address) {
-      programOrContractIds.add(transfer.address);
+      programOrContractIds.add(transfer.address.toLowerCase());
     }
   }
 
@@ -58,7 +64,7 @@ export function parseEthereumTransaction(
       interaction.spender;
 
     if (typeof address === "string" && address.length > 0) {
-      programOrContractIds.add(address);
+      programOrContractIds.add(address.toLowerCase());
     }
   }
 
