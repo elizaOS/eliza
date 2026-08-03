@@ -4152,10 +4152,10 @@ export async function startEliza(
   // default preset. Skipped when the env var is absent.
   let sandboxRouteAgentId: string | null = null;
   {
-    const { applySandboxCharacterFromEnv, resolveSandboxRouteAgentId } =
-      await import("./sandbox-character.ts");
-    applySandboxCharacterFromEnv(config);
-    sandboxRouteAgentId = resolveSandboxRouteAgentId();
+    const { applySandboxIdentityFromEnv } = await import(
+      "./sandbox-character.ts"
+    );
+    sandboxRouteAgentId = applySandboxIdentityFromEnv(config);
   }
 
   // 3b. Canonical file boot (sovereign identity): when configured via
@@ -5755,8 +5755,15 @@ export async function startEliza(
             fast: true,
           });
 
-          // Reload config from disk (updated by API)
+          // Reload config from disk (updated by API). Provisioned containers
+          // must re-apply their injected character on every hot reload: the
+          // injection is intentionally not serialized into eliza.json.
           const freshConfig = loadElizaConfig();
+          const { applySandboxIdentityFromEnv } = await import(
+            "./sandbox-character.ts"
+          );
+          const freshSandboxRouteAgentId =
+            applySandboxIdentityFromEnv(freshConfig);
 
           // Propagate secrets & cloud config into process.env so plugins
           // (especially plugin-elizacloud) can discover them.  The initial
@@ -5818,6 +5825,9 @@ export async function startEliza(
           // Rebuild character from the fresh config so first-run changes
           // (name, bio, style, etc.) are picked up on restart.
           const freshCharacter = buildCharacterFromConfig(freshConfig);
+          if (freshSandboxRouteAgentId) {
+            freshCharacter.id = freshSandboxRouteAgentId as UUID;
+          }
 
           const freshWorkspaceDir =
             freshConfig.agents?.defaults?.workspace ?? workspaceDir;

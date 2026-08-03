@@ -5,6 +5,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   applySandboxCharacterFromEnv,
+  applySandboxIdentityFromEnv,
   resolveSandboxRouteAgentId,
 } from "../sandbox-character.ts";
 
@@ -104,6 +105,36 @@ describe("applySandboxCharacterFromEnv", () => {
     const entry = (out as { agents: { list: Array<Record<string, unknown>> } })
       .agents.list[0];
     expect(entry.name).toBe("Nyx");
+  });
+});
+
+describe("applySandboxIdentityFromEnv", () => {
+  it("re-applies the injected character and routing id to a fresh reload config", () => {
+    const env = {
+      ELIZA_AGENT_CHARACTER_JSON: JSON.stringify({
+        id: "embedded-id",
+        name: "Sol",
+        system: "You are Sol.",
+      }),
+      SANDBOX_ROUTE_AGENT_ID: "route-id",
+    };
+
+    const initial = {} as never;
+    const reloaded = {
+      agents: { list: [{ name: "Eliza", default: true }] },
+    } as never;
+    expect(applySandboxIdentityFromEnv(initial, env)).toBe("route-id");
+    expect(applySandboxIdentityFromEnv(reloaded, env)).toBe("route-id");
+
+    const reloadedPrimary = (
+      reloaded as { agents: { list: Array<Record<string, unknown>> } }
+    ).agents.list[0];
+    expect(reloadedPrimary).toMatchObject({
+      id: "route-id",
+      name: "Sol",
+      system: "You are Sol.",
+      default: true,
+    });
   });
 });
 
