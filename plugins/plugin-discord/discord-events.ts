@@ -34,6 +34,7 @@ import {
 	diffRolePermissions,
 	fetchAuditEntry,
 } from "./permissionEvents";
+import { waitForDiscordIngressReadiness } from "./readiness";
 import type { DiscordService } from "./service";
 import {
 	handleAutocomplete as handleBuiltinAutocomplete,
@@ -343,22 +344,19 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 		// while the async ready sequence is still hydrating canonical owner aliases.
 		// Gate every ingress branch here, including listen-only ingestion, and keep
 		// the MessageManager gate as defense for direct/replay callers.
-		const ready = service.clientReadyPromise;
-		if (ready) {
-			try {
-				await ready;
-			} catch (error) {
-				service.runtime.reportError(
-					"discord:gateway-message-before-ready",
-					error,
-					{
-						accountId,
-						messageId: message.id,
-						channelId: message.channel.id,
-					},
-				);
-				return;
-			}
+		try {
+			await waitForDiscordIngressReadiness(service.clientReadyPromise);
+		} catch (error) {
+			service.runtime.reportError(
+				"discord:gateway-message-before-ready",
+				error,
+				{
+					accountId,
+					messageId: message.id,
+					channelId: message.channel.id,
+				},
+			);
+			return;
 		}
 
 		if (service.messageManager) {

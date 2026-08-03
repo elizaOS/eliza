@@ -77,6 +77,7 @@ import {
 	appendCoalescedDiscordMetadata,
 	type DiscordMessageWithCoalescedMetadata,
 } from "./message-coalesce";
+import { waitForDiscordIngressReadiness } from "./readiness";
 import {
 	applyDiscordStalenessGuard,
 	type DiscordStalenessConfig,
@@ -1295,18 +1296,17 @@ export class MessageManager {
 		// for the wrong reason and leaves split identity in memory. Wait before the
 		// dedupe reservation or any room/entity write. A failed ready sequence is a
 		// fail-closed connector state: ordinary chat must not race ahead of it.
-		const ready = this.discordService.clientReadyPromise;
-		if (ready) {
-			try {
-				await ready;
-			} catch (error) {
-				this.runtime.reportError("discord:message-before-ready", error, {
-					accountId: this.accountId,
-					messageId: message.id,
-					channelId: message.channel.id,
-				});
-				return;
-			}
+		try {
+			await waitForDiscordIngressReadiness(
+				this.discordService.clientReadyPromise,
+			);
+		} catch (error) {
+			this.runtime.reportError("discord:message-before-ready", error, {
+				accountId: this.accountId,
+				messageId: message.id,
+				channelId: message.channel.id,
+			});
+			return;
 		}
 
 		if (message.id && !this.markMessageAsProcessing(message.id)) {
