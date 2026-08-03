@@ -1,0 +1,194 @@
+/**
+ * Pins the i18n catalog contract (#17605) against synthetic fixture trees and
+ * the real repo. Errors: a literal key missing from the SOURCE locale, an
+ * unused source-locale key, an orphaned translation (locale key absent from
+ * the source catalog), and a stale `uncatalogued` entry. Warnings (errors only
+ * under strictTranslations): non-source locales missing used keys or lagging
+ * the source catalog. The real-repo case asserts the checker stays wireable —
+ * ok:true with translation gaps surfaced as warnings. Deterministic, no
+ * network.
+ */
+import { describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const { runI18nCheck } = await import(
+  new URL("../check-i18n.mjs", import.meta.url).href
+);
+
+const REAL_REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
+
+interface CheckResult {
+  ok: boolean;
+  errors: string[];
+  warnings: string[];
+  stats?: Record<string, number>;
+}
+
+function buildFixture({
+  en = { "app.title": "Hello" },
+  locales = {},
+  source = 'export const x = t("app.title");\n',
+  allowlist,
+}: {
+  en?: Record<string, string>;
+  locales?: Record<string, Record<string, string>>;
+  source?: string;
+  allowlist?: unknown;
+}): { root: string; options: Record<string, unknown> } {
+  const root = mkdtempSync(join(tmpdir(), "check-i18n-"));
+  const localeDir = join(root, "locales");
+  const srcDir = join(root, "src");
+  mkdirSync(localeDir, { recursive: true });
+  mkdirSync(srcDir, { recursive: true });
+  writeFileSync(join(localeDir, "en.json"), JSON.stringify(en));
+  for (const [lang, data] of Object.entries(locales)) {
+    writeFileSync(join(localeDir, `${lang}.json`), JSON.stringify(data));
+  }
+  writeFileSync(join(srcDir, "app.tsx"), source);
+  const allowlistPath = join(root, "allowlist.json");
+  if (allowlist !== undefined) {
+    writeFileSync(allowlistPath, JSON.stringify(allowlist));
+  }
+  return {
+    root,
+    options: {
+      repoRoot: root,
+      localeDir,
+      scanDirs: [srcDir],
+      allowlistPath,
+    },
+  };
+}
+
+function run(
+  fixture: { root: string; options: Record<string, unknown> },
+  extra: Record<string, unknown> = {},
+): CheckResult {
+  try {
+    return runI18nCheck({ ...fixture.options, ...extra });
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+}
+
+describe("check-i18n contract", () => {
+  test("passes a clean tree", () => {
+    const result = run(buildFixture({}));
+    expect(result.ok).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
+  test("fails when a used key is missing from the source locale", () => {
+    const result = run(
+      buildFixture({
+        en: {},
+        source: 'export const x = t("app.missing");\n',
+      }),
+    );
+    expect(result.ok).toBe(false);
+    expect(result.errors.join("\n")).toMatch(/en\.json missing 1 key/);
+  });
+
+  test("reports a non-source gap as a warning, not an error", () => {
+    const result = run(
+      buildFixture({
+        locales: { es: {} },
+      }),
+    );
+    expect(result.ok).toBe(true);
+    expect(result.warnings.join("\n")).toMatch(/es\.json missing 1 key/);
+    expect(result.warnings.join("\n")).toMatch(
+      /es\.json is missing 1 translation/,
+    );
+  });
+
+  test("--strict-translations upgrades non-source gaps to errors", () => {
+    const result = run(
+      buildFixture({
+        locales: { es: {} },
+      }),
+      { strictTranslations: true },
+    );
+    expect(result.ok).toBe(false);
+    expect(result.errors.join("\n")).toMatch(/es\.json missing 1 key/);
+  });
+
+  test("fails on an unused source-locale key", () => {
+    const result = run(
+      buildFixture({
+        en: { "app.title": "Hello", "app.dead": "Never rendered" },
+      }),
+    );
+    expect(result.ok).toBe(false);
+    expect(result.errors.join("\n")).toMatch(/1 unused key/);
+    expect(result.errors.join("\n")).toMatch(/app\.dead/);
+  });
+
+  test("fails on an orphaned translation absent from the source catalog", () => {
+    const result = run(
+      buildFixture({
+        locales: { es: { "app.title": "Hola", "app.ghost": "Fantasma" } },
+      }),
+    );
+    expect(result.ok).toBe(false);
+    expect(result.errors.join("\n")).toMatch(/orphaned translation/);
+    expect(result.errors.join("\n")).toMatch(/app\.ghost/);
+  });
+
+  test("uncatalogued keys are exempt from the source-catalog requirement", () => {
+    const result = run(
+      buildFixture({
+        source:
+          'export const x = t("app.title");\nexport const y = t("app.conditional", { defaultValue: cond ? "A" : "B" });\n',
+        allowlist: {
+          keys: [],
+          prefixes: [],
+          uncatalogued: [
+            { key: "app.conditional", reason: "runtime-conditional default" },
+          ],
+        },
+      }),
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  test("fails when an uncatalogued entry no longer has a call site", () => {
+    const result = run(
+      buildFixture({
+        allowlist: {
+          keys: [],
+          prefixes: [],
+          uncatalogued: [{ key: "app.gone", reason: "stale entry" }],
+        },
+      }),
+    );
+    expect(result.ok).toBe(false);
+    expect(result.errors.join("\n")).toMatch(/no longer used in source/);
+  });
+
+  test("template prefixes from source cover dynamically-built keys", () => {
+    const result = run(
+      buildFixture({
+        en: { "app.title": "Hello", "step.one": "One", "step.two": "Two" },
+        source:
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: the fixture IS a template-literal t() call under test
+          'export const x = t("app.title");\nexport const y = t(`step.${name}`);\n',
+      }),
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  test("the real repo satisfies the contract (wireable: gaps stay warnings)", () => {
+    const result = runI18nCheck({ repoRoot: REAL_REPO_ROOT }) as CheckResult;
+    expect(result.errors).toEqual([]);
+    expect(result.ok).toBe(true);
+    // Translation debt exists and must stay VISIBLE as warnings — a silent
+    // pass would hide the backfill work the same way the unwired checker did.
+    expect(result.warnings.some((w) => /missing \d+ translation/.test(w))).toBe(
+      true,
+    );
+  });
+});
