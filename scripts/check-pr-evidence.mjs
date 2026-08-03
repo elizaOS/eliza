@@ -344,6 +344,35 @@ function hasSubstantiveInlineLog(text) {
 const INLINE_TRANSCRIPT_MIN_LINES = 3;
 const INLINE_TRANSCRIPT_MIN_CHARS = 120;
 
+function inlineTranscriptMeasurements(text) {
+  const source = String(text ?? "");
+  const blocks = [
+    ...source.matchAll(/<details[\s\S]*?<\/details>/gi),
+    ...source.matchAll(/<pre[\s\S]*?<\/pre>/gi),
+    ...source.matchAll(/(?:```[\s\S]*?```|~~~[\s\S]*?~~~)/g),
+  ].map((match) => match[0]);
+
+  return blocks.flatMap((block) => {
+    const content = block
+      // A <summary> is a caption, not evidence — it must not carry the block.
+      .replace(/<summary[\s\S]*?<\/summary>/gi, " ")
+      .replace(/<[^>]*>/g, " ")
+      .replace(/^\s*(?:`{3,}|~{3,})[^\r\n]*$/gm, " ");
+    if (NON_REAL_EVIDENCE_RE.test(content)) return [];
+    const lines = content
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    return [{ lines: lines.length, chars: lines.join("").length }];
+  });
+}
+
+function inlineTranscriptMeetsFloor({ lines, chars }) {
+  return (
+    lines >= INLINE_TRANSCRIPT_MIN_LINES && chars >= INLINE_TRANSCRIPT_MIN_CHARS
+  );
+}
+
 /**
  * True when the row carries a pasted log/transcript body rather than a link to
  * one. CONTRIBUTING.md § Evidence and the root AGENTS.md both prescribe "long
@@ -358,28 +387,62 @@ const INLINE_TRANSCRIPT_MIN_CHARS = 120;
  * before this is consulted, so screenshots and video still demand real media.
  */
 export function hasInlineTranscriptEvidence(text) {
-  const source = String(text ?? "");
-  const blocks = [
-    ...source.matchAll(/<details[\s\S]*?<\/details>/gi),
-    ...source.matchAll(/<pre[\s\S]*?<\/pre>/gi),
-    ...source.matchAll(/```[\s\S]*?```/g),
-  ].map((match) => match[0]);
-  return blocks.some((block) => {
-    const content = block
-      // A <summary> is a caption, not evidence — it must not carry the block.
-      .replace(/<summary[\s\S]*?<\/summary>/gi, " ")
-      .replace(/<[^>]*>/g, " ")
-      .replace(/```/g, " ");
-    const lines = content
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
-    return (
-      lines.length >= INLINE_TRANSCRIPT_MIN_LINES &&
-      lines.join("").length >= INLINE_TRANSCRIPT_MIN_CHARS &&
-      !NON_REAL_EVIDENCE_RE.test(content)
+  return inlineTranscriptMeasurements(text).some(inlineTranscriptMeetsFloor);
+}
+
+/**
+ * Explain a pasted transcript that just missed the floor.
+ *
+ * A row holding a real code block is a different author mistake from an empty
+ * one: they followed CONTRIBUTING.md § Evidence and landed under a threshold.
+ * Reporting a bare `blank` there sends them to upload an artifact instead of
+ * pasting four more lines. Returns null when no block is present, so a genuinely
+ * empty row keeps its plain `blank`.
+ */
+export function describeInlineTranscriptShortfall(text) {
+  let best = null;
+  for (const measurement of inlineTranscriptMeasurements(text)) {
+    // Report the closest attempt rather than whichever block appears first.
+    if (
+      best === null ||
+      measurement.lines + measurement.chars > best.lines + best.chars
+    ) {
+      best = measurement;
+    }
+  }
+  if (best === null || inlineTranscriptMeetsFloor(best)) return null;
+
+  const missed = [];
+  if (best.lines < INLINE_TRANSCRIPT_MIN_LINES) {
+    missed.push(`${best.lines} line(s), needs ${INLINE_TRANSCRIPT_MIN_LINES}`);
+  }
+  if (best.chars < INLINE_TRANSCRIPT_MIN_CHARS) {
+    missed.push(
+      `${best.chars} character(s), needs ${INLINE_TRANSCRIPT_MIN_CHARS}`,
     );
-  });
+  }
+  if (missed.length === 0) return null;
+  return `pasted transcript is under the floor (${missed.join("; ")})`;
+}
+
+function fencedBlockDelimiter(line) {
+  const match = line.match(/^\s*(`{3,}|~{3,})(.*)$/);
+  if (!match) return null;
+  return {
+    character: match[1][0],
+    length: match[1].length,
+    remainder: match[2],
+  };
+}
+
+function closesFencedBlock(line, fence) {
+  const delimiter = fencedBlockDelimiter(line);
+  return (
+    delimiter !== null &&
+    delimiter.character === fence.character &&
+    delimiter.length >= fence.length &&
+    delimiter.remainder.trim() === ""
+  );
 }
 
 function substantiveTrajectoryValue(value, minimumLength) {
@@ -545,39 +608,71 @@ export function boundRowBlock(block) {
   const out = [];
   let started = false;
   let detailsDepth = 0;
+  let fence = null;
+  let fenceStart = -1;
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
     if (!started) {
       if (line.trim() === "") continue;
       started = true;
       out.push(line);
+      const delimiter = fencedBlockDelimiter(line);
+      if (delimiter) {
+        fence = delimiter;
+        fenceStart = out.length - 1;
+      }
       continue;
     }
 
     const trimmed = line.trim();
     if (trimmed === "") {
-      if (detailsDepth > 0) {
+      if (detailsDepth > 0 || fence !== null) {
         out.push(line);
         continue;
       }
       const next = lines.slice(index + 1).find((candidate) => candidate.trim());
-      if (next && /^<details\b/i.test(next.trim())) {
+      if (
+        next &&
+        (/^<details\b/i.test(next.trim()) ||
+          fencedBlockDelimiter(next) !== null)
+      ) {
         out.push(line);
         continue;
       }
       break;
     }
-    if (detailsDepth === 0 && /^#/.test(trimmed)) break;
-    if (/<!--\s*evidence-row:/i.test(trimmed)) break;
-    if (detailsDepth === 0 && /^[-*]\s/.test(line) && !/^\s/.test(line)) {
+    if (fence === null && detailsDepth === 0 && /^#/.test(trimmed)) break;
+    if (fence === null && /<!--\s*evidence-row:/i.test(trimmed)) break;
+    if (
+      fence === null &&
+      detailsDepth === 0 &&
+      /^[-*]\s/.test(line) &&
+      !/^\s/.test(line)
+    ) {
       break;
     }
     out.push(line);
+    if (fence !== null) {
+      if (closesFencedBlock(line, fence)) {
+        fence = null;
+        fenceStart = -1;
+      }
+      continue;
+    }
+    const delimiter = fencedBlockDelimiter(line);
+    if (delimiter) {
+      fence = delimiter;
+      fenceStart = out.length - 1;
+      continue;
+    }
     detailsDepth += (line.match(/<details\b/gi) ?? []).length;
     detailsDepth -= (line.match(/<\/details>/gi) ?? []).length;
     detailsDepth = Math.max(0, detailsDepth);
   }
-  return out.join("\n").trim();
+  // An unterminated fence must not absorb headings or links below the row and
+  // accidentally turn unrelated prose into evidence.
+  const bounded = fence === null ? out : out.slice(0, fenceStart);
+  return bounded.join("\n").trim();
 }
 
 export function extractEvidenceRows(body) {
@@ -709,14 +804,13 @@ export function evaluatePrEvidence(
     ) {
       return { id, label, status: "artifact-required" };
     }
-    return {
-      id,
-      label,
-      status:
-        artifactRequired || isEvidenceRowSatisfied(id, rowText)
-          ? "ok"
-          : "blank",
-    };
+    if (artifactRequired || isEvidenceRowSatisfied(id, rowText)) {
+      return { id, label, status: "ok" };
+    }
+    const shortfall = describeInlineTranscriptShortfall(rowText);
+    return shortfall
+      ? { id, label, status: "blank", detail: shortfall }
+      : { id, label, status: "blank" };
   });
   if (surfaceArtifactsRequired) {
     const { id, label } = SURFACE_OCR_EVIDENCE_ROW;
@@ -2323,6 +2417,83 @@ export function runSelfTest() {
     if (blank?.status !== "blank") {
       failures.push("blank row should be reported blank");
     }
+    if (blank?.detail) {
+      failures.push("an empty row must not claim a transcript shortfall");
+    }
+  }
+
+  {
+    // Pins the documented forms to the implemented ones: the failure help
+    // advertises a pasted transcript, so a compliant one must satisfy the gate.
+    // Without this, the help and `hasInlineTranscriptEvidence` can drift apart
+    // and outside contributors — who cannot upload release assets — are told
+    // their only options are a link or `N/A`.
+    const transcript = [
+      "- [x] Backend logs:",
+      "```",
+      "[develop-pr-gate] poll 1: passed=0 waiting=3 failed=0",
+      "[develop-pr-gate] poll 2: passed=2 waiting=1 failed=0",
+      "[develop-pr-gate] poll 3: passed=3 waiting=0 failed=0",
+      "[develop-pr-gate] all required checks green after 92s",
+      "```",
+    ].join("\n");
+    const { ok, findings } = evaluatePrEvidence(
+      buildFixtureBody({ "backend-logs": transcript }),
+    );
+    const row = findings.find((finding) => finding.id === "backend-logs");
+    if (!ok || row?.status !== "ok") {
+      failures.push(
+        "a pasted transcript meeting the documented floor should satisfy the gate",
+      );
+    }
+  }
+
+  {
+    // The help tells authors to prefer <details> because it is the only form
+    // that survives a blank line. Pin that promise.
+    const withBlankLines = [
+      "- [x] Backend logs:",
+      "",
+      "<details><summary>gate output</summary>",
+      "",
+      "```",
+      "[develop-pr-gate] poll 1: passed=0 waiting=3 failed=0",
+      "",
+      "[develop-pr-gate] poll 2: passed=2 waiting=1 failed=0",
+      "[develop-pr-gate] all required checks green after 92s",
+      "```",
+      "",
+      "</details>",
+    ].join("\n");
+    const { findings } = evaluatePrEvidence(
+      buildFixtureBody({ "backend-logs": withBlankLines }),
+    );
+    const row = findings.find((finding) => finding.id === "backend-logs");
+    if (row?.status !== "ok") {
+      failures.push(
+        "a <details> transcript containing blank lines should satisfy the gate",
+      );
+    }
+  }
+
+  {
+    // A transcript that just misses the floor is a different mistake from an
+    // empty row, and must say which threshold it missed.
+    const short = ["- [x] Backend logs:", "```", "poll 1: ok", "```"].join(
+      "\n",
+    );
+    const { findings } = evaluatePrEvidence(
+      buildFixtureBody({ "backend-logs": short }),
+    );
+    const row = findings.find((finding) => finding.id === "backend-logs");
+    if (row?.status !== "blank") {
+      failures.push("an under-floor transcript should still fail");
+    }
+    if (!row?.detail?.includes("under the floor")) {
+      failures.push(
+        "an under-floor transcript should report which threshold it missed",
+      );
+    }
   }
 
   {
@@ -2671,8 +2842,15 @@ How to fix (fastest path):
      (uploads to the pr-evidence release and verifies this gate locally)
 
 Rules: visual rows on UI-touching PRs need REAL media (an uploaded image/video,
-not a link to the PR or /checks page); every other row needs an artifact link
-or 'N/A - <reason>'. A wholly-new surface may N/A the before-screenshots row.
+not a link to the PR or /checks page); every other row needs an artifact link,
+a pasted transcript, or 'N/A - <reason>'. A wholly-new surface may N/A the
+before-screenshots row.
+
+Pasted transcripts must be at least ${INLINE_TRANSCRIPT_MIN_LINES} lines and ${INLINE_TRANSCRIPT_MIN_CHARS} characters, and must stay
+inside the row block. CONTRIBUTING.md § Evidence prefers a <details> block;
+complete backtick or tilde fences are also supported, including a blank line
+before the fence and blank lines inside it. Unclosed containers fail closed so
+they cannot absorb unrelated prose below the evidence row.
 Worked example: https://github.com/elizaOS/eliza/pull/15171
 Full standard: CONTRIBUTING.md § Evidence.`,
     );

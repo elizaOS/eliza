@@ -17,6 +17,7 @@ import {
   findRetiredRepoEvidenceFiles,
   hasArtifactReference,
   hasEvidenceFileReference,
+  hasInlineTranscriptEvidence,
   hasMatchingEvidenceHead,
   hasNaWithReason,
   hasOcrEvidenceReference,
@@ -1346,6 +1347,55 @@ describe("check-pr-evidence marker extraction", () => {
     const bounded = boundRowBlock(block);
     assert.ok(bounded.includes("continued indented line"));
     assert.ok(!bounded.includes("example.com"));
+  });
+
+  it("keeps complete fenced transcripts intact across blank lines", () => {
+    const transcript = [
+      "- [x] Backend logs from the exact run:",
+      "",
+      "```text",
+      "INFO request POST /api/agents returned statusCode=201 with the expected agent identifier",
+      "",
+      "INFO database transaction committed the agent and owner rows without warnings",
+      "INFO response body matched the persisted record and the request correlation identifier",
+      "```",
+      "",
+      "# not part of the row",
+      "https://example.com/should-not-be-captured",
+    ].join("\n");
+    const bounded = boundRowBlock(transcript);
+    assert.match(bounded, /database transaction committed/);
+    assert.ok(!bounded.includes("example.com"));
+
+    const body = buildBody({ "backend-logs": transcript });
+    const finding = evaluatePrEvidence(body).findings.find(
+      (entry) => entry.id === "backend-logs",
+    );
+    assert.equal(finding?.status, "ok");
+  });
+
+  it("supports tilde fences and rejects an unterminated fence without bleed", () => {
+    const complete = [
+      "- [x] Backend logs:",
+      "~~~log",
+      "INFO first request completed with statusCode=200 and a stable correlation identifier",
+      "WARN retry path was exercised once before the upstream connection recovered successfully",
+      "INFO final response matched the durable database record and emitted no error event",
+      "~~~",
+    ].join("\n");
+    assert.equal(hasInlineTranscriptEvidence(boundRowBlock(complete)), true);
+
+    const unterminated = [
+      "- [x] Backend logs:",
+      "```text",
+      "short line",
+      "",
+      "# unrelated evidence",
+      "https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000006",
+    ].join("\n");
+    const bounded = boundRowBlock(unterminated);
+    assert.equal(bounded, "- [x] Backend logs:");
+    assert.ok(!bounded.includes("user-attachments"));
   });
 });
 
