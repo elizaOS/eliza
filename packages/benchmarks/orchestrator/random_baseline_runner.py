@@ -301,10 +301,12 @@ def _adhd_payload(score: float) -> dict[str, Any]:
 
 def _agentbench_payload(score: float) -> dict[str, Any]:
     total = 2
+    passed = _passed_count(score, total)
     return {
         "overall_success_rate": score,
         "total_tasks": total,
-        "passed_tasks": _passed_count(score, total),
+        "passed_tasks": passed,
+        "failed_tasks": total - passed,
     }
 
 

@@ -171,6 +171,20 @@ def canonical_json_sha256(value: Any) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+AGENTBENCH_UNSUPPORTED_PROTOCOL_REASON = (
+    "agentbench_publication_unsupported:"
+    "per_task_protocol_stage_and_task_id_evidence_unavailable"
+)
+
+
+def agentbench_publication_contract_reason(
+    _metrics: Mapping[str, Any],
+) -> str:
+    """Quarantine AgentBench until auditable per-task protocol evidence exists."""
+
+    return AGENTBENCH_UNSUPPORTED_PROTOCOL_REASON
+
+
 def webshop_report_contract_reason(metrics: Mapping[str, Any]) -> str | None:
     """Validate corpus, search, dependency, and scenario provenance fields."""
 

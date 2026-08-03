@@ -6,7 +6,10 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from benchmarks.publication_contracts import webshop_workload_quarantine_reason
+from benchmarks.publication_contracts import (
+    agentbench_publication_contract_reason,
+    webshop_workload_quarantine_reason,
+)
 
 from .analyze_trajectory import summarize as summarize_trajectory
 from .code_agent_latest_contract import (
@@ -300,6 +303,19 @@ def _scan_latest_row_contract(
             )
         )
     metrics = payload.get("metrics")
+    if str(payload.get("benchmark_id") or "").strip() == "agentbench":
+        workload_reason = agentbench_publication_contract_reason(
+            metrics if isinstance(metrics, dict) else {}
+        )
+        if workload_reason is not None:
+            findings.append(
+                PublishabilityFinding(
+                    file=path,
+                    path="$.metrics",
+                    reason=workload_reason,
+                    value=_short_value(metrics),
+                )
+            )
     if str(payload.get("benchmark_id") or "").strip() == "webshop":
         workload_reason = webshop_workload_quarantine_reason(
             metrics if isinstance(metrics, dict) else {}

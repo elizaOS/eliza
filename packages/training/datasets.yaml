@@ -213,6 +213,7 @@ datasets:
   # =================== TOOL CALLING (CORE) =======================
   - slug: hermes-fc-v1
     repo_id: NousResearch/hermes-function-calling-v1
+    revision: dae3e1d28cfbcf4b915c04ea1e072030529b4bda
     normalizer: hermes_fc
     weight: 2.0
     est_size_gb: 0.3

@@ -35,9 +35,10 @@ async def test_smart_mock_runtime_end_to_end() -> None:
             split=BenchmarkSplit.DEV,
         )
 
-        # Enable a few real envs with 1 task each from upstream's dev split.
+        # Official OS tasks stay excluded until the upstream container protocol
+        # is implemented; their fail-closed contract has dedicated corpus tests.
         config.os_config = EnvironmentConfig(
-            enabled=True, max_tasks=1, additional_settings={"use_docker": False}
+            enabled=False, max_tasks=1, additional_settings={"use_docker": False}
         )
         config.db_config = EnvironmentConfig(enabled=True, max_tasks=1)
         config.kg_config = EnvironmentConfig(enabled=True, max_tasks=1)
@@ -56,7 +57,7 @@ async def test_smart_mock_runtime_end_to_end() -> None:
         # Pipeline invariants only - no success rate assertion.
         assert report.total_tasks == report.passed_tasks + report.failed_tasks
         assert 0.0 <= report.overall_success_rate <= 1.0
-        assert report.total_tasks >= 5  # 5 enabled envs * 1 task each
+        assert report.total_tasks >= 4  # 4 supported enabled envs * 1 task each
 
         # Strict JSON outputs should exist and be parseable
         results_path = Path(tmpdir) / "agentbench-results.json"

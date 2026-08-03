@@ -8,8 +8,9 @@ from abc import ABC, abstractmethod
 
 from elizaos_agentbench.types import (
     AgentBenchEnvironment,
-    AgentBenchTask,
+    AgentBenchFailureKind,
     AgentBenchResult,
+    AgentBenchTask,
     AgentRuntimeProtocol,
     EnvironmentConfig,
     ObservationType,
@@ -56,8 +57,13 @@ class EnvironmentAdapter(ABC):
         """
         pass
 
+    def validate_task(self, task: AgentBenchTask) -> None:
+        """Validate environment prerequisites before allocating runtime resources."""
+
     @abstractmethod
-    async def step(self, action: str) -> tuple[ObservationType, float, bool, dict[str, str | int | float | bool | None]]:
+    async def step(
+        self, action: str
+    ) -> tuple[ObservationType, float, bool, dict[str, str | int | float | bool | None]]:
         """
         Execute an action and return the result.
 
@@ -136,9 +142,11 @@ class EnvironmentAdapter(ABC):
         actions: list[str] = []
         total_reward = 0.0
         error: str | None = None
+        failure_kind: AgentBenchFailureKind | None = None
         success = False
 
         try:
+            self.validate_task(task)
             # Validate task before execution
             if not task.id:
                 raise ValueError("Task ID cannot be empty")
@@ -196,6 +204,7 @@ class EnvironmentAdapter(ABC):
                 elapsed_ms = (time.time() - start_time) * 1000
                 if elapsed_ms > task.timeout_ms:
                     error = f"Task timed out after {elapsed_ms:.0f}ms"
+                    failure_kind = AgentBenchFailureKind.TASK
                     break
 
                 # Early success check: if environment didn't signal done, allow evaluation to stop early.
@@ -208,15 +217,20 @@ class EnvironmentAdapter(ABC):
                             break
                     except Exception as eval_err:
                         error = f"Evaluation error: {eval_err}"
+                        failure_kind = AgentBenchFailureKind.INFRASTRUCTURE
                         break
 
             # Evaluate success
-            if not success:
+            if not success and failure_kind is None:
                 success = await self.evaluate(task, actions)
 
         except Exception as e:
             error = str(e)
+            failure_kind = AgentBenchFailureKind.INFRASTRUCTURE
             logger.error(f"[{self.environment.value}] Task {task.id} failed: {e}")
+
+        if not success and failure_kind is None:
+            failure_kind = AgentBenchFailureKind.TASK
 
         duration_ms = (time.time() - start_time) * 1000
 
@@ -229,6 +243,7 @@ class EnvironmentAdapter(ABC):
             final_state=self._current_state,
             duration_ms=duration_ms,
             error=error,
+            failure_kind=failure_kind,
             metrics={
                 "planning_time_ms": 0.0,
                 "execution_time_ms": duration_ms,

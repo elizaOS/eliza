@@ -20,6 +20,9 @@ import {
   configureBenchmarkToolCallPolicy,
   hasLifecycleTaskAction,
   normalizeBenchmarkModelUsage,
+  parseTrajectoryStepQuery,
+  selectTrajectoryOutbox,
+  selectTrajectorySteps,
   summarizeBenchmarkTurnUsage,
 } from "./server-utils";
 
@@ -94,6 +97,64 @@ describe("coerceParams", () => {
       coerceParams("BENCHMARK_ACTION:\n  command: search[laptop]"),
     ).toEqual({});
   });
+});
+
+describe("trajectory step selection", () => {
+  const steps = [{ step: 1 }, { step: 2 }, { step: 3 }];
+
+  it("preserves the full session when step is omitted", () => {
+    expect(parseTrajectoryStepQuery(null)).toEqual({ ok: true, value: null });
+    expect(
+      selectTrajectorySteps(steps, null).map((entry) => entry.step),
+    ).toEqual([1, 2, 3]);
+  });
+
+  it("selects exactly the requested turn", () => {
+    expect(parseTrajectoryStepQuery("2")).toEqual({ ok: true, value: 2 });
+    expect(selectTrajectorySteps(steps, 2).map((entry) => entry.step)).toEqual([
+      2,
+    ]);
+  });
+
+  it("selects only outbox entries emitted during the requested turn", () => {
+    const selected = [{ step: 2, startedAt: 200, finishedAt: 299 }];
+    const outbox = [
+      {
+        kind: "direct" as const,
+        targetId: "a",
+        text: "one",
+        source: "test",
+        ts: 150,
+      },
+      {
+        kind: "direct" as const,
+        targetId: "a",
+        text: "two",
+        source: "test",
+        ts: 250,
+      },
+      {
+        kind: "direct" as const,
+        targetId: "a",
+        text: "three",
+        source: "test",
+        ts: 350,
+      },
+    ];
+
+    expect(selectTrajectoryOutbox(outbox, selected, 2)).toEqual([outbox[1]]);
+    expect(selectTrajectoryOutbox(outbox, selected, null)).toEqual(outbox);
+  });
+
+  it.each(["", "0", "-1", "1.5", " 2", "9007199254740992"])(
+    "rejects invalid step %j",
+    (raw) => {
+      expect(parseTrajectoryStepQuery(raw)).toMatchObject({
+        ok: false,
+        code: "BENCHMARK_TRAJECTORY_STEP_INVALID",
+      });
+    },
+  );
 });
 
 describe("benchmark function-call metadata", () => {

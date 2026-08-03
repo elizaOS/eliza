@@ -2,13 +2,13 @@
 Tests for AgentBench types.
 """
 
-
 from elizaos_agentbench.types import (
     GPT4_BASELINE_SCORES,
     GPT35_BASELINE_SCORES,
     AgentBenchConfig,
     AgentBenchDataMode,
     AgentBenchEnvironment,
+    AgentBenchFailureKind,
     AgentBenchResult,
     AgentBenchTask,
     EnvironmentConfig,
@@ -98,9 +98,11 @@ class TestAgentBenchResult:
             final_state={},
             duration_ms=500.0,
             error="SQL syntax error",
+            failure_kind=AgentBenchFailureKind.INFRASTRUCTURE,
         )
         assert not result.success
         assert result.error == "SQL syntax error"
+        assert result.failure_kind == AgentBenchFailureKind.INFRASTRUCTURE
 
 
 class TestAgentBenchConfig:

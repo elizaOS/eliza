@@ -9,7 +9,12 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from elizaos_agentbench.adapters.base import EnvironmentAdapter
-from elizaos_agentbench.types import AgentBenchResult, AgentBenchTask, StepRecord
+from elizaos_agentbench.types import (
+    AgentBenchFailureKind,
+    AgentBenchResult,
+    AgentBenchTask,
+    StepRecord,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +52,7 @@ class AgentFnHarness:
         step_records: list[StepRecord] = []
         total_reward = 0.0
         error: str | None = None
+        failure_kind: AgentBenchFailureKind | None = None
         success = False
 
         try:
@@ -109,17 +115,22 @@ class AgentFnHarness:
                 elapsed_ms = (time.time() - start_time) * 1000
                 if elapsed_ms > task.timeout_ms:
                     error = f"Task timed out after {elapsed_ms:.0f}ms"
+                    failure_kind = AgentBenchFailureKind.TASK
                     break
 
                 if not done and await adapter.evaluate(task, actions):
                     success = True
                     done = True
 
-            if not success:
+            if not success and failure_kind is None:
                 success = await adapter.evaluate(task, actions)
         except Exception as exc:
             error = str(exc)
+            failure_kind = AgentBenchFailureKind.INFRASTRUCTURE
             logger.exception("[agentbench-%s] Task %s failed", self.harness, task.id)
+
+        if not success and failure_kind is None:
+            failure_kind = AgentBenchFailureKind.TASK
 
         duration_ms = (time.time() - start_time) * 1000
         return AgentBenchResult(
@@ -131,6 +142,7 @@ class AgentFnHarness:
             final_state=step_records[-1].observation if step_records else {},
             duration_ms=duration_ms,
             error=error,
+            failure_kind=failure_kind,
             metrics={
                 "planning_time_ms": 0.0,
                 "execution_time_ms": duration_ms,
@@ -144,4 +156,3 @@ class AgentFnHarness:
     async def clear_conversation(self) -> None:
         """External clients own their own context reset semantics."""
         return None
-

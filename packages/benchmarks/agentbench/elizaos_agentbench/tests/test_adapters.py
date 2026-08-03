@@ -2,18 +2,36 @@
 Tests for environment adapters.
 """
 
+import asyncio
+import sqlite3
+
 import pytest
 
+from elizaos_agentbench import upstream_loader
+from elizaos_agentbench.adapters.db_adapter import DatabaseEnvironmentAdapter
+from elizaos_agentbench.adapters.kg_adapter import KnowledgeGraphAdapter
+from elizaos_agentbench.adapters.lateral_thinking_adapter import LateralThinkingAdapter
+from elizaos_agentbench.adapters.os_adapter import (
+    OSEnvironmentAdapter,
+    _official_protocol_requirements,
+)
+from elizaos_agentbench.adapters.webshop_adapter import WebShopEnvironmentAdapter
 from elizaos_agentbench.types import (
     AgentBenchEnvironment,
+    AgentBenchInfrastructureError,
     AgentBenchTask,
     EnvironmentConfig,
 )
-from elizaos_agentbench.adapters.os_adapter import OSEnvironmentAdapter
-from elizaos_agentbench.adapters.db_adapter import DatabaseEnvironmentAdapter
-from elizaos_agentbench.adapters.webshop_adapter import WebShopEnvironmentAdapter
-from elizaos_agentbench.adapters.kg_adapter import KnowledgeGraphAdapter
-from elizaos_agentbench.adapters.lateral_thinking_adapter import LateralThinkingAdapter
+
+
+class _FakeProcess:
+    def __init__(self, *, returncode: int, stdout: bytes = b"", stderr: bytes = b"") -> None:
+        self.returncode = returncode
+        self._stdout = stdout
+        self._stderr = stderr
+
+    async def communicate(self) -> tuple[bytes, bytes]:
+        return self._stdout, self._stderr
 
 
 class TestOSAdapter:
@@ -29,6 +47,57 @@ class TestOSAdapter:
         """Test adapter initialization."""
         await adapter.initialize()
         assert adapter._is_initialized()
+
+    @pytest.mark.parametrize("settings", [{}, {"use_docker": True}])
+    @pytest.mark.parametrize("failed_stage", ["pull", "create", "start"])
+    @pytest.mark.asyncio
+    async def test_docker_lifecycle_failure_is_infrastructure_without_local_fallback(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        settings: dict[str, bool],
+        failed_stage: str,
+    ) -> None:
+        adapter = OSEnvironmentAdapter(config=EnvironmentConfig(additional_settings=settings))
+
+        async def create_process(*arguments: str, **_kwargs: object) -> _FakeProcess:
+            stage = arguments[1]
+            if stage == failed_stage:
+                return _FakeProcess(
+                    returncode=1,
+                    stderr=f"{stage} control-plane failure".encode(),
+                )
+            return _FakeProcess(
+                returncode=0,
+                stdout=b"container-id\n" if stage == "create" else b"",
+            )
+
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", create_process)
+
+        with pytest.raises(
+            AgentBenchInfrastructureError,
+            match=rf"docker {failed_stage} failed.*{failed_stage} control-plane failure",
+        ):
+            await adapter.initialize()
+        assert adapter._temp_dir is None
+        assert adapter._container_id is None
+        assert not adapter._is_initialized()
+
+    @pytest.mark.asyncio
+    async def test_local_execution_requires_explicit_false(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        async def unexpected_docker(*_args: object, **_kwargs: object) -> None:
+            raise AssertionError("Docker must not run in explicit local mode")
+
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", unexpected_docker)
+        adapter = OSEnvironmentAdapter(
+            config=EnvironmentConfig(additional_settings={"use_docker": False})
+        )
+
+        await adapter.initialize()
+
+        assert adapter._temp_dir is not None
+        assert adapter._container_id is None
 
     @pytest.mark.asyncio
     async def test_reset(self, adapter: OSEnvironmentAdapter) -> None:
@@ -47,6 +116,56 @@ class TestOSAdapter:
         observation = await adapter.reset(task)
         assert "working_dir" in observation
         assert "task_description" in observation
+
+    @pytest.mark.asyncio
+    async def test_script_backed_upstream_task_fails_closed(
+        self, adapter: OSEnvironmentAdapter
+    ) -> None:
+        await adapter.initialize()
+        task = AgentBenchTask(
+            id="os-test-1-stock-000",
+            environment=AgentBenchEnvironment.OS,
+            description="Read /usr/stock.log.",
+            initial_state={
+                "create": {
+                    "local": "default",
+                    "init": {"file": "init/stock-log.sh"},
+                }
+            },
+            goal="Return the transaction count.",
+            max_steps=8,
+            metadata={"evaluation": {"check": [None, {"file": "check/integer-match.py"}]}},
+        )
+
+        with pytest.raises(AgentBenchInfrastructureError, match="refusing partial execution"):
+            await adapter.reset(task)
+
+    @pytest.mark.asyncio
+    async def test_start_only_official_task_fails_closed(
+        self, adapter: OSEnvironmentAdapter
+    ) -> None:
+        await adapter.initialize()
+        task = AgentBenchTask(
+            id="os-test-start-only",
+            environment=AgentBenchEnvironment.OS,
+            description="Run the prepared program.",
+            initial_state={"create": {}, "start": "service example start"},
+            goal="Return the expected answer.",
+            max_steps=8,
+            ground_truth="ready",
+            metadata={"evaluation": {"match": "ready"}},
+        )
+
+        with pytest.raises(AgentBenchInfrastructureError, match="start, answer action"):
+            await adapter.reset(task)
+
+    def test_full_official_os_corpus_requires_upstream_protocol(self) -> None:
+        tasks = upstream_loader.load_os_tasks(
+            split="test", data_mode="full", include_edge_scenarios=False
+        )
+
+        assert len(tasks) == 144
+        assert all(_official_protocol_requirements(task) for task in tasks)
 
     def test_extract_command(self, adapter: OSEnvironmentAdapter) -> None:
         """Test command extraction from LLM response."""
@@ -77,6 +196,81 @@ class TestOSAdapter:
         await adapter.cleanup()
         assert not adapter._is_initialized()
 
+    @pytest.mark.asyncio
+    async def test_executor_process_failure_is_infrastructure(
+        self, adapter: OSEnvironmentAdapter, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        await adapter.initialize()
+
+        async def fail_process(_command: str) -> tuple[str, int]:
+            raise OSError("process launch failed")
+
+        monkeypatch.setattr(adapter, "_execute_local_command", fail_process)
+
+        with pytest.raises(AgentBenchInfrastructureError, match="process launch failed"):
+            await adapter.step("printf ready")
+
+    @pytest.mark.asyncio
+    async def test_dead_container_docker_exec_is_infrastructure(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        adapter = OSEnvironmentAdapter(
+            config=EnvironmentConfig(additional_settings={"use_docker": True})
+        )
+        adapter._container_id = "dead-container"
+        adapter._working_directory = "/workspace"
+
+        async def dead_container(*_args: object, **_kwargs: object) -> _FakeProcess:
+            return _FakeProcess(
+                returncode=1,
+                stderr=(b"Error response from daemon: Container dead-container is not running"),
+            )
+
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", dead_container)
+
+        with pytest.raises(AgentBenchInfrastructureError, match="container/daemon boundary"):
+            await adapter.step("ls")
+
+    @pytest.mark.asyncio
+    async def test_model_command_nonzero_exit_remains_a_task_result(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        adapter = OSEnvironmentAdapter(
+            config=EnvironmentConfig(additional_settings={"use_docker": True})
+        )
+        adapter._container_id = "running-container"
+        adapter._working_directory = "/workspace"
+
+        async def failed_command(*_args: object, **_kwargs: object) -> _FakeProcess:
+            return _FakeProcess(
+                returncode=2,
+                stderr=b"ls: cannot access missing: No such file or directory",
+            )
+
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", failed_command)
+
+        observation, reward, done, info = await adapter.step("ls missing")
+
+        assert observation["exit_code"] == 2
+        assert reward < 0
+        assert done is False
+        assert info["exit_code"] == 2
+
+    @pytest.mark.asyncio
+    async def test_model_command_timeout_remains_a_task_observation(
+        self, adapter: OSEnvironmentAdapter, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        await adapter.initialize()
+
+        async def time_out(_command: str) -> tuple[str, int]:
+            raise asyncio.TimeoutError
+
+        monkeypatch.setattr(adapter, "_execute_local_command", time_out)
+
+        observation, _reward, _done, info = await adapter.step("sleep 999")
+        assert observation == {"error": "Command timed out"}
+        assert info["timeout"] is True
+
 
 class TestDatabaseAdapter:
     @pytest.fixture
@@ -89,6 +283,82 @@ class TestDatabaseAdapter:
         await adapter.initialize()
         assert adapter._is_initialized()
         assert adapter._connection is not None
+
+    @pytest.mark.asyncio
+    async def test_invalid_model_query_remains_a_scored_failure(
+        self, adapter: DatabaseEnvironmentAdapter
+    ) -> None:
+        await adapter.initialize()
+        task = AgentBenchTask(
+            id="test-invalid-sql",
+            environment=AgentBenchEnvironment.DATABASE,
+            description="Query the users table.",
+            initial_state={
+                "schema": {"users": [{"name": "id", "type": "INTEGER"}]},
+                "data": {"users": [{"id": 1}]},
+            },
+            goal="Return the user id.",
+            max_steps=1,
+            metadata={"label": [1]},
+        )
+        await adapter.reset(task)
+        await adapter.step("SELECT missing FROM users")
+
+        assert await adapter.evaluate(task, ["SELECT missing FROM users"]) is False
+
+    @pytest.mark.asyncio
+    async def test_missing_connection_is_infrastructure(
+        self, adapter: DatabaseEnvironmentAdapter
+    ) -> None:
+        await adapter.initialize()
+        assert adapter._connection is not None
+        adapter._connection.close()
+        adapter._connection = None
+
+        with pytest.raises(AgentBenchInfrastructureError, match="connection is unavailable"):
+            await adapter.step("SELECT 1")
+
+    @pytest.mark.asyncio
+    async def test_database_engine_failure_is_infrastructure(
+        self, adapter: DatabaseEnvironmentAdapter
+    ) -> None:
+        class FailingCursor:
+            def execute(self, _query: str) -> None:
+                raise sqlite3.OperationalError("database is locked")
+
+        class FailingConnection:
+            def cursor(self) -> FailingCursor:
+                return FailingCursor()
+
+        adapter._connection = FailingConnection()  # type: ignore[assignment]
+
+        with pytest.raises(AgentBenchInfrastructureError, match="database is locked"):
+            await adapter.step("SELECT 1")
+
+    @pytest.mark.asyncio
+    async def test_database_scorer_runtime_failure_is_infrastructure(
+        self, adapter: DatabaseEnvironmentAdapter
+    ) -> None:
+        await adapter.initialize()
+        task = AgentBenchTask(
+            id="test-scoring-infrastructure",
+            environment=AgentBenchEnvironment.DATABASE,
+            description="Query the users table.",
+            initial_state={
+                "schema": {"users": [{"name": "id", "type": "INTEGER"}]},
+                "data": {"users": [{"id": 1}]},
+            },
+            goal="Return the user id.",
+            max_steps=1,
+            metadata={"label": [1]},
+        )
+        await adapter.reset(task)
+        await adapter.step("SELECT id FROM users")
+        assert adapter._connection is not None
+        adapter._connection.close()
+
+        with pytest.raises(AgentBenchInfrastructureError, match="scoring failed"):
+            await adapter.evaluate(task, ["SELECT id FROM users"])
 
     @pytest.mark.asyncio
     async def test_reset_creates_tables(self, adapter: DatabaseEnvironmentAdapter) -> None:
@@ -155,7 +425,9 @@ class TestDatabaseAdapter:
         assert adapter._extract_query(response1) == "SELECT * FROM users"
 
         response2 = "SELECT name FROM employees WHERE salary > 50000"
-        assert adapter._extract_query(response2) == "SELECT name FROM employees WHERE salary > 50000"
+        assert (
+            adapter._extract_query(response2) == "SELECT name FROM employees WHERE salary > 50000"
+        )
 
     @pytest.mark.asyncio
     async def test_cleanup(self, adapter: DatabaseEnvironmentAdapter) -> None:

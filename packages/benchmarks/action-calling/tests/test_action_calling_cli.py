@@ -141,6 +141,49 @@ def test_harness_response_to_calls_reads_adapter_tool_calls() -> None:
     assert source == "native_tool_calls"
 
 
+def test_harness_generation_keeps_the_reset_task_identity(monkeypatch) -> None:
+    case = cli._load_cases(cli.SMOKE_TEST, 1)[0]
+    contexts: list[dict[str, object]] = []
+
+    class FakeClient:
+        def send_message(
+            self, text: str, context: dict[str, object]
+        ) -> types.SimpleNamespace:
+            del text
+            contexts.append(context)
+            expected = case.expected_calls[0]
+            return types.SimpleNamespace(
+                text="",
+                actions=[expected["name"]],
+                params={"tool_calls": [expected]},
+            )
+
+    monkeypatch.setenv("BENCHMARK_HARNESS", "eliza")
+    predicted, _, _, _ = cli._generate(
+        FakeClient(),
+        "cerebras",
+        "test-model",
+        case,
+        "action-calling-run-7-case-0",
+        256,
+        0.0,
+        "auto",
+    )
+
+    assert predicted == case.expected_calls
+    assert contexts[0]["task_id"] == "action-calling-run-7-case-0"
+
+
+def test_task_ids_are_run_scoped_and_case_distinct(monkeypatch) -> None:
+    cases = cli._expand_cases(cli._load_cases(cli.SMOKE_TEST, 1))
+    monkeypatch.setenv("BENCHMARK_RUN_ID", "run-123")
+
+    task_ids = [cli._task_id(case, index) for index, case in enumerate(cases)]
+
+    assert len(task_ids) == len(set(task_ids))
+    assert all(task_id.startswith("action-calling-run-123-") for task_id in task_ids)
+
+
 def test_selected_harness_prefers_env_over_provider(monkeypatch) -> None:
     monkeypatch.setenv("BENCHMARK_HARNESS", "hermes")
 

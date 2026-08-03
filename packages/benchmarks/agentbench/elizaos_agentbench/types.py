@@ -46,6 +46,17 @@ class AgentBenchDataMode(Enum):
     FULL = "full"
 
 
+class AgentBenchFailureKind(Enum):
+    """Classifies an unsuccessful task without conflating score and harness health."""
+
+    TASK = "task"
+    INFRASTRUCTURE = "infrastructure"
+
+
+class AgentBenchInfrastructureError(RuntimeError):
+    """Raised when the benchmark harness cannot execute or score a task faithfully."""
+
+
 # JSON-like value types (no Any)
 JSONPrimitive = str | int | float | bool | None
 JSONValue = JSONPrimitive | list["JSONValue"] | dict[str, "JSONValue"]
@@ -213,6 +224,7 @@ class AgentBenchResult:
     final_state: ObservationType
     duration_ms: float
     error: str | None = None
+    failure_kind: AgentBenchFailureKind | None = None
     metrics: ResultMetricsType = field(
         default_factory=lambda: {
             "planning_time_ms": 0.0,
@@ -232,8 +244,20 @@ class AgentBenchResult:
             raise ValueError(f"steps_taken must be non-negative, got {self.steps_taken}")
         if self.duration_ms < 0:
             raise ValueError(f"duration_ms must be non-negative, got {self.duration_ms}")
+        if self.success and (self.error is not None or self.failure_kind is not None):
+            raise ValueError("successful results cannot contain an error or failure_kind")
+        if not self.success and self.failure_kind is None:
+            raise ValueError("unsuccessful results must declare a failure_kind")
+        if self.failure_kind == AgentBenchFailureKind.INFRASTRUCTURE and not self.error:
+            raise ValueError("infrastructure failures must include an error")
         # Ensure metrics are present and finite-ish
-        required_metric_keys = {"planning_time_ms", "execution_time_ms", "tokens_used", "reward", "efficiency"}
+        required_metric_keys = {
+            "planning_time_ms",
+            "execution_time_ms",
+            "tokens_used",
+            "reward",
+            "efficiency",
+        }
         missing = required_metric_keys - set(self.metrics.keys())
         if missing:
             raise ValueError(f"metrics missing required keys: {sorted(missing)}")
@@ -270,7 +294,9 @@ class EnvironmentReport:
         if self.passed_tasks < 0:
             raise ValueError(f"passed_tasks must be non-negative, got {self.passed_tasks}")
         if self.passed_tasks > self.total_tasks:
-            raise ValueError(f"passed_tasks ({self.passed_tasks}) cannot exceed total_tasks ({self.total_tasks})")
+            raise ValueError(
+                f"passed_tasks ({self.passed_tasks}) cannot exceed total_tasks ({self.total_tasks})"
+            )
         if not 0.0 <= self.success_rate <= 1.0:
             raise ValueError(f"success_rate must be between 0 and 1, got {self.success_rate}")
 
@@ -319,7 +345,9 @@ class AgentBenchReport:
         if self.total_tasks < 0:
             raise ValueError(f"total_tasks must be non-negative, got {self.total_tasks}")
         if not 0.0 <= self.overall_success_rate <= 1.0:
-            raise ValueError(f"overall_success_rate must be between 0 and 1, got {self.overall_success_rate}")
+            raise ValueError(
+                f"overall_success_rate must be between 0 and 1, got {self.overall_success_rate}"
+            )
         if self.passed_tasks < 0 or self.failed_tasks < 0:
             raise ValueError("passed_tasks and failed_tasks must be non-negative")
         if self.passed_tasks + self.failed_tasks != self.total_tasks:
@@ -328,7 +356,9 @@ class AgentBenchReport:
                 f"({self.passed_tasks} + {self.failed_tasks} != {self.total_tasks})"
             )
         if self.average_duration_ms < 0:
-            raise ValueError(f"average_duration_ms must be non-negative, got {self.average_duration_ms}")
+            raise ValueError(
+                f"average_duration_ms must be non-negative, got {self.average_duration_ms}"
+            )
 
 
 # Type for additional settings in environment config

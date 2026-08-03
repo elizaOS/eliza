@@ -336,6 +336,50 @@ def _query(values: Mapping[str, str | None]) -> str:
     return f"?{urlencode(compact)}" if compact else ""
 
 
+def _turn_trajectory_snapshot(
+    snapshot: Mapping[str, object], expected_step: int
+) -> dict[str, object]:
+    raw_steps = snapshot.get("steps")
+    if not isinstance(raw_steps, Sequence) or isinstance(
+        raw_steps, (str, bytes, bytearray)
+    ):
+        raise ValueError("trajectory snapshot is missing its steps array")
+    matching = [
+        dict(step)
+        for step in raw_steps
+        if isinstance(step, Mapping) and step.get("step") == expected_step
+    ]
+    if len(matching) != 1:
+        raise ValueError(
+            "trajectory snapshot must contain exactly one matching step "
+            f"for step {expected_step}; found {len(matching)}"
+        )
+    selected_step = matching[0]
+    started_at = selected_step.get("startedAt")
+    finished_at = selected_step.get("finishedAt")
+    raw_outbox = snapshot.get("outbox", [])
+    if not isinstance(raw_outbox, Sequence) or isinstance(
+        raw_outbox, (str, bytes, bytearray)
+    ):
+        raise ValueError("trajectory snapshot has an invalid outbox array")
+    turn_outbox = [
+        dict(entry)
+        for entry in raw_outbox
+        if isinstance(entry, Mapping)
+        and isinstance(entry.get("ts"), (int, float))
+        and isinstance(started_at, (int, float))
+        and isinstance(finished_at, (int, float))
+        and started_at <= entry["ts"] <= finished_at
+    ]
+    compact = dict(snapshot)
+    compact["steps"] = matching
+    compact["outbox"] = turn_outbox
+    compact["snapshot_scope"] = "turn"
+    compact["requested_step"] = expected_step
+    compact.setdefault("total_steps", len(raw_steps))
+    return compact
+
+
 def _tool_calls_from_captured_actions(raw: object) -> list[dict[str, object]]:
     if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)):
         return []
@@ -623,11 +667,18 @@ class ElizaClient:
         *,
         benchmark: str | None = None,
         task_id: str | None = None,
+        step: int | None = None,
     ) -> dict[str, object]:
         """GET /api/benchmark/trajectory for the active or named session."""
         if self._delegate is not None:
             return {"status": "unavailable", "steps": [], "outbox": []}
-        query = _query({"benchmark": benchmark, "task_id": task_id})
+        query = _query(
+            {
+                "benchmark": benchmark,
+                "task_id": task_id,
+                "step": str(step) if step is not None else None,
+            }
+        )
         return self._get(f"/api/benchmark/trajectory{query}")
 
     def diagnostics(
@@ -709,7 +760,16 @@ class ElizaClient:
         )
         if _capture_trajectory_enabled():
             try:
-                response.params["_eliza_trajectory_snapshot"] = self.trajectory(
+                trajectory_step = metadata.get("trajectory_step")
+                if (
+                    isinstance(trajectory_step, bool)
+                    or not isinstance(trajectory_step, int)
+                    or trajectory_step <= 0
+                ):
+                    raise ValueError(
+                        "benchmark response is missing a positive trajectory_step"
+                    )
+                snapshot = self.trajectory(
                     benchmark=str(
                         (context or {}).get("benchmark")
                         or metadata.get("benchmark")
@@ -724,6 +784,10 @@ class ElizaClient:
                         or ""
                     )
                     or None,
+                    step=trajectory_step,
+                )
+                response.params["_eliza_trajectory_snapshot"] = (
+                    _turn_trajectory_snapshot(snapshot, trajectory_step)
                 )
             except Exception as exc:
                 response.params["_eliza_trajectory_snapshot_error"] = (

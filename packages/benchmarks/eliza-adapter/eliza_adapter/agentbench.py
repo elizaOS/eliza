@@ -11,6 +11,7 @@ from eliza_adapter.client import ElizaClient
 # Import AgentBench types — these live next to the benchmark runner
 from elizaos_agentbench.types import (
     AgentBenchEnvironment,
+    AgentBenchFailureKind,
     AgentBenchResult,
     AgentBenchTask,
     StepRecord,
@@ -37,9 +38,15 @@ def _mock_fallback_action(
 
     if adapter.environment == AgentBenchEnvironment.DATABASE and task.ground_truth:
         return task.ground_truth
-    if adapter.environment == AgentBenchEnvironment.KNOWLEDGE_GRAPH and task.ground_truth:
+    if (
+        adapter.environment == AgentBenchEnvironment.KNOWLEDGE_GRAPH
+        and task.ground_truth
+    ):
         return f"answer[{task.ground_truth}]"
-    if adapter.environment == AgentBenchEnvironment.LATERAL_THINKING and task.ground_truth:
+    if (
+        adapter.environment == AgentBenchEnvironment.LATERAL_THINKING
+        and task.ground_truth
+    ):
         return f"answer[{task.ground_truth}]"
     if adapter.environment == AgentBenchEnvironment.OS:
         if task.id == "os-001":
@@ -73,6 +80,7 @@ class ElizaAgentHarness:
         step_records: list[StepRecord] = []
         total_reward = 0.0
         error: str | None = None
+        failure_kind: AgentBenchFailureKind | None = None
         success = False
 
         try:
@@ -97,21 +105,12 @@ class ElizaAgentHarness:
                 # rejected with "No valid command/SQL query found".
                 formatter = getattr(adapter, "format_prompt", None)
                 if callable(formatter):
-                    try:
-                        prompt_text = formatter(task, observation)
-                    except Exception as fmt_err:
-                        logger.warning(
-                            "[eliza-agentbench] format_prompt failed for %s: %s",
-                            task.id, fmt_err,
-                        )
-                        prompt_text = f"Start the benchmark task: {task.goal}"
+                    prompt_text = formatter(task, observation)
                 else:
                     if step_num == 0:
                         prompt_text = f"Start the benchmark task: {task.goal}"
                     else:
-                        prompt_text = (
-                            f"Continue with the benchmark task. Step {step_num + 1}/{task.max_steps}"
-                        )
+                        prompt_text = f"Continue with the benchmark task. Step {step_num + 1}/{task.max_steps}"
 
                 # Force strict action-language compliance. The Eliza chat planner
                 # otherwise picks REPLY and emits prose like "Got it, I'll ...".
@@ -154,7 +153,10 @@ class ElizaAgentHarness:
                 else:
                     # Try extracting <command> tag from response text
                     import re
-                    cmd_match = re.search(r"<command>(.*?)</command>", response.text or "", re.DOTALL)
+
+                    cmd_match = re.search(
+                        r"<command>(.*?)</command>", response.text or "", re.DOTALL
+                    )
                     if cmd_match:
                         action = cmd_match.group(1).strip()
                     elif response.text:
@@ -195,6 +197,7 @@ class ElizaAgentHarness:
                 elapsed_ms = (time.time() - start_time) * 1000
                 if elapsed_ms > task.timeout_ms:
                     error = f"Task timed out after {elapsed_ms:.0f}ms"
+                    failure_kind = AgentBenchFailureKind.TASK
                     break
 
                 # Early success
@@ -206,14 +209,19 @@ class ElizaAgentHarness:
                             break
                     except Exception as eval_err:
                         error = f"Evaluation error: {eval_err}"
+                        failure_kind = AgentBenchFailureKind.INFRASTRUCTURE
                         break
 
-            if not success:
+            if not success and failure_kind is None:
                 success = await adapter.evaluate(task, actions)
 
         except Exception as exc:
             error = str(exc)
+            failure_kind = AgentBenchFailureKind.INFRASTRUCTURE
             logger.error("[eliza-agentbench] Task %s failed: %s", task.id, exc)
+
+        if not success and failure_kind is None:
+            failure_kind = AgentBenchFailureKind.TASK
 
         duration_ms = (time.time() - start_time) * 1000
 
@@ -226,6 +234,7 @@ class ElizaAgentHarness:
             final_state=step_records[-1].observation if step_records else {},
             duration_ms=duration_ms,
             error=error,
+            failure_kind=failure_kind,
             metrics={
                 "planning_time_ms": 0.0,
                 "execution_time_ms": duration_ms,

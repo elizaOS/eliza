@@ -36,7 +36,7 @@ CI_LANES: tuple[str, ...] = ("scheduled", "smoke", "manual")
 
 # The core real-model subset wired into the scheduled orchestrator workflow.
 SCHEDULED_ORCHESTRATOR_SUBSET: frozenset[str] = frozenset(
-    {"bfcl", "action-calling", "agentbench", "tau_bench", "mint", "context_bench"}
+    {"bfcl", "action-calling", "tau_bench", "mint", "context_bench"}
 )
 
 # Benchmark id -> CI lane. MUST stay in 1:1 sync with the public benchmark ids
@@ -47,7 +47,6 @@ CI_LANE_BY_BENCHMARK: dict[str, str] = {
     # Core orchestrator subset (benchmark-orchestrator-scheduled.yml).
     "bfcl": "scheduled",
     "action-calling": "scheduled",
-    "agentbench": "scheduled",
     "tau_bench": "scheduled",
     "mint": "scheduled",
     "context_bench": "scheduled",
@@ -93,6 +92,7 @@ CI_LANE_BY_BENCHMARK: dict[str, str] = {
     "terminal_bench": "manual",  # Docker backend
     "swe_bench": "manual",  # Docker backend
     "swe_bench_orchestrated": "manual",  # Docker backend
+    "agentbench": "manual",  # diagnostic-only until full official environment parity
     "vending_bench": "manual",  # long-horizon
     "mmau": "manual",  # real audio dataset
     "voicebench": "manual",  # real audio assets

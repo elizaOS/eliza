@@ -35,6 +35,8 @@ from elizaos_agentbench.types import (
     AgentBenchConfig,
     AgentBenchDataMode,
     AgentBenchEnvironment,
+    AgentBenchFailureKind,
+    AgentBenchInfrastructureError,
     AgentBenchReport,
     AgentBenchResult,
     AgentBenchTask,
@@ -186,18 +188,22 @@ class AgentBenchRunner:
 
         try:
             # Initialize adapters
+            tasks_by_environment: dict[AgentBenchEnvironment, list[AgentBenchTask]] = {}
             for env in enabled_envs:
                 env_config = self.config.get_env_config(env)
                 adapter = self._create_adapter(env, env_config)
+                tasks = self._load_tasks(env)
+                for task in tasks:
+                    adapter.validate_task(task)
                 await adapter.initialize()
                 self._adapters[env] = adapter
+                tasks_by_environment[env] = tasks
                 logger.info(f"[AgentBenchRunner] Initialized {env.value} adapter")
 
             # Run benchmarks for each environment
             for env, adapter in self._adapters.items():
                 logger.info(f"[AgentBenchRunner] Running {env.value} benchmark...")
-                tasks = self._load_tasks(env)
-                env_config = self.config.get_env_config(env)
+                tasks = tasks_by_environment[env]
 
                 for task in tasks:
                     # Use injected bridge harness when present, otherwise run adapter directly.
@@ -209,6 +215,11 @@ class AgentBenchRunner:
                         # Direct mode: uses runtime.generate_text() directly
                         result = await adapter.run_task(task)
 
+                    if result.failure_kind == AgentBenchFailureKind.INFRASTRUCTURE:
+                        raise AgentBenchInfrastructureError(
+                            f"{env.value}: task {task.id} failed in the benchmark "
+                            f"harness: {result.error}"
+                        )
                     self._results.append(result)
                     status = "✓ PASS" if result.success else "✗ FAIL"
                     logger.info(
@@ -296,7 +307,8 @@ class AgentBenchRunner:
                 success_rate=passed / len(env_results) if env_results else 0,
                 average_steps=sum(r.steps_taken for r in env_results) / len(env_results),
                 average_duration_ms=sum(r.duration_ms for r in env_results) / len(env_results),
-                average_reward=sum(r.metrics.get("reward", 0) for r in env_results) / len(env_results),
+                average_reward=sum(r.metrics.get("reward", 0) for r in env_results)
+                / len(env_results),
                 results=env_results,
             )
 
@@ -399,14 +411,22 @@ class AgentBenchRunner:
         recommendations: list[str] = []
 
         # Analyze overall performance
-        total_success_rate = sum(r.success_rate for r in env_reports.values()) / len(env_reports) if env_reports else 0
+        total_success_rate = (
+            sum(r.success_rate for r in env_reports.values()) / len(env_reports)
+            if env_reports
+            else 0
+        )
 
         if total_success_rate > 0.6:
             status = "strong"
-            key_findings.append("ElizaOS demonstrates strong agent capabilities across tested environments")
+            key_findings.append(
+                "ElizaOS demonstrates strong agent capabilities across tested environments"
+            )
         elif total_success_rate > 0.3:
             status = "moderate"
-            key_findings.append("ElizaOS shows moderate agent capabilities with room for improvement")
+            key_findings.append(
+                "ElizaOS shows moderate agent capabilities with room for improvement"
+            )
         else:
             status = "needs_improvement"
             key_findings.append("ElizaOS agent capabilities need significant improvement")
@@ -536,6 +556,7 @@ class AgentBenchRunner:
             "final_state": r.final_state,
             "duration_ms": r.duration_ms,
             "error": r.error,
+            "failure_kind": r.failure_kind.value if r.failure_kind else None,
             "metrics": dict(r.metrics),
             "details": dict(r.details),
             "step_records": [
@@ -557,7 +578,7 @@ class AgentBenchRunner:
 
 ## Executive Summary
 
-- **Status**: {report.summary['status'].upper()}
+- **Status**: {report.summary["status"].upper()}
 - **Overall Success Rate**: {report.overall_success_rate * 100:.1f}%
 - **Total Tasks**: {report.total_tasks} ({report.passed_tasks} passed, {report.failed_tasks} failed)
 - **Average Duration**: {report.average_duration_ms:.0f}ms per task
@@ -626,7 +647,7 @@ class AgentBenchRunner:
 - **Average Tokens per Task**: {avg_tokens:.0f}
 
 ---
-*Generated on {report.summary.get('timestamp', datetime.now().isoformat())}*
+*Generated on {report.summary.get("timestamp", datetime.now().isoformat())}*
 *Benchmark: AgentBench (ICLR 2024)*
 *Framework: ElizaOS Python*
 """

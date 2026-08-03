@@ -157,6 +157,61 @@ export interface BenchmarkTrajectoryStep {
   personality_audit_log?: BenchmarkPersonalityAuditEntry[];
 }
 
+export type TrajectoryStepQuery =
+  | { ok: true; value: number | null }
+  | {
+      ok: false;
+      code: "BENCHMARK_TRAJECTORY_STEP_INVALID";
+      message: string;
+    };
+
+export function parseTrajectoryStepQuery(
+  raw: string | null,
+): TrajectoryStepQuery {
+  if (raw === null) return { ok: true, value: null };
+  if (!/^[1-9]\d*$/.test(raw)) {
+    return {
+      ok: false,
+      code: "BENCHMARK_TRAJECTORY_STEP_INVALID",
+      message: "step must be a positive integer",
+    };
+  }
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value)) {
+    return {
+      ok: false,
+      code: "BENCHMARK_TRAJECTORY_STEP_INVALID",
+      message: "step exceeds the supported integer range",
+    };
+  }
+  return { ok: true, value };
+}
+
+export function selectTrajectorySteps<T extends { step: number }>(
+  steps: readonly T[],
+  requestedStep: number | null,
+): T[] {
+  if (requestedStep === null) return [...steps];
+  return steps.filter((entry) => entry.step === requestedStep);
+}
+
+export function selectTrajectoryOutbox(
+  outbox: readonly BenchmarkOutboxEntry[],
+  selectedSteps: readonly Pick<
+    BenchmarkTrajectoryStep,
+    "startedAt" | "finishedAt"
+  >[],
+  requestedStep: number | null,
+): BenchmarkOutboxEntry[] {
+  if (requestedStep === null) return [...outbox];
+  const selected = selectedSteps[0];
+  if (!selected) return [];
+  return outbox.filter(
+    (entry) =>
+      entry.ts >= selected.startedAt && entry.ts <= selected.finishedAt,
+  );
+}
+
 export interface BenchmarkToolCall {
   id: string;
   type: "function";

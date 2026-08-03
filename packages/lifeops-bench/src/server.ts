@@ -67,8 +67,11 @@ import {
   hasLifecycleTaskAction,
   normalizeBenchmarkContext,
   normalizeBenchmarkModelUsage,
+  parseTrajectoryStepQuery,
   resolveHost,
   resolvePort,
+  selectTrajectoryOutbox,
+  selectTrajectorySteps,
   sessionKey,
   summarizeBenchmarkTurnUsage,
   toPlugin,
@@ -2360,6 +2363,19 @@ export async function startBenchmarkServer() {
     }
 
     if (pathname === "/api/benchmark/trajectory" && req.method === "GET") {
+      const parsedStep = parseTrajectoryStepQuery(
+        requestUrl.searchParams.get("step"),
+      );
+      if (!parsedStep.ok) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            error: parsedStep.message,
+            code: parsedStep.code,
+          }),
+        );
+        return;
+      }
       const context = extractRecord({
         benchmark: requestUrl.searchParams.get("benchmark") ?? undefined,
         task_id:
@@ -2387,6 +2403,8 @@ export async function startBenchmarkServer() {
       }
 
       const key = sessionKey(session);
+      const allSteps = trajectoriesBySession.get(key) ?? [];
+      const selectedSteps = selectTrajectorySteps(allSteps, parsedStep.value);
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(
         JSON.stringify({
@@ -2395,8 +2413,15 @@ export async function startBenchmarkServer() {
           task_id: session.taskId,
           room_id: session.roomId,
           relay_room_id: session.relayRoomId,
-          steps: trajectoriesBySession.get(key) ?? [],
-          outbox: outboxBySession.get(key) ?? [],
+          steps: selectedSteps,
+          outbox: selectTrajectoryOutbox(
+            outboxBySession.get(key) ?? [],
+            selectedSteps,
+            parsedStep.value,
+          ),
+          snapshot_scope: parsedStep.value === null ? "session" : "turn",
+          requested_step: parsedStep.value,
+          total_steps: allSteps.length,
         }),
       );
       return;

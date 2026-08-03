@@ -1,0 +1,11 @@
+{
+  "extra": {
+    "per_benchmark": {
+      "action-calling": {
+        "max_examples": null,
+        "expected_examples": 63,
+        "expand_scenarios": true
+      }
+    }
+  }
+}

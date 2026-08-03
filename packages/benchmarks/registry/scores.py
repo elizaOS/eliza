@@ -237,17 +237,47 @@ def _score_from_agentbench_json(data: JSONValue) -> ScoreExtraction:
         get_required(root, "total_tasks", ctx="agentbench:root"),
         ctx="agentbench:total_tasks",
     )
-    if total <= 0:
-        raise ValueError("agentbench: zero-task score is not publishable")
-    passed = root.get("passed_tasks")
+    passed = expect_float(
+        get_required(root, "passed_tasks", ctx="agentbench:root"),
+        ctx="agentbench:passed_tasks",
+    )
+    failed = expect_float(
+        get_required(root, "failed_tasks", ctx="agentbench:root"),
+        ctx="agentbench:failed_tasks",
+    )
+    if total <= 0 or not total.is_integer():
+        raise ValueError("agentbench: total_tasks must be a positive integer")
+    if passed < 0 or failed < 0 or not passed.is_integer() or not failed.is_integer():
+        raise ValueError("agentbench: passed_tasks and failed_tasks must be integers")
+    if passed + failed != total:
+        raise ValueError(
+            "agentbench: passed and failed task counts do not cover the corpus"
+        )
+    if not 0.0 <= overall <= 1.0:
+        raise ValueError(
+            "agentbench: overall success rate must be between zero and one"
+        )
+    if not math.isclose(overall, passed / total, rel_tol=0.0, abs_tol=1e-12):
+        raise ValueError("agentbench: overall success rate disagrees with task counts")
+    publication_fields = {
+        field: root[field]
+        for field in (
+            "dataset_provenance",
+            "dataset_selection",
+            "environment_reports",
+        )
+        if field in root
+    }
     return ScoreExtraction(
         score=overall,
         unit="ratio",
         higher_is_better=True,
         metrics={
             "overall_success_rate": overall,
-            "total_tasks": total,
-            "passed_tasks": passed if passed is not None else 0,
+            "total_tasks": int(total),
+            "passed_tasks": int(passed),
+            "failed_tasks": int(failed),
+            **publication_fields,
         },
     )
 

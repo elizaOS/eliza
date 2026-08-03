@@ -2,8 +2,8 @@
 Tests for AgentBench runner.
 """
 
-import tempfile
 import json
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -15,6 +15,10 @@ from elizaos_agentbench.types import (
     AgentBenchConfig,
     AgentBenchDataMode,
     AgentBenchEnvironment,
+    AgentBenchFailureKind,
+    AgentBenchInfrastructureError,
+    AgentBenchResult,
+    AgentBenchTask,
     EnvironmentConfig,
 )
 
@@ -164,6 +168,43 @@ class TestConvenienceFunction:
 
 class TestTaskLoadFailures:
     @pytest.mark.asyncio
+    async def test_unsupported_os_protocol_fails_before_adapter_initialization(
+        self, monkeypatch, tmp_path: Path
+    ) -> None:
+        config = AgentBenchConfig(
+            output_dir=str(tmp_path),
+            enable_memory_tracking=False,
+            data_mode=AgentBenchDataMode.FULL,
+        )
+        for env in AgentBenchEnvironment:
+            config.get_env_config(env).enabled = False
+        config.os_config = EnvironmentConfig(enabled=True)
+        runner = AgentBenchRunner(config=config)
+        adapter = runner._create_adapter(AgentBenchEnvironment.OS, config.os_config)
+        initialized = False
+
+        async def initialize() -> None:
+            nonlocal initialized
+            initialized = True
+
+        task = AgentBenchTask(
+            id="os-test-start-only",
+            environment=AgentBenchEnvironment.OS,
+            description="Use the prepared service.",
+            initial_state={"create": {}, "start": "service example start"},
+            goal="Return ready.",
+            max_steps=1,
+            metadata={"evaluation": {"match": "ready"}},
+        )
+        monkeypatch.setattr(adapter, "initialize", initialize)
+        monkeypatch.setattr(runner, "_create_adapter", lambda *_args: adapter)
+        monkeypatch.setattr(runner, "_load_tasks", lambda _env: [task])
+
+        with pytest.raises(AgentBenchInfrastructureError, match="refusing partial"):
+            await runner.run_benchmarks()
+        assert initialized is False
+
+    @pytest.mark.asyncio
     async def test_full_all_selection_refuses_partial_eight_environment_run(
         self, tmp_path: Path
     ) -> None:
@@ -256,6 +297,82 @@ class TestTaskLoadFailures:
 
         with pytest.raises(RuntimeError, match="database unavailable"):
             await runner.run_benchmarks()
+
+    @pytest.mark.asyncio
+    async def test_task_harness_error_is_not_published_as_model_failure(
+        self, monkeypatch, tmp_path: Path
+    ) -> None:
+        config = AgentBenchConfig(
+            output_dir=str(tmp_path),
+            enable_memory_tracking=False,
+            data_mode=AgentBenchDataMode.FIXTURE,
+        )
+        for env in AgentBenchEnvironment:
+            config.get_env_config(env).enabled = False
+        config.db_config = EnvironmentConfig(enabled=True, max_tasks=1)
+        runner = AgentBenchRunner(config=config)
+        adapter = runner._create_adapter(
+            AgentBenchEnvironment.DATABASE,
+            config.db_config,
+        )
+
+        async def fail_task(_task: object) -> AgentBenchResult:
+            return AgentBenchResult(
+                task_id="db-fixture-test-0000",
+                environment=AgentBenchEnvironment.DATABASE,
+                success=False,
+                steps_taken=0,
+                actions=[],
+                final_state={},
+                duration_ms=1.0,
+                error="fixture setup failed",
+                failure_kind=AgentBenchFailureKind.INFRASTRUCTURE,
+            )
+
+        monkeypatch.setattr(adapter, "run_task", fail_task)
+        monkeypatch.setattr(runner, "_create_adapter", lambda *_args: adapter)
+
+        with pytest.raises(RuntimeError, match="fixture setup failed"):
+            await runner.run_benchmarks()
+        assert not (tmp_path / "agentbench-results.json").exists()
+
+    @pytest.mark.asyncio
+    async def test_scored_task_timeout_is_reported_without_aborting(
+        self, monkeypatch, tmp_path: Path
+    ) -> None:
+        config = AgentBenchConfig(
+            output_dir=str(tmp_path),
+            enable_memory_tracking=False,
+            data_mode=AgentBenchDataMode.FIXTURE,
+        )
+        for env in AgentBenchEnvironment:
+            config.get_env_config(env).enabled = False
+        config.db_config = EnvironmentConfig(enabled=True, max_tasks=1)
+        runner = AgentBenchRunner(config=config)
+        adapter = runner._create_adapter(AgentBenchEnvironment.DATABASE, config.db_config)
+
+        async def timeout_task(_task: object) -> AgentBenchResult:
+            return AgentBenchResult(
+                task_id="db-fixture-test-0000",
+                environment=AgentBenchEnvironment.DATABASE,
+                success=False,
+                steps_taken=1,
+                actions=["think"],
+                final_state={},
+                duration_ms=1.0,
+                error="Task timed out after 1ms",
+                failure_kind=AgentBenchFailureKind.TASK,
+            )
+
+        monkeypatch.setattr(adapter, "run_task", timeout_task)
+        monkeypatch.setattr(runner, "_create_adapter", lambda *_args: adapter)
+
+        report = await runner.run_benchmarks()
+
+        assert report.total_tasks == 1
+        assert report.failed_tasks == 1
+        detailed = json.loads((tmp_path / "agentbench-detailed.json").read_text())
+        assert detailed[0]["failure_kind"] == "task"
 
     def test_zero_loaded_tasks_fail_fast_unless_allowed(self, monkeypatch) -> None:
         config = AgentBenchConfig(

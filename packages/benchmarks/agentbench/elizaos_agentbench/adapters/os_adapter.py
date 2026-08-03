@@ -11,14 +11,15 @@ import re
 import shlex
 import tempfile
 
+from elizaos_agentbench.adapters.base import EnvironmentAdapter
 from elizaos_agentbench.types import (
     AgentBenchEnvironment,
-    AgentRuntimeProtocol,
+    AgentBenchInfrastructureError,
     AgentBenchTask,
+    AgentRuntimeProtocol,
     EnvironmentConfig,
     ObservationType,
 )
-from elizaos_agentbench.adapters.base import EnvironmentAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,14 @@ _CONVERSATIONAL_PREFIXES = (
     "sounds good",
 )
 
+_DOCKER_EXEC_INFRASTRUCTURE_PREFIXES = (
+    "cannot connect to the docker daemon",
+    "error response from daemon",
+    "docker: error response from daemon",
+    "oci runtime exec failed",
+    "permission denied while trying to connect to the docker daemon",
+)
+
 
 def _looks_conversational(text: str) -> bool:
     """Return True if *text* looks like an English chat reply, not a command."""
@@ -69,6 +78,27 @@ def _looks_conversational(text: str) -> bool:
     return False
 
 
+def _official_protocol_requirements(task: AgentBenchTask) -> tuple[str, ...]:
+    """Return upstream OS protocol features this local adapter cannot honor."""
+    requirements: list[str] = []
+    create = task.initial_state.get("create")
+    start = task.initial_state.get("start")
+    evaluation = task.metadata.get("evaluation")
+    source_file = task.metadata.get("file")
+
+    if isinstance(source_file, str) and "os_interaction/" in source_file:
+        requirements.append("pinned task image and action protocol")
+    if isinstance(create, dict) and create:
+        requirements.append("create/image/init")
+    if start is not None:
+        requirements.append("start")
+    if isinstance(evaluation, dict) and evaluation.get("check"):
+        requirements.append("official check script")
+    if isinstance(evaluation, dict) and evaluation.get("match") is not None:
+        requirements.append("answer action")
+    return tuple(dict.fromkeys(requirements))
+
+
 class OSEnvironmentAdapter(EnvironmentAdapter):
     """
     Adapter for Operating System (Linux terminal) environment.
@@ -77,6 +107,15 @@ class OSEnvironmentAdapter(EnvironmentAdapter):
     """
 
     environment = AgentBenchEnvironment.OS
+
+    def validate_task(self, task: AgentBenchTask) -> None:
+        """Reject official tasks until their complete container protocol is supported."""
+        unsupported = _official_protocol_requirements(task)
+        if unsupported:
+            raise AgentBenchInfrastructureError(
+                "Official AgentBench OS task requires unsupported upstream protocol "
+                f"features ({', '.join(unsupported)}); refusing partial execution"
+            )
 
     # Dangerous command regexes that should be blocked
     DANGEROUS_PATTERNS: list[str] = [
@@ -99,16 +138,52 @@ class OSEnvironmentAdapter(EnvironmentAdapter):
         self._container_id: str | None = None
         self._temp_dir: str | None = None
         # Use default if config or docker_image is None
-        self._docker_image = (config.docker_image if config and config.docker_image else "ubuntu:22.04")
+        self._docker_image = (
+            config.docker_image if config and config.docker_image else "ubuntu:22.04"
+        )
         self._command_history: list[str] = []
         self._working_directory = "/"
 
     def _initialize_local_sandbox(self) -> None:
-        """Create a local temp sandbox when Docker is unavailable."""
+        """Create the local sandbox selected explicitly by configuration."""
         self._container_id = None
         if self._temp_dir is None:
             self._temp_dir = tempfile.mkdtemp(prefix="agentbench_os_")
         self._working_directory = self._temp_dir
+
+    async def _run_docker_lifecycle_command(self, stage: str, *arguments: str) -> str:
+        """Run a Docker lifecycle command and fail on any control-plane error."""
+
+        try:
+            process = await asyncio.create_subprocess_exec(
+                "docker",
+                stage,
+                *arguments,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await process.communicate()
+        except Exception as exc:
+            raise AgentBenchInfrastructureError(f"docker {stage} could not start: {exc}") from exc
+
+        if process.returncode != 0:
+            detail = stderr.decode(errors="replace").strip()
+            raise AgentBenchInfrastructureError(
+                f"docker {stage} failed with exit code {process.returncode}: {detail}"
+            )
+        return stdout.decode(errors="replace").strip()
+
+    async def _discard_failed_container(self) -> None:
+        container_id = self._container_id
+        if not container_id:
+            return
+        try:
+            await self._run_docker_lifecycle_command("rm", "-f", container_id)
+        except AgentBenchInfrastructureError as exc:
+            # error-policy:J6 failed startup cleanup is best-effort teardown.
+            logger.warning("[OS] Failed to remove unusable container: %s", exc)
+        finally:
+            self._container_id = None
 
     async def initialize(self) -> None:
         """Initialize Docker container for sandboxed execution."""
@@ -117,80 +192,45 @@ class OSEnvironmentAdapter(EnvironmentAdapter):
 
         logger.info("[OS] Initializing OS environment adapter...")
 
-        if self.config and self.config.additional_settings.get("use_docker", True):
+        use_docker = self.config.additional_settings.get("use_docker", True) is not False
+        if not use_docker:
+            self._initialize_local_sandbox()
+        else:
             try:
-                # Pull Docker image
-                pull_proc = await asyncio.create_subprocess_exec(
-                    "docker",
-                    "pull",
-                    self._docker_image,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                _, pull_stderr = await pull_proc.communicate()
-                if pull_proc.returncode != 0:
-                    raise RuntimeError(
-                        f"docker pull failed with exit code {pull_proc.returncode}: "
-                        f"{pull_stderr.decode(errors='replace').strip()}"
-                    )
-
-                # Create container
-                create_proc = await asyncio.create_subprocess_exec(
-                    "docker",
+                await self._run_docker_lifecycle_command("pull", self._docker_image)
+                self._container_id = await self._run_docker_lifecycle_command(
                     "create",
                     "-i",
                     "--memory=512m",
                     "--cpus=1",
                     self._docker_image,
                     "/bin/bash",
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
                 )
-                stdout, create_stderr = await create_proc.communicate()
-                if create_proc.returncode != 0:
-                    raise RuntimeError(
-                        f"docker create failed with exit code {create_proc.returncode}: "
-                        f"{create_stderr.decode(errors='replace').strip()}"
-                    )
-                self._container_id = stdout.decode().strip()
                 if not self._container_id:
-                    raise RuntimeError("docker create returned an empty container id")
-
-                # Start container
-                start_proc = await asyncio.create_subprocess_exec(
-                    "docker",
-                    "start",
-                    self._container_id,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                _, start_stderr = await start_proc.communicate()
-                if start_proc.returncode != 0:
-                    raise RuntimeError(
-                        f"docker start failed with exit code {start_proc.returncode}: "
-                        f"{start_stderr.decode(errors='replace').strip()}"
+                    raise AgentBenchInfrastructureError(
+                        "docker create returned an empty container id"
                     )
-
-                logger.info(f"[OS] Docker container started: {self._container_id[:12]}")
-
-            except Exception as e:
-                logger.warning(f"[OS] Docker initialization failed, using local execution: {e}")
-                self._initialize_local_sandbox()
-        else:
-            # Create temp directory for local sandboxed execution
-            self._initialize_local_sandbox()
+                await self._run_docker_lifecycle_command("start", self._container_id)
+            except AgentBenchInfrastructureError:
+                await self._discard_failed_container()
+                raise
+            logger.info(f"[OS] Docker container started: {self._container_id[:12]}")
 
         self._initialized = True
         logger.info("[OS] OS environment adapter initialized")
 
     async def reset(self, task: AgentBenchTask) -> ObservationType:
         """Reset environment for a new task."""
+        self.validate_task(task)
+
         self._command_history = []
 
         # Safely get working directory with type checking
         working_dir_value = task.initial_state.get("working_dir")
         requested_working_dir = (
-            working_dir_value if isinstance(working_dir_value, str) and working_dir_value else "/home/user"
+            working_dir_value
+            if isinstance(working_dir_value, str) and working_dir_value
+            else "/home/user"
         )
 
         # Local sandbox: always operate inside our temp directory
@@ -296,13 +336,12 @@ class OSEnvironmentAdapter(EnvironmentAdapter):
                 False,
                 {"command": command, "timeout": True},
             )
+        except AgentBenchInfrastructureError:
+            raise
         except Exception as e:
-            return (
-                {"error": str(e)},
-                -0.1,
-                False,
-                {"command": command, "exception": str(e)},
-            )
+            raise AgentBenchInfrastructureError(
+                f"OS command executor failed while running {command!r}: {e}"
+            ) from e
 
     def _is_dangerous_command(self, command: str) -> bool:
         """Check if a command matches dangerous patterns."""
@@ -352,13 +391,21 @@ class OSEnvironmentAdapter(EnvironmentAdapter):
                 proc.communicate(),
                 timeout=self.config.timeout_ms / 1000 if self.config else 30,
             )
-            output = stdout.decode() + stderr.decode()
+            stderr_text = stderr.decode(errors="replace")
+            normalized_stderr = stderr_text.strip().lower()
+            if proc.returncode != 0 and normalized_stderr.startswith(
+                _DOCKER_EXEC_INFRASTRUCTURE_PREFIXES
+            ):
+                raise AgentBenchInfrastructureError(
+                    f"docker exec failed at the container/daemon boundary: {stderr_text.strip()}"
+                )
+            output = stdout.decode(errors="replace") + stderr_text
             return output.strip(), proc.returncode or 0
         except asyncio.TimeoutError:
             return "Execution timed out", 124
 
     async def _execute_local_command(self, command: str) -> tuple[str, int]:
-        """Execute command locally in temp directory (fallback)."""
+        """Execute a command in the explicitly configured local sandbox."""
         try:
             proc = await asyncio.create_subprocess_shell(
                 command,
@@ -425,10 +472,10 @@ class OSEnvironmentAdapter(EnvironmentAdapter):
 
         # Execute verification command if specified
         if "verify_command" in task.metadata:
-            output, exit_code = await self._execute_docker_command(
-                task.metadata["verify_command"]
-            ) if self._container_id else await self._execute_local_command(
-                task.metadata["verify_command"]
+            output, exit_code = (
+                await self._execute_docker_command(task.metadata["verify_command"])
+                if self._container_id
+                else await self._execute_local_command(task.metadata["verify_command"])
             )
             return exit_code == 0 and expected in output.lower()
 
@@ -513,8 +560,8 @@ class OSEnvironmentAdapter(EnvironmentAdapter):
 
     def format_prompt(self, task: AgentBenchTask, observation: ObservationType) -> str:
         """Format observation into prompt for LLM."""
-        working_dir = observation.get('working_dir', '/')
-        last_output = observation.get('last_output') or observation.get('output') or 'No output yet'
+        working_dir = observation.get("working_dir", "/")
+        last_output = observation.get("last_output") or observation.get("output") or "No output yet"
 
         return f"""You are an AI assistant operating a Linux terminal. Your goal is to complete the following task.
 

@@ -4,10 +4,13 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from eliza_adapter.client import (
     ElizaClient,
     MessageResponse,
     _eliza_runtime_provenance,
+    _turn_trajectory_snapshot,
 )
 
 
@@ -106,8 +109,12 @@ def test_send_message_preserves_usage_tool_calls_metadata_and_telemetry(
                             {
                                 "llmCalls": [
                                     {
-                                        "messages": [{"role": "user", "content": "please search"}],
-                                        "tools": [{"function": {"name": "mail.search"}}],
+                                        "messages": [
+                                            {"role": "user", "content": "please search"}
+                                        ],
+                                        "tools": [
+                                            {"function": {"name": "mail.search"}}
+                                        ],
                                         "response": "tool call",
                                     }
                                 ]
@@ -161,6 +168,9 @@ def test_send_message_preserves_usage_tool_calls_metadata_and_telemetry(
     assert response.metadata["agent_label"] == "eliza"
     assert response.params["_eliza_trajectory_snapshot"] == {
         "status": "ok",
+        "snapshot_scope": "turn",
+        "requested_step": 3,
+        "total_steps": 1,
         "steps": [
             {
                 "step": 3,
@@ -169,7 +179,9 @@ def test_send_message_preserves_usage_tool_calls_metadata_and_telemetry(
                         {
                             "llmCalls": [
                                 {
-                                    "messages": [{"role": "user", "content": "please search"}],
+                                    "messages": [
+                                        {"role": "user", "content": "please search"}
+                                    ],
                                     "tools": [{"function": {"name": "mail.search"}}],
                                     "response": "tool call",
                                 }
@@ -181,7 +193,7 @@ def test_send_message_preserves_usage_tool_calls_metadata_and_telemetry(
         ],
     }
     assert get_calls == [
-        "/api/benchmark/trajectory?benchmark=loca_bench&task_id=task-1"
+        "/api/benchmark/trajectory?benchmark=loca_bench&task_id=task-1&step=3"
     ]
 
     records = [json.loads(line) for line in telemetry.read_text().splitlines()]
@@ -215,15 +227,20 @@ def test_send_message_preserves_usage_tool_calls_metadata_and_telemetry(
         "lifecycle_system_hint_attestation": None,
         "publishable_native": True,
     }
-    assert record["trajectory_snapshot"]["steps"][0]["nativeTrajectory"]["steps"][0][
-        "llmCalls"
-    ][0]["tools"][0]["function"]["name"] == "mail.search"
+    assert (
+        record["trajectory_snapshot"]["steps"][0]["nativeTrajectory"]["steps"][0][
+            "llmCalls"
+        ][0]["tools"][0]["function"]["name"]
+        == "mail.search"
+    )
     assert record["compaction_strategy"] == "hybrid-ledger"
     assert "csk-redaction-test" not in record["response_text"]
     assert "[REDACTED]" in record["response_text"]
 
 
-def test_runtime_provenance_carries_only_content_free_lifecycle_hint_attestation() -> None:
+def test_runtime_provenance_carries_only_content_free_lifecycle_hint_attestation() -> (
+    None
+):
     attestation = {
         "schema_version": 1,
         "system_hint_sha256": "a" * 64,
@@ -347,7 +364,9 @@ def test_send_message_promotes_meta_usage_for_downstream_metrics(
 
     client._post = fake_post  # type: ignore[method-assign]
 
-    response = client.send_message("meta usage", context={"benchmark": "x", "task_id": "a"})
+    response = client.send_message(
+        "meta usage", context={"benchmark": "x", "task_id": "a"}
+    )
 
     assert response.params["usage"]["prompt_tokens"] == 55
     assert response.params["usage"]["completion_tokens"] == 5
@@ -374,8 +393,73 @@ def test_client_fetches_trajectory_and_diagnostics(monkeypatch) -> None:
     client._get = fake_get  # type: ignore[method-assign]
 
     assert client.trajectory(benchmark="loca_bench", task_id="task 1")["status"] == "ok"
-    assert client.diagnostics(benchmark="loca_bench", task_id="task 1")["status"] == "ok"
+    assert (
+        client.diagnostics(benchmark="loca_bench", task_id="task 1")["status"] == "ok"
+    )
     assert calls == [
         "/api/benchmark/trajectory?benchmark=loca_bench&task_id=task+1",
         "/api/benchmark/diagnostics?benchmark=loca_bench&task_id=task+1",
     ]
+
+
+def test_turn_trajectory_snapshot_compacts_legacy_full_session_response() -> None:
+    snapshot = {
+        "status": "ok",
+        "steps": [
+            {"step": 1, "startedAt": 100, "finishedAt": 199},
+            {"step": 2, "startedAt": 200, "finishedAt": 299},
+            {"step": 3, "startedAt": 300, "finishedAt": 399},
+        ],
+        "outbox": [
+            {"ts": 150, "text": "first"},
+            {"ts": 250, "text": "second"},
+            {"ts": 350, "text": "third"},
+        ],
+    }
+
+    assert _turn_trajectory_snapshot(snapshot, 2) == {
+        "status": "ok",
+        "steps": [{"step": 2, "startedAt": 200, "finishedAt": 299}],
+        "outbox": [{"ts": 250, "text": "second"}],
+        "snapshot_scope": "turn",
+        "requested_step": 2,
+        "total_steps": 3,
+    }
+
+
+@pytest.mark.parametrize(
+    "steps",
+    [[], [{"step": 1}], [{"step": 2}, {"step": 2}]],
+)
+def test_turn_trajectory_snapshot_rejects_missing_or_duplicate_step(
+    steps: list[dict[str, int]],
+) -> None:
+    with pytest.raises(ValueError, match="exactly one matching step"):
+        _turn_trajectory_snapshot({"steps": steps}, 2)
+
+
+def test_turn_trajectory_snapshots_grow_linearly() -> None:
+    steps = [
+        {
+            "step": index,
+            "startedAt": index * 100,
+            "finishedAt": index * 100 + 99,
+            "payload": "x" * 256,
+        }
+        for index in range(1, 101)
+    ]
+    outbox = [{"ts": index * 100 + 50, "payload": "y" * 128} for index in range(1, 101)]
+    records = [
+        _turn_trajectory_snapshot(
+            {"steps": steps[:index], "outbox": outbox[:index]}, index
+        )
+        for index in range(1, 101)
+    ]
+
+    assert all(len(record["steps"]) == 1 for record in records)
+    assert all(len(record["outbox"]) == 1 for record in records)
+    serialized_size = sum(len(json.dumps(record)) for record in records)
+    unique_payload_size = sum(len(json.dumps(step)) for step in steps) + sum(
+        len(json.dumps(entry)) for entry in outbox
+    )
+    assert serialized_size < unique_payload_size * 2

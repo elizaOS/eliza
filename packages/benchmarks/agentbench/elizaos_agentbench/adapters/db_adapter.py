@@ -10,14 +10,15 @@ import re
 import sqlite3
 import tempfile
 
+from elizaos_agentbench.adapters.base import EnvironmentAdapter
 from elizaos_agentbench.types import (
     AgentBenchEnvironment,
-    AgentRuntimeProtocol,
+    AgentBenchInfrastructureError,
     AgentBenchTask,
+    AgentRuntimeProtocol,
     EnvironmentConfig,
     ObservationType,
 )
-from elizaos_agentbench.adapters.base import EnvironmentAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,30 @@ StepInfoType = dict[str, str | int | float | bool | None]
 
 # Type for schema storage - includes bool fields like primary_key
 SchemaColumnType = dict[str, str | bool]
+
+_MODEL_SQL_ERROR_MARKERS = (
+    "syntax error",
+    "no such table",
+    "no such column",
+    "no such function",
+    "has no column named",
+    "ambiguous column name",
+    "misuse of",
+    "wrong number of arguments",
+    "incomplete input",
+    "unrecognized token",
+)
+
+
+def _is_model_sql_error(error: sqlite3.Error) -> bool:
+    """Separate rejected SQL authored by the model from engine failures."""
+
+    if isinstance(error, (sqlite3.IntegrityError, sqlite3.DataError)):
+        return True
+    message = str(error).lower()
+    return isinstance(error, sqlite3.OperationalError) and any(
+        marker in message for marker in _MODEL_SQL_ERROR_MARKERS
+    )
 
 
 class DatabaseEnvironmentAdapter(EnvironmentAdapter):
@@ -39,8 +64,21 @@ class DatabaseEnvironmentAdapter(EnvironmentAdapter):
 
     # SQL keywords that are not allowed in table/column names
     SQL_RESERVED_WORDS: set[str] = {
-        "SELECT", "INSERT", "UPDATE", "DELETE", "DROP", "CREATE", "ALTER",
-        "TABLE", "DATABASE", "INDEX", "FROM", "WHERE", "AND", "OR", "NOT",
+        "SELECT",
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "CREATE",
+        "ALTER",
+        "TABLE",
+        "DATABASE",
+        "INDEX",
+        "FROM",
+        "WHERE",
+        "AND",
+        "OR",
+        "NOT",
     }
 
     def __init__(
@@ -53,6 +91,7 @@ class DatabaseEnvironmentAdapter(EnvironmentAdapter):
         self._db_path: str | None = None
         self._schema: dict[str, list[SchemaColumnType]] = {}
         self._query_history: list[str] = []
+        self._last_query_succeeded = False
         self._max_results = 100
 
     async def initialize(self) -> None:
@@ -89,6 +128,7 @@ class DatabaseEnvironmentAdapter(EnvironmentAdapter):
     async def reset(self, task: AgentBenchTask) -> ObservationType:
         """Reset database for a new task."""
         self._query_history = []
+        self._last_query_succeeded = False
         self._schema = {}
 
         # Drop all existing tables
@@ -133,12 +173,14 @@ class DatabaseEnvironmentAdapter(EnvironmentAdapter):
                     if col.get("not_null"):
                         col_def += " NOT NULL"
                     column_defs.append(col_def)
-                    schema_columns.append({
-                        "name": col_name,
-                        "type": col_type,
-                        "primary_key": bool(col.get("primary_key")),
-                        "not_null": bool(col.get("not_null")),
-                    })
+                    schema_columns.append(
+                        {
+                            "name": col_name,
+                            "type": col_type,
+                            "primary_key": bool(col.get("primary_key")),
+                            "not_null": bool(col.get("not_null")),
+                        }
+                    )
 
                 if column_defs and cursor:
                     create_sql = f"CREATE TABLE [{table_name}] ({', '.join(column_defs)})"
@@ -215,18 +257,18 @@ class DatabaseEnvironmentAdapter(EnvironmentAdapter):
             )
 
         self._query_history.append(query)
+        self._last_query_succeeded = False
+
+        if self._connection is None:
+            raise AgentBenchInfrastructureError(
+                "Database connection is unavailable during task execution"
+            )
 
         try:
-            cursor = self._connection.cursor() if self._connection else None
-            if not cursor:
-                return (
-                    {"error": "Database not initialized"},
-                    -0.5,
-                    False,
-                    {"query": query},
-                )
+            cursor = self._connection.cursor()
 
             cursor.execute(query)
+            self._last_query_succeeded = True
 
             # Handle different query types
             columns: list[str] = []
@@ -258,19 +300,18 @@ class DatabaseEnvironmentAdapter(EnvironmentAdapter):
             return observation, reward, done, {"query": query, "row_count": row_count}
 
         except sqlite3.Error as e:
-            return (
-                {"error": str(e), "query": query},
-                -0.1,
-                False,
-                {"query": query, "sql_error": str(e)},
-            )
+            if _is_model_sql_error(e):
+                return (
+                    {"error": str(e), "query": query},
+                    -0.1,
+                    False,
+                    {"query": query, "sql_error": str(e)},
+                )
+            raise AgentBenchInfrastructureError(f"Database execution failed for query: {e}") from e
         except Exception as e:
-            return (
-                {"error": str(e), "query": query},
-                -0.2,
-                False,
-                {"query": query, "exception": str(e)},
-            )
+            raise AgentBenchInfrastructureError(
+                f"Database executor failed unexpectedly: {e}"
+            ) from e
 
     def _extract_query(self, action: str) -> str:
         """Extract SQL query from action string."""
@@ -343,13 +384,17 @@ class DatabaseEnvironmentAdapter(EnvironmentAdapter):
         last_query = self._query_history[-1] if self._query_history else ""
         if not last_query:
             return False
+        if not self._last_query_succeeded:
+            return False
 
         label = task.metadata.get("label") if isinstance(task.metadata, dict) else None
 
         try:
             cursor = self._connection.cursor() if self._connection else None
             if not cursor:
-                return False
+                raise AgentBenchInfrastructureError(
+                    "AgentBench database evaluator has no initialized connection"
+                )
 
             cursor.execute(last_query)
             actual_rows = cursor.fetchall()
@@ -374,8 +419,11 @@ class DatabaseEnvironmentAdapter(EnvironmentAdapter):
 
             return False
         except Exception as e:
-            logger.error(f"[DB] Evaluation error: {e}")
-            return False
+            if isinstance(e, AgentBenchInfrastructureError):
+                raise
+            raise AgentBenchInfrastructureError(
+                f"AgentBench database scoring failed for task {task.id}"
+            ) from e
 
     @staticmethod
     def _normalize_db_value(v: object) -> str:
@@ -395,6 +443,7 @@ class DatabaseEnvironmentAdapter(EnvironmentAdapter):
     @staticmethod
     def _compare_db_values(actual: list[str], gold: list[str]) -> bool:
         """Match upstream's set / float-tolerant comparison."""
+
         def is_float(x: str) -> bool:
             try:
                 float(x)
@@ -408,8 +457,7 @@ class DatabaseEnvironmentAdapter(EnvironmentAdapter):
                 return abs(float(a) - float(g)) <= 1e-2
             return a == g
 
-        if (actual and all(is_float(x) for x in actual)
-                and gold and all(is_float(x) for x in gold)):
+        if actual and all(is_float(x) for x in actual) and gold and all(is_float(x) for x in gold):
             if len(actual) != len(gold):
                 return False
             matched = [False] * len(gold)
@@ -481,7 +529,7 @@ class DatabaseEnvironmentAdapter(EnvironmentAdapter):
         elif error:
             result_str = f"\n**Error:** {error}\n"
 
-        schema_str = observation.get('schema')
+        schema_str = observation.get("schema")
         if not isinstance(schema_str, str):
             schema_str = self._format_schema()
 

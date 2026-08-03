@@ -38,6 +38,8 @@ from elizaos_agentbench.types import (
     AgentBenchConfig,
     AgentBenchDataMode,
     AgentBenchEnvironment,
+    AgentBenchFailureKind,
+    AgentBenchInfrastructureError,
     AgentBenchReport,
     AgentBenchResult,
     AgentBenchTask,
@@ -48,6 +50,8 @@ from elizaos_agentbench.types import (
 __all__ = [
     # Types
     "AgentBenchEnvironment",
+    "AgentBenchFailureKind",
+    "AgentBenchInfrastructureError",
     "AgentBenchTask",
     "AgentBenchResult",
     "AgentBenchReport",

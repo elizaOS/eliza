@@ -54,7 +54,10 @@ from .env_utils import (
 )
 from .leaderboard import delta_to_high_score
 from .locking import latest_publication_lock, serialize_on_output_root
-from benchmarks.publication_contracts import webshop_workload_quarantine_reason
+from benchmarks.publication_contracts import (
+    agentbench_publication_contract_reason,
+    webshop_workload_quarantine_reason,
+)
 from .analyze_trajectory import summarize as summarize_trajectory
 from .random_baseline_runner import (
     CALIBRATION_HARNESSES,
@@ -903,10 +906,7 @@ def _run_command_with_deadlines(
                     progress_event_count=progress_events,
                 )
 
-            if (
-                execution_cancel_event is not None
-                and execution_cancel_event.is_set()
-            ):
+            if execution_cancel_event is not None and execution_cancel_event.is_set():
                 cancellation_error = (
                     "Command cancelled by the benchmark cohort coordinator"
                 )
@@ -1329,6 +1329,10 @@ def _publication_quarantine_reason(
         and dataset_source.strip().lower() in {"sample", "sample-files"}
     )
     explicit_sample = explicit_sample or metrics.get("use_sample_tasks") is True
+    if benchmark_id == "agentbench":
+        workload_reason = agentbench_publication_contract_reason(metrics)
+        if workload_reason is not None:
+            return workload_reason
     if benchmark_id == "webshop" and not explicit_sample:
         workload_reason = webshop_workload_quarantine_reason(metrics)
         if workload_reason is not None:

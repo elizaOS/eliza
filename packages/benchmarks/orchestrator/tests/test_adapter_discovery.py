@@ -338,7 +338,9 @@ def test_gauntlet_accepts_current_surfpool_remote_datasource_help(
     monkeypatch.setattr(
         orchestrator_adapters,
         "_surfpool_start_help",
-        lambda _binary: "Usage: surfpool start --network <NETWORK> --rpc-url <RPC_URL> --no-tui",
+        lambda _binary: (
+            "Usage: surfpool start --network <NETWORK> --rpc-url <RPC_URL> --no-tui"
+        ),
     )
     try:
         assert orchestrator_adapters._has_gauntlet_real_surfpool_backend() is True
@@ -369,7 +371,9 @@ def test_gauntlet_surfpool_manager_uses_current_mainnet_datasource_cli(
     monkeypatch.setattr(
         manager,
         "_start_help",
-        lambda: "Usage: surfpool start --network <NETWORK> --rpc-url <RPC_URL> --no-tui",
+        lambda: (
+            "Usage: surfpool start --network <NETWORK> --rpc-url <RPC_URL> --no-tui"
+        ),
     )
 
     command = manager._build_command()
@@ -2039,16 +2043,38 @@ def test_agentbench_routes_cross_harness_adapter_clients(
 
 
 def test_agentbench_score_rejects_zero_task_results() -> None:
-    with pytest.raises(ValueError, match="zero-task score"):
+    with pytest.raises(ValueError, match="positive integer"):
         _score_from_agentbench_json(
-            {"overall_success_rate": 1.0, "total_tasks": 0, "passed_tasks": 0}
+            {
+                "overall_success_rate": 1.0,
+                "total_tasks": 0,
+                "passed_tasks": 0,
+                "failed_tasks": 0,
+            }
         )
-    assert (
-        _score_from_agentbench_json(
-            {"overall_success_rate": 0.5, "total_tasks": 2, "passed_tasks": 1}
-        ).score
-        == 0.5
-    )
+
+
+def test_agentbench_score_accepts_arithmetically_valid_diagnostic_run() -> None:
+    report = {
+        "total_tasks": 2,
+        "passed_tasks": 1,
+        "failed_tasks": 1,
+        "overall_success_rate": 0.5,
+    }
+
+    extraction = _score_from_agentbench_json(report)
+
+    assert extraction.score == 0.5
+    assert extraction.metrics == {
+        "overall_success_rate": 0.5,
+        "total_tasks": 2,
+        "passed_tasks": 1,
+        "failed_tasks": 1,
+    }
+
+    inconsistent = dict(report, failed_tasks=0)
+    with pytest.raises(ValueError, match="do not cover"):
+        _score_from_agentbench_json(inconsistent)
 
 
 def test_context_and_terminal_scores_reject_zero_task_results() -> None:

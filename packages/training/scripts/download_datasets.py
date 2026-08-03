@@ -58,14 +58,28 @@ def dataset_dir(slug: str) -> Path:
     return RAW_DIR / slug
 
 
-def is_done(slug: str) -> bool:
-    return (dataset_dir(slug) / ".done").exists()
+def is_done(entry: dict) -> bool:
+    marker = dataset_dir(entry["slug"]) / ".done"
+    if not marker.is_file():
+        return False
+    revision = entry.get("revision")
+    if not revision:
+        return True
+    lines = marker.read_text(encoding="utf-8").splitlines()
+    return (
+        len(lines) >= 3
+        and lines[0] == entry.get("repo_id")
+        and lines[2] == revision
+    )
 
 
-def mark_done(slug: str, repo_id: str) -> None:
+def mark_done(slug: str, repo_id: str, revision: str | None = None) -> None:
     d = dataset_dir(slug)
     d.mkdir(parents=True, exist_ok=True)
-    (d / ".done").write_text(f"{repo_id}\n{time.time()}\n", encoding="utf-8")
+    lines = [repo_id, str(time.time())]
+    if revision:
+        lines.append(revision)
+    (d / ".done").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def dir_size_gb(path: Path) -> float:
@@ -153,7 +167,11 @@ def download_one(entry: dict, *, retries: int = 3) -> tuple[str, str, float]:
         return stage_local(entry)
     slug = entry["slug"]
     repo_id = entry["repo_id"]
+    revision = entry.get("revision")
     target = dataset_dir(slug)
+    marker = target / ".done"
+    if revision and marker.is_file() and not is_done(entry):
+        shutil.rmtree(target)
     target.mkdir(parents=True, exist_ok=True)
 
     last_err: Exception | None = None
@@ -162,6 +180,7 @@ def download_one(entry: dict, *, retries: int = 3) -> tuple[str, str, float]:
             snapshot_download(
                 repo_id=repo_id,
                 repo_type="dataset",
+                revision=revision,
                 local_dir=str(target),
                 # Skip optional large extras when not needed; we still get
                 # README.md and dataset_infos.json for traceability.
@@ -179,7 +198,7 @@ def download_one(entry: dict, *, retries: int = 3) -> tuple[str, str, float]:
                 etag_timeout=60,
                 max_workers=4,
             )
-            mark_done(slug, repo_id)
+            mark_done(slug, repo_id, revision)
             return (slug, "ok", dir_size_gb(target))
         except HfHubHTTPError as e:
             last_err = e
@@ -246,7 +265,7 @@ def main() -> int:
             continue
         if e["slug"] in skip:
             continue
-        if not args.rebuild and is_done(e["slug"]):
+        if not args.rebuild and is_done(e):
             log.info("skip %s (already done)", e["slug"])
             continue
         selected.append(e)

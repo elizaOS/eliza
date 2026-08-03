@@ -589,6 +589,13 @@ def _case_id(case: ExpectedCase, fallback: int) -> str:
     return str(raw_id or f"case-{fallback}").strip()
 
 
+def _task_id(case: ExpectedCase, index: int) -> str:
+    case_id = _case_id(case, index)
+    run_identity = os.environ.get("BENCHMARK_RUN_ID") or f"pid-{os.getpid()}"
+    case_digest = hashlib.sha256(case_id.encode("utf-8")).hexdigest()[:12]
+    return f"action-calling-{run_identity}-{index}-{case_digest}"
+
+
 def _append_to_last_user_message(
     messages: list[dict[str, str]], suffix: str
 ) -> list[dict[str, str]]:
@@ -1017,6 +1024,7 @@ def _generate(
     provider: str,
     model: str,
     case: ExpectedCase,
+    task_id: str,
     max_tokens: int,
     temperature: float,
     tool_choice: str,
@@ -1033,6 +1041,7 @@ def _generate(
                 text=_last_user_text(messages),
                 context={
                     "benchmark": "action-calling",
+                    "task_id": task_id,
                     "messages": messages,
                     "tools": case.tools,
                     "max_tokens": max_tokens,
@@ -1245,6 +1254,8 @@ def main() -> int:
     t0 = time.perf_counter()
 
     for i, case in enumerate(cases):
+        case_id = _case_id(case, i)
+        task_id = _task_id(case, i)
         if args.provider == "mock":
             predicted_calls = case.expected_calls
             gen_text = ""
@@ -1253,7 +1264,7 @@ def main() -> int:
         else:
             if _selected_harness(args.provider) and hasattr(client, "reset"):
                 client.reset(
-                    task_id=f"action-calling-{os.getpid()}-{i}",
+                    task_id=task_id,
                     benchmark="action-calling",
                 )
             predicted_calls, gen_text, generation_source, content_tool_calls = (
@@ -1262,6 +1273,7 @@ def main() -> int:
                     args.provider,
                     args.model,
                     case,
+                    task_id,
                     args.max_new_tokens,
                     args.temperature,
                     args.tool_choice,
@@ -1276,7 +1288,8 @@ def main() -> int:
                 counts[key] += 1
 
         case_outcome = {
-            "case_id": _case_id(case, i),
+            "case_id": case_id,
+            "task_id": task_id,
             "messages": case.messages,
             "tools": case.tools,
             "expected_tool_calls": case.expected_calls,
