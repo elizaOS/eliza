@@ -226,10 +226,11 @@ jobs:
       - name: Test homepage downloads
         if: steps.homepage-scope.outputs.run == 'true'
         working-directory: packages/homepage
-        # The provisioned runner reported six default workers. Heavy animated
-        # visual routes then contended, timed out, and multiplied into retries.
-        # Two workers preserve every test while bounding per-test CPU pressure.
-        run: bun run test:e2e --workers=2
+        # The Three.js landing route consumes the runner's software-rendering
+        # budget by itself. A second browser makes wall-clock animation time
+        # exceed the readiness boundary and costs more in retries than serial
+        # execution costs here.
+        run: bun run test:e2e --workers=1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

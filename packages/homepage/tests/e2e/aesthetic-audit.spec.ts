@@ -155,7 +155,7 @@ for (const viewport of VIEWPORTS) {
 
     for (const route of ROUTES) {
       test(`${route.name} (${viewport.name})`, async ({ page }) => {
-        test.setTimeout(60_000);
+        test.setTimeout(90_000);
 
         const consoleErrors: string[] = [];
         page.on("console", (msg) => {

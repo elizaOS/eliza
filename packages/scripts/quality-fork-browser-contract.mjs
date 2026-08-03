@@ -2,9 +2,9 @@
 /**
  * Static contract for the fork-safe homepage browser smoke.
  *
- * Self-hosted Quality (Fork) runners provide browser system libraries but do
- * not provide passwordless sudo. Playwright must therefore install Chromium
- * without --with-deps, while the real homepage browser test remains mandatory.
+ * Fork validation installs Chromium without privileged dependency mutation,
+ * runs the real homepage suite, and preserves exact failure artifacts through
+ * a reviewed uploader so runner-specific failures remain diagnosable.
  */
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";

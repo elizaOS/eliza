@@ -64,7 +64,7 @@ for (const viewport of VIEWPORTS) {
 
     for (const route of ROUTES) {
       test(`${route.name} (${viewport.name})`, async ({ page }) => {
-        test.setTimeout(60_000);
+        test.setTimeout(90_000);
         await page.goto(route.path, { waitUntil: "domcontentloaded" });
         await prepare(page, route.path);
         await captureScreenshotWithQualityRetry(

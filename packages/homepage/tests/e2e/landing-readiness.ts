@@ -9,6 +9,6 @@ import type { Page } from "playwright/test";
 export async function waitForLandingIntro(page: Page) {
   await page.locator('[data-intro-ready="true"]').waitFor({
     state: "visible",
-    timeout: 30_000,
+    timeout: 60_000,
   });
 }
