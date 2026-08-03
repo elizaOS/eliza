@@ -576,6 +576,10 @@ export class EmbeddingDimensionProbeError extends Error {
 const TEXT_GENERATION_MODEL_KEYS: readonly string[] =
 	TEXT_GENERATION_MODEL_TYPES;
 
+const CANONICAL_TEXT_CAPABILITY_SETTING = "ELIZA_CANONICAL_LLM_TEXT_ENABLED";
+const CANONICAL_EMBEDDING_CAPABILITY_SETTING =
+	"ELIZA_CANONICAL_EMBEDDINGS_ENABLED";
+
 type StructuredResponseFormat = "JSON" | "TOON";
 
 type StructuredResponseCandidate = {
@@ -5529,6 +5533,13 @@ export class AgentRuntime implements IAgentRuntime {
 		metadata?: ModelRegistrationMetadata,
 	): void {
 		const modelKey = String(modelType);
+		if (this.isCanonicalModelCapabilityDisabled(modelKey)) {
+			this.logger.debug(
+				{ src: "agent", agentId: this.agentId, modelType: modelKey, provider },
+				"Ignoring model registration for a capability omitted from canonical service routing",
+			);
+			return;
+		}
 		if (!this.models.has(modelKey)) {
 			this.models.set(modelKey, []);
 		}
@@ -5637,6 +5648,27 @@ export class AgentRuntime implements IAgentRuntime {
 		return hasHandler ? override : undefined;
 	}
 
+	private isCanonicalModelCapabilityDisabled(modelType: string): boolean {
+		const setting = TEXT_GENERATION_MODEL_KEYS.includes(modelType)
+			? this.getSetting(CANONICAL_TEXT_CAPABILITY_SETTING)
+			: modelType === ModelType.TEXT_EMBEDDING
+				? this.getSetting(CANONICAL_EMBEDDING_CAPABILITY_SETTING)
+				: undefined;
+		return (
+			setting === false || String(setting).trim().toLowerCase() === "false"
+		);
+	}
+
+	private assertCanonicalModelCapabilityEnabled(modelType: string): void {
+		if (!this.isCanonicalModelCapabilityDisabled(modelType)) return;
+		const capability = TEXT_GENERATION_MODEL_KEYS.includes(modelType)
+			? "llmText"
+			: "embeddings";
+		throw new NoModelProviderConfiguredError(
+			`Canonical service routing does not configure the ${capability} capability. Add serviceRouting.${capability} before requesting ${modelType}.`,
+		);
+	}
+
 	private resolveModelRegistration(
 		modelType: ModelTypeName | string,
 		provider?: string,
@@ -5649,6 +5681,9 @@ export class AgentRuntime implements IAgentRuntime {
 		provider?: string,
 	): ResolvedModelRegistration[] {
 		const requestedModelKey = String(modelType);
+		if (this.isCanonicalModelCapabilityDisabled(requestedModelKey)) {
+			return [];
+		}
 		const resolvedModels: ResolvedModelRegistration[] = [];
 
 		for (const candidateKey of getModelFallbackChain(requestedModelKey)) {
@@ -6003,6 +6038,7 @@ export class AgentRuntime implements IAgentRuntime {
 		provider?: string,
 	): Promise<R> {
 		const useModelStartedAt = Date.now();
+		this.assertCanonicalModelCapabilityEnabled(String(modelType));
 		const lookupCaller = RUNTIME_DEBUG_LOG_ENABLED
 			? captureModelLookupCaller()
 			: undefined;
