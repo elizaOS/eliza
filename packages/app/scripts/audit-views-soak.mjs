@@ -23,6 +23,10 @@ import {
   finalizeSoakEvidence,
   waitForOnboardingClearance,
 } from "./audit-views-soak-boundary.mjs";
+import {
+  isExpectedInactiveLifeOpsActivitySignalsResponse,
+  isLifeOpsActivitySignals503,
+} from "./browser-failure-policy.mjs";
 
 const UI = process.env.UI || "http://127.0.0.1:2138";
 const API = process.env.API || "http://127.0.0.1:31337";
@@ -216,7 +220,7 @@ release.
 - Render-guard errors: ${summary.renderErrors}
 - Module/view evictions attributed in scorecard: ${summary.moduleEvicts}
 - Module cleanups attributed in scorecard: ${summary.moduleCleanups}
-- Network log classification: ${networkSummary.unexpectedCount} unexpected / ${networkSummary.total} total (${networkSummary.expectedAbortCount} navigation aborts, ${networkSummary.expectedOptionalRoute404Count} optional-route 404s, ${networkSummary.expectedProtectedRoute401Count} protected-route 401s)
+- Network log classification: ${networkSummary.unexpectedCount} unexpected / ${networkSummary.total} total (${networkSummary.expectedAbortCount} navigation aborts, ${networkSummary.expectedOptionalRoute404Count} optional-route 404s, ${networkSummary.expectedProtectedRoute401Count} protected-route 401s, ${networkSummary.expectedInactiveLifeOps503Count} inactive-LifeOps 503s)
 - Heap series: ${heapSamples.map((sample) => `${(sample / 1e6).toFixed(1)}MB`).join(" -> ")} (${heapRatio.toFixed(2)}x)
 - Raw artifacts: \`audit-views-render-telemetry.json\`, \`audit-views-runtime-telemetry.json\`, \`audit-views-module-cache-telemetry.json\`, \`audit-views-heap-series.json\`, \`audit-views-frontend-log.json\`, \`audit-views-network-log.json\`, \`audit-views-network-summary.json\`
 - Video: ${videoArtifact ? `\`${videoArtifact}\`` : "N/A (VIDEO=0)"}
@@ -283,6 +287,21 @@ function classifyNetworkEntry(entry) {
     };
   }
 
+  if (
+    entry.kind === "response" &&
+    isExpectedInactiveLifeOpsActivitySignalsResponse(
+      entry.status,
+      entry.url,
+      entry.body,
+    )
+  ) {
+    return {
+      expected: true,
+      reason: "lifeops_activity_signals_inactive",
+      note: "The activity-signal route is installed but intentionally unavailable while the optional personal-assistant runtime is inactive.",
+    };
+  }
+
   return {
     expected: false,
     reason: "unexpected_network_failure",
@@ -309,6 +328,8 @@ function summarizeNetworkLog(networkLog) {
     expectedOptionalRoute404Count: byReason.optional_route_not_installed ?? 0,
     expectedProtectedRoute401Count:
       byReason.protected_route_without_session ?? 0,
+    expectedInactiveLifeOps503Count:
+      byReason.lifeops_activity_signals_inactive ?? 0,
     unexpectedCount: unexpected.length,
     byReason,
     unexpected,
@@ -473,6 +494,7 @@ async function main() {
   const pageErrors = [];
   const consoleLog = [];
   const networkLog = [];
+  const pendingNetworkResponses = new Set();
   page.on("pageerror", (e) => pageErrors.push(String(e.message)));
   page.on("console", (msg) => {
     consoleLog.push({
@@ -491,11 +513,37 @@ async function main() {
   });
   page.on("response", (response) => {
     if (response.status() < 400) return;
-    networkLog.push({
-      kind: "response",
-      status: response.status(),
-      url: response.url(),
-    });
+    if (!isLifeOpsActivitySignals503(response.status(), response.url())) {
+      networkLog.push({
+        kind: "response",
+        status: response.status(),
+        url: response.url(),
+      });
+      return;
+    }
+    const capture = response
+      .text()
+      .then((body) => {
+        networkLog.push({
+          kind: "response",
+          status: response.status(),
+          url: response.url(),
+          body,
+        });
+      })
+      .catch((error) => {
+        // error-policy:J7 the unreadable response is retained as an unexpected
+        // audit failure; body capture diagnostics must not stop the soak early.
+        networkLog.push({
+          kind: "response",
+          status: response.status(),
+          url: response.url(),
+          body: null,
+          bodyReadError: String(error),
+        });
+      })
+      .finally(() => pendingNetworkResponses.delete(capture));
+    pendingNetworkResponses.add(capture);
   });
 
   await page.goto(UI, { waitUntil: "domcontentloaded", timeout: 60000 });
@@ -693,6 +741,8 @@ async function main() {
     `no uncaught page errors during the soak (${JSON.stringify(pageErrors.slice(0, 3))})`,
   );
 
+  await Promise.allSettled([...pendingNetworkResponses]);
+
   // Closing the context owns page teardown and video finalization as one
   // operation. Closing the page first can deadlock Playwright's ffmpeg recorder
   // after a long capture, leaving an unattended nightly green-but-running until
@@ -713,7 +763,7 @@ async function main() {
   const networkSummary = summarizeNetworkLog(networkLog);
   assert(
     networkSummary.unexpectedCount === 0,
-    `no unexpected network failures during the soak (${networkSummary.unexpectedCount} unexpected / ${networkSummary.total} total; expected navigation aborts=${networkSummary.expectedAbortCount}, expected optional-route 404s=${networkSummary.expectedOptionalRoute404Count}, expected protected-route 401s=${networkSummary.expectedProtectedRoute401Count})`,
+    `no unexpected network failures during the soak (${networkSummary.unexpectedCount} unexpected / ${networkSummary.total} total; expected navigation aborts=${networkSummary.expectedAbortCount}, expected optional-route 404s=${networkSummary.expectedOptionalRoute404Count}, expected protected-route 401s=${networkSummary.expectedProtectedRoute401Count}, expected inactive-LifeOps 503s=${networkSummary.expectedInactiveLifeOps503Count})`,
   );
 
   const finalRaw = afterReleaseSnapshot.raw;
