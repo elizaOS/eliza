@@ -1,6 +1,6 @@
 // Persists shared runtime history records for cloud services through the shared DB boundary.
 import { and, eq } from "drizzle-orm";
-
+import { mergeSharedRuntimeHistoryMessages } from "../../lib/services/shared-runtime/shared-runtime-history-policy";
 import { dbRead, dbWrite } from "../client";
 import {
   type SharedRuntimeHistoryMessage,
@@ -8,59 +8,7 @@ import {
 } from "../schemas/shared-runtime-history";
 import { jsonbParam } from "../utils/jsonb";
 
-function isPersistedMessage(value: unknown): value is SharedRuntimeHistoryMessage {
-  return (
-    Boolean(value) &&
-    typeof value === "object" &&
-    ((value as { role?: unknown }).role === "user" ||
-      (value as { role?: unknown }).role === "assistant") &&
-    typeof (value as { content?: unknown }).content === "string" &&
-    (value as { content: string }).content.trim().length > 0
-  );
-}
-
-function messageIdentity(message: SharedRuntimeHistoryMessage): string {
-  return message.id ?? `${message.role}\u0000${message.createdAt ?? ""}\u0000${message.content}`;
-}
-
-function chooseMergedMessage(
-  current: SharedRuntimeHistoryMessage | undefined,
-  incoming: SharedRuntimeHistoryMessage,
-): SharedRuntimeHistoryMessage {
-  if (!current) return incoming;
-  if (
-    current.role === "assistant" &&
-    incoming.role === "assistant" &&
-    current.interrupted !== true &&
-    incoming.interrupted === true
-  ) {
-    return current;
-  }
-  if (
-    current.role === "assistant" &&
-    incoming.role === "assistant" &&
-    current.interrupted === true &&
-    incoming.interrupted === true &&
-    current.content.length > incoming.content.length
-  ) {
-    return current;
-  }
-  return incoming;
-}
-
-export function mergeSharedRuntimeHistoryMessages(
-  current: SharedRuntimeHistoryMessage[],
-  incoming: SharedRuntimeHistoryMessage[],
-  limit: number,
-): SharedRuntimeHistoryMessage[] {
-  const merged = new Map<string, SharedRuntimeHistoryMessage>();
-  for (const message of [...current, ...incoming]) {
-    if (!isPersistedMessage(message)) continue;
-    const key = messageIdentity(message);
-    merged.set(key, chooseMergedMessage(merged.get(key), message));
-  }
-  return [...merged.values()].sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0)).slice(-limit);
-}
+export { mergeSharedRuntimeHistoryMessages } from "../../lib/services/shared-runtime/shared-runtime-history-policy";
 
 /**
  * Durable persistence for shared-runtime (Tier-0) conversation history. Replaces
@@ -94,32 +42,6 @@ export class SharedRuntimeHistoryRepository {
       .where(eq(sharedRuntimeHistory.agent_id, agentId))
       .returning({ channelId: sharedRuntimeHistory.channel_id });
     return deleted.length;
-  }
-
-  async upsert(
-    agentId: string,
-    channelId: string,
-    messages: SharedRuntimeHistoryMessage[],
-  ): Promise<void> {
-    const now = new Date();
-    await dbWrite
-      .insert(sharedRuntimeHistory)
-      .values({
-        agent_id: agentId,
-        channel_id: channelId,
-        // Bind JSONB explicitly as a JSON string (Neon serverless driver can
-        // mis-bind raw JS arrays/objects as query params). The insert value
-        // type accepts a raw `SQL` expression per column, so no cast is needed.
-        messages: jsonbParam(messages),
-        updated_at: now,
-      })
-      .onConflictDoUpdate({
-        target: [sharedRuntimeHistory.agent_id, sharedRuntimeHistory.channel_id],
-        set: {
-          messages: jsonbParam(messages),
-          updated_at: now,
-        },
-      });
   }
 
   async merge(

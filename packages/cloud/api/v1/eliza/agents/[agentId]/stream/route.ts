@@ -94,6 +94,7 @@ async function __hono_POST(
       resolved.agent,
       rpcRequest,
       {
+        abortSignal: request.signal,
         executionCtx: resolved.executionCtx,
         namespace: resolved.namespace,
       },

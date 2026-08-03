@@ -145,6 +145,19 @@ export async function streamElizaConversation(
   }
 
   const reader = response.body.getReader();
+  let abortCancellation: Promise<void> | null = null;
+  const cancelReaderOnAbort = () => {
+    abortCancellation = reader.cancel(request.signal.reason).catch((error) => {
+      void error;
+      // error-policy:J6 best-effort teardown — the aborted voice turn remains
+      // the authoritative outcome even if an already-failed body rejects cancel.
+    });
+  };
+  if (request.signal.aborted) {
+    cancelReaderOnAbort();
+  } else {
+    request.signal.addEventListener("abort", cancelReaderOnAbort, { once: true });
+  }
   const decoder = new TextDecoder();
   let buffered = "";
   let eventType = "";
@@ -196,12 +209,17 @@ export async function streamElizaConversation(
       }
     }
   } finally {
-    try {
-      await reader.cancel();
-    } catch (ignoredError) {
-      void ignoredError;
-      // error-policy:J6 best-effort teardown — cancel on an already-ending
-      // response body must not mask the loop's real outcome.
+    request.signal.removeEventListener("abort", cancelReaderOnAbort);
+    if (abortCancellation) {
+      await abortCancellation;
+    } else {
+      try {
+        await reader.cancel();
+      } catch (ignoredError) {
+        void ignoredError;
+        // error-policy:J6 best-effort teardown — cancel on an already-ending
+        // response body must not mask the loop's real outcome.
+      }
     }
   }
 

@@ -10,7 +10,10 @@ import type { BridgeRequest } from "@/lib/services/eliza-sandbox";
 import type { CachedAgentSandbox } from "@/lib/services/shared-runtime/cached-agent-dates";
 import type { SharedTurnMessage } from "@/lib/services/shared-runtime/run-shared-agent-turn";
 import type { SharedRuntimeHistoryStore } from "@/lib/services/shared-runtime/shared-runtime-chat";
-import { MAX_HISTORY_MESSAGES } from "@/lib/services/shared-runtime/shared-runtime-history-policy";
+import {
+  MAX_HISTORY_MESSAGES,
+  mergeSharedRuntimeHistoryMessages,
+} from "@/lib/services/shared-runtime/shared-runtime-history-policy";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 // The agent row crosses the Durable Object boundary as JSON, so its Drizzle
@@ -61,53 +64,6 @@ function boundSnapshotHistory(
     ];
   }
   return bounded;
-}
-
-function messageIdentity(message: SharedTurnMessage): string {
-  return (
-    message.id ??
-    `${message.role}\u0000${message.createdAt ?? ""}\u0000${message.content}`
-  );
-}
-
-function chooseMergedMessage(
-  current: SharedTurnMessage | undefined,
-  incoming: SharedTurnMessage,
-): SharedTurnMessage {
-  if (!current) return incoming;
-  if (
-    current.role === "assistant" &&
-    incoming.role === "assistant" &&
-    current.interrupted !== true &&
-    incoming.interrupted === true
-  ) {
-    return current;
-  }
-  if (
-    current.role === "assistant" &&
-    incoming.role === "assistant" &&
-    current.interrupted === true &&
-    incoming.interrupted === true &&
-    current.content.length > incoming.content.length
-  ) {
-    return current;
-  }
-  return incoming;
-}
-
-function mergeConversationHistory(
-  current: SharedTurnMessage[],
-  incoming: SharedTurnMessage[],
-  limit: number,
-): SharedTurnMessage[] {
-  const merged = new Map<string, SharedTurnMessage>();
-  for (const message of [...current, ...incoming]) {
-    const key = messageIdentity(message);
-    merged.set(key, chooseMergedMessage(merged.get(key), message));
-  }
-  return [...merged.values()]
-    .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
-    .slice(-limit);
 }
 
 class ConversationCacheWarmingError extends Error {
@@ -194,11 +150,9 @@ export class SharedRuntimeConversation {
   ): Promise<void> {
     try {
       await this.runWithBindings(async () => {
-        const [{ sharedRuntimeHistoryRepository }, { MAX_HISTORY_MESSAGES }] =
-          await Promise.all([
-            import("@/db/repositories/shared-runtime-history"),
-            import("@/lib/services/shared-runtime/shared-runtime-chat"),
-          ]);
+        const { sharedRuntimeHistoryRepository } = await import(
+          "@/db/repositories/shared-runtime-history"
+        );
         await sharedRuntimeHistoryRepository.merge(
           snapshot.agentId,
           snapshot.channelId,
@@ -243,28 +197,13 @@ export class SharedRuntimeConversation {
     return {
       load: async (agentId, channelId) =>
         (await this.loadConversation(agentId, channelId)).history,
-      save: async (agentId, channelId, history) => {
-        const snapshot: StoredConversation = {
-          agentId,
-          channelId,
-          history: boundSnapshotHistory(history),
-          dirty: true,
-          version: (this.conversation?.version ?? 0) + 1,
-        };
-        // Durable write FIRST: adopting the snapshot before a failed put would
-        // leave phantom turns in the in-memory prompt window that were never
-        // persisted or mirrored.
-        await this.state.storage.put(CONVERSATION_KEY, snapshot);
-        this.conversation = snapshot;
-        this.scheduleMirror(snapshot);
-      },
       merge: async (agentId, channelId, messages) => {
         const current = await this.loadConversation(agentId, channelId);
         const snapshot: StoredConversation = {
           agentId,
           channelId,
           history: boundSnapshotHistory(
-            mergeConversationHistory(
+            mergeSharedRuntimeHistoryMessages(
               current.history,
               messages,
               MAX_HISTORY_MESSAGES,
@@ -313,6 +252,7 @@ export class SharedRuntimeConversation {
       };
       if (payload.operation === "stream") {
         return await sharedRuntimeChatService.stream(agent, payload.rpc, {
+          abortSignal: request.signal,
           executionCtx,
           historyStore,
         });

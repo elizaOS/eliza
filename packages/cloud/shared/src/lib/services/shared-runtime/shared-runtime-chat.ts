@@ -60,7 +60,6 @@ export type BridgeExecutionContext = {
 
 export interface SharedRuntimeHistoryStore {
   load(agentId: string, channelId: string): Promise<SharedTurnMessage[]>;
-  save?(agentId: string, channelId: string, history: SharedTurnMessage[]): Promise<void>;
   merge(
     agentId: string,
     channelId: string,
@@ -69,6 +68,7 @@ export interface SharedRuntimeHistoryStore {
 }
 
 export interface SharedRuntimeChatOptions {
+  abortSignal?: AbortSignal;
   executionCtx?: BridgeExecutionContext;
   historyStore?: SharedRuntimeHistoryStore;
 }
@@ -683,9 +683,23 @@ export class SharedRuntimeChatService {
       throw error;
     }
     const messageIds = turnMessageIds(agent.id, roomId, rpc);
+    const generationAbort = new AbortController();
+    const abortFromRequest = () => {
+      generationAbort.abort(options.abortSignal?.reason);
+    };
+    if (options.abortSignal?.aborted) {
+      abortFromRequest();
+    } else {
+      options.abortSignal?.addEventListener("abort", abortFromRequest, {
+        once: true,
+      });
+    }
+    const detachRequestAbort = () =>
+      options.abortSignal?.removeEventListener("abort", abortFromRequest);
     let turn: Awaited<ReturnType<typeof runSharedAgentTurnStream>>;
     try {
       turn = await runSharedAgentTurnStream({
+        abortSignal: generationAbort.signal,
         character,
         history,
         message: text,
@@ -693,6 +707,7 @@ export class SharedRuntimeChatService {
         onProviderDispatch: billing?.markProviderDispatched,
       });
     } catch (error) {
+      detachRequestAbort();
       await settleFailedProviderWorkOffPath(
         agent,
         billing,
@@ -703,12 +718,14 @@ export class SharedRuntimeChatService {
       throw error;
     }
     if (turn.degraded) {
+      detachRequestAbort();
       await billing?.settle(0);
       return new Response(turn.reply ?? "", {
         headers: { "Content-Type": "text/event-stream; charset=utf-8" },
       });
     }
     if (!turn.parts) {
+      detachRequestAbort();
       await settleAmbiguousProviderWorkOffPath(
         agent,
         billing,
@@ -871,16 +888,29 @@ export class SharedRuntimeChatService {
             );
           }
         } finally {
+          detachRequestAbort();
           if (!consumerCanceled) {
             controller.close();
           }
         }
       },
-      cancel: async () => {
+      cancel: async (reason) => {
         consumerCanceled = true;
-        await finalizeMessages(streamedReply, true, () =>
+        const persistence = finalizeMessages(streamedReply, true, () =>
           settleInterruptedTurn("consumer canceled stream"),
         );
+        generationAbort.abort(reason);
+        const providerCancellation = turn.cancel?.(reason) ?? Promise.resolve();
+        const [providerResult, persistenceResult] = await Promise.allSettled([
+          providerCancellation,
+          persistence,
+        ]);
+        if (persistenceResult.status === "rejected") {
+          throw persistenceResult.reason;
+        }
+        if (providerResult.status === "rejected") {
+          throw providerResult.reason;
+        }
       },
     });
     return new Response(stream, {

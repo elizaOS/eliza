@@ -17,6 +17,7 @@ let admissionError: Error | null;
 let billError: Error | null;
 let billingGate: Promise<void> | null;
 let releaseBilling = () => {};
+let streamAbortSignal: AbortSignal | undefined;
 const settleCalls: number[] = [];
 let settleUnknownCalls = 0;
 const billCalls: unknown[] = [];
@@ -147,8 +148,9 @@ mock.module("./run-shared-agent-turn", () => ({
       : turn.history;
     return { ...turn, history };
   },
-  runSharedAgentTurnStream: async () => {
+  runSharedAgentTurnStream: async (input: { abortSignal?: AbortSignal }) => {
     if (streamTurnError) throw streamTurnError;
+    streamAbortSignal = input.abortSignal;
     return streamTurn;
   },
 }));
@@ -306,6 +308,7 @@ beforeEach(() => {
   orgRateLimitError = null;
   billingGate = null;
   releaseBilling = () => {};
+  streamAbortSignal = undefined;
   turn = {
     degraded: false,
     reply: "hello back",
@@ -575,8 +578,13 @@ describe("SharedRuntimeChatService", () => {
     const providerGate = new Promise<void>((resolve) => {
       releaseProvider = resolve;
     });
+    let providerCancelReason: unknown;
     streamTurn = {
       degraded: false,
+      cancel: async (reason: unknown) => {
+        providerCancelReason = reason;
+        releaseProvider();
+      },
       parts: (async function* () {
         yield { type: "text-delta", text: "partial " };
         await providerGate;
@@ -601,8 +609,10 @@ describe("SharedRuntimeChatService", () => {
       content: "partial",
       interrupted: true,
     });
+    expect(streamAbortSignal?.aborted).toBe(true);
+    expect(streamAbortSignal?.reason).toBe("barge-in");
+    expect(providerCancelReason).toBe("barge-in");
     expect(settleUnknownCalls).toBe(1);
-    releaseProvider();
   });
 
   test("stream finalization retries after a failed history write", async () => {

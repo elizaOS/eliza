@@ -280,6 +280,52 @@ test("warm coordinated turns use local history and mirror asynchronously", async
   expect(repositoryHistoryLengths).toEqual([2, 3]);
 });
 
+test("concurrent turns serialize through one room and retain both writes", async () => {
+  repositoryReads = 0;
+  repositoryWrites = 0;
+  repositoryRow = [];
+  repositoryHistoryLengths.length = 0;
+  repositoryHistories.length = 0;
+  const data = new Map<string, unknown>([
+    [
+      "conversation",
+      {
+        agentId: AGENT_FIXTURE.id,
+        channelId: "room-1",
+        history: [],
+        dirty: false,
+        version: 1,
+      },
+    ],
+  ]);
+  const background: Promise<unknown>[] = [];
+  const object = new SharedRuntimeConversation(
+    makeState(data, background) as never,
+    {} as never,
+  );
+  const invoke = makeInvoke(object);
+
+  const [first, second] = await Promise.all([
+    invoke("concurrent-one"),
+    invoke("concurrent-two"),
+  ]);
+
+  expect(first).toMatchObject({ result: { historyLength: 1 } });
+  expect(second).toMatchObject({ result: { historyLength: 2 } });
+  const stored = data.get("conversation") as {
+    history: Array<{ id?: string; content: string }>;
+  };
+  expect(stored.history.map((message) => message.id)).toEqual([
+    "message-concurrent-one",
+    "message-concurrent-two",
+  ]);
+  expect(stored.history.map((message) => message.content)).toEqual([
+    "turn-concurrent-one",
+    "turn-concurrent-two",
+  ]);
+  await Promise.all(background.splice(0));
+});
+
 test("stream body cancellation persists before the room queue releases", async () => {
   repositoryReads = 0;
   repositoryWrites = 0;
