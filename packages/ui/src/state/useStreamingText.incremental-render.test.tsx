@@ -17,9 +17,11 @@
 
 import { act, cleanup, render, renderHook } from "@testing-library/react";
 import type { MutableRefObject } from "react";
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
+  ChatToolCallEvent,
+  ChatTurnStatus,
   CodingAgentSession,
   Conversation,
   ConversationMessage,
@@ -27,9 +29,11 @@ import type {
 } from "../api";
 import type { LoadConversationMessagesResult } from "./internal";
 import { useChatSend } from "./useChatSend";
+import { useChatState } from "./useChatState";
 import {
   applyStreamingTextModification,
   applyStreamingTextModificationsToMessages,
+  type StreamingTextModification,
 } from "./useStreamingText";
 
 const apiMocks = vi.hoisted(() => ({
@@ -40,6 +44,7 @@ const apiMocks = vi.hoisted(() => ({
     sendConversationMessageStream: vi.fn(),
     sendWsMessage: vi.fn(),
     stopCodingAgent: vi.fn(),
+    renameConversation: vi.fn(),
     getBaseUrl: vi.fn(() => ""),
   },
 }));
@@ -367,6 +372,133 @@ function makeChatSendDeps() {
   return { deps, setConversationMessages, conversationMessagesRef };
 }
 
+function useProductionChatSendHarness(
+  onStreamingBatch?: (batch: readonly StreamingTextModification[]) => void,
+) {
+  const chat = useChatState();
+  const statusesRef = useRef<ChatTurnStatus[]>([]);
+  const ptySessionsRef = useRef<CodingAgentSession[]>([]);
+  const observedBatchesRef = useRef<
+    ReadonlyArray<readonly StreamingTextModification[]>
+  >([]);
+  const applyStreamingMessageModifications = useCallback(
+    (batch: readonly StreamingTextModification[]) => {
+      observedBatchesRef.current = [...observedBatchesRef.current, batch];
+      onStreamingBatch?.(batch);
+      chat.applyStreamingMessageModifications(batch);
+    },
+    [chat.applyStreamingMessageModifications, onStreamingBatch],
+  );
+  const send = useChatSend({
+    t: (key) => key,
+    uiLanguage: "en",
+    tab: "chat",
+    activeConversationId: chat.state.activeConversationId,
+    ptySessionsRef,
+    setChatInput: chat.setChatInput,
+    setChatSending: chat.setChatSending,
+    setChatFirstTokenReceived: chat.setChatFirstTokenReceived,
+    setServerTurnStatus: (status) => {
+      if (status) statusesRef.current = [...statusesRef.current, status];
+    },
+    setChatLastUsage: chat.setChatLastUsage,
+    setChatPendingImages: chat.setChatPendingImages,
+    setConversations: chat.setConversations,
+    setActiveConversationId: chat.setActiveConversationId,
+    setCompanionMessageCutoffTs: chat.setCompanionMessageCutoffTs,
+    setConversationMessages: chat.setConversationMessages,
+    applyStreamingMessageModifications,
+    setUnreadConversations: () => {},
+    setChatReplyTarget: chat.setChatReplyTarget,
+    setActionNotice: () => {},
+    activeConversationIdRef: chat.activeConversationIdRef,
+    chatInputRef: chat.chatInputRef,
+    chatPendingImagesRef: chat.chatPendingImagesRef,
+    chatReplyTargetRef: chat.chatReplyTargetRef,
+    conversationsRef: chat.conversationsRef,
+    conversationMessagesRef: chat.conversationMessagesRef,
+    chatAbortRef: chat.chatAbortRef,
+    chatSendBusyRef: chat.chatSendBusyRef,
+    chatSendNonceRef: chat.chatSendNonceRef,
+    loadConversations: async () => chat.conversationsRef.current,
+    loadConversationMessages: async () => ({ ok: true }),
+    elizaCloudEnabled: false,
+    elizaCloudConnected: false,
+    pollCloudCredits: async () => true,
+  });
+  return { chat, send, observedBatchesRef, statusesRef };
+}
+
+type CapturedStream = {
+  conversationId: string;
+  onToken: (token: string, accumulatedText?: string) => void;
+  onStatus?: (status: ChatTurnStatus) => void;
+  onToolEvent?: (event: ChatToolCallEvent) => void;
+  resolve: (value: { text: string; completed: boolean }) => void;
+  reject: (error: unknown) => void;
+};
+
+function installPendingStreams(): CapturedStream[] {
+  const streams: CapturedStream[] = [];
+  apiMocks.client.sendConversationMessageStream.mockImplementation(
+    (
+      conversationId: string,
+      _text: string,
+      onToken: CapturedStream["onToken"],
+      _channelType: string,
+      signal: AbortSignal,
+      _images: unknown,
+      _metadata: unknown,
+      onStatus?: CapturedStream["onStatus"],
+      onToolEvent?: CapturedStream["onToolEvent"],
+    ) =>
+      new Promise((resolve, reject) => {
+        const stream: CapturedStream = {
+          conversationId,
+          onToken,
+          onStatus,
+          onToolEvent,
+          resolve,
+          reject,
+        };
+        streams.push(stream);
+        signal?.addEventListener(
+          "abort",
+          () => {
+            const error = new Error("aborted");
+            error.name = "AbortError";
+            reject(error);
+          },
+          { once: true },
+        );
+      }),
+  );
+  return streams;
+}
+
+async function seedProductionChat(
+  result: {
+    current: ReturnType<typeof useProductionChatSendHarness>;
+  },
+  conversationId = "conv-1",
+): Promise<void> {
+  await act(async () => {
+    result.current.chat.setConversations([
+      conversationFixture(conversationId, `room-${conversationId}`),
+    ]);
+    result.current.chat.setActiveConversationId(conversationId);
+    result.current.chat.setConversationMessages([
+      {
+        id: `${conversationId}-history`,
+        role: "assistant",
+        text: "Existing history",
+        timestamp: 1,
+      },
+    ]);
+    await Promise.resolve();
+  });
+}
+
 /**
  * Integration proof for the streaming-paint coalescer in `useChatSend`,
  * distinct from the reducer tested above. The reducer tests prove a commit
@@ -376,10 +508,14 @@ function makeChatSendDeps() {
 describe("streaming → useChatSend paint coalescing", () => {
   let nextFrameId = 1;
   let frameCallbacks = new Map<number, FrameRequestCallback>();
+  let cancelledFrameCallbacks = new Map<number, FrameRequestCallback>();
 
   beforeEach(() => {
     nextFrameId = 1;
     frameCallbacks = new Map();
+    cancelledFrameCallbacks = new Map();
+    apiMocks.client.abortConversationTurn.mockResolvedValue({ aborted: true });
+    apiMocks.client.renameConversation.mockResolvedValue(undefined);
     vi.stubGlobal(
       "requestAnimationFrame",
       vi.fn((callback: FrameRequestCallback) => {
@@ -392,6 +528,8 @@ describe("streaming → useChatSend paint coalescing", () => {
     vi.stubGlobal(
       "cancelAnimationFrame",
       vi.fn((id: number) => {
+        const callback = frameCallbacks.get(id);
+        if (callback) cancelledFrameCallbacks.set(id, callback);
         frameCallbacks.delete(id);
       }),
     );
@@ -410,6 +548,19 @@ describe("streaming → useChatSend paint coalescing", () => {
     if (!entry) throw new Error("Expected a scheduled streaming frame");
     const [id, callback] = entry;
     frameCallbacks.delete(id);
+    await act(async () => {
+      callback(performance.now());
+      await Promise.resolve();
+    });
+  }
+
+  async function runCancelledFrame(): Promise<void> {
+    const entry = cancelledFrameCallbacks.entries().next().value as
+      | [number, FrameRequestCallback]
+      | undefined;
+    if (!entry) throw new Error("Expected a cancelled streaming frame");
+    const [id, callback] = entry;
+    cancelledFrameCallbacks.delete(id);
     await act(async () => {
       callback(performance.now());
       await Promise.resolve();
@@ -547,5 +698,252 @@ describe("streaming → useChatSend paint coalescing", () => {
     const commitsAfterTerminal = setConversationMessages.mock.calls.length;
     expect(frameCallbacks.size).toBe(0);
     expect(setConversationMessages).toHaveBeenCalledTimes(commitsAfterTerminal);
+  });
+
+  it("uses the production ref-backed batch for text and multiple terminal tool lifecycles", async () => {
+    const streams = installPendingStreams();
+    const observed: StreamingTextModification[][] = [];
+    const { result } = renderHook(() =>
+      useProductionChatSendHarness((batch) => observed.push([...batch])),
+    );
+    await seedProductionChat(result);
+
+    let sendPromise!: Promise<void>;
+    await act(async () => {
+      sendPromise = result.current.send.sendChatText("search", {
+        conversationId: "conv-1",
+      });
+      await vi.waitFor(() => expect(streams).toHaveLength(1));
+    });
+
+    await act(async () => {
+      streams[0].onToken("", "Searching");
+      streams[0].onStatus?.({ kind: "running_tool", toolName: "search" });
+      streams[0].onToolEvent?.({
+        phase: "call",
+        callId: "call-1",
+        toolName: "search",
+        args: { query: "one" },
+      });
+      streams[0].onToolEvent?.({
+        phase: "result",
+        callId: "call-1",
+        toolName: "search",
+        result: { hits: 1 },
+      });
+      streams[0].onToolEvent?.({
+        phase: "call",
+        callId: "call-2",
+        toolName: "fetch",
+        args: { url: "https://example.test" },
+      });
+      streams[0].onToolEvent?.({
+        phase: "error",
+        callId: "call-2",
+        toolName: "fetch",
+        error: "denied",
+      });
+      streams[0].resolve({ text: "Searching complete", completed: true });
+      await sendPromise;
+    });
+
+    expect(observed).toHaveLength(2);
+    expect(observed[0].map((modification) => modification.mode)).toEqual([
+      "replace",
+      "tool",
+      "tool",
+      "tool",
+      "tool",
+    ]);
+    expect(observed[1].map((modification) => modification.mode)).toEqual([
+      "complete",
+    ]);
+    const assistant =
+      result.current.chat.conversationMessagesRef.current.at(-1);
+    expect(assistant?.text).toBe("Searching complete");
+    expect(assistant?.toolEvents).toEqual([
+      expect.objectContaining({
+        callId: "call-1",
+        status: "completed",
+        args: { query: "one" },
+        result: { hits: 1 },
+      }),
+      expect.objectContaining({
+        callId: "call-2",
+        status: "failed",
+        args: { url: "https://example.test" },
+        error: "denied",
+      }),
+    ]);
+    expect(result.current.observedBatchesRef.current).toHaveLength(2);
+    expect(frameCallbacks.size).toBe(0);
+  });
+
+  it("keeps a cancelled frame from an aborted turn out of the next turn", async () => {
+    const streams = installPendingStreams();
+    const { result } = renderHook(() => useProductionChatSendHarness());
+    await seedProductionChat(result);
+
+    let firstSend!: Promise<void>;
+    await act(async () => {
+      firstSend = result.current.send.sendChatText("first", {
+        conversationId: "conv-1",
+      });
+      await vi.waitFor(() => expect(streams).toHaveLength(1));
+    });
+    act(() => streams[0].onToken("", "first partial"));
+    expect(frameCallbacks.size).toBe(1);
+
+    await act(async () => {
+      result.current.send.handleChatStop();
+      await firstSend;
+    });
+    expect(cancelledFrameCallbacks.size).toBe(1);
+
+    let secondSend!: Promise<void>;
+    await act(async () => {
+      secondSend = result.current.send.sendChatText("second", {
+        conversationId: "conv-1",
+      });
+      await vi.waitFor(() => expect(streams).toHaveLength(2));
+    });
+    act(() => streams[1].onToken("", "second partial"));
+
+    await runCancelledFrame();
+    const assistantsBeforeCurrentFrame =
+      result.current.chat.conversationMessagesRef.current.filter(
+        (message) => message.role === "assistant",
+      );
+    expect(assistantsBeforeCurrentFrame.at(-1)?.text).toBe("");
+
+    await paintNextFrame();
+    expect(
+      result.current.chat.conversationMessagesRef.current
+        .filter((message) => message.role === "assistant")
+        .at(-1)?.text,
+    ).toBe("second partial");
+
+    await act(async () => {
+      streams[1].resolve({ text: "second complete", completed: true });
+      await secondSend;
+    });
+    expect(
+      result.current.chat.conversationMessagesRef.current.some(
+        (message) => message.text === "first partial",
+      ),
+    ).toBe(true);
+    expect(
+      result.current.chat.conversationMessagesRef.current.at(-1)?.text,
+    ).toBe("second complete");
+  });
+
+  it("generation-guards a stale microtask fallback across abort and the next turn", async () => {
+    vi.stubGlobal("requestAnimationFrame", undefined);
+    vi.stubGlobal("cancelAnimationFrame", undefined);
+    const microtasks: Array<() => void> = [];
+    vi.stubGlobal("queueMicrotask", (callback: () => void) => {
+      microtasks.push(callback);
+    });
+    const streams = installPendingStreams();
+    const { result } = renderHook(() => useProductionChatSendHarness());
+    await seedProductionChat(result);
+
+    let firstSend!: Promise<void>;
+    await act(async () => {
+      firstSend = result.current.send.sendChatText("first", {
+        conversationId: "conv-1",
+      });
+      await vi.waitFor(() => expect(streams).toHaveLength(1));
+    });
+    const microtasksBeforeFirstToken = microtasks.length;
+    act(() => streams[0].onToken("", "first partial"));
+    expect(microtasks).toHaveLength(microtasksBeforeFirstToken + 1);
+    const staleStreamingMicrotask = microtasks.at(-1);
+
+    await act(async () => {
+      result.current.send.handleChatStop();
+      await firstSend;
+    });
+
+    let secondSend!: Promise<void>;
+    await act(async () => {
+      secondSend = result.current.send.sendChatText("second", {
+        conversationId: "conv-1",
+      });
+      await vi.waitFor(() => expect(streams).toHaveLength(2));
+    });
+    const microtasksBeforeSecondToken = microtasks.length;
+    act(() => streams[1].onToken("", "second partial"));
+    expect(microtasks).toHaveLength(microtasksBeforeSecondToken + 1);
+    const currentStreamingMicrotask = microtasks.at(-1);
+
+    act(() => staleStreamingMicrotask?.());
+    expect(
+      result.current.chat.conversationMessagesRef.current.at(-1)?.text,
+    ).toBe("");
+    act(() => currentStreamingMicrotask?.());
+    expect(
+      result.current.chat.conversationMessagesRef.current.at(-1)?.text,
+    ).toBe("second partial");
+
+    await act(async () => {
+      streams[1].resolve({ text: "second complete", completed: true });
+      await secondSend;
+    });
+  });
+
+  it("drops an inactive conversation frame and resumes cleanly after returning", async () => {
+    const streams = installPendingStreams();
+    const { result } = renderHook(() => useProductionChatSendHarness());
+    await seedProductionChat(result, "conv-A");
+
+    let sendPromise!: Promise<void>;
+    await act(async () => {
+      sendPromise = result.current.send.sendChatText("A turn", {
+        conversationId: "conv-A",
+      });
+      await vi.waitFor(() => expect(streams).toHaveLength(1));
+    });
+    const conversationAMessages = [
+      ...result.current.chat.conversationMessagesRef.current,
+    ];
+    act(() => streams[0].onToken("", "must not cross conversations"));
+
+    act(() => {
+      result.current.chat.setActiveConversationId("conv-B");
+      result.current.chat.setConversationMessages([
+        {
+          id: "b-message",
+          role: "assistant",
+          text: "Conversation B",
+          timestamp: 20,
+        },
+      ]);
+    });
+    await paintNextFrame();
+    expect(result.current.chat.conversationMessagesRef.current).toEqual([
+      expect.objectContaining({ id: "b-message", text: "Conversation B" }),
+    ]);
+
+    act(() => {
+      result.current.chat.setActiveConversationId("conv-A");
+      result.current.chat.setConversationMessages(conversationAMessages);
+    });
+    expect(
+      result.current.chat.conversationMessagesRef.current.some(
+        (message) => message.text === "must not cross conversations",
+      ),
+    ).toBe(false);
+
+    act(() => streams[0].onToken("", "A resumed"));
+    await paintNextFrame();
+    expect(
+      result.current.chat.conversationMessagesRef.current.at(-1)?.text,
+    ).toBe("A resumed");
+
+    await act(async () => {
+      streams[0].resolve({ text: "A complete", completed: true });
+      await sendPromise;
+    });
   });
 });

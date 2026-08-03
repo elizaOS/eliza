@@ -31,6 +31,7 @@ export function stubElizaCore(): Plugin {
         const noop = new Proxy(() => noop, { get: () => noop });
         module.exports = new Proxy(
           {
+            MESSAGE_SOURCE_AGENT_GREETING: "agent_greeting",
             isViewVisible: () => true,
             dedupeModalities: (m) => Array.from(new Set(Array.isArray(m) ? m : [])),
             findInteractionRegions: () => [],
