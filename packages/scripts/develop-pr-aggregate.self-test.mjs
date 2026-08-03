@@ -90,7 +90,7 @@ assert.equal(
 );
 assert.match(
   resultFor(heldBeforeDeadline, "gitleaks").detail,
-  /required workflows awaiting maintainer approval: \.github\/workflows\/gitleaks\.yml/,
+  /required workflows awaiting maintainer approval: \.github\/workflows\/gitleaks\.yml; approve the listed workflows, then rerun this gate/,
 );
 
 assert.deepEqual(
@@ -149,7 +149,7 @@ assert.deepEqual(
 );
 assert.equal(
   awaitingApprovalMessage([heldWorkflowPath]),
-  `required workflows awaiting maintainer approval: ${heldWorkflowPath}`,
+  `required workflows awaiting maintainer approval: ${heldWorkflowPath}; approve the listed workflows, then rerun this gate`,
 );
 
 const approvalPages = [];
@@ -161,21 +161,29 @@ const pagedHeldPaths = await loadActionRequiredWorkflowPaths({
     return {
       workflow_runs:
         approvalPages.length === 1
-          ? [
+          ? Array.from({ length: 100 }, (_, index) => ({
+              id: 30 + index,
+              path: `.github/workflows/completed-${index}.yml`,
+              event: "pull_request",
+              head_sha: HEAD_SHA,
+              conclusion: "success",
+            }))
+          : [
               {
-                id: 30,
+                id: 130,
                 path: heldWorkflowPath,
                 event: "pull_request",
                 head_sha: HEAD_SHA,
                 conclusion: "action_required",
               },
-            ]
-          : [],
+            ],
     };
   },
 });
 assert.deepEqual(pagedHeldPaths, [heldWorkflowPath]);
-assert.equal(approvalPages.length, 1);
+assert.equal(approvalPages.length, 2);
+assert.match(approvalPages[0], /[?&]page=1$/);
+assert.match(approvalPages[1], /[?&]page=2$/);
 
 for (const [scenario, code] of [
   ["cancelled", "terminal-cancelled"],

@@ -60,5 +60,8 @@ export async function loadActionRequiredWorkflowPaths({
 }
 
 export function awaitingApprovalMessage(paths) {
-  return `required workflows awaiting maintainer approval: ${[...paths].sort().join(", ")}`;
+  return (
+    `required workflows awaiting maintainer approval: ${[...paths].sort().join(", ")}; ` +
+    "approve the listed workflows, then rerun this gate"
+  );
 }
