@@ -639,6 +639,9 @@ export class SolanaBlockchainConnector
           address,
         );
 
+      // FIXME: dead code — getSolanaOldestKnownSignature always returns an
+      // object, so this is never falsy. Should be `!oldestSignature.signature`.
+      // Flagged, not fixed here — out of scope for the ascending-order fix.
       if (!oldestSignature) {
         return createSuccessResult({
           chainId: SOLANA_CHAIN_ID,
