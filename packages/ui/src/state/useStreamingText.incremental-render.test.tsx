@@ -28,6 +28,7 @@ import type {
   ImageAttachment,
 } from "../api";
 import type { LoadConversationMessagesResult } from "./internal";
+import { STREAMING_RENDER_INTERVAL_MS } from "./streaming-render-cadence";
 import { useChatSend } from "./useChatSend";
 import { useChatState } from "./useChatState";
 import {
@@ -537,6 +538,7 @@ describe("streaming → useChatSend paint coalescing", () => {
 
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
     vi.clearAllMocks();
     vi.unstubAllGlobals();
   });
@@ -628,6 +630,9 @@ describe("streaming → useChatSend paint coalescing", () => {
   });
 
   it("bounds paints across separate fast token events and flushes terminal text immediately", async () => {
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "performance"],
+    });
     let onToken!: (token: string, accumulatedText?: string) => void;
     let resolveStream!: (data: { text: string; completed: boolean }) => void;
     apiMocks.client.sendConversationMessageStream.mockImplementation(
@@ -677,8 +682,18 @@ describe("streaming → useChatSend paint coalescing", () => {
       });
     }
 
-    // All transport events before the next paint share one cumulative snapshot.
+    // Separate transport events inside the cadence window share one cumulative
+    // snapshot and do not schedule one render frame per token.
     expect(setConversationMessages).toHaveBeenCalledTimes(1);
+    expect(frameCallbacks.size).toBe(0);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(STREAMING_RENDER_INTERVAL_MS - 1);
+    });
+    expect(frameCallbacks.size).toBe(0);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
 
     await paintNextFrame();
     expect(setConversationMessages).toHaveBeenCalledTimes(2);

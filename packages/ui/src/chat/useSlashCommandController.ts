@@ -319,6 +319,15 @@ export function useSlashCommandController(
     }
     let cancelled = false;
     const abortController = new AbortController();
+    const abortForPageExit = (event: PageTransitionEvent) => {
+      // A real browsing-context exit can reject fetch with a generic TypeError
+      // before React unmount cleanup runs. Mark it as cancellation at the
+      // browser boundary; bfcache entries stay live and keep their catalog.
+      if (event.persisted) return;
+      cancelled = true;
+      abortController.abort();
+    };
+    window.addEventListener("pagehide", abortForPageExit);
     setLoading(true);
     setLoadError(false);
     void (async () => {
@@ -431,6 +440,7 @@ export function useSlashCommandController(
     })();
     return () => {
       cancelled = true;
+      window.removeEventListener("pagehide", abortForPageExit);
       abortController.abort();
     };
   }, [probesEnabled]);

@@ -64,6 +64,7 @@ import {
 import {
   cancelStreamingRenderFrame,
   requestStreamingRenderFrame,
+  streamingRenderDelayMs,
 } from "./streaming-render-cadence";
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -670,11 +671,10 @@ export function useChatSend(deps: UseChatSendDeps) {
   // The SSE stream fires three per-event callbacks that each trigger a state
   // commit: `onToken` (cumulative text, often >60/sec on a fast model),
   // `onStatus` (live turn phase), and `onToolEvent` (inline tool-call steps).
-  // Park cumulative snapshots until the browser's next animation frame. Every
-  // transport callback before that frame overwrites or extends the same buffer,
-  // so React receives at most one coherent update per paint. Terminal and abort
-  // paths synchronously flush the latest snapshot; a hidden tab may defer
-  // intermediate paint without losing stream state.
+  // Park cumulative snapshots and bound transcript commits before aligning the
+  // work with an animation frame. A fast model can otherwise schedule a fresh
+  // frame for every transport event and leave no budget for the rest of the UI.
+  // Terminal and abort paths synchronously flush the latest snapshot.
   //
   // `pendingStatus` uses the NO_PENDING_STATUS sentinel = "no status update
   // parked", distinct from a parked `null` (an explicit clear-the-status
@@ -687,7 +687,9 @@ export function useChatSend(deps: UseChatSendDeps) {
     pendingToolEvents: ChatToolCallEvent[];
     flushScheduled: boolean;
     flushGeneration: number;
+    flushTimer: ReturnType<typeof setTimeout> | null;
     flushFrameId: number | null;
+    lastFlushAtMs: number | null;
   }>({
     conversationId: null,
     messageId: "",
@@ -696,7 +698,9 @@ export function useChatSend(deps: UseChatSendDeps) {
     pendingToolEvents: [],
     flushScheduled: false,
     flushGeneration: 0,
+    flushTimer: null,
     flushFrameId: null,
+    lastFlushAtMs: null,
   });
 
   const isConversationCommitActive = useCallback(
@@ -845,6 +849,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       buffer.pendingStatus = NO_PENDING_STATUS;
       return;
     }
+    let committed = false;
     const modifications: StreamingTextModification[] = [];
     if (buffer.pendingText !== null) {
       const fullText = buffer.pendingText;
@@ -871,12 +876,15 @@ export function useChatSend(deps: UseChatSendDeps) {
         buffer.conversationId,
         modifications,
       );
+      committed = true;
     }
     if (buffer.pendingStatus !== NO_PENDING_STATUS) {
       const status = buffer.pendingStatus;
       buffer.pendingStatus = NO_PENDING_STATUS;
       setServerTurnStatus(status);
+      committed = true;
     }
+    if (committed) buffer.lastFlushAtMs = performance.now();
   }, [
     applyStreamingModificationsForConversation,
     isConversationCommitActive,
@@ -891,6 +899,10 @@ export function useChatSend(deps: UseChatSendDeps) {
     if (buffer.flushScheduled) {
       buffer.flushGeneration += 1;
       buffer.flushScheduled = false;
+    }
+    if (buffer.flushTimer !== null) {
+      clearTimeout(buffer.flushTimer);
+      buffer.flushTimer = null;
     }
     if (buffer.flushFrameId !== null) {
       cancelStreamingRenderFrame(buffer.flushFrameId);
@@ -911,6 +923,10 @@ export function useChatSend(deps: UseChatSendDeps) {
       )
         return;
       if (buffer.flushScheduled) buffer.flushGeneration += 1;
+      if (buffer.flushTimer !== null) {
+        clearTimeout(buffer.flushTimer);
+        buffer.flushTimer = null;
+      }
       if (buffer.flushFrameId !== null) {
         cancelStreamingRenderFrame(buffer.flushFrameId);
         buffer.flushFrameId = null;
@@ -921,11 +937,13 @@ export function useChatSend(deps: UseChatSendDeps) {
       buffer.pendingStatus = NO_PENDING_STATUS;
       buffer.pendingToolEvents = [];
       buffer.flushScheduled = false;
+      buffer.lastFlushAtMs = null;
     },
     [],
   );
 
-  // Every decoded callback before the next browser paint shares one frame.
+  // The first snapshot reaches the next frame immediately. Later transport
+  // events share one trailing cadence window, then commit together on a frame.
   const ensureStreamingFlush = useCallback(() => {
     const buffer = streamingFlushRef.current;
     if (buffer.flushScheduled) return;
@@ -937,7 +955,20 @@ export function useChatSend(deps: UseChatSendDeps) {
       buffer.flushScheduled = false;
       commitStreamingBuffer();
     };
-    buffer.flushFrameId = requestStreamingRenderFrame(commitScheduled);
+    const requestCommitFrame = () => {
+      if (buffer.flushGeneration !== generation) return;
+      buffer.flushTimer = null;
+      buffer.flushFrameId = requestStreamingRenderFrame(commitScheduled);
+    };
+    const delayMs = streamingRenderDelayMs(
+      buffer.lastFlushAtMs,
+      performance.now(),
+    );
+    if (delayMs === 0) {
+      requestCommitFrame();
+      return;
+    }
+    buffer.flushTimer = setTimeout(requestCommitFrame, delayMs);
   }, [commitStreamingBuffer]);
 
   // Park the latest cumulative text for `messageId`. Synchronous callbacks from
@@ -986,6 +1017,10 @@ export function useChatSend(deps: UseChatSendDeps) {
     return () => {
       buffer.flushGeneration += 1;
       buffer.flushScheduled = false;
+      if (buffer.flushTimer !== null) {
+        clearTimeout(buffer.flushTimer);
+        buffer.flushTimer = null;
+      }
       if (buffer.flushFrameId !== null) {
         cancelStreamingRenderFrame(buffer.flushFrameId);
         buffer.flushFrameId = null;

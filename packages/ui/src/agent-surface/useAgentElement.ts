@@ -18,7 +18,7 @@
  */
 
 import type { RefObject } from "react";
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { useAgentSurface } from "./AgentSurfaceContext.hooks";
 import type { AgentElementDescriptor } from "./types";
 
@@ -93,12 +93,14 @@ export function useAgentElement<T extends HTMLElement = HTMLElement>(
     stableRef.current = stable;
   }
 
-  // Register/unregister with the registry across the element's lifetime.
-  useEffect(() => {
-    const stable = stableRef.current;
-    if (!registry || !stable) return;
-    return registry.register(stable, () => elRef.current);
-  }, [registry]);
+  const stableDescriptor = stableRef.current;
+
+  // The capability bridge may inspect the committed DOM before passive effects
+  // run, so registration must share the layout commit with the element's ref.
+  useLayoutEffect(() => {
+    if (!registry || !stableDescriptor) return;
+    return registry.register(stableDescriptor, () => elRef.current);
+  }, [registry, stableDescriptor]);
 
   // Notify subscribers (the indicator overlay) when rendered fields change.
   // The descriptor fields are intentional deps: the live getters mean the

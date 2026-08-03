@@ -94,6 +94,40 @@ describe("agent-surface render integration", () => {
     expect(result).toMatchObject({ ok: true, id: "note", value: "hello" });
   });
 
+  it("re-registers the committed element when its descriptor id changes", () => {
+    function DynamicInner({ id }: { id: string }) {
+      const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+        id,
+        role: "button",
+        label: `Button ${id}`,
+      });
+      return (
+        <button ref={ref} type="button" {...agentProps}>
+          {id}
+        </button>
+      );
+    }
+
+    const { rerender } = render(
+      <AgentSurfaceProvider viewId={VIEW} viewType="gui">
+        <DynamicInner id="first" />
+      </AgentSurfaceProvider>,
+    );
+    const registry = getViewRegistry(VIEW, "gui");
+    if (!registry) throw new Error("registry missing");
+
+    rerender(
+      <AgentSurfaceProvider viewId={VIEW} viewType="gui">
+        <DynamicInner id="second" />
+      </AgentSurfaceProvider>,
+    );
+
+    expect(registry.snapshot().elements.map((element) => element.id)).toEqual([
+      "second",
+    ]);
+    expect(document.querySelector("[data-agent-id='second']")).not.toBeNull();
+  });
+
   it("stamps explicit sensitive state and blocks password fills", () => {
     function SensitiveInner() {
       const { ref, agentProps } = useAgentElement<HTMLInputElement>({

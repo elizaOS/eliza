@@ -317,6 +317,32 @@ describe("useSlashCommandController — catalog load (#11112)", () => {
     expect(consoleError).not.toHaveBeenCalled();
     consoleError.mockRestore();
   });
+
+  it("classifies a generic fetch rejection during page exit as cancellation", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    listCommands.mockResolvedValue([]);
+    listCustomActions.mockImplementation(
+      (init) =>
+        new Promise<CustomActionDef[]>((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            "abort",
+            () => reject(new TypeError("Failed to fetch")),
+            { once: true },
+          );
+        }),
+    );
+
+    renderHook(() => useSlashCommandController());
+    await waitFor(() => expect(listCustomActions).toHaveBeenCalledOnce());
+    window.dispatchEvent(new PageTransitionEvent("pagehide"));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(consoleError).not.toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
 });
 
 describe("useSlashCommandController — protected-probe gate (#16242)", () => {
