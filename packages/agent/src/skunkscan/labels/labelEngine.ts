@@ -1,5 +1,8 @@
 import { WalletLabel, SupportedChain } from "../types";
-import { lookupStaticSolanaWalletLabel } from "./staticRegistry";
+import {
+  lookupStaticSolanaWalletLabel,
+  lookupStaticEthereumWalletLabel,
+} from "./staticRegistry";
 
 export function getUnknownWalletLabel(
   address: string,
@@ -26,7 +29,10 @@ export function lookupWalletLabel(
       return lookupStaticSolanaWalletLabel(address) ?? getUnknownWalletLabel(address);
     }
 
-    case "ethereum":
+    case "ethereum": {
+      return lookupStaticEthereumWalletLabel(address) ?? getUnknownWalletLabel(address);
+    }
+
     case "base":
     case "bnb":
       return getUnknownWalletLabel(address);
