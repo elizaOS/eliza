@@ -156,6 +156,7 @@ function createRuntime(
   agentId: UUID,
   overrides: Partial<AgentRuntime> = {},
 ): AgentRuntime {
+  const participantsByRoom = new Map<UUID, Set<UUID>>();
   const runtime = {
     agentId,
     character: { name: "Eliza", settings: {} },
@@ -167,10 +168,20 @@ function createRuntime(
       error: vi.fn(),
       debug: vi.fn(),
     },
-    ensureConnection: vi.fn(async () => undefined),
+    ensureConnection: vi.fn(
+      async (connection: Parameters<AgentRuntime["ensureConnection"]>[0]) => {
+        const participants =
+          participantsByRoom.get(connection.roomId) ?? new Set<UUID>();
+        participants.add(connection.entityId);
+        participantsByRoom.set(connection.roomId, participants);
+      },
+    ),
     updateWorld: vi.fn(async () => undefined),
     getWorld: vi.fn(async () => null),
     getRoom: vi.fn(async () => null),
+    getParticipantsForRoom: vi.fn(async (roomId: UUID) => [
+      ...(participantsByRoom.get(roomId) ?? []),
+    ]),
     getService: vi.fn(() => null),
     getServiceLoadPromise: vi.fn(async () => undefined),
     // The route's J7 diagnostic paths (inference-timing persistence, recovery

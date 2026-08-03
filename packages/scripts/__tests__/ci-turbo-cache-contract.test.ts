@@ -170,7 +170,7 @@ describe("ci-turbo-cache-contract", () => {
 
   test("fails when workspace setup nests the cache shim", () => {
     const nestedSetup = WORKSPACE_SETUP_YAML.replace(
-      /    - name: Restore and save Turbo cache[\s\S]*$/,
+      / {4}- name: Restore and save Turbo cache[\s\S]*$/,
       "    - uses: ./.github/actions/turbo-cache-github\n",
     );
     const root = buildRepo({ workspaceSetup: nestedSetup });
@@ -262,7 +262,7 @@ describe("ci-turbo-cache-contract", () => {
       "utf8",
     );
     const lintJob = workflow.match(
-      /^  lint:\s*$([\s\S]*?)(?=^  typecheck:\s*$)/m,
+      /^ {2}lint:\s*$([\s\S]*?)(?=^ {2}typecheck:\s*$)/m,
     )?.[0];
     expect(lintJob).toBeDefined();
     expect(lintJob).toMatch(/timeout-minutes:\s*15/);
@@ -287,7 +287,7 @@ describe("ci-turbo-cache-contract", () => {
       "utf8",
     );
     const typecheckJob = workflow.match(
-      /^  typecheck:\s*$([\s\S]*?)(?=^  build:\s*$)/m,
+      /^ {2}typecheck:\s*$([\s\S]*?)(?=^ {2}build:\s*$)/m,
     )?.[0];
     expect(typecheckJob).toBeDefined();
     expect(typecheckJob).toMatch(/timeout-minutes:\s*25/);
@@ -303,16 +303,15 @@ describe("ci-turbo-cache-contract", () => {
       "utf8",
     );
     const typecheckJob = workflow.match(
-      /^  typecheck:\s*$([\s\S]*?)(?=^  build:\s*$)/m,
+      /^ {2}typecheck:\s*$([\s\S]*?)(?=^ {2}build:\s*$)/m,
     )?.[0];
     const buildJob = workflow.match(
-      /^  build:\s*$([\s\S]*?)(?=^  elizaos-cli-global-smoke:\s*$)/m,
+      /^ {2}build:\s*$([\s\S]*?)(?=^ {2}elizaos-cli-global-smoke:\s*$)/m,
     )?.[0];
     expect(typecheckJob).toMatch(/cache-bun-install:\s*["']false["']/);
     expect(buildJob).toMatch(/cache-bun-install:\s*["']false["']/);
     expect(buildJob).toMatch(/timeout-minutes:\s*45/);
     expect(buildJob).toMatch(/run:\s*bun run build/);
-    expect(buildJob).toMatch(/run:\s*bun run test:e2e --workers=2/);
     expect(buildJob).not.toMatch(/continue-on-error|\|\| true/);
 
     const setup = readFileSync(

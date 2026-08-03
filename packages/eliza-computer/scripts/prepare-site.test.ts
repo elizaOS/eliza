@@ -23,6 +23,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createInstallCommand } from "../src/lib/install-command";
 import { createInstallAuthorityFixture } from "../tests/install-authority-fixture";
+import { requireSkillPythonDependencies } from "./python-runtime.mjs";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = resolve(packageRoot, "..", "..");
@@ -36,6 +37,7 @@ const skillRoot = join(
 const publicRoot = join(packageRoot, "public");
 const archivePath = join(publicRoot, "downloads", "contribute-to-eliza.skill");
 const checksumPath = `${archivePath}.sha256`;
+const skillPython = requireSkillPythonDependencies();
 let authorityRoot: string;
 let testAuthority: { apiOrigin: string; rawOrigin: string };
 let installerArtifactRoot: string;
@@ -124,7 +126,7 @@ with zipfile.ZipFile(sys.argv[1]) as archive:
 print(json.dumps(result))
 `;
   const parsed = parseJsonRecord(
-    execFileSync("python3", ["-c", script, archivePath], {
+    execFileSync(skillPython, ["-c", script, archivePath], {
       encoding: "utf8",
     }),
     "archive inspection",
@@ -317,7 +319,7 @@ beforeAll(() => {
     )}\n`,
   );
   execFileSync(
-    "python3",
+    skillPython,
     [
       join(
         repositoryRoot,
@@ -334,7 +336,7 @@ beforeAll(() => {
     "contribute-to-eliza.skill",
   );
   execFileSync(
-    "python3",
+    skillPython,
     [
       join(packageRoot, "scripts", "normalize-skill-archive.py"),
       installerArchivePath,
@@ -703,7 +705,7 @@ describe("contribution skill package", () => {
       );
       mkdirSync(maliciousDownloads, { recursive: true });
       execFileSync(
-        "python3",
+        skillPython,
         [
           "-c",
           `
@@ -790,7 +792,7 @@ with zipfile.ZipFile(archive_path, "w") as archive:
     try {
       mkdirSync(forgedDownloads, { recursive: true });
       execFileSync(
-        "python3",
+        skillPython,
         [
           "-c",
           `

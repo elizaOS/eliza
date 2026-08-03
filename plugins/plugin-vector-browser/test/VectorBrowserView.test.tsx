@@ -415,20 +415,22 @@ describe("VectorBrowserView — populated list", () => {
     });
     // "2" appears for total + unique metric values
     expect(screen.getAllByText("2").length).toBeGreaterThanOrEqual(1);
-    expect(agentSurface.useAgentElement).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: "vector-memory:m-0",
-        role: "button",
-        status: "active",
-      }),
-    );
-    expect(agentSurface.useAgentElement).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: "vector-memory:m-1",
-        role: "button",
-        status: "inactive",
-      }),
-    );
+    await waitFor(() => {
+      expect(agentSurface.useAgentElement).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: "vector-memory:m-0",
+          role: "button",
+          status: "active",
+        }),
+      );
+      expect(agentSurface.useAgentElement).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: "vector-memory:m-1",
+          role: "button",
+          status: "inactive",
+        }),
+      );
+    });
   });
 
   it("shows the empty state when there are no records", async () => {

@@ -102,14 +102,10 @@ jobs:
         run: bun install --frozen-lockfile --ignore-scripts
 
       - name: Install pinned skill validator dependency
-        run: |
-          printf '%s\n' \
-            'PyYAML==6.0.3 --hash=sha256:0f29edc409a6392443abf94b9cf89ce99889a1dd5376d94316ae5145dfedd5d6' \
-            > "$RUNNER_TEMP/eliza-computer-python-requirements.txt"
-          python -m pip install \
-            --disable-pip-version-check \
-            --require-hashes \
-            --requirement "$RUNNER_TEMP/eliza-computer-python-requirements.txt"
+        run: >-
+          python -m pip install --disable-pip-version-check
+          --only-binary=:all: --require-hashes
+          --requirement packages/skills/skills/skill-creator/requirements.txt
 
       - name: Validate canonical contribution skill
         run: |

@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import { validateWorkflowSources } from "./ci-workflow-invariants.mjs";
+import { run, validateWorkflowSources } from "./ci-workflow-invariants.mjs";
 
 const root = path.resolve(import.meta.dirname, "../..");
 const sources = {
@@ -30,12 +30,20 @@ const sources = {
     path.join(root, ".github/workflows/gitleaks.yml"),
     "utf8",
   ),
+  nightly: readFileSync(
+    path.join(root, ".github/workflows/nightly.yml"),
+    "utf8",
+  ),
   qualityFork: readFileSync(
     path.join(root, ".github/workflows/quality-fork.yml"),
     "utf8",
   ),
   setupWorkspace: readFileSync(
     path.join(root, ".github/actions/setup-bun-workspace/action.yml"),
+    "utf8",
+  ),
+  skillRequirements: readFileSync(
+    path.join(root, "packages/skills/skills/skill-creator/requirements.txt"),
     "utf8",
   ),
   tests: readFileSync(path.join(root, ".github/workflows/test.yml"), "utf8"),
@@ -45,7 +53,38 @@ test("accepts the repository workflow graph", () => {
   assert.deepEqual(validateWorkflowSources(sources), { ok: true });
 });
 
+test("loads every repository workflow source from disk", () => {
+  assert.deepEqual(run(root), { ok: true });
+});
+
 for (const fixture of [
+  {
+    name: "Nightly root build without Python 3.13",
+    key: "nightly",
+    mutate: (source) =>
+      source.replace('          python-version: "3.13"\n', ""),
+    pattern: /must provision Python 3.13 on the fail-closed hosted runner/,
+  },
+  {
+    name: "Nightly root build on a fail-open self-hosted runner",
+    key: "nightly",
+    mutate: (source) =>
+      source.replace(
+        "    runs-on: ubuntu-24.04\n",
+        "    runs-on: self-hosted\n",
+      ),
+    pattern: /must provision Python 3.13 on the fail-closed hosted runner/,
+  },
+  {
+    name: "Nightly Windows build without Python 3.13",
+    key: "nightly",
+    mutate: (source) =>
+      source.replace(
+        '        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97\n        with:\n          python-version: "3.13"\n',
+        '        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97\n        with:\n          python-version: "3.12"\n',
+      ),
+    pattern: /every desktop build lane must provision Python 3.13/,
+  },
   {
     name: "generic runner admission for PostgreSQL e2e",
     key: "cloudTests",
@@ -193,9 +232,19 @@ for (const fixture of [
   {
     name: "unhashed hosted-build skill validator dependency",
     key: "qualityFork",
-    mutate: (source) => source.replace("            --require-hashes \\\n", ""),
+    mutate: (source) => source.replace(" --require-hashes", ""),
     pattern:
       /hosted build must install the hash-pinned Python 3.13 skill validator dependency/,
+  },
+  {
+    name: "unapproved shared skill validator wheel",
+    key: "skillRequirements",
+    mutate: (source) =>
+      source.replace(
+        "0f29edc409a6392443abf94b9cf89ce99889a1dd5376d94316ae5145dfedd5d6",
+        "0000000000000000000000000000000000000000000000000000000000000000",
+      ),
+    pattern: /must pin the approved Python 3.13 PyYAML wheel hash/,
   },
   {
     name: "mismatched hosted-build skill validator Python",

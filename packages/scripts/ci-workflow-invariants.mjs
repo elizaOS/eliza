@@ -25,16 +25,19 @@ const WORKFLOW_PATHS = Object.freeze({
   cloudTests: ".github/workflows/cloud-tests.yml",
   develop: ".github/workflows/develop-pr.yml",
   gitleaks: ".github/workflows/gitleaks.yml",
+  nightly: ".github/workflows/nightly.yml",
   qualityFork: ".github/workflows/quality-fork.yml",
   setupWorkspace: ".github/actions/setup-bun-workspace/action.yml",
+  skillRequirements: "packages/skills/skills/skill-creator/requirements.txt",
   tests: ".github/workflows/test.yml",
 });
 const ISOLATED_BUN_HOME = `\${{ runner.temp }}/bun-home-\${{ github.run_id }}-\${{ github.run_attempt }}-\${{ github.job }}-\${{ strategy.job-index || 0 }}`;
 const FORK_JOB_GUARD =
   "github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true)";
 const FORK_CONCURRENCY_GROUP = `quality-fork-\${{ github.event_name }}-\${{ github.event.pull_request.number || github.ref }}`;
-const PY_YAML_313_X64_REQUIREMENT =
-  "PyYAML==6.0.3 --hash=sha256:0f29edc409a6392443abf94b9cf89ce99889a1dd5376d94316ae5145dfedd5d6";
+const PY_YAML_313_VERSION = "PyYAML==6.0.3";
+const PY_YAML_313_X64_HASH =
+  "--hash=sha256:0f29edc409a6392443abf94b9cf89ce99889a1dd5376d94316ae5145dfedd5d6";
 
 function invariant(condition, message) {
   if (!condition) throw new Error(message);
@@ -127,6 +130,7 @@ export function validateWorkflowSources(sources) {
   );
   const develop = parseWorkflow(WORKFLOW_PATHS.develop, sources.develop);
   const gitleaks = parseWorkflow(WORKFLOW_PATHS.gitleaks, sources.gitleaks);
+  const nightly = parseWorkflow(WORKFLOW_PATHS.nightly, sources.nightly);
   const qualityFork = parseWorkflow(
     WORKFLOW_PATHS.qualityFork,
     sources.qualityFork,
@@ -136,6 +140,36 @@ export function validateWorkflowSources(sources) {
     sources.setupWorkspace,
   );
   const tests = parseWorkflow(WORKFLOW_PATHS.tests, sources.tests);
+
+  for (const jobName of ["build-and-test", "publish-npm"]) {
+    const job = nightly.jobs[jobName];
+    const setup = job?.steps?.find(
+      (step) => step?.uses === "./.github/actions/setup-bun-workspace",
+    );
+    invariant(
+      job?.["runs-on"] === "ubuntu-24.04" &&
+        setup?.with?.["python-version"] === "3.13",
+      `${WORKFLOW_PATHS.nightly}: jobs.${jobName} must provision Python 3.13 on the fail-closed hosted runner`,
+    );
+  }
+  const desktopSteps = nightly.jobs["desktop-build-matrix"]?.steps;
+  invariant(
+    Array.isArray(desktopSteps),
+    `${WORKFLOW_PATHS.nightly}: jobs.desktop-build-matrix must contain steps`,
+  );
+  const desktopWorkspaceSetup = desktopSteps.find(
+    (step) => step?.uses === "./.github/actions/setup-bun-workspace",
+  );
+  const windowsPythonSetup = desktopSteps.find((step) =>
+    step?.uses?.startsWith("actions/setup-python@"),
+  );
+  invariant(
+    desktopWorkspaceSetup?.if === "runner.os != 'Windows'" &&
+      desktopWorkspaceSetup?.with?.["python-version"] === "3.13" &&
+      windowsPythonSetup?.if === "runner.os == 'Windows'" &&
+      windowsPythonSetup?.with?.["python-version"] === "3.13",
+    `${WORKFLOW_PATHS.nightly}: every desktop build lane must provision Python 3.13 for the skill packager`,
+  );
 
   const cloudE2e = requireJob(
     cloudTests,
@@ -275,10 +309,20 @@ export function validateWorkflowSources(sources) {
     (step) => step?.name === "Build",
   );
   const forkSkillDependencyIndex = forkBuild.steps.indexOf(forkSkillDependency);
+  const normalizedSkillRequirements = sources.skillRequirements
+    .replaceAll("\\", "")
+    .replace(/\s+/g, " ");
+  invariant(
+    normalizedSkillRequirements.includes(PY_YAML_313_VERSION) &&
+      normalizedSkillRequirements.includes(PY_YAML_313_X64_HASH),
+    `${WORKFLOW_PATHS.skillRequirements}: must pin the approved Python 3.13 PyYAML wheel hash`,
+  );
   invariant(
     forkBuildSetup?.with?.["python-version"] === "3.13" &&
       typeof forkSkillDependency?.run === "string" &&
-      forkSkillDependency.run.includes(PY_YAML_313_X64_REQUIREMENT) &&
+      forkSkillDependency.run.includes(
+        `--requirement ${WORKFLOW_PATHS.skillRequirements}`,
+      ) &&
       forkSkillDependency.run.includes("--require-hashes") &&
       forkSkillDependency["continue-on-error"] !== true &&
       forkSkillDependencyIndex >= 0 &&
@@ -423,12 +467,17 @@ export function run(repoRoot = REPO_ROOT) {
       path.join(repoRoot, WORKFLOW_PATHS.gitleaks),
       "utf8",
     ),
+    nightly: readFileSync(path.join(repoRoot, WORKFLOW_PATHS.nightly), "utf8"),
     qualityFork: readFileSync(
       path.join(repoRoot, WORKFLOW_PATHS.qualityFork),
       "utf8",
     ),
     setupWorkspace: readFileSync(
       path.join(repoRoot, WORKFLOW_PATHS.setupWorkspace),
+      "utf8",
+    ),
+    skillRequirements: readFileSync(
+      path.join(repoRoot, WORKFLOW_PATHS.skillRequirements),
       "utf8",
     ),
     tests: readFileSync(path.join(repoRoot, WORKFLOW_PATHS.tests), "utf8"),
