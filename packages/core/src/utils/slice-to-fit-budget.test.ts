@@ -78,11 +78,12 @@ describe("sliceToFitBudget", () => {
 		});
 
 		it("returns a contiguous suffix, never a gap", () => {
-			// "huge" blocks anything older, so only the tail survives.
-			const items = ["huuuuuuuge", "a", "b"];
-			expect(sliceToFitBudget(items, byLength, 5, { fromEnd: true })).toEqual([
-				"a",
-				"b",
+			// The oversized middle item blocks the older item even though that
+			// item would fit in the remaining budget. Skipping the blocker would
+			// turn a suffix into a gap and make the returned slice exceed budget.
+			const items = ["old", "huuuuuuuge", "tail"];
+			expect(sliceToFitBudget(items, byLength, 7, { fromEnd: true })).toEqual([
+				"tail",
 			]);
 		});
 
