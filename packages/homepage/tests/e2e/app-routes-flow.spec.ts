@@ -154,7 +154,9 @@ test("profile editor preserves sign-in return path and generates a compatible ma
   await expect(
     page.getByRole("heading", { name: "Link a public wallet." }),
   ).toBeVisible();
-  await page.getByLabel("Ethereum / EVM address").fill("not-a-wallet");
+  await page
+    .getByLabel("Ethereum / EVM address")
+    .fill("0xd2Bb04998A32BBd6A5F666EA306F4745a606495E");
   await page.getByRole("button", { name: "Generate README marker" }).click();
   await expect(page.getByRole("alert")).toContainText(
     "Enter a valid EVM address",
@@ -162,14 +164,14 @@ test("profile editor preserves sign-in return path and generates a compatible ma
 
   await page
     .getByLabel("Ethereum / EVM address")
-    .fill("0x1111111111111111111111111111111111111111");
+    .fill("0xd2Bb04998A32BBd6A5F666EA306F4745a606495f");
   await page.getByRole("button", { name: "Generate README marker" }).click();
 
   const generated = page.getByLabel("Generated wallet linking comment");
   await expect(generated).toContainText("<!-- WALLET-LINKING-BEGIN");
   await expect(generated).toContainText('"chain": "ethereum"');
   await expect(generated).toContainText(
-    '"address": "0x1111111111111111111111111111111111111111"',
+    '"address": "0xd2Bb04998A32BBd6A5F666EA306F4745a606495f"',
   );
   await expect(generated).toContainText("WALLET-LINKING-END -->");
 

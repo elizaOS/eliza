@@ -7,14 +7,30 @@ import {
   generateWalletReadmeComment,
   isValidEthereumAddress,
   isValidSolanaAddress,
+  WalletAddressValidationError,
 } from "../src/lib/wallet-linking";
 
 describe("wallet linking README marker", () => {
-  test("validates public EVM and Solana address formats", () => {
+  test("accepts EIP-55, lowercase, and uppercase EVM addresses", () => {
     expect(
       isValidEthereumAddress("0x1111111111111111111111111111111111111111"),
     ).toBe(true);
+    expect(
+      isValidEthereumAddress("0x52908400098527886E0F7030069857D2E4169EE7"),
+    ).toBe(true);
+    expect(
+      isValidEthereumAddress("0xd2Bb04998A32BBd6A5F666EA306F4745a606495f"),
+    ).toBe(true);
+  });
+
+  test("rejects invalid EVM formats and mixed-case checksums", () => {
     expect(isValidEthereumAddress("0xprivate-key")).toBe(false);
+    expect(
+      isValidEthereumAddress("0xd2Bb04998A32BBd6A5F666EA306F4745a606495E"),
+    ).toBe(false);
+  });
+
+  test("validates public Solana address formats", () => {
     expect(isValidSolanaAddress("11111111111111111111111111111111")).toBe(true);
     expect(isValidSolanaAddress("22222222222222222222222222222222")).toBe(
       false,
@@ -48,9 +64,17 @@ describe("wallet linking README marker", () => {
 WALLET-LINKING-END -->`);
   });
 
-  test("requires at least one address", () => {
+  test("requires at least one valid address at the serialization boundary", () => {
     expect(() =>
       generateWalletReadmeComment({}, new Date("2026-08-02T09:00:00.000Z")),
-    ).toThrow("Add at least one public wallet address.");
+    ).toThrow(WalletAddressValidationError);
+    expect(() =>
+      generateWalletReadmeComment({
+        ethereum: "0xd2Bb04998A32BBd6A5F666EA306F4745a606495E",
+      }),
+    ).toThrow("Enter a valid EVM address.");
+    expect(() =>
+      generateWalletReadmeComment({ solana: "WALLET-LINKING-END -->" }),
+    ).toThrow("Enter a valid Solana address.");
   });
 });

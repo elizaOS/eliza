@@ -4,6 +4,7 @@
  */
 
 import bs58 from "bs58";
+import { isAddress } from "viem";
 
 export interface WalletAddresses {
   ethereum?: string;
@@ -13,8 +14,15 @@ export interface WalletAddresses {
 export const WALLET_LINKING_BEGIN = "<!-- WALLET-LINKING-BEGIN";
 export const WALLET_LINKING_END = "WALLET-LINKING-END -->";
 
+export class WalletAddressValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "WalletAddressValidationError";
+  }
+}
+
 export function isValidEthereumAddress(value: string): boolean {
-  return /^0x[0-9a-fA-F]{40}$/.test(value.trim());
+  return isAddress(value.trim(), { strict: true });
 }
 
 export function isValidSolanaAddress(value: string): boolean {
@@ -32,18 +40,25 @@ export function generateWalletReadmeComment(
   addresses: WalletAddresses,
   now: Date = new Date(),
 ): string {
-  const wallets = [
-    addresses.ethereum
-      ? { chain: "ethereum", address: addresses.ethereum.trim() }
-      : null,
-    addresses.solana
-      ? { chain: "solana", address: addresses.solana.trim() }
-      : null,
-  ].filter((wallet): wallet is { chain: string; address: string } => !!wallet);
+  const ethereum = addresses.ethereum?.trim();
+  const solana = addresses.solana?.trim();
 
-  if (wallets.length === 0) {
-    throw new Error("Add at least one public wallet address.");
+  if (!ethereum && !solana) {
+    throw new WalletAddressValidationError(
+      "Add at least one public wallet address.",
+    );
   }
+  if (ethereum && !isValidEthereumAddress(ethereum)) {
+    throw new WalletAddressValidationError("Enter a valid EVM address.");
+  }
+  if (solana && !isValidSolanaAddress(solana)) {
+    throw new WalletAddressValidationError("Enter a valid Solana address.");
+  }
+
+  const wallets = [
+    ethereum ? { chain: "ethereum", address: ethereum } : null,
+    solana ? { chain: "solana", address: solana } : null,
+  ].filter((wallet): wallet is { chain: string; address: string } => !!wallet);
 
   return `${WALLET_LINKING_BEGIN}
 ${JSON.stringify({ lastUpdated: now.toISOString(), wallets }, null, 2)}

@@ -865,6 +865,7 @@
         "react-router-dom": "^7.10.0",
         "tailwind-merge": "^3.4.0",
         "three": "^0.184.0",
+        "viem": "2.49.3",
       },
       "devDependencies": {
         "@biomejs/biome": "2.5.6",
