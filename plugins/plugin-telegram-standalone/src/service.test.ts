@@ -21,11 +21,11 @@ const { FakeTelegraf, launchMock, stopMock, constructed } = vi.hoisted(() => {
 
 vi.mock("telegraf", () => ({ Telegraf: FakeTelegraf }));
 
-import { shouldStartTelegramStandaloneBot, TelegramStandaloneService } from "./index";
 import {
   claimTelegramPollerToken as claimFullTelegramPollerToken,
   releaseTelegramPollerToken as releaseFullTelegramPollerToken,
 } from "@elizaos/plugin-telegram";
+import { shouldStartTelegramStandaloneBot, TelegramStandaloneService } from "./index";
 import { claimTelegramPollerToken, releaseTelegramPollerToken } from "./poller-lock";
 
 // Minimal runtime — the service only touches getService() at stop time.
