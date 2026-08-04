@@ -34,7 +34,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, unwrapUserMessageText } from "@elizaos/core";
 import {
   appReferenceLogView,
   describeAppReference,
@@ -450,7 +450,7 @@ export const bookInfluencerAction: Action = {
     }
 
     const rec = readOpt(options);
-    const body = message.content?.text ?? "";
+    const body = unwrapUserMessageText(message);
     const amount = parseAmount(options, body);
     const brief =
       typeof rec.brief === "string" && rec.brief.trim()

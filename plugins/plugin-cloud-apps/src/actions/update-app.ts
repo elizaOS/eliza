@@ -19,7 +19,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, unwrapUserMessageText } from "@elizaos/core";
 import {
   appReferenceLogView,
   describeAppReference,
@@ -278,7 +278,10 @@ export const updateAppAction: Action = {
       };
     }
 
-    const intent = parseUpdateAppIntent(message.content?.text ?? "", options);
+    const intent = parseUpdateAppIntent(
+      unwrapUserMessageText(message),
+      options,
+    );
     const reference = intent.reference ?? extractAppReference(message, options);
     if (!reference) {
       await callback?.({ text: NO_REFERENCE_MESSAGE, actions: ["UPDATE_APP"] });

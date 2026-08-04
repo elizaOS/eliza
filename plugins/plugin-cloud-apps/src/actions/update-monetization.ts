@@ -23,7 +23,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, unwrapUserMessageText } from "@elizaos/core";
 import {
   appReferenceLogView,
   describeAppReference,
@@ -294,7 +294,7 @@ export const updateMonetizationAction: Action = {
     }
 
     const intent = parseMonetizationIntent(
-      message.content?.text ?? "",
+      unwrapUserMessageText(message),
       options,
     );
 

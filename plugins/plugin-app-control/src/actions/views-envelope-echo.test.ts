@@ -41,12 +41,14 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 	return {
 		...coreMock,
 		getUserMessageText: actual.getUserMessageText,
+		hardenIncomingUserMessage: actual.hardenIncomingUserMessage,
 		unwrapUserMessageText: actual.unwrapUserMessageText,
 		wrapExternalContent: actual.wrapExternalContent,
 	};
 });
 
-import { wrapExternalContent } from "@elizaos/core";
+import { hardenIncomingUserMessage, wrapExternalContent } from "@elizaos/core";
+import { userRequestMessageText } from "../params.js";
 
 /** A hardened inbound message exactly as core leaves it: wrapped text + stamp. */
 function envelopedMessage(userSentence: string, roomId = "room-1") {
@@ -311,5 +313,100 @@ describe("VIEWS — hardened-envelope messages never leak the envelope", () => {
 		// flow fell through toward a create dispatch carrying the envelope.
 		expect(result.success).toBe(true);
 		expect(result.text).toBe("Canceled. No view changes made.");
+	});
+});
+
+describe("adversarial envelope variants — extraction fails closed to empty", () => {
+	/** A legacy persisted message: stamped, arbitrary armor text, NO retained payload. */
+	function legacyArmoredMessage(text: string) {
+		return {
+			entityId: "user-1",
+			roomId: "room-1",
+			agentId: "agent-1",
+			content: {
+				text,
+				source: "discord",
+				metadata: { externalContentWrapped: true },
+			},
+		};
+	}
+
+	it("case-variant markers on a legacy message yield no user words, never armor", () => {
+		const wrapped = wrapExternalContent("close the wallet view", {
+			source: "api",
+			includeWarning: true,
+		}).toLowerCase(); // breaks byte-exact extraction, keeps the armor shape
+		expect(userRequestMessageText(legacyArmoredMessage(wrapped) as never)).toBe(
+			"",
+		);
+	});
+
+	it("fullwidth-Unicode marker armor yields no user words", () => {
+		expect(
+			userRequestMessageText(
+				legacyArmoredMessage(
+					"＜＜＜ＥＸＴＥＲＮＡＬ＿ＵＮＴＲＵＳＴＥＤ＿ＣＯＮＴＥＮＴ＞＞＞ close the wallet view",
+				) as never,
+			),
+		).toBe("");
+	});
+
+	it("a quoted marker echo in the user's own words yields no extractable text", () => {
+		const message = {
+			entityId: "user-1",
+			roomId: "room-1",
+			agentId: "agent-1",
+			content: {
+				text: 'what does "<<<EXTERNAL_UNTRUSTED_CONTENT>>>" mean?',
+				source: "discord",
+			},
+		};
+		hardenIncomingUserMessage(message as never);
+		expect(userRequestMessageText(message as never)).toBe("");
+	});
+
+	it("legacy unparseable armor drives the real VIEWS handler without selecting a warning-word view", async () => {
+		// The collision analog for views: a view labeled "Security" must not be
+		// resolved because "SECURITY NOTICE" appears in the armor a mangled
+		// legacy message falls back to.
+		const securityRegistry: ViewSummary[] = [
+			...REGISTRY,
+			{
+				id: "security",
+				label: "Security",
+				description: "Security posture and audit findings",
+				path: "/security",
+				pluginName: "core",
+				available: true,
+				viewType: "gui",
+				tags: ["security"],
+				visibleInManager: true,
+			},
+		];
+		const wrapped = wrapExternalContent("open the security view", {
+			source: "api",
+			includeWarning: true,
+		});
+		const mangled = wrapped.replace("<<<END_EXTERNAL_UNTRUSTED_CONTENT>>>", "");
+		const action = createViewsAction({
+			client: clientFor(securityRegistry),
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+		const callback = vi.fn();
+		const result = await action.handler(
+			{ agentId: "agent-1" } as never,
+			legacyArmoredMessage(mangled) as never,
+			undefined,
+			undefined,
+			callback,
+		);
+
+		expectNoEnvelope(result?.text);
+		for (const call of callback.mock.calls) {
+			expectNoEnvelope(call[0]?.text);
+		}
+		// Armor debris resolves nothing: the handler must not act on "Security".
+		const values = (result?.values ?? {}) as { viewId?: string };
+		expect(values.viewId).not.toBe("security");
 	});
 });

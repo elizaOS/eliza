@@ -13,6 +13,7 @@
 import type { AppDto } from "@elizaos/cloud-sdk";
 import { ElizaCloudClient } from "@elizaos/cloud-sdk";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
+import { unwrapUserMessageText } from "@elizaos/core";
 
 /** Default Eliza Cloud API base URL (matches the cloud runtime default). */
 export const DEFAULT_CLOUD_API_BASE_URL = "https://elizacloud.ai/api/v1";
@@ -350,8 +351,13 @@ export function plannerOptionSources(
 /**
  * Pull an app reference from planner-supplied options (nested
  * `options.parameters` first — the real planner path — then top-level) or,
- * failing that, the raw message text. Mirrors the read-core's
- * `resolveReference` so the mutating actions resolve apps identically.
+ * failing that, the security-unwrapped message text. Mirrors the read-core's
+ * `resolveReference` so the mutating actions resolve apps identically. The
+ * text fallback MUST be the canonical unwrapped payload, never raw
+ * `content.text`: on hardened connectors the raw text is the external-content
+ * envelope, and matching on it selected apps by words from the injected
+ * security WARNING ("External Content", "Security", …) instead of anything
+ * the user said.
  */
 export function extractAppReference(
   message: Memory,
@@ -365,7 +371,7 @@ export function extractAppReference(
       }
     }
   }
-  return (message.content?.text ?? "").trim();
+  return unwrapUserMessageText(message);
 }
 
 /**

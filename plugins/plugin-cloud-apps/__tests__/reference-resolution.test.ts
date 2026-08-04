@@ -1,7 +1,9 @@
 /**
- * Tests for the ambiguity-safe app resolver (matchAppByReference / findAppByReference / resolveApp): id then exact name/slug then whole-word then fragment; ties are ambiguous. Pure, no SDK.
+ * Tests for the ambiguity-safe app resolver (matchAppByReference / findAppByReference / resolveApp): id then exact name/slug then whole-word then fragment; ties are ambiguous. Pure, no SDK — plus the security-envelope adversarial suite proving the resolver can never see warning text.
  */
 import { describe, expect, it } from "bun:test";
+import type { Memory } from "@elizaos/core";
+import { hardenIncomingUserMessage, wrapExternalContent } from "@elizaos/core";
 import {
   appReferenceLogView,
   describeAppReference,
@@ -119,6 +121,129 @@ describe("extractAppReference — planner options (nested `parameters` first)", 
       "do something with my app",
     );
     expect(extractAppReference(msg)).toBe("do something with my app");
+  });
+});
+
+describe("extractAppReference — the resolver never sees security-warning text", () => {
+  // The scenario shaw named: cloud apps whose NAMES collide with words in the
+  // injected security warning. If armor text ever reaches the matcher, these
+  // apps get selected/mutated by the warning itself.
+  const collisionApps = [app("External Content"), app("Security"), app("Blog")];
+
+  /** A message as core leaves it TODAY: wrapped text + retained payload. */
+  function hardenedMessage(userSentence: string): Memory {
+    const message = {
+      entityId: "user-1",
+      roomId: "room-1",
+      content: { text: userSentence, source: "discord" },
+    } as unknown as Memory;
+    hardenIncomingUserMessage(message);
+    return message;
+  }
+
+  /** A legacy persisted message: wrapped text + stamp, NO retained payload. */
+  function legacyMessage(text: string): Memory {
+    return {
+      entityId: "user-1",
+      roomId: "room-1",
+      content: {
+        text,
+        source: "discord",
+        metadata: { externalContentWrapped: true },
+      },
+    } as unknown as Memory;
+  }
+
+  it("HAZARD DEMO: armor text fed directly to the matcher selects a collision app", () => {
+    // Documents why the fallback contract matters: "SECURITY NOTICE" in the
+    // warning whole-word-matches an app named "Security", so the pre-fix
+    // raw-text fallback let the injected warning pick the mutation target.
+    const armor = wrapExternalContent("hi", {
+      source: "api",
+      includeWarning: true,
+    });
+    const hit = matchAppByReference(collisionApps, armor);
+    expect(hit.app?.name).toBe("Security");
+  });
+
+  it("fresh hardened message: resolves from the retained payload, not the warning", () => {
+    const message = hardenedMessage("delete the Blog app");
+    expect((message.content.text as string).startsWith("SECURITY NOTICE")).toBe(
+      true,
+    );
+    const reference = extractAppReference(message, { parameters: {} });
+    expect(reference).toBe("delete the Blog app");
+    expect(matchAppByReference(collisionApps, reference).app?.name).toBe(
+      "Blog",
+    );
+  });
+
+  it("legacy parseable envelope: resolves from the extracted payload only", () => {
+    const wrapped = wrapExternalContent("delete the Blog app", {
+      source: "api",
+      includeWarning: true,
+    });
+    const reference = extractAppReference(legacyMessage(wrapped));
+    expect(reference).toBe("delete the Blog app");
+    expect(matchAppByReference(collisionApps, reference).app?.name).toBe(
+      "Blog",
+    );
+  });
+
+  it("REGRESSION (shaw): legacy UNPARSEABLE armor yields an empty reference — no collision app is ever selected", () => {
+    // Stamped message whose end marker was mangled in persistence: extraction
+    // fails, and the old raw-text fallback handed the whole armor (warning
+    // included) to the matcher. The safe interpretation of armor debris is
+    // "no reference": resolution fails closed into the ask-the-user path
+    // instead of mutating "External Content" or "Security".
+    const wrapped = wrapExternalContent("delete the Blog app", {
+      source: "api",
+      includeWarning: true,
+    });
+    const mangled = wrapped.replace("<<<END_EXTERNAL_UNTRUSTED_CONTENT>>>", "");
+    const reference = extractAppReference(legacyMessage(mangled));
+    expect(reference).toBe("");
+    const match = matchAppByReference(collisionApps, reference);
+    expect(match.app).toBeNull();
+    expect(match.candidates).toEqual([]);
+  });
+
+  it("case-variant and fullwidth armor variants also yield an empty reference", () => {
+    const variants = [
+      "security notice: the following content is from an external, untrusted source\n<<<external_untrusted_content>>>\ndelete Blog",
+      "＜＜＜ＥＸＴＥＲＮＡＬ＿ＵＮＴＲＵＳＴＥＤ＿ＣＯＮＴＥＮＴ＞＞＞ delete Blog",
+    ];
+    for (const text of variants) {
+      const reference = extractAppReference(legacyMessage(text));
+      expect(reference).toBe("");
+      expect(matchAppByReference(collisionApps, reference).app).toBeNull();
+    }
+  });
+
+  it("a quoted marker echo in the user's own words never becomes a reference", () => {
+    const message = hardenedMessage(
+      'what is "<<<EXTERNAL_UNTRUSTED_CONTENT>>>" supposed to mean?',
+    );
+    expect(extractAppReference(message)).toBe("");
+    expect(
+      matchAppByReference(collisionApps, extractAppReference(message)).app,
+    ).toBeNull();
+  });
+
+  it("planner-supplied references still win over any message shape", () => {
+    const wrapped = wrapExternalContent("noise", {
+      source: "api",
+      includeWarning: true,
+    });
+    const reference = extractAppReference(legacyMessage(wrapped), {
+      parameters: { appName: "Security" },
+    });
+    // An explicit planner arg naming the collision app is a legitimate user
+    // choice — only the TEXT fallback is armor-hazardous.
+    expect(reference).toBe("Security");
+    expect(matchAppByReference(collisionApps, reference).app?.name).toBe(
+      "Security",
+    );
   });
 });
 

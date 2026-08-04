@@ -194,9 +194,10 @@ describe("DEPLOY_APP", () => {
   });
 
   it("REGRESSION: a security-envelope reference is never echoed back to chat (tj-2dc95f75456876)", async () => {
-    // With empty planner args the reference falls back to the raw message
-    // text, which on hardened connectors is the whole rendered security
-    // envelope — the not-found reply must not re-broadcast it.
+    // With empty planner args the reference falls back to the message text.
+    // The canonical accessor extracts the PAYLOAD from a wrapped legacy
+    // message, so the not-found reply quotes the user's actual words — and
+    // never any part of the armor.
     setListApps(() =>
       Promise.resolve({
         success: true,
@@ -221,7 +222,9 @@ describe("DEPLOY_APP", () => {
     expect(res.success).toBe(false);
     expect(res.userFacingText).not.toContain("EXTERNAL_UNTRUSTED_CONTENT");
     expect(res.userFacingText).not.toContain("SECURITY NOTICE");
-    expect(res.userFacingText).toContain("that app");
+    expect(res.userFacingText).toContain(
+      '"can u host it and give me the link pls"',
+    );
     expect(cb.calls[0]?.text).not.toContain("EXTERNAL_UNTRUSTED_CONTENT");
     // Machine text + data reference stay clamped to a single bounded line.
     expect(requireDefined(res.text, "machine text").length).toBeLessThanOrEqual(
@@ -231,6 +234,39 @@ describe("DEPLOY_APP", () => {
     expect(data.reason).toBe("not_found");
     expect(data.reference.length).toBeLessThanOrEqual(121);
     expect(data.reference).not.toContain("\n");
+  });
+
+  it("REGRESSION: UNPARSEABLE armor falls back to an empty reference and the which-app ask", async () => {
+    // A mangled legacy envelope (no end marker) cannot be extracted; the old
+    // raw-text fallback shipped the armor into resolution and display. Now the
+    // reference is empty, so the action takes its ask-the-user path and
+    // resolution cannot select an app named after warning words.
+    setListApps(() =>
+      Promise.resolve({
+        success: true,
+        apps: [makeApp({ name: "Security", slug: "security" })],
+      }),
+    );
+    const mangled = [
+      "SECURITY NOTICE: The following content is from an EXTERNAL, UNTRUSTED source (e.g., email, webhook).",
+      "<<<EXTERNAL_UNTRUSTED_CONTENT>>>",
+      "can u host it and give me the link pls",
+    ].join("\n");
+    const cb = captureCallback();
+    const result = await deployAppAction.handler(
+      keyedRuntime(),
+      makeRoomMessage(mangled),
+      undefined,
+      undefined,
+      cb.fn,
+    );
+    const res = requireDefined(result, "action result");
+    expect(res.success).toBe(false);
+    expect(res.userFacingText).not.toContain("EXTERNAL_UNTRUSTED_CONTENT");
+    expect(res.userFacingText).not.toContain("SECURITY NOTICE");
+    expect(res.userFacingText).toContain("Which app would you like to deploy?");
+    const data = res.data as { reason: string };
+    expect(data.reason).toBe("no_reference");
   });
 
   it("not-found still quotes a short planner-supplied name", async () => {

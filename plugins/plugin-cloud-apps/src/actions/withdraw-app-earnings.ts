@@ -36,7 +36,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, unwrapUserMessageText } from "@elizaos/core";
 import {
   appReferenceLogView,
   describeAppReference,
@@ -549,7 +549,10 @@ export const withdrawAppEarningsAction: Action = {
     }
 
     // Amount: explicit request, else the full withdrawable balance.
-    const requested = parseWithdrawAmount(message.content?.text ?? "", options);
+    const requested = parseWithdrawAmount(
+      unwrapUserMessageText(message),
+      options,
+    );
     const amount = requested ?? withdrawable;
 
     if (amount > withdrawable + 1e-9) {
