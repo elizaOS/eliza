@@ -58,7 +58,95 @@ describe("prompt template exports", () => {
     }
   });
 
-  it("has balanced Handlebars delimiters", () => {
+  it("known required templates exist", () => {
+    const required = [
+      "messageHandlerTemplate",
+      "replyTemplate",
+      "shouldRespondTemplate",
+    ];
+    const names = new Set(extractTemplateConsts(readSrc()));
+    for (const r of required) {
+      assert.ok(names.has(r), `Required template "${r}" should be exported`);
+    }
+  });
+
+  it("keeps every user-facing response lane conversational by default", () => {
+    for (const template of [
+      prompts.messageHandlerTemplate,
+      prompts.plannerTemplate,
+      prompts.replyTemplate,
+    ]) {
+      assert.match(
+        template,
+        /natural conversation, not a database or debug log/,
+      );
+      assert.match(
+        template,
+        /Translate machine dates, 24-hour times, and Unix\/epoch timestamps into familiar dates and times/,
+      );
+      assert.match(
+        template,
+        /unless the user explicitly asks for raw or technical output/,
+      );
+      assert.match(template, /Preserve exact code and user-provided values/);
+    }
+  });
+
+  it("plannerTemplate requires owner life-management tools for side effects and fail-closed questions", () => {
+    assert.match(
+      prompts.plannerTemplate,
+      /matching owner life-management tool exists => call it before terminal answer/,
+    );
+    assert.match(
+      prompts.plannerTemplate,
+      /fail-closed no-op belongs in the tool result, not bare messageToUser/,
+    );
+  });
+
+  it("plannerTemplate keeps native args direct and reserves the parameters envelope for plain JSON", () => {
+    assert.match(
+      prompts.plannerTemplate,
+      /native toolCalls: pass each argument as a direct field in that tool's args object exactly as its schema declares/,
+    );
+    assert.match(
+      prompts.plannerTemplate,
+      /never nest arguments under `parameters` unless the tool schema itself declares a `parameters` field/,
+    );
+    assert.match(
+      prompts.plannerTemplate,
+      /plain-JSON fallback only \(when native tool calls are unavailable\)/,
+    );
+    assert.match(
+      prompts.plannerTemplate,
+      /never put that envelope inside a native tool's args/,
+    );
+  });
+
+  it("factExtractionTemplate names structured fields for multilingual LifeOps projection", () => {
+    const body = prompts.factExtractionTemplate;
+    assert.match(
+      body,
+      /Use these English key names even when the\s+message is in another language/,
+      "fact extractor should preserve English structured-field keys across locales",
+    );
+    assert.match(
+      body,
+      /"mi jefe es Pat" -> \{"person":"Pat","relationshipType":"manager"\}/,
+      "relationship facts should include person + relationshipType without English regex parsing",
+    );
+    assert.match(
+      body,
+      /"Je m'appelle Camille" -> \{"preferredName":"Camille"\}/,
+      "identity facts should include preferredName for non-English self-introductions",
+    );
+    assert.match(
+      body,
+      /relationship: person or partnerName, relationshipType, relationshipStatus,\s+platform, handle/,
+      "relationship structured fields should include graph and identity-handle keys",
+    );
+  });
+
+  it("templates have balanced Handlebars delimiters", () => {
     const source = readSrc();
     assert.strictEqual(
       (source.match(/\{\{/g) || []).length,
