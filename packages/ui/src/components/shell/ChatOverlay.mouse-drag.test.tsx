@@ -210,6 +210,19 @@ describe("text-layer stability during sheet motion", () => {
     expect(sheet().style.willChange).toBe("");
     g.up(380);
   });
+
+  it("keeps the transcript viewport on whole CSS pixels during a fractional drag", async () => {
+    render(<ChatOverlay controller={makeController()} />);
+    fireEvent.focus(screen.getByLabelText("message"));
+    await waitFor(() => expect(variant()).toBe("open"));
+
+    const g = drag(grabber()).down(360.5);
+    await g.move(391.25);
+
+    const basis = screen.getByTestId("chat-thread").style.flexBasis;
+    expect(basis).toMatch(/^\d+px$/);
+    g.up(391.25);
+  });
 });
 
 describe("adversarial mouse drags — up/down 200%, back-and-forth", () => {

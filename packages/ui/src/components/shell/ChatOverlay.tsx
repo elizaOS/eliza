@@ -3148,7 +3148,15 @@ export function ChatOverlay({
   const scrimVisibility = useTransform(threadHeight, (h) =>
     h > 0 ? "visible" : "hidden",
   );
-  const threadFlexBasis = useTransform(threadHeight, (h) => `${h}px`);
+  // Scroll geometry is integer CSS pixels (`clientHeight`, `scrollHeight`, and
+  // the bottom-anchor `scrollTop`). Quantize the flex viewport to that same
+  // coordinate system so fractional pointer frames cannot make transcript
+  // glyphs drift subpixel-by-subpixel and then jump when the scroll anchor
+  // crosses its next integer pixel.
+  const threadFlexBasis = useTransform(
+    threadHeight,
+    (height) => `${Math.round(height)}px`,
+  );
   // Full-screen SHAPE spring (0 = inset chat shape, 1 = edge-to-edge). It springs
   // between the two whenever `maximized` flips, so a maximize ANIMATES out to full
   // screen instead of jumping, and a restore drag ANIMATES back to the exact inset
