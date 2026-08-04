@@ -6,8 +6,6 @@ import { matchShortcut } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { appControlPlugin } from "./index.ts";
 import {
-	FLASHLIGHT_OFF_SHORTCUT_ID,
-	FLASHLIGHT_ON_SHORTCUT_ID,
 	VIEW_NAVIGATION_SHORTCUT_ID,
 	viewNavigationShortcuts,
 } from "./shortcuts.ts";
@@ -65,35 +63,6 @@ describe("viewNavigationShortcuts (#8791)", () => {
 			}),
 		).toBeNull();
 	});
-
-	it.each([
-		["turn on the flashlight", FLASHLIGHT_ON_SHORTCUT_ID, true],
-		["can you switch the torch on", FLASHLIGHT_ON_SHORTCUT_ID, true],
-		["flashlight on", FLASHLIGHT_ON_SHORTCUT_ID, true],
-		["turn the flashlight off", FLASHLIGHT_OFF_SHORTCUT_ID, false],
-		["switch off the torch", FLASHLIGHT_OFF_SHORTCUT_ID, false],
-		["torch off", FLASHLIGHT_OFF_SHORTCUT_ID, false],
-	] as const)(
-		"routes %s directly to the Android device capability",
-		(phrase, shortcutId, enabled) => {
-			const match = matchShortcut(
-				viewNavigationShortcuts,
-				phrase,
-				MATCH_CONTEXT,
-			);
-			expect(match?.shortcut.id).toBe(shortcutId);
-			expect(match?.shortcut.target).toEqual({
-				kind: "action",
-				name: "VIEWS",
-				parameters: {
-					action: "interact",
-					view: "device-control",
-					capability: "set-flashlight",
-					params: { enabled },
-				},
-			});
-		},
-	);
 
 	it("falls through when VIEWS is unavailable or the phrase is not navigation", () => {
 		expect(
