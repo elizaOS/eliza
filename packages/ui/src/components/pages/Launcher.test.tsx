@@ -127,7 +127,6 @@ describe("Launcher", () => {
       screen.getAllByText("Chat")[0].getAttribute("data-launcher-label"),
     ).toBe("");
   });
-
   it("compacts long unbroken labels without shrinking ordinary or wrapped labels", () => {
     render(
       <Launcher
