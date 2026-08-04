@@ -12,10 +12,14 @@ import {
 } from "./voice-warmup";
 
 describe("shouldWarmupVoice", () => {
-  const base = { mobile: false, skipEnv: false };
+  const base = { enabled: true, mobile: false, skipEnv: false };
 
-  it("warms when on desktop and not skipped", () => {
+  it("warms when explicitly enabled on desktop and not skipped", () => {
     expect(shouldWarmupVoice(base)).toBe(true);
+  });
+
+  it("does not issue a generic voice probe by default", () => {
+    expect(shouldWarmupVoice({ mobile: false, skipEnv: false })).toBe(false);
   });
 
   it("skips on mobile", () => {

@@ -184,6 +184,7 @@ export async function startDeferredVoiceWarmup(
 ): Promise<void> {
   if (
     !shouldWarmupVoice({
+      enabled: isTruthyEnvValue(process.env.ELIZA_ENABLE_VOICE_WARMUP),
       mobile: isMobilePlatform(),
       skipEnv: isTruthyEnvValue(process.env.ELIZA_SKIP_LOCAL_VOICE_WARMUP),
       cloudOnly: isExplicitDesktopCloudOnlyRuntime(),

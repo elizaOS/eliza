@@ -200,6 +200,26 @@ describe("view-action-affinity", () => {
     expect(warnings).toHaveLength(0);
   });
 
+  it("keeps missing optional alternatives at debug when a view remains actionable", () => {
+    const allMapped = new Set<string>();
+    for (const actions of Object.values(viewActionAffinityMap())) {
+      for (const action of actions) allMapped.add(action);
+    }
+    allMapped.delete("OWNER_SCREENTIME");
+    const warnings: string[] = [];
+    const debugs: string[] = [];
+
+    validateViewActionMap([...allMapped], {
+      warn: (message) => warnings.push(message),
+      debug: (message) => debugs.push(message),
+    });
+
+    expect(warnings).toHaveLength(0);
+    expect(debugs.some((message) => message.includes("OWNER_SCREENTIME"))).toBe(
+      true,
+    );
+  });
+
   // ── #8798: view-coverage completeness ─────────────────────────────────────
 
   it("built-in plugins-page/settings keep RUNTIME affinity via their declarations (#13589 stub migration)", () => {

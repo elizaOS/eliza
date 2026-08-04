@@ -450,9 +450,12 @@ export async function fetchOllamaModels(
       category: classifyModel(m.name),
     }));
   } catch (e: unknown) {
-    logger.warn(
-      `[model-catalog] Failed to fetch Ollama models: ${e instanceof Error ? e.message : e}`,
-    );
+    const message = `[model-catalog] Failed to fetch Ollama models: ${e instanceof Error ? e.message : e}`;
+    // A localhost probe discovers Ollama when it happens to be installed; its
+    // absence is the normal case. An operator-supplied endpoint is intentional
+    // configuration, so retain an actionable warning for that path.
+    if (process.env.OLLAMA_BASE_URL?.trim()) logger.warn(message);
+    else logger.debug(message);
     return [];
   }
 }

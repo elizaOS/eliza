@@ -160,6 +160,22 @@ const relativeElizaRoot = path
 const elizaGlob = (pattern: string): string =>
   relativeElizaRoot === "" ? pattern : `${relativeElizaRoot}/${pattern}`;
 const autonomousSourceRoot = getAutonomousSourceRoot(repoRoot);
+const agentKnowledgeGraphAliases: ModuleAlias[] = autonomousSourceRoot
+  ? [
+      {
+        // The agent's generic source alias maps subpaths to sibling `.ts`
+        // files, but this public export is an index directory. Keep clean
+        // integration runs on source instead of requiring a prebuilt dist.
+        find: /^@elizaos\/agent\/services\/knowledge-graph$/,
+        replacement: path.join(
+          autonomousSourceRoot,
+          "services",
+          "knowledge-graph",
+          "index.ts",
+        ),
+      },
+    ]
+  : [];
 const appCoreSourceRoot = getAppCoreSourceRoot(repoRoot);
 const sharedSourceRoot = getSharedSourceRoot(repoRoot);
 const workspaceUiSourceRoot = path.join(
@@ -222,6 +238,7 @@ const integrationResolveAlias: ModuleAlias[] = [
         },
       ]
     : []),
+  ...agentKnowledgeGraphAliases,
   ...getAgentSourceAliases(autonomousSourceRoot),
   ...getAppCoreSourceAliases(appCoreSourceRoot),
   ...getUiSourceAliases(uiSourceRoot),
