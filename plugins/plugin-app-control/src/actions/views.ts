@@ -131,6 +131,14 @@ const DESKTOP_ONLY_VIEW_MODES = new Set<ViewsMode>([
 // app-control must not import orchestrator internals, so this constant is kept
 // local and points at the orchestrator's owning constant.
 const SUB_AGENT_RELAY_SOURCE = "sub_agent";
+const SAFE_VIEW_CLIENT_ID = /^[A-Za-z0-9._-]{1,128}$/;
+
+function readViewInteractionClientId(message: Memory): string | undefined {
+	const clientId = readContentMetadata(message).viewClientId;
+	return typeof clientId === "string" && SAFE_VIEW_CLIENT_ID.test(clientId)
+		? clientId
+		: undefined;
+}
 
 function lowerSource(source: unknown): string {
 	return typeof source === "string" ? source.toLowerCase() : "";
@@ -2183,6 +2191,9 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			"ARRANGE_VIEWS",
 			"USE_VIEW_CAPABILITY",
 			"CALL_VIEW_CAPABILITY",
+			"SET_FLASHLIGHT",
+			"TURN_ON_FLASHLIGHT",
+			"TURN_OFF_FLASHLIGHT",
 			"CREATE_NOTE",
 			"CREATE_STICKY_NOTE",
 			"SHOW_NOTES",
@@ -2299,13 +2310,17 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			"coding",
 			"app-builder",
 			"task-coordinator",
+			"device",
+			"hardware",
+			"flashlight",
+			"torch",
 		],
 		description:
-			"Manage and navigate UI views. List available views, report the current view, open a specific view, close/hide a view without deleting its plugin, search views by name or capability, show the view manager, broadcast events to views, invoke registered capabilities on plugin views for view-backed content such as notes, calendar events, dashboards, and records, pin a view as a desktop tab, open a view in a separate window, request split/tiled layouts across multiple views, create a new view plugin (scaffolds + coding agent), edit an existing view plugin (coding agent), regenerate a view's icon/hero image, or delete/uninstall a view plugin.",
+			"Manage and navigate UI views. List available views, report the current view, open a specific view, close/hide a view without deleting its plugin, search views by name or capability, show the view manager, broadcast events to views, invoke registered capabilities on plugin views for view-backed content such as notes, calendar events, dashboards, records, and native device controls such as the phone flashlight, pin a view as a desktop tab, open a view in a separate window, request split/tiled layouts across multiple views, create a new view plugin (scaffolds + coding agent), edit an existing view plugin (coding agent), regenerate a view's icon/hero image, or delete/uninstall a view plugin.",
 		descriptionCompressed:
-			"views list|current|show|open|close|search|manager|broadcast|interact|pin|window|split|tile|create|edit|icon|delete; navigate/close UI views; invoke registered view capabilities for notes/events/dashboards/records; click/read/focus elements; split/tile layouts; scaffold/edit/remove view plugins; regenerate a view icon/hero",
+			"views list|current|show|open|close|search|manager|broadcast|interact|pin|window|split|tile|create|edit|icon|delete; navigate/close UI views; invoke registered view capabilities for notes/events/dashboards/records/native device controls; click/read/focus elements; split/tile layouts; scaffold/edit/remove view plugins; regenerate a view icon/hero",
 		routingHint:
-			"UI view/window/panel/app navigation and layout -> VIEWS. View switching is a COMMON, DEFAULT, PROACTIVE response while the user is in the app chat — strongly prefer opening the relevant view (action=show) whenever the user names an app surface, asks to see/check/open something, or expresses an intent that has a matching view, even when they don't say the word 'view'. Treat 'can you show me <X>', 'I want to <do X>', 'let me see <X>', 'pull up <X>', 'take me to <X>', 'go to <X>', 'open my <X>', and any reference to a domain (calendar, email/messages/inbox, wallet/balance/portfolio, finances/money/spending, focus/distractions, deep-work, goals/routines/reminders, health/sleep/screen-time, todos/tasks, documents/files, registered notes views/capabilities, contacts/relationships/people, companion, the app builder/coding) as a navigation request and switch to that view by default. When in doubt and a matching view exists, action=show it rather than only answering in text. Use VIEWS for open/show/switch/close/hide view requests, view manager, list views, split/tile views, pin view, open view in a separate window, or invoking a capability declared by a registered plugin view, including view-backed content operations like creating/listing notes or calendar events. For add/create calendar-event requests, use action=interact view=calendar capability=create-calendar-event; do not answer by opening or splitting the calendar unless the user asked for layout. For standalone notes requests, only use a registered notes view or notes capability; do not route them to documents/Knowledge. For an implicit request to SEE a domain surface — 'what's on my calendar', 'check my messages'/'my email', 'show my wallet'/'my balance', 'how much did I spend', 'I need to focus', 'take me to my goals', 'show my todos', 'pull up my documents', 'who do I know at X', or 'I want to add a new feature to my app' — open that surface with action=show and the matching view id (calendar, inbox, wallet, finances, focus, goals, health, todos, documents, relationships, companion, task-coordinator). This applies in ANY language: a navigation/see request in Spanish, French, German, Chinese, Japanese, Korean, etc. routes to VIEWS the same way. Opening a surface to view it is action=show, only adding or creating a record inside it is action=interact. Close/hide means VIEWS action=close, not delete/remove. For view capabilities use action=interact with view=<view id> and capability=<capability id>, or pass a generated capability action name that can be resolved from the view catalog. For domain record creation, updates, or deletion, always choose the view's declared semantic capability such as create-note or create-calendar-event; agent-fill and agent-click are only for an explicitly requested form-control interaction after inspecting the surface, never a substitute for a declared domain capability. Pass capability data as params={...} or top-level keys such as title/body/date/time/notes/color; never use dotted keys such as params.title. For a rename/update, identify the existing record separately: params={oldTitle:'current title',title:'replacement title',...}. For a named note read, pass title to get-notes. For a dated calendar read, pass date to get-calendar-state; for one named calendar event, pass title to get-calendar-event. A message that is ONLY a bare surface/view name — 'settings', 'calendar', 'wallet', 'inbox' — is a navigation command (typically a voice-transcribed utterance): immediately use action=show with that view; never answer a bare view name with a clarifying question. When the user says 'view' ('open the wallet view', 'show the calendar view'), VIEWS action=show is the required response — do NOT substitute a domain data/dashboard action for an explicit view-navigation ask. EXCEPTION — installed applications themselves: listing installed/running apps ('show me the apps', 'what apps are installed/running'), launching/restarting an app, or building a new app is the APP action, not VIEWS (the user's own Eliza Cloud apps/sites are LIST_CLOUD_APPS); only the apps/views *page* (view manager) is VIEWS. EXCEPTION — changing a settings/permission VALUE is NOT navigation: 'turn off shell permissions', 'disable shell access', 'change my permissions', or toggling any settings value is the SETTINGS action (action=set), even though those controls live on a settings page; VIEWS only OPENS the settings page without changing a value.",
+			"UI view/window/panel/app navigation and layout -> VIEWS. View switching is a COMMON, DEFAULT, PROACTIVE response while the user is in the app chat — strongly prefer opening the relevant view (action=show) whenever the user names an app surface, asks to see/check/open something, or expresses an intent that has a matching view, even when they don't say the word 'view'. Treat 'can you show me <X>', 'I want to <do X>', 'let me see <X>', 'pull up <X>', 'take me to <X>', 'go to <X>', 'open my <X>', and any reference to a domain (calendar, email/messages/inbox, wallet/balance/portfolio, finances/money/spending, focus/distractions, deep-work, goals/routines/reminders, health/sleep/screen-time, todos/tasks, documents/files, registered notes views/capabilities, contacts/relationships/people, companion, the app builder/coding) as a navigation request and switch to that view by default. When in doubt and a matching view exists, action=show it rather than only answering in text. Use VIEWS for open/show/switch/close/hide view requests, view manager, list views, split/tile views, pin view, open view in a separate window, or invoking a capability declared by a registered plugin view, including view-backed content operations like creating/listing notes or calendar events and native device controls. For a phone flashlight request, use action=interact view=device-control capability=set-flashlight with params={enabled:true|false}; never claim success with REPLY before the capability returns success. For add/create calendar-event requests, use action=interact view=calendar capability=create-calendar-event; do not answer by opening or splitting the calendar unless the user asked for layout. For standalone notes requests, only use a registered notes view or notes capability; do not route them to documents/Knowledge. For an implicit request to SEE a domain surface — 'what's on my calendar', 'check my messages'/'my email', 'show my wallet'/'my balance', 'how much did I spend', 'I need to focus', 'take me to my goals', 'show my todos', 'pull up my documents', 'who do I know at X', or 'I want to add a new feature to my app' — open that surface with action=show and the matching view id (calendar, inbox, wallet, finances, focus, goals, health, todos, documents, relationships, companion, task-coordinator). This applies in ANY language: a navigation/see request in Spanish, French, German, Chinese, Japanese, Korean, etc. routes to VIEWS the same way. Opening a surface to view it is action=show, only adding or creating a record inside it is action=interact. Close/hide means VIEWS action=close, not delete/remove. For view capabilities use action=interact with view=<view id> and capability=<capability id>, or pass a generated capability action name that can be resolved from the view catalog. For domain record creation, updates, or deletion, always choose the view's declared semantic capability such as create-note or create-calendar-event; agent-fill and agent-click are only for an explicitly requested form-control interaction after inspecting the surface, never a substitute for a declared domain capability. Pass capability data as params={...} or top-level keys such as title/body/date/time/notes/color; never use dotted keys such as params.title. For a rename/update, identify the existing record separately: params={oldTitle:'current title',title:'replacement title',...}. For a named note read, pass title to get-notes. For a dated calendar read, pass date to get-calendar-state; for one named calendar event, pass title to get-calendar-event. A message that is ONLY a bare surface/view name — 'settings', 'calendar', 'wallet', 'inbox' — is a navigation command (typically a voice-transcribed utterance): immediately use action=show with that view; never answer a bare view name with a clarifying question. When the user says 'view' ('open the wallet view', 'show the calendar view'), VIEWS action=show is the required response — do NOT substitute a domain data/dashboard action for an explicit view-navigation ask. EXCEPTION — installed applications themselves: listing installed/running apps ('show me the apps', 'what apps are installed/running'), launching/restarting an app, or building a new app is the APP action, not VIEWS (the user's own Eliza Cloud apps/sites are LIST_CLOUD_APPS); only the apps/views *page* (view manager) is VIEWS. EXCEPTION — changing a settings/permission VALUE is NOT navigation: 'turn off shell permissions', 'disable shell access', 'change my permissions', or toggling any settings value is the SETTINGS action (action=set), even though those controls live on a settings page; VIEWS only OPENS the settings page without changing a value.",
 		allowAdditionalParameters: true,
 		toolSchemaStrict: false,
 		// Every mode reports its authoritative outcome through its handler
@@ -2430,7 +2445,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			{
 				name: "capability",
 				description:
-					"Capability to invoke on the view (interact mode), e.g. 'create-note', 'get-notes', 'create-calendar-event', 'get-calendar-state', 'click-button', 'get-state', 'refresh', or 'focus-element'.",
+					"Declared capability to invoke on the view (interact mode), e.g. 'create-note', 'get-notes', 'create-calendar-event', 'get-calendar-state', 'set-flashlight', 'click-button', 'get-state', 'refresh', or 'focus-element'. Use semantic capabilities for domain record mutations and native device controls; agent-fill/agent-click are only for deliberate form-control interaction, not record creation, updates, or deletion.",
 				required: false,
 				schema: { type: "string" },
 			},
@@ -2975,6 +2990,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							params,
 							timeoutMs,
 							resolvedViewType,
+							readViewInteractionClientId(message),
 						);
 						const resultText = interaction.text;
 						const receipt = interaction.success
@@ -3614,6 +3630,7 @@ async function interactWithView(
 	params: Record<string, unknown> | undefined,
 	timeoutMs: number,
 	viewType?: ViewType,
+	clientId?: string,
 ): Promise<{ success: boolean; text: string; result?: unknown }> {
 	const { resolveServerOnlyPort } = await import("@elizaos/core");
 	const port = resolveServerOnlyPort(process.env);
@@ -3625,7 +3642,10 @@ async function interactWithView(
 			`${base}/api/views/${encodeURIComponent(viewId)}/interact${viewType ? `?viewType=${viewType}` : ""}`,
 			{
 				method: "POST",
-				headers: createViewsRequestHeaders(),
+				headers: {
+					...createViewsRequestHeaders(),
+					...(clientId ? { "X-ElizaOS-Client-Id": clientId } : {}),
+				},
 				body: JSON.stringify({ capability, params, timeoutMs, viewType }),
 				signal: AbortSignal.timeout(timeoutMs + 1_000),
 			},
