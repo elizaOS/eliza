@@ -1786,13 +1786,12 @@ function createV5ReplyStrategyResult(args: {
 	effectReceiptIds?: readonly string[];
 	/**
 	 * Provenance for the humanness voice gate (#14873): `true` when `text` is
-	 * the model's own composed reply (Stage-1 `replyText`, the Stage-1 ack), so
-	 * gated transports (`sendMessageToTarget`) deliver it untouched instead of
-	 * spending a blocking TEXT_SMALL re-voice on text that is already genuine
-	 * model voice. Leave unset for anything with template or tool provenance —
-	 * hardcoded deferrals, captured action output, planner `finalMessage`
-	 * (which can relay tool text or canned fallbacks) — so the gate still
-	 * rephrases those before they reach a user.
+	 * already final user-facing copy — either the model's own composed reply or
+	 * a byte-exact canonical `verifiedUserFacing` action result. Gated transports
+	 * (`sendMessageToTarget`) then preserve it instead of spending a blocking
+	 * TEXT_SMALL re-voice that could alter exact names, punctuation, or values.
+	 * Leave unset for templates, ordinary tool output, and mixed-provenance
+	 * planner text so the gate can still rewrite canned strings.
 	 */
 	agentVoiced?: boolean;
 }): StrategyResult {
@@ -5841,6 +5840,39 @@ function listAvailableContextsForRole(
 	return registry.listAvailable(role);
 }
 
+/**
+ * Whether the routed action owns the response-handler's pre-planner reply.
+ * A deterministic call is already selected, while relevance candidates are
+ * only safe to trust when they all resolve to the same canonical action.
+ */
+function actionOwnsResponseHandlerEarlyReply(
+	runtime: Pick<IAgentRuntime, "actions">,
+	messageHandler: MessageHandlerResult,
+): boolean {
+	const actionLookup = buildRuntimeActionLookup(runtime);
+	const deterministicToolCall = messageHandler.plan.deterministicToolCall;
+	if (deterministicToolCall) {
+		return (
+			resolveRuntimeAction(actionLookup, deterministicToolCall.name)
+				?.suppressEarlyReply === true
+		);
+	}
+
+	const candidateNames = messageHandler.plan.candidateActions ?? [];
+	if (candidateNames.length === 0) return false;
+
+	const resolvedCandidates = new Map<string, Action>();
+	for (const name of candidateNames) {
+		if (typeof name !== "string" || !name.trim()) return false;
+		const action = resolveRuntimeAction(actionLookup, name);
+		if (!action) return false;
+		resolvedCandidates.set(normalizeActionIdentifier(action.name), action);
+	}
+
+	if (resolvedCandidates.size !== 1) return false;
+	return resolvedCandidates.values().next().value?.suppressEarlyReply === true;
+}
+
 interface ExecuteV5PlannedToolCallParams {
 	runtime: IAgentRuntime;
 	toolCall: PlannerToolCall;
@@ -6599,6 +6631,43 @@ async function emitInteractionEvent(
 	}
 }
 
+const INTERMEDIATE_CALLBACK_METADATA_KEYS = new Set([
+	"actions",
+	"agentVoiced",
+	"channelType",
+	"effectReceiptIds",
+	"inReplyTo",
+	"mentionContext",
+	"merge",
+	"providers",
+	"reactedMessageText",
+	"responseId",
+	"responseMessageId",
+	"source",
+	"target",
+	"thought",
+	"transcriptVisibility",
+]);
+
+function hasIntermediateCallbackPayload(content: Content): boolean {
+	return Object.entries(content).some(([key, value]) => {
+		if (key === "text" || INTERMEDIATE_CALLBACK_METADATA_KEYS.has(key)) {
+			return false;
+		}
+		if (value === undefined || value === null) return false;
+		if (typeof value === "string") return value.trim().length > 0;
+		if (Array.isArray(value)) return value.length > 0;
+		if (typeof value === "object") return Object.keys(value).length > 0;
+		return true;
+	});
+}
+
+function withoutIntermediateVisibleText(content: Content): Content | null {
+	const filtered = { ...content };
+	delete filtered.text;
+	return hasIntermediateCallbackPayload(filtered) ? filtered : null;
+}
+
 export async function runV5MessageRuntimeStage1(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
@@ -7250,10 +7319,16 @@ export async function runV5MessageRuntimeStage1(args: {
 			messageHandler.plan.reply.trim().length > 0
 				? messageHandler.plan.reply
 				: undefined;
+		const prePatchStageOneReplyEffectStatus =
+			messageHandler.plan.replyEffectStatus;
+		const prePatchStageOneReplyIsUngroundedAppliedClaim =
+			prePatchStageOneReplyEffectStatus === "applied";
 		const responseHandlerEvaluation = fieldRunResult?.preempt
 			? {
 					activeEvaluators: [],
 					appliedPatches: [],
+					candidateActionsAddedByEvaluators: [],
+					candidateActionsClearedByEvaluators: false,
 					errors: [],
 				}
 			: await timeInferenceSpan("evaluators:response-handler", () =>
@@ -7402,8 +7477,19 @@ export async function runV5MessageRuntimeStage1(args: {
 		const selectedContexts =
 			route.type === "planning_needed" ? route.contexts : [];
 		const routedResponseHandlerReply = getMessageHandlerReply(messageHandler);
-		let earlyReplyText =
-			routedResponseHandlerReply || parsedResponseHandlerReply;
+		let earlyReplyText = actionOwnsResponseHandlerEarlyReply(
+			args.runtime,
+			messageHandler,
+		)
+			? ""
+			: routedResponseHandlerReply || parsedResponseHandlerReply;
+		// `replyEffectStatus: applied` is the model's prediction, not an effect
+		// receipt. Keep it buffered until the planner either produces a verified
+		// action result or returns the terminal failure; otherwise the client sees a
+		// fabricated success flash immediately before the real outcome replaces it.
+		if (prePatchStageOneReplyIsUngroundedAppliedClaim) {
+			earlyReplyText = "";
+		}
 		const onResponseHandlerEarlyReply = args.onResponseHandlerEarlyReply;
 		if (earlyReplyText.length > 0 && onResponseHandlerEarlyReply) {
 			const earlyReplyEgressDecision = evaluatePlannedReplyEgress({
@@ -7468,7 +7554,14 @@ export async function runV5MessageRuntimeStage1(args: {
 				args.runtime.actions ?? [],
 				getUserMessageText(args.message) ?? "",
 			);
-		if (directPlannerCandidateActions.length > 0) {
+		// An evaluator that clears Stage-1 candidates has established an
+		// authoritative route after inspecting richer runtime state. Re-running
+		// the generic text heuristic here would silently undo that decision (for
+		// example, a focused Notes follow-up otherwise becomes TASKS).
+		if (
+			directPlannerCandidateActions.length > 0 &&
+			!responseHandlerEvaluation.candidateActionsClearedByEvaluators
+		) {
 			messageHandler.plan.candidateActions = uniqueActionNames([
 				...getMessageHandlerCandidateActions(messageHandler),
 				...directPlannerCandidateActions,
@@ -7744,6 +7837,14 @@ export async function runV5MessageRuntimeStage1(args: {
 		const recordingCallback: HandlerCallback | undefined = args.callback
 			? async (content, ...rest) => args.callback?.(content, ...rest) ?? []
 			: undefined;
+		const intermediateCallback: HandlerCallback | undefined = recordingCallback
+			? async (content, ...rest) => {
+					const nonTextContent = withoutIntermediateVisibleText(content);
+					return nonTextContent
+						? recordingCallback(nonTextContent, ...rest)
+						: [];
+				}
+			: undefined;
 
 		const invokePlannerLoop = (
 			loopContext: typeof plannerContextAfterEarlyReply,
@@ -7764,6 +7865,12 @@ export async function runV5MessageRuntimeStage1(args: {
 							typeof messageHandler.plan.reply === "string"
 								? messageHandler.plan.reply
 								: undefined;
+						if (
+							prePatchStageOneReplyIsUngroundedAppliedClaim &&
+							postPatch === prePatchStageOneReply
+						) {
+							return undefined;
+						}
 						// A promotion patch that replaced a substantive stage-0 answer
 						// with a bare progress ack must not also disarm the loop's
 						// answer rescue — feed the preserved pre-patch answer instead.
@@ -7771,6 +7878,7 @@ export async function runV5MessageRuntimeStage1(args: {
 							prePatchStageOneReply &&
 							postPatch &&
 							postPatch !== prePatchStageOneReply &&
+							!prePatchStageOneReplyIsUngroundedAppliedClaim &&
 							PROGRESS_ONLY_ANSWER_REJECT.test(postPatch.trim())
 						) {
 							return prePatchStageOneReply;
@@ -7812,8 +7920,15 @@ export async function runV5MessageRuntimeStage1(args: {
 											ctx.trajectory,
 											exposedPlannerActions,
 										),
+										// A pending batch has not earned transcript prose, but its
+										// media and interactive payloads still belong to the user.
 										...(recordingCallback
-											? { callback: recordingCallback }
+											? {
+													callback:
+														ctx.plannerCompleted === false
+															? intermediateCallback
+															: recordingCallback,
+												}
 											: {}),
 									}),
 									plannerRuntime,
@@ -7850,7 +7965,9 @@ export async function runV5MessageRuntimeStage1(args: {
 		try {
 			plannerResult = await invokePlannerLoop(plannerContextAfterEarlyReply);
 		} catch (error) {
-			const preservedAnswer = prePatchStageOneReply?.trim();
+			const preservedAnswer = prePatchStageOneReplyIsUngroundedAppliedClaim
+				? undefined
+				: prePatchStageOneReply?.trim();
 			if (
 				!preservedAnswer ||
 				PROGRESS_ONLY_ANSWER_REJECT.test(preservedAnswer)
@@ -7959,10 +8076,15 @@ export async function runV5MessageRuntimeStage1(args: {
 		);
 		const ranNonSilentAction =
 			actionResults.length > 0 && !suppressesPlannerReply;
-		const stageOneAck =
+		const rawStageOneAck =
 			typeof messageHandler.plan.reply === "string"
 				? messageHandler.plan.reply.trim()
 				: "";
+		const stageOneAck =
+			prePatchStageOneReplyIsUngroundedAppliedClaim &&
+			rawStageOneAck === prePatchStageOneReply?.trim()
+				? ""
+				: rawStageOneAck;
 		// Answerless-final fallback: when the planner loop finished with NO final
 		// text and the only thing the user saw was a progress ack ("On it."), a
 		// preserved substantive stage-0 answer is strictly better than silence —
@@ -7972,6 +8094,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			earlyReplySent &&
 			!suppressesPlannerReply &&
 			prePatchStageOneReply &&
+			!prePatchStageOneReplyIsUngroundedAppliedClaim &&
 			!PROGRESS_ONLY_ANSWER_REJECT.test(prePatchStageOneReply.trim()) &&
 			normalizeVisibleTextForDuplicateCheck(prePatchStageOneReply) !==
 				normalizeVisibleTextForDuplicateCheck(earlyReplyText)
@@ -8098,19 +8221,22 @@ export async function runV5MessageRuntimeStage1(args: {
 			!plannedTextRepeatsActionReply &&
 			!plannedTextIsRedundantFailureFallback &&
 			!plannedTextRepeatsVerifiedActionDelivery;
-		// Voice-gate provenance (#14873): only the Stage-1 ack has unambiguous
-		// model provenance here (`messageHandler.plan.reply` is the Stage-1
-		// model's own field). The planner's `finalMessage` is deliberately NOT
-		// marked: it is a mixed-provenance field (evaluator messageToUser, a
-		// verified tool's userFacingText, a deterministic tool-result relay, or a
-		// hardcoded fallback all flow through it), and exempting it wholesale
-		// would let canned tool strings skip the humanness gate — the exact text
-		// the gate exists to rephrase. The hardcoded "on it, working on that
-		// now." ack stays unmarked for the same reason.
+		// Voice-gate provenance (#14873): the Stage-1 ack has unambiguous model
+		// provenance. A byte-exact canonical action result also needs preservation:
+		// `verifiedUserFacing` promises do-not-paraphrase semantics, so routing that
+		// text through a second model would violate its contract and can corrupt
+		// punctuation or exact values. Mixed evaluator/tool prose and hardcoded
+		// fallbacks remain unmarked so canned strings still receive the voice pass.
 		const effectiveReplyIsModelVoice =
 			!plannedText &&
 			stageOneAck.length > 0 &&
 			effectiveReplyText === stageOneAck;
+		const effectiveReplyIsCanonicalActionText = actionResults.some(
+			(result) =>
+				result.verifiedUserFacing === true &&
+				typeof result.userFacingText === "string" &&
+				effectiveDeliveredReplyText === result.userFacingText.trim(),
+		);
 		const transcriptVisibility = resolveActionResultTranscriptVisibility(
 			plannedTextRaw || effectiveReplyText,
 			actionResults,
@@ -8129,7 +8255,9 @@ export async function runV5MessageRuntimeStage1(args: {
 								plannerResult.evaluator?.thought ??
 								plannerResult.trajectory.steps.at(-1)?.thought ??
 								messageHandler.thought,
-							agentVoiced: effectiveReplyIsModelVoice,
+							agentVoiced:
+								effectiveReplyIsModelVoice ||
+								effectiveReplyIsCanonicalActionText,
 							...(effectiveReplyReceiptIds.length > 0
 								? { effectReceiptIds: effectiveReplyReceiptIds }
 								: {}),
@@ -9523,6 +9651,9 @@ function shouldRewriteActionCallback(
 	actionName?: string,
 ): response is Content & { text: string } {
 	if (!response || typeof response.text !== "string") return false;
+	// The settlement boundary marks only a byte-exact canonical action reply.
+	// Re-voicing it would violate verifiedUserFacing's do-not-paraphrase contract.
+	if (response.agentVoiced === true) return false;
 	if (getEffectDeliveryBinding(response)) {
 		return false;
 	}

@@ -80,4 +80,33 @@ describe("action callback voice rewriting", () => {
 			"REPLY",
 		);
 	});
+
+	it("does not rewrite a canonical action callback", async () => {
+		const callback: HandlerCallback = vi.fn(async () => []);
+		const runtime = createMockRuntime({
+			agentId: "agent",
+			character: { name: "Example" },
+			logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+			useModel: vi.fn(),
+		});
+		const message = {
+			id: "message",
+			roomId: "room",
+			entityId: "user",
+		} as unknown as Memory;
+		const canonicalText =
+			"“Send demo video” is scheduled for Tuesday, August 4, 2026 at 9:00 AM.";
+
+		const wrapped = wrapSingleTurnVisibleCallback(runtime, message, callback);
+		await wrapped?.(
+			{ text: canonicalText, agentVoiced: true },
+			"READ_CALENDAR",
+		);
+
+		expect(runtime.useModel).not.toHaveBeenCalled();
+		expect(callback).toHaveBeenCalledWith(
+			{ text: canonicalText, agentVoiced: true },
+			"READ_CALENDAR",
+		);
+	});
 });

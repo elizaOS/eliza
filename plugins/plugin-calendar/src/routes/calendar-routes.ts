@@ -24,6 +24,16 @@ import type {
 } from "@elizaos/shared";
 import type { CalendarOwnerMutationGateway } from "./mutation-gateway.js";
 
+export type CalendarRouteRateLimitKey =
+  | "google_api_read"
+  | "google_api_write"
+  | "calendar_create"
+  | "calendar_update"
+  | "calendar_delete"
+  | "calendar_source_read"
+  | "calendar_source_write"
+  | "calendar_source_sync";
+
 /** The calendar method surface the route handlers invoke. */
 export interface CalendarRouteService {
   getCalendarFeed(
@@ -86,7 +96,7 @@ export interface CalendarRouteDeps {
     fn: (service: CalendarRouteService) => Promise<void>,
   ) => Promise<boolean>;
   /** Returns `true` when the request is rate-limited (caller should stop). */
-  rateLimit: (key: string) => boolean;
+  rateLimit: (key: CalendarRouteRateLimitKey) => boolean;
   json: (data: unknown, status?: number) => void;
   readJsonBody: <T extends object>() => Promise<T | null>;
   /** Decode a matched path component, writing a 400 + returning null on failure. */
