@@ -302,6 +302,7 @@ interface Harness {
   baseUrl: string;
   reportError: ReturnType<typeof vi.fn>;
   setBindingAccount(accountId: string): void;
+  setLifecycleNow(now: Date): void;
   close(options?: { closeDatabase?: boolean }): Promise<void>;
 }
 
@@ -456,6 +457,12 @@ async function createHarness(
     reportError,
     setBindingAccount(accountId) {
       bindingAccountId = accountId;
+    },
+    setLifecycleNow(now) {
+      const lifecycle = calendar as unknown as {
+        googleWatch: { now: () => Date };
+      };
+      lifecycle.googleWatch.now = () => now;
     },
     async close(options = {}) {
       await closeServer(route.server);
@@ -778,8 +785,7 @@ describe("Google Calendar push lifecycle", { timeout: 30_000 }, () => {
     await forceInitialSync(harness);
     const request = harness.google.watchRequests[0];
     expect(request).toBeDefined();
-    vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(Date.now() + 61_000);
+    harness.setLifecycleNow(new Date(Date.now() + 61_000));
     const beforeRows = await watchRows(harness.pg);
     const beforeReceipts = await ingressReceiptRows(harness.pg);
     const beforeLimits = await ingressRateLimitRows(harness.pg);
