@@ -23,9 +23,9 @@ export const DEXPAPRIKA_CHAIN_MAP: Record<number, string> = {
   1: "ethereum",
   56: "bsc",
   8453: "base",
-  42161: "arbitrum_one",
+  42161: "arbitrum",
   10: "optimism",
-  137: "polygon_pos",
+  137: "polygon",
   43114: "avalanche",
 };
 
@@ -133,7 +133,7 @@ export async function fetchDexPaprikaPrices(
         if (!res.ok) return;
         const data = await res.json();
         if (!isRecord(data)) return;
-        const price = Number(data.price_usd);
+        const price = Number(data.summary?.price_usd);
         if (Number.isFinite(price) && price > 0) {
           results.set(addr.toLowerCase(), { price: price.toString() });
         }
