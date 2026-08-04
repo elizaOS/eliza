@@ -41,11 +41,7 @@ src/
   contracts/            Runtime-owned contracts plus topology, routing, first-run, and wallet adapters
   generated/            Build-time generated action/provider/evaluator docs + spec-helpers (do not hand-edit)
   i18n/                 validation + action-search keyword data (some generated; see prebuild)
-<<<<<<< HEAD
   security/             KMS adapters, MCP config validation, spawn policy, redaction, and content guards
-=======
-  security/             redact, ssrf-adjacent input policy, spawn-env-policy, external-content, incoming-message-security, outbound-envelope-guard
->>>>>>> 8340c62da2b (docs(core): list outbound-envelope-guard in the security layout)
   sensitive-requests/   Sensitive request policy helpers
   network/              Canonical SSRF/IP policy, DNS pinning, and guarded fetch transport
   markdown/  media/     markdown IR/chunking; media fetch + mime/type detection

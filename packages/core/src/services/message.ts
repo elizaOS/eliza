@@ -186,7 +186,13 @@ import {
 	sanitizeUserVisibleModelOutput,
 	type UserVisibleModelOutput,
 } from "../runtime/user-visible-model-output";
-import { guardOutboundEnvelopeText } from "../security/outbound-envelope-guard";
+import { containsExternalEnvelopeMaterial } from "../security/external-content";
+import {
+	createOutboundEnvelopeStreamLatch,
+	guardOutboundEnvelopeAttachments,
+	guardOutboundEnvelopeText,
+	reportOutboundEnvelopeBlock,
+} from "../security/outbound-envelope-guard";
 import {
 	attestDeliveryAudienceFromCanonicalRoom,
 	ownerExclusiveDisclosureWasUsed,
@@ -9336,6 +9342,100 @@ export async function enforceTrustedDeliveryAudienceOnResult(
 	};
 }
 
+/**
+ * First-sentence cloud-TTS delivery for streaming turns: synthesize the
+ * sentence and hand the audio to the callback as a data-URI attachment. The
+ * local-inference voice loop uses VoiceScheduler/PhraseChunker instead
+ * (packages/app-core/src/services/local-inference/voice/scheduler.ts) — this
+ * is not duplicated, it's the cloud-deployment counterpart (packages/core
+ * can't import packages/app-core; the two paths live at different layers and
+ * only one is active per deployment).
+ *
+ * Guarded before synthesis: for an envelope echo the "first sentence" IS the
+ * security-notice line, and this delivery bypasses the text-only outbound
+ * guard entirely (callback text is "", the armor rides in attachment.text and
+ * the synthesized audio). Envelope material is never spoken or attached —
+ * the delivery is skipped and reported instead. Exported for tests: the
+ * stream closure it serves is only reachable through a full handleMessage
+ * turn.
+ */
+export async function deliverFirstSentenceVoice(
+	runtime: Pick<
+		IAgentRuntime,
+		"character" | "getModel" | "useModel" | "logger" | "reportError"
+	>,
+	first: string,
+	callback: HandlerCallback | undefined,
+	abortSignal?: AbortSignal,
+): Promise<void> {
+	if (containsExternalEnvelopeMaterial(first)) {
+		reportOutboundEnvelopeBlock(runtime, first, "stream-tts");
+		return;
+	}
+	try {
+		const voiceSettings = runtime.character.settings?.voice as
+			| {
+					model?: string;
+					url?: string;
+					voiceId?: string;
+			  }
+			| undefined;
+
+		const model = voiceSettings?.model || "en_US-male-medium";
+		const voiceId = voiceSettings?.url || voiceSettings?.voiceId || "nova";
+
+		let audioBuffer: Buffer | null = null;
+		const params: TextToSpeechParams & {
+			model?: string;
+		} = {
+			text: first,
+			voice: voiceId,
+			model: model,
+			...(abortSignal ? { signal: abortSignal } : {}),
+		};
+		const result = runtime.getModel(ModelType.TEXT_TO_SPEECH)
+			? await runtime.useModel(ModelType.TEXT_TO_SPEECH, params)
+			: undefined;
+
+		if (
+			result instanceof ArrayBuffer ||
+			Object.prototype.toString.call(result) === "[object ArrayBuffer]"
+		) {
+			audioBuffer = Buffer.from(result as ArrayBuffer);
+		} else if (Buffer.isBuffer(result)) {
+			audioBuffer = result;
+		} else if (result instanceof Uint8Array) {
+			audioBuffer = Buffer.from(result);
+		}
+
+		if (audioBuffer && callback) {
+			const audioBase64 = audioBuffer.toString("base64");
+			await callback({
+				text: "",
+				attachments: [
+					{
+						id: v4(),
+						url: `data:audio/wav;base64,${audioBase64}`,
+						title: "Voice Response",
+						source: "voice-cache",
+						description: "Voice response for first sentence",
+						text: first,
+						contentType: ContentType.AUDIO,
+					},
+				],
+				source: "voice",
+			});
+		}
+	} catch (error) {
+		// error-policy:J4 voice is an optional enhancement of a streamed turn;
+		// a failed synthesis logs and the guarded text reply still delivers.
+		runtime.logger.error(
+			{ error },
+			"Error generating voice for first sentence",
+		);
+	}
+}
+
 export function wrapSingleTurnVisibleCallback(
 	// reportError is required: the fail-closed envelope guard inside `deliver`
 	// must be able to surface a blocked leak even from partial test runtimes.
@@ -9381,6 +9481,31 @@ export function wrapSingleTurnVisibleCallback(
 				// still recognize a delivery whose wire text was sanitized.
 				rawUnsanitizedText = response.text.trim() ? response.text : undefined;
 				response = { ...response, text: guarded };
+			}
+		}
+		// Attachments are a delivery surface the text guard never sees: both
+		// voice paths ship the spoken sentence as attachment.text under an empty
+		// top-level text, so envelope material must be blocked here too.
+		if (
+			Array.isArray(response.attachments) &&
+			response.attachments.length > 0
+		) {
+			const guardedAttachments = guardOutboundEnvelopeAttachments(
+				fullRuntime,
+				response.attachments,
+				"visible-callback-attachment",
+			);
+			if (guardedAttachments !== response.attachments) {
+				response = { ...response, attachments: guardedAttachments };
+				// When the blocked attachment was the whole payload there is
+				// nothing honest left to send — skip the delivery instead of
+				// handing connectors an empty message.
+				if (
+					guardedAttachments.length === 0 &&
+					!(typeof response.text === "string" && response.text.trim())
+				) {
+					return [];
+				}
 			}
 		}
 		response = enforceEffectGroundedVisibleContent(
@@ -10082,6 +10207,16 @@ export class DefaultMessageService implements IMessageService {
 				let firstSentenceSent = false;
 				let firstSentenceText = "";
 				let streamTextFallback = "";
+				// Envelope-echo latch for this turn's stream: once the accumulated
+				// text reads as envelope material, every downstream chunk consumer
+				// (model_stream_chunk hook re-emission, first-sentence TTS, the
+				// host's stream callback) is cut off. Chunks forwarded before the
+				// needle completed are already delivered — that residue is the
+				// documented open edge in security/outbound-envelope-guard.ts.
+				const streamCarriesEnvelope = createOutboundEnvelopeStreamLatch(
+					runtime,
+					"stream-chunk",
+				);
 				const userOnStreamChunk = options?.onStreamChunk;
 				const wrappedOnStreamChunk: StreamChunkCallback | undefined =
 					userOnStreamChunk
@@ -10103,6 +10238,10 @@ export class DefaultMessageService implements IMessageService {
 									streamText = streamTextFallback;
 								}
 
+								if (streamCarriesEnvelope(streamText)) {
+									return;
+								}
+
 								// Skip when this callback is invoked from `useModel`'s stream loop:
 								// `source: "use_model"` already ran for the same raw chunk (Node ALS).
 								if (getModelStreamChunkDeliveryDepth() === 0) {
@@ -10120,16 +10259,12 @@ export class DefaultMessageService implements IMessageService {
 									);
 								}
 
-								// First-sentence cloud-TTS path. The local-inference voice loop
-								// uses VoiceScheduler/PhraseChunker instead
-								// (packages/app-core/src/services/local-inference/voice/scheduler.ts) —
-								// this is not duplicated, it's the cloud-deployment counterpart
-								// (packages/core can't import packages/app-core; the two paths live
-								// at different layers and only one is active per deployment).
-								//
-								// Only run first-sentence TTS detection when `accumulated` is present.
-								// Raw-token streams (no accumulated) may contain partial
-								// structured output that would garble hasFirstSentence() and TTS.
+								// First-sentence cloud-TTS path (deliverFirstSentenceVoice —
+								// the local-inference voice loop is a separate layer, see its
+								// JSDoc). Only run detection when `accumulated` is present:
+								// raw-token streams (no accumulated) may contain partial
+								// structured output that would garble hasFirstSentence() and
+								// TTS.
 								if (
 									!firstSentenceSent &&
 									accumulated !== undefined &&
@@ -10139,90 +10274,14 @@ export class DefaultMessageService implements IMessageService {
 									if (first.length > 5) {
 										firstSentenceSent = true;
 										firstSentenceText = first;
-
-										(async () => {
-											try {
-												const voiceSettings = runtime.character.settings
-													?.voice as
-													| {
-															model?: string;
-															url?: string;
-															voiceId?: string;
-													  }
-													| undefined;
-
-												const model =
-													voiceSettings?.model || "en_US-male-medium";
-												const voiceId =
-													voiceSettings?.url ||
-													voiceSettings?.voiceId ||
-													"nova";
-
-												let audioBuffer: Buffer | null = null;
-												const params: TextToSpeechParams & {
-													model?: string;
-												} = {
-													text: first,
-													voice: voiceId,
-													model: model,
-													...(opts.abortSignal
-														? { signal: opts.abortSignal }
-														: {}),
-												};
-												const result = runtime.getModel(
-													ModelType.TEXT_TO_SPEECH,
-												)
-													? await runtime.useModel(
-															ModelType.TEXT_TO_SPEECH,
-															params,
-														)
-													: undefined;
-
-												if (
-													result instanceof ArrayBuffer ||
-													Object.prototype.toString.call(result) ===
-														"[object ArrayBuffer]"
-												) {
-													audioBuffer = Buffer.from(result as ArrayBuffer);
-												} else if (Buffer.isBuffer(result)) {
-													audioBuffer = result;
-												} else if (result instanceof Uint8Array) {
-													audioBuffer = Buffer.from(result);
-												}
-
-												if (audioBuffer && callback) {
-													const audioBase64 = audioBuffer.toString("base64");
-													await callback({
-														text: "",
-														attachments: [
-															{
-																id: v4(),
-																url: `data:audio/wav;base64,${audioBase64}`,
-																title: "Voice Response",
-																source: "voice-cache",
-																description:
-																	"Voice response for first sentence",
-																text: first,
-																contentType: ContentType.AUDIO,
-															},
-														],
-														source: "voice",
-													});
-												}
-											} catch (error) {
-												// error-policy:J4 Text already streams to the
-												// user when optional first-sentence TTS fails.
-												runtime.logger.error(
-													{ error },
-													"Error generating voice for first sentence",
-												);
-												runtime.reportError(
-													"MessageService.firstSentenceVoice",
-													error,
-													{ roomId: message.roomId },
-												);
-											}
-										})();
+										// Fire-and-forget on purpose: audio must not stall the
+										// text stream; failures log inside.
+										void deliverFirstSentenceVoice(
+											runtime,
+											first,
+											callback,
+											opts.abortSignal,
+										);
 									}
 								}
 
