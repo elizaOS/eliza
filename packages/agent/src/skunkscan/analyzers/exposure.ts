@@ -3,6 +3,7 @@ import {
   SupportedChain,
   WalletExposureSummary,
   WalletFundingSummary,
+  WalletRelationship,
 } from "../types";
 import {
   createConfidenceResponse,
@@ -12,6 +13,7 @@ export function analyzeWalletExposure(
   walletAddress: string,
   funding: WalletFundingSummary,
   chain: SupportedChain,
+  relationships: WalletRelationship[] = [],
 ): WalletExposureSummary {
   const matches: WalletExposureSummary["matches"] = [];
 
@@ -21,6 +23,7 @@ export function analyzeWalletExposure(
     matches.push({
       ...selfMatch,
       relationship: "self",
+      contributesToScore: true,
     });
   }
 
@@ -34,19 +37,61 @@ export function analyzeWalletExposure(
       matches.push({
         ...fundingMatch,
         relationship: "funder",
+        contributesToScore: true,
+        direction: "incoming",
       });
     }
   }
 
-  const hasKnownScamExposure = matches.some(
+  // Every relationship counterparty discovered by relationships.ts gets
+  // checked too - not just self and the single funding wallet above. The
+  // funder's own address is skipped here since it's already covered by the
+  // dedicated check above; without this skip the same address could
+  // produce two matches (once as "funder", once as "counterparty").
+  for (const relationship of relationships) {
+    if (relationship.address === funding.fundingWallet) {
+      continue;
+    }
+
+    const counterpartyMatch = lookupStaticExposure(
+      chain,
+      relationship.address,
+    );
+
+    if (!counterpartyMatch) {
+      continue;
+    }
+
+    const direction = relationship.direction ?? "unknown";
+
+    matches.push({
+      ...counterpartyMatch,
+      relationship: "counterparty",
+      // An incoming-only transfer from a flagged address (e.g. an
+      // unsolicited spam-token airdrop) is not something the wallet owner
+      // did - it's a materially weaker signal than the wallet itself
+      // sending funds to, or exchanging funds with, a flagged address, so
+      // it's shown for visibility but doesn't move the score.
+      contributesToScore:
+        direction === "outgoing" || direction === "bidirectional",
+      direction,
+      transactionSignatures: relationship.transactionSignatures,
+    });
+  }
+
+  const scoringEligibleMatches = matches.filter(
+    (match) => match.contributesToScore,
+  );
+
+  const hasKnownScamExposure = scoringEligibleMatches.some(
     (match) => match.category === "scam",
   );
 
-  const hasKnownRugPullExposure = matches.some(
+  const hasKnownRugPullExposure = scoringEligibleMatches.some(
     (match) => match.category === "rug_pull",
   );
 
-  const hasKnownSuspiciousExposure = matches.some(
+  const hasKnownSuspiciousExposure = scoringEligibleMatches.some(
     (match) =>
       match.category === "suspicious" ||
       match.category === "sanctioned" ||

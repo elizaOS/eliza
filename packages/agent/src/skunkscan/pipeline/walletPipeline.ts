@@ -102,17 +102,18 @@ export async function runWalletPipeline(
   risk,
 );
 
-  const exposure = analyzeWalletExposure(
-    input.address,
-    funding,
-    input.chain,
-  );
-
   const relationships = analyzeWalletRelationships(
     funding,
     input.address,
     input.normalizedRecentParsedTransactions,
     input.chain,
+  );
+
+  const exposure = analyzeWalletExposure(
+    input.address,
+    funding,
+    input.chain,
+    relationships.relationships,
   );
 
   const custodyProfile = analyzeWalletCustodyProfile(
