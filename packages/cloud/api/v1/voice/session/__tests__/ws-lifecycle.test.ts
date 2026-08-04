@@ -275,6 +275,44 @@ function makeCanonicalChunkFetch(deltas: string[]): typeof fetch {
   }) as unknown as typeof fetch;
 }
 
+function makeControlledCanonicalChunkFetch(): {
+  fetchImpl: typeof fetch;
+  enqueueChunk: (chunk: string) => void;
+  finish: () => void;
+  ready: Promise<void>;
+} {
+  const encoder = new TextEncoder();
+  let controller: ReadableStreamDefaultController<Uint8Array> | null = null;
+  let resolveReady: () => void = () => {};
+  const ready = new Promise<void>((resolve) => {
+    resolveReady = resolve;
+  });
+  return {
+    fetchImpl: (async () => {
+      const body = new ReadableStream<Uint8Array>({
+        start(c) {
+          controller = c;
+          resolveReady();
+        },
+      });
+      return new Response(body, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    }) as unknown as typeof fetch,
+    enqueueChunk(chunk: string) {
+      controller?.enqueue(
+        encoder.encode(`event: chunk\ndata: ${JSON.stringify({ chunk })}\n\n`),
+      );
+    },
+    finish() {
+      controller?.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
+      controller?.close();
+    },
+    ready,
+  };
+}
+
 // --- helpers --------------------------------------------------------------
 
 const CLAIMS = {
@@ -646,6 +684,35 @@ describe("voice-session WS lifecycle", () => {
     expect(client.controlTypes()).toContain("llm_first_text");
     const cartesia = FakeCartesiaSocket.instances.at(-1)!;
     expect(cartesia.sentText()).toContain("Canonical chunk.");
+    cartesia.emitDone();
+    await flush();
+    expect(client.controlTypes()).toContain("usage");
+  });
+
+  test("canonical incremental SSE chunk reaches Cartesia before stream completion", async () => {
+    const controlled = makeControlledCanonicalChunkFetch();
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: controlled.fetchImpl,
+    });
+
+    const flux = FakeFluxSocket.instances.at(-1)!;
+    flux.emitTurn("StartOfTurn");
+    flux.emitTurn("EndOfTurn", "voice transcript");
+    await controlled.ready;
+
+    controlled.enqueueChunk("This first streamed phrase is speakable now ");
+    await flush();
+
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    expect(client.controlTypes()).toContain("llm_first_text");
+    expect(cartesia.sentText()).toContain("This first streamed phrase");
+    expect(client.audioFrames.length).toBeGreaterThan(0);
+    expect(client.controlTypes()).not.toContain("usage");
+
+    controlled.finish();
+    await flush();
     cartesia.emitDone();
     await flush();
     expect(client.controlTypes()).toContain("usage");
