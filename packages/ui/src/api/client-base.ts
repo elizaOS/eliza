@@ -17,6 +17,7 @@ import {
 } from "../events";
 import { hydrateAndroidLocalAgentTokenForUrl } from "../first-run/local-agent-token";
 import { isMobileLocalAgentIpcUrl } from "../first-run/mobile-runtime-mode";
+import { isAndroidLocalSideloadBuild } from "../platform/android-runtime";
 import { shellLocalStorage } from "../surface-realm-channel";
 import {
   clearElizaApiBase,
@@ -497,11 +498,29 @@ function getInjectedWsBase(): string | undefined {
 
 function shouldUseRestOnlyForInsecureWebSocket(
   wsProtocol: "ws:" | "wss:",
+  host: string,
 ): boolean {
   if (wsProtocol !== "ws:") return false;
   if (typeof window === "undefined") return false;
   const rendererProtocol = window.location?.protocol;
-  return rendererProtocol === "https:" || rendererProtocol === "capacitor:";
+  if (rendererProtocol !== "https:" && rendererProtocol !== "capacitor:") {
+    return false;
+  }
+
+  // Debug/AOSP Android explicitly enables mixed content so its packaged
+  // https://localhost renderer can reach the loopback agent. Keeping the
+  // socket alive is required for server-to-device view capabilities; limit the
+  // exception to local builds and loopback so store builds and LAN/public
+  // cleartext endpoints retain the browser's stricter boundary.
+  const isLoopback =
+    host.startsWith("127.") ||
+    host === "localhost" ||
+    host.startsWith("localhost:") ||
+    host === "[::1]" ||
+    host.startsWith("[::1]:");
+  if (isLoopback && isAndroidLocalSideloadBuild()) return false;
+
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -1419,7 +1438,7 @@ export class ElizaClient {
     // renderer also cannot use that cleartext WebView socket even though its
     // native HTTP bridge keeps REST healthy. Both origins therefore use the
     // same REST-only state instead of reporting a dead backend (#16843).
-    if (shouldUseRestOnlyForInsecureWebSocket(wsProtocol)) {
+    if (shouldUseRestOnlyForInsecureWebSocket(wsProtocol, host)) {
       this.backoffMs = 500;
       this.reconnectAttempt = 0;
       this.disconnectedAt = null;
