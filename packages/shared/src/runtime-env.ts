@@ -334,6 +334,31 @@ export function resolveApiToken(
 }
 
 /**
+ * The single credential both sides of the protected self-API boundary compare.
+ *
+ * Both the caller building `Authorization` and the server resolving what it
+ * expects MUST derive their bytes here. When only the caller normalized, a
+ * configured `ELIZA_API_TOKEN` of `"Bearer x"` produced `Authorization: Bearer x`
+ * while the server still expected the literal `"Bearer x"` — the server strips
+ * one `Bearer ` prefix off the REQUEST but never off its own configured value,
+ * so the comparison failed and every protected caller 401'd. A legacy-only
+ * deployment failed the same way because the server read no compatibility key.
+ * Keeping one resolver makes that class of drift unrepresentable rather than
+ * merely fixed (#17043).
+ */
+export function resolveSelfApiCredential(
+  env: RuntimeEnvRecord = process.env,
+): string | null {
+  const token =
+    firstWinningEnvString(env, API_TOKEN_KEYS)?.value ??
+    firstWinningEnvString(env, LEGACY_SELF_API_TOKEN_KEYS)?.value;
+  if (!token) return null;
+
+  const credential = token.replace(/^Bearer\s+/i, "").trim();
+  return credential || null;
+}
+
+/**
  * Bearer headers for requests a process makes back to its own elizaOS API.
  * The server's canonical token wins over the documented compatibility key,
  * brand aliases are honored, and callers never have to repeat Bearer parsing.
@@ -341,12 +366,8 @@ export function resolveApiToken(
 export function createSelfApiRequestHeaders(
   env: RuntimeEnvRecord = process.env,
 ): Record<string, string> {
-  const token =
-    firstWinningEnvString(env, API_TOKEN_KEYS)?.value ??
-    firstWinningEnvString(env, LEGACY_SELF_API_TOKEN_KEYS)?.value;
-  if (!token) return {};
-
-  const credential = token.replace(/^Bearer\s+/i, "").trim();
+  const credential = resolveSelfApiCredential(env);
+  if (!credential) return {};
   return { Authorization: `Bearer ${credential}` };
 }
 

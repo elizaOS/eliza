@@ -17,7 +17,7 @@ import type {
 import {
   isCloudProvisionedContainer,
   PostAuthPairRequestSchema,
-  resolveApiToken,
+  resolveSelfApiCredential,
 } from "@elizaos/shared";
 import {
   isAuthorized,
@@ -26,7 +26,7 @@ import {
 } from "./server-helpers-auth.ts";
 
 function getConfiguredApiToken(): string | undefined {
-  return resolveApiToken(process.env) ?? undefined;
+  return resolveSelfApiCredential(process.env) ?? undefined;
 }
 
 export interface AuthRouteContext extends RouteRequestContext {

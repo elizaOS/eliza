@@ -10,11 +10,34 @@ import type { AddressInfo } from "node:net";
 import { Readable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { handleRuntimeSwitchRoutes } from "../api/runtime-switch-routes.ts";
+import { isAuthorized } from "../api/server-helpers-auth.ts";
 import { renderLiveStateForScope } from "../providers/page-scoped-live-state.ts";
 import { buildTestHandler } from "../runtime/custom-actions.ts";
 import { logsAction } from "./logs.ts";
 import { pluginAction } from "./plugin.ts";
 import { runtimeAction } from "./runtime.ts";
+
+/**
+ * Run the production authorization path with the server's own configured
+ * credential, independent of whatever the caller side currently has in env.
+ */
+function authorizeAsServer(
+  req: http.IncomingMessage,
+  serverToken: string,
+): boolean {
+  const savedCanonical = process.env.ELIZA_API_TOKEN;
+  const savedLegacy = process.env.ELIZA_API_AUTH_TOKEN;
+  process.env.ELIZA_API_TOKEN = serverToken;
+  delete process.env.ELIZA_API_AUTH_TOKEN;
+  try {
+    return isAuthorized(req);
+  } finally {
+    if (savedCanonical === undefined) delete process.env.ELIZA_API_TOKEN;
+    else process.env.ELIZA_API_TOKEN = savedCanonical;
+    if (savedLegacy === undefined) delete process.env.ELIZA_API_AUTH_TOKEN;
+    else process.env.ELIZA_API_AUTH_TOKEN = savedLegacy;
+  }
+}
 
 interface CapturedRequest {
   method: string;
@@ -67,7 +90,18 @@ async function startProtectedSelfApi(expectedToken: string): Promise<{
       };
       requests.push(request);
 
-      if (request.authorization !== `Bearer ${expectedToken}`) {
+      // Authorize with the REAL server helper, not a local string compare.
+      // A fixture that checks `authorization === \`Bearer ${expected}\`` defines
+      // the server to agree with the client and therefore cannot detect drift
+      // between `createSelfApiRequestHeaders` and the credential the server
+      // actually resolves (#17043). `isAuthorized` runs the production
+      // `getConfiguredApiToken` -> `extractAuthToken` -> timing-safe compare.
+      //
+      // The server's configured credential is pinned to `expectedToken` for the
+      // duration of the check so a caller configured differently is a real
+      // disagreement between two sides, not an identity comparison against the
+      // same live env the caller just read.
+      if (!authorizeAsServer(req, expectedToken)) {
         sendJson(res, 401, { error: "Unauthorized" });
         return;
       }

@@ -16,7 +16,7 @@ import {
   resolveAllowedOrigins,
   resolveApiBindHost,
   resolveApiSecurityConfig,
-  resolveApiToken,
+  resolveSelfApiCredential,
   setApiToken,
   stripOptionalHostPort,
 } from "@elizaos/shared";
@@ -234,7 +234,7 @@ function tokenMatches(expected: string, provided: string): boolean {
 }
 
 export function getConfiguredApiToken(): string | undefined {
-  return resolveApiToken(process.env) ?? undefined;
+  return resolveSelfApiCredential(process.env) ?? undefined;
 }
 
 /**

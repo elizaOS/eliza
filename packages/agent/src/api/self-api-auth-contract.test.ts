@@ -38,8 +38,6 @@ const repoRoot = resolve(
 const scanRoots = [
   "packages/agent/src",
   "plugins/plugin-app-control/src",
-  "plugins/plugin-polymarket/src/actions.ts",
-  "plugins/plugin-hyperliquid/src/actions/perpetual-market.ts",
 ] as const;
 
 const protocolExemptions: readonly ProtocolExemption[] = [
@@ -90,8 +88,6 @@ const expectedProtectedPaths = [
   "plugins/plugin-app-control/src/actions/views-client.ts",
   "plugins/plugin-app-control/src/actions/views-show.ts",
   "plugins/plugin-app-control/src/services/verification-helpers.ts",
-  "plugins/plugin-hyperliquid/src/actions/perpetual-market.ts",
-  "plugins/plugin-polymarket/src/actions.ts",
 ] as const;
 
 const localTargetPattern =

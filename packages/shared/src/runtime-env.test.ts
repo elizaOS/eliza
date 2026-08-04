@@ -20,6 +20,7 @@ import {
   resolveDesktopApiPortPreference,
   resolvePlatform,
   resolveRuntimePorts,
+  resolveSelfApiCredential,
   stripOptionalHostPort,
 } from "./runtime-env";
 
@@ -113,6 +114,60 @@ describe("self API request authentication", () => {
         ELIZA_API_AUTH_TOKEN: "   ",
       }),
     ).toEqual({});
+  });
+
+  // The defect this guards: the caller normalized the credential while the
+  // server compared its own un-normalized configured value, so a
+  // `Bearer `-prefixed or legacy-only configuration 401'd every protected
+  // caller. The server expects exactly `resolveSelfApiCredential(env)`, so
+  // whatever the caller puts after `Bearer ` must equal it for every shape.
+  it("sends exactly the credential the server resolves, for every configured shape", () => {
+    const configurations: Array<Record<string, string>> = [
+      { ELIZA_API_TOKEN: "canonical-token" },
+      { ELIZA_API_TOKEN: " canonical-token " },
+      { ELIZA_API_TOKEN: "Bearer canonical-token" },
+      { ELIZA_API_TOKEN: " bearer    canonical-token " },
+      { ELIZA_API_AUTH_TOKEN: "legacy-token" },
+      { ELIZA_API_AUTH_TOKEN: " Bearer legacy-token " },
+      {
+        ELIZA_API_TOKEN: "Bearer canonical-token",
+        ELIZA_API_AUTH_TOKEN: "legacy-token",
+      },
+    ];
+
+    for (const env of configurations) {
+      const expected = resolveSelfApiCredential(env);
+      expect(expected).toBeTruthy();
+      const header = createSelfApiRequestHeaders(env).Authorization;
+      expect(header, JSON.stringify(env)).toBe(`Bearer ${expected}`);
+      // Mirror the server's own extraction of the request header.
+      expect(header?.replace(/^Bearer /, ""), JSON.stringify(env)).toBe(
+        expected,
+      );
+    }
+  });
+
+  it("resolves no credential when neither key carries a value", () => {
+    expect(resolveSelfApiCredential({})).toBeNull();
+    expect(resolveSelfApiCredential({ ELIZA_API_TOKEN: "   " })).toBeNull();
+    expect(
+      resolveSelfApiCredential({
+        ELIZA_API_TOKEN: "   ",
+        ELIZA_API_AUTH_TOKEN: "  ",
+      }),
+    ).toBeNull();
+  });
+
+  // A value of exactly "Bearer" survives stripping, because the prefix rule
+  // requires whitespace after it. That is a misconfiguration either way; what
+  // must hold is that BOTH sides read it the same, so it authenticates or
+  // fails as a unit instead of becoming a silent 401 on one side only.
+  it("keeps a degenerate 'Bearer' value consistent across the boundary", () => {
+    const env = { ELIZA_API_TOKEN: "Bearer " };
+    expect(resolveSelfApiCredential(env)).toBe("Bearer");
+    expect(createSelfApiRequestHeaders(env)).toEqual({
+      Authorization: "Bearer Bearer",
+    });
   });
 });
 
