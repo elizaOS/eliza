@@ -2194,9 +2194,11 @@ export class AgentSandboxesRepository {
    * so an unexpected underflow leaves the counter untouched and visible instead
    * of being silently absorbed.
    *
-   * @returns true if THIS call actually decremented the node. False covers both
-   * "ownership was not ours to spend" and "ownership was spent but the counter
-   * did not move" (already 0, or no `docker_nodes` row) — the latter warns.
+   * @returns which of the three {@link DeletionAllocationRelease} outcomes
+   * occurred. `counter-unchanged` also warns: ownership was ours to spend, but
+   * the node counter did not move — either it was already 0 or the
+   * `docker_nodes` row is gone, and in both cases there is no slot left to give
+   * back, so committing the flip is correct.
    */
   private async spendDeletionAllocation(
     nodeId: string,
