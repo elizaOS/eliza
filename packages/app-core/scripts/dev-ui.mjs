@@ -285,6 +285,28 @@ function appendNodeOption(value, option) {
   return `${current} ${option}`;
 }
 
+function resolveNodeRuntimePath(env) {
+  const pathCandidates = (env.PATH ?? "")
+    .split(path.delimiter)
+    .filter(Boolean)
+    .map((dir) =>
+      path.join(dir, process.platform === "win32" ? "node.exe" : "node"),
+    );
+  const candidates = [
+    env.ELIZA_NODE_PATH,
+    env.npm_node_execpath,
+    ...pathCandidates,
+    "/opt/homebrew/bin/node",
+    "/usr/local/bin/node",
+    "/usr/bin/node",
+  ].filter(Boolean);
+  return resolveNodeExecPathFromCandidates({
+    candidates,
+    explicitNodePath: env.ELIZA_NODE_PATH,
+    platform: process.platform,
+  });
+}
+
 function resolveApiRuntimeCommand(env) {
   const requestedRuntime = env.ELIZA_RUNTIME?.trim().toLowerCase();
   const { runtime, warning } = chooseElizaRuntime({
@@ -318,27 +340,9 @@ function resolveApiRuntimeCommand(env) {
     );
   }
 
-  const pathCandidates = (env.PATH ?? "")
-    .split(path.delimiter)
-    .filter(Boolean)
-    .map((dir) =>
-      path.join(dir, process.platform === "win32" ? "node.exe" : "node"),
-    );
-  const candidates = [
-    env.ELIZA_NODE_PATH,
-    env.npm_node_execpath,
-    ...pathCandidates,
-    "/opt/homebrew/bin/node",
-    "/usr/local/bin/node",
-    "/usr/bin/node",
-  ].filter(Boolean);
   return {
     runtime: "node",
-    command: resolveNodeExecPathFromCandidates({
-      candidates,
-      explicitNodePath: env.ELIZA_NODE_PATH,
-      platform: process.platform,
-    }),
+    command: resolveNodeRuntimePath(env),
   };
 }
 
@@ -896,7 +900,7 @@ function startVite() {
   const { command: viteCmd, args: viteArgs } = resolveViteCommand({
     appDir: path.join(cwd, appDir),
     force: viteForce,
-    nodePath: which("node"),
+    nodePath: resolveNodeRuntimePath(process.env),
     port: UI_PORT,
   });
   if (viteForce) {

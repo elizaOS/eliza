@@ -25,3 +25,12 @@ describe.each([
     expect(source).toContain('"--conditions=eliza-source"');
   });
 });
+
+describe("dev-ui Vite runtime", () => {
+  it("uses the validated package-manager Node instead of a PATH shim", () => {
+    const source = readFileSync(path.join(scriptsDir, "dev-ui.mjs"), "utf8");
+
+    expect(source).toContain("nodePath: resolveNodeRuntimePath(process.env)");
+    expect(source).not.toContain('nodePath: which("node")');
+  });
+});
