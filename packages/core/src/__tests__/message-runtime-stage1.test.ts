@@ -3861,6 +3861,39 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("keeps an applied effect claim buffered until the planner has a receipt", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "The note still needs to be created.",
+				contexts: ["simple"],
+				replyText: "Created note “brush my teeth”.",
+				extra: { requiresTool: true, replyEffectStatus: "applied" },
+			}),
+			JSON.stringify({
+				thought: "The requested capability was unavailable.",
+				toolCalls: [],
+				messageToUser: "I couldn't create that note.",
+			}),
+		]);
+		const earlyReply = vi.fn(async () => undefined);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "Create a note to brush my teeth." }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			onResponseHandlerEarlyReply: earlyReply,
+		});
+
+		expect(earlyReply).not.toHaveBeenCalled();
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"I couldn't create that note.",
+			);
+		}
+	});
+
 	it("does not let a rejected early completion claim hide the later receipt-grounded confirmation", async () => {
 		const canonicalText = "Done — the pickup reminder is scheduled.";
 		const observedAt = "2026-07-27T18:00:00.000Z";
