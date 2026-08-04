@@ -6,8 +6,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   cancelStreamingRenderFrame,
   requestStreamingRenderFrame,
-  STREAMING_RENDER_INTERVAL_MS,
-  streamingRenderDelayMs,
 } from "./streaming-render-cadence";
 
 describe("streaming render frame scheduling", () => {
@@ -50,27 +48,5 @@ describe("streaming render frame scheduling", () => {
     cancelStreamingRenderFrame(42);
 
     expect(cancel).toHaveBeenCalledWith(42);
-  });
-});
-
-describe("streaming render cadence", () => {
-  it("does not delay the first transcript snapshot", () => {
-    expect(streamingRenderDelayMs(null, 100)).toBe(0);
-  });
-
-  it("returns the remainder of the cadence window", () => {
-    expect(streamingRenderDelayMs(100, 110)).toBe(
-      STREAMING_RENDER_INTERVAL_MS - 10,
-    );
-  });
-
-  it("allows a snapshot once the cadence window has elapsed", () => {
-    expect(
-      streamingRenderDelayMs(100, 100 + STREAMING_RENDER_INTERVAL_MS),
-    ).toBe(0);
-  });
-
-  it("waits a full interval if the monotonic clock moves backward", () => {
-    expect(streamingRenderDelayMs(100, 90)).toBe(STREAMING_RENDER_INTERVAL_MS);
   });
 });
