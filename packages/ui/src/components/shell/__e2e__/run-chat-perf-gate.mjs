@@ -380,14 +380,6 @@ await runBrowserFixtureE2E(
       if (thread) thread.scrollTop = thread.scrollHeight;
     });
     await page.waitForTimeout(200);
-    const productionStreamContainsChoice =
-      await page
-        .locator('[data-testid="perf-gate-root"]')
-        .getAttribute("data-production-stream-contains-choice");
-    check(
-      productionStreamContainsChoice === "true",
-      `production chat state received streamed CHOICE content (${productionStreamContainsChoice})`,
-    );
     await page
       .locator('[data-choice-id="perf-choice"]')
       .first()

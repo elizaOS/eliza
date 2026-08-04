@@ -917,22 +917,9 @@ describe("useChatSend streaming-burst coalescing (text + status + tool)", () => 
     mocks.client.renameConversation.mockResolvedValue(undefined);
   });
 
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  it("parks token+status+tool from one SSE burst into one frame, committing all three together", async () => {
+  it("parks token+status+tool from one SSE burst into one microtask, committing all three together", async () => {
     // Capture the per-event callbacks from a stream that stays pending so the
-    // scheduled frame can be observed BEFORE the terminal synchronous flush.
-    let streamingFrame: FrameRequestCallback | undefined;
-    vi.stubGlobal(
-      "requestAnimationFrame",
-      vi.fn((callback: FrameRequestCallback) => {
-        streamingFrame = callback;
-        return 1;
-      }),
-    );
-    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    // microtask can be observed BEFORE the terminal synchronous flush.
     let onTokenCb!: (t: string, a?: string) => void;
     let onStatusCb!: (s: ChatTurnStatus) => void;
     let onToolCb!: (e: ChatToolCallEvent) => void;
@@ -976,7 +963,7 @@ describe("useChatSend streaming-burst coalescing (text + status + tool)", () => 
     });
 
     // One SSE burst: a token, a status phase, and a tool call all arrive in the
-    // same tick — before the queued frame runs.
+    // same tick — before the queued microtask runs.
     act(() => {
       onTokenCb("Search", "Search");
       onStatusCb({ kind: "running_tool", toolName: "web_search" });
@@ -992,7 +979,6 @@ describe("useChatSend streaming-burst coalescing (text + status + tool)", () => 
     });
 
     await act(async () => {
-      streamingFrame?.(performance.now());
       await Promise.resolve();
     });
 
