@@ -34,6 +34,17 @@ export interface CalendarJsonModelResult<
   parsed: T | null;
 }
 
+export interface CalendarGroundedReplyArgs {
+  runtime: IAgentRuntime;
+  message: Memory;
+  state: State | undefined;
+  intent: string;
+  scenario: string;
+  fallback: string;
+  context?: Record<string, unknown>;
+  additionalRules: string[];
+}
+
 /**
  * Result of resolving a travel buffer for a freshly created event. Shape
  * mirrors the LifeOps `TravelBufferResult` fields the calendar handler reads.
@@ -202,6 +213,12 @@ export interface CalendarActionDeps {
     state: State | undefined;
     limit: number;
   }): Promise<string[]>;
+  /**
+   * Render the final human-facing reply through the host's model boundary.
+   * Hosts that omit this optional presentation seam receive the canonical,
+   * already-grounded action reply without changing action settlement.
+   */
+  renderGroundedReply?(args: CalendarGroundedReplyArgs): Promise<string>;
   /** Optional travel-buffer integration (LifeOps travel domain). */
   travelBuffer?: CalendarTravelBufferDep;
   /**
