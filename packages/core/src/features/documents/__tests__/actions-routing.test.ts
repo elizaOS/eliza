@@ -139,6 +139,19 @@ describe("documentAction.validate", () => {
 		);
 	});
 
+	it("allows the strict-decoder zero sentinel for irrelevant limit fields", () => {
+		const limit = documentAction.parameters?.find(
+			(parameter) => parameter.name === "limit",
+		);
+
+		expect(limit?.schema).toMatchObject({
+			type: "number",
+			minimum: 0,
+			maximum: 100,
+		});
+		expect(limit?.description).toContain("Use 0 when this field is not applicable");
+	});
+
 	it("is service-presence only — true when the service is registered", async () => {
 		const service = makeService();
 		const { runtime } = makeRuntime(service);
@@ -225,6 +238,23 @@ describe("documentAction.handler structured routing", () => {
 		expect(service.listDocumentsDetailed).toHaveBeenCalledWith(
 			expect.anything(),
 			expect.objectContaining({ scope: undefined }),
+		);
+	});
+
+	it("uses the list default when strict decoding supplies limit zero", async () => {
+		const service = makeService();
+		const { runtime } = makeRuntime(service);
+
+		await documentAction.handler?.(
+			runtime,
+			makeMessage("List my documents"),
+			undefined,
+			options({ action: "list", limit: 0, scope: "all-visible" }),
+		);
+
+		expect(service.listDocumentsDetailed).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({ limit: 25 }),
 		);
 	});
 

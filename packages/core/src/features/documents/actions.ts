@@ -247,8 +247,8 @@ function getSearchMode(value: unknown): SearchMode | undefined {
 }
 
 function getLimit(value: unknown, fallback: number): number {
-	return typeof value === "number" && Number.isFinite(value)
-		? Math.max(1, Math.min(100, Math.floor(value)))
+	return typeof value === "number" && Number.isFinite(value) && value >= 1
+		? Math.min(100, Math.floor(value))
 		: fallback;
 }
 
@@ -1130,9 +1130,10 @@ export const documentAction: Action = {
 		},
 		{
 			name: "limit",
-			description: "Maximum number of results or listed documents.",
+			description:
+				"Maximum number of results or listed documents (1-100). Use 0 when this field is not applicable to the selected action.",
 			required: false,
-			schema: { type: "number", minimum: 1, maximum: 100 },
+			schema: { type: "number", minimum: 0, maximum: 100 },
 		},
 		{
 			name: "searchMode",
