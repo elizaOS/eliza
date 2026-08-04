@@ -124,8 +124,9 @@ export interface VoiceCapabilitySnapshot {
 }
 
 /**
- * Cloud voice is usable only when the active session is authenticated and the
- * selected server config exposes its proxy. Neither signal is sufficient alone.
+ * A Cloud voice route is runnable only when the server can authenticate it and
+ * the active config selects the proxy. The status endpoint exposes those as
+ * separate facts, so neither flag alone is a capability signal.
  */
 export function isCloudVoiceRunnable(input: {
   connected: boolean;

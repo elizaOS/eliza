@@ -33,6 +33,7 @@ import {
   sanitizeApiKey,
   VOICE_PROVIDERS,
 } from "../../voice";
+import { isCloudVoiceRunnable } from "../../voice/voice-provider-defaults";
 import {
   CloudConnectionStatus,
   CloudSourceModeToggle,
