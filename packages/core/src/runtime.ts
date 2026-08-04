@@ -452,12 +452,17 @@ function awaitProviderExecution(
 			}
 			reject(signal.reason ?? new Error("Provider execution aborted"));
 		});
+		// Attach the settle handlers to `execution.promise` BEFORE checking
+		// `signal.aborted`: an already-aborted caller still needs a rejection
+		// handler wired up, or the shared promise's eventual rejection (driven
+		// by the `controller.abort()` below) goes unhandled and crashes the
+		// process under Node's default unhandled-rejection behavior.
+		execution.promise.then(settle(resolve), settle(reject));
 		if (signal.aborted) {
 			onAbort(undefined);
 			return;
 		}
 		signal.addEventListener("abort", onAbort, { once: true });
-		execution.promise.then(settle(resolve), settle(reject));
 	});
 }
 
