@@ -150,3 +150,56 @@ describe("selectV5PlannerStateProviderNames — declared contextGate honored (#1
 		expect(select([recentErrorsProvider], [])).toContain("RECENT_ERRORS");
 	});
 });
+
+/**
+ * The ambient RECENT_ERRORS exclusion must own the planner recompose, not
+ * just Stage 1: the always-on re-add above would otherwise restore internal
+ * diagnostics exactly on the ambient turns routed to planning — the turns
+ * this exclusion exists for (tj-f8249b30e986d6). Classification is
+ * structural (channel type + addressing + source metadata), never message
+ * text, and fails open to the full provider set.
+ */
+describe("selectV5PlannerStateProviderNames — ambient-turn exclusions", () => {
+	function groupMsg(content: Record<string, unknown>): Memory {
+		return {
+			id: "00000000-0000-0000-0000-0000000000b3" as UUID,
+			entityId: "00000000-0000-0000-0000-0000000000c3" as UUID,
+			roomId: "00000000-0000-0000-0000-0000000000d3" as UUID,
+			content: { text: "anyone seen the game last night?", ...content },
+		} as unknown as Memory;
+	}
+
+	function selectFor(content: Record<string, unknown>): string[] {
+		return selectV5PlannerStateProviderNames({
+			runtime: makeRuntime([recentErrorsProvider]),
+			message: groupMsg(content),
+			selectedContexts: ["general"],
+			userRoles: ["MEMBER"],
+		});
+	}
+
+	it("excludes RECENT_ERRORS from the planner recompose of an unaddressed group turn", () => {
+		expect(selectFor({ channelType: "GROUP" })).not.toContain("RECENT_ERRORS");
+	});
+
+	it("keeps RECENT_ERRORS on an addressed group turn (platform mention)", () => {
+		expect(
+			selectFor({
+				channelType: "GROUP",
+				mentionContext: { isMention: true, isReply: false, isThread: false },
+			}),
+		).toContain("RECENT_ERRORS");
+	});
+
+	it("keeps RECENT_ERRORS on DM and unknown-channel turns (fail open)", () => {
+		expect(selectFor({ channelType: "DM" })).toContain("RECENT_ERRORS");
+		expect(selectFor({})).toContain("RECENT_ERRORS");
+	});
+
+	it("keeps the Stage-1-only exclusions out of scope: the planner still re-adds ENTITIES", () => {
+		// Ambient exclusions are turn-scoped, not stage-scoped — the planner
+		// legitimately restores the Stage-1-only ENTITIES/DOCUMENTS set.
+		const names = selectFor({ channelType: "GROUP" });
+		expect(names).toContain("ENTITIES");
+	});
+});
