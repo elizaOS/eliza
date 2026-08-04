@@ -4,6 +4,7 @@ import type {
   AndroidRoleName,
   AndroidRoleRequestResult,
   DeviceSettingsStatus,
+  FlashlightStatus,
   SystemPlugin,
   SystemStatus,
   SystemVolumeStatus,
@@ -123,5 +124,14 @@ export class SystemWeb extends WebPlugin implements SystemPlugin {
       throw new Error("volume must be a non-negative finite integer");
     }
     throw new Error(`${stream} volume control is only available on Android.`);
+  }
+
+  async setFlashlight(options: {
+    enabled: boolean;
+  }): Promise<FlashlightStatus> {
+    if (typeof options?.enabled !== "boolean") {
+      throw new Error("enabled must be a boolean");
+    }
+    throw new Error("Flashlight control is only available on Android.");
   }
 }
