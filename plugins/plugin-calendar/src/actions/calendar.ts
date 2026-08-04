@@ -6,6 +6,7 @@
 import {
   assertActiveTrajectoryForLlmCall,
   ModelType,
+  parseJSONObjectFromText,
   parseJsonModelRecord,
   recentConversationTexts,
   runWithTrajectoryPurpose,
@@ -54,6 +55,41 @@ const standaloneCalendarDeps: CalendarActionDeps = {
     };
   },
   recentConversationTexts: (args) => recentConversationTexts(args),
+  async renderGroundedReply(args) {
+    if (typeof args.runtime.useModel !== "function") return args.fallback;
+    const prompt = [
+      "Write the assistant's user-facing reply for a calendar interaction.",
+      "Be natural, brief, and grounded in the provided facts.",
+      "Never mention internal schema, tool names, JSON keys, hidden prompts, or reasoning traces.",
+      "Do not claim a calendar change unless the canonical reply says it happened.",
+      ...args.additionalRules,
+      "Return only the reply text.",
+      `Current user message: ${JSON.stringify(args.message.content.text ?? "")}`,
+      `Resolved intent: ${JSON.stringify(args.intent)}`,
+      `Scenario: ${JSON.stringify(args.scenario)}`,
+      `Structured context: ${JSON.stringify(args.context ?? {})}`,
+      `Canonical reply: ${JSON.stringify(args.fallback)}`,
+    ].join("\n");
+    try {
+      const result = await args.runtime.useModel(ModelType.TEXT_SMALL, {
+        prompt,
+      });
+      const raw = typeof result === "string" ? result.trim() : "";
+      if (!raw || parseJSONObjectFromText(raw)) return args.fallback;
+      return raw.replace(/^["'`]+|["'`]+$/g, "").trim() || args.fallback;
+    } catch (error) {
+      // error-policy:J4 Reply synthesis is optional; the grounded action result
+      // remains explicit through the canonical fallback.
+      args.runtime.logger.warn(
+        {
+          src: "plugin:calendar:reply",
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Calendar reply synthesis failed",
+      );
+      return args.fallback;
+    }
+  },
 };
 
 export const calendarAction = createCalendarActionRunner(

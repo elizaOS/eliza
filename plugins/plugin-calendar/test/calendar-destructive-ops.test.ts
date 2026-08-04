@@ -133,8 +133,8 @@ function stubService(feedEvents: LifeOpsCalendarEvent[]) {
 type StubService = ReturnType<typeof stubService>;
 
 function fakeRuntime(service: StubService): IAgentRuntime {
-  // No `useModel` on purpose: renderGroundedActionReply then returns the
-  // handler's canonical fallback strings verbatim.
+  // No `useModel` on purpose: the handler returns its canonical grounded
+  // fallback strings verbatim.
   return {
     agentId: "agent-1",
     logger: {
@@ -246,6 +246,38 @@ describe("CALENDAR delete_event disambiguation", () => {
     });
     expect(result.success).toBe(false);
     expect(result.text).toContain("couldn't find");
+    expect(service.cancelApproval).not.toHaveBeenCalled();
+    expect(service.deleteCalendarEvent).not.toHaveBeenCalled();
+  });
+
+  it("delegates presentation without changing the grounded action result", async () => {
+    const renderGroundedReply = vi.fn(
+      async ({ fallback }) => `Human-readable: ${fallback}`,
+    );
+    const action = createCalendarActionRunner({
+      ...fakeDeps(service),
+      renderGroundedReply,
+    });
+
+    const result = (await action.handler(
+      fakeRuntime(service),
+      message("delete the standup"),
+      undefined,
+      {
+        parameters: { subaction: "delete_event", query: "standup" },
+      },
+      undefined,
+    )) as { success: boolean; text: string };
+
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("Human-readable:");
+    expect(renderGroundedReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        intent: "delete the standup",
+        scenario: "delete_event_not_found",
+        fallback: expect.stringContaining("couldn't find"),
+      }),
+    );
     expect(service.cancelApproval).not.toHaveBeenCalled();
     expect(service.deleteCalendarEvent).not.toHaveBeenCalled();
   });
