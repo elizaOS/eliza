@@ -22,6 +22,8 @@ export { todayDateKey } from "./date-key.js";
 
 const DATE_KEY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
+const TWELVE_HOUR_TIME_PATTERN =
+  /^(0?[1-9]|1[0-2])(?::([0-5]\d))?\s*([ap])\.?m\.?$/i;
 const ENTITY_ID_PATTERN = /^[a-z][a-z0-9-]{2,127}$/;
 const MAX_TITLE_LENGTH = 240;
 const MAX_BODY_LENGTH = 20_000;
@@ -160,10 +162,28 @@ export function parseDateKey(value: unknown, field = "date"): string {
 }
 
 export function parseTime(value: unknown, field = "time"): string {
-  if (typeof value !== "string" || !TIME_PATTERN.test(value.trim())) {
-    throw validationError(`${field} must be HH:mm in 24-hour time.`, field);
+  if (typeof value !== "string") {
+    throw validationError(
+      `${field} must be HH:mm or a 12-hour time with AM/PM.`,
+      field,
+    );
   }
-  return value.trim();
+  const normalized = value.trim();
+  if (TIME_PATTERN.test(normalized)) return normalized;
+
+  const twelveHour = TWELVE_HOUR_TIME_PATTERN.exec(normalized);
+  if (!twelveHour) {
+    throw validationError(
+      `${field} must be HH:mm or a 12-hour time with AM/PM.`,
+      field,
+    );
+  }
+
+  const hour = Number(twelveHour[1]);
+  const minute = twelveHour[2] ?? "00";
+  const meridiem = twelveHour[3]?.toLowerCase();
+  const canonicalHour = (hour % 12) + (meridiem === "p" ? 12 : 0);
+  return `${String(canonicalHour).padStart(2, "0")}:${minute}`;
 }
 
 function parseTimestamp(value: unknown, field: string): string {
