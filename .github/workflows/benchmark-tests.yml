@@ -67,6 +67,10 @@ jobs:
       - name: Ensure generated shared i18n data
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
+      - name: Build benchmark workspace dependencies
+        if: matrix.lane == 'benchmark-tests'
+        run: bunx turbo run build '--filter=@elizaos/lifeops-bench^...'
+
       - name: Run ${{ matrix.lane }} lane
         env:
           CI: "true"
