@@ -138,8 +138,50 @@ export function isFullTscEmit(script) {
   return true;
 }
 
+function executableBuildStatements(source) {
+  const withoutCommentLines = source
+    .split("\n")
+    .filter((line) => !/^\s*(\/\/|\*)/.test(line))
+    .join("\n");
+  const resolverAliases = [
+    ...withoutCommentLines.matchAll(
+      /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*resolveTscBin\(\)/g,
+    ),
+  ].map((match) => match[1]);
+  let normalized = withoutCommentLines;
+  for (const alias of resolverAliases) {
+    normalized = normalized.replace(new RegExp(`\\b${alias}\\b`, "g"), "tsc6");
+  }
+  return normalized
+    .split(";")
+    .map((statement) => statement.trim())
+    .filter(Boolean);
+}
+
+export function findFullTscEmit(source) {
+  return (
+    executableBuildStatements(source).find((statement) =>
+      isFullTscEmit(statement),
+    ) ?? null
+  );
+}
+
+function isEffectiveTypecheck(script) {
+  if (/\btsc6?\b/.test(script)) return true;
+  if (/\btypecheck-workspace\.(?:js|mjs|ts)\b/.test(script)) return true;
+  return /\b(?:bun|npm|pnpm|yarn)(?:\s+run)?(?:\s+--cwd\s+\S+)?\s+typecheck\b/.test(
+    script,
+  );
+}
+
+function isExplicitNoSourceTypecheck(script) {
+  return /^\s*echo\b.*\bno TypeScript source files to check\b/i.test(script);
+}
+
 function normalizeExceptionMap(exceptions) {
   if (exceptions instanceof Map) return exceptions;
+  // Set input is retained only for dependency-injected tests written against
+  // the former shape; production metadata always resolves package-owned Maps.
   return new Map(
     [...(exceptions ?? [])].map((packageName) => [
       packageName,
@@ -215,8 +257,17 @@ export function analyzeBuildTypecheck(options = {}) {
     const scripts = pkg.scripts ?? {};
     const build = scripts.build ?? "";
     const typecheck = scripts.typecheck ?? "";
-    const hasSeparateTypecheck = /\btsc6?\b/.test(typecheck);
+    const hasSeparateTypecheck = isEffectiveTypecheck(typecheck);
     if (hasSeparateTypecheck) counts.typechecked += 1;
+    if (
+      typecheck.trim().length > 0 &&
+      !hasSeparateTypecheck &&
+      !isExplicitNoSourceTypecheck(typecheck)
+    ) {
+      violations.push(
+        `${name}: typecheck script is not a recognized compiler or delegated typecheck lane — ${typecheck.trim()}`,
+      );
+    }
     const nativeTypeScript =
       pkg.dependencies?.["@typescript/native"] ??
       pkg.devDependencies?.["@typescript/native"];
@@ -253,17 +304,14 @@ export function analyzeBuildTypecheck(options = {}) {
         } catch {
           continue;
         }
-        for (const line of body.split("\n")) {
-          if (/^\s*(\/\/|\*)/.test(line)) continue; // skip comments
-          if (isFullTscEmit(line)) {
-            if (allow.doubleCheck.has(name)) {
-              usedExceptions.doubleCheck.add(name);
-            } else {
-              violations.push(
-                `${name}: ${buildFile} runs a full tsc6 type-check (add --noCheck) — ${line.trim()}`,
-              );
-            }
-            break;
+        const fullEmit = findFullTscEmit(body);
+        if (fullEmit) {
+          if (allow.doubleCheck.has(name)) {
+            usedExceptions.doubleCheck.add(name);
+          } else {
+            violations.push(
+              `${name}: ${buildFile} runs a full tsc6 type-check (add --noCheck) — ${fullEmit.replace(/\s+/g, " ")}`,
+            );
           }
         }
       }
@@ -289,17 +337,14 @@ export function analyzeBuildTypecheck(options = {}) {
     const rel = path.relative(root, file).split(path.sep).join("/");
     const body = readFileSync(file, "utf8");
     const owner = nearestPackageName(file, root);
-    for (const line of body.split("\n")) {
-      if (/^\s*(\/\/|\*)/.test(line)) continue;
-      if (isFullTscEmit(line)) {
-        if (allow.doubleCheck.has(owner)) {
-          usedExceptions.doubleCheck.add(owner);
-        } else {
-          violations.push(
-            `${rel}: build script runs tsc6 declaration emit without --noCheck — ${line.trim()}`,
-          );
-        }
-        break;
+    const fullEmit = findFullTscEmit(body);
+    if (fullEmit) {
+      if (allow.doubleCheck.has(owner)) {
+        usedExceptions.doubleCheck.add(owner);
+      } else {
+        violations.push(
+          `${rel}: build script runs tsc6 declaration emit without --noCheck — ${fullEmit.replace(/\s+/g, " ")}`,
+        );
       }
     }
 
@@ -331,8 +376,10 @@ export function analyzeBuildTypecheck(options = {}) {
       }
     }
   }
-  counts.excepted =
-    usedExceptions.doubleCheck.size + usedExceptions.tscTypecheck.size;
+  counts.excepted = new Set([
+    ...usedExceptions.doubleCheck,
+    ...usedExceptions.tscTypecheck,
+  ]).size;
 
   return { violations, counts };
 }

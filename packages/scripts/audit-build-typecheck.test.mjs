@@ -1,3 +1,7 @@
+/**
+ * Compiler-model enforcement against real temporary workspace manifests and
+ * build files, including delegated checks and package-owned exception edges.
+ */
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -30,6 +34,12 @@ test("nested workspace enforcement requires a justified package exception", () =
     });
     const pkgDir = path.join(root, "packages", "group", "nested");
     mkdirSync(pkgDir, { recursive: true });
+    const delegatedDir = path.join(root, "packages", "group", "delegated");
+    mkdirSync(delegatedDir, { recursive: true });
+    writeJson(path.join(delegatedDir, "package.json"), {
+      name: "@demo/delegated",
+      scripts: { typecheck: "bun run --cwd ../target typecheck" },
+    });
     const nestedPackage = {
       name: "@demo/nested",
       scripts: { typecheck: "tsc6 --noEmit" },
@@ -38,9 +48,9 @@ test("nested workspace enforcement requires a justified package exception", () =
 
     const unallowlisted = analyzeFixture(root);
     assert.deepEqual(unallowlisted.counts, {
-      declared: 1,
-      scanned: 1,
-      typechecked: 1,
+      declared: 2,
+      scanned: 2,
+      typechecked: 2,
       excepted: 0,
     });
     assert.match(
@@ -64,6 +74,61 @@ test("nested workspace enforcement requires a justified package exception", () =
     const justified = analyzeFixture(root);
     assert.deepEqual(justified.violations, []);
     assert.equal(justified.counts.excepted, 1);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("multiline emits and dual exceptions count one package", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "audit-build-dual-"));
+  try {
+    writeJson(path.join(root, "package.json"), {
+      workspaces: ["packages/*"],
+      devDependencies: {
+        "@typescript/native": "npm:typescript@^7.0.2",
+        "@typescript/typescript6": "6.0.0",
+      },
+    });
+    const pkgDir = path.join(root, "packages", "dual");
+    mkdirSync(pkgDir, { recursive: true });
+    writeJson(path.join(pkgDir, "package.json"), {
+      name: "@demo/dual",
+      scripts: {
+        build: "bun build.ts",
+        typecheck: "tsc6 --noEmit",
+      },
+      elizaos: {
+        scripts: {
+          buildModel: {
+            doubleCheck: { reason: "fixture exercises multiline emit" },
+            tscTypecheck: { reason: "fixture exercises compatibility check" },
+          },
+        },
+      },
+    });
+    writeFileSync(
+      path.join(pkgDir, "build.ts"),
+      [
+        "const tscBin = resolveTscBin();",
+        "await $" + "`${" + "tscBin}",
+        "  --emitDeclarationOnly",
+        "  -p tsconfig.build.json`;",
+        "",
+      ].join("\n"),
+    );
+
+    const result = analyzeBuildTypecheck({
+      repoRoot: root,
+      turbo: { tasks: {} },
+      buildFiles: [path.join(pkgDir, "build.ts")],
+    });
+    assert.deepEqual(result.violations, []);
+    assert.deepEqual(result.counts, {
+      declared: 1,
+      scanned: 1,
+      typechecked: 1,
+      excepted: 1,
+    });
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
