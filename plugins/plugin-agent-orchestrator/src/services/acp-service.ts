@@ -10,7 +10,7 @@
  * lease routes the sub-agent's inference through the parent (revoked when the
  * session ends), credential-proxy and model-gateway env is injected while
  * denied environment keys are stripped, and Codex runs get sandbox/approval
- * configuration with a Landlock-availability fallback. A single process-wide
+ * configuration with a Landlock-availability fallback (fail-closed when no operator override). A single process-wide
  * SIGTERM/SIGINT handler fans out to every live instance so multi-tenant hosts,
  * test runners, and hot-reload cycles don't leak per-instance listeners.
  */
@@ -2637,7 +2637,25 @@ export class AcpService extends Service {
         supported: ["read-only", "workspace-write", "danger-full-access"],
       });
     }
-    return mode ?? CODEX_NO_LANDLOCK_SANDBOX_MODE;
+    // Fail closed: when no operator-owned override is configured, do not
+    // silently widen a workspace-scoped task to host-wide filesystem access.
+    // Operators in container/VM-sandboxed deployments must explicitly set
+    // ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE (e.g. "danger-full-access")
+    // to permit this escalation.
+    if (!raw?.trim() || !mode) {
+      throw new ElizaError(
+        "Landlock unavailable and no operator-configured ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE fallback",
+        {
+          code: "CODEX_NO_LANDLOCK_NO_FALLBACK",
+          context: {
+            required:
+              "Set ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE to one of: read-only, workspace-write, danger-full-access",
+          },
+          severity: "fatal",
+        },
+      );
+    }
+    return mode;
   }
 
   private validateManagedCodexAcpModeConfiguration(): void {
@@ -2888,8 +2906,17 @@ export class AcpService extends Service {
       ) {
         throw new Error(message);
       }
-      const fallbackSandboxMode = this.codexNoLandlockSandboxMode();
-      const fallbackMode = this.managedCodexAcpInitialAgentMode(true);
+      let fallbackSandboxMode: CodexSandboxMode;
+      let fallbackMode: CodexAcpInitialAgentMode | undefined;
+      try {
+        fallbackSandboxMode = this.codexNoLandlockSandboxMode();
+        fallbackMode = this.managedCodexAcpInitialAgentMode(true);
+      } catch (fallbackErr) {
+        // error-policy:J6 no operator-configured no-Landlock fallback → fail
+        // closed by surfacing the original attach error, not the missing-config
+        // error, so operators see the actionable Landlock-availability message.
+        throw new Error(message);
+      }
       this.log(
         "warn",
         "Codex ACP Landlock unavailable; retrying with sandbox fallback",
