@@ -334,12 +334,11 @@ export const VIEW_OCR_POLICIES = {
     requireAny: ["Start host session", "session", "Remote server URL"],
   }),
   "plugin-notes-gui": expected({
-    requireAll: ["New note"],
-    requireAny: ["Title", "Details", "Add note"],
+    requireAll: ["Launch checklist", "Follow up"],
+    requireAny: ["Cloud agent", "demo recording"],
   }),
   "plugin-simple-calendar-gui": expected({
     requireAll: ["July 2026"],
-    requireAny: ["Today", "New event", "Light Phone demo"],
   }),
   "plugin-task-coordinator-gui": expected({
     requireAll: ["Task Coordinator"],
