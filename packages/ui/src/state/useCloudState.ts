@@ -46,8 +46,8 @@ import {
   openExternalUrl,
   yieldHttpAfterNativeMessageBox,
 } from "../utils";
-import { scrubPersistedAgentProfileTokens } from "./agent-profiles";
 import { dedicatedCloudAgentIdFromBase } from "../utils/cloud-agent-base";
+import { scrubPersistedAgentProfileTokens } from "./agent-profiles";
 import {
   CLOUD_LOGIN_POPUP_NAME,
   navigateToSameTabCloudLogin,

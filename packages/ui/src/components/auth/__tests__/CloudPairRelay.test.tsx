@@ -235,10 +235,7 @@ describe("CloudPairRelay", () => {
 
   it("keeps a legacy global token when BOTH scoped writes fail", () => {
     window.localStorage.setItem(CLOUD_PAIR_LOCAL_STORAGE_KEY, "legacy-key");
-    window.sessionStorage.setItem(
-      CLOUD_PAIR_SESSION_STORAGE_KEY,
-      "legacy-key",
-    );
+    window.sessionStorage.setItem(CLOUD_PAIR_SESSION_STORAGE_KEY, "legacy-key");
     // jsdom's Storage getters hand back a fresh proxy per access, so spying on
     // `setItem` never intercepts the write. Replace the getters with failing
     // storages for the duration of the call instead.
@@ -265,9 +262,9 @@ describe("CloudPairRelay", () => {
     try {
       // Neither storage channel accepted the write, so persistence fails
       // loudly (pre-existing contract) and the legacy key is never touched.
-      expect(() =>
-        persistCloudPairApiToken("agent-key", "agent-123"),
-      ).toThrow(/could not be stored/);
+      expect(() => persistCloudPairApiToken("agent-key", "agent-123")).toThrow(
+        /could not be stored/,
+      );
     } finally {
       Object.defineProperty(window, "localStorage", {
         configurable: true,

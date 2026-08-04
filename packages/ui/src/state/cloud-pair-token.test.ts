@@ -12,11 +12,11 @@
  * jsdom + real storages; no network.
  */
 import { beforeEach, describe, expect, it } from "vitest";
+import { cloudPairTokenKeyForAgent } from "../components/auth/CloudPairRelay";
 import {
   clearCloudPairApiToken,
   clearStalePairCredentialsForAgent,
 } from "./cloud-pair-token";
-import { cloudPairTokenKeyForAgent } from "../components/auth/CloudPairRelay";
 
 const LEGACY_KEY = "eliza:cloud-pair:api-token";
 const ACTIVE_SERVER_KEY = "elizaos:active-server";

@@ -78,6 +78,7 @@ import {
 } from "@elizaos/ui/bridge/storage-bridge";
 import { RenderTelemetryProfiler } from "@elizaos/ui/cloud-ui/runtime/render-telemetry";
 import { AppWindowRenderer } from "@elizaos/ui/components/apps/AppWindowRenderer";
+import { cloudPairTokenKeyForAgent } from "@elizaos/ui/components/auth/CloudPairRelay";
 import { ShellModalityProvider } from "@elizaos/ui/components/ShellModalityProvider";
 import { ShellRoleProvider } from "@elizaos/ui/components/ShellRoleProvider";
 import type {
@@ -144,11 +145,12 @@ import {
 } from "@elizaos/ui/platform/window-shell";
 import { AppProvider } from "@elizaos/ui/state";
 import { upsertAndActivateAgentProfile } from "@elizaos/ui/state/agent-profiles";
+import { resolveDedicatedAgentId } from "@elizaos/ui/state/agent-session-recovery";
 import { initOcrBridge } from "@elizaos/ui/state/ocr-bridge";
 import {
-  loadPersistedActiveServer,
   applyUiTheme,
   createPersistedActiveServer,
+  loadPersistedActiveServer,
   loadUiLanguage,
   loadUiThemeMode,
   resolveUiTheme,
@@ -166,8 +168,6 @@ import {
   dedicatedCloudAgentIdFromBase,
   isDedicatedCloudAgentBase,
 } from "@elizaos/ui/utils/cloud-agent-base";
-import { cloudPairTokenKeyForAgent } from "@elizaos/ui/components/auth/CloudPairRelay";
-import { resolveDedicatedAgentId } from "@elizaos/ui/state/agent-session-recovery";
 // biome-ignore lint/correctness/noUnusedImports: classic JSX output in this app bundle expects React in module scope.
 import * as React from "react";
 import { type ComponentType, lazy, StrictMode, Suspense } from "react";

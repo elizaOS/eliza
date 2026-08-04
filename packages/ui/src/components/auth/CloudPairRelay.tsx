@@ -4,8 +4,8 @@
  */
 import { useEffect, useState } from "react";
 import { getBootConfig, setBootConfig } from "../../config/boot-config";
-import { setElizaApiToken } from "../../utils/eliza-globals";
 import { dedicatedCloudAgentIdFromBase } from "../../utils/cloud-agent-base";
+import { setElizaApiToken } from "../../utils/eliza-globals";
 
 export const CLOUD_PAIR_SESSION_STORAGE_KEY = "eliza:cloud-pair:api-token";
 export const CLOUD_PAIR_LOCAL_STORAGE_KEY = CLOUD_PAIR_SESSION_STORAGE_KEY;
