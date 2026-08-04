@@ -1,9 +1,11 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+import personalAssistantConfig from "../../plugins/plugin-personal-assistant/vitest.config";
 
 const fileDir = path.dirname(fileURLToPath(import.meta.url));
 const monorepoRoot = path.resolve(fileDir, "../..");
+const appCoreSrc = path.join(monorepoRoot, "packages/app-core/src");
 const coreSrc = path.join(monorepoRoot, "packages/core/src");
 const loggerSrc = path.join(monorepoRoot, "packages/logger/src");
 const sharedSrc = path.join(monorepoRoot, "packages/shared/src");
@@ -11,6 +13,7 @@ const cloudRoutingSrc = path.join(monorepoRoot, "packages/cloud/routing/src");
 const cloudSdkSrc = path.join(monorepoRoot, "packages/cloud/sdk/src");
 
 export default defineConfig({
+  plugins: personalAssistantConfig.plugins,
   test: {
     testTimeout: 120_000,
     hookTimeout: 120_000,
@@ -18,6 +21,11 @@ export default defineConfig({
   },
   resolve: {
     alias: [
+      ...(personalAssistantConfig.resolve?.alias ?? []),
+      {
+        find: /^@elizaos\/app-core\/(.+)$/,
+        replacement: path.join(appCoreSrc, "$1"),
+      },
       {
         find: /^@elizaos\/core$/,
         replacement: path.join(coreSrc, "index.node.ts"),

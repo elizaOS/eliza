@@ -37,7 +37,7 @@ jobs:
     # Same fleet fallback as build-agent-image: hetzner when online (the
     # image is ~15 GB with baked models and CUDA layers; hosted runners need
     # the disk-free step below to survive it).
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 180
     permissions:
       contents: read
