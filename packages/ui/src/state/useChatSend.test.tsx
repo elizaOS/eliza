@@ -3338,6 +3338,9 @@ describe("useChatSend reply-target attachment", () => {
     const metadata = mocks.client.sendConversationMessageStream.mock
       .calls[0][6] as Record<string, unknown> | undefined;
     expect(metadata?.replyToMessageId).toBe(REPLY_ID);
+    expect(metadata?.uiTimeZone).toBe(
+      new Intl.DateTimeFormat().resolvedOptions().timeZone,
+    );
     // The armed reply is consumed exactly once: ref cleared + state cleared so a
     // subsequent send does not re-attach a stale reply.
     expect(deps.chatReplyTargetRef.current).toBeNull();
