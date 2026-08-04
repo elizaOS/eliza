@@ -394,6 +394,12 @@ describe("view management actions", () => {
 		expect(action.routingHint).toContain(
 			"reading or changing calendar events uses the CALENDAR action",
 		);
+		expect(action.routingHint).toContain(
+			"action=interact view=device-control capability=set-flashlight",
+		);
+		expect(action.similes).toContain("SET_FLASHLIGHT");
+		expect(action.tags).toContain("flashlight");
+		expect(action.description).toContain("native device controls");
 		expect(closeOne.routingHint).toContain("one open UI view/tab");
 		expect(closeAll.routingHint).toContain("every open UI view/tab");
 		expect(closeOne.routingHint).not.toContain("show or switch");
@@ -491,7 +497,13 @@ describe("view management actions", () => {
 
 		const result = await action.handler(
 			runtime as never,
-			message("what's on my calendar today?") as never,
+			{
+				...message("what's on my calendar today?"),
+				content: {
+					text: "what's on my calendar today?",
+					metadata: { viewClientId: "ui-client-123" },
+				},
+			} as never,
 			undefined,
 			{
 				action: "interact",
@@ -507,6 +519,9 @@ describe("view management actions", () => {
 			"http://127.0.0.1:3456/api/views/simple-calendar/interact?viewType=gui",
 			expect.objectContaining({
 				method: "POST",
+				headers: expect.objectContaining({
+					"X-ElizaOS-Client-Id": "ui-client-123",
+				}),
 				body: JSON.stringify({
 					capability: "get-calendar-state",
 					params: { date: "2026-08-03" },
