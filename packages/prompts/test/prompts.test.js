@@ -129,6 +129,28 @@ describe("prompt templates (src/index.ts)", () => {
     }
   });
 
+  it("keeps every user-facing response lane conversational by default", () => {
+    for (const template of [
+      prompts.messageHandlerTemplate,
+      prompts.plannerTemplate,
+      prompts.replyTemplate,
+    ]) {
+      assert.match(
+        template,
+        /natural conversation, not a database or debug log/,
+      );
+      assert.match(
+        template,
+        /Translate machine dates, 24-hour times, and Unix\/epoch timestamps into familiar dates and times/,
+      );
+      assert.match(
+        template,
+        /unless the user explicitly asks for raw or technical output/,
+      );
+      assert.match(template, /Preserve exact code and user-provided values/);
+    }
+  });
+
   it("plannerTemplate requires owner life-management tools for side effects and fail-closed questions", () => {
     assert.match(
       prompts.plannerTemplate,
