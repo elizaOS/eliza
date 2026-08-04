@@ -192,7 +192,9 @@ function createRuntime(
     useModel: vi.fn(async () => ""),
     ...overrides,
   };
-  return runtime as unknown as AgentRuntime;
+  const contractCheckedRuntime: Pick<AgentRuntime, "getParticipantsForRoom"> =
+    runtime;
+  return contractCheckedRuntime as unknown as AgentRuntime;
 }
 
 function createCtx(opts: {
