@@ -51,7 +51,7 @@ import {
   getUsageProvider,
   isCerebrasMode,
 } from "../utils/config";
-import { emitModelUsageEvent } from "../utils/events";
+import { emitModelUsageEvent, type ModelRetryTelemetry } from "../utils/events";
 
 // ============================================================================
 // Types
@@ -1443,14 +1443,27 @@ function buildNativeTextResult(
     providerMetadata?: unknown;
   },
   modelName: string,
-  provider: "cerebras" | "evolink" | "openai"
+  provider: "cerebras" | "evolink" | "openai",
+  retry?: ModelRetryTelemetry
 ): NativeGenerateTextResult {
+  const identity = mergeProviderIdentity(result.providerMetadata, modelName, provider) as Record<
+    string,
+    unknown
+  >;
   return {
     text: result.text,
     toolCalls: result.toolCalls ?? [],
     finishReason: result.finishReason,
     usage: convertUsage(result.usage),
-    providerMetadata: mergeProviderIdentity(result.providerMetadata, modelName, provider),
+    providerMetadata: retry
+      ? {
+          ...identity,
+          retryCount: retry.retryCount,
+          ...(retry.lastRetryReason !== undefined
+            ? { lastRetryReason: retry.lastRetryReason }
+            : {}),
+        }
+      : identity,
   };
 }
 
@@ -1639,38 +1652,119 @@ function isTransientProviderError(error: unknown): boolean {
   return false;
 }
 
+/** The AbortSignal wired into a call's transport, when the caller passed one. */
+function retryAbortSignal(generateParams: NativeGenerateTextParams): AbortSignal | undefined {
+  return (generateParams as { abortSignal?: AbortSignal }).abortSignal;
+}
+
+/** The caller's abort reason, or the standard AbortError when none was given. */
+function abortReason(signal: AbortSignal): unknown {
+  return signal.reason ?? new DOMException("The operation was aborted.", "AbortError");
+}
+
+function describeRetryReason(error: unknown): string {
+  return (error as { message?: string })?.message ?? String(error);
+}
+
+/**
+ * The single backoff seam every transient-retry lane goes through. Two jobs:
+ *
+ * 1. Observability — increments the per-call {@link ModelRetryTelemetry} that
+ *    MODEL_USED and the result's `providerMetadata` surface, and emits one
+ *    structured warn (lane/attempt/reason/model/backoff) per retry so a
+ *    degraded provider is visible without wire captures.
+ * 2. Abort-awareness — the exponential delay (capped at 3s + jitter) is where
+ *    a cancelled request would otherwise sit for seconds; an abort rejects the
+ *    wait immediately with the caller's reason, so no attempt can start after
+ *    cancellation.
+ */
+async function waitForTransientRetry(opts: {
+  lane: "generate" | "buffered-stream" | "stream-start";
+  maxRetries: number;
+  error: unknown;
+  model: string;
+  signal: AbortSignal | undefined;
+  state: ModelRetryTelemetry;
+}): Promise<void> {
+  const { lane, maxRetries, error, model, signal, state } = opts;
+  state.retryCount += 1;
+  state.lastRetryReason = describeRetryReason(error);
+  const backoffMs =
+    Math.min(3000, 300 * 2 ** (state.retryCount - 1)) + Math.floor(Math.random() * 200);
+  logger.warn(
+    {
+      src: "plugin-openai",
+      lane,
+      attempt: state.retryCount,
+      maxRetries,
+      backoffMs,
+      model,
+      reason: state.lastRetryReason,
+    },
+    `[OpenAI] transient ${lane} error, retrying`
+  );
+  await new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(abortReason(signal));
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      // signal is non-null here: the listener only exists when one was given.
+      reject(abortReason(signal as AbortSignal));
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, backoffMs);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 /**
  * Call `generateText` with bounded retry + exponential backoff on transient
  * provider errors (see {@link isTransientProviderError}). Mirrors opencode's
  * resilience posture (it sets `retries: 2` on its coding LLM call) but also
  * covers Cerebras's non-standard transient-400 that the AI SDK won't retry.
- * Non-transient errors propagate immediately on the first attempt.
+ * Non-transient errors propagate immediately on the first attempt, an aborted
+ * caller signal forbids any further attempt, and retry totals accumulate on
+ * `retryState` for MODEL_USED / result-metadata observability.
  */
 async function generateTextWithTransientRetry(
   generateParams: NativeGenerateTextParams,
-  maxRetries = 3,
-  beforeAttempt?: () => void
+  opts: {
+    model: string;
+    retryState: ModelRetryTelemetry;
+    maxRetries?: number;
+    beforeAttempt?: () => void;
+  }
 ): Promise<Awaited<ReturnType<typeof generateText<ToolSet>>>> {
+  const maxRetries = opts.maxRetries ?? 3;
+  const signal = retryAbortSignal(generateParams);
   let attempt = 0;
   for (;;) {
     try {
-      beforeAttempt?.();
+      opts.beforeAttempt?.();
       return (await generateText(
         generateParams as Parameters<typeof generateText>[0]
         // biome-ignore lint/suspicious/noExplicitAny: see above.
       )) as any;
     } catch (error) {
-      // error-policy:J2 context-adding rethrow — terminal or retry-exhausted
-      // errors rethrow unchanged; only bounded transient provider errors retry.
-      if (attempt >= maxRetries || !isTransientProviderError(error)) throw error;
+      // error-policy:J2 context-adding rethrow — terminal, retry-exhausted, or
+      // cancelled errors rethrow unchanged; only bounded transient provider
+      // errors on a still-live request retry.
+      if (attempt >= maxRetries || signal?.aborted || !isTransientProviderError(error)) {
+        throw error;
+      }
       attempt++;
-      const backoffMs = Math.min(3000, 300 * 2 ** (attempt - 1)) + Math.floor(Math.random() * 200);
-      logger.warn(
-        `[OpenAI] transient model error (attempt ${attempt}/${maxRetries}), retrying in ${backoffMs}ms: ${
-          (error as { message?: string })?.message ?? String(error)
-        }`
-      );
-      await new Promise((resolve) => setTimeout(resolve, backoffMs));
+      await waitForTransientRetry({
+        lane: "generate",
+        maxRetries,
+        error,
+        model: opts.model,
+        signal,
+        state: opts.retryState,
+      });
     }
   }
 }
@@ -1698,9 +1792,15 @@ interface BufferedStreamResult {
 async function consumeStreamWithTransientRetry(
   generateParams: NativeGenerateTextParams,
   onChunk: ((chunk: string) => void) | undefined,
-  maxRetries = 5,
-  beforeAttempt?: () => void
+  opts: {
+    model: string;
+    retryState: ModelRetryTelemetry;
+    maxRetries?: number;
+    beforeAttempt?: () => void;
+  }
 ): Promise<BufferedStreamResult> {
+  const maxRetries = opts.maxRetries ?? 5;
+  const signal = retryAbortSignal(generateParams);
   let attempt = 0;
   for (;;) {
     try {
@@ -1710,7 +1810,7 @@ async function consumeStreamWithTransientRetry(
       // and rethrow after consumption so the retry below can act on it. (This
       // is the same reason opencode attaches an onError to its streamText.)
       let capturedError: unknown;
-      beforeAttempt?.();
+      opts.beforeAttempt?.();
       const result = streamText({
         ...(generateParams as Parameters<typeof streamText>[0]),
         onError: ({ error }: { error: unknown }) => {
@@ -1728,17 +1828,21 @@ async function consumeStreamWithTransientRetry(
       if (capturedError) throw capturedError;
       return { text, toolCalls, usage, finishReason };
     } catch (error) {
-      // error-policy:J2 context-adding rethrow — terminal or retry-exhausted
-      // errors rethrow unchanged; only bounded transient provider errors retry.
-      if (attempt >= maxRetries || !isTransientProviderError(error)) throw error;
+      // error-policy:J2 context-adding rethrow — terminal, retry-exhausted, or
+      // cancelled errors rethrow unchanged; only bounded transient provider
+      // errors on a still-live request retry.
+      if (attempt >= maxRetries || signal?.aborted || !isTransientProviderError(error)) {
+        throw error;
+      }
       attempt++;
-      const backoffMs = Math.min(3000, 300 * 2 ** (attempt - 1)) + Math.floor(Math.random() * 200);
-      logger.warn(
-        `[OpenAI] transient stream error (attempt ${attempt}/${maxRetries}), retrying in ${backoffMs}ms: ${
-          (error as { message?: string })?.message ?? String(error)
-        }`
-      );
-      await new Promise((resolve) => setTimeout(resolve, backoffMs));
+      await waitForTransientRetry({
+        lane: "buffered-stream",
+        maxRetries,
+        error,
+        model: opts.model,
+        signal,
+        state: opts.retryState,
+      });
     }
   }
 }
@@ -1826,6 +1930,16 @@ async function generateTextByModelType(
   const restoreResponseText = (text: string): string =>
     preparedOutput?.transform?.restoreText(text) ?? text;
 
+  // Shared across whichever retry lane serves this call; exactly one lane runs
+  // per call, so the totals are per-request, never cross-request.
+  const retryState: ModelRetryTelemetry = { retryCount: 0, lastRetryReason: undefined };
+  const retryMetadata = () => ({
+    retryCount: retryState.retryCount,
+    ...(retryState.lastRetryReason !== undefined
+      ? { lastRetryReason: retryState.lastRetryReason }
+      : {}),
+  });
+
   const generateParams: NativeTextParams = {
     model,
     ...promptOrMessages,
@@ -1873,8 +1987,12 @@ async function generateTextByModelType(
         consumeStreamWithTransientRetry(
           generateParams,
           hasResponseTransform ? undefined : params.onStreamChunk,
-          5,
-          () => attestLlmInputSubstring(details)
+          {
+            model: modelName,
+            retryState,
+            maxRetries: 5,
+            beforeAttempt: () => attestLlmInputSubstring(details),
+          }
         )
       );
       const restoredText = restoreResponseText(buffered.text);
@@ -1887,7 +2005,14 @@ async function generateTextByModelType(
       details.finishReason = buffered.finishReason;
       if (buffered.usage) {
         applyUsageToDetails(details, buffered.usage);
-        emitModelUsageEvent(runtime, modelType, params.prompt ?? "", buffered.usage, modelName);
+        emitModelUsageEvent(
+          runtime,
+          modelType,
+          params.prompt ?? "",
+          buffered.usage,
+          modelName,
+          retryState
+        );
       }
       return {
         textStream: (async function* replayBufferedStream() {
@@ -1902,7 +2027,7 @@ async function generateTextByModelType(
         ...(shouldReturnNativeResult ? { toolCalls: Promise.resolve(restoredToolCalls) } : {}),
         usage: Promise.resolve(convertUsage(buffered.usage)),
         finishReason: Promise.resolve(buffered.finishReason),
-        providerMetadata: { modelName, provider: usageProvider },
+        providerMetadata: { modelName, provider: usageProvider, ...retryMetadata() },
       };
     }
     const details = createLlmCallDetails(
@@ -1975,21 +2100,27 @@ async function generateTextByModelType(
       // live Cerebras 500 bursts routinely outlast the previous 3-attempt
       // (~2.3s) window and killed recoverable turns (12 clusters on
       // 2026-08-02); nothing has reached the user yet, so the extra waits
-      // only delay an honest failure reply, never double-deliver.
+      // only delay an honest failure reply, never double-deliver. A cancelled
+      // request never retries, however retryable the error looks — the abort
+      // check here plus the abort-aware backoff below guarantee no attempt
+      // starts after cancellation.
+      const abortSignal = retryAbortSignal(generateParams);
       if (
         !failedBeforeFirstToken ||
         attempt >= 5 ||
+        abortSignal?.aborted ||
         !isTransientProviderError(capturedStreamError)
       ) {
         break;
       }
-      const backoffMs = Math.min(3000, 300 * 2 ** attempt) + Math.floor(Math.random() * 200);
-      logger.warn(
-        `[OpenAI] transient stream-start error (attempt ${attempt + 1}/5), retrying in ${backoffMs}ms: ${
-          (capturedStreamError as { message?: string })?.message ?? String(capturedStreamError)
-        }`
-      );
-      await new Promise((resolve) => setTimeout(resolve, backoffMs));
+      await waitForTransientRetry({
+        lane: "stream-start",
+        maxRetries: 5,
+        error: capturedStreamError,
+        model: modelName,
+        signal: abortSignal,
+        state: retryState,
+      });
     }
     // Replays the pre-pulled first item, then continues the committed attempt.
     const iterateStream = async function* (): AsyncGenerator<unknown> {
@@ -2048,7 +2179,14 @@ async function generateTextByModelType(
       details.response = restoreResponseText(responseChunks.join(""));
       if (usageResult.status === "fulfilled" && usageResult.value) {
         applyUsageToDetails(details, usageResult.value);
-        emitModelUsageEvent(runtime, modelType, params.prompt ?? "", usageResult.value, modelName);
+        emitModelUsageEvent(
+          runtime,
+          modelType,
+          params.prompt ?? "",
+          usageResult.value,
+          modelName,
+          retryState
+        );
       } else if (usageResult.status === "rejected") {
         companionStreamError ??= usageResult.reason;
       }
@@ -2134,7 +2272,7 @@ async function generateTextByModelType(
       ...(shouldReturnNativeResult ? { toolCalls: restoredToolCallsPromise } : {}),
       usage: usagePromise,
       finishReason: finishReasonPromise,
-      providerMetadata: { modelName, provider: usageProvider },
+      providerMetadata: { modelName, provider: usageProvider, ...retryMetadata() },
     };
   }
 
@@ -2149,9 +2287,12 @@ async function generateTextByModelType(
     generateParams
   );
   const result = await recordLlmCall(runtime, details, async () => {
-    const result = await generateTextWithTransientRetry(generateParams, 3, () =>
-      attestLlmInputSubstring(details)
-    );
+    const result = await generateTextWithTransientRetry(generateParams, {
+      model: modelName,
+      retryState,
+      maxRetries: 3,
+      beforeAttempt: () => attestLlmInputSubstring(details),
+    });
     const restoredText = restoreResponseText(result.text);
     const restoredToolCalls = restoreRecordArgToolCalls(
       result.toolCalls,
@@ -2172,11 +2313,23 @@ async function generateTextByModelType(
   });
 
   if (result.usage) {
-    emitModelUsageEvent(runtime, modelType, params.prompt ?? "", result.usage, modelName);
+    emitModelUsageEvent(
+      runtime,
+      modelType,
+      params.prompt ?? "",
+      result.usage,
+      modelName,
+      retryState
+    );
   }
 
   if (shouldReturnNativeResult) {
-    return buildNativeTextResult(result, modelName, usageProvider) as NativeTextModelResult;
+    return buildNativeTextResult(
+      result,
+      modelName,
+      usageProvider,
+      retryState
+    ) as NativeTextModelResult;
   }
 
   return result.text;
