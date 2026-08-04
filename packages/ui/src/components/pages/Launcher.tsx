@@ -40,6 +40,7 @@ const LAUNCHER_RESPONSIVE_CSS = `
 }
 [data-testid="launcher"] [data-launcher-label][data-compact-label="true"] {
   font-size: .75rem;
+  overflow-wrap: anywhere;
 }
 @media (orientation: landscape) and (max-height: 520px) {
   [data-testid="launcher"] [data-launcher-icon] { width: 3.5rem; height: 3.5rem; }
@@ -101,7 +102,7 @@ const IconTile = memo(function IconTile({ entry, onLaunch }: IconTileProps) {
   });
   return (
     <div
-      className="flex justify-center"
+      className="flex w-full justify-center"
       data-testid={`launcher-tile-${entry.id}`}
     >
       <button
@@ -113,7 +114,7 @@ const IconTile = memo(function IconTile({ entry, onLaunch }: IconTileProps) {
         onPointerCancel={hold.onPointerCancel}
         onClickCapture={suppression.onClickCapture}
         onClick={() => onLaunch(entry)}
-        className="group relative flex max-w-[5.5rem] flex-col items-center gap-2.5 rounded-2xl select-none"
+        className="group relative flex w-full max-w-[5.5rem] flex-col items-center gap-2.5 rounded-2xl select-none"
       >
         <div className="relative">
           <div
@@ -157,7 +158,7 @@ const IconTile = memo(function IconTile({ entry, onLaunch }: IconTileProps) {
           data-launcher-label=""
           data-compact-label={hasLongUnbrokenLabel || undefined}
           className={cn(
-            "line-clamp-2 max-w-[5.5rem] text-center text-xs font-bold leading-tight tracking-[0.01em] whitespace-normal",
+            "line-clamp-2 w-max max-w-[5.5rem] text-center text-xs font-bold leading-tight tracking-[0.01em] whitespace-normal",
             WALLPAPER_TEXT.base,
             WALLPAPER_FLOAT_SHADOW,
           )}

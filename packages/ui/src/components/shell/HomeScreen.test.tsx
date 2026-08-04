@@ -181,22 +181,28 @@ describe("HomeScreen", () => {
     expect(apps.contains(calendarButton)).toBe(true);
     apps.scrollTop = 96;
 
+    // The redesigned inbox starts fully populated in its capped region. Fold
+    // it once before exercising an explicit expansion that occupies Home.
+    const list = screen.getByTestId("home-notification-list");
+    fireEvent.wheel(list, { deltaY: PULL_COMMIT_PX + 10 });
+    fireEvent.wheel(list, { deltaY: PULL_COMMIT_PX + 10 });
+    act(() => vi.advanceTimersByTime(700));
+
     calendarButton.focus();
-    fireEvent.wheel(screen.getByTestId("home-notification-list"), {
-      deltaY: -(PULL_COMMIT_PX + 10),
-    });
+    fireEvent.wheel(list, { deltaY: -(PULL_COMMIT_PX + 10) });
     expect(apps.className).toContain("overflow-y-auto");
     expect(apps.className).not.toContain("overflow-y-hidden");
     expect(apps.getAttribute("aria-hidden")).toBe("true");
     expect(apps.hasAttribute("inert")).toBe(true);
     expect(apps.contains(calendarButton)).toBe(true);
     expect(document.activeElement).toBe(
-      screen.getByTestId("notifications-collapse"),
+      screen.getByTestId("home-notification-center"),
     );
-    expect(screen.getByTestId("notifications-count").style.opacity).toBe("0");
+    expect(screen.queryByTestId("notifications-count")).toBeNull();
     expect(screen.queryByTestId("notification-group-label")).toBeNull();
 
-    fireEvent.click(screen.getByTestId("notifications-collapse"));
+    fireEvent.wheel(list, { deltaY: PULL_COMMIT_PX + 10 });
+    fireEvent.wheel(list, { deltaY: PULL_COMMIT_PX + 10 });
     act(() => vi.advanceTimersByTime(700));
     expect(screen.getByTestId("home-notification-list").dataset.shadeMode).toBe(
       "rested",
@@ -227,6 +233,10 @@ describe("HomeScreen", () => {
     expect(
       secondaryRegion?.contains(screen.getByTestId("home-widget-host")),
     ).toBe(true);
+
+    fireEvent.wheel(list, { deltaY: PULL_COMMIT_PX + 10 });
+    fireEvent.wheel(list, { deltaY: PULL_COMMIT_PX + 10 });
+    act(() => vi.advanceTimersByTime(700));
 
     fireEvent.pointerDown(list, {
       pointerType: "mouse",
@@ -266,7 +276,8 @@ describe("HomeScreen", () => {
 
     fireEvent.wheel(list, { deltaY: -(PULL_COMMIT_PX + 10) });
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
-    fireEvent.click(screen.getByTestId("notifications-collapse"));
+    fireEvent.wheel(list, { deltaY: PULL_COMMIT_PX + 10 });
+    fireEvent.wheel(list, { deltaY: PULL_COMMIT_PX + 10 });
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     expect(list.hasAttribute("data-shade-settling")).toBe(true);
     expect(
@@ -320,6 +331,7 @@ describe("HomeScreen", () => {
     fireEvent.wheel(list, { deltaY: -(PULL_COMMIT_PX / 2 + 2) });
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     expect(apps.hasAttribute("inert")).toBe(false);
+    act(() => vi.advanceTimersByTime(700));
 
     const calendarButton = screen.getByRole("button", {
       name: "Open Calendar",
@@ -333,10 +345,11 @@ describe("HomeScreen", () => {
 
     expect(apps.hasAttribute("inert")).toBe(true);
     expect(document.activeElement).toBe(
-      screen.getByTestId("notifications-collapse"),
+      screen.getByTestId("home-notification-center"),
     );
 
-    fireEvent.click(screen.getByTestId("notifications-collapse"));
+    fireEvent.wheel(list, { deltaY: PULL_COMMIT_PX + 10 });
+    fireEvent.wheel(list, { deltaY: PULL_COMMIT_PX + 10 });
     act(() => vi.advanceTimersByTime(700));
     expect(apps.hasAttribute("inert")).toBe(false);
     expect(document.activeElement).toBe(calendarButton);
@@ -360,6 +373,9 @@ describe("HomeScreen", () => {
     const calendarButton = screen.getByRole("button", {
       name: "Open Calendar",
     });
+    fireEvent.wheel(list, { deltaY: PULL_COMMIT_PX + 10 });
+    fireEvent.wheel(list, { deltaY: PULL_COMMIT_PX + 10 });
+    act(() => vi.advanceTimersByTime(700));
     calendarButton.focus();
     fireEvent.wheel(list, { deltaY: -(PULL_COMMIT_PX + 10) });
     expect(apps.hasAttribute("inert")).toBe(true);

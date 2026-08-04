@@ -103,7 +103,7 @@ const HOME_SCREEN_CSS = `
   [data-testid="home-notification-list"][data-shade-preview="expanding"][data-shade-dragging]
 ) [data-home-notification-region],
 [data-testid="home-content-column"][data-home-has-notifications]:has(
-  [data-testid="home-notification-list"][data-shade-mode="expanded"]:not([data-shade-settling])
+  [data-testid="home-notification-list"][data-shade-occupies-home]:not([data-shade-settling])
 ) [data-home-notification-region] {
   flex-grow: 1;
   max-height: 100%;
@@ -112,7 +112,7 @@ const HOME_SCREEN_CSS = `
   [data-testid="home-notification-list"][data-shade-preview="expanding"][data-shade-dragging]
 ) [data-home-below-notifications],
 [data-testid="home-content-column"][data-home-has-notifications]:has(
-  [data-testid="home-notification-list"][data-shade-mode="expanded"]:not([data-shade-settling])
+  [data-testid="home-notification-list"][data-shade-occupies-home]:not([data-shade-settling])
 ) [data-home-below-notifications] {
   flex-grow: 0;
   grid-template-rows: 0fr;
@@ -342,7 +342,7 @@ export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
           <NotificationsHomeCenter
             emptyGestureTargetRef={homeScreenRef}
             shadeLayoutTargetRef={homeContentColumnRef}
-            onShadeExpandedChange={handleShadeExpandedChange}
+            onShadeOccupancyChange={handleShadeExpandedChange}
           />
         </div>
 

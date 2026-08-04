@@ -2184,6 +2184,55 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     state: "unavailable",
     byProvider: [],
   };
+  // The orchestrator view mounts its account-pool widgets alongside task
+  // status. Healthy empty payloads keep the deterministic harness faithful to
+  // the real contracts instead of falling through to the stub server's 501.
+  await page.route(/\/api\/accounts(?:\?.*)?$/, async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ providers: [] }),
+    });
+  });
+
+  await page.route("**/api/orchestrator/accounts**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    const { pathname } = new URL(route.request().url());
+    const body = pathname.endsWith("/readiness")
+      ? {
+          ready: false,
+          rotation: false,
+          required: 1,
+          providers: [],
+          problems: ["No coding accounts are connected."],
+        }
+      : { strategy: "least-used", availability: {}, assignments: [] };
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(body),
+    });
+  });
+
+  await page.route("**/api/orchestrator/rooms", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ rooms: [] }),
+    });
+  });
+
   await page.route("**/api/orchestrator/status", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();

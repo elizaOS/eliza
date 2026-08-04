@@ -215,6 +215,15 @@ export function useStartupShellController(): StartupShellController {
       return;
     }
 
+    // The auth-status probe is the authority for whether a provisioned cloud
+    // container needs its one-time bootstrap session. Its first-run endpoint is
+    // protected until that session exists, so probing it here would turn the
+    // expected 401 into a startup failure before the bootstrap screen can run.
+    if (isBootstrapGateRequired(phase, firstRunCloudProvisionedContainer)) {
+      setShowBootstrap(true);
+      return;
+    }
+
     cloudSkipProbeStartedRef.current = true;
     let cancelled = false;
 
@@ -235,11 +244,6 @@ export function useStartupShellController(): StartupShellController {
       const status = probe.value;
 
       if (!status.cloudProvisioned) {
-        return;
-      }
-
-      if (needsBootstrapSession()) {
-        setShowBootstrap(true);
         return;
       }
 

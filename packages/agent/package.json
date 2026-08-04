@@ -74,6 +74,21 @@
       "default": "./dist/index.js"
     },
     "./package.json": "./package.json",
+    "./actions/grounded-action-reply": {
+      "types": "./src/actions/grounded-action-reply.ts",
+      "eliza-source": {
+        "types": "./src/actions/grounded-action-reply.ts",
+        "import": "./src/actions/grounded-action-reply.ts",
+        "default": "./src/actions/grounded-action-reply.ts"
+      },
+      "bun": {
+        "types": "./src/actions/grounded-action-reply.ts",
+        "import": "./src/actions/grounded-action-reply.ts",
+        "default": "./src/actions/grounded-action-reply.ts"
+      },
+      "import": "./dist/actions/grounded-action-reply.js",
+      "default": "./dist/actions/grounded-action-reply.js"
+    },
     "./api": {
       "types": "./src/api/index.ts",
       "eliza-source": {

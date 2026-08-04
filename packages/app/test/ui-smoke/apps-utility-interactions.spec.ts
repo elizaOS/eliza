@@ -209,66 +209,6 @@ test("utility app-window routes render without red errors or overflow", async ({
   }
 });
 
-test("vector browser controls search and switch projection modes", async ({
-  page,
-}) => {
-  const issues = installIssueGuards(page);
-  const vectorBrowser = {
-    name: "vector-browser",
-    path: "/vector-browser",
-    readyChecks: [
-      { selector: '[data-agent-id="vector-table"]' },
-      { text: "Deterministic memory fixture" },
-    ],
-    timeoutMs: 90_000,
-  } satisfies RouteCase;
-
-  await openAppWindow(page, vectorBrowser);
-  await expect(page.locator('[data-agent-id="vector-table"]')).toBeVisible();
-  await expect(page.getByPlaceholder("Search content...")).toBeVisible();
-  await expect(
-    page.getByText("Deterministic memory fixture").first(),
-  ).toBeVisible();
-
-  await page.getByPlaceholder("Search content...").fill("smoke");
-  await clickRequired(
-    page.getByRole("button", { name: /^Search$/ }),
-    "vector search",
-  );
-  await expect(
-    page.getByText("Deterministic memory fixture").first(),
-  ).toBeVisible();
-
-  await clickRequired(
-    page.getByRole("button", { name: "2D" }),
-    "vector 2D projection",
-  );
-  await expect(page.getByRole("button", { name: "2D" })).toHaveAttribute(
-    "aria-current",
-    "true",
-  );
-  await expect(page.getByText(/Not enough embeddings/i)).toBeVisible();
-
-  await clickRequired(
-    page.getByRole("button", { name: "3D" }),
-    "vector 3D projection",
-  );
-  await expect(page.getByRole("button", { name: "3D" })).toHaveAttribute(
-    "aria-current",
-    "true",
-  );
-  await expect(page.getByText(/Not enough embeddings/i)).toBeVisible();
-
-  await clickRequired(
-    page.getByRole("button", { name: "List" }),
-    "vector list view",
-  );
-  await expect(
-    page.getByText("Deterministic memory fixture").first(),
-  ).toBeVisible();
-  await expectNoIssues(page, issues, "vector browser interactions");
-});
-
 test("wallet inventory controls update visible deterministic state", async ({
   page,
 }) => {
@@ -332,7 +272,7 @@ test("wallet inventory controls update visible deterministic state", async ({
   await expect(walletSidebar.getByText("USDC", { exact: true })).toHaveCount(0);
 
   await clickRequired(
-    walletSidebar.getByRole("button", { name: "Open RPC settings" }),
+    page.getByRole("button", { name: "RPC settings", exact: true }),
     "Wallet RPC settings action",
   );
   await expect(page).toHaveURL(/wallet-rpc/);

@@ -5047,6 +5047,7 @@ export function ChatOverlay({
             : "calc(var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.5rem)",
       }}
       data-testid="chat-overlay"
+      data-chat-gesture-surface=""
       data-open={sheetOpen ? "true" : undefined}
     >
       {/* NO reclaimed-bottom-floor element here (removed): it used to paint a

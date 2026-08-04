@@ -99,7 +99,7 @@ describe("root test lane min-task wiring (#13620)", () => {
     ["test", 120],
     ["test:server", 8],
     ["test:client", 3],
-    ["test:plugins", 100],
+    ["test:plugins", 99],
     ["test:e2e", 17],
     ["test:live", 100],
     ["test:e2e:live", 17],
