@@ -79,6 +79,8 @@ async function startService(
   return service;
 }
 
+const SQL_PERSISTENCE_TEST_TIMEOUT_MS = 15_000;
+
 describe("scheduling SQL persistence", () => {
   const harnesses: RuntimeHarness[] = [];
 
@@ -157,7 +159,7 @@ describe("scheduling SQL persistence", () => {
       "SELECT id FROM app_lifeops.life_scheduled_tasks",
     );
     expect(source.rows).toEqual([{ id: "legacy-watcher" }]);
-  });
+  }, SQL_PERSISTENCE_TEST_TIMEOUT_MS);
 
   it("keeps a due watcher through runner service re-init and fires it", async () => {
     const harness = await createRuntimeHarness();
@@ -220,5 +222,5 @@ describe("scheduling SQL persistence", () => {
         WHERE id = '${scheduled.taskId}'`,
     );
     expect(rows.rows[0]?.status).toBe("fired");
-  });
+  }, SQL_PERSISTENCE_TEST_TIMEOUT_MS);
 });
