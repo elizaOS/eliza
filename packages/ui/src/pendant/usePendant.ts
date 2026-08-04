@@ -24,6 +24,7 @@ export interface UsePendantOptions {
   vadSpeechRmsThreshold?: number;
   onTranscript?: (text: string) => void;
   onSegment?: (detail: PendantTranscriptSegmentDetail) => void;
+  dispatchResolvedTranscript?: boolean;
 }
 
 export interface UsePendantResult {
@@ -80,6 +81,7 @@ export function usePendant(options: UsePendantOptions = {}): UsePendantResult {
       onState: setPendantState,
       onTranscript: optionsRef.current.onTranscript,
       onSegment: optionsRef.current.onSegment,
+      dispatchResolvedTranscript: optionsRef.current.dispatchResolvedTranscript,
       vadSilenceMs: optionsRef.current.vadSilenceMs,
       vadSpeechRmsThreshold: optionsRef.current.vadSpeechRmsThreshold,
     };

@@ -118,6 +118,11 @@ export interface PendantConnectionOptions {
    * Bluetooth elsewhere.
    */
   createTransport?: () => PendantTransport | null;
+  /**
+   * Dispatch resolved text directly to VOICE_DM. Canonical session owners set
+   * this false and dispatch only after the server commits the segment.
+   */
+  dispatchResolvedTranscript?: boolean;
   /** Maximum spontaneous mid-session reconnect attempts. */
   reconnectMaxAttempts?: number;
   /** Delay between spontaneous mid-session reconnect attempts. */
@@ -194,6 +199,9 @@ export class PendantConnection {
 
   /** True while an utterance is being transcribed — serializes finalizations. */
   private finalizing: Promise<void> = Promise.resolve();
+  /** Invalidates queued/in-flight ASR when capture is paused or disconnected. */
+  private captureGeneration = 0;
+  private transcriptionAbort: AbortController | null = null;
 
   private readonly onAudioPayload = (payload: Uint8Array): void => {
     this.handleNotification(payload);
@@ -252,8 +260,10 @@ export class PendantConnection {
     if (detail.status !== "resolved") return;
     const text = detail.text?.trim() ?? "";
     if (!text) return;
-    dispatchPendantVoiceTranscript(text);
-    this.opts.onTranscript?.(text);
+    if (this.opts.dispatchResolvedTranscript !== false) {
+      dispatchPendantVoiceTranscript(text);
+      this.opts.onTranscript?.(text);
+    }
   }
 
   private resetDetector(): void {
@@ -635,8 +645,9 @@ export class PendantConnection {
       if (segment) this.emitSegment(segment);
       this.resetDetector();
       if (segment) {
+        const generation = this.captureGeneration;
         this.finalizing = this.finalizing.then(() =>
-          this.finalizeUtterance(chunks, total, segment),
+          this.finalizeUtterance(chunks, total, segment, generation),
         );
       }
     }
@@ -664,8 +675,16 @@ export class PendantConnection {
     chunks: Float32Array[],
     total: number,
     segment: PendantTranscriptSegmentDetail,
+    generation: number,
   ): Promise<void> {
-    if (total === 0) return;
+    if (total === 0 || generation !== this.captureGeneration || this.paused) {
+      this.emitSegment({
+        ...segment,
+        status: "discarded",
+        discardReason: "paused",
+      });
+      return;
+    }
     const pcm = new Float32Array(total);
     let off = 0;
     for (const c of chunks) {
@@ -684,8 +703,20 @@ export class PendantConnection {
     const wav = encodeMonoPcm16Wav(pcm, OMI_OPUS_SAMPLE_RATE_HZ);
     const wasStatus = this.state.status;
     this.patch({ status: "transcribing" });
+    const abort = new AbortController();
+    this.transcriptionAbort = abort;
     try {
-      const { text, words } = await transcribeLocalInferenceWav(wav);
+      const { text, words } = await transcribeLocalInferenceWav(wav, {
+        signal: abort.signal,
+      });
+      if (generation !== this.captureGeneration || this.paused) {
+        this.emitSegment({
+          ...segment,
+          status: "discarded",
+          discardReason: "paused",
+        });
+        return;
+      }
       const resolvedSegment: PendantTranscriptSegmentDetail = {
         ...segment,
         status: "resolved",
@@ -695,6 +726,18 @@ export class PendantConnection {
       this.patch({ lastTranscript: text, error: null, typedError: null });
       this.commitSegment(resolvedSegment);
     } catch (error) {
+      if (
+        abort.signal.aborted ||
+        generation !== this.captureGeneration ||
+        this.paused
+      ) {
+        this.emitSegment({
+          ...segment,
+          status: "discarded",
+          discardReason: "paused",
+        });
+        return;
+      }
       // error-policy:J4 Failed ASR becomes an explicit failed transcript segment.
       // ASR failure is non-fatal for ambient capture, but it must stay visible
       // so the transcript surface does not look healthy while segments drop.
@@ -708,6 +751,7 @@ export class PendantConnection {
         warning: typedError.message,
       });
     } finally {
+      if (this.transcriptionAbort === abort) this.transcriptionAbort = null;
       // Return to the ambient listening state (or hearing if speech already
       // resumed while we were transcribing).
       const next =
@@ -727,6 +771,9 @@ export class PendantConnection {
     if (this.paused) return;
     if (!this.transport || !this.decoder || !this.isPauseableStatus()) return;
     this.paused = true;
+    this.captureGeneration += 1;
+    this.transcriptionAbort?.abort();
+    this.transcriptionAbort = null;
     this.reassembler.reset();
     this.accountedDroppedPackets = 0;
     this.resetDetector();

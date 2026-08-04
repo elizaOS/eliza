@@ -14,6 +14,7 @@ import {
   sendJson as httpSendJson,
   type LegacyRouteHandler,
   logger,
+  type Memory,
   type Route,
   resolveCanonicalOwnerId,
   stringToUuid,
@@ -355,6 +356,65 @@ async function notifyCommittedSegment(
       );
     }
   }
+}
+
+function canonicalPendantMemoryId(event: PendantCommittedSegmentEvent): UUID {
+  return stringToUuid(
+    `pendant:${event.snapshot.session.agentId}:${event.snapshot.session.id}:${event.segment.id}`,
+  );
+}
+
+/** Persist the resolved transcript as the one recallable pendant record. */
+async function persistCanonicalPendantMemory(
+  runtime: AgentRuntime,
+  event: PendantCommittedSegmentEvent,
+): Promise<void> {
+  const text = event.segment.text.trim();
+  if (event.segment.status !== "resolved" || !text) return;
+
+  const { session } = event.snapshot;
+  const id = canonicalPendantMemoryId(event);
+  const roomId = stringToUuid(
+    `${runtime.character?.name?.trim() || "Eliza"}-web-chat-room`,
+  );
+  const timestamp = Date.parse(
+    event.segment.endedAt ?? event.segment.updatedAt,
+  );
+  const memory: Memory = {
+    id,
+    entityId: session.ownerId as UUID,
+    agentId: session.agentId as UUID,
+    roomId,
+    createdAt: Number.isFinite(timestamp) ? timestamp : Date.now(),
+    content: { text, source: "pendant", channelType: "VOICE_DM" },
+    metadata: {
+      provider: "pendant",
+      accountId: session.agentId,
+      platformMessageId: event.segment.id,
+      sourceId: event.segment.id,
+      chatType: "dm",
+      scope: "owner-private",
+      scopedToEntityId: session.ownerId,
+      addedBy: session.ownerId,
+      addedByRole: "OWNER",
+      base: { source: "pendant", scope: "owner-private" },
+      pendant: {
+        userId: session.ownerId,
+        accountId: session.agentId,
+        messageId: event.segment.id,
+        sessionId: session.id,
+        segmentId: event.segment.id,
+        segmentRevision: event.segment.revision,
+      },
+    },
+  };
+
+  const existing = await runtime.getMemoryById(id);
+  if (existing) {
+    await runtime.updateMemory({ ...existing, ...memory });
+    return;
+  }
+  await runtime.createMemory(memory, "messages", true);
 }
 
 function broadcastMutation(
@@ -741,8 +801,12 @@ export async function handlePendantSessionRoutes(
         };
       });
       if (event.committed) {
+        await persistCanonicalPendantMemory(identity.runtime, event);
         await notifyCommittedSegment(event);
         broadcastMutation(ctx, event.snapshot);
+      } else {
+        // Repair a prior attempt where the projection committed but Memory did not.
+        await persistCanonicalPendantMemory(identity.runtime, event);
       }
       json(
         res,
@@ -769,9 +833,8 @@ export async function handlePendantSessionRoutes(
       const segmentId = tail[1];
       const event = await withSessionLock(lockKey, async () => {
         const stored = await loadStored({ repository, ...identity, sessionId });
-        // Pausing prevents new capture segments, but already-durable pending
-        // segments must still accept late ASR/diarization revisions.
-        assertNotEnded(stored);
+        // Pause severs late ASR/diarization writes from the prior generation.
+        assertCanAppend(stored);
         assertLease(stored, parsed.data.leaseToken);
         const existingIndex = stored.segments.findIndex(
           (segment) => segment.id === segmentId,
@@ -821,8 +884,11 @@ export async function handlePendantSessionRoutes(
         };
       });
       if (event.committed) {
+        await persistCanonicalPendantMemory(identity.runtime, event);
         await notifyCommittedSegment(event);
         broadcastMutation(ctx, event.snapshot);
+      } else {
+        await persistCanonicalPendantMemory(identity.runtime, event);
       }
       json(
         res,

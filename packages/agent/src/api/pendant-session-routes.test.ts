@@ -51,6 +51,18 @@ const {
 
 class TestRuntime {
   readonly agentId: UUID;
+  readonly character = { name: "Test Agent" };
+  readonly memories = new Map<string, Record<string, unknown>>();
+  readonly createMemory = vi.fn(
+    async (memory: Record<string, unknown>, tableName: string) => {
+      this.memories.set(String(memory.id), memory);
+      expect(tableName).toBe("messages");
+      return memory.id;
+    },
+  );
+  readonly updateMemory = vi.fn(async (memory: Record<string, unknown>) => {
+    this.memories.set(String(memory.id), memory);
+  });
 
   constructor(agentId: UUID) {
     this.agentId = agentId;
@@ -62,20 +74,8 @@ class TestRuntime {
     );
   }
 
-  async getMemoryById(): Promise<never> {
-    throw new Error("Pendant session routes must not read Memory records");
-  }
-
-  async createMemory(): Promise<never> {
-    throw new Error("Pendant session routes must not create Memory records");
-  }
-
-  async updateMemory(): Promise<never> {
-    throw new Error("Pendant session routes must not update Memory records");
-  }
-
-  async deleteMemory(): Promise<never> {
-    throw new Error("Pendant session routes must not delete Memory records");
+  async getMemoryById(id: string): Promise<Record<string, unknown> | null> {
+    return this.memories.get(id) ?? null;
   }
 }
 
@@ -367,6 +367,63 @@ describe("handlePendantSessionRoutes", () => {
     }
   });
 
+  it("writes one owner-private canonical Memory with pendant provenance", async () => {
+    const ownerId = uuid();
+    const h = makeHarness(ownerId);
+    await h.request("POST", "/api/pendant/sessions", {
+      sessionId: "sess-memory",
+    });
+    const lease = okBody<{ leaseToken: string }>(
+      await h.request("POST", "/api/pendant/sessions/sess-memory/lease", {
+        holder: "capturer",
+      }),
+    );
+
+    const mutation = await h.request(
+      "POST",
+      "/api/pendant/sessions/sess-memory/segments",
+      {
+        leaseToken: lease.leaseToken,
+        segment: segment("sess-memory", 0, 0, "private pendant fact"),
+      },
+    );
+    expect(mutation.status).toBe(200);
+    expect(h.runtime.memories).toHaveLength(1);
+    const [memory] = [...h.runtime.memories.values()];
+    expect(memory).toMatchObject({
+      entityId: ownerId,
+      agentId: h.runtime.agentId,
+      content: {
+        text: "private pendant fact",
+        source: "pendant",
+        channelType: "VOICE_DM",
+      },
+      metadata: {
+        provider: "pendant",
+        scope: "owner-private",
+        scopedToEntityId: ownerId,
+        base: { source: "pendant", scope: "owner-private" },
+        pendant: {
+          userId: ownerId,
+          sessionId: "sess-memory",
+          segmentId: "sess-memory:segment:0",
+        },
+      },
+    });
+    expect(h.runtime.createMemory).toHaveBeenCalledWith(
+      expect.objectContaining({ id: memory?.id }),
+      "messages",
+      true,
+    );
+
+    await h.request("POST", "/api/pendant/sessions/sess-memory/segments", {
+      leaseToken: lease.leaseToken,
+      segment: segment("sess-memory", 0, 0, "private pendant fact"),
+    });
+    expect(h.runtime.memories).toHaveLength(1);
+    expect(h.runtime.createMemory).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps exact duplicate replay idempotent and conflicts altered same-revision content", async () => {
     const h = makeHarness();
     await h.request("POST", "/api/pendant/sessions", { sessionId: "sess-b" });
@@ -613,16 +670,38 @@ describe("handlePendantSessionRoutes", () => {
     );
     expect(second.leaseToken).not.toBe(first.leaseToken);
 
+    await h.request("POST", "/api/pendant/sessions/sess-c/segments", {
+      leaseToken: second.leaseToken,
+      segment: {
+        ...segment("sess-c", 0),
+        status: "pending",
+        text: "",
+        endedAt: null,
+      },
+    });
     await h.request("POST", "/api/pendant/sessions/sess-c/pause", {});
     const blocked = await h.request(
       "POST",
       "/api/pendant/sessions/sess-c/segments",
       {
         leaseToken: second.leaseToken,
-        segment: segment("sess-c", 0),
+        segment: segment("sess-c", 1),
       },
     );
     expect(blocked.status).toBe(409);
+    const lateAsr = await h.request(
+      "PATCH",
+      "/api/pendant/sessions/sess-c/segments/sess-c%3Asegment%3A0",
+      {
+        leaseToken: second.leaseToken,
+        revision: 1,
+        status: "resolved",
+        text: "must not land after pause",
+        endedAt: "2026-07-09T00:00:01.000Z",
+      },
+    );
+    expect(lateAsr.status).toBe(409);
+    expect(h.runtime.memories).toHaveLength(0);
   });
 
   it("converges polling, deletes from memory, and enforces owner and agent isolation", async () => {
