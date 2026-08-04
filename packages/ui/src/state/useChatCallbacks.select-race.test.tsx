@@ -35,7 +35,9 @@ import type {
   ConversationMessage,
   ImageAttachment,
 } from "../api";
+import { CLOUD_HANDOFF_PHASE_EVENT } from "../events";
 import type { AutonomyEventStore, AutonomyRunHealthMap } from "./autonomy";
+import { readChatDraft } from "./ChatComposerContext.hooks";
 import type { LifecycleAction } from "./internal";
 import { type DataLoadersDeps, useDataLoaders } from "./useDataLoaders";
 
@@ -47,6 +49,7 @@ const mocks = vi.hoisted(() => ({
     deleteConversation: vi.fn(),
     cleanupEmptyConversations: vi.fn(),
     requestGreeting: vi.fn(),
+    sendConversationMessageStream: vi.fn(),
     sendWsMessage: vi.fn(),
     getStatus: vi.fn(),
     getBaseUrl: vi.fn(() => ""),
@@ -130,6 +133,8 @@ interface Harness {
   activeConversationIdRef: MutableRefObject<string | null>;
   conversationMessagesRef: MutableRefObject<ConversationMessage[]>;
   conversationsRef: MutableRefObject<Conversation[]>;
+  chatInputRef: MutableRefObject<string>;
+  chatPendingImagesRef: MutableRefObject<ImageAttachment[]>;
   /** Resolve the oldest in-flight getConversationMessages fetch for `id`. */
   resolveLoad: (id: string, messages: ConversationMessage[]) => void;
   deletedConversationIds: () => string[];
@@ -176,6 +181,13 @@ function makeHarness(seedConversations: Conversation[]): Harness {
     (v) => {
       unreadRef.current = typeof v === "function" ? v(unreadRef.current) : v;
     };
+  const setChatInput: UseChatCallbacksDeps["setChatInput"] = vi.fn((v) => {
+    chatInputRef.current = v;
+  });
+  const setChatPendingImages: UseChatCallbacksDeps["setChatPendingImages"] =
+    vi.fn((v) => {
+      chatPendingImagesRef.current = v;
+    });
   // Mirrors useChatState.resetDraftState — the exact side effects the real
   // handleNewConversation runs before creating the fresh conversation.
   const resetConversationDraftState = (): void => {
@@ -268,12 +280,12 @@ function makeHarness(seedConversations: Conversation[]): Harness {
     companionMessageCutoffTs: 0,
     conversationMessages: [],
     ptySessions: [] as CodingAgentSession[],
-    setChatInput: vi.fn(),
+    setChatInput,
     setChatSending: vi.fn(),
     setChatFirstTokenReceived: vi.fn(),
     setServerTurnStatus: vi.fn(),
     setChatLastUsage: vi.fn(),
-    setChatPendingImages: vi.fn(),
+    setChatPendingImages,
     setConversations,
     setActiveConversationId,
     setCompanionMessageCutoffTs: vi.fn(),
@@ -353,6 +365,8 @@ function makeHarness(seedConversations: Conversation[]): Harness {
     activeConversationIdRef,
     conversationMessagesRef,
     conversationsRef,
+    chatInputRef,
+    chatPendingImagesRef,
     resolveLoad: (id, messages) => {
       pendingLoads.get(id)?.shift()?.resolve(messages);
     },
@@ -581,5 +595,87 @@ describe("rapid conversation switching must never delete a real conversation", (
     expect(result.current.loaders.loadedConversationIdRef.current).toBe(
       "conv-new-1",
     );
+  });
+
+  it("new chat restores queued text and attachments after resetting the old draft", async () => {
+    const h = makeHarness(SEED);
+    const { result } = mountChat(h);
+    const queuedImage: ImageAttachment = {
+      data: "AAAA",
+      mimeType: "image/png",
+      name: "queued.png",
+    };
+
+    await selectAndCommit(result, h, "conv-b", realHistory("b"));
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(CLOUD_HANDOFF_PHASE_EVENT, {
+          detail: { agentId: "agent-123", phase: "migrating" },
+        }),
+      );
+    });
+
+    let queuedSend!: Promise<void>;
+    await act(async () => {
+      queuedSend = result.current.callbacks.sendChatText("keep this", {
+        conversationId: "conv-b",
+        images: [queuedImage],
+      });
+      await Promise.resolve();
+    });
+
+    expect(h.chatInputRef.current).toBe("");
+    expect(h.chatPendingImagesRef.current).toEqual([]);
+
+    await act(async () => {
+      await result.current.callbacks.handleNewConversation();
+      await queuedSend;
+    });
+
+    expect(h.chatInputRef.current).toBe("keep this");
+    expect(h.chatPendingImagesRef.current).toEqual([queuedImage]);
+    expect(mocks.client.sendConversationMessageStream).not.toHaveBeenCalled();
+  });
+
+  it("conversation selection parks cancelled queued text and images on the source conversation", async () => {
+    const h = makeHarness(SEED);
+    const { result } = mountChat(h);
+    const queuedImage: ImageAttachment = {
+      data: "BBBB",
+      mimeType: "image/png",
+      name: "source-only.png",
+    };
+
+    await selectAndCommit(result, h, "conv-b", realHistory("b"));
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(CLOUD_HANDOFF_PHASE_EVENT, {
+          detail: { agentId: "agent-123", phase: "migrating" },
+        }),
+      );
+    });
+
+    let queuedSend!: Promise<void>;
+    await act(async () => {
+      queuedSend = result.current.callbacks.sendChatText("stay with B", {
+        conversationId: "conv-b",
+        images: [queuedImage],
+      });
+      await Promise.resolve();
+    });
+
+    await selectAndCommit(result, h, "conv-c", realHistory("c"));
+    await queuedSend;
+
+    expect(readChatDraft("conv-b")).toBe("stay with B");
+    expect(h.chatInputRef.current).toBe("");
+    expect(h.chatPendingImagesRef.current).toEqual([]);
+
+    await selectAndCommit(result, h, "conv-b", realHistory("b-return"));
+
+    expect(h.chatInputRef.current).toBe("stay with B");
+    expect(h.chatPendingImagesRef.current).toEqual([queuedImage]);
+    expect(mocks.client.sendConversationMessageStream).not.toHaveBeenCalled();
   });
 });

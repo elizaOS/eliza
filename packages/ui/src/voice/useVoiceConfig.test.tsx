@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 
 /**
- * Exercises character voice resolution through the shared hook with mocked
- * configuration transport and real provider-default selection boundaries.
+ * Hook coverage for character-preset voice resolution. Runtime capability
+ * selection is deterministic; compatibility reads cannot become surprise
+ * settings writes.
  */
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -59,7 +60,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("useVoiceConfig character preset resolution", () => {
-  it("does not select Cloud voice when the route is unauthenticated", async () => {
+  it("does not select Cloud voice when the route is configured but unauthenticated", async () => {
     hoisted.appState.elizaCloudVoiceProxyAvailable = true;
     hoisted.getConfig.mockResolvedValue({});
 
@@ -72,7 +73,7 @@ describe("useVoiceConfig character preset resolution", () => {
     expect(result.current.voiceConfig.provider).toBe("robot-voice");
   });
 
-  it("selects Cloud voice only when the configured route is authenticated", async () => {
+  it("selects Cloud voice when the configured route is authenticated", async () => {
     hoisted.appState.elizaCloudConnected = true;
     hoisted.appState.elizaCloudVoiceProxyAvailable = true;
     hoisted.getConfig.mockResolvedValue({});
@@ -95,10 +96,13 @@ describe("useVoiceConfig character preset resolution", () => {
     const { result } = renderHook(() => useVoiceConfig("en"));
 
     await waitFor(() => expect(result.current.voiceBootstrapTick).toBe(1));
+    expect(hoisted.resolvedTtsDefault).toHaveBeenLastCalledWith(
+      expect.objectContaining({ cloudVoiceAvailable: false }),
+    );
     expect(result.current.voiceConfig.provider).toBe("eliza-cloud");
   });
 
-  it("releases a legacy provider pin without mutating settings", async () => {
+  it("releases a legacy implicit provider without mutating settings", async () => {
     hoisted.getConfig.mockResolvedValue({
       ui: { presetId: "jin" },
       messages: {
@@ -116,7 +120,7 @@ describe("useVoiceConfig character preset resolution", () => {
     expect(hoisted.updateConfig).not.toHaveBeenCalled();
   });
 
-  it("derives a fresh preset without mutating settings", async () => {
+  it("derives a fresh provider-neutral preset without mutating settings", async () => {
     hoisted.getConfig.mockResolvedValue({ ui: { presetId: "jin" } });
 
     const { result } = renderHook(() => useVoiceConfig("en"));
@@ -127,7 +131,7 @@ describe("useVoiceConfig character preset resolution", () => {
     expect(hoisted.updateConfig).not.toHaveBeenCalled();
   });
 
-  it("does not migrate an explicit provider whose key is redacted", async () => {
+  it("does not migrate an explicit ElevenLabs provider whose key is redacted", async () => {
     hoisted.getConfig.mockResolvedValue({
       ui: { presetId: "jin" },
       messages: {
