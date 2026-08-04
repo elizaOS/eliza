@@ -180,11 +180,13 @@
         "vitest": "^4.0.18",
       },
       "peerDependencies": {
+        "@elizaos/plugin-calendar": "workspace:*",
         "@elizaos/plugin-e2b-sandbox": "*",
         "@elizaos/plugin-inbox": "workspace:*",
         "@elizaos/plugin-x402": "*",
       },
       "optionalPeers": [
+        "@elizaos/plugin-calendar",
         "@elizaos/plugin-e2b-sandbox",
         "@elizaos/plugin-inbox",
         "@elizaos/plugin-x402",
@@ -1348,7 +1350,6 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@capacitor/core": "8.4.0",
-        "@elizaos/app-core": "workspace:*",
         "@elizaos/capacitor-calendar": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-google-workspace": "workspace:*",
@@ -2728,6 +2729,7 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/core": "workspace:*",
+        "@elizaos/registry": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@elizaos/vault": "workspace:*",
       },

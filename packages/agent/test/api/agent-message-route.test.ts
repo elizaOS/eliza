@@ -18,6 +18,8 @@
  *     handlers registered via `runtime.registerModel`) is shared.
  *   - Compatibility transports never expose assistant turns explicitly
  *     marked internal, while ordinary visible summaries remain unchanged.
+ *   - `AgentRuntime.useModel(TEXT_LARGE)` dispatches to handlers registered
+ *     through `runtime.registerModel`.
  */
 
 import crypto from "node:crypto";
@@ -1018,5 +1020,4 @@ describe("AgentRuntime model dispatch (layer-2 verification from #7680)", () => 
     expect(handler).toHaveBeenCalledTimes(1);
   });
 });
-
 void ChannelType;
