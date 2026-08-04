@@ -22,10 +22,9 @@ const now = Date.parse("2026-07-30T20:00:00.000Z");
 
 function liveLedger(overrides = {}) {
   return {
-    schemaVersion: "1",
+    schemaVersion: "2",
     repository: "elizaOS/eliza",
     generatedAt: "2026-07-30T19:58:00.000Z",
-    stale: false,
     source: {
       provider: "github-graphql",
       fetchedAt: "2026-07-30T19:57:59.000Z",

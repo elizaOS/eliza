@@ -5,7 +5,7 @@
  */
 
 export const LEADERBOARD_REPOSITORY = "elizaOS/eliza" as const;
-export const LEADERBOARD_SCHEMA_VERSION = "1" as const;
+export const LEADERBOARD_SCHEMA_VERSION = "2" as const;
 export const SCORE_RULE_VERSION = "eliza-computer-v4" as const;
 export const SCORE_WINDOW_DAYS = 30;
 export const VERIFICATION_WINDOW_DAYS = 7;
@@ -396,7 +396,6 @@ export interface LeaderboardSnapshot {
   ruleVersion: typeof SCORE_RULE_VERSION;
   generatedAt: string;
   sourceUpdatedAt: string;
-  stale: false;
   window: {
     days: number;
     from: string;
@@ -2289,7 +2288,6 @@ export function createLeaderboardSnapshot(
     ruleVersion: SCORE_RULE_VERSION,
     generatedAt: input.generatedAt,
     sourceUpdatedAt: latestSourceUpdate(input),
-    stale: false,
     window: {
       days: SCORE_WINDOW_DAYS,
       from: input.windowFrom,
@@ -3296,8 +3294,10 @@ export function assertLeaderboardSnapshot(
   if (snapshot.ruleVersion !== SCORE_RULE_VERSION) {
     throw new Error(`snapshot.ruleVersion must be ${SCORE_RULE_VERSION}`);
   }
-  if (snapshot.stale !== false) {
-    throw new Error("A freshly generated snapshot must set stale=false");
+  if ("stale" in snapshot) {
+    throw new Error(
+      "snapshot must not persist a staleness claim; consumers derive freshness from generatedAt",
+    );
   }
   assertIsoTimestamp(snapshot.generatedAt, "snapshot.generatedAt");
   assertIsoTimestamp(snapshot.sourceUpdatedAt, "snapshot.sourceUpdatedAt");

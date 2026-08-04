@@ -16,12 +16,11 @@ export function snapshotFixture(): LeaderboardSnapshot {
     kind: "User",
   };
   return {
-    schemaVersion: "1",
+    schemaVersion: "2",
     repository: "elizaOS/eliza",
     ruleVersion: "eliza-computer-v4",
     generatedAt,
     sourceUpdatedAt: generatedAt,
-    stale: false,
     window: {
       days: 30,
       from: "2026-06-30T00:00:00.000Z",

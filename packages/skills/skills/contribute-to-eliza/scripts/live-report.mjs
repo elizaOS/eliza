@@ -297,23 +297,78 @@ function compareComment(left, right) {
 }
 
 export function parsePaginatedJson(output) {
-  const parsed = JSON.parse(output);
-  if (!Array.isArray(parsed)) {
-    throw new TypeError("gh --slurp output must be an array of pages");
+  // `gh api --paginate` prints each page as its own top-level JSON array,
+  // concatenated back to back. This scanner splits those top-level arrays
+  // without gh's newer `--slurp` flag (added in gh 2.48.0), so the inventory
+  // works on every GitHub CLI that supports `--paginate`, including
+  // distribution-packaged releases such as 2.45.0.
+  const text = output.trim();
+  if (text.length === 0) {
+    return [];
   }
-  return parsed.flatMap((page, index) => {
-    if (!Array.isArray(page)) {
-      throw new TypeError(`gh page ${index + 1} must be an array`);
+  const pages = [];
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escaped = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === '"') {
+        inString = false;
+      }
+      continue;
     }
-    return page;
-  });
+    if (character === '"') {
+      inString = true;
+      continue;
+    }
+    if (character === "[" || character === "{") {
+      if (depth === 0) {
+        if (character !== "[") {
+          throw new TypeError(
+            `gh page ${pages.length + 1} must be an array`,
+          );
+        }
+        start = index;
+      }
+      depth += 1;
+      continue;
+    }
+    if (character === "]" || character === "}") {
+      depth -= 1;
+      if (depth < 0) {
+        throw new TypeError("gh api output is not balanced JSON");
+      }
+      if (depth === 0) {
+        const page = JSON.parse(text.slice(start, index + 1));
+        if (!Array.isArray(page)) {
+          throw new TypeError(`gh page ${pages.length + 1} must be an array`);
+        }
+        pages.push(page);
+        start = -1;
+      }
+      continue;
+    }
+    if (depth === 0 && !/\s/.test(character)) {
+      throw new TypeError("gh api output must contain only JSON arrays");
+    }
+  }
+  if (depth !== 0 || inString) {
+    throw new TypeError("gh api output is not balanced JSON");
+  }
+  return pages.flat();
 }
 
 export function readGhPages(endpoint, spawn = spawnSync) {
   if (typeof endpoint !== "string" || endpoint.length === 0) {
     throw new TypeError("GitHub endpoint must be a non-empty string");
   }
-  const args = ["api", "--method", "GET", "--paginate", "--slurp", endpoint];
+  const args = ["api", "--method", "GET", "--paginate", endpoint];
   const result = spawn("gh", args, {
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,

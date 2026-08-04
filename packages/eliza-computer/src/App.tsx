@@ -866,6 +866,18 @@ export function App() {
       (clock - Date.parse(snapshot.generatedAt)) / (60 * 60 * 1000);
     return ageHours > 8 ? "stale" : "fresh";
   }, [clock, snapshot]);
+  const snapshotAge = useMemo(() => {
+    if (!snapshot) {
+      return undefined;
+    }
+    const ageMs = Math.max(0, clock - Date.parse(snapshot.generatedAt));
+    const ageHours = Math.floor(ageMs / (60 * 60 * 1000));
+    if (ageHours < 24) {
+      return `${ageHours} ${ageHours === 1 ? "hour" : "hours"}`;
+    }
+    const ageDays = Math.floor(ageHours / 24);
+    return `${ageDays} ${ageDays === 1 ? "day" : "days"}`;
+  }, [clock, snapshot]);
 
   return (
     <>
@@ -951,6 +963,9 @@ export function App() {
                 PRs
               </span>
               <span>Updated {formatDate(snapshot.generatedAt, true)}</span>
+              {freshness === "stale" ? (
+                <span>Data is {snapshotAge} old</span>
+              ) : null}
             </>
           ) : dataState.status === "error" ? (
             <>

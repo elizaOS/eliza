@@ -118,14 +118,16 @@ export function assertLiveLedgerReady(
       : contents,
     "leaderboard",
   );
-  if (snapshot.schemaVersion !== "1") {
-    throw new TypeError("leaderboard.schemaVersion must be 1");
+  if (snapshot.schemaVersion !== "2") {
+    throw new TypeError("leaderboard.schemaVersion must be 2");
   }
   if (snapshot.repository !== "elizaOS/eliza") {
     throw new TypeError("leaderboard.repository must be elizaOS/eliza");
   }
-  if (snapshot.stale !== false) {
-    throw new TypeError("leaderboard.stale must be false");
+  if ("stale" in snapshot) {
+    throw new TypeError(
+      "leaderboard must not persist a staleness claim; freshness is derived from generatedAt",
+    );
   }
   const generatedAt = asTimestamp(
     snapshot.generatedAt,

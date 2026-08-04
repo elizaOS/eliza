@@ -43,9 +43,15 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: eliza-computer-${{ github.event.pull_request.number || github.ref }}
-  # Quality-only PR supersessions may cancel. A trusted develop release must
-  # finish its deployment and byte verification before a newer run starts.
+  # PR runs supersede one another inside their own pull request. Trusted
+  # develop runs (push, schedule, workflow_dispatch) each use a unique group so
+  # a deploy waiting on the eliza-army-production environment can never
+  # queue-cancel newer scheduled quality runs; that interaction previously held
+  # the published contribution data stale for days while every six-hour
+  # refresh was cancelled behind one unapproved deploy. Production release
+  # ordering is still serialized by the deploy job's dedicated
+  # eliza-computer-production group and its post-approval freshness guard.
+  group: eliza-computer-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -224,6 +230,41 @@ jobs:
         with:
           name: eliza-computer-pages-${{ github.run_id }}
           path: packages/eliza-computer/dist
+
+      - name: Refuse to regress the published data snapshot
+        run: |
+          set -euo pipefail
+          artifact_ms="$(
+            node -e 'const value = JSON.parse(require("node:fs").readFileSync("packages/eliza-computer/dist/data/leaderboard.json", "utf8")); const parsed = Date.parse(value.generatedAt); if (!Number.isFinite(parsed)) throw new TypeError("artifact leaderboard.generatedAt is invalid"); process.stdout.write(String(parsed));'
+          )"
+          now_ms="$(node -e 'process.stdout.write(Date.now().toString())')"
+          if [ "$(( now_ms - artifact_ms ))" -gt "$(( 8 * 60 * 60 * 1000 ))" ]; then
+            echo "::warning::This release ships a contribution snapshot older than 8 hours. Approve or dispatch the newest run for fresher data."
+          fi
+          live_response="$RUNNER_TEMP/eliza-army-live-leaderboard.json"
+          live_status="$(
+            curl --silent --show-error \
+              --connect-timeout 10 \
+              --max-time 30 \
+              --header "Cache-Control: no-cache" \
+              --output "$live_response" \
+              --write-out "%{http_code}" \
+              "https://eliza.army/data/leaderboard.json?release-guard=$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          )" || live_status="unreachable"
+          if [ "$live_status" != "200" ]; then
+            echo "::notice::The live snapshot is not readable (status $live_status); releasing the verified bundle."
+            exit 0
+          fi
+          if ! live_ms="$(
+            node -e 'const value = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")); const parsed = Date.parse(value.generatedAt); if (!Number.isFinite(parsed)) throw new TypeError("live leaderboard.generatedAt is invalid"); process.stdout.write(String(parsed));' "$live_response"
+          )"; then
+            echo "::notice::The live snapshot is unparseable; releasing the verified bundle."
+            exit 0
+          fi
+          if [ "$live_ms" -gt "$artifact_ms" ]; then
+            echo "::error::The live contribution snapshot is newer than this run's artifact. A superseded release must not regress published data; approve or dispatch the newest run instead."
+            exit 1
+          fi
 
       - name: Require live release-input equivalence
         run: |

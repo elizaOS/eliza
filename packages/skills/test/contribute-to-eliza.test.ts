@@ -328,13 +328,26 @@ describe("live report parsing", () => {
     }
   });
 
-  it("flattens paginated gh output and rejects malformed pages", () => {
+  it("flattens concatenated --paginate output without gh --slurp", () => {
+    // gh api --paginate (without the 2.48.0-only --slurp flag) prints each
+    // page as its own top-level JSON array, back to back.
     assert.deepStrictEqual(
-      parsePaginatedJson('[[{"number":1}],[{"number":2}]]'),
+      parsePaginatedJson('[{"number":1}]\n[{"number":2}]'),
       [{ number: 1 }, { number: 2 }],
     );
-    assert.throws(() => parsePaginatedJson('{"number":1}'), /array of pages/);
-    assert.throws(() => parsePaginatedJson('[[{"number":1}],{}]'), /page 2/);
+    assert.deepStrictEqual(
+      parsePaginatedJson('[{"number":1}][{"number":2},{"number":3}]'),
+      [{ number: 1 }, { number: 2 }, { number: 3 }],
+    );
+    assert.deepStrictEqual(parsePaginatedJson("[]"), []);
+    assert.deepStrictEqual(parsePaginatedJson(""), []);
+    assert.deepStrictEqual(
+      parsePaginatedJson('[{"title":"brackets ][ inside strings"}]'),
+      [{ title: "brackets ][ inside strings" }],
+    );
+    assert.throws(() => parsePaginatedJson('{"number":1}'), /must be an array/);
+    assert.throws(() => parsePaginatedJson('[{"number":1}]{}'), /page 2/);
+    assert.throws(() => parsePaginatedJson('[{"number":1}'), /not balanced/);
   });
 
   it("accepts exact provider/model pairs and rejects placeholders", () => {
@@ -695,7 +708,7 @@ describe("live report behavior", () => {
         invocation = { command, args, options };
         return {
           status: 0,
-          stdout: '[[{"number":1}],[{"number":2}]]',
+          stdout: '[{"number":1}]\n[{"number":2}]',
           stderr: "",
         };
       },
@@ -703,13 +716,15 @@ describe("live report behavior", () => {
 
     assert.deepStrictEqual(pages, [{ number: 1 }, { number: 2 }]);
     assert.strictEqual(invocation?.command, "gh");
-    assert.deepStrictEqual(invocation?.args.slice(0, 5), [
+    assert.deepStrictEqual(invocation?.args.slice(0, 4), [
       "api",
       "--method",
       "GET",
       "--paginate",
-      "--slurp",
     ]);
+    // The 2.48.0-only --slurp flag must stay absent so packaged GitHub CLI
+    // releases (for example Ubuntu's gh 2.45.0) can run the inventory.
+    assert.ok(!invocation?.args.includes("--slurp"));
     assert.ok(
       !invocation?.args.some((argument) => /POST|PATCH|DELETE/.test(argument)),
     );

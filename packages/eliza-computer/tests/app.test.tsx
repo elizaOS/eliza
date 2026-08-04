@@ -365,6 +365,44 @@ describe("App", () => {
     expect(screen.getByText("Snapshot update delayed")).toBeInTheDocument();
   });
 
+  it("renders a days-old snapshot as delayed with its age on first load", async () => {
+    // Regression: the live site served a 2026-08-01 snapshot for days while
+    // its embedded generation-time flag claimed freshness. The browser must
+    // derive staleness from generatedAt relative to now and say how old the
+    // data is, regardless of any producer-side claim.
+    vi.useFakeTimers();
+    const now = new Date("2026-08-04T02:00:00.000Z");
+    vi.setSystemTime(now);
+    const snapshot = snapshotFixture();
+    const generatedAt = "2026-08-01T19:18:35.643Z";
+    snapshot.generatedAt = generatedAt;
+    snapshot.sourceUpdatedAt = generatedAt;
+    snapshot.source.fetchedAt = generatedAt;
+    for (const item of [
+      ...snapshot.workQueue.issues,
+      ...snapshot.workQueue.pullRequests,
+    ]) {
+      item.createdAt = generatedAt;
+      item.updatedAt = generatedAt;
+    }
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => structuredClone(snapshot),
+    } as Response);
+
+    render(<App />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText("Snapshot update delayed")).toBeInTheDocument();
+    expect(screen.getByText("Data is 2 days old")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Latest GitHub snapshot"),
+    ).not.toBeInTheDocument();
+  });
+
   it("accepts a valid snapshot when the visitor clock is behind", async () => {
     vi.useFakeTimers();
     const snapshot = snapshotFixture();

@@ -90,8 +90,14 @@ describe("eliza.army deployment contract", () => {
     expect(workflow).toContain(
       `cancel-in-progress: ${"$"}{{ github.event_name == 'pull_request' }}`,
     );
+    // Trusted develop runs must never share a workflow-level concurrency
+    // group: a deploy waiting on environment approval would queue-cancel
+    // every newer scheduled quality run and freeze the published data.
+    expect(workflow).toContain(
+      `group: eliza-computer-${"$"}{{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}`,
+    );
     expect(workflow).not.toContain(
-      `group: eliza-computer-${"$"}{{ github.event.pull_request.number || github.ref }}\n  cancel-in-progress: true`,
+      `group: eliza-computer-${"$"}{{ github.event.pull_request.number || github.ref }}`,
     );
     expect(deployJob).toContain(
       "github.event_name == 'push' && github.ref == 'refs/heads/develop'",
@@ -109,6 +115,41 @@ describe("eliza.army deployment contract", () => {
     expect(deployJob).toContain("group: eliza-computer-production");
     expect(deployJob).toContain("cancel-in-progress: false");
     expect(deployJob).toContain("name: eliza-army-production");
+  });
+
+  it("never regresses the published contribution snapshot", () => {
+    // Independent develop runs release in approval order, not run order, so
+    // the deploy must refuse to overwrite newer live data with an older
+    // artifact and must read freshness from generatedAt at release time.
+    const guardStep = deployJob.slice(
+      deployJob.indexOf(
+        "- name: Refuse to regress the published data snapshot",
+      ),
+      deployJob.indexOf("- name: Require live release-input equivalence"),
+    );
+    expect(guardStep).toContain(
+      "packages/eliza-computer/dist/data/leaderboard.json",
+    );
+    expect(guardStep).toContain("https://eliza.army/data/leaderboard.json");
+    expect(guardStep).toContain('--header "Cache-Control: no-cache"');
+    expect(guardStep).toContain(
+      "A superseded release must not regress published data",
+    );
+    expect(guardStep).toContain('if [ "$live_ms" -gt "$artifact_ms" ]; then');
+    // The guard runs after the artifact download and before any Cloudflare
+    // credential is referenced.
+    const downloadIndex = deployJob.indexOf(
+      "- name: Download verified Pages bundle",
+    );
+    const guardIndex = deployJob.indexOf(
+      "- name: Refuse to regress the published data snapshot",
+    );
+    const credentialIndex = deployJob.indexOf(
+      "- name: Require scoped Cloudflare credentials",
+    );
+    expect(downloadIndex).toBeGreaterThan(-1);
+    expect(guardIndex).toBeGreaterThan(downloadIndex);
+    expect(credentialIndex).toBeGreaterThan(guardIndex);
   });
 
   it("has no candidate-controlled production release path", () => {

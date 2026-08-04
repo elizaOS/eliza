@@ -2167,7 +2167,6 @@ describe("deduplication and public schema", () => {
     expect(snapshot).toMatchObject({
       repository: LEADERBOARD_REPOSITORY,
       ruleVersion: SCORE_RULE_VERSION,
-      stale: false,
       source: {
         provider: "github-graphql",
         counts: { openIssues: 1, openPullRequests: 1 },
@@ -2246,6 +2245,24 @@ describe("deduplication and public schema", () => {
 
     expect(() => assertLeaderboardSnapshot(malformed)).toThrow(
       `snapshot.repository must be ${LEADERBOARD_REPOSITORY}`,
+    );
+  });
+
+  it("rejects any persisted staleness claim so freshness stays consumer-derived", () => {
+    // A generation-time stale flag lies as soon as the deployed artifact
+    // outlives its build: the live site served stale:false for days while the
+    // snapshot itself was generated 2026-08-01. Freshness must be derived by
+    // the consumer from generatedAt, never trusted from the producer.
+    const snapshot = createLeaderboardSnapshot(input());
+    expect(snapshot).not.toHaveProperty("stale");
+
+    const claimingFresh: unknown = { ...snapshot, stale: false };
+    expect(() => assertLeaderboardSnapshot(claimingFresh)).toThrow(
+      "must not persist a staleness claim",
+    );
+    const claimingStale: unknown = { ...snapshot, stale: true };
+    expect(() => assertLeaderboardSnapshot(claimingStale)).toThrow(
+      "must not persist a staleness claim",
     );
   });
 

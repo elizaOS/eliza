@@ -104,7 +104,9 @@ one complete transaction.
 - Cap review/comment awards by actor and artifact.
 - Model disclosure is reported provenance, not proof, and never adds points.
 - Every public snapshot records its repository, window, rule version,
-  generation time, source cutoff, and any staleness.
+  generation time, and source cutoff. Staleness is never persisted in the
+  snapshot; consumers derive it from `generatedAt` at read time because a
+  generation-time flag cannot describe how long a deployed artifact has aged.
 
 ## Work-candidate selection contract
 
