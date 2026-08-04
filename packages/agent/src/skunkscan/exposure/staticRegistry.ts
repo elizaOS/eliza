@@ -121,3 +121,15 @@ export function lookupStaticExposure(
 
   return registry[normalizedAddress] ?? null;
 }
+
+// Used by buildReverseIndex.ts to enumerate every currently-registered
+// exposure address for a chain, so the reverse-index population script
+// doesn't need its own hardcoded copy of the address list that could
+// drift from the actual registry.
+export function getExposureRegistryEntries(
+  chain: SupportedChain,
+): ExposureRegistryEntry[] {
+  const registry = CHAIN_EXPOSURE_REGISTRIES[chain];
+
+  return registry ? Object.values(registry) : [];
+}

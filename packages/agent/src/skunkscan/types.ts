@@ -627,7 +627,7 @@ export type WalletExposureSummary = {
     label: string;
     category: "scam" | "rug_pull" | "suspicious" | "sanctioned" | "adverse_media";
     confidence: "low" | "medium" | "high";
-    source: "static_registry" | "external_provider" | "manual_review";
+    source: "static_registry" | "external_provider" | "manual_review" | "reverse_index";
     relationship: "self" | "funder" | "counterparty";
     // Whether this match counts toward exposureScore/exposureLevel/the
     // hasKnown* booleans below. self and funder matches always contribute;
