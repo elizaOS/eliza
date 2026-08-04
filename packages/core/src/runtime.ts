@@ -153,6 +153,8 @@ import {
 	setTrajectoryPurpose,
 } from "./trajectory-context";
 import {
+	runInModelCallRecordingScope,
+	runWithModelCallRecordingScope,
 	type TrajectoryProviderAccessLogger,
 	type TrajectoryRuntimeLlmCallLogger,
 	withProviderStep,
@@ -6190,6 +6192,24 @@ export class AgentRuntime implements IAgentRuntime {
 				);
 			}
 
+			// Outer-scope mirrors of the try-block locals needed by the catch block's
+			// failed-attempt trajectory record. `let`/`const` inside `try` are not
+			// visible to the matching `catch`, so we capture them here as they are
+			// assigned inside (#17532).
+			let modelParamsRef: unknown = params;
+			let promptContentRef: string | null | undefined;
+			// recordingStateRef tracks whether the provider already logged this call.
+			// The catch block must not add a second failure entry for a call the
+			// provider recorded before throwing (e.g. OpenAI streaming logs in its
+			// generator finalizer then rethrows the stream error) — that would
+			// reintroduce the double-counting this fix removes (#17532).
+			//
+			// Initial value `{ recorded: false }` is only read when the handler
+			// throws BEFORE runWithModelCallRecordingScope assigns the real store
+			// (line ~6578). Once assigned, all later reads reference the scope's
+			// live mutable object, not this placeholder.
+			let recordingStateRef: { recorded: boolean } = { recorded: false };
+
 			try {
 				const binaryModels: string[] = [
 					ModelType.TRANSCRIPTION,
@@ -6602,6 +6622,11 @@ export class AgentRuntime implements IAgentRuntime {
 						: null) ||
 					(typeof modelParams === "string" ? modelParams : null);
 
+				// Capture the post-hook params + prompt into the outer scope so the
+				// catch block's failed-attempt trajectory record can see them.
+				modelParamsRef = modelParams;
+				promptContentRef = promptContent;
+
 				if (!binaryModels.includes(resolvedModelKey)) {
 					this.logger.trace(
 						{
@@ -6673,10 +6698,15 @@ export class AgentRuntime implements IAgentRuntime {
 					attemptMeta,
 				);
 				handlerStartedAt = Date.now();
-				const rawResponse = await handler(
-					this,
-					modelParams as Record<string, JsonValue | object>,
-				);
+				const { result: handlerResult, recordingState } =
+					await runWithModelCallRecordingScope(() =>
+						handler(this, modelParams as Record<string, JsonValue | object>),
+					);
+				// Expose the mutable recording state to the catch block so it can
+				// suppress a failure entry when the provider already logged this
+				// call before throwing (#17532).
+				recordingStateRef = recordingState;
+				const rawResponse = handlerResult;
 
 				let safeRawResponse: unknown =
 					secretSwapSession?.substituteInValue(rawResponse) ?? rawResponse;
@@ -6694,9 +6724,38 @@ export class AgentRuntime implements IAgentRuntime {
 					(paramsChunk || ctxChunk) &&
 					isTextStreamResult(rawResponse)
 				) {
-					for await (const chunk of rawResponse.textStream) {
-						if (abortSignal?.aborted) break;
-						await deliverModelStreamChunk(chunk);
+					// Consume the provider stream inside the recording scope, mirroring
+					// the pass-through TextStreamResult wrapper below. Async generators
+					// do not inherit AsyncLocalStorage context from their creation, and
+					// runWithModelCallRecordingScope above has already exited by the
+					// time we iterate, so markProviderRecordedCall (fired from the
+					// provider finalizer via logActiveTrajectoryLlmCall — e.g. the
+					// plugin-openai live-stream finally block) would find no store and
+					// no-op. Re-entering the scope per-.next() (and forwarding .return()
+					// cleanup) ensures the provider mark lands and suppresses the
+					// generic fallback, otherwise this call is double-recorded (#17532).
+					const streamIter = rawResponse.textStream[Symbol.asyncIterator]();
+					try {
+						while (true) {
+							const { done, value } = await runInModelCallRecordingScope(
+								recordingState,
+								() => streamIter.next(),
+							);
+							if (done) break;
+							// Check abort AFTER pulling a chunk (matching the original
+							// for-await pull-then-check order) so the provider generator
+							// body always advances at least once and its finally block
+							// runs on .return() cleanup.
+							if (abortSignal?.aborted) break;
+							await deliverModelStreamChunk(value);
+						}
+					} finally {
+						// Forward cleanup to the provider iterator so its finally block
+						// (markProviderRecordedCall) also runs inside the scope. Safe to
+						// call even if already exhausted.
+						await runInModelCallRecordingScope(recordingState, async () => {
+							await streamIter.return?.();
+						});
 					}
 					await flushGuardedStream();
 					structuredExtractor?.flush();
@@ -6832,6 +6891,7 @@ export class AgentRuntime implements IAgentRuntime {
 							result: resultRef.current,
 							response: modelOutToTrajectoryString(resultRef.current),
 							elapsedTime,
+							providerRecorded: recordingState.recorded,
 						});
 					}
 					recordInferenceSpan(
@@ -6925,7 +6985,14 @@ export class AgentRuntime implements IAgentRuntime {
 					resultRef.current,
 				);
 
-				if (String(modelType) !== ModelType.TEXT_EMBEDDING) {
+				if (
+					String(modelType) !== ModelType.TEXT_EMBEDDING &&
+					!(
+						shouldStream &&
+						!handlerDeliveredStream &&
+						isTextStreamResult(resultRef.current as object)
+					)
+				) {
 					await this.recordUseModelTrajectory({
 						modelType: String(modelType),
 						resolvedModelKey: String(resolvedModelKey),
@@ -6935,7 +7002,79 @@ export class AgentRuntime implements IAgentRuntime {
 						result: resultRef.current,
 						response: modelOutToTrajectoryString(resultRef.current),
 						elapsedTime,
+						providerRecorded: recordingState.recorded,
 					});
+				}
+
+				// Pass-through stream: the caller will consume textStream after
+				// useModel returns. Defer the generic trajectory record until then,
+				// so the provider's deferred recordLlmCall has time to mark the
+				// flag (#17532).
+				if (
+					shouldStream &&
+					!handlerDeliveredStream &&
+					isTextStreamResult(resultRef.current as object)
+				) {
+					const streamResult = resultRef.current as TextStreamResult;
+					const trajArgs = {
+						modelType: String(modelType),
+						resolvedModelKey: String(resolvedModelKey),
+						provider: resolvedModel.provider,
+						modelParams,
+						promptContent,
+						elapsedTime,
+					};
+					let didRecord = false;
+					const recordOnce = async () => {
+						if (didRecord) return;
+						didRecord = true;
+						const finalText = await streamResult.text;
+						await this.recordUseModelTrajectory({
+							...trajArgs,
+							result: finalText,
+							response: finalText,
+							providerRecorded: recordingState.recorded,
+						});
+					};
+					resultRef.current = {
+						...streamResult,
+						textStream: (async function* () {
+							// Each .next() call re-enters the recording scope so
+							// the provider generator body (and its finally block
+							// where markProviderRecordedCall fires) runs inside
+							// the ALS context (#17532).
+							const innerIter = streamResult.textStream[Symbol.asyncIterator]();
+							try {
+								while (true) {
+									const { done, value } = await runInModelCallRecordingScope(
+										recordingState,
+										() => innerIter.next(),
+									);
+									if (done) break;
+									yield value;
+								}
+							} finally {
+								// Forward cleanup to the provider iterator so its
+								// finally block (markProviderRecordedCall) runs inside
+								// the scope. Safe to call even if already exhausted.
+								await runInModelCallRecordingScope(recordingState, async () => {
+									await innerIter.return?.();
+									await recordOnce();
+								});
+							}
+						})(),
+						// Lazy: only record if the caller awaits text, not eagerly
+						// when the provider's SDK promise settles (#17532).
+						get text() {
+							return Promise.resolve(
+								runInModelCallRecordingScope(recordingState, async () => {
+									const t = await streamResult.text;
+									await recordOnce();
+									return t;
+								}),
+							);
+						},
+					} satisfies TextStreamResult;
 				}
 				recordInferenceSpan(
 					`model-postprocess:${String(modelType)}`,
@@ -6958,6 +7097,30 @@ export class AgentRuntime implements IAgentRuntime {
 						Date.now() - handlerStartedAt,
 						{ ...attemptMeta, outcome: "error" },
 					);
+				}
+				// Record the failed attempt as a trajectory llm-call entry so a
+				// rejected (often billed) provider attempt is not invisible. If
+				// failover succeeds, only the success would otherwise appear; if
+				// every attempt fails, the step would have zero model entries
+				// (#17532). Fire-and-forget: trajectory logging must not block the
+				// failover/rethrow path, and its own failures are reported inside.
+				// Skip when the provider already logged this call before throwing
+				// (e.g. OpenAI streaming logs in its finalizer then rethrows) — a
+				// second failure entry would reintroduce the double-counting this
+				// fix removes (#17532).
+				if (!recordingStateRef.recorded) {
+					void this.recordFailedModelTrajectory({
+						modelType: String(modelType),
+						resolvedModelKey: String(resolvedModelKey),
+						provider: resolvedModel.provider,
+						modelParams: modelParamsRef,
+						promptContent: promptContentRef,
+						error,
+						elapsedTime:
+							handlerStartedAt === null
+								? Date.now() - preprocessingStartedAt
+								: Date.now() - handlerStartedAt,
+					});
 				}
 				lastModelError = error;
 				const nextModel = resolvedModels[resolvedIndex + 1];
@@ -7005,8 +7168,14 @@ export class AgentRuntime implements IAgentRuntime {
 		result?: unknown;
 		response: string;
 		elapsedTime: number;
+		providerRecorded: boolean;
 	}): Promise<void> {
 		if (this.initResolver) return;
+
+		// When the provider-level wire recorder (`recordLlmCall` or
+		// `logActiveTrajectoryLlmCall`) already logged this call, suppress the
+		// generic fallback to avoid double counting (#17532).
+		if (args.providerRecorded) return;
 
 		try {
 			const trajCtx = getTrajectoryContext();
@@ -7099,6 +7268,109 @@ export class AgentRuntime implements IAgentRuntime {
 			);
 			this.reportError("AgentRuntime.recordUseModelTrajectory", error, {
 				modelType: args.modelType,
+			});
+		}
+	}
+
+	/**
+	 * Emit a failure llm-call entry for a `useModel` attempt that threw before
+	 * producing a usable result. Without this, a rejected provider attempt is
+	 * invisible in the trajectory: if failover succeeds, only the successful
+	 * call appears and the failed (and often billed) attempt is lost; if every
+	 * attempt fails, the step has zero model entries at all (#17532).
+	 *
+	 * Records the real error — sanitized of secrets — as the response payload
+	 * with `finishReason: "error"`, and does NOT fabricate an empty response or
+	 * zero token counts. Trajectory logging never breaks core model flow, so
+	 * failures here are swallowed and surfaced via reportError instead.
+	 */
+	private async recordFailedModelTrajectory(args: {
+		modelType: string;
+		resolvedModelKey: string;
+		provider?: string;
+		modelParams: unknown;
+		promptContent: string | null | undefined;
+		error: unknown;
+		elapsedTime: number;
+	}): Promise<void> {
+		if (this.initResolver) return;
+		// A failed attempt is NOT provider-recorded: the provider never returned
+		// a result, so its wire recorder did not run. We want this entry to land.
+		try {
+			const trajCtx = getTrajectoryContext();
+			const stepId = trajCtx?.trajectoryStepId;
+			if (!stepId) return;
+			const trajLogger = (await this._ensureServiceStarted("trajectories")) as
+				| (Service & TrajectoryRuntimeLlmCallLogger)
+				| null;
+			if (!trajLogger) return;
+
+			const paramsRecord = isPlainObject(args.modelParams)
+				? (args.modelParams as Record<string, unknown>)
+				: {};
+			const tempRaw = isPlainObject(args.modelParams)
+				? (args.modelParams as { temperature?: number }).temperature
+				: undefined;
+			const maxTokensRaw = isPlainObject(args.modelParams)
+				? (args.modelParams as { maxTokens?: number }).maxTokens
+				: undefined;
+			const systemPrompt =
+				resolveEffectiveSystemPrompt({
+					params: args.modelParams,
+					fallback: this.buildRuntimeSystemPrompt(),
+				}) ?? "";
+			const userPrompt =
+				this.getFirstUserPromptFromMessages(paramsRecord.messages) ??
+				args.promptContent ??
+				"";
+			const errorMessage =
+				args.error instanceof Error
+					? args.error.message
+					: typeof args.error === "string"
+						? args.error
+						: "unknown model error";
+			// Mark the response as a sanitized failure, not a success payload, so
+			// downstream readers/agents can distinguish billed-but-failed attempts
+			// from real outputs. Secrets are stripped to keep the trajectory safe.
+			const sanitizedMessage = this.redactSecrets(errorMessage);
+			const activeTrace = this.getActiveTrace(this.getCurrentRunId());
+			trajLogger.logLlmCall({
+				stepId,
+				model: args.resolvedModelKey,
+				modelType: args.modelType,
+				provider: args.provider,
+				systemPrompt,
+				userPrompt,
+				prompt:
+					typeof paramsRecord.prompt === "string"
+						? paramsRecord.prompt
+						: userPrompt,
+				messages: undefined,
+				tools: paramsRecord.tools,
+				toolChoice: paramsRecord.toolChoice,
+				responseSchema: paramsRecord.responseSchema,
+				providerOptions: paramsRecord.providerOptions,
+				response: `[model call failed] ${sanitizedMessage}`,
+				finishReason: "error",
+				temperature: typeof tempRaw === "number" ? tempRaw : 0,
+				maxTokens: typeof maxTokensRaw === "number" ? maxTokensRaw : 0,
+				purpose: trajCtx.purpose ?? "action",
+				actionType: "runtime.useModel",
+				latencyMs: Math.max(0, Math.round(args.elapsedTime)),
+				modelSlot: args.modelType,
+				runId: trajCtx.runId,
+				roomId: trajCtx.roomId,
+				messageId: trajCtx.messageId,
+				executionTraceId: activeTrace?.id,
+				providerOrder: trajCtx.providerOrder,
+				providerAttributions: trajCtx.providerAttributions,
+			});
+		} catch (trajectoryError) {
+			// Trajectory logging must never break core model flow. Surface the
+			// telemetry failure without masking the original model error.
+			this.reportError("TrajectoryFailedAttemptRecord", trajectoryError, {
+				modelKey: args.resolvedModelKey,
+				provider: args.provider,
 			});
 		}
 	}

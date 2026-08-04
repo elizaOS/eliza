@@ -500,6 +500,14 @@ type TrajectoryLlmGuardContext = {
 };
 
 const RECORD_LLM_CALL_DEPTH_KEY = Symbol.for("elizaos.recordLlmCallDepth");
+
+/**
+ * Ambient key for the per-call provider-recording flag AsyncLocalStorage.
+ * Stored as a Symbol.for so it survives dual-bundle scenarios.
+ */
+const MODEL_CALL_PROVIDER_RECORDED_KEY = Symbol.for(
+	"elizaos.modelCallProviderRecorded",
+);
 const LLM_INPUT_SUBSTRING_ATTESTATION_CONTEXT_MANAGER_KEY = Symbol.for(
 	"elizaos.llmInputSubstringAttestationContextManager",
 );
@@ -909,6 +917,159 @@ export function assertRecordedLlmCall(
 	);
 }
 
+/**
+ * Mutable per-call recording state. Exported so callers can hold the live
+ * reference and read `.recorded` at the actual suppression decision point.
+ */
+export type ModelCallRecordingState = { recorded: boolean };
+
+/**
+ * Open a request-local recording scope around a single `useModel()` call.
+ *
+ * Returns the live mutable store so the caller can read `.recorded` at the
+ * actual decision point — which may be AFTER streaming completes (#17532).
+ *
+ * For deferred-streaming providers (e.g. plugin-xai grok.ts), the handler
+ * returns a TextStreamResult immediately, but `recordLlmCall` only resolves
+ * when the stream is fully consumed. The mutable store reflects late-arriving
+ * marks because `markProviderRecordedCall` mutates the same object reference.
+ *
+ * Each call gets its own store via AsyncLocalStorage semantics, so concurrent
+ * `useModel()` calls cannot suppress one another.
+ */
+export async function runWithModelCallRecordingScope<T>(
+	fn: () => Promise<T> | T,
+): Promise<{ result: T; recordingState: ModelCallRecordingState }> {
+	const storage = getModelCallRecordingStorage();
+	const store: ModelCallRecordingState = { recorded: false };
+	const result = await storage.run(store, fn);
+	return { result, recordingState: store };
+}
+
+/**
+ * Re-enter the recording scope for a given recordingState, typically to
+ * consume a deferred stream whose provider finalizer calls
+ * `markProviderRecordedCall()`. Async generators do not retain
+ * AsyncLocalStorage context from their creation, so we must re-establish the
+ * scope around stream consumption (#17532).
+ */
+export function runInModelCallRecordingScope<T>(
+	recordingState: ModelCallRecordingState,
+	fn: () => T | Promise<T>,
+): T | Promise<T> {
+	const storage = getModelCallRecordingStorage();
+	return storage.run(recordingState, fn);
+}
+
+/**
+ * Mark the current model call as already recorded by the provider-level wire
+ * recorder. Called from `logActiveTrajectoryLlmCall` (the single chokepoint
+ * for all provider trajectory logging) when the log succeeds.
+ */
+export function markProviderRecordedCall(): void {
+	const storage = getModelCallRecordingStorage();
+	const store = storage.getStore();
+	if (store) {
+		store.recorded = true;
+	}
+}
+
+/**
+ * Returns `true` when the current model call has already been recorded by the
+ * provider-level wire recorder, so the generic `useModel` fallback can skip.
+ */
+export function isProviderRecordedCall(): boolean {
+	const storage = getModelCallRecordingStorage();
+	return storage.getStore()?.recorded === true;
+}
+
+/**
+ * Lazily-initialized AsyncLocalStorage for the per-call provider-recorded flag.
+ * Stored as an ambient singleton so it survives dual-bundle scenarios.
+ */
+type ModelCallRecordingStorage = {
+	getStore(): ModelCallRecordingState | undefined;
+	run<R>(
+		store: ModelCallRecordingState,
+		fn: () => R | Promise<R>,
+	): R | Promise<R>;
+};
+
+function getModelCallRecordingStorage(): ModelCallRecordingStorage {
+	return getAmbientSingleton(
+		MODEL_CALL_PROVIDER_RECORDED_KEY,
+		createModelCallRecordingStorage,
+	);
+}
+
+function createModelCallRecordingStorage(): ModelCallRecordingStorage {
+	if (supportsAsyncLocalStorage()) {
+		const { AsyncLocalStorage } = process.getBuiltinModule(
+			"node:async_hooks",
+		) as typeof import("node:async_hooks");
+		const storage = new AsyncLocalStorage<ModelCallRecordingState>();
+		return {
+			getStore: () => storage.getStore(),
+			run: (store, fn) => storage.run(store, fn),
+		};
+	}
+	// Synchronous fallback for browser/edge. The store is a mutable object
+	// passed by reference, so `runWithModelCallRecordingScope` can read the
+	// `recorded` flag after `fn` settles. The run wrapper awaits async `fn`
+	// before restoring the previous slot, so marks made during async work
+	// (e.g. recordLlmCall) are captured.
+	//
+	// LIMITATION: This fallback does NOT support concurrent async useModel
+	// calls — without AsyncLocalStorage, overlapping scopes corrupt the
+	// single mutable slot. The corruption direction is asymmetric and
+	// dangerous: call A opens, call B opens (saving A as prev), A's provider
+	// finalizer marks — and mutates B's store. B then observes
+	// `recorded === true` and suppresses its generic fallback record, while
+	// A observes `false` and records. Net effect: one call double-counted
+	// and another silently dropped. Because the PR's goal is preventing
+	// duplicate accounting, converting duplicates into ABSENT records (which
+	// read as healthy zero-cost calls) is the wrong failure direction.
+	//
+	// Node always uses the AsyncLocalStorage path above; this only affects
+	// browser/edge runtimes, where concurrent model calls are rare.
+	// AsyncLocalStorage is a Node built-in, NOT available in browsers.
+	// The nearest browser equivalent is the TC39 AsyncContext proposal,
+	// which is not yet shipped. If browser/edge concurrent calls become
+	// common, either adopt AsyncContext when available or thread per-call
+	// recording state explicitly through provider recording APIs.
+	let syncStore: ModelCallRecordingState | undefined;
+	return {
+		getStore: () => syncStore,
+		run: (store, fn) => {
+			const prev = syncStore;
+			syncStore = store;
+			const restore = () => {
+				syncStore = prev;
+			};
+			try {
+				const result = fn();
+				if (result instanceof Promise) {
+					return result.then(
+						(v) => {
+							restore();
+							return v;
+						},
+						(e) => {
+							restore();
+							throw e;
+						},
+					);
+				}
+				restore();
+				return result;
+			} catch (e) {
+				restore();
+				throw e;
+			}
+		},
+	};
+}
+
 export function resolveTrajectoryLogger(
 	runtime: IAgentRuntime,
 ): TrajectoryLoggerLike | null {
@@ -1064,6 +1225,14 @@ export function logActiveTrajectoryLlmCall(
 		stepId,
 		...details,
 	});
+
+	// Mark the current model-call scope as provider-recorded. This is the
+	// single chokepoint for ALL provider-level trajectory logging — whether
+	// called via `recordLlmCall` or directly (e.g. plugin-openai live
+	// streaming). Centralizing here ensures every successful provider record
+	// suppresses the generic `useModel` fallback (#17532).
+	markProviderRecordedCall();
+
 	return true;
 }
 
@@ -1120,13 +1289,84 @@ export async function recordLlmCall<T>(
 					? ""
 					: tryStringify(result);
 
+	// Several providers do not surface token counts in the detail they hand to
+	// recordLlmCall even though the SDK result carries them: xAI omits tokens
+	// entirely from its recordLlmCall detail, and plugin-openai's buffered-stream
+	// path records before the buffered usage resolves. Because the generic
+	// useModel fallback is suppressed once this provider record lands
+	// (#17532), failing to backfill here would silently lose token/cost
+	// attribution for those providers. Normalize result.usage into any missing
+	// token field, never overwriting an explicitly provider-supplied value.
+	const tokenFields = normalizeTokenFieldsFromResult(result, details);
+
 	logActiveTrajectoryLlmCall(runtime, {
 		...details,
+		...tokenFields,
 		response: responseText,
 		latencyMs: Math.max(0, Math.round(elapsed)),
 	});
 
 	return result;
+}
+
+/**
+ * Extract token/cache fields from a provider SDK result's `usage` object,
+ * preserving any value the caller already supplied in `details`. AI SDK
+ * `usage` carries `promptTokens`/`completionTokens` plus the cache variants;
+ * older shapes use `input`/`output` aliases. Returns only the fields that were
+ * missing, so the caller controls what wins (#17532 token backfill).
+ */
+function normalizeTokenFieldsFromResult(
+	result: unknown,
+	details: RecordLlmCallDetails,
+): Partial<
+	Pick<
+		TrajectoryLlmCallDetails,
+		| "promptTokens"
+		| "completionTokens"
+		| "cacheReadInputTokens"
+		| "cacheCreationInputTokens"
+	>
+> {
+	if (!result || typeof result !== "object") return {};
+	const usage = (result as { usage?: unknown }).usage;
+	if (!usage || typeof usage !== "object") return {};
+	const asNumber = (value: unknown): number | undefined =>
+		typeof value === "number" && Number.isFinite(value) ? value : undefined;
+	const u = usage as Record<string, unknown>;
+	const out: Partial<
+		Pick<
+			TrajectoryLlmCallDetails,
+			| "promptTokens"
+			| "completionTokens"
+			| "cacheReadInputTokens"
+			| "cacheCreationInputTokens"
+		>
+	> = {};
+	if (details.promptTokens === undefined) {
+		const prompt =
+			asNumber(u.promptTokens) ?? asNumber(u.inputTokens) ?? asNumber(u.input);
+		if (prompt !== undefined) out.promptTokens = prompt;
+	}
+	if (details.completionTokens === undefined) {
+		const completion =
+			asNumber(u.completionTokens) ??
+			asNumber(u.outputTokens) ??
+			asNumber(u.output);
+		if (completion !== undefined) out.completionTokens = completion;
+	}
+	if (details.cacheReadInputTokens === undefined) {
+		const cacheRead =
+			asNumber(u.cacheReadInputTokens) ?? asNumber(u.cachedInputTokens);
+		if (cacheRead !== undefined) out.cacheReadInputTokens = cacheRead;
+	}
+	if (details.cacheCreationInputTokens === undefined) {
+		const cacheCreation =
+			asNumber(u.cacheCreationInputTokens) ?? asNumber(u.cacheCreationTokens);
+		if (cacheCreation !== undefined)
+			out.cacheCreationInputTokens = cacheCreation;
+	}
+	return out;
 }
 
 function tryStringify(value: unknown): string {
