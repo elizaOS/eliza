@@ -97,6 +97,7 @@ function fakeGate(): CalendarHostGate {
 
 let pg: PGlite;
 let calendar: CalendarService;
+const reportError = vi.fn();
 
 const CREATE_EVENTS_TABLE = `CREATE TABLE app_calendar.life_calendar_events (
   id TEXT PRIMARY KEY,
@@ -168,6 +169,7 @@ beforeAll(async () => {
     getCache: async () => undefined,
     setCache: async () => undefined,
     getService: () => null,
+    reportError,
   } as unknown as IAgentRuntime;
 
   calendar = new CalendarService(runtime);
@@ -285,6 +287,70 @@ describe("CalendarService (real PGlite, Apple provider)", () => {
       grantId: APPLE_CALENDAR_GRANT_ID,
     });
     expect(calendars.some((c) => c.provider === "apple_calendar")).toBe(true);
+  });
+
+  it("keeps an unsupported Apple source explicit without systemic escalation", async () => {
+    reportError.mockClear();
+    __testing.setNativeCalendarBridgeForTest(null);
+    try {
+      const feed = await calendar.getCalendarFeed(
+        INTERNAL_URL,
+        {
+          grantId: APPLE_CALENDAR_GRANT_ID,
+          timeMin: "2036-05-12T00:00:00.000Z",
+          timeMax: "2036-05-13T00:00:00.000Z",
+        },
+        new Date("2036-05-12T12:00:00.000Z"),
+      );
+      expect(feed.state).toBe("unavailable");
+      expect(feed.sources).toEqual([
+        expect.objectContaining({
+          status: "disconnected",
+          error: expect.objectContaining({
+            code: "CALENDAR_SOURCE_UNSUPPORTED",
+            retryable: false,
+          }),
+        }),
+      ]);
+      expect(reportError).not.toHaveBeenCalled();
+    } finally {
+      __testing.setNativeCalendarBridgeForTest(appleBridge() as never);
+    }
+  });
+
+  it("still reports unexpected Apple feed failures", async () => {
+    reportError.mockClear();
+    __testing.setNativeCalendarBridgeForTest({
+      ...appleBridge(),
+      listEvents: async () => {
+        throw new Error("EventKit transport failed");
+      },
+    } as never);
+    try {
+      const feed = await calendar.getCalendarFeed(
+        INTERNAL_URL,
+        {
+          grantId: APPLE_CALENDAR_GRANT_ID,
+          timeMin: "2037-05-12T00:00:00.000Z",
+          timeMax: "2037-05-13T00:00:00.000Z",
+        },
+        new Date("2037-05-12T12:00:00.000Z"),
+      );
+      expect(feed.state).toBe("unavailable");
+      expect(reportError).toHaveBeenCalledWith(
+        "calendar:feed-source",
+        expect.any(Error),
+        {
+          source: expect.objectContaining({
+            calendarId: "primary",
+            provider: "apple_calendar",
+            side: "owner",
+          }),
+        },
+      );
+    } finally {
+      __testing.setNativeCalendarBridgeForTest(appleBridge() as never);
+    }
   });
 
   it("returns the event in the aggregated feed", async () => {
