@@ -35,6 +35,7 @@ export interface CanonicalScopedStreamRequest {
   userId?: string;
   namespace: RuntimeDurableObjectNamespace;
   executionCtx: BridgeExecutionContext;
+  abortSignal?: AbortSignal;
   body: unknown;
   origin?: string | null;
   timings?: Record<string, number>;
@@ -102,6 +103,7 @@ export async function handleCanonicalScopedAgentStream(
   const bridgeStartedAt = nowMs();
   try {
     upstream = await coordinateSharedStream(request.agent, rpc, {
+      abortSignal: request.abortSignal,
       namespace: request.namespace,
       executionCtx: request.executionCtx,
     });

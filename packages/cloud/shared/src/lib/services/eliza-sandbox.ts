@@ -3159,7 +3159,12 @@ export class ElizaSandboxService {
       history.length > SHARED_RUNTIME_HISTORY_MAX_MESSAGES
         ? history.slice(history.length - SHARED_RUNTIME_HISTORY_MAX_MESSAGES)
         : history;
-    await sharedRuntimeHistoryRepository.upsert(agentId, channelId, capped);
+    await sharedRuntimeHistoryRepository.merge(
+      agentId,
+      channelId,
+      capped,
+      SHARED_RUNTIME_HISTORY_MAX_MESSAGES,
+    );
   }
 
   private sharedRuntimeBillingPrompt(

@@ -140,21 +140,21 @@ describe("eliza sse bridge", () => {
     });
   });
 
-  test("reports aborted when the signal fires mid-stream", async () => {
+  test("aborting a never-ending internal response cancels its body reader", async () => {
     const controller = new AbortController();
+    let responseCancelReason: unknown;
     const fetchImpl = (async () => {
       const encoder = new TextEncoder();
       const body = new ReadableStream<Uint8Array>({
-        async start(c) {
+        start(c) {
           c.enqueue(
             encoder.encode(
               `data: ${JSON.stringify({ choices: [{ delta: { content: "partial" } }] })}\n\n`,
             ),
           );
-          // Abort before the stream naturally ends.
-          controller.abort();
-          await new Promise((r) => setTimeout(r, 5));
-          c.close();
+        },
+        cancel(reason) {
+          responseCancelReason = reason;
         },
       });
       return new Response(body, { status: 200 });
@@ -172,9 +172,10 @@ describe("eliza sse bridge", () => {
         signal: controller.signal,
         fetchImpl,
       },
-      () => {},
+      () => controller.abort("barge-in"),
     );
     expect(result.aborted).toBe(true);
+    expect(responseCancelReason).toBe("barge-in");
   });
 
   test("throws an upstream error on a non-2xx response", async () => {

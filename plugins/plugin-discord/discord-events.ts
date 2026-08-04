@@ -23,6 +23,7 @@ import {
 	type User,
 } from "discord.js";
 import { isDiscordUserAddressed } from "./addressing";
+import { DISCORD_SERVICE_NAME } from "./constants";
 import { type ChannelDebouncer, createChannelDebouncer } from "./debouncer";
 import {
 	getDiscordMessageCoalesceConfig,
@@ -671,7 +672,7 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 			await waitForDiscordIngressReadiness(service.clientReadyPromise);
 		} catch (error) {
 			service.runtime.reportError(
-				["discord", "gateway-interaction-before-ready"].join(":"),
+				`${DISCORD_SERVICE_NAME}:gateway-interaction-before-ready`,
 				error,
 				{
 					accountId,
