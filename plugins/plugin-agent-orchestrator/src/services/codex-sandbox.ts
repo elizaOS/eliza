@@ -1,7 +1,7 @@
 /**
  * Normalizes managed Codex ACP sandbox settings and probes Linux Landlock
- * availability so the orchestrator can select a supported successor mode,
- * falling back to `danger-full-access` where Landlock is unavailable.
+ * availability so the orchestrator can select a supported successor mode
+ * without silently widening a workspace-scoped coding session to host access.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { platform } from "node:os";
@@ -45,6 +45,19 @@ export function normalizeCodexSandboxMode(
   return CODEX_SANDBOX_MODES.has(normalized as CodexSandboxMode)
     ? (normalized as CodexSandboxMode)
     : undefined;
+}
+
+/**
+ * Resolve the operator-owned fallback used when Codex cannot enforce its Linux
+ * workspace sandbox. There is deliberately no implicit fallback: changing a
+ * chat-started coding task from workspace-scoped to `danger-full-access` is an
+ * authorization expansion, not a compatibility default. Operators running the
+ * adapter inside another hard sandbox may opt in explicitly.
+ */
+export function resolveCodexNoLandlockSandboxMode(
+  value: string | undefined,
+): CodexSandboxMode | undefined {
+  return normalizeCodexSandboxMode(value);
 }
 
 export function normalizeCodexApprovalPolicy(

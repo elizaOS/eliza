@@ -52,6 +52,7 @@ import {
   isCodexLandlockPanic,
   normalizeCodexApprovalPolicy,
   normalizeCodexSandboxMode,
+  resolveCodexNoLandlockSandboxMode,
 } from "./codex-sandbox.js";
 import {
   accountMetaFromSessionMetadata,
@@ -299,7 +300,6 @@ export function resolveCodexAcpInitialAgentMode(
   }
   return mode;
 }
-const CODEX_NO_LANDLOCK_SANDBOX_MODE: CodexSandboxMode = "danger-full-access";
 const CODEX_NO_LANDLOCK_APPROVAL_POLICY = "never";
 /**
  * Effort levels the Claude Code CLI honors via CLAUDE_CODE_EFFORT_LEVEL (its
@@ -2628,16 +2628,28 @@ export class AcpService extends Service {
     return policy;
   }
 
-  private codexNoLandlockSandboxMode(): CodexSandboxMode {
+  private codexNoLandlockSandboxMode(): CodexSandboxMode | undefined {
     const raw = this.setting("ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE");
-    const mode = normalizeCodexSandboxMode(raw);
+    const mode = resolveCodexNoLandlockSandboxMode(raw);
     if (raw?.trim() && !mode) {
       this.log("warn", "Ignoring invalid Codex ACP no-Landlock sandbox mode", {
         value: raw,
         supported: ["read-only", "workspace-write", "danger-full-access"],
       });
     }
-    return mode ?? CODEX_NO_LANDLOCK_SANDBOX_MODE;
+    return mode;
+  }
+
+  private requireCodexNoLandlockSandboxMode(): CodexSandboxMode {
+    const mode = this.codexNoLandlockSandboxMode();
+    if (mode) return mode;
+    throw new ElizaError(
+      "Codex workspace sandbox is unavailable; refusing to widen this coding session to host access. Configure ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE only when an independent container or VM sandbox enforces the workspace boundary.",
+      {
+        code: "CODEX_ACP_SANDBOX_UNAVAILABLE",
+        severity: "fatal",
+      },
+    );
   }
 
   private validateManagedCodexAcpModeConfiguration(): void {
@@ -2681,10 +2693,10 @@ export class AcpService extends Service {
             },
           });
     const sandboxMode = forceNoLandlockFallback
-      ? this.codexNoLandlockSandboxMode()
+      ? this.requireCodexNoLandlockSandboxMode()
       : (configuredSandboxMode ??
         (landlock === "unavailable"
-          ? this.codexNoLandlockSandboxMode()
+          ? this.requireCodexNoLandlockSandboxMode()
           : undefined));
     if (!sandboxMode) return undefined;
     const approvalPolicy =

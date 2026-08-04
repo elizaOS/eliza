@@ -193,14 +193,13 @@
       },
       "ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE": {
         "type": "string",
-        "description": "Codex ACP sandbox_mode used when Linux Landlock is unavailable.",
+        "description": "Explicit Codex ACP sandbox mode used when Linux Landlock is unavailable. Unset fails closed instead of silently widening a workspace-scoped task to host access; configure only behind an independent container or VM sandbox.",
         "required": false,
-        "default": "danger-full-access",
         "sensitive": false
       },
       "ELIZA_CODEX_ACP_APPROVAL_POLICY": {
         "type": "string",
-        "description": "Optional managed Codex ACP approval policy. Requires an explicit sandbox mode; fixed pairs are read-only/on-request, workspace-write/on-request, and danger-full-access/never. The no-Landlock fallback defaults to never.",
+        "description": "Optional managed Codex ACP approval policy. Requires an explicit sandbox mode; fixed pairs are read-only/on-request, workspace-write/on-request, and danger-full-access/never.",
         "required": false,
         "sensitive": false
       },
