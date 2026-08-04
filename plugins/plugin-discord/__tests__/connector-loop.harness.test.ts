@@ -21,7 +21,15 @@
  * sanitizer is gone, so this proves the shared boundary covers Discord.
  */
 
-import { ModelType } from "@elizaos/core";
+import {
+	attestDeliveryAudienceFromCanonicalRoom,
+	authorizeOwnerExclusiveDisclosure,
+	ChannelType as CoreChannelType,
+	createUniqueUuid,
+	type Memory,
+	ModelType,
+	type UUID,
+} from "@elizaos/core";
 import {
 	type LlmProxyFixture,
 	type MockLlmRuntime,
@@ -29,6 +37,7 @@ import {
 } from "@elizaos/test-harness";
 import { ChannelType as DiscordChannelType } from "discord.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { resolveElizaOwnerEntityId } from "../identity.ts";
 import { MessageManager } from "../messages.ts";
 import { DiscordService } from "../service.ts";
 import type { DiscordSettings, IDiscordService } from "../types.ts";
@@ -84,7 +93,21 @@ async function driveDiscordTurn(options: {
 	// author — used to reproduce a co-mention (`@other @bot`) where the bot is
 	// not the first-mentioned user.
 	coMentionedUserIds?: string[];
-}): Promise<{ sent: SentMessage[]; channelId: string }> {
+	readyGate?: Promise<void>;
+	beforeReadyRelease?: (context: {
+		runtime: MockLlmRuntime["runtime"];
+		sent: SentMessage[];
+		ownerDiscordUserIds: Set<string>;
+		roomId: UUID;
+		authorId: string;
+	}) => Promise<void>;
+}): Promise<{
+	sent: SentMessage[];
+	channelId: string;
+	runtime: MockLlmRuntime["runtime"];
+	roomId: UUID;
+	authorId: string;
+}> {
 	const channelKind = options.channelKind ?? "guild";
 	// Heuristic (non-strict) proxy: the reply turn makes several model calls;
 	// callers pin only the calls they need via fixtures and the proxy answers
@@ -238,15 +261,17 @@ async function driveDiscordTurn(options: {
 	// getChannelType, resolveDiscordEntityId, getAccountState,
 	// createAccountServiceFacade). An empty account pool means getAccountState()
 	// returns null, so the facade resolves everything from these parent fields.
+	const ownerDiscordUserIds = new Set<string>();
 	const discordService = Object.assign(
 		Object.create(DiscordService.prototype),
 		{
 			runtime,
 			client: captureClient,
+			clientReadyPromise: options.readyGate ?? null,
 			accountId: "default",
 			defaultAccountId: "default",
 			discordSettings,
-			ownerDiscordUserIds: new Set<string>(),
+			ownerDiscordUserIds,
 			accountPool: { get: () => null, getDefault: () => null },
 		},
 	);
@@ -263,12 +288,112 @@ async function driveDiscordTurn(options: {
 	);
 
 	// The same entrypoint the gateway MessageCreate listener calls.
-	await manager.handleMessage(message);
+	const turn = manager.handleMessage(message);
+	if (options.beforeReadyRelease) {
+		await options.beforeReadyRelease({
+			runtime,
+			sent,
+			ownerDiscordUserIds,
+			roomId: createUniqueUuid(runtime, channelId),
+			authorId,
+		});
+	}
+	await turn;
 
-	return { sent, channelId };
+	return {
+		sent,
+		channelId,
+		runtime,
+		roomId: createUniqueUuid(runtime, channelId),
+		authorId,
+	};
 }
 
 describe("discord connector loop (keyless harness)", () => {
+	it("waits for ready-time owner hydration before DM identity, recall authorization, and one send", async () => {
+		let releaseReady!: () => void;
+		const readyGate = new Promise<void>((resolve) => {
+			releaseReady = resolve;
+		});
+
+		const result = await driveDiscordTurn({
+			channelKind: "dm",
+			inboundText:
+				"Remember that my launch phrase is solar key, then reply once.",
+			readyGate,
+			beforeReadyRelease: async ({
+				runtime,
+				sent,
+				ownerDiscordUserIds,
+				roomId,
+				authorId,
+			}) => {
+				// ClientReady has fired, but onReady is still hydrating application
+				// ownership. No identity/room/memory/send side effect may race ahead.
+				await new Promise((resolve) => setTimeout(resolve, 25));
+				expect(sent).toHaveLength(0);
+				expect(await runtime.getRoom(roomId)).toBeNull();
+
+				// Mirrors refreshOwnerDiscordUserIds completing before onReady resolves.
+				ownerDiscordUserIds.add(authorId);
+				releaseReady();
+			},
+		});
+
+		expect(result.sent).toHaveLength(1);
+		const canonicalOwnerId = resolveElizaOwnerEntityId(result.runtime) as UUID;
+		const participants = await result.runtime.getParticipantsForRoom(
+			result.roomId,
+		);
+		expect(new Set(participants)).toEqual(
+			new Set([canonicalOwnerId, result.runtime.agentId]),
+		);
+
+		const memories = await result.runtime.getMemories({
+			roomId: result.roomId,
+			tableName: "messages",
+			count: 20,
+		});
+		const inbound = memories.find(
+			(memory) => memory.entityId === canonicalOwnerId,
+		);
+		expect(inbound?.content.text).toContain("solar key");
+		if (!inbound) throw new Error("canonical owner memory was not persisted");
+
+		// The exact canonical DM room written by Discord authorizes owner-private
+		// recall. Adding any third participant invalidates that authorization.
+		await attestDeliveryAudienceFromCanonicalRoom(result.runtime, inbound);
+		expect(
+			(await authorizeOwnerExclusiveDisclosure(result.runtime, inbound))
+				.allowed,
+		).toBe(true);
+
+		const guestId = createUniqueUuid(result.runtime, "discord-cutover-guest");
+		await result.runtime.ensureConnection({
+			entityId: guestId,
+			roomId: result.roomId,
+			userName: "guest",
+			name: "Guest",
+			source: "discord",
+			channelId: result.channelId,
+			type: CoreChannelType.DM,
+			worldId: result.roomId,
+		});
+		const groupProbe: Memory = {
+			id: createUniqueUuid(result.runtime, "probe"),
+			entityId: canonicalOwnerId,
+			agentId: result.runtime.agentId,
+			roomId: result.roomId,
+			content: { text: "recall solar key", source: "discord" },
+			createdAt: Date.now(),
+		};
+		await attestDeliveryAudienceFromCanonicalRoom(result.runtime, groupProbe);
+		expect(
+			(await authorizeOwnerExclusiveDisclosure(result.runtime, groupProbe))
+				.allowed,
+		).toBe(false);
+	}, 120_000);
+
 	it("responds when explicitly @mentioned among other users (co-mention, bot not first)", async () => {
 		// Live 2026-07-16: `@ruby @osiris @remilio` in a multi-bot channel was
 		// dropped by the "targets another mentioned user" gate because the bot
