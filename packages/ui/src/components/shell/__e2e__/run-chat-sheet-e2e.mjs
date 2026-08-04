@@ -18,9 +18,9 @@
  *       short input pull springs back · pill tap → INPUT (no keyboard) ·
  *       grabber tap steps INPUT → HALF → INPUT.
  *       Full matrix: CHAT_SHEET_STATE_MATRIX.md.
- *   - AUTOSCROLL, per input type: tail follows at bottom, a single >80px
- *       streamed growth remains pinned, reading-scrollback is not yanked, and
- *       scrollback remains stable without extra floating controls.
+ *   - AUTOSCROLL, per input type: tail follows at bottom through streamed
+ *       growth and live sheet resizing, reading-scrollback is not yanked by
+ *       either content growth or resizing, and no floating controls appear.
  *   - EVERY control/state via deterministic fixture loads + interactions:
  *       empty · peek/half/full · typing→send · attach image→thumbnail→remove ·
  *       mic press→recording · voice speaking→mute toggle · responding typing
@@ -442,6 +442,66 @@ async function release(p, pointer, up = 0) {
     if (!drag) throw new Error("release(touch): no held real-touch drag");
     heldTouchDrags.delete(p);
     await drag.release();
+  }
+}
+
+/** Real touch swipe from a chosen point inside a rendered element. Attachment
+ * tiles intentionally reserve their lower-right 44px hit region for Remove, so
+ * their draggable pixels must be exercised from a non-control point instead of
+ * the element center. */
+async function touchSwipeFromFraction(
+  p,
+  selector,
+  dx,
+  dy,
+  { xFraction = 0.18, yFraction = 0.18, steps = 8, stepDelayMs = 4 } = {},
+) {
+  await p.evaluate(
+    () => new Promise((resolve) => requestAnimationFrame(() => resolve())),
+  );
+  const box = await p.locator(selector).boundingBox();
+  assert(Boolean(box), `real-touch: ${selector} has a rendered box`);
+  const startX = box.x + box.width * xFraction;
+  const startY = box.y + box.height * yFraction;
+  const client = await p.context().newCDPSession(p);
+  const touchPoint = (x, y) => ({
+    x,
+    y,
+    id: 1,
+    radiusX: 4,
+    radiusY: 4,
+    force: 1,
+  });
+  let ended = false;
+  try {
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [touchPoint(startX, startY)],
+    });
+    for (let i = 1; i <= steps; i += 1) {
+      await client.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [
+          touchPoint(startX + (dx * i) / steps, startY + (dy * i) / steps),
+        ],
+      });
+      if (stepDelayMs > 0) await p.waitForTimeout(stepDelayMs);
+    }
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+    ended = true;
+  } finally {
+    if (!ended) {
+      await Promise.allSettled([
+        client.send("Input.dispatchTouchEvent", {
+          type: "touchCancel",
+          touchPoints: [],
+        }),
+      ]);
+    }
+    await client.detach();
   }
 }
 
@@ -1261,6 +1321,83 @@ async function scrollReaderUp(p, pointer) {
   return after;
 }
 
+async function startResizeAnchorProbe(p) {
+  await p.evaluate(() => {
+    const viewport = document.querySelector(
+      '[data-testid="chat-thread-scroll"]',
+    );
+    if (!(viewport instanceof HTMLElement)) {
+      throw new Error("chat transcript viewport is missing");
+    }
+    const samples = [];
+    const sample = () => {
+      const messages = viewport.querySelectorAll("[data-message-id]");
+      const last = messages.item(messages.length - 1);
+      const viewportRect = viewport.getBoundingClientRect();
+      const lastRect = last?.getBoundingClientRect();
+      const sheet = document.querySelector('[data-testid="chat-sheet"]');
+      samples.push({
+        bottomDelta:
+          Math.max(0, viewport.scrollHeight - viewport.clientHeight) -
+          viewport.scrollTop,
+        lastGap: lastRect ? viewportRect.bottom - lastRect.bottom : null,
+        sheetHeight: sheet?.getBoundingClientRect().height ?? 0,
+      });
+    };
+    // This probe registers after the product observer. Sampling in a microtask
+    // observes the state after every observer in the delivery has run, while
+    // still preceding the dependency's deliberately deferred next-frame work.
+    const observer = new ResizeObserver(() => queueMicrotask(sample));
+    observer.observe(viewport);
+    sample();
+    window.__chatResizeAnchorProbe = { observer, samples };
+  });
+}
+
+async function stopResizeAnchorProbe(p) {
+  return p.evaluate(() => {
+    const probe = window.__chatResizeAnchorProbe;
+    probe?.observer.disconnect();
+    delete window.__chatResizeAnchorProbe;
+    return probe?.samples ?? [];
+  });
+}
+
+async function provePinnedResizeStability(p, pointer) {
+  await startResizeAnchorProbe(p);
+  await gesture(p, -120, {
+    pointer,
+    hold: true,
+    slow: true,
+    steps: 24,
+    target: "chat-sheet-grabber",
+  });
+  await p.waitForTimeout(60);
+  const samples = await stopResizeAnchorProbe(p);
+  await release(p, pointer);
+  await p.waitForTimeout(SETTLE);
+
+  const heights = samples.map((sample) => sample.sheetHeight);
+  const bottomDeltas = samples.map((sample) => Math.abs(sample.bottomDelta));
+  const lastGaps = samples
+    .map((sample) => sample.lastGap)
+    .filter((gap) => gap !== null);
+  const heightTravel = Math.max(...heights) - Math.min(...heights);
+  const gapTravel = Math.max(...lastGaps) - Math.min(...lastGaps);
+  assert(
+    samples.length >= 8 && heightTravel >= 80,
+    `[${pointer}] AUTOSCROLL samples a meaningful slow resize (${samples.length} samples, ${heightTravel.toFixed(1)}px)`,
+  );
+  assert(
+    Math.max(...bottomDeltas) <= 1.5,
+    `[${pointer}] AUTOSCROLL stays synchronously bottom-pinned during resize (max delta ${Math.max(...bottomDeltas).toFixed(2)}px)`,
+  );
+  assert(
+    lastGaps.length >= 8 && gapTravel <= 1.5,
+    `[${pointer}] AUTOSCROLL last message has no painted jump during resize (gap travel ${gapTravel.toFixed(2)}px)`,
+  );
+}
+
 async function runAutoScrollSuite(p, pointer, tag) {
   await openSheetToFull(p, pointer);
   const beforeLargeGrowth = await threadScrollState(p);
@@ -1291,7 +1428,30 @@ async function runAutoScrollSuite(p, pointer, tag) {
     `[${pointer}] AUTOSCROLL stays pinned after a new assistant line (delta=${Math.round(afterAppend?.bottomDelta ?? -1)})`,
   );
 
+  await provePinnedResizeStability(p, pointer);
+  await waitForThreadBottom(p);
+
   const readerPosition = await scrollReaderUp(p, pointer);
+  await gesture(p, -80, {
+    pointer,
+    hold: true,
+    slow: true,
+    steps: 16,
+    target: "chat-sheet-grabber",
+  });
+  const resizedReaderPosition = await threadScrollState(p);
+  await release(p, pointer);
+  await p.waitForTimeout(SETTLE);
+  const settledReaderPosition = await threadScrollState(p);
+  assert(
+    !!readerPosition &&
+      !!resizedReaderPosition &&
+      !!settledReaderPosition &&
+      Math.abs(resizedReaderPosition.scrollTop - readerPosition.scrollTop) <=
+        2 &&
+      Math.abs(settledReaderPosition.scrollTop - readerPosition.scrollTop) <= 2,
+    `[${pointer}] AUTOSCROLL resize and settle preserve a reader in history (${Math.round(readerPosition?.scrollTop ?? 0)} → ${Math.round(resizedReaderPosition?.scrollTop ?? 0)} → ${Math.round(settledReaderPosition?.scrollTop ?? 0)})`,
+  );
   await mutateAssistant(
     p,
     "__growLastAssistant",
@@ -2432,7 +2592,8 @@ try {
     await p.close();
   }
 
-  // attach image → thumbnail + remove button (real file through the hidden input)
+  // Attachments keep their remove controls above the grabber while their tile
+  // and gap pixels remain part of the continuous sheet-drag surface.
   {
     const p = await ctrl();
     attachConsole(p, sink);
@@ -2442,19 +2603,53 @@ try {
     // 1x1 transparent PNG
     const pngB64 =
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
-    await p.setInputFiles('input[type="file"]', {
-      name: "shot.png",
-      mimeType: "image/png",
-      buffer: Buffer.from(pngB64, "base64"),
-    });
+    await p.setInputFiles('input[type="file"]', [
+      {
+        name: "shot.png",
+        mimeType: "image/png",
+        buffer: Buffer.from(pngB64, "base64"),
+      },
+      {
+        name: "shot-two.png",
+        mimeType: "image/png",
+        buffer: Buffer.from(pngB64, "base64"),
+      },
+    ]);
     await p.waitForTimeout(350);
     assert((await p.locator('img[alt="shot.png"]').count()) === 1, "ATTACH: pending image thumbnail rendered");
+    assert((await p.locator('img[alt="shot-two.png"]').count()) === 1, "ATTACH: second thumbnail renders a real inter-tile gap");
     assert(await p.getByTestId("chat-composer-action").isVisible(), "ATTACH: send button shown for image-only turn");
     assert(await p.getByLabel("remove shot.png").isVisible(), "ATTACH: per-image remove button shown");
     await snap(p, "state-image-attached");
     await p.getByLabel("remove shot.png").click();
     await p.waitForTimeout(250);
     assert((await p.locator('img[alt="shot.png"]').count()) === 0, "REMOVE: thumbnail cleared after remove");
+
+    // Re-add the first tile, then start a real touch pull on its image pixels.
+    // The list owns the same pull binding as the grabber, while each remove
+    // button stops pointerdown before it can seed a sheet gesture.
+    await p.setInputFiles('input[type="file"]', {
+      name: "shot.png",
+      mimeType: "image/png",
+      buffer: Buffer.from(pngB64, "base64"),
+    });
+    await p.waitForTimeout(250);
+    await touchSwipeFromFraction(p, 'img[alt="shot.png"]', 0, -160, {
+      steps: 8,
+      stepDelayMs: 4,
+    });
+    await p.waitForTimeout(SETTLE);
+    assert((await detent(p)) === "half", "ATTACH DRAG: pull through tile pixels opens the sheet");
+
+    await p.keyboard.press("Escape");
+    await p.waitForTimeout(SETTLE);
+    assert((await detent(p)) === "collapsed", "ATTACH DRAG: Escape restores input before gap proof");
+    await touchSwipe(p, testIdSelector("chat-pending-attachment-list"), 0, -160, {
+      steps: 8,
+      stepDelayMs: 4,
+    });
+    await p.waitForTimeout(SETTLE);
+    assert((await detent(p)) === "half", "ATTACH DRAG: pull through attachment-list gap opens the sheet");
     await p.close();
   }
 
