@@ -20,6 +20,7 @@ const requireAuthOrApiKeyWithOrg = mock(async () => ({
   apiKey: null,
 }));
 const assertSafeForPublicUse = mock(async () => undefined);
+const reconcileReservation = mock(async (..._args: unknown[]) => undefined);
 const payoutAwareReservation = {
   reservedAmount: 0.0012,
   reservationTransactionId: "reservation-1",
@@ -30,7 +31,7 @@ const payoutAwareReservation = {
     markupPercent: 0.2,
   },
   affiliatePayoutSourceId: "ai_billing:affiliate:voice-tts-test",
-  reconcile: async () => undefined,
+  reconcile: reconcileReservation,
 };
 const reserveCredits = mock(async () => payoutAwareReservation);
 const billUsage = mock(async (..._args: unknown[]) => ({
@@ -48,6 +49,14 @@ const elevenLabsTextToSpeech = mock(
       },
     }),
 );
+let drainPcm16ToWavError: Error | null = null;
+const encodedWav = Uint8Array.from([
+  82, 73, 70, 70, 40, 0, 0, 0, 87, 65, 86, 69, 1, 0, 2, 0,
+]);
+const drainPcm16ToWav = mock(async () => {
+  if (drainPcm16ToWavError) throw drainPcm16ToWavError;
+  return encodedWav;
+});
 let allowKokoroFetch = false;
 let cartesiaStatus = 200;
 let cachedVoiceResponse: {
@@ -170,6 +179,7 @@ mock.module("@/lib/services/elevenlabs", () => ({
 }));
 
 mock.module("@/lib/services/pcm16-wav", () => ({
+  drainPcm16ToWav,
   drainPcm16Stream: async () => new Uint8Array([1, 0, 2, 0]),
   pcm16ToWav: (pcm: Uint8Array) => pcm,
 }));
@@ -225,6 +235,9 @@ beforeEach(() => {
   billUsage.mockClear();
   createUsage.mockClear();
   elevenLabsTextToSpeech.mockClear();
+  reconcileReservation.mockClear();
+  drainPcm16ToWav.mockClear();
+  drainPcm16ToWavError = null;
 });
 
 afterAll(() => {
@@ -463,6 +476,47 @@ describe("POST /api/v1/voice/tts provider selection", () => {
     expect(reserveCredits).toHaveBeenCalledTimes(1);
     expect(billUsage).toHaveBeenCalledTimes(1);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("returns exact bounded WAV bytes and bills only after encoding succeeds", async () => {
+    const response = await postTts({
+      text: "Codec-less playback.",
+      voiceId: "custom-elevenlabs-voice",
+      format: "wav",
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("audio/wav");
+    expect(response.headers.get("Cache-Control")).toBe("no-cache");
+    expect(response.headers.get("X-TTS-Cache")).toBe("miss");
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(encodedWav);
+    expect(elevenLabsTextToSpeech).toHaveBeenCalledWith({
+      text: "Codec-less playback.",
+      voiceId: "custom-elevenlabs-voice",
+      modelId: undefined,
+      outputFormat: "pcm_24000",
+    });
+    expect(drainPcm16ToWav).toHaveBeenCalledWith(
+      expect.any(ReadableStream),
+      16 * 1024 * 1024,
+      24_000,
+    );
+    expect(billUsage).toHaveBeenCalledTimes(1);
+    expect(reconcileReservation).not.toHaveBeenCalled();
+  });
+
+  test("refunds the reservation and never bills when WAV encoding fails", async () => {
+    drainPcm16ToWavError = new Error("bounded PCM drain failed");
+    const response = await postTts({
+      text: "Do not charge failed audio.",
+      voiceId: "custom-elevenlabs-voice",
+      format: "wav",
+    });
+
+    expect(response.status).toBe(500);
+    expect(billUsage).not.toHaveBeenCalled();
+    expect(reconcileReservation).toHaveBeenCalledTimes(1);
+    expect(reconcileReservation).toHaveBeenCalledWith(0);
   });
 
   // #16425: the client mints one Idempotency-Key per logical utterance (sent

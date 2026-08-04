@@ -48,7 +48,7 @@ import {
   InsufficientCreditsError,
 } from "@/lib/services/credits";
 import { getElevenLabsService } from "@/lib/services/elevenlabs";
-import { drainPcm16Stream, pcm16ToWav } from "@/lib/services/pcm16-wav";
+import { drainPcm16ToWav } from "@/lib/services/pcm16-wav";
 import {
   fingerprintCloudVoiceSettings,
   getCloudFirstLineCacheService,
@@ -129,7 +129,7 @@ function buildTtsObservabilityHeaders(
 
 /** ElevenLabs PCM sample rate we request for the WAV path (Hz). */
 const WAV_PCM_SAMPLE_RATE = 24_000;
-const MAX_WAV_PCM_BYTES = 64 * 1024 * 1024;
+const MAX_WAV_PCM_BYTES = 16 * 1024 * 1024;
 
 /**
  * Default Cartesia voice for un-pinned requests ("Skylar — Friendly Guide",
@@ -617,7 +617,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     // ElevenLabs voice ids keep ElevenLabs. Billing below charges the same
     // ElevenLabs catalog rate either way, so the engine choice never changes
     // the user's price (Cartesia's upstream cost is lower, not higher).
-    let wav: Uint8Array | undefined;
+    let wav: Uint8Array<ArrayBuffer> | undefined;
     let audioStream: ReadableStream<Uint8Array> | undefined;
     let synthesisEngine: "elevenlabs" | "cartesia" = "elevenlabs";
     let cartesiaMp3ContentType = "audio/mpeg";
@@ -686,8 +686,9 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
         });
       }
       if (wantWav) {
-        wav = pcm16ToWav(
-          await drainPcm16Stream(audioStream, MAX_WAV_PCM_BYTES),
+        wav = await drainPcm16ToWav(
+          audioStream,
+          MAX_WAV_PCM_BYTES,
           WAV_PCM_SAMPLE_RATE,
         );
       }
@@ -836,7 +837,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     // it. (Buffered, not streamed — fine for short TTS replies; the MP3 path
     // keeps its chunked streaming below.)
     if (wav !== undefined) {
-      return new Response(wav as unknown as BodyInit, {
+      return new Response(wav.buffer, {
         headers: {
           "Content-Type": "audio/wav",
           "Cache-Control": "no-cache",
