@@ -484,6 +484,50 @@ describe("SCHEDULED_TASK action", () => {
       roomId: secondRoomId,
     });
 
+    // Owner-only first-party/API rooms use the same audience attestation as a
+    // connector DM, but must retain their in-app output and public planner key.
+    const apiRoomId = crypto.randomUUID() as UUID;
+    await runtime.createRoom({
+      id: apiRoomId,
+      source: "telegram",
+      // First-party/scenario rooms can inherit the preferred connector source
+      // while retaining the internal room id as their synthetic channel id.
+      channelId: apiRoomId,
+      type: ChannelType.DM,
+      worldId: runtime.agentId,
+    } as Room);
+    await runtime.addParticipant(ownerId, apiRoomId);
+    await runtime.addParticipant(runtime.agentId, apiRoomId);
+    const apiMessage = {
+      ...message,
+      id: crypto.randomUUID() as UUID,
+      roomId: apiRoomId,
+      content: { text: "schedule an internal check", source: "telegram" },
+    } as Memory;
+    await attestDeliveryAudienceFromCanonicalRoom(runtime, apiMessage);
+    const apiIdempotencyKey = `api-${crypto.randomUUID()}`;
+    const apiCreate = await executePlannedToolCall(
+      runtime,
+      { message: apiMessage, userRoles: ["OWNER"], activeContexts: ["tasks"] },
+      {
+        name: "SCHEDULED_TASKS",
+        params: {
+          action: "create",
+          kind: "custom",
+          promptInstructions: "Run the internal check.",
+          trigger: { kind: "manual" },
+          output: { destination: "in_app" },
+          idempotencyKey: apiIdempotencyKey,
+        },
+      },
+    );
+    expect(apiCreate.success).toBe(true);
+    const apiTask = (apiCreate.data as { task?: ScheduledTask } | undefined)
+      ?.task;
+    expect(apiTask?.idempotencyKey).toBe(apiIdempotencyKey);
+    expect(apiTask?.output?.target).toMatch(/^in_app:/);
+    expect(apiTask?.metadata?.chatDeliveryBinding).toBeUndefined();
+
     const before = (await runner.list()).length;
     const deniedMessage = { ...message, id: crypto.randomUUID() as UUID };
     await attestDeliveryAudienceFromCanonicalRoom(runtime, deniedMessage);
