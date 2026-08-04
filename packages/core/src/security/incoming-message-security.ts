@@ -209,14 +209,19 @@ export function scrubIncomingMessageTextForStorage(text: string): string {
  * warning words.
  *
  * Resolution order: the retained `metadata.userPayloadText` stamp when present
- * (the trusted copy taken before wrapping); otherwise a marker parse of
- * `content.text` for legacy messages persisted before the retained field
- * existed; otherwise the raw text. Whatever wins is validated last: a result
+ * (the trusted copy taken before wrapping); otherwise, ONLY when the
+ * `externalContentWrapped` stamp attests the envelope came from this module, a
+ * marker parse of `content.text` (legacy messages persisted before the
+ * retained field existed); otherwise the raw text. Unstamped marker-shaped
+ * text is never parsed — the stamp is the authenticity proof, and extracting a
+ * "payload" from an unauthenticated envelope would let injected marker text
+ * place attacker-chosen words (e.g. a "yes" for a destructive confirm) where
+ * consumers read the user's words. Whatever wins is validated last: a result
  * that still reads as envelope material (partial markers, the warning
- * sentence, a stamped message whose markers were mangled) returns "" — an
- * empty reference sends resolvers down their ask-the-user path instead of
- * matching warning words, which is the only safe interpretation of armor
- * debris.
+ * sentence, a stamped message whose markers were mangled, unstamped armor)
+ * returns "" — an empty reference sends resolvers down their ask-the-user path
+ * instead of matching warning words, which is the only safe interpretation of
+ * armor debris.
  */
 export function unwrapUserMessageText(message: Memory): string {
 	const text =
@@ -226,8 +231,10 @@ export function unwrapUserMessageText(message: Memory): string {
 	let candidate: string;
 	if (typeof retained === "string" && retained.trim().length > 0) {
 		candidate = retained;
-	} else {
+	} else if (metadata.externalContentWrapped === true) {
 		candidate = extractWrappedExternalContent(text) ?? text;
+	} else {
+		candidate = text;
 	}
 	const trimmed = candidate.trim();
 	return containsExternalEnvelopeMaterial(trimmed) ? "" : trimmed;

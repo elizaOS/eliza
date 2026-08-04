@@ -195,9 +195,9 @@ describe("DEPLOY_APP", () => {
 
   it("REGRESSION: a security-envelope reference is never echoed back to chat (tj-2dc95f75456876)", async () => {
     // With empty planner args the reference falls back to the message text.
-    // The canonical accessor extracts the PAYLOAD from a wrapped legacy
-    // message, so the not-found reply quotes the user's actual words — and
-    // never any part of the armor.
+    // The canonical accessor extracts the PAYLOAD from a stamped legacy
+    // wrapped message, so the not-found reply quotes the user's actual words —
+    // and never any part of the armor.
     setListApps(() =>
       Promise.resolve({
         success: true,
@@ -210,10 +210,12 @@ describe("DEPLOY_APP", () => {
       "can u host it and give me the link pls",
       "<<<END_EXTERNAL_UNTRUSTED_CONTENT>>>",
     ].join("\n");
+    const wrappedMessage = makeRoomMessage(envelope);
+    wrappedMessage.content.metadata = { externalContentWrapped: true };
     const cb = captureCallback();
     const result = await deployAppAction.handler(
       keyedRuntime(),
-      makeRoomMessage(envelope),
+      wrappedMessage,
       undefined,
       undefined,
       cb.fn,

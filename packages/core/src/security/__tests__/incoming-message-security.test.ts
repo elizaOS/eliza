@@ -176,11 +176,16 @@ describe("unwrapUserMessageText fail-closed contract", () => {
 		expect(unwrapUserMessageText(message)).toBe("show my earnings");
 	});
 
-	it("marker-parses a legacy wrapped message that lost its stamp entirely", () => {
+	it("never parses UNSTAMPED marker-shaped text — unauthenticated armor yields empty", () => {
+		// The stamp is the authenticity proof that the envelope came from
+		// hardenIncomingUserMessage. Without it, marker-shaped text could be an
+		// injected fake envelope smuggling attacker-chosen "user words" (e.g. a
+		// "yes" for a destructive confirm) — so it is treated as armor debris,
+		// not parsed.
 		const message = userMessage("show my earnings");
 		hardenIncomingUserMessage(message);
-		message.content.metadata = {}; // pre-stamp persistence shape
-		expect(unwrapUserMessageText(message)).toBe("show my earnings");
+		message.content.metadata = {}; // stamp lost / never applied
+		expect(unwrapUserMessageText(message)).toBe("");
 	});
 
 	it("returns empty — never armor — for a legacy unparseable stamped message", () => {
