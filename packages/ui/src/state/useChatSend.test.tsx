@@ -446,6 +446,46 @@ describe("useChatSend stop handling", () => {
     expect(assistantMessages[0].id).toBe("server-asst-1");
   });
 
+  it("shows durable server history without a stale fallback after an empty interrupted stream", async () => {
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "",
+      completed: false,
+    });
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    vi.mocked(deps.loadConversationMessages).mockImplementation(async () => {
+      deps.setConversationMessages([
+        {
+          id: "server-user-home",
+          role: "user",
+          text: "go home",
+          timestamp: Date.now(),
+        },
+        {
+          id: "server-assistant-home",
+          role: "assistant",
+          text: "Opened Home.",
+          timestamp: Date.now(),
+        },
+      ]);
+      return { ok: true };
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("go home", {
+        conversationId: "conv-1",
+      });
+    });
+
+    expect(deps.conversationMessagesRef.current).toEqual([
+      expect.objectContaining({ role: "user", text: "go home" }),
+      expect.objectContaining({ role: "assistant", text: "Opened Home." }),
+    ]);
+  });
+
   it("keeps the pending-turn receipt when page teardown aborts an active send", async () => {
     const started = deferred();
     mockStreamingUntilAbort(started);

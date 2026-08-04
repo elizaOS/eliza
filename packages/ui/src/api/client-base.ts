@@ -2037,12 +2037,12 @@ export class ElizaClient {
       }
     }
 
+    const rawReplyText = streamState.doneText ?? streamState.fullText;
     const resolvedText =
-      streamState.doneNoResponseReason === "ignored"
+      streamState.doneNoResponseReason === "ignored" ||
+      (!streamState.receivedDone && rawReplyText.trim().length === 0)
         ? ""
-        : this.normalizeAssistantText(
-            streamState.doneText ?? streamState.fullText,
-          );
+        : this.normalizeAssistantText(rawReplyText);
     return {
       text: resolvedText,
       agentName: streamState.doneAgentName ?? "Eliza",
