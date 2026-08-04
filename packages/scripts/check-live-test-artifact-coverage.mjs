@@ -147,11 +147,18 @@ function parseArgs(argv) {
 }
 
 function packageJsonPaths() {
-  const completed = spawnSync("rg", ["--files", "-g", "package.json"], {
+  const completed = spawnSync("git", ["ls-files", "*package.json"], {
     cwd: REPO_ROOT,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   });
+  if (completed.error) {
+    throw new Error(
+      completed.error.code === "ENOENT"
+        ? "git is required but was not found on PATH"
+        : `failed to list package.json files: ${completed.error.message}`,
+    );
+  }
   if (completed.status !== 0) {
     throw new Error(completed.stderr || "failed to list package.json files");
   }
