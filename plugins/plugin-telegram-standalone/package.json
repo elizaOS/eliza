@@ -55,6 +55,7 @@
     }
   },
   "dependencies": {
+    "@elizaos/plugin-telegram": "workspace:*",
     "telegraf": "4.16.3"
   },
   "peerDependencies": {

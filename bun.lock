@@ -5507,6 +5507,7 @@
       "name": "@elizaos/plugin-telegram-standalone",
       "version": "2.0.3-beta.7",
       "dependencies": {
+        "@elizaos/plugin-telegram": "workspace:*",
         "telegraf": "4.16.3",
       },
       "devDependencies": {

@@ -1,6 +1,8 @@
 import type { IAgentRuntime } from "@elizaos/core";
+import { resolveTelegramRuntimeEntityId } from "@elizaos/plugin-telegram";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { handleTelegramStandaloneMessage } from "./handler";
+import { resolveStandaloneTelegramEntityId } from "./identity";
 
 function makeRuntime() {
   const cache = new Map<string, unknown>();
@@ -63,6 +65,14 @@ describe("standalone Telegram durable identity", () => {
     expect(runtime.setCache).toHaveBeenCalledWith(
       "telegram-standalone:processed:default:111:7",
       expect.any(Object)
+    );
+  });
+
+  it("uses the same unmatched user entity id as the plugin connector", async () => {
+    const { runtime } = makeRuntime();
+
+    await expect(resolveStandaloneTelegramEntityId(runtime, "default", "555001")).resolves.toBe(
+      await resolveTelegramRuntimeEntityId(runtime, "default", "555001")
     );
   });
 });
