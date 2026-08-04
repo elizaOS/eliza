@@ -3,6 +3,7 @@
  * ScheduledTask runner, and a loopback HTTP server around the public route.
  * Only Google's remote API is represented by a deterministic transport.
  */
+import { createHmac } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import { PGlite } from "@electric-sql/pglite";
 import type { ConnectorAccountManager, IAgentRuntime } from "@elizaos/core";
@@ -24,7 +25,7 @@ import {
   GOOGLE_CALENDAR_WEBHOOK_PATH,
   type GoogleCalendarNotificationHeaders,
 } from "../src/google-watch/index.js";
-import { calendarRouteHandler } from "../src/routes/plugin-routes.js";
+import { calendarPlugin } from "../src/plugin.js";
 import {
   type CalendarHostGate,
   CalendarService,
@@ -321,9 +322,19 @@ async function initializeDatabase(pg: PGlite): Promise<void> {
 async function listen(
   runtime: IAgentRuntime,
 ): Promise<{ server: Server; baseUrl: string }> {
-  const handler = calendarRouteHandler();
+  await calendarPlugin.init?.({}, runtime);
+  const route = calendarPlugin.routes?.find(
+    (candidate) =>
+      candidate.type === "POST" &&
+      candidate.path === GOOGLE_CALENDAR_WEBHOOK_PATH,
+  );
   const server = createServer((req, res) => {
-    void handler(req, res, runtime).catch((error: unknown) => {
+    if (!route || req.method !== "POST" || req.url !== route.path) {
+      res.writeHead(404);
+      res.end();
+      return;
+    }
+    void route.handler(req, res, runtime).catch((error: unknown) => {
       res.writeHead(500);
       res.end(error instanceof Error ? error.message : String(error));
     });
@@ -451,6 +462,23 @@ async function createHarness(
       }
     },
   };
+}
+
+function expiredSignedToken(token: string): string {
+  const parts = token.split(".");
+  const claims = JSON.parse(
+    Buffer.from(parts[2] ?? "", "base64url").toString("utf8"),
+  ) as Record<string, unknown>;
+  claims.e = 0;
+  const payload = Buffer.from(JSON.stringify(claims)).toString("base64url");
+  const secret = Buffer.from(
+    WEBHOOK_KEY_CURRENT.split(":")[1] ?? "",
+    "base64url",
+  );
+  const signature = createHmac("sha256", secret)
+    .update(payload)
+    .digest("base64url");
+  return `gcalwh.v1.${payload}.${signature}`;
 }
 
 async function postNotification(
@@ -863,6 +891,14 @@ describe("Google Calendar push lifecycle", { timeout: 30_000 }, () => {
       resourceState: "exists",
       messageNumber: "2",
     });
+    const expiredToken = await postNotification(harness.baseUrl, {
+      channelId: request?.channelId ?? "",
+      channelToken: expiredSignedToken(request?.token ?? ""),
+      resourceId: "resource-1",
+      resourceUri: RESOURCE_URI,
+      resourceState: "exists",
+      messageNumber: "2",
+    });
     const wrongResource = await postNotification(harness.baseUrl, {
       channelId: request?.channelId ?? "",
       channelToken: request?.token ?? "",
@@ -883,9 +919,10 @@ describe("Google Calendar push lifecycle", { timeout: 30_000 }, () => {
 
     expect([
       staleToken.status,
+      expiredToken.status,
       wrongResource.status,
       wrongAccount.status,
-    ]).toEqual([404, 404, 404]);
+    ]).toEqual([404, 404, 404, 404]);
     expect(harness.google.eventPageRequests).toHaveLength(before);
     const rows = await watchRows(harness.pg);
     expect(rows).toEqual(beforeRows);
