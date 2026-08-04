@@ -120,7 +120,7 @@ Account resolution order (for the `default` account): `character.settings.telegr
 
 ## Conventions / gotchas
 
-- **One bot token per Telegram long-poll session.** If two agent instances share the same token they will 409-conflict. The plugin tracks active pollers in `ACTIVE_TELEGRAM_POLLERS` (module-level `Map`) and stops the previous poller before launching a new one.
+- **One bot token per Telegram long-poll session.** If two live agent instances share the same token they will 409-conflict. Full and standalone pollers use the shared process-local lock in `src/poller-lock.ts`: global records are keyed by a token fingerprint, never the plaintext token, and they do not store live `Telegraf` objects. A claim is reclaimed only after its poller reaches an explicit terminal state; starting, retrying, or quiet-but-live owners remain a hard launch failure.
 - **`TelegramService` must start before `TelegramOwnerPairingServiceImpl`** — the pairing service's `start` looks up the live Telegraf `bot` instance from the already-running `TelegramService`.
 - **Message sending**: use `MessageManager` (available as `TelegramService.messageManager`). Markdown is converted to Telegram MarkdownV2 via `convertMarkdownToTelegram` in `utils.ts`. Messages longer than 4096 characters are split.
 - **Forum topics**: each thread becomes a separate `Room` with `channelId` of the form `<chatId>-<threadId>`. Room metadata includes `isForumTopic: true`.

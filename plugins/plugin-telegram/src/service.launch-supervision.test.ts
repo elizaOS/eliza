@@ -10,6 +10,7 @@
  * runtime taking over the token cancels the loser's relaunch. Runtime, timers,
  * and `@elizaos/core` (logger/Service) are mocked.
  */
+import { logger } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TelegramService } from "./service";
 
@@ -98,6 +99,7 @@ describe("TelegramService.launchPollerSupervised", () => {
   it("self-heals a post-connect poll failure with a bounded, backed-off relaunch and then gives up", async () => {
     const { bot, calls } = makeBot();
     const { service, runtime } = makeService();
+    const loggerError = vi.spyOn(logger, "error").mockImplementation(() => {});
 
     const launched = callLaunch(service, bot, "tok-heal", "acct");
     calls[0].onLaunch();
@@ -125,6 +127,10 @@ describe("TelegramService.launchPollerSupervised", () => {
     await vi.advanceTimersByTimeAsync(60_000);
     expect(bot.launch).toHaveBeenCalledTimes(6);
     expect(runtime.reportError).toHaveBeenCalledTimes(6);
+    expect(loggerError).toHaveBeenCalledWith(
+      expect.objectContaining({ maxPollRelaunches: 5 }),
+      expect.stringContaining("gave up"),
+    );
   });
 
   it("fails loudly instead of replacing a poller that already owns the token", async () => {

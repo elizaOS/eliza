@@ -89,6 +89,7 @@ export * from "./accounts";
 export * from "./connector-account-provider";
 export * from "./identity";
 export * from "./local-client";
+export * from "./poller-lock";
 export {
   MessageManager,
   stopTelegramAccountAuthSession,

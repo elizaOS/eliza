@@ -22,6 +22,10 @@ const { FakeTelegraf, launchMock, stopMock, constructed } = vi.hoisted(() => {
 vi.mock("telegraf", () => ({ Telegraf: FakeTelegraf }));
 
 import { shouldStartTelegramStandaloneBot, TelegramStandaloneService } from "./index";
+import {
+  claimTelegramPollerToken as claimFullTelegramPollerToken,
+  releaseTelegramPollerToken as releaseFullTelegramPollerToken,
+} from "@elizaos/plugin-telegram";
 import { claimTelegramPollerToken, releaseTelegramPollerToken } from "./poller-lock";
 
 // Minimal runtime — the service only touches getService() at stop time.
@@ -120,6 +124,25 @@ describe("TelegramStandaloneService lifecycle", () => {
     );
     expect(launchMock).not.toHaveBeenCalled();
     releaseTelegramPollerToken("test-token", activeBot);
+  });
+
+  it("observes full-mode poller ownership through the shared lock implementation", async () => {
+    process.env.ELIZA_LIFEOPS_PASSIVE_CONNECTORS = "false";
+    process.env.ELIZA_TELEGRAM_STANDALONE_BOT = "1";
+    process.env.TELEGRAM_BOT_TOKEN = "test-shared-token";
+    const activeBot = { stop: vi.fn() } as never;
+    claimFullTelegramPollerToken("test-shared-token", {
+      bot: activeBot,
+      mode: "full",
+      ownerId: "agent-full",
+      accountId: "default",
+    });
+
+    await expect(TelegramStandaloneService.start(fakeRuntime())).rejects.toThrow(
+      /already has an active full poller/i
+    );
+    expect(launchMock).not.toHaveBeenCalled();
+    releaseFullTelegramPollerToken("test-shared-token", activeBot);
   });
 
   it("stands down under the gate when no bot token is configured", async () => {

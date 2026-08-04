@@ -6,7 +6,7 @@ import {
   claimTelegramPollerToken,
   getTelegramPollerClaim,
   markTelegramPollerConnected,
-  markTelegramPollerError,
+  markTelegramPollerTerminated,
   markTelegramPollerUpdate,
   releaseTelegramPollerToken,
   type TelegramPollerHealth,
@@ -18,9 +18,9 @@ function formatError(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-// Module-level reference so a hot runtime restart can stop the previous poller
-// before the next one launches — two long-polls on one bot token would fight
-// over ownership and Telegram would 409 one of them.
+// Module-level reference lets this service stop its own previous standalone
+// poller during hot restart. Cross-mode ownership is enforced by the shared
+// poller lock, which preserves a hard failure for a live full-service owner.
 let activeStandaloneBot: Telegraf<Context> | null = null;
 let activeStandaloneToken: string | null = null;
 
@@ -119,7 +119,7 @@ export class TelegramStandaloneService extends Service {
           }
         )
         .catch((err: unknown) => {
-          markTelegramPollerError(botToken, bot, err);
+          markTelegramPollerTerminated(botToken, bot, err);
           logger.warn(`[telegram-standalone] Telegram bot launch error: ${formatError(err)}`);
         });
 

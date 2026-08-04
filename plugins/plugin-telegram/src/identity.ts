@@ -62,6 +62,9 @@ function telegramOwnerMatches(
   const id = stringField(telegram.userId) ?? stringField(telegram.id);
   if (id !== telegramUserId) return false;
   const boundAccountId = stringField(telegram.accountId);
+  // Older owner-pairing rows predate account-scoped metadata. The Telegram
+  // user id is server-attested, so those rows remain valid for the runtime's
+  // owner while newly written rows bind to the specific bot account.
   return !boundAccountId || boundAccountId === accountId;
 }
 
@@ -88,5 +91,8 @@ export async function resolveTelegramRuntimeEntityId(
     }
   }
 
+  // `getEntityById` throws on storage failure; a null owner here means the
+  // configured owner is not paired to this Telegram user yet, not that the row
+  // failed to load.
   return createUniqueUuid(runtime, `${accountId}:${telegramUserId}`) as UUID;
 }

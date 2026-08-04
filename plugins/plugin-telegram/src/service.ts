@@ -6,8 +6,8 @@
  * reactions, and threads route back out through Telegram.
  *
  * Forum topics become distinct Rooms keyed `<chatId>-<threadId>`. Active pollers
- * are tracked in a module-level map so a token is never long-polled twice
- * (Telegram 409s on concurrent getUpdates). Must start before
+ * are tracked in the shared process-local poller lock so a token is never
+ * long-polled twice (Telegram 409s on concurrent getUpdates). Must start before
  * `TelegramOwnerPairingServiceImpl`, which looks up the live bot instance here.
  */
 import {
@@ -60,10 +60,12 @@ import { resolveTelegramRuntimeEntityId } from "./identity";
 import { MessageManager } from "./messageManager";
 import {
   claimTelegramPollerToken,
+  ensureTelegramPollerTokenAvailable,
   getTelegramPollerClaim,
   listTelegramPollerHealth,
   markTelegramPollerConnected,
   markTelegramPollerError,
+  markTelegramPollerTerminated,
   markTelegramPollerUpdate,
   releaseTelegramPollerToken,
   type TelegramPollerHealth,
@@ -711,22 +713,22 @@ export class TelegramService extends Service {
     const accountId = activeState?.accountId ?? this.defaultAccountId;
 
     if (botToken) {
-      const active = getTelegramPollerClaim(botToken);
-      if (active && active.bot !== bot) {
+      try {
+        ensureTelegramPollerTokenAvailable(botToken, bot);
+      } catch (error) {
+        const active = getTelegramPollerClaim(botToken);
         logger.error(
           {
             src: "plugin:telegram",
             agentId: this.runtime.agentId,
             accountId,
-            activeMode: active.mode,
-            activeOwnerId: active.ownerId,
-            activeAccountId: active.accountId,
+            activeMode: active?.mode,
+            activeOwnerId: active?.ownerId,
+            activeAccountId: active?.accountId,
           },
           "Telegram bot token is already owned by another poller",
         );
-        throw new Error(
-          `Telegram bot token already owned by ${active.mode} poller ${active.ownerId}/${active.accountId}`,
-        );
+        throw error;
       }
     }
 
@@ -888,7 +890,15 @@ export class TelegramService extends Service {
             },
             "Telegram poller gave up after repeated conflicts — verify only one instance holds this bot token",
           );
-          clearActive();
+          if (botToken) {
+            markTelegramPollerTerminated(
+              botToken,
+              bot,
+              new Error("Telegram poller exhausted its relaunch budget"),
+            );
+          } else {
+            clearActive();
+          }
           return;
         }
         relaunches++;
