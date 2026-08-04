@@ -15,17 +15,19 @@ import {
 } from "node:http";
 import { request as requestHttps } from "node:https";
 import net from "node:net";
-import type { Action, HandlerOptions, IAgentRuntime } from "@elizaos/core";
+import {
+  type Action,
+  type HandlerOptions,
+  type IAgentRuntime,
+  isPrivateIpAddress,
+  normalizeHostLike,
+} from "@elizaos/core";
 import { resolveApiToken, resolveServerOnlyPort } from "@elizaos/shared";
 import { hasSelectedContextOrSignalSync } from "../actions/context-signal.ts";
 import type {
   CustomActionDef,
   CustomActionHandler,
 } from "../config/types.eliza.ts";
-import {
-  isBlockedPrivateOrLinkLocalIp,
-  normalizeHostLike,
-} from "../security/network-policy.ts";
 
 /** Cached runtime reference for hot-registration of new actions. */
 let _runtime: IAgentRuntime | null = null;
@@ -231,7 +233,7 @@ function shellEscape(value: string): string {
 }
 
 function isBlockedIp(ip: string): boolean {
-  return isBlockedPrivateOrLinkLocalIp(ip);
+  return isPrivateIpAddress(ip);
 }
 
 function normalizeDnsAddress(record: unknown): string | null {

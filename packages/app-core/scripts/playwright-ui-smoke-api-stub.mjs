@@ -1,4 +1,9 @@
-/** Supports app-core build, packaging, or development orchestration for playwright ui smoke api stub mjs. */
+/**
+ * Deterministic API stand-in for UI-smoke Playwright runs: serves the dashboard
+ * HTTP/WebSocket surface with canned data and real, provenance-tagged view
+ * bundles where they exist; audit mode (ELIZA_UI_SMOKE_REQUIRE_REAL_BUNDLES=1)
+ * turns a missing real bundle into a 424 instead of synthesizing one.
+ */
 import { existsSync, readFileSync } from "node:fs";
 import http from "node:http";
 import path from "node:path";
@@ -263,13 +268,6 @@ const stubCatalogApps = [
     heroImage: "/app-heroes/skills-viewer.png",
   }),
   stubCatalogApp({
-    name: "@elizaos/plugin-training",
-    displayName: "Fine Tuning",
-    description:
-      "Build datasets, inspect trajectories, and activate tuned models.",
-    capabilities: ["training", "fine-tuning", "datasets", "models"],
-  }),
-  stubCatalogApp({
     name: "@elizaos/app-trajectory-viewer",
     displayName: "Trajectory Viewer",
     description: "Inspect LLM call history, prompts, and execution traces.",
@@ -311,26 +309,6 @@ const stubCatalogApps = [
     description: "Search runtime and service logs.",
     capabilities: ["logs", "debug", "viewer"],
     heroImage: "/app-heroes/log-viewer.png",
-  }),
-  stubCatalogApp({
-    name: "@elizaos/plugin-shopify",
-    displayName: "Shopify",
-    description: "Manage Shopify store operations from the agent workspace.",
-    category: "platform",
-  }),
-  stubCatalogApp({
-    name: "@elizaos/plugin-hyperliquid",
-    displayName: "Hyperliquid",
-    description: "Inspect Hyperliquid markets, positions, and order status.",
-    category: "platform",
-    capabilities: ["hyperliquid", "trading", "wallet"],
-  }),
-  stubCatalogApp({
-    name: "@elizaos/plugin-polymarket",
-    displayName: "Polymarket",
-    description: "Browse prediction markets and native trading readiness.",
-    category: "platform",
-    capabilities: ["polymarket", "prediction-markets", "wallet"],
   }),
 ];
 
@@ -565,113 +543,6 @@ const emptyWalletMarketOverview = {
   prices: [],
   movers: [],
   predictions: [],
-};
-
-const stubHyperliquidStatus = {
-  publicReadReady: true,
-  signerReady: false,
-  executionReady: false,
-  executionBlockedReason:
-    "Signed Hyperliquid exchange mutations are disabled in UI smoke.",
-  accountAddress: null,
-  apiBaseUrl: "https://api.hyperliquid.xyz",
-  credentialMode: "none",
-  readiness: {
-    publicReads: true,
-    accountReads: false,
-    signer: false,
-    execution: false,
-  },
-  account: {
-    address: null,
-    source: "none",
-    guidance:
-      "Connect a managed vault or configure an account address for account reads.",
-  },
-  vault: {
-    configured: false,
-    ready: false,
-    address: null,
-    guidance: "Public market reads do not require a vault.",
-  },
-  apiWallet: {
-    configured: false,
-    guidance: "API-wallet delegation is optional.",
-  },
-};
-
-const stubHyperliquidMarkets = {
-  markets: [
-    {
-      name: "BTC",
-      index: 0,
-      szDecimals: 5,
-      maxLeverage: 50,
-      onlyIsolated: false,
-      isDelisted: false,
-    },
-    {
-      name: "ETH",
-      index: 1,
-      szDecimals: 4,
-      maxLeverage: 50,
-      onlyIsolated: false,
-      isDelisted: false,
-    },
-  ],
-  source: "hyperliquid-info-meta",
-  fetchedAt: "2026-01-01T00:00:00.000Z",
-};
-
-const stubPolymarketStatus = {
-  publicReads: {
-    ready: true,
-    reason: null,
-    gammaApiBase: "https://gamma-api.polymarket.com",
-    dataApiBase: "https://data-api.polymarket.com",
-  },
-  trading: {
-    ready: false,
-    credentialsReady: false,
-    missing: [
-      "POLYMARKET_PRIVATE_KEY",
-      "CLOB_API_KEY",
-      "CLOB_API_SECRET",
-      "CLOB_API_PASSPHRASE",
-    ],
-    reason: "Trading is disabled in UI smoke.",
-    clobApiBase: "https://clob.polymarket.com",
-  },
-};
-
-const stubPolymarketMarket = {
-  id: "ui-smoke-market",
-  slug: "ui-smoke-market",
-  question: "Will the UI smoke suite stay green?",
-  description: "Deterministic fixture market for app-window QA.",
-  category: "QA",
-  active: true,
-  closed: false,
-  archived: false,
-  restricted: false,
-  enableOrderBook: true,
-  conditionId: "0xsmoke",
-  clobTokenIds: ["yes-token", "no-token"],
-  outcomes: [
-    { name: "Yes", price: "0.72" },
-    { name: "No", price: "0.28" },
-  ],
-  liquidity: "10000",
-  volume: "42000",
-  volume24hr: "1200",
-  lastTradePrice: "0.72",
-  bestBid: "0.71",
-  bestAsk: "0.73",
-  image: null,
-  icon: null,
-  endDate: null,
-  startDate: "2026-01-01T00:00:00.000Z",
-  updatedAt: "2026-01-01T00:00:00.000Z",
 };
 
 const smokeGeneratedAt = "2026-01-01T00:00:00.000Z";
@@ -1957,7 +1828,7 @@ function createDemoOrchestratorState() {
     latestSessionId: "session-codex",
     latestSessionLabel: "Codex Builder",
     latestWorkdir: "/tmp/orchestrator-kanban",
-    latestRepo: "/home/nubs/Git/iqlabs/eliza-labs/eliza",
+    latestRepo: "/workspaces/eliza",
     latestActivityAt: startedAtMs,
     createdAt: startedAt,
     updatedAt: startedAt,
@@ -2012,7 +1883,7 @@ function createDemoOrchestratorState() {
         originalTask:
           "Generate the planner shell and persist card movement locally.",
         workdir: "/tmp/orchestrator-kanban",
-        repo: "/home/nubs/Git/iqlabs/eliza-labs/eliza",
+        repo: "/workspaces/eliza",
         activeTool: "write",
         decisionCount: 0,
         autoResolvedCount: 0,
@@ -2047,7 +1918,7 @@ function createDemoOrchestratorState() {
         originalTask:
           "Review the planner visual affordances and interaction model.",
         workdir: "/tmp/orchestrator-kanban",
-        repo: "/home/nubs/Git/iqlabs/eliza-labs/eliza",
+        repo: "/workspaces/eliza",
         activeTool: "review",
         decisionCount: 0,
         autoResolvedCount: 0,
@@ -3179,146 +3050,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === "GET" && url.pathname === "/api/shopify/status") {
-    sendJson(req, res, 200, { connected: false, shop: null });
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/shopify/products") {
-    sendJson(req, res, 200, { products: [], total: 0, page: 1, pageSize: 25 });
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/shopify/orders") {
-    sendJson(req, res, 200, { orders: [], total: 0 });
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/shopify/inventory") {
-    sendJson(req, res, 200, { items: [], locations: [] });
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/shopify/customers") {
-    sendJson(req, res, 200, { customers: [], total: 0 });
-    return;
-  }
-
-  // Birdclaw (local birdclaw.sh Twitter/X archive): the zero-key smoke stack
-  // has no local archive, so the honest state is "not installed" — the view
-  // renders its real setup card (BirdclawView never fetches tweets/inbox when
-  // status.installed is false).
-  if (req.method === "GET" && url.pathname === "/api/birdclaw/status") {
-    sendJson(req, res, 200, {
-      status: {
-        installed: false,
-        version: null,
-        home: null,
-        counts: null,
-        transport: null,
-        message:
-          "birdclaw is not installed on this host. Install birdclaw.sh and run a sync to build the local archive.",
-      },
-    });
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/hyperliquid/status") {
-    sendJson(req, res, 200, stubHyperliquidStatus);
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/hyperliquid/markets") {
-    sendJson(req, res, 200, stubHyperliquidMarkets);
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/hyperliquid/positions") {
-    sendJson(req, res, 200, {
-      accountAddress: null,
-      positions: [],
-      readBlockedReason:
-        "Connect an account address to read Hyperliquid positions.",
-      fetchedAt: null,
-    });
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/hyperliquid/orders") {
-    sendJson(req, res, 200, {
-      accountAddress: null,
-      orders: [],
-      readBlockedReason: "Connect an account address to read open orders.",
-      fetchedAt: null,
-    });
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/polymarket/status") {
-    sendJson(req, res, 200, stubPolymarketStatus);
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/polymarket/markets") {
-    sendJson(req, res, 200, {
-      markets: [stubPolymarketMarket],
-      source: { api: "gamma", endpoint: "/markets" },
-    });
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/polymarket/market") {
-    sendJson(req, res, 200, {
-      market: stubPolymarketMarket,
-      source: { api: "gamma", endpoint: "/markets" },
-    });
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/polymarket/orderbook") {
-    sendJson(req, res, 200, {
-      tokenId: url.searchParams.get("token_id") ?? "yes-token",
-      market: stubPolymarketMarket.id,
-      assetId: null,
-      bids: [{ price: "0.71", size: "100" }],
-      asks: [{ price: "0.73", size: "100" }],
-      bestBid: "0.71",
-      bestBidSize: "100",
-      bestAsk: "0.73",
-      bestAskSize: "100",
-      midpoint: "0.72",
-      spread: "0.02",
-      bidLevels: 1,
-      askLevels: 1,
-      lastTradePrice: "0.72",
-      tickSize: "0.01",
-      source: { api: "clob", endpoint: "/book" },
-    });
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/polymarket/orders") {
-    sendJson(req, res, 200, {
-      enabled: false,
-      reason: "Trading is disabled in UI smoke.",
-      requiredForTrading: [
-        "POLYMARKET_PRIVATE_KEY",
-        "CLOB_API_KEY",
-        "CLOB_API_SECRET",
-        "CLOB_API_PASSPHRASE",
-      ],
-    });
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/polymarket/positions") {
-    sendJson(req, res, 200, {
-      positions: [],
-      source: { api: "data", endpoint: "/positions" },
-    });
-    return;
-  }
-
   if (url.pathname === "/api/conversations") {
     if (req.method === "GET") {
       sendJson(req, res, 200, { conversations: stubConversations });
@@ -4373,26 +4104,6 @@ const server = http.createServer(async (req, res) => {
       safariPackagePath: null,
       releaseManifest: null,
     });
-    return;
-  }
-
-  if (
-    (req.method === "GET" || req.method === "POST") &&
-    url.pathname === "/api/training/auto/config"
-  ) {
-    sendJson(req, res, 200, {
-      config: {
-        autoTrain: false,
-        triggerThreshold: 20,
-        triggerCooldownHours: 24,
-        backends: [],
-      },
-    });
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/training/auto/status") {
-    sendJson(req, res, 200, { serviceRegistered: false });
     return;
   }
 

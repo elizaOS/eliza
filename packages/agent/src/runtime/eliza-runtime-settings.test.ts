@@ -10,13 +10,14 @@ import type { ElizaConfig } from "../config/config.ts";
 import { buildRuntimeSettingsProjection } from "./runtime-settings.ts";
 import { applySandboxConnectorOwnership } from "./sandbox-character.ts";
 
-const ENV_KEYS = ["SECRET_SALT"] as const;
+const ENV_KEYS = ["SECRET_SALT", "EMBEDDING_PROVIDER"] as const;
 
 let savedEnv: Record<string, string | undefined>;
 
 beforeEach(() => {
   savedEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
   process.env.SECRET_SALT = "salt-runtime";
+  process.env.EMBEDDING_PROVIDER = "local";
 });
 
 afterEach(() => {
@@ -117,6 +118,7 @@ describe("buildRuntimeSettingsProjection", () => {
     expect(settings).toMatchObject({
       VALIDATION_LEVEL: "fast",
       ENCRYPTION_SALT: "salt-runtime",
+      EMBEDDING_PROVIDER: "local",
       OPENAI_API_KEY: "openai-key",
       DISCORD_API_TOKEN: "discord-token",
       DISCORD_BOT_TOKEN: "discord-token",

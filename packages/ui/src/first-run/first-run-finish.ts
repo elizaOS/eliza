@@ -49,6 +49,7 @@ import {
 import { runAgentSessionRecovery } from "../state/agent-session-recovery-runner";
 import type { CloudLoginOptions } from "../state/types";
 import { isCloudStatusAuthenticated } from "../utils";
+import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
 import { autoDownloadRecommendedLocalModelInBackground } from "./auto-download-recommended";
 import { assertDeviceRamTierAllowsLocalRuntime } from "./device-ram-gate";
 import {
@@ -741,9 +742,12 @@ export async function bindCloudAgent(
           })
           .then((res) => {
             if (!res.success) {
-              console.warn(
-                `[firstRunFinish] shared bridge delete failed (leaked row ${sharedAgentId}): ${res.error ?? "unknown"}`,
-              );
+              reportRendererDiagnostic({
+                scope: "first-run.shared-bridge-cleanup",
+                error: new Error(res.error ?? "Shared bridge cleanup failed"),
+                severity: "warning",
+                context: { sharedAgentId },
+              });
             }
           });
       },

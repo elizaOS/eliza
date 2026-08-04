@@ -141,7 +141,7 @@ export function BrowserStatusSidebarWidget(_props: ChatSidebarWidgetProps) {
               >
                 {label}
               </span>
-              <span className="shrink-0 text-3xs uppercase tracking-wider text-muted/70">
+              <span className="shrink-0 text-3xs uppercase tracking-wider text-muted-strong">
                 {status.label}
               </span>
             </Button>

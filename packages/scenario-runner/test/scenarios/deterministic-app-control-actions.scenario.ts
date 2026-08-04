@@ -1,6 +1,6 @@
 /**
  * Keyless catalog coverage for the plugin-app-control action surface against a
- * seeded set of scenario views. Runs on the pr-deterministic lane under the LLM proxy.
+ * seeded set of scenario views. Runs on the pr-deterministic lane under the model provider.
  */
 import { promises as fs } from "node:fs";
 import path from "node:path";

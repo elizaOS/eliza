@@ -1,3 +1,4 @@
+/** Verifies inline-widget registry through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

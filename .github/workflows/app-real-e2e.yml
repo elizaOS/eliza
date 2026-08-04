@@ -31,8 +31,8 @@ permissions:
 
 env:
   CI: "true"
-  NODE_VERSION: "24"
-  BUN_VERSION: "canary"
+  NODE_VERSION: "24.15.0"
+  BUN_VERSION: "1.3.14"
   ELIZA_LIVE_TEST: "1"
   # Provider keys (the suite picks the first resolvable via selectLiveProvider();
   # absent secrets => the suite self-skips, never fails).

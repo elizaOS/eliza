@@ -84,7 +84,6 @@ export {
   type RestartHandler,
   requestRestart,
   resolveCloudApiBaseUrl,
-  STREAMING_PLUGINS,
   setRestartHandler,
 } from "@elizaos/shared";
 export {
@@ -161,7 +160,6 @@ export {
   routeAutonomyTextToUser,
   startApiServer,
   streamResponseBodyWithByteLimit,
-  validateMcpServerConfig,
 } from "./api/server.ts";
 // `server-helpers.ts` exposes auth/conversation/wallet helpers that the
 // canonical `server.ts` already re-exports for backwards compat. Re-exporting
@@ -456,7 +454,6 @@ export * from "./services/tee-runtime-config.ts";
 export * from "./services/tee-sealed-volume.ts";
 export * from "./services/tee-signer-backend.ts";
 export { resolveDefaultAgentWorkspaceDir } from "./shared/workspace-resolution.ts";
-export * from "./test-support/index.ts";
 export * from "./triggers/runtime.ts";
 export * from "./triggers/scheduling.ts";
 export * from "./triggers/types.ts";

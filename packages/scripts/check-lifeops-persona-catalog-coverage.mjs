@@ -3,8 +3,10 @@
 /**
  * Coverage gate for the LifeOps persona scenario-pack ledgers. The pack
  * catalogs are progress ledgers, not executable scenarios; this script confirms
- * their declared scenario ids resolve to the real TypeScript scenario-runner
- * corpus or the Python LifeOpsBench corpus and prints authored/verified totals.
+ * their declared scenario-runner ids resolve to the real TypeScript
+ * scenario-runner corpus and prints authored/verified totals. Rows on the
+ * `lifeops-bench` surface resolve against the Python LifeOpsBench corpus,
+ * which now lives in https://github.com/elizaOS/benchmarks.
  */
 
 import { lstatSync, readdirSync, readFileSync } from "node:fs";
@@ -25,11 +27,6 @@ const TS_SCENARIO_ROOTS = [
   "plugins/plugin-personal-assistant/test/scenarios",
   "packages/scenario-runner/test/scenarios",
 ].map((entry) => path.join(REPO_ROOT, entry));
-const PYTHON_SCENARIO_ROOT = path.join(
-  REPO_ROOT,
-  "packages/benchmarks/lifeops-bench/eliza_lifeops_bench/scenarios",
-);
-
 const EXPECTED_CATALOGS = [
   ["adhd-capture-and-start.catalog.json", "A1", 28],
   ["adhd-follow-through.catalog.json", "A2", 24],
@@ -141,31 +138,6 @@ function loadScenarioRunnerIds() {
   return ids;
 }
 
-function loadLifeOpsBenchIds() {
-  const ids = new Map();
-  const files = walkFiles(PYTHON_SCENARIO_ROOT, (file) => file.endsWith(".py"));
-  // Two id-declaration forms coexist in the bench corpus: the explicit
-  // `id="..."` keyword on inline `Scenario(...)` literals, and the positional
-  // first argument of the per-pack scenario factories (`_scenario(...)` /
-  // `_live(...)`) some packs use to build their `SCENARIOS` list (e.g.
-  // night_owl_anchored_day.py). Both resolve real, registered scenarios, so the
-  // coverage gate must see both — matching only `id=` silently under-counts the
-  // factory packs. `_anchor(...)`/`_definition(...)` helpers also take a leading
-  // string, so the factory pattern is scoped to the scenario-builder names.
-  const idKeywordPattern = /\bid\s*=\s*["']([^"']+)["']/g;
-  const factoryIdPattern = /\b_(?:scenario|live)\(\s*["']([^"']+)["']/g;
-  for (const file of files) {
-    const source = readFileSync(file, "utf8");
-    for (const match of source.matchAll(idKeywordPattern)) {
-      ids.set(match[1], toPosix(path.relative(REPO_ROOT, file)));
-    }
-    for (const match of source.matchAll(factoryIdPattern)) {
-      ids.set(match[1], toPosix(path.relative(REPO_ROOT, file)));
-    }
-  }
-  return ids;
-}
-
 function validateCatalogShape(
   catalog,
   expectedFile,
@@ -222,7 +194,6 @@ function validateCatalogShape(
 
 function summarize() {
   const scenarioRunnerIds = loadScenarioRunnerIds();
-  const lifeOpsBenchIds = loadLifeOpsBenchIds();
   const errors = [];
   const packs = [];
   const expectedCatalogs = PACK_FILTER
@@ -272,9 +243,15 @@ function summarize() {
       }
       if (status === "authored" || status === "verified") {
         authored += 1;
-        const idMap =
-          surface === "scenario-runner" ? scenarioRunnerIds : lifeOpsBenchIds;
-        if (typeof id === "string" && !idMap.has(id)) {
+        // lifeops-bench rows resolve against the Python LifeOpsBench corpus,
+        // which now lives in the standalone benchmarks repo
+        // (https://github.com/elizaOS/benchmarks); only scenario-runner ids
+        // are resolvable from this checkout.
+        if (
+          surface === "scenario-runner" &&
+          typeof id === "string" &&
+          !scenarioRunnerIds.has(id)
+        ) {
           errors.push(`${where}: ${surface} id "${id}" was not found`);
         }
       }

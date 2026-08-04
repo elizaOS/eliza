@@ -305,6 +305,27 @@ for (const fixture of [
     pattern: /lint:check may not be conditional/,
   },
   {
+    name: "repository-level plugin contracts treated as a workspace",
+    key: "develop",
+    mutate: (source) =>
+      source.replace("__tests__/*) continue ;;", "__tests__/*) : ;;"),
+    pattern: /exclude repository-level and fully deleted plugin roots/,
+  },
+  {
+    name: "repository-level plugin build file treated as a workspace",
+    key: "develop",
+    mutate: (source) =>
+      source.replace('if [[ "$relative" != */* ]]', "if false"),
+    pattern: /exclude repository-level and fully deleted plugin roots/,
+  },
+  {
+    name: "fully deleted legacy plugin treated as a current workspace",
+    key: "develop",
+    mutate: (source) =>
+      source.replace('if [ ! -e "plugins/$pkg" ]', "if false"),
+    pattern: /exclude repository-level and fully deleted plugin roots/,
+  },
+  {
     name: "permissive gitleaks",
     key: "gitleaks",
     mutate: (source) =>

@@ -188,8 +188,12 @@ export async function runBotNoiseTriage(
 			.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
 			.map((memory) => historyLine(runtime, memory))
 			.filter((line): line is string => line !== null);
-	} catch {
-		// History is best-effort context; triage still works without it.
+	} catch (error) {
+		// error-policy:J4 Recent history only improves the optional cost gate;
+		// the current message remains sufficient for a conservative verdict.
+		runtime.reportError("BotNoiseTriage.history", error, {
+			roomId: message.roomId,
+		});
 	}
 
 	const prompt = buildBotNoiseTriagePrompt({
@@ -227,8 +231,8 @@ export async function runBotNoiseTriage(
 		}
 		return { applied: true, respond: verdict };
 	} catch (error) {
-		// No TEXT_SMALL handler / provider failure: the gate must never take
-		// the pipeline down. Fail open.
+		// error-policy:J4 This optional cost gate deliberately degrades to the
+		// normal response pipeline, which remains the authoritative path.
 		runtime.logger?.debug?.(
 			{
 				src: "service:message",
@@ -237,6 +241,9 @@ export async function runBotNoiseTriage(
 			},
 			"[message] bot-noise triage model call failed — falling back to full pipeline",
 		);
+		runtime.reportError("BotNoiseTriage.model", error, {
+			roomId: message.roomId,
+		});
 		return { applied: false };
 	}
 }

@@ -59,7 +59,7 @@ export const APPS_VIEW_HIDDEN_APP_NAMES = [
   "@elizaos/plugin-task-coordinator",
   // Shared wallet/inventory system package — provides components used by the
   // app shell, not a standalone installable app.
-  "@elizaos/plugin-wallet-ui",
+  "@elizaos/plugin-wallet",
 ] as const;
 
 const APPS_VIEW_HIDDEN_APP_NAME_SET = new Set<string>(

@@ -150,6 +150,8 @@ export class BatchProcessor<T> {
 				await this.process(item);
 				return { item, success: true, retryCount };
 			} catch (err) {
+				// error-policy:J4 Per-item retry is bounded; exhaustion becomes
+				// an explicit failed BatchItemOutcome.
 				lastError = err instanceof Error ? err : new Error(String(err));
 				if (
 					attempt >= maxAttempts ||
@@ -167,6 +169,8 @@ export class BatchProcessor<T> {
 					try {
 						await this.onExhausted(item, lastError);
 					} catch {
+						// error-policy:J7 Exhaustion callbacks observe an already
+						// failed item and cannot abort independent batch work.
 						// Keep callback failures from aborting the whole batch
 					}
 				}

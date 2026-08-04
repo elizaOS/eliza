@@ -1,16 +1,4 @@
-/**
- * Markdown to Intermediate Representation (IR) conversion.
- *
- * Converts markdown text to a structured format with:
- * - Plain text content
- * - Style spans (bold, italic, code, etc.)
- * - Link spans
- *
- * This enables consistent rendering across different platforms
- * that may have different markdown support.
- *
- * @module markdown/ir
- */
+/** Converts Markdown into text, style spans, and links for platform-independent rendering. */
 
 import MarkdownIt from "markdown-it";
 import { chunkText } from "./chunk.js";

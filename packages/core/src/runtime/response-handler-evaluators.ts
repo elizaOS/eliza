@@ -294,6 +294,11 @@ export async function runResponseHandlerEvaluators(args: {
 				);
 			}
 		} catch (error) {
+			// error-policy:J7 Evaluators are independent Stage-1 enrichers; collect and
+			// report each failure while allowing the remaining evaluators to run.
+			args.runtime.reportError("ResponseHandlerEvaluator.evaluate", error, {
+				evaluator: evaluator.name,
+			});
 			const message = error instanceof Error ? error.message : String(error);
 			result.errors.push({ evaluatorName: evaluator.name, error: message });
 			args.runtime.logger.warn(

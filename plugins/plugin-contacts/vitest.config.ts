@@ -27,10 +27,24 @@ export default defineConfig({
         replacement: require.resolve("react-dom/client"),
       },
       {
+        find: /^@elizaos\/capacitor-contacts\/web$/,
+        replacement: resolve(
+          rootDir,
+          "../../plugins/plugin-native-contacts/src/web.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/capacitor-contacts$/,
+        replacement: resolve(
+          rootDir,
+          "../../plugins/plugin-native-contacts/src/index.ts",
+        ),
+      },
+      {
         // @elizaos/ui's DynamicViewLoader statically imports this plugin-health
         // subpath; the keyless contacts test env has no built plugin-health
         // dist to resolve it against, so collection of every Contacts view test
-        // fails. Anchor it to source, matching plugin-phone/wallet-ui/facewear.
+        // fails. Anchor it to source, matching plugin-phone and wallet-ui.
         find: /^@elizaos\/plugin-health\/screen-time\/mobile-signal-setup$/,
         replacement: resolve(
           rootDir,
@@ -44,23 +58,6 @@ export default defineConfig({
       {
         find: /^@elizaos\/ui\/platform$/,
         replacement: resolve(rootDir, "test/stubs/ui-platform.ts"),
-      },
-      {
-        // Subpath alias (declared before the bare specifier so it wins) so the
-        // real-parser contract test can import the real ContactsWeb fallback —
-        // the package ships no built ./web export.
-        find: /^@elizaos\/capacitor-contacts\/web$/,
-        replacement: resolve(
-          rootDir,
-          "../../plugins/plugin-native-contacts/src/web.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/capacitor-contacts$/,
-        replacement: resolve(
-          rootDir,
-          "../../plugins/plugin-native-contacts/src/index.ts",
-        ),
       },
       {
         find: /^@elizaos\/ui\/(.+)$/,

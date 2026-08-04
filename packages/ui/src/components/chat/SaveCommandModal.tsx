@@ -127,11 +127,7 @@ export function SaveCommandModal({
             />
           </div>
           {error && (
-            <p
-              id={inputErrorId}
-              className="text-xs"
-              style={{ color: "#ef4444" }}
-            >
+            <p id={inputErrorId} className="text-xs text-danger">
               {error}
             </p>
           )}

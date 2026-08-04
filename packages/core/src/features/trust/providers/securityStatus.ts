@@ -8,7 +8,6 @@
  * legitimate admins are not gated as adversarial input. Restricted to
  * admin/settings contexts and a minimum ADMIN role.
  */
-import { logger } from "../../../logger.ts";
 import type {
 	IAgentRuntime,
 	Memory,
@@ -24,11 +23,7 @@ async function isAdminRequester(
 	message: Memory,
 	state: State,
 ): Promise<boolean> {
-	try {
-		return await resolveAdminContext(runtime, message, state);
-	} catch {
-		return false;
-	}
+	return resolveAdminContext(runtime, message, state);
 }
 
 export const securityStatusProvider: Provider = {
@@ -82,53 +77,26 @@ export const securityStatusProvider: Provider = {
 				};
 			}
 
-			let messageAnalysis: {
-				detected: boolean;
-				type?: string;
-				details?: string;
-			} = {
-				detected: false,
+			const analysis = await securityModule.analyzeMessage(
+				message.content.text || "",
+				message.entityId,
+				{ roomId: message.roomId },
+			);
+			const messageAnalysis = {
+				detected: analysis.detected,
+				type: analysis.type,
+				details: analysis.details?.slice(0, 500),
 			};
-			let recentIncidentCount = 0;
-			let threatConfidence = 0;
-
-			try {
-				const analysis = await securityModule.analyzeMessage(
-					message.content.text || "",
-					message.entityId,
-					{ roomId: message.roomId },
-				);
-				messageAnalysis = {
-					detected: analysis.detected,
-					type: analysis.type,
-					details: analysis.details?.slice(0, 500),
-				};
-			} catch (err) {
-				logger.debug(
-					{ error: err },
-					"[SecurityStatusProvider] Message analysis unavailable",
-				);
-			}
-
-			try {
-				const incidents = await securityModule.getRecentSecurityIncidents(
-					message.roomId,
-					24,
-				);
-				recentIncidentCount = incidents.length;
-			} catch {
-				// incidents unavailable
-			}
-
-			try {
-				const assessment = await securityModule.assessThreatLevel({
-					roomId: message.roomId,
-					entityId: message.entityId,
-				});
-				threatConfidence = assessment.confidence;
-			} catch {
-				// assessment unavailable
-			}
+			const incidents = await securityModule.getRecentSecurityIncidents(
+				message.roomId,
+				24,
+			);
+			const recentIncidentCount = incidents.length;
+			const assessment = await securityModule.assessThreatLevel({
+				roomId: message.roomId,
+				entityId: message.entityId,
+			});
+			const threatConfidence = assessment.confidence;
 
 			const alertLevel =
 				threatConfidence > 0.7
@@ -189,13 +157,16 @@ export const securityStatusProvider: Provider = {
 				},
 			};
 		} catch (error) {
+			runtime.reportError("SecurityStatusProvider.get", error, {
+				roomId: message.roomId,
+				entityId: message.entityId,
+			});
+			// error-policy:J4 Security failures become an explicit unavailable state instead of a healthy no-threat assessment.
 			return {
-				text: "",
+				text: "Security assessment unavailable. Do not treat this message as cleared by security checks.",
 				values: {
 					securityConcern: "unavailable",
 					alertLevel: "UNKNOWN",
-					hasActiveThreats: false,
-					currentMessageFlagged: false,
 				},
 				data: {
 					available: false,

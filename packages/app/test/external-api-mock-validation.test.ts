@@ -3,7 +3,7 @@
 // The keyless ui-smoke lane mocks external-API BFF endpoints with inline fixtures
 // in test/ui-smoke/helpers.ts. A mock is only trustworthy when the plugin's BFF
 // parser is validated against a REAL recorded provider response + a live drift
-// check (see docs/EXTERNAL_API_MOCK_VALIDATION.md).
+// check. The tier inventories below are the canonical contract.
 //
 // This gate enforces:
 //   1. every API marked "validated" keeps its recorded-contract + live-drift tests
@@ -27,26 +27,11 @@ const REPO_ROOT = path.resolve(HERE, "../../..");
 const VALIDATED: Readonly<
   Record<string, { contract: string; real: string; fixtures: string }>
 > = {
-  polymarket: {
-    contract: "plugins/plugin-polymarket/src/routes.contract.test.ts",
-    real: "plugins/plugin-polymarket/src/routes.real.test.ts",
-    fixtures: "plugins/plugin-polymarket/src/__fixtures__",
-  },
-  hyperliquid: {
-    contract: "plugins/plugin-hyperliquid/src/routes.contract.test.ts",
-    real: "plugins/plugin-hyperliquid/src/routes.real.test.ts",
-    fixtures: "plugins/plugin-hyperliquid/src/__fixtures__",
-  },
   coingecko: {
     contract:
       "plugins/plugin-wallet/src/routes/wallet-market-overview.contract.test.ts",
     real: "plugins/plugin-wallet/src/routes/wallet-market-overview.real.test.ts",
     fixtures: "plugins/plugin-wallet/src/routes/__fixtures__",
-  },
-  calendly: {
-    contract: "plugins/plugin-calendly/src/calendly-client.contract.test.ts",
-    real: "plugins/plugin-calendly/src/calendly-client.real.test.ts",
-    fixtures: "plugins/plugin-calendly/src/__fixtures__",
   },
   "web-search": {
     contract:
@@ -63,8 +48,8 @@ const VALIDATED: Readonly<
  * CONTRACT_TESTED — a recorded-real contract test only (the parser is proven
  * against a captured real response; no live-drift test yet). Maps each api to its
  * specific contract test file. Promote to VALIDATED by adding a live-drift test.
- * Empty for now (plugin-shopify was removed from the workspace); a newly
- * contract-tested API is added here.
+ * Empty until an app mock has a recorded-real contract test but no live-drift
+ * test. Add that API here when the intermediate validation state is real.
  */
 const CONTRACT_TESTED: Readonly<Record<string, string>> = {};
 

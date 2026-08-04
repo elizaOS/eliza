@@ -54,7 +54,6 @@ const VIEW_REGISTRY_FALLBACK: OcrExpectation = {
 export const VIEW_OCR_POLICIES = {
   "builtin-chat": expected({
     requireAll: ["Mostly clear"],
-    requireAny: ["Today", "Learn conversational Spanish"],
   }),
   "builtin-phone": expected({
     requireAll: ["Phone"],
@@ -163,10 +162,6 @@ export const VIEW_OCR_POLICIES = {
       "Search skills",
     ],
   }),
-  "builtin-fine-tuning": expected({
-    requireAll: ["Fine-Tuning"],
-    requireAny: ["Status", "Trajectories", "RUNTIME", "JOBS"],
-  }),
   "builtin-trajectories": expected({
     requireAll: ["Trajectories"],
     requireAny: ["No trajectories yet", "Browse"],
@@ -235,10 +230,6 @@ export const VIEW_OCR_POLICIES = {
     requireAll: ["Misty Forest", "Desert Dusk"],
     requireAny: ["Ocean Deep", "Alpine Dawn", "Ember Night"],
   }),
-  "plugin-birdclaw-gui": expected({
-    requireAll: ["Birdclaw"],
-    requireAny: ["not set up yet", "Bookmarks", "private SQLite"],
-  }),
   "plugin-cloud-gui": exempt(
     "unregistered-remote-bundle",
     "The Cloud GUI has no remote bundle in the hermetic browser audit, so the view-registry fallback is the only observable surface.",
@@ -247,10 +238,6 @@ export const VIEW_OCR_POLICIES = {
   "plugin-contacts-gui": expected({
     requireAll: ["Contacts"],
     requireAny: ["address book", "phone, or email", "search"],
-  }),
-  "plugin-hyperliquid-gui": expected({
-    requireAll: ["Hyperliquid"],
-    requireAny: ["read-ready", "Markets", "positions"],
   }),
   "plugin-focus-gui": expected({
     requireAll: ["Focus", "Idle"],
@@ -302,44 +289,21 @@ export const VIEW_OCR_POLICIES = {
     requireAll: ["Messages"],
     requireAny: ["Set default SMS", "bridge-only", "compose"],
   }),
-  "plugin-model-tester-gui": expected({
-    requireAll: ["Model Tester"],
-    requireAny: ["Smoke", "Vision", "probes"],
-  }),
   "plugin-phone-gui": expected({
     requireAll: ["Phone"],
     requireAny: ["call-blocked", "dialer", "recent"],
-  }),
-  "plugin-polymarket-gui": expected({
-    requireAny: ["markets", "reads", "trading", "vol", "liq", "last"],
   }),
   "plugin-wallet-gui": expected({
     requireAll: ["Wallet"],
     requireAny: ["Tokens", "RPC", "ETH", "SOL"],
   }),
-  "plugin-vector-browser-gui": expected({
-    requireAll: ["Vector Browser"],
-    requireAny: ["memories", "search content", "embed"],
-  }),
-  "plugin-feed-gui": expected({
-    requireAll: ["Feed"],
-    requireAny: ["Ready to trade", "Refresh", "Resume"],
-  }),
   "plugin-views-manager-gui": expected({
     requireAll: ["Views", "Refresh"],
     requireAny: ["ready views", "gui ready"],
   }),
-  "plugin-screenshare-gui": expected({
-    requireAll: ["Screenshare"],
-    requireAny: ["Start host session", "session", "Remote server URL"],
-  }),
   "plugin-notes-gui": expected({
     requireAll: ["New note"],
     requireAny: ["Title", "Details", "Add note"],
-  }),
-  "plugin-simple-calendar-gui": expected({
-    requireAll: ["July 2026"],
-    requireAny: ["Today", "New event", "Light Phone demo"],
   }),
   "plugin-task-coordinator-gui": expected({
     requireAll: ["Task Coordinator"],
@@ -356,10 +320,6 @@ export const VIEW_OCR_POLICIES = {
   "plugin-trajectory-logger-gui": expected({
     requireAll: ["Trajectory Logger"],
     requireAny: ["Back to apps", "HANDLE", "PLAN"],
-  }),
-  "plugin-training-gui": expected({
-    requireAll: ["Fine Tuning"],
-    requireAny: ["Status", "RUNTIME", "Trajectories"],
   }),
 } as const satisfies Record<string, ViewOcrPolicy>;
 

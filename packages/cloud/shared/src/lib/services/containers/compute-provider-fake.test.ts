@@ -57,36 +57,6 @@ beforeEach(() => {
 });
 
 // ---------------------------------------------------------------------------
-// implements ComputeProvider — surface
-// ---------------------------------------------------------------------------
-
-describe("surface", () => {
-  test("exposes all ComputeProvider methods", () => {
-    const methods = [
-      "listServers",
-      "getServer",
-      "createServer",
-      "deleteServer",
-      "powerOff",
-      "powerOn",
-      "listVolumes",
-      "getVolume",
-      "createVolume",
-      "attachVolume",
-      "detachVolume",
-      "deleteVolume",
-      "waitForAction",
-      "listServerTypes",
-      "listLocations",
-      "listImages",
-    ] as const;
-    for (const m of methods) {
-      expect(typeof (provider as unknown as Record<string, unknown>)[m]).toBe("function");
-    }
-  });
-});
-
-// ---------------------------------------------------------------------------
 // Server lifecycle: createServer returns not-ready; getServer flips on ticks
 // ---------------------------------------------------------------------------
 

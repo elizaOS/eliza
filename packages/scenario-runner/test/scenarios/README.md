@@ -1,10 +1,10 @@
 # Scenario Runner Deterministic PR Catalog
 
 `bun run --cwd packages/scenario-runner test:pr:e2e` runs the zero-cost PR
-catalog with `SCENARIO_USE_LLM_PROXY=1` and
-`SCENARIO_LLM_PROXY_STRICT=1`:
+catalog with `SCENARIO_USE_DETERMINISTIC_MODEL=1`. The core deterministic model
+provider always requires an exact fixture or explicit resolver:
 
-- `deterministic-pr-smoke` covers the deterministic LLM proxy reply plus
+- `deterministic-pr-smoke` covers the deterministic model reply plus
   VIEWS manager, pin, detached window, and mounted-view interact flows.
 - `deterministic-app-control-actions` covers VIEWS list, search, show,
   broadcast, create/edit, direct edit, and confirmed delete plus APP list,
@@ -33,9 +33,6 @@ catalog with `SCENARIO_USE_LLM_PROXY=1` and
   `TODO`, then the real `TODO` action against real TodosService DB state and
   CURRENT_TODOS provider output for write, create, update, complete, cancel,
   delete, list, clear, and active-only provider rendering.
-- `deterministic-streaming-actions` covers the real `STREAM` action and stream
-  route handler for start, status, stop, provider status rendering, exact
-  loopback route responses, and stream destination lifecycle side effects.
 - `deterministic-mcp-actions-routes` covers the real `@elizaos/plugin-mcp`
   service against a committed stdio MCP fixture, the parent `MCP` router,
   `MCP_READ_RESOURCE`, `MCP_CALL_TOOL`, `MCP_SEARCH_ACTIONS`,
@@ -88,7 +85,7 @@ Live-mode scenario execution remains separate:
 bun run --cwd packages/scenario-runner test:live:e2e
 ```
 
-That script intentionally does not set `SCENARIO_USE_LLM_PROXY`; the CLI still
+That script intentionally does not set `SCENARIO_USE_DETERMINISTIC_MODEL`; the CLI still
 requires a real provider key for live natural-language planner runs.
 
 - `live-help-knowledge` covers the deleted-Help-view replacement: a real model
@@ -108,10 +105,8 @@ requires a real provider key for live natural-language planner runs.
   unavailable and each final check asserts no `VIEWS`/`agent-*` capability was
   used. Run both with
   `eliza-scenarios run packages/scenario-runner/test/scenarios --lane live-only '**/live-lifeops-task-filter-due-window.scenario.ts' '**/live-plugin-enable-toggle-verb.scenario.ts' --report <out> --run-dir <dir>`.
-  These are live manual evidence assets, not CI gates; the zero-vector embedding
-  fallback occasionally drops the `PLUGIN` verb from the model's tool context for
-  a whole boot (see the plugin scenario header), so re-run if the plugin toggle
-  scenario reports only `REPLY`.
+  These are live manual evidence assets, not CI gates. Simulated scenario runs
+  disable embeddings explicitly; live runs use the configured provider path.
 - The chat-widget round-trip legs (MVP ws2 acceptance, #14322/#16939):
   `live-chat-widgets-form-roundtrip` (FORM emit → `[form:submit …]` re-entry →
   values used), `live-chat-widgets-choice-roundtrip` (a `[CHOICE:app-create …]`

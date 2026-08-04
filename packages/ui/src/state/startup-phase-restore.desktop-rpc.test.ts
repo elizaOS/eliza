@@ -1,3 +1,4 @@
+/** Verifies runRestoringSession desktop bridge startup calls through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

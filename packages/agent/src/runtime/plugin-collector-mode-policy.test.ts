@@ -48,7 +48,6 @@ describe("collectPluginNames runtime mode provider policy", () => {
     expect(MOBILE_MODEL_PROVIDER_PLUGINS).toEqual([
       "@elizaos/plugin-anthropic",
       "@elizaos/plugin-openai",
-      "@elizaos/plugin-ollama",
       "@elizaos/plugin-elizacloud",
     ]);
   });
@@ -135,7 +134,6 @@ describe("collectPluginNames runtime mode provider policy", () => {
     const names = collectPluginNames(config);
 
     expect(names.has("@elizaos/plugin-local-inference")).toBe(true);
-    expect(names.has("@elizaos/plugin-ollama")).toBe(true);
     expect(names.has("@elizaos/plugin-elizacloud")).toBe(false);
   });
 

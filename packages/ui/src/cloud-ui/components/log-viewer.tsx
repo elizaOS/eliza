@@ -45,6 +45,7 @@ export interface LogViewerSelectControl {
   value: string;
   onChange: (value: string) => void;
   options: LogViewerSelectOption[];
+  ariaLabel?: string;
   triggerClassName?: string;
 }
 
@@ -259,7 +260,7 @@ export function LogViewer({
             </div>
             {subtitle && <p className="text-sm text-white/60">{subtitle}</p>}
             {fetchedAt && (
-              <p className="mt-1 text-xs text-white/40">
+              <p className="mt-1 text-xs text-white/60">
                 Refreshed at {new Date(fetchedAt).toLocaleTimeString()}
               </p>
             )}
@@ -272,6 +273,7 @@ export function LogViewer({
                 onValueChange={lineCountControl.onChange}
               >
                 <SelectTrigger
+                  aria-label={lineCountControl.ariaLabel ?? "Log line count"}
                   className={cn(
                     "h-8 w-[100px] rounded-none border-border bg-black/40 text-xs",
                     lineCountControl.triggerClassName,
@@ -290,6 +292,10 @@ export function LogViewer({
             )}
             {onToggleStreaming && (
               <BrandButton
+                aria-label={
+                  streamingTitle ??
+                  (streaming?.active ? "Stop streaming logs" : "Stream logs")
+                }
                 variant="outline"
                 size="sm"
                 onClick={onToggleStreaming}
@@ -306,6 +312,7 @@ export function LogViewer({
             )}
             {onRefresh && (
               <BrandButton
+                aria-label={refreshTitle}
                 variant="outline"
                 size="sm"
                 onClick={onRefresh}
@@ -318,6 +325,7 @@ export function LogViewer({
             )}
             {onCopyAll && (
               <BrandButton
+                aria-label={copyTitle}
                 variant="outline"
                 size="sm"
                 onClick={onCopyAll}
@@ -329,6 +337,7 @@ export function LogViewer({
             )}
             {onDownload && (
               <BrandButton
+                aria-label={downloadTitle}
                 variant="outline"
                 size="sm"
                 onClick={onDownload}
@@ -347,12 +356,13 @@ export function LogViewer({
           <div className="flex flex-col gap-3 sm:flex-row">
             {search && (
               <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/60" />
                 <Input
+                  aria-label={search.placeholder ?? "Search logs"}
                   placeholder={search.placeholder ?? "Search logs..."}
                   value={search.value}
                   onChange={(event) => search.onChange(event.target.value)}
-                  className="rounded-none border-border bg-black/40 pl-9 text-white placeholder:text-white/40 "
+                  className="rounded-none border-border bg-black/40 pl-9 text-white placeholder:text-white/60 "
                   style={{ fontFamily: "var(--font-roboto-mono)" }}
                 />
               </div>
@@ -363,6 +373,7 @@ export function LogViewer({
                 onValueChange={levelFilter.onChange}
               >
                 <SelectTrigger
+                  aria-label={levelFilter.ariaLabel ?? "Log level"}
                   className={cn(
                     "w-full rounded-none border-border bg-black/40 sm:w-[140px]",
                     levelFilter.triggerClassName,
@@ -407,7 +418,7 @@ export function LogViewer({
             >
               {errorTitle}
             </p>
-            <p className="text-xs text-white/40">{error}</p>
+            <p className="text-xs text-white/60">{error}</p>
             {showRetryOnError && onRetry && (
               <BrandButton
                 variant="outline"
@@ -429,7 +440,7 @@ export function LogViewer({
             {(isFilteredEmpty
               ? filteredEmptyState.description
               : emptyState.description) && (
-              <p className="mt-1 text-xs text-white/40">
+              <p className="mt-1 text-xs text-white/60">
                 {isFilteredEmpty
                   ? filteredEmptyState.description
                   : emptyState.description}

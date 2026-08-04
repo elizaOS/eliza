@@ -256,6 +256,13 @@ export function startupReducer(
             attempts: 0,
             target: state.target ?? "embedded-local",
           };
+        case "AGENT_ERROR":
+          return {
+            phase: "error",
+            reason: "backend-unreachable",
+            message: event.message,
+            timedOut: false,
+          };
         case "RETRY":
           return { phase: "restoring-session" };
         default:
@@ -484,6 +491,36 @@ export function isStartupTerminal(state: StartupState): boolean {
   return state.phase === "ready" || state.phase === "error";
 }
 
+export type StartupStatusMessageKey =
+  | "startupshell.Starting"
+  | "startupshell.InitializingAgent"
+  | "startupshell.Loading";
+
+/** User-facing status copy is derived from the coordinator, not parallel lifecycle state. */
+export function getStartupStatusMessageKey(
+  state: StartupState,
+): StartupStatusMessageKey {
+  switch (state.phase) {
+    case "starting-runtime":
+      return "startupshell.InitializingAgent";
+    case "hydrating":
+    case "ready":
+      return "startupshell.Loading";
+    default:
+      return "startupshell.Starting";
+  }
+}
+
+/** Interactive startup states accept recovery, pairing, onboarding, or shell input. */
+export function isStartupInteractive(state: StartupState): boolean {
+  return (
+    state.phase === "pairing-required" ||
+    state.phase === "first-run-required" ||
+    state.phase === "ready" ||
+    state.phase === "error"
+  );
+}
+
 /**
  * True once the live app shell may MOUNT — the backend is reached and the active
  * conversation is hydratable — even though the agent's first-turn capability may
@@ -506,28 +543,4 @@ export function isShellPaintable(phase: StartupPhaseValue): boolean {
     phase === "hydrating" ||
     phase === "ready"
   );
-}
-
-/**
- * Derive the legacy StartupPhase from the coordinator state.
- *
- * NOTE: pairing-required, first-run-required, error, and hydrating all map
- * to "ready" — this looks counterintuitive but is correct because App.tsx's
- * coordinator gate (`startupCoordinator.phase !== "ready"`) catches these
- * phases BEFORE the legacy startupPhase/startupStatus rendering logic runs.
- * The legacy "ready" value is a passthrough state that never renders.
- */
-export function toLegacyStartupPhase(
-  state: StartupState,
-): "starting-backend" | "initializing-agent" | "ready" {
-  switch (state.phase) {
-    case "restoring-session":
-    case "resolving-target":
-    case "polling-backend":
-      return "starting-backend";
-    case "starting-runtime":
-      return "initializing-agent";
-    default:
-      return "ready";
-  }
 }

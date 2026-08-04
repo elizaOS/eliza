@@ -165,8 +165,6 @@ describe("curateLauncherPages", () => {
         entry("companion"),
         entry("model-tester"),
         entry("shopify"),
-        entry("facewear", { viewKind: "preview" }),
-        entry("smartglasses", { viewKind: "preview" }),
       ],
       { isAosp: false, enabledKinds: ENABLED, cloudActive: true },
     );
@@ -309,7 +307,7 @@ describe("curateLauncherPages", () => {
   it("shows registered Notes and Calendar views without requiring Cloud auth", () => {
     const views = [
       entry("notes", { label: "Notes" }),
-      entry("simple-calendar", { label: "Calendar" }),
+      entry("calendar", { label: "Calendar" }),
     ];
 
     expect(
@@ -320,7 +318,7 @@ describe("curateLauncherPages", () => {
           cloudActive: false,
         }),
       ),
-    ).toEqual(["simple-calendar", "notes"]);
+    ).toEqual(["calendar", "notes"]);
     expect(
       ids(
         curateLauncherPages(views, {
@@ -329,7 +327,7 @@ describe("curateLauncherPages", () => {
           cloudActive: true,
         }),
       ),
-    ).toEqual(["simple-calendar", "notes"]);
+    ).toEqual(["calendar", "notes"]);
   });
 
   it("collapses duplicate wallet + automations registrations, keeping Tasks its own tile", () => {
@@ -454,8 +452,6 @@ describe("curateLauncherPages — full realistic view set", () => {
     entry("companion"),
     entry("model-tester"),
     entry("shopify"),
-    entry("facewear", { viewKind: "preview" }),
-    entry("smartglasses", { viewKind: "preview" }),
     // Wallet + duplicate registrations + grouped sub-views.
     entry("wallet", { viewKind: "system" }),
     entry("inventory", { builtin: true, viewKind: "system" }),
@@ -480,7 +476,6 @@ describe("curateLauncherPages — full realistic view set", () => {
     entry("transcripts", { viewKind: "system" }),
     entry("relationships", { viewKind: "system" }),
     entry("memories", { viewKind: "system" }),
-    entry("feed", { viewKind: "system" }),
     entry("stream"),
     // Builtin tab with no declared kind — curation must still force preview.
     entry("pendant-transcript", { builtin: true, label: "Pendant Transcript" }),
@@ -500,8 +495,6 @@ describe("curateLauncherPages — full realistic view set", () => {
     entry("skills", { builtin: true }),
     entry("plugins", { viewKind: "system" }),
     entry("plugins-page", { viewKind: "system" }),
-    // Training UI — declared release, forced developer by curation.
-    entry("fine-tuning"),
   ];
 
   it("produces the exact off-fork ONE-page layout (developer on → tools after apps)", () => {
@@ -525,7 +518,6 @@ describe("curateLauncherPages — full realistic view set", () => {
       "character",
       "documents",
       "memories",
-      "feed",
       "stream",
       "pendant-transcript",
       "trajectories",
@@ -534,7 +526,6 @@ describe("curateLauncherPages — full realistic view set", () => {
       "logs",
       "skills",
       "plugins",
-      "fine-tuning",
     ]);
   });
 
@@ -561,9 +552,9 @@ describe("curateLauncherPages — full realistic view set", () => {
     ]);
   });
 
-  it("forces feed/stream/pendant to preview and fine-tuning + relationships to developer regardless of declared kind", () => {
-    // Preview on, developer off: the preview surfaces come back, the training UI
-    // and relationships stay hidden (they are developer-gated, not preview).
+  it("forces stream/pendant to preview while relationships stays inside Character", () => {
+    // Preview on, developer off: the preview surfaces return while developer
+    // tools remain hidden and relationships stays inside Character.
     const previewOnly = ids(
       curateLauncherPages(REAL_VIEWS, {
         isAosp: false,
@@ -571,15 +562,14 @@ describe("curateLauncherPages — full realistic view set", () => {
         cloudActive: true,
       }),
     );
-    for (const id of ["feed", "stream", "pendant-transcript"]) {
+    for (const id of ["stream", "pendant-transcript"]) {
       expect(previewOnly).toContain(id);
     }
-    expect(previewOnly).not.toContain("fine-tuning");
     expect(previewOnly).not.toContain("trajectories");
     expect(previewOnly).not.toContain("relationships");
 
-    // Developer on, preview off: the training UI + relationships show with the
-    // dev tools, the preview surfaces (feed/stream/pendant) stay hidden.
+    // Developer on, preview off: developer tools return, relationships remains
+    // a Character section, and preview surfaces stay hidden.
     const developerOnly = ids(
       curateLauncherPages(REAL_VIEWS, {
         isAosp: false,
@@ -587,10 +577,9 @@ describe("curateLauncherPages — full realistic view set", () => {
         cloudActive: true,
       }),
     );
-    expect(developerOnly).toContain("fine-tuning");
     // relationships is a Character section, never a tile — even developer-on.
     expect(developerOnly).not.toContain("relationships");
-    for (const id of ["feed", "stream", "pendant-transcript"]) {
+    for (const id of ["stream", "pendant-transcript"]) {
       expect(developerOnly).not.toContain(id);
     }
   });
@@ -646,14 +635,7 @@ describe("canonicalLauncherId derives package-name mapping from owner declaratio
   // the internal-tool app declarations. It now derives from each declaration's
   // own `targetTab`, so a package rename/add flows through with no edit here.
   it("canonicalizes an internal-tool app package name to its declared targetTab", () => {
-    // Live case: the fine-tuning surface used to require a literal
-    // `["@elizaos/plugin-training", "fine-tuning"]` row in launcher-curation.
-    expect(getInternalToolAppTargetTab("@elizaos/plugin-training")).toBe(
-      "fine-tuning",
-    );
-    expect(canonicalLauncherId("@elizaos/plugin-training")).toBe("fine-tuning");
-
-    // The task-coordinator PACKAGE NAME collapses onto the tasks tile via its
+    // The task-coordinator package name collapses onto the tasks tile via its
     // declaration (the short `task-coordinator` alias keeps its legacy row).
     expect(canonicalLauncherId("@elizaos/plugin-task-coordinator")).toBe(
       "tasks",
@@ -665,24 +647,26 @@ describe("canonicalLauncherId derives package-name mapping from owner declaratio
     // An internal-tool app surfaces in the launcher as a catalog card whose id
     // IS the package name (appToEntry uses `id: app.name`). Curation must fold
     // it onto the owning tab tile from the declaration alone.
-    const targetTab = getInternalToolAppTargetTab("@elizaos/plugin-training");
-    expect(targetTab).toBe("fine-tuning");
+    const targetTab = getInternalToolAppTargetTab(
+      "@elizaos/plugin-task-coordinator",
+    );
+    expect(targetTab).toBe("tasks");
     const page = curateLauncherPages(
       [
         entry("chat"),
-        entry("fine-tuning", { viewKind: "developer" }),
+        entry("tasks", { viewKind: "system" }),
         // Catalog card for the same surface, keyed by package name.
-        entry("@elizaos/plugin-training", {
+        entry("@elizaos/plugin-task-coordinator", {
           kind: "app",
           state: "available",
-          viewKind: "developer",
+          viewKind: "system",
         }),
       ],
       { isAosp: false, enabledKinds: ENABLED, cloudActive: true },
     );
-    // One "fine-tuning" tile, no stray `@elizaos/...` package-name tile.
-    expect(ids(page).filter((id) => id === "fine-tuning")).toHaveLength(1);
-    expect(ids(page)).not.toContain("@elizaos/plugin-training");
+    // One tasks tile, no stray package-name tile.
+    expect(ids(page).filter((id) => id === "tasks")).toHaveLength(1);
+    expect(ids(page)).not.toContain("@elizaos/plugin-task-coordinator");
   });
 });
 
@@ -724,9 +708,6 @@ describe("normalizeLauncherLabel", () => {
     expect(normalizeLauncherLabel("Fine-Tuning")).toBe("Fine-Tuning");
     expect(normalizeLauncherLabel("Fine - Tuning")).toBe("Fine-Tuning");
     expect(normalizeLauncherLabel("  Fine-Tuning  ")).toBe("Fine-Tuning");
-    expect(normalizeLauncherLabel("Fine-Tuning")).toBe(
-      normalizeLauncherLabel("Fine - Tuning"),
-    );
   });
 
   it("normalizes slash spacing and collapses internal runs of whitespace", () => {
@@ -784,7 +765,7 @@ describe("launcher label-duplication lint", () => {
       entry("documents", { label: "Documents", viewKind: "system" }),
       entry("memories", { label: "Memories", viewKind: "system" }),
       // Every internal-tool declaration keyed by its own targetTab + declared
-      // label — the real fine-tuning/plugins/skills/… tiles.
+      // label — the real plugins/skills/trajectory/etc. tiles.
       ...declarations.map((d) =>
         entry(getInternalToolAppTargetTab(d.name) ?? d.name, {
           label: d.displayName,
@@ -797,25 +778,6 @@ describe("launcher label-duplication lint", () => {
       enabledKinds: ENABLED,
       cloudActive: true,
     });
-    expect(() => assertNoDuplicateVisibleLabels(page)).not.toThrow();
-  });
-
-  it("collapses the historical triple 'Fine-Tuning' registrations to a single labelled tile", () => {
-    // `advanced` + `fine-tuning` builtin tabs + the `training` plugin view all
-    // route to /apps/fine-tuning; with per-registration label drift they read as
-    // `Fin Tuning` / `Fine-Tuning` / `Fine-Tuning`. Curation folds them to one
-    // canonical tile, and the surviving label is normalized.
-    const page = curateLauncherPages(
-      [
-        entry("advanced", { label: "Fin Tuning" }),
-        entry("fine-tuning", { label: "Fine - Tuning", viewKind: "developer" }),
-        entry("training", { label: "Fine-Tuning" }),
-      ],
-      { isAosp: false, enabledKinds: ENABLED, cloudActive: true },
-    );
-    const fineTuning = page.filter((e) => e.id === "fine-tuning");
-    expect(fineTuning).toHaveLength(1);
-    expect(fineTuning[0].label).toBe("Fine-Tuning");
     expect(() => assertNoDuplicateVisibleLabels(page)).not.toThrow();
   });
 

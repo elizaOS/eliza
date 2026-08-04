@@ -10,6 +10,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { Worker } from "node:worker_threads";
 import {
   buildAndPackReleaseCandidate,
   loadReleaseState,
@@ -125,7 +126,7 @@ function makeScenario() {
     sourceRef: "refs/heads/develop",
     registry: "https://registry.npmjs.org/",
     publisher: "release-git",
-    build: { command: process.execPath, args: ["build.mjs"] },
+    build: { command: "node", args: ["build.mjs"] },
   });
   recordReleaseTransition(candidateDirectory, "registry-bound", {
     registry: plan.registry,
@@ -208,18 +209,7 @@ describe("atomic release refs", () => {
     const fixture = makeScenario();
     git(fixture.repoRoot, ["tag", "unrelated-local-tag", fixture.releaseSha]);
     const hookPath = path.join(fixture.remotePath, "hooks/update");
-    fs.writeFileSync(
-      hookPath,
-      [
-        "#!/bin/sh",
-        'if [ "$1" = "refs/tags/v1.0.0" ]; then',
-        "  exit 1",
-        "fi",
-        "exit 0",
-        "",
-      ].join("\n"),
-    );
-    fs.chmodSync(hookPath, 0o755);
+    fs.symlinkSync("/usr/bin/false", hookPath);
 
     expect(() =>
       pushAtomicReleaseRefs({
@@ -363,8 +353,7 @@ describe("atomic release refs", () => {
       `${fixture.releaseSha}:refs/heads/develop`,
     ]);
     const hookPath = path.join(fixture.remotePath, "hooks/update");
-    fs.writeFileSync(hookPath, ["#!/bin/sh", "exit 1", ""].join("\n"));
-    fs.chmodSync(hookPath, 0o755);
+    fs.symlinkSync("/usr/bin/false", hookPath);
     expect(() =>
       pushReleaseTag({
         repoRoot: fixture.repoRoot,
@@ -394,33 +383,40 @@ describe("atomic release refs", () => {
     );
   }, 30_000);
 
-  test("a post-push interruption binds retry intent before remote mutation", () => {
+  test("a post-push interruption binds retry intent before remote mutation", async () => {
     const fixture = makeScenario();
     const lockPath = path.join(
       fixture.candidateDirectory,
       "release-state.json.lock",
     );
-    const hookPath = path.join(fixture.remotePath, "hooks/post-receive");
-    fs.writeFileSync(
-      hookPath,
-      [
-        "#!/bin/sh",
-        `printf '%s\\n' post-receive > ${JSON.stringify(lockPath)}`,
-        "",
-      ].join("\n"),
+    const ready = new Int32Array(
+      new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT),
     );
-    fs.chmodSync(hookPath, 0o755);
-
-    expect(() =>
-      pushAtomicReleaseRefs({
-        repoRoot: fixture.repoRoot,
-        candidateDirectory: fixture.candidateDirectory,
-        remote: "release-test",
-        branch: "develop",
-        tag: "v1.0.0",
-        expectedOldBranchSha: fixture.baseSha,
-      }),
-    ).toThrow("locked by another writer");
+    const worker = new Worker(
+      new URL("./fixtures/release-lock-worker.mjs", import.meta.url),
+      {
+        workerData: {
+          lockPath,
+          refPath: path.join(fixture.remotePath, "refs/tags/v1.0.0"),
+          ready: ready.buffer,
+        },
+      },
+    );
+    expect(Atomics.wait(ready, 0, 0, 5_000)).not.toBe("timed-out");
+    try {
+      expect(() =>
+        pushAtomicReleaseRefs({
+          repoRoot: fixture.repoRoot,
+          candidateDirectory: fixture.candidateDirectory,
+          remote: "release-test",
+          branch: "develop",
+          tag: "v1.0.0",
+          expectedOldBranchSha: fixture.baseSha,
+        }),
+      ).toThrow("locked by another writer");
+    } finally {
+      await worker.terminate();
+    }
     const interruptedRefs = remoteRefs(fixture.repoRoot, fixture.remote);
     expect(interruptedRefs).toContain(
       `${fixture.releaseSha}\trefs/heads/develop`,
@@ -432,7 +428,6 @@ describe("atomic release refs", () => {
       "git-bound",
     );
 
-    fs.unlinkSync(hookPath);
     fs.unlinkSync(lockPath);
     const changedRemote = path.join(fixture.base, "changed-remote.git");
     execFileSync("git", ["init", "--bare", changedRemote]);

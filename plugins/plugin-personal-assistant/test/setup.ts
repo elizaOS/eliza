@@ -29,6 +29,6 @@ vi.mock("react-dom/server", () => ({
 vi.mock("@elizaos/agent", async () => import("./stubs/agent.ts"));
 vi.mock("@elizaos/ui", async () => import("./stubs/ui.ts"));
 vi.mock(
-  "@elizaos/plugin-google",
-  async () => import("./stubs/plugin-google.ts"),
+  "@elizaos/plugin-google-workspace",
+  async () => import("./stubs/plugin-google-workspace.ts"),
 );

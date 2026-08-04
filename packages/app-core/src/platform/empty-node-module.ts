@@ -153,7 +153,6 @@ export const validatePluginConfig = () =>
     warnings: [],
     maskedValue: null,
   });
-export const validateMcpServerConfig = noop;
 
 // ── Extra @elizaos/agent browser aliases surfaced by plugin dist files ────────
 // Upstream's enumeration only walked app-core/dist; the broader plugin

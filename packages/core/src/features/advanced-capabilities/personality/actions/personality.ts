@@ -143,6 +143,12 @@ async function recordAuditMemory(
 			PERSONALITY_AUDIT_TABLE,
 		);
 	} catch (error) {
+		// error-policy:J7 Audit persistence must not reverse an already-applied
+		// personality mutation, but the missing audit record remains observable.
+		runtime.reportError("PersonalityAction.auditMemory", error, {
+			op,
+			roomId: message.roomId,
+		});
 		logger.warn(
 			{
 				error: error instanceof Error ? error.message : String(error),

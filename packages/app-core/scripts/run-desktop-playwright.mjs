@@ -1,5 +1,9 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for run desktop playwright mjs. */
+/**
+ * Windows-only wrapper for packaged desktop Playwright validation: exits 0 on
+ * other platforms (the lane runs in release CI) and runs
+ * test:desktop:playwright:windows with Bun on Windows.
+ */
 
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";

@@ -1,6 +1,6 @@
 /**
  * Vitest config for the default unit/shape suite: aliases `@elizaos/plugin-sql`
- * to workspace source and excludes the live, real-drift, and PGLite-harness
+ * to workspace source and excludes the live, real-drift, and PGLite real-runtime
  * lanes (each has its own config or gated invocation).
  */
 import path from "node:path";
@@ -40,8 +40,8 @@ export default defineConfig({
 		include: ["__tests__/**/*.test.ts", "src/**/*.test.ts"],
 		// `*.real.test.ts` are kept in: they self-skip keyless (describe.skipIf)
 		// and run live only in the nightly external-api-live-drift lane.
-		// `*.harness.test.ts` boot a real PGLite runtime and need the workspace
-		// source aliases from vitest.harness.config.ts — run via `test:harness`.
+		// `*.real.test.ts` boot a real PGLite runtime and need the workspace
+		// source aliases from vitest.real-runtime.config.ts — run via `test:real-runtime`.
 		exclude: [
 			"**/node_modules/**",
 			"**/dist/**",
@@ -57,7 +57,7 @@ export default defineConfig({
 						"__tests__/openai.live.test.ts",
 					]
 				: ["**/*.live.test.ts"]),
-			"**/*.harness.test.ts",
+			"**/*.real.test.ts",
 		],
 	},
 });

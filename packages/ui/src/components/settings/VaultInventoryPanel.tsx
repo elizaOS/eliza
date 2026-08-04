@@ -320,7 +320,7 @@ const CategoryGroup = memo(function CategoryGroup({
 }) {
   return (
     <div data-testid={`vault-category-${category}`} className="space-y-1">
-      <p className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted/70">
+      <p className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
         {CATEGORY_LABEL[category]}
       </p>
       <ul className="space-y-1">

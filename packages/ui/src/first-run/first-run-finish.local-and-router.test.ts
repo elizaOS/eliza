@@ -1,3 +1,4 @@
+/** Verifies runFirstRunFinish — router boundaries through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

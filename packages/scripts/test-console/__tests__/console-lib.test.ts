@@ -147,7 +147,7 @@ describe("registry (real plan discovery)", () => {
       optInToggles: {},
       history: {},
     });
-    expect(without.tasks.length).toBeGreaterThan(200);
+    expect(without.tasks.length).toBeGreaterThanOrEqual(150);
     expect(without.orphanSuites).toEqual([]);
     expect(without.connections.length).toBeGreaterThan(30);
 

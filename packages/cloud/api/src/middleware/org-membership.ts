@@ -13,8 +13,8 @@
  * `admin.action` with `result: "denied"`.
  */
 
-import type { AuditAction } from "@elizaos/security/audit";
 import type { Context } from "hono";
+import type { AuditAction } from "@/api-app/services/audit";
 import { ForbiddenError } from "@/lib/api/cloud-worker-errors";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";

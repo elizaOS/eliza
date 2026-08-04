@@ -1,3 +1,4 @@
+/** Verifies rapid conversation switching must never delete a real conversation through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Rapid-conversation-switch data-loss race.

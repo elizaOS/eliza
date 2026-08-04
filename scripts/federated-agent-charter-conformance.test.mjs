@@ -655,13 +655,13 @@ function fixture() {
       },
       {
         workId: WORK_2,
-        title: "Hub ownership decision",
+        title: "Quality evidence decision",
         repoId: "elizaOS/eliza",
-        pillar: "forge-landing",
+        pillar: "quality-evidence",
         state: "done",
         targetBranch: "develop",
-        paths: ["packages/eliza-hub"],
-        packages: ["eliza-hub"],
+        paths: ["packages/registry"],
+        packages: ["@elizaos/registry"],
         aliases: ["github:elizaOS/eliza#16436"],
         accountability: [
           { failureClass: "implementation", accountableAgentId: NUBS },

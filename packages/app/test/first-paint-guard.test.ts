@@ -24,7 +24,6 @@ const MUST_BE_DEFERRED = [
   "importAppTaskCoordinator",
   "importAppTaskCoordinatorRegister",
   "importAppPhone",
-  "importAppTraining",
 ];
 
 const BLOCKING_PLUGIN_PACKAGE_IMPORT_PATTERN =

@@ -385,7 +385,7 @@ export function PromoteAppDialog({
                   config.channels.includes("advertising")
                     ? "border-accent/50 bg-accent-subtle"
                     : adAccounts.length === 0
-                      ? "border-border bg-bg-elevated opacity-60 cursor-not-allowed"
+                      ? "border-border bg-bg-muted cursor-not-allowed"
                       : "border-border bg-bg-elevated hover:bg-bg-hover hover:border-border-strong"
                 }`}
               >
@@ -406,7 +406,7 @@ export function PromoteAppDialog({
                       Advertising
                     </span>
                     {adAccounts.length === 0 ? (
-                      <span className="px-2 py-0.5 rounded-sm text-2xs bg-status-warning-bg text-status-warning border border-status-warning/30">
+                      <span className="px-2 py-0.5 rounded-sm text-2xs bg-status-warning-bg text-txt-strong border border-status-warning/30">
                         Connect account first
                       </span>
                     ) : (

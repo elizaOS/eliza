@@ -19,6 +19,7 @@
  * extraction quality can be reviewed offline.
  */
 import { getEntityDetails } from "../entities.ts";
+import { ElizaError } from "../errors.ts";
 import {
 	buildFactKeywordsForStorage,
 	scoreFactKeywordRelevance,
@@ -511,41 +512,53 @@ async function fetchExistingRelationships(
 export function parseFactsAndRelationshipsOutput(
 	raw: unknown,
 ): FactsAndRelationshipsResult {
-	const empty: FactsAndRelationshipsResult = {
-		facts: [],
-		relationships: [],
-		thought: "",
-	};
 	const text = extractText(raw);
-	if (!text) return empty;
+	if (!text) {
+		throw new ElizaError("Facts model returned no output", {
+			code: "FACTS_MODEL_OUTPUT_MISSING",
+		});
+	}
 	const parsed = parseJsonObject<Record<string, unknown>>(text);
-	if (!parsed) return empty;
+	if (!parsed) {
+		throw new ElizaError("Facts model returned invalid JSON", {
+			code: "FACTS_MODEL_OUTPUT_INVALID",
+		});
+	}
+	if (
+		!Array.isArray(parsed.facts) ||
+		!parsed.facts.every((entry) => typeof entry === "string") ||
+		!Array.isArray(parsed.relationships) ||
+		typeof parsed.thought !== "string"
+	) {
+		throw new ElizaError("Facts model output does not match its schema", {
+			code: "FACTS_MODEL_OUTPUT_SCHEMA_INVALID",
+		});
+	}
 
-	const facts = Array.isArray(parsed.facts)
-		? parsed.facts
-				.map((entry) => (typeof entry === "string" ? entry.trim() : ""))
-				.filter((entry): entry is string => entry.length > 0)
-		: [];
-	const relationships = Array.isArray(parsed.relationships)
-		? parsed.relationships
-				.map((entry): MessageHandlerExtractedRelationship | null => {
-					if (!entry || typeof entry !== "object") return null;
-					const rel = entry as Record<string, unknown>;
-					const subject =
-						typeof rel.subject === "string" ? rel.subject.trim() : "";
-					const predicate =
-						typeof rel.predicate === "string" ? rel.predicate.trim() : "";
-					const object =
-						typeof rel.object === "string" ? rel.object.trim() : "";
-					if (!subject || !predicate || !object) return null;
-					return { subject, predicate, object };
-				})
-				.filter(
-					(entry): entry is MessageHandlerExtractedRelationship =>
-						entry !== null,
-				)
-		: [];
-	const thought = typeof parsed.thought === "string" ? parsed.thought : "";
+	const facts = parsed.facts.map((entry) => entry.trim()).filter(Boolean);
+	const relationships = parsed.relationships.map(
+		(entry, index): MessageHandlerExtractedRelationship => {
+			if (!entry || typeof entry !== "object") {
+				throw new ElizaError("Facts model returned a malformed relationship", {
+					code: "FACTS_RELATIONSHIP_INVALID",
+					context: { relationshipIndex: index },
+				});
+			}
+			const rel = entry as Record<string, unknown>;
+			const subject = typeof rel.subject === "string" ? rel.subject.trim() : "";
+			const predicate =
+				typeof rel.predicate === "string" ? rel.predicate.trim() : "";
+			const object = typeof rel.object === "string" ? rel.object.trim() : "";
+			if (!subject || !predicate || !object) {
+				throw new ElizaError("Facts model returned a malformed relationship", {
+					code: "FACTS_RELATIONSHIP_INVALID",
+					context: { relationshipIndex: index },
+				});
+			}
+			return { subject, predicate, object };
+		},
+	);
+	const thought = parsed.thought;
 	return { facts, relationships, thought };
 }
 
@@ -601,40 +614,36 @@ async function persistFactsAndRelationships(
 			const sanitized = sanitizePersistedFact(runtime, factText);
 			if (!sanitized) continue;
 			const keywords = buildFactKeywordsForStorage(sanitized);
-			try {
-				await runtime.createMemory(
-					{
-						entityId: message.entityId,
-						agentId: runtime.agentId,
-						roomId: message.roomId,
-						content: { text: sanitized, type: "fact" },
-						metadata: {
-							type: MemoryType.CUSTOM,
-							source: "facts_and_relationships_stage",
-							messageId: message.id,
-							tags: ["fact", "extracted", "stage1"],
-							keywords,
-							extractedAt: Date.now(),
-							// Stage-1 extraction is a single-message, unverified pass.
-							// Classify as `current` (time-decaying) with default
-							// confidence so the read path treats these as transient
-							// claims rather than permanent durable identity facts (the
-							// reader otherwise defaults missing `kind` to `durable`).
-							// The reflection pass promotes confirmed facts to durable.
-							kind: "current" as FactKind,
-							category: "uncategorized",
-							confidence: DEFAULT_STAGE_FACT_CONFIDENCE,
-							verificationStatus: "self_reported" as FactVerificationStatus,
-							validAt: new Date().toISOString(),
-						},
-					} as Memory,
-					"facts",
-					true,
-				);
-				factsWritten += 1;
-			} catch {
-				// best-effort persistence — failures land in the trajectory thought.
-			}
+			await runtime.createMemory(
+				{
+					entityId: message.entityId,
+					agentId: runtime.agentId,
+					roomId: message.roomId,
+					content: { text: sanitized, type: "fact" },
+					metadata: {
+						type: MemoryType.CUSTOM,
+						source: "facts_and_relationships_stage",
+						messageId: message.id,
+						tags: ["fact", "extracted", "stage1"],
+						keywords,
+						extractedAt: Date.now(),
+						// Stage-1 extraction is a single-message, unverified pass.
+						// Classify as `current` (time-decaying) with default
+						// confidence so the read path treats these as transient
+						// claims rather than permanent durable identity facts (the
+						// reader otherwise defaults missing `kind` to `durable`).
+						// The reflection pass promotes confirmed facts to durable.
+						kind: "current" as FactKind,
+						category: "uncategorized",
+						confidence: DEFAULT_STAGE_FACT_CONFIDENCE,
+						verificationStatus: "self_reported" as FactVerificationStatus,
+						validAt: new Date().toISOString(),
+					},
+				} as Memory,
+				"facts",
+				true,
+			);
+			factsWritten += 1;
 		}
 	}
 
@@ -658,66 +667,60 @@ async function persistFactsAndRelationships(
 				message,
 			);
 			const echoText = `${normalized.subject} ${normalized.predicate} ${normalized.object}`;
-			try {
-				await runtime.createMemory(
-					{
-						entityId: message.entityId,
-						agentId: runtime.agentId,
-						roomId: message.roomId,
-						content: {
-							text: echoText,
-							type: "relationship",
-							subject: normalized.subject,
-							predicate: normalized.predicate,
-							object: normalized.object,
-						},
-						metadata: {
-							type: MemoryType.CUSTOM,
-							source: "facts_and_relationships_stage",
-							messageId: message.id,
-							sourceEntityId,
-							targetEntityId,
-							tags: ["relationship", "extracted", "stage1"],
-							keywords: buildFactKeywordsForStorage(echoText),
-							extractedAt: Date.now(),
-							// Same stage-1 classification as the fact branch above: this
-							// echo lands in the `facts` table, and the reader defaults a
-							// missing `kind` to `durable` — an unkinded echo therefore
-							// resurfaces as a permanent durable fact (live symptom: the
-							// same claim shown twice, once durable, once current).
-							kind: "current" as FactKind,
-							category: "relationship",
-							confidence: DEFAULT_STAGE_FACT_CONFIDENCE,
-							verificationStatus: "self_reported" as FactVerificationStatus,
-							validAt: new Date().toISOString(),
-						},
-					} as Memory,
-					"facts",
-					true,
-				);
-				if (
-					sourceEntityId &&
-					targetEntityId &&
-					sourceEntityId !== targetEntityId &&
-					typeof runtime.createRelationship === "function"
-				) {
-					await runtime
-						.createRelationship({
-							sourceEntityId,
-							targetEntityId,
-							tags: [normalized.predicate],
-							metadata: {
-								source: "facts_and_relationships_stage",
-								messageId: message.id,
-								lastInteractionAt: new Date().toISOString(),
-							},
-						})
-						.catch(() => false);
-				}
-				relationshipsWritten += 1;
-			} catch {
-				// best-effort persistence
+			await runtime.createMemory(
+				{
+					entityId: message.entityId,
+					agentId: runtime.agentId,
+					roomId: message.roomId,
+					content: {
+						text: echoText,
+						type: "relationship",
+						subject: normalized.subject,
+						predicate: normalized.predicate,
+						object: normalized.object,
+					},
+					metadata: {
+						type: MemoryType.CUSTOM,
+						source: "facts_and_relationships_stage",
+						messageId: message.id,
+						sourceEntityId,
+						targetEntityId,
+						tags: ["relationship", "extracted", "stage1"],
+						keywords: buildFactKeywordsForStorage(echoText),
+						extractedAt: Date.now(),
+						// Same stage-1 classification as the fact branch above: this
+						// echo lands in the `facts` table, and the reader defaults a
+						// missing `kind` to `durable` — an unkinded echo therefore
+						// resurfaces as a permanent durable fact (live symptom: the
+						// same claim shown twice, once durable, once current).
+						kind: "current" as FactKind,
+						category: "relationship",
+						confidence: DEFAULT_STAGE_FACT_CONFIDENCE,
+						verificationStatus: "self_reported" as FactVerificationStatus,
+						validAt: new Date().toISOString(),
+					},
+				} as Memory,
+				"facts",
+				true,
+			);
+			if (
+				sourceEntityId &&
+				targetEntityId &&
+				sourceEntityId !== targetEntityId &&
+				typeof runtime.createRelationship === "function"
+			) {
+				await runtime.createRelationship({
+					sourceEntityId,
+					targetEntityId,
+					tags: [normalized.predicate],
+					metadata: {
+						source: "facts_and_relationships_stage",
+						messageId: message.id,
+						lastInteractionAt: new Date().toISOString(),
+					},
+				});
 			}
+			relationshipsWritten += 1;
 		}
 	}
 

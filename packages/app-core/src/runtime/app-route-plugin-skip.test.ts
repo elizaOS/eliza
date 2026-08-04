@@ -1,6 +1,6 @@
 /**
- * Covers the app-route-plugin skip/normalize/load helpers exported from
- * `eliza.ts`: `getSkippedAppRoutePluginIds` (parsing the
+ * Covers the app-route-plugin skip/normalize/load helpers owned by the startup
+ * contributor module: `getSkippedAppRoutePluginIds` (parsing the
  * `ELIZA_SKIP_APP_ROUTE_PLUGINS` env list), `normalizeAppRoutePluginId` (id
  * canonicalization), and `__loadAppRoutePluginFromSpecifierForTest` (loading a
  * real first-party route plugin and surfacing missing transitive imports). One
@@ -16,7 +16,7 @@ import {
   __loadAppRoutePluginFromSpecifierForTest,
   getSkippedAppRoutePluginIds,
   normalizeAppRoutePluginId,
-} from "./eliza.ts";
+} from "./startup/app-contributors.ts";
 
 const ENV_KEY = "ELIZA_SKIP_APP_ROUTE_PLUGINS";
 
@@ -72,12 +72,10 @@ describe("normalizeAppRoutePluginId", () => {
   });
 
   it("strips -app / -ui / -routes suffixes", () => {
-    expect(normalizeAppRoutePluginId("@elizaos/plugin-wallet-ui")).toBe(
+    expect(normalizeAppRoutePluginId("@elizaos/plugin-wallet:ui")).toBe(
       "wallet",
     );
-    expect(normalizeAppRoutePluginId("@elizaos/plugin-shopify")).toBe(
-      "shopify",
-    );
+    expect(normalizeAppRoutePluginId("@elizaos/plugin-notes")).toBe("notes");
     expect(normalizeAppRoutePluginId("@elizaos/plugin-documents-routes")).toBe(
       "documents",
     );
@@ -97,7 +95,7 @@ describe("normalizeAppRoutePluginId", () => {
 
   it("is idempotent on an already-short alias (so short tokens match full ids)", () => {
     expect(normalizeAppRoutePluginId("wallet")).toBe("wallet");
-    expect(normalizeAppRoutePluginId("@elizaos/plugin-wallet-ui")).toBe(
+    expect(normalizeAppRoutePluginId("@elizaos/plugin-wallet:ui")).toBe(
       normalizeAppRoutePluginId("wallet"),
     );
   });

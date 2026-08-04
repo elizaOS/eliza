@@ -262,9 +262,19 @@ export interface StartupCoordinatorView {
     probeForExistingInstall: boolean;
     defaultTarget: "embedded-local" | "remote-backend" | "cloud-managed" | null;
   };
-  legacyPhase: StartupPhase;
   loading: boolean;
   terminal: boolean;
+  isShellPaintable: boolean;
+  isInteractive: boolean;
+  statusMessageKey:
+    | "startupshell.Starting"
+    | "startupshell.InitializingAgent"
+    | "startupshell.Loading";
+  error: {
+    reason: StartupErrorReason;
+    message: string;
+    timedOut: boolean;
+  } | null;
   target: "embedded-local" | "remote-backend" | "cloud-managed" | null;
   phase: StartupCoordinatorView["state"]["phase"];
 }
@@ -314,7 +324,6 @@ export interface AppState {
   /** Incremented on agent reset so first-run UI shows immediately (not stuck behind VRM reveal). */
   firstRunUiRevealNonce: number;
   firstRunLoading: boolean;
-  startupPhase: StartupPhase;
   startupError: StartupErrorState | null;
   /** StartupCoordinator handle — the sole startup authority. */
   startupCoordinator: StartupCoordinatorView;
@@ -565,9 +574,6 @@ export interface AppState {
   importFile: File | null;
   importError: string | null;
   importSuccess: string | null;
-
-  // Startup
-  startupStatus: string | null;
 
   // First-run (the in-chat conductor owns flow state; these are the surviving
   // cross-surface fields: finish-port + CONNECT_EVENT writes, content-pack and

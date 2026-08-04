@@ -1,6 +1,6 @@
 /**
  * Keyless catalog coverage for the plugin-mcp action and route surface. Runs on
- * the pr-deterministic lane under the LLM proxy.
+ * the pr-deterministic lane under the model provider.
  */
 import { readFileSync } from "node:fs";
 import type http from "node:http";
@@ -24,9 +24,9 @@ import {
 } from "../../../../plugins/plugin-mcp/src/types.ts";
 import {
   matchesScenarioInput,
-  type RuntimeWithScenarioLlmFixtures,
+  type RuntimeWithScenarioModelFixtures,
   registerStrictActionRouteFixtures,
-} from "./_helpers/strict-llm-action-fixtures";
+} from "@elizaos/core/testing";
 
 const MCP_SERVER_NAME = "scenario_mcp";
 const TOOL_NAME = "echo_code";
@@ -143,7 +143,7 @@ function unsupportedMcpEvaluationFixture(input: string, op: string) {
 }
 
 type RuntimeWithMcpScenario = IAgentRuntime &
-  RuntimeWithScenarioLlmFixtures & {
+  RuntimeWithScenarioModelFixtures & {
     plugins?: Plugin[];
     getServiceLoadPromise?: (serviceType: string) => Promise<unknown>;
     registerPlugin: (plugin: Plugin) => Promise<void>;
@@ -157,7 +157,7 @@ type RuntimeWithMcpScenario = IAgentRuntime &
       ) => Promise<void> | void;
       __scenarioMcpRoute?: boolean;
     }>;
-    scenarioLlmFixtures?: {
+    scenarioModelFixtures?: {
       register: (...fixtures: Array<Record<string, unknown>>) => void;
     };
     setSetting: (key: string, value: unknown, secret?: boolean) => void;
@@ -510,7 +510,7 @@ async function seedMcp(ctx: ScenarioContext): Promise<string | undefined> {
 
   runtime.setSetting("mcp", mcpConfig().mcp, false);
   registerStrictActionRouteFixtures(runtime, strictMcpRoutes);
-  runtime.scenarioLlmFixtures?.register(
+  runtime.scenarioModelFixtures?.register(
     {
       name: "mcp-resource-analysis",
       match: {

@@ -1,7 +1,7 @@
 /**
  * Unit coverage for the pure eliza-code cerebras spawn-spec builder and bin
  * resolver (`lib/eliza-code-spec.ts`): env/model/tier wiring, base-URL defaults,
- * and resolver override + workspace walk-up, driven with an injected `exists`
+ * and explicit external binary resolution, driven with an injected `exists`
  * predicate — no real PTY or process spawn.
  */
 import path from "node:path";
@@ -18,7 +18,7 @@ describe("buildElizaCodeCerebrasSpec", () => {
   const base = {
     cwd: "/work/repo",
     apiKey: "sk-cloud-123",
-    binPath: "/abs/packages/examples/code/dist/index.js",
+    binPath: "/opt/eliza-code/dist/index.js",
   };
 
   it("launches the interactive binary via bun, in the given cwd", () => {
@@ -105,26 +105,18 @@ describe("resolveElizaCodeBin", () => {
     ).toThrow(/no file exists/i);
   });
 
-  it("walks up to find packages/examples/code/dist/index.js", () => {
-    const want = path.join(
-      "/repo",
-      "packages",
-      "examples",
-      "code",
-      "dist",
-      "index.js",
-    );
-    const resolved = resolveElizaCodeBin({
-      env: {},
-      startDir: "/repo/plugins/plugin-pty",
-      exists: (p) => p === want,
-    });
-    expect(resolved).toBe(want);
+  it("rejects a relative ELIZA_CODE_BIN path", () => {
+    expect(() =>
+      resolveElizaCodeBin({
+        env: { ELIZA_CODE_BIN: "bin/eliza-code.js" },
+        exists: () => true,
+      }),
+    ).toThrow(/absolute path/i);
   });
 
-  it("throws actionable guidance when the bundle is not built", () => {
-    expect(() =>
-      resolveElizaCodeBin({ env: {}, startDir: "/repo", exists: () => false }),
-    ).toThrow(/Build it with/i);
+  it("requires an explicitly configured external binary", () => {
+    expect(() => resolveElizaCodeBin({ env: {}, exists: () => false })).toThrow(
+      /must be set/i,
+    );
   });
 });

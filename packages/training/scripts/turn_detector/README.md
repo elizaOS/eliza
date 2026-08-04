@@ -40,9 +40,9 @@ This directory hosts the **fine-tune + eval pipeline** for those models:
 - For multilingual coverage: NoXi (subject to per-corpus licensing) and the
   YODAS Thai EOU subset for Thai support (v2 only).
 
-All data goes through the workspace privacy filter
-(`eliza/plugins/plugin-training/src/core/privacy-filter.ts`) before it lands
-on disk. No raw user transcript or audio escapes that boundary.
+All data goes through
+`packages/training/scripts/privacy_filter_trajectories.py` before it lands on
+disk. No raw user transcript or audio escapes that boundary.
 
 ## Quick start (smoke)
 

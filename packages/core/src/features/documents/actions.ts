@@ -208,6 +208,8 @@ function hasSearchCategory(runtime: IAgentRuntime, category: string): boolean {
 		runtime.getSearchCategory(category, { includeDisabled: true });
 		return true;
 	} catch {
+		// error-policy:J4 getSearchCategory uses a throw to signal an absent
+		// optional registry entry; callers register it on this explicit miss.
 		return false;
 	}
 }
@@ -707,6 +709,8 @@ async function handleDelete(
 	try {
 		await service.deleteDocument(documentId, message);
 	} catch (error) {
+		// error-policy:J1 Delete translates authorization and persistence
+		// failures into explicit action results.
 		const code = error instanceof ElizaError ? error.code : undefined;
 		if (code === "DOCUMENT_MUTATION_FORBIDDEN") {
 			const text =
@@ -1295,6 +1299,8 @@ export const documentAction: Action = {
 					return handleImportUrl(runtime, service, message, params, callback);
 			}
 		} catch (error) {
+			// error-policy:J1 The polymorphic documents action translates
+			// failures into its explicit unsuccessful result shape.
 			logger.error({ error }, `Error in DOCUMENT ${subaction} action`);
 			// Planner-facing only: internal exception text must not leak to chat.
 			const text = `The documents ${subaction.replace("_", " ")} operation failed: ${

@@ -1,3 +1,4 @@
+/** Verifies RelationshipsGraphPanel pinch zoom through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Pinch-zoom performance contract for the relationships graph. jsdom does no

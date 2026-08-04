@@ -10,7 +10,7 @@ import { cleanup, render } from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@elizaos/ui", () => ({
+vi.mock("@elizaos/ui/components", () => ({
   OrchestratorTaskWidget: () => (
     <div data-testid="live-orchestrator-task-stream">live tasks</div>
   ),

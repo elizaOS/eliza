@@ -69,8 +69,8 @@ describe("judge self-grading governance (#9310)", () => {
     // Force the judge onto the runtime TEXT_LARGE fallback — never Cerebras —
     // and make sure no proxy/strict flags leak in from the host env.
     vi.stubEnv("EVAL_MODEL_PROVIDER", "runtime");
-    vi.stubEnv("SCENARIO_USE_LLM_PROXY", "");
-    vi.stubEnv("ELIZA_SCENARIO_USE_LLM_PROXY", "");
+    vi.stubEnv("SCENARIO_USE_DETERMINISTIC_MODEL", "");
+    vi.stubEnv("ELIZA_SCENARIO_USE_DETERMINISTIC_MODEL", "");
     vi.stubEnv("SCENARIO_JUDGE_REQUIRE_INDEPENDENT", "");
   });
 
@@ -107,7 +107,7 @@ describe("judge self-grading governance (#9310)", () => {
   });
 
   it("does not stamp deterministic-proxy lanes (fixtures answer the judge)", async () => {
-    vi.stubEnv("SCENARIO_USE_LLM_PROXY", "1");
+    vi.stubEnv("SCENARIO_USE_DETERMINISTIC_MODEL", "1");
     vi.stubEnv("SCENARIO_JUDGE_REQUIRE_INDEPENDENT", "1");
     const report = await runScenario(
       judgedScenario("judge-proxy-lane"),

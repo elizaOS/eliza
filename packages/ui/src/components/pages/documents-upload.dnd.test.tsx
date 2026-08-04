@@ -1,3 +1,4 @@
+/** Verifies UploadZone — native file drop (handleDrop) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

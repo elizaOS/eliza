@@ -11,9 +11,8 @@
  * Families:
  *   scenario   — @elizaos/scenario-runner drives a real AgentRuntime + PGLite.
  *                Emits eliza_native_v1 trajectories natively via --export-native.
- *   benchmark  — packages/benchmarks orchestrator (registry/commands.py).
- *                Emits per-benchmark result JSON today; eliza_native_v1 requires
- *                wiring the adapter runtime's trajectory recorder (see notes).
+ *   benchmark  — moved to https://github.com/elizaOS/benchmarks; the stub
+ *                family entry records the move.
  *   e2e        — *.live.e2e.test.ts / *.real.e2e.test.ts vitest lanes that drive
  *                a real runtime. Trajectory capture requires ELIZA_SAVE_TRAJECTORIES
  *                + ELIZA_TRAJECTORY_DIR then native-export conversion (see notes).
@@ -52,29 +51,6 @@ function countFiles(dir, suffix) {
   return out;
 }
 
-// Measured expansion multipliers (eliza-scenarios list --count-scenarios).
-// `existing` = base scenario count, `total` = with persona/paraphrase expansion.
-// Sampled live this run; embedded so the manifest is self-describing without a
-// slow re-boot of the loader on every rebuild.
-const MEASURED_EXPANSION = {
-  "packages/test/scenarios": { existing: 707, total: 7777 },
-  "plugins/plugin-personal-assistant/test/scenarios": {
-    existing: 197,
-    total: 2167,
-  },
-  "plugins/plugin-app-control/test/scenarios": { existing: 15, total: 165 },
-  "plugins/plugin-health/test/scenarios": { existing: 8, total: 88 },
-  "plugins/plugin-cloud-apps/test/scenarios": { existing: 1, total: 11 },
-  "plugins/plugin-agent-orchestrator/test/scenarios": {
-    existing: 8,
-    total: 88,
-  },
-};
-
-// The test-harness's canonical corpus root. It keeps scenarios directly under
-// `scenarios/` (not `test/scenarios/`), so the per-package convention glob below
-// does not reach it; include it explicitly. This is the scenario-runner's
-// DEFAULT_SCENARIO_ROOT, a well-known path constant — not a plugin coupling.
 const DEFAULT_SCENARIO_ROOT = "packages/test/scenarios";
 
 // Every workspace package's `test/scenarios` dir that exists on disk, discovered
@@ -100,9 +76,9 @@ function scenarioFamily() {
     const dir = path.join(REPO_ROOT, rel);
     const files = countFiles(dir, ".scenario.ts");
     if (files.length === 0) continue;
-    const expansion = MEASURED_EXPANSION[rel] ?? {
+    const expansion = {
       existing: files.length,
-      total: files.length * 10,
+      total: files.length * 11,
     };
     items.push({
       id: rel.replace(/[/]/g, "__"),
@@ -169,44 +145,13 @@ function scenarioFamily() {
 }
 
 function benchmarkFamily() {
-  let adapters = [];
-  let rawList = "";
-  try {
-    rawList = execFileSync(
-      "python3",
-      ["-m", "benchmarks.orchestrator", "list-benchmarks"],
-      { cwd: PACKAGES, encoding: "utf8", timeout: 120000 },
-    );
-  } catch (err) {
-    // list-benchmarks exits non-zero when there are "uncovered" benchmark
-    // directories, but still prints the full adapter list to stdout. Use it.
-    rawList = (err && err.stdout ? String(err.stdout) : "") || "";
-  }
-  for (const line of rawList.split("\n")) {
-    const m = line.match(/^-\s+(\S+)\s+dir=(\S+)\s+cwd=(.+)$/);
-    if (m) adapters.push({ id: m[1], dir: m[2], cwd: m[3].trim() });
-  }
-  if (adapters.length === 0)
-    adapters = [
-      { error: "orchestrator list-benchmarks produced no parseable adapters" },
-    ];
+  // The benchmark orchestrator and all benchmark suites moved to the
+  // standalone https://github.com/elizaOS/benchmarks repo; harvest them there.
   return {
     kind: "benchmark",
-    emitsTrajectory: "wiring-needed",
-    trajectoryFormat: "eliza_native_v1 (after wiring)",
-    source: "packages/benchmarks/registry/commands.py",
-    listCommand:
-      "python3 -m benchmarks.orchestrator list-benchmarks (cwd=packages)",
-    runInvocationTemplate:
-      "python3 -m benchmarks.orchestrator run --benchmarks <ID> --provider cli --model gpt-5.5 (cwd=packages)",
-    resultLands:
-      "packages/benchmarks/benchmark_results/** (per-benchmark JSON; locate_result() in registry/commands.py). GITIGNORED.",
-    trajectoryWiring:
-      "The ~25 eliza-adapter-routed benchmarks boot a real AgentRuntime (serves /api/benchmark/message). Set ELIZA_SAVE_TRAJECTORIES=1 + ELIZA_TRAJECTORY_DIR=<dir> on the adapter runtime, then run packages/scenario-runner native-export over <dir> to convert RecordedTrajectory JSON → eliza_native_v1. Non-eliza-adapter benchmarks (standard/*, python-only) do NOT boot the runtime and cannot emit native trajectories.",
-    providerSeam:
-      "orchestrator --provider cli maps to ELIZA_CHAT_VIA_CLI=codex for eliza-adapter benchmarks; verify per-adapter provider plumbing before Stage 2.",
-    adapterCount: adapters.filter((a) => a.id).length,
-    adapters,
+    movedTo: "https://github.com/elizaOS/benchmarks",
+    adapterCount: 0,
+    adapters: [],
   };
 }
 

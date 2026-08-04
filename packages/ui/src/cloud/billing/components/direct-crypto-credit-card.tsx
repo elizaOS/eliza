@@ -25,13 +25,7 @@ import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { PublicKey, Transaction } from "@solana/web3.js";
 import { Coins, Loader2, ShieldCheck, Wallet } from "lucide-react";
-import {
-  type CSSProperties,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { erc20Abi } from "viem";
@@ -42,6 +36,7 @@ import {
   waitForTransactionReceipt,
   writeContract,
 } from "wagmi/actions";
+import { reportRendererDiagnostic } from "../../../utils/renderer-diagnostics";
 import { api, apiFetch } from "../../lib/api-client";
 import type { CryptoStatusResponse, CryptoStatusTokenOption } from "../types";
 import {
@@ -172,7 +167,12 @@ async function attachDirectPaymentTx(
       json: { transactionHash, payerSignature },
     });
   } catch (error) {
-    console.warn("[direct-crypto] attach-tx failed", error);
+    reportRendererDiagnostic({
+      scope: "billing.direct-crypto.attach-transaction",
+      error,
+      severity: "warning",
+      context: { paymentId, transactionHash },
+    });
   }
 }
 
@@ -450,10 +450,12 @@ export function DirectCryptoCreditCard({
       try {
         await confirmDirectPayment(payment.paymentId, hash, payerSignature);
       } catch (confirmError) {
-        console.warn(
-          "[direct-crypto] inline confirm failed; relying on cron",
-          confirmError,
-        );
+        reportRendererDiagnostic({
+          scope: "billing.direct-crypto.inline-confirmation",
+          error: confirmError,
+          severity: "warning",
+          context: { paymentId: payment.paymentId, transactionHash: hash },
+        });
       }
     } catch (error) {
       if (!activePaymentId) pendingPaymentStore.clear();
@@ -517,9 +519,6 @@ export function DirectCryptoCreditCard({
   const payButtonClassName = isCloudSurface
     ? "min-w-[172px] rounded-xs bg-black text-white hover:bg-black/82"
     : "min-w-[172px]";
-  const cloudButtonStyle: CSSProperties | undefined = isCloudSurface
-    ? { backgroundColor: "#000", borderColor: "#000", color: "#fff" }
-    : undefined;
   const showNetworkSelector = !lockedNetwork && enabledNetworks.length > 1;
   const showTokenSelector = tokenOptions.length > 1;
 
@@ -681,7 +680,6 @@ export function DirectCryptoCreditCard({
               variant="surface"
               onClick={() => setSolanaModalVisible(true)}
               className={surfaceButtonClassName}
-              style={cloudButtonStyle}
             >
               {solana.publicKey ? "Solana connected" : "Connect Solana"}
             </Button>
@@ -696,7 +694,6 @@ export function DirectCryptoCreditCard({
                   variant={isCloudSurface ? "default" : "surface"}
                   onClick={account ? openAccountModal : openConnectModal}
                   className={surfaceButtonClassName}
-                  style={cloudButtonStyle}
                 >
                   {account
                     ? `${account.address.slice(0, 6)}...${account.address.slice(-4)}`
@@ -712,7 +709,6 @@ export function DirectCryptoCreditCard({
             onClick={handlePay}
             disabled={!canPay || busy}
             className={payButtonClassName}
-            style={cloudButtonStyle}
           >
             {busy ? (
               <Loader2 className="h-4 w-4 animate-spin" />

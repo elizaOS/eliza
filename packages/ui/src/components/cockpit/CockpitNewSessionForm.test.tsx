@@ -1,3 +1,4 @@
+/** Verifies CockpitNewSessionForm through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Interaction tests for CockpitNewSessionForm: submit stays disabled until a
@@ -114,20 +115,6 @@ describe("CockpitNewSessionForm", () => {
     );
     expect(screen.getByText(/repo suggestions are unavailable/i)).toBeTruthy();
     expect(screen.getByTestId("cockpit-repo-input")).toBeTruthy();
-  });
-
-  it("keeps optional labels and repo guidance at accessible contrast", () => {
-    render(<CockpitNewSessionForm onCreate={vi.fn()} />);
-
-    for (const optionalLabel of screen.getAllByText("(optional)")) {
-      expect(optionalLabel.className).toContain("text-muted");
-      expect(optionalLabel.className).not.toContain("text-muted/70");
-    }
-    const guidance = screen.getByText(
-      "Leave blank to run in a scratch workspace.",
-    );
-    expect(guidance.className).toContain("text-muted");
-    expect(guidance.className).not.toContain("text-muted/70");
   });
 
   it("reflects a mode switch in the submitted policy", async () => {

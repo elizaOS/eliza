@@ -21,7 +21,7 @@
  * fields the route emits — no fabricated rows.
  */
 
-import { client } from "@elizaos/ui";
+import { client } from "@elizaos/ui/api";
 
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -204,9 +204,10 @@ type SearchState =
 
 /** Route an open-document request through the assistant chat (no fabricated nav). */
 function requestOpenDocument(id: string): void {
-  const send = (client as { sendChatMessage?: (text: string) => void })
-    .sendChatMessage;
-  send?.(`Open the document ${id}.`);
+  const chatClient = client as {
+    sendChatMessage?: (text: string) => void;
+  };
+  chatClient.sendChatMessage?.(`Open the document ${id}.`);
 }
 
 export function DocumentsView(props: DocumentsViewProps = {}): ReactNode {

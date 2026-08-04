@@ -1,5 +1,10 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for sanitize npm package metadata mjs. */
+/**
+ * Strips npm-publish-unsafe metadata from a package.json in place:
+ * local-protocol (workspace:/file:/link:/portal:) overrides and
+ * bundleDependencies entries that would fail or leak paths in `npm publish` of
+ * the packaged artifact.
+ */
 
 import fs from "node:fs";
 import path from "node:path";

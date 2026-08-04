@@ -1,5 +1,10 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for audit apple store sandbox mjs. */
+/**
+ * Mac App Store sandbox audit: asserts the Electrobun MAS entitlement plists
+ * carry no forbidden hardened-runtime entitlements (JIT allowed only for the
+ * bun child) and scans packaged Mach-O binaries for JIT symbols that would trip
+ * App Review.
+ */
 
 import { spawnSync } from "node:child_process";
 import {

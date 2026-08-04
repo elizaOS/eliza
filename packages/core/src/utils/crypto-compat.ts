@@ -1,8 +1,5 @@
 /**
- * Browser and Node.js compatible crypto abstraction
- * Provides cross-platform interface for cryptographic operations
- *
- * @module crypto-compat
+ * Browser- and Node-compatible cryptographic operations.
  *
  * This module provides both synchronous (Node.js only) and asynchronous (cross-platform)
  * APIs for cryptographic operations. Use async methods for browser compatibility.

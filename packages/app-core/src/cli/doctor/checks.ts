@@ -22,6 +22,8 @@ import { resolveStateDir } from "@elizaos/core";
 import {
   getCloudSecret,
   resolveApiSecurityConfig,
+  resolveDesktopApiPort,
+  resolveDesktopUiPort,
   resolveServerOnlyPort,
 } from "@elizaos/shared";
 
@@ -106,13 +108,13 @@ export function checkRuntime(): CheckResult {
   const ver = process.version;
   const match = ver.match(/^v(\d+)/);
   const major = match ? Number(match[1]) : 0;
-  if (major < 22) {
+  if (major < 24) {
     return {
       label: "Runtime",
       category: "system",
       status: "fail",
-      detail: `Node.js ${ver} (requires >=22)`,
-      fix: "Install Node.js 22+ — https://nodejs.org",
+      detail: `Node.js ${ver} (requires >=24)`,
+      fix: "Install Node.js 24+ — https://nodejs.org",
     };
   }
   return {
@@ -587,8 +589,8 @@ export async function runAllChecks(
   }
 
   const portResults = await Promise.all([
-    checkPort(opts.apiPort ?? 31337),
-    checkPort(opts.uiPort ?? 2138),
+    checkPort(opts.apiPort ?? resolveDesktopApiPort(env)),
+    checkPort(opts.uiPort ?? resolveDesktopUiPort(env)),
   ]);
 
   return [...sync, ...portResults];

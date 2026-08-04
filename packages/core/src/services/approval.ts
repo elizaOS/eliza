@@ -1,15 +1,7 @@
 /**
- * ApprovalService
- *
- * A robust abstraction for task-based approvals in Eliza.
- * Provides a interface for requesting approvals, handling choices,
- * and managing approval workflows.
- *
- * Patterns supported:
- * - Simple confirm/deny (e.g., "Post this tweet?")
- * - Multi-option choices (e.g., "Select deployment target")
- * - Timed approvals with expiration
- * - Approval chains (e.g., "Approve step 1, then step 2")
+ * Task-backed approval workflows with explicit choices, role checks, and
+ * optional deadlines. Callback failures remain observable and never resolve an
+ * approval as successful when its required side effect did not complete.
  */
 
 import { logger } from "../logger.ts";
@@ -250,10 +242,19 @@ export class ApprovalService extends Service {
 			// Set up timeout if specified
 			if (request.timeoutMs && request.timeoutMs > 0) {
 				pending.expiresAt = now + request.timeoutMs;
-				pending.timeoutHandle = setTimeout(
-					() => this.handleTimeout(taskId),
-					request.timeoutMs,
-				);
+				pending.timeoutHandle = setTimeout(() => {
+					void this.handleTimeout(taskId).catch((error) => {
+						// error-policy:J1 Timer callbacks are an asynchronous process
+						// boundary; reject the waiting caller and report the failure.
+						this.runtime.reportError("ApprovalService.timeout", error, {
+							taskId,
+						});
+						this.pendingApprovals.delete(taskId);
+						pending.reject(
+							error instanceof Error ? error : new Error(String(error)),
+						);
+					});
+				}, request.timeoutMs);
 			}
 
 			this.pendingApprovals.set(taskId, pending);
@@ -316,10 +317,16 @@ export class ApprovalService extends Service {
 
 			if (request.timeoutMs && request.timeoutMs > 0) {
 				pending.expiresAt = Date.now() + request.timeoutMs;
-				pending.timeoutHandle = setTimeout(
-					() => this.handleTimeout(taskId),
-					request.timeoutMs,
-				);
+				pending.timeoutHandle = setTimeout(() => {
+					void this.handleTimeout(taskId).catch((error) => {
+						// error-policy:J1 Fire-and-forget approvals have no awaiting caller,
+						// so the diagnostic channel is their observable failure boundary.
+						this.runtime.reportError("ApprovalService.asyncTimeout", error, {
+							taskId,
+						});
+						this.pendingApprovals.delete(taskId);
+					});
+				}, request.timeoutMs);
 			}
 
 			this.pendingApprovals.set(taskId, pending);
@@ -432,14 +439,7 @@ export class ApprovalService extends Service {
 		// Call timeout callback if provided
 		const task = await this.runtime.getTask(taskId);
 		if (task && request.onTimeout) {
-			try {
-				await request.onTimeout(task, this.runtime);
-			} catch (error) {
-				logger.error(
-					{ src: "service:approval", taskId, error },
-					"Error in timeout callback",
-				);
-			}
+			await request.onTimeout(task, this.runtime);
 		}
 
 		// Resolve with timeout default or cancel
@@ -506,14 +506,7 @@ export class ApprovalService extends Service {
 
 		// Call onSelect callback if provided
 		if (request?.onSelect) {
-			try {
-				await request.onSelect(selectedOption, task, this.runtime);
-			} catch (error) {
-				logger.error(
-					{ src: "service:approval", taskId, error },
-					"Error in onSelect callback",
-				);
-			}
+			await request.onSelect(selectedOption, task, this.runtime);
 		}
 
 		// Resolve the pending promise

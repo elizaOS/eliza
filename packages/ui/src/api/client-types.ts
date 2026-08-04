@@ -9,5 +9,4 @@ export * from "./client-types-cloud";
 export * from "./client-types-config";
 export * from "./client-types-core";
 export * from "./client-types-experience";
-export * from "./client-types-feed";
 export * from "./client-types-relationships";

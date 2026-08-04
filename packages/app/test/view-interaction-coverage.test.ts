@@ -42,27 +42,6 @@ const DECOMPOSED_PA_SPEC =
 const GUI_INTERACTION_OWNERS: Readonly<
   Record<string, readonly InteractionOwner[]>
 > = {
-  birdclaw: [
-    {
-      spec: "plugins/plugin-birdclaw/src/plugin.test.ts",
-      proves:
-        "Locks the Birdclaw view manifest path, bundle, component export, shipped modality, and manager visibility contract.",
-      signals: [
-        "declares the birdclaw view exactly as the bundle build emits it",
-        "BirdclawView",
-      ],
-    },
-    {
-      spec: "plugins/plugin-birdclaw/src/components/birdclaw/BirdclawView.test.tsx",
-      proves:
-        "Exercises tab switching (home/likes/bookmarks/inbox), the sync trigger with in-place reload, sync-failure surfacing, and the setup/error/retry states through the injected fetcher seam.",
-      signals: [
-        "switches tabs: likes uses the liked filter, inbox hits the inbox route",
-        "syncs the active tab's collection and reloads in place",
-        "renders the error state and recovers on retry",
-      ],
-    },
-  ],
   calendar: [
     {
       spec: DECOMPOSED_PA_SPEC,
@@ -144,17 +123,6 @@ const GUI_INTERACTION_OWNERS: Readonly<
       ],
     },
   ],
-  hyperliquid: [
-    {
-      spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
-      proves: "Verifies markets, positions, and orders.",
-      signals: [
-        "market utility controls show fixture data on load",
-        "market-BTC",
-        "position-BTC",
-      ],
-    },
-  ],
   "lifeops-live-test": [
     {
       spec: "plugins/plugin-scheduling/src/components/lifeops-live-test/LifeOpsLiveTestSpatialView.tsx",
@@ -175,24 +143,13 @@ const GUI_INTERACTION_OWNERS: Readonly<
       ],
     },
   ],
-  "model-tester": [
-    {
-      spec: "packages/app/test/ui-smoke/apps-model-training-interactions.spec.ts",
-      proves:
-        "Runs deterministic text and image model probes through visible form controls.",
-      signals: [
-        "model tester route runs deterministic visible probes",
-        "run text probe",
-      ],
-    },
-  ],
   notes: [
     {
-      spec: "plugins/plugin-simple-views/src/views/simple-views.e2e.test.tsx",
+      spec: "plugins/plugin-notes/src/views/notes.e2e.test.tsx",
       proves:
         "Creates, edits, and preserves a note through the real Notes surface and filesystem-backed service.",
       signals: [
-        "creates, edits, and preserves a note while creating an event across view switches",
+        "creates, edits, and preserves a note across remounts",
         "Demo briefing ready",
       ],
     },
@@ -205,16 +162,6 @@ const GUI_INTERACTION_OWNERS: Readonly<
       signals: ["phone deterministic controls", "dialpad-", "dialer-call"],
     },
   ],
-  polymarket: [
-    {
-      spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
-      proves: "Verifies the Polymarket route shell.",
-      signals: [
-        "market utility controls show fixture data on load",
-        "polymarket-root",
-      ],
-    },
-  ],
   wallet: [
     {
       spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
@@ -225,22 +172,6 @@ const GUI_INTERACTION_OWNERS: Readonly<
         "Hide USDC",
         "Open RPC settings",
       ],
-    },
-  ],
-  "vector-browser": [
-    {
-      spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
-      proves:
-        "Exercises vector memory search, list/detail state, and 2D/3D projection mode controls.",
-      signals: ["vector browser controls", "vector 2D projection"],
-    },
-  ],
-  feed: [
-    {
-      spec: "packages/app/test/ui-smoke/apps-personal-assistant-feed-interactions.spec.ts",
-      proves:
-        "Exercises feed GUI no-run state through deterministic app routes.",
-      signals: ["feed gui no-run state"],
     },
   ],
   "views-manager": [
@@ -277,25 +208,6 @@ const GUI_INTERACTION_OWNERS: Readonly<
       signals: ["orchestrator-workbench", "orchestrator-add-agent-submit"],
     },
   ],
-  screenshare: [
-    {
-      spec: "packages/app/test/ui-smoke/screenshare-gui-interactions.spec.ts",
-      proves:
-        "Exercises host start/open/copy/stop, remote connect, capability refresh, and request payloads.",
-      signals: ["host lifecycle", "capability refresh", "screen-token-1"],
-    },
-  ],
-  "simple-calendar": [
-    {
-      spec: "plugins/plugin-simple-views/src/views/simple-views.e2e.test.tsx",
-      proves:
-        "Creates a calendar event through the real Calendar surface and verifies persistence across a view switch.",
-      signals: [
-        "creates, edits, and preserves a note while creating an event across view switches",
-        "Create calendar event",
-      ],
-    },
-  ],
   "task-coordinator": [
     {
       spec: "packages/app/test/ui-smoke/task-coordinator-gui-interactions.spec.ts",
@@ -313,30 +225,6 @@ const GUI_INTERACTION_OWNERS: Readonly<
       spec: "packages/app/test/ui-smoke/apps-model-training-interactions.spec.ts",
       proves: "Exercises detail selection, stage filtering, and search.",
       signals: ["trajectory viewer route refreshes"],
-    },
-  ],
-  training: [
-    {
-      spec: "packages/app/test/ui-smoke/apps-model-training-interactions.spec.ts",
-      proves:
-        "Exercises trajectory selection, dataset build, training job start, and cancel flow.",
-      signals: ["fine-tuning route selects trajectories", "start training job"],
-    },
-  ],
-  facewear: [
-    {
-      spec: "packages/app/test/ui-smoke/apps-comms-device-interactions.spec.ts",
-      proves:
-        "Exercises device status refresh and deterministic manage bridge behavior.",
-      signals: ["facewear device controls", "facewearStatusRequests"],
-    },
-  ],
-  smartglasses: [
-    {
-      spec: "packages/app/test/ui-smoke/apps-comms-device-interactions.spec.ts",
-      proves:
-        "Exercises connect headset, display writes, microphone toggles, and Wi-Fi setup bridge calls.",
-      signals: ["smartglasses bridge controls", "Connect"],
     },
   ],
   cockpit: [
@@ -368,9 +256,7 @@ const INTERACTION_DEBT: Readonly<Record<string, string>> = {
 
 const MAX_INTERACTION_DEBT = 1;
 
-const KEYLESS_INTERACTION_OWNER_DEBT = new Set([
-  "packages/app/test/ui-smoke/apps-personal-assistant-feed-interactions.spec.ts",
-]);
+const KEYLESS_INTERACTION_OWNER_DEBT = new Set<string>([]);
 
 function viewKey(view: Pick<VisualViewCase, "id" | "viewType">) {
   return `${view.id}:${view.viewType}`;
@@ -427,7 +313,7 @@ describe("plugin view interaction coverage", () => {
       return !hasInteractionOwner && !(viewKey(view) in INTERACTION_DEBT);
     });
 
-    expect(visualCases.length).toBe(30);
+    expect(visualCases.length).toBe(21);
     expect(
       unclassified.map((view) => `${viewKey(view)} ${view.path}`),
       "Add an interaction owner or an explicit debt reason for each view case.",

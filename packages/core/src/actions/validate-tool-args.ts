@@ -44,6 +44,8 @@ export function testSchemaPattern(
 	try {
 		regex = new RegExp(pattern);
 	} catch (err) {
+		// error-policy:J3 tool schemas are untrusted plugin input; an invalid
+		// pattern becomes a structured validation failure.
 		return {
 			ok: false,
 			reason: `has an invalid pattern ${pattern}: ${

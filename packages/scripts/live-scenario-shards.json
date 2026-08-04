@@ -6,7 +6,7 @@
   "timeoutMinutes": 330,
   "costCeiling": {
     "maxWorkflowMinutes": 330,
-    "maxConcurrentShards": 4,
+    "maxConcurrentShards": 5,
     "note": "Each shard is an independent matrix job with its own dependency build, so the lane's wall clock is the slowest shard rather than the sum. Per-shard timeoutMinutes stay under the 6-hour GitHub-hosted job cap. The scenario-runner view-chat shard is restricted to its declared scenarioIds; provider-side token budgets remain enforced by the scenario runner."
   },
   "shards": [
@@ -70,6 +70,38 @@
       "root": "plugins/plugin-app-control/test/scenarios",
       "report": "artifacts/app-control-scenario-report.json",
       "runDir": "artifacts/scenario-runs/app-control",
+      "timeoutMinutes": 120,
+      "lane": "live-only",
+      "requiredAnySecrets": [
+        [
+          "OPENAI_API_KEY",
+          "OPENROUTER_API_KEY",
+          "ANTHROPIC_API_KEY",
+          "GOOGLE_GENERATIVE_AI_API_KEY",
+          "GOOGLE_API_KEY",
+          "GROQ_API_KEY"
+        ]
+      ],
+      "requiredSecrets": ["CEREBRAS_API_KEY"],
+      "artifactContract": [
+        "report",
+        "matrix",
+        "viewer",
+        "native-jsonl",
+        "native-manifest",
+        "privacy-attestation",
+        "logs"
+      ]
+    },
+    {
+      "id": "agent-orchestrator",
+      "root": "plugins/plugin-agent-orchestrator/test/scenarios",
+      "scenarioIds": [
+        "orchestrator.grilling-happy-path",
+        "orchestrator.origin-routing-live"
+      ],
+      "report": "artifacts/agent-orchestrator-scenario-report.json",
+      "runDir": "artifacts/scenario-runs/agent-orchestrator",
       "timeoutMinutes": 120,
       "lane": "live-only",
       "requiredAnySecrets": [

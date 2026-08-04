@@ -71,9 +71,23 @@ export {
 	DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
 	DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
 	type DeploymentTargetConfig,
+	type DeploymentTargetRuntime,
+	type LinkedAccountAccountSource,
+	type LinkedAccountConfig,
+	type LinkedAccountFlagConfig,
 	type LinkedAccountFlagsConfig,
+	type LinkedAccountHealth,
+	type LinkedAccountHealthDetail,
+	type LinkedAccountProviderId,
+	type LinkedAccountSource,
+	type LinkedAccountStatus,
+	type LinkedAccountsConfig,
+	type LinkedAccountUsage,
 	type ServiceCapability,
+	type ServiceRouteAccountStrategy,
+	type ServiceRouteConfig,
 	type ServiceRoutingConfig,
+	type ServiceTransport,
 } from "./contracts/service-routing";
 export * from "./contracts/wallet";
 export * from "./database";
@@ -193,7 +207,6 @@ export * from "./model-gateway";
 export * from "./name-tokens";
 // Export network utilities (SSRF protection, secure fetch)
 export * from "./network";
-export { getOptimizationRootDir } from "./optimization-root-dir";
 export * from "./plugin";
 export * from "./plugins";
 export * from "./prompts";

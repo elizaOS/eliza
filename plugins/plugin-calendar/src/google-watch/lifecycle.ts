@@ -18,7 +18,7 @@ import {
   isBlockedHostname,
   isPrivateIpAddress,
 } from "@elizaos/core";
-import type { GoogleCalendarWatchResponse } from "@elizaos/plugin-google";
+import type { GoogleCalendarWatchResponse } from "@elizaos/plugin-google-workspace";
 import {
   type DispatchResult,
   getScheduledTaskChannelDispatcher,

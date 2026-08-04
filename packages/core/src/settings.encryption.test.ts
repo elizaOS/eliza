@@ -52,11 +52,11 @@ describe("encryptStringValue / decryptStringValue", () => {
 		);
 	});
 
-	it("fails SAFE on a wrong salt — returns the ciphertext, never a partial plaintext", () => {
+	it("fails closed on a wrong salt instead of exposing ciphertext as a value", () => {
 		const enc = encryptStringValue(SECRET, SALT);
-		const out = decryptStringValue(enc, "wrong-salt");
-		expect(out).toBe(enc); // unchanged ciphertext, not garbage
-		expect(out).not.toContain("sk-api-key"); // the secret never leaks
+		expect(() => decryptStringValue(enc, "wrong-salt")).toThrow(
+			"Failed to decrypt secret setting",
+		);
 	});
 });
 

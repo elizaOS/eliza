@@ -1,7 +1,7 @@
 name: Deploy Apps Worker (Product 2)
 
 # SSHes to the apps-control host, fetches the target branch, installs the
-# systemd unit shipped at packages/scripts/cloud/admin/eliza-apps-worker.service,
+# systemd unit shipped at packages/cloud/scripts/admin/eliza-apps-worker.service,
 # and restarts the eliza-apps-worker daemon (the Product-2 deploy daemon).
 #
 # This is the slim sibling of deploy-eliza-provisioning-worker.yml: it deploys
@@ -20,9 +20,9 @@ on:
     branches: [develop, main]
     paths:
       - '.github/workflows/deploy-apps-worker.yml'
-      - 'packages/scripts/cloud/admin/daemons/apps-provisioning-worker.ts'
-      - 'packages/scripts/cloud/admin/daemons/provisioning-worker.ts'
-      - 'packages/scripts/cloud/admin/eliza-apps-worker.service'
+      - 'packages/cloud/scripts/admin/daemons/apps-provisioning-worker.ts'
+      - 'packages/cloud/scripts/admin/daemons/provisioning-worker.ts'
+      - 'packages/cloud/scripts/admin/eliza-apps-worker.service'
       - 'packages/cloud/shared/src/lib/services/provisioning-jobs.ts'
       - 'packages/cloud/shared/src/lib/services/provisioning-job-types.ts'
       - 'packages/cloud/shared/src/lib/services/apps-deploy-backend.ts'
@@ -200,14 +200,14 @@ jobs:
             git checkout "origin/$DEPLOY_BRANCH" -- bun.lock
 
             if ! command -v bun >/dev/null 2>&1; then
-              curl -fsSL https://bun.sh/install | bash -s "canary"
+              curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.14"
               export BUN_INSTALL="$HOME/.bun"
               export PATH="$BUN_INSTALL/bin:$PATH"
             fi
 
             cd /opt/eliza
             for attempt in 1 2 3; do
-              if bun install --no-save --ignore-scripts; then
+              if bun install --frozen-lockfile --no-save --ignore-scripts; then
                 break
               fi
               if [ "$attempt" -eq 3 ]; then exit 1; fi
@@ -229,7 +229,7 @@ jobs:
             ln -sfn ../../packages/cloud/shared node_modules/@elizaos/cloud-shared
 
             sudo install -m 0644 \
-              packages/scripts/cloud/admin/eliza-apps-worker.service \
+              packages/cloud/scripts/admin/eliza-apps-worker.service \
               "/etc/systemd/system/$SYSTEMD_UNIT"
             sudo systemctl daemon-reload
             sudo systemctl enable "$SYSTEMD_UNIT"

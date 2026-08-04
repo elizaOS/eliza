@@ -1,3 +1,4 @@
+/** Verifies ChatComposerContext draft persistence through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Per-conversation composer draft persistence (`ChatComposerContext.hooks`):

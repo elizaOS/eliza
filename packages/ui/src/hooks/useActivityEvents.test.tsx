@@ -1,3 +1,4 @@
+/** Verifies useActivityEvents rail-gesture park through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Unit coverage for useActivityEvents' rail-gesture park (#swipe-smoothness):

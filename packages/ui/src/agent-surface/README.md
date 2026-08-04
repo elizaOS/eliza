@@ -75,7 +75,7 @@ Rules:
 - **One element, one stable id.** Ids are the agent's address space — keep them
   semantic (`tab-positions`, `input-amount`, `action-send`).
 - **Hooks can't run in `.map()`** — extract a tiny child component that calls
-  `useAgentElement` (see `WalletRailTabButton` in `plugin-wallet-ui`).
+  `useAgentElement` (see `WalletRailTabButton` in `plugin-wallet`).
 - **Roles** drive fill/click affordances:
   `FILLABLE_ROLES` = text-input, number-input, textarea, select, slider;
   `CLICKABLE_ROLES` = button, link, toggle, tab, menu-item, list-item, card.

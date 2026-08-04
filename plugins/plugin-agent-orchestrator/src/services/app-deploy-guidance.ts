@@ -138,9 +138,8 @@ function elizaCloudGuidance(task?: string, monetized?: boolean): string {
   // signal only ever ADDS monetization detection, never removes it.
   if (monetized === true || isMonetizedAppTask(task)) {
     lines.push(
-      "START FROM THE TEMPLATE — do NOT build the Cloud SDK / registration / OAuth-proxy / Dockerfile from scratch. A complete, working, already-deployed monetized chat app is in THIS checkout at `packages/examples/cloud/edad`. Copy it as your starting point: `cp -r packages/examples/cloud/edad <your-app-dir>`, then ADAPT only the app-specific bits.",
-      "- CHANGE only: `public/index.html` (the SYSTEM_PROMPT constant, the MODEL constant, the <title>/brand/meta text, the input placeholder, the TOKEN_KEY/STATE_KEY localStorage prefixes), the art in `public/` (SVGs, favicon, og-image), and the markup % you set at registration.",
-      "- KEEP byte-for-byte: `server.ts`, `db.ts`, the Dockerfile, and the OAuth + same-origin proxy + `/health` plumbing — that IS the canonical correct monetized wiring (it forwards to `/api/v1/messages` with `x-app-id` + `x-affiliate-code`, the org-balance billing path).",
+      "USE the `build-monetized-app` skill as the canonical implementation contract; do not invent a parallel Cloud SDK, registration, OAuth proxy, or billing path.",
+      "- Preserve the skill's OAuth, same-origin proxy, health-check, and `/api/v1/messages` contract with `x-app-id` + `x-affiliate-code`; adapt the product UI, prompt, model choice, assets, and markup.",
       // Broker-first (#14118): Cloud register + deploy go through the parent
       // agent, NOT a raw owner key in this child's env. The broker commands map
       // 1:1 onto the edad README's API calls (apps.create → POST /api/v1/apps,
@@ -155,7 +154,7 @@ function elizaCloudGuidance(task?: string, monetized?: boolean): string {
       // edad's server.ts reads the non-reserved `ELIZA_CLOUD_API_KEY` instead. That
       // secret is a real value the child must place in environmentVars, so it comes
       // from the owner-approved credential bridge (single-use), never a raw env leak.
-      '- The container needs the owner\'s Cloud key at RUNTIME as `environmentVars.ELIZA_CLOUD_API_KEY` (NOT `ELIZAOS_CLOUD_API_KEY` — that key is platform-reserved and the deploy route rejects it). You do NOT have this key in your env by default. Request it via the owner-approved credential bridge — `POST /api/coding-agents/<PARALLAX_SESSION_ID>/credentials/request` with `{"credentialKeys":["ELIZAOS_CLOUD_API_KEY"]}` (see "Requesting a missing credential" in your AGENTS.md/CLAUDE.md for the full request+poll flow), then pass the value as `environmentVars.ELIZA_CLOUD_API_KEY` in the containers.create params. If the owner declines or the bridge is unwired, STOP and report that the container cannot self-bill without the owner\'s Cloud key (the operator can also set `ELIZA_FORWARD_CLOUD_KEY_TO_SUBAGENTS=1` to forward it). Never hardcode the key in image/frontend code.',
+      '- The container needs the owner\'s Cloud key at RUNTIME as `environmentVars.ELIZA_CLOUD_API_KEY` (NOT `ELIZAOS_CLOUD_API_KEY` — that key is platform-reserved and the deploy route rejects it). You do NOT have this key in your env by default. Request it via the owner-approved credential bridge — `POST /api/coding-agents/<ORCHESTRATOR_SESSION_ID>/credentials/request` with `{"credentialKeys":["ELIZAOS_CLOUD_API_KEY"]}` (see "Requesting a missing credential" in your AGENTS.md/CLAUDE.md for the full request+poll flow), then pass the value as `environmentVars.ELIZA_CLOUD_API_KEY` in the containers.create params. If the owner declines or the bridge is unwired, STOP and report that the container cannot self-bill without the owner\'s Cloud key (the operator can also set `ELIZA_FORWARD_CLOUD_KEY_TO_SUBAGENTS=1` to forward it). Never hardcode the key in image/frontend code.',
     );
   } else {
     lines.push(
@@ -191,7 +190,7 @@ function customHostGuidance(
   // signal, not by keyword-matching the task text.
   const monetizeLine =
     monetized === true
-      ? "- THIS APP IS MONETIZED: it must charge per use, so a static page is NOT enough. Register it with Eliza Cloud and follow the `build-monetized-app` skill (Cloud SDK app registration → an `appId`, an inference markup, Eliza Cloud OAuth, and a same-origin proxy that forwards to `/api/v1/messages` with `x-app-id` + `x-affiliate-code` — the org-balance billing path). Start from the working reference at `packages/examples/cloud/edad`. Report the live monetized URL only after a real billed message round-trips."
+      ? "- THIS APP IS MONETIZED: it must charge per use, so a static page is NOT enough. Register it with Eliza Cloud and follow the `build-monetized-app` skill (Cloud SDK app registration → an `appId`, an inference markup, Eliza Cloud OAuth, and a same-origin proxy that forwards to `/api/v1/messages` with `x-app-id` + `x-affiliate-code` — the org-balance billing path). Report the live monetized URL only after a real billed message round-trips."
       : "- If the app must earn money / be monetized: also register it with Eliza Cloud — follow the `build-monetized-app` skill (Cloud SDK registration, an inference markup, per-call billing). Otherwise do not involve Eliza Cloud.";
   // A capability note, NOT an assertion that the current task is an app — it is
   // always available and the agent applies it by judgment. So it must stay

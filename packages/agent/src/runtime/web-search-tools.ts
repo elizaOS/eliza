@@ -157,8 +157,12 @@ function copyStaticFunctionProperties(
     if (!descriptor) continue;
     try {
       Object.defineProperty(wrapped, key, descriptor);
-    } catch {
-      /* non-configurable */
+    } catch (error) {
+      // error-policy:J4 some SDK function properties are intentionally
+      // non-configurable; the wrapper remains usable without copying them.
+      logger.debug(
+        `[web-search] Could not copy static property ${key}: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 }

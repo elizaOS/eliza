@@ -1,9 +1,4 @@
-/**
- * @module features/plugin-manager/actions/plugin-handlers/search
- *
- * `search` sub-mode of the PLUGIN action. Searches the elizaOS
- * plugin registry by free-form query.
- */
+/** Searches the elizaOS plugin registry from a free-form query. */
 
 import { logger } from "../../../../logger.ts";
 import type {

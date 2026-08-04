@@ -138,6 +138,11 @@ export class PairingService extends Service {
 			Promise.all(
 				expiredIds.map((id) => this.runtime.deletePairingRequest(id)),
 			).catch((err) => {
+				// error-policy:J6 Expired-row cleanup is best-effort maintenance; report
+				// failures without hiding valid, unexpired pairing requests.
+				this.runtime.reportError("PairingService.expiredCleanup", err, {
+					requestCount: expiredIds.length,
+				});
 				this.runtime.logger.warn(
 					{ src: "service:pairing", error: err },
 					"Failed to clean up expired pairing requests",

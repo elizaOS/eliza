@@ -1,16 +1,4 @@
-/**
- * Session management utilities for elizaOS.
- *
- * Provides:
- * - Session key building and parsing
- * - Session types and data structures
- * - Session storage with caching and locking
- * - Session path resolution
- * - Agent/peer/thread session management
- * - Identity linking for cross-platform users
- *
- * @module sessions
- */
+/** Public surface for session identity, storage, path resolution, and runtime context. */
 
 // ============================================================================
 // Session Key Utilities

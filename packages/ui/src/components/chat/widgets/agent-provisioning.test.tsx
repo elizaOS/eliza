@@ -1,3 +1,4 @@
+/** Verifies AgentProvisioningWidget through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // AgentProvisioningWidget lifecycle: renders the migrating state (opening chat on

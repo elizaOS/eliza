@@ -17,7 +17,7 @@ import {
   PgliteVaultImpl,
   reconcileStalePglitePid,
 } from "../src/pglite-vault.js";
-import { VaultMissError } from "../src/vault.js";
+import { VaultDecryptionError, VaultMissError } from "../src/vault.js";
 import { runtimeVaultCaller } from "./vitest-assertion-shim.js";
 
 describe("PgliteVaultImpl", () => {
@@ -180,8 +180,27 @@ describe("PgliteVaultImpl", () => {
       masterKey: inMemoryMasterKey(wrongKey),
       auditPath: join(dir, "audit", "vault.jsonl"),
     });
-    await expect(v2.get("k")).rejects.toThrow(/decryption failed/);
+    await expect(v2.get("k")).rejects.toBeInstanceOf(VaultDecryptionError);
+    expect(
+      await v2.quarantineUnreadable("k", "test wrong-key recovery", "test"),
+    ).toBe(true);
+    expect(await v2.has("k")).toBe(false);
+    await v2.set("k", "replacement", { sensitive: true });
+    expect(await v2.get("k")).toBe("replacement");
     await v2.close();
+
+    const db = await PGlite.create(join(dir, ".vault-pglite"));
+    const preserved = await db.query<{
+      original_key: string;
+      ciphertext: string;
+    }>(
+      `SELECT original_key, ciphertext
+         FROM vault_quarantined_entries WHERE original_key = $1`,
+      ["k"],
+    );
+    expect(preserved.rows).toHaveLength(1);
+    expect(preserved.rows[0]?.ciphertext).not.toContain("secret-value");
+    await db.close();
     await rm(dir, { recursive: true, force: true });
   });
 

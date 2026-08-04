@@ -1,4 +1,7 @@
-/** Supports app-core build, packaging, or development orchestration for node path env mjs. */
+/**
+ * Extends a child environment's NODE_PATH with the workspace's node_modules
+ * (including the .bun dir) so spawned tools resolve workspace packages.
+ */
 import path from "node:path";
 
 export function extendNodePathEnv(baseEnv, rootDir) {

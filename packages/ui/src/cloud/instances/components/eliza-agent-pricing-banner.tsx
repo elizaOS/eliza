@@ -79,7 +79,7 @@ export function ElizaAgentPricingBanner({
           <div className="bg-black/60 p-3.5 space-y-1.5">
             <div className="flex items-center gap-1.5">
               <Zap className="h-3 w-3 text-green-400" />
-              <p className="text-[10px] uppercase tracking-[0.2em] text-white/40">
+              <p className="text-[10px] uppercase tracking-[0.2em] text-white/60">
                 {t("cloud.containers.pricingBanner.running", {
                   defaultValue: "Running",
                 })}
@@ -97,7 +97,7 @@ export function ElizaAgentPricingBanner({
           <div className="bg-black/60 p-3.5 space-y-1.5">
             <div className="flex items-center gap-1.5">
               <TrendingDown className="h-3 w-3 text-white/60" />
-              <p className="text-[10px] uppercase tracking-[0.2em] text-white/40">
+              <p className="text-[10px] uppercase tracking-[0.2em] text-white/60">
                 {t("cloud.containers.pricingBanner.idle", {
                   defaultValue: "Idle",
                 })}
@@ -115,7 +115,7 @@ export function ElizaAgentPricingBanner({
           <div className="bg-black/60 p-3.5 space-y-1.5">
             <div className="flex items-center gap-1.5">
               <DollarSign className="h-3 w-3 text-white/70" />
-              <p className="text-[10px] uppercase tracking-[0.2em] text-white/40">
+              <p className="text-[10px] uppercase tracking-[0.2em] text-white/60">
                 {t("cloud.containers.pricingBanner.yourCost", {
                   defaultValue: "Your Cost",
                 })}
@@ -141,7 +141,7 @@ export function ElizaAgentPricingBanner({
           <div className="bg-black/60 p-3.5 space-y-1.5">
             <div className="flex items-center gap-1.5">
               <Clock className="h-3 w-3 text-white/50" />
-              <p className="text-[10px] uppercase tracking-[0.2em] text-white/40">
+              <p className="text-[10px] uppercase tracking-[0.2em] text-white/60">
                 {t("cloud.containers.pricingBanner.remaining", {
                   defaultValue: "Remaining",
                 })}

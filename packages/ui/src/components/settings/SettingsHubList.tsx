@@ -36,7 +36,7 @@ export function SettingsHubList({
     >
       {grouped.map(({ group, label: groupLabel, items }) => (
         <section key={group} data-testid={`settings-hub-group-${group}`}>
-          <h2 className="mb-1.5 px-1 text-2xs font-medium uppercase tracking-wide text-muted/80">
+          <h2 className="mb-1.5 px-1 text-2xs font-medium uppercase tracking-wide text-muted">
             {groupLabel}
           </h2>
           <div className="overflow-hidden rounded-xl bg-card/60">

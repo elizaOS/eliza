@@ -1,4 +1,8 @@
-/** Supports app-core build, packaging, or development orchestration for app dir mjs. */
+/**
+ * Resolves the main app and Electrobun platform directories across repo layouts
+ * (flat elizaOS monorepo vs a consumer repo that nests it as eliza/) so build
+ * scripts target the right app package regardless of the host fork.
+ */
 import fs from "node:fs";
 import path from "node:path";
 

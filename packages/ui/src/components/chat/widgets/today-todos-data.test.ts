@@ -1,3 +1,4 @@
+/** Verifies parseTodayTodos through the package's configured test harness. */
 // Read-model unit tests for the home "Today" card: boundary parsing of the
 // untrusted /api/lifeops/todos wire, the due/overdue-today selection, and the
 // occurrence-complete write. Deterministic — `now` is injected, fetch is stubbed.

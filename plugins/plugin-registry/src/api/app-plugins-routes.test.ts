@@ -43,7 +43,7 @@ vi.mock("@elizaos/app-core/api/response", () => ({
   sendJsonError: mocks.sendJsonError,
 }));
 
-vi.mock("@elizaos/app-core/registry", () => ({
+vi.mock("@elizaos/registry/first-party", () => ({
   loadRegistry: mocks.loadRegistry,
 }));
 
@@ -70,7 +70,6 @@ vi.mock("@elizaos/shared", () => ({
   CONNECTOR_PLUGINS: {
     discord: "@elizaos/plugin-discord",
   },
-  STREAMING_PLUGINS: {},
 }));
 
 vi.mock("@elizaos/vault", () => ({

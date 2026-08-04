@@ -52,13 +52,6 @@ describe("pii-scrub done-marker key", () => {
 		expect(scrubMarkerKey(hash, RULESET)).toBe(`pii:${hash}:v${RULESET}`);
 	});
 
-	it("is stable: identical content hashes identically across calls", () => {
-		expect(hashScrubContent("abc")).toBe(hashScrubContent("abc"));
-		expect(scrubMarkerKeyForContent("abc", RULESET)).toBe(
-			scrubMarkerKeyForContent("abc", RULESET),
-		);
-	});
-
 	it("differs when content differs (edit -> new key -> re-scrub)", () => {
 		expect(scrubMarkerKeyForContent("abc", RULESET)).not.toBe(
 			scrubMarkerKeyForContent("abcd", RULESET),

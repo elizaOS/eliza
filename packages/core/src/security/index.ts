@@ -1,12 +1,4 @@
-/**
- * Security utilities for elizaOS.
- *
- * Provides:
- * - Sensitive text redaction (pattern-based and secrets-based)
- * - External content wrapping for prompt injection protection
- *
- * @module security
- */
+/** Public surface for redaction, untrusted-content handling, and runtime security primitives. */
 
 export { mnemonicValid } from "./bip39-wordlist.js";
 export {

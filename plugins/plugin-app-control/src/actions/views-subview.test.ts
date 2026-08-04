@@ -44,7 +44,7 @@ const REGISTRY: ViewSummary[] = [
 		label: "Wallet",
 		description: "Non-custodial wallet inventory",
 		path: "/wallet",
-		pluginName: "@elizaos/plugin-wallet-ui",
+		pluginName: "@elizaos/plugin-wallet:ui",
 		available: true,
 		viewType: "gui",
 		tags: ["finance", "crypto", "wallet"],

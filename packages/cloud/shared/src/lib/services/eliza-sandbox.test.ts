@@ -14,7 +14,7 @@ import {
   test,
 } from "bun:test";
 import { readFileSync } from "node:fs";
-import { KeyNotFoundError, KmsError, orgKey } from "@elizaos/security/kms";
+import { KeyNotFoundError, KmsError, orgKey } from "@elizaos/core/security/kms";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 
@@ -40,7 +40,7 @@ import { provisioningJobService } from "./provisioning-jobs";
 import { resolveSandboxContainerLaunchConfig } from "./sandbox-container-launch-config";
 import type { SandboxCreateConfig, SandboxHandle, SandboxProvider } from "./sandbox-provider-types";
 
-// Drive the REAL @elizaos/security crypto stack so the errors the snapshot-degrade
+// Drive the real core KMS stack so the errors the snapshot-degrade
 // path classifies are genuine (`AeadError`, `KeyNotFoundError`) — not hand-rolled
 // stand-ins. In NODE_ENV=test, getKmsClient() resolves the in-process memory
 // backend, which is exactly what orphans keys across a restart in prod.
@@ -5165,7 +5165,7 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
   // the pre-upgrade snapshot it wrote — decrypt then throws KeyNotFoundError on
   // resume. That must degrade to a FRESH boot (agent comes up without prior
   // in-memory state), NOT brick the whole provision closed. Drives the REAL
-  // provision() body; the thrown error is the REAL @elizaos/security
+  // provision() body; the thrown error is from the real core KMS
   // KeyNotFoundError.
   test("(10) an orphaned snapshot (KeyNotFoundError on getLatestBackup) degrades to a fresh boot", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
@@ -5978,7 +5978,7 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
 });
 
 // Snapshot-degrade error classification (`isUnrecoverableSnapshotError`), proven
-// against REAL @elizaos/security errors produced by the crypto stack — the
+// against real core KMS errors produced by the crypto stack — the
 // precise crypto-vs-transient distinction the degrade path keys on.
 describe("isUnrecoverableSnapshotError (permanent-vs-transient classification)", () => {
   test("classifies a real KeyNotFoundError (memory-KMS key rotated away) as unrecoverable", async () => {

@@ -20,7 +20,23 @@
 import type { RefObject } from "react";
 import { useEffect, useRef } from "react";
 import { useAgentSurface } from "./AgentSurfaceContext.hooks";
-import type { AgentElementDescriptor } from "./types";
+import type { AgentElementDescriptor, AgentElementRole } from "./types";
+
+// These roles are expected to land on native or ARIA interactive controls.
+// Mirroring the agent-facing label into the accessibility tree keeps the two
+// interaction channels from describing the same control differently.
+const ACCESSIBLE_NAME_ROLES: ReadonlySet<AgentElementRole> = new Set([
+  "button",
+  "link",
+  "text-input",
+  "number-input",
+  "textarea",
+  "select",
+  "toggle",
+  "slider",
+  "tab",
+  "menu-item",
+]);
 
 export interface AgentElementHandle<T extends HTMLElement> {
   ref: RefObject<T | null>;
@@ -30,6 +46,7 @@ export interface AgentElementHandle<T extends HTMLElement> {
     "data-agent-label": string;
     "data-agent-sensitive"?: "true";
     "data-state"?: string;
+    "aria-label"?: string;
   };
 }
 
@@ -120,6 +137,9 @@ export function useAgentElement<T extends HTMLElement = HTMLElement>(
       "data-agent-id": descriptor.id,
       "data-agent-role": descriptor.role ?? "region",
       "data-agent-label": descriptor.label,
+      ...(descriptor.role && ACCESSIBLE_NAME_ROLES.has(descriptor.role)
+        ? { "aria-label": descriptor.label }
+        : {}),
       ...(descriptor.sensitive
         ? { "data-agent-sensitive": "true" as const }
         : {}),

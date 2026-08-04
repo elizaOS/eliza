@@ -150,6 +150,8 @@ describe("tryHandleTrajectoryReadRoutes", () => {
 		const service = {
 			getTrajectoryDetail: async (id: string) => ({
 				trajectoryId: id,
+				agentId: "agent-1",
+				startTime: 500,
 				endTime: 1000,
 				metrics: { finalStatus: "completed" },
 				metadata: { source: "discord", roomId: "room-1", entityId: "entity-1" },
@@ -173,7 +175,12 @@ describe("tryHandleTrajectoryReadRoutes", () => {
 						providerAccesses: [
 							{ providerId: "p0", providerName: "facts", purpose: "ctx" },
 						],
-						action: { attemptId: "a0", actionName: "REPLY", success: true },
+						action: {
+							attemptId: "a0",
+							actionType: "REPLY",
+							actionName: "REPLY",
+							success: true,
+						},
 					},
 				],
 			}),
@@ -281,7 +288,7 @@ describe("tryHandleTrajectoryReadRoutes", () => {
 		expect(get().status).toBe(404);
 	});
 
-	it("returns an empty list (200, not 404) when the service is absent", async () => {
+	it("returns an unavailable error when the service is absent", async () => {
 		const { res, get } = mockRes();
 		const handled = await tryHandleTrajectoryReadRoutes({
 			pathname: "/api/trajectories",
@@ -291,10 +298,8 @@ describe("tryHandleTrajectoryReadRoutes", () => {
 			res,
 		});
 		expect(handled).toBe(true);
-		expect(get().status).toBe(200);
-		expect((get().body as { trajectories: unknown[] }).trajectories).toEqual(
-			[],
-		);
+		expect(get().status).toBe(503);
+		expect(get().body).toEqual({ error: "Trajectory service unavailable" });
 	});
 
 	it("does not treat /stats or /config as a detail id", async () => {

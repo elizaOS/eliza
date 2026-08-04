@@ -99,13 +99,13 @@ describe("v5 planner executor context", () => {
 		expect(callback).toHaveBeenCalledWith({ text: widgetText }, "APP");
 	});
 
-	it("keeps both v5 executeV5PlannedToolCall call sites on the shared context builder", () => {
+	it("keeps the v5 execution call site on the shared context builder", () => {
 		const source = readFileSync(
 			new URL("../message.ts", import.meta.url),
 			"utf8",
 		);
 		expect(source.match(/executorCtx:\s*buildV5ExecutorContext/g)).toHaveLength(
-			2,
+			1,
 		);
 	});
 });

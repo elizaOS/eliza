@@ -351,7 +351,6 @@ describe("KokoroFfiRuntime", () => {
 		);
 
 		const materialized = calls.loads[0]?.voiceBinPath;
-		expect(materialized).toBeDefined();
 		if (!materialized) throw new Error("missing materialized voice path");
 		expect(materialized).not.toBe(packagedPath);
 		expect(path.basename(materialized)).toMatch(
@@ -385,7 +384,6 @@ describe("KokoroFfiRuntime", () => {
 		);
 
 		const materialized = calls.loads[0]?.voiceBinPath;
-		expect(materialized).toBeDefined();
 		if (!materialized) throw new Error("missing materialized voice path");
 		expect(materialized).not.toBe(packagedPath);
 		expect(path.basename(materialized)).toMatch(

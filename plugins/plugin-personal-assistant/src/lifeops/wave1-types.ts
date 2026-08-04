@@ -6,7 +6,7 @@
  * Types only — no runtime behaviour.
  */
 
-import type { TaskExecutionProfile } from "@elizaos/contracts";
+import type { TaskExecutionProfile } from "@elizaos/shared";
 
 export type TerminalState =
   | "completed"

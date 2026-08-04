@@ -1,3 +1,4 @@
+/** Verifies startTutorial through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Unit coverage for the tutorial state machine: every guarded transition

@@ -1,3 +1,4 @@
+/** Verifies GameViewOverlay header drag through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Drag performance contract for the floating game overlay. The header drag now

@@ -191,7 +191,7 @@ export function AppsListView({
                 <span>{app.total_requests.toLocaleString()}</span>
               </div>
               <span className="text-white/20">-</span>
-              <span className="shrink-0 text-white/40">
+              <span className="shrink-0 text-white/60">
                 {formatRelativeTime(app.updated_at)}
               </span>
             </div>

@@ -1,13 +1,12 @@
 /**
  * Repo integration-lane smoke — #11047.
  *
- * The repo-level integration lane (packages/test/vitest/integration.config.ts)
+ * The repo-level integration lane (packages/scripts/vitest/integration.config.ts)
  * was dead in flat eliza checkouts for two independent reasons:
  *
  *   1. the `@elizaos/core` string alias prefix-matched subpath imports, so
  *      `@elizaos/core/node` rewrote to `<core entry file>/node` (ENOTDIR) and
- *      the personal-assistant plugin barrel could not load (plugin-calendly's
- *      dist imports `@elizaos/core/node`);
+ *      the personal-assistant plugin barrel could not load;
  *   2. every config path was `eliza/`-prefixed and cwd-relative, so the lane
  *      matched zero files unless the checkout was nested as literally `eliza/`
  *      inside a consumer workspace.
@@ -17,7 +16,7 @@
  * unconditionally.
  *
  * Run:
- *   bunx vitest run --config packages/test/vitest/integration.config.ts \
+ *   bunx vitest run --config packages/scripts/vitest/integration.config.ts \
  *     plugins/plugin-personal-assistant/test/integration-lane.smoke.integration.test.ts
  */
 import { BaseMessageAdapter } from "@elizaos/core/node";

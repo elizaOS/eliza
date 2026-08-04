@@ -1,3 +1,4 @@
+/** Verifies WalletKeysSection - requests route through the shared client through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

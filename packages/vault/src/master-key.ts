@@ -5,14 +5,16 @@
  * and fail-closed TEE attestation before releasing sealed-volume keys.
  */
 
-import { execFile, spawn } from "node:child_process";
+import { execFile, execFileSync, spawn } from "node:child_process";
 import { scryptSync } from "node:crypto";
 import { existsSync } from "node:fs";
+import { createRequire } from "node:module";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { generateMasterKey, KEY_BYTES } from "./crypto.js";
 
 const execFileAsync = promisify(execFile);
+const require = createRequire(import.meta.url);
 
 /**
  * Where the encryption master key lives.
@@ -450,6 +452,109 @@ export function defaultMasterKey(
         : keychain.describe();
     },
   };
+}
+
+/**
+ * Resolve the same persistent master key as {@link defaultMasterKey} for
+ * synchronous credential stores that must be readable during process boot.
+ * The function uses the platform keychain or the configured vault passphrase;
+ * it never writes a filesystem fallback key.
+ */
+export function loadDefaultMasterKeySync(opts: OsKeychainOptions = {}): Buffer {
+  const service = opts.service ?? "eliza";
+  const account = opts.account ?? "vault.masterKey";
+  const passphrase = process.env.ELIZA_VAULT_PASSPHRASE;
+
+  if (passphrase && passphrase.length < PASSPHRASE_MIN_LENGTH) {
+    throw new MasterKeyUnavailableError(
+      `ELIZA_VAULT_PASSPHRASE must be at least ${PASSPHRASE_MIN_LENGTH} characters`,
+    );
+  }
+
+  if (isKeychainUnsafe()) {
+    if (!passphrase) {
+      throw new MasterKeyUnavailableError(keychainUnsafeMessage("vault: "));
+    }
+    return Buffer.from(
+      scryptSync(passphrase, `${service}.vault.masterKey.v1`, KEY_BYTES, {
+        N: DEFAULT_SCRYPT_COST,
+        r: DEFAULT_SCRYPT_BLOCK_SIZE,
+        p: DEFAULT_SCRYPT_PARALLELIZATION,
+        maxmem: 64 * 1024 * 1024,
+      }),
+    );
+  }
+
+  try {
+    if (process.platform === "darwin") {
+      let existing: string | null = null;
+      try {
+        existing = execFileSync(
+          "/usr/bin/security",
+          ["find-generic-password", "-s", service, "-a", account, "-w"],
+          { encoding: "utf8" },
+        ).trim();
+      } catch (error) {
+        const stderr = String((error as { stderr?: string }).stderr ?? error);
+        if (!stderr.includes("could not be found")) throw error;
+      }
+      if (existing) {
+        const key = Buffer.from(existing, "base64");
+        if (key.length !== KEY_BYTES) {
+          throw new MasterKeyUnavailableError(
+            `OS keychain entry ${service}/${account} is not a ${KEY_BYTES}-byte key`,
+          );
+        }
+        return key;
+      }
+      const created = generateMasterKey();
+      const encoded = created.toString("base64");
+      execFileSync(
+        "/usr/bin/security",
+        ["add-generic-password", "-s", service, "-a", account, "-U", "-w"],
+        {
+          input: `${encoded}\n${encoded}\n`,
+          stdio: ["pipe", "ignore", "pipe"],
+        },
+      );
+      return created;
+    }
+
+    const { Entry } =
+      require("@napi-rs/keyring") as typeof import("@napi-rs/keyring");
+    const entry = new Entry(service, account);
+    const existing = entry.getPassword();
+    if (existing) {
+      const key = Buffer.from(existing, "base64");
+      if (key.length !== KEY_BYTES) {
+        throw new MasterKeyUnavailableError(
+          `OS keychain entry ${service}/${account} is not a ${KEY_BYTES}-byte key`,
+        );
+      }
+      return key;
+    }
+    const created = generateMasterKey();
+    entry.setPassword(created.toString("base64"));
+    return created;
+  } catch (keychainError) {
+    if (passphrase) {
+      return Buffer.from(
+        scryptSync(passphrase, `${service}.vault.masterKey.v1`, KEY_BYTES, {
+          N: DEFAULT_SCRYPT_COST,
+          r: DEFAULT_SCRYPT_BLOCK_SIZE,
+          p: DEFAULT_SCRYPT_PARALLELIZATION,
+          maxmem: 64 * 1024 * 1024,
+        }),
+      );
+    }
+    throw new MasterKeyUnavailableError(
+      `vault master key unavailable: ${
+        keychainError instanceof Error
+          ? keychainError.message
+          : String(keychainError)
+      }`,
+    );
+  }
 }
 
 export function osKeychainMasterKey(

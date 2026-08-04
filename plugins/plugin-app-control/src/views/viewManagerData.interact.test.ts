@@ -13,7 +13,7 @@ const viewList = {
 			viewType: "gui",
 			path: "/wallet",
 			available: true,
-			pluginName: "@elizaos/plugin-wallet-ui",
+			pluginName: "@elizaos/plugin-wallet:ui",
 		},
 		{
 			id: "messages",

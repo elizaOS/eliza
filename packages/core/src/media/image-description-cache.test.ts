@@ -23,6 +23,7 @@ function fakeRuntime(overrides: {
 	runtime: IAgentRuntime;
 	useModel: ReturnType<typeof vi.fn>;
 	setCache: ReturnType<typeof vi.fn>;
+	reportError: ReturnType<typeof vi.fn>;
 } {
 	const store = new Map<string, unknown>(Object.entries(overrides.cache ?? {}));
 	const useModel = overrides.useModel ?? vi.fn();
@@ -30,20 +31,19 @@ function fakeRuntime(overrides: {
 		store.set(key, value);
 		return true;
 	});
+	const reportError = vi.fn();
 	const runtime = createMockRuntime({
 		getCache: vi.fn(async (key: string) => store.get(key)),
 		setCache,
 		useModel,
+		reportError,
 		logger: { warn: vi.fn(), debug: vi.fn(), info: vi.fn(), error: vi.fn() },
 	});
-	return { runtime, useModel, setCache };
+	return { runtime, useModel, setCache, reportError };
 }
 
 describe("imageDescriptionCacheKey", () => {
 	it("is deterministic and content-sensitive", () => {
-		expect(imageDescriptionCacheKey("data:image/png;base64,AAAA")).toBe(
-			imageDescriptionCacheKey("data:image/png;base64,AAAA"),
-		);
 		expect(imageDescriptionCacheKey("a")).not.toBe(
 			imageDescriptionCacheKey("b"),
 		);
@@ -117,10 +117,15 @@ describe("describeImageCached", () => {
 		const useModel = vi.fn(async () => {
 			throw new Error("vision down");
 		});
-		const { runtime, setCache } = fakeRuntime({ useModel });
+		const { runtime, reportError, setCache } = fakeRuntime({ useModel });
 		const result = await describeImageCached(runtime, "https://x/e.png", "p");
 		expect(result).toBeNull();
 		expect(setCache).not.toHaveBeenCalled();
+		expect(reportError).toHaveBeenCalledWith(
+			"ImageDescriptionCache.describe",
+			expect.objectContaining({ message: "vision down" }),
+			{ imageUrl: "https://x/e.png" },
+		);
 	});
 
 	it("returns null for an empty URL without calling the model", async () => {

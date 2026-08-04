@@ -1,9 +1,4 @@
-/**
- * @fileoverview Inference Provider Detection and Validation
- *
- * Detects available inference providers and ensures tests have access to
- * real inference capabilities. Throws errors if no provider is found.
- */
+/** Detects and validates real inference providers required by integration tests. */
 
 import z from "zod";
 import { logger } from "../logger";

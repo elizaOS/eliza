@@ -1,46 +1,7 @@
 /**
- * AgentEventService
- *
- * A centralized service for managing agent event streams.
- * Provides event emission, subscription, and run context tracking
- * for agent lifecycle events, tool usage, assistant responses, errors, and heartbeats.
- *
- * This service consolidates event handling that was previously scattered
- * across Otto's agent-events.ts and heartbeat-events.ts.
- *
- * @example
- * ```typescript
- * const eventService = runtime.getService(ServiceType.AGENT_EVENT) as AgentEventService;
- *
- * // Subscribe to events
- * const unsubscribe = eventService.subscribe((event) => {
- *   console.log(`[${event.stream}] ${event.runId}:${event.seq}`, event.data);
- * });
- *
- * // Register run context
- * eventService.registerRunContext('run-123', {
- *   sessionKey: 'session-abc',
- *   verboseLevel: 'verbose',
- * });
- *
- * // Emit events
- * eventService.emit({
- *   runId: 'run-123',
- *   stream: 'lifecycle',
- *   data: { type: 'run_start', stepName: 'process_message' },
- * });
- *
- * // Emit heartbeat
- * eventService.emitHeartbeat({
- *   status: 'ok-token',
- *   to: 'user@example.com',
- *   preview: 'Hello, world!',
- * });
- *
- * // Cleanup
- * unsubscribe();
- * eventService.clearRunContext('run-123');
- * ```
+ * Synchronous agent-event and heartbeat fan-out with per-run sequencing.
+ * Listener isolation keeps one observer from starving its siblings while every
+ * observer failure is surfaced through the runtime diagnostic channel.
  */
 
 import { logger } from "../logger.ts";
@@ -216,7 +177,13 @@ export class AgentEventService extends Service {
 			try {
 				listener(enriched);
 			} catch (error) {
+				// error-policy:J7 Event observers are diagnostics/stream consumers;
+				// report their failure without starving independent listeners.
 				errors.push({ listener, error });
+				this.runtime.reportError("AgentEventService.listener", error, {
+					stream: enriched.stream,
+					runId: enriched.runId,
+				});
 				logger.error(
 					{
 						src: "service:agent_event",
@@ -272,7 +239,12 @@ export class AgentEventService extends Service {
 			try {
 				listener(enriched);
 			} catch (error) {
+				// error-policy:J7 Heartbeat observers are independent diagnostic
+				// consumers; one broken listener must not stop the rest.
 				heartbeatErrors++;
+				this.runtime.reportError("AgentEventService.heartbeatListener", error, {
+					status: enriched.status,
+				});
 				logger.error(
 					{ src: "service:agent_event", error, status: enriched.status },
 					"Error in heartbeat listener - listener threw exception",

@@ -48,7 +48,7 @@ export function ElizaAgentTabs({ agentId, children }: ElizaAgentTabsProps) {
             className={`relative shrink-0 px-5 py-3 font-mono text-[11px] uppercase tracking-[0.2em] transition-colors ${
               activeTab === tab
                 ? "text-txt-strong"
-                : "text-white/40 hover:text-white/70"
+                : "text-white/60 hover:text-white/70"
             }`}
           >
             {labels[tab]}

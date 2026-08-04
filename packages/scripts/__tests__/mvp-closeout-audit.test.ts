@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -280,12 +280,12 @@ describe("atomic MVP closeout audit", () => {
 
   test("GitHub command failure exits nonzero without a report", () => {
     const dir = mkdtempSync(join(tmpdir(), "mvp-closeout-gh-failure-"));
-    const fakeGh = join(dir, "gh");
-    writeFileSync(
-      fakeGh,
-      "#!/usr/bin/env sh\necho 'rate limit exceeded' >&2\nexit 1\n",
-    );
-    chmodSync(fakeGh, 0o755);
+    const fakeGh = join(dir, process.platform === "win32" ? "gh.cmd" : "gh");
+    if (process.platform === "win32") {
+      writeFileSync(fakeGh, "@echo off\r\nexit /b 1\r\n");
+    } else {
+      symlinkSync("/usr/bin/false", fakeGh);
+    }
 
     const result = spawnSync(process.execPath, [scriptPath, "--json"], {
       encoding: "utf8",
@@ -294,7 +294,7 @@ describe("atomic MVP closeout audit", () => {
 
     expect(result.status).toBe(1);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toContain("rate limit exceeded");
+    expect(result.stderr).toContain("Command failed");
     expect(result.stderr).toContain("[mvp-closeout-audit]");
   });
 });

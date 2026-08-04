@@ -28,10 +28,6 @@ import type {
   SetLifeOpsCalendarIncludedResponse,
   UpdateLifeOpsIcsCalendarSourceRequest,
 } from "@elizaos/shared";
-// Load the `@elizaos/ui` barrel so the `declare module "@elizaos/ui"`
-// augmentation below resolves; the calendar methods are exposed on the
-// public `ElizaClient` surface that consumers import from `@elizaos/ui`.
-import type {} from "@elizaos/ui";
 import { ElizaClient } from "@elizaos/ui/api";
 import type {
   MeetingAutoJoinPolicy,
@@ -109,7 +105,7 @@ export interface CalendarClientMethods {
 // side-effect import. Do NOT re-declare meeting join/list methods here — call
 // the ui client's `requestMeetingBot` / `listMeetings` directly.
 
-declare module "@elizaos/ui" {
+declare module "@elizaos/ui/api/client-base" {
   interface ElizaClient extends CalendarClientMethods {}
 }
 

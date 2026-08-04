@@ -38,7 +38,7 @@ describe("pluginPackageNameCandidates", () => {
 });
 
 describe("registerPluginViews package-dir resolution", () => {
-  const PLUGIN_NAME = "birdclaw";
+  const PLUGIN_NAME = "blocker";
 
   afterEach(() => {
     unregisterPluginViews(PLUGIN_NAME);
@@ -50,8 +50,8 @@ describe("registerPluginViews package-dir resolution", () => {
       description: "resolution fixture",
       views: [
         {
-          id: "birdclaw-resolution-fixture",
-          label: "Birdclaw fixture",
+          id: "blocker-resolution-fixture",
+          label: "Blocker fixture",
           bundlePath: "dist/views/bundle.js",
         },
       ],
@@ -60,12 +60,12 @@ describe("registerPluginViews package-dir resolution", () => {
     await registerPluginViews(plugin);
 
     const entry = listViews({ includeAllKinds: true }).find(
-      (view) => view.id === "birdclaw-resolution-fixture",
+      (view) => view.id === "blocker-resolution-fixture",
     );
     expect(entry).toBeDefined();
     // Normalized so the assertion holds on Windows path separators too.
     const pluginDir = (entry?.pluginDir ?? "").split("\\").join("/");
-    expect(pluginDir).toContain("plugins/plugin-birdclaw");
+    expect(pluginDir).toContain("plugins/plugin-blocker");
   });
 });
 

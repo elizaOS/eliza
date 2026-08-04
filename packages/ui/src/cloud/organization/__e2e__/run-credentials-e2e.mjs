@@ -96,7 +96,7 @@ const pgdata = mkdtempSync(join(tmpdir(), "credpool-visual-pg-"));
 // Resolve @elizaos/* from source (no dist build needed in a fresh checkout) so
 // the spawned migrate and cloud-api-hono-dev subprocesses reach plugin-sql's
 // peer dependency on core — same trick as run-slop-removal-e2e.mjs /
-// packages/test/cloud-e2e/playwright.config.ts.
+// packages/cloud/e2e/playwright.config.ts.
 const bunSourceCondition = "--conditions=eliza-source";
 const bunOptions = process.env.BUN_OPTIONS?.includes(bunSourceCondition)
   ? process.env.BUN_OPTIONS
@@ -140,7 +140,7 @@ await new Promise((res, rej) => {
 console.log("== boot cloud-api ==");
 const apiServer = spawn(
   "bun",
-  ["run", "packages/scripts/cloud/admin/dev/cloud-api-hono-dev.ts"],
+  ["run", "packages/cloud/scripts/admin/dev/cloud-api-hono-dev.ts"],
   { cwd: repoRoot, env: stackEnv, stdio: ["ignore", "ignore", "inherit"] },
 );
 process.on("exit", () => {

@@ -1,3 +1,4 @@
+/** Verifies connector-setup card — renders for each chat-set-up connector through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

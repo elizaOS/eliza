@@ -139,6 +139,7 @@ export const NoRecommendation: Story = {
  * the offer hides itself (component returns null).
  */
 export const HiddenWhenSatisfied: Story = {
+  tags: ["story-gate-expect-blank"],
   args: {
     installed: [elizaInstalled],
     downloads: [],

@@ -21,12 +21,8 @@ const expectedProviderPluginMap = {
   GEMINI_API_KEY: "@elizaos/plugin-google-genai",
   GOOGLE_API_KEY: "@elizaos/plugin-google-genai",
   GOOGLE_GENERATIVE_AI_API_KEY: "@elizaos/plugin-google-genai",
-  GROQ_API_KEY: "@elizaos/plugin-groq",
   NEARAI_API_KEY: "@elizaos/plugin-nearai",
-  OLLAMA_BASE_URL: "@elizaos/plugin-ollama",
   OPENAI_API_KEY: "@elizaos/plugin-openai",
-  OPENROUTER_API_KEY: "@elizaos/plugin-openrouter",
-  XAI_API_KEY: "@elizaos/plugin-xai",
   ZAI_API_KEY: "@elizaos/plugin-zai",
   Z_AI_API_KEY: "@elizaos/plugin-zai",
 };

@@ -47,7 +47,7 @@ export type RetrieveActionsInput = {
 	measurementMode?: boolean;
 	/**
 	 * Optional per-tier overrides for retrieval. When provided, the call
-	 * uses these instead of the in-file constants. Wired by the benchmark
+	 * uses these instead of the in-file constants. Wired by the external benchmark
 	 * harness from `RETRIEVAL_DEFAULTS_BY_TIER`.
 	 */
 	tierOverrides?: {
@@ -109,13 +109,11 @@ const BM25_B = 0.4;
 const RRF_K = 60;
 
 /**
- * Per-tier retrieval defaults inlined in core to avoid taking a runtime
- * dep on `@elizaos-benchmarks/lib`. Kept in sync by hand with
- * `packages/benchmarks/lib/src/retrieval-defaults.ts` — the benchmark
- * package is the source of truth (it's where the Pareto sweep emits
- * recommended values); this copy exists so the runtime can read
- * `MODEL_TIER` without crossing the dep boundary. If the two drift,
- * fix this file from the benchmarks copy.
+ * Per-tier retrieval defaults inlined in core so the runtime never takes a
+ * dep on the benchmark tooling. Kept in sync by hand with
+ * `retrieval-defaults.ts` in https://github.com/elizaOS/benchmarks — the
+ * benchmark repo is the source of truth (it's where the Pareto sweep emits
+ * recommended values). If the two drift, fix this file from that copy.
  */
 const RETRIEVAL_TIER_DEFAULTS: Record<
 	"small" | "mid" | "large" | "frontier",

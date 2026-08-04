@@ -283,11 +283,9 @@ export const containersEnv = {
    * user repo) at create time, so create -> deploy resolves to a prebuilt,
    * allowlisted image instead of failing with "no image to deploy".
    *
-   * Defaults to the published example-app image at the `:showcase` tag that
-   * `.github/workflows/build-example-app-images.yml` publishes (and gates on a
-   * working container before pushing). It sits under `ghcr.io/elizaos/*`, so the
-   * apps-deploy allowlist permits it unchanged. Override the whole ref via
-   * `APP_DEFAULT_TEMPLATE_IMAGE`.
+   * Defaults to the retained `:showcase` template image. It sits under
+   * `ghcr.io/elizaos/*`, so the apps-deploy allowlist permits it unchanged.
+   * Override the whole ref via `APP_DEFAULT_TEMPLATE_IMAGE`.
    *
    * TODO(ops, digest-pin): `:showcase` is a MUTABLE tag — the registry could
    * re-point it after the deploy-time allowlist check. Once a stable showcase

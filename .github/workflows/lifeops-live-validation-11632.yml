@@ -16,7 +16,7 @@ permissions:
   contents: read
 
 env:
-  BUN_VERSION: "canary"
+  BUN_VERSION: "1.3.14"
   NODE_VERSION: "24.15.0"
 
 jobs:
@@ -71,7 +71,7 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
           node-version: ${{ env.NODE_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           install-protoc: "false"
           setup-python: "false"
@@ -96,7 +96,7 @@ jobs:
         run: |
           set -euo pipefail
           bunx vitest run \
-            --config packages/test/vitest/integration.config.ts \
+            --config packages/scripts/vitest/integration.config.ts \
             plugins/plugin-personal-assistant/test/owner-agent-permission-matrix.integration.test.ts \
             2>&1 | tee "$LIFEOPS_EVIDENCE_DIR/owner-agent-permission-matrix.txt"
 
@@ -106,7 +106,7 @@ jobs:
           TEST_LANE: post-merge
         run: |
           set -euo pipefail
-          bun run --cwd plugins/plugin-google test \
+          bun run --cwd plugins/plugin-google-workspace test \
             2>&1 | tee "$LIFEOPS_EVIDENCE_DIR/plugin-google-live.txt"
 
       - name: Run X live connector suite

@@ -46,6 +46,10 @@ export const currentViewProvider: Provider = {
 	name: "current_view",
 	description:
 		"The UI view the user is currently looking at — and whether the agent just switched it — so replies acknowledge the move and stay aware of view switches.",
+	// Explicitly retain the historical general-context fallback. The compose hook
+	// below remains the authority that adds this provider to Stage 1 only for
+	// switch turns, so declaring the context does not make it always-on.
+	contexts: ["general"],
 	// Just after available_apps. Composed in the planner state by default; pulled
 	// into the Stage-1 response state on switch turns by the compose hook.
 	position: -7,

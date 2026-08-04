@@ -8,6 +8,7 @@ import type {
   BrowserWorkspaceSnapshot,
   BrowserWorkspaceTab,
 } from "../../../api/browser-contracts";
+import { __setAuthStatusForTests } from "../../../hooks/useAuthStatus";
 import { mockApp } from "../../../storybook/mock-providers.helpers";
 import { BrowserStatusSidebarWidget } from "./browser-status";
 
@@ -36,12 +37,30 @@ function tab(
 
 function withTabs(tabs: BrowserWorkspaceTab[]): Decorator[] {
   const snapshot: BrowserWorkspaceSnapshot = { mode: "desktop", tabs };
-  // Install the stub for the story's render lifetime. The widget fetches the
-  // snapshot in an effect (after this decorator returns), so the override must
-  // stay in place — a synchronous try/finally restore would revert it before
-  // the fetch runs. Each story re-installs its own snapshot before rendering.
+  __setAuthStatusForTests({
+    phase: "authenticated",
+    identity: {
+      id: "browser-story-owner",
+      displayName: "Story Owner",
+      kind: "owner",
+    },
+    session: { id: "browser-story-session", kind: "local", expiresAt: null },
+    access: {
+      mode: "local",
+      passwordConfigured: false,
+      ownerConfigured: true,
+      role: "OWNER",
+    },
+  });
+  // The browser gate needs the populated snapshot, while the portable jsdom
+  // smoke intentionally keeps effect-driven requests pending so they cannot
+  // settle after its render-only assertion and trigger an unwrapped update.
+  // Each story re-installs its snapshot before rendering.
   const stub: Decorator = (Story) => {
-    client.getBrowserWorkspace = async () => snapshot;
+    client.getBrowserWorkspace = () =>
+      navigator.userAgent.includes("jsdom")
+        ? new Promise<BrowserWorkspaceSnapshot>(() => {})
+        : Promise.resolve(snapshot);
     return <Story />;
   };
   return [stub, mockApp({})];

@@ -430,7 +430,7 @@ export function resolveElectrobunCopyMap({
     // The runtime bundle dist is produced by the build pipeline before
     // Electrobun packaging runs. Enumerate its top-level entries when present;
     // when it is absent (e.g. config imported outside a build, as in tests),
-    // the unconditional package.json + remotes mappings below still encode the
+    // the unconditional package.json mapping below still encodes the
     // embedded-runtime contract.
     const runtimeBundleEntries = fs.existsSync(runtimeBundleSourcePath)
       ? fs.readdirSync(runtimeBundleSourcePath)
@@ -447,9 +447,6 @@ export function resolveElectrobunCopyMap({
     }
     if (fs.existsSync(path.join(repoRoot, "plugins.json"))) {
       copy[repoPluginsJsonPath] = `${runtimeDistDir}/plugins.json`;
-    }
-    if (fs.existsSync(path.join(electrobunDir, "remotes"))) {
-      copy.remotes = "remotes";
     }
     copy[repoPackageJsonPath] = `${runtimeDistDir}/package.json`;
   }

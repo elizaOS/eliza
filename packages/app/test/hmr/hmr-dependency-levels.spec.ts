@@ -30,10 +30,6 @@ const LEVELS = [
   // so this source file is guaranteed in the live graph.
   { name: "@elizaos/shared", file: "packages/shared/src/character-presets.ts" },
   {
-    name: "plugin view birdclaw",
-    file: "plugins/plugin-birdclaw/src/components/birdclaw/BirdclawView.tsx",
-  },
-  {
     name: "plugin view contacts",
     file: "plugins/plugin-contacts/src/components/ContactsAppView.tsx",
   },
@@ -91,52 +87,24 @@ const LEVELS = [
     file: "plugins/plugin-relationships/src/components/relationships/RelationshipsView.tsx",
   },
   {
-    name: "plugin view hyperliquid",
-    file: "plugins/plugin-hyperliquid/src/HyperliquidView.tsx",
-  },
-  {
     name: "plugin view messages",
     file: "plugins/plugin-messages/src/components/MessagesView.tsx",
-  },
-  {
-    name: "plugin view model tester",
-    file: "plugins/app-model-tester/src/ModelTesterAppView.tsx",
   },
   {
     name: "plugin view phone",
     file: "plugins/plugin-phone/src/components/PhoneView.tsx",
   },
   {
-    name: "plugin view polymarket",
-    file: "plugins/plugin-polymarket/src/PolymarketView.tsx",
-  },
-  {
     name: "plugin view wallet",
-    file: "plugins/plugin-wallet-ui/src/InventoryView.tsx",
-  },
-  {
-    name: "plugin view vector-browser",
-    file: "plugins/plugin-vector-browser/src/VectorBrowserView.tsx",
-  },
-  {
-    name: "plugin view feed",
-    file: "plugins/plugin-feed/src/components/FeedView.tsx",
+    file: "plugins/plugin-wallet/src/ui/InventoryView.tsx",
   },
   {
     name: "plugin view manager",
     file: "plugins/plugin-app-control/src/views/ViewManagerView.tsx",
   },
   {
-    name: "plugin view screenshare",
-    file: "plugins/plugin-screenshare/src/components/ScreenshareView.tsx",
-  },
-  {
     name: "plugin view notes",
-    file: "plugins/plugin-simple-views/src/views/NotesView.tsx",
-  },
-  {
-    name: "plugin view simple-calendar",
-    file: "plugins/plugin-simple-views/src/views/SimpleCalendarView.tsx",
+    file: "plugins/plugin-notes/src/views/NotesView.tsx",
   },
   {
     name: "plugin view task coordinator",
@@ -150,13 +118,6 @@ const LEVELS = [
     name: "plugin view trajectory logger",
     file: "plugins/plugin-trajectory-logger/src/components/TrajectoryLoggerView.tsx",
   },
-  {
-    name: "plugin view training",
-    file: "plugins/plugin-training/src/ui/FineTuningView.tsx",
-  },
-  // Facewear + smartglasses device controls moved to Settings → Wearables, so
-  // they no longer carry standalone GUI HMR source probes. Their stale probes
-  // stay out of this matrix to keep it in lockstep with the GUI VIEW_CASES set.
 ] as const;
 
 // Vite's client logs these to the page console when it processes a change.

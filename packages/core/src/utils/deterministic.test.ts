@@ -13,6 +13,7 @@ import {
 	deterministicShuffle,
 	getDeterministicNames,
 	hashStringToUint32,
+	shortStringHash,
 	stableStringify,
 } from "./deterministic.ts";
 
@@ -25,6 +26,14 @@ describe("hashStringToUint32", () => {
 		expect(Number.isInteger(h)).toBe(true);
 		expect(h).toBeGreaterThanOrEqual(0);
 		expect(h).toBeLessThan(2 ** 32);
+	});
+});
+
+describe("shortStringHash", () => {
+	it("preserves the compact trace-key hash contract", () => {
+		expect(shortStringHash("")).toBe("1505");
+		expect(shortStringHash("hello")).toBe("e2f5ecef");
+		expect(shortStringHash("template")).toBe("ae5c6ff3");
 	});
 });
 
