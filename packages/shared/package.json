@@ -143,6 +143,16 @@
       "import": "./dist/local-inference/verify.js",
       "default": "./dist/local-inference/verify.js"
     },
+    "./platform/native-library-policy": {
+      "types": "./dist/platform/native-library-policy.d.ts",
+      "eliza-source": {
+        "types": "./src/platform/native-library-policy.ts",
+        "import": "./src/platform/native-library-policy.ts",
+        "default": "./src/platform/native-library-policy.ts"
+      },
+      "import": "./dist/platform/native-library-policy.js",
+      "default": "./dist/platform/native-library-policy.js"
+    },
     "./character-presets": {
       "types": "./dist/character-presets.d.ts",
       "import": "./dist/character-presets.js",
