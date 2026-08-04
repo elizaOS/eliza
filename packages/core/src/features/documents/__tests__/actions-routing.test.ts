@@ -149,7 +149,9 @@ describe("documentAction.validate", () => {
 			minimum: 0,
 			maximum: 100,
 		});
-		expect(limit?.description).toContain("Use 0 when this field is not applicable");
+		expect(limit?.description).toContain(
+			"Use 0 when this field is not applicable",
+		);
 	});
 
 	it("is service-presence only — true when the service is registered", async () => {
@@ -241,7 +243,7 @@ describe("documentAction.handler structured routing", () => {
 		);
 	});
 
-	it("uses the list default when strict decoding supplies limit zero", async () => {
+	it("ignores ungrounded strict-decoder zero sentinels on list", async () => {
 		const service = makeService();
 		const { runtime } = makeRuntime(service);
 
@@ -249,12 +251,41 @@ describe("documentAction.handler structured routing", () => {
 			runtime,
 			makeMessage("List my documents"),
 			undefined,
-			options({ action: "list", limit: 0, scope: "all-visible" }),
+			options({
+				action: "list",
+				limit: 0,
+				query: "0",
+				timeRangeStart: "0",
+				timeRangeEnd: "0",
+				scope: "all-visible",
+			}),
 		);
 
 		expect(service.listDocumentsDetailed).toHaveBeenCalledWith(
 			expect.anything(),
-			expect.objectContaining({ limit: 25 }),
+			expect.objectContaining({
+				limit: 25,
+				query: undefined,
+				timeRangeStart: undefined,
+				timeRangeEnd: undefined,
+			}),
+		);
+	});
+
+	it("preserves zero when the user explicitly asks for it", async () => {
+		const service = makeService();
+		const { runtime } = makeRuntime(service);
+
+		await documentAction.handler?.(
+			runtime,
+			makeMessage("List documents matching 0"),
+			undefined,
+			options({ action: "list", query: "0", scope: "all-visible" }),
+		);
+
+		expect(service.listDocumentsDetailed).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({ query: "0" }),
 		);
 	});
 
