@@ -5444,9 +5444,9 @@ export async function startEliza(
   // lifeops, browser, video), auto-enabled providers/connectors, custom
   // plugins, plus the post-init tail. Runs in the background after the runtime
   // is ready so the API can bind immediately; deferred capabilities light up as
-  // each plugin registers. The 3 intra-core dependency edges
-  // (coding-tools/agent-skills → shell, lifeops → google) live entirely within
-  // this group, so the existing wave algorithm preserves ordering.
+  // each plugin registers. Core services register in dependency waves before
+  // feature plugins because a feature service may resolve an always-loaded core
+  // service during its own start hook.
   const runDeferredBoot = async (abortSignal: AbortSignal): Promise<void> => {
     abortSignal.throwIfAborted();
     // This task is intentionally scheduled after the host's ready handoff.
@@ -5484,12 +5484,6 @@ export async function startEliza(
       const deferredResolvedPlugins =
         await resolveDeferredPluginsForBoot(abortSignal);
       abortSignal.throwIfAborted();
-      await registerDeferredRuntimePlugins(
-        deferredResolvedPlugins,
-        abortSignal,
-      );
-      bootTimer.lap("deferred:runtime-plugins");
-
       await preregisterCorePluginsInDependencyWaves({
         runtime,
         resolvedPlugins: deferredResolvedPlugins,
@@ -5501,6 +5495,15 @@ export async function startEliza(
         abortSignal,
       });
       bootTimer.lap("deferred:core-plugin-waves");
+
+      // Feature plugins are allowed to resolve core services in their start
+      // hooks. Waiting for the core waves here keeps that contract true while
+      // preserving the after-readiness deferred boot boundary.
+      await registerDeferredRuntimePlugins(
+        deferredResolvedPlugins,
+        abortSignal,
+      );
+      bootTimer.lap("deferred:runtime-plugins");
     }
 
     // Drain app-route plugin loaders into runtime.routes. App-route plugins
