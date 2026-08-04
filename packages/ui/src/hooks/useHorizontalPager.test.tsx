@@ -244,13 +244,50 @@ describe("useHorizontalPager — release-velocity flick", () => {
     clientY: 300,
   } as const;
 
+  it("commits a fast horizontal flick even without an intermediate pointermove", () => {
+    const onChange = vi.fn();
+    const { getByTestId } = render(<Harness onPageChange={onChange} />);
+    const rail = getByTestId("rail");
+    act(() => {
+      clock = 1000;
+      fireEvent.pointerDown(rail, { ...opts, clientX: 800 });
+      // Real touch hardware can coalesce a short, fast flick into down→up. The
+      // 120px displacement is below the 30% drag threshold but fast enough to
+      // commit through the velocity path.
+      clock = 1080;
+      fireEvent.pointerUp(rail, {
+        ...opts,
+        clientX: 680,
+        clientY: 302,
+      });
+    });
+    expect(onChange).toHaveBeenCalledWith(1);
+  });
+
+  it("does not steal a vertical release when no intermediate pointermove arrives", () => {
+    const onChange = vi.fn();
+    const { getByTestId } = render(<Harness onPageChange={onChange} />);
+    const rail = getByTestId("rail");
+    act(() => {
+      clock = 1000;
+      fireEvent.pointerDown(rail, { ...opts, clientX: 800 });
+      clock = 1080;
+      fireEvent.pointerUp(rail, {
+        ...opts,
+        clientX: 700,
+        clientY: 520,
+      });
+    });
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it("commits a slow drag finished with a fast flick (release velocity, not average)", () => {
     const onChange = vi.fn();
     const { getByTestId } = render(<Harness onPageChange={onChange} />);
     const rail = getByTestId("rail");
     act(() => {
       clock = 1000;
-      // Drag slowly to ~180px over 600ms (well under the 50% distance floor and
+      // Drag slowly to ~180px over 600ms (well under the 30% distance floor and
       // a low AVERAGE velocity ~0.3 px/ms)…
       fireEvent.pointerDown(rail, { ...opts, clientX: 800 });
       fireEvent.pointerMove(rail, { ...opts, clientX: 780 });
@@ -261,7 +298,7 @@ describe("useHorizontalPager — release-velocity flick", () => {
       fireEvent.pointerMove(rail, { ...opts, clientX: 500 });
       fireEvent.pointerUp(rail, { ...opts, clientX: 500 });
     });
-    // Distance was only 300px (< 512 half-width), so this commits ONLY via the
+    // Distance was only 300px (< the 30% threshold), so this commits ONLY via the
     // fast release — the exact "drag then flick" the average-velocity path failed.
     expect(onChange).toHaveBeenCalledWith(1);
   });
