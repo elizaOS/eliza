@@ -769,6 +769,12 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
   // runs) so it always reflects the latest sessions at call-time.
   const ptySessionsRef = useRef(ptySessions);
   ptySessionsRef.current = ptySessions;
+  // Attachments cannot use the text-draft localStorage path, so keep their
+  // conversation ownership in memory while the shell is mounted. Switching
+  // threads must never carry a cancelled queued attachment into the target.
+  const conversationPendingImagesRef = useRef(
+    new Map<string, ImageAttachment[]>(),
+  );
 
   const send = useChatSend({
     t,
@@ -826,8 +832,11 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     loadPlugins,
     hydrateInitialConversationState,
     requestGreetingWhenRunning,
-    interruptActiveChatPipeline: send.interruptActiveChatPipeline,
+    interruptActiveChatPipelineWithDraft:
+      send.interruptActiveChatPipelineWithDraft,
     resetConversationDraftState,
+    setChatInput,
+    setChatPendingImages,
     setActiveConversationId,
     setConversationMessages,
     setConversations,
@@ -901,10 +910,13 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       // composer), then wipe the draft for the new chat — and re-apply the
       // restore after the wipe so the user's queued words survive new-chat
       // (#10700 "no message is lost").
-      const restoredQueuedText = send.interruptActiveChatPipeline();
+      const restoredQueuedDraft = send.interruptActiveChatPipelineWithDraft();
       resetConversationDraftState();
-      if (restoredQueuedText) {
-        setChatInput(restoredQueuedText);
+      if (restoredQueuedDraft.text) {
+        setChatInput(restoredQueuedDraft.text);
+      }
+      if (restoredQueuedDraft.images.length > 0) {
+        setChatPendingImages(restoredQueuedDraft.images);
       }
       // Snapshot the navigation epoch AFTER the draft reset — `resetConversationDraftState`
       // itself bumps this epoch, so capturing it before (the old order) made the
@@ -1095,9 +1107,10 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       greetingFiredRef,
       greetingInFlightConversationRef,
       loadedConversationIdRef,
-      send.interruptActiveChatPipeline,
+      send.interruptActiveChatPipelineWithDraft,
       setActiveConversationId,
       setChatInput,
+      setChatPendingImages,
       setCompanionMessageCutoffTs,
       setConversationMessages,
       setConversations,
@@ -1116,7 +1129,19 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       if (id === currentActiveId && conversationMessagesRef.current.length > 0)
         return;
 
-      send.interruptActiveChatPipeline();
+      const composerTextBeforeInterrupt = chatInputRef.current;
+      const composerImagesBeforeInterrupt = [...chatPendingImagesRef.current];
+      const restoredQueuedDraft = send.interruptActiveChatPipelineWithDraft();
+      const leavingComposerText = [
+        restoredQueuedDraft.text,
+        composerTextBeforeInterrupt,
+      ]
+        .filter((text) => text.length > 0)
+        .join("\n");
+      const leavingComposerImages = [
+        ...restoredQueuedDraft.images,
+        ...composerImagesBeforeInterrupt,
+      ];
 
       // Clean up empty conversations: if the previous conversation has only
       // system/greeting messages and no user messages, delete it silently.
@@ -1153,6 +1178,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
           // The draft is gone — drop its persisted composer text too so it
           // can't resurface or bleed into the next conversation's draft.
           clearChatDraft(prevId);
+          conversationPendingImagesRef.current.delete(prevId);
           removedPreviousDraft = true;
           setConversations((prev) => prev.filter((c) => c.id !== prevId));
           setUnreadConversations((prev) => {
@@ -1174,9 +1200,20 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       // reappears in — and would be sent to — the wrong conversation.
       if (id !== currentActiveId) {
         if (prevId && prevId !== id && !removedPreviousDraft) {
-          writeChatDraft(prevId, chatInputRef.current);
+          writeChatDraft(prevId, leavingComposerText);
+          if (leavingComposerImages.length > 0) {
+            conversationPendingImagesRef.current.set(
+              prevId,
+              leavingComposerImages,
+            );
+          } else {
+            conversationPendingImagesRef.current.delete(prevId);
+          }
         }
         setChatInput(readChatDraft(id) ?? "");
+        setChatPendingImages([
+          ...(conversationPendingImagesRef.current.get(id) ?? []),
+        ]);
       }
 
       const previousActive = currentActiveId;
@@ -1198,6 +1235,10 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
         if (fallbackId) {
           setActiveConversationId(fallbackId);
           activeConversationIdRef.current = fallbackId;
+          setChatInput(readChatDraft(fallbackId) ?? "");
+          setChatPendingImages([
+            ...(conversationPendingImagesRef.current.get(fallbackId) ?? []),
+          ]);
           client.sendWsMessage({
             type: "active-conversation",
             conversationId: fallbackId,
@@ -1213,6 +1254,8 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
         } else {
           setActiveConversationId(null);
           activeConversationIdRef.current = null;
+          setChatInput("");
+          setChatPendingImages([]);
           setConversationMessages([]);
         }
         setActionNotice(
@@ -1226,6 +1269,10 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       setActiveConversationId(previousActive);
       activeConversationIdRef.current = previousActive;
       if (previousActive) {
+        setChatInput(readChatDraft(previousActive) ?? "");
+        setChatPendingImages([
+          ...(conversationPendingImagesRef.current.get(previousActive) ?? []),
+        ]);
         client.sendWsMessage({
           type: "active-conversation",
           conversationId: previousActive,
@@ -1252,12 +1299,14 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       loadConversations,
       setActionNotice,
       setChatInput,
+      setChatPendingImages,
       activeConversationIdRef,
       chatInputRef,
+      chatPendingImagesRef,
       conversationHydrationEpochRef,
       conversationMessagesRef,
       loadedConversationIdRef,
-      send.interruptActiveChatPipeline,
+      send.interruptActiveChatPipelineWithDraft,
       setActiveConversationId,
       setConversationMessages,
       setConversations,
