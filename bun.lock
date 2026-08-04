@@ -1574,7 +1574,7 @@
         "opusscript": "^0.1.1",
         "prism-media": "1.3.5",
         "tslib": "^2.6.3",
-        "undici": "8.5.0",
+        "undici": "8.9.0",
         "zod": "^4.4.3",
       },
       "devDependencies": {
@@ -1638,7 +1638,7 @@
         "jose": "^6.2.2",
         "js-tiktoken": "^1.0.21",
         "ox": "0.14.20",
-        "undici": "8.5.0",
+        "undici": "8.9.0",
         "viem": "^2.48.8",
         "ws": "8.21.0",
       },
@@ -9062,7 +9062,7 @@
 
     "underscore": ["underscore@1.13.8", "", {}, "sha512-DXtD3ZtEQzc7M8m4cXotyHR+FAS18C64asBYY5vqZexfYryNNnDc02W4hKg3rdQuqOYas1jkseX0+nZXjTXnvQ=="],
 
-    "undici": ["undici@8.5.0", "", {}, "sha512-xamtWoB1EshgjpmlXd7GGm2VfdDtw1+rD8uhry8pSNW3If6S8E0m2T2+orSKeZXEn/aPJMviCpDBA65WJt8zhg=="],
+    "undici": ["undici@8.9.0", "", {}, "sha512-aWZpUj7XoGonMClx4gdDRfgBjqeA+F473aDmROQQbM9n6PRfK/u1q/a0X4wMTgcHfT8H6fpbt98PFuDUwFg2YA=="],
 
     "undici-types": ["undici-types@7.19.2", "", {}, "sha512-qYVnV5OEm2AW8cJMCpdV20CDyaN3g0AjDlOGf1OW4iaDEx8MwdtChUp4zu4H0VP3nDRF/8RKWH+IPp9uW0YGZg=="],
 
