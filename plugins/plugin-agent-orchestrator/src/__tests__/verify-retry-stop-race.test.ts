@@ -10,14 +10,18 @@
  * false "<task> — stopped before completion." into the origin room — while
  * the retry went on to verify and PASS.
  *
- * These tests pin the two structural fixes plus the trigger:
+ * These tests pin the structural fixes plus the trigger:
  *  1. the router stamps a pending-handoff marker on the original session
  *     before awaiting the spawn, and resolves it on settlement (successor
  *     stamp on success, cleared on spawn failure);
- *  2. the coordinator treats a `stopped` carrying the pending marker as
- *     handoff plumbing (no synthesis, no dedupe-slot claim) while a genuine
- *     stop with no marker still synthesizes;
- *  3. trailing sentence punctuation is trimmed at the URL token boundary so a
+ *  2. the coordinator treats a `stopped` carrying the CURRENT-generation
+ *     pending marker as handoff plumbing (no synthesis, no dedupe-slot
+ *     claim), while a genuine stop with no marker still synthesizes;
+ *  3. suppression is generation-scoped: a persisted marker that outlived its
+ *     handoff (prior process generation, or a settle whose metadata clear was
+ *     swallowed) never suppresses a legitimate later stop — it is ignored and
+ *     explicitly cleared;
+ *  4. trailing sentence punctuation is trimmed at the URL token boundary so a
  *     live app is never probed at a punctuation path and declared dead.
  */
 
@@ -26,6 +30,10 @@ import type { AddressInfo } from "node:net";
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AcpService } from "../services/acp-service.js";
+import {
+  beginPendingHandoff,
+  settlePendingHandoff,
+} from "../services/handoff-pending.js";
 import {
   annotateUnverifiedUrls,
   SubAgentRouter,
@@ -190,10 +198,13 @@ describe("coordinator: teardown `stopped` during an in-flight handoff is plumbin
     service: SwarmCoordinatorService;
     emit: (sessionId: string, event: string, data: unknown) => void;
     completions: Array<{ status: string; sessionId: string }>;
+    metadataPatches: Array<{ sessionId: string; patch: MetadataPatch }>;
   } {
     const handlers: Array<
       (sessionId: string, event: string, data: unknown) => void
     > = [];
+    const metadataPatches: Array<{ sessionId: string; patch: MetadataPatch }> =
+      [];
     const acp = {
       onSessionEvent(
         handler: (sessionId: string, event: string, data: unknown) => void,
@@ -202,6 +213,17 @@ describe("coordinator: teardown `stopped` during an in-flight handoff is plumbin
         return () => {};
       },
       getSession: async (sessionId: string) => sessions.get(sessionId),
+      updateSessionMetadata: vi.fn(
+        async (sessionId: string, patch: MetadataPatch) => {
+          metadataPatches.push({ sessionId, patch });
+          const session = sessions.get(sessionId) as
+            | { metadata?: Record<string, unknown> }
+            | undefined;
+          if (session) {
+            session.metadata = { ...session.metadata, ...patch };
+          }
+        },
+      ),
     };
     const runtime = {
       getService: (type: string) =>
@@ -222,6 +244,7 @@ describe("coordinator: teardown `stopped` during an in-flight handoff is plumbin
         for (const h of [...handlers]) h(sessionId, event, data);
       },
       completions,
+      metadataPatches,
     };
   }
 
@@ -238,28 +261,89 @@ describe("coordinator: teardown `stopped` during an in-flight handoff is plumbin
     };
   }
 
-  it("does not synthesize a stop that carries the pending marker — and does not claim the dedupe slot", async () => {
+  it("does not synthesize a stop carrying the CURRENT-generation pending marker — and does not claim the dedupe slot", async () => {
+    // The in-flight window: the router minted this generation's token and the
+    // successor spawn has not settled, so the token is still registered.
+    const token = beginPendingHandoff("sess-orig");
     const sessions = new Map<string, unknown>([
       [
         "sess-orig",
-        storedSession("sess-orig", {
-          [HANDOFF_PENDING_META_KEY]: new Date().toISOString(),
-        }),
+        storedSession("sess-orig", { [HANDOFF_PENDING_META_KEY]: token }),
       ],
     ]);
     const { service, emit, completions } = makeCoordinatorHarness(sessions);
 
-    // The incident: teardown stop races ahead of the successor stamp.
-    emit("sess-orig", "stopped", {});
-    await flushMicrotasks();
-    expect(completions).toEqual([]);
+    try {
+      // The incident: teardown stop races ahead of the successor stamp.
+      emit("sess-orig", "stopped", {});
+      await flushMicrotasks();
+      expect(completions).toEqual([]);
 
-    // The skip must NOT claim the synthesis slot: the lineage's validated
-    // completion (dispatched later against the same session) still posts.
-    emit("sess-orig", "task_complete", { response: "verified live" });
+      // The skip must NOT claim the synthesis slot: the lineage's validated
+      // completion (dispatched later against the same session) still posts.
+      emit("sess-orig", "task_complete", { response: "verified live" });
+      await flushMicrotasks();
+      expect(completions).toEqual([
+        { status: "completed", sessionId: "sess-orig" },
+      ]);
+    } finally {
+      settlePendingHandoff("sess-orig", token);
+      await service.stop();
+    }
+  });
+
+  it("a stale persisted marker from a prior generation does not suppress a legitimate later stop — and is cleared", async () => {
+    // The leak the generation scoping exists for: a marker persisted by a
+    // prior process generation (crash between stamp and settle) survives in
+    // the store, but no handoff is in flight in THIS process. The stop must
+    // synthesize, and the leaked marker must be removed so it cannot shadow
+    // any future terminal either.
+    const sessions = new Map<string, unknown>([
+      [
+        "sess-stale",
+        storedSession("sess-stale", {
+          [HANDOFF_PENDING_META_KEY]:
+            "2026-08-01T00:00:00.000Z/00000000-0000-4000-8000-00000000dead",
+        }),
+      ],
+    ]);
+    const { service, emit, completions, metadataPatches } =
+      makeCoordinatorHarness(sessions);
+
+    emit("sess-stale", "stopped", {});
     await flushMicrotasks();
     expect(completions).toEqual([
-      { status: "completed", sessionId: "sess-orig" },
+      { status: "stopped", sessionId: "sess-stale" },
+    ]);
+    expect(
+      metadataPatches.some(
+        (p) =>
+          p.sessionId === "sess-stale" &&
+          p.patch[HANDOFF_PENDING_META_KEY] === null,
+      ),
+    ).toBe(true);
+
+    await service.stop();
+  });
+
+  it("a marker that outlived its settled handoff (swallowed clear) does not suppress the next genuine stop", async () => {
+    // Settlement retired the token from the registry, but the best-effort
+    // metadata clear was swallowed, so the marker string is still persisted.
+    // Presence alone must not be authority: the stop synthesizes.
+    const token = beginPendingHandoff("sess-settled");
+    settlePendingHandoff("sess-settled", token);
+    const sessions = new Map<string, unknown>([
+      [
+        "sess-settled",
+        storedSession("sess-settled", { [HANDOFF_PENDING_META_KEY]: token }),
+      ],
+    ]);
+    const { service, emit, completions } = makeCoordinatorHarness(sessions);
+
+    emit("sess-settled", "stopped", {});
+    await flushMicrotasks();
+    expect(completions).toEqual([
+      { status: "stopped", sessionId: "sess-settled" },
     ]);
 
     await service.stop();
@@ -275,6 +359,74 @@ describe("coordinator: teardown `stopped` during an in-flight handoff is plumbin
     await flushMicrotasks();
     expect(completions).toEqual([
       { status: "stopped", sessionId: "sess-plain" },
+    ]);
+
+    await service.stop();
+  });
+
+  it("router and coordinator agree end to end: suppressed while the spawn is in flight, synthesizing after the failed spawn clears it", async () => {
+    // Full loop through the REAL token: the router stamps the shared store,
+    // the coordinator reads the same store. Mid-flight the stop is plumbing;
+    // once the spawn fails and the router clears the marker, the next genuine
+    // stop synthesizes exactly once.
+    const sessions = new Map<string, unknown>([
+      ["sess-orig", storedSession("sess-orig", { roomId: ROOM })],
+    ]);
+    const spawn = makeDeferred<{ sessionId: string }>();
+    const routerAcp = {
+      onSessionEvent: () => () => {},
+      getSession: vi.fn(async () => undefined),
+      getSessions: vi.fn(async () => []),
+      spawnSession: vi.fn(() => spawn.promise),
+      updateSessionMetadata: vi.fn(
+        async (sessionId: string, patch: MetadataPatch) => {
+          const session = sessions.get(sessionId) as
+            | { metadata?: Record<string, unknown> }
+            | undefined;
+          if (session) {
+            session.metadata = { ...session.metadata, ...patch };
+          }
+        },
+      ),
+    };
+    const routerRuntime = {
+      agentId: AGENT_ID,
+      character: { name: "Tester" },
+      logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      getSetting: () => undefined,
+      getService: (type: string) =>
+        type === "ACP_SERVICE" || type === "ACP_SUBPROCESS_SERVICE"
+          ? routerAcp
+          : undefined,
+      reportError: vi.fn(),
+    } as unknown as IAgentRuntime;
+    const router = new SubAgentRouter(routerRuntime);
+    const internals = router as unknown as {
+      retryIncompleteBuild(
+        session: Record<string, unknown>,
+        dead: Array<{ url: string; status: string }>,
+      ): Promise<boolean>;
+    };
+    const { service, emit, completions } = makeCoordinatorHarness(sessions);
+
+    const pending = internals.retryIncompleteBuild(originSession("sess-orig"), [
+      { url: "https://example.com/apps/color-pop/", status: "HTTP 404" },
+    ]);
+    await flushMicrotasks();
+
+    // Mid-flight: the persisted marker carries the registered token.
+    emit("sess-orig", "stopped", {});
+    await flushMicrotasks();
+    expect(completions).toEqual([]);
+
+    spawn.reject(new Error("spawn exploded"));
+    await expect(pending).resolves.toBe(false);
+
+    // After the failed spawn the decision is cleared; a genuine stop posts.
+    emit("sess-orig", "stopped", {});
+    await flushMicrotasks();
+    expect(completions).toEqual([
+      { status: "stopped", sessionId: "sess-orig" },
     ]);
 
     await service.stop();
