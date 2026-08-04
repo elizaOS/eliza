@@ -4,8 +4,9 @@
  *
  * Ops:
  *   create — create a trigger (interval / once / cron) with instructions and
- *            wakeMode. Enforces a per-creator limit and dedupes on
- *            (type, instructions, schedule).
+ *            wakeMode. Enforces a per-creator limit and dedupes on the full
+ *            delivery identity (type, instructions, schedule, workflow,
+ *            creator, delivery room).
  *   update — patch displayName / instructions / schedule / wakeMode / maxRuns.
  *   delete — remove a trigger task.
  *   run    — fire a trigger immediately (manual run, force=true).
@@ -461,8 +462,26 @@ async function opCreate(
   const scheduleKey = usedDelay ? `+${delayMs}` : (scheduledAtIso ?? "");
   const workflowId = readString(params.workflowId);
   const dedupeWorkflowId = workflowId === undefined ? "" : workflowId;
+  // Workflow triggers run autonomously, so they land in the autonomy room. A
+  // prompt trigger (reminder) must fire back where the user asked for it — the
+  // originating chat room — so the reminder is actually delivered to them.
+  // Resolved before the dedupe key because the delivery room is part of the
+  // trigger's identity.
+  const service = runtime.getService(AUTONOMY_SERVICE_TYPE);
+  const autonomyService = isAutonomyRoomService(service) ? service : null;
+  const deliveryRoomId = workflowId
+    ? (autonomyService?.getAutonomousRoomId?.() ?? message.roomId)
+    : message.roomId;
+  // The dedupe key is the COMPLETE delivery identity: what fires (type,
+  // instructions, schedule, workflow) plus who it fires FOR (creator) and
+  // WHERE it fires (delivery room). Task lookup is agent-wide, so a key
+  // hashing only the request let one user's stored reminder suppress a
+  // different user's identical ask — the second recipient got a verified
+  // "you're covered" while the only existing trigger delivered to someone
+  // else's room. Only the same recipient re-asking for the same delivery is
+  // a replay.
   const dedupeKey = dedupeHash(
-    `${triggerType}|${instructions.toLowerCase()}|${intervalMs}|${scheduleKey}|${cronExpression ?? ""}|${dedupeWorkflowId}`,
+    `${triggerType}|${instructions.toLowerCase()}|${intervalMs}|${scheduleKey}|${cronExpression ?? ""}|${dedupeWorkflowId}|${creatorId}|${deliveryRoomId}`,
   );
 
   const existingTasks = await runtime.getTasks({
@@ -487,9 +506,18 @@ async function opCreate(
   // receipt. The legacy fallback matches instructions+type only — it ignores
   // the schedule, so a stored 8am reminder "matches" a new 9am request; that
   // is a hint, never proof, and must not become a verified "you're covered".
+  // The createdBy equality is load-bearing even though the key already hashes
+  // the creator: dedupeHash is a 32-bit djb2, so a collision across users is
+  // possible — and a cross-recipient false match here silently swallows a
+  // distinct recipient's delivery. The structural guard makes that class of
+  // suppression impossible regardless of hash width.
   const exactDuplicate = existingTasks.find((t) => {
     const cfg = readTriggerConfig(t);
-    return Boolean(cfg?.enabled && cfg.dedupeKey === dedupeKey);
+    return Boolean(
+      cfg?.enabled &&
+        cfg.createdBy === creatorId &&
+        cfg.dedupeKey === dedupeKey,
+    );
   });
   if (exactDuplicate?.id) {
     // Idempotent success: the desired state (an equivalent enabled trigger)
@@ -511,6 +539,10 @@ async function opCreate(
   const legacyDuplicate = existingTasks.find((t) => {
     const cfg = readTriggerConfig(t);
     if (!cfg?.enabled || cfg.dedupeKey) return false;
+    // Same recipient only: another user's identical wording is a different
+    // delivery, not a near-duplicate — steering them to "delete it first"
+    // would suppress their own reminder in favor of someone else's.
+    if (cfg.createdBy !== creatorId) return false;
     return (
       cfg.instructions.trim().toLowerCase() === instructions.toLowerCase() &&
       cfg.triggerType === triggerType
@@ -565,20 +597,12 @@ async function opCreate(
     );
   }
 
-  // Workflow triggers run autonomously, so they land in the autonomy room. A
-  // prompt trigger (reminder) must fire back where the user asked for it — the
-  // originating chat room — so the reminder is actually delivered to them.
-  const service = runtime.getService(AUTONOMY_SERVICE_TYPE);
-  const autonomyService = isAutonomyRoomService(service) ? service : null;
-  const roomId =
-    triggerConfig.kind === "prompt"
-      ? message.roomId
-      : (autonomyService?.getAutonomousRoomId?.() ?? message.roomId);
-
   const taskId = await runtime.createTask({
     name: TRIGGER_TASK_NAME,
     description: displayName,
-    roomId,
+    // The room hashed into the dedupe key above — the task must land exactly
+    // where its identity says it delivers.
+    roomId: deliveryRoomId,
     tags: [...TRIGGER_TASK_TAGS],
     metadata,
   });
