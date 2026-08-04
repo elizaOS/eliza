@@ -11572,6 +11572,11 @@ export class DefaultMessageService implements IMessageService {
 									return value;
 								})
 							: Promise.resolve(undefined);
+						// Memories owed a MESSAGE_SENT claim once — and only if — the
+						// delivery boundary succeeds. Collected during the persist pass
+						// (which runs concurrently with the callback), committed below
+						// strictly after both operations settle.
+						const deliveredClaimMemories: Memory[] = [];
 						const persistTask = (async () => {
 							for (const responseMemory of responseMessages) {
 								if (
@@ -11603,13 +11608,29 @@ export class DefaultMessageService implements IMessageService {
 										persistedResponseMessageIds.add(responseMemory.id);
 									}
 								}
-
-								// MESSAGE_SENT signals delivery, not persistence. It fires
-								// for transient/doNotPersist replies too (structured failure
-								// replies skip the memory write above): the delivery callback
-								// already ran for them, and suppressing the event made those
-								// delivered turns indistinguishable from dropped ones in
-								// logs, activity streams, and trajectory closure.
+								deliveredClaimMemories.push(responseMemory);
+							}
+						})();
+						const [deliveryOutcome, persistOutcome] = await Promise.allSettled([
+							deliveryTask,
+							persistTask,
+						]);
+						// MESSAGE_SENT signals delivery, not persistence — and delivery
+						// is only a fact once the callback boundary has resolved.
+						// Claiming from inside the persist pass raced the callback and
+						// recorded a durable sent-claim for deliveries that then failed,
+						// turning a dropped reply into recorded success. The claim
+						// commits here, strictly after the boundary succeeded: a
+						// rejected callback produces no claim, and the error rethrown
+						// below reaches the caller with the turn still unclaimed, so a
+						// later retry that delivers can claim exactly once. It still
+						// fires for transient/doNotPersist replies (structured failure
+						// replies skip the memory write above): their delivery is just
+						// as real, and suppressing the event made those delivered turns
+						// indistinguishable from drops in logs, activity streams, and
+						// trajectory closure.
+						if (deliveryOutcome.status === "fulfilled") {
+							for (const responseMemory of deliveredClaimMemories) {
 								detachPostDeliverySideEffect(runtime, "MESSAGE_SENT", () =>
 									this.emitMessageSent(
 										runtime,
@@ -11618,11 +11639,7 @@ export class DefaultMessageService implements IMessageService {
 									),
 								);
 							}
-						})();
-						const [deliveryOutcome, persistOutcome] = await Promise.allSettled([
-							deliveryTask,
-							persistTask,
-						]);
+						}
 						if (persistOutcome.status === "rejected") {
 							// The persist failure (data loss) outranks the delivery
 							// failure for propagation; the held delivery failure is
