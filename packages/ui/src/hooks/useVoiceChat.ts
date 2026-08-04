@@ -2721,7 +2721,16 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       });
 
       const current = assistantSpeechRef.current;
-      if (!current || current.messageId !== messageId) {
+      const promotesActiveMessage =
+        current != null &&
+        current.messageId !== messageId &&
+        queueOptions?.continuationOfMessageId === current.messageId &&
+        current.latestSpeakable.length > 0 &&
+        (speakable === current.latestSpeakable ||
+          speakable.startsWith(current.latestSpeakable));
+      if (promotesActiveMessage) {
+        current.messageId = messageId;
+      } else if (!current || current.messageId !== messageId) {
         clearAssistantTtsDebounce();
         assistantSpeechRef.current = {
           messageId,
@@ -2731,9 +2740,12 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           replacePlaybackOnFirstClip: queueOptions?.replace !== false,
           telemetry: queueOptions?.telemetry,
         };
-      } else if (queueOptions?.telemetry) {
-        current.telemetry = {
-          ...current.telemetry,
+      }
+
+      const promotedOrCurrent = assistantSpeechRef.current;
+      if (queueOptions?.telemetry && promotedOrCurrent) {
+        promotedOrCurrent.telemetry = {
+          ...promotedOrCurrent.telemetry,
           ...queueOptions.telemetry,
         };
       }
