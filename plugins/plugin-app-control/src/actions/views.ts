@@ -30,6 +30,7 @@ import { matchViewCommand } from "./view-command-matcher.js";
 import {
 	createViewsClient,
 	parseViewInteractionResponse,
+	readViewInteractionEffectContract,
 	readViewInteractionReceipt,
 	type ViewSummary,
 	type ViewsClient,
@@ -130,6 +131,14 @@ const DESKTOP_ONLY_VIEW_MODES = new Set<ViewsMode>([
 // app-control must not import orchestrator internals, so this constant is kept
 // local and points at the orchestrator's owning constant.
 const SUB_AGENT_RELAY_SOURCE = "sub_agent";
+const SAFE_VIEW_CLIENT_ID = /^[A-Za-z0-9._-]{1,128}$/;
+
+function readViewInteractionClientId(message: Memory): string | undefined {
+	const clientId = readContentMetadata(message).viewClientId;
+	return typeof clientId === "string" && SAFE_VIEW_CLIENT_ID.test(clientId)
+		? clientId
+		: undefined;
+}
 
 function lowerSource(source: unknown): string {
 	return typeof source === "string" ? source.toLowerCase() : "";
@@ -808,8 +817,9 @@ function operationFamilyForTokens(tokens: Set<string>): OperationFamily | null {
 function operationFamilyForCapability(
 	capability: ViewCapability,
 ): OperationFamily | null {
-	return operationFamilyForTokens(
-		tokensFor(`${capability.id} ${capability.description ?? ""}`),
+	return (
+		operationFamilyForTokens(tokensFor(capability.id)) ??
+		operationFamilyForTokens(tokensFor(capability.description))
 	);
 }
 
@@ -1057,6 +1067,41 @@ function resolveViewCapability({
 	return best?.candidate ?? null;
 }
 
+function correctCapabilityOperationFamily(
+	view: ViewSummary,
+	capability: ViewCapability,
+	text: string,
+): ViewCapability {
+	const requestTokens = tokensFor(viewRequestText(text));
+	const requestedFamily = operationFamilyForTokens(requestTokens);
+	const selectedFamily = operationFamilyForCapability(capability);
+	if (
+		!requestedFamily ||
+		!selectedFamily ||
+		requestedFamily === selectedFamily
+	) {
+		return capability;
+	}
+
+	const familyMatches = (view.capabilities ?? []).filter(
+		(candidate) => operationFamilyForCapability(candidate) === requestedFamily,
+	);
+	if (familyMatches.length === 1 && familyMatches[0]) return familyMatches[0];
+
+	const ranked = familyMatches
+		.map((candidate) => ({
+			candidate,
+			score: countIntersection(requestTokens, capabilityTokens(candidate)),
+		}))
+		.sort((left, right) => right.score - left.score);
+	// Multiple semantic siblings are corrected only when the user's nouns make
+	// one a unique best match; a tie preserves the planner decision rather than
+	// guessing between collection and single-record reads.
+	return ranked[0] && ranked[0].score > (ranked[1]?.score ?? -1)
+		? ranked[0].candidate
+		: capability;
+}
+
 type CapabilityParamsResolution =
 	| { ok: true; params: Record<string, unknown> | undefined }
 	| { ok: false; error: string };
@@ -1197,6 +1242,7 @@ function readCapabilityParams(
 			),
 		);
 	}
+	normalizeDateReadAlias(params, capability, messageText);
 
 	for (const key of Object.keys(params)) {
 		if (params[key] === undefined) {
@@ -1226,6 +1272,31 @@ function readCapabilityParams(
 		ok: true,
 		params: Object.keys(params).length > 0 ? params : undefined,
 	};
+}
+
+function normalizeDateReadAlias(
+	params: Record<string, unknown>,
+	capability: ViewCapability | null | undefined,
+	messageText?: string,
+): void {
+	if (
+		!capability ||
+		operationFamilyForCapability(capability) !== "read" ||
+		!("date" in (capability.params ?? {})) ||
+		typeof params.title !== "string" ||
+		params.date !== undefined
+	) {
+		return;
+	}
+	const title = params.title.trim();
+	if (
+		extractIsoDate(title) !== title ||
+		/\b(?:titled?|named)\b/i.test(viewRequestText(messageText ?? ""))
+	) {
+		return;
+	}
+	params.date = title;
+	delete params.title;
 }
 
 function deriveParamsFromIntent(
@@ -1297,6 +1368,19 @@ function extractIntentTextAfter(
 	return null;
 }
 
+function extractReferencedTitle(intent: string): string | null {
+	const quoted = /\b(?:titled?|named)\s+["']([^"']{1,240})["']/i.exec(
+		intent,
+	)?.[1];
+	if (quoted?.trim()) return quoted.trim();
+
+	const unquoted =
+		/\b(?:titled?|named)\s+(.+?)(?=\s*(?:[.,;]|\b(?:and|then|with|on|at|rename|change|update|move|delete|remove)\b|$))/i.exec(
+			intent,
+		)?.[1];
+	return unquoted?.trim() || null;
+}
+
 function deriveParamsFromMessageText(
 	text: string,
 	capability: ViewCapability,
@@ -1304,7 +1388,7 @@ function deriveParamsFromMessageText(
 	existing: Record<string, unknown>,
 ): Record<string, unknown> {
 	const derived: Record<string, unknown> = {};
-	const trimmed = text.trim();
+	const trimmed = viewRequestText(text).trim();
 	if (!trimmed) return derived;
 
 	const family = operationFamilyForCapability(capability);
@@ -1323,6 +1407,33 @@ function deriveParamsFromMessageText(
 		if (capabilityParamKeys.has("title") && !existing.title && title) {
 			derived.title = title;
 		}
+	}
+
+	if (
+		family === "read" &&
+		capabilityParamKeys.has("title") &&
+		existing.title === undefined
+	) {
+		const title = extractReferencedTitle(trimmed);
+		if (title) derived.title = title;
+	}
+
+	if (
+		family === "update" &&
+		capabilityParamKeys.has("oldTitle") &&
+		existing.oldTitle === undefined
+	) {
+		const oldTitle = extractReferencedTitle(trimmed);
+		if (oldTitle) derived.oldTitle = oldTitle;
+	}
+
+	if (
+		family === "select" &&
+		capabilityParamKeys.has("date") &&
+		existing.date === undefined
+	) {
+		const date = extractIsoDate(trimmed);
+		if (date) derived.date = date;
 	}
 
 	if (family === "delete") {
@@ -2080,6 +2191,9 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			"ARRANGE_VIEWS",
 			"USE_VIEW_CAPABILITY",
 			"CALL_VIEW_CAPABILITY",
+			"SET_FLASHLIGHT",
+			"TURN_ON_FLASHLIGHT",
+			"TURN_OFF_FLASHLIGHT",
 			"CREATE_NOTE",
 			"CREATE_STICKY_NOTE",
 			"SHOW_NOTES",
@@ -2196,15 +2310,22 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			"coding",
 			"app-builder",
 			"task-coordinator",
+			"device",
+			"hardware",
+			"flashlight",
+			"torch",
 		],
 		description:
-			"Manage and navigate UI views. List available views, report the current view, open a specific view, close/hide a view without deleting its plugin, search views by name or capability, show the view manager, broadcast events to views, invoke registered capabilities on plugin views for view-backed content such as notes, calendar events, dashboards, and records, pin a view as a desktop tab, open a view in a separate window, request split/tiled layouts across multiple views, create a new view plugin (scaffolds + coding agent), edit an existing view plugin (coding agent), regenerate a view's icon/hero image, or delete/uninstall a view plugin.",
+			"Manage and navigate UI views. List available views, report the current view, open a specific view, close/hide a view without deleting its plugin, search views by name or capability, show the view manager, broadcast events to views, invoke registered capabilities on plugin views for view-backed content such as notes, calendar events, dashboards, records, and native device controls such as the phone flashlight, pin a view as a desktop tab, open a view in a separate window, request split/tiled layouts across multiple views, create a new view plugin (scaffolds + coding agent), edit an existing view plugin (coding agent), regenerate a view's icon/hero image, or delete/uninstall a view plugin.",
 		descriptionCompressed:
-			"views list|current|show|open|close|search|manager|broadcast|interact|pin|window|split|tile|create|edit|icon|delete; navigate/close UI views; invoke registered view capabilities for notes/events/dashboards/records; click/read/focus elements; split/tile layouts; scaffold/edit/remove view plugins; regenerate a view icon/hero",
+			"views list|current|show|open|close|search|manager|broadcast|interact|pin|window|split|tile|create|edit|icon|delete; navigate/close UI views; invoke registered view capabilities for notes/events/dashboards/records/native device controls; click/read/focus elements; split/tile layouts; scaffold/edit/remove view plugins; regenerate a view icon/hero",
 		routingHint:
-			"UI view/window/panel/app navigation and layout -> VIEWS. View switching is a COMMON, DEFAULT, PROACTIVE response while the user is in the app chat — strongly prefer opening the relevant view (action=show) whenever the user names an app surface, asks to see/check/open something, or expresses an intent that has a matching view, even when they don't say the word 'view'. Treat 'can you show me <X>', 'I want to <do X>', 'let me see <X>', 'pull up <X>', 'take me to <X>', 'go to <X>', 'open my <X>', and any reference to a domain (calendar, email/messages/inbox, wallet/balance/portfolio, finances/money/spending, focus/distractions, goals/routines/reminders, health/sleep/screen-time, todos/tasks, documents/files, registered notes views/capabilities, contacts/relationships/people, companion, the app builder/coding) as a navigation request and switch to that view by default. When in doubt and a matching view exists, action=show it rather than only answering in text. Use VIEWS for open/show/switch/close/hide view requests, view manager, list views, split/tile views, pin view, open view in a separate window, or invoking a capability declared by a registered plugin view, including view-backed content operations like creating/listing notes or calendar events. For add/create calendar-event requests, use action=interact view=calendar capability=create-calendar-event; do not answer by opening or splitting the calendar unless the user asked for layout. For standalone notes requests, only use a registered notes view or notes capability; do not route them to documents/Knowledge. For an implicit request to SEE a domain surface — 'what's on my calendar', 'check my messages'/'my email', 'show my wallet'/'my balance', 'how much did I spend', 'I need to focus', 'take me to my goals', 'show my todos', 'pull up my documents', 'who do I know at X', or 'I want to add a new feature to my app' — open that surface with action=show and the matching view id (calendar, inbox, wallet, finances, focus, goals, health, todos, documents, relationships, companion, task-coordinator). This applies in ANY language: a navigation/see request in Spanish, French, German, Chinese, Japanese, Korean, etc. routes to VIEWS the same way. Opening a surface to view it is action=show, only adding or creating a record inside it is action=interact. Close/hide means VIEWS action=close, not delete/remove. For view capabilities use action=interact with view=<view id> and capability=<capability id>, or pass a generated capability action name that can be resolved from the view catalog. Pass capability data as params={...} or top-level keys such as title/body/date/time/notes/color; never use dotted keys such as params.title. A message that is ONLY a bare surface/view name — 'settings', 'calendar', 'wallet', 'inbox' — is a navigation command (typically a voice-transcribed utterance): immediately use action=show with that view; never answer a bare view name with a clarifying question. When the user says 'view' ('open the wallet view', 'show the calendar view'), VIEWS action=show is the required response — do NOT substitute a domain data/dashboard action for an explicit view-navigation ask. EXCEPTION — installed applications themselves: listing installed/running apps ('show me the apps', 'what apps are installed/running'), launching/restarting an app, or building a new app is the APP action, not VIEWS (the user's own Eliza Cloud apps/sites are LIST_CLOUD_APPS); only the apps/views *page* (view manager) is VIEWS. EXCEPTION — changing a settings/permission VALUE is NOT navigation: 'turn off shell permissions', 'disable shell access', 'change my permissions', or toggling any settings value is the SETTINGS action (action=set), even though those controls live on a settings page; VIEWS only OPENS the settings page without changing a value.",
+			"UI view/window/panel/app navigation and layout -> VIEWS. View switching is a COMMON, DEFAULT, PROACTIVE response while the user is in the app chat — strongly prefer opening the relevant view (action=show) whenever the user names an app surface, asks to see/check/open something, or expresses an intent that has a matching view, even when they don't say the word 'view'. Treat 'can you show me <X>', 'I want to <do X>', 'let me see <X>', 'pull up <X>', 'take me to <X>', 'go to <X>', 'open my <X>', and any reference to a domain (calendar, email/messages/inbox, wallet/balance/portfolio, finances/money/spending, focus/distractions, deep-work, goals/routines/reminders, health/sleep/screen-time, todos/tasks, documents/files, registered notes views/capabilities, contacts/relationships/people, companion, the app builder/coding) as a navigation request and switch to that view by default. When in doubt and a matching view exists, action=show it rather than only answering in text. Use VIEWS for open/show/switch/close/hide view requests, view manager, list views, split/tile views, pin view, open view in a separate window, or invoking a capability declared by a registered plugin view, including view-backed content operations like creating/listing notes or calendar events and native device controls. For a phone flashlight request, use action=interact view=device-control capability=set-flashlight with params={enabled:true|false}; never claim success with REPLY before the capability returns success. For add/create calendar-event requests, use action=interact view=calendar capability=create-calendar-event; do not answer by opening or splitting the calendar unless the user asked for layout. For standalone notes requests, only use a registered notes view or notes capability; do not route them to documents/Knowledge. For an implicit request to SEE a domain surface — 'what's on my calendar', 'check my messages'/'my email', 'show my wallet'/'my balance', 'how much did I spend', 'I need to focus', 'take me to my goals', 'show my todos', 'pull up my documents', 'who do I know at X', or 'I want to add a new feature to my app' — open that surface with action=show and the matching view id (calendar, inbox, wallet, finances, focus, goals, health, todos, documents, relationships, companion, task-coordinator). This applies in ANY language: a navigation/see request in Spanish, French, German, Chinese, Japanese, Korean, etc. routes to VIEWS the same way. Opening a surface to view it is action=show, only adding or creating a record inside it is action=interact. Close/hide means VIEWS action=close, not delete/remove. For view capabilities use action=interact with view=<view id> and capability=<capability id>, or pass a generated capability action name that can be resolved from the view catalog. For domain record creation, updates, or deletion, always choose the view's declared semantic capability such as create-note or create-calendar-event; agent-fill and agent-click are only for an explicitly requested form-control interaction after inspecting the surface, never a substitute for a declared domain capability. Pass capability data as params={...} or top-level keys such as title/body/date/time/notes/color; never use dotted keys such as params.title. For a rename/update, identify the existing record separately: params={oldTitle:'current title',title:'replacement title',...}. For a named note read, pass title to get-notes. For a dated calendar read, pass date to get-calendar-state; for one named calendar event, pass title to get-calendar-event. A message that is ONLY a bare surface/view name — 'settings', 'calendar', 'wallet', 'inbox' — is a navigation command (typically a voice-transcribed utterance): immediately use action=show with that view; never answer a bare view name with a clarifying question. When the user says 'view' ('open the wallet view', 'show the calendar view'), VIEWS action=show is the required response — do NOT substitute a domain data/dashboard action for an explicit view-navigation ask. EXCEPTION — installed applications themselves: listing installed/running apps ('show me the apps', 'what apps are installed/running'), launching/restarting an app, or building a new app is the APP action, not VIEWS (the user's own Eliza Cloud apps/sites are LIST_CLOUD_APPS); only the apps/views *page* (view manager) is VIEWS. EXCEPTION — changing a settings/permission VALUE is NOT navigation: 'turn off shell permissions', 'disable shell access', 'change my permissions', or toggling any settings value is the SETTINGS action (action=set), even though those controls live on a settings page; VIEWS only OPENS the settings page without changing a value.",
 		allowAdditionalParameters: true,
 		toolSchemaStrict: false,
+		// Every mode reports its authoritative outcome through its handler
+		// callback, after the shell or capability boundary has actually settled.
+		suppressEarlyReply: true,
 		suppressPostActionContinuation: true,
 
 		parameters: [
@@ -2324,14 +2445,14 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			{
 				name: "capability",
 				description:
-					"Capability to invoke on the view (interact mode), e.g. 'create-note', 'get-notes', 'create-calendar-event', 'get-calendar-state', 'click-button', 'get-state', 'refresh', or 'focus-element'.",
+					"Declared capability to invoke on the view (interact mode), e.g. 'create-note', 'get-notes', 'create-calendar-event', 'get-calendar-state', 'set-flashlight', 'click-button', 'get-state', 'refresh', or 'focus-element'. Use semantic capabilities for domain record mutations and native device controls; agent-fill/agent-click are only for deliberate form-control interaction, not record creation, updates, or deletion.",
 				required: false,
 				schema: { type: "string" },
 			},
 			{
 				name: "params",
 				description:
-					"Object parameters for the capability (interact mode), e.g. { title: 'launch checklist', body: 'test auth' } or { title: 'team sync', date: '2026-06-08', time: '17:00' }. Do not use dotted parameter names like 'params.title'.",
+					"Object parameters for the capability (interact mode), e.g. { title: 'launch checklist', body: 'test auth' }, { title: 'team sync', date: '2026-06-08', time: '17:00' }, or a rename { oldTitle: 'team sync', title: 'investor sync' }. Dated calendar reads pass date to get-calendar-state; named event reads pass title to get-calendar-event. Do not use dotted parameter names like 'params.title'.",
 				required: false,
 				schema: { type: "object", additionalProperties: true },
 			},
@@ -2343,9 +2464,30 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				schema: { type: "string" },
 			},
 			{
+				name: "oldTitle",
+				description:
+					"Current exact title used to locate a note or event for a rename/update.",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "newTitle",
+				description:
+					"Replacement-title alias for registered view capabilities that expose newTitle.",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
 				name: "body",
 				description:
 					"Top-level passthrough for registered view capabilities that accept body/content text, such as create-note.",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "details",
+				description:
+					"Top-level passthrough for registered view capabilities that accept details text.",
 				required: false,
 				schema: { type: "string" },
 			},
@@ -2769,6 +2911,9 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						}
 						const resolvedView =
 							resolvedCapability?.view ?? resolveViewTarget(viewId, views);
+						const standardCapability = STANDARD_VIEW_CAPABILITY_BY_KEY.get(
+							normalizeCapabilityKey(capability),
+						);
 						if (!resolvedCapability && resolvedView) {
 							const matches = (resolvedView.capabilities ?? []).filter(
 								(candidate) =>
@@ -2781,7 +2926,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 									capability: matches[0],
 								};
 								capability = matches[0].id;
-							} else if (matches.length === 0) {
+							} else if (matches.length === 0 && !standardCapability) {
 								// Generated action labels may be a unique semantic alias for
 								// a declared catalog capability. Keep the view target fixed so
 								// this cannot dispatch across an unrelated surface.
@@ -2802,9 +2947,6 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 								}
 							}
 						}
-						const standardCapability = STANDARD_VIEW_CAPABILITY_BY_KEY.get(
-							normalizeCapabilityKey(capability),
-						);
 						if (!resolvedCapability && !standardCapability) {
 							const reply = `Cannot invoke capability "${capability}" on view "${viewId}": the view catalog does not declare that capability.`;
 							await callback?.({ text: reply });
@@ -2812,6 +2954,20 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						}
 						if (!resolvedCapability && standardCapability)
 							capability = standardCapability;
+						if (resolvedCapability) {
+							const correctedCapability = correctCapabilityOperationFamily(
+								resolvedCapability.view,
+								resolvedCapability.capability,
+								text,
+							);
+							if (correctedCapability.id !== resolvedCapability.capability.id) {
+								resolvedCapability = {
+									...resolvedCapability,
+									capability: correctedCapability,
+								};
+								capability = correctedCapability.id;
+							}
+						}
 						const paramsResolution = readCapabilityParams(
 							actionOptions,
 							resolvedCapability?.capability,
@@ -2834,10 +2990,14 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							params,
 							timeoutMs,
 							resolvedViewType,
+							readViewInteractionClientId(message),
 						);
 						const resultText = interaction.text;
 						const receipt = interaction.success
 							? readViewInteractionReceipt(interaction.result)
+							: undefined;
+						const effectContract = interaction.success
+							? readViewInteractionEffectContract(interaction.result)
 							: undefined;
 						await callback?.({ text: resultText });
 						return {
@@ -2850,6 +3010,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 										turnComplete: true,
 									}
 								: {}),
+							...(effectContract ?? {}),
 							values: {
 								mode: "interact",
 								viewId,
@@ -3469,6 +3630,7 @@ async function interactWithView(
 	params: Record<string, unknown> | undefined,
 	timeoutMs: number,
 	viewType?: ViewType,
+	clientId?: string,
 ): Promise<{ success: boolean; text: string; result?: unknown }> {
 	const { resolveServerOnlyPort } = await import("@elizaos/core");
 	const port = resolveServerOnlyPort(process.env);
@@ -3480,7 +3642,10 @@ async function interactWithView(
 			`${base}/api/views/${encodeURIComponent(viewId)}/interact${viewType ? `?viewType=${viewType}` : ""}`,
 			{
 				method: "POST",
-				headers: createViewsRequestHeaders(),
+				headers: {
+					...createViewsRequestHeaders(),
+					...(clientId ? { "X-ElizaOS-Client-Id": clientId } : {}),
+				},
 				body: JSON.stringify({ capability, params, timeoutMs, viewType }),
 				signal: AbortSignal.timeout(timeoutMs + 1_000),
 			},

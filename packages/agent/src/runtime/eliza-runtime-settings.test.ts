@@ -103,6 +103,8 @@ describe("buildRuntimeSettingsProjection", () => {
 
     const settings = buildRuntimeSettingsProjection(config, {
       preferredProviderId: "openai",
+      brainProviderName: "openai",
+      embeddingProviderName: "openai",
       visionModeSetting: "OFF",
       managedSkillsDir: "/state/skills",
       bundledSkillsDir: "/bundled/skills",
@@ -128,6 +130,8 @@ describe("buildRuntimeSettingsProjection", () => {
       WHATSAPP_ALLOW_FROM: "+15551234567",
       WHATSAPP_GROUP_ALLOW_FROM: "family",
       MODEL_PROVIDER: "openai",
+      ELIZA_BRAIN_PROVIDER: "openai",
+      ELIZA_EMBEDDING_PROVIDER: "openai",
       VISION_MODE: "OFF",
       SOLANA_RPC_URL: "https://solana.example/rpc",
       SOLANA_NO_ACTIONS: "true",
@@ -152,5 +156,23 @@ describe("buildRuntimeSettingsProjection", () => {
     );
     expect(settings.EVM_PRIVATE_KEY).toBeUndefined();
     expect(settings.GENERIC_PASSWORD).toBeUndefined();
+  });
+
+  it("projects explicit canonical routing omissions as disabled capabilities", () => {
+    const settings = buildRuntimeSettingsProjection({
+      serviceRouting: {
+        llmText: { backend: "cerebras", transport: "direct" },
+      },
+    } as ElizaConfig);
+
+    expect(settings.ELIZA_CANONICAL_LLM_TEXT_ENABLED).toBe("true");
+    expect(settings.ELIZA_CANONICAL_EMBEDDINGS_ENABLED).toBe("false");
+  });
+
+  it("preserves legacy plugin capabilities when canonical routing is absent", () => {
+    const settings = buildRuntimeSettingsProjection({} as ElizaConfig);
+
+    expect(settings.ELIZA_CANONICAL_LLM_TEXT_ENABLED).toBeUndefined();
+    expect(settings.ELIZA_CANONICAL_EMBEDDINGS_ENABLED).toBeUndefined();
   });
 });

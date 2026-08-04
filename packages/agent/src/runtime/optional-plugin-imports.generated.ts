@@ -27,6 +27,10 @@ export const OPTIONAL_PLUGIN_IMPORTERS: Record<string, () => Promise<unknown>> =
     // @ts-ignore: runtime subpath export is intentional; not every package tsconfig resolves its declaration condition.
     "@elizaos/plugin-inbox": () => import("@elizaos/plugin-inbox/plugin"),
     "@elizaos/plugin-app-control": () => import("@elizaos/plugin-app-control"),
+    "@elizaos/plugin-notes": () => import("@elizaos/plugin-notes/plugin"),
+    // biome-ignore lint/suspicious/noTsIgnore: optional literal imports may be unbuilt in sibling source typechecks.
+    // @ts-ignore: calendar is peer-linked to avoid the calendar -> agent runtime dependency cycle; the deferred import runs after agent module initialization.
+    "@elizaos/plugin-calendar": () => import("@elizaos/plugin-calendar/plugin"),
     "@elizaos/plugin-anthropic": () => import("@elizaos/plugin-anthropic"),
     "@elizaos/plugin-openai": () => import("@elizaos/plugin-openai"),
   };

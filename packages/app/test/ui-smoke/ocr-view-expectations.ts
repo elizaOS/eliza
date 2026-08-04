@@ -302,8 +302,8 @@ export const VIEW_OCR_POLICIES = {
     requireAny: ["ready views", "gui ready"],
   }),
   "plugin-notes-gui": expected({
-    requireAll: ["New note"],
-    requireAny: ["Title", "Details", "Add note"],
+    requireAll: ["Launch checklist", "Follow up"],
+    requireAny: ["Cloud agent", "demo recording"],
   }),
   "plugin-task-coordinator-gui": expected({
     requireAll: ["Task Coordinator"],

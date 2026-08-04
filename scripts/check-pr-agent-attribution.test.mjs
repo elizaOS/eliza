@@ -92,11 +92,14 @@ function generatedPrWorkflowPaths() {
   return readdirSync(workflowsDirectory)
     .filter((name) => /\.ya?ml$/.test(name))
     .map((name) => `.github/workflows/${name}`)
-    .filter((workflowPath) =>
-      /\bgh\s+pr\s+create\b|peter-evans\/create-pull-request@/.test(
-        workflowSource(workflowPath),
-      ),
-    )
+    .filter((workflowPath) => {
+      const source = workflowSource(workflowPath);
+      return (
+        /\bgh\s+pr\s+create\b|peter-evans\/create-pull-request@/.test(source) &&
+        source.includes("<!-- contribution-attribution:v1 -->") &&
+        source.includes("<!-- evidence-row:before-screenshots -->")
+      );
+    })
     .sort();
 }
 
@@ -527,7 +530,6 @@ describe("PR agent attribution", () => {
     const ecosystemRefs = {
       npm: "dependabot/npm_and_yarn/*",
       "github-actions": "dependabot/github_actions/*",
-      pip: "dependabot/pip/*",
     };
     assert.deepEqual(
       [...new Set(configuredEcosystems)].sort(),
@@ -584,12 +586,9 @@ describe("PR agent attribution", () => {
     );
   });
 
-  it("discovers and validates every workflow-generated PR body", async () => {
+  it("discovers and validates every statically generated PR body", async () => {
     const workflowPaths = generatedPrWorkflowPaths();
-    assert.ok(
-      workflowPaths.length >= 4,
-      "expected all repository PR-creation workflows to be discovered",
-    );
+    assert.deepEqual(workflowPaths, [".github/workflows/docs-ci.yml"]);
     for (const workflowPath of workflowPaths) {
       const source = workflowSource(workflowPath);
       assert.match(

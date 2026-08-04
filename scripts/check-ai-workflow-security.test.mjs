@@ -8,6 +8,8 @@ import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
 const SKILL_REVIEW_PATH = ".github/workflows/skill-review.yml";
+const SKILL_REVIEW_REQUIREMENTS_PATH =
+  "packages/skills/skills/skill-creator/requirements.txt";
 const CLAUDE_PATH = ".github/workflows/claude.yml";
 const DOCS_CI_PATH = ".github/workflows/docs-ci.yml";
 

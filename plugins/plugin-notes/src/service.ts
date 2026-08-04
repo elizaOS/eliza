@@ -8,7 +8,12 @@
 import { randomUUID } from "node:crypto";
 import { ElizaError, type IAgentRuntime, logger, Service } from "@elizaos/core";
 import { NotesStore } from "./store.js";
-import type { NotesSnapshot, NotesStoreStatus, StickyNote } from "./types.js";
+import type {
+  NotesSnapshot,
+  NotesStoreStatus,
+  StickyNote,
+  UpdateNoteInput,
+} from "./types.js";
 import {
   parseCreateNoteInput,
   parseEntityId,
@@ -35,6 +40,88 @@ function notFound(id: string): ElizaError {
     context: { kind: "note", id },
     severity: "ephemeral",
   });
+}
+
+type NoteLookupSelector = "title" | "query";
+
+function normalizedLookup(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function lookupError(
+  code: "NOTES_NOT_FOUND" | "NOTES_AMBIGUOUS_NOTE",
+  selector: NoteLookupSelector,
+  value: string,
+  candidates: StickyNote[],
+): ElizaError {
+  const target = value.trim();
+  return new ElizaError(
+    code === "NOTES_NOT_FOUND"
+      ? `No sticky note matches "${target}".`
+      : `"${target}" matches multiple sticky notes: ${candidates
+          .map((note) => note.title)
+          .join(", ")}.`,
+    {
+      code,
+      context: {
+        kind: "note",
+        selector,
+        target,
+        candidateIds: candidates.map((note) => note.id),
+      },
+      severity: "ephemeral",
+    },
+  );
+}
+
+function resolveNoteIndex(
+  notes: StickyNote[],
+  selector: NoteLookupSelector,
+  value: string,
+): number {
+  const target = normalizedLookup(value);
+  const exact = notes
+    .map((note, index) => ({ index, note }))
+    .filter(({ note }) => normalizedLookup(note.title) === target);
+  const candidates =
+    selector === "title" || exact.length > 0
+      ? exact
+      : notes
+          .map((note, index) => ({ index, note }))
+          .filter(({ note }) =>
+            normalizedLookup(`${note.title} ${note.body}`).includes(target),
+          );
+  if (candidates.length === 0) {
+    throw lookupError("NOTES_NOT_FOUND", selector, value, []);
+  }
+  if (candidates.length > 1) {
+    throw lookupError(
+      "NOTES_AMBIGUOUS_NOTE",
+      selector,
+      value,
+      candidates.map(({ note }) => note),
+    );
+  }
+  const candidate = candidates[0];
+  if (!candidate) {
+    throw new ElizaError("Resolved sticky note was missing.", {
+      code: "NOTES_NOTE_RESOLUTION_FAILED",
+      severity: "fatal",
+    });
+  }
+  return candidate.index;
+}
+
+function applyNotePatch(
+  existing: StickyNote,
+  patch: UpdateNoteInput,
+  updatedAt: string,
+): StickyNote {
+  const updated: StickyNote = { ...existing, updatedAt };
+  if (patch.title !== undefined) updated.title = patch.title;
+  if (patch.body !== undefined) updated.body = patch.body;
+  if (patch.color !== undefined) updated.color = patch.color;
+  return updated;
 }
 
 export class NotesService extends Service {
@@ -113,7 +200,21 @@ export class NotesService extends Service {
     return note;
   }
 
-  async createNote(inputValue: unknown): Promise<StickyNote> {
+  getNoteByLookup(selector: NoteLookupSelector, value: string): StickyNote {
+    const notes = this.snapshot().notes;
+    const note = notes[resolveNoteIndex(notes, selector, value)];
+    if (!note) {
+      throw new ElizaError("Resolved sticky note was missing.", {
+        code: "NOTES_NOTE_RESOLUTION_FAILED",
+        severity: "fatal",
+      });
+    }
+    return note;
+  }
+
+  async createNoteWithCommit(
+    inputValue: unknown,
+  ): Promise<{ value: StickyNote; snapshot: NotesSnapshot }> {
     const input = parseCreateNoteInput(inputValue);
     const now = this.now().toISOString();
     const id = parseEntityId(this.createId());
@@ -137,10 +238,17 @@ export class NotesService extends Service {
       return note;
     });
     await this.emitStateUpdated(transaction.snapshot, "note:created");
-    return transaction.value;
+    return transaction;
   }
 
-  async updateNote(idValue: unknown, patchValue: unknown): Promise<StickyNote> {
+  async createNote(inputValue: unknown): Promise<StickyNote> {
+    return (await this.createNoteWithCommit(inputValue)).value;
+  }
+
+  async updateNoteWithCommit(
+    idValue: unknown,
+    patchValue: unknown,
+  ): Promise<{ value: StickyNote; snapshot: NotesSnapshot }> {
     const id = parseEntityId(idValue);
     const patch = parseUpdateNoteInput(patchValue);
     const updatedAt = this.now().toISOString();
@@ -148,21 +256,45 @@ export class NotesService extends Service {
       const index = draft.notes.findIndex((note) => note.id === id);
       const existing = draft.notes[index];
       if (index < 0 || !existing) throw notFound(id);
-      const updated: StickyNote = {
-        ...existing,
-        updatedAt,
-      };
-      if (patch.title !== undefined) updated.title = patch.title;
-      if (patch.body !== undefined) updated.body = patch.body;
-      if (patch.color !== undefined) updated.color = patch.color;
+      const updated = applyNotePatch(existing, patch, updatedAt);
       draft.notes[index] = updated;
       return updated;
     });
     await this.emitStateUpdated(transaction.snapshot, "note:updated");
-    return transaction.value;
+    return transaction;
   }
 
-  async deleteNote(idValue: unknown): Promise<StickyNote> {
+  async updateNote(idValue: unknown, patchValue: unknown): Promise<StickyNote> {
+    return (await this.updateNoteWithCommit(idValue, patchValue)).value;
+  }
+
+  async updateNoteByLookupWithCommit(
+    selector: NoteLookupSelector,
+    value: string,
+    patchValue: unknown,
+  ): Promise<{ value: StickyNote; snapshot: NotesSnapshot }> {
+    const patch = parseUpdateNoteInput(patchValue);
+    const updatedAt = this.now().toISOString();
+    const transaction = await this.store.transact((draft) => {
+      const index = resolveNoteIndex(draft.notes, selector, value);
+      const existing = draft.notes[index];
+      if (!existing) {
+        throw new ElizaError("Resolved sticky note was missing.", {
+          code: "NOTES_NOTE_RESOLUTION_FAILED",
+          severity: "fatal",
+        });
+      }
+      const updated = applyNotePatch(existing, patch, updatedAt);
+      draft.notes[index] = updated;
+      return updated;
+    });
+    await this.emitStateUpdated(transaction.snapshot, "note:updated");
+    return transaction;
+  }
+
+  async deleteNoteWithCommit(
+    idValue: unknown,
+  ): Promise<{ value: StickyNote; snapshot: NotesSnapshot }> {
     const id = parseEntityId(idValue);
     const transaction = await this.store.transact((draft) => {
       const index = draft.notes.findIndex((note) => note.id === id);
@@ -172,17 +304,48 @@ export class NotesService extends Service {
       return existing;
     });
     await this.emitStateUpdated(transaction.snapshot, "note:deleted");
-    return transaction.value;
+    return transaction;
   }
 
-  async clearNotes(): Promise<number> {
+  async deleteNote(idValue: unknown): Promise<StickyNote> {
+    return (await this.deleteNoteWithCommit(idValue)).value;
+  }
+
+  async deleteNoteByLookupWithCommit(
+    selector: NoteLookupSelector,
+    value: string,
+  ): Promise<{ value: StickyNote; snapshot: NotesSnapshot }> {
+    const transaction = await this.store.transact((draft) => {
+      const index = resolveNoteIndex(draft.notes, selector, value);
+      const existing = draft.notes[index];
+      if (!existing) {
+        throw new ElizaError("Resolved sticky note was missing.", {
+          code: "NOTES_NOTE_RESOLUTION_FAILED",
+          severity: "fatal",
+        });
+      }
+      draft.notes.splice(index, 1);
+      return existing;
+    });
+    await this.emitStateUpdated(transaction.snapshot, "note:deleted");
+    return transaction;
+  }
+
+  async clearNotesWithCommit(): Promise<{
+    value: number;
+    snapshot: NotesSnapshot;
+  }> {
     const transaction = await this.store.transact((draft) => {
       const count = draft.notes.length;
       draft.notes = [];
       return count;
     });
     await this.emitStateUpdated(transaction.snapshot, "notes:cleared");
-    return transaction.value;
+    return transaction;
+  }
+
+  async clearNotes(): Promise<number> {
+    return (await this.clearNotesWithCommit()).value;
   }
 
   private async emitStateUpdated(
