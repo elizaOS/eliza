@@ -4,6 +4,8 @@
  */
 
 import { afterEach, expect, test } from "bun:test";
+import type { RuntimeR2Bucket } from "@/lib/storage/r2-runtime-binding";
+import type { Bindings } from "@/types/cloud-worker-env";
 
 process.env.MOCK_REDIS = "1";
 
@@ -33,6 +35,24 @@ const cachedAgent = {
   execution_tier: "shared",
   agent_name: "Cache Voice",
 };
+
+const inaccessibleBlobBinding: RuntimeR2Bucket = {
+  async get() {
+    throw new Error("voice cache hot path must not read object storage");
+  },
+  async put() {
+    throw new Error("voice cache hot path must not write object storage");
+  },
+  async delete() {
+    throw new Error("voice cache hot path must not delete object storage");
+  },
+};
+
+const baseBindings = {
+  BLOB: inaccessibleBlobBinding,
+  DATABASE_URL: "postgresql://must-not-connect.invalid/eliza",
+  VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer voice-service",
+} satisfies Bindings;
 
 afterEach(async () => {
   await cache.del(CACHE_KEY);
@@ -64,18 +84,17 @@ test("real cache + canonical coordinator dispatch performs no response-path DB w
     },
   };
   const env = {
+    ...baseBindings,
     CACHE_ENABLED: "true",
-    DATABASE_URL: "postgresql://must-not-connect.invalid/eliza",
-    VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer voice-service",
     SHARED_RUNTIME_CONVERSATIONS: namespace,
-  };
+  } satisfies Bindings;
 
   await runWithCloudBindingsAsync(env, () =>
     cache.set(CACHE_KEY, cachedAgent, 60),
   );
 
   const fetchImpl = createInternalElizaConversationFetch(
-    env as Parameters<typeof createInternalElizaConversationFetch>[0],
+    env,
     {
       agentId: AGENT_ID,
       conversationId: CONVERSATION_ID,
@@ -124,15 +143,14 @@ test("rejects conversation-creation routes instead of creating per-turn conversa
   await cache.set(CACHE_KEY, cachedAgent, 60);
   const fetchImpl = createInternalElizaConversationFetch(
     {
+      ...baseBindings,
       CACHE_ENABLED: "true",
-      DATABASE_URL: "postgresql://must-not-connect.invalid/eliza",
-      VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer voice-service",
       SHARED_RUNTIME_CONVERSATIONS: {
         getByName() {
           throw new Error("conversation coordinator must not be reached");
         },
       },
-    } as Parameters<typeof createInternalElizaConversationFetch>[0],
+    } satisfies Bindings,
     {
       agentId: AGENT_ID,
       conversationId: CONVERSATION_ID,
@@ -169,9 +187,8 @@ test("missing Worker coordinator fails closed without selecting a legacy bridge"
   await cache.set(CACHE_KEY, cachedAgent, 60);
   const fetchImpl = createInternalElizaConversationFetch(
     {
-      DATABASE_URL: "postgresql://must-not-connect.invalid/eliza",
-      VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer voice-service",
-    } as Parameters<typeof createInternalElizaConversationFetch>[0],
+      ...baseBindings,
+    } satisfies Bindings,
     {
       agentId: AGENT_ID,
       conversationId: CONVERSATION_ID,
