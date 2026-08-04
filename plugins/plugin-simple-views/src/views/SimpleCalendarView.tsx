@@ -305,8 +305,9 @@ export function SimpleCalendarView() {
           style={{
             ...VIEW_SCROLL_STYLE,
             display: "grid",
-            gridTemplateColumns:
-              "repeat(auto-fit, minmax(min(100%, 370px), 1fr))",
+            // A fixed track minimum avoids circular percentage sizing when the
+            // landscape chat rail reduces the routed surface's inline space.
+            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
             gap: 14,
             alignItems: "start",
           }}

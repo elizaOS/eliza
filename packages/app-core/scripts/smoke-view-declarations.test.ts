@@ -43,6 +43,21 @@ describe("smoke view declaration parity (#15791)", () => {
     }
   });
 
+  it("declares both managed simple views used by the visual audit", () => {
+    expect(smokeViewDeclarations).toEqual(
+      expect.arrayContaining([
+        ["notes", "Notes", "plugin-simple-views", "/notes", "NotesView"],
+        [
+          "simple-calendar",
+          "Calendar",
+          "plugin-simple-views",
+          "/simple-calendar",
+          "SimpleCalendarView",
+        ],
+      ]),
+    );
+  });
+
   it("fails parity when a deleted plugin id is (re)introduced", () => {
     const withRemoved = [
       ...smokeViewDeclarations,

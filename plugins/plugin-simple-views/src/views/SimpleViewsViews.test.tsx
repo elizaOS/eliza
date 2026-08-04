@@ -123,7 +123,9 @@ describe("Simple Views state labels", () => {
         innerHeight: { configurable: true, value: height },
         innerWidth: { configurable: true, value: width },
       });
-      stateHook.mockReturnValue(hookState({ snapshot: snapshot(1) }));
+      const surfaceSnapshot = snapshot(1);
+      surfaceSnapshot.notes = [stickyNote()];
+      stateHook.mockReturnValue(hookState({ snapshot: surfaceSnapshot }));
       const notes = render(<NotesView />);
       const notesRoot = notes.getByTestId("simple-notes-view");
       expect(notesRoot.style.height).toBe("100%");
@@ -144,6 +146,12 @@ describe("Simple Views state labels", () => {
       );
       expect(notesScroll.style.scrollPaddingBottom).toContain(
         "--eliza-chat-clearance",
+      );
+      const notesGrid = notes.getByRole("region", {
+        name: "Notes",
+      }).firstElementChild as HTMLElement;
+      expect(notesGrid.style.gridTemplateColumns).toBe(
+        "repeat(auto-fill, minmax(230px, 1fr))",
       );
       notes.unmount();
 
@@ -169,6 +177,9 @@ describe("Simple Views state labels", () => {
       );
       expect(calendarScroll.style.scrollPaddingBottom).toContain(
         "--eliza-chat-clearance",
+      );
+      expect(calendarScroll.style.gridTemplateColumns).toBe(
+        "repeat(auto-fit, minmax(280px, 1fr))",
       );
     },
   );

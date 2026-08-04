@@ -93,6 +93,14 @@ export const smokeViewDeclarations = [
     { capabilities: ["agent-surface"] },
   ],
   ["views-manager", "Views", "plugin-app-control", "/views", "ViewManagerView"],
+  ["notes", "Notes", "plugin-simple-views", "/notes", "NotesView"],
+  [
+    "simple-calendar",
+    "Calendar",
+    "plugin-simple-views",
+    "/simple-calendar",
+    "SimpleCalendarView",
+  ],
   [
     "screenshare",
     "Screenshare",

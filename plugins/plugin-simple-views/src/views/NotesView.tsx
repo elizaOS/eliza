@@ -148,8 +148,9 @@ export function NotesView() {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns:
-                    "repeat(auto-fill, minmax(min(100%, 230px), 1fr))",
+                  // A fixed track minimum avoids circular percentage sizing
+                  // beside the landscape chat rail while preserving wrapping.
+                  gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))",
                   gap: 12,
                 }}
               >
