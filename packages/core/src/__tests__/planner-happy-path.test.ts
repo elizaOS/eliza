@@ -919,6 +919,9 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			expect(result.result.responseContent?.text).toBe(
 				"Root disk: 65% used, 138G available. Biggest cleanup candidate: /home/example/.bun (19G).",
 			);
+			// Canonical means do-not-paraphrase through the outbound voice gate,
+			// not only while the planner chooses its final message.
+			expect(result.result.responseContent?.agentVoiced).toBe(true);
 		}
 	});
 
