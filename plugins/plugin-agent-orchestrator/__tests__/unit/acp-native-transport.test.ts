@@ -62,6 +62,39 @@ function queueProc(p = proc()): MockProc {
   return p;
 }
 
+function synchronousReplyProc(): MockProc {
+  const p = new EventEmitter() as MockProc;
+  p.stdout = new EventEmitter();
+  p.stderr = new EventEmitter();
+  p.stdinWrites = [];
+  p.stdin = new Writable({
+    write(chunk, _enc, cb) {
+      const raw = chunk.toString();
+      p.stdinWrites.push(raw);
+      const request = JSON.parse(raw) as { id?: string | number };
+      if (request.id !== undefined) {
+        p.stdout.emit(
+          "data",
+          Buffer.from(
+            `${JSON.stringify({ jsonrpc: "2.0", id: request.id, result: {} })}\n`,
+          ),
+        );
+      }
+      cb();
+    },
+  });
+  p.killed = false;
+  p.kill = vi.fn((signal?: NodeJS.Signals) => {
+    p.killed = true;
+    p.signalCode = signal ?? null;
+    return true;
+  });
+  p.pid = Math.floor(Math.random() * 10_000) + 1_000;
+  p.exitCode = null;
+  p.signalCode = null;
+  return p;
+}
+
 async function waitForWrites(p: MockProc, count: number): Promise<void> {
   const startedAt = Date.now();
   while (Date.now() - startedAt < 1_000) {
@@ -166,6 +199,22 @@ afterEach(() => {
 });
 
 describe("NativeAcpClient JSON-RPC lifecycle", () => {
+  it("registers a request before a synchronous stdin.write reply", async () => {
+    const p = queueProc(synchronousReplyProc());
+    const client = new NativeAcpClient({
+      command: "agent-acp",
+      cwd: "/tmp/native-acp",
+      approvalPreset: "autonomous",
+      timeoutMs: 25,
+    });
+
+    await expect(client.start()).resolves.toBeUndefined();
+    expect(writeAt(p, 0)).toMatchObject({
+      id: 1,
+      method: "initialize",
+    });
+  });
+
   it("sends JSON-RPC requests and resolves responses", async () => {
     const events: unknown[] = [];
     const p = queueProc();
