@@ -39,10 +39,8 @@ import { registerLifeOpsScheduledTaskSubjectStore } from "./runtime-wiring.ts";
 import { processDueScheduledTasks } from "./scheduler.ts";
 import { getScheduledTaskRunner } from "./service.ts";
 
-interface ScheduledTaskSeed extends Omit<
-  ScheduledTask,
-  "taskId" | "state" | "createdBy"
-> {
+interface ScheduledTaskSeed
+  extends Omit<ScheduledTask, "taskId" | "state" | "createdBy"> {
   taskId?: string;
   createdBy?: string;
   state?: ScheduledTask["state"];

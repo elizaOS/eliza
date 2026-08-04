@@ -53,11 +53,11 @@ import {
   resolvePendingPromptsStore,
 } from "../pending-prompts/store.js";
 import { LifeOpsRepository } from "../repository.js";
+import { readScheduledTaskChatDeliveryBinding } from "./delivery-binding.js";
 import {
   applyReminderIntensityToNoReplyPolicy,
   softenReminderIntensityForQuietStreak,
 } from "./no-reply-intensity.js";
-import { readScheduledTaskChatDeliveryBinding } from "./delivery-binding.js";
 import { getScheduledTaskRunner } from "./service.js";
 
 type NoReplyTerminalStatus = "skipped" | "expired" | "failed";

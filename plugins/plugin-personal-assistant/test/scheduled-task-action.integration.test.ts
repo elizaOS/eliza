@@ -708,7 +708,8 @@ describe("SCHEDULED_TASK action", () => {
     expect(history?.success).toBe(true);
     const entries = (
       history?.data as
-        { entries?: Array<{ taskId: string; eventType?: string }> } | undefined
+        | { entries?: Array<{ taskId: string; eventType?: string }> }
+        | undefined
     )?.entries;
     if (!entries) throw new Error("history did not return entries");
     // Entries from BOTH tasks are present — the read spans the whole ledger.
