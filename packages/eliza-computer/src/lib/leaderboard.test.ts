@@ -5,7 +5,7 @@
 
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   assertLeaderboardSnapshot,
@@ -361,12 +361,7 @@ describe("model attribution", () => {
     // This is the exact composition that invalidated 64 of 67 eligible
     // sources before the terminal-block scoping.
     const template = readFileSync(
-      fileURLToPath(
-        new URL(
-          "../../../../.github/pull_request_template.md",
-          import.meta.url,
-        ),
-      ),
+      resolve(process.cwd(), "..", "..", ".github/pull_request_template.md"),
       "utf8",
     );
     const source = textSource(
