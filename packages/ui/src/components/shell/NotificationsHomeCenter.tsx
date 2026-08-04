@@ -327,30 +327,12 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
 .eliza-notif-scroll[data-shade-dragging] .eliza-notif-shade-transition {
   transition: none;
 }
-/* Keep the rim on the gesture surface, but move its fill to the full-size
-   content layer. This is the demo-era layering that lets the card visibly
-   fade under the finger without changing the rim's material or brightness. */
-.eliza-notif-scroll:is([data-shade-dragging], [data-shade-settling]) .eliza-notif-row-surface,
-[data-notification-shade-cancelling] .eliza-notif-row-surface {
-  background-color: transparent;
-  background-image: none;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-}
-.eliza-notif-scroll:is([data-shade-dragging], [data-shade-settling]) .eliza-notif-row-content,
-[data-notification-shade-cancelling] .eliza-notif-row-content {
-  background-color: rgb(22 22 25);
-  background-image: ${LIQUID_GLASS_SHEEN};
-}
-.eliza-notif-scroll:is([data-shade-dragging], [data-shade-settling]) :is([data-notification-stack-material], [data-notification-stacked]) .eliza-notif-row-content,
-[data-notification-shade-cancelling] :is([data-notification-stack-material], [data-notification-stacked]) .eliza-notif-row-content {
-  background-color: rgb(28 28 30);
-  background-image: none;
-}
-/* The card surface owns the group fade so its fill, copy, and rim move as one
-   physical object. A row-specific variable is reserved for disposable stack
-   rows; falling back to the group variable here would multiply the surface
-   fade and make direct manipulation feel nonlinear. */
+/* The settled card surface keeps ownership of its fill, sheen, and rim through
+   drag and settle. Moving those layers to the inner button on the first drag
+   frame changes their compositing before any meaningful travel and reads as a
+   color jump. Opacity and transform provide the continuous close instead. A
+   row-specific variable is reserved for disposable stack rows; falling back to
+   the group variable here would multiply the fade. */
 .eliza-notif-scroll:is([data-shade-dragging], [data-shade-settling]) [data-notification-group-content] .eliza-notif-row-content {
   opacity: var(--eliza-notif-row-content-visibility, 1);
 }
