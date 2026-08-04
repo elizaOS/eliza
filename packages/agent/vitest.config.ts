@@ -146,7 +146,6 @@ export default defineConfig({
   test: {
     ...baseConfig.test,
     environment: "node",
-    pool: "vmForks",
     setupFiles: ["test/setup.ts"],
     testTimeout: 120_000,
     hookTimeout: 120_000,
