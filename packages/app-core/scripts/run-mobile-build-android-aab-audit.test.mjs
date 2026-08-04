@@ -1000,6 +1000,7 @@ describe("pinned bundletool provisioning", () => {
       env: {
         ELIZA_MOBILE_AUDIT_SCRIPT: "  /tools/audit.mjs  ",
         NODE_BINARY: "  /tools/node  ",
+        NODE_PATH: "  /workspace/existing-node-modules  ",
         PATH: "/usr/bin",
       },
       javaHome: "/jdk",
@@ -1008,6 +1009,21 @@ describe("pinned bundletool provisioning", () => {
     expect(path.isAbsolute(defaults.NODE_BINARY)).toBe(true);
     expect(defaults.NODE_BINARY).toBe(process.execPath);
     expect(overridden.NODE_BINARY).toBe("/tools/node");
+    expect(defaults.NODE_PATH).toBe(
+      path.join(
+        fileURLToPath(new URL("../../app", import.meta.url)),
+        "node_modules",
+      ),
+    );
+    expect(overridden.NODE_PATH).toBe(
+      [
+        path.join(
+          fileURLToPath(new URL("../../app", import.meta.url)),
+          "node_modules",
+        ),
+        "/workspace/existing-node-modules",
+      ].join(path.delimiter),
+    );
     expect(path.isAbsolute(defaults.ELIZA_MOBILE_AUDIT_SCRIPT)).toBe(true);
     expect(defaults.ELIZA_MOBILE_AUDIT_SCRIPT).toBe(
       fileURLToPath(new URL("./run-mobile-build.mjs", import.meta.url)),

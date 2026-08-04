@@ -6915,6 +6915,13 @@ export function createAndroidBuildEnv(
       env.ELIZA_MOBILE_AUDIT_SCRIPT?.trim() || fileURLToPath(import.meta.url),
     JAVA_HOME: javaHome,
     NODE_BINARY: env.NODE_BINARY?.trim() || process.execPath,
+    // Capacitor 8 generates settings.gradle package lookups through a child
+    // `node` process. Bun's isolated linker keeps mobile dependencies under
+    // packages/app/node_modules, which is not an ancestor of app-core's
+    // canonical Android tree, so bare require.resolve() otherwise fails.
+    NODE_PATH: [path.join(appDir, "node_modules"), env.NODE_PATH?.trim()]
+      .filter(Boolean)
+      .join(path.delimiter),
     PATH: prependPath(env, [
       path.join(javaHome, "bin"),
       path.join(androidSdkRoot, "platform-tools"),
