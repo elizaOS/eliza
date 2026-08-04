@@ -11,7 +11,6 @@
  * calendar assistant action.
  */
 import { createHash } from "node:crypto";
-import { renderGroundedActionReply } from "@elizaos/agent/actions/grounded-action-reply";
 import type {
   Action,
   ActionExample,
@@ -1122,16 +1121,16 @@ async function renderCalendarActionReply(args: {
   context?: Record<string, unknown>;
 }): Promise<string> {
   const { runtime, message, state, intent, scenario, fallback, context } = args;
-  return renderGroundedActionReply({
+  const renderGroundedReply = deps().renderGroundedReply;
+  if (!renderGroundedReply) return fallback;
+  return renderGroundedReply({
     runtime,
     message,
     state,
     intent,
-    domain: "calendar",
     scenario,
     fallback,
     context,
-    preferCharacterVoice: true,
     additionalRules: [
       "Mirror the user's phrasing for dates, times, ranges, and scheduling language when possible.",
       "Prefer phrases like tomorrow morning, next week, later, earlier, free, busy, or the user's own wording over robotic calendar language.",
