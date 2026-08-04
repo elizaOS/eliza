@@ -257,6 +257,18 @@ describe("v5 planner loop skeleton", () => {
 		);
 	});
 
+	it("keeps terminal planner replies human-readable unless raw output was requested", () => {
+		expect(plannerTemplate).toContain(
+			"natural conversation, not a database or debug log",
+		);
+		expect(plannerTemplate).toContain(
+			"Translate machine dates, 24-hour times, and Unix/epoch timestamps into familiar dates and times",
+		);
+		expect(plannerTemplate).toContain(
+			"unless the user explicitly asks for raw or technical output",
+		);
+	});
+
 	it("forbids using SHELL as a fallback for chat-message search/recall", () => {
 		// Regression for elizaOS/eliza#7935: Stage 1 hinted
 		// candidateActions=["SEARCH_MESSAGES"], but no matching action was

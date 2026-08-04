@@ -701,6 +701,8 @@ available_contexts:
 {{/if}}
 replyText: user-facing text. Always write. Simple path = whole answer. Planning path = brief ack ("On it.", "Spawning the sub-agent now.", "Looking into it."); planner gives final. NEVER refuse the user's request in replyText when contexts/candidateActions != "simple": tools run later; ack only. Ban planning-path refusal openings: "I cannot...", "I am unable...", "I don't have the ability...", "Sorry, I can't...". Tools exist (FILE, BASH, TASKS_SPAWN_AGENT, ...). If truly no tool can attempt, use contexts=["simple"] and explain.
 
+All user-visible replyText must read like natural conversation, not a database or debug log. Prefer concise everyday wording. Translate machine dates, 24-hour times, and Unix/epoch timestamps into familiar dates and times; do not expose internal ids, field names, raw JSON, tool names, receipt metadata, or backend jargon unless the user explicitly asks for raw or technical output. Preserve exact code and user-provided values when they are the subject of the request.
+
 contexts (directly after replyText): ids from available_contexts. Never invent. ["simple"] or [] = direct reply, no planner.
 
 requiresTool=true for tools/actions/subagents/providers/filesystem/network/browser/API/live data/side effects/long work/verification. Else false. If the current message is directed at another participant rather than you — bot/webhook chatter, or one person addressing another by name (a "(bot)" tag marks automated senders) — you are only overhearing it: set requiresTool=false and do not invent a task from it.
@@ -848,6 +850,7 @@ rules:
 - plain-JSON fallback only (when native tool calls are unavailable): return exactly {"action":"TOOL_NAME","parameters":{...},"thought":"short reason"}; never put that envelope inside a native tool's args
 - owner goal save/create/update/review when OWNER_GOALS is exposed => native OWNER_GOALS args are {"action":"create|update|review","intent":"...","title":"...","confirmed":true|false,"details":{"description":"...","successCriteria":{"summary":"..."},"supportStrategy":{"summary":"..."} } }; only the plain-JSON fallback wraps those args in {"action":"OWNER_GOALS","parameters":{...},"thought":"..."}; never use messageToUser
 - never invent tool names, connector names, providers, ids, benchmark ids
+- messageToUser must read like natural conversation, not a database or debug log. Prefer concise everyday wording. Translate machine dates, 24-hour times, and Unix/epoch timestamps into familiar dates and times; do not expose internal ids, field names, raw JSON, tool names, receipt metadata, or backend jargon unless the user explicitly asks for raw or technical output. Preserve exact code and user-provided values when they are the subject of the request.
 
 return:
 JSON object only. No markdown, prose, XML, or legacy formats.
@@ -954,6 +957,8 @@ export const replyTemplate = `# Task: Generate dialog for character {{agentName}
 # Instructions: Write the next message for {{agentName}}.
 "thought": short description of what the agent is thinking and planning.
 "text": next message {{agentName}} will send.
+
+Write text like natural conversation, not a database or debug log. Prefer concise everyday wording. Translate machine dates, 24-hour times, and Unix/epoch timestamps into familiar dates and times; do not expose internal ids, field names, raw JSON, tool names, receipt metadata, or backend jargon unless the user explicitly asks for raw or technical output. Preserve exact code and user-provided values when they are the subject of the request.
 
 CODE BLOCK FORMATTING:
 - For code examples, snippets, or multi-line code, ALWAYS wrap with \`\`\` fenced code blocks (specify language if known, e.g., \`\`\`python).

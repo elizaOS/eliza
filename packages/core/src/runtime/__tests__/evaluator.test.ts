@@ -10,6 +10,18 @@ import { ModelType } from "../../types/model";
 import { parseEvaluatorOutput, runEvaluator } from "../evaluator";
 
 describe("v5 evaluator skeleton", () => {
+	it("keeps synthesized replies human-readable unless raw output was requested", () => {
+		expect(evaluatorTemplate).toContain(
+			"natural conversation, not a database or debug log",
+		);
+		expect(evaluatorTemplate).toContain(
+			"Translate machine dates, 24-hour times, and Unix/epoch timestamps into familiar dates and times",
+		);
+		expect(evaluatorTemplate).toContain(
+			"unless the user explicitly asks for raw or technical output",
+		);
+	});
+
 	it("allows structured chat markers while still banning arbitrary JSON/tool attempts", () => {
 		expect(evaluatorTemplate).toContain("arbitrary JSON/tool attempts");
 		expect(evaluatorTemplate).toContain(

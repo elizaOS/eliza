@@ -669,6 +669,93 @@ describe("Simple Views capabilities", () => {
     expect(service.listCalendarEvents()).toEqual([]);
   });
 
+  it("keeps machine dates and times out of every user-facing calendar reply", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    const selected = await interact(
+      "select-calendar-date",
+      { date: "2026-08-03" },
+      service,
+    );
+    expect(selected.text).toBe("Showing Monday, August 3, 2026.");
+
+    const created = await interact(
+      "create-calendar-event",
+      {
+        title: "Send demo video",
+        date: "2026-08-04",
+        time: "00:00",
+        notes: "Share the final clip.",
+      },
+      service,
+    );
+    expect(created.text).toBe(
+      "Added “Send demo video” to your calendar for Tuesday, August 4, 2026 at 12:00 AM.",
+    );
+    expect(created.data).toMatchObject({
+      event: { date: "2026-08-04", time: "00:00" },
+    });
+
+    const listed = await interact(
+      "get-calendar-state",
+      { date: "2026-08-04" },
+      service,
+    );
+    expect(listed.text).toBe(
+      "On Tuesday, August 4, 2026, you have “Send demo video” at 12:00 AM — Share the final clip.",
+    );
+
+    const read = await interact(
+      "get-calendar-event",
+      { title: "Send demo video" },
+      service,
+    );
+    expect(read.text).toBe(
+      "“Send demo video” is scheduled for Tuesday, August 4, 2026 at 12:00 AM — Share the final clip.",
+    );
+
+    const updated = await interact(
+      "update-calendar-event",
+      { title: "Send demo video", time: "12:00" },
+      service,
+    );
+    expect(updated.text).toBe(
+      "Updated “Send demo video”. It's scheduled for Tuesday, August 4, 2026 at 12:00 PM.",
+    );
+
+    const deleted = await interact(
+      "delete-calendar-event",
+      { title: "Send demo video" },
+      service,
+    );
+    expect(deleted.text).toBe("Removed “Send demo video” from your calendar.");
+
+    const empty = await interact(
+      "get-calendar-state",
+      { date: "2026-08-04" },
+      service,
+    );
+    expect(empty.text).toBe(
+      "You have nothing scheduled for Tuesday, August 4, 2026.",
+    );
+
+    for (const result of [
+      selected,
+      created,
+      listed,
+      read,
+      updated,
+      deleted,
+      empty,
+    ]) {
+      expect(result.text).not.toMatch(/\b\d{4}-\d{2}-\d{2}\b/);
+      expect(result.text).not.toMatch(/\b(?:0\d|1[3-9]|2\d):[0-5]\d\b/);
+      expect(result.text).not.toMatch(/\b\d{10,13}\b/);
+      expect(result.text).not.toMatch(
+        /\b(?:createdAt|updatedAt|revision|receiptId)\b/,
+      );
+    }
+  });
+
   it("keeps the viewed date stable when events are created or moved", async () => {
     const service = await serviceFor(await temporaryStateFile());
     await service.selectDate("2026-08-03");

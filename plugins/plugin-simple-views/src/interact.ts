@@ -44,6 +44,59 @@ const EXPECTED_FAILURE_CODES = new Set([
 
 const PLANNER_SUMMARY_ITEM_LIMIT = 20;
 const PLANNER_SUMMARY_EXCERPT_LENGTH = 160;
+const HUMAN_DATE_FORMAT = new Intl.DateTimeFormat("en-US", {
+  weekday: "long",
+  month: "long",
+  day: "numeric",
+  year: "numeric",
+  timeZone: "UTC",
+});
+
+function humanDate(dateKey: string): string {
+  const validDateKey = parseDateKey(dateKey);
+  const year = Number(validDateKey.slice(0, 4));
+  const month = Number(validDateKey.slice(5, 7));
+  const day = Number(validDateKey.slice(8, 10));
+  return HUMAN_DATE_FORMAT.format(new Date(Date.UTC(year, month - 1, day)));
+}
+
+function humanTime(time: string): string {
+  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(time);
+  if (!match) {
+    throw new ElizaError("Calendar event time must be HH:mm.", {
+      code: "SIMPLE_VIEWS_VALIDATION_FAILED",
+      context: { field: "calendar event.time" },
+      severity: "ephemeral",
+    });
+  }
+  const hour = Number(match[1]);
+  const minute = match[2];
+  return `${hour % 12 || 12}:${minute} ${hour >= 12 ? "PM" : "AM"}`;
+}
+
+function quoted(value: string): string {
+  return `“${value}”`;
+}
+
+function sentence(value: string): string {
+  const text = value.trim();
+  return /[.!?]$/.test(text) ? text : `${text}.`;
+}
+
+function humanDetails(value: string): string {
+  const details = value.trim();
+  return details.length > 0
+    ? ` — ${details.slice(0, PLANNER_SUMMARY_EXCERPT_LENGTH)}`
+    : "";
+}
+
+function noteSummary(note: StickyNote): string {
+  return `${quoted(note.title)}${humanDetails(note.body)}`;
+}
+
+function eventDetails(event: SimpleCalendarEvent): string {
+  return humanDetails(event.notes);
+}
 
 function paramsRecord(value: unknown): Record<string, unknown> {
   if (value === undefined) return {};
@@ -169,39 +222,53 @@ function normalizeRenameParams(
 }
 
 function summarizeNotes(notes: StickyNote[]): string {
-  if (notes.length === 0) return "No sticky notes yet.";
+  if (notes.length === 0) return "You don't have any notes yet.";
   const visible = notes
     .slice(0, PLANNER_SUMMARY_ITEM_LIMIT)
-    .map(
-      (note) =>
-        `${note.title}: ${note.body.slice(0, PLANNER_SUMMARY_EXCERPT_LENGTH)}`,
-    );
+    .map((note) => noteSummary(note));
   if (notes.length > visible.length) {
-    visible.push(`${notes.length - visible.length} more notes not shown.`);
+    visible.push(`Plus ${notes.length - visible.length} more.`);
   }
-  return visible.join("\n");
+  return notes.length === 1
+    ? visible.join("")
+    : `Here are your notes:\n${visible.map((note) => `• ${note}`).join("\n")}`;
 }
 
 function summarizeEvents(events: SimpleCalendarEvent[], date?: string): string {
   if (events.length === 0) {
     return date
-      ? `No Simple Calendar events for ${date}.`
-      : "No Simple Calendar events yet.";
+      ? `You have nothing scheduled for ${humanDate(date)}.`
+      : "Your calendar is empty.";
   }
-  const visible = events
-    .slice(0, PLANNER_SUMMARY_ITEM_LIMIT)
-    .map(
-      (event) =>
-        `${event.date} ${event.time} - ${event.title}${
-          event.notes.length > 0
-            ? `: ${event.notes.slice(0, PLANNER_SUMMARY_EXCERPT_LENGTH)}`
-            : ""
-        }`,
+  const shownEvents = events.slice(0, PLANNER_SUMMARY_ITEM_LIMIT);
+  if (shownEvents.length === 1 && events.length === 1) {
+    const event = shownEvents[0];
+    if (!event) {
+      throw new ElizaError("Calendar summary event is required.", {
+        code: "SIMPLE_VIEWS_INVALID_STATE",
+        severity: "fatal",
+      });
+    }
+    const schedule = date
+      ? `${quoted(event.title)} at ${humanTime(event.time)}`
+      : `${quoted(event.title)} on ${humanDate(event.date)} at ${humanTime(event.time)}`;
+    return sentence(
+      `${date ? `On ${humanDate(date)}, you have` : "You have"} ${schedule}${eventDetails(event)}`,
     );
-  if (events.length > visible.length) {
-    visible.push(`${events.length - visible.length} more events not shown.`);
   }
-  return visible.join("\n");
+  const visible = shownEvents.map((event) => {
+    const schedule = date
+      ? `${quoted(event.title)} at ${humanTime(event.time)}`
+      : `${humanDate(event.date)} — ${quoted(event.title)} at ${humanTime(event.time)}`;
+    return `${schedule}${eventDetails(event)}`;
+  });
+  if (events.length > visible.length) {
+    visible.push(`Plus ${events.length - visible.length} more.`);
+  }
+  const introduction = date
+    ? `On ${humanDate(date)}, you have:`
+    : "Here's your calendar:";
+  return `${introduction}\n${visible.map((event) => `• ${event}`).join("\n")}`;
 }
 
 function parseLookupTarget(
@@ -337,7 +404,7 @@ async function dispatchCapability(
       target.selector === "id"
         ? service.getNote(target.value)
         : service.getNoteByLookup(target.selector, target.value);
-    return success(service, `Read sticky note "${note.title}".`, { note });
+    return success(service, sentence(noteSummary(note)), { note });
   }
   if (capability === "create-note") {
     const { value: note, snapshot } =
@@ -346,7 +413,7 @@ async function dispatchCapability(
       snapshot,
       capability,
       { kind: "simple-views.note", id: note.id },
-      `Created sticky note "${note.title}".`,
+      `Created note ${quoted(note.title)}.`,
       { note },
     );
   }
@@ -376,7 +443,7 @@ async function dispatchCapability(
       snapshot,
       capability,
       { kind: "simple-views.note", id: note.id },
-      `Updated sticky note "${note.title}".`,
+      `Updated note ${quoted(note.title)}.`,
       { note },
     );
   }
@@ -398,7 +465,7 @@ async function dispatchCapability(
       snapshot,
       capability,
       { kind: "simple-views.note", id: note.id },
-      `Deleted sticky note "${note.title}".`,
+      `Deleted note ${quoted(note.title)}.`,
       { note },
     );
   }
@@ -409,7 +476,11 @@ async function dispatchCapability(
       snapshot,
       capability,
       { kind: "simple-views.note-collection", id: "notes" },
-      `Cleared ${cleared} sticky note(s).`,
+      cleared === 0
+        ? "There were no notes to delete."
+        : cleared === 1
+          ? "Deleted your note."
+          : `Deleted all ${cleared} notes.`,
       { cleared },
     );
   }
@@ -447,9 +518,13 @@ async function dispatchCapability(
       target.selector === "id"
         ? service.getCalendarEvent(target.value)
         : service.getCalendarEventByLookup(target.selector, target.value);
-    return success(service, `Read calendar event "${event.title}".`, {
-      event,
-    });
+    return success(
+      service,
+      sentence(
+        `${quoted(event.title)} is scheduled for ${humanDate(event.date)} at ${humanTime(event.time)}${eventDetails(event)}`,
+      ),
+      { event },
+    );
   }
   if (capability === "select-calendar-date") {
     assertOnlyParams(params, ["date"]);
@@ -460,7 +535,7 @@ async function dispatchCapability(
       snapshot,
       capability,
       { kind: "simple-views.calendar-selection", id: "selected-date" },
-      `Selected ${date}.`,
+      `Showing ${humanDate(date)}.`,
       { date },
     );
   }
@@ -473,7 +548,7 @@ async function dispatchCapability(
       snapshot,
       capability,
       { kind: "simple-views.calendar-event", id: event.id },
-      `Created calendar event "${event.title}" for ${event.date} at ${event.time}.`,
+      `Added ${quoted(event.title)} to your calendar for ${humanDate(event.date)} at ${humanTime(event.time)}.`,
       { event },
     );
   }
@@ -506,7 +581,7 @@ async function dispatchCapability(
       snapshot,
       capability,
       { kind: "simple-views.calendar-event", id: event.id },
-      `Updated calendar event "${event.title}".`,
+      `Updated ${quoted(event.title)}. It's scheduled for ${humanDate(event.date)} at ${humanTime(event.time)}.`,
       { event },
     );
   }
@@ -528,7 +603,7 @@ async function dispatchCapability(
       snapshot,
       capability,
       { kind: "simple-views.calendar-event", id: event.id },
-      `Deleted calendar event "${event.title}".`,
+      `Removed ${quoted(event.title)} from your calendar.`,
       { event },
     );
   }

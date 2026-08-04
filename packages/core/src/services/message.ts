@@ -1804,13 +1804,12 @@ function createV5ReplyStrategyResult(args: {
 	effectReceiptIds?: readonly string[];
 	/**
 	 * Provenance for the humanness voice gate (#14873): `true` when `text` is
-	 * the model's own composed reply (Stage-1 `replyText`, the Stage-1 ack), so
-	 * gated transports (`sendMessageToTarget`) deliver it untouched instead of
-	 * spending a blocking TEXT_SMALL re-voice on text that is already genuine
-	 * model voice. Leave unset for anything with template or tool provenance —
-	 * hardcoded deferrals, captured action output, planner `finalMessage`
-	 * (which can relay tool text or canned fallbacks) — so the gate still
-	 * rephrases those before they reach a user.
+	 * already final user-facing copy — either the model's own composed reply or
+	 * a byte-exact canonical `verifiedUserFacing` action result. Gated transports
+	 * (`sendMessageToTarget`) then preserve it instead of spending a blocking
+	 * TEXT_SMALL re-voice that could alter exact names, punctuation, or values.
+	 * Leave unset for templates, ordinary tool output, and mixed-provenance
+	 * planner text so the gate can still rewrite canned strings.
 	 */
 	agentVoiced?: boolean;
 }): StrategyResult {
@@ -8632,19 +8631,22 @@ export async function runV5MessageRuntimeStage1(args: {
 			!plannedTextRepeatsActionReply &&
 			!plannedTextIsRedundantFailureFallback &&
 			!plannedTextRepeatsVerifiedActionDelivery;
-		// Voice-gate provenance (#14873): only the Stage-1 ack has unambiguous
-		// model provenance here (`messageHandler.plan.reply` is the Stage-1
-		// model's own field). The planner's `finalMessage` is deliberately NOT
-		// marked: it is a mixed-provenance field (evaluator messageToUser, a
-		// verified tool's userFacingText, a deterministic tool-result relay, or a
-		// hardcoded fallback all flow through it), and exempting it wholesale
-		// would let canned tool strings skip the humanness gate — the exact text
-		// the gate exists to rephrase. The hardcoded "on it, working on that
-		// now." ack stays unmarked for the same reason.
+		// Voice-gate provenance (#14873): the Stage-1 ack has unambiguous model
+		// provenance. A byte-exact canonical action result also needs preservation:
+		// `verifiedUserFacing` promises do-not-paraphrase semantics, so routing that
+		// text through a second model would violate its contract and can corrupt
+		// punctuation or exact values. Mixed evaluator/tool prose and hardcoded
+		// fallbacks remain unmarked so canned strings still receive the voice pass.
 		const effectiveReplyIsModelVoice =
 			!plannedText &&
 			stageOneAck.length > 0 &&
 			effectiveReplyText === stageOneAck;
+		const effectiveReplyIsCanonicalActionText = actionResults.some(
+			(result) =>
+				result.verifiedUserFacing === true &&
+				typeof result.userFacingText === "string" &&
+				effectiveDeliveredReplyText === result.userFacingText.trim(),
+		);
 		const transcriptVisibility = resolveActionResultTranscriptVisibility(
 			plannedTextRaw || effectiveReplyText,
 			actionResults,
@@ -8663,7 +8665,9 @@ export async function runV5MessageRuntimeStage1(args: {
 								plannerResult.evaluator?.thought ??
 								plannerResult.trajectory.steps.at(-1)?.thought ??
 								messageHandler.thought,
-							agentVoiced: effectiveReplyIsModelVoice,
+							agentVoiced:
+								effectiveReplyIsModelVoice ||
+								effectiveReplyIsCanonicalActionText,
 							...(effectiveReplyReceiptIds.length > 0
 								? { effectReceiptIds: effectiveReplyReceiptIds }
 								: {}),
@@ -10042,6 +10046,9 @@ function shouldRewriteActionCallback(
 	actionName?: string,
 ): response is Content & { text: string } {
 	if (!response || typeof response.text !== "string") return false;
+	// The settlement boundary marks only a byte-exact canonical action reply.
+	// Re-voicing it would violate verifiedUserFacing's do-not-paraphrase contract.
+	if (response.agentVoiced === true) return false;
 	if (getEffectDeliveryBinding(response)) {
 		return false;
 	}
