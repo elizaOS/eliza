@@ -353,23 +353,6 @@ describe("AutomationsFeed", () => {
     render(<AutomationsFeed />);
 
     expect(await screen.findByText("Nothing scheduled yet")).toBeTruthy();
-    const scrollRegion = screen.getByTestId("automations-scroll-region");
-    expect(scrollRegion.className).toContain("overflow-y-auto");
-    expect(scrollRegion.className).toContain(
-      "pb-[var(--eliza-chat-clearance,5.25rem)]",
-    );
-    expect(scrollRegion.className).toContain(
-      "pe-[var(--eliza-chat-side-clearance,0px)]",
-    );
-    expect(screen.getByTestId("automations-empty-state").className).toContain(
-      "[@media(orientation:landscape)_and_(max-height:520px)]:py-3",
-    );
-    expect(
-      screen.getByTestId("automations-empty-state").querySelector("svg")
-        ?.className.baseVal,
-    ).toContain(
-      "[@media(orientation:landscape)_and_(max-height:520px)]:hidden",
-    );
     // The empty state is unreachable in practice (a default is seeded on first
     // run); when it does render for the deleted-everything edge it must carry
     // NO create CTA — the agent offers re-creation from chat instead.

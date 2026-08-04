@@ -254,3 +254,14 @@ regexTarget = "match"
 regexes = [
   '''DISCORD_SPEAKER_LEASE_TABLE\s*=\s*"discord_coordination_reply_slots"''',
 ]
+
+# Discord readiness diagnostics use a human-readable error key, not a client
+# credential. Two additive commits carried spellings that matched the
+# discord-client-secret heuristic; allow only those exact historical commits so
+# current and future Discord source remains fully scanned.
+[[allowlists]]
+description = "Discord interaction-readiness diagnostic key (not a credential)"
+commits = [
+  "84076db8c101861e1010781abc569ff571639791",
+  "c118ecb29ce8b66518e57092e0426cdf52bd5045",
+]

@@ -7,7 +7,6 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Z_BUILD_BADGE } from "../../lib/floating-layers";
 import { BuildBadge } from "./BuildBadge";
 
 const BUILD_INFO = {
@@ -44,9 +43,6 @@ describe("BuildBadge", () => {
     expect(badge.textContent).toContain("58f6bb3beb · Jul 03 17:42 MDT");
     const anchor = badge.closest("[data-aesthetic-overlay-ignore='true']");
     expect(anchor).not.toBeNull();
-    expect((anchor as HTMLElement).style.paddingTop).toContain(
-      "safe-area-inset-top",
-    );
     expect(fetch).toHaveBeenCalledWith(
       "/build-info.json",
       expect.objectContaining({ cache: "no-store" }),

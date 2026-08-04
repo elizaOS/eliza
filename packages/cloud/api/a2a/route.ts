@@ -28,24 +28,24 @@ app.post("/", async (c) => {
   try {
     body = await c.req.json();
   } catch {
+    // error-policy:J1 the JSON-RPC transport boundary translates invalid JSON
+    // syntax without exposing the Worker's global exception response.
     return c.json(
       jsonRpcError(A2AErrorCodes.PARSE_ERROR, "Parse error", null),
       400,
     );
   }
 
+  if (Array.isArray(body) && body.length === 0) {
+    return c.json(
+      jsonRpcError(A2AErrorCodes.INVALID_REQUEST, "Invalid Request", null),
+      400,
+    );
+  }
+
   const messages = Array.isArray(body) ? body : [body];
   const results = await Promise.all(
-    messages.map((message) =>
-      handlePlatformA2aJsonRpc(
-        c,
-        message as {
-          id?: string | number | null;
-          method?: string;
-          params?: Record<string, unknown>;
-        },
-      ),
-    ),
+    messages.map((message) => handlePlatformA2aJsonRpc(c, message)),
   );
 
   return c.json(Array.isArray(body) ? results : results[0]);

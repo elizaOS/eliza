@@ -49,7 +49,6 @@ describe("TopicChipsBar", () => {
     fireEvent.click(screen.getByTestId("topic-chip-user_greeting"));
     expect(onSelectTopic).toHaveBeenCalledWith("user_greeting");
   });
-
 });
 
 describe("TopicGroup", () => {

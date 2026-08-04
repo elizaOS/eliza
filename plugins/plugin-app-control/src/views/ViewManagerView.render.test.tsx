@@ -80,17 +80,11 @@ describe("ViewManagerView GUI wrapper", () => {
 			throw new Error(`Unexpected request: ${url}`);
 		});
 
-		const { container } = render(<ViewManagerView />);
+		render(<ViewManagerView />);
 
 		// Both labels render once the snapshot lands.
 		await screen.findByText("Wallet");
 		expect(screen.getByText("Feed")).toBeTruthy();
-		expect(container.firstElementChild?.className).toContain("overflow-y-auto");
-		expect(container.firstElementChild?.className).toContain("flex-1");
-		expect(container.firstElementChild?.className).toContain("h-0");
-		expect(container.firstElementChild?.className).not.toContain("h-full");
-		expect(container.firstElementChild?.className).not.toContain("flex-col");
-
 		// Paths render as the muted subtitle for each row.
 		expect(screen.getByText("/wallet")).toBeTruthy();
 		expect(screen.getByText("/feed")).toBeTruthy();

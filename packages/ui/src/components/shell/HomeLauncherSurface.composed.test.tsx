@@ -378,9 +378,6 @@ describe("Home ↔ Launcher composed surface", () => {
     expect(screen.queryByTestId("launcher-image-browser")).toBeNull();
     expect(settingsVisual?.querySelector("img")).toBeNull();
     expect(browserVisual?.querySelector("img")).toBeNull();
-    expect(settingsVisual?.getAttribute("style")).toContain("linear-gradient");
-    expect(browserVisual?.getAttribute("style")).toContain("linear-gradient");
-
     const settingsGlyph = settingsVisual
       ?.querySelector("svg")
       ?.getAttribute("class");

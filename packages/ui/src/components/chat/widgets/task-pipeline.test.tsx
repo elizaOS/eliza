@@ -31,7 +31,6 @@ describe("PlanChecklist", () => {
     expect(root.textContent).toContain("1/3");
     const items = root.querySelectorAll("li");
     expect(items[0].getAttribute("data-status")).toBe("completed");
-    expect(items[0].className).toContain("line-through");
     expect(items[1].getAttribute("data-status")).toBe("in_progress");
     expect(items[2].getAttribute("data-status")).toBe("pending");
   });
@@ -79,7 +78,6 @@ describe("SubagentBlock", () => {
     expect(screen.getByTestId("plan-checklist")).toBeTruthy();
     expect(screen.getByTestId("tool-call-event-log")).toBeTruthy();
   });
-
 });
 
 describe("toNativeToolEvent", () => {

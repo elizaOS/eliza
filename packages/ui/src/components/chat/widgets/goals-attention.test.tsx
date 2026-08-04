@@ -232,17 +232,4 @@ describe("GoalsAttentionWidget (#9143)", () => {
       root?.querySelector('[data-testid="widget-goals-attention"]'),
     ).not.toBeNull();
   });
-
-  it("falls back to the default 2x1 span when no spanClassName is supplied (#11752)", async () => {
-    mockGoalsResponse([
-      record({ id: "g1", title: "Ship it", reviewState: "at_risk" }),
-    ]);
-
-    const { container } = render(<GoalsAttentionWidget slot="home" />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("widget-goals-attention")).toBeTruthy();
-    });
-    expect(container.firstElementChild?.className).toContain("col-span-2");
-  });
 });

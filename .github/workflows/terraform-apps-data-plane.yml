@@ -107,7 +107,7 @@ jobs:
   # so it runs safely on every PR (incl. before the env HCLOUD_TOKEN exists).
   validate:
     if: github.event_name == 'pull_request'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e
@@ -129,7 +129,7 @@ jobs:
   # / eliza-staging projects (see header comment).
   plan-apply:
     if: github.event_name == 'workflow_dispatch'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     environment: ${{ github.event.inputs.environment }}
     env:
       HCLOUD_TOKEN: ${{ secrets.HCLOUD_APPS_TOKEN }}

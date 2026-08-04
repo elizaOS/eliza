@@ -230,6 +230,17 @@ for (const fixture of [
       /hosted build must install the hash-pinned Python 3.13 skill validator dependency/,
   },
   {
+    name: "legacy artifact sync for fork homepage validation",
+    key: "qualityFork",
+    mutate: (source) =>
+      source.replace(
+        '          ELIZA_SKIP_ARTIFACT_SYNC: "1"\n',
+        '          ELIZA_SKIP_ARTIFACT_SYNC: "0"\n',
+      ),
+    pattern:
+      /hosted build must preserve exact-head homepage baselines by skipping legacy artifact sync/,
+  },
+  {
     name: "unhashed hosted-build skill validator dependency",
     key: "qualityFork",
     mutate: (source) => source.replace(" --require-hashes", ""),

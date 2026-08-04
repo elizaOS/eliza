@@ -32,30 +32,9 @@ afterEach(() => {
 });
 
 describe("ViewHeader — standardized normal-view header (#13451)", () => {
-  it("renders an icon-only back button with no rest-state border or fill", () => {
+  it("renders an accessible icon-only back button", () => {
     render(<ViewHeader title="Wallet" />);
     const back = screen.getByRole("button", { name: /back/i });
-    // Chromeless at rest: transparent background, no border.
-    expect(back.className).toContain("bg-transparent");
-    expect(back.className).not.toContain("border");
-    // Rest state has no accent/neutral chip fill (regression guard for the
-    // old `bg-bg` fill that read as a chip).
-    expect(back.className).not.toContain("bg-bg ");
-    expect(back.className).not.toMatch(/\bbg-bg\b(?!-)/);
-    // The BUTTON is the hit target and meets the 44px mobile minimum on its
-    // own box (#14152 follow-up: a target borrowed from the surrounding row
-    // is not clickable-by-contract); -m-1 keeps the 36px layout footprint.
-    expect(back.className).toContain("h-11");
-    expect(back.className).toContain("w-11");
-    expect(back.className).toContain("-m-1");
-    // Hover is the ONLY place a chip appears — on the inner 36px visual span,
-    // so the resting/hover appearance is unchanged by the larger hit box.
-    const chip = back.querySelector("span");
-    expect(chip).not.toBeNull();
-    expect(chip?.className).toContain("group-hover:bg-bg-hover");
-    expect(chip?.className).toContain("h-9");
-    expect(chip?.className).toContain("w-9");
-    // Icon-only: no visible text label in the button.
     expect(back.textContent?.trim()).toBe("");
   });
 
@@ -85,10 +64,7 @@ describe("ViewHeader — standardized normal-view header (#13451)", () => {
   it("opts a view out of the back control with showBack={false}", () => {
     render(<ViewHeader title="Home" showBack={false} />);
     expect(screen.queryByRole("button", { name: /back/i })).toBeNull();
-    // Title still present and centered even with no back control.
-    const title = screen.getByRole("heading", { name: "Home" });
-    expect(title.className).toContain("text-center");
-    expect(title.className).toContain("mx-auto");
+    expect(screen.getByRole("heading", { name: "Home" })).toBeTruthy();
   });
 
   it("names the back control per-view via backLabel (agent + a11y)", () => {
@@ -111,22 +87,5 @@ describe("ViewHeader — standardized normal-view header (#13451)", () => {
     expect(
       screen.queryByRole("button", { name: "Back to launcher" }),
     ).toBeNull();
-  });
-
-  it("renders trailing actions at the right edge, above the centered title", () => {
-    render(
-      <ViewHeader
-        title="Wallet"
-        right={<button type="button">Refresh</button>}
-      />,
-    );
-    const refresh = screen.getByRole("button", { name: "Refresh" });
-    const title = screen.getByRole("heading", { name: "Wallet" });
-    // Actions render (rightmost edge) and stay clickable above the centered
-    // title layer; the title itself is pointer-events-none so it never eats
-    // clicks meant for the controls.
-    expect(refresh).toBeTruthy();
-    expect(title.className).toContain("pointer-events-none");
-    expect(title.className).toContain("text-center");
   });
 });

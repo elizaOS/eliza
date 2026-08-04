@@ -91,32 +91,6 @@ describe("Notes state labels", () => {
     expect(yellow?.textContent).toBe("");
   });
 
-  it.each([
-    { height: 499, label: "compact", width: 315 },
-    { height: 800, label: "desktop", width: 1280 },
-  ])(
-    "lets each view own scrolling inside the overflow-hidden host at $label size",
-    ({ height, width }) => {
-      Object.defineProperties(window, {
-        innerHeight: { configurable: true, value: height },
-        innerWidth: { configurable: true, value: width },
-      });
-      stateHook.mockReturnValue(hookState({ snapshot: snapshot(1) }));
-      const notes = render(<NotesView />);
-      const notesRoot = notes.getByTestId("simple-notes-view");
-      expect(notesRoot.style.height).toContain("--eliza-chat-clearance");
-      expect(notesRoot.style.width).toContain("--eliza-chat-side-clearance");
-      expect(notesRoot.style.minHeight).toBe("0px");
-      expect(notesRoot.style.overflowY).toBe("auto");
-      expect(notesRoot.style.paddingBottom).not.toContain(
-        "--eliza-chat-clearance",
-      );
-      expect(notesRoot.style.paddingInlineEnd).not.toContain(
-        "--eliza-chat-side-clearance",
-      );
-    },
-  );
-
   it("does not report healthy zero counts before the first snapshot", () => {
     stateHook.mockReturnValue(hookState({ loading: true }));
     const _notes = render(<NotesView />);

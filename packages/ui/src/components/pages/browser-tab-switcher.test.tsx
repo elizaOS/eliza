@@ -126,7 +126,6 @@ describe("BrowserTabFoldControl", () => {
     fireEvent.click(control);
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
-
 });
 
 describe("BrowserTabSwitcher", () => {
@@ -256,5 +255,4 @@ describe("BrowserTabSwitcher", () => {
     const dialog = screen.getByTestId("browser-workspace-tab-switcher");
     expect(within(dialog).getByText("No tabs open yet")).toBeTruthy();
   });
-
 });

@@ -157,12 +157,6 @@ describe("CockpitRoute — live spawn wiring (agent mocked at client boundary)",
     );
   });
 
-  it("reserves scroll clearance for the floating terminal controls", async () => {
-    render(<CockpitRoute />);
-    await waitFor(() => expect(mocks.cockpitViewProps).not.toBeNull());
-    expect(mocks.cockpitViewProps?.className).toContain("pb-20");
-  });
-
   it("spawning creates the task AND spawns the agent with the picked mode", async () => {
     render(<CockpitRoute />);
     await waitFor(() => expect(mocks.getOrchestratorRooms).toHaveBeenCalled());

@@ -160,6 +160,14 @@ function normalizeUsage(value) {
       .map((key) => [key, value[key]])
       .filter(([, number]) => Number.isFinite(number) && number >= 0),
   );
+  const promptTokenDetails = finiteFields(value.prompt_tokens_details, [
+    "cached_tokens",
+  ]);
+  const inputTokenDetails = finiteFields(value.input_tokens_details, [
+    "cached_tokens",
+  ]);
+  if (promptTokenDetails) usage.prompt_tokens_details = promptTokenDetails;
+  if (inputTokenDetails) usage.input_tokens_details = inputTokenDetails;
   return Object.keys(usage).length > 0 ? usage : null;
 }
 
@@ -194,13 +202,14 @@ export async function safeHttpError(response) {
   };
 }
 
-export function buildOpenAiRequestBody(probeCase, prompt) {
+export function buildOpenAiRequestBody(probeCase, prompt, promptCacheKey) {
   const body = {
     model: probeCase.model,
     messages: [{ role: "user", content: prompt }],
     stream: true,
     stream_options: { include_usage: true },
     max_tokens: probeCase.maxTokens,
+    ...(promptCacheKey ? { prompt_cache_key: promptCacheKey } : {}),
   };
   if (probeCase.reasoningEffort !== "omit") {
     body.reasoning_effort = probeCase.reasoningEffort;
@@ -226,6 +235,12 @@ export function consumeOpenAiEvent(event) {
     finishReason:
       typeof choice?.finish_reason === "string" ? choice.finish_reason : null,
     usage: normalizeUsage(event?.usage),
+    providerTimeInfo: finiteFields(event?.time_info, [
+      "queue_time",
+      "prompt_time",
+      "completion_time",
+      "total_time",
+    ]),
     providerError:
       error && typeof error === "object"
         ? {
@@ -265,6 +280,7 @@ export async function readSse(
   let reasoningCharacters = 0;
   let outputText = "";
   let usage = null;
+  let providerTimeInfo = null;
   let finishReason = null;
   let providerError = null;
   let terminal = null;
@@ -300,6 +316,9 @@ export async function readSse(
       outputCharacters += observation.content.length;
     }
     if (observation.usage) usage = observation.usage;
+    if (observation.providerTimeInfo) {
+      providerTimeInfo = observation.providerTimeInfo;
+    }
     if (observation.finishReason) finishReason = observation.finishReason;
     if (observation.providerError) providerError = observation.providerError;
     if (observation.terminal) terminal = observation.terminal;
@@ -327,6 +346,7 @@ export async function readSse(
     reasoningCharacters,
     outputText,
     usage,
+    providerTimeInfo,
     finishReason,
     providerError,
     terminal,
@@ -429,6 +449,7 @@ export async function probeOpenAi({
   timeoutMs,
   sequence,
   metadata,
+  promptCacheKey,
   fetchImpl = fetch,
 }) {
   const expectedProof = proof || ["latency-proof", randomUUID()].join("-");
@@ -449,7 +470,9 @@ export async function probeOpenAi({
         "X-Eliza-Telemetry": "full",
         "User-Agent": "eliza-chat-latency/1.0",
       },
-      body: JSON.stringify(buildOpenAiRequestBody(probeCase, prompt)),
+      body: JSON.stringify(
+        buildOpenAiRequestBody(probeCase, prompt, promptCacheKey),
+      ),
       signal: requestSignal(timeoutMs),
     });
   } catch (error) {
@@ -528,6 +551,7 @@ export async function probeOpenAi({
     malformedEvents: stream.malformedEvents,
     cleanCompletion,
     usage: stream.usage,
+    providerTimeInfo: stream.providerTimeInfo,
     providerError: stream.providerError,
     headers,
     serverTiming,
@@ -763,6 +787,7 @@ export async function runPairedProbes({
                 idleBeforeTargetMs: idleBeforeEachTarget ? idleMs : 0,
                 pairIntervalMs: pacePairs ? pairIntervalMs : 0,
               },
+              promptCacheKey: seed,
               fetchImpl,
             });
           }),
@@ -838,6 +863,22 @@ export function summarizeLatencyRecords(records) {
         firstTokenMs: metric((record) => record.firstTokenMs),
         totalMs: metric((record) => record.totalMs),
         preforwardMs: metric((record) => record.preforward?.total),
+        cacheRatePercent: metric((record) => {
+          const promptTokens =
+            record.usage?.prompt_tokens ?? record.usage?.input_tokens;
+          const cachedTokens =
+            record.usage?.prompt_tokens_details?.cached_tokens ??
+            record.usage?.input_tokens_details?.cached_tokens;
+          return Number.isFinite(promptTokens) &&
+            promptTokens > 0 &&
+            Number.isFinite(cachedTokens)
+            ? (cachedTokens / promptTokens) * 100
+            : undefined;
+        }),
+        providerPromptMs: metric((record) => {
+          const seconds = record.providerTimeInfo?.prompt_time;
+          return Number.isFinite(seconds) ? seconds * 1_000 : undefined;
+        }),
       };
     })
     .sort((left, right) =>
@@ -1040,6 +1081,7 @@ export async function runCli(argv = process.argv.slice(2)) {
               promptOverride: values.prompt,
               timeoutMs,
               sequence,
+              promptCacheKey: benchmarkSeed,
             }),
           );
         }

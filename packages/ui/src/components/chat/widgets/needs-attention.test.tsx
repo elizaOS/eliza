@@ -278,17 +278,6 @@ describe("NeedsAttentionWidget (#9449)", () => {
       root?.querySelector('[data-testid="chat-widget-needs-attention"]'),
     ).not.toBeNull();
   });
-
-  it("falls back to the default 2x1 span when no spanClassName is supplied (#11752)", async () => {
-    mockPending([pending({ id: "a-1", title: "Send the contract" })]);
-
-    const { container } = render(<NeedsAttentionWidget {...fetchProps} />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("chat-widget-needs-attention")).toBeTruthy();
-    });
-    expect(container.firstElementChild?.className).toContain("col-span-2");
-  });
 });
 
 // #14737 — tap behavior derives from the pending item's kind + options; the

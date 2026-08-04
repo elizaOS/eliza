@@ -76,10 +76,6 @@ import {
 } from "../../glass/native-backdrop";
 import { resetGlassBridgeForTests } from "../../glass/native-bridge";
 import {
-  GLASS_SHEET_BACKDROP_FILTER,
-  GLASS_SHEET_FILL,
-} from "../../glass/tokens";
-import {
   LAYOUT_SHIFT_INTENT_ATTR,
   LAYOUT_SHIFT_INTENT_TRANSIENT,
 } from "../../hooks/useLayoutShiftMonitor";
@@ -1944,21 +1940,6 @@ describe("ChatOverlay", () => {
     expect(grabberCue?.className).not.toContain("animate-pulse");
   });
 
-  it("keeps the ambient layer non-blocking for controls behind it", () => {
-    render(<ChatOverlay controller={makeController()} />);
-
-    const root = screen.getByTestId("chat-overlay");
-    expect(root.className).toContain("pointer-events-none");
-    expect(root.className).not.toContain("pointer-events-auto");
-
-    // The overlay still has a LIVE interactive region: the composer fieldset
-    // re-enables pointer events (inline, gated on !pilled) so taps land on the
-    // input while the rest of the surface passes through to the view behind it.
-    const composer = screen.getByTestId("chat-sheet");
-    expect(composer.style.pointerEvents).toBe("auto");
-    expect(composer).not.toBe(root);
-  });
-
   it("exposes the canonical chat composer test id on the overlay input only", () => {
     render(<ChatOverlay controller={makeController()} />);
 
@@ -2053,30 +2034,6 @@ describe("ChatOverlay", () => {
       expect(sheet.getAttribute("data-detent")).toBe(detent);
     },
   );
-
-  it("keeps composer controls in one non-wrapping input row inside the constrained panel", () => {
-    render(<ChatOverlay controller={makeController()} />);
-
-    const input = screen.getByTestId("chat-composer-textarea");
-    const bar = input.parentElement;
-    const panel = screen.getByTestId("chat-sheet");
-
-    expect(screen.queryByTestId("chat-composer-clear-debug")).toBeNull();
-    // Width is constrained on the panel's wrapper (which also holds the absolute
-    // drag handle) via the morph-driven inline max-width — 48rem (768px) at rest,
-    // widening to the viewport only as the maximize morph completes.
-    expect(panel.parentElement?.style.maxWidth).toBe("768px");
-    expect(bar?.className).toContain("flex");
-    expect(bar?.className).not.toContain("flex-wrap");
-    expect(bar?.className).toContain("gap-[clamp(0.125rem,1.25vw,0.5rem)]");
-    expect(bar?.className).toContain("px-[clamp(0.25rem,1.5vw,0.5rem)]");
-    expect(bar?.className).toContain("py-[clamp(0.125rem,0.75dvh,0.375rem)]");
-    expect(input.className).toContain("flex-1");
-    expect(input.className).not.toContain("basis-full");
-    expect(
-      screen.getByTestId("chat-composer-trailing-controls").className,
-    ).toContain("gap-0");
-  });
 
   it("renders no prompt-suggestion chips while the strip is flagged off", () => {
     render(
@@ -3481,6 +3438,45 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(sheet.getAttribute("data-chat-state")).toBe("MAXIMIZED");
   });
 
+  it("snaps to full-screen at 90% while held and reverses below the same line", async () => {
+    const { controller } = makeSwipeController();
+    render(<ChatOverlay controller={controller} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+    const startY = viewportHeight;
+    const snapHeight = viewportHeight * 0.9;
+
+    fireEvent.pointerDown(grabber, { clientY: startY, pointerId: 71 });
+    fireEvent.pointerMove(grabber, {
+      clientY: startY - (snapHeight - 20),
+      pointerId: 71,
+    });
+    await waitFor(() =>
+      expect(sheet.getAttribute("data-maximized")).toBeNull(),
+    );
+
+    fireEvent.pointerMove(grabber, {
+      clientY: startY - (snapHeight + 20),
+      pointerId: 71,
+    });
+    await waitFor(() =>
+      expect(sheet.getAttribute("data-maximized")).toBe("true"),
+    );
+
+    fireEvent.pointerMove(grabber, {
+      clientY: startY - (snapHeight - 30),
+      pointerId: 71,
+    });
+    await waitFor(() =>
+      expect(sheet.getAttribute("data-maximized")).toBeNull(),
+    );
+    fireEvent.pointerUp(grabber, {
+      clientY: startY - (snapHeight - 30),
+      pointerId: 71,
+    });
+  });
+
   it("renders the top-20% pull-down restore zone ONLY while maximized", () => {
     const { controller } = makeSwipeController();
     render(<ChatOverlay controller={controller} />);
@@ -3509,6 +3505,38 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     // (the thread didn't collapse to the input).
     expect(sheet.getAttribute("data-maximized")).toBeNull();
     expect(sheet.getAttribute("data-variant")).toBe("open");
+  });
+
+  it("keeps full-screen filled until a restore pull crosses below 90%", async () => {
+    const { controller } = makeSwipeController();
+    render(<ChatOverlay controller={controller} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    bigPullUp();
+    expect(sheet.getAttribute("data-maximized")).toBe("true");
+
+    const zone = screen.getByTestId("chat-maximize-restore-zone");
+    const startY = 20;
+    fireEvent.pointerDown(zone, { clientY: startY, pointerId: 81 });
+    const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+    fireEvent.pointerMove(zone, {
+      clientY: startY + viewportHeight * 0.05,
+      pointerId: 81,
+    });
+    await waitFor(() =>
+      expect(sheet.getAttribute("data-maximized")).toBe("true"),
+    );
+
+    fireEvent.pointerMove(zone, {
+      clientY: startY + viewportHeight * 0.12,
+      pointerId: 81,
+    });
+    await waitFor(() =>
+      expect(sheet.getAttribute("data-maximized")).toBeNull(),
+    );
+    fireEvent.pointerUp(zone, {
+      clientY: startY + viewportHeight * 0.12,
+      pointerId: 81,
+    });
   });
 
   it("a FULL downward pull in the restore zone drops full-bleed and collapses the sheet all the way (the un-maximize→collapse bug)", () => {

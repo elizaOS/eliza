@@ -47,7 +47,7 @@ env:
 jobs:
   app-real-e2e:
     name: Browser-driven real app e2e (nightly)
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 60
     # NOTE: `continue-on-error` intentionally lives on the e2e run step below, NOT
     # here at the job level. Job-level soft-fail resolves the whole run to

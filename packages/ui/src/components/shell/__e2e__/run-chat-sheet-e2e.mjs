@@ -471,15 +471,15 @@ async function openToFullDetent(p, pointer, label = "open to FULL") {
 async function restoreFromMaximized(p, pointer = "mouse", keyboardTouch = false) {
   const zone = p.getByTestId("chat-maximize-restore-zone");
   await zone.waitFor();
-  // 120px keeps the released height inside the FULL detent's magnet
-  // (SHEET_DETENT_MAGNET below the inset ceiling), so the restore
-  // deterministically snaps to the inset FULL detent instead of free-resting a
-  // few px under the magnet edge (140px sat right on that boundary).
+  // Cross the component's 90% restore line on every viewport. A fixed 120px
+  // pull works on desktop but remains inside the top 10% band on the tall mobile
+  // fixture, where full-screen must intentionally stay filled.
+  const restoreDistance = Math.max(120, Math.ceil((await viewportH(p)) * 0.12));
   if (pointer === "touch" && keyboardTouch) {
     await zone.focus();
     await p.keyboard.press("ArrowDown");
   } else {
-    await gesture(p, -120, {
+    await gesture(p, -restoreDistance, {
       pointer,
       slow: true,
       steps: 8,
@@ -614,9 +614,10 @@ async function runDragSuite(p, pointer, tag) {
     `[${pointer}] releasing the committed over-pull stays MAXIMIZED`,
   );
   await restoreFromMaximized(p, pointer);
+  const restoredH = await sheetHeight(p);
   assert(
-    near(await sheetHeight(p), fullH, TOL + 48),
-    `[${pointer}] settles back near FULL after restore`,
+    restoredH > halfH && restoredH < vh * 0.9,
+    `[${pointer}] restore settles in tall window mode below 90% (${Math.round(restoredH)}px)`,
   );
   const restoredState = await chatState(p);
   const restoredStillMaximized =
@@ -692,9 +693,25 @@ async function runDragSuite(p, pointer, tag) {
   await gesture(p, 120, { pointer, slow: true });
   await p.waitForTimeout(SETTLE);
   assert((await variant(p)) === "open", `[${pointer}] re-opened for the click-out check`);
-  await p
-    .getByTestId("chat-sheet-backdrop")
-    .click({ position: { x: 16, y: 16 }, force: true });
+  // The backdrop is deliberately pointer-transparent in production. Dispatch
+  // the synthetic pointer sequence directly so its target remains the backdrop
+  // marker; a forced Playwright click retargets through it to the sheet/root and
+  // incorrectly exercises the inside-tap path.
+  const backdrop = p.getByTestId("chat-sheet-backdrop");
+  await backdrop.dispatchEvent("pointerdown", {
+    pointerId: 91,
+    pointerType: pointer,
+    button: 0,
+    clientX: 16,
+    clientY: 16,
+  });
+  await backdrop.dispatchEvent("pointerup", {
+    pointerId: 91,
+    pointerType: pointer,
+    button: 0,
+    clientX: 16,
+    clientY: 16,
+  });
   await p.waitForTimeout(SETTLE);
   assert((await variant(p)) === "closed", `[${pointer}] clicking outside COLLAPSES the chat`);
   await snap(p, `${tag}-clicked-out-collapsed`);
@@ -1098,6 +1115,7 @@ async function runMidDragCommitSuite(p, tag) {
       .count()) === 1 && (await detent(p)) === "full",
     `[${tag}-held] the long-haul pull to the top ends MAXIMIZED`,
   );
+  const maximizedH = await sheetHeight(p);
 
   // Put the chat away again for the reversal leg (restore-strip drag down).
   await restoreFromMaximized(p, "mouse");
@@ -1121,8 +1139,8 @@ async function runMidDragCommitSuite(p, tag) {
   };
   const upH1 = await leg(topY);
   assert(
-    near(upH1, grabY2 - topY - 120, 30),
-    `[${tag}-held] reversal leg 1 (up) tracks (${Math.round(upH1)}px)`,
+    near(upH1, maximizedH, 30),
+    `[${tag}-held] reversal leg 1 (up) snaps to full-screen (${Math.round(upH1)}px)`,
   );
   const downH = await leg(grabY2);
   assert(
@@ -1131,8 +1149,8 @@ async function runMidDragCommitSuite(p, tag) {
   );
   const upH2 = await leg(topY);
   assert(
-    near(upH2, grabY2 - topY - 120, 30),
-    `[${tag}-held] reversal leg 3 (up again) tracks identically (${Math.round(upH2)}px)`,
+    near(upH2, maximizedH, 30),
+    `[${tag}-held] reversal leg 3 (up again) snaps identically (${Math.round(upH2)}px)`,
   );
   await p.mouse.up();
   await p.waitForTimeout(SETTLE);
@@ -1301,7 +1319,12 @@ const sink = { logs: [], errors: [] };
 // Drive a SLOW held grabber drag from the sheet's current open state to `endY`,
 // sampling every step: the cursor Y and the panel's live TOP edge (what the user
 // perceives as the sheet edge under the finger). Returns the per-step rows.
-async function sampleGrabberDrag(page, endY, steps = 34) {
+async function sampleGrabberDrag(
+  page,
+  endY,
+  steps = 34,
+  target = "chat-sheet-grabber",
+) {
   const panelTopY = async () => {
     const box = await page
       .getByTestId("chat-sheet")
@@ -1309,7 +1332,7 @@ async function sampleGrabberDrag(page, endY, steps = 34) {
       .catch(() => null);
     return box ? box.y : null;
   };
-  const b = await page.getByTestId("chat-sheet-grabber").boundingBox();
+  const b = await page.getByTestId(target).boundingBox();
   const cx = b.x + b.width / 2;
   const startY = b.y + b.height / 2;
   const rows = [];
@@ -1320,7 +1343,16 @@ async function sampleGrabberDrag(page, endY, steps = 34) {
     await page.mouse.move(cx, cursorY);
     await page.waitForTimeout(22);
     const top = await panelTopY();
-    rows.push({ cursorY, top, div: top == null ? null : top - cursorY });
+    const maximized =
+      (await page
+        .getByTestId("chat-sheet")
+        .getAttribute("data-maximized")) === "true";
+    rows.push({
+      cursorY,
+      top,
+      maximized,
+      div: top == null ? null : top - cursorY,
+    });
   }
   await page.mouse.up();
   await page.waitForTimeout(SETTLE);
@@ -1380,26 +1412,41 @@ async function runFingerTrackingSuite(page) {
   const vh = await viewportH(page);
   const up = await sampleGrabberDrag(page, -30);
   const upStats = assertFingerTracking(up, 28, "[finger] UP open→top", 90);
-  // The top must actually be reachable in one drag (the discrete commit springs
-  // the panel edge-to-edge once the over-pull crosses the threshold).
+  // The top must actually be reachable in one drag. The 90% crossing starts a
+  // discrete spring, so the last finger sample may catch that spring in flight;
+  // verify its settled endpoint instead of requiring the animation to finish
+  // inside the sampling loop's final 20ms slice.
   const minTop = Math.min(...up.filter((r) => r.top != null).map((r) => r.top));
+  await page.waitForTimeout(SETTLE);
+  const settledUpTop = await panelTop(page);
   assert(
-    minTop <= 40,
-    `[finger] UP drag reaches the screen top (min panel top ${Math.round(minTop)}px ≤ 40px)`,
+    settledUpTop <= 8,
+    `[finger] UP drag snaps from 90% to the screen top (sample min ${Math.round(minTop)}px, settled top ${Math.round(settledUpTop)}px ≤ 8px)`,
   );
 
-  // Reset to a clean inset FULL sheet for the collapse test.
-  await page.keyboard.press("Escape");
-  await page.waitForTimeout(SETTLE);
-  await gesture(page, 160, { pointer: "mouse", slow: false, steps: 1 });
-  await page.waitForTimeout(SETTLE);
-  await gesture(page, 220, { pointer: "mouse", slow: false, steps: 1 });
-  await page.waitForTimeout(SETTLE);
-
-  // (B) FULL → drag the grabber all the way down; the sheet edge follows 1:1
-  // and the chat ends collapsed at the bottom (pill/input).
-  const down = await sampleGrabberDrag(page, vh - 8);
-  const downStats = assertFingerTracking(down, 28, "[finger] DOWN full→pill");
+  // (B) MAXIMIZED → drag the restore strip all the way down. Full-screen stays
+  // pinned while the finger remains above the 90% crossing, then the window
+  // edge follows 1:1 and the chat ends collapsed at the bottom (pill/input).
+  const down = await sampleGrabberDrag(
+    page,
+    vh - 8,
+    34,
+    "chat-maximize-restore-zone",
+  );
+  const downMaximized = down.filter(
+    (row) => row.maximized && row.top != null,
+  );
+  assert(
+    downMaximized.length > 0 && downMaximized.every((row) => row.top <= 8),
+    `[finger] DOWN restore keeps full-screen pinned above the 90% crossing`,
+  );
+  const firstWindowRow = down.find(
+    (row) => !row.maximized && row.top != null,
+  );
+  assert(
+    firstWindowRow != null && firstWindowRow.top <= vh * 0.1 + 40,
+    `[finger] DOWN restore animates to window mode near 90% (top ${Math.round(firstWindowRow?.top ?? -1)}px)`,
+  );
   assert(
     (await variant(page)) === "closed",
     `[finger] DOWN drag collapses the chat to the bottom`,
@@ -1410,25 +1457,20 @@ async function runFingerTrackingSuite(page) {
   // screen top under the finger (no freeze, and it must maximize with the finger
   // still ON screen, not far past it), and reversing DOWN in the same gesture
   // must un-scale 1:1 (no displaced dead zone from a committed-maximize state).
-  // Reset to a clean INSET-full sheet (Escape → input → two flicks half→full):
-  // opening from the pill/half and over-flicking lands NEAR-maximized, which
-  // would make the round trip start inside the overshoot region.
-  if ((await detent(page)) === "pill") {
-    await page.getByTestId("chat-pill").click();
-    await page.waitForTimeout(SETTLE);
-  }
-  await page.keyboard.press("Escape");
-  await page.waitForTimeout(SETTLE);
-  await gesture(page, 160, { pointer: "mouse", slow: false, steps: 1 });
-  await page.waitForTimeout(SETTLE);
+  // Reset to a clean HALF sheet. FULL's old inset detent itself reaches the new
+  // 90% snap band on this viewport, so HALF is the honest window-mode starting
+  // point for the same-gesture maximize/reverse round trip.
+  await gotoFixture(page);
+  await page.waitForSelector('[data-testid="chat-sheet-grabber"]');
+  await page.waitForTimeout(500);
   await gesture(page, 160, { pointer: "mouse", slow: false, steps: 1 });
   await page.waitForTimeout(SETTLE);
   assert(
-    (await detent(page)) === "full" &&
+    (await detent(page)) === "half" &&
       (await page
         .locator('[data-testid="chat-sheet"][data-maximized="true"]')
         .count()) === 0,
-    `[finger] reached INSET-full before the maximize round-trip (detent ${await detent(page)})`,
+    `[finger] reached window-mode HALF before the maximize round-trip (detent ${await detent(page)})`,
   );
   {
     const b = await page.getByTestId("chat-sheet-grabber").boundingBox();
@@ -1437,12 +1479,14 @@ async function runFingerTrackingSuite(page) {
     const topY = -28; // just past the screen top
     const rows = [];
     const readTop = async (cursorY, phase) => {
-      const top = await page
+      const state = await page
         .getByTestId("chat-sheet")
-        .boundingBox()
-        .then((box) => box?.y ?? null)
-        .catch(() => null);
-      rows.push({ phase, cursorY, top });
+        .evaluate((sheet) => ({
+          top: sheet.getBoundingClientRect().top,
+          maximized: sheet.getAttribute("data-maximized") === "true",
+        }))
+        .catch(() => ({ top: null, maximized: false }));
+      rows.push({ phase, cursorY, ...state });
     };
     await page.mouse.move(cx, startY);
     await page.mouse.down();
@@ -1476,33 +1520,31 @@ async function runFingerTrackingSuite(page) {
       upTop <= 8,
       `[finger] FULL→top drag reaches the screen top under the finger (min top ${Math.round(upTop)}px ≤ 8px — no freeze)`,
     );
-    // The DOWN phase must track the finger 1:1 (constant offset) — no dead zone
-    // from a committed-maximize state. This round trip only spans the over-pull
-    // region (top ~0→inset-full), so trim just the pinned-at-screen-top boundary
-    // (top ≤ 6, where the grabber gap compresses) and measure the divergence's
-    // spread directly.
-    const downDivs = rows
-      .filter((r) => r.phase === "down" && r.top != null && r.top > 6)
-      .map((r) => r.top - r.cursorY);
-    let downWorst = -1;
-    if (downDivs.length >= 6) {
-      const sorted = [...downDivs].sort((a, c) => a - c);
-      const med = sorted[Math.floor(sorted.length / 2)];
-      downWorst = Math.max(...downDivs.map((d) => Math.abs(d - med)));
-      assert(
-        downWorst <= 34,
-        `[finger] MAXIMIZE reversal DOWN tracks 1:1 (max drift ${Math.round(downWorst)}px from the ${Math.round(med)}px offset ≤ 34px — no committed-maximize dead zone)`,
-      );
-    } else {
-      assert(false, `[finger] MAXIMIZE reversal: too few down samples (${downDivs.length})`);
-    }
+    // While the pull remains above the 90% restore line, MAXIMIZED must mean
+    // truly full-height: no wallpaper strip is allowed above the panel. Once
+    // the finger crosses below 90%, the state flips back to the inset window.
+    const downMaximized = rows.filter(
+      (r) => r.phase === "down" && r.maximized && r.top != null,
+    );
+    assert(
+      downMaximized.length > 0 &&
+        Math.min(...downMaximized.map((r) => r.top)) <= 8,
+      `[finger] MAXIMIZED restore reaches the viewport top while held above 90%`,
+    );
+    const firstWindowRow = rows.find(
+      (r) => r.phase === "down" && !r.maximized && r.top != null,
+    );
+    assert(
+      firstWindowRow != null && firstWindowRow.top <= vh * 0.1 + 40,
+      `[finger] restore switches to window mode near the 90% line (first window top ${Math.round(firstWindowRow?.top ?? -1)}px)`,
+    );
     console.log(
-      `  ℹ maximize round-trip: up top ${Math.round(upTop)}px, maximized at cursorY ${maxedAtCursor == null ? "n/a" : Math.round(maxedAtCursor)}, down drift ${Math.round(downWorst)}px`,
+      `  ℹ maximize round-trip: up top ${Math.round(upTop)}px, maximized at cursorY ${maxedAtCursor == null ? "n/a" : Math.round(maxedAtCursor)}, restored near top ${Math.round(firstWindowRow?.top ?? -1)}px`,
     );
   }
 
   console.log(
-    `  ℹ finger tracking: up drift ${Math.round(upStats?.worst ?? -1)}px, down drift ${Math.round(downStats?.worst ?? -1)}px (handle offsets ${Math.round(upStats?.median ?? 0)}/${Math.round(downStats?.median ?? 0)}px)`,
+    `  ℹ finger tracking: up drift ${Math.round(upStats?.worst ?? -1)}px (handle offset ${Math.round(upStats?.median ?? 0)}px); restore crossed to window at top ${Math.round(firstWindowRow?.top ?? -1)}px`,
   );
 }
 
@@ -1625,9 +1667,12 @@ async function runAnimationAppearanceSuite(page) {
   // sampleCurve), so the guard is `< 260` — squarely between that animated peak
   // and the ~415px one-frame snap it exists to catch. `steppedFrames >= 8`
   // already proves the motion is spread across many frames, not a single jump.
+  await gotoFixture(page);
+  await page.waitForSelector('[data-testid="chat-sheet-grabber"]');
+  await page.waitForTimeout(500);
+  await gesture(page, 160, { pointer: "mouse", slow: false, steps: 1 });
+  await page.waitForTimeout(SETTLE);
   const collapse = await sampleCurve(async () => {
-    await page.getByTestId("chat-sheet-grabber").click(); // full → half
-    await page.waitForTimeout(SETTLE);
     await page.getByTestId("chat-sheet-grabber").click(); // half → input (collapse)
   });
   assert(

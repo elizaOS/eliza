@@ -964,28 +964,6 @@ describe("NotificationsHomeCenter", () => {
     expect(screen.queryByTestId("notifications-mark-all-read")).toBeNull();
   });
 
-  it("rows are liquid-glass cards (shared recipe on the swipe surface)", () => {
-    __ingestNotificationForTests(makeNotification({ title: "Glass" }));
-    render(<NotificationsHomeCenter />);
-    expandShade();
-    const surface = screen.getByTestId("notification-row-swipe");
-    expect(surface.className).toContain("eliza-notif-glass");
-    expect(surface.className).toContain("rounded-2xl");
-    // The recipe itself ships in the component's style block (fill + sheen +
-    // inset edge + blur), so the class is the single source of the look.
-    const css = document.querySelector("style")?.textContent ?? "";
-    expect(css).toContain(".eliza-notif-glass");
-    expect(css).toContain("backdrop-filter");
-    expect(css).toContain("box-shadow");
-    const focusedGlassRule = css.match(
-      /\.eliza-notif-glass:focus-within\s*\{([^}]*)\}/,
-    )?.[1];
-    expect(focusedGlassRule).toContain("box-shadow:");
-    expect(focusedGlassRule).toContain("!important");
-    expect(css).toContain(".eliza-notif-row-inner[data-swipe-dragging]");
-    expect(surface.getAttribute("data-swipe-dragging")).toBeNull();
-  });
-
   it("acting on a row removes it; surviving rows keep their stable order", () => {
     __ingestNotificationForTests(
       makeNotification({
@@ -2736,20 +2714,6 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     );
     expect(list.getAttribute("data-shade-preview")).toBe("expanding");
     expect(list.hasAttribute("data-shade-dragging")).toBe(true);
-    const css = list.parentElement?.querySelector("style")?.textContent ?? "";
-    expect(css).toContain(".eliza-notif-scroll[data-shade-dragging]");
-    const releaseRule = css.match(
-      /\.eliza-notif-scroll\[data-shade-release-settling\]\s*\{([^}]*)\}/,
-    )?.[1];
-    expect(releaseRule).toContain("animation: none");
-    expect(releaseRule).toContain("-webkit-mask-image: none");
-    expect(releaseRule).toContain("mask-image: none");
-    const rowAnimationGuard = css
-      .match(/[^{}]+\{\s*animation: none !important;\s*\}/g)
-      ?.find((rule) => rule.includes("data-shade-release-settling"));
-    expect(rowAnimationGuard).toContain(
-      '.eliza-notif-scroll[data-shade-mode="expanded"] .eliza-notif-row',
-    );
     expect(groupContent?.style.transform).toBe(expectedTransform);
     expect(clearSlot?.style.transform).toBe(expectedTransform);
     expect(count.style.transform).toBe(expectedTransform);

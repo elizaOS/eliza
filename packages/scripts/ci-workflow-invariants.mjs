@@ -302,6 +302,10 @@ export function validateWorkflowSources(sources) {
   const forkBuildSetup = forkBuild.steps.find(
     (step) => step?.uses === "./.github/actions/setup-bun-workspace",
   );
+  invariant(
+    forkBuildSetup?.env?.ELIZA_SKIP_ARTIFACT_SYNC === "1",
+    `${WORKFLOW_PATHS.qualityFork}: hosted build must preserve exact-head homepage baselines by skipping legacy artifact sync`,
+  );
   const forkSkillDependency = forkBuild.steps.find(
     (step) => step?.name === "Install pinned skill validator dependency",
   );

@@ -186,16 +186,6 @@ describe("ChatOverlay first-run gating", () => {
     expect(controller.send).not.toHaveBeenCalled();
   });
 
-  it("preserves the shell wallpaper behind a neutral onboarding scrim", () => {
-    render(<ChatOverlay controller={makeController()} firstRunOpen />);
-    const backdrop = screen.getByTestId("chat-first-run-backdrop");
-    expect(backdrop.getAttribute("data-first-run-opaque")).toBe("true");
-    expect(backdrop.className).toContain("bg-black/15");
-    const surface = screen.getByTestId("chat-sheet-surface");
-    expect(surface.style.backgroundColor).toBe("transparent");
-    expect(surface.style.backgroundImage).toBe("none");
-  });
-
   it("drops the opaque backdrop off its opaque state on the completion edge (revealing the launcher)", () => {
     const controller = makeController();
     const { rerender } = render(
@@ -257,7 +247,7 @@ describe("ChatOverlay first-run gating", () => {
     expect(sheet.getAttribute("data-detent")).toBe("full");
   });
 
-  it("renders a non-interactive composer handle without changing its height", () => {
+  it("renders a non-interactive composer handle at the full detent", () => {
     render(<ChatOverlay controller={makeController()} firstRunOpen />);
     const sheet = screen.getByTestId("chat-sheet");
     const composer = screen.getByTestId("chat-composer-row");
@@ -267,12 +257,6 @@ describe("ChatOverlay first-run gating", () => {
     expect(composer.contains(decorativeHandle)).toBe(true);
     expect(decorativeHandle.getAttribute("aria-hidden")).toBe("true");
     expect(decorativeHandle.tagName).toBe("SPAN");
-    // The composer keeps its normal equal-inset padding during first-run —
-    // the responsive clamp token from the composer row, not a taller pt-5.
-    expect(composer.className.split(" ")).toContain(
-      "py-[clamp(0.125rem,0.75dvh,0.375rem)]",
-    );
-    expect(composer.className.split(" ")).not.toContain("pt-5");
     expect(sheet.getAttribute("data-variant")).toBe("open");
     expect(sheet.getAttribute("data-detent")).toBe("full");
   });

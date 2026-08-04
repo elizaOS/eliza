@@ -63,7 +63,6 @@ describe("SettingsGroup", () => {
     expect(screen.getByText("Row A")).toBeTruthy();
     expect(screen.getByText("Row B")).toBeTruthy();
   });
-
 });
 
 describe("agent-addressable rows", () => {

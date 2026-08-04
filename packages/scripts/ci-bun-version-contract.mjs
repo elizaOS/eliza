@@ -53,6 +53,7 @@ const GATE_WORKFLOWS = [
   "app-aesthetic-audit.yml",
   "develop-exhaustive.yml",
   "ci-full-matrix-proof.yml",
+  "windows-ci.yml",
   "windows-desktop-preload-smoke.yml",
 ];
 

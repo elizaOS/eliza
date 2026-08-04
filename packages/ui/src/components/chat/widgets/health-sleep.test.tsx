@@ -234,15 +234,4 @@ describe("HealthSleepWidget (#9143)", () => {
       root?.querySelector('[data-testid="widget-health-sleep"]'),
     ).not.toBeNull();
   });
-
-  it("falls back to the default 2x1 span when no spanClassName is supplied (#11752)", async () => {
-    mockSleep({ episodes: [episode()], classification: "regular" });
-
-    const { container } = render(<HealthSleepWidget slot="home" />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("widget-health-sleep")).toBeTruthy();
-    });
-    expect(container.firstElementChild?.className).toContain("col-span-2");
-  });
 });

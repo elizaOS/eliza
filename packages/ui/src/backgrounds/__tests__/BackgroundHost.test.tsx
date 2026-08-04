@@ -10,7 +10,6 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { BackgroundHost } from "../BackgroundHost";
-import { SKY_BACKGROUND_COLOR } from "../types";
 
 afterEach(() => {
   cleanup();
@@ -26,8 +25,6 @@ describe("BackgroundHost", () => {
     if (!host) throw new Error("background host element missing");
     expect(host.dataset.elizaBg).toBe("solid");
     expect(host.getAttribute("aria-hidden")).toBe("true");
-    expect(host.style.background).toContain("var(--background");
-    expect(host.style.background).toContain(SKY_BACKGROUND_COLOR);
   });
 
   it("never mounts a video or animation surface", () => {

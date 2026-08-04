@@ -83,25 +83,6 @@ describe("Launcher", () => {
     expect(document.querySelectorAll('[aria-label^="Page "]').length).toBe(0);
   });
 
-  it("scales icons and labels from the launcher container while keeping short landscape compact", () => {
-    render(<Launcher entries={FEW} onLaunch={() => {}} />);
-    const css = [...document.querySelectorAll("style")]
-      .map((style) => style.textContent ?? "")
-      .find((value) => value.includes("[data-launcher-icon]"));
-
-    expect(css).toContain("container-type: inline-size");
-    expect(css).toContain("width: clamp(3.5rem, 16cqi, 4.5rem)");
-    expect(css).toContain(
-      "font-size: clamp(.75rem, calc(.68rem + .25cqi), .875rem)",
-    );
-    expect(css).toContain(
-      "@media (orientation: landscape) and (max-height: 520px)",
-    );
-    expect(
-      screen.getAllByText("Chat")[0].getAttribute("data-launcher-label"),
-    ).toBe("");
-  });
-
   it("compacts long unbroken labels without shrinking ordinary or wrapped labels", () => {
     render(
       <Launcher

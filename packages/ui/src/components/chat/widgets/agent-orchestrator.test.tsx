@@ -136,5 +136,4 @@ describe("OrchestratorActivityWidget (home slot)", () => {
       root?.querySelector('[data-testid="chat-widget-events"]'),
     ).not.toBeNull();
   });
-
 });

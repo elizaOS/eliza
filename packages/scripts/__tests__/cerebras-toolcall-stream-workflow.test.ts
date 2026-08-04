@@ -155,6 +155,9 @@ describe("Eliza Cloud plugin tool-call stream workflow (#16997)", () => {
     expect(identifiedStep(runtimeJob, "cerebras_chat_flow_live").run).toContain(
       "packages/agent perf:cerebras-chat",
     );
+    expect(namedStep(runtimeJob, "Validate benchmark helpers").run).toBe(
+      "bunx vitest run packages/agent/test/cerebras-chat-flow-latency.test.ts --coverage.enabled=false",
+    );
     expect(
       identifiedStep(evidenceJob, "plugin_toolcall_stream_live").run,
     ).toContain(

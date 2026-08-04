@@ -334,31 +334,5 @@ describe.skipIf(SKIP_E2E)("Twitter E2E Integration Tests", () => {
       );
       expect(message).toBeNull();
     });
-
-    it("should handle rate limiting gracefully", async () => {
-      // This test is commented out to avoid hitting rate limits during normal test runs
-      // Uncomment to test rate limit handling
-      /*
-      const promises = [];
-      for (let i = 0; i < 20; i++) {
-        promises.push(
-          postService.createPost({
-            agentId: runtime.agentId,
-            roomId: testRoomId,
-            text: `Rate limit test ${i} at ${Date.now()}`,
-          }).then(post => {
-            testTweetIds.push(post.id);
-            return post;
-          })
-        );
-      }
-
-      try {
-        await Promise.all(promises);
-      } catch (error) {
-        expect(error.message).toContain('rate limit');
-      }
-      */
-    });
   });
 });

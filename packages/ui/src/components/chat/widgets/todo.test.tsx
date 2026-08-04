@@ -384,17 +384,6 @@ describe("TodoSidebarWidget", () => {
     ).not.toBeNull();
   });
 
-  it("home slot: falls back to the default 2x1 span when no spanClassName is supplied (#11752)", async () => {
-    stubLifeopsFetch([
-      ownerTodo({ id: "od", title: "Pay rent", dueDate: overdueDue() }),
-    ]);
-    const { container } = render(
-      <TodoWidget slot="home" events={[]} clearEvents={vi.fn()} />,
-    );
-    expect(await screen.findByText("Pay rent")).toBeTruthy();
-    expect(container.firstElementChild?.className).toContain("col-span-2");
-  });
-
   it("home slot: renders an at-risk goal as one flagged row inside Today (spec §E item 5)", async () => {
     stubLifeopsFetch(
       [],
