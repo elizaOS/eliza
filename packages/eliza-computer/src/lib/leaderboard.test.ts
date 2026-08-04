@@ -417,6 +417,43 @@ describe("model attribution", () => {
     ]);
   });
 
+  it("still rejects two complete footers separated by different lane signatures", () => {
+    // Each group here is a COMPLETE footer (all four labels plus its own
+    // lane signature), unlike the adjacent-rows case above. The
+    // one-terminal-lane-signature rule must reject this before the walk
+    // ever reaches the row-count checks.
+    const source = textSource(
+      "PR_LANE_SEPARATED:body",
+      [
+        "AI provider/model: OpenAI / gpt-5.6-sol",
+        "Client / agent tooling: codex-desktop",
+        "Contribution skill revision: N/A - unit test does not invoke the contribution skill",
+        "Attribution status: self-reported",
+        "— [lane-one]",
+        "AI provider/model: Anthropic / claude-opus-5",
+        "Client / agent tooling: codex-desktop",
+        "Contribution skill revision: N/A - unit test does not invoke the contribution skill",
+        "Attribution status: self-reported",
+        "— [lane-two]",
+        '<!-- eliza-computer-attribution:v1 {"provider":"anthropic","model":"claude-opus-5","client":"codex-desktop","skill_revision":"N/A - unit test does not invoke the contribution skill"} -->',
+      ].join("\n"),
+    );
+
+    const result = assessModelAttribution([source]);
+
+    expect(
+      result.declarations.some(
+        (declaration) => declaration.format === "machine-marker",
+      ),
+    ).toBe(false);
+    expect(result.invalidMarkers).toEqual([
+      expect.objectContaining({
+        sourceId: "PR_LANE_SEPARATED:body",
+        reason: "marker requires exactly one terminal lane signature",
+      }),
+    ]);
+  });
+
   it("rejects vague names and reports malformed markers without guessing", () => {
     const source = textSource(
       "COMMENT_2",

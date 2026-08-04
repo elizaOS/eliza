@@ -1070,8 +1070,11 @@ function markerFooterError(
   // as checklist rows far above it; a checklist row is not a competing footer.
   // Scanning the whole body made the template and SKILL.md ("append this
   // footer after the template") mutually exclusive and invalidated 64 of 67
-  // eligible sources (#17610). Two genuinely adjacent footers still collide
-  // here, so duplicate-footer detection is unweakened.
+  // eligible sources (#17610). Adjacent duplicate rows within this single
+  // terminal block still collide here (the count checks below). Two
+  // COMPLETE footers, each carrying its own lane signature, are already
+  // rejected earlier by the one-terminal-lane-signature check above this
+  // call, not by this block's row counts.
   const footerBlock = terminalAttributionBlock(
     body,
     beforeMarker,
