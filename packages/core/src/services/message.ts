@@ -882,20 +882,31 @@ const MODEL_CONTEXT_PROVIDER_EXCLUSION_SET = new Set<string>(
 const STAGE1_EXTRA_PROVIDER_EXCLUSIONS = ["ENTITIES", "DOCUMENTS"] as const;
 
 /**
- * Per-turn Stage-1 exclusions: the static set plus RECENT_ERRORS when the
- * turn is an unaddressed text-group turn. Internal diagnostics belong in
- * turns where the agent is acting or its operator is engaging; rendered into
- * the Stage-1 context of ambient group chatter they hijack routing — a live
- * "available_apps provider timeout" block led Stage 1 to answer a bystander's
- * crypto question as if it were about the internal error
- * (tj-f8249b30e986d6). The gate reuses the structural classifier the Stage-1
- * prompt tier branches on (channel type + addressing + source metadata,
- * never message-text heuristics), so anything not positively identified as
- * unaddressed group traffic — DMs, mentions, replies, name-drops,
- * autonomous/sub-agent turns, unknown channels — keeps the full provider
- * set, byte-identical to before.
+ * Providers withheld from EVERY composition pass and EVERY render of an
+ * unaddressed text-group turn. Internal diagnostics belong in turns where the
+ * agent is acting or its operator is engaging; rendered into the context of
+ * ambient group chatter they hijack routing — a live "available_apps provider
+ * timeout" block led Stage 1 to answer a bystander's crypto question as if it
+ * were about the internal error (tj-f8249b30e986d6). The exclusion must own
+ * the whole turn, not just Stage 1: the planner recompose re-adds every
+ * `alwaysInResponseState` provider (selectV5PlannerStateProviderNames), and
+ * composeState's turn cache can carry a previously composed block back into
+ * any later state object — so the ambient gate is applied to the Stage-1
+ * include list, to the planner include list, AND as a render exclusion on the
+ * planner context (createV5MessageContextObject), keeping cached provider
+ * state out of the prompt even when composition never requested it this pass.
  */
-function stage1ExtraProviderExclusions(
+const AMBIENT_TURN_PROVIDER_EXCLUSIONS = ["RECENT_ERRORS"] as const;
+
+/**
+ * The ambient exclusions, gated on the structural classifier the Stage-1
+ * prompt tier branches on (channel type + addressing + source metadata, never
+ * message-text heuristics). Anything not positively identified as unaddressed
+ * group traffic — DMs, mentions, replies, name-drops, autonomous/sub-agent
+ * turns, unknown channels — gets an empty list, so addressed turns keep the
+ * full provider set byte-identical to before.
+ */
+function ambientTurnProviderExclusions(
 	runtime: IAgentRuntime,
 	message: Memory,
 ): readonly string[] {
@@ -905,9 +916,20 @@ function stage1ExtraProviderExclusions(
 			messageExplicitlyAddressesAgent(runtime, message),
 		)
 	) {
-		return [...STAGE1_EXTRA_PROVIDER_EXCLUSIONS, "RECENT_ERRORS"];
+		return AMBIENT_TURN_PROVIDER_EXCLUSIONS;
 	}
-	return STAGE1_EXTRA_PROVIDER_EXCLUSIONS;
+	return [];
+}
+
+/** Per-turn Stage-1 exclusions: the static set plus the ambient-turn gate. */
+function stage1ExtraProviderExclusions(
+	runtime: IAgentRuntime,
+	message: Memory,
+): readonly string[] {
+	return [
+		...STAGE1_EXTRA_PROVIDER_EXCLUSIONS,
+		...ambientTurnProviderExclusions(runtime, message),
+	];
 }
 
 function hasInboundBenchmarkContext(message: Memory): boolean {
@@ -1187,6 +1209,19 @@ export function selectV5PlannerStateProviderNames(args: {
 			continue;
 		}
 		providerNames.add(name);
+	}
+
+	// The ambient gate owns this composition pass too: without it, the
+	// always-on re-add above restores RECENT_ERRORS for ambient turns routed
+	// to planning, undoing the Stage-1 exclusion exactly on the turns that
+	// reach a model twice. Stage-1-only exclusions (ENTITIES/DOCUMENTS) are
+	// deliberately NOT subtracted here — the planner legitimately re-adds
+	// them; the ambient exclusions are turn-scoped, not stage-scoped.
+	for (const excluded of ambientTurnProviderExclusions(
+		args.runtime,
+		args.message,
+	)) {
+		providerNames.delete(excluded);
 	}
 
 	return [...providerNames];
@@ -4160,7 +4195,13 @@ export async function renderMessageHandlerStablePrefix(
 		state,
 		userRoles: [senderRole],
 		availableContexts,
-		extraProviderExclusions: STAGE1_EXTRA_PROVIDER_EXCLUSIONS,
+		// Per-turn exclusions so the stable-prefix render is owned by the same
+		// gate as every live render; the synthetic VOICE_DM message classifies
+		// as addressed, so today this resolves to the static set.
+		extraProviderExclusions: stage1ExtraProviderExclusions(
+			runtime,
+			syntheticMessage,
+		),
 	});
 	const rendered = renderContextObject(context);
 	const stableSegments = rendered.promptSegments.filter(
@@ -7640,6 +7681,14 @@ export async function runV5MessageRuntimeStage1(args: {
 			preselectedActions: exposedPlannerActions,
 			actionSurface,
 			ambientTurn,
+			// Render-side half of the ambient gate: the include-list exclusion in
+			// selectV5PlannerStateProviderNames stops fresh composition, but
+			// composeState merges the whole turn cache into the state it returns,
+			// so a block composed earlier in the turn would still render here.
+			// The exclusion must own cached rendering as well as composition.
+			...(ambientTurn
+				? { extraProviderExclusions: AMBIENT_TURN_PROVIDER_EXCLUSIONS }
+				: {}),
 		});
 		const responseHandlerContextSlices = stringArrayProperty(
 			(messageHandler.plan as { contextSlices?: unknown }).contextSlices,
