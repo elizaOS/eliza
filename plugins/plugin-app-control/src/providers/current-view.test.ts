@@ -199,6 +199,3 @@ describe("current_view state provider", () => {
 		expect(r.values?.currentViewSubview).toBe("voice");
 	});
 });
-/**
- * Current-view provider tests for exposing active renderer state to agent context.
- */
