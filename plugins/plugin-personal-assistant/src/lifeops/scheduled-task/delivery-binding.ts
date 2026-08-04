@@ -62,10 +62,26 @@ export async function bindScheduledTaskToInboundChat(
     return null;
   }
 
+  // Canonical owner-only audience attestation is shared by connector DMs and
+  // first-party/API turns. A first-party request can target a room whose
+  // canonical source names the owner's preferred connector, so classify the
+  // inbound envelope before consulting that room. Otherwise internal scenario
+  // and API turns are rewritten into unavailable outbound connector sends and
+  // planner idempotency keys leak a synthetic room suffix.
+  const inboundSource =
+    stringField(message.metadata?.source) ??
+    stringField(message.content.source);
+  if (inboundSource === "api" || inboundSource === "client_chat") {
+    return null;
+  }
+
   const room = await runtime.getRoom(message.roomId);
   const source = stringField(room?.source);
   const channelId = stringField(room?.channelId);
   if (!room || !source || !channelId || room.id !== audience.roomId) {
+    return null;
+  }
+  if (source === "api" || source === "client_chat" || channelId === room.id) {
     return null;
   }
 
