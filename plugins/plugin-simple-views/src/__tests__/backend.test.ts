@@ -756,6 +756,56 @@ describe("Simple Views capabilities", () => {
     }
   });
 
+  it("normalizes ordinary 12-hour calendar times at the capability boundary", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+
+    const morning = await interact(
+      "create-calendar-event",
+      {
+        title: "Team sync",
+        date: "2026-08-04",
+        time: "10:00 AM",
+      },
+      service,
+    );
+    expect(morning).toMatchObject({
+      success: true,
+      text: "Added “Team sync” to your calendar for Tuesday, August 4, 2026 at 10:00 AM.",
+      data: { event: { time: "10:00" } },
+    });
+
+    const midnight = await interact(
+      "update-calendar-event",
+      { title: "Team sync", time: "12am" },
+      service,
+    );
+    expect(midnight).toMatchObject({
+      success: true,
+      data: { event: { time: "00:00" } },
+    });
+
+    const afternoon = await interact(
+      "update-calendar-event",
+      { title: "Team sync", time: "1:05 p.m." },
+      service,
+    );
+    expect(afternoon).toMatchObject({
+      success: true,
+      data: { event: { time: "13:05" } },
+    });
+
+    await expect(
+      interact(
+        "update-calendar-event",
+        { title: "Team sync", time: "10" },
+        service,
+      ),
+    ).resolves.toMatchObject({
+      success: false,
+      error: { code: "SIMPLE_VIEWS_VALIDATION_FAILED" },
+    });
+  });
+
   it("keeps the viewed date stable when events are created or moved", async () => {
     const service = await serviceFor(await temporaryStateFile());
     await service.selectDate("2026-08-03");
