@@ -251,7 +251,7 @@
       "outputs": []
     },
     "@elizaos/plugin-calendar#typecheck": {
-      "dependsOn": [],
+      "dependsOn": ["@elizaos/plugin-video#build"],
       "outputs": []
     },
     "@elizaos/plugin-personal-assistant#typecheck": {
