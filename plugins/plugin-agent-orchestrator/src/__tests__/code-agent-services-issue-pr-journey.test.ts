@@ -1,5 +1,5 @@
 /**
- * Production-service journey over disposable boundaries: a real GitHub PAT
+ * Services-level journey over disposable boundaries (this does not exercise TASKS orchestration or ACP): a real GitHub PAT
  * client creates a fixture issue over HTTP, real git creates/commits/pushes the
  * issue branch, and the production GitHub provider opens the pull request over
  * HTTP. Only GitHub itself and the repository host are local fixtures.
@@ -129,7 +129,7 @@ afterEach(() => {
   }
 });
 
-describe("code-agent issue to pull-request journey", () => {
+describe("code-agent services-level issue to pull-request journey", () => {
   it("turns a fixture issue into a pushed branch, commit, and real PR request", async () => {
     const github = new FixtureGitHub();
     await github.start();

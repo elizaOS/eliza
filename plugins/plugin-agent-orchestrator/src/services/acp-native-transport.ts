@@ -303,8 +303,6 @@ export class NativeAcpClient {
     const id = this.nextId++;
     const proc = this.requireProcess();
     const payload = { jsonrpc: "2.0", id, method, params };
-    this.emitEvent(payload as AcpJsonRpcMessage);
-    proc.stdin.write(`${JSON.stringify(payload)}\n`);
     return new Promise((resolve, reject) => {
       const timer =
         timeoutMs > 0
@@ -315,6 +313,8 @@ export class NativeAcpClient {
             }, timeoutMs)
           : undefined;
       this.pending.set(id, { resolve, reject, timer });
+      this.emitEvent(payload as AcpJsonRpcMessage);
+      proc.stdin.write(`${JSON.stringify(payload)}\n`);
     });
   }
 
