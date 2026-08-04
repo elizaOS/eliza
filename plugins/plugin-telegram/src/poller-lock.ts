@@ -43,7 +43,7 @@ const botOwnerKeys = new WeakMap<Telegraf<Context>, symbol>();
 const botByOwnerKey = new Map<symbol, Telegraf<Context>>();
 
 function credentialFingerprint(value: string): string {
-  return createHash("sha256").update(value).digest("hex").slice(0, 16);
+  return createHash("sha256").update(value).digest("hex");
 }
 
 function lockKeyForToken(token: string): string {
