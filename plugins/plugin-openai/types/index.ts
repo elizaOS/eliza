@@ -288,6 +288,14 @@ export interface TextStreamResult {
   providerMetadata?: {
     modelName: string;
     provider: "cerebras" | "evolink" | "openai";
+    /**
+     * Transient attempts re-issued before this stream was served; 0 = clean
+     * first attempt. Present so consumers can tell a degraded-provider success
+     * from a healthy one without scraping logs.
+     */
+    retryCount?: number;
+    /** Provider error message behind the most recent retry, when any occurred. */
+    lastRetryReason?: string;
   };
 }
 
