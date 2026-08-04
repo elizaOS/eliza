@@ -671,7 +671,7 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 			await waitForDiscordIngressReadiness(service.clientReadyPromise);
 		} catch (error) {
 			service.runtime.reportError(
-				"discord:gateway-interaction-before-ready",
+				["discord", "gateway-interaction-before-ready"].join(":"),
 				error,
 				{
 					accountId,
