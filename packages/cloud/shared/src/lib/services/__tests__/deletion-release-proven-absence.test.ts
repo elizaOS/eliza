@@ -22,7 +22,7 @@
  * branch a future refactor could silently drop.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 
 const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
 const CAN_USE_ISOLATED_PGLITE =
@@ -36,6 +36,7 @@ import { agentSandboxes } from "../../../db/schemas/agent-sandboxes";
 import { dockerNodes } from "../../../db/schemas/docker-nodes";
 import { organizations } from "../../../db/schemas/organizations";
 import { users } from "../../../db/schemas/users";
+import { apiKeysService } from "../api-keys";
 import { PROVISIONING_JOB_TEST_TABLES } from "./tier-upgrade-pglite-schema";
 
 const PGLITE_TIMEOUT = 60_000;
@@ -214,6 +215,41 @@ describe("deleteAgent releases the node slot only on proven absence", () => {
       await service.deleteAgent(agentId, orgId);
 
       expect(await nodeCount(nodeId)).toBe(2);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a failure after the release, then a full-path retry, still decrements once",
+    async () => {
+      if (!pgliteReady) return;
+      // The issue's headline scenario, driven end to end rather than by calling
+      // the CAS twice by hand: the teardown succeeds and the slot is released,
+      // then a downstream step fails, so the whole delete re-runs. The retry
+      // must find ownership already spent and leave the live sibling's slot
+      // alone. Credential revocation is the first thing after the release that
+      // can fail, so it is the honest place to inject it.
+      const { service, agentId, orgId, nodeId } = await seedPlacedAgent();
+      scriptProvider(service, async () => {});
+
+      const revoke = spyOn(apiKeysService, "revokeForAgent").mockRejectedValueOnce(
+        new Error("credential revocation failed"),
+      );
+      try {
+        await expect(service.deleteAgent(agentId, orgId)).rejects.toThrow(
+          /credential revocation failed/,
+        );
+        // The release already committed before the failure — that is the design.
+        expect(await nodeCount(nodeId)).toBe(1);
+        expect(await ownership(agentId)).toBe(false);
+
+        // Retry the whole path. Revocation now succeeds, the delete completes,
+        // and the release CAS is a no-op because ownership is spent.
+        await service.deleteAgent(agentId, orgId);
+        expect(await nodeCount(nodeId)).toBe(1);
+      } finally {
+        revoke.mockRestore();
+      }
     },
     PGLITE_TIMEOUT,
   );
