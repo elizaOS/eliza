@@ -313,7 +313,7 @@ export function readGhPages(endpoint, spawn = spawnSync) {
   if (typeof endpoint !== "string" || endpoint.length === 0) {
     throw new TypeError("GitHub endpoint must be a non-empty string");
   }
-  const args = ["api", "--method", "GET", "--paginate", "--slurp", endpoint];
+  const args = ["api", "--method", "GET", "--paginate", endpoint];
   const result = spawn("gh", args, {
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
