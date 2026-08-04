@@ -84,7 +84,8 @@ export const NOTES_CAPABILITIES: ViewCapability[] = [
   },
   {
     id: "create-note",
-    description: "Create a durable sticky note.",
+    description:
+      "Create a durable sticky note. Use this whenever the user explicitly asks to make, create, write, or save a note; dates and times inside the requested note remain note content unless the user also asks to schedule a calendar event or reminder.",
     params: {
       title: {
         ...TITLE_PARAM,
@@ -197,7 +198,8 @@ export const CALENDAR_CAPABILITIES: ViewCapability[] = [
   },
   {
     id: "create-calendar-event",
-    description: "Create a durable Simple Calendar event.",
+    description:
+      "Create a durable Simple Calendar event only when the user asks to schedule or add an event, appointment, meeting, or calendar item. A date or time mentioned inside an explicit note request does not turn that note into an event.",
     params: {
       title: {
         ...TITLE_PARAM,

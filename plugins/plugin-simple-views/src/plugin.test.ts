@@ -40,4 +40,24 @@ describe("simpleViewsPlugin", () => {
       ]),
     );
   });
+
+  it("keeps explicit note intent ahead of incidental calendar language", () => {
+    const notes = simpleViewsPlugin.views?.find((view) => view.id === "notes");
+    const calendar = simpleViewsPlugin.views?.find(
+      (view) => view.id === "simple-calendar",
+    );
+    const createNote = notes?.capabilities?.find(
+      (capability) => capability.id === "create-note",
+    );
+    const createEvent = calendar?.capabilities?.find(
+      (capability) => capability.id === "create-calendar-event",
+    );
+
+    expect(createNote?.description).toContain(
+      "dates and times inside the requested note remain note content",
+    );
+    expect(createEvent?.description).toContain(
+      "explicit note request does not turn that note into an event",
+    );
+  });
 });
