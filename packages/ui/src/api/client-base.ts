@@ -18,6 +18,7 @@ import {
 import { hydrateAndroidLocalAgentTokenForUrl } from "../first-run/local-agent-token";
 import { isMobileLocalAgentIpcUrl } from "../first-run/mobile-runtime-mode";
 import { isAndroidLocalSideloadBuild } from "../platform/android-runtime";
+import { isTrustedRestoreApiBaseUrl } from "../state/runtime-url-trust";
 import { shellLocalStorage } from "../surface-realm-channel";
 import {
   clearElizaApiBase,
@@ -507,18 +508,13 @@ function shouldUseRestOnlyForInsecureWebSocket(
     return false;
   }
 
-  // Debug/AOSP Android explicitly enables mixed content so its packaged
-  // https://localhost renderer can reach the loopback agent. Keeping the
-  // socket alive is required for server-to-device view capabilities; limit the
-  // exception to local builds and loopback so store builds and LAN/public
-  // cleartext endpoints retain the browser's stricter boundary.
-  const isLoopback =
-    host.startsWith("127.") ||
-    host === "localhost" ||
-    host.startsWith("localhost:") ||
-    host === "[::1]" ||
-    host.startsWith("[::1]:");
-  if (isLoopback && isAndroidLocalSideloadBuild()) return false;
+  // Direct Android builds enable mixed content so their packaged
+  // https://localhost renderer can keep the paired runtime's backchannel
+  // alive. The same trust gate that protects persisted API bases restricts
+  // this exception to loopback/private-LAN hosts; store and public cleartext
+  // endpoints retain the browser's stricter boundary.
+  const isTrustedPairedHost = isTrustedRestoreApiBaseUrl(`http://${host}`);
+  if (isTrustedPairedHost && isAndroidLocalSideloadBuild()) return false;
 
   return true;
 }
