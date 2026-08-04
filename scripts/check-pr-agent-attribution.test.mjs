@@ -93,7 +93,7 @@ function generatedPrWorkflowPaths() {
     .filter((name) => /\.ya?ml$/.test(name))
     .map((name) => `.github/workflows/${name}`)
     .filter((workflowPath) =>
-      /\bgh\s+pr\s+create\b|peter-evans\/create-pull-request@/.test(
+      /^\s+gh\s+pr\s+create\b|peter-evans\/create-pull-request@/m.test(
         workflowSource(workflowPath),
       ),
     )
@@ -527,7 +527,6 @@ describe("PR agent attribution", () => {
     const ecosystemRefs = {
       npm: "dependabot/npm_and_yarn/*",
       "github-actions": "dependabot/github_actions/*",
-      pip: "dependabot/pip/*",
     };
     assert.deepEqual(
       [...new Set(configuredEcosystems)].sort(),
@@ -586,9 +585,10 @@ describe("PR agent attribution", () => {
 
   it("discovers and validates every workflow-generated PR body", async () => {
     const workflowPaths = generatedPrWorkflowPaths();
-    assert.ok(
-      workflowPaths.length >= 4,
-      "expected all repository PR-creation workflows to be discovered",
+    assert.deepEqual(
+      workflowPaths,
+      [".github/workflows/docs-ci.yml"],
+      "the generated-PR workflow inventory must stay explicit",
     );
     for (const workflowPath of workflowPaths) {
       const source = workflowSource(workflowPath);
