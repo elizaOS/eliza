@@ -110,4 +110,54 @@ describe("CanonicalPendantSessionController", () => {
     expect(h.client.patchSegment).not.toHaveBeenCalled();
     expect(h.order).toEqual([]);
   });
+
+  it("does not publish an append snapshot that resolves after pause", async () => {
+    const h = harness();
+    let resolveAppend:
+      | ((pendingSnapshot: ReturnType<typeof snapshot>) => void)
+      | undefined;
+    h.client.appendSegment.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveAppend = resolve;
+        }),
+    );
+    const onSnapshot = vi.fn();
+    const controller = new CanonicalPendantSessionController({
+      client: h.client as never,
+      holder: "device",
+      onSnapshot,
+      onError: (error) => {
+        throw error;
+      },
+    });
+
+    await controller.start();
+    onSnapshot.mockClear();
+    controller.handleSegment(detail("pending"));
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    controller.pause();
+    if (!resolveAppend) throw new Error("append did not start");
+    resolveAppend(snapshot(2));
+    await settle();
+
+    expect(h.client.pause).toHaveBeenCalledWith("session-1");
+    expect(onSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("severs snapshot delivery while paused and resumes the canonical session", async () => {
+    const h = harness();
+    await h.controller.start();
+
+    h.controller.pause();
+    expect(h.controller.acceptsSnapshot(snapshot(4))).toBe(false);
+    await h.controller.resume();
+
+    expect(h.client.createSession).toHaveBeenCalledTimes(1);
+    expect(h.client.resume).toHaveBeenCalledWith("session-1");
+    expect(h.client.startPolling).toHaveBeenLastCalledWith("session-1");
+    expect(h.controller.acceptsSnapshot(snapshot(6))).toBe(true);
+  });
 });
