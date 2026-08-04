@@ -351,8 +351,12 @@ export async function runAgentSessionRecovery(
           if (signal?.aborted || isRecoveryTargetCurrent?.() === false) {
             return cancelledResult();
           }
-          persistPairApiToken(apiToken, agentId);
-          await onPairedInProcess?.(apiToken);
+          if (commitPairedInProcess) {
+            await commitPairedInProcess(apiToken);
+          } else {
+            persistPairApiToken(apiToken, agentId);
+            await onPairedInProcess?.(apiToken);
+          }
           return { ok: true, redirectUrl, mode: "in-process" };
         } catch (err) {
           if (signal?.aborted || isRecoveryTargetCurrent?.() === false) {
