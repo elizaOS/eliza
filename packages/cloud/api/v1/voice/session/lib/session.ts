@@ -10,12 +10,13 @@
  *     handled per live-provider intel.
  *   - LLM: `streamElizaConversation` (existing SSE / Cerebras pass-through). No
  *     new LLM client.
- *   - TTS: `CartesiaSonicTtsAdapter` (#15949). Phrase-aggregated deltas stream
- *     in; the adapter's strict no-post-cancel guarantee makes barge-in correct.
+ *   - TTS: Fish Audio when `ELIZA_TTS_FISH_ENABLED` is true; otherwise
+ *     `CartesiaSonicTtsAdapter` (#15949). Phrase-aggregated deltas stream in;
+ *     adapters' strict no-post-cancel guarantee makes barge-in correct.
  *
  * Interruption (contract §7.5): acoustic speech-start / Flux turn / explicit
- * `barge_in` -> under one `voiceTurnId`, cancel Cartesia (no post-cancel
- * frames), abort the Eliza SSE fetch, flush the downlink, drop pending phrase
+ * `barge_in` -> under one `voiceTurnId`, cancel the active TTS stream (no
+ * post-cancel frames), abort the Eliza SSE fetch, flush the downlink, drop pending phrase
  * aggregation, emit `interrupted`, return to listening. Target <250ms.
  *
  * Metering (SEC-15): server-derived uplink duration only; the client is NEVER
@@ -28,10 +29,14 @@
 
 import {
   CartesiaSonicTtsAdapter,
-  type CartesiaSonicTtsStream,
   type CartesiaWebSocketFactory,
   VOICE_TTS_MAX_BUFFER_DELAY_MS,
 } from "@/lib/services/cartesia-sonic-tts";
+import {
+  type FishAudioModel,
+  FishAudioTtsAdapter,
+  type FishAudioWebSocketFactory,
+} from "@/lib/services/fish-audio-tts";
 import type {
   VoiceUsageIdentity,
   VoiceUsageLimits,
@@ -110,6 +115,13 @@ export interface VoiceSessionConfig {
   cartesiaApiKey: string;
   cartesiaVoiceId: string;
   cartesiaWebSocketFactory: CartesiaWebSocketFactory;
+  fishAudioEnabled?: boolean;
+  fishAudioApiKey?: string;
+  fishAudioReferenceId?: string;
+  fishAudioModel?: FishAudioModel;
+  fishAudioSampleRate?: number;
+  fishAudioFirstAudioTimeoutMs?: number;
+  fishAudioWebSocketFactory?: FishAudioWebSocketFactory;
 
   // LLM leg.
   elizaEndpoint: string;
@@ -163,7 +175,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 
   private stt: DeepgramFluxRealtimeSession | null = null;
   private readonly cartesiaAdapter: CartesiaSonicTtsAdapter;
-  private ttsStream: CartesiaSonicTtsStream | null = null;
+  private readonly fishAudioAdapter: FishAudioTtsAdapter | null = null;
+  private ttsStream: RealtimeTtsStream | null = null;
 
   private state: SessionState = "ready";
   private started = false;
@@ -209,6 +222,21 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       voiceId: config.cartesiaVoiceId,
       websocketFactory: config.cartesiaWebSocketFactory,
     });
+    if (
+      config.fishAudioEnabled &&
+      config.fishAudioApiKey &&
+      config.fishAudioReferenceId &&
+      config.fishAudioWebSocketFactory
+    ) {
+      this.fishAudioAdapter = new FishAudioTtsAdapter({
+        apiKey: config.fishAudioApiKey,
+        referenceId: config.fishAudioReferenceId,
+        model: config.fishAudioModel,
+        sampleRate: config.fishAudioSampleRate,
+        firstAudioTimeoutMs: config.fishAudioFirstAudioTimeoutMs,
+        websocketFactory: config.fishAudioWebSocketFactory,
+      });
+    }
   }
 
   /**
@@ -505,49 +533,61 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     });
     this.phrase = phrase;
 
-    let tts: CartesiaSonicTtsStream | null = null;
+    let tts: RealtimeTtsStream | null = null;
     // Held terminal suffix (see the streaming loop below): Cartesia requires a
     // non-empty final request carrying continue:false. We retain only the last
     // word of each complete phrase, not the whole phrase, so synthesis can begin
     // immediately while preserving a real terminal request for stream close.
     let pendingPhrase: string | null = null;
-    const ensureTts = (): CartesiaSonicTtsStream => {
+    const ensureTts = (): RealtimeTtsStream => {
       if (tts) return tts;
-      tts = this.cartesiaAdapter.createStream(
-        { traceId, maxBufferDelayMs: VOICE_TTS_MAX_BUFFER_DELAY_MS },
-        {
-          onFirstAudio: () => {
-            if (this.currentVoiceTurnId !== traceId) return;
-            this.state = "speaking";
-            this.send({ t: "speaking_start", traceId });
-          },
-          onAudioFrame: (frame) => {
-            // Guard: no post-cancel / stale-turn frames ever reach the client.
-            if (this.currentVoiceTurnId !== traceId) return;
-            this.config.downlink.sendAudio(frame.bytes);
-          },
-          onComplete: () => {
-            if (this.currentVoiceTurnId !== traceId) return;
-            this.send({ t: "speaking_end", traceId });
-            this.finishTurn(traceId);
-          },
-          onProviderError: (err) => {
-            if (this.currentVoiceTurnId !== traceId) return;
-            this.send({
-              t: "error",
-              code: err.code ?? "tts_error",
-              retryable: true,
-            });
-            // Prewarming means TTS can fail while the LLM is still generating.
-            // Abort that upstream work before finishTurn clears the controller,
-            // otherwise a failed voice turn can keep consuming model resources.
-            abort.abort();
-            // Close out the failed turn so the client gets usage + returns to
-            // listening, instead of the session being stuck on a dead turn.
-            this.finishTurn(traceId);
-          },
+      const callbacks: RealtimeTtsStreamCallbacks = {
+        onFirstAudio: () => {
+          if (this.currentVoiceTurnId !== traceId) return;
+          this.state = "speaking";
+          this.send({ t: "speaking_start", traceId });
         },
-      );
+        onAudioFrame: (frame) => {
+          // Guard: no post-cancel / stale-turn frames ever reach the client.
+          if (this.currentVoiceTurnId !== traceId) return;
+          this.config.downlink.sendAudio(frame.bytes);
+        },
+        onComplete: () => {
+          if (this.currentVoiceTurnId !== traceId) return;
+          this.send({ t: "speaking_end", traceId });
+          this.finishTurn(traceId);
+        },
+        onProviderError: (err) => {
+          if (this.currentVoiceTurnId !== traceId) return;
+          this.send({
+            t: "error",
+            code: err.code ?? "tts_error",
+            retryable: true,
+          });
+          // Prewarming means TTS can fail while the LLM is still generating.
+          // Abort that upstream work before finishTurn clears the controller,
+          // otherwise a failed voice turn can keep consuming model resources.
+          abort.abort();
+          // Close out the failed turn so the client gets usage + returns to
+          // listening, instead of the session being stuck on a dead turn.
+          this.finishTurn(traceId);
+        },
+      };
+      const createCartesia = () =>
+        this.cartesiaAdapter.createStream(
+          { traceId, maxBufferDelayMs: VOICE_TTS_MAX_BUFFER_DELAY_MS },
+          callbacks,
+        );
+      if (this.fishAudioAdapter) {
+        tts = new FishPrimaryRealtimeTtsStream({
+          traceId,
+          fishAudioAdapter: this.fishAudioAdapter,
+          createCartesia,
+          callbacks,
+        });
+      } else {
+        tts = createCartesia();
+      }
       this.ttsStream = tts;
       return tts;
     };
@@ -867,6 +907,117 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   get currentState(): SessionState {
     return this.state;
   }
+}
+
+interface RealtimeTtsPhraseInput {
+  readonly text: string;
+  readonly continueContext: boolean;
+  readonly flush?: boolean;
+  readonly duration?: number;
+  readonly maxBufferDelayMs?: number;
+}
+
+interface RealtimeTtsStreamCallbacks {
+  readonly onFirstAudio?: (event: { readonly elapsedMs: number }) => void;
+  readonly onAudioFrame?: (event: { readonly bytes: Uint8Array }) => void;
+  readonly onComplete?: (event: { readonly frameCount: number }) => void;
+  readonly onProviderError?: (event: { readonly code?: string }) => void;
+}
+
+interface RealtimeTtsStream {
+  readonly opened: Promise<void>;
+  readonly closed: Promise<void>;
+  sendPhrase(phrase: RealtimeTtsPhraseInput): void;
+  cancel(reason?: string): void;
+}
+
+/**
+ * Fish is primary only until its first audio byte. The production realtime path
+ * is `packages/cloud/api/v1/voice/session/lib/session.ts`: after Fish emits
+ * audio, this wrapper never switches provider for that turn; before audio, a
+ * connect error or first-audio timeout replays queued phrases to Cartesia.
+ */
+class FishPrimaryRealtimeTtsStream implements RealtimeTtsStream {
+  readonly opened: Promise<void>;
+  readonly closed: Promise<void>;
+
+  private active: RealtimeTtsStream;
+  private readonly phrases: RealtimeTtsPhraseInput[] = [];
+  private fishAudioProduced = false;
+  private usingCartesia = false;
+  private cancelled = false;
+  private suppressFishFallback = false;
+  private resolveOpened!: () => void;
+
+  constructor(
+    private readonly input: {
+      readonly traceId: string;
+      readonly fishAudioAdapter: FishAudioTtsAdapter;
+      readonly createCartesia: () => RealtimeTtsStream;
+      readonly callbacks: RealtimeTtsStreamCallbacks;
+    },
+  ) {
+    this.opened = new Promise((resolve) => {
+      this.resolveOpened = resolve;
+    });
+    this.active = this.input.fishAudioAdapter.createStream(
+      { traceId: input.traceId },
+      {
+        onFirstAudio: (event) => {
+          this.fishAudioProduced = true;
+          this.phrases.length = 0;
+          this.resolveOpened();
+          this.input.callbacks.onFirstAudio?.(event);
+        },
+        onAudioFrame: (event) => this.input.callbacks.onAudioFrame?.(event),
+        onComplete: (event) => this.input.callbacks.onComplete?.(event),
+        onProviderError: (event) => this.handleFishProviderError(event.code),
+      },
+    );
+    this.closed = this.active.closed;
+    void this.active.opened
+      .then(() => this.resolveOpened())
+      .catch(() => undefined);
+  }
+
+  sendPhrase(phrase: RealtimeTtsPhraseInput): void {
+    if (!this.usingCartesia && !this.fishAudioProduced)
+      this.phrases.push(phrase);
+    this.active.sendPhrase(phrase);
+  }
+
+  cancel(reason?: string): void {
+    this.cancelled = true;
+    this.active.cancel(reason);
+  }
+
+  private handleFishProviderError(code?: string): void {
+    if (this.cancelled || this.suppressFishFallback) return;
+    if (this.fishAudioProduced || !isFishPreAudioFallbackError(code)) {
+      this.input.callbacks.onProviderError?.({
+        code: code ?? "fish_tts_error",
+      });
+      return;
+    }
+    this.usingCartesia = true;
+    this.suppressFishFallback = true;
+    this.active.cancel(`fish_pre_audio_fallback:${code ?? "provider_error"}`);
+    this.suppressFishFallback = false;
+    this.active = this.input.createCartesia();
+    void this.active.opened
+      .then(() => this.resolveOpened())
+      .catch(() => undefined);
+    for (const phrase of this.phrases) this.active.sendPhrase(phrase);
+    this.phrases.length = 0;
+  }
+}
+
+function isFishPreAudioFallbackError(code: string | undefined): boolean {
+  return (
+    code === "websocket_error" ||
+    code === "websocket_closed_before_open" ||
+    code === "first_audio_timeout"
+  );
 }
 
 /**

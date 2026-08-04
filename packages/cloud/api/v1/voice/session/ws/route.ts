@@ -15,8 +15,11 @@ import {
 } from "@/lib/services/voice-usage-meter";
 import { logger } from "@/lib/utils/logger";
 import {
+  isFishRealtimeTtsEnabled,
   isVoiceRealtimeWsEnabled,
   resolveElizaModel,
+  resolveFishRealtimeFirstAudioTimeoutMs,
+  resolveFishRealtimeSampleRate,
   resolveMaxSessions,
   resolveVoiceUsageLimits,
   type VoiceRealtimeEnv,
@@ -36,6 +39,7 @@ import { createInternalElizaConversationFetchFactory } from "../lib/internal-eli
 import {
   createWorkerCartesiaFactory,
   createWorkerDeepgramFluxFactory,
+  createWorkerFishAudioFactory,
   isWorkerOutboundWsAvailable,
 } from "../lib/provider-socket-factory";
 import { VoiceSession } from "../lib/session";
@@ -97,6 +101,10 @@ app.get("/", (c) => {
   const deepgramApiKey = env.DEEPGRAM_API_KEY;
   const cartesiaApiKey = env.CARTESIA_API_KEY;
   const cartesiaVoiceId = env.VOICE_REALTIME_CARTESIA_VOICE_ID;
+  const fishAudioEnabled = isFishRealtimeTtsEnabled(env);
+  const fishAudioApiKey = env.FISH_AUDIO_API_KEY;
+  const fishAudioReferenceId =
+    env.FISH_AUDIO_REFERENCE_ID ?? env.FISH_AUDIO_VOICE_ID;
   const elizaEndpoint = env.VOICE_REALTIME_ELIZA_ENDPOINT;
   // The WS is headerless (WebView 113), so the client's Authorization is not
   // usable for the LLM leg. The server presents its own held credential; the
@@ -106,6 +114,7 @@ app.get("/", (c) => {
     !deepgramApiKey ||
     !cartesiaApiKey ||
     !cartesiaVoiceId ||
+    (fishAudioEnabled && (!fishAudioApiKey || !fishAudioReferenceId)) ||
     !elizaEndpoint ||
     !elizaAuthorization
   ) {
@@ -223,6 +232,14 @@ app.get("/", (c) => {
         cartesiaApiKey,
         cartesiaVoiceId,
         cartesiaWebSocketFactory: createWorkerCartesiaFactory(),
+        fishAudioEnabled,
+        fishAudioApiKey,
+        fishAudioReferenceId,
+        fishAudioModel: env.FISH_AUDIO_MODEL === "s2.1" ? "s2.1" : "s2.1-pro",
+        fishAudioSampleRate: resolveFishRealtimeSampleRate(env),
+        fishAudioFirstAudioTimeoutMs:
+          resolveFishRealtimeFirstAudioTimeoutMs(env),
+        fishAudioWebSocketFactory: createWorkerFishAudioFactory(),
         elizaEndpoint,
         elizaAuthorization,
         elizaModel: resolveElizaModel(env),

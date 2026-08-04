@@ -334,6 +334,34 @@ describe("voice-session ws upgrade (happy path)", () => {
     );
   });
 
+  test("leaves Fish realtime TTS off by default", async () => {
+    const res = await upgrade();
+    expect(res.status).toBe(101);
+    const session = buildCapturedSession();
+    expect(session.config.fishAudioEnabled).toBe(false);
+    expect(session.config.fishAudioApiKey).toBeUndefined();
+  });
+
+  test("injects Fish realtime TTS config when the Fish flag is enabled", async () => {
+    const res = await upgrade({
+      ELIZA_TTS_FISH_ENABLED: "true",
+      FISH_AUDIO_API_KEY: "fish-key",
+      FISH_AUDIO_REFERENCE_ID: "fish-voice",
+      FISH_AUDIO_MODEL: "s2.1",
+      FISH_AUDIO_SAMPLE_RATE: "24000",
+      FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS: "25",
+    });
+    expect(res.status).toBe(101);
+    const session = buildCapturedSession();
+    expect(session.config.fishAudioEnabled).toBe(true);
+    expect(session.config.fishAudioApiKey).toBe("fish-key");
+    expect(session.config.fishAudioReferenceId).toBe("fish-voice");
+    expect(session.config.fishAudioModel).toBe("s2.1");
+    expect(session.config.fishAudioSampleRate).toBe(24000);
+    expect(session.config.fishAudioFirstAudioTimeoutMs).toBe(25);
+    expect(typeof session.config.fishAudioWebSocketFactory).toBe("function");
+  });
+
   test("returns 503 transport-unavailable when WebSocketPair is absent", async () => {
     delete (globalThis as { WebSocketPair?: unknown }).WebSocketPair;
     const res = await upgrade();

@@ -16,6 +16,13 @@ import type { VoiceUsageLimits } from "../services/voice-usage-meter";
 export interface VoiceRealtimeEnv {
   VOICE_REALTIME_WS_ENABLED?: string;
   VOICE_REALTIME_CARTESIA_VOICE_ID?: string;
+  ELIZA_TTS_FISH_ENABLED?: string;
+  FISH_AUDIO_API_KEY?: string;
+  FISH_AUDIO_MODEL?: string;
+  FISH_AUDIO_REFERENCE_ID?: string;
+  FISH_AUDIO_VOICE_ID?: string;
+  FISH_AUDIO_SAMPLE_RATE?: string;
+  FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS?: string;
   VOICE_REALTIME_ELIZA_ENDPOINT?: string;
   VOICE_REALTIME_ELIZA_AUTHORIZATION?: string;
   VOICE_REALTIME_ELIZA_MODEL?: string;
@@ -48,6 +55,21 @@ export function isVoiceRealtimeWsEnabled(env: VoiceRealtimeEnv | undefined): boo
   const raw = env?.VOICE_REALTIME_WS_ENABLED;
   if (typeof raw !== "string") return false;
   return TRUEY.has(raw.trim().toLowerCase());
+}
+
+/** Fish realtime TTS is default-off and only participates when explicitly enabled. */
+export function isFishRealtimeTtsEnabled(env: VoiceRealtimeEnv | undefined): boolean {
+  const raw = env?.ELIZA_TTS_FISH_ENABLED;
+  if (typeof raw !== "string") return false;
+  return TRUEY.has(raw.trim().toLowerCase());
+}
+
+export function resolveFishRealtimeSampleRate(env: VoiceRealtimeEnv | undefined): number {
+  return parsePositiveInt(env?.FISH_AUDIO_SAMPLE_RATE, 24_000);
+}
+
+export function resolveFishRealtimeFirstAudioTimeoutMs(env: VoiceRealtimeEnv | undefined): number {
+  return parsePositiveInt(env?.FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS, 1_500);
 }
 
 export function resolveVoiceUsageLimits(env: VoiceRealtimeEnv | undefined): VoiceUsageLimits {
