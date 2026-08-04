@@ -597,7 +597,7 @@ describe("PR agent attribution", () => {
     const ecosystemRefs = {
       npm: "dependabot/npm_and_yarn/*",
       "github-actions": "dependabot/github_actions/*",
-      pip: "dependabot/pip/*",
+      pip: ["dependabot/pip/*", "dependabot/uv/*"],
     };
     assert.deepEqual(
       [...new Set(configuredEcosystems)].sort(),
@@ -605,11 +605,16 @@ describe("PR agent attribution", () => {
       "the trusted ref allowlist must be updated for every configured ecosystem",
     );
     for (const ecosystem of configuredEcosystems) {
-      assert.match(
-        normalizer,
-        new RegExp(ecosystemRefs[ecosystem].replaceAll("*", "\\*")),
-        `${ecosystem} Dependabot refs must be explicitly allowed`,
-      );
+      const refs = Array.isArray(ecosystemRefs[ecosystem])
+        ? ecosystemRefs[ecosystem]
+        : [ecosystemRefs[ecosystem]];
+      for (const ref of refs) {
+        assert.match(
+          normalizer,
+          new RegExp(ref.replaceAll("*", "\\*")),
+          `${ecosystem} Dependabot ref ${ref} must be explicitly allowed`,
+        );
+      }
     }
 
     const policyBlock = [
