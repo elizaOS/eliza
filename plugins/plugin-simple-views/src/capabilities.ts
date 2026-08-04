@@ -34,8 +34,10 @@ const DATE_PARAM: ViewCapabilityParameter = {
 
 const TIME_PARAM: ViewCapabilityParameter = {
   type: "string",
-  description: "Time in HH:mm 24-hour format.",
-  pattern: "^([01]\\d|2[0-3]):[0-5]\\d$",
+  description:
+    "Time in HH:mm 24-hour format or a 12-hour clock form with AM/PM; stored canonically as HH:mm.",
+  pattern:
+    "^(?:([01]\\d|2[0-3]):[0-5]\\d|(?:0?[1-9]|1[0-2])(?::[0-5]\\d)?\\s*[AaPp]\\.?[Mm]\\.?)$",
 };
 
 const ID_PARAM = {
@@ -208,7 +210,8 @@ export const CALENDAR_CAPABILITIES: ViewCapability[] = [
       },
       time: {
         ...TIME_PARAM,
-        description: "Optional HH:mm 24-hour time; defaults to 09:00.",
+        description:
+          "Optional HH:mm or 12-hour AM/PM time; defaults to 09:00 and is stored as HH:mm.",
       },
       details: { ...BODY_PARAM, description: "Optional event details." },
       notes: { ...BODY_PARAM, description: "Optional event notes." },
@@ -245,7 +248,10 @@ export const CALENDAR_CAPABILITIES: ViewCapability[] = [
       },
       newTitle: { ...TITLE_PARAM, description: "Replacement event title." },
       date: { ...DATE_PARAM, description: "Replacement YYYY-MM-DD date." },
-      time: { ...TIME_PARAM, description: "Replacement HH:mm time." },
+      time: {
+        ...TIME_PARAM,
+        description: "Replacement HH:mm or 12-hour AM/PM time.",
+      },
       details: { ...BODY_PARAM, description: "Replacement event details." },
       notes: { ...BODY_PARAM, description: "Replacement event details." },
       color: {
