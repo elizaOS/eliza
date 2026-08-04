@@ -224,6 +224,13 @@ export interface QueueAssistantSpeechOptions {
    * additional visible assistant turns from the same voice response.
    */
   replace?: boolean;
+  /**
+   * Previous temporary message id when persistence promotes the same streaming
+   * assistant response to its authoritative server id. The queue preserves its
+   * spoken prefix only when this id matches the active response and the new
+   * text is identical or an extension.
+   */
+  continuationOfMessageId?: string;
   telemetry?: VoiceAssistantSpeechTelemetry;
   /** Emotion hint forwarded to the TTS provider (see SpeakTask.emotion). */
   emotion?: Emotion;

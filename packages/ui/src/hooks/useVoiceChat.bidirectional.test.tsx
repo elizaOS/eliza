@@ -195,6 +195,56 @@ describe("useVoiceChat bidirectional browser voice", () => {
     );
   });
 
+  it("does not repeat a partial when its temporary id is promoted (#16094)", async () => {
+    const { result } = renderHook(() =>
+      useVoiceChat({ onTranscript: vi.fn() }),
+    );
+    const partial = "This streamed answer has already been spoken aloud.";
+
+    act(() => {
+      result.current.queueAssistantSpeech("temp-1", partial, false);
+    });
+    await waitFor(() => {
+      expect(speechSynthesisMock.speak).toHaveBeenCalledTimes(1);
+    });
+
+    act(() => {
+      result.current.queueAssistantSpeech("server-1", partial, true, {
+        continuationOfMessageId: "temp-1",
+      });
+    });
+    expect(speechSynthesisMock.speak).toHaveBeenCalledTimes(1);
+  });
+
+  it("speaks only the remainder after a promoted id gains final text (#16094)", async () => {
+    const { result } = renderHook(() =>
+      useVoiceChat({ onTranscript: vi.fn() }),
+    );
+    const partial = "This streamed answer has already been spoken aloud.";
+    const remainder = "Only this final sentence is new.";
+
+    act(() => {
+      result.current.queueAssistantSpeech("temp-2", partial, false);
+    });
+    await waitFor(() => {
+      expect(speechSynthesisMock.speak).toHaveBeenCalledTimes(1);
+    });
+
+    act(() => {
+      result.current.queueAssistantSpeech(
+        "server-2",
+        `${partial} ${remainder}`,
+        true,
+        { continuationOfMessageId: "temp-2" },
+      );
+      speechSynthesisMock.spoken[0]?.onend?.();
+    });
+    await waitFor(() => {
+      expect(speechSynthesisMock.speak).toHaveBeenCalledTimes(2);
+    });
+    expect(speechSynthesisMock.spoken[1]?.text).toBe(remainder);
+  });
+
   it("submits final microphone transcript through the real browser recognition path", async () => {
     const onTranscript = vi.fn();
     const onTranscriptPreview = vi.fn();

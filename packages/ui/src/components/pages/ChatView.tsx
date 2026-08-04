@@ -101,6 +101,7 @@ import {
   useChatVoiceController,
   useGameModalMessages,
 } from "./chat-view-hooks";
+import { shouldBargeInFromMicTap } from "./chat-view-voice-mic";
 
 const CHAT_INPUT_MIN_HEIGHT_PX = 46;
 const CHAT_INPUT_MAX_HEIGHT_PX = 200;
@@ -431,12 +432,13 @@ export function ChatView({
     getRealtimeConsentNonce,
   });
   // Mic-tap semantics: while a REALTIME session is the active mic and the agent
-  // is speaking, a mic tap is a BARGE-IN (flush playback + notify server), not a
-  // new dictation capture. Otherwise the mic behaves exactly as before
+  // is thinking or speaking, a mic tap is a BARGE-IN (cancel the pending turn,
+  // flush playback, and notify the server), not a new dictation capture.
+  // Otherwise the mic behaves exactly as before
   // (`beginVoiceCapture`). This keeps barge-in on the SAME existing control.
   const handleMicStartListening = useCallback(
     (mode?: Parameters<typeof beginVoiceCapture>[0]) => {
-      if (voiceSession.realtimeActive && voiceSession.agentSpeaking) {
+      if (shouldBargeInFromMicTap(voiceSession)) {
         voiceSession.bargeIn();
         return;
       }
