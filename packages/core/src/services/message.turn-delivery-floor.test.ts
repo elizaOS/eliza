@@ -282,6 +282,86 @@ describe("delivery observability floor for transient failure replies", () => {
 	});
 });
 
+describe("MESSAGE_SENT commits only after the delivery boundary succeeds", () => {
+	beforeEach(() => {
+		vi.stubEnv("ELIZA_TRAJECTORY_RECORDING", "0");
+	});
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+	it("a rejected delivery callback produces no durable sent-claim", async () => {
+		// The side-effect ordering bug: MESSAGE_SENT fired from the persist
+		// pass, which runs concurrently with the delivery callback — a failed
+		// delivery still produced a durable sent-claim, so downstream
+		// consumers (activity streams, follow-up seeding, trajectory closure)
+		// recorded a reply the user never received.
+		const replyText = `crimson. probe-${v4()}`;
+		const h = createHarness(async (_h, modelType) => {
+			if (modelType === "RESPONSE_HANDLER") return stage1DirectReply(replyText);
+			throw RATE_LIMIT_ERROR;
+		});
+
+		await expect(
+			h.service.handleMessage(
+				h.runtime,
+				h.makeMessage("whats my favorite color?"),
+				async () => {
+					throw new Error("connector send failed");
+				},
+			),
+		).rejects.toThrow("connector send failed");
+		await drainPostDeliveryTasks(h.runtime);
+
+		expect(messageSentTexts(h)).not.toContain(replyText);
+		// The delivery failure does not skip persistence — the reply row is
+		// stored so the retry path can observe and reconcile it.
+		expect(h.persistedTexts()).toContain(replyText);
+	});
+
+	it("the retry that delivers claims exactly once", async () => {
+		// The failed first attempt must leave the turn unclaimed, and the
+		// successful retry must produce exactly one durable claim — never zero
+		// (delivery invisible) and never two (double-claimed turn).
+		const replyText = `crimson. probe-${v4()}`;
+		const h = createHarness(async (_h, modelType) => {
+			if (modelType === "RESPONSE_HANDLER") return stage1DirectReply(replyText);
+			throw RATE_LIMIT_ERROR;
+		});
+
+		await expect(
+			h.service.handleMessage(
+				h.runtime,
+				h.makeMessage("whats my favorite color?"),
+				async () => {
+					throw new Error("connector send failed");
+				},
+			),
+		).rejects.toThrow("connector send failed");
+		await drainPostDeliveryTasks(h.runtime);
+		expect(
+			messageSentTexts(h).filter((text) => text === replyText),
+		).toHaveLength(0);
+
+		const deliveries: Content[] = [];
+		const retry = await h.service.handleMessage(
+			h.runtime,
+			h.makeMessage("whats my favorite color?"),
+			async (content) => {
+				deliveries.push(content);
+				return [];
+			},
+		);
+		await drainPostDeliveryTasks(h.runtime);
+
+		expect(retry.didRespond).toBe(true);
+		expect(visibleTexts(deliveries)).toEqual([replyText]);
+		expect(
+			messageSentTexts(h).filter((text) => text === replyText),
+		).toHaveLength(1);
+	});
+});
+
 describe("race-superseded turns keep addressed responses", () => {
 	beforeEach(() => {
 		vi.stubEnv("ELIZA_TRAJECTORY_RECORDING", "0");
