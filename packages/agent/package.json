@@ -366,11 +366,15 @@
   },
   "peerDependencies": {
     "@elizaos/plugin-e2b-sandbox": "*",
+    "@elizaos/plugin-calendar": "workspace:*",
     "@elizaos/plugin-inbox": "workspace:*",
     "@elizaos/plugin-x402": "*"
   },
   "peerDependenciesMeta": {
     "@elizaos/plugin-e2b-sandbox": {
+      "optional": true
+    },
+    "@elizaos/plugin-calendar": {
       "optional": true
     },
     "@elizaos/plugin-inbox": {
@@ -386,6 +390,7 @@
     "@types/jsdom": "^28.0.0",
     "@types/node": "^25.2.0",
     "@types/pg": "^8.15.2",
+    "@types/pngjs": "^6.0.5",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@types/ws": "^8.18.1",

@@ -98,6 +98,7 @@ const appMock = vi.hoisted(() => ({
     handleChatStop: vi.fn(),
     setActionNotice: vi.fn(),
     uiLanguage: "en",
+    elizaCloudConnected: false,
     elizaCloudVoiceProxyAvailable: false,
   },
   // Live server-reported turn status (#8813), read via useChatTurnStatus().
@@ -183,10 +184,15 @@ const voiceOutputMock = vi.hoisted(() => ({
   // each render — lastTurnVoice is internal (not on the public controller
   // return), so this real consumer boundary is where the flag is observable.
   lastTurnVoiceSeen: undefined as boolean | undefined,
+  cloudConnectedSeen: undefined as boolean | undefined,
 }));
 vi.mock("../useShellVoiceOutput", () => ({
-  useShellVoiceOutput: (opts?: { lastTurnVoice?: boolean }) => {
+  useShellVoiceOutput: (opts?: {
+    lastTurnVoice?: boolean;
+    cloudConnected?: boolean;
+  }) => {
     voiceOutputMock.lastTurnVoiceSeen = opts?.lastTurnVoice;
+    voiceOutputMock.cloudConnectedSeen = opts?.cloudConnected;
     return voiceOutputMock;
   },
 }));
@@ -221,8 +227,11 @@ afterEach(() => {
   appMock.value.handleSelectConversation = vi.fn(() => Promise.resolve());
   appMock.value.activeConversationId = null;
   appMock.value.conversations = [];
+  appMock.value.elizaCloudConnected = false;
+  appMock.value.elizaCloudVoiceProxyAvailable = false;
   voiceOutputMock.stopSpeaking.mockClear();
   voiceOutputMock.lastTurnVoiceSeen = undefined;
+  voiceOutputMock.cloudConnectedSeen = undefined;
   wakeListenMock.lastEnabled = undefined;
   try {
     window.localStorage.clear();
@@ -230,6 +239,25 @@ afterEach(() => {
 });
 
 describe("useShellController", () => {
+  it("passes only authenticated selected Cloud voice capability to output", () => {
+    const { rerender } = renderHook(() => useShellController());
+
+    expect(voiceOutputMock.cloudConnectedSeen).toBe(false);
+
+    appMock.value.elizaCloudVoiceProxyAvailable = true;
+    rerender();
+    expect(voiceOutputMock.cloudConnectedSeen).toBe(false);
+
+    appMock.value.elizaCloudVoiceProxyAvailable = false;
+    appMock.value.elizaCloudConnected = true;
+    rerender();
+    expect(voiceOutputMock.cloudConnectedSeen).toBe(false);
+
+    appMock.value.elizaCloudVoiceProxyAvailable = true;
+    rerender();
+    expect(voiceOutputMock.cloudConnectedSeen).toBe(true);
+  });
+
   it("opens the shared chat state even while startup is still booting", () => {
     appMock.value.agentStatus = { ...WARMING_STATUS };
 

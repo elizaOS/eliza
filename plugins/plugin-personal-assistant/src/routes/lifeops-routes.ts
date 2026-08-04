@@ -223,6 +223,9 @@ const LIFEOPS_RATE_LIMITS = {
   calendar_create: { maxRequests: 20, windowMs: 60_000 },
   calendar_update: { maxRequests: 20, windowMs: 60_000 },
   calendar_delete: { maxRequests: 10, windowMs: 60_000 },
+  calendar_source_read: { maxRequests: 120, windowMs: 60_000 },
+  calendar_source_write: { maxRequests: 20, windowMs: 60_000 },
+  calendar_source_sync: { maxRequests: 30, windowMs: 60_000 },
   // OAuth + connector lifecycle: tight cap because these mutate stored
   // credentials or initiate consent flows.
   oauth_init: { maxRequests: 5, windowMs: 60_000 },
@@ -1055,8 +1058,7 @@ export async function handleLifeOpsRoutes(
           ctx,
           fn as unknown as (service: LifeOpsService) => Promise<void>,
         ),
-      rateLimit: (key) =>
-        rateLimitRequest(ctx, key as LifeOpsRateLimitOperation),
+      rateLimit: (key) => rateLimitRequest(ctx, key),
       json: (data, status) => json(res, data, status),
       readJsonBody: <T extends object>() => readJsonBody<T>(req, res),
       decodePathComponent: (raw, label) =>
