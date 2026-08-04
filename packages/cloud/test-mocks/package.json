@@ -22,7 +22,7 @@
   },
   "dependencies": {
     "@elizaos/cloud-shared": "workspace:*",
-    "hono": "4.12.27"
+    "hono": "4.12.34"
   },
   "devDependencies": {
     "bun-types": "*"
