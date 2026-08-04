@@ -120,6 +120,51 @@ test("real cache + canonical coordinator dispatch performs no response-path DB w
   });
 });
 
+test("rejects conversation-creation routes instead of creating per-turn conversations", async () => {
+  await cache.set(CACHE_KEY, cachedAgent, 60);
+  const fetchImpl = createInternalElizaConversationFetch(
+    {
+      CACHE_ENABLED: "true",
+      DATABASE_URL: "postgresql://must-not-connect.invalid/eliza",
+      VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer voice-service",
+      SHARED_RUNTIME_CONVERSATIONS: {
+        getByName() {
+          throw new Error("conversation coordinator must not be reached");
+        },
+      },
+    } as Parameters<typeof createInternalElizaConversationFetch>[0],
+    {
+      agentId: AGENT_ID,
+      conversationId: CONVERSATION_ID,
+      organizationId: ORGANIZATION_ID,
+      userId: USER_ID,
+    },
+    {
+      waitUntil() {
+        throw new Error("hydration must not be scheduled");
+      },
+    },
+  );
+
+  await expect(
+    fetchImpl(
+      `https://voice.internal/api/v1/eliza/agents/${AGENT_ID}/api/conversations`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer voice-service",
+          "Content-Type": "application/json",
+          "X-Eliza-Agent-Id": AGENT_ID,
+          "X-Eliza-Conversation-Id": CONVERSATION_ID,
+          "X-Eliza-Organization-Id": ORGANIZATION_ID,
+          "X-Eliza-User-Id": USER_ID,
+        },
+        body: JSON.stringify({ title: "must not exist on voice turn path" }),
+      },
+    ),
+  ).rejects.toThrow("unsupported internal Eliza stream path");
+});
+
 test("missing Worker coordinator fails closed without selecting a legacy bridge", async () => {
   await cache.set(CACHE_KEY, cachedAgent, 60);
   const fetchImpl = createInternalElizaConversationFetch(
