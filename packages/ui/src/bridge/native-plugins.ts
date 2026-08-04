@@ -601,6 +601,10 @@ export interface SystemPluginLike extends NativePlugin {
     volumes: unknown[];
   }>;
   openWriteSettings?: () => Promise<void>;
+  setFlashlight?: (options: { enabled: boolean }) => Promise<{
+    available: boolean;
+    enabled: boolean;
+  }>;
 }
 
 export interface MobileSignalsPluginLike extends NativePlugin {

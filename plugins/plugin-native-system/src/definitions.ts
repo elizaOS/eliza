@@ -40,6 +40,11 @@ export interface DeviceSettingsStatus {
   volumes: SystemVolumeStatus[];
 }
 
+export interface FlashlightStatus {
+  available: boolean;
+  enabled: boolean;
+}
+
 export interface SystemPlugin {
   getStatus(): Promise<SystemStatus>;
   requestRole(options: {
@@ -56,6 +61,7 @@ export interface SystemPlugin {
     volume: number;
     showUi?: boolean;
   }): Promise<SystemVolumeStatus>;
+  setFlashlight(options: { enabled: boolean }): Promise<FlashlightStatus>;
   openWriteSettings(): Promise<void>;
   openDisplaySettings(): Promise<void>;
   openSoundSettings(): Promise<void>;
