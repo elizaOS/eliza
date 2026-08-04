@@ -42,6 +42,10 @@ import {
   reportCodingAccountFailure,
 } from "./coding-account-selection.js";
 import {
+  beginPendingHandoff,
+  settlePendingHandoff,
+} from "./handoff-pending.js";
+import {
   readSessionRetryCount,
   resolveStateLostRespawnCap,
   SESSION_RETRY_METADATA_KEY,
@@ -110,12 +114,17 @@ const HANDED_OFF_SUCCESSOR_META_KEY = "handedOffToSuccessorSessionId";
 // boot — and the original session's teardown `stopped` can be processed inside
 // that window, where every swarm-coordinator guard reads pre-stamp state and
 // synthesizes a false "stopped before completion" into the origin room. This
-// marker makes the in-flight decision observable. It exists ONLY between the
-// handoff decision and spawn settlement: markSessionHandedOff replaces it with
-// the successor stamp on success, and the spawn-failure catch clears it so the
-// surfaced failure and any later genuine stop still synthesize. Value is an
-// ISO timestamp (traceability); presence is what matters. Matching local
-// literal in swarm-coordinator-service.ts (no cross-import).
+// marker makes the in-flight decision observable. It is meant to exist ONLY
+// between the handoff decision and spawn settlement: markSessionHandedOff
+// replaces it with the successor stamp on success, and the spawn-failure catch
+// clears it so the surfaced failure and any later genuine stop still
+// synthesize. Because the persisted value can nonetheless outlive the handoff
+// (crash between stamp and settle, swallowed best-effort clear), presence
+// alone is NOT authority: the value is the handoff's generation token
+// (handoff-pending.ts), and the coordinator honors it only while that exact
+// token is registered in-flight — stale persisted markers are ignored and
+// cleared, so they can never suppress a later legitimate stop. Matching local
+// key literal in swarm-coordinator-service.ts (no cross-import).
 const HANDOFF_PENDING_META_KEY = "routerHandoffPendingAt";
 // Metadata marker the router stamps on a successor session (verify-retry,
 // state-lost respawn, account failover) when it re-points the forwarded
@@ -2035,7 +2044,7 @@ export class SubAgentRouter extends Service {
     // Pre-stamp the respawn decision BEFORE awaiting the spawn — same race as
     // the verify-retry path: the dead session's teardown `stopped` can be
     // processed while the replacement spawn is still in flight.
-    await this.markHandoffPending(session.id);
+    const pendingToken = await this.markHandoffPending(session.id);
     try {
       const result = await service.spawnSession({
         agentType: session.agentType,
@@ -2094,12 +2103,16 @@ export class SubAgentRouter extends Service {
       }
       // Same handoff stamp as verify-retry (#11711): the old session's teardown
       // `stopped` is plumbing, not a user-facing completion — the respawn posts.
-      await this.markSessionHandedOff(session.id, result.sessionId);
+      await this.markSessionHandedOff(
+        session.id,
+        result.sessionId,
+        pendingToken,
+      );
       return true;
     } catch (err) {
       // Clear the pending marker: no successor exists, so the honest failure
       // path (and any later genuine stop) must synthesize normally.
-      await this.clearHandoffPending(session.id);
+      await this.clearHandoffPending(session.id, pendingToken);
       this.log(
         "warn",
         `${reason} respawn spawn failed; surfacing the failure instead`,
@@ -2200,6 +2213,7 @@ export class SubAgentRouter extends Service {
   private async markSessionHandedOff(
     oldSessionId: string,
     successorSessionId: string,
+    pendingToken: string,
   ): Promise<void> {
     await this.patchHandoffMetadata(oldSessionId, {
       [HANDED_OFF_SUCCESSOR_META_KEY]: successorSessionId,
@@ -2207,6 +2221,12 @@ export class SubAgentRouter extends Service {
       // successor stamp, so no window exists where both are absent.
       [HANDOFF_PENDING_META_KEY]: null,
     });
+    // Registry retire AFTER the successor stamp lands: a stop processed in
+    // between reads the successor stamp, so no window opens where the marker
+    // is current-but-unstamped. If the patch was swallowed, the persisted
+    // marker is now stale (registry retired) and the coordinator ignores and
+    // clears it — failing toward the prior duplicate-post, never suppression.
+    settlePendingHandoff(oldSessionId, pendingToken);
   }
 
   /**
@@ -2214,21 +2234,34 @@ export class SubAgentRouter extends Service {
    * about to be awaited, so its teardown `stopped` — which can be processed
    * while the spawn is still in flight — is recognized by swarm-synthesis as
    * handoff plumbing rather than a genuine terminal. Must be called BEFORE
-   * `spawnSession` is awaited; pair with {@link clearHandoffPending} in the
-   * spawn-failure path. Best-effort, same contract as markSessionHandedOff.
+   * `spawnSession` is awaited. Returns the generation token that scopes the
+   * marker to THIS handoff: the coordinator only honors the marker while the
+   * token is registered in-flight, so a persisted marker that outlives its
+   * handoff (crash, swallowed clear) can never suppress a later legitimate
+   * stop. Pair with {@link clearHandoffPending} in the spawn-failure path and
+   * pass the token to {@link markSessionHandedOff} on success. Best-effort on
+   * the metadata write, same contract as markSessionHandedOff.
    */
-  private async markHandoffPending(sessionId: string): Promise<void> {
+  private async markHandoffPending(sessionId: string): Promise<string> {
+    const token = beginPendingHandoff(sessionId);
     await this.patchHandoffMetadata(sessionId, {
-      [HANDOFF_PENDING_META_KEY]: new Date().toISOString(),
+      [HANDOFF_PENDING_META_KEY]: token,
     });
+    return token;
   }
 
   /**
    * Remove the pending-handoff marker after a FAILED successor spawn, so the
    * caller's surfaced-failure post and any later genuine stop synthesize
-   * exactly as before the decision was made.
+   * exactly as before the decision was made. The registry retire comes first
+   * and is unconditional: even when the metadata clear is swallowed, the
+   * persisted marker is no longer current and cannot suppress anything.
    */
-  private async clearHandoffPending(sessionId: string): Promise<void> {
+  private async clearHandoffPending(
+    sessionId: string,
+    pendingToken: string,
+  ): Promise<void> {
+    settlePendingHandoff(sessionId, pendingToken);
     await this.patchHandoffMetadata(sessionId, {
       [HANDOFF_PENDING_META_KEY]: null,
     });
@@ -2336,7 +2369,7 @@ Do not report done until every referenced URL in the final page resolves without
     // teardown `stopped` fires inside that window — a post-spawn-only stamp
     // (the prior shape) let synthesis post a false "stopped before
     // completion" for a build whose retry was already in flight.
-    await this.markHandoffPending(session.id);
+    const pendingToken = await this.markHandoffPending(session.id);
     try {
       const result = await service.spawnSession({
         agentType: session.agentType,
@@ -2370,13 +2403,17 @@ Do not report done until every referenced URL in the final page resolves without
       // consume it. The teardown-`stopped` race itself is closed by the
       // pending marker stamped before the spawn, not by this call: the stop
       // can land while spawnSession is still in flight.
-      await this.markSessionHandedOff(session.id, result.sessionId);
+      await this.markSessionHandedOff(
+        session.id,
+        result.sessionId,
+        pendingToken,
+      );
       return true;
     } catch (err) {
       // The decision did not survive: clear the pending marker BEFORE
       // returning so the caller's surfaced verification failure and any later
       // genuine stop synthesize normally.
-      await this.clearHandoffPending(session.id);
+      await this.clearHandoffPending(session.id, pendingToken);
       this.log(
         "warn",
         "verify-retry spawn failed; surfacing the failure instead",

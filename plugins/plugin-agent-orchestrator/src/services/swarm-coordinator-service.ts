@@ -24,6 +24,7 @@ import {
   SWARM_COORDINATOR_SERVICE_TYPE,
 } from "@elizaos/core";
 import { AcpService } from "./acp-service.js";
+import { isPendingHandoffCurrent } from "./handoff-pending.js";
 import { OrchestratorTaskService } from "./orchestrator-task-service.js";
 import { isSessionBusyError } from "./parent-agent-dispatch.js";
 import {
@@ -84,15 +85,19 @@ const ROUTER_OWNED_TERMINAL_EVENTS = new Set(["task_complete", "error"]);
 // synthesis must not post the old one (#11711). Matching local literal (no
 // import from sub-agent-router — see the ROUTER_ORIGIN_UUID_RE note).
 const HANDED_OFF_SUCCESSOR_META_KEY = "handedOffToSuccessorSessionId";
-// Pending-handoff marker (matching local literal — see sub-agent-router.ts):
-// the router stamps it on the ORIGINAL session at the moment it decides on a
-// verify-retry / respawn, BEFORE the successor spawn resolves. The successor
-// stamp above only lands after the spawn settles — seconds later on a slow
-// subprocess boot — and a teardown `stopped` processed inside that window
-// reads pre-stamp state on every guard, synthesizing a false "stopped before
-// completion". Presence ⇒ the stop is handoff plumbing. The router clears the
-// marker when the spawn settles (successor stamp on success, removal on
-// failure), so a stop with no handoff in flight synthesizes exactly as before.
+// Pending-handoff marker (matching local key literal — see
+// sub-agent-router.ts): the router stamps it on the ORIGINAL session at the
+// moment it decides on a verify-retry / respawn, BEFORE the successor spawn
+// resolves. The successor stamp above only lands after the spawn settles —
+// seconds later on a slow subprocess boot — and a teardown `stopped`
+// processed inside that window reads pre-stamp state on every guard,
+// synthesizing a false "stopped before completion". Presence alone is NOT
+// authority: the persisted marker can outlive its handoff (crash between
+// stamp and settle, swallowed best-effort clear), and honoring a stale one
+// would suppress every later legitimate stop for the session. The value is
+// the handoff's generation token, honored only while handoff-pending.ts
+// still registers it in-flight; a stale marker is ignored AND cleared so the
+// stop synthesizes exactly as if the marker had never leaked.
 const HANDOFF_PENDING_META_KEY = "routerHandoffPendingAt";
 
 const LEGACY_TASK_EVICTION_GRACE_MS = 60_000;
@@ -992,13 +997,21 @@ export class SwarmCoordinatorService
       if (readString(fresh, HANDED_OFF_SUCCESSOR_META_KEY)) {
         return;
       }
-      // Handoff decided but successor spawn not yet settled (the pending
-      // marker exists only inside that window): the stop is teardown
-      // plumbing racing ahead of the successor stamp. Same semantics as the
-      // stamped skip above — do NOT claim the dedupe slot, so the successor's
-      // (or the validator's) completion for this lineage still posts.
-      if (readString(fresh, HANDOFF_PENDING_META_KEY)) {
-        return;
+      // Handoff decided but successor spawn not yet settled: the stop is
+      // teardown plumbing racing ahead of the successor stamp. Same semantics
+      // as the stamped skip above — do NOT claim the dedupe slot, so the
+      // successor's (or the validator's) completion for this lineage still
+      // posts. Suppression is generation-scoped: the marker only counts while
+      // its exact token is the registered in-flight handoff. A persisted
+      // marker that outlived its handoff (prior process generation, crash
+      // between stamp and settle, swallowed clear) must not silence a
+      // legitimate stop — it is cleared here and the stop synthesizes.
+      const pendingMarker = readString(fresh, HANDOFF_PENDING_META_KEY);
+      if (pendingMarker) {
+        if (isPendingHandoffCurrent(sessionId, pendingMarker)) {
+          return;
+        }
+        await this.clearStalePendingHandoffMarker(sessionId);
       }
       // A verify-retry session reports its outcome under the ORIGINAL
       // session's validated completion (dispatchCustomValidatorResult runs on
@@ -1358,6 +1371,30 @@ export class SwarmCoordinatorService
       // fall through to empty — fail open (treat unknown as not-superseded)
     }
     return {};
+  }
+
+  /**
+   * Remove a pending-handoff marker whose generation token is no longer the
+   * registered in-flight handoff. Clearing keeps the leak from shadowing any
+   * future terminal for this session; the calling stop still synthesizes this
+   * turn regardless of whether the clear lands.
+   */
+  private async clearStalePendingHandoffMarker(
+    sessionId: string,
+  ): Promise<void> {
+    const acp = this.acp();
+    if (typeof acp?.updateSessionMetadata !== "function") return;
+    try {
+      await acp.updateSessionMetadata(sessionId, {
+        [HANDOFF_PENDING_META_KEY]: null,
+      });
+      this.enrichmentMetadataCache.delete(sessionId);
+    } catch {
+      // error-policy:J6 best-effort marker cleanup on a session already being
+      // torn down; a missed clear re-runs on the next stop and never
+      // suppresses a terminal (staleness is decided by the registry, not the
+      // store).
+    }
   }
 
   private async getEnrichmentMetadata(
