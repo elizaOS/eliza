@@ -62,6 +62,25 @@ function invalidActionResult(message: string): never {
 	});
 }
 
+/** Preserve an action's canonical do-not-paraphrase reply at every later
+ * delivery gate, but only when the callback text matches it byte-for-byte
+ * after the transport's ordinary edge trimming. */
+function markCanonicalCallback(
+	response: Content,
+	result: ActionResult,
+): Content {
+	const canonical = result.userFacingText?.trim();
+	const callbackText = response.text?.trim();
+	if (
+		result.verifiedUserFacing !== true ||
+		!canonical ||
+		callbackText !== canonical
+	) {
+		return response;
+	}
+	return { ...response, agentVoiced: true };
+}
+
 /** Convert legacy handler returns into the canonical ActionResult shape. */
 export function normalizeActionResult(
 	actionName: string,
@@ -159,7 +178,7 @@ async function deliverSettledCallback(args: {
 		const { effectReceiptIds: _untrustedReceiptIds, ...response } =
 			args.buffered.response;
 		return args.callback(
-			response,
+			markCanonicalCallback(response, args.result),
 			args.buffered.actionName ?? args.action.name,
 		);
 	}
@@ -191,10 +210,13 @@ async function deliverSettledCallback(args: {
 	args.deliveredKeys.add(deliveryKey);
 	return args.callback(
 		bindEffectDelivery(
-			{
-				...args.buffered.response,
-				effectReceiptIds: receiptIds,
-			},
+			markCanonicalCallback(
+				{
+					...args.buffered.response,
+					effectReceiptIds: receiptIds,
+				},
+				args.result,
+			),
 			expectedText,
 			receiptIds,
 			appliedReceipts !== null,

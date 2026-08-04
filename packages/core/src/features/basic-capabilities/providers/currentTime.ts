@@ -1,9 +1,10 @@
 /**
  * The CURRENT_TIME provider: injects the current date and time into the prompt
  * in several formats (ISO, unix, date-only, time-only, day-of-week, and a human
- * readable full form), resolved against the agent's TIMEZONE setting (default
- * UTC) so the agent can reason about "now". Text content comes from the
- * centralized CURRENT_TIME provider spec.
+ * readable full form), resolved against the sending client's IANA timezone
+ * when available and otherwise the agent's TIMEZONE setting. Turn-local time
+ * keeps relative dates aligned with the device the user is actively using.
+ * Text content comes from the centralized CURRENT_TIME provider spec.
  */
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
 import type {
@@ -15,6 +16,26 @@ import type {
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("CURRENT_TIME");
+
+function clientTimeZone(message: Memory): string | null {
+	const metadata = message.content?.metadata;
+	if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+		return null;
+	}
+	const candidate = (metadata as Record<string, unknown>).uiTimeZone;
+	if (typeof candidate !== "string" || candidate.trim().length === 0) {
+		return null;
+	}
+	const timeZone = candidate.trim();
+	try {
+		new Intl.DateTimeFormat("en-US", { timeZone }).format(0);
+		return timeZone;
+	} catch {
+		// error-policy:J3 message metadata is untrusted; an invalid timezone is
+		// explicitly rejected so the configured runtime timezone remains authoritative.
+		return null;
+	}
+}
 
 /**
  * Current time provider function that retrieves the current date and time
@@ -37,7 +58,9 @@ export const currentTimeProvider: Provider = {
 	get: async (_runtime: IAgentRuntime, _message: Memory, _state: State) => {
 		const now = new Date();
 		const setting = _runtime.getSetting("TIMEZONE");
-		const timeZone = (typeof setting === "string" ? setting : "UTC") || "UTC";
+		const configuredTimeZone =
+			(typeof setting === "string" ? setting : "UTC") || "UTC";
+		const timeZone = clientTimeZone(_message) ?? configuredTimeZone;
 
 		const isoTimestamp = now.toISOString();
 		const unixTimestamp = Math.floor(now.getTime() / 1000);
@@ -73,6 +96,7 @@ export const currentTimeProvider: Provider = {
 				currentDate: dateOnly,
 				dayOfWeek: dayOfWeek,
 				unixTimestamp: unixTimestamp,
+				timeZone,
 			},
 			data: {
 				iso: isoTimestamp,
@@ -81,6 +105,7 @@ export const currentTimeProvider: Provider = {
 				dayOfWeek: dayOfWeek,
 				humanReadable: humanReadable,
 				unixTimestamp: unixTimestamp,
+				timeZone,
 			},
 		};
 	},
