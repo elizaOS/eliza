@@ -570,29 +570,10 @@ export async function installDatabaseTrajectoryLogger(
     logger.providerAccess.splice(0, logger.providerAccess.length);
   }
 
-  const llmLogger = logger.logLlmCall;
-  const originalLogLlmCall =
-    typeof llmLogger === "function"
-      ? (...args: unknown[]) => Reflect.apply(llmLogger, logger, args)
-      : null;
-  const providerAccessLogger = logger.logProviderAccess;
-  const originalLogProviderAccess =
-    typeof providerAccessLogger === "function"
-      ? (...args: unknown[]) =>
-          Reflect.apply(providerAccessLogger, logger, args)
-      : null;
-
+  // The bridge replaces lifecycle and read methods below, so capture must use
+  // the same owner. Forwarding into the original core writer would make one
+  // event mutate two incompatible step/reward shapes in the shared table.
   logger.logLlmCall = (...args: unknown[]) => {
-    if (originalLogLlmCall) {
-      try {
-        originalLogLlmCall(...args);
-      } catch (err) {
-        // error-policy:J7 third-party logger diagnostics cannot interrupt the
-        // model path; warnRuntime reports the instrumentation failure.
-        warnRuntime(runtime, "Trajectory logger logLlmCall threw", err);
-      }
-    }
-
     const normalized = normalizeLlmCallPayload(args);
     if (!normalized) return;
 
@@ -610,16 +591,6 @@ export async function installDatabaseTrajectoryLogger(
   };
 
   logger.logProviderAccess = (...args: unknown[]) => {
-    if (originalLogProviderAccess) {
-      try {
-        originalLogProviderAccess(...args);
-      } catch (err) {
-        // error-policy:J7 third-party logger diagnostics cannot interrupt the
-        // model path; warnRuntime reports the instrumentation failure.
-        warnRuntime(runtime, "Trajectory logger logProviderAccess threw", err);
-      }
-    }
-
     const normalized = normalizeProviderAccessPayload(args);
     if (!normalized) return;
 
@@ -904,21 +875,19 @@ export async function installDatabaseTrajectoryLogger(
     };
   }
 
-  if (typeof loggerForRoutes.exportTrajectories !== "function") {
-    loggerForRoutes.exportTrajectories = async (
-      options: RuntimeTrajectoryExportOptions,
-    ): Promise<TrajectoryExportResult> => {
-      const persistedTrajectories = await loadPersistedTrajectoriesForExport(
-        runtime,
-        options,
-      );
-      return exportPersistedTrajectories({
-        agentId: runtime.agentId,
-        persistedTrajectories,
-        options,
-      });
-    };
-  }
+  loggerForRoutes.exportTrajectories = async (
+    options: RuntimeTrajectoryExportOptions,
+  ): Promise<TrajectoryExportResult> => {
+    const persistedTrajectories = await loadPersistedTrajectoriesForExport(
+      runtime,
+      options,
+    );
+    return exportPersistedTrajectories({
+      agentId: runtime.agentId,
+      persistedTrajectories,
+      options,
+    });
+  };
 
   patchedLoggers.add(loggerObject);
 

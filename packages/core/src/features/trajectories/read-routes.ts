@@ -59,7 +59,7 @@ interface ServiceTrajectoryStep {
 	stepId: string;
 	llmCalls: ServiceLlmCall[];
 	providerAccesses: ServiceProviderAccess[];
-	action: ServiceActionAttempt;
+	action?: ServiceActionAttempt;
 }
 
 interface ServiceTrajectory {
@@ -190,7 +190,7 @@ function detailToUi(
 			});
 		}
 		const action = step.action;
-		if (action.actionName || action.actionType) {
+		if (action && (action.actionName || action.actionType)) {
 			const failed = action.success === false || Boolean(action.error);
 			toolEvents.push({
 				id: action.attemptId,
