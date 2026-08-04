@@ -6,7 +6,9 @@ import { describe, expect, it } from "vitest";
 import {
   type ChatPanelLayoutInput,
   isShortLandscapeViewport,
+  resolveChatPanelHalfDetentHeight,
   resolveChatPanelLayout,
+  SHEET_GRABBER_TOP_CLEARANCE,
   SHEET_TOP_MARGIN,
   SHORT_LANDSCAPE_MAX_HEIGHT,
 } from "./chat-panel-layout";
@@ -202,10 +204,32 @@ describe("resolveChatPanelLayout", () => {
       fullBleed: false,
     };
     const { panelMaxH } = resolveChatPanelLayout(input);
-    expect(panelMaxH).toBe(117 - 12);
+    expect(panelMaxH).toBe(117 - 12 - SHEET_GRABBER_TOP_CLEARANCE);
     // Screen height = visual viewport (117) + keyboard (276) = 393. The panel
-    // top must land at or below the screen top.
+    // top keeps the full grab target below the screen edge.
     expect(panelTopFromBottom(input, panelMaxH)).toBeLessThanOrEqual(393);
+    expect(393 - panelTopFromBottom(input, panelMaxH)).toBe(
+      SHEET_GRABBER_TOP_CLEARANCE,
+    );
+  });
+
+  it("keeps the complete grab target visible above LP3 Gboard", () => {
+    // Physical LP3 capture: the WebView kept its 414px layout viewport while
+    // Gboard reported a 223px native lift. The keyboard gap is 12px. A 22px
+    // reserve seats the grabber's 44px hit zone fully on-screen even though the
+    // preferred 200px panel no longer fits above the keyboard.
+    const input: ChatPanelLayoutInput = {
+      viewportH: 414,
+      bottomPad: 12,
+      keyboardInset: 0,
+      effectiveKeyboardInset: 223,
+      safeAreaTopPx: 0,
+      fullBleed: false,
+    };
+    const { panelMaxH } = resolveChatPanelLayout(input);
+    expect(414 - panelTopFromBottom(input, panelMaxH)).toBe(
+      SHEET_GRABBER_TOP_CLEARANCE,
+    );
   });
 
   it("demonstrates the pre-fix landscape-keyboard geometry pushed the panel top off-screen", () => {
@@ -275,6 +299,19 @@ describe("resolveChatPanelLayout", () => {
       fullBleed: false,
     });
     expect(topMargin).toBe(SHEET_TOP_MARGIN);
+  });
+});
+
+describe("resolveChatPanelHalfDetentHeight", () => {
+  it("clamps the LP3 half detent to the Gboard-constrained panel ceiling", () => {
+    // 46% of the unchanged 414px WebView is 190px, but physical LP3 proof
+    // leaves only a 157px panel above Gboard once its full grab target is
+    // reserved. The resting motion target must not expand past that ceiling.
+    expect(resolveChatPanelHalfDetentHeight(414, 157)).toBe(157);
+  });
+
+  it("keeps the ordinary viewport-relative half detent when it fits", () => {
+    expect(resolveChatPanelHalfDetentHeight(800, 728)).toBe(368);
   });
 });
 

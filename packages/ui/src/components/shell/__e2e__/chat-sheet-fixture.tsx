@@ -98,7 +98,7 @@ const fewMessages = params.has("few") || firstRun;
 // detent the content must exceed the panel height and the thread must scroll
 // natively (the "can't scroll chat on web" repro harness, #chat-scroll-web).
 const manyMessages = params.has("many");
-const MANY_SEED: ShellMessage[] = Array.from({ length: 40 }, (_, i) => {
+const MANY_SEED: ShellMessage[] = Array.from({ length: 56 }, (_, i) => {
   const role: ShellMessage["role"] = i % 2 === 0 ? "user" : "assistant";
   return {
     id: `many-${i}`,

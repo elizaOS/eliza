@@ -28,8 +28,8 @@ export interface UseVoiceConfigResult {
 
 /**
  * Loads the saved character/TTS voice config from the server, derives preset
- * voices without implicit settings writes, applies runtime provider defaults,
- * and keeps it fresh across
+ * voices without implicit settings writes, applies platform/runtime provider
+ * defaults, and keeps it fresh across
  * {@link VOICE_CONFIG_UPDATED_EVENT}. Shared by the full ChatView voice
  * controller and the ambient `/chat` overlay so both resolve the *same* TTS
  * provider/voice — there is a single voice-config pipeline, not two.
