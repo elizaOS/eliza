@@ -9,8 +9,15 @@ import { describe, expect, it } from "vitest";
 import { isAutonomousTurn } from "../../runtime/private-action-gate.ts";
 import type { Memory } from "../../types/memory.ts";
 import {
+	incomingPipelineHookContext,
+	type PipelineHookSpec,
+} from "../../types/pipeline-hooks.ts";
+import type { UUID } from "../../types/primitives.ts";
+import type { IAgentRuntime } from "../../types/runtime.ts";
+import {
 	hardenIncomingUserMessage,
 	messageHasPromptInjectionFlag,
+	registerCoreIncomingMessageSecurityHook,
 	scrubIncomingMessageTextForStorage,
 	unwrapUserMessageText,
 } from "../incoming-message-security.js";
@@ -150,6 +157,69 @@ describe("retained user payload (inbound trust boundary)", () => {
 		expect(metadata.userPayloadText).toBeUndefined();
 		expect(metadata.externalContentWrapped).toBeUndefined();
 		expect(unwrapUserMessageText(message)).toBe("routine check-in");
+	});
+});
+
+// The retained payload persists to memory and is what unwrapUserMessageText
+// prefers — so it must be stored in the same scrubbed form as content.text.
+// Regression: the retention initially stamped the RAW pre-scrub text, so a
+// pasted API key the text scrub removed persisted anyway and re-echoed
+// through payload consumers (describeAppReference quotes short references).
+describe("persistence hook scrubs the retained payload", () => {
+	const SECRET = "sk-abcdefghijklmnopqrstuvwxyz1234567890";
+
+	async function runIncomingSecurityHook(message: Memory): Promise<void> {
+		let captured: PipelineHookSpec | undefined;
+		const runtime = {
+			registerPipelineHook: (spec: PipelineHookSpec) => {
+				captured = spec;
+			},
+		} as unknown as IAgentRuntime;
+		registerCoreIncomingMessageSecurityHook(runtime);
+		if (!captured) {
+			throw new Error("incoming security hook was not registered");
+		}
+		await captured.handler(
+			runtime,
+			incomingPipelineHookContext(message, {
+				roomId: message.roomId,
+				responseId: "response-1" as UUID,
+				runId: "run-1" as UUID,
+			}),
+		);
+	}
+
+	it("persists metadata.userPayloadText with the secret scrubbed, surrounding words intact", async () => {
+		const message = userMessage(
+			`here is my key OPENAI_API_KEY=${SECRET} please keep it safe`,
+		);
+		await runIncomingSecurityHook(message);
+		const metadata = message.content.metadata as Record<string, unknown>;
+		const retained = metadata.userPayloadText;
+		expect(typeof retained).toBe("string");
+		expect(retained).not.toContain(SECRET);
+		expect(retained).toContain("here is my key");
+		expect(retained).toContain("please keep it safe");
+		// The envelope in content.text is scrubbed too — the two persisted
+		// fields must agree on what secrets survived (none).
+		expect(message.content.text).not.toContain(SECRET);
+	});
+
+	it("unwrapUserMessageText echoes only the scrubbed payload", async () => {
+		const message = userMessage(`my token OPENAI_API_KEY=${SECRET} is failing`);
+		await runIncomingSecurityHook(message);
+		const unwrapped = unwrapUserMessageText(message);
+		expect(unwrapped).not.toContain(SECRET);
+		expect(unwrapped).toContain("my token");
+		expect(unwrapped).toContain("is failing");
+	});
+
+	it("leaves a secret-free payload byte-identical through the hook", async () => {
+		const message = userMessage("deploy the blog app");
+		await runIncomingSecurityHook(message);
+		const metadata = message.content.metadata as Record<string, unknown>;
+		expect(metadata.userPayloadText).toBe("deploy the blog app");
+		expect(unwrapUserMessageText(message)).toBe("deploy the blog app");
 	});
 });
 

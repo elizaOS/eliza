@@ -48,7 +48,11 @@ export type IncomingMessageSecurityMetadata = {
 	 * the armor back out of the prompt text. Persisted with the message content,
 	 * so replayed/stored messages keep the trusted payload. Only
 	 * `hardenIncomingUserMessage` may stamp it; forged inbound values are
-	 * stripped there like the autonomy marker.
+	 * stripped there like the autonomy marker. The pipeline hook applies
+	 * `scrubIncomingMessageTextForStorage` to this field exactly as it does to
+	 * `content.text` — the retained copy persists and gets echoed by payload
+	 * consumers, so an unscrubbed copy would resurrect every secret the text
+	 * scrub removed.
 	 */
 	userPayloadText?: string;
 };
@@ -264,6 +268,22 @@ export function registerCoreIncomingMessageSecurityHook(
 					: "";
 			if (text) {
 				ctx.message.content.text = scrubIncomingMessageTextForStorage(text);
+			}
+			// The retained payload persists to memory alongside content.text and is
+			// what unwrapUserMessageText prefers, so it must pass through the same
+			// storage scrub — otherwise a pasted secret the text scrub removed
+			// survives in metadata and re-echoes through every payload consumer.
+			const metadata = ctx.message.content.metadata;
+			if (typeof metadata === "object" && metadata !== null) {
+				const record = metadata as Record<string, unknown>;
+				if (
+					typeof record.userPayloadText === "string" &&
+					record.userPayloadText
+				) {
+					record.userPayloadText = scrubIncomingMessageTextForStorage(
+						record.userPayloadText,
+					);
+				}
 			}
 		},
 	};
