@@ -74,12 +74,15 @@ function makeRuntime(opts: { enableAutonomy: boolean }): {
   return { runtime, createdTasks };
 }
 
-function makeMessage(text: string): Memory {
+function makeMessage(
+  text: string,
+  from?: { entityId?: UUID; roomId?: UUID },
+): Memory {
   return {
     id: stringToUuid(`msg-${text.slice(0, 24)}`),
-    entityId: USER_ID,
+    entityId: from?.entityId ?? USER_ID,
     agentId: AGENT_ID,
-    roomId: CHAT_ROOM_ID,
+    roomId: from?.roomId ?? CHAT_ROOM_ID,
     content: { text },
     createdAt: Date.now(),
   } as Memory;
@@ -89,8 +92,9 @@ async function create(
   runtime: IAgentRuntime,
   parameters: Record<string, unknown>,
   text = "remind me to drink water",
+  from?: { entityId?: UUID; roomId?: UUID },
 ) {
-  return triggerAction.handler(runtime, makeMessage(text), undefined, {
+  return triggerAction.handler(runtime, makeMessage(text, from), undefined, {
     parameters: { action: "create", ...parameters },
   });
 }
@@ -702,5 +706,184 @@ describe("TRIGGER effect receipts — completion-claim grounding", () => {
       resource: { kind: "trigger.task", id: String(taskId) },
     });
     expect(hasAppliedUserFacingEffectProof(result)).toBe(true);
+  });
+});
+
+describe("TRIGGER dedupe — replay key is the complete delivery identity", () => {
+  const OTHER_USER_ID = stringToUuid("trigger-create-other-user");
+  const OTHER_ROOM_ID = stringToUuid("trigger-create-other-room");
+
+  function storeTasks(
+    runtime: IAgentRuntime,
+    triggers: Array<Record<string, unknown> | undefined>,
+  ): void {
+    (
+      runtime.getTasks as unknown as { mockResolvedValue: (v: Task[]) => void }
+    ).mockResolvedValue(
+      triggers.map(
+        (trigger, i) =>
+          ({
+            id: stringToUuid(`stored-task-${i}`),
+            name: "TRIGGER_DISPATCH",
+            tags: ["queue", "repeat", "trigger"],
+            metadata: { updatedAt: Date.now(), trigger },
+          }) as unknown as Task,
+      ),
+    );
+  }
+
+  it("a second recipient sharing the same request still gets their own delivery", async () => {
+    // Two users in the SAME channel ask for the same reminder. Recipient A's
+    // stored trigger must not suppress recipient B: B's reminder would never
+    // fire for B, yet B would be told "you're covered" with a verified
+    // receipt minted from A's row.
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const first = await create(runtime, {
+      instructions: "drink water",
+      delaySeconds: 90,
+    });
+    expect(first?.success).toBe(true);
+    storeTasks(runtime, [
+      createdTasks[0].metadata.trigger as unknown as Record<string, unknown>,
+    ]);
+    const second = await create(
+      runtime,
+      { instructions: "drink water", delaySeconds: 90 },
+      "remind me to drink water",
+      { entityId: OTHER_USER_ID },
+    );
+    if (!second) throw new Error("expected a result");
+    expect(second.success).toBe(true);
+    expect(second.data?.duplicateTaskId).toBeUndefined();
+    expect(second.effectReceipts?.[0]).toMatchObject({
+      outcome: "applied",
+      idempotency: { replayed: false },
+    });
+    expect(createdTasks).toHaveLength(2);
+    expect(createdTasks[1].metadata.trigger?.createdBy).toBe(
+      String(OTHER_USER_ID),
+    );
+    // Distinct recipients produce distinct replay keys for the same request.
+    expect(createdTasks[1].metadata.trigger?.dedupeKey).not.toBe(
+      createdTasks[0].metadata.trigger?.dedupeKey,
+    );
+  });
+
+  it("the same recipient asking in a different room gets a delivery there too", async () => {
+    // A reminder delivers into the room it was created in; the same wording
+    // requested from a different room is a different delivery, not a replay.
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const first = await create(runtime, {
+      instructions: "drink water",
+      delaySeconds: 90,
+    });
+    expect(first?.success).toBe(true);
+    storeTasks(runtime, [
+      createdTasks[0].metadata.trigger as unknown as Record<string, unknown>,
+    ]);
+    const second = await create(
+      runtime,
+      { instructions: "drink water", delaySeconds: 90 },
+      "remind me to drink water",
+      { roomId: OTHER_ROOM_ID },
+    );
+    if (!second) throw new Error("expected a result");
+    expect(second.success).toBe(true);
+    expect(second.data?.duplicateTaskId).toBeUndefined();
+    expect(createdTasks).toHaveLength(2);
+    expect(createdTasks[1].roomId).toBe(OTHER_ROOM_ID);
+  });
+
+  it("the same recipient replaying the same delivery is suppressed as a replayed no-op", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const first = await create(runtime, {
+      instructions: "drink water",
+      delaySeconds: 90,
+    });
+    expect(first?.success).toBe(true);
+    storeTasks(runtime, [
+      createdTasks[0].metadata.trigger as unknown as Record<string, unknown>,
+    ]);
+    const replay = await create(runtime, {
+      instructions: "drink water",
+      delaySeconds: 90,
+    });
+    if (!replay) throw new Error("expected a result");
+    expect(replay.success).toBe(true);
+    expect(replay.effectReceipts?.[0]).toMatchObject({
+      outcome: "noop",
+      idempotency: { replayed: true },
+    });
+    expect(createdTasks).toHaveLength(1);
+  });
+
+  it("a dedupe-key collision can never cross recipients — createdBy is structurally required", async () => {
+    // dedupeHash is a 32-bit djb2, so two different identities CAN collide.
+    // Simulate the collision adversarially: store recipient A's row carrying
+    // the exact key recipient B's ask will compute. B must still get their
+    // own trigger — key equality alone is never proof across creators.
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const probe = await create(
+      runtime,
+      { instructions: "drink water", delaySeconds: 90 },
+      "remind me to drink water",
+      { entityId: OTHER_USER_ID },
+    );
+    expect(probe?.success).toBe(true);
+    const collidingKey = createdTasks[0].metadata.trigger?.dedupeKey;
+    const attackerRow = {
+      ...(createdTasks[0].metadata.trigger as unknown as Record<
+        string,
+        unknown
+      >),
+      createdBy: String(USER_ID),
+      dedupeKey: collidingKey,
+    };
+    createdTasks.length = 0;
+    storeTasks(runtime, [attackerRow]);
+    const second = await create(
+      runtime,
+      { instructions: "drink water", delaySeconds: 90 },
+      "remind me to drink water",
+      { entityId: OTHER_USER_ID },
+    );
+    if (!second) throw new Error("expected a result");
+    expect(second.success).toBe(true);
+    expect(second.data?.duplicateTaskId).toBeUndefined();
+    expect(createdTasks).toHaveLength(1);
+  });
+
+  it("another user's legacy (pre-key) row is not near-duplicate advice for a new recipient", async () => {
+    // The fuzzy tier matches instructions+type on rows without a dedupeKey.
+    // Scoped to the creator: telling recipient B "a similar trigger exists,
+    // delete it first" about A's row suppresses B's own delivery.
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const first = await create(runtime, {
+      instructions: "drink water",
+      delaySeconds: 90,
+    });
+    expect(first?.success).toBe(true);
+    const legacyRow = {
+      ...(createdTasks[0].metadata.trigger as unknown as Record<
+        string,
+        unknown
+      >),
+      dedupeKey: undefined,
+    };
+    createdTasks.length = 0;
+    storeTasks(runtime, [legacyRow]);
+    const second = await create(
+      runtime,
+      { instructions: "drink water", delaySeconds: 90 },
+      "remind me to drink water",
+      { entityId: OTHER_USER_ID },
+    );
+    if (!second) throw new Error("expected a result");
+    expect(second.success).toBe(true);
+    expect(second.data?.legacyFuzzyMatch).toBeUndefined();
+    expect(createdTasks).toHaveLength(1);
+    expect(createdTasks[0].metadata.trigger?.createdBy).toBe(
+      String(OTHER_USER_ID),
+    );
   });
 });
