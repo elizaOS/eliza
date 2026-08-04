@@ -179,10 +179,21 @@ describe("ElizaClient websocket connection policy", () => {
     expect(createdUrls[0]).toContain("ws://127.0.0.1:31338/ws?");
   });
 
-  it("still blocks non-loopback cleartext ws from a local Android sideload renderer", () => {
+  it("opens trusted private-LAN ws from a local Android sideload renderer", () => {
     const createdUrls = stubWebSocket();
     vi.spyOn(Capacitor, "getPlatform").mockReturnValue("android");
     const client = new ElizaClient("http://192.168.1.10:31338", "agent-token");
+
+    client.connectWs();
+
+    expect(createdUrls).toHaveLength(1);
+    expect(createdUrls[0]).toContain("ws://192.168.1.10:31338/ws?");
+  });
+
+  it("still blocks public cleartext ws from a local Android sideload renderer", () => {
+    const createdUrls = stubWebSocket();
+    vi.spyOn(Capacitor, "getPlatform").mockReturnValue("android");
+    const client = new ElizaClient("http://203.0.113.10:31338", "agent-token");
 
     client.connectWs();
 
