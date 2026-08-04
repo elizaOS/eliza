@@ -21,6 +21,7 @@ import {
   EventType,
   type HandlerCallback,
   type IAgentRuntime,
+  type JsonValue,
   lifeOpsPassiveConnectorsEnabled,
   logger,
   type Media,
@@ -35,6 +36,7 @@ import type {
   Document,
   InlineKeyboardButton,
   Message,
+  MessageEntity,
   ReactionType,
   Update,
   User,
@@ -62,6 +64,7 @@ import {
   cleanText,
   convertMarkdownToTelegram,
   convertToTelegramButtons,
+  splitMarkdownForTelegram,
 } from "./utils";
 
 /**
@@ -87,8 +90,11 @@ export enum MediaType {
   VIDEO = "video",
   DOCUMENT = "document",
   AUDIO = "audio",
+  VOICE = "voice",
   ANIMATION = "animation",
 }
+
+type TelegramSentMessage = Message;
 
 /**
  * Map a Telegram file's MIME type to the coarse core ContentType. Returns the
@@ -154,6 +160,107 @@ function isTelegramCommandForBot(
   }
   const normalizedBot = botUsername?.replace(/^@/, "").trim().toLowerCase();
   return Boolean(normalizedBot && target.toLowerCase() === normalizedBot);
+}
+
+function telegramMessageEntities(message: Message): MessageEntity[] {
+  if ("entities" in message && Array.isArray(message.entities)) {
+    return message.entities;
+  }
+  if (
+    "caption_entities" in message &&
+    Array.isArray(message.caption_entities)
+  ) {
+    return message.caption_entities;
+  }
+  return [];
+}
+
+function telegramTextWithEntities(message: Message): {
+  rawText: string | undefined;
+  renderedText: string | undefined;
+  entities: MessageEntity[];
+} {
+  const rawText = telegramMessagePlainText(message);
+  const entities = telegramMessageEntities(message);
+  return {
+    rawText,
+    renderedText: rawText,
+    entities,
+  };
+}
+
+function telegramEntityMetadata(entity: MessageEntity): {
+  [key: string]: JsonValue;
+} {
+  const metadata: { [key: string]: JsonValue } = {
+    type: entity.type,
+    offset: entity.offset,
+    length: entity.length,
+  };
+  if ("url" in entity && typeof entity.url === "string") {
+    metadata.url = entity.url;
+  }
+  if ("language" in entity && typeof entity.language === "string") {
+    metadata.language = entity.language;
+  }
+  if (
+    "custom_emoji_id" in entity &&
+    typeof entity.custom_emoji_id === "string"
+  ) {
+    metadata.custom_emoji_id = entity.custom_emoji_id;
+  }
+  if ("user" in entity && entity.user) {
+    metadata.user = {
+      id: entity.user.id,
+      is_bot: entity.user.is_bot,
+      first_name: entity.user.first_name,
+      ...(entity.user.last_name ? { last_name: entity.user.last_name } : {}),
+      ...(entity.user.username ? { username: entity.user.username } : {}),
+    };
+  }
+  return metadata;
+}
+
+function telegramRichTextMetadata(
+  message: Message,
+):
+  | { rawText: string; entities: Array<{ [key: string]: JsonValue }> }
+  | undefined {
+  const { rawText, entities } = telegramTextWithEntities(message);
+  if (!rawText || entities.length === 0) {
+    return undefined;
+  }
+  return {
+    rawText,
+    entities: entities.map(telegramEntityMetadata),
+  };
+}
+
+function addTelegramAttachmentProvenance(
+  attachment: Media,
+  message: Message,
+  accountId: string,
+): Media {
+  const threadId =
+    "message_thread_id" in message && message.message_thread_id !== undefined
+      ? message.message_thread_id.toString()
+      : undefined;
+  return {
+    ...attachment,
+    createdAt: message.date * 1000,
+    metadata: {
+      ...(attachment as Media & { metadata?: Record<string, unknown> })
+        .metadata,
+      source: "telegram",
+      provider: "telegram",
+      accountId,
+      chatId: message.chat.id.toString(),
+      messageId: message.message_id.toString(),
+      threadId,
+      mediaGroupId:
+        "media_group_id" in message ? message.media_group_id : undefined,
+    },
+  } as Media & { metadata: Record<string, unknown> };
 }
 
 const MAX_MESSAGE_LENGTH = 4096; // Telegram's max message length
@@ -312,8 +419,13 @@ function isPdfTextService(service: unknown): service is PdfTextService {
 type TelegramMediaSender = (
   chatId: number | string,
   media: string | { source: fs.ReadStream },
-  extra?: { caption?: string },
-) => Promise<unknown>;
+  extra?: {
+    caption?: string;
+    parse_mode?: "MarkdownV2";
+    reply_parameters?: { message_id: number };
+    message_thread_id?: number;
+  },
+) => Promise<TelegramSentMessage>;
 
 const getChannelType = (chat: Chat): ChannelType => {
   const chatType = chat.type;
@@ -990,11 +1102,9 @@ export class MessageManager {
     let processedContent = "";
     const attachments: Media[] = [];
 
-    // Get message text
-    if ("text" in message && message.text) {
-      processedContent = message.text;
-    } else if ("caption" in message && message.caption) {
-      processedContent = message.caption as string;
+    const rendered = telegramTextWithEntities(message);
+    if (rendered.renderedText) {
+      processedContent = rendered.renderedText;
     }
 
     // Process documents
@@ -1018,17 +1128,26 @@ export class MessageManager {
             processedContent += documentContent;
           }
 
-          attachments.push({
-            id: document.file_id,
-            url: fileLink.toString(),
-            title,
-            source: document.mime_type?.startsWith("application/pdf")
-              ? "PDF"
-              : "Document",
-            contentType: contentTypeForMime(document.mime_type),
-            description: documentInfo.formattedDescription,
-            text: fullText,
-          });
+          attachments.push(
+            addTelegramAttachmentProvenance(
+              {
+                id: document.file_id,
+                url: fileLink.toString(),
+                title,
+                source: document.mime_type?.startsWith("application/pdf")
+                  ? "PDF"
+                  : "Document",
+                contentType: contentTypeForMime(document.mime_type),
+                mimeType: document.mime_type,
+                filename: document.file_name,
+                size: document.file_size,
+                description: documentInfo.formattedDescription,
+                text: fullText,
+              },
+              message,
+              this.accountId,
+            ),
+          );
           logger.debug(
             {
               src: "plugin:telegram",
@@ -1048,54 +1167,76 @@ export class MessageManager {
             "Error processing document",
           );
           // Add a fallback attachment even if processing failed
-          attachments.push({
-            id: document.file_id,
-            url: "",
-            title: `Document: ${documentInfo.fileName}`,
-            source: "Document",
-            description: `Document processing failed: ${documentInfo.fileName}`,
-            text: `Document: ${documentInfo.fileName}\nSize: ${documentInfo.fileSize || 0} bytes\nType: ${documentInfo.mimeType || "unknown"}`,
-          });
+          attachments.push(
+            addTelegramAttachmentProvenance(
+              {
+                id: document.file_id,
+                url: "",
+                title: `Document: ${documentInfo.fileName}`,
+                source: "Document",
+                mimeType: documentInfo.mimeType,
+                filename: documentInfo.fileName,
+                size: documentInfo.fileSize,
+                description: `Document processing failed: ${documentInfo.fileName}`,
+                text: `Document: ${documentInfo.fileName}\nSize: ${documentInfo.fileSize || 0} bytes\nType: ${documentInfo.mimeType || "unknown"}`,
+              },
+              message,
+              this.accountId,
+            ),
+          );
         }
       } else {
-        // Add a basic attachment even if documentInfo is null
-        attachments.push({
-          id: document.file_id,
-          url: "",
-          title: `Document: ${document.file_name || "Unknown Document"}`,
-          source: "Document",
-          description: `Document: ${document.file_name || "Unknown Document"}`,
-          text: `Document: ${document.file_name || "Unknown Document"}\nSize: ${document.file_size || 0} bytes\nType: ${document.mime_type || "unknown"}`,
-        });
+        attachments.push(
+          addTelegramAttachmentProvenance(
+            {
+              id: document.file_id,
+              url: "",
+              title: `Document: ${document.file_name || "Unknown Document"}`,
+              source: "Document",
+              contentType: contentTypeForMime(document.mime_type),
+              mimeType: document.mime_type,
+              filename: document.file_name,
+              size: document.file_size,
+              description: `Document: ${document.file_name || "Unknown Document"}`,
+              text: `Document: ${document.file_name || "Unknown Document"}\nSize: ${document.file_size || 0} bytes\nType: ${document.mime_type || "unknown"}`,
+            },
+            message,
+            this.accountId,
+          ),
+        );
       }
     }
 
     // Process images
     if ("photo" in message && message.photo.length > 0) {
-      const imageInfo = await this.processImage(message);
-      if (imageInfo) {
-        try {
-          const photo = message.photo[message.photo.length - 1];
-          const fileLink = await this.bot.telegram.getFileLink(photo.file_id);
-          attachments.push({
-            id: photo.file_id,
-            url: fileLink.toString(),
-            title: "Image Attachment",
-            source: "Image",
-            contentType: "image",
-            description: imageInfo.description,
-            text: imageInfo.description,
-          });
-        } catch (error) {
-          logger.error(
+      try {
+        const photo = message.photo[message.photo.length - 1];
+        const fileLink = await this.bot.telegram.getFileLink(photo.file_id);
+        attachments.push(
+          addTelegramAttachmentProvenance(
             {
-              src: "plugin:telegram",
-              agentId: this.runtime.agentId,
-              error: error instanceof Error ? error.message : String(error),
+              id: photo.file_id,
+              url: fileLink.toString(),
+              title: "Image Attachment",
+              source: "Image",
+              contentType: "image",
+              size: photo.file_size,
+              width: photo.width,
+              height: photo.height,
             },
-            "Error attaching processed image",
-          );
-        }
+            message,
+            this.accountId,
+          ),
+        );
+      } catch (error) {
+        logger.error(
+          {
+            src: "plugin:telegram",
+            agentId: this.runtime.agentId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "Error attaching image",
+        );
       }
     }
 
@@ -1110,13 +1251,64 @@ export class MessageManager {
     ): Promise<void> => {
       try {
         const fileLink = await this.bot.telegram.getFileLink(fileId);
-        attachments.push({
-          id: fileId,
-          url: fileLink.toString(),
-          title,
-          source,
-          contentType,
-        });
+        const telegramFile =
+          "voice" in message && message.voice?.file_id === fileId
+            ? message.voice
+            : "audio" in message && message.audio?.file_id === fileId
+              ? message.audio
+              : "video" in message && message.video?.file_id === fileId
+                ? message.video
+                : "animation" in message &&
+                    message.animation?.file_id === fileId
+                  ? message.animation
+                  : undefined;
+        attachments.push(
+          addTelegramAttachmentProvenance(
+            {
+              id: fileId,
+              url: fileLink.toString(),
+              title,
+              source,
+              contentType,
+              mimeType:
+                telegramFile &&
+                "mime_type" in telegramFile &&
+                typeof telegramFile.mime_type === "string"
+                  ? telegramFile.mime_type
+                  : undefined,
+              filename:
+                telegramFile &&
+                "file_name" in telegramFile &&
+                typeof telegramFile.file_name === "string"
+                  ? telegramFile.file_name
+                  : undefined,
+              size:
+                typeof telegramFile?.file_size === "number"
+                  ? telegramFile.file_size
+                  : undefined,
+              duration:
+                telegramFile &&
+                "duration" in telegramFile &&
+                typeof telegramFile.duration === "number"
+                  ? telegramFile.duration
+                  : undefined,
+              width:
+                telegramFile &&
+                "width" in telegramFile &&
+                typeof telegramFile.width === "number"
+                  ? telegramFile.width
+                  : undefined,
+              height:
+                telegramFile &&
+                "height" in telegramFile &&
+                typeof telegramFile.height === "number"
+                  ? telegramFile.height
+                  : undefined,
+            },
+            message,
+            this.accountId,
+          ),
+        );
       } catch (error) {
         logger.error(
           {
@@ -1134,7 +1326,7 @@ export class MessageManager {
         message.voice.file_id,
         "audio",
         "Voice Message",
-        "Voice",
+        "Voice Note",
       );
     }
     if ("audio" in message && message.audio) {
@@ -1254,63 +1446,129 @@ export class MessageManager {
     }
   }
 
+  private async sendUnsupportedMediaNotice(
+    ctx: Context,
+    attachment: Media,
+    replyToMessageId?: number,
+    messageThreadId?: number,
+  ): Promise<Message.TextMessage> {
+    if (!ctx.chat) {
+      throw new Error("sendUnsupportedMediaNotice: ctx.chat is undefined");
+    }
+    const chatId = ctx.chat.id;
+    const title = attachment.title || attachment.filename || attachment.id;
+    const contentType = attachment.contentType || attachment.mimeType;
+    const notice = [
+      "I could not send this Telegram attachment.",
+      title ? `Attachment: ${title}` : undefined,
+      contentType ? `Type: ${contentType}` : undefined,
+    ]
+      .filter(Boolean)
+      .join("\n");
+    const formatted = convertMarkdownToTelegram(notice);
+    const sendOptions = {
+      reply_parameters: replyToMessageId
+        ? { message_id: replyToMessageId }
+        : undefined,
+      message_thread_id: messageThreadId,
+    };
+    return this.sendWithRetry(
+      () =>
+        ctx.telegram.sendMessage(chatId, formatted, {
+          ...sendOptions,
+          parse_mode: "MarkdownV2",
+        }),
+      () => ctx.telegram.sendMessage(chatId, cleanText(notice), sendOptions),
+    );
+  }
+
   /**
-   * Sends a message in chunks, handling attachments and splitting the message if necessary
-   *
-   * @param {Context} ctx - The context object representing the current state of the bot
-   * @param {TelegramContent} content - The content of the message to be sent
-   * @param {number} [replyToMessageId] - The ID of the message to reply to, if any
-   * @returns {Promise<Message.TextMessage[]>} - An array of TextMessage objects representing the messages sent
+   * Sends a message in chunks, handling attachments and splitting the message if necessary.
    */
   async sendMessageInChunks(
     ctx: Context,
     content: TelegramContent,
     replyToMessageId?: number,
     messageThreadId?: number,
-  ): Promise<Message.TextMessage[]> {
+  ): Promise<TelegramSentMessage[]> {
+    const sentMessages: TelegramSentMessage[] = [];
+    const telegramConfig = getTelegramMultiAccountConfig(this.runtime);
+    const replyToMode =
+      telegramConfig.accounts?.[this.accountId]?.replyToMode ??
+      telegramConfig.replyToMode ??
+      "first";
+
     if (content.attachments && content.attachments.length > 0) {
-      await Promise.all(
-        content.attachments.map(async (attachment: Media) => {
-          const typeMap: { [key: string]: MediaType } = {
-            "image/gif": MediaType.ANIMATION,
-            image: MediaType.PHOTO,
-            doc: MediaType.DOCUMENT,
-            video: MediaType.VIDEO,
-            audio: MediaType.AUDIO,
-          };
+      for (const attachment of content.attachments) {
+        const typeMap: { [key: string]: MediaType } = {
+          "image/gif": MediaType.ANIMATION,
+          image: MediaType.PHOTO,
+          doc: MediaType.DOCUMENT,
+          video: MediaType.VIDEO,
+          audio: MediaType.AUDIO,
+        };
 
-          let mediaType: MediaType | undefined;
+        let mediaType: MediaType | undefined;
 
-          for (const prefix in typeMap) {
-            if (attachment.contentType?.startsWith(prefix)) {
-              mediaType = typeMap[prefix];
-              break;
-            }
+        for (const prefix in typeMap) {
+          if (attachment.contentType?.startsWith(prefix)) {
+            mediaType = typeMap[prefix];
+            break;
           }
+        }
 
-          if (!mediaType) {
-            // Degrade unknown/absent content types to a document upload instead
-            // of throwing — a throw inside Promise.all aborts the whole reply
-            // and silently drops the agent's text.
-            logger.warn(
-              {
-                src: "plugin:telegram",
-                agentId: this.runtime.agentId,
-                contentType: attachment.contentType,
-              },
-              "Unknown Telegram attachment content type; sending as document",
-            );
-            mediaType = MediaType.DOCUMENT;
-          }
-
-          await this.sendMedia(
-            ctx,
-            attachment.url,
-            mediaType,
-            attachment.description,
+        if (!mediaType) {
+          logger.warn(
+            {
+              src: "plugin:telegram",
+              agentId: this.runtime.agentId,
+              contentType: attachment.contentType,
+            },
+            "Unknown Telegram attachment content type; sending visible failure",
           );
-        }),
-      );
+          const shouldReplyToSource =
+            replyToMessageId !== undefined &&
+            replyToMode !== "off" &&
+            (replyToMode === "all" || sentMessages.length === 0);
+          sentMessages.push(
+            await this.sendUnsupportedMediaNotice(
+              ctx,
+              attachment,
+              shouldReplyToSource ? replyToMessageId : undefined,
+              messageThreadId,
+            ),
+          );
+          continue;
+        }
+
+        const contentMetadata = isRecord(content.metadata)
+          ? content.metadata
+          : {};
+        const telegramMetadata = isRecord(contentMetadata.telegram)
+          ? contentMetadata.telegram
+          : {};
+        const sendsAudioAsVoice =
+          mediaType === MediaType.AUDIO &&
+          ((typeof content.text === "string" &&
+            content.text.includes("[[audio_as_voice]]")) ||
+            telegramMetadata.audioAsVoice === true ||
+            telegramMetadata.sendAsVoice === true ||
+            attachment.source === "Voice Note");
+        const shouldReplyToSource =
+          replyToMessageId !== undefined &&
+          replyToMode !== "off" &&
+          (replyToMode === "all" || sentMessages.length === 0);
+
+        const sentMedia = await this.sendMedia(
+          ctx,
+          attachment.url,
+          sendsAudioAsVoice ? MediaType.VOICE : mediaType,
+          attachment.description,
+          shouldReplyToSource ? replyToMessageId : undefined,
+          messageThreadId,
+        );
+        sentMessages.push(sentMedia);
+      }
       // Fall through to the text path below so an attachment reply never drops
       // the agent's accompanying prose (sent as a follow-up message).
     }
@@ -1327,8 +1585,6 @@ export class MessageManager {
         content,
         buildInteractionUrlResolver(appBaseUrl),
       );
-      const sentMessages: Message.TextMessage[] = [];
-
       const telegramButtons = convertToTelegramButtons(content.buttons ?? []);
       const hasKeyboardRows =
         rendered.keyboardRows.length > 0 || telegramButtons.length > 0;
@@ -1344,7 +1600,7 @@ export class MessageManager {
         return sentMessages;
       }
 
-      const chunks = this.splitMessage(textToSend);
+      const chunks = splitMarkdownForTelegram(textToSend, MAX_MESSAGE_LENGTH);
 
       if (!ctx.chat) {
         logger.error(
@@ -1372,14 +1628,12 @@ export class MessageManager {
       // lookup) and attached to the final chunk only, alongside any other
       // interaction controls.
       const embedLaunchRow = await this.buildEmbedLaunchRow(ctx);
-      const telegramConfig = getTelegramMultiAccountConfig(this.runtime);
-      const replyToMode =
-        telegramConfig.accounts?.[this.accountId]?.replyToMode ??
-        telegramConfig.replyToMode ??
-        "first";
-
       for (let i = 0; i < chunks.length; i++) {
-        const chunk = convertMarkdownToTelegram(chunks[i]);
+        const rawChunk = chunks[i].replaceAll("[[audio_as_voice]]", "").trim();
+        if (!rawChunk) {
+          continue;
+        }
+        const chunk = convertMarkdownToTelegram(rawChunk);
         if (!ctx.chat) {
           logger.error(
             { src: "plugin:telegram", agentId: this.runtime.agentId },
@@ -1407,7 +1661,7 @@ export class MessageManager {
         const shouldReplyToSource =
           replyToMessageId !== undefined &&
           replyToMode !== "off" &&
-          (replyToMode === "all" || i === 0);
+          (replyToMode === "all" || sentMessages.length === 0);
         const sendOptions = {
           reply_parameters: shouldReplyToSource
             ? { message_id: replyToMessageId }
@@ -1426,7 +1680,7 @@ export class MessageManager {
           // otherwise the user sees literal backslash escapes ("Sure\!"). Mirror
           // the editMessage fallback, which sends cleanText(text).
           () =>
-            ctx.telegram.sendMessage(chatId, cleanText(chunks[i]), sendOptions),
+            ctx.telegram.sendMessage(chatId, cleanText(rawChunk), sendOptions),
         )) as Message.TextMessage;
 
         sentMessages.push(sentMessage);
@@ -1437,7 +1691,7 @@ export class MessageManager {
   }
 
   private async persistSentMessageMemories(args: {
-    sentMessages: Message.TextMessage[];
+    sentMessages: TelegramSentMessage[];
     content: TelegramContent;
     roomId: UUID;
     channelType: ChannelType;
@@ -1458,7 +1712,12 @@ export class MessageManager {
         content: {
           ...args.content,
           source: "telegram",
-          text: sentMessage.text,
+          text:
+            "text" in sentMessage
+              ? sentMessage.text
+              : "caption" in sentMessage && sentMessage.caption
+                ? sentMessage.caption
+                : args.content.text,
           inReplyTo: args.inReplyTo,
           channelType: args.channelType,
           metadata: { accountId: this.accountId },
@@ -1513,7 +1772,9 @@ export class MessageManager {
     mediaPath: string,
     type: MediaType,
     caption?: string,
-  ): Promise<void> {
+    replyToMessageId?: number,
+    messageThreadId?: number,
+  ): Promise<TelegramSentMessage> {
     try {
       const isUrl = /^(http|https):\/\//.test(mediaPath);
       // Look up the raw sender lazily and bind only the one we need. Building
@@ -1525,6 +1786,7 @@ export class MessageManager {
         [MediaType.VIDEO]: ctx.telegram.sendVideo,
         [MediaType.DOCUMENT]: ctx.telegram.sendDocument,
         [MediaType.AUDIO]: ctx.telegram.sendAudio,
+        [MediaType.VOICE]: ctx.telegram.sendVoice,
         [MediaType.ANIMATION]: ctx.telegram.sendAnimation,
       };
 
@@ -1537,12 +1799,45 @@ export class MessageManager {
       if (!ctx.chat) {
         throw new Error("sendMedia: ctx.chat is undefined");
       }
+      const chatId = ctx.chat.id;
 
+      const formattedCaption = caption
+        ? convertMarkdownToTelegram(caption)
+        : undefined;
+      const sendOptions = {
+        caption: formattedCaption,
+        parse_mode: formattedCaption ? ("MarkdownV2" as const) : undefined,
+        reply_parameters: replyToMessageId
+          ? { message_id: replyToMessageId }
+          : undefined,
+        message_thread_id: messageThreadId,
+      };
+      const plainTextFallback = caption
+        ? () => {
+            const fallbackOptions = {
+              ...sendOptions,
+              caption: cleanText(caption),
+              parse_mode: undefined,
+            };
+            if (isUrl) {
+              return sendFunction(chatId, mediaPath, fallbackOptions);
+            }
+            const fallbackStream = fs.createReadStream(mediaPath);
+            return sendFunction(
+              chatId,
+              { source: fallbackStream },
+              fallbackOptions,
+            ).finally(() => fallbackStream.destroy());
+          }
+        : undefined;
+
+      let sentMessage: TelegramSentMessage;
       if (isUrl) {
-        // Handle HTTP URLs
-        await sendFunction(ctx.chat.id, mediaPath, { caption });
+        sentMessage = await this.sendWithRetry(
+          () => sendFunction(chatId, mediaPath, sendOptions),
+          plainTextFallback,
+        );
       } else {
-        // Handle local file paths
         if (!fs.existsSync(mediaPath)) {
           throw new Error(`File not found at path: ${mediaPath}`);
         }
@@ -1550,10 +1845,10 @@ export class MessageManager {
         const fileStream = fs.createReadStream(mediaPath);
 
         try {
-          if (!ctx.chat) {
-            throw new Error("sendMedia (file): ctx.chat is undefined");
-          }
-          await sendFunction(ctx.chat.id, { source: fileStream }, { caption });
+          sentMessage = await this.sendWithRetry(
+            () => sendFunction(chatId, { source: fileStream }, sendOptions),
+            plainTextFallback,
+          );
         } finally {
           fileStream.destroy();
         }
@@ -1568,6 +1863,7 @@ export class MessageManager {
         },
         "Media sent successfully",
       );
+      return sentMessage;
     } catch (error) {
       logger.error(
         {
@@ -1581,71 +1877,6 @@ export class MessageManager {
       );
       throw error;
     }
-  }
-
-  /**
-   * Splits a given text into an array of strings based on the maximum message length.
-   *
-   * @param {string} text - The text to split into chunks.
-   * @returns {string[]} An array of strings with each element representing a chunk of the original text.
-   */
-  private splitMessage(text: string): string[] {
-    const chunks: string[] = [];
-    if (!text) {
-      return chunks;
-    }
-
-    let currentChunk = "";
-
-    const appendSegment = (segment: string) => {
-      let remaining = segment;
-
-      while (remaining.length > 0) {
-        const availableLength = MAX_MESSAGE_LENGTH - currentChunk.length;
-
-        if (remaining.length <= availableLength) {
-          currentChunk += remaining;
-          return;
-        }
-
-        if (availableLength > 0) {
-          currentChunk += remaining.slice(0, availableLength);
-          remaining = remaining.slice(availableLength);
-        }
-
-        if (currentChunk) {
-          chunks.push(currentChunk);
-          currentChunk = "";
-        }
-      }
-    };
-
-    const lines = text.split("\n");
-    for (const line of lines) {
-      let segment = currentChunk ? `\n${line}` : line;
-      if (!segment) {
-        continue;
-      }
-
-      if (
-        currentChunk &&
-        currentChunk.length + segment.length > MAX_MESSAGE_LENGTH
-      ) {
-        chunks.push(currentChunk);
-        currentChunk = "";
-        segment = line;
-        if (!segment) {
-          continue;
-        }
-      }
-
-      appendSegment(segment);
-    }
-
-    if (currentChunk) {
-      chunks.push(currentChunk);
-    }
-    return chunks;
   }
 
   /**
@@ -1735,12 +1966,19 @@ export class MessageManager {
 
       // Clean processedContent and attachments to avoid NULL characters
       const cleanedContent = cleanText(policyAdjustedContent);
-      const cleanedAttachments = attachments.map((att) => ({
-        ...att,
-        text: cleanText(att.text),
-        description: cleanText(att.description),
-        title: cleanText(att.title),
-      }));
+      const cleanedAttachments = attachments.map((att) => {
+        const cleaned = { ...att };
+        if (typeof cleaned.text === "string") {
+          cleaned.text = cleanText(cleaned.text);
+        }
+        if (typeof cleaned.description === "string") {
+          cleaned.description = cleanText(cleaned.description);
+        }
+        if (typeof cleaned.title === "string") {
+          cleaned.title = cleanText(cleaned.title);
+        }
+        return cleaned;
+      });
 
       if (!cleanedContent && cleanedAttachments.length === 0) {
         return;
@@ -1781,7 +2019,12 @@ export class MessageManager {
           text: cleanedContent || " ",
           attachments: cleanedAttachments,
           source: "telegram",
-          metadata: { accountId: this.accountId },
+          metadata: {
+            accountId: this.accountId,
+            telegram: {
+              richText: telegramRichTextMetadata(message),
+            },
+          },
           channelType,
           inReplyTo:
             "reply_to_message" in message && message.reply_to_message
@@ -1840,8 +2083,14 @@ export class MessageManager {
 
       // Create callback for handling responses
       const baseCallback: HandlerCallback = async (content: Content) => {
+        const telegramContent = content as TelegramContent;
         // A model response with no user-facing text is a legitimate no-op.
-        if (!content.text) {
+        if (
+          !content.text &&
+          (!telegramContent.attachments ||
+            telegramContent.attachments.length === 0) &&
+          (!telegramContent.buttons || telegramContent.buttons.length === 0)
+        ) {
           return [];
         }
 
@@ -2534,14 +2783,14 @@ export class MessageManager {
    * @param {number | string} chatId - The Telegram chat ID to send the message to
    * @param {Content} content - The content to send
    * @param {number} [replyToMessageId] - Optional message ID to reply to
-   * @returns {Promise<Message.TextMessage[]>} The sent messages
+   * @returns {Promise<Message[]>} The sent messages
    */
   public async sendMessage(
     chatId: number | string,
     content: Content,
     replyToMessageId?: number,
     messageThreadId?: number,
-  ): Promise<Message.TextMessage[]> {
+  ): Promise<TelegramSentMessage[]> {
     try {
       // Create a context-like object for sending
       const ctx = {
@@ -2588,7 +2837,12 @@ export class MessageManager {
           roomId,
           content: {
             ...content,
-            text: sentMessage.text,
+            text:
+              "text" in sentMessage
+                ? sentMessage.text
+                : "caption" in sentMessage && sentMessage.caption
+                  ? sentMessage.caption
+                  : content.text,
             source: "telegram",
             metadata: { ...contentMetadata, accountId: this.accountId },
             channelType: getChannelType({

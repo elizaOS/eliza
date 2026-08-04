@@ -10,6 +10,7 @@ import type { Button } from "./types";
 
 // A list of Telegram MarkdownV2 reserved characters that must be escaped
 const TELEGRAM_RESERVED_REGEX = /([_*[\]()~`>#+\-=|{}.!\\])/g;
+const TELEGRAM_MESSAGE_LIMIT = 4096;
 
 /**
  * Escapes plain text for Telegram MarkdownV2.
@@ -202,6 +203,359 @@ export function convertMarkdownToTelegram(markdown: string): string {
   }
 
   return finalResult;
+}
+
+type MarkdownSplitToken =
+  | { kind: "plain"; raw: string }
+  | { kind: "escaped"; raw: string }
+  | { kind: "bold"; marker: "**"; content: string }
+  | { kind: "italic"; marker: "*" | "_"; content: string }
+  | { kind: "strike"; marker: "~~"; content: string }
+  | { kind: "inlineCode"; content: string }
+  | { kind: "fence"; language: string; content: string }
+  | { kind: "link"; text: string; url: string };
+
+function convertedLength(markdown: string): number {
+  return convertMarkdownToTelegram(markdown).length;
+}
+
+function tokenRaw(token: MarkdownSplitToken): string {
+  switch (token.kind) {
+    case "plain":
+    case "escaped":
+      return token.raw;
+    case "bold":
+      return `${token.marker}${token.content}${token.marker}`;
+    case "italic":
+      return `${token.marker}${token.content}${token.marker}`;
+    case "strike":
+      return `${token.marker}${token.content}${token.marker}`;
+    case "inlineCode":
+      return `\`${token.content}\``;
+    case "fence":
+      return `\`\`\`${token.language}\n${token.content}\`\`\``;
+    case "link":
+      return `[${token.text}](${token.url})`;
+  }
+}
+
+function findUnescaped(text: string, needle: string, start: number): number {
+  let index = text.indexOf(needle, start);
+  while (index !== -1) {
+    let slashCount = 0;
+    for (let i = index - 1; i >= 0 && text[i] === "\\"; i -= 1) {
+      slashCount += 1;
+    }
+    if (slashCount % 2 === 0) {
+      return index;
+    }
+    index = text.indexOf(needle, index + needle.length);
+  }
+  return -1;
+}
+
+function tokenizeMarkdownForTelegram(markdown: string): MarkdownSplitToken[] {
+  const tokens: MarkdownSplitToken[] = [];
+  let plain = "";
+  const flushPlain = () => {
+    if (plain) {
+      tokens.push({ kind: "plain", raw: plain });
+      plain = "";
+    }
+  };
+
+  for (let i = 0; i < markdown.length; ) {
+    if (markdown[i] === "\\" && i + 1 < markdown.length) {
+      flushPlain();
+      tokens.push({ kind: "escaped", raw: markdown.slice(i, i + 2) });
+      i += 2;
+      continue;
+    }
+
+    if (markdown.startsWith("```", i)) {
+      const close = markdown.indexOf("```", i + 3);
+      if (close !== -1) {
+        const openingLineEnd = markdown.indexOf("\n", i + 3);
+        if (openingLineEnd !== -1 && openingLineEnd < close) {
+          flushPlain();
+          tokens.push({
+            kind: "fence",
+            language: markdown.slice(i + 3, openingLineEnd),
+            content: markdown.slice(openingLineEnd + 1, close),
+          });
+          i = close + 3;
+          continue;
+        }
+      }
+    }
+
+    if (markdown[i] === "`") {
+      const close = findUnescaped(markdown, "`", i + 1);
+      if (close !== -1) {
+        flushPlain();
+        tokens.push({
+          kind: "inlineCode",
+          content: markdown.slice(i + 1, close),
+        });
+        i = close + 1;
+        continue;
+      }
+    }
+
+    if (markdown[i] === "[") {
+      const textEnd = findUnescaped(markdown, "](", i + 1);
+      if (textEnd !== -1) {
+        const urlEnd = findUnescaped(markdown, ")", textEnd + 2);
+        if (urlEnd !== -1) {
+          flushPlain();
+          tokens.push({
+            kind: "link",
+            text: markdown.slice(i + 1, textEnd),
+            url: markdown.slice(textEnd + 2, urlEnd),
+          });
+          i = urlEnd + 1;
+          continue;
+        }
+      }
+    }
+
+    if (markdown.startsWith("**", i)) {
+      const close = findUnescaped(markdown, "**", i + 2);
+      if (close !== -1) {
+        flushPlain();
+        tokens.push({
+          kind: "bold",
+          marker: "**",
+          content: markdown.slice(i + 2, close),
+        });
+        i = close + 2;
+        continue;
+      }
+    }
+
+    if (markdown.startsWith("~~", i)) {
+      const close = findUnescaped(markdown, "~~", i + 2);
+      if (close !== -1) {
+        flushPlain();
+        tokens.push({
+          kind: "strike",
+          marker: "~~",
+          content: markdown.slice(i + 2, close),
+        });
+        i = close + 2;
+        continue;
+      }
+    }
+
+    if (markdown[i] === "*" && !markdown.startsWith("**", i)) {
+      const close = findUnescaped(markdown, "*", i + 1);
+      if (close !== -1 && !markdown.startsWith("*", close + 1)) {
+        flushPlain();
+        tokens.push({
+          kind: "italic",
+          marker: "*",
+          content: markdown.slice(i + 1, close),
+        });
+        i = close + 1;
+        continue;
+      }
+    }
+
+    if (markdown[i] === "_") {
+      const close = findUnescaped(markdown, "_", i + 1);
+      if (close !== -1) {
+        flushPlain();
+        tokens.push({
+          kind: "italic",
+          marker: "_",
+          content: markdown.slice(i + 1, close),
+        });
+        i = close + 1;
+        continue;
+      }
+    }
+
+    plain += markdown[i];
+    i += 1;
+  }
+
+  flushPlain();
+  return tokens;
+}
+
+function splitPlainMarkdown(text: string, maxLength: number): string[] {
+  const chunks: string[] = [];
+  let remaining = text;
+  while (remaining.length > 0) {
+    let low = 1;
+    let high = remaining.length;
+    let best = 1;
+    while (low <= high) {
+      const mid = Math.floor((low + high) / 2);
+      if (convertedLength(remaining.slice(0, mid)) <= maxLength) {
+        best = mid;
+        low = mid + 1;
+      } else {
+        high = mid - 1;
+      }
+    }
+
+    const preferred = Math.max(
+      remaining.lastIndexOf("\n\n", best),
+      remaining.lastIndexOf("\n", best),
+      remaining.lastIndexOf(" ", best),
+    );
+    const splitAt = preferred > 0 ? preferred : best;
+    const chunk = remaining.slice(0, splitAt).trimEnd();
+    if (chunk) {
+      chunks.push(chunk);
+    }
+    remaining = remaining.slice(splitAt).trimStart();
+  }
+  return chunks;
+}
+
+function splitWrappedMarkdown(
+  content: string,
+  wrap: (chunk: string) => string,
+  maxLength: number,
+): string[] {
+  const chunks: string[] = [];
+  let remaining = content;
+  while (remaining.length > 0) {
+    let low = 1;
+    let high = remaining.length;
+    let best = 1;
+    while (low <= high) {
+      const mid = Math.floor((low + high) / 2);
+      if (convertedLength(wrap(remaining.slice(0, mid))) <= maxLength) {
+        best = mid;
+        low = mid + 1;
+      } else {
+        high = mid - 1;
+      }
+    }
+
+    const preferred = Math.max(
+      remaining.lastIndexOf("\n\n", best),
+      remaining.lastIndexOf("\n", best),
+      remaining.lastIndexOf(" ", best),
+    );
+    const splitAt = preferred > 0 ? preferred : best;
+    const inner = remaining.slice(0, splitAt).trimEnd();
+    if (inner) {
+      chunks.push(wrap(inner));
+    }
+    remaining = remaining.slice(splitAt).trimStart();
+  }
+  return chunks;
+}
+
+function splitOversizedToken(
+  token: MarkdownSplitToken,
+  maxLength: number,
+): string[] {
+  switch (token.kind) {
+    case "bold":
+      return splitWrappedMarkdown(
+        token.content,
+        (chunk) => `${token.marker}${chunk}${token.marker}`,
+        maxLength,
+      );
+    case "italic":
+      return splitWrappedMarkdown(
+        token.content,
+        (chunk) => `${token.marker}${chunk}${token.marker}`,
+        maxLength,
+      );
+    case "strike":
+      return splitWrappedMarkdown(
+        token.content,
+        (chunk) => `${token.marker}${chunk}${token.marker}`,
+        maxLength,
+      );
+    case "inlineCode":
+      return splitWrappedMarkdown(
+        token.content,
+        (chunk) => `\`${chunk}\``,
+        maxLength,
+      );
+    case "fence":
+      return splitWrappedMarkdown(
+        token.content,
+        (chunk) => `\`\`\`${token.language}\n${chunk}\`\`\``,
+        maxLength,
+      );
+    case "link": {
+      const wrapped = splitWrappedMarkdown(
+        token.text,
+        (chunk) => `[${chunk}](${token.url})`,
+        maxLength,
+      );
+      if (wrapped.length > 0) {
+        return wrapped;
+      }
+      return splitPlainMarkdown(tokenRaw(token), maxLength);
+    }
+    case "plain":
+    case "escaped":
+      return splitPlainMarkdown(token.raw, maxLength);
+  }
+}
+
+/**
+ * Splits source Markdown only at boundaries that remain valid after Telegram
+ * MarkdownV2 conversion. Oversized formatting spans are reopened in each output
+ * chunk so callers can convert every chunk independently before sending.
+ */
+export function splitMarkdownForTelegram(
+  markdown: string,
+  maxLength = TELEGRAM_MESSAGE_LIMIT,
+): string[] {
+  if (!markdown) {
+    return [];
+  }
+  if (convertedLength(markdown) <= maxLength) {
+    return [markdown];
+  }
+
+  const chunks: string[] = [];
+  let current = "";
+  const flush = () => {
+    const trimmed = current.trim();
+    if (trimmed) {
+      chunks.push(trimmed);
+    }
+    current = "";
+  };
+
+  for (const token of tokenizeMarkdownForTelegram(markdown)) {
+    const raw = tokenRaw(token);
+    if (convertedLength(raw) > maxLength) {
+      flush();
+      for (const piece of splitOversizedToken(token, maxLength)) {
+        if (piece && convertedLength(piece) <= maxLength) {
+          chunks.push(piece);
+        }
+      }
+      continue;
+    }
+
+    const next = current ? `${current}${raw}` : raw;
+    if (convertedLength(next) <= maxLength) {
+      current = next;
+      continue;
+    }
+
+    flush();
+    current = raw;
+  }
+
+  flush();
+
+  return chunks.filter(
+    (chunk) => chunk.length > 0 && convertedLength(chunk) <= maxLength,
+  );
 }
 
 /**

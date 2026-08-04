@@ -2,11 +2,14 @@
  * Unit tests for `MessageManager` outbound chunking and malformed-payload
  * handling: over-limit messages hard-split at Telegram's size cap (preferring
  * newline boundaries), interaction-only replies still carry fallback text, and
- * unknown attachment types degrade to a document upload. Telegraf is mocked.
+ * unknown attachment types produce a visible unsupported-media notice. Telegraf
+ * is mocked.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { MediaType, MessageManager } from "./messageManager";
+
+const TELEGRAM_LIMIT = 4096;
 
 function createManager() {
   let messageId = 0;
@@ -30,6 +33,21 @@ function createManager() {
     sendChatAction,
     sendMessage,
   };
+}
+
+function expectTelegramChunksValid(chunks: string[]) {
+  expect(chunks.length).toBeGreaterThan(0);
+  for (const chunk of chunks) {
+    expect(chunk.length).toBeGreaterThan(0);
+    expect(chunk.length).toBeLessThanOrEqual(TELEGRAM_LIMIT);
+    expect((chunk.match(/(?<!\\)\*/g) ?? []).length % 2).toBe(0);
+    expect((chunk.match(/(?<!\\)_/g) ?? []).length % 2).toBe(0);
+    expect((chunk.match(/(?<!\\)~/g) ?? []).length % 2).toBe(0);
+    expect((chunk.match(/(?<!\\)`/g) ?? []).length % 2).toBe(0);
+    expect((chunk.match(/(?<!\\)\[/g) ?? []).length).toBe(
+      (chunk.match(/(?<!\\)\]\(/g) ?? []).length,
+    );
+  }
 }
 
 describe("MessageManager long message splitting", () => {
@@ -103,6 +121,117 @@ describe("MessageManager long message splitting", () => {
       `${firstLine}\ny`,
       "z",
     ]);
+  });
+
+  it("keeps MarkdownV2-expanded chunks under Telegram's final limit", async () => {
+    const { manager, sendMessage } = createManager();
+    const text = "escaped punctuation! ".repeat(350);
+
+    await manager.sendMessageInChunks(
+      {
+        chat: { id: 123 },
+        telegram: {
+          sendChatAction: vi.fn(async () => undefined),
+          sendMessage,
+        },
+      } as never,
+      { text },
+    );
+
+    expect(sendMessage.mock.calls.length).toBeGreaterThan(1);
+    expect(
+      sendMessage.mock.calls.every((call) => String(call[1]).length <= 4096),
+    ).toBe(true);
+    expect(sendMessage.mock.calls.map((call) => call[1]).join("")).toContain(
+      "escaped punctuation\\!",
+    );
+  });
+
+  it("rewraps a bold span longer than Telegram's final limit", async () => {
+    const { manager, sendMessage } = createManager();
+    const text = `**${"bold text ".repeat(600)}**`;
+
+    await manager.sendMessageInChunks(
+      {
+        chat: { id: 123 },
+        telegram: {
+          sendChatAction: vi.fn(async () => undefined),
+          sendMessage,
+        },
+      } as never,
+      { text },
+    );
+
+    const chunks = sendMessage.mock.calls.map((call) => String(call[1]));
+    expect(chunks.length).toBeGreaterThan(1);
+    expectTelegramChunksValid(chunks);
+    expect(chunks.every((chunk) => chunk.startsWith("*"))).toBe(true);
+    expect(chunks.every((chunk) => chunk.endsWith("*"))).toBe(true);
+  });
+
+  it("rewraps a fenced code block longer than Telegram's final limit", async () => {
+    const { manager, sendMessage } = createManager();
+    const text = `\`\`\`ts\n${"const value = 1;\n".repeat(420)}\`\`\``;
+
+    await manager.sendMessageInChunks(
+      {
+        chat: { id: 123 },
+        telegram: {
+          sendChatAction: vi.fn(async () => undefined),
+          sendMessage,
+        },
+      } as never,
+      { text },
+    );
+
+    const chunks = sendMessage.mock.calls.map((call) => String(call[1]));
+    expect(chunks.length).toBeGreaterThan(1);
+    expectTelegramChunksValid(chunks);
+    expect(chunks.every((chunk) => chunk.startsWith("```ts\n"))).toBe(true);
+    expect(chunks.every((chunk) => chunk.endsWith("```"))).toBe(true);
+  });
+
+  it("keeps link-adjacent long messages valid after MarkdownV2 conversion", async () => {
+    const { manager, sendMessage } = createManager();
+    const link = "[docs](https://example.test/path-v1)";
+    const text = `${"read this! ".repeat(390)}${link}${" then continue. ".repeat(90)}`;
+
+    await manager.sendMessageInChunks(
+      {
+        chat: { id: 123 },
+        telegram: {
+          sendChatAction: vi.fn(async () => undefined),
+          sendMessage,
+        },
+      } as never,
+      { text },
+    );
+
+    const chunks = sendMessage.mock.calls.map((call) => String(call[1]));
+    expect(chunks.length).toBeGreaterThan(1);
+    expectTelegramChunksValid(chunks);
+    expect(chunks.join("")).toContain("[docs](https://example.test/path-v1)");
+  });
+
+  it("counts emoji using Telegram's UTF-16 message limit", async () => {
+    const { manager, sendMessage } = createManager();
+    const text = `prefix ${"🧪".repeat(2300)} suffix!`;
+
+    await manager.sendMessageInChunks(
+      {
+        chat: { id: 123 },
+        telegram: {
+          sendChatAction: vi.fn(async () => undefined),
+          sendMessage,
+        },
+      } as never,
+      { text },
+    );
+
+    const chunks = sendMessage.mock.calls.map((call) => String(call[1]));
+    expect(chunks.length).toBeGreaterThan(1);
+    expectTelegramChunksValid(chunks);
+    expect(chunks.join("")).toContain("🧪");
   });
 });
 
@@ -194,16 +323,44 @@ describe("MessageManager malformed payload handling", () => {
     }
   });
 
-  it("does not throw when image description or file lookup fails", async () => {
+  it("keeps an inbound photo attachment on the canonical production path", async () => {
     const getFileLink = vi.fn(
       async () => new URL("https://files.test/photo.jpg"),
     );
-    const useModel = vi.fn(async () => {
-      throw new Error("vision failed");
+    const manager = new MessageManager(
+      { telegram: { getFileLink } } as never,
+      { agentId: "agent-1" } as never,
+    );
+
+    const result = await manager.processMessage({
+      message_id: 1,
+      date: 1,
+      chat: { id: 123, type: "private" },
+      photo: [{ file_id: "p1", file_unique_id: "u1", width: 1, height: 1 }],
+    } as never);
+
+    expect(result).toEqual({
+      processedContent: "",
+      attachments: [
+        expect.objectContaining({
+          id: "p1",
+          url: "https://files.test/photo.jpg",
+          contentType: "image",
+        }),
+      ],
+    });
+    const attachment = result.attachments[0];
+    expect(attachment).not.toHaveProperty("text");
+    expect(attachment).not.toHaveProperty("description");
+  });
+
+  it("does not throw when Telegram fails an image file lookup", async () => {
+    const getFileLink = vi.fn(async () => {
+      throw new Error("telegram file expired");
     });
     const manager = new MessageManager(
       { telegram: { getFileLink } } as never,
-      { agentId: "agent-1", useModel } as never,
+      { agentId: "agent-1" } as never,
     );
 
     await expect(
@@ -214,74 +371,52 @@ describe("MessageManager malformed payload handling", () => {
         photo: [{ file_id: "p1", file_unique_id: "u1", width: 1, height: 1 }],
       } as never),
     ).resolves.toEqual({ processedContent: "", attachments: [] });
-    expect(useModel).toHaveBeenCalled();
+    expect(getFileLink).toHaveBeenCalledTimes(1);
   });
 
-  it("does not throw when Telegram fails the second image file lookup", async () => {
-    const getFileLink = vi
-      .fn()
-      .mockResolvedValueOnce(new URL("https://files.test/photo.jpg"))
-      .mockRejectedValueOnce(new Error("telegram file expired"));
-    const useModel = vi.fn(async () => ({
-      title: "Receipt",
-      description: "Total is visible",
-    }));
-    const manager = new MessageManager(
-      { telegram: { getFileLink } } as never,
-      { agentId: "agent-1", useModel } as never,
-    );
-
-    await expect(
-      manager.processMessage({
-        message_id: 1,
-        date: 1,
-        chat: { id: 123, type: "private" },
-        photo: [{ file_id: "p1", file_unique_id: "u1", width: 1, height: 1 }],
-      } as never),
-    ).resolves.toEqual({ processedContent: "", attachments: [] });
-    expect(getFileLink).toHaveBeenCalledTimes(2);
-    expect(useModel).toHaveBeenCalledWith(
-      "IMAGE_DESCRIPTION",
-      "https://files.test/photo.jpg",
-    );
-  });
-
-  it("degrades an unknown attachment content type to a document send (and still awaits failures)", async () => {
+  it("reports unknown attachment content types visibly instead of degrading to a document", async () => {
     const { manager } = createManager();
-    const sendDocument = vi.fn(async () => {
-      throw new Error("telegram unavailable");
-    });
+    const sendMessage = vi.fn(
+      async (chatId: number | string, text: string) => ({
+        message_id: 1,
+        date: 1,
+        text,
+        chat: { id: chatId, type: "private" },
+      }),
+    );
 
-    // Unknown/absent content types degrade to a document upload rather than
-    // throwing synchronously (a sync throw inside Promise.all would abort the
-    // whole reply); the underlying send failure is still awaited and propagated.
-    await expect(
-      manager.sendMessageInChunks(
-        {
-          chat: { id: 123 },
-          telegram: { sendDocument },
-        } as never,
-        {
-          text: "",
-          attachments: [
-            {
-              id: "a1",
-              url: "https://files.test/file.bin",
-              contentType: "application/octet-stream",
-            },
-          ],
-        } as never,
-      ),
-    ).rejects.toThrow("telegram unavailable");
-    expect(sendDocument).toHaveBeenCalled();
+    const sent = await manager.sendMessageInChunks(
+      {
+        chat: { id: 123 },
+        telegram: { sendMessage, sendChatAction: vi.fn() },
+      } as never,
+      {
+        text: "",
+        attachments: [
+          {
+            id: "a1",
+            url: "https://files.test/file.bin",
+            contentType: "application/octet-stream",
+          },
+        ],
+      } as never,
+    );
+    expect(sent).toHaveLength(1);
+    expect(sendMessage.mock.calls[0][1]).toContain(
+      "I could not send this Telegram attachment",
+    );
   });
 
   it("never drops the agent's text when sending an attachment", async () => {
     const { manager } = createManager();
-    const sendPhoto = vi.fn(async () => undefined);
+    const sendPhoto = vi.fn(async (chatId: number | string) => ({
+      message_id: 1,
+      date: 1,
+      chat: { id: chatId, type: "private" },
+    }));
     const sendChatAction = vi.fn(async () => undefined);
     const sendMessage = vi.fn(async (chatId: number, text: string) => ({
-      message_id: 1,
+      message_id: 2,
       date: 1,
       text,
       chat: { id: chatId, type: "private" },
@@ -306,7 +441,7 @@ describe("MessageManager malformed payload handling", () => {
 
     expect(sendPhoto).toHaveBeenCalledTimes(1); // media sent
     expect(sendMessage).toHaveBeenCalledTimes(1); // prose NOT dropped
-    expect(sent).toHaveLength(1);
+    expect(sent).toHaveLength(2);
     expect(String(sendMessage.mock.calls[0][1])).toContain(
       "here is your image",
     );
@@ -314,7 +449,11 @@ describe("MessageManager malformed payload handling", () => {
 
   it("does not post an empty trailing message for an attachment-only reply", async () => {
     const { manager } = createManager();
-    const sendPhoto = vi.fn(async () => undefined);
+    const sendPhoto = vi.fn(async (chatId: number | string) => ({
+      message_id: 1,
+      date: 1,
+      chat: { id: chatId, type: "private" },
+    }));
     const sendMessage = vi.fn();
     const sendChatAction = vi.fn(async () => undefined);
 
@@ -337,7 +476,7 @@ describe("MessageManager malformed payload handling", () => {
 
     expect(sendPhoto).toHaveBeenCalledTimes(1);
     expect(sendMessage).not.toHaveBeenCalled();
-    expect(sent).toEqual([]);
+    expect(sent).toHaveLength(1);
   });
 
   it("ingests an inbound voice message as an AUDIO attachment", async () => {
@@ -368,6 +507,115 @@ describe("MessageManager malformed payload handling", () => {
         contentType: "audio",
       }),
     ]);
+    expect(result.attachments[0]).not.toHaveProperty("text");
+    expect(result.attachments[0]).not.toHaveProperty("description");
+  });
+
+  it("passes inbound voice to messageService as audio without placeholder text", async () => {
+    const getFileLink = vi.fn(
+      async () => new URL("https://files.test/voice.ogg"),
+    );
+    const handleMessage = vi.fn(async () => undefined);
+    const runtime = {
+      agentId: "agent-1",
+      character: {
+        name: "Agent",
+        settings: {
+          telegram: {
+            botToken: "123456:ABCDEF",
+            dmPolicy: "allowlist",
+            allowFrom: ["42"],
+          },
+        },
+      },
+      getSetting: vi.fn((key: string) =>
+        key === "TELEGRAM_AUTO_REPLY" ? "true" : undefined,
+      ),
+      ensureConnection: vi.fn(async () => undefined),
+      messageService: { handleMessage },
+      getService: vi.fn(() => null),
+      reportError: vi.fn(),
+    } as unknown as IAgentRuntime;
+    const manager = new MessageManager(
+      { telegram: { getFileLink } } as never,
+      runtime,
+    );
+
+    await manager.handleMessage({
+      from: { id: 42, first_name: "Ada", username: "ada", is_bot: false },
+      chat: { id: 123, type: "private", first_name: "Ada" },
+      message: {
+        message_id: 99,
+        date: 1_700_000_000,
+        chat: { id: 123, type: "private", first_name: "Ada" },
+        voice: {
+          file_id: "v1",
+          file_unique_id: "u1",
+          duration: 3,
+          mime_type: "audio/ogg",
+        },
+      },
+    } as never);
+
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    const memory = handleMessage.mock.calls[0][1];
+    expect(memory.content.attachments).toEqual([
+      expect.objectContaining({
+        id: "v1",
+        url: "https://files.test/voice.ogg",
+        contentType: "audio",
+      }),
+    ]);
+    expect(memory.content.attachments[0]).not.toHaveProperty("text");
+    expect(memory.content.attachments[0]).not.toHaveProperty("description");
+    expect(memory.content.text).not.toContain("transcript");
+    expect(memory.content.text.trim()).toBe("");
+  });
+
+  it("preserves Telegram text entity metadata using UTF-16 offsets", async () => {
+    const createMemory = vi.fn(async () => undefined);
+    const runtime = {
+      agentId: "agent-1",
+      getSetting: vi.fn(() => undefined),
+      ensureConnection: vi.fn(async () => undefined),
+      createMemory,
+    } as unknown as IAgentRuntime;
+    const manager = new MessageManager({ telegram: {} } as never, runtime);
+
+    await manager.handleMessage({
+      from: { id: 42, first_name: "Ada", username: "ada", is_bot: false },
+      chat: { id: 123, type: "private", first_name: "Ada" },
+      message: {
+        message_id: 99,
+        date: 1_700_000_000,
+        text: "Go 🧪bold link",
+        entities: [
+          { type: "bold", offset: 5, length: 6 },
+          {
+            type: "text_link",
+            offset: 12,
+            length: 4,
+            url: "https://example.test",
+          },
+        ],
+        chat: { id: 123, type: "private", first_name: "Ada" },
+      },
+    } as never);
+
+    const memory = createMemory.mock.calls[0][0];
+    expect(memory.content.text).toBe("Go 🧪bold link");
+    expect(memory.content.metadata.telegram.richText).toMatchObject({
+      rawText: "Go 🧪bold link",
+      entities: [
+        { type: "bold", offset: 5, length: 6 },
+        {
+          type: "text_link",
+          offset: 12,
+          length: 4,
+          url: "https://example.test",
+        },
+      ],
+    });
   });
 
   it("ignores reaction updates with empty reaction arrays", async () => {

@@ -1,8 +1,9 @@
 /**
  * Unit tests for outbound media dispatch: each `Media` attachment routes to the
  * matching Telegram sender (sendPhoto / sendVideo / sendAudio / sendDocument) by
- * coarse content type, unknown types degrade to a document, and accompanying
- * prose is sent alongside. Telegraf send calls are mocked.
+ * coarse content type, unknown types produce a visible unsupported-media
+ * notice, and accompanying prose is sent alongside. Telegraf send calls are
+ * mocked.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
@@ -28,12 +29,55 @@ function setup() {
     runtime as never,
   );
 
+  const sent = (message_id: number, chatId = 123, caption?: string) => ({
+    message_id,
+    date: 1_700_000_000 + message_id,
+    caption,
+    chat: { id: chatId, type: "private" },
+  });
   const senders = {
-    sendPhoto: vi.fn(async () => ({ message_id: 1 })),
-    sendVideo: vi.fn(async () => ({ message_id: 2 })),
-    sendAudio: vi.fn(async () => ({ message_id: 3 })),
-    sendDocument: vi.fn(async () => ({ message_id: 4 })),
-    sendAnimation: vi.fn(async () => ({ message_id: 5 })),
+    sendPhoto: vi.fn(
+      async (
+        chatId: number | string,
+        _url: string,
+        opts?: { caption?: string },
+      ) => sent(1, Number(chatId), opts?.caption),
+    ),
+    sendVideo: vi.fn(
+      async (
+        chatId: number | string,
+        _url: string,
+        opts?: { caption?: string },
+      ) => sent(2, Number(chatId), opts?.caption),
+    ),
+    sendAudio: vi.fn(
+      async (
+        chatId: number | string,
+        _url: string,
+        opts?: { caption?: string },
+      ) => sent(3, Number(chatId), opts?.caption),
+    ),
+    sendVoice: vi.fn(
+      async (
+        chatId: number | string,
+        _url: string,
+        opts?: { caption?: string },
+      ) => sent(4, Number(chatId), opts?.caption),
+    ),
+    sendDocument: vi.fn(
+      async (
+        chatId: number | string,
+        _url: string,
+        opts?: { caption?: string },
+      ) => sent(5, Number(chatId), opts?.caption),
+    ),
+    sendAnimation: vi.fn(
+      async (
+        chatId: number | string,
+        _url: string,
+        opts?: { caption?: string },
+      ) => sent(6, Number(chatId), opts?.caption),
+    ),
     sendChatAction: vi.fn(async () => undefined),
     sendMessage: vi.fn(async (chatId: number | string, text: string) => ({
       message_id: 9,
@@ -65,7 +109,7 @@ describe("Telegram connector outbound media", () => {
     expect(senders.sendPhoto).toHaveBeenCalledWith(
       123,
       "https://cdn.example.com/cat.png",
-      { caption: "a cat" },
+      expect.objectContaining({ caption: "a cat", parse_mode: "MarkdownV2" }),
     );
     // Attachment-only reply: no trailing empty text message.
     expect(senders.sendMessage).not.toHaveBeenCalled();
@@ -92,16 +136,26 @@ describe("Telegram connector outbound media", () => {
     expect(senders.sendVideo).toHaveBeenCalledWith(
       123,
       "https://cdn.example.com/clip.mp4",
-      { caption: undefined },
+      {
+        caption: undefined,
+        message_thread_id: undefined,
+        parse_mode: undefined,
+        reply_parameters: undefined,
+      },
     );
     expect(senders.sendAudio).toHaveBeenCalledWith(
       123,
       "https://cdn.example.com/clip.mp3",
-      { caption: undefined },
+      {
+        caption: undefined,
+        message_thread_id: undefined,
+        parse_mode: undefined,
+        reply_parameters: undefined,
+      },
     );
   });
 
-  it("sends a document attachment, and degrades an unknown type to a document", async () => {
+  it("sends a document attachment, and visibly reports an unknown type", async () => {
     const { manager, ctx, senders } = setup();
     await manager.sendMessageInChunks(ctx, {
       text: "",
@@ -111,16 +165,25 @@ describe("Telegram connector outbound media", () => {
           url: "https://cdn.example.com/report.pdf",
           contentType: "document",
         },
-        // No contentType → degrades to a document upload (never throws/drops).
         { id: "blob", url: "https://cdn.example.com/data.bin" },
       ],
     } as never);
 
-    expect(senders.sendDocument).toHaveBeenCalledTimes(2);
+    expect(senders.sendDocument).toHaveBeenCalledTimes(1);
     expect(senders.sendDocument).toHaveBeenCalledWith(
       123,
       "https://cdn.example.com/report.pdf",
-      { caption: undefined },
+      {
+        caption: undefined,
+        message_thread_id: undefined,
+        parse_mode: undefined,
+        reply_parameters: undefined,
+      },
+    );
+    expect(senders.sendMessage).toHaveBeenCalledWith(
+      123,
+      expect.stringContaining("could not send"),
+      expect.objectContaining({ parse_mode: "MarkdownV2" }),
     );
   });
 
@@ -139,5 +202,54 @@ describe("Telegram connector outbound media", () => {
 
     expect(senders.sendPhoto).toHaveBeenCalledTimes(1);
     expect(senders.sendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves thread/reply options, sends sequentially, and uses sendVoice for voice notes", async () => {
+    const { manager, ctx, senders } = setup();
+    const sent = await manager.sendMessageInChunks(
+      ctx,
+      {
+        text: "[[audio_as_voice]]",
+        attachments: [
+          {
+            id: "v1",
+            url: "https://cdn.example.com/voice.ogg",
+            contentType: "audio",
+            source: "Voice Note",
+            description: "voice caption",
+          },
+          {
+            id: "p1",
+            url: "https://cdn.example.com/p.png",
+            contentType: "image",
+          },
+        ],
+      } as never,
+      88,
+      9,
+    );
+
+    expect(senders.sendVoice.mock.invocationCallOrder[0]).toBeLessThan(
+      senders.sendPhoto.mock.invocationCallOrder[0],
+    );
+    expect(senders.sendVoice).toHaveBeenCalledWith(
+      123,
+      "https://cdn.example.com/voice.ogg",
+      expect.objectContaining({
+        caption: "voice caption",
+        message_thread_id: 9,
+        reply_parameters: { message_id: 88 },
+      }),
+    );
+    expect(senders.sendPhoto).toHaveBeenCalledWith(
+      123,
+      "https://cdn.example.com/p.png",
+      expect.objectContaining({
+        message_thread_id: 9,
+        reply_parameters: undefined,
+      }),
+    );
+    expect(senders.sendMessage).not.toHaveBeenCalled();
+    expect(sent.map((message) => message.message_id)).toEqual([4, 1]);
   });
 });
