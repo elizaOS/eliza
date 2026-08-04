@@ -81,11 +81,7 @@ export async function bindScheduledTaskToInboundChat(
   if (!room || !source || !channelId || room.id !== audience.roomId) {
     return null;
   }
-  if (
-    source === "api" ||
-    source === "client_chat" ||
-    channelId === room.id
-  ) {
+  if (source === "api" || source === "client_chat" || channelId === room.id) {
     return null;
   }
 
