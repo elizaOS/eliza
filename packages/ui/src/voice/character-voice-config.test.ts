@@ -22,7 +22,7 @@ function resolveJinVoice(tts?: Record<string, unknown>) {
 }
 
 describe("resolveCharacterVoiceConfigFromAppConfig", () => {
-  it("attaches the preset voice without pinning a TTS provider", () => {
+  it("attaches the selected preset voice without pinning a TTS provider", () => {
     const resolved = resolveJinVoice();
 
     expect(resolved).toEqual({
@@ -74,7 +74,7 @@ describe("resolveCharacterVoiceConfigFromAppConfig", () => {
     expect(resolveJinVoice(voiceConfig)).toEqual(voiceConfig);
   });
 
-  it("preserves an explicit provider from the redacted config response", () => {
+  it("preserves an explicit ElevenLabs choice from the redacted config response", () => {
     const voiceConfig = {
       provider: "elevenlabs" as const,
       elevenlabs: {

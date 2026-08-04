@@ -80,8 +80,9 @@ function resolveLegacyVoiceId(characterId: string): string | null {
 
 function isExplicitElevenLabsChoice(config: VoiceConfig | null): boolean {
   const apiKey = config?.elevenlabs?.apiKey?.trim() ?? "";
-  // GET /api/config replaces stored secrets with this sentinel. It is not a
-  // browser credential, but it is durable evidence of an explicit provider.
+  // GET /api/config replaces a stored secret with this sentinel. It is not a
+  // usable browser key, but it is durable evidence that the user configured
+  // ElevenLabs; treating it as absent would rewrite their provider on load.
   const hasStoredKeyEvidence =
     apiKey.toUpperCase() === "[REDACTED]" ||
     apiKey.toUpperCase() === "REDACTED";
@@ -120,9 +121,11 @@ export function resolveCharacterVoiceConfigFromAppConfig(args: {
     return storedVoiceConfig;
   }
 
-  // Presets select a voice, not a transport. Legacy configs coupled the two by
-  // stamping ElevenLabs without a mode or key, guaranteeing a failed first
-  // utterance whenever the runtime's usable default was a different provider.
+  // Character presets select a voice, not a transport. Old configs coupled the
+  // two by stamping `provider: elevenlabs` without a mode or usable key, which
+  // bypasses capability defaults and guarantees a fail-closed first utterance.
+  // A mode or usable key is an explicit modern ElevenLabs choice and remains
+  // authoritative; otherwise remove only the legacy provider pin.
   const releaseLegacyProvider =
     storedVoiceConfig?.provider === "elevenlabs" &&
     !isExplicitElevenLabsChoice(storedVoiceConfig);
@@ -148,12 +151,13 @@ export function resolveCharacterVoiceConfigFromAppConfig(args: {
   }
 
   if (!shouldUpdatePresetVoice) {
+    // Provider-neutralizing an old preset is a read-time compatibility rule,
+    // not an implicit settings mutation. This also keeps signed-out clients
+    // from retrying a protected config write every time voice state reloads.
     return providerNeutralConfig;
   }
 
-  // Preset state is deterministic character state. Derive it during reads
-  // instead of turning normal chat startup into a protected settings write.
-  return {
+  const voiceConfig: VoiceConfig = {
     ...providerNeutralConfig,
     elevenlabs: {
       ...(providerNeutralConfig?.elevenlabs ?? {}),
@@ -163,6 +167,11 @@ export function resolveCharacterVoiceConfigFromAppConfig(args: {
         DEFAULT_ELEVENLABS_MODEL_ID,
     },
   };
+
+  // The preset voice is deterministic character state. Keeping it derived
+  // avoids a protected settings write during ordinary chat startup; explicit
+  // choices made in Voice Settings still persist through that surface.
+  return voiceConfig;
 }
 
 /**
