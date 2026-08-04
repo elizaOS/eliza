@@ -90,6 +90,8 @@ export interface NavigateViewDetail {
   viewPath?: string | null;
   viewLabel?: string;
   viewType?: NavigateViewType;
+  /** Navigation provenance; agent commands may preserve active chat typing. */
+  source?: "agent" | "user";
   action?: string;
   /** Sub-section to deep-link within the target view (e.g. a Settings section id). */
   subview?: string;
@@ -209,6 +211,7 @@ export interface ShellNavigateViewPayload {
   viewPath?: string | null;
   viewLabel?: string;
   viewType?: ShellNavigateViewType;
+  source?: "agent" | "user";
   action?: string;
   subview?: string;
   views?: string[];
@@ -248,6 +251,10 @@ export function normalizeShellNavigateViewPayload(
     viewPath: typeof data.viewPath === "string" ? data.viewPath : undefined,
     viewLabel: typeof data.viewLabel === "string" ? data.viewLabel : undefined,
     viewType: readViewType(data.viewType),
+    source:
+      data.source === "agent" || data.source === "user"
+        ? data.source
+        : undefined,
     action: typeof data.action === "string" ? data.action : undefined,
     subview: readNonEmptyString(data.subview),
     views: views && views.length > 0 ? views : undefined,
