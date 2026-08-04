@@ -629,6 +629,18 @@ export type WalletExposureSummary = {
     confidence: "low" | "medium" | "high";
     source: "static_registry" | "external_provider" | "manual_review";
     relationship: "self" | "funder" | "counterparty";
+    // Whether this match counts toward exposureScore/exposureLevel/the
+    // hasKnown* booleans below. self and funder matches always contribute;
+    // a counterparty match only contributes when direction is "outgoing" or
+    // "bidirectional" - an incoming-only transfer from a flagged address
+    // (e.g. an unsolicited spam-token airdrop) is a materially different
+    // signal than the wallet itself sending funds to one, and is shown in
+    // `matches` for visibility without moving the score.
+    contributesToScore: boolean;
+    // Populated for counterparty matches (the funder/self checks don't carry
+    // a meaningful transfer direction the same way); omitted otherwise.
+    direction?: WalletRelationshipDirection;
+    transactionSignatures?: string[];
   }[];
   notes: string[];
 };

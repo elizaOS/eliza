@@ -24,6 +24,7 @@ const STATIC_ETHEREUM_EXPOSURE_REGISTRY: Record<string, ExposureRegistryEntry> =
     confidence: "high",
     source: "static_registry",
     relationship: "self",
+    contributesToScore: true,
   },
 
   "0x9fc53c75046900d1f58209f50f534852ae9f912a": {
@@ -33,6 +34,7 @@ const STATIC_ETHEREUM_EXPOSURE_REGISTRY: Record<string, ExposureRegistryEntry> =
     confidence: "high",
     source: "static_registry",
     relationship: "self",
+    contributesToScore: true,
   },
 
   "0xb1302743acf31f567e9020810523f5030942e211": {
@@ -42,6 +44,7 @@ const STATIC_ETHEREUM_EXPOSURE_REGISTRY: Record<string, ExposureRegistryEntry> =
     confidence: "high",
     source: "static_registry",
     relationship: "self",
+    contributesToScore: true,
   },
 
   "0x658729879fca881d9526480b82ae00efc54b5c2d": {
@@ -51,6 +54,7 @@ const STATIC_ETHEREUM_EXPOSURE_REGISTRY: Record<string, ExposureRegistryEntry> =
     confidence: "high",
     source: "static_registry",
     relationship: "self",
+    contributesToScore: true,
   },
 
   "0x412f10aad96fd78da6736387e2c84931ac20313f": {
@@ -60,6 +64,7 @@ const STATIC_ETHEREUM_EXPOSURE_REGISTRY: Record<string, ExposureRegistryEntry> =
     confidence: "high",
     source: "static_registry",
     relationship: "self",
+    contributesToScore: true,
   },
 
   "0x00001f78189be22c3498cff1b8e02272c3220000": {
@@ -69,6 +74,7 @@ const STATIC_ETHEREUM_EXPOSURE_REGISTRY: Record<string, ExposureRegistryEntry> =
     confidence: "high",
     source: "static_registry",
     relationship: "self",
+    contributesToScore: true,
   },
 
   "0x0000daf60a1becf1bd617c584dea964455890000": {
@@ -78,6 +84,7 @@ const STATIC_ETHEREUM_EXPOSURE_REGISTRY: Record<string, ExposureRegistryEntry> =
     confidence: "high",
     source: "static_registry",
     relationship: "self",
+    contributesToScore: true,
   },
 };
 
