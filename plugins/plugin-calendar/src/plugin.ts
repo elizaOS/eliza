@@ -32,6 +32,7 @@ export const calendarPlugin: Plugin = {
   name: "calendar",
   description:
     "Multi-provider calendar feeds, scheduling, and event management for Eliza agents.",
+  dependencies: ["@elizaos/plugin-scheduling"],
   schema: calendarSchema,
   services: [CalendarMigrationService, CalendarService],
   actions: [calendarAction, calendarSourcesAction, conflictDetectAction],

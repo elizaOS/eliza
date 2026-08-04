@@ -13,9 +13,9 @@ export const notesRoutes: Route[] = [
     name: "notes-state",
     path: "/api/notes/state",
     rawPath: true,
-    modes: ["cloud"],
+    modes: ["local", "local-only", "cloud", "remote"],
     modeReason:
-      "the native Notes release surface is backed by managed Cloud agent state",
+      "Notes state is owned by the active runtime in every supported topology",
     routeHandler: async (context) => {
       try {
         return {
