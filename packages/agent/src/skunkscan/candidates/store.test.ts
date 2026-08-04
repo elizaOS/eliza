@@ -10,9 +10,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { WalletRelationship } from "../types";
 import { detectRaiseAndDrainPattern } from "../patterns/raiseAndDrain";
+import { checkKnownLabelMatches } from "../patterns/knownLabelMatch";
 import { ScamPatternCandidateStore } from "./store";
 import type { RuntimeDb } from "./sql";
-import type { LabelMatchReference } from "./types";
 
 vi.mock("drizzle-orm", () => ({
   sql: {
@@ -43,6 +43,36 @@ const ANUBISDAO_RUG2_RELATIONSHIPS: WalletRelationship[] = [
     totalNativeAmountReceived: 0,
     totalNativeAmountSent: 12800,
     transactionSignatures: ["0xfixture-anubisdao-outbound-1"],
+  },
+];
+
+// Same raise-and-drain shape, but the outbound counterparty is Binance 14
+// (0x28c6c06298d514db089934071355e5743bf21d60) - a real, already-verified
+// centralized_exchange entry in labels/staticRegistry.ts. Detection should
+// still match structurally, but the label-match check must flag it so a
+// reviewer sees the exchange label immediately.
+const DRAIN_TO_KNOWN_EXCHANGE_RELATIONSHIPS: WalletRelationship[] = [
+  {
+    address: "0xsome-unlabeled-funding-source",
+    relationship: "counterparty",
+    confidence: "high",
+    direction: "incoming",
+    firstInteractionAt: 1635429600,
+    lastInteractionAt: 1635430800,
+    totalNativeAmountReceived: 13597,
+    totalNativeAmountSent: 0,
+    transactionSignatures: ["0xfixture-known-exchange-inbound-1"],
+  },
+  {
+    address: "0x28c6c06298d514db089934071355e5743bf21d60",
+    relationship: "counterparty",
+    confidence: "high",
+    direction: "outgoing",
+    firstInteractionAt: 1635502800,
+    lastInteractionAt: 1635502800,
+    totalNativeAmountReceived: 0,
+    totalNativeAmountSent: 12800,
+    transactionSignatures: ["0xfixture-known-exchange-outbound-1"],
   },
 ];
 
@@ -145,36 +175,44 @@ describe("ScamPatternCandidateStore - end-to-end with a real Pattern A match", (
     // if this fails, the persistence proof below would be meaningless.
     expect(evidence).not.toBeNull();
 
+    const walletAddress = "0x9fc53c75046900d1f58209f50f534852ae9f912a";
+
+    // Real check, not a hardcoded literal - AnubisDAO's actual counterparties
+    // aren't labeled exchanges, so this should come back false/[].
+    const labelCheck = checkKnownLabelMatches(
+      "ethereum",
+      walletAddress,
+      ANUBISDAO_RUG2_RELATIONSHIPS,
+    );
+    expect(labelCheck.hasKnownLabelMatch).toBe(false);
+    expect(labelCheck.labelMatches).toEqual([]);
+
     const db = createFakeDb();
     const store = new ScamPatternCandidateStore(db);
 
-    const labelMatches: LabelMatchReference[] = [];
-
     const inserted = await store.insert({
       chain: "ethereum",
-      address: "0x9fc53c75046900d1f58209f50f534852ae9f912a",
+      address: walletAddress,
       patterns: ["raise_and_drain"],
       evidence: evidence as unknown as Record<string, unknown>,
-      hasKnownLabelMatch: false,
-      labelMatches,
+      hasKnownLabelMatch: labelCheck.hasKnownLabelMatch,
+      labelMatches: labelCheck.labelMatches,
     });
 
     expect(inserted.reviewStatus).toBe("pending");
     expect(inserted.chain).toBe("ethereum");
-    expect(inserted.address).toBe(
-      "0x9fc53c75046900d1f58209f50f534852ae9f912a",
-    );
+    expect(inserted.address).toBe(walletAddress);
     expect(inserted.patterns).toEqual(["raise_and_drain"]);
+    expect(inserted.hasKnownLabelMatch).toBe(false);
+    expect(inserted.labelMatches).toEqual([]);
 
     // Read back via a fresh lookup, not just the insert's own return value -
     // proves the round trip, not just that insert echoes its input.
-    const readBack = await store.byAddress(
-      "ethereum",
-      "0x9fc53c75046900d1f58209f50f534852ae9f912a",
-    );
+    const readBack = await store.byAddress("ethereum", walletAddress);
 
     expect(readBack).not.toBeNull();
     expect(readBack?.reviewStatus).toBe("pending");
+    expect(readBack?.hasKnownLabelMatch).toBe(false);
     expect(readBack?.evidence).toMatchObject({
       patternId: "raise_and_drain",
       inboundTotalNative: 13597,
@@ -188,5 +226,60 @@ describe("ScamPatternCandidateStore - end-to-end with a real Pattern A match", (
     });
     expect(accepted.reviewStatus).toBe("accepted");
     expect(accepted.reviewedBy).toBe("test-reviewer");
+  });
+
+  it("flags and persists a match whose counterparty is already labeled a known exchange", async () => {
+    const walletAddress = "0xanother-flagged-wallet";
+
+    const evidence = detectRaiseAndDrainPattern(
+      DRAIN_TO_KNOWN_EXCHANGE_RELATIONSHIPS,
+      NOW_TIMESTAMP,
+    );
+    expect(evidence).not.toBeNull();
+
+    const labelCheck = checkKnownLabelMatches(
+      "ethereum",
+      walletAddress,
+      DRAIN_TO_KNOWN_EXCHANGE_RELATIONSHIPS,
+    );
+    expect(labelCheck.hasKnownLabelMatch).toBe(true);
+    expect(labelCheck.labelMatches).toEqual([
+      {
+        address: "0x28c6c06298d514db089934071355e5743bf21d60",
+        label: "Binance 14",
+        relationship: "counterparty",
+      },
+    ]);
+
+    const db = createFakeDb();
+    const store = new ScamPatternCandidateStore(db);
+
+    const inserted = await store.insert({
+      chain: "ethereum",
+      address: walletAddress,
+      patterns: ["raise_and_drain"],
+      evidence: evidence as unknown as Record<string, unknown>,
+      hasKnownLabelMatch: labelCheck.hasKnownLabelMatch,
+      labelMatches: labelCheck.labelMatches,
+    });
+
+    expect(inserted.hasKnownLabelMatch).toBe(true);
+    expect(inserted.labelMatches).toEqual([
+      {
+        address: "0x28c6c06298d514db089934071355e5743bf21d60",
+        label: "Binance 14",
+        relationship: "counterparty",
+      },
+    ]);
+
+    const readBack = await store.byAddress("ethereum", walletAddress);
+    expect(readBack?.hasKnownLabelMatch).toBe(true);
+    expect(readBack?.labelMatches).toEqual([
+      {
+        address: "0x28c6c06298d514db089934071355e5743bf21d60",
+        label: "Binance 14",
+        relationship: "counterparty",
+      },
+    ]);
   });
 });
