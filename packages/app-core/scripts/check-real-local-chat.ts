@@ -3,7 +3,7 @@
  * real chat pipeline: a real AgentRuntime + the real conversation routes + the
  * real message-handling/RESPONSE_HANDLER flow + real history persistence. The
  * only deterministic part is token generation, supplied by the in-process
- * deterministic LLM proxy (a real Plugin with real model handlers) — NOT the
+ * deterministic model provider (a real Plugin with real model handlers) — NOT the
  * ui-smoke api-stub, which fakes the entire conversation endpoint and bypasses
  * the runtime. So this proves the chat machinery works end-to-end, not just that
  * a stub echoes a fixture.
@@ -17,7 +17,7 @@
  */
 
 import assert from "node:assert/strict";
-import { createDeterministicLlmProxyPlugin } from "../../test/mocks/helpers/llm-proxy-plugin.ts";
+import { createDeterministicModelPlugin } from "@elizaos/core/testing";
 import { startApiServer } from "../src/api/server.ts";
 import {
   createConversation,
@@ -32,12 +32,24 @@ async function main(): Promise<void> {
   const configEnv = useIsolatedConfigEnv("eliza-local-chat-check-");
   // Real Plugin with real model handlers (priority 1000 wins). Deterministic
   // output; the pipeline around it is fully real.
-  const proxy = createDeterministicLlmProxyPlugin({
-    failOnUnhandledAction: false,
+  const modelProvider = createDeterministicModelPlugin({
+    fixtures: [
+      {
+        name: "local-chat-reply",
+        match: { modelType: "RESPONSE_HANDLER" },
+        response: {
+          contexts: ["simple"],
+          intents: ["greeting"],
+          replyText: "Hello from the deterministic model provider.",
+          candidateActionNames: [],
+        },
+        times: 1,
+      },
+    ],
   });
   const runtimeResult = await createRealTestRuntime({
     characterName: "LocalChatCheck",
-    plugins: [proxy],
+    plugins: [modelProvider],
   });
   const server = await startApiServer({
     port: 0,

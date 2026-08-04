@@ -1,3 +1,4 @@
+/** Verifies useWhatsAppPairing write failures surface to the user through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Behaviour test for the WhatsApp pairing hook's write paths. Drives the real

@@ -1,3 +1,4 @@
+/** Verifies useChatState single-greeting invariant through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // `useChatState.setConversationMessages` enforces the single-greeting-per-thread

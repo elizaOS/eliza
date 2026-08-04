@@ -1,13 +1,4 @@
-/**
- * Advanced Actions
- *
- * Extended actions that can be enabled with `advancedCapabilities: true`.
- *
- * Contact / Rolodex / entity ops (ADD_CONTACT / REMOVE_CONTACT /
- * SEARCH_CONTACTS / UPDATE_CONTACT / UPDATE_ENTITY) are now consolidated
- * into the `CONTACT` parent action in @elizaos/agent
- * (packages/agent/src/actions/contact.ts).
- */
+/** Actions enabled by the runtime's `advancedCapabilities` option. */
 
 export { messageAction } from "./message.ts";
 export { postAction } from "./post.ts";

@@ -10,11 +10,11 @@ The runtime heart of elizaOS: `AgentRuntime`, the plugin abstractions (actions /
 
 ```
 src/
-  index.ts              Default barrel — re-exports index.node + a few @elizaos/contracts type shims
+  index.ts              Default barrel — re-exports index.node and security helpers
   index.node.ts         Full Node API surface (the real export list — start here)
   index.browser.ts      Browser-safe subset (no fs/process-bound modules)
   index.edge.ts         Edge-runtime subset
-  runtime.ts            AgentRuntime class (~9000 lines, `class AgentRuntime implements IAgentRuntime` at L718); the central orchestrator
+  runtime.ts            AgentRuntime class and lifecycle orchestration; navigate by symbol
   runtime-composition.ts  loadCharacters / createRuntimes / settings merge (Node-only boot helpers)
   runtime-env.ts        Runtime environment + state resolution
   plugin.ts             Plugin load/validate/resolve: loadPlugin, resolvePlugins, validatePlugin, resolvePluginDependencies
@@ -38,12 +38,12 @@ src/
   providers/            First-party providers (setup-progress, skill-eligibility, linked-identities, ...)
   schemas/              Drizzle table schemas + character schema. schemas/index.ts: buildBaseTables, BaseTables
   database/             inMemoryAdapter (IDatabaseAdapter fallback used when ALLOW_NO_DATABASE)
-  contracts/            Re-exports/adapters over @elizaos/contracts (cloud-topology, first-run-options, service-routing, wallet)
+  contracts/            Runtime-owned contracts plus topology, routing, first-run, and wallet adapters
   generated/            Build-time generated action/provider/evaluator docs + spec-helpers (do not hand-edit)
   i18n/                 validation + action-search keyword data (some generated; see prebuild)
-  security/             redact, ssrf-adjacent input policy, spawn-env-policy, external-content, incoming-message-security
+  security/             KMS adapters, MCP config validation, spawn policy, redaction, and content guards
   sensitive-requests/   Sensitive request policy helpers
-  network/              SSRF guard + secure fetch (fetch-guard, ssrf)
+  network/              Canonical SSRF/IP policy, DNS pinning, and guarded fetch transport
   markdown/  media/     markdown IR/chunking; media fetch + mime/type detection
   testing/              Test harness exports (live-provider, integration-runtime, http, mocks) — `@elizaos/core/testing`
   capabilities/         Runtime capability index
@@ -52,7 +52,6 @@ src/
   registries/           Registry utilities
   sessions/             Session management
   sandbox/              Sandbox policy
-  optimization/         Optimization utilities
   scheduled-task/       Scheduled task helpers
   validation/           Input validation utilities
   constants/            Shared constants
@@ -60,7 +59,7 @@ src/
   owner-state/          Owner state tracking
   messaging/            Messaging utilities
   search.ts             In-memory/embedding search utilities
-  utils.ts  utils/      Shared helpers: prompts (composePromptFromState, parseKeyValueXml), batch-queue,
+  utils.ts  utils/      Shared helpers: prompts (composePromptFromState, parseKeyValueXml), deterministic hashing, state/optimization dirs, batch-queue,
                         confirmation, read-env, state-dir, streaming, environment, plugin-loader
 build.ts                Custom bun-based multi-target build (Node / browser / edge + d.ts generation)
 scripts/perf-settings.ts, scripts/run-e2e-smoke.mjs
@@ -77,7 +76,11 @@ From `@elizaos/core` (`index.node.ts`):
 - Boot/composition (Node): `loadCharacters`, `createRuntimes`, `buildBaseTables`, `InMemoryDatabaseAdapter`.
 - Prompt + model helpers: `composePromptFromState`, `parseKeyValueXml`, `callModelWithValidation`, `parseAndValidate`.
 
-Subpath entries (see `package.json` `exports`): `@elizaos/core/node`, `@elizaos/core/browser`, `@elizaos/core/roles`, `@elizaos/core/testing`, `@elizaos/core/services/*`.
+Subpath entries (see `package.json` `exports`): `@elizaos/core/node`,
+`@elizaos/core/browser`, `@elizaos/core/roles`, `@elizaos/core/testing`,
+`@elizaos/core/network`, `@elizaos/core/atomic-json`,
+`@elizaos/core/security/mcp-server-config`, `@elizaos/core/security/kms`,
+`@elizaos/core/security/spawn-env-policy`, and `@elizaos/core/services/*`.
 
 This package does NOT export a `corePlugin` singleton — the foundational actions/providers/evaluators/services live in `features/basic-capabilities` and are exported as the `basic*` bundles above.
 
@@ -92,13 +95,13 @@ bun run --cwd packages/core test:watch    # vitest watch
 bun run --cwd packages/core test:coverage # vitest with v8 coverage
 bun run --cwd packages/core test:e2e      # Playwright (playwright.config.ts)
 bun run --cwd packages/core test:e2e:smoke
-bun run --cwd packages/core typecheck     # tsgo --noEmit -p ./tsconfig.json
+bun run --cwd packages/core typecheck     # generate keywords, then tsc --noEmit
 bun run --cwd packages/core lint          # biome check --write ./src
 bun run --cwd packages/core format        # biome format --write ./src
 bun run --cwd packages/core clean         # remove dist + emitted src artifacts
 ```
 
-`prebuild` builds `@elizaos/contracts` and generates `src/i18n/generated/validation-keyword-data.ts` if missing. Depends on workspace packages `@elizaos/contracts` and `@elizaos/prompts`.
+`prebuild` builds logger and cloud-routing, then generates `src/i18n/generated/validation-keyword-data.ts` if missing. Runtime-owned contracts are compiled with core.
 
 ## Config / env vars
 
@@ -151,60 +154,33 @@ visible.
 ## How to extend
 
 - **Add an action/provider/evaluator/service to the built-in bundle:** implement against the `Action`/`Provider`/`Evaluator`/`Service` types in `types/`, then add it to the relevant array in `src/features/basic-capabilities/index.ts` (`basicActions`, `basicProviders`, `basicEvaluators`, `basicServices`). Most new capabilities should live in their own plugin package instead of here.
-- **Add a runtime type/contract:** define it under `src/types/<area>.ts` and export from `src/types/index.ts`. If it should be shared with non-runtime consumers, prefer `@elizaos/contracts` and re-export via `src/contracts/`.
+- **Add a runtime type/contract:** define it under `src/types/<area>.ts` or the owning `src/contracts/` domain and export it through the narrowest stable subpath. Cross-host contracts that do not belong to the runtime live under `@elizaos/shared/contracts`.
 - **Add a DB table:** extend the schema in `src/schemas/` and wire it into `buildBaseTables` (`schemas/index.ts`); adapters in plugin-sql/localdb materialize it.
 - **Touching the message loop:** the order is provider → model → action → evaluator. Logic lives in `src/runtime/` (`message-handler.ts`, `planner-loop.ts`, `turn-controller.ts`) and `runtime.ts`. Validated model output goes through `runtime/validated-model-call.ts`.
 - **Browser/edge surface:** if your code is Node-only (fs, process, native deps), export it from `index.node.ts` only — never add it to `index.browser.ts` / `index.edge.ts`.
 
 ## Conventions / gotchas
 
-- `index.node.ts` is the source of truth for the public surface; `index.ts` just re-exports it plus a few `@elizaos/contracts` type shims (kept explicit to avoid d.ts ambiguity).
+- `index.node.ts` is the source of truth for the root public surface; narrow contract consumers should prefer `@elizaos/core/contracts/*` subpaths to avoid barrel collisions.
 - Three build targets share source — Node-only imports in shared modules break the browser/edge bundles. Verify with `build:node` vs full `build`.
 - The model-output contract is `<response>` XML (with `<actions>`/`<providers>`/`<text>`); plain text is tolerated and treated as a `REPLY`.
 - DB mutation methods on `IDatabaseAdapter` return `Promise<boolean>` so callers can distinguish success/failure (`types/database.ts`).
 - The task system (`services/task.ts`, `services/task-scheduler.ts`) is the single place scheduled work runs; only tasks tagged `queue` are polled. Three modes: local timer, per-daemon (`startTaskScheduler`), serverless (`{ serverless: true }` + `runDueTasks()`).
-- `runtime.ts` is very large (~9000 lines / ~259 KB) — navigate by symbol, not by reading top-to-bottom.
+- `runtime.ts` is intentionally large and load-bearing; navigate by symbol and
+  ownership boundary rather than reading it top to bottom or adding another
+  unrelated responsibility.
 - `src/generated/` and parts of `src/i18n/generated/` are build artifacts; regenerate via prebuild rather than editing.
-- Repo-wide rules (logger-only, ESM, naming, architecture) are in the root [AGENTS.md](../../AGENTS.md) — not restated here.
+- Repository-wide rules and evidence requirements are inherited from the root
+  [`CLAUDE.md`](../../CLAUDE.md).
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
-## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+## Package completion evidence
 
-> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
-> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
-> works **without reading the code**, from the artifacts you attach. This applies to **every**
-> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
+Follow the repository-wide definition of done in the root guide. For core
+changes, additionally capture and inspect:
 
-- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
-  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
-  providers/context, the raw model output, every tool/action call, and the result. Then **open
-  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
-  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
-- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
-  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
-  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
-  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
-  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
-  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
-  them is part of your change.
-- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
-  the entire feature or view, start to finish (`bun run test:e2e:record`).
-- **Manually review every artifact the change touches** — never just the green check: client
-  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
-  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
-- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
-  blocker by the **hard path**: build the real architecture, stand up the real
-  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
-  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
-  highest-effort, production-ready version. Keep going until every possibility is exhausted.
-
-Artifacts → attached inline in the PR (MP4 video, JPG screenshots, logs in `<details>`); attach each evidence type **or**
-explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
-behavior, **re-capture** evidence; stale proof is worse than none.
-
-**Capture & manually review for this package — runtime / framework:**
-- A **live-LLM** scenario trajectory for the runtime path you touched — provider → model → action → evaluator — with the raw `<response>` XML and every tool/action call visible and **read**.
-- Backend `[ClassName]` logs proving the message loop, task scheduler, or service actually fired end to end.
-- The memory/state artifacts produced — rows written, embeddings, room/world/entity records, scheduled-task rows — inspected, not assumed.
-- For shared modules: `build:node` vs full `build` so the browser/edge bundles still compile.
-<!-- END: evidence-and-e2e-mandate -->
+- a live-model trajectory for any changed provider → model → action → evaluator
+  path, including raw model output and every tool result;
+- structured logs and the resulting memory, entity, relationship, task,
+  trajectory, or database artifacts; and
+- both the Node-only build and the full multi-target build whenever a shared
+  export or runtime dependency changes.

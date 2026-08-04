@@ -284,9 +284,6 @@ export function SlashCommandMenu({
     // The combobox input (in the composer) owns aria-activedescendant + focus;
     // this listbox is a non-focusable popup the input points to via aria-controls.
     <div
-      id={listboxId}
-      role="listbox"
-      aria-label="Slash commands"
       data-testid="slash-command-menu"
       className={cn(
         "absolute bottom-full left-0 right-0 z-10 mb-2 max-h-[min(46vh,22rem)] overflow-y-auto",
@@ -298,7 +295,7 @@ export function SlashCommandMenu({
       <div
         className={cn(
           "px-3.5 pb-1 pt-0.5 text-[10px] font-medium uppercase tracking-wider",
-          WALLPAPER_TEXT.faint,
+          WALLPAPER_TEXT.muted,
           WALLPAPER_FLOAT_SHADOW,
         )}
       >
@@ -320,66 +317,68 @@ export function SlashCommandMenu({
           some commands couldn't load
         </div>
       ) : null}
-      {state.items.map((item, index) => (
-        <Button
-          key={item.id}
-          id={`slash-option-${item.id}`}
-          role="option"
-          aria-selected={index === state.activeIndex}
-          data-testid={`slash-option-${index}`}
-          data-active={index === state.activeIndex ? "true" : undefined}
-          // Mouse-enter highlights. Pointer-down prevents the mouse/pen focus
-          // steal (the composer input must keep focus); touch keeps the
-          // platform default so iOS/WebKit does not suppress the tap's click.
-          // The pick itself fires on click so the engine's native
-          // tap-vs-scroll discrimination applies — a touch drag that scrolls
-          // this overflowing listbox emits pointercancel and never clicks,
-          // whereas the old pointer-down pick executed a command the instant a
-          // scroll gesture touched a row (#10722 real-pointer gesture coverage
-          // in slash-commands.spec.ts).
-          onMouseEnter={() => state.setActiveIndex(index)}
-          onPointerDown={(e) => {
-            if (e.pointerType !== "touch") e.preventDefault();
-          }}
-          onClick={() => onPick(index)}
-          variant="ghost"
-          className={cn(
-            "flex h-auto w-full items-center justify-start gap-3 whitespace-normal rounded-none px-3.5 py-2 text-left font-normal transition-colors hover:bg-white/8",
-            index === state.activeIndex ? "bg-white/15" : "hover:bg-white/8",
-          )}
-        >
-          <span
+      <div id={listboxId} role="listbox" aria-label="Slash commands">
+        {state.items.map((item, index) => (
+          <Button
+            key={item.id}
+            id={`slash-option-${item.id}`}
+            role="option"
+            aria-selected={index === state.activeIndex}
+            data-testid={`slash-option-${index}`}
+            data-active={index === state.activeIndex ? "true" : undefined}
+            // Mouse-enter highlights. Pointer-down prevents the mouse/pen focus
+            // steal (the composer input must keep focus); touch keeps the
+            // platform default so iOS/WebKit does not suppress the tap's click.
+            // The pick itself fires on click so the engine's native
+            // tap-vs-scroll discrimination applies — a touch drag that scrolls
+            // this overflowing listbox emits pointercancel and never clicks,
+            // whereas the old pointer-down pick executed a command the instant a
+            // scroll gesture touched a row (#10722 real-pointer gesture coverage
+            // in slash-commands.spec.ts).
+            onMouseEnter={() => state.setActiveIndex(index)}
+            onPointerDown={(e) => {
+              if (e.pointerType !== "touch") e.preventDefault();
+            }}
+            onClick={() => onPick(index)}
+            variant="ghost"
             className={cn(
-              "min-w-0 shrink-0 font-mono text-[13px]",
-              WALLPAPER_TEXT.strong,
-              WALLPAPER_FLOAT_SHADOW,
+              "flex h-auto w-full items-center justify-start gap-3 whitespace-normal rounded-none px-3.5 py-2 text-left font-normal transition-colors hover:bg-white/8",
+              index === state.activeIndex ? "bg-white/15" : "hover:bg-white/8",
             )}
           >
-            {item.primary}
-          </span>
-          {item.secondary ? (
             <span
               className={cn(
-                "min-w-0 flex-1 truncate text-[12px]",
-                WALLPAPER_TEXT.soft,
+                "min-w-0 shrink-0 font-mono text-[13px]",
+                WALLPAPER_TEXT.strong,
                 WALLPAPER_FLOAT_SHADOW,
               )}
             >
-              {item.secondary}
+              {item.primary}
             </span>
-          ) : (
-            <span className="flex-1" />
-          )}
-          {item.isCommand && item.hasArgs ? (
-            <span
-              aria-hidden="true"
-              className="shrink-0 text-[11px] text-white/35"
-            >
-              ⇥
-            </span>
-          ) : null}
-        </Button>
-      ))}
+            {item.secondary ? (
+              <span
+                className={cn(
+                  "min-w-0 flex-1 truncate text-[12px]",
+                  WALLPAPER_TEXT.soft,
+                  WALLPAPER_FLOAT_SHADOW,
+                )}
+              >
+                {item.secondary}
+              </span>
+            ) : (
+              <span className="flex-1" />
+            )}
+            {item.isCommand && item.hasArgs ? (
+              <span
+                aria-hidden="true"
+                className="shrink-0 text-[11px] text-white/35"
+              >
+                ⇥
+              </span>
+            ) : null}
+          </Button>
+        ))}
+      </div>
     </div>
   );
 }

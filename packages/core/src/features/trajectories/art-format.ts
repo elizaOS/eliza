@@ -124,10 +124,20 @@ export function toARTTrajectory(trajectory: Trajectory): ARTTrajectory {
 			scenarioId: trajectory.scenarioId,
 			groupIndex: trajectory.groupIndex,
 			environmentContext: {
-				initialBalance: trajectory.steps[0]?.environmentState.agentBalance || 0,
-				finalBalance: trajectory.metrics.finalBalance || 0,
-				initialPnL: trajectory.steps[0]?.environmentState.agentPnL || 0,
-				finalPnL: trajectory.metrics.finalPnL || 0,
+				...(trajectory.steps[0]?.environmentState.agentBalance !== undefined
+					? {
+							initialBalance: trajectory.steps[0].environmentState.agentBalance,
+						}
+					: {}),
+				...(trajectory.metrics.finalBalance !== undefined
+					? { finalBalance: trajectory.metrics.finalBalance }
+					: {}),
+				...(trajectory.steps[0]?.environmentState.agentPnL !== undefined
+					? { initialPnL: trajectory.steps[0].environmentState.agentPnL }
+					: {}),
+				...(trajectory.metrics.finalPnL !== undefined
+					? { finalPnL: trajectory.metrics.finalPnL }
+					: {}),
 				actionsTaken: trajectory.steps.map((s) => s.action.actionType),
 				errors: trajectory.steps
 					.filter((s) => !s.action.success)

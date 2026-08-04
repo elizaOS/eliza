@@ -1,3 +1,4 @@
+/** Verifies useDataLoaders — 404 refresh failure surfaces instead of swallowing through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Real error-path coverage for the 404 stale-conversation recovery in

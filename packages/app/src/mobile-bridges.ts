@@ -30,7 +30,7 @@ const BACKGROUND_RUNNER_CONFIG_RETRY_MS = 5_000;
 
 /**
  * True on AOSP Eliza-derived Android system images, where the agent serves
- * inference in-process (plugin-aosp-local-inference, ELIZA_LOCAL_LLAMA=1) and
+ * inference in-process (plugin-native-inference, ELIZA_LOCAL_LLAMA=1) and
  * the WebView llama device bridge is redundant. Detected from the framework
  * `ElizaOS/<tag>` user-agent marker the AOSP image stamps on the WebView —
  * synchronous and boot-race-free. Stock-Android sideloads of the same APK do
@@ -85,7 +85,7 @@ export function createMobileBridges(ctx: MobileBridgeContext) {
     // moves behind the same plugin surface.
     //
     // AOSP Eliza-derived Android builds are the exception: they ship the fork
-    // llama libs and serve inference in-process via plugin-aosp-local-inference
+    // llama libs and serve inference in-process via plugin-native-inference
     // (ELIZA_LOCAL_LLAMA=1, eliza-aosp-llama handlers at priority 0). On those
     // builds the WebView device bridge is pure overhead — it connects, the
     // agent never routes a `generate` to it, and it just churns reconnect

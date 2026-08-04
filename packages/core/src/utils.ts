@@ -92,6 +92,7 @@ function isRestrictedCSPEnvironment(): boolean {
 		new Function("return 1");
 		_isRestrictedCSP = false;
 	} catch {
+		// error-policy:J4 Restricted CSP explicitly selects the safe template engine.
 		_isRestrictedCSP = true;
 	}
 
@@ -652,6 +653,8 @@ function parseToonScalar(value: string): unknown {
 		try {
 			return JSON.parse(value);
 		} catch {
+			// error-policy:J3 TOON scalar text is untrusted model output; malformed
+			// JSON remains an explicit string scalar.
 			return value;
 		}
 	}
@@ -907,13 +910,12 @@ function unescapeBasicXmlEntities(value: string): string {
 }
 
 /**
- * Parses a JSON object from text (code block or raw). Uses JSON5 so LLM output with
- * trailing commas, unquoted keys, or single quotes still parses (why: strict JSON often fails on model output).
- * Returns null on parse failure so one bad block doesn't crash the flow.
+ * Parses a JSON object from raw text or a code block. JSON5 accepts common
+ * model-output variations such as trailing commas, unquoted keys, and single
+ * quotes. Invalid or non-object input returns null.
  *
  * @param text - The input text from which to extract and parse the JSON object.
  * @returns An object parsed from the JSON string if successful; otherwise null.
- * @throws Will throw an error if parsing fails and cannot extract a valid JSON object.
  */
 export function parseJSONObjectFromText(
 	text: string,
@@ -928,6 +930,8 @@ export function parseJSONObjectFromText(
 		}
 		return result;
 	} catch (_error) {
+		// error-policy:J3 model output is untrusted input; null is the explicit
+		// invalid signal consumed by callers that request repair or retry.
 		return null;
 	}
 }

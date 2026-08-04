@@ -159,6 +159,8 @@ export async function requestSecretHandler(
 			data: { actionName: "SECRETS", action: "request", key, exists: false },
 		};
 	} catch (error) {
+		// error-policy:J1 the action boundary translates the request failure into
+		// an explicit unsuccessful result visible to the model.
 		logger.error("[SECRETS:request] Error:", String(error));
 		return {
 			success: false,
@@ -170,11 +172,7 @@ export async function requestSecretHandler(
 }
 
 function runtimeSetting(runtime: IAgentRuntime, key: string): unknown {
-	try {
-		return runtime.getSetting(key);
-	} catch {
-		return undefined;
-	}
+	return runtime.getSetting(key);
 }
 
 function buildSecretRequestEnvironment(

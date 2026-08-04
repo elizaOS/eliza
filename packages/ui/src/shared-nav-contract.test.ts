@@ -70,8 +70,8 @@ const PLUGIN_VIEW_TARGETS: Record<string, PluginViewPin> = {
   notes: {
     path: "/notes",
     sources: [
-      "plugins/plugin-simple-views/src/plugin.ts",
-      "plugins/plugin-simple-views/src/register.ts",
+      "plugins/plugin-notes/src/plugin.ts",
+      "plugins/plugin-notes/src/register.ts",
     ],
   },
   "task-coordinator": {

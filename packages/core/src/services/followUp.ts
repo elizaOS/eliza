@@ -224,6 +224,7 @@ export class FollowUpService extends Service {
 				}
 			}
 		} catch (error) {
+			// error-policy:J2 Log follow-up identity and preserve the completion failure.
 			logger.error(
 				"[FollowUpService] Error completing follow-up:",
 				error instanceof Error ? error.message : String(error),
@@ -272,6 +273,7 @@ export class FollowUpService extends Service {
 				`[FollowUpService] Snoozed follow-up ${taskId} to ${newDate.toISOString()}`,
 			);
 		} catch (error) {
+			// error-policy:J2 Log follow-up identity and preserve the snooze failure.
 			logger.error(
 				"[FollowUpService] Error snoozing follow-up:",
 				error instanceof Error ? error.message : String(error),
@@ -424,6 +426,7 @@ export class FollowUpService extends Service {
 						`[FollowUpService] Executed follow-up for ${entity.names[0]}`,
 					);
 				} catch (error) {
+					// error-policy:J2 Log follow-up identity and preserve the execution failure.
 					logger.error(
 						"[FollowUpService] Error executing follow-up:",
 						error instanceof Error ? error.message : String(error),

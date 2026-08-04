@@ -42,13 +42,16 @@ function terminalSupportedByEnv(ctx: PluginAutoEnableContext): boolean {
 }
 
 /**
- * Enable when `config.features.codingTools` is truthy, or via the legacy
- * `config.features["coding-agent"]` key.
+ * Enable when `config.features.codingTools` is truthy, via the legacy
+ * `config.features["coding-agent"]` key, or via `config.features.shell`
+ * (the shell services formerly shipped as @elizaos/plugin-shell now live in
+ * this plugin).
  */
 export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
   return (
     (isFeatureEnabled(ctx.config, "codingTools") ||
-      isFeatureEnabled(ctx.config, "coding-agent")) &&
+      isFeatureEnabled(ctx.config, "coding-agent") ||
+      isFeatureEnabled(ctx.config, "shell")) &&
     terminalSupportedByEnv(ctx)
   );
 }

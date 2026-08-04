@@ -1,4 +1,4 @@
-/** Verifies the connector runtime-service delegates (X, Calendly) forward calls and apply egress filtering. Deterministic vitest with stubbed runtime services. */
+/** Verifies the connector runtime-service delegates (X) forward calls and apply egress filtering. Deterministic vitest with stubbed runtime services. */
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import type { IAgentRuntime, SendHandlerOutcome } from "@elizaos/core";
@@ -10,13 +10,9 @@ import {
   filterActionResultForEgress,
 } from "./privacy-egress.js";
 import {
-  createCalendlySingleUseLinkWithRuntimeService,
   createXPostWithRuntimeService,
   fetchXDirectMessagesWithRuntimeService,
-  getCalendlyAvailabilityWithRuntimeService,
   getXAccountStatusWithRuntimeService,
-  listCalendlyEventTypesWithRuntimeService,
-  listCalendlyScheduledEventsWithRuntimeService,
   readIMessagesWithRuntimeService,
   readSignalRecentWithRuntimeService,
   resolveRuntimeConnectorAccountId,
@@ -446,74 +442,6 @@ describe("runtime service delegates", () => {
       limit: 3,
       accountId: "default",
     });
-  });
-
-  it("delegates Calendly account-scoped capabilities before env unavailable", async () => {
-    const listEventTypes = vi.fn(async () => [{ uri: "event-type-1" }]);
-    const listScheduledEvents = vi.fn(async () => [{ uri: "event-1" }]);
-    const getAvailability = vi.fn(async () => [
-      { date: "2026-05-08", slots: [] },
-    ]);
-    const createSingleUseLink = vi.fn(async () => ({
-      bookingUrl: "https://calendly.com/d/abc",
-      expiresAt: null,
-    }));
-    const runtime = runtimeWithServices({
-      calendly: {
-        isConnected: vi.fn(
-          (accountId?: string) => accountId === "acct-owner-1",
-        ),
-        listEventTypes,
-        listScheduledEvents,
-        getAvailability,
-        createSingleUseLink,
-      },
-    });
-    const calendlyGrant = grant({ provider: "calendly" });
-
-    await expect(
-      listCalendlyEventTypesWithRuntimeService({
-        runtime,
-        grant: calendlyGrant,
-      }),
-    ).resolves.toMatchObject({ status: "handled", accountId: "acct-owner-1" });
-    await expect(
-      listCalendlyScheduledEventsWithRuntimeService({
-        runtime,
-        grant: calendlyGrant,
-        options: { limit: 1 },
-      }),
-    ).resolves.toMatchObject({ status: "handled", accountId: "acct-owner-1" });
-    await expect(
-      getCalendlyAvailabilityWithRuntimeService({
-        runtime,
-        grant: calendlyGrant,
-        eventTypeUri: "event-type-1",
-        options: { startDate: "2026-05-08", endDate: "2026-05-09" },
-      }),
-    ).resolves.toMatchObject({ status: "handled", accountId: "acct-owner-1" });
-    await expect(
-      createCalendlySingleUseLinkWithRuntimeService({
-        runtime,
-        grant: calendlyGrant,
-        eventTypeUri: "event-type-1",
-      }),
-    ).resolves.toMatchObject({ status: "handled", accountId: "acct-owner-1" });
-
-    expect(listEventTypes).toHaveBeenCalledWith("acct-owner-1");
-    expect(listScheduledEvents).toHaveBeenCalledWith(
-      { limit: 1 },
-      "acct-owner-1",
-    );
-    expect(getAvailability).toHaveBeenCalledWith(
-      "event-type-1",
-      { startDate: "2026-05-08", endDate: "2026-05-09" },
-      "acct-owner-1",
-    );
-    expect(createSingleUseLink).toHaveBeenCalledWith(
-      "event-type-1",
-      "acct-owner-1",
-    );
   });
 
   it("falls back when a runtime service capability is missing", async () => {

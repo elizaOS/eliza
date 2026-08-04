@@ -46,10 +46,16 @@ interface MockRuntimeHandle {
   updatedTasks: Array<{ id: UUID; patch: Partial<Task> }>;
   warnings: unknown[][];
   notifyCalls: Array<Record<string, unknown>>;
+  reportedErrors: Array<{
+    scope: string;
+    error: unknown;
+    context?: Record<string, unknown>;
+  }>;
   setDispatchResult: (
     result: { ok: true; executionId?: string } | { ok: false; error: string },
   ) => void;
   setWorkflowServicePresent: (present: boolean) => void;
+  setNotifyError: (error: Error | null) => void;
 }
 
 function makeRuntime(): MockRuntimeHandle {
@@ -59,6 +65,8 @@ function makeRuntime(): MockRuntimeHandle {
   const updatedTasks: Array<{ id: UUID; patch: Partial<Task> }> = [];
   const warnings: unknown[][] = [];
   const notifyCalls: Array<Record<string, unknown>> = [];
+  const reportedErrors: MockRuntimeHandle["reportedErrors"] = [];
+  let notifyError: Error | null = null;
 
   const messageService = {
     async handleMessage(
@@ -81,6 +89,7 @@ function makeRuntime(): MockRuntimeHandle {
   const notificationService = {
     async notify(input: Record<string, unknown>) {
       notifyCalls.push(input);
+      if (notifyError) throw notifyError;
     },
   };
   let dispatchResult: {
@@ -127,6 +136,11 @@ function makeRuntime(): MockRuntimeHandle {
     }),
     ensureConnection: vi.fn(async () => {}),
     getRoom: vi.fn(async () => null),
+    reportError: vi.fn(
+      (scope: string, error: unknown, context?: Record<string, unknown>) => {
+        reportedErrors.push({ scope, error, context });
+      },
+    ),
   } as unknown as IAgentRuntime;
 
   return {
@@ -137,11 +151,15 @@ function makeRuntime(): MockRuntimeHandle {
     updatedTasks,
     warnings,
     notifyCalls,
+    reportedErrors,
     setDispatchResult: (result) => {
       dispatchResult = result;
     },
     setWorkflowServicePresent: (present) => {
       workflowServicePresent = present;
+    },
+    setNotifyError: (error) => {
+      notifyError = error;
     },
   };
 }
@@ -274,6 +292,24 @@ describe("executeTriggerTask", () => {
     expect(notif.category).toBe("workflow");
     expect(notif.priority).toBe("high");
     expect(notif.groupKey).toBe(`trigger:${task.id}`);
+  });
+
+  it("reports notification failures without changing trigger success", async () => {
+    const notifyError = new Error("notification store unavailable");
+    handle.setNotifyError(notifyError);
+    const task = makeTriggerTask({ triggerType: "interval" });
+
+    const result = await executeTriggerTask(handle.runtime, task, {
+      source: "scheduler",
+    });
+
+    expect(result.status).toBe("success");
+    await vi.waitFor(() => expect(handle.reportedErrors).toHaveLength(1));
+    expect(handle.reportedErrors[0]).toMatchObject({
+      scope: "TriggerRuntime.notifySuccess",
+      error: notifyError,
+      context: { taskId: task.id },
+    });
   });
 
   it("dispatches a workflow-kind cron trigger and recomputes the next schedule", async () => {

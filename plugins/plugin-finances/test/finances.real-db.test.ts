@@ -18,7 +18,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
-} from "../../../packages/test/helpers/real-runtime.ts";
+} from "../../../packages/app-core/test/helpers/real-runtime.ts";
 import { FinancesRepository } from "../src/db/finances-repository.ts";
 import { FinancesService } from "../src/finances-service.ts";
 import financesPlugin from "../src/plugin.ts";

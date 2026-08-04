@@ -73,12 +73,12 @@ ${selector}::before {
     rgba(255, 255, 255, 0.24) 100%
   );
   -webkit-mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
+    linear-gradient(rgb(0 0 0) 0 0) content-box,
+    linear-gradient(rgb(0 0 0) 0 0);
   -webkit-mask-composite: xor;
   mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
+    linear-gradient(rgb(0 0 0) 0 0) content-box,
+    linear-gradient(rgb(0 0 0) 0 0);
   mask-composite: exclude;
   pointer-events: none;
 }`;

@@ -4,13 +4,13 @@ Use this as a routing map, then read the live files in the checkout. The live re
 
 ## Instruction order
 
-1. Read `SECURITY.md` before handling a suspected vulnerability.
+1. Read `packages/docs/security.md` before handling a suspected vulnerability.
 2. Read root `AGENTS.md` or `CLAUDE.md` and `CONTRIBUTING.md`.
 3. Read the issue or PR, linked Project card, tracker, design doc, and acceptance criteria.
 4. Read `AGENTS.md` or `CLAUDE.md` in every package or plugin touched.
 5. Preserve `.github/pull_request_template.md` evidence rows and use the applicable issue template.
 
-Never expose a live vulnerability, credential, exploit path, or embargoed dependency issue in public. Route it privately as `SECURITY.md` directs.
+Never expose a live vulnerability, credential, exploit path, or embargoed dependency issue in public. Route it privately as `packages/docs/security.md` directs.
 
 ## Untrusted contribution boundary
 

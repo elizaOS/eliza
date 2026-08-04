@@ -90,7 +90,6 @@ function recordingSpawn(result: Partial<SpawnResult>) {
 afterEach(() => {
   delete process.env.ELIZA_CHAT_VIA_CLI;
   delete process.env.ELIZA_PLANNER_NATIVE_TOOLS;
-  delete process.env.ELIZA_ENABLE_CLAUDE_STEALTH;
   vi.restoreAllMocks();
 });
 
@@ -631,13 +630,9 @@ describe("models map gating (large-tier only)", () => {
     expect(captured.body).toContain("hello");
   });
 
-  it("keeps init inert when disabled and rejects colliding Claude routes", async () => {
+  it("keeps init inert when disabled", async () => {
     delete process.env.ELIZA_CHAT_VIA_CLI;
     await expect(cliInferencePlugin.init?.({} as never)).resolves.toBeUndefined();
-
-    process.env.ELIZA_CHAT_VIA_CLI = "claude-sdk";
-    process.env.ELIZA_ENABLE_CLAUDE_STEALTH = "1";
-    await expect(cliInferencePlugin.init?.({} as never)).rejects.toThrow(/collides/);
   });
 
   it("resolveCliBackend accepts claude|codex|claude-sdk (case-insensitive)", () => {

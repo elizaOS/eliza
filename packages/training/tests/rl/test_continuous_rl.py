@@ -276,21 +276,6 @@ class TestSetupTrainingComponents:
         agent._setup_training_components()
         assert agent.optimizer is not None
 
-    @pytest.mark.skip(
-        reason="kondo_gate module was not vendored into eliza/packages/training; "
-        "the use_kondo=True path silently no-ops here. Re-enable when KondoGate is restored."
-    )
-    def test_setup_training_components_creates_kondo_gate(self) -> None:
-        agent = ContinuousRLAgent(
-            "test",
-            ContinuousRLConfig(
-                device="cpu", optimizer="adamw", use_kondo=True, use_turboquant=False
-            ),
-        )
-        agent.model = torch.nn.Linear(4, 4)
-        agent._setup_training_components()
-        assert agent.kondo_gate is not None
-
     def test_setup_training_components_creates_turboquant(self) -> None:
         agent = ContinuousRLAgent(
             "test",

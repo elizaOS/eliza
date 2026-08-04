@@ -5,7 +5,6 @@
  * interaction counts — by evaluating the TrustEngine for the message sender.
  * Gated to admin/settings contexts and a minimum ADMIN role.
  */
-import { logger } from "../../../logger.ts";
 import type {
 	IAgentRuntime,
 	Memory,
@@ -110,14 +109,17 @@ export const trustProfileProvider: Provider = {
 				},
 			};
 		} catch (error) {
-			logger.error(
-				{ error },
-				"[TrustProfileProvider] Error fetching trust profile:",
-			);
+			// error-policy:J4 trust state becomes explicitly unavailable and the
+			// provider failure remains observable to the agent.
+			runtime.reportError("TrustProfileProvider.get", error, {
+				entityId: message.entityId,
+				roomId: message.roomId,
+			});
 			return {
 				text: "Unable to fetch trust profile",
-				values: {},
+				values: { trustProfileAvailable: false },
 				data: {
+					available: false,
 					error: error instanceof Error ? error.message : String(error),
 				},
 			};

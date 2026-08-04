@@ -1,5 +1,9 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for run node tsx mjs. */
+/**
+ * Launches a script under Node with the tsx loader, resolving the node binary
+ * through run-node-runtime's candidate search (npm_node_execpath, PATH, common
+ * install paths).
+ */
 import { spawn } from "node:child_process";
 import path from "node:path";
 import process from "node:process";

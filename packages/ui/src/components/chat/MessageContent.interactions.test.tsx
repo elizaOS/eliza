@@ -1,3 +1,4 @@
+/** Verifies MessageContent non-bytes interaction rendering through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Render coverage for the non-bytes interaction states surfaced in chat (the

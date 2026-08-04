@@ -3,9 +3,9 @@
  *
  * A single machine-checkable registry of every trycua/cua capability, each tagged
  * `have` | `partial` | `missing` | `na`. This is the executable form of
- * `docs/TRYCUA_PARITY_AUDIT.md`: it fails CI when a `have` verb is dropped from the
- * live action surface, when a host input verb loses its test coverage, or when an
- * `na` decision is silently reverted (e.g. browser_execute re-enabled).
+ * It fails CI when a `have` verb is dropped from the live action surface, when
+ * a host input verb loses test coverage, or when an `na` decision is silently
+ * reverted (for example, browser_execute being re-enabled).
  *
  * Crucially this runs in the DEFAULT lane — i.e. on Windows, Linux, macOS and the
  * AOSP/Node test runner alike — so "we have parity, and every verb is tested" is
@@ -44,7 +44,7 @@ interface Capability {
   milestone?: string;
 }
 
-// The full surface. Keep in sync with docs/TRYCUA_PARITY_AUDIT.md.
+// The full surface.
 const CAPABILITIES: Capability[] = [
   // ── host input ────────────────────────────────────────────────────────────
   { cua: "screenshot", domain: "input", status: "have", verb: "screenshot" },
@@ -280,12 +280,6 @@ const CAPABILITIES: Capability[] = [
     domain: "architecture",
     status: "have",
     milestone: "src/mcp — tool catalog + dispatch + optional-SDK server",
-  },
-  {
-    cua: "eval harness (ScreenSpot/OSWorld/per-OS scenarios)",
-    domain: "architecture",
-    status: "partial",
-    milestone: "M14",
   },
   {
     cua: "low-token continuous screen description",

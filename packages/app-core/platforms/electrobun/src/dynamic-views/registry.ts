@@ -3,7 +3,6 @@ import { DynamicViewError } from "./errors";
 import {
   DYNAMIC_VIEW_PLACEMENTS,
   DYNAMIC_VIEW_SOURCES,
-  type DynamicViewEventSubscription,
   type DynamicViewManifest,
   type DynamicViewMetadata,
   type DynamicViewPlacement,
@@ -68,33 +67,6 @@ function validateSource(value: DynamicViewSource): DynamicViewSource {
   return value;
 }
 
-function validateSubscriptions(
-  subscriptions: DynamicViewEventSubscription[] | undefined,
-): DynamicViewEventSubscription[] | undefined {
-  if (subscriptions === undefined) return undefined;
-  if (!Array.isArray(subscriptions)) {
-    throw new DynamicViewError(
-      "DYNAMIC_VIEW_INVALID_MANIFEST",
-      "eventSubscriptions must be an array.",
-    );
-  }
-  return subscriptions.map((subscription) => {
-    if (!isNonEmptyString(subscription.remoteId)) {
-      throw new DynamicViewError(
-        "DYNAMIC_VIEW_INVALID_MANIFEST",
-        "eventSubscriptions[].remoteId must be a non-empty string.",
-      );
-    }
-    return {
-      remoteId: subscription.remoteId,
-      events: validateStringList(
-        subscription.events,
-        "eventSubscriptions.events",
-      ),
-    };
-  });
-}
-
 function optionalString(
   value: string | undefined,
   field: string,
@@ -140,26 +112,10 @@ export function normalizeDynamicViewManifest(
   };
   const description = optionalString(manifest.description, "description");
   const permissions = validateStringList(manifest.permissions, "permissions");
-  const requiredRemotes = validateStringList(
-    manifest.requiredRemotes,
-    "requiredRemotes",
-  );
-  const eventSubscriptions = validateSubscriptions(manifest.eventSubscriptions);
-  const invokeTargets = validateStringList(
-    manifest.invokeTargets,
-    "invokeTargets",
-  );
   const metadata = validateMetadata(manifest.metadata);
 
   if (description !== undefined) normalized.description = description;
   if (permissions !== undefined) normalized.permissions = permissions;
-  if (requiredRemotes !== undefined) {
-    normalized.requiredRemotes = requiredRemotes;
-  }
-  if (eventSubscriptions !== undefined) {
-    normalized.eventSubscriptions = eventSubscriptions;
-  }
-  if (invokeTargets !== undefined) normalized.invokeTargets = invokeTargets;
   if (metadata !== undefined) normalized.metadata = metadata;
 
   return normalized;

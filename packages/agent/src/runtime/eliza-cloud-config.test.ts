@@ -69,7 +69,7 @@ afterEach(() => {
 });
 
 describe("applyCloudConfigToEnv cloud-container embeddings (#8769)", () => {
-  it("keeps cloud embeddings unset by default and clears the disabled flag", () => {
+  it("defaults app-hosted embeddings to local and clears the disabled flag", () => {
     process.env.ELIZA_CLOUD_PROVISIONED = "1";
     // A stale disabled flag must be cleared, not left to poison a later explicit
     // cloud embedding opt-in.
@@ -77,7 +77,7 @@ describe("applyCloudConfigToEnv cloud-container embeddings (#8769)", () => {
 
     applyCloudConfigToEnv({} as ElizaConfig);
 
-    expect(process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBeUndefined();
+    expect(process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBe("false");
     expect(process.env.ELIZA_CLOUD_EMBEDDINGS_DISABLED).toBeUndefined();
     // Cloud inference is likewise forced on for a provisioned container.
     expect(process.env.ELIZAOS_CLOUD_USE_INFERENCE).toBe("true");

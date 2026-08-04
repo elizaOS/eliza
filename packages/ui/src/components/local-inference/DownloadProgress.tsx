@@ -20,8 +20,12 @@ export function DownloadProgress({ job }: DownloadProgressProps) {
   return (
     <div className="w-full">
       <div
-        className="h-2 w-full overflow-hidden rounded-sm bg-muted"
+        className="h-2 w-full overflow-hidden rounded-sm bg-bg-muted"
         role="progressbar"
+        aria-label={t("downloadprogress.ariaLabel", {
+          model: job.modelId,
+          defaultValue: "Download progress for {{model}}",
+        })}
         aria-valuenow={pct}
         aria-valuemin={0}
         aria-valuemax={100}

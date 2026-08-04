@@ -64,7 +64,7 @@ export function CostAlerts({ costTrending }: CostAlertsProps) {
   }
 
   const toneClasses: Record<"warning" | "error" | "info", string> = {
-    warning: "border-border bg-muted text-txt",
+    warning: "border-border bg-bg-muted text-txt",
     error: "border-border bg-txt text-bg",
     info: "border-border bg-surface text-txt",
   };
@@ -89,9 +89,7 @@ export function CostAlerts({ costTrending }: CostAlertsProps) {
             {iconMap[alert.type]}
             <div className="space-y-2">
               <p className="font-semibold leading-tight">{alert.title}</p>
-              <p className="text-sm text-muted-foreground">
-                {alert.description}
-              </p>
+              <p className="text-sm opacity-80">{alert.description}</p>
             </div>
           </div>
         </div>

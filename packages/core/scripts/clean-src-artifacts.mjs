@@ -1,15 +1,11 @@
 #!/usr/bin/env node
-// Cross-platform replacement for the bash pipeline:
-//   find src -type f \( -name '*.js' -o -name '*.js.map' \
-//     -o -name '*.d.ts' -o -name '*.d.ts.map' \) \
-//     ! -path 'src/types/generated/*' -delete 2>/dev/null || true
-//
-// Removes emitted artifacts from src/ that older build setups left behind,
-// preserving anything under src/types/generated/. No-throw: failures during
-// the sweep are swallowed so `clean` stays idempotent (matches the bash
-// `|| true` tail).
+/**
+ * Keeps generated JavaScript and declaration output out of the core source
+ * tree. Cleanup mode removes stray compiler artifacts; `--check` fails when
+ * any remain so package builds cannot silently repopulate `src/`.
+ */
 
-import { readdirSync, statSync, unlinkSync } from "node:fs";
+import { readdirSync, unlinkSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -25,36 +21,30 @@ function endsWithAny(name) {
 	return false;
 }
 
-function walk(dir) {
-	let entries;
-	try {
-		entries = readdirSync(dir, { withFileTypes: true });
-	} catch {
-		return;
-	}
+function findArtifacts(dir, artifacts = []) {
+	const entries = readdirSync(dir, { withFileTypes: true });
 	for (const entry of entries) {
 		const full = path.join(dir, entry.name);
 		if (entry.isDirectory()) {
-			// Skip the preserve root entirely (matches the `! -path 'src/types/generated/*'`).
+			// Protobuf declarations are source inputs, not package build output.
 			if (full === preserveRoot) continue;
-			walk(full);
+			findArtifacts(full, artifacts);
 			continue;
 		}
 		if (!entry.isFile()) continue;
 		if (!endsWithAny(entry.name)) continue;
-		try {
-			unlinkSync(full);
-		} catch {
-			// Match the bash `2>/dev/null || true` semantics.
-		}
+		artifacts.push(full);
 	}
+	return artifacts;
 }
 
-try {
-	statSync(srcRoot);
-} catch {
-	process.exit(0);
+const artifacts = findArtifacts(srcRoot);
+if (process.argv.includes("--check")) {
+	if (artifacts.length > 0) {
+		throw new Error(
+			`Generated compiler artifacts found under src/:\n${artifacts.join("\n")}`,
+		);
+	}
+} else {
+	for (const artifact of artifacts) unlinkSync(artifact);
 }
-
-walk(srcRoot);
-process.exit(0);

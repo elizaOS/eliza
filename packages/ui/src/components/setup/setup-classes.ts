@@ -1,7 +1,7 @@
-// Shared first-run / setup styling tokens. Pure string + style constants kept
-// out of the component modules so those stay Fast-Refresh-clean: a module that
-// exports a component alongside an object/array export (e.g. a style object)
-// breaks the React refresh boundary and forces a full reload.
+/**
+ * Shares first-run presentation classes without mixing non-component exports
+ * into React modules, preserving their Fast Refresh boundaries.
+ */
 
 export const setupDetailStackClassName = "flex w-full flex-col gap-4 text-left";
 export const setupReadableTextStrongClassName =

@@ -1,6 +1,6 @@
 /**
  * Keyless coverage for the plugin-todos action surface and the CURRENT_TODOS
- * provider. Runs on the pr-deterministic lane under the LLM proxy.
+ * provider. Runs on the pr-deterministic lane under the model provider.
  */
 import { ModelType, stringToUuid, type UUID } from "@elizaos/core";
 import type {
@@ -14,7 +14,7 @@ import todosPlugin, {
   TodosService,
   todosTable,
 } from "../../../../plugins/plugin-todos/src/index.ts";
-import { matchesScenarioInput } from "./_helpers/strict-llm-action-fixtures";
+import { matchesScenarioInput } from "@elizaos/core/testing";
 
 const SCENARIO_ID = "deterministic-todos-actions";
 const ENTITY_ID = stringToUuid(`scenario-account:${SCENARIO_ID}:main`);
@@ -50,7 +50,7 @@ type RuntimeWithPlugins = {
   getServiceLoadPromise?: (serviceType: string) => Promise<unknown>;
   plugins?: Array<{ name?: unknown }>;
   registerPlugin?: (plugin: unknown) => Promise<void>;
-  scenarioLlmFixtures?: {
+  scenarioModelFixtures?: {
     register: (...fixtures: Array<Record<string, unknown>>) => void;
   };
 };
@@ -167,7 +167,7 @@ async function seedTodos(ctx: ScenarioContext): Promise<string | undefined> {
     await runtime.adapter?.runPluginMigrations?.([todosPlugin], {
       verbose: false,
     });
-    runtime.scenarioLlmFixtures?.register(
+    runtime.scenarioModelFixtures?.register(
       handleResponseFixture("Add a todo to cover natural language routing"),
       plannerFixture("Add a todo to cover natural language routing", {
         action: "create",

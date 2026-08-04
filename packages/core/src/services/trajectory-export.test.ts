@@ -84,6 +84,21 @@ describe("trajectory-export", () => {
 		expect(calls[1]?.callId).toBe("traj-1:step-1:call:2");
 	});
 
+	it("rejects corrupt persisted steps instead of exporting a valid empty run", () => {
+		expect(() =>
+			summarizeTrajectoryUsage({
+				...sampleTrajectory,
+				stepsJson: "not-json{",
+			}),
+		).toThrow("Trajectory steps contain malformed JSON");
+		expect(() =>
+			summarizeTrajectoryUsage({
+				...sampleTrajectory,
+				stepsJson: JSON.stringify({ stepId: "not-an-array" }),
+			}),
+		).toThrow("Trajectory steps must be an array");
+	});
+
 	it("summarizes cache usage without double-counting prompt tokens", () => {
 		expect(summarizeTrajectoryCache(sampleTrajectory)).toMatchObject({
 			totalInputTokens: 150,

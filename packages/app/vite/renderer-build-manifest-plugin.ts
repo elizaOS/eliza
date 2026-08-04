@@ -62,8 +62,8 @@ export function rendererBuildManifestPlugin(): Plugin {
           `[renderer-build-manifest] wrote ${RENDERER_BUILD_MANIFEST_FILENAME} buildId=${manifest.buildId.slice(0, 12)} (${manifest.assetCount} assets)`,
         );
       } catch (err) {
-        // A renderer build with no index.html is a non-app output (e.g. the
-        // model-tester entry); skip stamping rather than failing the build.
+        // A renderer build with no index.html is a non-app output; skip
+        // stamping rather than failing the build.
         const message = err instanceof Error ? err.message : String(err);
         if (message.includes("not a built renderer")) return;
         throw err;

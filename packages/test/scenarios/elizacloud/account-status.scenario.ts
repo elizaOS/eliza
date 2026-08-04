@@ -19,7 +19,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   describeCalls,
   successfulActionData,
-} from "../_helpers/effect-assertions.ts";
+} from "@elizaos/scenario-runner/scenario-assertions";
 
 const CLOUD_ACCOUNT_STATUS = "CLOUD_ACCOUNT_STATUS";
 const CLOUD_BASE_URL = "https://cloud.test.invalid/api/v1";
@@ -27,7 +27,7 @@ const MOCK_BALANCE = 12.5;
 
 type R = AgentRuntime & {
   setSetting?: (k: string, v: string, secret?: boolean) => void;
-  scenarioLlmFixtures?: {
+  scenarioModelFixtures?: {
     register: (...f: Array<Record<string, unknown>>) => void;
   };
 };
@@ -107,7 +107,7 @@ export default scenario({
         process.env.ELIZAOS_CLOUD_USE_INFERENCE = "false";
         process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS = "false";
 
-        runtime.scenarioLlmFixtures?.register(
+        runtime.scenarioModelFixtures?.register(
           {
             name: "elizacloud-stage1",
             match: {

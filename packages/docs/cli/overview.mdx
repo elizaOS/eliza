@@ -26,6 +26,7 @@ elizaos --help
 | `info`                           | Show available project and plugin templates.                                |
 | `upgrade`                        | Upgrade the current generated project to the latest template.               |
 | `deploy`                         | Deploy the current project to Eliza Cloud (experimental).                   |
+| `migrate-agent`                  | Convert a file-based OpenClaw agent into Eliza character and memory artifacts. |
 | `plugins submit`                 | Submit the current plugin project to the registry.                          |
 | `capability-router connect`      | Connect the running agent to a remote capability-router or Cloud sandbox.   |
 | `version`                        | Print CLI version.                                                          |
@@ -41,25 +42,19 @@ That's the whole surface. There is no `eliza start`, `eliza setup`, `eliza db`, 
   </Card>
 </CardGroup>
 
-## Adding plugins to a project
+## Command help is authoritative
 
-Plugins are added by editing your character's `plugins` array and running `bun install` to fetch the npm package. There is no `eliza plugins install` command.
-
-```ts
-// character.ts
-export const character: Character = {
-  name: 'Eliza',
-  plugins: [
-    '@elizaos/plugin-sql',
-    '@elizaos/plugin-anthropic',
-    '@elizaos/plugin-discord',  // <- add by editing this list
-  ],
-};
-```
+The CLI is versioned independently from these docs. Inspect the installed
+version before scripting an operation:
 
 ```bash
-bun add @elizaos/plugin-discord
+elizaos --version
+elizaos <command> --help
 ```
+
+Generated projects own runtime and plugin-management workflows through their
+package scripts and app UI; the scaffold CLI does not provide a generic
+`plugins install` command.
 
 ## Source
 

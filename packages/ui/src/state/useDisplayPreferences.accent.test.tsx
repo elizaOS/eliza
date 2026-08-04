@@ -1,3 +1,4 @@
+/** Verifies accent presets — pure helpers through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Accent-preset selection in `useDisplayPreferences`: id normalization, color

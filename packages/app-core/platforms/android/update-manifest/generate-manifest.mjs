@@ -24,14 +24,14 @@ function parseArgs(argv) {
 
 const opts = parseArgs(args);
 
-const version = opts["version"];
+const version = opts.version;
 const versionCode = opts["version-code"];
-const channel = opts["channel"] ?? "stable";
-const sha256 = opts["sha256"];
+const channel = opts.channel ?? "stable";
+const sha256 = opts.sha256;
 const sizeBytes = opts["size-bytes"];
 const downloadUrl = opts["download-url"];
-const changelog = opts["changelog"];
-const output = opts["output"] ?? "android-update-manifest.json";
+const changelog = opts.changelog;
+const output = opts.output ?? "android-update-manifest.json";
 
 const errors = [];
 
@@ -47,7 +47,10 @@ if (!["stable", "beta", "canary"].includes(channel)) {
 }
 
 const parsedVersionCode = parseInt(versionCode, 10);
-if (versionCode && (isNaN(parsedVersionCode) || parsedVersionCode <= 0)) {
+if (
+  versionCode &&
+  (Number.isNaN(parsedVersionCode) || parsedVersionCode <= 0)
+) {
   errors.push(
     `--version-code must be a positive integer (got: ${versionCode})`,
   );
@@ -55,7 +58,7 @@ if (versionCode && (isNaN(parsedVersionCode) || parsedVersionCode <= 0)) {
 
 if (sizeBytes !== undefined) {
   const parsedSize = parseInt(sizeBytes, 10);
-  if (isNaN(parsedSize) || parsedSize < 0) {
+  if (Number.isNaN(parsedSize) || parsedSize < 0) {
     errors.push(
       `--size-bytes must be a non-negative integer (got: ${sizeBytes})`,
     );
@@ -89,8 +92,8 @@ if (changelog !== undefined) {
   manifest.changelog = changelog;
 }
 
-const fs = await import("fs");
-const json = JSON.stringify(manifest, null, 2) + "\n";
+const fs = await import("node:fs");
+const json = `${JSON.stringify(manifest, null, 2)}\n`;
 fs.writeFileSync(output, json, "utf8");
 
 console.log(`Manifest written to: ${output}`);

@@ -1,7 +1,7 @@
 /**
  * Client-side audit emission. POSTs an event to the SOC2 audit endpoint
  * (`POST /api/v1/security/audit`) using the same allowlisted action names as
- * `@elizaos/security/audit`. The server stamps the actor id, ip, and user-agent
+ * `@/services/audit`. The server stamps the actor id, ip, and user-agent
  * before persisting via the canonical `AuditDispatcher`; the client only carries
  * action + result + metadata.
  *
@@ -12,7 +12,7 @@
 import { ApiError, apiFetch } from "../../lib/api-client";
 
 /**
- * The exact action strings allowed by `@elizaos/security/audit`'s
+ * The exact action strings allowed by `@/services/audit`'s
  * `AUDIT_ACTIONS` tuple. The server validates the action again, so a mismatch
  * results in a 4xx (handled here as a graceful degrade).
  */

@@ -1,13 +1,6 @@
 /**
- * Security utilities for handling untrusted external content.
- *
- * Provides functions to safely wrap and process content from
- * external sources (emails, webhooks, web tools, etc.) before passing to LLM agents.
- *
- * SECURITY: External content should NEVER be directly interpolated into
- * system prompts or treated as trusted instructions.
- *
- * @module security/external-content
+ * Wraps untrusted external content before model ingestion.
+ * Email, webhook, and web-tool payloads must never become trusted prompt instructions.
  */
 
 import {

@@ -115,7 +115,8 @@ function initContextManagerSync(): ITrajectoryContextManager {
 				},
 			} as ITrajectoryContextManager;
 		} catch {
-			// AsyncLocalStorage unavailable — fall back to stack
+			// error-policy:J4 AsyncLocalStorage is an optional Node optimization;
+			// non-Node runtimes use the explicit stack implementation below.
 		}
 	}
 	return new StackContextManager<TrajectoryContext | undefined>();
@@ -163,6 +164,8 @@ export function memoizeTurnWork<T>(
 
 	const promise = work();
 	memo.set(key, promise);
+	// error-policy:J5 The original promise is returned to and observed by the
+	// caller; this branch only evicts rejected work from the turn-local memo.
 	void promise.catch(() => {
 		if (memo.get(key) === promise) memo.delete(key);
 	});

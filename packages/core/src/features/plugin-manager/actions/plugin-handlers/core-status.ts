@@ -1,9 +1,4 @@
-/**
- * @module features/plugin-manager/actions/plugin-handlers/core-status
- *
- * `core_status` sub-mode of the PLUGIN action. Reports whether
- * `@elizaos/core` is currently ejected or running from the npm package.
- */
+/** Reports whether the runtime uses an ejected or packaged copy of `@elizaos/core`. */
 
 import type {
 	ActionResult,

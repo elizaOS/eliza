@@ -1,3 +1,4 @@
+/** Verifies useContextMenu — Quote-in-Chat through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // useContextMenu — the desktop (Electrobun) selection context-menu wiring.

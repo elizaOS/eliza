@@ -1,3 +1,4 @@
+/** Verifies ChatMessage voice speaker surfacing through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Renders ChatMessage in jsdom to assert voice-speaker surfacing: the speaker

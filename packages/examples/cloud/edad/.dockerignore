@@ -1,7 +1,0 @@
-node_modules
-.next
-.git
-.DS_Store
-README.md
-api
-*.log

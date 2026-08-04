@@ -186,7 +186,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install
+          install-command: bun install --frozen-lockfile
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -195,7 +195,7 @@ jobs:
         run: bun run build:views
 
       - name: Views system tests
-        run: bunx vitest run packages/agent/src/__tests__/views-system-smoke.test.ts packages/agent/src/__tests__/views-registry-integration.test.ts packages/agent/src/__tests__/plugin-tui-view-coverage.test.ts
+        run: bunx vitest run packages/agent/src/__tests__/views-system-smoke.test.ts packages/agent/src/__tests__/views-registry-integration.test.ts
 
       - name: Remote capability router tests
         run: bun run test:remote-capabilities
@@ -256,8 +256,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          python-version: "3.13"
-          install-command: bun install
+          install-command: bun install --frozen-lockfile
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -323,7 +322,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install
+          install-command: bun install --frozen-lockfile
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -346,7 +345,7 @@ jobs:
 
       - name: Run plugin tests
         # Cap step below the 95m job budget so a flaky plugin
-        # (most recently plugin-shell rust PTY tests in run 25234887145)
+        # (most recently shell rust PTY tests in run 25234887145)
         # fails fast instead of burning the whole job's wall clock.
         timeout-minutes: 85
         run: bun run test:plugins
@@ -392,7 +391,7 @@ jobs:
           exit 1
 
   # First CI consumer of the repo-level integration lane
-  # (packages/test/vitest/integration.config.ts). The lane was dead in CI:
+  # (packages/scripts/vitest/integration.config.ts). The lane was dead in CI:
   # nothing invoked the config, its @elizaos/core alias broke the /node
   # subpath, and its eliza/-prefixed paths matched zero files in a flat
   # checkout (#11047). Runs plugin-personal-assistant's test:integration —
@@ -422,13 +421,13 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install
+          install-command: bun install --frozen-lockfile
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
-      # The personal-assistant barrel imports sibling plugin dists (e.g.
-      # plugin-calendly pulls "@elizaos/core/node") straight from
+      # The personal-assistant barrel imports sibling plugin dists that pull
+      # "@elizaos/core/node" straight from
       # node_modules, so the lane needs the package's workspace dependency
       # graph built. Turbo replays warm runs from cache.
       - name: Build personal-assistant dependency graph
@@ -458,7 +457,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install
+          install-command: bun install --frozen-lockfile
           install-native-deps: "false"
 
       - name: Build workspace packages for Vitest resolution
@@ -477,7 +476,7 @@ jobs:
     env:
       TEST_LANE: "pr"
       ELIZA_LIVE_TEST: "0"
-      SCENARIO_USE_LLM_PROXY: "1"
+      SCENARIO_USE_DETERMINISTIC_MODEL: "1"
       CEREBRAS_API_KEY: ""
       OPENAI_API_KEY: ""
       ANTHROPIC_API_KEY: ""
@@ -501,7 +500,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -515,9 +514,8 @@ jobs:
       - name: Scenario runner unit coverage
         run: bun run --cwd packages/scenario-runner test -- src/executor.test.ts src/runtime-factory.test.ts src/scenario-pr-workflow.test.ts
 
-      - name: Deterministic LLM proxy unit coverage
-        working-directory: packages
-        run: bunx vitest run --config test/mocks/vitest.config.ts test/mocks/__tests__/llm-proxy-plugin.test.ts
+      - name: Deterministic model provider unit coverage
+        run: bun run --cwd packages/core test -- src/testing/deterministic-model-plugin.test.ts
 
       - name: UI voice interaction coverage
         run: bun run --cwd packages/ui test -- src/hooks/useVoiceChat.bidirectional.test.tsx src/hooks/useContinuousChat.test.tsx
@@ -537,7 +535,7 @@ jobs:
     env:
       TEST_LANE: "pr"
       ELIZA_LIVE_TEST: "0"
-      SCENARIO_USE_LLM_PROXY: "1"
+      SCENARIO_USE_DETERMINISTIC_MODEL: "1"
       CEREBRAS_API_KEY: ""
       OPENAI_API_KEY: ""
       ANTHROPIC_API_KEY: ""
@@ -561,7 +559,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -612,7 +610,7 @@ jobs:
     env:
       TEST_LANE: "pr"
       ELIZA_LIVE_TEST: "0"
-      SCENARIO_USE_LLM_PROXY: "1"
+      SCENARIO_USE_DETERMINISTIC_MODEL: "1"
       CEREBRAS_API_KEY: ""
       OPENAI_API_KEY: ""
       ANTHROPIC_API_KEY: ""
@@ -636,7 +634,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -674,7 +672,7 @@ jobs:
     env:
       TEST_LANE: "pr"
       ELIZA_LIVE_TEST: "0"
-      SCENARIO_USE_LLM_PROXY: "1"
+      SCENARIO_USE_DETERMINISTIC_MODEL: "1"
       CEREBRAS_API_KEY: ""
       OPENAI_API_KEY: ""
       ANTHROPIC_API_KEY: ""
@@ -698,7 +696,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -739,7 +737,7 @@ jobs:
         if: always()
         run: node packages/scripts/rm-path-recursive.mjs reports/scenarios/pr-deterministic reports/scenarios/pr-deterministic-corpus reports/scenarios/pr-deterministic-orchestrator reports/scenarios/pr-deterministic-lifeops reports/scenarios/catalog-inventory packages/app/playwright-report packages/app/test-results
 
-  zero-key-harness-e2e:
+  zero-key-model-provider-e2e:
     name: Zero-Key harness E2E
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.zero_key == 'true'
@@ -748,7 +746,7 @@ jobs:
     env:
       TEST_LANE: "pr"
       ELIZA_LIVE_TEST: "0"
-      SCENARIO_USE_LLM_PROXY: "1"
+      SCENARIO_USE_DETERMINISTIC_MODEL: "1"
       CEREBRAS_API_KEY: ""
       OPENAI_API_KEY: ""
       ANTHROPIC_API_KEY: ""
@@ -772,7 +770,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -780,14 +778,13 @@ jobs:
       - name: Ensure generated shared i18n data
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
-      - name: Keyless harness e2e (mock-LLM + recorded fixtures)
-        working-directory: packages
-        run: bunx vitest run --config test/mocks/vitest.config.ts test/mocks/__tests__/
+      - name: External API mock contract coverage
+        run: bunx vitest run --config packages/scenario-runner/test/mocks/vitest.config.ts
 
-      - name: Per-plugin keyless harness adoption proofs
+      - name: Per-plugin deterministic model-provider runtime adoption proofs
         run: |
-          bun run --cwd plugins/plugin-anthropic test:harness
-          bun run --cwd plugins/plugin-discord test:harness
+          bun run --cwd plugins/plugin-anthropic test:real-runtime
+          bun run --cwd plugins/plugin-discord test:real-runtime
 
   zero-key-e2e:
     name: Zero-Key Deterministic E2E
@@ -797,7 +794,7 @@ jobs:
       - zero-key-browser
       - zero-key-diagnostics
       - zero-key-scenario-runner
-      - zero-key-harness-e2e
+      - zero-key-model-provider-e2e
     if: ${{ !cancelled() && always() && (github.event_name != 'pull_request' || needs.changes.outputs.zero_key == 'true') }}
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     steps:
@@ -811,7 +808,7 @@ jobs:
             "zero-key-browser:${{ needs.zero-key-browser.result }}" \
             "zero-key-diagnostics:${{ needs.zero-key-diagnostics.result }}" \
             "zero-key-scenario-runner:${{ needs.zero-key-scenario-runner.result }}" \
-            "zero-key-harness-e2e:${{ needs.zero-key-harness-e2e.result }}"; do
+            "zero-key-model-provider-e2e:${{ needs.zero-key-model-provider-e2e.result }}"; do
             name="${pair%%:*}"
             result="${pair##*:}"
             echo "$name: $result"
@@ -890,7 +887,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install
+          install-command: bun install --frozen-lockfile
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -1037,7 +1034,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install
+          install-command: bun install --frozen-lockfile
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -1118,7 +1115,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install
+          install-command: bun install --frozen-lockfile
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"

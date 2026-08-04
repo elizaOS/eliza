@@ -77,6 +77,7 @@ import {
 	appendCoalescedDiscordMetadata,
 	type DiscordMessageWithCoalescedMetadata,
 } from "./message-coalesce";
+import { waitForDiscordIngressReadiness } from "./readiness";
 import {
 	applyDiscordStalenessGuard,
 	type DiscordStalenessConfig,
@@ -1285,6 +1286,26 @@ export class MessageManager {
 		}
 
 		if (this.discordSettings.shouldIgnoreBotMessages && message.author?.bot) {
+			return;
+		}
+
+		// Discord can emit messageCreate immediately after ClientReady while the
+		// async onReady sequence is still resolving application-owner aliases.
+		// Ingesting before that boundary permanently attributes an owner message to
+		// a platform-derived entity, which makes owner-private recall fail closed
+		// for the wrong reason and leaves split identity in memory. Wait before the
+		// dedupe reservation or any room/entity write. A failed ready sequence is a
+		// fail-closed connector state: ordinary chat must not race ahead of it.
+		try {
+			await waitForDiscordIngressReadiness(
+				this.discordService.clientReadyPromise,
+			);
+		} catch (error) {
+			this.runtime.reportError("discord:message-before-ready", error, {
+				accountId: this.accountId,
+				messageId: message.id,
+				channelId: message.channel.id,
+			});
 			return;
 		}
 

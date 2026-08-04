@@ -350,8 +350,8 @@ export function buildStatus() {
     devices,
     existingEvidence,
     nextCommands: [
-      "LIFEOPS_PERMISSION_MATRIX=1 bunx vitest run --config packages/test/vitest/integration.config.ts plugins/plugin-personal-assistant/test/owner-agent-permission-matrix.integration.test.ts",
-      "TEST_LANE=post-merge ELIZA_LIVE_TEST=1 bun run --cwd plugins/plugin-google test",
+      "LIFEOPS_PERMISSION_MATRIX=1 bunx vitest run --config packages/scripts/vitest/integration.config.ts plugins/plugin-personal-assistant/test/owner-agent-permission-matrix.integration.test.ts",
+      "TEST_LANE=post-merge ELIZA_LIVE_TEST=1 bun run --cwd plugins/plugin-google-workspace test",
       "TEST_LANE=post-merge ELIZA_LIVE_TEST=1 bun run --cwd plugins/plugin-x test",
       "bun run dev && bun run --cwd packages/app audit:views",
       "bun run --cwd packages/app capture:android-emu",

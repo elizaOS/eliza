@@ -1,25 +1,10 @@
-/** Vitest config for plugin-x, wiring the shared provider-SDK aliases/shim so tests run without real provider SDKs installed. */
+/** Runs X connector tests against the real workspace package graph. */
 import { defineConfig } from "vitest/config";
-import {
-  providerSdkAliases,
-  providerSdkShimPlugin,
-  repoRoot,
-} from "../../packages/test/vitest/provider-sdk-aliases";
+import { buildWorkspaceSourceAliases } from "../../packages/scripts/vitest/source-aliases.ts";
 
-const testAliases = [
-  {
-    find: "@elizaos/core/node",
-    replacement: `${repoRoot}/core/src/index.node.ts`,
-  },
-  ...providerSdkAliases,
-  {
-    find: "@elizaos/logger",
-    replacement: `${repoRoot}/logger/src/index.ts`,
-  },
-];
+const testAliases = buildWorkspaceSourceAliases();
 
 export default defineConfig({
-  plugins: [providerSdkShimPlugin()],
   resolve: {
     alias: testAliases,
   },

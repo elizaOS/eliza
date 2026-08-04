@@ -974,7 +974,7 @@ async function collectWorkspaceEntityIds(
 
 	if (rooms.length > 0) {
 		const roomEntities = await Promise.all(
-			rooms.map((room) => runtime.getEntitiesForRoom(room.id).catch(() => [])),
+			rooms.map((room) => runtime.getEntitiesForRoom(room.id)),
 		);
 		for (const entities of roomEntities) {
 			for (const entity of entities) {
@@ -2149,14 +2149,12 @@ async function buildGraphModel(
 		relationshipsService,
 		rooms,
 	);
-	const ownerEntityId = (await resolvers
-		.resolveOwnerEntityId(runtime)
-		.catch(() => null)) as UUID | null;
+	const ownerEntityId = (await resolvers.resolveOwnerEntityId(
+		runtime,
+	)) as UUID | null;
 	const cloudAuth = getCloudAuthService(runtime);
 	const cloudUserId = asString(cloudAuth?.getUserId?.()) ?? null;
-	const configuredOwnerName = await resolvers
-		.fetchConfiguredOwnerName()
-		.catch(() => null);
+	const configuredOwnerName = await resolvers.fetchConfiguredOwnerName();
 	const entityContexts = new Map<UUID, EntityContext>();
 
 	await Promise.all(
@@ -2287,6 +2285,8 @@ export function createNativeRelationshipsGraphService(
 					return model;
 				})
 				.catch((err) => {
+					// error-policy:J5 The shared promise is returned to callers, who observe
+					// the rejection; this branch only clears the single-flight slot.
 					modelBuildPromise = null;
 					throw err;
 				});
@@ -2313,7 +2313,7 @@ export function createNativeRelationshipsGraphService(
 		async getGraphSnapshot(query = {}): Promise<RelationshipsGraphSnapshot> {
 			const [model, ownerName] = await Promise.all([
 				getCachedModel(),
-				resolvers.fetchConfiguredOwnerName().catch(() => null),
+				resolvers.fetchConfiguredOwnerName(),
 			]);
 			const scopedGraph = graphViewForScope(
 				model.summaries,
@@ -2377,7 +2377,7 @@ export function createNativeRelationshipsGraphService(
 		): Promise<RelationshipsPersonDetail | null> {
 			const [model, ownerName] = await Promise.all([
 				getCachedModel(),
-				resolvers.fetchConfiguredOwnerName().catch(() => null),
+				resolvers.fetchConfiguredOwnerName(),
 			]);
 			const cluster =
 				Array.from(model.clusters.values()).find(

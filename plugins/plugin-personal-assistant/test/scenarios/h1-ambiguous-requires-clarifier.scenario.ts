@@ -3,8 +3,9 @@
  * relationship type, the assistant must ask the owner instead of writing a low
  * confidence edge.
  */
+
+import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { judgeRubric } from "../../../../packages/test/scenarios/_helpers/action-assertions.ts";
 
 export default scenario({
   lane: "live-only",

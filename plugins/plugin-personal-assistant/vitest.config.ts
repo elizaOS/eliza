@@ -8,9 +8,9 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
-import baseConfig from "../../packages/test/vitest/default.config";
-import { repoRoot } from "../../packages/test/vitest/repo-root";
-import { getElizaWorkspaceRoot } from "../../packages/test/vitest/workspace-aliases";
+import baseConfig from "../../packages/scripts/vitest/default.config";
+import { repoRoot } from "../../packages/scripts/vitest/repo-root";
+import { getElizaWorkspaceRoot } from "../../packages/scripts/vitest/workspace-aliases";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const elizaRoot = getElizaWorkspaceRoot(repoRoot);
@@ -55,11 +55,8 @@ const optionalCorePluginStubPrefix = "\0lifeops-optional-core-plugin-stub:";
 const optionalCorePluginStubPackages = new Set([
   "@elizaos/plugin-agent-orchestrator",
   "@elizaos/plugin-task-coordinator",
-  "@elizaos/plugin-app-control",
-  "@elizaos/plugin-shell",
   "@elizaos/plugin-coding-tools",
   "@elizaos/plugin-pty",
-  "@elizaos/plugin-birdclaw",
   "@elizaos/plugin-commands",
   "@elizaos/plugin-video",
   "@elizaos/plugin-vision",
@@ -88,8 +85,8 @@ const agentSourceJsToTsPlugin = {
     if (source === "@elizaos/ui") {
       return path.join(lifeopsTestStubsRoot, "ui.ts");
     }
-    if (source === "@elizaos/plugin-google") {
-      return path.join(lifeopsTestStubsRoot, "plugin-google.ts");
+    if (source === "@elizaos/plugin-google-workspace") {
+      return path.join(lifeopsTestStubsRoot, "plugin-google-workspace.ts");
     }
 
     const normalizedImporter = importer?.replace(/^\/@fs/, "");
@@ -112,23 +109,6 @@ const agentSourceJsToTsPlugin = {
   load(id: string) {
     if (!id.startsWith(optionalCorePluginStubPrefix)) return null;
     const packageName = id.slice(optionalCorePluginStubPrefix.length);
-    if (packageName === "@elizaos/plugin-app-control") {
-      return [
-        "export function parseSettingsRequest(input) { return input ?? {}; }",
-        "export function createSettingsAction() {",
-        "  return {",
-        '    name: "SETTINGS_SECTION_TEST_STUB",',
-        '    description: "Test stub for app-control section settings.",',
-        "    examples: [],",
-        "    validate: async () => true,",
-        "    handler: async () => ({ success: false, text: 'settings stub unavailable' }),",
-        "  };",
-        "}",
-        'const plugin = { name: "plugin-app-control-test-stub", description: "Test stub for @elizaos/plugin-app-control", actions: [], providers: [], evaluators: [], services: [] };',
-        "export { plugin };",
-        "export default plugin;",
-      ].join("\n");
-    }
     const name = `${packageName.slice("@elizaos/".length)}-test-stub`;
     return [
       `const plugin = ${JSON.stringify({
@@ -406,6 +386,15 @@ export default defineConfig({
         replacement: path.join(agentSourceRoot, "security", "access.ts"),
       },
       {
+        find: /^@elizaos\/agent\/services\/knowledge-graph$/,
+        replacement: path.join(
+          agentSourceRoot,
+          "services",
+          "knowledge-graph",
+          "index.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/agent\/services\/knowledge-graph\/service$/,
         replacement: path.join(
           agentSourceRoot,
@@ -417,6 +406,10 @@ export default defineConfig({
       {
         find: /^@elizaos\/agent\/config\/config$/,
         replacement: path.join(agentSourceRoot, "config", "config.ts"),
+      },
+      {
+        find: /^@elizaos\/agent\/config\/paths$/,
+        replacement: path.join(agentSourceRoot, "config", "paths.ts"),
       },
       {
         find: "@elizaos/agent",
@@ -442,12 +435,19 @@ export default defineConfig({
           "$1.ts",
         ),
       },
-      // The agent's settings action pulls the shared parser from the
-      // `@elizaos/plugin-app-control/actions/settings` subpath (#14804), but
-      // app-control's build bundles only the barrel — there is no per-file
-      // dist and vitest has no eliza-source condition, so the subpath must be
-      // anchored to source (the bare specifier stays stubbed via
-      // optionalCorePluginStubPackages above).
+      // The agent's settings action pulls createSettingsAction +
+      // parseSettingsRequest from the `@elizaos/plugin-app-control` barrel
+      // (#14804), but app-control's build bundles only the barrel — there is
+      // no per-file dist and vitest has no eliza-source condition. Anchor the
+      // bare specifier to the file stub (which re-exports the real settings
+      // module) and subpaths to source. These must be alias entries, not
+      // resolveId stubs: vite:alias runs before user plugins, so baseConfig's
+      // installed-package alias for this plugin would otherwise win and
+      // resolve a stale published dist that lacks the settings exports.
+      {
+        find: /^@elizaos\/plugin-app-control$/,
+        replacement: path.join(lifeopsTestStubsRoot, "plugin-app-control.ts"),
+      },
       {
         find: /^@elizaos\/plugin-app-control\/(.+)$/,
         replacement: path.join(
@@ -580,16 +580,6 @@ export default defineConfig({
         ),
       },
       {
-        find: /^@elizaos\/plugin-remote-desktop$/,
-        replacement: path.join(
-          elizaRoot,
-          "plugins",
-          "plugin-remote-desktop",
-          "src",
-          "index.ts",
-        ),
-      },
-      {
         find: /^@elizaos\/plugin-scheduling$/,
         replacement: path.join(
           elizaRoot,
@@ -683,16 +673,6 @@ export default defineConfig({
       },
       { find: /^telegram\/sessions$/, replacement: telegramSessionsEntry },
       {
-        find: /^@elizaos\/plugin-calendly$/,
-        replacement: path.join(
-          elizaRoot,
-          "plugins",
-          "plugin-calendly",
-          "src",
-          "index.ts",
-        ),
-      },
-      {
         find: /^@elizaos\/plugin-browser\/password-manager-bridge$/,
         replacement: path.join(
           elizaRoot,
@@ -761,8 +741,11 @@ export default defineConfig({
         ),
       },
       {
-        find: /^@elizaos\/plugin-google$/,
-        replacement: path.join(lifeopsTestStubsRoot, "plugin-google.ts"),
+        find: /^@elizaos\/plugin-google-workspace$/,
+        replacement: path.join(
+          lifeopsTestStubsRoot,
+          "plugin-google-workspace.ts",
+        ),
       },
       {
         find: /^@elizaos\/plugin-elizacloud$/,

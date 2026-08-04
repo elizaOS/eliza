@@ -8,15 +8,7 @@
  */
 import http from "node:http";
 import { Socket } from "node:net";
-import {
-  afterAll,
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
 
 // This suite drives the REAL `ensureRouteMinRole` (via the real `./auth.ts`)
@@ -27,12 +19,8 @@ import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
 // pulling the full auth graph when they do not need it.
 
 const mocks = vi.hoisted(() => {
-  // Reset the shared module registry during hoist so this file's `./auth/*`
-  // mocks bind to a fresh auth graph. Under app-core's `isolate:false` runner a
-  // preceding suite (e.g. dev-route-catalog) can otherwise leave a cached
-  // `./auth/sessions` mock in place, and the real `ensureRouteMinRole` would
-  // resolve that stale `findActiveSession` instead of the one mocked below.
-  // Mirrors ensure-route-min-role.test.ts.
+  // Bind the route to this file's complete auth graph before installing its
+  // controllable session and store mocks.
   vi.resetModules();
   return {
     executeRawSql: vi.fn(),
@@ -228,15 +216,6 @@ beforeEach(() => {
 afterEach(() => {
   delete process.env.ELIZA_API_TOKEN;
   delete process.env.ELIZA_REQUIRE_LOCAL_AUTH;
-});
-
-// Under `isolate: false` app-core suites share one module registry. This file
-// installs a full-replacement `@elizaos/shared` mock plus `../auth/sessions`
-// and `../../services/auth-store` mocks; clear the registry on teardown so those
-// stripped/mocked modules cannot leak into a later real-module suite (e.g.
-// first-run-persistence, which imports the genuine `@elizaos/shared` normalizers).
-afterAll(() => {
-  vi.resetModules();
 });
 
 describe("handleDatabaseRowsCompatRoute", () => {

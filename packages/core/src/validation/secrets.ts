@@ -1,11 +1,4 @@
-/**
- * Secret Validation Module
- *
- * Consolidated validation patterns for secrets across the entire codebase.
- * All secret validation should use these patterns to ensure consistency.
- *
- * @module validation/secrets
- */
+/** Canonical validation patterns for secrets accepted by core and plugins. */
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // VALIDATION PATTERNS

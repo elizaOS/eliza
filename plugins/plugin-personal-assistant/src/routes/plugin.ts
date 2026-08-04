@@ -780,6 +780,6 @@ export const personalAssistantRoutesPlugin: Plugin = {
   name: "@elizaos/plugin-personal-assistant-routes",
   description:
     "LifeOps dashboard, Google Workspace, website blocker, and scheduling routes",
-  dependencies: ["@elizaos/plugin-google"],
+  dependencies: ["@elizaos/plugin-google-workspace"],
   routes: lifeOpsPluginRoutes,
 };

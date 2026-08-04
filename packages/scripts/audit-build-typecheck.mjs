@@ -37,10 +37,6 @@ const CUSTOM_PLUGIN_BUILD_ALLOW = new Map([
     "custom declaration emit flags for allowImportingTsExtensions/rootDir",
   ],
   [
-    "plugins/plugin-benchmarks/build.ts",
-    "legacy tolerant declaration fallback pending tsconfig output cleanup",
-  ],
-  [
     "plugins/plugin-computeruse/build.ts",
     "multiple published entrypoints plus parallel declaration emit",
   ],

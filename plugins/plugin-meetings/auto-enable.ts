@@ -30,7 +30,7 @@ function isFeatureEnabled(
  * the host can actually run the browser bots.
  *
  * No bespoke on/off env flag — the plugin follows the standard feature-toggle
- * convention (cf. plugin-shell / plugin-browser): it comes on when meetings is
+ * convention (cf. plugin-coding-tools / plugin-browser): it comes on when meetings is
  * enabled in config, not when an `ELIZA_MEETINGS_*` switch is set. The only
  * capability gate is the mobile veto: browser automation cannot run inside an
  * Android / iOS app sandbox (`ctx.isNativePlatform`, which the resolver derives

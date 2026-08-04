@@ -1,5 +1,9 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for ensure generated core proto js mjs. */
+/**
+ * Transpiles @elizaos/core's generated proto `_pb.ts` files to sibling .js
+ * (ES2022) so node-run scripts can import them without a build step; skips
+ * cleanly when no generated dir exists and only retranspiles stale outputs.
+ */
 
 import fs from "node:fs";
 import path from "node:path";

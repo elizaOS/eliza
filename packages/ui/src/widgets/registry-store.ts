@@ -20,7 +20,7 @@ function getComponentRegistry(): Map<string, ComponentType<WidgetProps>> {
 // *after* a home/sidebar host has already resolved its slot. Because slot
 // resolution is a pure function of (registry state + plugin snapshot), the host
 // must re-resolve when the registry changes — otherwise an idle-registered
-// widget (e.g. plugin-wallet-ui's chat-sidebar widget) is silently dropped
+// widget (e.g. plugin-wallet's chat-sidebar widget) is silently dropped
 // until an unrelated plugin-snapshot change happens to re-run resolution.
 //
 // This is a `useSyncExternalStore` source: a monotonic version counter plus a

@@ -38,7 +38,7 @@ const SCAN_ROOTS = [
   join(import.meta.dirname, "cloud-ui"),
   // Sibling plugins whose views were de-chipped in the same change.
   join(import.meta.dirname, "../../../plugins/plugin-task-coordinator/src"),
-  join(import.meta.dirname, "../../../plugins/plugin-wallet-ui/src"),
+  join(import.meta.dirname, "../../../plugins/plugin-wallet/src/ui"),
 ] as const;
 
 function collectFiles(dir: string, out: string[] = []): string[] {

@@ -324,6 +324,8 @@ export async function adjudicateInjectionRisk(
 				reasonMatch?.[1]?.trim()?.slice(0, 300) ?? `adjudicated ${verdict}`,
 		};
 	} catch (error) {
+		// error-policy:J4 Security adjudication degrades only to an explicit blocked
+		// verdict, never to an allow or healthy-empty state.
 		runtime.logger?.warn?.(
 			{
 				src: "should-respond-risk-gate",

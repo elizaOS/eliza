@@ -8,7 +8,7 @@ fronts the local llama.cpp server and forwards OpenAI-compatible
 the Vast Serverless Engine so its autoscaler can size the endpoint.
 
 This file is intentionally small. The control loop (queue, autoscale,
-load balancer) lives on Vast's side; eliza/cloud routes requests by hitting
+load balancer) lives on Vast's side; Eliza Cloud routes requests by hitting
 the endpoint URL via `VastProvider`.
 
 Why llama.cpp instead of vLLM:

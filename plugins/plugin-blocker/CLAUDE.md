@@ -11,9 +11,9 @@ platform engine lifecycle, a drizzle `pgSchema('app_blocker')`, and a `focus`
 overlay view rendered by the dashboard shell. The `BLOCK` umbrella action is
 host-adapted by `@elizaos/plugin-personal-assistant`.
 
-This package was split out of `@elizaos/plugin-personal-assistant`. The
-providers, services, schema, and view are owned here. The `BLOCK` action remains
-PA-resident to keep one owner-gated scheduler/chat dispatch path.
+This package owns the providers, services, schema, and view. The `BLOCK` action
+remains in `@elizaos/plugin-personal-assistant` so owner gating, scheduler
+integration, and chat dispatch have one owner.
 
 ## Plugin surface
 
@@ -27,9 +27,9 @@ PA-resident to keep one owner-gated scheduler/chat dispatch path.
 - `APP_BLOCKER` (`src/providers/app-blocker.ts`) — active app block sessions.
 
 ### Services
-- `WebsiteBlockerService` (`src/services/website-blocker.ts`,
-  `serviceType = "website-blocker"`).
-- `AppBlockerService` (`src/services/app-blocker.ts`,
+- `WebsiteBlockerService` (`src/services/website-blocker/service.ts`,
+  `serviceType = "website_blocker"`).
+- `AppBlockerService` (`src/services/app-blocker/service.ts`,
   `serviceType = "app-blocker"`).
 
 ### Schema
@@ -48,11 +48,11 @@ src/
   index.ts                        Public export barrel
   types.ts                        Constants + Block* types
   providers/
-    website-blocker.ts            WEBSITE_BLOCKER provider (stub)
-    app-blocker.ts                APP_BLOCKER provider (stub)
+    website-blocker.ts            WEBSITE_BLOCKER provider
+    app-blocker.ts                APP_BLOCKER provider
   services/
-    website-blocker.ts            WebsiteBlockerService (stub)
-    app-blocker.ts                AppBlockerService (stub)
+    website-blocker/              hosts/native engine, permissions, service
+    app-blocker/                  platform access, engine, service, types
   db/
     index.ts                      Re-exports schema
     schema.ts                     pgSchema('app_blocker') + tables
@@ -77,10 +77,10 @@ bun run --cwd plugins/plugin-blocker clean        # rm -rf dist
 
 ## Config / env vars
 
-This plugin reads no environment variables and has no settings keys yet. Once
-the real services are migrated, the SelfControl admin permission flow and the
-macOS app-blocker bundle-id allow-list will pick up the same env contract as
-the lifeops implementations they replace.
+`WEBSITE_BLOCKER_HOSTS_FILE_PATH` overrides the hosts file used by the website
+engine; `SELFCONTROL_HOSTS_FILE_PATH` is the compatibility alias. Platform
+access and permission state are otherwise resolved through the native service
+boundaries.
 
 ## How to extend
 
@@ -101,47 +101,13 @@ the lifeops implementations they replace.
 - The view bundle is built independently of the JS / type build (`build:views`
   vs `build:js` + `build:types`) — both must run for a complete release.
 - All services log with the `[Blocker]` prefix.
-- See the root `AGENTS.md` for repo-wide architecture rules, logger
+- See the root `CLAUDE.md` for repo-wide architecture rules, logger
   conventions, and ESM standards.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
-## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+## Verification
 
-> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
-> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
-> works **without reading the code**, from the artifacts you attach. This applies to **every**
-> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
-
-- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
-  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
-  providers/context, the raw model output, every tool/action call, and the result. Then **open
-  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
-  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
-- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
-  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
-  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
-  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
-  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
-  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
-  them is part of your change.
-- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
-  the entire feature or view, start to finish (`bun run test:e2e:record`).
-- **Manually review every artifact the change touches** — never just the green check: client
-  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
-  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
-- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
-  blocker by the **hard path**: build the real architecture, stand up the real
-  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
-  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
-  highest-effort, production-ready version. Keep going until every possibility is exhausted.
-
-Artifacts → attached inline in the PR (MP4 video, JPG screenshots, logs in `<details>`); attach each evidence type **or**
-explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
-behavior, **re-capture** evidence; stale proof is worse than none.
-
-**Capture & manually review for this package — CLI / tooling:**
-- The real command/flow invocation transcript (args in, stdout/stderr, exit code) and the artifacts it generated (files, scaffolds, manifests, screenshots/recordings).
-- Failure paths: bad args, missing deps, partial state, permission/network errors.
-- A recording/log of the actual run end to end — not a unit test of one helper.
-- Any model interaction captured as a live trajectory and reviewed.
-<!-- END: evidence-and-e2e-mandate -->
+Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+the package's relevant build, typecheck, lint, and test commands, then exercise
+the real integration boundary changed by the work. Inspect the produced domain
+artifacts and failure behavior; do not substitute mocked success for the system
+under test.

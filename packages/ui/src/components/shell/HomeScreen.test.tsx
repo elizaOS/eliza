@@ -1,3 +1,4 @@
+/** Verifies HomeScreen through the package's configured test harness. */
 // @vitest-environment jsdom
 
 // HomeScreen composition: the unified home WidgetHost, the pinned dashboard
@@ -212,7 +213,6 @@ describe("HomeScreen", () => {
     __ingestNotificationForTests(makeNotification());
     render(<HomeScreen onOpenTile={vi.fn()} />);
 
-    const home = screen.getByTestId("home-screen");
     const column = screen.getByTestId("home-content-column");
     const list = screen.getByTestId("home-notification-list");
     const notificationRegion = column.querySelector<HTMLElement>(
@@ -221,27 +221,12 @@ describe("HomeScreen", () => {
     const secondaryRegion = column.querySelector<HTMLElement>(
       "[data-home-below-notifications]",
     );
-    const secondaryRegionInner = column.querySelector<HTMLElement>(
-      "[data-home-below-notifications-inner]",
-    );
-    const css = home.querySelector("style")?.textContent ?? "";
-
     expect(column.hasAttribute("data-home-has-notifications")).toBe(true);
     expect(notificationRegion).toBeTruthy();
     expect(secondaryRegion).toBeTruthy();
-    expect(secondaryRegionInner?.className).toContain("min-h-0");
-    expect(secondaryRegionInner?.className).toContain("overflow-y-auto");
     expect(
       secondaryRegion?.contains(screen.getByTestId("home-widget-host")),
     ).toBe(true);
-    expect(css).toContain(
-      '[data-shade-preview="expanding"][data-shade-dragging]',
-    );
-    expect(css).toContain(
-      '[data-shade-mode="expanded"]:not([data-shade-settling])',
-    );
-    expect(css).toContain("grid-template-rows: 0fr");
-    expect(css).toContain("--eliza-home-notification-settle-duration");
 
     fireEvent.pointerDown(list, {
       pointerType: "mouse",

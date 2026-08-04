@@ -1,3 +1,4 @@
+/** Verifies TasksPageView through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Structural tests for TasksPageView (#13565, views-redesign epic): the

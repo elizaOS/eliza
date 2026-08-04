@@ -48,7 +48,7 @@ import {
 	getTrajectoryContext,
 	logger,
 } from "@elizaos/core";
-import { USE_SKILL_ACTION_NAME, useSkillAction } from "./use-skill";
+import { useSkillAction } from "./use-skill";
 
 const mockedAnnotateActiveTrajectoryStep = vi.mocked(
 	annotateActiveTrajectoryStep,
@@ -63,10 +63,6 @@ beforeEach(() => {
 });
 
 describe("useSkillAction", () => {
-	it("uses the exported action-name contract", () => {
-		expect(useSkillAction.name).toBe(USE_SKILL_ACTION_NAME);
-	});
-
 	it("reads planned action arguments from handler parameters", async () => {
 		const skill = {
 			slug: "github",

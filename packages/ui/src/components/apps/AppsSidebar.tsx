@@ -181,7 +181,7 @@ export function AppsSidebar({
       <SidebarScrollRegion className="scrollbar-hide px-1 pb-3 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <SidebarPanel className="bg-transparent gap-0 p-0 shadow-none">
           {!hasAnyResults ? (
-            <div className="px-3 py-4 text-2xs text-muted/70">
+            <div className="px-3 py-4 text-2xs text-muted">
               No apps available
             </div>
           ) : (
@@ -319,7 +319,7 @@ function AppsSidebarAppButtonInner<TPayload>({
       }`}
     >
       <Icon
-        className="h-3.5 w-3.5 shrink-0 text-muted/70"
+        className="h-3.5 w-3.5 shrink-0 text-muted"
         aria-hidden
         strokeWidth={2}
       />

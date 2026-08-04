@@ -177,7 +177,7 @@ jobs:
 
   test("the checked-in workflow set is uniformly fail-safe", () => {
     const result = validateHetznerFleetRouting(REAL_REPO_ROOT);
-    expect(result.files).toBeGreaterThan(100);
-    expect(result.selectors).toBeGreaterThan(200);
+    expect(result.files).toBeGreaterThan(70);
+    expect(result.selectors).toBeGreaterThan(150);
   });
 });

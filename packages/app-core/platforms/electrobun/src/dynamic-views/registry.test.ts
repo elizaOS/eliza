@@ -11,9 +11,6 @@ function manifest(id = "agent.run.trace"): DynamicViewManifest {
     source: "agent",
     entrypoint: "./trace.html",
     placement: "floating",
-    requiredRemotes: ["eliza.runtime"],
-    eventSubscriptions: [{ remoteId: "eliza.runtime" }],
-    invokeTargets: ["eliza.runtime"],
   };
 }
 
@@ -61,13 +58,8 @@ describe("DynamicViewRegistry", () => {
       ...manifest("  agent.run.trace  "),
       title: "  Agent Run Trace  ",
       entrypoint: "  ./trace.html  ",
-      description: "Remote/local trace window",
+      description: "Local trace window",
       permissions: ["filesystem.read"],
-      requiredRemotes: ["eliza.runtime", "plugin.worker"],
-      eventSubscriptions: [
-        { remoteId: "eliza.runtime", events: ["trace.started"] },
-      ],
-      invokeTargets: ["eliza.runtime"],
       metadata: { stable: true, version: 1 },
     });
 
@@ -75,13 +67,8 @@ describe("DynamicViewRegistry", () => {
       id: "agent.run.trace",
       title: "Agent Run Trace",
       entrypoint: "./trace.html",
-      description: "Remote/local trace window",
+      description: "Local trace window",
       permissions: ["filesystem.read"],
-      requiredRemotes: ["eliza.runtime", "plugin.worker"],
-      eventSubscriptions: [
-        { remoteId: "eliza.runtime", events: ["trace.started"] },
-      ],
-      invokeTargets: ["eliza.runtime"],
       metadata: { stable: true, version: 1 },
     });
 
@@ -103,17 +90,6 @@ describe("DynamicViewRegistry", () => {
     ["placement", { placement: "sidebar" }],
     ["description", { description: " " }],
     ["permissions", { permissions: ["filesystem.read", ""] }],
-    ["requiredRemotes", { requiredRemotes: ["eliza.runtime", " "] }],
-    ["eventSubscriptions", { eventSubscriptions: "eliza.runtime" }],
-    [
-      "eventSubscriptions.remoteId",
-      { eventSubscriptions: [{ remoteId: " " }] },
-    ],
-    [
-      "eventSubscriptions.events",
-      { eventSubscriptions: [{ remoteId: "r", events: ["ready", ""] }] },
-    ],
-    ["invokeTargets", { invokeTargets: ["eliza.runtime", ""] }],
   ])("rejects invalid manifest field: %s", (_field, patch) => {
     const registry = new DynamicViewRegistry();
 

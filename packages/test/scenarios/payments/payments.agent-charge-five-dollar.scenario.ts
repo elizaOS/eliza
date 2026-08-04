@@ -4,8 +4,8 @@ import {
   type ScenarioContext,
   scenario,
 } from "@elizaos/scenario-runner/schema";
-import { expectTurnToCallAction } from "../_helpers/action-assertions.ts";
-import { expectScenarioActionResultData } from "../_helpers/action-result-assertions.ts";
+import { expectTurnToCallAction } from "@elizaos/scenario-runner/scenario-assertions";
+import { expectScenarioActionResultData } from "@elizaos/scenario-runner/scenario-assertions";
 import { appChargeTestPlugin } from "./_fixtures/app-charge-test-plugin.ts";
 
 function asRuntime(value: unknown): AgentRuntime {

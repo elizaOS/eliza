@@ -14,7 +14,6 @@ on:
       - "packages/docs/**/*.mdx"
       - "packages/docs/**/*.md"
       - "packages/docs/docs.json"
-      - "packages/docs/mint.json"
 
   # Allow manual triggering
   workflow_dispatch:

@@ -167,9 +167,9 @@ function wrapProviderWithMinRole(
   provider: Provider,
   minRole: RoleGateRole,
   marker: string,
-): void {
+): boolean {
   if ((provider as { __roleGate?: string }).__roleGate === marker) {
-    return;
+    return false;
   }
 
   const originalGet = provider.get;
@@ -187,6 +187,7 @@ function wrapProviderWithMinRole(
     return originalGet.call(provider, runtime, message, state);
   };
   (provider as { __roleGate?: string }).__roleGate = marker;
+  return true;
 }
 
 /**
@@ -250,8 +251,9 @@ export function applyPluginRoleGating(plugins: Plugin[]): void {
       const minRole = gatedMinRole(provider);
       if (!minRole) continue;
       try {
-        wrapProviderWithMinRole(provider, minRole, minRole);
-        gatedProviders++;
+        if (wrapProviderWithMinRole(provider, minRole, minRole)) {
+          gatedProviders++;
+        }
       } catch (err) {
         // Fail closed: a sensitive provider we could not wrap must not be
         // exposed. Withhold its content and report loudly — never silently
@@ -269,7 +271,7 @@ export function applyPluginRoleGating(plugins: Plugin[]): void {
   }
 
   if (gatedProviders > 0) {
-    logger.info(`[role-gating] Total: ${gatedProviders} provider(s) gated`);
+    logger.debug(`[role-gating] ${gatedProviders} provider(s) gated`);
   }
   if (withheldProviders > 0) {
     logger.error(

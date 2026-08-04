@@ -18,16 +18,17 @@
  * - {@link CompositeEntityRecognizer} — merges several recognizers, resolves
  *   overlaps (longest span wins), and applies the blocklist.
  *
- * The heavy local NER model (distilbert-NER via `@huggingface/transformers`) lives
- * behind this same interface in `@elizaos/plugin-pii-guard` and is injected at
- * runtime, so `@elizaos/core` never hard-depends on an ONNX runtime.
+ * The model-backed recognizer (an LLM extraction pass on the resident local
+ * llama.cpp backend) lives behind this same interface in
+ * `@elizaos/plugin-local-inference` and is injected at runtime, so
+ * `@elizaos/core` never hard-depends on an inference runtime.
  *
- * ## transformers.js offset caveat (issue #359)
- * transformers.js token-classification pipelines frequently return `start`/`end`
- * as `null` for BERT/DeBERTa tokenizers. That is why {@link EntitySpan.start} /
- * {@link EntitySpan.end} are optional and why the pseudonymizer swaps by **value**
- * (string replace), never by offset. Recognizers should still fill offsets when
- * they can (regex/gazetteer do) so overlap resolution is precise.
+ * ## Offsets are best-effort
+ * Model-backed recognizers cannot always locate a reported entity precisely in
+ * the source text. That is why {@link EntitySpan.start} / {@link EntitySpan.end}
+ * are optional and why the pseudonymizer swaps by **value** (string replace),
+ * never by offset. Recognizers should still fill offsets when they can
+ * (regex/gazetteer/LLM do) so overlap resolution is precise.
  */
 import { findBasicEmailSpans } from "./basic-email";
 
@@ -48,18 +49,19 @@ export interface EntitySpan {
 
 /** Recognizes named-entity PII spans in free text. */
 export interface PiiEntityRecognizer {
-	/** Stable identifier, for logging/telemetry (`regex`, `distilbert-ner`, …). */
+	/** Stable identifier, for logging/telemetry (`regex`, `local-llm-ner`, …). */
 	readonly name: string;
 	/** Return every detected span in `text`. Must not throw for empty input. */
 	recognize(text: string): Promise<EntitySpan[]>;
 }
 
 /**
- * Service type a plugin registers to supply the local NER model recognizer to
- * the runtime's PII swap layer. `@elizaos/core` never hard-depends on an ONNX
- * runtime; it looks up this service when PII swap is enabled and composes the
- * returned recognizer with its built-in regex recognizer. When absent, the layer
- * runs regex-only (addresses; opt-in email/phone) — degraded but still safe.
+ * Service type a plugin registers to supply the model-backed NER recognizer to
+ * the runtime's PII swap layer. `@elizaos/core` never hard-depends on an
+ * inference runtime; it looks up this service when PII swap is enabled and
+ * composes the returned recognizer with its built-in regex recognizer. When
+ * absent, the layer runs regex-only (addresses; opt-in email/phone) — degraded
+ * but still safe.
  */
 export const PII_ENTITY_RECOGNIZER_SERVICE = "pii_entity_recognizer";
 
@@ -218,20 +220,13 @@ export class CompositeEntityRecognizer implements PiiEntityRecognizer {
 
 	async recognize(text: string): Promise<EntitySpan[]> {
 		if (!text) return [];
-		// Run recognizers concurrently — the ONNX model call overlaps the (cheap)
-		// regex/gazetteer passes rather than serializing behind them. A recognizer
-		// that throws (e.g. a model backend error) contributes zero spans instead of
-		// rejecting the whole batch, so one failing recognizer degrades coverage but
-		// never takes down the model call it is protecting.
+		// Run recognizers concurrently so the model-backed call overlaps the cheap
+		// regex/gazetteer passes. Every configured recognizer contributes to the
+		// protection boundary, so failure aborts instead of reducing PII coverage.
 		const batches = await Promise.all(
-			this.recognizers.map(async (r, order) => {
-				try {
-					const spans = await r.recognize(text);
-					return spans.map((s) => ({ span: s, order }));
-				} catch {
-					return [] as { span: EntitySpan; order: number }[];
-				}
-			}),
+			this.recognizers.map(async (recognizer, order) =>
+				(await recognizer.recognize(text)).map((span) => ({ span, order })),
+			),
 		);
 		const candidates = batches
 			.flat()
@@ -281,7 +276,7 @@ export class CompositeEntityRecognizer implements PiiEntityRecognizer {
 
 /**
  * Map an upstream recognizer label to a canonical pseudonym kind. Handles the
- * distilbert-NER CoNLL labels (`PER`/`ORG`/`LOC`/`MISC`, with or without `B-`/`I-`
+ * CoNLL-style NER labels (`PER`/`ORG`/`LOC`/`MISC`, with or without `B-`/`I-`
  * prefixes) and common synonyms; unknown labels pass through unchanged so the
  * pseudonymizer's default surrogate still applies.
  */

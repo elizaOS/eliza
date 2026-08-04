@@ -4,9 +4,8 @@
  * Each target opens its real rendered route and proves that chat and voice can
  * enumerate every interactive control through `viewInteract`. Native-OS Phone,
  * Contacts, and Messages are exercised on device rather than through the web
- * shell; Shopify has no shipped view declaration, and facewear lives inside
- * Settings. The sibling inventory covers wallet inventory, orchestrator, and
- * feed.
+ * shell; Shopify has no shipped view declaration. The sibling inventory covers
+ * wallet inventory, orchestrator, and feed.
  */
 
 import { expect, type Page, test } from "@playwright/test";
@@ -147,45 +146,7 @@ const PLUGIN_VIEW_TARGETS: readonly PluginViewTarget[] = [
     ready: { text: "Last sleep" },
     requiredIds: [],
   },
-  // --- Markets / connector surfaces (own view components, agent toolbars) ---
-  {
-    label: "Hyperliquid",
-    path: "/hyperliquid",
-    viewId: "hyperliquid",
-    // The visible "<Name> controls" toolbars were removed (#14596); each
-    // spatial view stamps its root Card with a stable data-agent-id instead.
-    ready: { selector: '[data-agent-id="hyperliquid-root"]' },
-    requiredIds: ["hyperliquid-refresh", "hyperliquid-home"],
-  },
-  {
-    label: "Polymarket",
-    path: "/polymarket",
-    viewId: "polymarket",
-    ready: { selector: '[data-agent-id="polymarket-root"]' },
-    requiredIds: ["polymarket-refresh"],
-  },
-  {
-    label: "Screenshare",
-    path: "/screenshare",
-    viewId: "screenshare",
-    ready: { text: /^Session:/ },
-    requiredIds: ["screenshare-session-toggle", "screenshare-refresh"],
-  },
   // --- Tooling views ---
-  {
-    label: "Training (fine-tuning)",
-    path: "/apps/fine-tuning",
-    viewId: "training",
-    ready: { testId: "fine-tuning-view" },
-    // The dataset / job sections mount together (not tab-gated) in FineTuningView,
-    // so their refresh + build/start controls always register.
-    requiredIds: [
-      "dataset-refresh",
-      "dataset-build",
-      "job-refresh",
-      "job-start",
-    ],
-  },
   {
     label: "Vector Browser",
     path: "/vector-browser",
@@ -405,17 +366,3 @@ for (const target of PLUGIN_VIEW_TARGETS) {
     await scanUnwiredControls(page, target.label);
   });
 }
-
-test("facewear has no GUI agent-bridge surface to inventory (documented skip)", async ({
-  page,
-}) => {
-  // Not a coverage gap: facewear device controls live in Settings → Wearables.
-  // There is no standalone GUI route that mounts an agent-bridge surface for
-  // `facewear`, so it is intentionally excluded from the inventory above. This
-  // test documents that decision so the exclusion is explicit and reviewable.
-  test.skip(
-    true,
-    "facewear device controls live in Settings → Wearables, not a standalone inventory route.",
-  );
-  await openAppPath(page, "/apps/facewear");
-});

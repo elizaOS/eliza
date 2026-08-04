@@ -8,7 +8,7 @@ The canonical orchestration plugin for elizaOS task agents. Spawns local coding 
 
 > Naming: this plugin is *not* the same thing as `@elizaos/plugin-acp`. That package is Shaw's ACP gateway client (IDE bridge over a remote ACP gateway). `@elizaos/plugin-agent-orchestrator` is the *task backend* that runs coding agents as subprocesses on the same host as the runtime.
 
-> **Vocabulary:** the work items this plugin manages (`OrchestratorTaskRecord`, `orchestrator_tasks`) are **coding tasks** — always qualify them as such in prose and UI, never the bare word "task" (which is reserved for the core runtime `Task` primitive). A coding task has no cron/recurrence; scheduling belongs to the trigger layer, not here. See [`docs/automation-glossary.md`](../../docs/automation-glossary.md).
+> **Vocabulary:** the work items this plugin manages (`OrchestratorTaskRecord`, `orchestrator_tasks`) are **coding tasks** — always qualify them as such in prose and UI, never the bare word "task" (which is reserved for the core runtime `Task` primitive). A coding task has no cron/recurrence; scheduling belongs to the trigger layer, not here.
 
 ## What it does
 
@@ -137,6 +137,11 @@ You usually don't subscribe directly — `SubAgentRouter` already does, and rout
 ## Configuration
 
 All configuration is via environment variables. Use `ELIZA_ACP_TRANSPORT=native` for the embedded TypeScript ACP client and `ELIZA_ACP_TRANSPORT=cli` only when you deliberately want the existing `acpx` wrapper.
+
+`ORCHESTRATOR_SESSION_ID` is spawn-managed rather than operator configuration.
+The ACP service injects the child session id under this name so the child can
+address its session-scoped loopback bridge, child runtimes do not register a
+second credential broker, and child trajectories retain their session join key.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |

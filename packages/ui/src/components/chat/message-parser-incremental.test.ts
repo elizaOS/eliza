@@ -1,3 +1,4 @@
+/** Verifies parseSegmentsStreaming differential (byte-identical to full parse) through the package's configured test harness. */
 // @vitest-environment node
 //
 // Correctness + work bound for the incremental streaming parser (#15280). The

@@ -1,4 +1,9 @@
-/** Supports app-core build, packaging, or development orchestration for run node runtime mjs. */
+/**
+ * Chooses the JS runtime (bun vs node) for launching the app: honors
+ * ELIZA_RUNTIME, avoids the known-unstable Bun 1.3.9-on-Linux combination,
+ * enforces a minimum Node major, and resolves executable paths for the launcher
+ * scripts.
+ */
 import { spawnSync } from "node:child_process";
 
 const KNOWN_UNSTABLE_BUN_LINUX = /^1\.3\.9(?:$|[-+].*)/;

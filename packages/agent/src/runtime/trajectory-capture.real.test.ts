@@ -3,9 +3,8 @@
  *
  * Reproduces + guards the bug where the in-memory "trajectories" service
  * captured LLM calls only into its own `trajectory_step_index` store, while the
- * viewer + collection read the SQL `trajectory_steps` tables — so on every
- * platform without the plugin-training log-backfill (mobile, cloud) a trajectory
- * showed ZERO recorded LLM calls.
+ * viewer reads the SQL `trajectory_steps` tables, producing trajectories with
+ * zero recorded LLM calls.
  *
  * `installDatabaseTrajectoryLogger(runtime)` is the bridge that mirrors capture
  * into `trajectory_steps`; it is now wired at boot in

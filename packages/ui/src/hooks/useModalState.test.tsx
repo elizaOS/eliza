@@ -1,3 +1,4 @@
+/** Verifies useModalState through the package's configured test harness. */
 // @vitest-environment jsdom
 
 import { act, renderHook } from "@testing-library/react";

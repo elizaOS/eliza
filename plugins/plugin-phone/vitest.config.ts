@@ -74,13 +74,6 @@ export default defineConfig({
         replacement: resolve(rootDir, "test/stubs/ui.tsx"),
       },
       {
-        find: /^@elizaos\/capacitor-phone$/,
-        replacement: resolve(
-          rootDir,
-          "../../plugins/plugin-native-phone/src/index.ts",
-        ),
-      },
-      {
         find: /^@elizaos\/app-core$/,
         replacement: resolve(rootDir, "../../packages/app-core/src/index.ts"),
       },

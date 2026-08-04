@@ -1,3 +1,4 @@
+/** Verifies view matrix classification through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // View MATRIX coverage (#10202 — "current system/developer/plugin views are
@@ -58,8 +59,6 @@ const VIEW_CLASSIFICATION: Record<string, "system" | "developer"> = {
   // Developer / advanced surfaces.
   plugins: "developer",
   skills: "developer",
-  advanced: "developer",
-  "fine-tuning": "developer",
   trajectories: "developer",
   transcripts: "developer",
   relationships: "developer",

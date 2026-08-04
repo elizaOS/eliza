@@ -6,8 +6,8 @@
  * 2. The vite app dev server (port 2138, proxies /api and /ws to 31337)
  *
  * Automatically kills zombie processes on both ports before starting.
- * Waits for the API port to be open before launching vite so the proxy
- * doesn't flood the terminal with ECONNREFUSED errors.
+ * Starts the API and Vite together. The UI can compile and serve before the
+ * runtime is ready; proxied requests recover as soon as the API comes online.
  *
  * Usage:
  *   node eliza/packages/app-core/scripts/dev-ui.mjs            # from Eliza repo root — API + UI
@@ -23,13 +23,11 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { resolveDesktopApiPort, resolveDesktopUiPort } from "@elizaos/shared";
-import * as JSON5Module from "json5";
 import { startAgentSourceWatcher } from "./lib/agent-source-watcher.mjs";
 import { createApiSupervisor } from "./lib/api-supervisor.mjs";
 import { relativeAppDir, resolveMainAppDir } from "./lib/app-dir.mjs";
 import { getBunVersionAdvisory } from "./lib/bun-version-guard.mjs";
 import { capacitorPluginsBuildNeeded } from "./lib/capacitor-plugin-build-needed.mjs";
-import { coerceBoolean } from "./lib/dev-ui-onchain.mjs";
 import { buildVisionDepsFailureMessage } from "./lib/dev-ui-vision.mjs";
 import { resolveViteCommand } from "./lib/dev-ui-vite.mjs";
 import { signalSpawnedProcessTree } from "./lib/kill-process-tree.mjs";
@@ -157,8 +155,19 @@ const { CAPACITOR_PLUGIN_NAMES, NATIVE_PLUGINS_ROOT } = await import(
 syncElizaEnvAliases();
 
 const API_PORT = resolveDesktopApiPort(process.env);
-const JSON5 = JSON5Module.default ?? JSON5Module;
 const cwd = process.cwd();
+const sourceCheckout = [
+  path.join(cwd, "packages", "app-core", "src", "runtime", "dev-server.ts"),
+  path.join(
+    cwd,
+    "eliza",
+    "packages",
+    "app-core",
+    "src",
+    "runtime",
+    "dev-server.ts",
+  ),
+].some((entry) => existsSync(entry));
 
 // --app=<name> selects which app to serve (default: "app" → packages/app)
 const appArgMatch = process.argv.find((a) => a.startsWith("--app="));
@@ -276,6 +285,28 @@ function appendNodeOption(value, option) {
   return `${current} ${option}`;
 }
 
+function resolveNodeRuntimePath(env) {
+  const pathCandidates = (env.PATH ?? "")
+    .split(path.delimiter)
+    .filter(Boolean)
+    .map((dir) =>
+      path.join(dir, process.platform === "win32" ? "node.exe" : "node"),
+    );
+  const candidates = [
+    env.ELIZA_NODE_PATH,
+    env.npm_node_execpath,
+    ...pathCandidates,
+    "/opt/homebrew/bin/node",
+    "/usr/local/bin/node",
+    "/usr/bin/node",
+  ].filter(Boolean);
+  return resolveNodeExecPathFromCandidates({
+    candidates,
+    explicitNodePath: env.ELIZA_NODE_PATH,
+    platform: process.platform,
+  });
+}
+
 function resolveApiRuntimeCommand(env) {
   const requestedRuntime = env.ELIZA_RUNTIME?.trim().toLowerCase();
   const { runtime, warning } = chooseElizaRuntime({
@@ -309,27 +340,9 @@ function resolveApiRuntimeCommand(env) {
     );
   }
 
-  const pathCandidates = (env.PATH ?? "")
-    .split(path.delimiter)
-    .filter(Boolean)
-    .map((dir) =>
-      path.join(dir, process.platform === "win32" ? "node.exe" : "node"),
-    );
-  const candidates = [
-    env.ELIZA_NODE_PATH,
-    env.npm_node_execpath,
-    ...pathCandidates,
-    "/opt/homebrew/bin/node",
-    "/usr/local/bin/node",
-    "/usr/bin/node",
-  ].filter(Boolean);
   return {
     runtime: "node",
-    command: resolveNodeExecPathFromCandidates({
-      candidates,
-      explicitNodePath: env.ELIZA_NODE_PATH,
-      platform: process.platform,
-    }),
+    command: resolveNodeRuntimePath(env),
   };
 }
 
@@ -410,192 +423,6 @@ if (!hasBun && !which("npx")) {
       "Install Bun or Node.js with npx to run this dev script.",
   );
   process.exit(1);
-}
-
-// ---------------------------------------------------------------------------
-// Stealth import config
-// ---------------------------------------------------------------------------
-
-// coerceBoolean — imported from ./lib/dev-ui-onchain.mjs
-
-function resolveElizaStateDir() {
-  const explicitStateDir = process.env.ELIZA_STATE_DIR?.trim();
-  if (explicitStateDir) return path.resolve(explicitStateDir);
-
-  const xdgStateHome = process.env.XDG_STATE_HOME?.trim();
-  const stateHome = xdgStateHome
-    ? path.isAbsolute(xdgStateHome)
-      ? xdgStateHome
-      : path.join(os.homedir(), xdgStateHome)
-    : path.join(os.homedir(), ".local", "state");
-
-  return path.join(stateHome, resolveElizaNamespace());
-}
-
-function resolveElizaNamespace() {
-  return process.env.ELIZA_NAMESPACE?.trim() || cliName || "eliza";
-}
-
-function resolveElizaConfigPath() {
-  const explicitConfigPath = process.env.ELIZA_CONFIG_PATH?.trim();
-  if (explicitConfigPath) {
-    return path.resolve(explicitConfigPath);
-  }
-
-  return path.join(resolveElizaStateDir(), `${resolveElizaNamespace()}.json`);
-}
-
-function loadElizaConfigForDev() {
-  const configPath = resolveElizaConfigPath();
-  if (!existsSync(configPath)) return null;
-  try {
-    const raw = readFileSync(configPath, "utf-8");
-    return JSON5.parse(raw);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.warn(
-      `${green(logPrefix)} Failed to parse config at ${configPath}: ${msg}`,
-    );
-    return null;
-  }
-}
-
-function readPluginStealthFlag(entries, ids) {
-  if (!entries || typeof entries !== "object") return null;
-
-  for (const id of ids) {
-    const entry = entries[id];
-    if (!entry || typeof entry !== "object") continue;
-
-    const config = entry.config;
-    if (!config || typeof config !== "object") continue;
-
-    const stealthFlag =
-      config.stealthImport ??
-      config.enableStealthImport ??
-      config.enableStealth;
-    const parsed = coerceBoolean(stealthFlag);
-    if (parsed !== null) return parsed;
-  }
-
-  return null;
-}
-
-function _formatRelativeImportPath(relativePath) {
-  const normalized = relativePath.split(path.sep).join("/");
-  return normalized.startsWith("./") ? normalized : `./${normalized}`;
-}
-
-function resolveStealthImportPath(devCwd, candidatePaths) {
-  for (const candidatePath of candidatePaths) {
-    const absPath = path.join(devCwd, candidatePath);
-    if (existsSync(absPath)) {
-      // Return the absolute path so the value stays valid regardless of
-      // which cwd the API child gets spawned in. The API child is anchored
-      // at the eliza/ submodule (see apiSpawnCwd below), so a path computed
-      // relative to the outer eliza cwd would resolve to a non-existent
-      // `eliza/eliza/...` from the child's perspective.
-      return absPath;
-    }
-  }
-  return null;
-}
-
-function addStealthImport(imports, label, candidatePaths) {
-  const resolvedPath = resolveStealthImportPath(cwd, candidatePaths);
-  if (resolvedPath) {
-    imports.push(resolvedPath);
-    return;
-  }
-
-  console.warn(
-    `  ${green(logPrefix)} ${orange(
-      `${label} stealth requested but no preload file was found. Tried: ${candidatePaths.join(", ")}`,
-    )}`,
-  );
-}
-
-function resolveStealthImportFlags() {
-  let openaiFlag = coerceBoolean(process.env.ELIZA_ENABLE_OPENAI_STEALTH);
-  let claudeFlag = coerceBoolean(process.env.ELIZA_ENABLE_CLAUDE_STEALTH);
-
-  const globalFlag = coerceBoolean(process.env.ELIZA_ENABLE_STEALTH_IMPORTS);
-  if (globalFlag !== null) {
-    openaiFlag = globalFlag;
-    claudeFlag = globalFlag;
-  }
-
-  const config = loadElizaConfigForDev();
-  if (config && typeof config === "object") {
-    const feature = config.features?.stealthImports;
-    if (typeof feature === "boolean") {
-      if (openaiFlag === null) openaiFlag = feature;
-      if (claudeFlag === null) claudeFlag = feature;
-    } else if (feature && typeof feature === "object") {
-      const enabled = coerceBoolean(feature.enabled);
-      if (enabled !== null) {
-        if (openaiFlag === null) openaiFlag = enabled;
-        if (claudeFlag === null) claudeFlag = enabled;
-      }
-
-      const openaiFeature =
-        coerceBoolean(feature.openai) ?? coerceBoolean(feature.codex);
-      const claudeFeature =
-        coerceBoolean(feature.claude) ?? coerceBoolean(feature.anthropic);
-
-      if (openaiFeature !== null && openaiFlag === null) {
-        openaiFlag = openaiFeature;
-      }
-      if (claudeFeature !== null && claudeFlag === null) {
-        claudeFlag = claudeFeature;
-      }
-    }
-
-    const pluginEntries = config.plugins?.entries;
-    const openaiPluginStealth = readPluginStealthFlag(pluginEntries, [
-      "openai",
-      "@elizaos/plugin-openai",
-      "openai-codex-stealth",
-    ]);
-    const claudePluginStealth = readPluginStealthFlag(pluginEntries, [
-      "anthropic",
-      "@elizaos/plugin-anthropic",
-      "claude-code-stealth",
-    ]);
-
-    if (openaiPluginStealth !== null && openaiFlag === null) {
-      openaiFlag = openaiPluginStealth;
-    }
-    if (claudePluginStealth !== null && claudeFlag === null) {
-      claudeFlag = claudePluginStealth;
-    }
-  }
-
-  // Auto-detect subscription credentials: if the user has logged in via
-  // a subscription provider, enable the corresponding stealth interceptor
-  // automatically (unless explicitly disabled above).
-  const stateDir = resolveElizaStateDir();
-  if (openaiFlag === null) {
-    const codexAuthPath = path.join(stateDir, "auth", "openai-codex.json");
-    if (existsSync(codexAuthPath)) {
-      openaiFlag = true;
-    }
-  }
-  if (claudeFlag === null) {
-    const anthropicAuthPath = path.join(
-      stateDir,
-      "auth",
-      "anthropic-subscription.json",
-    );
-    if (existsSync(anthropicAuthPath)) {
-      claudeFlag = true;
-    }
-  }
-
-  return {
-    openai: openaiFlag === true,
-    claude: claudeFlag === true,
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -961,6 +788,7 @@ let viteRestartCount = 0;
 let viteRestartTimer = null;
 let viteHealthTimer = null;
 let viteStartedAt = 0;
+let viteReady = false;
 
 // Vite cold-start of the full raw-source module graph can exceed 60s on slow
 // shared CI runners (2-4 cores). Allow CI to widen the health-check kill window
@@ -1030,11 +858,11 @@ function buildCapacitorPluginsIfNeeded(childEnv) {
       const skipPlugins =
         process.env.ELIZA_DEV_PLUGIN_BUILD === "0" ||
         process.env.ELIZA_SKIP_PLUGIN_BUILD === "1" ||
-        (process.env.ELIZA_DEV_SOURCE === "1" && !forcePlugins);
+        (sourceCheckout && !forcePlugins);
       if (skipPlugins) {
         const skipReason =
-          process.env.ELIZA_DEV_SOURCE === "1" && !forcePlugins
-            ? "ELIZA_DEV_SOURCE=1"
+          sourceCheckout && !forcePlugins
+            ? "source checkout"
             : "ELIZA_SKIP_PLUGIN_BUILD=1";
         console.log(
           `  ${green(logPrefix)} ${dim(`Skipping Capacitor plugin build (${skipReason}).`)}`,
@@ -1073,7 +901,7 @@ function startVite() {
   const { command: viteCmd, args: viteArgs } = resolveViteCommand({
     appDir: path.join(cwd, appDir),
     force: viteForce,
-    nodePath: which("node"),
+    nodePath: resolveNodeRuntimePath(process.env),
     port: UI_PORT,
   });
   if (viteForce) {
@@ -1082,6 +910,7 @@ function startVite() {
     );
   }
   viteStartedAt = Date.now();
+  viteReady = false;
   viteProcess = spawn(viteCmd, viteArgs, {
     cwd: path.join(cwd, appDir),
     env: {
@@ -1101,15 +930,35 @@ function startVite() {
     cleanup(1);
   });
 
-  viteProcess.stdout.on("data", (data) => {
-    const text = data.toString();
-    if (text.includes("ready")) {
+  const launchedViteProcess = viteProcess;
+  // Vite's human-readable banner is not an API: its wording and output stream
+  // have changed across releases. Probe the actual listener so the dev host
+  // reports UI readiness reliably and includes a useful parallel-start timing.
+  void waitForPort(UI_PORT, {
+    timeout: VITE_READY_BUDGET_MS,
+    interval: 100,
+  })
+    .then(() => {
+      if (shuttingDown || viteProcess !== launchedViteProcess) return;
+      viteReady = true;
+      if (viteHealthTimer) {
+        clearTimeout(viteHealthTimer);
+        viteHealthTimer = null;
+      }
+      const elapsed = ((Date.now() - viteStartedAt) / 1000).toFixed(1);
       const securitySettingsUrl = `http://localhost:${UI_PORT}/settings#security`;
       console.log(
-        `\n  ${green(logPrefix)} ${orange(`http://localhost:${UI_PORT}/`)}\n  ${green(logPrefix)} ${dim("Local access: no password required on this machine")}\n  ${green(logPrefix)} ${dim(`Security settings: ${securitySettingsUrl}`)}\n`,
+        `\n  ${green(logPrefix)} ${orange(`UI ready at http://localhost:${UI_PORT}/`)} ${dim(`(${elapsed}s)`)}\n  ${green(logPrefix)} ${dim("Local access: no password required on this machine")}\n  ${green(logPrefix)} ${dim(`Security settings: ${securitySettingsUrl}`)}\n`,
       );
-    }
-  });
+    })
+    .catch(() => {
+      // error-policy:J5 the health-check timer below observes the same stalled
+      // UI process, owns recovery, and emits the actionable restart message.
+    });
+
+  // Drain ordinary Vite stdout. Warnings and errors remain visible on stderr;
+  // readiness is reported from the listener probe above.
+  viteProcess.stdout.resume();
 
   viteProcess.stderr.on("data", (data) => {
     process.stderr.write(data);
@@ -1158,9 +1007,10 @@ function scheduleViteHealthCheck(delayMs = 15_000) {
   if (viteHealthTimer) clearTimeout(viteHealthTimer);
   viteHealthTimer = setTimeout(async () => {
     viteHealthTimer = null;
-    if (shuttingDown || !viteProcess) return;
+    if (shuttingDown || !viteProcess || viteReady) return;
 
     const listening = await isPortListening(UI_PORT);
+    if (shuttingDown || !viteProcess || viteReady) return;
     if (!listening) {
       const ageMs = Date.now() - viteStartedAt;
       if (ageMs > VITE_READY_BUDGET_MS) {
@@ -1174,7 +1024,7 @@ function scheduleViteHealthCheck(delayMs = 15_000) {
       }
     }
 
-    scheduleViteHealthCheck();
+    if (!viteReady) scheduleViteHealthCheck();
   }, delayMs);
   viteHealthTimer.unref();
 }
@@ -1183,7 +1033,9 @@ if (uiOnly) {
   startVite();
 } else {
   console.log(`${orange(`\n${cliName} dev mode`)}\n`);
-  console.log(`  ${green(logPrefix)} ${green("Starting dev server...")}\n`);
+  console.log(
+    `  ${green(logPrefix)} ${green("Starting API and UI dev servers in parallel...")}\n`,
+  );
   console.log(
     `  ${green(logPrefix)} ${dim(
       `API log level=${devLogLevel}${
@@ -1195,33 +1047,6 @@ if (uiOnly) {
       }`,
     )}`,
   );
-
-  // Security default: stealth shims are disabled unless explicitly enabled
-  // via env vars or plugin config in eliza.json.
-  const stealth = resolveStealthImportFlags();
-  const nodeStealthImports = [];
-  if (stealth.openai) {
-    addStealthImport(nodeStealthImports, "OpenAI Codex", [
-      "packages/app-core/scripts/openai-codex-stealth.mjs",
-      "eliza/packages/app-core/scripts/openai-codex-stealth.mjs",
-      "openai-codex-stealth.mjs",
-    ]);
-  }
-  if (stealth.claude) {
-    addStealthImport(nodeStealthImports, "Claude Code", [
-      "packages/agent/src/auth/claude-code-stealth-preload.ts",
-      "eliza/packages/agent/src/auth/claude-code-stealth-preload.ts",
-      "packages/app-core/scripts/claude-code-stealth.mjs",
-      "eliza/packages/app-core/scripts/claude-code-stealth.mjs",
-      "claude-code-stealth.mjs",
-    ]);
-  }
-
-  if (nodeStealthImports.length > 0) {
-    console.log(
-      `  ${green(logPrefix)} ${dim(`Stealth imports enabled: ${nodeStealthImports.join(", ")}`)}`,
-    );
-  }
 
   let devServerEntry = resolveDevServerEntryRelativePath(cwd);
   // Resolve to absolute so it stays valid when we anchor the API child cwd
@@ -1240,23 +1065,17 @@ if (uiOnly) {
   const apiRuntimeIsBun = apiRuntime === "bun";
   const apiCmd = [
     apiRuntimeCmd,
+    ...(apiRuntimeIsBun ? ["--no-install"] : []),
     "--conditions=eliza-source",
     ...(apiRuntimeIsBun ? [] : ["--import", "tsx"]),
-    // Bun preloads modules with `--preload`; Node uses `--import`. Passing
-    // `--import` to Bun breaks startup whenever a stealth shim is enabled
-    // (OpenAI Codex / Claude Code).
-    ...nodeStealthImports.flatMap((filePath) => [
-      apiRuntimeIsBun ? "--preload" : "--import",
-      filePath,
-    ]),
     devServerEntry,
   ];
   // The API server resolves @elizaos/* deps via Bun workspace lookup, which
   // walks up from cwd looking for a package.json with a `workspaces` field.
   // When running from the eliza-style outer repo (cwd contains an `eliza/`
   // submodule), the outer package.json's `workspaces: ["apps/*"]` excludes
-  // eliza's workspace packages — so plugin-x402, plugin-streaming, etc. fail
-  // to resolve. Spawn the API child with cwd anchored at eliza/ so its
+  // eliza's workspace packages fail to resolve. Spawn the API child with cwd
+  // anchored at eliza/ so its
   // workspaces ([packages/*, plugins/*]) are visible.
   const elizaSubmoduleRoot = path.join(cwd, "eliza");
   const apiSpawnCwd = existsSync(path.join(elizaSubmoduleRoot, "package.json"))
@@ -1264,10 +1083,8 @@ if (uiOnly) {
     : cwd;
 
   const childEnv = createDevChildEnv(process.env);
-  // V8 bytecode cache for the Node API runtime. The runtime is deliberately
-  // Node (not Bun) for node: built-ins, so this persists compiled module
-  // bytecode across boots and hot-reload restarts, trimming plugin-import cost.
-  // Node 22.8+ honors it; older node and Bun ignore the var (safe no-op).
+  // V8 bytecode cache when the API runtime resolves to Node. Node 22.8+
+  // honors it; older Node versions and Bun ignore the var (safe no-op).
   // Pinned under the state dir (not os.tmpdir()) so an OS temp reap doesn't
   // wipe the warm ~100MB cache and force a multi-second cold recompile on the
   // next boot. Content-hash-keyed, so a stale entry self-invalidates.
@@ -1390,6 +1207,11 @@ if (uiOnly) {
 
   apiSupervisor.start();
 
+  // Start Vite before the source-watcher directory scan. The proxy has no
+  // boot-time dependency on the API, and both children can warm their module
+  // graphs while the parent installs hot-reload watches.
+  startVite();
+
   // Agent hot-reload: bounce the API child when backend source changes. The
   // watcher only sees `*/src` (never `dist/`), and a restart fires only when the
   // agent is currently healthy — so a build, or a change during boot, can never
@@ -1441,14 +1263,6 @@ if (uiOnly) {
       `  ${green(logPrefix)} ${dim(`Agent hot-reload on: watching ${sourceWatcher.count} source dirs (set ELIZA_DEV_NO_WATCH=1 to disable).`)}`,
     );
   }
-
-  // Start Vite immediately, in parallel with the API boot. The dev server only
-  // proxies to the API at request time — it has no startup dependency on the
-  // API being up — so gating it behind waitForPort(API_PORT) just stacked the
-  // full runtime+plugin boot in front of first paint. Booting both at once
-  // gives the browser a UI as soon as Vite is ready, and requests resolve once
-  // the API comes up moments later.
-  startVite();
 
   const startTime = Date.now();
   let phase = "port";

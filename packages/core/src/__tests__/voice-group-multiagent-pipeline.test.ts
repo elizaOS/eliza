@@ -109,6 +109,8 @@ function makeAgentRuntime(agentName: string): IAgentRuntime {
 		character: { name: agentName, system: "Be brief.", bio: "" },
 		actions: [],
 		providers: [],
+		getRoom: vi.fn(async () => null),
+		reportError: vi.fn(),
 		composeState: vi.fn(async () => makeState()),
 		runActionsByMode: vi.fn(async () => undefined),
 		emitEvent: vi.fn(async () => undefined),

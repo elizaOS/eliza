@@ -1,4 +1,8 @@
-/** Supports app-core build, packaging, or development orchestration for android gradle mjs. */
+/**
+ * Gradle invocation constants and command builders for Android targets:
+ * AAR-metadata tasks, cloud/AOSP property flags, and per-target build/test
+ * command assembly.
+ */
 export const ANDROID_AAR_METADATA_TASKS = Object.freeze({
   debug: ":capacitor-cordova-android-plugins:writeDebugAarMetadata",
   release: ":capacitor-cordova-android-plugins:writeReleaseAarMetadata",

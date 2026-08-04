@@ -190,9 +190,9 @@ export function InviteMemberDialog({
 
             <form onSubmit={handleSubmit} className="space-y-4">
               {error && (
-                <div className="bg-[#EB4335]/10 border border-[#EB4335]/40 p-3 flex items-start gap-2">
-                  <AlertCircle className="h-4 w-4 text-[#EB4335] flex-shrink-0 mt-0.5" />
-                  <p className="text-xs md:text-sm font-mono text-[#EB4335]">
+                <div className="bg-danger/10 border border-danger/40 p-3 flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 text-danger flex-shrink-0 mt-0.5" />
+                  <p className="text-xs md:text-sm font-mono text-danger">
                     {error}
                   </p>
                 </div>

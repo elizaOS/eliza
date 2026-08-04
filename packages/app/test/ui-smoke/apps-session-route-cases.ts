@@ -70,12 +70,6 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
-    name: "fine tuning app window",
-    path: "/apps/fine-tuning",
-    selector: '[data-testid="fine-tuning-view"]',
-    timeoutMs: 90_000,
-  },
-  {
     name: "trajectories app window",
     path: "/apps/trajectories",
     selector: '[data-testid="trajectories-view"]',
@@ -100,16 +94,6 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
-    name: "model tester app window",
-    path: "/apps/model-tester",
-    readyChecks: [
-      { selector: '[data-testid="model-tester-shell"]' },
-      { text: "Model Tester" },
-      { text: "Text" },
-    ],
-    timeoutMs: 90_000,
-  },
-  {
     name: "inventory app window",
     path: "/apps/inventory",
     selector: '[data-testid="wallet-shell"]',
@@ -119,24 +103,6 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     name: "wallet app shell page",
     path: "/inventory",
     selector: '[data-testid="wallet-shell"]',
-    timeoutMs: 90_000,
-  },
-  // Hyperliquid/Polymarket wallet sub-views consolidated onto single adaptive
-  // spatial views — the rich-DOM app shells (and later the visible
-  // "<Name> controls" toolbars, #14596) are gone; the wrapper's remaining
-  // agent controls are aria-hidden and invisible. Each spatial view now stamps
-  // its root Card with a stable data-agent-id, which is the readiness anchor
-  // proving the real view bundle mounted (and not the Launcher fallback).
-  {
-    name: "hyperliquid",
-    path: "/hyperliquid",
-    readyChecks: [{ selector: '[data-agent-id="hyperliquid-root"]' }],
-    timeoutMs: 90_000,
-  },
-  {
-    name: "polymarket",
-    path: "/polymarket",
-    readyChecks: [{ selector: '[data-agent-id="polymarket-root"]' }],
     timeoutMs: 90_000,
   },
   {
@@ -188,12 +154,6 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
-    name: "calendar app shell page",
-    path: "/simple-calendar",
-    selector: '[data-testid="simple-calendar-view"]',
-    timeoutMs: 90_000,
-  },
-  {
     // Pinned home tile → Settings.
     name: "settings view",
     path: "/settings",
@@ -216,34 +176,27 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
 ];
 
 const managerVisibleViewTileCases = [
-  { viewId: "birdclaw", path: "/birdclaw" },
   { viewId: "calendar", path: "/calendar" },
   { viewId: "cloud", path: "/cloud" },
   { viewId: "contacts", path: "/contacts" },
   { viewId: "cockpit", path: "/cockpit" },
   { viewId: "documents", path: "/documents" },
-  { viewId: "feed", path: "/feed" },
   { viewId: "finances", path: "/finances" },
   { viewId: "focus", path: "/focus" },
   { viewId: "goals", path: "/goals" },
   { viewId: "health", path: "/health" },
   { viewId: "inbox", path: "/inbox" },
   { viewId: "messages", path: "/messages" },
-  { viewId: "model-tester", path: "/model-tester" },
   { viewId: "orchestrator", path: "/orchestrator" },
   { viewId: "cloud", path: "/cloud" },
   { viewId: "phone", path: "/phone" },
   { viewId: "relationships", path: "/relationships" },
-  { viewId: "screenshare", path: "/screenshare" },
   { viewId: "notes", path: "/notes" },
-  { viewId: "simple-calendar", path: "/simple-calendar" },
   { viewId: "task-coordinator", path: "/task-coordinator" },
   { viewId: "todos", path: "/todos" },
-  { viewId: "training", path: "/apps/fine-tuning" },
   { viewId: "trajectory-logger", path: "/trajectory-logger" },
   { viewId: "views-manager", path: "/views" },
   { viewId: "wallet", path: "/wallet" },
-  { viewId: "vector-browser", path: "/vector-browser" },
 ];
 
 /**
@@ -265,7 +218,7 @@ export const MANAGER_VISIBLE_VIEW_TILE_CASES: readonly SafeViewTileCase[] =
  * without turning all-pages click safety into a long game/app bootstrap loop.
  */
 export const SAFE_VIEW_TILE_CASES: readonly SafeViewTileCase[] = [
-  { viewId: "fine-tuning", path: "/apps/fine-tuning" },
+  { viewId: "notes", path: "/notes" },
 ].map(({ viewId, path }) => ({
   viewId,
   testId: launcherTileTestId(viewId),

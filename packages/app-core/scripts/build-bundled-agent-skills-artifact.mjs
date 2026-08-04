@@ -1,5 +1,9 @@
 #!/usr/bin/env bun
-/** Supports app-core build, packaging, or development orchestration for build bundled agent skills artifact mjs. */
+/**
+ * Builds the bundled dist artifact for @elizaos/plugin-agent-skills: wipes the
+ * plugin's dist via the shared cleanup helper, then bundles with Bun keeping
+ * node:*, @elizaos/core, and fflate external.
+ */
 
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";

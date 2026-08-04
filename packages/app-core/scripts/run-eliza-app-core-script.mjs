@@ -1,5 +1,9 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for run eliza app core script mjs. */
+/**
+ * Trampoline that runs a named script from this directory with the repo root as
+ * cwd, adding the tsx loader for .ts entries; rejects paths that escape the
+ * scripts dir.
+ */
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, extname, resolve } from "node:path";

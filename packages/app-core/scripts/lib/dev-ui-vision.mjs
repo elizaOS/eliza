@@ -1,4 +1,7 @@
-/** Supports app-core build, packaging, or development orchestration for dev ui vision mjs. */
+/**
+ * Formats the operator-facing failure message the dev orchestrator prints when
+ * automatic vision dependency install (ensure-vision-deps.mjs) fails.
+ */
 export function buildVisionDepsFailureMessage(
   error,
   command = "node scripts/ensure-vision-deps.mjs",

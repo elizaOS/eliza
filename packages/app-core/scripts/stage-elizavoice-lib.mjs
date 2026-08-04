@@ -1,39 +1,10 @@
 #!/usr/bin/env node
-// stage-elizavoice-lib.mjs
-//
-// Phase 3a: cross-build the fused fork voice library
-// (`libelizainference.so` — the omnivoice `elizainference` target with VAD,
-// wake-word, speaker, and diarizer fused at ABI v7) for Android arm64-v8a
-// with the NDK (BIONIC, not musl/zig), and stage the stripped .so into the
-// app's jniLibs so the externalNativeBuild JNI shim (libelizavoicejni.so) can
-// link it and the APK packages it.
-//
-// The build statically links ggml/llama/mtmd into libelizainference.so so the
-// resulting .so has NO external NEEDED deps beyond bionic libc/libm/libdl —
-// zero SONAME collision with the existing musl jniLibs (libeliza_bun.so etc).
-//
-// Two variants:
-//   --variant cpu     (default) static-fused libelizainference.so, CPU only.
-//   --variant vulkan  dynamic build: libelizainference.so + its ggml/llama/mtmd
-//                     shared backends incl. libggml-vulkan.so. The GPU backend
-//                     dlopens the device's libvulkan at runtime — the path the
-//                     bionic app process can take but the musl agent cannot.
-//                     Device-proven on Pixel 9a (Mali-G715), ~15 tok/s warm.
-//
-// Usage:
-//   node packages/app-core/scripts/stage-elizavoice-lib.mjs [--abi arm64-v8a] [--variant cpu|vulkan]
-//
-// Env:
-//   ANDROID_HOME / ANDROID_SDK_ROOT  Android SDK root (NDK under ndk/<version>)
-//   ELIZA_NDK_VERSION                NDK version dir (default: highest installed)
-//   (vulkan variant only — host shader tooling, auto-discovered, env overrides win)
-//   ELIZA_GLSLC                      glslc (default: NDK shader-tools)
-//   ELIZA_SPIRV_HEADERS_DIR          SPIRV-Headers lib/cmake/SPIRV-Headers dir
-//   ELIZA_VULKAN_INCLUDE_DIR         Vulkan-Headers include dir (vulkan/, vk_video/, spirv/)
-//
-// Output:
-//   packages/app-core/platforms/android/app/src/main/jniLibs/<abi>/libelizainference.so
-//   (+ the ggml/llama/mtmd sibling .so for --variant vulkan)
+/**
+ * Cross-builds the fused voice inference library for Android arm64-v8a with
+ * the NDK and stages it into the app's jniLibs. The CPU variant statically
+ * links ggml/llama/mtmd; the Vulkan variant stages their shared backends and
+ * requires host shader tooling supplied by the documented ELIZA_* overrides.
+ */
 
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
@@ -91,7 +62,6 @@ function resolveVulkanHostTooling(ndk) {
     process.env.ELIZA_SPIRV_HEADERS_DIR ||
     firstExisting([
       "/tmp/spirv-headers-install/lib/cmake/SPIRV-Headers",
-      "/home/shaw/aosp/external/shaderc/spirv-headers",
     ]);
   if (!spirvHeadersDir) {
     die(

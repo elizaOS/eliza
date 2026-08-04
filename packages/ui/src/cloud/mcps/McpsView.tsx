@@ -24,7 +24,7 @@ import {
   testBuiltinMcpConnection,
 } from "./lib/test-connection";
 import { useBuiltinMcps, usePublicMcps, useUserMcps } from "./lib/use-mcps";
-import { McpDetailDrawer, StatusBadge } from "./McpDetailDrawer";
+import { McpDetailDrawer, McpStatusBadge } from "./McpDetailDrawer";
 import { McpEditorDialog } from "./McpEditorDialog";
 
 type McpsTab = "own" | "registry" | "builtin";
@@ -291,7 +291,7 @@ const UserMcpCard = memo(function UserMcpCard({
             </p>
           </div>
         </div>
-        <StatusBadge status={mcp.status} />
+        <McpStatusBadge status={mcp.status} />
       </div>
       <p className="mt-3 text-xs text-muted line-clamp-2 min-h-[2.5rem]">
         {mcp.description}

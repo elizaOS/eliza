@@ -2,9 +2,8 @@
  * Host-external importers this app build contributes to `DynamicViewLoader`.
  *
  * `DynamicViewLoader`'s trunk map (in `@elizaos/ui`) is framework-only. Plugin
- * view bundles that import a plugin package (e.g. the training view importing
- * `@elizaos/plugin-training`, or the health/finances views importing
- * `@elizaos/plugin-browser`) leave that specifier external and rely on the host
+ * view bundles that import a plugin package (e.g. the health/finances views
+ * importing `@elizaos/plugin-browser`) leave that specifier external and rely on the host
  * shell to resolve it to the host realm's singleton. This module — the app
  * (build-variant) entrypoint — registers those plugin-owned specifiers so the
  * shared UI package never has to name them.
@@ -42,9 +41,6 @@ export function registerAppHostExternalImporters(): void {
 
   registerHostExternalImporter("@elizaos/plugin-browser", () =>
     importHostExternal("@elizaos/plugin-browser"),
-  );
-  registerHostExternalImporter("@elizaos/plugin-training", () =>
-    importHostExternal("@elizaos/plugin-training"),
   );
   registerHostExternalImporter(
     "@elizaos/plugin-health/screen-time/mobile-signal-setup",

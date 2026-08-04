@@ -19,9 +19,11 @@
  * second project is registered. In the hidden case it reports a `null`
  * projectId to the host so the task list stays unfiltered exactly like today.
  */
-import { Button, client } from "@elizaos/ui";
+
 import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { client } from "@elizaos/ui/api";
 import type { ProjectSummary } from "@elizaos/ui/api/client-types-cloud";
+import { Button } from "@elizaos/ui/components/ui/button";
 // Direct subpath (mirrors the sibling panels): the browser barrel doesn't
 // reliably re-export the newer dropdown-menu primitives.
 import {

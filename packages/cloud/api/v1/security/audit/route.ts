@@ -6,9 +6,12 @@
  * actor, org, ip, user-agent, request id, and final allowlist validation.
  */
 
-import { AUDIT_ACTIONS, type AuditResult } from "@elizaos/security/audit";
 import { Hono } from "hono";
 import { z } from "zod";
+import {
+  type AuditResult,
+  CLIENT_AUDIT_ACTIONS,
+} from "@/api-app/services/audit";
 import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserWithOrg } from "@/lib/auth/workers-hono-auth";
@@ -18,7 +21,7 @@ import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 const app = new Hono<AppEnv>();
 
 const clientAuditSchema = z.object({
-  action: z.enum(AUDIT_ACTIONS),
+  action: z.enum(CLIENT_AUDIT_ACTIONS),
   result: z.enum(["allow", "deny", "error"]),
   resource: z
     .object({
@@ -30,7 +33,12 @@ const clientAuditSchema = z.object({
   metadata: z
     .record(
       z.string().min(1).max(128),
-      z.union([z.string(), z.number(), z.boolean(), z.null()]),
+      z.union([
+        z.string().max(1024),
+        z.number().finite(),
+        z.boolean(),
+        z.null(),
+      ]),
     )
     .optional(),
 });

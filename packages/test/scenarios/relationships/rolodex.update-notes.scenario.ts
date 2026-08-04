@@ -9,7 +9,7 @@ import {
   callPayloadBlob,
   describeCalls,
   successfulCalls,
-} from "../_helpers/effect-assertions.ts";
+} from "@elizaos/scenario-runner/scenario-assertions";
 
 function expectAliceSundanceUpdate(ctx: ScenarioContext): string | undefined {
   if (successfulCalls(ctx, "UPDATE_CONTACT").length === 0) {

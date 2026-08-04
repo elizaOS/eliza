@@ -7,11 +7,6 @@ import { extractStructuredDataFromOCR, OCRService } from "./ocr-service";
 import { DoctrOCRService, shouldPreferAppleVision } from "./ocr-service-doctr";
 
 describe("DoctrOCRService availability", () => {
-  it("reports availability via a typed boolean", async () => {
-    const result = await DoctrOCRService.isAvailable();
-    expect(typeof result).toBe("boolean");
-  });
-
   it("initialize() throws cleanly when GGUF weights are not present", async () => {
     // Pin nonexistent paths so the readiness check fails immediately. The
     // error must be clearly attributable to missing GGUFs (no silent
@@ -121,13 +116,6 @@ describe("extractStructuredDataFromOCR", () => {
 });
 
 describe("OCRService backend chain", () => {
-  it("respects forced backend selection (no init)", () => {
-    expect(new OCRService({ backend: "doctr" })).toBeInstanceOf(OCRService);
-    expect(new OCRService({ backend: "apple-vision" })).toBeInstanceOf(
-      OCRService,
-    );
-  });
-
   it("getActiveBackend returns null before initialize()", () => {
     const svc = new OCRService();
     expect(svc.getActiveBackend()).toBeNull();

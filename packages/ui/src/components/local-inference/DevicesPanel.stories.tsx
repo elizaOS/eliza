@@ -117,10 +117,12 @@ export const SingleCpuOnly: Story = {
 
 /** No devices connected — the panel renders nothing. */
 export const NoDevices: Story = {
+  tags: ["story-gate-expect-blank"],
   args: { status: noDevices },
 };
 
 /** Null status (e.g. before the first poll) — the panel renders nothing. */
 export const NullStatus: Story = {
+  tags: ["story-gate-expect-blank"],
   args: { status: null },
 };

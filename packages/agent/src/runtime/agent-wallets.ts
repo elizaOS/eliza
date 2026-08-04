@@ -20,7 +20,12 @@
 
 import { logger } from "@elizaos/core";
 import type { WalletChain } from "@elizaos/shared";
-import { removeEntryMeta, setEntryMeta, type Vault } from "@elizaos/vault";
+import {
+  removeEntryMeta,
+  setEntryMeta,
+  type Vault,
+  VaultDecryptionError,
+} from "@elizaos/vault";
 import { deriveEvmAddress, generateWalletForChain } from "../api/wallet.ts";
 import { teeBootGateBlocksSecrets } from "../services/tee-boot-gate-state.ts";
 
@@ -286,7 +291,24 @@ export async function ensureAgentWallets(
   const out: AgentWalletDescriptor[] = [];
   for (const chain of chains) {
     abortSignal?.throwIfAborted();
-    const existing = await getAgentWalletDescriptor(vault, agentId, chain);
+    let existing: AgentWalletDescriptor | null;
+    try {
+      existing = await getAgentWalletDescriptor(vault, agentId, chain);
+    } catch (error) {
+      if (!(error instanceof VaultDecryptionError)) throw error;
+      const key = walletKey(agentId, chain);
+      const quarantined = await vault.quarantineUnreadable(
+        key,
+        "agent wallet failed authenticated decryption during bootstrap",
+        caller ?? "agent-wallets:bootstrap-repair",
+      );
+      if (!quarantined) throw error;
+      logger.warn(
+        { agentId, chain },
+        "[agent-wallets] Quarantined an undecryptable wallet entry and will generate a replacement; the opaque original remains preserved in the vault database.",
+      );
+      existing = null;
+    }
     abortSignal?.throwIfAborted();
     if (existing) {
       out.push(existing);

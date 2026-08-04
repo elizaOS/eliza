@@ -1,3 +1,4 @@
+/** Verifies useLoadOlderOnScroll — prefetch trigger (#13532) through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Unit coverage for the infinite upward scroll engine (#13532): scroll-anchor
@@ -72,7 +73,7 @@ function makeScroller(initialHeight: number, clientHeight: number) {
 interface HarnessProps {
   scroller: HTMLDivElement;
   sentinel: HTMLDivElement;
-  onLoadOlder: () => Promise<void>;
+  onLoadOlder: () => Promise<{ prependedCount: number } | undefined>;
   hasMore: boolean;
   topItemKey: string | number;
   enabled?: boolean;
@@ -104,7 +105,7 @@ function Harness(props: HarnessProps) {
 function LateSentinelHarness(props: {
   scroller: HTMLDivElement;
   sentinel: HTMLDivElement | null;
-  onLoadOlder: () => Promise<void>;
+  onLoadOlder: () => Promise<{ prependedCount: number } | undefined>;
   hasMore: boolean;
   topItemKey: string | number;
 }) {
@@ -146,7 +147,7 @@ describe("useLoadOlderOnScroll — prefetch trigger (#13532)", () => {
       <Harness
         scroller={scroller}
         sentinel={sentinel}
-        onLoadOlder={async () => {}}
+        onLoadOlder={async () => undefined}
         hasMore
         topItemKey="a"
       />,
@@ -161,7 +162,7 @@ describe("useLoadOlderOnScroll — prefetch trigger (#13532)", () => {
   it("fires onLoadOlder when the sentinel intersects", async () => {
     const { el: scroller } = makeScroller(1000, 400);
     const sentinel = document.createElement("div");
-    const onLoadOlder = vi.fn(async () => {});
+    const onLoadOlder = vi.fn(async () => undefined);
     render(
       <Harness
         scroller={scroller}
@@ -180,7 +181,7 @@ describe("useLoadOlderOnScroll — prefetch trigger (#13532)", () => {
   it("never fires when hasMore is false (latched off at the true top)", () => {
     const { el: scroller } = makeScroller(1000, 400);
     const sentinel = document.createElement("div");
-    const onLoadOlder = vi.fn(async () => {});
+    const onLoadOlder = vi.fn(async () => undefined);
     render(
       <Harness
         scroller={scroller}
@@ -201,7 +202,7 @@ describe("useLoadOlderOnScroll — late-mounting sentinel (#13953)", () => {
   it("attaches the observer once the sentinel mounts on the empty→populated transition", async () => {
     const { el: scroller } = makeScroller(1000, 400);
     const sentinel = document.createElement("div");
-    const onLoadOlder = vi.fn(async () => {});
+    const onLoadOlder = vi.fn(async () => undefined);
 
     // Initial open: transcript empty — sentinel not rendered, topItemKey "".
     const { rerender } = render(
@@ -247,7 +248,7 @@ describe("useLoadOlderOnScroll — late-mounting sentinel (#13953)", () => {
     const { el: scroller } = makeScroller(1000, 400);
     const sentinelA = document.createElement("div");
     const sentinelB = document.createElement("div");
-    const onLoadOlder = vi.fn(async () => {});
+    const onLoadOlder = vi.fn(async () => undefined);
 
     const { rerender } = render(
       <LateSentinelHarness
@@ -304,8 +305,8 @@ describe("useLoadOlderOnScroll — in-flight guard", () => {
     let resolveLoad: (() => void) | null = null;
     const onLoadOlder = vi.fn(
       () =>
-        new Promise<void>((resolve) => {
-          resolveLoad = resolve;
+        new Promise<{ prependedCount: number } | undefined>((resolve) => {
+          resolveLoad = () => resolve(undefined);
         }),
     );
     render(
@@ -347,6 +348,7 @@ describe("useLoadOlderOnScroll — scroll-anchor preservation", () => {
     // onLoadOlder simulates an upward grow: the older page adds 600px of height.
     const onLoadOlder = vi.fn(async () => {
       state.height = 1600;
+      return { prependedCount: 20 };
     });
 
     const { rerender } = render(
@@ -362,6 +364,19 @@ describe("useLoadOlderOnScroll — scroll-anchor preservation", () => {
     // Trigger the load: this captures the pre-grow height (1000) and grows.
     await act(async () => {
       FakeIntersectionObserver.last?.fire(true);
+    });
+
+    // WebKit may delay the React commit beyond two animation frames. A
+    // positive loader outcome must keep the anchor armed until topItemKey
+    // observes that commit instead of expiring on a frame-count heuristic.
+    await act(async () => {
+      await new Promise((resolve) =>
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() =>
+            requestAnimationFrame(() => resolve(null)),
+          ),
+        ),
+      );
     });
 
     // The prepend changed the first item; re-render with the new top key so the
@@ -393,7 +408,7 @@ describe("useLoadOlderOnScroll — scroll-anchor preservation", () => {
     const sentinel = document.createElement("div");
 
     // No-op load: no growth, no prepend.
-    const onLoadOlder = vi.fn(async () => {});
+    const onLoadOlder = vi.fn(async () => ({ prependedCount: 0 }));
 
     const { rerender } = render(
       <Harness
@@ -405,16 +420,10 @@ describe("useLoadOlderOnScroll — scroll-anchor preservation", () => {
       />,
     );
 
-    // Fire the load; it resolves with no growth. Flush the finally's DOUBLE rAF
-    // that clears the un-consumed anchor (two frames of runway so a real
-    // prepend's commit outlasts the expiry on WebKit — see the hook comment).
+    // Fire the load; its result authoritatively reports no growth, so the
+    // unconsumed anchor is cleared without waiting on a frame heuristic.
     await act(async () => {
       FakeIntersectionObserver.last?.fire(true);
-    });
-    await act(async () => {
-      await new Promise((resolve) =>
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve(null))),
-      );
     });
 
     // Now grow the scroller and change the top key for an UNRELATED reason
@@ -444,7 +453,7 @@ describe("useLoadOlderOnScroll — scroll-anchor preservation", () => {
       <Harness
         scroller={scroller}
         sentinel={sentinel}
-        onLoadOlder={async () => {}}
+        onLoadOlder={async () => undefined}
         hasMore
         topItemKey="a"
       />,
@@ -456,7 +465,7 @@ describe("useLoadOlderOnScroll — scroll-anchor preservation", () => {
         <Harness
           scroller={scroller}
           sentinel={sentinel}
-          onLoadOlder={async () => {}}
+          onLoadOlder={async () => undefined}
           hasMore
           topItemKey="b"
         />,

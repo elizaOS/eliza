@@ -7,10 +7,14 @@
  */
 
 import type { WalletAddresses, WalletConfigStatus } from "@elizaos/shared";
-import type {
-  StewardSignResponse,
-  StewardStatusResponse,
-} from "../../api/client-types-steward";
+import type { StewardStatusResponse } from "../../api/client-types-steward";
+
+export type {
+  BrowserWorkspaceSolanaMessageSignatureResult,
+  BrowserWorkspaceSolanaTransactionResult,
+  BrowserWorkspaceWalletMessageSignatureResult,
+  BrowserWorkspaceWalletTransactionResult,
+} from "../../api/client-types-wallet";
 
 export const BROWSER_WALLET_REQUEST_TYPE = "ELIZA_BROWSER_WALLET_REQUEST";
 export const BROWSER_WALLET_RESPONSE_TYPE = "ELIZA_BROWSER_WALLET_RESPONSE";
@@ -46,39 +50,6 @@ export interface BrowserWorkspaceWalletState {
   solanaConnected: boolean;
   solanaMessageSigningAvailable: boolean;
   solanaTransactionSigningAvailable: boolean;
-}
-
-export interface BrowserWorkspaceWalletTransactionResult
-  extends Pick<
-    StewardSignResponse,
-    "approved" | "denied" | "pending" | "txHash" | "txId" | "violations"
-  > {
-  mode: "local-key" | "steward";
-}
-
-export interface BrowserWorkspaceWalletMessageSignatureResult {
-  mode: "local-key";
-  signature: string;
-}
-
-export interface BrowserWorkspaceSolanaMessageSignatureResult {
-  address: string;
-  mode: "local-key";
-  signatureBase64: string;
-}
-
-export interface BrowserWorkspaceSolanaTransactionResult {
-  address: string;
-  mode: "local-key" | "steward";
-  /** Base64-encoded fully-signed transaction (always present on success). */
-  signedTransactionBase64: string;
-  /**
-   * Optional broadcast signature (base58) when the steward broadcast the
-   * transaction. Omitted when the caller asked for signing only.
-   */
-  signature?: string;
-  /** Cluster the steward signed/broadcast against. */
-  cluster: "mainnet" | "devnet" | "testnet";
 }
 
 export type BrowserWorkspaceWalletRpcMethod =

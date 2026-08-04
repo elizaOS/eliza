@@ -1,3 +1,4 @@
+/** Verifies view-chat-binding onSubmit through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * The view↔chat binding registry (`view-chat-binding`): the module-level

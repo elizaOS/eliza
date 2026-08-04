@@ -1,18 +1,17 @@
 /**
- * app-core wrapper around `@elizaos/agent`'s dashboard HTTP API. Monkey-patches
- * `http.createServer` so every request first runs the compat pipeline — CORS for
- * local renderers (Vite/WKWebView), env-alias and config-file sync, header
- * mirroring, and `/api/status` body rewriting — then dispatches app-core compat
+ * app-core wrapper around `@elizaos/agent`'s dashboard HTTP API. Every request
+ * first runs the compat pipeline — CORS for local renderers (Vite/WKWebView),
+ * env aliases, header mirroring, and `/api/status` body rewriting — then
+ * dispatches app-core compat
  * routes (auth/session/pairing, cloud proxy + billing, secrets, sensitive
  * requests, first-run, plugins, catalog, local-inference, agent reset) before
- * delegating to the upstream listener. `startApiServer` wraps upstream start,
- * seeds the module-scoped shared compat runtime state so the early and late
- * patch sites share one reference, hydrates wallet keys, and installs the
- * hardened wallet-export guard. Route helpers are re-exported here so tests can
- * import them from `./server`.
+ * delegating to the upstream listener. The wrapper keeps compat state scoped to
+ * one server instance, hydrates wallet keys, and installs the hardened
+ * wallet-export guard. Route helpers are re-exported here so tests can import
+ * them from `./server`.
  */
 import fs from "node:fs";
-import http from "node:http";
+import type http from "node:http";
 import { createRequire } from "node:module";
 import path from "node:path";
 import {
@@ -43,11 +42,11 @@ import {
   saveElizaConfig,
   streamResponseBodyWithByteLimit,
   startApiServer as upstreamStartApiServer,
-  validateMcpServerConfig,
 } from "@elizaos/agent";
+import { getDeferredBootStatus } from "@elizaos/agent/runtime/deferred-boot-status";
 // Override the wallet export rejection function with the hardened version
 // that adds rate limiting, audit logging, and a forced confirmation delay.
-import { type AgentRuntime, logger, resolveStateDir } from "@elizaos/core";
+import { type AgentRuntime, logger } from "@elizaos/core";
 import { resolveLinkedAccountsInConfig } from "@elizaos/shared/contracts/first-run-options";
 import { handleAccountPoolStatusRoute } from "./account-pool-status-routes";
 import {
@@ -121,7 +120,6 @@ export {
   resolvePluginConfigMutationRejections,
   routeAutonomyTextToUser,
   streamResponseBodyWithByteLimit,
-  validateMcpServerConfig,
 };
 
 // Lazy reference to @elizaos/plugin-local-inference/routes — avoids a static
@@ -143,12 +141,7 @@ import {
   isElizaSettingsDebugEnabled,
   settingsDebugCloudSummary,
 } from "@elizaos/shared/settings-debug";
-import {
-  ensureRuntimeSqlCompatibility,
-  executeRawSql,
-  sanitizeIdentifier,
-  sqlLiteral,
-} from "@elizaos/shared/utils/sql-compat";
+import { ensureRuntimeSqlCompatibility } from "@elizaos/shared/utils/sql-compat";
 import { buildCharacterFromConfig } from "../runtime/build-character-from-config";
 import { handleAuthBootstrapRoutes } from "./auth-bootstrap-routes";
 import { handleAuthPairingCompatRoutes } from "./auth-pairing-routes";
@@ -161,6 +154,7 @@ import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
 import { handleDropStatusCompatRoute } from "./drop-status-compat-route";
 import { handleEmbedAuthRoutes } from "./embed-auth-routes";
+import { resolveFeatureRouteReadinessFailure } from "./feature-route-readiness.js";
 import { handleFirstRunRoute } from "./first-run-routes";
 import { handleI18nLocaleRoute } from "./i18n-locale-routes";
 import { handleInternalWakeRoute } from "./internal-routes";
@@ -179,14 +173,6 @@ import { handleSensitiveRequestRoutes } from "./sensitive-request-routes";
 import { getCorsAllowedPorts, isAllowedOrigin } from "./server-cors";
 
 const _require = createRequire(import.meta.url);
-
-import { readAliasedEnv } from "@elizaos/shared/utils/env";
-
-// Lazy-imported to avoid circular dependency with runtime/eliza.ts
-const lazyEnsureTTS = () =>
-  import("../runtime/ensure-text-to-speech-handler.js").then(
-    (m) => m.ensureTextToSpeechHandler,
-  );
 
 const _LOCAL_TTS_PROVIDER_IDS = [
   "eliza-local-inference",
@@ -231,7 +217,7 @@ import { filterConfigEnvForResponse as _filterConfigEnvForResponse } from "./ser
 const _PACKAGE_ROOT_NAMES = new Set(["eliza", "elizaai", "elizaos"]);
 
 // ---------------------------------------------------------------------------
-// Internal helpers used by the monkey-patch handler (stay in server.ts)
+// Internal helpers used by the compatibility request pipeline.
 // ---------------------------------------------------------------------------
 
 function hydrateWalletOsStoreFlagFromConfig(): void {
@@ -239,77 +225,20 @@ function hydrateWalletOsStoreFlagFromConfig(): void {
     return;
   }
 
-  try {
-    const config = loadElizaConfig();
-    const persistedEnv =
-      config.env && typeof config.env === "object" && !Array.isArray(config.env)
-        ? (config.env as Record<string, unknown>)
-        : undefined;
-    const raw = persistedEnv?.ELIZA_WALLET_OS_STORE;
-    if (typeof raw === "string" && raw.trim()) {
-      process.env.ELIZA_WALLET_OS_STORE = raw.trim();
-      return;
-    }
-  } catch {
-    // Best effort only; upstream startup will still load config normally.
+  const config = loadElizaConfig();
+  const persistedEnv =
+    config.env && typeof config.env === "object" && !Array.isArray(config.env)
+      ? (config.env as Record<string, unknown>)
+      : undefined;
+  const raw = persistedEnv?.ELIZA_WALLET_OS_STORE;
+  if (typeof raw === "string" && raw.trim()) {
+    process.env.ELIZA_WALLET_OS_STORE = raw.trim();
+    return;
   }
 
   if (isNodePlatformSecureStoreDefaultAvailable()) {
     process.env.ELIZA_WALLET_OS_STORE = "1";
   }
-}
-
-function resolveCompatConfigPaths(): {
-  elizaConfigPath?: string;
-  appConfigPath?: string;
-} {
-  const explicitConfig = readAliasedEnv("ELIZA_CONFIG_PATH");
-  const hasStateOverride = Boolean(readAliasedEnv("ELIZA_STATE_DIR"));
-  const configPath =
-    explicitConfig ||
-    (hasStateOverride ? path.join(resolveStateDir(), "eliza.json") : undefined);
-
-  return { elizaConfigPath: configPath, appConfigPath: configPath };
-}
-
-export function syncCompatConfigFiles(): void {
-  const { elizaConfigPath, appConfigPath } = resolveCompatConfigPaths();
-  if (!elizaConfigPath || !appConfigPath || elizaConfigPath === appConfigPath) {
-    return;
-  }
-
-  const elizaExists = fs.existsSync(elizaConfigPath);
-  const appExists = fs.existsSync(appConfigPath);
-  if (!elizaExists && !appExists) {
-    return;
-  }
-
-  let sourcePath: string;
-  let targetPath: string;
-
-  if (elizaExists && !appExists) {
-    sourcePath = elizaConfigPath;
-    targetPath = appConfigPath;
-  } else if (!elizaExists && appExists) {
-    sourcePath = appConfigPath;
-    targetPath = elizaConfigPath;
-  } else {
-    const elizaStat = fs.statSync(elizaConfigPath);
-    const appStat = fs.statSync(appConfigPath);
-
-    if (appStat.mtimeMs > elizaStat.mtimeMs) {
-      sourcePath = appConfigPath;
-      targetPath = elizaConfigPath;
-    } else if (elizaStat.mtimeMs > appStat.mtimeMs) {
-      sourcePath = elizaConfigPath;
-      targetPath = appConfigPath;
-    } else {
-      return;
-    }
-  }
-
-  fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-  fs.copyFileSync(sourcePath, targetPath);
 }
 
 const RUNTIME_STOP_RESET_TIMEOUT_MS = 20_000;
@@ -349,55 +278,38 @@ async function clearCompatPgliteDataDir(
     // `runtime.stop()` releases plugins/services to drop the PGlite write lock
     // before we delete the data dir. On mobile CPU with many plugins loaded it
     // can take a while, and a hung plugin shutdown must not wedge reset forever.
-    // POSIX `rm` succeeds with open file handles, so if stop overruns we log and
-    // proceed to delete anyway; the lingering runtime is torn down by the
-    // first-run restart that follows on the client.
-    let stopTimedOut = false;
+    // Deleting while a runtime still owns the database risks reporting a reset
+    // that did not actually release every resource, so timeout is a failure.
     let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
     try {
       await Promise.race([
         Promise.resolve(runtime.stop({ fast: true })),
-        new Promise<void>((resolve) => {
+        new Promise<void>((_resolve, reject) => {
           timeoutHandle = setTimeout(() => {
-            stopTimedOut = true;
-            resolve();
+            reject(
+              new Error(
+                `runtime.stop() exceeded ${RUNTIME_STOP_RESET_TIMEOUT_MS}ms`,
+              ),
+            );
           }, RUNTIME_STOP_RESET_TIMEOUT_MS);
         }),
       ]);
-    } catch (err) {
-      logger.warn(
-        `[eliza][reset] runtime.stop() failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
     } finally {
       if (timeoutHandle) {
         clearTimeout(timeoutHandle);
       }
     }
-    if (stopTimedOut) {
-      logger.warn(
-        `[eliza][reset] runtime.stop() exceeded ${RUNTIME_STOP_RESET_TIMEOUT_MS}ms; deleting PGlite data dir anyway`,
-      );
-    }
   }
 
   const dataDir = resolveCompatPgliteDataDir(config);
   if (path.basename(dataDir) !== ".elizadb") {
-    logger.warn(
-      `[eliza][reset] Refusing to delete unexpected PGlite dir: ${dataDir}`,
-    );
-    return;
+    throw new Error(`Refusing to delete unexpected PGlite dir: ${dataDir}`);
   }
 
-  try {
-    if (fs.existsSync(dataDir)) {
-      fs.rmSync(dataDir, { recursive: true, force: true });
-      logger.info(
-        `[eliza][reset] Deleted PGlite data dir (GGUF models preserved): ${dataDir}`,
-      );
-    }
-  } catch (err) {
-    logger.warn(
-      `[eliza][reset] Failed to delete PGlite data dir: ${err instanceof Error ? err.message : String(err)}`,
+  if (fs.existsSync(dataDir)) {
+    fs.rmSync(dataDir, { recursive: true, force: true });
+    logger.info(
+      `[eliza][reset] Deleted PGlite data dir (GGUF models preserved): ${dataDir}`,
     );
   }
 }
@@ -482,6 +394,8 @@ function rewriteCompatStatusBody(
       agentName,
     });
   } catch {
+    // error-policy:J3 upstream status is untrusted boundary data; preserve the
+    // original body when it cannot be parsed instead of fabricating a status.
     return bodyText;
   }
 }
@@ -529,55 +443,6 @@ function patchCompatStatusResponse(
       resolvedCallback,
     );
   }) as typeof res.end;
-}
-
-async function _getTableColumnNames(
-  runtime: AgentRuntime,
-  tableName: string,
-  schemaName = "public",
-): Promise<Set<string>> {
-  const columns = new Set<string>();
-
-  try {
-    const { rows } = await executeRawSql(
-      runtime,
-      `SELECT column_name
-         FROM information_schema.columns
-        WHERE table_schema = ${sqlLiteral(schemaName)}
-          AND table_name = ${sqlLiteral(tableName)}
-        ORDER BY ordinal_position`,
-    );
-
-    for (const row of rows) {
-      const value = row.column_name;
-      if (typeof value === "string" && value.length > 0) {
-        columns.add(value);
-      }
-    }
-  } catch {
-    // Fall through to PRAGMA for PGlite/SQLite compatibility.
-  }
-
-  if (columns.size > 0) {
-    return columns;
-  }
-
-  try {
-    const { rows } = await executeRawSql(
-      runtime,
-      `PRAGMA table_info(${sanitizeIdentifier(tableName)})`,
-    );
-    for (const row of rows) {
-      const value = row.name;
-      if (typeof value === "string" && value.length > 0) {
-        columns.add(value);
-      }
-    }
-  } catch {
-    // Ignore missing-table/missing-pragma support.
-  }
-
-  return columns;
 }
 
 /**
@@ -630,12 +495,8 @@ function resolveCloudConfig(runtime?: unknown): ElizaConfig {
       }
       (config.cloud as Record<string, unknown>).apiKey = backfillKey;
       // Persist the backfilled key so later reads find it on disk.
-      try {
-        saveElizaConfig(config);
-        logger.info("[cloud] Backfilled missing cloud.apiKey to config file");
-      } catch {
-        // Non-fatal: the key is still available for this request
-      }
+      saveElizaConfig(config);
+      logger.info("[cloud] Backfilled missing cloud.apiKey to config file");
     }
   }
   if (isElizaSettingsDebugEnabled()) {
@@ -936,18 +797,14 @@ const COMPAT_ROUTE_CHAIN: readonly CompatRouteChainEntry[] = [
         clearPersistedFirstRunConfig(config);
         saveElizaConfig(config);
         clearCloudSecrets();
-        try {
-          await deleteWalletSecretsFromOsStore();
-        } catch (osErr) {
-          logger.warn(
-            `[eliza][reset] OS wallet store cleanup: ${osErr instanceof Error ? osErr.message : String(osErr)}`,
-          );
-        }
+        await deleteWalletSecretsFromOsStore();
         logger.info(
           "[eliza][reset] POST /api/agent/reset: eliza.json saved; renderer should restart API process if embedded/third-party dev",
         );
         sendJsonResponse(res, 200, { ok: true });
       } catch (err) {
+        // error-policy:J1 reset-route boundary — return an explicit failure
+        // when any reset step fails instead of claiming a partial reset worked.
         logger.warn(
           `[eliza][reset] POST /api/agent/reset failed: ${err instanceof Error ? err.message : String(err)}`,
         );
@@ -1089,178 +946,117 @@ export async function handleElizaCompatRoute(
   return handleCompatRoute(req, res, state);
 }
 
-/**
- * Module-scoped singleton compat-state. Both the early
- * `patchHttpCreateServerForCompat()` call (from `startEliza` before upstream's
- * boot binds the listener) AND the later `startApiServer` wrapper need to
- * share the SAME state object — otherwise the early-bound listener captures
- * an empty state by closure and never sees the runtime that `startApiServer`
- * assigns to its own local state. `getSharedCompatRuntimeState()` returns
- * this singleton so both call sites can read/mutate the same reference.
- */
-const sharedCompatRuntimeState: CompatRuntimeState = {
-  current: null,
-  pendingAgentName: null,
-  pendingRestartReasons: [],
-};
+async function runCompatRequestPipeline(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  state: CompatRuntimeState,
+  next: () => Promise<void>,
+): Promise<void> {
+  // Re-check cloud TTS key alias on each request so sign-in mid-session
+  // is picked up without a restart.
+  ensureCloudTtsApiKeyAlias();
+  mirrorCompatHeaders(req);
+  patchCompatStatusResponse(req, res, state);
 
-export function getSharedCompatRuntimeState(): CompatRuntimeState {
-  return sharedCompatRuntimeState;
-}
+  // CORS: allow local renderer servers (Vite, static loopback, WKWebView).
+  // WKWebView sometimes omits `Origin` on cross-port fetches; allow Referer
+  // only when Origin is absent so we never reflect an arbitrary Origin.
+  const originHeader = req.headers.origin ?? "";
+  // Build allowed origins from configured ports (API, UI, gateway, home)
+  const corsAllowedPorts = new Set(getCorsAllowedPorts());
+  const localPort = req.socket.localPort;
+  if (typeof localPort === "number") {
+    corsAllowedPorts.add(String(localPort));
+  }
+  const allowOrigin = (() => {
+    if (originHeader !== "") {
+      return isAllowedOrigin(originHeader, corsAllowedPorts)
+        ? originHeader
+        : null;
+    }
+    const ref = req.headers.referer;
+    if (!ref) return null;
+    try {
+      const u = new URL(ref);
+      return isAllowedOrigin(ref, corsAllowedPorts) ? u.origin : null;
+    } catch {
+      // error-policy:J3 untrusted Referer header — an unparseable URL is
+      // treated as "no allowed origin" (request is denied below).
+      return null;
+    }
+  })();
 
-export function patchHttpCreateServerForCompat(): () => void {
-  // Always capture the shared singleton. A caller-local CompatRuntimeState
-  // would split early and late patch sites back into different state objects.
-  const effectiveState = sharedCompatRuntimeState;
-  const originalCreateServer = http.createServer.bind(http);
+  if (originHeader !== "" && !allowOrigin) {
+    res.writeHead(403, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "cors_origin_denied" }));
+    return;
+  }
 
-  http.createServer = ((...args: Parameters<typeof originalCreateServer>) => {
-    const [firstArg, secondArg] = args;
-    const listener =
-      typeof firstArg === "function"
-        ? firstArg
-        : typeof secondArg === "function"
-          ? secondArg
-          : undefined;
+  if (allowOrigin) {
+    res.setHeader("Access-Control-Allow-Origin", allowOrigin);
+    res.setHeader(
+      "Access-Control-Allow-Methods",
+      "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+    );
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      "Content-Type, Authorization, X-API-Token, X-Api-Key, X-ElizaOS-Client-Id, X-ElizaOS-UI-Language, X-ElizaOS-Token, X-Eliza-Export-Token, X-Eliza-Terminal-Token, X-Eliza-Platform, X-Eliza-CSRF",
+    );
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+  }
 
-    if (!listener) {
-      return originalCreateServer(...args);
+  if (req.method === "OPTIONS") {
+    res.statusCode = 204;
+    res.end();
+    return;
+  }
+
+  {
+    const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+    if (
+      pathname.startsWith("/api/database") ||
+      pathname.startsWith("/api/trajectories")
+    ) {
+      await ensureRuntimeSqlCompatibility(state.current);
     }
 
-    const wrappedListener: http.RequestListener = async (req, res) => {
-      // Re-check cloud TTS key alias on each request so sign-in mid-session
-      // is picked up without a restart.
-      ensureCloudTtsApiKeyAlias();
-      mirrorCompatHeaders(req);
-      patchCompatStatusResponse(req, res, effectiveState);
-
-      // CORS: allow local renderer servers (Vite, static loopback, WKWebView).
-      // WKWebView sometimes omits `Origin` on cross-port fetches; allow Referer
-      // only when Origin is absent so we never reflect an arbitrary Origin.
-      const originHeader = req.headers.origin ?? "";
-      // Build allowed origins from configured ports (API, UI, gateway, home)
-      const corsAllowedPorts = new Set(getCorsAllowedPorts());
-      const localPort = req.socket.localPort;
-      if (typeof localPort === "number") {
-        corsAllowedPorts.add(String(localPort));
-      }
-      const allowOrigin = (() => {
-        if (originHeader !== "") {
-          return isAllowedOrigin(originHeader, corsAllowedPorts)
-            ? originHeader
-            : null;
-        }
-        const ref = req.headers.referer;
-        if (!ref) return null;
-        try {
-          const u = new URL(ref);
-          return isAllowedOrigin(ref, corsAllowedPorts) ? u.origin : null;
-        } catch {
-          // error-policy:J3 untrusted Referer header — an unparseable URL is
-          // treated as "no allowed origin" (request is denied below).
-          return null;
-        }
-      })();
-
-      if (originHeader !== "" && !allowOrigin) {
-        res.writeHead(403, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "cors_origin_denied" }));
+    try {
+      if (await handleCompatRoute(req, res, state)) {
         return;
       }
-
-      if (allowOrigin) {
-        res.setHeader("Access-Control-Allow-Origin", allowOrigin);
-        res.setHeader(
-          "Access-Control-Allow-Methods",
-          "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-        );
-        res.setHeader(
-          "Access-Control-Allow-Headers",
-          "Content-Type, Authorization, X-API-Token, X-Api-Key, X-ElizaOS-Client-Id, X-ElizaOS-UI-Language, X-ElizaOS-Token, X-Eliza-Export-Token, X-Eliza-Terminal-Token, X-Eliza-Platform, X-Eliza-CSRF",
-        );
-        res.setHeader("Access-Control-Allow-Credentials", "true");
+    } catch (err) {
+      // error-policy:J1 HTTP middleware boundary — translate an app-core
+      // route failure into an explicit 500 response.
+      logger.error(
+        {
+          error: err instanceof Error ? err.message : String(err),
+          stack: err instanceof Error ? err.stack : undefined,
+        },
+        "[CompatApiServer] Unhandled compat route error",
+      );
+      if (!res.headersSent) {
+        res.statusCode = 500;
+        res.setHeader("content-type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ error: "Internal server error" }));
       }
+      return;
+    }
+  }
 
-      if (req.method === "OPTIONS") {
-        res.statusCode = 204;
-        res.end();
-        return;
-      }
+  const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+  const deferredBoot = getDeferredBootStatus();
+  const readinessFailure = resolveFeatureRouteReadinessFailure(
+    pathname,
+    state.current !== null,
+    deferredBoot.phases["app-route-tail"],
+  );
+  if (readinessFailure) {
+    res.setHeader("Retry-After", "1");
+    sendJsonResponse(res, 503, readinessFailure);
+    return;
+  }
 
-      res.on("finish", () => {
-        syncCompatConfigFiles();
-      });
-
-      {
-        const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
-        if (
-          pathname.startsWith("/api/database") ||
-          pathname.startsWith("/api/trajectories")
-        ) {
-          await ensureRuntimeSqlCompatibility(effectiveState.current);
-        }
-
-        try {
-          if (await handleCompatRoute(req, res, effectiveState)) {
-            return;
-          }
-        } catch (err) {
-          logger.error(
-            {
-              error: err instanceof Error ? err.message : String(err),
-              stack: err instanceof Error ? err.stack : undefined,
-            },
-            "[CompatApiServer] Unhandled compat route error",
-          );
-          if (!res.headersSent) {
-            res.statusCode = 500;
-            res.setHeader("content-type", "application/json; charset=utf-8");
-            res.end(JSON.stringify({ error: "Internal server error" }));
-          }
-          return;
-        }
-      }
-
-      Promise.resolve(listener(req, res)).catch((err) => {
-        logger.error(
-          {
-            error: err instanceof Error ? err.message : String(err),
-            stack: err instanceof Error ? err.stack : undefined,
-          },
-          "[CompatApiServer] Upstream listener error",
-        );
-        if (!res.headersSent) {
-          res.statusCode = 500;
-          res.setHeader("content-type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: "Internal server error" }));
-        }
-      });
-    };
-
-    const created =
-      typeof firstArg === "function"
-        ? originalCreateServer(wrappedListener)
-        : originalCreateServer(firstArg, wrappedListener);
-
-    // Attach the local-inference device-bridge WS upgrade handler to every
-    // HTTP server created through this patched factory. Safe to call on
-    // every server — `attachToHttpServer` is idempotent and only installs
-    // the upgrade listener once. Imported dynamically to avoid static boundary violation.
-    void import("@elizaos/plugin-local-inference/services")
-      .then(({ deviceBridge }) => deviceBridge.attachToHttpServer(created))
-      .catch((err: unknown) => {
-        logger.warn(
-          "[compat] Failed to attach device-bridge WS handler:",
-          err instanceof Error ? err.message : String(err),
-        );
-      });
-
-    return created;
-  }) as typeof http.createServer;
-
-  return () => {
-    http.createServer = originalCreateServer as typeof http.createServer;
-  };
+  await next();
 }
 
 export async function startApiServer(
@@ -1273,73 +1069,71 @@ export async function startApiServer(
   hydrateWalletOsStoreFlagFromConfig();
   await hydrateWalletKeysFromNodePlatformSecureStore();
 
-  // Use the module-scoped shared state instead of a fresh local object so
-  // any earlier patch installation (e.g. the `startEliza` boot-time install
-  // that ensures upstream's listener engages the compat dispatcher) sees the
-  // runtime once we receive it here. The shared state is created at module
-  // load with `current: null`; we seed it now from the caller's optional
-  // runtime arg, then upstream's `server.updateRuntime` wrapper continues to
-  // mutate the same reference per hot-swap.
-  const compatState = sharedCompatRuntimeState;
-  clearCompatRuntimeRestart(compatState);
-  if (args[0]?.runtime) {
-    compatState.current = args[0].runtime as AgentRuntime;
-    compatState.pendingAgentName = null;
+  const compatState: CompatRuntimeState = {
+    current: (args[0]?.runtime as AgentRuntime | undefined) ?? null,
+    pendingAgentName: null,
+    pendingRestartReasons: [],
+  };
+
+  if (compatState.current && !args[0]?.skipDeferredStartupWork) {
+    await ensureRuntimeSqlCompatibility(compatState.current);
   }
-  const restoreCreateServer = patchHttpCreateServerForCompat();
 
-  try {
-    if (compatState.current) {
-      await ensureRuntimeSqlCompatibility(compatState.current);
-      await (await lazyEnsureTTS())(compatState.current);
-    }
-
-    const upstreamStart = Date.now();
-    const server = await upstreamStartApiServer(...args);
-    logger.info(
-      `[eliza-api] upstreamStartApiServer took ${Date.now() - upstreamStart}ms`,
-    );
-
-    const originalUpdateRuntime = server.updateRuntime as (
-      runtime: AgentRuntime,
-    ) => void;
-
-    server.updateRuntime = (runtime: AgentRuntime) => {
-      compatState.current = runtime;
-      clearCompatRuntimeRestart(compatState);
-      // Make the runtime immediately visible to upstream routes so hot swaps do
-      // not briefly return 503s while compat setup finishes in the background.
-      originalUpdateRuntime(runtime);
-
-      // Continue repairing SQL compatibility + Edge TTS registration
-      // asynchronously. These are important, but they should not block the
-      // runtime from becoming available to non-TTS routes.
-      void (async () => {
-        try {
-          await ensureRuntimeSqlCompatibility(runtime);
-        } catch (err) {
-          logger.error(
-            `[eliza][runtime] SQL compatibility init failed: ${
-              err instanceof Error ? err.message : String(err)
-            }`,
-          );
+  const callerOptions = args[0];
+  const upstreamStart = Date.now();
+  const server = await upstreamStartApiServer({
+    ...callerOptions,
+    requestMiddleware: async (req, res, next) => {
+      await runCompatRequestPipeline(req, res, compatState, async () => {
+        if (callerOptions?.requestMiddleware) {
+          await callerOptions.requestMiddleware(req, res, next);
+          return;
         }
+        await next();
+      });
+    },
+    configureServer: async (httpServer) => {
+      await callerOptions?.configureServer?.(httpServer);
+      const { deviceBridge } = await import(
+        "@elizaos/plugin-local-inference/services"
+      );
+      deviceBridge.attachToHttpServer(httpServer);
+    },
+  });
+  logger.info(
+    `[eliza-api] upstreamStartApiServer took ${Date.now() - upstreamStart}ms`,
+  );
 
-        try {
-          await (await lazyEnsureTTS())(runtime);
-        } catch (err) {
-          logger.warn(
-            `[eliza][runtime] TTS init failed (non-critical): ${
-              err instanceof Error ? err.message : String(err)
-            }`,
-          );
-        }
-      })();
-    };
+  const originalUpdateRuntime = server.updateRuntime as (
+    runtime: AgentRuntime,
+  ) => void;
 
-    syncCompatConfigFiles();
-    return server;
-  } finally {
-    restoreCreateServer();
-  }
+  server.updateRuntime = (runtime: AgentRuntime) => {
+    compatState.current = runtime;
+    clearCompatRuntimeRestart(compatState);
+    // Make the runtime immediately visible to upstream routes so hot swaps do
+    // not briefly return 503s while compat setup finishes in the background.
+    originalUpdateRuntime(runtime);
+
+    // Continue repairing SQL compatibility asynchronously without blocking
+    // the runtime from becoming available to unrelated routes.
+    void (async () => {
+      try {
+        await ensureRuntimeSqlCompatibility(runtime);
+      } catch (err) {
+        // error-policy:J7 post-swap diagnostics must not roll back a runtime
+        // already published to request handlers; report the degraded feature.
+        logger.error(
+          `[eliza][runtime] SQL compatibility init failed: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+        runtime.reportError("appCore.sqlCompatibility", err, {
+          phase: "runtime-swap",
+        });
+      }
+    })();
+  };
+
+  return server;
 }

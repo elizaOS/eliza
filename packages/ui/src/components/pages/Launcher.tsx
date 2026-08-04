@@ -113,7 +113,7 @@ const IconTile = memo(function IconTile({ entry, onLaunch }: IconTileProps) {
         onPointerCancel={hold.onPointerCancel}
         onClickCapture={suppression.onClickCapture}
         onClick={() => onLaunch(entry)}
-        className="group relative flex max-w-[5.5rem] flex-col items-center gap-1.5 rounded-2xl select-none"
+        className="group relative flex max-w-[5.5rem] flex-col items-center gap-2.5 rounded-2xl select-none"
       >
         <div className="relative">
           <div
@@ -157,7 +157,7 @@ const IconTile = memo(function IconTile({ entry, onLaunch }: IconTileProps) {
           data-launcher-label=""
           data-compact-label={hasLongUnbrokenLabel || undefined}
           className={cn(
-            "line-clamp-2 max-w-[5.5rem] text-center text-xs font-semibold leading-tight tracking-normal whitespace-normal",
+            "line-clamp-2 max-w-[5.5rem] text-center text-xs font-bold leading-tight tracking-[0.01em] whitespace-normal",
             WALLPAPER_TEXT.base,
             WALLPAPER_FLOAT_SHADOW,
           )}

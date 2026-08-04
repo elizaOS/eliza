@@ -1,7 +1,7 @@
 # Live Scenario Runner (nightly)
 #
 # Executes the executive-assistant, connector certification, plugin-health,
-# app-control, and scenario-runner view-chat scenarios against a live LLM
+# app-control, agent-orchestrator, and scenario-runner view-chat scenarios against a live LLM
 # runtime with real credentials. Each shard is one job in a matrix fanned out
 # from packages/scripts/live-scenario-shards.json, and a terminal aggregate gate
 # re-reads every shard's outcome artifact, so the lane's wall clock is its
@@ -75,6 +75,7 @@ on:
           - lifeops-connectors
           - plugin-health
           - app-control
+          - agent-orchestrator
           - scenario-runner-view-chat
       judge_threshold:
         description: "LLM-judge minimum pass score (0.0 - 1.0)"
@@ -97,7 +98,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  BUN_VERSION: "canary"
+  BUN_VERSION: "1.3.14"
   NODE_VERSION: "24.15.0"
   ELIZA_LIVE_TEST: "1"
 
@@ -158,7 +159,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
 
       - name: Verify scenario-runner CLI present
         run: |
@@ -250,16 +251,12 @@ jobs:
           echo "::endgroup::"
 
           provider_package=""
-          if [ -n "${GROQ_API_KEY:-}" ]; then
-            provider_package="plugins/plugin-groq"
-          elif [ -n "${OPENAI_API_KEY:-}" ]; then
+          if [ -n "${OPENAI_API_KEY:-}" ]; then
             provider_package="plugins/plugin-openai"
           elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then
             provider_package="plugins/plugin-anthropic"
           elif [ -n "${GOOGLE_GENERATIVE_AI_API_KEY:-}" ] || [ -n "${GOOGLE_API_KEY:-}" ]; then
             provider_package="plugins/plugin-google-genai"
-          elif [ -n "${OPENROUTER_API_KEY:-}" ]; then
-            provider_package="plugins/plugin-openrouter"
           fi
 
           package_dirs=(
@@ -276,12 +273,10 @@ jobs:
             plugins/plugin-goals
             plugins/plugin-inbox
             plugins/plugin-reminders
-            plugins/plugin-calendly
             plugins/plugin-discord
             plugins/plugin-elizacloud
-            plugins/plugin-google
+            plugins/plugin-google-workspace
             plugins/plugin-phone
-            plugins/plugin-remote-desktop
             plugins/plugin-x
             plugins/plugin-local-inference
             plugins/plugin-app-control

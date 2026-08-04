@@ -1,3 +1,4 @@
+/** Verifies ConversationsSidebar through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

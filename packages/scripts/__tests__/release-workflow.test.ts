@@ -448,8 +448,6 @@ describe("transactional npm release workflow", () => {
       }
     }
     expect(cohort.packages).toEqual([...expected].sort());
-    expect(cohort.packages).toContain("@elizaos/plugin-remote-manifest");
-    expect(cohort.packages).toContain("@elizaos/plugin-worker-runtime");
     expect(cohort.packages).toContain("@elizaos/cloud-shared");
   });
 });

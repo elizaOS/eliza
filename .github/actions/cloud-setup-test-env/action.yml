@@ -35,9 +35,9 @@ runs:
           exit 1
         fi
 
-    - uses: actions/setup-node@v6
+    - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
       with:
-        node-version: "22"
+        node-version: "24.15.0"
 
     - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       env:
@@ -53,9 +53,9 @@ runs:
       run: |
         for attempt in 1 2 3; do
           if [ "$attempt" -eq 3 ]; then
-            bun install --no-save --verbose && git diff --exit-code -- bun.lock && exit 0
+            bun install --frozen-lockfile --no-save --verbose && git diff --exit-code -- bun.lock && exit 0
           else
-            bun install --no-save && git diff --exit-code -- bun.lock && exit 0
+            bun install --frozen-lockfile --no-save && git diff --exit-code -- bun.lock && exit 0
           fi
 
           echo "bun install attempt $attempt failed or changed bun.lock; retrying in 10s..."

@@ -27,43 +27,22 @@
       "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
       "@elizaos/agent": ["../../packages/agent/src/index.ts"],
       "@elizaos/agent/*": ["../../packages/agent/src/*"],
-      "@elizaos/plugin-task-coordinator": [
-        "../plugin-task-coordinator/src/api/coordinator-types.ts"
-      ],
       "@elizaos/plugin-workflow": ["../plugin-workflow/dist/index.d.ts"],
       "@elizaos/plugin-workflow/*": ["../plugin-workflow/dist/*"],
       "@elizaos/core": ["../../packages/core/src/index.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/logger": ["../../packages/logger/src/index.ts"],
       "@elizaos/logger/*": ["../../packages/logger/src/*"],
-      "@elizaos/plugin-wallet-ui": [
-        "../../plugins/plugin-wallet-ui/src/index.ts"
+      "@elizaos/plugin-wallet/ui": [
+        "../../plugins/plugin-wallet/src/ui/index.ts"
       ],
-      "@elizaos/plugin-wallet-ui/*": ["../../plugins/plugin-wallet-ui/src/*"],
-      "@elizaos/plugin-local-inference": [
-        "../../plugins/plugin-local-inference/src/index.ts"
-      ],
-      "@elizaos/plugin-local-inference/*": [
-        "../../plugins/plugin-local-inference/src/*"
-      ],
+      "@elizaos/plugin-wallet/*": ["../../plugins/plugin-wallet/src/*"],
       "@elizaos/plugin-registry": [
         "../../plugins/plugin-registry/dist/index.d.ts"
       ],
       "@elizaos/plugin-registry/*": ["../../plugins/plugin-registry/dist/*"],
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
-      "@elizaos/import-conversations": [
-        "../../packages/import-conversations/src/index.ts"
-      ],
-      "@elizaos/import-conversations/browser": [
-        "../../packages/import-conversations/src/browser.ts"
-      ],
-      "@elizaos/capacitor-bun-runtime": [
-        "../../plugins/plugin-native-bun-runtime/src/index.ts"
-      ],
-      "@elizaos/capacitor-camera": [
-        "../../plugins/plugin-native-camera/src/index.ts"
-      ],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["../../packages/shared/src/*"],
       "@elizaos/vault": ["../../packages/vault/src/index.ts"],
@@ -77,15 +56,21 @@
       ],
       "react-dom": [
         "../../packages/app-core/node_modules/@types/react-dom/index.d.ts"
+      ],
+      "@elizaos/plugin-local-inference": [
+        "../../plugins/plugin-local-inference/src/index.ts"
+      ],
+      "@elizaos/plugin-local-inference/*": [
+        "../../plugins/plugin-local-inference/src/*"
+      ],
+      "@elizaos/capacitor-bun-runtime": [
+        "../../plugins/plugin-native-bun-runtime/src/index.ts"
+      ],
+      "@elizaos/capacitor-camera": [
+        "../../plugins/plugin-native-camera/src/index.ts"
       ]
     }
   },
-  "include": [
-    "src/**/*.ts",
-    "src/**/*.tsx",
-    "src/**/*.d.ts",
-    "../../packages/agent/src/external-modules.d.ts",
-    "../../packages/app-core/src/ambient-modules.d.ts"
-  ],
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],
   "exclude": ["src/**/*.stories.ts", "src/**/*.stories.tsx"]
 }

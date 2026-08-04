@@ -1,3 +1,4 @@
+/** Verifies urlBase64ToUint8Array through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Contract tests for the web-push subscription manager. Every DOM/global seam

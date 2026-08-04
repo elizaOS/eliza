@@ -21,9 +21,6 @@
 			"@elizaos/agent": ["../../packages/agent/src/index.ts"],
 			"@elizaos/agent/*": ["../../packages/agent/src/*"],
 			"@elizaos/app-core": ["./src/type-shims/app-core-root.ts"],
-			"@elizaos/app-core/agent-bridge": [
-				"../../packages/app-core/src/agent-bridge.ts"
-			],
 			"@elizaos/app-core/account-pool": [
 				"../../packages/app-core/src/account-pool.ts"
 			],
@@ -37,9 +34,6 @@
 			"@elizaos/app-core/api/response": [
 				"../../packages/app-core/src/api/response.ts"
 			],
-			"@elizaos/app-core/registry": [
-				"../../packages/app-core/src/registry/index.ts"
-			],
 			"@elizaos/app-core/services/vault-mirror": [
 				"../../packages/app-core/src/services/vault-mirror.ts"
 			],
@@ -52,12 +46,6 @@
 				"../../plugins/plugin-native-camera/src/index.ts"
 			],
 			"@elizaos/core": ["../../packages/core/src/index.node.ts"],
-			"@elizaos/import-conversations": [
-				"../../packages/import-conversations/src/index.ts"
-			],
-			"@elizaos/import-conversations/browser": [
-				"../../packages/import-conversations/src/browser.ts"
-			],
 			"@elizaos/logger": ["../../packages/logger/src/index.ts"],
 			"@elizaos/shared": ["../../packages/shared/src/index.ts"],
 			"@elizaos/shared/*": ["../../packages/shared/src/*"],
@@ -94,11 +82,11 @@
 			"@elizaos/plugin-app-manager/*": [
 				"../../plugins/plugin-app-manager/src/*"
 			],
-			"@elizaos/plugin-aosp-local-inference": [
-				"../../plugins/plugin-aosp-local-inference/src/index.ts"
+			"@elizaos/plugin-native-inference": [
+				"../../plugins/plugin-native-inference/src/index.ts"
 			],
-			"@elizaos/plugin-aosp-local-inference/*": [
-				"../../plugins/plugin-aosp-local-inference/src/*"
+			"@elizaos/plugin-native-inference/*": [
+				"../../plugins/plugin-native-inference/src/*"
 			],
 			"@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
 			"@elizaos/plugin-browser/*": ["../../plugins/plugin-browser/src/*"],
@@ -129,19 +117,10 @@
 			"@elizaos/plugin-local-inference/*": [
 				"../../plugins/plugin-local-inference/src/*"
 			],
-			"@elizaos/plugin-remote-manifest": [
-				"../../packages/plugin-remote-manifest/src/index.ts"
-			],
-			"@elizaos/plugin-remote-manifest/*": [
-				"../../packages/plugin-remote-manifest/src/*"
-			],
 			"@elizaos/plugin-registry": [
 				"../../plugins/plugin-registry/src/index.ts"
 			],
 			"@elizaos/plugin-registry/*": ["../../plugins/plugin-registry/src/*"],
-			"@elizaos/plugin-streaming": [
-				"../../plugins/plugin-streaming/src/index.ts"
-			],
 			"@elizaos/plugin-scheduling": [
 				"../../plugins/plugin-scheduling/src/index.ts"
 			],
@@ -153,16 +132,8 @@
 			"@elizaos/plugin-task-coordinator/*": [
 				"../../plugins/plugin-task-coordinator/src/*"
 			],
-			"@elizaos/plugin-worker-runtime": [
-				"../../packages/plugin-worker-runtime/src/index.ts"
-			],
-			"@elizaos/plugin-worker-runtime/*": [
-				"../../packages/plugin-worker-runtime/src/*"
-			],
 			"@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/src/index.ts"],
-			"@elizaos/plugin-wallet/*": ["../../plugins/plugin-wallet/src/*"],
-			"@elizaos/plugin-x402": ["../../plugins/plugin-x402/src/index.ts"],
-			"@elizaos/plugin-x402/*": ["../../plugins/plugin-x402/src/*"]
+			"@elizaos/plugin-wallet/*": ["../../plugins/plugin-wallet/src/*"]
 		}
 	},
 	"include": ["src/**/*"],

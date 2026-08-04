@@ -38,13 +38,10 @@ import {
   ElizaError,
   type IAgentRuntime,
   Service,
+  TRACE_ENV,
 } from "@elizaos/core";
 import { isAndroidMobile } from "@elizaos/shared";
 import { NativeAcpClient } from "./acp-native-transport.js";
-import {
-  formatAcpCommand,
-  provisionWorkspaceElizaCodeAcp,
-} from "./acp-provisioning.js";
 import { augmentTaskWithDeployGuidance } from "./app-deploy-guidance.js";
 import {
   type CodexSandboxMode,
@@ -358,25 +355,6 @@ export function normalizeClaudeAcpModelId(
   return normalized || undefined;
 }
 
-/**
- * Provision the workspace-native ACP executable on first use, crash-safely.
- * Development and self-hosted checkouts deliberately do not require a global
- * npm install: the package is built into its normal dist directory and launched
- * with the same Bun executable that performed the build.
- *
- * Delegates to the advisory-lock and atomic-publish protocol in
- * `acp-provisioning.ts` (#16169). The thin adapter preserves the string command
- * contract while the formatter quotes paths only when the downstream parser
- * needs it.
- */
-export function ensureWorkspaceElizaCodeAcp(
-  startDir: string = process.cwd(),
-): string | undefined {
-  const result = provisionWorkspaceElizaCodeAcp(startDir);
-  if (!result) return undefined;
-  return formatAcpCommand(result);
-}
-
 async function runGitForAcp(
   workdir: string,
   args: string[],
@@ -434,8 +412,7 @@ const ACP_METADATA_GIT_WRAPPER_DIR = "gitWrapperDir";
 const ACP_METADATA_SPAWN_MODEL = "spawnModel";
 const MAX_CAPTURED_TOOL_OUTPUT_CHARS = 12_000;
 const TOOL_OUTPUT_END_MARKER = "[/tool output]";
-const SESSION_GIT_WRAPPER = `#!/usr/bin/env node
-const { spawn, spawnSync } = require("node:child_process");
+const SESSION_GIT_WRAPPER_BODY = `const { spawn, spawnSync } = require("node:child_process");
 const { randomUUID } = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -689,6 +666,24 @@ const result = run(args);
 if (result.signal) process.kill(process.pid, result.signal);
 process.exit(result.status ?? 1);
 `;
+
+function sessionGitWrapper(): string {
+  const interpreter = process.versions.bun
+    ? findExecutableOnPath("node")
+    : process.execPath;
+  if (!interpreter) {
+    throw new Error("Cannot create the ACP git wrapper without a Node runtime");
+  }
+  if (/\s/.test(interpreter)) {
+    throw new Error(
+      `Cannot create the ACP git wrapper with a whitespace-containing runtime path: ${interpreter}`,
+    );
+  }
+  // The wrapper nests synchronous git processes, which deadlocks if a Bun test
+  // process synchronously invokes another Bun process. A direct Node shebang
+  // also avoids an extra /usr/bin/env process at the command boundary.
+  return `#!${interpreter}\n${SESSION_GIT_WRAPPER_BODY}`;
+}
 const ACP_HEALTH_CHECK_INTERVAL_MS = 60_000;
 // Terminal (stopped/errored) sessions are kept this long for any post-completion
 // reference, then reclaimed by the health-check sweep so the durable session
@@ -1104,7 +1099,7 @@ export class AcpService extends Service {
     await mkdir(wrapperDir, { recursive: true });
     await copyFile(repoIndex, baseFile);
     await copyFile(repoIndex, indexFile);
-    await writeFile(wrapperFile, SESSION_GIT_WRAPPER, "utf8");
+    await writeFile(wrapperFile, sessionGitWrapper(), "utf8");
     await chmod(wrapperFile, 0o755);
     return {
       env: {
@@ -3181,16 +3176,13 @@ export class AcpService extends Service {
         this.setting("ELIZA_CLAUDE_ACP_COMMAND") ??
         "npx -y @agentclientprotocol/claude-agent-acp@0.34.0"
       );
-    // The elizaos native agent is the eliza-code ACP server
-    // (packages/examples/code, bin `eliza-code-acp`). The elizaos CLI has no
-    // ACP mode, so the bare-name fallback below would spawn the wrong binary —
-    // resolve to the eliza-code bin unless an explicit command is configured.
+    // The elizaOS CLI has no ACP mode; the separately installed eliza-code ACP
+    // server is the native adapter for this agent type.
     if (normalizedAgentType === "elizaos")
       return (
         this.setting("ELIZA_ELIZAOS_ACP_COMMAND") ??
         findExecutableOnPath("eliza-code-acp") ??
-        ensureWorkspaceElizaCodeAcp() ??
-        "npx -y --package @elizaos/example-code@2.0.0-beta.1 eliza-code-acp"
+        "eliza-code-acp"
       );
     return String(normalizedAgentType);
   }
@@ -4121,7 +4113,7 @@ export class AcpService extends Service {
       if (normalizedConfigured) env.ANTHROPIC_MODEL = normalizedConfigured;
     }
     if (childSessionId?.trim()) {
-      env.PARALLAX_SESSION_ID = childSessionId.trim();
+      env[TRACE_ENV.SESSION_ID] = childSessionId.trim();
     }
     if (
       agentType === "codex" &&

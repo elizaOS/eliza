@@ -51,7 +51,6 @@ import { RuntimeView } from "@elizaos/ui/components/pages/RuntimeView";
 import { SkillsView } from "@elizaos/ui/components/pages/SkillsView";
 import { TasksPageView } from "@elizaos/ui/components/pages/TasksPageView";
 import { TrajectoriesView } from "@elizaos/ui/components/pages/TrajectoriesView";
-import { FineTuningView } from "@elizaos/ui/components/training/injected";
 import { useApp } from "@elizaos/ui/state/useApp";
 import { openExternalUrl } from "@elizaos/ui/utils";
 import {
@@ -137,9 +136,6 @@ function renderInternalToolTab(tab: Tab): JSX.Element | null {
       return <DatabasePageView />;
     case "logs":
       return <LogsView />;
-    case "fine-tuning":
-    case "advanced":
-      return <FineTuningView />;
     case "inventory":
       return <RegisteredWalletInventoryView />;
     case "tasks":

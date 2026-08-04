@@ -2,7 +2,7 @@
 
 The Eliza Cloud HTTP API: a Cloudflare Workers app (Hono router) that backs auth, app/agent registration, inference routing, billing, MCP, A2A, domains, and container deploys. Not an elizaOS plugin and not imported by other packages — it is deployed as a standalone Worker (`wrangler deploy`). Most shared logic (DB client, auth, providers, billing, cron) lives in `@elizaos/cloud-shared`; this package owns the Worker entrypoint, the route tree, and the route-mount codegen.
 
-See the root `AGENTS.md` for repo-wide rules (logger-only, ESM, naming, architecture). Conventions below are specific to this package.
+See the root `CLAUDE.md` for repo-wide rules (logger-only, ESM, naming, architecture). Conventions below are specific to this package.
 
 ## Layout
 
@@ -28,7 +28,7 @@ src/
                            route. Re-run `bun run codegen` after adding/removing a route.
   middleware/              auth.ts (global auth gate + public-path allowlist),
                            org-membership.ts.
-  services/                audit-dispatcher-singleton.ts, audit-events.ts (auth_events sink).
+  services/                audit/ (cloud-owned audit contract + dispatcher), audit-events.ts (required auth_events sink).
   queue/                   stripe-event.ts, types.ts (Cloudflare Queue consumers).
   steward/embedded.ts      Embedded Steward (auth provider) handler, mounted at /steward*.
   lib/mcp/                 mcps-transport-gateway.ts (createMcpsTransportApp factory).
@@ -68,7 +68,7 @@ bun run --cwd packages/cloud/api dev            # wrangler dev (local Worker)
 bun run --cwd packages/cloud/api dev:full       # dev + local control plane
 bun run --cwd packages/cloud/api codegen        # regen src/_router.generated.ts
 bun run --cwd packages/cloud/api build          # tsc --noEmit (type-only)
-bun run --cwd packages/cloud/api typecheck      # tsgo --noEmit
+bun run --cwd packages/cloud/api typecheck      # tsc --noEmit
 bun run --cwd packages/cloud/api lint           # biome check .
 bun run --cwd packages/cloud/api lint:fix       # biome check --write .
 bun run --cwd packages/cloud/api test           # bun test __tests__
@@ -78,11 +78,11 @@ bun run --cwd packages/cloud/api deploy         # wrangler deploy --env producti
 bun run --cwd packages/cloud/api agent:build    # build the cloud agent container image
 ```
 
-`dev`/`agent:build` shell out to `packages/scripts/cloud/admin/dev/*.mjs` (outside this package).
+`dev`/`agent:build` shell out to `packages/cloud/scripts/admin/dev/*.mjs` (outside this package).
 
 ## Config / env vars
 
-Worker bindings and env vars are declared in `wrangler.toml` and typed by `Bindings` in `@/types/cloud-worker-env` (cloud-shared). Local dev reads `.dev.vars`; both `.dev.vars` and the `.dev.vars.example` reference file are gitignored (`.gitignore` `.dev.vars.*`). `bun run dev` regenerates `.dev.vars` from repo `.env`/`.env.local` via `packages/scripts/cloud/admin/sync-api-dev-vars.ts`.
+Worker bindings and env vars are declared in `wrangler.toml` and typed by `Bindings` in `@/types/cloud-worker-env` (cloud-shared). Local dev reads `.dev.vars`; both `.dev.vars` and the `.dev.vars.example` reference file are gitignored (`.gitignore` `.dev.vars.*`). `bun run dev` regenerates `.dev.vars` from repo `.env`/`.env.local` via `packages/cloud/scripts/admin/sync-api-dev-vars.ts`.
 
 Representative bindings (see `Bindings` for the full set): `DATABASE_URL` (Railway Postgres in cloud, reached from the Worker via the `HYPERDRIVE` binding; PGlite locally), `BLOB` (R2), `BITROUTER_API_KEY` / `BITROUTER_BASE_URL` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `CEREBRAS_API_KEY` / `AI_GATEWAY_API_KEY`, `ELEVENLABS_API_KEY`, `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_API_TOKEN`, `STEWARD_API_URL`, `JWT_SIGNING_KEY_ID` / `JWT_SIGNING_PRIVATE_KEY` / `JWT_SIGNING_PUBLIC_KEY`, `R2_PUBLIC_HOST`. Stripe/crypto webhook secrets are read by their respective route handlers.
 
@@ -104,44 +104,10 @@ Add an endpoint:
 - Special-cased routes registered manually in `bootstrap-app.ts` (root `/`, `/steward*`, blooio/bluebubbles webhooks, legacy birdeye 308 redirect, jwks) bypass the codegen tree — keep that list in sync when touching those surfaces.
 - This is the only `@elizaos/*` package with no published consumers; treat `wrangler.toml` + `index.ts` as the contract.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
-## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+## Verification
 
-> The binding, repo-wide standard is **[AGENTS.md](../../../AGENTS.md)**. Read it.
-> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
-> works **without reading the code**, from the artifacts you attach. This applies to **every**
-> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
-
-- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
-  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
-  providers/context, the raw model output, every tool/action call, and the result. Then **open
-  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
-  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
-- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
-  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
-  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
-  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
-  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
-  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
-  them is part of your change.
-- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
-  the entire feature or view, start to finish (`bun run test:e2e:record`).
-- **Manually review every artifact the change touches** — never just the green check: client
-  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
-  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
-- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
-  blocker by the **hard path**: build the real architecture, stand up the real
-  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
-  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
-  highest-effort, production-ready version. Keep going until every possibility is exhausted.
-
-Artifacts → attached inline in the PR (MP4 video, JPG screenshots, logs in `<details>`); attach each evidence type **or**
-explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
-behavior, **re-capture** evidence; stale proof is worse than none.
-
-**Capture & manually review for this package — cloud backend / security:**
-- Real request → response traces against the local cloud stack (`bun run cloud:mock`) hitting real endpoints, plus the structured backend logs.
-- The **DB state** the change produced/changed (Drizzle rows), billing/usage records, and migration up **and** down.
-- Auth/role-gating and multi-tenant isolation proven by test, including the denied-access paths (see #9853/#9948) — not assumed.
-- The agent trajectory for any model-backed endpoint.
-<!-- END: evidence-and-e2e-mandate -->
+Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../../CLAUDE.md). Run
+the package's relevant build, typecheck, lint, and test commands, then exercise
+the real integration boundary changed by the work. Inspect the produced domain
+artifacts and failure behavior; do not substitute mocked success for the system
+under test.

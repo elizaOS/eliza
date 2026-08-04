@@ -8,7 +8,7 @@
 #
 # Runs ONLY:
 #   plugins/plugin-computeruse/src/__tests__/cua-parity-input.real.test.ts
-# through the shared real config (packages/test/vitest/real.config.ts) on
+# through the shared real config (packages/scripts/vitest/real.config.ts) on
 # Linux (Xvfb), macOS (headful), and Windows (interactive desktop). This is the
 # one remaining step to satisfy "tested on windows, linux, mac os" for the
 # trycua/cua parity verbs (#9170): today only Windows real-driver actuation is
@@ -46,7 +46,7 @@ env:
   ELIZA_CI_REAL: "1"
   ELIZA_COMPUTERUSE_DRIVER: "nutjs"
   TEST_FILE: "plugins/plugin-computeruse/src/__tests__/cua-parity-input.real.test.ts"
-  REAL_CONFIG: "packages/test/vitest/real.config.ts"
+  REAL_CONFIG: "packages/scripts/vitest/real.config.ts"
 
 jobs:
   cua-parity-real:

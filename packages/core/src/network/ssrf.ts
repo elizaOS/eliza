@@ -37,10 +37,9 @@ export type SsrfPolicy = {
 	allowedHostnames?: string[];
 };
 
-const PRIVATE_IPV6_PREFIXES = ["fe80:", "fec0:", "fc", "fd"];
 const BLOCKED_HOSTNAMES = new Set(["localhost", "metadata.google.internal"]);
 
-function normalizeHostname(hostname: string): string {
+export function normalizeHostLike(hostname: string): string {
 	const normalized = hostname.trim().toLowerCase().replace(/\.$/, "");
 	if (normalized.startsWith("[") && normalized.endsWith("]")) {
 		return normalized.slice(1, -1);
@@ -48,18 +47,45 @@ function normalizeHostname(hostname: string): string {
 	return normalized;
 }
 
+/** Return true only for localhost and literal loopback addresses. */
+export function isLoopbackHost(hostname: string): boolean {
+	const normalized = normalizeIpForPolicy(hostname);
+	if (normalized === "localhost" || normalized === "::1") return true;
+
+	const mapped = normalized.startsWith("::ffff:")
+		? parseIpv4FromMappedIpv6(normalized.slice("::ffff:".length))
+		: null;
+	const ipv4 = mapped ?? parseIpv4(normalized) ?? parseIpv4Loose(normalized);
+	return ipv4?.[0] === 127;
+}
+
+/** Normalize brackets, scope ids, and IPv4-mapped IPv6 forms for policy checks. */
+export function normalizeIpForPolicy(address: string): string {
+	const normalized = normalizeHostLike(address).split("%")[0];
+	const mappedMatch = /^(?:::ffff:|(?:0{1,4}:){5}ffff:)(.+)$/i.exec(normalized);
+	if (!mappedMatch?.[1]) return normalized;
+	const rawMapped = mappedMatch[1];
+	const mapped = rawMapped.includes(".")
+		? (parseIpv4Loose(rawMapped) ?? parseIpv4(rawMapped))
+		: parseIpv4FromMappedIpv6(rawMapped);
+	return mapped ? mapped.join(".") : normalized;
+}
+
 function normalizeHostnameSet(values?: string[]): Set<string> {
 	if (!values || values.length === 0) {
 		return new Set<string>();
 	}
 	return new Set(
-		values.map((value) => normalizeHostname(value)).filter(Boolean),
+		values.map((value) => normalizeHostLike(value)).filter(Boolean),
 	);
 }
 
 function parseIpv4(address: string): number[] | null {
 	const parts = address.split(".");
-	if (parts.length !== 4) {
+	if (
+		parts.length !== 4 ||
+		parts.some((part) => !/^(?:0|[1-9][0-9]*)$/.test(part))
+	) {
 		return null;
 	}
 	const numbers = parts.map((part) => Number.parseInt(part, 10));
@@ -189,39 +215,30 @@ function isPrivateIpv4(parts: number[]): boolean {
 	return false;
 }
 
+function isPrivateIpv6(address: string): boolean {
+	if (address === "::" || address === "::1") return true;
+	const firstHextet = /^([0-9a-f]{1,4})(?=:|$)/i.exec(address)?.[1];
+	if (!firstHextet) return false;
+	const first = Number.parseInt(firstHextet, 16);
+	return (
+		(first & 0xfe00) === 0xfc00 || // fc00::/7 unique-local
+		(first & 0xffc0) === 0xfe80 || // fe80::/10 link-local
+		(first & 0xffc0) === 0xfec0 || // fec0::/10 deprecated site-local
+		(first & 0xff00) === 0xff00 // ff00::/8 multicast
+	);
+}
+
 /**
  * Check if an IP address is private/internal.
  */
 export function isPrivateIpAddress(address: string): boolean {
-	let normalized = address.trim().toLowerCase();
-	if (normalized.startsWith("[") && normalized.endsWith("]")) {
-		normalized = normalized.slice(1, -1);
-	}
+	const normalized = normalizeIpForPolicy(address);
 	if (!normalized) {
 		return false;
 	}
 
-	if (normalized.startsWith("::ffff:")) {
-		const mapped = normalized.slice("::ffff:".length);
-		const ipv4 = parseIpv4FromMappedIpv6(mapped);
-		if (ipv4) {
-			if (isPrivateIpv4(ipv4)) {
-				return true;
-			}
-			// inet_aton reading of an octal/hex/decimal mapped octet
-			// (e.g. ::ffff:0177.0.0.1) that the OS resolver would honor.
-			const loose = mapped.includes(".") ? parseIpv4Loose(mapped) : null;
-			return loose ? isPrivateIpv4(loose) : false;
-		}
-	}
-
 	if (normalized.includes(":")) {
-		if (normalized === "::" || normalized === "::1") {
-			return true;
-		}
-		return PRIVATE_IPV6_PREFIXES.some((prefix) =>
-			normalized.startsWith(prefix),
-		);
+		return isPrivateIpv6(normalized);
 	}
 
 	const strict = parseIpv4(normalized);
@@ -243,7 +260,7 @@ export function isPrivateIpAddress(address: string): boolean {
  * Check if a hostname should be blocked (localhost, internal domains).
  */
 export function isBlockedHostname(hostname: string): boolean {
-	const normalized = normalizeHostname(hostname);
+	const normalized = normalizeHostLike(hostname);
 	if (!normalized) {
 		return false;
 	}
@@ -265,7 +282,7 @@ export function createPinnedLookup(params: {
 	addresses: string[];
 	fallback?: PinnedLookup;
 }): PinnedLookup {
-	const normalizedHost = normalizeHostname(params.hostname);
+	const normalizedHost = normalizeHostLike(params.hostname);
 	const fallback = params.fallback;
 	// Drop any non-string/empty address before pinning. An undefined address
 	// reaching node's net layer throws "Invalid IP address: undefined" and the
@@ -290,7 +307,7 @@ export function createPinnedLookup(params: {
 		if (!cb) {
 			return;
 		}
-		const normalized = normalizeHostname(host);
+		const normalized = normalizeHostLike(host);
 		if (!normalized || normalized !== normalizedHost) {
 			if (fallback) {
 				if (typeof options === "function" || options === undefined) {
@@ -338,7 +355,7 @@ export async function resolvePinnedHostnameWithPolicy(
 	hostname: string,
 	params: { lookupFn?: LookupFn; policy?: SsrfPolicy } = {},
 ): Promise<PinnedHostname> {
-	const normalized = normalizeHostname(hostname);
+	const normalized = normalizeHostLike(hostname);
 	if (!normalized) {
 		throw new Error("Invalid hostname");
 	}

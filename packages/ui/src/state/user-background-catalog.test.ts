@@ -1,3 +1,4 @@
+/** Verifies user background catalog (#13538) through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * User background catalog (#13538): persistence of agent/user-added backgrounds.

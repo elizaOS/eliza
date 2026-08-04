@@ -4,9 +4,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-const skipLocalUpstreams =
-  process.env.ELIZA_SKIP_LOCAL_UPSTREAMS === "1" ||
-  process.env.ELIZA_SKIP_LOCAL_UPSTREAMS === "1";
+const skipLocalUpstreams = process.env.ELIZA_SKIP_LOCAL_UPSTREAMS === "1";
 
 function getRepoLocalWorkspaceRoot(
   packageName: string,

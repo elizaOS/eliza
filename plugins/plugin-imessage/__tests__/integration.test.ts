@@ -10,20 +10,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import imessagePlugin, {
+import {
   appleDateToJsMs,
   chatDbMessageToPublicShape,
   formatPhoneNumber,
   getLastChatDbAccessIssue,
-  IMESSAGE_SERVICE_NAME,
   IMessageCliError,
   IMessageConfigurationError,
-  // Event types
-  IMessageEventTypes,
   IMessageNotSupportedError,
   // Error classes
   IMessagePluginError,
-  IMessageService,
   isEmail,
   // Type utilities
   isPhoneNumber,
@@ -40,38 +36,6 @@ import imessagePlugin, {
 } from "../src/index";
 
 const runtimeRequire = createRequire(import.meta.url);
-
-// ============================================================
-// Plugin exports
-// ============================================================
-
-describe("iMessage plugin exports", () => {
-  it("exports plugin metadata", () => {
-    expect(imessagePlugin.name).toBe("imessage");
-    expect(imessagePlugin.description).toContain("iMessage");
-    expect(Array.isArray(imessagePlugin.actions)).toBe(true);
-    expect(Array.isArray(imessagePlugin.providers)).toBe(true);
-    expect(Array.isArray(imessagePlugin.services)).toBe(true);
-  });
-
-  it("exports service", () => {
-    expect(IMessageService).toBeDefined();
-  });
-
-  it("exports parsing utility functions", () => {
-    expect(parseMessagesFromAppleScript).toBeDefined();
-    expect(parseChatsFromAppleScript).toBeDefined();
-  });
-
-  it("exports constants", () => {
-    expect(IMESSAGE_SERVICE_NAME).toBe("imessage");
-    expect(MAX_IMESSAGE_MESSAGE_LENGTH).toBe(4000);
-    expect(IMessageEventTypes.MESSAGE_RECEIVED).toBe("IMESSAGE_MESSAGE_RECEIVED");
-    expect(IMessageEventTypes.MESSAGE_SENT).toBe("IMESSAGE_MESSAGE_SENT");
-    expect(IMessageEventTypes.CONNECTION_READY).toBe("IMESSAGE_CONNECTION_READY");
-    expect(IMessageEventTypes.ERROR).toBe("IMESSAGE_ERROR");
-  });
-});
 
 // ============================================================
 // isPhoneNumber

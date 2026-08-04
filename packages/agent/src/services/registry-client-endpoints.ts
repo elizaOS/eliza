@@ -8,12 +8,8 @@
  */
 import { lookup as dnsLookup } from "node:dns/promises";
 import net from "node:net";
-import { logger } from "@elizaos/core";
+import { isPrivateIpAddress, logger, normalizeHostLike } from "@elizaos/core";
 import type { RegistryEndpoint } from "../config/types.eliza.ts";
-import {
-  isBlockedPrivateOrLinkLocalIp,
-  normalizeHostLike,
-} from "../security/network-policy.ts";
 import type { RegistryPluginInfo } from "./registry-client-types.ts";
 
 /** Raw shape of a single entry returned by a registry endpoint's JSON response. */
@@ -103,7 +99,7 @@ export function parseRegistryEndpointUrl(rawUrl: string): URL {
     throw new Error(`Endpoint host "${hostname}" is blocked`);
   }
 
-  if (net.isIP(hostname) && isBlockedPrivateOrLinkLocalIp(hostname)) {
+  if (net.isIP(hostname) && isPrivateIpAddress(hostname)) {
     throw new Error(`Endpoint host "${hostname}" is blocked`);
   }
 
@@ -164,7 +160,7 @@ async function resolveRegistryEndpointUrlRejection(rawUrl: string): Promise<{
   }
 
   for (const entry of addresses) {
-    if (isBlockedPrivateOrLinkLocalIp(entry.address)) {
+    if (isPrivateIpAddress(entry.address)) {
       return {
         rejection: `Endpoint host "${hostname}" resolves to blocked address ${entry.address}`,
         endpoint: null,
@@ -212,7 +208,7 @@ async function fetchSingleEndpoint(
       }
 
       for (const address of refreshedAddresses) {
-        if (isBlockedPrivateOrLinkLocalIp(address)) {
+        if (isPrivateIpAddress(address)) {
           logger.warn(
             `[registry-client] Endpoint "${label}" (${url}) blocked: host resolves to blocked address ${address}`,
           );

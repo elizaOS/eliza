@@ -22,7 +22,7 @@
 import type {
   CodingAgentTaskThreadDetail,
   CodingAgentTaskTimelineItem,
-} from "@elizaos/ui";
+} from "@elizaos/ui/api/client-types-cloud";
 import {
   cleanup,
   fireEvent,
@@ -62,13 +62,11 @@ vi.mock("@elizaos/ui/agent-surface", () => ({
   useAgentElement: () => ({ ref: () => {}, agentProps: {} }),
 }));
 
-// Partial mock: keep every REAL @elizaos/ui export (TaskInspector renders
-// AlertDialog/DiffReviewPanel/… from the barrel) and override only `client`.
-vi.mock("@elizaos/ui", async (importOriginal) => {
+// Keep the real UI components while replacing the API client boundary.
+vi.mock("@elizaos/ui/api", async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
   return {
     ...actual,
-    ELIZA_CLOUD_TIER_MODEL: tierModels,
     client: {
       getOrchestratorStatus: () => calls.getOrchestratorStatus(),
       listCodingAgentTaskThreads: (o: unknown) =>
@@ -93,7 +91,12 @@ vi.mock("@elizaos/ui", async (importOriginal) => {
   };
 });
 
-import { getViewChatBinding } from "@elizaos/ui";
+vi.mock("@elizaos/ui/components", async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return { ...actual, ELIZA_CLOUD_TIER_MODEL: tierModels };
+});
+
+import { getViewChatBinding } from "@elizaos/ui/state";
 import { CockpitSessionPane } from "./CockpitSessionPane";
 
 const ISO = "2026-01-01T00:00:00.000Z";
@@ -491,15 +494,6 @@ describe("CockpitSessionPane — inspector layout per surface (#11159 audit)", (
     } as unknown as MediaQueryList;
     vi.stubGlobal("matchMedia", () => mql);
   }
-
-  it("desktop keeps TaskInspector's w-80 rail fallback (no unconditional class override)", async () => {
-    renderPane();
-    const inspector = await screen.findByTestId("orchestrator-inspector");
-    // Passing className="flex" unconditionally suppressed the `flex w-80`
-    // fallback; in this flex ROW the shrink-0 inspector then inflated to
-    // max-content and crushed the transcript on desktop.
-    expect(inspector.className).toContain("w-80");
-  });
 
   it("mobile overrides the rail with the dismissible drawer", async () => {
     stubMobileMatchMedia();

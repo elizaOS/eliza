@@ -30,26 +30,12 @@
 /packages/cloud/sdk/                    @elizaos/backend-leads
 
 # Security and crypto-handling code — mandatory security review.
-/packages/security/                     @elizaos/security-team
+/packages/core/src/security/            @elizaos/security-team @elizaos/runtime-team
+/packages/cloud/api/src/services/audit/ @elizaos/security-team @elizaos/cloud-team
 /packages/vault/                        @elizaos/security-team
-/packages/contracts/                    @elizaos/security-team @elizaos/backend-leads
-
-# Plugin runtime / sandboxing surface.
-# The host-shim cluster (base + android/ios/electrobun) now lives under
-# plugin-remote-manifest/src/host-shim/ (subpath exports).
-/packages/plugin-worker-runtime/        @elizaos/runtime-team
-/packages/plugin-sub-agent-claude-code/ @elizaos/runtime-team @elizaos/security-team
-/packages/plugin-remote-manifest/       @elizaos/runtime-team @elizaos/security-team
 
 # ML / training / hardware.
 /packages/training/                     @elizaos/ml-hw-lead
-/packages/feed/                         @elizaos/ml-hw-lead
-
-# Deployment artifacts.
-/deploy/                                @elizaos/platform-team
-
-# Install / bootstrap surface.
-/install/                               @elizaos/security-team
 
 # Dependency patches.
 /patches/                               @elizaos/backend-leads @elizaos/security-team
@@ -59,10 +45,9 @@
 # knobs that loosen CI: raising a ratchet baseline budgets more debt, and
 # adding a spec to the deny-list silently removes it from PR coverage. A
 # feature PR must not adjust them without an explicit owner review.
-/packages/scripts/type-safety-ratchet-baseline.json    @elizaos/security-team @elizaos/platform-team
 /packages/scripts/type-duplication-audit.baseline.json @elizaos/security-team @elizaos/platform-team
 /packages/scripts/ui-determinism-baseline.json         @elizaos/security-team @elizaos/platform-team
 /packages/app/test/ui-smoke/.pr-deny-list.json         @elizaos/security-team @elizaos/platform-team
 
 # Documentation only — lighter review.
-/docs/security/                         @elizaos/security-team
+/packages/docs/security/                @elizaos/security-team

@@ -72,6 +72,8 @@ function makeRuntime(
 	const runtime: ExecuteToolCallTestRuntime = {
 		actions,
 		getRoom: vi.fn(async () => null),
+		getService: vi.fn(() => undefined),
+		reportError: vi.fn(),
 		logger: {
 			debug: vi.fn(),
 			warn: vi.fn(),
@@ -942,10 +944,6 @@ describe("executePlannedToolCall", () => {
 			"trajectory-1",
 			expect.objectContaining({
 				timestamp: expect.any(Number),
-				agentBalance: 0,
-				agentPoints: 0,
-				agentPnL: 0,
-				openPositions: 0,
 			}),
 		);
 		expect(observedContexts[0]).toMatchObject({
@@ -1012,10 +1010,6 @@ describe("executePlannedToolCall", () => {
 			"trajectory-1",
 			expect.objectContaining({
 				timestamp: expect.any(Number),
-				agentBalance: 0,
-				agentPoints: 0,
-				agentPnL: 0,
-				openPositions: 0,
 			}),
 		);
 		expect(observedContexts[0]).toMatchObject({
@@ -1593,7 +1587,7 @@ describe("executePlannedToolCall", () => {
 			expect(handler).not.toHaveBeenCalled();
 		});
 
-		it("ignores malformed ACTION_ROLE_POLICY (treats as empty)", async () => {
+		it("rejects malformed ACTION_ROLE_POLICY", async () => {
 			process.env.ACTION_ROLE_POLICY = "not-json";
 			_resetActionRolePolicyCacheForTests();
 			const handler = vi.fn(async () => ({ success: true }));
@@ -1602,14 +1596,14 @@ describe("executePlannedToolCall", () => {
 				handler,
 			});
 
-			const result = await executePlannedToolCall(
-				makeRuntime([action]),
-				{ message: makeMessage() },
-				{ name: "PLAIN_ACTION", params: {} },
-			);
-
-			expect(result.success).toBe(true);
-			expect(handler).toHaveBeenCalledOnce();
+			await expect(
+				executePlannedToolCall(
+					makeRuntime([action]),
+					{ message: makeMessage() },
+					{ name: "PLAIN_ACTION", params: {} },
+				),
+			).rejects.toMatchObject({ code: "INVALID_ACTION_ROLE_POLICY" });
+			expect(handler).not.toHaveBeenCalled();
 		});
 
 		it("does not match a policy entry against the action's similes", async () => {
@@ -1665,7 +1659,7 @@ describe("executePlannedToolCall", () => {
 			expect(handler).toHaveBeenCalledOnce();
 		});
 
-		it("ignores policy entries with unrecognized roles instead of granting access", async () => {
+		it("rejects policy entries with unrecognized roles", async () => {
 			process.env.ACTION_ROLE_POLICY = JSON.stringify({ GATED: "MODERATOR" });
 			_resetActionRolePolicyCacheForTests();
 			const handler = vi.fn(async () => ({ success: true }));
@@ -1676,18 +1670,17 @@ describe("executePlannedToolCall", () => {
 				handler,
 			});
 
-			const result = await executePlannedToolCall(
-				makeRuntime([action]),
-				{
-					message: makeMessage(),
-					activeContexts: ["general"],
-					userRoles: ["GUEST"],
-				},
-				{ name: "GATED", params: {} },
-			);
-
-			expect(result.success).toBe(false);
-			expect(String(result.error)).toContain("not allowed");
+			await expect(
+				executePlannedToolCall(
+					makeRuntime([action]),
+					{
+						message: makeMessage(),
+						activeContexts: ["general"],
+						userRoles: ["GUEST"],
+					},
+					{ name: "GATED", params: {} },
+				),
+			).rejects.toMatchObject({ code: "INVALID_ACTION_ROLE_POLICY" });
 			expect(handler).not.toHaveBeenCalled();
 		});
 	});

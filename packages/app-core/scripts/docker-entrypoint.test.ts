@@ -5,11 +5,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
 
-// These tests spawn the docker entrypoint shell scripts through `/bin/sh`,
-// which only exists on POSIX. The Docker images these entrypoints belong
-// to are Linux-only (alpine/debian), so on Windows we skip the whole
-// suite rather than fail. Run on Linux/macOS (or inside WSL) to exercise.
+// The no-auth path is portable across POSIX shells. Root, Tailscale, and
+// privilege-drop behavior belongs to the Linux container contract and relies on
+// executable fixtures that macOS may hold in its provenance scanner.
 const describeIfPosix = process.platform === "win32" ? describe.skip : describe;
+const testIfLinux = process.platform === "linux" ? test : test.skip;
 
 const cloudAgentEntrypoint = path.resolve(
   import.meta.dirname,
@@ -76,29 +76,31 @@ describeIfPosix("docker entrypoint", () => {
     });
   });
 
-  test("starts tailscaled and joins headscale before agent startup", async () => {
-    const root = await mkdtemp(path.join(tmpdir(), "docker-entrypoint-"));
-    const binDir = path.join(root, "bin");
-    const stateDir = path.join(root, "state");
-    const socketPath = path.join(root, "tailscaled.sock");
-    const argsLog = path.join(root, "tailscale-args.log");
-    await mkdir(binDir, { recursive: true });
-    await mkdir(stateDir, { recursive: true });
+  testIfLinux(
+    "starts tailscaled and joins headscale before agent startup",
+    async () => {
+      const root = await mkdtemp(path.join(tmpdir(), "docker-entrypoint-"));
+      const binDir = path.join(root, "bin");
+      const stateDir = path.join(root, "state");
+      const socketPath = path.join(root, "tailscaled.sock");
+      const argsLog = path.join(root, "tailscale-args.log");
+      await mkdir(binDir, { recursive: true });
+      await mkdir(stateDir, { recursive: true });
 
-    await writeExecutable(
-      path.join(binDir, "id"),
-      `#!/bin/sh
+      await writeExecutable(
+        path.join(binDir, "id"),
+        `#!/bin/sh
 if [ "$1" = "-u" ]; then
   printf 0
   exit 0
 fi
 exec /usr/bin/id "$@"
 `,
-    );
+      );
 
-    await writeExecutable(
-      path.join(binDir, "tailscaled"),
-      `#!/bin/sh
+      await writeExecutable(
+        path.join(binDir, "tailscaled"),
+        `#!/bin/sh
 for arg in "$@"; do
   case "$arg" in
     --socket=*) socket="\${arg#--socket=}" ;;
@@ -109,81 +111,85 @@ mkdir -p "$(dirname "$socket")"
 : > "$socket"
 sleep 5
 `,
-    );
+      );
 
-    await writeExecutable(
-      path.join(binDir, "tailscale"),
-      `#!/bin/sh
+      await writeExecutable(
+        path.join(binDir, "tailscale"),
+        `#!/bin/sh
 printf '%s\\n' "$@" > "$TAILSCALE_ARGS_LOG"
 `,
-    );
+      );
 
-    const result = runDockerEntrypoint(
-      {
-        PATH: `${binDir}:/usr/bin:/bin`,
-        PORT: "9999",
-        ELIZA_PORT: "8888",
-        TS_AUTHKEY: "tskey-ci-test",
-        SANDBOX_AGENT_ID: "agent-ci-test",
-        TS_STATE_DIR: stateDir,
-        TS_SOCKET: socketPath,
-        HEADSCALE_URL: "https://headscale.example.test",
-        TS_EXTRA_ARGS: "--accept-routes",
-        TAILSCALE_ARGS_LOG: argsLog,
-      },
-      [
-        "/bin/sh",
-        "-c",
-        'printf "ELIZA_PORT=%s TS_SOCKET=%s" "$ELIZA_PORT" "$TS_SOCKET"',
-      ],
-    );
+      const result = runDockerEntrypoint(
+        {
+          PATH: `${binDir}:/usr/bin:/bin`,
+          PORT: "9999",
+          ELIZA_PORT: "8888",
+          TS_AUTHKEY: "tskey-ci-test",
+          SANDBOX_AGENT_ID: "agent-ci-test",
+          TS_STATE_DIR: stateDir,
+          TS_SOCKET: socketPath,
+          HEADSCALE_URL: "https://headscale.example.test",
+          TS_EXTRA_ARGS: "--accept-routes",
+          TAILSCALE_ARGS_LOG: argsLog,
+        },
+        [
+          "/bin/sh",
+          "-c",
+          'printf "ELIZA_PORT=%s TS_SOCKET=%s" "$ELIZA_PORT" "$TS_SOCKET"',
+        ],
+      );
 
-    expect(result).toMatchObject({
-      code: 0,
-      stdout: `ELIZA_PORT=9999 TS_SOCKET=${socketPath}`,
-    });
+      expect(result).toMatchObject({
+        code: 0,
+        stdout: `ELIZA_PORT=9999 TS_SOCKET=${socketPath}`,
+      });
 
-    const args = await readFile(argsLog, "utf8");
-    expect(args).toContain(`--socket=${socketPath}`);
-    expect(args).toContain("up");
-    expect(args).toContain("--auth-key=tskey-ci-test");
-    expect(args).toContain("--hostname=agent-ci-test");
-    expect(args).toContain("--login-server=https://headscale.example.test");
-    expect(args).toContain("--accept-routes");
-  });
+      const args = await readFile(argsLog, "utf8");
+      expect(args).toContain(`--socket=${socketPath}`);
+      expect(args).toContain("up");
+      expect(args).toContain("--auth-key=tskey-ci-test");
+      expect(args).toContain("--hostname=agent-ci-test");
+      expect(args).toContain("--login-server=https://headscale.example.test");
+      expect(args).toContain("--accept-routes");
+    },
+  );
 
-  test("fails clearly when tailscale is requested but unavailable", async () => {
-    const root = await mkdtemp(
-      path.join(tmpdir(), "docker-entrypoint-missing-tailscale-"),
-    );
-    const binDir = path.join(root, "bin");
-    await mkdir(binDir, { recursive: true });
+  testIfLinux(
+    "fails clearly when tailscale is requested but unavailable",
+    async () => {
+      const root = await mkdtemp(
+        path.join(tmpdir(), "docker-entrypoint-missing-tailscale-"),
+      );
+      const binDir = path.join(root, "bin");
+      await mkdir(binDir, { recursive: true });
 
-    await writeExecutable(
-      path.join(binDir, "id"),
-      `#!/bin/sh
+      await writeExecutable(
+        path.join(binDir, "id"),
+        `#!/bin/sh
 if [ "$1" = "-u" ]; then
   printf 0
   exit 0
 fi
 exec /usr/bin/id "$@"
 `,
-    );
+      );
 
-    const result = runDockerEntrypoint(
-      {
-        PATH: `${binDir}:/usr/bin:/bin`,
-        TS_AUTHKEY: "tskey-ci-test",
-      },
-      ["/bin/sh", "-c", "printf should-not-start"],
-    );
+      const result = runDockerEntrypoint(
+        {
+          PATH: `${binDir}:/usr/bin:/bin`,
+          TS_AUTHKEY: "tskey-ci-test",
+        },
+        ["/bin/sh", "-c", "printf should-not-start"],
+      );
 
-    expect(result.code).toBe(1);
-    expect(result.stderr).toContain(
-      "[docker-entrypoint] TS_AUTHKEY is set but tailscale/tailscaled is not installed",
-    );
-    expect(result.stdout).toBe("");
-  });
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain(
+        "[docker-entrypoint] TS_AUTHKEY is set but tailscale/tailscaled is not installed",
+      );
+      expect(result.stdout).toBe("");
+    },
+  );
 });
 
 describeIfPosix("cloud-agent docker entrypoint", () => {
@@ -202,30 +208,34 @@ describeIfPosix("cloud-agent docker entrypoint", () => {
     });
   });
 
-  test("starts tailscaled, joins headscale, and drops privileges before cloud-agent startup", async () => {
-    const root = await mkdtemp(path.join(tmpdir(), "cloud-agent-entrypoint-"));
-    const binDir = path.join(root, "bin");
-    const stateDir = path.join(root, "state");
-    const socketPath = path.join(root, "tailscaled.sock");
-    const argsLog = path.join(root, "tailscale-args.log");
-    const gosuUserLog = path.join(root, "gosu-user.log");
-    await mkdir(binDir, { recursive: true });
-    await mkdir(stateDir, { recursive: true });
+  testIfLinux(
+    "starts tailscaled, joins headscale, and drops privileges before cloud-agent startup",
+    async () => {
+      const root = await mkdtemp(
+        path.join(tmpdir(), "cloud-agent-entrypoint-"),
+      );
+      const binDir = path.join(root, "bin");
+      const stateDir = path.join(root, "state");
+      const socketPath = path.join(root, "tailscaled.sock");
+      const argsLog = path.join(root, "tailscale-args.log");
+      const gosuUserLog = path.join(root, "gosu-user.log");
+      await mkdir(binDir, { recursive: true });
+      await mkdir(stateDir, { recursive: true });
 
-    await writeExecutable(
-      path.join(binDir, "id"),
-      `#!/bin/sh
+      await writeExecutable(
+        path.join(binDir, "id"),
+        `#!/bin/sh
 if [ "$1" = "-u" ]; then
   printf 0
   exit 0
 fi
 exec /usr/bin/id "$@"
 `,
-    );
+      );
 
-    await writeExecutable(
-      path.join(binDir, "tailscaled"),
-      `#!/bin/sh
+      await writeExecutable(
+        path.join(binDir, "tailscaled"),
+        `#!/bin/sh
 for arg in "$@"; do
   case "$arg" in
     --socket=*) socket="\${arg#--socket=}" ;;
@@ -236,48 +246,49 @@ mkdir -p "$(dirname "$socket")"
 : > "$socket"
 sleep 5
 `,
-    );
+      );
 
-    await writeExecutable(
-      path.join(binDir, "tailscale"),
-      `#!/bin/sh
+      await writeExecutable(
+        path.join(binDir, "tailscale"),
+        `#!/bin/sh
 printf '%s\\n' "$@" > "$TAILSCALE_ARGS_LOG"
 `,
-    );
+      );
 
-    await writeExecutable(
-      path.join(binDir, "gosu"),
-      `#!/bin/sh
+      await writeExecutable(
+        path.join(binDir, "gosu"),
+        `#!/bin/sh
 printf '%s\\n' "$1" > "$GOSU_USER_LOG"
 shift
 exec "$@"
 `,
-    );
+      );
 
-    const result = runEntrypoint(
-      {
-        PATH: `${binDir}:/usr/bin:/bin`,
-        TS_AUTHKEY: "tskey-cloud-test",
-        SANDBOX_AGENT_ID: "agent-cloud-test",
-        TS_STATE_DIR: stateDir,
-        TS_SOCKET: socketPath,
-        HEADSCALE_URL: "https://headscale.example.test",
-        TS_EXTRA_ARGS: "--accept-routes",
-        TAILSCALE_ARGS_LOG: argsLog,
-        GOSU_USER_LOG: gosuUserLog,
-      },
-      ["/bin/sh", "-c", "printf cloud-started"],
-    );
+      const result = runEntrypoint(
+        {
+          PATH: `${binDir}:/usr/bin:/bin`,
+          TS_AUTHKEY: "tskey-cloud-test",
+          SANDBOX_AGENT_ID: "agent-cloud-test",
+          TS_STATE_DIR: stateDir,
+          TS_SOCKET: socketPath,
+          HEADSCALE_URL: "https://headscale.example.test",
+          TS_EXTRA_ARGS: "--accept-routes",
+          TAILSCALE_ARGS_LOG: argsLog,
+          GOSU_USER_LOG: gosuUserLog,
+        },
+        ["/bin/sh", "-c", "printf cloud-started"],
+      );
 
-    expect(result).toMatchObject({ code: 0, stdout: "cloud-started" });
+      expect(result).toMatchObject({ code: 0, stdout: "cloud-started" });
 
-    const args = await readFile(argsLog, "utf8");
-    expect(args).toContain(`--socket=${socketPath}`);
-    expect(args).toContain("up");
-    expect(args).toContain("--auth-key=tskey-cloud-test");
-    expect(args).toContain("--hostname=agent-cloud-test");
-    expect(args).toContain("--login-server=https://headscale.example.test");
-    expect(args).toContain("--accept-routes");
-    await expect(readFile(gosuUserLog, "utf8")).resolves.toBe("agent\n");
-  });
+      const args = await readFile(argsLog, "utf8");
+      expect(args).toContain(`--socket=${socketPath}`);
+      expect(args).toContain("up");
+      expect(args).toContain("--auth-key=tskey-cloud-test");
+      expect(args).toContain("--hostname=agent-cloud-test");
+      expect(args).toContain("--login-server=https://headscale.example.test");
+      expect(args).toContain("--accept-routes");
+      await expect(readFile(gosuUserLog, "utf8")).resolves.toBe("agent\n");
+    },
+  );
 });

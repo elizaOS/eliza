@@ -11,6 +11,7 @@
  * @module plugin-collector
  */
 import { existsSync } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { lifeOpsPassiveConnectorsEnabled } from "@elizaos/core";
 import channelPluginMap from "@elizaos/registry/first-party/channel-plugin-map.json" with {
@@ -50,9 +51,20 @@ const OPTIONAL_CORE_PLUGIN_NAMES = new Set<string>(OPTIONAL_CORE_PLUGINS);
 const STORE_BUILD_LOCAL_EXECUTION_PLUGINS = new Set<string>([
   "agent-orchestrator",
   "@elizaos/plugin-agent-orchestrator",
-  "@elizaos/plugin-shell",
   "@elizaos/plugin-coding-tools",
 ]);
+const requireFromPluginCollector = createRequire(import.meta.url);
+
+function gitpathologistPackageAvailable(): boolean {
+  try {
+    requireFromPluginCollector.resolve(
+      "@elizaos/plugin-gitpathologist/package.json",
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Agent orchestrator ships as the standalone @elizaos/plugin-agent-orchestrator package;
@@ -118,50 +130,20 @@ function gitpathologistRequested(config: ElizaConfig): boolean {
   const raw = process.env.ELIZA_GITPATHOLOGIST?.trim().toLowerCase();
   if (raw === "0" || raw === "false" || raw === "no") return false;
   if (raw === "1" || raw === "true" || raw === "yes") return true;
-  return existsSync(path.join(resolveGitpathologistRepoRoot(), ".git"));
+  return (
+    existsSync(path.join(resolveGitpathologistRepoRoot(), ".git")) &&
+    gitpathologistPackageAvailable()
+  );
 }
 
 /**
- * Birdclaw (@elizaos/plugin-birdclaw) wraps the birdclaw CLI — a local-first
- * Twitter/X archive (https://birdclaw.sh). Auto-loads when the host actually
- * has birdclaw: the `birdclaw` binary on PATH, a `BIRDCLAW_BIN`/`BIRDCLAW_HOME`
- * override, or an existing `~/.birdclaw` data root. Users can force it either
- * way via config `birdclaw: true|false` or ELIZA_BIRDCLAW=1/0.
- */
-function birdclawBinaryOnPath(): boolean {
-  const rawPath = process.env.PATH;
-  if (!rawPath) return false;
-  for (const dir of rawPath.split(path.delimiter)) {
-    if (!dir) continue;
-    if (existsSync(path.join(dir, "birdclaw"))) return true;
-  }
-  return false;
-}
-
-function birdclawRequested(config: ElizaConfig): boolean {
-  const agentEntry = config.agents?.list?.[0];
-  const fromEntry = agentEntry?.birdclaw;
-  const fromDefaults = config.agents?.defaults?.birdclaw;
-  if (typeof fromEntry === "boolean") return fromEntry;
-  if (typeof fromDefaults === "boolean") return fromDefaults;
-  const raw = process.env.ELIZA_BIRDCLAW?.trim().toLowerCase();
-  if (raw === "0" || raw === "false" || raw === "no") return false;
-  if (raw === "1" || raw === "true" || raw === "yes") return true;
-  const bin = process.env.BIRDCLAW_BIN?.trim();
-  if (bin && existsSync(bin)) return true;
-  const home = process.env.BIRDCLAW_HOME?.trim();
-  if (home && existsSync(home)) return true;
-  const userHome = process.env.HOME?.trim();
-  if (userHome && existsSync(path.join(userHome, ".birdclaw"))) return true;
-  return birdclawBinaryOnPath();
-}
-
-/**
- * The opt-in standalone Telegram polling bot (`@elizaos/plugin-telegram-standalone`)
- * only loads when LifeOps passive connectors are explicitly disabled AND
- * `ELIZA_TELEGRAM_STANDALONE_BOT` is truthy — the same gate the plugin's service
- * self-checks. In the default passive-connectors-on posture it never loads, so
- * the passive `@elizaos/plugin-telegram` connector owns the telegram long-poll.
+ * The opt-in standalone Telegram polling bot (the standalone mode of
+ * `@elizaos/plugin-telegram`) only runs when LifeOps passive connectors are
+ * explicitly disabled AND `ELIZA_TELEGRAM_STANDALONE_BOT` is truthy — the same
+ * gate the `TelegramStandaloneService` self-checks. In the default
+ * passive-connectors-on posture the passive telegram connector owns the
+ * long-poll; this gate only ensures the Telegram plugin is loaded so its
+ * standalone service can start.
  */
 function telegramStandaloneRequested(): boolean {
   if (lifeOpsPassiveConnectorsEnabled(null, process.env)) {
@@ -181,6 +163,9 @@ function telegramStandaloneRequested(): boolean {
  */
 const PLUGIN_PACKAGE_ALIASES: Readonly<Record<string, string>> = {
   "@elizaos/plugin-coding-agent": "@elizaos/plugin-coding-tools",
+  "@elizaos/plugin-shell": "@elizaos/plugin-coding-tools",
+  "@elizaos/plugin-discord-local": "@elizaos/plugin-discord",
+  "@elizaos/plugin-telegram-standalone": "@elizaos/plugin-telegram",
   "@homunculuslabs/plugin-zai": "@elizaos/plugin-zai",
 };
 
@@ -241,7 +226,6 @@ export const MODEL_PROVIDER_PLUGIN_NAMES: ReadonlySet<string> = new Set(
 );
 
 const LOCAL_MODEL_PROVIDER_PLUGINS = new Set<string>([
-  "@elizaos/plugin-ollama",
   "@elizaos/plugin-local-inference",
 ]);
 
@@ -296,10 +280,8 @@ const LEGACY_HOST_OWNED_SHORT_ID_MAP: Readonly<Record<string, string>> = {
   repoPrompt: "@elizaos/plugin-repoprompt",
   // plugin-x402 (no registry-entry.json yet).
   x402: "@elizaos/plugin-x402",
-  // plugin-streaming (no registry-entry.json yet).
   // plugin-manager, secrets (SECRETS), trust: now built-in core capabilities.
   // Enable via ENABLE_PLUGIN_MANAGER, ENABLE_SECRETS_MANAGER, ENABLE_TRUST.
-  streaming: "@elizaos/plugin-streaming",
   // Steward wallet plugin — short ID used by auto-enable; third-party npm scope,
   // no first-party registry entry.
   "stwd-eliza-plugin": "@stwd/eliza-plugin",
@@ -548,24 +530,14 @@ export function collectPluginNames(
       "gitpathologist (auto-on when .git/ present; gate ELIZA_GITPATHOLOGIST)",
     );
   }
-  // Mobile never gets birdclaw: the plugin shells out to the birdclaw CLI,
-  // which cannot exist inside a store-build sandbox — gating the whole plugin
-  // (not just spawning) keeps its launcher tile from appearing where the
-  // archive can never load.
-  if (!onMobile && birdclawRequested(config)) {
-    pluginsToLoad.add("@elizaos/plugin-birdclaw");
-    track(
-      "@elizaos/plugin-birdclaw",
-      "birdclaw (auto-on when the birdclaw CLI/data root is present; gate ELIZA_BIRDCLAW)",
-    );
-  }
-  // Opt-in standalone Telegram polling bot. Loaded only when passive connectors
-  // are disabled and ELIZA_TELEGRAM_STANDALONE_BOT is set; its service owns the
-  // Telegraf long-poll lifecycle (previously inlined in the app-core boot tail).
+  // Opt-in standalone Telegram polling bot. When passive connectors are
+  // disabled and ELIZA_TELEGRAM_STANDALONE_BOT is set, load the Telegram
+  // plugin so its self-gating TelegramStandaloneService owns the Telegraf
+  // long-poll lifecycle.
   if (telegramStandaloneRequested()) {
-    pluginsToLoad.add("@elizaos/plugin-telegram-standalone");
+    pluginsToLoad.add("@elizaos/plugin-telegram");
     track(
-      "@elizaos/plugin-telegram-standalone",
+      "@elizaos/plugin-telegram",
       "telegram standalone bot (gate ELIZA_TELEGRAM_STANDALONE_BOT)",
     );
   }
@@ -753,7 +725,9 @@ export function collectPluginNames(
 
   // Enforce feature gating last so allow-list entries cannot bypass it.
   if (shellPluginDisabled) {
-    pluginsToLoad.delete("@elizaos/plugin-shell");
+    // Shell execution ships inside plugin-coding-tools; disabling shell
+    // disables the whole local coding-tools surface.
+    pluginsToLoad.delete("@elizaos/plugin-coding-tools");
   }
   if (storeBuild) {
     for (const pluginName of STORE_BUILD_LOCAL_EXECUTION_PLUGINS) {

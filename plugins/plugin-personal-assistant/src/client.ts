@@ -12,7 +12,7 @@ import type {
 } from "@elizaos/plugin-blocker/services/app-blocker/index";
 // `ElizaClient` comes from the UI barrel so the client extension augments the
 // same class instance used by the frontend shell.
-import { ElizaClient } from "@elizaos/ui/api";
+import { ElizaClient } from "@elizaos/ui/api/client-base";
 import { getAppBlockerPlugin } from "@elizaos/ui/bridge";
 
 function requireAppBlockerPlugin(): AppBlockerPluginLike {
@@ -31,7 +31,7 @@ function requireAppBlockerPlugin(): AppBlockerPluginLike {
   return plugin;
 }
 
-declare module "@elizaos/ui" {
+declare module "@elizaos/ui/api/client-base" {
   interface ElizaClient {
     checkAppBlockerPermissions(): Promise<AppBlockerPermissionResult>;
     requestAppBlockerPermissions(): Promise<AppBlockerPermissionResult>;

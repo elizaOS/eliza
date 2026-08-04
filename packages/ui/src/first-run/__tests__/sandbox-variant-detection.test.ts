@@ -1,3 +1,4 @@
+/** Verifies isAospElizaUserAgent — pure detection contract through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

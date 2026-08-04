@@ -169,16 +169,16 @@ export const followUpsProvider: Provider = {
 				},
 			};
 		} catch (error) {
+			// error-policy:J4 follow-up context becomes explicitly unavailable; a
+			// failed query is not a legitimate zero-follow-up state.
+			runtime.reportError("FollowUpsProvider.get", error, {
+				roomId: _message.roomId,
+			});
 			return {
-				text: "",
-				values: {
-					followUpCount: 0,
-					overdueCount: 0,
-					upcomingCount: 0,
-					suggestionsCount: 0,
-				},
+				text: "Follow-up context is unavailable.",
+				values: { followUpsAvailable: false },
 				data: {
-					followUpCount: 0,
+					available: false,
 					error: error instanceof Error ? error.message : String(error),
 				},
 			};

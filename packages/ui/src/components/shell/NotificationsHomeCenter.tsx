@@ -29,9 +29,8 @@
  * same-direction gesture in the state it already produced is a no-op — this is
  * what makes trackpad momentum safe (the old toggle re-fired on trailing
  * momentum deltas and snapped the shade shut moments after opening it). The
- * footer total (for example, "3 Notifications") opens the shade directly and
- * fades away during expansion, then returns during collapse. Pull/push gestures
- * provide the same directional transition from the surrounding surface.
+ * full inbox is shown on mount. Pull/push gestures provide the directional
+ * transition from the surrounding surface without redundant controls.
  *
  * The pull/wheel gesture NEVER fans a stack, and a drag that starts on a stack
  * still belongs to the shade. Tapping a peek fans that producer group and
@@ -46,7 +45,7 @@
  * row.
  */
 import type { AgentNotification } from "@elizaos/core";
-import { ChevronDown, ChevronUp, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { motion } from "motion/react";
 import {
   type CSSProperties,
@@ -72,7 +71,6 @@ import {
   navigateDeepLink,
 } from "../../state/notifications/navigate-deep-link";
 import {
-  clearNotifications,
   removeNotification,
   removeNotifications,
   retryNotificationHydration,
@@ -86,6 +84,31 @@ import {
   NotificationRow,
   orderDashboardNotifications,
 } from "./notification-shade-content";
+import {
+  CLEAR_CONFIRM_TIMEOUT_MS,
+  EMPTY_PULL_COMMIT_PX,
+  isClickBelowNotificationCards,
+  isInteractiveGestureTarget,
+  MAX_PULL_PREVIEW_GROUPS,
+  MAX_RENDERED_ROWS,
+  MAX_VISIBLE_STACK_LAYERS,
+  POST_DRAG_CLICK_SUPPRESSION_MS,
+  PULL_CANCEL_SETTLE_MS,
+  SHADE_CLOSE_EDGE_PX,
+  SHADE_EASING,
+  SHADE_FLICK_VELOCITY_PX_PER_MS,
+  SHADE_MAX_SETTLE_MS,
+  SHADE_MIN_FLICK_DISTANCE_PX,
+  SHADE_MIN_SETTLE_MS,
+  SHADE_MIN_SETTLE_SPEED_PX_PER_MS,
+  SHADE_MIN_VELOCITY_SAMPLE_MS,
+  SHADE_SETTLE_MS,
+  STACK_BOTTOM_CLEARANCE_PX,
+  STACK_PEEK_OFFSET_PX,
+  touchWithIdentifier,
+  WHEEL_COLLAPSE_STEP_PX,
+  WHEEL_COMMIT_LOCK_MS,
+} from "./notification-shade-gesture-policy";
 
 export {
   __setNotificationRowRenderObserverForTests,
@@ -128,110 +151,6 @@ export {
   PULL_COMMIT_PX,
 } from "./notification-shade-presentation";
 
-/**
- * Upper bound on rendered rows. The store caps the inbox at 300 but painting
- * hundreds of buttons on the always-mounted home hurts low-end mobile; 100
- * matches the HTTP hydrate limit, and dismiss/clear manage volume beyond it.
- */
-const MAX_RENDERED_ROWS = 100;
-
-/**
- * Only the first viewport's stacks participate in the live pull preview.
- * Mounting the full 100-row inbox on the first touchmove stalls the gesture on
- * mobile; the remaining stacks mount after the shade commits and are below the
- * fold.
- */
-const MAX_PULL_PREVIEW_GROUPS = 6;
-
-/** Empty feedback should latch after a normal short pull, not require a full shade drag. */
-const EMPTY_PULL_COMMIT_PX = PULL_COMMIT_PX / 2;
-
-/**
- * Bottom-edge capture for the iOS-style upward close gesture. Keeping this
- * narrow lets the rest of an overflowing list retain native vertical scroll.
- */
-const SHADE_CLOSE_EDGE_PX = 40;
-
-const INTERACTIVE_GESTURE_TARGET_SELECTOR =
-  "button, a, input, textarea, select, [role='button'], [contenteditable='true']";
-
-function isInteractiveGestureTarget(target: EventTarget | null): boolean {
-  return (
-    target instanceof Element &&
-    target.closest(INTERACTIVE_GESTURE_TARGET_SELECTOR) !== null
-  );
-}
-
-function isClickBelowNotificationCards(
-  target: EventTarget | null,
-  clientY: number,
-  center: HTMLElement,
-): boolean {
-  if (!(target instanceof Node) || !center.contains(target)) return false;
-  if (
-    target instanceof Element &&
-    target.closest("[data-notification-group]")
-  ) {
-    return false;
-  }
-  if (isInteractiveGestureTarget(target)) return false;
-  const groups = center.querySelectorAll<HTMLElement>(
-    "[data-notification-group]",
-  );
-  const lastGroup = groups.item(groups.length - 1);
-  if (!lastGroup) return false;
-  const bounds = lastGroup.getBoundingClientRect();
-  return bounds.height > 0 && clientY > bounds.bottom;
-}
-
-function touchWithIdentifier(
-  touches: TouchList,
-  identifier: number,
-): Touch | undefined {
-  for (let index = 0; index < touches.length; index += 1) {
-    const touch = touches[index];
-    if (touch?.identifier === identifier) return touch;
-  }
-  return undefined;
-}
-
-/**
- * Per-event cap (px) on a wheel delta's contribution toward the COLLAPSE
- * commit. Collapse shares its direction with ordinary downward scrolling, so
- * one aggressive flick at the top of an overflowing list must never commit on
- * its first event — with the cap, the commit needs at least two events with
- * the list still at its top, and the first real scroll resets the run.
- * Expansion has no such conflict (the list is already at its top) and stays
- * uncapped.
- */
-const WHEEL_COLLAPSE_STEP_PX = PULL_COMMIT_PX / 2;
-
-/** iOS-style visual depth: one, two, or three cards, never more. */
-const MAX_VISIBLE_STACK_LAYERS = 3;
-
-/** Vertical offset (px) each successive peek card protrudes beneath the top. */
-const STACK_PEEK_OFFSET_PX = 7;
-
-/** Clear space after the final peek before the next notification group. */
-const STACK_BOTTOM_CLEARANCE_PX = 2;
-
-const CLEAR_CONFIRM_TIMEOUT_MS = 5_000;
-const POST_DRAG_CLICK_SUPPRESSION_MS = 180;
-const SHADE_SETTLE_MS = 460;
-const SHADE_MIN_SETTLE_MS = 320;
-const SHADE_MAX_SETTLE_MS = 600;
-const SHADE_MIN_SETTLE_SPEED_PX_PER_MS = 0.15;
-const SHADE_EASING = "cubic-bezier(0.25,0.1,0.25,1)";
-/** Ignore trackpad rebound while the committed shade settle is running. */
-const WHEEL_COMMIT_LOCK_MS = SHADE_SETTLE_MS;
-const PULL_CANCEL_SETTLE_MS = SHADE_SETTLE_MS;
-const SHADE_MIN_FLICK_DISTANCE_PX = 22;
-const SHADE_FLICK_VELOCITY_PX_PER_MS = 0.45;
-const SHADE_MIN_VELOCITY_SAMPLE_MS = 16;
-// The count and clear slots trade the same 40px of list flow space. Their
-// geometry must settle on one clock or a cancelled pull overshoots before the
-// slower slot catches up, making the count reverse direction at the edge.
-const NOTIFICATION_COUNT_RESTORE_MS = SHADE_SETTLE_MS;
 /** The stack fan has enough travel to read clearly without feeling delayed. */
 export const STACK_FAN_SETTLE_MS = 300;
 const STACK_FAN_LAYOUT_TRANSITION = {
@@ -405,15 +324,7 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
   --eliza-notif-opacity-duration: ${STACK_FOLD_SETTLE_MS}ms;
   --eliza-notif-opacity-delay: 0ms;
 }
-.eliza-notif-count-transition {
-  transition:
-    height var(--eliza-notif-settle-duration, ${NOTIFICATION_COUNT_RESTORE_MS}ms) ${SHADE_EASING},
-    margin-bottom var(--eliza-notif-settle-duration, ${NOTIFICATION_COUNT_RESTORE_MS}ms) ${SHADE_EASING},
-    opacity var(--eliza-notif-opacity-duration, var(--eliza-notif-settle-duration, ${NOTIFICATION_COUNT_RESTORE_MS}ms)) ${SHADE_EASING} var(--eliza-notif-opacity-delay, 0ms),
-    transform var(--eliza-notif-settle-duration, ${NOTIFICATION_COUNT_RESTORE_MS}ms) ${SHADE_EASING};
-}
-.eliza-notif-scroll[data-shade-dragging] .eliza-notif-shade-transition,
-.eliza-notif-scroll[data-shade-dragging] .eliza-notif-count-transition {
+.eliza-notif-scroll[data-shade-dragging] .eliza-notif-shade-transition {
   transition: none;
 }
 /* Keep the rim on the gesture surface, but move its fill to the full-size
@@ -532,13 +443,6 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
   animation: none;
   -webkit-mask-image: none;
   mask-image: none;
-}
-/* Count and card shells become independent compositor layers while they trade
-   flow space. Keep cards above the count so its label fades behind their
-   material instead of painting through it during either shade direction. */
-.eliza-notif-scroll [data-notification-count-slot] {
-  position: relative;
-  z-index: 0;
 }
 .eliza-notif-scroll [data-notification-group] {
   position: relative;
@@ -690,7 +594,7 @@ export function NotificationsHomeCenter({
   const reduceMotion = usePrefersReducedMotion();
   // Shade mode: rested (interrupt-tier triage) vs expanded (full inbox).
   // Producer groups stay stacked until individually fanned out.
-  const [shadeExpanded, setShadeExpanded] = useState(false);
+  const [shadeExpanded, setShadeExpanded] = useState(true);
   const [shadeOpenProgress, setShadeOpenProgress] = useState(1);
   useEffect(() => {
     onShadeExpandedChange?.(shadeExpanded);
@@ -727,7 +631,6 @@ export function NotificationsHomeCenter({
   const [confirmingGroupKey, setConfirmingGroupKey] = useState<string | null>(
     null,
   );
-  const [clearAllStage, setClearAllStage] = useState<0 | 1 | 2>(0);
   const [shadeClosing, setShadeClosing] = useState(false);
   const [pullCancellingDirection, setPullCancellingDirection] = useState<
     "expand" | "collapse" | null
@@ -746,16 +649,14 @@ export function NotificationsHomeCenter({
     key: string;
   } | null>(null);
 
-  // Count and stack-peek controls become inert during expansion. Capture a
-  // keyboard opener before that DOM mutation makes the browser blur it.
+  // Stack-peek controls become inert during expansion. Capture a keyboard
+  // opener before that DOM mutation makes the browser blur it.
   const captureShadeFocusBeforeExpand = useCallback(() => {
     const active = document.activeElement;
     if (
       active instanceof HTMLElement &&
       centerRef.current?.contains(active) &&
-      active.closest(
-        "[data-notification-count-slot], [data-notification-stack-peek]",
-      )
+      active.closest("[data-notification-stack-peek]")
     ) {
       shadeFocusReturnRef.current = active;
     }
@@ -844,7 +745,6 @@ export function NotificationsHomeCenter({
         return next;
       });
       setConfirmingGroupKey(null);
-      setClearAllStage(0);
       setShadeExpanded(true);
     },
     [
@@ -881,7 +781,6 @@ export function NotificationsHomeCenter({
         return next;
       });
       setConfirmingGroupKey((current) => (current === key ? null : current));
-      setClearAllStage(0);
     },
     [cancelPullCancellation, cancelStackFold],
   );
@@ -1008,17 +907,17 @@ export function NotificationsHomeCenter({
     };
   }, [expandedStacks, stackGeometryRevision]);
 
-  // Expanding can make the total button or a stack peek inert while it still
-  // owns keyboard focus. Move focus to the corresponding visible collapse
-  // control, then restore the opener only while the shade still owns focus;
-  // another surface such as chat must keep an intentional focus move.
+  // Expanding can make a stack peek inert while it still owns keyboard focus.
+  // Move focus to the corresponding stack control, then restore the opener
+  // only while the shade still owns focus; another surface such as chat must
+  // keep an intentional focus move.
   useLayoutEffect(() => {
     const center = centerRef.current;
     const expandedFocusScope = shadeExpanded && !shadeClosing;
     if (expandedFocusScope) {
       if (shadeFocusReturnRef.current && center) {
         const collapseControl = center.querySelector<HTMLElement>(
-          '[data-testid="notifications-collapse"], [data-testid="notification-stack-collapse"]',
+          '[data-testid="notification-stack-collapse"]',
         );
         (collapseControl ?? center).focus({ preventScroll: true });
       }
@@ -1290,7 +1189,6 @@ export function NotificationsHomeCenter({
   }, []);
 
   const cancelClearConfirmation = useCallback(() => {
-    setClearAllStage(0);
     setConfirmingGroupKey(null);
   }, []);
 
@@ -1322,7 +1220,6 @@ export function NotificationsHomeCenter({
       cancelPullCancellation();
       setShadeClosing(false);
       setShadeExpanded(expanded);
-      setClearAllStage(0);
       setConfirmingGroupKey(null);
       setShadeOpenedByStack(false);
       if (!expanded) {
@@ -1354,10 +1251,6 @@ export function NotificationsHomeCenter({
     }
     setShade(true);
   }, [reduceMotion, setShade, setShadeSettleDuration]);
-
-  const openShadeFromControl = useCallback(() => {
-    beginProgrammaticShadeOpen();
-  }, [beginProgrammaticShadeOpen]);
 
   // Every expansion path must reveal the shade's first row and clear control.
   // Stack taps call expandStack directly (not setShade), and mounting their
@@ -1524,7 +1417,6 @@ export function NotificationsHomeCenter({
         return next;
       });
       setConfirmingGroupKey((current) => (current === key ? null : current));
-      setClearAllStage(0);
       // A stack that opened the shade also closes it, but both layers share
       // this fold clock. Sequencing the shade afterward creates a visible
       // second tail even when the stack itself has already reached rest.
@@ -1559,7 +1451,7 @@ export function NotificationsHomeCenter({
     for (const key of closingStacks) completeStackFold(key);
   }, [closingStacks, completeStackFold, reduceMotion]);
 
-  const hasClearConfirmation = clearAllStage > 0 || confirmingGroupKey !== null;
+  const hasClearConfirmation = confirmingGroupKey !== null;
   useEffect(() => {
     if (!hasClearConfirmation) return;
     const timeout = window.setTimeout(
@@ -2433,7 +2325,6 @@ export function NotificationsHomeCenter({
   const clearProducer = useCallback(
     (key: string, ids: readonly string[]) => {
       if (confirmingGroupKey !== key) {
-        setClearAllStage(0);
         setConfirmingGroupKey(key);
         return;
       }
@@ -2443,40 +2334,24 @@ export function NotificationsHomeCenter({
     },
     [confirmingGroupKey, foldStack],
   );
-  const clearAll = useCallback(() => {
-    if (clearAllStage === 0) {
-      setConfirmingGroupKey(null);
-      setClearAllStage(1);
+  // An emptied-out inbox resets transient gesture and stack state. The first
+  // arrival opens the shade, including persisted notifications that hydrate
+  // after this component's initial empty render. `pullPx` is cleared too: if
+  // the inbox empties mid-pull the touch effect unbinds before touchend, so a
+  // stale translateY would otherwise ride into the next arrival's first paint.
+  useEffect(() => {
+    if (!inboxEmpty) {
+      setShadeExpanded(true);
       return;
     }
-    if (clearAllStage === 1) {
-      setClearAllStage(2);
-      return;
-    }
-    setClearAllStage(0);
-    setConfirmingGroupKey(null);
     cancelAllStackFolds();
+    setShadeExpanded(false);
+    setShadeOpenedByStack(false);
     setOpeningStacks(new Set());
     setExpandedStacks(new Set());
-    void clearNotifications();
-  }, [cancelAllStackFolds, clearAllStage]);
-
-  // An emptied-out inbox resets the shade so the next arrival starts rested.
-  // `pullPx` is cleared too: if the inbox empties mid-pull the touch effect
-  // unbinds before touchend, so a stale translateY would otherwise ride into
-  // the next arrival's first paint.
-  useEffect(() => {
-    if (inboxEmpty) {
-      cancelAllStackFolds();
-      setShadeExpanded(false);
-      setShadeOpenedByStack(false);
-      setOpeningStacks(new Set());
-      setExpandedStacks(new Set());
-      setConfirmingGroupKey(null);
-      setClearAllStage(0);
-      cancelPullCancellation();
-      setPullPx(0);
-    }
+    setConfirmingGroupKey(null);
+    cancelPullCancellation();
+    setPullPx(0);
   }, [cancelAllStackFolds, cancelPullCancellation, inboxEmpty, setPullPx]);
 
   // Build stable rested and expanded projections. During a downward pull,
@@ -2583,32 +2458,14 @@ export function NotificationsHomeCenter({
     committedCloseProgress,
     disposableContentVisibility,
     pullContentVisibility,
-    notificationCountVisibility,
-    notificationCountOffset,
     pullOvershootOffset,
-    collapseControlOvershootOffset,
-    notificationCountLayoutVisibility,
     emptyStateVisibility,
-    collapseControlVisibility,
-    clearControlVisibility,
-    clearControlLayoutVisibility,
   } = notificationPullPresentation(pullPx, shadeExpanded, shadeClosing);
   const disposableLayoutVisibility = 1 - committedCloseProgress;
   const stackLayoutTransition =
     expandedStacks.size > 0 && closingStacks.size === 0
       ? STACK_FAN_LAYOUT_TRANSITION
       : STACK_FOLD_LAYOUT_TRANSITION;
-  const collapseControlPresentationVisibility =
-    collapseControlVisibility * shadeOpenProgress;
-  const collapseControlInteractive =
-    shadeExpanded &&
-    !shadeClosing &&
-    !isPulling &&
-    !pullReleaseSettling &&
-    pullCancellingDirection === null &&
-    collapseControlPresentationVisibility === 1;
-  const showCollapseControl =
-    (shadeExpanded || previewingExpansion) && hasNotifications;
   const onListPointerDown = (e: React.PointerEvent) => {
     if (e.pointerType !== "mouse" || !e.isPrimary) return;
     const el = scrollRef.current;
@@ -2691,45 +2548,6 @@ export function NotificationsHomeCenter({
     e.preventDefault();
     e.stopPropagation();
   };
-  const notificationCountAfterGroupIndex = restedGroups.length - 1;
-  const notificationCount = hasNotifications ? (
-    <li
-      key="notification-count"
-      data-testid="notifications-count"
-      data-notification-count-slot=""
-      aria-hidden={notificationCountVisibility === 0 ? true : undefined}
-      inert={notificationCountVisibility === 0 ? true : undefined}
-      style={{
-        height: `${notificationCountLayoutVisibility * 32}px`,
-        marginBottom: `${(notificationCountLayoutVisibility - 1) * 8}px`,
-        opacity: notificationCountVisibility,
-        transform: `translate3d(0, ${
-          notificationCountOffset + pullOvershootOffset
-        }px, 0)`,
-        transition: isPulling ? "none" : undefined,
-      }}
-      className="eliza-notif-count-transition flex shrink-0 items-center justify-center px-3 text-2xs font-medium text-white/50"
-    >
-      <button
-        type="button"
-        data-testid="notifications-count-button"
-        data-notif-control=""
-        aria-label={`Show all ${notifications.length} notification${notifications.length === 1 ? "" : "s"}`}
-        aria-expanded={shadeExpanded && !shadeClosing}
-        onClick={openShadeFromControl}
-        className="flex h-8 w-full shrink-0 items-center justify-center gap-1 text-inherit transition-colors hover:text-white/70"
-      >
-        {notifications.length === 1
-          ? "1 Notification"
-          : `${notifications.length} Notifications`}
-        <ChevronDown
-          aria-hidden
-          data-testid="notifications-count-chevron"
-          className="h-3 w-3 shrink-0"
-        />
-      </button>
-    </li>
-  ) : null;
   return (
     <section
       ref={centerRef}
@@ -2757,8 +2575,7 @@ export function NotificationsHomeCenter({
       <LiquidGlassRefractionDefs />
       {/* No "Notifications" header, no group eyebrows, no dividers: the
           physical gaps between card clusters ARE the grouping. Directional
-          pull gestures own the shade transition; the collapse command stays
-          pinned to the viewport while notification rows scroll beneath it. */}
+          pull gestures own the shade transition. */}
       <ul
         ref={scrollRef}
         onPointerDown={onListPointerDown}
@@ -2773,64 +2590,17 @@ export function NotificationsHomeCenter({
         data-shade-dragging={isPulling ? "" : undefined}
         data-shade-settling={shadeClosing ? "" : undefined}
         data-shade-release-settling={pullReleaseSettling ? "" : undefined}
-        style={
-          {
-            "--eliza-notif-base-padding": showCollapseControl ? "4px" : "40px",
-          } as CSSProperties
-        }
+        style={{ "--eliza-notif-base-padding": "40px" } as CSSProperties}
         className={cn(
           // select-none: a mouse pull-drag must read as a gesture, not a text
           // selection sweep across the cards (platform-shade idiom).
           "eliza-notif-scroll relative flex min-h-0 touch-pan-y select-none flex-col gap-2 overflow-y-auto overflow-x-hidden overscroll-y-contain px-1.5 pt-1",
-          showCollapseControl ? "flex-[0_1_auto] pb-1" : "flex-1 pb-10",
+          "flex-1 pb-10",
           hasNotifications &&
             "scroll-fade scroll-fade-t-[1.25rem] scroll-fade-b-[1.5rem]",
           shadeClosing && "pointer-events-none",
         )}
       >
-        {hasNotifications ? (
-          <li
-            data-notification-clear-slot=""
-            aria-hidden={clearControlVisibility === 0 ? true : undefined}
-            inert={clearControlVisibility < 1 ? true : undefined}
-            style={{
-              height: clearControlLayoutVisibility * 32,
-              marginBottom: (clearControlLayoutVisibility - 1) * 8,
-              opacity: clearControlVisibility,
-              transform: `translate3d(0, ${
-                (1 - clearControlVisibility) * -8 + pullOvershootOffset
-              }px, 0)`,
-            }}
-            className="eliza-notif-shade-transition flex shrink-0 justify-end overflow-hidden px-2"
-          >
-            <button
-              type="button"
-              data-testid="notifications-clear-all"
-              data-confirming={clearAllStage > 0 ? "true" : undefined}
-              data-clear-stage={clearAllStage}
-              data-notif-control=""
-              aria-label={
-                clearAllStage === 2
-                  ? "Confirm clear all notifications"
-                  : clearAllStage === 1
-                    ? "Continue clearing all notifications"
-                    : "Clear all notifications"
-              }
-              onClick={clearAll}
-              className={cn(
-                "eliza-notif-clear-all eliza-notif-control-transition h-8 shrink-0 overflow-hidden whitespace-nowrap text-xs font-medium text-white/60 transition-[width,color] duration-200 ease-out hover:text-white/90",
-                clearAllStage > 0 && "text-white",
-              )}
-            >
-              <ClearConfirmationContent
-                armingLabel="Clear all"
-                confirmingLabel="Confirm?"
-                confirming={clearAllStage > 0}
-                stage={clearAllStage}
-              />
-            </button>
-          </li>
-        ) : null}
         {!hasNotifications ? (
           <li
             role="status"
@@ -2852,8 +2622,7 @@ export function NotificationsHomeCenter({
             No Notifications
           </li>
         ) : null}
-        {notificationCountAfterGroupIndex < 0 ? notificationCount : null}
-        {groups.flatMap((group, groupIndex) => {
+        {groups.map((group, groupIndex) => {
           const allGroupRows = allGroupRowsByKey.get(group.key) ?? group.rows;
           const groupWasRested = restedGroupKeys.has(group.key);
           const pullRevealed = previewingExpansion && !groupWasRested;
@@ -3170,55 +2939,9 @@ export function NotificationsHomeCenter({
               </div>
             </motion.li>
           );
-          return groupIndex === notificationCountAfterGroupIndex
-            ? [groupElement, notificationCount]
-            : [groupElement];
+          return groupElement;
         })}
       </ul>
-      {showCollapseControl ? (
-        <div
-          data-testid="notifications-collapse-footer"
-          data-notification-collapse-footer=""
-          aria-hidden={!collapseControlInteractive ? true : undefined}
-          inert={!collapseControlInteractive ? true : undefined}
-          style={{
-            opacity: collapseControlPresentationVisibility,
-            transform: `translateY(${
-              (1 - collapseControlPresentationVisibility) * 4 +
-              collapseControlOvershootOffset
-            }px)`,
-            transition: isPulling
-              ? "none"
-              : closingStacks.size > 0
-                ? `opacity ${STACK_FOLD_SETTLE_MS}ms ${SHADE_EASING}, transform ${STACK_FOLD_SETTLE_MS}ms ${SHADE_EASING}`
-                : undefined,
-          }}
-          className="eliza-notif-shade-transition pointer-events-none flex shrink-0 justify-center px-3"
-        >
-          <button
-            type="button"
-            data-testid="notifications-collapse"
-            onClick={(event) => {
-              if (event.detail === 0) {
-                shadeFocusReturnRef.current =
-                  centerRef.current?.querySelector<HTMLElement>(
-                    '[data-testid="notifications-count-button"]',
-                  ) ?? null;
-              }
-              requestShadeCollapse();
-            }}
-            className={cn(
-              "flex min-h-touch items-center justify-center gap-1 px-2 text-2xs font-medium text-white/55 transition-colors hover:text-white/90",
-              collapseControlInteractive
-                ? "pointer-events-auto"
-                : "pointer-events-none",
-            )}
-          >
-            Collapse
-            <ChevronUp aria-hidden className="h-3 w-3 shrink-0" />
-          </button>
-        </div>
-      ) : null}
     </section>
   );
 }

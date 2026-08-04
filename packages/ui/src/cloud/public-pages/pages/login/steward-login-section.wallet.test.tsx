@@ -1,3 +1,4 @@
+/** Verifies StewardLoginSection — wallet sign-in gating (SIWE/SIWS port) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

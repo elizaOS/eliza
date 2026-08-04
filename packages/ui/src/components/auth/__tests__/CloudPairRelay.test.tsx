@@ -1,3 +1,4 @@
+/** Verifies CloudPairRelay through the package's configured test harness. */
 // @vitest-environment jsdom
 
 import { readFileSync } from "node:fs";

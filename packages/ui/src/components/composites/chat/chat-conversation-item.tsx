@@ -287,7 +287,7 @@ export const ChatConversationItem = memo(function ChatConversationItem({
 
       {isConfirmingDelete ? (
         <div className="flex flex-shrink-0 items-center gap-1.5 rounded-sm border border-danger/30 bg-destructive-subtle px-2 py-1 ">
-          <span className="text-2xs font-medium text-danger">
+          <span className="text-2xs font-medium text-txt-strong">
             {labels.deleteConfirm ?? "Delete?"}
           </span>
           <Button

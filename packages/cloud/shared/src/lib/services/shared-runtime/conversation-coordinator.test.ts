@@ -35,11 +35,13 @@ describe("shared conversation coordinator", () => {
   test("routes bridge, stream, and history through one room object", async () => {
     const names: string[] = [];
     const envelopes: unknown[] = [];
+    const signals: Array<AbortSignal | null | undefined> = [];
     const namespace = {
       getByName(name: string) {
         names.push(name);
         return {
           fetch: async (_input: RequestInfo | URL, init?: RequestInit) => {
+            signals.push(init?.signal);
             const envelope = JSON.parse(String(init?.body));
             envelopes.push(envelope);
             if (envelope.operation === "stream") {
@@ -74,12 +76,19 @@ describe("shared conversation coordinator", () => {
       params: { text: "hi", roomId: "room-1" },
     };
     const executionCtx = { waitUntil() {} };
+    const abortController = new AbortController();
 
     expect(
       (await coordinateSharedBridge(agent, rpc, { namespace, executionCtx })).result?.text,
     ).toBe("coordinated");
     expect(
-      await (await coordinateSharedStream(agent, rpc, { namespace, executionCtx }))?.text(),
+      await (
+        await coordinateSharedStream(agent, rpc, {
+          abortSignal: abortController.signal,
+          namespace,
+          executionCtx,
+        })
+      )?.text(),
     ).toContain("event: done");
     expect(await coordinateSharedHistory("agent-1", "room-1", { namespace })).toEqual([
       { role: "assistant", content: "cached" },
@@ -91,6 +100,7 @@ describe("shared conversation coordinator", () => {
       "stream",
       "history",
     ]);
+    expect(signals).toEqual([undefined, abortController.signal, undefined]);
     expect(directBridge).not.toHaveBeenCalled();
     expect(directStream).not.toHaveBeenCalled();
     expect(directHistory).not.toHaveBeenCalled();

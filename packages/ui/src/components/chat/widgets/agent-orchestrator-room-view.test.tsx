@@ -1,3 +1,4 @@
+/** Verifies OrchestratorRoomView through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // OrchestratorRoomView presentation: empty state, hiding terminal rooms from the

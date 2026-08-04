@@ -32,7 +32,11 @@ import { ModelType } from "../../../../types/index.ts";
 import { parseKeyValueXml } from "../../../../utils.ts";
 import { getSendPolicy } from "../send-policy.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
-import type { DraftRecord, DraftRequest } from "../types.ts";
+import {
+	type DraftRecord,
+	type DraftRequest,
+	NotYetImplementedError,
+} from "../types.ts";
 import {
 	bodyParameter,
 	draftIdParameter,
@@ -102,9 +106,9 @@ function normalizeSource(value: unknown): string | undefined {
  * Extract the outbound-draft fields (platform, recipient, message body) the user
  * asked to send, using the model's structured output instead of English-only
  * regex/keyword parsing (#10470). Fields the request doesn't specify come back
- * empty; the caller still enforces that a body + recipient are present. Falls
- * back to `{}` (no extraction) if the model call fails — the action then reports
- * the missing details, never a wrong guess.
+ * empty; the caller still enforces that a body + recipient are present. Model
+ * failures propagate through the action boundary so an outage is never
+ * presented as missing user input.
  */
 async function extractOutboundDraftFromText(
 	runtime: IAgentRuntime,
@@ -122,17 +126,7 @@ Return ONLY this XML, leaving a field empty when the request does not specify it
 <recipient>who to send to (a name, @handle, or contact), or empty</recipient>
 <body>the exact message text to send, or empty</body>
 </response>`;
-	let raw: string;
-	try {
-		raw = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
-	} catch (error) {
-		logger.warn(
-			`[SendDraft] outbound-draft extraction failed: ${
-				error instanceof Error ? error.message : String(error)
-			}`,
-		);
-		return {};
-	}
+	const raw = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
 	// Tolerate models that omit the wrapper or wrap the XML in a code fence —
 	// parseKeyValueXml reads the direct children of a <response> block.
 	const cleaned = raw.replace(/```(?:xml)?/gi, "").trim();
@@ -334,11 +328,14 @@ export const sendDraftAction: Action = {
 					channelId: draftParsed.channelId,
 				});
 			} catch (error) {
-				const messageText =
-					error instanceof Error ? error.message : String(error);
-				if (!/NotYetImplemented|createDraft/i.test(messageText)) {
+				if (!(error instanceof NotYetImplementedError)) {
 					throw error;
 				}
+				// error-policy:J4 Adapters may explicitly decline remote draft creation;
+				// a `local:` draft is a visibly distinct, sendable confirmation artifact.
+				runtime.reportError("SendDraft.remoteDraftUnavailable", error, {
+					source: draftParsed.source,
+				});
 				record = saveLocalOutboundDraft({
 					service,
 					source: draftParsed.source,

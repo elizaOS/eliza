@@ -44,7 +44,6 @@ afterEach(() => {
 const emptyConfig: ElizaConfig = {} as ElizaConfig;
 
 const HEAVY = [
-  "@elizaos/plugin-shell",
   "@elizaos/plugin-coding-tools",
   "@elizaos/plugin-browser",
   "agent-orchestrator",
@@ -60,7 +59,7 @@ describe("collectPluginNames lean-chat plugin set (#8434)", () => {
     // Lean chat keeps the conversational essentials.
     expect(names.has("@elizaos/plugin-sql")).toBe(true);
     expect(names.has("@elizaos/plugin-app-control")).toBe(true);
-    expect(names.has("@elizaos/plugin-simple-views")).toBe(true);
+    expect(names.has("@elizaos/plugin-notes")).toBe(true);
     expect(names.has("@elizaos/plugin-commands")).toBe(true);
     expect(names.has("@elizaos/plugin-agent-skills")).toBe(true);
 
@@ -92,7 +91,6 @@ describe("collectPluginNames lean-chat plugin set (#8434)", () => {
       features: { shell: true, codingTools: true, browser: true },
     } as ElizaConfig;
     const names = collectPluginNames(config);
-    expect(names.has("@elizaos/plugin-shell")).toBe(false);
     expect(names.has("@elizaos/plugin-coding-tools")).toBe(false);
     expect(names.has("@elizaos/plugin-browser")).toBe(false);
   });
@@ -123,7 +121,6 @@ describe("collectPluginNames lean-chat plugin set (#8434)", () => {
     // Cloud embedding slot yielded so plugin-elizacloud doesn't also register.
     expect(process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBe("false");
     // The rest of the lean exclusions still hold - only local-inference is kept.
-    expect(names.has("@elizaos/plugin-shell")).toBe(false);
     expect(names.has("@elizaos/plugin-coding-tools")).toBe(false);
     expect(names.has("@elizaos/plugin-wallet")).toBe(false);
   });
@@ -157,9 +154,8 @@ describe("collectPluginNames lean-chat plugin set (#8434)", () => {
   it("leaves the default (non-lean) desktop set carrying the full surfaces", () => {
     // No ELIZA_PLUGIN_SET → default CORE_PLUGINS seed on desktop.
     const names = collectPluginNames(emptyConfig);
-    expect(names.has("@elizaos/plugin-shell")).toBe(true);
     expect(names.has("@elizaos/plugin-coding-tools")).toBe(true);
     expect(names.has("@elizaos/plugin-browser")).toBe(true);
-    expect(names.has("@elizaos/plugin-simple-views")).toBe(false);
+    expect(names.has("@elizaos/plugin-notes")).toBe(false);
   });
 });

@@ -1,3 +1,4 @@
+/** Verifies root @elizaos/ui import is broker-scoped, not an escape hatch (#14237) through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // The root `@elizaos/ui` host-external must not be a broker escape hatch

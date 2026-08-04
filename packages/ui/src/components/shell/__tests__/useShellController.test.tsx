@@ -1,3 +1,4 @@
+/** Verifies useShellController through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // The shell controller hook end to end in jsdom: conversation load watchdog,

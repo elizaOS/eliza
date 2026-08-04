@@ -526,7 +526,7 @@ export function CustomActionEditor({
                   {generating ? "Generating..." : "Generate"}
                 </Button>
               </div>
-              <span className="text-xs text-muted/70">
+              <span className="text-xs text-muted">
                 {t("customactioneditor.TheAgentWillGener")}
               </span>
             </div>
@@ -575,7 +575,7 @@ export function CustomActionEditor({
               placeholder={t("customactioneditor.SYNONYMONESYNONYM")}
               className={`flex-1 ${editorInputClassName}`}
             />
-            <span className="text-xs text-muted/70">
+            <span className="text-xs text-muted">
               {t("customactioneditor.CommaSeparatedAlte")}
             </span>
           </div>
@@ -725,7 +725,7 @@ export function CustomActionEditor({
                 rows={4}
                 className={editorMonoTextareaClassName}
               />
-              <span className="text-xs text-muted/70">
+              <span className="text-xs text-muted">
                 {t("streamsettings.Use")} {`{{paramName}}`}{" "}
                 {t("customactioneditor.forParameterSubsti")}
               </span>
