@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { runInNewContext } from "node:vm";
-import { appDevWsBasePlugin } from "./vite.config";
+import { appDevWsBasePlugin, resolveLocalCspSources } from "./vite.config";
 
 describe("appDevWsBasePlugin", () => {
   test("injects same-origin ws/wss bases without a machine-local address", () => {
@@ -40,5 +40,29 @@ describe("appDevWsBasePlugin", () => {
       expect(window.__ELIZAOS_WS_BASE__).toBe(expected);
       expect(window.__ELIZA_WS_BASE__).toBe(expected);
     }
+  });
+});
+
+describe("resolveLocalCspSources", () => {
+  test("permits paired Android transports whose private-LAN host is selected at runtime", () => {
+    expect(resolveLocalCspSources("android", false)).toEqual({
+      localHttpSources: " http://localhost:* http://127.0.0.1:*",
+      localConnectSources: " http: ws:",
+    });
+  });
+
+  test("keeps non-Android cleartext access limited to loopback", () => {
+    expect(resolveLocalCspSources("ios", false)).toEqual({
+      localHttpSources: " http://localhost:* http://127.0.0.1:*",
+      localConnectSources:
+        " http://localhost:* ws://localhost:* wss://localhost:* http://127.0.0.1:* ws://127.0.0.1:* wss://127.0.0.1:*",
+    });
+  });
+
+  test("keeps iOS store builds free of all cleartext sources", () => {
+    expect(resolveLocalCspSources("ios", true)).toEqual({
+      localHttpSources: "",
+      localConnectSources: "",
+    });
   });
 });

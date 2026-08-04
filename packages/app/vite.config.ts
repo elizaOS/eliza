@@ -968,12 +968,10 @@ function appShellMetadataPlugin(): Plugin {
     CAPACITOR_BUILD_TARGET === "ios" &&
     (process.env.ELIZA_BUILD_VARIANT === "store" ||
       process.env.ELIZA_RELEASE_AUTHORITY === "apple-app-store");
-  const localHttpSources = isIosStoreBuild
-    ? ""
-    : " http://localhost:* http://127.0.0.1:*";
-  const localConnectSources = isIosStoreBuild
-    ? ""
-    : " http://localhost:* ws://localhost:* wss://localhost:* http://127.0.0.1:* ws://127.0.0.1:* wss://127.0.0.1:*";
+  const { localHttpSources, localConnectSources } = resolveLocalCspSources(
+    CAPACITOR_BUILD_TARGET,
+    isIosStoreBuild,
+  );
   const manifest = `${JSON.stringify(
     {
       name: APP_SHELL_METADATA.appName,
@@ -1039,6 +1037,30 @@ function appShellMetadataPlugin(): Plugin {
         source: manifest,
       });
     },
+  };
+}
+
+export function resolveLocalCspSources(
+  capacitorBuildTarget: string,
+  isIosStoreBuild: boolean,
+): { localHttpSources: string; localConnectSources: string } {
+  if (isIosStoreBuild) {
+    return { localHttpSources: "", localConnectSources: "" };
+  }
+
+  const localHttpSources = " http://localhost:* http://127.0.0.1:*";
+  if (capacitorBuildTarget === "android") {
+    // Paired Android shells discover the host at runtime, so its private-LAN
+    // address cannot be enumerated at build time. API-base validation still
+    // limits accepted cleartext hosts to loopback/private addresses, while the
+    // CSP must permit the resulting REST/EventSource and WebSocket transports.
+    return { localHttpSources, localConnectSources: " http: ws:" };
+  }
+
+  return {
+    localHttpSources,
+    localConnectSources:
+      " http://localhost:* ws://localhost:* wss://localhost:* http://127.0.0.1:* ws://127.0.0.1:* wss://127.0.0.1:*",
   };
 }
 
