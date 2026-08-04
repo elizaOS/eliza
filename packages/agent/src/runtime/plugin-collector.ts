@@ -11,6 +11,7 @@
  * @module plugin-collector
  */
 import { existsSync } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { lifeOpsPassiveConnectorsEnabled } from "@elizaos/core";
 import channelPluginMap from "@elizaos/registry/first-party/channel-plugin-map.json" with {
@@ -52,6 +53,18 @@ const STORE_BUILD_LOCAL_EXECUTION_PLUGINS = new Set<string>([
   "@elizaos/plugin-agent-orchestrator",
   "@elizaos/plugin-coding-tools",
 ]);
+const requireFromPluginCollector = createRequire(import.meta.url);
+
+function gitpathologistPackageAvailable(): boolean {
+  try {
+    requireFromPluginCollector.resolve(
+      "@elizaos/plugin-gitpathologist/package.json",
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Agent orchestrator ships as the standalone @elizaos/plugin-agent-orchestrator package;
@@ -117,7 +130,10 @@ function gitpathologistRequested(config: ElizaConfig): boolean {
   const raw = process.env.ELIZA_GITPATHOLOGIST?.trim().toLowerCase();
   if (raw === "0" || raw === "false" || raw === "no") return false;
   if (raw === "1" || raw === "true" || raw === "yes") return true;
-  return existsSync(path.join(resolveGitpathologistRepoRoot(), ".git"));
+  return (
+    existsSync(path.join(resolveGitpathologistRepoRoot(), ".git")) &&
+    gitpathologistPackageAvailable()
+  );
 }
 
 /**

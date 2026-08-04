@@ -100,10 +100,6 @@ describe("publicLinkSensitiveRequestAdapter", () => {
     }
   });
 
-  it("declares the public_link target", () => {
-    expect(publicLinkSensitiveRequestAdapter.target).toBe("public_link");
-  });
-
   it("returns a public URL for any_payer payment with appId", async () => {
     const request = buildRequest();
     const result = await publicLinkSensitiveRequestAdapter.deliver({

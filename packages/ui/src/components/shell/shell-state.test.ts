@@ -94,11 +94,12 @@ describe("selectVisibleShellMessages (#9141 gap 4 windowing)", () => {
   });
 
   it("defaults to the exported render cap", () => {
-    expect(MAX_RENDERED_SHELL_MESSAGES).toBe(80);
     const big = Array.from({ length: 100 }, (_, i) =>
       msg(`m${i}`, "user", `t${i}`),
     );
-    expect(selectVisibleShellMessages(big, "idle")).toHaveLength(80);
+    expect(selectVisibleShellMessages(big, "idle")).toHaveLength(
+      MAX_RENDERED_SHELL_MESSAGES,
+    );
   });
 
   it("is exhaustive over ShellPhase for the empty-assistant exception", () => {

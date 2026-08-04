@@ -659,7 +659,7 @@ async function registerStaticPluginPhase(
         if (registration.required) {
           throw new Error(`${registration.packageName} resolved to null`);
         }
-        logger.warn(
+        logger.debug(
           `[boot] ${registration.packageName} skipped after ${Date.now() - startedAt}ms: module unavailable`,
         );
         return;
@@ -678,7 +678,7 @@ async function registerStaticPluginPhase(
         );
         throw err;
       }
-      logger.warn(
+      logger.debug(
         `[boot] ${registration.packageName} skipped after ${elapsed}ms: ${formatError(err)}`,
       );
     }
@@ -1028,15 +1028,11 @@ export async function configureLocalEmbeddingPlugin(
   );
 
   setEnvIfMissing("MODELS_DIR", path.join(resolveStateDir(), "models"));
-  const documentEmbeddingProvider = process.env.EMBEDDING_PROVIDER?.trim();
-  if (
-    !documentEmbeddingProvider ||
-    !["local", "openai", "google"].includes(
-      documentEmbeddingProvider.toLowerCase(),
-    )
-  ) {
-    process.env.EMBEDDING_PROVIDER = "local";
-  }
+  // The local app owns embeddings on-device. Remote embedding providers remain
+  // available to cloud-hosted deployments, but an app-side OPENAI/GOOGLE value
+  // must not turn a local boot into a network embedding path. The caller gates
+  // this configuration off when cloud embeddings are explicitly enabled.
+  process.env.EMBEDDING_PROVIDER = "local";
 
   logger.info(
     `[eliza] Configured local embedding env: ${process.env.LOCAL_EMBEDDING_MODEL} (repo: ${process.env.LOCAL_EMBEDDING_MODEL_REPO ?? "auto"}, dims: ${process.env.LOCAL_EMBEDDING_DIMENSIONS ?? "auto"}, ctx: ${process.env.LOCAL_EMBEDDING_CONTEXT_SIZE ?? "auto"}, GPU: ${process.env.LOCAL_EMBEDDING_GPU_LAYERS}, mmap: ${process.env.LOCAL_EMBEDDING_USE_MMAP})`,
@@ -2233,7 +2229,13 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
   } else if (cloudEmbeddingsPolicy === "false" || hasByoEmbeddingProvider) {
     process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS = "false";
   } else {
-    delete process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS;
+    // The app host owns embedding policy. Leaving this unset delegates the
+    // choice to plugin-elizacloud, whose standalone default is to register its
+    // 1536-dim OpenAI-backed handler. That made a connected Cloud account
+    // silently replace the app's local gte-small path and retry /embeddings
+    // over the network. Keep the plugin's cloud capability available, but make
+    // local 384-dim embeddings the explicit app default.
+    process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS = "false";
   }
   setCloudUsageEnv("ELIZAOS_CLOUD_USE_RPC", topology.services.rpc);
 
@@ -4590,6 +4592,11 @@ export async function startEliza(
   // before construction prevents cancellation during plugin/config resolution
   // from creating an unowned runtime after bootElizaRuntime returns.
   opts?.abortSignal?.throwIfAborted();
+  // Establish local embedding ownership before buildRuntimeSettings snapshots
+  // process.env into the per-agent settings map. The later deferred call stays
+  // as an idempotent guard before bundled-document seeding.
+  await configureLocalEmbeddingEnvEarlyIfNeeded(config);
+  opts?.abortSignal?.throwIfAborted();
   bootContext.enterPhase("construct-runtime");
   let runtime = new AgentRuntime({
     character,
@@ -4683,7 +4690,10 @@ export async function startEliza(
   //     video) are NOT essential to the chat path and are loaded in the
   //     background after the runtime is ready — see runDeferredBoot below.
   logger.info("[eliza] Pre-registering roles capability...");
-  await runtime.registerPlugin(rolesPlugin);
+  // AgentRuntime installs the same core roleAction during initialize(). This
+  // early plugin owns role state/provider bootstrap only; registering the
+  // identical action twice made every healthy boot emit a collision warning.
+  await runtime.registerPlugin({ ...rolesPlugin, actions: [] });
   logger.info("[eliza] ✓ roles capability pre-registered");
   bootTimer.lap("svc:roles-register");
 
@@ -4761,9 +4771,13 @@ export async function startEliza(
     // layer too — the deferred re-probe below re-enables embeddings if a
     // provider recovers once late plugins register.
     if (runtime.isEmbeddingGenerationDisabled()) {
-      logger.warn(
-        "[eliza] boot continuing with embedding generation disabled: every registered TEXT_EMBEDDING provider failed the dimension probe; memory writes persist without vectors until the deferred re-probe finds a working provider",
-      );
+      const message =
+        "[eliza] boot continuing with embedding generation disabled: memory writes persist without vectors until the deferred re-probe finds a working provider";
+      if (process.env.EMBEDDING_PROVIDER === "local") {
+        logger.info(`${message} (local handler registration is pending)`);
+      } else {
+        logger.warn(message);
+      }
     }
     // Fast-path, no-wait: wrap useModel for compaction/tracing now so the very
     // first turn runs through the optimized prompt path.
@@ -5158,8 +5172,20 @@ export async function startEliza(
     await ensureModel(modelsDir, modelRepo, model, false);
   };
 
-  const startEmbeddingWarmup = (abortSignal: AbortSignal): Promise<void> =>
-    warmEmbeddingModel(abortSignal).catch((err) => {
+  const startEmbeddingWarmup = async (
+    abortSignal: AbortSignal,
+  ): Promise<void> => {
+    try {
+      await warmEmbeddingModel(abortSignal);
+      abortSignal.throwIfAborted();
+      // A clean install can reach the deferred dimension probe before the GGUF
+      // download completes. Re-probe after warmup so the runtime recovers to
+      // dim384 on the same boot instead of remaining vector-disabled until the
+      // next process restart.
+      if (process.env.EMBEDDING_PROVIDER?.trim().toLowerCase() === "local") {
+        await runtime.ensureEmbeddingDimension();
+      }
+    } catch (err) {
       if (abortSignal.aborted) throw err;
       // error-policy:J7 First use can retry the download, while reportError
       // keeps the degraded warmup visible to the agent and operator.
@@ -5167,7 +5193,8 @@ export async function startEliza(
       logger.warn(
         `[eliza] Embedding model warmup failed (will retry on first use): ${formatError(err)}`,
       );
-    });
+    }
+  };
 
   // Per-agent EVM + Solana wallet bootstrap is DEFERRED off the boot critical
   // path: it runs after the runtime is reachable as runtime-owned deferred

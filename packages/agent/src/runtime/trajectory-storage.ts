@@ -923,7 +923,17 @@ export async function installDatabaseTrajectoryLogger(
   patchedLoggers.add(loggerObject);
 
   void ensureTrajectoriesTable(runtime).catch((err) => {
-    coreLogger.warn(`[trajectory] Trajectories table init failed: ${err}`);
+    const cause =
+      err instanceof Error && "cause" in err ? err.cause : undefined;
+    coreLogger.warn(
+      {
+        err,
+        cause: cause instanceof Error ? cause.message : String(cause),
+        src: "eliza",
+        subsystem: "trajectory-db",
+      },
+      "[trajectory] Trajectories table init failed",
+    );
   });
 }
 

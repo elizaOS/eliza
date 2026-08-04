@@ -236,7 +236,7 @@ export function validateViewActionMap(
 export function validateViewCoverage(
   registeredViewIds: Iterable<string>,
   viewsWithCapabilities: Iterable<string>,
-  logger?: { warn: (msg: string) => void },
+  logger?: { warn: (msg: string) => void; debug?: (msg: string) => void },
 ): string[] {
   const mapped = new Set(Object.keys(viewActionAffinityMap()));
   const withCaps = new Set(viewsWithCapabilities);
@@ -244,8 +244,13 @@ export function validateViewCoverage(
   for (const viewId of registeredViewIds) {
     if (mapped.has(viewId) || withCaps.has(viewId)) continue;
     uncovered.push(viewId);
-    logger?.warn(
+    logger?.debug?.(
       `[eliza] view "${viewId}" declares no relatedActions and no ViewCapability — its domain actions are not weighted while it is foreground (agent-surface element control still works)`,
+    );
+  }
+  if (uncovered.length > 0) {
+    logger?.warn(
+      `[eliza] view coverage: ${uncovered.length} view${uncovered.length === 1 ? "" : "s"} declare no relatedActions or ViewCapability (${uncovered.join(", ")}) — domain actions are not foreground-weighted`,
     );
   }
   return uncovered;

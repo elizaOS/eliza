@@ -34,11 +34,6 @@ const EXPECTED_ACTIONS = [
 ];
 
 describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
-  it("exports a Plugin with the expected name", () => {
-    expect(codingToolsPlugin.name).toBe("coding-tools");
-    expect(codingToolsPlugin.description).toBeTruthy();
-  });
-
   it("registers the consolidated top-level coding actions", () => {
     const actions = codingToolsPlugin.actions ?? [];
     const names = actions.map((a) => a.name).sort();

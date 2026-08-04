@@ -147,5 +147,6 @@ export type {
 export {
   createVault,
   resolveDefaultVaultDataDir,
+  VaultDecryptionError,
   VaultMissError,
 } from "./vault.js";

@@ -733,13 +733,44 @@ function resolveFusedEmbedBundleRoot(
  * resident text vocab — retiring the node-llama-cpp / libllama embedding path.
  * `null` once resolution fails (the handler then falls back).
  */
-let fusedEmbedHandlePromise: Promise<{
+type FusedEmbeddingHandle = {
 	ffi: import("../services/voice/ffi-bindings").ElizaInferenceFfi;
 	ctx: import("../services/voice/ffi-bindings").ElizaInferenceContextHandle;
 	embed: NonNullable<
 		import("../services/voice/ffi-bindings").ElizaInferenceFfi["embed"]
 	>;
-} | null> | null;
+};
+
+let fusedEmbedHandlePromise: Promise<FusedEmbeddingHandle | null> | null = null;
+let liveFusedEmbeddingHandle: FusedEmbeddingHandle | null = null;
+let fusedEmbeddingExitCleanupInstalled = false;
+
+function installFusedEmbeddingExitCleanup(): void {
+	if (fusedEmbeddingExitCleanupInstalled) return;
+	fusedEmbeddingExitCleanupInstalled = true;
+	process.once("exit", () => {
+		const handle = liveFusedEmbeddingHandle;
+		liveFusedEmbeddingHandle = null;
+		if (!handle) return;
+		try {
+			handle.ffi.destroy(handle.ctx);
+		} catch (error) {
+			// error-policy:J6 process-exit teardown is best-effort; the process is
+			// already terminating, but the dylib close must still be attempted.
+			logger.debug(
+				`[local-inference] fused embedding context teardown failed during exit: ${String(error)}`,
+			);
+		}
+		try {
+			handle.ffi.close();
+		} catch (error) {
+			// error-policy:J6 process-exit teardown cannot be retried safely.
+			logger.debug(
+				`[local-inference] fused embedding library close failed during exit: ${String(error)}`,
+			);
+		}
+	});
+}
 
 // A null resolution is retried on the next embed rather than cached for the
 // process lifetime — the boot dimension-probe can call getFusedEmbeddingHandle
@@ -797,10 +828,13 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
 				return null;
 			}
 			const ctx = ffi.create(bundleRoot);
+			const handle = { ffi, ctx, embed: ffi.embed };
+			liveFusedEmbeddingHandle = handle;
+			installFusedEmbeddingExitCleanup();
 			logger.info(
 				`[local-inference] Desktop embeddings via fused libelizainference (eliza_inference_embed) anchored at ${bundleRoot} — node-llama-cpp embedding path retired`,
 			);
-			return { ffi, ctx, embed: ffi.embed };
+			return handle;
 		})().catch((e) => {
 			logger.warn(
 				`[local-inference] fused embed init threw: ${e instanceof Error ? e.message : String(e)}`,
@@ -1541,21 +1575,25 @@ export async function ensureLocalInferenceHandler(
 		);
 	}
 
-	// Pre-flight: if no backend is available, skip handler registration
-	// entirely so we don't advertise a handler that will throw. The device
-	// bridge is always "available" in the sense that it parks calls until a
-	// device connects, so if it is enabled we always register handlers.
-	if (
-		!bionicHostRegistered &&
-		!aospRegistered &&
-		!capacitorRegistered &&
-		!deviceBridgeEnabled &&
-		!(await localInferenceEngine.available())
-	) {
+	// Text/voice availability and embedding availability are independent on
+	// desktop. gte-small uses the dedicated fused embedding entry point and can
+	// be present even when no generative model/backend is active. The old
+	// process-wide preflight returned here and therefore never registered the
+	// perfectly usable local 384-dim embedder; the runtime then pinned Eliza
+	// Cloud's synthetic 1536-dim probe and every real embedding hit the network.
+	// Keep text handlers registered (their router gate already drops unavailable
+	// local candidates), but only advertise voice/vision when a general backend
+	// is actually available.
+	const generalBackendAvailable =
+		bionicHostRegistered ||
+		aospRegistered ||
+		capacitorRegistered ||
+		deviceBridgeEnabled ||
+		(await localInferenceEngine.available());
+	if (!generalBackendAvailable) {
 		logger.debug(
-			"[local-inference] No local inference backend available; skipping model registration",
+			"[local-inference] No general local inference backend available; local text candidates stay dormant while the independent desktop embedding path remains registered",
 		);
-		return;
 	}
 
 	// First-light convenience: when exactly one model is installed and no
@@ -1662,50 +1700,52 @@ export async function ensureLocalInferenceHandler(
 		);
 	}
 
-	try {
-		runtimeWithRegistration.registerModel(
-			ModelType.TEXT_TO_SPEECH,
-			makeTextToSpeechHandler(),
-			provider,
-			LOCAL_INFERENCE_PRIORITY,
-		);
-		// TRANSCRIPTION is registered default-on at the local-inference floor
-		// priority (0). It is the last-resort handler: any cloud / other-plugin
-		// TRANSCRIPTION handler registers above 0 and wins. When the handler
-		// does run, it drives the fused libelizainference ASR runtime — the sole
-		// on-device transcriber (Gemma ASR streaming → fused batch interim →
-		// AsrUnavailableError) via the engine's armed voice bridge — see
-		// makeTranscriptionHandler / EngineVoiceBridge.createStreamingTranscriber.
-		// (The old ELIZA_LOCAL_TRANSCRIPTION env gate is removed — voice is a
-		// first-class Eliza-1 surface, not opt-in.)
-		// On the bionic-delegated path the fused lib lives in the app process, not
-		// this musl agent — so transcription + vision must forward audio/image
-		// bytes to the bionic host (op="asr" / op="image") rather than the
-		// in-process engine / memory-arbiter, which can't load the lib here.
-		runtimeWithRegistration.registerModel(
-			ModelType.TRANSCRIPTION,
-			bionicHostRegistered
-				? makeBionicTranscriptionHandler()
-				: makeTranscriptionHandler(),
-			provider,
-			LOCAL_INFERENCE_PRIORITY,
-		);
-		runtimeWithRegistration.registerModel(
-			ModelType.IMAGE_DESCRIPTION,
-			bionicHostRegistered
-				? makeBionicImageDescriptionHandler()
-				: makeImageDescriptionHandler(),
-			provider,
-			LOCAL_INFERENCE_PRIORITY,
-		);
-		logger.info(
-			`[local-inference] Registered ${provider} voice and vision handlers for TEXT_TO_SPEECH / TRANSCRIPTION / IMAGE_DESCRIPTION at priority ${LOCAL_INFERENCE_PRIORITY}${bionicHostRegistered ? " (bionic-host delegated)" : ""}`,
-		);
-	} catch (err) {
-		logger.warn(
-			"[local-inference] Could not register local voice/vision handlers",
-			err instanceof Error ? err.message : String(err),
-		);
+	if (generalBackendAvailable) {
+		try {
+			runtimeWithRegistration.registerModel(
+				ModelType.TEXT_TO_SPEECH,
+				makeTextToSpeechHandler(),
+				provider,
+				LOCAL_INFERENCE_PRIORITY,
+			);
+			// TRANSCRIPTION is registered default-on at the local-inference floor
+			// priority (0). It is the last-resort handler: any cloud / other-plugin
+			// TRANSCRIPTION handler registers above 0 and wins. When the handler
+			// does run, it drives the fused libelizainference ASR runtime — the sole
+			// on-device transcriber (Gemma ASR streaming → fused batch interim →
+			// AsrUnavailableError) via the engine's armed voice bridge — see
+			// makeTranscriptionHandler / EngineVoiceBridge.createStreamingTranscriber.
+			// (The old ELIZA_LOCAL_TRANSCRIPTION env gate is removed — voice is a
+			// first-class Eliza-1 surface, not opt-in.)
+			// On the bionic-delegated path the fused lib lives in the app process, not
+			// this musl agent — so transcription + vision must forward audio/image
+			// bytes to the bionic host (op="asr" / op="image") rather than the
+			// in-process engine / memory-arbiter, which can't load the lib here.
+			runtimeWithRegistration.registerModel(
+				ModelType.TRANSCRIPTION,
+				bionicHostRegistered
+					? makeBionicTranscriptionHandler()
+					: makeTranscriptionHandler(),
+				provider,
+				LOCAL_INFERENCE_PRIORITY,
+			);
+			runtimeWithRegistration.registerModel(
+				ModelType.IMAGE_DESCRIPTION,
+				bionicHostRegistered
+					? makeBionicImageDescriptionHandler()
+					: makeImageDescriptionHandler(),
+				provider,
+				LOCAL_INFERENCE_PRIORITY,
+			);
+			logger.info(
+				`[local-inference] Registered ${provider} voice and vision handlers for TEXT_TO_SPEECH / TRANSCRIPTION / IMAGE_DESCRIPTION at priority ${LOCAL_INFERENCE_PRIORITY}${bionicHostRegistered ? " (bionic-host delegated)" : ""}`,
+			);
+		} catch (err) {
+			logger.warn(
+				"[local-inference] Could not register local voice/vision handlers",
+				err instanceof Error ? err.message : String(err),
+			);
+		}
 	}
 
 	logger.info(

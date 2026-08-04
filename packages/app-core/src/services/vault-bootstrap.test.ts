@@ -50,6 +50,7 @@ function createFailingVault(): Vault {
     reveal: async () => "",
     has: async () => false,
     remove: async () => {},
+    quarantineUnreadable: async () => false,
     list: async () => [],
     describe: async () => null,
     stats: async () => ({

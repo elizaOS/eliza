@@ -2896,6 +2896,13 @@ export function ChatOverlay({
   // spring (instead of a discrete swap at commit) keeps the top edge from
   // popping a safe-area-height on notch devices. 0px at rest (t=0).
   const glassTopExtension = useMotionTemplate`calc(${fullBleedT} * -1 * env(safe-area-inset-top, 0px))`;
+  // The overlay's bottom safe-area padding eases to zero during maximize. The
+  // panel is anchored above that padding, so without a matching glass extension
+  // the wallpaper shows through as a temporary floor strip until the shape
+  // spring reaches 1. Extend only the painted surface through the remaining
+  // inset while full-screen is committed; composer/content geometry continues
+  // to follow its normal safe-area morph.
+  const glassBottomExtension = useMotionTemplate`calc(-1 * ${bottomInsetFactor} * (var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.5rem))`;
   // At full-bleed the composer floats as its OWN glass capsule — the exact
   // chrome of the resting input bar (frosted fill, hairline border, capsule
   // radius) — instead of dissolving into the edge-to-edge panel. All of it
@@ -3127,28 +3134,32 @@ export function ChatOverlay({
   // from full/maximized = "put the chat away" — the screen edge leaves no room
   // to overshoot below a full-height sheet, so start height carries the
   // intent). Otherwise the INPUT bar (short closes, small free rests).
-  const collapseFromRelease = React.useCallback(() => {
-    // A gesture whose MID-DRAG pill commit already fired (haptic + blur +
-    // mode flip, possibly not yet flushed by React) only needs its springs
-    // settled — running collapseToPill again double-haptic'd every
-    // drag-out-the-bottom.
-    if (pillCommittedMidDragRef.current) {
-      settleDrag();
-      return;
-    }
-    // The overshoot test only applies to gestures that came DOWN through the
-    // bottom (openProgress driven 1 → below the commit line). A drag that
-    // started PILLED moves openProgress the other way (0 → up) — a half-open
-    // pill morph must land on the INPUT, not read as "carried past bottom".
-    if (
-      (!pilled && openProgress.get() <= PILL_COMMIT_PROGRESS) ||
-      dragStartHRef.current > halfH + SHEET_DETENT_MAGNET
-    ) {
-      collapseToPill();
-    } else {
-      closeSheet();
-    }
-  }, [pilled, openProgress, halfH, collapseToPill, closeSheet, settleDrag]);
+  const collapseFromRelease = React.useCallback(
+    (collapseHighStart = true) => {
+      // A gesture whose MID-DRAG pill commit already fired (haptic + blur +
+      // mode flip, possibly not yet flushed by React) only needs its springs
+      // settled — running collapseToPill again double-haptic'd every
+      // drag-out-the-bottom.
+      if (pillCommittedMidDragRef.current) {
+        settleDrag();
+        return;
+      }
+      // The overshoot test only applies to gestures that came DOWN through the
+      // bottom (openProgress driven 1 → below the commit line). A drag that
+      // started PILLED moves openProgress the other way (0 → up) — a half-open
+      // pill morph must land on the INPUT, not read as "carried past bottom".
+      if (
+        (!pilled && openProgress.get() <= PILL_COMMIT_PROGRESS) ||
+        (collapseHighStart &&
+          dragStartHRef.current > halfH + SHEET_DETENT_MAGNET)
+      ) {
+        collapseToPill();
+      } else {
+        closeSheet();
+      }
+    },
+    [pilled, openProgress, halfH, collapseToPill, closeSheet, settleDrag],
+  );
 
   // Leaving the chat for Settings/Home: animate OUT of maximize and collapse the
   // sheet (closeSheet un-maximizes + springs the thread height down) BEFORE
@@ -4845,9 +4856,10 @@ export function ChatOverlay({
     overpullCapT.set(0);
     const h = Math.max(0, Math.min(threadHeight.get(), panelMaxH));
     if (h <= SHEET_DETENT_MAGNET) {
-      // The restore drag started full-height, so a run to the bottom lands on
-      // the PILL (collapseFromRelease reads the gesture-start height).
-      collapseFromRelease();
+      // A restore pull released close to the bottom lands on the INPUT bar.
+      // Starting from MAXIMIZED must not itself mean "put the whole chat away";
+      // only an actual overshoot into the input→pill morph may reach the pill.
+      collapseFromRelease(false);
       return;
     }
     focusThreadRef.current = true;
@@ -5209,9 +5221,12 @@ export function ChatOverlay({
             // consume that height. During a held maximize the transcript flex
             // basis can shrink around the composer chrome, leaving the sheet
             // flagged MAXIMIZED while its top still sits ~50px below the
-            // viewport. Full-screen/restoring frames therefore own an explicit
-            // animated height; window-mode sheets remain content-sized.
-            height: fullBleedFrame ? panelCapH : undefined,
+            // viewport. Full-screen frames therefore own an explicit animated
+            // height. Window/restore frames must explicitly return to `auto`:
+            // passing `undefined` leaves Framer Motion's last pixel height
+            // inline, stranding a restored sheet at the inset-full ceiling while
+            // its thread height continues shrinking underneath it.
+            height: fullBleed ? panelCapH : "auto",
             // Full-bleed must be exactly scale 1 — a sub-1 morph scale with a
             // bottom transform-origin would drop the top edge below the status
             // bar (the "gap at the top when maximized" bug). While open (incl. a
@@ -5325,6 +5340,10 @@ export function ChatOverlay({
               // the extension eases in with the morph instead of popping at
               // commit. Harmless when the inset is 0.
               top: glassTopExtension,
+              // Cover the bottom safe-area floor throughout the maximize
+              // spring. At rest this is omitted so the inset window continues
+              // to float above the gesture/home-indicator clearance.
+              bottom: fullBleed ? glassBottomExtension : undefined,
             }}
           />
           {/* AX-tree mirror of data-detent: the native gesture e2e suites

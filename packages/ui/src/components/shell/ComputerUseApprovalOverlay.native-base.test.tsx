@@ -81,8 +81,8 @@ afterEach(() => {
 });
 
 describe("ComputerUseApprovalOverlay on native IPC base (Android WebView URL parser)", () => {
-  it("renders without crashing and degrades to polling instead of opening SSE", async () => {
-    expect(() => render(<ComputerUseApprovalOverlay />)).not.toThrow();
+  it("degrades to polling instead of opening SSE", async () => {
+    render(<ComputerUseApprovalOverlay />);
 
     await waitFor(() => {
       expect(clientMock.getComputerUseApprovals).toHaveBeenCalled();

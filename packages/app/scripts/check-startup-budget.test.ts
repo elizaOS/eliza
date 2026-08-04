@@ -14,7 +14,6 @@ import { describe, expect, it } from "vitest";
 // vitest imports its exported pure functions directly.
 import {
   computeRegressionPct,
-  DEFAULT_TTI_MARKS,
   evaluateAll,
   evaluateMetric,
   extractTtiMark,
@@ -114,11 +113,6 @@ describe("extractTtiMark", () => {
       ["app-modules:start", 60],
     ]);
     expect(extractTtiMark(stalled)).toBeNull();
-  });
-
-  it("exposes the mark priority order", () => {
-    expect(DEFAULT_TTI_MARKS[0]).toBe("startup-shell:mounted");
-    expect(DEFAULT_TTI_MARKS).toContain("coordinator:ready");
   });
 });
 

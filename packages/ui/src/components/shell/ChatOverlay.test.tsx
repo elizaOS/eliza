@@ -3533,10 +3533,51 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     await waitFor(() =>
       expect(sheet.getAttribute("data-maximized")).toBeNull(),
     );
+    expect(sheet.style.height).toBe("auto");
     fireEvent.pointerUp(zone, {
       clientY: startY + viewportHeight * 0.12,
       pointerId: 81,
     });
+  });
+
+  it("rests a maximized restore below half at the released window height", async () => {
+    const { controller } = makeSwipeController();
+    render(<ChatOverlay controller={controller} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    bigPullUp();
+
+    const zone = screen.getByTestId("chat-maximize-restore-zone");
+    fireEvent.pointerDown(zone, { clientY: 20, pointerId: 82 });
+    fireEvent.pointerMove(zone, { clientY: 500, pointerId: 82 });
+    await waitFor(() =>
+      expect(sheet.getAttribute("data-maximized")).toBeNull(),
+    );
+    fireEvent.pointerUp(zone, { clientY: 500, pointerId: 82 });
+
+    await waitFor(() =>
+      expect(sheet.getAttribute("data-chat-state")).toBe("OPEN_UNDER_HALF"),
+    );
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+    expect(sheet.style.height).toBe("auto");
+  });
+
+  it("lands a near-bottom maximized restore on the input instead of the pill", async () => {
+    const { controller } = makeSwipeController();
+    render(<ChatOverlay controller={controller} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    bigPullUp();
+
+    const zone = screen.getByTestId("chat-maximize-restore-zone");
+    fireEvent.pointerDown(zone, { clientY: 20, pointerId: 83 });
+    fireEvent.pointerMove(zone, { clientY: 730, pointerId: 83 });
+    fireEvent.pointerUp(zone, { clientY: 730, pointerId: 83 });
+
+    await waitFor(() =>
+      expect(sheet.getAttribute("data-chat-state")).toBe("INPUT"),
+    );
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
   });
 
   it("a FULL downward pull in the restore zone drops full-bleed and collapses the sheet all the way (the un-maximize→collapse bug)", () => {
@@ -3557,6 +3598,7 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
 
     expect(sheet.getAttribute("data-maximized")).toBeNull();
     expect(sheet.getAttribute("data-variant")).toBe("closed");
+    expect(sheet.getAttribute("data-detent")).toBe("pill");
   });
 
   it("keyboard-activates the restore zone (ArrowDown exits full-bleed)", () => {

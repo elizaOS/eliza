@@ -33,7 +33,6 @@ import {
   formatProposedSlotsReply,
   runCheckAvailabilityHandler,
   runProposeMeetingTimesHandler,
-  runSchedulingNegotiationHandler,
   runUpdateMeetingPreferencesHandler,
 } from "../src/actions/lib/scheduling-handler.js";
 import { readLifeOpsMeetingPreferences } from "../src/lifeops/owner-profile.js";
@@ -77,10 +76,6 @@ function makeMessage(runtime: AgentRuntime, text: string) {
 }
 
 describe("life-ops scheduling-with-others (pure slot logic)", () => {
-  it("exposes a scheduling negotiation handler", () => {
-    expect(typeof runSchedulingNegotiationHandler).toBe("function");
-  });
-
   it("computeProposedSlots returns 3 slots within preferred hours, avoiding busy intervals and blackouts", () => {
     const now = new Date();
     const windowStart = new Date(localIso(1, 0, 0));

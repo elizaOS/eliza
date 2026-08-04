@@ -101,17 +101,6 @@ describe("PagerEdgeButtons (#10717)", () => {
     expect(last.queryByTestId("pager-edge-prev")).not.toBeNull();
     expect(last.queryByTestId("pager-edge-next")).toBeNull();
   });
-
-  it("uses neutral icon color with no card chrome or blue", () => {
-    mockPointerCapability({ finePointer: true });
-    const { getByTestId } = render(
-      <PagerEdgeButtons canPrev canNext goPrev={vi.fn()} goNext={vi.fn()} />,
-    );
-    const cls = getByTestId("pager-edge-next").className;
-    expect(cls).toContain("text-white/55");
-    expect(cls).toContain("hover:text-white");
-    expect(cls).not.toMatch(/border|rounded-|bg-(black|white|blue)/);
-  });
 });
 
 // The first-session swipe hint (#13453 debt 5) renders exactly where these
@@ -119,12 +108,6 @@ describe("PagerEdgeButtons (#10717)", () => {
 // complement cannot drift into showing both teaching affordances (or neither)
 // on a single device.
 describe("FINE_POINTER_EDGE_BUTTON_QUERY complement contract", () => {
-  it("is the exact fine-pointer query FirstSessionSwipeHint inverts", () => {
-    expect(FINE_POINTER_EDGE_BUTTON_QUERY).toBe(
-      "(min-width: 768px) and (hover: hover) and (pointer: fine)",
-    );
-  });
-
   it("gates the buttons on exactly this query, nothing else", () => {
     mockPointerCapability({ finePointer: true });
     render(

@@ -18,11 +18,6 @@
  *     handlers registered via `runtime.registerModel`) is shared.
  *   - Compatibility transports never expose assistant turns explicitly
  *     marked internal, while ordinary visible summaries remain unchanged.
- *   - `AgentRuntime.useModel(TEXT_LARGE)` dispatches to handlers
- *     registered via `runtime.registerModel` — the layer-2 check from the
- *     issue. Confirms the suspected "useModel doesn't fire the registered
- *     handler" claim was incorrect: when a TEXT_LARGE handler is
- *     registered, `useModel` invokes it.
  */
 
 import crypto from "node:crypto";
@@ -30,7 +25,6 @@ import http from "node:http";
 import {
   type AgentRuntime,
   ChannelType,
-  ModelType,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -953,82 +947,6 @@ describe("compatibility transport transcript visibility", () => {
     expect(parseResponseBody(record)).toMatchObject({
       response: "Notes and Calendar are ready to use.",
     });
-  });
-});
-
-describe("AgentRuntime model dispatch (layer-2 verification from #7680)", () => {
-  /**
-   * Layer-2 check from #7680: the issue suspected that `useModel(TEXT_LARGE)`
-   * doesn't actually fire the registered handler. This test confirms the
-   * dispatch path: `registerModel` and the `useModel` resolver share a
-   * single Map (`this.models`). There is no shadow table — handlers
-   * registered via `runtime.registerModel` are exactly what `useModel`
-   * resolves to.
-   *
-   * We exercise the `registerModel` method directly (private member of
-   * `AgentRuntime` instance). Constructing a fully wired `AgentRuntime`
-   * for this unit test would pull in a database adapter; instead we use
-   * the public `registerModel`/`getModel` methods bound to a minimal
-   * stub that owns just `this.models` — the exact shape the prototype
-   * methods need.
-   */
-  it("resolves TEXT_LARGE handler from the same Map that registerModel writes", async () => {
-    const { AgentRuntime } = await import("@elizaos/core");
-    type ModelHandler = (
-      runtime: AgentRuntime,
-      params: Record<string, unknown>,
-    ) => Promise<unknown>;
-    interface ModelEntry {
-      handler: ModelHandler;
-      provider: string;
-      priority: number;
-      registrationOrder: number;
-    }
-    const stub = {
-      models: new Map<string, ModelEntry[]>(),
-      logger: { debug: () => {}, info: () => {}, warn: () => {} },
-      agentId: stringToUuid("model-routing-agent"),
-      emitEvent: vi.fn(async () => undefined),
-    };
-
-    const proto = AgentRuntime.prototype as unknown as Record<
-      string,
-      (this: typeof stub, ...args: unknown[]) => unknown
-    >;
-
-    const handler = vi.fn(async () => "from-local-inference");
-    (
-      proto.registerModel as unknown as (
-        this: typeof stub,
-        modelType: string,
-        handler: ModelHandler,
-        provider: string,
-        priority?: number,
-      ) => void
-    ).call(
-      stub,
-      ModelType.TEXT_LARGE,
-      handler as never,
-      "eliza-local-inference",
-      0,
-    );
-
-    // The Map is populated as the runtime expects — verify the row shape
-    // matches what `resolveModelRegistration` reads inside `useModel`.
-    const entries = stub.models.get(ModelType.TEXT_LARGE);
-    expect(entries?.length).toBe(1);
-    expect(entries?.[0].handler).toBe(handler);
-    expect(entries?.[0].provider).toBe("eliza-local-inference");
-    expect(entries?.[0].priority).toBe(0);
-
-    // Calling the resolved handler directly proves the registered closure
-    // is what would fire — no separate "slot assignments" indirection.
-    const result = await entries?.[0].handler(stub as unknown as AgentRuntime, {
-      prompt: "test",
-      maxTokens: 16,
-    });
-    expect(result).toBe("from-local-inference");
-    expect(handler).toHaveBeenCalledTimes(1);
   });
 });
 

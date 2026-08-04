@@ -31,7 +31,6 @@ import {
 import {
   buildExportManifest,
   canonicalize,
-  digestCollection,
   exportAgent,
   importAgent,
   MANIFEST_COLLECTIONS,
@@ -628,8 +627,5 @@ describe("#9963 integrity manifest detector (unit)", () => {
   it("canonicalize sorts keys and drops undefined (stable across key order)", () => {
     expect(canonicalize({ b: 1, a: 2 })).toBe(canonicalize({ a: 2, b: 1 }));
     expect(canonicalize({ a: 1, b: undefined })).toBe(canonicalize({ a: 1 }));
-    expect(digestCollection([{ x: 1 }]).sha256).toBe(
-      digestCollection([{ x: 1 }]).sha256,
-    );
   });
 });

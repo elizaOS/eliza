@@ -202,11 +202,6 @@ describe("useComposerPaste", () => {
     expect(addFiles).not.toHaveBeenCalled();
     expect(attachText).not.toHaveBeenCalled();
   });
-
-  it("returns no handler on surfaces without outbound attachments", () => {
-    render(<PasteHarness />);
-    fireEvent.paste(screen.getByTestId("input"), pasteEvent([], "hello"));
-  });
 });
 
 function DraftHarness() {

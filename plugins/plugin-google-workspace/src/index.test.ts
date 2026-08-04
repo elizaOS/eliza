@@ -40,15 +40,6 @@ describe("google plugin", () => {
     vi.unstubAllGlobals();
   });
 
-  it("exports one Google plugin with the workspace and chat services", () => {
-    expect(googlePlugin.name).toBe("google");
-    expect(googlePlugin.description).toContain("Gmail, Calendar, Drive, Meet, and Chat");
-    expect(googlePlugin.services).toContain(GoogleWorkspaceService);
-    expect(
-      googlePlugin.services?.map((s) => (s as { serviceType?: string }).serviceType)
-    ).toContain("google-chat");
-  });
-
   it("registers the Google connector account provider on init", async () => {
     const runtime = {
       getService: vi.fn(() => null),

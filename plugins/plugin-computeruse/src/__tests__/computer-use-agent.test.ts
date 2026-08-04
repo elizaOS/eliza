@@ -482,7 +482,6 @@ describe("runComputerUseAgentLoop — fake Brain", () => {
       result: { success: true },
     });
     const firstProgress = progress[0];
-    expect(firstProgress).toBeDefined();
     if (!firstProgress) {
       throw new Error("expected first progress event");
     }
@@ -525,7 +524,6 @@ describe("runComputerUseAgentLoop — fake Brain", () => {
     expect(progress).toHaveLength(1);
     expect(progress[0]?.result.success).toBe(false);
     const firstProgress = progress[0];
-    expect(firstProgress).toBeDefined();
     if (!firstProgress) {
       throw new Error("expected failed progress event");
     }

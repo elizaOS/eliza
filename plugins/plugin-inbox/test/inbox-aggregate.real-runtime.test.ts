@@ -490,7 +490,6 @@ describe("InboxDomain on a real runtime", () => {
       inboundChat({ id: "cached-1", text: "hello from cache" }),
     ]);
     const first = seeded[0];
-    expect(first).toBeDefined();
     if (!first) throw new Error("unreachable");
     cache.seed(first, new Date().toISOString());
 
@@ -518,7 +517,6 @@ describe("InboxDomain on a real runtime", () => {
       inboundChat({ id: "warm-1", text: "warm cache row" }),
     ]);
     const warm = seeded[0];
-    expect(warm).toBeDefined();
     if (!warm) throw new Error("unreachable");
     cache.seed(warm, new Date().toISOString());
 
@@ -686,7 +684,6 @@ describe("InboxDomain on a real runtime", () => {
       inboundChat({ id: "cached-degraded-1", text: "warm row" }),
     ]);
     const warm = seeded[0];
-    expect(warm).toBeDefined();
     if (!warm) throw new Error("unreachable");
     cache.seed(warm, new Date().toISOString());
 
@@ -732,7 +729,6 @@ describe("InboxDomain on a real runtime", () => {
       inboundChat({ id: "read-1", text: "unread row" }),
     ]);
     const row = seeded[0];
-    expect(row).toBeDefined();
     if (!row) throw new Error("unreachable");
     cache.seed({ ...row, unread: true }, new Date().toISOString());
 

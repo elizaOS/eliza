@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 import type { ReportedError } from "../errors";
 import type { IAgentRuntime, Memory, State } from "../types";
-import { QUIET_ERROR_CODES, recentErrorsProvider } from "./recent-errors";
+import { recentErrorsProvider } from "./recent-errors";
 
 function runtimeWith(entries: ReportedError[]): IAgentRuntime {
 	return { getRecentReportedErrors: () => entries } as unknown as IAgentRuntime;
@@ -148,11 +148,5 @@ describe("RECENT_ERRORS provider", () => {
 		expect(surfaced).toHaveLength(1);
 		expect(surfaced[0].code).toBe("WALLET_RPC_DOWN");
 		expect(result.text).not.toContain("TASK_TICK_FAILED");
-	});
-
-	it("exports the quiet-code set with the scheduler plumbing codes", () => {
-		expect(QUIET_ERROR_CODES.has("TASK_TICK_FAILED")).toBe(true);
-		expect(QUIET_ERROR_CODES.has("TASK_WORKER_MISSING")).toBe(true);
-		expect(QUIET_ERROR_CODES.has("WALLET_RPC_DOWN")).toBe(false);
 	});
 });

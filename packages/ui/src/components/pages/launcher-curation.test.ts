@@ -708,9 +708,6 @@ describe("normalizeLauncherLabel", () => {
     expect(normalizeLauncherLabel("Fine-Tuning")).toBe("Fine-Tuning");
     expect(normalizeLauncherLabel("Fine - Tuning")).toBe("Fine-Tuning");
     expect(normalizeLauncherLabel("  Fine-Tuning  ")).toBe("Fine-Tuning");
-    expect(normalizeLauncherLabel("Fine-Tuning")).toBe(
-      normalizeLauncherLabel("Fine - Tuning"),
-    );
   });
 
   it("normalizes slash spacing and collapses internal runs of whitespace", () => {

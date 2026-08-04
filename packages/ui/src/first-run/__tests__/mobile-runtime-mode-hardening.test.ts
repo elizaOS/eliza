@@ -4,9 +4,9 @@
 /**
  * Hardening coverage for `../mobile-runtime-mode.ts`. The sibling
  * `../mobile-runtime-mode.test.ts` already covers the happy-path "persist
- * local mode" and "remove on empty target" cases against a native Capacitor
- * shell. This file fills the remaining gaps: pure-function normalization,
- * runtime-target -> mode mapping, the localStorage read path, dispatch of the
+ * local mode", "remove on empty target", and runtime-target mapping cases
+ * against a native Capacitor shell. This file fills the remaining gaps:
+ * pure-function normalization, the localStorage read path, dispatch of the
  * `MOBILE_RUNTIME_MODE_CHANGED_EVENT`, web-platform fallback (Capacitor
  * reports `web`), unloaded-Capacitor fallback (module import rejects), and
  * idempotence on repeated calls.
@@ -51,7 +51,6 @@ vi.mock("@capacitor/preferences", () => ({
 import { MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../../events";
 import {
   MOBILE_RUNTIME_MODE_STORAGE_KEY,
-  mobileRuntimeModeForServerTarget,
   normalizeMobileRuntimeMode,
   persistMobileRuntimeModeForServerTarget,
   readPersistedMobileRuntimeMode,
@@ -104,21 +103,6 @@ describe("normalizeMobileRuntimeMode", () => {
     expect(normalizeMobileRuntimeMode("remote")).toBeNull();
     expect(normalizeMobileRuntimeMode("elizacloud")).toBeNull();
     expect(normalizeMobileRuntimeMode("{}")).toBeNull();
-  });
-});
-
-describe("mobileRuntimeModeForServerTarget", () => {
-  it("maps every first-run runtime target to its mobile mode", () => {
-    expect(mobileRuntimeModeForServerTarget("remote")).toBe("remote-mac");
-    expect(mobileRuntimeModeForServerTarget("elizacloud")).toBe("cloud");
-    expect(mobileRuntimeModeForServerTarget("elizacloud-hybrid")).toBe(
-      "cloud-hybrid",
-    );
-    expect(mobileRuntimeModeForServerTarget("local")).toBe("local");
-  });
-
-  it("returns null for the empty-string target (no selection)", () => {
-    expect(mobileRuntimeModeForServerTarget("")).toBeNull();
   });
 });
 

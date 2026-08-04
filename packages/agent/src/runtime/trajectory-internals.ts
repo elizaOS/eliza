@@ -811,8 +811,22 @@ export function warnRuntime(
 // ---------------------------------------------------------------------------
 
 function databaseErrorMatches(error: unknown, patterns: RegExp[]): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return patterns.some((pattern) => pattern.test(message));
+  const messages: string[] = [];
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+
+  while (current !== undefined && current !== null && !seen.has(current)) {
+    seen.add(current);
+    messages.push(current instanceof Error ? current.message : String(current));
+    current =
+      typeof current === "object" && "cause" in current
+        ? (current as { cause?: unknown }).cause
+        : undefined;
+  }
+
+  return patterns.some((pattern) =>
+    messages.some((message) => pattern.test(message)),
+  );
 }
 
 function isMissingTableError(error: unknown): boolean {
@@ -848,7 +862,31 @@ async function addColumnIfMissing(
   }
 }
 
+const trajectorySchemaInitializationPromises = new WeakMap<
+  object,
+  Promise<boolean>
+>();
+
 export async function ensureTrajectoriesTable(
+  runtime: IAgentRuntime,
+): Promise<boolean> {
+  const key = runtime as object;
+  if (schemaVersions.get(key) === SCHEMA_VERSION) return true;
+  const existing = trajectorySchemaInitializationPromises.get(key);
+  if (existing) return existing;
+
+  const initialization = initializeTrajectoriesTable(runtime);
+  trajectorySchemaInitializationPromises.set(key, initialization);
+  try {
+    return await initialization;
+  } finally {
+    if (trajectorySchemaInitializationPromises.get(key) === initialization) {
+      trajectorySchemaInitializationPromises.delete(key);
+    }
+  }
+}
+
+async function initializeTrajectoriesTable(
   runtime: IAgentRuntime,
 ): Promise<boolean> {
   const key = runtime as object;

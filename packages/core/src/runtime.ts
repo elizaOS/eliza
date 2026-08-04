@@ -537,6 +537,15 @@ export interface EmbeddingProbeAttempt {
 	error: string;
 }
 
+/** Providers that satisfy the app's explicit on-device embedding contract. */
+const LOCAL_EMBEDDING_PROVIDERS = new Set([
+	"eliza-router",
+	"eliza-local-inference",
+	"eliza-device-bridge",
+	"capacitor-llama",
+	"eliza-aosp-llama",
+]);
+
 /**
  * Thrown by `AgentRuntime.ensureEmbeddingDimension` when EVERY registered
  * TEXT_EMBEDDING provider failed the null dimension probe. Carries the
@@ -2972,6 +2981,12 @@ export class AgentRuntime implements IAgentRuntime {
 				if (!(error instanceof EmbeddingDimensionProbeError)) {
 					throw error;
 				}
+				const pendingLocalHandler =
+					error.attempts.length === 1 &&
+					error.attempts[0]?.provider === "local" &&
+					error.attempts[0]?.error.includes(
+						"no on-device embedding handler is registered",
+					);
 				// error-policy:J4 Embeddings enter an explicit disabled state until
 				// the deferred probe succeeds; the runtime remains otherwise usable.
 				// Every registered TEXT_EMBEDDING provider failed the dimension
@@ -2981,17 +2996,29 @@ export class AgentRuntime implements IAgentRuntime {
 				// would silently drop against its default-sized column (#8769). The
 				// deferred boot re-probe (packages/agent) re-runs the probe after
 				// late plugins register and re-enables embeddings on success.
-				this.logger.error(
-					{
-						src: "agent",
-						agentId: this.agentId,
-						attempts: error.attempts,
-					},
-					"All registered TEXT_EMBEDDING providers failed the dimension probe; continuing boot with embedding generation disabled — memory recall over new memories is degraded until a provider recovers",
-				);
-				this.reportError("AgentRuntime.embeddingDimensionProbe", error, {
+				const context = {
+					src: "agent",
+					agentId: this.agentId,
 					attempts: error.attempts,
-				});
+				};
+				if (pendingLocalHandler) {
+					this.logger.info(
+						context,
+						"Local TEXT_EMBEDDING handler will register during deferred plugin boot; keeping embedding generation disabled until the deferred probe",
+					);
+				} else {
+					this.logger.error(
+						{
+							src: "agent",
+							agentId: this.agentId,
+							attempts: error.attempts,
+						},
+						"All registered TEXT_EMBEDDING providers failed the dimension probe; continuing boot with embedding generation disabled — memory recall over new memories is degraded until a provider recovers",
+					);
+					this.reportError("AgentRuntime.embeddingDimensionProbe", error, {
+						attempts: error.attempts,
+					});
+				}
 			}
 		}
 
@@ -9543,15 +9570,55 @@ ${section_end}`;
 				"Database adapter not initialized before ensureEmbeddingDimension",
 			);
 		}
-		const registrations = this.resolveModelRegistrations(
+		const allRegistrations = this.resolveModelRegistrations(
 			ModelType.TEXT_EMBEDDING,
 		);
-		if (registrations.length === 0) {
+		if (allRegistrations.length === 0) {
 			throw new Error("No TEXT_EMBEDDING model registered");
 		}
 
-		// Probe every registered TEXT_EMBEDDING provider in the same priority
-		// order useModel resolves them. The probe passes null; handlers return a
+		// EMBEDDING_PROVIDER=local is an ownership boundary, not a preference.
+		// In particular, the dimension probe must not bypass the local router and
+		// explicitly invoke cloud handlers: doing so caused clean local app boots
+		// to send embedding batches to Eliza Cloud when the GGUF was still staging.
+		// Prefer the router when present because it owns local device selection;
+		// otherwise fail over only among concrete on-device handlers.
+		const configuredProvider = String(
+			this.getSetting("EMBEDDING_PROVIDER") ?? "",
+		)
+			.trim()
+			.toLowerCase();
+		const localOnly = configuredProvider === "local";
+		const localRegistrations = localOnly
+			? allRegistrations.filter((registration) =>
+					LOCAL_EMBEDDING_PROVIDERS.has(registration.provider),
+				)
+			: [];
+		const routerRegistrations = localRegistrations.filter(
+			(registration) => registration.provider === "eliza-router",
+		);
+		const registrations = localOnly
+			? routerRegistrations.length > 0
+				? routerRegistrations
+				: localRegistrations
+			: allRegistrations;
+		if (localOnly && registrations.length === 0) {
+			const probeError = new EmbeddingDimensionProbeError([
+				{
+					provider: "local",
+					modelKey: ModelType.TEXT_EMBEDDING,
+					error:
+						"EMBEDDING_PROVIDER=local but no on-device embedding handler is registered",
+				},
+			]);
+			this.disableEmbeddingGeneration(probeError.message);
+			throw probeError;
+		}
+
+		// Probe every eligible TEXT_EMBEDDING provider in the same priority order
+		// useModel resolves them. An explicit local policy limits eligibility to
+		// on-device handlers; it never falls through to a remote provider. The
+		// probe passes null; handlers return a
 		// zero-filled vector of their real output width. A provider that cannot
 		// answer the null probe cannot produce usable vectors either, so ANY
 		// probe failure — not just a rate limit — advances to the next
@@ -9592,7 +9659,9 @@ ${section_end}`;
 						provider: registration.provider,
 						error: error instanceof Error ? error.message : String(error),
 					},
-					"TEXT_EMBEDDING provider failed the dimension probe; trying next registered provider",
+					localOnly
+						? "Local TEXT_EMBEDDING provider failed the dimension probe; remote fallback is disabled"
+						: "TEXT_EMBEDDING provider failed the dimension probe; trying next registered provider",
 				);
 				continue;
 			}
@@ -9609,7 +9678,9 @@ ${section_end}`;
 						agentId: this.agentId,
 						provider: registration.provider,
 					},
-					"TEXT_EMBEDDING provider returned an invalid probe embedding; trying next registered provider",
+					localOnly
+						? "Local TEXT_EMBEDDING provider returned an invalid probe embedding; remote fallback is disabled"
+						: "TEXT_EMBEDDING provider returned an invalid probe embedding; trying next registered provider",
 				);
 				continue;
 			}

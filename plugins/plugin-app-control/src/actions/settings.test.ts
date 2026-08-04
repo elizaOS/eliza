@@ -328,7 +328,6 @@ describe("SETTINGS action: list", () => {
 		expect(result?.verifiedUserFacing).toBe(true);
 		expect(result?.turnComplete).toBe(true);
 		expect(result?.continueChain).toBeUndefined();
-		expect(result).toBeDefined();
 		if (!result) throw new Error("Expected SETTINGS list result");
 		const sections = (
 			result.data as { sections: Array<Record<string, unknown>> }

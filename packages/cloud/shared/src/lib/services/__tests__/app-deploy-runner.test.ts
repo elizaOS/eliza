@@ -23,7 +23,6 @@ describe("containerNameForApp (#9145)", () => {
   test("is deterministic for a UUID id", () => {
     const id = "550e8400-e29b-41d4-a716-446655440000";
     expect(containerNameForApp(id)).toBe("app-550e8400e29b");
-    expect(containerNameForApp(id)).toBe(containerNameForApp(id));
   });
 });
 

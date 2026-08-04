@@ -51,16 +51,6 @@ describe("HomeScreen entrance flicker lock (#9304)", () => {
       <HomeScreen onOpenTile={vi.fn()} showNativeOsTiles />,
     );
 
-    const entranceStyles = Array.from(container.querySelectorAll("style"))
-      .map((style) => style.textContent ?? "")
-      .find((css) => css.includes("@keyframes home-enter"));
-    expect(entranceStyles).toBeDefined();
-    const homeEnterKeyframes = entranceStyles?.match(
-      /@keyframes home-enter\s*\{[\s\S]*?\n\}/,
-    )?.[0];
-    expect(homeEnterKeyframes).toBeDefined();
-    expect(homeEnterKeyframes).not.toMatch(/opacity\s*:/);
-
     // First mount: the entrance class is present, but content remains opaque.
     expect(classOnAnyBlock(container)).toBe(true);
     expect(

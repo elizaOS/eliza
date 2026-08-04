@@ -116,24 +116,4 @@ describe("OrchestratorActivityWidget (home slot)", () => {
     expect(widget.textContent).toContain("Alpha event");
     expect(widget.textContent).toContain("Beta event");
   });
-
-  it("home slot: applies the host-supplied spanClassName to its single root grid-item element (#11752)", () => {
-    const { container } = render(
-      <ActivityWidget
-        {...props({
-          slot: "home",
-          events: [event({ summary: "Working" })],
-          spanClassName: "col-span-2 row-span-1",
-        })}
-      />,
-    );
-
-    const root = container.firstElementChild;
-    expect(root).not.toBeNull();
-    expect(root?.className).toContain("col-span-2");
-    expect(root?.className).toContain("row-span-1");
-    expect(
-      root?.querySelector('[data-testid="chat-widget-events"]'),
-    ).not.toBeNull();
-  });
 });

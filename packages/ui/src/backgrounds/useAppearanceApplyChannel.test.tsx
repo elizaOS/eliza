@@ -6,7 +6,6 @@
  * contract reaches the same setters used by the Appearance settings section.
  */
 
-import { APPEARANCE_APPLY_EVENT as SHARED_APPEARANCE_APPLY_EVENT } from "@elizaos/shared/events";
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { __setAppValueForTests } from "../state/app-store";
@@ -45,10 +44,6 @@ afterEach(() => {
 });
 
 describe("useAppearanceApplyChannel", () => {
-  it("uses the shared appearance apply event contract", () => {
-    expect(APPEARANCE_APPLY_EVENT).toBe(SHARED_APPEARANCE_APPLY_EVENT);
-  });
-
   it("applies valid appearance fields to the persisted preference setters", () => {
     const setters = mountChannel();
     apply({

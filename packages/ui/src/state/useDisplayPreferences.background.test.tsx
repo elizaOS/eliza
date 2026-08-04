@@ -193,7 +193,6 @@ describe("useDisplayPreferences — background history + undo", () => {
   });
 
   it("caps inline data-URL image entries to the single most recent (quota hazard)", () => {
-    expect(MAX_BACKGROUND_HISTORY_DATA_URLS).toBe(1);
     const dataEntry = (n: number) => ({
       mode: "image",
       color: "#111111",
@@ -215,7 +214,7 @@ describe("useDisplayPreferences — background history + undo", () => {
     const dataUrls = normalized.filter((e) => e.imageUrl?.startsWith("data:"));
     // Only the most recent data-URL entry survives; media-store + shader
     // entries are all kept in order.
-    expect(dataUrls.length).toBe(1);
+    expect(dataUrls).toHaveLength(MAX_BACKGROUND_HISTORY_DATA_URLS);
     expect(dataUrls[0]?.imageUrl).toContain("3");
     expect(normalized.map((e) => e.imageUrl ?? e.color)).toEqual([
       "/api/media/hash1.jpg",

@@ -614,7 +614,8 @@ export function createSubAgentCredentialBridgeAdapter(options: {
   tunnel: CredentialTunnelService;
   dispatch: SensitiveRequestDispatchRegistry;
   runtime: IAgentRuntime;
-}): BridgeCredentialAdapter & SubAgentCredentialBridge {
+}): BridgeCredentialAdapter &
+  SubAgentCredentialBridge & { stop(): Promise<void> } {
   const { dispatch, runtime, tunnel } = options;
   const agentId = String(
     (runtime as { agentId?: unknown }).agentId ?? "local-agent",
@@ -659,6 +660,10 @@ export function createSubAgentCredentialBridgeAdapter(options: {
   }
 
   return {
+    // The adapter owns no timers or sockets, but runtime services must expose a
+    // lifecycle hook so hot reload can stop them without false warnings.
+    async stop() {},
+
     requestCredentials(input) {
       return declareAndDispatch({
         childSessionId: input.childSessionId,

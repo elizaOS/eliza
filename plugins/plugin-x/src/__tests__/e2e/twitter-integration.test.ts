@@ -191,28 +191,6 @@ describe.skipIf(SKIP_E2E)("Twitter E2E Integration Tests", () => {
       console.log(`Fetched ${posts.length} posts for user ${profile.username}`);
     });
 
-    it("should like and unlike a post", async () => {
-      // Create a post
-      const post = await postService.createPost({
-        agentId: runtime.agentId,
-        roomId: testRoomId,
-        text: `E2E Test Like ${Date.now()}`,
-      });
-      testTweetIds.push(post.id);
-
-      // Like the post
-      await postService.likePost(post.id, runtime.agentId);
-      console.log("Liked post:", post.id);
-
-      // Wait a bit
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Fetch the post to verify it was liked
-      const likedPost = await postService.getPost(post.id, runtime.agentId);
-      // Note: The like count might not update immediately due to Twitter's eventual consistency
-      console.log("Post metrics after like:", likedPost?.metrics);
-    });
-
     it("should delete a post", async () => {
       // Create a post
       const post = await postService.createPost({

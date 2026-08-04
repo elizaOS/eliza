@@ -118,10 +118,6 @@ function makePublicOAuthRequest(): DispatchSensitiveRequest {
 }
 
 describe("ownerAppOAuthSensitiveRequestAdapter", () => {
-  it("declares the canonical owner_app_oauth target", () => {
-    expect(ownerAppOAuthSensitiveRequestAdapter.target).toBe("owner_app_oauth");
-  });
-
   it("delivers to an owner-app private chat and emits the OAuth form envelope", async () => {
     const { runtime, calls } = makeRuntime();
     const request = makeOwnerAppPrivateOAuthRequest();

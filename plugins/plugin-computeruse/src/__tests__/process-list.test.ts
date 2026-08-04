@@ -12,39 +12,38 @@ import {
   parseWindowsProcessJson,
 } from "../platform/process-list.js";
 
-describe("process-list — Linux /proc (real host)", () => {
-  if (currentPlatform() !== "linux") {
-    it.skip("not on linux", () => {});
-    return;
-  }
-  it("enumerates running processes", () => {
-    const procs = listProcesses();
-    expect(procs.length).toBeGreaterThan(5);
-    for (const p of procs) {
-      expect(p.pid).toBeGreaterThan(0);
-      expect(p.name.length).toBeGreaterThan(0);
-    }
-  });
+describe.skipIf(currentPlatform() !== "linux")(
+  "process-list — Linux /proc (real host)",
+  () => {
+    it("enumerates running processes", () => {
+      const procs = listProcesses();
+      expect(procs.length).toBeGreaterThan(5);
+      for (const p of procs) {
+        expect(p.pid).toBeGreaterThan(0);
+        expect(p.name.length).toBeGreaterThan(0);
+      }
+    });
 
-  it("includes our own process (vitest)", () => {
-    const procs = listProcesses();
-    const ownPid = process.pid;
-    const me = procs.find((p) => p.pid === ownPid);
-    expect(me).toBeDefined();
-    expect(me?.name.length).toBeGreaterThan(0);
-  });
+    it("includes our own process (vitest)", () => {
+      const procs = listProcesses();
+      const ownPid = process.pid;
+      const me = procs.find((p) => p.pid === ownPid);
+      expect(me).toBeDefined();
+      expect(me?.name.length).toBeGreaterThan(0);
+    });
 
-  it("matches /proc entry count within reason", () => {
-    const procs = listProcesses();
-    const procEntries = readdirSync("/proc").filter((e) => /^\d+$/.test(e));
-    // Some pids may have vanished between the two reads, but the count
-    // should be in the same order of magnitude.
-    expect(procs.length).toBeGreaterThanOrEqual(
-      Math.floor(procEntries.length * 0.5),
-    );
-    expect(procs.length).toBeLessThanOrEqual(procEntries.length + 10);
-  });
-});
+    it("matches /proc entry count within reason", () => {
+      const procs = listProcesses();
+      const procEntries = readdirSync("/proc").filter((e) => /^\d+$/.test(e));
+      // Some pids may have vanished between the two reads, but the count
+      // should be in the same order of magnitude.
+      expect(procs.length).toBeGreaterThanOrEqual(
+        Math.floor(procEntries.length * 0.5),
+      );
+      expect(procs.length).toBeLessThanOrEqual(procEntries.length + 10);
+    });
+  },
+);
 
 describe("process-list — parsePsOutput (darwin parser)", () => {
   it("parses canonical BSD ps output", () => {

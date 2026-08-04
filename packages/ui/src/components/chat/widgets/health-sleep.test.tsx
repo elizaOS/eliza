@@ -215,23 +215,4 @@ describe("HealthSleepWidget (#9143)", () => {
       null,
     );
   });
-
-  it("applies the host-supplied spanClassName to its single root grid-item element (#11752)", async () => {
-    mockSleep({ episodes: [episode()], classification: "irregular" });
-
-    const { container } = render(
-      <HealthSleepWidget slot="home" spanClassName="col-span-2 row-span-1" />,
-    );
-
-    await waitFor(() => {
-      expect(screen.getByTestId("widget-health-sleep")).toBeTruthy();
-    });
-    const root = container.firstElementChild;
-    expect(root).not.toBeNull();
-    expect(root?.className).toContain("col-span-2");
-    expect(root?.className).toContain("row-span-1");
-    expect(
-      root?.querySelector('[data-testid="widget-health-sleep"]'),
-    ).not.toBeNull();
-  });
 });

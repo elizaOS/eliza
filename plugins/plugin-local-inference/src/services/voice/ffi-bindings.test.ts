@@ -248,8 +248,8 @@ function bunOnPath(): string | null {
 }
 
 describe("ffi-bindings — pure unit (no Bun, no dylib)", () => {
-	it("ELIZA_INFERENCE_ABI_VERSION is 14 (Kokoro IPA input + G2P-kind query)", () => {
-		expect(ELIZA_INFERENCE_ABI_VERSION).toBe(14);
+	it("ELIZA_INFERENCE_ABI_VERSION is 15 (exact-size Kokoro PCM allocation)", () => {
+		expect(ELIZA_INFERENCE_ABI_VERSION).toBe(15);
 	});
 
 	it("loadElizaInferenceFfi throws VoiceLifecycleError when FFI is unavailable", () => {
@@ -381,21 +381,20 @@ describeGeneratedStub("ffi-stub stub library — ABI v3 symbol audit", () => {
 	}, 30_000);
 });
 
-describeGeneratedStub(
+const bunForStubIntegration = bunOnPath();
+const bunFfiForStubIntegration = bunForStubIntegration
+	? probeBunFfi(bunForStubIntegration)
+	: { available: false };
+const describeGeneratedStubIntegration =
+	supportsGeneratedStub &&
+	bunForStubIntegration &&
+	bunFfiForStubIntegration.available
+		? describe
+		: describe.skip;
+
+describeGeneratedStubIntegration(
 	"ffi-bindings — integration via bun subprocess against stub dylib",
 	() => {
-		const bun = bunOnPath();
-
-		if (!bun) {
-			it.skip("bun not on PATH — skipping integration tests", () => {});
-			return;
-		}
-		const ffiProbe = probeBunFfi(bun);
-		if (!ffiProbe.available) {
-			it.skip(`Bun FFI loader unavailable — ${ffiProbe.reason}`, () => {});
-			return;
-		}
-
 		it("stub dylib exists and is non-empty", () => {
 			expect(statSync(STUB_DYLIB).size).toBeGreaterThan(1024);
 		});

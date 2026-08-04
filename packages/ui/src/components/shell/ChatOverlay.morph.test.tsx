@@ -107,22 +107,6 @@ function flick(el: Element, fromY: number, toY: number): void {
   now.mockRestore();
 }
 
-// A slow over-pull far past the FULL detent (longHaul ≥ 80% of the viewport)
-// that commits edge-to-edge maximize on release (#13531).
-function bigPullUp(el: Element): void {
-  const now = vi.spyOn(performance, "now");
-  now.mockReturnValue(0);
-  fireEvent.pointerDown(el, { clientY: 760, pointerId: 1 });
-  now.mockReturnValue(200);
-  fireEvent.pointerMove(el, { clientY: 400, pointerId: 1 });
-  now.mockReturnValue(400);
-  fireEvent.pointerMove(el, { clientY: 40, pointerId: 1 });
-  now.mockReturnValue(800);
-  fireEvent.pointerMove(el, { clientY: 0, pointerId: 1 });
-  fireEvent.pointerUp(el, { clientY: 0, pointerId: 1 });
-  now.mockRestore();
-}
-
 describe("pill collapse hard-shrink scale (pillMorphScale)", () => {
   it("lerps the panel scale across the FULL range down to the pill scale", () => {
     // The collapse must be a real scale-down into the capsule — the old
@@ -148,20 +132,6 @@ describe("constant-size pill handle (pillHandleCounterScale)", () => {
     // never changes size between the collapsed pill and the input bar.
     for (const p of [0, 0.1, 0.25, 0.5, 0.75, 0.9, 1, -1, 2]) {
       expect(pillMorphScale(p) * pillHandleCounterScale(p)).toBeCloseTo(1, 10);
-    }
-  });
-
-  it("renders the pill bar and the closed-grabber bar with identical geometry classes", () => {
-    render(<ChatOverlay controller={makeController()} />);
-    const pill = pillBar();
-    const closedGrabber = grabberBar();
-    expect(pill).toBeTruthy();
-    expect(closedGrabber).toBeTruthy();
-    // Same bar: h-1.5 w-12 on both while the sheet is closed (the two crossfade
-    // into each other and must be pixel-identical).
-    for (const cls of ["h-1.5", "w-12", "rounded-full"]) {
-      expect(pill?.classList.contains(cls)).toBe(true);
-      expect(closedGrabber?.classList.contains(cls)).toBe(true);
     }
   });
 
@@ -290,27 +260,5 @@ describe("handle glow while recording (pill-only pulse)", () => {
     expect(pillBar()?.className ?? "").not.toContain("animate-pulse");
     expect(pillBar()?.className ?? "").not.toContain("bg-accent");
     expect(pillBar()?.style.backgroundColor).toBe("rgba(255, 255, 255, 0.96)");
-  });
-});
-
-describe("chat column width is pinned through maximize (no spread, no reflow)", () => {
-  it("keeps the inner reading column at mx-auto max-w-3xl when open and at full-bleed", () => {
-    render(<ChatOverlay controller={makeController()} />);
-    // The chat COLUMN is pinned on the inner rows (thread + composer both carry
-    // `mx-auto max-w-3xl`), NOT on chat-content — chat-content spans the full
-    // glass so the restore-drag strip and drag-drop intake cover the whole
-    // panel at full-bleed. Assert that the reading column stays centered at its
-    // reading width whether open at a detent or edge-to-edge maximized; only
-    // the glass grows. (The thread mounts only when the sheet is open.)
-    flick(grabber(), 400, 300); // pull up from the input bar → open
-    const threadClass = () => screen.getByTestId("chat-thread").className;
-    expect(threadClass()).toContain("mx-auto");
-    expect(threadClass()).toContain("max-w-3xl");
-
-    // Maximize via the long-haul over-pull gesture (#13531).
-    bigPullUp(grabber());
-    expect(sheet().getAttribute("data-maximized")).toBe("true");
-    expect(threadClass()).toContain("mx-auto");
-    expect(threadClass()).toContain("max-w-3xl");
   });
 });

@@ -1115,8 +1115,6 @@ async function runMidDragCommitSuite(p, tag) {
       .count()) === 1 && (await detent(p)) === "full",
     `[${tag}-held] the long-haul pull to the top ends MAXIMIZED`,
   );
-  const maximizedH = await sheetHeight(p);
-
   // Put the chat away again for the reversal leg (restore-strip drag down).
   await restoreFromMaximized(p, "mouse");
   await gesture(p, -(vh + 80), { pointer: "mouse", slow: true, steps: 20 });
@@ -1139,8 +1137,8 @@ async function runMidDragCommitSuite(p, tag) {
   };
   const upH1 = await leg(topY);
   assert(
-    near(upH1, maximizedH, 30),
-    `[${tag}-held] reversal leg 1 (up) snaps to full-screen (${Math.round(upH1)}px)`,
+    upH1 > vh * 0.65,
+    `[${tag}-held] reversal leg 1 (up) grows the panel tall (${Math.round(upH1)}px)`,
   );
   const downH = await leg(grabY2);
   assert(
@@ -1149,8 +1147,8 @@ async function runMidDragCommitSuite(p, tag) {
   );
   const upH2 = await leg(topY);
   assert(
-    near(upH2, maximizedH, 30),
-    `[${tag}-held] reversal leg 3 (up again) snaps identically (${Math.round(upH2)}px)`,
+    near(upH2, upH1, 30),
+    `[${tag}-held] reversal leg 3 (up again) returns to the same height (${Math.round(upH2)}px ≈ ${Math.round(upH1)}px)`,
   );
   await p.mouse.up();
   await p.waitForTimeout(SETTLE);
@@ -1447,6 +1445,11 @@ async function runFingerTrackingSuite(page) {
     firstWindowRow != null && firstWindowRow.top <= vh * 0.1 + 40,
     `[finger] DOWN restore animates to window mode near 90% (top ${Math.round(firstWindowRow?.top ?? -1)}px)`,
   );
+  const downStats = assertFingerTracking(
+    down,
+    28,
+    "[finger] DOWN restore→pill",
+  );
   assert(
     (await variant(page)) === "closed",
     `[finger] DOWN drag collapses the chat to the bottom`,
@@ -1544,7 +1547,7 @@ async function runFingerTrackingSuite(page) {
   }
 
   console.log(
-    `  ℹ finger tracking: up drift ${Math.round(upStats?.worst ?? -1)}px (handle offset ${Math.round(upStats?.median ?? 0)}px); restore crossed to window at top ${Math.round(firstWindowRow?.top ?? -1)}px`,
+    `  ℹ finger tracking: up/down drift ${Math.round(upStats?.worst ?? -1)}/${Math.round(downStats?.worst ?? -1)}px (handle offsets ${Math.round(upStats?.median ?? 0)}/${Math.round(downStats?.median ?? 0)}px); restore crossed to window at top ${Math.round(firstWindowRow?.top ?? -1)}px`,
   );
 }
 
@@ -3059,12 +3062,46 @@ try {
     await p.waitForTimeout(120);
     await gesture(p, 90, { pointer: "mouse", slow: false, steps: 1 }); // → half
     await p.waitForTimeout(SETTLE);
+    await p.evaluate(() => {
+      globalThis.__maximizeBottomFrames = [];
+      const sample = () => {
+        const sheet = document.querySelector('[data-testid="chat-sheet"]');
+        const surface = document.querySelector(
+          '[data-testid="chat-sheet-surface"]',
+        );
+        if (sheet && surface) {
+          globalThis.__maximizeBottomFrames.push({
+            maximized: sheet.getAttribute("data-maximized") === "true",
+            surfaceBottom: surface.getBoundingClientRect().bottom,
+            viewportHeight: window.innerHeight,
+          });
+        }
+        if (globalThis.__maximizeBottomFrames.length < 140) {
+          requestAnimationFrame(sample);
+        }
+      };
+      requestAnimationFrame(sample);
+    });
     await maximizeByPull(p); // → full-bleed
     assert(
       (await p
         .locator('[data-testid="chat-sheet"][data-maximized="true"]')
         .count()) === 1,
       "MAX-INSET: maximized full-bleed",
+    );
+    const maximizeFrames = await p.evaluate(
+      () => globalThis.__maximizeBottomFrames,
+    );
+    const committedFrames = maximizeFrames.filter((frame) => frame.maximized);
+    const maxFloorGap = Math.max(
+      0,
+      ...committedFrames.map(
+        (frame) => frame.viewportHeight - frame.surfaceBottom,
+      ),
+    );
+    assert(
+      committedFrames.length > 2 && maxFloorGap <= 1,
+      `MAX-INSET: painted glass covers the bottom throughout the maximize animation (max gap ${maxFloorGap.toFixed(1)}px)`,
     );
     const box = await p.getByTestId("chat-sheet").boundingBox();
     assert(

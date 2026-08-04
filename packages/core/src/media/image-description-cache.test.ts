@@ -44,9 +44,6 @@ function fakeRuntime(overrides: {
 
 describe("imageDescriptionCacheKey", () => {
 	it("is deterministic and content-sensitive", () => {
-		expect(imageDescriptionCacheKey("data:image/png;base64,AAAA")).toBe(
-			imageDescriptionCacheKey("data:image/png;base64,AAAA"),
-		);
 		expect(imageDescriptionCacheKey("a")).not.toBe(
 			imageDescriptionCacheKey("b"),
 		);

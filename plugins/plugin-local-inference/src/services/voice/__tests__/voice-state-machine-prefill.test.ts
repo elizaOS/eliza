@@ -230,7 +230,6 @@ describe("VoiceStateMachine + C7 prefill integration", () => {
 		const preDraftSave = mgr.operations.find(
 			(op) => op.kind === "save" && op.name === "pre-draft",
 		);
-		expect(preDraftSave).toBeDefined();
 		if (!preDraftSave) {
 			throw new Error("expected pre-draft checkpoint save");
 		}

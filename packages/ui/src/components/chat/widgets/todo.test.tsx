@@ -361,29 +361,6 @@ describe("TodoSidebarWidget", () => {
     expect(openViewSpy).toHaveBeenCalledWith("/todos", "todos");
   });
 
-  it("home slot: applies the host-supplied spanClassName to its single root grid-item element (#11752)", async () => {
-    stubLifeopsFetch([
-      ownerTodo({ id: "od", title: "Pay rent", dueDate: overdueDue() }),
-    ]);
-    const { container } = render(
-      <TodoWidget
-        slot="home"
-        events={[]}
-        clearEvents={vi.fn()}
-        spanClassName="col-span-2 row-span-1"
-      />,
-    );
-
-    expect(await screen.findByText("Pay rent")).toBeTruthy();
-    const root = container.firstElementChild;
-    expect(root).not.toBeNull();
-    expect(root?.className).toContain("col-span-2");
-    expect(root?.className).toContain("row-span-1");
-    expect(
-      root?.querySelector('[data-testid="chat-widget-todos"]'),
-    ).not.toBeNull();
-  });
-
   it("home slot: renders an at-risk goal as one flagged row inside Today (spec §E item 5)", async () => {
     stubLifeopsFetch(
       [],

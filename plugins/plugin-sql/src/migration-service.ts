@@ -158,7 +158,7 @@ export class DatabaseMigrationService {
         shouldInstallSearchObjects &&
         (await messageSearchTableExists(this.db))
       ) {
-        await applyMessageSearchObjects(this.db);
+        await applyMessageSearchObjects(this.db, this.databaseBackend);
         this.messageSearchObjectsSettled = true;
       } else if (!this.messageSearchObjectsSettled && shouldInstallSearchObjects) {
         logger.info(

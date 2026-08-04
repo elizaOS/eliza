@@ -108,6 +108,7 @@ const noopVault: Vault = {
   reveal: () => Promise.resolve(""),
   has: () => Promise.resolve(false),
   remove: () => Promise.resolve(),
+  quarantineUnreadable: () => Promise.resolve(false),
   list: () => Promise.resolve([]),
   describe: () => Promise.resolve(null),
   stats: () =>

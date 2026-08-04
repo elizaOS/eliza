@@ -197,7 +197,6 @@ describe("ENTER_WORKTREE", () => {
     const data = result.data as Record<string, unknown> | undefined;
     const worktreePath = data?.worktreePath as string | undefined;
     expect(typeof worktreePath).toBe("string");
-    expect(worktreePath).toBeDefined();
     if (!worktreePath) throw new Error("missing worktreePath");
 
     env.cleanupDirs.push(worktreePath);

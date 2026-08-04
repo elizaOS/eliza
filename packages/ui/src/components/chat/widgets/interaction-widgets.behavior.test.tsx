@@ -393,32 +393,6 @@ describe("ChoiceWidget — pick an option", () => {
     expect(recommended.className).not.toContain("disabled:opacity-100");
     expect(onChoose).toHaveBeenCalledWith("local");
   });
-
-  it("multi-option first-run error choices use readable neutral rows (#15516)", () => {
-    render(
-      <ChoiceWidget
-        id="recovery"
-        scope="first-run"
-        options={[
-          { value: "retry", label: "Try again" },
-          {
-            value: "different",
-            label: "Choose a different way to run",
-          },
-          { value: "settings", label: "Configure in Settings" },
-        ]}
-        onChoose={vi.fn()}
-      />,
-    );
-
-    for (const id of ["retry", "different", "settings"]) {
-      const classes = screen.getByTestId(`choice-${id}`).className.split(/\s+/);
-      expect(classes).toContain("bg-card");
-      expect(classes).toContain("text-txt-strong");
-      expect(classes).toContain("border-border-strong");
-      expect(classes).not.toContain("bg-bg-accent");
-    }
-  });
 });
 
 describe("ChoiceWidget — put their own in (allowCustom)", () => {

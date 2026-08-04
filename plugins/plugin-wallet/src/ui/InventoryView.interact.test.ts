@@ -69,27 +69,6 @@ const nfts = {
   solana: null,
 };
 
-const marketOverview = {
-  movers: [
-    {
-      id: "bnb",
-      symbol: "BNB",
-      name: "BNB",
-      priceUsd: 600,
-      change24hPct: 2.5,
-      marketCapRank: 5,
-      imageUrl: null,
-    },
-  ],
-  predictions: [],
-  prices: [],
-  sources: {
-    movers: { available: true, providerName: "test", providerUrl: "#" },
-    predictions: { available: true, providerName: "test", providerUrl: "#" },
-    prices: { available: true, providerName: "test", providerUrl: "#" },
-  },
-};
-
 function seedWalletClientResponses() {
   walletClient.getWalletAddresses.mockResolvedValue({
     evmAddress: "0xabc",
@@ -103,7 +82,6 @@ function seedWalletClientResponses() {
   });
   walletClient.getWalletBalances.mockResolvedValue(balances);
   walletClient.getWalletNfts.mockResolvedValue(nfts);
-  walletClient.getWalletMarketOverview.mockResolvedValue(marketOverview);
   walletClient.getWalletTradingProfile.mockResolvedValue({
     window: "30d",
     source: "all",
@@ -150,12 +128,6 @@ describe("wallet interact capabilities", () => {
         ],
       },
     );
-  });
-
-  it("returns the market overview", async () => {
-    await expect(interact("wallet-market-overview")).resolves.toEqual({
-      overview: marketOverview,
-    });
   });
 
   it("returns the trading profile for the requested window", async () => {

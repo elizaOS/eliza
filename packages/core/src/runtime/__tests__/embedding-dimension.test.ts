@@ -3,9 +3,11 @@
  * against a real AgentRuntime + InMemoryDatabaseAdapter with canned/broken
  * embedding handlers registered via registerModel (no live model):
  *
- * 1. The probe fails over across ALL registered TEXT_EMBEDDING providers in
- *    priority order — any probe error advances, first success wins, sizes the
- *    vector column, and pins that provider for later embedding calls.
+ * 1. The probe fails over across eligible registered TEXT_EMBEDDING providers
+ *    in priority order — any probe error advances, first success wins, sizes
+ *    the vector column, and pins that provider for later embedding calls.
+ *    EMBEDDING_PROVIDER=local is a strict ownership boundary: only the local
+ *    router/on-device handlers are eligible and cloud is never probed.
  * 2. When every probe fails, a typed EmbeddingDimensionProbeError carries each
  *    provider's failure, and the runtime enters a coherent degraded mode:
  *    memory writes skip vector generation (warn once) instead of emitting
@@ -27,12 +29,14 @@ import { type Character, type Memory, ModelType, type UUID } from "../../types";
 
 const ROOM_ID = "00000000-0000-0000-0000-000000000001" as UUID;
 
-function makeRuntime(): AgentRuntime {
+function makeRuntime(options?: { embeddingProvider?: string }): AgentRuntime {
 	return new AgentRuntime({
 		character: {
 			name: "EmbeddingProbeAgent",
 			bio: "test",
-			settings: {},
+			settings: options?.embeddingProvider
+				? { EMBEDDING_PROVIDER: options.embeddingProvider }
+				: {},
 		} as Character,
 		adapter: new InMemoryDatabaseAdapter(),
 		logLevel: "fatal",
@@ -84,6 +88,66 @@ describe("AgentRuntime.ensureEmbeddingDimension provider failover", () => {
 		expect(memory.embedding).toHaveLength(768);
 		expect(brokenHandler).toHaveBeenCalledTimes(1);
 		expect(healthyHandler).toHaveBeenCalledTimes(2);
+	});
+
+	it("never probes a remote provider when EMBEDDING_PROVIDER=local", async () => {
+		const runtime = makeRuntime({ embeddingProvider: "local" });
+		const localRouter = vi.fn(async () => {
+			throw new Error("local GGUF is still staging");
+		});
+		const cloudHandler = vi.fn(async () => new Array(1536).fill(0));
+
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING,
+			cloudHandler,
+			"elizacloud",
+			100,
+		);
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING,
+			localRouter,
+			"eliza-router",
+			Number.MAX_SAFE_INTEGER,
+		);
+
+		const error: unknown = await runtime
+			.ensureEmbeddingDimension()
+			.catch((err: unknown) => err);
+
+		expect(error).toBeInstanceOf(EmbeddingDimensionProbeError);
+		expect((error as EmbeddingDimensionProbeError).attempts).toEqual([
+			{
+				provider: "eliza-router",
+				modelKey: ModelType.TEXT_EMBEDDING,
+				error: "local GGUF is still staging",
+			},
+		]);
+		expect(localRouter).toHaveBeenCalledTimes(1);
+		expect(cloudHandler).not.toHaveBeenCalled();
+		expect(runtime.isEmbeddingGenerationDisabled()).toBe(true);
+	});
+
+	it("fails closed when local ownership is configured without an on-device handler", async () => {
+		const runtime = makeRuntime({ embeddingProvider: "local" });
+		const cloudHandler = vi.fn(async () => new Array(1536).fill(0));
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING,
+			cloudHandler,
+			"elizacloud",
+			100,
+		);
+
+		const error: unknown = await runtime
+			.ensureEmbeddingDimension()
+			.catch((err: unknown) => err);
+
+		expect(error).toBeInstanceOf(EmbeddingDimensionProbeError);
+		expect((error as EmbeddingDimensionProbeError).attempts[0]).toMatchObject({
+			provider: "local",
+			error: expect.stringContaining("no on-device embedding handler"),
+		});
+		expect(cloudHandler).not.toHaveBeenCalled();
+		expect(runtime.isEmbeddingGenerationDisabled()).toBe(true);
 	});
 
 	it("treats an invalid probe embedding as a failed attempt and advances", async () => {
@@ -240,6 +304,24 @@ describe("AgentRuntime.ensureEmbeddingDimension provider failover", () => {
 });
 
 describe("AgentRuntime.initialize with a broken TEXT_EMBEDDING provider (#10702)", () => {
+	it("treats the pre-plugin local handler gap as expected startup sequencing", async () => {
+		const runtime = makeRuntime({ embeddingProvider: "local" });
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING,
+			async () => new Array(1536).fill(0),
+			"elizacloud",
+			100,
+		);
+		const reportError = vi.spyOn(runtime, "reportError");
+		const errorLog = vi.spyOn(runtime.logger, "error");
+
+		await expect(runtime.initialize()).resolves.toBeUndefined();
+
+		expect(runtime.isEmbeddingGenerationDisabled()).toBe(true);
+		expect(reportError).not.toHaveBeenCalled();
+		expect(errorLog).not.toHaveBeenCalled();
+	});
+
 	it("boots in degraded mode when the only provider fails the probe, instead of crashing", async () => {
 		const runtime = makeRuntime();
 		const ollamaHandler = vi.fn(async () => {

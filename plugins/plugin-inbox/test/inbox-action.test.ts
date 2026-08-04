@@ -545,7 +545,6 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
       // the fetched snippet) for the store-backed message.
       expect(useModel).toHaveBeenCalledTimes(1);
       const modelCall = useModel.mock.calls[0];
-      expect(modelCall).toBeDefined();
       if (!modelCall) throw new Error("Expected a priority classifier call");
       const prompt = (modelCall[1] as { prompt: string }).prompt;
       expect(prompt).toContain("Classify each message");
@@ -609,7 +608,6 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
       expect(result.data).toMatchObject({ classified: 1 });
       expect(useModel).toHaveBeenCalledTimes(1);
       const modelCall = useModel.mock.calls[0];
-      expect(modelCall).toBeDefined();
       if (!modelCall) throw new Error("Expected a priority classifier call");
       const prompt = (modelCall[1] as { prompt: string }).prompt;
       expect(prompt).toContain("brand new question about the launch");
@@ -673,7 +671,6 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
       expect(gmailFetcher).toHaveBeenCalledTimes(1);
       expect(useModel).toHaveBeenCalledTimes(1);
       const modelCall = useModel.mock.calls[0];
-      expect(modelCall).toBeDefined();
       if (!modelCall) throw new Error("Expected a priority classifier call");
       const prompt = (modelCall[1] as { prompt: string }).prompt;
       expect(prompt).toContain("production is down and needs urgent review");

@@ -1974,6 +1974,35 @@ function makeEsToolkitCompatEsmPlugin(
   };
 }
 
+// Rolldown invokes optimizer resolve hooks once per import edge. Resolving the
+// same five polyfill packages inside that hook turned a cold Vite start into
+// tens of thousands of synchronous package.json lookups (~55-60 seconds on a
+// warm filesystem). Resolve each installed polyfill once while loading config;
+// the hot hook is then a constant-time map lookup.
+const optimizerNodePolyfills: Readonly<Record<string, string>> = (() => {
+  const resolved: Record<string, string> = {};
+  for (const [nodeId, pkg, entry] of [
+    ["node:events", "events", "events.js"],
+    ["events", "events", "events.js"],
+    ["node:buffer", "buffer", "index.js"],
+    ["buffer", "buffer", "index.js"],
+    ["node:util", "util", "util.js"],
+    ["util", "util", "util.js"],
+    ["node:process", "process", "browser.js"],
+    ["process", "process", "browser.js"],
+    ["node:stream", "stream-browserify", "index.js"],
+    ["stream", "stream-browserify", "index.js"],
+  ] as const) {
+    try {
+      const pkgDir = path.dirname(_require.resolve(`${pkg}/package.json`));
+      resolved[nodeId] = path.join(pkgDir, entry);
+    } catch {
+      // Missing optional polyfills fall through to a generated node stub.
+    }
+  }
+  return resolved;
+})();
+
 export default defineConfig({
   root: here,
   customLogger: viteLogger,
@@ -2810,7 +2839,7 @@ export const INVALID_TRACER_PROVIDER = {};
       "react-router/dom",
       "react-router-dom",
       // Three.js core + all subpath imports must be pre-bundled together so
-      // esbuild shares a single module identity.
+      // the optimizer shares a single module identity.
       "three",
       "three/examples/jsm/controls/OrbitControls.js",
       "three/examples/jsm/libs/meshopt_decoder.module.js",
@@ -2878,29 +2907,7 @@ export const INVALID_TRACER_PROVIDER = {};
         {
           name: "node-builtins-polyfill",
           resolveId(source) {
-            const polyfills: Record<string, string> = {};
-            for (const [nodeId, pkg, entry] of [
-              ["node:events", "events", "events.js"],
-              ["events", "events", "events.js"],
-              ["node:buffer", "buffer", "index.js"],
-              ["buffer", "buffer", "index.js"],
-              ["node:util", "util", "util.js"],
-              ["util", "util", "util.js"],
-              ["node:process", "process", "browser.js"],
-              ["process", "process", "browser.js"],
-              ["node:stream", "stream-browserify", "index.js"],
-              ["stream", "stream-browserify", "index.js"],
-            ] as const) {
-              try {
-                const pkgDir = path.dirname(
-                  _require.resolve(`${pkg}/package.json`),
-                );
-                polyfills[nodeId] = path.join(pkgDir, entry);
-              } catch {
-                // polyfill not installed
-              }
-            }
-            const polyfill = polyfills[source];
+            const polyfill = optimizerNodePolyfills[source];
             if (polyfill) return polyfill;
             if (source.startsWith("node:")) return `\0node-stub:${source}`;
             return null;

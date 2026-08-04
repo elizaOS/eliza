@@ -1540,10 +1540,3 @@ afterAll(() => {
     `[cerebras-journey-eval] wrote ${RESULTS.length}-domain baseline to ${RESULTS_PATH}`,
   );
 });
-
-// Ensure vitest detects this as a runnable suite even when no key is present.
-describe("cerebras-journey-eval bootstrap", () => {
-  it("acknowledges the suite is wired", () => {
-    expect(typeof gradeJourney).toBe("function");
-  });
-});

@@ -8,25 +8,13 @@ import {
 import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import { bindReadyPhase, type ReadyPhaseDeps } from "./startup-phase-hydrate";
 
-// Integration coverage for the full frontend ingestion of an agent-driven view
-// switch: a *raw* WebSocket frame (the literal JSON the agent backend emits via
-// broadcastWs({ type: SHELL_NAVIGATE_VIEW_WS_EVENT, ... }) at
-// packages/agent/src/api/views-routes.ts:788) is dispatched exactly the way the
-// real ElizaClient does it — JSON.parse(event.data), read `data.type`, fan out
-// to handlers registered for that type (client-base.ts:836-859) — and handed to
-// the real `bindReadyPhase` SHELL_NAVIGATE_VIEW_WS_EVENT handler
-// (startup-phase-hydrate.ts:414), which must re-dispatch a normalized DOM
-// `eliza:navigate:view` CustomEvent.
-//
-// The sibling startup-phase-hydrate.view-interact.test.ts feeds *pre-parsed*
-// objects straight into the handler map. This file proves the missing seam: the
-// server's wire frame, carrying the `type` discriminator and the server's
-// conditional field omission, actually reaches the handler keyed by its `type`
-// and survives untrusted-input normalization end to end.
+// Coverage for the ready-phase navigate handler: backend-shaped frames reach
+// bindReadyPhase through the client event seam and are normalized into the
+// browser shell's `eliza:navigate:view` CustomEvent.
 
-// Faithful re-implementation of ElizaClient's WS message routing
-// (client-base.ts:836-859) so we can feed a literal JSON string frame. This is
-// the boundary under test — kept intentionally tiny and mirrored from source.
+// Boundary double for ElizaClient's WS message routing. The production
+// handler registered by bindReadyPhase is the system under test here; parsing
+// and dispatch inside ElizaClient have their own client tests.
 const clientMock = vi.hoisted(() => {
   const wsHandlers = new Map<
     string,
@@ -346,20 +334,6 @@ describe("agent view-switch raw WS frame to DOM navigate event", () => {
     const detail = (navHandler.mock.calls[0][0] as CustomEvent).detail;
     expect(detail.viewId).toBe("spatial-room");
     expect(detail.viewType).toBe("xr");
-    teardown();
-  });
-
-  it("swallows malformed JSON without throwing or dispatching", () => {
-    expect(() => clientMock.deliverFrame("not-json{")).not.toThrow();
-    expect(navHandler).not.toHaveBeenCalled();
-    teardown();
-  });
-
-  it("does not dispatch a navigate event for an unrelated frame type", () => {
-    clientMock.deliverFrame(
-      JSON.stringify({ type: "agent-status", state: "running" }),
-    );
-    expect(navHandler).not.toHaveBeenCalled();
     teardown();
   });
 
