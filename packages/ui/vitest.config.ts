@@ -14,9 +14,8 @@ const coreSrc = resolve(monorepoRoot, "packages/core/src");
 const cloudRoutingSrc = resolve(monorepoRoot, "packages/cloud/routing/src");
 const cloudSharedSrc = resolve(monorepoRoot, "packages/cloud/shared/src");
 const loggerSrc = resolve(monorepoRoot, "packages/logger/src");
-const bunRuntimeSrc = resolve(
-  monorepoRoot,
-  "plugins/plugin-native-bun-runtime/src/index.ts",
+const bunRuntimeSrc = createRequire(import.meta.url).resolve(
+  "@elizaos/capacitor-bun-runtime",
 );
 const hostExternalStub = resolve(packageRoot, "test/stubs/host-external.ts");
 
