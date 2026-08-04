@@ -333,7 +333,7 @@ jobs:
       # and installs the APK, then runs the live on-device local-chat smoke, which
       # stages the GGUF and asserts a real model reply.
       - name: Build, install, and run Android on-device local-chat smoke
-        uses: reactivecircus/android-emulator-runner@62dbb605bba737720e10b196cb4220d374026a6d
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
           api-level: 34
           arch: x86_64
