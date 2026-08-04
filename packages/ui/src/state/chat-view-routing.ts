@@ -180,6 +180,7 @@ export function buildChatViewMetadata(
     uiTab: tab,
     uiViewPath: normalizedViewPath,
     uiViewCapabilities: viewRouting.capabilities,
+    uiTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     [CONTEXT_ROUTING_METADATA_KEY]: {
       ...(existingRouting ?? {}),
       primaryContext: viewRouting.primaryContext,

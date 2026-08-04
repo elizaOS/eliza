@@ -5441,7 +5441,6 @@ export async function startEliza(
         }
       }
     }
-
     deduplicatePluginActions([
       basicCapabilitiesPlugin,
       ...subAgentCredentialPlugins,
