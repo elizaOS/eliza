@@ -564,6 +564,35 @@ describe("executePlannedToolCall", () => {
 		);
 	});
 
+	it("preserves byte-exact canonical callback text through later voice gates", async () => {
+		const canonicalText =
+			"“Send demo video” is scheduled for Tuesday, August 4, 2026 at 9:00 AM.";
+		const callback: HandlerCallback = vi.fn(async () => []);
+		const action = makeAction({
+			name: "READ_CALENDAR",
+			handler: async (_runtime, _message, _state, _options, actionCallback) => {
+				await actionCallback?.({ text: canonicalText });
+				return {
+					success: true,
+					text: canonicalText,
+					userFacingText: canonicalText,
+					verifiedUserFacing: true,
+				};
+			},
+		});
+
+		await executePlannedToolCall(
+			makeRuntime([action]),
+			{ message: makeMessage(), callback },
+			{ name: "READ_CALENDAR", params: {} },
+		);
+
+		expect(callback).toHaveBeenCalledWith(
+			{ text: canonicalText, agentVoiced: true },
+			"READ_CALENDAR",
+		);
+	});
+
 	it("suppresses mutation callbacks until their result carries receipt proof", async () => {
 		const callback: HandlerCallback = vi.fn(async () => []);
 		const action = makeAction({
