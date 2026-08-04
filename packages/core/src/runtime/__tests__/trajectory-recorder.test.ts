@@ -10,6 +10,10 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TRACE_ENV } from "../trace-correlation";
+// The real canonical parser, imported by path on purpose: the round-trip test
+// must fail if the recorder's terminal shape and the validator's accepted
+// vocabulary ever drift apart.
+import { validateTrajectory } from "../../../../scripts/lib/trajectory-validate";
 import {
 	applyTrajectoryFieldCap,
 	captureSkillInvocationIO,
@@ -684,12 +688,14 @@ describe("JsonFileTrajectoryRecorder", () => {
 		expect(trajectory?.metrics.finalDecision).toBe("error");
 	});
 
-	it("stamps a distinct terminal sentinel on a finished trajectory with no evaluation stage", async () => {
+	it("stamps the canonical clean terminal on a finished trajectory with no evaluation stage", async () => {
 		// Non-evaluated terminal paths (Stage-1 direct reply, deterministic
 		// fallback, structured failure reply) end a turn without any evaluation
 		// stage. The recorder must still stamp the clean terminal — an absent
 		// finalDecision on a finished trajectory previously read as "died after
-		// planner" and made delivered turns indistinguishable from drops.
+		// planner" and made delivered turns indistinguishable from drops. The
+		// stamp must be a member of the canonical validator's closed
+		// finalDecision vocabulary, not an invented sentinel.
 		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
 		const id = recorder.startTrajectory({
 			agentId: "agent-direct-reply",
@@ -710,7 +716,39 @@ describe("JsonFileTrajectoryRecorder", () => {
 		await recorder.endTrajectory(id, "finished");
 		const trajectory = await recorder.load(id);
 		expect(trajectory?.status).toBe("finished");
-		expect(trajectory?.metrics.finalDecision).toBe("terminal:finished");
+		expect(trajectory?.metrics.finalDecision).toBe("FINISH");
+	});
+
+	it("round-trips the stamped clean terminal through the real canonical validator", async () => {
+		// The canonical parser (packages/scripts/lib/trajectory-validate.ts)
+		// accepts only FINISH / CONTINUE / max_iterations / error for
+		// finalDecision — any invented terminal sentinel fails validation for
+		// every recorded trajectory. This drives the REAL validator, not a
+		// re-declared vocabulary, so recorder and parser cannot drift apart.
+		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
+		const id = recorder.startTrajectory({
+			agentId: "agent-validator-roundtrip",
+			rootMessage: { id: "msg", text: "whats my favorite color?" },
+		});
+		await recorder.recordStage(id, {
+			stageId: "stage-msghandler-1",
+			kind: "messageHandler",
+			startedAt: 1_000,
+			endedAt: 1_200,
+			latencyMs: 200,
+			model: {
+				modelType: "RESPONSE_HANDLER",
+				provider: "test",
+				response: "crimson.",
+			},
+		});
+		await recorder.endTrajectory(id, "finished");
+		const trajectory = await recorder.load(id);
+		const result = validateTrajectory(trajectory);
+		const finalDecisionIssues = result.issues.filter(
+			(issue) => issue.path === "$.metrics.finalDecision",
+		);
+		expect(finalDecisionIssues).toEqual([]);
 	});
 
 	it("does not overwrite an evaluation-derived finalDecision at finish", async () => {
