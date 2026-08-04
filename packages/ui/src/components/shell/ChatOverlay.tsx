@@ -11,6 +11,7 @@ import {
   Film,
   Loader2,
   Mic,
+  MicOff,
   Music,
   Paperclip,
   Search,
@@ -50,6 +51,8 @@ import {
   CHAT_PREFILL_EVENT,
   type ChatPrefillEventDetail,
   ELIZA_BACK_INTENT_EVENT,
+  NAVIGATE_VIEW_EVENT,
+  type NavigateViewDetail,
 } from "../../events";
 import {
   TOUCH_TAP_MOVE_SLOP as OUTSIDE_SHEET_TAP_SLOP,
@@ -70,6 +73,7 @@ import { useLoadOlderOnScroll } from "../../hooks/useLoadOlderOnScroll";
 import { usePushToTalk } from "../../hooks/usePushToTalk";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
+import { tabFromPath } from "../../navigation";
 import { claimAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
 import { isIOS, isNative, isStandalonePwa } from "../../platform/init";
 import {
@@ -143,6 +147,7 @@ import {
 import {
   isShortLandscapeViewport,
   measureSafeAreaInsetTop,
+  resolveChatPanelHalfDetentHeight,
   resolveChatPanelLayout,
 } from "./chat-panel-layout";
 import { LIQUID_GLASS_EDGE_SHADOW, LIQUID_GLASS_SHEEN } from "./liquid-glass";
@@ -294,7 +299,9 @@ export type ChatMode = "pill" | "input" | "half" | "full";
 
 type MotionControls = { stop: () => void };
 
-const SHEET_HALF_VH = 0.46; // fraction of viewport height at the HALF detent
+// Keep the synchronous resize anchor aligned with MessageScroller's own
+// definition of an end-pinned reader.
+const MESSAGE_SCROLLER_END_THRESHOLD_PX = 8;
 // A landscape phone still needs room for the attach, mic, voice, and text
 // controls. The old 208px cap squeezed the editable field to ~46px and made a
 // rotation look like the composer had broken. Keep the corner treatment, but
@@ -311,6 +318,10 @@ const CHAT_CLEARANCE_MAX_PX = 220;
 // floor. That gap is part of the occluded footprint even though it is outside
 // the measured fieldset.
 const CHAT_CLEARANCE_REST_GAP_PX = 8;
+// Single source of truth for the visible gap between the focused composer and
+// the software keyboard. The layout solver consumes the same number it paints,
+// so a native keyboard event cannot leave panel height using stale rest padding.
+const KEYBOARD_COMPOSER_GAP_PX = 12;
 // Restore-from-maximized grab zone (#13531): while full-bleed, a downward pull
 // that STARTS within this fraction of the panel height from the top drops
 // full-bleed and tracks the finger. 0.9 = "top 90%" — nearly the whole panel is
@@ -736,7 +747,6 @@ function SheetGrabber({
   breathing,
   opacity,
   pilled,
-  inert,
 }: {
   open: boolean;
   onOpen: () => void;
@@ -750,11 +760,8 @@ function SheetGrabber({
   // Inert while pilled so the invisible grabber can't steal taps meant for the
   // pill capsule (or pass-through to the home screen) below it.
   pilled: boolean;
-  // Inert while collapsed attachment controls are visible; their tap targets sit
-  // in the same top edge zone the broad swipe handle normally owns.
-  inert?: boolean;
 }): React.JSX.Element {
-  const disabled = pilled || inert;
+  const disabled = pilled;
   return (
     <motion.button
       style={{ opacity, pointerEvents: disabled ? "none" : "auto" }}
@@ -782,6 +789,15 @@ function SheetGrabber({
           e.preventDefault();
           onClose();
         }
+      }}
+      // Opening the sheet moves this handle before Chromium emits the touch
+      // gesture's compatibility click. Without suppressing that native follow-
+      // up, the click re-hit-tests onto the composer now underneath the release
+      // coordinate and focuses it; the next handle tap then dismisses the
+      // keyboard instead of closing the sheet. Pointer events remain the sole
+      // touch authority, matching PillHandle's moving-target contract below.
+      onTouchEnd={(e) => {
+        if (e.cancelable) e.preventDefault();
       }}
       {...binding}
       className={cn(
@@ -1348,16 +1364,13 @@ export function ChatOverlay({
   const openProgressAnimationRef = React.useRef<MotionControls | null>(null);
   const prefillFocusFrameRef = React.useRef<number | null>(null);
   const prefillFocusTimerRef = React.useRef<number | null>(null);
-  // A GPU-compositing hint scoped to an ACTIVE drag/settle only. While the
-  // finger drives the panel (`scale`/`flexBasis` change every frame) and while
-  // the release spring runs, we set `will-change: transform` on the panel (and
-  // suppress the thread's edge mask) so iOS Safari/WebKit promotes the morph to
-  // its own compositor layer up front — it then composites without a per-frame
-  // repaint of the frosted glass + content (the visible micro-stutter on the
-  // installed PWA). Deliberately NOT permanent: `will-change` keeps a promoted
-  // layer (and its memory) resident, so we drop it the instant the release
-  // spring settles. A ref mirrors it for the guarded setter so per-frame drag
-  // updates never cause a redundant re-render.
+  // Render-level motion state for the active drag and its release spring. The
+  // native-glass handoff and safe-area morph use this boundary, while the live
+  // height itself remains a MotionValue so pointer frames do not re-render.
+  // Do not turn this signal into `will-change` on the text-bearing fieldset:
+  // promoting and demoting that whole subtree re-rasterizes stationary glyphs
+  // at the gesture edges. The pill's real transform is composited by the
+  // browser when Framer Motion writes it; open-sheet drags change layout only.
   const [isDragging, setDragging] = React.useState(false);
   const isDraggingRef = React.useRef(false);
   // True only while the sheet is at TRUE rest: no finger down AND no height
@@ -1562,6 +1575,7 @@ export function ChatOverlay({
   const [pttHolding, setPttHolding] = React.useState(false);
   const [imageError, setImageError] = React.useState<string | null>(null);
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
+  const preserveFocusOnAgentNavigationRef = React.useRef<string | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const overlayRef = React.useRef<HTMLDivElement>(null);
   const panelRef = React.useRef<HTMLFieldSetElement>(null);
@@ -1760,6 +1774,48 @@ export function ChatOverlay({
   // streamed-content growth. The ref remains local because search, keyboard
   // focus, topic jumps, and infinite-history prefetch address the same viewport.
   const threadRef = React.useRef<HTMLDivElement>(null);
+  // MessageScroller intentionally defers resize reconciliation to the next
+  // animation frame. That is correct for ordinary content growth, but the chat
+  // sheet changes this viewport's height on every drag frame: a bottom-pinned
+  // transcript would otherwise paint once at the old scrollTop, then jump when
+  // MessageScroller catches up. Preserve only an already-pinned reader in the
+  // ResizeObserver delivery phase; readers in history retain their exact place.
+  const threadPinnedToEndRef = React.useRef(!firstRunOpen);
+  const handleThreadScroll = React.useCallback(
+    (event: React.UIEvent<HTMLDivElement>) => {
+      const viewport = event.currentTarget;
+      const end = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
+      threadPinnedToEndRef.current =
+        end - viewport.scrollTop <= MESSAGE_SCROLLER_END_THRESHOLD_PX;
+    },
+    [],
+  );
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a conversation change resets the keyed MessageScroller to its declared start/end policy.
+  React.useLayoutEffect(() => {
+    threadPinnedToEndRef.current = !firstRunOpen;
+  }, [activeConversationId, firstRunOpen]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: activeConversationId remounts the keyed viewport even while presentation stays true.
+  React.useLayoutEffect(() => {
+    const viewport = threadRef.current;
+    if (
+      !threadPresented ||
+      !viewport ||
+      typeof ResizeObserver === "undefined"
+    ) {
+      return;
+    }
+    const preservePinnedEnd = () => {
+      if (!threadPinnedToEndRef.current) return;
+      const end = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
+      if (Math.abs(end - viewport.scrollTop) > 0.5) {
+        viewport.scrollTop = end;
+      }
+    };
+    preservePinnedEnd();
+    const observer = new ResizeObserver(preservePinnedEnd);
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [activeConversationId, threadPresented]);
   const [scrollToEndRequest, setScrollToEndRequest] = React.useState(0);
   // Focus the thread for keyboard scrolling when an opener requested it.
   // Deliberately NO dependency array: many requesters (drag settles, flick
@@ -1892,8 +1948,10 @@ export function ChatOverlay({
     element: HTMLElement;
     fadeTimer: number;
     cleanupTimer: number;
-    outline: string;
-    outlineOffset: string;
+    boxShadow: string;
+    filter: string;
+    borderRadius: string;
+    textShadow: string;
     transition: string;
   } | null>(null);
   const clearSearchHighlight = React.useCallback(() => {
@@ -1901,8 +1959,10 @@ export function ChatOverlay({
     if (!active) return;
     window.clearTimeout(active.fadeTimer);
     window.clearTimeout(active.cleanupTimer);
-    active.element.style.outline = active.outline;
-    active.element.style.outlineOffset = active.outlineOffset;
+    active.element.style.boxShadow = active.boxShadow;
+    active.element.style.filter = active.filter;
+    active.element.style.borderRadius = active.borderRadius;
+    active.element.style.textShadow = active.textShadow;
     active.element.style.transition = active.transition;
     active.element.removeAttribute("data-chat-search-highlight");
     activeSearchHighlightRef.current = null;
@@ -1921,26 +1981,43 @@ export function ChatOverlay({
         el.scrollIntoView({ block: "center", behavior: "smooth" });
       }
       // Paint inside the actual bubble so the scroller's paint containment
-      // cannot clip the transient accent.
+      // cannot clip the transient neutral highlight.
       const bubble =
         el.querySelector<HTMLElement>('[data-chat-message-bubble="true"]') ??
         el;
+      // The assistant bubble spans the transcript width by design. Paint on
+      // its selectable text layer so the halo follows the message rather than
+      // inheriting the row's straight edges.
+      const paintTarget =
+        bubble.querySelector<HTMLElement>('[data-chat-selectable="true"]') ??
+        bubble;
       const previous = {
-        outline: bubble.style.outline,
-        outlineOffset: bubble.style.outlineOffset,
-        transition: bubble.style.transition,
+        boxShadow: paintTarget.style.boxShadow,
+        filter: paintTarget.style.filter,
+        borderRadius: paintTarget.style.borderRadius,
+        textShadow: paintTarget.style.textShadow,
+        transition: paintTarget.style.transition,
       };
-      bubble.setAttribute("data-chat-search-highlight", "true");
-      bubble.style.outline = "2px solid var(--accent)";
-      bubble.style.outlineOffset = "-2px";
-      bubble.style.transition =
-        "outline-color 650ms cubic-bezier(0.22, 1, 0.36, 1)";
+      paintTarget.setAttribute("data-chat-search-highlight", "true");
+      // A drop shadow follows the painted bubble/text silhouette. An outline
+      // follows the full assistant row, which reads as a rectangular box.
+      paintTarget.style.borderRadius = "0.75rem";
+      paintTarget.style.boxShadow =
+        "0 0 0 1px rgba(255, 255, 255, 0.12), 0 0 16px rgba(255, 255, 255, 0.28)";
+      paintTarget.style.filter =
+        "drop-shadow(0 0 7px rgba(255, 255, 255, 0.62))";
+      paintTarget.style.textShadow =
+        "0 0 4px rgba(255, 255, 255, 0.72), 0 0 12px rgba(255, 255, 255, 0.38)";
+      paintTarget.style.transition =
+        "box-shadow 650ms cubic-bezier(0.22, 1, 0.36, 1), filter 650ms cubic-bezier(0.22, 1, 0.36, 1), text-shadow 650ms cubic-bezier(0.22, 1, 0.36, 1)";
       const fadeTimer = window.setTimeout(() => {
-        bubble.style.outline = "2px solid transparent";
+        paintTarget.style.boxShadow = "none";
+        paintTarget.style.filter = "drop-shadow(0 0 0 rgba(255, 255, 255, 0))";
+        paintTarget.style.textShadow = "0 0 0 rgba(255, 255, 255, 0)";
       }, 1050);
       const cleanupTimer = window.setTimeout(clearSearchHighlight, 1750);
       activeSearchHighlightRef.current = {
-        element: bubble,
+        element: paintTarget,
         fadeTimer,
         cleanupTimer,
         ...previous,
@@ -2032,6 +2109,9 @@ export function ChatOverlay({
     (message: ChatMessageData) => {
       setChatReplyTarget(buildReplyTargetFromMessage(message, agentName));
       setMode((m) => (m === "half" || m === "full" ? m : "half"));
+      // Keep this synchronous with the trusted Reply click so mobile browsers
+      // may open the software keyboard without a second tap.
+      inputRef.current?.focus({ preventScroll: true });
     },
     [setChatReplyTarget, agentName],
   );
@@ -2596,6 +2676,9 @@ export function ChatOverlay({
   // sub-threshold inset a touch page carries at rest.
   const keyboardBlocksMaximize =
     effectiveKeyboardInset >= KEYBOARD_INTRUSION_THRESHOLD_PX;
+  const layoutBottomPad = keyboardLiftActive
+    ? KEYBOARD_COMPOSER_GAP_PX
+    : bottomPad;
 
   // FULL-SCREEN derived gate: maximized only takes effect AT the full detent, so
   // a stale flag can never leak into half/collapsed/pill. Drives the edge-to-edge
@@ -2685,7 +2768,7 @@ export function ChatOverlay({
   // panel top tracks the pointer all the way to the screen edge.
   const layoutInput = {
     viewportH,
-    bottomPad,
+    bottomPad: layoutBottomPad,
     keyboardInset,
     effectiveKeyboardInset,
     safeAreaTopPx: safeAreaTop,
@@ -2710,7 +2793,13 @@ export function ChatOverlay({
   // the detent target matches the visible height (no dead slack at the top of a
   // pull-down) while the sheet rises all the way to the top.
   const openH = panelMaxH;
-  const halfH = Math.round(viewportH * SHEET_HALF_VH);
+  // The nominal half detent can exceed the entire visible panel when a native
+  // keyboard lifts the overlay without shrinking Chromium's layout viewport
+  // (the LP3 WebView reports 414px while Gboard consumes 223px). A resting
+  // detent may never outrun its current panel ceiling: panelCapH intentionally
+  // follows threadHeight during a live over-pull, so an oversized HALF target
+  // otherwise re-expands the cap and clips the grabber above the screen.
+  const halfH = resolveChatPanelHalfDetentHeight(viewportH, panelMaxH);
   const detentH = !sheetOpen ? 0 : expanded ? openH : halfH;
   // A free-drag rest height wins over the detent until a detent is re-taken.
   const baseH = freeH != null ? Math.min(freeH, panelMaxH) : detentH;
@@ -2780,7 +2869,15 @@ export function ChatOverlay({
   const scrimVisibility = useTransform(threadHeight, (h) =>
     h > 0 ? "visible" : "hidden",
   );
-  const threadFlexBasis = useTransform(threadHeight, (h) => `${h}px`);
+  // Scroll geometry is integer CSS pixels (`clientHeight`, `scrollHeight`, and
+  // the bottom-anchor `scrollTop`). Quantize the flex viewport to that same
+  // coordinate system so fractional pointer frames cannot make transcript
+  // glyphs drift subpixel-by-subpixel and then jump when the scroll anchor
+  // crosses its next integer pixel.
+  const threadFlexBasis = useTransform(
+    threadHeight,
+    (height) => `${Math.round(height)}px`,
+  );
   // Full-screen SHAPE spring (0 = inset chat shape, 1 = edge-to-edge). It springs
   // between the two whenever `maximized` flips, so a maximize ANIMATES out to full
   // screen instead of jumping, and a restore drag ANIMATES back to the exact inset
@@ -2898,10 +2995,16 @@ export function ChatOverlay({
     fullBleedT,
     (t: number) => PANEL_RADIUS_PX * (1 - t),
   );
-  // A matching clip-path keeps transformed transcript children inside the
-  // morphing glass edge on WebKit. Border-radius plus overflow-hidden alone can
-  // leak a compositor-layer text sliver through the rounded top corners.
-  const contentClipPath = useMotionTemplate`inset(0 round ${morphRadius}px)`;
+  // Keep transformed transcript children one physical border-width inside the
+  // inset glass. The rim is translucent, so clipping at its outer edge lets
+  // compositor-promoted text show through the antialiased top curve even when
+  // the rim itself paints above it. The reserved pixel eases to zero with the
+  // full-bleed morph, where there is no border or rounded edge to protect.
+  const contentClipPath = useTransform(fullBleedT, (t: number) => {
+    const inset = 1 - t;
+    const innerRadius = Math.max(0, PANEL_RADIUS_PX * (1 - t) - inset);
+    return `inset(${inset}px round ${innerRadius}px)`;
+  });
   const bottomInsetFactor = useTransform(fullBleedT, [0, 1], [1, 0]);
   const overlayPadBottom = useMotionTemplate`calc(${bottomInsetFactor} * (var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.5rem))`;
   // Full-bleed extends the glass UP under the status bar; riding the shape
@@ -3008,7 +3111,11 @@ export function ChatOverlay({
   // open) so a half-finished pill drag springs cleanly back to the capsule.
   const settleDrag = React.useCallback(() => {
     draggingRef.current = false;
-    setDragPreviewMounted(false);
+    // Keep a collapsed-state drag preview mounted until the return spring
+    // actually reaches zero. Unmounting it at pointer-up removes the moving
+    // body one frame before the glass settles, which reads as a flash/snap on a
+    // short pull or a canceled pointer. The threadHeight listener owns the
+    // eventual unmount; committed open destinations clear the preview below.
     // Settle toward the LIVE resting pose (modeRef/freeHRef), not the render
     // closure: a mid-drag commit flips mode in the same event as the release,
     // and the stale closure here sprang the sheet back toward the PRE-commit
@@ -3054,7 +3161,6 @@ export function ChatOverlay({
     animateOpenProgress,
     settleFullBleed,
     overpullCapT,
-    setDragPreviewMounted,
   ]);
   // Keep the ref the (earlier-declared) viewport-resize effect calls pointing at
   // the latest settleDrag, so a rotation re-settles with current geometry.
@@ -3480,6 +3586,39 @@ export function ChatOverlay({
     if (preFocusCollapsedRef.current) collapse();
   }, [collapse]);
 
+  // A chat-command navigation is different from a direct tile/tab navigation:
+  // the user just pressed Enter and should be able to keep typing. Capture that
+  // one transition before App updates currentTab; the blur effect below consumes
+  // the lease. Direct navigation carries no agent source and keeps the existing
+  // iOS keyboard cleanup.
+  React.useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const preserveFocusedComposer = (event: Event) => {
+      const detail = (event as CustomEvent<NavigateViewDetail>).detail;
+      const action = detail?.action;
+      const targetTab =
+        action === "close" || action === "close-all" || action === "open-window"
+          ? null
+          : action === "split-view" || action === "tile-views"
+            ? "views"
+            : detail?.viewId && detail.viewPath === `/${detail.viewId}`
+              ? detail.viewId
+              : detail?.viewPath
+                ? (tabFromPath(detail.viewPath) ?? detail.viewId ?? null)
+                : (detail?.viewId ?? null);
+      preserveFocusOnAgentNavigationRef.current =
+        detail?.source === "agent" &&
+        targetTab !== null &&
+        typeof document !== "undefined" &&
+        document.activeElement === inputRef.current
+          ? targetTab
+          : null;
+    };
+    window.addEventListener(NAVIGATE_VIEW_EVENT, preserveFocusedComposer);
+    return () =>
+      window.removeEventListener(NAVIGATE_VIEW_EVENT, preserveFocusedComposer);
+  }, []);
+
   // The composer overlay floats over every view and survives tab changes, so
   // navigating away from a focused composer (chat → Settings / Home / …) would
   // otherwise leave the textarea holding DOM focus on the new view (its
@@ -3491,7 +3630,13 @@ export function ChatOverlay({
   // change) is left untouched. Keyboard.hide() guarantees iOS dismisses the
   // accessory bar, not just the soft keyboard.
   React.useEffect(() => {
-    if (currentTab === "chat") return;
+    if (currentTab === "chat") {
+      preserveFocusOnAgentNavigationRef.current = null;
+      return;
+    }
+    const preserveFocus =
+      preserveFocusOnAgentNavigationRef.current === currentTab;
+    preserveFocusOnAgentNavigationRef.current = null;
     const input = inputRef.current;
     if (
       typeof document === "undefined" ||
@@ -3500,6 +3645,7 @@ export function ChatOverlay({
     ) {
       return;
     }
+    if (preserveFocus) return;
     input.blur();
     void import("@capacitor/keyboard")
       .then(({ Keyboard }) => Keyboard.hide())
@@ -4321,9 +4467,12 @@ export function ChatOverlay({
       // the capsule and crossfades out under the finger — in BOTH directions);
       // above 0 it is the thread height.
       openProgress.set(cont < 0 ? clamp01(1 + cont / PILL_OPEN_DISTANCE) : 1);
+      const fullscreenCrossCont = fullscreenCrossContRef.current;
       const snappedAboveThreshold =
-        fullscreenCrossContRef.current != null &&
-        cont >= fullscreenCrossContRef.current;
+        fullscreenCrossCont != null &&
+        cont >=
+          fullscreenCrossCont -
+            (maximized ? FULLSCREEN_RELEASE_HYSTERESIS_PX : 0);
       if (!snappedAboveThreshold) {
         // A same-gesture reversal below the snap line takes height authority
         // back from the full-screen spring on its first pixel.
@@ -4428,7 +4577,8 @@ export function ChatOverlay({
       // once (border, radius, side inset, width, composer capsule). Only the SHAPE
       // is stateful: below 90% the panel HEIGHT tracks the finger 1:1; at the
       // line the height and shape spring to the viewport. Pulling back below the
-      // same line springs the window shape home.
+      // release band springs the window shape home; normal pointer jitter stays
+      // committed.
       // Reduced-motion cuts instantly.
       // A real keyboard blocks maximize (the edge-to-edge panel would spill above
       // the keyboard-shrunk visual viewport); a pull-to-full with the keyboard up
@@ -4522,6 +4672,7 @@ export function ChatOverlay({
       maxOverPull,
       viewportH,
       fullscreenSnapH,
+      maximized,
       expanded,
       freeH,
       threadHeight,
@@ -4699,7 +4850,6 @@ export function ChatOverlay({
     // to a detent — drag the sheet to any size and it stays.
     onSettleFree: (direction) => {
       draggingRef.current = false;
-      setDragPreviewMounted(false);
       // Onboarding: a released drag always springs back to the pinned FULL.
       if (pinnedOpen) return settleDrag();
       // Include a same-event mid-drag pill commit (see onPullUp).
@@ -4739,7 +4889,10 @@ export function ChatOverlay({
       // peak visible height (maxPullRawRef) carries the intent. Downward restore drags
       // must not re-enter full-bleed, even if a previous upward peak was visible
       // before the release settled.
-      if (direction === "up" && maybeMaximizeOnRelease()) return;
+      if (direction === "up" && maybeMaximizeOnRelease()) {
+        setDragPreviewMounted(false);
+        return;
+      }
       const h = Math.max(0, Math.min(threadHeight.get(), panelMaxH));
       // DETENT MAGNETISM — the resting positions are the detents {collapsed:0,
       // half, full}; a release within SHEET_DETENT_MAGNET of one snaps to it
@@ -4753,8 +4906,10 @@ export function ChatOverlay({
       }
       focusThreadRef.current = true;
       if (h >= openH - SHEET_DETENT_MAGNET) {
+        setDragPreviewMounted(false);
         goToDetent("full");
       } else if (Math.abs(h - halfH) <= SHEET_DETENT_MAGNET) {
+        setDragPreviewMounted(false);
         goToDetent("half");
       } else {
         // In a gap between detents → rest exactly where released. `half` is the
@@ -4762,6 +4917,7 @@ export function ChatOverlay({
         // left. This leaves FULL without goToDetent, so drop full-bleed here
         // too — only the FULL detent may stay maximized (a stale flag would
         // re-maximize the next return to full).
+        setDragPreviewMounted(false);
         setFreeH(h);
         setMode("half");
         setMaximized(false);
@@ -5059,7 +5215,7 @@ export function ChatOverlay({
         // so the switch is seamless) — at rest it stays the plain calc so the
         // home-indicator clearance contract is exact.
         paddingBottom: keyboardLiftActive
-          ? "0.75rem"
+          ? `${KEYBOARD_COMPOSER_GAP_PX}px`
           : fullBleed || restoreDragging || isDragging
             ? overlayPadBottom
             : "calc(var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.5rem)",
@@ -5206,7 +5362,6 @@ export function ChatOverlay({
             breathing={(listening || responding) && !recording}
             opacity={grabberOpacity}
             pilled={pilled}
-            inert={!sheetOpen && (hasImages || Boolean(imageError))}
           />
         ) : null}
         <motion.fieldset
@@ -5254,16 +5409,6 @@ export function ChatOverlay({
             scale: fullBleed ? 1 : panelScale,
             // Grow UP out of the pill at the bottom.
             transformOrigin: "bottom center",
-            // GPU-promote the panel ONLY while a drag/settle is live (#swipe-
-            // smoothness). The morph animates `scale` (a transform) here and the
-            // thread animates its `flexBasis` below; hinting `will-change:
-            // transform` for the duration of the gesture lets WebKit/iOS Safari
-            // rasterize the panel onto its own compositor layer up front, so the
-            // finger-tracked morph and the release spring composite without
-            // repainting the frosted glass each frame (the installed-PWA
-            // micro-stutter). Dropped on settle — a permanent hint keeps the
-            // layer (and its memory) resident for no benefit at rest.
-            willChange: isDragging ? "transform" : undefined,
             // Pilled: span the (invisible) input area but pass taps through to the
             // home screen — only the pill-capsule child re-enables pointer events.
             pointerEvents: pilled ? "none" : "auto",
@@ -5634,6 +5779,7 @@ export function ChatOverlay({
                   key={activeConversationId ?? "unbound"}
                   autoScroll={!firstRunOpen}
                   defaultScrollPosition={firstRunOpen ? "start" : "end"}
+                  scrollEdgeThreshold={MESSAGE_SCROLLER_END_THRESHOLD_PX}
                 >
                   <MessageScrollerSendFollow request={scrollToEndRequest} />
                   <MessageScrollerSearchBridge
@@ -5650,6 +5796,7 @@ export function ChatOverlay({
                         data-testid="chat-thread-scroll"
                         ref={threadRef}
                         preserveScrollOnPrepend={false}
+                        onScroll={handleThreadScroll}
                         aria-label="conversation history"
                         aria-hidden={
                           !sheetOpen || searchOpen ? true : undefined
@@ -5690,9 +5837,12 @@ export function ChatOverlay({
                             className="sticky top-0 z-[2] -mx-5 mb-1 bg-gradient-to-b from-scrim to-transparent px-5"
                           />
                         ) : null}
-                        {/* Normal chat keeps the latest line near the composer. First-run
-                  starts at the top of the transcript so the opening prompt reads
-                  like the first turn in a conversation. */}
+                        {/* Normal chat consumes only the free space in genuinely
+                  short threads to keep their latest line near the composer.
+                  Once content fills the viewport there is no free space to
+                  distribute, so long transcripts retain their natural flow.
+                  First-run starts at the top so the opening prompt reads like
+                  the first turn. */}
                         <MessageScrollerContent
                           ref={threadContentRef}
                           aria-busy={responding}
@@ -5700,7 +5850,7 @@ export function ChatOverlay({
                             "flex flex-col gap-0",
                             firstRunOpen
                               ? "shrink-0 pt-8"
-                              : "mt-auto pb-3 pt-8",
+                              : "mt-auto justify-end pb-3 pt-8",
                           )}
                         >
                           {/* Top sentinel for infinite upward scroll (#13532, #14279):
@@ -5807,6 +5957,26 @@ export function ChatOverlay({
                     </AnimatePresence>
                   </MessageScroller>
                 </MessageScrollerProvider>
+                {!firstRunOpen ? (
+                  <motion.div
+                    data-testid="chat-thread-top-fade"
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-x-px top-px z-30 h-12"
+                    style={{
+                      opacity: threadContentOpacity,
+                      // A fixed compositor layer lets messages dissolve beneath
+                      // the floating grabber without masking the scrolling
+                      // subtree. WebKit re-rasterizes CSS-masked scrollers while
+                      // their flex basis changes, which makes the pull gesture
+                      // stutter. Hold the panel color through the grabber's
+                      // footprint before beginning the dissolve so no glyph can
+                      // ghost through the antialiased rim or the handle itself.
+                      backgroundImage: fullBleed
+                        ? "linear-gradient(to bottom, var(--bg) 0%, var(--bg) 28%, color-mix(in srgb, var(--bg) 72%, transparent) 64%, transparent 100%)"
+                        : "linear-gradient(to bottom, var(--card) 0%, var(--card) 28%, color-mix(in srgb, var(--card) 62%, transparent) 64%, transparent 100%)",
+                    }}
+                  />
+                ) : null}
               </motion.div>
             ) : null}
             {/* Cloud-agent provisioning status — rendered IN the chat, just
@@ -5816,11 +5986,22 @@ export function ChatOverlay({
                 (or a credit/retry state is live), so this is inert in the common
                 case. Full chat-column width, styled to sit in the sheet. */}
             <AgentProvisioningWidget spanClassName="relative z-10 mx-auto w-full max-w-3xl shrink-0 px-3 pt-2" />
-            {/* Pending image attachments + any read error, just above the input. */}
+            {/* Pending attachments share the sheet's pull binding so tile and
+                gap pixels remain one continuous drag surface. Their remove
+                controls sit below the grabber's narrow top hit band and stop
+                the pointerdown from seeding a drag, preserving an independent
+                44px-class target for each file. */}
             {hasImages || imageError ? (
-              <div className="relative z-10 flex shrink-0 flex-col gap-1.5 px-3 pt-2">
+              <div
+                data-testid="chat-pending-attachments"
+                className="pointer-events-none relative z-10 flex shrink-0 flex-col gap-1.5 px-3 pt-2"
+              >
                 {hasImages ? (
-                  <div className="flex flex-wrap gap-2">
+                  <div
+                    data-testid="chat-pending-attachment-list"
+                    {...pullBinding}
+                    className="pointer-events-auto flex touch-none flex-wrap gap-2"
+                  >
                     {pendingImages.map((img, i) => {
                       const kind = chatUploadKind(img.mimeType);
                       const removeButton = (
@@ -5828,11 +6009,13 @@ export function ChatOverlay({
                           variant="ghost"
                           size="icon-sm"
                           aria-label={`remove ${img.name}`}
+                          onPointerDown={(event) => event.stopPropagation()}
                           onClick={() => removeImage(i)}
                           // Small visual disc, but a 44px-class hit zone via the
                           // invisible `before` overlay so it's thumb-tappable
-                          // without crowding the tile.
-                          className="absolute -right-1.5 -top-1.5 z-30 grid h-5 w-5 place-items-center rounded-full border border-border-strong bg-scrim p-0 text-xs text-txt transition-colors before:absolute before:-inset-3 before:content-[''] hover:bg-bg"
+                          // without crowding the tile. Bottom placement keeps
+                          // that hit zone clear of the grabber above the sheet.
+                          className="pointer-events-auto absolute -bottom-1.5 -right-1.5 z-30 grid h-5 w-5 place-items-center rounded-full border border-border-strong bg-scrim p-0 text-xs text-txt transition-colors before:absolute before:-inset-3 before:content-[''] hover:bg-bg"
                         >
                           ×
                         </Button>
@@ -6150,13 +6333,14 @@ export function ChatOverlay({
                     // Transcript capture and the underlying mic are independent:
                     // this control preserves the one-tap privacy stop while the
                     // adjacent transcript control can leave listening enabled.
+                    // MicOff distinguishes that privacy boundary from the live
+                    // waveform without adding a second pulsing activity signal.
                     <SoftButton
-                      icon={AudioLines}
+                      icon={MicOff}
                       label="stop transcription and mic"
                       disabled={firstRunOpen || transcriptionFinishing}
                       active
                       pressed
-                      pulse={recording}
                       onPointerDown={(event) => event.preventDefault()}
                       onClick={handleMicClick}
                       testId="chat-composer-mic"
