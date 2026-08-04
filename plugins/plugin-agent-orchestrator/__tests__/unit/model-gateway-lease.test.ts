@@ -72,7 +72,9 @@ const nativeClientMock = getNativeMockState();
 
 vi.mock("../../src/services/acp-native-transport.js", () => {
   const state = getNativeMockState();
-  state.NativeAcpClient = class MockNativeAcpClient implements MockNativeClient {
+  state.NativeAcpClient = class MockNativeAcpClient
+    implements MockNativeClient
+  {
     opts: NativeOptions;
     eventHandler?: NativeEventHandler;
     start = vi.fn(async () => undefined);
