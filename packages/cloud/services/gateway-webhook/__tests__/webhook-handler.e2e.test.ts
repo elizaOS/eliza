@@ -444,8 +444,8 @@ describe("gateway webhook handler e2e routing", () => {
           key.includes("webhook:telegram") && !key.endsWith(":processing"),
       ),
     ).toEqual([
-      "webhook:telegram:project:eliza-app:bot:218da20172ac4d99:message:123",
-      "webhook:telegram:project:eliza-app:bot:9c352facd71adf06:message:123",
+      "webhook:telegram:project:eliza-app:account:bot:218da20172ac4d99:message:123",
+      "webhook:telegram:project:eliza-app:account:bot:9c352facd71adf06:message:123",
     ]);
   });
 
