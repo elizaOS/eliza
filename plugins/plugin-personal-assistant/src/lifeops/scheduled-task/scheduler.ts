@@ -57,6 +57,7 @@ import {
   applyReminderIntensityToNoReplyPolicy,
   softenReminderIntensityForQuietStreak,
 } from "./no-reply-intensity.js";
+import { readScheduledTaskChatDeliveryBinding } from "./delivery-binding.js";
 import { getScheduledTaskRunner } from "./service.js";
 
 type NoReplyTerminalStatus = "skipped" | "expired" | "failed";
@@ -467,6 +468,27 @@ async function recordPendingPromptIfNeeded(args: {
   return recorded;
 }
 
+const STALE_BOUND_DISPATCH_MS = 5 * 60_000;
+
+/**
+ * A bound connector fire can crash after the atomic claim, including after the
+ * provider accepted the message but before `lastDispatchResult` persisted.
+ * Only these receipt-capable, connector-bound sends are recoverable: replaying
+ * the same deterministic `(taskId,firedAt)` key through the runtime connector
+ * returns its committed receipt instead of posting a second message. Legacy
+ * channel sends remain parked because their acceptance is unknowable.
+ */
+function isRecoverableBoundDispatch(task: ScheduledTask, now: Date): boolean {
+  if (task.state.status !== "fired") return false;
+  if (task.metadata?.lastDispatchResult !== undefined) return false;
+  if (!readScheduledTaskChatDeliveryBinding(task.metadata)) return false;
+  const firedAt = task.state.firedAt ? Date.parse(task.state.firedAt) : NaN;
+  return (
+    Number.isFinite(firedAt) &&
+    now.getTime() - firedAt >= STALE_BOUND_DISPATCH_MS
+  );
+}
+
 export async function processDueScheduledTasks(
   request: ProcessDueScheduledTasksRequest,
 ): Promise<ProcessDueScheduledTasksResult> {
@@ -544,8 +566,45 @@ export async function processDueScheduledTasks(
   });
   const completedTaskIds = new Set<string>();
   const timeoutTaskIds = new Set<string>();
+  const recoveredTaskIds = new Set<string>();
+
+  // Restart reconciliation runs before completion-timeout handling. Otherwise
+  // a claimed-but-undelivered reminder could age into its no-reply policy even
+  // though the owner never received the original prompt.
+  for (const task of liveCandidates) {
+    if (result.fires.length >= limit) break;
+    if (!isRecoverableBoundDispatch(task, request.now)) continue;
+    try {
+      // A single CAS claims the exact fired occurrence observed by this tick.
+      // There is deliberately no reopen write: reopen-then-claim lets two
+      // workers claim one another's reopen and double-dispatch.
+      const fireResult = await runner.fireWithResult(task.taskId, {
+        recoverFiredAtIso: task.state.firedAt,
+      } as never);
+      const recovered = await handleFireResult({
+        request,
+        repo,
+        fireResult,
+        decision: {
+          due: true,
+          reason: "stale bound dispatch recovery",
+          occurrenceAtIso: task.state.firedAt,
+        },
+        dueContext,
+        result,
+      });
+      if (recovered) recoveredTaskIds.add(task.taskId);
+    } catch (error) {
+      const message = errorMessage(error);
+      logger.warn(
+        `[lifeops-scheduled-task] dispatch recovery failed for ${task.taskId}: ${message}`,
+      );
+      result.errors.push({ taskId: task.taskId, phase: "fire", message });
+    }
+  }
 
   for (const task of timeoutCandidates) {
+    if (recoveredTaskIds.has(task.taskId)) continue;
     if (result.completions.length >= limit) {
       break;
     }
@@ -582,6 +641,7 @@ export async function processDueScheduledTasks(
   // cheap indexed DB ops in a pathological burst and guarantee the due-fire
   // pass always gets its full `limit`.
   for (const task of timeoutCandidates) {
+    if (recoveredTaskIds.has(task.taskId)) continue;
     if (completedTaskIds.has(task.taskId)) continue;
     if (result.completionTimeouts.length >= limit) {
       break;
@@ -630,6 +690,7 @@ export async function processDueScheduledTasks(
   }
 
   for (const task of dueCandidates) {
+    if (recoveredTaskIds.has(task.taskId)) continue;
     if (completedTaskIds.has(task.taskId)) continue;
     if (timeoutTaskIds.has(task.taskId)) continue;
     if (result.fires.length >= limit) {

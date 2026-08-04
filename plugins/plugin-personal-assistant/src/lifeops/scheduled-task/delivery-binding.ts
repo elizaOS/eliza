@@ -155,10 +155,16 @@ export async function revalidateScheduledTaskChatDeliveryBinding(
     const expected = canonicalParticipants(
       binding.audience.participantEntityIds,
     );
+    const roomMetadata =
+      room?.metadata && typeof room.metadata === "object"
+        ? (room.metadata as Record<string, unknown>)
+        : undefined;
+    const currentAccountId = stringField(roomMetadata?.accountId);
     if (
       !room ||
       room.source !== binding.source ||
       room.channelId !== binding.channelId ||
+      currentAccountId !== binding.accountId ||
       binding.audience.agentEntityId !== runtime.agentId ||
       current.length !== expected.length ||
       current.some((value, index) => value !== expected[index]) ||

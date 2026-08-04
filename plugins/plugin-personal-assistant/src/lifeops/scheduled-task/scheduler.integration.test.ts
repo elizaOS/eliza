@@ -14,7 +14,14 @@
  * mobile `/api/background/run-due-tasks` route both call.
  */
 
-import { EventType, logger, type Memory, type UUID } from "@elizaos/core";
+import {
+  ChannelType,
+  EventType,
+  logger,
+  type Memory,
+  type Room,
+  type UUID,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createLifeOpsTestRuntime,
@@ -32,8 +39,10 @@ import { registerLifeOpsScheduledTaskSubjectStore } from "./runtime-wiring.ts";
 import { processDueScheduledTasks } from "./scheduler.ts";
 import { getScheduledTaskRunner } from "./service.ts";
 
-interface ScheduledTaskSeed
-  extends Omit<ScheduledTask, "taskId" | "state" | "createdBy"> {
+interface ScheduledTaskSeed extends Omit<
+  ScheduledTask,
+  "taskId" | "state" | "createdBy"
+> {
   taskId?: string;
   createdBy?: string;
   state?: ScheduledTask["state"];
@@ -127,6 +136,127 @@ describe("processDueScheduledTasks — production wiring", () => {
     const transitions = log.map((entry) => entry.transition);
     expect(transitions).toContain("fired");
   });
+
+  it("reconciles a stale bound fire after restart by replaying its provider receipt", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    const ownerId = "00000000-0000-0000-0000-0000000000aa" as UUID;
+    const roomId = "00000000-0000-0000-0000-0000000000cc" as UUID;
+    await runtime.createEntity({
+      id: ownerId,
+      names: ["Owner"],
+      agentId: runtime.agentId,
+    });
+    await runtime.createRoom({
+      id: roomId,
+      source: "telegram",
+      channelId: "owner-chat-42",
+      type: ChannelType.DM,
+      worldId: runtime.agentId,
+      metadata: { accountId: "personal" },
+    } as Room);
+    await runtime.addParticipant(ownerId, roomId);
+    await runtime.addParticipant(runtime.agentId, roomId);
+
+    vi.spyOn(runtime, "useModel").mockResolvedValue(
+      "Your scheduled check is ready.",
+    );
+    const acceptedAt = Date.parse("2026-05-09T12:00:02.000Z");
+    const send = vi.spyOn(runtime, "sendMessageToTarget").mockResolvedValue({
+      kind: "duplicate",
+      priorDelivery: "delivered",
+      receipt: {
+        providerMessageIds: ["telegram-provider-1"],
+        acceptedAt,
+        persistence: { status: "persisted", memoryIds: [] },
+      },
+    } as never);
+
+    const firedAt = "2026-05-09T12:00:00.000Z";
+    const seed = await seedScheduledTask(runtime, {
+      kind: "reminder",
+      promptInstructions: "Run the private check.",
+      trigger: { kind: "once", atIso: firedAt },
+      priority: "medium",
+      respectsGlobalPause: true,
+      source: "user_chat",
+      ownerVisible: true,
+      output: {
+        destination: "channel",
+        target: "telegram:owner-chat-42",
+      },
+      state: { status: "fired", firedAt, followupCount: 0 },
+      metadata: {
+        chatDeliveryBinding: {
+          version: 1,
+          source: "telegram",
+          roomId,
+          channelId: "owner-chat-42",
+          audience: {
+            kind: "direct",
+            provenance: "canonical_room",
+            ownerEntityId: ownerId,
+            agentEntityId: runtime.agentId,
+            participantEntityIds: [ownerId, runtime.agentId].sort(),
+            membershipVersion: [ownerId, runtime.agentId].sort().join("\u0000"),
+          },
+        },
+      },
+    });
+
+    const [firstTick, secondTick] = await Promise.all([
+      processDueScheduledTasks({
+        runtime,
+        agentId: runtime.agentId,
+        now: new Date("2026-05-09T12:06:00.000Z"),
+        limit: 5,
+      }),
+      processDueScheduledTasks({
+        runtime,
+        agentId: runtime.agentId,
+        now: new Date("2026-05-09T12:06:00.000Z"),
+        limit: 5,
+      }),
+    ]);
+    const errors = [...firstTick.errors, ...secondTick.errors];
+    const fires = [...firstTick.fires, ...secondTick.fires];
+
+    expect(errors).toEqual([]);
+    expect(fires).toHaveLength(1);
+    expect(fires[0]).toMatchObject({
+      taskId: seed.taskId,
+      status: "fired",
+      reason: "stale bound dispatch recovery",
+    });
+    expect(send).toHaveBeenCalledOnce();
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "telegram",
+        channelId: "owner-chat-42",
+      }),
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          scheduledDispatchKey: `${seed.taskId}:${firedAt}`,
+        }),
+      }),
+    );
+    const persisted = await new LifeOpsRepository(runtime).getScheduledTask(
+      runtime.agentId,
+      seed.taskId,
+    );
+    expect(persisted?.metadata).toMatchObject({
+      dispatchPreparedMessage: "Your scheduled check is ready.",
+      dispatchIdempotencyKey: `${seed.taskId}:${firedAt}`,
+    });
+    expect(persisted?.metadata?.lastDispatchResult).toMatchObject({
+      ok: true,
+      messageId: "telegram-provider-1",
+      receipt: {
+        providerMessageId: "telegram-provider-1",
+        metadata: expect.objectContaining({ replayed: true }),
+      },
+    });
+  }, 120_000);
 
   it("respectsGlobalPause via the real GlobalPauseStore: paused tasks skip, then fire after clear()", async () => {
     runtimeResult = await createLifeOpsTestRuntime();

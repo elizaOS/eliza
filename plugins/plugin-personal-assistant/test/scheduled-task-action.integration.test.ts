@@ -366,6 +366,7 @@ describe("SCHEDULED_TASK action", () => {
       createdAt: Date.now(),
     } as Memory;
     await attestDeliveryAudienceFromCanonicalRoom(runtime, message);
+    const bindingIdempotencyKey = `bound-${crypto.randomUUID()}`;
     const result = await executePlannedToolCall(
       runtime,
       { message, userRoles: ["OWNER"], activeContexts: ["tasks"] },
@@ -377,7 +378,7 @@ describe("SCHEDULED_TASK action", () => {
           promptInstructions: "Run the private check and report the result.",
           trigger: { kind: "manual" },
           output: { destination: "channel", target: "discord:public-room" },
-          idempotencyKey: `bound-${crypto.randomUUID()}`,
+          idempotencyKey: bindingIdempotencyKey,
         },
       },
     );
@@ -403,6 +404,86 @@ describe("SCHEDULED_TASK action", () => {
     const runner = getScheduledTaskRunner(runtime, {
       agentId: runtime.agentId,
     });
+
+    const poisonedUpdate = await executePlannedToolCall(
+      runtime,
+      { message, userRoles: ["OWNER"], activeContexts: ["tasks"] },
+      {
+        name: "SCHEDULED_TASKS",
+        params: {
+          action: "update",
+          taskId: task?.taskId,
+          patch: {
+            promptInstructions: "Run the updated private check.",
+            output: { destination: "channel", target: "discord:public-room" },
+            metadata: { chatDeliveryBinding: { version: 999 } },
+          },
+        },
+      },
+    );
+    expect(poisonedUpdate.success).toBe(true);
+    const protectedTask = (await runner.list()).find(
+      (candidate) => candidate.taskId === task?.taskId,
+    );
+    expect(protectedTask?.promptInstructions).toBe(
+      "Run the updated private check.",
+    );
+    expect(protectedTask?.output).toEqual({
+      destination: "channel",
+      target: "telegram:owner-chat-42",
+    });
+    expect(protectedTask?.metadata?.chatDeliveryBinding).toMatchObject({
+      version: 1,
+      roomId,
+    });
+
+    // The same content and planner idempotency key in a second account/room is
+    // a distinct delivery, not a duplicate of the first DM.
+    const secondRoomId = crypto.randomUUID() as UUID;
+    await runtime.createRoom({
+      id: secondRoomId,
+      source: "telegram",
+      channelId: "owner-chat-99",
+      type: ChannelType.DM,
+      worldId: runtime.agentId,
+      metadata: { accountId: "work" },
+    } as Room);
+    await runtime.addParticipant(ownerId, secondRoomId);
+    await runtime.addParticipant(runtime.agentId, secondRoomId);
+    const secondMessage = {
+      ...message,
+      id: crypto.randomUUID() as UUID,
+      roomId: secondRoomId,
+    } as Memory;
+    await attestDeliveryAudienceFromCanonicalRoom(runtime, secondMessage);
+    const secondCreate = await executePlannedToolCall(
+      runtime,
+      {
+        message: secondMessage,
+        userRoles: ["OWNER"],
+        activeContexts: ["tasks"],
+      },
+      {
+        name: "SCHEDULED_TASKS",
+        params: {
+          action: "create",
+          kind: "custom",
+          promptInstructions: "Run the private check and report the result.",
+          trigger: { kind: "manual" },
+          idempotencyKey: bindingIdempotencyKey,
+        },
+      },
+    );
+    expect(secondCreate.success).toBe(true);
+    const secondTask = (
+      secondCreate.data as { task?: ScheduledTask } | undefined
+    )?.task;
+    expect(secondTask?.taskId).not.toBe(task?.taskId);
+    expect(secondTask?.output?.target).toBe("telegram:owner-chat-99");
+    expect(secondTask?.metadata?.chatDeliveryBinding).toMatchObject({
+      roomId: secondRoomId,
+    });
+
     const before = (await runner.list()).length;
     const deniedMessage = { ...message, id: crypto.randomUUID() as UUID };
     await attestDeliveryAudienceFromCanonicalRoom(runtime, deniedMessage);
@@ -627,8 +708,7 @@ describe("SCHEDULED_TASK action", () => {
     expect(history?.success).toBe(true);
     const entries = (
       history?.data as
-        | { entries?: Array<{ taskId: string; eventType?: string }> }
-        | undefined
+        { entries?: Array<{ taskId: string; eventType?: string }> } | undefined
     )?.entries;
     if (!entries) throw new Error("history did not return entries");
     // Entries from BOTH tasks are present — the read spans the whole ledger.

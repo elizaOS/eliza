@@ -373,12 +373,33 @@ describe("scheduled task production dispatcher", () => {
         id: "00000000-0000-0000-0000-0000000000cc",
         source: "telegram",
         channelId: "owner-chat-42",
+        metadata: { accountId: "personal" },
       })),
       getParticipantsForRoom: vi.fn(async () => participants),
+      sendMessageToTarget: vi
+        .fn()
+        .mockResolvedValueOnce({
+          kind: "delivered" as const,
+          receipt: {
+            providerMessageIds: ["telegram-provider-1"],
+            acceptedAt: Date.parse("2026-05-10T12:00:01.000Z"),
+            persistence: { status: "persisted" as const, memoryIds: [] },
+          },
+          memories: [],
+        })
+        .mockResolvedValueOnce({
+          kind: "duplicate" as const,
+          priorDelivery: "delivered" as const,
+          receipt: {
+            providerMessageIds: ["telegram-provider-1"],
+            acceptedAt: Date.parse("2026-05-10T12:00:01.000Z"),
+            persistence: { status: "persisted" as const, memoryIds: [] },
+          },
+        }),
     } as unknown as IAgentRuntime;
     const send = vi.fn(async () => ({
       ok: true as const,
-      messageId: "telegram-provider-1",
+      messageId: "legacy-should-not-send",
     }));
     const registry = createChannelRegistry();
     registry.register(sendCapableChannel(send));
@@ -400,7 +421,15 @@ describe("scheduled task production dispatcher", () => {
         },
       },
     };
-    const dispatcher = createProductionScheduledTaskDispatcher({ runtime });
+    const dispatcher = createProductionScheduledTaskDispatcher({
+      runtime,
+      persistDispatchAttempt: async (dispatchRecord, message, key) => {
+        Object.assign(dispatchRecord.metadata ?? {}, {
+          dispatchPreparedMessage: message,
+          dispatchIdempotencyKey: key,
+        });
+      },
+    });
     const record = {
       taskId: "task_bound",
       firedAtIso: "2026-05-10T12:00:00.000Z",
@@ -419,23 +448,34 @@ describe("scheduled task production dispatcher", () => {
       channelKey: "telegram",
       target: "owner-chat-42",
     });
-    expect(send).toHaveBeenCalledWith(
+    expect(runtime.sendMessageToTarget).toHaveBeenCalledWith(
       expect.objectContaining({
-        target: "owner-chat-42",
+        source: "telegram",
+        accountId: "personal",
+        channelId: "owner-chat-42",
+        roomId: "00000000-0000-0000-0000-0000000000cc",
+      }),
+      expect.objectContaining({
+        text: RENDERED_MESSAGE,
+        agentVoiced: true,
         metadata: expect.objectContaining({
-          accountId: "personal",
-          roomId: "00000000-0000-0000-0000-0000000000cc",
-          audience: {
-            kind: "direct",
-            provenance: "canonical_room",
-            membershipVersion: participants.join("\u0000"),
-            ownerOnly: true,
-          },
+          scheduledDispatchKey: "task_bound:2026-05-10T12:00:00.000Z",
         }),
       }),
     );
+    expect(send).not.toHaveBeenCalled();
+    expect(await dispatcher.dispatch(record)).toMatchObject({
+      ok: true,
+      messageId: "telegram-provider-1",
+      receipt: {
+        provider: "telegram",
+        providerMessageId: "telegram-provider-1",
+        idempotencyKey: "task_bound:2026-05-10T12:00:00.000Z",
+        metadata: expect.objectContaining({ replayed: true }),
+      },
+    });
 
-    send.mockClear();
+    vi.mocked(runtime.sendMessageToTarget).mockClear();
     await expect(
       dispatcher.dispatch({
         ...record,
