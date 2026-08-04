@@ -3563,7 +3563,9 @@ function latestToolResultText(
 const RAW_TOOL_TEXT_ECHO_MIN_CHARS = 24;
 
 function normalizeForEchoComparison(text: string): string {
-	return text.replace(/\s+/g, " ").trim();
+	// Case-folded so a letter-case variant of the raw text cannot slip the
+	// verbatim/head-anchored comparison; still not a prose heuristic.
+	return text.replace(/\s+/g, " ").trim().toLowerCase();
 }
 
 /**
