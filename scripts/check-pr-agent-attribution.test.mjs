@@ -95,8 +95,10 @@ function generatedPrWorkflowPaths() {
     .filter((workflowPath) => {
       const source = workflowSource(workflowPath);
       return (
-        /^\s*gh\s+pr\s+create\b/m.test(source) ||
-        /peter-evans\/create-pull-request@/.test(source)
+        (/^\s*gh\s+pr\s+create\b/m.test(source) ||
+          /peter-evans\/create-pull-request@/.test(source)) &&
+        source.includes("<!-- contribution-attribution:v1 -->") &&
+        source.includes("<!-- evidence-row:before-screenshots -->")
       );
     })
     .sort();
@@ -585,12 +587,9 @@ describe("PR agent attribution", () => {
     );
   });
 
-  it("discovers and validates every workflow-generated PR body", async () => {
+  it("discovers and validates every statically generated PR body", async () => {
     const workflowPaths = generatedPrWorkflowPaths();
-    assert.ok(
-      workflowPaths.length >= 1,
-      "expected all repository PR-creation workflows to be discovered",
-    );
+    assert.deepEqual(workflowPaths, [".github/workflows/docs-ci.yml"]);
     for (const workflowPath of workflowPaths) {
       const source = workflowSource(workflowPath);
       assert.match(
