@@ -18,7 +18,7 @@
 import { act, cleanup, render, renderHook } from "@testing-library/react";
 import type { MutableRefObject } from "react";
 import { useState } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   CodingAgentSession,
   Conversation,
@@ -26,11 +26,9 @@ import type {
   ImageAttachment,
 } from "../api";
 import type { LoadConversationMessagesResult } from "./internal";
+import { STREAMING_RENDER_INTERVAL_MS } from "./streaming-render-cadence";
 import { useChatSend } from "./useChatSend";
-import {
-  applyStreamingTextModification,
-  applyStreamingTextModificationsToMessages,
-} from "./useStreamingText";
+import { applyStreamingTextModification } from "./useStreamingText";
 
 const apiMocks = vi.hoisted(() => ({
   client: {
@@ -227,67 +225,6 @@ describe("streaming → incremental assistant-bubble render", () => {
   });
 });
 
-describe("streaming → targeted transcript mutation", () => {
-  it("updates the in-flight tail without inspecting historical message fields", () => {
-    const historical = Array.from({ length: 120 }, (_, index) => {
-      const message = {
-        role: index % 2 === 0 ? "user" : "assistant",
-        text: `history ${index}`,
-        timestamp: index,
-      } as ConversationMessage;
-      Object.defineProperty(message, "id", {
-        get() {
-          throw new Error("streaming hot path inspected historical ids");
-        },
-      });
-      return message;
-    });
-    const tail: ConversationMessage = {
-      id: ASSISTANT_ID,
-      role: "assistant",
-      text: "",
-      timestamp: 121,
-    };
-    const previous = [...historical, tail];
-
-    const next = applyStreamingTextModificationsToMessages(previous, [
-      {
-        messageId: ASSISTANT_ID,
-        mode: "replace",
-        fullText: "Visible partial",
-      },
-      {
-        messageId: ASSISTANT_ID,
-        mode: "tool",
-        event: {
-          phase: "call",
-          callId: "tool-1",
-          toolName: "SEARCH",
-        },
-      },
-    ]);
-
-    expect(next).not.toBe(previous);
-    for (let index = 0; index < historical.length; index += 1) {
-      expect(next[index]).toBe(historical[index]);
-    }
-    expect(next.at(-1)).toMatchObject({
-      id: ASSISTANT_ID,
-      text: "Visible partial",
-      toolEvents: [{ callId: "tool-1", status: "running" }],
-    });
-    expect(
-      applyStreamingTextModificationsToMessages(next, [
-        {
-          messageId: ASSISTANT_ID,
-          mode: "replace",
-          fullText: "Visible partial",
-        },
-      ]),
-    ).toBe(next);
-  });
-});
-
 function conversationFixture(id: string, roomId: string): Conversation {
   return {
     id,
@@ -374,47 +311,12 @@ function makeChatSendDeps() {
  * separate fast events stay bounded, and terminal text flushes without loss.
  */
 describe("streaming → useChatSend paint coalescing", () => {
-  let nextFrameId = 1;
-  let frameCallbacks = new Map<number, FrameRequestCallback>();
-
-  beforeEach(() => {
-    nextFrameId = 1;
-    frameCallbacks = new Map();
-    vi.stubGlobal(
-      "requestAnimationFrame",
-      vi.fn((callback: FrameRequestCallback) => {
-        const id = nextFrameId;
-        nextFrameId += 1;
-        frameCallbacks.set(id, callback);
-        return id;
-      }),
-    );
-    vi.stubGlobal(
-      "cancelAnimationFrame",
-      vi.fn((id: number) => {
-        frameCallbacks.delete(id);
-      }),
-    );
-  });
-
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
     vi.clearAllMocks();
     vi.unstubAllGlobals();
   });
-
-  async function paintNextFrame(): Promise<void> {
-    const entry = frameCallbacks.entries().next().value as
-      | [number, FrameRequestCallback]
-      | undefined;
-    if (!entry) throw new Error("Expected a scheduled streaming frame");
-    const [id, callback] = entry;
-    frameCallbacks.delete(id);
-    await act(async () => {
-      callback(performance.now());
-      await Promise.resolve();
-    });
-  }
 
   it("coalesces one synchronous token burst into one commit and flushes terminal text", async () => {
     // Capture the streaming `onToken` (3rd arg) and resolve the stream when we
@@ -458,8 +360,6 @@ describe("streaming → useChatSend paint coalescing", () => {
       await Promise.resolve();
     });
 
-    expect(setConversationMessages).not.toHaveBeenCalled();
-    await paintNextFrame();
     expect(setConversationMessages).toHaveBeenCalledTimes(1);
 
     // The streamed text painted so far is the latest parked snapshot.
@@ -477,6 +377,7 @@ describe("streaming → useChatSend paint coalescing", () => {
   });
 
   it("bounds paints across separate fast token events and flushes terminal text immediately", async () => {
+    vi.useFakeTimers();
     let onToken!: (token: string, accumulatedText?: string) => void;
     let resolveStream!: (data: { text: string; completed: boolean }) => void;
     apiMocks.client.sendConversationMessageStream.mockImplementation(
@@ -513,23 +414,25 @@ describe("streaming → useChatSend paint coalescing", () => {
       onToken("", "A");
       await Promise.resolve();
     });
-    expect(setConversationMessages).not.toHaveBeenCalled();
-    await paintNextFrame();
     expect(setConversationMessages).toHaveBeenCalledTimes(1);
     expect(assistantText()).toBe("A");
 
     const fastSnapshots = ["AB", "ABC", "ABCD", "ABCDE", "ABCDEF", "ABCDEFG"];
     for (const snapshot of fastSnapshots) {
       await act(async () => {
+        await vi.advanceTimersByTimeAsync(10);
         onToken("", snapshot);
         await Promise.resolve();
       });
     }
 
-    // All transport events before the next paint share one cumulative snapshot.
+    // Six transport events arrived in 60 ms, inside one paint interval. Their
+    // cumulative text is parked without six expensive overlay commits.
     expect(setConversationMessages).toHaveBeenCalledTimes(1);
 
-    await paintNextFrame();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(STREAMING_RENDER_INTERVAL_MS);
+    });
     expect(setConversationMessages).toHaveBeenCalledTimes(2);
     expect(assistantText()).toBe("ABCDEFG");
 
@@ -545,7 +448,10 @@ describe("streaming → useChatSend paint coalescing", () => {
     );
 
     const commitsAfterTerminal = setConversationMessages.mock.calls.length;
-    expect(frameCallbacks.size).toBe(0);
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
     expect(setConversationMessages).toHaveBeenCalledTimes(commitsAfterTerminal);
+    vi.useRealTimers();
   });
 });

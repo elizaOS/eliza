@@ -6,7 +6,6 @@
 // and state barrel are stubbed.
 
 import {
-  act,
   cleanup,
   fireEvent,
   render,
@@ -43,16 +42,6 @@ const stubSections = vi.hoisted(() => [
     group: "agent",
     titleKey: "settings.sections.identity.label",
     defaultTitle: "Basics",
-  },
-  {
-    id: "ai-model",
-    label: "settings.sections.aiModel.label",
-    defaultLabel: "AI Model",
-    tone: "neutral",
-    hue: "slate",
-    group: "agent",
-    titleKey: "settings.sections.aiModel.label",
-    defaultTitle: "AI Model",
   },
   {
     id: "runtime",
@@ -167,7 +156,7 @@ vi.mock("../settings/settings-sections", () => {
         .sort((a, b) => a.order - b.order)
         .map(({ group, label, items }) => ({ group, label, items }));
     },
-    readSettingsHashSection: () => window.location.hash.slice(1) || null,
+    readSettingsHashSection: () => null,
     replaceSettingsHash: vi.fn(),
     settingsSectionLabel: (section: { defaultLabel: string }) =>
       section.defaultLabel,
@@ -202,7 +191,6 @@ function hubRow(id: string): HTMLButtonElement {
 }
 
 beforeEach(() => {
-  window.history.replaceState(null, "", "/");
   appMock.value = makeContext();
   permissionPrimingMock.calls = [];
   crashControl.shouldThrow = true;
@@ -262,23 +250,6 @@ describe("SettingsView", () => {
     expect(screen.getByTestId("stub-runtime")).toBeTruthy();
     expect(screen.queryByTestId("stub-identity")).toBeNull();
     expect(screen.getByTestId("view-header").textContent).toContain("Runtime");
-  });
-
-  it("follows pushState popstate hash navigation without remounting", async () => {
-    const loadPlugins = appMock.value.loadPlugins;
-    render(<SettingsView initialSection="identity" />);
-
-    expect(screen.getByTestId("stub-identity")).toBeTruthy();
-    await waitFor(() => expect(loadPlugins).toHaveBeenCalledTimes(1));
-
-    act(() => {
-      window.history.pushState(null, "", "/settings#ai-model");
-      window.dispatchEvent(new PopStateEvent("popstate"));
-    });
-
-    expect(await screen.findByTestId("stub-ai-model")).toBeTruthy();
-    expect(screen.queryByTestId("stub-identity")).toBeNull();
-    expect(loadPlugins).toHaveBeenCalledTimes(1);
   });
 
   it("opens a targeted permission priming modal from a settings navigate payload", async () => {

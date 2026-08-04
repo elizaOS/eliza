@@ -47,24 +47,20 @@ import type { ChatReplyTarget } from "./ChatComposerContext.hooks";
 import { clearChatDraft } from "./ChatComposerContext.hooks";
 import { isConversationRecord } from "./chat-conversation-guards";
 import {
-  applyStreamingTextModifications,
+  applyStreamingTextModification,
   formatSearchBullet,
   type LoadConversationMessagesResult,
   mergeStreamingText,
   normalizeCustomActionName,
   parseCustomActionParams,
   parseSlashCommandInput,
-  type StreamingTextModification,
   shouldApplyFinalStreamText,
 } from "./internal";
 import {
   clearPendingChatTurn,
   persistPendingChatTurn,
 } from "./pending-chat-turns";
-import {
-  cancelStreamingRenderFrame,
-  requestStreamingRenderFrame,
-} from "./streaming-render-cadence";
+import { streamingRenderDelayMs } from "./streaming-render-cadence";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -508,13 +504,6 @@ export interface UseChatSendDeps {
       | ConversationMessage[]
       | ((prev: ConversationMessage[]) => ConversationMessage[]),
   ) => void;
-  /**
-   * Production fast path from useChatState. Tests and isolated consumers may
-   * omit it and fall back to the ordinary state setter.
-   */
-  applyStreamingMessageModifications?: (
-    modifications: readonly StreamingTextModification[],
-  ) => void;
   setUnreadConversations: (
     v: Set<string> | ((prev: Set<string>) => Set<string>),
   ) => void;
@@ -607,7 +596,6 @@ export function useChatSend(deps: UseChatSendDeps) {
     setActiveConversationId,
     setCompanionMessageCutoffTs,
     setConversationMessages,
-    applyStreamingMessageModifications,
     setUnreadConversations,
     setChatReplyTarget,
     setActionNotice,
@@ -670,11 +658,13 @@ export function useChatSend(deps: UseChatSendDeps) {
   // The SSE stream fires three per-event callbacks that each trigger a state
   // commit: `onToken` (cumulative text, often >60/sec on a fast model),
   // `onStatus` (live turn phase), and `onToolEvent` (inline tool-call steps).
-  // Park cumulative snapshots until the browser's next animation frame. Every
-  // transport callback before that frame overwrites or extends the same buffer,
-  // so React receives at most one coherent update per paint. Terminal and abort
-  // paths synchronously flush the latest snapshot; a hidden tab may defer
-  // intermediate paint without losing stream state.
+  // A microtask merges callbacks decoded from one transport event, but a fast
+  // model still delivers separate events faster than the full chat overlay can
+  // render them. Park cumulative snapshots and paint the first one immediately,
+  // then at a bounded cadence. Terminal/abort paths synchronously flush the
+  // latest snapshot, so throttling cannot lose text. A timeout is the delivery
+  // clock rather than rAF because hidden/resource-constrained tabs may defer
+  // animation frames for seconds.
   //
   // `pendingStatus` uses the NO_PENDING_STATUS sentinel = "no status update
   // parked", distinct from a parked `null` (an explicit clear-the-status
@@ -687,7 +677,8 @@ export function useChatSend(deps: UseChatSendDeps) {
     pendingToolEvents: ChatToolCallEvent[];
     flushScheduled: boolean;
     flushGeneration: number;
-    flushFrameId: number | null;
+    flushTimer: ReturnType<typeof setTimeout> | null;
+    lastFlushAtMs: number | null;
   }>({
     conversationId: null,
     messageId: "",
@@ -696,7 +687,8 @@ export function useChatSend(deps: UseChatSendDeps) {
     pendingToolEvents: [],
     flushScheduled: false,
     flushGeneration: 0,
-    flushFrameId: null,
+    flushTimer: null,
+    lastFlushAtMs: null,
   });
 
   const isConversationCommitActive = useCallback(
@@ -718,35 +710,15 @@ export function useChatSend(deps: UseChatSendDeps) {
     [isConversationCommitActive, setConversationMessages],
   );
 
-  const applyStreamingModificationsForConversation = useCallback(
-    (
-      conversationId: string | null,
-      modifications: readonly StreamingTextModification[],
-    ) => {
-      if (!isConversationCommitActive(conversationId)) return;
-      if (applyStreamingMessageModifications) {
-        applyStreamingMessageModifications(modifications);
-        return;
-      }
-      applyStreamingTextModifications(setConversationMessages, modifications);
-    },
-    [
-      applyStreamingMessageModifications,
-      isConversationCommitActive,
-      setConversationMessages,
-    ],
-  );
-
   const applyStreamingModificationForConversation = useCallback(
     (
       conversationId: string | null,
-      modification: StreamingTextModification,
+      modification: Parameters<typeof applyStreamingTextModification>[1],
     ) => {
-      applyStreamingModificationsForConversation(conversationId, [
-        modification,
-      ]);
+      if (!isConversationCommitActive(conversationId)) return;
+      applyStreamingTextModification(setConversationMessages, modification);
     },
-    [applyStreamingModificationsForConversation],
+    [isConversationCommitActive, setConversationMessages],
   );
 
   const reconcileTerminalStream = useCallback(
@@ -845,41 +817,39 @@ export function useChatSend(deps: UseChatSendDeps) {
       buffer.pendingStatus = NO_PENDING_STATUS;
       return;
     }
-    const modifications: StreamingTextModification[] = [];
+    let committed = false;
     if (buffer.pendingText !== null) {
       const fullText = buffer.pendingText;
       buffer.pendingText = null;
-      modifications.push({
+      applyStreamingTextModification(setConversationMessages, {
         messageId: buffer.messageId,
         mode: "replace",
         fullText,
       });
+      committed = true;
     }
     if (buffer.pendingToolEvents.length > 0) {
       const toolEvents = buffer.pendingToolEvents;
       buffer.pendingToolEvents = [];
       for (const event of toolEvents) {
-        modifications.push({
+        applyStreamingTextModification(setConversationMessages, {
           messageId: buffer.messageId,
           mode: "tool",
           event,
         });
       }
-    }
-    if (modifications.length > 0) {
-      applyStreamingModificationsForConversation(
-        buffer.conversationId,
-        modifications,
-      );
+      committed = true;
     }
     if (buffer.pendingStatus !== NO_PENDING_STATUS) {
       const status = buffer.pendingStatus;
       buffer.pendingStatus = NO_PENDING_STATUS;
       setServerTurnStatus(status);
+      committed = true;
     }
+    if (committed) buffer.lastFlushAtMs = performance.now();
   }, [
-    applyStreamingModificationsForConversation,
     isConversationCommitActive,
+    setConversationMessages,
     setServerTurnStatus,
   ]);
 
@@ -892,9 +862,9 @@ export function useChatSend(deps: UseChatSendDeps) {
       buffer.flushGeneration += 1;
       buffer.flushScheduled = false;
     }
-    if (buffer.flushFrameId !== null) {
-      cancelStreamingRenderFrame(buffer.flushFrameId);
-      buffer.flushFrameId = null;
+    if (buffer.flushTimer !== null) {
+      clearTimeout(buffer.flushTimer);
+      buffer.flushTimer = null;
     }
     commitStreamingBuffer();
   }, [commitStreamingBuffer]);
@@ -911,9 +881,9 @@ export function useChatSend(deps: UseChatSendDeps) {
       )
         return;
       if (buffer.flushScheduled) buffer.flushGeneration += 1;
-      if (buffer.flushFrameId !== null) {
-        cancelStreamingRenderFrame(buffer.flushFrameId);
-        buffer.flushFrameId = null;
+      if (buffer.flushTimer !== null) {
+        clearTimeout(buffer.flushTimer);
+        buffer.flushTimer = null;
       }
       buffer.conversationId = conversationId;
       buffer.messageId = messageId;
@@ -921,11 +891,13 @@ export function useChatSend(deps: UseChatSendDeps) {
       buffer.pendingStatus = NO_PENDING_STATUS;
       buffer.pendingToolEvents = [];
       buffer.flushScheduled = false;
+      buffer.lastFlushAtMs = null;
     },
     [],
   );
 
-  // Every decoded callback before the next browser paint shares one frame.
+  // The first snapshot paints in a microtask; later snapshots within the
+  // cadence window share one trailing timer and overwrite the cumulative text.
   const ensureStreamingFlush = useCallback(() => {
     const buffer = streamingFlushRef.current;
     if (buffer.flushScheduled) return;
@@ -933,11 +905,19 @@ export function useChatSend(deps: UseChatSendDeps) {
     const generation = buffer.flushGeneration;
     const commitScheduled = () => {
       if (buffer.flushGeneration !== generation) return;
-      buffer.flushFrameId = null;
+      buffer.flushTimer = null;
       buffer.flushScheduled = false;
       commitStreamingBuffer();
     };
-    buffer.flushFrameId = requestStreamingRenderFrame(commitScheduled);
+    const delayMs = streamingRenderDelayMs(
+      buffer.lastFlushAtMs,
+      performance.now(),
+    );
+    if (delayMs === 0) {
+      queueMicrotask(commitScheduled);
+      return;
+    }
+    buffer.flushTimer = setTimeout(commitScheduled, delayMs);
   }, [commitStreamingBuffer]);
 
   // Park the latest cumulative text for `messageId`. Synchronous callbacks from
@@ -986,9 +966,9 @@ export function useChatSend(deps: UseChatSendDeps) {
     return () => {
       buffer.flushGeneration += 1;
       buffer.flushScheduled = false;
-      if (buffer.flushFrameId !== null) {
-        cancelStreamingRenderFrame(buffer.flushFrameId);
-        buffer.flushFrameId = null;
+      if (buffer.flushTimer !== null) {
+        clearTimeout(buffer.flushTimer);
+        buffer.flushTimer = null;
       }
       buffer.pendingText = null;
       buffer.conversationId = null;
