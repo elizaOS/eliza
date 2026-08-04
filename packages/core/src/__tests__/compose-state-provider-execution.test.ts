@@ -489,4 +489,58 @@ describe("composeState provider execution", () => {
 		expect((thirdError as TurnAbortedError).reason).toBe("last caller stopped");
 		expect(calls).toBe(1);
 	});
+
+	it("does not hand a fresh caller a departed owner's abort reason while eviction lags settlement (#17604)", async () => {
+		const runtime = new AgentRuntime({
+			character: { name: "provider-evict-race" } as Character,
+		});
+		const release = deferred();
+		const started = deferred();
+		let calls = 0;
+		runtime.registerProvider({
+			name: "RACY",
+			get: async () => {
+				calls += 1;
+				started.resolve();
+				await release.promise;
+				return { text: `racy-${calls}` };
+			},
+		});
+		const message = makeMessage("66666666-6666-6666-6666-666666666666");
+
+		// Owner is the SOLE waiter on the shared execution.
+		const ownerController = new AbortController();
+		const owner = runWithStreamingContext(
+			{ onStreamChunk: async () => {}, abortSignal: ownerController.signal },
+			() => runtime.composeState(message, ["RACY"], true),
+		);
+		await started.promise;
+		expect(calls).toBe(1);
+
+		// Abort the owner, then IMMEDIATELY (same synchronous tick, no await in
+		// between) issue a fresh composeState for the SAME message with a
+		// fresh, unaborted signal. controller.abort() is synchronous but the
+		// in-flight map entry is only evicted once the shared promise finishes
+		// unwinding through withProviderDeadline/withProviderStep, so a caller
+		// landing in that window can still find and attach to the dying
+		// execution instead of starting its own.
+		ownerController.abort("owner stopped");
+		const freshController = new AbortController();
+		const fresh = runWithStreamingContext(
+			{ onStreamChunk: async () => {}, abortSignal: freshController.signal },
+			() => runtime.composeState(message, ["RACY"], true),
+		);
+
+		const ownerError = await owner.catch((cause: unknown) => cause);
+		expect(ownerError).toBeInstanceOf(TurnAbortedError);
+		expect((ownerError as TurnAbortedError).reason).toBe("owner stopped");
+
+		release.resolve();
+		// A fresh caller with its own, never-aborted signal must get a real
+		// provider result from a provider run made on ITS behalf, not the
+		// departed owner's abort reason.
+		const freshState = await fresh;
+		expect(freshState.text).toBe("racy-2");
+		expect(calls).toBe(2);
+	});
 });

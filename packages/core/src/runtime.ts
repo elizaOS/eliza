@@ -385,6 +385,10 @@ interface InFlightProviderExecution {
 	// swallowed entirely, and pushed the first caller's abort reason into
 	// turns that never requested it.
 	controller: AbortController;
+	// Every consumer of this execution MUST attach through awaitProviderExecution
+	// rather than awaiting `promise` directly: an uncounted caller would not
+	// register as a waiter, so the accounting below could abort the shared
+	// work out from under it.
 	waiters: number;
 	startedAt: number;
 	startedAtMonotonic: number;
@@ -405,9 +409,22 @@ interface InFlightProviderExecution {
 // signal-less callers let a cancelling waiter abort work an uncounted caller
 // was still awaiting — the mirror image of the original defect (caught in
 // review on #17604 by executing this function standalone).
+//
+// `evict` removes the in-flight map entry for this execution. It runs
+// SYNCHRONOUSLY, immediately before `controller.abort()`, rather than being
+// left to the `promise.then(cleanup, cleanup)` at the call site: that cleanup
+// only fires once the shared promise finishes unwinding through
+// withProviderDeadline/withProviderStep, a microtask or more after the
+// synchronous abort. A composeState call landing in that window would still
+// `get()` the dying execution and inherit an abort reason it never asked
+// for — the same defect this file fixes, relocated from "always" to "inside
+// a race window" (#17604 review). Calling `evict` here makes the entry
+// unreachable at the moment it stops being viable instead of when its
+// promise settles.
 function awaitProviderExecution(
 	execution: InFlightProviderExecution,
 	signal: AbortSignal | undefined,
+	evict: () => void,
 ): Promise<ProviderResult> {
 	execution.waiters += 1;
 	let released = false;
@@ -430,6 +447,7 @@ function awaitProviderExecution(
 		};
 		const onAbort = settle(() => {
 			if (execution.waiters === 0) {
+				evict();
 				execution.controller.abort(signal.reason);
 			}
 			reject(signal.reason ?? new Error("Provider execution aborted"));
@@ -4810,20 +4828,37 @@ export class AgentRuntime implements IAgentRuntime {
 					};
 					if (inFlightKey !== null) {
 						this.providerExecutionsInFlight.set(inFlightKey, execution);
-						const cleanup = () => {
-							if (
-								this.providerExecutionsInFlight.get(inFlightKey) === execution
-							) {
-								this.providerExecutionsInFlight.delete(inFlightKey);
-							}
-						};
-						void promise.then(cleanup, cleanup);
 					}
+				}
+				// Hoisted so BOTH the owner path (the `execution` just created
+				// above) and the coalesced path (the `execution` fetched from the
+				// map before this `if`) can evict the SAME map entry the moment it
+				// stops being viable, rather than waiting for `promise` to unwind.
+				// Identity-checked against the specific execution this call
+				// attached to, so a later execution occupying the same key is
+				// never evicted by a stale caller; idempotent so calling it
+				// synchronously from awaitProviderExecution's abort path AND again
+				// from `promise.then(evict, evict)` below is harmless.
+				const attachedExecution = execution;
+				const evict =
+					inFlightKey !== null
+						? () => {
+								if (
+									this.providerExecutionsInFlight.get(inFlightKey) ===
+									attachedExecution
+								) {
+									this.providerExecutionsInFlight.delete(inFlightKey);
+								}
+							}
+						: () => {};
+				if (!providerCoalesced && inFlightKey !== null) {
+					void attachedExecution.promise.then(evict, evict);
 				}
 				try {
 					const result = await awaitProviderExecution(
 						execution,
 						providerSignal,
+						evict,
 					);
 					const endedAt = Date.now();
 					const duration = performance.now() - execution.startedAtMonotonic;
