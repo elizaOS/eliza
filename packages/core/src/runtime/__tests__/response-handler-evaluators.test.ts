@@ -17,6 +17,7 @@ import {
 
 function runtimeWith(evaluators: ResponseHandlerEvaluator[]): IAgentRuntime {
 	return {
+		reportError: () => undefined,
 		agentId: "00000000-0000-0000-0000-000000000001",
 		responseHandlerEvaluators: evaluators,
 		logger: { warn: () => undefined, debug: () => undefined },

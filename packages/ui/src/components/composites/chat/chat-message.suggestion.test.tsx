@@ -1,3 +1,4 @@
+/** Verifies ChatMessage proactive suggestion affordance (#8792) through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Renders ChatMessage in jsdom and asserts the proactive-suggestion affordance

@@ -374,11 +374,11 @@ function matchesScenarioFileGlobs(file, fileGlobs) {
 
 const KNOWN_DEFERRED_DEFAULT_SCENARIO_COVERAGE = [
   {
-    glob: "packages/test/scenarios/activity/**/*.scenario.ts",
+    glob: "plugins/plugin-personal-assistant/test/scenarios/corpus/activity/**/*.scenario.ts",
     issue: "#10757",
   },
   {
-    glob: "packages/test/scenarios/selfcontrol/**/*.scenario.ts",
+    glob: "plugins/plugin-personal-assistant/test/scenarios/corpus/selfcontrol/**/*.scenario.ts",
     issue: "#10757",
   },
   {
@@ -847,7 +847,7 @@ export function main(argv = process.argv.slice(2)) {
 
   const covered = new Set();
   const coverageGlobs = [
-    "packages/test/scenarios/executive-assistant/*.scenario.ts",
+    "plugins/plugin-personal-assistant/test/scenarios/corpus/executive-assistant/*.scenario.ts",
     "packages/test/scenarios/connector-certification/*.scenario.ts",
   ];
   const prDeterministicDefaultIds = defaultScenarios

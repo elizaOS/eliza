@@ -1,3 +1,4 @@
+/** Verifies isCharacterSectionPath through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // jsdom tests for the Character family section strip (#13591): the fixed

@@ -1,8 +1,8 @@
 /** Configures the deterministic Vitest harness for @elizaos/core test suites. */
 import path from "node:path";
 import { defineConfig } from "vitest/config";
-import { repoRoot } from "../../packages/test/vitest/repo-root";
-import { getElizaWorkspaceRoot } from "../../packages/test/vitest/workspace-aliases";
+import { repoRoot } from "../../packages/scripts/vitest/repo-root";
+import { getElizaWorkspaceRoot } from "../../packages/scripts/vitest/workspace-aliases";
 
 const pluginSqlRoot = path.join(
 	getElizaWorkspaceRoot(repoRoot),
@@ -10,10 +10,21 @@ const pluginSqlRoot = path.join(
 	"plugin-sql",
 	"src",
 );
+const loggerSource = path.join(
+	getElizaWorkspaceRoot(repoRoot),
+	"packages",
+	"logger",
+	"src",
+	"index.ts",
+);
 
 export default defineConfig({
 	resolve: {
 		alias: [
+			{
+				find: /^@elizaos\/logger$/,
+				replacement: loggerSource,
+			},
 			{
 				find: /^@elizaos\/plugin-sql$/,
 				replacement: path.join(pluginSqlRoot, "index.node.ts"),

@@ -42,7 +42,6 @@ import {
 
 const DEFAULT_BRANDED_PREFIX = "ELIZA";
 export const DEFAULT_APP_ROUTE_PLUGIN_MODULES = [
-  "@elizaos/plugin-shopify",
   "@elizaos/plugin-personal-assistant",
   "@elizaos/plugin-github",
   "@elizaos/plugin-computeruse",

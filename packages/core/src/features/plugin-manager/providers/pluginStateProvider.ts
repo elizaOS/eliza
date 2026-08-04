@@ -214,10 +214,14 @@ export const pluginStateProvider: Provider & { relevanceKeywords: string[] } = {
 				},
 			};
 		} catch (error) {
+			// error-policy:J4 plugin state becomes explicitly unavailable and the
+			// provider failure remains observable to the agent.
+			runtime.reportError("PluginStateProvider.get", error);
 			return {
 				text: "Plugin state unavailable",
-				values: {},
+				values: { pluginStateAvailable: false },
 				data: {
+					available: false,
 					error: error instanceof Error ? error.message : String(error),
 				},
 			};

@@ -56,7 +56,6 @@
  */
 
 import { recordInferenceSpan } from "../../inference-timing";
-import { logger } from "../../logger";
 import { getStreamingContext } from "../../streaming-context";
 import type { IAgentRuntime } from "../../types";
 import { ModelType } from "../../types";
@@ -164,9 +163,12 @@ export async function embedRecallQuery(
 	let runId: string;
 	try {
 		runId = runtime.getCurrentRunId();
-	} catch {
+	} catch (error) {
+		// error-policy:J4 Pre-run callers have no active run and explicitly use
+		// the message-scoped cache key.
 		// No active run yet (a pre-run caller such as document augmentation): fall
 		// back to the messageId turn key below so the vector still caches.
+		runtime.reportError("DocumentRecall.preRunCacheKey", error);
 		runId = "";
 	}
 
@@ -211,13 +213,11 @@ export async function embedRecallQuery(
 			if (signal?.aborted) {
 				throw signal.reason ?? error;
 			}
-			logger.debug(
-				{
-					src: "core:documents:recall-embed",
-					error: error instanceof Error ? error.message : String(error),
-				},
-				"Recall-query embed threw synchronously; failing open to keyword recall",
-			);
+			// error-policy:J4 semantic recall explicitly degrades to keyword recall;
+			// surface the embedding failure before returning the unavailable signal.
+			runtime.reportError("DocumentRecall.embedding", error, {
+				phase: "synchronous",
+			});
 			return null;
 		}
 		cache?.inFlight.set(normalized, pending);
@@ -231,8 +231,8 @@ export async function embedRecallQuery(
 				}
 			})
 			.catch(() => {
-				// Swallow: the awaiting caller below logs + fails open. Avoids an
-				// unhandled rejection from the detached cache-population branch.
+				// error-policy:J5 the awaiting caller below observes and reports the
+				// same rejection; this detached cache branch only suppresses duplication.
 			})
 			.finally(() => {
 				cache?.inFlight.delete(normalized);
@@ -248,13 +248,11 @@ export async function embedRecallQuery(
 		if (signal?.aborted) {
 			throw signal.reason ?? error;
 		}
-		logger.debug(
-			{
-				src: "core:documents:recall-embed",
-				error: error instanceof Error ? error.message : String(error),
-			},
-			"Recall-query embed failed; failing open to keyword recall",
-		);
+		// error-policy:J4 semantic recall explicitly degrades to keyword recall;
+		// surface the embedding failure before returning the unavailable signal.
+		runtime.reportError("DocumentRecall.embedding", error, {
+			phase: "asynchronous",
+		});
 		return null;
 	}
 }
@@ -291,9 +289,12 @@ export function aliasRecallQuery(
 	let runId: string;
 	try {
 		runId = runtime.getCurrentRunId();
-	} catch {
+	} catch (error) {
+		// error-policy:J4 Pre-run callers have no active run and explicitly use
+		// the message-scoped cache key.
 		// No active run (the pre-run augmentation caller): key by messageId, the
 		// same fallback embedRecallQuery uses, so both resolve one slot.
+		runtime.reportError("DocumentRecall.preRunAliasKey", error);
 		runId = "";
 	}
 	if (runId === "" && options.messageId === undefined) {
@@ -324,8 +325,8 @@ export function aliasRecallQuery(
 			}
 		})
 		.catch(() => {
-			// Swallow: the source caller logs + fails open; an alias-text caller
-			// awaiting this shared promise fails open through its own catch.
+			// error-policy:J5 The source caller observes and reports this same
+			// rejection; this branch only prevents duplicate alias-cache work.
 		})
 		.finally(() => {
 			cache.inFlight.delete(aliasKey);

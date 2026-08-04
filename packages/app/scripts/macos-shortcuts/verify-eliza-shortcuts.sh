@@ -91,7 +91,7 @@ actual_url="$(
   ELIZA_URL_SCHEME=elizaos \
   ELIZA_SHORTCUT_SOURCE=macos-shortcuts \
   ELIZA_SHORTCUT_ACTION=ask \
-  "$helper" --dry-run "Remind me at 5 & call mom"
+  sh "$helper" --dry-run "Remind me at 5 & call mom"
 )"
 
 if [ "$actual_url" != "$expected_url" ]; then
@@ -106,7 +106,7 @@ stdin_url="$(
     ELIZA_URL_SCHEME=elizaos \
     ELIZA_SHORTCUT_SOURCE=macos-shortcuts \
     ELIZA_SHORTCUT_ACTION=lifeops.create \
-    "$helper" --dry-run
+    sh "$helper" --dry-run
 )"
 expected_stdin_url="elizaos://assistant?text=check%20in%20on%20me%20tomorrow%20morning&source=macos-shortcuts&action=lifeops.create"
 
@@ -123,7 +123,7 @@ it's 100% (done) * now!" | \
     ELIZA_URL_SCHEME=elizaos \
     ELIZA_SHORTCUT_SOURCE=macos-shortcuts \
     ELIZA_SHORTCUT_ACTION=ask \
-    "$helper" --dry-run
+    sh "$helper" --dry-run
 )"
 expected_multiline_url="elizaos://assistant?text=line%20one%0Ait%27s%20100%25%20%28done%29%20%2A%20now%21&source=macos-shortcuts&action=ask"
 
@@ -160,7 +160,7 @@ if [ "$run_shortcut" -eq 1 ]; then
 fi
 
 if [ "$live_open" -eq 1 ]; then
-  "$helper" "remind me to stand up in 20 minutes" >/dev/null
+  sh "$helper" "remind me to stand up in 20 minutes" >/dev/null
 fi
 
 echo "PASS helper builds assistant deep links"

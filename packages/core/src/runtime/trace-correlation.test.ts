@@ -16,11 +16,13 @@ describe("resolveTraceCorrelationFromEnv", () => {
 		const env = {
 			[TRACE_ENV.TRACE_ID]: "trace-123",
 			[TRACE_ENV.TASK_ID]: "task-abc",
+			[TRACE_ENV.SESSION_ID]: "session-456",
 			[TRACE_ENV.PARENT_STEP_ID]: "step-9",
 		} as NodeJS.ProcessEnv;
 		expect(resolveTraceCorrelationFromEnv(env)).toEqual({
 			traceId: "trace-123",
 			taskId: "task-abc",
+			sessionId: "session-456",
 			parentStepId: "step-9",
 		});
 	});
@@ -29,9 +31,15 @@ describe("resolveTraceCorrelationFromEnv", () => {
 		const env = {
 			[TRACE_ENV.TRACE_ID]: "  trace-x  ",
 			[TRACE_ENV.TASK_ID]: "   ",
+			[TRACE_ENV.SESSION_ID]: "  session-x  ",
 		} as NodeJS.ProcessEnv;
 		const out = resolveTraceCorrelationFromEnv(env);
 		expect(out.traceId).toBe("trace-x");
+		expect(out.sessionId).toBe("session-x");
 		expect("taskId" in out).toBe(false);
+	});
+
+	it("names the spawn-managed session marker for the generic orchestrator", () => {
+		expect(TRACE_ENV.SESSION_ID).toBe("ORCHESTRATOR_SESSION_ID");
 	});
 });

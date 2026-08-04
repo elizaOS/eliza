@@ -92,44 +92,30 @@ export function buildElizaCodeCerebrasSpec(
 }
 
 /**
- * Resolves the built interactive eliza-code entry (`dist/index.js`). Order:
- *   1. explicit `ELIZA_CODE_BIN` env (absolute path),
- *   2. walk up from `startDir` looking for `packages/examples/code/dist/index.js`.
- * Throws with actionable guidance when it can't be found (the bundle must be
- * built: `bun run --cwd packages/examples/code build`).
+ * Resolves the operator-supplied interactive eliza-code entry. The CLI is an
+ * external runtime dependency, so deployments must provide an absolute
+ * `ELIZA_CODE_BIN` path rather than relying on a repository-owned bundle.
  */
 export function resolveElizaCodeBin(opts?: {
   env?: Record<string, string | undefined>;
-  startDir?: string;
   exists?: (p: string) => boolean;
 }): string {
   const env = opts?.env ?? process.env;
   const exists = opts?.exists ?? existsSync;
 
-  const override = env.ELIZA_CODE_BIN?.trim();
-  if (override) {
-    if (!exists(override)) {
-      throw new Error(
-        `ELIZA_CODE_BIN is set to "${override}" but no file exists there.`,
-      );
-    }
-    return path.resolve(override);
+  const configuredPath = env.ELIZA_CODE_BIN?.trim();
+  if (!configuredPath) {
+    throw new Error(
+      "ELIZA_CODE_BIN must be set to the absolute path of an installed eliza-code entrypoint.",
+    );
   }
-
-  const rel = path.join("packages", "examples", "code", "dist", "index.js");
-  let dir = path.resolve(opts?.startDir ?? process.cwd());
-  // Walk up to the filesystem root looking for the workspace entry.
-  for (;;) {
-    const candidate = path.join(dir, rel);
-    if (exists(candidate)) return candidate;
-    const parent = path.dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
+  if (!path.isAbsolute(configuredPath)) {
+    throw new Error("ELIZA_CODE_BIN must be an absolute path.");
   }
-
-  throw new Error(
-    "Could not locate the interactive eliza-code binary " +
-      `(${rel}). Build it with "bun run --cwd packages/examples/code build", ` +
-      "or set ELIZA_CODE_BIN to its absolute path.",
-  );
+  if (!exists(configuredPath)) {
+    throw new Error(
+      `ELIZA_CODE_BIN is set to "${configuredPath}" but no file exists there.`,
+    );
+  }
+  return path.resolve(configuredPath);
 }

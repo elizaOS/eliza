@@ -103,21 +103,10 @@ type RenderTelemetryIssue = {
   severity?: string;
 };
 
-type SmokeSimpleViewsNote = {
+type SmokeNote = {
   id: string;
   title: string;
   body: string;
-  color: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type SmokeSimpleViewsEvent = {
-  id: string;
-  title: string;
-  date: string;
-  time: string;
-  notes: string;
   color: string;
   createdAt: string;
   updatedAt: string;
@@ -253,7 +242,6 @@ const SETTINGS_SECTION_IDS_BY_LABEL = new Map<string, string>([
   ["Voice", "voice"],
   ["Capabilities", "capabilities"],
   ["Apps", "apps"],
-  ["Remote Plugins", "remote-plugins"],
   ["Connectors", "connectors"],
   ["Wearables", "wearables"],
   ["App Permissions", "app-permissions"],
@@ -758,285 +746,6 @@ function emptyWalletTradingProfile(url: URL) {
     tokenBreakdown: [],
     recentSwaps: [],
   };
-}
-
-function smokeHyperliquidStatus() {
-  return {
-    publicReadReady: true,
-    signerReady: false,
-    executionReady: false,
-    executionBlockedReason:
-      "Signed Hyperliquid execution is disabled in UI smoke.",
-    accountAddress: "0x1234567890abcdef1234567890abcdef12345678",
-    apiBaseUrl: "https://api.hyperliquid.xyz",
-    credentialMode: "none",
-    readiness: {
-      publicReads: true,
-      accountReads: true,
-      signer: false,
-      execution: false,
-    },
-    account: {
-      address: "0x1234567890abcdef1234567890abcdef12345678",
-      source: "env_account",
-      guidance: null,
-    },
-    vault: {
-      configured: false,
-      ready: false,
-      address: null,
-      guidance: "UI smoke uses deterministic read-only data.",
-    },
-    apiWallet: {
-      configured: false,
-      guidance: "UI smoke does not configure an API wallet.",
-    },
-  };
-}
-
-function smokeHyperliquidMarkets() {
-  return {
-    markets: [
-      {
-        name: "BTC",
-        index: 0,
-        szDecimals: 5,
-        maxLeverage: 50,
-        onlyIsolated: false,
-        isDelisted: false,
-      },
-      {
-        name: "ETH",
-        index: 1,
-        szDecimals: 4,
-        maxLeverage: 25,
-        onlyIsolated: false,
-        isDelisted: false,
-      },
-    ],
-    source: "hyperliquid-info-meta",
-    fetchedAt: SMOKE_GENERATED_AT,
-  };
-}
-
-function smokePolymarketStatus() {
-  return {
-    publicReads: {
-      ready: true,
-      reason: null,
-      gammaApiBase: "https://gamma-api.polymarket.com",
-      dataApiBase: "https://data-api.polymarket.com",
-    },
-    // Required by PolymarketStatusResponse — usePolymarketState reads
-    // `status.account.ready` before fetching positions; omitting the block
-    // made the view render a caught TypeError as its error banner.
-    account: {
-      ready: false,
-      reason:
-        "No Polymarket wallet address configured. Set POLYMARKET_WALLET_ADDRESS (or a managed EVM address) to read positions.",
-      address: null,
-    },
-    trading: {
-      ready: false,
-      reason: "Signed CLOB trading is disabled in UI smoke.",
-      credentialsReady: false,
-      missing: [
-        "POLYMARKET_PRIVATE_KEY",
-        "CLOB_API_KEY",
-        "CLOB_API_SECRET",
-        "CLOB_API_PASSPHRASE",
-      ],
-      clobApiBase: "https://clob.polymarket.com",
-    },
-  };
-}
-
-function smokePolymarketMarkets() {
-  return {
-    markets: [
-      {
-        id: "ui-smoke-green",
-        slug: "ui-smoke-suite-green",
-        question: "Will the UI smoke suite stay green?",
-        description: "Deterministic market fixture for route coverage.",
-        category: "Testing",
-        active: true,
-        closed: false,
-        archived: false,
-        restricted: false,
-        enableOrderBook: true,
-        conditionId: "0xpolymarketuismoke",
-        clobTokenIds: ["yes-token", "no-token"],
-        outcomes: [
-          { name: "Yes", price: "0.87" },
-          { name: "No", price: "0.13" },
-        ],
-        // Raw numeric strings — the real Gamma API + BFF parser emit unformatted
-        // numerics (see plugin-polymarket routes.contract.test.ts). The view's
-        // shortNumber() does Number(value), so a pre-formatted "$12,345" would
-        // render as "—". Keep this matching the validated real DTO shape.
-        liquidity: "12345.5",
-        volume: "45678.25",
-        volume24hr: "1234.75",
-        lastTradePrice: "0.87",
-        bestBid: "0.86",
-        bestAsk: "0.88",
-        image: null,
-        icon: null,
-        endDate: "2026-06-01T00:00:00.000Z",
-        startDate: SMOKE_GENERATED_AT,
-        updatedAt: SMOKE_GENERATED_AT,
-      },
-      {
-        id: "ui-smoke-secondary",
-        slug: "ui-smoke-secondary-market",
-        question: "Will fixture market selection work?",
-        description: "Second deterministic market for click selection.",
-        category: "Testing",
-        active: true,
-        closed: false,
-        archived: false,
-        restricted: false,
-        enableOrderBook: true,
-        conditionId: "0xpolymarketuismoke2",
-        clobTokenIds: ["up-token", "down-token"],
-        outcomes: [
-          { name: "Up", price: "0.64" },
-          { name: "Down", price: "0.36" },
-        ],
-        liquidity: "2345.1",
-        volume: "5678.4",
-        volume24hr: "234.6",
-        lastTradePrice: "0.64",
-        bestBid: "0.63",
-        bestAsk: "0.65",
-        image: null,
-        icon: null,
-        endDate: "2026-06-02T00:00:00.000Z",
-        startDate: SMOKE_GENERATED_AT,
-        updatedAt: SMOKE_GENERATED_AT,
-      },
-    ],
-    source: { api: "gamma", endpoint: "/markets" },
-  };
-}
-
-function smokeShopifyProducts(url: URL) {
-  const products = [
-    {
-      id: "gid://shopify/Product/1001",
-      title: "Example Hoodie",
-      status: "ACTIVE",
-      productType: "Apparel",
-      vendor: "Eliza Smoke Store",
-      totalInventory: 12,
-      priceRange: { min: "88.00", max: "88.00" },
-      imageUrl: null,
-      updatedAt: SMOKE_GENERATED_AT,
-    },
-    {
-      id: "gid://shopify/Product/1002",
-      title: "Agent Sticker Pack",
-      status: "DRAFT",
-      productType: "Accessories",
-      vendor: "Eliza Smoke Store",
-      totalInventory: 4,
-      priceRange: { min: "12.00", max: "18.00" },
-      imageUrl: null,
-      updatedAt: SMOKE_GENERATED_AT,
-    },
-  ];
-  const query = (url.searchParams.get("q") ?? "").trim().toLowerCase();
-  const filtered = query
-    ? products.filter((product) => product.title.toLowerCase().includes(query))
-    : products;
-  return {
-    products: filtered,
-    total: filtered.length,
-    page: Number(url.searchParams.get("page") ?? 1),
-    pageSize: Number(url.searchParams.get("limit") ?? 20),
-  };
-}
-
-function smokeShopifyOrders() {
-  return {
-    orders: [
-      {
-        id: "gid://shopify/Order/2001",
-        name: "#1001",
-        email: "buyer@example.test",
-        totalPrice: "88.00",
-        currencyCode: "USD",
-        fulfillmentStatus: "UNFULFILLED",
-        financialStatus: "PAID",
-        createdAt: SMOKE_GENERATED_AT,
-        lineItemCount: 1,
-      },
-    ],
-    total: 1,
-  };
-}
-
-function smokeShopifyInventory() {
-  return {
-    items: [
-      {
-        id: "gid://shopify/InventoryItem/3001",
-        sku: "MLDY-HOODIE",
-        productTitle: "Example Hoodie",
-        variantTitle: "Black / M",
-        locationId: "gid://shopify/Location/1",
-        locationName: "Main Warehouse",
-        available: 3,
-        incoming: 5,
-      },
-      {
-        id: "gid://shopify/InventoryItem/3002",
-        sku: "AGENT-STICKERS",
-        productTitle: "Agent Sticker Pack",
-        variantTitle: "",
-        locationId: "gid://shopify/Location/1",
-        locationName: "Main Warehouse",
-        available: 12,
-        incoming: 0,
-      },
-    ],
-    locations: ["Main Warehouse"],
-  };
-}
-
-function smokeShopifyCustomers(url: URL) {
-  const customers = [
-    {
-      id: "gid://shopify/Customer/4001",
-      firstName: "Ada",
-      lastName: "Lovelace",
-      email: "ada@example.test",
-      ordersCount: 3,
-      totalSpent: "264.00",
-      currencyCode: "USD",
-      createdAt: SMOKE_GENERATED_AT,
-    },
-    {
-      id: "gid://shopify/Customer/4002",
-      firstName: "Grace",
-      lastName: "Hopper",
-      email: "grace@example.test",
-      ordersCount: 1,
-      totalSpent: "88.00",
-      currencyCode: "USD",
-      createdAt: SMOKE_GENERATED_AT,
-    },
-  ];
-  const query = (url.searchParams.get("q") ?? "").trim().toLowerCase();
-  const filtered = query
-    ? customers.filter((customer) =>
-        `${customer.firstName} ${customer.lastName} ${customer.email}`
-          .toLowerCase()
-          .includes(query),
-      )
-    : customers;
-  return { customers: filtered, total: filtered.length };
 }
 
 function smokeWalletBalances() {
@@ -1661,27 +1370,6 @@ function emptyLifeOpsSocialSummary(url: URL) {
   };
 }
 
-function emptyTrainingStatus() {
-  return {
-    runningJobs: 0,
-    queuedJobs: 0,
-    completedJobs: 0,
-    failedJobs: 0,
-    modelCount: 0,
-    datasetCount: 0,
-    runtimeAvailable: false,
-  };
-}
-
-function emptyTrainingCollections() {
-  return {
-    root: "/tmp/eliza-ui-smoke-training",
-    indexJsonPath: "/tmp/eliza-ui-smoke-training/index.json",
-    indexHtmlPath: "/tmp/eliza-ui-smoke-training/index.html",
-    collections: [],
-  };
-}
-
 function emptyStewardStatus() {
   return {
     configured: true,
@@ -1841,9 +1529,8 @@ function smokeDatabaseQuery(sql: string) {
 
 /** Installs baseline API routes for smoke tests before flow-specific overrides. */
 export async function installDefaultAppRoutes(page: Page): Promise<void> {
-  let simpleViewsRevision = 4;
-  let simpleViewsSelectedDate = "2026-07-22";
-  let simpleViewsNotes: SmokeSimpleViewsNote[] = [
+  let notesRevision = 4;
+  let smokeNotes: SmokeNote[] = [
     {
       id: "note-launch",
       title: "Launch checklist",
@@ -1861,23 +1548,9 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       updatedAt: SMOKE_GENERATED_AT,
     },
   ];
-  let simpleViewsEvents: SmokeSimpleViewsEvent[] = [
-    {
-      id: "event-demo",
-      title: "Light Phone demo",
-      date: "2026-07-22",
-      time: "15:00",
-      notes: "Show Cloud chat, Notes, and Calendar.",
-      color: "rose",
-      createdAt: SMOKE_GENERATED_AT,
-      updatedAt: SMOKE_GENERATED_AT,
-    },
-  ];
-  const simpleViewsSnapshot = () => ({
-    revision: simpleViewsRevision,
-    selectedDate: simpleViewsSelectedDate,
-    notes: simpleViewsNotes,
-    events: simpleViewsEvents,
+  const notesSnapshot = () => ({
+    revision: notesRevision,
+    notes: smokeNotes,
   });
 
   // Answer with a stamp that carries NO commit/label/builtAt, so the BuildBadge
@@ -2030,7 +1703,7 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     });
   });
 
-  await page.route("**/api/simple-views/state", async (route) => {
+  await page.route("**/api/notes/state", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
       return;
@@ -2040,129 +1713,86 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       contentType: "application/json",
       body: JSON.stringify({
         success: true,
-        data: simpleViewsSnapshot(),
+        data: notesSnapshot(),
       }),
     });
   });
 
-  await page.route(
-    /\/api\/views\/(?:notes|simple-calendar)\/interact$/,
-    async (route) => {
-      if (route.request().method() !== "POST") {
-        await route.fallback();
-        return;
-      }
-      const payload: unknown = route.request().postDataJSON();
-      if (!isSmokeRecord(payload) || typeof payload.capability !== "string") {
-        await route.fulfill({
-          status: 400,
-          contentType: "application/json",
-          body: JSON.stringify({ error: "Invalid Simple Views interaction." }),
-        });
-        return;
-      }
-      const params = isSmokeRecord(payload.params) ? payload.params : {};
-      const now = new Date(
-        Date.parse(SMOKE_GENERATED_AT) + (simpleViewsRevision + 1) * 1_000,
-      ).toISOString();
-
-      if (payload.capability === "create-note") {
-        simpleViewsNotes = [
-          {
-            id: `note-smoke-${simpleViewsRevision + 1}`,
-            title: smokeString(params, "title", "Smoke note"),
-            body: smokeString(params, "body"),
-            color: smokeString(params, "color", "yellow"),
-            createdAt: now,
-            updatedAt: now,
-          },
-          ...simpleViewsNotes,
-        ];
-      } else if (payload.capability === "update-note") {
-        const id = smokeString(params, "id");
-        simpleViewsNotes = simpleViewsNotes.map((note) =>
-          note.id === id
-            ? {
-                ...note,
-                title: smokeString(params, "title", note.title),
-                body: smokeString(params, "body", note.body),
-                color: smokeString(params, "color", note.color),
-                updatedAt: now,
-              }
-            : note,
-        );
-      } else if (payload.capability === "delete-note") {
-        const id = smokeString(params, "id");
-        simpleViewsNotes = simpleViewsNotes.filter((note) => note.id !== id);
-      } else if (payload.capability === "clear-notes") {
-        simpleViewsNotes = [];
-      } else if (payload.capability === "select-calendar-date") {
-        simpleViewsSelectedDate = smokeString(
-          params,
-          "date",
-          simpleViewsSelectedDate,
-        );
-      } else if (payload.capability === "create-calendar-event") {
-        simpleViewsEvents = [
-          {
-            id: `event-smoke-${simpleViewsRevision + 1}`,
-            title: smokeString(params, "title", "Smoke event"),
-            date: smokeString(params, "date", simpleViewsSelectedDate),
-            time: smokeString(params, "time", "09:00"),
-            notes: smokeString(params, "notes"),
-            color: smokeString(params, "color", "green"),
-            createdAt: now,
-            updatedAt: now,
-          },
-          ...simpleViewsEvents,
-        ];
-      } else if (payload.capability === "update-calendar-event") {
-        const id = smokeString(params, "id");
-        simpleViewsEvents = simpleViewsEvents.map((event) =>
-          event.id === id
-            ? {
-                ...event,
-                title: smokeString(params, "title", event.title),
-                date: smokeString(params, "date", event.date),
-                time: smokeString(params, "time", event.time),
-                notes: smokeString(params, "notes", event.notes),
-                color: smokeString(params, "color", event.color),
-                updatedAt: now,
-              }
-            : event,
-        );
-      } else if (payload.capability === "delete-calendar-event") {
-        const id = smokeString(params, "id");
-        simpleViewsEvents = simpleViewsEvents.filter(
-          (event) => event.id !== id,
-        );
-      } else {
-        await route.fulfill({
-          status: 400,
-          contentType: "application/json",
-          body: JSON.stringify({
-            error: `Unsupported Simple Views interaction: ${payload.capability}`,
-          }),
-        });
-        return;
-      }
-
-      simpleViewsRevision += 1;
+  await page.route(/\/api\/views\/notes\/interact$/, async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    const payload: unknown = route.request().postDataJSON();
+    if (!isSmokeRecord(payload) || typeof payload.capability !== "string") {
       await route.fulfill({
-        status: 200,
+        status: 400,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "Invalid Notes interaction." }),
+      });
+      return;
+    }
+    const params = isSmokeRecord(payload.params) ? payload.params : {};
+    const now = new Date(
+      Date.parse(SMOKE_GENERATED_AT) + (notesRevision + 1) * 1_000,
+    ).toISOString();
+
+    if (payload.capability === "create-note") {
+      smokeNotes = [
+        {
+          id: `note-smoke-${notesRevision + 1}`,
+          title: smokeString(params, "title", "Smoke note"),
+          body: smokeString(params, "body"),
+          color: smokeString(params, "color", "yellow"),
+          createdAt: now,
+          updatedAt: now,
+        },
+        ...smokeNotes,
+      ];
+    } else if (payload.capability === "update-note") {
+      const id = smokeString(params, "id");
+      smokeNotes = smokeNotes.map((note) =>
+        note.id === id
+          ? {
+              ...note,
+              title: smokeString(params, "title", note.title),
+              body: smokeString(params, "body", note.body),
+              color: smokeString(params, "color", note.color),
+              updatedAt: now,
+            }
+          : note,
+      );
+    } else if (payload.capability === "delete-note") {
+      const id = smokeString(params, "id");
+      smokeNotes = smokeNotes.filter((note) => note.id !== id);
+    } else if (payload.capability === "clear-notes") {
+      smokeNotes = [];
+    } else {
+      await route.fulfill({
+        status: 400,
         contentType: "application/json",
         body: JSON.stringify({
-          requestId: `simple-views-smoke-${simpleViewsRevision}`,
-          success: true,
-          result: {
-            success: true,
-            text: `Handled ${payload.capability}.`,
-            state: simpleViewsSnapshot(),
-          },
+          error: `Unsupported Notes interaction: ${payload.capability}`,
         }),
       });
-    },
-  );
+      return;
+    }
+
+    notesRevision += 1;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        requestId: `notes-smoke-${notesRevision}`,
+        success: true,
+        result: {
+          success: true,
+          text: `Handled ${payload.capability}.`,
+          state: notesSnapshot(),
+        },
+      }),
+    });
+  });
 
   // The Transcripts view (client.listTranscripts) hits this on mount; the
   // keyless loopback stack answers 501 for unimplemented endpoints, which surface
@@ -2462,161 +2092,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     });
   });
 
-  await page.route("**/api/hyperliquid/status", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(smokeHyperliquidStatus()),
-    });
-  });
-
-  await page.route("**/api/hyperliquid/markets", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(smokeHyperliquidMarkets()),
-    });
-  });
-
-  await page.route("**/api/hyperliquid/positions", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        accountAddress: smokeHyperliquidStatus().accountAddress,
-        positions: [
-          {
-            coin: "BTC",
-            size: "0.05",
-            entryPx: "65000",
-            positionValue: "3250",
-            unrealizedPnl: "42",
-            returnOnEquity: "0.012",
-            liquidationPx: null,
-            markPx: "65000",
-            distanceToLiquidationPct: null,
-            marginUsed: "650",
-            leverageType: "cross",
-            leverageValue: 5,
-          },
-        ],
-        summary: {
-          accountValue: "12500",
-          totalNotionalPosition: "3250",
-          totalMarginUsed: "650",
-          totalRawUsd: "12500",
-          withdrawable: "11850",
-          totalUnrealizedPnl: "42",
-          effectiveLeverage: 0.26,
-        },
-        readBlockedReason: null,
-        fetchedAt: SMOKE_GENERATED_AT,
-      }),
-    });
-  });
-
-  await page.route("**/api/hyperliquid/orders", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        accountAddress: smokeHyperliquidStatus().accountAddress,
-        orders: [
-          {
-            coin: "ETH",
-            side: "B",
-            limitPx: "3200",
-            size: "0.25",
-            oid: 1001,
-            timestamp: Date.parse(SMOKE_GENERATED_AT),
-            reduceOnly: false,
-            orderType: "Limit",
-            tif: "Gtc",
-            cloid: null,
-          },
-        ],
-        readBlockedReason: null,
-        fetchedAt: SMOKE_GENERATED_AT,
-      }),
-    });
-  });
-
-  await page.route("**/api/polymarket/status", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(smokePolymarketStatus()),
-    });
-  });
-
-  await page.route("**/api/polymarket/markets**", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(smokePolymarketMarkets()),
-    });
-  });
-
-  await page.route("**/api/polymarket/orders", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        enabled: false,
-        reason: "Signed CLOB trading is disabled in UI smoke.",
-        requiredForTrading: [
-          "POLYMARKET_PRIVATE_KEY",
-          "CLOB_API_KEY",
-          "CLOB_API_SECRET",
-          "CLOB_API_PASSPHRASE",
-        ],
-      }),
-    });
-  });
-
-  await page.route("**/api/polymarket/positions**", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        positions: [],
-        source: { api: "data", endpoint: "/positions" },
-      }),
-    });
-  });
-
   await page.route("**/api/database/tables", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -2645,119 +2120,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify(smokeDatabaseQuery(body.sql ?? "")),
-    });
-  });
-
-  await page.route("**/api/shopify/status", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        connected: true,
-        shop: {
-          name: "Eliza Smoke Store",
-          domain: "smoke-store.example",
-          plan: "development",
-          email: "ops@example.test",
-          currencyCode: "USD",
-        },
-      }),
-    });
-  });
-
-  await page.route("**/api/shopify/products**", async (route) => {
-    const request = route.request();
-    if (request.method() === "GET") {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(smokeShopifyProducts(new URL(request.url()))),
-      });
-      return;
-    }
-    if (request.method() === "POST") {
-      // Match the real handler's 201 response shape (a full product object), not
-      // a {ok, productId} stub — the TUI interact() returns this body as `product`.
-      const input = (request.postDataJSON() ?? {}) as {
-        title?: string;
-        vendor?: string;
-        productType?: string;
-        price?: string;
-      };
-      await route.fulfill({
-        status: 201,
-        contentType: "application/json",
-        body: JSON.stringify({
-          id: "gid://shopify/Product/9001",
-          title: input.title ?? "New Product",
-          status: "DRAFT",
-          productType: input.productType ?? "",
-          vendor: input.vendor ?? "",
-          totalInventory: 0,
-          updatedAt: SMOKE_GENERATED_AT,
-          imageUrl: null,
-          priceRange: {
-            min: input.price ?? "0.00",
-            max: input.price ?? "0.00",
-          },
-        }),
-      });
-      return;
-    }
-    await route.fallback();
-  });
-
-  await page.route("**/api/shopify/orders**", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(smokeShopifyOrders()),
-    });
-  });
-
-  await page.route("**/api/shopify/inventory", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(smokeShopifyInventory()),
-    });
-  });
-
-  await page.route("**/api/shopify/inventory/**/adjust", async (route) => {
-    if (route.request().method() !== "POST") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ ok: true }),
-    });
-  });
-
-  await page.route("**/api/shopify/customers**", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(
-        smokeShopifyCustomers(new URL(route.request().url())),
-      ),
     });
   });
 
@@ -2809,98 +2171,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify(smokeWalletNfts()),
-    });
-  });
-
-  await page.route("**/api/model-tester/status", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        tests: [
-          {
-            id: "text-small",
-            label: "Text",
-            modelType: "TEXT_SMALL",
-            available: true,
-            providers: ["deterministic-ui-smoke"],
-          },
-          {
-            id: "text-large",
-            label: "Streaming Text",
-            modelType: "TEXT_LARGE",
-            available: true,
-            providers: ["deterministic-ui-smoke"],
-          },
-          {
-            id: "embedding",
-            label: "Embedding",
-            modelType: "TEXT_EMBEDDING",
-            available: true,
-            providers: ["deterministic-ui-smoke"],
-          },
-          {
-            id: "text-to-speech",
-            label: "Voice",
-            modelType: "TEXT_TO_SPEECH",
-            available: true,
-            providers: ["deterministic-ui-smoke"],
-          },
-          {
-            id: "transcription",
-            label: "Transcription",
-            modelType: "TRANSCRIPTION",
-            available: true,
-            providers: ["deterministic-ui-smoke"],
-          },
-          {
-            id: "vad",
-            label: "Voice Activity",
-            modelType: "TEXT_SMALL",
-            available: true,
-            providers: ["deterministic-ui-smoke"],
-          },
-          {
-            id: "image-description",
-            label: "Image Description",
-            modelType: "IMAGE_DESCRIPTION",
-            available: true,
-            providers: ["deterministic-ui-smoke"],
-          },
-          {
-            id: "image",
-            label: "Image Generation",
-            modelType: "IMAGE",
-            available: true,
-            providers: ["deterministic-ui-smoke"],
-          },
-        ],
-      }),
-    });
-  });
-
-  await page.route("**/api/model-tester/run", async (route) => {
-    if (route.request().method() !== "POST") {
-      await route.fallback();
-      return;
-    }
-    const rawBody = route.request().postData() ?? "{}";
-    const body = JSON.parse(rawBody) as { test?: string };
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        ok: true,
-        test: body.test ?? "text-small",
-        durationMs: 1,
-        output: {
-          text: "deterministic model tester result",
-        },
-      }),
     });
   });
 
@@ -3880,286 +3150,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
         cloudVoiceProxyAvailable: false,
         hasApiKey: false,
       }),
-    });
-  });
-
-  await page.route("**/api/facewear/status", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ connected: false, devices: [] }),
-    });
-  });
-
-  await page.route("**/api/training/status", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(emptyTrainingStatus()),
-    });
-  });
-
-  await page.route("**/api/training/trajectories**", async (route) => {
-    const request = route.request();
-    const pathname = new URL(request.url()).pathname;
-    if (
-      request.method() === "POST" &&
-      pathname === "/api/training/trajectories/publish"
-    ) {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          trajectoriesPublished: 0,
-          cloudUpload: { huggingFaceRepo: "ui-smoke/training" },
-        }),
-      });
-      return;
-    }
-    if (request.method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        available: false,
-        reason: "ui-smoke",
-        total: 0,
-        trajectories: [],
-      }),
-    });
-  });
-
-  await page.route("**/api/training/datasets", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ datasets: [] }),
-    });
-  });
-
-  await page.route("**/api/training/backends**", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        backends: { mlx: false, cuda: false, cpu: true },
-      }),
-    });
-  });
-
-  await page.route("**/api/training/jobs", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ jobs: [] }),
-    });
-  });
-
-  await page.route("**/api/training/models", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ models: [] }),
-    });
-  });
-
-  await page.route("**/api/training/vast/models", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ loaded_at: null, entries: [] }),
-    });
-  });
-
-  await page.route("**/api/training/collections**", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(emptyTrainingCollections()),
-    });
-  });
-
-  await page.route("**/api/training/collect", async (route) => {
-    if (route.request().method() !== "POST") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        preflight: { liveRequired: false, checks: [] },
-      }),
-    });
-  });
-
-  await page.route("**/api/training/analysis/index", async (route) => {
-    if (route.request().method() !== "POST") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        outputDir: "/tmp/ui-smoke-training/analysis",
-        indexHtmlPath: "/tmp/ui-smoke-training/analysis/index.html",
-        manifestPath: "/tmp/ui-smoke-training/analysis/manifest.json",
-        manifest: {
-          schema: "eliza.training.analysis-index",
-          schemaVersion: 1,
-          generatedAt: new Date(0).toISOString(),
-          roots: [],
-          outputDir: "/tmp/ui-smoke-training/analysis",
-          indexHtmlPath: "/tmp/ui-smoke-training/analysis/index.html",
-          manifestPath: "/tmp/ui-smoke-training/analysis/manifest.json",
-          counts: {},
-          coverage: {},
-          artifacts: [],
-        },
-      }),
-    });
-  });
-
-  await page.route("**/api/training/analysis/readiness", async (route) => {
-    if (route.request().method() !== "POST") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        outputDir: "/tmp/ui-smoke-training/readiness",
-        reportPath: "/tmp/ui-smoke-training/readiness/report.json",
-        report: {
-          schema: "eliza.training.readiness",
-          schemaVersion: 1,
-          generatedAt: new Date(0).toISOString(),
-          outputDir: "/tmp/ui-smoke-training/readiness",
-          reportPath: "/tmp/ui-smoke-training/readiness/report.json",
-          analysisManifestPath: "/tmp/ui-smoke-training/analysis/manifest.json",
-          analysisIndexHtmlPath: "/tmp/ui-smoke-training/analysis/index.html",
-          status: "ready",
-          counts: { ready: 0, checks: 0, missing: 0 },
-          checks: [],
-        },
-      }),
-    });
-  });
-
-  await page.route("**/api/training/auto/config", async (route) => {
-    const method = route.request().method();
-    if (method !== "GET" && method !== "POST") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        config: {
-          autoTrain: false,
-          triggerThreshold: 20,
-          triggerCooldownHours: 24,
-          backends: [],
-        },
-      }),
-    });
-  });
-
-  await page.route("**/api/training/auto/status", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ serviceRegistered: false }),
-    });
-  });
-
-  await page.route("**/api/training/auto/runs**", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ runs: [] }),
-    });
-  });
-
-  await page.route("**/api/training/blueprints", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ count: 0, stats: {}, blueprints: [] }),
-    });
-  });
-
-  await page.route("**/api/training/context-catalog", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ contexts: [], actions: {}, providers: {} }),
-    });
-  });
-
-  await page.route("**/api/training/context-audit", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ gaps: [], missingContexts: [], hasGaps: false }),
     });
   });
 

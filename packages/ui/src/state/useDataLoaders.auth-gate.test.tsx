@@ -1,3 +1,4 @@
+/** Verifies useDataLoaders auth gate (#11084) through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // #11084 — AppProvider mounts the data loaders before the auth probe

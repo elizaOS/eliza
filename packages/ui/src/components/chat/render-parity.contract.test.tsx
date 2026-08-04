@@ -1,3 +1,4 @@
+/** Verifies chat render parity (ThreadLine vs MessageContent) — #9954 through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Component-tree render-parity contract (#9954).

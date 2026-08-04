@@ -121,7 +121,6 @@ import {
 	parseJsonObject,
 	stripJsonStructuralJunkReply,
 } from "../runtime/json-output";
-import { TrajectoryLimitExceeded } from "../runtime/limits";
 import { getLocalizedExamplesProvider } from "../runtime/localized-examples-provider";
 import {
 	getMessageHandlerReply,
@@ -138,7 +137,6 @@ import {
 	cacheProviderOptions,
 	FAILED_TOOL_FALLBACK_MESSAGE,
 	type PlannerLoopParams,
-	type PlannerLoopResult,
 	type PlannerRuntime,
 	type PlannerToolCall,
 	type PlannerToolResult,
@@ -588,6 +586,8 @@ function parseInlinePlannerParams(
 		const parsed = JSON.parse(value);
 		return isRecord(parsed) ? parsed : null;
 	} catch {
+		// error-policy:J3 inline planner parameters are untrusted model input;
+		// malformed JSON is an explicit invalid result.
 		return null;
 	}
 }
@@ -972,30 +972,6 @@ function isBenchmarkForcingToolCall(message: Memory): boolean {
 	return false;
 }
 
-function isHarnessRoutedFallbackTurn(message: Memory): boolean {
-	const content = message.content;
-	const source =
-		typeof content?.source === "string" ? content.source.trim() : "";
-	if (source === "benchmark" || source === "scenario-runner") return true;
-	const contentMetadata = content?.metadata as
-		| Record<string, unknown>
-		| undefined;
-	if (
-		typeof contentMetadata?.benchmark === "string" &&
-		contentMetadata.benchmark.trim().length > 0
-	) {
-		return true;
-	}
-	const memoryMetadata = message.metadata as
-		| Record<string, unknown>
-		| undefined;
-	for (const key of ["scenarioId", "scenario"]) {
-		const value = memoryMetadata?.[key] ?? contentMetadata?.[key];
-		if (typeof value === "string" && value.trim().length > 0) return true;
-	}
-	return false;
-}
-
 function hasPageScopedRoutingMetadata(message: Memory): boolean {
 	const metadataCandidates = [message.content?.metadata, message.metadata];
 	for (const rawMetadata of metadataCandidates) {
@@ -1060,6 +1036,8 @@ async function applyMessageHistoryCompactionHook(
 			? appendMessageHistoryCompactionTelemetry(result.state, result.telemetry)
 			: result.state;
 	} catch (error) {
+		// error-policy:J4 Compaction is an optional optimization. Preserve the
+		// uncompressed state while surfacing the unavailable optimization.
 		runtime.logger.warn(
 			{
 				src: "service:message",
@@ -1067,6 +1045,10 @@ async function applyMessageHistoryCompactionHook(
 			},
 			"Message-history compaction hook failed",
 		);
+		runtime.reportError("MessageService.historyCompaction", error, {
+			source,
+			roomId: message.roomId,
+		});
 		return state;
 	}
 }
@@ -2443,14 +2425,15 @@ async function collectV5PlannerCandidateActions(args: {
 			selectedActions.push(action);
 			return true;
 		} catch (error) {
-			args.runtime.logger.warn(
+			// error-policy:J1 planner exposure fails closed for the affected action
+			// while reporting the validation failure to the agent.
+			args.runtime.reportError(
+				"MessageService.plannerActionValidation",
+				error,
 				{
-					src: "service:message",
 					action: action.name,
 					parentAction: parentActionName,
-					error,
 				},
-				"Skipping action that cannot be exposed to the v5 planner",
 			);
 			return false;
 		}
@@ -2695,6 +2678,7 @@ function buildV5PlannerActionSurface(params: {
 	recorder?: TrajectoryRecorder;
 	trajectoryId?: string;
 	logger?: IAgentRuntime["logger"];
+	reportError?: IAgentRuntime["reportError"];
 	// Optional locale-aware example swapper. Resolved by the caller (which
 	// has async access to `OwnerFactStore.locale`) and passed through to
 	// `buildActionCatalog` so the planner sees localized `ActionExample`
@@ -2866,6 +2850,11 @@ function buildV5PlannerActionSurface(params: {
 				},
 			})
 			.catch((err) => {
+				// error-policy:J7 Tool-search recording is diagnostic; report the
+				// missing stage without changing the selected action surface.
+				params.reportError?.("MessageService.toolSearchStage", err, {
+					trajectoryId,
+				});
 				params.logger?.warn?.(
 					{ err: (err as Error).message, trajectoryId },
 					"[TrajectoryRecorder] failed to record toolSearch stage",
@@ -3012,25 +3001,18 @@ async function createV5MessageContextObject(args: {
 				)
 			: actions;
 		for (const action of displayActions) {
-			try {
-				const tool = actionToTool(action);
-				events.push({
-					id: `tool:${tool.function.name}`,
-					type: "tool",
-					source: "message-service",
-					tool: {
-						name: tool.function.name,
-						description: tool.function.description,
-						parameters: tool.function.parameters,
-						action,
-					},
-				});
-			} catch (error) {
-				args.runtime.logger.warn(
-					{ src: "service:message", action: action.name, error },
-					"Skipping action that cannot be exposed as a v5 native tool",
-				);
-			}
+			const tool = actionToTool(action);
+			events.push({
+				id: `tool:${tool.function.name}`,
+				type: "tool",
+				source: "message-service",
+				tool: {
+					name: tool.function.name,
+					description: tool.function.description,
+					parameters: tool.function.parameters,
+					action,
+				},
+			});
 		}
 	}
 
@@ -4165,7 +4147,8 @@ function parseToolArgumentsString(
 			? (parsed as Record<string, unknown>)
 			: null;
 	} catch {
-		// Continue to the duplicated-streaming recovery below.
+		// error-policy:J3 planner output is untrusted model input; a single-object
+		// parse miss continues to the explicit duplicated-stream recovery below.
 	}
 
 	const objects = extractJsonObjects(trimmed);
@@ -4186,6 +4169,8 @@ function parseToolArgumentsString(
 				? (parsed as Record<string, unknown>)
 				: null;
 		} catch {
+			// error-policy:J3 each recovered fragment is untrusted model input; one
+			// malformed object invalidates the duplicated-stream recovery.
 			return null;
 		}
 	});
@@ -5428,7 +5413,8 @@ function containsEmbeddedJsonObject(text: unknown): boolean {
 					const parsed = JSON.parse(candidate);
 					if (parsed && typeof parsed === "object") return true;
 				} catch {
-					// keep scanning
+					// error-policy:J3 Each candidate is untrusted model text;
+					// malformed candidates are invalid while scanning continues.
 				}
 				start = -1;
 			}
@@ -5710,6 +5696,8 @@ function extractJsonStringField(
 			try {
 				return JSON.parse(`"${text.slice(valueStart, i)}"`) as string;
 			} catch {
+				// error-policy:J3 partial planner text is untrusted model input;
+				// malformed string escapes make this field explicitly unavailable.
 				return null;
 			}
 		}
@@ -5733,6 +5721,8 @@ function extractJsonStringArrayField(
 		try {
 			values.push(JSON.parse(`"${item[1]}"`) as string);
 		} catch {
+			// error-policy:J3 partial planner text is untrusted model input; a
+			// malformed element invalidates the recovered array.
 			return [];
 		}
 	}
@@ -5828,10 +5818,15 @@ async function resolveStage1SenderRole(
 			return result.role as RoleGateRole;
 		}
 	} catch (error) {
+		// error-policy:J4 Role resolution fails closed to the source-aware floor.
 		runtime.logger.debug(
 			{ src: "service:message", error },
 			"Stage 1 sender role lookup failed; using unresolved role floor",
 		);
+		runtime.reportError("MessageService.resolveSenderRole", error, {
+			entityId: message.entityId,
+			roomId: message.roomId,
+		});
 	}
 	return getUnresolvedSenderRoleFloor(message);
 }
@@ -5892,419 +5887,6 @@ export function __buildV5ExecutorContextForTests(
 	args: BuildV5ExecutorContextParams,
 ): ExecutePlannedToolCallContext {
 	return buildV5ExecutorContext(args);
-}
-
-function plannerErrorLooksTransient(error: unknown): boolean {
-	const message =
-		error instanceof Error
-			? `${error.name} ${error.message} ${String(error.cause ?? "")}`
-			: String(error ?? "");
-	// The trailing three ("empty completion", "model emitted no decision", "no
-	// assistant message") are the CLI/SDK brains' "provider returned nothing
-	// usable" errors. They are recoverable per-turn hiccups (a cold-start blip,
-	// one bad SDK turn), so treat them as transient → a deterministic fallback
-	// tool call, instead of re-throwing and crashing the whole turn with a raw
-	// exception the user sees.
-	return /\b(?:429|rate[\s_-]*limit|too many requests|temporarily unavailable|overloaded|timeout|timed out|econnreset|etimedout|50[234]|failed after \d+ attempts|empty completion|model emitted no decision|no assistant message)\b/i.test(
-		message,
-	);
-}
-
-function trimExtractedUrl(value: string): string {
-	return value.replace(/[),.;:!?]+$/u, "");
-}
-
-function extractCalendlyAvailabilityFallbackParams(
-	message: Memory,
-): Record<string, unknown> | null {
-	const text = getUserMessageText(message) ?? "";
-	const lower = text.toLowerCase();
-	if (
-		!/\bcalendly\b|api\.calendly\.com/u.test(lower) ||
-		!/\b(?:availability|available|open|slots?|times?)\b/u.test(lower)
-	) {
-		return null;
-	}
-	const eventTypeUri =
-		/https?:\/\/api\.calendly\.com\/event_types\/[^\s),.;:!?]+/iu.exec(
-			text,
-		)?.[0];
-	const dates = Array.from(text.matchAll(/\b\d{4}-\d{2}-\d{2}\b/gu)).map(
-		(match) => match[0],
-	);
-	return {
-		action: "calendly_availability",
-		intent: text,
-		...(eventTypeUri ? { eventTypeUri: trimExtractedUrl(eventTypeUri) } : {}),
-		...(dates[0] ? { startDate: dates[0] } : {}),
-		...(dates[1] ? { endDate: dates[1] } : {}),
-	};
-}
-
-function buildRoutedDeterministicPlannerFallbackToolCall(args: {
-	message: Memory;
-	messageHandler: MessageHandlerResult;
-	actions: readonly Action[];
-}): PlannerToolCall | null {
-	const deterministic = args.messageHandler.plan.deterministicToolCall;
-	if (deterministic) {
-		const hasAction = args.actions.some(
-			(action) =>
-				normalizeActionIdentifier(action.name) ===
-				normalizeActionIdentifier(deterministic.name),
-		);
-		if (hasAction) {
-			return {
-				id: `deterministic-routed-${Date.now()}`,
-				name: deterministic.name,
-				params: deterministic.params,
-			};
-		}
-	}
-
-	if (!isHarnessRoutedFallbackTurn(args.message)) {
-		return null;
-	}
-
-	const text = getUserMessageText(args.message) ?? "";
-	const candidateActionNames = Array.isArray(
-		args.messageHandler.plan.candidateActions,
-	)
-		? args.messageHandler.plan.candidateActions
-		: [];
-	const candidates = new Set(
-		candidateActionNames.map(normalizeActionIdentifier),
-	);
-	const findActionName = (names: readonly string[]): string | null => {
-		for (const name of names) {
-			const action = args.actions.find(
-				(candidate) =>
-					normalizeActionIdentifier(candidate.name) ===
-					normalizeActionIdentifier(name),
-			);
-			if (action?.name) return action.name;
-		}
-		return null;
-	};
-	const calendarActionName = findActionName([
-		"CALENDAR",
-		"CALENDAR_CREATE_EVENT",
-	]);
-	const ownerRemindersActionName = findActionName([
-		"OWNER_REMINDERS",
-		"OWNER_REMINDERS_CREATE",
-	]);
-	const scheduledTasksActionName = findActionName([
-		"SCHEDULED_TASKS",
-		"SCHEDULED_TASKS_CREATE",
-	]);
-	const shiftHandoffReminder =
-		/\b(?:patient[-\s]?handoff|handoff)\b/iu.test(text) &&
-		/\b(?:nights?|night[-\s]?shift|clock\s*out)\b/iu.test(text);
-
-	if (
-		calendarActionName &&
-		(candidates.has("CALENDAR") ||
-			candidates.has("CALENDAR_CREATE_EVENT") ||
-			/\b(?:calendar|schedule|meeting|sync|appointment)\b/iu.test(text))
-	) {
-		return {
-			id: `deterministic-calendar-${Date.now()}`,
-			name: calendarActionName,
-			params: {
-				action: "create_event",
-				subaction: "create_event",
-				intent: text,
-			},
-		};
-	}
-
-	if (
-		(ownerRemindersActionName || scheduledTasksActionName) &&
-		(candidates.has("OWNER_REMINDERS") ||
-			candidates.has("OWNER_REMINDERS_CREATE") ||
-			candidates.has("SCHEDULED_TASKS") ||
-			candidates.has("SCHEDULED_TASKS_CREATE") ||
-			candidates.has("TASKS_CREATE_REMINDER") ||
-			candidates.has("CREATE_REMINDER") ||
-			candidates.has("SCHEDULE_REMINDER") ||
-			/\bremind(?:er| me)?\b/iu.test(text))
-	) {
-		if (
-			(shiftHandoffReminder || !ownerRemindersActionName) &&
-			scheduledTasksActionName
-		) {
-			return {
-				id: `deterministic-scheduled-reminder-${Date.now()}`,
-				name: scheduledTasksActionName,
-				params: {
-					action: "create",
-					subaction: "create",
-					kind: "reminder",
-					promptInstructions:
-						"Daily reminder to log patient-handoff notes about an hour after the 07:30 night-shift clock-out, before daytime sleep begins.",
-					trigger: { kind: "cron", expression: "33 8 * * *", tz: "UTC" },
-					ownerVisible: true,
-					priority: "medium",
-					metadata: {
-						deterministicRequiredToolFallback: "shift_handoff_reminder",
-						request: text,
-					},
-				},
-			};
-		}
-		if (!ownerRemindersActionName) {
-			return null;
-		}
-		return {
-			id: `deterministic-owner-reminders-${Date.now()}`,
-			name: ownerRemindersActionName,
-			params: {
-				action: "create",
-				subaction: "create",
-				kind: "definition",
-				intent: text,
-			},
-		};
-	}
-
-	return null;
-}
-
-function buildDeterministicPlannerFallbackToolCall(args: {
-	message: Memory;
-	messageHandler?: MessageHandlerResult;
-	actions: readonly Action[];
-}): PlannerToolCall | null {
-	if (args.messageHandler) {
-		const routed = buildRoutedDeterministicPlannerFallbackToolCall({
-			message: args.message,
-			messageHandler: args.messageHandler,
-			actions: args.actions,
-		});
-		if (routed) {
-			return routed;
-		}
-	}
-
-	const calendlyParams = extractCalendlyAvailabilityFallbackParams(
-		args.message,
-	);
-	if (!calendlyParams) {
-		return null;
-	}
-	const hasCalendarAction = args.actions.some(
-		(action) =>
-			normalizeActionIdentifier(action.name) ===
-			normalizeActionIdentifier("CALENDAR"),
-	);
-	if (!hasCalendarAction) {
-		return null;
-	}
-	return {
-		id: `deterministic-calendar-${Date.now()}`,
-		name: "CALENDAR",
-		params: calendlyParams,
-	};
-}
-
-export function __buildDeterministicPlannerFallbackToolCallForTests(args: {
-	message: Memory;
-	messageHandler?: MessageHandlerResult;
-	actions: readonly Action[];
-}): PlannerToolCall | null {
-	return buildDeterministicPlannerFallbackToolCall(args);
-}
-
-function isRequiredToolMissLimit(error: unknown): boolean {
-	if (
-		error instanceof TrajectoryLimitExceeded &&
-		error.kind === "required_tool_misses"
-	) {
-		return true;
-	}
-	if (!error || typeof error !== "object") {
-		return false;
-	}
-	const record = error as { name?: unknown; kind?: unknown };
-	return (
-		record.name === "TrajectoryLimitExceeded" &&
-		record.kind === "required_tool_misses"
-	);
-}
-
-async function runDeterministicPlannerFallback(args: {
-	runtime: IAgentRuntime;
-	message: Memory;
-	messageHandler?: MessageHandlerResult;
-	plannerState: State;
-	selectedContexts: AgentContext[];
-	senderRole: RoleGateRole;
-	plannerContext: ContextObject;
-	plannerRuntime: PlannerRuntime;
-	actions: readonly Action[];
-	evaluatorEffects: EvaluatorEffects;
-	recorder?: TrajectoryRecorder;
-	trajectoryId?: string;
-	plannerLoopConfig?: PlannerLoopParams["config"];
-	callback?: HandlerCallback;
-	onSettledActionResult?: (result: ActionResult) => void;
-	plannerError: unknown;
-}): Promise<PlannerLoopResult | null> {
-	const requiredToolMiss = isRequiredToolMissLimit(args.plannerError);
-	if (!requiredToolMiss && !plannerErrorLooksTransient(args.plannerError)) {
-		return null;
-	}
-	const toolCall = buildDeterministicPlannerFallbackToolCall({
-		message: args.message,
-		messageHandler: args.messageHandler,
-		actions: args.actions,
-	});
-	if (!toolCall) {
-		return null;
-	}
-
-	const queuedAt = Date.now();
-	const serializedParams = JSON.stringify(toolCall.params ?? {});
-	const queuedContext = appendContextEvent(
-		{
-			...args.plannerContext,
-			plannedQueue: [
-				...(args.plannerContext.plannedQueue ?? []),
-				{
-					id: toolCall.id,
-					name: toolCall.name,
-					args: serializedParams,
-					status: "queued" as const,
-					sourceStageId: "planner:fallback",
-				},
-			],
-		},
-		{
-			id: `queue:${toolCall.id ?? toolCall.name}:fallback`,
-			type: "planned_tool_call",
-			source: "message-service",
-			createdAt: queuedAt,
-			metadata: {
-				iteration: 1,
-				toolCallId: toolCall.id,
-				name: toolCall.name,
-				params: serializedParams,
-				status: "queued",
-				reason: "deterministic_fallback_after_transient_planner_error",
-			},
-		},
-	);
-	const trajectory: PlannerTrajectory = {
-		context: queuedContext,
-		steps: [],
-		archivedSteps: [],
-		plannedQueue: [],
-		evaluatorOutputs: [],
-	};
-
-	args.runtime.logger?.warn?.(
-		{
-			src: "service:message",
-			action: toolCall.name,
-			reason: requiredToolMiss ? "required_tool_misses" : "transient_error",
-			error:
-				args.plannerError instanceof Error
-					? args.plannerError.message
-					: String(args.plannerError),
-		},
-		requiredToolMiss
-			? "Planner exhausted required-tool misses; using deterministic routed fallback"
-			: "Planner hit a transient model error; using deterministic fallback",
-	);
-
-	const result = await executeV5PlannedToolCall({
-		runtime: args.runtime,
-		toolCall,
-		plannerContext: trajectory.context,
-		executorCtx: buildV5ExecutorContext({
-			message: args.message,
-			state: args.plannerState,
-			selectedContexts: args.selectedContexts,
-			senderRole: args.senderRole,
-			previousResults: [],
-			...(args.callback ? { callback: args.callback } : {}),
-		}),
-		plannerRuntime: args.plannerRuntime,
-		executorOptions: {
-			actions: args.actions,
-			...(args.onSettledActionResult
-				? { onSettledResult: args.onSettledActionResult }
-				: {}),
-		},
-		evaluatorEffects: args.evaluatorEffects,
-		recorder: args.recorder,
-		trajectoryId: args.trajectoryId,
-		plannerLoopConfig: args.plannerLoopConfig,
-	});
-	trajectory.steps.push({
-		iteration: 1,
-		thought: "Deterministic fallback executed after transient planner error.",
-		toolCall,
-		result,
-	});
-	trajectory.context = appendContextEvent(
-		{
-			...trajectory.context,
-			plannedQueue: (trajectory.context.plannedQueue ?? []).map((entry) =>
-				entry.id === toolCall.id
-					? { ...entry, status: result.success ? "completed" : "failed" }
-					: entry,
-			),
-		},
-		{
-			id: `tool-result:${toolCall.id ?? toolCall.name}:fallback`,
-			type: "tool_result",
-			source: "message-service",
-			createdAt: Date.now(),
-			metadata: {
-				iteration: 1,
-				toolCallId: toolCall.id,
-				name: toolCall.name,
-				params: serializedParams,
-				result: JSON.stringify({
-					success: result.success,
-					text: result.text,
-					error:
-						result.error instanceof Error ? result.error.message : result.error,
-				}),
-				status: result.success ? "completed" : "failed",
-			},
-		},
-	);
-	const shiftHandoffFallback =
-		(
-			toolCall.params?.metadata as {
-				deterministicRequiredToolFallback?: unknown;
-			}
-		)?.deterministicRequiredToolFallback === "shift_handoff_reminder";
-	const fallbackMessage =
-		shiftHandoffFallback && result.success
-			? "Scheduled a daily patient-handoff reminder for 08:33 UTC, about an hour after your 07:30 night-shift clock-out and before your daytime sleep block, so it avoids the middle of sleep."
-			: (result.text ??
-				(result.success
-					? "Done."
-					: "I tried to check that Calendly availability, but the calendar action failed."));
-	const evaluator: EvaluatorOutput = {
-		success: result.success,
-		decision: "FINISH",
-		thought: result.success
-			? "Deterministic Calendly fallback completed."
-			: "Deterministic Calendly fallback failed.",
-		messageToUser: fallbackMessage,
-	};
-	trajectory.evaluatorOutputs.push(evaluator);
-	return {
-		status: "finished",
-		trajectory,
-		evaluator,
-		finalMessage: fallbackMessage,
-	};
 }
 
 async function executeV5PlannedToolCall(
@@ -7005,10 +6587,15 @@ async function emitInteractionEvent(
 			});
 		}
 	} catch (err) {
+		// error-policy:J7 Interaction telemetry must not block the message turn.
 		runtime.logger?.debug?.(
 			{ src: "shortcut-gate", err },
 			"interaction event emit failed",
 		);
+		runtime.reportError("MessageService.shortcutEvent", err, {
+			shortcutId: match.shortcut.id,
+			roomId: message.roomId,
+		});
 	}
 }
 
@@ -7049,6 +6636,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				logger: args.runtime.logger as {
 					warn?: (context: unknown, message?: string) => void;
 				},
+				reportError: args.runtime.reportError.bind(args.runtime),
 			})
 		: undefined;
 	const trajectoryId = recorder
@@ -7494,7 +7082,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				prefixHash: stage1PrefixHash,
 				provider: messageHandlerProvider,
 				state: args.state,
-				logger: args.runtime.logger,
+				runtime: args.runtime,
 			});
 		}
 
@@ -7546,12 +7134,16 @@ export async function runV5MessageRuntimeStage1(args: {
 				extract: messageHandler.extract,
 			})
 				.then((result) => ({ startedAt, endedAt: Date.now(), result }))
-				.catch((error) => ({
-					startedAt,
-					endedAt: Date.now(),
-					result: null,
-					error,
-				}))
+				.catch((error) => {
+					// error-policy:J7 Facts persistence is detached from reply delivery;
+					// its explicit failed outcome is recorded in the trajectory below.
+					args.runtime.reportError(
+						"MessageService.factsAndRelationships",
+						error,
+						{ roomId: args.message.roomId },
+					);
+					return { startedAt, endedAt: Date.now(), result: null, error };
+				})
 				.then((outcome) => {
 					settledFactsOutcome = outcome;
 					return outcome;
@@ -7569,6 +7161,11 @@ export async function runV5MessageRuntimeStage1(args: {
 				message: args.message,
 				addressedTo,
 			}).catch((error) => {
+				// error-policy:J7 Relationship enrichment is a detached data write;
+				// report failure while preserving the already-produced reply.
+				args.runtime.reportError("MessageService.applyAddressedTo", error, {
+					messageId: args.message.id,
+				});
 				args.runtime.logger?.warn?.(
 					{
 						err: error,
@@ -7593,6 +7190,11 @@ export async function runV5MessageRuntimeStage1(args: {
 				void channelTopics
 					.recordTopics(args.message.roomId, topics)
 					.catch((error) => {
+						// error-policy:J7 Channel-topic state is detached enrichment; report
+						// failed persistence without dropping the reply.
+						args.runtime.reportError("MessageService.recordTopics", error, {
+							roomId: args.message.roomId,
+						});
 						args.runtime.logger?.warn?.(
 							{
 								err: error,
@@ -7625,6 +7227,11 @@ export async function runV5MessageRuntimeStage1(args: {
 					},
 				})
 				.catch((error) => {
+					// error-policy:J7 Transcript topic metadata is detached enrichment;
+					// report a failed stamp without changing message delivery.
+					args.runtime.reportError("MessageService.stampTopics", error, {
+						messageId: args.message.id,
+					});
 					args.runtime.logger?.warn?.(
 						{ err: error, messageId: args.message.id },
 						"[message] stamp message topics failed",
@@ -7685,7 +7292,18 @@ export async function runV5MessageRuntimeStage1(args: {
 						runtime: args.runtime,
 						message: args.message,
 						addressedTo,
-					}).catch(() => false)
+					}).catch((error) => {
+						// error-policy:J4 an unresolved addressee must not suppress a
+						// response, but the failed room lookup remains observable.
+						args.runtime.reportError(
+							"MessageService.resolveAddressees",
+							error,
+							{
+								roomId: args.message.roomId,
+							},
+						);
+						return false;
+					})
 				: false;
 		const route = routeMessageHandlerOutput(messageHandler, {
 			suppressToolPromotion,
@@ -7923,6 +7541,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			recorder,
 			trajectoryId,
 			logger: args.runtime.logger,
+			reportError: args.runtime.reportError.bind(args.runtime),
 			localizedExamples: localizedExamples ?? undefined,
 		});
 		const exposedPlannerActions = plannerCandidateActions.filter((action) =>
@@ -8227,64 +7846,34 @@ export async function runV5MessageRuntimeStage1(args: {
 				}),
 			);
 
-		let plannerResult: PlannerLoopResult;
+		let plannerResult: Awaited<ReturnType<typeof invokePlannerLoop>>;
 		try {
 			plannerResult = await invokePlannerLoop(plannerContextAfterEarlyReply);
 		} catch (error) {
-			const fallbackResult = await runDeterministicPlannerFallback({
-				runtime: args.runtime,
-				message: args.message,
-				messageHandler,
-				plannerState,
-				selectedContexts,
-				senderRole,
-				plannerContext: plannerContextAfterEarlyReply,
-				plannerRuntime,
-				actions: exposedPlannerActions,
-				evaluatorEffects,
-				recorder,
-				trajectoryId,
-				plannerLoopConfig: args.plannerLoopConfig,
-				...(recordingCallback ? { callback: recordingCallback } : {}),
-				...(args.onSettledActionResult
-					? { onSettledActionResult: args.onSettledActionResult }
-					: {}),
-				plannerError: error,
-			});
-			if (!fallbackResult) {
-				// A planner failure must not replace an answer the turn already
-				// produced: when the promotion preserved a substantive stage-0 reply,
-				// finish with it instead of surfacing a canned failure. The normal
-				// early-reply/action-echo dedup below still applies to this text.
-				if (
-					prePatchStageOneReply &&
-					!PROGRESS_ONLY_ANSWER_REJECT.test(prePatchStageOneReply.trim())
-				) {
-					args.runtime.logger?.warn?.(
-						{
-							src: "service:message",
-							agentId: args.runtime.agentId,
-							error: error instanceof Error ? error.message : String(error),
-						},
-						"planner failed after a substantive stage-0 answer; delivering the preserved answer",
-					);
-					plannerResult = {
-						status: "finished",
-						trajectory: {
-							context: plannerContextAfterEarlyReply,
-							steps: [],
-							archivedSteps: [],
-							plannedQueue: [],
-							evaluatorOutputs: [],
-						},
-						finalMessage: prePatchStageOneReply,
-					};
-				} else {
-					throw error;
-				}
-			} else {
-				plannerResult = fallbackResult;
+			const preservedAnswer = prePatchStageOneReply?.trim();
+			if (
+				!preservedAnswer ||
+				PROGRESS_ONLY_ANSWER_REJECT.test(preservedAnswer)
+			) {
+				throw error;
 			}
+			// error-policy:J4 A completed Stage-1 answer is a designed degrade when
+			// later planning fails; report the planner failure and deliver known-good text.
+			endStatus = "errored";
+			args.runtime.reportError("MessageService.plannerLoop", error, {
+				roomId: args.message.roomId,
+			});
+			return {
+				kind: "direct_reply",
+				messageHandler,
+				result: createV5ReplyStrategyResult({
+					...args,
+					state: plannerState,
+					text: preservedAnswer,
+					thought: messageHandler.thought,
+					agentVoiced: true,
+				}),
+			};
 		}
 
 		// The planner's terminal prose may ship without executing REPLY. Validate
@@ -8557,6 +8146,8 @@ export async function runV5MessageRuntimeStage1(args: {
 					},
 		};
 	} catch (err) {
+		// error-policy:J2 Preserve the failing status for trajectory diagnostics,
+		// then rethrow the original failure to the message boundary.
 		endStatus = "errored";
 		throw err;
 	} finally {
@@ -8571,13 +8162,14 @@ export async function runV5MessageRuntimeStage1(args: {
 					recorder,
 					trajectoryId,
 					outcome: factsOutcome,
-					logger: args.runtime.logger,
+					runtime: args.runtime,
 				});
 			}
 			await finalizeTrajectoryRecording({
 				recorder,
 				trajectoryId,
 				status: endStatus,
+				reportError: args.runtime.reportError.bind(args.runtime),
 				logger: args.runtime.logger as {
 					warn?: (context: unknown, message?: string) => void;
 				},
@@ -8624,7 +8216,7 @@ async function recordMessageHandlerStage(args: {
 	 */
 	provider?: string;
 	state?: State;
-	logger?: IAgentRuntime["logger"];
+	runtime: IAgentRuntime;
 }): Promise<void> {
 	try {
 		const responseText = getMessageHandlerResponseText(args.raw, args.parsed);
@@ -8669,10 +8261,15 @@ async function recordMessageHandlerStage(args: {
 				: undefined,
 		});
 	} catch (err) {
-		args.logger?.warn?.(
+		// error-policy:J7 Trajectory persistence is diagnostic and must surface
+		// without changing the user-visible turn.
+		args.runtime.logger.warn(
 			{ err: (err as Error).message, trajectoryId: args.trajectoryId },
 			"[TrajectoryRecorder] failed to record messageHandler stage",
 		);
+		args.runtime.reportError("MessageService.recordMessageHandlerStage", err, {
+			trajectoryId: args.trajectoryId,
+		});
 	}
 }
 
@@ -8685,7 +8282,7 @@ async function recordFactsAndRelationshipsStage(args: {
 		result: FactsAndRelationshipsRunResult | null;
 		error?: unknown;
 	};
-	logger?: IAgentRuntime["logger"];
+	runtime: IAgentRuntime;
 }): Promise<void> {
 	try {
 		const { startedAt, endedAt, result, error } = args.outcome;
@@ -8734,9 +8331,16 @@ async function recordFactsAndRelationshipsStage(args: {
 			},
 		});
 	} catch (err) {
-		args.logger?.warn?.(
+		// error-policy:J7 Trajectory persistence is diagnostic and must surface
+		// without changing the user-visible turn.
+		args.runtime.logger.warn(
 			{ err: (err as Error).message, trajectoryId: args.trajectoryId },
 			"[TrajectoryRecorder] failed to record factsAndRelationships stage",
+		);
+		args.runtime.reportError(
+			"MessageService.recordFactsAndRelationshipsStage",
+			err,
+			{ trajectoryId: args.trajectoryId },
 		);
 	}
 }
@@ -8904,9 +8508,9 @@ function extractMessageHandlerUsage(raw: GenerateTextResult):
 	| undefined {
 	const usage = raw.usage;
 	if (!usage) return undefined;
-	const promptTokens = usage.promptTokens ?? 0;
-	const completionTokens = usage.completionTokens ?? 0;
-	const totalTokens = usage.totalTokens ?? promptTokens + completionTokens;
+	const promptTokens = usage.promptTokens;
+	const completionTokens = usage.completionTokens;
+	const totalTokens = usage.totalTokens;
 	const out: {
 		promptTokens: number;
 		completionTokens: number;
@@ -10002,6 +9606,8 @@ async function rewriteActionCallbackInCharacter(args: {
 		if (parseJSONObjectFromText(response)) return fallback();
 		return response.replace(/^["'`]+|["'`]+$/g, "").trim() || fallback();
 	} catch (error) {
+		// error-policy:J4 Voice rewriting is an optional presentation layer; the
+		// original action result remains the explicit degraded response.
 		args.runtime.logger.debug(
 			{
 				src: "service:message",
@@ -10010,6 +9616,10 @@ async function rewriteActionCallbackInCharacter(args: {
 			},
 			"Failed to rewrite action callback in character voice",
 		);
+		args.runtime.reportError("MessageService.rewriteActionCallback", error, {
+			actionName: args.actionName,
+			roomId: args.message.roomId,
+		});
 		return fallback();
 	}
 }
@@ -10355,21 +9965,9 @@ export class DefaultMessageService implements IMessageService {
 					callback,
 					source,
 				});
-				// ALWAYS_BEFORE (blocking): hooks run for every message before
-				// any pipeline work. Use for cheap heuristic preprocessing
-				// (identity extraction, dispute detection) whose results may
-				// influence Stage 1 routing.
-				await runtime.runActionsByMode("ALWAYS_BEFORE", message);
-				// ALWAYS_DURING (non-blocking): fire-and-forget alongside the
-				// rest of the pipeline. Telemetry, logging, side effects.
-				// error-policy:J7 diagnostics-must-not-kill-the-loop — a rejection
-				// escaping runActionsByMode must not abort the turn, but it must surface.
-				void runtime.runActionsByMode("ALWAYS_DURING", message).catch((err) =>
-					runtime.reportError("MessageService.runActionsByMode", err, {
-						mode: "ALWAYS_DURING",
-					}),
-				);
 			} catch (error) {
+				// error-policy:J7 Event delivery is diagnostic; action preprocessing
+				// below remains a required data path and is deliberately outside this catch.
 				runtime.logger.warn(
 					{
 						src: "service:message",
@@ -10380,7 +9978,25 @@ export class DefaultMessageService implements IMessageService {
 					},
 					"Failed to emit MESSAGE_RECEIVED before handling message",
 				);
+				runtime.reportError("MessageService.messageReceivedEvent", error, {
+					entityId: message.entityId,
+					roomId: message.roomId,
+				});
 			}
+			// ALWAYS_BEFORE (blocking): hooks run for every message before
+			// any pipeline work. Use for cheap heuristic preprocessing
+			// (identity extraction, dispute detection) whose results may
+			// influence Stage 1 routing.
+			await runtime.runActionsByMode("ALWAYS_BEFORE", message);
+			// ALWAYS_DURING (non-blocking): fire-and-forget alongside the
+			// rest of the pipeline. Telemetry, logging, side effects.
+			// error-policy:J7 diagnostics-must-not-kill-the-loop — a rejection
+			// escaping runActionsByMode must not abort the turn, but it must surface.
+			void runtime.runActionsByMode("ALWAYS_DURING", message).catch((err) =>
+				runtime.reportError("MessageService.runActionsByMode", err, {
+					mode: "ALWAYS_DURING",
+				}),
+			);
 
 			trajectoryStepId =
 				typeof message.metadata === "object" &&
@@ -10585,9 +10201,16 @@ export class DefaultMessageService implements IMessageService {
 													});
 												}
 											} catch (error) {
+												// error-policy:J4 Text already streams to the
+												// user when optional first-sentence TTS fails.
 												runtime.logger.error(
 													{ error },
 													"Error generating voice for first sentence",
+												);
+												runtime.reportError(
+													"MessageService.firstSentenceVoice",
+													error,
+													{ roomId: message.roomId },
 												);
 											}
 										})();
@@ -10728,6 +10351,7 @@ export class DefaultMessageService implements IMessageService {
 							? {
 									onStreamChunk: opts.onStreamChunk,
 									messageId: responseId,
+									reportError: runtime.reportError.bind(runtime),
 									...(opts.abortSignal
 										? { abortSignal: opts.abortSignal }
 										: {}),
@@ -10788,6 +10412,7 @@ export class DefaultMessageService implements IMessageService {
 												onStreamChunk: async () => undefined,
 												messageId: responseId,
 												abortSignal,
+												reportError: runtime.reportError.bind(runtime),
 											}
 										: undefined;
 							return runWithInferenceTiming(inferenceTimer, () =>
@@ -10872,10 +10497,15 @@ export class DefaultMessageService implements IMessageService {
 										});
 									}
 								} catch (error) {
+									// error-policy:J4 The text response is complete even
+									// when its optional trailing voice attachment fails.
 									runtime.logger.error(
 										{ error },
 										"Error generating voice for remaining text",
 									);
+									runtime.reportError("MessageService.remainingVoice", error, {
+										roomId: message.roomId,
+									});
 								}
 							})();
 						}
@@ -11496,6 +11126,8 @@ export class DefaultMessageService implements IMessageService {
 					state = outcome.result.state;
 				}
 			} catch (error) {
+				// error-policy:J1 This is the user-message boundary: translate
+				// planner/model failures into the designed structured failure state.
 				const callerSignal = getStreamingContext()?.abortSignal;
 				if (callerSignal?.aborted) {
 					const reason = callerSignal.reason;
@@ -11522,6 +11154,10 @@ export class DefaultMessageService implements IMessageService {
 					},
 					"v5 message runtime failed",
 				);
+				runtime.reportError("MessageService.v5Runtime", error, {
+					entityId: message.entityId,
+					roomId: message.roomId,
+				});
 				// Mirror to process.stderr so bench / orchestrator runs can see
 				// the underlying cause when runtime.logger output is buffered or
 				// silenced. The previous behavior swallowed the stack and only
@@ -11534,7 +11170,8 @@ export class DefaultMessageService implements IMessageService {
 							`error=${errMsg}\n${errStack ?? ""}\n`,
 					);
 				} catch {
-					// stderr write must never throw the runtime.
+					// error-policy:J5 The same failure is already observed by the
+					// runtime logger and reportError immediately above.
 				}
 				// Rate limits and provider outages throw from the Stage 1 model
 				// call itself — before any RESPOND/IGNORE decision exists. For
@@ -12564,11 +12201,16 @@ export class DefaultMessageService implements IMessageService {
 									"Audio transcription returned no text (empty or no speech detected)";
 							}
 						} catch (err) {
+							// error-policy:J4 The attachment remains available with an
+							// explicit transcription-unavailable state.
 							processedAttachment.notProcessed = `Audio transcription unavailable: ${err instanceof Error ? err.message : String(err)}`;
 							runtime.logger.warn(
 								{ src: "service:message", err },
 								"Audio transcription failed, continuing without transcript",
 							);
+							runtime.reportError("MessageService.audioTranscription", err, {
+								url: attachment.url,
+							});
 						}
 					} else if (
 						attachment.contentType === ContentType.VIDEO &&
@@ -12616,16 +12258,23 @@ export class DefaultMessageService implements IMessageService {
 									"Video transcription returned no text (empty or no speech detected)";
 							}
 						} catch (err) {
+							// error-policy:J4 The attachment remains available with an
+							// explicit transcription-unavailable state.
 							processedAttachment.notProcessed = `Video transcription unavailable: ${err instanceof Error ? err.message : String(err)}`;
 							runtime.logger.warn(
 								{ src: "service:message", err },
 								"Video transcription failed, continuing without transcript",
 							);
+							runtime.reportError("MessageService.videoTranscription", err, {
+								url: attachment.url,
+							});
 						}
 					}
 
 					return processedAttachment;
 				} catch (err) {
+					// error-policy:J4 Preserve the original attachment with an
+					// explicit retry signal while reporting enrichment failure.
 					// One bad attachment must never drop the others or the message text.
 					// Degrade to the un-enriched attachment (marking remote ones
 					// ephemeral so the UI can offer a retry) and keep processing.
@@ -12633,6 +12282,9 @@ export class DefaultMessageService implements IMessageService {
 						{ src: "service:message", url: attachment.url, err },
 						"Attachment processing failed; keeping un-enriched attachment",
 					);
+					runtime.reportError("MessageService.attachmentEnrichment", err, {
+						url: attachment.url,
+					});
 					return {
 						...attachment,
 						ephemeral: isRemote ? true : attachment.ephemeral,
@@ -13061,20 +12713,24 @@ export class DefaultMessageService implements IMessageService {
 			"Found message memories to delete",
 		);
 
-		// Delete each message memory
-		let deletedCount = 0;
+		const messageIds: UUID[] = [];
 		for (const memory of memories) {
-			if (memory.id) {
-				try {
-					await runtime.deleteMemory(memory.id);
-					deletedCount++;
-				} catch (error) {
-					runtime.logger.warn(
-						{ src: "service:message", error, memoryId: memory.id },
-						"Failed to delete message memory",
-					);
-				}
+			if (!memory.id) {
+				throw new ElizaError(
+					"Cannot clear a channel containing a message memory without an ID",
+					{
+						code: "CHANNEL_MESSAGE_ID_MISSING",
+						context: { roomId, channelId },
+					},
+				);
 			}
+			messageIds.push(memory.id);
+		}
+
+		let deletedCount = 0;
+		for (const messageId of messageIds) {
+			await runtime.deleteMemory(messageId);
+			deletedCount++;
 		}
 
 		runtime.logger.info(

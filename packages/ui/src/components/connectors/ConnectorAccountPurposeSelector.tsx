@@ -113,6 +113,11 @@ export function ConnectorAccountPurposeSelector({
           onValueChange={handleValueChange}
         >
           <SelectTrigger
+            aria-label={
+              accountLabel
+                ? `Role for ${accountLabel}`
+                : t("connectorpurpose.actsAs", { defaultValue: "Acts as" })
+            }
             id={id}
             className="h-8 w-[132px] rounded-sm border border-border bg-card text-xs"
           >

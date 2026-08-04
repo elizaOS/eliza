@@ -1,3 +1,4 @@
+/** Verifies notification boot boundaries through the package's configured test harness. */
 // @vitest-environment jsdom
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";

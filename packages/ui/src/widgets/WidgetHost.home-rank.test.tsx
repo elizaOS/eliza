@@ -1,3 +1,4 @@
+/** Verifies WidgetHost home-slot ranking (#9143) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 import { cleanup, render, screen, waitFor } from "@testing-library/react";

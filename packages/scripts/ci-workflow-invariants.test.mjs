@@ -230,6 +230,17 @@ for (const fixture of [
       /hosted build must install the hash-pinned Python 3.13 skill validator dependency/,
   },
   {
+    name: "legacy artifact sync for fork homepage validation",
+    key: "qualityFork",
+    mutate: (source) =>
+      source.replace(
+        '          ELIZA_SKIP_ARTIFACT_SYNC: "1"\n',
+        '          ELIZA_SKIP_ARTIFACT_SYNC: "0"\n',
+      ),
+    pattern:
+      /hosted build must preserve exact-head homepage baselines by skipping legacy artifact sync/,
+  },
+  {
     name: "unhashed hosted-build skill validator dependency",
     key: "qualityFork",
     mutate: (source) => source.replace(" --require-hashes", ""),
@@ -292,6 +303,27 @@ for (const fixture of [
         "      - name: Run lint (read-only)\n        if: false\n",
       ),
     pattern: /lint:check may not be conditional/,
+  },
+  {
+    name: "repository-level plugin contracts treated as a workspace",
+    key: "develop",
+    mutate: (source) =>
+      source.replace("__tests__/*) continue ;;", "__tests__/*) : ;;"),
+    pattern: /exclude repository-level and fully deleted plugin roots/,
+  },
+  {
+    name: "repository-level plugin build file treated as a workspace",
+    key: "develop",
+    mutate: (source) =>
+      source.replace('if [[ "$relative" != */* ]]', "if false"),
+    pattern: /exclude repository-level and fully deleted plugin roots/,
+  },
+  {
+    name: "fully deleted legacy plugin treated as a current workspace",
+    key: "develop",
+    mutate: (source) =>
+      source.replace('if [ ! -e "plugins/$pkg" ]', "if false"),
+    pattern: /exclude repository-level and fully deleted plugin roots/,
   },
   {
     name: "permissive gitleaks",

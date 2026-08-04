@@ -1,3 +1,4 @@
+/** Verifies parseSegments cost through the package's configured test harness. */
 // @vitest-environment node
 //
 // parseSegments cost benchmark (perf/chat-render-benchmarks). parseSegments

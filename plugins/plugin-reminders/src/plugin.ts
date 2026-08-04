@@ -7,7 +7,7 @@
  * PA auto-registers this plugin so the schema + migration run, and PA's reminder
  * repository reads/writes `app_reminders`. The delivery/escalation engine itself
  * stays PA-resident, writing through these tables. See
- * `plugins/plugin-personal-assistant/docs/lifeops-extraction-plan.md`.
+ * Package boundaries and migration invariants live in the package guide.
  */
 import type { Plugin } from "@elizaos/core";
 import { remindersDbSchema } from "./db/schema.ts";

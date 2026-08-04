@@ -9,6 +9,4 @@
 export {
   CONNECTOR_PLUGINS,
   isConnectorConfigured,
-  isStreamingDestinationConfigured,
-  STREAMING_PLUGINS,
 } from "./plugin-auto-enable-engine.js";

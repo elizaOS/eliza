@@ -54,6 +54,11 @@ import type { ElizaConfig } from "../config/config.ts";
 import { resolveStateDir } from "../config/paths.ts";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import {
+  deleteConversationMemories,
+  deleteConversationMessage,
+  truncateConversationMessages,
+} from "../services/conversation-message-service.ts";
+import {
   type SerializedMessageAttachment,
   selectAttachmentsForViewer,
 } from "./attachment-disclosure.ts";
@@ -209,11 +214,14 @@ function _readDeletedConversationIdsFromState(): Set<string> {
         .map((id) => (typeof id === "string" ? id.trim() : ""))
         .filter((id) => id.length > 0),
     );
-  } catch (err) {
-    logger.warn(
-      `[eliza-api] Failed to read deleted conversations state: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return new Set();
+  } catch (error) {
+    // error-policy:J2 an existing but unreadable tombstone file cannot be
+    // treated as an empty deletion history or deleted chats may reappear.
+    throw new ElizaError("Failed to read deleted conversation tombstones", {
+      code: "DELETED_CONVERSATION_STATE_READ_FAILED",
+      cause: error,
+      context: { filePath },
+    });
   }
 }
 
@@ -818,13 +826,7 @@ function markConversationDeleted(
     state.deletedConversationIds.delete(oldest);
   }
 
-  try {
-    persistDeletedConversationIdsToState(state.deletedConversationIds);
-  } catch (err) {
-    logger.warn(
-      `[conversations] Failed to persist deleted conversation tombstones: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
+  persistDeletedConversationIdsToState(state.deletedConversationIds);
 }
 
 async function deleteConversationRoomData(
@@ -855,69 +857,6 @@ async function deleteConversationRoomData(
       }
     },
   );
-}
-
-async function deleteConversationMemories(
-  runtime: AgentRuntime,
-  memoryIds: UUID[],
-): Promise<number> {
-  if (memoryIds.length === 0) return 0;
-
-  const runtimeWithDelete = runtime as AgentRuntime & {
-    deleteManyMemories?: (memoryIds: UUID[]) => Promise<unknown>;
-    deleteMemory?: (memoryId: UUID) => Promise<unknown>;
-    removeMemory?: (memoryId: UUID) => Promise<unknown>;
-    adapter?: {
-      db?: {
-        deleteManyMemories?: (memoryIds: UUID[]) => Promise<unknown>;
-        deleteMemory?: (memoryId: UUID) => Promise<unknown>;
-        removeMemory?: (memoryId: UUID) => Promise<unknown>;
-      };
-    };
-  };
-
-  if (typeof runtimeWithDelete.deleteManyMemories === "function") {
-    await runtimeWithDelete.deleteManyMemories(memoryIds);
-    return memoryIds.length;
-  }
-
-  const dbDeleteMany = runtimeWithDelete.adapter.db.deleteManyMemories;
-  if (typeof dbDeleteMany === "function") {
-    await dbDeleteMany.call(runtimeWithDelete.adapter.db, memoryIds);
-    return memoryIds.length;
-  }
-
-  let deletedCount = 0;
-  for (const memoryId of memoryIds) {
-    if (typeof runtimeWithDelete.deleteMemory === "function") {
-      await runtimeWithDelete.deleteMemory(memoryId);
-    } else if (typeof runtimeWithDelete.removeMemory === "function") {
-      await runtimeWithDelete.removeMemory(memoryId);
-    } else if (
-      typeof runtimeWithDelete.adapter.db.deleteMemory === "function"
-    ) {
-      await runtimeWithDelete.adapter.db.deleteMemory.call(
-        runtimeWithDelete.adapter.db,
-        memoryId,
-      );
-    } else if (
-      typeof runtimeWithDelete.adapter.db.removeMemory === "function"
-    ) {
-      await runtimeWithDelete.adapter.db.removeMemory.call(
-        runtimeWithDelete.adapter.db,
-        memoryId,
-      );
-    } else {
-      const unsupportedError = new Error(
-        "Conversation message deletion is not supported by this runtime",
-      ) as Error & { status?: number };
-      unsupportedError.status = 501;
-      throw unsupportedError;
-    }
-    deletedCount += 1;
-  }
-
-  return deletedCount;
 }
 
 function captureConversationConnection(
@@ -1619,10 +1558,14 @@ async function ensureConversationGreetingStoredUnlocked(
       tableName: "messages",
       limit: 12,
     });
-  } catch (err) {
-    throw new Error(
-      `Failed to inspect existing conversation messages: ${getErrorMessage(err)}`,
-    );
+  } catch (error) {
+    // error-policy:J2 greeting setup retains the storage cause for the route
+    // boundary instead of fabricating an empty conversation.
+    throw new ElizaError("Failed to inspect conversation messages", {
+      code: "CONVERSATION_GREETING_READ_FAILED",
+      cause: error,
+      context: { conversationId: conv.id },
+    });
   }
 
   memories.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
@@ -1684,10 +1627,14 @@ async function ensureConversationGreetingStoredUnlocked(
         },
       }),
     );
-  } catch (err) {
-    throw new Error(
-      `Failed to store greeting message: ${getErrorMessage(err)}`,
-    );
+  } catch (error) {
+    // error-policy:J2 greeting persistence is required before the route reports
+    // the greeting as stored.
+    throw new ElizaError("Failed to store conversation greeting", {
+      code: "CONVERSATION_GREETING_WRITE_FAILED",
+      cause: error,
+      context: { conversationId: conv.id },
+    });
   }
 
   conv.updatedAt = new Date().toISOString();
@@ -1697,80 +1644,6 @@ async function ensureConversationGreetingStoredUnlocked(
     generated: true,
     persisted: true,
   };
-}
-
-/**
- * Delete a SINGLE message from a conversation by id (#13533). Unlike
- * `truncateConversationMessages` (which drops the target and everything after —
- * the edit-and-resend primitive), this removes exactly one row and leaves the
- * rest of the thread intact.
- *
- * The id is resolved by store lookup and its `roomId` verified against the
- * conversation's room the same way `?around` guards a forged pivot
- * (`loadConversationMessagesAround`): a message id from another room yields a 404
- * ("not found"), never a cross-room delete. A `messageId` that resolves to no
- * memory is a 404.
- */
-async function deleteConversationMessage(
-  runtime: AgentRuntime,
-  conv: ConversationMeta,
-  messageId: string,
-): Promise<{ deletedCount: number }> {
-  const [memory] = await runtime.getMemoriesByIds(
-    [messageId as UUID],
-    "messages",
-  );
-  // Not found, or a forged id pointing at another room: treat both as 404 so a
-  // cross-room id can't confirm existence or delete foreign content.
-  if (!memory || memory.roomId !== conv.roomId) {
-    const notFoundError = new Error(
-      "Conversation message not found",
-    ) as Error & { status?: number };
-    notFoundError.status = 404;
-    throw notFoundError;
-  }
-  const deletedCount = await deleteConversationMemories(runtime, [
-    messageId as UUID,
-  ]);
-  return { deletedCount };
-}
-
-async function truncateConversationMessages(
-  runtime: AgentRuntime,
-  conv: ConversationMeta,
-  messageId: string,
-  options?: { inclusive?: boolean },
-): Promise<{ deletedCount: number }> {
-  const memories = await runtime.getMemories({
-    roomId: conv.roomId,
-    tableName: "messages",
-    limit: 1000,
-  });
-
-  memories.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
-  const targetIndex = memories.findIndex((memory) => memory.id === messageId);
-  if (targetIndex < 0) {
-    const notFoundError = new Error(
-      "Conversation message not found",
-    ) as Error & {
-      status?: number;
-    };
-    notFoundError.status = 404;
-    throw notFoundError;
-  }
-
-  const deleteStartIndex =
-    options?.inclusive === true ? targetIndex : targetIndex + 1;
-  const memoryIds = memories
-    .slice(deleteStartIndex)
-    .map((memory) => memory.id)
-    .filter(
-      (memoryId): memoryId is UUID =>
-        typeof memoryId === "string" && memoryId.trim().length > 0,
-    );
-
-  const deletedCount = await deleteConversationMemories(runtime, memoryIds);
-  return { deletedCount };
 }
 
 // ---------------------------------------------------------------------------
@@ -2664,9 +2537,14 @@ export async function handleConversationRoutes(
         await persistConversationMemory(runtime, memory);
         inserted += 1;
       } catch (err) {
-        logger.warn(
-          `[conversations] import: failed to persist message ${i}: ${getErrorMessage(err)}`,
+        // error-policy:J1 the import boundary reports the exact partial-write
+        // position and never returns a healthy skipped-count response.
+        error(
+          res,
+          `Conversation import failed at message ${i}: ${getErrorMessage(err)}`,
+          500,
         );
+        return true;
       }
     }
     conv.updatedAt = new Date().toISOString();
@@ -4081,9 +3959,14 @@ export async function handleConversationRoutes(
           await deleteConversationMemories(state.runtime, memoryIds);
         }
       } catch (err) {
-        logger.debug(
-          `[conversations] Failed to delete messages for ${convId}: ${err instanceof Error ? err.message : String(err)}`,
+        // error-policy:J1 deletion must not create a tombstone while message
+        // rows remain; report the failed operation to the caller.
+        error(
+          res,
+          `Failed to delete conversation messages: ${getErrorMessage(err)}`,
+          500,
         );
+        return true;
       }
       try {
         await deleteConversationRoomData(state.runtime, conv.roomId);
@@ -4096,9 +3979,14 @@ export async function handleConversationRoutes(
           );
           return true;
         }
-        logger.debug(
-          `[conversations] Failed to delete room data for ${convId}: ${err instanceof Error ? err.message : String(err)}`,
+        // error-policy:J1 an incomplete room deletion is a route failure, not a
+        // successful tombstone-only delete.
+        error(
+          res,
+          `Failed to delete conversation room: ${getErrorMessage(err)}`,
+          500,
         );
+        return true;
       }
     }
     state.conversations.delete(convId);

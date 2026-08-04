@@ -8,12 +8,7 @@ const toVitePath = (value: string): string => value.replaceAll("\\", "/");
 const coreSrc = resolve(rootDir, "../../packages/core/src");
 const pluginBrowserSrc = resolve(rootDir, "../plugin-browser/src");
 const pluginCommandsSrc = resolve(rootDir, "../plugin-commands/src");
-const pluginTrainingSrc = resolve(rootDir, "../plugin-training/src");
 const sharedSrc = resolve(rootDir, "../../packages/shared/src");
-const importConversationsSrc = resolve(
-  rootDir,
-  "../../packages/import-conversations/src",
-);
 
 export default defineConfig({
   resolve: {
@@ -34,7 +29,7 @@ export default defineConfig({
       // package's suite runs standalone — causing the whole suite to fail to load.
       // Resolve `@elizaos/shared` to source too (this suite runs in the `node`
       // environment, so node-only shared modules load fine), mirroring how ui,
-      // plugin-browser, and plugin-training are already redirected to source above.
+      // plugin-browser is already redirected to source below.
       {
         find: /^@elizaos\/shared$/,
         replacement: toVitePath(resolve(sharedSrc, "index.ts")),
@@ -49,24 +44,18 @@ export default defineConfig({
           resolve(rootDir, "../../packages/ui/src/index.ts"),
         ),
       },
+      // Tests mock the public UI barrel as the client boundary. Resolve the
+      // optimized API subpath to that same module id so those mocks continue to
+      // intercept requests after production imports moved off the root barrel.
+      {
+        find: /^@elizaos\/ui\/api$/,
+        replacement: toVitePath(
+          resolve(rootDir, "../../packages/ui/src/index.ts"),
+        ),
+      },
       {
         find: /^@elizaos\/ui\/(.+)$/,
         replacement: `${toVitePath(resolve(rootDir, "../../packages/ui/src"))}/$1`,
-      },
-      // `@elizaos/ui` (aliased to source above) pulls MemoryViewerView, which
-      // imports the `@elizaos/import-conversations/browser` subpath. That subpath
-      // only resolves to source through the package's `eliza-source` export
-      // condition, which vitest does not apply — bare resolution falls through to
-      // `./dist`, absent when this suite runs standalone (the Windows CI lane
-      // builds only core/shared). Anchor it to source; import-conversations/src
-      // has no external deps, so this is self-contained.
-      {
-        find: /^@elizaos\/import-conversations$/,
-        replacement: toVitePath(resolve(importConversationsSrc, "index.ts")),
-      },
-      {
-        find: /^@elizaos\/import-conversations\/(.+)$/,
-        replacement: `${toVitePath(importConversationsSrc)}/$1`,
       },
       {
         find: /^@elizaos\/plugin-health\/screen-time\/mobile-signal-setup$/,
@@ -95,14 +84,6 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-browser\/(.+)$/,
         replacement: `${toVitePath(pluginBrowserSrc)}/$1`,
-      },
-      {
-        find: /^@elizaos\/plugin-training$/,
-        replacement: toVitePath(resolve(pluginTrainingSrc, "index.ts")),
-      },
-      {
-        find: /^@elizaos\/plugin-training\/(.+)$/,
-        replacement: `${toVitePath(pluginTrainingSrc)}/$1`,
       },
     ],
   },

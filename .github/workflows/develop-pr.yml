@@ -36,7 +36,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: "1.3.14" # pinned: floating canary writes lockfileVersion 2 and breaks --frozen-lockfile (#11184/#9454)
-          install-command: bun install
+          install-command: bun install --frozen-lockfile
           install-native-deps: "false"
           install-protoc: "false"
           setup-python: "false"
@@ -48,15 +48,6 @@ jobs:
 
       - name: Check formatting
         run: bun run format:check
-
-      # Also present in quality.yml, which only runs on PRs to `main` and on
-      # post-merge pushes — so a change to this bundle reached develop with the
-      # smoke never having executed anywhere. It settles every claim through
-      # the REAL prune tool (effective flags, unknown-flag rejection, an actual
-      # stale-vs-fresh reclaim, and a two-orphan sweep), which is exactly the
-      # class of defect a string-compare version let ship before (#15398).
-      - name: Run runner-workspace cleanup smoke
-        run: ./packages/deploy/runner-workspace-cleanup/smoke-test.sh
 
       - name: Validate merge-critical workflow invariants
         run: node packages/scripts/ci-workflow-invariants.mjs
@@ -107,7 +98,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: "1.3.14" # pinned: floating canary writes lockfileVersion 2 and breaks --frozen-lockfile (#11184/#9454)
-          install-command: bun install
+          install-command: bun install --frozen-lockfile
           install-native-deps: "false"
           install-protoc: "false"
           setup-python: "false"
@@ -146,7 +137,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: "1.3.14" # pinned: floating canary writes lockfileVersion 2 and breaks --frozen-lockfile (#11184/#9454)
-          install-command: bun install
+          install-command: bun install --frozen-lockfile
           install-native-deps: "false"
           install-protoc: "false"
           setup-python: "false"
@@ -188,7 +179,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: "1.3.14" # pinned: floating canary writes lockfileVersion 2 and breaks --frozen-lockfile (#11184/#9454)
-          install-command: bun install
+          install-command: bun install --frozen-lockfile
           install-native-deps: "false"
           install-protoc: "false"
           setup-python: "false"
@@ -211,8 +202,24 @@ jobs:
           trap 'rm -f "$changed_paths_file" "$sorted_packages_file"' EXIT
           git diff --no-renames --name-only -z "$BASE_SHA"...HEAD -- plugins > "$changed_paths_file"
           while IFS= read -r -d '' changed_path; do
-            pkg="${changed_path#plugins/}"
+            relative="${changed_path#plugins/}"
+            # Top-level build files and plugins/__tests__ are repository-level
+            # plugin contracts rather than package workspaces; the script lane
+            # owns them. Nested unknown directories still fail closed below.
+            if [[ "$relative" != */* ]]; then
+              continue
+            fi
+            case "$relative" in
+              __tests__/*) continue ;;
+            esac
+            pkg="$relative"
             pkg="${pkg%%/*}"
+            # A full package deletion has no current manifest or tests to run.
+            # This also permits cleanup of pre-convention legacy package names;
+            # malformed nested roots that still exist remain a hard failure.
+            if [ ! -e "plugins/$pkg" ]; then
+              continue
+            fi
             if [[ ! "$pkg" =~ ^plugin-[a-z0-9-]+$ ]]; then
               echo "Unsupported plugin workspace path: $changed_path" >&2
               exit 1

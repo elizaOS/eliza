@@ -6,9 +6,9 @@
  * which is fine — the trajectory proves planner → JOIN_MEETING → MeetingService
  * with the real error surfaced.
  */
-import type { ScenarioDefinition } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
-export default {
+export default scenario({
   id: "live-join-meeting",
   lane: "live-only",
   title: "Real LLM routes a Meet link to JOIN_MEETING (plugin-meetings)",
@@ -40,4 +40,4 @@ export default {
       minCount: 1,
     },
   ],
-} satisfies ScenarioDefinition;
+});

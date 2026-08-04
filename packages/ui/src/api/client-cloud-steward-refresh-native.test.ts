@@ -1,3 +1,4 @@
+/** Verifies refreshCloudStewardSession native bearer refresh through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

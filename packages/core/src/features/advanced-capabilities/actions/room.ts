@@ -496,6 +496,8 @@ async function applyOp(args: {
 			success: true,
 		};
 	} catch (error) {
+		// error-policy:J1 Action results are the planner-facing boundary for room
+		// operation failures and retain the thrown error for diagnostics.
 		logger.error(
 			{
 				src: `plugin:advanced-capabilities:action:room_op:${args.op}`,

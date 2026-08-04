@@ -3,7 +3,7 @@
 First-class calendar plugin for elizaOS agents. Owns the calendar domain that
 previously lived inside `@elizaos/plugin-personal-assistant`:
 
-- **Calendar feed** aggregated across Google Calendar (via `@elizaos/plugin-google`),
+- **Calendar feed** aggregated across Google Calendar (via `@elizaos/plugin-google-workspace`),
   delegated Microsoft 365/Outlook accounts (via Microsoft Graph), guarded
   ICS/webcal subscriptions, and Apple Calendar (native macOS/iOS bridge via
   `@elizaos/capacitor-calendar`).

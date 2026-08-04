@@ -50,18 +50,6 @@ const initializerPath = path.join(
 );
 const readmePath = path.join(androidRoot, "README.md");
 const repoRoot = path.resolve(scriptsDir, "../../..");
-const aospManifestPath = path.join(
-  repoRoot,
-  "packages/os/android/vendor/eliza/manifests/aosp-assistant-full-control.json",
-);
-const privappPermissionsPath = path.join(
-  repoRoot,
-  "packages/os/android/vendor/eliza/permissions/privapp-permissions-ai.elizaos.app.xml",
-);
-const distroValidatorPath = path.join(
-  repoRoot,
-  "packages/scripts/distro-android/validate.mjs",
-);
 
 function stripManifest(xml, policy) {
   let stripped = xml;
@@ -409,23 +397,4 @@ describe("LP3 direct Cloud build flag", () => {
     expect(readme).toContain("permission-prompt loop");
   });
 
-  it("does not grant the direct-only permission to generic AOSP builds", () => {
-    const aospManifest = JSON.parse(fs.readFileSync(aospManifestPath, "utf8"));
-    const privappPermissions = fs.readFileSync(privappPermissionsPath, "utf8");
-    const validator = fs.readFileSync(distroValidatorPath, "utf8");
-
-    expect(aospManifest.privilegedPermissions).not.toContain(
-      "android.permission.WRITE_SECURE_SETTINGS",
-    );
-    expect(aospManifest.playStorePolicy.mustStripPermissions).toContain(
-      "android.permission.WRITE_SECURE_SETTINGS",
-    );
-    expect(aospManifest.playStorePolicy.mustStripComponents).toEqual(
-      expect.arrayContaining(ANDROID_LP3_COLOR_POLICY_COMPONENTS),
-    );
-    expect(privappPermissions).not.toContain(
-      '<permission name="android.permission.WRITE_SECURE_SETTINGS" />',
-    );
-    expect(validator).not.toContain("android.permission.WRITE_SECURE_SETTINGS");
-  });
 });

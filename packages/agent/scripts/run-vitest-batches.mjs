@@ -14,7 +14,7 @@ const packageRoot = path.resolve(
   "..",
 );
 const batchSize = Number.parseInt(process.env.AGENT_TEST_BATCH_SIZE ?? "1", 10);
-const roots = ["src", "test"];
+const roots = ["src", "test", "scripts"];
 
 const excludedPatterns = [
   /\.e2e\.test\.[cm]?tsx?$/,
@@ -23,6 +23,9 @@ const excludedPatterns = [
   /\.live\.e2e\.test\.[cm]?tsx?$/,
   /\.real\.test\.[cm]?tsx?$/,
   /-real\.test\.[cm]?tsx?$/,
+  /\.cloud-smoke\.test\.[cm]?tsx?$/,
+  /\.provider-smoke\.test\.[cm]?tsx?$/,
+  /test\/crash-restart-supervisor\.test\.[cm]?tsx?$/,
 ];
 
 function walk(relativeDir, out) {

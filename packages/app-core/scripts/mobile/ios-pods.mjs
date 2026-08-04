@@ -1,4 +1,8 @@
-/** Supports app-core build, packaging, or development orchestration for ios pods mjs. */
+/**
+ * Manifest of the mobile Capacitor plugins and their iOS CocoaPods (name,
+ * official/community kind, SPM compatibility) plus Android AGP9 patch flags,
+ * consumed by the iOS pod and Android patch steps of the mobile build.
+ */
 export const MOBILE_CAPACITOR_PLUGIN_MANIFEST = [
   {
     packageName: "@capacitor/app",

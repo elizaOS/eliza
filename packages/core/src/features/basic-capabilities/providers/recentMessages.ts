@@ -753,23 +753,18 @@ export const recentMessagesProvider: Provider = {
 				text,
 			};
 		} catch (error) {
+			// error-policy:J4 recent-message context becomes explicitly unavailable;
+			// a failed query is not a legitimate empty conversation.
+			runtime.reportError("RecentMessagesProvider.get", error, {
+				roomId: message.roomId,
+			});
 			return {
 				data: {
-					recentMessages: [],
-					recentInteractions: [],
-					actionResults: [],
+					available: false,
 					error: error instanceof Error ? error.message : String(error),
 				},
-				values: {
-					recentPosts: "",
-					recentMessages: "",
-					recentMessageInteractions: "",
-					recentPostInteractions: "",
-					recentInteractions: "",
-					recentActionResults: "",
-					recentMessage: "",
-				},
-				text: "No recent messages available",
+				values: { recentMessagesAvailable: false },
+				text: "Recent conversation context is unavailable.",
 			};
 		}
 	},

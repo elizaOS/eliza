@@ -27,6 +27,7 @@ Eliza-1 local inference provider for elizaOS. Serves text generation, embeddings
 | `TRANSCRIPTION` handler | Agent transcribes audio using the eligible bundled local ASR runtime. |
 | `IMAGE` handler | Agent generates images using the active local diffusion backend. |
 | `IMAGE_DESCRIPTION` handler | Agent describes images using the active multimodal model. |
+| PII entity recognizer service | Supplies the local-LLM NER recognizer (person / org / location) to core's PII pseudonymization layer (`ELIZA_PII_SWAP_ENABLED`). Extraction prompts run on the resident local backend, so PII never leaves the device; while no local backend is active the layer degrades to regex-only. |
 
 ## Requirements
 
@@ -79,8 +80,9 @@ reading code. The source of truth is:
   classification and the mobile context clamp.
 - `src/services/recommendation.ts` for text-model slot ladders.
 - `src/runtime/embedding-presets.ts` for local embedding defaults.
-- `scripts/local-inference-thresholds.json` for backend tok/s floors used by
-  ablation gates.
+- `scripts/local-inference-performance-policy.json` for the relative
+  performance floors enforced by `scripts/local-inference-performance-check.mjs`
+  in the local-inference-matrix CI lane.
 
 | Target | Local mode | Text model policy | Context policy | Embeddings | Notes |
 |---|---|---|---|---|---|
@@ -196,7 +198,7 @@ entity-match, first-audio/TTFT latency — via `workbench-entrypoint.ts` +
 
 The workbench is the single home for what was previously fragmented across a pure
 scoring lib (`e2e-harness.ts`, now promoted to the source of truth), a two-agent
-`voice:duet` harness, native `packages/benchmarks/voice/*.mjs` scenarios, Python
+`voice:duet` harness, native voice benchmark scenarios (https://github.com/elizaOS/benchmarks), Python
 benches, and the single-turn headful self-test (`voice-selftest`). Those remain
 runnable, but **new** voice coverage should be authored as a `VoiceScenario` +
 corpus and scored through `e2e-harness.ts`, not as a new bespoke harness.

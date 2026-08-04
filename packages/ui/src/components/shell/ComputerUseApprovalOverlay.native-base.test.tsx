@@ -1,3 +1,4 @@
+/** Verifies ComputerUseApprovalOverlay on native IPC base (Android WebView URL parser) through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Android WebView / WebKit throw "Failed to construct 'URL': Invalid URL" when
@@ -80,8 +81,8 @@ afterEach(() => {
 });
 
 describe("ComputerUseApprovalOverlay on native IPC base (Android WebView URL parser)", () => {
-  it("renders without crashing and degrades to polling instead of opening SSE", async () => {
-    expect(() => render(<ComputerUseApprovalOverlay />)).not.toThrow();
+  it("degrades to polling instead of opening SSE", async () => {
+    render(<ComputerUseApprovalOverlay />);
 
     await waitFor(() => {
       expect(clientMock.getComputerUseApprovals).toHaveBeenCalled();

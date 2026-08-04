@@ -1,3 +1,4 @@
+/** Verifies App screen-background fuzz — color invariant across view switching through the package's configured test harness. */
 // @vitest-environment jsdom
 // Companion route-matrix coverage for App's full-shell path. The focused
 // notification ingress assertion lives in App.chat-overlay-first-run.test.tsx.
@@ -233,7 +234,11 @@ vi.mock("./state", async () => {
     setUiLanguage: vi.fn(),
     setUiTheme: vi.fn(),
     setUiThemeMode: vi.fn(),
-    startupCoordinator: { phase: "ready", retry: vi.fn() },
+    startupCoordinator: {
+      phase: "ready",
+      isShellPaintable: true,
+      retry: vi.fn(),
+    },
     startupError: null,
     systemWarnings: [],
     tab: appState.tab,
@@ -476,8 +481,6 @@ const BUILTIN_TABS: { tab: BuiltinTab; path: string }[] = [
   { tab: "triggers", path: "/triggers" },
   { tab: "plugins", path: "/plugins" },
   { tab: "skills", path: "/skills" },
-  { tab: "advanced", path: "/advanced" },
-  { tab: "fine-tuning", path: "/fine-tuning" },
   { tab: "trajectories", path: "/trajectories" },
   { tab: "transcripts", path: "/transcripts" },
   { tab: "relationships", path: "/relationships" },

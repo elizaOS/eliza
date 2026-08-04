@@ -13,7 +13,12 @@ const groundedActionReply = path.join(
   "actions",
   "grounded-action-reply.ts",
 );
-const pluginGoogleSrc = path.join(elizaRoot, "plugins", "plugin-google", "src");
+const pluginGoogleSrc = path.join(
+  elizaRoot,
+  "plugins",
+  "plugin-google-workspace",
+  "src",
+);
 const pluginSqlSrc = path.join(elizaRoot, "plugins", "plugin-sql", "src");
 const pluginSchedulingSrc = path.join(
   elizaRoot,
@@ -35,7 +40,7 @@ const appCoreNativeLibraryPolicy = path.join(
 
 /**
  * Unit-test config. UI / service suites that need inlined core/agent/ui or
- * plugin-google stubs are layered in alongside their specs; the base here keeps
+ * plugin-google-workspace stubs are layered in alongside their specs; the base here keeps
  * node-environment domain tests fast.
  */
 export default defineConfig({
@@ -75,11 +80,11 @@ export default defineConfig({
   resolve: {
     alias: [
       {
-        find: /^@elizaos\/plugin-google$/,
+        find: /^@elizaos\/plugin-google-workspace$/,
         replacement: path.join(pluginGoogleSrc, "index.ts"),
       },
       {
-        find: /^@elizaos\/plugin-google\/(.+)$/,
+        find: /^@elizaos\/plugin-google-workspace\/(.+)$/,
         replacement: path.join(pluginGoogleSrc, "$1"),
       },
       {

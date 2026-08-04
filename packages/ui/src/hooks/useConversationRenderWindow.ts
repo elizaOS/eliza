@@ -66,7 +66,7 @@ export interface ConversationRenderWindow {
   /** Effective window — feed the transcript `slice(-windowSize)`. */
   windowSize: number;
   /** Wire to useLoadOlderOnScroll.onLoadOlder: reveal-before-fetch, then page. */
-  onLoadOlder: () => Promise<void>;
+  onLoadOlder: () => Promise<LoadOlderResult>;
   /** AND with surface gates and feed useLoadOlderOnScroll.hasMore. */
   canLoadOlder: boolean;
   /** Search-jump: render the full loaded set (capped at MAX_LOADED_SHELL_WINDOW). */
@@ -108,27 +108,36 @@ export function useConversationRenderWindow({
   fetchOlderRef.current = fetchOlder;
 
   const onLoadOlder = useCallback(async () => {
+    const previousWindowSize = windowSizeRef.current;
     const plan = planScrollTopLoadOlder(
-      windowSizeRef.current,
+      previousWindowSize,
       renderableCountRef.current,
       hasMoreOlderRef.current,
     );
-    if (plan.nextWindowSize !== windowSizeRef.current) {
+    if (plan.nextWindowSize !== previousWindowSize) {
       setBaseWindow(plan.nextWindowSize);
     }
-    if (!plan.shouldFetch) return;
+    if (!plan.shouldFetch) {
+      return {
+        hasMore: hasMoreOlderRef.current,
+        prependedCount: Math.max(0, plan.nextWindowSize - previousWindowSize),
+      };
+    }
     const key = conversationKeyRef.current;
     const result = await fetchOlderRef.current();
     // A page that resolved after a conversation switch belongs to the previous
     // thread — drop it so it can neither re-arm paging nor grow the window for
     // the newly active one.
-    if (conversationKeyRef.current !== key) return;
+    if (conversationKeyRef.current !== key) {
+      return { hasMore: false, prependedCount: 0 };
+    }
     setHasMoreOlder(result.hasMore);
     if (result.prependedCount > 0) {
       setBaseWindow((n) =>
         Math.min(n + result.prependedCount, MAX_LOADED_SHELL_WINDOW),
       );
     }
+    return result;
   }, []);
 
   // A switched conversation may have its own older history — re-arm the loader,

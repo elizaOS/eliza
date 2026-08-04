@@ -2,7 +2,7 @@
  * LifeOps API methods on ElizaClient.
  *
  * Uses TypeScript declaration merging to augment the `ElizaClient` class in
- * `@elizaos/ui` with LifeOps-specific methods.
+ * `@elizaos/ui/api` with LifeOps-specific methods.
  *
  * Include once at startup to register the methods.
  *
@@ -94,7 +94,7 @@ import type {
 // does not re-export the class value). The `/api` subpath is the class's home
 // and is the pattern the sibling client extensions use (see
 // plugins/plugin-calendar/src/api/client-calendar.ts).
-import { ElizaClient } from "@elizaos/ui/api";
+import { ElizaClient } from "@elizaos/ui/api/client-base";
 // Calendar client methods (getLifeOpsCalendarFeed / create|update|delete event,
 // …) live in @elizaos/plugin-calendar now; this side-effect import attaches
 // them to the shared ElizaClient prototype so the LifeOps dashboard keeps them.
@@ -456,7 +456,7 @@ export interface LifeOpsElizaClientMethods {
   ): Promise<VerifyLifeOpsTelegramConnectorResponse>;
 }
 
-declare module "@elizaos/ui" {
+declare module "@elizaos/ui/api/client-base" {
   interface ElizaClient extends LifeOpsElizaClientMethods {}
 }
 

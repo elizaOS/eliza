@@ -101,6 +101,7 @@ import {
   formatMobileWebDistProblems,
   mobileWebDistReuseStatus,
 } from "./lib/mobile-web-build-reuse.mjs";
+import { normalizeCapacitorSettingsFile } from "./lib/portable-capacitor-settings.mjs";
 import {
   assertStagedRendererMatchesBuild,
   overlayFreshRendererIntoPublic,
@@ -247,8 +248,12 @@ const IOS_FULL_BUN_DEPLOYMENT_TARGET = "16.0";
 // dir + APK name in `app.config.ts > aosp:`. When that block is present
 // (Eliza, etc.), stage to `<repoRoot>/os/android/vendor/<vendorDir>/
 // apps/<appName>/<appName>.apk`. When absent, fall back to the upstream
-// elizaOS path under packages/os/.
+// Canonical system images live in the sibling elizaOS/os checkout. App-only
+// Android builds never write there; the AOSP lane sets ELIZAOS_OS_REPO_ROOT.
 function resolveSystemApkStagingDir() {
+  const osRepositoryRoot = path.resolve(
+    process.env.ELIZAOS_OS_REPO_ROOT ?? path.join(elizaRepoRoot, "..", "os"),
+  );
   let variant = null;
   try {
     variant = loadAospVariantConfig({
@@ -261,7 +266,8 @@ function resolveSystemApkStagingDir() {
   }
   if (variant) {
     const vendorDir = path.join(
-      repoRoot,
+      osRepositoryRoot,
+      "packages",
       "os",
       "android",
       "vendor",
@@ -274,7 +280,7 @@ function resolveSystemApkStagingDir() {
     };
   }
   const elizaOsVendorDir = path.join(
-    repoRoot,
+    osRepositoryRoot,
     "packages",
     "os",
     "android",
@@ -5497,10 +5503,15 @@ export function resolveAndroidLp3ColorPolicyBuildEnv(env = process.env) {
   };
 }
 
+// LP3 is an elizaOS direct-debug policy, never a whitelabel capability. Build
+// entrypoints pass their resolved identity explicitly so nested hosts cannot
+// leak ambient branding into these pure policy helpers.
+const ANDROID_LP3_CANONICAL_APP_ID = "ai.elizaos.app";
+
 export function enforceAndroidLp3ColorPolicyBuildPolicy({
   targetName,
   env = process.env,
-  appId = APP.appId,
+  appId = ANDROID_LP3_CANONICAL_APP_ID,
 }) {
   if (!isAndroidLp3ColorPolicyEnabled(env)) return;
   const playSignaled =
@@ -6941,6 +6952,9 @@ export async function runAndroidBuild(
   await ensurePlatform("android");
   await ensureRendererDistMatchesLane(target.webTarget);
   await runCapacitor(["sync", "android"]);
+  normalizeCapacitorSettingsFile(
+    path.join(androidDir, "capacitor.settings.gradle"),
+  );
   ensureBunRuntimeRegistered();
   mirrorCapacitorWebPayloadIntoAndroidDir();
 
@@ -7070,6 +7084,7 @@ function auditAndroidSystemArtifact({ androidSdkRoot, javaHome } = {}) {
   assertAndroidArtifactOmitsLp3ManifestMarkers(
     dumpAndroidArtifactManifest(aapt, artifact),
     {
+      appId: APP.appId,
       label: "ordinary AOSP",
       permissions: ["WRITE_SECURE_SETTINGS"],
     },
@@ -7838,12 +7853,10 @@ function assertAndroidLp3ColorPolicyManifest(manifestText) {
 
 export function assertAndroidArtifactOmitsLp3ManifestMarkers(
   manifestText,
-  { label, permissions = [] },
+  { appId = ANDROID_LP3_CANONICAL_APP_ID, label, permissions = [] },
 ) {
   const forbiddenMarkers = [
-    ...ANDROID_LP3_POLICY_CLASSES.map(
-      (className) => `${APP.appId}.${className}`,
-    ),
+    ...ANDROID_LP3_POLICY_CLASSES.map((className) => `${appId}.${className}`),
     ...ANDROID_LP3_PRIVATE_ACTIONS,
     ...ANDROID_LP3_POLICY_MARKERS,
     ...permissions.map((permission) => `android.permission.${permission}`),
@@ -8036,6 +8049,7 @@ export function auditAndroidCloudArtifact(
         assertAndroidLp3ColorPolicyManifest(manifestText);
       } else {
         assertAndroidArtifactOmitsLp3ManifestMarkers(manifestText, {
+          appId: APP.appId,
           label: "normal Cloud",
         });
       }

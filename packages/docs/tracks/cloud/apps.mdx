@@ -37,21 +37,10 @@ key server-side.
 - `PATCH /api/v1/apps/:id` - update metadata, URLs, origins, and settings.
 - `DELETE /api/v1/apps/:id` - soft-delete.
 
-## Deploy Readiness
-
-App deploys are gated in production by `APPS_DEPLOY_ENABLED`. The cutover is
-operator-controlled: apply the production apps data plane, merge the production
-Worker flag, arm the production daemon, then deploy the all-features eDad test
-app with isolated DB mode.
-
-**Why:** the app record, Worker route, daemon, app node, tenant DB, and wildcard
-domain must agree before production can safely accept deploy jobs. See
-[Launch Status](/cloud/launch-status) for the current gate.
-
 ## Source
 
 - Route: `packages/cloud/api/v1/apps/route.ts`, `packages/cloud/api/v1/apps/[id]/route.ts`
-- Dashboard UI: `packages/cloud-frontend/src/dashboard/apps/`
+- Dashboard UI: `packages/ui/src/cloud/applications/`
 
 ## See also
 

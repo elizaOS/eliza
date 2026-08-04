@@ -40,7 +40,7 @@ const ENV_KEYS = [
   "LIFEOPS_LIVE_JUDGE_MIN_SCORE",
   "SKIP_REASON",
 ] as const;
-const DETERMINISTIC_PROVIDER_NAME = "deterministic-llm-proxy" as const;
+const DETERMINISTIC_PROVIDER_NAME = "deterministic-model-provider" as const;
 
 function writeScenario(
   dir: string,
@@ -218,7 +218,7 @@ function createDependencies(
 ): CliDependencies {
   return {
     availableProviderNames: vi.fn(() => ["unit-test"]),
-    shouldUseDeterministicLlmProxy: vi.fn(() => true),
+    shouldUseDeterministicModel: vi.fn(() => true),
     createScenarioRuntime: vi.fn(async () => ({
       runtime: {} as never,
       pgliteDir: tmpdir(),
@@ -370,7 +370,7 @@ describe("scenario-runner CLI", () => {
       cleanup,
     }));
     const dependencies = createDependencies(() => "passed", {
-      shouldUseDeterministicLlmProxy: vi.fn(() => false),
+      shouldUseDeterministicModel: vi.fn(() => false),
       createScenarioRuntime,
       runScenario: vi.fn(async (scenario) =>
         qualifiedScenarioReport(scenario.id),
@@ -453,7 +453,7 @@ describe("scenario-runner CLI", () => {
     const writeReport = vi.fn(writeReportToDisk);
     const writeScenarioRunViewer = vi.fn(writeScenarioRunViewerToDisk);
     const dependencies = createDependencies(() => "passed", {
-      shouldUseDeterministicLlmProxy: vi.fn(() => false),
+      shouldUseDeterministicModel: vi.fn(() => false),
       createScenarioRuntime: vi.fn(async () => ({
         runtime: {} as never,
         pgliteDir: tmpdir(),
@@ -497,7 +497,7 @@ describe("scenario-runner CLI", () => {
     const runDir = path.join(tempDir, "unqualified-run");
     const nativePath = path.join(tempDir, "unqualified.jsonl");
     const dependencies = createDependencies(() => "passed", {
-      shouldUseDeterministicLlmProxy: vi.fn(() => false),
+      shouldUseDeterministicModel: vi.fn(() => false),
       createScenarioRuntime: vi.fn(async () => ({
         runtime: {} as never,
         pgliteDir: tmpdir(),
@@ -597,7 +597,7 @@ describe("scenario-runner CLI", () => {
     const createScenarioRuntime = vi.fn();
     const dependencies = createDependencies(() => "passed", {
       availableProviderNames: vi.fn(() => []),
-      shouldUseDeterministicLlmProxy: vi.fn(() => false),
+      shouldUseDeterministicModel: vi.fn(() => false),
       createScenarioRuntime,
     });
 

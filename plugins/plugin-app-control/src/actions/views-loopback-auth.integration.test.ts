@@ -52,7 +52,7 @@ const NOTES_VIEW: ViewSummary = {
 	id: "notes",
 	label: "Notes",
 	path: "/notes",
-	pluginName: "plugin-simple-views",
+	pluginName: "plugin-notes",
 	available: true,
 	viewType: "gui",
 	capabilities: [

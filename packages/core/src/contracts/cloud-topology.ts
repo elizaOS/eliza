@@ -3,7 +3,7 @@
  * whether the account is linked, the deployment runtime (cloud vs local), which
  * cloud services (inference/tts/media/embeddings/rpc) are routed through the
  * cloud proxy, and whether the eliza-cloud plugin should load. Reads through the
- * `first-run-options` resolvers over `@elizaos/contracts`; linkage treats a
+ * `first-run-options` resolvers; linkage treats a
  * `[REDACTED]` API key as unset.
  */
 import {
@@ -13,12 +13,15 @@ import {
 	resolveServiceRoutingInConfig,
 } from "./first-run-options.js";
 
-export type ElizaCloudService =
-	| "inference"
-	| "tts"
-	| "media"
-	| "embeddings"
-	| "rpc";
+export const ELIZA_CLOUD_SERVICES = [
+	"inference",
+	"tts",
+	"media",
+	"embeddings",
+	"rpc",
+] as const;
+
+export type ElizaCloudService = (typeof ELIZA_CLOUD_SERVICES)[number];
 
 export type ResolvedElizaCloudTopology = {
 	linked: boolean;

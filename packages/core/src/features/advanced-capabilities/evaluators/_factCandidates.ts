@@ -1,13 +1,6 @@
 /**
- * Shared helper for writing pending fact reconciliations to the
- * `fact_candidates` table. The table is provisioned by the schema layer
- * elsewhere; here we just append rows that the Facts review UI will surface
- * as "I noticed conflicting info."
- *
- * Originally lived inside `factRefinement.ts`; lifted here when the
- * single-call extractor (Phase 3 of the fact-memory refactor) replaced the
- * refinement evaluator. The extractor still needs to queue contradictions
- * for human review.
+ * Persists pending fact reconciliations for the Facts review UI.
+ * Schema provisioning belongs to the database layer; this helper only appends contradictions.
  */
 import { sql } from "drizzle-orm";
 import type { IAgentRuntime, UUID } from "../../../types/index.ts";

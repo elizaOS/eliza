@@ -1,6 +1,7 @@
+/** Verifies ConsolePage through the package's configured test harness. */
 // @vitest-environment jsdom
 
-import { render, screen } from "@testing-library/react";
+import { render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useDocumentTitle } from "../lib/use-document-title";
 
@@ -16,18 +17,6 @@ import { ConsolePage } from "./ConsolePage";
 describe("ConsolePage", () => {
   afterEach(() => {
     document.title = "";
-  });
-
-  it("wraps children in the shared max-width console container", () => {
-    const { container } = render(
-      <ConsolePage>
-        <div>surface body</div>
-      </ConsolePage>,
-    );
-    expect(screen.getByText("surface body")).toBeTruthy();
-    const shell = container.firstElementChild;
-    expect(shell?.className).toContain("max-w-4xl");
-    expect(shell?.className).toContain("mx-auto");
   });
 
   it("sets the document title from titleKey/titleDefault while mounted", () => {

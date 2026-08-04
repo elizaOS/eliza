@@ -26,7 +26,7 @@
  * test.yml, or dropping the develop-pr.yml gate, fails this contract.
  *
  * Cache regime (#12341): the whole repo is on the GitHub-native Turbo cache
- * (setup-bun-workspace → the pinned `turbo-cache-github` shim). NO workflow may
+ * embedded in setup-bun-workspace. NO workflow may
  * wire the Vercel SaaS remote cache (`TURBO_TOKEN`/`TURBO_TEAM`/
  * `TURBO_CACHE: remote:rw`); nightly.yml and release.yaml — the publish paths
  * that formerly pinned that env — must instead route through

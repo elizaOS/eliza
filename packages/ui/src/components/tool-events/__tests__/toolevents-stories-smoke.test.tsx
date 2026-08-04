@@ -1,3 +1,4 @@
+/** Verifies toolevents stories smoke through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Portable-stories smoke test for the tool-events surface. Composes every

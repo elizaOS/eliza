@@ -44,7 +44,6 @@ export const OPT_IN_GATES = [
   },
   { key: "RUN_LIVE_NATIVE_ACP", label: "Native ACP smoke" },
   { key: "RUN_LIVE_ACPX", label: "ACPX sub-agent router" },
-  { key: "FORCE_OSWORLD_BENCHMARK", label: "OSWorld benchmark" },
 ];
 
 export const CONNECTIONS = [

@@ -17,9 +17,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // re-runs contributed by plugin-health depend on registries created later in
 // init, which is the boot-order seam these hooks exist to paper over — not the
 // behavior this test asserts.
-vi.mock("@elizaos/plugin-google", async (importOriginal) => ({
+vi.mock("@elizaos/plugin-google-workspace", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
-  googlePlugin: { name: "@elizaos/plugin-google", init: vi.fn() },
+  googlePlugin: { name: "@elizaos/plugin-google-workspace", init: vi.fn() },
 }));
 vi.mock("@elizaos/plugin-health", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),

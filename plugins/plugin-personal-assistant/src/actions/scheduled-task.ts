@@ -49,6 +49,11 @@ import {
 import { messageText } from "../lifeops/google/format-helpers.js";
 import { resolvePendingPromptsStore } from "../lifeops/pending-prompts/store.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
+import {
+  bindScheduledTaskToInboundChat,
+  readScheduledTaskChatDeliveryBinding,
+  SCHEDULED_TASK_DELIVERY_BINDING_KEY,
+} from "../lifeops/scheduled-task/delivery-binding.js";
 import type {
   ScheduledTask,
   ScheduledTaskFilter,
@@ -1107,6 +1112,7 @@ async function handleGet(
 async function handleCreate(
   scope: RunnerScope,
   params: ScheduledTaskParams,
+  message: Memory,
 ): Promise<ActionResult> {
   const promptInstructions =
     typeof params.promptInstructions === "string"
@@ -1152,6 +1158,41 @@ async function handleCreate(
     normalizeSubjectKind(params.subjectKind),
     params.subjectId,
   );
+  // Capture the server-attested destination BEFORE duplicate resolution. A
+  // schedule is not equivalent across connector accounts/rooms: collapsing
+  // two identical reminder texts before reading their bindings silently sends
+  // only the first room's copy.
+  const chatDeliveryBinding = await bindScheduledTaskToInboundChat(
+    scope.runtime,
+    message,
+  );
+  const sameDeliveryBinding = (candidate: ScheduledTask): boolean => {
+    const candidateBinding = readScheduledTaskChatDeliveryBinding(
+      candidate.metadata,
+    );
+    if (!chatDeliveryBinding) {
+      return !Object.hasOwn(
+        candidate.metadata ?? {},
+        SCHEDULED_TASK_DELIVERY_BINDING_KEY,
+      );
+    }
+    return (
+      candidateBinding?.source === chatDeliveryBinding.source &&
+      candidateBinding.roomId === chatDeliveryBinding.roomId &&
+      candidateBinding.channelId === chatDeliveryBinding.channelId &&
+      candidateBinding.accountId === chatDeliveryBinding.accountId
+    );
+  };
+  // Scope planner idempotency to the canonical delivery binding. The runner's
+  // idempotency index is global to the agent, so leaving a model-supplied key
+  // unscoped can alias otherwise-distinct reminders created in two DMs.
+  const requestedIdempotencyKey = params.idempotencyKey?.trim() || undefined;
+  const effectiveIdempotencyKey = requestedIdempotencyKey
+    ? chatDeliveryBinding
+      ? `${requestedIdempotencyKey}:${chatDeliveryBinding.source}:${chatDeliveryBinding.accountId ?? "default"}:${chatDeliveryBinding.roomId}`
+      : requestedIdempotencyKey
+    : undefined;
+
   // Content-level duplicate guard. `idempotencyKey` already dedupes exact
   // retries, but a planner re-asked across turns tends to mint a NEW key for
   // the same intent (observed live: two identical brush-teeth cron reminders
@@ -1174,22 +1215,22 @@ async function handleCreate(
   );
   const normalizedInstructions = promptInstructions.toLowerCase();
   const triggerKey = stableTriggerKey(trigger);
-  const idempotencyDuplicate =
-    typeof params.idempotencyKey === "string" &&
-    params.idempotencyKey.trim().length > 0
-      ? allTasks.find(
-          (candidate) =>
-            candidate.idempotencyKey === params.idempotencyKey?.trim(),
-        )
-      : undefined;
+  const idempotencyDuplicate = effectiveIdempotencyKey
+    ? allTasks.find(
+        (candidate) =>
+          candidate.idempotencyKey === effectiveIdempotencyKey &&
+          sameDeliveryBinding(candidate),
+      )
+    : undefined;
   const contentDuplicate = activeSiblings.find(
     (candidate) =>
-      (candidate.promptInstructions.trim().toLowerCase() ===
+      sameDeliveryBinding(candidate) &&
+      ((candidate.promptInstructions.trim().toLowerCase() ===
         normalizedInstructions &&
         stableTriggerKey(candidate.trigger) === triggerKey) ||
-      (requestedTaskId !== undefined &&
-        (candidate.taskId === requestedTaskId ||
-          candidate.metadata?.plannerTaskId === requestedTaskId)),
+        (requestedTaskId !== undefined &&
+          (candidate.taskId === requestedTaskId ||
+            candidate.metadata?.plannerTaskId === requestedTaskId))),
   );
   const duplicate = idempotencyDuplicate ?? contentDuplicate;
   if (duplicate) {
@@ -1206,11 +1247,22 @@ async function handleCreate(
       },
     };
   }
-  const output = normalizeOutputInput(scope, params.output);
+  // A verified connector DM is bound to its canonical external channel. The
+  // model cannot redirect a future reminder by inventing output.target. Other
+  // turn kinds retain the in-app/default normalization above.
+  const output = chatDeliveryBinding
+    ? {
+        destination: "channel" as const,
+        target: `${chatDeliveryBinding.source}:${chatDeliveryBinding.channelId}`,
+      }
+    : normalizeOutputInput(scope, params.output);
   const completionCheck = normalizeCompletionCheckInput(params.completionCheck);
   const metadata = {
     ...(params.metadata ?? {}),
     ...(requestedTaskId ? { plannerTaskId: requestedTaskId } : {}),
+    ...(chatDeliveryBinding
+      ? { [SCHEDULED_TASK_DELIVERY_BINDING_KEY]: chatDeliveryBinding }
+      : {}),
     ...(scope.roomId && params.completionCheck
       ? { pendingPromptRoomId: scope.roomId }
       : {}),
@@ -1235,8 +1287,8 @@ async function handleCreate(
       ...(output ? { output } : {}),
       ...(nonEmptyRecord(params.pipeline) ? { pipeline: params.pipeline } : {}),
       ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
-      ...(params.idempotencyKey
-        ? { idempotencyKey: params.idempotencyKey }
+      ...(effectiveIdempotencyKey
+        ? { idempotencyKey: effectiveIdempotencyKey }
         : {}),
       respectsGlobalPause: params.respectsGlobalPause ?? true,
       source: params.source ?? "user_chat",
@@ -1319,7 +1371,24 @@ async function handleUpdate(
       data: { subaction: "update", task: existing, unchanged: true },
     };
   }
-  const updated = await scope.runner.apply(taskId, "edit", params.patch);
+  const existingBinding = readScheduledTaskChatDeliveryBinding(
+    existing.metadata,
+  );
+  // Delivery identity is server-attested state, never model-editable state.
+  // Preserve both the canonical output and binding while still allowing the
+  // owner to reschedule or rewrite the reminder itself.
+  const safePatch = existingBinding
+    ? {
+        ...params.patch,
+        output: existing.output,
+        metadata: {
+          ...(existing.metadata ?? {}),
+          ...(params.patch.metadata ?? {}),
+          [SCHEDULED_TASK_DELIVERY_BINDING_KEY]: existingBinding,
+        },
+      }
+    : params.patch;
+  const updated = await scope.runner.apply(taskId, "edit", safePatch);
   return {
     success: true,
     text: "Updated that scheduled item.",
@@ -1938,7 +2007,7 @@ export const scheduledTaskAction: Action & {
         result = await handleGet(scope, params);
         break;
       case "create":
-        result = await handleCreate(scope, params);
+        result = await handleCreate(scope, params, message);
         break;
       case "update":
         result = await handleUpdate(scope, params);

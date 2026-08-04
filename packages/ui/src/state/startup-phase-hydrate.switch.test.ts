@@ -1,3 +1,4 @@
+/** Verifies bindReadyPhase shell:switch-agent handler through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Frontend half of the #12178 runtime-switch contract: the bindReadyPhase

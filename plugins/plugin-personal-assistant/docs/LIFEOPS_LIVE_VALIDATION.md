@@ -90,7 +90,6 @@ Legend for **Result**: `pass` · `fail` · `blocked (no creds)` · `n/a`.
 | Screen-time / Focus | `OWNER_SCREENTIME`, `BLOCK` (macOS-only) | macOS hosts/SelfControl admin; iOS Family Controls; Android Usage Access | | |
 | Finances | `OWNER_FINANCES` (subscription detect, import, approval) | Gmail billing corpus / CSV fixture / Plaid or PayPal sandbox | | |
 | Documents | `OWNER_DOCUMENTS` (search/review/signature) | document store + signature provider | | |
-| Remote desktop | `REMOTE_DESKTOP` | `ELIZA_REMOTE_ACCESS_TOKEN` / `ELIZA_REMOTE_LOCAL_MODE` | | |
 
 ## Split views (each on desktop + mobile)
 
@@ -110,10 +109,8 @@ minimal checkout stays green:
 
 - Connector live tests are gated behind their env var(s) — e.g. an `it.skipIf`
   on the access token / sandbox key; skipped runs log the missing prerequisite.
-- The LifeOps prompt benchmark only runs the live leg under
-  `RUN_LIFEOPS_PROMPT_BENCHMARK=1` (see
-  `test/lifeops-prompt-benchmark.activation.test.ts`); its pure scoring/report
-  coverage always runs.
+- The LifeOps prompt benchmark now lives in the standalone benchmarks repo
+  (https://github.com/elizaOS/benchmarks) and runs there, not in this package.
 - Native-device flows (HealthKit, Family Controls, SMS default-role) require a
   real device/simulator and are out of scope for headless CI.
 

@@ -510,7 +510,7 @@ export const GROQ_NATIVE_MODEL_ID_MAP: Record<string, string> = {
 export const VAST_NATIVE_MODELS: CatalogModel[] = [
   // ─── eliza-1 series ────────────────────────────────────────────────
   // Self-hosted on Vast.ai. Manifests live in
-  // cloud/services/vast-pyworker/manifests/eliza-1-*.json.
+  // packages/cloud/services/vast-pyworker/manifests/eliza-1-*.json.
   {
     id: "vast/eliza-1-2b",
     object: "model",

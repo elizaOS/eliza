@@ -202,6 +202,7 @@ function makeRuntime(
 		},
 		actions: [],
 		providers: [],
+		getRoom: vi.fn(async () => null),
 		composeState: vi.fn(async () => makeState()),
 		runActionsByMode: vi.fn(async () => undefined),
 		emitEvent: vi.fn(async () => undefined),

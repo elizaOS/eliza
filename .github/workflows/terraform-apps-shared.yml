@@ -82,10 +82,10 @@ jobs:
   # so it runs safely on every PR (incl. before the env HCLOUD_TOKEN exists).
   validate:
     if: github.event_name == 'pull_request'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     steps:
-      - uses: actions/checkout@v7.0.1
-      - uses: hashicorp/setup-terraform@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e
         with:
           terraform_version: ${{ env.TF_VERSION }}
       - name: terraform fmt -check
@@ -102,7 +102,7 @@ jobs:
   # nodes; the per-env scoping lives in apps-data-plane.
   plan-apply:
     if: github.event_name == 'workflow_dispatch'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     env:
       HCLOUD_TOKEN: ${{ secrets.HCLOUD_APPS_TOKEN }}
       # R2 (S3-compatible) state backend creds.
@@ -115,8 +115,8 @@ jobs:
       # rejects 0.0.0.0/0. Set as a repo-level GH var, e.g. '["1.2.3.4/32"]'.
       TF_VAR_operator_ingress_cidrs: ${{ vars.APPS_SHARED_OPERATOR_INGRESS_CIDRS }}
     steps:
-      - uses: actions/checkout@v7.0.1
-      - uses: hashicorp/setup-terraform@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e
         with:
           terraform_version: ${{ env.TF_VERSION }}
 

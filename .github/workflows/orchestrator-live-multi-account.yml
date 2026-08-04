@@ -8,7 +8,7 @@
 #
 # OPERATOR PREREQUISITE: add the live-account secrets below. With them ABSENT
 # this workflow SKIPS GRACEFULLY (exit 0 + ::notice::) — it never fails CI when
-# the secrets are not configured (mirrors benchmark-orchestrator-scheduled.yml).
+# the secrets are not configured.
 #
 # Required repo secrets (1 each minimum; add _2 for real rotation):
 #   ELIZA_LIVE_CLAUDE_OAUTH_TOKEN_1[, _2]   Claude Code OAuth token(s)
@@ -42,13 +42,13 @@ permissions:
   contents: read
 
 env:
-  BUN_VERSION: "canary"
-  NODE_VERSION: "24"
+  BUN_VERSION: "1.3.14"
+  NODE_VERSION: "24.15.0"
 
 jobs:
   live-multi-account:
     name: live multi-account rotation
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 30
     env:
       ELIZA_LIVE_CLAUDE_OAUTH_TOKEN_1: ${{ secrets.ELIZA_LIVE_CLAUDE_OAUTH_TOKEN_1 }}
@@ -89,7 +89,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
 
       # Seeds the REAL AccountPool + coding-account-bridge from the secrets,
       # asserts per-provider selection + credential injection + distinct-account

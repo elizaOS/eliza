@@ -29,6 +29,7 @@ function makeRuntime(opts: RuntimeMockOpts): IAgentRuntime {
 	}
 	const noop = () => {};
 	return {
+		reportError: vi.fn(),
 		agentId: AGENT_ID,
 		logger: { info: noop, warn: noop, debug: noop, error: noop },
 		getModel: (type: string) => models[type],

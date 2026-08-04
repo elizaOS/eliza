@@ -74,6 +74,7 @@ function makeRuntime(): {
 			experienceMemory(EXP_OLD, 1_000),
 			experienceMemory(EXP_NEW, 2_000),
 		]),
+		upsertMemory: vi.fn(async () => true),
 		useModel,
 	});
 	return { runtime, useModel };
@@ -89,9 +90,6 @@ describe("ExperienceService.findSimilarExperiences — shared recall embed fail-
 		const { runtime, useModel } = makeRuntime();
 
 		const service = await ExperienceService.start(runtime);
-		// Let the constructor's loadExperiences settle.
-		await vi.waitFor(() => expect(runtime.getMemories).toHaveBeenCalled());
-		await Promise.resolve();
 
 		const results = await service.findSimilarExperiences("any query", 5);
 
@@ -109,8 +107,6 @@ describe("ExperienceService.findSimilarExperiences — shared recall embed fail-
 		const { runtime, useModel } = makeRuntime();
 
 		const service = await ExperienceService.start(runtime);
-		await vi.waitFor(() => expect(runtime.getMemories).toHaveBeenCalled());
-		await Promise.resolve();
 
 		const results = await service.findSimilarExperiences("any query", 5);
 

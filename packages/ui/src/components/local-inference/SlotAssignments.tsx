@@ -1,3 +1,5 @@
+/** Assigns installed local models to runtime slots with capability guardrails. */
+
 import { useCallback, useRef, useState } from "react";
 import { client } from "../../api";
 import type {

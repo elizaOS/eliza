@@ -48,6 +48,7 @@ import { executeHostedGoogleSearch } from "../../services/google-search";
 import { memoryService } from "../../services/memory";
 import { organizationsService } from "../../services/organizations";
 import { usageService } from "../../services/usage";
+import { UntrustedA2AChatMessagesSchema } from "./chat-messages";
 import type {
   A2AContext,
   BalanceResult,
@@ -83,10 +84,9 @@ export async function executeSkillChatCompletion(
   ctx: A2AContext,
 ): Promise<ChatCompletionResult> {
   const model = (dataContent.model as string) || BITROUTER_DEFAULT_TEXT_MODEL;
-  const messages = (dataContent.messages as Array<{
-    role: string;
-    content: string;
-  }>) || [{ role: "user", content: textContent }];
+  const messages = UntrustedA2AChatMessagesSchema.parse(
+    dataContent.messages ?? [{ role: "user", content: textContent }],
+  );
   const options = {
     temperature: dataContent.temperature as number | undefined,
     maxTokens: dataContent.max_tokens as number | undefined,
@@ -121,10 +121,7 @@ export async function executeSkillChatCompletion(
   try {
     const result = await streamText({
       model: getLanguageModel(model),
-      messages: messages.map((m) => ({
-        role: m.role as "user" | "assistant" | "system",
-        content: m.content,
-      })),
+      messages,
       ...options,
       ...(effectiveMaxTokens != null && {
         maxOutputTokens: effectiveMaxTokens,

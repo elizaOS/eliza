@@ -8,6 +8,7 @@ import { v4 as uuidv4 } from "uuid";
 import { a2aTaskStoreService, type TaskStoreEntry } from "../../services/a2a-task-store";
 import { contentModerationService } from "../../services/content-moderation";
 import { logger } from "../../utils/logger";
+import { parseUntrustedA2AMessageSendParams } from "./request-validation";
 import {
   executeSkillBrowserSession,
   executeSkillChatCompletion,
@@ -100,7 +101,7 @@ export async function handleMessageSend(
   params: MessageSendParams,
   ctx: A2AContext,
 ): Promise<Task | Message> {
-  const { message, configuration, metadata } = params;
+  const { message, configuration, metadata } = parseUntrustedA2AMessageSendParams(params);
 
   if (!message?.parts?.length) {
     throw new Error("Message must contain at least one part");

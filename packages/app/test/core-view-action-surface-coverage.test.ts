@@ -90,7 +90,7 @@ const CORE_SURFACE_OWNERS: Readonly<Record<string, CoreSurfaceOwner>> = {
   wallet: {
     viewId: "wallet",
     provider: "dynamic",
-    files: ["plugins/plugin-wallet-ui/src/components/InventoryAppView.tsx"],
+    files: ["plugins/plugin-wallet/src/ui/components/InventoryAppView.tsx"],
     minAgentElements: 5,
   },
   browser: {
@@ -115,12 +115,6 @@ const CORE_SURFACE_OWNERS: Readonly<Record<string, CoreSurfaceOwner>> = {
       "packages/ui/src/components/pages/skill-marketplace.tsx",
     ],
     minAgentElements: 6,
-  },
-  feed: {
-    viewId: "feed",
-    provider: "dynamic",
-    files: ["plugins/plugin-feed/src/components/FeedSpatialView.tsx"],
-    minAgentElements: 2,
   },
   relationships: {
     viewId: "relationships",
@@ -197,9 +191,6 @@ const SETTINGS_SECTION_OWNER_FILES: Readonly<
     "packages/ui/src/components/settings/WalletRpcSection.tsx",
     "packages/ui/src/components/settings/WalletKeysSection.tsx",
     "packages/ui/src/components/pages/ConfigPageView.tsx",
-  ],
-  "remote-plugins": [
-    "packages/ui/src/components/settings/RemotePluginHostSection.tsx",
   ],
   updates: ["packages/ui/src/components/pages/ReleaseCenterView.tsx"],
   advanced: ["packages/ui/src/components/settings/AdvancedSection.tsx"],

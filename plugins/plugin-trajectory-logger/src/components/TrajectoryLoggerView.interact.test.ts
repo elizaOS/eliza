@@ -13,7 +13,7 @@ interface RecordedCall {
 
 /**
  * Stub fetch to serve a real-shaped list envelope + per-id detail payloads.
- * The detail shape mirrors @elizaos/plugin-training's GET /api/trajectories/:id
+ * The detail shape mirrors core's GET /api/trajectories/:id
  * (UITrajectoryDetailResult): trajectory + llmCalls (with stepType/purpose/
  * actionType/response) + toolEvents + evaluationEvents.
  */

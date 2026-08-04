@@ -35,6 +35,7 @@ export class RuntimeMigrator {
   private snapshotStorage: SnapshotStorage;
   private extensionManager: ExtensionManager;
   private introspector: DatabaseIntrospector;
+  private initializationPromise: Promise<void> | null = null;
 
   constructor(private db: DrizzleDB) {
     this.migrationTracker = new MigrationTracker(db);
@@ -282,9 +283,19 @@ export class RuntimeMigrator {
    * @throws Error if table creation fails
    */
   async initialize(): Promise<void> {
-    logger.info({ src: "plugin:sql" }, "Initializing migration system");
-    await this.migrationTracker.ensureTables();
-    logger.info({ src: "plugin:sql" }, "Migration system initialized");
+    if (!this.initializationPromise) {
+      this.initializationPromise = (async () => {
+        logger.debug({ src: "plugin:sql" }, "Initializing migration system");
+        await this.migrationTracker.ensureTables();
+        logger.debug({ src: "plugin:sql" }, "Migration system initialized");
+      })();
+      // error-policy:J5 initialize() awaits the same rejection below; this
+      // observer only clears the cached attempt so a later call can retry.
+      this.initializationPromise.catch(() => {
+        this.initializationPromise = null;
+      });
+    }
+    await this.initializationPromise;
   }
 
   /**
@@ -308,7 +319,7 @@ export class RuntimeMigrator {
     let lockAcquired = false;
 
     try {
-      logger.info({ src: "plugin:sql", pluginName }, "Starting migration for plugin");
+      logger.debug({ src: "plugin:sql", pluginName }, "Starting migration for plugin");
 
       await this.initialize();
 

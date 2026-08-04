@@ -5,7 +5,7 @@
  * reducer + dispatch, cutting hook count and making state transitions explicit.
  */
 
-import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
+import { useCallback, useEffect, useReducer, useRef } from "react";
 import type { AgentStatus } from "../api";
 import { type ActionTone, TOAST_TTL_MS } from "./action-notice";
 import {
@@ -17,7 +17,6 @@ import type {
   AppState,
   LifecycleAction,
   StartupErrorState,
-  StartupPhase,
 } from "./types";
 
 // ── State shape ────────────────────────────────────────────────────────
@@ -28,7 +27,6 @@ export interface LifecycleState {
   firstRunComplete: boolean;
   firstRunUiRevealNonce: number;
   firstRunLoading: boolean;
-  startupPhase: StartupPhase;
   startupError: StartupErrorState | null;
   startupRetryNonce: number;
   authRequired: boolean;
@@ -48,7 +46,6 @@ const INITIAL_LIFECYCLE_STATE: LifecycleState = {
   firstRunComplete: loadPersistedFirstRunComplete(),
   firstRunUiRevealNonce: 0,
   firstRunLoading: true,
-  startupPhase: "starting-backend",
   startupError: null,
   startupRetryNonce: 0,
   authRequired: false,
@@ -75,7 +72,6 @@ type LifecycleAction_ =
   | { type: "SET_FIRST_RUN_COMPLETE"; value: boolean }
   | { type: "INCREMENT_FIRST_RUN_REVEAL_NONCE" }
   | { type: "SET_FIRST_RUN_LOADING"; value: boolean }
-  | { type: "SET_STARTUP_PHASE"; value: StartupPhase }
   | { type: "SET_STARTUP_ERROR"; value: StartupErrorState | null }
   | { type: "RETRY_STARTUP" }
   | { type: "SET_AUTH_REQUIRED"; value: boolean }
@@ -112,8 +108,6 @@ function lifecycleReducer(
       };
     case "SET_FIRST_RUN_LOADING":
       return { ...state, firstRunLoading: action.value };
-    case "SET_STARTUP_PHASE":
-      return { ...state, startupPhase: action.value };
     case "SET_STARTUP_ERROR":
       return { ...state, startupError: action.value };
     case "RETRY_STARTUP":
@@ -122,7 +116,6 @@ function lifecycleReducer(
         startupError: null,
         authRequired: false,
         firstRunLoading: true,
-        startupPhase: "starting-backend",
         startupRetryNonce: state.startupRetryNonce + 1,
       };
     case "SET_AUTH_REQUIRED":
@@ -200,7 +193,6 @@ export interface LifecycleStateHook {
   setFirstRunComplete: (v: boolean) => void;
   incrementFirstRunRevealNonce: () => void;
   setFirstRunLoading: (v: boolean) => void;
-  setStartupPhase: (v: StartupPhase) => void;
   setStartupError: (v: StartupErrorState | null) => void;
   retryStartup: () => void;
   setAuthRequired: (v: boolean) => void;
@@ -221,9 +213,6 @@ export interface LifecycleStateHook {
   addSystemWarning: (warning: string) => void;
   dismissSystemWarning: (message: string) => void;
   setSystemWarnings: (v: string[]) => void;
-
-  /** Derived startup status. */
-  startupStatus: AppState["startupStatus"];
 
   // Refs for synchronous checks
   lifecycleBusyRef: React.RefObject<boolean>;
@@ -296,10 +285,6 @@ export function useLifecycleState(): LifecycleStateHook {
   );
   const setFirstRunLoading = useCallback(
     (v: boolean) => dispatch({ type: "SET_FIRST_RUN_LOADING", value: v }),
-    [],
-  );
-  const setStartupPhase = useCallback(
-    (v: StartupPhase) => dispatch({ type: "SET_STARTUP_PHASE", value: v }),
     [],
   );
   const setStartupError = useCallback(
@@ -398,23 +383,6 @@ export function useLifecycleState(): LifecycleStateHook {
     dispatch({ type: "SET_SYSTEM_WARNINGS", value: v });
   }, []);
 
-  // ── Derived state ──
-
-  const startupStatus = useMemo<AppState["startupStatus"]>(() => {
-    if (state.startupError) return "recoverable-error";
-    if (state.authRequired) return "auth-blocked";
-    if (state.firstRunLoading || state.startupPhase !== "ready")
-      return "loading";
-    if (!state.firstRunComplete) return "first-run";
-    return "ready";
-  }, [
-    state.authRequired,
-    state.firstRunComplete,
-    state.firstRunLoading,
-    state.startupError,
-    state.startupPhase,
-  ]);
-
   return {
     state,
     dispatch,
@@ -424,7 +392,6 @@ export function useLifecycleState(): LifecycleStateHook {
     setFirstRunComplete,
     incrementFirstRunRevealNonce,
     setFirstRunLoading,
-    setStartupPhase,
     setStartupError,
     retryStartup,
     setAuthRequired,
@@ -439,7 +406,6 @@ export function useLifecycleState(): LifecycleStateHook {
     addSystemWarning,
     dismissSystemWarning,
     setSystemWarnings,
-    startupStatus,
     lifecycleBusyRef,
     lifecycleActionRef,
     agentStatusRef,

@@ -19,7 +19,7 @@
       "tier": "T3",
       "surface": "scenario-runner",
       "status": "verified",
-      "notes": "pr-deterministic (keyless). Real scheduler tick: a during_window:morning habit is re-anchored by the night-rotation owner facts so it stays silent at the pre-rotation 08:00 slot (now protected daytime sleep) and fires at the shifted 15:30 waking window, while a quiet_hours-gated companion defers with a derived reason; two deliveries, none inside protected sleep. Passes keyless under TZ=UTC SCENARIO_USE_LLM_PROXY=1 SCENARIO_LLM_PROXY_STRICT=1 --conditions eliza-source (#12772). Re-verified on current develop (2026-07-04): per-scenario keyless CLI run 1 passed/0 failed (deterministic proxy, no live model); authoring keyless proof in PR #13310."
+      "notes": "pr-deterministic (keyless). Real scheduler tick: a during_window:morning habit is re-anchored by the night-rotation owner facts so it stays silent at the pre-rotation 08:00 slot (now protected daytime sleep) and fires at the shifted 15:30 waking window, while a quiet_hours-gated companion defers with a derived reason; two deliveries, none inside protected sleep. Passes keyless under TZ=UTC SCENARIO_USE_DETERMINISTIC_MODEL=1 --conditions eliza-source (#12772). Re-verified on current develop (2026-07-04): per-scenario keyless CLI run 1 passed/0 failed (deterministic proxy, no live model); authoring keyless proof in PR #13310."
     },
     {
       "id": "shift-rotation-sleep-protection-holds-low-priority-nudge",

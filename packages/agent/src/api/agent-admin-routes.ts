@@ -69,6 +69,10 @@ export interface AgentAdminRouteContext
   state: AgentAdminRouteState;
   onRestart?: (() => Promise<AgentRuntime | null>) | undefined;
   onRuntimeSwapped?: () => void;
+  onRuntimeActivated?: (
+    previousRuntime: AgentRuntime | null,
+    activeRuntime: AgentRuntime,
+  ) => void | Promise<void>;
   resolveStateDir: () => string;
   stateDirExists: (resolvedState: string) => boolean;
   removeStateDir: (resolvedState: string) => void;
@@ -104,6 +108,7 @@ export async function handleAgentAdminRoutes(
     state,
     onRestart,
     onRuntimeSwapped,
+    onRuntimeActivated,
     json,
     error,
     resolveStateDir,
@@ -130,6 +135,7 @@ export async function handleAgentAdminRoutes(
     const previousState = state.agentState;
     state.agentState = "restarting";
     try {
+      const previousRuntime = state.runtime;
       const newRuntime = await onRestart();
       if (newRuntime) {
         state.runtime = newRuntime;
@@ -142,6 +148,7 @@ export async function handleAgentAdminRoutes(
         state.startedAt = Date.now();
         state.pendingRestartReasons = [];
         onRuntimeSwapped?.();
+        await onRuntimeActivated?.(previousRuntime, newRuntime);
         json(res, {
           ok: true,
           pendingRestart: false,
@@ -186,7 +193,7 @@ export async function handleAgentAdminRoutes(
         removeStateDir(dataDir);
       }
 
-      clearPersistedFirstRunConfig(config);
+      await clearPersistedFirstRunConfig(config);
       saveElizaConfig(config);
 
       // Wipe cloud-related vault entries so the next boot doesn't re-hydrate

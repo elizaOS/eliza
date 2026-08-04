@@ -1,4 +1,9 @@
-/** Supports app-core build, packaging, or development orchestration for validate regression matrix mjs. */
+/**
+ * Validates regression-matrix.json against the repo: every suite's guard
+ * snippets must appear in the referenced GitHub workflow files and the manual
+ * desktop checklist doc must contain its items, so the matrix cannot silently
+ * drift from CI.
+ */
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";

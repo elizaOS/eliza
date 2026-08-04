@@ -15,6 +15,9 @@ import { access, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import sharp from "sharp";
+import { brandColorFractions } from "./analyzers/brand.ts";
+import { dominantPalette as analyzeDominantPalette } from "./analyzers/color.ts";
+import { changeMetric as analyzeChangeMetric } from "./analyzers/diff.ts";
 
 export const DEFAULT_PIXEL_THRESHOLD = 30;
 export const DEFAULT_BLUE_COVERAGE_LIMIT = 0.05;
@@ -168,104 +171,21 @@ export async function dominantColorsFromPng(pngPath, opts = {}) {
 
 /** Top-k colours by area, using the legacy visual-qa 4-bit floor quantizer. */
 export async function dominantPalette(imagePath, k = 6) {
-  const { data, info } = await sharp(imagePath)
-    .resize(160, 160, { fit: "fill" })
-    .raw()
-    .toBuffer({ resolveWithObject: true });
-  const buckets = new Map();
-  const step = info.channels;
-  for (let i = 0; i < data.length; i += step) {
-    const r = data[i] & 0xf0;
-    const g = data[i + 1] & 0xf0;
-    const b = data[i + 2] & 0xf0;
-    const key = (r << 16) | (g << 8) | b;
-    buckets.set(key, (buckets.get(key) ?? 0) + 1);
-  }
-  const total = info.width * info.height || 1;
-  return [...buckets.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, k)
-    .map(([key, count]) => {
-      const r = (key >> 16) & 0xff;
-      const g = (key >> 8) & 0xff;
-      const b = key & 0xff;
-      return {
-        hex: rgbToHex(r, g, b),
-        rgb: [r, g, b],
-        fraction: Number((count / total).toFixed(4)),
-      };
-    });
+  return analyzeDominantPalette(imagePath, k);
 }
 
 /** Whole-frame blue/orange/neutral fractions used by the app brand gate. */
 export async function brandColorFractionsFromPng(imagePath) {
-  const { data, info } = await sharp(imagePath)
-    .resize(200, 200, { fit: "fill" })
-    .raw()
-    .toBuffer({ resolveWithObject: true });
-  const step = info.channels;
-  const n = data.length / step || 1;
-  let blue = 0;
-  let orange = 0;
-  let neutral = 0;
-  for (let i = 0; i < data.length; i += step) {
-    const r = data[i];
-    const g = data[i + 1];
-    const b = data[i + 2];
-    if (b > r + 30 && b > g + 30 && b > 90) blue++;
-    if (r > 150 && r > g + 25 && g > b + 15 && b < 140) orange++;
-    const mx = Math.max(r, g, b);
-    const mn = Math.min(r, g, b);
-    if (mx - mn < 20) neutral++;
-  }
-  return {
-    blue_fraction: Number((blue / n).toFixed(4)),
-    orange_fraction: Number((orange / n).toFixed(4)),
-    neutral_fraction: Number((neutral / n).toFixed(4)),
-  };
+  return brandColorFractions(imagePath);
 }
 
 /** Size-agnostic changed-pixel metric used by per-screenshot visual QA. */
 export async function changeMetric(imagePath, baselinePath) {
-  const width = 256;
-  const meta = await sharp(imagePath).metadata();
-  const srcW = meta.width ?? width;
-  const srcH = meta.height ?? width;
-  const height = Math.max(1, Math.round((width * srcH) / srcW));
-  const toGrid = (src) =>
-    sharp(src)
-      .resize(width, height, { fit: "fill" })
-      .removeAlpha()
-      .raw()
-      .toBuffer();
-  const [a, b] = await Promise.all([toGrid(imagePath), toGrid(baselinePath)]);
-  let changed = 0;
-  let minX = width;
-  let minY = height;
-  let maxX = 0;
-  let maxY = 0;
-  const px = width * height;
-  for (let p = 0; p < px; p++) {
-    const i = p * 3;
-    const d = Math.max(
-      Math.abs(a[i] - b[i]),
-      Math.abs(a[i + 1] - b[i + 1]),
-      Math.abs(a[i + 2] - b[i + 2]),
-    );
-    if (d > 24) {
-      changed++;
-      const x = p % width;
-      const y = (p / width) | 0;
-      if (x < minX) minX = x;
-      if (y < minY) minY = y;
-      if (x > maxX) maxX = x;
-      if (y > maxY) maxY = y;
-    }
-  }
+  const result = await analyzeChangeMetric(imagePath, baselinePath);
   return {
-    changed_fraction: Number((changed / px).toFixed(4)),
-    changed_bbox_norm: changed ? [minX, minY, maxX, maxY] : null,
-    grid: [width, height],
+    changed_fraction: result.changed_fraction,
+    changed_bbox_norm: result.changed_bbox,
+    grid: result.grid,
   };
 }
 

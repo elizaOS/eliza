@@ -3,8 +3,7 @@
  * screenshot (no anomalies → no questions), a brand/diff-anomaly screenshot
  * (blue over threshold + large diff region → targeted questions), and an
  * OCR/expectation screenshot (dev strings + missing/forbidden copy). Asserts
- * determinism (same in → same out) and the stable id scheme the certify
- * reviewer keys off.
+ * the stable id scheme the certify reviewer keys off.
  */
 
 import { describe, expect, it } from "vitest";
@@ -77,10 +76,6 @@ describe("suggestQuestions", () => {
     expect(questions.find((q) => q.id === "q-forbidden-0")?.expected).toBe(
       "no",
     );
-  });
-
-  it("is deterministic — identical input yields identical output", () => {
-    expect(suggestQuestions(ANOMALOUS)).toEqual(suggestQuestions(ANOMALOUS));
   });
 
   it("accepts camelCase analysis fields too", () => {

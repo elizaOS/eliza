@@ -7,8 +7,7 @@
 
 import {
   resolveAllowedOrigins,
-  resolveDesktopApiPort,
-  resolveUiPort,
+  resolveRuntimePorts,
 } from "@elizaos/shared/runtime-env";
 import { readAliasedEnv } from "@elizaos/shared/utils/env";
 
@@ -23,10 +22,11 @@ import { readAliasedEnv } from "@elizaos/shared/utils/env";
  * written back to `process.env` (#13423).
  */
 export function buildCorsAllowedPorts(): Set<string> {
+  const runtimePorts = resolveRuntimePorts(process.env);
   const ports = new Set([
-    String(resolveDesktopApiPort(process.env)),
-    String(resolveUiPort(process.env)),
-    String(readAliasedEnv("ELIZA_PORT") ?? "2138"),
+    String(runtimePorts.desktopApiPort),
+    String(runtimePorts.desktopUiPort),
+    String(runtimePorts.serverOnlyPort),
     String(readAliasedEnv("ELIZA_GATEWAY_PORT") ?? "18789"),
     String(readAliasedEnv("ELIZA_HOME_PORT") ?? "2142"),
   ]);

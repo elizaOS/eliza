@@ -376,6 +376,11 @@ export const replyAction = {
 				});
 			} catch (error) {
 				if (plannerReplyFallback) {
+					// error-policy:J4 The planner already produced grounded reply text;
+					// report the optional rewrite outage and deliver that exact text.
+					runtime.reportError("ReplyAction.modelRewrite", error, {
+						roomId: message.roomId,
+					});
 					logger.warn(
 						{
 							src: "plugin:basic-capabilities:action:reply",

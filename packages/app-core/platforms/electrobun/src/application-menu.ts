@@ -37,13 +37,6 @@ const APP_MENU_ENTRIES: readonly AppMenuEntry[] = [
     hasDetailsPage: false,
   },
   {
-    slug: "training",
-    name: "@elizaos/plugin-training",
-    displayName: "Fine Tuning",
-    windowPath: "/apps/fine-tuning",
-    hasDetailsPage: true,
-  },
-  {
     slug: "trajectory-viewer",
     name: "@elizaos/app-trajectory-viewer",
     displayName: "Trajectory Viewer",

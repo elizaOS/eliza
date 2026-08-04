@@ -1,3 +1,4 @@
+/** Verifies ViewErrorBoundary through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // ViewErrorBoundary: crash containment + recovery + crash telemetry (#10202,

@@ -20,13 +20,13 @@ import { WidgetHost } from "../../widgets/WidgetHost";
 import { DefaultHomeWidgets } from "./DefaultHomeWidgets";
 import { NotificationsHomeCenter } from "./NotificationsHomeCenter";
 
-// A gentle staggered fade-up as the home settles in - iOS-style, calm, and
-// fully stilled under prefers-reduced-motion. Each block carries a small
-// animation-delay (set inline) so the cards/tiles cascade in.
+// A gentle staggered rise as the home settles in. Foregrounds stay fully opaque
+// throughout so slow paints and screenshot tooling never expose unreadable
+// intermediate content. Reduced-motion users see the settled layout directly.
 const HOME_SCREEN_CSS = `
 @keyframes home-enter {
-  from { opacity: 0; transform: translateY(10px); }
-  to   { opacity: 1; transform: none; }
+  from { transform: translateY(10px); }
+  to   { transform: none; }
 }
 .home-enter { animation: home-enter 460ms cubic-bezier(0.22,1,0.36,1) both; }
 
@@ -128,13 +128,10 @@ const HOME_SCREEN_CSS = `
 `;
 
 /**
- * The entrance fade-up must play exactly ONCE, on first mount - not on every
- * re-render or resize (which would re-apply the `opacity 0→1` animation and
- * flash the cards). This hook returns the `home-enter` class only for the first
- * commit, then permanently empty: after the initial paint the cards keep their
- * settled (fully opaque) state and a parent re-render / resize can never replay
- * the fade. Pure CSS `forwards` doesn't protect against the class being
- * re-evaluated, so we drop it from the tree once it has run (issue 9304).
+ * The entrance rise plays once on first mount so subsequent renders never move
+ * interactive targets away from the user's pointer. Pure CSS `forwards` does
+ * not prevent animation replay when the class is re-evaluated, so the class is
+ * removed after it runs (issue 9304).
  */
 function useEnterOnceClass(): string {
   // `played` is set in a layout effect after the first commit so the very first
@@ -201,7 +198,7 @@ export interface HomeScreenProps {
 export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
   // The live activity stream feeds the home ranker's attention signals.
   const { events, clearEvents } = useActivityEvents();
-  // The entrance fade plays once, on first mount only - never re-triggered by a
+  // The entrance rise plays once, on first mount only - never re-triggered by a
   // re-render or resize (issue 9304).
   const enterClass = useEnterOnceClass();
   // Dev/test-only: observe home layout shifts on the shared telemetry channel.

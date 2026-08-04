@@ -140,7 +140,7 @@ function googleGrant(accountId: string): LifeOpsConnectorGrant {
 const GRANT_A = googleGrant("acct-a");
 const GRANT_B = googleGrant("acct-b");
 
-/** Google event shape as produced by @elizaos/plugin-google's mapEvent. */
+/** Google event shape as produced by @elizaos/plugin-google-workspace's mapEvent. */
 function googleEvent(externalId: string, title: string) {
   return {
     id: externalId,

@@ -110,6 +110,7 @@ export const UnavailableProvider: Story = {
 };
 
 export const Closed: Story = {
+  tags: ["story-gate-expect-blank"],
   args: {
     open: false,
   },

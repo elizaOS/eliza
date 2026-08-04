@@ -1,4 +1,8 @@
-/** Supports app-core build, packaging, or development orchestration for desktop startup embedding warmup policy mjs. */
+/**
+ * Decides whether desktop startup warms up the local embedding model, from the
+ * ELIZA skip/opt-in/defer env overrides and CI detection; returns the effective
+ * policy with its source and how to change it.
+ */
 const SKIP_ENV = "ELIZA_SKIP_LOCAL_EMBEDDING_WARMUP";
 const OPT_IN_ENV = "ELIZA_ENABLE_STARTUP_LOCAL_EMBEDDING_WARMUP";
 const DEFER_ENV = "ELIZA_DEFER_LOCAL_EMBEDDING_WARMUP";

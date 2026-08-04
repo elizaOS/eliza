@@ -44,7 +44,7 @@ on:
       - "packages/cloud/shared/**"
       - "packages/cloud/services/**"
       - "packages/cloud/sdk/**"
-      - "packages/scripts/cloud/**"
+      - "packages/cloud/scripts/**"
       - "packages/app/**"
       - "packages/app-core/**"
       - "packages/ui/**"
@@ -56,7 +56,7 @@ on:
       - "packages/cloud/shared/**"
       - "packages/cloud/services/**"
       - "packages/cloud/sdk/**"
-      - "packages/scripts/cloud/**"
+      - "packages/cloud/scripts/**"
       - "packages/app/**"
       - "packages/app-core/**"
       - "packages/ui/**"
@@ -170,7 +170,7 @@ jobs:
             )"
           fi
 
-          node packages/scripts/cloud/release-admission-cli.mjs \
+          node packages/cloud/scripts/release-admission-cli.mjs \
             "--event=$EVENT_NAME" \
             "--environment=$TARGET_ENVIRONMENT" \
             "--ref=$GITHUB_REF" \
@@ -232,7 +232,7 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          node-version: "22"
+          node-version: "24.15.0"
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
@@ -245,9 +245,9 @@ jobs:
         run: |
           for attempt in 1 2 3; do
             if [ "$attempt" -eq 3 ]; then
-              bun install --no-save --ignore-scripts --verbose && exit 0
+              bun install --frozen-lockfile --no-save --ignore-scripts --verbose && exit 0
             else
-              bun install --no-save --ignore-scripts && exit 0
+              bun install --frozen-lockfile --no-save --ignore-scripts && exit 0
             fi
 
             echo "bun install attempt $attempt failed; retrying in 10s..."
@@ -409,7 +409,7 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          node-version: "22"
+          node-version: "24.15.0"
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
@@ -449,7 +449,7 @@ jobs:
           for attempt in 1 2 3; do
             test -f package.json || { echo "::error::package.json missing from $PWD"; ls -la; exit 1; }
             mkdir -p "$install_cache"
-            if timeout "${install_timeout}s" bun install --no-save --ignore-scripts --cache-dir "$install_cache"; then
+            if timeout "${install_timeout}s" bun install --frozen-lockfile --no-save --ignore-scripts --cache-dir "$install_cache"; then
               break
             fi
             if [ "$attempt" -eq 3 ]; then
@@ -786,7 +786,7 @@ jobs:
           if [ "$FORCE" = "true" ]; then
             args+=(--force)
           fi
-          node packages/scripts/cloud/deploy-freshness-guard-cli.mjs "${args[@]}"
+          node packages/cloud/scripts/deploy-freshness-guard-cli.mjs "${args[@]}"
 
       - name: Deploy to Cloudflare Workers
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true'
@@ -865,7 +865,7 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          node-version: "22"
+          node-version: "24.15.0"
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
@@ -1069,7 +1069,7 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          node-version: "22"
+          node-version: "24.15.0"
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
@@ -1116,7 +1116,7 @@ jobs:
           for attempt in 1 2 3; do
             test -f package.json || { echo "::error::package.json missing from $PWD"; ls -la; exit 1; }
             mkdir -p "$install_cache"
-            if timeout "${install_timeout}s" bun install --no-save --ignore-scripts --cache-dir "$install_cache"; then
+            if timeout "${install_timeout}s" bun install --frozen-lockfile --no-save --ignore-scripts --cache-dir "$install_cache"; then
               break
             fi
             if [ "$attempt" -eq 3 ]; then
@@ -1244,7 +1244,7 @@ jobs:
           if [ "$FORCE" = "true" ]; then
             args+=(--force)
           fi
-          node packages/scripts/cloud/deploy-freshness-guard-cli.mjs "${args[@]}"
+          node packages/cloud/scripts/deploy-freshness-guard-cli.mjs "${args[@]}"
 
       - name: Deploy to Cloudflare Pages
         if: steps.cf.outputs.configured == 'true' && (github.event_name == 'pull_request' || steps.freshness.outputs.should_deploy == 'true')
@@ -1278,7 +1278,7 @@ jobs:
         env:
           SERVED_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://elizacloud.ai' || 'https://staging.elizacloud.ai' }}
         run: |
-          node packages/scripts/cloud/verify-pages-frontend-cli.mjs \
+          node packages/cloud/scripts/verify-pages-frontend-cli.mjs \
             --served-url "$SERVED_URL" \
             --dist packages/app/dist \
             --require-text "Signing in to your agent" \
@@ -1474,7 +1474,7 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          node-version: "22"
+          node-version: "24.15.0"
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
@@ -1521,7 +1521,7 @@ jobs:
           for attempt in 1 2 3; do
             test -f package.json || { echo "::error::package.json missing from $PWD"; ls -la; exit 1; }
             mkdir -p "$install_cache"
-            if timeout "${install_timeout}s" bun install --no-save --ignore-scripts --cache-dir "$install_cache"; then
+            if timeout "${install_timeout}s" bun install --frozen-lockfile --no-save --ignore-scripts --cache-dir "$install_cache"; then
               break
             fi
             if [ "$attempt" -eq 3 ]; then
@@ -1646,7 +1646,7 @@ jobs:
           if [ "$FORCE" = "true" ]; then
             args+=(--force)
           fi
-          node packages/scripts/cloud/deploy-freshness-guard-cli.mjs "${args[@]}"
+          node packages/cloud/scripts/deploy-freshness-guard-cli.mjs "${args[@]}"
 
       - name: Deploy to Cloudflare Pages
         if: steps.cf.outputs.configured == 'true' && (github.event_name == 'pull_request' || steps.freshness.outputs.should_deploy == 'true')
@@ -1678,7 +1678,7 @@ jobs:
         env:
           SERVED_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://app.elizacloud.ai' || 'https://app-staging.elizacloud.ai' }}
         run: |
-          node packages/scripts/cloud/verify-pages-frontend-cli.mjs \
+          node packages/cloud/scripts/verify-pages-frontend-cli.mjs \
             --served-url "$SERVED_URL" \
             --dist packages/app/dist \
             --require-text "Signing in to your agent" \
@@ -1726,7 +1726,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          node-version: "24"
+          node-version: "24.15.0"
 
       - name: Resolve deployed environment
         id: env
@@ -1745,6 +1745,6 @@ jobs:
         # require the beacon: a beaconless answer means the deploy that was
         # supposed to carry it did not take. A genuine cross-wire is always fatal.
         run: |
-          node packages/scripts/cloud/verify-environment-routing-cli.mjs \
+          node packages/cloud/scripts/verify-environment-routing-cli.mjs \
             --environment "${{ steps.env.outputs.environment }}" \
             --require-beacon

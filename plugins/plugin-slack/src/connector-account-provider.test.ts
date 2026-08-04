@@ -16,6 +16,7 @@ import { SLACK_SERVICE_NAME } from "./types";
 function runtime(settings: Record<string, unknown>): IAgentRuntime {
   return {
     character: {},
+    getService: vi.fn(() => null),
     getSetting: vi.fn((key: string) => settings[key]),
   } as IAgentRuntime;
 }

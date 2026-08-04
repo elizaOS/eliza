@@ -74,7 +74,7 @@ describe("resetPluginSqlPgliteSingleton (app-core DB auto-reset)", () => {
 
   it("keys runtime PGlite recovery on plugin-sql's exported error codes", () => {
     const source = readFileSync(
-      path.resolve(import.meta.dirname, "eliza.ts"),
+      path.resolve(import.meta.dirname, "startup/pglite-recovery.ts"),
       "utf8",
     );
 

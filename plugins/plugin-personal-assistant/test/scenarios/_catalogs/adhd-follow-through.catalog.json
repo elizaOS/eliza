@@ -29,7 +29,7 @@
       "tier": "T3",
       "surface": "scenario-runner",
       "status": "verified",
-      "notes": "pr-deterministic (keyless). REAL scheduler tick: a reminder with a user_acknowledged completionCheck fires (once_due), goes unanswered -> no_reply_retry_1 (snooze override, scheduledTaskCompletionTimeouts), re-fires (scheduled_override_due), then settles terminally (skipped/no_reply_reminder_expired). Proves the dropped task is neither lost nor nagged forever. Passes keyless under TZ=UTC SCENARIO_USE_LLM_PROXY=1 SCENARIO_LLM_PROXY_STRICT=1 --conditions eliza-source."
+      "notes": "pr-deterministic (keyless). REAL scheduler tick: a reminder with a user_acknowledged completionCheck fires (once_due), goes unanswered -> no_reply_retry_1 (snooze override, scheduledTaskCompletionTimeouts), re-fires (scheduled_override_due), then settles terminally (skipped/no_reply_reminder_expired). Proves the dropped task is neither lost nor nagged forever. Passes keyless under TZ=UTC SCENARIO_USE_DETERMINISTIC_MODEL=1 --conditions eliza-source."
     },
     {
       "id": "adhd-followthrough-intensity-persistent-chases-twice",

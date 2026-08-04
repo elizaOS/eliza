@@ -1,5 +1,5 @@
 /** Implements Electrobun desktop errors ts behavior for app-core shell integration. */
-import type { JsonValue } from "@elizaos/plugin-remote-manifest";
+import type { JsonValue } from "@elizaos/core";
 
 export type DynamicViewErrorCode =
   | "DYNAMIC_VIEW_DUPLICATE"
@@ -9,7 +9,6 @@ export type DynamicViewErrorCode =
   | "DYNAMIC_VIEW_ENTRYPOINT_UNAVAILABLE"
   | "DYNAMIC_VIEW_UNSUPPORTED_ENTRYPOINT"
   | "DYNAMIC_VIEW_UNSUPPORTED_PLACEMENT"
-  | "DYNAMIC_VIEW_REQUIRED_REMOTE_UNAVAILABLE"
   | "DYNAMIC_VIEW_OPEN_FAILED"
   | "DYNAMIC_VIEW_PUSH_FAILED";
 

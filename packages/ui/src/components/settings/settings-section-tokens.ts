@@ -54,8 +54,6 @@ export const LEGACY_SETTINGS_SECTION_TOKEN_ALIASES: Readonly<
   abilities: "capabilities",
   apps: "apps",
   views: "apps",
-  "remote-plugins": "remote-plugins",
-  remote: "remote-plugins",
   connectors: "connectors",
   connections: "connectors",
   integrations: "connectors",
@@ -72,7 +70,6 @@ export const LEGACY_SETTINGS_SECTION_TOKEN_ALIASES: Readonly<
   updates: "updates",
   update: "updates",
   advanced: "advanced",
-  "fine-tuning": "advanced",
   backup: "advanced",
   backups: "advanced",
 };

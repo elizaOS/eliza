@@ -44,7 +44,7 @@ concurrency:
 
 jobs:
   arm:
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     environment: ${{ github.event.inputs.environment }}
     timeout-minutes: 10
     env:
@@ -63,7 +63,7 @@ jobs:
       # var to keep working).
       CERTBOT_EMAIL: ${{ vars.CERTBOT_EMAIL }}
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Preflight
         run: |
@@ -90,7 +90,7 @@ jobs:
 
       - name: Arm Headscale and daemon env
         run: |
-          node packages/scripts/cloud/admin/arm-headscale-control-plane.mjs \
+          node packages/cloud/scripts/admin/arm-headscale-control-plane.mjs \
             --host "$DEPLOY_HOST" \
             --ssh-key "$DEPLOY_SSH_KEY_PATH" \
             --headscale-public-url "$HEADSCALE_PUBLIC_URL" \

@@ -1,3 +1,4 @@
+/** Verifies App navigate-view shell handler through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

@@ -58,6 +58,7 @@ export const Nebula: Story = {
 
 /** A deliberately broken shader — the component must fall back, not crash. */
 export const BrokenSourceFallsBack: Story = {
+  tags: ["story-gate-expect-single-color"],
   args: {
     source: "this is not valid glsl",
     uniforms: DEFAULT_SHADER_UNIFORMS,

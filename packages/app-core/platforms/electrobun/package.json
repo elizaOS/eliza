@@ -28,12 +28,10 @@
   "dependencies": {
     "@elizaos/agent": "workspace:*",
     "@elizaos/app-core": "workspace:*",
-    "@elizaos/plugin-remote-manifest": "workspace:*",
     "@elizaos/plugin-browser": "workspace:*",
     "@elizaos/plugin-capacitor-bridge": "workspace:*",
     "@elizaos/plugin-local-inference": "workspace:*",
     "@elizaos/plugin-registry": "workspace:*",
-    "@elizaos/plugin-streaming": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "bonjour-service": "1.4.2",
     "electrobun": "^1.18.1"

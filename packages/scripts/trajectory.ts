@@ -4,13 +4,9 @@
  * the runtime recorder writes to `${ELIZA_TRAJECTORY_DIR}` (default
  * `./trajectories/`).
  *
- * Spec lives in `research/native-tool-calling/PLAN.md` §18.3.
- *
- * The schema this CLI reads matches `RecordedTrajectory` / `RecordedStage` in
- * §18.1. Agent B owns the runtime side that produces the files; this tool
- * never imports from `runtime/trajectory-recorder.ts` so it stays usable when
- * that side hasn't landed yet. The schema is duplicated here verbatim from
- * the plan as a typed contract.
+ * The schema mirrors the runtime recorder's JSON contract but remains local so
+ * partially written or older artifacts can still be inspected without loading
+ * the agent runtime.
  *
  * Subcommands:
  *   list       - Tabular index of trajectories.

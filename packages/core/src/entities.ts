@@ -139,6 +139,8 @@ function parseEntityResolutionResponse(
 		try {
 			parsedJson = JSON.parse(trimmed);
 		} catch {
+			// error-policy:J3 entity resolution is model-produced input; malformed
+			// JSON is an explicit invalid response.
 			return null;
 		}
 	}

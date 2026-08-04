@@ -153,7 +153,7 @@ describe("contribute-to-eliza skill structure", () => {
     assert.match(source, /source\.sha256/);
     assert.match(source, /revisionStatus.*committed/);
     assert.match(source, /never substitute.*guessed SHA/i);
-    assert.match(source, /SECURITY\.md/);
+    assert.match(source, /packages\/docs\/security\.md/);
     assert.match(source, /origin\/develop/);
     assert.match(source, /package-local `AGENTS\.md` or `CLAUDE\.md`/);
     assert.match(source, /manually inspect every trajectory, log, screenshot/);

@@ -161,7 +161,7 @@ function sourceFileKind(relPath) {
 
 // Map a tracked path to its owning workspace package directory (best-effort):
 // the path segment immediately before the first `src/` segment, qualified by
-// its parent so nested products (`packages/feed/packages/agents`) stay distinct.
+// its parent so nested products remain distinct.
 function packageOf(relPath) {
   const parts = relPath.split("/");
   const srcIdx = parts.indexOf("src");

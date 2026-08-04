@@ -19,7 +19,10 @@ import net from "node:net";
 import { promisify } from "node:util";
 import {
   type AgentRuntime,
+  isLoopbackHost,
   logger,
+  normalizeHostLike,
+  normalizeIpForPolicy,
   sendJson,
   sendJsonError,
 } from "@elizaos/core";
@@ -39,11 +42,6 @@ import type {
   DatabaseProviderType,
   PostgresCredentials,
 } from "../config/types.eliza.ts";
-import {
-  isLoopbackHost,
-  normalizeHostLike,
-  normalizeIpForPolicy,
-} from "../security/network-policy.ts";
 
 export {
   stripSqlBlockComments,

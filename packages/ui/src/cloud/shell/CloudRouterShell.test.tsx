@@ -1,3 +1,4 @@
+/** Verifies CloudRouterShell apex catch-all through the package's configured test harness. */
 // @vitest-environment jsdom
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { cleanup, render, screen } from "@testing-library/react";

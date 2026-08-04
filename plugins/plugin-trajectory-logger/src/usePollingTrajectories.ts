@@ -3,7 +3,7 @@
  * 700 ms and returns the active and most-recently-completed trajectory plus
  * their details. Uses an `AbortController` to cancel in-flight requests on
  * unmount. Distinguishes a genuine fetch error from the routes being absent
- * (404/503 when `@elizaos/plugin-training` is not mounted) via a separate
+ * (404/503 when the core trajectory service is unavailable) via a separate
  * `unavailable` flag, so the view can degrade instead of showing an error.
  */
 import { useEffect, useState } from "react";

@@ -71,7 +71,7 @@ because that GitHub Environment requires deployment approval.
 ### Manual equivalent
 
 ```bash
-node packages/scripts/cloud/admin/arm-headscale-control-plane.mjs \
+node packages/cloud/scripts/admin/arm-headscale-control-plane.mjs \
   --host <control-plane-ip> \
   --ssh-key <deploy-key> \
   --headscale-public-url https://headscale.elizacloud.ai \

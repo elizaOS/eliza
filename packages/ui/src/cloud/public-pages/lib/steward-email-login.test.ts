@@ -1,3 +1,4 @@
+/** Verifies steward email sign-in adapter through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

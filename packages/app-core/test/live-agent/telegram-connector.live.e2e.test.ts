@@ -577,47 +577,6 @@ describeIfLive("Telegram Connector - Media & Attachments", () => {
   );
 
   it(
-    "receives voice messages (sendVoice API is accessible)",
-    async () => {
-      // Verify the sendVoice endpoint exists by calling with invalid data
-      // A real voice message requires an OGG file encoded with OPUS
-      const resp = await tgApi("sendVoice", {
-        chat_id: CHAT_ID,
-        voice: "https://example.com/nonexistent.ogg",
-      });
-      // May fail because URL isn't a valid voice file, but the API method exists
-      // This validates the bot has the sendVoice capability
-      expect(resp).toBeDefined();
-      if (resp.ok) {
-        sentMessageIds.push((resp.result as TelegramMessage).message_id);
-      }
-      logger.info(
-        `[telegram-connector] sendVoice API accessible: ${resp.ok ? "sent" : resp.description}`,
-      );
-    },
-    TEST_TIMEOUT,
-  );
-
-  it(
-    "receives video messages (sendVideo API is accessible)",
-    async () => {
-      // Same approach as voice — validate API accessibility
-      const resp = await tgApi("sendVideo", {
-        chat_id: CHAT_ID,
-        video: "https://example.com/nonexistent.mp4",
-      });
-      expect(resp).toBeDefined();
-      if (resp.ok) {
-        sentMessageIds.push((resp.result as TelegramMessage).message_id);
-      }
-      logger.info(
-        `[telegram-connector] sendVideo API accessible: ${resp.ok ? "sent" : resp.description}`,
-      );
-    },
-    TEST_TIMEOUT,
-  );
-
-  it(
     "sends photos via sendPhoto",
     async () => {
       const resp = await tgApi<TelegramMessage>("sendPhoto", {

@@ -41,7 +41,9 @@ const NAMESPACE = {
 const EXECUTION_CTX = {
   waitUntil: (_promise: Promise<unknown>) => undefined,
 };
+const ABORT_SIGNAL = new AbortController().signal;
 const BASE = {
+  abortSignal: ABORT_SIGNAL,
   agent: AGENT,
   agentId: AGENT.id,
   orgId: AGENT.organization_id,
@@ -69,6 +71,7 @@ describe("handleCanonicalScopedAgentStream", () => {
     const call = coordinateSharedStream.mock.calls[0];
     expect(call?.[0]).toBe(AGENT);
     expect(call?.[2]).toEqual({
+      abortSignal: ABORT_SIGNAL,
       namespace: NAMESPACE,
       executionCtx: EXECUTION_CTX,
     });

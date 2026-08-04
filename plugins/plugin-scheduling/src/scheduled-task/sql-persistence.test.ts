@@ -79,6 +79,8 @@ async function startService(
   return service;
 }
 
+const SQL_PERSISTENCE_TEST_TIMEOUT_MS = 15_000;
+
 describe("scheduling SQL persistence", () => {
   const harnesses: RuntimeHarness[] = [];
 
@@ -92,20 +94,22 @@ describe("scheduling SQL persistence", () => {
     await expect(service.stop()).resolves.toBeUndefined();
   });
 
-  it("copies legacy app_lifeops scheduled-task rows non-destructively", async () => {
-    const harness = await createRuntimeHarness();
-    harnesses.push(harness);
-    await harness.pg.query("CREATE SCHEMA IF NOT EXISTS app_lifeops");
-    await harness.pg.query(
-      `CREATE TABLE app_lifeops.life_scheduled_tasks
+  it(
+    "copies legacy app_lifeops scheduled-task rows non-destructively",
+    async () => {
+      const harness = await createRuntimeHarness();
+      harnesses.push(harness);
+      await harness.pg.query("CREATE SCHEMA IF NOT EXISTS app_lifeops");
+      await harness.pg.query(
+        `CREATE TABLE app_lifeops.life_scheduled_tasks
         (LIKE app_scheduling.life_scheduled_tasks INCLUDING DEFAULTS INCLUDING CONSTRAINTS)`,
-    );
-    await harness.pg.query(
-      `CREATE TABLE app_lifeops.life_scheduled_task_log
+      );
+      await harness.pg.query(
+        `CREATE TABLE app_lifeops.life_scheduled_task_log
         (LIKE app_scheduling.life_scheduled_task_log INCLUDING DEFAULTS INCLUDING CONSTRAINTS)`,
-    );
-    await harness.pg.query(
-      `INSERT INTO app_scheduling.life_scheduled_tasks (
+      );
+      await harness.pg.query(
+        `INSERT INTO app_scheduling.life_scheduled_tasks (
         id, agent_id, kind, prompt_instructions, trigger_json, priority,
         respects_global_pause, state_json, source, created_by, owner_visible,
         metadata_json, created_at, updated_at
@@ -115,9 +119,9 @@ describe("scheduling SQL persistence", () => {
         '{"status":"scheduled","followupCount":0}', 'plugin', 'current', TRUE,
         '{}', '2026-07-17T00:00:00.000Z', '2026-07-17T00:00:00.000Z'
       )`,
-    );
-    await harness.pg.query(
-      `INSERT INTO app_lifeops.life_scheduled_tasks (
+      );
+      await harness.pg.query(
+        `INSERT INTO app_lifeops.life_scheduled_tasks (
         id, agent_id, kind, prompt_instructions, trigger_json, priority,
         respects_global_pause, state_json, source, created_by, owner_visible,
         metadata_json, created_at, updated_at
@@ -127,98 +131,107 @@ describe("scheduling SQL persistence", () => {
         '{"status":"scheduled","followupCount":0}', 'plugin', 'legacy', TRUE,
         '{}', '2026-07-17T00:00:00.000Z', '2026-07-17T00:00:00.000Z'
       )`,
-    );
-    await harness.pg.query(
-      `INSERT INTO app_lifeops.life_scheduled_task_log (
+      );
+      await harness.pg.query(
+        `INSERT INTO app_lifeops.life_scheduled_task_log (
         id, agent_id, task_id, occurred_at, transition, rolled_up
       ) VALUES (
         'legacy-log', 'agent-sql-persist', 'legacy-watcher',
         '2026-07-17T00:00:00.000Z', 'scheduled', FALSE
       )`,
-    );
+      );
 
-    const results = await migrateSchedulingTables(async (sql) => {
-      const result = await harness.pg.query<Record<string, unknown>>(sql);
-      return result.rows;
-    });
+      const results = await migrateSchedulingTables(async (sql) => {
+        const result = await harness.pg.query<Record<string, unknown>>(sql);
+        return result.rows;
+      });
 
-    expect(results.map((result) => result.outcome)).toEqual([
-      "copied",
-      "copied",
-    ]);
-    const target = await harness.pg.query(
-      "SELECT id, kind FROM app_scheduling.life_scheduled_tasks ORDER BY id",
-    );
-    expect(target.rows).toEqual([
-      { id: "current-task", kind: "reminder" },
-      { id: "legacy-watcher", kind: "watcher" },
-    ]);
-    const source = await harness.pg.query(
-      "SELECT id FROM app_lifeops.life_scheduled_tasks",
-    );
-    expect(source.rows).toEqual([{ id: "legacy-watcher" }]);
-  });
+      expect(results.map((result) => result.outcome)).toEqual([
+        "copied",
+        "copied",
+      ]);
+      const target = await harness.pg.query(
+        "SELECT id, kind FROM app_scheduling.life_scheduled_tasks ORDER BY id",
+      );
+      expect(target.rows).toEqual([
+        { id: "current-task", kind: "reminder" },
+        { id: "legacy-watcher", kind: "watcher" },
+      ]);
+      const source = await harness.pg.query(
+        "SELECT id FROM app_lifeops.life_scheduled_tasks",
+      );
+      expect(source.rows).toEqual([{ id: "legacy-watcher" }]);
+    },
+    SQL_PERSISTENCE_TEST_TIMEOUT_MS,
+  );
 
-  it("keeps a due watcher through runner service re-init and fires it", async () => {
-    const harness = await createRuntimeHarness();
-    harnesses.push(harness);
-    const dispatches: string[] = [];
-    const dispatcher: ScheduledTaskDispatcher = {
-      async dispatch(record): Promise<DispatchResult> {
-        dispatches.push(record.taskId);
-        return { ok: true, messageId: `msg:${record.taskId}` };
-      },
-    };
-    registerScheduledTaskRunnerDeps(harness.runtime, (runtime, agentId) => ({
-      store: createSchedulingSqlScheduledTaskStore({ runtime, agentId }),
-      logStore: createSchedulingSqlScheduledTaskLogStore({ runtime, agentId }),
-      dispatcher,
-      ownerFacts: () => ({ timezone: "UTC" }),
-      globalPause: { current: async () => ({ active: false }) },
-      activity: { hasSignalSince: () => false },
-      subjectStore: { wasUpdatedSince: () => false },
-    }));
-    const firstService = await startService(harness);
-    const firstRunner = getScheduledTaskRunner(harness.runtime, {
-      agentId: harness.runtime.agentId,
-      now: () => new Date("2026-07-17T09:00:00.000Z"),
-    });
-    const scheduled = await firstRunner.schedule({
-      kind: "watcher",
-      promptInstructions: "Check the persisted watcher.",
-      trigger: { kind: "once", atIso: "2026-07-17T09:00:00.000Z" },
-      priority: "medium",
-      respectsGlobalPause: true,
-      source: "plugin",
-      createdBy: "test",
-      ownerVisible: true,
-      executionProfile: "bg-heavy-fgs",
-    });
+  it(
+    "keeps a due watcher through runner service re-init and fires it",
+    async () => {
+      const harness = await createRuntimeHarness();
+      harnesses.push(harness);
+      const dispatches: string[] = [];
+      const dispatcher: ScheduledTaskDispatcher = {
+        async dispatch(record): Promise<DispatchResult> {
+          dispatches.push(record.taskId);
+          return { ok: true, messageId: `msg:${record.taskId}` };
+        },
+      };
+      registerScheduledTaskRunnerDeps(harness.runtime, (runtime, agentId) => ({
+        store: createSchedulingSqlScheduledTaskStore({ runtime, agentId }),
+        logStore: createSchedulingSqlScheduledTaskLogStore({
+          runtime,
+          agentId,
+        }),
+        dispatcher,
+        ownerFacts: () => ({ timezone: "UTC" }),
+        globalPause: { current: async () => ({ active: false }) },
+        activity: { hasSignalSince: () => false },
+        subjectStore: { wasUpdatedSince: () => false },
+      }));
+      const firstService = await startService(harness);
+      const firstRunner = getScheduledTaskRunner(harness.runtime, {
+        agentId: harness.runtime.agentId,
+        now: () => new Date("2026-07-17T09:00:00.000Z"),
+      });
+      const scheduled = await firstRunner.schedule({
+        kind: "watcher",
+        promptInstructions: "Check the persisted watcher.",
+        trigger: { kind: "once", atIso: "2026-07-17T09:00:00.000Z" },
+        priority: "medium",
+        respectsGlobalPause: true,
+        source: "plugin",
+        createdBy: "test",
+        ownerVisible: true,
+        executionProfile: "bg-heavy-fgs",
+      });
 
-    await firstService.stop();
-    harness.setService(null);
-    await startService(harness);
-    const restartedRunner = getScheduledTaskRunner(harness.runtime, {
-      agentId: harness.runtime.agentId,
-      now: () => new Date("2026-07-17T09:01:00.000Z"),
-    });
+      await firstService.stop();
+      harness.setService(null);
+      await startService(harness);
+      const restartedRunner = getScheduledTaskRunner(harness.runtime, {
+        agentId: harness.runtime.agentId,
+        now: () => new Date("2026-07-17T09:01:00.000Z"),
+      });
 
-    const restored = await restartedRunner.list({
-      kind: "watcher",
-      status: "scheduled",
-    });
-    expect(restored.map((task) => task.taskId)).toEqual([scheduled.taskId]);
-    expect(restored[0]?.executionProfile).toBe("bg-heavy-fgs");
+      const restored = await restartedRunner.list({
+        kind: "watcher",
+        status: "scheduled",
+      });
+      expect(restored.map((task) => task.taskId)).toEqual([scheduled.taskId]);
+      expect(restored[0]?.executionProfile).toBe("bg-heavy-fgs");
 
-    const fired = await restartedRunner.fire(scheduled.taskId);
+      const fired = await restartedRunner.fire(scheduled.taskId);
 
-    expect(fired.state.status).toBe("fired");
-    expect(dispatches).toEqual([scheduled.taskId]);
-    const rows = await harness.pg.query<{ status: string }>(
-      `SELECT state_json::jsonb ->> 'status' AS status
+      expect(fired.state.status).toBe("fired");
+      expect(dispatches).toEqual([scheduled.taskId]);
+      const rows = await harness.pg.query<{ status: string }>(
+        `SELECT state_json::jsonb ->> 'status' AS status
          FROM app_scheduling.life_scheduled_tasks
         WHERE id = '${scheduled.taskId}'`,
-    );
-    expect(rows.rows[0]?.status).toBe("fired");
-  });
+      );
+      expect(rows.rows[0]?.status).toBe("fired");
+    },
+    SQL_PERSISTENCE_TEST_TIMEOUT_MS,
+  );
 });

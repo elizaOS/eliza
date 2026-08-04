@@ -71,7 +71,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           # Fork lint is intentionally bounded; restoring the broad fallback
           # can cost more than installing the exact lockfile dependency set.
           cache-bun-install: "false"
@@ -114,7 +114,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           cache-bun-install: "false"
 
       # @elizaos/core's package.json points "main"/"types" at dist/ files
@@ -156,10 +156,14 @@ jobs:
 
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
+        env:
+          # The legacy fixture bundle contains stale visual baselines; homepage
+          # tests must use the expectations committed with the checked-out SHA.
+          ELIZA_SKIP_ARTIFACT_SYNC: "1"
         with:
           bun-version: ${{ env.BUN_VERSION }}
           python-version: "3.13"
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           cache-bun-install: "false"
 
       - name: Install pinned skill validator dependency
@@ -264,7 +268,7 @@ jobs:
           no-cache: true
 
       - name: Install dependencies
-        run: bun install --ignore-scripts --no-frozen-lockfile
+        run: bun install --frozen-lockfile --ignore-scripts
 
       - name: Lint bin exports (#8000 static guard)
         run: bun run --cwd packages/elizaos lint:bin-exports

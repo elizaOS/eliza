@@ -487,10 +487,8 @@ describe("MeetingService — roster, transcripts, listing", () => {
     const participants = transcript.metadata?.participants as
       | Array<{ displayName: string }>
       | undefined;
-    expect(participants).toBeDefined();
     if (!participants) throw new Error("Expected transcript participants");
     const participant = participants[0];
-    expect(participant).toBeDefined();
     if (!participant) throw new Error("Expected a transcript participant");
     expect(participant.displayName).toBe("Jill");
     // Knowledge mirror landed with the transcript tag + clientDocumentId link.

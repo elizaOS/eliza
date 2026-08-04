@@ -15,8 +15,8 @@ import {
 } from "./messages-view-helpers";
 
 // Shape verified against the real provider types in
-// plugins/plugin-native-messages/src/definitions.ts (SmsMessageSummary) and
-// plugins/plugin-native-system/src/definitions.ts (SystemStatus / AndroidRoleStatus).
+// /capacitor-messages/definitions.ts (SmsMessageSummary) and
+// /capacitor-system/definitions.ts (SystemStatus / AndroidRoleStatus).
 // type 1 = inbound (received), type 2 = outbound (sent) — matches Android SMS_TYPE.
 function msg(overrides: Partial<SmsMessageSummary>): SmsMessageSummary {
   return {

@@ -1,4 +1,8 @@
-/** Supports app-core build, packaging, or development orchestration for read app identity mjs. */
+/**
+ * Extracts app identity fields (appId, appName, URL schemes, namespace) from a
+ * host app's app.config.ts by regex so build scripts can brand artifacts
+ * without evaluating TypeScript.
+ */
 import fs from "node:fs";
 import path from "node:path";
 

@@ -1,5 +1,10 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for mobile auth simulator smoke mjs. */
+/**
+ * iOS-simulator smoke for the auth deep-link path: launches the app via simctl,
+ * fires the URL-scheme auth callback, and reads the in-app handler's
+ * classification result back out of the app container. Proves callback delivery
+ * + handler classification, not a real login (see AUTH_SMOKE_LANE).
+ */
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";

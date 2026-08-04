@@ -687,8 +687,6 @@ export function saveUiShellMode(mode: UiShellMode): void {
 
 function normalizeLastNativeTab(tab: unknown): Tab {
   switch (tab) {
-    case "advanced":
-      return "fine-tuning";
     case "chat":
     case "stream":
     case "apps":
@@ -698,7 +696,6 @@ function normalizeLastNativeTab(tab: unknown): Tab {
     case "triggers":
     case "plugins":
     case "skills":
-    case "fine-tuning":
     case "trajectories":
     case "relationships":
     case "voice":

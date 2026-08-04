@@ -196,6 +196,7 @@ SELF_CARE_HABIT_IDS = [
 ]
 
 # Variant rewrites mirroring lifeops-prompt-benchmark-cases.ts
+# (now maintained in https://github.com/elizaOS/benchmarks)
 def _normalize_sentence(text: str) -> str:
     return re.sub(r"[.!?]+$", "", text).strip()
 

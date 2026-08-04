@@ -9,6 +9,7 @@
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import type { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import type { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type {
   EmbeddedResource,
   ImageContent,
@@ -121,7 +122,7 @@ export interface McpServer {
 export interface McpConnection {
   server: McpServer;
   readonly client: Client;
-  readonly transport: StdioClientTransport | SSEClientTransport;
+  readonly transport: StdioClientTransport | SSEClientTransport | StreamableHTTPClientTransport;
 }
 
 export interface McpToolResult {

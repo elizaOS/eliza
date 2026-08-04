@@ -13,4 +13,4 @@ master_authorized_cidrs = [
   # }
 ]
 
-github_repos = ["elizaOS/cloud"]
+github_repos = ["elizaOS/eliza"]

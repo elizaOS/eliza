@@ -1,3 +1,4 @@
+/** Verifies ConnectorsSection mode routing through the package's configured test harness. */
 // @vitest-environment jsdom
 
 import { describe, expect, it } from "vitest";

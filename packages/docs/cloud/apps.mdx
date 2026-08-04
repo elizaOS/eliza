@@ -1,5 +1,5 @@
 ---
-title: Apps
+title: Cloud apps
 description: Create and manage Eliza Cloud apps for hosting, chat routing, domains, analytics, and monetization.
 ---
 
@@ -18,20 +18,6 @@ An Eliza Cloud app provides:
 - **Domains and hosting metadata**: App URL, managed app domains, and custom domains.
 
 Use a **project** for deployable product workspace state and container `projectName`. Use the **Cloud app** `id` when calling `/api/v1/apps/{id}/chat`.
-
-## Launch Readiness
-
-Container deploys and isolated app databases are behind an explicit production
-gate. Staging has a CI-backed deploy proof, but production deploy is only live
-after operators apply the production apps data plane, merge the
-`APPS_DEPLOY_ENABLED` cutover switch, and arm the production daemon.
-
-**Why:** the Worker flag only decides whether deploy requests enqueue real
-`APP_DEPLOY` jobs. The daemon still needs the app node list, registry settings,
-tenant DB admin DSN, and matching feature flag; otherwise requests can be
-accepted while apps remain stuck in `building`.
-
-See [Launch Status](/cloud/launch-status) for the current cutover checklist.
 
 ## Quick Start
 

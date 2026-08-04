@@ -1,3 +1,4 @@
+/** Verifies fetchServerFavoriteApps startup transport gating through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * fetchServerFavoriteApps startup gating (iOS boot-warning D2 item 3).

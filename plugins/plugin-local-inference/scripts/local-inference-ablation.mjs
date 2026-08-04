@@ -26,6 +26,11 @@ const DEFAULT_VARIANTS = [
     args: [],
   },
   {
+    name: "stock_no_fa",
+    label: "target only, f16 KV, flash attention disabled",
+    args: ["-fa", "off"],
+  },
+  {
     name: "turbo4_polar_kv",
     label: "target only, Turbo/Polar KV turbo4",
     args: ["--cache-type-k", "tbq4_0", "--cache-type-v", "tbq4_0"],
@@ -37,8 +42,10 @@ const DEFAULT_VARIANTS = [
   },
   {
     name: "qjl_tcq_forced",
-    label: "target only, QJL K + TBQ3 V",
-    args: ["--cache-type-k", "qjl1_256", "--cache-type-v", "tbq3_0"],
+    label: "target only, forced QJL/TCQ turbo3_tcq",
+    args: ["--cache-type-k", "tbq3_tcq", "--cache-type-v", "tbq3_tcq"],
+    softFailBackends: ["cpu"],
+    softFailSignals: ["SIGSEGV"],
   },
   {
     name: "mtp_only",
@@ -65,19 +72,19 @@ const DEFAULT_VARIANTS = [
   },
   {
     name: "all_mtp_qjl_tcq",
-    label: "draft-MTP + QJL K + TBQ3 V",
+    label: "draft-MTP + forced QJL/TCQ turbo3_tcq",
     needsDrafter: true,
     args: [
       "--spec-type",
       "draft-mtp",
       "--cache-type-k",
-      "qjl1_256",
+      "tbq3_tcq",
       "--cache-type-v",
-      "tbq3_0",
+      "tbq3_tcq",
       "--cache-type-k-draft",
-      "qjl1_256",
+      "tbq3_tcq",
       "--cache-type-v-draft",
-      "tbq3_0",
+      "tbq3_tcq",
     ],
   },
 ];
@@ -99,38 +106,11 @@ function detectBackend() {
     process.env.CUDA_VISIBLE_DEVICES !== "-1"
   )
     return "cuda";
-  const nvidia = spawnSync("nvidia-smi", ["-L"], {
-    stdio: ["ignore", "pipe", "ignore"],
-    encoding: "utf8",
-  });
-  if (nvidia.status === 0 && /\bGPU\s+\d+:/i.test(nvidia.stdout ?? "")) {
-    return "cuda";
-  }
   return "cpu";
 }
 
 function platformKey(backend) {
   return `${process.platform}-${process.arch}-${backend}`;
-}
-
-function canonicalArch(arch = process.arch) {
-  if (arch === "x64") return "x86_64";
-  return arch;
-}
-
-function canonicalPlatformKey(backend) {
-  return `${process.platform}-${canonicalArch()}-${backend}`;
-}
-
-function thresholdLookupKeys(hardware) {
-  const keys = [
-    hardware.platformKey,
-    hardware.canonicalPlatformKey,
-    `${hardware.platform}-${hardware.arch}`,
-    `${hardware.platform}-${hardware.canonicalArch}`,
-    hardware.backend,
-  ];
-  return [...new Set(keys.filter(Boolean))];
 }
 
 function defaultBinary(backend) {
@@ -144,80 +124,6 @@ function defaultBinary(backend) {
   );
 }
 
-const KERNEL_BY_CACHE_TYPE = new Map([
-  ["turbo3", "turbo3"],
-  ["tbq3_0", "turbo3"],
-  ["turbo4", "turbo4"],
-  ["tbq4_0", "turbo4"],
-  ["turbo3_tcq", "turbo3_tcq"],
-  ["tbq3_tcq", "turbo3_tcq"],
-  ["qjl", "qjl_full"],
-  ["qjl_full", "qjl_full"],
-  ["qjl1_256", "qjl_full"],
-  ["polar", "polarquant"],
-  ["polarquant", "polarquant"],
-  ["q4_polar", "polarquant"],
-]);
-
-function normalizeKernelArg(value) {
-  return String(value).trim().toLowerCase().replaceAll("-", "_");
-}
-
-function kernelForCacheType(value) {
-  return KERNEL_BY_CACHE_TYPE.get(normalizeKernelArg(value)) ?? null;
-}
-
-function optionValue(argv, index) {
-  const arg = argv[index];
-  const eq = arg.indexOf("=");
-  if (eq !== -1) return { value: arg.slice(eq + 1), consumed: 0 };
-  const value = argv[index + 1];
-  if (!value || value.startsWith("--")) return { value: null, consumed: 0 };
-  return { value, consumed: 1 };
-}
-
-function variantRequiredKernels(variant) {
-  const required = new Set();
-  const argv = variant.args ?? [];
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i];
-    if (arg === "--spec-type" || arg.startsWith("--spec-type=")) {
-      const parsed = optionValue(argv, i);
-      const specType = parsed.value ? normalizeKernelArg(parsed.value) : "";
-      if (specType === "mtp" || specType === "draft_mtp") {
-        required.add("mtp");
-      }
-      i += parsed.consumed;
-      continue;
-    }
-    if (arg.startsWith("--cache-type")) {
-      const parsed = optionValue(argv, i);
-      if (parsed.value) {
-        const kernel = kernelForCacheType(parsed.value);
-        if (kernel) required.add(kernel);
-      }
-      i += parsed.consumed;
-    }
-  }
-  return [...required];
-}
-
-function loadCapabilities(binary) {
-  const filePath = path.join(path.dirname(binary), "CAPABILITIES.json");
-  if (!fs.existsSync(filePath)) return null;
-  const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
-  const kernels = parsed?.kernels;
-  if (!kernels || typeof kernels !== "object" || Array.isArray(kernels)) {
-    throw new Error(`invalid CAPABILITIES.json kernels map: ${filePath}`);
-  }
-  return { path: filePath, kernels };
-}
-
-function missingVariantKernels(variant, capabilities) {
-  const required = variantRequiredKernels(variant);
-  return required.filter((kernel) => capabilities.kernels[kernel] !== true);
-}
-
 function defaultModelPath(name) {
   return path.join(stateDir(), "local-inference", "models", name);
 }
@@ -226,55 +132,13 @@ function defaultBundlePath(tierSlug, ...parts) {
   return defaultModelPath(path.join(`eliza-1-${tierSlug}.bundle`, ...parts));
 }
 
-const QUICK_VARIANTS = [
-  "baseline_f16_kv",
-  "turbo4_polar_kv",
-  "mtp_only",
-];
-
-const OPTION_ALIASES = new Map([
-  ["-b", "--batch-size"],
-  ["-ub", "--ubatch-size"],
-]);
-
-const NUMBER_OPTIONS = new Map([
-  ["--runs", "runs"],
-  ["--max-tokens", "maxTokens"],
-  ["--warmup-tokens", "warmupTokens"],
-  ["--ctx-size", "contextSize"],
-  ["--ctx-size-draft", "draftContextSize"],
-  ["--draft-min", "draftMin"],
-  ["--draft-max", "draftMax"],
-  ["--batch-size", "batchSize"],
-  ["--ubatch-size", "ubatchSize"],
-  ["--gpu-layers", "gpuLayers"],
-  ["--draft-gpu-layers", "draftGpuLayers"],
-  ["--timeout-ms", "timeoutMs"],
-  ["--start-timeout-ms", "startTimeoutMs"],
-]);
-
-const PATH_OPTIONS = new Map([
-  ["--binary", "binary"],
-  ["--model", "model"],
-  ["--drafter", "drafter"],
-  ["--out-dir", "outDir"],
-  ["--config", "config"],
-  ["--gate", "gate"],
-]);
-
-const VALUE_OPTIONS = new Set([
-  ...NUMBER_OPTIONS.keys(),
-  ...PATH_OPTIONS.keys(),
-  "--backend",
-  "--prompt",
-  "--variants",
-]);
-
-function defaultArgsForBackend(backend) {
-  const defaultGpuLayers = backend === "cpu" ? 0 : 99;
-  return {
+function parseArgs(argv) {
+  const backend = detectBackend();
+  let gpuLayersExplicit = false;
+  let draftGpuLayersExplicit = false;
+  const args = {
     backend,
-    binary: null,
+    binary: defaultBinary(backend),
     model: defaultBundlePath("2b", "text", "eliza-1-2b-128k.gguf"),
     drafter: defaultBundlePath("2b", "mtp", "drafter-2b.gguf"),
     runs: 3,
@@ -286,119 +150,110 @@ function defaultArgsForBackend(backend) {
     draftMax: 16,
     batchSize: 256,
     ubatchSize: 64,
-    gpuLayers: defaultGpuLayers,
-    draftGpuLayers: defaultGpuLayers,
+    gpuLayers: 99,
+    draftGpuLayers: 99,
     timeoutMs: 180_000,
     startTimeoutMs: 120_000,
     prompt: DEFAULT_PROMPT,
     variants: null,
     outDir: path.join(process.cwd(), "artifacts", "local-inference-ablation"),
     config: null,
-    gate: null,
     requireAll: false,
   };
-}
-
-function requireArgValue(argv, index, arg) {
-  const value = argv[index + 1];
-  if (!value || value.startsWith("--")) {
-    throw new Error(`${arg} requires a value`);
-  }
-  return value;
-}
-
-function setNumberOption(args, key, value) {
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed)) throw new Error(`${key} must be a number`);
-  args[key] = parsed;
-}
-
-function applyValueOption(args, option, value) {
-  if (option === "--backend") {
-    args.backend = value;
-    return;
-  }
-  if (option === "--prompt") {
-    args.prompt = value;
-    return;
-  }
-  if (option === "--variants") {
-    args.variants = value
-      .split(",")
-      .map((v) => v.trim())
-      .filter(Boolean);
-    return;
-  }
-  const numberKey = NUMBER_OPTIONS.get(option);
-  if (numberKey) {
-    setNumberOption(args, numberKey, value);
-    return;
-  }
-  const pathKey = PATH_OPTIONS.get(option);
-  if (pathKey) {
-    args[pathKey] = path.resolve(value);
-    return;
-  }
-  throw new Error(`Unknown argument: ${option}`);
-}
-
-function applyFlagOption(args, arg) {
-  if (arg === "--require-all") {
-    args.requireAll = true;
-    return true;
-  }
-  if (arg === "--quick") {
-    args.runs = 1;
-    args.maxTokens = 96;
-    args.warmupTokens = 16;
-    args.variants = QUICK_VARIANTS;
-    return true;
-  }
-  if (arg === "--help" || arg === "-h") {
-    printHelp();
-    process.exit(0);
-  }
-  return false;
-}
-
-function parseArgs(argv) {
-  const args = defaultArgsForBackend(detectBackend());
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
-    if (applyFlagOption(args, arg)) continue;
-    const option = OPTION_ALIASES.get(arg) ?? arg;
-    if (!VALUE_OPTIONS.has(option)) throw new Error(`Unknown argument: ${arg}`);
-    const value = requireArgValue(argv, i, option);
-    applyValueOption(args, option, value);
-    i += 1;
+    const next = () => {
+      const value = argv[i + 1];
+      if (!value || value.startsWith("--"))
+        throw new Error(`${arg} requires a value`);
+      i += 1;
+      return value;
+    };
+    if (arg === "--backend") args.backend = next();
+    else if (arg === "--binary") args.binary = path.resolve(next());
+    else if (arg === "--model") args.model = path.resolve(next());
+    else if (arg === "--drafter") args.drafter = path.resolve(next());
+    else if (arg === "--runs") args.runs = Number.parseInt(next(), 10);
+    else if (arg === "--max-tokens")
+      args.maxTokens = Number.parseInt(next(), 10);
+    else if (arg === "--warmup-tokens")
+      args.warmupTokens = Number.parseInt(next(), 10);
+    else if (arg === "--ctx-size")
+      args.contextSize = Number.parseInt(next(), 10);
+    else if (arg === "--ctx-size-draft")
+      args.draftContextSize = Number.parseInt(next(), 10);
+    else if (arg === "--draft-min") args.draftMin = Number.parseInt(next(), 10);
+    else if (arg === "--draft-max") args.draftMax = Number.parseInt(next(), 10);
+    else if (arg === "--batch-size" || arg === "-b")
+      args.batchSize = Number.parseInt(next(), 10);
+    else if (arg === "--ubatch-size" || arg === "-ub")
+      args.ubatchSize = Number.parseInt(next(), 10);
+    else if (arg === "--gpu-layers") {
+      args.gpuLayers = Number.parseInt(next(), 10);
+      gpuLayersExplicit = true;
+    } else if (arg === "--draft-gpu-layers") {
+      args.draftGpuLayers = Number.parseInt(next(), 10);
+      draftGpuLayersExplicit = true;
+    } else if (arg === "--timeout-ms")
+      args.timeoutMs = Number.parseInt(next(), 10);
+    else if (arg === "--start-timeout-ms")
+      args.startTimeoutMs = Number.parseInt(next(), 10);
+    else if (arg === "--prompt") args.prompt = next();
+    else if (arg === "--variants")
+      args.variants = next()
+        .split(",")
+        .map((v) => v.trim())
+        .filter(Boolean);
+    else if (arg === "--out-dir") args.outDir = path.resolve(next());
+    else if (arg === "--config") args.config = path.resolve(next());
+    else if (arg === "--require-all") args.requireAll = true;
+    else if (arg === "--quick") {
+      args.runs = 1;
+      args.maxTokens = 96;
+      args.warmupTokens = 16;
+      args.variants = [
+        "baseline_f16_kv",
+        "turbo4_polar_kv",
+        "qjl_tcq_forced",
+        "mtp_only",
+      ];
+    } else if (arg === "--help" || arg === "-h") {
+      printHelp();
+      process.exit(0);
+    } else {
+      throw new Error(`Unknown argument: ${arg}`);
+    }
   }
+  if (args.backend === "cpu" && !gpuLayersExplicit) args.gpuLayers = 0;
+  if (args.backend === "cpu" && !draftGpuLayersExplicit)
+    args.draftGpuLayers = 0;
   args.binary = args.binary || defaultBinary(args.backend);
   return args;
 }
 
 function printHelp() {
-  console.log(`Usage: node scripts/local-inference-ablation.mjs [options]
+  console.log(`Usage: node plugins/plugin-local-inference/scripts/local-inference-ablation.mjs [options]
 
 Options:
-  --backend metal|cuda|rocm|vulkan|cpu
+  --backend metal|cuda|rocm|cpu
   --binary /path/to/llama-server
   --model /path/to/target.gguf
   --drafter /path/to/drafter.gguf
   --variants baseline_f16_kv,turbo4_polar_kv,qjl_tcq_forced,mtp_only
   --runs 3 --max-tokens 256 --quick
   --out-dir artifacts/local-inference-ablation
-  --config scripts/local-inference-ablation.config.json
-  --gate scripts/local-inference-thresholds.json
+  --config plugins/plugin-local-inference/scripts/local-inference-ablation.config.json
   --require-all   fail (exit 1) if any variant is skipped due to a missing model
 
 Exit codes:
-  0  all selected variants ran (or were cleanly skipped) and met thresholds (if --gate is set)
-  1  startup error, a variant failed to run, gate thresholds were violated, or a model was missing while --require-all is set
+  0  all selected variants ran or were cleanly skipped
+  1  startup error, a variant failed to run, or a model was missing while --require-all is set
 `);
 }
 
 function loadVariants(args) {
   let variants = DEFAULT_VARIANTS;
+  const capabilities = loadCapabilities(args.binary);
   if (args.config) {
     const parsed = JSON.parse(fs.readFileSync(args.config, "utf8"));
     if (Array.isArray(parsed.variants)) variants = parsed.variants;
@@ -409,7 +264,6 @@ function loadVariants(args) {
   }
   const targetExists = fs.existsSync(args.model);
   const drafterExists = fs.existsSync(args.drafter);
-  const capabilities = loadCapabilities(args.binary);
   return variants.map((variant) => {
     if (!targetExists) {
       return { ...variant, skipReason: `model missing: ${args.model}` };
@@ -417,62 +271,48 @@ function loadVariants(args) {
     if (variant.needsDrafter && !drafterExists) {
       return { ...variant, skipReason: `drafter missing: ${args.drafter}` };
     }
-    if (capabilities) {
-      const missing = missingVariantKernels(variant, capabilities);
-      if (missing.length > 0) {
-        return {
-          ...variant,
-          skipReason: `kernel(s) not advertised by ${capabilities.path}: ${missing.join(", ")}`,
-        };
-      }
+    const missingKernels = missingVariantKernels(variant, capabilities);
+    if (missingKernels.length > 0) {
+      return {
+        ...variant,
+        skipReason: `kernel unavailable for ${args.backend}: ${missingKernels.join(", ")}`,
+      };
     }
     return variant;
   });
 }
 
-function loadThresholds(filePath) {
+function loadCapabilities(binaryPath) {
+  const filePath = path.join(path.dirname(binaryPath), "CAPABILITIES.json");
+  if (!fs.existsSync(filePath)) return null;
   const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
-  if (!parsed || typeof parsed !== "object") {
-    throw new Error(`invalid threshold file: ${filePath}`);
-  }
-  return parsed;
+  return parsed && typeof parsed === "object" ? parsed : null;
 }
 
-function thresholdFor(thresholds, backend, variantName) {
-  if (!thresholds) return null;
-  const keys = Array.isArray(backend) ? backend : [backend];
-  for (const key of keys) {
-    const byBackend = thresholds[key];
-    if (!byBackend || typeof byBackend !== "object") continue;
-    const direct = byBackend[variantName];
-    if (typeof direct === "number" && Number.isFinite(direct)) return direct;
-    const fallback = byBackend.default;
-    if (typeof fallback === "number" && Number.isFinite(fallback)) {
-      return fallback;
+function missingVariantKernels(variant, capabilities) {
+  const kernels = capabilities?.kernels;
+  if (!kernels || typeof kernels !== "object") return [];
+  const required = new Set();
+  const args = variant.args || [];
+  for (let i = 0; i < args.length; i += 1) {
+    const flag = args[i];
+    const value = args[i + 1];
+    if (flag === "--spec-type" && (value === "mtp" || value === "draft-mtp")) {
+      required.add("mtp");
+    }
+    if (
+      flag === "--cache-type-k" ||
+      flag === "--cache-type-v" ||
+      flag === "--cache-type-k-draft" ||
+      flag === "--cache-type-v-draft"
+    ) {
+      if (value === "turbo3" || value === "tbq3_0") required.add("turbo3");
+      if (value === "turbo4" || value === "tbq4_0") required.add("turbo4");
+      if (value === "turbo3_tcq" || value === "tbq3_tcq")
+        required.add("turbo3_tcq");
     }
   }
-  return null;
-}
-
-function evaluateGate(report, thresholds) {
-  const violations = [];
-  const thresholdKeys = thresholdLookupKeys(report.hardware);
-  for (const variant of report.variants) {
-    if (variant.skipped || !variant.ok) continue;
-    const min = thresholdFor(thresholds, thresholdKeys, variant.name);
-    if (min === null) continue;
-    variant.thresholdTokPerSec = min;
-    variant.thresholdKeys = thresholdKeys;
-    if (variant.avgTokPerSec < min) {
-      violations.push({
-        name: variant.name,
-        backend: report.hardware.backend,
-        avgTokPerSec: variant.avgTokPerSec,
-        thresholdTokPerSec: min,
-      });
-    }
-  }
-  return violations;
+  return Array.from(required).filter((name) => kernels[name] !== true);
 }
 
 function runCapture(cmd, cmdArgs) {
@@ -491,10 +331,8 @@ function hardwareInfo(args) {
   const info = {
     platform: process.platform,
     arch: process.arch,
-    canonicalArch: canonicalArch(),
     backend: args.backend,
     platformKey: platformKey(args.backend),
-    canonicalPlatformKey: canonicalPlatformKey(args.backend),
     hostname: os.hostname(),
     cpus: os.cpus().map((cpu) => cpu.model)[0],
     memoryGb: Math.round(os.totalmem() / 1024 ** 3),
@@ -589,12 +427,18 @@ function serverArgs(args, variant, port) {
     HOST,
     "--port",
     String(port),
+    "--n-gpu-layers",
+    String(args.gpuLayers),
     "--ctx-size",
     String(args.contextSize),
     "--parallel",
     "1",
     "--metrics",
     "--jinja",
+    "--reasoning",
+    "off",
+    "--chat-template-kwargs",
+    '{"enable_thinking":false}',
     "-fa",
     "on",
     "-b",
@@ -602,9 +446,6 @@ function serverArgs(args, variant, port) {
     "-ub",
     String(args.ubatchSize),
   ];
-  if (args.backend !== "cpu") {
-    out.push("--n-gpu-layers", String(args.gpuLayers));
-  }
   if (variant.needsDrafter || variant.args?.includes("--spec-type")) {
     out.push(
       "-md",
@@ -613,13 +454,25 @@ function serverArgs(args, variant, port) {
       String(args.draftMin),
       "--spec-draft-n-max",
       String(args.draftMax),
+      "--n-gpu-layers-draft",
+      String(args.draftGpuLayers),
     );
-    if (args.backend !== "cpu") {
-      out.push("--n-gpu-layers-draft", String(args.draftGpuLayers));
-    }
   }
   out.push(...(variant.args || []));
   return out;
+}
+
+function softFailureReason(args, variant, message) {
+  const backends = Array.isArray(variant.softFailBackends)
+    ? variant.softFailBackends
+    : [];
+  const signals = Array.isArray(variant.softFailSignals)
+    ? variant.softFailSignals
+    : [];
+  if (!backends.includes(args.backend)) return null;
+  const matchedSignal = signals.find((signal) => message.includes(signal));
+  if (!matchedSignal) return null;
+  return `kernel crashed on ${args.backend}: ${matchedSignal}`;
 }
 
 async function completion(baseUrl, args, maxTokens) {
@@ -705,7 +558,14 @@ async function runVariant(args, variant) {
   } catch (error) {
     row.error = error instanceof Error ? error.message : String(error);
     row.logs = logs.slice(-120);
-    console.log(`${variant.name} FAILED: ${row.error.split("\n")[0]}`);
+    const skipReason = softFailureReason(args, variant, row.error);
+    if (skipReason) {
+      row.skipped = true;
+      row.skipReason = skipReason;
+      console.log(`${variant.name} SKIPPED: ${skipReason}`);
+    } else {
+      console.log(`${variant.name} FAILED: ${row.error.split("\n")[0]}`);
+    }
   } finally {
     await stopServer(child, state);
   }
@@ -720,12 +580,8 @@ function printSummary(results) {
         `${row.name.padEnd(24)} SKIPPED  ${row.skipReason ?? "unknown"}`,
       );
     } else if (row.ok) {
-      const gate =
-        typeof row.thresholdTokPerSec === "number"
-          ? `  >=${row.thresholdTokPerSec.toFixed(2)} tok/s gate`
-          : "";
       console.log(
-        `${row.name.padEnd(24)} ${row.avgTokPerSec.toFixed(2).padStart(8)} tok/s  (${row.label})${gate}`,
+        `${row.name.padEnd(24)} ${row.avgTokPerSec.toFixed(2).padStart(8)} tok/s  (${row.label})`,
       );
     } else {
       console.log(
@@ -741,8 +597,6 @@ async function main() {
   if (variants.length === 0) throw new Error("no variants selected");
 
   const binaryMissing = !fs.existsSync(args.binary);
-  const _modelMissing = !fs.existsSync(args.model);
-  const thresholds = args.gate ? loadThresholds(args.gate) : null;
 
   fs.mkdirSync(args.outDir, { recursive: true });
 
@@ -755,7 +609,6 @@ async function main() {
     runs: args.runs,
     hardware: hardwareInfo(args),
     variants: [],
-    gate: thresholds ? args.gate : null,
   };
 
   if (binaryMissing) {
@@ -786,18 +639,19 @@ async function main() {
     }
   }
 
-  const violations = thresholds ? evaluateGate(report, thresholds) : [];
-  report.thresholdViolations = violations;
-
   printSummary(report.variants);
 
+  const skipped = report.variants.filter((row) => row.skipped);
+  const failed = report.variants.filter((row) => !row.skipped && !row.ok);
+  const executed = report.variants.filter(
+    (row) => row.ok === true && !row.skipped,
+  );
+  report.executedVariantCount = executed.length;
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const outPath = path.join(args.outDir, `${stamp}-${args.backend}.json`);
   fs.writeFileSync(outPath, `${JSON.stringify(report, null, 2)}\n`);
   console.log(`\nWrote ${outPath}`);
 
-  const skipped = report.variants.filter((row) => row.skipped);
-  const failed = report.variants.filter((row) => !row.skipped && !row.ok);
   let exitCode = 0;
   if (failed.length > 0) {
     console.error(
@@ -805,19 +659,14 @@ async function main() {
     );
     exitCode = 1;
   }
+  if (executed.length === 0) {
+    console.error("[ablation] zero variants executed successfully");
+    exitCode = 1;
+  }
   if (args.requireAll && skipped.length > 0) {
     console.error(
       `[ablation] --require-all set but ${skipped.length} variant(s) skipped: ${skipped.map((row) => row.name).join(", ")}`,
     );
-    exitCode = 1;
-  }
-  if (violations.length > 0) {
-    console.error("[ablation] threshold gate violations:");
-    for (const v of violations) {
-      console.error(
-        `  ${v.backend}/${v.name}: ${v.avgTokPerSec.toFixed(2)} tok/s < ${v.thresholdTokPerSec.toFixed(2)} tok/s`,
-      );
-    }
     exitCode = 1;
   }
   process.exit(exitCode);

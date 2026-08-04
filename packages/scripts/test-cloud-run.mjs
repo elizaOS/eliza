@@ -133,7 +133,7 @@ export function buildTestEnv(baseEnv) {
 // packages/cloud/api; the stale paths made `bun test` target nonexistent dirs,
 // so the cloud unit suite (incl. the IAC inference hot-path tests) silently ran
 // nothing = false-green gate. cloud-tests.yml already triggers on
-// `packages/scripts/cloud/**` and `packages/cloud/services/**`; the routing
+// `packages/cloud/scripts/**` and `packages/cloud/services/**`; the routing
 // (model-routing resolver) and infra (IaC / static-config) packages carry
 // pure, DB-free unit suites that ran on no PR lane until they were added here
 // alongside the cloud-tests.yml `paths:` update.
@@ -141,7 +141,7 @@ export function computeTestRoots(root) {
   return {
     cloudSharedSrc: path.join(root, "packages", "cloud", "shared", "src"),
     cloudApiRoot: path.join(root, "packages", "cloud", "api"),
-    cloudScriptsTests: path.join(root, "packages", "scripts", "cloud"),
+    cloudScriptsTests: path.join(root, "packages", "cloud", "scripts"),
     cloudRoutingTests: path.join(root, "packages", "cloud", "routing", "src"),
     cloudInfraTests: path.join(root, "packages", "cloud", "infra", "tests"),
     cloudServicesRoot: path.join(root, "packages", "cloud", "services"),

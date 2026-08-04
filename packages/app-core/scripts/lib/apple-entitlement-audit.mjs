@@ -1,5 +1,10 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for apple entitlement audit mjs. */
+/**
+ * Audits Apple entitlement plists against the reviewed manifest
+ * (platforms/apple-store-entitlements.reviewed.json): every review-sensitive
+ * entitlement in a build must be acknowledged there, so entitlement drift fails
+ * release checks instead of App Review.
+ */
 
 import { spawnSync } from "node:child_process";
 import {

@@ -42,11 +42,15 @@ function createFailingVault(): Vault {
     set: async () => {
       throw new Error("vault unavailable");
     },
+    setIfAbsent: async () => {
+      throw new Error("vault unavailable");
+    },
     setReference: async () => {},
     get: async () => "",
     reveal: async () => "",
     has: async () => false,
     remove: async () => {},
+    quarantineUnreadable: async () => false,
     list: async () => [],
     describe: async () => null,
     stats: async () => ({

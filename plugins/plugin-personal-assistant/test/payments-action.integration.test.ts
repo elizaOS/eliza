@@ -22,7 +22,7 @@
  *
  * Mockoon-mode note (`LIFEOPS_USE_MOCKOON`): the audit asks for a
  * Mockoon-mocked Plaid path; that mock fixture lives outside this plugin
- * (`eliza/test/mocks/mockoon/`). When the Mockoon URL is set, the
+ * (`packages/scenario-runner/test/mocks/mockoon/`). When the Mockoon URL is set, the
  * `add_source` kind=plaid path becomes deterministic via that mock; here we
  * exercise the kind=manual path which requires no external service and is
  * the canonical happy-path for the action's CSV import flow.

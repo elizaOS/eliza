@@ -2,7 +2,6 @@
 import type { DynamicViewRegistry } from "../dynamic-views/registry";
 import type { DynamicViewSessionManager } from "../dynamic-views/session-manager";
 import { createTraceDynamicViewManifest } from "./trace-dynamic-view";
-import { createTraceHost, type TraceHost } from "./trace-host-requests";
 import { TraceService } from "./trace-service";
 import { TraceStore } from "./trace-store";
 
@@ -25,17 +24,12 @@ export function getTraceService(options: {
   return traceService;
 }
 
-export function createTraceHostForRuntime(service: TraceService): TraceHost {
-  return createTraceHost(service);
-}
-
 export function resetTraceStateForTests(): void {
   traceService = null;
 }
 
 export * from "./errors";
 export * from "./trace-dynamic-view";
-export * from "./trace-host-requests";
 export * from "./trace-service";
 export * from "./trace-store";
 export * from "./types";

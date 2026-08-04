@@ -180,7 +180,6 @@ describe("plugin-health smoke (W1-B)", () => {
 
   it("wake-up pack triggers off `wake.confirmed` (sustained signal anchor)", () => {
     const record = wakeUpDefaultPack.records[0];
-    expect(record).toBeDefined();
     if (!record) throw new Error("wakeUpDefaultPack should have a record");
     expect(record.trigger.kind).toBe("relative_to_anchor");
     if (record.trigger.kind === "relative_to_anchor") {
@@ -319,7 +318,6 @@ describe("plugin-health smoke (W1-B)", () => {
     const testRuntime = { connectorRegistry } as never;
     registerHealthConnectors(testRuntime);
     const apple = connectorList.find((c) => c.kind === "apple_health");
-    expect(apple).toBeDefined();
     if (!apple) throw new Error("apple_health should be registered");
     const status = await apple.status();
     expect(status.state).toBe("disconnected");

@@ -1,3 +1,4 @@
+/** Verifies resolveAttachmentUrl through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Render test for the shared chat MessageAttachments renderer: each media kind

@@ -24,7 +24,7 @@ The eject system lets you clone an upstream plugin's source code locally, modify
 
 ## What Eject Does
 
-Ejecting a plugin clones its upstream Git repository into a local directory (`~/.local/state/eliza/plugins/ejected/`), creates tracking metadata (`.upstream.json`), and configures the runtime to load the local copy instead of the npm-installed version.
+Ejecting a plugin clones its upstream Git repository into a local directory (`~/.local/state/plugins/ejected/`), creates tracking metadata (`.upstream.json`), and configures the runtime to load the local copy instead of the npm-installed version.
 
 This is useful when you need to:
 
@@ -55,9 +55,9 @@ eject the telegram plugin so I can edit its source
 Or manually:
 ```bash
 git clone --branch 1.x https://github.com/elizaos-plugins/plugin-telegram.git \
-  ~/.local/state/eliza/plugins/ejected/plugin-telegram
+  ~/.local/state/plugins/ejected/plugin-telegram
 
-cd ~/.local/state/eliza/plugins/ejected/plugin-telegram
+cd ~/.local/state/plugins/ejected/plugin-telegram
 bun install
 bun run build
 ```
@@ -67,7 +67,7 @@ bun run build
 Make your changes in the ejected plugin's `src/` directory:
 
 ```bash
-cd ~/.local/state/eliza/plugins/ejected/plugin-telegram/src/
+cd ~/.local/state/plugins/ejected/plugin-telegram/src/
 # Edit files...
 ```
 
@@ -76,7 +76,7 @@ cd ~/.local/state/eliza/plugins/ejected/plugin-telegram/src/
 After editing, rebuild the plugin:
 
 ```bash
-cd ~/.local/state/eliza/plugins/ejected/plugin-telegram
+cd ~/.local/state/plugins/ejected/plugin-telegram
 bun run build
 ```
 
@@ -101,7 +101,7 @@ sync the ejected telegram plugin
 
 Or manually:
 ```bash
-cd ~/.local/state/eliza/plugins/ejected/plugin-telegram
+cd ~/.local/state/plugins/ejected/plugin-telegram
 git fetch origin
 git pull --rebase origin 1.x
 bun run build
@@ -118,7 +118,7 @@ reinject the telegram plugin
 
 Or manually:
 ```bash
-rm -rf ~/.local/state/eliza/plugins/ejected/plugin-telegram
+rm -rf ~/.local/state/plugins/ejected/plugin-telegram
 # Restart Eliza — it loads the npm version again
 ```
 
@@ -209,10 +209,10 @@ The agent has built-in actions for managing ejected plugins and core:
 
 When the runtime resolves plugins, ejected versions always take precedence:
 
-1. **Ejected** (`~/.local/state/eliza/plugins/ejected/`) -- highest priority
+1. **Ejected** (`~/.local/state/plugins/ejected/`) -- highest priority
 2. **Workspace override** (project-local plugin overrides)
 3. **Official npm** (`node_modules/@elizaos/plugin-*`) -- with install record repair
-4. **User-installed** (`~/.local/state/eliza/plugins/installed/`)
+4. **User-installed** (`~/.local/state/plugins/installed/`)
 5. **Local @eliza** (built-in dist plugins)
 6. **npm fallback** (`import(name)`)
 
@@ -276,7 +276,7 @@ interface SyncResult {
 ### Manual Sync
 
 ```bash
-cd ~/.local/state/eliza/plugins/ejected/plugin-telegram
+cd ~/.local/state/plugins/ejected/plugin-telegram
 
 # Check what changed upstream
 git fetch origin
@@ -301,7 +301,7 @@ If merge conflicts occur, resolve them manually, then `git add` the resolved fil
 The ejected plugin is a real Git repository. You can push changes upstream:
 
 ```bash
-cd ~/.local/state/eliza/plugins/ejected/plugin-telegram
+cd ~/.local/state/plugins/ejected/plugin-telegram
 
 # Add your fork as a remote
 git remote add fork git@github.com:YOUR_USER/plugin-telegram.git
