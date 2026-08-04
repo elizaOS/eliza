@@ -3,7 +3,7 @@
  * ScheduledTask runner, and a loopback HTTP server around the public route.
  * Only Google's remote API is represented by a deterministic transport.
  */
-import { createHmac } from "node:crypto";
+import { createHash } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import { PGlite } from "@electric-sql/pglite";
 import type { ConnectorAccountManager, IAgentRuntime } from "@elizaos/core";
@@ -367,6 +367,7 @@ async function createHarness(
     webhookEnabled?: boolean;
     webhookKeys?: string;
     revokedKeyIds?: string;
+    webhookTtlSeconds?: number;
   } = {},
 ): Promise<Harness> {
   const pg = args.pg ?? new PGlite();
@@ -393,7 +394,9 @@ async function createHarness(
         ...(args.revokedKeyIds
           ? { GOOGLE_CALENDAR_WEBHOOK_REVOKED_KEY_IDS: args.revokedKeyIds }
           : {}),
-        GOOGLE_CALENDAR_WATCH_TTL_SECONDS: "3600",
+        GOOGLE_CALENDAR_WATCH_TTL_SECONDS: String(
+          args.webhookTtlSeconds ?? 3600,
+        ),
         GOOGLE_CALENDAR_WATCH_RENEWAL_LEAD_MINUTES: "1440",
         GOOGLE_CALENDAR_WATCH_SYNC_LEASE_SECONDS: "300",
         GOOGLE_CALENDAR_MAX_WATCHES_PER_ACCOUNT: "8",
@@ -464,21 +467,15 @@ async function createHarness(
   };
 }
 
-function expiredSignedToken(token: string): string {
+function badHmacToken(token: string): string {
   const parts = token.split(".");
-  const claims = JSON.parse(
-    Buffer.from(parts[2] ?? "", "base64url").toString("utf8"),
-  ) as Record<string, unknown>;
-  claims.e = 0;
-  const payload = Buffer.from(JSON.stringify(claims)).toString("base64url");
-  const secret = Buffer.from(
-    WEBHOOK_KEY_CURRENT.split(":")[1] ?? "",
-    "base64url",
-  );
-  const signature = createHmac("sha256", secret)
-    .update(payload)
-    .digest("base64url");
-  return `gcalwh.v1.${payload}.${signature}`;
+  const signature = parts[3] ?? "";
+  const replacement = signature.startsWith("A") ? "B" : "A";
+  return `${parts.slice(0, 3).join(".")}.${replacement}${signature.slice(1)}`;
+}
+
+function sha256Hex(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
 }
 
 async function postNotification(
@@ -739,12 +736,21 @@ describe("Google Calendar push lifecycle", { timeout: 30_000 }, () => {
     expect(rows[0]?.pending_message_number).toBeNull();
   });
 
-  it("does not mutate durable channel state for an invalid capability token", async () => {
+  it("does not mutate durable state for a capability with a bad HMAC", async () => {
     const harness = await createHarness();
     harnesses.push(harness);
     await forceInitialSync(harness);
     const request = harness.google.watchRequests[0];
     expect(request).toBeDefined();
+    const invalidToken = badHmacToken(request?.token ?? "");
+    // Make the durable digest agree so this denial proves signature validation,
+    // rather than passing only because the defense-in-depth digest rejects it.
+    await harness.pg.query(
+      `UPDATE app_calendar.google_calendar_watch_channels
+          SET token_sha256 = $1
+        WHERE channel_id = $2`,
+      [sha256Hex(invalidToken), request?.channelId],
+    );
     const beforeRows = await watchRows(harness.pg);
     const beforeReceipts = await ingressReceiptRows(harness.pg);
     const beforeLimits = await ingressRateLimitRows(harness.pg);
@@ -752,7 +758,36 @@ describe("Google Calendar push lifecycle", { timeout: 30_000 }, () => {
 
     const response = await postNotification(harness.baseUrl, {
       channelId: request?.channelId ?? "",
-      channelToken: "invalid-capability",
+      channelToken: invalidToken,
+      resourceId: "resource-1",
+      resourceUri: RESOURCE_URI,
+      resourceState: "exists",
+      messageNumber: "2",
+    });
+
+    expect(response.status).toBe(404);
+    expect(await watchRows(harness.pg)).toEqual(beforeRows);
+    expect(await ingressReceiptRows(harness.pg)).toEqual(beforeReceipts);
+    expect(await ingressRateLimitRows(harness.pg)).toEqual(beforeLimits);
+    expect(harness.google.eventPageRequests).toHaveLength(beforeProviderCalls);
+  });
+
+  it("rejects a naturally expired signed token while its provider channel remains live", async () => {
+    const harness = await createHarness({ webhookTtlSeconds: 60 });
+    harnesses.push(harness);
+    await forceInitialSync(harness);
+    const request = harness.google.watchRequests[0];
+    expect(request).toBeDefined();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() + 61_000);
+    const beforeRows = await watchRows(harness.pg);
+    const beforeReceipts = await ingressReceiptRows(harness.pg);
+    const beforeLimits = await ingressRateLimitRows(harness.pg);
+    const beforeProviderCalls = harness.google.eventPageRequests.length;
+
+    const response = await postNotification(harness.baseUrl, {
+      channelId: request?.channelId ?? "",
+      channelToken: request?.token ?? "",
       resourceId: "resource-1",
       resourceUri: RESOURCE_URI,
       resourceState: "exists",
@@ -891,14 +926,6 @@ describe("Google Calendar push lifecycle", { timeout: 30_000 }, () => {
       resourceState: "exists",
       messageNumber: "2",
     });
-    const expiredToken = await postNotification(harness.baseUrl, {
-      channelId: request?.channelId ?? "",
-      channelToken: expiredSignedToken(request?.token ?? ""),
-      resourceId: "resource-1",
-      resourceUri: RESOURCE_URI,
-      resourceState: "exists",
-      messageNumber: "2",
-    });
     const wrongResource = await postNotification(harness.baseUrl, {
       channelId: request?.channelId ?? "",
       channelToken: request?.token ?? "",
@@ -919,10 +946,9 @@ describe("Google Calendar push lifecycle", { timeout: 30_000 }, () => {
 
     expect([
       staleToken.status,
-      expiredToken.status,
       wrongResource.status,
       wrongAccount.status,
-    ]).toEqual([404, 404, 404, 404]);
+    ]).toEqual([404, 404, 404]);
     expect(harness.google.eventPageRequests).toHaveLength(before);
     const rows = await watchRows(harness.pg);
     expect(rows).toEqual(beforeRows);
