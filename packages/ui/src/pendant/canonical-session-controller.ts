@@ -21,6 +21,7 @@ export class CanonicalPendantSessionController {
   private readonly ordinals = new Map<string, number>();
   private chain: Promise<void> = Promise.resolve();
   private generation = 0;
+  private acceptingSnapshots = false;
 
   constructor(
     private readonly options: CanonicalPendantSessionControllerOptions,
@@ -41,6 +42,7 @@ export class CanonicalPendantSessionController {
       );
       this.sessionId = snapshot.session.id;
       this.leaseToken = lease.leaseToken;
+      this.acceptingSnapshots = true;
       this.options.onSnapshot(snapshot);
       this.options.client.startPolling(snapshot.session.id);
     });
@@ -66,6 +68,7 @@ export class CanonicalPendantSessionController {
           leaseToken,
           segment: toWireSegment(detail, ordinal, "pending", 0),
         });
+        if (generation !== this.generation) return;
         this.options.onSnapshot(pending);
       }
       if (detail.status === "pending") return;
@@ -105,6 +108,7 @@ export class CanonicalPendantSessionController {
     for (const mutation of [...this.options.client.unsyncedQueue]) {
       this.options.client.discardUnsyncedMutation(mutation.id);
     }
+    this.acceptingSnapshots = false;
     const sessionId = this.sessionId;
     if (!sessionId) return;
     void this.options.client
@@ -115,6 +119,7 @@ export class CanonicalPendantSessionController {
   resume(): Promise<void> {
     return this.enqueue(async () => {
       if (!this.sessionId) return;
+      this.acceptingSnapshots = true;
       const snapshot = await this.options.client.resume(this.sessionId);
       this.options.onSnapshot(snapshot);
       this.options.client.startPolling(this.sessionId);
@@ -124,6 +129,15 @@ export class CanonicalPendantSessionController {
   stop(): void {
     this.generation += 1;
     this.options.client.stopPolling();
+    this.acceptingSnapshots = false;
+    this.sessionId = null;
+    this.leaseToken = null;
+    this.nextOrdinal = 0;
+    this.ordinals.clear();
+  }
+
+  acceptsSnapshot(snapshot: PendantSessionSnapshot): boolean {
+    return this.acceptingSnapshots && this.sessionId === snapshot.session.id;
   }
 
   private async ensureStarted(): Promise<void> {
@@ -137,6 +151,7 @@ export class CanonicalPendantSessionController {
     });
     this.sessionId = snapshot.session.id;
     this.leaseToken = lease.leaseToken;
+    this.acceptingSnapshots = true;
     this.options.onSnapshot(snapshot);
     this.options.client.startPolling(snapshot.session.id);
   }
