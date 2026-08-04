@@ -1838,7 +1838,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(screen.getByTestId("notification-row")).toBe(priorityRow);
   });
 
-  it("keeps card material fully opaque through a reversible upward drag", () => {
+  it("keeps the same card material through a reversible upward drag", () => {
     __ingestNotificationForTests(
       makeNotification({
         priority: "urgent",
@@ -1898,6 +1898,20 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     )?.[1];
     expect(activeDragRule).toContain("-webkit-mask-image: none");
     expect(activeDragRule).toContain("mask-image: none");
+    // A pull may animate compositor properties, but changing which element
+    // paints the fill produces a visible first-frame color/rim discontinuity.
+    const gestureMaterialRules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+      .filter(
+        (match) =>
+          match[1]?.includes("data-shade-dragging") ||
+          match[1]?.includes("data-shade-settling") ||
+          match[1]?.includes("data-notification-shade-cancelling"),
+      )
+      .map((match) => match[2] ?? "")
+      .join("\n");
+    expect(gestureMaterialRules).not.toMatch(
+      /background-(?:color|image)|backdrop-filter/,
+    );
 
     let filesOpacity = Number.parseFloat(filesGroup?.style.opacity ?? "1");
     let agentOpacity = Number.parseFloat(agentGroup?.style.opacity ?? "1");
