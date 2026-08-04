@@ -27,6 +27,7 @@ const ENV_KEYS = [
   "CEREBRAS_API_KEY",
   "OPENAI_API_KEY",
   "OLLAMA_BASE_URL",
+  "ZAI_API_KEY",
 ] as const;
 
 let savedEnv: Record<string, string | undefined>;
@@ -116,8 +117,8 @@ describe("collectPluginNames runtime mode provider policy", () => {
     expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
   });
 
-  it("keeps only Ollama when it owns direct text beside Cloud capabilities", () => {
-    process.env.OLLAMA_BASE_URL = "http://127.0.0.1:11434";
+  it("keeps only z.ai when it owns direct text beside Cloud capabilities", () => {
+    process.env.ZAI_API_KEY = "zai-test";
     process.env.OPENAI_API_KEY = "sk-test";
 
     const config: ElizaConfig = {
@@ -127,7 +128,7 @@ describe("collectPluginNames runtime mode provider policy", () => {
       },
       serviceRouting: {
         llmText: {
-          backend: "ollama",
+          backend: "zai",
           transport: "direct",
         },
         media: {
@@ -143,7 +144,7 @@ describe("collectPluginNames runtime mode provider policy", () => {
 
     const names = collectPluginNames(config);
 
-    expect(names.has("@elizaos/plugin-ollama")).toBe(true);
+    expect(names.has("@elizaos/plugin-zai")).toBe(true);
     expect(names.has("@elizaos/plugin-openai")).toBe(false);
     expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
     expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
@@ -213,9 +214,9 @@ describe("collectPluginNames runtime mode provider policy", () => {
     expect(names.has("@elizaos/plugin-ollama")).toBe(false);
   });
 
-  it("keeps only Ollama when it owns direct embeddings beside external direct text", () => {
+  it("keeps z.ai when it owns direct embeddings beside external direct text", () => {
     process.env.CEREBRAS_API_KEY = "csk-test";
-    process.env.OLLAMA_BASE_URL = "http://127.0.0.1:11434";
+    process.env.ZAI_API_KEY = "zai-test";
 
     const config: ElizaConfig = {
       deploymentTarget: {
@@ -232,7 +233,7 @@ describe("collectPluginNames runtime mode provider policy", () => {
           transport: "cloud-proxy",
         },
         embeddings: {
-          backend: "ollama",
+          backend: "zai",
           transport: "direct",
         },
       },
@@ -241,13 +242,13 @@ describe("collectPluginNames runtime mode provider policy", () => {
     const names = collectPluginNames(config);
 
     expect(names.has("@elizaos/plugin-openai")).toBe(true);
-    expect(names.has("@elizaos/plugin-ollama")).toBe(true);
+    expect(names.has("@elizaos/plugin-zai")).toBe(true);
     expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
     expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
   });
 
-  it("keeps Ollama embeddings when Cloud owns text", () => {
-    process.env.OLLAMA_BASE_URL = "http://127.0.0.1:11434";
+  it("keeps z.ai embeddings when Cloud owns text", () => {
+    process.env.ZAI_API_KEY = "zai-test";
 
     const config: ElizaConfig = {
       deploymentTarget: {
@@ -260,7 +261,7 @@ describe("collectPluginNames runtime mode provider policy", () => {
           transport: "cloud-proxy",
         },
         embeddings: {
-          backend: "ollama",
+          backend: "zai",
           transport: "direct",
         },
       },
@@ -268,7 +269,7 @@ describe("collectPluginNames runtime mode provider policy", () => {
 
     const names = collectPluginNames(config);
 
-    expect(names.has("@elizaos/plugin-ollama")).toBe(true);
+    expect(names.has("@elizaos/plugin-zai")).toBe(true);
     expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
     expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
   });
