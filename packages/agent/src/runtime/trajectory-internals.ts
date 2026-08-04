@@ -844,6 +844,15 @@ function isDuplicateColumnError(error: unknown): boolean {
   ]);
 }
 
+function isMissingCurrentTrajectoryColumnError(error: unknown): boolean {
+  return databaseErrorMatches(error, [
+    /column ["'`]?(?:metadata_json|metrics_json)["'`]?.*does not exist/i,
+    /no column named ["'`]?(?:metadata_json|metrics_json)["'`]?/i,
+    /has no column named ["'`]?(?:metadata_json|metrics_json)["'`]?/i,
+    /unknown column ["'`]?(?:metadata_json|metrics_json)["'`]?/i,
+  ]);
+}
+
 async function addColumnIfMissing(
   runtime: IAgentRuntime,
   table: string,
@@ -1921,7 +1930,7 @@ export async function saveTrajectory(
     trajectory.updatedAt || new Date(endTime ?? summary.endTime).toISOString();
   const serializedSteps = sqlQuote(JSON.stringify(trajectory.steps));
   const serializedMetadata = sqlQuote(JSON.stringify(trajectory.metadata));
-  const serializedCompatMetrics = sqlQuote(
+  const serializedMetrics = sqlQuote(
     JSON.stringify({
       episodeLength: trajectory.steps.length,
       finalStatus: trajectory.status,
@@ -1934,7 +1943,7 @@ export async function saveTrajectory(
     }),
   );
 
-  const sql = `INSERT INTO trajectories (
+  const legacySchemaSql = `INSERT INTO trajectories (
       id,
       agent_id,
       source,
@@ -2004,7 +2013,7 @@ export async function saveTrajectory(
       updated_at = EXCLUDED.updated_at,
       episode_length = EXCLUDED.episode_length`;
 
-  const compatSql = `INSERT INTO trajectories (
+  const currentSchemaSql = `INSERT INTO trajectories (
       id,
       agent_id,
       source,
@@ -2047,7 +2056,7 @@ export async function saveTrajectory(
       ${trajectory.batchId ? sqlQuote(trajectory.batchId) : "NULL"},
       ${serializedSteps},
       ${serializedMetadata},
-      ${serializedCompatMetrics},
+      ${serializedMetrics},
       ${sqlQuote(createdAt)},
       ${sqlQuote(updatedAt)}
     )
@@ -2076,18 +2085,30 @@ export async function saveTrajectory(
 
   let saved = false;
   try {
-    await executeRawSql(runtime, sql);
+    await executeRawSql(runtime, currentSchemaSql);
     saved = true;
-  } catch (err) {
+  } catch (currentSchemaError) {
+    // error-policy:J3 Only an explicit missing canonical column selects the
+    // legacy shape; connectivity, constraints, and malformed data fail closed.
+    if (!isMissingCurrentTrajectoryColumnError(currentSchemaError)) {
+      // error-policy:J2 Preserve the canonical write failure for its caller.
+      throw new ElizaError("Could not save trajectory", {
+        code: "TRAJECTORY_SAVE_FAILED",
+        cause: currentSchemaError,
+        context: { trajectoryId: trajectory.id },
+      });
+    }
+    // Agent-only deployments may still own the legacy table shape; use it only
+    // when the canonical service schema explicitly lacks its columns.
     try {
-      await executeRawSql(runtime, compatSql);
+      await executeRawSql(runtime, legacySchemaSql);
       saved = true;
-    } catch (compatErr) {
+    } catch (legacySchemaError) {
       // error-policy:J2 both supported SQL shapes failed; surface both causes
       // rather than returning a false value that downstream code may ignore.
       throw new ElizaError("Could not save trajectory", {
         code: "TRAJECTORY_SAVE_FAILED",
-        cause: new AggregateError([err, compatErr]),
+        cause: new AggregateError([currentSchemaError, legacySchemaError]),
         context: { trajectoryId: trajectory.id },
       });
     }
