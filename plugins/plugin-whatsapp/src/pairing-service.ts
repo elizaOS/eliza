@@ -65,13 +65,17 @@ export class WhatsAppPairingSession {
 
     const baileys = await import("@whiskeysockets/baileys");
     const makeWASocket = baileys.default;
-    const { useMultiFileAuthState, fetchLatestBaileysVersion, DisconnectReason } = baileys;
+    const {
+      useMultiFileAuthState: loadMultiFileAuthState,
+      fetchLatestBaileysVersion,
+      DisconnectReason,
+    } = baileys;
     const QRCode = (await import("qrcode")).default;
     const { Boom } = await import("@hapi/boom");
 
     fs.mkdirSync(this.options.authDir, { recursive: true });
 
-    const { state, saveCreds } = await useMultiFileAuthState(this.options.authDir);
+    const { state, saveCreds } = await loadMultiFileAuthState(this.options.authDir);
     const { version } = await fetchLatestBaileysVersion();
 
     const pino = (await import("pino")).default;
@@ -203,11 +207,11 @@ export async function whatsappLogout(workspaceDir: string, accountId = "default"
     try {
       const baileys = await import("@whiskeysockets/baileys");
       const makeWASocket = baileys.default;
-      const { useMultiFileAuthState, fetchLatestBaileysVersion } = baileys;
+      const { useMultiFileAuthState: loadMultiFileAuthState, fetchLatestBaileysVersion } = baileys;
       const pino = (await import("pino")).default;
       const logger = pino({ level: "silent" });
 
-      const { state } = await useMultiFileAuthState(authDir);
+      const { state } = await loadMultiFileAuthState(authDir);
       const { version } = await fetchLatestBaileysVersion();
 
       const sock = makeWASocket({
