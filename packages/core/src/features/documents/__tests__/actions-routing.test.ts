@@ -119,6 +119,26 @@ function options(parameters: Record<string, unknown>): HandlerOptions {
 }
 
 describe("documentAction.validate", () => {
+	it("offers an explicit no-filter scope for strict guided decoding", () => {
+		const scope = documentAction.parameters?.find(
+			(parameter) => parameter.name === "scope",
+		);
+
+		expect(scope?.schema).toMatchObject({
+			type: "string",
+			enum: [
+				"global",
+				"owner-private",
+				"user-private",
+				"agent-private",
+				"all-visible",
+			],
+		});
+		expect(scope?.description).toContain(
+			"use all-visible unless the user explicitly names",
+		);
+	});
+
 	it("is service-presence only — true when the service is registered", async () => {
 		const service = makeService();
 		const { runtime } = makeRuntime(service);
@@ -190,6 +210,23 @@ describe("documentAction.handler structured routing", () => {
 			expect(service[method]).toHaveBeenCalledTimes(1);
 		},
 	);
+
+	it("treats all-visible as no scope filter for list", async () => {
+		const service = makeService();
+		const { runtime } = makeRuntime(service);
+
+		await documentAction.handler?.(
+			runtime,
+			makeMessage("What documents are stored right now?"),
+			undefined,
+			options({ action: "list", scope: "all-visible" }),
+		);
+
+		expect(service.listDocumentsDetailed).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({ scope: undefined }),
+		);
+	});
 
 	it("keeps query-miss fallback documents separate from matched documents", async () => {
 		const service = makeService();

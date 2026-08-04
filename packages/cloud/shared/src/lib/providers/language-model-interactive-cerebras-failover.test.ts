@@ -13,8 +13,6 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 const ORIGINAL_FETCH = globalThis.fetch;
 
 delete process.env.BITROUTER_API_KEY;
-delete process.env.AI_GATEWAY_API_KEY;
-delete process.env.AIGATEWAY_API_KEY;
 delete process.env.ANTHROPIC_API_KEY;
 delete process.env.OPENAI_API_KEY;
 delete process.env.GROQ_API_KEY;

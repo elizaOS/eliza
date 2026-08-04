@@ -282,7 +282,6 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   OPENROUTER_API_KEY                 OpenRouter BYOK key (backup for non-native models)
 #   ANTHROPIC_API_KEY                  Claude
 #   OPENAI_API_KEY                     OpenAI direct
-#   AI_GATEWAY_API_KEY
 #   GROQ_API_KEY                       Groq
 #   CEREBRAS_API_KEY                   Cerebras — ultra-fast inference for provisioning chat agent
 #   FAL_KEY                            Fal.ai video gen

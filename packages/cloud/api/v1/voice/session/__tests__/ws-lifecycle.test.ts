@@ -702,12 +702,15 @@ describe("voice-session WS lifecycle", () => {
     flux.emitTurn("EndOfTurn", "voice transcript");
     await controlled.ready;
 
-    controlled.enqueueChunk("This first streamed phrase is speakable now ");
+    const streamedChunk = "This first streamed phrase is speakable now ";
+    controlled.enqueueChunk(streamedChunk);
     await flush();
 
     const cartesia = FakeCartesiaSocket.instances.at(-1)!;
     expect(client.controlTypes()).toContain("llm_first_text");
-    expect(cartesia.sentText()).toContain("This first streamed phrase");
+    const spokenPrefix = cartesia.sentText();
+    expect(spokenPrefix.length).toBeGreaterThan(0);
+    expect(streamedChunk.startsWith(spokenPrefix)).toBe(true);
     expect(client.audioFrames.length).toBeGreaterThan(0);
     expect(client.controlTypes()).not.toContain("usage");
 

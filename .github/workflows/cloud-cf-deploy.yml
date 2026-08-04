@@ -24,7 +24,7 @@ name: Cloud CF Deploy
 # Provider secrets are published when configured (the Worker calls native
 # providers directly and uses OpenRouter as the backup):
 #   OPENROUTER_API_KEY, CEREBRAS_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY,
-#   GROQ_API_KEY, AI_GATEWAY_API_KEY, FAL_KEY, ELEVENLABS_API_KEY,
+#   GROQ_API_KEY, FAL_KEY, ELEVENLABS_API_KEY,
 #   CARTESIA_API_KEY, CARTESIA_VOICE_ID, VAST_API_KEY, VAST_BASE_URL.
 # Media/voice secrets, likewise published when configured (#13406):
 #   FAL_API_KEY (the video provider registry reads FAL_KEY ?? FAL_API_KEY),
@@ -540,7 +540,6 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
           FAL_KEY: ${{ secrets.FAL_KEY }}
           # fal key under its alternate name: the video provider registry reads
           # FAL_KEY ?? FAL_API_KEY, and prod carries it as FAL_API_KEY (#13406).
@@ -741,7 +740,6 @@ jobs:
             ANTHROPIC_API_KEY \
             CEREBRAS_API_KEY \
             GROQ_API_KEY \
-            AI_GATEWAY_API_KEY \
             FAL_KEY \
             FAL_API_KEY \
             ELEVENLABS_API_KEY \

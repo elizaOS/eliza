@@ -22,8 +22,6 @@ let stateDir: string;
 let configPath: string;
 const savedEnv: Record<string, string | undefined> = {};
 const ENV_KEYS = [
-  "AIGATEWAY_API_KEY",
-  "AI_GATEWAY_API_KEY",
   "ELIZA_CONFIG_PATH",
   "ELIZA_STATE_DIR",
   "ELIZA_PERSIST_CONFIG_PATH",

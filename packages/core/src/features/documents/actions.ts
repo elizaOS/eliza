@@ -172,6 +172,7 @@ const DOCUMENT_SCOPES = new Set<DocumentVisibilityScope>([
 	"user-private",
 	"agent-private",
 ]);
+const DOCUMENT_SCOPE_OPTIONS = [...DOCUMENT_SCOPES, "all-visible"] as const;
 
 const DOCUMENT_PATH_PATTERN =
 	/(?:\/[\w .-]+)+|(?:[a-zA-Z]:[\\/][\w\s.-]+(?:[\\/][\w\s.-]+)*)/;
@@ -1142,11 +1143,11 @@ export const documentAction: Action = {
 		{
 			name: "scope",
 			description:
-				"Visibility scope for newly-created documents: global, owner-private, user-private, or agent-private.",
+				"Visibility scope. For list/search, use all-visible unless the user explicitly names global, owner-private, user-private, or agent-private; phrases such as 'my documents' mean all documents visible to the requester. For newly-created documents, select the requested visibility scope.",
 			required: false,
 			schema: {
 				type: "string",
-				enum: [...DOCUMENT_SCOPES],
+				enum: [...DOCUMENT_SCOPE_OPTIONS],
 			},
 		},
 		{

@@ -11,8 +11,6 @@ import providerPluginMap from "./provider-plugin-map.json" with {
 import type { RegistryEntry } from "./schema";
 
 const expectedProviderPluginMap = {
-  AIGATEWAY_API_KEY: "@elizaos/plugin-vercel-ai-gateway",
-  AI_GATEWAY_API_KEY: "@elizaos/plugin-vercel-ai-gateway",
   ANTHROPIC_API_KEY: "@elizaos/plugin-anthropic",
   CEREBRAS_API_KEY: "@elizaos/plugin-openai",
   ELIZAOS_CLOUD_API_KEY: "@elizaos/plugin-elizacloud",

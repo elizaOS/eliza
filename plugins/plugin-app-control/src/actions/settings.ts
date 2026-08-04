@@ -1818,18 +1818,45 @@ async function handleSet(
 	// with no key/chain routes to the neutral `provider` key, where
 	// buildWalletRpcSelections resolves the remaining options or refuses.
 	const requestedKeyName =
-		request.namespace ??
-		request.key ??
+		(request.sectionId === "app-permissions"
+			? (request.namespace ?? request.key)
+			: request.key) ??
 		(request.sectionId === "wallet-rpc"
 			? (request.chain?.toLowerCase() ?? "provider")
 			: null) ??
 		(request.sectionId === "permissions" && request.permission
 			? "request"
 			: Object.keys(cap.keys)[0]);
+	const voiceKeyName = (() => {
+		if (request.sectionId !== "voice" || !requestedKeyName) {
+			return requestedKeyName;
+		}
+		const normalizedKeyName = requestedKeyName
+			.trim()
+			.toLowerCase()
+			.replaceAll("_", "-")
+			.replace(/\s+/g, "-");
+		if (cap.keys[normalizedKeyName]) return normalizedKeyName;
+		if (normalizedKeyName.includes("continuous")) return "continuous-chat";
+		if (
+			normalizedKeyName.includes("silence") ||
+			normalizedKeyName.includes("end-of-turn")
+		) {
+			return "silence-ms";
+		}
+		if (
+			normalizedKeyName.includes("rms") ||
+			normalizedKeyName.includes("threshold") ||
+			normalizedKeyName.includes("sensitivity")
+		) {
+			return "rms";
+		}
+		return normalizedKeyName;
+	})();
 	const keyName =
 		request.sectionId === "app-permissions"
 			? (resolvePermissionNamespace(requestedKeyName) ?? requestedKeyName)
-			: requestedKeyName;
+			: voiceKeyName;
 	const writable = keyName ? cap.keys[keyName] : undefined;
 	if (!writable) {
 		const known = Object.keys(cap.keys).join(", ");

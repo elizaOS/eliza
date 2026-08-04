@@ -20,16 +20,20 @@ function usage() {
   return `Usage: bun packages/cloud/api/scripts/voice-warm-turn-measure.mjs --ws-url <wss://.../api/v1/voice/session/ws?sessionId=...> --token <voice-session-jwt> --pcm <speech.pcm> [--turns 20] [--warmup 1]\n\nNo credentials are read from disk. This harness does not mint sessions, fund accounts, or bypass billing; run only against an already-authorized staging session whose spend has been separately approved.`;
 }
 
-function parseArgs(argv) {
+export function parseArgs(argv, env = process.env) {
   const args = {
-    wsUrl: process.env.VOICE_STAGING_WS_URL ?? "",
-    token: process.env.VOICE_SESSION_TOKEN ?? "",
-    pcm: process.env.VOICE_PCM_FIXTURE ?? "",
-    turns: Number(process.env.VOICE_MEASURE_TURNS ?? DEFAULT_TURNS),
-    warmup: Number(process.env.VOICE_MEASURE_WARMUP ?? 1),
-    chunkBytes: Number(process.env.VOICE_MEASURE_CHUNK_BYTES ?? DEFAULT_CHUNK_BYTES),
-    chunkDelayMs: Number(process.env.VOICE_MEASURE_CHUNK_DELAY_MS ?? DEFAULT_CHUNK_DELAY_MS),
-    turnTimeoutMs: Number(process.env.VOICE_MEASURE_TIMEOUT_MS ?? DEFAULT_TURN_TIMEOUT_MS),
+    wsUrl: env.VOICE_STAGING_WS_URL ?? "",
+    token: env.VOICE_SESSION_TOKEN ?? "",
+    pcm: env.VOICE_PCM_FIXTURE ?? "",
+    turns: Number(env.VOICE_MEASURE_TURNS ?? DEFAULT_TURNS),
+    warmup: Number(env.VOICE_MEASURE_WARMUP ?? 1),
+    chunkBytes: Number(env.VOICE_MEASURE_CHUNK_BYTES ?? DEFAULT_CHUNK_BYTES),
+    chunkDelayMs: Number(
+      env.VOICE_MEASURE_CHUNK_DELAY_MS ?? DEFAULT_CHUNK_DELAY_MS,
+    ),
+    turnTimeoutMs: Number(
+      env.VOICE_MEASURE_TIMEOUT_MS ?? DEFAULT_TURN_TIMEOUT_MS,
+    ),
     json: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -83,6 +87,15 @@ function parseArgs(argv) {
   if (!args.wsUrl || !args.token || !args.pcm) {
     throw new Error("--ws-url, --token, and --pcm are required");
   }
+  let target;
+  try {
+    target = new URL(args.wsUrl);
+  } catch {
+    throw new Error("--ws-url must be a valid ws:// or wss:// URL");
+  }
+  if (target.protocol !== "ws:" && target.protocol !== "wss:") {
+    throw new Error("--ws-url must be a valid ws:// or wss:// URL");
+  }
   if (!Number.isInteger(args.turns) || args.turns < 20) {
     throw new Error("--turns must be an integer >= 20");
   }
@@ -95,6 +108,9 @@ function parseArgs(argv) {
   if (!Number.isInteger(args.chunkDelayMs) || args.chunkDelayMs < 0) {
     throw new Error("--chunk-delay-ms must be an integer >= 0");
   }
+  if (!Number.isInteger(args.turnTimeoutMs) || args.turnTimeoutMs <= 0) {
+    throw new Error("--turn-timeout-ms must be a positive integer");
+  }
   return args;
 }
 
@@ -104,10 +120,17 @@ function delay(ms) {
 
 function percentile(samples, fraction) {
   const sorted = [...samples].sort((left, right) => left - right);
-  return sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * fraction) - 1)] ?? 0;
+  return (
+    sorted[
+      Math.min(sorted.length - 1, Math.ceil(sorted.length * fraction) - 1)
+    ] ?? 0
+  );
 }
 
-function summarize(samples) {
+export function summarize(samples) {
+  if (samples.length === 0) {
+    throw new Error("cannot summarize an empty sample set");
+  }
   const round = (value) => Math.round(value * 10) / 10;
   return {
     count: samples.length,
@@ -146,18 +169,27 @@ function printHuman(result) {
 function connect(wsUrl) {
   const ws = new WebSocket(wsUrl);
   return new Promise((resolve, reject) => {
+    let settled = false;
+    const cleanup = () => {
+      clearTimeout(timeout);
+      ws.removeEventListener("open", onOpen);
+      ws.removeEventListener("error", onError);
+    };
+    const finish = (callback) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      callback();
+    };
     const timeout = setTimeout(() => {
       ws.close();
-      reject(new Error("WebSocket open timed out"));
+      finish(() => reject(new Error("WebSocket open timed out")));
     }, 10_000);
-    ws.addEventListener("open", () => {
-      clearTimeout(timeout);
-      resolve(ws);
-    });
-    ws.addEventListener("error", (error) => {
-      clearTimeout(timeout);
-      reject(error);
-    });
+    const onOpen = () => finish(() => resolve(ws));
+    const onError = () =>
+      finish(() => reject(new Error("WebSocket open failed")));
+    ws.addEventListener("open", onOpen);
+    ws.addEventListener("error", onError);
   });
 }
 
@@ -173,24 +205,58 @@ function messageText(data) {
   return typeof data === "string" ? data : Buffer.from(data).toString("utf8");
 }
 
+function controlFrame(data, context) {
+  try {
+    const frame = JSON.parse(messageText(data));
+    if (!frame || typeof frame !== "object" || typeof frame.t !== "string") {
+      throw new Error("missing control-frame type");
+    }
+    return frame;
+  } catch (error) {
+    throw new Error(`${context} received an invalid control frame`, {
+      cause: error,
+    });
+  }
+}
+
 function waitForReady(ws, token) {
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error("ready timed out")), 10_000);
+    const cleanup = () => {
+      clearTimeout(timeout);
+      ws.removeEventListener("message", onMessage);
+      ws.removeEventListener("error", onError);
+      ws.removeEventListener("close", onClose);
+    };
+    const fail = (error) => {
+      cleanup();
+      reject(error);
+    };
+    const timeout = setTimeout(
+      () => fail(new Error("ready timed out")),
+      10_000,
+    );
     const onMessage = (event) => {
       if (isBinaryMessage(event.data)) return;
-      const frame = JSON.parse(messageText(event.data));
+      let frame;
+      try {
+        frame = controlFrame(event.data, "ready handshake");
+      } catch (error) {
+        fail(error);
+        return;
+      }
       if (frame.t === "ready") {
-        clearTimeout(timeout);
-        ws.removeEventListener("message", onMessage);
+        cleanup();
         resolve(frame);
       }
       if (frame.t === "error") {
-        clearTimeout(timeout);
-        ws.removeEventListener("message", onMessage);
-        reject(new Error(`ready failed: ${frame.code}`));
+        fail(new Error(`ready failed: ${frame.code ?? "unknown"}`));
       }
     };
+    const onError = () => fail(new Error("WebSocket failed before ready"));
+    const onClose = () => fail(new Error("WebSocket closed before ready"));
     ws.addEventListener("message", onMessage);
+    ws.addEventListener("error", onError);
+    ws.addEventListener("close", onClose);
     ws.send(
       JSON.stringify({
         t: "hello",
@@ -223,7 +289,7 @@ async function sendPcmTurn(ws, pcm, args) {
   ws.send(JSON.stringify({ t: "end_audio" }));
 }
 
-function measureTurn(ws, turnIndex, counted, timeoutMs) {
+export function measureTurn(ws, turnIndex, counted, timeoutMs) {
   const state = {
     turnIndex,
     counted,
@@ -244,6 +310,12 @@ function measureTurn(ws, turnIndex, counted, timeoutMs) {
       const cleanup = () => {
         clearTimeout(timeout);
         ws.removeEventListener("message", onMessage);
+        ws.removeEventListener("error", onError);
+        ws.removeEventListener("close", onClose);
+      };
+      const fail = (error) => {
+        cleanup();
+        reject(error);
       };
       const onMessage = (event) => {
         const now = performance.now();
@@ -251,7 +323,13 @@ function measureTurn(ws, turnIndex, counted, timeoutMs) {
           if (state.sttFinalAt && !state.firstAudioAt) state.firstAudioAt = now;
           return;
         }
-        const frame = JSON.parse(messageText(event.data));
+        let frame;
+        try {
+          frame = controlFrame(event.data, `turn ${turnIndex}`);
+        } catch (error) {
+          fail(error);
+          return;
+        }
         if (frame.t === "stt_final" && !state.sttFinalAt) {
           state.sttFinalAt = now;
           state.traceId = frame.traceId ?? null;
@@ -264,8 +342,7 @@ function measureTurn(ws, turnIndex, counted, timeoutMs) {
           state.llmFirstTextAt = now;
         } else if (frame.t === "usage" && state.sttFinalAt) {
           if (!state.llmFirstTextAt || !state.firstAudioAt) {
-            cleanup();
-            reject(
+            fail(
               new Error(
                 `turn ${turnIndex} completed before llm_first_text and first audio`,
               ),
@@ -275,12 +352,18 @@ function measureTurn(ws, turnIndex, counted, timeoutMs) {
           state.usageAt = now;
           cleanup();
           resolve(state);
-        } else if (frame.t === "error" && state.sttFinalAt) {
-          cleanup();
-          reject(new Error(`turn ${turnIndex} failed: ${frame.code}`));
+        } else if (frame.t === "error") {
+          fail(
+            new Error(`turn ${turnIndex} failed: ${frame.code ?? "unknown"}`),
+          );
         }
       };
+      const onError = () => fail(new Error(`turn ${turnIndex} socket failed`));
+      const onClose = () =>
+        fail(new Error(`turn ${turnIndex} socket closed before usage`));
       ws.addEventListener("message", onMessage);
+      ws.addEventListener("error", onError);
+      ws.addEventListener("close", onClose);
     }),
   };
 }
@@ -292,7 +375,9 @@ function normalizeSample(sample) {
     traceId: sample.traceId,
     transcript: sample.text,
     sttFinalToLlmFirstTextMs: round(sample.llmFirstTextAt - sample.sttFinalAt),
-    llmFirstTextToFirstAudioMs: round(sample.firstAudioAt - sample.llmFirstTextAt),
+    llmFirstTextToFirstAudioMs: round(
+      sample.firstAudioAt - sample.llmFirstTextAt,
+    ),
     sttFinalToFirstAudioMs: round(sample.firstAudioAt - sample.sttFinalAt),
     sttFinalToUsageMs: round(sample.usageAt - sample.sttFinalAt),
   };
@@ -326,9 +411,15 @@ async function main() {
       readyTraceId: ready.traceId ?? null,
       note: "Correlate traceId/conversationId with Worker logs containing `[shared-runtime REST] stream pre-header timing` for bridge pre-header timings.",
       summary: {
-        sttFinalToLlmFirstText: summarize(samples.map((sample) => sample.sttFinalToLlmFirstTextMs)),
-        llmFirstTextToFirstAudio: summarize(samples.map((sample) => sample.llmFirstTextToFirstAudioMs)),
-        sttFinalToFirstAudio: summarize(samples.map((sample) => sample.sttFinalToFirstAudioMs)),
+        sttFinalToLlmFirstText: summarize(
+          samples.map((sample) => sample.sttFinalToLlmFirstTextMs),
+        ),
+        llmFirstTextToFirstAudio: summarize(
+          samples.map((sample) => sample.llmFirstTextToFirstAudioMs),
+        ),
+        sttFinalToFirstAudio: summarize(
+          samples.map((sample) => sample.sttFinalToFirstAudioMs),
+        ),
       },
       samples,
     };
@@ -342,7 +433,11 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n\n${usage()}\n`);
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((error) => {
+    process.stderr.write(
+      `${error instanceof Error ? error.message : String(error)}\n\n${usage()}\n`,
+    );
+    process.exit(1);
+  });
+}

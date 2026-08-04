@@ -31,7 +31,7 @@ export function getModelOptions(): {
   large: ModelOption[];
   mega: ModelOption[];
 } {
-  // All models available via Eliza Cloud (Vercel AI Gateway).
+  // All models available via Eliza Cloud.
   // IDs use "provider/model" format to match the cloud API routing.
   // Every tier exposes the full catalog so users can assign any model to any slot.
   const freeDefaultMatchesRecommended =
@@ -284,10 +284,6 @@ const PROVIDER_ENV_KEYS: Record<
     altEnvKeys: ["GOOGLE_API_KEY", "GEMINI_API_KEY"],
   },
   ollama: { envKey: "OLLAMA_BASE_URL" },
-  "vercel-ai-gateway": {
-    envKey: "AI_GATEWAY_API_KEY",
-    altEnvKeys: ["AIGATEWAY_API_KEY"],
-  },
 };
 
 // ── Per-provider cache read/write ────────────────────────────────────────
@@ -543,32 +539,6 @@ export async function fetchOpenRouterModels(
   return deduped;
 }
 
-/** Fetch Vercel AI Gateway models — no auth required, response has `type` field. */
-export async function fetchVercelGatewayModels(
-  baseUrl: string,
-): Promise<CachedModel[]> {
-  try {
-    const url = `${baseUrl.replace(/\/+$/, "")}/models`;
-    const res = await fetch(url);
-    if (!res.ok) return [];
-    const data = (await res.json()) as {
-      data?: Array<{ id: string; name?: string; type?: string }>;
-    };
-    return (data.data ?? [])
-      .map((m) => ({
-        id: m.id,
-        name: m.name ?? m.id,
-        category: m.type ? restTypeToCategory(m.type) : classifyModel(m.id),
-      }))
-      .sort((a, b) => a.id.localeCompare(b.id));
-  } catch (e: unknown) {
-    logger.warn(
-      `[model-catalog] Failed to fetch Vercel AI Gateway models: ${e instanceof Error ? e.message : e}`,
-    );
-    return [];
-  }
-}
-
 /** Fetch NEAR AI Cloud models from its catalog endpoint. */
 export async function fetchNearAIModels(
   apiKey: string,
@@ -693,10 +663,6 @@ export async function fetchProviderModels(
         apiKey,
         baseUrl ?? "https://api.moonshot.ai/v1",
       );
-    case "vercel-ai-gateway":
-      return fetchVercelGatewayModels(
-        baseUrl ?? "https://ai-gateway.vercel.sh/v1",
-      );
     default:
       return [];
   }
@@ -724,11 +690,7 @@ export async function getOrFetchProvider(
   }
 
   let baseUrl = cfg.baseUrl;
-  if (providerId === "vercel-ai-gateway") {
-    baseUrl =
-      process.env.AI_GATEWAY_BASE_URL?.trim() ||
-      "https://ai-gateway.vercel.sh/v1";
-  } else if (providerId === "nearai") {
+  if (providerId === "nearai") {
     baseUrl =
       process.env.NEARAI_BASE_URL?.trim() || "https://cloud-api.near.ai/v1";
   }
@@ -741,11 +703,7 @@ export async function getOrFetchProvider(
   if (providerId === "ollama" && isMobilePlatform()) return [];
 
   // Skip remote providers that need an API key when none is configured
-  const keylessProviders = new Set([
-    "ollama",
-    "openrouter",
-    "vercel-ai-gateway",
-  ]);
+  const keylessProviders = new Set(["ollama", "openrouter"]);
   if (!keyValue && !keylessProviders.has(providerId)) return [];
 
   const models = await fetchProviderModels(providerId, keyValue ?? "", baseUrl);

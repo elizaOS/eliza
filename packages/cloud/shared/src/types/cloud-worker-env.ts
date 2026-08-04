@@ -204,9 +204,6 @@ export interface Bindings {
    * bytes. Unset uses the route default.
    */
   HF_PROXY_MONTHLY_EGRESS_LIMIT_BYTES?: string;
-  AI_GATEWAY_API_KEY?: string;
-  AIGATEWAY_API_KEY?: string;
-  AI_GATEWAY_BASE_URL?: string;
   VERCEL_OIDC_TOKEN?: string;
   /**
    * Public hostname that serves the BLOB R2 bucket. Used to construct sample
