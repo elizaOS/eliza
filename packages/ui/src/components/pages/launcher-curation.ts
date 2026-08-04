@@ -233,6 +233,15 @@ function preferenceScore(entry: ViewEntry): number {
   return score;
 }
 
+function hasRuntimeBackedSimpleCalendar(entries: ViewEntry[]): boolean {
+  return entries.some(
+    (entry) =>
+      entry.id === "simple-calendar" &&
+      entry.state === "loaded" &&
+      entry.view?.available === true,
+  );
+}
+
 /**
  * Launcher tiles that require an Eliza Cloud account. Plugin-provided views
  * such as Notes and Calendar are governed by the live view catalogue instead:
@@ -282,6 +291,17 @@ export function curateLauncherPages(
   { isAosp, enabledKinds, cloudActive }: CurateLauncherOptions,
 ): ViewEntry[] {
   const byCanonical = new Map<string, ViewEntry>();
+  // Simple Views is the product Calendar surface when its live view-registry
+  // entry is available. Native clients intentionally strip remote bundle URLs
+  // and contribute the bundled component through the in-process app-shell
+  // registry, so `view.available` — not bundle transport — is authoritative.
+  const connectedCalendarIsPresent = entries.some(
+    (entry) =>
+      entry.id === "calendar" &&
+      entry.state === "loaded" &&
+      entry.view?.available !== false,
+  );
+  const simpleCalendarIsRuntimeBacked = hasRuntimeBackedSimpleCalendar(entries);
   // Each winner's score is frozen at insert time. Re-scoring the STORED entry
   // on later comparisons would hand an alias-winning tile the canonical-id
   // bonus it never earned (its id is rewritten to the canonical id below),
@@ -290,6 +310,14 @@ export function curateLauncherPages(
   // alias label ("Fin Tuning") could beat the real Fine-Tuning tile.
   const scoreByCanonical = new Map<string, number>();
   for (const entry of entries) {
+    if (entry.id === "calendar" && simpleCalendarIsRuntimeBacked) continue;
+    if (
+      entry.id === "simple-calendar" &&
+      connectedCalendarIsPresent &&
+      !simpleCalendarIsRuntimeBacked
+    ) {
+      continue;
+    }
     const canonicalId = canonicalLauncherId(entry.id);
     if (LAUNCHER_HIDDEN_IDS.has(canonicalId)) continue;
     if (isGroupedLauncherSubPage(canonicalId, entry)) continue;

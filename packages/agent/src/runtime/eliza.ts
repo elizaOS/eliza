@@ -158,9 +158,11 @@ import {
 import {
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
   formatError,
+  getFirstRunProviderOption,
   isElizaSettingsDebugEnabled,
   isMobilePlatform,
   migrateLegacyRuntimeConfig,
+  normalizeFirstRunProviderId,
   readAliasedEnv,
   resolveDeploymentTargetInConfig,
   resolveDesktopApiPort,
@@ -1094,7 +1096,13 @@ function trimEnvString(value: unknown): string | undefined {
 
 function trimCloudCredential(value: unknown): string | undefined {
   const trimmed = trimEnvString(value);
-  if (!trimmed || trimmed.toUpperCase() === "[REDACTED]") return undefined;
+  if (
+    !trimmed ||
+    trimmed.toUpperCase() === "[REDACTED]" ||
+    isVaultRef(trimmed)
+  ) {
+    return undefined;
+  }
   return trimmed;
 }
 
@@ -2026,6 +2034,52 @@ export async function resolveConnectorSecretsOverlayForBoot(
   return resolved;
 }
 
+/** @internal Exported for vault-backed cloud/provider boot coverage. */
+export async function resolveConfigEnvVaultRefsForBoot(
+  config: ElizaConfig,
+): Promise<void> {
+  if (isMobilePlatform() || readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1") {
+    return;
+  }
+  if (
+    !config.env ||
+    typeof config.env !== "object" ||
+    Array.isArray(config.env)
+  ) {
+    return;
+  }
+
+  const vault = importAppCoreRuntime().sharedVault();
+  const configEnv = config.env as Record<string, unknown>;
+  const { resolved, missing } = await resolveConfigEnvForProcess(
+    configEnv,
+    vault,
+  );
+  for (const [key, value] of Object.entries(resolved)) {
+    configEnv[key] = value;
+  }
+
+  const varsBag = configEnv.vars;
+  let varsMissing: string[] = [];
+  if (varsBag && typeof varsBag === "object" && !Array.isArray(varsBag)) {
+    const varsResult = await resolveConfigEnvForProcess(
+      varsBag as Record<string, unknown>,
+      vault,
+    );
+    varsMissing = varsResult.missing;
+    for (const [key, value] of Object.entries(varsResult.resolved)) {
+      (varsBag as Record<string, unknown>)[key] = value;
+    }
+  }
+
+  const unresolved = [...new Set([...missing, ...varsMissing])];
+  if (unresolved.length > 0) {
+    logger.warn(
+      `[vault-bootstrap] sentinel(s) without vault entry: ${unresolved.join(", ")}`,
+    );
+  }
+}
+
 /**
  * Auto-resolve Discord Application ID from the bot token via Discord API.
  * Called during async runtime init so that users only need a bot token.
@@ -2156,8 +2210,14 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
   const cloud = config.cloud;
 
   const isCloudContainer = isProvisionedCloudContainer();
-  if (!cloud && !isCloudContainer) return;
   const topology = resolveElizaCloudTopology(config as Record<string, unknown>);
+  const serviceRouting = resolveServiceRoutingInConfig(
+    config as Record<string, unknown>,
+  );
+  // Canonical per-capability routes can load Cloud without the deprecated
+  // config.cloud block. They still need the tri-state usage flags below so a
+  // direct text provider is not displaced by Cloud's higher-priority models.
+  if (!cloud && !isCloudContainer && !topology.shouldLoadPlugin) return;
 
   // Cloud inference is selected from the canonical first-run connection, not
   // just from raw cloud flags. This keeps linked cloud auth from re-enabling
@@ -2215,13 +2275,23 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
   // because plugin-elizacloud registers cloud embedding handlers when the flag
   // is unset.
   const hasByoEmbeddingProvider = hasExplicitEmbeddingProviderConfig(config);
+  const hasCanonicalRouting = Object.hasOwn(config, "serviceRouting");
+  const embeddingRoute = serviceRouting?.embeddings;
+  const hasExplicitCloudEmbeddingRoute = Boolean(
+    embeddingRoute?.transport === "cloud-proxy" &&
+      normalizeFirstRunProviderId(embeddingRoute.backend) === "elizacloud",
+  );
   const cloudEmbeddingsPolicy = readEffectiveEnvValue(
     config,
     "ELIZAOS_CLOUD_USE_EMBEDDINGS",
   )
     ?.trim()
     .toLowerCase();
-  if (isTruthyEnvFlag(cloudEmbeddingsPolicy)) {
+  if (embeddingRoute || hasCanonicalRouting) {
+    process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS = hasExplicitCloudEmbeddingRoute
+      ? "true"
+      : "false";
+  } else if (isTruthyEnvFlag(cloudEmbeddingsPolicy)) {
     // Match the truthy set the router (`readBooleanEnv`) and warmup policy
     // (`isTruthyEnv`) use for this same flag, so `=1`/`=yes`/`=true` all opt into
     // Cloud embeddings identically at the boot, router, and warmup call sites.
@@ -2246,8 +2316,16 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
   }
 
   if (shouldLoadCloudPlugin) {
+    const configuredCloudApiKey = trimCloudCredential(cloud?.apiKey);
+    const effectiveCloudApiKey =
+      configuredCloudApiKey ??
+      readEffectiveCloudCredential(config, "ELIZAOS_CLOUD_API_KEY");
+    const configuredCloudBaseUrl = trimEnvString(cloud?.baseUrl);
+    const effectiveCloudBaseUrl =
+      configuredCloudBaseUrl ??
+      readEffectiveEnvValue(config, "ELIZAOS_CLOUD_BASE_URL");
     logger.info(
-      `[eliza] Cloud config: inference=${topology.services.inference}, runtime=${topology.runtime}, hasApiKey=${Boolean(cloud?.apiKey || process.env.ELIZAOS_CLOUD_API_KEY)}, apiKey=${cloudApiKeyFingerprint(cloud?.apiKey ?? process.env.ELIZAOS_CLOUD_API_KEY)}, baseUrl=${cloud?.baseUrl ?? "(default)"}, isCloudContainer=${isCloudContainer}`,
+      `[eliza] Cloud config: inference=${topology.services.inference}, runtime=${topology.runtime}, hasApiKey=${Boolean(effectiveCloudApiKey)}, apiKey=${cloudApiKeyFingerprint(effectiveCloudApiKey)}, baseUrl=${effectiveCloudBaseUrl ?? "(default)"}, isCloudContainer=${isCloudContainer}`,
     );
     // Only propagate the API key from config when it is a real credential —
     // never set the literal "[REDACTED]" placeholder (which can leak into the
@@ -2260,9 +2338,7 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
     // (the plugin skips chat-brain registration), so deleting the key — and
     // losing image/media/TTS with it — is no longer necessary (#10819). Only a
     // leaked placeholder is still scrubbed.
-    const isRealApiKey =
-      cloud?.apiKey && cloud.apiKey.trim().toUpperCase() !== "[REDACTED]";
-    if (isRealApiKey) {
+    if (configuredCloudApiKey) {
       // #11038: a stale/placeholder vault entry resolved into config here
       // silently CLOBBERS a valid key already in the service env, and the
       // resulting 401s are indistinguishable from a server-side auth outage
@@ -2270,22 +2346,24 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
       // key still wins (by design), but a mismatch against a non-empty env
       // value is loudly fingerprinted so the operator can see which credential
       // is actually on the wire.
-      const configKey = (cloud?.apiKey ?? "").trim();
+      const configKey = configuredCloudApiKey;
       const envKey = process.env.ELIZAOS_CLOUD_API_KEY?.trim();
       if (envKey && configKey && envKey !== configKey) {
         logger.warn(
           `[eliza] Cloud API key from config (${cloudApiKeyFingerprint(configKey)}) differs from process.env.ELIZAOS_CLOUD_API_KEY (${cloudApiKeyFingerprint(envKey)}) — the config/vault value wins and will OVERRIDE the env key. If cloud calls start returning 401 "Invalid or expired API key", the vault likely holds a stale/placeholder entry (#11038).`,
         );
       }
-      process.env.ELIZAOS_CLOUD_API_KEY = cloud.apiKey;
+    }
+    if (effectiveCloudApiKey) {
+      process.env.ELIZAOS_CLOUD_API_KEY = effectiveCloudApiKey;
     } else if (
       !isCloudContainer &&
       process.env.ELIZAOS_CLOUD_API_KEY?.trim().toUpperCase() === "[REDACTED]"
     ) {
       delete process.env.ELIZAOS_CLOUD_API_KEY;
     }
-    if (cloud?.baseUrl) {
-      process.env.ELIZAOS_CLOUD_BASE_URL = cloud.baseUrl;
+    if (effectiveCloudBaseUrl) {
+      process.env.ELIZAOS_CLOUD_BASE_URL = effectiveCloudBaseUrl;
     } else if (!isCloudContainer) {
       delete process.env.ELIZAOS_CLOUD_BASE_URL;
     }
@@ -3507,6 +3585,29 @@ export function buildRuntimeSettings(
   });
 }
 
+/** @internal Exported for routing regression coverage. */
+export function resolveRuntimeProviderName(
+  resolvedPlugins: readonly RuntimeResolvedPlugin[],
+  pluginPackageName: string | undefined,
+): string | undefined {
+  if (!pluginPackageName) return undefined;
+  const name = resolvedPlugins
+    .find((entry) => entry.name === pluginPackageName)
+    ?.plugin.name?.trim();
+  return name || undefined;
+}
+
+/** @internal Exported for routing regression coverage. */
+export function resolveEmbeddingProviderPluginName(
+  config: ElizaConfig,
+): string | undefined {
+  const route = resolveServiceRoutingInConfig(
+    config as Record<string, unknown>,
+  )?.embeddings;
+  const backend = normalizeFirstRunProviderId(route?.backend);
+  return backend ? getFirstRunProviderOption(backend)?.pluginName : undefined;
+}
+
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
@@ -3942,36 +4043,14 @@ export async function startEliza(
       process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY =
         await resolveOptimizedPromptIntegrityKey(vault);
     }
-
-    const { resolved, missing } = await resolveConfigEnvForProcess(
-      config.env as Record<string, unknown> | undefined,
-      vault,
-    );
-    if (missing.length > 0) {
-      logger.warn(
-        `[vault-bootstrap] sentinel(s) without vault entry: ${missing.join(", ")}`,
-      );
-    }
-    if (
-      config.env &&
-      typeof config.env === "object" &&
-      !Array.isArray(config.env)
-    ) {
-      for (const [key, value] of Object.entries(resolved)) {
-        (config.env as Record<string, unknown>)[key] = value;
-      }
-    }
-    const varsBag = (config.env as Record<string, unknown> | undefined)?.vars;
-    if (varsBag && typeof varsBag === "object" && !Array.isArray(varsBag)) {
-      const varsResult = await resolveConfigEnvForProcess(
-        varsBag as Record<string, unknown>,
-        vault,
-      );
-      for (const [key, value] of Object.entries(varsResult.resolved)) {
-        (varsBag as Record<string, unknown>)[key] = value;
-      }
-    }
+    await resolveConfigEnvVaultRefsForBoot(config);
   }
+
+  // Cloud config is applied once before vault access so plain credentials can
+  // start prefetches, then again after sentinel resolution so a vault-backed
+  // key replaces the reference before plugin discovery. The credential filter
+  // rejects unresolved refs on the first pass.
+  applyCloudConfigToEnv(config);
 
   // 2f. Propagate arbitrary env vars from config.env into process.env.
   // Eliza stores user-defined env vars (plugin settings, API URLs, etc.)
@@ -4432,6 +4511,14 @@ export async function startEliza(
   const otherPlugins = resolvedPlugins.filter(
     (p) => !PREREGISTER_PLUGINS.has(p.name),
   );
+  const preferredTextRuntimeProviderName = resolveRuntimeProviderName(
+    resolvedPlugins,
+    preferredProviderPluginName,
+  );
+  const preferredEmbeddingRuntimeProviderName = resolveRuntimeProviderName(
+    resolvedPlugins,
+    resolveEmbeddingProviderPluginName(config),
+  );
 
   // Resolve the runtime log level from config (AgentRuntime doesn't support
   // "silent", so we map it to "fatal" as the quietest supported level).
@@ -4536,12 +4623,6 @@ export async function startEliza(
   }
   // ── End sandbox setup ───────────────────────────────────────────────────
 
-  // ── Boost preferred provider plugin priority ──────────────────────────
-  // elizaOS selects the model handler with the highest `priority` for each
-  // ModelType.  All provider plugins default to priority 0, so whichever
-  // registers first wins — essentially random when using Promise.all.
-  // When the user has explicitly selected a provider or model, prefer that
-  // provider's plugin so its handlers are selected over registration order.
   const pluginsForRuntime = otherPlugins.map((p) => p.plugin);
   const visionModeSetting = resolveVisionModeSetting(config);
   if (preferredProviderPluginName) {
@@ -4623,6 +4704,8 @@ export async function startEliza(
       : {}),
     settings: buildRuntimeSettings(config, {
       preferredProviderId,
+      brainProviderName: preferredTextRuntimeProviderName,
+      embeddingProviderName: preferredEmbeddingRuntimeProviderName,
       visionModeSetting,
       managedSkillsDir,
       bundledSkillsDir,
@@ -5327,7 +5410,6 @@ export async function startEliza(
         }
       }
     }
-
     deduplicatePluginActions([
       basicCapabilitiesPlugin,
       ...subAgentCredentialPlugins,

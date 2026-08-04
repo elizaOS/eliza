@@ -3651,6 +3651,39 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("keeps an applied effect claim buffered until the planner has a receipt", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "The note still needs to be created.",
+				contexts: ["simple"],
+				replyText: "Created note “brush my teeth”.",
+				extra: { requiresTool: true, replyEffectStatus: "applied" },
+			}),
+			JSON.stringify({
+				thought: "The requested capability was unavailable.",
+				toolCalls: [],
+				messageToUser: "I couldn't create that note.",
+			}),
+		]);
+		const earlyReply = vi.fn(async () => undefined);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "Create a note to brush my teeth." }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			onResponseHandlerEarlyReply: earlyReply,
+		});
+
+		expect(earlyReply).not.toHaveBeenCalled();
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"I couldn't create that note.",
+			);
+		}
+	});
+
 	it("does not let a rejected early completion claim hide the later receipt-grounded confirmation", async () => {
 		const canonicalText = "Done — the pickup reminder is scheduled.";
 		const observedAt = "2026-07-27T18:00:00.000Z";
@@ -4354,6 +4387,91 @@ describe("runV5MessageRuntimeStage1", () => {
 				"Checked through the planner.",
 			);
 		}
+	});
+
+	it("does not re-add generic inferred actions after an evaluator clears the candidate route", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "The generic router guessed shell.",
+				contexts: ["general"],
+				candidateActionNames: ["SHELL"],
+				extra: { requiresTool: true },
+			}),
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "call-exclusive",
+						name: "CHECK_RUNTIME",
+						arguments: {},
+					},
+				],
+			},
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "The exclusive route completed.",
+				messageToUser: "Checked through the exclusive route.",
+			}),
+		]);
+		const checkHandler = vi.fn(async () => ({
+			success: true,
+			text: "checked",
+		}));
+		runtime.actions = [
+			{
+				name: "CHECK_RUNTIME",
+				description: "Check the runtime through the authoritative route.",
+				contexts: ["general"],
+				validate: vi.fn(async () => true),
+				handler: checkHandler,
+			},
+			{
+				name: "SHELL",
+				description: "Run a local shell command.",
+				similes: ["RUN_SHELL", "EXECUTE_COMMAND"],
+				contexts: ["general"],
+				validate: vi.fn(async () => true),
+				handler: vi.fn(),
+			},
+		] as IAgentRuntime["actions"];
+		runtime.responseHandlerEvaluators = [
+			{
+				name: "test.exclusive_route",
+				priority: 5,
+				shouldRun: () => true,
+				evaluate: () => ({
+					requiresTool: true,
+					clearCandidateActions: true,
+					addCandidateActions: ["CHECK_RUNTIME"],
+					clearParentActionHints: true,
+					addParentActionHints: ["CHECK_RUNTIME"],
+					clearReply: true,
+				}),
+			} satisfies ResponseHandlerEvaluator,
+		];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "run ls" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		const plannerParams = useModelCalls(runtime)[1]?.[1] as {
+			tools?: Array<{ name?: string }>;
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		const toolNames = plannerParams.tools?.map((tool) => tool.name) ?? [];
+		expect(toolNames).toContain("CHECK_RUNTIME");
+		expect(toolNames).not.toContain("SHELL");
+		expect(
+			plannerParams.messages
+				?.map((entry) => String(entry.content ?? ""))
+				.join("\n"),
+		).toContain('"candidateActions":["CHECK_RUNTIME"]');
+		expect(checkHandler).toHaveBeenCalledTimes(1);
 	});
 
 	it("dispatches response-handler field preemption before planner routing", async () => {

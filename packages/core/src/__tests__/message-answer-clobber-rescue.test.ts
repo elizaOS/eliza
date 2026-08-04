@@ -20,7 +20,7 @@ import {
 import type { Action, HandlerCallback } from "../types/components";
 import type { Memory } from "../types/memory";
 import { ModelType } from "../types/model";
-import type { UUID } from "../types/primitives";
+import type { Content, Media, UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
 
@@ -244,6 +244,115 @@ describe("answer-clobber rescue", () => {
 		// substantive answer is the final delivered text.
 		expect(earlyReplies).toContain(PROGRESS_ACK);
 		expect(finalText).toBe(SUBSTANTIVE_ANSWER);
+	});
+
+	it("never rescues a pre-tool success claim marked as already applied", async () => {
+		const ungroundedClaim = "Created a note titled ‘Eat Lunch’.";
+		const runtime = makeRuntime({
+			responses: [
+				{
+					expectModelType: String(ModelType.RESPONSE_HANDLER),
+					body: stage1Response({
+						contexts: ["simple"],
+						replyText: ungroundedClaim,
+						extra: { replyEffectStatus: "applied" },
+					}),
+				},
+				ANSWERLESS_PLANNER,
+				ANSWERLESS_FINISH,
+			],
+			evaluators: [clobberEvaluator("test-clobber", PROGRESS_ACK)],
+		});
+
+		const { finalText, earlyReplies } = await runTurn({ runtime });
+
+		expect(earlyReplies).toEqual([]);
+		expect(finalText ?? "").not.toBe(ungroundedClaim);
+	});
+
+	it("keeps callbacks from more-work-pending actions out of the transcript", async () => {
+		const delivered: Content[] = [];
+		const callback: HandlerCallback = async (content) => {
+			delivered.push(content);
+			return [];
+		};
+		const attachment: Media = {
+			id: "intermediate-image",
+			url: "https://example.test/intermediate.png",
+			title: "Intermediate image",
+		};
+		const intermediateAction: Action = {
+			name: "INTERMEDIATE_LOOKUP",
+			description: "performs the first step of a multi-step request",
+			similes: [],
+			examples: [],
+			parameters: [],
+			validate: async () => true,
+			handler: async (_rt, _msg, _state, _opts, cb) => {
+				await cb?.({
+					text: "Intermediate implementation detail.",
+					attachments: [attachment],
+				});
+				return { success: true, text: "First step complete." };
+			},
+		} as unknown as Action;
+		const finalReply = "The complete request is finished.";
+		const runtime = makeRuntime({
+			responses: [
+				{
+					expectModelType: String(ModelType.RESPONSE_HANDLER),
+					body: stage1Response({
+						contexts: ["general"],
+						replyText: PROGRESS_ACK,
+						extra: { candidateActionNames: ["INTERMEDIATE_LOOKUP"] },
+					}),
+				},
+				{
+					expectModelType: String(ModelType.ACTION_PLANNER),
+					body: {
+						text: "",
+						toolCalls: [
+							{
+								id: "intermediate-1",
+								name: "INTERMEDIATE_LOOKUP",
+								arguments: { eliza_turn_scope: "more_work_pending" },
+							},
+						],
+					},
+				},
+				{
+					expectModelType: String(ModelType.RESPONSE_HANDLER),
+					body: JSON.stringify({
+						success: true,
+						decision: "CONTINUE",
+						thought: "One more step remains.",
+					}),
+				},
+				{
+					expectModelType: String(ModelType.ACTION_PLANNER),
+					body: {
+						text: "",
+						toolCalls: [
+							{
+								id: "reply-1",
+								name: "REPLY",
+								arguments: { text: finalReply },
+							},
+						],
+					},
+				},
+			],
+			evaluators: [],
+			actions: [intermediateAction],
+		});
+
+		const { finalText } = await runTurn({ runtime, callback });
+
+		expect(delivered.map((content) => content.text)).not.toContain(
+			"Intermediate implementation detail.",
+		);
+		expect(delivered).toContainEqual({ attachments: [attachment] });
+		expect(finalText).toBe(finalReply);
 	});
 
 	it("survives multiple promotions: the pre-patch answer is preserved across stacked evaluator patches", async () => {

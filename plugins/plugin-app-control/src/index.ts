@@ -184,8 +184,8 @@ export const appControlPlugin: Plugin = {
 		VerificationRoomBridgeService,
 	],
 	async init(_config, runtime) {
-		// Inject the `current_view` acknowledgement provider into the curated
-		// Stage-1 response state ONLY on switch turns (gating in
+		// Inject the `current_view` state provider into the curated Stage-1
+		// response state only on explicit switch turns (gating in
 		// applyCurrentViewComposeHook), so non-switch turns pay no prompt/token
 		// cost. The planner state already composes `current_view` by default.
 		runtime.registerPipelineHook({

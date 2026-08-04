@@ -74,17 +74,33 @@ const packageManifest: RootPackageManifest = JSON.parse(
   fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"),
 );
 
-function resolveInstalledPackageRoot(packageName: string): string {
-  const requireFromRoot = createRequire(path.join(repoRoot, "package.json"));
-  return path.dirname(requireFromRoot.resolve(`${packageName}/package.json`));
+function resolveInstalledPackageRoot(
+  packageName: string,
+  workspacePackageRoot = repoRoot,
+): string {
+  const requireFromWorkspace = createRequire(
+    path.join(workspacePackageRoot, "package.json"),
+  );
+  return path.dirname(
+    requireFromWorkspace.resolve(`${packageName}/package.json`),
+  );
 }
 
-const workspaceReactDir = resolveInstalledPackageRoot("react");
-const workspaceReactDomDir = resolveInstalledPackageRoot("react-dom");
+// Bun isolates workspace-only development dependencies on clean installs.
+// Resolve each singleton from the package that declares it rather than relying
+// on an incidental root hoist that disappears when the lockfile is rebuilt.
+const uiPackageRoot = path.join(elizaWorkspaceRoot, "packages", "ui");
+const corePackageRoot = path.join(elizaWorkspaceRoot, "packages", "core");
+const workspaceReactDir = resolveInstalledPackageRoot("react", uiPackageRoot);
+const workspaceReactDomDir = resolveInstalledPackageRoot(
+  "react-dom",
+  uiPackageRoot,
+);
 const workspaceReactTestRendererDir = resolveInstalledPackageRoot(
   "react-test-renderer",
+  corePackageRoot,
 );
-const workspaceAdzeDir = resolveInstalledPackageRoot("adze");
+const workspaceAdzeDir = resolveInstalledPackageRoot("adze", corePackageRoot);
 const workspaceReactEntry = path.join(workspaceReactDir, "index.js");
 const workspaceReactJsxRuntimeEntry = path.join(
   workspaceReactDir,
