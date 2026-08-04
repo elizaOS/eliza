@@ -89,6 +89,8 @@ dependencies = [
 ]
 
 [tool.uv]
+# borb's published wheels contain conflicting duplicate paths; its source archive is valid.
+no-binary-package = ["borb"]
 override-dependencies = [
     "pyjwt>=2.10.1",
 ]
