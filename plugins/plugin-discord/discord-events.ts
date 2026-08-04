@@ -665,6 +665,23 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 			return;
 		}
 
+		// Commands, modals, and components can enter the same privileged runtime
+		// paths as messages. Do not let them race canonical owner hydration either.
+		try {
+			await waitForDiscordIngressReadiness(service.clientReadyPromise);
+		} catch (error) {
+			service.runtime.reportError(
+				"discord:gateway-interaction-before-ready",
+				error,
+				{
+					accountId,
+					interactionId: interaction.id,
+					interactionType: interaction.type,
+				},
+			);
+			return;
+		}
+
 		const isSlashCommand = interaction.isCommand();
 		const isModalSubmit = interaction.isModalSubmit();
 		const isComponent = interaction.isMessageComponent();
