@@ -186,6 +186,7 @@ import {
 	sanitizeUserVisibleModelOutput,
 	type UserVisibleModelOutput,
 } from "../runtime/user-visible-model-output";
+import { guardOutboundEnvelopeText } from "../security/outbound-envelope-guard";
 import {
 	attestDeliveryAudienceFromCanonicalRoom,
 	ownerExclusiveDisclosureWasUsed,
@@ -9336,7 +9337,9 @@ export async function enforceTrustedDeliveryAudienceOnResult(
 }
 
 export function wrapSingleTurnVisibleCallback(
-	runtime: Pick<IAgentRuntime, "agentId" | "logger"> &
+	// reportError is required: the fail-closed envelope guard inside `deliver`
+	// must be able to surface a blocked leak even from partial test runtimes.
+	runtime: Pick<IAgentRuntime, "agentId" | "logger" | "reportError"> &
 		Partial<Pick<IAgentRuntime, "character" | "useModel">> & {
 			getService?: IAgentRuntime["getService"];
 		},
@@ -9363,15 +9366,21 @@ export function wrapSingleTurnVisibleCallback(
 		// Shared post-model, pre-channel sanitization (#15888): every visible
 		// delivery — action callbacks, early replies, simple replies, terminal
 		// content — funnels through this wrap, so stripping leaked machine
-		// syntax here covers every connector without per-connector copies.
+		// syntax here covers every connector without per-connector copies. The
+		// envelope guard then fail-closed blocks any security-envelope echo the
+		// model produced, replacing it with the honest leak notice.
 		if (typeof response?.text === "string" && response.text.length > 0) {
-			const sanitized = sanitizeOutboundText(response.text);
-			if (sanitized !== response.text) {
+			const guarded = guardOutboundEnvelopeText(
+				fullRuntime,
+				sanitizeOutboundText(response.text),
+				"visible-callback",
+			);
+			if (guarded !== response.text) {
 				// Record the raw form too: planner-echo suppression compares the
 				// planner's unsanitized finalMessage against this set, and must
 				// still recognize a delivery whose wire text was sanitized.
 				rawUnsanitizedText = response.text.trim() ? response.text : undefined;
-				response = { ...response, text: sanitized };
+				response = { ...response, text: guarded };
 			}
 		}
 		response = enforceEffectGroundedVisibleContent(

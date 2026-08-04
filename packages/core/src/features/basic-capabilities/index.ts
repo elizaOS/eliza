@@ -25,7 +25,7 @@ import {
 	recordOwnerGrant,
 } from "../../roles.ts";
 import { TURN_CONTROL_ROUTES } from "../../runtime/turn-routes";
-import { containsExternalEnvelopeMarkers } from "../../security/external-content.ts";
+import { containsExternalEnvelopeMaterial } from "../../security/external-content.ts";
 import { SensitiveRequestDispatchRegistryService } from "../../sensitive-requests/dispatch-registry.ts";
 import {
 	bridgeActionCompletedToStreams,
@@ -1027,15 +1027,16 @@ const events: PluginEvents = {
 				},
 				"Message sent",
 			);
-			// Tripwire, not a scrubber: the external-content security envelope
-			// must never reach a user, but silently rewriting outbound text
-			// would hide the bug that put it there. Detection only — the
-			// message ships as-is and the leak surfaces via reportError.
+			// Secondary observability behind the fail-closed pre-send guard
+			// (security/outbound-envelope-guard): every core delivery seam
+			// blocks envelope material before it ships, so a hit here means a
+			// delivery path bypassed those seams entirely — report it, the
+			// message already left.
 			const sentText =
 				typeof payload.message.content.text === "string"
 					? payload.message.content.text
 					: "";
-			if (sentText && containsExternalEnvelopeMarkers(sentText)) {
+			if (sentText && containsExternalEnvelopeMaterial(sentText)) {
 				payload.runtime.reportError(
 					"outbound-envelope-tripwire",
 					new Error(
