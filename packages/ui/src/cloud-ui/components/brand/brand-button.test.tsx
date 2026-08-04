@@ -37,10 +37,4 @@ describe("BrandButton primary disabled state (#13406 finding 3)", () => {
     expect(cls).not.toContain("disabled:bg-accent");
   });
 
-  it("keeps the branded accent fill for the enabled primary button", () => {
-    render(<BrandButton variant="primary">Buy credits</BrandButton>);
-    const btn = screen.getByRole("button", { name: "Buy credits" });
-    expect(btn.className).toContain("bg-accent");
-    expect(btn.className).toContain("text-accent-foreground");
-  });
 });

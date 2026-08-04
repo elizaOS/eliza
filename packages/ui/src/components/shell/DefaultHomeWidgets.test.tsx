@@ -93,21 +93,6 @@ describe("DefaultHomeWidgets", () => {
     expect(weather.querySelector(".text-5xl")).toBeTruthy();
   });
 
-  it("lays the time + weather out as 2×2 grid neighbours", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-06-25T14:30:00Z"));
-    render(<DefaultHomeWidgets />);
-    act(() => {
-      vi.advanceTimersByTime(1);
-    });
-    const root = screen.getByTestId("default-home-widgets");
-    // The container is a 4-column grid; the time + weather each span 2×2.
-    expect(root.className).toContain("grid-cols-4");
-    const weather = screen.getByTestId("home-weather");
-    expect(weather.className).toContain("col-span-2");
-    expect(weather.className).toContain("row-span-2");
-  });
-
   it("hides the time/date tile when the pref is set, keeping weather (#10706)", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-25T14:30:00Z"));

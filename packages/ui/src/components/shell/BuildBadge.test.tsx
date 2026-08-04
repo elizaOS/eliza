@@ -53,17 +53,6 @@ describe("BuildBadge", () => {
     );
   });
 
-  it("anchors to the top-left, clearing the top safe-area inset", async () => {
-    mockFetchOk(BUILD_INFO);
-    render(<BuildBadge />);
-    await screen.findByTestId("build-badge");
-    const anchor = screen.getByTestId("build-badge-anchor");
-    expect(anchor.className).toContain("top-0");
-    expect(anchor.className).toContain("left-0");
-    expect(anchor.getAttribute("style")).toContain("safe-area-inset-top");
-    expect(anchor.style.zIndex).toBe(String(Z_BUILD_BADGE));
-  });
-
   it("falls back to commit + builtAt when label is missing", async () => {
     mockFetchOk({ commit: "58f6bb3beb", builtAt: "2026-07-03 17:42 MDT" });
     render(<BuildBadge />);

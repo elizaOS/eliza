@@ -235,6 +235,10 @@ const bufferBase64JsEntry = resolveBunStorePackageEntry(
 const bufferIeee754Entry = resolveBunStorePackageEntry("ieee754", "index.js");
 const BUFFER_ESM_SHIM_ID = "virtual:eliza-buffer-esm-shim";
 const BUFFER_ESM_SHIM_RESOLVED = `\0${BUFFER_ESM_SHIM_ID}`;
+const SOLANA_WALLET_CSS_RESOLVED = path.resolve(
+  here,
+  "src/shims/solana-wallet-adapter-react-ui.css",
+);
 
 function resolveBunStorePackageEntry(
   packageName: string,
@@ -324,6 +328,7 @@ export default bufferModule;
     },
   };
 }
+
 // Other Capacitor packages imported by eliza/packages/app-core sources.
 // Resolved here (packages/app scope) so Rollup can find them when bundling
 // files from within the eliza submodule tree where bun may not hoist them.
@@ -395,10 +400,6 @@ const json5EsmEntry = path.join(
 const markedEntry = path.join(
   elizaRoot,
   "plugins/plugin-task-coordinator/node_modules/marked/lib/marked.esm.js",
-);
-const streamdownEntry = path.join(
-  uiPkgRoot,
-  "node_modules/streamdown/dist/index.js",
 );
 const rechartsEntry = path.join(
   uiPkgRoot,
@@ -657,6 +658,13 @@ function stringifyBuildLogMessage(message: unknown): string {
 
 function isKnownToleratedBuildWarning(message: unknown): boolean {
   const text = stringifyBuildLogMessage(message);
+  if (
+    text.includes("Sourcemap for") &&
+    text.includes("@stwd+") &&
+    text.includes("points to missing source files")
+  ) {
+    return true;
+  }
   if (
     text.includes("IMPORT_IS_UNDEFINED") &&
     text.includes("Import `tslFn`") &&
@@ -2290,14 +2298,10 @@ export const INVALID_TRACER_PROVIDER = {};
       // Bare Node built-in polyfills for browser — pathe provides ESM path,
       // events is pre-bundled via optimizeDeps.
       { find: /^path$/, replacement: patheEntry },
-      // Map `buffer`/`node:buffer` to the real feross buffer (the stub plugin
-      // now bypasses them) so the crypto graph gets a callable Buffer.
-      ...(bufferEntry
-        ? [
-            { find: /^buffer$/, replacement: BUFFER_ESM_SHIM_ID },
-            { find: /^node:buffer$/, replacement: BUFFER_ESM_SHIM_ID },
-          ]
-        : []),
+      {
+        find: /^@solana\/wallet-adapter-react-ui\/styles\.css$/,
+        replacement: SOLANA_WALLET_CSS_RESOLVED,
+      },
       {
         find: /^fast-redact$/,
         replacement: path.resolve(here, "src/shims/fast-redact.ts"),
@@ -2393,9 +2397,6 @@ export const INVALID_TRACER_PROVIDER = {};
         : []),
       ...(dateFnsJalaliEntry
         ? [{ find: /^date-fns-jalali$/, replacement: dateFnsJalaliEntry }]
-        : []),
-      ...(fs.existsSync(streamdownEntry)
-        ? [{ find: /^streamdown$/, replacement: streamdownEntry }]
         : []),
       ...(fs.existsSync(rechartsEntry)
         ? [{ find: /^recharts$/, replacement: rechartsEntry }]
@@ -2796,6 +2797,11 @@ export const INVALID_TRACER_PROVIDER = {};
   },
   optimizeDeps: {
     noDiscovery: process.env.ELIZA_APP_VITE_NO_DISCOVERY !== "0",
+    // This graph is explicitly enumerated below and discovery is disabled, so
+    // waiting for a crawl cannot reveal another dependency. Publish completed
+    // optimizer chunks as they settle so the browser can request them in
+    // parallel instead of holding the whole first-load batch.
+    holdUntilCrawlEnd: false,
     include: [
       "react",
       "react-dom",
@@ -2817,7 +2823,6 @@ export const INVALID_TRACER_PROVIDER = {};
       // lucide-react alone is ~250 per-icon requests once the build-only
       // per-icon rewrite is disabled in dev; the rest are multi-file ESM libs.
       "lucide-react",
-      "streamdown",
       "recharts",
       "nprogress",
       "cookie",
@@ -2845,12 +2850,6 @@ export const INVALID_TRACER_PROVIDER = {};
       }),
       // Resolvable via the resolve.alias above (transitive through @elizaos/core).
       "@opentelemetry/api",
-      // Pre-bundle feross `buffer` so the dev server serves it as ESM with a
-      // named `Buffer` export. With `noDiscovery` on, the raw Bun-store CommonJS
-      // file behind the resolve.alias is not transformed unless it is listed
-      // here; esbuild's pre-bundle interop exposes `exports.Buffer = Buffer` as
-      // a named ESM export for workspace imports from `node:buffer`. See #9452.
-      ...(bufferEntry ? ["buffer", "node:buffer"] : []),
     ],
     // Remap node: builtins to npm polyfills during dep optimization so
     // Rolldown doesn't externalize them as browser-incompatible node:* imports.

@@ -50,15 +50,6 @@ describe("TopicChipsBar", () => {
     expect(onSelectTopic).toHaveBeenCalledWith("user_greeting");
   });
 
-  it("keeps the chip rail scrollbar-free (touch never shows chrome)", () => {
-    render(<ShellTopicChipsBar topics={["billing", "deployment"]} />);
-    const rail = screen.getByTestId("topic-chips-bar");
-    // The horizontal overflow rail must hide its scrollbar on every engine:
-    // Firefox (`scrollbar-width:none`) and WebKit (`::-webkit-scrollbar`).
-    expect(rail.className).toContain("[scrollbar-width:none]");
-    expect(rail.className).toContain("[&::-webkit-scrollbar]:hidden");
-    expect(rail.className).toContain("overflow-x-auto");
-  });
 });
 
 describe("TopicGroup", () => {

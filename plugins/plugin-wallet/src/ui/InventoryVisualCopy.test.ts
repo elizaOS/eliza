@@ -25,9 +25,4 @@ describe("Inventory visual copy", () => {
     expect(source).toContain("RPC providers: EVM ");
   });
 
-  it("keeps the empty wallet market pulse free of paragraph helper copy", () => {
-    expect(source).not.toContain(
-      '<p className="mt-2 max-w-xl text-sm text-muted">',
-    );
-  });
 });

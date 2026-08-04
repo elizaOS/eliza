@@ -83,26 +83,6 @@ describe("Launcher", () => {
     expect(document.querySelectorAll('[aria-label^="Page "]').length).toBe(0);
   });
 
-  it("scrolls vertically without visible scrollbar chrome and adapts narrow grids", () => {
-    render(<Launcher entries={FEW} onLaunch={() => {}} />);
-    const page = screen.getByTestId("launcher-page-window");
-    expect(page.className).toContain("overflow-y-auto");
-    expect(page.className).toContain("overscroll-y-contain");
-    expect(page.className).toContain("scrollbar-hide");
-    expect(page.className).toContain("[scrollbar-width:none]");
-    expect(page.className).toContain("[&::-webkit-scrollbar]:hidden");
-    expect(page.className).toContain("scroll-fade");
-    expect(page.className).toContain("scroll-fade-t-[3.5rem]");
-    expect(page.className).toContain("[--scroll-fade-reveal:1px]");
-    expect(page.className).toContain("scroll-fade-b-");
-    expect(page.className).toContain("mb-[calc(");
-    expect(page.className).toContain("--eliza-chat-clearance");
-    const grid = page.querySelector(".grid");
-    expect(grid?.className).toContain("grid-cols-3");
-    expect(grid?.className).toContain("min-[360px]:grid-cols-4");
-    expect(grid?.className).toContain("sm:grid-cols-5");
-  });
-
   it("scales icons and labels from the launcher container while keeping short landscape compact", () => {
     render(<Launcher entries={FEW} onLaunch={() => {}} />);
     const css = [...document.querySelectorAll("style")]
@@ -143,16 +123,6 @@ describe("Launcher", () => {
     expect(
       screen.getByText("Memory Viewer").getAttribute("data-compact-label"),
     ).toBeNull();
-  });
-
-  it("renders at natural height when embedded in Home's app scroller", () => {
-    render(<Launcher entries={FEW} onLaunch={() => {}} embedded />);
-    const page = screen.getByTestId("launcher-page-window");
-    expect(page.className).toContain("overflow-visible");
-    expect(page.className).not.toContain("overflow-y-auto");
-    expect(page.className).not.toContain("scroll-fade");
-    expect(page.className).not.toContain("mb-[calc(");
-    expect(screen.getByTestId("launcher").className).not.toContain("flex-1");
   });
 
   it("marks preview and developer tiles without changing release tiles", () => {

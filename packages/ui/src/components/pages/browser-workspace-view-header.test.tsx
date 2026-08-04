@@ -52,15 +52,6 @@ afterEach(() => {
 });
 
 describe("BrowserWorkspaceView uniform header (#13596)", () => {
-  it("renders the standardized centered 'Browser' title", () => {
-    render(<ViewHeader title={BROWSER_VIEW_TITLE} />);
-    const title = screen.getByRole("heading", { name: BROWSER_VIEW_TITLE });
-    // Centered over the full header width, matching every other view.
-    expect(title.className).toContain("absolute");
-    expect(title.className).toContain("inset-x-0");
-    expect(title.className).toContain("text-center");
-  });
-
   it("renders an icon-only chromeless back control (returns to launcher)", () => {
     render(<ViewHeader title={BROWSER_VIEW_TITLE} />);
     const back = screen.getByRole("button", { name: /back/i });

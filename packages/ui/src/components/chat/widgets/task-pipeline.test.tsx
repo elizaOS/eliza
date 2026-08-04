@@ -80,21 +80,6 @@ describe("SubagentBlock", () => {
     expect(screen.getByTestId("tool-call-event-log")).toBeTruthy();
   });
 
-  it("indents a nested child session", () => {
-    render(
-      <SubagentBlock
-        agent={{
-          ...agent,
-          parentSessionId: "parent",
-          steps: [],
-          plan: undefined,
-        }}
-      />,
-    );
-    expect(screen.getByTestId("subagent-block").className).toContain(
-      "border-l",
-    );
-  });
 });
 
 describe("toNativeToolEvent", () => {

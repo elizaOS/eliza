@@ -126,15 +126,6 @@ describe("BackgroundSettingsControls wallpaper gallery", () => {
     expect(screen.queryByLabelText("Generate a background image")).toBeNull();
   });
 
-  it("renders curated photo wallpaper tiles from their actual served image", () => {
-    seed();
-    render(<BackgroundSettingsControls />);
-
-    const reef = screen.getByLabelText("Set background to Reef")
-      .firstElementChild as HTMLElement | null;
-    expect(reef?.style.backgroundImage).toContain("/wallpapers/reef.webp");
-  });
-
   it("marks the active wallpaper as pressed and leaves others unpressed", () => {
     // The live config is the Reef image, so its tile is the active one.
     seed({

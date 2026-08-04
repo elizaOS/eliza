@@ -2641,6 +2641,37 @@ export class AgentRuntime implements IAgentRuntime {
 		const basicCapabilitiesPlugin = createBasicCapabilitiesPlugin(
 			this.capabilityOptions,
 		);
+		// Extended capabilities predate the native relationships feature and still
+		// export its MESSAGE/POST actions, relationship providers, and evaluators
+		// for compatibility. When the native feature is enabled (the default), it
+		// owns those components. Remove the legacy copies before registration so
+		// startup does not register the same capability family twice.
+		if (this.resolveNativeFeatureEnabled("relationships")) {
+			const nativeRelationships =
+				getNativeRuntimeFeaturePlugin("relationships");
+			const actionNames = new Set(
+				(nativeRelationships.actions ?? []).map((action) => action.name),
+			);
+			const providerNames = new Set(
+				(nativeRelationships.providers ?? []).map((provider) => provider.name),
+			);
+			const evaluatorNames = new Set(
+				(nativeRelationships.evaluators ?? []).map(
+					(evaluator) => evaluator.name,
+				),
+			);
+			basicCapabilitiesPlugin.actions = basicCapabilitiesPlugin.actions?.filter(
+				(action) => !actionNames.has(action.name),
+			);
+			basicCapabilitiesPlugin.providers =
+				basicCapabilitiesPlugin.providers?.filter(
+					(provider) => !providerNames.has(provider.name),
+				);
+			basicCapabilitiesPlugin.evaluators =
+				basicCapabilitiesPlugin.evaluators?.filter(
+					(evaluator) => !evaluatorNames.has(evaluator.name),
+				);
+		}
 		pluginRegistrationPromises.push(
 			this.registerPlugin(basicCapabilitiesPlugin),
 		);
@@ -3507,30 +3538,45 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	registerProvider(provider: Provider) {
+		if (this.providers.includes(provider)) {
+			this.logger.debug(
+				{ src: "agent", agentId: this.agentId, provider: provider.name },
+				"Provider instance already registered, skipping",
+			);
+			return;
+		}
 		const canonical = withCanonicalProviderDocs(provider);
+		Object.assign(provider, canonical);
 		const existingIndex = this.providers.findIndex(
-			(p) => p.name === canonical.name,
+			(p) => p.name === provider.name,
 		);
 		if (existingIndex !== -1) {
 			if (
 				this.resolveComponentCollision(
 					"provider",
-					canonical.name,
-					canonical.override,
+					provider.name,
+					provider.override,
 				)
 			) {
-				this.providers[existingIndex] = canonical;
+				this.providers[existingIndex] = provider;
 			}
 			return;
 		}
-		this.providers.push(canonical);
+		this.providers.push(provider);
 		this.logger.debug(
-			{ src: "agent", agentId: this.agentId, provider: canonical.name },
+			{ src: "agent", agentId: this.agentId, provider: provider.name },
 			"Provider registered",
 		);
 	}
 
 	registerAction(action: Action) {
+		if (this.actions.includes(action)) {
+			this.logger.debug(
+				{ src: "agent", agentId: this.agentId, action: action.name },
+				"Action instance already registered, skipping",
+			);
+			return;
+		}
 		const canonical = withCanonicalActionDocs(action);
 		Object.assign(action, canonical);
 		const existingIndex = this.actions.findIndex((a) => a.name === action.name);
@@ -3602,6 +3648,13 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	registerEvaluator(evaluator: RegisteredEvaluator) {
+		if (this.evaluators.includes(evaluator)) {
+			this.logger.debug(
+				{ src: "agent", agentId: this.agentId, evaluator: evaluator.name },
+				"Evaluator instance already registered, skipping",
+			);
+			return;
+		}
 		const existingIndex = this.evaluators.findIndex(
 			(item) => item.name === evaluator.name,
 		);

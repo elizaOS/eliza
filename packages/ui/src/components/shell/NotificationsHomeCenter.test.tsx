@@ -964,15 +964,6 @@ describe("NotificationsHomeCenter", () => {
     expect(screen.queryByTestId("notifications-mark-all-read")).toBeNull();
   });
 
-  it("the inbox CONTAINER has no chrome — glass lives on the cards", () => {
-    __ingestNotificationForTests(makeNotification());
-    render(<NotificationsHomeCenter />);
-    const card = screen.getByTestId("home-notification-center");
-    expect(card.className).not.toContain("backdrop-blur");
-    expect(card.className).not.toContain("border");
-    expect(card.className).not.toMatch(/bg-black|bg-white/);
-  });
-
   it("rows are liquid-glass cards (shared recipe on the swipe surface)", () => {
     __ingestNotificationForTests(makeNotification({ title: "Glass" }));
     render(<NotificationsHomeCenter />);

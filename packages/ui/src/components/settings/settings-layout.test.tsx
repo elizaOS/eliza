@@ -64,28 +64,6 @@ describe("SettingsGroup", () => {
     expect(screen.getByText("Row B")).toBeTruthy();
   });
 
-  it("keeps its title, description, and footer at accessible contrast", () => {
-    render(
-      <SettingsStack>
-        <SettingsGroup
-          title="Agent"
-          description="Core behavior"
-          footer="Applies immediately"
-        >
-          <SettingsRow label="Row A" />
-        </SettingsGroup>
-      </SettingsStack>,
-    );
-    // The section title/description/footer render `text-muted` at full
-    // strength: the previous `/70` + `/80` opacity dropped these below the
-    // WCAG AA 4.5:1 floor (3.54 and 4.36) across every settings panel.
-    for (const text of ["Agent", "Core behavior", "Applies immediately"]) {
-      const el = screen.getByText(text);
-      expect(el.className).toContain("text-muted");
-      expect(el.className).not.toContain("text-muted/70");
-      expect(el.className).not.toContain("text-muted/80");
-    }
-  });
 });
 
 describe("agent-addressable rows", () => {

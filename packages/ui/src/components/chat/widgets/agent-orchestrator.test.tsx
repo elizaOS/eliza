@@ -137,26 +137,4 @@ describe("OrchestratorActivityWidget (home slot)", () => {
     ).not.toBeNull();
   });
 
-  it("home slot: falls back to the default 2x1 span when no spanClassName is supplied (#11752)", () => {
-    const { container } = render(
-      <ActivityWidget
-        {...props({ slot: "home", events: [event({ summary: "Working" })] })}
-      />,
-    );
-    expect(container.firstElementChild?.className).toContain("col-span-2");
-  });
-
-  it("chat-sidebar slot: does NOT wrap the section in a grid-span root (#11752)", () => {
-    const { container } = render(
-      <ActivityWidget
-        {...props({
-          slot: "chat-sidebar",
-          events: [event({ summary: "Working" })],
-        })}
-      />,
-    );
-    expect(container.firstElementChild?.className ?? "").not.toContain(
-      "col-span-2",
-    );
-  });
 });

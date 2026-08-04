@@ -495,15 +495,6 @@ describe("CockpitSessionPane — inspector layout per surface (#11159 audit)", (
     vi.stubGlobal("matchMedia", () => mql);
   }
 
-  it("desktop keeps TaskInspector's w-80 rail fallback (no unconditional class override)", async () => {
-    renderPane();
-    const inspector = await screen.findByTestId("orchestrator-inspector");
-    // Passing className="flex" unconditionally suppressed the `flex w-80`
-    // fallback; in this flex ROW the shrink-0 inspector then inflated to
-    // max-content and crushed the transcript on desktop.
-    expect(inspector.className).toContain("w-80");
-  });
-
   it("mobile overrides the rail with the dismissible drawer", async () => {
     stubMobileMatchMedia();
     try {

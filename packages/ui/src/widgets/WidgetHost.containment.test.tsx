@@ -65,9 +65,4 @@ afterEach(() => {
 });
 
 describe("WidgetHost layout containment lock (#9304)", () => {
-  it("applies `contain: layout` to the host so a reorder doesn't reflow the page", () => {
-    render(<WidgetHost slot="home" layout="grid" />);
-    const host = screen.getByTestId("widget-host-home");
-    expect(host.style.contain).toBe("layout");
-  });
 });

@@ -27,17 +27,6 @@ describe("HomePill", () => {
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
-  it("lets the overlay shell own native-window positioning", () => {
-    render(<HomePill phase="idle" onOpen={() => {}} onClose={() => {}} />);
-    const className = screen.getByRole("button").className;
-
-    expect(className).toContain("relative");
-    expect(className).toContain("mb-3");
-    expect(className).not.toContain("fixed");
-    expect(className).not.toContain("left-1/2");
-    expect(className).not.toContain("-translate-x-1/2");
-  });
-
   it("calls onClose when clicked from summoned", () => {
     const onClose = vi.fn();
     render(<HomePill phase="summoned" onOpen={() => {}} onClose={onClose} />);

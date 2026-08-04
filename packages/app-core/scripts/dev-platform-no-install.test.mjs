@@ -33,4 +33,33 @@ describe("dev-ui Vite runtime", () => {
     expect(source).toContain("nodePath: resolveNodeRuntimePath(process.env)");
     expect(source).not.toContain('nodePath: which("node")');
   });
+
+  it("starts Vite before watcher setup and API readiness polling", () => {
+    const source = readFileSync(path.join(scriptsDir, "dev-ui.mjs"), "utf8");
+    const apiStart = source.indexOf("  apiSupervisor.start();");
+    const viteStart = source.indexOf("\n  startVite();", apiStart);
+    const watcherStart = source.indexOf(
+      "\n    sourceWatcher = startAgentSourceWatcher(",
+      viteStart,
+    );
+    const readinessPoll = source.indexOf(
+      "\n  waitForPort(API_PORT)",
+      viteStart,
+    );
+
+    expect(apiStart).toBeGreaterThan(-1);
+    expect(viteStart).toBeGreaterThan(apiStart);
+    expect(watcherStart).toBeGreaterThan(viteStart);
+    expect(readinessPoll).toBeGreaterThan(viteStart);
+  });
+
+  it("stops the startup watchdog after Vite first becomes ready", () => {
+    const source = readFileSync(path.join(scriptsDir, "dev-ui.mjs"), "utf8");
+
+    expect(source).toContain("viteReady = true;");
+    expect(source).toContain(
+      "if (shuttingDown || !viteProcess || viteReady) return;",
+    );
+    expect(source).toContain("if (!viteReady) scheduleViteHealthCheck();");
+  });
 });

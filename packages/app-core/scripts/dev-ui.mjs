@@ -6,8 +6,8 @@
  * 2. The vite app dev server (port 2138, proxies /api and /ws to 31337)
  *
  * Automatically kills zombie processes on both ports before starting.
- * Waits for the API port to be open before launching vite so the proxy
- * doesn't flood the terminal with ECONNREFUSED errors.
+ * Starts the API and Vite together. The UI can compile and serve before the
+ * runtime is ready; proxied requests recover as soon as the API comes online.
  *
  * Usage:
  *   node eliza/packages/app-core/scripts/dev-ui.mjs            # from Eliza repo root — API + UI
@@ -788,6 +788,7 @@ let viteRestartCount = 0;
 let viteRestartTimer = null;
 let viteHealthTimer = null;
 let viteStartedAt = 0;
+let viteReady = false;
 
 // Vite cold-start of the full raw-source module graph can exceed 60s on slow
 // shared CI runners (2-4 cores). Allow CI to widen the health-check kill window
@@ -909,6 +910,7 @@ function startVite() {
     );
   }
   viteStartedAt = Date.now();
+  viteReady = false;
   viteProcess = spawn(viteCmd, viteArgs, {
     cwd: path.join(cwd, appDir),
     env: {
@@ -928,15 +930,35 @@ function startVite() {
     cleanup(1);
   });
 
-  viteProcess.stdout.on("data", (data) => {
-    const text = data.toString();
-    if (text.includes("ready")) {
+  const launchedViteProcess = viteProcess;
+  // Vite's human-readable banner is not an API: its wording and output stream
+  // have changed across releases. Probe the actual listener so the dev host
+  // reports UI readiness reliably and includes a useful parallel-start timing.
+  void waitForPort(UI_PORT, {
+    timeout: VITE_READY_BUDGET_MS,
+    interval: 100,
+  })
+    .then(() => {
+      if (shuttingDown || viteProcess !== launchedViteProcess) return;
+      viteReady = true;
+      if (viteHealthTimer) {
+        clearTimeout(viteHealthTimer);
+        viteHealthTimer = null;
+      }
+      const elapsed = ((Date.now() - viteStartedAt) / 1000).toFixed(1);
       const securitySettingsUrl = `http://localhost:${UI_PORT}/settings#security`;
       console.log(
-        `\n  ${green(logPrefix)} ${orange(`http://localhost:${UI_PORT}/`)}\n  ${green(logPrefix)} ${dim("Local access: no password required on this machine")}\n  ${green(logPrefix)} ${dim(`Security settings: ${securitySettingsUrl}`)}\n`,
+        `\n  ${green(logPrefix)} ${orange(`UI ready at http://localhost:${UI_PORT}/`)} ${dim(`(${elapsed}s)`)}\n  ${green(logPrefix)} ${dim("Local access: no password required on this machine")}\n  ${green(logPrefix)} ${dim(`Security settings: ${securitySettingsUrl}`)}\n`,
       );
-    }
-  });
+    })
+    .catch(() => {
+      // error-policy:J5 the health-check timer below observes the same stalled
+      // UI process, owns recovery, and emits the actionable restart message.
+    });
+
+  // Drain ordinary Vite stdout. Warnings and errors remain visible on stderr;
+  // readiness is reported from the listener probe above.
+  viteProcess.stdout.resume();
 
   viteProcess.stderr.on("data", (data) => {
     process.stderr.write(data);
@@ -985,9 +1007,10 @@ function scheduleViteHealthCheck(delayMs = 15_000) {
   if (viteHealthTimer) clearTimeout(viteHealthTimer);
   viteHealthTimer = setTimeout(async () => {
     viteHealthTimer = null;
-    if (shuttingDown || !viteProcess) return;
+    if (shuttingDown || !viteProcess || viteReady) return;
 
     const listening = await isPortListening(UI_PORT);
+    if (shuttingDown || !viteProcess || viteReady) return;
     if (!listening) {
       const ageMs = Date.now() - viteStartedAt;
       if (ageMs > VITE_READY_BUDGET_MS) {
@@ -1001,7 +1024,7 @@ function scheduleViteHealthCheck(delayMs = 15_000) {
       }
     }
 
-    scheduleViteHealthCheck();
+    if (!viteReady) scheduleViteHealthCheck();
   }, delayMs);
   viteHealthTimer.unref();
 }
@@ -1010,7 +1033,9 @@ if (uiOnly) {
   startVite();
 } else {
   console.log(`${orange(`\n${cliName} dev mode`)}\n`);
-  console.log(`  ${green(logPrefix)} ${green("Starting dev server...")}\n`);
+  console.log(
+    `  ${green(logPrefix)} ${green("Starting API and UI dev servers in parallel...")}\n`,
+  );
   console.log(
     `  ${green(logPrefix)} ${dim(
       `API log level=${devLogLevel}${
@@ -1182,6 +1207,11 @@ if (uiOnly) {
 
   apiSupervisor.start();
 
+  // Start Vite before the source-watcher directory scan. The proxy has no
+  // boot-time dependency on the API, and both children can warm their module
+  // graphs while the parent installs hot-reload watches.
+  startVite();
+
   // Agent hot-reload: bounce the API child when backend source changes. The
   // watcher only sees `*/src` (never `dist/`), and a restart fires only when the
   // agent is currently healthy — so a build, or a change during boot, can never
@@ -1233,14 +1263,6 @@ if (uiOnly) {
       `  ${green(logPrefix)} ${dim(`Agent hot-reload on: watching ${sourceWatcher.count} source dirs (set ELIZA_DEV_NO_WATCH=1 to disable).`)}`,
     );
   }
-
-  // Start Vite immediately, in parallel with the API boot. The dev server only
-  // proxies to the API at request time — it has no startup dependency on the
-  // API being up — so gating it behind waitForPort(API_PORT) just stacked the
-  // full runtime+plugin boot in front of first paint. Booting both at once
-  // gives the browser a UI as soon as Vite is ready, and requests resolve once
-  // the API comes up moments later.
-  startVite();
 
   const startTime = Date.now();
   let phase = "port";

@@ -77,6 +77,10 @@ import {
   setEnvIfMissing,
 } from "./provider-model-defaults.ts";
 import { shouldLoadRemoteCodingRunnerForBoot } from "./remote-coding-runner-gate.ts";
+import {
+  applyHostActionOwnership,
+  registerFallbackActionIfAbsent,
+} from "./runtime-action-ownership.ts";
 import { runRuntimeStartupMaintenance } from "./runtime-maintenance.ts";
 import {
   buildRuntimeSettingsProjection,
@@ -3362,7 +3366,9 @@ async function preregisterCorePluginsInDependencyWaves(args: {
       args.abortSignal?.throwIfAborted();
       const regStart = Date.now();
       logger.info(`[eliza] ${context}Pre-registering core plugin: ${name}...`);
-      await args.runtime.registerPlugin(resolved.plugin);
+      await args.runtime.registerPlugin(
+        applyHostActionOwnership(args.runtime, resolved.plugin),
+      );
       registered.add(name);
       logger.info(
         `[eliza] ${context}✓ ${name} pre-registered (${Date.now() - regStart}ms)`,
@@ -4992,8 +4998,13 @@ export async function startEliza(
         );
         return;
       }
-      runtime.registerAction(webFetch);
-      logger.info("[eliza] Registered keyless WEB_FETCH action");
+      if (registerFallbackActionIfAbsent(runtime, webFetch)) {
+        logger.info("[eliza] Registered keyless WEB_FETCH action");
+      } else {
+        logger.debug(
+          "[eliza] WEB_FETCH already provided by a loaded plugin; keyless fallback skipped",
+        );
+      }
     } catch (err) {
       logger.debug(
         `[eliza] WEB_FETCH action registration skipped: ${formatError(err)}`,
@@ -5012,8 +5023,13 @@ export async function startEliza(
         );
         return;
       }
-      runtime.registerAction(webSearch);
-      logger.info("[eliza] Registered keyless WEB_SEARCH action");
+      if (registerFallbackActionIfAbsent(runtime, webSearch)) {
+        logger.info("[eliza] Registered keyless WEB_SEARCH action");
+      } else {
+        logger.debug(
+          "[eliza] WEB_SEARCH already provided by a loaded plugin; keyless fallback skipped",
+        );
+      }
     } catch (err) {
       logger.debug(
         `[eliza] WEB_SEARCH action registration skipped: ${formatError(err)}`,

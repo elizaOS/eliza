@@ -2028,6 +2028,15 @@ export type PluginResolutionPhase = "all" | "blocking" | "deferred";
  */
 const blockingPhaseClaimedProviderNames = new Set<string>();
 
+/**
+ * Successful and failed resolutions retained from the blocking pass until the
+ * matching deferred pass diagnoses provider availability. A deferred pass only
+ * returns plugins that were not claimed by blocking, so diagnosing from its
+ * local result alone falsely reports that no provider loaded.
+ */
+const blockingPhaseLoadedPluginNames = new Set<string>();
+let blockingPhaseFailedPlugins: readonly FailedPluginDetail[] = [];
+
 export async function resolvePlugins(
   config: ElizaConfig,
   opts?: {
@@ -2040,6 +2049,11 @@ export async function resolvePlugins(
   const failedPlugins: Array<{ name: string; error: string }> = [];
   const repairedInstallRecords = new Set<string>();
   const phase = opts?.phase ?? "all";
+
+  if (phase === "blocking") {
+    blockingPhaseLoadedPluginNames.clear();
+    blockingPhaseFailedPlugins = [];
+  }
 
   // NOTE: Auto-enable runs before dependency validation intentionally.
   // It returns a new config object (structuredClone under the hood) with
@@ -2604,8 +2618,27 @@ export async function resolvePlugins(
 
   // Diagnose version-skew issues when AI providers failed to load (#10)
   const loadedNames = plugins.map((p) => p.name);
+  if (phase === "blocking") {
+    for (const name of loadedNames) {
+      blockingPhaseLoadedPluginNames.add(name);
+    }
+    blockingPhaseFailedPlugins = failedPlugins.map((failure) => ({
+      ...failure,
+    }));
+  }
   if (phase !== "blocking") {
-    const diagnostic = diagnoseNoAIProvider(loadedNames, failedPlugins);
+    const diagnosticLoadedNames =
+      phase === "deferred"
+        ? [...blockingPhaseLoadedPluginNames, ...loadedNames]
+        : loadedNames;
+    const diagnosticFailedPlugins =
+      phase === "deferred"
+        ? [...blockingPhaseFailedPlugins, ...failedPlugins]
+        : failedPlugins;
+    const diagnostic = diagnoseNoAIProvider(
+      diagnosticLoadedNames,
+      diagnosticFailedPlugins,
+    );
     if (diagnostic) {
       if (opts?.quiet) {
         // In headless/GUI mode before first-run setup, this is expected — the user

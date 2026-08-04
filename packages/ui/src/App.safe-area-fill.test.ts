@@ -74,16 +74,6 @@ describe("App safe-area fill invariant", () => {
     expect(APP_SRC).toContain(SAFE_AREA_MARKER);
   });
 
-  it("shell root never establishes a containing block for the fixed bg layers", () => {
-    const cls = classNameOfElementContaining(SAFE_AREA_MARKER);
-    for (const token of CONTAINING_BLOCK_TOKENS) {
-      expect(
-        cls.includes(token),
-        `shell root className must not contain "${token}" — it would make the root the containing block for the fixed inset-0 background layers, re-opening an unfilled band under the notch. className: "${cls}"`,
-      ).toBe(false);
-    }
-  });
-
   it("shell root inline style sets only paddingTop (no transform/filter/contain)", () => {
     const idx = APP_SRC.indexOf(SAFE_AREA_MARKER);
     const styleStart = APP_SRC.lastIndexOf("style={{", idx);

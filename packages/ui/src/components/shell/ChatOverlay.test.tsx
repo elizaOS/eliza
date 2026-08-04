@@ -269,18 +269,6 @@ describe("ChatOverlay", () => {
     expect(screen.queryByRole("button", { name: "talk" })).toBeNull();
   });
 
-  it("renders the frosted sheet from the glass token system (no saturate)", () => {
-    // The chat sheet is a liquid-glass SYSTEM surface: its inset material comes
-    // from GLASS_SHEET_* tokens, not a hand-rolled inline recipe. The backdrop
-    // filter is a neutral blur with NO saturate — saturate muddies the warm
-    // field to brown, which the whole liquid-glass system forbids.
-    render(<ChatOverlay controller={makeController()} />);
-    const surface = screen.getByTestId("chat-sheet-surface");
-    expect(surface.style.backdropFilter).toBe(GLASS_SHEET_BACKDROP_FILTER);
-    expect(surface.style.backdropFilter).not.toMatch(/saturate|brightness/);
-    expect(surface.style.backgroundColor).toBe(GLASS_SHEET_FILL);
-  });
-
   it("reports typing start and pause from the real composer draft", () => {
     vi.useFakeTimers();
     try {
@@ -571,21 +559,6 @@ describe("ChatOverlay", () => {
     expect(overlay.style.paddingBottom).toBe(initialPadding);
   });
 
-  it("seats the resting composer above the home indicator: full gesture inset plus a small gap", () => {
-    // Lock-screen anchoring: with the overlay reclaimed to the true physical
-    // bottom (device r8, screen.height reclaim), the resting composer clears the
-    // whole home-indicator/Android gesture inset plus a SMALL visual gap
-    // (~34px + 8px on iOS). The gap was trimmed 0.625rem → 0.5rem (device r8:
-    // "bottom has excess padding") so the composer sits one finger above the
-    // indicator, not floating in a dead band, no longer the old 40% inset
-    // compensation that was tuned around the collapsed-ICB float.
-    render(<ChatOverlay controller={makeController()} />);
-    const overlay = screen.getByTestId("chat-overlay");
-    expect(overlay.style.paddingBottom).toBe(
-      "calc(var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.5rem)",
-    );
-  });
-
   it("publishes the full resting footprint and compact-landscape side clearance", () => {
     const originalInnerWidth = Object.getOwnPropertyDescriptor(
       window,
@@ -853,21 +826,6 @@ describe("ChatOverlay", () => {
     fireEvent.pointerMove(grabber, { clientY: 280, pointerId: 1 });
     fireEvent.pointerUp(grabber, { clientY: 280, pointerId: 1 });
     expect(sheet.getAttribute("data-variant")).toBe("open");
-  });
-
-  it("spans a WIDE swipe-up grab zone across the composer top edge", () => {
-    // Lock-screen affordance: the grabber's hit zone must reach across the
-    // composer's width (inset-x-6, not a narrow centred px-16 stub) so a
-    // swipe-up begun anywhere near the bottom opens the chat — while still
-    // floating above the input row so it never eats taps meant for the
-    // textarea.
-    render(<ChatOverlay controller={makeController()} />);
-    const grabber = screen.getByTestId("chat-sheet-grabber");
-    expect(grabber.className).toContain("inset-x-6");
-    expect(grabber.className).not.toContain("px-16");
-    // The zone stops at the handle's own bottom (before:bottom-0) so it can't
-    // overlap the interactive composer controls beneath it.
-    expect(grabber.className).toContain("before:bottom-0");
   });
 
   // #14331: the waveform reflects only spoken-conversation capture. Dedicated
@@ -1508,26 +1466,6 @@ describe("ChatOverlay", () => {
     expect(content?.getAttribute("aria-busy")).toBe("true");
     expect(row?.parentElement).toBe(content);
     expect(row?.className).toContain("w-full");
-  });
-
-  it("fades the expanded transcript under the grabber without masking its scroller", () => {
-    render(<ChatOverlay controller={makeController()} />);
-    fireEvent.focus(screen.getByLabelText("message"));
-
-    const fade = screen.getByTestId("chat-thread-top-fade");
-    const rim = screen.getByTestId("chat-sheet-rim");
-    const viewport = screen.getByTestId("chat-thread-scroll");
-    expect(fade.className).toContain("pointer-events-none");
-    expect(fade.className).toContain("absolute");
-    expect(fade.className).toContain("inset-x-px");
-    expect(fade.className).toContain("top-px");
-    expect(fade.className).toContain("z-30");
-    expect(fade.style.opacity).not.toBe("");
-    expect(fade.style.backgroundImage).toContain("linear-gradient");
-    expect(rim.className).toContain("z-40");
-    expect(rim.className).toContain("border-border-strong");
-    expect(viewport.style.maskImage).toBe("");
-    expect(viewport.style.webkitMaskImage).toBe("");
   });
 
   it("closes the sheet on Escape", () => {

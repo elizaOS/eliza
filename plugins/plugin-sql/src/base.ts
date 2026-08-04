@@ -464,6 +464,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   protected readonly databaseBackend: DatabaseBackend = "unknown";
   protected migrationService?: DatabaseMigrationService;
   private migrationRunPromise: Promise<void> | null = null;
+  private readonly migratedSchemaEntries = new Map<string, Map<string, unknown>>();
   private _connectorAccountStore?: ConnectorAccountStore;
   private messageSearchTrigramAvailable: boolean | null = null;
   private lastDocumentListStatement?: {
@@ -518,27 +519,58 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       await this.migrationService.initializeWithDatabase(this.db as DrizzleDatabase);
     }
 
-    for (const plugin of plugins) {
-      if (plugin.schema) {
-        this.migrationService.registerSchema(plugin.name, plugin.schema);
-      }
-    }
-
     if (this.migrationRunPromise) {
-      logger.info(
+      logger.debug(
         { src: "plugin:sql", pluginCount: plugins.length },
         "Plugin migrations already running in this process; joining active run"
       );
       await this.migrationRunPromise;
+      return this.runPluginMigrations(plugins, options);
+    }
+
+    const pendingPlugins = plugins.filter(
+      (plugin): plugin is { name: string; schema: Record<string, unknown> } =>
+        plugin.schema !== undefined &&
+        !this.schemaEntriesAlreadyMigrated(plugin.name, plugin.schema)
+    );
+    if (pendingPlugins.length === 0) {
+      logger.debug(
+        { src: "plugin:sql", pluginCount: plugins.length },
+        "All requested plugin schema instances already migrated; skipping"
+      );
       return;
     }
 
-    this.migrationRunPromise = this.migrationService.runAllPluginMigrations(options);
+    for (const plugin of pendingPlugins) {
+      this.migrationService.registerSchema(plugin.name, plugin.schema);
+    }
+
+    this.migrationRunPromise = this.migrationService.runAllPluginMigrations(
+      options,
+      pendingPlugins.map((plugin) => plugin.name)
+    );
     try {
       await this.migrationRunPromise;
+      if (!options?.dryRun) {
+        for (const plugin of pendingPlugins) {
+          this.migratedSchemaEntries.set(plugin.name, new Map(Object.entries(plugin.schema)));
+        }
+      }
     } finally {
       this.migrationRunPromise = null;
     }
+  }
+
+  private schemaEntriesAlreadyMigrated(
+    pluginName: string,
+    schema: Record<string, unknown>
+  ): boolean {
+    const migrated = this.migratedSchemaEntries.get(pluginName);
+    const entries = Object.entries(schema);
+    if (!migrated || migrated.size !== entries.length) {
+      return false;
+    }
+    return entries.every(([name, value]) => migrated.get(name) === value);
   }
 
   public getDatabase(): unknown {

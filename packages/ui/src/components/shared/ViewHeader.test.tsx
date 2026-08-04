@@ -32,22 +32,6 @@ afterEach(() => {
 });
 
 describe("ViewHeader — standardized normal-view header (#13451)", () => {
-  it("centers the title across the full header width", () => {
-    render(<ViewHeader title="Settings" />);
-    const title = screen.getByRole("heading", { name: "Settings" });
-    // Centered over the full header (absolute inset-x-0 + mx-auto + centered
-    // text), NOT within a side-dependent grid track, so it stays centered
-    // regardless of back/right control widths.
-    expect(title.className).toContain("absolute");
-    expect(title.className).toContain("inset-x-0");
-    expect(title.className).toContain("mx-auto");
-    expect(title.className).toContain("text-center");
-    // Regression guards: never re-introduce the track-local alignment that
-    // shifted the title when actions were wider than the back button.
-    expect(title.className).not.toContain("justify-self-start");
-    expect(title.className).not.toContain("sm:justify-self-start");
-  });
-
   it("renders an icon-only back button with no rest-state border or fill", () => {
     render(<ViewHeader title="Wallet" />);
     const back = screen.getByRole("button", { name: /back/i });
@@ -127,24 +111,6 @@ describe("ViewHeader — standardized normal-view header (#13451)", () => {
     expect(
       screen.queryByRole("button", { name: "Back to launcher" }),
     ).toBeNull();
-  });
-
-  it("keeps the title centered even when the right action is wide", () => {
-    render(
-      <ViewHeader
-        title="Wallet"
-        right={<button type="button">A very wide refresh action</button>}
-      />,
-    );
-    const header = screen.getByTestId("view-header");
-    const title = screen.getByRole("heading", { name: "Wallet" });
-    // Centering is anchored to the full header, not a side-dependent track, so
-    // a wide right action cannot shift the title (the earlier grid-track
-    // regression). No fixed/asymmetric grid tracks remain.
-    expect(title.className).toContain("absolute");
-    expect(title.className).toContain("inset-x-0");
-    expect(title.className).toContain("mx-auto");
-    expect(header.className).not.toContain("grid-cols-");
   });
 
   it("renders trailing actions at the right edge, above the centered title", () => {

@@ -2,14 +2,15 @@
  * Covers resolveRuntimePluginImportSpecifier() (rewriting core app plugins to
  * their /plugin runtime entrypoint while leaving other package roots intact) and
  * resolvePlugins() manifest discovery that auto-enables third-party scoped
- * plugin-* packages via their autoEnable module. Deterministic — a real on-disk
+ * plugin-* packages via their autoEnable module, including provider diagnostics
+ * spanning the blocking/deferred boot split. Deterministic — a real on-disk
  * fixture package under a temp workspace, no live model.
  */
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { Plugin } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { logger, type Plugin } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   resolvePlugins,
   resolveRuntimePluginImportSpecifier,
@@ -113,6 +114,7 @@ describe("resolvePlugins boot-phase split for model providers (#14038)", () => {
   it("loads a model-provider plugin in the blocking phase and excludes it from the deferred phase", async () => {
     const previousCwd = process.cwd();
     const workspace = await mkdtemp(path.join(tmpdir(), "eliza-plugin-phase-"));
+    const infoSpy = vi.spyOn(logger, "info").mockImplementation(() => {});
     const dropinsDir = path.join(workspace, "dropin-plugins");
     const writeDropIn = async (dirName: string, packageName: string) => {
       const root = path.join(dropinsDir, dirName);
@@ -164,7 +166,11 @@ describe("resolvePlugins boot-phase split for model providers (#14038)", () => {
       const deferredNames = deferred.map((p) => p.name);
       expect(deferredNames).not.toContain("@elizaos/plugin-nearai");
       expect(deferredNames).toContain("@dropins/plugin-plainfixture");
+      expect(infoSpy).not.toHaveBeenCalledWith(
+        expect.stringContaining("No AI provider plugin was loaded"),
+      );
     } finally {
+      infoSpy.mockRestore();
       process.chdir(previousCwd);
       await rm(workspace, { recursive: true, force: true });
     }

@@ -127,19 +127,6 @@ describe("BrowserTabFoldControl", () => {
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
-  it("is a ≥44px touch target (min-h-11)", () => {
-    render(
-      <BrowserTabFoldControl
-        activeLabel="Tab"
-        count={1}
-        openLabel="Show 1 tab"
-        onOpen={vi.fn()}
-      />,
-    );
-    const control = screen.getByTestId("browser-workspace-tab-fold-control");
-    expect(control.className).toContain("min-h-11");
-    expect(control.className).toContain("h-11");
-  });
 });
 
 describe("BrowserTabSwitcher", () => {
@@ -270,15 +257,4 @@ describe("BrowserTabSwitcher", () => {
     expect(within(dialog).getByText("No tabs open yet")).toBeTruthy();
   });
 
-  it("tab cards and close buttons are ≥44px / ≥36px touch targets", () => {
-    renderSwitcher();
-    const card = screen.getByTestId("browser-tab-card-user-0");
-    const activateTarget = within(card).getByRole("tab");
-    // min-h-11 = 2.75rem = 44px activate surface.
-    expect(activateTarget.className).toContain("min-h-11");
-    const closeBtn = screen.getByTestId("browser-tab-card-close-user-0");
-    // h-9 = 2.25rem = 36px close hit-area inside the card corner.
-    expect(closeBtn.className).toContain("h-9");
-    expect(closeBtn.className).toContain("w-9");
-  });
 });

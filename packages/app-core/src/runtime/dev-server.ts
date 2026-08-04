@@ -86,7 +86,10 @@ import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { ensureAuthPairingCodeForRemoteAccess } from "../api/auth-pairing-routes";
 import { startApiServer } from "../api/server";
-import { formatApiDevSettingsBannerText } from "./api-dev-settings-banner.js";
+import {
+  formatApiDevSettingsBannerText,
+  shouldShowApiDevSettingsBanner,
+} from "./api-dev-settings-banner.js";
 
 /**
  * The `./eliza` module is the entire agent-runtime / startEliza graph
@@ -111,7 +114,7 @@ console.log(
 
 // Load .env files for parity with CLI mode (which loads via run-main.ts).
 const { config: loadDotenv } = await import("dotenv");
-loadDotenv();
+loadDotenv({ quiet: true });
 
 console.log(
   `${getLogPrefix()} dotenv loaded (${elapsedSinceStartupTimingStart()}ms since ${STARTUP_TIMING_SOURCE}; module body ${elapsedSinceModuleBodyStart()}ms)`,
@@ -527,42 +530,32 @@ async function main() {
   // Invalidate cached CORS port set so the new port is allowed.
   const { invalidateCorsAllowedPorts } = await import("../api/server-cors.js");
   invalidateCorsAllowedPorts();
-  // Use console.log for startup timing to bypass logger filtering
-  console.log(
-    `${getLogPrefix()} API server ready on port ${actualPort} (${apiReady - apiStart}ms)`,
-  );
-
   const pairing = ensureAuthPairingCodeForRemoteAccess();
 
-  // Print connection info
+  // Keep the default ready signal compact. Credential and pairing details are
+  // separate because they are conditional and operationally necessary.
   const apiToken = resolveApiToken(process.env);
-  console.log("");
-  console.log(`${getLogPrefix()} ╭──────────────────────────────────────────╮`);
-  console.log(`${getLogPrefix()} │  Server is running.                      │`);
-  console.log(`${getLogPrefix()} │                                          │`);
   console.log(
-    `${getLogPrefix()} │  Connect at: http://localhost:${String(actualPort).padEnd(13)}│`,
+    `${getLogPrefix()} API ready: http://localhost:${actualPort} (${apiReady - apiStart}ms)`,
   );
   if (apiToken) {
     console.log(
-      `${getLogPrefix()} │  Connection key: ${("*".repeat(Math.max(0, apiToken.length - 4)) + apiToken.slice(-4)).padEnd(22)}│`,
+      `${getLogPrefix()} Connection key: ${"*".repeat(Math.max(0, apiToken.length - 4)) + apiToken.slice(-4)}`,
     );
   }
   if (pairing) {
+    console.log(`${getLogPrefix()} Pairing code: ${pairing.code}`);
+  }
+
+  if (shouldShowApiDevSettingsBanner(process.env)) {
     console.log(
-      `${getLogPrefix()} │  Pairing code: ${pairing.code.padEnd(24)}│`,
+      colorizeDevSettingsStartupBanner(
+        formatApiDevSettingsBannerText(actualPort, {
+          hadUserApiTokenInEnv,
+        }),
+      ),
     );
   }
-  console.log(`${getLogPrefix()} ╰──────────────────────────────────────────╯`);
-  console.log("");
-
-  console.log(
-    colorizeDevSettingsStartupBanner(
-      formatApiDevSettingsBannerText(actualPort, {
-        hadUserApiTokenInEnv,
-      }),
-    ),
-  );
 
   console.log(
     `${getLogPrefix()} Startup init complete in ${Date.now() - startupStart}ms, agent bootstrapping...`,

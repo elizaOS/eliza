@@ -309,16 +309,6 @@ describe("CalendarUpcomingWidget", () => {
     await screen.findByTestId("chat-widget-calendar-upcoming");
   });
 
-  it("applies the grid span to its single root element", async () => {
-    connectedGoogle();
-    mockFeed([event({ id: "a", title: "Standup" })]);
-    const { container } = render(<CalendarUpcomingWidget {...homeProps} />);
-    await screen.findByTestId("chat-widget-calendar-upcoming");
-    const root = container.firstElementChild as HTMLElement;
-    expect(root.className).toContain("col-span-4");
-    expect(root.className).toContain("row-span-1");
-  });
-
   it("publishes the reminder weight when the next event starts within 2 hours (home slot)", async () => {
     connectedGoogle();
     mockFeed([

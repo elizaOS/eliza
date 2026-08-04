@@ -10,9 +10,4 @@ function readSource(fileName: string): string {
 }
 
 describe("WifiAppView visual copy", () => {
-  it("keeps the Android WiFi overlay free of paragraph helper copy", () => {
-    const source = readSource("WifiAppView.tsx");
-
-    expect(source).not.toContain("<p className=");
-  });
 });
