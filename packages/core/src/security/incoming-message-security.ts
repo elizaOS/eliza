@@ -7,6 +7,7 @@ import type { PipelineHookSpec } from "../types/pipeline-hooks.ts";
 import type { ContentValue } from "../types/primitives.ts";
 import type { IAgentRuntime } from "../types/runtime.ts";
 import {
+	containsExternalEnvelopeMaterial,
 	detectSuspiciousPatterns,
 	type ExternalContentSource,
 	extractWrappedExternalContent,
@@ -38,6 +39,18 @@ export type IncomingMessageSecurityMetadata = {
 	promptInjectionSuspected?: boolean;
 	promptInjectionPatterns?: string[];
 	externalContentWrapped?: boolean;
+	/**
+	 * The user's exact words, retained at the inbound trust boundary BEFORE the
+	 * external-content envelope replaces `content.text`. The envelope exists for
+	 * prompts (the model must see the untrusted-content warning); every
+	 * non-prompt consumer — resolvers, query fallbacks, anything echoed back to
+	 * chat — reads this field through `unwrapUserMessageText` and never parses
+	 * the armor back out of the prompt text. Persisted with the message content,
+	 * so replayed/stored messages keep the trusted payload. Only
+	 * `hardenIncomingUserMessage` may stamp it; forged inbound values are
+	 * stripped there like the autonomy marker.
+	 */
+	userPayloadText?: string;
 };
 
 /**
@@ -102,7 +115,9 @@ function hasFinancialCommandLanguage(text: string): boolean {
 }
 
 function readMessageMetadata(message: Memory): IncomingMessageSecurityMetadata {
-	const existing = message.content.metadata;
+	// Optional-chained: `unwrapUserMessageText` accepts loosely-shaped messages
+	// from evaluator/routing contexts where `content` may be absent.
+	const existing = message.content?.metadata;
 	if (typeof existing === "object" && existing !== null) {
 		return existing as IncomingMessageSecurityMetadata;
 	}
@@ -110,13 +125,41 @@ function readMessageMetadata(message: Memory): IncomingMessageSecurityMetadata {
 }
 
 /**
- * Apply injection detection + external wrapping before compose / LLM.
- * Mutates `message.content` in place (pipeline hook + optional direct callers).
+ * `userPayloadText` and `externalContentWrapped` are runtime-internal stamps
+ * that only this module may set: a connector that forwards client-supplied
+ * `content.metadata` would otherwise let an external sender pre-stamp a
+ * payload DIFFERENT from the visible text, steering resolvers to a target the
+ * model never saw. Same doctrine as the forged autonomy marker — strip both
+ * from every inbound message before hardening re-stamps them.
+ */
+function stripForgedSecurityStamps(message: Memory): void {
+	const metadata = message.content.metadata;
+	if (typeof metadata !== "object" || metadata === null) {
+		return;
+	}
+	const record = metadata as Record<string, unknown>;
+	if ("userPayloadText" in record) {
+		delete record.userPayloadText;
+	}
+	if ("externalContentWrapped" in record) {
+		delete record.externalContentWrapped;
+	}
+}
+
+/**
+ * Apply injection detection + external wrapping at the inbound trust boundary,
+ * before compose / LLM. Mutates `message.content` in place (pipeline hook +
+ * optional direct callers). For untrusted sources the user's exact words are
+ * retained in `metadata.userPayloadText` and `content.text` becomes the
+ * security envelope: prompts read the envelope, everything else reads the
+ * retained payload via `unwrapUserMessageText`.
  */
 export function hardenIncomingUserMessage(message: Memory): void {
 	// Runs before the empty-text guard: an external message must never keep a
-	// forged autonomy marker regardless of its text (#12087 Item 7).
+	// forged autonomy marker or forged security stamps regardless of its text
+	// (#12087 Item 7).
 	stripUntrustedAutonomyMarker(message);
+	stripForgedSecurityStamps(message);
 
 	const text =
 		typeof message.content.text === "string" ? message.content.text : "";
@@ -138,6 +181,7 @@ export function hardenIncomingUserMessage(message: Memory): void {
 	}
 
 	if (shouldTreatSourceAsUntrusted(source)) {
+		metadata.userPayloadText = text;
 		message.content.text = wrapExternalContent(text, {
 			source: resolveExternalSource(source),
 			includeWarning: true,
@@ -154,26 +198,39 @@ export function scrubIncomingMessageTextForStorage(text: string): string {
 }
 
 /**
- * The user's actual words from a message that `hardenIncomingUserMessage` may
- * have wrapped in the external-content security envelope. The envelope exists
- * for PROMPTS — the model must see the untrusted-content warning — but code
- * that treats `content.text` as user input (query fallbacks, name/target
- * extraction, anything later echoed back to chat) must operate on the payload,
- * not the armor: an action that quoted the raw text shipped the entire
- * envelope to Discord (live leak 2026-08-02, tj-2dc95f75456876). Keyed on the
- * `externalContentWrapped` metadata stamp, so unwrapped messages pass through
- * untouched; a stamped message whose markers were somehow lost falls back to
- * the raw text rather than returning nothing.
+ * Canonical accessor for the user's actual words from a message that
+ * `hardenIncomingUserMessage` may have wrapped in the external-content
+ * security envelope. The envelope exists for PROMPTS — the model must see the
+ * untrusted-content warning — but code that treats `content.text` as user
+ * input (query fallbacks, name/target extraction, anything later echoed back
+ * to chat) must operate on the payload, not the armor: an action that quoted
+ * the raw text shipped the entire envelope to Discord (live leak 2026-08-02,
+ * tj-2dc95f75456876), and a resolver that matched on it selected apps by
+ * warning words.
+ *
+ * Resolution order: the retained `metadata.userPayloadText` stamp when present
+ * (the trusted copy taken before wrapping); otherwise a marker parse of
+ * `content.text` for legacy messages persisted before the retained field
+ * existed; otherwise the raw text. Whatever wins is validated last: a result
+ * that still reads as envelope material (partial markers, the warning
+ * sentence, a stamped message whose markers were mangled) returns "" — an
+ * empty reference sends resolvers down their ask-the-user path instead of
+ * matching warning words, which is the only safe interpretation of armor
+ * debris.
  */
 export function unwrapUserMessageText(message: Memory): string {
 	const text =
 		typeof message.content?.text === "string" ? message.content.text : "";
 	const metadata = readMessageMetadata(message);
-	if (metadata.externalContentWrapped === true) {
-		const payload = extractWrappedExternalContent(text);
-		if (payload !== null) return payload;
+	const retained = metadata.userPayloadText;
+	let candidate: string;
+	if (typeof retained === "string" && retained.trim().length > 0) {
+		candidate = retained;
+	} else {
+		candidate = extractWrappedExternalContent(text) ?? text;
 	}
-	return text.trim();
+	const trimmed = candidate.trim();
+	return containsExternalEnvelopeMaterial(trimmed) ? "" : trimmed;
 }
 
 export function messageHasPromptInjectionFlag(message: Memory): boolean {

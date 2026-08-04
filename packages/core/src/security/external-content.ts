@@ -230,10 +230,10 @@ export function wrapExternalContent(
 }
 
 /**
- * Whether text carries the wrap markers or warning header this module emits.
- * Outbound tripwire predicate: user-facing text must never contain the
- * envelope (a leaked echo shipped it to chat verbatim, tj-2dc95f75456876) —
- * the MESSAGE_SENT tripwire in basic-capabilities reports, never rewrites.
+ * Whether text carries the exact wrap markers or warning header this module
+ * emits. Byte-exact predicate kept for callers that need to recognize a
+ * verbatim envelope; delivery gating uses the variant-tolerant
+ * {@link containsExternalEnvelopeMaterial} instead.
  */
 export function containsExternalEnvelopeMarkers(text: string): boolean {
 	return (
@@ -241,6 +241,52 @@ export function containsExternalEnvelopeMarkers(text: string): boolean {
 		text.includes(EXTERNAL_CONTENT_END) ||
 		text.includes("SECURITY NOTICE: The following content is from an EXTERNAL")
 	);
+}
+
+// Lowercased marker token with word separators collapsed to "_", so
+// "EXTERNAL_UNTRUSTED_CONTENT", "external untrusted content", and
+// "External-Untrusted-Content" all reduce to the same needle.
+const ENVELOPE_MARKER_NEEDLE = "external_untrusted_content";
+// Lowercased first sentence of EXTERNAL_CONTENT_WARNING (parenthetical
+// dropped: an echo often truncates the tail but keeps the head).
+const ENVELOPE_WARNING_NEEDLE =
+	"security notice: the following content is from an external, untrusted source";
+// How far past a "<<<" run the marker words may sit and still count as marker
+// material. The real markers fit in 40 chars; the slack absorbs echo noise
+// ("<<< the EXTERNAL untrusted CONTENT block …") without scanning whole
+// paragraphs.
+const MARKER_PROXIMITY_WINDOW = 64;
+
+/**
+ * Variant-tolerant detector for security-envelope material in text. Unlike
+ * {@link containsExternalEnvelopeMarkers} (byte-exact), this catches the echo
+ * shapes a model actually produces when it regurgitates the envelope: case
+ * changes, fullwidth/compatibility Unicode (folded via NFKC), quoted or
+ * partial marker fragments ("he said \"<<<EXTERNAL…\""), separator-mangled
+ * marker names, and the warning's first sentence on its own. Used by the
+ * fail-closed outbound guard and by `unwrapUserMessageText` — both must treat
+ * "looks like the envelope" as disqualifying, so this predicate prefers false
+ * positives over misses.
+ */
+export function containsExternalEnvelopeMaterial(text: string): boolean {
+	if (!text) return false;
+	const normalized = text.normalize("NFKC").toLowerCase();
+	const wordFolded = normalized.replace(/[\s_-]+/g, "_");
+	if (wordFolded.includes(ENVELOPE_MARKER_NEEDLE)) return true;
+	if (normalized.replace(/\s+/g, " ").includes(ENVELOPE_WARNING_NEEDLE)) {
+		return true;
+	}
+	// "<<<" near "external" catches truncated echoes ('he said
+	// "<<<EXTERNAL…"') that carry neither the full marker name nor the warning
+	// sentence. "<<<" is vanishingly rare in agent prose, so requiring only the
+	// one word keeps the fail-closed bias without blocking ordinary text.
+	let cursor = normalized.indexOf("<<<");
+	while (cursor >= 0) {
+		const window = normalized.slice(cursor, cursor + MARKER_PROXIMITY_WINDOW);
+		if (window.includes("external")) return true;
+		cursor = normalized.indexOf("<<<", cursor + 3);
+	}
+	return false;
 }
 
 /**

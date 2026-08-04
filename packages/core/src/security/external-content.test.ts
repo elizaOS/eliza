@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import {
 	buildSafeExternalPrompt,
 	containsExternalEnvelopeMarkers,
+	containsExternalEnvelopeMaterial,
 	detectSuspiciousPatterns,
 	extractWrappedExternalContent,
 	getHookType,
@@ -206,5 +207,100 @@ describe("containsExternalEnvelopeMarkers", () => {
 			false,
 		);
 		expect(containsExternalEnvelopeMarkers("")).toBe(false);
+	});
+});
+
+describe("containsExternalEnvelopeMaterial: adversarial echo variants", () => {
+	it("detects the exact markers and full wrapped output", () => {
+		const wrapped = wrapExternalContent("hello there", {
+			source: "api",
+			includeWarning: true,
+		});
+		expect(containsExternalEnvelopeMaterial(wrapped)).toBe(true);
+		expect(
+			containsExternalEnvelopeMaterial("<<<EXTERNAL_UNTRUSTED_CONTENT>>>"),
+		).toBe(true);
+		expect(
+			containsExternalEnvelopeMaterial("<<<END_EXTERNAL_UNTRUSTED_CONTENT>>>"),
+		).toBe(true);
+	});
+
+	it("detects case-changed markers", () => {
+		expect(
+			containsExternalEnvelopeMaterial("<<<external_untrusted_content>>>"),
+		).toBe(true);
+		expect(
+			containsExternalEnvelopeMaterial("<<<External_Untrusted_Content>>>"),
+		).toBe(true);
+	});
+
+	it("detects fullwidth-Unicode (NFKC-foldable) marker disguises", () => {
+		expect(
+			containsExternalEnvelopeMaterial(
+				"＜＜＜ＥＸＴＥＲＮＡＬ＿ＵＮＴＲＵＳＴＥＤ＿ＣＯＮＴＥＮＴ＞＞＞",
+			),
+		).toBe(true);
+		expect(
+			containsExternalEnvelopeMaterial("＜＜＜ＥＸＴＥＲＮＡＬ stuff"),
+		).toBe(true);
+	});
+
+	it("detects quoted echoes of the marker", () => {
+		expect(
+			containsExternalEnvelopeMaterial(
+				'he said "<<<EXTERNAL_UNTRUSTED_CONTENT>>>" and then left',
+			),
+		).toBe(true);
+	});
+
+	it("detects truncated partial echoes near <<<", () => {
+		expect(containsExternalEnvelopeMaterial('he said "<<<EXTERNAL…"')).toBe(
+			true,
+		);
+		expect(containsExternalEnvelopeMaterial("<<<EXTERNAL_UNTRUSTED")).toBe(
+			true,
+		);
+	});
+
+	it("detects reference echoes with mangled separators", () => {
+		expect(
+			containsExternalEnvelopeMaterial(
+				"that external untrusted content block was weird",
+			),
+		).toBe(true);
+		expect(
+			containsExternalEnvelopeMaterial("EXTERNAL-UNTRUSTED-CONTENT marker"),
+		).toBe(true);
+	});
+
+	it("detects the warning's first sentence on its own, any casing", () => {
+		expect(
+			containsExternalEnvelopeMaterial(
+				"security notice: the following content is from an external, untrusted source and more",
+			),
+		).toBe(true);
+		expect(
+			containsExternalEnvelopeMaterial(
+				"SECURITY NOTICE:   The following content   is from an EXTERNAL, UNTRUSTED source",
+			),
+		).toBe(true);
+	});
+
+	it("passes clean prose, including app names that collide with warning words", () => {
+		expect(containsExternalEnvelopeMaterial("the page is live, enjoy")).toBe(
+			false,
+		);
+		// "External Content" / "Security" as plain nouns (e.g. a cloud app name
+		// echoed in a reply) must NOT be blocked — only marker/warning shapes.
+		expect(
+			containsExternalEnvelopeMaterial('deployed your app "External Content"'),
+		).toBe(false);
+		expect(
+			containsExternalEnvelopeMaterial('your app "Security" is live'),
+		).toBe(false);
+		expect(containsExternalEnvelopeMaterial("use <<< here docs in bash")).toBe(
+			false,
+		);
+		expect(containsExternalEnvelopeMaterial("")).toBe(false);
 	});
 });
