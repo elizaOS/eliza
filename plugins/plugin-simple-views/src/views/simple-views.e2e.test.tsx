@@ -21,9 +21,10 @@ vi.mock("@elizaos/ui/api", () => ({
   client: { onWsEvent: vi.fn(() => () => undefined) },
 }));
 
-vi.mock("@elizaos/ui/events", () => ({
-  useViewEvent: vi.fn(),
-}));
+vi.mock("@elizaos/ui/events", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@elizaos/ui/events")>();
+  return { ...actual, useViewEvent: vi.fn() };
+});
 
 vi.mock("@elizaos/ui/agent-surface", () => ({
   useAgentElement: (definition: { id: string; label: string }) => ({
