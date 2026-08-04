@@ -17,6 +17,7 @@ import { SharedRuntimeCacheWarmingError } from "./shared-runtime-errors";
 export interface SharedConversationCoordinatorOptions {
   namespace: RuntimeDurableObjectNamespace;
   executionCtx: BridgeExecutionContext;
+  abortSignal?: AbortSignal;
 }
 
 export interface SharedConversationHistoryCoordinatorOptions {
@@ -137,6 +138,7 @@ export async function coordinateSharedStream(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ operation: "stream", agent, rpc }),
+      ...(options.abortSignal ? { signal: options.abortSignal } : {}),
     });
   return await requireCoordinatorResponse(response, "stream");
 }

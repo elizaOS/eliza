@@ -12,15 +12,46 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 // Per-test controls for the collaborators used by both turn entry points.
 let providerConfigured = true;
-let generateTextImpl: () => Promise<{ text: string; usage?: unknown }> = async () => ({
+let generateTextImpl: (options?: {
+  abortSignal?: AbortSignal;
+  messages?: Array<{ role: string; content: string }>;
+}) => Promise<{ text: string; usage?: unknown }> = async () => ({
   text: "ok reply",
 });
-let streamTextImpl: () => { fullStream: AsyncIterable<unknown> } = () => ({
-  fullStream: (async function* () {
-    yield { type: "text-delta", text: "ok " };
-    yield { type: "text-delta", text: "reply" };
-    yield { type: "finish", totalUsage: { totalTokens: 3 } };
-  })(),
+type StreamTextOptions = {
+  abortSignal?: AbortSignal;
+  messages?: Array<{ role: string; content: string }>;
+};
+
+function aiFullStream(iterable: AsyncIterable<unknown>): ReadableStream<unknown> {
+  const iterator = iterable[Symbol.asyncIterator]();
+  return new ReadableStream({
+    async pull(controller) {
+      try {
+        const next = await iterator.next();
+        if (next.done) controller.close();
+        else controller.enqueue(next.value);
+      } catch (error) {
+        controller.error(error);
+      }
+    },
+    async cancel(reason) {
+      await iterator.return?.(reason);
+    },
+  });
+}
+
+let lastStreamTextOptions: StreamTextOptions | undefined;
+let streamTextImpl: (options?: StreamTextOptions) => {
+  fullStream: ReadableStream<unknown>;
+} = () => ({
+  fullStream: aiFullStream(
+    (async function* () {
+      yield { type: "text-delta", text: "ok " };
+      yield { type: "text-delta", text: "reply" };
+      yield { type: "finish", totalUsage: { totalTokens: 3 } };
+    })(),
+  ),
 });
 
 mock.module("../../providers/language-model", () => ({
@@ -34,8 +65,12 @@ mock.module("../../providers/language-model", () => ({
 }));
 
 mock.module("ai", () => ({
-  generateText: async () => generateTextImpl(),
-  streamText: () => streamTextImpl(),
+  generateText: async (options?: { messages?: Array<{ role: string; content: string }> }) =>
+    generateTextImpl(options),
+  streamText: (options?: StreamTextOptions) => {
+    lastStreamTextOptions = options;
+    return streamTextImpl(options);
+  },
 }));
 
 const { runSharedAgentTurn, runSharedAgentTurnStream } = await import("./run-shared-agent-turn");
@@ -44,13 +79,16 @@ const originalFetch = globalThis.fetch;
 
 beforeEach(() => {
   providerConfigured = true;
+  lastStreamTextOptions = undefined;
   generateTextImpl = async () => ({ text: "ok reply" });
   streamTextImpl = () => ({
-    fullStream: (async function* () {
-      yield { type: "text-delta", text: "ok " };
-      yield { type: "text-delta", text: "reply" };
-      yield { type: "finish", totalUsage: { totalTokens: 3 } };
-    })(),
+    fullStream: aiFullStream(
+      (async function* () {
+        yield { type: "text-delta", text: "ok " };
+        yield { type: "text-delta", text: "reply" };
+        yield { type: "finish", totalUsage: { totalTokens: 3 } };
+      })(),
+    ),
   });
   globalThis.fetch = mock(async () => {
     throw new Error("no network expected in this unit test");
@@ -187,6 +225,28 @@ describe("runSharedAgentTurn — internal failure propagates vs designed-empty d
     });
     expect(typeof result.history[3]?.createdAt).toBe("number");
   });
+
+  test("annotates interrupted assistant history before provider input", async () => {
+    let providerMessages: Array<{ role: string; content: string }> = [];
+    generateTextImpl = async (options) => {
+      providerMessages = options?.messages ?? [];
+      return { text: "continued" };
+    };
+
+    await runSharedAgentTurn({
+      character: { name: "Nova", system: "You are Nova.", model: "gpt-oss-120b" },
+      history: [
+        { role: "user", content: "first" },
+        { role: "assistant", content: "partial answer", interrupted: true },
+      ],
+      message: "continue",
+    });
+
+    expect(providerMessages[1]).toEqual({
+      role: "assistant",
+      content: "[interrupted assistant partial]\npartial answer",
+    });
+  });
 });
 
 describe("runSharedAgentTurnStream — incremental provider policy", () => {
@@ -235,10 +295,12 @@ describe("runSharedAgentTurnStream — incremental provider policy", () => {
 
   test("wraps failures raised while consuming the provider stream", async () => {
     streamTextImpl = () => ({
-      fullStream: (async function* () {
-        yield { type: "text-delta", text: "partial" };
-        throw new Error("provider stream reset");
-      })(),
+      fullStream: aiFullStream(
+        (async function* () {
+          yield { type: "text-delta", text: "partial" };
+          throw new Error("provider stream reset");
+        })(),
+      ),
     });
 
     const result = await runSharedAgentTurnStream({
@@ -262,5 +324,40 @@ describe("runSharedAgentTurnStream — incremental provider policy", () => {
     expect(error).toBeInstanceOf(Error);
     expect((error as Error).message).toContain("streaming agent turn failed");
     expect(((error as Error).cause as Error).message).toContain("provider stream reset");
+  });
+
+  test("passes cancellation to the AI SDK and cancels its response reader", async () => {
+    const abortController = new AbortController();
+    let providerCancelReason: unknown;
+    streamTextImpl = () => ({
+      fullStream: new ReadableStream({
+        start(controller) {
+          controller.enqueue({ type: "text-delta", text: "partial" });
+        },
+        cancel(reason) {
+          providerCancelReason = reason;
+        },
+      }),
+    });
+
+    const result = await runSharedAgentTurnStream({
+      abortSignal: abortController.signal,
+      character: { name: "Nova", model: "gpt-oss-120b" },
+      history: [],
+      message: "hello",
+    });
+    if (!result.parts || !result.cancel) {
+      throw new Error("expected cancellable streaming result");
+    }
+    const iterator = result.parts[Symbol.asyncIterator]();
+    await expect(iterator.next()).resolves.toMatchObject({
+      value: { type: "text-delta", text: "partial" },
+    });
+
+    await result.cancel("barge-in");
+
+    expect(lastStreamTextOptions?.abortSignal).toBe(abortController.signal);
+    expect(providerCancelReason).toBe("barge-in");
+    await expect(iterator.next()).resolves.toMatchObject({ done: true });
   });
 });
