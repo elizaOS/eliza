@@ -6,6 +6,15 @@ import type { ChatEvent, PlatformAdapter, WebhookConfig } from "./types";
 const TELEGRAM_API_BASE = "https://api.telegram.org";
 const MAX_MESSAGE_LENGTH = 4096;
 
+function fingerprintBotToken(botToken: string | undefined): string {
+  if (!botToken) return "missing";
+  return crypto
+    .createHash("sha256")
+    .update(botToken)
+    .digest("hex")
+    .slice(0, 16);
+}
+
 async function telegramApi<T>(
   botToken: string,
   method: string,
@@ -76,6 +85,14 @@ interface TelegramUpdate {
 
 export const telegramAdapter: PlatformAdapter = {
   platform: "telegram",
+
+  getDedupeScope(
+    config: WebhookConfig,
+    _event: ChatEvent,
+    project: string,
+  ): string {
+    return `project:${project}:bot:${fingerprintBotToken(config.botToken)}`;
+  },
 
   async verifyWebhook(
     request: Request,

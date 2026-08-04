@@ -2,6 +2,15 @@ import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import { type Context, Telegraf } from "telegraf";
 import { handleTelegramStandaloneMessage } from "./handler";
 import { shouldStartTelegramStandaloneBot } from "./policy";
+import {
+  claimTelegramPollerToken,
+  getTelegramPollerClaim,
+  markTelegramPollerConnected,
+  markTelegramPollerError,
+  markTelegramPollerUpdate,
+  releaseTelegramPollerToken,
+  type TelegramPollerHealth,
+} from "./poller-lock";
 
 export const TELEGRAM_STANDALONE_SERVICE_NAME = "telegram-standalone";
 
@@ -13,17 +22,24 @@ function formatError(err: unknown): string {
 // before the next one launches — two long-polls on one bot token would fight
 // over ownership and Telegram would 409 one of them.
 let activeStandaloneBot: Telegraf<Context> | null = null;
+let activeStandaloneToken: string | null = null;
 
 function stopActiveStandaloneBot(reason: string): void {
   if (!activeStandaloneBot) {
     return;
   }
+  const bot = activeStandaloneBot;
+  const token = activeStandaloneToken;
   try {
-    activeStandaloneBot.stop(reason);
+    bot.stop(reason);
   } catch {
     /* ignore */
   }
+  if (token) {
+    releaseTelegramPollerToken(token, bot);
+  }
   activeStandaloneBot = null;
+  activeStandaloneToken = null;
 }
 
 /**
@@ -42,6 +58,7 @@ export class TelegramStandaloneService extends Service {
     "Opt-in standalone Telegram polling bot (gate ELIZA_TELEGRAM_STANDALONE_BOT).";
 
   private bot: Telegraf<Context> | null = null;
+  private botToken: string | null = null;
 
   static async start(runtime: IAgentRuntime): Promise<TelegramStandaloneService> {
     const service = new TelegramStandaloneService(runtime);
@@ -72,8 +89,17 @@ export class TelegramStandaloneService extends Service {
     try {
       const apiRoot = process.env.TELEGRAM_API_ROOT || "https://api.telegram.org";
       const bot = new Telegraf(botToken, { telegram: { apiRoot } });
+      this.bot = bot;
+      this.botToken = botToken;
+      claimTelegramPollerToken(botToken, {
+        bot,
+        mode: "standalone",
+        ownerId: String(this.runtime.agentId),
+        accountId: "default",
+      });
 
       bot.on("message", async (ctx) => {
+        markTelegramPollerUpdate(botToken, bot);
         await handleTelegramStandaloneMessage(this.runtime, ctx);
       });
 
@@ -83,16 +109,22 @@ export class TelegramStandaloneService extends Service {
 
       // Fire-and-forget — bot.launch() only resolves on stop().
       bot
-        .launch({
-          dropPendingUpdates: true,
-          allowedUpdates: ["message", "message_reaction"],
-        })
-        .catch((err: unknown) =>
-          logger.warn(`[telegram-standalone] Telegram bot launch error: ${formatError(err)}`)
-        );
+        .launch(
+          {
+            dropPendingUpdates: false,
+            allowedUpdates: ["message", "message_reaction"],
+          },
+          () => {
+            markTelegramPollerConnected(botToken, bot);
+          }
+        )
+        .catch((err: unknown) => {
+          markTelegramPollerError(botToken, bot, err);
+          logger.warn(`[telegram-standalone] Telegram bot launch error: ${formatError(err)}`);
+        });
 
-      this.bot = bot;
       activeStandaloneBot = bot;
+      activeStandaloneToken = botToken;
 
       // Stop the poller on process signals in addition to the runtime's
       // service-stop path, matching the previous inline connector's SIGINT
@@ -103,8 +135,40 @@ export class TelegramStandaloneService extends Service {
       await new Promise((r) => setTimeout(r, 500));
       logger.info("[telegram-standalone] Telegram bot polling started");
     } catch (err) {
+      if (botToken && this.bot) {
+        releaseTelegramPollerToken(botToken, this.bot);
+      }
+      this.bot = null;
+      this.botToken = null;
       logger.warn(`[telegram-standalone] Telegram bot setup failed: ${formatError(err)}`);
+      throw err;
     }
+  }
+
+  public getPollerHealth(): TelegramPollerHealth {
+    if (!this.botToken || !this.bot) {
+      return {
+        ok: false,
+        mode: "standalone",
+        accountId: "default",
+        ownerId: String(this.runtime.agentId),
+        connected: false,
+        lastError: "Telegram standalone poller is not launched",
+      };
+    }
+    const claim = getTelegramPollerClaim(this.botToken);
+    if (claim?.bot === this.bot) {
+      const { bot: _bot, ...health } = claim;
+      return health;
+    }
+    return {
+      ok: false,
+      mode: "standalone",
+      accountId: "default",
+      ownerId: String(this.runtime.agentId),
+      connected: false,
+      lastError: "Telegram standalone poller lock is not active",
+    };
   }
 
   async stop(): Promise<void> {
@@ -117,6 +181,10 @@ export class TelegramStandaloneService extends Service {
         /* ignore */
       }
     }
+    if (this.botToken && this.bot) {
+      releaseTelegramPollerToken(this.botToken, this.bot);
+    }
     this.bot = null;
+    this.botToken = null;
   }
 }

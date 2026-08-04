@@ -121,6 +121,7 @@ vi.mock("@elizaos/core", async () => {
     ChannelType,
     CommandRegistryService,
     EventType,
+    getConfiguredOwnerEntityIds: () => [],
     getDefaultTriageService,
     ModelType,
     Role,

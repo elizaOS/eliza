@@ -40,6 +40,10 @@ import type {
 import type { Context, NarrowedContext, Telegraf } from "telegraf";
 import { Markup } from "telegraf";
 import { resolveTelegramSenderAuth } from "./command-registration";
+import {
+  resolveTelegramRuntimeEntityId,
+  telegramIdentityMetadata,
+} from "./identity";
 import { renderTelegramInteractions } from "./interactions";
 import {
   type TelegramContent,
@@ -131,19 +135,6 @@ type ComputerUseApprovalResolver = {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
-}
-
-function telegramIdentityMetadata(
-  telegramUserId: string,
-  name?: string,
-  username?: string,
-): Record<string, string> {
-  return {
-    userId: telegramUserId,
-    id: telegramUserId,
-    ...(name ? { name } : {}),
-    ...(username ? { username } : {}),
-  };
 }
 
 function isCompactProgressContent(
@@ -339,6 +330,54 @@ export class MessageManager {
 
   private scopedTelegramKey(key: string): string {
     return this.accountId === "default" ? key : `${this.accountId}:${key}`;
+  }
+
+  private telegramMessageMemoryKey(
+    chatId: number | string,
+    messageId: number | string,
+  ): string {
+    return `telegram:${this.accountId}:message:${chatId}:${messageId}`;
+  }
+
+  private telegramUpdateDedupeKey(
+    chatId: number | string,
+    messageId: number | string,
+  ): string {
+    return `telegram:processed:${this.accountId}:${chatId}:${messageId}`;
+  }
+
+  private async getTelegramMessageDeliveryState(
+    chatId: number | string,
+    messageId: number | string,
+  ): Promise<"delivery_started" | "processed" | undefined> {
+    const marker = await this.runtime.getCache<{
+      processedAt: number;
+      accountId: string;
+      chatId: string;
+      messageId: string;
+      state?: "delivery_started" | "processed";
+    }>(this.telegramUpdateDedupeKey(chatId, messageId));
+    if (!marker) return undefined;
+    // Markers written before delivery-state tracking landed represent turns
+    // that completed successfully.
+    return marker.state ?? "processed";
+  }
+
+  private async markTelegramMessageDeliveryState(
+    chatId: number | string,
+    messageId: number | string,
+    state: "delivery_started" | "processed",
+  ): Promise<void> {
+    await this.runtime.setCache(
+      this.telegramUpdateDedupeKey(chatId, messageId),
+      {
+        processedAt: Date.now(),
+        accountId: this.accountId,
+        chatId: String(chatId),
+        messageId: String(messageId),
+        state,
+      },
+    );
   }
 
   /**
@@ -1097,7 +1136,10 @@ export class MessageManager {
       const responseMemory: Memory = {
         id: createUniqueUuid(
           this.runtime,
-          this.scopedTelegramKey(sentMessage.message_id.toString()),
+          this.telegramMessageMemoryKey(
+            sentMessage.chat.id,
+            sentMessage.message_id,
+          ),
         ),
         entityId: this.runtime.agentId,
         agentId: this.runtime.agentId,
@@ -1313,10 +1355,11 @@ export class MessageManager {
 
     try {
       const telegramUserId = ctx.from.id.toString();
-      const entityId = createUniqueUuid(
+      const entityId = await resolveTelegramRuntimeEntityId(
         this.runtime,
-        this.scopedTelegramKey(telegramUserId),
-      ) as UUID;
+        this.accountId,
+        telegramUserId,
+      );
 
       const threadId =
         "is_topic_message" in message && message.is_topic_message
@@ -1341,8 +1384,46 @@ export class MessageManager {
       const telegramMessageId = message.message_id.toString();
       const messageId = createUniqueUuid(
         this.runtime,
-        this.scopedTelegramKey(telegramMessageId),
+        this.telegramMessageMemoryKey(telegramChatId, telegramMessageId),
       );
+
+      const deliveryState = await this.getTelegramMessageDeliveryState(
+        telegramChatId,
+        telegramMessageId,
+      );
+      if (deliveryState) {
+        if (deliveryState === "delivery_started") {
+          const error = new Error(
+            `Telegram delivery outcome is uncertain for ${this.accountId}/${telegramChatId}/${telegramMessageId}; refusing duplicate egress`,
+          );
+          this.runtime.reportError("telegram:delivery-uncertain", error, {
+            accountId: this.accountId,
+            chatId: telegramChatId,
+            messageId: telegramMessageId,
+          });
+          logger.error(
+            {
+              src: "plugin:telegram",
+              agentId: this.runtime.agentId,
+              accountId: this.accountId,
+              chatId: telegramChatId,
+              messageId: telegramMessageId,
+            },
+            "Refusing to replay a Telegram turn after delivery started",
+          );
+        }
+        logger.debug(
+          {
+            src: "plugin:telegram",
+            agentId: this.runtime.agentId,
+            accountId: this.accountId,
+            chatId: telegramChatId,
+            messageId: telegramMessageId,
+          },
+          "Skipping duplicate Telegram message update",
+        );
+        return;
+      }
 
       // Process message content and attachments
       const { processedContent, attachments } =
@@ -1403,8 +1484,9 @@ export class MessageManager {
             "reply_to_message" in message && message.reply_to_message
               ? createUniqueUuid(
                   this.runtime,
-                  this.scopedTelegramKey(
-                    message.reply_to_message.message_id.toString(),
+                  this.telegramMessageMemoryKey(
+                    telegramChatId,
+                    message.reply_to_message.message_id,
                   ),
                 )
               : undefined,
@@ -1436,6 +1518,7 @@ export class MessageManager {
               telegramUserId,
               ctx.from.first_name,
               ctx.from.username,
+              this.accountId,
             ),
             chatId: telegramChatId,
             messageId: telegramMessageId,
@@ -1462,6 +1545,16 @@ export class MessageManager {
           if (!content.text) {
             return [];
           }
+
+          // Persist the no-replay barrier before touching Telegram. If the
+          // process dies after this point, a redelivered update fails visibly
+          // instead of risking a duplicate message whose first send may have
+          // reached Telegram without returning an acknowledgement.
+          await this.markTelegramMessageDeliveryState(
+            telegramChatId,
+            telegramMessageId,
+            "delivery_started",
+          );
 
           let sentMessages: boolean | Message.TextMessage[] = false;
           // channelType target === 'telegram'
@@ -1501,6 +1594,11 @@ export class MessageManager {
             inReplyTo: messageId,
           });
         } catch (error) {
+          this.runtime.reportError("telegram:delivery", error, {
+            accountId: this.accountId,
+            chatId: telegramChatId,
+            messageId: telegramMessageId,
+          });
           logger.error(
             {
               src: "plugin:telegram",
@@ -1509,7 +1607,7 @@ export class MessageManager {
             },
             "Error in message callback",
           );
-          return [];
+          throw error;
         }
       };
       const callback = createTelegramCompactProgressCallback({
@@ -1536,6 +1634,11 @@ export class MessageManager {
       if (!shouldReply) {
         try {
           await this.runtime.createMemory(memory, "messages");
+          await this.markTelegramMessageDeliveryState(
+            telegramChatId,
+            telegramMessageId,
+            "processed",
+          );
         } catch (persistError) {
           logger.warn(
             {
@@ -1558,6 +1661,11 @@ export class MessageManager {
           this.runtime,
           memory,
           callback,
+        );
+        await this.markTelegramMessageDeliveryState(
+          telegramChatId,
+          telegramMessageId,
+          "processed",
         );
       } else {
         logger.error(
@@ -1644,7 +1752,7 @@ export class MessageManager {
     const callbackKey = `cbq-${query.id}`;
     const messageId = createUniqueUuid(
       this.runtime,
-      this.scopedTelegramKey(callbackKey),
+      this.telegramMessageMemoryKey(telegramChatId, callbackKey),
     );
     const channelType = getChannelType(chat);
     const computerUseApproval = parseComputerUseApprovalCallback(decoded.value);
@@ -1777,7 +1885,7 @@ export class MessageManager {
     const memory: Memory = {
       id: createUniqueUuid(
         this.runtime,
-        this.scopedTelegramKey(`cua-${queryId}`),
+        this.telegramMessageMemoryKey(args.chat.id, `cua-${queryId}`),
       ),
       entityId: args.entityId,
       agentId: this.runtime.agentId,
@@ -1982,7 +2090,7 @@ export class MessageManager {
       const reactionId = createUniqueUuid(
         this.runtime,
         this.scopedTelegramKey(
-          `${reaction.message_id}-${ctx.from.id}-${Date.now()}`,
+          `reaction:${reaction.chat.id}:${reaction.message_id}:${ctx.from.id}:${Date.now()}`,
         ),
       );
 
@@ -1998,7 +2106,10 @@ export class MessageManager {
           source: "telegram",
           inReplyTo: createUniqueUuid(
             this.runtime,
-            this.scopedTelegramKey(reaction.message_id.toString()),
+            this.telegramMessageMemoryKey(
+              reaction.chat.id,
+              reaction.message_id,
+            ),
           ),
           metadata: { accountId: this.accountId },
         },
@@ -2042,7 +2153,10 @@ export class MessageManager {
           const responseMemory: Memory = {
             id: createUniqueUuid(
               this.runtime,
-              this.scopedTelegramKey(sentMessage.message_id.toString()),
+              this.telegramMessageMemoryKey(
+                sentMessage.chat.id,
+                sentMessage.message_id,
+              ),
             ),
             entityId: this.runtime.agentId,
             agentId: this.runtime.agentId,
@@ -2240,7 +2354,10 @@ export class MessageManager {
         const memory: Memory = {
           id: createUniqueUuid(
             this.runtime,
-            this.scopedTelegramKey(sentMessage.message_id.toString()),
+            this.telegramMessageMemoryKey(
+              sentMessage.chat.id,
+              sentMessage.message_id,
+            ),
           ),
           entityId: this.runtime.agentId,
           agentId: this.runtime.agentId,

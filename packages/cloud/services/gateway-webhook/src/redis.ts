@@ -27,6 +27,7 @@ interface SetOptions {
 export interface GatewayRedis {
   get<T = unknown>(key: string): Promise<T | null>;
   set(key: string, value: string, options?: SetOptions): Promise<unknown>;
+  del(key: string): Promise<unknown>;
   lpush(key: string, value: string): Promise<unknown>;
   ltrim(key: string, start: number, stop: number): Promise<unknown>;
   expire(key: string, seconds: number): Promise<unknown>;
@@ -62,6 +63,10 @@ class NativeRedisAdapter implements GatewayRedis {
       return this.client.set(key, value, "NX");
     }
     return this.client.set(key, value);
+  }
+
+  async del(key: string): Promise<unknown> {
+    return this.client.del(key);
   }
 
   async lpush(key: string, value: string): Promise<unknown> {
@@ -117,6 +122,10 @@ class MemoryRedisAdapter implements GatewayRedis {
       return this.client.set(key, value, "NX");
     }
     return this.client.set(key, value);
+  }
+
+  async del(key: string): Promise<unknown> {
+    return this.client.del(key);
   }
 
   async lpush(key: string, value: string): Promise<unknown> {

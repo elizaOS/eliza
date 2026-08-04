@@ -16,6 +16,10 @@ import {
 import { resolveWebhookConfig } from "./webhook-config";
 
 const DEDUP_TTL_SECONDS = 300;
+const PROCESSING_TTL_SECONDS = 60;
+const TELEGRAM_DELIVERY_TTL_SECONDS = 30 * 24 * 60 * 60;
+const TELEGRAM_EGRESS_STARTED = "egress_started";
+const TELEGRAM_DELIVERED = "delivered";
 
 interface HandlerDeps {
   redis: GatewayRedis;
@@ -73,7 +77,82 @@ export async function handleWebhook(
     return ackResponse(adapter.platform);
   }
 
-  const dedupKey = `webhook:${adapter.platform}:${event.messageId}`;
+  const dedupKey = buildWebhookDedupeKey(
+    adapter,
+    config,
+    event,
+    project,
+    agentId,
+  );
+  const priorDeliveryState = await redis.get<string>(dedupKey);
+  if (priorDeliveryState) {
+    if (
+      adapter.platform === "telegram" &&
+      priorDeliveryState === TELEGRAM_EGRESS_STARTED
+    ) {
+      logger.error(
+        "Telegram webhook delivery outcome is uncertain; refusing replay",
+        {
+          platform: adapter.platform,
+          messageId: event.messageId,
+          dedupKey,
+        },
+      );
+      return new Response(
+        JSON.stringify({ error: "delivery outcome uncertain" }),
+        {
+          status: 503,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    }
+    logger.debug("Duplicate webhook skipped", {
+      platform: adapter.platform,
+      messageId: event.messageId,
+      dedupKey,
+    });
+    return ackResponse(adapter.platform);
+  }
+
+  if (adapter.platform === "telegram") {
+    const processingKey = `${dedupKey}:processing`;
+    const claimed = await redis.set(processingKey, "1", {
+      nx: true,
+      ex: PROCESSING_TTL_SECONDS,
+    });
+    if (!claimed) {
+      return new Response(JSON.stringify({ error: "update in progress" }), {
+        status: 503,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    try {
+      await processMessage(
+        adapter,
+        config,
+        event,
+        deps,
+        project,
+        agentId,
+        async () => {
+          // Write the no-replay barrier before the Bot API call. A crash or
+          // ambiguous network failure after this point must fail visibly on a
+          // Telegram retry instead of sending the same response twice.
+          await redis.set(dedupKey, TELEGRAM_EGRESS_STARTED, {
+            ex: TELEGRAM_DELIVERY_TTL_SECONDS,
+          });
+        },
+      );
+      await redis.set(dedupKey, TELEGRAM_DELIVERED, {
+        ex: TELEGRAM_DELIVERY_TTL_SECONDS,
+      });
+      return ackResponse(adapter.platform);
+    } finally {
+      await redis.del(processingKey);
+    }
+  }
+
   const isNew = await redis.set(dedupKey, "1", {
     nx: true,
     ex: DEDUP_TTL_SECONDS,
@@ -82,6 +161,7 @@ export async function handleWebhook(
     logger.debug("Duplicate webhook skipped", {
       platform: adapter.platform,
       messageId: event.messageId,
+      dedupKey,
     });
     return ackResponse(adapter.platform);
   }
@@ -102,6 +182,19 @@ export async function handleWebhook(
   return ackResponse(adapter.platform);
 }
 
+function buildWebhookDedupeKey(
+  adapter: PlatformAdapter,
+  config: WebhookConfig,
+  event: ChatEvent,
+  project: string,
+  agentId?: string,
+): string {
+  const scope = adapter.getDedupeScope?.(config, event, project, agentId);
+  return scope
+    ? `webhook:${adapter.platform}:${scope}:message:${event.messageId}`
+    : `webhook:${adapter.platform}:${event.messageId}`;
+}
+
 async function processMessage(
   adapter: PlatformAdapter,
   config: WebhookConfig,
@@ -109,6 +202,7 @@ async function processMessage(
   deps: HandlerDeps,
   project: string,
   explicitAgentId?: string,
+  beforeEgress?: () => Promise<void>,
 ): Promise<void> {
   const { redis, cloudBaseUrl, getAuthHeader } = deps;
   const authHeader = getAuthHeader();
@@ -128,7 +222,7 @@ async function processMessage(
       platform: adapter.platform,
       senderId: event.senderId,
     });
-    await sendOnboardingReply(adapter, config, event, deps);
+    await sendOnboardingReply(adapter, config, event, deps, beforeEgress);
     return;
   }
 
@@ -137,7 +231,7 @@ async function processMessage(
   const server = await resolveAgentServer(redis, agentId);
   if (!server) {
     logger.error("No server found for agent", { project, agentId });
-    return;
+    throw new Error(`No server found for agent ${agentId}`);
   }
 
   adapter.sendTypingIndicator(config, event).catch((err) => {
@@ -174,7 +268,7 @@ async function processMessage(
       platform: adapter.platform,
       agentId,
     });
-    return;
+    throw err;
   }
 
   // An empty responseText is a deliberate no-response from the agent (mute /
@@ -192,12 +286,14 @@ async function processMessage(
   }
 
   try {
+    await beforeEgress?.();
     await adapter.sendReply(config, event, responseText);
   } catch (err) {
     logger.error("Failed to send reply", {
       error: err instanceof Error ? err.message : String(err),
       platform: adapter.platform,
     });
+    throw err;
   }
 }
 
@@ -206,51 +302,46 @@ async function sendOnboardingReply(
   config: WebhookConfig,
   event: ChatEvent,
   deps: HandlerDeps,
+  beforeEgress?: () => Promise<void>,
 ): Promise<void> {
   const { cloudBaseUrl, getAuthHeader } = deps;
 
-  try {
-    const response = await fetch(
-      `${cloudBaseUrl}/api/eliza-app/onboarding/chat`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...getAuthHeader(),
-        },
-        body: JSON.stringify({
-          sessionId: `platform:${adapter.platform}:${event.senderId}`,
-          message: event.text,
-          platform: adapter.platform,
-          platformUserId: event.senderId,
-          platformDisplayName: event.senderName,
-        }),
-        signal: AbortSignal.timeout(30_000),
+  const response = await fetch(
+    `${cloudBaseUrl}/api/eliza-app/onboarding/chat`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...getAuthHeader(),
       },
+      body: JSON.stringify({
+        sessionId: `platform:${adapter.platform}:${event.senderId}`,
+        message: event.text,
+        platform: adapter.platform,
+        platformUserId: event.senderId,
+        platformDisplayName: event.senderName,
+      }),
+      signal: AbortSignal.timeout(30_000),
+    },
+  );
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(
+      `onboarding chat failed (${response.status}) ${body.slice(0, 200)}`,
     );
-
-    if (!response.ok) {
-      const body = await response.text().catch(() => "");
-      throw new Error(
-        `onboarding chat failed (${response.status}) ${body.slice(0, 200)}`,
-      );
-    }
-
-    const body = (await response.json()) as {
-      data?: {
-        reply?: string;
-      };
-    };
-    const reply =
-      body.data?.reply ??
-      "I can get your Eliza Cloud agent set up. Open https://app.elizacloud.ai/get-started to continue.";
-    await adapter.sendReply(config, event, reply);
-  } catch (err) {
-    logger.error("Failed to send onboarding reply", {
-      platform: adapter.platform,
-      error: err instanceof Error ? err.message : String(err),
-    });
   }
+
+  const body = (await response.json()) as {
+    data?: {
+      reply?: string;
+    };
+  };
+  const reply =
+    body.data?.reply ??
+    "I can get your Eliza Cloud agent set up. Open https://app.elizacloud.ai/get-started to continue.";
+  await beforeEgress?.();
+  await adapter.sendReply(config, event, reply);
 }
 
 function ackResponse(platform: Platform): Response {

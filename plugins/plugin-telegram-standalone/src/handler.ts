@@ -8,6 +8,7 @@ import {
   type Memory,
   type UUID,
 } from "@elizaos/core";
+import { resolveStandaloneTelegramEntityId } from "./identity";
 
 function formatError(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -96,6 +97,14 @@ function splitTelegramText(text: string): string[] {
   return chunks;
 }
 
+function telegramStandaloneMemoryKey(accountId: string, chatId: string, messageId: string): string {
+  return `telegram:${accountId}:message:${chatId}:${messageId}`;
+}
+
+function telegramStandaloneDedupeKey(accountId: string, chatId: string, messageId: string): string {
+  return `telegram-standalone:processed:${accountId}:${chatId}:${messageId}`;
+}
+
 export async function handleTelegramStandaloneMessage(
   runtime: IAgentRuntime,
   ctx: TelegramStandaloneContext
@@ -110,6 +119,7 @@ export async function handleTelegramStandaloneMessage(
     const from = ctx.from ?? message.from;
     const telegramUserId = String(from?.id ?? `chat-${chatId}`);
     const username = from?.username ?? from?.first_name ?? `telegram-${telegramUserId}`;
+    const accountId = "default";
     const threadId =
       message.message_thread_id !== undefined ? String(message.message_thread_id) : undefined;
     const telegramRoomId = threadId ? `${chatId}-${threadId}` : chatId;
@@ -131,12 +141,34 @@ export async function handleTelegramStandaloneMessage(
       return;
     }
 
-    const entityId = createUniqueUuid(runtime, `telegram-user:${telegramUserId}`) as UUID;
+    const telegramMessageId =
+      message.message_id !== undefined ? String(message.message_id) : `${chatId}:${Date.now()}`;
+    const dedupeKey = telegramStandaloneDedupeKey(accountId, chatId, telegramMessageId);
+    const deliveryMarker = await runtime.getCache<{ state?: "delivery_started" | "processed" }>(
+      dedupeKey
+    );
+    if (deliveryMarker !== undefined) {
+      if (deliveryMarker.state === "delivery_started") {
+        runtime.reportError(
+          "telegram-standalone:delivery-uncertain",
+          new Error(
+            `Telegram delivery outcome is uncertain for ${accountId}/${chatId}/${telegramMessageId}; refusing duplicate egress`
+          ),
+          { accountId, chatId, messageId: telegramMessageId }
+        );
+      }
+      logger.debug(
+        `[telegram-standalone] duplicate Telegram message skipped chat=${chatId} message=${telegramMessageId}`
+      );
+      return;
+    }
+
+    const entityId = await resolveStandaloneTelegramEntityId(runtime, accountId, telegramUserId);
     const roomId = createUniqueUuid(runtime, `telegram-room:${telegramRoomId}`) as UUID;
     const worldId = createUniqueUuid(runtime, `telegram-world:${chatId}`) as UUID;
     const messageId = createUniqueUuid(
       runtime,
-      `telegram-message:${message.message_id ?? `${chatId}:${Date.now()}`}`
+      telegramStandaloneMemoryKey(accountId, chatId, telegramMessageId)
     ) as UUID;
     const channelType = getTelegramChannelType(chat.type);
     const createdAt = typeof message.date === "number" ? message.date * 1000 : Date.now();
@@ -168,7 +200,11 @@ export async function handleTelegramStandaloneMessage(
           message.reply_to_message?.message_id !== undefined
             ? (createUniqueUuid(
                 runtime,
-                `telegram-message:${message.reply_to_message.message_id}`
+                telegramStandaloneMemoryKey(
+                  accountId,
+                  chatId,
+                  String(message.reply_to_message.message_id)
+                )
               ) as UUID)
             : undefined,
       },
@@ -176,6 +212,8 @@ export async function handleTelegramStandaloneMessage(
         type: "message",
         source: "telegram",
         provider: "telegram",
+        accountId,
+        scope: "room",
         timestamp: createdAt,
         entityName: from?.first_name,
         entityUserName: from?.username,
@@ -190,6 +228,8 @@ export async function handleTelegramStandaloneMessage(
           username: from?.username,
         },
         telegram: {
+          id: telegramUserId,
+          userId: telegramUserId,
           chatId,
           messageId: String(message.message_id ?? ""),
           threadId,
@@ -204,6 +244,14 @@ export async function handleTelegramStandaloneMessage(
       if (!content.text) {
         return [];
       }
+
+      await runtime.setCache(dedupeKey, {
+        state: "delivery_started",
+        processedAt: Date.now(),
+        accountId,
+        chatId,
+        messageId: telegramMessageId,
+      });
 
       const sentMemories: Memory[] = [];
       const chunks = splitTelegramText(content.text);
@@ -220,7 +268,10 @@ export async function handleTelegramStandaloneMessage(
         const sentMessageId =
           sent?.message_id !== undefined ? String(sent.message_id) : `local-${Date.now()}-${index}`;
         const responseMemory: Memory = {
-          id: createUniqueUuid(runtime, `telegram-message:${sentMessageId}`) as UUID,
+          id: createUniqueUuid(
+            runtime,
+            telegramStandaloneMemoryKey(accountId, String(sent?.chat?.id ?? chatId), sentMessageId)
+          ) as UUID,
           entityId: runtime.agentId,
           agentId: runtime.agentId,
           roomId,
@@ -235,6 +286,8 @@ export async function handleTelegramStandaloneMessage(
             type: "message",
             source: "telegram",
             provider: "telegram",
+            accountId,
+            scope: "room",
             timestamp: typeof sent?.date === "number" ? sent.date * 1000 : Date.now(),
             fromBot: true,
             fromId: runtime.agentId,
@@ -259,10 +312,19 @@ export async function handleTelegramStandaloneMessage(
     await runtime.messageService.handleMessage(runtime, memory, callback, {
       continueAfterActions: true,
     });
+    await runtime.setCache(dedupeKey, {
+      state: "processed",
+      processedAt: Date.now(),
+      accountId,
+      chatId,
+      messageId: telegramMessageId,
+    });
   } catch (outerErr) {
+    runtime.reportError("telegram-standalone:delivery", outerErr);
     logger.warn(`[telegram-standalone] Telegram handler error: ${formatError(outerErr)}`);
     // error-policy:J6 best-effort user-facing error notice; the underlying
     // failure is already logged above, so a failed reply has nowhere left to go.
     await ctx.reply("Sorry, I encountered an error processing your message.").catch(() => {});
+    throw outerErr;
   }
 }

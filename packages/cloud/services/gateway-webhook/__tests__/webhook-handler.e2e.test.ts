@@ -1,5 +1,6 @@
 // Exercises the gateway-webhook webhook handler.e2e path with deterministic cloud service fixtures.
 import { afterEach, describe, expect, mock, test } from "bun:test";
+import { telegramAdapter } from "../src/adapters/telegram";
 import type {
   ChatEvent,
   PlatformAdapter,
@@ -31,6 +32,10 @@ class MemoryRedis implements GatewayRedis {
     if (options.nx && this.store.has(key)) return null;
     this.store.set(key, value);
     return "OK";
+  }
+
+  async del(key: string): Promise<unknown> {
+    return this.store.delete(key) ? 1 : 0;
   }
 
   async lpush(): Promise<unknown> {
@@ -98,6 +103,8 @@ const envKeys = [
   "ELIZA_APP_TWILIO_ACCOUNT_SID",
   "ELIZA_APP_TWILIO_AUTH_TOKEN",
   "ELIZA_APP_TWILIO_PHONE_NUMBER",
+  "ELIZA_APP_TELEGRAM_BOT_TOKEN",
+  "ELIZA_APP_TELEGRAM_WEBHOOK_SECRET",
 ] as const;
 const originalEnv = new Map(envKeys.map((key) => [key, process.env[key]]));
 
@@ -106,6 +113,27 @@ function configureEnv(): void {
   process.env.ELIZA_APP_TWILIO_ACCOUNT_SID = "AC_test";
   process.env.ELIZA_APP_TWILIO_AUTH_TOKEN = "twilio-secret";
   process.env.ELIZA_APP_TWILIO_PHONE_NUMBER = "+15550000000";
+}
+
+function createTelegramAdapter(
+  event: ChatEvent,
+): PlatformAdapter & { replies: string[]; typingCount: number } {
+  const adapter: PlatformAdapter & { replies: string[]; typingCount: number } =
+    {
+      platform: "telegram",
+      replies: [],
+      typingCount: 0,
+      getDedupeScope: telegramAdapter.getDedupeScope,
+      verifyWebhook: mock(async () => true),
+      extractEvent: mock(async () => event),
+      sendReply: mock(async (_config, _event, text) => {
+        adapter.replies.push(text);
+      }),
+      sendTypingIndicator: mock(async () => {
+        adapter.typingCount += 1;
+      }),
+    };
+  return adapter;
 }
 
 async function waitFor(assertion: () => boolean, label: string): Promise<void> {
@@ -334,4 +362,168 @@ describe("gateway webhook handler e2e routing", () => {
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(adapter.replies).toEqual([]);
   });
+
+  test("scopes Telegram webhook dedupe by project and bot account", async () => {
+    configureEnv();
+    const redis = new MemoryRedis();
+    redis.store.set("agent:agent-1:server", "server-1");
+    redis.store.set("server:server-1:url", "http://agent-server.local");
+    const event: ChatEvent = {
+      platform: "telegram",
+      messageId: "123",
+      chatId: "42",
+      senderId: "42",
+      senderName: "Ada",
+      text: "same update id",
+      rawPayload: {},
+    };
+    const botA = createTelegramAdapter(event);
+    const botB = createTelegramAdapter(event);
+
+    globalThis.fetch = mock(async (input, init) => {
+      const request = new Request(input, init);
+      if (
+        request.url ===
+        "https://api.elizacloud.ai/api/internal/identity/resolve"
+      ) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            data: {
+              user: { id: "user-1", organizationId: "org-1" },
+              agent: { id: "agent-1" },
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (request.url === "http://agent-server.local/agents/agent-1/message") {
+        return new Response(JSON.stringify({ response: "ok" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      throw new Error(`Unexpected fetch: ${request.url}`);
+    }) as typeof fetch;
+
+    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "bot-token-a";
+    await handleWebhook(
+      new Request("https://gateway.example/webhook/eliza-app/telegram", {
+        method: "POST",
+        body: "{}",
+      }),
+      botA,
+      {
+        redis,
+        cloudBaseUrl: "https://api.elizacloud.ai",
+        getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+      },
+      "eliza-app",
+    );
+
+    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "bot-token-b";
+    await handleWebhook(
+      new Request("https://gateway.example/webhook/eliza-app/telegram", {
+        method: "POST",
+        body: "{}",
+      }),
+      botB,
+      {
+        redis,
+        cloudBaseUrl: "https://api.elizacloud.ai",
+        getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+      },
+      "eliza-app",
+    );
+
+    expect(botA.replies).toEqual(["ok"]);
+    expect(botB.replies).toEqual(["ok"]);
+    expect(
+      [...redis.store.keys()].filter(
+        (key) =>
+          key.includes("webhook:telegram") && !key.endsWith(":processing"),
+      ),
+    ).toEqual([
+      "webhook:telegram:project:eliza-app:bot:218da20172ac4d99:message:123",
+      "webhook:telegram:project:eliza-app:bot:9c352facd71adf06:message:123",
+    ]);
+  });
+
+  test("fails visibly instead of replaying after Telegram egress starts", async () => {
+    configureEnv();
+    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "bot-token-a";
+    const redis = new MemoryRedis();
+    redis.store.set("agent:agent-1:server", "server-1");
+    redis.store.set("server:server-1:url", "http://agent-server.local");
+    const event: ChatEvent = {
+      platform: "telegram",
+      messageId: "uncertain-1",
+      chatId: "42",
+      senderId: "42",
+      senderName: "Ada",
+      text: "send exactly once",
+      rawPayload: {},
+    };
+    const adapter = createTelegramAdapter(event);
+    let forwardAttempts = 0;
+    let sendAttempts = 0;
+    adapter.sendReply = mock(async () => {
+      sendAttempts += 1;
+      throw new Error("Telegram acknowledgement unavailable");
+    });
+
+    globalThis.fetch = mock(async (input, init) => {
+      const request = new Request(input, init);
+      if (
+        request.url ===
+        "https://api.elizacloud.ai/api/internal/identity/resolve"
+      ) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            data: {
+              user: { id: "user-1", organizationId: "org-1" },
+              agent: { id: "agent-1" },
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (request.url === "http://agent-server.local/agents/agent-1/message") {
+        forwardAttempts += 1;
+        return new Response(JSON.stringify({ response: "one response" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      throw new Error(`Unexpected fetch: ${request.url}`);
+    }) as typeof fetch;
+
+    const request = () =>
+      new Request("https://gateway.example/webhook/eliza-app/telegram", {
+        method: "POST",
+        body: "{}",
+      });
+    const deps = {
+      redis,
+      cloudBaseUrl: "https://api.elizacloud.ai",
+      getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+    };
+
+    await expect(
+      handleWebhook(request(), adapter, deps, "eliza-app"),
+    ).rejects.toThrow("Telegram acknowledgement unavailable");
+
+    const retry = await handleWebhook(request(), adapter, deps, "eliza-app");
+    expect(retry.status).toBe(503);
+    expect(await retry.json()).toEqual({ error: "delivery outcome uncertain" });
+    expect(sendAttempts).toBe(1);
+    expect(forwardAttempts).toBe(1);
+    expect(
+      [...redis.store.entries()].some(
+        ([key, value]) =>
+          key.includes("uncertain-1") && value === "egress_started",
+      ),
+    ).toBe(true);
+  }, 30_000);
 });

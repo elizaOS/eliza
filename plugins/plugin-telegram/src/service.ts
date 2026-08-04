@@ -56,7 +56,18 @@ import {
   registerTelegramCommandHandlers,
 } from "./command-registration";
 import { TELEGRAM_SERVICE_NAME } from "./constants";
+import { resolveTelegramRuntimeEntityId } from "./identity";
 import { MessageManager } from "./messageManager";
+import {
+  claimTelegramPollerToken,
+  getTelegramPollerClaim,
+  listTelegramPollerHealth,
+  markTelegramPollerConnected,
+  markTelegramPollerError,
+  markTelegramPollerUpdate,
+  releaseTelegramPollerToken,
+  type TelegramPollerHealth,
+} from "./poller-lock";
 import { registerTelegramTaskBoardCommand } from "./task-board";
 import {
   type TelegramEntityPayload,
@@ -153,20 +164,12 @@ function filterMemoriesByQuery(
 
 type MiddlewareNext = () => Promise<void>;
 
-type ActiveTelegramPoller = {
-  bot: Telegraf<Context>;
-  agentId: UUID;
-  accountId: string;
-};
-
 type TelegramAccountRuntime = {
   accountId: string;
   account: ResolvedTelegramAccount;
   bot: Telegraf<Context>;
   messageManager: MessageManager;
 };
-
-const ACTIVE_TELEGRAM_POLLERS = new Map<string, ActiveTelegramPoller>();
 
 function getCanonicalOwnerId(runtime: IAgentRuntime): UUID | null {
   for (const key of CANONICAL_OWNER_SETTING_KEYS) {
@@ -441,6 +444,30 @@ export class TelegramService extends Service {
     return this.getDefaultAccountState()?.bot ?? this.bot ?? null;
   }
 
+  public getPollerHealth(): TelegramPollerHealth {
+    const health = this.getPollerHealthByAccount();
+    return (
+      health.find((entry) => entry.accountId === this.defaultAccountId) ??
+      health[0] ?? {
+        ok: false,
+        mode: "full",
+        accountId: this.defaultAccountId,
+        ownerId: String(this.runtime.agentId),
+        connected: false,
+        lastError: "Telegram poller is not launched",
+      }
+    );
+  }
+
+  public getPollerHealthByAccount(): TelegramPollerHealth[] {
+    const accountIds = new Set(this.getAccountIds());
+    return listTelegramPollerHealth("full").filter(
+      (entry) =>
+        entry.ownerId === String(this.runtime.agentId) &&
+        accountIds.has(entry.accountId),
+    );
+  }
+
   private resolveAccountIdFromContext(
     context?: MessageConnectorQueryContext | null,
     target?: TargetInfo | null,
@@ -655,10 +682,7 @@ export class TelegramService extends Service {
         state.bot.stop("service-stop");
         const token = state.account.botToken;
         if (token) {
-          const active = ACTIVE_TELEGRAM_POLLERS.get(token);
-          if (active?.bot === state.bot) {
-            ACTIVE_TELEGRAM_POLLERS.delete(token);
-          }
+          releaseTelegramPollerToken(token, state.bot);
         }
       }
       return;
@@ -668,10 +692,7 @@ export class TelegramService extends Service {
     if (bot) {
       bot.stop("service-stop");
       if (this.botToken) {
-        const active = ACTIVE_TELEGRAM_POLLERS.get(this.botToken);
-        if (active?.bot === bot) {
-          ACTIVE_TELEGRAM_POLLERS.delete(this.botToken);
-        }
+        releaseTelegramPollerToken(this.botToken, bot);
       }
     }
   }
@@ -690,33 +711,22 @@ export class TelegramService extends Service {
     const accountId = activeState?.accountId ?? this.defaultAccountId;
 
     if (botToken) {
-      const active = ACTIVE_TELEGRAM_POLLERS.get(botToken);
+      const active = getTelegramPollerClaim(botToken);
       if (active && active.bot !== bot) {
-        logger.warn(
+        logger.error(
           {
             src: "plugin:telegram",
             agentId: this.runtime.agentId,
             accountId,
-            previousAgentId: active.agentId,
+            activeMode: active.mode,
+            activeOwnerId: active.ownerId,
+            activeAccountId: active.accountId,
           },
-          "Stopping existing Telegram poller before launching a new one",
+          "Telegram bot token is already owned by another poller",
         );
-        try {
-          active.bot.stop("replaced-by-new-runtime");
-        } catch (error) {
-          logger.warn(
-            {
-              src: "plugin:telegram",
-              agentId: this.runtime.agentId,
-              accountId,
-              error: error instanceof Error ? error.message : String(error),
-            },
-            "Failed to stop previous Telegram poller cleanly",
-          );
-        }
-        ACTIVE_TELEGRAM_POLLERS.delete(botToken);
-        // Give Telegram a brief moment to release long-poll ownership.
-        await new Promise((resolve) => setTimeout(resolve, 300));
+        throw new Error(
+          `Telegram bot token already owned by ${active.mode} poller ${active.ownerId}/${active.accountId}`,
+        );
       }
     }
 
@@ -838,14 +848,15 @@ export class TelegramService extends Service {
       if (!botToken) {
         return true;
       }
-      const active = ACTIVE_TELEGRAM_POLLERS.get(botToken);
+      const active = getTelegramPollerClaim(botToken);
       return active === undefined || active.bot === bot;
     };
     const markActive = (): void => {
       if (botToken) {
-        ACTIVE_TELEGRAM_POLLERS.set(botToken, {
+        claimTelegramPollerToken(botToken, {
           bot,
-          agentId: this.runtime.agentId,
+          mode: "full",
+          ownerId: String(this.runtime.agentId),
           accountId,
         });
       }
@@ -854,10 +865,7 @@ export class TelegramService extends Service {
       if (!botToken) {
         return;
       }
-      const active = ACTIVE_TELEGRAM_POLLERS.get(botToken);
-      if (active?.bot === bot) {
-        ACTIVE_TELEGRAM_POLLERS.delete(botToken);
-      }
+      releaseTelegramPollerToken(botToken, bot);
     };
 
     let relaunches = 0;
@@ -906,15 +914,29 @@ export class TelegramService extends Service {
 
       const runLaunch = (): void => {
         let connectedAt = 0;
+        try {
+          markActive();
+        } catch (error) {
+          if (!connectedOnce) {
+            reject(error);
+          } else {
+            if (botToken) {
+              markTelegramPollerError(botToken, bot, error);
+            }
+          }
+          return;
+        }
         bot
           .launch(
             {
-              dropPendingUpdates: true,
+              dropPendingUpdates: false,
               allowedUpdates: ["message", "message_reaction", "callback_query"],
             },
             () => {
               connectedAt = Date.now();
-              markActive();
+              if (botToken) {
+                markTelegramPollerConnected(botToken, bot);
+              }
               if (!connectedOnce) {
                 connectedOnce = true;
                 resolve();
@@ -940,6 +962,9 @@ export class TelegramService extends Service {
                 clearActive();
                 reject(error);
                 return;
+              }
+              if (botToken) {
+                markTelegramPollerError(botToken, bot, error);
               }
               // error-policy:J7 poll-loop failure after connecting (or on a
               // relaunch) — start() has already returned, so surface it
@@ -1109,6 +1134,10 @@ export class TelegramService extends Service {
     // Regular message handler
     bot?.on("message", async (ctx) => {
       try {
+        const token = state?.account.botToken ?? this.botToken;
+        if (token) {
+          markTelegramPollerUpdate(token, bot);
+        }
         // Preprocessing runs in the middleware chain; this only dispatches.
         await messageManager?.handleMessage(ctx);
       } catch (error) {
@@ -1127,6 +1156,10 @@ export class TelegramService extends Service {
     // Reaction handler
     bot?.on("message_reaction", async (ctx) => {
       try {
+        const token = state?.account.botToken ?? this.botToken;
+        if (token) {
+          markTelegramPollerUpdate(token, bot);
+        }
         await messageManager?.handleReaction(ctx);
       } catch (error) {
         logger.error(
@@ -1145,6 +1178,10 @@ export class TelegramService extends Service {
     // interaction protocol). Foreign callbacks are acknowledged and ignored.
     bot?.on("callback_query", async (ctx) => {
       try {
+        const token = state?.account.botToken ?? this.botToken;
+        if (token) {
+          markTelegramPollerUpdate(token, bot);
+        }
         await messageManager?.handleCallbackQuery(ctx);
       } catch (error) {
         logger.error(
@@ -1279,10 +1316,11 @@ export class TelegramService extends Service {
   ): Promise<void> {
     if (ctx.from) {
       const telegramId = ctx.from.id.toString();
-      const entityId = createUniqueUuid(
+      const entityId = await resolveTelegramRuntimeEntityId(
         this.runtime,
-        this.scopedTelegramKey(telegramId, accountId),
-      ) as UUID;
+        accountId,
+        telegramId,
+      );
 
       if (this.syncedEntityIds.has(entityId)) {
         return;
@@ -1327,10 +1365,11 @@ export class TelegramService extends Service {
     if (ctx.message && "new_chat_members" in ctx.message) {
       for (const newMember of ctx.message.new_chat_members) {
         const telegramId = newMember.id.toString();
-        const entityId = createUniqueUuid(
+        const entityId = await resolveTelegramRuntimeEntityId(
           this.runtime,
-          this.scopedTelegramKey(telegramId, accountId),
-        ) as UUID;
+          accountId,
+          telegramId,
+        );
 
         if (this.syncedEntityIds.has(entityId)) {
           continue;
