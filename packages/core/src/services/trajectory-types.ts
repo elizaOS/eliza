@@ -274,11 +274,10 @@ export interface TrajectoryDetailRecord {
 	batchId?: string;
 	steps?: TrajectoryStepRecord[];
 	metrics?: {
-    finalStatus?: string;
-    /** Step count at last persist; required by Core validators (#17730). */
-    episodeLength?: number;
-    [key: string]: unknown;
-  };
+		finalStatus?: string;
+		/** Step count at last persist; required by Core validators (#17730). */
+		episodeLength?: number;
+	};
 	/** Plain JSON-like bag; values are not validated as {@link JsonValue} at the boundary. */
 	metadata?: Record<string, unknown>;
 	stepsJson?: string;

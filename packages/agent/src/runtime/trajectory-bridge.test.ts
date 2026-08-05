@@ -207,40 +207,36 @@ describe("installDatabaseTrajectoryLogger (capture bridge)", () => {
     ).toBe(true);
   });
 
-  it.each([
-    "metadata_json",
-    "metrics_json",
-    "reward_components_json",
-  ] as const)(
+  it.each(["metadata_json", "metrics_json", "reward_components_json"] as const)(
     "falls back to the legacy schema when %s is unavailable",
     async (missingColumn) => {
-    const { runtime, logger, execute } = makeRuntime();
-    execute.mockImplementation(async (query: unknown) => {
-      const sql = sqlText(query);
-      if (
-        /INSERT INTO trajectories\s*\(/i.test(sql) &&
-        sql.includes(missingColumn)
-      ) {
-        throw new Error(`column ${missingColumn} does not exist`);
-      }
-      return [];
-    });
-    await installDatabaseTrajectoryLogger(runtime);
+      const { runtime, logger, execute } = makeRuntime();
+      execute.mockImplementation(async (query: unknown) => {
+        const sql = sqlText(query);
+        if (
+          /INSERT INTO trajectories\s*\(/i.test(sql) &&
+          sql.includes(missingColumn)
+        ) {
+          throw new Error(`column ${missingColumn} does not exist`);
+        }
+        return [];
+      });
+      await installDatabaseTrajectoryLogger(runtime);
 
-    logger.logLlmCall({
-      stepId: "step-legacy",
-      model: "eliza-1-2b",
-      response: "hello",
-      purpose: "action",
-      actionType: "runtime.useModel",
-    });
-    await flushTrajectoryWrites(runtime);
+      logger.logLlmCall({
+        stepId: "step-legacy",
+        model: "eliza-1-2b",
+        response: "hello",
+        purpose: "action",
+        actionType: "runtime.useModel",
+      });
+      await flushTrajectoryWrites(runtime);
 
-    const writes = trajectoryInsertSql(execute);
-    expect(writes).toHaveLength(2);
-    expect(writes[0]).toContain(missingColumn);
-    expect(writes[1]).not.toContain(missingColumn);
-    expect(writes[1]).toContain("episode_length");
+      const writes = trajectoryInsertSql(execute);
+      expect(writes).toHaveLength(2);
+      expect(writes[0]).toContain(missingColumn);
+      expect(writes[1]).not.toContain(missingColumn);
+      expect(writes[1]).toContain("episode_length");
     },
   );
 

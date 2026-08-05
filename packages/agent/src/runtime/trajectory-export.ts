@@ -88,6 +88,15 @@ function toPublicTrajectoryProviderAccess(
   };
 }
 
+/**
+ * Map a persisted step into the public step record shape.
+ *
+ * Does not invent an `action` field: Agent-bridge LLM-only captures are
+ * actionless by design (#17730). `TrajectoryStep` here is
+ * `TrajectoryStepRecord` (no required action). Training-side
+ * `features/trajectories` `TrajectoryStep.action` is optional for the same
+ * reason; ART conversion guards absence rather than assuming every step acted.
+ */
 function toPublicTrajectoryStep(
   step: PersistedStep,
   trajectoryId: string,

@@ -258,7 +258,9 @@ describe("trajectory capture -> DB -> viewer", () => {
     );
     expect(providers.has("local-inference"), "local call persisted").toBe(true);
     expect(providers.has("openai"), "cloud call persisted").toBe(true);
-    expect((detail?.steps ?? []).every((step) => step.action == null)).toBe(true);
+    expect((detail?.steps ?? []).every((step) => step.action == null)).toBe(
+      true,
+    );
 
     const listRoute = await readRoute("/api/trajectories");
     expect(listRoute.status).toBe(200);
