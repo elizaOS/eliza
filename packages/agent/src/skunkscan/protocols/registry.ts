@@ -9,6 +9,10 @@ import { ETHEREUM_STAKING_PROTOCOLS } from "./ethereum/staking";
 import { ETHEREUM_YIELD_PROTOCOLS } from "./ethereum/yield";
 import { ETHEREUM_NFT_PROTOCOLS } from "./ethereum/nft";
 import { ETHEREUM_INFRASTRUCTURE_PROTOCOLS } from "./ethereum/infrastructure";
+import { BNB_DEX_PROTOCOLS } from "./bnb/dex";
+import { BNB_LENDING_PROTOCOLS } from "./bnb/lending";
+import { BNB_STAKING_PROTOCOLS } from "./bnb/staking";
+import { BNB_INFRASTRUCTURE_PROTOCOLS } from "./bnb/infrastructure";
 
 export type ChainProtocol = {
   programId: string;
@@ -64,11 +68,19 @@ const ETHEREUM_PROTOCOLS: Readonly<Record<string, ChainProtocol>> = {
   ...ETHEREUM_INFRASTRUCTURE_PROTOCOLS,
 };
 
+const BNB_PROTOCOLS: Readonly<Record<string, ChainProtocol>> = {
+  ...BNB_DEX_PROTOCOLS,
+  ...BNB_LENDING_PROTOCOLS,
+  ...BNB_STAKING_PROTOCOLS,
+  ...BNB_INFRASTRUCTURE_PROTOCOLS,
+};
+
 const CHAIN_PROTOCOL_REGISTRIES: Partial<
   Record<SupportedChain, Readonly<Record<string, ChainProtocol>>>
 > = {
   solana: SOLANA_PROTOCOLS,
   ethereum: ETHEREUM_PROTOCOLS,
+  bnb: BNB_PROTOCOLS,
 };
 
 export function lookupProtocol(
