@@ -42,6 +42,8 @@ const UI_SRC = path.join(REPO_ROOT, "packages/ui/src");
  *      / `.on("touchstart"` (a hand-rolled touch gesture, not a click).
  *   3. a named gesture-engine hook — usePullGesture / useHorizontalPager
  *      (definition or consumer).
+ *   4. the rail-gesture lifecycle store — its begin function marks the
+ *      promotion window that freezes expensive render work during a swipe.
  * A plain `onClick`/`onPointerDown` button is intentionally NOT a gesture site.
  */
 const GESTURE_MARKERS: readonly RegExp[] = [
@@ -50,6 +52,7 @@ const GESTURE_MARKERS: readonly RegExp[] = [
   /addEventListener\(\s*["']touchstart/,
   /\bon\(\s*["']touchstart/,
   /\buse(PullGesture|HorizontalPager)\b/,
+  /export function beginRailGesture\b/,
 ];
 
 /** `.test.`/`.fuzz.` specs, `__e2e__` fixtures, and this gate are not sites. */
