@@ -1184,6 +1184,7 @@ export function selectV5PlannerStateProviderNames(args: {
 	message: Memory;
 	selectedContexts: readonly AgentContext[];
 	userRoles: readonly RoleGateRole[];
+	candidateActions?: readonly string[];
 }): string[] {
 	const providerNames = new Set<string>(CORE_RESPONSE_STATE_PROVIDERS);
 	if (hasInboundBenchmarkContext(args.message)) {
@@ -1231,7 +1232,54 @@ export function selectV5PlannerStateProviderNames(args: {
 		providerNames.delete(excluded);
 	}
 
+	const actionExclusions = new Set(
+		plannerStateProviderExclusionsForCandidateActions(
+			args.runtime,
+			args.candidateActions ?? [],
+		).map((name) => name.toUpperCase()),
+	);
+	for (const providerName of providerNames) {
+		if (actionExclusions.has(providerName.toUpperCase())) {
+			providerNames.delete(providerName);
+		}
+	}
+
 	return [...providerNames];
+}
+
+function plannerStateProviderExclusionsForCandidateActions(
+	runtime: Pick<IAgentRuntime, "actions">,
+	candidateActionNames: readonly string[],
+): string[] {
+	if (candidateActionNames.length === 0) return [];
+
+	const actionLookup = buildRuntimeActionLookup(runtime);
+	const resolvedActions: Action[] = [];
+	for (const candidateName of candidateActionNames) {
+		const action = resolveRuntimeAction(actionLookup, candidateName);
+		if (!action || !Array.isArray(action.plannerStateProviderExclusions)) {
+			return [];
+		}
+		resolvedActions.push(action);
+	}
+
+	const [first, ...rest] = resolvedActions;
+	if (!first) return [];
+	const sharedByAction = rest.map(
+		(action) =>
+			new Set(
+				action.plannerStateProviderExclusions?.map((name) =>
+					name.toUpperCase(),
+				) ?? [],
+			),
+	);
+	const seen = new Set<string>();
+	return (first.plannerStateProviderExclusions ?? []).filter((name) => {
+		const normalized = name.trim().toUpperCase();
+		if (!normalized || seen.has(normalized)) return false;
+		seen.add(normalized);
+		return sharedByAction.every((set) => set.has(normalized));
+	});
 }
 
 function _ensureActionStateValues(
@@ -3791,7 +3839,7 @@ direct/private rules:
 - Chat, static knowledge, writing, rewriting, translation, brainstorming, and explanations: contexts=["simple"]; answer in replyText.
 - Simple replyText must be natural and complete, not a placeholder, unless terse was requested.
 - Non-simple contexts/actions are only for tools, live/private state, files/web/shell, side effects, scheduling/memory/settings/secrets/finance/media/device control.
-- UI navigation is device/app control: open/show/switch/go-home requests use contexts=["general"], candidateActionNames=["VIEWS"], and a brief pending ack. Never claim the view opened before VIEWS succeeds.
+- UI navigation is device/app control: open/show/switch/go-home requests use contexts=["general"], candidateActionNames=["OPEN_VIEW"], and a brief pending ack. Never claim the view opened before OPEN_VIEW succeeds.
 - Slash-command questions are conversation: contexts=["general"]; say /commands shows the list; never select VIEWS or ask clarification for "show commands".
 - Sticky Notes and native device controls are also device/app control: note and flashlight reads or mutations use contexts=["general"], candidateActionNames=["VIEWS"]. Do not route sticky Notes to documents or invent action names such as CREATE_NOTE.
 - Calendar-event reads or mutations use contexts=["calendar"], candidateActionNames=["CALENDAR"]. A timed "add X tomorrow at 9am" request is a calendar event unless the user explicitly asks for a task or reminder.
@@ -7760,11 +7808,19 @@ export async function runV5MessageRuntimeStage1(args: {
 			});
 			earlyReplySent = delivered !== false;
 		}
+		const stageOneCandidateActions =
+			getMessageHandlerCandidateActions(messageHandler);
+		const plannerProviderExclusions =
+			plannerStateProviderExclusionsForCandidateActions(
+				args.runtime,
+				stageOneCandidateActions,
+			);
 		const plannerProviderNames = selectV5PlannerStateProviderNames({
 			runtime: args.runtime,
 			message: args.message,
 			selectedContexts,
 			userRoles: [senderRole],
+			candidateActions: stageOneCandidateActions,
 		});
 		const recomposedPlannerState =
 			typeof args.runtime.composeState === "function"
@@ -7891,8 +7947,13 @@ export async function runV5MessageRuntimeStage1(args: {
 			// composeState merges the whole turn cache into the state it returns,
 			// so a block composed earlier in the turn would still render here.
 			// The exclusion must own cached rendering as well as composition.
-			...(ambientTurn
-				? { extraProviderExclusions: AMBIENT_TURN_PROVIDER_EXCLUSIONS }
+			...(ambientTurn || plannerProviderExclusions.length > 0
+				? {
+						extraProviderExclusions: [
+							...(ambientTurn ? AMBIENT_TURN_PROVIDER_EXCLUSIONS : []),
+							...plannerProviderExclusions,
+						],
+					}
 				: {}),
 		});
 		const responseHandlerContextSlices = stringArrayProperty(

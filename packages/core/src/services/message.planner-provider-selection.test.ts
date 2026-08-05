@@ -37,12 +37,24 @@ function msg(): Memory {
 function select(
 	providers: Provider[],
 	selectedContexts: AgentContext[],
+	candidateActions?: string[],
 ): string[] {
 	return selectV5PlannerStateProviderNames({
-		runtime: makeRuntime(providers),
+		runtime: {
+			...makeRuntime(providers),
+			actions: candidateActions
+				? [
+						{
+							name: "OPEN_VIEW",
+							plannerStateProviderExclusions: ["workspaceContext", "uiWidgets"],
+						} as never,
+					]
+				: [],
+		} as IAgentRuntime,
 		message: msg(),
 		selectedContexts,
 		userRoles: ["MEMBER"],
+		candidateActions,
 	});
 }
 
@@ -148,6 +160,51 @@ describe("selectV5PlannerStateProviderNames — declared contextGate honored (#1
 		expect(recentErrorsProvider.alwaysInResponseState).toBe(true);
 		expect(select([recentErrorsProvider], ["code"])).toContain("RECENT_ERRORS");
 		expect(select([recentErrorsProvider], [])).toContain("RECENT_ERRORS");
+	});
+});
+
+describe("selectV5PlannerStateProviderNames — action-owned prompt budget", () => {
+	const workspace = provider({
+		name: "workspaceContext",
+		contextGate: { anyOf: ["general"] },
+	});
+	const widgets = provider({
+		name: "uiWidgets",
+		contextGate: { anyOf: ["general"] },
+	});
+
+	it("omits providers that cannot affect the sole routed action", () => {
+		const names = select([workspace, widgets], ["general"], ["OPEN_VIEW"]);
+		expect(names).not.toContain("workspaceContext");
+		expect(names).not.toContain("uiWidgets");
+	});
+
+	it("keeps the full state when Stage 1 has no action candidate", () => {
+		const names = select([workspace, widgets], ["general"]);
+		expect(names).toContain("workspaceContext");
+		expect(names).toContain("uiWidgets");
+	});
+
+	it("fails open when any candidate has no declared exclusions", () => {
+		const runtime = {
+			...makeRuntime([workspace, widgets]),
+			actions: [
+				{
+					name: "OPEN_VIEW",
+					plannerStateProviderExclusions: ["workspaceContext", "uiWidgets"],
+				},
+				{ name: "OTHER_ACTION" },
+			],
+		} as IAgentRuntime;
+		const names = selectV5PlannerStateProviderNames({
+			runtime,
+			message: msg(),
+			selectedContexts: ["general"],
+			userRoles: ["MEMBER"],
+			candidateActions: ["OPEN_VIEW", "OTHER_ACTION"],
+		});
+		expect(names).toContain("workspaceContext");
+		expect(names).toContain("uiWidgets");
 	});
 });
 
