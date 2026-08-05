@@ -150,6 +150,7 @@ export interface ShellController {
       channelType?: "DM" | "VOICE_DM";
       images?: ImageAttachment[];
       metadata?: Record<string, unknown>;
+      clientMessageId?: string;
     },
   ) => void;
   /** Show the agent the screen: sends a vision-intent turn so the agent runs its
@@ -794,6 +795,7 @@ export function useShellController(): ShellController {
         channelType?: "DM" | "VOICE_DM";
         images?: ImageAttachment[];
         metadata?: Record<string, unknown>;
+        clientMessageId?: string;
       },
     ) => {
       const trimmed = text.trim();
@@ -1721,8 +1723,18 @@ export function useShellController(): ShellController {
       if (!text) return;
       send(text, {
         channelType: "VOICE_DM",
+        ...(detail.segmentId
+          ? { clientMessageId: `pendant:${detail.segmentId}` }
+          : {}),
         metadata: {
           voiceSource: "pendant",
+          ...(detail.ownerId ? { pendantOwnerId: detail.ownerId } : {}),
+          ...(detail.agentId ? { pendantAgentId: detail.agentId } : {}),
+          ...(detail.sessionId ? { pendantSessionId: detail.sessionId } : {}),
+          ...(detail.segmentId ? { pendantSegmentId: detail.segmentId } : {}),
+          ...(detail.segmentRevision !== undefined
+            ? { pendantSegmentRevision: detail.segmentRevision }
+            : {}),
           voiceTurnSignal: buildVoiceTurnSignal(text, {
             recentAgentReply: latestAgentReplyRef.current.text,
             replyAgeMs: latestAgentReplyRef.current.at

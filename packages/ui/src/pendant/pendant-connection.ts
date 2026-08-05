@@ -135,17 +135,25 @@ export const PENDANT_VOICE_TRANSCRIPT_EVENT =
 
 export interface PendantVoiceTranscriptDetail {
   text: string;
+  ownerId?: string;
+  agentId?: string;
+  sessionId?: string;
+  segmentId?: string;
+  segmentRevision?: number;
 }
 
 /** Dispatch a finalized pendant transcript for the shell to send as VOICE_DM. */
-export function dispatchPendantVoiceTranscript(text: string): void {
+export function dispatchPendantVoiceTranscript(
+  text: string,
+  provenance: Omit<PendantVoiceTranscriptDetail, "text"> = {},
+): void {
   if (typeof window === "undefined") return;
   const trimmed = text.trim();
   if (!trimmed) return;
   window.dispatchEvent(
     new CustomEvent<PendantVoiceTranscriptDetail>(
       PENDANT_VOICE_TRANSCRIPT_EVENT,
-      { detail: { text: trimmed } },
+      { detail: { text: trimmed, ...provenance } },
     ),
   );
 }
@@ -329,7 +337,7 @@ export class PendantConnection {
   }
 
   /** Request a device, connect GATT, subscribe to audio + battery. */
-  async connect(): Promise<void> {
+  async connect(): Promise<boolean> {
     const transport = (this.opts.createTransport ?? selectPendantTransport)();
     if (!transport) {
       this.patch({
@@ -340,7 +348,7 @@ export class PendantConnection {
           "Bluetooth is not available in this environment.",
         ),
       });
-      return;
+      return false;
     }
     this.clearReconnectTimer();
     this.intentionalDisconnect = false;
@@ -385,6 +393,7 @@ export class PendantConnection {
       }
 
       this.patch({ status: "listening", connectStep: "done" });
+      return true;
     } catch (err) {
       // error-policy:J4 The connection boundary translates failures into the typed UI state.
       const typedError = classifyPendantConnectionError(err);
@@ -400,7 +409,7 @@ export class PendantConnection {
           error: null,
           typedError: null,
         });
-        return;
+        return false;
       }
       this.patch({
         status: "error",
@@ -408,6 +417,7 @@ export class PendantConnection {
         error: typedError.message,
         typedError,
       });
+      return false;
     }
   }
 
@@ -796,6 +806,9 @@ export class PendantConnection {
   async disconnect(): Promise<void> {
     this.intentionalDisconnect = true;
     this.clearReconnectTimer();
+    this.captureGeneration += 1;
+    this.transcriptionAbort?.abort();
+    this.transcriptionAbort = null;
     // Finalize reassembly diagnostics. The wire has no end marker, so flush
     // conservatively drops an unconfirmed tail instead of decoding partial audio.
     if (this.decoder) {

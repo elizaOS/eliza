@@ -2412,6 +2412,16 @@ export async function persistExactConversationMemory(
   runtime: AgentRuntime,
   memory: ReturnType<typeof createMessageMemory>,
 ): Promise<ReturnType<typeof createMessageMemory>> {
+  return (await persistExactConversationMemoryResult(runtime, memory)).memory;
+}
+
+export async function persistExactConversationMemoryResult(
+  runtime: AgentRuntime,
+  memory: ReturnType<typeof createMessageMemory>,
+): Promise<{
+  created: boolean;
+  memory: ReturnType<typeof createMessageMemory>;
+}> {
   if (!memory.id) {
     throw new ElizaError(
       "Exact conversation memory is missing its durable id",
@@ -2456,14 +2466,14 @@ export async function persistExactConversationMemory(
   };
 
   const existing = await loadExisting();
-  if (existing) return assertExact(existing);
+  if (existing) return { created: false, memory: assertExact(existing) };
 
   try {
     await runtime.createMemory(memory, "messages");
-    return memory;
+    return { created: true, memory };
   } catch (cause) {
     const raced = await loadExisting();
-    if (raced) return assertExact(raced);
+    if (raced) return { created: false, memory: assertExact(raced) };
     throw new ElizaError("Failed to store exact conversation memory", {
       code: "CONVERSATION_MEMORY_WRITE_FAILED",
       cause,

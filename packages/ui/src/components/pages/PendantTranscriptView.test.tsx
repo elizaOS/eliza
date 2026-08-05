@@ -68,8 +68,8 @@ vi.mock("../views/ShellViewAgentSurface", () => ({
   ShellViewAgentSurface: ({ children }: { children?: ReactNode }) => children,
 }));
 
-const connect = vi.fn();
-const disconnect = vi.fn();
+const connect = vi.fn(async () => true);
+const disconnect = vi.fn(async () => undefined);
 const pause = vi.fn();
 const resume = vi.fn();
 
@@ -78,6 +78,8 @@ function createMockSyncClient(
 ) {
   return {
     unsyncedQueue: [],
+    currentSnapshot: null,
+    discoverCurrentSession: vi.fn(async () => null),
     createSession: vi.fn(async () => {
       const snapshot = sessionSnapshot();
       onSnapshot?.(snapshot);
@@ -121,6 +123,7 @@ function createMockSyncClient(
       return snapshot;
     }),
     resume: vi.fn(async () => sessionSnapshot({ revision: 5 })),
+    end: vi.fn(async () => sessionSnapshot({ state: "ended", revision: 6 })),
     startPolling: vi.fn(),
     stopPolling: vi.fn(),
     discardUnsyncedMutation: vi.fn(),
@@ -257,19 +260,22 @@ describe("PendantTranscriptView", () => {
     ).toBe(false);
   });
 
-  it("connects through the canonical session controller before BLE capture", async () => {
+  it("connects BLE before acquiring the canonical session lease", async () => {
     render(<PendantTranscriptView />);
 
     fireEvent.click(screen.getByRole("button", { name: /^Connect$/ }));
 
     await waitFor(() => expect(connect).toHaveBeenCalledTimes(1));
     const client = syncMock.clients[0];
+    expect(connect.mock.invocationCallOrder[0]).toBeLessThan(
+      client?.createSession.mock.invocationCallOrder[0] ?? Number.MAX_VALUE,
+    );
     expect(client?.createSession).toHaveBeenCalledWith({
       processingLocation: "cloud",
     });
     expect(client?.acquireLease).toHaveBeenCalledWith("session-1", {
       holder: expect.any(String),
-      leaseMs: 300_000,
+      leaseMs: 60_000,
     });
     expect(client?.startPolling).toHaveBeenCalledWith("session-1");
     expect(
@@ -277,6 +283,32 @@ describe("PendantTranscriptView", () => {
         "Canonical private session · synced across owner devices",
       ),
     ).toBeTruthy();
+  });
+
+  it("does not create a server session when BLE connection fails", async () => {
+    connect.mockResolvedValueOnce(false);
+    render(<PendantTranscriptView />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^Connect$/ }));
+
+    await waitFor(() => expect(connect).toHaveBeenCalledTimes(1));
+    const client = syncMock.clients[0];
+    expect(client?.createSession).not.toHaveBeenCalled();
+    expect(client?.acquireLease).not.toHaveBeenCalled();
+  });
+
+  it("ends a newly created session when lease acquisition fails", async () => {
+    render(<PendantTranscriptView />);
+    const client = syncMock.clients[0];
+    client?.acquireLease.mockRejectedValueOnce(new Error("lease failed"));
+
+    fireEvent.click(screen.getByRole("button", { name: /^Connect$/ }));
+
+    await waitFor(() => expect(disconnect).toHaveBeenCalledTimes(1));
+    expect(client?.end).toHaveBeenCalledWith("session-1");
+    expect(
+      screen.getByTestId("pendant-transcript-sync-error").textContent,
+    ).toContain("lease failed");
   });
 
   it("renders status and transcript from canonical session snapshots", async () => {
@@ -371,6 +403,27 @@ describe("PendantTranscriptView", () => {
     expect(client?.createSession).toHaveBeenCalledTimes(1);
     expect(client?.resume).toHaveBeenCalledWith("session-1");
     expect(client?.startPolling).toHaveBeenLastCalledWith("session-1");
+  });
+
+  it("recovers the canonical session before BLE when server pause fails", async () => {
+    const { rerender } = render(<PendantTranscriptView />);
+    fireEvent.click(screen.getByRole("button", { name: /^Connect$/ }));
+    await waitFor(() => expect(connect).toHaveBeenCalledTimes(1));
+
+    const client = syncMock.clients[0];
+    client?.pause.mockRejectedValueOnce(new Error("pause failed"));
+    setPendantState({ status: "listening", paused: false });
+    rerender(<PendantTranscriptView />);
+    fireEvent.click(screen.getByRole("button", { name: /Pause Listening/ }));
+
+    await waitFor(() => expect(resume).toHaveBeenCalledTimes(1));
+    expect(client?.resume).toHaveBeenCalledWith("session-1");
+    expect(client?.resume.mock.invocationCallOrder[0]).toBeLessThan(
+      resume.mock.invocationCallOrder[0] ?? Number.MAX_VALUE,
+    );
+    expect(
+      screen.getByTestId("pendant-transcript-sync-error").textContent,
+    ).toContain("pause failed");
   });
 
   it("does not read or write browser storage as transcript authority", () => {

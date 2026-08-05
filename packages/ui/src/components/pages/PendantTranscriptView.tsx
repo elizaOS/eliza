@@ -244,28 +244,66 @@ export function PendantTranscriptView(): React.ReactElement {
     ),
   });
 
-  React.useEffect(() => () => controller.stop(), [controller]);
+  React.useEffect(() => {
+    void controller.followLatest().catch((error) => {
+      setSyncError(error instanceof Error ? error.message : String(error));
+    });
+    return () => {
+      // error-policy:J5 stop reports the same failure through the controller onError boundary.
+      void controller.stop().catch(() => undefined);
+    };
+  }, [controller]);
 
-  const connectCanonical = React.useCallback(() => {
-    void controller
-      .start()
-      .then(connect)
-      .catch((error) => {
-        setSyncError(error instanceof Error ? error.message : String(error));
-      });
-  }, [connect, controller]);
-  const pauseCanonical = React.useCallback(() => {
+  const connectCanonical = React.useCallback(async () => {
+    setSyncError(null);
+    const connected = await connect();
+    if (!connected) return;
+    try {
+      await controller.start();
+    } catch (error) {
+      const stop = controller.stop();
+      await disconnect();
+      // error-policy:J5 controller onError already records the teardown failure.
+      await stop.catch(() => undefined);
+      setSyncError(error instanceof Error ? error.message : String(error));
+    }
+  }, [connect, controller, disconnect]);
+  const pauseCanonical = React.useCallback(async () => {
     pause();
-    controller.pause();
-  }, [controller, pause]);
-  const resumeCanonical = React.useCallback(() => {
-    void controller
-      .resume()
-      .then(resume)
-      .catch((error) => {
-        setSyncError(error instanceof Error ? error.message : String(error));
-      });
+    try {
+      await controller.pause();
+    } catch (error) {
+      try {
+        await controller.resume();
+        resume();
+      } catch (recoveryError) {
+        setSyncError(
+          recoveryError instanceof Error
+            ? recoveryError.message
+            : String(recoveryError),
+        );
+        return;
+      }
+      setSyncError(error instanceof Error ? error.message : String(error));
+    }
+  }, [controller, pause, resume]);
+  const resumeCanonical = React.useCallback(async () => {
+    try {
+      await controller.resume();
+      resume();
+    } catch (error) {
+      setSyncError(error instanceof Error ? error.message : String(error));
+    }
   }, [controller, resume]);
+  const disconnectCanonical = React.useCallback(async () => {
+    const stop = controller.stop();
+    await disconnect();
+    try {
+      await stop;
+    } catch (error) {
+      setSyncError(error instanceof Error ? error.message : String(error));
+    }
+  }, [controller, disconnect]);
 
   const live = isPendantLiveStatus(state.status);
   const frozen = !live && session.segments.length > 0;
@@ -345,7 +383,7 @@ export function PendantTranscriptView(): React.ReactElement {
                 <Button
                   variant="surface"
                   size="lg"
-                  onClick={disconnect}
+                  onClick={disconnectCanonical}
                   data-testid="pendant-transcript-disconnect"
                   className="w-full"
                 >

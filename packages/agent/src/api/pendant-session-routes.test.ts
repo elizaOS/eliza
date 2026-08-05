@@ -1,8 +1,8 @@
 /**
  * Route-level tests for pendant session sync using the repository contract.
  *
- * The runtime wrapper deliberately throws on Memory API access; pendant capture
- * state belongs to normalized session/segment/insight tables instead.
+ * Pendant capture state belongs to normalized session/segment/insight tables;
+ * recallable chat Memory is created later by the conversation delivery path.
  */
 
 import crypto from "node:crypto";
@@ -166,6 +166,13 @@ class FailingPendantSessionRepository implements PendantSessionRepository {
     > = {},
   ) {}
 
+  async loadLatest(
+    params: Parameters<PendantSessionRepository["loadLatest"]>[0],
+  ): ReturnType<PendantSessionRepository["loadLatest"]> {
+    if (this.fail.loadLatest) throw new Error("latest load failed");
+    return this.delegate.loadLatest(params);
+  }
+
   async load(
     params: Parameters<PendantSessionRepository["load"]>[0],
   ): ReturnType<PendantSessionRepository["load"]> {
@@ -207,6 +214,26 @@ class FailingPendantSessionRepository implements PendantSessionRepository {
 }
 
 describe("handlePendantSessionRoutes", () => {
+  it("discovers the latest non-ended session within the owner and agent boundary", async () => {
+    const h = makeHarness();
+    await h.request("POST", "/api/pendant/sessions", {
+      sessionId: "sess-old",
+    });
+    await h.request("POST", "/api/pendant/sessions/sess-old/end", {});
+    await h.request("POST", "/api/pendant/sessions", {
+      sessionId: "sess-current",
+    });
+
+    const current = okBody<{
+      snapshot: { session: { id: string; state: string } };
+    }>(await h.request("GET", "/api/pendant/sessions/current"));
+
+    expect(current.snapshot.session).toMatchObject({
+      id: "sess-current",
+      state: "active",
+    });
+  });
+
   it("reloads the canonical winner after a cross-process create conflict", async () => {
     const ownerId = uuid();
     const agentId = uuid();
@@ -228,6 +255,7 @@ describe("handlePendantSessionRoutes", () => {
     };
     let loads = 0;
     const repository: PendantSessionRepository = {
+      loadLatest: vi.fn(async () => null),
       load: vi.fn(async () => (++loads === 1 ? null : winner)),
       create: vi.fn(async () => false),
       saveSession: vi.fn(async () => undefined),
@@ -367,9 +395,8 @@ describe("handlePendantSessionRoutes", () => {
     }
   });
 
-  it("writes one owner-private canonical Memory with pendant provenance", async () => {
-    const ownerId = uuid();
-    const h = makeHarness(ownerId);
+  it("does not create a second Memory before canonical conversation delivery", async () => {
+    const h = makeHarness();
     await h.request("POST", "/api/pendant/sessions", {
       sessionId: "sess-memory",
     });
@@ -388,40 +415,15 @@ describe("handlePendantSessionRoutes", () => {
       },
     );
     expect(mutation.status).toBe(200);
-    expect(h.runtime.memories).toHaveLength(1);
-    const [memory] = [...h.runtime.memories.values()];
-    expect(memory).toMatchObject({
-      entityId: ownerId,
-      agentId: h.runtime.agentId,
-      content: {
-        text: "private pendant fact",
-        source: "pendant",
-        channelType: "VOICE_DM",
-      },
-      metadata: {
-        provider: "pendant",
-        scope: "owner-private",
-        scopedToEntityId: ownerId,
-        base: { source: "pendant", scope: "owner-private" },
-        pendant: {
-          userId: ownerId,
-          sessionId: "sess-memory",
-          segmentId: "sess-memory:segment:0",
-        },
-      },
-    });
-    expect(h.runtime.createMemory).toHaveBeenCalledWith(
-      expect.objectContaining({ id: memory?.id }),
-      "messages",
-      true,
-    );
+    expect(h.runtime.memories).toHaveLength(0);
+    expect(h.runtime.createMemory).not.toHaveBeenCalled();
 
     await h.request("POST", "/api/pendant/sessions/sess-memory/segments", {
       leaseToken: lease.leaseToken,
       segment: segment("sess-memory", 0, 0, "private pendant fact"),
     });
-    expect(h.runtime.memories).toHaveLength(1);
-    expect(h.runtime.createMemory).toHaveBeenCalledTimes(1);
+    expect(h.runtime.memories).toHaveLength(0);
+    expect(h.runtime.createMemory).not.toHaveBeenCalled();
   });
 
   it("keeps exact duplicate replay idempotent and conflicts altered same-revision content", async () => {
@@ -809,6 +811,7 @@ describe("handlePendantSessionRoutes", () => {
   it("maps repository revision CAS conflicts to typed current-revision responses", async () => {
     const delegate = new InMemoryPendantSessionRepository();
     const repository: PendantSessionRepository = {
+      loadLatest: (params) => delegate.loadLatest(params),
       load: (params) => delegate.load(params),
       create: (value) => delegate.create(value),
       saveSession: vi.fn(async () => {
