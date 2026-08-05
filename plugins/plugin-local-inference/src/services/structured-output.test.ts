@@ -223,6 +223,7 @@ describe("resolveGuidedDecodeForParams", () => {
 		expect(out.grammar?.lazy).toBe(false);
 		expect(out.prefillPlan).not.toBeNull();
 		expect(out.prefill).toBe('{\n  "shouldRespond": "');
+		expect(out.outputPrefix).toBe('{\n  "shouldRespond": "');
 		expect(out.grammar?.source.split("\n")[0]).toContain("enum0");
 		expect(out.grammar?.source.split("\n")[0]).not.toContain(
 			'"{\\n  \\"shouldRespond\\": \\""',
@@ -271,6 +272,7 @@ describe("resolveGuidedDecodeForParams", () => {
 			prefill: "seed:",
 		});
 		expect(out.prefill).toBe("seed:");
+		expect(out.outputPrefix).toBeNull();
 	});
 
 	it("no elizaSchema → no prefill plan (guided decode off), bare grammar still resolved", () => {
@@ -278,6 +280,7 @@ describe("resolveGuidedDecodeForParams", () => {
 		expect(out.prefillPlan).toBeNull();
 		expect(out.grammar?.source).toBe('root ::= "x"');
 		expect(out.prefill).toBeNull();
+		expect(out.outputPrefix).toBeNull();
 	});
 });
 

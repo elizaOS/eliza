@@ -679,8 +679,17 @@ export function resolveGuidedDecodeForParams(
 	grammar: GbnfGrammar | null;
 	prefillPlan: ElizaPrefillPlan | null;
 	prefill: string | null;
+	/** Prefix omitted from the native sampled tail and required to rebuild the logical response. */
+	outputPrefix: string | null;
 } {
-	if (!params) return { grammar: null, prefillPlan: null, prefill: null };
+	if (!params) {
+		return {
+			grammar: null,
+			prefillPlan: null,
+			prefill: null,
+			outputPrefix: null,
+		};
+	}
 	const schema = params.elizaSchema;
 	if (schema) {
 		const baseGrammar: GbnfGrammar | null =
@@ -695,11 +704,16 @@ export function resolveGuidedDecodeForParams(
 				: plan && plan.prefix.length > 0
 					? plan.prefix
 					: null;
-		const grammar =
+		const tailGrammar =
 			baseGrammar && prefill && plan?.prefix === prefill
-				? (stripPrefilledPrefixFromGrammar(baseGrammar, prefill) ?? baseGrammar)
-				: baseGrammar;
-		return { grammar, prefillPlan: plan, prefill };
+				? stripPrefilledPrefixFromGrammar(baseGrammar, prefill)
+				: null;
+		return {
+			grammar: tailGrammar ?? baseGrammar,
+			prefillPlan: plan,
+			prefill,
+			outputPrefix: tailGrammar ? prefill : null,
+		};
 	}
 	return {
 		grammar: resolveGrammarForParams(params),
@@ -708,5 +722,6 @@ export function resolveGuidedDecodeForParams(
 			typeof params.prefill === "string" && params.prefill.length > 0
 				? params.prefill
 				: null,
+		outputPrefix: null,
 	};
 }
