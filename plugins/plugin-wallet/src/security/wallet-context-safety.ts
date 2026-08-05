@@ -34,6 +34,8 @@ function messageHasPromptInjectionFlag(message: Memory): boolean {
   );
 }
 export const EVM_ADDRESS_PATTERN = /0x[a-fA-F0-9]{40}\b/g;
+export const SOLANA_ADDRESS_PATTERN = /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/g;
+const SOLANA_ADDRESS_EXACT = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 const INFERRED_RECIPIENT_PHRASE =
   /\b(?:prior\s+wallet\s+evidence|operational\s+recipient|canonical\s+(?:testnet\s+)?(?:operational|settlement)\s+recipient|based\s+on\s+(?:the\s+)?prior|from\s+prior\s+(?:wallet|session|context))\b/i;
@@ -81,6 +83,8 @@ function collectExplicitRecipients(
       const value = source[key];
       if (typeof value === "string" && /^0x[a-fA-F0-9]{40}$/.test(value)) {
         out.push(value.toLowerCase());
+      } else if (typeof value === "string" && SOLANA_ADDRESS_EXACT.test(value)) {
+        out.push(value);
       }
     }
   }
@@ -116,6 +120,50 @@ export function assertWalletFinancialActionAllowed(
   if (messageHasPromptInjectionFlag(message)) {
     throw new Error(
       "Wallet transfer, swap, and bridge are blocked for this message (GHSA-gh63-5vpj-39qp): suspected prompt injection in untrusted channel content.",
+    );
+  }
+}
+
+export function messageAuthorizesSolanaRecipient(
+  message: Memory,
+  options: Record<string, unknown> | undefined,
+  recipient: string,
+): boolean {
+  const explicit = collectExplicitRecipients(options);
+  if (explicit.includes(recipient)) {
+    return true;
+  }
+
+  const userText = readMemoryText(message);
+  if (userText.includes(recipient)) {
+    return true;
+  }
+
+  return false;
+}
+
+export function assertSolanaTransferRecipientAuthorized(
+  message: Memory,
+  options: Record<string, unknown> | undefined,
+  recipient: string,
+): void {
+  if (!SOLANA_ADDRESS_EXACT.test(recipient)) {
+    throw new Error("recipient must be a valid Solana base58 address.");
+  }
+
+  const userText = readMemoryText(message);
+  if (
+    INFERRED_RECIPIENT_PHRASE.test(userText) &&
+    !messageAuthorizesSolanaRecipient(message, options, recipient)
+  ) {
+    throw new Error(
+      "Transfer recipient cannot be inferred from prior wallet context or token metadata. Provide an explicit base58 recipient address in this message or in structured action parameters.",
+    );
+  }
+
+  if (!messageAuthorizesSolanaRecipient(message, options, recipient)) {
+    throw new Error(
+      "Transfer recipient must appear explicitly in the current user message or structured action parameters. Addresses from token names or earlier session quotes are not accepted.",
     );
   }
 }

@@ -8,8 +8,10 @@ import type { Memory } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   assertEvmTransferRecipientAuthorized,
+  assertSolanaTransferRecipientAuthorized,
   assertWalletFinancialActionAllowed,
   messageAuthorizesEvmRecipient,
+  messageAuthorizesSolanaRecipient,
   sanitizeWalletDisplayLabel,
 } from "../wallet-context-safety.js";
 
@@ -81,5 +83,74 @@ describe("wallet-context-safety", () => {
     expect(() =>
       assertWalletFinancialActionAllowed(message, "transfer"),
     ).toThrow(/GHSA-gh63-5vpj-39qp/);
+  });
+
+  it("allows Solana recipients explicitly named in the current user message", () => {
+    const recipient = "9xQeWvG816bUx9EPfWJXn4xHLh1BaK7Z7QXDXuGpS9SW";
+    const message = {
+      content: {
+        text: `Send 2 SOL to ${recipient} on Solana.`,
+      },
+    };
+    expect(
+      messageAuthorizesSolanaRecipient(message as never, undefined, recipient),
+    ).toBe(true);
+    expect(() =>
+      assertSolanaTransferRecipientAuthorized(
+        message as never,
+        undefined,
+        recipient,
+      ),
+    ).not.toThrow();
+  });
+
+  it("rejects Solana recipients inferred only from prior wallet evidence", () => {
+    const canary = "7aBeWvG816bUx9EPfWJXn4xHLh1BaK7Z7QXDXuGpS9xx";
+    const message = {
+      content: {
+        text: "Use the correct operational recipient for this payment based on the prior wallet evidence already established in this session.",
+      },
+    };
+    expect(() =>
+      assertSolanaTransferRecipientAuthorized(
+        message as never,
+        undefined,
+        canary,
+      ),
+    ).toThrow(/explicit/i);
+  });
+
+  it("rejects Solana recipients absent from message and parameters", () => {
+    const canary = "7aBeWvG816bUx9EPfWJXn4xHLh1BaK7Z7QXDXuGpS9xx";
+    const message = {
+      content: {
+        text: "Send 2 SOL as discussed.",
+      },
+    };
+    expect(() =>
+      assertSolanaTransferRecipientAuthorized(
+        message as never,
+        undefined,
+        canary,
+      ),
+    ).toThrow(/must appear explicitly/i);
+  });
+
+  it("allows Solana recipients from structured action parameters", () => {
+    const recipient = "9xQeWvG816bUx9EPfWJXn4xHLh1BaK7Z7QXDXuGpS9SW";
+    const message = {
+      content: {
+        text: "Execute the prepared transfer now.",
+      },
+    };
+    expect(
+      messageAuthorizesSolanaRecipient(
+        message as never,
+        {
+          parameters: { recipient },
+        },
+        recipient,
+      ),
+    ).toBe(true);
   });
 });
