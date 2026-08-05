@@ -303,7 +303,12 @@ describe("Stage-1 prompt tiering", () => {
 		expect(systemContent).toContain(
 			"Never claim the view opened before VIEWS succeeds.",
 		);
-		expect(systemContent).toContain("UI open/show/switch/go-home -> VIEWS.");
+		expect(systemContent).toContain(
+			"View-backed records and native device controls are also device/app control",
+		);
+		expect(systemContent).toContain(
+			"UI navigation and view-backed Notes/Calendar/device operations -> VIEWS.",
+		);
 		expect(systemContent).not.toContain(GROUP_TRIAGE_MARKER);
 		expect(systemContent).not.toContain(FULL_TEMPLATE_MARKER);
 	});
