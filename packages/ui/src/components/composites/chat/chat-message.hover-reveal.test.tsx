@@ -62,8 +62,8 @@ describe("ChatMessage desktop hover chrome", () => {
       name: "Copy message",
       hidden: true,
     });
-    expect(copy.className).toContain("max-md:h-11");
-    expect(copy.className).toContain("max-md:w-11");
+    expect(copy.className).toContain("max-md:h-8");
+    expect(copy.className).toContain("max-md:w-8");
     expect(
       screen.queryByRole("button", { name: /delete/i, hidden: true }),
     ).toBeNull();
@@ -146,7 +146,7 @@ describe("ChatMessage desktop hover chrome", () => {
     expect(content?.className).toContain("pb-6");
     expect(content?.className).toContain("transition-[padding-bottom]");
     expect(content?.className).not.toContain("pb-0");
-    expect(content?.className).not.toContain("pb-12");
+    expect(content?.className).not.toContain("pb-9");
     expect(actions.className).toContain("bottom-0");
     expect(actions.className).toContain("absolute");
     expect(actions.getAttribute("aria-hidden")).toBe("true");
