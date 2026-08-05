@@ -148,9 +148,14 @@ const balance = {
   sol: solBalance,
 };
 
+// Helius hard-caps the Enhanced Transactions batch this feeds at 100
+// (verified live), but unlike Moralis, Helius exposes no cost/credit
+// signal in the response at any batch size - the per-call cost-scaling
+// question stays genuinely unresolved, so this is a conservative bump
+// rather than a jump to the ceiling.
 const recentTransactionsResult =
   await connector.getTransactions(walletAddress, {
-    limit: 50,
+    limit: 75,
   });
 
 if (
