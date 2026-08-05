@@ -18,6 +18,18 @@ const MATCH_CONTEXT = {
 describe("viewNavigationShortcuts (#8791)", () => {
 	it("remain compatibility exports but are not registered ahead of the model", () => {
 		expect(appControlPlugin.shortcuts ?? []).toEqual([]);
+		expect(appControlPlugin.actions?.map((action) => action.name)).toEqual(
+			expect.arrayContaining(["OPEN_VIEW", "VIEWS"]),
+		);
+		expect(
+			appControlPlugin.actions?.findIndex(
+				(action) => action.name === "OPEN_VIEW",
+			),
+		).toBeLessThan(
+			appControlPlugin.actions?.findIndex(
+				(action) => action.name === "VIEWS",
+			) ?? -1,
+		);
 		expect(
 			appControlPlugin.responseHandlerEvaluators?.map(
 				(evaluator) => evaluator.name,
