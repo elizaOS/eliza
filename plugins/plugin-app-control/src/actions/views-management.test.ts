@@ -390,8 +390,54 @@ describe("view management actions", () => {
 			"agent-fill and agent-click are only for an explicitly requested form-control interaction",
 		);
 		expect(action.routingHint).toContain(
-			"For a dated calendar read, pass date to get-calendar-state",
+			"reading or changing calendar events uses the CALENDAR action",
 		);
+	});
+
+	it("does not reinterpret an undeclared explicit capability on the current view", async () => {
+		const { runtime } = createRuntime();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({
+						id: "notes",
+						label: "Notes",
+						path: "/notes",
+						capabilities: [
+							{
+								id: "create-note",
+								description: "Create a sticky note.",
+							},
+						],
+					}),
+					view({ id: "calendar", label: "Calendar", path: "/calendar" }),
+				]),
+				getCurrentView: vi.fn(async () => ({
+					viewId: "notes",
+					viewLabel: "Notes",
+					viewPath: "/notes",
+					viewType: "gui" as const,
+				})),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+
+		const result = await action.handler(
+			runtime as never,
+			message("add demo tomorrow at 9am") as never,
+			undefined,
+			{
+				action: "interact",
+				capability: "create-calendar-event",
+				params: { title: "demo", date: "2026-08-05", time: "09:00" },
+			},
+			vi.fn(),
+		);
+
+		expect(result?.success).toBe(false);
+		expect(result?.text).toContain("Specify view and capability");
+		expect(result?.text).not.toContain("create-note");
+		expect(globalThis.fetch).not.toHaveBeenCalled();
 	});
 
 	it("repairs a date-shaped calendar title emitted by a small planner", async () => {
