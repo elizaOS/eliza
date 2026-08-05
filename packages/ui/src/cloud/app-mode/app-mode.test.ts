@@ -146,6 +146,7 @@ describe("decideAppModeRoute — decision table", () => {
 describe("redirectToAgentWebUI — pairing redirect", () => {
   const realFetch = globalThis.fetch;
   const realAssign = appModeNavigation.assign;
+  const realReplace = appModeNavigation.replace;
   let fetchCalls: Array<{ url: string; method: string | undefined }>;
   let assignedUrls: string[];
 
@@ -159,7 +160,12 @@ describe("redirectToAgentWebUI — pairing redirect", () => {
 
   function captureAssign(): void {
     assignedUrls = [];
+    // Both seams feed one log: automatic entry replaces history, an explicit
+    // pick pushes; the distinction is asserted in its own test below.
     appModeNavigation.assign = (url: string) => {
+      assignedUrls.push(url);
+    };
+    appModeNavigation.replace = (url: string) => {
       assignedUrls.push(url);
     };
   }
@@ -167,6 +173,7 @@ describe("redirectToAgentWebUI — pairing redirect", () => {
   afterEach(() => {
     globalThis.fetch = realFetch;
     appModeNavigation.assign = realAssign;
+    appModeNavigation.replace = realReplace;
   });
 
   function jsonResponse(status: number, body: unknown): Response {
@@ -176,7 +183,7 @@ describe("redirectToAgentWebUI — pairing redirect", () => {
     });
   }
 
-  it("200 with a redirectUrl → full-page assign to the agent's /pair URL", async () => {
+  it("200 with a redirectUrl → full-page navigation to the agent's /pair URL", async () => {
     const redirectUrl = "https://agent-1.elizacloud.ai/pair?token=tok";
     stubFetch(() => jsonResponse(200, { data: { redirectUrl } }));
     captureAssign();
@@ -188,6 +195,29 @@ describe("redirectToAgentWebUI — pairing redirect", () => {
     expect(fetchCalls).toEqual([
       { url: "/api/v1/eliza/agents/agent-1/pairing-token", method: "POST" },
     ]);
+  });
+
+  it("automatic entry REPLACES history; an explicit pick pushes", async () => {
+    // The gate is a transient "connecting" screen. Left in history, Back from
+    // the agent UI re-enters it, mints another one-time pairing token, and
+    // bounces forward — trapping the user. An explicit chooser pick is a real
+    // navigation the user should be able to back out of.
+    const redirectUrl = "https://agent-1.elizacloud.ai/pair?token=tok";
+    const seen: Array<"assign" | "replace"> = [];
+    appModeNavigation.assign = () => {
+      seen.push("assign");
+    };
+    appModeNavigation.replace = () => {
+      seen.push("replace");
+    };
+
+    stubFetch(() => jsonResponse(200, { data: { redirectUrl } }));
+    await redirectToAgentWebUI("agent-1");
+    expect(seen).toEqual(["replace"]);
+
+    stubFetch(() => jsonResponse(200, { data: { redirectUrl } }));
+    await redirectToAgentWebUI("agent-1", "user-initiated");
+    expect(seen).toEqual(["replace", "assign"]);
   });
 
   it("202 (agent must resume first) → starting result, no navigation", async () => {

@@ -150,7 +150,7 @@ function AgentChooser({
   async function openAgent(agentId: string): Promise<void> {
     setPendingId(agentId);
     setError(null);
-    const result = await redirectToAgentWebUI(agentId);
+    const result = await redirectToAgentWebUI(agentId, "user-initiated");
     if (!result.ok) {
       setPendingId(null);
       setError(

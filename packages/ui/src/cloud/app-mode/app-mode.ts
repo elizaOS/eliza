@@ -122,6 +122,9 @@ export const appModeNavigation = {
   assign(url: string): void {
     window.location.assign(url);
   },
+  replace(url: string): void {
+    window.location.replace(url);
+  },
 };
 
 export type PairingRedirectResult =
@@ -152,6 +155,14 @@ function pairingErrorMessage(payload: unknown, status: number): string {
  */
 export async function redirectToAgentWebUI(
   agentId: string,
+  /**
+   * Automatic entry replaces the gate in history: the gate page is a
+   * transient "connecting" state, and leaving it in history traps the user
+   * (Back from the agent UI re-enters the gate, which mints another one-time
+   * pairing token and bounces forward again). An explicit chooser click is a
+   * real navigation the user should be able to back out of.
+   */
+  navigation: "automatic" | "user-initiated" = "automatic",
 ): Promise<PairingRedirectResult> {
   try {
     const { status, data } = await apiWithStatus<unknown>(
@@ -183,7 +194,11 @@ export async function redirectToAgentWebUI(
       };
     }
 
-    appModeNavigation.assign(redirectUrl);
+    if (navigation === "automatic") {
+      appModeNavigation.replace(redirectUrl);
+    } else {
+      appModeNavigation.assign(redirectUrl);
+    }
     return { ok: true, redirectUrl };
   } catch (err) {
     // error-policy:J4 network/transport failure becomes the gate's visibly
