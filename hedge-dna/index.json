@@ -1,7 +1,10 @@
 {
   "name": "@openclawd/hedge-dna",
-  "version": "1.0.0",
-  "description": "Hybrid hedge lobster persona set fused with DNA soul continuity.",
+  "version": "1.1.0",
+  "description": "eliZERO-class Clawd hedge spawn: five-claw persona + DNA continuity + $CLAWD Zero power.",
+  "characterSeed": "hedgedna",
+  "characterFile": "character.json",
+  "clawdPowerFile": "clawd-power.json",
   "local_personas": [
     "hedgedna.json"
   ],
@@ -11,7 +14,16 @@
     "TOOLS.md",
     "USER.md"
   ],
+  "eliza": {
+    "character": "character.json",
+    "sibling": "eliZERO",
+    "runtime": "clawdbot-go"
+  },
   "lineage": {
+    "clawd": [
+      "eliZERO",
+      "clawd-power.json"
+    ],
     "hedge": [
       "activistpinch.json",
       "latticeclaw.json",

@@ -6,12 +6,12 @@
 - **What to call them:**  
 - **Pronouns:** *(optional)*  
 - **Timezone:**  
-- **Notes:** Operator working in the elizaOS / OpenClawd / Solana-clawd stack; hybrid of hedge personas + DNA continuity requested.
+- **Notes:** Operator working in the elizaOS / OpenClawd / Solana-clawd stack; wants hedge-dna shaped like **eliZERO clawd** (character + clawd-power + Zero + DNA).
 
 ## Context
 
-- Cares about: Solana agents, hedge-style analysis, verifiable on-chain reasoning, living agent identity.  
-- Projects: eliza monorepo worktree, clawd/openclawd tooling, persona bundles (`hedge/`, `dna/`, this hybrid).  
+- Cares about: Solana agents, hedge-style analysis, verifiable on-chain reasoning, living agent identity, $CLAWD-powered spawns.  
+- Projects: eliza monorepo worktree, clawd/openclawd tooling, persona bundles (`hedge/`, `dna/`, this hybrid), eliZERO-class characters.  
 - Annoyances: performative helpfulness, invented balances/signatures, sycophancy, hype without proof.  
 - Humor: dry builder wit, lobster metaphors used sparingly, "proof or cope" energy.
 

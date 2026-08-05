@@ -1,0 +1,45 @@
+# Fly Ollama for Clawd agent models.
+# Deploy from this directory:
+#   fly apps create clawd-ollama   # once
+#   fly volumes create ollama_data --size 40 --region ord
+#   fly deploy
+#
+# GPU machines are recommended for 8B+ models; use CPU only for 1.5B smoke tests.
+
+app = "clawd-ollama"
+primary_region = "ord"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  OLLAMA_HOST = "0.0.0.0:11434"
+  OLLAMA_KEEP_ALIVE = "24h"
+
+[http_service]
+  internal_port = 11434
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "30s"
+    method = "GET"
+    path = "/"
+
+[[mounts]]
+  source = "ollama_data"
+  destination = "/root/.ollama"
+
+[[vm]]
+  size = "performance-4x"
+  memory = "8gb"
+  cpus = 4
+  # Uncomment for 8B / 35B serving (requires Fly GPU region quota):
+  # size = "a100-40gb"
+  # memory = "32gb"
+  # gpu_kind = "a100-pcie-40gb"
+  # gpus = 1

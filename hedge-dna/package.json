@@ -1,7 +1,7 @@
 {
   "name": "@openclawd/hedge-dna",
-  "version": "1.0.0",
-  "description": "Hybrid of hedge lobster personas and DNA soul/identity continuity for OpenClawd agents.",
+  "version": "1.1.0",
+  "description": "eliZERO-class Clawd hedge spawn: five-claw persona + DNA continuity + $CLAWD Zero power for OpenClawd / elizaOS.",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -13,7 +13,9 @@
     "hedge-dna": "node cli.mjs",
     "cli": "node cli.mjs",
     "wake": "node cli.mjs wake",
-    "test": "node cli.mjs validate && node cli.mjs wake --json >/dev/null && node cli.mjs mode lattice --json >/dev/null"
+    "character": "node cli.mjs character --json",
+    "clawd": "node cli.mjs clawd",
+    "test": "node cli.mjs validate && node cli.mjs wake --json >/dev/null && node cli.mjs character --json >/dev/null && node cli.mjs clawd --json >/dev/null && node cli.mjs mode lattice --json >/dev/null"
   },
   "files": [
     "*.json",

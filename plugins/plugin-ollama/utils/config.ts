@@ -14,9 +14,15 @@ type SettingsProvider = {
 };
 
 export const DEFAULT_OLLAMA_URL = "http://localhost:11434";
-export const DEFAULT_SMALL_MODEL = "eliza-1-2b";
-export const DEFAULT_LARGE_MODEL = "eliza-1-4b";
-export const DEFAULT_EMBEDDING_MODEL = "eliza-1-2b";
+/** Fast 1.5B Solana/core agent model (local `ollama list` tag). */
+export const DEFAULT_SMALL_MODEL = "8bit/solana-clawd-core-ai:latest";
+/** Trading-focused 8B LoRA (planner / medium path). */
+export const DEFAULT_MEDIUM_MODEL =
+  "8bit/solana-trading-factory:8b-lora-20260620";
+/** On-chain specialist ~35B MoE (large / mega path). */
+export const DEFAULT_LARGE_MODEL = "8bit/hauhau-qwen36-onchain:latest";
+/** Generic embedding model; pull with `ollama pull nomic-embed-text`. */
+export const DEFAULT_EMBEDDING_MODEL = "nomic-embed-text";
 
 function getEnvValue(key: string): string | undefined {
   if (typeof process === "undefined" || !process.env) {
@@ -76,7 +82,7 @@ export function getMediumModel(runtime: SettingsProvider): string {
   return (
     getSetting(runtime, "OLLAMA_MEDIUM_MODEL") ||
     getSetting(runtime, "MEDIUM_MODEL") ||
-    getSmallModel(runtime)
+    DEFAULT_MEDIUM_MODEL
   );
 }
 

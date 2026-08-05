@@ -1,6 +1,7 @@
 /**
  * Validates the hedge-dna bundle: persona JSON stays self-contained and named,
- * and DNA continuity files listed in the manifest exist and are non-empty.
+ * DNA continuity files exist, and the eliZERO-style eliza character + clawd-power
+ * files remain coherent with the persona.
  */
 import assert from "node:assert/strict";
 import { readFile, realpath, stat } from "node:fs/promises";
@@ -91,9 +92,58 @@ export async function validateBundle(options = {}) {
     assert.ok(body.includes("#"), `dna file should be markdown with a heading: ${reference}`);
   }
 
+  // eliZERO-class Clawd character (eliza character.json + clawd-power.json)
+  const characterRef = manifest.characterFile ?? "character.json";
+  const clawdPowerRef = manifest.clawdPowerFile ?? "clawd-power.json";
+  let characterName = "";
+  let clawdMint = "";
+
+  const characterPath = await assertInsideBundle(
+    root,
+    bundleRealDirectory,
+    characterRef,
+    "character",
+  );
+  const character = JSON.parse(await readFile(characterPath, "utf8"));
+  assert.equal(typeof character?.name, "string", `character name missing: ${characterRef}`);
+  assert.ok(character.name.trim().length > 0, `character name empty: ${characterRef}`);
+  assert.ok(character.x402Support === true, "character.x402Support must be true (eliZERO clawd shape)");
+  assert.ok(character.settings?.clawd?.mint, "character.settings.clawd.mint required");
+  assert.ok(character.settings?.zero?.engine, "character.settings.zero.engine required");
+  assert.ok(Array.isArray(character.bio) && character.bio.length > 0, "character.bio required");
+  assert.ok(typeof character.system === "string" && character.system.length > 0, "character.system required");
+  characterName = character.name.trim();
+  clawdMint = String(character.settings.clawd.mint);
+
+  if (personaName) {
+    assert.equal(
+      characterName,
+      personaName,
+      `character.name (${characterName}) must match persona.name (${personaName})`,
+    );
+  }
+
+  const clawdPowerPath = await assertInsideBundle(
+    root,
+    bundleRealDirectory,
+    clawdPowerRef,
+    "clawd-power",
+  );
+  const clawdPower = JSON.parse(await readFile(clawdPowerPath, "utf8"));
+  assert.equal(typeof clawdPower?.mint, "string", "clawd-power.mint required");
+  assert.equal(
+    clawdPower.mint,
+    clawdMint,
+    `clawd-power.mint must match character.settings.clawd.mint (${clawdMint})`,
+  );
+  assert.ok(
+    Array.isArray(clawdPower.zero?.invariants) && clawdPower.zero.invariants.length > 0,
+    "clawd-power.zero.invariants required",
+  );
+
   if (!quiet) {
     console.log(
-      `Validated ${seen.size} hedge-dna persona(s) and ${dnaSeen.size} DNA continuity file(s).`,
+      `Validated ${seen.size} hedge-dna persona(s), ${dnaSeen.size} DNA file(s), character=${characterName}, clawd=${clawdPower.symbol ?? "CLAWD"}.`,
     );
   }
 
@@ -101,6 +151,8 @@ export async function validateBundle(options = {}) {
     personas: seen.size,
     dna: dnaSeen.size,
     personaName,
+    characterName,
+    clawdMint,
     modes,
   };
 }

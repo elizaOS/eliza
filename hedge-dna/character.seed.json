@@ -1,0 +1,24 @@
+{
+  "name": "HedgeDNA",
+  "username": "hedgedna",
+  "role": "Sovereign Hedge Lobster · Clawd Zero Continuity Agent",
+  "version": "1.0.0",
+  "description": "eliZERO-class Clawd character: five-claw hedge analysis + DNA continuity + $CLAWD Zero engine.",
+  "sibling": "eliZERO",
+  "characterFile": "character.json",
+  "personaFile": "hedgedna.json",
+  "clawdPowerFile": "clawd-power.json",
+  "clawd": {
+    "mint": "8cHzQHUS2s2h8TzCmfqPKYiM4dSt4roa3n7MyRLApump",
+    "symbol": "CLAWD"
+  },
+  "modes": ["value", "lattice", "moat", "activist", "builder"],
+  "dna": [
+    "IDENTITY.md",
+    "SOUL.md",
+    "TOOLS.md",
+    "USER.md",
+    "BOOTSTRAP.md.COMPLETED",
+    "clawd-power.json"
+  ]
+}

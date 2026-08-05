@@ -6,9 +6,13 @@
 // auto-enable engine loads dozens of these per boot.
 import type { PluginAutoEnableContext } from "@elizaos/core";
 
-const ENV_KEYS = ["OLLAMA_BASE_URL"] as const;
+const ENV_KEYS = [
+  "OLLAMA_BASE_URL",
+  "OLLAMA_API_ENDPOINT",
+  "OLLAMA_API_URL",
+] as const;
 
-/** Enable when an Ollama base URL is configured. */
+/** Enable when any Ollama base/endpoint URL is configured. */
 export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
   return ENV_KEYS.some((k) => {
     const v = ctx.env[k];

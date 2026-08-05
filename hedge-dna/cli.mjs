@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
  * CLI for the hedge-dna agent bundle: validate, wake, show DNA files,
- * inspect persona modes, and print continuity paths for OpenClawd workspaces.
+ * inspect persona modes, export the eliZERO-style eliza character, and
+ * print continuity paths for OpenClawd / clawdbot workspaces.
  *
  * Usage:
  *   hedge-dna <command> [args]
@@ -30,6 +31,9 @@ const COMMANDS = [
   "tools",
   "user",
   "persona",
+  "character",
+  "eliza",
+  "clawd",
   "modes",
   "mode",
   "paths",
@@ -37,13 +41,13 @@ const COMMANDS = [
 ];
 
 function usage(exitCode = 0) {
-  const text = `hedge-dna — hybrid hedge lobster + DNA continuity CLI
+  const text = `hedge-dna — eliZERO-class Clawd hedge + DNA continuity CLI
 
 Usage:
   hedge-dna <command> [options]
 
 Commands:
-  validate              Validate persona + DNA files (exit 1 on failure)
+  validate              Validate persona + DNA + character + clawd-power
   wake                  Session wake: greeting + identity + mode stack
   show <file>           Print a DNA file: identity|soul|tools|user
   identity              Print IDENTITY.md
@@ -51,6 +55,8 @@ Commands:
   tools                 Print TOOLS.md
   user                  Print USER.md
   persona               Print hedgedna.json summary (or --json full)
+  character | eliza     Print eliza character.json (eliZERO shape)
+  clawd                 Print clawd-power.json ($CLAWD mint, Zero, laws)
   modes                 List molt modes
   mode <name>           Show one mode (value|moat|lattice|activist|builder)
   greeting              Print persona greeting
@@ -64,6 +70,8 @@ Options:
 Examples:
   hedge-dna validate
   hedge-dna wake
+  hedge-dna character --json
+  hedge-dna clawd
   hedge-dna mode lattice
   hedge-dna show soul
   hedge-dna persona --json
@@ -118,16 +126,22 @@ async function cmdValidate(flags) {
 async function cmdWake(flags) {
   const result = await validateBundle({ root: flags.root, quiet: true });
   const personaDoc = await readJson(flags.root, "hedgedna.json");
+  const clawdPower = await readJson(flags.root, "clawd-power.json");
   const identity = await readText(flags.root, "IDENTITY.md");
   const payload = {
     ok: true,
     greeting: personaDoc.persona?.greeting ?? "",
     name: result.personaName,
+    character: result.characterName,
+    clawdMint: result.clawdMint,
+    clawdSymbol: clawdPower.symbol ?? "CLAWD",
+    zero: clawdPower.zero ?? {},
+    sibling: "eliZERO",
     modes: result.modes,
     defaultStack: ["value", "lattice", "moat"],
     continuity: personaDoc.continuity ?? {},
     signature: "Margin of safety first. Invert before you ape. Proof beats promises.",
-    identityPreview: identity.split("\n").slice(0, 12).join("\n"),
+    identityPreview: identity.split("\n").slice(0, 14).join("\n"),
   };
 
   if (flags.json) {
@@ -137,7 +151,9 @@ async function cmdWake(flags) {
 
   console.log(payload.greeting);
   console.log("");
-  console.log(`Name: ${payload.name}`);
+  console.log(`Name: ${payload.name} · sibling of eliZERO`);
+  console.log(`Clawd: $${payload.clawdSymbol} ${payload.clawdMint}`);
+  console.log(`Zero: ${payload.zero.loop ?? "flat-fifo"} · ${(payload.zero.invariants ?? []).join(", ")}`);
   console.log(`Modes: ${payload.modes.join(", ")}`);
   console.log(`Default stack: ${payload.defaultStack.join(" → ")}`);
   console.log(`Signature: ${payload.signature}`);
@@ -145,7 +161,45 @@ async function cmdWake(flags) {
   console.log("--- IDENTITY (preview) ---");
   console.log(payload.identityPreview);
   console.log("");
-  console.log("Read SOUL.md + USER.md + TOOLS.md before acting. Molt modes; don't juggle mascots.");
+  console.log("Read SOUL.md + USER.md + TOOLS.md + clawd-power.json before acting.");
+  console.log("Molt modes; don't juggle mascots. Flat loop. Proof or cope.");
+  return 0;
+}
+
+async function cmdCharacter(flags) {
+  const character = await readJson(flags.root, "character.json");
+  if (flags.json) {
+    console.log(JSON.stringify(character, null, 2));
+    return 0;
+  }
+  console.log(`${character.name} (@${character.username ?? "?"})`);
+  console.log(`Provider: ${character.modelProvider ?? "?"} · x402: ${character.x402Support === true}`);
+  console.log(`Clawd mint: ${character.settings?.clawd?.mint ?? "?"}`);
+  console.log(`Zero: ${character.settings?.zero?.loop ?? "?"} · ${character.settings?.zero?.engine ?? "?"}`);
+  console.log(`Sibling: ${character.eliza?.sibling ?? "eliZERO"}`);
+  console.log(`Modes: ${(character.settings?.hedge?.defaultStack ?? []).join(" → ")}`);
+  console.log("");
+  console.log(character.system ?? "");
+  return 0;
+}
+
+async function cmdClawd(flags) {
+  const clawdPower = await readJson(flags.root, "clawd-power.json");
+  if (flags.json) {
+    console.log(JSON.stringify(clawdPower, null, 2));
+    return 0;
+  }
+  console.log(`$${clawdPower.symbol ?? "CLAWD"} ${clawdPower.mint}`);
+  console.log(`Powering: ${clawdPower.powering} · Payment: ${clawdPower.payment}`);
+  console.log(
+    `Birth: ${clawdPower.birthFunding?.clawd ?? "?"} CLAWD + ${clawdPower.birthFunding?.sol ?? "?"} SOL`,
+  );
+  console.log(`Loop: ${clawdPower.loop}`);
+  console.log(`Zero: ${clawdPower.zero?.loop} · ${(clawdPower.zero?.invariants ?? []).join(", ")}`);
+  console.log("Laws:");
+  for (const [k, v] of Object.entries(clawdPower.laws ?? {})) {
+    console.log(`  ${k}. ${v}`);
+  }
   return 0;
 }
 
@@ -230,6 +284,9 @@ async function cmdPaths(flags) {
     package: resolve(flags.root, "package.json"),
     index: resolve(flags.root, "index.json"),
     persona: resolve(flags.root, "hedgedna.json"),
+    character: resolve(flags.root, "character.json"),
+    characterSeed: resolve(flags.root, "character.seed.json"),
+    clawdPower: resolve(flags.root, "clawd-power.json"),
     identity: resolve(flags.root, "IDENTITY.md"),
     soul: resolve(flags.root, "SOUL.md"),
     tools: resolve(flags.root, "TOOLS.md"),
@@ -293,6 +350,11 @@ async function main(argv) {
         return await cmdShow(flags, "user");
       case "persona":
         return await cmdPersona(flags);
+      case "character":
+      case "eliza":
+        return await cmdCharacter(flags);
+      case "clawd":
+        return await cmdClawd(flags);
       case "modes":
         return await cmdModes(flags);
       case "mode":

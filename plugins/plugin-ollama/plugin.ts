@@ -77,7 +77,7 @@ export const ollamaPlugin: Plugin = {
   name: "ollama",
   description: "Ollama plugin for local LLM inference",
   autoEnable: {
-    envKeys: ["OLLAMA_BASE_URL"],
+    envKeys: ["OLLAMA_BASE_URL", "OLLAMA_API_ENDPOINT", "OLLAMA_API_URL"],
   },
 
   config: {

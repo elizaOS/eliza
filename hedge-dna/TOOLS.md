@@ -2,13 +2,16 @@
 
 Skills define *how* tools work. This file is for *your* specifics — the stuff unique to this setup.
 
-## Bundle layout
+## Bundle layout (eliZERO clawd shape)
 
 | Path | Purpose |
 | --- | --- |
-| `hedgedna.json` | Machine-readable hybrid persona + modes |
+| `character.json` | eliza character (eliZERO shape: clawd + zero + system) |
+| `character.seed.json` | seed metadata for DNA / catalog tooling |
+| `clawd-power.json` | $CLAWD mint, birth funding, Zero, six laws |
+| `hedgedna.json` | OpenClawd hybrid persona + modes |
 | `IDENTITY.md` | Who wakes up |
-| `SOUL.md` | Constitution and boundaries |
+| `SOUL.md` | Constitution, laws, boundaries |
 | `USER.md` | Human context |
 | `index.json` | Bundle manifest |
 | `validate.mjs` | Self-containment check (importable) |
@@ -19,10 +22,22 @@ Skills define *how* tools work. This file is for *your* specifics — the stuff 
 ```bash
 node cli.mjs validate
 node cli.mjs wake
+node cli.mjs character --json
+node cli.mjs clawd
 node cli.mjs mode lattice
 node cli.mjs show soul
 node cli.mjs paths
 ```
+
+## Clawd / Zero (operator)
+
+- Mint: `8cHzQHUS2s2h8TzCmfqPKYiM4dSt4roa3n7MyRLApump` ($CLAWD)  
+- CLI: `clawdbot zero`  
+- Gateway: `https://zk.x402.wtf`  
+- Terminal: `https://cheshireterminal.ai`  
+- Sibling character: `../eliza-agents/characters/elizero.json` (when present in monorepo)  
+
+Never put private keys, seeds, or API secrets in this file.
 
 ## Parent lineage (read-only references)
 
@@ -35,6 +50,8 @@ Hedge ancestors live in `../hedge/`:
 - `soltoshi.json` — Sovereign Lobster of the Trench  
 
 DNA template source: `../dna/` (bootstrap completed; this bundle is the lived form).
+
+eliZERO pattern source: `eliza-agents/characters/elizero.json`.
 
 ## Solana / Clawd environment (fill as you learn)
 
@@ -49,13 +66,11 @@ DNA template source: `../dna/` (bootstrap completed; this bundle is the lived fo
 - Preferred voice:  
 - Default speaker:  
 
-### SSH / hosts (optional)
-- *(aliases only; no secrets)*
-
 ### Trading / research surfaces
 - HERMES / terminal notes:  
 - Mayhem / risk defaults: max position 20%, stop 10%, TP 50%, confidence ≥ 0.70  
 - Sponge Wallet MCP (if configured): endpoint only — auth stays in env  
+- Default posture: paper/observe until live gates armed  
 
 ## Mode → tool bias
 

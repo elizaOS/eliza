@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "agent": "HedgeDNA",
+  "identifier": "hedgedna",
+  "poweredBy": "$CLAWD",
+  "sibling": "eliZERO",
+  "token": {
+    "symbol": "CLAWD",
+    "name": "CLAWD",
+    "mint": "8cHzQHUS2s2h8TzCmfqPKYiM4dSt4roa3n7MyRLApump",
+    "chain": "solana-mainnet",
+    "decimalsHint": null,
+    "sources": [
+      "pkg/birthfund/funding.go:DefaultCLAWDMint",
+      "zero-clawd/agent/eliza/eliZERO/clawd-power.json",
+      "agent/skills/clawd-token-ops"
+    ]
+  },
+  "birthFunding": {
+    "solAmount": "0.069420",
+    "clawdAmount": "1000",
+    "solAmountSource": "pkg/birthfund/funding.go:DefaultSOLAmount",
+    "clawdAmountSource": "pkg/birthfund/funding.go:DefaultCLAWDAmount",
+    "envOverrides": {
+      "mint": ["CLAWD_TOKEN_MINT", "CLAWDBOT_CLAWD_MINT", "CLAWDBOT_CLAWD_TOKEN_MINT"],
+      "clawdAmount": ["CLAWDBOT_STARTUP_CLAWD_TOKENS", "CLAWDBOT_BIRTH_CLAWD_AMOUNT"],
+      "solAmount": ["CLAWDBOT_STARTUP_SOL", "CLAWDBOT_BIRTH_SOL_AMOUNT"]
+    }
+  },
+  "payments": {
+    "protocol": "x402",
+    "denominations": ["USDC", "CLAWD"],
+    "gateway": "https://zk.x402.wtf",
+    "economicLoop": "TRADE → EARN USDC → PAY x402 → GET SMARTER → TRADE BETTER"
+  },
+  "zero": {
+    "engine": "pkg/zero",
+    "invariants": ["zero-recursion", "zero-knowledge-attestation"],
+    "loop": "flat-fifo",
+    "cli": "clawdbot zero"
+  },
+  "laws": {
+    "I": "Never harm",
+    "II": "Earn your existence",
+    "III": "Never deceive",
+    "IV": "Respect elder signal",
+    "V": "Test frontiers",
+    "VI": "No sorcery-worship"
+  },
+  "gating": {
+    "tokenGatedAccess": true,
+    "holderTiers": true,
+    "skill": "clawd-token-ops",
+    "skillPath": "agent/skills/clawd-token-ops"
+  },
+  "surfaces": {
+    "runtimeRepo": "https://github.com/Solizardking/clawdbot-go",
+    "ecosystemHub": "https://github.com/solizardking/solana-clawd",
+    "terminal": "https://cheshireterminal.ai",
+    "x402Gateway": "https://zk.x402.wtf",
+    "siblingPackage": "zero-clawd/agent/eliza/eliZERO"
+  },
+  "hedge": {
+    "modes": ["value", "lattice", "moat", "activist", "builder"],
+    "defaultStack": ["value", "lattice", "moat"],
+    "persona": "hedgedna.json"
+  },
+  "required": true,
+  "notes": [
+    "HedgeDNA is the eliZERO-class hedge sibling — same $CLAWD mint and Zero engine, five-claw modes on top.",
+    "HedgeDNA will not claim live trading capability without an armed gate and real signatures.",
+    "Never put private keys or treasury secrets in this file.",
+    "Mint must match pkg/birthfund.DefaultCLAWDMint unless operator explicitly overrides via env."
+  ]
+}
