@@ -26,6 +26,7 @@ import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import { isBlockedBySsoBridgeLogout } from "@/lib/services/sso-bridge-codes";
 import { describeSyncError, syncUserFromSteward } from "@/lib/steward-sync";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -225,6 +226,19 @@ app.post("/", async (c) => {
           }),
         );
       return c.json(errorBody("Invalid token", "invalid_token"), 401);
+    }
+
+    // Cross-host logout barrier: after an explicit logout, the OTHER origin's
+    // background session sync must not re-plant the domain-wide cookies with
+    // its surviving pre-logout token (that would silently undo the logout the
+    // user just performed). A token issued at-or-before the user's last
+    // explicit logout is refused with a DISTINCT code the client honors as a
+    // real revocation (it clears its stored session instead of retrying).
+    // Marker-store failures throw to the outer catch — no cookies get planted
+    // while the barrier is unreadable (fail closed).
+    if (await isBlockedBySsoBridgeLogout(claims.userId, claims.issuedAt)) {
+      logStewardAuth("session-ended", null);
+      return c.json(errorBody("Session was signed out", "session_ended"), 401);
     }
 
     let cloudUser: Awaited<ReturnType<typeof syncUserFromSteward>>;

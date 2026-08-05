@@ -15,25 +15,37 @@
  * mints a 60-second single-use opaque code that the app origin exchanges for
  * the token over POST. The token never appears in a URL.
  *
- * The handshake is bound to the initiating app origin by a `state` nonce:
- * created here, persisted in the app origin's sessionStorage (readable by no
- * other origin), echoed through both redirect legs, and verified-and-consumed
- * before any exchange call. A mismatch aborts to the app's own login — an
- * attacker who mints a code for their own session cannot drive a victim's
- * browser through the exchange leg (login CSRF / session fixation).
+ * The handshake is bound to the initiating app origin twice over:
+ *  - a `state` nonce: created here, persisted in the app origin's
+ *    sessionStorage (readable by no other origin), echoed through both
+ *    redirect legs, and verified-and-consumed before any exchange call. A
+ *    mismatch aborts to the app's own login — an attacker who mints a code
+ *    for their own session cannot drive a victim's browser through the
+ *    exchange leg (login CSRF / session fixation) — and BURNS the code
+ *    server-side so the abandoned code cannot be redeemed later.
+ *  - a PKCE-style `verifier`: also created here and held ONLY in this
+ *    origin's sessionStorage; its sha256 (`challenge`) rides the mint leg and
+ *    is stored with the code, and the raw verifier travels once, in the
+ *    exchange POST body. Both handshake URLs carry only the code/challenge,
+ *    so HTTP logs and browser history on either origin never contain enough
+ *    to redeem a code.
  *
  * Hostname gating is a strict hardcoded allowlist: only the real app hosts
  * initiate/exchange, only their paired dashboard hosts mint, and every other
  * hostname — localhost/dev (even with `VITE_FORCE_APP_MODE`), previews,
  * per-agent subdomains — resolves to role "none" and the bridge is inert.
  *
- * Logout stays logged out (both hosts): explicit app-host sign-out records a
- * persistent local marker that suppresses auto-bridging until the next real
- * sign-in, and calls the server logout route, which stamps a server-side
- * logout marker the mint/exchange endpoints refuse to bridge across. Dashboard
- * sign-out clears the dashboard's localStorage session (the only mint
- * credential) and the domain-wide `steward-authed` marker cookie this module
- * pre-checks, so a logged-out browser never even attempts the bounce.
+ * Logout stays logged out (both hosts): explicit sign-out on EITHER host
+ * (`signOutFromSsoBridgedHost` — ConsoleShell routes both its branches here)
+ * records a persistent local marker that suppresses auto-bridging until the
+ * next real sign-in, and calls the server logout route, which stamps a
+ * server-side Postgres logout marker. The mint/exchange endpoints refuse to
+ * bridge across that marker, the cookie-planting session-sync endpoint
+ * refuses pre-logout tokens with `session_ended` (so the paired origin's
+ * surviving session cannot re-plant the domain cookies and clears itself on
+ * its next sync), and the domain-wide `steward-authed` marker cookie this
+ * module pre-checks is cleared, so a logged-out browser never even attempts
+ * the bounce.
  */
 
 import {
@@ -138,10 +150,11 @@ export function sanitizeBridgeReturnTo(
 }
 
 // ---------------------------------------------------------------------------
-// State nonce (defect fix: handshake binding)
+// State nonce + PKCE verifier (defect fix: handshake binding + code theft)
 // ---------------------------------------------------------------------------
 
 const SSO_STATE_KEY = "eliza_sso_bridge_state";
+const SSO_VERIFIER_KEY = "eliza_sso_bridge_verifier";
 const SSO_STATE_RE = /^[0-9a-f]{64}$/;
 
 /** Both legs validate the echoed state's shape before using it in a URL. */
@@ -151,21 +164,50 @@ export function isWellFormedSsoState(
   return typeof value === "string" && SSO_STATE_RE.test(value);
 }
 
+/** Challenge/verifier share the state's 64-hex shape (32 random bytes). */
+export function isWellFormedSsoChallenge(
+  value: string | null | undefined,
+): value is string {
+  return isWellFormedSsoState(value);
+}
+
+function randomHex32(): string {
+  const bytes = new Uint8Array(32);
+  globalThis.crypto.getRandomValues(bytes);
+  return Array.from(bytes)
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function sha256Hex(input: string): Promise<string> {
+  const data = new TextEncoder().encode(input);
+  const buf = await globalThis.crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 /**
- * Create the handshake nonce and persist it in THIS origin's sessionStorage.
- * Returns null when storage or crypto is unavailable (privacy mode) — the
- * caller must then fall back to the normal login flow instead of bridging,
- * because an unbound handshake is exactly the CSRF this nonce exists to stop.
+ * Create the handshake secrets and persist them in THIS origin's
+ * sessionStorage: the `state` nonce (echoed through both redirect URLs) and
+ * the PKCE-style `verifier` (never leaves this origin until the exchange POST
+ * body). Only the verifier's sha256 — the `challenge` — is returned for the
+ * mint URL. Returns null when storage or crypto is unavailable (privacy
+ * mode) — the caller must then fall back to the normal login flow instead of
+ * bridging, because an unbound handshake is exactly the CSRF and code-theft
+ * surface these two values exist to stop.
  */
-export function createSsoBridgeState(): string | null {
+export async function createSsoBridgeHandshake(): Promise<{
+  state: string;
+  challenge: string;
+} | null> {
   try {
-    const bytes = new Uint8Array(32);
-    globalThis.crypto.getRandomValues(bytes);
-    const state = Array.from(bytes)
-      .map((byte) => byte.toString(16).padStart(2, "0"))
-      .join("");
+    const state = randomHex32();
+    const verifier = randomHex32();
+    const challenge = await sha256Hex(verifier);
     sessionStorage.setItem(SSO_STATE_KEY, state);
-    return state;
+    sessionStorage.setItem(SSO_VERIFIER_KEY, verifier);
+    return { state, challenge };
   } catch {
     // error-policy:J4 no storage/crypto → the bridge is disabled for this
     // visit (fail-closed to the ordinary login), never an unbound handshake.
@@ -182,6 +224,19 @@ export function consumeSsoBridgeState(): string | null {
   } catch {
     // error-policy:J4 unreadable storage verifies as "no stored state" → the
     // exchange leg aborts to login (fail-closed).
+    return null;
+  }
+}
+
+/** Read AND delete the stored verifier — the exchange POST is single-shot. */
+export function consumeSsoBridgeVerifier(): string | null {
+  try {
+    const verifier = sessionStorage.getItem(SSO_VERIFIER_KEY);
+    sessionStorage.removeItem(SSO_VERIFIER_KEY);
+    return verifier;
+  } catch {
+    // error-policy:J4 unreadable storage verifies as "no verifier" → the
+    // exchange leg burns the code and aborts to login (fail-closed).
     return null;
   }
 }
@@ -276,17 +331,23 @@ export function clearSsoLoggedOut(): void {
 // Handshake URLs
 // ---------------------------------------------------------------------------
 
-/** Dashboard-origin URL the app origin leaves for when it has no session. */
+/**
+ * Dashboard-origin URL the app origin leaves for when it has no session.
+ * Carries the state nonce and the CHALLENGE (sha256 of the verifier) — never
+ * the verifier itself, so this URL grants nothing to whoever logs it.
+ */
 export function buildBridgeMintUrl(
   appHostname: string,
   state: string,
+  challenge: string,
   returnTo: string,
 ): string | null {
   const pair = pairForHostname(appHostname);
   if (!pair || pair.appHost !== appHostname.toLowerCase()) return null;
   if (!isWellFormedSsoState(state)) return null;
+  if (!isWellFormedSsoChallenge(challenge)) return null;
   const safe = sanitizeBridgeReturnTo(returnTo);
-  return `${pair.mintOrigin}${SSO_BRIDGE_PATH}?state=${encodeURIComponent(state)}&returnTo=${encodeURIComponent(safe)}`;
+  return `${pair.mintOrigin}${SSO_BRIDGE_PATH}?state=${encodeURIComponent(state)}&challenge=${encodeURIComponent(challenge)}&returnTo=${encodeURIComponent(safe)}`;
 }
 
 /** App-origin URL the dashboard redirects back to after minting a code. */
@@ -314,6 +375,15 @@ export function buildBridgeExchangeUrl(
  * says a server session exists to bridge FROM (after any logout that marker
  * is cleared domain-wide, so a logged-out browser skips the bounce entirely),
  * and while the loop guard is clear.
+ *
+ * ACCEPTED RISK: `steward-authed` is a non-HttpOnly parent-domain cookie, so
+ * JS on a user-content sibling subdomain can PLANT it and force this gate
+ * open. The cookie is only ever a routing hint — minting still requires the
+ * dashboard's localStorage Bearer, exchanging still requires this origin's
+ * state + verifier — so the worst case is one wasted bounce to the dashboard
+ * and back to /login, bounded to one attempt per tab per 5 minutes by the
+ * loop guard. There is no unplantable cross-origin signal available to a
+ * first visit, so this hint is used knowingly.
  */
 export function shouldAutoBridgeToSso(
   hostname: string = window.location.hostname,
@@ -326,18 +396,24 @@ export function shouldAutoBridgeToSso(
 }
 
 /**
- * Leave for the dashboard mint leg: create + store the state nonce, mark the
- * attempt, and replace the location (the gate page is transient — Back must
- * not re-enter it). Returns false when the bridge cannot start (no nonce
- * storage / unknown host); the caller falls back to the ordinary login.
+ * Leave for the dashboard mint leg: create + store the state nonce and PKCE
+ * verifier, mark the attempt, and replace the location (the gate page is
+ * transient — Back must not re-enter it). Resolves false when the bridge
+ * cannot start (no nonce storage / unknown host); the caller falls back to
+ * the ordinary login.
  */
-export function redirectToSsoBridge(
+export async function redirectToSsoBridge(
   returnTo: string,
   hostname: string = window.location.hostname,
-): boolean {
-  const state = createSsoBridgeState();
-  if (!state) return false;
-  const url = buildBridgeMintUrl(hostname, state, returnTo);
+): Promise<boolean> {
+  const handshake = await createSsoBridgeHandshake();
+  if (!handshake) return false;
+  const url = buildBridgeMintUrl(
+    hostname,
+    handshake.state,
+    handshake.challenge,
+    returnTo,
+  );
   if (!url) return false;
   markSsoBridgeAttempt();
   appModeNavigation.replace(url);
@@ -362,25 +438,34 @@ export type SsoMintResult =
   | { ok: false; error: string };
 
 /**
- * Dashboard side: trade the local session for a one-time code. The Bearer
- * token comes from THIS origin's localStorage — deliberately never from the
- * parent-domain cookie, which JS on user-content subdomains can plant (the
- * server enforces the same rule). No refresh token travels: the app origin
- * already shares the HttpOnly domain refresh cookie.
+ * Dashboard side: trade the local session for a one-time code bound to the
+ * app origin's PKCE challenge. The Bearer token comes from THIS origin's
+ * localStorage — deliberately never from the parent-domain cookie, which JS
+ * on user-content subdomains can plant (the server enforces the same rule).
+ * No refresh token travels: the app origin already shares the HttpOnly
+ * domain refresh cookie.
  */
 export async function mintSsoCode(
   hostname: string,
+  challenge: string,
   fetchFn: typeof fetch = fetch,
 ): Promise<SsoMintResult> {
   const base = apiBaseForHostname(hostname);
   if (!base) return { ok: false, error: "Host cannot mint SSO codes" };
+  if (!isWellFormedSsoChallenge(challenge)) {
+    return { ok: false, error: "Malformed code challenge" };
+  }
   const token = readStoredStewardToken();
   if (!token) return { ok: false, error: "No local session" };
   try {
     const res = await fetchFn(`${base}/api/auth/sso-bridge/mint`, {
       method: "POST",
       credentials: "include",
-      headers: { Authorization: `Bearer ${token}` },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ codeChallenge: challenge }),
     });
     if (!res.ok)
       return { ok: false, error: `Mint failed (HTTP ${res.status})` };
@@ -413,25 +498,30 @@ function tokenLooksHydratable(token: string): boolean {
 }
 
 /**
- * App side: consume the code and hydrate this origin's localStorage mirror.
- * After this the app origin is indistinguishable from one the user logged
- * into directly: same storage key, same `steward-token-sync` event, and the
- * existing AuthTokenSync loop takes over cookie sync + refresh (the HttpOnly
- * refresh cookie is domain-wide and already present).
+ * App side: consume the code (presenting the PKCE verifier that never left
+ * this origin's sessionStorage) and hydrate this origin's localStorage
+ * mirror. After this the app origin is indistinguishable from one the user
+ * logged into directly: same storage key, same `steward-token-sync` event,
+ * and the existing AuthTokenSync loop takes over cookie sync + refresh (the
+ * HttpOnly refresh cookie is domain-wide and already present).
  */
 export async function performSsoExchange(
   code: string,
+  verifier: string,
   hostname: string,
   fetchFn: typeof fetch = fetch,
 ): Promise<SsoExchangeResult> {
   const base = apiBaseForHostname(hostname);
   if (!base) return { ok: false, error: "Host cannot exchange SSO codes" };
+  if (!isWellFormedSsoChallenge(verifier)) {
+    return { ok: false, error: "Malformed code verifier" };
+  }
   try {
     const res = await fetchFn(`${base}/api/auth/sso-bridge/exchange`, {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code }),
+      body: JSON.stringify({ code, codeVerifier: verifier }),
     });
     if (!res.ok) {
       return { ok: false, error: `Exchange failed (HTTP ${res.status})` };
@@ -481,19 +571,52 @@ export async function performSsoExchange(
   }
 }
 
+/**
+ * Destroy a code this origin refuses to exchange (state mismatch, missing
+ * verifier). The server consumes atomically BEFORE checking the verifier, so
+ * presenting the bare code burns it: without this, an abandoned handshake
+ * leaves a live code sitting in the address bar and both origins' request
+ * logs for the rest of its TTL. Fire-and-forget — the reply is always 401 and
+ * failure to burn only restores the pre-existing exposure.
+ */
+export function burnSsoBridgeCode(
+  code: string,
+  hostname: string = window.location.hostname,
+  fetchFn: typeof fetch = fetch,
+): void {
+  const base = apiBaseForHostname(hostname);
+  if (!base || !isWellFormedSsoCode(code)) return;
+  void fetchFn(`${base}/api/auth/sso-bridge/exchange`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code }),
+  }).catch(() => {
+    // error-policy:J6 best-effort destruction of an already-abandoned code;
+    // the code still dies on its own 60s TTL.
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Sign-out (defect fix: logout stays logged out)
 // ---------------------------------------------------------------------------
 
 /**
- * Explicit sign-out on an app-mode host. Order matters: the local logged-out
- * marker lands synchronously first (auto-bridge is suppressed even if the
- * network never answers), the server logout request is ISSUED while the
- * session cookies are still in the jar (it ends the server-side sessions AND
- * stamps the server logout marker that blocks minting for pre-logout tokens),
- * and the local scrub stays synchronous so the login page never renders over
- * a half-signed-out session. The returned promise settles with the server
- * teardown; callers may ignore it.
+ * Explicit sign-out on ANY host of a bridge pair — ConsoleShell routes both
+ * the app-mode AND dashboard sign-out branches here, because a dashboard
+ * sign-out that never reaches `/api/auth/logout` stamps no server logout
+ * marker, and the paired origin's surviving session would silently undo it
+ * (re-planting the domain cookies via its background session sync). Order
+ * matters: the local logged-out marker lands synchronously first (auto-bridge
+ * is suppressed even if the network never answers), the server logout request
+ * is ISSUED while the session cookies are still in the jar (it ends the
+ * server-side sessions AND stamps the server logout marker that blocks
+ * minting, exchanging, and cookie re-planting for pre-logout tokens), and the
+ * local scrub stays synchronous so the login page never renders over a
+ * half-signed-out session. On hostnames outside the deployed map (local dev)
+ * the server call is skipped and this degrades to the local scrub, exactly
+ * the previous dashboard behavior. The returned promise settles with the
+ * server teardown; callers may ignore it.
  */
 export async function signOutFromSsoBridgedHost(
   hostname: string = window.location.hostname,

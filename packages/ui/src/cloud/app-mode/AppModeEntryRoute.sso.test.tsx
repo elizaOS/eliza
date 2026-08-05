@@ -11,6 +11,7 @@ import { AppModeEntryRoute } from "./AppModeEntryRoute";
 import { appModeNavigation } from "./app-mode";
 
 const SSO_STATE_KEY = "eliza_sso_bridge_state";
+const SSO_VERIFIER_KEY = "eliza_sso_bridge_verifier";
 const SSO_ATTEMPT_KEY = "eliza_sso_bridge_attempted_at";
 const SSO_LOGGED_OUT_KEY = "eliza_sso_logged_out";
 
@@ -113,7 +114,7 @@ afterEach(() => {
 });
 
 describe("AppModeEntryRoute — SSO auto-bridge (app host origin)", () => {
-  it("signed out + domain session marker → full-page bounce to the dashboard mint leg with a stored state nonce", async () => {
+  it("signed out + domain session marker → full-page bounce to the dashboard mint leg with a stored state nonce + PKCE challenge", async () => {
     document.cookie = "steward-authed=1; path=/";
     renderEntry("/chat?x=1");
 
@@ -126,6 +127,14 @@ describe("AppModeEntryRoute — SSO auto-bridge (app host origin)", () => {
     expect(url.searchParams.get("state")).toBe(
       sessionStorage.getItem(SSO_STATE_KEY),
     );
+    // The URL carries the CHALLENGE; the verifier stays in sessionStorage and
+    // never appears in the (loggable) URL.
+    const challenge = url.searchParams.get("challenge");
+    const verifier = sessionStorage.getItem(SSO_VERIFIER_KEY);
+    expect(challenge).toMatch(/^[0-9a-f]{64}$/);
+    expect(verifier).toMatch(/^[0-9a-f]{64}$/);
+    expect(challenge).not.toBe(verifier);
+    expect(replacedUrls[0]).not.toContain(verifier as string);
     // Loop guard armed before leaving.
     expect(sessionStorage.getItem(SSO_ATTEMPT_KEY)).not.toBeNull();
     // The gate holds a notice — never the login page under a leaving redirect.

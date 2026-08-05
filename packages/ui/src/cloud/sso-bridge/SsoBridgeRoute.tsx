@@ -3,12 +3,18 @@
  * role-switched by hostname (see `./sso-bridge` for the security model):
  *
  *  - mint role (elizacloud.ai / www / staging): a signed-in dashboard visit
- *    mints a one-time code and bounces to the paired app host; a signed-out
- *    one bounces straight to the app host's own login. Nothing here changes
- *    dashboard behavior on any other path.
+ *    that arrived FROM the paired app origin (referrer-gated — a public GET
+ *    that mints on any cross-site navigation would be a CSRF-triggerable
+ *    minting oracle) mints a one-time code bound to the app origin's PKCE
+ *    challenge and bounces to the paired app host; anything else bounces to
+ *    the app host's own login (signed out) or home (not app-initiated).
+ *    Nothing here changes dashboard behavior on any other path.
  *  - exchange role (app.elizacloud.ai / app-staging): verifies-and-consumes
- *    the state nonce BEFORE any network call, exchanges the code, hydrates
- *    this origin's session, and lands on the sanitized returnTo.
+ *    the state nonce BEFORE any network call, exchanges the code with the
+ *    stored verifier, hydrates this origin's session, and lands on the
+ *    sanitized returnTo. A handshake this origin refuses (state mismatch,
+ *    missing verifier) BURNS the code server-side before falling back to
+ *    login, so the abandoned code cannot be redeemed later.
  *  - every other hostname (localhost, previews, per-agent subdomains): inert —
  *    an immediate local redirect home, no bridge code paths reachable.
  *
@@ -24,7 +30,10 @@ import { appModeNavigation } from "../app-mode/app-mode";
 import { hasHydratableStewardToken } from "../lib/steward-session";
 import {
   buildBridgeExchangeUrl,
+  burnSsoBridgeCode,
   consumeSsoBridgeState,
+  consumeSsoBridgeVerifier,
+  isWellFormedSsoChallenge,
   isWellFormedSsoCode,
   isWellFormedSsoState,
   mintSsoCode,
@@ -49,22 +58,54 @@ function appLoginUrl(appOrigin: string, returnTo: string): string {
   return `${appOrigin}/login?returnTo=${encodeURIComponent(returnTo)}`;
 }
 
+/**
+ * The legitimate mint leg is ALWAYS a cross-origin navigation from the paired
+ * app origin, whose default referrer policy (strict-origin-when-cross-origin)
+ * sends exactly that origin. A third-party page cannot forge it — a forced
+ * navigation carries the attacker's origin or (with a no-referrer policy)
+ * nothing. Privacy setups that strip the referrer lose the auto-bridge and
+ * fall back to the ordinary login, which is the designed fail-closed path.
+ */
+function referrerIsPairedAppOrigin(
+  appOrigin: string,
+  referrer: string = document.referrer,
+): boolean {
+  if (!referrer) return false;
+  try {
+    return new URL(referrer).origin === appOrigin;
+  } catch {
+    // error-policy:J3 an unparseable referrer reads as "not app-initiated" and
+    // the mint leg refuses to start (fail-closed).
+    return false;
+  }
+}
+
 function MintLeg({
   hostname,
   state,
+  challenge,
   returnTo,
 }: {
   hostname: string;
   state: string;
+  challenge: string;
   returnTo: string;
 }): React.JSX.Element {
   const startedRef = useRef(false);
+  const [notInitiated, setNotInitiated] = useState(false);
 
   useEffect(() => {
     if (startedRef.current) return;
     startedRef.current = true;
     const appOrigin = pairedAppOrigin(hostname);
     if (!appOrigin) return;
+
+    if (!referrerIsPairedAppOrigin(appOrigin)) {
+      // Not a handshake the app origin initiated (direct visit, or a
+      // third-party page forcing a signed-in user here): mint nothing.
+      setNotInitiated(true);
+      return;
+    }
 
     if (!hasHydratableStewardToken()) {
       // No dashboard session to bridge FROM (signed out here, or logout just
@@ -74,14 +115,17 @@ function MintLeg({
       return;
     }
 
-    void mintSsoCode(hostname).then((result) => {
+    void mintSsoCode(hostname, challenge).then((result) => {
       const url = result.ok
         ? buildBridgeExchangeUrl(hostname, result.code, state, returnTo)
         : null;
       appModeNavigation.replace(url ?? appLoginUrl(appOrigin, returnTo));
     });
-  }, [hostname, state, returnTo]);
+  }, [hostname, state, challenge, returnTo]);
 
+  if (notInitiated) {
+    return <Navigate to="/" replace />;
+  }
   return <BridgeNotice label="Connecting to the Eliza app" />;
 }
 
@@ -107,17 +151,20 @@ function ExchangeLeg({
     // State nonce first, before ANY network call: the stored value is
     // consumed single-shot, and only an exact echo of what THIS origin
     // created may proceed. Missing/mismatched state (a handshake this origin
-    // never initiated — login CSRF) aborts to the local login and the code is
-    // never presented for exchange.
+    // never initiated — login CSRF) aborts to the local login; the code is
+    // never EXCHANGED, but a well-formed one is BURNED so it cannot sit live
+    // in the address bar and request logs for the rest of its TTL.
     const stored = consumeSsoBridgeState();
+    const verifier = consumeSsoBridgeVerifier();
     const stateOk =
       stored !== null && isWellFormedSsoState(state) && stored === state;
-    if (!stateOk || !isWellFormedSsoCode(code)) {
+    if (!stateOk || !isWellFormedSsoCode(code) || verifier === null) {
+      if (isWellFormedSsoCode(code)) burnSsoBridgeCode(code, hostname);
       setFailed(true);
       return;
     }
 
-    void performSsoExchange(code, hostname).then((result) => {
+    void performSsoExchange(code, verifier, hostname).then((result) => {
       if (result.ok) {
         navigate(returnTo, { replace: true });
         return;
@@ -154,12 +201,20 @@ export function SsoBridgeRoute({
 
   if (role === "mint") {
     const state = params.get("state");
-    if (!isWellFormedSsoState(state)) {
-      // A mint visit without a well-formed nonce was not initiated by the app
-      // origin — treat it as any other unknown dashboard path.
+    const challenge = params.get("challenge");
+    if (!isWellFormedSsoState(state) || !isWellFormedSsoChallenge(challenge)) {
+      // A mint visit without a well-formed nonce + challenge was not initiated
+      // by the app origin — treat it as any other unknown dashboard path.
       return <Navigate to="/" replace />;
     }
-    return <MintLeg hostname={hostname} state={state} returnTo={returnTo} />;
+    return (
+      <MintLeg
+        hostname={hostname}
+        state={state}
+        challenge={challenge}
+        returnTo={returnTo}
+      />
+    );
   }
 
   return (

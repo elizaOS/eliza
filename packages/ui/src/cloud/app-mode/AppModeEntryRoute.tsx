@@ -85,14 +85,15 @@ export function AppModeEntryRoute({
     }
     if (ssoDecisionRef.current) return;
     ssoDecisionRef.current = true;
-    if (
-      shouldAutoBridgeToSso() &&
-      redirectToSsoBridge(`${location.pathname}${location.search}`)
-    ) {
-      setSsoBridging(true);
+    if (!shouldAutoBridgeToSso()) {
+      setSsoBridging(false);
       return;
     }
-    setSsoBridging(false);
+    // Async because the handshake hashes the PKCE verifier before leaving;
+    // `ssoBridging` stays null (holding the notice) until it resolves.
+    void redirectToSsoBridge(`${location.pathname}${location.search}`).then(
+      (started) => setSsoBridging(started),
+    );
   }, [ready, authenticated, location]);
 
   const route =

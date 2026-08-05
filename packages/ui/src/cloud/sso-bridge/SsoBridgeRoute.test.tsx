@@ -1,4 +1,4 @@
-/** Behavioral contract for the /auth/bridge route component — role switching by injected hostname, the mint leg's session gate + code mint + cross-origin bounce, and the exchange leg's state-nonce verification before any network call — jsdom + real render, hand-rolled fetch/navigation stubs. */
+/** Behavioral contract for the /auth/bridge route component — role switching by injected hostname, the mint leg's referrer gate + session gate + challenge-bound code mint + cross-origin bounce, and the exchange leg's state-nonce/verifier verification with burn-on-refusal — jsdom + real render, hand-rolled fetch/navigation stubs. */
 // @vitest-environment jsdom
 
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
@@ -10,8 +10,11 @@ import { SsoBridgeRoute } from "./SsoBridgeRoute";
 
 const STATE = "a".repeat(64);
 const OTHER_STATE = "c".repeat(64);
+const CHALLENGE = "e".repeat(64);
+const VERIFIER = "d".repeat(64);
 const CODE = `esso_${"b".repeat(64)}`;
 const SSO_STATE_KEY = "eliza_sso_bridge_state";
+const SSO_VERIFIER_KEY = "eliza_sso_bridge_verifier";
 
 function base64url(value: unknown): string {
   return btoa(JSON.stringify(value))
@@ -44,6 +47,14 @@ function stubNetwork(responder: (url: string) => Response): void {
   appModeNavigation.replace = (url: string) => {
     replacedUrls.push(url);
   };
+}
+
+/** jsdom's document.referrer is ""; the mint leg's gate reads it directly. */
+function setReferrer(value: string): void {
+  Object.defineProperty(document, "referrer", {
+    value,
+    configurable: true,
+  });
 }
 
 function json(status: number, body: unknown): Response {
@@ -80,6 +91,7 @@ afterEach(() => {
   sessionStorage.clear();
   globalThis.fetch = realFetch;
   appModeNavigation.replace = realReplace;
+  setReferrer("");
 });
 
 describe("SsoBridgeRoute — inert role", () => {
@@ -100,16 +112,45 @@ describe("SsoBridgeRoute — inert role", () => {
 });
 
 describe("SsoBridgeRoute — mint leg (dashboard host)", () => {
+  const MINT_QS = `?state=${STATE}&challenge=${CHALLENGE}&returnTo=%2Fchat`;
+
   it("without a well-formed state nonce the visit is treated as any unknown path", () => {
+    setReferrer("https://app.elizacloud.ai/");
     stubNetwork(() => json(500, {}));
-    renderBridge("elizacloud.ai", "?returnTo=%2Fchat");
+    renderBridge("elizacloud.ai", `?challenge=${CHALLENGE}&returnTo=%2Fchat`);
     expect(screen.getByTestId("home-page")).toBeTruthy();
     expect(fetchLog).toEqual([]);
   });
 
-  it("signed out on the dashboard → straight to the APP host's own login", async () => {
+  it("without a well-formed challenge the visit is treated as any unknown path — no unbound codes", () => {
+    setReferrer("https://app.elizacloud.ai/");
     stubNetwork(() => json(500, {}));
     renderBridge("elizacloud.ai", `?state=${STATE}&returnTo=%2Fchat`);
+    expect(screen.getByTestId("home-page")).toBeTruthy();
+    expect(fetchLog).toEqual([]);
+  });
+
+  it("a cross-site or absent referrer mints NOTHING — a third-party page cannot use the dashboard as a minting oracle", async () => {
+    localStorage.setItem(STEWARD_TOKEN_KEY, liveToken());
+    for (const referrer of [
+      "",
+      "https://evil.example/",
+      "https://elizacloud.ai/",
+    ]) {
+      setReferrer(referrer);
+      stubNetwork(() => json(200, { ok: true, code: CODE }));
+      renderBridge("elizacloud.ai", MINT_QS);
+      expect(await screen.findByTestId("home-page")).toBeTruthy();
+      expect(fetchLog).toEqual([]);
+      expect(replacedUrls).toEqual([]);
+      cleanup();
+    }
+  });
+
+  it("signed out on the dashboard → straight to the APP host's own login", async () => {
+    setReferrer("https://app.elizacloud.ai/");
+    stubNetwork(() => json(500, {}));
+    renderBridge("elizacloud.ai", MINT_QS);
     await waitFor(() =>
       expect(replacedUrls).toEqual([
         "https://app.elizacloud.ai/login?returnTo=%2Fchat",
@@ -118,10 +159,11 @@ describe("SsoBridgeRoute — mint leg (dashboard host)", () => {
     expect(fetchLog).toEqual([]);
   });
 
-  it("signed in → mints with Bearer and bounces to the app exchange leg, state echoed", async () => {
+  it("signed in + app-initiated → mints with Bearer + challenge and bounces to the app exchange leg, state echoed, challenge NOT echoed", async () => {
+    setReferrer("https://app.elizacloud.ai/");
     localStorage.setItem(STEWARD_TOKEN_KEY, liveToken());
     stubNetwork(() => json(200, { ok: true, code: CODE }));
-    renderBridge("elizacloud.ai", `?state=${STATE}&returnTo=%2Fchat`);
+    renderBridge("elizacloud.ai", MINT_QS);
 
     await waitFor(() =>
       expect(replacedUrls).toEqual([
@@ -131,12 +173,16 @@ describe("SsoBridgeRoute — mint leg (dashboard host)", () => {
     expect(fetchLog[0].url).toBe(
       "https://api.elizacloud.ai/api/auth/sso-bridge/mint",
     );
+    expect(JSON.parse(String(fetchLog[0].init?.body))).toEqual({
+      codeChallenge: CHALLENGE,
+    });
   });
 
   it("mint failure → the app host's own login, never a loop back here", async () => {
+    setReferrer("https://app.elizacloud.ai/");
     localStorage.setItem(STEWARD_TOKEN_KEY, liveToken());
     stubNetwork(() => json(503, { error: "sso_unavailable" }));
-    renderBridge("elizacloud.ai", `?state=${STATE}&returnTo=%2Fchat`);
+    renderBridge("elizacloud.ai", MINT_QS);
     await waitFor(() =>
       expect(replacedUrls).toEqual([
         "https://app.elizacloud.ai/login?returnTo=%2Fchat",
@@ -145,10 +191,11 @@ describe("SsoBridgeRoute — mint leg (dashboard host)", () => {
   });
 
   it("open-redirect returnTo collapses to /", async () => {
+    setReferrer("https://app.elizacloud.ai/");
     stubNetwork(() => json(500, {}));
     renderBridge(
       "elizacloud.ai",
-      `?state=${STATE}&returnTo=${encodeURIComponent("//evil.com")}`,
+      `?state=${STATE}&challenge=${CHALLENGE}&returnTo=${encodeURIComponent("//evil.com")}`,
     );
     await waitFor(() =>
       expect(replacedUrls).toEqual([
@@ -159,9 +206,23 @@ describe("SsoBridgeRoute — mint leg (dashboard host)", () => {
 });
 
 describe("SsoBridgeRoute — exchange leg (app host)", () => {
-  it("state mismatch aborts to the local login BEFORE any exchange call", async () => {
-    sessionStorage.setItem(SSO_STATE_KEY, OTHER_STATE);
-    stubNetwork(() => json(200, { ok: true, token: liveToken() }));
+  function armHandshake(state: string = STATE): void {
+    sessionStorage.setItem(SSO_STATE_KEY, state);
+    sessionStorage.setItem(SSO_VERIFIER_KEY, VERIFIER);
+  }
+
+  /** The refusal paths burn the abandoned code: one verifier-less POST. */
+  function expectBurnOnly(): void {
+    expect(fetchLog).toHaveLength(1);
+    expect(fetchLog[0].url).toBe(
+      "https://api.elizacloud.ai/api/auth/sso-bridge/exchange",
+    );
+    expect(JSON.parse(String(fetchLog[0].init?.body))).toEqual({ code: CODE });
+  }
+
+  it("state mismatch aborts to the local login — the code is never EXCHANGED, only burned", async () => {
+    armHandshake(OTHER_STATE);
+    stubNetwork(() => json(401, { error: "invalid_code" }));
     renderBridge(
       "app.elizacloud.ai",
       `?code=${CODE}&state=${STATE}&returnTo=%2Fchat`,
@@ -170,23 +231,35 @@ describe("SsoBridgeRoute — exchange leg (app host)", () => {
     expect((await screen.findByTestId("login-page")).textContent).toBe(
       "/login?returnTo=%2Fchat",
     );
-    expect(fetchLog).toEqual([]);
+    expectBurnOnly();
     // The stored nonce was consumed either way — no second try with it.
     expect(sessionStorage.getItem(SSO_STATE_KEY)).toBeNull();
+    expect(sessionStorage.getItem(SSO_VERIFIER_KEY)).toBeNull();
   });
 
-  it("missing stored state (handshake this origin never initiated) aborts to login", async () => {
-    stubNetwork(() => json(200, { ok: true, token: liveToken() }));
+  it("missing stored state (handshake this origin never initiated) aborts to login and burns the code", async () => {
+    stubNetwork(() => json(401, { error: "invalid_code" }));
     renderBridge(
       "app.elizacloud.ai",
       `?code=${CODE}&state=${STATE}&returnTo=%2Fchat`,
     );
     expect(await screen.findByTestId("login-page")).toBeTruthy();
-    expect(fetchLog).toEqual([]);
+    expectBurnOnly();
   });
 
-  it("malformed code aborts to login without a network call", async () => {
+  it("missing verifier (lost storage) aborts to login and burns the code instead of exchanging", async () => {
     sessionStorage.setItem(SSO_STATE_KEY, STATE);
+    stubNetwork(() => json(401, { error: "invalid_code" }));
+    renderBridge(
+      "app.elizacloud.ai",
+      `?code=${CODE}&state=${STATE}&returnTo=%2Fchat`,
+    );
+    expect(await screen.findByTestId("login-page")).toBeTruthy();
+    expectBurnOnly();
+  });
+
+  it("malformed code aborts to login without ANY network call", async () => {
+    armHandshake();
     stubNetwork(() => json(200, { ok: true, token: liveToken() }));
     renderBridge(
       "app.elizacloud.ai",
@@ -196,8 +269,8 @@ describe("SsoBridgeRoute — exchange leg (app host)", () => {
     expect(fetchLog).toEqual([]);
   });
 
-  it("state match → exchanges the code, hydrates, lands on the sanitized returnTo", async () => {
-    sessionStorage.setItem(SSO_STATE_KEY, STATE);
+  it("state match → exchanges code + verifier, hydrates, lands on the sanitized returnTo", async () => {
+    armHandshake();
     const token = liveToken();
     stubNetwork((url) =>
       url.includes("/sso-bridge/exchange")
@@ -214,10 +287,14 @@ describe("SsoBridgeRoute — exchange leg (app host)", () => {
     expect(fetchLog[0].url).toBe(
       "https://api.elizacloud.ai/api/auth/sso-bridge/exchange",
     );
+    expect(JSON.parse(String(fetchLog[0].init?.body))).toEqual({
+      code: CODE,
+      codeVerifier: VERIFIER,
+    });
   });
 
   it("a denied exchange (replayed/expired code) falls back to the local login", async () => {
-    sessionStorage.setItem(SSO_STATE_KEY, STATE);
+    armHandshake();
     stubNetwork(() => json(401, { error: "invalid_code" }));
     renderBridge(
       "app.elizacloud.ai",
@@ -228,7 +305,7 @@ describe("SsoBridgeRoute — exchange leg (app host)", () => {
   });
 
   it("open-redirect returnTo lands on / after a successful exchange", async () => {
-    sessionStorage.setItem(SSO_STATE_KEY, STATE);
+    armHandshake();
     stubNetwork((url) =>
       url.includes("/sso-bridge/exchange")
         ? json(200, { ok: true, token: liveToken() })

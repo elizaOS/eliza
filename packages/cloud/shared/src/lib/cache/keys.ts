@@ -102,12 +102,6 @@ export const CacheKeys = {
     user: (tokenHash: string) => `session:user:${tokenHash}:v1`,
     pattern: () => `session:*`,
   },
-  ssoBridge: {
-    /** Single-use cross-host SSO code, keyed by the code's sha256 (raw codes are never stored). */
-    code: (codeHash: string) => `sso-bridge:code:${codeHash}:v1`,
-    /** Explicit-logout marker that blocks bridging tokens issued before it. */
-    logout: (stewardUserId: string) => `sso-bridge:logout:${stewardUserId}:v1`,
-  },
   user: {
     byId: (id: string) => `user:id:${id}:v1`,
     byEmail: (email: string) => `user:email:${email}:v1`,

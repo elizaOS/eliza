@@ -89,6 +89,10 @@ export interface StewardSessionResponse {
 export type StewardSessionErrorCode =
   | "missing_token"
   | "invalid_token"
+  /** The user explicitly logged out AFTER this token was issued (cross-host
+   * SSO logout marker). A real revocation: clients clear the stored session
+   * instead of retrying the sync. */
+  | "session_ended"
   | "server_secret_missing"
   | "steward_user_sync_failed"
   | "internal_error"
