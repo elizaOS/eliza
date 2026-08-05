@@ -4,10 +4,10 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { spawnSync } from "node:child_process";
 import { mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 
 const audit = await import(
   new URL("../run-mvp-closeout-audit.mjs", import.meta.url).href

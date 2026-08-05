@@ -7,7 +7,6 @@
  * required scenario workflow; a test list without an executing lane is invalid.
  */
 
-import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -17,6 +16,7 @@ import {
   assertUniqueRepositoryIdentities,
   normalizeGitRepositoryPath,
 } from "./repository-file-integrity.mjs";
+import { execFileSync } from "./spawn-sync-captured.mjs";
 
 export const SCRIPT_TEST_RUNNER =
   "node packages/scripts/run-script-tests.mjs --report reports/script-tests/inventory.json --junit reports/script-tests/junit.xml";

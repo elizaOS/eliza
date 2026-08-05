@@ -92,6 +92,22 @@ function resolveExportTarget(exportTarget: unknown): string | undefined {
   return undefined;
 }
 
+function resolveWorkspaceSourceExportTarget(
+  packageRoot: string,
+  exportTarget: string,
+): string | undefined {
+  const normalizedTarget = exportTarget.replace(/^\.\//, "");
+  if (!normalizedTarget.startsWith("dist/")) return undefined;
+
+  const sourceRelativePath = normalizedTarget
+    .slice("dist/".length)
+    .replace(/\.(?:cjs|mjs|js)$/, "");
+  const sourceCandidate = resolveModuleEntry(
+    path.join(packageRoot, "src", sourceRelativePath),
+  );
+  return existsSync(sourceCandidate) ? sourceCandidate : undefined;
+}
+
 function getWorkspacePackageExportAliases(
   packageName: string,
   packageRoot: string,
@@ -116,7 +132,9 @@ function getWorkspacePackageExportAliases(
       return [];
     }
 
-    const replacement = path.join(packageRoot, target);
+    const replacement =
+      resolveWorkspaceSourceExportTarget(packageRoot, target) ??
+      path.join(packageRoot, target);
     if (!existsSync(replacement)) {
       return [];
     }

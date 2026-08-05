@@ -4,9 +4,9 @@
  */
 
 import { expect, test } from "bun:test";
-import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawnSync } from "../../../scripts/lib/spawn-sync-captured.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 

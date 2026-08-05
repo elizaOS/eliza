@@ -17,6 +17,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 
 const repoRoot = resolve(import.meta.dir, "../../..");
 const runTurbo = join(repoRoot, "packages/scripts/run-turbo.mjs");
@@ -275,19 +276,13 @@ describe("filtered build generated outputs", () => {
 
 describe("generate-keywords argv contract", () => {
   test("rejects the removed --target flag before writing anything", async () => {
-    const child = Bun.spawn(
-      [process.execPath, keywordGenerator, "--target", "ts"],
-      {
-        cwd: repoRoot,
-        env: process.env,
-        stdout: "pipe",
-        stderr: "pipe",
-      },
-    );
-    await child.exited;
-    const stderr = await new Response(child.stderr).text();
+    const child = spawnSync("node", [keywordGenerator, "--target", "ts"], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      env: process.env,
+    });
 
-    expect(child.exitCode).toBe(1);
-    expect(stderr).toContain("takes no arguments");
+    expect(child.status).toBe(1);
+    expect(child.stderr).toContain("takes no arguments");
   });
 });

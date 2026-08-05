@@ -55,13 +55,6 @@ const PLUGIN_VIEW_TARGETS: readonly {
     ready: { testId: "orchestrator-accounts-toggle" },
     requiredIds: ["header-accounts-toggle"],
   },
-  {
-    label: "Feed",
-    path: "/feed",
-    viewId: "feed",
-    ready: { text: /Spawn agent/i },
-    requiredIds: ["spawn-agent"],
-  },
 ];
 
 async function waitForReady(

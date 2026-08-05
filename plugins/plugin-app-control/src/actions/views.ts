@@ -25,7 +25,13 @@ import {
 	AGENT_SURFACE_CAPABILITY_IDS,
 	STANDARD_CAPABILITIES,
 } from "@elizaos/shared";
-import { normalizeActionOptions, readStringOption } from "../params.js";
+import {
+	describeTargetReference,
+	normalizeActionOptions,
+	readStringOption,
+	targetReferenceLogView,
+	userRequestMessageText,
+} from "../params.js";
 import { matchViewCommand } from "./view-command-matcher.js";
 import {
 	createViewsClient,
@@ -1840,7 +1846,9 @@ async function runViewsClose({
 	viewType?: ViewType;
 	callback?: HandlerCallback;
 }): Promise<ActionResult> {
-	const text = message.content.text ?? "";
+	// Security-unwrapped user words — never the raw (possibly enveloped)
+	// content.text; the envelope's warning contains verbs the extractors match.
+	const text = userRequestMessageText(message);
 	if (isCloseAllRequest(text, options)) {
 		const result = await navigateViewWithShellAction(
 			"__all__",
@@ -1877,15 +1885,19 @@ async function runViewsClose({
 		const views = await client.listViews({ viewType });
 		const resolution = resolveCloseTargetView(target, views);
 		if (resolution.kind === "none") {
-			const reply = `No view matches "${target}". Try action=list to see available views.`;
+			const reply = `No view matches ${describeTargetReference(target)}. Try action=list to see available views.`;
 			await callback?.({ text: reply });
-			return { success: false, text: reply, data: { target } };
+			return {
+				success: false,
+				text: reply,
+				data: { target: targetReferenceLogView(target) },
+			};
 		}
 		if (resolution.kind === "ambiguous") {
 			const list = resolution.candidates
 				.map((view) => `- ${view.label} (${view.id})`)
 				.join("\n");
-			const reply = `"${target}" matches multiple views:\n${list}\nWhich one did you mean?`;
+			const reply = `${describeTargetReference(target)} matches multiple views:\n${list}\nWhich one did you mean?`;
 			await callback?.({ text: reply });
 			return {
 				success: false,
@@ -1934,7 +1946,9 @@ async function runViewsLayout({
 	viewType?: ViewType;
 	callback?: HandlerCallback;
 }): Promise<ActionResult> {
-	const text = message.content.text ?? "";
+	// Security-unwrapped user words — never the raw (possibly enveloped)
+	// content.text; the envelope's warning contains verbs the extractors match.
+	const text = userRequestMessageText(message);
 	const views = await client.listViews({ viewType });
 	const placement =
 		mode === "split" ? readPlacementValue(text, options) : undefined;
@@ -2433,7 +2447,9 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			_state?: State,
 			options?: Record<string, unknown>,
 		): Promise<boolean> => {
-			const text = message.content.text ?? "";
+			// Security-unwrapped user words — never the raw (possibly enveloped)
+			// content.text; the envelope's warning contains verbs the extractors match.
+			const text = userRequestMessageText(message);
 			const actionOptions = normalizeActionOptions(options);
 			const roomId =
 				typeof message.roomId === "string" ? message.roomId : runtime.agentId;
@@ -2513,7 +2529,9 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			const run = async (): Promise<ActionResult> => {
 				const actionOptions = normalizeActionOptions(options);
 				const client = clientFactory();
-				const text = message.content.text ?? "";
+				// Security-unwrapped user words — never the raw (possibly enveloped)
+				// content.text; the envelope's warning contains verbs the extractors match.
+				const text = userRequestMessageText(message);
 				const roomId =
 					typeof message.roomId === "string" ? message.roomId : runtime.agentId;
 
