@@ -3311,16 +3311,22 @@ describe("runV5MessageRuntimeStage1", () => {
 		const params = useModelCalls(runtime)[0]?.[1] as {
 			messages?: Array<{ content?: string | null }>;
 		};
-		const userContent = params.messages?.[1]?.content ?? "";
-		expect(userContent).toContain(
+		const fullPrompt = (params.messages ?? [])
+			.map((message) => message.content ?? "")
+			.join("\n");
+		expect(fullPrompt).toContain(
 			"only the most recent window of a longer stored conversation",
 		);
-		expect(userContent).toContain(
+		expect(fullPrompt).toContain(
 			"route it to the memory context (set requiresTool)",
 		);
-		expect(userContent).not.toContain(
+		// No contradictory capability text anywhere in the rendered prompt —
+		// system message included. The denial sentence and its "no chat-history
+		// search" qualifier must both be absent when the search surface exists.
+		expect(fullPrompt).not.toContain(
 			"there is no separate chat-history search tool",
 		);
+		expect(fullPrompt).not.toContain("no chat-history search");
 		// Route decision: the memory vote reaches the planner (tool path).
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {
@@ -3341,7 +3347,7 @@ describe("runV5MessageRuntimeStage1", () => {
 				replyText: "I don't see bitcoin in the recent messages I can see.",
 			}),
 		]);
-		await runV5MessageRuntimeStage1({
+		const result = await runV5MessageRuntimeStage1({
 			runtime,
 			message: makeMessage({
 				text: "how many times have i mentioned bitcoin in this channel?",
@@ -3352,13 +3358,23 @@ describe("runV5MessageRuntimeStage1", () => {
 		const params = useModelCalls(runtime)[0]?.[1] as {
 			messages?: Array<{ content?: string | null }>;
 		};
-		const userContent = params.messages?.[1]?.content ?? "";
-		expect(userContent).toContain(
+		const fullPrompt = (params.messages ?? [])
+			.map((message) => message.content ?? "")
+			.join("\n");
+		expect(fullPrompt).toContain(
 			"there is no separate chat-history search tool",
 		);
-		expect(userContent).not.toContain(
+		expect(fullPrompt).not.toContain(
 			"only the most recent window of a longer stored conversation",
 		);
+		expect(fullPrompt).not.toContain(
+			"route it to the memory context (set requiresTool)",
+		);
+		expect(fullPrompt).not.toContain("search it with MEMORY op:search");
+		// Route decision: honest denial ships directly — no planner escalation,
+		// so exactly one model call (Stage 1 only) is made.
+		expect(result.kind).toBe("direct_reply");
+		expect(useModelCalls(runtime).length).toBe(1);
 	});
 
 	it("renders the ambient-turn policy in the planner prompt on an unaddressed group turn and records planner IGNORE as a terminal decision", async () => {
@@ -3588,7 +3604,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			},
 		]);
 
-		await runV5MessageRuntimeStage1({
+		const result = await runV5MessageRuntimeStage1({
 			runtime,
 			message: makeMessage({
 				text: "how many times have i mentioned bitcoin in this channel?",
@@ -3611,6 +3627,10 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(prompt).not.toContain(
 			"available_contexts lists a memory or recall context",
 		);
+		// Route decision: a context without an executable action must not cost a
+		// planner escalation — the denial ships directly off one Stage 1 call.
+		expect(result.kind).toBe("direct_reply");
+		expect(useModelCalls(runtime).length).toBe(1);
 	});
 
 	it("does not advertise chat-history search when the registered action is role-hidden", async () => {
@@ -3631,7 +3651,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		]);
 		runtime.actions = [makeMemorySearchAction("OWNER")];
 
-		await runV5MessageRuntimeStage1({
+		const result = await runV5MessageRuntimeStage1({
 			runtime,
 			message: makeMessage({
 				text: "how many times have i mentioned bitcoin in this channel?",
@@ -3651,6 +3671,10 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(prompt).toContain("there is no separate chat-history search tool");
 		expect(prompt).not.toContain("route it to the memory context");
 		expect(prompt).not.toContain("search it with MEMORY op:search");
+		// Route decision: a role-hidden action is not an executable surface for
+		// this caller — no planner escalation, one Stage 1 call only.
+		expect(result.kind).toBe("direct_reply");
+		expect(useModelCalls(runtime).length).toBe(1);
 	});
 
 	it("current_turn_boundary answers facts stated in the current message itself", async () => {
