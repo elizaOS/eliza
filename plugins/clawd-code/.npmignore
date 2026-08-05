@@ -1,0 +1,18 @@
+# Runtime secrets and local state
+.env
+.env.local
+.env.*.local
+*.env
+.clawd/
+outputs/
+node_modules/
+
+# Development-only files
+src/
+tsconfig.json
+*.tsbuildinfo
+coverage/
+.nyc_output/
+.DS_Store
+Thumbs.db
+*.log

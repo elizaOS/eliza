@@ -1,0 +1,106 @@
+{
+  "hash": "6a4d9f66",
+  "configHash": "bcaf76cb",
+  "lockfileHash": "d361d2e2",
+  "browserHash": "26dba364",
+  "optimized": {
+    "@capacitor/app": {
+      "src": "../../../../node_modules/@capacitor/app/dist/esm/index.js",
+      "file": "@capacitor_app.js",
+      "fileHash": "c992e4a1",
+      "needsInterop": false
+    },
+    "@capacitor/core": {
+      "src": "../../../../node_modules/@capacitor/core/dist/index.js",
+      "file": "@capacitor_core.js",
+      "fileHash": "37e901cd",
+      "needsInterop": false
+    },
+    "@capacitor/keyboard": {
+      "src": "../../../../node_modules/@capacitor/keyboard/dist/esm/index.js",
+      "file": "@capacitor_keyboard.js",
+      "fileHash": "42c982f6",
+      "needsInterop": false
+    },
+    "@capacitor/status-bar": {
+      "src": "../../../../node_modules/@capacitor/status-bar/dist/esm/index.js",
+      "file": "@capacitor_status-bar.js",
+      "fileHash": "efa0fa38",
+      "needsInterop": false
+    },
+    "react-dom": {
+      "src": "../../../../node_modules/react-dom/index.js",
+      "file": "react-dom.js",
+      "fileHash": "e1a99bab",
+      "needsInterop": true
+    },
+    "react-dom/client": {
+      "src": "../../../../node_modules/react-dom/client.js",
+      "file": "react-dom_client.js",
+      "fileHash": "9de0963a",
+      "needsInterop": true
+    },
+    "react": {
+      "src": "../../../../node_modules/react/index.js",
+      "file": "react.js",
+      "fileHash": "13f2ab5c",
+      "needsInterop": true
+    },
+    "react/jsx-dev-runtime": {
+      "src": "../../../../node_modules/react/jsx-dev-runtime.js",
+      "file": "react_jsx-dev-runtime.js",
+      "fileHash": "ac87c8a7",
+      "needsInterop": true
+    },
+    "three": {
+      "src": "../../../../node_modules/three/build/three.module.js",
+      "file": "three.js",
+      "fileHash": "62376708",
+      "needsInterop": false
+    },
+    "three/examples/jsm/controls/OrbitControls.js": {
+      "src": "../../../../node_modules/three/examples/jsm/controls/OrbitControls.js",
+      "file": "three_examples_jsm_controls_OrbitControls__js.js",
+      "fileHash": "51dc6936",
+      "needsInterop": false
+    },
+    "three/examples/jsm/libs/meshopt_decoder.module.js": {
+      "src": "../../../../node_modules/three/examples/jsm/libs/meshopt_decoder.module.js",
+      "file": "three_examples_jsm_libs_meshopt___decoder__module__js.js",
+      "fileHash": "cc2417b6",
+      "needsInterop": false
+    },
+    "three/examples/jsm/loaders/DRACOLoader.js": {
+      "src": "../../../../node_modules/three/examples/jsm/loaders/DRACOLoader.js",
+      "file": "three_examples_jsm_loaders_DRACOLoader__js.js",
+      "fileHash": "197b6eb7",
+      "needsInterop": false
+    },
+    "three/examples/jsm/loaders/FBXLoader.js": {
+      "src": "../../../../node_modules/three/examples/jsm/loaders/FBXLoader.js",
+      "file": "three_examples_jsm_loaders_FBXLoader__js.js",
+      "fileHash": "61ed0e3a",
+      "needsInterop": false
+    },
+    "three/examples/jsm/loaders/GLTFLoader.js": {
+      "src": "../../../../node_modules/three/examples/jsm/loaders/GLTFLoader.js",
+      "file": "three_examples_jsm_loaders_GLTFLoader__js.js",
+      "fileHash": "3f1ffc3e",
+      "needsInterop": false
+    }
+  },
+  "chunks": {
+    "rolldown-runtime-BvCyGRYZ": {
+      "file": "rolldown-runtime-BvCyGRYZ.js",
+      "isDynamicEntry": false
+    },
+    "three.module-DGMucbGR": {
+      "file": "three.module-DGMucbGR.js",
+      "isDynamicEntry": false
+    },
+    "web-HVLy8TPR": {
+      "file": "web-HVLy8TPR.js",
+      "isDynamicEntry": true
+    }
+  }
+}

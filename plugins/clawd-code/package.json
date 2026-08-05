@@ -1,0 +1,57 @@
+{
+  "name": "@solana-clawd/clawd-code",
+  "version": "1.0.0",
+  "description": "Curl-installable Solana-native AI coding CLI with wallet creation and paper-gated perps workflows",
+  "type": "module",
+  "main": "dist/cli.js",
+  "bin": {
+    "clawd-code": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/cli.ts",
+    "start": "node dist/cli.js",
+    "test": "echo \"No tests yet\" && exit 0"
+  },
+  "files": [
+    "dist",
+    "install.sh",
+    "README.md",
+    "LICENSE",
+    ".env.example",
+    "clawd.json"
+  ],
+  "keywords": [
+    "solana",
+    "ai-agent",
+    "grok",
+    "clawd",
+    "clawd-code",
+    "lobster",
+    "perpetuals",
+    "trading",
+    "x402",
+    "phoenix",
+    "vulcan"
+  ],
+  "homepage": "https://github.com/Solizardking/solana-clawd/tree/main/clawd-code#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Solizardking/solana-clawd.git",
+    "directory": "clawd-code"
+  },
+  "bugs": {
+    "url": "https://github.com/Solizardking/solana-clawd/issues"
+  },
+  "author": "Solizardking",
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

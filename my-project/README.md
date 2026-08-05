@@ -10,17 +10,25 @@ An elizaOS project built on [elizaOS](https://github.com/elizaos/eliza).
 
 ## First Run
 
+This project is nested inside an elizaOS monorepo checkout. **Use local source
+mode** (not published npm packages) — current `beta` npm packages are incomplete
+and do not install cleanly for a full app stack.
+
 ```bash
-bun install
+# one-time: link parent monorepo as ./eliza and mark local mode
+bun run eliza:eject
+
+# then start the branded app (API + UI)
 bun run dev
 ```
 
-The default install uses published `@elizaos/*` packages. To switch to an
-in-repo elizaOS source checkout, eject the local source:
+- UI: http://localhost:2138/
+- API: http://localhost:31337/
 
-```bash
-bun run eliza:eject
-```
+If you create this project **outside** a monorepo, `bun run eliza:eject` clones
+`./eliza` instead of linking the parent. Published package mode
+(`bun run eliza:packages`) requires a complete npm publish of `@elizaos/*` and
+is not recommended on the current beta until registry and related packages ship.
 
 ## Common Commands
 

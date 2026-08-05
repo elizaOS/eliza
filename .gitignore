@@ -1037,3 +1037,4 @@ packages/ui/src/components/shell/__e2e__/output-home-locale/
 # App-create scaffolds: the workspace app root the APP create flow builds into
 # (<checkout>/eliza/apps/<dir>). Generated per-user app workdirs, never repo code.
 /eliza/
+.env.clawd

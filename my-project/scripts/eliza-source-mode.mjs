@@ -93,13 +93,71 @@ function removePathRecursive(targetPath) {
   }
 }
 
+function parentMonorepoRoot() {
+  // When this project lives inside an elizaOS monorepo checkout
+  // (…/eliza/my-project), reuse the parent instead of cloning a second tree.
+  const parent = path.resolve(repoRoot, "..");
+  const parentPkg = path.join(parent, "package.json");
+  const parentAppCore = path.join(parent, "packages", "app-core", "package.json");
+  if (!fs.existsSync(parentPkg) || !fs.existsSync(parentAppCore)) {
+    return null;
+  }
+  try {
+    const pkg = JSON.parse(fs.readFileSync(parentPkg, "utf8"));
+    if (pkg?.name === "eliza" || pkg?.workspaces) return parent;
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function ensureLocalElizaLinkOrClone(env) {
+  const elizaRoot = path.join(repoRoot, "eliza");
+  const nestedParent = parentMonorepoRoot();
+  if (nestedParent) {
+    // Prefer a relative symlink so the tree stays portable within the checkout.
+    const relativeParent = path.relative(repoRoot, nestedParent) || "..";
+    if (fs.existsSync(elizaRoot) || fs.lstatSync(elizaRoot, { throwIfNoEntry: false })) {
+      try {
+        const st = fs.lstatSync(elizaRoot);
+        if (st.isSymbolicLink()) {
+          const target = fs.readlinkSync(elizaRoot);
+          if (path.resolve(repoRoot, target) === nestedParent) {
+            console.log(
+              `[eliza-source-mode] reusing nested monorepo via eliza/ → ${relativeParent}`,
+            );
+            return Promise.resolve();
+          }
+        }
+      } catch {
+        // fall through and replace
+      }
+      console.log(
+        "[eliza-source-mode] replacing eliza/ so it can link the parent monorepo",
+      );
+      removePathRecursive(elizaRoot);
+    }
+    fs.symlinkSync(relativeParent, elizaRoot);
+    console.log(
+      `[eliza-source-mode] linked eliza/ → ${relativeParent} (nested monorepo)`,
+    );
+    return Promise.resolve();
+  }
+  return cloneLocalElizaIfMissing(env);
+}
+
 async function cloneLocalElizaIfMissing(env) {
   const elizaRoot = path.join(repoRoot, "eliza");
-  if (fs.existsSync(elizaRoot)) {
+  if (fs.existsSync(elizaRoot) || fs.lstatSync(elizaRoot, { throwIfNoEntry: false })) {
     // A complete clone has a .git directory. A clone that was interrupted
     // mid-transfer (the network reset this guards against) can leave a partial
     // tree behind; reusing it would silently build against a broken checkout,
     // so treat a partial directory as missing and re-clone.
+    try {
+      if (fs.lstatSync(elizaRoot).isSymbolicLink()) return;
+    } catch {
+      // continue
+    }
     if (fs.existsSync(path.join(elizaRoot, ".git"))) return;
     console.log(
       "[eliza-source-mode] removing partial eliza/ checkout before re-clone",
@@ -161,9 +219,15 @@ async function runLocalMode(options) {
     ELIZA_SKIP_LOCAL_UPSTREAMS: "",
   };
 
-  await cloneLocalElizaIfMissing(env);
+  await ensureLocalElizaLinkOrClone(env);
   if (options.install) {
-    await run("bun", ["install"], path.join(repoRoot, "eliza"), env);
+    const elizaRoot = path.join(repoRoot, "eliza");
+    const nested = parentMonorepoRoot() !== null;
+    // Nested monorepo already has its own install; only reinstall the consumer
+    // project. Standalone clones still need a full monorepo install first.
+    if (!nested) {
+      await run("bun", ["install"], elizaRoot, env);
+    }
     await run("bun", ["install"], repoRoot, env);
   }
   setMarkedElizaSourceMode(repoRoot, "local");

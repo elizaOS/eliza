@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Local Clawd runtime state
+.clawd/
+
+# Environment files — NEVER commit secrets
+.env
+.env.local
+.env.*.local
+*.env
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Outputs
+outputs/
+*.output
+.cache/
+tmp/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Test
+coverage/
+.nyc_output/

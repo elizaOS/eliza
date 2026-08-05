@@ -1,0 +1,12 @@
+{
+  "name": "@openclawd/hedge",
+  "version": "1.0.0",
+  "description": "Hedge persona set for OpenClawd agents.",
+  "local_personas": [
+    "activistpinch.json",
+    "latticeclaw.json",
+    "moatmaw.json",
+    "soltoshi.json",
+    "valueclaw.json"
+  ]
+}

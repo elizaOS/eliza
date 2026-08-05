@@ -1,0 +1,36 @@
+{
+  "mcpServers": {
+    "helius": {
+      "command": "node",
+      "args": ["../../core-ai/helius-mcp/dist/index.js"],
+      "env": {
+        "HELIUS_API_KEY": "${HELIUS_API_KEY}",
+        "SOLANA_RPC_URL": "${SOLANA_RPC_URL}"
+      }
+    },
+    "clawd-code": {
+      "command": "npx",
+      "args": ["@solana-clawd/clawd-code@latest"]
+    },
+    "pump-mcp": {
+      "command": "node",
+      "args": ["../../mcp-server/dist/index.js"],
+      "env": {
+        "SOLANA_RPC_URL": "${SOLANA_RPC_URL}",
+        "HELIUS_API_KEY": "${HELIUS_API_KEY}"
+      }
+    },
+    "phoenix-rise": {
+      "type": "http",
+      "url": "https://api.phoenix.gg/enclave"
+    },
+    "DFlow": {
+      "type": "http",
+      "url": "https://pond.dflow.net/mcp"
+    },
+    "zkcompression": {
+      "type": "http",
+      "url": "https://www.zkcompression.com/mcp"
+    }
+  }
+}

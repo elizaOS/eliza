@@ -87,7 +87,7 @@ examples/browser-extension/safari/
 packages/app/android/
 packages/app/ios/
 packages/app/electrobun/
-
+.env.clawd
 # Capacitor native plugin build output and local Gradle state.
 packages/capacitor/**/android/build/
 packages/capacitor/**/android/.gradle/
