@@ -545,10 +545,15 @@ export interface DiarizationSample {
 export interface DiarizationResult {
 	kind: "diarization";
 	total: number;
-	/** Diarization error rate: fraction of turns whose speaker was wrong/missing. */
+	/** Frame-based diarization error rate. */
 	der: number;
 	confusions: number;
 	misses: number;
+	/** Duration decomposition from the frame-based DER scorer. */
+	confusionMs?: number;
+	missedMs?: number;
+	falseAlarmMs?: number;
+	totalReferenceMs?: number;
 	maxDer: number;
 	passed: boolean;
 }
@@ -632,8 +637,57 @@ export function scoreDiarizationTimeline(
 		der: round4(result.der),
 		confusions,
 		misses,
+		confusionMs: result.confusionMs,
+		missedMs: result.missedMs,
+		falseAlarmMs: result.falseAlarmMs,
+		totalReferenceMs: result.totalReferenceMs,
 		maxDer,
 		passed: turns.length > 0 && result.der <= maxDer,
+	};
+}
+
+/**
+ * Score an actual diarizer timeline. Unlike {@link scoreDiarizationTimeline},
+ * the hypothesis spans here come from the diarizer itself; callers must not
+ * copy reference boundaries into the hypothesis.
+ */
+export function scoreDiarizationSegments(
+	reference: ReadonlyArray<DiarizationSegment>,
+	hypothesis: ReadonlyArray<DiarizationSegment>,
+	opts: { maxDer?: number } = {},
+): DiarizationResult {
+	const maxDer = opts.maxDer ?? 0.2;
+	const result = computeDiarizationErrorRate(reference, hypothesis);
+	let confusions = 0;
+	let misses = 0;
+	for (const segment of reference) {
+		const midpoint = segment.startMs + (segment.endMs - segment.startMs) / 2;
+		const active = hypothesis.filter(
+			(candidate) =>
+				candidate.startMs <= midpoint && candidate.endMs > midpoint,
+		);
+		if (active.length === 0) {
+			misses += 1;
+		} else if (
+			!active.some(
+				(candidate) => result.mapping[candidate.speaker] === segment.speaker,
+			)
+		) {
+			confusions += 1;
+		}
+	}
+	return {
+		kind: "diarization",
+		total: reference.length,
+		der: round4(result.der),
+		confusions,
+		misses,
+		confusionMs: result.confusionMs,
+		missedMs: result.missedMs,
+		falseAlarmMs: result.falseAlarmMs,
+		totalReferenceMs: result.totalReferenceMs,
+		maxDer,
+		passed: reference.length > 0 && result.der <= maxDer,
 	};
 }
 
@@ -970,6 +1024,26 @@ export function scorePartialMonotonicity(
 	};
 }
 
+export interface MeasurementCoverageResult {
+	kind: "measurement-coverage";
+	metric: string;
+	count: number;
+	passed: boolean;
+}
+
+/** Fail-closed evidence that a real lane measured a required signal. */
+export function scoreMeasurementCoverage(
+	metric: string,
+	count: number,
+): MeasurementCoverageResult {
+	return {
+		kind: "measurement-coverage",
+		metric,
+		count,
+		passed: Number.isInteger(count) && count > 0,
+	};
+}
+
 export type VoiceE2eCaseResult =
 	| TtsAsrRoundTripResult
 	| BargeInInterruptionResult
@@ -985,7 +1059,8 @@ export type VoiceE2eCaseResult =
 	| EchoRejectionResult
 	| OwnerSecurityResult
 	| ErleResult
-	| PartialMonotonicityResult;
+	| PartialMonotonicityResult
+	| MeasurementCoverageResult;
 
 export interface VoiceE2eSummary {
 	passed: boolean;

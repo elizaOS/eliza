@@ -90,6 +90,10 @@ import {
   formatApiDevSettingsBannerText,
   shouldShowApiDevSettingsBanner,
 } from "./api-dev-settings-banner.js";
+import {
+  isRoutineDevMemoryHeartbeatEnabled,
+  logRoutineDevMemoryHeartbeat,
+} from "./dev-memory-heartbeat.js";
 
 /**
  * The `./eliza` module is the entire agent-runtime / startEliza graph
@@ -587,10 +591,10 @@ process.on("uncaughtException", (error) => {
 // ── Dev memory instrumentation ──────────────────────────────────────
 // Agents cannot see the native window; surface RSS/heap so a runaway child
 // (a stuck boot was observed climbing 399MB→1.8GB over minutes) is visible in
-// the dev log and correlatable with restart events. .unref() so it never holds
-// the process open. Silence with ELIZA_DEV_HEAP_REPORT=0.
-if (process.env.ELIZA_DEV_HEAP_REPORT !== "0") {
-  const mb = (n: number) => Math.round(n / 1048576);
+// the debug log and correlatable with restart events. Forced collection can
+// pause the process, so this diagnostic is opt-in. .unref() prevents it from
+// holding the process open.
+if (isRoutineDevMemoryHeartbeatEnabled(process.env.ELIZA_DEV_HEAP_REPORT)) {
   const heapReportTimer = setInterval(() => {
     // --expose-gc (set by dev-ui) lets us report post-collection RETAINED heap,
     // which separates a real leak from uncollected garbage. rss stays the
@@ -598,10 +602,7 @@ if (process.env.ELIZA_DEV_HEAP_REPORT !== "0") {
     if (typeof global.gc === "function") {
       global.gc();
     }
-    const m = process.memoryUsage();
-    logger.info(
-      `${getLogPrefix()} mem rss=${mb(m.rss)}MB heapUsed=${mb(m.heapUsed)}MB heapTotal=${mb(m.heapTotal)}MB external=${mb(m.external)}MB arrayBuffers=${mb(m.arrayBuffers)}MB`,
-    );
+    logRoutineDevMemoryHeartbeat(logger, getLogPrefix(), process.memoryUsage());
   }, 60_000);
   heapReportTimer.unref();
 }

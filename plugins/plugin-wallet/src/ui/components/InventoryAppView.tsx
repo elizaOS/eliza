@@ -1145,7 +1145,7 @@ function WalletRailAddress({
       ref={ref}
       type="button"
       className={cn(
-        "group inline-flex min-h-10 min-w-0 items-center gap-2 rounded-sm px-2 py-2 text-left transition-colors [@media(orientation:landscape)_and_(max-height:520px)]:min-h-8 [@media(orientation:landscape)_and_(max-height:520px)]:py-1",
+        "group inline-flex min-h-10 min-w-0 items-center gap-2 rounded-sm px-2 py-2 text-left transition-colors pointer-coarse:min-h-touch [@media(orientation:landscape)_and_(max-height:520px)]:min-h-8 [@media(orientation:landscape)_and_(max-height:520px)]:py-1",
         address ? "text-txt hover:text-accent" : "text-muted",
       )}
       onClick={handleCopy}
@@ -1305,7 +1305,7 @@ function WalletRailRpcButton({
       unstyled
       ref={ref}
       type="button"
-      className="inline-flex min-h-10 items-center gap-2 rounded-sm px-3 text-xs font-semibold text-txt transition-colors hover:text-accent [@media(orientation:landscape)_and_(max-height:520px)]:min-h-8 [@media(orientation:landscape)_and_(max-height:520px)]:px-2"
+      className="inline-flex min-h-10 items-center gap-2 rounded-sm px-3 text-xs font-semibold text-txt transition-colors pointer-coarse:min-h-touch hover:text-accent [@media(orientation:landscape)_and_(max-height:520px)]:min-h-8 [@media(orientation:landscape)_and_(max-height:520px)]:px-2"
       onClick={onOpenSettings}
       title={`RPC providers: EVM ${evmProvider}, Solana ${solanaProvider}`}
       aria-label="Open RPC settings"
@@ -1383,7 +1383,7 @@ function WalletRailTabButton({
       ref={ref}
       type="button"
       className={cn(
-        "inline-flex min-h-10 min-w-0 items-center justify-center gap-1.5 px-3 py-2 text-sm font-semibold transition-colors [@media(orientation:landscape)_and_(max-height:520px)]:min-h-8 [@media(orientation:landscape)_and_(max-height:520px)]:py-1",
+        "inline-flex min-h-10 min-w-0 items-center justify-center gap-1.5 px-3 py-2 text-sm font-semibold transition-colors pointer-coarse:min-h-touch [@media(orientation:landscape)_and_(max-height:520px)]:min-h-8 [@media(orientation:landscape)_and_(max-height:520px)]:py-1",
         active ? "text-txt" : "text-muted hover:text-txt",
       )}
       onClick={() => onSelect(tab.id)}

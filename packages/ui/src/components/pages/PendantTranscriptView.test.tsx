@@ -1,20 +1,21 @@
 /**
  * Pendant transcript view states are rendered against mocked pendant transport
- * and scrolling hooks so the component contract stays deterministic in jsdom.
+ * and canonical session sync so the ambient route contract stays deterministic.
  */
 
 // @vitest-environment jsdom
 
+import type { PendantSessionSnapshot } from "@elizaos/shared/contracts";
 import {
   act,
   cleanup,
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { PENDANT_TRANSCRIPT_STORAGE_KEY } from "../../pendant/pendant-transcript-session";
 import type {
   UsePendantOptions,
   UsePendantResult,
@@ -26,6 +27,14 @@ const pendantMock = vi.hoisted(() => ({
   onSegment: undefined as UsePendantOptions["onSegment"] | undefined,
 }));
 
+const syncMock = vi.hoisted(() => ({
+  clients: [] as Array<ReturnType<typeof createMockSyncClient>>,
+  createClient: vi.fn(
+    (onSnapshot?: (snapshot: PendantSessionSnapshot) => void) =>
+      createMockSyncClient(onSnapshot),
+  ),
+}));
+
 vi.mock("../../pendant/usePendant", () => ({
   usePendant: (options?: UsePendantOptions) => {
     pendantMock.onSegment = options?.onSegment;
@@ -33,6 +42,17 @@ vi.mock("../../pendant/usePendant", () => ({
       throw new Error("usePendant mock result was not configured");
     }
     return pendantMock.result;
+  },
+}));
+
+vi.mock("../../pendant/session-sync-client", () => ({
+  createPendantSessionSyncClient: (options?: {
+    onSnapshot?: (snapshot: PendantSessionSnapshot) => void;
+    onError?: (error: Error) => void;
+  }) => {
+    const client = syncMock.createClient(options?.onSnapshot);
+    syncMock.clients.push(client);
+    return client;
   },
 }));
 
@@ -48,10 +68,120 @@ vi.mock("../views/ShellViewAgentSurface", () => ({
   ShellViewAgentSurface: ({ children }: { children?: ReactNode }) => children,
 }));
 
-const connect = vi.fn();
-const disconnect = vi.fn();
+const connect = vi.fn(async () => true);
+const disconnect = vi.fn(async () => undefined);
 const pause = vi.fn();
 const resume = vi.fn();
+
+function createMockSyncClient(
+  onSnapshot?: (snapshot: PendantSessionSnapshot) => void,
+) {
+  return {
+    unsyncedQueue: [],
+    currentSnapshot: null,
+    discoverCurrentSession: vi.fn(async () => null),
+    createSession: vi.fn(async () => {
+      const snapshot = sessionSnapshot();
+      onSnapshot?.(snapshot);
+      return snapshot;
+    }),
+    acquireLease: vi.fn(async () => ({
+      ok: true as const,
+      session: sessionSnapshot().session,
+      leaseToken: "lease-token",
+    })),
+    appendSegment: vi.fn(async () => {
+      const snapshot = sessionSnapshot({
+        segments: [segmentSnapshot({ status: "pending", text: "" })],
+        revision: 2,
+      });
+      onSnapshot?.(snapshot);
+      return snapshot;
+    }),
+    patchSegment: vi.fn(async () => {
+      const snapshot = sessionSnapshot({
+        segments: [
+          segmentSnapshot({ status: "resolved", text: "hello pendant" }),
+        ],
+        revision: 3,
+      });
+      onSnapshot?.(snapshot);
+      return snapshot;
+    }),
+    pause: vi.fn(async () => {
+      const snapshot = sessionSnapshot({
+        state: "paused",
+        segments: [
+          segmentSnapshot({
+            status: "resolved",
+            text: "late tail after pause",
+          }),
+        ],
+        revision: 4,
+      });
+      onSnapshot?.(snapshot);
+      return snapshot;
+    }),
+    resume: vi.fn(async () => sessionSnapshot({ revision: 5 })),
+    end: vi.fn(async () => sessionSnapshot({ state: "ended", revision: 6 })),
+    startPolling: vi.fn(),
+    stopPolling: vi.fn(),
+    discardUnsyncedMutation: vi.fn(),
+  };
+}
+
+function sessionSnapshot({
+  segments = [],
+  state = "active",
+  revision = 1,
+}: {
+  segments?: PendantSessionSnapshot["segments"];
+  state?: PendantSessionSnapshot["session"]["state"];
+  revision?: number;
+} = {}): PendantSessionSnapshot {
+  return {
+    schemaVersion: 1,
+    session: {
+      id: "session-1",
+      ownerId: "owner",
+      agentId: "agent",
+      startedAt: "2026-08-04T00:00:00.000Z",
+      endedAt: null,
+      state,
+      captureLease: null,
+      processingLocation: "cloud",
+      revision,
+    },
+    segments,
+    insightRefs: [],
+  };
+}
+
+function segmentSnapshot({
+  status,
+  text,
+}: {
+  status: "pending" | "resolved" | "asr-error";
+  text: string;
+}): PendantSessionSnapshot["segments"][number] {
+  return {
+    id: "session-1:segment:0",
+    sessionId: "session-1",
+    ordinal: 0,
+    status,
+    text,
+    words: [],
+    speakerCluster: null,
+    speakerAlias: null,
+    confidence: null,
+    error: status === "asr-error" ? "ASR failed" : null,
+    createdAt: "2026-08-04T00:00:00.000Z",
+    updatedAt: "2026-08-04T00:00:01.000Z",
+    startedAt: "2026-08-04T00:00:00.000Z",
+    endedAt: status === "pending" ? null : "2026-08-04T00:00:01.000Z",
+    revision: status === "pending" ? 0 : 1,
+  };
+}
 
 function setPendantState(
   overrides: Partial<UsePendantResult["state"]> = {},
@@ -81,14 +211,14 @@ function setPendantState(
 
 describe("PendantTranscriptView", () => {
   beforeEach(() => {
-    localStorage.clear();
     vi.clearAllMocks();
+    syncMock.clients = [];
+    syncMock.createClient.mockClear();
     setPendantState();
   });
 
   afterEach(() => {
     cleanup();
-    localStorage.clear();
   });
 
   it("keeps unsupported distinct from idle", () => {
@@ -103,7 +233,7 @@ describe("PendantTranscriptView", () => {
     ).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Connect/ })).toBeNull();
     expect(screen.getByTestId("pendant-recording-indicator").textContent).toBe(
-      "Idle",
+      "Off",
     );
   });
 
@@ -130,258 +260,181 @@ describe("PendantTranscriptView", () => {
     ).toBe(false);
   });
 
-  it("renders cache corruption as error instead of a healthy empty feed", () => {
-    localStorage.setItem(PENDANT_TRANSCRIPT_STORAGE_KEY, "{not json");
-
+  it("connects BLE before acquiring the canonical session lease", async () => {
     render(<PendantTranscriptView />);
 
-    expect(screen.getByTestId("pendant-transcript-cache-error")).toBeTruthy();
-    expect(screen.getByText("Transcript cache unavailable")).toBeTruthy();
-    expect(screen.queryByText("No transcript segments yet")).toBeNull();
-    expect(
-      screen.getByRole("button", { name: /Clear local view\/cache/ }),
-    ).toBeTruthy();
-  });
+    fireEvent.click(screen.getByRole("button", { name: /^Connect$/ }));
 
-  it("shows pause while connected and calls pause", () => {
-    setPendantState({
-      status: "connected",
-      paused: false,
-      deviceName: "omi devkit",
-    });
-
-    render(<PendantTranscriptView />);
-    fireEvent.click(screen.getByRole("button", { name: /Pause/ }));
-
-    expect(pause).toHaveBeenCalledTimes(1);
-    expect(resume).not.toHaveBeenCalled();
-  });
-
-  it("shows resume while paused and calls resume", () => {
-    setPendantState({
-      status: "paused",
-      paused: true,
-    });
-
-    render(<PendantTranscriptView />);
-    fireEvent.click(screen.getByRole("button", { name: /Resume/ }));
-
-    expect(resume).toHaveBeenCalledTimes(1);
-    expect(pause).not.toHaveBeenCalled();
-  });
-
-  it("renders persisted resolved transcript text with timings hidden by default", () => {
-    const startedAt = Date.UTC(2026, 0, 1, 13, 14, 15);
-    localStorage.setItem(
-      PENDANT_TRANSCRIPT_STORAGE_KEY,
-      JSON.stringify({
-        segments: [
-          {
-            id: "segment-1",
-            status: "resolved",
-            text: "hello world",
-            startedAt,
-            endedAt: startedAt + 1_250,
-            durationMs: 1_250,
-            words: [
-              { text: "hello", startMs: 0, endMs: 500 },
-              { text: "world", startMs: 550, endMs: 1_200 },
-            ],
-            warning: null,
-          },
-        ],
-        updatedAt: startedAt + 1_250,
-        clearedThrough: null,
-      }),
+    await waitFor(() => expect(connect).toHaveBeenCalledTimes(1));
+    const client = syncMock.clients[0];
+    expect(connect.mock.invocationCallOrder[0]).toBeLessThan(
+      client?.createSession.mock.invocationCallOrder[0] ?? Number.MAX_VALUE,
     );
-
-    render(<PendantTranscriptView />);
-
-    expect(screen.getByText("hello world")).toBeTruthy();
-    expect(
-      screen.getByText("Local offline cache · this device only"),
-    ).toBeTruthy();
-    expect(screen.queryByTitle("0-500ms")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /Show timings/ }));
-    expect(screen.getByText("hello").getAttribute("title")).toBe("0-500ms");
-    expect(screen.getByText("world").getAttribute("title")).toBe("550-1200ms");
-    fireEvent.click(screen.getByRole("button", { name: /Hide timings/ }));
-    expect(screen.queryByTitle("0-500ms")).toBeNull();
+    expect(client?.createSession).toHaveBeenCalledWith({
+      processingLocation: "cloud",
+    });
+    expect(client?.acquireLease).toHaveBeenCalledWith("session-1", {
+      holder: expect.any(String),
+      leaseMs: 60_000,
+    });
+    expect(client?.startPolling).toHaveBeenCalledWith("session-1");
     expect(
       screen.getByText(
-        new Intl.DateTimeFormat("en-US", {
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-          hour12: false,
-        }).format(startedAt),
+        "Canonical private session · synced across owner devices",
       ),
     ).toBeTruthy();
   });
 
-  it("clear suppresses late old completions but allows new pending segments", () => {
-    localStorage.setItem(
-      PENDANT_TRANSCRIPT_STORAGE_KEY,
-      JSON.stringify({
-        segments: [
-          {
-            id: "segment-before-clear",
-            status: "pending",
-            text: "",
-            startedAt: 1_000,
-            endedAt: 1_500,
-            durationMs: 500,
-            words: [],
-            warning: null,
-          },
-        ],
-        updatedAt: 1_500,
-        clearedThrough: null,
-      }),
-    );
-    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(2_000);
-
-    try {
-      render(<PendantTranscriptView />);
-      expect(screen.getByText("Transcribing...")).toBeTruthy();
-
-      fireEvent.click(
-        screen.getByRole("button", { name: /Clear local view\/cache/ }),
-      );
-      expect(screen.getByText("No transcript segments yet")).toBeTruthy();
-
-      act(() => {
-        pendantMock.onSegment?.({
-          id: "segment-before-clear",
-          status: "resolved",
-          text: "late stale text",
-          startedAt: 1_000,
-          endedAt: 1_500,
-          durationMs: 500,
-          words: [],
-        });
-      });
-      expect(screen.queryByText("late stale text")).toBeNull();
-      expect(screen.getByText("No transcript segments yet")).toBeTruthy();
-
-      act(() => {
-        pendantMock.onSegment?.({
-          id: "segment-after-clear",
-          status: "pending",
-          startedAt: 2_100,
-          endedAt: 2_500,
-          durationMs: 400,
-        });
-      });
-      expect(screen.getByText("Transcribing...")).toBeTruthy();
-    } finally {
-      nowSpy.mockRestore();
-    }
-  });
-
-  it("renders ASR failures as quiet visible rows while silence discard stays invisible", () => {
+  it("does not create a server session when BLE connection fails", async () => {
+    connect.mockResolvedValueOnce(false);
     render(<PendantTranscriptView />);
 
-    act(() => {
+    fireEvent.click(screen.getByRole("button", { name: /^Connect$/ }));
+
+    await waitFor(() => expect(connect).toHaveBeenCalledTimes(1));
+    const client = syncMock.clients[0];
+    expect(client?.createSession).not.toHaveBeenCalled();
+    expect(client?.acquireLease).not.toHaveBeenCalled();
+  });
+
+  it("ends a newly created session when lease acquisition fails", async () => {
+    render(<PendantTranscriptView />);
+    const client = syncMock.clients[0];
+    client?.acquireLease.mockRejectedValueOnce(new Error("lease failed"));
+
+    fireEvent.click(screen.getByRole("button", { name: /^Connect$/ }));
+
+    await waitFor(() => expect(disconnect).toHaveBeenCalledTimes(1));
+    expect(client?.end).toHaveBeenCalledWith("session-1");
+    expect(
+      screen.getByTestId("pendant-transcript-sync-error").textContent,
+    ).toContain("lease failed");
+  });
+
+  it("renders status and transcript from canonical session snapshots", async () => {
+    const { rerender } = render(<PendantTranscriptView />);
+    fireEvent.click(screen.getByRole("button", { name: /^Connect$/ }));
+    await waitFor(() => expect(connect).toHaveBeenCalledTimes(1));
+    setPendantState({
+      status: "listening",
+      paused: false,
+      deviceName: "omi devkit",
+      batteryPercent: 91,
+    });
+    rerender(<PendantTranscriptView />);
+
+    await act(async () => {
       pendantMock.onSegment?.({
-        id: "silent",
+        id: "local-1",
         status: "pending",
-        startedAt: 1_000,
-        endedAt: 1_500,
-        durationMs: 500,
+        startedAt: Date.parse("2026-08-04T00:00:00.000Z"),
+        endedAt: Date.parse("2026-08-04T00:00:01.000Z"),
+        durationMs: 1000,
       });
+      await Promise.resolve();
+      await Promise.resolve();
     });
-    expect(screen.getByText("Transcribing...")).toBeTruthy();
-
-    act(() => {
-      pendantMock.onSegment?.({
-        id: "silent",
-        status: "discarded",
-        discardReason: "silence",
-        startedAt: 1_000,
-        endedAt: 1_500,
-        durationMs: 500,
-      });
-    });
-    expect(screen.queryByText("Transcribing...")).toBeNull();
-    expect(screen.queryByTestId("pendant-segment-discarded")).toBeNull();
-
-    act(() => {
-      pendantMock.onSegment?.({
-        id: "failed",
-        status: "failed",
-        failureReason: "asr-failed",
-        warning: "Could not transcribe this segment.",
-        startedAt: 2_000,
-        endedAt: 2_500,
-        durationMs: 500,
-      });
-    });
-    expect(screen.getByTestId("pendant-segment-failed")).toBeTruthy();
-    expect(screen.getByText("Could not transcribe this segment.")).toBeTruthy();
-  });
-
-  it("marks prior disconnected feed as frozen read-only", () => {
-    localStorage.setItem(
-      PENDANT_TRANSCRIPT_STORAGE_KEY,
-      JSON.stringify({
-        segments: [
-          {
-            id: "segment-1",
-            status: "resolved",
-            text: "old transcript",
-            startedAt: 1_000,
-            endedAt: 1_500,
-            durationMs: 500,
-            words: [],
-            warning: null,
-          },
-        ],
-        updatedAt: 1_500,
-        clearedThrough: null,
-      }),
-    );
-    setPendantState({ status: "idle" });
-
-    render(<PendantTranscriptView />);
-
-    expect(screen.getByText("old transcript")).toBeTruthy();
-    expect(screen.getByTestId("pendant-transcript-frozen").textContent).toBe(
-      "Feed frozen - reconnect the pendant to resume live capture.",
-    );
-  });
-
-  it("shows reconnecting without live pause controls", () => {
-    localStorage.setItem(
-      PENDANT_TRANSCRIPT_STORAGE_KEY,
-      JSON.stringify({
-        segments: [
-          {
-            id: "segment-1",
-            status: "resolved",
-            text: "preserved transcript",
-            startedAt: 1_000,
-            endedAt: 1_500,
-            durationMs: 500,
-            words: [],
-            warning: null,
-          },
-        ],
-        updatedAt: 1_500,
-        clearedThrough: null,
-      }),
-    );
-    setPendantState({ status: "reconnecting" });
-
-    render(<PendantTranscriptView />);
 
     expect(screen.getByTestId("pendant-recording-indicator").textContent).toBe(
-      "Reconnecting",
+      "Listeningcloud",
     );
-    expect(screen.getByRole("button", { name: /Reconnecting/ })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /Pause/ })).toBeNull();
-    expect(screen.getByTestId("pendant-transcript-frozen").textContent).toBe(
-      "Feed frozen - reconnect the pendant to resume live capture.",
+    expect(screen.getByText("Transcribing...")).toBeTruthy();
+
+    await act(async () => {
+      pendantMock.onSegment?.({
+        id: "local-1",
+        status: "resolved",
+        text: "hello pendant",
+        startedAt: Date.parse("2026-08-04T00:00:00.000Z"),
+        endedAt: Date.parse("2026-08-04T00:00:01.000Z"),
+        durationMs: 1000,
+        words: [],
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText("hello pendant")).toBeTruthy();
+    expect(screen.getByText("1 resolved · 0 pending")).toBeTruthy();
+  });
+
+  it("severs canonical capture on pause and suppresses in-flight transcript tails", async () => {
+    const { rerender } = render(<PendantTranscriptView />);
+    fireEvent.click(screen.getByRole("button", { name: /^Connect$/ }));
+    await waitFor(() => expect(connect).toHaveBeenCalledTimes(1));
+    setPendantState({ status: "listening", paused: false });
+    rerender(<PendantTranscriptView />);
+
+    await act(async () => {
+      pendantMock.onSegment?.({
+        id: "local-tail",
+        status: "pending",
+        startedAt: Date.parse("2026-08-04T00:00:00.000Z"),
+        endedAt: Date.parse("2026-08-04T00:00:01.000Z"),
+        durationMs: 1000,
+      });
+      fireEvent.click(screen.getByRole("button", { name: /Pause Listening/ }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const client = syncMock.clients[0];
+    expect(pause).toHaveBeenCalledTimes(1);
+    expect(client?.stopPolling).toHaveBeenCalled();
+    expect(client?.pause).toHaveBeenCalledWith("session-1");
+    expect(screen.queryByText("late tail after pause")).toBeNull();
+    expect(screen.queryByText("Transcribing...")).toBeNull();
+  });
+
+  it("resumes the severed canonical session before BLE capture", async () => {
+    const { rerender } = render(<PendantTranscriptView />);
+    fireEvent.click(screen.getByRole("button", { name: /^Connect$/ }));
+    await waitFor(() => expect(connect).toHaveBeenCalledTimes(1));
+
+    setPendantState({ status: "listening", paused: false });
+    rerender(<PendantTranscriptView />);
+    fireEvent.click(screen.getByRole("button", { name: /Pause Listening/ }));
+    setPendantState({ status: "paused", paused: true });
+    rerender(<PendantTranscriptView />);
+    fireEvent.click(screen.getByRole("button", { name: /Resume Listening/ }));
+
+    await waitFor(() => expect(resume).toHaveBeenCalledTimes(1));
+    const client = syncMock.clients[0];
+    expect(client?.createSession).toHaveBeenCalledTimes(1);
+    expect(client?.resume).toHaveBeenCalledWith("session-1");
+    expect(client?.startPolling).toHaveBeenLastCalledWith("session-1");
+  });
+
+  it("recovers the canonical session before BLE when server pause fails", async () => {
+    const { rerender } = render(<PendantTranscriptView />);
+    fireEvent.click(screen.getByRole("button", { name: /^Connect$/ }));
+    await waitFor(() => expect(connect).toHaveBeenCalledTimes(1));
+
+    const client = syncMock.clients[0];
+    client?.pause.mockRejectedValueOnce(new Error("pause failed"));
+    setPendantState({ status: "listening", paused: false });
+    rerender(<PendantTranscriptView />);
+    fireEvent.click(screen.getByRole("button", { name: /Pause Listening/ }));
+
+    await waitFor(() => expect(resume).toHaveBeenCalledTimes(1));
+    expect(client?.resume).toHaveBeenCalledWith("session-1");
+    expect(client?.resume.mock.invocationCallOrder[0]).toBeLessThan(
+      resume.mock.invocationCallOrder[0] ?? Number.MAX_VALUE,
     );
+    expect(
+      screen.getByTestId("pendant-transcript-sync-error").textContent,
+    ).toContain("pause failed");
+  });
+
+  it("does not read or write browser storage as transcript authority", () => {
+    const getItem = vi.spyOn(Storage.prototype, "getItem");
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    const removeItem = vi.spyOn(Storage.prototype, "removeItem");
+
+    render(<PendantTranscriptView />);
+
+    expect(getItem).not.toHaveBeenCalled();
+    expect(setItem).not.toHaveBeenCalled();
+    expect(removeItem).not.toHaveBeenCalled();
   });
 });

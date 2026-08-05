@@ -25,6 +25,7 @@ import {
   getSharedSourceRoot,
   getUiSourceRoot,
 } from "../../core/src/testing/eliza-package-paths";
+import { dependencySourcemapLoggerPlugin } from "./dependency-sourcemap-logger";
 import { repoRoot } from "./repo-root";
 import {
   getAgentSourceAliases,
@@ -441,6 +442,7 @@ const vitestResolveAlias: ModuleAlias[] = [
 ];
 
 export default defineConfig({
+  plugins: [dependencySourcemapLoggerPlugin()],
   resolve: {
     preserveSymlinks: true,
     dedupe: ["react", "react-dom", "ethers", "@elizaos/core"],

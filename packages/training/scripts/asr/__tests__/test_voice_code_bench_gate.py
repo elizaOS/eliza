@@ -48,7 +48,10 @@ def _row(audio_id: str = "contact_routing_001") -> gate.VoiceCodeBenchRow:
 def test_gate_contract_records_public_dataset_and_eval_only_policy() -> None:
     contract = gate.gate_contract()
 
-    assert contract["source_url"] == "https://huggingface.co/datasets/besimple-ai/voice-code-bench"
+    assert (
+        contract["source_url"]
+        == "https://huggingface.co/datasets/besimple-ai/voice-code-bench"
+    )
     assert contract["license"] == "mit"
     assert contract["split"] == "test"
     assert contract["row_count"] == 300
@@ -104,14 +107,73 @@ def test_partial_entity_recovery_keeps_task_success_false() -> None:
     assert report["rows"][0]["tsr"] == 0.0
 
 
+def test_exact_acoustic_entity_recovery_counts_when_canonical_format_differs() -> None:
+    row = gate.VoiceCodeBenchRow(
+        audio_id="phone_001",
+        domain="contact_routing",
+        scenario="callback",
+        difficulty="light",
+        reference="Call 212-555-0100.",
+        entities=(
+            gate.VoiceCodeBenchEntity(
+                id="e01",
+                type="phone_number",
+                canonical="212-555-0100",
+                acoustic="area code two one two five five five zero one zero zero",
+            ),
+        ),
+    )
+
+    report = gate.score_voice_code_bench_rows(
+        [row],
+        {"phone_001": "Call area code two one two five five five zero one zero zero."},
+    )
+
+    assert report["metrics"]["ctem"] == 1.0
+    assert report["metrics"]["tsr"] == 1.0
+    assert report["rows"][0]["entities"][0]["acoustic"] == row.entities[0].acoustic
+
+
+def test_phone_homophones_are_exact_structured_recovery() -> None:
+    assert gate.entity_matches_hypothesis(
+        "415-555-0101",
+        "Call four one five dash five five five dash O one zero one.",
+        "phone_number",
+    )
+    assert gate.entity_matches_hypothesis(
+        "ext4821", "Choose extension four eight two one.", "phone_extension"
+    )
+
+
+def test_format_invariant_error_rate_accepts_acoustic_or_canonical_entity() -> None:
+    row = gate.VoiceCodeBenchRow(
+        audio_id="phone_001",
+        domain="contact_routing",
+        scenario="callback",
+        difficulty="light",
+        reference="Call 212-555-0100 now",
+        acoustic_reference="Call two one two five five five zero one zero zero now",
+        entities=(
+            gate.VoiceCodeBenchEntity(
+                id="e01",
+                type="phone_number",
+                canonical="212-555-0100",
+                acoustic="two one two five five five zero one zero zero",
+            ),
+        ),
+    )
+
+    assert gate.format_invariant_error_rates(row, row.reference) == (0.0, 0.0)
+    assert gate.format_invariant_error_rates(row, row.acoustic_reference) == (0.0, 0.0)
+
+
 def test_embedded_structured_tokens_do_not_count_as_exact_recovery() -> None:
     row = _row()
     report = gate.score_voice_code_bench_rows(
         [row],
         {
             row.audio_id: (
-                "GitHub Support should call 415 201 9000 but use code "
-                "XBH7421Y instead."
+                "GitHub Support should call 415 201 9000 but use code XBH7421Y instead."
             )
         },
     )
@@ -139,6 +201,19 @@ def test_publishable_report_requires_real_provider_hashes_and_metrics() -> None:
     ]
 
     contract = gate.gate_contract()
+    good_rows = [
+        {
+            "status": "ok",
+            "transcript": "real provider transcript",
+            "hashes": {
+                "row_id": "a" * 64,
+                "audio_sha256": "b" * 64,
+                "reference_sha256": "c" * 64,
+                "entities_sha256": "d" * 64,
+            },
+        }
+        for _ in range(gate.DATASET_ROWS)
+    ]
     good_report = {
         "publishable": True,
         "source_url": gate.DATASET_SOURCE_URL,
@@ -153,6 +228,8 @@ def test_publishable_report_requires_real_provider_hashes_and_metrics() -> None:
         },
         "hashes": {key: f"{key}:hash" for key in contract["required_hashes"]},
         "metrics": {"ctem": 1.0, "tsr": 1.0, "wer": 0.0, "cer": 0.0},
+        "provider_error_count": 0,
+        "rows": good_rows,
     }
 
     assert gate.validate_publishable_report(good_report) == []
@@ -164,8 +241,9 @@ def test_publishable_report_requires_real_provider_hashes_and_metrics() -> None:
             "asr_provider": 123,
         },
     }
-    assert "provider_metadata.asr_provider is required" in gate.validate_publishable_report(
-        bad_provider_type
+    assert (
+        "provider_metadata.asr_provider is required"
+        in gate.validate_publishable_report(bad_provider_type)
     )
 
     bad_sample_rate_string = {
@@ -175,8 +253,9 @@ def test_publishable_report_requires_real_provider_hashes_and_metrics() -> None:
             "sample_rate_hz": "16000",
         },
     }
-    assert "provider_metadata.sample_rate_hz is required" in gate.validate_publishable_report(
-        bad_sample_rate_string
+    assert (
+        "provider_metadata.sample_rate_hz is required"
+        in gate.validate_publishable_report(bad_sample_rate_string)
     )
 
     bad_sample_rate_bool = {
@@ -186,6 +265,15 @@ def test_publishable_report_requires_real_provider_hashes_and_metrics() -> None:
             "sample_rate_hz": True,
         },
     }
-    assert "provider_metadata.sample_rate_hz is required" in gate.validate_publishable_report(
-        bad_sample_rate_bool
+    assert (
+        "provider_metadata.sample_rate_hz is required"
+        in gate.validate_publishable_report(bad_sample_rate_bool)
+    )
+
+    bad_row_status = {
+        **good_report,
+        "rows": [{**good_rows[0], "status": "provider_error"}, *good_rows[1:]],
+    }
+    assert "rows[0].status must be ok" in gate.validate_publishable_report(
+        bad_row_status
     )

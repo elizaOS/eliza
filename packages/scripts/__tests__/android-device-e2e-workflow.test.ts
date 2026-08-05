@@ -3,9 +3,9 @@
  * otherwise executes multiline input as independent `sh -c` processes.
  */
 
-import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 
 const repoRoot = new URL("../../../", import.meta.url);
 const workflowPath = new URL(

@@ -1,19 +1,19 @@
 /**
- * Runs the agent Vitest suite one file per process so package-level tests do
- * not share leaked module state or a long-lived transform heap. The file
- * selection mirrors vitest.config.ts and keeps `bun run --cwd packages/agent
- * test` as the single package entrypoint.
+ * Runs the agent Vitest suite in bounded parallel, process-isolated batches.
+ * The file selection mirrors vitest.config.ts while one-file batches prevent
+ * leaked module state and open handles from crossing test boundaries.
  */
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { readdirSync, statSync } from "node:fs";
+import { availableParallelism } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { runPool } from "../../scripts/lib/test-task-pool.mjs";
 
 const packageRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
-const batchSize = Number.parseInt(process.env.AGENT_TEST_BATCH_SIZE ?? "1", 10);
 const roots = ["src", "test", "scripts"];
 
 const excludedPatterns = [
@@ -48,55 +48,167 @@ function walk(relativeDir, out) {
   }
 }
 
-const files = roots.flatMap((root) => {
-  const out = [];
-  walk(root, out);
-  return out;
-});
-files.sort();
-
-if (files.length === 0) {
-  console.error(
-    "[agent-test] No test files matched the package Vitest config.",
-  );
-  process.exit(1);
+export function positiveInteger(value, label, fallback) {
+  if (value === undefined || value === "") return fallback;
+  const parsed = Number(value);
+  if (!/^[1-9]\d*$/.test(String(value)) || !Number.isSafeInteger(parsed)) {
+    throw new Error(`${label} must be a positive integer.`);
+  }
+  return parsed;
 }
 
-if (!Number.isFinite(batchSize) || batchSize < 1) {
-  console.error(
-    "[agent-test] AGENT_TEST_BATCH_SIZE must be a positive integer.",
-  );
-  process.exit(1);
+export function createBatches(files, batchSize) {
+  const batches = [];
+  for (let start = 0; start < files.length; start += batchSize) {
+    batches.push(files.slice(start, start + batchSize));
+  }
+  return batches;
 }
 
-const inheritedNodeOptions = process.env.NODE_OPTIONS ?? "";
-const nodeOptions = inheritedNodeOptions.includes("--max-old-space-size")
-  ? inheritedNodeOptions
-  : `${inheritedNodeOptions} --max-old-space-size=8192`.trim();
+function terminate(child) {
+  if (!child.pid) return;
+  if (process.platform === "win32") {
+    child.kill("SIGTERM");
+    return;
+  }
+  try {
+    process.kill(-child.pid, "SIGTERM");
+  } catch {
+    // error-policy:J6 Process-group teardown can race with child exit.
+    child.kill("SIGTERM");
+  }
+}
 
-for (let start = 0; start < files.length; start += batchSize) {
-  const batch = files.slice(start, start + batchSize);
-  const batchNumber = Math.floor(start / batchSize) + 1;
-  const batchCount = Math.ceil(files.length / batchSize);
-  console.log(
-    `[agent-test] batch ${batchNumber}/${batchCount}: ${batch.length} file(s)`,
-  );
-  const result = spawnSync(
-    "bunx",
-    ["vitest", "run", "--config", "vitest.config.ts", ...batch],
-    {
-      cwd: packageRoot,
-      env: { ...process.env, NODE_OPTIONS: nodeOptions },
-      stdio: "inherit",
-    },
-  );
-  if (result.error) {
-    console.error(
-      `[agent-test] Failed to start Vitest: ${result.error.message}`,
+function runBatch(batch, nodeOptions, active) {
+  return new Promise((resolve) => {
+    const startedAt = performance.now();
+    const child = spawn(
+      "bunx",
+      ["vitest", "run", "--config", "vitest.config.ts", ...batch],
+      {
+        cwd: packageRoot,
+        detached: process.platform !== "win32",
+        env: { ...process.env, NODE_OPTIONS: nodeOptions },
+        stdio: ["ignore", "pipe", "pipe"],
+      },
     );
-    process.exit(1);
+    active.add(child);
+    const stdout = [];
+    const stderr = [];
+    child.stdout.on("data", (chunk) => stdout.push(chunk));
+    child.stderr.on("data", (chunk) => stderr.push(chunk));
+    child.once("error", (error) => {
+      active.delete(child);
+      resolve({
+        durationMs: performance.now() - startedAt,
+        error,
+        status: 1,
+        stderr: Buffer.concat(stderr).toString(),
+        stdout: Buffer.concat(stdout).toString(),
+      });
+    });
+    child.once("close", (status, signal) => {
+      active.delete(child);
+      resolve({
+        durationMs: performance.now() - startedAt,
+        signal,
+        status: status ?? 1,
+        stderr: Buffer.concat(stderr).toString(),
+        stdout: Buffer.concat(stdout).toString(),
+      });
+    });
+  });
+}
+
+async function main() {
+  const batchSize = positiveInteger(
+    process.env.AGENT_TEST_BATCH_SIZE,
+    "AGENT_TEST_BATCH_SIZE",
+    1,
+  );
+  const concurrency = positiveInteger(
+    process.env.AGENT_TEST_CONCURRENCY,
+    "AGENT_TEST_CONCURRENCY",
+    Math.min(4, availableParallelism()),
+  );
+  const verbose = process.env.AGENT_TEST_VERBOSE === "1";
+  const files = roots.flatMap((root) => {
+    const out = [];
+    walk(root, out);
+    return out;
+  });
+  files.sort();
+  if (files.length === 0) {
+    throw new Error("No test files matched the package Vitest config.");
   }
-  if (result.status !== 0) {
-    process.exit(result.status ?? 1);
+
+  const inheritedNodeOptions = process.env.NODE_OPTIONS ?? "";
+  const nodeOptions = inheritedNodeOptions.includes("--max-old-space-size")
+    ? inheritedNodeOptions
+    : `${inheritedNodeOptions} --max-old-space-size=8192`.trim();
+  const batches = createBatches(files, batchSize);
+  const active = new Set();
+  const stop = () => {
+    for (const child of active) terminate(child);
+  };
+  process.once("SIGTERM", stop);
+  process.once("SIGINT", stop);
+  const startedAt = performance.now();
+  let completed = 0;
+  console.log(
+    `[agent-test] ${files.length} file(s), ${batches.length} isolated batch(es), concurrency ${Math.min(concurrency, batches.length)}`,
+  );
+  try {
+    const results = await runPool(
+      batches,
+      async (batch, index) => {
+        const result = await runBatch(batch, nodeOptions, active);
+        completed += 1;
+        if (verbose || result.status !== 0) {
+          const label = `[agent-test] batch ${index + 1}/${batches.length}: ${batch.join(", ")}`;
+          process.stdout.write(`${label}\n${result.stdout}`);
+          process.stderr.write(result.stderr);
+        } else if (completed % 25 === 0 || completed === batches.length) {
+          console.log(`[agent-test] progress ${completed}/${batches.length}`);
+        }
+        return result;
+      },
+      concurrency,
+    );
+    const failures = results.flatMap((entry, index) => {
+      if (!entry.ok) return [{ batch: batches[index], error: entry.error }];
+      if (entry.value.status !== 0) {
+        return [{ batch: batches[index], ...entry.value }];
+      }
+      return [];
+    });
+    if (failures.length > 0) {
+      for (const failure of failures) {
+        if (failure.error) {
+          console.error(
+            `[agent-test] ${failure.batch.join(", ")}: ${failure.error instanceof Error ? failure.error.message : String(failure.error)}`,
+          );
+        }
+      }
+      console.error(`[agent-test] ${failures.length} batch(es) failed.`);
+      process.exitCode = 1;
+      return;
+    }
+    console.log(
+      `[agent-test] passed ${files.length} file(s) in ${((performance.now() - startedAt) / 1000).toFixed(1)}s`,
+    );
+  } finally {
+    process.removeListener("SIGTERM", stop);
+    process.removeListener("SIGINT", stop);
   }
+}
+
+if (import.meta.main || process.argv[1] === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    // error-policy:J1 Convert orchestration failures into a visible package-test failure.
+    console.error(
+      `[agent-test] ${error instanceof Error ? error.message : String(error)}`,
+    );
+    process.exitCode = 1;
+  });
 }

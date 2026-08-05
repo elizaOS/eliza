@@ -1,12 +1,18 @@
-// Handles v1 cloud API v1 generate video route traffic with route-local auth expectations.
+/** Handles authenticated video generation, billing, and pending-job reconciliation. */
 import { Hono } from "hono";
 import { z } from "zod";
+import {
+  admitFlatGenerativeOperation,
+  asGenerativeCacheApiError,
+  getGenerativeExecutionContext,
+  getGenerativePricingCacheOptions,
+  requireGenerativeRouteCaller,
+} from "@/api-app/lib/generative-route-auth";
 import {
   ApiError,
   failureResponse,
   jsonError,
 } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   RateLimitPresets,
   rateLimit,
@@ -19,6 +25,7 @@ import {
   VIDEO_PENDING_SETTLEMENT_MARKER,
   VideoGenerationPendingError,
 } from "@/lib/providers/video/types";
+import { type BillingContext, billFlatUsage } from "@/lib/services/ai-billing";
 import {
   calculateVideoGenerationCostFromCatalog,
   getDefaultVideoBillingDimensions,
@@ -114,8 +121,9 @@ function providerFailureDetails(options: {
 }
 
 app.post("/", async (c) => {
-  let reservation: Awaited<ReturnType<typeof creditsService.reserve>> | null =
-    null;
+  let admission:
+    | Awaited<ReturnType<typeof admitFlatGenerativeOperation>>
+    | undefined;
   // Once the charge is SETTLED, a later (non-critical, post-settle) failure must
   // NOT hit the catch's reconcile(0) — which is non-idempotent and would refund
   // the already-correct charge, giving a free video. Mirrors generate-image.
@@ -123,7 +131,7 @@ app.post("/", async (c) => {
   let pendingContext: PendingSettlementContext | null = null;
 
   try {
-    const user = await requireUserOrApiKeyWithOrg(c);
+    const { user, apiKeyId } = await requireGenerativeRouteCaller(c);
     const request = videoRequestSchema.parse(await c.req.json());
     const definition = getSupportedVideoModelDefinition(request.model);
     if (!definition) {
@@ -151,20 +159,6 @@ app.post("/", async (c) => {
       );
     }
 
-    await contentSafetyService.assertSafeForPublicUse({
-      surface: "media_generation_prompt",
-      organizationId: user.organization_id,
-      userId: user.id,
-      text: [
-        `Video prompt: ${request.prompt}`,
-        request.referenceUrl
-          ? `Reference URL: ${request.referenceUrl}`
-          : undefined,
-      ],
-      imageUrls: request.referenceUrl ? [request.referenceUrl] : undefined,
-      metadata: { type: "video", model: request.model },
-    });
-
     const defaults = getDefaultVideoBillingDimensions(request.model);
     const durationSeconds = request.durationSeconds ?? defaults.durationSeconds;
     const dimensions = {
@@ -178,19 +172,46 @@ app.post("/", async (c) => {
         ? { durationSeconds }
         : {}),
     };
-    const cost = await calculateVideoGenerationCostFromCatalog({
-      model: request.model,
-      billingSource: definition.billingSource,
-      durationSeconds,
-      dimensions,
-    });
-
-    try {
-      reservation = await creditsService.reserve({
+    const [, cost] = await Promise.all([
+      contentSafetyService.assertSafeForPublicUse({
+        surface: "media_generation_prompt",
         organizationId: user.organization_id,
         userId: user.id,
-        amount: cost.totalCost,
-        description: `Video generation: ${request.model}`,
+        text: [
+          `Video prompt: ${request.prompt}`,
+          request.referenceUrl
+            ? `Reference URL: ${request.referenceUrl}`
+            : undefined,
+        ],
+        imageUrls: request.referenceUrl ? [request.referenceUrl] : undefined,
+        metadata: { type: "video", model: request.model },
+      }),
+      calculateVideoGenerationCostFromCatalog({
+        model: request.model,
+        billingSource: definition.billingSource,
+        durationSeconds,
+        dimensions,
+        cache: getGenerativePricingCacheOptions(c),
+      }),
+    ]);
+    const billingContext: BillingContext = {
+      organizationId: user.organization_id,
+      userId: user.id,
+      apiKeyId,
+      model: request.model,
+      provider: definition.provider,
+      billingSource: definition.billingSource,
+      requestId: `generate-video:${crypto.randomUUID()}`,
+      affiliateCode: c.req.header("X-Affiliate-Code"),
+      description: `Video generation: ${request.model}`,
+    };
+
+    try {
+      admission = await admitFlatGenerativeOperation({
+        c,
+        context: billingContext,
+        apiKeyId,
+        cost,
       });
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {
@@ -226,6 +247,7 @@ app.post("/", async (c) => {
 
     let generated: Awaited<ReturnType<typeof provider.generate>>;
     try {
+      await admission.markProviderDispatched?.();
       generated = await provider.generate({
         ...request,
         // Bill-what-you-deliver: the org is charged for the RESOLVED duration
@@ -265,50 +287,65 @@ app.post("/", async (c) => {
       );
     }
 
-    await reservation.reconcile(cost.totalCost);
-    chargeSettled = true;
-
-    const generation = await generationsService.create({
-      organization_id: user.organization_id,
-      user_id: user.id,
-      type: "video",
-      model: request.model,
-      provider: definition.provider,
-      prompt: request.prompt,
-      result: {
-        requestId: generated.requestId,
-        seed: generated.seed,
-        timings: generated.timings,
-        billingSource: definition.billingSource,
-      },
-      status: "completed",
-      storage_url: generated.video.url,
-      thumbnail_url: generated.video.url,
-      file_size: generated.video.file_size
-        ? BigInt(generated.video.file_size)
-        : undefined,
-      mime_type: generated.video.content_type ?? "video/mp4",
-      parameters: {
-        referenceUrl: request.referenceUrl,
-        durationSeconds,
-        resolution: request.resolution,
-        audio: request.audio,
-        voiceControl: request.voiceControl,
-      },
-      dimensions: {
-        width: generated.video.width,
-        height: generated.video.height,
-        duration: durationSeconds,
-      },
-      cost: String(cost.totalCost),
-      credits: String(cost.totalCost),
-      job_id: generated.requestId,
-      completed_at: new Date(),
+    const generationId = crypto.randomUUID();
+    let billingApplied = false;
+    const persistenceTask = (async () => {
+      await billFlatUsage(billingContext, cost, admission?.reservation);
+      billingApplied = true;
+      chargeSettled = true;
+      await generationsService.create({
+        id: generationId,
+        organization_id: user.organization_id,
+        user_id: user.id,
+        type: "video",
+        model: request.model,
+        provider: definition.provider,
+        prompt: request.prompt,
+        result: {
+          requestId: generated.requestId,
+          seed: generated.seed,
+          timings: generated.timings,
+          billingSource: definition.billingSource,
+        },
+        status: "completed",
+        storage_url: generated.video.url,
+        thumbnail_url: generated.video.url,
+        file_size: generated.video.file_size
+          ? BigInt(generated.video.file_size)
+          : undefined,
+        mime_type: generated.video.content_type ?? "video/mp4",
+        parameters: {
+          referenceUrl: request.referenceUrl,
+          durationSeconds,
+          resolution: request.resolution,
+          audio: request.audio,
+          voiceControl: request.voiceControl,
+        },
+        dimensions: {
+          width: generated.video.width,
+          height: generated.video.height,
+          duration: durationSeconds,
+        },
+        cost: String(cost.totalCost),
+        credits: String(cost.totalCost),
+        job_id: generated.requestId,
+        completed_at: new Date(),
+      });
+    })().catch(async (error) => {
+      if (!billingApplied) await admission?.settleUnknown();
+      // error-policy:J7 successful video billing/history persistence runs
+      // outside the response; conservative settlement remains observable.
+      logger.error("[GenerateVideo] Background persistence failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
     });
+    const executionCtx = getGenerativeExecutionContext(c);
+    if (executionCtx) executionCtx.waitUntil(persistenceTask);
+    else void persistenceTask;
 
     return c.json({
       success: true,
-      id: generation.id,
+      id: generationId,
       requestId: generated.requestId,
       video: generated.video,
       seed: generated.seed,
@@ -323,11 +360,26 @@ app.post("/", async (c) => {
     // terminal state — charging on late success, refunding once on failure.
     if (
       error instanceof VideoGenerationPendingError &&
-      reservation?.reservationTransactionId &&
+      admission &&
       !chargeSettled &&
       pendingContext
     ) {
+      let reservationTransactionId: string | null | undefined;
       try {
+        const existingReservation =
+          admission.mode === "synchronous_reservation"
+            ? admission.reservation
+            : undefined;
+        const reservation =
+          existingReservation ??
+          (await creditsService.reserve({
+            organizationId: pendingContext.organizationId,
+            userId: pendingContext.userId,
+            amount: pendingContext.totalCost,
+            description: `Pending video generation: ${pendingContext.model}`,
+          }));
+        reservationTransactionId = reservation.reservationTransactionId;
+        if (!existingReservation) await admission.settle(0);
         const generation = await generationsService.create({
           organization_id: pendingContext.organizationId,
           user_id: pendingContext.userId,
@@ -377,7 +429,7 @@ app.post("/", async (c) => {
           "[GenerateVideo] Failed to persist pending settlement — leaving hold for the reservation sweep",
           {
             requestId: error.requestId,
-            reservationTransactionId: reservation.reservationTransactionId,
+            reservationTransactionId,
             error:
               persistError instanceof Error
                 ? persistError.message
@@ -387,17 +439,21 @@ app.post("/", async (c) => {
         return failureResponse(c, error);
       }
     }
-    if (reservation && !chargeSettled) {
-      await reservation.reconcile(0).catch((reconcileError) => {
-        logger.error("[GenerateVideo] Failed to refund reservation", {
+    if (admission && !chargeSettled) {
+      const release = admission.settle(0);
+      const executionCtx = getGenerativeExecutionContext(c);
+      const observed = release.catch((reconcileError) => {
+        logger.error("[GenerateVideo] Failed to release admission", {
           error:
             reconcileError instanceof Error
               ? reconcileError.message
               : String(reconcileError),
         });
       });
+      if (executionCtx) executionCtx.waitUntil(observed);
+      else await observed;
     }
-    return failureResponse(c, error);
+    return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
   }
 });
 
