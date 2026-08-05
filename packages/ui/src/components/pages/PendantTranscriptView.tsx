@@ -211,6 +211,7 @@ export function PendantTranscriptView(): React.ReactElement {
     },
     [],
   );
+  const controllerHolder = React.useId();
   const controller = React.useMemo(() => {
     const client = createPendantSessionSyncClient({
       onSnapshot: (snapshot) => {
@@ -222,13 +223,13 @@ export function PendantTranscriptView(): React.ReactElement {
     });
     const nextController = new CanonicalPendantSessionController({
       client,
-      holder: crypto.randomUUID(),
+      holder: controllerHolder,
       onSnapshot: acceptSnapshot,
       onError: (error) => setSyncError(error.message),
     });
     controllerRef.current = nextController;
     return nextController;
-  }, [acceptSnapshot]);
+  }, [acceptSnapshot, controllerHolder]);
   const { scrollRef, atBottom, jumpToLatest } =
     useThreadAutoScroll<HTMLDivElement>({
       growthKey: `${session.segments.length}:${

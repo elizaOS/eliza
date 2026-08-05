@@ -1,10 +1,10 @@
 /**
  * Provider-data assembly and memory persistence for MCP: buildMcpProviderData
  * turns the connected-server list into the provider's structured data plus a
- * markdown summary, and createMcpMemory records tool/resource use as an embedded
- * agent memory.
+ * markdown summary, and createMcpMemory records tool/resource use as an agent
+ * memory with an embedding when the runtime provides that capability.
  */
-import type { IAgentRuntime, Memory } from "@elizaos/core";
+import { type IAgentRuntime, type Memory, ModelType } from "@elizaos/core";
 import type {
   McpProvider,
   McpProviderData,
@@ -22,7 +22,7 @@ export async function createMcpMemory(
   content: string,
   metadata: Readonly<Record<string, unknown>>
 ): Promise<void> {
-  const memory = await runtime.addEmbeddingToMemory({
+  const memory: Memory = {
     entityId: message.entityId,
     agentId: runtime.agentId,
     roomId: message.roomId,
@@ -34,9 +34,13 @@ export async function createMcpMemory(
         serverName,
       },
     },
-  });
+  };
 
-  await runtime.createMemory(memory, type === "resource" ? "resources" : "tools", true);
+  const persistedMemory = runtime.getModel(ModelType.TEXT_EMBEDDING)
+    ? await runtime.addEmbeddingToMemory(memory)
+    : memory;
+
+  await runtime.createMemory(persistedMemory, type === "resource" ? "resources" : "tools", true);
 }
 
 export function buildMcpProviderData(servers: readonly McpServer[]): McpProvider {

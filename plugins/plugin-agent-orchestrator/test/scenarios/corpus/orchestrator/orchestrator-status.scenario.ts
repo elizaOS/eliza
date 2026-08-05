@@ -21,11 +21,11 @@ import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import { useRuntime } from "@elizaos/plugin-commands";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { codingAgentRoutePlugin } from "../../../../plugins/plugin-agent-orchestrator/src/setup-routes.ts";
 import {
   ORCHESTRATOR_STATUS_COMMAND_ACTION,
   registerOrchestratorCommands,
-} from "../../../../plugins/plugin-task-coordinator/src/orchestrator-command.ts";
+} from "../../../../../plugin-task-coordinator/src/orchestrator-command.ts";
+import { codingAgentRoutePlugin } from "../../../../src/setup-routes.ts";
 
 const COMMAND_TEXT = "/orchestrator-status";
 
