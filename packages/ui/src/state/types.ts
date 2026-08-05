@@ -689,9 +689,14 @@ export type LoadConversationMessagesResult =
 export const AGENT_TRANSFER_MIN_PASSWORD_LENGTH = 4;
 export const AGENT_READY_TIMEOUT_MS = 120_000;
 
+export interface SetTabOptions {
+  /** Preserve an exact route already owned by the caller instead of pushing the tab's canonical path. */
+  history?: "push" | "preserve";
+}
+
 export interface AppActions {
   // Navigation
-  setTab: (tab: Tab) => void;
+  setTab: (tab: Tab, options?: SetTabOptions) => void;
   setUiShellMode: (mode: UiShellMode) => void;
   switchUiShellMode: (mode: UiShellMode) => void;
   switchShellView: (view: ShellView) => void;

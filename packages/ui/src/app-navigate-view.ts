@@ -131,6 +131,7 @@ export function createNavigateViewHandler({
   openDesktopTab,
   setActiveDesktopTabId,
   setTab,
+  setTabForPath,
   setViewLayout,
 }: {
   availableViewsForDesktopTabs: ViewRegistryEntry[];
@@ -141,11 +142,13 @@ export function createNavigateViewHandler({
   openDesktopTab: DesktopTabOpen;
   setActiveDesktopTabId: (viewId: string | null) => void;
   setTab: (tab: Tab) => void;
+  setTabForPath?: (tab: Tab) => void;
   setViewLayout?: (layout: ActiveViewLayout | null) => void;
 }): (event: Event) => void {
+  const activatePathTab = setTabForPath ?? setTab;
   const activateTabForPath = (path: string) => {
     const routeTab = tabFromPath(path);
-    if (routeTab) setTab(routeTab);
+    if (routeTab) activatePathTab(routeTab);
   };
 
   return (event: Event) => {
@@ -186,7 +189,7 @@ export function createNavigateViewHandler({
         layout: detail.layout,
         placement: detail.placement,
       });
-      setTab("views");
+      activatePathTab("views");
       navigatePath("/views");
       return;
     }
