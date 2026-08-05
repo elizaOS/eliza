@@ -1004,6 +1004,7 @@
       "name": "@elizaos/ui",
       "version": "2.0.3-beta.7",
       "dependencies": {
+        "@babel/runtime": "^7.29.7",
         "@capacitor/core": "8.4.0",
         "@elizaos/cloud-shared": "workspace:*",
         "@elizaos/core": "workspace:*",
