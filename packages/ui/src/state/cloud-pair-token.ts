@@ -60,10 +60,9 @@ function tryRemoveFromStorage(remove: () => void): boolean {
  * shellSessionStorage wrapper).
  */
 export function clearCloudPairApiToken(agentId?: string): void {
-  const scopedKey =
-    agentId && agentId.trim()
-      ? cloudPairTokenKeyForAgent(agentId.trim())
-      : null;
+  const scopedKey = agentId?.trim()
+    ? cloudPairTokenKeyForAgent(agentId.trim())
+    : null;
   tryRemoveFromStorage(() => {
     if (scopedKey) shellLocalStorage.removeItem(scopedKey);
     // Legacy single-key format — cleared unconditionally so a pre-#17579
