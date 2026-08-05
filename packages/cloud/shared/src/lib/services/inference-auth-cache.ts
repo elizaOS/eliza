@@ -485,3 +485,33 @@ export async function lowerOrgBalanceHint(
   if (existing.balanceUsd <= balanceUsd) return;
   await writeOrgBalanceHint(orgId, balanceUsd, balanceAt, existing.balanceRevision);
 }
+
+/**
+ * Publish an AUTHORITATIVE balance snapshot as the gate hint without ever
+ * raising the gate above a lower value another writer already published.
+ *
+ * Unlike {@link lowerOrgBalanceHint} this seeds an entry when none exists,
+ * which is what the post-debit settlers need: the committed debit's
+ * `onCreditMutation` DELETES the hint, and a lower-only repair is a no-op on an
+ * absent key, so the next Worker turn hit a `cacheOnly` miss and fail-closed
+ * with a user-visible cache-warming 503.
+ *
+ * The min-clamp preserves the over-admit bound: a concurrent debit that
+ * committed and lowered the hint between this caller's authoritative read and
+ * its write must not be undone. Equal-or-higher cached values are replaced,
+ * since the authoritative snapshot is the source of truth for those.
+ */
+export async function republishOrgBalanceHint(
+  orgId: string,
+  balanceUsd: number,
+  balanceAt: number,
+  balanceRevision: string,
+): Promise<void> {
+  const existing = await readOrgBalanceHint(orgId);
+  if (existing && existing.balanceUsd < balanceUsd) {
+    // A concurrent debit already published a stricter gate. Keep it — but keep
+    // it PRESENT, which is the whole point of republishing.
+    return;
+  }
+  await writeOrgBalanceHint(orgId, balanceUsd, balanceAt, balanceRevision);
+}
