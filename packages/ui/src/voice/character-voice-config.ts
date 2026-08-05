@@ -8,7 +8,7 @@ import {
 } from "@elizaos/shared";
 import type { VoiceConfig } from "../api/client";
 import { asRecord } from "../state/config-readers";
-import { PREMADE_VOICES } from "./types";
+import { hasConfiguredApiKey, PREMADE_VOICES } from "./types";
 import type { DefaultVoiceProviderResult } from "./voice-provider-defaults";
 
 const DEFAULT_ELEVENLABS_MODEL_ID = "eleven_flash_v2_5";
@@ -78,25 +78,57 @@ function resolveLegacyVoiceId(characterId: string): string | null {
   return voice?.voiceId ?? null;
 }
 
+function isExplicitElevenLabsChoice(config: VoiceConfig | null): boolean {
+  const apiKey = config?.elevenlabs?.apiKey?.trim() ?? "";
+  // GET /api/config replaces stored secrets with this sentinel. It is not a
+  // browser credential, but it is durable evidence of an explicit provider.
+  const hasStoredKeyEvidence =
+    apiKey.toUpperCase() === "[REDACTED]" ||
+    apiKey.toUpperCase() === "REDACTED";
+  return Boolean(
+    config?.provider === "elevenlabs" &&
+      (config.mode === "cloud" ||
+        config.mode === "own-key" ||
+        hasConfiguredApiKey(apiKey) ||
+        hasStoredKeyEvidence),
+  );
+}
+
+function withoutVoiceProvider(config: VoiceConfig): VoiceConfig {
+  const providerNeutralConfig = { ...config };
+  delete providerNeutralConfig.provider;
+  return providerNeutralConfig;
+}
+
 export function resolveCharacterVoiceConfigFromAppConfig(args: {
   config: Record<string, unknown>;
   uiLanguage: string;
-}): { voiceConfig: VoiceConfig | null; shouldPersist: boolean } {
+}): VoiceConfig | null {
   const storedVoiceConfig = resolveStoredVoiceConfig(args.config);
   const selectedCharacterVoice = resolveSelectedCharacterVoiceId(
     args.config,
     args.uiLanguage,
   );
   if (!selectedCharacterVoice) {
-    return { voiceConfig: storedVoiceConfig, shouldPersist: false };
+    return storedVoiceConfig;
   }
 
   if (
     storedVoiceConfig?.provider &&
     storedVoiceConfig.provider !== "elevenlabs"
   ) {
-    return { voiceConfig: storedVoiceConfig, shouldPersist: false };
+    return storedVoiceConfig;
   }
+
+  // Presets select a voice, not a transport. Legacy configs coupled the two by
+  // stamping ElevenLabs without a mode or key, guaranteeing a failed first
+  // utterance whenever the runtime's usable default was a different provider.
+  const releaseLegacyProvider =
+    storedVoiceConfig?.provider === "elevenlabs" &&
+    !isExplicitElevenLabsChoice(storedVoiceConfig);
+  const providerNeutralConfig = releaseLegacyProvider
+    ? withoutVoiceProvider(storedVoiceConfig)
+    : storedVoiceConfig;
 
   const currentVoiceId =
     typeof storedVoiceConfig?.elevenlabs?.voiceId === "string"
@@ -105,28 +137,31 @@ export function resolveCharacterVoiceConfigFromAppConfig(args: {
   const legacyVoiceId = resolveLegacyVoiceId(
     selectedCharacterVoice.characterId,
   );
-  const shouldPersist =
+  const shouldUpdatePresetVoice =
     selectedCharacterVoice.voiceId !== currentVoiceId &&
     (!currentVoiceId ||
       currentVoiceId === DEFAULT_ELEVENLABS_VOICE_ID ||
       currentVoiceId === legacyVoiceId);
 
-  if (!shouldPersist) {
-    return { voiceConfig: storedVoiceConfig, shouldPersist: false };
+  if (!releaseLegacyProvider && !shouldUpdatePresetVoice) {
+    return storedVoiceConfig;
   }
 
+  if (!shouldUpdatePresetVoice) {
+    return providerNeutralConfig;
+  }
+
+  // Preset state is deterministic character state. Derive it during reads
+  // instead of turning normal chat startup into a protected settings write.
   return {
-    voiceConfig: {
-      ...storedVoiceConfig,
-      provider: "elevenlabs",
-      elevenlabs: {
-        ...(storedVoiceConfig?.elevenlabs ?? {}),
-        voiceId: selectedCharacterVoice.voiceId,
-        modelId:
-          storedVoiceConfig?.elevenlabs?.modelId ?? DEFAULT_ELEVENLABS_MODEL_ID,
-      },
+    ...providerNeutralConfig,
+    elevenlabs: {
+      ...(providerNeutralConfig?.elevenlabs ?? {}),
+      voiceId: selectedCharacterVoice.voiceId,
+      modelId:
+        providerNeutralConfig?.elevenlabs?.modelId ??
+        DEFAULT_ELEVENLABS_MODEL_ID,
     },
-    shouldPersist: true,
   };
 }
 
