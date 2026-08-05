@@ -47,7 +47,7 @@ import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import { type CreditReconciliationResult, creditsService } from "./credits";
 import { invalidateOrgBalanceHint } from "./inference-auth-cache";
-import { republishOrgBalanceHintAfterDebit } from "./inference-billing-fast-path";
+import { republishOrgBalanceHintAfterDebit } from "./inference-balance-republish";
 
 export type InferenceBillingLedger = "db" | "kv";
 
