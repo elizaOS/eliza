@@ -133,6 +133,11 @@ describe("Notes capability-to-UI journey", () => {
     expect(await screen.findByText("Demo briefing ready")).toBeTruthy();
     expect(screen.getByText("Keep the note wall durable")).toBeTruthy();
     expect(
+      screen
+        .getByLabelText("Note Demo briefing ready")
+        .getAttribute("data-agent-id"),
+    ).toBe("note-e2e-1");
+    expect(
       populatedNotes.container.querySelector("button, input, textarea, form"),
     ).toBeNull();
     populatedNotes.unmount();
