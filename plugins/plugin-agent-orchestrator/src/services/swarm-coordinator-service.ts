@@ -624,7 +624,7 @@ export class SwarmCoordinatorService
     });
     this.acpBindStatus = "bound";
     this.acpBindReason = null;
-    logger.info(
+    logger.debug(
       `[SwarmCoordinator] subscribed to ACP session-event stream${
         this.acpBindAttempts > 0
           ? ` (after ${this.acpBindAttempts} retr${

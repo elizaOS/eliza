@@ -18,6 +18,8 @@ retired ASR model.
 | `finetune_asr.py` | End-to-end fine-tune pipeline (real + synthetic-smoke). |
 | `eval_asr.py` | WER + RTF evaluation + baseline comparison + HF-push gating. |
 | `voice_code_bench_gate.py` | VoiceCodeBench runtime-download contract plus exact structured-token metrics (`ctem`, `tsr`, WER, CER). |
+| `voice_code_bench_registry.json` | Pinned public dataset revision, runner, provider, and evidence schema registry entry. |
+| `voice_code_bench_run.py` | Resumable real-provider runner with outside-git caching, byte provenance, logs, and failure review. |
 | `configs/base.yaml` | Base hyperparameter config for all ASR fine-tunes. |
 | `configs/asr_same.yaml` | Same-corpus-specific overrides. |
 | `__tests__/test_asr_pipeline.py` | CI tests (synthetic-smoke + config + gate logic). |
@@ -105,6 +107,39 @@ Synthetic/unit results are never publishable. A publishable report must mark
 `publishable: true` and include a real ASR provider/model, artifact revision,
 sample rate, dataset/hash metadata, score JSON, logs, and manually reviewed
 failures.
+
+Run the registered ElevenLabs backend with an explicit cache and evidence
+directory outside the repository. Start with a bounded slice, then omit
+`--limit` for the publishable 300-row run:
+
+```bash
+python3 packages/training/scripts/asr/voice_code_bench_run.py \
+  --cache-dir /tmp/eliza-voice-code-bench-cache \
+  --output-dir /tmp/eliza-voice-code-bench-runs \
+  --model scribe_v2 \
+  --limit 3
+
+python3 packages/training/scripts/asr/voice_code_bench_run.py \
+  --cache-dir /tmp/eliza-voice-code-bench-cache \
+  --output-dir /tmp/eliza-voice-code-bench-runs \
+  --model scribe_v2 \
+  --concurrency 2
+```
+
+The runner reads `ELEVENLABS_API_KEY` (or the legacy
+`ELEVENLABS_XI_API_KEY`), pins the dataset commit from the registry, and writes
+`backend.jsonl`, `report.json`, `adapter-config.json`, and
+`failure-review.md`. Provider errors retain their raw response and make the run
+non-publishable. ElevenLabs exposes the hosted model ID but not an immutable
+checkpoint revision, so the report records that reproducibility limitation
+explicitly. To resume an interrupted run or retry its failed provider rows,
+replace `--output-dir` with the exact prior `--run-dir`; the runner rejects any
+configuration drift before reusing its checkpoint.
+
+For reviewer-accessible evidence after the branch is pushed, dispatch the
+`VoiceCodeBench Real ASR` workflow. Its default 300-row Scribe v2 run keeps raw
+audio in runner-temporary storage and uploads only the report, provider log,
+adapter config, and failure review as a 30-day Actions artifact.
 
 Sam-specific config relaxes WER to ≤ 20% (5-clip val set is noisy).
 
