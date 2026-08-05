@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#ff5800" />
+    <meta name="description" content="Create apps and agents by chatting with AI. Join the Eliza private preview." />
+    <meta property="og:title" content="Eliza | Build by talking" />
+    <meta property="og:description" content="Create apps and agents by chatting with AI." />
+    <meta property="og:image" content="https://eliza.app/brand/eliza_ogembed.png" />
+    <meta property="og:url" content="https://eliza.app/" />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" href="/brand/favicons/favicon.svg" type="image/svg+xml" />
+    <link rel="canonical" href="https://eliza.app/" />
+    <link rel="stylesheet" href="/styles.css" />
+    <title>Eliza | Build by talking</title>
+  </head>
+  <body>
+    <main class="page-shell">
+      <nav class="nav" aria-label="Primary navigation">
+        <a class="brand" href="/" aria-label="Eliza home">
+          <img src="/brand/logos/eliza_logotext_black.svg" alt="Eliza" width="160" height="52" />
+        </a>
+        <span class="preview-pill"><span aria-hidden="true"></span> Private preview</span>
+      </nav>
+
+      <section class="hero" aria-labelledby="hero-heading">
+        <div class="copy-column">
+          <p class="eyebrow">The interface for one-person companies</p>
+          <h1 id="hero-heading">Build by<br /><em>talking.</em></h1>
+          <p class="lede">Create apps and agents by chatting with AI. Eliza turns a conversation into working software, then keeps it running.</p>
+
+          <form class="waitlist" id="waitlist-form" novalidate>
+            <label for="email">Get early access</label>
+            <div class="form-row">
+              <input id="email" name="email" type="email" autocomplete="email" inputmode="email" placeholder="you@company.com" maxlength="254" required aria-describedby="form-note form-status" />
+              <input class="honey" type="text" name="companyWebsite" tabindex="-1" autocomplete="off" aria-hidden="true" />
+              <button type="submit"><span>Join the waitlist</span><span aria-hidden="true">↗</span></button>
+            </div>
+            <div class="form-meta">
+              <p id="form-note">Product access and occasional updates. No noise.</p>
+              <p id="form-status" class="status" role="status" aria-live="polite"></p>
+            </div>
+          </form>
+        </div>
+
+        <div class="signal" aria-hidden="true">
+          <div class="orbit orbit-one"></div>
+          <div class="orbit orbit-two"></div>
+          <div class="core-mark">
+            <span class="prompt">Describe it</span>
+            <span class="connector"></span>
+            <span class="artifact">Ship it</span>
+          </div>
+          <p>Conversation<br />→ software</p>
+        </div>
+      </section>
+
+      <footer>
+        <p>Eliza, intelligent systems for people who build.</p>
+        <div class="links">
+          <a href="https://elizacloud.ai" rel="noopener">Eliza Cloud</a>
+          <a href="https://os.eliza.app" rel="noopener">elizaOS</a>
+          <a href="https://elizacloud.ai/privacy-policy" rel="noopener">Privacy</a>
+        </div>
+      </footer>
+    </main>
+    <script src="/waitlist.js" defer></script>
+  </body>
+</html>
