@@ -19,10 +19,11 @@ vi.mock("../../widgets/WidgetHost", () => ({
   ),
 }));
 
-import { HomeScreen } from "./HomeScreen";
+import { __resetHomeEntranceForTests, HomeScreen } from "./HomeScreen";
 
 beforeEach(() => {
   vi.useFakeTimers();
+  __resetHomeEntranceForTests();
 });
 
 afterEach(() => {
@@ -80,5 +81,17 @@ describe("HomeScreen entrance flicker lock (#9304)", () => {
       rerender(<HomeScreen onOpenTile={vi.fn()} showNativeOsTiles={false} />);
     });
     expect(classOnAnyBlock(container)).toBe(false);
+  });
+
+  it("does not replay the entrance after leaving and returning home", () => {
+    const first = render(<HomeScreen onOpenTile={vi.fn()} showNativeOsTiles />);
+    expect(classOnAnyBlock(first.container)).toBe(true);
+
+    first.unmount();
+    const second = render(
+      <HomeScreen onOpenTile={vi.fn()} showNativeOsTiles />,
+    );
+
+    expect(classOnAnyBlock(second.container)).toBe(false);
   });
 });
