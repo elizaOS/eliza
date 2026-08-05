@@ -2,17 +2,42 @@ import type {
   Action,
   ActionResult,
   HandlerCallback,
+  HandlerOptions,
   IAgentRuntime,
   Memory,
   State,
 } from "@elizaos/core";
+import {
+  actionFailure,
+  actionSuccess,
+  getPriorActionResult,
+} from "../action-result.js";
 import { DflowClient, formatQuote } from "../client/dflow-client.js";
 import { readDflowTradeConfig, toAtomicAmount } from "../config.js";
-import { parseTradeIntent } from "../parse-trade.js";
+import { parseTradeIntent, type ParsedTrade } from "../parse-trade.js";
 import { assertLiveReady, loadKeypair } from "../services/wallet.js";
 
+const ACTION = "DFLOW_SWAP";
+
+function tradeFromPriorQuote(
+  prior: ActionResult | undefined,
+): ParsedTrade | null {
+  const data = prior?.data as
+    | {
+        parsed?: ParsedTrade;
+        atomicAmount?: string;
+        inputMint?: string;
+        outputMint?: string;
+      }
+    | undefined;
+  if (!data?.parsed) return null;
+  const p = data.parsed;
+  if (data.atomicAmount) p.atomicAmount = data.atomicAmount;
+  return p;
+}
+
 export const dflowSwapAction: Action = {
-  name: "DFLOW_SWAP",
+  name: ACTION,
   similes: [
     "SOLANA_SWAP",
     "EXECUTE_SWAP",
@@ -21,39 +46,54 @@ export const dflowSwapAction: Action = {
     "SWAP_TOKENS",
   ],
   description:
-    "Preview or execute a Solana spot swap via DFlow. Default is preview (quote + unsigned tx info). Live sign/broadcast only when SOLANA_TRADE_LIVE=true and user says execute/live. Requires DFLOW_API_KEY, HELIUS_RPC_URL, SOLANA_PRIVATE_KEY for live.",
+    "Preview or execute a Solana spot swap via DFlow. Prefer chaining after DFLOW_QUOTE (reads actionResults). Default preview; live only with SOLANA_TRADE_LIVE=true and user says execute/live.",
   validate: async (_runtime, message) => {
     const text = message.content?.text || "";
-    return /swap|trade|buy|sell|convert|execute\s+swap|dflow/i.test(text);
+    return /swap|trade|buy|sell|convert|execute\s+swap|dflow|preview/i.test(
+      text,
+    );
   },
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    _state?: State,
-    _options?: unknown,
+    state?: State,
+    options?: HandlerOptions | Record<string, unknown>,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const getSetting = (k: string) =>
       runtime.getSetting?.(k) as string | undefined;
     const cfg = readDflowTradeConfig(getSetting);
     const text = message.content?.text || "";
-    const parsed = parseTradeIntent(text, cfg);
+
+    // Multi-step: reuse prior DFLOW_QUOTE when utterance is vague ("preview that")
+    const priorQuote = getPriorActionResult("DFLOW_QUOTE", options, state);
+    let parsed = parseTradeIntent(text, cfg);
+    if (!parsed && priorQuote) {
+      parsed = tradeFromPriorQuote(priorQuote);
+      if (parsed) {
+        // inherit live intent from current message if any
+        if (/\b(live|execute)\b/i.test(text)) {
+          parsed.live = true;
+          parsed.previewOnly = false;
+        }
+      }
+    }
 
     if (!parsed) {
       const body =
-        "Could not parse swap. Try: “swap 0.01 SOL to USDC” or “execute swap 1 USDC to SOL live”.";
-      if (callback) await callback({ text: body, actions: ["DFLOW_SWAP"] });
-      return { success: false, text: body };
+        "Could not parse swap (and no prior DFLOW_QUOTE). Try: “swap 0.01 SOL to USDC” or chain DFLOW_QUOTE then DFLOW_SWAP.";
+      if (callback) await callback({ text: body }, ACTION);
+      return actionFailure(ACTION, body);
     }
 
-    if (parsed.input.decimals == null) {
-      const body = `Unknown decimals for ${parsed.input.symbol}. Use SOL/USDC/USDT or set decimals.`;
-      if (callback) await callback({ text: body, actions: ["DFLOW_SWAP"] });
-      return { success: false, text: body };
+    if (parsed.input.decimals == null && !parsed.atomicAmount) {
+      const body = `Unknown decimals for ${parsed.input.symbol}. Use SOL/USDC/USDT or chain after a quote.`;
+      if (callback) await callback({ text: body }, ACTION);
+      return actionFailure(ACTION, body);
     }
     const atomic =
       parsed.atomicAmount ||
-      toAtomicAmount(parsed.humanAmount, parsed.input.decimals);
+      toAtomicAmount(parsed.humanAmount, parsed.input.decimals!);
 
     const wantLive = parsed.live && !parsed.previewOnly;
 
@@ -80,6 +120,7 @@ export const dflowSwapAction: Action = {
       }
 
       const client = new DflowClient(cfg);
+      // Prefer fresh order; if prior quote had a transaction and pair matches, still re-quote for freshness
       const order = await client.getOrder({
         inputMint: parsed.input.mint,
         outputMint: parsed.output.mint,
@@ -95,17 +136,26 @@ export const dflowSwapAction: Action = {
             outSymbol: parsed.output.symbol,
             humanIn: parsed.humanAmount,
           }),
+          priorQuote
+            ? "(Chained after DFLOW_QUOTE — pair/amount reused from plan.)"
+            : "",
           "",
           "To execute live: set SOLANA_TRADE_LIVE=true, HELIUS_RPC_URL, SOLANA_PRIVATE_KEY,",
           "and say “execute swap … live”.",
-        ].join("\n");
-        if (callback) await callback({ text: body, actions: ["DFLOW_SWAP"] });
-        return {
-          success: true,
-          text: body,
-          data: { mode: "preview", order, parsed },
-          values: { lastSwapMode: "preview" },
-        };
+        ]
+          .filter(Boolean)
+          .join("\n");
+        if (callback) await callback({ text: body }, ACTION);
+        return actionSuccess(
+          ACTION,
+          body,
+          { mode: "preview", order, parsed, chainedFrom: "DFLOW_QUOTE" },
+          {
+            values: { lastSwapMode: "preview" },
+            turnComplete: true,
+            verifiedUserFacing: true,
+          },
+        );
       }
 
       if (!order.transaction) {
@@ -120,18 +170,22 @@ export const dflowSwapAction: Action = {
         `  explorer: https://solscan.io/tx/${sig}`,
         `  outAmount (quoted atomic): ${order.outAmount ?? "n/a"}`,
       ].join("\n");
-      if (callback) await callback({ text: body, actions: ["DFLOW_SWAP"] });
-      return {
-        success: true,
-        text: body,
-        data: { mode: "live", signature: sig, order, parsed },
-        values: { lastSwapMode: "live", lastTx: sig },
-      };
+      if (callback) await callback({ text: body }, ACTION);
+      return actionSuccess(
+        ACTION,
+        body,
+        { mode: "live", signature: sig, order, parsed },
+        {
+          values: { lastSwapMode: "live", lastTx: sig },
+          turnComplete: true,
+          verifiedUserFacing: true,
+        },
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       const body = `DFlow swap failed: ${msg}`;
-      if (callback) await callback({ text: body, actions: ["DFLOW_SWAP"] });
-      return { success: false, text: body, error: err as Error };
+      if (callback) await callback({ text: body }, ACTION);
+      return actionFailure(ACTION, body, err);
     }
   },
   examples: [
