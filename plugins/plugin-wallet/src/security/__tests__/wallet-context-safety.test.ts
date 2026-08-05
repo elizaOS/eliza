@@ -136,6 +136,25 @@ describe("wallet-context-safety", () => {
     ).toThrow(/must appear explicitly/i);
   });
 
+  it("does not authorize a Solana recipient whose case is mangled in the message", () => {
+    const recipient = "9xQeWvG816bUx9EPfWJXn4xHLh1BaK7Z7QXDXuGpS9SW";
+    const message = {
+      content: {
+        text: "Send 2 SOL to 9XQeWvG816bUx9EPfWJXn4xHLh1BaK7Z7QXDXuGpS9SW on Solana.",
+      },
+    };
+    expect(
+      messageAuthorizesSolanaRecipient(message as never, undefined, recipient),
+    ).toBe(false);
+    expect(() =>
+      assertSolanaTransferRecipientAuthorized(
+        message as never,
+        undefined,
+        recipient,
+      ),
+    ).toThrow(/must appear explicitly/i);
+  });
+
   it("allows Solana recipients from structured action parameters", () => {
     const recipient = "9xQeWvG816bUx9EPfWJXn4xHLh1BaK7Z7QXDXuGpS9SW";
     const message = {
