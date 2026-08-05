@@ -62,6 +62,7 @@
     "@elizaos/plugin-elizacloud",
     "@elizaos/plugin-embeddings",
     "@elizaos/plugin-finances",
+    "@elizaos/plugin-fish-audio",
     "@elizaos/plugin-form",
     "@elizaos/plugin-github",
     "@elizaos/plugin-goals",

@@ -135,7 +135,20 @@ export type {
 	PlannerTrajectory,
 } from "./planner-types";
 
-const DEFAULT_PLANNER_MAX_TOKENS = 1024;
+/**
+ * Chat-lane planner output budget. Reasoning models spend completion tokens on
+ * deliberation BEFORE the tool call, and with `toolChoice: required` a budget
+ * exhausted mid-reasoning means the required call is never emitted — Cerebras
+ * then terminates the stream with an in-stream "server error", which reads as
+ * a transient provider failure but reproduces 100% on any ask ambiguous
+ * enough to burn the budget (live 2026-08-03: nine identical failures on one
+ * build-and-host ask; wire capture showed the entire old 1024-token budget
+ * consumed by reasoning deltas with no tool call). 4096 leaves deliberation
+ * headroom while staying chat-sized; `ELIZA_PLANNER_MAX_TOKENS` overrides.
+ * The coding lane's larger budget below exists for the same failure class
+ * (#10132).
+ */
+const DEFAULT_PLANNER_MAX_TOKENS = 4096;
 
 /**
  * Coding/full-surface mode is on when the eliza-code sub-agent sets
@@ -168,7 +181,12 @@ const DEFAULT_CODING_PLANNER_MAX_TOKENS = 16384;
  * `ELIZA_CODING_PLANNER_MAX_TOKENS`).
  */
 function resolvePlannerMaxTokens(): number {
-	if (!isCodingFullSurfaceMode()) return DEFAULT_PLANNER_MAX_TOKENS;
+	if (!isCodingFullSurfaceMode()) {
+		const chatRaw = Number(process.env.ELIZA_PLANNER_MAX_TOKENS);
+		return Number.isFinite(chatRaw) && chatRaw > 0
+			? Math.floor(chatRaw)
+			: DEFAULT_PLANNER_MAX_TOKENS;
+	}
 	const raw = Number(process.env.ELIZA_CODING_PLANNER_MAX_TOKENS);
 	return Number.isFinite(raw) && raw > 0
 		? Math.floor(raw)
@@ -872,7 +890,21 @@ async function runPlannerLoopIterations(
 								),
 					// STOP/IGNORE-only terminals chose silence; a textless REPLY did
 					// not (the model tried to answer and failed to carry text).
-					...(hasReplyCall ? {} : { endedWithDeliberateSilence: true }),
+					// The silent terminal's name travels with the result so the
+					// message handler can record the turn under the action the
+					// model actually chose (STOP vs IGNORE); NONE folds into
+					// IGNORE — both mean "nothing to say", only STOP carries the
+					// distinct "stand down" semantics.
+					...(hasReplyCall
+						? {}
+						: {
+								endedWithDeliberateSilence: true,
+								silentTerminalAction: plannerOutput.toolCalls.some(
+									(toolCall) => toolCall.name.toUpperCase() === "STOP",
+								)
+									? ("STOP" as const)
+									: ("IGNORE" as const),
+							}),
 				};
 			}
 
@@ -3539,6 +3571,88 @@ function latestToolResultText(
 	return undefined;
 }
 
+/**
+ * Floor for the echo comparison, in normalized characters. Below it a match
+ * is likelier to be a coincidence than a reproduction (a distilled answer
+ * like "3" is a byte-prefix of "3 tasks found …"); at or above it a
+ * byte-exact overlap with planner-facing tool text only occurs when the
+ * model reproduced that text rather than answering in its own words.
+ */
+const RAW_TOOL_TEXT_ECHO_MIN_CHARS = 24;
+
+function normalizeForEchoComparison(text: string): string {
+	// Case-folded so a letter-case variant of the raw text cannot slip the
+	// verbatim/head-anchored comparison; still not a prose heuristic.
+	return text.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+/**
+ * Structural gate keeping typed tool data non-user-facing at the
+ * evaluator/planner boundary. `result.text` is planner-facing by contract
+ * (planner-types.ts): only the opt-in `userFacingText` — or a structural
+ * marker whose deterministic relay deliberately surfaces `text`
+ * (requiresConfirmation / awaitingUserInput / noop) — licenses tool output
+ * for the user channel. A weak model repeats the raw text verbatim after a
+ * protocol-failure replan (live tj-f730d907139bb2), and because an explicit
+ * model reply outranks tool text in the final-message precedence, that echo
+ * would promote planner-facing material into chat. The gate byte-compares
+ * the candidate against every unlicensed `result.text` in the trajectory,
+ * rejecting head-anchored reproduction: the exact text, an exact head of it
+ * (truncated echo), or the exact text plus a trailing addendum — so the
+ * caller falls through to typed user-facing data or ends the turn. Verbatim,
+ * head-anchored comparison only, never a prose heuristic: a genuine
+ * paraphrase differs bytewise, and a genuine synthesis that merely quotes a
+ * tool fragment mid-sentence does not START with the raw text; both pass
+ * untouched.
+ */
+function isEchoOfPlannerFacingToolText(
+	candidate: string,
+	trajectory: PlannerTrajectory,
+): boolean {
+	const normalizedCandidate = normalizeForEchoComparison(candidate);
+	if (normalizedCandidate.length < RAW_TOOL_TEXT_ECHO_MIN_CHARS) return false;
+	for (const step of trajectory.steps) {
+		if (!step.toolCall || isTerminalToolCall(step.toolCall)) continue;
+		const result = step.result;
+		if (!result) continue;
+		const rawText = getNonEmptyString(result.text);
+		if (!rawText) continue;
+		if (
+			hasRequiresConfirmationMarker(result) ||
+			hasAwaitingUserInputMarker(result) ||
+			hasNoopMarker(result) ||
+			// Internal-transcript results are DESIGNED to pass through the reply
+			// channel byte-exact: the delivery boundary matches the reply against
+			// the result text and stamps the outgoing message
+			// transcriptVisibility:"internal" (resolveActionResultTranscript-
+			// Visibility), so it never renders as assistant prose. Gating the
+			// echo here would break that stamping match.
+			result.transcriptVisibility === "internal"
+		) {
+			continue;
+		}
+		const normalizedRaw = normalizeForEchoComparison(rawText);
+		if (normalizedRaw.length < RAW_TOOL_TEXT_ECHO_MIN_CHARS) continue;
+		// When the tool's own userFacingText carries the raw text, the raw text
+		// IS the sanctioned user projection — repeating it is not a leak.
+		const userFacing = getNonEmptyString(result.userFacingText);
+		if (
+			userFacing &&
+			normalizeForEchoComparison(userFacing).includes(normalizedRaw)
+		) {
+			continue;
+		}
+		if (
+			normalizedCandidate === normalizedRaw ||
+			normalizedRaw.startsWith(normalizedCandidate) ||
+			normalizedCandidate.startsWith(normalizedRaw)
+		) {
+			return true;
+		}
+	}
+	return false;
+}
+
 function hasSuccessfulNonTerminalToolStep(
 	trajectory: PlannerTrajectory,
 ): boolean {
@@ -3940,8 +4054,16 @@ function preferredFinalMessageFromToolOrModel(
 	fallback?: unknown,
 ): string | undefined {
 	const modelText = getNonEmptyString(modelMessage);
+	// Rejecting a raw-tool-text echo HERE (not only in userSafeFinalMessage)
+	// lets the precedence chain below recover the turn from typed data — the
+	// tool's opt-in `userFacingText` or the caller's explicit fallback —
+	// instead of degrading straight to the handled-step placeholder.
 	const usableModelText =
-		modelText && !isToolMetaNarration(modelText) ? modelText : undefined;
+		modelText &&
+		!isToolMetaNarration(modelText) &&
+		!isEchoOfPlannerFacingToolText(modelText, trajectory)
+			? modelText
+			: undefined;
 	const widgetReply = userSafeWidgetReplyCandidate(usableModelText);
 	const widgetCollectsLatestMissingInput =
 		widgetReply !== undefined && latestToolResultAwaitsUserInput(trajectory);
@@ -4380,7 +4502,16 @@ function userSafeFinalMessage(
 	// rejected wholesale (or worse, sent verbatim when the unsafe-text heuristic
 	// doesn't match the markup shape).
 	const candidate = sanitizePlannerMessage(message);
-	if (candidate && !isUnsafeUserVisibleText(candidate)) {
+	if (
+		candidate &&
+		!isUnsafeUserVisibleText(candidate) &&
+		// Hard boundary for the raw-tool-text echo: every finished-turn path
+		// funnels through here, so a candidate that reproduces planner-facing
+		// `result.text` (weak-model echo after a protocol failure) degrades to
+		// the tool's typed userFacingText or the placeholder — the raw text
+		// itself can never ship.
+		!isEchoOfPlannerFacingToolText(candidate, trajectory)
+	) {
 		return candidate;
 	}
 	const latest = sanitizePlannerMessage(latestToolResultText(trajectory));

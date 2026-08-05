@@ -1,8 +1,7 @@
 /**
- * Hook that loads, applies defaults to, and persists the character's voice
- * config, staying in sync via VOICE_CONFIG_UPDATED_EVENT.
+ * Hook that loads and applies defaults to the character's voice config,
+ * staying in sync via VOICE_CONFIG_UPDATED_EVENT.
  */
-import { logger } from "@elizaos/logger";
 import * as React from "react";
 
 import { client } from "../api/client";
@@ -16,6 +15,7 @@ import {
   resolveCharacterVoiceConfigFromAppConfig,
 } from "./character-voice-config";
 import { hasConfiguredApiKey } from "./types";
+import { isCloudVoiceRunnable } from "./voice-provider-defaults";
 
 export interface UseVoiceConfigResult {
   /** Saved voice config with platform/runtime provider defaults applied. Never null. */
@@ -27,8 +27,9 @@ export interface UseVoiceConfigResult {
 }
 
 /**
- * Loads the saved character/TTS voice config from the server, applies platform +
- * runtime provider defaults, and keeps it fresh across
+ * Loads the saved character/TTS voice config from the server, derives preset
+ * voices without implicit settings writes, applies runtime provider defaults,
+ * and keeps it fresh across
  * {@link VOICE_CONFIG_UPDATED_EVENT}. Shared by the full ChatView voice
  * controller and the ambient `/chat` overlay so both resolve the *same* TTS
  * provider/voice — there is a single voice-config pipeline, not two.
@@ -38,8 +39,11 @@ export function useVoiceConfig(uiLanguage: string): UseVoiceConfigResult {
   const [voiceConfig, setVoiceConfig] = React.useState<VoiceConfig | null>(
     null,
   );
-  const cloudVoiceAvailable = useAppSelector(
-    (s) => s.elizaCloudVoiceProxyAvailable,
+  const cloudVoiceAvailable = useAppSelector((s) =>
+    isCloudVoiceRunnable({
+      connected: s.elizaCloudConnected,
+      proxyAvailable: s.elizaCloudVoiceProxyAvailable,
+    }),
   );
   // ElevenLabs is a default only when the user has actually configured a key —
   // it is never selected silently (slow + key-gated).
@@ -59,25 +63,12 @@ export function useVoiceConfig(uiLanguage: string): UseVoiceConfigResult {
   const loadVoiceConfig = React.useCallback(async () => {
     try {
       const cfg = await client.getConfig();
-      const resolved = resolveCharacterVoiceConfigFromAppConfig({
+      const resolvedVoiceConfig = resolveCharacterVoiceConfigFromAppConfig({
         config: cfg,
         uiLanguage,
       });
       if (!isMountedRef.current) return;
-      setVoiceConfig(resolved.voiceConfig);
-      if (resolved.shouldPersist && resolved.voiceConfig) {
-        // error-policy:J6 best-effort background persist — a lost persist
-        // means the resolved voice diverges from the server copy across
-        // restarts, so the failure is logged, never swallowed
-        void client
-          .updateConfig({ messages: { tts: resolved.voiceConfig } })
-          .catch((err: unknown) => {
-            logger.warn(
-              { err },
-              "[useVoiceConfig] failed to persist resolved voice config",
-            );
-          });
-      }
+      setVoiceConfig(resolvedVoiceConfig);
     } catch {
       if (!isMountedRef.current) return;
       // error-policy:J4 no config endpoint (minimal shells) or unreadable

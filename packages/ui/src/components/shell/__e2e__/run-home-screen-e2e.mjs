@@ -27,7 +27,6 @@ import {
   summarizeStability,
 } from "../../../testing/layout-stability.ts";
 import {
-  touchDragHold,
   touchLongPress,
   touchSwipe,
   touchTap,
@@ -734,9 +733,9 @@ try {
       `no home widget hit its error boundary (${errorCards.length})`,
     );
   }
-  // Notifications render inline on the home column. Rested mode shows the
-  // seeded interrupt-tier row; the count control opens the full shade without
-  // adding a second sheet or overlay surface.
+  // Notifications render inline on the home column. The consolidated shade is
+  // already expanded and control-free; detailed gesture and dismissal behavior
+  // is covered by the app Playwright gesture matrix.
   {
     const center = mobile.getByTestId("home-notification-center");
     await center.waitFor({ state: "visible", timeout: 5000 });
@@ -759,121 +758,14 @@ try {
       (await center.getByText("Payment failed", { exact: false }).count()) > 0,
       "the notification row shows the seeded title",
     );
-    const countButton = center.getByTestId("notifications-count-button");
     assert(
-      (await countButton.textContent())?.includes("1 Notification"),
-      "the rested count control reflects the seeded notification",
-    );
-    const restedClearState = await center
-      .getByTestId("notifications-clear-all")
-      .evaluate((button) => {
-        const slot = button.closest("[data-notification-clear-slot]");
-        return {
-          opacity: slot ? getComputedStyle(slot).opacity : null,
-          height: slot ? getComputedStyle(slot).height : null,
-          ariaHidden: slot?.getAttribute("aria-hidden"),
-          inert: slot?.hasAttribute("inert"),
-        };
-      });
-    assert(
-      restedClearState.opacity === "0" &&
-        restedClearState.height === "0px" &&
-        restedClearState.ariaHidden === "true" &&
-        restedClearState.inert === true &&
+      (await center
+        .locator('[data-testid="home-notification-list"][data-shade-mode="expanded"]')
+        .count()) === 1 &&
+        (await center.getByTestId("notifications-count-button").count()) === 0 &&
+        (await center.getByTestId("notifications-clear-all").count()) === 0 &&
         (await center.getByTestId("notifications-collapse").count()) === 0,
-      "expanded controls remain mounted but fully inert and hidden at rest",
-    );
-
-    const countSlot = center.getByTestId("notifications-count");
-    const restedCountBox = await countSlot.boundingBox();
-    if (!restedCountBox) throw new Error("missing notification count bounds");
-    const partialPull = await touchDragHold(
-      mobile,
-      '[data-testid="home-notification-list"]',
-      0,
-      48,
-      { steps: 6, stepDelayMs: 16 },
-    );
-    await mobile.evaluate(
-      () => new Promise((resolve) => requestAnimationFrame(resolve)),
-    );
-    const heldCountBox = await countSlot.boundingBox();
-    if (!heldCountBox) throw new Error("missing pulled count bounds");
-    const heldCountTravel = heldCountBox.y - restedCountBox.y;
-    assert(
-      heldCountTravel > 1 && heldCountTravel < 28,
-      `a partial pull moves the count continuously instead of inserting a 40px row (${heldCountTravel.toFixed(2)}px)`,
-    );
-
-    await partialPull.release();
-    const releaseTrace = await mobile.evaluate(async (restedTop) => {
-      const samples = [];
-      const startedAt = performance.now();
-      // Keep sampling through click suppression so the next tap is both a
-      // separate user action and a settled-state check.
-      while (performance.now() - startedAt < 560) {
-        await new Promise((resolve) => requestAnimationFrame(resolve));
-        const count = document.querySelector(
-          '[data-testid="notifications-count"]',
-        );
-        if (!(count instanceof HTMLElement)) break;
-        samples.push(count.getBoundingClientRect().top - restedTop);
-      }
-      return samples;
-    }, restedCountBox.y);
-    const releasePeak = Math.max(...releaseTrace);
-    const releaseFinal = releaseTrace.at(-1) ?? Number.POSITIVE_INFINITY;
-    assert(
-      releasePeak <= heldCountTravel + 1.5,
-      `a cancelled pull returns without bouncing farther from rest (${releasePeak.toFixed(2)}px peak)`,
-    );
-    assert(
-      Math.abs(releaseFinal) < 0.75,
-      `the notification count settles back at rest (${releaseFinal.toFixed(2)}px)`,
-    );
-
-    await touchTap(mobile, '[data-testid="notifications-count-button"]');
-    await center
-      .locator(
-        '[data-testid="home-notification-list"][data-shade-mode="expanded"]',
-      )
-      .waitFor({ state: "visible", timeout: 5000 });
-    assert(
-      (await center.getByTestId("notifications-clear-all").count()) === 1 &&
-        (await center.getByTestId("notifications-collapse").count()) === 1,
-      "opening the shade reveals clear and collapse controls",
-    );
-    await mobile.waitForFunction(() => {
-      const footer = document.querySelector(
-        '[data-testid="notifications-collapse-footer"]',
-      );
-      return footer instanceof HTMLElement && !footer.hasAttribute("inert");
-    });
-
-    await touchTap(mobile, '[data-testid="notifications-collapse"]');
-    await center
-      .locator(
-        '[data-testid="home-notification-list"][data-shade-mode="rested"]',
-      )
-      .waitFor({ state: "visible", timeout: 5000 });
-    const collapsedClearState = await center
-      .getByTestId("notifications-clear-all")
-      .evaluate((button) => {
-        const slot = button.closest("[data-notification-clear-slot]");
-        return {
-          opacity: slot ? getComputedStyle(slot).opacity : null,
-          height: slot ? getComputedStyle(slot).height : null,
-          ariaHidden: slot?.getAttribute("aria-hidden"),
-          inert: slot?.hasAttribute("inert"),
-        };
-      });
-    assert(
-      collapsedClearState.opacity === "0" &&
-        collapsedClearState.height === "0px" &&
-        collapsedClearState.ariaHidden === "true" &&
-        collapsedClearState.inert === true &&
-        (await center.getByTestId("notifications-collapse").count()) === 0,
-      "collapse restores the mounted clear control to its inert rested state",
+      "the consolidated notification shade is expanded without legacy controls",
     );
   }
   // Apps and native surfaces live exclusively on the adjacent launcher page;
@@ -1263,7 +1155,7 @@ try {
     (await desktop.getByTestId("home-tile-phone").count()) === 0,
     "phone tile hidden when native disabled",
   );
-  // Desktop uses the same inline notification center and shade controls.
+  // Desktop uses the same inline, expanded, control-free notification center.
   {
     const center = desktop.getByTestId("home-notification-center");
     await center.waitFor({ state: "visible", timeout: 5000 });
@@ -1271,23 +1163,13 @@ try {
       (await center.getByTestId("notification-row").count()) === 1,
       "desktop home renders the inline notification inbox with the seeded row",
     );
-    await center.getByTestId("notifications-count-button").click();
-    await center
-      .locator(
-        '[data-testid="home-notification-list"][data-shade-mode="expanded"]',
-      )
-      .waitFor({ state: "visible", timeout: 5000 });
     assert(
-      (await center.getByTestId("notifications-clear-all").count()) === 1 &&
-        (await center.getByTestId("notifications-collapse").count()) === 1,
-      "desktop opens the same clear and collapse controls",
+      (await center
+        .locator('[data-testid="home-notification-list"][data-shade-mode="expanded"]')
+        .count()) === 1 &&
+        (await center.getByTestId("notifications-count-button").count()) === 0,
+      "desktop renders the same expanded notification shade without a count control",
     );
-    await center.getByTestId("notifications-collapse").click();
-    await center
-      .locator(
-        '[data-testid="home-notification-list"][data-shade-mode="rested"]',
-      )
-      .waitFor({ state: "visible", timeout: 5000 });
   }
   await snap(desktop, "desktop-home");
   await swipeLeft(desktop.getByTestId("home-launcher-home-page"));

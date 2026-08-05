@@ -547,6 +547,19 @@ export async function handlePendantSessionRoutes(
       return true;
     }
 
+    if (method === "GET" && pathname === `${PREFIX}/current`) {
+      const stored = await repository.loadLatest(identity);
+      if (!stored) {
+        throw routeError(
+          "not_found",
+          "No active pendant session was found",
+          404,
+        );
+      }
+      json(res, { ok: true, snapshot: snapshotFromStored(stored) });
+      return true;
+    }
+
     const parsedPath = parseSessionPath(pathname);
     if (!parsedPath) {
       throw routeError("not_found", "Pendant session route was not found", 404);
@@ -769,9 +782,8 @@ export async function handlePendantSessionRoutes(
       const segmentId = tail[1];
       const event = await withSessionLock(lockKey, async () => {
         const stored = await loadStored({ repository, ...identity, sessionId });
-        // Pausing prevents new capture segments, but already-durable pending
-        // segments must still accept late ASR/diarization revisions.
-        assertNotEnded(stored);
+        // Pause severs late ASR/diarization writes from the prior generation.
+        assertCanAppend(stored);
         assertLease(stored, parsed.data.leaseToken);
         const existingIndex = stored.segments.findIndex(
           (segment) => segment.id === segmentId,
@@ -998,6 +1010,7 @@ const PENDANT_SESSION_ROUTE_SPECS: ReadonlyArray<{
   path: string;
 }> = [
   { type: "POST", path: "/api/pendant/sessions" },
+  { type: "GET", path: "/api/pendant/sessions/current" },
   { type: "GET", path: "/api/pendant/sessions/:sessionId" },
   { type: "DELETE", path: "/api/pendant/sessions/:sessionId" },
   { type: "GET", path: "/api/pendant/sessions/:sessionId/export" },

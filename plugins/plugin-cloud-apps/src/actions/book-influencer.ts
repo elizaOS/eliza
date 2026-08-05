@@ -34,8 +34,10 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, unwrapUserMessageText } from "@elizaos/core";
 import {
+  appReferenceLogView,
+  describeAppReference,
   getCloudClient,
   matchByReference,
   type ReferenceMatch,
@@ -448,7 +450,7 @@ export const bookInfluencerAction: Action = {
     }
 
     const rec = readOpt(options);
-    const body = message.content?.text ?? "";
+    const body = unwrapUserMessageText(message);
     const amount = parseAmount(options, body);
     const brief =
       typeof rec.brief === "string" && rec.brief.trim()
@@ -478,7 +480,7 @@ export const bookInfluencerAction: Action = {
           }));
         } catch (err) {
           logger.warn(
-            `[BOOK_INFLUENCER] listInfluencers failed while resolving "${ref}": ${
+            `[BOOK_INFLUENCER] listInfluencers failed while resolving "${appReferenceLogView(ref)}": ${
               err instanceof Error ? err.message : String(err)
             }`,
           );
@@ -499,13 +501,17 @@ export const bookInfluencerAction: Action = {
           profileName = match.item.display_name;
         } else if (match.candidates.length > 1) {
           const names = match.candidates.map((p) => p.display_name);
-          const msg = `Which influencer do you mean? "${ref}" matches ${names.length}: ${names.join(", ")}. Reply with the exact name so I book the right one.`;
+          const msg = `Which influencer do you mean? ${describeAppReference(ref, "that name")} matches ${names.length}: ${names.join(", ")}. Reply with the exact name so I book the right one.`;
           await callback?.({ text: msg, actions: ["BOOK_INFLUENCER"] });
           return {
             success: false,
-            text: `Ambiguous influencer reference "${ref}" (${names.length} matches).`,
+            text: `Ambiguous influencer reference "${appReferenceLogView(ref)}" (${names.length} matches).`,
             userFacingText: msg,
-            data: { reason: "ambiguous", reference: ref, candidates: names },
+            data: {
+              reason: "ambiguous",
+              reference: appReferenceLogView(ref),
+              candidates: names,
+            },
           };
         }
       }
