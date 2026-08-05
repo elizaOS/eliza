@@ -109,11 +109,21 @@ export function createTurnDrainRegistry(): DiscordTurnDrainRegistry {
 		}
 
 		let timedOut = false;
+		// Await the status reaction too, not just the handler: resolveFinished()
+		// fires inside the controller's serialised chain, so it lands strictly
+		// AFTER the handler promise. Awaiting the handler alone would let a fast
+		// turn settle the drain while its reaction was still mid-transition, and
+		// stop() would then destroy the client on top of a reaction still showing
+		// in progress — the exact state this module prevents, reached through the
+		// success path instead of the timeout (#17749 review).
 		const settleAll = Promise.all(
 			entries.map(([, entry]) =>
-				// error-policy:J5 same reasoning as trackTurn above — the turn's
-				// real caller already observes and handles this rejection.
-				entry.promise.catch(() => undefined),
+				Promise.all([
+					// error-policy:J5 same reasoning as trackTurn above — the turn's
+					// real caller already observes and handles this rejection.
+					entry.promise.catch(() => undefined),
+					entry.statusReactions?.whenFinished ?? Promise.resolve(),
+				]),
 			),
 		);
 		// The handle must be captured and cleared: an armed Node timer keeps the

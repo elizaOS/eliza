@@ -182,4 +182,46 @@ describe("createTurnDrainRegistry", () => {
 			clearSpy.mockRestore();
 		}
 	});
+	it("waits for the status reaction to settle, not just the handler promise (#17749 review)", async () => {
+		// The success path must mean "handler done AND reaction reconciled".
+		// resolveFinished() fires inside the controller's serialised chain, so
+		// it lands strictly after the handler promise — a fast turn could
+		// otherwise settle the drain while its reaction was still showing
+		// in-progress, and stop() would destroy the client on top of it. That
+		// is the exact state this module exists to prevent, reached through
+		// the success path rather than the timeout. Caught in review by
+		// krutftw on the first head.
+		const registry = createTurnDrainRegistry();
+		let reactionSettled = false;
+		let finishReaction: () => void = () => undefined;
+		const controller = {
+			whenFinished: new Promise<void>((resolve) => {
+				finishReaction = () => {
+					reactionSettled = true;
+					resolve();
+				};
+			}),
+			abandon: vi.fn(),
+		} as unknown as StatusReactionController;
+
+		registry.trackTurn("msg-race", Promise.resolve());
+		registry.trackStatusReaction("msg-race", controller);
+
+		let drainResolved = false;
+		const drained = registry.drain(60_000).then((result) => {
+			drainResolved = true;
+			return result;
+		});
+
+		// Let every already-resolved promise flush. The handler is done; the
+		// reaction is not. The drain must still be waiting.
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		expect(reactionSettled).toBe(false);
+		expect(drainResolved).toBe(false);
+
+		finishReaction();
+		const result = await drained;
+		expect(result.abandonedMessageIds).toEqual([]);
+		expect(controller.abandon).not.toHaveBeenCalled();
+	});
 });
