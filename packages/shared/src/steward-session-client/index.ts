@@ -93,6 +93,10 @@ export type StewardSessionErrorCode =
    * SSO logout marker). A real revocation: clients clear the stored session
    * instead of retrying the sync. */
   | "session_ended"
+  /** The SSO logout-marker store is unreachable and the token is
+   * bridge-issued, so the sync fails closed (503). Transient: clients hold
+   * the stored session and retry, as with `server_secret_missing`. */
+  | "sso_unavailable"
   | "server_secret_missing"
   | "steward_user_sync_failed"
   | "internal_error"

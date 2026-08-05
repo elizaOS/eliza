@@ -330,6 +330,11 @@ describe("code lifecycle", () => {
     expect(
       Math.abs((newClaims?.expiration ?? 0) - (origClaims?.expiration ?? 0)),
     ).toBeLessThanOrEqual(1);
+    // The re-mint is stamped bridge-issued — the session-sync endpoint scopes
+    // its fail-closed logout-marker read to exactly these tokens. The original
+    // (per-origin login) token carries no stamp.
+    expect(newClaims?.bridged).toBe(true);
+    expect(origClaims?.bridged).toBeUndefined();
 
     // Consumed atomically: the second presentation of the same code loses.
     const replay = await exchange(code, verifier);

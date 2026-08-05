@@ -253,6 +253,10 @@ app.post("/exchange", async (c) => {
     // Re-mint from the claims verified at mint, capped to the ORIGINAL exp so
     // the bridge can never extend a session's lifetime. The stored dashboard
     // token was never persisted, so there is nothing to replay out of the DB.
+    // The `bridged` stamp marks the token as bridge-issued: the session-sync
+    // endpoint consults the logout marker (fail closed) ONLY for stamped
+    // tokens, so ordinary logins never acquire the marker store as a hard
+    // availability dependency.
     const remainingSeconds =
       record.tokenExpiresAt - Math.floor(Date.now() / 1000);
     if (remainingSeconds <= 0) {
@@ -260,7 +264,7 @@ app.post("/exchange", async (c) => {
     }
     const minted = await mintStewardTokenFromClaims(
       c.env,
-      record.claims,
+      { ...record.claims, bridged: true },
       remainingSeconds,
     );
     if (!minted) {
