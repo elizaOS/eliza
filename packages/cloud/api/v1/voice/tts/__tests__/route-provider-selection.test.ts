@@ -181,6 +181,8 @@ mock.module("@/lib/services/elevenlabs", () => ({
 mock.module("@/lib/services/pcm16-wav", () => ({
   drainPcm16ToWav,
   drainPcm16Stream: async () => new Uint8Array([1, 0, 2, 0]),
+  pcm16ChunksToWav: (chunks: readonly Uint8Array[]) =>
+    chunks[0] ?? new Uint8Array(),
   pcm16ToWav: (pcm: Uint8Array) => pcm,
 }));
 
