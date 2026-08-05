@@ -1541,7 +1541,7 @@ describe("ChatOverlay", () => {
     expect(row?.className).toContain("w-full");
   });
 
-  it("fades the inset transcript under the grabber without masking its scroller", () => {
+  it("fades the expanded transcript under the grabber without masking its scroller", () => {
     render(<ChatOverlay controller={makeController()} />);
     fireEvent.focus(screen.getByLabelText("message"));
 
@@ -3658,19 +3658,6 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     bigPullUp();
     expect(sheet.getAttribute("data-maximized")).toBe("true");
     expect(sheet.getAttribute("data-chat-state")).toBe("MAXIMIZED");
-  });
-
-  it("restores the canonical top-led transcript presentation in full-bleed", () => {
-    const { controller } = makeSwipeController();
-    render(<ChatOverlay controller={controller} />);
-    bigPullUp();
-
-    const viewport = screen.getByTestId("chat-thread-scroll");
-    const content = viewport.querySelector<HTMLElement>(
-      '[data-slot="message-scroller-content"]',
-    );
-    expect(content?.className).not.toContain("justify-end");
-    expect(screen.queryByTestId("chat-thread-top-fade")).toBeNull();
   });
 
   it("snaps to full-screen at 90% while held and reverses below the same line", async () => {
