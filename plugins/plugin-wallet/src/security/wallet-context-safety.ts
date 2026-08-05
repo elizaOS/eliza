@@ -22,6 +22,12 @@ const FINANCIAL_WRITE_SUBACTIONS = new Set([
   "swap",
   "bridge",
   "pump_fun_buy",
+  // governance votes/delegations are on-chain writes; an injected message must not
+  // drive them any more than it may drive a transfer
+  "gov",
+  // steward TRADE order submission routes through trade-action.ts, not the wallet
+  // router, but is the same class of financial write
+  "trade",
 ]);
 
 function messageHasPromptInjectionFlag(message: Memory): boolean {

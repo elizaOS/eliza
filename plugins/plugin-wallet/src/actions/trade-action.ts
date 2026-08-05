@@ -16,6 +16,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { requireTradeOrderConfirmation } from "../security/trade-confirmation.js";
+import { assertWalletFinancialActionAllowed } from "../security/wallet-context-safety.js";
 import { StewardTradingService } from "../services/steward-trading-service.js";
 import type {
   HyperliquidSubmitOrderRequest,
@@ -605,6 +606,22 @@ export const tradeRouterAction: Action = {
     }
     if (parsed.operation === "inspect_session") {
       return inspectSession(service, parsed.sessionId);
+    }
+    try {
+      assertWalletFinancialActionAllowed(message, "trade");
+    } catch (error) {
+      const text = error instanceof Error ? error.message : String(error);
+      await callback?.({ text, content: { error: "PROMPT_INJECTION_BLOCKED" } });
+      return {
+        success: false,
+        text,
+        data: providerRecord({
+          outcome: "rejected",
+          error: "PROMPT_INJECTION_BLOCKED",
+          retrySafe: false,
+        }),
+        values: { tradeOutcome: "rejected" },
+      };
     }
     return submitOrder(runtime, message, service, parsed.order, callback);
   },
