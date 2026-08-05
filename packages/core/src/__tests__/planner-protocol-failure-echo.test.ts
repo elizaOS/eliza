@@ -137,6 +137,7 @@ function makeRuntime(opts: {
 			...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
 		],
 		emitEvent: vi.fn(async () => undefined),
+		reportError: vi.fn(),
 		runActionsByMode: vi.fn(async () => undefined),
 		getSetting: vi.fn(() => undefined),
 		useModel: vi.fn(async (modelType: unknown) => {
