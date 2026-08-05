@@ -1,7 +1,8 @@
 /**
  * Normalizes managed Codex ACP sandbox settings and probes Linux Landlock
- * availability so the orchestrator can select a supported successor mode,
- * falling back to `danger-full-access` where Landlock is unavailable.
+ * availability so the orchestrator can select a supported successor mode.
+ * When Landlock is unavailable there is no silent host-wide default — callers
+ * must supply an explicit ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE override.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { platform } from "node:os";
@@ -45,6 +46,26 @@ export function normalizeCodexSandboxMode(
   return CODEX_SANDBOX_MODES.has(normalized as CodexSandboxMode)
     ? (normalized as CodexSandboxMode)
     : undefined;
+}
+
+/** Env var operators set for the no-Landlock Codex ACP fallback. */
+export const CODEX_NO_LANDLOCK_SANDBOX_MODE_ENV =
+  "ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE";
+
+/**
+ * Resolve the operator-owned no-Landlock sandbox override.
+ *
+ * Fail-closed: empty or unrecognized values return `undefined` so the caller
+ * can throw rather than silently widen a workspace-scoped task to host access.
+ */
+export function resolveNoLandlockSandboxMode(
+  value: string | undefined,
+): CodexSandboxMode | undefined {
+  return normalizeCodexSandboxMode(value);
+}
+
+export function noLandlockFallbackRequiredMessage(): string {
+  return `Set ${CODEX_NO_LANDLOCK_SANDBOX_MODE_ENV} to one of: read-only, workspace-write, danger-full-access`;
 }
 
 export function normalizeCodexApprovalPolicy(

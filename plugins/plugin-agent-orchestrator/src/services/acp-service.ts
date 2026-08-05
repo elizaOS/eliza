@@ -45,10 +45,13 @@ import { NativeAcpClient } from "./acp-native-transport.js";
 import { augmentTaskWithDeployGuidance } from "./app-deploy-guidance.js";
 import {
   type CodexSandboxMode,
+  CODEX_NO_LANDLOCK_SANDBOX_MODE_ENV,
   detectLandlockAvailability,
   isCodexLandlockPanic,
+  noLandlockFallbackRequiredMessage,
   normalizeCodexApprovalPolicy,
   normalizeCodexSandboxMode,
+  resolveNoLandlockSandboxMode,
 } from "./codex-sandbox.js";
 import {
   accountMetaFromSessionMetadata,
@@ -296,7 +299,8 @@ export function resolveCodexAcpInitialAgentMode(
   }
   return mode;
 }
-const CODEX_NO_LANDLOCK_SANDBOX_MODE: CodexSandboxMode = "danger-full-access";
+// No silent host-wide default: when Landlock is unavailable the operator must
+// set ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE explicitly (fail-closed).
 const CODEX_NO_LANDLOCK_APPROVAL_POLICY = "never";
 /**
  * Effort levels the Claude Code CLI honors via CLAUDE_CODE_EFFORT_LEVEL (its
@@ -2631,8 +2635,8 @@ export class AcpService extends Service {
   }
 
   private codexNoLandlockSandboxMode(): CodexSandboxMode {
-    const raw = this.setting("ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE");
-    const mode = normalizeCodexSandboxMode(raw);
+    const raw = this.setting(CODEX_NO_LANDLOCK_SANDBOX_MODE_ENV);
+    const mode = resolveNoLandlockSandboxMode(raw);
     if (raw?.trim() && !mode) {
       this.log("warn", "Ignoring invalid Codex ACP no-Landlock sandbox mode", {
         value: raw,
@@ -2643,15 +2647,14 @@ export class AcpService extends Service {
     // silently widen a workspace-scoped task to host-wide filesystem access.
     // Operators in container/VM-sandboxed deployments must explicitly set
     // ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE (e.g. "danger-full-access")
-    // to permit this escalation.
-    if (!raw?.trim() || !mode) {
+    // to permit this escalation. `mode` is already null for empty/invalid raw.
+    if (!mode) {
       throw new ElizaError(
-        "Landlock unavailable and no operator-configured ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE fallback",
+        `Landlock unavailable and no operator-configured ${CODEX_NO_LANDLOCK_SANDBOX_MODE_ENV} fallback`,
         {
           code: "CODEX_NO_LANDLOCK_NO_FALLBACK",
           context: {
-            required:
-              "Set ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE to one of: read-only, workspace-write, danger-full-access",
+            required: noLandlockFallbackRequiredMessage(),
           },
           severity: "fatal",
         },
@@ -2914,10 +2917,17 @@ export class AcpService extends Service {
         fallbackSandboxMode = this.codexNoLandlockSandboxMode();
         fallbackMode = this.managedCodexAcpInitialAgentMode(true);
       } catch (fallbackErr) {
-        // error-policy:J6 no operator-configured no-Landlock fallback → fail
-        // closed by surfacing the original attach error, not the missing-config
-        // error, so operators see the actionable Landlock-availability message.
-        throw new Error(message);
+        // error-policy:J2 context-adding rethrow: attach failed AND no operator
+        // fallback is configured. Preserve both — the Landlock symptom in
+        // `message` and the env-var remedy from fallbackErr.
+        throw new ElizaError(message, {
+          code: "CODEX_NO_LANDLOCK_NO_FALLBACK",
+          cause: fallbackErr,
+          context: {
+            required: noLandlockFallbackRequiredMessage(),
+          },
+          severity: "fatal",
+        });
       }
       this.log(
         "warn",
