@@ -24,7 +24,6 @@ import {
 } from "./actions/views.js";
 import { createViewsClient } from "./actions/views-client.js";
 import { createChoiceShortcutEvaluator } from "./evaluators/create-choice-shortcut.js";
-import { viewCommandShortcutEvaluator } from "./evaluators/view-command-shortcut.js";
 import { viewContextEvaluator } from "./evaluators/view-context.js";
 import { viewFollowupRoutingEvaluator } from "./evaluators/view-followup-routing.js";
 import { availableAppsProvider } from "./providers/available-apps.js";
@@ -37,7 +36,6 @@ import { AppRegistryService } from "./services/app-registry-service.js";
 import { AppVerificationService } from "./services/app-verification.js";
 import { AppWorkerHostService } from "./services/app-worker-host-service.js";
 import { VerificationRoomBridgeService } from "./services/verification-room-bridge.js";
-import { viewNavigationShortcuts } from "./shortcuts.js";
 
 export {
 	type AgentSwitchActionDeps,
@@ -157,14 +155,11 @@ export const appControlPlugin: Plugin = {
 		agentSwitchAction,
 		settingsAction,
 	],
-	shortcuts: viewNavigationShortcuts,
-	// Three-stage view-switch cascade:
-	//  1. EARLY  — viewCommandShortcutEvaluator (responseHandlerEvaluator, no
-	//     model): on an explicit multilingual command ("open settings"), FORCES
-	//     the VIEWS action so navigation never depends on weak-model selection.
-	//  2. ACTION — viewsAction: navigates; deterministic target via
-	//     resolveIntentView → matchViewCommand. The agent may also pick it.
-	//  3. POST   — viewContextEvaluator (small model): catches CONTEXTUAL intent
+	// Model-owned view-switch cascade:
+	//  1. PLAN   — the response handler/planner selects VIEWS from the registered
+	//     action contract, including explicit multilingual navigation requests.
+	//  2. ACTION — viewsAction resolves the selected target and navigates.
+	//  3. POST   — viewContextEvaluator (small model) catches contextual intent
 	//     the user never spelled out ("fix the login bug" -> task-coordinator).
 	//     Its gate defers whenever resolveIntentView already matches a direct
 	//     surface (the rigid matchViewCommand matcher, or the legacy intent
@@ -172,7 +167,6 @@ export const appControlPlugin: Plugin = {
 	// view-followup-routing handles mutation follow-ups on the active view.
 	evaluators: [viewContextEvaluator],
 	responseHandlerEvaluators: [
-		viewCommandShortcutEvaluator,
 		createChoiceShortcutEvaluator,
 		viewFollowupRoutingEvaluator,
 	],
