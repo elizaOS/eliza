@@ -28,6 +28,10 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 	return {
 		...coreMock,
 		resolveStateDir: actual.resolveStateDir,
+		// Target extraction routes through the security-envelope unwrap seam;
+		// it must run against the real core implementations.
+		getUserMessageText: actual.getUserMessageText,
+		unwrapUserMessageText: actual.unwrapUserMessageText,
 	};
 });
 

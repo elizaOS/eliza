@@ -9,6 +9,7 @@
 
 import type { AppDto, ElizaCloudClient } from "@elizaos/cloud-sdk";
 import type { Memory } from "@elizaos/core";
+import { unwrapUserMessageText } from "@elizaos/core";
 import {
   extractAppReference,
   looksLikeAppId,
@@ -85,7 +86,9 @@ export function extractDomainReferences(
       return isValidDomain(domain) ? [domain] : [];
     }
   }
-  const text = (message.content?.text ?? "").slice(0, MAX_SCANNED_TEXT);
+  // Canonical unwrapped payload, never raw content.text: the security
+  // envelope's metadata lines are domain-shaped enough to false-match.
+  const text = unwrapUserMessageText(message).slice(0, MAX_SCANNED_TEXT);
   const seen = new Set<string>();
   for (const match of text.matchAll(DOMAIN_TOKEN)) {
     const domain = normalizeDomain(match[0]);

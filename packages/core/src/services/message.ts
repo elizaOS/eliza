@@ -186,6 +186,13 @@ import {
 	sanitizeUserVisibleModelOutput,
 	type UserVisibleModelOutput,
 } from "../runtime/user-visible-model-output";
+import { containsExternalEnvelopeMaterial } from "../security/external-content";
+import {
+	createOutboundEnvelopeStreamLatch,
+	guardOutboundEnvelopeAttachments,
+	guardOutboundEnvelopeText,
+	reportOutboundEnvelopeBlock,
+} from "../security/outbound-envelope-guard";
 import {
 	attestDeliveryAudienceFromCanonicalRoom,
 	ownerExclusiveDisclosureWasUsed,
@@ -9243,21 +9250,17 @@ function hasExplicitReplyIntent(
 /**
  * Race-keep policy for a finished response that a newer same-room message
  * superseded mid-generation. Returns the human-readable keep reason, or null
- * when the response should be discarded. An explicit conversational reply is
- * always kept. Action-mode responses omit REPLY, so they are also kept when
- * the transport context deterministically establishes that the turn addressed
- * the agent. Unaddressed, non-conversational work remains replaceable.
+ * when the response should be discarded. Kept only when the planner
+ * deliberately chose to converse (explicit REPLY/RESPOND): every deliverable
+ * response constructor in this pipeline sets `actions:["REPLY"]`, so this is
+ * the complete keep set — a discard is always a non-deliverable shape, and it
+ * ends the run with the observable "replaced" terminal instead of vanishing.
  */
 export function resolveSupersededResponseKeepReason(
 	responseContent: Pick<Content, "actions"> | null | undefined,
-	deterministicallyAddressed = false,
 ): string | null {
-	if (!responseContent) return null;
 	if (hasExplicitReplyIntent(responseContent)) {
 		return "explicit REPLY for an addressed message";
-	}
-	if (deterministicallyAddressed) {
-		return "deterministically addressed action-mode turn";
 	}
 	return null;
 }
@@ -9655,8 +9658,104 @@ export async function enforceTrustedDeliveryAudienceOnResult(
 	};
 }
 
+/**
+ * First-sentence cloud-TTS delivery for streaming turns: synthesize the
+ * sentence and hand the audio to the callback as a data-URI attachment. The
+ * local-inference voice loop uses VoiceScheduler/PhraseChunker instead
+ * (packages/app-core/src/services/local-inference/voice/scheduler.ts) — this
+ * is not duplicated, it's the cloud-deployment counterpart (packages/core
+ * can't import packages/app-core; the two paths live at different layers and
+ * only one is active per deployment).
+ *
+ * Guarded before synthesis: for an envelope echo the "first sentence" IS the
+ * security-notice line, and this delivery bypasses the text-only outbound
+ * guard entirely (callback text is "", the armor rides in attachment.text and
+ * the synthesized audio). Envelope material is never spoken or attached —
+ * the delivery is skipped and reported instead. Exported for tests: the
+ * stream closure it serves is only reachable through a full handleMessage
+ * turn.
+ */
+export async function deliverFirstSentenceVoice(
+	runtime: Pick<
+		IAgentRuntime,
+		"character" | "getModel" | "useModel" | "logger" | "reportError"
+	>,
+	first: string,
+	callback: HandlerCallback | undefined,
+	abortSignal?: AbortSignal,
+): Promise<void> {
+	if (containsExternalEnvelopeMaterial(first)) {
+		reportOutboundEnvelopeBlock(runtime, first, "stream-tts");
+		return;
+	}
+	try {
+		const voiceSettings = runtime.character.settings?.voice as
+			| {
+					model?: string;
+					url?: string;
+					voiceId?: string;
+			  }
+			| undefined;
+
+		const model = voiceSettings?.model || "en_US-male-medium";
+		const voiceId = voiceSettings?.url || voiceSettings?.voiceId || "nova";
+
+		let audioBuffer: Buffer | null = null;
+		const params: TextToSpeechParams & {
+			model?: string;
+		} = {
+			text: first,
+			voice: voiceId,
+			model: model,
+			...(abortSignal ? { signal: abortSignal } : {}),
+		};
+		const result = runtime.getModel(ModelType.TEXT_TO_SPEECH)
+			? await runtime.useModel(ModelType.TEXT_TO_SPEECH, params)
+			: undefined;
+
+		if (
+			result instanceof ArrayBuffer ||
+			Object.prototype.toString.call(result) === "[object ArrayBuffer]"
+		) {
+			audioBuffer = Buffer.from(result as ArrayBuffer);
+		} else if (Buffer.isBuffer(result)) {
+			audioBuffer = result;
+		} else if (result instanceof Uint8Array) {
+			audioBuffer = Buffer.from(result);
+		}
+
+		if (audioBuffer && callback) {
+			const audioBase64 = audioBuffer.toString("base64");
+			await callback({
+				text: "",
+				attachments: [
+					{
+						id: v4(),
+						url: `data:audio/wav;base64,${audioBase64}`,
+						title: "Voice Response",
+						source: "voice-cache",
+						description: "Voice response for first sentence",
+						text: first,
+						contentType: ContentType.AUDIO,
+					},
+				],
+				source: "voice",
+			});
+		}
+	} catch (error) {
+		// error-policy:J4 voice is an optional enhancement of a streamed turn;
+		// a failed synthesis logs and the guarded text reply still delivers.
+		runtime.logger.error(
+			{ error },
+			"Error generating voice for first sentence",
+		);
+	}
+}
+
 export function wrapSingleTurnVisibleCallback(
-	runtime: Pick<IAgentRuntime, "agentId" | "logger"> &
+	// reportError is required: the fail-closed envelope guard inside `deliver`
+	// must be able to surface a blocked leak even from partial test runtimes.
+	runtime: Pick<IAgentRuntime, "agentId" | "logger" | "reportError"> &
 		Partial<Pick<IAgentRuntime, "character" | "useModel">> & {
 			getService?: IAgentRuntime["getService"];
 		},
@@ -9683,15 +9782,46 @@ export function wrapSingleTurnVisibleCallback(
 		// Shared post-model, pre-channel sanitization (#15888): every visible
 		// delivery — action callbacks, early replies, simple replies, terminal
 		// content — funnels through this wrap, so stripping leaked machine
-		// syntax here covers every connector without per-connector copies.
+		// syntax here covers every connector without per-connector copies. The
+		// envelope guard then fail-closed blocks any security-envelope echo the
+		// model produced, replacing it with the honest leak notice.
 		if (typeof response?.text === "string" && response.text.length > 0) {
-			const sanitized = sanitizeOutboundText(response.text);
-			if (sanitized !== response.text) {
+			const guarded = guardOutboundEnvelopeText(
+				fullRuntime,
+				sanitizeOutboundText(response.text),
+				"visible-callback",
+			);
+			if (guarded !== response.text) {
 				// Record the raw form too: planner-echo suppression compares the
 				// planner's unsanitized finalMessage against this set, and must
 				// still recognize a delivery whose wire text was sanitized.
 				rawUnsanitizedText = response.text.trim() ? response.text : undefined;
-				response = { ...response, text: sanitized };
+				response = { ...response, text: guarded };
+			}
+		}
+		// Attachments are a delivery surface the text guard never sees: both
+		// voice paths ship the spoken sentence as attachment.text under an empty
+		// top-level text, so envelope material must be blocked here too.
+		if (
+			Array.isArray(response.attachments) &&
+			response.attachments.length > 0
+		) {
+			const guardedAttachments = guardOutboundEnvelopeAttachments(
+				fullRuntime,
+				response.attachments,
+				"visible-callback-attachment",
+			);
+			if (guardedAttachments !== response.attachments) {
+				response = { ...response, attachments: guardedAttachments };
+				// When the blocked attachment was the whole payload there is
+				// nothing honest left to send — skip the delivery instead of
+				// handing connectors an empty message.
+				if (
+					guardedAttachments.length === 0 &&
+					!(typeof response.text === "string" && response.text.trim())
+				) {
+					return [];
+				}
 			}
 		}
 		response = enforceEffectGroundedVisibleContent(
@@ -10396,6 +10526,16 @@ export class DefaultMessageService implements IMessageService {
 				let firstSentenceSent = false;
 				let firstSentenceText = "";
 				let streamTextFallback = "";
+				// Envelope-echo latch for this turn's stream: once the accumulated
+				// text reads as envelope material, every downstream chunk consumer
+				// (model_stream_chunk hook re-emission, first-sentence TTS, the
+				// host's stream callback) is cut off. Chunks forwarded before the
+				// needle completed are already delivered — that residue is the
+				// documented open edge in security/outbound-envelope-guard.ts.
+				const streamCarriesEnvelope = createOutboundEnvelopeStreamLatch(
+					runtime,
+					"stream-chunk",
+				);
 				const userOnStreamChunk = options?.onStreamChunk;
 				const wrappedOnStreamChunk: StreamChunkCallback | undefined =
 					userOnStreamChunk
@@ -10417,6 +10557,10 @@ export class DefaultMessageService implements IMessageService {
 									streamText = streamTextFallback;
 								}
 
+								if (streamCarriesEnvelope(streamText)) {
+									return;
+								}
+
 								// Skip when this callback is invoked from `useModel`'s stream loop:
 								// `source: "use_model"` already ran for the same raw chunk (Node ALS).
 								if (getModelStreamChunkDeliveryDepth() === 0) {
@@ -10434,16 +10578,12 @@ export class DefaultMessageService implements IMessageService {
 									);
 								}
 
-								// First-sentence cloud-TTS path. The local-inference voice loop
-								// uses VoiceScheduler/PhraseChunker instead
-								// (packages/app-core/src/services/local-inference/voice/scheduler.ts) —
-								// this is not duplicated, it's the cloud-deployment counterpart
-								// (packages/core can't import packages/app-core; the two paths live
-								// at different layers and only one is active per deployment).
-								//
-								// Only run first-sentence TTS detection when `accumulated` is present.
-								// Raw-token streams (no accumulated) may contain partial
-								// structured output that would garble hasFirstSentence() and TTS.
+								// First-sentence cloud-TTS path (deliverFirstSentenceVoice —
+								// the local-inference voice loop is a separate layer, see its
+								// JSDoc). Only run detection when `accumulated` is present:
+								// raw-token streams (no accumulated) may contain partial
+								// structured output that would garble hasFirstSentence() and
+								// TTS.
 								if (
 									!firstSentenceSent &&
 									accumulated !== undefined &&
@@ -10453,90 +10593,14 @@ export class DefaultMessageService implements IMessageService {
 									if (first.length > 5) {
 										firstSentenceSent = true;
 										firstSentenceText = first;
-
-										(async () => {
-											try {
-												const voiceSettings = runtime.character.settings
-													?.voice as
-													| {
-															model?: string;
-															url?: string;
-															voiceId?: string;
-													  }
-													| undefined;
-
-												const model =
-													voiceSettings?.model || "en_US-male-medium";
-												const voiceId =
-													voiceSettings?.url ||
-													voiceSettings?.voiceId ||
-													"nova";
-
-												let audioBuffer: Buffer | null = null;
-												const params: TextToSpeechParams & {
-													model?: string;
-												} = {
-													text: first,
-													voice: voiceId,
-													model: model,
-													...(opts.abortSignal
-														? { signal: opts.abortSignal }
-														: {}),
-												};
-												const result = runtime.getModel(
-													ModelType.TEXT_TO_SPEECH,
-												)
-													? await runtime.useModel(
-															ModelType.TEXT_TO_SPEECH,
-															params,
-														)
-													: undefined;
-
-												if (
-													result instanceof ArrayBuffer ||
-													Object.prototype.toString.call(result) ===
-														"[object ArrayBuffer]"
-												) {
-													audioBuffer = Buffer.from(result as ArrayBuffer);
-												} else if (Buffer.isBuffer(result)) {
-													audioBuffer = result;
-												} else if (result instanceof Uint8Array) {
-													audioBuffer = Buffer.from(result);
-												}
-
-												if (audioBuffer && callback) {
-													const audioBase64 = audioBuffer.toString("base64");
-													await callback({
-														text: "",
-														attachments: [
-															{
-																id: v4(),
-																url: `data:audio/wav;base64,${audioBase64}`,
-																title: "Voice Response",
-																source: "voice-cache",
-																description:
-																	"Voice response for first sentence",
-																text: first,
-																contentType: ContentType.AUDIO,
-															},
-														],
-														source: "voice",
-													});
-												}
-											} catch (error) {
-												// error-policy:J4 Text already streams to the
-												// user when optional first-sentence TTS fails.
-												runtime.logger.error(
-													{ error },
-													"Error generating voice for first sentence",
-												);
-												runtime.reportError(
-													"MessageService.firstSentenceVoice",
-													error,
-													{ roomId: message.roomId },
-												);
-											}
-										})();
+										// Fire-and-forget on purpose: audio must not stall the
+										// text stream; failures log inside.
+										void deliverFirstSentenceVoice(
+											runtime,
+											first,
+											callback,
+											opts.abortSignal,
+										);
 									}
 								}
 
@@ -11689,35 +11753,12 @@ export class DefaultMessageService implements IMessageService {
 			// generating a response, the default behavior is to drop the older
 			// response so the bot only replies to the freshest input.
 			//
-			// Exceptions — keep the response when:
-			// 1. The planner picked an explicit REPLY/RESPOND action. That's a
-			//    deliberate conversational signal (often a direct @-mention) and
-			//    dropping it leaves the user looking at silence on a tagged
-			//    message, which the character contract treats as a bug.
-			// 2. The turn deterministically addressed the agent (DM, platform
-			//    mention/reply, autonomous, delivered early ack) even without an
-			//    explicit REPLY action. Action-mode turns finish without REPLY in
-			//    their actions list, so on a slow backend any addressed turn that
-			//    overlapped the next inbound message was silently dropped — and
-			//    connectors treat the resulting non-delivery as a deliberate
-			//    IGNORE, making the silence terminal and unobservable.
-			// Either way the newer message still gets its own turn through the
-			// normal pipeline, so each inbound message is answered at most once —
-			// keeping the older response never double-replies to either message.
+			// Keep only a deliverable response carrying the explicit REPLY/RESPOND
+			// marker. Action results opt into the user channel through userFacingText,
+			// and that path constructs the same explicit reply marker.
 			const currentResponseId = agentResponses.get(message.roomId);
 			if (currentResponseId !== responseId && !opts.keepExistingResponses) {
-				const addressedTurn = this.isDeterministicallyAddressedTurn({
-					runtime,
-					message,
-					room,
-					mentionContext,
-					isAutonomous,
-					hasDeliveredEarlyReply: earlyReplyMessages.length > 0,
-				});
-				const keepReason = resolveSupersededResponseKeepReason(
-					responseContent,
-					addressedTurn.addressed,
-				);
+				const keepReason = resolveSupersededResponseKeepReason(responseContent);
 				if (keepReason) {
 					runtime.logger.info(
 						{

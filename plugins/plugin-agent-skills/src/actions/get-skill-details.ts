@@ -12,7 +12,9 @@ import type {
 	Memory,
 	State,
 } from "@elizaos/core";
+import { unwrapUserMessageText } from "@elizaos/core";
 import type { AgentSkillsService } from "../services/skills";
+import { describeSkillReference } from "./parse-helpers";
 import { createAgentSkillsActionValidator } from "./validators";
 
 type GetSkillDetailsOptions = {
@@ -70,8 +72,9 @@ export const getSkillDetailsAction = {
 					: typeof opts?.slug === "string"
 						? opts.slug
 						: null;
-			const slug =
-				explicitSlug || extractSlugFromText(message.content.text || "");
+			// Parse the user's actual words, not the external-content security
+			// envelope hardenIncomingUserMessage wraps around untrusted messages.
+			const slug = explicitSlug || extractSlugFromText(unwrapUserMessageText(message));
 
 			if (!slug) {
 				return {
@@ -82,7 +85,9 @@ export const getSkillDetailsAction = {
 
 			const details = await service.getSkillDetails(slug);
 			if (!details) {
-				const text = `Skill "${slug}" not found in the registry.`;
+				// Display-clamped echo: only a name-shaped slug is quoted back,
+				// never a planner-supplied blob.
+				const text = `Skill ${describeSkillReference(slug, "matching that reference")} not found in the registry.`;
 				if (callback) await callback({ text });
 				return { success: false, error: new Error(text) };
 			}

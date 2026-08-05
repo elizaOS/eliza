@@ -17,6 +17,8 @@ import type {
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
+  appReferenceLogView,
+  describeAppReference,
   extractAppReference,
   findAppByReference,
   formatAppDetail,
@@ -33,7 +35,7 @@ const ERROR_MESSAGE =
   "I couldn't fetch that app's details right now — the Cloud API returned an error. Try again in a moment.";
 
 function notFoundMessage(reference: string, available: string[]): string {
-  const base = `I couldn't find an app matching "${reference}".`;
+  const base = `I couldn't find an app matching ${describeAppReference(reference)}.`;
   if (available.length === 0) {
     return `${base} You don't have any apps on Eliza Cloud yet.`;
   }
@@ -114,9 +116,12 @@ export const getAppAction: Action = {
         await callback?.({ text: msg, actions: ["GET_APP"] });
         return {
           success: false,
-          text: `No app matched "${reference}".`,
+          text: `No app matched "${appReferenceLogView(reference)}".`,
           userFacingText: msg,
-          data: { reason: "not_found", reference },
+          data: {
+            reason: "not_found",
+            reference: appReferenceLogView(reference),
+          },
         };
       }
 
@@ -131,7 +136,7 @@ export const getAppAction: Action = {
       };
     } catch (err) {
       logger.warn(
-        `[GET_APP] Failed to fetch app "${reference}": ${
+        `[GET_APP] Failed to fetch app "${appReferenceLogView(reference)}": ${
           err instanceof Error ? err.message : String(err)
         }`,
       );

@@ -18,6 +18,7 @@ import {
 import { ElizaError } from "../../errors";
 import { logger } from "../../logger";
 import { hasRoleAccess, isAgentSelf } from "../../roles";
+import { unwrapUserMessageText } from "../../security/incoming-message-security.ts";
 import type {
 	Action,
 	ActionExample,
@@ -31,6 +32,10 @@ import type {
 	State,
 	UUID,
 } from "../../types";
+import {
+	describeUserReference,
+	userReferenceLogView as queryLogView,
+} from "../../utils/reference-echo.ts";
 import { addDocumentFromFilePath } from "./docs-loader.ts";
 import {
 	type DocumentListResult,
@@ -46,6 +51,10 @@ import type {
 } from "./types.ts";
 import { fetchDocumentFromUrl, isYouTubeUrl } from "./url-ingest.ts";
 import { createDocumentNoteFilename, deriveDocumentTitle } from "./utils.ts";
+
+// Blob-safe rendering rationale lives in utils/reference-echo.ts.
+const describeQuery = (query: string): string =>
+	describeUserReference(query, "that search");
 
 type DocumentSubAction =
 	| "list"
@@ -234,7 +243,9 @@ function getDocumentId(
 	const candidate = (params.documentId ?? params.id)?.trim();
 	if (candidate && isUuid(candidate)) return candidate;
 
-	const match = (message.content.text ?? "").match(
+	// Extract from the user's actual words: on hardened connectors
+	// content.text is core's external-content security envelope.
+	const match = unwrapUserMessageText(message).match(
 		/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
 	);
 	return match?.[0] && isUuid(match[0]) ? match[0] : null;
@@ -450,7 +461,9 @@ function getFilePath(
 	if (typeof params.filePath === "string" && params.filePath.trim()) {
 		return params.filePath.trim();
 	}
-	return (message.content.text ?? "").match(DOCUMENT_PATH_PATTERN)?.[0] ?? null;
+	return (
+		unwrapUserMessageText(message).match(DOCUMENT_PATH_PATTERN)?.[0] ?? null
+	);
 }
 
 function getUrl(
@@ -460,7 +473,7 @@ function getUrl(
 	if (typeof params.url === "string" && params.url.trim()) {
 		return params.url.trim();
 	}
-	return (message.content.text ?? "").match(URL_PATTERN)?.[0] ?? null;
+	return unwrapUserMessageText(message).match(URL_PATTERN)?.[0] ?? null;
 }
 
 async function scopedAddOptions(
@@ -547,15 +560,15 @@ async function handleSearch(
 		.slice(0, limit);
 	const text =
 		visible.length === 0
-			? `I couldn't find any documents matching "${query}".`
-			: `Found ${visible.length} document fragment(s) for "${query}":\n\n${visible
+			? `I couldn't find any documents matching ${describeQuery(query)}.`
+			: `Found ${visible.length} document fragment(s) for ${describeQuery(query)}:\n\n${visible
 					.map((item, index) => `${index + 1}. ${item.content.text ?? ""}`)
 					.join("\n\n")}`;
 	// No visible callback: fragments are intermediate retrieval data for the
 	// planner to synthesize into the answer, not the answer itself.
 	return result(true, text, "search", {
-		values: { query, results: visible },
-		data: { query, results: visible },
+		values: { query: queryLogView(query), results: visible },
+		data: { query: queryLogView(query), results: visible },
 	});
 }
 
@@ -796,12 +809,12 @@ function formatDocumentListResult(result: DocumentListResult): string {
 			return "No documents matched the requested filters.";
 		case "query_miss":
 			if (result.availableDocuments.length === 0) {
-				return `No documents matched ${JSON.stringify(result.query)}. Available-document offset ${result.availableOffset} is past the ${result.totalAvailable} documents allowed by the requested filters.`;
+				return `No documents matched ${describeQuery(result.query ?? "")}. Available-document offset ${result.availableOffset} is past the ${result.totalAvailable} documents allowed by the requested filters.`;
 			}
-			return `No documents matched ${JSON.stringify(result.query)}. Showing available documents${result.availableOffset > 0 ? ` from offset ${result.availableOffset}` : ""} instead:\n${formatDocumentList(result.availableDocuments)}`;
+			return `No documents matched ${describeQuery(result.query ?? "")}. Showing available documents${result.availableOffset > 0 ? ` from offset ${result.availableOffset}` : ""} instead:\n${formatDocumentList(result.availableDocuments)}`;
 		case "page_exhausted": {
 			const matchDescription = result.query
-				? `documents matching ${JSON.stringify(result.query)}`
+				? `documents matching ${describeQuery(result.query)}`
 				: "available documents";
 			return `Offset ${result.offset} is past the ${result.totalMatched} ${matchDescription}.`;
 		}
@@ -858,7 +871,7 @@ async function handleList(
 		documents: listResult.documents,
 		availableDocuments: listResult.availableDocuments,
 		status: listResult.status,
-		...(listResult.query ? { query: listResult.query } : {}),
+		...(listResult.query ? { query: queryLogView(listResult.query) } : {}),
 		limit: listResult.limit,
 		offset: listResult.offset,
 		totalVisible: listResult.totalVisible,
@@ -925,9 +938,9 @@ async function handleImportFile(
 	);
 	if (filePath) {
 		if (!fs.existsSync(filePath)) {
-			const text = `No file exists at ${filePath}; tell the user it couldn't be found.`;
+			const text = `No file exists at ${describeUserReference(filePath, "that path")}; tell the user it couldn't be found.`;
 			return result(false, text, "import_file", {
-				values: { error: "not_found" },
+				values: { error: "not_found", filePath: queryLogView(filePath) },
 			});
 		}
 		const stored = await addDocumentFromFilePath({

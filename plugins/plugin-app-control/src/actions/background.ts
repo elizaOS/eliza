@@ -40,7 +40,11 @@ import type {
 	NavigateViewDetail,
 } from "@elizaos/shared/events";
 import { BACKGROUND_APPLY_EVENT } from "@elizaos/shared/events";
-import { normalizeActionOptions, readStringOption } from "../params.js";
+import {
+	normalizeActionOptions,
+	readStringOption,
+	userRequestMessageText,
+} from "../params.js";
 import { createViewsRequestHeaders } from "./views-request-auth.js";
 
 export type {
@@ -734,7 +738,9 @@ export function createBackgroundAction(
 		): Promise<boolean> => {
 			return (
 				inferBackgroundPlan(
-					message.content.text ?? "",
+					// Security-unwrapped user words — the envelope's warning contains
+					// verbs the plan inference would false-match.
+					userRequestMessageText(message),
 					message.content.attachments,
 				) !== null
 			);
@@ -749,7 +755,7 @@ export function createBackgroundAction(
 		): Promise<ActionResult> => {
 			const actionOptions = normalizeActionOptions(options);
 			const plan = inferBackgroundPlan(
-				message.content.text ?? "",
+				userRequestMessageText(message),
 				message.content.attachments,
 				actionOptions,
 			);

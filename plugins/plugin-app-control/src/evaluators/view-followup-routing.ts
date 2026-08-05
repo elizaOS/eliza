@@ -2,16 +2,16 @@
  * Response-handler evaluator that routes follow-up intent to focused view capabilities.
  */
 
-import {
-	getUserMessageText,
-	type ResponseHandlerEvaluator,
-	type ResponseHandlerEvaluatorContext,
-	type ViewCapability,
+import type {
+	ResponseHandlerEvaluator,
+	ResponseHandlerEvaluatorContext,
+	ViewCapability,
 } from "@elizaos/core";
 import {
 	createViewsClient,
 	type ViewSummary,
 } from "../actions/views-client.js";
+import { userRequestMessageText } from "../params.js";
 
 type CapabilityFamily = "create" | "delete" | "update";
 
@@ -123,7 +123,9 @@ function shouldConsiderViewFollowup(
 	if (context.messageHandler.processMessage === "STOP") return null;
 	if (!hasRegisteredViewsAction(context)) return null;
 
-	const tokens = tokenize(getUserMessageText(context.message));
+	// Security-unwrapped user words — the envelope's warning contains follow-up
+	// verbs ("change", "delete", …) the token families would false-match.
+	const tokens = tokenize(userRequestMessageText(context.message));
 	const family = requestFamily(tokens);
 	if (!family) return null;
 	if (!hasAny(tokens, REFERENCE_TOKENS)) return null;

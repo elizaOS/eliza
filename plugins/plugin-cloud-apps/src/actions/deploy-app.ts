@@ -28,6 +28,8 @@ import type {
 import { logger } from "@elizaos/core";
 import { recordAppDeployFact } from "../app-facts.js";
 import {
+  appReferenceLogView,
+  describeAppReference,
   extractAppReference,
   getCloudClient,
   resolveApp,
@@ -49,7 +51,7 @@ const ERROR_MESSAGE =
   "I couldn't start that deploy right now — the Cloud API returned an error. Try again in a moment.";
 
 function notFoundMessage(reference: string, available: string[]): string {
-  const base = `I couldn't find an app matching "${reference}".`;
+  const base = `I couldn't find an app matching ${describeAppReference(reference)}.`;
   if (available.length === 0) {
     return `${base} You don't have any apps on Eliza Cloud yet — ask me to create one first.`;
   }
@@ -87,10 +89,11 @@ async function reportLive(
 
 export const deployAppAction: Action = {
   name: "DEPLOY_APP",
-  similes: ["SHIP_APP", "GO_LIVE", "DEPLOY_CLOUD_APP", "LAUNCH_APP"],
+  similes: ["SHIP_APP", "GO_LIVE", "DEPLOY_CLOUD_APP"],
   description:
-    "Deploy an existing Eliza Cloud app and confirm it is live (waits for the build to finish and verifies the public URL responds). Use when the user asks to deploy, ship, launch, or go live with an app.",
-  descriptionCompressed: "Deploy a Cloud app and verify it is live.",
+    "Deploy an EXISTING Eliza Cloud app and confirm it is live (waits for the build to finish and verifies the public URL responds). Use only when the app already exists on Eliza Cloud and the user asks to deploy, ship, or go live with it. To build AND host something new — a web app/page/site the user wants a live link for — use APP action=create instead; this action cannot create anything.",
+  descriptionCompressed:
+    "Deploy an EXISTING Cloud app and verify it is live; building+hosting something new -> APP action=create.",
   contexts: ["settings", "finance", "apps"],
   contextGate: { anyOf: ["settings", "finance", "apps"] },
   suppressPostActionContinuation: true,
@@ -134,7 +137,7 @@ export const deployAppAction: Action = {
       ({ app, available } = await resolveApp(client, reference));
     } catch (err) {
       logger.warn(
-        `[DEPLOY_APP] Failed to resolve app "${reference}": ${
+        `[DEPLOY_APP] Failed to resolve app "${appReferenceLogView(reference)}": ${
           err instanceof Error ? err.message : String(err)
         }`,
       );
@@ -153,9 +156,12 @@ export const deployAppAction: Action = {
       await callback?.({ text: msg, actions: ["DEPLOY_APP"] });
       return {
         success: false,
-        text: `No app matched "${reference}".`,
+        text: `No app matched "${appReferenceLogView(reference)}".`,
         userFacingText: msg,
-        data: { reason: "not_found", reference },
+        data: {
+          reason: "not_found",
+          reference: appReferenceLogView(reference),
+        },
       };
     }
 

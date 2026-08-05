@@ -10,9 +10,10 @@ import type {
 	Provider,
 	ProviderResult,
 } from "@elizaos/core";
-import { getUserMessageText, logger } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import { createViewsClient } from "../actions/views-client.js";
 import { resolveIntentView } from "../actions/views-show.js";
+import { userRequestMessageText } from "../params.js";
 
 const EMPTY: ProviderResult = { text: "", values: {}, data: {} };
 
@@ -38,7 +39,8 @@ export const currentViewProvider: Provider = {
 		message: Memory,
 	): Promise<ProviderResult> => {
 		try {
-			const text = getUserMessageText(message);
+			// Security-unwrapped user words — never raw (possibly enveloped) text.
+			const text = userRequestMessageText(message);
 			// The early shortcut will force VIEWS for this exact phrase. Until that
 			// action completes, the renderer still reports the previous view, so the
 			// requested target must be the authoritative state for this turn.

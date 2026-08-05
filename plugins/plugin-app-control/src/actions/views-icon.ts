@@ -16,7 +16,12 @@ import type {
 	Memory,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { readStringOption } from "../params.js";
+import {
+	describeTargetReference,
+	readStringOption,
+	targetReferenceLogView,
+	userRequestMessageText,
+} from "../params.js";
 import type { ViewSummary } from "./views-client.js";
 import { resolveTargetView } from "./views-edit.js";
 import { writeViewHeroAsset } from "./views-hero.js";
@@ -75,7 +80,7 @@ export function extractIconTarget(
 		readStringOption(options, "target");
 	if (explicit) return explicit;
 
-	const text = message.content.text ?? "";
+	const text = userRequestMessageText(message);
 	const stripped = text
 		.replace(ICON_NOUNS, " ")
 		.replace(ICON_VERBS, " ")
@@ -131,15 +136,19 @@ export async function runViewsIcon({
 
 	const resolution = resolveTargetView(target, views);
 	if (resolution.kind === "none") {
-		const text = `No view matches "${target}". Try \`action=list\` to see available views.`;
+		const text = `No view matches ${describeTargetReference(target)}. Try \`action=list\` to see available views.`;
 		await callback?.({ text });
-		return { success: false, text, data: { target } };
+		return {
+			success: false,
+			text,
+			data: { target: targetReferenceLogView(target) },
+		};
 	}
 	if (resolution.kind === "ambiguous") {
 		const list = resolution.candidates
 			.map((view) => `- ${view.label} (${view.id})`)
 			.join("\n");
-		const text = `"${target}" matches multiple views:\n${list}\nWhich one's icon should I regenerate?`;
+		const text = `${describeTargetReference(target)} matches multiple views:\n${list}\nWhich one's icon should I regenerate?`;
 		await callback?.({ text });
 		return {
 			success: false,

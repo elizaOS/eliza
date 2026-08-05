@@ -14,8 +14,13 @@ import type {
 	Memory,
 	State,
 } from "@elizaos/core";
+import { unwrapUserMessageText } from "@elizaos/core";
 import type { AgentSkillsService } from "../services/skills";
-import { detectEnableIntent, extractSlugFromMessage } from "./parse-helpers";
+import {
+	describeSkillReference,
+	detectEnableIntent,
+	extractSlugFromMessage,
+} from "./parse-helpers";
 import { createAgentSkillsActionValidator } from "./validators";
 
 type ToggleSkillOptions = {
@@ -92,7 +97,9 @@ export const toggleSkillAction = {
 			return { success: false, error: new Error(errorText) };
 		}
 
-		const text = message.content.text || "";
+		// Parse the user's actual words, not the external-content security
+		// envelope hardenIncomingUserMessage wraps around untrusted messages.
+		const text = unwrapUserMessageText(message);
 		const opts = options as ToggleSkillOptions | undefined;
 		const explicitSlug = optionString(opts, "slug");
 		const explicitEnable = optionBoolean(opts, "enabled");
@@ -109,9 +116,10 @@ export const toggleSkillAction = {
 		}
 
 		if (enable === null) {
+			// Display-clamp the echo — the slug may be a planner-supplied blob.
 			const errorText =
 				"I couldn't determine whether to enable or disable the skill. " +
-				`Please say "enable ${slug}" or "disable ${slug}".`;
+				`Please say "enable" or "disable" for ${describeSkillReference(slug)}.`;
 			if (callback) await callback({ text: errorText });
 			return { success: false, error: new Error(errorText) };
 		}
@@ -132,7 +140,7 @@ export const toggleSkillAction = {
 				.slice(0, 10)
 				.map((s) => s.slug)
 				.join(", ");
-			const errorText = `Skill "${slug}" not found. Available skills: ${available}`;
+			const errorText = `Skill ${describeSkillReference(slug, "matching that reference")} not found. Available skills: ${available}`;
 			if (callback) await callback({ text: errorText });
 			return { success: false, error: new Error(errorText) };
 		}

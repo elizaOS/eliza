@@ -19,8 +19,10 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, unwrapUserMessageText } from "@elizaos/core";
 import {
+  appReferenceLogView,
+  describeAppReference,
   extractAppReference,
   getCloudClient,
   resolveApp,
@@ -237,7 +239,7 @@ function describeChange(patch: UpdateAppInput, updated: AppDto): string[] {
 }
 
 function notFoundMessage(reference: string, available: string[]): string {
-  const base = `I couldn't find an app matching "${reference}".`;
+  const base = `I couldn't find an app matching ${describeAppReference(reference)}.`;
   if (available.length === 0) {
     return `${base} You don't have any apps on Eliza Cloud yet.`;
   }
@@ -276,7 +278,10 @@ export const updateAppAction: Action = {
       };
     }
 
-    const intent = parseUpdateAppIntent(message.content?.text ?? "", options);
+    const intent = parseUpdateAppIntent(
+      unwrapUserMessageText(message),
+      options,
+    );
     const reference = intent.reference ?? extractAppReference(message, options);
     if (!reference) {
       await callback?.({ text: NO_REFERENCE_MESSAGE, actions: ["UPDATE_APP"] });
@@ -321,7 +326,7 @@ export const updateAppAction: Action = {
       ({ app, available } = await resolveApp(client, reference));
     } catch (err) {
       logger.warn(
-        `[UPDATE_APP] Failed to resolve app "${reference}": ${
+        `[UPDATE_APP] Failed to resolve app "${appReferenceLogView(reference)}": ${
           err instanceof Error ? err.message : String(err)
         }`,
       );
@@ -340,9 +345,12 @@ export const updateAppAction: Action = {
       await callback?.({ text: msg, actions: ["UPDATE_APP"] });
       return {
         success: false,
-        text: `No app matched "${reference}".`,
+        text: `No app matched "${appReferenceLogView(reference)}".`,
         userFacingText: msg,
-        data: { reason: "not_found", reference },
+        data: {
+          reason: "not_found",
+          reference: appReferenceLogView(reference),
+        },
       };
     }
 

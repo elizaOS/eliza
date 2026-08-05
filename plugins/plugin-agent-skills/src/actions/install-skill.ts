@@ -14,8 +14,9 @@ import type {
 	Memory,
 	State,
 } from "@elizaos/core";
+import { unwrapUserMessageText } from "@elizaos/core";
 import type { AgentSkillsService } from "../services/skills";
-import { extractSlugFromMessage } from "./parse-helpers";
+import { describeSkillReference, extractSlugFromMessage } from "./parse-helpers";
 import { createAgentSkillsActionValidator } from "./validators";
 
 const SKILL_SEARCH_LIMIT = 5;
@@ -69,7 +70,9 @@ export const installSkillAction = {
 			return { success: false, error: new Error(errorText) };
 		}
 
-		const text = message.content.text || "";
+		// Parse the user's actual words, not the external-content security
+		// envelope hardenIncomingUserMessage wraps around untrusted messages.
+		const text = unwrapUserMessageText(message);
 		const slug = extractSlugFromMessage(text);
 
 		if (!slug) {
@@ -95,10 +98,11 @@ export const installSkillAction = {
 			};
 		}
 
-		// Try to find the skill in the registry first
+		// Try to find the skill in the registry first. Echoes are display-clamped:
+		// only a name-shaped slug is quoted back, never an arbitrary blob.
 		if (callback) {
 			await callback({
-				text: `Searching for "${slug}" in the skill registry...`,
+				text: `Searching for ${describeSkillReference(slug)} in the skill registry...`,
 			});
 		}
 
@@ -111,7 +115,7 @@ export const installSkillAction = {
 			) ?? searchResults[0];
 
 		if (!bestMatch) {
-			const errorText = `No skill matching "${slug}" found in the registry.`;
+			const errorText = `No skill matching ${describeSkillReference(slug)} found in the registry.`;
 			if (callback) await callback({ text: errorText });
 			return { success: false, error: new Error(errorText) };
 		}

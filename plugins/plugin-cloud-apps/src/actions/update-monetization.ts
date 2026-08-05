@@ -23,8 +23,10 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, unwrapUserMessageText } from "@elizaos/core";
 import {
+  appReferenceLogView,
+  describeAppReference,
   extractAppReference,
   getCloudClient,
   resolveApp,
@@ -218,7 +220,7 @@ function settingsHaveFields(settings: UpdateAppMonetizationInput): boolean {
 }
 
 function notFoundMessage(reference: string, available: string[]): string {
-  const base = `I couldn't find an app matching "${reference}".`;
+  const base = `I couldn't find an app matching ${describeAppReference(reference)}.`;
   if (available.length === 0) {
     return `${base} You don't have any apps on Eliza Cloud yet.`;
   }
@@ -292,7 +294,7 @@ export const updateMonetizationAction: Action = {
     }
 
     const intent = parseMonetizationIntent(
-      message.content?.text ?? "",
+      unwrapUserMessageText(message),
       options,
     );
 
@@ -342,7 +344,7 @@ export const updateMonetizationAction: Action = {
       ({ app, available } = await resolveApp(client, reference));
     } catch (err) {
       logger.warn(
-        `[UPDATE_MONETIZATION] Failed to resolve app "${reference}": ${
+        `[UPDATE_MONETIZATION] Failed to resolve app "${appReferenceLogView(reference)}": ${
           err instanceof Error ? err.message : String(err)
         }`,
       );
@@ -364,9 +366,12 @@ export const updateMonetizationAction: Action = {
       await callback?.({ text: msg, actions: ["UPDATE_MONETIZATION"] });
       return {
         success: false,
-        text: `No app matched "${reference}".`,
+        text: `No app matched "${appReferenceLogView(reference)}".`,
         userFacingText: msg,
-        data: { reason: "not_found", reference },
+        data: {
+          reason: "not_found",
+          reference: appReferenceLogView(reference),
+        },
       };
     }
 

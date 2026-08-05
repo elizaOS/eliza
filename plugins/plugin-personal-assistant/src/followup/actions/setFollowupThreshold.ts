@@ -10,11 +10,20 @@ import type {
   IAgentRuntime,
   UUID,
 } from "@elizaos/core";
-import { asUUID, logger } from "@elizaos/core";
+import {
+  asUUID,
+  describeUserReference,
+  logger,
+  userReferenceLogView,
+} from "@elizaos/core";
 import {
   type ContactInfo,
   getRelationshipsServiceLike,
 } from "../followup-tracker.js";
+
+// Blob-safe rendering rationale lives in core's utils/reference-echo.ts.
+const describeContactName = (name: string): string =>
+  describeUserReference(name, "that contact");
 
 interface SetFollowupThresholdParams {
   contactId?: unknown;
@@ -122,7 +131,8 @@ export const setFollowupThresholdAction: Action = {
       if (matches.length === 0) {
         return {
           success: false,
-          text: `No contact found matching "${contactName}".`,
+          text: `No contact found matching ${describeContactName(contactName)}.`,
+          data: { contactName: userReferenceLogView(contactName) },
         };
       }
       if (matches.length > 1) {
@@ -131,9 +141,10 @@ export const setFollowupThresholdAction: Action = {
           .join(", ");
         return {
           success: false,
-          text: `Ambiguous contact name "${contactName}" — matches ${matches.length} contacts: ${candidateNames}. Please specify contactId.`,
+          text: `Ambiguous contact name ${describeContactName(contactName)} — matches ${matches.length} contacts: ${candidateNames}. Please specify contactId.`,
           data: {
             ambiguous: true,
+            contactName: userReferenceLogView(contactName),
             candidates: matches.map((m) => ({
               entityId: String(m.contact.entityId),
               displayName: m.displayName,
@@ -145,7 +156,8 @@ export const setFollowupThresholdAction: Action = {
       if (!match) {
         return {
           success: false,
-          text: `No contact found matching "${contactName}".`,
+          text: `No contact found matching ${describeContactName(contactName)}.`,
+          data: { contactName: userReferenceLogView(contactName) },
         };
       }
       resolvedContact = match.contact;

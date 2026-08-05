@@ -19,6 +19,7 @@ import {
 	type SubactionsMap,
 } from "../../../actions/resolve-action-args.ts";
 import { logger } from "../../../logger.ts";
+import { unwrapUserMessageText } from "../../../security/incoming-message-security.ts";
 import type {
 	Action,
 	ActionParameters,
@@ -438,7 +439,10 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 		params: PluginActionParams,
 	): Promise<ActionResult> => {
 		logger.info(`[plugin-manager] MANAGE_PLUGINS mode=${subaction}`);
-		const text = message.content.text ?? "";
+		// On hardened connectors content.text is the whole external-content
+		// security envelope; unwrap so the search-query fallback is the user's
+		// actual words, not ~2KB of armor echoed back to chat.
+		const text = unwrapUserMessageText(message);
 		const name = params.name;
 
 		switch (subaction) {
@@ -580,7 +584,9 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 			options?: ActionOptions,
 		): Promise<boolean> => {
 			if (!(await canManagePlugins(runtime, message))) return false;
-			const text = message.content.text ?? "";
+			// Unwrapped so a hardened message's "new"/"edit-N" choice reply still
+			// matches (the raw text would be the whole security envelope).
+			const text = unwrapUserMessageText(message);
 			const hasStructuredMode = Boolean(
 				readStringOption(options, "action") ||
 					readStringOption(options, "subaction") ||
@@ -628,7 +634,10 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 				};
 			}
 
-			const text = message.content.text ?? "";
+			// User's words, not the external-content envelope: this text seeds the
+			// resolver's name/query extraction and the search-query fallback, both
+			// of which can be echoed back to the user.
+			const text = unwrapUserMessageText(message);
 
 			if (isPluginCreateChoiceReply(text)) {
 				const roomId =

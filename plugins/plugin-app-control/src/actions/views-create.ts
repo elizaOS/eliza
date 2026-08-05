@@ -15,7 +15,11 @@ import type {
 	Memory,
 } from "@elizaos/core";
 import { logger, ModelType, spawnWithTrajectoryLink } from "@elizaos/core";
-import { readStringOption } from "../params.js";
+import {
+	describeTargetReference,
+	readStringOption,
+	userRequestMessageText,
+} from "../params.js";
 import {
 	findAsyncCodingDelegationActionName,
 	preflightCodingDispatch,
@@ -884,7 +888,7 @@ export async function runViewsCreate({
 
 	const roomId =
 		typeof message.roomId === "string" ? message.roomId : runtime.agentId;
-	const userText = (message.content.text ?? "").trim();
+	const userText = userRequestMessageText(message).trim();
 	const explicitChoice = readStringOption(options, "choice");
 	const explicitEditTarget = readStringOption(options, "editTarget");
 	const explicitIntent = readStringOption(options, "intent");
@@ -970,7 +974,7 @@ export async function runViewsCreate({
 				v.pluginName === explicitEditTarget,
 		);
 		if (!target) {
-			const text = `Cannot find an installed view named "${explicitEditTarget}".`;
+			const text = `Cannot find an installed view matching ${describeTargetReference(explicitEditTarget)}.`;
 			await callback?.({ text });
 			return { success: false, text };
 		}

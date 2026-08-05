@@ -25,6 +25,7 @@ import {
 	recordOwnerGrant,
 } from "../../roles.ts";
 import { TURN_CONTROL_ROUTES } from "../../runtime/turn-routes";
+import { containsExternalEnvelopeMaterial } from "../../security/external-content.ts";
 import { SensitiveRequestDispatchRegistryService } from "../../sensitive-requests/dispatch-registry.ts";
 import {
 	bridgeActionCompletedToStreams,
@@ -1026,6 +1027,24 @@ const events: PluginEvents = {
 				},
 				"Message sent",
 			);
+			// Secondary observability behind the fail-closed pre-send guard
+			// (security/outbound-envelope-guard): every core delivery seam
+			// blocks envelope material before it ships, so a hit here means a
+			// delivery path bypassed those seams entirely — report it, the
+			// message already left.
+			const sentText =
+				typeof payload.message.content.text === "string"
+					? payload.message.content.text
+					: "";
+			if (sentText && containsExternalEnvelopeMaterial(sentText)) {
+				payload.runtime.reportError(
+					"outbound-envelope-tripwire",
+					new Error(
+						"outbound message contains external-content envelope markers",
+					),
+					{ preview: sentText.slice(0, 120) },
+				);
+			}
 		},
 	],
 

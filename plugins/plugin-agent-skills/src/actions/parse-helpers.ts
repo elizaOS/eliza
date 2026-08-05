@@ -20,8 +20,12 @@ const ACTION_VERBS =
  * @returns The extracted slug, or null if nothing usable remains.
  */
 export function extractSlugFromMessage(text: string): string | null {
-	// Prefer quoted strings — explicit and unambiguous
-	const quotedMatch = text.match(/["']([^"']+)["']/);
+	// Prefer quoted strings — explicit and unambiguous. The capture is bounded
+	// to one line and 64 chars: an unbounded [^"']+ crossed newlines, so a
+	// single quote char in a large message (the external-content security
+	// envelope's warning text contains an apostrophe) captured a giant span
+	// that actions then echoed back to chat (tj-2dc95f75456876).
+	const quotedMatch = text.match(/["']([^"'\r\n]{1,64})["']/);
 	if (quotedMatch) return quotedMatch[1].trim();
 
 	// Strip filler and action words, collapse whitespace
@@ -34,6 +38,32 @@ export function extractSlugFromMessage(text: string): string | null {
 
 	if (cleaned.length > 0 && cleaned.length < 100) return cleaned;
 	return null;
+}
+
+/**
+ * User-facing echo of a skill reference. Only name-shaped values (single line,
+ * <=64 chars) are quoted back verbatim; anything else — a planner-supplied
+ * blob, the external-content security envelope — renders as the neutral
+ * fallback so an oversized or hostile reference never ships to chat.
+ */
+export function describeSkillReference(
+	reference: string,
+	fallback = "that skill",
+): string {
+	const trimmed = reference.trim();
+	const nameShaped =
+		trimmed.length > 0 && trimmed.length <= 64 && !/[\r\n]/.test(trimmed);
+	return nameShaped ? `"${trimmed}"` : fallback;
+}
+
+/**
+ * Log/machine-facing render of a skill reference. A blob must still never
+ * travel whole — a weak planner echoes tool text verbatim and a multi-KB blob
+ * bloats context — so collapse whitespace to one line and clamp to 120 chars.
+ */
+export function skillReferenceLogView(reference: string): string {
+	const collapsed = reference.replace(/\s+/g, " ").trim();
+	return collapsed.length > 120 ? `${collapsed.slice(0, 120)}…` : collapsed;
 }
 
 /**

@@ -16,6 +16,7 @@ import type {
 	Memory,
 	State,
 } from "@elizaos/core";
+import { unwrapUserMessageText } from "@elizaos/core";
 import { getSkillDetailsAction } from "./get-skill-details";
 import { installSkillAction } from "./install-skill";
 import { searchSkillsAction } from "./search-skills";
@@ -122,7 +123,9 @@ function selectRoute(
 		const route = ROUTES.find((candidate) => candidate.op === requested);
 		if (route) return route;
 	}
-	const text = typeof message.content.text === "string" ? message.content.text : "";
+	// Route on the user's actual words, not the external-content security
+	// envelope hardenIncomingUserMessage wraps around untrusted messages.
+	const text = unwrapUserMessageText(message);
 	return ROUTES.find((route) => route.match.test(text)) ?? null;
 }
 

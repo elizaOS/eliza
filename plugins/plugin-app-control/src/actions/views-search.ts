@@ -18,6 +18,7 @@
 
 import type { ActionResult, HandlerCallback, ViewType } from "@elizaos/core";
 import { resolveServerOnlyPort } from "@elizaos/core";
+import { describeTargetReference, targetReferenceLogView } from "../params.js";
 import {
 	parseViewSummary,
 	type ViewSummary,
@@ -57,10 +58,14 @@ function formatSearchResults(
 	results: readonly ScoredView[],
 	query: string,
 ): string {
+	// The query can be the whole-message fallback or an arbitrary planner blob;
+	// only a name-shaped value renders quoted (else the neutral noun) so the
+	// header never re-broadcasts a security envelope into chat.
+	const shownQuery = describeTargetReference(query, "your search");
 	if (results.length === 0) {
-		return `No views found matching "${query}".`;
+		return `No views found matching ${shownQuery}.`;
 	}
-	const lines: string[] = [`Views matching "${query}" (${results.length}):`];
+	const lines: string[] = [`Views matching ${shownQuery} (${results.length}):`];
 	for (const { view, score } of results) {
 		const pathStr = view.path ? ` — ${view.path}` : "";
 		const desc = view.description ? ` — ${view.description}` : "";
@@ -146,7 +151,9 @@ export async function runViewsSearch({
 			text,
 			values: {
 				mode: "search",
-				query,
+				// Machine-facing echo of the query stays length-bounded: a weak
+				// planner repeats tool values verbatim and blobs bloat context.
+				query: targetReferenceLogView(query),
 				viewType: viewType ?? "gui",
 				resultCount: semanticResults.length,
 			},
@@ -168,7 +175,9 @@ export async function runViewsSearch({
 		text,
 		values: {
 			mode: "search",
-			query,
+			// Machine-facing echo of the query stays length-bounded: a weak
+			// planner repeats tool values verbatim and blobs bloat context.
+			query: targetReferenceLogView(query),
 			viewType: viewType ?? "gui",
 			resultCount: scored.length,
 		},

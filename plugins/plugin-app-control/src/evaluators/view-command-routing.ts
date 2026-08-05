@@ -2,8 +2,9 @@
  * Pre-LLM view-command routing helper for explicit navigation utterances.
  */
 
-import { getUserMessageText, type Memory } from "@elizaos/core";
+import type { Memory } from "@elizaos/core";
 import { matchViewCommand } from "../actions/view-command-matcher.js";
+import { userRequestMessageText } from "../params.js";
 
 export const VIEWS_ACTION_NAME = "VIEWS";
 
@@ -13,7 +14,9 @@ type ViewCommandRoutingContext = {
 };
 
 function messageText(context: ViewCommandRoutingContext): string {
-	return context.message ? getUserMessageText(context.message) : "";
+	// Security-unwrapped user words — the envelope's warning text must never
+	// feed the navigation-command matcher.
+	return userRequestMessageText(context.message as Memory | undefined);
 }
 
 function hasRegisteredViewsAction(context: ViewCommandRoutingContext): boolean {

@@ -20,7 +20,12 @@ import {
 	type AppControlClient,
 	createAppControlClient,
 } from "../client/api.js";
-import { readOptionalRefOption, readStringOption } from "../params.js";
+import {
+	describeTargetReference,
+	readOptionalRefOption,
+	readStringOption,
+	userRequestMessageText,
+} from "../params.js";
 import type { InstalledAppInfo } from "../types.js";
 import {
 	findAsyncCodingDelegationActionName,
@@ -954,7 +959,7 @@ export async function runCreate({
 }: AppCreateInput): Promise<ActionResult> {
 	const roomId =
 		typeof message.roomId === "string" ? message.roomId : runtime.agentId;
-	const userText = (message.content.text ?? "").trim();
+	const userText = userRequestMessageText(message).trim();
 	const explicitChoice = readStringOption(options, "choice");
 	const explicitEditTarget = readOptionalRefOption(options, "editTarget");
 	const explicitIntent = readStringOption(options, "intent");
@@ -1060,7 +1065,7 @@ export async function runCreate({
 				a.pluginName === explicitEditTarget,
 		);
 		if (!target) {
-			const text = `Cannot find an installed app named "${explicitEditTarget}".`;
+			const text = `Cannot find an installed app matching ${describeTargetReference(explicitEditTarget, "that app")}.`;
 			await callback?.({ text });
 			return { success: false, text };
 		}

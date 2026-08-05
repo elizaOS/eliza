@@ -3,11 +3,9 @@
  * explicit navigation request in the current turn. Completed switches never
  * leak acknowledgement instructions into a later, unrelated message.
  */
-import {
-	getUserMessageText,
-	type PipelineHookContextForPhase,
-} from "@elizaos/core";
+import type { PipelineHookContextForPhase } from "@elizaos/core";
 import { resolveIntentView } from "../actions/views-show.js";
+import { userRequestMessageText } from "../params.js";
 
 export const CURRENT_VIEW_HOOK_ID = "app-control:current-view-on-switch";
 
@@ -26,7 +24,9 @@ export function applyCurrentViewComposeHook(
 ): void {
 	if (!ctx.onlyInclude) return;
 	if (ctx.providers.current.includes("current_view")) return;
-	const text = getUserMessageText(ctx.message);
+	// Security-unwrapped user words — the envelope must never look like an
+	// imminent view-switch command.
+	const text = userRequestMessageText(ctx.message);
 	const imminent = resolveIntentView(text) != null;
 	if (imminent) {
 		ctx.providers.current = [...ctx.providers.current, "current_view"];

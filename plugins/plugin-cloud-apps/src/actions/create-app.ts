@@ -28,7 +28,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, unwrapUserMessageText } from "@elizaos/core";
 import { getCloudClient, resolveCloudApiKey } from "../client.js";
 import { invalidateAppsCache } from "../providers/cloud-apps.js";
 
@@ -252,7 +252,10 @@ export const createAppAction: Action = {
       };
     }
 
-    const intent = parseCreateAppIntent(message.content?.text ?? "", options);
+    const intent = parseCreateAppIntent(
+      unwrapUserMessageText(message),
+      options,
+    );
     if (!intent.name) {
       await callback?.({ text: NO_NAME_MESSAGE, actions: ["CREATE_APP"] });
       return {

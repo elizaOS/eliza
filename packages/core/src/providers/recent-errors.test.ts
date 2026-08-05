@@ -149,6 +149,7 @@ describe("RECENT_ERRORS provider", () => {
 		expect(surfaced[0].code).toBe("WALLET_RPC_DOWN");
 		expect(result.text).not.toContain("TASK_TICK_FAILED");
 	});
+
 	it("frames the block as internal diagnostics that never absorb user questions", async () => {
 		// A live "available_apps provider timeout" rendered without this framing
 		// got answered as if it were the user's question (tj-f8249b30e986d6).

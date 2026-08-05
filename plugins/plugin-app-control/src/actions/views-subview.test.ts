@@ -24,7 +24,11 @@ const coreMock = vi.hoisted(() => ({
 
 vi.mock("@elizaos/core", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@elizaos/core")>();
-	return { ...coreMock, getUserMessageText: actual.getUserMessageText };
+	return {
+		...coreMock,
+		getUserMessageText: actual.getUserMessageText,
+		unwrapUserMessageText: actual.unwrapUserMessageText,
+	};
 });
 
 const REGISTRY: ViewSummary[] = [

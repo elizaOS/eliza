@@ -14,7 +14,12 @@ import type {
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type { AppControlClient } from "../client/api.js";
-import { extractLaunchTarget, readStringOption } from "../params.js";
+import {
+	describeTargetReference,
+	extractLaunchTarget,
+	readStringOption,
+	targetReferenceLogView,
+} from "../params.js";
 import { formatAppCandidates, resolveInstalledApp } from "../resolve.js";
 
 interface AppVerificationLike {
@@ -68,13 +73,13 @@ export async function runRelaunch({
 		const resolution = resolveInstalledApp(target, installed);
 		if (resolution.kind === "ambiguous") {
 			const candidates = resolution.candidates ?? [];
-			const text = `"${target}" matches multiple apps:\n${formatAppCandidates(
+			const text = `${describeTargetReference(target, "that app")} matches multiple apps:\n${formatAppCandidates(
 				candidates,
 			)}\nPlease specify which one.`;
 			await callback?.({ text });
 			return {
 				success: true,
-				text: `"${target}" matched multiple installed apps; asked the user which one to relaunch`,
+				text: `"${targetReferenceLogView(target)}" matched multiple installed apps; asked the user which one to relaunch`,
 				userFacingText: text,
 				verifiedUserFacing: true,
 				turnComplete: true,

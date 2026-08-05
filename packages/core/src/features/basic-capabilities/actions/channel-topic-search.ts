@@ -7,6 +7,7 @@
  * `/api/channel-topics/search` route registered by the basic-capabilities plugin.
  */
 
+import { unwrapUserMessageText } from "../../../security/incoming-message-security.ts";
 import type { TopicSearchHit } from "../../../services/channel-topics.ts";
 import type {
 	Action,
@@ -15,6 +16,10 @@ import type {
 	Memory,
 	State,
 } from "../../../types/index.ts";
+import {
+	describeUserReference,
+	userReferenceLogView as queryLogView,
+} from "../../../utils/reference-echo.ts";
 
 interface TopicSearchService {
 	searchTopics(query: string, limit?: number): TopicSearchHit[];
@@ -29,15 +34,23 @@ function getTopicsService(
 	return svc && typeof svc.searchTopics === "function" ? svc : undefined;
 }
 
-/** Pull the search query from explicit params, else the message text. */
+/**
+ * Pull the search query from explicit params, else the message text — unwrapped,
+ * because on hardened connectors content.text is core's external-content
+ * security envelope, not the user's words.
+ */
 function resolveQuery(
 	message: Memory,
 	options?: { parameters?: Record<string, unknown> },
 ): string {
 	const param = options?.parameters?.query;
 	if (typeof param === "string" && param.trim()) return param.trim();
-	return (message.content?.text ?? "").trim();
+	return unwrapUserMessageText(message);
 }
+
+// Blob-safe rendering rationale lives in utils/reference-echo.ts.
+const describeQuery = (query: string): string =>
+	describeUserReference(query, "that topic");
 
 export const channelTopicSearchAction: Action = {
 	name: "SEARCH_CHANNEL_TOPICS",
@@ -81,15 +94,19 @@ export const channelTopicSearchAction: Action = {
 		const hits = svc.searchTopics(query, 10);
 		const text =
 			hits.length === 0
-				? `No channels found discussing "${query}".`
-				: `Channels discussing "${query}":\n${hits
+				? `No channels found discussing ${describeQuery(query)}.`
+				: `Channels discussing ${describeQuery(query)}:\n${hits
 						.map((h) => `- ${h.roomId}: ${h.matchedTopics.join(", ")}`)
 						.join("\n")}`;
 		return {
 			success: true,
 			text,
 			values: { success: true, matchCount: hits.length },
-			data: { actionName: "SEARCH_CHANNEL_TOPICS", query, hits },
+			data: {
+				actionName: "SEARCH_CHANNEL_TOPICS",
+				query: queryLogView(query),
+				hits,
+			},
 		};
 	},
 	examples: [],

@@ -13,6 +13,7 @@
 import type { AppDto } from "@elizaos/cloud-sdk";
 import { ElizaCloudClient } from "@elizaos/cloud-sdk";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
+import { unwrapUserMessageText } from "@elizaos/core";
 
 /** Default Eliza Cloud API base URL (matches the cloud runtime default). */
 export const DEFAULT_CLOUD_API_BASE_URL = "https://elizacloud.ai/api/v1";
@@ -350,8 +351,13 @@ export function plannerOptionSources(
 /**
  * Pull an app reference from planner-supplied options (nested
  * `options.parameters` first — the real planner path — then top-level) or,
- * failing that, the raw message text. Mirrors the read-core's
- * `resolveReference` so the mutating actions resolve apps identically.
+ * failing that, the security-unwrapped message text. Mirrors the read-core's
+ * `resolveReference` so the mutating actions resolve apps identically. The
+ * text fallback MUST be the canonical unwrapped payload, never raw
+ * `content.text`: on hardened connectors the raw text is the external-content
+ * envelope, and matching on it selected apps by words from the injected
+ * security WARNING ("External Content", "Security", …) instead of anything
+ * the user said.
  */
 export function extractAppReference(
   message: Memory,
@@ -365,7 +371,40 @@ export function extractAppReference(
       }
     }
   }
-  return (message.content?.text ?? "").trim();
+  return unwrapUserMessageText(message);
+}
+
+/**
+ * Render a reference for user-facing chat text. {@link extractAppReference}
+ * falls back to the raw message text, and on hardened connectors that text is
+ * the entire rendered prompt — including core's `<<<EXTERNAL_UNTRUSTED_CONTENT>>>`
+ * security envelope — so quoting it back into chat re-broadcasts ~2KB of
+ * untrusted scaffolding to the user (live leak 2026-08-02, tj-2dc95f75456876).
+ * This is a shape property, not content sniffing: planner-supplied references
+ * and real app names are short single-line strings, a rendered prompt never is.
+ * A name-shaped reference (non-empty, single line, ≤64 chars) renders quoted;
+ * anything else renders as the neutral `fallback` noun ("that app").
+ */
+export function describeAppReference(
+  reference: string,
+  fallback = "that app",
+): string {
+  const trimmed = reference.trim();
+  const nameShaped =
+    trimmed.length > 0 && trimmed.length <= 64 && !/[\r\n]/.test(trimmed);
+  return nameShaped ? `"${trimmed}"` : fallback;
+}
+
+/**
+ * Render a reference for logs and machine-facing action text/data, where the
+ * actual query matters. A blob-shaped fallback reference (see
+ * {@link describeAppReference}) must still never travel whole: a weak planner
+ * echoes tool text verbatim, and a multi-KB blob bloats context — so collapse
+ * whitespace to one line and clamp to 120 chars with a trailing ellipsis.
+ */
+export function appReferenceLogView(reference: string): string {
+  const collapsed = reference.replace(/\s+/g, " ").trim();
+  return collapsed.length > 120 ? `${collapsed.slice(0, 120)}…` : collapsed;
 }
 
 export interface ResolvedApp {
