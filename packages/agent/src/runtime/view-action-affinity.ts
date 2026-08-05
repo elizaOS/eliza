@@ -184,13 +184,11 @@ export function viewScopedNamedActions(
 }
 
 /**
- * Validate view action affinity against the runtime's registered actions, mirroring
- * validateIntentActionMap. Missing names are reported as ONE aggregated warn
- * line per boot (grouped by view) so drift is caught at startup without a
- * per-action warn flood: most view-related actions belong to optional
- * plugins (wallet, polymarket, hyperliquid, …) and a deployment that doesn't
- * load them would otherwise emit dozens of boot warnings that bury real ones.
- * Per-action detail is still available at debug level.
+ * Validate view action affinity against the runtime's registered actions,
+ * mirroring validateIntentActionMap. A view may declare alternative actions
+ * supplied by optional plugins, so partial misses remain debug diagnostics.
+ * Warn only when none of a view's declared actions exist; those fully broken
+ * mappings are aggregated into one line per boot.
  */
 export function validateViewActionMap(
   registeredActions: string[],
@@ -199,15 +197,16 @@ export function validateViewActionMap(
   const registered = new Set(registeredActions.map((a) => a.toUpperCase()));
   const missingByView = new Map<string, string[]>();
   for (const [viewId, actions] of Object.entries(viewActionAffinityMap())) {
-    for (const action of actions) {
-      if (!registered.has(action.toUpperCase())) {
-        logger?.debug?.(
-          `[eliza] view action affinity for "${viewId}" references "${action}" which is not a registered action`,
-        );
-        const list = missingByView.get(viewId);
-        if (list) list.push(action);
-        else missingByView.set(viewId, [action]);
-      }
+    const missing = actions.filter(
+      (action) => !registered.has(action.toUpperCase()),
+    );
+    for (const action of missing) {
+      logger?.debug?.(
+        `[eliza] view action affinity for "${viewId}" references "${action}" which is not a registered action`,
+      );
+    }
+    if (missing.length === actions.length) {
+      missingByView.set(viewId, missing);
     }
   }
   if (missingByView.size === 0) return;

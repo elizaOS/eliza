@@ -435,9 +435,10 @@
     "@shadcn/react": "0.2.1",
     "@simplewebauthn/browser": "^13.0.0",
     "@solana/spl-token": "^0.4.14",
+    "@solana/wallet-adapter-phantom": "^0.9.29",
     "@solana/wallet-adapter-react": "^0.15.39",
     "@solana/wallet-adapter-react-ui": "^0.9.39",
-    "@solana/wallet-adapter-wallets": "^0.19.38",
+    "@solana/wallet-adapter-solflare": "^0.6.33",
     "@solana/web3.js": "1.98.4",
     "@stwd/react": "^0.7.2",
     "@stwd/sdk": "^0.11.0",
@@ -464,7 +465,7 @@
     "three": "^0.184.0",
     "vaul": "^1.1.2",
     "viem": "^2.48.8",
-    "wagmi": "^3.6.15",
+    "wagmi": "^2.19.5",
     "ws": "^8.19.0"
   },
   "devDependencies": {

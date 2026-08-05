@@ -11,7 +11,7 @@
  * calendar assistant action.
  */
 import { createHash } from "node:crypto";
-import { renderGroundedActionReply } from "@elizaos/agent";
+import { renderGroundedActionReply } from "@elizaos/agent/actions/grounded-action-reply";
 import type {
   Action,
   ActionExample,

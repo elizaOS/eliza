@@ -749,8 +749,16 @@ export function useChatVoiceController(options: {
       };
     }
 
+    const continuationOfMessageId =
+      prev &&
+      prev.messageId !== messageId &&
+      !conversationMessages.some((message) => message.id === prev.messageId) &&
+      (text === prev.text || text.startsWith(prev.text))
+        ? prev.messageId
+        : undefined;
     queueAssistantSpeech(messageId, text, !chatSending, {
       replace: replacePlayback,
+      ...(continuationOfMessageId ? { continuationOfMessageId } : {}),
       telemetry,
     });
     suppressedAssistantSpeechRef.current = null;

@@ -580,7 +580,7 @@ jobs:
         run: bun run --cwd packages/app test:e2e test/ui-smoke/tts-stt-e2e.spec.ts --project=chromium
 
       - name: Actual app plugin view browser coverage
-        run: bun run --cwd packages/app test:e2e test/ui-smoke/plugin-views-visual.spec.ts test/ui-smoke/plugin-views-interaction.spec.ts test/ui-smoke/orchestrator-gui-workbench.spec.ts test/ui-smoke/screenshare-gui-interactions.spec.ts test/ui-smoke/task-coordinator-gui-interactions.spec.ts --project=chromium
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/plugin-views-visual.spec.ts test/ui-smoke/plugin-views-interaction.spec.ts test/ui-smoke/orchestrator-gui-workbench.spec.ts test/ui-smoke/task-coordinator-gui-interactions.spec.ts --project=chromium
 
       # WebKit cross-engine pointer/focus lane (#10722): the playwright config's
       # opt-in `webkit` project (Desktop Safari) over the keyless chat

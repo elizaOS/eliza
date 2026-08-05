@@ -1457,19 +1457,15 @@ function resolveManualChunk(id: string): string | undefined {
     return "view-icons";
   }
 
-  // Self-contained leaf libraries needed EAGERLY by @elizaos/core's browser
-  // SOURCE graph (`utils/crypto-compat.ts` → @noble; runtime/services → uuid),
-  // which mobile builds bundle via USE_CORE_SOURCE_BROWSER_ENTRY, and that the
-  // pinned wallet stack also uses. Without an explicit assignment the
+  // Self-contained leaf libraries needed EAGERLY by the app/core graph and
+  // also by the pinned wallet stack. Without an explicit assignment the
   // manual-chunk fold captures them into `vendor-crypto`, anchoring the whole
-  // wallet chunk into the mobile entry's static import closure. They import
-  // nothing outside themselves, so the vendor-crypto → vendor-boot-leaves edge
-  // cannot form the cross-chunk init cycle the crypto pin guards against. On
-  // web (core resolves to its prebuilt dist bundle, which inlines these) the
-  // chunk is only reachable from vendor-crypto and stays lazy.
+  // wallet chunk into the entry's static import closure. They import nothing
+  // outside themselves, so the vendor-crypto → vendor-boot-leaves edge cannot
+  // form the cross-chunk init cycle the crypto pin guards against.
   if (
     normalizedId.includes("/node_modules/@noble/") ||
-    /\/node_modules\/uuid\//.test(normalizedId)
+    /\/node_modules\/(uuid|zod)\//.test(normalizedId)
   ) {
     return "vendor-boot-leaves";
   }

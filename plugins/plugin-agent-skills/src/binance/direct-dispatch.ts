@@ -62,9 +62,10 @@ async function rewriteFallbackActionText(args: {
     return `I ran ${args.actionName} and got a result, but I couldn't format the details cleanly here.${error}`;
   };
   if (typeof args.runtime.useModel !== "function") return fallback();
+  const invokeModel = args.runtime.useModel.bind(args.runtime);
 
   try {
-    const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, {
+    const raw = await invokeModel(ModelType.TEXT_SMALL, {
       prompt: [
         "Rewrite this fallback action output in the assistant character's user-facing voice.",
         'Return strict JSON only: {"response":"..."}.',
@@ -888,9 +889,10 @@ async function summarizeDirectBinanceSkillResult(
     "Skill result:",
     resultSnippet,
   ].join("\n");
+  const invokeModel = runtime.useModel.bind(runtime);
 
   try {
-    const summary = await runtime.useModel(ModelType.TEXT_SMALL, {
+    const summary = await invokeModel(ModelType.TEXT_SMALL, {
       prompt,
       maxTokens: 700,
       temperature: 0.2,
@@ -945,9 +947,10 @@ async function rewriteRawDirectBinanceSkillResult(
     `Skill: ${JSON.stringify(skillSlug)}`,
     `Raw payload: ${JSON.stringify(boundedPayload)}`,
   ].join("\n");
+  const invokeModel = runtime.useModel.bind(runtime);
 
   try {
-    const raw = await runtime.useModel(ModelType.TEXT_SMALL, {
+    const raw = await invokeModel(ModelType.TEXT_SMALL, {
       prompt,
       maxTokens: 900,
       temperature: 0.1,

@@ -520,6 +520,13 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
 
 let notificationsHomeCenterRenderObserverForTests: (() => void) | null = null;
 
+function isChatGestureTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element &&
+    target.closest("[data-chat-gesture-surface]") !== null
+  );
+}
+
 function usePrefersReducedMotion(): boolean {
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(() => {
     if (
@@ -579,14 +586,14 @@ export interface NotificationsHomeCenterProps {
    * velocity-aware releases still settle as one layout transaction.
    */
   shadeLayoutTargetRef?: RefObject<HTMLElement | null>;
-  /** Reports shade allocation changes to the inline home layout. */
-  onShadeExpandedChange?: (expanded: boolean) => void;
+  /** Reports when an explicit expansion occupies the inline home layout. */
+  onShadeOccupancyChange?: (occupiesHome: boolean) => void;
 }
 
 export function NotificationsHomeCenter({
   emptyGestureTargetRef,
   shadeLayoutTargetRef,
-  onShadeExpandedChange,
+  onShadeOccupancyChange,
 }: NotificationsHomeCenterProps = {}): React.JSX.Element | null {
   notificationsHomeCenterRenderObserverForTests?.();
   const { notifications, hydrated, hydrationStatus } = useNotifications();
@@ -595,10 +602,14 @@ export function NotificationsHomeCenter({
   // Shade mode: rested (interrupt-tier triage) vs expanded (full inbox).
   // Producer groups stay stacked until individually fanned out.
   const [shadeExpanded, setShadeExpanded] = useState(true);
+  // The full inbox is visible in the normal capped home region on first paint.
+  // Only an explicit user expansion lets it occupy the remaining home column;
+  // conflating those states hid every widget whenever a notification existed.
+  const [shadeOccupiesHome, setShadeOccupiesHome] = useState(false);
   const [shadeOpenProgress, setShadeOpenProgress] = useState(1);
   useEffect(() => {
-    onShadeExpandedChange?.(shadeExpanded);
-  }, [onShadeExpandedChange, shadeExpanded]);
+    onShadeOccupancyChange?.(shadeOccupiesHome);
+  }, [onShadeOccupancyChange, shadeOccupiesHome]);
   // Per-producer stack expansion (iOS-shade idiom). Tapping a peek fans that
   // stack and enters the expanded shade; folding the shade resets every stack.
   const [expandedStacks, setExpandedStacks] = useState<ReadonlySet<string>>(
@@ -746,6 +757,7 @@ export function NotificationsHomeCenter({
       });
       setConfirmingGroupKey(null);
       setShadeExpanded(true);
+      setShadeOccupiesHome(true);
     },
     [
       cancelPullCancellation,
@@ -1220,6 +1232,7 @@ export function NotificationsHomeCenter({
       cancelPullCancellation();
       setShadeClosing(false);
       setShadeExpanded(expanded);
+      setShadeOccupiesHome(expanded);
       setConfirmingGroupKey(null);
       setShadeOpenedByStack(false);
       if (!expanded) {
@@ -1482,6 +1495,10 @@ export function NotificationsHomeCenter({
       // drag already decided the shade state; do not reinterpret that release
       // as a separate outside-tap collapse before the surface can consume it.
       const target = event.target;
+      // Chat pulls are a separate gesture session. Pointer capture keeps the
+      // synthesized release click on the chat handle even when the finger ends
+      // over this shade, so never reinterpret that click as notification input.
+      if (isChatGestureTarget(target)) return;
       const gestureSurface =
         emptyGestureTargetRef?.current ?? centerRef.current;
       if (
@@ -2346,6 +2363,7 @@ export function NotificationsHomeCenter({
     }
     cancelAllStackFolds();
     setShadeExpanded(false);
+    setShadeOccupiesHome(false);
     setShadeOpenedByStack(false);
     setOpeningStacks(new Set());
     setExpandedStacks(new Set());
@@ -2586,6 +2604,7 @@ export function NotificationsHomeCenter({
         onWheel={onListWheel}
         data-testid="home-notification-list"
         data-shade-mode={shadeExpanded ? "expanded" : "rested"}
+        data-shade-occupies-home={shadeOccupiesHome ? "" : undefined}
         data-shade-preview={previewingExpansion ? "expanding" : undefined}
         data-shade-dragging={isPulling ? "" : undefined}
         data-shade-settling={shadeClosing ? "" : undefined}

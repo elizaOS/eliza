@@ -172,6 +172,7 @@ const DOCUMENT_SCOPES = new Set<DocumentVisibilityScope>([
 	"user-private",
 	"agent-private",
 ]);
+const DOCUMENT_SCOPE_OPTIONS = [...DOCUMENT_SCOPES, "all-visible"] as const;
 
 const DOCUMENT_PATH_PATTERN =
 	/(?:\/[\w .-]+)+|(?:[a-zA-Z]:[\\/][\w\s.-]+(?:[\\/][\w\s.-]+)*)/;
@@ -246,8 +247,8 @@ function getSearchMode(value: unknown): SearchMode | undefined {
 }
 
 function getLimit(value: unknown, fallback: number): number {
-	return typeof value === "number" && Number.isFinite(value)
-		? Math.max(1, Math.min(100, Math.floor(value)))
+	return typeof value === "number" && Number.isFinite(value) && value >= 1
+		? Math.min(100, Math.floor(value))
 		: fallback;
 }
 
@@ -339,7 +340,25 @@ function getQuery(params: DocumentActionParameters): string {
 	return "";
 }
 
-function getDocumentFilterParams(params: DocumentActionParameters): {
+function getOptionalPlannerString(
+	value: unknown,
+	message: Memory,
+): string | undefined {
+	if (typeof value !== "string" || !value.trim()) return undefined;
+	const normalized = value.trim();
+	if (
+		normalized === "0" &&
+		!/(?:^|\D)0(?:\D|$)/.test(message.content.text ?? "")
+	) {
+		return undefined;
+	}
+	return normalized;
+}
+
+function getDocumentFilterParams(
+	params: DocumentActionParameters,
+	message: Memory,
+): {
 	scope?: DocumentVisibilityScope;
 	scopedToEntityId?: UUID;
 	addedBy?: UUID;
@@ -361,8 +380,12 @@ function getDocumentFilterParams(params: DocumentActionParameters): {
 		typeof params.addedBy === "string" && isUuid(params.addedBy)
 			? (params.addedBy as UUID)
 			: undefined;
-	const timeRangeStart = parseTimestampParam(params.timeRangeStart);
-	const timeRangeEnd = parseTimestampParam(params.timeRangeEnd);
+	const timeRangeStart = parseTimestampParam(
+		getOptionalPlannerString(params.timeRangeStart, message),
+	);
+	const timeRangeEnd = parseTimestampParam(
+		getOptionalPlannerString(params.timeRangeEnd, message),
+	);
 	const tags = Array.isArray(params.tags)
 		? params.tags.filter((tag): tag is string => typeof tag === "string")
 		: undefined;
@@ -510,7 +533,7 @@ async function handleSearch(
 		...message,
 		content: { ...message.content, text: query },
 	};
-	const filters = getDocumentFilterParams(params);
+	const filters = getDocumentFilterParams(params, message);
 	const matches = await service.searchDocuments(
 		searchMessage,
 		filters.scopedToEntityId
@@ -807,8 +830,13 @@ async function handleList(
 		typeof params.addedBy === "string" && isUuid(params.addedBy)
 			? (params.addedBy as UUID)
 			: undefined;
-	const timeRangeStart = parseTimestampParam(params.timeRangeStart);
-	const timeRangeEnd = parseTimestampParam(params.timeRangeEnd);
+	const timeRangeStart = parseTimestampParam(
+		getOptionalPlannerString(params.timeRangeStart, message),
+	);
+	const timeRangeEnd = parseTimestampParam(
+		getOptionalPlannerString(params.timeRangeEnd, message),
+	);
+	const query = getOptionalPlannerString(params.query, message);
 	const offset =
 		typeof params.offset === "number" && params.offset >= 0
 			? Math.floor(params.offset)
@@ -817,7 +845,7 @@ async function handleList(
 	const listResult = await service.listDocumentsDetailed(message, {
 		limit: getLimit(params.limit, 25),
 		offset,
-		query: params.query,
+		query,
 		scope,
 		scopedToEntityId,
 		addedBy,
@@ -1129,9 +1157,10 @@ export const documentAction: Action = {
 		},
 		{
 			name: "limit",
-			description: "Maximum number of results or listed documents.",
+			description:
+				"Maximum number of results or listed documents (1-100). Use 0 when this field is not applicable to the selected action.",
 			required: false,
-			schema: { type: "number", minimum: 1, maximum: 100 },
+			schema: { type: "number", minimum: 0, maximum: 100 },
 		},
 		{
 			name: "searchMode",
@@ -1142,11 +1171,11 @@ export const documentAction: Action = {
 		{
 			name: "scope",
 			description:
-				"Visibility scope for newly-created documents: global, owner-private, user-private, or agent-private.",
+				"Visibility scope. For list/search, use all-visible unless the user explicitly names global, owner-private, user-private, or agent-private; phrases such as 'my documents' mean all documents visible to the requester. For newly-created documents, select the requested visibility scope.",
 			required: false,
 			schema: {
 				type: "string",
-				enum: [...DOCUMENT_SCOPES],
+				enum: [...DOCUMENT_SCOPE_OPTIONS],
 			},
 		},
 		{

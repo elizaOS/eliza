@@ -98,7 +98,7 @@
     "@elizaos/ui": "workspace:*",
     "drizzle-orm": "0.45.2",
     "lucide-react": "^1.0.0",
-    "react-plaid-link": "^4.0.1",
+    "react-plaid-link": "^5.0.0",
     "sharp": "^0.35.3",
     "zod": "^4.4.3"
   },

@@ -93,8 +93,10 @@ const RUNTIME_APP_PLUGIN_SUBPATHS = new Set([
 function isBenignOptionalPluginFailure(msg: string): boolean {
   return (
     msg.includes("Cannot find module") ||
+    msg.includes("Cannot find package") ||
     msg.includes("MODULE_NOT_FOUND") ||
     msg.includes("ResolveMessage") ||
+    (msg.includes("ENOENT") && msg.includes("plugin-")) ||
     msg === "browser server binary not found"
   );
 }
@@ -2295,6 +2297,11 @@ export async function resolvePlugins(
     ...Object.values(CHANNEL_PLUGIN_MAP),
     ...OPTIONAL_CORE_PLUGINS,
   ]);
+  for (const [pluginName, reason] of loadReasons) {
+    if (reason.startsWith('plugins.entries["')) {
+      optionalPluginNames.add(pluginName);
+    }
+  }
 
   // Load a single plugin - returns result or null on skip/failure
   async function loadSinglePlugin(pluginName: string): Promise<{
@@ -2609,12 +2616,12 @@ export async function resolvePlugins(
       const reason = loadReasons.get(f.name);
       return reason ? `${f.name} (added by: ${reason})` : f.name;
     });
-    logger.info(
+    logger.debug(
       `[eliza] Optional plugins not installed: ${withReasons.join(", ")}`,
     );
   }
 
-  setLastFailedPlugins(failedPlugins);
+  setLastFailedPlugins(detailFailures);
 
   // Diagnose version-skew issues when AI providers failed to load (#10)
   const loadedNames = plugins.map((p) => p.name);

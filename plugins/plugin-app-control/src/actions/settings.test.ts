@@ -547,6 +547,43 @@ describe("SETTINGS action: set on an owned route section", () => {
 		expect(texts.join(" ")).toContain("continuous chat is always-on");
 	});
 
+	it("ignores generic namespace noise and canonicalizes composed voice keys", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async (request) => {
+			if (request.method === "GET") {
+				return { ok: true, data: { messages: {} } };
+			}
+			return { ok: true };
+		});
+		const { result } = await invoke(
+			{
+				action: "set",
+				section: "voice",
+				namespace: "voice",
+				key: "continuous_chat_always_on",
+				value: "on",
+			},
+			routeFetch,
+		);
+
+		expect(result?.success).toBe(true);
+		expect(result?.values).toMatchObject({
+			section: "voice",
+			key: "continuous-chat",
+		});
+		expect(routeFetch).toHaveBeenNthCalledWith(2, {
+			method: "PUT",
+			path: "/api/config",
+			body: {
+				messages: {
+					voice: {
+						continuous: "always-on",
+						vadAutoStop: DEFAULT_VOICE_SETTINGS_PREFS.vadAutoStop,
+					},
+				},
+			},
+		});
+	});
+
 	it("updates voice VAD silence while preserving existing voice prefs", async () => {
 		const routeFetch = vi.fn<SettingsRouteFetch>(async (request) => {
 			if (request.method === "GET") {

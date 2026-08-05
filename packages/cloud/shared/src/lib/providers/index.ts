@@ -18,7 +18,6 @@ import { getProviderKey, getRequiredProviderKey } from "./provider-env";
 import type { AIProvider } from "./types";
 import { VastProvider } from "./vast";
 import { resolveVastEndpointConfig, resolveVastFallbackModel } from "./vast-endpoints";
-import { VercelAIGatewayProvider } from "./vercel-ai-gateway";
 
 export { AnthropicDirectProvider } from "./anthropic-direct";
 // Note: anthropic-thinking parse helpers (parseAnthropicCotBudgetFromEnv, etc.) are exported
@@ -33,7 +32,6 @@ export { OpenRouterProvider } from "./openrouter";
 export * from "./types";
 export { VastProvider } from "./vast";
 export * from "./vast-endpoints";
-export { VercelAIGatewayProvider } from "./vercel-ai-gateway";
 
 interface ProviderSingleton {
   apiKey: string;
@@ -49,7 +47,6 @@ let cerebrasDirectProviderInstance: ProviderSingleton | null = null;
 let openAIDirectProviderInstance: OpenAIDirectProviderSingleton | null = null;
 let anthropicDirectProviderInstance: ProviderSingleton | null = null;
 let openRouterProviderInstance: OpenAIDirectProviderSingleton | null = null;
-let vercelAIGatewayProviderInstance: ProviderSingleton | null = null;
 let vastProviderInstances = new Map<string, AIProvider>();
 
 export function hasGroqProviderConfigured(): boolean {
@@ -183,33 +180,6 @@ export function getVastProvider(model = "vast/eliza-1-27b"): AIProvider {
   return provider;
 }
 
-function getVercelAIGatewayApiKey(): string | null {
-  return getProviderKey("AI_GATEWAY_API_KEY") ?? getProviderKey("AIGATEWAY_API_KEY");
-}
-
-function getVercelAIGatewayBaseURL(): string | undefined {
-  return getProviderKey("AI_GATEWAY_BASE_URL") ?? undefined;
-}
-
-export function hasVercelAIGatewayProviderConfigured(): boolean {
-  return Boolean(getVercelAIGatewayApiKey());
-}
-
-export function getVercelAIGatewayProvider(): AIProvider {
-  const apiKey = getVercelAIGatewayApiKey();
-  if (!apiKey) {
-    throw new Error("AI_GATEWAY_API_KEY environment variable is required");
-  }
-
-  if (!vercelAIGatewayProviderInstance || vercelAIGatewayProviderInstance.apiKey !== apiKey) {
-    vercelAIGatewayProviderInstance = {
-      apiKey,
-      provider: new VercelAIGatewayProvider(apiKey, getVercelAIGatewayBaseURL()),
-    };
-  }
-  return vercelAIGatewayProviderInstance.provider;
-}
-
 export function getProviderForModel(model: string): AIProvider {
   if (isGroqNativeModel(model)) {
     return getGroqProvider();
@@ -227,7 +197,7 @@ export function getProviderForModel(model: string): AIProvider {
     if (hasOpenRouterProviderConfigured()) {
       return getOpenRouterProvider();
     }
-    return getVercelAIGatewayProvider();
+    return getOpenRouterProvider();
   }
 
   if (model.startsWith("openai/") && hasOpenAIDirectConfigured()) {
@@ -242,7 +212,7 @@ export function getProviderForModel(model: string): AIProvider {
     return getOpenRouterProvider();
   }
 
-  return getVercelAIGatewayProvider();
+  return getOpenRouterProvider();
 }
 
 /**
@@ -257,7 +227,7 @@ export function getProviderForModel(model: string): AIProvider {
  *   - `openai/*` (+ OPENAI_API_KEY): OpenAI direct, OpenRouter on-error fallback.
  *   - `anthropic/*` (+ ANTHROPIC_API_KEY): Anthropic direct, OpenRouter fallback.
  *   - Everything else (no native key — xai, google, mistral, …): OpenRouter is
- *     the direct gateway (no further fallback), else the dev Vercel gateway.
+ *     the direct gateway with no further fallback.
  */
 export function getProviderForModelWithFallback(model: string): {
   primary: AIProvider;
@@ -285,7 +255,7 @@ export function getProviderForModelWithFallback(model: string): {
     if (openRouterBackup) {
       return { primary: openRouterBackup, fallback: null };
     }
-    return { primary: getVercelAIGatewayProvider(), fallback: null };
+    return { primary: getOpenRouterProvider(), fallback: null };
   }
 
   if (model.startsWith("openai/") && hasOpenAIDirectConfigured()) {
@@ -301,5 +271,5 @@ export function getProviderForModelWithFallback(model: string): {
     return { primary: openRouterBackup, fallback: null };
   }
 
-  return { primary: getVercelAIGatewayProvider(), fallback: null };
+  return { primary: getOpenRouterProvider(), fallback: null };
 }

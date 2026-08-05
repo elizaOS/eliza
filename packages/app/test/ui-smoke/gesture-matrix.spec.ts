@@ -301,15 +301,8 @@ async function rowTitleOrder(center: Locator): Promise<string[]> {
   });
 }
 
-/**
- * Fan the rested shade open so every seeded row renders flat. The inbox is
- * priority-triaged: at rest only interrupt-tier rows (high/urgent) show,
- * Z-stacked by producer. The notification-count button is the
- * keyboard-accessible form of the same pull-to-expand transition, fanning all
- * priorities out.
- */
-async function expandNotificationShade(page: Page): Promise<void> {
-  await page.getByTestId("notifications-count-button").click();
+/** Assert the control-free inbox has mounted its complete notification set. */
+async function expectFullNotificationInbox(page: Page): Promise<void> {
   await expect(page.getByTestId("home-notification-list")).toHaveAttribute(
     "data-shade-mode",
     "expanded",
@@ -328,25 +321,20 @@ test("dashboard notification center: rested priority, expansion, tap acknowledge
   await installSeededInboxRoutes(page, seedInboxNotifications());
   await openHome(page);
 
-  // At rest the inline center shows only interrupt-tier rows while preserving
-  // the full inbox count as the explicit expand affordance.
+  // The redesigned inline center mounts the complete inbox immediately; shade
+  // gestures and producer-stack taps remain the only disclosure controls.
   const center = page.getByTestId("home-notification-center");
   await expect(center).toBeVisible({ timeout: 15_000 });
   await expect(page.getByTestId("notifications-shade")).toHaveCount(0);
   await expect(
     page.getByTestId("home-screen").getByTestId("home-notification-center"),
   ).toBeVisible();
-  await expect(center.getByTestId("notification-row")).toHaveCount(2, {
+  await expect(center.getByTestId("notification-row")).toHaveCount(8, {
     timeout: 15_000,
   });
-  expect(await rowTitleOrder(center)).toEqual(SEEDED_ORDER.slice(0, 2));
-  await expect(center.getByTestId("notifications-count-button")).toHaveText(
-    "8 Notifications",
-  );
-
-  await expandNotificationShade(page);
-  await expect(center.getByTestId("notification-row")).toHaveCount(8);
   expect(await rowTitleOrder(center)).toEqual(SEEDED_ORDER);
+  await expect(center.getByTestId("notifications-count-button")).toHaveCount(0);
+  await expectFullNotificationInbox(page);
   await evidenceShot(page, "notification-center-expanded");
 
   // Platform-shade acknowledgement clears a row after acting on its safe
@@ -495,7 +483,7 @@ test.describe("real touch (hasTouch project)", () => {
     // meaningful rather than vacuous.
     const center = page.getByTestId("home-notification-center");
     await expect(center).toBeVisible({ timeout: 15_000 });
-    await expandNotificationShade(page);
+    await expectFullNotificationInbox(page);
     const list = page.getByTestId("home-notification-list");
     await expect(list.getByTestId("notification-row")).toHaveCount(
       OVERFLOW_ROWS,
@@ -564,7 +552,7 @@ test.describe("real touch (hasTouch project)", () => {
     // Expand the priority-triaged shade so the sub-interrupt "Backup finished"
     // row is present to swipe (rested, only interrupt-tier producers show, so
     // this normal-priority producer stays hidden until the shade fans out).
-    await expandNotificationShade(page);
+    await expectFullNotificationInbox(page);
     await expect(center.getByTestId("notification-row")).toHaveCount(8, {
       timeout: 15_000,
     });

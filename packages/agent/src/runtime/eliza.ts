@@ -287,7 +287,6 @@ import {
   debugLogResolvedContext,
   validateRuntimeContext,
 } from "../api/plugin-validation.ts";
-import { listViews } from "../api/views-registry.ts";
 import { getWalletAddresses, syncSolanaPublicKeyEnv } from "../api/wallet.ts";
 import {
   configFileExists,
@@ -355,10 +354,7 @@ import {
   installDatabaseTrajectoryLogger,
   shouldEnableTrajectoryLoggingByDefault,
 } from "./trajectory-persistence.ts";
-import {
-  validateViewActionMap,
-  validateViewCoverage,
-} from "./view-action-affinity.ts";
+import { validateViewActionMap } from "./view-action-affinity.ts";
 
 function isPluginSqlResolutionError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err);
@@ -5623,18 +5619,12 @@ export async function startEliza(
       runtime.actions.map((a) => a.name),
       runtime.logger,
     );
-    // Same timing: turn the (previously dead-but-tested) view-coverage validators
-    // into a live drift guard now that all plugins/views are registered (#8798).
-    // Warns when a view affinity entry names an unregistered action, or a
-    // registered view has neither relatedActions nor a declared ViewCapability.
-    const developerViews = listViews({ developerMode: true });
+    // Validate live affinity only after deferred actions have registered.
+    // Completeness coverage remains a static repository audit: several shell
+    // and diagnostic views intentionally use universal element capabilities,
+    // so repeating that lint as a runtime warning mislabels healthy boots.
     validateViewActionMap(
       runtime.actions.map((a) => a.name),
-      runtime.logger,
-    );
-    validateViewCoverage(
-      developerViews.map((v) => v.id),
-      developerViews.filter((v) => v.capabilities?.length).map((v) => v.id),
       runtime.logger,
     );
     bootTimer.lap("deferred:complete");

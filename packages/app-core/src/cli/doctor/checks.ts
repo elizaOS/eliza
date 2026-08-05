@@ -67,11 +67,6 @@ export const MODEL_KEY_VARS = [
   { key: "PERPLEXITY_API_KEY", label: "Perplexity" },
   { key: "ZAI_API_KEY", alias: "Z_AI_API_KEY", label: "Zai" },
   { key: "MOONSHOT_API_KEY", alias: "KIMI_API_KEY", label: "Kimi / Moonshot" },
-  {
-    key: "AI_GATEWAY_API_KEY",
-    alias: "AIGATEWAY_API_KEY",
-    label: "Vercel AI Gateway",
-  },
   { key: "ELIZAOS_CLOUD_API_KEY", label: "elizaOS Cloud" },
   { key: "OLLAMA_BASE_URL", label: "Ollama (local)" },
 ] as const;

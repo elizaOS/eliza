@@ -228,7 +228,9 @@ const devLogLevel =
     .trim()
     .toLowerCase() || "info";
 const quietApiLogs = process.env.ELIZA_DEV_QUIET_LOGS === "1";
-const verboseApiLogs = process.env.ELIZA_DEV_VERBOSE_LOGS !== "0";
+// Normal dev output keeps milestones plus warnings/errors. Full structured and
+// native-backend logs remain available explicitly for diagnostic captures.
+const verboseApiLogs = process.env.ELIZA_DEV_VERBOSE_LOGS === "1";
 // Agent hot-reload is ON by default: a source-only watcher (see
 // startAgentSourceWatcher) bounces the API child through the supervisor when
 // backend `*/src` changes. Unlike the old `node --watch`, it never watches

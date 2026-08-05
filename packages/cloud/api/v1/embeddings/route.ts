@@ -390,8 +390,6 @@ app.post("/", async (c) => {
     // untouched — no AI-SDK decode/validate/re-encode of the float arrays.
     // Usage is parsed once from the same buffer so the settle chain below
     // bills exactly what the provider reported, identical to the SDK path.
-    // The Vercel AI Gateway fallback keeps the SDK path (resolver returns it
-    // only for the direct-OpenAI source).
     let passthroughBody: ArrayBuffer | null = null;
     const passthroughUpstream =
       isPassthroughEmbeddingsEnabled() &&

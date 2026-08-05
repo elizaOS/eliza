@@ -226,15 +226,6 @@
       "chat"
     ]
   },
-  "vercel-ai-gateway": {
-    "description": "Vercel AI Gateway provider for routing model requests through a single endpoint.",
-    "tags": [
-      "ai-provider",
-      "llm",
-      "gateway",
-      "routing"
-    ]
-  },
   "zalo": {
     "description": "Zalo connector for official account messaging and support workflows.",
     "tags": [

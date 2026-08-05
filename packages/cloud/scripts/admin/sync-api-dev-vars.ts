@@ -118,9 +118,6 @@ const providerOverrideKeys = new Set([
   // same as the other providers below.
   "CEREBRAS_API_KEY",
   "GROQ_API_KEY",
-  "AI_GATEWAY_API_KEY",
-  "AIGATEWAY_API_KEY",
-  "AI_GATEWAY_BASE_URL",
 ]);
 const preserveProviderEnv = process.env.PRESERVE_E2E_PROVIDER_ENV === "1";
 

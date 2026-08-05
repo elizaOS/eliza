@@ -22,10 +22,10 @@
     "test:batch": "bun test __tests__",
     "test:audit": "node test/_audit-coverage.mjs",
     "test:e2e": "node test/e2e/run-e2e-batches.mjs",
-    "test:e2e:foundation": "TEST_SERVER_SCRIPT=dev bun test --preload test/e2e/preload.ts test/e2e/agent-token-flow.test.ts --timeout 120000"
+    "test:e2e:foundation": "TEST_SERVER_SCRIPT=dev bun test --preload test/e2e/preload.ts test/e2e/agent-token-flow.test.ts --timeout 120000",
+    "voice:measure-warm-turns": "bun scripts/voice-warm-turn-measure.mjs"
   },
   "dependencies": {
-    "@ai-sdk/gateway": "^3.0.37",
     "@ai-sdk/openai": "^3.0.54",
     "@cloudflare/workers-types": "^4.20260429.1",
     "@elevenlabs/elevenlabs-js": "^2.45.0",
@@ -36,7 +36,7 @@
     "ai": "^6.0.170",
     "drizzle-orm": "0.45.2",
     "file-type": "^22.0.1",
-    "hono": "4.12.27",
+    "hono": "4.12.34",
     "music-metadata": "^11.12.3",
     "nanoid": "^5.1.9",
     "stripe": "^22.0.0",
@@ -49,12 +49,13 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.6",
+    "@msgpack/msgpack": "3.1.3",
     "@types/pg": "^8.16.0",
     "@types/ws": "^8.18.1",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "dotenv": "^17.4.2",
     "miniflare": "4.20260730.0",
     "pg": "^8.20.0",
-    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "ws": "^8.21.0"
   }

@@ -3,11 +3,10 @@
 
 // Dashboard notification center behavior against the real notification store
 // (driven via the test-only ingest; HTTP mutations mocked at the API client).
-// Pins the shade spec: priority-only triage, liquid-glass Z-stacked groups
+// Pins the shade spec: a control-free full inbox, liquid-glass Z-stacked groups
 // with no headers/dividers, DIRECTIONAL pull/wheel expand-collapse (down
 // expands, up collapses — never a toggle, so trailing trackpad momentum can't
-// snap the shade back shut), an interactive notification total, direct-tap
-// activation, and swipe-to-dismiss.
+// snap the shade back shut), direct-tap activation, and swipe-to-dismiss.
 
 import {
   act,
@@ -1629,10 +1628,17 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
 
   it("shows all notifications by default without expand or collapse controls", () => {
     seedTriage();
-    render(<NotificationsHomeCenter />);
+    const onShadeOccupancyChange = vi.fn();
+    render(
+      <NotificationsHomeCenter
+        onShadeOccupancyChange={onShadeOccupancyChange}
+      />,
+    );
 
     const list = screen.getByTestId("home-notification-list");
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(list.hasAttribute("data-shade-occupies-home")).toBe(false);
+    expect(onShadeOccupancyChange).toHaveBeenLastCalledWith(false);
     expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
     expect(screen.getAllByTestId("notification-stack-peek")).toHaveLength(2);
     expect(screen.getByTestId("notification-source-count").textContent).toBe(
@@ -1657,6 +1663,44 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     const list = screen.getByTestId("home-notification-list");
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     expect(screen.getByText("Hydrated alert")).toBeTruthy();
+  });
+
+  it("ignores a chat pull release over the notification area", () => {
+    seedTriage();
+    render(
+      <>
+        <NotificationsHomeCenter />
+        <button
+          type="button"
+          data-chat-gesture-surface=""
+          data-testid="chat-pull-handle"
+        >
+          Chat pull handle
+        </button>
+      </>,
+    );
+    const list = screen.getByTestId("home-notification-list");
+    const chatHandle = screen.getByTestId("chat-pull-handle");
+
+    fireEvent.pointerDown(chatHandle, {
+      pointerType: "touch",
+      pointerId: 31,
+      clientY: 600,
+    });
+    fireEvent.pointerMove(chatHandle, {
+      pointerType: "touch",
+      pointerId: 31,
+      clientY: 240,
+    });
+    fireEvent.pointerUp(chatHandle, {
+      pointerType: "touch",
+      pointerId: 31,
+      clientY: 240,
+    });
+    fireEvent.click(chatHandle, { detail: 1, clientY: 240 });
+
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(list.hasAttribute("data-shade-settling")).toBe(false);
   });
 
   it("keeps the priority row mounted while an outside tap fades quiet groups", () => {

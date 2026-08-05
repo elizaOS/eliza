@@ -72,6 +72,7 @@ export async function buildLocalInferencePlugin(
 		// (oven-sh/bun#12734).
 		entrypoints: [
 			"./src/index.ts",
+			"./src/actions/generate-media.ts",
 			"./src/local-inference-routes.ts",
 			"./src/runtime/index.ts",
 			"./src/routes/index.ts",
@@ -106,6 +107,9 @@ export async function buildLocalInferencePlugin(
 
 	await smokeImport(
 		new URL("./dist/local-inference-routes.js", import.meta.url).href,
+	);
+	await smokeImport(
+		new URL("./dist/actions/generate-media.js", import.meta.url).href,
 	);
 	await smokeImport(new URL("./dist/voice-wake.js", import.meta.url).href);
 	await smokeImport(new URL("./dist/voice-workbench.js", import.meta.url).href);

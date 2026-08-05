@@ -68,7 +68,6 @@
     }
   },
   "dependencies": {
-    "@ai-sdk/gateway": "3.0.133",
     "@ai-sdk/openai": "^3.0.9",
     "@ai-sdk/provider": "3.0.14",
     "@ai-sdk/provider-utils": "5.0.5",
@@ -86,7 +85,7 @@
     "jose": "^6.2.2",
     "js-tiktoken": "^1.0.21",
     "ox": "0.14.20",
-    "undici": "8.5.0",
+    "undici": "8.9.0",
     "viem": "^2.48.8",
     "ws": "8.21.0"
   },
