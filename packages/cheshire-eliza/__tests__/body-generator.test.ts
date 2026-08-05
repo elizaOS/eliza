@@ -15,6 +15,7 @@ describe("cheshire-eliza body generator", () => {
     expect(body.character.plugins).toContain("@elizaos/plugin-e2b-computer");
     expect(body.character.plugins).toContain("@elizaos/plugin-cheshire-memory");
     expect(body.character.plugins).toContain("@elizaos/plugin-clawdbrowser");
+    expect(body.character.plugins).toContain("@elizaos/plugin-dflow-trade");
     expect(body.visualPrompt.toLowerCase()).toContain("clawdscout");
     expect(body.bodyMeta.rails).toEqual(["solana", "robinhood"]);
   });
@@ -26,6 +27,9 @@ describe("cheshire-eliza body generator", () => {
     );
     expect(solizardCheshireCharacter.plugins).toContain(
       "@elizaos/plugin-clawdbrowser",
+    );
+    expect(solizardCheshireCharacter.plugins).toContain(
+      "@elizaos/plugin-dflow-trade",
     );
   });
 });

@@ -98,6 +98,8 @@ export function generateAgentBody(input: BodyGeneratorInput): GeneratedAgentBody
   if (input.includeForge !== false) {
     plugins.push("@elizaos/plugin-clawdbrowser");
   }
+  // Spot trading via DFlow + Helius (preview-first)
+  plugins.push("@elizaos/plugin-dflow-trade");
 
   const railLine = rails.join(" + ");
   const bio = [

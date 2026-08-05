@@ -30,6 +30,7 @@ const body = generateAgentBody({
 | `@elizaos/plugin-e2b-computer` | E2B sandbox computer |
 | `@elizaos/plugin-cheshire-memory` | Hermes + Honcho memory |
 | `@elizaos/plugin-clawdbrowser` | **Official** ClawdBrowser `tools.md` catalog (search / describe / list) |
+| `@elizaos/plugin-dflow-trade` | **Official** Solana spot trade via DFlow + Helius (DeepSeek-ready) |
 
 ### ClawdBrowser tools
 
@@ -41,5 +42,18 @@ import clawdBrowserPlugin from "@elizaos/plugin-clawdbrowser";
 ```
 
 Actions: `SEARCH_CLAWD_TOOLS`, `DESCRIBE_CLAWD_TOOL`, `LIST_CLAWD_TOOLS`.
+
+### Solana trading (DeepSeek + DFlow + Helius)
+
+```bash
+export DEEPSEEK_API_KEY=...
+export DFLOW_API_KEY=...
+export HELIUS_RPC_URL=https://mainnet.helius-rpc.com/?api-key=...
+# optional live:
+# export SOLANA_PRIVATE_KEY=...
+# export SOLANA_TRADE_LIVE=true
+```
+
+Agent utterances: “quote 0.01 SOL to USDC”, “swap 1 USDC to SOL preview”, “trade readiness”.
 
 See [docs/PR_PATH.md](./docs/PR_PATH.md) for PR + remote map.

@@ -19,4 +19,5 @@ export const CHESHIRE_ELIZA_PLUGINS = [
   "@elizaos/plugin-e2b-computer",
   "@elizaos/plugin-cheshire-memory",
   "@elizaos/plugin-clawdbrowser",
+  "@elizaos/plugin-dflow-trade",
 ] as const;

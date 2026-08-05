@@ -1,0 +1,80 @@
+{
+  "id": "dflow-trade",
+  "name": "DFlow Solana Trade",
+  "description": "Official plugin: natural-language Solana spot swaps via DFlow Trading API + Helius RPC. Preview-first quotes; live execution gated by SOLANA_TRADE_LIVE.",
+  "npmName": "@elizaos/plugin-dflow-trade",
+  "version": "0.1.0",
+  "source": "bundled",
+  "tags": [
+    "dflow",
+    "solana",
+    "swap",
+    "trading",
+    "helius",
+    "deepseek",
+    "spot"
+  ],
+  "config": {
+    "DFLOW_API_KEY": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "DFlow API key",
+      "help": "x-api-key for https://quote-api.dflow.net (prod). Dev host works without a key.",
+      "advanced": false
+    },
+    "DFLOW_TRADE_API_URL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Trade API URL",
+      "help": "Default: https://quote-api.dflow.net when key set, else https://dev-quote-api.dflow.net",
+      "advanced": true
+    },
+    "HELIUS_RPC_URL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Helius RPC URL",
+      "help": "Solana RPC for balance + sendTransaction (SOLANA_RPC_URL also accepted)",
+      "advanced": false
+    },
+    "SOLANA_PRIVATE_KEY": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Wallet private key (base58)",
+      "help": "Required only for live signed swaps",
+      "advanced": false
+    },
+    "SOLANA_TRADE_LIVE": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Enable live swaps",
+      "help": "Must be true to broadcast. Default preview-only.",
+      "advanced": false
+    },
+    "DEEPSEEK_API_KEY": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "DeepSeek API key",
+      "help": "Optional LLM key — plugin tools work with any model provider",
+      "advanced": true
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "ArrowLeftRight",
+    "group": "defi",
+    "groupOrder": 2,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "defi"
+}

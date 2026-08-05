@@ -24,6 +24,7 @@ Under `plugins/`:
 - `@elizaos/plugin-e2b-computer` — E2B sandbox computer
 - `@elizaos/plugin-cheshire-memory` — `HERMES_API_KEY` + `HONCHO_API_KEY`
 - `@elizaos/plugin-clawdbrowser` — official ClawdBrowser `tools.md` catalog (SEARCH/DESCRIBE/LIST)
+- `@elizaos/plugin-dflow-trade` — DFlow + Helius Solana spot (DFLOW_API_KEY, HELIUS_RPC_URL; DeepSeek-ready)
 
 Under `packages/cheshire-eliza/`:
 
@@ -39,9 +40,9 @@ cd /Users/8bit/agents/agents/eliza
 git checkout -b feat/cheshire-eliza-plugins
 git add plugins/plugin-robinhood plugins/plugin-solana-forging \
   plugins/plugin-e2b-computer plugins/plugin-cheshire-memory \
-  plugins/plugin-clawdbrowser \
+  plugins/plugin-clawdbrowser plugins/plugin-dflow-trade \
   packages/cheshire-eliza
-git commit -m "feat(cheshire): forge plugins, E2B, memory, official ClawdBrowser tools.md plugin"
+git commit -m "feat(cheshire): forge, clawdbrowser tools, dflow solana trade"
 
 # 2) push to Solizardking/eliza
 git push -u origin feat/cheshire-eliza-plugins
@@ -91,6 +92,13 @@ HONCHO_SESSION_ID=cheshire-prod
 
 # ClawdBrowser tools.md catalog
 CLAWDBROWSER_TOOLS_MD=/Users/8bit/ClawdBrowser/tools.md
+
+# Solana NL trading
+DEEPSEEK_API_KEY=
+DFLOW_API_KEY=
+HELIUS_RPC_URL=
+SOLANA_PRIVATE_KEY=
+SOLANA_TRADE_LIVE=false
 ```
 
 ## cheshireterminal.ai/eliza-agents
