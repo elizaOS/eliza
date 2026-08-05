@@ -3249,6 +3249,7 @@
     "@solana/assertions@5.5.1": "patches/@solana%2Fassertions@5.5.1.patch",
     "@solana/options@5.5.1": "patches/@solana%2Foptions@5.5.1.patch",
     "@solana/subscribable@5.5.1": "patches/@solana%2Fsubscribable@5.5.1.patch",
+    "@capacitor/ios@8.5.0": "patches/@capacitor%2Fios@8.5.0.patch",
     "@solana/accounts@5.5.1": "patches/@solana%2Faccounts@5.5.1.patch",
     "@solana/instruction-plans@5.5.1": "patches/@solana%2Finstruction-plans@5.5.1.patch",
     "telegraf@4.16.3": "patches/telegraf@4.16.3.patch",
