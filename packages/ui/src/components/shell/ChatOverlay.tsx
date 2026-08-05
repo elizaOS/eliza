@@ -2141,7 +2141,9 @@ export function ChatOverlay({
               ) : undefined
             }
             appearance="glass"
-            enterOnMount={m.id.startsWith("temp-")}
+            // Fast actions can navigate in the same paint that appends their
+            // optimistic turn. Overlay rows must therefore be visible on their
+            // first frame so the handoff never exposes only the prior transcript.
             agentName={agentName}
             message={shellToChatMessageData(m)}
             reduceMotion={reduce}

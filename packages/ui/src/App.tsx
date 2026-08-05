@@ -2341,6 +2341,7 @@ function AppContent() {
       openDesktopTab,
       setActiveDesktopTabId,
       setTab,
+      setTabForPath: (routeTab) => setTab(routeTab, { history: "preserve" }),
       setViewLayout,
     });
     // An agent-dispatched navigate to the Settings view that carries a `subview`

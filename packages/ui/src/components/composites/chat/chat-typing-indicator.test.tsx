@@ -100,7 +100,34 @@ describe("TurnStatus working indicator", () => {
     render(<TurnStatus status={{ kind: "thinking" }} showLabel={false} />);
     const label = screen.getByTestId("turn-status-label");
     expect(label.textContent).toBe("Thinking");
+    expect(label.getAttribute("data-current-label")).toBe("Thinking");
+    expect(screen.getByTestId("turn-status-indicator").className).toContain(
+      "min-h-[1.4375rem]",
+    );
     expect(screen.queryByTestId("typing-dots")).toBeNull();
     expect(screen.queryByTestId("turn-status-spinner")).toBeNull();
+  });
+
+  it("suppresses transient planner phases and swaps stable ones on one baseline", () => {
+    const { rerender } = render(
+      <TurnStatus status={{ kind: "thinking" }} showLabel={false} />,
+    );
+    const label = screen.getByTestId("turn-status-label");
+
+    rerender(
+      <TurnStatus
+        status={{ kind: "running_tool", toolName: "VIEWS" }}
+        showLabel={false}
+      />,
+    );
+    expect(label.getAttribute("data-current-label")).toBe("Thinking");
+
+    act(() => {
+      vi.advanceTimersByTime(320);
+    });
+    expect(label.getAttribute("data-current-label")).toBe("Using Views");
+    expect(screen.getByTestId("turn-status-indicator").className).toContain(
+      "min-h-[1.4375rem]",
+    );
   });
 });
