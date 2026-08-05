@@ -56,14 +56,12 @@ function makeRegistryRuntime() {
 }
 
 describe("healthPlugin init", () => {
-  it("declares the health view and routing evaluator without direct actions", () => {
+  it("declares the health view without direct actions or text-routing evaluators", () => {
     expect(healthPlugin.name).toBe(HEALTH_PLUGIN_NAME);
     expect(healthPlugin.actions).toEqual([]);
     expect(healthPlugin.providers).toEqual([]);
     expect(healthPlugin.services).toEqual([]);
-    expect(
-      healthPlugin.responseHandlerEvaluators?.map((e) => e.name),
-    ).toContain("health.owner-telemetry-routing");
+    expect(healthPlugin.responseHandlerEvaluators ?? []).toEqual([]);
     const view = healthPlugin.views?.[0];
     expect(view).toMatchObject({
       id: "health",
