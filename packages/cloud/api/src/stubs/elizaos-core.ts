@@ -62,6 +62,157 @@ export function stripAugmentationForPersistence<
   } as T;
 }
 
+// --- unwrapUserMessageText: worker-safe mirror of
+// packages/core/src/security/incoming-message-security.ts +
+// external-content.ts. plugin-cloud-apps actions bundled into the Worker read
+// the user's actual words through this accessor. The mirror keeps the same
+// resolution order (retained metadata.userPayloadText, then a marker parse
+// ONLY when the externalContentWrapped stamp attests the envelope, then raw
+// text) and the same fail-closed validation: any result that still reads as
+// envelope material — via the NFKC/invisible/homoglyph detection skeleton —
+// resolves to "". Divergence here would re-open the cloud lane to the
+// envelope echo the core seam closed. ---
+
+const EXTERNAL_CONTENT_START = "<<<EXTERNAL_UNTRUSTED_CONTENT>>>";
+const EXTERNAL_CONTENT_END = "<<<END_EXTERNAL_UNTRUSTED_CONTENT>>>";
+const ENVELOPE_MARKER_NEEDLE = "external_untrusted_content";
+const ENVELOPE_WARNING_NEEDLE =
+  "security notice: the following content is from an external, untrusted source";
+const MARKER_PROXIMITY_WINDOW = 64;
+const INVISIBLE_CODE_POINTS = /[\u200B-\u200D\u2060\uFEFF\u00AD]/g;
+
+// Cyrillic/Greek letters that render as the Latin letters of the envelope
+// vocabulary. Mirrors CONFUSABLE_TO_LATIN in core's external-content.ts.
+const CONFUSABLE_TO_LATIN: Record<string, string> = {
+  А: "A",
+  В: "B",
+  Е: "E",
+  Ѕ: "S",
+  І: "I",
+  Ј: "J",
+  К: "K",
+  М: "M",
+  Н: "H",
+  О: "O",
+  Р: "P",
+  С: "C",
+  Т: "T",
+  У: "Y",
+  Х: "X",
+  а: "a",
+  в: "b",
+  е: "e",
+  ѕ: "s",
+  і: "i",
+  ј: "j",
+  к: "k",
+  м: "m",
+  н: "h",
+  о: "o",
+  р: "p",
+  с: "c",
+  т: "t",
+  у: "y",
+  х: "x",
+  Α: "A",
+  Β: "B",
+  Ε: "E",
+  Ζ: "Z",
+  Η: "H",
+  Ι: "I",
+  Κ: "K",
+  Μ: "M",
+  Ν: "N",
+  Ο: "O",
+  Ρ: "P",
+  Τ: "T",
+  Υ: "Y",
+  Χ: "X",
+  α: "a",
+  β: "b",
+  ε: "e",
+  ζ: "z",
+  η: "n",
+  ι: "i",
+  κ: "k",
+  μ: "m",
+  ν: "v",
+  ο: "o",
+  ρ: "p",
+  τ: "t",
+  υ: "u",
+  χ: "x",
+};
+
+const CONFUSABLE_PATTERN = new RegExp(
+  `[${Object.keys(CONFUSABLE_TO_LATIN).join("")}]`,
+  "g",
+);
+
+function buildEnvelopeDetectionSkeleton(text: string): string {
+  return text
+    .normalize("NFKC")
+    .replace(INVISIBLE_CODE_POINTS, "")
+    .replace(CONFUSABLE_PATTERN, (char) => CONFUSABLE_TO_LATIN[char] ?? char)
+    .toLowerCase();
+}
+
+export function containsExternalEnvelopeMaterial(text: string): boolean {
+  if (!text) return false;
+  const skeleton = buildEnvelopeDetectionSkeleton(text);
+  const wordFolded = skeleton.replace(/[\s_-]+/g, "_");
+  if (wordFolded.includes(ENVELOPE_MARKER_NEEDLE)) return true;
+  if (skeleton.replace(/\s+/g, " ").includes(ENVELOPE_WARNING_NEEDLE)) {
+    return true;
+  }
+  let cursor = skeleton.indexOf("<<<");
+  while (cursor >= 0) {
+    const window = skeleton.slice(cursor, cursor + MARKER_PROXIMITY_WINDOW);
+    if (window.includes("external")) return true;
+    cursor = skeleton.indexOf("<<<", cursor + 3);
+  }
+  return false;
+}
+
+function extractWrappedExternalContent(content: string): string | null {
+  const start = content.indexOf(EXTERNAL_CONTENT_START);
+  if (start < 0) return null;
+  const payloadStart = start + EXTERNAL_CONTENT_START.length;
+  const end = content.indexOf(EXTERNAL_CONTENT_END, payloadStart);
+  if (end < 0) return null;
+  const inner = content.slice(payloadStart, end);
+  const metadataSeparator = "\n---\n";
+  const separatorIndex = inner.indexOf(metadataSeparator);
+  const payload =
+    separatorIndex >= 0
+      ? inner.slice(separatorIndex + metadataSeparator.length)
+      : inner;
+  return payload.trim();
+}
+
+export function unwrapUserMessageText(message: {
+  content?: { text?: unknown; metadata?: unknown };
+}): string {
+  const text =
+    typeof message.content?.text === "string" ? message.content.text : "";
+  const metadata =
+    typeof message.content?.metadata === "object" &&
+    message.content.metadata !== null
+      ? (message.content.metadata as Record<string, unknown>)
+      : {};
+  const retained = metadata.userPayloadText;
+  let candidate: string;
+  if (typeof retained === "string" && retained.trim().length > 0) {
+    candidate = retained;
+  } else if (metadata.externalContentWrapped === true) {
+    candidate = extractWrappedExternalContent(text) ?? text;
+  } else {
+    candidate = text;
+  }
+  const trimmed = candidate.trim();
+  return containsExternalEnvelopeMaterial(trimmed) ? "" : trimmed;
+}
+
 // --- ElizaError: worker-safe mirror of @elizaos/core/errors (pure-JS Error
 // subclass, no I/O). Cloud Worker services (active-billing-numeric, user-mcps,
 // twap-price-oracle, cloudflare-registrar, …) import + extend it, so the shim
