@@ -313,6 +313,7 @@ describe("fishAudioPlugin", () => {
           ELIZA_TTS_FISH_ENABLED: "true",
           FISH_AUDIO_API_KEY: process.env.FISH_AUDIO_API_KEY,
           FISH_AUDIO_REFERENCE_ID: liveReferenceId,
+          FISH_AUDIO_MODEL: process.env.FISH_AUDIO_MODEL,
         }),
         { text: "Fish Audio live integration test.", audioStream: true },
       );
