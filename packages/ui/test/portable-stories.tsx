@@ -14,7 +14,7 @@
  *   smokeStoryModules("primitive", mods);
  */
 import { composeStories } from "@storybook/react";
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 import type { ComponentType, ReactElement, ReactNode } from "react";
 import {
   afterAll,
@@ -76,6 +76,11 @@ export function smokeStoryModules(
     wrap?: (node: ReactNode) => ReactNode;
     minModules?: number;
     /**
+     * Deliberate ErrorBoundary stories may declare the exact React error they
+     * exercise without weakening the package-wide unexpected-console guard.
+     */
+    expectedConsoleErrors?: Record<string, RegExp>;
+    /**
      * `"<Module>/<Story>"` keys to render as `it.skip` — for stories that need
      * the full app runtime (live AppProvider data: plugins, appRuns, transcript
      * sinks) that jsdom composition can't supply. These are covered by the
@@ -88,9 +93,30 @@ export function smokeStoryModules(
     options.wrap ??
     ((node: ReactNode) => <TooltipProvider>{node}</TooltipProvider>);
   const skip = new Set(options.skip ?? []);
+  const expectedConsoleErrors = options.expectedConsoleErrors ?? {};
+  const restoreMediaMethods: Array<() => void> = [];
 
   beforeAll(() => {
     installJsdomUiPolyfills();
+    // jsdom exposes the media-element methods but implements them by reporting
+    // an error. Stories exercise component lifecycle, not browser codecs, so
+    // provide the real DOM contracts: play resolves; pause/load are synchronous.
+    if (typeof HTMLMediaElement !== "undefined") {
+      const play = vi
+        .spyOn(HTMLMediaElement.prototype, "play")
+        .mockResolvedValue(undefined);
+      const pause = vi
+        .spyOn(HTMLMediaElement.prototype, "pause")
+        .mockImplementation(() => {});
+      const load = vi
+        .spyOn(HTMLMediaElement.prototype, "load")
+        .mockImplementation(() => {});
+      restoreMediaMethods.push(
+        () => play.mockRestore(),
+        () => pause.mockRestore(),
+        () => load.mockRestore(),
+      );
+    }
     // This smoke is offline (no backend behind jsdom), but components still
     // fire real on-mount fetches whose socket errors settle on the network's
     // schedule — on a loaded CI worker that can be AFTER vitest tore down the
@@ -102,6 +128,7 @@ export function smokeStoryModules(
     vi.stubGlobal("fetch", () => new Promise<Response>(() => {}));
   });
   afterAll(() => {
+    for (const restore of restoreMediaMethods) restore();
     vi.unstubAllGlobals();
   });
   afterEach(cleanup);
@@ -139,19 +166,47 @@ export function smokeStoryModules(
           // ShortcutsOverlay/Open, …). Blank-render detection that needs that
           // runtime lives in the browser story gate (its needs-runtime path) and
           // the live audit:app — not this fast offline smoke.
-          const { container } = render(wrap(<Story />) as ReactElement);
-          // If the story defines an interaction (`play`), run it — so authoring a
-          // play function automatically gets it exercised in this lane, with no
-          // per-component test to wire up.
-          const play = (
-            Story as {
-              play?: (ctx: {
-                canvasElement: HTMLElement;
-              }) => void | Promise<void>;
+          const storyKey = `${name}/${storyName}`;
+          const expectedConsoleError = expectedConsoleErrors[storyKey];
+          const consoleError = expectedConsoleError
+            ? vi.spyOn(console, "error").mockImplementation(() => {})
+            : null;
+          try {
+            const { container } = render(wrap(<Story />) as ReactElement);
+            // Immediate async story state must settle inside React's act boundary
+            // so the smoke observes the mounted state rather than leaking work.
+            await act(async () => {
+              await Promise.resolve();
+              await Promise.resolve();
+            });
+
+            if (consoleError && expectedConsoleError) {
+              const emitted = consoleError.mock.calls
+                .flat()
+                .map((argument) =>
+                  argument instanceof Error
+                    ? (argument.stack ?? argument.message)
+                    : String(argument),
+                )
+                .join("\n");
+              expect(emitted).toMatch(expectedConsoleError);
             }
-          ).play;
-          if (typeof play === "function") {
-            await play({ canvasElement: container });
+
+            // If the story defines an interaction (`play`), run it — so authoring a
+            // play function automatically gets it exercised in this lane, with no
+            // per-component test to wire up.
+            const play = (
+              Story as {
+                play?: (ctx: {
+                  canvasElement: HTMLElement;
+                }) => void | Promise<void>;
+              }
+            ).play;
+            if (typeof play === "function") {
+              await play({ canvasElement: container });
+            }
+          } finally {
+            consoleError?.mockRestore();
           }
         });
       }
