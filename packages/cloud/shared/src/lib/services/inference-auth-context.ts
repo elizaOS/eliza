@@ -129,6 +129,8 @@ export interface ResolveInferenceAuthOptions {
   onCacheWriteTelemetry?(telemetry: InferenceAuthCacheWriteTelemetry): void;
   /** Never join a Postgres hydration to the inference response promise. */
   cacheOnly?: boolean;
+  /** Internal background refresh: bypass the combined decision and revalidate. */
+  forceAuthoritative?: boolean;
 }
 
 interface MutableInferenceAuthTrace {
@@ -152,6 +154,7 @@ interface MutableInferenceAuthTrace {
 }
 
 const apiKeyHydrations = new Map<string, Promise<void>>();
+const AUTH_CONTEXT_REFRESH_AFTER_MS = 30_000;
 
 const OPAQUE_TRACE_ID =
   /^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i;
@@ -286,6 +289,7 @@ function getOrCreateApiKeyHydration(
   const hydration = resolveInferenceAuthContext(req, {
     traceId,
     cacheOnly: false,
+    forceAuthoritative: true,
   })
     .then(async (result) => {
       if (result.kind === "suspended") {
@@ -404,7 +408,7 @@ export async function resolveInferenceAuthContext(
     trace.cacheBackend = cache.getBackendKind();
 
     const keyHash = hashApiKey(credential.rawKey);
-    if (authCacheEnabled && cacheAvailable) {
+    if (authCacheEnabled && cacheAvailable && !options.forceAuthoritative) {
       const cacheReadStartedAt = performance.now();
       const cached = await readInferenceAuthContextWithOutcome(
         keyHash,
@@ -424,8 +428,16 @@ export async function resolveInferenceAuthContext(
               error: error instanceof Error ? error.message : String(error),
             });
           });
-        if (options.executionCtx) options.executionCtx.waitUntil(usageUpdate);
-        else void usageUpdate;
+        if (options.executionCtx) {
+          options.executionCtx.waitUntil(usageUpdate);
+          if (Date.now() - cached.ctx.cachedAt >= AUTH_CONTEXT_REFRESH_AFTER_MS) {
+            options.executionCtx.waitUntil(
+              getOrCreateApiKeyHydration(req, keyHash, options.traceId),
+            );
+          }
+        } else {
+          void usageUpdate;
+        }
         trace.result = "authorized_cache";
         return { kind: "authorized", ctx: cached.ctx, source: "cache" };
       }
@@ -452,6 +464,7 @@ export async function resolveInferenceAuthContext(
     trace.authoritative = "error";
     trace.result = "error";
     const bypassAuthoritativeCaches =
+      options.forceAuthoritative === true ||
       trace.controlledProbe === "on" ||
       trace.cacheRead === "invalid" ||
       trace.cacheRead === "unavailable" ||
