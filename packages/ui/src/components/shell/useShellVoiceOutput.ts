@@ -161,8 +161,18 @@ export function useShellVoiceOutput(
     // A new assistant message replaces prior playback; a streaming continuation
     // of the same message appends. `queueAssistantSpeech` dedupes the prefix.
     const replace = previous?.id !== latest.id;
+    const continuationOfMessageId =
+      previous &&
+      previous.id !== latest.id &&
+      !conversationMessages.some((message) => message.id === previous.id) &&
+      (latest.text === previous.text || latest.text.startsWith(previous.text))
+        ? previous.id
+        : undefined;
     spokenRef.current = latest;
-    queueAssistantSpeech(latest.id, latest.text, !chatSending, { replace });
+    queueAssistantSpeech(latest.id, latest.text, !chatSending, {
+      replace,
+      ...(continuationOfMessageId ? { continuationOfMessageId } : {}),
+    });
   }, [
     agentVoiceMuted,
     voiceBootstrapTick,

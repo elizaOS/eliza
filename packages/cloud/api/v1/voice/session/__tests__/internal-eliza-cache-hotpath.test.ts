@@ -4,6 +4,7 @@
  */
 
 import { afterEach, expect, test } from "bun:test";
+import type { Bindings } from "@/types/cloud-worker-env";
 
 process.env.MOCK_REDIS = "1";
 
@@ -25,6 +26,17 @@ const CACHE_KEY = CacheKeys.sharedAgentScope.voice(
   USER_ID,
   AGENT_ID,
 );
+const blobBinding = {
+  async get() {
+    return null;
+  },
+  async put() {
+    return undefined;
+  },
+  async delete() {
+    return undefined;
+  },
+} satisfies Bindings["BLOB"];
 
 const cachedAgent = {
   id: AGENT_ID,
@@ -67,6 +79,7 @@ test("real cache + canonical coordinator dispatch performs no response-path DB w
     CACHE_ENABLED: "true",
     DATABASE_URL: "postgresql://must-not-connect.invalid/eliza",
     VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer voice-service",
+    BLOB: blobBinding,
     SHARED_RUNTIME_CONVERSATIONS: namespace,
   };
 
@@ -127,6 +140,7 @@ test("rejects conversation-creation routes instead of creating per-turn conversa
       CACHE_ENABLED: "true",
       DATABASE_URL: "postgresql://must-not-connect.invalid/eliza",
       VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer voice-service",
+      BLOB: blobBinding,
       SHARED_RUNTIME_CONVERSATIONS: {
         getByName() {
           throw new Error("conversation coordinator must not be reached");
@@ -171,6 +185,7 @@ test("missing Worker coordinator fails closed without selecting a legacy bridge"
     {
       DATABASE_URL: "postgresql://must-not-connect.invalid/eliza",
       VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer voice-service",
+      BLOB: blobBinding,
     } as Parameters<typeof createInternalElizaConversationFetch>[0],
     {
       agentId: AGENT_ID,
