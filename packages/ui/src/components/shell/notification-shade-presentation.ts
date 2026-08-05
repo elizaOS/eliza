@@ -298,8 +298,13 @@ export function applyNotificationPullPresentation(
           "--eliza-notif-group-content-visibility",
           String(contentVisibility),
         );
+        content.style.setProperty(
+          "--eliza-notif-group-surface-visibility",
+          String(contentVisibility),
+        );
       } else if (!shadeClosing) {
         content.style.removeProperty("--eliza-notif-group-content-visibility");
+        content.style.removeProperty("--eliza-notif-group-surface-visibility");
       }
       content.style.transform = `translate3d(0, ${
         containerOffset + contentPullOffset + presentation.pullOvershootOffset
@@ -380,6 +385,7 @@ export function clearNotificationPullVisibilityOverrides(
     "[data-notification-group-content]",
   )) {
     content.style.removeProperty("--eliza-notif-group-content-visibility");
+    content.style.removeProperty("--eliza-notif-group-surface-visibility");
   }
   for (const row of root.querySelectorAll<HTMLElement>(
     "[data-notification-disposable-row]",
