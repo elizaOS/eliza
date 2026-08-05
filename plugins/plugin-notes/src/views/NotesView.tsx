@@ -32,7 +32,11 @@ function formatUpdatedAt(value: string): string {
 
 function NoteCard({ note }: { note: StickyNoteModel }) {
   const card = useAgentElement<HTMLElement>({
-    id: `notes-card-${note.id}`,
+    // The agent surface is also planner context. Sharing the domain id keeps a
+    // follow-up such as “delete that note” addressable by the same identifier
+    // the semantic capability accepts instead of leaking a presentation-only
+    // DOM id into tool parameters.
+    id: note.id,
     label: `Note ${note.title}`,
     role: "card",
     group: "notes-list",
