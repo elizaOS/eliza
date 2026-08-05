@@ -563,6 +563,7 @@ jobs:
           FISH_AUDIO_API_KEY: ${{ secrets.FISH_AUDIO_API_KEY }}
           FISH_AUDIO_REFERENCE_ID: ${{ secrets.FISH_AUDIO_REFERENCE_ID }}
           ELIZA_TTS_FISH_ENABLED: ${{ steps.env.outputs.deploy_environment != 'production' && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.ELIZA_TTS_FISH_ENABLED) && 'true' || 'false' }}
+          FISH_AUDIO_DATA_GOVERNANCE_APPROVED: ${{ steps.env.outputs.deploy_environment != 'production' && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.FISH_AUDIO_DATA_GOVERNANCE_APPROVED) && 'true' || 'false' }}
           FISH_AUDIO_MODEL: ${{ vars.FISH_AUDIO_MODEL || 's2.1-pro' }}
           # The realtime downlink contract is PCM16 mono at exactly 16 kHz.
           FISH_AUDIO_SAMPLE_RATE: "16000"
@@ -680,6 +681,10 @@ jobs:
           # voice downlink format are deployable; Cartesia is still required
           # above because it handles pre-first-audio fallback.
           if is_truthy "$ELIZA_TTS_FISH_ENABLED"; then
+            if ! is_truthy "$FISH_AUDIO_DATA_GOVERNANCE_APPROVED"; then
+              echo "::error::Fish realtime TTS is unavailable until FISH_AUDIO_DATA_GOVERNANCE_APPROVED is explicitly set after owner policy attestation"
+              exit 1
+            fi
             missing_fish_secrets=()
             for name in FISH_AUDIO_API_KEY FISH_AUDIO_REFERENCE_ID; do
               if ! has_nonblank_value "${!name:-}"; then
@@ -723,8 +728,9 @@ jobs:
                 ;;
               FISH_AUDIO_API_KEY|FISH_AUDIO_REFERENCE_ID)
                 if ! is_truthy "$VOICE_REALTIME_WS_ENABLED" || \
-                   ! is_truthy "$ELIZA_TTS_FISH_ENABLED"; then
-                  echo "::notice::$name is gated by realtime voice and ELIZA_TTS_FISH_ENABLED; skipping"
+                   ! is_truthy "$ELIZA_TTS_FISH_ENABLED" || \
+                   ! is_truthy "$FISH_AUDIO_DATA_GOVERNANCE_APPROVED"; then
+                  echo "::notice::$name is gated by realtime voice, Fish enablement, and data-governance approval; skipping"
                   return 0
                 fi
                 ;;
@@ -844,11 +850,12 @@ jobs:
           KOKORO_TTS_URL: ${{ vars.ELIZA_VOICE_KOKORO_TTS_URL }}
           VOICE_REALTIME_WS_ENABLED: ${{ steps.env.outputs.deploy_environment != 'production' && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED) && 'true' || 'false' }}
           ELIZA_TTS_FISH_ENABLED: ${{ steps.env.outputs.deploy_environment != 'production' && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.ELIZA_TTS_FISH_ENABLED) && 'true' || 'false' }}
+          FISH_AUDIO_DATA_GOVERNANCE_APPROVED: ${{ steps.env.outputs.deploy_environment != 'production' && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.FISH_AUDIO_DATA_GOVERNANCE_APPROVED) && 'true' || 'false' }}
           FISH_AUDIO_MODEL: ${{ vars.FISH_AUDIO_MODEL || 's2.1-pro' }}
           FISH_AUDIO_SAMPLE_RATE: "16000"
           FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS: ${{ vars.FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS || '1500' }}
         run: |
-          args=(${{ steps.env.outputs.wrangler_args }} --var ELIZA_DEPLOY_COMMIT:"$GITHUB_SHA" --var VOICE_REALTIME_WS_ENABLED:"$VOICE_REALTIME_WS_ENABLED" --var ELIZA_TTS_FISH_ENABLED:"$ELIZA_TTS_FISH_ENABLED" --var FISH_AUDIO_MODEL:"$FISH_AUDIO_MODEL" --var FISH_AUDIO_SAMPLE_RATE:"$FISH_AUDIO_SAMPLE_RATE" --var FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS:"$FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS")
+          args=(${{ steps.env.outputs.wrangler_args }} --var ELIZA_DEPLOY_COMMIT:"$GITHUB_SHA" --var VOICE_REALTIME_WS_ENABLED:"$VOICE_REALTIME_WS_ENABLED" --var ELIZA_TTS_FISH_ENABLED:"$ELIZA_TTS_FISH_ENABLED" --var FISH_AUDIO_DATA_GOVERNANCE_APPROVED:"$FISH_AUDIO_DATA_GOVERNANCE_APPROVED" --var FISH_AUDIO_MODEL:"$FISH_AUDIO_MODEL" --var FISH_AUDIO_SAMPLE_RATE:"$FISH_AUDIO_SAMPLE_RATE" --var FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS:"$FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS")
           if [ -n "${KOKORO_TTS_URL:-}" ]; then
             args+=(--var KOKORO_TTS_URL:"$KOKORO_TTS_URL")
           else

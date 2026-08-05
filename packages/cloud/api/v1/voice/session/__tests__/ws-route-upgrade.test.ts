@@ -345,6 +345,7 @@ describe("voice-session ws upgrade (happy path)", () => {
   test("injects Fish realtime TTS config when the Fish flag is enabled", async () => {
     const res = await upgrade({
       ELIZA_TTS_FISH_ENABLED: "true",
+      FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
       FISH_AUDIO_API_KEY: "fish-key",
       FISH_AUDIO_REFERENCE_ID: "fish-voice",
       FISH_AUDIO_MODEL: "s2.1-pro-free",
@@ -362,9 +363,25 @@ describe("voice-session ws upgrade (happy path)", () => {
     expect(typeof session.config.fishAudioWebSocketFactory).toBe("function");
   });
 
+  test("refuses Fish egress when data-governance approval is absent", async () => {
+    const res = await upgrade({
+      ELIZA_TTS_FISH_ENABLED: "true",
+      FISH_AUDIO_API_KEY: "fish-key",
+      FISH_AUDIO_REFERENCE_ID: "fish-voice",
+    });
+
+    expect(res.status).toBe(503);
+    expect((await res.json()) as unknown).toEqual({
+      error: "Fish Audio is unavailable pending data-governance approval",
+      code: "fish_audio_data_governance_unapproved",
+    });
+    expect(attachCalls).toHaveLength(0);
+  });
+
   test("refuses the upgrade when Fish config would violate the voice PCM contract", async () => {
     const res = await upgrade({
       ELIZA_TTS_FISH_ENABLED: "true",
+      FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
       FISH_AUDIO_API_KEY: "fish-key",
       FISH_AUDIO_REFERENCE_ID: "fish-voice",
       FISH_AUDIO_SAMPLE_RATE: "24000",
@@ -377,6 +394,7 @@ describe("voice-session ws upgrade (happy path)", () => {
   test("refuses the upgrade when the configured Fish model is unsupported", async () => {
     const res = await upgrade({
       ELIZA_TTS_FISH_ENABLED: "true",
+      FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
       FISH_AUDIO_API_KEY: "fish-key",
       FISH_AUDIO_REFERENCE_ID: "fish-voice",
       FISH_AUDIO_MODEL: "s2.1",

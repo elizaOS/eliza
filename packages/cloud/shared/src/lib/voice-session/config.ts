@@ -24,6 +24,7 @@ export interface VoiceRealtimeEnv {
   VOICE_REALTIME_WS_ENABLED?: string;
   VOICE_REALTIME_CARTESIA_VOICE_ID?: string;
   ELIZA_TTS_FISH_ENABLED?: string;
+  FISH_AUDIO_DATA_GOVERNANCE_APPROVED?: string;
   FISH_AUDIO_API_KEY?: string;
   FISH_AUDIO_MODEL?: string;
   FISH_AUDIO_REFERENCE_ID?: string;
@@ -64,11 +65,23 @@ export function isVoiceRealtimeWsEnabled(env: VoiceRealtimeEnv | undefined): boo
   return TRUEY.has(raw.trim().toLowerCase());
 }
 
-/** Fish realtime TTS is default-off and only participates when explicitly enabled. */
-export function isFishRealtimeTtsEnabled(env: VoiceRealtimeEnv | undefined): boolean {
+/** Whether an operator requested Fish realtime TTS. */
+export function isFishRealtimeTtsRequested(env: VoiceRealtimeEnv | undefined): boolean {
   const raw = env?.ELIZA_TTS_FISH_ENABLED;
   if (typeof raw !== "string") return false;
   return TRUEY.has(raw.trim().toLowerCase());
+}
+
+/** Server-only approval after the provider's retention/training policy is attested. */
+export function isFishAudioDataGovernanceApproved(env: VoiceRealtimeEnv | undefined): boolean {
+  const raw = env?.FISH_AUDIO_DATA_GOVERNANCE_APPROVED;
+  if (typeof raw !== "string") return false;
+  return TRUEY.has(raw.trim().toLowerCase());
+}
+
+/** Fish participates only when both enablement and governance approval are explicit. */
+export function isFishRealtimeTtsEnabled(env: VoiceRealtimeEnv | undefined): boolean {
+  return isFishRealtimeTtsRequested(env) && isFishAudioDataGovernanceApproved(env);
 }
 
 export function resolveFishRealtimeSampleRate(env: VoiceRealtimeEnv | undefined): number {

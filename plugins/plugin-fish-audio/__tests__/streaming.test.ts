@@ -80,6 +80,14 @@ class FakeFishSocket {
     listeners.add(listener as (event: unknown) => void);
   }
 
+  emitAudio(bytes: Uint8Array): void {
+    this.fire("message", { data: encode({ event: "audio", audio: bytes }) });
+  }
+
+  emitFinish(): void {
+    this.fire("message", { data: encode({ event: "finish", reason: "stop" }) });
+  }
+
   private fire(type: string, event: unknown): void {
     for (const listener of this.listeners.get(type) ?? []) listener(event);
   }
@@ -128,6 +136,7 @@ afterEach(() => {
   FakeFishSocket.finishReason = "stop";
   configureFishAudioWebSocketFactory(undefined);
   Reflect.deleteProperty(globalThis, "WebSocket");
+  vi.useRealTimers();
 });
 
 describe("fishAudioPlugin", () => {
@@ -142,9 +151,22 @@ describe("fishAudioPlugin", () => {
     expect(rt.registerModel).not.toHaveBeenCalled();
   });
 
-  test("registers TEXT_TO_SPEECH when ELIZA_TTS_FISH_ENABLED is true", async () => {
+  test("does not register when data-governance approval is absent", async () => {
     const rt = runtime({
       ELIZA_TTS_FISH_ENABLED: "true",
+      FISH_AUDIO_API_KEY: "key",
+      FISH_AUDIO_REFERENCE_ID: "voice",
+    });
+
+    await fishAudioPlugin.init?.({}, rt);
+
+    expect(rt.registerModel).not.toHaveBeenCalled();
+  });
+
+  test("registers TEXT_TO_SPEECH when enablement and governance approval are explicit", async () => {
+    const rt = runtime({
+      ELIZA_TTS_FISH_ENABLED: "true",
+      FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
       FISH_AUDIO_API_KEY: "key",
       FISH_AUDIO_REFERENCE_ID: "voice",
     });
@@ -166,6 +188,7 @@ describe("fishAudioPlugin", () => {
     });
     const rt = runtime({
       ELIZA_TTS_FISH_ENABLED: "true",
+      FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
       FISH_AUDIO_API_KEY: "key",
       FISH_AUDIO_REFERENCE_ID: "voice",
     });
@@ -213,6 +236,7 @@ describe("fishAudioPlugin", () => {
     const result = await handleFishAudioTextToSpeech(
       runtime({
         ELIZA_TTS_FISH_ENABLED: "true",
+        FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
         FISH_AUDIO_API_KEY: "key",
         FISH_AUDIO_REFERENCE_ID: "voice",
       }),
@@ -236,6 +260,7 @@ describe("fishAudioPlugin", () => {
     const result = await handleFishAudioTextToSpeech(
       runtime({
         ELIZA_TTS_FISH_ENABLED: "true",
+        FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
         FISH_AUDIO_API_KEY: "key",
         FISH_AUDIO_REFERENCE_ID: "voice",
       }),
@@ -258,6 +283,7 @@ describe("fishAudioPlugin", () => {
     const result = await handleFishAudioTextToSpeech(
       runtime({
         ELIZA_TTS_FISH_ENABLED: "true",
+        FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
         FISH_AUDIO_API_KEY: "key",
         FISH_AUDIO_REFERENCE_ID: "voice",
       }),
@@ -275,6 +301,7 @@ describe("fishAudioPlugin", () => {
     });
     const rt = runtime({
       ELIZA_TTS_FISH_ENABLED: "true",
+      FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
       FISH_AUDIO_API_KEY: "key",
       FISH_AUDIO_REFERENCE_ID: "voice",
     });
@@ -282,6 +309,129 @@ describe("fishAudioPlugin", () => {
     const result = await handleFishAudioTextToSpeech(rt, { text: "buffer me" });
 
     expect(result).toEqual(new Uint8Array([5, 6]));
+  });
+
+  test("accepts audio exactly at the configured buffer ceiling", async () => {
+    FakeFishSocket.respondToText = false;
+    Object.defineProperty(globalThis, "WebSocket", {
+      value: FakeFishSocket,
+      configurable: true,
+    });
+    const result = await handleFishAudioTextToSpeech(
+      runtime({
+        ELIZA_TTS_FISH_ENABLED: "true",
+        FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
+        FISH_AUDIO_API_KEY: "key",
+        FISH_AUDIO_REFERENCE_ID: "voice",
+      }),
+      { text: "bounded", audioStream: true, maxBufferBytes: 4 },
+    );
+    if (result instanceof Uint8Array)
+      throw new Error("Expected streaming result");
+    await Promise.resolve();
+    const socket = FakeFishSocket.instances.at(-1);
+    socket?.emitAudio(new Uint8Array([1, 2]));
+    socket?.emitAudio(new Uint8Array([3, 4]));
+    socket?.emitFinish();
+
+    await expect(result.bytes).resolves.toEqual(new Uint8Array([1, 2, 3, 4]));
+  });
+
+  test("rejects both result surfaces and closes when audio exceeds the buffer ceiling", async () => {
+    FakeFishSocket.respondToText = false;
+    Object.defineProperty(globalThis, "WebSocket", {
+      value: FakeFishSocket,
+      configurable: true,
+    });
+    const result = await handleFishAudioTextToSpeech(
+      runtime({
+        ELIZA_TTS_FISH_ENABLED: "true",
+        FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
+        FISH_AUDIO_API_KEY: "key",
+        FISH_AUDIO_REFERENCE_ID: "voice",
+      }),
+      { text: "too large", audioStream: true, maxBufferBytes: 3 },
+    );
+    if (result instanceof Uint8Array)
+      throw new Error("Expected streaming result");
+    const iterator = result.audioStream[Symbol.asyncIterator]();
+    await Promise.resolve();
+    const socket = FakeFishSocket.instances.at(-1);
+    socket?.emitAudio(new Uint8Array([1, 2]));
+    await expect(iterator.next()).resolves.toEqual({
+      done: false,
+      value: new Uint8Array([1, 2]),
+    });
+    socket?.emitAudio(new Uint8Array([3, 4]));
+
+    await expect(result.bytes).rejects.toMatchObject({
+      code: "FISH_AUDIO_MAX_BUFFER_BYTES_EXCEEDED",
+    });
+    await expect(iterator.next()).rejects.toMatchObject({
+      code: "FISH_AUDIO_MAX_BUFFER_BYTES_EXCEEDED",
+    });
+    expect(socket?.readyState).toBe(3);
+  });
+
+  test("rejects and closes a stalled synthesis at the wall-clock deadline", async () => {
+    vi.useFakeTimers();
+    FakeFishSocket.respondToText = false;
+    Object.defineProperty(globalThis, "WebSocket", {
+      value: FakeFishSocket,
+      configurable: true,
+    });
+    const result = await handleFishAudioTextToSpeech(
+      runtime({
+        ELIZA_TTS_FISH_ENABLED: "true",
+        FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
+        FISH_AUDIO_API_KEY: "key",
+        FISH_AUDIO_REFERENCE_ID: "voice",
+      }),
+      { text: "stall", audioStream: true, synthesisTimeoutMs: 25 },
+    );
+    if (result instanceof Uint8Array)
+      throw new Error("Expected streaming result");
+    vi.advanceTimersByTime(25);
+
+    await expect(result.bytes).rejects.toMatchObject({
+      code: "FISH_AUDIO_SYNTHESIS_TIMEOUT",
+    });
+    expect(FakeFishSocket.instances.at(-1)?.readyState).toBe(3);
+  });
+
+  test("suppresses provider frames and deadline work after cancellation", async () => {
+    vi.useFakeTimers();
+    FakeFishSocket.respondToText = false;
+    Object.defineProperty(globalThis, "WebSocket", {
+      value: FakeFishSocket,
+      configurable: true,
+    });
+    const controller = new AbortController();
+    const result = await handleFishAudioTextToSpeech(
+      runtime({
+        ELIZA_TTS_FISH_ENABLED: "true",
+        FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
+        FISH_AUDIO_API_KEY: "key",
+        FISH_AUDIO_REFERENCE_ID: "voice",
+      }),
+      {
+        text: "cancel",
+        audioStream: true,
+        signal: controller.signal,
+        synthesisTimeoutMs: 25,
+      },
+    );
+    if (result instanceof Uint8Array)
+      throw new Error("Expected streaming result");
+    controller.abort();
+    const socket = FakeFishSocket.instances.at(-1);
+    await expect(result.bytes).rejects.toMatchObject({
+      code: "FISH_AUDIO_STREAM_ABORTED",
+    });
+    socket?.emitAudio(new Uint8Array([9, 9]));
+    vi.advanceTimersByTime(25);
+
+    expect(socket?.readyState).toBe(3);
   });
 
   test("wraps live PCM evidence in a valid mono WAV container", () => {
@@ -312,6 +462,7 @@ describe("fishAudioPlugin", () => {
       const result = await handleFishAudioTextToSpeech(
         runtime({
           ELIZA_TTS_FISH_ENABLED: "true",
+          FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
           FISH_AUDIO_API_KEY: process.env.FISH_AUDIO_API_KEY,
           FISH_AUDIO_REFERENCE_ID: liveReferenceId,
           FISH_AUDIO_MODEL: process.env.FISH_AUDIO_MODEL,

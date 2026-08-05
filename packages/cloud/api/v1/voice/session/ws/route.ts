@@ -15,7 +15,9 @@ import {
 } from "@/lib/services/voice-usage-meter";
 import { logger } from "@/lib/utils/logger";
 import {
+  isFishAudioDataGovernanceApproved,
   isFishRealtimeTtsEnabled,
+  isFishRealtimeTtsRequested,
   isVoiceRealtimeWsEnabled,
   resolveElizaModel,
   resolveFishRealtimeFirstAudioTimeoutMs,
@@ -102,6 +104,20 @@ app.get("/", (c) => {
   const deepgramApiKey = env.DEEPGRAM_API_KEY;
   const cartesiaApiKey = env.CARTESIA_API_KEY;
   const cartesiaVoiceId = env.VOICE_REALTIME_CARTESIA_VOICE_ID;
+  const fishAudioRequested = isFishRealtimeTtsRequested(env);
+  const fishAudioGovernanceApproved = isFishAudioDataGovernanceApproved(env);
+  if (fishAudioRequested && !fishAudioGovernanceApproved) {
+    logger.error(
+      "[voice-session-ws] Fish Audio requested without data-governance approval; refusing upgrade",
+    );
+    return c.json(
+      {
+        error: "Fish Audio is unavailable pending data-governance approval",
+        code: "fish_audio_data_governance_unapproved",
+      },
+      503,
+    );
+  }
   const fishAudioEnabled = isFishRealtimeTtsEnabled(env);
   const fishAudioApiKey = env.FISH_AUDIO_API_KEY;
   const fishAudioReferenceId =

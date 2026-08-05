@@ -79,7 +79,11 @@ class FakeFishSocket implements FishAudioWebSocketLike {
   }
 }
 
-function makeHarness(opts?: { maxQueuedFrames?: number; firstAudioTimeoutMs?: number }) {
+function makeHarness(opts?: {
+  maxQueuedFrames?: number;
+  firstAudioTimeoutMs?: number;
+  now?: () => number;
+}) {
   const sockets: FakeFishSocket[] = [];
   const calls: Array<{ url: string; options: FishAudioWebSocketFactoryOptions }> = [];
   const factory: FishAudioWebSocketFactory = (url, options) => {
@@ -95,6 +99,7 @@ function makeHarness(opts?: { maxQueuedFrames?: number; firstAudioTimeoutMs?: nu
     websocketFactory: factory,
     maxQueuedFrames: opts?.maxQueuedFrames,
     firstAudioTimeoutMs: opts?.firstAudioTimeoutMs ?? 10_000,
+    now: opts?.now,
     metrics: (event) => metrics.push(event.name),
   });
   return { adapter, calls, metrics, socket: () => sockets[0], sockets };
@@ -161,6 +166,24 @@ describe("FishAudioTtsAdapter", () => {
     expect(firstAudio[0]).toBeGreaterThanOrEqual(0);
     expect(metrics).toContain("fish_tts_first_audio");
     expect(frames).toEqual([new Uint8Array([1, 2, 3, 4])]);
+  });
+
+  test("measures first audio from first text rather than socket prewarm", () => {
+    let nowMs = 1_000;
+    const { adapter, socket } = makeHarness({ now: () => nowMs });
+    const firstAudio: number[] = [];
+    const stream = adapter.createStream(
+      { contextId: "ctx-prewarm" },
+      { onFirstAudio: (event) => firstAudio.push(event.elapsedMs) },
+    );
+    socket().emitOpen();
+    nowMs = 8_000;
+    stream.sendPhrase({ text: "after prewarm", continueContext: false });
+    nowMs = 8_037;
+
+    socket().emitAudio(new Uint8Array([1, 2]));
+
+    expect(firstAudio).toEqual([37]);
   });
 
   test("flushes continuation text so short realtime phrases synthesize immediately", () => {

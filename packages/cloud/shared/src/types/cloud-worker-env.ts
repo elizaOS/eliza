@@ -156,6 +156,7 @@ export interface Bindings {
   VOICE_REALTIME_CARTESIA_VOICE_ID?: string;
   /** Default-off flag that promotes Fish Audio to primary realtime TTS. */
   ELIZA_TTS_FISH_ENABLED?: string;
+  FISH_AUDIO_DATA_GOVERNANCE_APPROVED?: string;
   /** Server-side Fish Audio API key for realtime TTS. */
   FISH_AUDIO_API_KEY?: string;
   /** Fish realtime model: s1, s2-pro, s2.1-pro, or s2.1-pro-free. */

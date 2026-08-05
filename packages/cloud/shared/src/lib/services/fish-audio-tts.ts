@@ -64,6 +64,7 @@ export interface FishAudioAdapterConfig {
   readonly firstAudioTimeoutMs?: number;
   readonly maxQueuedFrames?: number;
   readonly metrics?: FishAudioMetricsHook;
+  readonly now?: () => number;
 }
 
 export interface FishAudioMetricEvent {
@@ -253,6 +254,7 @@ interface NormalizedConfig {
   readonly firstAudioTimeoutMs: number;
   readonly maxQueuedFrames: number;
   readonly metrics?: FishAudioMetricsHook;
+  readonly now: () => number;
 }
 
 interface StreamConstructorInput extends NormalizedConfig {
@@ -269,7 +271,6 @@ export class FishAudioTtsStream {
 
   private readonly input: StreamConstructorInput;
   private readonly socket: FishAudioWebSocketLike;
-  private readonly startedAt = Date.now();
   private readonly outboundQueue: Uint8Array[] = [];
   private frameSequence = 0;
   private cancelled = false;
@@ -279,6 +280,7 @@ export class FishAudioTtsStream {
   private firstAudioEmitted = false;
   private providerErrorEmitted = false;
   private firstAudioTimer: ReturnType<typeof setTimeout> | null = null;
+  private firstTextSubmittedAtMs: number | null = null;
   private resolveOpened!: () => void;
   private rejectOpened!: (error: unknown) => void;
   private resolveClosed!: () => void;
@@ -530,9 +532,20 @@ export class FishAudioTtsStream {
 
   private handleAudio(bytes: Uint8Array): void {
     if (!this.firstAudioEmitted) {
+      if (this.firstTextSubmittedAtMs === null) {
+        this.emitProviderError({
+          contextId: this.contextId,
+          traceId: this.traceId,
+          title: "Fish provider sent audio before text",
+          message: "Fish emitted audio before the first non-empty text submission",
+          code: "provider_audio_before_text",
+        });
+        this.socket.close(1011, "Fish audio before text");
+        return;
+      }
       this.firstAudioEmitted = true;
       this.clearFirstAudioTimer();
-      const elapsedMs = Date.now() - this.startedAt;
+      const elapsedMs = this.input.now() - this.firstTextSubmittedAtMs;
       this.input.callbacks.onFirstAudio?.({
         contextId: this.contextId,
         traceId: this.traceId,
@@ -569,6 +582,7 @@ export class FishAudioTtsStream {
 
   private startFirstAudioTimer(): void {
     if (this.firstAudioTimer) return;
+    this.firstTextSubmittedAtMs = this.input.now();
     this.firstAudioTimer = setTimeout(() => {
       if (this.cancelled || this.firstAudioEmitted || this.completed || this.providerErrorEmitted)
         return;
@@ -602,7 +616,7 @@ export class FishAudioTtsStream {
     this.input.metrics?.({
       name,
       traceId: this.traceId,
-      timestampMs: Date.now(),
+      timestampMs: this.input.now(),
       attributes: {
         provider: FISH_AUDIO_PROVIDER_ID,
         modelId: this.input.model,
@@ -696,6 +710,7 @@ function validateFishAudioConfig(config: FishAudioAdapterConfig): NormalizedConf
     firstAudioTimeoutMs,
     maxQueuedFrames,
     metrics: config.metrics,
+    now: config.now ?? Date.now,
   };
 }
 

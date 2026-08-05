@@ -76,6 +76,7 @@ function runPreflight(env: Record<string, string>) {
       FISH_AUDIO_API_KEY: "fish-test",
       FISH_AUDIO_REFERENCE_ID: "fish-reference-test",
       ELIZA_TTS_FISH_ENABLED: "false",
+      FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "false",
       FISH_AUDIO_MODEL: "s2.1-pro",
       FISH_AUDIO_SAMPLE_RATE: "16000",
       FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS: "1500",
@@ -113,7 +114,7 @@ describe("Cloud CF realtime voice deploy contract", () => {
       "FISH_AUDIO_API_KEY|FISH_AUDIO_REFERENCE_ID",
     );
     expect(publishStep.run).toContain(
-      "is gated by realtime voice and ELIZA_TTS_FISH_ENABLED; skipping",
+      "is gated by realtime voice, Fish enablement, and data-governance approval; skipping",
     );
   });
 
@@ -126,6 +127,12 @@ describe("Cloud CF realtime voice deploy contract", () => {
     expect(deployStep.env?.FISH_AUDIO_SAMPLE_RATE).toBe("16000");
     expect(deployStep.run).toContain(
       '--var ELIZA_TTS_FISH_ENABLED:"$ELIZA_TTS_FISH_ENABLED"',
+    );
+    expect(deployStep.env?.FISH_AUDIO_DATA_GOVERNANCE_APPROVED).toBe(
+      publishStep.env?.FISH_AUDIO_DATA_GOVERNANCE_APPROVED,
+    );
+    expect(deployStep.run).toContain(
+      '--var FISH_AUDIO_DATA_GOVERNANCE_APPROVED:"$FISH_AUDIO_DATA_GOVERNANCE_APPROVED"',
     );
     expect(deployStep.run).toContain(
       '--var FISH_AUDIO_SAMPLE_RATE:"$FISH_AUDIO_SAMPLE_RATE"',
@@ -147,6 +154,12 @@ describe("Cloud CF realtime voice deploy contract", () => {
     expect(productionVars).toContain('VOICE_REALTIME_WS_ENABLED = "false"');
     expect(stagingVars).toContain('ELIZA_TTS_FISH_ENABLED = "false"');
     expect(productionVars).toContain('ELIZA_TTS_FISH_ENABLED = "false"');
+    expect(stagingVars).toContain(
+      'FISH_AUDIO_DATA_GOVERNANCE_APPROVED = "false"',
+    );
+    expect(productionVars).toContain(
+      'FISH_AUDIO_DATA_GOVERNANCE_APPROVED = "false"',
+    );
     expect(publishStep.env?.VOICE_REALTIME_WS_ENABLED).toContain(
       "vars.VOICE_REALTIME_WS_ENABLED",
     );
@@ -264,6 +277,7 @@ executedDescribe(
         const result = runPreflight({
           [missing]: " \t\n",
           ELIZA_TTS_FISH_ENABLED: "true",
+          FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
           VOICE_REALTIME_WS_ENABLED: "true",
         });
         expect(
@@ -280,6 +294,7 @@ executedDescribe(
         const result = runPreflight({
           ...invalid,
           ELIZA_TTS_FISH_ENABLED: "true",
+          FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
           VOICE_REALTIME_WS_ENABLED: "true",
         });
         expect(result.status, `${result.stdout}${result.stderr}`).toBe(1);
@@ -287,9 +302,21 @@ executedDescribe(
 
       const configured = runPreflight({
         ELIZA_TTS_FISH_ENABLED: "true",
+        FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
         VOICE_REALTIME_WS_ENABLED: "true",
       });
       expect(configured.status).toBe(0);
+    });
+
+    test("refuses Fish promotion without explicit data-governance approval", () => {
+      const result = runPreflight({
+        ELIZA_TTS_FISH_ENABLED: "true",
+        FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "false",
+        VOICE_REALTIME_WS_ENABLED: "true",
+      });
+
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain("FISH_AUDIO_DATA_GOVERNANCE_APPROVED");
     });
 
     test("constructs the staging fallback only after truthy opt-in and a nonblank source key", () => {

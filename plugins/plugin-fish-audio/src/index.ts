@@ -23,6 +23,8 @@ const DEFAULT_SAMPLE_RATE = 24_000;
 const DEFAULT_FORMAT = "pcm";
 const DEFAULT_LATENCY = "balanced";
 const DEFAULT_CHUNK_LENGTH = 100;
+const DEFAULT_MAX_BUFFER_BYTES = 16 * 1024 * 1024;
+const DEFAULT_SYNTHESIS_TIMEOUT_MS = 120_000;
 const DEFAULT_MIME_TYPE = "audio/pcm; codecs=pcm_s16le; rate=24000";
 const TRUEY = new Set(["1", "true", "yes", "on"]);
 
@@ -34,6 +36,8 @@ type TtsInput =
       model?: string;
       format?: FishAudioFormat;
       sampleRate?: number;
+      maxBufferBytes?: number;
+      synthesisTimeoutMs?: number;
     });
 
 interface FishAudioWebSocketLike {
@@ -90,17 +94,31 @@ function getSetting(runtime: IAgentRuntime, key: string): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-function isEnabled(runtime: IAgentRuntime): boolean {
+function isRequested(runtime: IAgentRuntime): boolean {
   return TRUEY.has(
     (getSetting(runtime, "ELIZA_TTS_FISH_ENABLED") ?? "").toLowerCase(),
   );
 }
 
+function isDataGovernanceApproved(runtime: IAgentRuntime): boolean {
+  return TRUEY.has(
+    (
+      getSetting(runtime, "FISH_AUDIO_DATA_GOVERNANCE_APPROVED") ?? ""
+    ).toLowerCase(),
+  );
+}
+
 function resolveConfig(runtime: IAgentRuntime, input: TtsInput) {
-  if (!isEnabled(runtime)) {
+  if (!isRequested(runtime)) {
     throw new ElizaError(
       "Fish Audio TTS is disabled; set ELIZA_TTS_FISH_ENABLED=true",
       { code: "FISH_AUDIO_DISABLED" },
+    );
+  }
+  if (!isDataGovernanceApproved(runtime)) {
+    throw new ElizaError(
+      "Fish Audio TTS is unavailable until an operator approves its data-governance policy",
+      { code: "FISH_AUDIO_DATA_GOVERNANCE_NOT_APPROVED" },
     );
   }
   const apiKey = getSetting(runtime, "FISH_AUDIO_API_KEY");
@@ -159,6 +177,34 @@ function resolveConfig(runtime: IAgentRuntime, input: TtsInput) {
       context: { sampleRate },
     });
   }
+  const maxBufferBytes = Number(
+    (typeof input === "string" ? undefined : input.maxBufferBytes) ??
+      getSetting(runtime, "FISH_AUDIO_MAX_BUFFER_BYTES") ??
+      DEFAULT_MAX_BUFFER_BYTES,
+  );
+  if (!Number.isSafeInteger(maxBufferBytes) || maxBufferBytes <= 0) {
+    throw new ElizaError(
+      "Fish Audio maxBufferBytes must be a positive integer",
+      {
+        code: "FISH_AUDIO_MAX_BUFFER_BYTES_INVALID",
+        context: { maxBufferBytes },
+      },
+    );
+  }
+  const synthesisTimeoutMs = Number(
+    (typeof input === "string" ? undefined : input.synthesisTimeoutMs) ??
+      getSetting(runtime, "FISH_AUDIO_SYNTHESIS_TIMEOUT_MS") ??
+      DEFAULT_SYNTHESIS_TIMEOUT_MS,
+  );
+  if (!Number.isSafeInteger(synthesisTimeoutMs) || synthesisTimeoutMs <= 0) {
+    throw new ElizaError(
+      "Fish Audio synthesisTimeoutMs must be a positive integer",
+      {
+        code: "FISH_AUDIO_SYNTHESIS_TIMEOUT_INVALID",
+        context: { synthesisTimeoutMs },
+      },
+    );
+  }
   return {
     apiKey,
     text,
@@ -166,6 +212,8 @@ function resolveConfig(runtime: IAgentRuntime, input: TtsInput) {
     model,
     format,
     sampleRate,
+    maxBufferBytes,
+    synthesisTimeoutMs,
     audioStream: typeof input !== "string" && input.audioStream === true,
     signal: typeof input === "string" ? undefined : input.signal,
   };
@@ -198,10 +246,12 @@ function createFishAudioStream(
   });
   const socket = openSocket(config.apiKey, config.model);
   socket.binaryType = "arraybuffer";
+  let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
 
   const finish = () => {
     if (done) return;
     done = true;
+    if (deadlineTimer) clearTimeout(deadlineTimer);
     resolveBytes(concatBytes(bufferedChunks, totalBytes));
     while (waiters.length > 0) {
       waiters.shift()?.({ done: true, value: undefined });
@@ -210,6 +260,7 @@ function createFishAudioStream(
   const fail = (error: unknown) => {
     if (done) return;
     done = true;
+    if (deadlineTimer) clearTimeout(deadlineTimer);
     failure = error;
     rejectBytes(error);
     while (waiters.length > 0) {
@@ -217,6 +268,20 @@ function createFishAudioStream(
     }
   };
   const push = (chunk: Uint8Array) => {
+    if (done) return;
+    if (chunk.byteLength > config.maxBufferBytes - totalBytes) {
+      fail(
+        new ElizaError("Fish Audio TTS exceeded the buffered audio limit", {
+          code: "FISH_AUDIO_MAX_BUFFER_BYTES_EXCEEDED",
+          context: {
+            maxBufferBytes: config.maxBufferBytes,
+            receivedBytes: totalBytes + chunk.byteLength,
+          },
+        }),
+      );
+      socket.close(1009, "audio limit exceeded");
+      return;
+    }
     bufferedChunks.push(chunk);
     totalBytes += chunk.byteLength;
     const waiter = waiters.shift();
@@ -226,6 +291,15 @@ function createFishAudioStream(
     }
     chunks.push(chunk);
   };
+  deadlineTimer = setTimeout(() => {
+    fail(
+      new ElizaError("Fish Audio TTS exceeded the synthesis deadline", {
+        code: "FISH_AUDIO_SYNTHESIS_TIMEOUT",
+        context: { synthesisTimeoutMs: config.synthesisTimeoutMs },
+      }),
+    );
+    socket.close(1013, "synthesis timeout");
+  }, config.synthesisTimeoutMs);
 
   socket.addEventListener("open", () => {
     socket.send(
@@ -424,11 +498,22 @@ export const fishAudioPlugin: Plugin = {
     FISH_AUDIO_VOICE_ID: env.FISH_AUDIO_VOICE_ID ?? null,
     FISH_AUDIO_FORMAT: env.FISH_AUDIO_FORMAT ?? null,
     FISH_AUDIO_SAMPLE_RATE: env.FISH_AUDIO_SAMPLE_RATE ?? null,
+    FISH_AUDIO_DATA_GOVERNANCE_APPROVED:
+      env.FISH_AUDIO_DATA_GOVERNANCE_APPROVED ?? null,
+    FISH_AUDIO_MAX_BUFFER_BYTES: env.FISH_AUDIO_MAX_BUFFER_BYTES ?? null,
+    FISH_AUDIO_SYNTHESIS_TIMEOUT_MS:
+      env.FISH_AUDIO_SYNTHESIS_TIMEOUT_MS ?? null,
   },
   async init(_config, runtime) {
-    if (!isEnabled(runtime)) {
+    if (!isRequested(runtime)) {
       logger.info(
         "[Fish Audio] TEXT_TO_SPEECH registration skipped: ELIZA_TTS_FISH_ENABLED is off",
+      );
+      return;
+    }
+    if (!isDataGovernanceApproved(runtime)) {
+      logger.warn(
+        "[Fish Audio] TEXT_TO_SPEECH registration skipped: data-governance approval is absent",
       );
       return;
     }
