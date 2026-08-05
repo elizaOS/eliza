@@ -227,24 +227,40 @@ const NOTIF_SCROLL_CSS = `
   .eliza-notif-meta { font-size: clamp(.6875rem, calc(.5rem + .75cqi), .8125rem); }
 }
 .eliza-notif-glass {
-  background-color: rgb(12 12 14 / 34%);
-  background-image: ${LIQUID_GLASS_SHEEN};
-  box-shadow: ${LIQUID_GLASS_EDGE_SHADOW};
-  -webkit-backdrop-filter: ${LIQUID_GLASS_BLUR};
-  backdrop-filter: ${LIQUID_GLASS_BLUR};
-  transition: background-color 150ms linear;
+  --eliza-notif-glass-fill: rgb(12 12 14 / 34%);
+  --eliza-notif-glass-sheen: ${LIQUID_GLASS_SHEEN};
+  --eliza-notif-glass-backdrop: ${LIQUID_GLASS_BLUR};
+  --eliza-notif-glass-visibility: 1;
+  isolation: isolate;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
-/* The global focus reset removes box shadows, but this inset edge is part of
-   the glass material rather than a focus ring and must survive card focus. */
-.eliza-notif-glass:focus-within {
-  box-shadow: ${LIQUID_GLASS_EDGE_SHADOW} !important;
+/* The fill and edge depth live on a permanent layer beneath card content. The
+   mask-composite rim remains the permanent ::before layer below, so neither
+   layer changes ownership when a shade gesture begins. */
+.eliza-notif-glass::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background-color: var(--eliza-notif-glass-fill);
+  background-image: var(--eliza-notif-glass-sheen);
+  box-shadow: ${LIQUID_GLASS_EDGE_SHADOW};
+  -webkit-backdrop-filter: var(--eliza-notif-glass-backdrop);
+  backdrop-filter: var(--eliza-notif-glass-backdrop);
+  opacity: var(--eliza-notif-glass-visibility);
+  pointer-events: none;
+  transition: background-color 150ms linear;
 }
 /* Chromium honors url(#…) on backdrop-filter → refract the background at the
    rim (the "liquid" cue). WebKit can't, so it keeps the frosted blur above. */
 @supports (backdrop-filter: url(#x)) or (-webkit-backdrop-filter: url(#x)) {
   .eliza-notif-glass {
-    -webkit-backdrop-filter: ${LIQUID_GLASS_REFRACTION};
-    backdrop-filter: ${LIQUID_GLASS_REFRACTION};
+    --eliza-notif-glass-backdrop: ${LIQUID_GLASS_REFRACTION};
   }
 }
 /* A dense expanded inbox cannot afford one live backdrop-refraction graph per
@@ -253,17 +269,15 @@ const NOTIF_SCROLL_CSS = `
    and scroll stay compositor-cheap even at the 100-row render cap. */
 .eliza-notif-scroll[data-shade-preview] .eliza-notif-glass,
 .eliza-notif-scroll[data-shade-mode="expanded"] .eliza-notif-glass {
-  background-color: rgb(22 22 25);
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
+  --eliza-notif-glass-fill: rgb(22 22 25);
+  --eliza-notif-glass-backdrop: none;
 }
 /* Backdrop refraction has to resample the fixed wallpaper while the complete
    home pane translates. Keep the same opaque material during a horizontal rail
    drag/settle, then restore refraction when the pager reaches rest. */
 [data-rail-gesture-active] .eliza-notif-glass {
-  background-color: rgb(22 22 25 / 88%);
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
+  --eliza-notif-glass-fill: rgb(22 22 25 / 88%);
+  --eliza-notif-glass-backdrop: none;
 }
 /* A collapsed stack is a set of physical cards, not translucent glass panes.
    Keep its front card and peeks solid through every shade/pager material
@@ -271,14 +285,16 @@ const NOTIF_SCROLL_CSS = `
 .eliza-notif-scroll [data-notification-stack-material] .eliza-notif-glass,
 .eliza-notif-scroll [data-notification-stacked] .eliza-notif-glass,
 .eliza-notif-scroll .eliza-notif-glass.eliza-notif-stack-peek {
-  background-color: rgb(28 28 30);
-  background-image: none;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
+  --eliza-notif-glass-fill: rgb(28 28 30);
+  --eliza-notif-glass-sheen: none;
+  --eliza-notif-glass-backdrop: none;
 }
 /* Directional specular rim tracing every rounded corner (mask-composite ring)
    — replaces the old one-sided inset hairline that read as a vertical line. */
 ${liquidGlassRimCss(".eliza-notif-glass")}
+.eliza-notif-glass::before {
+  opacity: var(--eliza-notif-glass-visibility);
+}
 /* Touch browsers can leave :hover latched on the release target until React's
    settled projection replaces it. Only precise pointers get a hover material,
    so every physical card keeps one fill throughout a touch release. */
@@ -286,10 +302,10 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
   .eliza-notif-scroll [data-notification-stack-material] .eliza-notif-glass:hover,
   .eliza-notif-scroll [data-notification-stacked] .eliza-notif-glass:hover,
   .eliza-notif-scroll .eliza-notif-glass.eliza-notif-stack-peek:hover {
-    background-color: rgb(38 38 42);
+    --eliza-notif-glass-fill: rgb(38 38 42);
   }
   .eliza-notif-glass:hover {
-    background-color: rgb(38 38 42 / 42%);
+    --eliza-notif-glass-fill: rgb(38 38 42 / 42%);
   }
 }
 .eliza-notif-pull-reveal {
@@ -335,7 +351,10 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
    row-specific variable is reserved for disposable stack rows; falling back to
    the group variable here would multiply the fade. */
 .eliza-notif-scroll:is([data-shade-dragging], [data-shade-settling]) [data-notification-group-content] .eliza-notif-row-content {
-  opacity: var(--eliza-notif-row-content-visibility, 1);
+  opacity: var(
+    --eliza-notif-row-content-visibility,
+    var(--eliza-notif-group-content-visibility, 1)
+  );
 }
 .eliza-notif-scroll[data-shade-dragging] [data-notification-group-content] .eliza-notif-row-content {
   transition: none;
@@ -346,17 +365,22 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
   transition:
     opacity var(--eliza-notif-opacity-duration, var(--eliza-notif-settle-duration, ${SHADE_SETTLE_MS}ms)) ${SHADE_EASING};
 }
-/* The row button owns the copy, but the glass surface is the visible card.
-   Fade that surface with the content during a close gesture; otherwise the
-   copy disappears into an opaque rounded shell and the card reads as solid.
-   The important override is deliberate because NotificationRow keeps its
-   gesture surface at inline opacity 1 while it owns horizontal dismissing. */
-.eliza-notif-scroll:is([data-shade-dragging], [data-shade-settling]) [data-notification-group-content] .eliza-notif-row-surface {
-  opacity: var(--eliza-notif-group-content-visibility, 1) !important;
-  transition: opacity var(--eliza-notif-opacity-duration, var(--eliza-notif-settle-duration, ${SHADE_SETTLE_MS}ms)) ${SHADE_EASING};
+/* Collapse opacity belongs to the permanent fill and rim layers, never their
+   parent element. This avoids recompositing the faint right edge while still
+   fading the complete physical card at the same rate as its information. The
+   element-level override also neutralizes stack-peek inline opacity so it
+   cannot multiply the shared fade. */
+.eliza-notif-scroll[data-shade-mode="expanded"]:is([data-shade-dragging], [data-shade-settling]) [data-notification-group-content] .eliza-notif-glass {
+  --eliza-notif-glass-visibility: var(--eliza-notif-group-surface-visibility, 1);
+  opacity: 1 !important;
 }
-.eliza-notif-scroll[data-shade-dragging] [data-notification-group-content] .eliza-notif-row-surface {
+.eliza-notif-scroll[data-shade-mode="expanded"][data-shade-dragging] [data-notification-group-content] .eliza-notif-glass::before,
+.eliza-notif-scroll[data-shade-mode="expanded"][data-shade-dragging] [data-notification-group-content] .eliza-notif-glass::after {
   transition: none;
+}
+.eliza-notif-scroll[data-shade-mode="expanded"][data-shade-settling] [data-notification-group-content] .eliza-notif-glass::before,
+.eliza-notif-scroll[data-shade-mode="expanded"][data-shade-settling] [data-notification-group-content] .eliza-notif-glass::after {
+  transition: opacity var(--eliza-notif-opacity-duration, var(--eliza-notif-settle-duration, ${SHADE_SETTLE_MS}ms)) ${SHADE_EASING};
 }
 /* A cancelled pull reverses the information fade on the same presentation
    clock while the unchanged glass shell stays in place. */
@@ -364,8 +388,12 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
   opacity: 1;
   transition: opacity var(--eliza-notif-settle-duration, ${SHADE_SETTLE_MS}ms) ${SHADE_EASING};
 }
-[data-notification-shade-cancelling] .eliza-notif-row-surface {
+[data-notification-shade-cancelling] .eliza-notif-glass {
+  --eliza-notif-glass-visibility: 1;
   opacity: 1 !important;
+}
+[data-notification-shade-cancelling] .eliza-notif-glass::before,
+[data-notification-shade-cancelling] .eliza-notif-glass::after {
   transition: opacity var(--eliza-notif-settle-duration, ${SHADE_SETTLE_MS}ms) ${SHADE_EASING};
 }
 /* Bulk clear keeps its right edge aligned with each producer's X. Touch-first
