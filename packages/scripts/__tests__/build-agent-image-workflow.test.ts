@@ -188,17 +188,13 @@ describe("build-agent-image workflow", () => {
     expect(workflowText.match(/inputs\.publication_target/g)).toHaveLength(1);
   });
 
-  test("keeps push and release publication on the canonical repository", () => {
-    for (const eventName of ["push", "release"]) {
-      const result = runPublicationResolver(eventName, "canonical");
-      expect(result.exitCode).toBe(0);
-      expect(result.output.get("name")).toBe("ghcr.io/elizaos/eliza");
-      expect(result.output.get("metadata_name")).toBe("ghcr.io/elizaOS/eliza");
-      expect(result.output.get("destination_name")).toBe(
-        "ghcr.io/elizaos/eliza",
-      );
-      expect(result.output.get("publication_target")).toBe("canonical");
-    }
+  test("keeps push publication on the canonical repository", () => {
+    const result = runPublicationResolver("push", "canonical");
+    expect(result.exitCode).toBe(0);
+    expect(result.output.get("name")).toBe("ghcr.io/elizaos/eliza");
+    expect(result.output.get("metadata_name")).toBe("ghcr.io/elizaOS/eliza");
+    expect(result.output.get("destination_name")).toBe("ghcr.io/elizaos/eliza");
+    expect(result.output.get("publication_target")).toBe("canonical");
 
     expect(workflowText).toContain(
       `type=raw,value=develop,enable=${githubExpression("github.ref == 'refs/heads/develop'")}`,
@@ -209,7 +205,6 @@ describe("build-agent-image workflow", () => {
     expect(workflowText).toContain(
       `type=raw,value=latest,enable=${githubExpression("github.ref == 'refs/heads/main'")}`,
     );
-    expect(workflowText).toContain("type=ref,event=tag");
     expect(workflowText).toContain("type=sha,prefix=sha-,format=short");
   });
 
@@ -223,12 +218,10 @@ describe("build-agent-image workflow", () => {
     );
     expect(manual.output.get("publication_target")).toBe("demo");
 
-    for (const eventName of ["push", "release"]) {
-      const rejected = runPublicationResolver(eventName, "demo");
-      expect(rejected.exitCode).not.toBe(0);
-      expect(rejected.output.size).toBe(0);
-      expect(rejected.stderr).toContain("available only to workflow_dispatch");
-    }
+    const rejected = runPublicationResolver("push", "demo");
+    expect(rejected.exitCode).not.toBe(0);
+    expect(rejected.output.size).toBe(0);
+    expect(rejected.stderr).toContain("available only to workflow_dispatch");
   });
 
   test("rejects arbitrary or shell-shaped publication targets without evaluation", () => {

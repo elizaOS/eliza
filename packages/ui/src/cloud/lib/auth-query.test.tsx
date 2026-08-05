@@ -8,7 +8,7 @@
  * `@capacitor/core` is doubled to exercise both web and native platforms.
  */
 
-import { act, renderHook } from "@testing-library/react";
+import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const capacitorState = vi.hoisted(() => ({ isNative: false }));
@@ -72,6 +72,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  cleanup();
   vi.unstubAllGlobals();
 });
 

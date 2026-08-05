@@ -16,7 +16,7 @@
 # create-instance env payload (never the onstart text, never logs). When vast
 # fails for ANY reason the job goes red with a "local certification required"
 # summary carrying the exact fallback command — same chain, same output; the
-# develop→main gate (certification-verify.yml) cannot tell the difference.
+# verifier described in .github/certification/README.md cannot tell the difference.
 
 name: certification-vast
 

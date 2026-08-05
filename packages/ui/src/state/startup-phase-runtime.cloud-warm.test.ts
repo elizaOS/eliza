@@ -272,6 +272,7 @@ describe("runStartingRuntime — managed cloud cold-boot warmup", () => {
   // ── CONVERSATIONS-500 HARDENING (persistent 5xx must not spin forever) ──
 
   it("persistent /api/conversations 500 + /api/status canRespond → advances to chat despite the broken list endpoint", async () => {
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
     // The exact staging defect: the runtime is UP (/api/status 200 canRespond),
     // but GET /api/conversations deterministically 500s. The old boolean gate
     // treated the 500 like a warming 404 and spun forever. Now: after a short
@@ -312,9 +313,16 @@ describe("runStartingRuntime — managed cloud cold-boot warmup", () => {
     expect(deps.setConnected).toHaveBeenCalledWith(true);
     // No infinite spinner and no hard error, because status confirmed readiness.
     expect(deps.setStartupError).not.toHaveBeenCalled();
+    expect(consoleWarn).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.stringContaining("/api/status reports canRespond"),
+    );
   });
 
   it("persistent /api/conversations 500 AND /api/status can't confirm → surfaces an actionable AGENT_ERROR with retry (no infinite spinner)", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
     persistenceMock.loadPersistedActiveServer.mockReturnValue({
       id: "cloud:agent-123",
       kind: "cloud",
@@ -357,6 +365,10 @@ describe("runStartingRuntime — managed cloud cold-boot warmup", () => {
     );
     expect(dispatch).not.toHaveBeenCalledWith({ type: "AGENT_RUNNING" });
     expect(deps.setFirstRunLoading).toHaveBeenCalledWith(false);
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.stringContaining("could not confirm readiness"),
+    );
   });
 
   it("a SINGLE transient 500 that then recovers to serving still advances (no premature error on one blip)", async () => {

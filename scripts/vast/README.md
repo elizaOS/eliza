@@ -2,9 +2,9 @@
 
 Automated full-tier certification on rented vast.ai GPUs, plus the local
 fallback (#14548, epic #14541). The product of a run is a **signed
-`certification.json`** — the artifact the develop→main promotion gate
-(`.github/workflows/certification-verify.yml`) verifies. Whether it was
-signed on a vast instance or on a laptop is invisible to the gate by design;
+`certification.json`** — the artifact verified with the command in
+`.github/certification/README.md`. Whether it was signed on a vast instance or
+on a laptop is invisible to the verifier by design;
 the Ed25519 signature is what matters (trust model:
 [`.github/certification/README.md`](../../.github/certification/README.md)).
 
@@ -17,7 +17,6 @@ the Ed25519 signature is what matters (trust model:
 | `local-certify.mjs` | One-command local fallback (same chain, same output) |
 | `../../docker/certification/Dockerfile.gpu` | The prebuilt image the instance boots (models + toolchain baked; onstart is capped at 16 KB) |
 | `../../.github/workflows/certification-vast.yml` | Dispatch/nightly workflow that drives the driver |
-| `../../.github/workflows/certification-image.yml` | Builds + pushes `ghcr.io/elizaos/certification-gpu` |
 
 ## Automated run (vast.ai)
 
@@ -131,8 +130,6 @@ fabricate green.
 llama.cpp `b8525`, the minimum `scripts/gpu-vision` accepts), the
 sha256-pinned OCR/VLM GGUFs via `scripts/gpu-vision/setup.mjs --with-vlm`,
 Node 24, Bun 1.3.14, Playwright Chromium (+ OS deps), tesseract, and ffmpeg.
-Rebuilds publish from `.github/workflows/certification-image.yml`
-(dispatch, or automatically when the Dockerfile / model pins change) to
-`ghcr.io/elizaos/certification-gpu:{latest,sha-<short>}` using the
-workflow's own `GITHUB_TOKEN` — no extra registry secret. Secrets are never
-baked into the image.
+Rebuilding and publishing `ghcr.io/elizaos/certification-gpu` is an explicit
+operator task; there is no automatic image-publishing workflow. Secrets must
+never be baked into the image.

@@ -89,7 +89,7 @@ scripts (schema and gates in [`VOICE_LIVE_MATRIX.md`](./VOICE_LIVE_MATRIX.md)):
   Instruments.
 - **Android `SpeechRecognizer` (NNAPI)** — needs a port of `stage-b-stt-bench`
   to an instrumented Android test on a real device (coordinate with #10727
-  device lifecycle and the `voice-live-e2e.yml` runner).
+  device lifecycle and the manual `live-smoke.yml` voice suite).
 - **Fused ASR on-device (steady-state)** — `bun plugins/plugin-local-inference/native/verify/asr_bench.ts
   --wav-dir <corpus> --real-recorded` on the provisioned device bundle.
 - The combined decision cell `stt.stage-b.evaluation` goes green only when

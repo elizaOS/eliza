@@ -16,7 +16,6 @@ name: Cloud CF Deploy
 # Per environment (both projects):
 # - push to develop  -> staging   (api-staging.elizacloud.ai; staging.* / app-staging.*)
 # - push to main     -> production (api.elizacloud.ai; elizacloud.ai / app.elizacloud.ai)
-# - pull_request     -> preview    (Pages preview branch backed by staging API)
 #
 # Required repo secrets:
 #   CLOUDFLARE_API_TOKEN   - account-scoped token with Workers + Pages edit perms
@@ -37,22 +36,10 @@ name: Cloud CF Deploy
 #   (Ed25519 keypair for the signed voice-model catalog; the catalog route 503s
 #   while the signing key is unset).
 #
-# Source: cloud/.github/workflows/cf-deploy.yml in the original elizaOS/cloud repo.
+# Consolidated from the original standalone Cloud deployment workflow.
 
 on:
   push:
-    branches: [main, develop]
-    paths:
-      - "packages/cloud/api/**"
-      - "packages/cloud/shared/**"
-      - "packages/cloud/services/**"
-      - "packages/cloud/sdk/**"
-      - "packages/cloud/scripts/**"
-      - "packages/app/**"
-      - "packages/app-core/**"
-      - "packages/ui/**"
-      - ".github/workflows/cloud-cf-deploy.yml"
-  pull_request:
     branches: [main, develop]
     paths:
       - "packages/cloud/api/**"
@@ -190,7 +177,7 @@ jobs:
   # Database migrations — the schema gate for every deploy job below (#11208).
   #
   # Prod refreshes via a workflow_dispatch of THIS workflow, but migrate-db
-  # used to live only in cloud-deploy-backend.yml — the two were decoupled, so
+  # is kept in this deployment authority so
   # a refresh shipped new Worker/Pages code against whatever schema prod
   # happened to have. Every deploy job below now `needs: migrate-db`, which
   # guarantees migrations run AND succeed before any new code serves traffic:
@@ -1762,7 +1749,7 @@ jobs:
   # THAT environment -- not the other one leaking through the prod
   # `*.elizacloud.ai/*` wildcard or a mis-mapped Pages custom domain. This does
   # NOT gate the deploy (it already happened); it surfaces a misroute as a red
-  # check. The always-on scheduled monitor is .github/workflows/verify-cf-routing.yml.
+  # check. Operators can also dispatch this workflow for an explicit recheck.
   # ---------------------------------------------------------------------------
   verify-routing:
     name: Verify ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }} routing

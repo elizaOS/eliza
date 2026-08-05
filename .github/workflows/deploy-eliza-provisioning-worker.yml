@@ -142,7 +142,7 @@ jobs:
       SANDBOX_REGISTRY_REDIS_URL: ${{ secrets.SANDBOX_REGISTRY_REDIS_URL }}
       # Cloud database DSN for the provisioning worker + agent router. Same
       # fallback chain as the migrator jobs (cloud-cf-deploy.yml /
-      # cloud-deploy-backend.yml) so the CP daemon always resolves the exact
+      # cloud deployment) so the CP daemon always resolves the exact
       # DB the Worker schema is migrated against. Before this, DATABASE_URL
       # only lived hand-edited on the box: when staging moved Neon → Railway
       # the CP silently kept polling the abandoned Neon DB for 3 weeks

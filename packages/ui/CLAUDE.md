@@ -163,7 +163,7 @@ given class of bug; reach for the heavier ones when behaviour or pixels matter.
    by execution context, so effect/handler/timer usage is fine. Existing backlog
    is tracked in `packages/scripts/ui-determinism-baseline.json`; if a new
    occurrence is intentional, run `audit:ui-determinism:update` and commit the
-   baseline. Wired into `ci.yaml`.
+   baseline. The repository `verify` command runs in `.github/workflows/ci.yml`.
 
 3. **Story gate (`audit:stories`, `test/story-gate/`).** Renders **every**
    Storybook story in headless Chromium and HARD-fails on a story that throws,
@@ -172,9 +172,9 @@ given class of bug; reach for the heavier ones when behaviour or pixels matter.
    shim (frozen clock / seeded RNG / en-US-UTC / animations off) makes every
    screenshot byte-stable. App-context-dependent stories are classified soft
    `needs-runtime` (covered live by `audit:app`), not failed. Build the catalog
-   first (`build-storybook --output-dir storybook-static`), then run the gate;
-   the dedicated `.github/workflows/ui-story-gate.yml` does both on `packages/ui`
-   changes. Reusable helpers: `determinism-shim.mjs` and `log-capture.mjs`
+   first (`build-storybook --output-dir storybook-static`), then run the gate
+   when reviewing story or design-system changes. Reusable helpers:
+   `determinism-shim.mjs` and `log-capture.mjs`
    (durable frontend console/network artifact, wired per story into
    `output/frontend-logs.json`).
 

@@ -46,7 +46,7 @@ AWS is retired as a primary backend. Where each surface landed:
 
 | Dependency | Where | Target | Status |
 |---|---|---|---|
-| `gateway-discord` EKS deployment | `packages/cloud/services/gateway-discord/terraform/` and `.github/workflows/cloud-gateway-discord.yml` | Railway (`railway.toml` + Dockerfile). Service is already a Bun/Docker app. | **Done.** `terraform/` and `chart/` removed; `railway.toml` added; workflow stripped of all AWS jobs (terraform plan/apply/destroy, EKS update-kubeconfig, ECR/Helm deploy). Workflow now only runs tests; Railway auto-deploys on push. |
+| `gateway-discord` EKS deployment | Former service Terraform/chart and GitHub workflow | Railway (`railway.toml` + Dockerfile). Service is already a Bun/Docker app. | **Done.** `terraform/`, `chart/`, and the standalone gateway workflow were removed. Service tests run through consolidated CI; deployment is owned outside the PR gate. |
 | `gateway-webhook` EKS deployment | `packages/cloud/services/gateway-webhook/` | Railway. | **Done.** No `terraform/` directory existed; `railway.toml` is in place; workflow has no AWS jobs. |
 | `TERRAFORM_AWS_ROLE_ARN` / `GATEWAY_AWS_ROLE_ARN` GitHub secrets | CI vars | Remove from the `gateway-dev` / `gateway-prd` environments now that the workflow no longer references them. | **Ready for removal.** Workflow no longer reads either variable; the env-vars in the GitHub environments themselves should be deleted by a maintainer with org-admin access. |
 
@@ -84,9 +84,8 @@ AWS is retired as a primary backend. Where each surface landed:
 
 4. **Stage 2b — gateway-discord cutover (done):**
    - `terraform/` and `chart/` directories deleted from `packages/cloud/services/gateway-discord/`.
-   - All AWS-specific jobs removed from `.github/workflows/cloud-gateway-discord.yml`
-     (terraform plan/apply/destroy, AWS OIDC, EKS update-kubeconfig, Helm deploy,
-     image build job that fed the EKS path).
+   - The standalone gateway workflow was removed after its AWS jobs were
+     retired; consolidated CI owns service tests without deployment authority.
    - Remaining task: maintainer with org-admin to remove
      `TERRAFORM_AWS_ROLE_ARN` and `GATEWAY_AWS_ROLE_ARN` from the `gateway-dev` /
      `gateway-prd` GitHub environments. No code references them.

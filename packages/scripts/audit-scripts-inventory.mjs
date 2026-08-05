@@ -157,8 +157,8 @@ function repositoryCandidateFiles() {
     // while retaining symlinks for the containment validator below to reject.
     .filter((file) => {
       try {
-        lstatSync(path.join(ROOT, file));
-        return true;
+        const metadata = lstatSync(path.join(ROOT, file));
+        return metadata.isFile() || metadata.isSymbolicLink();
       } catch (error) {
         if (error?.code === "ENOENT") return false;
         throw error;
@@ -562,15 +562,15 @@ function buildInventory() {
     workflowExecutionSteps(source, file),
   );
   const ciText = workflowSteps.map(({ run }) => run).join("\n");
-  const scenarioWorkflowPath = ".github/workflows/scenario-pr.yml";
-  if (!candidateFiles.includes(scenarioWorkflowPath)) {
-    throw new Error(`script inventory is missing ${scenarioWorkflowPath}`);
+  const ciWorkflowPath = ".github/workflows/ci.yml";
+  if (!candidateFiles.includes(ciWorkflowPath)) {
+    throw new Error(`script inventory is missing ${ciWorkflowPath}`);
   }
   const scriptTests = buildScriptTestInventory({
     repoRoot: ROOT,
     candidateFiles,
     packageScripts: rootScripts,
-    scenarioWorkflow: readRepositoryText(scenarioWorkflowPath),
+    ciWorkflow: readRepositoryText(ciWorkflowPath),
   });
   const ciRootSeeds = referencedRootScripts(ciText);
   const ciFileSeeds = referencedScriptFiles(ciText, fileUniverse);

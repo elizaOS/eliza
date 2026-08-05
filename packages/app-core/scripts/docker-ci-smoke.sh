@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# Smoke-test the production Docker build path used by .github/workflows/build-docker.yml.
+# Smoke-test the production Docker build path for operator verification.
 #
 # What this does:
 #   1. Installs deps with bun using the committed lockfile

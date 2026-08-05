@@ -25,26 +25,6 @@
     "reason": "validates LifeOps persona scenario-pack ledgers against the personal-assistant plugin's scenario suite"
   },
   {
-    "file": "packages/scripts/check-scenario-workflow-coverage.mjs",
-    "tokens": [
-      "plugins/plugin-agent-orchestrator",
-      "plugins/plugin-app-control",
-      "plugins/plugin-health",
-      "plugins/plugin-personal-assistant"
-    ],
-    "reason": "scans the named scenario-root plugins to verify PR/live lane tags and workflow coverage"
-  },
-  {
-    "file": "packages/scripts/ci-path-gate.mjs",
-    "tokens": [
-      "plugins/plugin-app-control",
-      "plugins/plugin-computeruse",
-      "plugins/plugin-github",
-      "plugins/plugin-sql"
-    ],
-    "reason": "path-gate rules map changes in these critical plugins to the scenario-pr test lane"
-  },
-  {
     "file": "packages/scripts/e2e-coverage/inventory.ts",
     "tokens": ["@elizaos/plugin-discord", "plugins/plugin-commands"],
     "reason": "discovers HTTP routes / connector registration from these route-wiring plugins for the e2e surface inventory"
@@ -196,11 +176,6 @@
     "reason": "Markdown link hygiene excludes stale/prototype documentation subtrees by concrete path prefix so maintained contributor-facing docs can remain hard-gated"
   },
   {
-    "file": "scripts/cuda-continuity.mjs",
-    "tokens": ["plugins/plugin-local-inference"],
-    "reason": "CUDA continuity proves the plugin-local-inference native llama.cpp gitlink and runtime harness at the exact candidate commit"
-  },
-  {
     "file": "scripts/generate-view-heroes.mjs",
     "tokens": [
       "plugins/plugin-app-control",
@@ -218,15 +193,6 @@
     "reason": "curated fallback-art list for plugins with an elizaos.app surface but no committed hero.svg"
   },
   {
-    "file": "scripts/lifeops/collect-11632-live-validation-status.mjs",
-    "tokens": [
-      "plugins/plugin-google-workspace",
-      "plugins/plugin-personal-assistant",
-      "plugins/plugin-x"
-    ],
-    "reason": "maps LifeOps HITL connector groups to the plugins needing OAuth/credentials for live validation"
-  },
-  {
     "file": "scripts/lifeops/connector-paths.mjs",
     "tokens": ["plugins/plugin-github", "plugins/plugin-personal-assistant"],
     "reason": "central LifeOps credential-path map for GitHub and personal-assistant connector live-validation lanes"
@@ -240,15 +206,6 @@
     "file": "scripts/lifeops/hitl-credential-dashboard.mjs",
     "tokens": ["plugins/plugin-github"],
     "reason": "HITL credential dashboard reports the concrete plugin-github credential lane used by operators"
-  },
-  {
-    "file": "scripts/lifeops/run-11632-live-lanes.mjs",
-    "tokens": [
-      "plugins/plugin-google-workspace",
-      "plugins/plugin-personal-assistant",
-      "plugins/plugin-x"
-    ],
-    "reason": "LifeOps live-lane runner enumerates the connector plugins that require real OAuth credentials"
   },
   {
     "file": "scripts/training-harvest/build-manifest.mjs",

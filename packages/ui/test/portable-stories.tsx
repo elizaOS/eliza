@@ -14,7 +14,7 @@
  *   smokeStoryModules("primitive", mods);
  */
 import { composeStories } from "@storybook/react";
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 import type { ComponentType, ReactElement, ReactNode } from "react";
 import {
   afterAll,
@@ -61,6 +61,13 @@ export function installJsdomUiPolyfills(): void {
   proto.hasPointerCapture ??= () => false;
   proto.setPointerCapture ??= () => {};
   proto.releasePointerCapture ??= () => {};
+  if (typeof HTMLMediaElement !== "undefined") {
+    // jsdom declares these methods but reports "not implemented" when a
+    // story's mount effect exercises them.
+    HTMLMediaElement.prototype.play = () => Promise.resolve();
+    HTMLMediaElement.prototype.pause = () => {};
+    HTMLMediaElement.prototype.load = () => {};
+  }
 }
 
 type StoryModules = Record<string, unknown>;
@@ -162,6 +169,9 @@ export function smokeStoryModules(
           if (expectCaughtError.has(storyKey)) {
             expect(caughtErrors).not.toHaveLength(0);
           }
+          // Resolve immediately-settling mount effects before the test ends so
+          // their state updates stay inside React's test boundary.
+          await act(async () => {});
           // If the story defines an interaction (`play`), run it — so authoring a
           // play function automatically gets it exercised in this lane, with no
           // per-component test to wire up.

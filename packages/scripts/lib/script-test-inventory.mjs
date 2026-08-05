@@ -4,7 +4,8 @@
  * Bun receives every discovered file explicitly, so nested tests and supported
  * extension or casing variants cannot fall outside its directory heuristics.
  * The same inventory also binds that runner to root test commands and the
- * required scenario workflow; a test list without an executing lane is invalid.
+ * required consolidated CI workflow; a test list without an executing lane is
+ * invalid.
  */
 
 import { createHash } from "node:crypto";
@@ -66,7 +67,8 @@ export function isScriptTestPath(value) {
 }
 
 function listRepositoryFiles(repoRoot) {
-  return execFileSync(
+  const pathspecs = ["packages/scripts", "packages/cloud/scripts"];
+  const candidates = execFileSync(
     "git",
     [
       "-C",
@@ -76,6 +78,8 @@ function listRepositoryFiles(repoRoot) {
       "--cached",
       "--others",
       "--exclude-standard",
+      "--",
+      ...pathspecs,
     ],
     {
       encoding: "utf8",
@@ -84,6 +88,19 @@ function listRepositoryFiles(repoRoot) {
   )
     .split("\0")
     .filter(Boolean);
+  const deleted = new Set(
+    execFileSync(
+      "git",
+      ["-C", repoRoot, "ls-files", "-z", "--deleted", "--", ...pathspecs],
+      {
+        encoding: "utf8",
+        maxBuffer: 64 * 1024 * 1024,
+      },
+    )
+      .split("\0")
+      .filter(Boolean),
+  );
+  return candidates.filter((file) => !deleted.has(file));
 }
 
 function validateExclusions(eligibleFiles, exclusions) {
@@ -136,7 +153,7 @@ function scalarString(mapping, key, label, requiredType) {
   return value.value;
 }
 
-function parseScenarioWorkflow(source) {
+function parseCiWorkflow(source) {
   const document = parseDocument(source, {
     merge: false,
     prettyErrors: true,
@@ -144,83 +161,67 @@ function parseScenarioWorkflow(source) {
   });
   if (document.errors.length > 0) {
     throw new Error(
-      `[script-test-inventory] scenario-pr.yml is invalid YAML: ${document.errors[0].message}`,
+      `[script-test-inventory] ci.yml is invalid YAML: ${document.errors[0].message}`,
     );
   }
   visit(document, {
     Alias(_key, node) {
       if (isAlias(node)) {
         throw new Error(
-          "[script-test-inventory] scenario-pr.yml may not use YAML aliases",
+          "[script-test-inventory] ci.yml may not use YAML aliases",
         );
       }
     },
     Pair(_key, pair) {
       if (scalarKey(pair) === "<<") {
         throw new Error(
-          "[script-test-inventory] scenario-pr.yml may not use YAML merge keys",
+          "[script-test-inventory] ci.yml may not use YAML merge keys",
         );
       }
     },
   });
   if (!isMap(document.contents)) {
     throw new Error(
-      "[script-test-inventory] scenario-pr.yml root must be a mapping",
+      "[script-test-inventory] ci.yml root must be a mapping",
     );
   }
   return document.contents;
 }
 
-function assertScenarioLane(scenarioWorkflow) {
-  const root = parseScenarioWorkflow(scenarioWorkflow);
+function assertCiLane(ciWorkflow) {
+  const root = parseCiWorkflow(ciWorkflow);
   const jobs = mappingValue(root, "jobs");
   if (!isMap(jobs)) {
     throw new Error(
-      "[script-test-inventory] scenario-pr.yml must declare a jobs mapping",
+      "[script-test-inventory] ci.yml must declare a jobs mapping",
     );
   }
-  const job = mappingValue(jobs, "scenario-runner-e2e");
+  const job = mappingValue(jobs, "tests");
   if (!isMap(job)) {
     throw new Error(
-      "[script-test-inventory] scenario-pr.yml must declare jobs.scenario-runner-e2e",
-    );
-  }
-  if (
-    scalarString(job, "needs", "scenario-runner-e2e.needs", "PLAIN") !==
-    "changes"
-  ) {
-    throw new Error(
-      "[script-test-inventory] scenario-runner-e2e must depend directly on changes",
-    );
-  }
-  if (
-    scalarString(job, "if", "scenario-runner-e2e.if", "PLAIN") !==
-    "needs.changes.outputs.run_scenario_pr == 'true'"
-  ) {
-    throw new Error(
-      "[script-test-inventory] scenario-runner-e2e must use the required change-gate condition",
+      "[script-test-inventory] ci.yml must declare jobs.tests",
     );
   }
   if (mappingValue(job, "continue-on-error") !== undefined) {
     throw new Error(
-      "[script-test-inventory] scenario-runner-e2e may not continue on error",
+      "[script-test-inventory] tests job may not continue on error",
     );
   }
   const steps = mappingValue(job, "steps");
   if (!isSeq(steps)) {
     throw new Error(
-      "[script-test-inventory] scenario-runner-e2e.steps must be a sequence",
+      "[script-test-inventory] tests.steps must be a sequence",
     );
   }
   const named = steps.items.filter(
     (step) =>
       isMap(step) &&
       mappingValue(step, "name")?.value ===
-        "Complete packages/scripts test sweep",
+        "Script contract tests",
   );
   if (named.length !== 1 || !isMap(named[0])) {
     throw new Error(
-      "[script-test-inventory] scenario-runner-e2e must own exactly one Complete packages/scripts test sweep step",
+      "[script-test-inventory] tests job must own exactly one Script contract tests step",
     );
   }
   const step = named[0];
@@ -242,7 +243,7 @@ function assertScenarioLane(scenarioWorkflow) {
     "bun run test:scripts"
   ) {
     throw new Error(
-      "[script-test-inventory] scenario-pr.yml packages/scripts sweep must execute bun run test:scripts",
+      "[script-test-inventory] ci.yml script contract step must execute bun run test:scripts",
     );
   }
   const env = mappingValue(step, "env");
@@ -256,7 +257,7 @@ function assertScenarioLane(scenarioWorkflow) {
   }
 }
 
-function assertLaneContracts({ packageScripts, scenarioWorkflow }) {
+function assertLaneContracts({ packageScripts, ciWorkflow }) {
   if (packageScripts["test:scripts"] !== SCRIPT_TEST_RUNNER) {
     throw new Error(
       `[script-test-inventory] package.json test:scripts must be exactly: ${SCRIPT_TEST_RUNNER}`,
@@ -271,7 +272,7 @@ function assertLaneContracts({ packageScripts, scenarioWorkflow }) {
       );
     }
   }
-  assertScenarioLane(scenarioWorkflow);
+  assertCiLane(ciWorkflow);
 }
 
 /**
@@ -323,18 +324,18 @@ export function buildScriptTestInventory(options = {}) {
     options.packageScripts ??
     JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8"))
       .scripts;
-  const scenarioWorkflow =
-    options.scenarioWorkflow ??
+  const ciWorkflow =
+    options.ciWorkflow ??
     readFileSync(
-      path.join(repoRoot, ".github/workflows/scenario-pr.yml"),
+      path.join(repoRoot, ".github/workflows/ci.yml"),
       "utf8",
     );
-  assertLaneContracts({ packageScripts, scenarioWorkflow });
+  assertLaneContracts({ packageScripts, ciWorkflow });
 
   const lanes = [
     "package.json#test",
     "package.json#test:all",
-    ".github/workflows/scenario-pr.yml#scenario-runner-e2e",
+    ".github/workflows/ci.yml#tests",
   ];
   const inventory = {
     schemaVersion: 2,

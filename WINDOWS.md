@@ -53,7 +53,7 @@ scripts bootstrap user machines.
 
 ## What works on Windows
 
-Verified (`windows-latest` CI lane, see `.github/workflows/windows-ci.yml`):
+Historically verified on a Windows GitHub runner:
 
 - `bun install` — 3075 packages resolved, 462 workspace symlinks set up,
   postinstall pipeline (patch-nested-core-dist, patch-llama-cpp-capacitor,
@@ -192,12 +192,11 @@ A handful of plugins ship native modules:
 
 ## CI
 
-A dedicated Windows lane runs on every PR/push:
-[`.github/workflows/windows-ci.yml`](.github/workflows/windows-ci.yml).
-It exercises `bun install`, typecheck, the six unit-test suites listed
-above, the agent build cascade, and the helper-script smokes. Failures on
-that lane block the PR; that's how this contract is enforced going
-forward.
+The scheduled [nightly workflow](.github/workflows/nightly.yml) provides the
+single Windows automation lane. It installs with the pinned Bun and Node
+versions, builds core, and runs the core tests. Broader Windows packaging and
+installer checks remain explicit operator runs; they are not duplicated across
+pull-request workflows.
 
 ## Reporting Windows-only bugs
 

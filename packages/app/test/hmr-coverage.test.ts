@@ -12,10 +12,6 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "../../..");
 const VISUAL_MATRIX_SPEC = path.join(HERE, "ui-smoke", "plugin-view-cases.ts");
 const HMR_SPEC = path.join(HERE, "hmr", "hmr-dependency-levels.spec.ts");
-const DEV_SMOKE_WORKFLOW = path.join(
-  REPO_ROOT,
-  ".github/workflows/dev-smoke.yml",
-);
 const ROOT_PACKAGE_JSON = path.join(REPO_ROOT, "package.json");
 const APP_PACKAGE_JSON = path.join(REPO_ROOT, "packages/app/package.json");
 
@@ -101,19 +97,6 @@ function readHmrRootGraphPluginViewNames(): Set<string> {
   );
 }
 
-function readWorkflowJobBlock(workflow: string, jobName: string): string {
-  const match = workflow.match(
-    new RegExp(
-      `\\n  ${jobName}:\\n([\\s\\S]*?)(?=\\n  [a-zA-Z0-9_-]+:\\n|\\n*$)`,
-    ),
-  );
-  expect(
-    match?.[1],
-    `${jobName} job was not found in dev-smoke.yml`,
-  ).toBeTruthy();
-  return match?.[1] ?? "";
-}
-
 function probePathExists(repoRelativePath: string): boolean {
   if (existsSync(path.join(REPO_ROOT, repoRelativePath))) {
     return true;
@@ -183,30 +166,18 @@ describe("plugin view HMR coverage", () => {
     ).toEqual([]);
   });
 
-  it("keeps the HMR browser gate wired into CI", () => {
+  it("exposes the HMR browser command for local and operator use", () => {
     const rootPackage = JSON.parse(readFileSync(ROOT_PACKAGE_JSON, "utf8")) as {
       scripts?: Record<string, string>;
     };
     const appPackage = JSON.parse(readFileSync(APP_PACKAGE_JSON, "utf8")) as {
       scripts?: Record<string, string>;
     };
-    const workflow = readFileSync(DEV_SMOKE_WORKFLOW, "utf8");
-    const hmrJob = readWorkflowJobBlock(workflow, "hmr");
-
     expect(rootPackage.scripts?.["test:hmr"]).toContain(
       "packages/app test:hmr",
     );
     expect(appPackage.scripts?.["test:hmr"]).toContain(
       "playwright.hmr.config.ts",
     );
-    expect(hmrJob).toContain("name: Vite HMR dependency-level smoke");
-    expect(hmrJob).toContain("needs: changes");
-    expect(hmrJob).toContain(
-      "if: github.event_name != 'pull_request' || needs.changes.outputs.dev_smoke == 'true'",
-    );
-    expect(hmrJob).toContain("run: bun run test:hmr");
-    expect(hmrJob).toContain("name: hmr-results");
-    expect(hmrJob).toContain("packages/app/playwright-report/");
-    expect(hmrJob).toContain("packages/app/test-results/hmr/");
   });
 });

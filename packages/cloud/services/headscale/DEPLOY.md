@@ -100,7 +100,7 @@ Hetzner provisioning-worker host.
 > headscale Railway service to `railway up`; users/api-keys are created on the
 > CP host (`headscale users create agent`, `headscale apikeys create
 > --expiration=8760h`), and `server_url` is converged into
-> `/etc/headscale/config.yaml` on the CP by `arm-headscale-control-plane.yml`.
+> `/etc/headscale/config.yaml` by the control-plane operator flow.
 
 ## 1. DNS
 

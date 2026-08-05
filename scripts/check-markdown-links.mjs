@@ -43,6 +43,9 @@ function trackedMarkdownFiles() {
   })
     .split("\n")
     .filter(Boolean)
+    // `git ls-files` includes index entries deleted in the current worktree.
+    // Audit the documentation that would actually ship from this checkout.
+    .filter((file) => existsSync(path.join(ROOT, file)))
     .filter((file) => !EXCLUDED_NAMES.has(path.basename(file)))
     .filter(
       (file) => !EXCLUDED_PREFIXES.some((prefix) => file.startsWith(prefix)),

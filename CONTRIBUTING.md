@@ -140,14 +140,11 @@ If an evidence type does not apply, keep it visible in the PR and write
 `N/A - <reason>`. Never leave evidence rows blank. Open every artifact yourself
 before asking for review; capturing is not review.
 
-**The gate is mechanical and fails closed.** `.github/workflows/pr.yaml` runs
-`scripts/check-pr-evidence.mjs` on every PR: a blank/checkbox-only evidence row,
-or a bare `N/A` with no reason, fails the check. A PR whose **diff touches a
-rendered-UI source file** (a `.tsx`/`.css`/`.svg`/`.html` under `packages/app`,
-`packages/ui`, `apps/app`, …) must attach **concrete** before/after screenshot,
-walkthrough-video, and OCR-review artifacts — a link, not `N/A` — even when the
-`ui`/`frontend`/`native` label is absent. Do not try to route around this by
-dropping the label; fix the pipeline and capture the evidence.
+Evidence is a reviewer-owned acceptance record rather than a required GitHub
+Actions status. Use `scripts/check-pr-evidence.mjs` locally when preparing the
+pull request, and reject missing or placeholder evidence during review. A PR
+whose diff touches rendered UI should attach concrete before/after screenshots,
+a walkthrough video, and OCR review artifacts.
 
 **Before capturing, check your toolchain.** Run the doctor; it reports every
 capture tool (tesseract, ffmpeg, Playwright browsers, GPU/Baidu OCR, Apple
@@ -247,9 +244,9 @@ rebasing when `develop` changes the behavior under review.
 
 **Headless agents (no browser, cannot drag-and-drop):** upload media to the
 dedicated [`pr-evidence` release](https://github.com/elizaOS/eliza/releases/tag/pr-evidence)
-and embed the asset URLs — they end in a media extension, render inline via
-`![](…)`, and satisfy the evidence gate. Prefer the one-command tool, which
-also patches the PR rows and verifies the gate locally:
+and embed the asset URLs — they end in a media extension and render inline via
+`![](…)`. Prefer the one-command tool, which also patches the PR rows and
+validates them locally:
 
 ```bash
 # name files <pr-number>-<artifact>.<ext>, then:

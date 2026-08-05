@@ -6,7 +6,7 @@ name: Transactional NPM Release
 # exact Git tag and GitHub Release only after a live full-cohort registry check.
 
 on:
-  workflow_call:
+  workflow_dispatch:
     inputs:
       source_sha:
         description: Full source commit SHA of the prepared release candidate
@@ -33,37 +33,6 @@ on:
         required: false
         type: number
         default: 0
-    outputs:
-      source_sha:
-        description: Verified source commit
-        value: ${{ jobs.finalize.outputs.source_sha }}
-      source_ref:
-        description: Verified canonical source branch ref
-        value: ${{ jobs.finalize.outputs.source_ref }}
-      repository:
-        description: Verified GitHub repository identity
-        value: ${{ jobs.finalize.outputs.repository }}
-      version:
-        description: Published exact version
-        value: ${{ jobs.finalize.outputs.version }}
-      channel:
-        description: Verified public npm channel
-        value: ${{ jobs.finalize.outputs.channel }}
-      npm_publisher:
-        description: Authenticated npm publisher identity
-        value: ${{ jobs.finalize.outputs.npm_publisher }}
-      plan_integrity:
-        description: SHA-512 integrity of the canonical release plan
-        value: ${{ jobs.finalize.outputs.plan_integrity }}
-      cohort_integrity:
-        description: SHA-512 integrity of the immutable package cohort
-        value: ${{ jobs.finalize.outputs.cohort_integrity }}
-      registry_verified:
-        description: Full immutable cohort and channel verification result
-        value: ${{ jobs.finalize.outputs.registry_verified }}
-      candidate_artifact:
-        description: Final release plan, tarballs, and transition evidence artifact
-        value: ${{ jobs.finalize.outputs.candidate_artifact }}
 concurrency:
   group: public-npm-release-transaction
   cancel-in-progress: false
@@ -81,11 +50,11 @@ jobs:
     outputs:
       tooling_sha: ${{ steps.authority.outputs.tooling_sha }}
     steps:
-      - name: Require current protected orchestrator
+      - name: Require current protected release workflow
         id: authority
         shell: bash
         env:
-          EXPECTED_CALLER_REF: elizaOS/eliza/.github/workflows/release-orchestrator.yml@refs/heads/develop
+          EXPECTED_CALLER_REF: elizaOS/eliza/.github/workflows/release.yaml@refs/heads/develop
           EXPECTED_REPOSITORY: elizaOS/eliza
           OBSERVED_REF: ${{ github.ref }}
           OBSERVED_REPOSITORY: ${{ github.repository }}
@@ -110,7 +79,7 @@ jobs:
             exit 1
           fi
           if [ "$OBSERVED_WORKFLOW_REF" != "$EXPECTED_CALLER_REF" ]; then
-            echo "::error::Release caller workflow is $OBSERVED_WORKFLOW_REF, expected $EXPECTED_CALLER_REF."
+            echo "::error::Release workflow is $OBSERVED_WORKFLOW_REF, expected $EXPECTED_CALLER_REF."
             exit 1
           fi
 

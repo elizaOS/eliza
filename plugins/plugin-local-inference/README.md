@@ -191,8 +191,9 @@ entity-match, first-audio/TTFT latency — via `workbench-entrypoint.ts` +
   `robustness:real` (WER under noise / reverb / far-field / telephone),
   `voicestack:real` (speaker recognition / diarization / VAD / local TTS),
   `agentvoice:real` (agent-self-voice rejection + overlapping speakers).
-- **CI** — `.github/workflows/voice-workbench.yml` runs the `--logic` lane plus
-  the regression baseline on every change to the voice surface.
+- **Automation** — the logic and baseline modes remain package-owned commands.
+  Run them directly when changing the voice decision surface; credentialed or
+  hardware-backed voice proof belongs in the manual live-smoke process.
 
 ### Legacy harnesses it absorbs
 
@@ -239,7 +240,7 @@ ELIZA_INFERENCE_LIB_DIR=/tmp/fused-lib LD_LIBRARY_PATH=/tmp/fused-lib \
   bun plugins/plugin-local-inference/scripts/kokoro-real-smoke.ts
 ```
 
-CI runs exactly this on Linux via `.github/workflows/kokoro-real-smoke.yml`
-(opt-in: `workflow_dispatch`, a `kokoro-smoke-*` tag, or a loader/converter/smoke/submodule change).
+This is an explicit hardware/operator smoke rather than a pull-request check.
+Run it on the Linux host that owns the staged fused library and model assets.
 
 For agent-facing documentation see `CLAUDE.md` / `AGENTS.md` in this directory.

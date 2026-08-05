@@ -19,14 +19,12 @@ const REAL_REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 const CANONICAL = "1.3.14";
 
 const GATE_WORKFLOWS = [
-  "ci.yaml",
-  "test.yml",
+  "ci.yml",
+  "nightly.yml",
   "cloud-cf-deploy.yml",
-  "app-aesthetic-audit.yml",
-  "develop-exhaustive.yml",
-  "ci-full-matrix-proof.yml",
-  "windows-ci.yml",
-  "windows-desktop-preload-smoke.yml",
+  "live-smoke.yml",
+  "release.yaml",
+  "weekly-maintenance.yml",
 ];
 
 // A gate stub that pins via a BUN_VERSION env literal and references it from the
@@ -144,7 +142,7 @@ describe("ci-bun-version-contract", () => {
   });
 
   test("fails when a gate workflow floats back to canary", () => {
-    const root = buildRepo({ overrides: { "test.yml": GATE_FLOATING } });
+    const root = buildRepo({ overrides: { "ci.yml": GATE_FLOATING } });
     try {
       expect(() => runContract(root)).toThrow(/must not float/);
     } finally {
@@ -153,7 +151,7 @@ describe("ci-bun-version-contract", () => {
   });
 
   test("fails when a gate workflow drops the canonical pin entirely", () => {
-    const root = buildRepo({ overrides: { "ci.yaml": GATE_NO_PIN } });
+    const root = buildRepo({ overrides: { "ci.yml": GATE_NO_PIN } });
     try {
       expect(() => runContract(root)).toThrow(
         /does not wire the canonical Bun pin/,

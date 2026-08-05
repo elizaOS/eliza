@@ -1,12 +1,12 @@
 /**
  * Keeps the repository's workflow and composite-action graph immutable,
- * uniquely named, referenced, and free of duplicate UI fixture ownership.
+ * uniquely named, and referenced.
  */
 
-import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { describe, expect, test } from "bun:test";
 
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
 const githubRoot = join(repoRoot, ".github");
@@ -25,9 +25,7 @@ describe("GitHub action supply-chain references", () => {
 
     for (const file of collectYamlFiles(githubRoot)) {
       const source = readFileSync(file, "utf8");
-      for (const match of source.matchAll(
-        /^\s*(?:-\s*)?uses:\s+(\S+)\s*$/gmu,
-      )) {
+      for (const match of source.matchAll(/^\s*(?:-\s*)?uses:\s+(\S+)\s*$/gmu)) {
         const reference = match[1];
         if (reference.startsWith("./") || reference.startsWith("docker://")) {
           continue;
@@ -58,9 +56,7 @@ describe("GitHub action supply-chain references", () => {
 
   test("does not retain orphaned local composite actions", () => {
     const yamlFiles = collectYamlFiles(githubRoot);
-    const graph = yamlFiles
-      .map((file) => readFileSync(file, "utf8"))
-      .join("\n");
+    const graph = yamlFiles.map((file) => readFileSync(file, "utf8")).join("\n");
     const orphaned = yamlFiles
       .filter((file) => /^action\.ya?ml$/u.test(file.split("/").at(-1) ?? ""))
       .map((file) => `./${relative(repoRoot, dirname(file))}`)
@@ -69,61 +65,4 @@ describe("GitHub action supply-chain references", () => {
     expect(orphaned).toEqual([]);
   });
 
-  test("assigns each UI fixture suite to one parallel workflow", () => {
-    const suites = (name: string) =>
-      new Set(
-        [
-          ...readFileSync(join(githubRoot, "workflows", name), "utf8").matchAll(
-            /^\s*run:\s+(?:[A-Z_][A-Z0-9_]*=\S+\s+)*bun run --cwd packages\/ui (test:[^\s#]+)/gmu,
-          ),
-        ].map((match) => match[1]),
-      );
-    const core = suites("ui-e2e-gate.yml");
-    const extended = suites("ui-fixture-e2e.yml");
-
-    expect([...core].filter((suite) => extended.has(suite))).toEqual([]);
-  });
-
-  test("keeps the WebKit fixture lane on a provisionable hosted runner", () => {
-    const source = readFileSync(
-      join(githubRoot, "workflows", "ui-fixture-e2e.yml"),
-      "utf8",
-    );
-
-    expect(source).toMatch(/^\s{4}runs-on:\s*ubuntu-24\.04$/m);
-    expect(source).not.toContain("hetzner-robot");
-    expect(source).toContain(
-      ".github/scripts/install-playwright-browsers.sh chromium webkit",
-    );
-  });
-
-  test("keeps the chat WebKit lane on a provisionable hosted runner", () => {
-    const source = readFileSync(
-      join(githubRoot, "workflows", "chat-shell-gestures.yml"),
-      "utf8",
-    );
-
-    expect(source).toMatch(/^\s{4}runs-on:\s*ubuntu-24\.04$/m);
-    expect(source).not.toContain("hetzner-robot");
-    expect(source).toContain(
-      ".github/scripts/install-playwright-browsers.sh chromium webkit",
-    );
-  });
-
-  test("installs dev-smoke Chromium without requiring self-hosted sudo", () => {
-    const source = readFileSync(
-      join(githubRoot, "workflows", "dev-smoke.yml"),
-      "utf8",
-    );
-
-    expect(
-      source.match(
-        /\.github\/scripts\/install-playwright-browsers\.sh chromium/g,
-      ),
-    ).toHaveLength(2);
-    expect(source).not.toContain("playwright install --with-deps chromium");
-    expect(source).toContain(
-      "ELIZA_VAULT_PASSPHRASE: dev-smoke-headless-vault-only",
-    );
-  });
 });

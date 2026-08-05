@@ -30,8 +30,7 @@
  * in this stack that produces an observable Hetzner node transition. Autoscale
  * (step g) uses the now-landed daemon path (#8920/#8921): the `agent-hot-pool`
  * cron the `--with-daemon` loop ticks replenishes the warm pool on its own. The
- * REAL-Hetzner variant of this loop runs nightly via
- * `.github/workflows/monetized-loop-nightly.yml`.
+ * REAL-Hetzner variant is an explicit operator-run integration.
  *
  * Load-bearing invariants (exact, not smoke):
  *   - Hetzner node: server count grows by 1 per provision, each reaching

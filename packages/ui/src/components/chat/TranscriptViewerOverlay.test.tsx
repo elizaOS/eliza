@@ -249,8 +249,10 @@ describe("TranscriptViewerOverlay", () => {
         },
       ),
     );
-    expect(screen.getByTestId("transcript-share-success").textContent).toMatch(
-      /redacted/i,
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("transcript-share-success").textContent,
+      ).toMatch(/redacted/i),
     );
   });
 
@@ -335,8 +337,10 @@ describe("TranscriptViewerOverlay", () => {
         "99999999-9999-9999-9999-999999999999",
       ),
     );
-    expect(screen.getByTestId("transcript-share-success").textContent).toMatch(
-      /revoked/i,
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("transcript-share-success").textContent,
+      ).toMatch(/revoked/i),
     );
   });
 

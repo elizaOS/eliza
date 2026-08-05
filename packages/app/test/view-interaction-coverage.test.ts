@@ -10,10 +10,6 @@ import { describe, expect, it } from "vitest";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "../../..");
 const VIEW_CASES_SOURCE = path.join(HERE, "ui-smoke", "plugin-view-cases.ts");
-const KEYLESS_WORKFLOW = path.join(
-  REPO_ROOT,
-  ".github/workflows/scenario-pr.yml",
-);
 
 type ViewType = "gui" | "tui";
 
@@ -256,7 +252,6 @@ const INTERACTION_DEBT: Readonly<Record<string, string>> = {
 
 const MAX_INTERACTION_DEBT = 1;
 
-const KEYLESS_INTERACTION_OWNER_DEBT = new Set<string>([]);
 
 function viewKey(view: Pick<VisualViewCase, "id" | "viewType">) {
   return `${view.id}:${view.viewType}`;
@@ -295,11 +290,6 @@ function interactionOwners(view: VisualViewCase): readonly InteractionOwner[] {
 
 function readRepoFile(relativePath: string): string {
   return readFileSync(path.join(REPO_ROOT, relativePath), "utf8");
-}
-
-function uiSmokeSpecName(spec: string): string | null {
-  const match = spec.match(/^packages\/app\/test\/ui-smoke\/(.+\.spec\.ts)$/);
-  return match?.[1] ?? null;
 }
 
 describe("plugin view interaction coverage", () => {
@@ -370,33 +360,4 @@ describe("plugin view interaction coverage", () => {
     expect(missingSignals).toEqual([]);
   });
 
-  it("keeps ui-smoke interaction-owner specs wired into keyless CI", () => {
-    const owners = new Map<string, InteractionOwner>();
-    for (const view of readVisualMatrixCases()) {
-      for (const owner of interactionOwners(view)) {
-        owners.set(owner.spec, owner);
-      }
-    }
-
-    const workflow = readFileSync(KEYLESS_WORKFLOW, "utf8");
-    const unwired = [...owners.keys()]
-      .map((spec) => ({
-        spec,
-        uiSmokeName: uiSmokeSpecName(spec),
-      }))
-      .filter(
-        (owner): owner is { spec: string; uiSmokeName: string } =>
-          owner.uiSmokeName !== null,
-      )
-      .filter((owner) => !KEYLESS_INTERACTION_OWNER_DEBT.has(owner.spec))
-      .filter(
-        (owner) => !workflow.includes(`test/ui-smoke/${owner.uiSmokeName}`),
-      )
-      .map((owner) => owner.spec);
-
-    expect(
-      unwired,
-      "Every Playwright ui-smoke interaction owner must run in keyless scenario-pr CI.",
-    ).toEqual([]);
-  });
 });

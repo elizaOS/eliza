@@ -26,6 +26,16 @@ const LEVEL_NAMES: Record<number, string> = {
 const ADZE_PRETTY_PREFIX =
   /^\s*(?:trace|debug|verbose|success|progress|log|info|warn|error|fatal|alert)\s{2,}/i;
 
+function isAdzeRenderedMirror(entry: StructuredLogEntry): boolean {
+  // Adze's configured levels occupy 1-8; elizaOS invocation entries use the
+  // transport scale 10-60. Prefer that stable signal because colorized Linux
+  // output can place ANSI escapes before the human-readable level prefix.
+  return (
+    (entry.level !== undefined && entry.level < 10) ||
+    ADZE_PRETTY_PREFIX.test(entry.msg)
+  );
+}
+
 let earlyLogBuffer: LogEntry[] | null = null;
 let stopEarlyCapture: (() => void) | null = null;
 
@@ -59,7 +69,7 @@ export function listenForUiLogs(
   onEntry: (entry: LogEntry) => void,
 ): () => void {
   return addLogListener((entry) => {
-    if (ADZE_PRETTY_PREFIX.test(entry.msg)) return;
+    if (isAdzeRenderedMirror(entry)) return;
     onEntry(formatStructuredLogEntry(entry));
   });
 }

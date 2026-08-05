@@ -130,7 +130,7 @@ Every loop lane is seeded and reproducible:
 
 - **fixture-e2e (≥500 actions):** `bun run --cwd packages/ui test:launcher-loop-e2e`
   (`packages/ui/src/components/shell/__e2e__/run-launcher-loop-e2e.mjs`). CI pins
-  seed `12375` in `.github/workflows/chat-shell-gestures.yml`; a failing batch
+  seed `12375` in the local gesture test command; a failing batch
   writes `failure-batch-<n>.json` with the run seed + fast-check shrunk command
   list. Replay with the printed `ELIZA_LOOP_SEED`, or
   `ELIZA_LOOP_ONLY_BATCH=<n>` for just that batch.
