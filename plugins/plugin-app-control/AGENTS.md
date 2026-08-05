@@ -5,7 +5,7 @@ models, active agent profiles, and built-in settings.
 
 ## Purpose / role
 
-This opt-in plugin registers eight actions, no natural-language pre-LLM shortcuts, three evaluators,
+This opt-in plugin registers eight actions, no natural-language pre-LLM shortcuts, two evaluators,
 two providers, and four services. Dashboard operations use authenticated
 loopback HTTP (`/api/apps/*`, `/api/views/*`) discovered through the existing
 port resolver.
@@ -31,7 +31,7 @@ port resolver.
 | `viewContextEvaluator` | `src/evaluators/view-context.ts` | Model-assisted contextual navigation when no explicit view command matched. |
 | `viewCommandShortcutEvaluator` | `src/evaluators/view-command-shortcut.ts` | Compatibility export for downstream users; the first-party plugin does not register it because the model owns view-action selection. |
 | `createChoiceShortcutEvaluator` | `src/evaluators/create-choice-shortcut.ts` | Routes replies to pending app/view creation choices without another model decision. |
-| `viewFollowupRoutingEvaluator` | `src/evaluators/view-followup-routing.ts` | Detects mutation follow-ups and dispatches `VIEWS`. |
+| `viewFollowupRoutingEvaluator` | `src/evaluators/view-followup-routing.ts` | Compatibility export for downstream users; the first-party plugin leaves focused-view mutation follow-ups to Stage 1 and the planner. |
 
 ### Shortcuts
 
@@ -69,7 +69,7 @@ View source lives in `src/views/ViewManagerView.tsx`. Bundled separately by `vit
 src/
   index.ts                        Plugin entry; exports appControlPlugin
   types.ts                        API response shapes (InstalledAppInfo, AppRunSummary, AppLaunchResult, AppStopResult)
-  shortcuts.ts                    Pre-LLM natural-language shortcuts for explicit view navigation
+  shortcuts.ts                    Compatibility natural-language shortcut definitions; not registered by the plugin
   params.ts                       Option normalisation + verb/noun extraction helpers
   resolve.ts                      App/run name resolution (exact + substring match)
   protected-apps.ts               List of built-in apps that cannot be deleted
@@ -105,7 +105,7 @@ src/
     view-context.ts               contextual view selection
     view-command-shortcut.ts      deterministic explicit-command routing
     create-choice-shortcut.ts     pending create-choice routing
-    view-followup-routing.ts      mutation follow-up routing
+    view-followup-routing.ts      compatibility mutation-follow-up evaluator; not registered by the plugin
   providers/
     available-apps.ts             available_apps provider
     current-view.ts               current_view provider
