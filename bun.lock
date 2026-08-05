@@ -454,7 +454,7 @@
         "file-type": "^22.0.1",
         "hono": "4.12.34",
         "music-metadata": "^11.12.3",
-        "nanoid": "^5.1.9",
+        "nanoid": "^6.0.0",
         "stripe": "^22.0.0",
         "telegraf": "^4.16.3",
         "uuid": "^14.0.0",
@@ -704,7 +704,7 @@
         "json-schema": "^0.4.0",
         "json5": "^2.2.3",
         "libphonenumber-js": "^1.12.42",
-        "nanoid": "^5.1.9",
+        "nanoid": "^6.0.0",
         "nodemailer": "^9.0.1",
         "pg": "^8.20.0",
         "redis": "^5.0.0",
@@ -8062,7 +8062,7 @@
 
     "nan": ["nan@2.28.0", "", {}, "sha512-fTsDz99OTq2sVePhGdp4qQhggZFtKr64ZNVyVajRKtMOkJxYekplBh577PiJB12v/D3s2E5cGtOI45LWp6rnLQ=="],
 
-    "nanoid": ["nanoid@5.1.16", "", { "bin": { "nanoid": "bin/nanoid.js" } }, "sha512-kVrnsrJqMR8+oLJnGEmSWw9BivK5mt7H3FZatVRjrc5wGqFYuBxX1yG7+A7Gi5AefkX6t/oCkizcQgpu0cY1dQ=="],
+    "nanoid": ["nanoid@6.0.1", "", { "bin": { "nanoid": "bin/nanoid.js" } }, "sha512-3wVS3i51pE2pi1k5FFL/95BGfVS0kSsvDVuGXHOtxox/TywUmtgq+3qiTOTbs9J7KfHaXPiN171k/A6dBnaXFw=="],
 
     "native-run": ["native-run@2.0.3", "", { "dependencies": { "@ionic/utils-fs": "^3.1.7", "@ionic/utils-terminal": "^2.3.4", "bplist-parser": "^0.3.2", "debug": "^4.3.4", "elementtree": "^0.1.7", "ini": "^4.1.1", "plist": "^3.1.0", "split2": "^4.2.0", "through2": "^4.0.2", "tslib": "^2.6.2", "yauzl": "^2.10.0" }, "bin": { "native-run": "bin/native-run" } }, "sha512-U1PllBuzW5d1gfan+88L+Hky2eZx+9gv3Pf6rNBxKbORxi7boHzqiA6QFGSnqMem4j0A9tZ08NMIs5+0m/VS1Q=="],
 
