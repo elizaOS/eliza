@@ -240,6 +240,7 @@ describe("CloudRouterShell apex catch-all — zero app-mode network", () => {
 
 describe("CloudRouterShell app-mode catch-all (app.elizacloud.ai)", () => {
   const realAssign = appModeNavigation.assign;
+  const realReplace = appModeNavigation.replace;
   let assignedUrls: string[] = [];
 
   afterEach(() => {
@@ -247,6 +248,7 @@ describe("CloudRouterShell app-mode catch-all (app.elizacloud.ai)", () => {
     localStorage.clear();
     globalThis.fetch = realFetch;
     appModeNavigation.assign = realAssign;
+    appModeNavigation.replace = realReplace;
     Object.defineProperty(window, "location", {
       configurable: true,
       value: realLocation,
@@ -305,7 +307,12 @@ describe("CloudRouterShell app-mode catch-all (app.elizacloud.ai)", () => {
       });
     });
     assignedUrls = [];
+    // Both seams feed one log: automatic entry replaces history, an explicit
+    // chooser pick pushes; the split itself is pinned in app-mode.test.ts.
     appModeNavigation.assign = (url: string) => {
+      assignedUrls.push(url);
+    };
+    appModeNavigation.replace = (url: string) => {
       assignedUrls.push(url);
     };
     localStorage.setItem(STEWARD_TOKEN_KEY, stewardToken(FUTURE_EXP));

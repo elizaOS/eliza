@@ -17,6 +17,7 @@ import { visualizer } from "rollup-plugin-visualizer";
 import {
   createLogger,
   defineConfig,
+  loadEnv,
   type Plugin,
   transformWithOxc,
 } from "vite";
@@ -44,6 +45,7 @@ import {
   shouldSkipBuildStamp,
 } from "./scripts/build-stamp.mjs";
 import { CAPACITOR_PLUGIN_NAMES } from "./scripts/capacitor-plugin-names.mjs";
+import { forbiddenForcedHostModeFlags } from "./scripts/forced-host-mode-guard.mjs";
 import { normalizeEnvPrefix } from "./src/env-prefix.js";
 import { appSideEffectModulesPlugin } from "./vite/app-side-effect-modules.ts";
 import { calendarOptimizeDeps } from "./vite/calendar-optimize-deps.ts";
@@ -1063,6 +1065,39 @@ function productionBuildStampGuardPlugin(): Plugin {
 }
 
 /**
+ * Fails any production-mode build in which a forced host-mode escape hatch
+ * (VITE_FORCE_APP_MODE / VITE_FORCE_APEX_CONSOLE) is set. The flags override
+ * the app-mode and apex hostname checks for EVERY host, so a Pages deploy that
+ * carries one silently turns the elizacloud.ai apex into the forced surface —
+ * this guard makes that misconfiguration fail loudly at build time instead.
+ * The production/staging Pages builds (cloud-cf-deploy.yml) run plain
+ * `vite build` (mode "production"), so both are covered; `vite dev` and
+ * development-mode bundles keep the escape hatch.
+ */
+function forcedHostModeFlagGuardPlugin(): Plugin {
+  return {
+    name: "eliza-forced-host-mode-flag-guard",
+    configResolved(config) {
+      if (config.command !== "build" || config.mode !== "production") return;
+      // loadEnv covers `.env*` files as well as process.env.
+      const offending = forbiddenForcedHostModeFlags(
+        loadEnv(config.mode, config.envDir, "VITE_FORCE_"),
+      );
+      if (offending.length > 0) {
+        throw new Error(
+          `${offending.join(", ")} must not be set in a production-mode build: ` +
+            "the forced host-mode flags override the app-mode/apex hostname " +
+            "checks for every host, so a deployed bundle with one baked in " +
+            "hijacks the elizacloud.ai apex. Remove the flag from the deploy " +
+            "config (cloud-cf-deploy.yml / wrangler.toml); to test a built " +
+            "bundle with the flag locally, build with --mode development.",
+        );
+      }
+    },
+  };
+}
+
+/**
  * Pinned @elizaos/core from the repo root (must match the agent/runtime lock).
  */
 function getPinnedElizaCoreVersion(): string {
@@ -2064,6 +2099,7 @@ export default defineConfig({
     ),
   },
   plugins: [
+    forcedHostModeFlagGuardPlugin(),
     productionBuildStampGuardPlugin(),
     bufferEsmShimPlugin(),
     // Manifest-driven renderer side-effect plugin registration (#9178): resolves

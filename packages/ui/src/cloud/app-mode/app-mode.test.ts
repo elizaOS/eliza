@@ -51,6 +51,19 @@ describe("isAppModeHostname — hostname matrix", () => {
     expect(isAppModeHostname("localhost", true)).toBe(true);
     expect(isAppModeHostname("elizacloud.ai", false)).toBe(false);
   });
+
+  it("dev escape hatch DOES override the apex — deliberate, pinned decision", () => {
+    // VITE_FORCE_APP_MODE short-circuits BEFORE the hostname set on purpose:
+    // the flag exists so `vite dev` (localhost) can exercise app-mode entry at
+    // all, and a partial override that carved out the apex would make the flag
+    // lie about what it forces. The apex is protected at BUILD time instead —
+    // packages/app's vite config fails any production-mode build in which
+    // VITE_FORCE_APP_MODE or VITE_FORCE_APEX_CONSOLE is set
+    // (packages/app/scripts/forced-host-mode-guard.mjs), so the flag can never
+    // reach a deployed bundle. If this test surprises you, that guard is the
+    // invariant you are looking for.
+    expect(isAppModeHostname("elizacloud.ai", true)).toBe(true);
+  });
 });
 
 describe("decideAppModeRoute — decision table", () => {

@@ -62,6 +62,7 @@ interface StubRoutes {
 
 const realFetch = globalThis.fetch;
 const realAssign = appModeNavigation.assign;
+const realReplace = appModeNavigation.replace;
 let fetchLog: string[];
 let assignedUrls: string[];
 
@@ -87,7 +88,12 @@ function stubNetwork(routes: StubRoutes): void {
     );
   }) as typeof fetch;
   assignedUrls = [];
+  // Both seams feed one log: automatic entry replaces history, an explicit
+  // chooser pick pushes; the replace-vs-assign split is pinned in app-mode.test.ts.
   appModeNavigation.assign = (url: string) => {
+    assignedUrls.push(url);
+  };
+  appModeNavigation.replace = (url: string) => {
     assignedUrls.push(url);
   };
 }
@@ -139,6 +145,7 @@ afterEach(() => {
   localStorage.clear();
   globalThis.fetch = realFetch;
   appModeNavigation.assign = realAssign;
+  appModeNavigation.replace = realReplace;
 });
 
 describe("AppModeEntryRoute — auth gating", () => {

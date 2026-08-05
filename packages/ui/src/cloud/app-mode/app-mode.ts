@@ -29,7 +29,9 @@ export const APP_MODE_HOSTNAMES: ReadonlySet<string> = new Set([
 
 /** Dev-only app-mode emulation: the app hosts are never `localhost`, so the
  * entry routing is otherwise untestable in `vite dev`. Vite inlines the env
- * read on literal access; production builds ship without the flag. Mirrors
+ * read on literal access, and production-mode packages/app builds REFUSE to
+ * bake the flag (`packages/app/scripts/forced-host-mode-guard.mjs` throws at
+ * build time), so it can never reach a deployed bundle. Mirrors
  * `VITE_FORCE_APEX_CONSOLE` in `../shell/apex-host.ts`. */
 function readAppModeDevFlag(): boolean {
   return import.meta.env?.VITE_FORCE_APP_MODE === "true";
