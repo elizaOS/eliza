@@ -37,10 +37,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
+import { isAppModeHost } from "../app-mode/app-mode";
 import { useCreditsBalance } from "../instances/lib/data/credits";
 import { formatUsd } from "../lib/format-usd";
 import { hasHydratableStewardToken } from "../lib/steward-session";
 import { useSessionAuth } from "../lib/use-session-auth";
+import { signOutFromSsoBridgedHost } from "../sso-bridge/sso-bridge";
 import {
   CONSOLE_OVERVIEW_NAV_ITEM,
   CONSOLE_SURFACES,
@@ -161,7 +163,16 @@ function ConsoleUserMenu({
           <DropdownMenuItem
             className="text-red-400"
             onSelect={() => {
-              clearStaleStewardSession();
+              if (isAppModeHost()) {
+                // App-mode sign-out must survive the cross-host SSO bridge:
+                // mark this origin logged out (suppresses auto-bridge), end
+                // the server session while the cookies still exist, then
+                // scrub locally. Dashboard hosts keep the original behavior
+                // byte-for-byte.
+                void signOutFromSsoBridgedHost();
+              } else {
+                clearStaleStewardSession();
+              }
               navigate("/login", { replace: true });
             }}
           >

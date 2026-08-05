@@ -9,6 +9,7 @@ import { deleteCookie, getCookie } from "hono/cookie";
 import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
 import { invalidateSessionCaches } from "@/lib/auth";
 import { cookieDomainForHost } from "@/lib/auth/cookie-domain";
+import { verifyStewardTokenCached } from "@/lib/auth/steward-client";
 import {
   canMutateLegacyStewardCookies,
   LEGACY_STEWARD_COOKIES,
@@ -19,6 +20,7 @@ import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import { markSsoBridgeLogout } from "@/lib/services/sso-bridge-codes";
 import { userSessionsService } from "@/lib/services/user-sessions";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -62,6 +64,16 @@ app.post("/", async (c) => {
     if (stewardToken) {
       await invalidateSessionCaches(stewardToken);
       logger.debug("[Logout] Invalidated session caches for token");
+
+      // Stamp the cross-host SSO logout marker: the sso-bridge mint/exchange
+      // legs refuse tokens issued before this moment, so an explicit logout
+      // cannot be silently undone by the paired host bridging the other
+      // origin's still-unexpired session back in.
+      const claims = await verifyStewardTokenCached(c.env, stewardToken);
+      if (claims) {
+        await markSsoBridgeLogout(claims.userId);
+        logger.debug("[Logout] Stamped SSO bridge logout marker");
+      }
     }
 
     if (stewardToken) {
