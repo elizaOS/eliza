@@ -5403,4 +5403,59 @@ describe("sub-agent completion relay vs the direct-candidate injection backstop"
 		const calls = useModelCalls(runtime);
 		expect(calls[1]?.[0]).toBe(ModelType.ACTION_PLANNER);
 	});
+
+	it("renders prompt automations as user-facing output instructions", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "Automation fired.",
+				contexts: ["general"],
+				replyText: "time to take your vitamins.",
+			}),
+		]);
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: 'Scheduled trigger "take vitamins" fired. Do this now: remind me to take my vitamins',
+				source: "trigger-prompt",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-0000000000aa" as UUID,
+		});
+
+		const stage1Call = useModelCalls(runtime)[0]?.[1] as
+			| { messages?: Array<{ content?: string | null }> }
+			| undefined;
+		const stage1Content = (stage1Call?.messages ?? [])
+			.map((entry) => entry.content ?? "")
+			.join("\n");
+		expect(stage1Content).toContain("trigger_automation_policy:");
+		expect(stage1Content).toContain(
+			"whatever you reply is delivered to the user",
+		);
+		expect(stage1Content).toContain("Never reply with an acknowledgement");
+	});
+
+	it("does not render the automation policy for ordinary user turns", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "Ordinary turn.",
+				contexts: ["general"],
+				replyText: "sure.",
+			}),
+		]);
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "remind me to take my vitamins" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-0000000000ab" as UUID,
+		});
+
+		const stage1Call = useModelCalls(runtime)[0]?.[1] as
+			| { messages?: Array<{ content?: string | null }> }
+			| undefined;
+		const stage1Content = (stage1Call?.messages ?? [])
+			.map((entry) => entry.content ?? "")
+			.join("\n");
+		expect(stage1Content).not.toContain("trigger_automation_policy");
+	});
 });

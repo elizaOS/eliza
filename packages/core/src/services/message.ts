@@ -3043,6 +3043,20 @@ async function createV5MessageContextObject(args: {
 			' Before saying you cannot find something, read the final message:user itself: if the asker states a fact and asks about it in the same message ("my favorite color is teal, what is my favorite color?"), answer from the current message directly. Only when the asked-about token appears neither in the current message nor in any visible prior_message block, say so plainly ("I don\'t see X in the recent messages I can see") rather than claiming you searched beyond the visible window or fabricating an action — the prior_message blocks are the only window you have, and there is no separate chat-history search tool. This "no chat-history search" limit is about CHAT recall ONLY. It does NOT apply to what a task, build, deploy, or sub-agent YOU ran actually did: that run status IS verifiable with the task/sub-agent tools. So when the final message asks "what happened with [the build/app/task]" or disputes whether something you ran actually worked, treat it as a live verification request (set requiresTool) and CHECK the current task/sub-agent status with a tool before reporting, disclaiming, or conceding — never say you cannot verify a run you can look up.',
 	});
 
+	// Prompt automations execute without a visible human message; their reply is
+	// the delivered result. Make that boundary explicit so the model performs
+	// the instruction instead of acknowledging framing the recipient never sees.
+	if (args.message.content.source === MESSAGE_SOURCE_TRIGGER_PROMPT) {
+		events.push({
+			id: "trigger-automation-policy",
+			type: "instruction",
+			source: "message-service",
+			stable: false,
+			content:
+				'trigger_automation_policy: The final message:user below is a scheduled automation of yours firing, not a person talking to you. Its "Do this now:" clause is the instruction you must carry out on this turn, and whatever you reply is delivered to the user as the automation\'s output. Produce that output: if the instruction is to remind, the reply IS the reminder addressed to the user; if it is to check or report something, run the needed tools and reply with the result. Never reply with an acknowledgement of the instruction itself ("noted.", "got it", "will do") — the user never sees the instruction, so an acknowledgement reaches them as a bare non-sequitur.',
+		});
+	}
+
 	// Ambient-turn policy (live incident tj-f637475edcb7bd): on an unaddressed
 	// group turn the planner ran, produced no tool activity, and still shipped
 	// the filler completion "I handled the available step." as the reply. The
