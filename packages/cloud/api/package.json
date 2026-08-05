@@ -38,7 +38,7 @@
     "file-type": "^22.0.1",
     "hono": "4.12.34",
     "music-metadata": "^11.12.3",
-    "nanoid": "^5.1.9",
+    "nanoid": "^6.0.0",
     "stripe": "^22.0.0",
     "telegraf": "^4.16.3",
     "uuid": "^14.0.0",

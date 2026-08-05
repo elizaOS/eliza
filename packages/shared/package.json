@@ -415,7 +415,7 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/registry": "workspace:*",
-    "chalk": "^5.3.0",
+    "chalk": "^6.0.0",
     "drizzle-orm": "0.45.2",
     "phonemizer": "^1.2.1",
     "react": "^19.0.0",
