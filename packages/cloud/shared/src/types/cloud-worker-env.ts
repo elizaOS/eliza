@@ -154,6 +154,21 @@ export interface Bindings {
   VOICE_REALTIME_WS_ENABLED?: string;
   /** Cartesia voice id (UUID) used for the realtime downlink. */
   VOICE_REALTIME_CARTESIA_VOICE_ID?: string;
+  /** Default-off flag that promotes Fish Audio to primary realtime TTS. */
+  ELIZA_TTS_FISH_ENABLED?: string;
+  FISH_AUDIO_DATA_GOVERNANCE_APPROVED?: string;
+  /** Server-side Fish Audio API key for realtime TTS. */
+  FISH_AUDIO_API_KEY?: string;
+  /** Fish realtime model: s1, s2-pro, s2.1-pro, or s2.1-pro-free. */
+  FISH_AUDIO_MODEL?: string;
+  /** Fish reference/voice id for realtime TTS. */
+  FISH_AUDIO_REFERENCE_ID?: string;
+  /** Legacy alias for the Fish realtime reference id. */
+  FISH_AUDIO_VOICE_ID?: string;
+  /** Fish realtime output sample rate; the voice-session contract is raw PCM at 16 kHz. */
+  FISH_AUDIO_SAMPLE_RATE?: string;
+  /** Pre-first-audio timeout that permits Fish -> Cartesia fallback. */
+  FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS?: string;
   /**
    * API origin for the LLM leg. The bridge constructs the canonical
    * `/eliza/agents/:agentId/api/conversations/:conversationId/messages/stream`

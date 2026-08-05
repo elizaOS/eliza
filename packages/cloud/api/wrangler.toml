@@ -468,6 +468,10 @@ VOICE_REALTIME_WS_ENABLED = "true"
 VOICE_REALTIME_CARTESIA_VOICE_ID = "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4"
 VOICE_REALTIME_ELIZA_ENDPOINT = "https://api-staging.elizacloud.ai"
 VOICE_REALTIME_ELIZA_MODEL = "gemma-4-31b"
+# Fish is promoted only by the environment-scoped deploy variable after its
+# credentials exist; the committed default remains safe for local deploys.
+ELIZA_TTS_FISH_ENABLED = "false"
+FISH_AUDIO_DATA_GOVERNANCE_APPROVED = "false"
 
 FORCE_REDIS_EVENTS = "false"
 R2_PUBLIC_HOST = "blob-staging.elizacloud.ai"
@@ -656,6 +660,8 @@ INFERENCE_PASSTHROUGH_EMBEDDINGS = "true"
 # Realtime voice is a staging-only soak. Keep the production posture explicit
 # so a missing variable or inherited default cannot accidentally expose it.
 VOICE_REALTIME_WS_ENABLED = "false"
+ELIZA_TTS_FISH_ENABLED = "false"
+FISH_AUDIO_DATA_GOVERNANCE_APPROVED = "false"
 FORCE_REDIS_EVENTS = "false"
 R2_PUBLIC_HOST = "blob.elizacloud.ai"
 SQL_HEAVY_PAYLOAD_STORAGE = "r2"

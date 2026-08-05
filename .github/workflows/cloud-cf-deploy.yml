@@ -25,11 +25,14 @@ name: Cloud CF Deploy
 # providers directly and uses OpenRouter as the backup):
 #   OPENROUTER_API_KEY, CEREBRAS_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY,
 #   GROQ_API_KEY, FAL_KEY, ELEVENLABS_API_KEY,
-#   CARTESIA_API_KEY, CARTESIA_VOICE_ID, VAST_API_KEY, VAST_BASE_URL.
+#   CARTESIA_API_KEY, CARTESIA_VOICE_ID, FISH_AUDIO_API_KEY,
+#   FISH_AUDIO_REFERENCE_ID, VAST_API_KEY, VAST_BASE_URL.
 # Media/voice secrets, likewise published when configured (#13406):
 #   FAL_API_KEY (the video provider registry reads FAL_KEY ?? FAL_API_KEY),
 #   CARTESIA_API_KEY (secret) + CARTESIA_VOICE_ID (from
 #   vars.ELIZA_VOICE_CARTESIA_VOICE_ID) for first-class Cartesia cloud TTS,
+#   FISH_AUDIO_API_KEY + FISH_AUDIO_REFERENCE_ID for the independently gated
+#   Fish Audio realtime primary (Cartesia remains its fallback),
 #   ELIZA_VOICE_CATALOG_SIGNING_KEY_BASE64 + ELIZA_VOICE_CATALOG_PUBLIC_KEY_BASE64
 #   (Ed25519 keypair for the signed voice-model catalog; the catalog route 503s
 #   while the signing key is unset).
@@ -554,6 +557,17 @@ jobs:
           # CARTESIA_VOICE_ID overrides the built-in safe UUID.
           CARTESIA_API_KEY: ${{ secrets.CARTESIA_API_KEY }}
           CARTESIA_VOICE_ID: ${{ vars.ELIZA_VOICE_CARTESIA_VOICE_ID }}
+          # Fish is an independently gated realtime primary. Its credentials
+          # are published only while both realtime voice and the Fish opt-in
+          # are enabled; Cartesia remains required as the fallback.
+          FISH_AUDIO_API_KEY: ${{ secrets.FISH_AUDIO_API_KEY }}
+          FISH_AUDIO_REFERENCE_ID: ${{ secrets.FISH_AUDIO_REFERENCE_ID }}
+          ELIZA_TTS_FISH_ENABLED: ${{ steps.env.outputs.deploy_environment != 'production' && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.ELIZA_TTS_FISH_ENABLED) && 'true' || 'false' }}
+          FISH_AUDIO_DATA_GOVERNANCE_APPROVED: ${{ steps.env.outputs.deploy_environment != 'production' && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.FISH_AUDIO_DATA_GOVERNANCE_APPROVED) && 'true' || 'false' }}
+          FISH_AUDIO_MODEL: ${{ vars.FISH_AUDIO_MODEL || 's2.1-pro' }}
+          # The realtime downlink contract is PCM16 mono at exactly 16 kHz.
+          FISH_AUDIO_SAMPLE_RATE: "16000"
+          FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS: ${{ vars.FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS || '1500' }}
           # Self-hosted Whisper STT base URL (OpenAI-compatible
           # /v1/audio/transcriptions). When set, /api/v1/voice/stt uses free
           # Whisper instead of billed ElevenLabs Scribe. Sourced from the same
@@ -662,6 +676,38 @@ jobs:
             fi
           fi
 
+          # Fish is a separate, default-off promotion within realtime voice.
+          # Refuse to advertise it unless its own credentials and the exact
+          # voice downlink format are deployable; Cartesia is still required
+          # above because it handles pre-first-audio fallback.
+          if is_truthy "$ELIZA_TTS_FISH_ENABLED"; then
+            if ! is_truthy "$FISH_AUDIO_DATA_GOVERNANCE_APPROVED"; then
+              echo "::error::Fish realtime TTS is unavailable until FISH_AUDIO_DATA_GOVERNANCE_APPROVED is explicitly set after owner policy attestation"
+              exit 1
+            fi
+            missing_fish_secrets=()
+            for name in FISH_AUDIO_API_KEY FISH_AUDIO_REFERENCE_ID; do
+              if ! has_nonblank_value "${!name:-}"; then
+                missing_fish_secrets+=("$name")
+              fi
+            done
+            if [ "${#missing_fish_secrets[@]}" -gt 0 ]; then
+              echo "::error::Fish realtime TTS is enabled but required secrets are missing: ${missing_fish_secrets[*]}"
+              exit 1
+            fi
+            case "$FISH_AUDIO_MODEL" in
+              s1|s2-pro|s2.1-pro|s2.1-pro-free) ;;
+              *)
+                echo "::error::Fish realtime TTS model is invalid: $FISH_AUDIO_MODEL"
+                exit 1
+                ;;
+            esac
+            if [ "$FISH_AUDIO_SAMPLE_RATE" != "16000" ]; then
+              echo "::error::Fish realtime TTS must deploy at 16000 Hz"
+              exit 1
+            fi
+          fi
+
           # The Worker is the gateway: it calls native providers directly and
           # uses OpenRouter (BYOK) as the backup. At least one provider key (the
           # OpenRouter backup, or a native key) must be configured.
@@ -677,6 +723,14 @@ jobs:
               DEEPGRAM_API_KEY|CARTESIA_API_KEY|VOICE_REALTIME_ELIZA_AUTHORIZATION)
                 if ! is_truthy "$VOICE_REALTIME_WS_ENABLED"; then
                   echo "::notice::$name is gated by VOICE_REALTIME_WS_ENABLED; skipping"
+                  return 0
+                fi
+                ;;
+              FISH_AUDIO_API_KEY|FISH_AUDIO_REFERENCE_ID)
+                if ! is_truthy "$VOICE_REALTIME_WS_ENABLED" || \
+                   ! is_truthy "$ELIZA_TTS_FISH_ENABLED" || \
+                   ! is_truthy "$FISH_AUDIO_DATA_GOVERNANCE_APPROVED"; then
+                  echo "::notice::$name is gated by realtime voice, Fish enablement, and data-governance approval; skipping"
                   return 0
                 fi
                 ;;
@@ -748,8 +802,9 @@ jobs:
             ELIZA_VOICE_CATALOG_PUBLIC_KEY_BASE64 \
             VAST_API_KEY \
             VAST_BASE_URL \
-            DEEPGRAM_API_KEY \
             CARTESIA_API_KEY \
+            FISH_AUDIO_API_KEY \
+            FISH_AUDIO_REFERENCE_ID \
             VOICE_REALTIME_ELIZA_AUTHORIZATION \
             STEWARD_PLATFORM_KEYS
           do
@@ -794,8 +849,13 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           KOKORO_TTS_URL: ${{ vars.ELIZA_VOICE_KOKORO_TTS_URL }}
           VOICE_REALTIME_WS_ENABLED: ${{ steps.env.outputs.deploy_environment != 'production' && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED) && 'true' || 'false' }}
+          ELIZA_TTS_FISH_ENABLED: ${{ steps.env.outputs.deploy_environment != 'production' && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.ELIZA_TTS_FISH_ENABLED) && 'true' || 'false' }}
+          FISH_AUDIO_DATA_GOVERNANCE_APPROVED: ${{ steps.env.outputs.deploy_environment != 'production' && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.FISH_AUDIO_DATA_GOVERNANCE_APPROVED) && 'true' || 'false' }}
+          FISH_AUDIO_MODEL: ${{ vars.FISH_AUDIO_MODEL || 's2.1-pro' }}
+          FISH_AUDIO_SAMPLE_RATE: "16000"
+          FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS: ${{ vars.FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS || '1500' }}
         run: |
-          args=(${{ steps.env.outputs.wrangler_args }} --var ELIZA_DEPLOY_COMMIT:"$GITHUB_SHA" --var VOICE_REALTIME_WS_ENABLED:"$VOICE_REALTIME_WS_ENABLED")
+          args=(${{ steps.env.outputs.wrangler_args }} --var ELIZA_DEPLOY_COMMIT:"$GITHUB_SHA" --var VOICE_REALTIME_WS_ENABLED:"$VOICE_REALTIME_WS_ENABLED" --var ELIZA_TTS_FISH_ENABLED:"$ELIZA_TTS_FISH_ENABLED" --var FISH_AUDIO_DATA_GOVERNANCE_APPROVED:"$FISH_AUDIO_DATA_GOVERNANCE_APPROVED" --var FISH_AUDIO_MODEL:"$FISH_AUDIO_MODEL" --var FISH_AUDIO_SAMPLE_RATE:"$FISH_AUDIO_SAMPLE_RATE" --var FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS:"$FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS")
           if [ -n "${KOKORO_TTS_URL:-}" ]; then
             args+=(--var KOKORO_TTS_URL:"$KOKORO_TTS_URL")
           else

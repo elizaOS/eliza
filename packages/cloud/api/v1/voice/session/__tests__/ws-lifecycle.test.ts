@@ -10,6 +10,7 @@
  */
 
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
+import { decode, encode } from "@msgpack/msgpack";
 
 // Break the logger -> @elizaos/core transitive import chain (repo-standard
 // test isolation for cloud-api unit tests). Logic under test is untouched.
@@ -24,6 +25,7 @@ mock.module("@elizaos/core", () => ({
 }));
 
 import type { CartesiaWebSocketLike } from "../../../../../shared/src/lib/services/cartesia-sonic-tts";
+import type { FishAudioWebSocketLike } from "../../../../../shared/src/lib/services/fish-audio-tts";
 import { InMemoryVoiceUsageStore } from "../../../../../shared/src/lib/services/voice-usage-meter";
 import {
   mintVoiceSessionToken,
@@ -162,6 +164,84 @@ class FakeCartesiaSocket implements CartesiaWebSocketLike {
         const parsed = JSON.parse(entry) as { transcript?: unknown };
         return typeof parsed.transcript === "string" ? parsed.transcript : "";
       })
+      .join("");
+  }
+  private fire(type: string, payload: unknown) {
+    for (const l of this.listeners.get(type) ?? []) l(payload);
+  }
+}
+
+// --- fake Fish Audio socket (drives the REAL adapter) ---------------------
+
+class FakeFishAudioSocket implements FishAudioWebSocketLike {
+  static instances: FakeFishAudioSocket[] = [];
+  readyState = 0;
+  binaryType: BinaryType = "arraybuffer";
+  sent: Uint8Array[] = [];
+  closed = false;
+  autoOpen = true;
+  autoAudio = true;
+  private listeners = new Map<string, Set<(e: unknown) => void>>();
+
+  constructor(opts?: { autoOpen?: boolean; autoAudio?: boolean }) {
+    this.autoOpen = opts?.autoOpen ?? true;
+    this.autoAudio = opts?.autoAudio ?? true;
+    FakeFishAudioSocket.instances.push(this);
+    if (this.autoOpen) {
+      queueMicrotask(() => {
+        this.readyState = 1;
+        this.fire("open", undefined);
+      });
+    }
+  }
+  send(data: Uint8Array) {
+    this.sent.push(data);
+    const msg = decode(data) as { event?: string; text?: string };
+    if (this.autoAudio && msg.event === "text" && msg.text) {
+      queueMicrotask(() => {
+        if (this.closed) return;
+        this.emitAudio(new Uint8Array([9, 8, 7, 6]));
+      });
+    }
+  }
+  close(code?: number, reason?: string) {
+    if (this.closed) return;
+    this.closed = true;
+    this.readyState = 3;
+    this.fire("close", { code, reason });
+  }
+  addEventListener(type: string, listener: (e: never) => void) {
+    if (!this.listeners.has(type)) this.listeners.set(type, new Set());
+    this.listeners.get(type)!.add(listener as (e: unknown) => void);
+  }
+  emitOpen() {
+    this.readyState = 1;
+    this.fire("open", undefined);
+  }
+  emitAudio(bytes = new Uint8Array([9, 8, 7, 6])) {
+    this.fire("message", { data: encode({ event: "audio", audio: bytes }) });
+  }
+  emitDone(reason: "stop" | "error" = "stop") {
+    this.fire("message", { data: encode({ event: "finish", reason }) });
+  }
+  emitTransportError(message = "fish connect failed") {
+    this.fire("error", { message });
+  }
+  emitProviderError(code = "fish_provider_rejected") {
+    this.fire("message", {
+      data: encode({
+        event: "error",
+        code,
+        message: "Fish rejected synthesis",
+      }),
+    });
+  }
+  sentFrames(): Record<string, unknown>[] {
+    return this.sent.map((frame) => decode(frame) as Record<string, unknown>);
+  }
+  sentText(): string {
+    return this.sentFrames()
+      .map((entry) => (typeof entry.text === "string" ? entry.text : ""))
       .join("");
   }
   private fire(type: string, payload: unknown) {
@@ -327,6 +407,11 @@ async function connectSession(opts: {
   client: FakeClientSocket;
   fetchImpl: typeof fetch;
   prewarmElizaContext?: () => Promise<void>;
+  fish?: {
+    enabled?: boolean;
+    firstAudioTimeoutMs?: number;
+    socketFactory?: () => FakeFishAudioSocket;
+  };
 }): Promise<{ sessionId: string }> {
   const minted = await mintVoiceSessionToken(CLAIMS);
   const usageStore = new InMemoryVoiceUsageStore();
@@ -347,6 +432,13 @@ async function connectSession(opts: {
         cartesiaApiKey: "ct-key",
         cartesiaVoiceId: "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4",
         cartesiaWebSocketFactory: () => new FakeCartesiaSocket(),
+        fishAudioEnabled: opts.fish?.enabled,
+        fishAudioApiKey: opts.fish?.enabled ? "fish-key" : undefined,
+        fishAudioReferenceId: opts.fish?.enabled ? "fish-voice" : undefined,
+        fishAudioModel: "s2.1-pro",
+        fishAudioFirstAudioTimeoutMs: opts.fish?.firstAudioTimeoutMs,
+        fishAudioWebSocketFactory:
+          opts.fish?.socketFactory ?? (() => new FakeFishAudioSocket()),
         elizaEndpoint: "http://internal/api/v1/chat/completions",
         elizaAuthorization: "Bearer eliza-server",
         elizaModel: "gemma-4-31b",
@@ -579,6 +671,156 @@ describe("voice-session WS lifecycle", () => {
     expect(FakeCartesiaSocket.instances.length).toBe(before + 1);
     await flush();
     await flush();
+  });
+
+  test("keeps Cartesia as the default realtime TTS provider when Fish flag is off", async () => {
+    const client = new FakeClientSocket();
+    const beforeFish = FakeFishAudioSocket.instances.length;
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["Default voice."]),
+    });
+
+    const flux = FakeFluxSocket.instances.at(-1)!;
+    flux.emitTurn("StartOfTurn");
+    flux.emitTurn("EndOfTurn", "say default");
+    await flush();
+    await flush();
+
+    expect(FakeFishAudioSocket.instances.length).toBe(beforeFish);
+    expect(FakeCartesiaSocket.instances.at(-1)?.sentText()).toContain(
+      "Default voice.",
+    );
+  });
+
+  test("uses Fish as primary when enabled and sends MessagePack phrase frames", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["Fish primary response reaches audio quickly."]),
+      fish: { enabled: true },
+    });
+
+    const flux = FakeFluxSocket.instances.at(-1)!;
+    flux.emitTurn("StartOfTurn");
+    flux.emitTurn("EndOfTurn", "say fish");
+    await flush();
+    await flush();
+
+    const fish = FakeFishAudioSocket.instances.at(-1)!;
+    expect(fish.sentFrames()[0]).toEqual({
+      event: "start",
+      request: {
+        text: "",
+        reference_id: "fish-voice",
+        format: "pcm",
+        sample_rate: 16000,
+        latency: "balanced",
+        chunk_length: 100,
+      },
+    });
+    expect(fish.sentText()).toBe(
+      "Fish primary response reaches audio quickly.",
+    );
+    expect(fish.sentFrames()).toContainEqual({ event: "flush" });
+    expect(fish.sentFrames().at(-1)).toEqual({ event: "stop" });
+    expect(client.audioFrames.at(-1)).toEqual(new Uint8Array([9, 8, 7, 6]));
+  });
+
+  test("falls back to Cartesia for Fish connect failure before first audio", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["Fallback phrase."]),
+      fish: {
+        enabled: true,
+        socketFactory: () => new FakeFishAudioSocket({ autoOpen: false }),
+      },
+    });
+
+    const flux = FakeFluxSocket.instances.at(-1)!;
+    flux.emitTurn("StartOfTurn");
+    flux.emitTurn("EndOfTurn", "say fallback");
+    await flush();
+    const fish = FakeFishAudioSocket.instances.at(-1)!;
+    fish.emitTransportError();
+    await flush();
+
+    expect(FakeCartesiaSocket.instances.at(-1)?.sentText()).toContain(
+      "Fallback phrase.",
+    );
+  });
+
+  test("falls back to Cartesia for Fish first-audio timeout", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["Timeout fallback."]),
+      fish: {
+        enabled: true,
+        firstAudioTimeoutMs: 1,
+        socketFactory: () => new FakeFishAudioSocket({ autoAudio: false }),
+      },
+    });
+
+    const flux = FakeFluxSocket.instances.at(-1)!;
+    flux.emitTurn("StartOfTurn");
+    flux.emitTurn("EndOfTurn", "say timeout");
+    await flush();
+    await flush();
+
+    expect(FakeCartesiaSocket.instances.at(-1)?.sentText()).toContain(
+      "Timeout fallback.",
+    );
+  });
+
+  test("does not fall back to Cartesia for Fish provider error before audio", async () => {
+    const client = new FakeClientSocket();
+    const beforeCartesia = FakeCartesiaSocket.instances.length;
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["Provider error."]),
+      fish: {
+        enabled: true,
+        socketFactory: () => new FakeFishAudioSocket({ autoAudio: false }),
+      },
+    });
+
+    const flux = FakeFluxSocket.instances.at(-1)!;
+    flux.emitTurn("StartOfTurn");
+    flux.emitTurn("EndOfTurn", "say no fallback");
+    await flush();
+    const fish = FakeFishAudioSocket.instances.at(-1)!;
+    fish.emitProviderError();
+    await flush();
+
+    expect(FakeCartesiaSocket.instances.length).toBe(beforeCartesia);
+    expect(
+      client.controlFrames.find((frame) => frame.t === "error")?.code,
+    ).toBe("fish_provider_rejected");
+  });
+
+  test("does not fall back to Cartesia after Fish produced first audio", async () => {
+    const client = new FakeClientSocket();
+    const beforeCartesia = FakeCartesiaSocket.instances.length;
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["Fish then fail."]),
+      fish: { enabled: true },
+    });
+
+    const flux = FakeFluxSocket.instances.at(-1)!;
+    flux.emitTurn("StartOfTurn");
+    flux.emitTurn("EndOfTurn", "say no switch");
+    await flush();
+    const fish = FakeFishAudioSocket.instances.at(-1)!;
+    fish.emitTransportError("post first audio failure");
+    await flush();
+
+    expect(FakeCartesiaSocket.instances.length).toBe(beforeCartesia);
+    expect(
+      client.controlFrames.find((frame) => frame.t === "error")?.code,
+    ).toBe("websocket_error");
   });
 
   test("empty LLM reply cancels the prewarmed Cartesia context", async () => {
