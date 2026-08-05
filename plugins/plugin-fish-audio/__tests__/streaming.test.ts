@@ -194,7 +194,8 @@ describe("fishAudioPlugin", () => {
           reference_id: "voice",
           format: "pcm",
           sample_rate: 24000,
-          latency: "normal",
+          latency: "balanced",
+          chunk_length: 100,
         },
       },
       { event: "text", text: "hello" },
@@ -315,19 +316,31 @@ describe("fishAudioPlugin", () => {
           FISH_AUDIO_REFERENCE_ID: liveReferenceId,
           FISH_AUDIO_MODEL: process.env.FISH_AUDIO_MODEL,
         }),
-        { text: "Fish Audio live integration test.", audioStream: true },
+        {
+          text: "Fish Audio should begin speaking before this complete sentence has finished synthesizing. This longer live sample verifies that playback receives multiple incremental audio frames instead of one buffered response.",
+          audioStream: true,
+        },
       );
       if (result instanceof Uint8Array)
         throw new Error("Expected streaming Fish Audio result");
 
       let firstAudioMs: number | undefined;
+      let lastAudioMs: number | undefined;
+      let audioFrames = 0;
       for await (const chunk of result.audioStream) {
-        if (chunk.byteLength > 0 && firstAudioMs === undefined)
-          firstAudioMs = performance.now() - startedAt;
+        if (chunk.byteLength > 0) {
+          const elapsedMs = performance.now() - startedAt;
+          firstAudioMs ??= elapsedMs;
+          lastAudioMs = elapsedMs;
+          audioFrames += 1;
+        }
       }
       const pcm = await result.bytes;
       const totalMs = performance.now() - startedAt;
       expect(firstAudioMs).toBeDefined();
+      expect(lastAudioMs).toBeDefined();
+      expect(audioFrames).toBeGreaterThan(1);
+      expect(firstAudioMs ?? totalMs).toBeLessThan(totalMs);
       expect(pcm.byteLength).toBeGreaterThan(0);
       expect(pcm.byteLength % 2).toBe(0);
 
@@ -340,7 +353,10 @@ describe("fishAudioPlugin", () => {
           model: process.env.FISH_AUDIO_MODEL ?? "s2.1-pro",
           sampleRate: 24_000,
           firstAudioMs: Math.round(firstAudioMs ?? 0),
+          lastAudioMs: Math.round(lastAudioMs ?? 0),
           totalMs: Math.round(totalMs),
+          audioFrames,
+          streamedBeforeComplete: (firstAudioMs ?? totalMs) < totalMs,
           pcmBytes: pcm.byteLength,
           wavBytes: wav.byteLength,
           wavSha256: createHash("sha256").update(wav).digest("hex"),

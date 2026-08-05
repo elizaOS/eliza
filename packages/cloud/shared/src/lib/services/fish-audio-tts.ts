@@ -21,7 +21,8 @@ const DEFAULT_SAMPLE_RATE = 16_000;
 const DEFAULT_CHANNELS = 1;
 const DEFAULT_FORMAT = "pcm";
 const DEFAULT_MODEL = FISH_AUDIO_MODEL_S21_PRO;
-const DEFAULT_LATENCY = "normal";
+const DEFAULT_LATENCY = "balanced";
+const DEFAULT_CHUNK_LENGTH = 100;
 const DEFAULT_FIRST_AUDIO_TIMEOUT_MS = 1_500;
 const DEFAULT_MAX_QUEUED_FRAMES = 128;
 const SUPPORTED_MODELS = new Set([
@@ -170,6 +171,7 @@ type FishOutgoingFrame =
         readonly format: "pcm";
         readonly sample_rate: 16_000;
         readonly latency: "normal" | "balanced";
+        readonly chunk_length: number;
       };
     }
   | {
@@ -379,6 +381,7 @@ export class FishAudioTtsStream {
             format: "pcm",
             sample_rate: 16_000,
             latency: this.input.latency,
+            chunk_length: DEFAULT_CHUNK_LENGTH,
           },
         } satisfies FishOutgoingFrame),
       );

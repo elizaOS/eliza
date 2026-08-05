@@ -21,6 +21,8 @@ export const FISH_AUDIO_TTS_WEBSOCKET_URL = "wss://api.fish.audio/v1/tts/live";
 const DEFAULT_MODEL = "s2.1-pro";
 const DEFAULT_SAMPLE_RATE = 24_000;
 const DEFAULT_FORMAT = "pcm";
+const DEFAULT_LATENCY = "balanced";
+const DEFAULT_CHUNK_LENGTH = 100;
 const DEFAULT_MIME_TYPE = "audio/pcm; codecs=pcm_s16le; rate=24000";
 const TRUEY = new Set(["1", "true", "yes", "on"]);
 
@@ -234,7 +236,8 @@ function createFishAudioStream(
           reference_id: config.referenceId,
           format: "pcm",
           sample_rate: 24000,
-          latency: "normal",
+          latency: DEFAULT_LATENCY,
+          chunk_length: DEFAULT_CHUNK_LENGTH,
         },
       }),
     );

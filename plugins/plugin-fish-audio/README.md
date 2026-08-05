@@ -25,9 +25,11 @@ bun run --cwd plugins/plugin-fish-audio test -- --testNamePattern "live Fish Aud
 ```
 
 `FISH_AUDIO_VOICE_ID` may be used instead of `FISH_AUDIO_REFERENCE_ID`. The
-live test reports redacted first-audio and completion timing, byte counts, and
-the WAV SHA-256. When `FISH_AUDIO_EVIDENCE_PATH` is set, it also writes the raw
+live test reports redacted first-audio and completion timing, incremental audio
+frame count, byte counts, and the WAV SHA-256. It fails if Fish buffers the
+response into one frame instead of streaming audio before completion. When
+`FISH_AUDIO_EVIDENCE_PATH` is set, it also writes the raw
 24 kHz mono PCM response into an inspectable WAV at that path. Evidence output
 belongs outside the repository and must not contain the API key.
 
-The live WebSocket uses `Authorization: Bearer <FISH_AUDIO_API_KEY>` and a `model` connection header. It sends MessagePack frames in this order: `{ event: "start", request: { text: "", reference_id, format: "pcm", sample_rate: 24000, latency: "normal" } }`, one `{ event: "text", text }`, `{ event: "flush" }`, then `{ event: "stop" }`.
+The live WebSocket uses `Authorization: Bearer <FISH_AUDIO_API_KEY>` and a `model` connection header. It sends MessagePack frames in this order: `{ event: "start", request: { text: "", reference_id, format: "pcm", sample_rate: 24000, latency: "balanced", chunk_length: 100 } }`, one `{ event: "text", text }`, `{ event: "flush" }`, then `{ event: "stop" }`. This benchmarked configuration produced multiple playable frames with substantially lower time to first audio than Fish's `normal` latency mode.
