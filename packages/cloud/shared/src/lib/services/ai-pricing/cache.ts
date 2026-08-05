@@ -171,8 +171,22 @@ const textPricingInFlight = new Map<string, Promise<TokenPricingRates>>();
 const textPricingPersistenceInFlight = new Map<string, Promise<TokenPricingRates>>();
 const textPricingFailures = new Map<string, number>();
 
+interface CachedFlatPricingEntry {
+  v: 1;
+  cachedAt: number;
+  entry: PreparedPricingEntry;
+}
+
+const flatPricingCache = new Map<string, CachedFlatPricingEntry>();
+const flatPricingPersistenceInFlight = new Map<string, Promise<PreparedPricingEntry>>();
+const flatPricingFailures = new Map<string, number>();
+
 function durableTextPricingKey(cacheKey: string): string {
   return `iac:pricing:${cacheKey}:v1`;
+}
+
+function durableFlatPricingKey(cacheKey: string): string {
+  return `iac:flat-pricing:${cacheKey}:v1`;
 }
 
 function isPositiveRate(value: unknown): value is number {
@@ -387,6 +401,135 @@ export async function getCachedTextPricingRates(
   throw new AiPricingCacheUnavailableError();
 }
 
+function isCachedFlatPricingEntry(value: unknown): value is CachedFlatPricingEntry {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  if (record.v !== 1 || typeof record.cachedAt !== "number") return false;
+  if (!record.entry || typeof record.entry !== "object") return false;
+  const entry = record.entry as Record<string, unknown>;
+  return (
+    typeof entry.billingSource === "string" &&
+    typeof entry.provider === "string" &&
+    typeof entry.model === "string" &&
+    typeof entry.productFamily === "string" &&
+    typeof entry.chargeType === "string" &&
+    typeof entry.unit === "string" &&
+    typeof entry.unitPrice === "number" &&
+    Number.isFinite(entry.unitPrice)
+  );
+}
+
+function persistFlatPricingEntry(
+  cacheKey: string,
+  loader: () => Promise<PreparedPricingEntry>,
+): Promise<PreparedPricingEntry> {
+  const existing = flatPricingPersistenceInFlight.get(cacheKey);
+  if (existing) return existing;
+
+  const persistence = loader().then(async (entry) => {
+    const record: CachedFlatPricingEntry = {
+      v: 1,
+      cachedAt: Date.now(),
+      entry,
+    };
+    flatPricingCache.set(cacheKey, record);
+    const outcome = await cache.setWithOutcome(
+      durableFlatPricingKey(cacheKey),
+      record,
+      TEXT_PRICING_HARD_TTL_SECONDS,
+    );
+    if (outcome.kind !== "written") {
+      throw new AiPricingCacheUnavailableError();
+    }
+    flatPricingFailures.delete(cacheKey);
+    return entry;
+  });
+  flatPricingPersistenceInFlight.set(cacheKey, persistence);
+  const cleanup = () => {
+    if (flatPricingPersistenceInFlight.get(cacheKey) === persistence) {
+      flatPricingPersistenceInFlight.delete(cacheKey);
+    }
+  };
+  persistence.then(cleanup, cleanup);
+  return persistence;
+}
+
+async function loadFlatPricingEntry(
+  cacheKey: string,
+  loader: () => Promise<PreparedPricingEntry>,
+): Promise<PreparedPricingEntry> {
+  const entry = await loader();
+  flatPricingCache.set(cacheKey, { v: 1, cachedAt: Date.now(), entry });
+  flatPricingFailures.delete(cacheKey);
+  return entry;
+}
+
+function scheduleFlatPricingHydration(
+  cacheKey: string,
+  loader: () => Promise<PreparedPricingEntry>,
+  executionCtx: { waitUntil(promise: Promise<unknown>): void },
+): void {
+  executionCtx.waitUntil(
+    persistFlatPricingEntry(cacheKey, loader).then(
+      () => undefined,
+      (error) => {
+        flatPricingFailures.set(cacheKey, Date.now() + TEXT_PRICING_FAILURE_TTL_MS);
+        // error-policy:J7 flat-rate hydration is intentionally outside model
+        // dispatch; retain a typed unavailable state and surface the failure.
+        logger.warn("[AI Pricing] flat-rate cache hydration failed", {
+          cacheKey,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      },
+    ),
+  );
+}
+
+/**
+ * Resolve a fixed-operation pricing entry without authoritative I/O in a
+ * Worker request. Bounded stale values serve immediately while refresh runs
+ * under `waitUntil`; a cold miss returns a retryable warming state.
+ */
+export async function getCachedFlatPricingEntry(
+  cacheKey: string,
+  loader: () => Promise<PreparedPricingEntry>,
+  options: PricingCacheReadOptions = {},
+): Promise<PreparedPricingEntry> {
+  const local = flatPricingCache.get(cacheKey);
+  const localAge = local ? Date.now() - local.cachedAt : Number.POSITIVE_INFINITY;
+  if (local && localAge < TEXT_PRICING_FRESH_TTL_MS) return local.entry;
+  if (!options.cacheOnly) return await loadFlatPricingEntry(cacheKey, loader);
+  if (!options.executionCtx) throw new AiPricingCacheUnavailableError();
+
+  if (local && localAge < TEXT_PRICING_HARD_TTL_MS) {
+    scheduleFlatPricingHydration(cacheKey, loader, options.executionCtx);
+    return local.entry;
+  }
+  flatPricingCache.delete(cacheKey);
+
+  const outcome = await cache.getWithOutcome<unknown>(durableFlatPricingKey(cacheKey));
+  if (
+    outcome.kind === "hit" &&
+    isCachedFlatPricingEntry(outcome.value) &&
+    Date.now() - outcome.value.cachedAt < TEXT_PRICING_HARD_TTL_MS
+  ) {
+    flatPricingCache.set(cacheKey, outcome.value);
+    if (Date.now() - outcome.value.cachedAt >= TEXT_PRICING_FRESH_TTL_MS) {
+      scheduleFlatPricingHydration(cacheKey, loader, options.executionCtx);
+    }
+    return outcome.value.entry;
+  }
+
+  const failedUntil = flatPricingFailures.get(cacheKey);
+  if (failedUntil !== undefined && failedUntil > Date.now()) {
+    throw new AiPricingCacheUnavailableError();
+  }
+  flatPricingFailures.delete(cacheKey);
+  scheduleFlatPricingHydration(cacheKey, loader, options.executionCtx);
+  if (outcome.kind === "miss") throw new AiPricingCacheWarmingError();
+  throw new AiPricingCacheUnavailableError();
+}
+
 /** Test hook: reset all process-local pricing caches between tests. */
 export function __clearPersistedPricingCache(): void {
   persistedPricingCache.clear();
@@ -395,4 +538,7 @@ export function __clearPersistedPricingCache(): void {
   textPricingInFlight.clear();
   textPricingPersistenceInFlight.clear();
   textPricingFailures.clear();
+  flatPricingCache.clear();
+  flatPricingPersistenceInFlight.clear();
+  flatPricingFailures.clear();
 }

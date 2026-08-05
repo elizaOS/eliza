@@ -11,7 +11,7 @@ describe("applyWindowsNativeInferenceDefaults", () => {
 
     applyWindowsNativeInferenceDefaults(env, "win32");
 
-    expect(env.ELIZA_DISABLE_LOCAL_EMBEDDINGS).toBe("1");
+    expect(env.ELIZA_DISABLE_LOCAL_EMBEDDINGS).toBeUndefined();
     expect(env.GGML_NO_BACKTRACE).toBe("1");
   });
 

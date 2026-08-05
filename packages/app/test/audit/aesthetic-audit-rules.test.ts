@@ -2,7 +2,7 @@
  * Unit tests for the Aesthetic Audit Rules app audit helper used by visual
  * review evidence.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -624,14 +624,10 @@ describe("minimalism baseline parse/build (#9950 update path)", () => {
   });
 
   it("the COMMITTED baseline file parses (spec-load integrity)", () => {
-    // Support both root and package-scoped Vitest invocation.
-    const packageRoot = existsSync(path.join(process.cwd(), "packages/app"))
-      ? path.join(process.cwd(), "packages/app")
-      : process.cwd();
     const committed = readFileSync(
       path.join(
-        packageRoot,
-        "test/ui-smoke/aesthetic-minimalism-baseline.json",
+        import.meta.dirname,
+        "../ui-smoke/aesthetic-minimalism-baseline.json",
       ),
       "utf8",
     );

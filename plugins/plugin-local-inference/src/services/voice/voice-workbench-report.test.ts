@@ -5,6 +5,7 @@ import {
 	scoreDiarization,
 	scoreEotDecision,
 	scoreErle,
+	scoreMeasurementCoverage,
 	scorePartialMonotonicity,
 	scoreRespondDecision,
 	scoreTtsAsrRoundTrip,
@@ -137,6 +138,27 @@ describe("buildVoiceWorkbenchReport", () => {
 		expect(report.metrics.bargeInCancelMs.worst).toBe(120);
 		expect(report.metrics.erleDb.worst).toBe(19);
 		expect(report.metrics.partialRetractions.worst).toBe(0);
+	});
+
+	it("publishes per-scenario real measurement counts and failures", () => {
+		const report = buildVoiceWorkbenchReport([
+			{
+				scenarioId: "coverage",
+				classes: ["endpoint-latency"],
+				status: "ran",
+				cases: [
+					scoreMeasurementCoverage("first-audio-latency", 0),
+					scoreMeasurementCoverage("diarization-segments", 3),
+				],
+			},
+		]);
+		expect(report.scenarios[0].measurementCoverage).toEqual([
+			{ metric: "first-audio-latency", count: 0, passed: false },
+			{ metric: "diarization-segments", count: 3, passed: true },
+		]);
+		expect(formatVoiceWorkbenchMarkdown(report)).toContain(
+			"first-audio-latency=0!",
+		);
 	});
 });
 

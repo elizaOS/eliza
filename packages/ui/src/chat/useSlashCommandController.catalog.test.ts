@@ -321,6 +321,31 @@ describe("useSlashCommandController — catalog load (#11112)", () => {
     expect(consoleError).not.toHaveBeenCalled();
     consoleError.mockRestore();
   });
+
+  it("marks page navigation as cancellation before Chromium rejects in-flight fetches", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    listCommands.mockImplementation(
+      (_surface, init) =>
+        new Promise<SlashCommandCatalogItem[]>((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            "abort",
+            () => reject(new TypeError("Failed to fetch")),
+            { once: true },
+          );
+        }),
+    );
+
+    renderHook(() => useSlashCommandController());
+    await waitFor(() => expect(listCommands).toHaveBeenCalledOnce());
+    window.dispatchEvent(new Event("pagehide"));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(consoleError).not.toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
 });
 
 describe("useSlashCommandController — protected-probe gate (#16242)", () => {

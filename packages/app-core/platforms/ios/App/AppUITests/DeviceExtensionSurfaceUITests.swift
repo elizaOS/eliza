@@ -57,6 +57,12 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
         attachScreenshot(named: "widget-assert-01-app-foregrounded")
     }
 
+    func testKeyboardDictationSurfaceNeedsProvisionedDeviceLane() throws {
+        throw XCTSkip(
+            "The custom keyboard requires a provisioned device lane to verify enablement, Full Access/App Group round-trip, and dictation delivery."
+        )
+    }
+
     // MARK: - Control Center controls
 
     @available(iOS 18.0, *)

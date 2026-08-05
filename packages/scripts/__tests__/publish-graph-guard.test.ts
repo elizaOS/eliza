@@ -14,11 +14,11 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { execFileSync } from "../lib/spawn-sync-captured.mjs";
 import { listPackages } from "../lib/workspaces.mjs";
 import {
   classifyViolations,

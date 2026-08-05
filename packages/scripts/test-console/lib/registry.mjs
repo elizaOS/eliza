@@ -11,14 +11,13 @@
  * plan task whose `relativeDir` prefixes its path.
  */
 
-import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-
 import {
   computeRealLiveAccounting,
   GUARDED_REAL_LIVE_SUITES,
 } from "../../lib/real-live-suites.mjs";
+import { spawnSync } from "../../lib/spawn-sync-captured.mjs";
 import {
   CONNECTIONS,
   connectionStatus,
@@ -31,24 +30,39 @@ export const REPO_ROOT = path.resolve(here, "..", "..", "..", "..");
 
 let cachedPlan = null;
 
-/** Discover the full task plan (cached per process; ~1s cold). */
-export function discoverPlan({ force = false } = {}) {
-  if (cachedPlan && !force) return cachedPlan;
-  const result = spawnSync(
-    process.execPath,
+function runPlanDiscovery() {
+  return spawnSync(
+    "node",
     [
       path.join(REPO_ROOT, "packages/scripts/run-all-tests.mjs"),
       "--plan=json",
       "--all",
     ],
-    { cwd: REPO_ROOT, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
+    {
+      cwd: REPO_ROOT,
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+    },
   );
-  if (result.status !== 0) {
+}
+
+/** Discover the full task plan (cached per process; ~1s cold). */
+export function discoverPlan({ force = false } = {}) {
+  if (cachedPlan && !force) return cachedPlan;
+  const result = runPlanDiscovery();
+  if (result.error || result.status !== 0) {
     throw new Error(
-      `plan discovery failed (exit ${result.status}): ${result.stderr?.slice(0, 2000)}`,
+      `plan discovery failed (exit ${result.status}): ${(result.stderr || String(result.error)).slice(0, 2000)}`,
     );
   }
-  cachedPlan = JSON.parse(result.stdout);
+  try {
+    cachedPlan = JSON.parse(result.stdout);
+  } catch (cause) {
+    throw new Error(
+      `plan discovery returned invalid JSON (${result.stdout.length} chars; tail=${JSON.stringify(result.stdout.slice(-120))})`,
+      { cause },
+    );
+  }
   return cachedPlan;
 }
 

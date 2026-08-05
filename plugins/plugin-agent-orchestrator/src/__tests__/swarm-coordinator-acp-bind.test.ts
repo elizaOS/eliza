@@ -15,7 +15,7 @@
  *   - never-registers keeps retrying (unbounded) instead of going silent.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, logger } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AcpService } from "../services/acp-service.js";
 import { SwarmCoordinatorService } from "../services/swarm-coordinator-service.js";
@@ -167,6 +167,12 @@ describe("SwarmCoordinatorService ACP bind race (coordinator silent give-up)", (
   });
 
   it("normal boot: binds immediately with zero retries", async () => {
+    const debugSpy = vi
+      .spyOn(logger, "debug")
+      .mockImplementation(() => undefined);
+    const infoSpy = vi
+      .spyOn(logger, "info")
+      .mockImplementation(() => undefined);
     const { runtime, registerAcp } = makeRuntime();
     const { acp, subscriberCount } = makeFakeAcp();
     registerAcp(acp); // ACP already up before the coordinator starts
@@ -178,11 +184,19 @@ describe("SwarmCoordinatorService ACP bind race (coordinator silent give-up)", (
     expect(service.acpBindState.status).toBe("bound");
     expect(service.acpBindState.attempts).toBe(0);
     expect(subscriberCount()).toBe(1);
+    expect(debugSpy).toHaveBeenCalledWith(
+      expect.stringContaining("subscribed to ACP session-event stream"),
+    );
+    expect(infoSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("subscribed to ACP session-event stream"),
+    );
     await service.stop();
   });
 
   it("marks UNBOUND loudly when ACP fails to start (load-promise rejects)", async () => {
-    const _errorSpy = vi.fn();
+    const errorSpy = vi
+      .spyOn(logger, "error")
+      .mockImplementation(() => undefined);
     const { runtime, failAcpStart } = makeRuntime({ driveLoadPromise: true });
     const { subscriberCount } = makeFakeAcp();
 
@@ -195,6 +209,9 @@ describe("SwarmCoordinatorService ACP bind race (coordinator silent give-up)", (
     expect(service.acpBindState.status).toBe("unbound");
     expect(service.acpBindState.reason).toContain("acp subprocess crashed");
     expect(subscriberCount()).toBe(0);
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("ACP bind failed"),
+    );
     await service.stop();
   });
 

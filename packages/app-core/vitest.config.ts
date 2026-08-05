@@ -167,6 +167,8 @@ export default defineConfig({
       "scripts/stage-android-agent.test.mjs",
       "scripts/stage-desktop-fused-lib-staleness.test.mjs",
       "scripts/build-helpers/arm64-simd.test.mjs",
+      // Uses Node.js built-in test runner (node:test), not vitest.
+      "scripts/lib/dev-ui-vite.test.mjs",
       // Uses bun:test, not vitest.
       "scripts/aosp/stage-default-models.test.mjs",
       // Uses bun:test, not vitest.

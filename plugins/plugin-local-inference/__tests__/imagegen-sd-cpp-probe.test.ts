@@ -102,13 +102,19 @@ function runProbe(env: Record<string, string | undefined>): ProbeResult {
 // `sd.exe`, which these unit fakes cannot stand in for.
 const itPosix = it.skipIf(process.platform === "win32");
 
-function linkFakeBinary(
+function createFakeBinary(
 	dir: string,
 	name: string,
-	target = "/usr/bin/true",
+	target?: string,
 ): string {
 	const binary = join(dir, name);
-	symlinkSync(target, binary);
+	if (target) {
+		symlinkSync(target, binary);
+	} else {
+		writeFileSync(binary, "#!/bin/sh\nprintf '%s\\n' 'sd.cpp fake 1.0'\n", {
+			mode: 0o755,
+		});
+	}
 	return binary;
 }
 
@@ -128,11 +134,11 @@ describe("WS3 sd-cpp probe — first-run script", () => {
 
 	itPosix("reports CPU-only when the binary returns version but no CUDA proof", () => {
 		const dir = mkdtempSync(join(tmpdir(), "sd-cpp-probe-"));
-		const fakeBin = linkFakeBinary(dir, "fake-sd");
+		const fakeBin = createFakeBinary(dir, "fake-sd");
 		const probe = runProbe({ SD_CPP_BIN: fakeBin });
 		expect(probe.available).toBe(true);
 		expect(probe.binary).toBe(fakeBin);
-		expect(probe.version).toBeNull();
+		expect(probe.version).toBe("sd.cpp fake 1.0");
 		expect(Array.isArray(probe.supportedModels)).toBe(true);
 		expect(probe.supportedModels).toContain("imagegen-sd-1_5-q5_0");
 		expect(probe.supportedModels).toContain(
@@ -145,7 +151,7 @@ describe("WS3 sd-cpp probe — first-run script", () => {
 
 	itPosix("does not treat generic cuda metadata as CUDA build proof", () => {
 		const dir = mkdtempSync(join(tmpdir(), "sd-cpp-probe-"));
-		const fakeBin = linkFakeBinary(dir, "fake-sd-metal");
+		const fakeBin = createFakeBinary(dir, "fake-sd-metal");
 		writeFileSync(
 			`${fakeBin}.manifest.json`,
 			JSON.stringify({
@@ -161,7 +167,7 @@ describe("WS3 sd-cpp probe — first-run script", () => {
 
 	itPosix("reports CUDA when the capability manifest proves it", () => {
 		const dir = mkdtempSync(join(tmpdir(), "sd-cpp-probe-"));
-		const fakeBin = linkFakeBinary(dir, "fake-sd-cuda");
+		const fakeBin = createFakeBinary(dir, "fake-sd-cuda");
 		writeFileSync(
 			`${fakeBin}.manifest.json`,
 			JSON.stringify({ accelerators: ["cuda"] }),
@@ -174,7 +180,7 @@ describe("WS3 sd-cpp probe — first-run script", () => {
 
 	itPosix("fails closed when ELIZA_IMAGEGEN_ACCELERATOR is not supported", () => {
 		const dir = mkdtempSync(join(tmpdir(), "sd-cpp-probe-"));
-		const fakeBin = linkFakeBinary(dir, "fake-sd");
+		const fakeBin = createFakeBinary(dir, "fake-sd");
 		const probe = runProbe({
 			SD_CPP_BIN: fakeBin,
 			ELIZA_IMAGEGEN_ACCELERATOR: "vulkan",
@@ -190,7 +196,7 @@ describe("WS3 sd-cpp probe — first-run script", () => {
 
 	itPosix("passes when ELIZA_IMAGEGEN_ACCELERATOR is supported", () => {
 		const dir = mkdtempSync(join(tmpdir(), "sd-cpp-probe-"));
-		const fakeBin = linkFakeBinary(dir, "fake-sd-vulkan");
+		const fakeBin = createFakeBinary(dir, "fake-sd-vulkan");
 		writeFileSync(
 			join(dir, "sd-cpp.manifest.json"),
 			JSON.stringify({ accelerators: ["vulkan"] }),
@@ -207,7 +213,7 @@ describe("WS3 sd-cpp probe — first-run script", () => {
 
 	itPosix("reports binary_version_mismatch when the binary exits non-zero on --version", () => {
 		const dir = mkdtempSync(join(tmpdir(), "sd-cpp-probe-"));
-		const fakeBin = linkFakeBinary(dir, "fake-sd-broken", "/usr/bin/false");
+		const fakeBin = createFakeBinary(dir, "fake-sd-broken", "/usr/bin/false");
 		const probe = runProbe({ SD_CPP_BIN: fakeBin });
 		expect(probe.available).toBe(false);
 		expect(probe.binary).toBe(fakeBin);
@@ -253,7 +259,7 @@ describe("WS3 sd-cpp backend — binary missing yields structured error", () => 
 
 	itPosix("rejects CUDA load when the sd-cpp binary is CPU-only", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "sd-cpp-probe-"));
-		const fakeBin = linkFakeBinary(dir, "fake-sd-cpu");
+		const fakeBin = createFakeBinary(dir, "fake-sd-cpu");
 		try {
 			await loadSdCppImageGenBackend({
 				modelKey: "imagegen-sd-1_5-q5_0",
@@ -274,7 +280,7 @@ describe("WS3 sd-cpp backend — binary missing yields structured error", () => 
 
 	itPosix("rejects Vulkan load when the sd-cpp binary is CPU-only", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "sd-cpp-probe-"));
-		const fakeBin = linkFakeBinary(dir, "fake-sd-cpu");
+		const fakeBin = createFakeBinary(dir, "fake-sd-cpu");
 		try {
 			await loadSdCppImageGenBackend({
 				modelKey: "imagegen-sd-1_5-q5_0",
@@ -295,7 +301,7 @@ describe("WS3 sd-cpp backend — binary missing yields structured error", () => 
 
 	itPosix("rejects Metal load when the sd-cpp binary is CPU-only", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "sd-cpp-probe-"));
-		const fakeBin = linkFakeBinary(dir, "fake-sd-cpu");
+		const fakeBin = createFakeBinary(dir, "fake-sd-cpu");
 		try {
 			await loadSdCppImageGenBackend({
 				modelKey: "imagegen-sd-1_5-q5_0",
@@ -316,7 +322,7 @@ describe("WS3 sd-cpp backend — binary missing yields structured error", () => 
 
 	itPosix("accepts CUDA load when sidecar manifest proves CUDA support", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "sd-cpp-probe-"));
-		const fakeBin = linkFakeBinary(dir, "fake-sd-cuda");
+		const fakeBin = createFakeBinary(dir, "fake-sd-cuda");
 		const fakeModel = join(dir, "model.gguf");
 		writeFileSync(fakeModel, "fake model");
 		writeFileSync(
@@ -334,7 +340,7 @@ describe("WS3 sd-cpp backend — binary missing yields structured error", () => 
 
 	itPosix("accepts Vulkan load when sidecar manifest proves Vulkan support", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "sd-cpp-probe-"));
-		const fakeBin = linkFakeBinary(dir, "fake-sd-vulkan");
+		const fakeBin = createFakeBinary(dir, "fake-sd-vulkan");
 		const fakeModel = join(dir, "model.gguf");
 		writeFileSync(fakeModel, "fake model");
 		writeFileSync(

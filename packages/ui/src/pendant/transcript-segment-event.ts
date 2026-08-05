@@ -16,7 +16,7 @@ export type PendantSegmentStatus =
   | "discarded"
   | "failed";
 
-export type PendantSegmentDiscardReason = "silence";
+export type PendantSegmentDiscardReason = "silence" | "paused";
 export type PendantSegmentFailureReason = "asr-failed";
 
 export interface PendantAsrWord {

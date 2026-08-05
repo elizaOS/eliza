@@ -132,6 +132,20 @@ async function processMessage(
     return;
   }
 
+  // A linked user whose agent is still provisioning has no runtime target. The
+  // shared onboarding worker owns provisioning status, so route there rather
+  // than falling back to the project default agent (which would answer from a
+  // stranger's runtime) or dropping the message on a missing-server lookup.
+  if (!explicitAgentId && !identity.agentId) {
+    logger.info("Identity linked without an agent; routing to onboarding", {
+      project,
+      platform: adapter.platform,
+      userId: identity.userId,
+    });
+    await sendOnboardingReply(adapter, config, event, deps);
+    return;
+  }
+
   const agentId = explicitAgentId || identity.agentId || config.agentId;
 
   const server = await resolveAgentServer(redis, agentId);

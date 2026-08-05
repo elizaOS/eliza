@@ -32,6 +32,7 @@ const agent = createAgent({
 | `SKILLS_DIR` | Directory to load/install skills | `./skills` |
 | `SKILLS_AUTO_LOAD` | Load installed skills on startup | `true` |
 | `SKILLS_REGISTRY` | Skill registry URL | `https://clawhub.ai` |
+| `SKILLS_SYNC_CATALOG_ON_START` | Opt in to a remote catalog sync during startup | `false` |
 | `BUNDLED_SKILLS_DIRS` | Comma-separated paths of read-only bundled skill dirs | — |
 | `OTTO_BUNDLED_SKILLS_DIR` | Legacy: single Otto bundled skills directory | — |
 

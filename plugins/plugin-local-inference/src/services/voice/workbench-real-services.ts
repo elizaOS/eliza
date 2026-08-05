@@ -23,6 +23,7 @@ import {
 } from "@elizaos/shared/voice/respond-gate";
 import { scoreEndOfTurnHeuristic } from "@elizaos/shared/voice-eot";
 import { resolveFusedLibraryPath } from "../desktop-fused-ffi-backend-runtime";
+import { OnlineSpeakerClusterer } from "./acoustic-speaker-attribution";
 import type {
 	CorpusGroundTruth,
 	CorpusTtsSynthesizer,
@@ -32,14 +33,23 @@ import { createKokoroTtsBackend } from "./engine-bridge";
 import { type ElizaInferenceFfi, loadElizaInferenceFfi } from "./ffi-bindings";
 import type { KokoroTtsBackend } from "./kokoro/kokoro-backend";
 import { resolveKokoroEngineConfig } from "./kokoro/kokoro-engine-discovery";
+import {
+	type DiarizerOutput,
+	PYANNOTE_WINDOW_SECONDS,
+} from "./speaker/diarizer";
 import { FusedDiarizer } from "./speaker/diarizer-fused";
 import { averageEmbeddings } from "./speaker/encoder";
 import { FusedSpeakerEncoder } from "./speaker/encoder-fused";
 import { SPEAKER_GGML_MIN_SAMPLES } from "./speaker/encoder-ggml";
 import { cosineSimilarity } from "./speaker-imprint";
-import { resampleLinear } from "./transcriber";
+import {
+	StabilizedStreamingTranscriber,
+	StreamingAsrFeeder,
+} from "./streaming-asr/streaming-pipeline-adapter";
+import { FfiStreamingTranscriber, resampleLinear } from "./transcriber";
 import type { VoiceScenario } from "./voice-scenario";
 import type {
+	VoiceDiarizationObservation,
 	VoiceTurnObservation,
 	VoiceWorkbenchServices,
 } from "./workbench-headless-runner";
@@ -53,6 +63,7 @@ const SAMPLE_RATE = 16_000;
 const EOT_COMMIT_THRESHOLD = 0.5;
 const DEFAULT_OWNER_THRESHOLD = 0.78;
 const MAX_AGENT_TTS_SECONDS = 12;
+const STREAMING_ASR_FRAME_SAMPLES = SAMPLE_RATE / 5;
 const SPEAKER_ENROLLMENT_PHRASE =
 	"This is my voice enrollment sample for reliable speaker recognition.";
 
@@ -99,6 +110,11 @@ interface SpeakerProfile {
 interface SpeakerMatch {
 	profile: SpeakerProfile;
 	similarity: number;
+}
+
+interface MeasuredSynthesis {
+	pcm: Float32Array;
+	firstAudioMs: number;
 }
 
 export interface RealVoiceWorkbenchRuntime {
@@ -191,6 +207,17 @@ function ensureMinSpeakerSamples(pcm: Float32Array): Float32Array {
 	return out;
 }
 
+function concatPcm(parts: ReadonlyArray<Float32Array>): Float32Array {
+	const total = parts.reduce((sum, part) => sum + part.length, 0);
+	const out = new Float32Array(total);
+	let offset = 0;
+	for (const part of parts) {
+		out.set(part, offset);
+		offset += part.length;
+	}
+	return out;
+}
+
 function diarizerWindow(pcm: Float32Array): Float32Array {
 	const targetSamples = SAMPLE_RATE * 5;
 	if (pcm.length === targetSamples) return pcm;
@@ -198,6 +225,81 @@ function diarizerWindow(pcm: Float32Array): Float32Array {
 	const out = new Float32Array(targetSamples);
 	out.set(pcm);
 	return out;
+}
+
+export interface VoiceWorkbenchStreamDiarizationArgs {
+	audio: Float32Array;
+	sampleRate: number;
+	diarizeWindow(pcm: Float32Array): Promise<DiarizerOutput>;
+	encodeSpeaker(pcm: Float32Array): Promise<Float32Array>;
+}
+
+/** Diarize every model window and preserve provider-produced stream offsets. */
+export async function diarizeVoiceWorkbenchStream(
+	args: VoiceWorkbenchStreamDiarizationArgs,
+): Promise<VoiceDiarizationObservation[]> {
+	const audio16 = ensureSampleRate(args.audio, args.sampleRate, SAMPLE_RATE);
+	const windowSamples = SAMPLE_RATE * PYANNOTE_WINDOW_SECONDS;
+	const clusterer = new OnlineSpeakerClusterer();
+	const observations: VoiceDiarizationObservation[] = [];
+
+	for (
+		let windowStartSample = 0;
+		windowStartSample < audio16.length;
+		windowStartSample += windowSamples
+	) {
+		const availableSamples = Math.min(
+			windowSamples,
+			audio16.length - windowStartSample,
+		);
+		const windowPcm = new Float32Array(windowSamples);
+		windowPcm.set(
+			audio16.subarray(windowStartSample, windowStartSample + availableSamples),
+		);
+		const output = await args.diarizeWindow(windowPcm);
+		const byLocalSpeaker = new Map<number, typeof output.segments>();
+		for (const segment of output.segments) {
+			const existing = byLocalSpeaker.get(segment.localSpeakerId) ?? [];
+			existing.push(segment);
+			byLocalSpeaker.set(segment.localSpeakerId, existing);
+		}
+
+		for (const segments of byLocalSpeaker.values()) {
+			const audioParts = segments.flatMap((segment) => {
+				const start = Math.max(
+					0,
+					Math.floor((segment.startMs / 1000) * SAMPLE_RATE),
+				);
+				const end = Math.min(
+					availableSamples,
+					Math.ceil((segment.endMs / 1000) * SAMPLE_RATE),
+				);
+				return end > start ? [windowPcm.subarray(start, end)] : [];
+			});
+			if (audioParts.length === 0) continue;
+			const embedding = await args.encodeSpeaker(
+				ensureMinSpeakerSamples(concatPcm(audioParts)),
+			);
+			const clusterId = clusterer.assign(embedding);
+			if (!clusterId) continue;
+
+			const windowStartMs = (windowStartSample / SAMPLE_RATE) * 1000;
+			const availableMs = (availableSamples / SAMPLE_RATE) * 1000;
+			for (const segment of segments) {
+				const endMs = Math.min(segment.endMs, availableMs);
+				if (endMs <= segment.startMs) continue;
+				observations.push({
+					speaker: clusterId,
+					startMs: windowStartMs + segment.startMs,
+					endMs: windowStartMs + endMs,
+					confidence: segment.confidence,
+					hasOverlap: segment.hasOverlap,
+				});
+			}
+		}
+	}
+
+	return observations;
 }
 
 function pcm16ToFloat32(bytes: Uint8Array): Float32Array {
@@ -309,7 +411,9 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 			synthesize: (input) => this.synthesizeCorpusTurn(input),
 		};
 		this.services = {
+			strictMeasurementCoverage: true,
 			prepareScenario: (input) => this.prepareScenario(input),
+			observeDiarization: (input) => this.observeDiarization(input),
 			observeTurn: (input) => this.observeTurn(input),
 		};
 	}
@@ -330,6 +434,10 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 					"[voice:workbench --real] fused library does not support diarizer ABI",
 				);
 			}
+			// The workbench transcribes the entire matrix. Keep ASR resident for the
+			// run, matching LiveDiarizationSession, instead of reloading the model and
+			// audio projector for every scored turn.
+			ffi.mmapAcquire(ctx, "asr");
 			const encoder = await FusedSpeakerEncoder.load({
 				ffi,
 				ctx,
@@ -423,6 +531,7 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 				`[voice:workbench --real] scenario ${args.groundTruth.scenarioId} was not prepared before observeTurn`,
 			);
 		}
+		const endpointStartedAtMs = performance.now();
 		const audio16 = ensureSampleRate(args.audio, args.sampleRate, SAMPLE_RATE);
 		const speakerPcm = ensureMinSpeakerSamples(audio16);
 		const embedding = await this.encoder.encode(speakerPcm);
@@ -450,7 +559,14 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 				? matchedEntityId === ownerCandidate.ownerEntityId
 				: speakerMatch?.profile.isOwner === true;
 
-		const transcript = await this.transcribe(audio16);
+		const streamingResult =
+			args.groundTruth.classes.includes("streaming-partials") &&
+			this.ffi.asrStreamSupported()
+				? await this.transcribeStreaming(audio16)
+				: null;
+		const transcript = streamingResult
+			? streamingResult.transcript
+			: await this.transcribe(audio16);
 		const eotProbability = scoreEndOfTurnHeuristic(transcript);
 		const eotDecided = eotProbability >= EOT_COMMIT_THRESHOLD;
 		const selfVoiceSimilarity = this.selfVoiceSimilarity(embedding);
@@ -487,9 +603,17 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 			if (participant?.entityId) inferredEntities.push(participant.entityId);
 		}
 
-		if (responded && args.label.agentReplyText) {
-			this.lastAgentReply = args.label.agentReplyText;
-			await this.observeAgentReply(args.label.agentReplyText);
+		let firstAudioMs: number | undefined;
+		if (responded) {
+			const replyText = args.label.agentReplyText ?? "I heard you.";
+			const synthesisStartedAtMs = performance.now();
+			firstAudioMs =
+				synthesisStartedAtMs -
+				endpointStartedAtMs +
+				(await this.observeAgentReply(replyText));
+			if (args.label.agentReplyText) {
+				this.lastAgentReply = args.label.agentReplyText;
+			}
 		}
 
 		return {
@@ -499,8 +623,23 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 			responded,
 			inferredEntities,
 			matchedEntityId,
+			...(firstAudioMs !== undefined ? { firstAudioMs } : {}),
 			predictedOwner,
+			...(streamingResult
+				? { partialTranscripts: streamingResult.partials }
+				: {}),
 		};
+	}
+
+	private async observeDiarization(args: {
+		audio: Float32Array;
+		sampleRate: number;
+	}): Promise<VoiceDiarizationObservation[]> {
+		return diarizeVoiceWorkbenchStream({
+			...args,
+			diarizeWindow: (pcm) => this.diarizer.diarizeWindow(pcm),
+			encodeSpeaker: (pcm) => this.encoder.encode(pcm),
+		});
 	}
 
 	private async synthesizeCorpusTurn(args: {
@@ -563,8 +702,17 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 		text: string,
 		voiceId: string,
 	): Promise<Float32Array> {
+		return (await this.synthesizeKokoroMeasured(text, voiceId)).pcm;
+	}
+
+	private async synthesizeKokoroMeasured(
+		text: string,
+		voiceId: string,
+	): Promise<MeasuredSynthesis> {
 		const chunks: Float32Array[] = [];
 		let sampleRate = 0;
+		const startedAtMs = performance.now();
+		let firstAudioMs: number | undefined;
 		await this.kokoroBackend.synthesizeStream({
 			phrase: {
 				id: 1,
@@ -581,6 +729,7 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 			cancelSignal: { cancelled: false },
 			onChunk: (c) => {
 				if (!c.isFinal && c.pcm.length > 0) {
+					firstAudioMs ??= performance.now() - startedAtMs;
 					chunks.push(c.pcm);
 					sampleRate = c.sampleRate;
 				}
@@ -588,7 +737,7 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 			},
 		});
 		const total = chunks.reduce((n, c) => n + c.length, 0);
-		if (total === 0 || sampleRate === 0) {
+		if (total === 0 || sampleRate === 0 || firstAudioMs === undefined) {
 			throw new Error(
 				`[voice:workbench --real] Kokoro produced no audio for "${text}" [${voiceId}]`,
 			);
@@ -600,21 +749,28 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 			off += c.length;
 		}
 		const capped = Math.min(pcm.length, sampleRate * MAX_AGENT_TTS_SECONDS);
-		return resampleLinear(pcm.subarray(0, capped), sampleRate, SAMPLE_RATE);
+		return {
+			pcm: resampleLinear(pcm.subarray(0, capped), sampleRate, SAMPLE_RATE),
+			firstAudioMs,
+		};
 	}
 
 	private async synthesizeAgent(text: string): Promise<Float32Array> {
 		return this.synthesizeKokoro(text, KOKORO_AGENT_VOICE);
 	}
 
-	private async observeAgentReply(text: string): Promise<void> {
-		const pcm = await this.synthesizeAgent(text);
+	private async observeAgentReply(text: string): Promise<number> {
+		const synthesis = await this.synthesizeKokoroMeasured(
+			text,
+			KOKORO_AGENT_VOICE,
+		);
 		this.selfVoiceEmbeddings.push(
-			await this.encoder.encode(ensureMinSpeakerSamples(pcm)),
+			await this.encoder.encode(ensureMinSpeakerSamples(synthesis.pcm)),
 		);
 		while (this.selfVoiceEmbeddings.length > 8) {
 			this.selfVoiceEmbeddings.shift();
 		}
+		return synthesis.firstAudioMs;
 	}
 
 	private selfVoiceSimilarity(embedding: Float32Array): number | null {
@@ -626,18 +782,53 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 	}
 
 	private async transcribe(pcm: Float32Array): Promise<string> {
-		this.ffi.mmapAcquire(this.ctx, "asr");
-		try {
-			if (this.ffi.timedAsrSupported?.()) {
-				return this.ffi
-					.asrTranscribeTimed({ ctx: this.ctx, pcm, sampleRateHz: SAMPLE_RATE })
-					.text.trim();
-			}
+		if (this.ffi.timedAsrSupported?.()) {
 			return this.ffi
-				.asrTranscribe({ ctx: this.ctx, pcm, sampleRateHz: SAMPLE_RATE })
-				.trim();
+				.asrTranscribeTimed({ ctx: this.ctx, pcm, sampleRateHz: SAMPLE_RATE })
+				.text.trim();
+		}
+		return this.ffi
+			.asrTranscribe({ ctx: this.ctx, pcm, sampleRateHz: SAMPLE_RATE })
+			.trim();
+	}
+
+	private async transcribeStreaming(
+		pcm: Float32Array,
+	): Promise<{ transcript: string; partials: string[] }> {
+		const transcriber = new StabilizedStreamingTranscriber(
+			new FfiStreamingTranscriber({
+				ffi: this.ffi,
+				getContext: () => this.ctx,
+			}),
+		);
+		const partials: string[] = [];
+		const feeder = new StreamingAsrFeeder({
+			transcriber,
+			events: {
+				onPartial: (update) => partials.push(update.partial),
+			},
+		});
+		try {
+			const startedAtMs = performance.now();
+			for (
+				let offset = 0;
+				offset < pcm.length;
+				offset += STREAMING_ASR_FRAME_SAMPLES
+			) {
+				feeder.feedFrame({
+					pcm: pcm.subarray(
+						offset,
+						Math.min(pcm.length, offset + STREAMING_ASR_FRAME_SAMPLES),
+					),
+					sampleRate: SAMPLE_RATE,
+					timestampMs: startedAtMs + (offset / SAMPLE_RATE) * 1000,
+				});
+			}
+			const final = await feeder.finalize();
+			return { transcript: final.partial.trim(), partials };
 		} finally {
-			this.ffi.mmapEvict(this.ctx, "asr");
+			feeder.dispose();
+			transcriber.dispose();
 		}
 	}
 
@@ -651,8 +842,12 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 				try {
 					await this.diarizer.dispose();
 				} finally {
-					this.ffi.destroy(this.ctx);
-					this.ffi.close();
+					try {
+						this.ffi.mmapEvict(this.ctx, "asr");
+					} finally {
+						this.ffi.destroy(this.ctx);
+						this.ffi.close();
+					}
 				}
 			}
 		}

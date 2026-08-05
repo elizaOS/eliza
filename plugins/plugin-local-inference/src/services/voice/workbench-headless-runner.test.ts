@@ -101,6 +101,109 @@ describe("runVoiceScenarioHeadless — scoring", () => {
 		expect(failed.has("respond-decision")).toBe(true);
 	});
 
+	it("scores real diarizer spans instead of copying per-turn reference boundaries", async () => {
+		const corpus = await generateVoiceCorpus(SCENARIO);
+		const clusterBySpeaker = new Map([
+			["alice", "cluster-a"],
+			["bob", "cluster-b"],
+		]);
+		const services: VoiceWorkbenchServices = {
+			async observeDiarization() {
+				return corpus.groundTruth.turns.map((label) => ({
+					speaker: clusterBySpeaker.get(label.speaker) ?? "cluster-unknown",
+					startMs: (label.speechStartSample / corpus.sampleRate) * 1000,
+					endMs: (label.speechEndSample / corpus.sampleRate) * 1000,
+				}));
+			},
+			async observeTurn({ label }) {
+				return {
+					hypothesisTranscript: label.referenceTranscript,
+					predictedSpeakerLabel: "collapsed-turn-label",
+					eotDecided: true,
+					responded: label.expectRespond,
+					inferredEntities: [],
+					matchedEntityId: label.entityId ?? null,
+				};
+			},
+		};
+		const run = await runVoiceScenarioHeadless({
+			scenario: SCENARIO,
+			corpus,
+			services,
+		});
+		const diarization = run.cases.find((c) => c.kind === "diarization");
+		expect(diarization).toMatchObject({ der: 0, passed: true });
+		expect(diarization).toHaveProperty("totalReferenceMs");
+	});
+
+	it("fails DER when a real diarizer emits no segments", async () => {
+		const corpus = await generateVoiceCorpus(SCENARIO);
+		const services: VoiceWorkbenchServices = {
+			async observeDiarization() {
+				return [];
+			},
+			async observeTurn({ label }) {
+				return {
+					hypothesisTranscript: label.referenceTranscript,
+					predictedSpeakerLabel: label.speaker,
+					eotDecided: true,
+					responded: label.expectRespond,
+					inferredEntities: [],
+					matchedEntityId: label.entityId ?? null,
+				};
+			},
+		};
+		const run = await runVoiceScenarioHeadless({
+			scenario: SCENARIO,
+			corpus,
+			services,
+		});
+		const diarization = run.cases.find((c) => c.kind === "diarization");
+		expect(diarization).toMatchObject({ der: 1, passed: false });
+		if (diarization?.kind === "diarization") {
+			expect(diarization.missedMs).toBeGreaterThan(0);
+		}
+	});
+
+	it("fails closed when a real lane omits an asserted measurement", async () => {
+		const scenario = {
+			...SCENARIO,
+			assertions: { ...SCENARIO.assertions, maxFirstAudioMs: 800 },
+		};
+		const corpus = await generateVoiceCorpus(scenario);
+		const services: VoiceWorkbenchServices = {
+			strictMeasurementCoverage: true,
+			async observeDiarization() {
+				return corpus.groundTruth.turns.map((label) => ({
+					speaker: `cluster-${label.speaker}`,
+					startMs: (label.speechStartSample / corpus.sampleRate) * 1000,
+					endMs: (label.speechEndSample / corpus.sampleRate) * 1000,
+				}));
+			},
+			async observeTurn({ label }) {
+				return {
+					hypothesisTranscript: label.referenceTranscript,
+					predictedSpeakerLabel: label.speaker,
+					eotDecided: true,
+					responded: label.expectRespond,
+					inferredEntities: [],
+					matchedEntityId: label.entityId ?? null,
+				};
+			},
+		};
+		const run = await runVoiceScenarioHeadless({
+			scenario,
+			corpus,
+			services,
+		});
+		const coverage = run.cases.find(
+			(entry) =>
+				entry.kind === "measurement-coverage" &&
+				entry.metric === "first-audio-latency",
+		);
+		expect(coverage).toMatchObject({ count: 0, passed: false });
+	});
+
 	it("fails EOT when a mid-utterance pause is treated as a boundary", async () => {
 		const scenario = VOICE_WORKBENCH_SCENARIOS.find(
 			(candidate) => candidate.id === "pauses-midutterance",

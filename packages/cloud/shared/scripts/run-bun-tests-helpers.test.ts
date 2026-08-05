@@ -1,6 +1,8 @@
 /**
- * Pure policy coverage for the package test wrapper: crash classification,
- * bounded quarantine retries, and timeout argument forwarding on every platform.
+ * Covers cloud-shared test-wrapper policy without spawning Bun.
+ *
+ * The deterministic harness exercises process batching, positional-filter
+ * detection, crash classification, bounded retries, and argument forwarding.
  */
 import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
@@ -8,18 +10,27 @@ import path from "node:path";
 import {
   buildMainPassArgs,
   buildQuarantinePassArgs,
+  buildTestBatchArgs,
+  buildTestBatches,
   classifyBunTestExit,
   DEFAULT_MAX_QUARANTINE_ATTEMPTS,
+  DEFAULT_PGLITE_TEST_BATCH_SIZE,
   DEFAULT_QUARANTINE_ATTEMPT_TIMEOUT_MS,
   DEFAULT_QUARANTINED_SUITES,
+  DEFAULT_TEST_BATCH_SIZE,
   DEFAULT_TEST_TIMEOUT_MS,
   extractCrashExcerpt,
   findCrashMarkers,
   getBunFailCounts,
+  hasBunFailureMarker,
   hasBunRunSummary,
+  hasExplicitTestFileFilter,
   resolveAttemptTimeoutMs,
   resolveMaxAttempts,
   resolveQuarantineMode,
+  resolveTestBatchSizes,
+  resolveTestShardingMode,
+  shouldNormalizeBunStatus99,
   shouldRetryQuarantinedSuites,
   withDefaultTestTimeout,
 } from "./run-bun-tests-helpers.mjs";
@@ -156,6 +167,12 @@ describe("classifyBunTestExit (#15785 crash-signature classifier)", () => {
     expect(result.reason).toContain("without a completed bun run summary");
   });
 
+  test("known PGlite status 99 after a completed green run is a pass", () => {
+    const result = classifyBunTestExit({ status: 99, signal: null, output: PASS_OUTPUT });
+    expect(result.kind).toBe("pass");
+    expect(result.reason).toContain("exit-code pollution");
+  });
+
   test("ANSI-colored and GitHub-timestamped summaries still parse", () => {
     const output =
       "2026-07-09T18:54:11.7012371Z \u001b[31m 2 fail\u001b[0m\n" +
@@ -164,6 +181,35 @@ describe("classifyBunTestExit (#15785 crash-signature classifier)", () => {
     expect(hasBunRunSummary(output)).toBe(true);
     const result = classifyBunTestExit({ status: 3, signal: null, output });
     expect(result.kind).toBe("test-failure");
+  });
+});
+
+describe("known Bun/PGlite dirty-exit normalization", () => {
+  test("accepts status 99 only after a complete summary with no failures", () => {
+    expect(shouldNormalizeBunStatus99({ status: 99, signal: null, output: PASS_OUTPUT })).toBe(
+      true,
+    );
+    expect(
+      shouldNormalizeBunStatus99({ status: 99, signal: null, output: "bun test v1.3.14\n" }),
+    ).toBe(false);
+  });
+
+  test("fails closed on assertion, module, unhandled-error, signal, or nonzero fail markers", () => {
+    const outputs = [
+      `${PASS_OUTPUT}(fail) suite > case\n`,
+      `${PASS_OUTPUT}# Unhandled error between tests\n`,
+      `${PASS_OUTPUT}error: Cannot find module 'missing'\n`,
+      `${PASS_OUTPUT} 1 fail\n`,
+    ];
+    for (const output of outputs) {
+      expect(shouldNormalizeBunStatus99({ status: 99, signal: null, output })).toBe(false);
+      expect(
+        hasBunFailureMarker(output) || getBunFailCounts(output).some((count) => count > 0),
+      ).toBe(true);
+    }
+    expect(shouldNormalizeBunStatus99({ status: 99, signal: "SIGTERM", output: PASS_OUTPUT })).toBe(
+      false,
+    );
   });
 });
 
@@ -276,6 +322,86 @@ describe("package-level test timeout arguments", () => {
   });
 });
 
+describe("fresh-process sharding policy", () => {
+  test("defaults to small ordinary batches and one-file PGlite batches", () => {
+    expect(resolveTestBatchSizes({})).toEqual({
+      ordinary: DEFAULT_TEST_BATCH_SIZE,
+      pglite: DEFAULT_PGLITE_TEST_BATCH_SIZE,
+    });
+    expect(DEFAULT_PGLITE_TEST_BATCH_SIZE).toBe(1);
+  });
+
+  test("batch size overrides are bounded and invalid values fall back", () => {
+    expect(
+      resolveTestBatchSizes({
+        ELIZA_BUN_TEST_BATCH_SIZE: "4",
+        ELIZA_BUN_TEST_PGLITE_BATCH_SIZE: "2",
+      }),
+    ).toEqual({ ordinary: 4, pglite: 2 });
+    expect(
+      resolveTestBatchSizes({
+        ELIZA_BUN_TEST_BATCH_SIZE: "999",
+        ELIZA_BUN_TEST_PGLITE_BATCH_SIZE: "999",
+      }),
+    ).toEqual({ ordinary: 100, pglite: 10 });
+    expect(
+      resolveTestBatchSizes({
+        ELIZA_BUN_TEST_BATCH_SIZE: "0",
+        ELIZA_BUN_TEST_PGLITE_BATCH_SIZE: "junk",
+      }),
+    ).toEqual({ ordinary: DEFAULT_TEST_BATCH_SIZE, pglite: DEFAULT_PGLITE_TEST_BATCH_SIZE });
+  });
+
+  test("groups ordinary files deterministically and gives each PGlite file a fresh process", () => {
+    const files = ["z.test.ts", "db-b.test.ts", "a.test.ts", "db-a.test.ts", "m.test.ts"];
+    expect(
+      buildTestBatches(files, ["db-a.test.ts", "db-b.test.ts"], {
+        ordinary: 2,
+        pglite: 1,
+      }),
+    ).toEqual([
+      { kind: "ordinary", files: ["a.test.ts", "m.test.ts"] },
+      { kind: "ordinary", files: ["z.test.ts"] },
+      { kind: "pglite", files: ["db-a.test.ts"] },
+      { kind: "pglite", files: ["db-b.test.ts"] },
+    ]);
+  });
+
+  test("detects positional path filters but not separated option values or test argv", () => {
+    expect(hasExplicitTestFileFilter([])).toBe(false);
+    expect(hasExplicitTestFileFilter(["--timeout=120000", "--conditions=eliza-source"])).toBe(
+      false,
+    );
+    expect(hasExplicitTestFileFilter(["--timeout", "120000", "--preload", "setup.ts"])).toBe(false);
+    expect(hasExplicitTestFileFilter(["src/lib"])).toBe(true);
+    expect(hasExplicitTestFileFilter(["--timeout=120000", "src/a.test.ts"])).toBe(true);
+    expect(hasExplicitTestFileFilter(["--", "application-argument"])).toBe(false);
+  });
+
+  test("sharding defaults on and has an explicit diagnostic opt-out", () => {
+    expect(resolveTestShardingMode({})).toBe(true);
+    expect(resolveTestShardingMode({ ELIZA_BUN_TEST_SHARDING: "1" })).toBe(true);
+    expect(resolveTestShardingMode({ ELIZA_BUN_TEST_SHARDING: "0" })).toBe(false);
+  });
+
+  test("batch args preserve caller order and insert files before the option boundary", () => {
+    expect(buildTestBatchArgs(["a.test.ts", "b.test.ts"], ["--timeout", "120000"])).toEqual([
+      "--isolate",
+      "--timeout",
+      "120000",
+      "a.test.ts",
+      "b.test.ts",
+    ]);
+    expect(buildTestBatchArgs(["a.test.ts"], ["--conditions=eliza-source", "--", "arg"])).toEqual([
+      "--isolate",
+      "--conditions=eliza-source",
+      "a.test.ts",
+      "--",
+      "arg",
+    ]);
+  });
+});
+
 describe("pass argument shapes", () => {
   const suites = [
     "src/lib/services/tenant-db/tenant-db-placement-claimer.test.ts",
@@ -304,6 +430,20 @@ describe("pass argument shapes", () => {
       "--path-ignore-patterns=src/other/pglite-suite.test.ts",
       "--path-ignore-patterns=**/tenant-db-placement-claimer.test.ts",
     ]);
+  });
+
+  test("main pass appends an explicit shard before the option boundary", () => {
+    expect(buildMainPassArgs(suites, ["--timeout=120000", "--", "arg"], ["src/a.test.ts"])).toEqual(
+      [
+        "--isolate",
+        "--path-ignore-patterns=src/lib/services/tenant-db/tenant-db-placement-claimer.test.ts",
+        "--path-ignore-patterns=src/other/pglite-suite.test.ts",
+        "--timeout=120000",
+        "src/a.test.ts",
+        "--",
+        "arg",
+      ],
+    );
   });
 
   test("quarantine pass runs exactly the quarantined suites", () => {

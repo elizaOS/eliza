@@ -6,11 +6,11 @@
  * also pin direct-versus-imported entrypoint behavior in both supported runtimes.
  */
 import { describe, expect, test } from "bun:test";
-import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 
 const {
   parseWindowsCommands,

@@ -1,60 +1,41 @@
 #!/usr/bin/env node
 
-// Package `test` entry — wraps what used to be a bare `bun test --isolate`.
-//
-// WHY (#15785): on the Windows CI shard (`windows-ci.yml` app-and-cli lane,
-// pinned to Bun canary) the PGlite-backed tenant-db placement-claimer suite
-// intermittently wedges in a beforeEach/afterEach hook and then takes the
-// WHOLE `bun test` process down with a native crash:
-//
-//   (fail) tenant DB durable placement claimer > (unnamed) [6147.35ms]
-//     ^ a beforeEach/afterEach hook timed out for this test.
-//   panic(main thread): Illegal instruction at address 0x7FF6B271CDB0
-//   oh no: Bun has crashed. This indicates a bug in Bun, not your code.
-//   error: script "test" exited with code 3
-//
-// That is a Bun/PGlite (WASM) bug, not a test bug — the byte-identical suite
-// passed 11h earlier. Workflow files cannot carry the mitigation (see the
-// issue), so it lives here in the test entry:
-//
-//   - every pass: use the repository's 60-second per-test default unless the
-//                 caller supplied either supported `--timeout` form.
-//   - non-win32 (default): one `bun test --isolate [args]` process.
-//   - win32 (or ELIZA_WIN_PGLITE_QUARANTINE=1):
-//       pass 1  `bun test --isolate` over everything EXCEPT the quarantined
-//               PGlite tenant-db suites (repeated --path-ignore-patterns).
-//       pass 2  the quarantined suites in their own child `bun test` process,
-//               retried a bounded number of times ONLY when the child died
-//               with a native-crash signature; full crash output is captured
-//               to a file for the upstream Bun report
-//               (scripts/bun-pglite-crash-upstream-report.md).
-//
-// Integrity guarantees (#13620 — no vacuous green):
-//   - every quarantined suite still RUNS on every platform; this is not a skip
-//     list, and a missing quarantined file fails the run loudly.
-//   - a reported test failure (assertion/hook fail with a completed run) is
-//     NEVER retried — it fails the run immediately.
-//   - retries are bounded; a persistent crash still fails the run.
-//   - the main pass keeps plain fail-fast semantics: any non-zero exit fails
-//     the run (no crash-retry outside the quarantined suites).
-//
-// Extra CLI args are forwarded verbatim to BOTH passes (explicit --timeout
-// forms and --conditions compose fine; a positional file filter will run matching
-// files in both passes — harmless, but scope filters manually if that grates).
+/**
+ * Runs cloud-shared tests through bounded, sequential Bun child processes.
+ *
+ * Full-package runs use small ordinary batches and one-file PGlite batches so
+ * process exit reclaims JSC and WASM heaps that `bun test --isolate` retains
+ * between files. Explicit positional filters keep the legacy single-process
+ * behavior so caller path semantics and argument forwarding remain exact.
+ *
+ * The wrapper also contains the Windows #15785 native-crash quarantine. On the
+ * Windows CI shard, the PGlite-backed tenant-db placement-claimer suite can
+ * wedge in a hook and take the whole Bun process down with a native crash.
+ *
+ * Every quarantined suite still runs, genuine test failures never retry, and
+ * retries are bounded. Extra CLI arguments are forwarded verbatim; explicit
+ * timeout forms and `--conditions` compose with both execution paths.
+ */
 
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   buildMainPassArgs,
   buildQuarantinePassArgs,
+  buildTestBatchArgs,
+  buildTestBatches,
   classifyBunTestExit,
   DEFAULT_QUARANTINED_SUITES,
   extractCrashExcerpt,
+  hasExplicitTestFileFilter,
   resolveAttemptTimeoutMs,
   resolveMaxAttempts,
   resolveQuarantineMode,
+  resolveTestBatchSizes,
+  resolveTestShardingMode,
+  shouldNormalizeBunStatus99,
   shouldRetryQuarantinedSuites,
   withDefaultTestTimeout,
 } from "./run-bun-tests-helpers.mjs";
@@ -62,13 +43,86 @@ import {
 const here = path.dirname(fileURLToPath(import.meta.url));
 const packageDir = path.resolve(here, "..");
 const repoRoot = path.resolve(packageDir, "../../..");
-const passthroughArgs = withDefaultTestTimeout(process.argv.slice(2));
+const rawPassthroughArgs = process.argv.slice(2);
+const passthroughArgs = withDefaultTestTimeout(rawPassthroughArgs);
 
 const UPSTREAM_TEMPLATE = "packages/cloud/shared/scripts/bun-pglite-crash-upstream-report.md";
 
 // Tail cap for captured child output: the panic banner sits at the very end of
 // the stream, so a bounded tail always contains it while keeping memory sane.
 const OUTPUT_TAIL_CAP_BYTES = 16 * 1024 * 1024;
+const TEST_FILE_PATTERN = /(?:^|\/)[^/]+\.(?:test|spec)\.[cm]?[jt]sx?$/;
+const PGLITE_SOURCE_PATTERN = /(?:@electric-sql\/pglite|pglite:\/\/|\bPGlite\b)/i;
+const DISCOVERY_SKIP_DIRECTORIES = new Set([
+  ".git",
+  ".tmp",
+  ".turbo",
+  "build",
+  "coverage",
+  "dist",
+  "node_modules",
+]);
+
+function toPosixPath(file) {
+  return file.split(path.sep).join(path.posix.sep);
+}
+
+function resolveTestFile(file) {
+  return path.isAbsolute(file) ? file : path.join(packageDir, file);
+}
+
+function discoverTestFiles() {
+  // Test-only seam for exercising sharding with a small real filesystem
+  // manifest. Production runs discover from the package root.
+  if (process.env.ELIZA_BUN_TEST_FILES_JSON) {
+    const parsed = JSON.parse(process.env.ELIZA_BUN_TEST_FILES_JSON);
+    if (
+      !Array.isArray(parsed) ||
+      parsed.length === 0 ||
+      parsed.some((entry) => typeof entry !== "string" || entry.length === 0)
+    ) {
+      throw new Error("[run-bun-tests] ELIZA_BUN_TEST_FILES_JSON must be a non-empty string array");
+    }
+    if (new Set(parsed).size !== parsed.length) {
+      throw new Error("[run-bun-tests] ELIZA_BUN_TEST_FILES_JSON contains duplicate test files");
+    }
+    const missing = parsed.filter((file) => !existsSync(resolveTestFile(file)));
+    if (missing.length > 0) {
+      throw new Error(`[run-bun-tests] sharded test file(s) not found:\n  ${missing.join("\n  ")}`);
+    }
+    return [...parsed].sort();
+  }
+
+  const discovered = [];
+  const visit = (directory) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      if (entry.isDirectory()) {
+        if (!DISCOVERY_SKIP_DIRECTORIES.has(entry.name)) visit(path.join(directory, entry.name));
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      const absolute = path.join(directory, entry.name);
+      const relative = toPosixPath(path.relative(packageDir, absolute));
+      if (TEST_FILE_PATTERN.test(relative)) discovered.push(relative);
+    }
+  };
+  visit(packageDir);
+  if (discovered.length === 0) {
+    throw new Error(
+      "[run-bun-tests] test discovery found zero files; refusing a vacuous green run",
+    );
+  }
+  return discovered.sort();
+}
+
+function isPgliteTestFile(file) {
+  return PGLITE_SOURCE_PATTERN.test(readFileSync(resolveTestFile(file), "utf8"));
+}
+
+function matchesPackageRelativeFile(file, packageRelativeFile) {
+  if (!path.isAbsolute(file)) return toPosixPath(file) === packageRelativeFile;
+  return toPosixPath(path.relative(packageDir, file)) === packageRelativeFile;
+}
 
 /**
  * Spawn seam: `ELIZA_BUN_TEST_BIN` (+ JSON-array `ELIZA_BUN_TEST_BIN_ARGS`)
@@ -102,11 +156,10 @@ const SHELL_SAFE_ARG = /^[A-Za-z0-9_~\-./\\=:*?,[\]@+]+$/;
 function assertShellSafe(args) {
   const offender = args.find((arg) => !SHELL_SAFE_ARG.test(arg));
   if (offender !== undefined) {
-    console.error(
+    throw new Error(
       `[run-bun-tests] argument ${JSON.stringify(offender)} is not safe to pass through the win32 shell spawn; ` +
         "quote-free args only (no spaces or cmd metacharacters).",
     );
-    process.exit(1);
   }
 }
 
@@ -240,28 +293,73 @@ function writeCrashCapture({ attempt, maxAttempts, args, result, reason }) {
   return file;
 }
 
+async function runShardedPass(testFiles, quarantinedSuites) {
+  const batchSizes = resolveTestBatchSizes(process.env);
+  const pgliteFiles = testFiles.filter(isPgliteTestFile);
+  const batches = buildTestBatches(testFiles, pgliteFiles, batchSizes);
+  console.log(
+    `[run-bun-tests] sequential process sharding: ${testFiles.length} file(s), ${batches.length} child process(es), ` +
+      `ordinary batch=${batchSizes.ordinary}, PGlite batch=${batchSizes.pglite} (${pgliteFiles.length} PGlite-heavy file(s))`,
+  );
+
+  for (let index = 0; index < batches.length; index += 1) {
+    const batch = batches[index];
+    const args =
+      quarantinedSuites.length > 0
+        ? buildMainPassArgs(quarantinedSuites, passthroughArgs, batch.files)
+        : buildTestBatchArgs(batch.files, passthroughArgs);
+    console.log(
+      `[run-bun-tests] ${batch.kind} batch ${index + 1}/${batches.length}: ${batch.files.length} file(s)`,
+    );
+    const result = await runBunTest(args);
+    if (shouldNormalizeBunStatus99(result)) {
+      console.warn(
+        `[run-bun-tests] ${batch.kind} batch ${index + 1}/${batches.length} exited with Bun status ${result.status} ` +
+          "after reporting no failed tests; treating as pass (known Bun/PGlite exit-code pollution).",
+      );
+      continue;
+    }
+    if (result.status !== 0 || result.signal) {
+      console.error(
+        `[run-bun-tests] ${batch.kind} batch ${index + 1}/${batches.length} FAILED ` +
+          `(status=${result.status ?? "null"}, signal=${result.signal ?? "none"}); stopping before later batches.`,
+      );
+      return result;
+    }
+  }
+  return { status: 0, signal: null };
+}
+
 async function main() {
   const quarantineOn = resolveQuarantineMode({
     platform: process.platform,
     env: process.env,
   });
+  const shardingOn =
+    resolveTestShardingMode(process.env) && !hasExplicitTestFileFilter(rawPassthroughArgs);
 
-  if (!quarantineOn) {
+  if (!shardingOn && resolveTestShardingMode(process.env)) {
+    console.log(
+      "[run-bun-tests] explicit positional test filter detected; preserving Bun's single-process filter semantics",
+    );
+  }
+
+  if (!quarantineOn && !shardingOn) {
     // Keep the simple one-process path while making the repository's intended
-    // timeout explicit across this package-cwd process boundary.
+    // timeout explicit for filtered runs and the diagnostic opt-out.
     const result = await runBunTest(["--isolate", ...passthroughArgs], {
       inherit: true,
     });
     if (result.signal) {
       console.error(`[run-bun-tests] bun test terminated by signal ${result.signal}`);
-      process.exit(1);
+      return 1;
     }
-    process.exit(result.status ?? 1);
+    return result.status ?? 1;
   }
 
-  const quarantinedSuites = resolveQuarantinedSuites(process.env);
-  const maxAttempts = resolveMaxAttempts(process.env);
-  const attemptTimeoutMs = resolveAttemptTimeoutMs(process.env);
+  const quarantinedSuites = quarantineOn ? resolveQuarantinedSuites(process.env) : [];
+  const maxAttempts = quarantineOn ? resolveMaxAttempts(process.env) : 1;
+  const attemptTimeoutMs = quarantineOn ? resolveAttemptTimeoutMs(process.env) : 0;
 
   // Fail loud on a stale quarantine list (e.g. a renamed suite) — otherwise
   // the quarantined pass would silently run nothing (#13620).
@@ -271,39 +369,63 @@ async function main() {
       `[run-bun-tests] quarantined suite(s) not found on disk:\n  ${missing.join("\n  ")}\n` +
         "Update DEFAULT_QUARANTINED_SUITES in scripts/run-bun-tests-helpers.mjs to match the layout.",
     );
-    process.exit(1);
+    return 1;
   }
 
-  console.log(
-    `[run-bun-tests] win32 PGlite quarantine active (#15785): ${quarantinedSuites.length} suite(s) run isolated with native-crash retry (max ${maxAttempts} attempts, ${attemptTimeoutMs}ms watchdog):\n` +
-      quarantinedSuites.map((suite) => `  - ${suite}`).join("\n"),
-  );
-
-  // ---- pass 1: everything except the quarantined suites ------------------
-  const mainArgs = buildMainPassArgs(quarantinedSuites, passthroughArgs);
-  console.log(`[run-bun-tests] main pass: bun test ${mainArgs.join(" ")}`);
-  const quarantinedBasenames = quarantinedSuites.map((suite) => path.posix.basename(suite));
-  let exclusionLeak = false;
-  let scanCarry = "";
-  const mainResult = await runBunTest(mainArgs, {
-    onOutput: (text) => {
-      const window = scanCarry + text;
-      if (quarantinedBasenames.some((name) => window.includes(name))) {
-        exclusionLeak = true;
-      }
-      scanCarry = window.slice(-512);
-    },
-  });
-  const mainOk = mainResult.status === 0 && !mainResult.signal;
-  if (!mainOk) {
-    console.error(
-      `[run-bun-tests] main pass FAILED (status=${mainResult.status ?? "null"}, signal=${mainResult.signal ?? "none"}) — this is outside the quarantined suites and is NOT retried.`,
+  if (quarantineOn) {
+    console.log(
+      `[run-bun-tests] win32 PGlite quarantine active (#15785): ${quarantinedSuites.length} suite(s) run isolated with native-crash retry (max ${maxAttempts} attempts, ${attemptTimeoutMs}ms watchdog):\n` +
+        quarantinedSuites.map((suite) => `  - ${suite}`).join("\n"),
     );
   }
-  if (exclusionLeak) {
-    console.warn(
-      "[run-bun-tests] WARNING: a quarantined suite name appeared in main-pass output — --path-ignore-patterns may no longer exclude it (bun behavior change?). The suite still runs isolated below; failures stay loud either way.",
+
+  let mainResult = { status: 0, signal: null };
+  let mainOk = true;
+
+  if (shardingOn) {
+    const discovered = discoverTestFiles();
+    const mainFiles = discovered.filter(
+      (file) => !quarantinedSuites.some((suite) => matchesPackageRelativeFile(file, suite)),
     );
+    if (mainFiles.length === 0 && !quarantineOn) {
+      throw new Error(
+        "[run-bun-tests] sharded pass has zero test files; refusing a vacuous green run",
+      );
+    }
+    mainResult = await runShardedPass(mainFiles, quarantinedSuites);
+    mainOk = mainResult.status === 0 && !mainResult.signal;
+    if (!mainOk) {
+      const status = mainResult.status ?? 1;
+      return status === 0 ? 1 : status;
+    }
+    if (!quarantineOn) return 0;
+  } else {
+    // ---- pass 1: everything except the quarantined suites ----------------
+    const mainArgs = buildMainPassArgs(quarantinedSuites, passthroughArgs);
+    console.log(`[run-bun-tests] main pass: bun test ${mainArgs.join(" ")}`);
+    const quarantinedBasenames = quarantinedSuites.map((suite) => path.posix.basename(suite));
+    let exclusionLeak = false;
+    let scanCarry = "";
+    mainResult = await runBunTest(mainArgs, {
+      onOutput: (text) => {
+        const window = scanCarry + text;
+        if (quarantinedBasenames.some((name) => window.includes(name))) {
+          exclusionLeak = true;
+        }
+        scanCarry = window.slice(-512);
+      },
+    });
+    mainOk = mainResult.status === 0 && !mainResult.signal;
+    if (!mainOk) {
+      console.error(
+        `[run-bun-tests] main pass FAILED (status=${mainResult.status ?? "null"}, signal=${mainResult.signal ?? "none"}) — this is outside the quarantined suites and is NOT retried.`,
+      );
+    }
+    if (exclusionLeak) {
+      console.warn(
+        "[run-bun-tests] WARNING: a quarantined suite name appeared in main-pass output — --path-ignore-patterns may no longer exclude it (bun behavior change?). The suite still runs isolated below; failures stay loud either way.",
+      );
+    }
   }
 
   // ---- pass 2: the quarantined suites, isolated, crash-retried -----------
@@ -377,16 +499,21 @@ async function main() {
   }
 
   if (mainOk && quarantineOk) {
-    process.exit(0);
+    return 0;
   }
   if (!mainOk) {
     const status = mainResult.status ?? 1;
-    process.exit(status === 0 ? 1 : status);
+    return status === 0 ? 1 : status;
   }
-  process.exit(quarantineStatus === 0 ? 1 : quarantineStatus);
+  return quarantineStatus === 0 ? 1 : quarantineStatus;
 }
 
-main().catch((error) => {
-  console.error("[run-bun-tests] fatal:", error);
-  process.exit(1);
-});
+main().then(
+  (status) => {
+    process.exitCode = status;
+  },
+  (error) => {
+    console.error("[run-bun-tests] fatal:", error);
+    process.exitCode = 1;
+  },
+);

@@ -1,5 +1,7 @@
+/** Verifies the thin inference router's authentication and canonical route behavior. */
 import { describe, expect, test } from "bun:test";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import chatCompletionsRoute from "../v1/chat/completions/route";
 import { createInferenceApp } from "./inference-app";
 
 interface AuthErrorBody {
@@ -29,9 +31,13 @@ const env = {
   BLOB: {},
 } as unknown as AppEnv["Bindings"];
 
+function createChatInferenceApp() {
+  return createInferenceApp("/api/v1/chat/completions", chatCompletionsRoute);
+}
+
 describe("chat-only inference application", () => {
   test("keeps unauthenticated chat pre-SSE with the canonical shell", async () => {
-    const response = await createInferenceApp().fetch(
+    const response = await createChatInferenceApp().fetch(
       new Request("https://api.elizacloud.ai/api/v1/chat/completions", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -63,7 +69,7 @@ describe("chat-only inference application", () => {
   });
 
   test("keeps CORS preflight ahead of route auth", async () => {
-    const response = await createInferenceApp().fetch(
+    const response = await createChatInferenceApp().fetch(
       new Request("https://api.elizacloud.ai/api/v1/chat/completions", {
         method: "OPTIONS",
         headers: {
@@ -82,7 +88,7 @@ describe("chat-only inference application", () => {
   });
 
   test("keeps non-chat routes outside the thin app surface", async () => {
-    const response = await createInferenceApp().fetch(
+    const response = await createChatInferenceApp().fetch(
       new Request("https://api.elizacloud.ai/api/v1/embeddings", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -109,7 +115,7 @@ describe("chat-only inference application", () => {
         return { success: true };
       },
     };
-    const response = await createInferenceApp().fetch(
+    const response = await createChatInferenceApp().fetch(
       new Request("https://api.elizacloud.ai/api/v1/chat/completions", {
         method: "POST",
         headers: { "content-type": "application/json" },

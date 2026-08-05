@@ -1,13 +1,10 @@
 /**
  * Money-leak regression for POST /api/v1/generate-video (#10278).
  *
- * The route reserves credits, settles them via reservation.reconcile(totalCost),
- * sets chargeSettled=true, THEN writes the generation row. reservation.reconcile
- * is non-idempotent (it refunds reservedAmount-actualCost from the closure-
- * captured hold). Before the fix, a post-settle failure (generationsService.create
- * throwing) fell into the catch's reconcile(0) and fully refunded an already-
- * settled, correct charge — a free video. The fix gates the catch refund on
- * `!chargeSettled`.
+ * The route returns delivered provider output before detached billing/history
+ * persistence finishes. A history failure after settlement must remain
+ * observable without turning the successful response into a failure or
+ * refunding the provider cost.
  *
  * These tests drive the real route handler with a faithful ledger-backed
  * reservation (the reconcile math is REAL) and assert:
@@ -232,9 +229,10 @@ describe("generate-video — post-settle failure must not refund (#10278)", () =
 
     const res = await post();
 
-    // The request fails (the create threw)...
-    expect(res.status).toBeGreaterThanOrEqual(500);
-    // ...but the settled charge is NOT refunded: exactly one reconcile, to totalCost.
+    // Provider output was delivered, so detached history failure does not
+    // rewrite the response after the route has handed it back.
+    expect(res.status).toBe(200);
+    // The settled charge is NOT refunded: exactly one reconcile, to totalCost.
     expect(ledger.reconcileCalls).toBe(1);
     expect(ledger.lastActual).toBeCloseTo(COST, 10);
     // Balance reflects the correct charge for a delivered video, not a free one.

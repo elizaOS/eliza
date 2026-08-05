@@ -118,6 +118,11 @@ export interface PendantConnectionOptions {
    * Bluetooth elsewhere.
    */
   createTransport?: () => PendantTransport | null;
+  /**
+   * Dispatch resolved text directly to VOICE_DM. Canonical session owners set
+   * this false and dispatch only after the server commits the segment.
+   */
+  dispatchResolvedTranscript?: boolean;
   /** Maximum spontaneous mid-session reconnect attempts. */
   reconnectMaxAttempts?: number;
   /** Delay between spontaneous mid-session reconnect attempts. */
@@ -130,17 +135,25 @@ export const PENDANT_VOICE_TRANSCRIPT_EVENT =
 
 export interface PendantVoiceTranscriptDetail {
   text: string;
+  ownerId?: string;
+  agentId?: string;
+  sessionId?: string;
+  segmentId?: string;
+  segmentRevision?: number;
 }
 
 /** Dispatch a finalized pendant transcript for the shell to send as VOICE_DM. */
-export function dispatchPendantVoiceTranscript(text: string): void {
+export function dispatchPendantVoiceTranscript(
+  text: string,
+  provenance: Omit<PendantVoiceTranscriptDetail, "text"> = {},
+): void {
   if (typeof window === "undefined") return;
   const trimmed = text.trim();
   if (!trimmed) return;
   window.dispatchEvent(
     new CustomEvent<PendantVoiceTranscriptDetail>(
       PENDANT_VOICE_TRANSCRIPT_EVENT,
-      { detail: { text: trimmed } },
+      { detail: { text: trimmed, ...provenance } },
     ),
   );
 }
@@ -194,6 +207,9 @@ export class PendantConnection {
 
   /** True while an utterance is being transcribed — serializes finalizations. */
   private finalizing: Promise<void> = Promise.resolve();
+  /** Invalidates queued/in-flight ASR when capture is paused or disconnected. */
+  private captureGeneration = 0;
+  private transcriptionAbort: AbortController | null = null;
 
   private readonly onAudioPayload = (payload: Uint8Array): void => {
     this.handleNotification(payload);
@@ -252,8 +268,10 @@ export class PendantConnection {
     if (detail.status !== "resolved") return;
     const text = detail.text?.trim() ?? "";
     if (!text) return;
-    dispatchPendantVoiceTranscript(text);
-    this.opts.onTranscript?.(text);
+    if (this.opts.dispatchResolvedTranscript !== false) {
+      dispatchPendantVoiceTranscript(text);
+      this.opts.onTranscript?.(text);
+    }
   }
 
   private resetDetector(): void {
@@ -319,7 +337,7 @@ export class PendantConnection {
   }
 
   /** Request a device, connect GATT, subscribe to audio + battery. */
-  async connect(): Promise<void> {
+  async connect(): Promise<boolean> {
     const transport = (this.opts.createTransport ?? selectPendantTransport)();
     if (!transport) {
       this.patch({
@@ -330,7 +348,7 @@ export class PendantConnection {
           "Bluetooth is not available in this environment.",
         ),
       });
-      return;
+      return false;
     }
     this.clearReconnectTimer();
     this.intentionalDisconnect = false;
@@ -375,6 +393,7 @@ export class PendantConnection {
       }
 
       this.patch({ status: "listening", connectStep: "done" });
+      return true;
     } catch (err) {
       // error-policy:J4 The connection boundary translates failures into the typed UI state.
       const typedError = classifyPendantConnectionError(err);
@@ -390,7 +409,7 @@ export class PendantConnection {
           error: null,
           typedError: null,
         });
-        return;
+        return false;
       }
       this.patch({
         status: "error",
@@ -398,6 +417,7 @@ export class PendantConnection {
         error: typedError.message,
         typedError,
       });
+      return false;
     }
   }
 
@@ -635,8 +655,9 @@ export class PendantConnection {
       if (segment) this.emitSegment(segment);
       this.resetDetector();
       if (segment) {
+        const generation = this.captureGeneration;
         this.finalizing = this.finalizing.then(() =>
-          this.finalizeUtterance(chunks, total, segment),
+          this.finalizeUtterance(chunks, total, segment, generation),
         );
       }
     }
@@ -664,8 +685,16 @@ export class PendantConnection {
     chunks: Float32Array[],
     total: number,
     segment: PendantTranscriptSegmentDetail,
+    generation: number,
   ): Promise<void> {
-    if (total === 0) return;
+    if (total === 0 || generation !== this.captureGeneration || this.paused) {
+      this.emitSegment({
+        ...segment,
+        status: "discarded",
+        discardReason: "paused",
+      });
+      return;
+    }
     const pcm = new Float32Array(total);
     let off = 0;
     for (const c of chunks) {
@@ -684,8 +713,20 @@ export class PendantConnection {
     const wav = encodeMonoPcm16Wav(pcm, OMI_OPUS_SAMPLE_RATE_HZ);
     const wasStatus = this.state.status;
     this.patch({ status: "transcribing" });
+    const abort = new AbortController();
+    this.transcriptionAbort = abort;
     try {
-      const { text, words } = await transcribeLocalInferenceWav(wav);
+      const { text, words } = await transcribeLocalInferenceWav(wav, {
+        signal: abort.signal,
+      });
+      if (generation !== this.captureGeneration || this.paused) {
+        this.emitSegment({
+          ...segment,
+          status: "discarded",
+          discardReason: "paused",
+        });
+        return;
+      }
       const resolvedSegment: PendantTranscriptSegmentDetail = {
         ...segment,
         status: "resolved",
@@ -695,6 +736,18 @@ export class PendantConnection {
       this.patch({ lastTranscript: text, error: null, typedError: null });
       this.commitSegment(resolvedSegment);
     } catch (error) {
+      if (
+        abort.signal.aborted ||
+        generation !== this.captureGeneration ||
+        this.paused
+      ) {
+        this.emitSegment({
+          ...segment,
+          status: "discarded",
+          discardReason: "paused",
+        });
+        return;
+      }
       // error-policy:J4 Failed ASR becomes an explicit failed transcript segment.
       // ASR failure is non-fatal for ambient capture, but it must stay visible
       // so the transcript surface does not look healthy while segments drop.
@@ -708,6 +761,7 @@ export class PendantConnection {
         warning: typedError.message,
       });
     } finally {
+      if (this.transcriptionAbort === abort) this.transcriptionAbort = null;
       // Return to the ambient listening state (or hearing if speech already
       // resumed while we were transcribing).
       const next =
@@ -727,6 +781,9 @@ export class PendantConnection {
     if (this.paused) return;
     if (!this.transport || !this.decoder || !this.isPauseableStatus()) return;
     this.paused = true;
+    this.captureGeneration += 1;
+    this.transcriptionAbort?.abort();
+    this.transcriptionAbort = null;
     this.reassembler.reset();
     this.accountedDroppedPackets = 0;
     this.resetDetector();
@@ -749,6 +806,9 @@ export class PendantConnection {
   async disconnect(): Promise<void> {
     this.intentionalDisconnect = true;
     this.clearReconnectTimer();
+    this.captureGeneration += 1;
+    this.transcriptionAbort?.abort();
+    this.transcriptionAbort = null;
     // Finalize reassembly diagnostics. The wire has no end marker, so flush
     // conservatively drops an unconfirmed tail instead of decoding partial audio.
     if (this.decoder) {

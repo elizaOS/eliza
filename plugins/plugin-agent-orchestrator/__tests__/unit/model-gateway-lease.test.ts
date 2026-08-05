@@ -372,7 +372,6 @@ describe("revoke on task end — all three terminal exit paths + teardown", () =
     expect(gateway.callModel(token)).toBe(200);
 
     await service.closeSession(sessionId);
-    await settle();
 
     expect(gateway.revoked).toEqual(["lease-1"]);
     expect(gateway.callModel(token)).toBe(401);
@@ -715,7 +714,6 @@ describe("HTTP reference broker — real loopback mint + revoke over the wire", 
     });
 
     await service.closeSession(sessionId);
-    await settle();
 
     const revoke = requests.find((r) => /\/revoke$/.test(r.url));
     expect(revoke).toBeDefined();

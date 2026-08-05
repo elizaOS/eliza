@@ -62,4 +62,19 @@ describe("dev-ui Vite runtime", () => {
     );
     expect(source).toContain("if (!viteReady) scheduleViteHealthCheck();");
   });
+
+  it("defers optional vision dependency work until after UI readiness", () => {
+    const source = readFileSync(path.join(scriptsDir, "dev-ui.mjs"), "utf8");
+    const readyState = source.indexOf("viteReady = true;");
+    const visionStart = source.indexOf(
+      "\n      startVisionDepsCheck();",
+      readyState,
+    );
+
+    expect(readyState).toBeGreaterThan(-1);
+    expect(visionStart).toBeGreaterThan(readyState);
+    expect(source.slice(0, readyState)).not.toContain(
+      "\nstartVisionDepsCheck();",
+    );
+  });
 });

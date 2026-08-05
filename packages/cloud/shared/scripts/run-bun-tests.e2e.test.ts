@@ -1,20 +1,39 @@
-// End-to-end coverage for scripts/run-bun-tests.mjs (#15785): spawns the REAL
-// wrapper process, which spawns real children through the ELIZA_BUN_TEST_BIN
-// seam (scripts/__fixtures__/stub-bun-runner.mjs emitting the verbatim #15785
-// panic output). Exercises the full classify → capture → retry → exit-code
-// pipeline with real processes on any platform.
+/**
+ * Exercises the real cloud-shared test wrapper with scripted Bun children.
+ *
+ * The process harness covers sequential sharding, PGlite process isolation,
+ * fail-fast behavior, and the full Windows #15785 classify/capture/retry path.
+ */
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { DEFAULT_TEST_TIMEOUT_MS } from "./run-bun-tests-helpers.mjs";
+import { DEFAULT_QUARANTINED_SUITES, DEFAULT_TEST_TIMEOUT_MS } from "./run-bun-tests-helpers.mjs";
 
 const scriptsDir = import.meta.dir;
 const wrapperPath = path.join(scriptsDir, "run-bun-tests.mjs");
 const stubPath = path.join(scriptsDir, "__fixtures__", "stub-bun-runner.mjs");
 
 const QUARANTINED_SUITE = "src/lib/services/tenant-db/tenant-db-placement-claimer.test.ts";
+const CAPTURE_BOOTSTRAP = `
+const { closeSync, openSync } = require("node:fs");
+const { spawnSync } = require("node:child_process");
+const stdoutFd = openSync(process.env.ELIZA_CAPTURE_STDOUT, "w");
+const stderrFd = openSync(process.env.ELIZA_CAPTURE_STDERR, "w");
+let result;
+try {
+  result = spawnSync(process.argv[1], process.argv.slice(2), {
+    cwd: process.env.ELIZA_CAPTURE_CWD,
+    env: JSON.parse(process.env.ELIZA_CAPTURE_ENV),
+    stdio: ["ignore", stdoutFd, stderrFd],
+  });
+} finally {
+  closeSync(stdoutFd);
+  closeSync(stderrFd);
+}
+process.exitCode = result.signal ? 1 : (result.status ?? 1);
+`;
 
 interface WrapperRun {
   status: number | null;
@@ -24,6 +43,31 @@ interface WrapperRun {
   invocations: { argv: string[] }[];
   crashDir: string;
   crashCaptures: string[];
+}
+
+function spawnCaptured(
+  command: string,
+  args: string[],
+  options: { cwd: string; env: NodeJS.ProcessEnv; timeout: number },
+  stateDir: string,
+  label: string,
+) {
+  const stdoutPath = path.join(stateDir, `${label}.stdout.log`);
+  const stderrPath = path.join(stateDir, `${label}.stderr.log`);
+  const result = spawnSync("node", ["-e", CAPTURE_BOOTSTRAP, command, ...args], {
+    cwd: options.cwd,
+    timeout: options.timeout,
+    env: {
+      ...process.env,
+      ELIZA_CAPTURE_STDOUT: stdoutPath,
+      ELIZA_CAPTURE_STDERR: stderrPath,
+      ELIZA_CAPTURE_CWD: options.cwd,
+      ELIZA_CAPTURE_ENV: JSON.stringify(options.env),
+    },
+  });
+  const stdout = readFileSync(stdoutPath, "utf8");
+  const stderr = readFileSync(stderrPath, "utf8");
+  return { result, stdout, stderr, merged: `${stdout}${stderr}` };
 }
 
 function runWrapper({
@@ -39,23 +83,37 @@ function runWrapper({
 }): WrapperRun {
   const stateDir = mkdtempSync(path.join(tmpdir(), "run-bun-tests-e2e-"));
   const crashDir = path.join(stateDir, "crash-captures");
-  const result = spawnSync(process.execPath, [wrapperPath, ...args], {
-    cwd: scriptsDir,
-    encoding: "utf8",
-    timeout: 120_000,
-    maxBuffer: 32 * 1024 * 1024,
-    env: {
-      ...process.env,
-      ELIZA_WIN_PGLITE_QUARANTINE: "1",
-      ELIZA_BUN_TEST_BIN: process.execPath,
-      ELIZA_BUN_TEST_BIN_ARGS: JSON.stringify([stubPath]),
-      ELIZA_PGLITE_CRASH_DIR: crashDir,
-      STUB_STATE_DIR: stateDir,
-      STUB_QUARANTINE_PLAN: JSON.stringify(plan ?? ["pass"]),
-      STUB_MAIN_MODE: mainMode,
-      ...env,
+  const ordinaryFiles = ["ordinary-c.test.ts", "ordinary-a.test.ts", "ordinary-b.test.ts"].map(
+    (name) => path.join(stateDir, name),
+  );
+  const pgliteFile = path.join(stateDir, "pglite-heavy.test.ts");
+  for (const file of ordinaryFiles) writeFileSync(file, "// ordinary test fixture\n");
+  writeFileSync(pgliteFile, 'process.env.DATABASE_URL = "pglite://memory";\n');
+  const discoveredTestFiles = [...ordinaryFiles, pgliteFile, ...DEFAULT_QUARANTINED_SUITES];
+  const captured = spawnCaptured(
+    process.execPath,
+    [wrapperPath, ...args],
+    {
+      cwd: scriptsDir,
+      timeout: 120_000,
+      env: {
+        ...process.env,
+        ELIZA_WIN_PGLITE_QUARANTINE: "1",
+        ELIZA_BUN_TEST_BIN: process.execPath,
+        ELIZA_BUN_TEST_BIN_ARGS: JSON.stringify([stubPath]),
+        ELIZA_PGLITE_CRASH_DIR: crashDir,
+        ELIZA_BUN_TEST_FILES_JSON: JSON.stringify(discoveredTestFiles),
+        ELIZA_BUN_TEST_BATCH_SIZE: "2",
+        ELIZA_BUN_TEST_PGLITE_BATCH_SIZE: "1",
+        STUB_STATE_DIR: stateDir,
+        STUB_QUARANTINE_PLAN: JSON.stringify(plan ?? ["pass"]),
+        STUB_MAIN_MODE: mainMode,
+        ...env,
+      },
     },
-  });
+    stateDir,
+    "wrapper",
+  );
   const invocationsFile = path.join(stateDir, "invocations.jsonl");
   const invocations = existsSync(invocationsFile)
     ? readFileSync(invocationsFile, "utf8")
@@ -68,10 +126,10 @@ function runWrapper({
     ? readdirSync(crashDir).map((file) => path.join(crashDir, file))
     : [];
   return {
-    status: result.status,
-    stdout: result.stdout ?? "",
-    stderr: result.stderr ?? "",
-    merged: `${result.stdout ?? ""}${result.stderr ?? ""}`,
+    status: captured.result.status,
+    stdout: captured.stdout,
+    stderr: captured.stderr,
+    merged: captured.merged,
     invocations,
     crashDir,
     crashCaptures,
@@ -88,7 +146,7 @@ describe("run-bun-tests wrapper e2e (#15785 quarantine + crash retry)", () => {
 
     const mainPasses = run.invocations.filter((i) => isMainPassInvocation(i.argv));
     const quarantinePasses = run.invocations.filter((i) => !isMainPassInvocation(i.argv));
-    expect(mainPasses).toHaveLength(1);
+    expect(mainPasses).toHaveLength(3);
     expect(quarantinePasses).toHaveLength(2);
     for (const invocation of run.invocations) {
       expect(invocation.argv).toContain(`--timeout=${DEFAULT_TEST_TIMEOUT_MS}`);
@@ -147,19 +205,19 @@ describe("run-bun-tests wrapper e2e (#15785 quarantine + crash retry)", () => {
     expect(readFileSync(run.crashCaptures[0], "utf8")).toContain("native-crash exit code 3");
   }, 60_000);
 
-  test("main-pass failure is not retried and fails the run even when the quarantined pass is green", () => {
+  test("a sharded main-pass failure stops immediately before the quarantine pass", () => {
     const run = runWrapper({ plan: ["pass"], mainMode: "fail" });
     expect(run.status).toBe(1);
-    expect(run.merged).toContain("main pass FAILED");
-    // Both passes still ran (one failure does not mask the other).
+    expect(run.merged).toContain("stopping before later batches");
     const quarantinePasses = run.invocations.filter((i) => !isMainPassInvocation(i.argv));
-    expect(quarantinePasses.length).toBeGreaterThanOrEqual(1);
+    expect(quarantinePasses).toHaveLength(0);
+    expect(run.invocations).toHaveLength(1);
   }, 60_000);
 
   test("quarantine off: single invocation uses the package timeout default", () => {
     const run = runWrapper({
       plan: ["pass"],
-      env: { ELIZA_WIN_PGLITE_QUARANTINE: "0" },
+      env: { ELIZA_WIN_PGLITE_QUARANTINE: "0", ELIZA_BUN_TEST_SHARDING: "0" },
     });
     expect(run.status).toBe(0);
     expect(run.invocations).toHaveLength(1);
@@ -169,6 +227,44 @@ describe("run-bun-tests wrapper e2e (#15785 quarantine + crash retry)", () => {
     expect(argv).toContain(`--timeout=${DEFAULT_TEST_TIMEOUT_MS}`);
     expect(argv.some((arg) => arg.startsWith("--path-ignore-patterns="))).toBe(false);
     expect(argv).not.toContain(QUARANTINED_SUITE);
+  }, 60_000);
+
+  test("full-package mode uses sequential ordinary batches and one-file PGlite processes", () => {
+    const run = runWrapper({
+      plan: ["pass"],
+      env: { ELIZA_WIN_PGLITE_QUARANTINE: "0" },
+    });
+    expect(run.status).toBe(0);
+    expect(run.invocations).toHaveLength(5); // 3 ordinary files / 2, then 3 PGlite singletons
+    expect(run.merged).toContain("ordinary batch=2, PGlite batch=1");
+
+    const fileArgs = run.invocations.map((invocation) =>
+      invocation.argv.filter((arg) => arg.endsWith(".test.ts")),
+    );
+    expect(fileArgs.slice(0, 2).map((files) => files.length)).toEqual([2, 1]);
+    expect(fileArgs.slice(2).map((files) => files.length)).toEqual([1, 1, 1]);
+    expect(new Set(fileArgs.flat()).size).toBe(6);
+  }, 60_000);
+
+  test("sharded execution is fail-fast and never starts batches after the first failure", () => {
+    const run = runWrapper({
+      plan: ["pass", "fail", "pass"],
+      env: { ELIZA_WIN_PGLITE_QUARANTINE: "0" },
+    });
+    expect(run.status).toBe(1);
+    expect(run.invocations).toHaveLength(2);
+    expect(run.merged).toContain("ordinary batch 2/5 FAILED");
+    expect(run.merged).toContain("stopping before later batches");
+  }, 60_000);
+
+  test("a completed green PGlite batch with Bun status 99 is normalized and later batches run", () => {
+    const run = runWrapper({
+      plan: ["status-99", "pass"],
+      env: { ELIZA_WIN_PGLITE_QUARANTINE: "0" },
+    });
+    expect(run.status).toBe(0);
+    expect(run.invocations).toHaveLength(5);
+    expect(run.merged).toContain("known Bun/PGlite exit-code pollution");
   }, 60_000);
 
   test("a stale quarantine list fails loudly before running anything (#13620: no silent zero-suite pass)", () => {
@@ -205,7 +301,9 @@ describe("run-bun-tests wrapper e2e (#15785 quarantine + crash retry)", () => {
       const run = runWrapper({ plan: ["pass"], args });
       expect(run.status).toBe(0);
       for (const invocation of run.invocations) {
-        expect(invocation.argv.slice(-args.length)).toEqual(args);
+        const forwardedAt = invocation.argv.indexOf(args[0]);
+        expect(forwardedAt).toBeGreaterThanOrEqual(0);
+        expect(invocation.argv.slice(forwardedAt, forwardedAt + args.length)).toEqual(args);
         expect(invocation.argv).not.toContain(`--timeout=${DEFAULT_TEST_TIMEOUT_MS}`);
       }
     },
@@ -229,27 +327,26 @@ describe("run-bun-tests wrapper e2e (#15785 quarantine + crash retry)", () => {
     delete env.ELIZA_BUN_TEST_BIN_ARGS;
 
     try {
-      const defaultRun = spawnSync("node", [wrapperPath, probePath], {
-        cwd: scriptsDir,
-        encoding: "utf8",
-        timeout: 20_000,
-        env,
-      });
-      const defaultOutput = `${defaultRun.stdout ?? ""}${defaultRun.stderr ?? ""}`;
-      expect(defaultRun.status, defaultOutput).toBe(0);
-      expect(defaultOutput).toContain("1 pass");
+      const defaultRun = spawnCaptured(
+        "node",
+        [wrapperPath, probePath],
+        { cwd: scriptsDir, timeout: 20_000, env },
+        stateDir,
+        "default-timeout",
+      );
+      expect(defaultRun.result.status, defaultRun.merged).toBe(0);
+      expect(defaultRun.merged).toContain("1 pass");
 
-      for (const overrideArgs of [["--timeout", "50"], ["--timeout=50"]]) {
-        const overrideRun = spawnSync("node", [wrapperPath, probePath, ...overrideArgs], {
-          cwd: scriptsDir,
-          encoding: "utf8",
-          timeout: 20_000,
-          env,
-        });
-        expect(overrideRun.status).toBe(1);
-        expect(`${overrideRun.stdout ?? ""}${overrideRun.stderr ?? ""}`).toContain(
-          "timed out after 50ms",
+      for (const [index, overrideArgs] of [["--timeout", "50"], ["--timeout=50"]].entries()) {
+        const overrideRun = spawnCaptured(
+          "node",
+          [wrapperPath, probePath, ...overrideArgs],
+          { cwd: scriptsDir, timeout: 20_000, env },
+          stateDir,
+          `override-timeout-${index}`,
         );
+        expect(overrideRun.result.status).toBe(1);
+        expect(overrideRun.merged).toContain("timed out after 50ms");
       }
     } finally {
       rmSync(stateDir, { recursive: true, force: true });

@@ -1,11 +1,11 @@
-// Pure decision logic for scripts/run-bun-tests.mjs (the package `test` entry).
-//
-// Split out so the crash-signature classifier and retry-bound rules are
-// unit-testable without spawning bun (scripts/run-bun-tests-helpers.test.ts).
-//
-// The ANSI/fail-count parsing mirrors packages/scripts/test-cloud-run-helpers.mjs
-// (the bun status-99 normalizer precedent). It is duplicated here — not imported
-// across packages — so the package test entry stays self-contained.
+/**
+ * Pure policy for the cloud-shared Bun test wrapper.
+ *
+ * The helpers keep process-sharding, crash classification, bounded retry, and
+ * argument forwarding testable without spawning Bun. ANSI/fail-count parsing
+ * mirrors packages/scripts/test-cloud-run-helpers.mjs so this package entry
+ * remains self-contained.
+ */
 
 /**
  * The PGlite-backed tenant-db suites that intermittently take Bun canary down
@@ -41,6 +41,110 @@ export const DEFAULT_QUARANTINE_ATTEMPT_TIMEOUT_MS = 10 * 60 * 1000;
  * so the repository's intended default must cross the process boundary.
  */
 export const DEFAULT_TEST_TIMEOUT_MS = 60_000;
+
+/** Ordinary suites share a small process; PGlite suites default to one process each. */
+export const DEFAULT_TEST_BATCH_SIZE = 16;
+export const DEFAULT_PGLITE_TEST_BATCH_SIZE = 1;
+const MAX_TEST_BATCH_SIZE = 100;
+const MAX_PGLITE_TEST_BATCH_SIZE = 10;
+
+function resolveBoundedBatchSize(raw, fallback, ceiling) {
+  if (raw === undefined || raw === "") return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isInteger(parsed) || parsed < 1) return fallback;
+  return Math.min(parsed, ceiling);
+}
+
+/** Explicit, bounded process batch sizes for normal and PGlite-heavy suites. */
+export function resolveTestBatchSizes(env) {
+  return {
+    ordinary: resolveBoundedBatchSize(
+      env.ELIZA_BUN_TEST_BATCH_SIZE,
+      DEFAULT_TEST_BATCH_SIZE,
+      MAX_TEST_BATCH_SIZE,
+    ),
+    pglite: resolveBoundedBatchSize(
+      env.ELIZA_BUN_TEST_PGLITE_BATCH_SIZE,
+      DEFAULT_PGLITE_TEST_BATCH_SIZE,
+      MAX_PGLITE_TEST_BATCH_SIZE,
+    ),
+  };
+}
+
+/** `0` is an escape hatch for diagnostics; sharding is otherwise the default. */
+export function resolveTestShardingMode(env) {
+  return env.ELIZA_BUN_TEST_SHARDING !== "0";
+}
+
+const OPTIONS_WITH_SEPARATE_VALUES = new Set([
+  "--coverage-dir",
+  "--coverage-reporter",
+  "--max-concurrency",
+  "--path-ignore-patterns",
+  "--preload",
+  "--reporter",
+  "--reporter-outfile",
+  "--rerun-each",
+  "--seed",
+  "--test-name-pattern",
+  "--timeout",
+]);
+
+/**
+ * Positional filters are left to Bun unchanged because combining them with an
+ * explicit shard file list would broaden Bun's OR-style path matching. Values
+ * belonging to known runner options are not mistaken for path filters.
+ */
+export function hasExplicitTestFileFilter(args) {
+  const optionBoundary = args.indexOf("--");
+  const runnerArgs = optionBoundary === -1 ? args : args.slice(0, optionBoundary);
+  for (let index = 0; index < runnerArgs.length; index += 1) {
+    const arg = runnerArgs[index];
+    if (OPTIONS_WITH_SEPARATE_VALUES.has(arg)) {
+      index += 1;
+      continue;
+    }
+    if (!arg.startsWith("-")) return true;
+  }
+  return false;
+}
+
+function chunk(items, size) {
+  const batches = [];
+  for (let index = 0; index < items.length; index += size) {
+    batches.push(items.slice(index, index + size));
+  }
+  return batches;
+}
+
+/**
+ * Deterministically group ordinary tests, then PGlite-heavy tests. Process exit
+ * between batches is the reclamation boundary for Bun/JSC and PGlite WASM.
+ */
+export function buildTestBatches(testFiles, pgliteTestFiles, batchSizes) {
+  const pglite = new Set(pgliteTestFiles);
+  const ordinaryFiles = testFiles.filter((file) => !pglite.has(file)).sort();
+  const pgliteFiles = testFiles.filter((file) => pglite.has(file)).sort();
+  return [
+    ...chunk(ordinaryFiles, batchSizes.ordinary).map((files) => ({ kind: "ordinary", files })),
+    ...chunk(pgliteFiles, batchSizes.pglite).map((files) => ({ kind: "pglite", files })),
+  ];
+}
+
+function insertTestFilesBeforeOptionBoundary(passthroughArgs, testFiles) {
+  const optionBoundary = passthroughArgs.indexOf("--");
+  if (optionBoundary === -1) return [...passthroughArgs, ...testFiles];
+  return [
+    ...passthroughArgs.slice(0, optionBoundary),
+    ...testFiles,
+    ...passthroughArgs.slice(optionBoundary),
+  ];
+}
+
+/** Build one fresh-process invocation while forwarding caller arguments verbatim. */
+export function buildTestBatchArgs(testFiles, passthroughArgs) {
+  return ["--isolate", ...insertTestFilesBeforeOptionBoundary(passthroughArgs, testFiles)];
+}
 
 /** Preserve either supported Bun timeout form; otherwise add the package default. */
 export function withDefaultTestTimeout(passthroughArgs) {
@@ -136,6 +240,34 @@ export function hasBunRunSummary(output) {
   return getSummaryLines(output).some((line) => /^Ran \d+ tests? across \d+ files?\./.test(line));
 }
 
+export function hasBunPassRecord(output) {
+  return getSummaryLines(output).some((line) => /^\s*\(pass\)\s+/.test(line));
+}
+
+export function hasBunFailureMarker(output) {
+  return getSummaryLines(output).some((line) => {
+    if (/^\s*\(fail\)\s+/.test(line)) return true;
+    if (/^# Unhandled error between tests/.test(line)) return true;
+    if (/^error: Cannot find (module|package)\b/.test(line)) return true;
+    return /^error: Module not found\b/.test(line);
+  });
+}
+
+/**
+ * Bun/PGlite can pollute `process.exitCode` after a completed green run. Match
+ * the repository cloud runner's fail-closed normalization: only status 99 (or
+ * Bun's green-but-dirty status 1) with no fail count/marker can be accepted.
+ */
+export function shouldNormalizeBunStatus99({ status, signal, output }) {
+  if (signal) return false;
+  const knownPollution = status === 99;
+  const greenButDirty = status === 1;
+  if (!knownPollution && !greenButDirty) return false;
+  if (getBunFailCounts(output).some((count) => count !== 0)) return false;
+  if (hasBunFailureMarker(output)) return false;
+  return hasBunRunSummary(output) || (greenButDirty && hasBunPassRecord(output));
+}
+
 /** Names of every crash marker present in the output (empty = none). */
 export function findCrashMarkers(output) {
   const plain = stripAnsi(output);
@@ -161,6 +293,12 @@ export function findCrashMarkers(output) {
  */
 export function classifyBunTestExit({ status, signal, output }) {
   const exitCode = typeof status === "number" ? status : null;
+  if (shouldNormalizeBunStatus99({ status, signal, output })) {
+    return {
+      kind: "pass",
+      reason: `known Bun/PGlite exit-code pollution (status ${exitCode}) after a completed green run`,
+    };
+  }
   if (exitCode === 0 && !signal) {
     // A pass must be a COMPLETED run: exit 0 without bun's end-of-run summary
     // means the process reported nothing (e.g. every target file was filtered
@@ -278,7 +416,7 @@ export function resolveAttemptTimeoutMs(env) {
  * `--path-ignore-patterns` must be repeated per pattern — a comma-joined value
  * is treated as one glob and silently matches nothing (verified on bun 1.4.0).
  */
-export function buildMainPassArgs(quarantinedSuites, passthroughArgs) {
+export function buildMainPassArgs(quarantinedSuites, passthroughArgs, testFiles = []) {
   const forwarded = [];
   for (let index = 0; index < passthroughArgs.length; index += 1) {
     const arg = passthroughArgs[index];
@@ -295,7 +433,7 @@ export function buildMainPassArgs(quarantinedSuites, passthroughArgs) {
   return [
     "--isolate",
     ...quarantinedSuites.map((suite) => `--path-ignore-patterns=${suite}`),
-    ...forwarded,
+    ...insertTestFilesBeforeOptionBoundary(forwarded, testFiles),
   ];
 }
 

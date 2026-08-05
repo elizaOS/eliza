@@ -8,7 +8,7 @@ This is a **Capacitor 8 native plugin**, not an elizaOS runtime plugin. It expos
 
 On **iOS** the plugin either starts a full `ElizaBunEngine.xcframework` (production store path, `engine: "bun"`) or falls back to a `JavaScriptCore` JSContext compatibility bridge for development/sideload builds (`engine: "compat"`). `engine: "auto"` selects whichever is available.
 
-On **Android** the plugin delegates to the host app's `ElizaAgentService` foreground service over a loopback API; there is no JSContext fallback — `engine` is always `"bun"` on Android.
+On **Android** the plugin delegates to the host app's `ElizaAgentService` foreground service over the app-owned agent bridge; there is no JSContext fallback — `engine` is always `"bun"` on Android.
 
 ## Plugin surface (TypeScript API)
 

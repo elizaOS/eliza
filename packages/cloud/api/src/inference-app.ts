@@ -1,3 +1,9 @@
+/**
+ * Builds the small Hono shell used by lazily loaded generative route families.
+ * The entrypoint supplies exactly one route module, avoiding evaluation of the
+ * monolithic generated router and unrelated authentication/audit services.
+ */
+
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { logger as honoLogger } from "hono/logger";
@@ -20,7 +26,6 @@ import { setRuntimeR2Bucket } from "@/lib/storage/r2-runtime-binding";
 import { logger } from "@/lib/utils/logger";
 import { describeUnhandledError } from "@/lib/utils/unhandled-error-detail";
 import type { AppEnv } from "@/types/cloud-worker-env";
-import chatCompletionsRoute from "../v1/chat/completions/route";
 
 /**
  * Chat-only application loaded by the thin Worker entrypoint.
@@ -31,7 +36,10 @@ import chatCompletionsRoute from "../v1/chat/completions/route";
  * protected-route auth/audit tree. Billing and SSE remain wholly owned by the
  * canonical route module.
  */
-export function createInferenceApp(): Hono<AppEnv> {
+export function createInferenceApp(
+  mountPath: string,
+  route: Hono<AppEnv>,
+): Hono<AppEnv> {
   const app = new Hono<AppEnv>({ strict: false });
 
   app.use("*", async (c, next) => {
@@ -120,7 +128,7 @@ export function createInferenceApp(): Hono<AppEnv> {
     ),
   );
 
-  app.route("/api/v1/chat/completions", chatCompletionsRoute);
+  app.route(mountPath, route);
   app.notFound((c) =>
     c.json(
       { success: false, error: "Not found", code: "resource_not_found" },

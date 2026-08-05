@@ -8,12 +8,9 @@ An admitted Cloudflare Worker token/model request must not query or mutate
 Postgres, connect to Railway Redis, or wait for an accounting write before
 dispatching the provider request. This contract covers `/v1/chat`,
 `/v1/chat/completions`, `/v1/messages`, `/v1/responses`, `/v1/embeddings`,
-shared-agent model turns, and the internal Eliza model turn used by a voice
-session.
-
-Direct TTS, STT, and voice-clone requests are outside this contract. They are
-metered media or stateful job endpoints with their own reservation and job-state
-requirements; they are not token/model LLM dispatches.
+shared-agent model turns, the internal Eliza model turn used by a voice session,
+direct TTS/STT, and image, video, music, and SFX generation. Voice cloning and
+other stateful mutation/job endpoints retain their own reservation semantics.
 
 The synchronous Worker path is:
 
@@ -39,12 +36,13 @@ and payout delivery run under `executionCtx.waitUntil`. A Durable Object alarm
 recovers an expired dispatched monetary lease if response-side settlement
 disappears.
 
-This contract applies to the listed token/model routes in the inference Worker.
-Non-Worker tools and excluded media/job endpoints retain their synchronous
-accounting contracts, but a covered Worker route must never fall back to that
-path. Missing or unavailable cache state produces a retryable 503 and starts
-asynchronous hydration; insufficient cached balance produces 402; a rate denial
-produces 429.
+This contract applies to the listed generative routes in the inference Worker.
+Non-Worker tools and stateful job endpoints retain synchronous compatibility,
+but a covered Worker route must never fall back to that path. Missing or
+unavailable cache state produces a retryable 503 and starts asynchronous
+hydration; insufficient cached balance produces 402; a rate denial produces
+429. Content-safety checks and object storage remain synchronous where the
+returned artifact depends on them.
 
 ## Why Railway Redis is not on this path
 
@@ -68,7 +66,7 @@ selected production architecture.
 
 | State | Synchronous owner | Durable/source-of-truth owner | Consistency |
 | --- | --- | --- | --- |
-| API-key and Steward-session authorization | Postgres/Steward | Postgres/Steward | Authoritative while `INFERENCE_AUTH_CACHE_ENABLED` is false |
+| API-key and Steward-session authorization | One combined Cloudflare KV decision | Postgres/Steward | 60s physical bound; active entries refresh after 30s under `waitUntil` |
 | Moderation decision | Cloudflare KV auth context | Postgres | Invalidated on lifecycle changes; bounded staleness |
 | Model pricing | Cloudflare KV | Pricing tables | Revisioned cache; cold requests warm and retry |
 | Affiliate attribution | Cloudflare KV | Postgres | Immutable snapshot per admitted request |
@@ -88,18 +86,20 @@ remain transactional in Postgres and publish monotonic cache revisions.
 
 ## Authorization and cold-cache behavior
 
-Authorization remains authoritative by default. `INFERENCE_AUTH_CACHE_ENABLED`
-is a separate, fail-closed rollout control and stays false in every checked-in
-environment until revocation has a strongly consistent boundary. A successful
-KV deletion is not proof that every point of presence has stopped serving an
-older positive value.
+`INFERENCE_AUTH_CACHE_ENABLED` is enabled in staging and production. Warm API
+keys and Steward sessions perform one combined remote decision read containing
+identity, organization, and moderation state. The physical TTL is 60 seconds;
+an active entry older than 30 seconds is served immediately while an
+authoritative refresh runs under `waitUntil`. This bounds a lost or
+eventually-consistent invalidation to the same one-minute horizon already used
+by moderation decisions without joining Postgres or Steward to dispatch.
 
-The gated implementation accepts positive cache entries only for fully
-authorized credentials. API-key entries are keyed by the full credential hash.
-Steward-session entries currently use the verified subject, so the gate must
-also remain disabled until they use an immutable session identity. Wallet
-signatures remain outside the cache-only Worker path because their timestamped
-proof cannot safely be replayed as an asynchronous hydration.
+The implementation accepts positive cache entries only for fully authorized
+credentials. API-key entries are keyed by the full credential hash. Steward
+JWTs use an in-isolate verification memo after the combined decision read, so
+the distributed JWT memo does not add a second cache lookup. Wallet signatures
+remain outside the cache-only Worker path because their timestamped proof
+cannot safely be replayed as asynchronous hydration.
 
 On a Worker cache miss:
 
@@ -237,9 +237,11 @@ Staging and production require:
 - `INFERENCE_DEFERRED_ADMISSION="true"`; and
 - `INFERENCE_HOT_PATH_CACHES="true"`.
 
-`INFERENCE_AUTH_CACHE_ENABLED` remains `"false"` in staging and production.
-Enabling it requires the strong revocation and immutable-session contract
-described above plus deployed rollback evidence.
+`INFERENCE_AUTH_CACHE_ENABLED="true"` and
+`THIN_INFERENCE_ENTRY_ENABLED="true"` are enabled in staging and production.
+The thin entry lazily evaluates only the matched generative route module rather
+than the monolithic API router. Either flag remains an independent rollback
+control.
 
 `INFERENCE_BILLING_LEDGER` still selects the compatibility ledger for
 non-Worker callers and sweep migration support. It does not add a ledger write
@@ -254,8 +256,8 @@ token/model routes use Cloudflare-native bindings and do not require
 The production contract is protected at three layers:
 
 1. Route tripwire tests install database seams that throw if chat,
-   completions, messages, responses, embeddings, shared-agent, or the
-   voice-session internal Eliza turn touches them before provider dispatch.
+   completions, messages, responses, embeddings, shared-agent, voice, or media
+   generation touches them before provider dispatch.
    These tripwires are what enforce the zero pre-provider Postgres, Redis,
    ledger, reservation, and payout guarantee.
 2. Admission tests assert the only warm pre-dispatch write is the Durable

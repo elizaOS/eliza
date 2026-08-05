@@ -38,6 +38,23 @@ import { describe, expect, it } from "vitest";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const elizaSource = readFileSync(path.join(here, "eliza.ts"), "utf8");
 
+describe("early local embedding ownership policy", () => {
+  const start = elizaSource.indexOf(
+    "export async function configureLocalEmbeddingEnvEarlyIfNeeded(",
+  );
+  const end = elizaSource.indexOf(
+    "// ---------------------------------------------------------------------------",
+    start,
+  );
+  const body = elizaSource.slice(start, end);
+
+  it("does not confuse packaged prefetch skipping with remote provider ownership", () => {
+    expect(start).toBeGreaterThan(-1);
+    expect(body).toContain("shouldUseLocalEmbeddingModel");
+    expect(body).not.toContain("shouldWarmupLocalEmbeddingModel");
+  });
+});
+
 /**
  * Slice out the body of the `runDeferredBoot` arrow closure so the ordering
  * assertions cannot be satisfied by an unrelated earlier/later occurrence of

@@ -29,10 +29,17 @@
  * Run: bun run --cwd packages/ui test:launcher-loop-e2e
  */
 
-import { mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { builtinModules } from "node:module";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { chromium } from "playwright";
 import {
   stubNodeBuiltins,
@@ -140,6 +147,29 @@ const stubResolver = {
     }));
   },
 };
+
+// The production launcher resolves packaged PNGs relative to the generated
+// module with `new URL(..., import.meta.url)`. This fixture is intentionally an
+// inline IIFE, where esbuild otherwise replaces import.meta with an empty
+// object and every icon URL throws before React can mount. Bind only that
+// module's import.meta.url to its source file URL, matching the sibling home
+// fixture that exercises the same surface.
+const fixtureViewIconUrls = {
+  name: "launcher-loop-fixture-view-icon-urls",
+  setup(b) {
+    b.onLoad({ filter: /view-icons\.generated\.ts$/ }, async (args) => {
+      const source = await readFile(args.path, "utf8");
+      return {
+        contents: source.replaceAll(
+          "import.meta.url",
+          JSON.stringify(pathToFileURL(args.path).href),
+        ),
+        loader: "ts",
+      };
+    });
+  },
+};
+
 const stubElizaCore = {
   name: "stub-eliza-core",
   setup(b) {
@@ -199,7 +229,12 @@ const url = await writeFixturePage({
   outDir,
   htmlName: "launcher-loop.html",
   title: "launcher loop e2e",
-  plugins: [stubResolver, stubElizaCore, stubNodeBuiltins()],
+  plugins: [
+    stubResolver,
+    fixtureViewIconUrls,
+    stubElizaCore,
+    stubNodeBuiltins(),
+  ],
   processShim: true,
   headHtml,
   background: "#0a0d16",

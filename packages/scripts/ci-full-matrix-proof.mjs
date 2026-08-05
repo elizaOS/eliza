@@ -1,4 +1,15 @@
 #!/usr/bin/env node
+import {
+  appendFileSync,
+  closeSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 /**
  * Proof job for the exhaustive develop lane (#12342). Fails loudly when the
  * committed lane manifest and the real workflow/test-plan drift apart, so the
@@ -32,18 +43,7 @@
  * non-zero = at least one drift, with every violation printed (not just the
  * first) and mirrored into the GitHub step summary when `--summary` is given.
  */
-import { spawnSync } from "node:child_process";
-import {
-  appendFileSync,
-  closeSync,
-  mkdtempSync,
-  openSync,
-  readFileSync,
-  rmSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { spawnSync } from "./lib/spawn-sync-captured.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..", "..");
@@ -103,15 +103,29 @@ function loadPlan({ planFile }) {
   const runner = resolve(here, "run-all-tests.mjs");
   const dir = mkdtempSync(join(tmpdir(), "ci-full-matrix-proof-"));
   const planPath = join(dir, "plan.json");
-  const fd = openSync(planPath, "w");
+  let fd = -1;
   let result;
   try {
-    result = spawnSync(process.execPath, [runner, "--plan=json"], {
-      cwd: repoRoot,
-      stdio: ["ignore", fd, "pipe"],
-    });
+    if (typeof globalThis.Bun !== "undefined") {
+      const bunResult = globalThis.Bun.spawnSync({
+        cmd: [process.execPath, runner, "--plan=json"],
+        cwd: repoRoot,
+        stderr: "pipe",
+        stdout: globalThis.Bun.file(planPath),
+      });
+      result = {
+        status: bunResult.exitCode,
+        stderr: bunResult.stderr,
+      };
+    } else {
+      fd = openSync(planPath, "w");
+      result = spawnSync(process.execPath, [runner, "--plan=json"], {
+        cwd: repoRoot,
+        stdio: ["ignore", fd, "pipe"],
+      });
+    }
   } finally {
-    closeSync(fd);
+    if (fd >= 0) closeSync(fd);
   }
   try {
     if (result.status !== 0) {

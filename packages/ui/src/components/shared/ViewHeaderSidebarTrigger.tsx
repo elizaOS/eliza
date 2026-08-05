@@ -42,7 +42,7 @@ export function ViewHeaderSidebarTrigger({
       data-testid="page-layout-mobile-sidebar-trigger"
       onClick={() => control.setOpen(true)}
       className={cn(
-        "inline-flex h-9 max-w-[9rem] items-center gap-1.5 rounded-full bg-bg px-3 text-sm font-medium text-txt transition-colors hover:bg-bg-hover",
+        "inline-flex h-9 max-w-[9rem] items-center gap-1.5 rounded-full bg-bg px-3 text-sm font-medium text-txt transition-colors pointer-coarse:min-h-touch pointer-coarse:min-w-touch hover:bg-bg-hover",
         className,
       )}
     >

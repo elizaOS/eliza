@@ -190,16 +190,11 @@ export async function configureAutonomy(
 ): Promise<void> {
   if (loopEnabled) {
     await ensureAutonomyBootstrapContext(runtime);
-  } else {
-    logger.info(
-      "[eliza] Autonomy bootstrap deferred — autonomous loop disabled",
-    );
   }
 
   if (!runtime.getService(AUTONOMY_SERVICE_TYPE)) {
     try {
       await startAndRegisterAutonomyService(runtime);
-      logger.info("[eliza] AutonomyService started and waiting");
     } catch (error) {
       // error-policy:J2 startup must identify the failed subsystem while
       // retaining the service error for boundary diagnostics.
@@ -214,7 +209,7 @@ export async function configureAutonomy(
 
   if (!loopEnabled) {
     logger.info(
-      "[eliza] AutonomyService waiting — set ENABLE_AUTONOMY=true to start autonomous loop",
+      "[eliza] Autonomy loop disabled; trigger service ready — set ENABLE_AUTONOMY=true to enable continuous autonomy",
     );
     return;
   }

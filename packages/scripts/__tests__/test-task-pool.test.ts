@@ -1,7 +1,7 @@
 // Exercises tests test task pool.test automation behavior with deterministic script fixtures.
 import { describe, expect, test } from "bun:test";
-import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 
 import {
   isParallelSafeTask,

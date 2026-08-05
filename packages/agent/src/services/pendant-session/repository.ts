@@ -149,6 +149,10 @@ export interface StoredPendantSessionDocument {
 }
 
 export interface PendantSessionRepository {
+  loadLatest(params: {
+    ownerId: string;
+    agentId: string;
+  }): Promise<StoredPendantSessionDocument | null>;
   load(params: {
     ownerId: string;
     agentId: string;
@@ -345,6 +349,25 @@ export class SqlPendantSessionRepository implements PendantSessionRepository {
     };
   }
 
+  async loadLatest(params: {
+    ownerId: string;
+    agentId: string;
+  }): Promise<StoredPendantSessionDocument | null> {
+    const [row] = await executeRawSql(
+      this.runtime,
+      `SELECT id
+         FROM app_lifeops.pendant_sessions
+        WHERE owner_id = ${sqlQuote(params.ownerId)}
+          AND agent_id = ${sqlQuote(params.agentId)}
+          AND state <> 'ended'
+        ORDER BY started_at DESC, id DESC
+        LIMIT 1`,
+    );
+    const sessionId = row ? toText(row.id).trim() : "";
+    if (!sessionId) return null;
+    return this.load({ ...params, sessionId });
+  }
+
   async create(stored: StoredPendantSessionDocument): Promise<boolean> {
     const session = stored.session;
     const lease = session.captureLease;
@@ -528,6 +551,28 @@ export class InMemoryPendantSessionRepository
 
   private key(ownerId: string, agentId: string, sessionId: string): string {
     return `${ownerId}:${agentId}:${sessionId}`;
+  }
+
+  async loadLatest(params: {
+    ownerId: string;
+    agentId: string;
+  }): Promise<StoredPendantSessionDocument | null> {
+    const latest = [...this.rows.values()]
+      .filter(
+        (stored) =>
+          stored.session.ownerId === params.ownerId &&
+          stored.session.agentId === params.agentId &&
+          stored.session.state !== "ended",
+      )
+      .sort((left, right) => {
+        const byStartedAt = right.session.startedAt.localeCompare(
+          left.session.startedAt,
+        );
+        return byStartedAt !== 0
+          ? byStartedAt
+          : right.session.id.localeCompare(left.session.id);
+      })[0];
+    return latest ? cloneStored(latest) : null;
   }
 
   async load(params: {

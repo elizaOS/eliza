@@ -54,6 +54,31 @@ describe("PendantSessionSyncClient", () => {
     fetchWithCsrfMock.mockReset();
   });
 
+  it("discovers the current owner session and treats absence as empty", async () => {
+    const fetcher = fetchWithCsrfMock
+      .mockResolvedValueOnce(response({ ok: true, snapshot: snapshot(4) }))
+      .mockResolvedValueOnce(
+        response(
+          {
+            ok: false,
+            error: { code: "not_found", message: "no active session" },
+          },
+          404,
+        ),
+      );
+    const client = new PendantSessionSyncClient({ fetcher });
+
+    await expect(client.discoverCurrentSession()).resolves.toMatchObject({
+      session: { id: "sess-a", revision: 4 },
+    });
+    await expect(client.discoverCurrentSession()).resolves.toBeNull();
+    expect(fetcher).toHaveBeenNthCalledWith(
+      1,
+      "/api/pendant/sessions/current",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
   it("queues offline appends and drains them before polling", async () => {
     const fetcher = fetchWithCsrfMock
       .mockRejectedValueOnce(new TypeError("Failed to fetch"))

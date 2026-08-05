@@ -104,7 +104,6 @@ function which(cmd) {
 
 function installMacOs() {
   if (which("imagesnap")) {
-    console.log(`  ${green(logPrefix)} ${dim("imagesnap installed")}`);
     return;
   }
 
@@ -128,7 +127,6 @@ function installMacOs() {
 
 function installLinux() {
   if (which("fswebcam")) {
-    console.log(`  ${green(logPrefix)} ${dim("fswebcam installed")}`);
     return;
   }
 
@@ -171,7 +169,6 @@ function installLinux() {
 
 function installWindows() {
   if (which("ffmpeg")) {
-    console.log(`  ${green(logPrefix)} ${dim("ffmpeg installed")}`);
     return;
   }
 

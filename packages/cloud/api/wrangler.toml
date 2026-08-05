@@ -445,8 +445,9 @@ INFERENCE_DEFERRED_ADMISSION = "true"
 # Enables local decision memos in front of shared revisioned caches. Exact
 # organization rate and spend decisions remain in the Durable Object.
 INFERENCE_HOT_PATH_CACHES = "true"
-# Staging retains authoritative auth while admission/cache foundations soak.
-INFERENCE_AUTH_CACHE_ENABLED = "false"
+# One combined auth+org+moderation read; authoritative refresh runs only under
+# waitUntil and the 60s physical TTL bounds lost invalidation.
+INFERENCE_AUTH_CACHE_ENABLED = "true"
 # Pass-through streaming fast path (#15428): "true" pipes qualifying streamed
 # chat completions (OpenAI-compatible direct upstream, no tools/response_format/
 # web-search) byte-for-byte from the provider instead of decoding/re-encoding
@@ -563,7 +564,7 @@ __filename = '"/worker.js"'
 
 [env.production.vars]
 NODE_ENV = "production"
-THIN_INFERENCE_ENTRY_ENABLED = "false"
+THIN_INFERENCE_ENTRY_ENABLED = "true"
 # Apps deploy (Product 2): arms the Worker-side deploy trigger (configureAppsDeployTrigger,
 # bootstrap-app.ts) so POST /api/v1/apps/:id/deploy enqueues a real APP_DEPLOY job instead of
 # the no-op stub. Mirrors [env.staging.vars]. CUTOVER GATE — only effective once the prod
@@ -643,8 +644,9 @@ INFERENCE_DEFERRED_ADMISSION = "true"
 # Enables local decision memos in front of shared revisioned caches. Exact
 # organization rate and spend decisions remain in the Durable Object.
 INFERENCE_HOT_PATH_CACHES = "true"
-# Production authorization remains authoritative until the revocation gate lands.
-INFERENCE_AUTH_CACHE_ENABLED = "false"
+# One combined auth+org+moderation read; authoritative refresh runs only under
+# waitUntil and the 60s physical TTL bounds lost invalidation.
+INFERENCE_AUTH_CACHE_ENABLED = "true"
 # Pass-through streaming fast path (#15428): "true" pipes qualifying streamed
 # chat completions (OpenAI-compatible direct upstream, no tools/response_format/
 # web-search) byte-for-byte from the provider instead of decoding/re-encoding

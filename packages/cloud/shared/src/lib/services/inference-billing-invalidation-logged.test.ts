@@ -49,9 +49,23 @@ mock.module("./inference-auth-cache", () => ({
   invalidateOrgBalanceHint: async () => {
     throw invalidationErr;
   },
+  // The settler now REPUBLISHES the gate hint after a committed debit instead
+  // of leaving it absent (the 200/503 flap fix). This is the same cache target
+  // (`balance-hint`) reached through a different call, so the induced failure
+  // moves here — the assertion that a failing balance-hint repair still warns
+  // rather than vanishing is unchanged.
+  republishOrgBalanceHint: async () => {
+    throw invalidationErr;
+  },
 }));
 mock.module("./credits", () => ({
-  creditsService: { notifyBalanceDecrease: () => {} },
+  creditsService: {
+    notifyBalanceDecrease: () => {},
+    // The authoritative read the republish performs before writing. It must
+    // SUCCEED here so the induced failure under test is unambiguously the cache
+    // write, not the database read.
+    getOrganizationBalanceSnapshot: async () => ({ balanceUsd: 5, revision: "2" }),
+  },
 }));
 
 const { createLedgerDebitSettler } = await import("./inference-billing-ledger");

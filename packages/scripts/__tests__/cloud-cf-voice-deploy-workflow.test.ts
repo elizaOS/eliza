@@ -7,9 +7,9 @@
  * secrets so a managed deploy overwrites any stale Worker value first.
  */
 import { describe, expect, test } from "bun:test";
-import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolveGnuBash } from "../lib/gnu-shell.mjs";
+import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 
 const repoRoot = new URL("../../../", import.meta.url);
 

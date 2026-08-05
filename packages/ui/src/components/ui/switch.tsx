@@ -1,7 +1,9 @@
 /**
  * On/off switch rendered as a `<button role="switch">` (controlled or
  * uncontrolled) — a dependency-free toggle that does not pull in Radix, used
- * wherever a bare boolean switch is needed.
+ * wherever a bare boolean switch is needed. On coarse pointers the button's
+ * box expands to the 44px touch floor while background clipping preserves the
+ * compact 44x24 visual track.
  */
 import * as React from "react";
 
@@ -54,7 +56,7 @@ const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(
     return (
       <button
         className={cn(
-          "peer inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-sm border-2 border-transparent transition-colors      disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-accent data-[state=unchecked]:bg-input",
+          "peer inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-sm border-2 border-transparent transition-colors pointer-coarse:min-h-touch pointer-coarse:py-2.5 pointer-coarse:bg-clip-content disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-accent data-[state=unchecked]:bg-input",
           className,
         )}
         {...props}

@@ -338,6 +338,55 @@ describe("plain-text backstop — complete-direct-reply valve (2026-07-01)", () 
 	});
 });
 
+describe("voice settings write backstop (#16942)", () => {
+	const actions = [
+		{ name: "REPLY", similes: [] },
+		{
+			name: "SETTINGS",
+			similes: ["UPDATE_SETTINGS", "VOICE_SETTINGS"],
+		},
+		{ name: "VIEWS", similes: ["OPEN_SETTINGS"] },
+	] as unknown as ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>;
+
+	it.each([
+		[
+			"In this Eliza app's voice settings, turn continuous chat on in always-on mode.",
+			"On it — I will enable continuous chat in always-on mode now.",
+			["ENABLE_CONTINUOUS_CHAT", "UPDATE_VOICE_SETTINGS"],
+		],
+		[
+			"Update my voice settings: set the end-of-turn silence to 1200 ms.",
+			"Done — I set your end-of-turn silence to 1200 ms.",
+			["SET_END_OF_TURN_SILENCE", "UPDATE_VOICE_SETTINGS"],
+		],
+	])(
+		"forces SETTINGS for %j despite a simple reply and invented candidates",
+		(messageText, reply, inventedCandidates) => {
+			const output = messageHandlerFromFieldResult(
+				{
+					shouldRespond: "RESPOND",
+					contexts: ["simple"],
+					intents: [],
+					replyText: reply,
+					candidateActionNames: inventedCandidates,
+					facts: [],
+					relationships: [],
+					addressedTo: [],
+				},
+				undefined,
+				{ actions, messageText },
+			);
+
+			expect(output.plan).toMatchObject({
+				contexts: ["general"],
+				simple: false,
+				requiresTool: true,
+				candidateActions: ["SETTINGS"],
+			});
+		},
+	);
+});
+
 describe("live routing regressions", () => {
 	it("extracts inline params from planner action strings", () => {
 		const shellPlan: Record<string, unknown> = {

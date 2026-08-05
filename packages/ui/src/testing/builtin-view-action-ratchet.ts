@@ -644,7 +644,7 @@ export const BUILTIN_VIEW_MUTATION_BASELINE = [
     viewId: "pendant-transcript",
     sourceFiles: ["packages/ui/src/components/pages/PendantTranscriptView.tsx"],
     semanticActions: [],
-    maxMutationSites: 7,
+    maxMutationSites: 6,
     exemptReason:
       "device-local BLE pendant capture surface; segments live in a browser-local optimistic cache, not agent domain state",
   },

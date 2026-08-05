@@ -4,6 +4,23 @@
  */
 import type { CapacitorConfig } from "@capacitor/cli";
 import appConfig from "./app.config";
+import appPackage from "./package.json" with { type: "json" };
+
+export function resolveAndroidCapacitorPlugins(
+  dependencies: Record<string, string>,
+): string[] {
+  return Object.keys(dependencies)
+    .filter(
+      (name) =>
+        name.startsWith("@elizaos/capacitor-") ||
+        name.startsWith("@capacitor-community/") ||
+        (name.startsWith("@capacitor/") &&
+          !["@capacitor/android", "@capacitor/core", "@capacitor/ios"].includes(
+            name,
+          )),
+    )
+    .sort();
+}
 
 function isIosStoreBuild(): boolean {
   return (
@@ -197,6 +214,10 @@ const config: CapacitorConfig = {
     // package. Upstream elizaOS owns the shared app-core tree; white-label or
     // explicitly isolated builds use the app-local ignored android/ project.
     path: androidProjectPath,
+    // Android owns the fused app runtime. Keep iOS's llama-cpp-capacitor
+    // dependency out of raw Android sync while discovering every declared
+    // Capacitor plugin, including the embedded Bun host, from package metadata.
+    includePlugins: resolveAndroidCapacitorPlugins(appPackage.dependencies),
     backgroundColor: "#000000",
     allowMixedContent: false,
     captureInput: true,

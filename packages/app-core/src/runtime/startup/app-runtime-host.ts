@@ -186,7 +186,7 @@ async function ensureTriggerEventBridge(
     "../../services/trigger-event-bridge.js"
   );
   resources.triggerEventBridge = startTriggerEventBridge(runtime);
-  logger.info("[eliza] trigger event bridge armed");
+  logger.debug("[eliza] trigger event bridge armed");
 }
 
 async function ensureConnectorTargetCatalog(
@@ -218,7 +218,7 @@ async function ensureConnectorTargetCatalog(
       runtime.services.delete(CONNECTOR_TARGET_CATALOG_SERVICE_TYPE as never);
     },
   };
-  logger.info("[eliza] connector-target-catalog registered");
+  logger.debug("[eliza] connector-target-catalog registered");
 }
 
 export function stopRuntimeBootResources(

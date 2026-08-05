@@ -17,7 +17,7 @@
  * `box` node — there is one container primitive underneath.
  */
 
-import type { CSSProperties, ReactNode } from "react";
+import { type CSSProperties, type ReactNode, useId } from "react";
 import { Button as UiButton } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import {
@@ -558,6 +558,7 @@ export const Button = brand<ButtonProps>("button", function Button(props) {
 
 export const Field = brand<FieldProps>("field", function Field(props) {
   const { modality } = useSpatialContext();
+  const fieldId = useId();
   const cell = CELL_REM[modality];
   const spec = buildFieldSpec(props);
   const labelCss: CSSProperties = {
@@ -582,13 +583,17 @@ export const Field = brand<FieldProps>("field", function Field(props) {
     minWidth: 0,
     ...commonFlexStyle(spec, cell),
   };
-  // A div (not a <label>): the control is rendered conditionally, so static a11y
-  // association can't see it; the field is addressable via its agent metadata.
   return (
     <div data-spatial-kind="field" style={wrap}>
-      {spec.label ? <span style={labelCss}>{spec.label}</span> : null}
+      {spec.label ? (
+        <label htmlFor={fieldId} style={labelCss}>
+          {spec.label}
+        </label>
+      ) : null}
       {spec.kind === "textarea" ? (
         <Textarea
+          id={fieldId}
+          aria-label={spec.label ?? spec.agent?.label}
           style={inputCss}
           placeholder={spec.placeholder}
           defaultValue={spec.value}
@@ -606,7 +611,12 @@ export const Field = brand<FieldProps>("field", function Field(props) {
             props.onChange?.(value === EMPTY_SPATIAL_SELECT_VALUE ? "" : value)
           }
         >
-          <SelectTrigger style={inputCss} {...agentDataProps(spec.agent)}>
+          <SelectTrigger
+            id={fieldId}
+            aria-label={spec.label ?? spec.agent?.label}
+            style={inputCss}
+            {...agentDataProps(spec.agent)}
+          >
             <SelectValue placeholder={spec.placeholder ?? ""} />
           </SelectTrigger>
           <SelectContent>
@@ -622,6 +632,8 @@ export const Field = brand<FieldProps>("field", function Field(props) {
         </Select>
       ) : (
         <Input
+          id={fieldId}
+          aria-label={spec.label ?? spec.agent?.label}
           type={
             spec.kind === "password"
               ? "password"

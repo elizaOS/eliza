@@ -171,6 +171,7 @@ const GUI_INTERACTION_OWNERS: Readonly<
         "wallet inventory interactions",
         "Hide USDC",
         "Wallet RPC settings action",
+        'name: "RPC settings", exact: true',
       ],
     },
   ],

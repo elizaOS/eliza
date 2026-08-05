@@ -1,11 +1,11 @@
 #!/usr/bin/env node
+
 /**
  * Audits scenario-catalog ownership across deterministic, credentialed, and
  * platform-gated lanes. Missing live prerequisites remain explicit deferrals
  * so a retired workflow cannot make unexecuted scenarios look covered.
  */
 
-import { spawnSync } from "node:child_process";
 import {
   existsSync,
   lstatSync,
@@ -18,6 +18,7 @@ import {
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
+import { spawnSync } from "./lib/spawn-sync-captured.mjs";
 
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),

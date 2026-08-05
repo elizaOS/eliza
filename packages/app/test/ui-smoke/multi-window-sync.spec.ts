@@ -7,9 +7,10 @@
 //
 // This spec drives it end-to-end: two pages in the SAME browser context (same
 // origin → shared BroadcastChannel), each with its own conversation-store
-// mocks (the sync itself is purely client-side). Swiping window A to another
-// conversation must repaint window B's thread with that conversation — and
-// the follow must be bidirectional without echo loops.
+// mocks (the sync itself is purely client-side). A protocol message sent from
+// either window must repaint both threads with that conversation without an
+// echo loop. Open-thread swipe is deliberately not used: that gesture no
+// longer switches conversations.
 
 import { expect, type Page, test } from "@playwright/test";
 import {
@@ -145,7 +146,19 @@ async function openSyncedWindow(page: Page): Promise<void> {
   });
 }
 
-test("switching conversations in window A follows in window B (and back) via BroadcastChannel", async ({
+async function broadcastActiveConversation(
+  page: Page,
+  conversationId: string,
+): Promise<void> {
+  await page.evaluate(async (id) => {
+    const channel = new BroadcastChannel("elizaos-tab-sync");
+    channel.postMessage({ kind: "active-conversation", conversationId: id });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    channel.close();
+  }, conversationId);
+}
+
+test("active-conversation broadcasts switch both windows bidirectionally without echo loops", async ({
   context,
   page,
 }) => {
@@ -159,8 +172,8 @@ test("switching conversations in window A follows in window B (and back) via Bro
   const threadA = windowA.locator("#continuous-thread");
   const threadB = windowB.locator("#continuous-thread");
 
-  // A: swipe LEFT → the next (older) conversation (standup → billing).
-  await pointerDrag(windowA, "#continuous-thread", -160, 0, 12);
+  // A-originated protocol message selects billing in both mounted windows.
+  await broadcastActiveConversation(windowA, "conv-billing");
   await expect(threadA).toContainText("BILLING", { timeout: 15_000 });
 
   // B follows A's switch with NO interaction on B — pure cross-window sync.
@@ -169,8 +182,8 @@ test("switching conversations in window A follows in window B (and back) via Bro
   // No echo loop: A must still be on billing after B applied the change.
   await expect(threadA).toContainText("BILLING");
 
-  // And the sync is bidirectional: B swipes on (billing → deploy), A follows.
-  await pointerDrag(windowB, "#continuous-thread", -160, 0, 12);
+  // The same protocol is bidirectional: a B-originated selection reaches A.
+  await broadcastActiveConversation(windowB, "conv-deploy");
   await expect(threadB).toContainText("DEPLOY", { timeout: 15_000 });
   await expect(threadA).toContainText("DEPLOY", { timeout: 10_000 });
 

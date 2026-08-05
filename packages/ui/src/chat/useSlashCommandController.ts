@@ -318,6 +318,11 @@ export function useSlashCommandController(
     }
     let cancelled = false;
     const abortController = new AbortController();
+    const cancelCatalogLoad = () => {
+      cancelled = true;
+      abortController.abort();
+    };
+    window.addEventListener("pagehide", cancelCatalogLoad, { once: true });
     setLoading(true);
     setLoadError(false);
     void (async () => {
@@ -432,8 +437,8 @@ export function useSlashCommandController(
       setLoading(false);
     })();
     return () => {
-      cancelled = true;
-      abortController.abort();
+      window.removeEventListener("pagehide", cancelCatalogLoad);
+      cancelCatalogLoad();
     };
   }, [probesEnabled]);
 

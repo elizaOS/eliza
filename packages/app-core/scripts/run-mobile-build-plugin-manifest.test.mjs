@@ -71,7 +71,7 @@ it("keeps the existing iOS custom pod include gates", () => {
   expect(localPods.get("ElizaosCapacitorMobileAgentBridge")).toBe(
     "@elizaos/capacitor-mobile-agent-bridge",
   );
-  expect(localPods.get("LlamaCpp")).toBe("llama-cpp-capacitor");
+  expect(localPods.has("LlamaCpp")).toBe(false);
   expect(localPods.get("LlamaCppCapacitor")).toBe("llama-cpp-capacitor");
 });
 
@@ -83,8 +83,5 @@ it("derives the iOS CocoaPods-owned SPM strip set from manifest annotations", ()
   );
 
   expect(IOS_COCOAPODS_OWNED_SPM_PLUGINS).toEqual(ownedSpmPlugins);
-  expect([...IOS_COCOAPODS_OWNED_SPM_PLUGINS].sort()).toEqual([
-    "LlamaCpp",
-    "LlamaCppCapacitor",
-  ]);
+  expect([...IOS_COCOAPODS_OWNED_SPM_PLUGINS]).toEqual(["LlamaCppCapacitor"]);
 });

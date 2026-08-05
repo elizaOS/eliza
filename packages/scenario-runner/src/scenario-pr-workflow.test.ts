@@ -666,7 +666,7 @@ describe("scenario PR workflow contract", () => {
       "04-chat-pill-suppressed",
       "05-views-with-pill",
       "07-wallet-view-with-pill",
-      "Open RPC settings",
+      'name: "RPC settings", exact: true',
       "name: /^Tokens$/",
       "open wallet by typing",
       "home-launcher-surface",

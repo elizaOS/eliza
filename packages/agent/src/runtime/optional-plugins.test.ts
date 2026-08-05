@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import {
+  hasElizaSourceRuntimeCondition,
   OPTIONAL_STATIC_PLUGIN_PACKAGES,
   OPTIONAL_STATIC_PLUGIN_REGISTRATIONS,
   optionalPluginImportSpecifier,
@@ -88,6 +89,25 @@ describe("optional-plugin literal-import codegen", () => {
     for (const pkg of UNBUNDLED_OPTIONAL_PLUGINS) {
       expect(bundled.has(pkg), pkg).toBe(false);
     }
+  });
+});
+
+describe("workspace-source runtime condition", () => {
+  it("recognizes both supported command-line condition forms", () => {
+    expect(
+      hasElizaSourceRuntimeCondition([
+        "--no-install",
+        "--conditions=eliza-source",
+      ]),
+    ).toBe(true);
+    expect(
+      hasElizaSourceRuntimeCondition(["--conditions", "eliza-source"]),
+    ).toBe(true);
+  });
+
+  it("does not treat unrelated or missing conditions as source mode", () => {
+    expect(hasElizaSourceRuntimeCondition(["--conditions=node"])).toBe(false);
+    expect(hasElizaSourceRuntimeCondition(["--no-install"])).toBe(false);
   });
 });
 

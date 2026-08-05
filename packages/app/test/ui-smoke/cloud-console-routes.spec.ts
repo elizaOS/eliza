@@ -9,6 +9,7 @@ import {
   installDefaultAppRoutes,
   installPageDiagnosticsGuard,
 } from "./helpers";
+import { installCloudApiStubs } from "./helpers/cloud-audit-fixtures";
 
 const TEST_AUTH_ENABLED =
   process.env.VITE_PLAYWRIGHT_TEST_AUTH === "true" ||
@@ -130,6 +131,7 @@ test.describe("cloud console route wiring", () => {
   test.beforeEach(async ({ page }) => {
     installPageDiagnosticsGuard(page);
     await installDefaultAppRoutes(page);
+    await installCloudApiStubs(page);
     stewardToken = await seedStewardToken(page);
   });
 
@@ -139,7 +141,10 @@ test.describe("cloud console route wiring", () => {
     await page.goto("/dashboard/analytics", { waitUntil: "domcontentloaded" });
 
     await expect(
-      page.getByRole("status", { name: "Loading analytics" }),
+      page.getByRole("heading", { name: "Analytics", level: 1 }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Total requests" }),
     ).toBeVisible();
     await expect(
       page.getByRole("heading", { name: /^Not found$/ }),

@@ -406,6 +406,12 @@ function documentedClickNoop(
   ) {
     return "active tab re-selection leaves the selected tab unchanged";
   }
+  if (
+    details.attributes["aria-pressed"] === "true" &&
+    after.details?.attributes["aria-pressed"] === "true"
+  ) {
+    return "active pressed-control re-selection leaves the selected value unchanged";
+  }
   if (details.href) {
     try {
       const beforeUrl = new URL(before.url);
@@ -507,6 +513,95 @@ async function pressEscapeWithSemanticOutcome(
   };
 }
 
+/**
+ * Install the write/discovery seams exercised by this keyless interaction
+ * audit. Persistence and integration behavior remain owned by the live-stack
+ * specs; this gate needs canonical responses so clicking a real control proves
+ * its semantic outcome instead of tripping the stub server's catch-all 501.
+ */
+async function installInteractionAuditRoutes(page: Page): Promise<void> {
+  let character: Record<string, unknown> = {
+    name: "Playwright Smoke",
+    bio: ["Interaction-audit character"],
+    system: "",
+    adjectives: [],
+    topics: [],
+    style: { all: [], chat: [], post: [] },
+    messageExamples: [],
+    postExamples: [],
+  };
+
+  await page.route(/\/api\/character(?:\?.*)?$/, async (route) => {
+    const method = route.request().method();
+    if (method === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ character, agentName: "Playwright Smoke" }),
+      });
+      return;
+    }
+    if (method === "PUT") {
+      const payload: unknown = route.request().postDataJSON();
+      if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+        character = { ...character, ...(payload as Record<string, unknown>) };
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          character,
+          agentName: "Playwright Smoke",
+        }),
+      });
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.route(/\/api\/stream\/(?:live|offline)$/, async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    const live = new URL(route.request().url()).pathname.endsWith("/live");
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        live,
+        ...(live
+          ? {
+              destination: "Playwright Smoke",
+              inputMode: "voice",
+              audioSource: "microphone",
+            }
+          : {}),
+      }),
+    });
+  });
+
+  await page.route("**/api/pendant/sessions/current", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 404,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: false,
+        error: {
+          code: "not_found",
+          message: "No active pendant session was found",
+        },
+      }),
+    });
+  });
+}
+
 test.describe("every-view interaction coverage", () => {
   for (const view of VIEW_ROUTES) {
     test(`${view.id} — exercise every control with semantic outcomes`, async ({
@@ -546,6 +641,7 @@ test.describe("every-view interaction coverage", () => {
       await seedAppStorage(page);
       await hideChatOverlay(page);
       await installDefaultAppRoutes(page);
+      await installInteractionAuditRoutes(page);
       await openAppPath(page, view.path);
       await page.locator("body").waitFor({ state: "visible", timeout: 60_000 });
       semanticOutcomes.push(

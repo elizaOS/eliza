@@ -24,6 +24,7 @@ import {
   isDuplicateChatMessage,
   normalizeClientMessageId,
   persistExactConversationMemory,
+  persistExactConversationMemoryResult,
   setChatMessageIdOutcome,
 } from "../chat-routes.ts";
 
@@ -200,6 +201,34 @@ describe("isDuplicateChatMessage", () => {
 });
 
 describe("persistExactConversationMemory", () => {
+  it("reports whether an exact row was newly created or already committed", async () => {
+    const memory = createMessageMemory({
+      id: stringToUuid("exact-status-memory"),
+      entityId: stringToUuid("exact-status-user"),
+      agentId: stringToUuid("exact-status-agent"),
+      roomId: stringToUuid("exact-status-room"),
+      content: {
+        text: "one canonical turn",
+        channelType: ChannelType.VOICE_DM,
+      },
+    });
+    let stored: typeof memory | undefined;
+    const runtime = {
+      getMemoriesByIds: vi.fn(async () => (stored ? [stored] : [])),
+      createMemory: vi.fn(async () => {
+        stored = memory;
+      }),
+    } as unknown as AgentRuntime;
+
+    await expect(
+      persistExactConversationMemoryResult(runtime, memory),
+    ).resolves.toMatchObject({ created: true, memory: { id: memory.id } });
+    await expect(
+      persistExactConversationMemoryResult(runtime, memory),
+    ).resolves.toMatchObject({ created: false, memory: { id: memory.id } });
+    expect(runtime.createMemory).toHaveBeenCalledTimes(1);
+  });
+
   it("recognizes a committed row after the storage acknowledgement is lost", async () => {
     const memory = createMessageMemory({
       id: stringToUuid("ack-lost-memory"),

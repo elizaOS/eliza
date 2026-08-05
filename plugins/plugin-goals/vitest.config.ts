@@ -10,6 +10,7 @@ import baseConfig from "../../packages/scripts/vitest/default.config";
 
 const rootDir = dirname(fileURLToPath(import.meta.url));
 const sourceOf = (relative: string) => resolve(rootDir, relative);
+const uiSrc = sourceOf("../../packages/ui/src");
 const baseAliases = Array.isArray(baseConfig.resolve?.alias)
   ? baseConfig.resolve.alias
   : [];
@@ -31,6 +32,18 @@ export default defineConfig({
         replacement: sourceOf(
           "../../packages/agent/src/services/knowledge-graph/index.ts",
         ),
+      },
+      {
+        find: /^@elizaos\/ui$/,
+        replacement: resolve(uiSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/ui\/(.+)$/,
+        replacement: resolve(uiSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/plugin-app-control$/,
+        replacement: sourceOf("../plugin-app-control/src/index.ts"),
       },
       {
         find: /^@elizaos\/plugin-goals\/db\/schema$/,

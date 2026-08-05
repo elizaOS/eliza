@@ -2124,7 +2124,7 @@ export async function resolvePlugins(
     });
   }
   if (changes.length > 0) {
-    logger.info(`[eliza] Plugin auto-enable: ${changes.join("; ")}`);
+    logger.debug(`[eliza] Plugin auto-enable: ${changes.join("; ")}`);
   }
 
   // Provenance for "why is this package in the load set?" — surfaced when an
@@ -2288,7 +2288,7 @@ export async function resolvePlugins(
     );
   }
 
-  logger.info(`[eliza] Resolving ${pluginsToLoad.size} plugins...`);
+  logger.debug(`[eliza] Resolving ${pluginsToLoad.size} plugins...`);
   const loadStartTime = Date.now();
 
   // Built once so we don't rebuild on every optional plugin failure.
@@ -2545,7 +2545,7 @@ export async function resolvePlugins(
   // anyway — the work is CPU-bound on one thread. Blocking/all phases gate boot
   // and keep the parallel path. Mirrors the deferred static-plugin scheduling.
   const yieldBetweenLoads = phase === "deferred" && !serializePluginLoads;
-  logger.info(
+  logger.debug(
     `[eliza] Loading ${pluginsToLoad.size} plugins${serializePluginLoads ? " sequentially" : yieldBetweenLoads ? " (deferred, yielding)" : ""}...`,
   );
   const pluginResults =
@@ -2580,7 +2580,7 @@ export async function resolvePlugins(
   }
 
   const loadDuration = Date.now() - loadStartTime;
-  logger.info(`[eliza] Plugin loading took ${loadDuration}ms`);
+  logger.debug(`[eliza] Plugin loading took ${loadDuration}ms`);
 
   // Summary logging — do not treat “optional + not installed” as top-level failures.
   const optionalFailed = failedPlugins.filter((f) =>
@@ -2602,7 +2602,7 @@ export async function resolvePlugins(
     completeMsg += `, ${detailFailures.length} failed`;
   }
   if (benignOptionalFailed.length > 0) {
-    completeMsg += ` (${benignOptionalFailed.length} optional unavailable)`;
+    completeMsg += ` (${benignOptionalFailed.length} optional not installed)`;
   }
   logger.info(completeMsg);
 

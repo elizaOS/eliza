@@ -5,10 +5,10 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 
 const matrix = await import(
   new URL("../audit-mvp-evidence-matrix.mjs", import.meta.url).href

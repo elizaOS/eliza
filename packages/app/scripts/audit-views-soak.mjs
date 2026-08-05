@@ -740,6 +740,11 @@ async function main() {
     pageErrors.length === 0,
     `no uncaught page errors during the soak (${JSON.stringify(pageErrors.slice(0, 3))})`,
   );
+  const consoleErrors = consoleLog.filter((entry) => entry.type === "error");
+  assert(
+    consoleErrors.length === 0,
+    `no console errors during the soak (${JSON.stringify(consoleErrors.slice(0, 3))})`,
+  );
 
   await Promise.allSettled([...pendingNetworkResponses]);
 
@@ -779,6 +784,7 @@ async function main() {
   writeJson("audit-views-navigation.json", [...navRecords.values()]);
   writeJson("audit-views-frontend-log.json", {
     console: consoleLog,
+    consoleErrors,
     pageErrors,
   });
   writeJson("audit-views-network-log.json", networkLog);

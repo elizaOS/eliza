@@ -22,11 +22,8 @@ export function isLocalEmbeddingDisabledByEnv(): boolean {
 	return isTruthyEnv("ELIZA_DISABLE_LOCAL_EMBEDDINGS");
 }
 
-export function shouldWarmupLocalEmbeddingModel(): boolean {
-	if (isTruthyEnv("ELIZA_SKIP_LOCAL_EMBEDDING_WARMUP")) {
-		return false;
-	}
-
+/** Whether this process should own embeddings through the on-device provider. */
+export function shouldUseLocalEmbeddingModel(): boolean {
 	if (isLocalEmbeddingDisabledByEnv()) {
 		return false;
 	}
@@ -45,4 +42,15 @@ export function shouldWarmupLocalEmbeddingModel(): boolean {
 	}
 
 	return true;
+}
+
+export function shouldWarmupLocalEmbeddingModel(): boolean {
+	if (!shouldUseLocalEmbeddingModel()) {
+		return false;
+	}
+
+	// Prefetch timing is independent from provider ownership. Packaged desktop
+	// startup skips the download to reach first paint quickly, but must still
+	// configure and register the local 384-dimensional provider for first use.
+	return !isTruthyEnv("ELIZA_SKIP_LOCAL_EMBEDDING_WARMUP");
 }

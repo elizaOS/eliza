@@ -114,6 +114,23 @@ export class PendantSessionSyncClient {
     });
   }
 
+  async discoverCurrentSession(): Promise<PendantSessionSnapshot | null> {
+    try {
+      return await this.requestSnapshot(
+        `${PENDANT_SESSION_SYNC_API_PREFIX}/current`,
+        { method: "GET" },
+      );
+    } catch (error) {
+      if (
+        error instanceof PendantSessionSyncError &&
+        error.response?.error.code === "not_found"
+      ) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
   async acquireLease(
     sessionId: string,
     request: AcquirePendantLeaseRequest,

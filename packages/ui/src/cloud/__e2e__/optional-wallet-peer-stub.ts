@@ -34,7 +34,11 @@ export const optionalWalletPeerStubPlugin: Plugin = {
     pluginBuild.onLoad(
       { filter: /.*/, namespace: "optional-wallet-peer-stub" },
       () => ({
-        contents: "export default {};",
+        contents: `const inertPeer = {};
+export default inertPeer;
+export const Porto = { create: () => ({ provider: inertPeer }) };
+export const RpcSchema = { wallet_connect: { Capabilities: inertPeer } };
+export const z = { encode: (_schema, value) => value };`,
         loader: "js",
       }),
     );

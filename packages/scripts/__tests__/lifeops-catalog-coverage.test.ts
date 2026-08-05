@@ -2,10 +2,10 @@
  * Exercises the catalog coverage reporter against the real MVP scenario ledgers.
  */
 import { describe, expect, test } from "bun:test";
-import { spawnSync } from "node:child_process";
 import { cpSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 
 const scriptPath = join(
   import.meta.dirname,

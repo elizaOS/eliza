@@ -898,6 +898,14 @@ test.describe("production launcher — curated pages, reorder disabled by design
     await expect(
       grid.locator('[data-testid^="launcher-tile-"]').first(),
     ).toBeVisible({ timeout: 15_000 });
+    // Plugin-backed launcher entries arrive after the shell-owned tiles. Wait
+    // for the current catalog tail before snapshotting order so an asynchronous
+    // Phone Companion registration cannot be mistaken for drag reordering.
+    await expect(grid.getByTestId("launcher-tile-phone-companion")).toBeVisible(
+      {
+        timeout: 15_000,
+      },
+    );
 
     const initialIds = await launcherTileIds(page);
     expect(initialIds.length).toBeGreaterThan(1);

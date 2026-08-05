@@ -426,27 +426,16 @@ jobs:
           bun run --cwd plugins/plugin-local-inference robustness:real \
             2>&1 | tee "$VOICE_REAL_MATRIX_OUT/robustness-real.log"
 
-      # DESIGNED LOUD SKIP (#16972) — never a green-skip: the 26-scenario
-      # workbench gates fired for the first time ever on this lane's first
-      # real execution and 24/26 scenarios fail on uncalibrated
-      # diarization/voice-entity thresholds (DER mean 0.59, voice→entity
-      # 0.36) while every other matrix entry passes. Running it red every
-      # night would recreate the exact unobservable-regression state #16945
-      # fixed. #16972 tracks the calibration campaign; flip
-      # ELIZA_VOICE_WORKBENCH_REAL_READY=1 (repo variable) to re-enable
-      # without editing this file.
+      # Hard-real authority (#16972): the workbench consumes provider-produced
+      # diarization boundaries across the full stream and fails closed when an
+      # asserted signal has no samples. Product-quality failures stay red; this
+      # job must never convert them into an omitted or warning-only matrix.
       - name: Real voice workbench scenario matrix
-        if: vars.ELIZA_VOICE_WORKBENCH_REAL_READY == '1'
         run: |
           set -euo pipefail
           bun run --cwd plugins/plugin-local-inference voice:workbench --real \
             --out "$VOICE_REAL_MATRIX_OUT/voice-workbench-real" \
             2>&1 | tee "$VOICE_REAL_MATRIX_OUT/voice-workbench-real.log"
-
-      - name: Note skipped workbench matrix (gates uncalibrated)
-        if: vars.ELIZA_VOICE_WORKBENCH_REAL_READY != '1'
-        run: |
-          echo "::warning title=voice:workbench --real skipped::The 26-scenario workbench gates are uncalibrated for CI (24/26 fail on first-ever real execution — see elizaOS/eliza#16972). Set repo variable ELIZA_VOICE_WORKBENCH_REAL_READY=1 to re-enable. All other acoustic-matrix entries ran for real above."
 
       # bun test, NOT vitest: these suites need bun:ffi, and vitest's node
       # workers make every one of them skip — a green-skip lie this lane bans.

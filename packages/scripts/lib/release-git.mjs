@@ -7,7 +7,6 @@
  * commit, so the plan digest and release identity cannot be substituted.
  */
 
-import { spawnSync } from "node:child_process";
 import {
   recordReleaseTransition,
   verifyReleaseCandidate,
@@ -20,6 +19,7 @@ import {
   validateGitHubRepository,
   validateSourceRef,
 } from "./release-contract.mjs";
+import { spawnSync } from "./spawn-sync-captured.mjs";
 
 const RESERVED_TAGS = new Set([
   "v2.0.3-beta.8",

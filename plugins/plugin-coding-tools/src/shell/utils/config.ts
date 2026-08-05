@@ -99,7 +99,7 @@ export function loadShellConfig(): ShellConfig {
       );
     }
     config.allowedDirectory = path.resolve(allowedDirectory);
-    logger.info(
+    logger.debug(
       `Shell plugin enabled with allowed directory: ${config.allowedDirectory}, ` +
         `background: ${allowBackground}, timeout: ${timeout}ms`,
     );

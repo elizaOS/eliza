@@ -19,8 +19,8 @@
  * repo (best-effort, bounded) before asking git. If either commit can't be
  * fetched, ancestry is reported as `null` and the guard deploys (fail-open).
  */
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import { execFileSync } from "../../scripts/lib/spawn-sync-captured.mjs";
 
 import {
   decideDeployFreshness,

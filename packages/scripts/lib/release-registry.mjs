@@ -5,7 +5,6 @@
  * its registry integrity exactly matches the candidate bytes.
  */
 
-import { spawnSync } from "node:child_process";
 import path from "node:path";
 import {
   recordReleaseTransition,
@@ -18,6 +17,7 @@ import {
   validateNpmPublisher,
   validateRegistryUrl,
 } from "./release-contract.mjs";
+import { spawnSync } from "./spawn-sync-captured.mjs";
 
 export class RegistryInspectionError extends Error {
   constructor(message, { kind, status, cause } = {}) {

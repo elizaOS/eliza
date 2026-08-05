@@ -27,7 +27,6 @@ import {
   summarizeStability,
 } from "../../../testing/layout-stability.ts";
 import {
-  touchDragHold,
   touchLongPress,
   touchSwipe,
   touchTap,
@@ -885,8 +884,9 @@ try {
       `no home widget hit its error boundary (${errorCards.length})`,
     );
   }
-  // Notifications render inline on the home column. Their shade is operated by
-  // directional gestures, without redundant count, clear, or collapse chrome.
+  // Notifications render inline on the home column. The consolidated shade is
+  // control-free and operated by directional gestures; this run covers both
+  // live travel and settled-state ownership without redundant global chrome.
   {
     const center = mobile.getByTestId("home-notification-center");
     await center.waitFor({ state: "visible", timeout: 5000 });
@@ -911,6 +911,7 @@ try {
     );
     assert(
       (await center.getByTestId("notifications-count").count()) === 0 &&
+        (await center.getByTestId("notifications-count-button").count()) === 0 &&
         (await center.getByTestId("notifications-clear-all").count()) === 0 &&
         (await center.getByTestId("notifications-collapse").count()) === 0,
       "the gesture-only shade renders no redundant global controls",
@@ -1427,7 +1428,7 @@ try {
     (await desktop.getByTestId("home-tile-phone").count()) === 0,
     "phone tile hidden when native disabled",
   );
-  // Desktop uses the same inline notification center and directional shade.
+  // Desktop uses the same inline, control-free directional shade.
   {
     const center = desktop.getByTestId("home-notification-center");
     await center.waitFor({ state: "visible", timeout: 5000 });

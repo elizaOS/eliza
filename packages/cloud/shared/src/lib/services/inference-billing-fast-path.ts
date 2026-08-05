@@ -18,10 +18,17 @@ import { clearOrgAdmissionRefused, markOrgAdmissionRefused } from "./inference-a
 import {
   INFERENCE_AUTH_CONTEXT_VERSION,
   invalidateOrgBalanceHint,
-  lowerOrgBalanceHint,
   readOrgBalanceHint,
   writeOrgBalanceHint,
 } from "./inference-auth-cache";
+import { republishOrgBalanceHintAfterDebit } from "./inference-balance-republish";
+
+/**
+ * Re-exported so the settler call site below and existing importers keep a
+ * single name. The implementation lives in `inference-balance-republish` to
+ * keep it reachable from the DB ledger without widening that module's graph.
+ */
+export { republishOrgBalanceHintAfterDebit };
 
 /** A durable record of an in-flight optimistic charge (the backstop). */
 export interface PendingInferenceCharge {
@@ -430,11 +437,13 @@ export async function debitInferenceCost(
         persistedAmountUsd,
       });
     }
-    // Lower-only: a debit can only REDUCE the balance, so never let an
-    // out-of-order concurrent debit raise the cached gate hint (#9899 #12).
-    // Top-ups go through a separate path that invalidates the hint.
+    // The committed debit already evicted the gate hint via onCreditMutation.
+    // Republish authoritative balance + revision so the NEXT turn hits a warm
+    // entry instead of a fail-closed cache-warming 503. A concurrent debit can
+    // only lower the value afterwards (lowerOrgBalanceHint), so this can never
+    // raise the gate above authoritative state.
     try {
-      await lowerOrgBalanceHint(ctx.organizationId, result.newBalance, Date.now());
+      await republishOrgBalanceHintAfterDebit(ctx.organizationId);
     } catch (cause) {
       markOrgAdmissionRefused(ctx.organizationId);
       try {

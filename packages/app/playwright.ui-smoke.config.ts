@@ -288,8 +288,9 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `${JSON.stringify(nodeExecutable)} ${JSON.stringify(path.join(repoRoot, "packages", "app-core", "scripts", "run-node-tsx.mjs"))} ${JSON.stringify(uiSmokeLiveStack)}`,
+    command: `${JSON.stringify(nodeExecutable)} ${JSON.stringify(path.join(repoRoot, "packages", "app-core", "scripts", "run-node-tsx.mjs"))} --exit-with-parent ${JSON.stringify(uiSmokeLiveStack)}`,
     cwd: repoRoot,
+    gracefulShutdown: { signal: "SIGTERM", timeout: 15_000 },
     url: `http://127.0.0.1:${uiSmokePort}`,
     reuseExistingServer,
     // A cold renderer build transforms ~3000 modules (~12 min) before the smoke

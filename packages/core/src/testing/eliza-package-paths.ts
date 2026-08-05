@@ -36,6 +36,7 @@ function getRepoLocalWorkspaceRoot(
 			"../eliza/packages/app-core",
 		],
 		"@elizaos/shared": ["eliza/packages/shared", "../eliza/packages/shared"],
+		"@elizaos/ui": ["packages/ui", "eliza/packages/ui", "../eliza/packages/ui"],
 	};
 
 	// Workspace plugins live under plugins/ (or eliza/plugins/ when this repo

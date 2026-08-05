@@ -115,6 +115,13 @@ const reserveCredits = mock(
     };
   },
 );
+const reserveFlatUsageCredits = mock(async (context: { requestId?: string | null }) => ({
+  reservedAmount: 0.01,
+  reservationTransactionId: "flat-reservation",
+  affiliateAttribution: null,
+  affiliatePayoutSourceId: context.requestId ? `ai_billing:affiliate:${context.requestId}` : null,
+  reconcile: reconcileReservation,
+}));
 let affiliateDebitError: Error | null = null;
 const collectAffiliateInferenceFallback = mock(async (params: { actualCost: number }) => {
   if (affiliateDebitError) throw affiliateDebitError;
@@ -153,6 +160,7 @@ const settleInferenceAdmissionLease = mock(async () => undefined);
 
 mock.module("./ai-billing", () => ({
   reserveCredits,
+  reserveFlatUsageCredits,
   getAffiliatePayoutSourceId: (context: { requestId?: string | null }) =>
     `ai_billing:affiliate:${context.requestId}`,
   InsufficientCreditsError: class InsufficientCreditsError extends Error {
@@ -292,6 +300,7 @@ beforeEach(() => {
   affiliateReads = 0;
   __clearInferenceAffiliateCacheState();
   reserveCredits.mockClear();
+  reserveFlatUsageCredits.mockClear();
   reconcileReservation.mockClear();
   collectAffiliateInferenceFallback.mockClear();
   debitInferenceCost.mockClear();
@@ -412,6 +421,31 @@ test("warm Worker admission writes only the Durable Object lease before provider
   );
   expect(settleInferenceAdmissionLease).toHaveBeenCalledTimes(1);
   expect(settleInferenceAdmissionLease.mock.calls[0]?.[1]).toBe(0.01);
+});
+
+test("flat Worker admission leases the fixed catalog cost without token pricing reads", async () => {
+  const background: Promise<unknown>[] = [];
+  const flatCost = {
+    totalCost: 0.025,
+    baseTotalCost: 0.02,
+    platformMarkup: 0.005,
+  };
+
+  const admission = await admitOrganizationInference({
+    ...admissionParams(nextModel(), background),
+    flatCost,
+  });
+  const lease = acquireInferenceAdmissionLease.mock.calls.at(-1)?.[0] as
+    | { estimatedCostUsd: number }
+    | undefined;
+
+  expect(admission.mode).toBe("durable_object_debit");
+  expect(lease?.estimatedCostUsd).toBe(flatCost.totalCost);
+  expect(pairReads).toBe(0);
+  expect(fallbackReads).toBe(0);
+  expect(catalogReads).toBe(0);
+  expect(reserveCredits).not.toHaveBeenCalled();
+  expect(reserveFlatUsageCredits).not.toHaveBeenCalled();
 });
 
 test("unknown provider cost retains the admitted estimate and wins a later zero settlement", async () => {

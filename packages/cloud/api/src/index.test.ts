@@ -1,4 +1,4 @@
-// Exercises cloud API src index.test behavior with deterministic Worker route fixtures.
+/** Verifies Cloud Worker routing and thin-inference dispatch with deterministic fixtures. */
 import { describe, expect, test } from "bun:test";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import cloudApiWorker, {
@@ -40,13 +40,20 @@ describe("thin inference entry dispatch", () => {
     ).toBe(true);
   });
 
-  test("matches only the exact canonical chat completions route", () => {
+  test("matches canonical generative routes without accepting suffixes", () => {
     expect(isCanonicalInferencePath("/api/v1/chat/completions")).toBe(true);
     expect(isCanonicalInferencePath("/api/v1/chat/completions/")).toBe(false);
     expect(isCanonicalInferencePath("/api/v1/chat/completions/admin")).toBe(
       false,
     );
-    expect(isCanonicalInferencePath("/api/v1/embeddings")).toBe(false);
+    expect(isCanonicalInferencePath("/api/v1/embeddings")).toBe(true);
+    expect(isCanonicalInferencePath("/api/v1/messages")).toBe(true);
+    expect(isCanonicalInferencePath("/api/v1/voice/stt")).toBe(true);
+    expect(isCanonicalInferencePath("/api/v1/voice/tts")).toBe(true);
+    expect(isCanonicalInferencePath("/api/v1/generate-image")).toBe(true);
+    expect(isCanonicalInferencePath("/api/v1/apps/app-1/chat")).toBe(true);
+    expect(isCanonicalInferencePath("/api/agents/agent-1/a2a")).toBe(true);
+    expect(isCanonicalInferencePath("/api/v1/models")).toBe(false);
   });
 
   test("dispatches canonical chat requests through the thin app when enabled", async () => {
