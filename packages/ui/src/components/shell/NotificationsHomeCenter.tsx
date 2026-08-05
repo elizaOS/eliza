@@ -131,6 +131,7 @@ import {
 } from "./liquid-glass";
 import {
   applyNotificationPullPresentation,
+  clearNotificationPullVisibilityOverrides,
   dampenPull,
   notificationGroupContainerOffset,
   notificationGroupPullOffset,
@@ -1264,6 +1265,12 @@ export function NotificationsHomeCenter({
         // targeting zero so padding and card transforms share one transition.
         if (pullReleaseSettling) list.getBoundingClientRect();
         list.style.setProperty("--eliza-notif-pull-overshoot", "0px");
+      }
+      // A cancelled pull retains its last visibility while it reverses. Once
+      // every gesture-owned settle is over, remove the imperative variables so
+      // persistent keyed rows begin the next close from React's settled state.
+      if (!pullCancellingDirection && !pullReleaseSettling) {
+        clearNotificationPullVisibilityOverrides(centerRef.current);
       }
       return;
     }
