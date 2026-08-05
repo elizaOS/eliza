@@ -13,7 +13,11 @@ const ROUTES = [
   { path: "/get-started", heading: /Anywhere you want her to be/i },
   { path: "/connected", url: /\/get-started$/ },
   // "*" is the App.tsx catch-all; exercised via a representative unknown path.
-  { path: "*", goto: "/this-page-does-not-exist", heading: /This page doesn't exist/i },
+  {
+    path: "*",
+    goto: "/this-page-does-not-exist",
+    heading: /This page doesn't exist/i,
+  },
 ] as const;
 
 const ALLOWED_CONSOLE_NOISE: RegExp[] = [
