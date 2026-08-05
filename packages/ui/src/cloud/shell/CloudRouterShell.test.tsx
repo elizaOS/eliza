@@ -1,9 +1,11 @@
-/** Verifies CloudRouterShell apex catch-all through the package's configured test harness. */
+/** Verifies the CloudRouterShell catch-all host matrix — apex console redirects (with zero network), app-mode gating on the Eliza app hosts, and untouched fall-through everywhere else — through the package's configured test harness. */
 // @vitest-environment jsdom
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
-import { cleanup, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
+import { appModeNavigation } from "../app-mode/app-mode";
 import { AppCatchAllRoute, DASHBOARD_REDIRECTS } from "./CloudRouterShell";
 
 /**
@@ -62,6 +64,67 @@ function renderCatchAll(initialPath = "/"): void {
       </Routes>
     </MemoryRouter>,
   );
+}
+
+/** Same catch-all render, plus the query provider + route markers the lazy
+ * app-mode gate needs. Used by the app-host tests; the apex tests keep the
+ * bare render above, proving the apex path needs none of this. */
+function renderCatchAllWithAppModeMarkers(initialPath = "/"): void {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={[initialPath]}>
+        <Routes>
+          <Route path="/login" element={<div data-testid="login-page" />} />
+          <Route
+            path="/dashboard"
+            element={<div data-testid="console-home" />}
+          />
+          <Route
+            path="/dashboard/agents"
+            element={<div data-testid="instances-page" />}
+          />
+          <Route path="/join" element={<div data-testid="join-page" />} />
+          <Route
+            path="*"
+            element={
+              <AppCatchAllRoute appElement={<div data-testid="agent-app" />} />
+            }
+          />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
+const realFetch = globalThis.fetch;
+let fetchLog: string[] = [];
+
+/** Hand-rolled fetch recorder: logs `METHOD url` for every call and answers
+ * with `respond` (defaulting to an empty agents list). */
+function installFetchRecorder(
+  respond?: (url: string, init?: RequestInit) => Response,
+): void {
+  fetchLog = [];
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    fetchLog.push(`${init?.method ?? "GET"} ${url}`);
+    return Promise.resolve(
+      respond
+        ? respond(url, init)
+        : new Response(JSON.stringify({ success: true, data: [] }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+    );
+  }) as typeof fetch;
+}
+
+async function flushMicrotasks(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
 }
 
 describe("CloudRouterShell apex catch-all", () => {
@@ -141,6 +204,126 @@ describe("CloudRouterShell apex catch-all", () => {
     renderCatchAll();
     expect(screen.getByTestId("agent-app")).toBeTruthy();
     expect(screen.queryByTestId("login-page")).toBeNull();
+  });
+});
+
+describe("CloudRouterShell apex catch-all — zero app-mode network", () => {
+  afterEach(() => {
+    cleanup();
+    localStorage.clear();
+    globalThis.fetch = realFetch;
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: realLocation,
+    });
+  });
+
+  it("an unauthenticated apex render performs ZERO fetches (byte-identical apex)", async () => {
+    setHostname("elizacloud.ai");
+    installFetchRecorder();
+    renderCatchAll();
+    expect(screen.getByTestId("login-page")).toBeTruthy();
+    await flushMicrotasks();
+    expect(fetchLog).toEqual([]);
+  });
+
+  it("an authenticated apex render performs ZERO fetches (no agents probe, no pairing)", async () => {
+    setHostname("elizacloud.ai");
+    installFetchRecorder();
+    localStorage.setItem(STEWARD_TOKEN_KEY, stewardToken(FUTURE_EXP));
+    renderCatchAll();
+    expect(screen.getByTestId("console-home")).toBeTruthy();
+    await flushMicrotasks();
+    expect(fetchLog).toEqual([]);
+  });
+});
+
+describe("CloudRouterShell app-mode catch-all (app.elizacloud.ai)", () => {
+  const realAssign = appModeNavigation.assign;
+  let assignedUrls: string[] = [];
+
+  afterEach(() => {
+    cleanup();
+    localStorage.clear();
+    globalThis.fetch = realFetch;
+    appModeNavigation.assign = realAssign;
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: realLocation,
+    });
+  });
+
+  it("sends an unauthenticated app-host visitor through the login flow, not the agent app", async () => {
+    setHostname("app.elizacloud.ai");
+    installFetchRecorder();
+    renderCatchAllWithAppModeMarkers();
+    // The gate chunk is lazy; the login redirect lands after it loads.
+    expect(await screen.findByTestId("login-page")).toBeTruthy();
+    expect(screen.queryByTestId("agent-app")).toBeNull();
+    expect(fetchLog).toEqual([]);
+  });
+
+  it("gates every non-registered (marketing/app) path on the app host, not just the root", async () => {
+    setHostname("app.elizacloud.ai");
+    installFetchRecorder();
+    renderCatchAllWithAppModeMarkers("/some/marketing-path");
+    expect(await screen.findByTestId("login-page")).toBeTruthy();
+    expect(screen.queryByTestId("agent-app")).toBeNull();
+  });
+
+  it("routes a signed-in app-host visitor with one running dedicated agent into its web UI via pairing", async () => {
+    setHostname("app.elizacloud.ai");
+    const redirectUrl = "https://agent-1.elizacloud.ai/pair?token=tok";
+    installFetchRecorder((url, init) => {
+      if (url === "/api/v1/eliza/agents/agent-1/pairing-token") {
+        return new Response(JSON.stringify({ data: { redirectUrl } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url === "/api/v1/eliza/agents" && (init?.method ?? "GET") === "GET") {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            data: [
+              {
+                id: "agent-1",
+                agentName: "Eliza",
+                status: "running",
+                executionTier: "dedicated-always",
+                lastHeartbeatAt: "2026-08-05T00:00:00.000Z",
+                updatedAt: "2026-08-05T00:00:00.000Z",
+              },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response(JSON.stringify({ error: `unstubbed ${url}` }), {
+        status: 500,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    assignedUrls = [];
+    appModeNavigation.assign = (url: string) => {
+      assignedUrls.push(url);
+    };
+    localStorage.setItem(STEWARD_TOKEN_KEY, stewardToken(FUTURE_EXP));
+    renderCatchAllWithAppModeMarkers();
+
+    await waitFor(() => expect(assignedUrls).toEqual([redirectUrl]));
+    expect(fetchLog).toContain(
+      "POST /api/v1/eliza/agents/agent-1/pairing-token",
+    );
+    expect(screen.queryByTestId("agent-app")).toBeNull();
+  });
+
+  it("app-staging.elizacloud.ai is an app-mode host too (staging mirrors prod)", async () => {
+    setHostname("app-staging.elizacloud.ai");
+    installFetchRecorder();
+    renderCatchAllWithAppModeMarkers();
+    expect(await screen.findByTestId("login-page")).toBeTruthy();
+    expect(screen.queryByTestId("agent-app")).toBeNull();
   });
 });
 
