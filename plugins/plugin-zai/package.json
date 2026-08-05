@@ -57,7 +57,7 @@
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.20",
     "@elizaos/core": "workspace:*",
-    "ai": "^6.0.23"
+    "ai": "^7.0.0"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.6",
