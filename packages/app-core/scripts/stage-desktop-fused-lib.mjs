@@ -331,7 +331,10 @@ function backendCmakeFlags(backend) {
     case "hip":
       return ["-DGGML_HIP=ON"];
     case "cpu":
-      return [];
+      // llama.cpp enables Metal by default on macOS. The explicit CPU variant
+      // must disable it so hosts with Command Line Tools but no Metal compiler
+      // still produce the documented CPU-only fused runtime.
+      return ["-DGGML_METAL=OFF"];
     default:
       die(`unknown backend ${backend}`);
   }
