@@ -409,8 +409,11 @@ export function buildOnstart(opts) {
     '[ -n "$BUNDLE_DIR" ] || fail bundle-dir',
     // biome-ignore lint/suspicious/noTemplateCurlyInString: bash env expansion, not a JS template
     'BUNDLE_DIR="${BUNDLE_DIR%/}"',
-    'bun run --cwd packages/evidence certify:rollup -- --bundle "$BUNDLE_DIR" --out "$BUNDLE_DIR/verdicts.json" || fail rollup',
-    `bun run --cwd packages/evidence certify:sign -- --bundle "$BUNDLE_DIR" --verdicts "$BUNDLE_DIR/verdicts.json" --reviewer-id '${opts.reviewerId}' --reviewer-kind agent || fail sign`,
+    // Verdicts live beside the bundle, never inside it: certify:sign's
+    // integrity check refuses a bundle containing unlisted files.
+    'VERDICTS="${BUNDLE_DIR%/}-verdicts.json"',
+    'bun run --cwd packages/evidence certify:rollup -- --bundle "$BUNDLE_DIR" --out "$VERDICTS" || fail rollup',
+    `bun run --cwd packages/evidence certify:sign -- --bundle "$BUNDLE_DIR" --verdicts "$VERDICTS" --reviewer-id '${opts.reviewerId}' --reviewer-kind agent || fail sign`,
     `echo "${CERT_BEGIN_MARKER}"`,
     'cat "$BUNDLE_DIR/certification.json" || fail cert-read',
     'echo ""',

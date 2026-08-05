@@ -118,7 +118,10 @@ function main(argv, env) {
     opts.tier,
   ]);
   const bundleDir = newestBundleDir();
-  const verdictsPath = path.join(bundleDir, "verdicts.json");
+  // Sibling of the bundle dir, never inside it: certify:sign's integrity
+  // check refuses to sign a bundle containing files the manifest does not
+  // list, and verdicts.json is reviewer input, not bundle evidence.
+  const verdictsPath = `${bundleDir.replace(/\/+$/, "")}-verdicts.json`;
   run("certify:rollup", "bun", [
     "run",
     "--cwd",
