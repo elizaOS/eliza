@@ -315,7 +315,7 @@ async function settleLedgerCharge(
     await CacheInvalidation.onCreditMutation(ctx.organizationId).catch(
       reportInvalidationFailure(ctx.organizationId, "credit-mutation"),
     );
-    invalidateOrganizationCache(ctx.organizationId).catch(
+    await invalidateOrganizationCache(ctx.organizationId).catch(
       reportInvalidationFailure(ctx.organizationId, "organization-cache"),
     );
     // onCreditMutation above already DELETED the gate hint. Republish it with
@@ -332,6 +332,9 @@ async function settleLedgerCharge(
     try {
       await republishOrgBalanceHintAfterDebit(ctx.organizationId);
     } catch (cause) {
+      // error-policy:J7 diagnostics must not kill the settle path: debit already
+      // committed; refuse the org and clear the gate rather than throw into the
+      // user's response (KV rethrows for task replay; ledger does not).
       markOrgAdmissionRefused(ctx.organizationId);
       await invalidateOrgBalanceHint(ctx.organizationId).catch(
         reportInvalidationFailure(ctx.organizationId, "balance-hint"),
@@ -367,7 +370,10 @@ async function settleLedgerCharge(
       amountUsd,
       source,
     });
-    invalidateOrgBalanceHint(ctx.organizationId).catch(
+    // Awaited (not fire-and-forget): this invalidation forces the org off the
+    // cacheOnly optimistic path after a refused debit. Dropped, a warm hint
+    // would over-admit on the next turn (#17768 review).
+    await invalidateOrgBalanceHint(ctx.organizationId).catch(
       reportInvalidationFailure(ctx.organizationId, "balance-hint"),
     );
   }
