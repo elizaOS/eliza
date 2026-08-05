@@ -25,6 +25,7 @@ describe("element-reporter buildPayload", () => {
 
     const payload = buildPayload(registry);
     expect(payload.viewId).toBe("wallet");
+    expect(payload.viewType).toBe("gui");
     const byId = Object.fromEntries(payload.elements.map((e) => [e.id, e]));
     expect(byId.amount).toMatchObject({
       id: "amount",
