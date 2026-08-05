@@ -161,6 +161,17 @@ const calendarView = {
   viewType: "gui" as const,
 };
 
+const simpleCalendarView = {
+  id: "simple-calendar",
+  label: "Simple Calendar",
+  available: true,
+  pluginName: "@elizaos/plugin-simple-views",
+  path: "/simple-calendar",
+  bundleUrl: "/api/views/simple-calendar/bundle.js",
+  surface: { header: "fullscreen" as const },
+  viewType: "gui" as const,
+};
+
 const notesFullscreenView = {
   id: "notes",
   label: "Notes",
