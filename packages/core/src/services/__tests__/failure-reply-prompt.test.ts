@@ -6,6 +6,7 @@
  */
 import { APICallError, RetryError } from "ai";
 import { describe, expect, it } from "vitest";
+import { ModelType } from "../../types";
 import {
 	buildFailureReplyPrompt,
 	isModelProviderFallbackError,
@@ -224,6 +225,19 @@ describe("isRateLimitError", () => {
 });
 
 describe("isModelProviderFallbackError", () => {
+	it("treats typed local-inference unavailability as a provider failover signal", () => {
+		const error = Object.assign(new Error("native binding unavailable"), {
+			code: "LOCAL_INFERENCE_UNAVAILABLE",
+		});
+
+		expect(
+			isModelProviderFallbackError(error, ModelType.RESPONSE_HANDLER),
+		).toBe(true);
+		expect(isModelProviderFallbackError(error, ModelType.TEXT_TO_SPEECH)).toBe(
+			false,
+		);
+	});
+
 	it("reuses the rate-limit classifier for CLI-SDK subscription/session limits", () => {
 		expect(
 			isModelProviderFallbackError(
