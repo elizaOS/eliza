@@ -346,17 +346,17 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
   transition:
     opacity var(--eliza-notif-opacity-duration, var(--eliza-notif-settle-duration, ${SHADE_SETTLE_MS}ms)) ${SHADE_EASING};
 }
-/* The row button owns the copy, but the glass surface is the visible card.
-   Fade that surface with the content during a close gesture; otherwise the
-   copy disappears into an opaque rounded shell and the card reads as solid.
-   The important override is deliberate because NotificationRow keeps its
-   gesture surface at inline opacity 1 while it owns horizontal dismissing. */
-.eliza-notif-scroll:is([data-shade-dragging], [data-shade-settling]) [data-notification-group-content] .eliza-notif-row-surface {
-  opacity: var(--eliza-notif-group-surface-visibility, 1) !important;
-  transition: opacity var(--eliza-notif-opacity-duration, var(--eliza-notif-settle-duration, ${SHADE_SETTLE_MS}ms)) ${SHADE_EASING};
-}
+/* Direct manipulation moves one unchanged physical card: dimming its glass
+   shell while the pointer is still down reads as a lighting/material swap.
+   Once the close is committed, the complete surface fades on the settle clock
+   so fill, copy, rim, and stacked edges still disappear together. */
 .eliza-notif-scroll[data-shade-dragging] [data-notification-group-content] .eliza-notif-row-surface {
+  opacity: 1 !important;
   transition: none;
+}
+.eliza-notif-scroll[data-shade-settling] [data-notification-group-content] .eliza-notif-row-surface {
+  opacity: var(--eliza-notif-group-content-visibility, 1) !important;
+  transition: opacity var(--eliza-notif-opacity-duration, var(--eliza-notif-settle-duration, ${SHADE_SETTLE_MS}ms)) ${SHADE_EASING};
 }
 /* A cancelled pull reverses the information fade on the same presentation
    clock while the unchanged glass shell stays in place. */

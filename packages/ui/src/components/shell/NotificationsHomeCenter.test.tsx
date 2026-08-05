@@ -61,7 +61,6 @@ import {
 } from "./NotificationsHomeCenter";
 import { NOTIFICATION_ROW_SETTLE_MS } from "./notification-shade-content";
 import {
-  notificationMaterialVisibility,
   notificationPullOvershootOffset,
   notificationPullPresentation,
   PULL_TRAVEL_PX,
@@ -611,13 +610,6 @@ describe("dampenPull", () => {
     expect(notificationPullOvershootOffset(PULL_TRAVEL_PX)).toBe(0);
     expect(notificationPullOvershootOffset(overpull)).toBeCloseTo(9.8, 1);
     expect(notificationPullOvershootOffset(-overpull)).toBeCloseTo(-9.8, 1);
-  });
-
-  it("eases glass material away from rest without a first-frame shade step", () => {
-    expect(notificationMaterialVisibility(1)).toBe(1);
-    expect(notificationMaterialVisibility(0.98)).toBeCloseTo(0.9996, 4);
-    expect(notificationMaterialVisibility(0.5)).toBe(0.75);
-    expect(notificationMaterialVisibility(0)).toBe(0);
   });
 
   it("fades the count before upward overpull reaches its clipping boundary", () => {
@@ -1764,7 +1756,9 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     const list = screen.getByTestId("home-notification-list");
     const priorityRow = screen.getByTestId("notification-row");
     expandShade();
-    expect(screen.getAllByTestId("notification-stack-peek")).toHaveLength(2);
+    const initialPeeks = screen.getAllByTestId("notification-stack-peek");
+    expect(initialPeeks).toHaveLength(2);
+    const initialPeekOpacities = initialPeeks.map((peek) => peek.style.opacity);
 
     fireEvent.pointerDown(list, {
       pointerType: "mouse",
@@ -1799,8 +1793,9 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     ).toBeLessThan(1);
     expect(screen.queryByTestId("notifications-count")).toBeNull();
     const peeks = screen.getAllByTestId("notification-stack-peek");
-    expect(Number.parseFloat(peeks[0].style.opacity)).toBeLessThan(1);
-    expect(Number.parseFloat(peeks[1].style.opacity)).toBeLessThan(1);
+    expect(peeks.map((peek) => peek.style.opacity)).toEqual(
+      initialPeekOpacities,
+    );
 
     fireEvent.pointerUp(list, {
       pointerType: "mouse",
@@ -1826,20 +1821,16 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(settledContentRule).not.toContain(
       "--eliza-notif-group-content-visibility",
     );
-    const settledSurfaceRule = [
-      ...(list.parentElement
-        ?.querySelector("style")
-        ?.textContent?.matchAll(
-          /\.eliza-notif-scroll:is\(\[data-shade-dragging\], \[data-shade-settling\]\)[^{}]*\.eliza-notif-row-surface\s*\{([^}]*)\}/g,
-        ) ?? []),
-    ]
-      .map((match) => match[1])
-      .find((rule) => rule.includes("opacity:"));
+    const settledSurfaceRule = list.parentElement
+      ?.querySelector("style")
+      ?.textContent?.match(
+        /\.eliza-notif-scroll\[data-shade-settling\][^{}]*\.eliza-notif-row-surface\s*\{([^}]*)\}/,
+      )?.[1];
     expect(settledSurfaceRule).toContain("opacity:");
     expect(settledSurfaceRule).toContain("!important");
     expect(settledSurfaceRule).toContain("transition:");
     expect(list.parentElement?.querySelector("style")?.textContent).toContain(
-      ".eliza-notif-scroll:is([data-shade-dragging], [data-shade-settling]) [data-notification-group-content] .eliza-notif-row-surface",
+      ".eliza-notif-scroll[data-shade-settling] [data-notification-group-content] .eliza-notif-row-surface",
     );
     finishShadeCollapse();
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
@@ -1912,6 +1903,11 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
       /\.eliza-notif-scroll\[data-shade-dragging\]\s*\{([^}]*)\}/,
     )?.[1];
     expect(activeDragRule).not.toContain("mask-image");
+    const activeSurfaceRule = css.match(
+      /\.eliza-notif-scroll\[data-shade-dragging\][^{}]*\.eliza-notif-row-surface\s*\{([^}]*)\}/,
+    )?.[1];
+    expect(activeSurfaceRule).toContain("opacity: 1 !important");
+    expect(activeSurfaceRule).toContain("transition: none");
     const releaseSettleRule = css.match(
       /\.eliza-notif-scroll\[data-shade-release-settling\]\s*\{([^}]*)\}/,
     )?.[1];
@@ -1950,13 +1946,6 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(filesContentOpacity).toBeGreaterThan(0);
     expect(filesContentOpacity).toBeLessThan(1);
     expect(agentContentOpacity).toBeLessThan(filesContentOpacity);
-    const filesSurfaceOpacity = Number.parseFloat(
-      filesGroup?.style.getPropertyValue(
-        "--eliza-notif-group-surface-visibility",
-      ) ?? "0",
-    );
-    expect(filesSurfaceOpacity).toBeGreaterThan(filesContentOpacity);
-    expect(filesSurfaceOpacity).toBeLessThan(1);
     expect(screen.queryByTestId("notifications-count")).toBeNull();
     expect(screen.queryByTestId("notifications-collapse-footer")).toBeNull();
 
@@ -1998,11 +1987,6 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(
       filesGroup?.style.getPropertyValue(
         "--eliza-notif-group-content-visibility",
-      ),
-    ).toBe("");
-    expect(
-      filesGroup?.style.getPropertyValue(
-        "--eliza-notif-group-surface-visibility",
       ),
     ).toBe("");
     expect(
@@ -2207,11 +2191,6 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(
       priorityGroup?.style.getPropertyValue(
         "--eliza-notif-group-content-visibility",
-      ),
-    ).toBe("");
-    expect(
-      priorityGroup?.style.getPropertyValue(
-        "--eliza-notif-group-surface-visibility",
       ),
     ).toBe("");
     expect(
