@@ -1,0 +1,43 @@
+{
+  "name": "my-project",
+  "version": "0.1.0",
+  "description": "My Project workspace built on elizaOS",
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "bun@1.4.0-canary.1",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "workspaces": [
+    "apps/*"
+  ],
+  "overrides": {
+    "@elizaos/plugin-local-inference": "npm:empty-npm-package@1.0.0",
+    "@whiskeysockets/baileys": "npm:empty-npm-package@1.0.0",
+    "node-llama-cpp": "npm:empty-npm-package@1.0.0"
+  },
+  "resolutions": {
+    "@elizaos/plugin-local-inference": "npm:empty-npm-package@1.0.0",
+    "@whiskeysockets/baileys": "npm:empty-npm-package@1.0.0",
+    "node-llama-cpp": "npm:empty-npm-package@1.0.0"
+  },
+  "scripts": {
+    "build": "bun run --cwd apps/app build",
+    "build:desktop": "ELIZA_APP_NAME=\"My Project\" ELIZA_APP_ID=com.example.myproject ELIZA_NAMESPACE=my-project node scripts/run-eliza-app-core-script.mjs desktop-build.mjs build --variant=base",
+    "build:ios": "node scripts/run-eliza-app-core-script.mjs run-mobile-build.mjs ios",
+    "build:android": "node scripts/run-eliza-app-core-script.mjs run-mobile-build.mjs android",
+    "dev": "node scripts/run-eliza-app-core-script.mjs dev-ui.mjs --name=my-project",
+    "dev:ui": "node scripts/run-eliza-app-core-script.mjs dev-ui.mjs --name=my-project --ui-only",
+    "dev:desktop": "ELIZA_NAMESPACE=my-project node scripts/run-eliza-app-core-script.mjs dev-platform.mjs",
+    "test": "bun run --cwd apps/app test",
+    "typecheck": "bun run --cwd apps/app typecheck",
+    "lint": "bun run --cwd apps/app lint",
+    "verify": "bun run typecheck && bun run lint",
+    "setup:upstreams": "node scripts/eliza-source-mode.mjs local --install",
+    "eliza:local": "node scripts/eliza-source-mode.mjs local --install",
+    "eliza:eject": "node scripts/eliza-source-mode.mjs local --install",
+    "eject:eliza": "node scripts/eliza-source-mode.mjs local --install",
+    "eliza:packages": "node scripts/eliza-source-mode.mjs packages --install",
+    "postinstall": "node scripts/ensure-elizaos-optional-app-stubs.mjs"
+  }
+}
