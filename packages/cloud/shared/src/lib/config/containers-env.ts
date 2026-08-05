@@ -403,6 +403,36 @@ export const containersEnv = {
     );
   },
 
+  /**
+   * Default per-agent container memory ceiling in MiB, applied by the docker
+   * provisioner whenever a sandbox has no explicit `container.memory` of its
+   * own. `0` disables the ceiling entirely (pre-2026-08 behavior).
+   *
+   * Why a default exists at all: agent containers previously ran with
+   * `HostConfig.Memory=0` (unlimited) plus `--restart unless-stopped`. One
+   * agent stuck in a boot loop — each boot attempt spiking ~2GB before dying —
+   * could starve an entire node and get HEALTHY co-tenant agents OOM-killed
+   * (observed fleet-wide on staging 2026-08-05: node `available` memory driven
+   * to 4MB, kernel OOM killing unrelated agents every ~10-30s).
+   *
+   * Default: 3072 MiB — comfortably above the observed ~2.1GB boot-time RSS
+   * spike of the current agent image, and aligned with the ~4GB/agent budget
+   * the ccx33 + capacity-8 sizing was designed around (see
+   * defaultAutoscaleNodeCapacity). Clamped to [0, 65536].
+   */
+  agentContainerMemoryLimitMb(): number {
+    const env = getCloudAwareEnv();
+    const raw = pick(
+      env.CONTAINERS_AGENT_MEMORY_LIMIT_MB,
+      env.ELIZA_AGENT_MEMORY_LIMIT_MB,
+    );
+    const parsed = raw ? Number(raw) : Number.NaN;
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      return Math.min(65536, Math.floor(parsed));
+    }
+    return 3072;
+  },
+
   /** Explicit operator-pinned agent image, without the hardcoded fallback. */
   defaultAgentImageOverride(): string | undefined {
     const env = getCloudAwareEnv();
