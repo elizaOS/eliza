@@ -40,6 +40,39 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+const RETIRED_PLUGIN_CONFIG_IDS = new Set([
+  "simple-views",
+  "@elizaos/plugin-simple-views",
+]);
+
+/**
+ * Removes plugin references whose product surfaces now belong to canonical
+ * core plugins. Notes and Calendar load through their own packages, so keeping
+ * the former aggregate package in user config creates a false boot failure
+ * without preserving any capability.
+ */
+function migrateRetiredPluginConfig(config: ElizaConfig): void {
+  const plugins = config.plugins;
+  if (!plugins) return;
+
+  if (plugins.entries) {
+    for (const pluginId of RETIRED_PLUGIN_CONFIG_IDS) {
+      delete plugins.entries[pluginId];
+    }
+  }
+
+  if (plugins.allow) {
+    plugins.allow = plugins.allow.filter(
+      (pluginId) => !RETIRED_PLUGIN_CONFIG_IDS.has(pluginId),
+    );
+  }
+}
+
+function migrateConfig(config: ElizaConfig): void {
+  migrateLegacyRuntimeConfig(config as Record<string, unknown>);
+  migrateRetiredPluginConfig(config);
+}
+
 function resolveConfigWritePath(env: NodeJS.ProcessEnv = process.env): string {
   const persistPath = env.ELIZA_PERSIST_CONFIG_PATH?.trim();
   return persistPath ? resolveUserPath(persistPath) : resolveConfigPath();
@@ -142,7 +175,7 @@ export function loadElizaConfig(): ElizaConfig {
     (baseConfig || persistedConfig
       ? mergeConfigRecords(baseConfig ?? {}, persistedConfig ?? {})
       : { logging: { level: "error" } })) as ElizaConfig;
-  migrateLegacyRuntimeConfig(resolved as Record<string, unknown>);
+  migrateConfig(resolved);
   normalizeModelMetadataInConfig(resolved);
 
   const skillsJsonPath = path.join(resolveStateDir(), "skills.json");
@@ -380,7 +413,7 @@ export function saveElizaConfig(config: ElizaConfig): void {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
 
-  migrateLegacyRuntimeConfig(config as Record<string, unknown>);
+  migrateConfig(config);
   if (isWalletOsStoreEnabledInConfig(config)) {
     stripWalletPrivateKeysFromConfig(config);
   }
@@ -391,7 +424,7 @@ export function saveElizaConfig(config: ElizaConfig): void {
     );
   }
 
-  migrateLegacyRuntimeConfig(sanitized as Record<string, unknown>);
+  migrateConfig(sanitized as ElizaConfig);
   if (isWalletOsStoreEnabledInConfig(sanitized as ElizaConfig)) {
     stripWalletPrivateKeysFromConfig(sanitized as ElizaConfig);
   }
