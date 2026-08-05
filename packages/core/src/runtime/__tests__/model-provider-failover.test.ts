@@ -193,6 +193,35 @@ describe("AgentRuntime.useModel provider failover", () => {
 		expect(backupHandler).toHaveBeenCalledTimes(1);
 	});
 
+	it("fails over RESPONSE_HANDLER when the local backend is unavailable", async () => {
+		const runtime = makeRuntime();
+		const unavailableLocalHandler = vi.fn(async () => {
+			throw Object.assign(new Error("native binding unavailable"), {
+				code: "LOCAL_INFERENCE_UNAVAILABLE",
+			});
+		});
+		const directHandler = vi.fn(async () => "direct response");
+
+		runtime.registerModel(
+			ModelType.RESPONSE_HANDLER,
+			unavailableLocalHandler,
+			"eliza-local-inference",
+			100,
+		);
+		runtime.registerModel(
+			ModelType.RESPONSE_HANDLER,
+			directHandler,
+			"openai",
+			10,
+		);
+
+		await expect(
+			runtime.useModel(ModelType.RESPONSE_HANDLER, { prompt: "hello" }),
+		).resolves.toBe("direct response");
+		expect(unavailableLocalHandler).toHaveBeenCalledTimes(1);
+		expect(directHandler).toHaveBeenCalledTimes(1);
+	});
+
 	it("does not switch providers when a provider is explicitly requested", async () => {
 		const runtime = makeRuntime();
 		const exhaustedHandler = vi.fn(async () => {
