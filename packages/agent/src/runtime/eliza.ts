@@ -51,6 +51,7 @@ import {
 } from "./operations/vault-bridge.ts";
 import { OPTIONAL_PLUGIN_IMPORTERS } from "./optional-plugin-imports.generated.ts";
 import {
+  hasElizaSourceRuntimeCondition,
   OPTIONAL_STATIC_PLUGIN_OVERRIDES,
   OPTIONAL_STATIC_PLUGIN_REGISTRATIONS,
   optionalPluginImportSpecifier,
@@ -421,6 +422,26 @@ function resolveWorkspacePluginSourceEntry(packageName: string): string | null {
 // generated importer. Plugins not in the map (e.g. desktop-only gitpathologist)
 // load through a bare dynamic import from a node_modules/desktop install.
 const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
+  // Bun 1.3.x can resolve a literal dynamic import nested in the generated
+  // importer map through the package's `bun`/dist condition when launched with
+  // both `--no-install` and `--conditions=eliza-source`, even though a direct
+  // import and import.meta.resolve() select the source condition. Make the
+  // operator's explicit source request authoritative so dev boot never runs a
+  // stale dist artifact after a source edit. Packaged/mobile processes do not
+  // carry this condition and keep using the literal importers below.
+  if (
+    hasElizaSourceRuntimeCondition() &&
+    isWorkspacePluginSourceFallbackAllowed()
+  ) {
+    const sourceEntry = resolveWorkspacePluginSourceEntry(packageName);
+    if (sourceEntry) {
+      logger.debug(
+        `[eliza] Loading ${packageName} from explicitly requested workspace source at ${sourceEntry}`,
+      );
+      return await import(pathToFileURL(sourceEntry).href);
+    }
+  }
+
   try {
     const importer = OPTIONAL_PLUGIN_IMPORTERS[packageName];
     if (importer) return await importer();
