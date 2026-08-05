@@ -135,22 +135,28 @@ describe("GET /api/views/:id/hero", () => {
     expect(body).toContain("No Hero View");
   });
 
-  it("marks every builtin view as having a real hero image", () => {
+  it("marks each builtin according to whether it declares a packaged hero", () => {
     const builtinViews = listViews({ includeAllKinds: true }).filter(
       (view) => view.pluginName === "@elizaos/builtin",
     );
 
     expect(builtinViews).toHaveLength(BUILTIN_VIEWS.length);
     for (const view of builtinViews) {
-      expect(view.hasHeroImage).toBe(true);
+      const declaration = BUILTIN_VIEWS.find(
+        (candidate) => candidate.id === view.id,
+      );
+      expect(declaration).toBeDefined();
+      expect(view.hasHeroImage).toBe(Boolean(declaration?.heroImagePath));
       expect(view.heroImageUrl).toBe(
         `/api/views/${encodeURIComponent(view.id)}/hero`,
       );
     }
   });
 
-  it("serves packaged PNG heroes for every builtin view", async () => {
-    for (const view of BUILTIN_VIEWS) {
+  it("serves packaged PNG heroes for visual builtin views", async () => {
+    for (const view of BUILTIN_VIEWS.filter(
+      (declaration) => declaration.heroImagePath,
+    )) {
       const { ctx, res } = makeHeroCtx(view.id);
 
       await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
@@ -161,6 +167,24 @@ describe("GET /api/views/:id/hero", () => {
       expect(bodyBufferFrom(res).subarray(0, 8)).toEqual(
         Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
       );
+    }
+  });
+
+  it("serves a generated SVG for capability-only builtin views", async () => {
+    const capabilityOnlyViews = BUILTIN_VIEWS.filter(
+      (declaration) => !declaration.heroImagePath,
+    );
+    expect(capabilityOnlyViews.length).toBeGreaterThan(0);
+
+    for (const view of capabilityOnlyViews) {
+      const { ctx, res } = makeHeroCtx(view.id);
+
+      await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+
+      const headers = headersFrom(res);
+      expect(headers["Content-Type"]).toBe("image/svg+xml");
+      expect(headers["Content-Length"]).toBeGreaterThan(0);
+      expect(bodyFrom(res)).toContain("<svg");
     }
   });
 
