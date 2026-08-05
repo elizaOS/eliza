@@ -24,6 +24,15 @@ let shouldBlock: (userId: string) => Promise<boolean>;
 const incrementUsageCalls: string[] = [];
 const bypassCacheCalls: boolean[] = [];
 const moderationBypassCacheCalls: boolean[] = [];
+const ADMISSION = {
+  balance: { balanceUsd: 100, balanceAt: 1, balanceRevision: "1" },
+  rateLimits: {
+    completionsRpm: 60,
+    embeddingsRpm: 100,
+    standardRpm: 30,
+    strictRpm: 5,
+  },
+};
 
 mock.module("./inference-api-key-auth", () => ({
   requireInferenceApiKeyWithOrg: async (
@@ -64,6 +73,12 @@ mock.module("./api-keys", () => ({
       incrementUsageCalls.push(id);
     },
   },
+}));
+mock.module("./inference-admission-snapshot", () => ({
+  loadInferenceAdmissionSnapshot: async () => ADMISSION,
+}));
+mock.module("./inference-app-key-scope", () => ({
+  loadInferenceAppKeyScope: async () => null,
 }));
 
 const { __clearInferenceApiKeyHydrations, resolveInferenceAuthContext, extractApiKeyCredential } =
@@ -161,6 +176,7 @@ describe("resolveInferenceAuthContext", () => {
     expect(res.ctx.orgId).toBe("org-1");
     expect(res.ctx.apiKeyId).toBe("key-1");
     expect(res.ctx.keyHash).toBe(hashApiKey(KEY));
+    expect(res.ctx.admission).toEqual(ADMISSION);
 
     const cached = await readInferenceAuthContext(hashApiKey(KEY));
     expect(cached).not.toBeNull();
@@ -563,17 +579,20 @@ describe("isInferenceAuthContext shape guard", () => {
         apiKeyId: "k",
         keyHash: hashApiKey(KEY),
         cachedAt: 1,
+        appScopeId: null,
       }),
     ).toBe(false);
     expect(isInferenceAuthContext({ v: 1, userId: "u" })).toBe(false);
     expect(
       isInferenceAuthContext({
-        v: 1,
+        v: 2,
         cachedAt: 1,
         userId: "u",
         orgId: "o",
         apiKeyId: "k",
         keyHash: hashApiKey(KEY),
+        appScopeId: null,
+        admission: ADMISSION,
       }),
     ).toBe(true);
   });

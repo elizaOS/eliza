@@ -18,10 +18,6 @@ import {
   requireGenerativeRouteCaller,
 } from "@/api-app/lib/generative-route-auth";
 import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
-import {
-  RateLimitPresets,
-  rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { getAudioProvider } from "@/lib/providers/audio/registry";
 import type { GeneratedAudio } from "@/lib/providers/audio/types";
 import { type BillingContext, billFlatUsage } from "@/lib/services/ai-billing";
@@ -51,8 +47,6 @@ const sfxRequestSchema = z.object({
 });
 
 const app = new Hono<AppEnv>();
-
-app.use("*", rateLimit(RateLimitPresets.STRICT));
 
 function envString(env: Bindings, key: string): string | undefined {
   const value = env[key];
@@ -127,7 +121,8 @@ app.post("/", async (c) => {
   let chargeSettled = false;
 
   try {
-    const { user, apiKeyId } = await requireGenerativeRouteCaller(c);
+    const { user, apiKeyId, admissionSnapshot } =
+      await requireGenerativeRouteCaller(c, { rateLimitEndpoint: "strict" });
     const request = sfxRequestSchema.parse(await c.req.json());
     const definition = getSupportedSfxModelDefinition(request.model);
     if (!definition) {
@@ -202,6 +197,7 @@ app.post("/", async (c) => {
         context: billingContext,
         apiKeyId,
         cost,
+        admissionSnapshot,
       });
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {
