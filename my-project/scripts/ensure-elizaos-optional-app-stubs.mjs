@@ -257,55 +257,61 @@ function patchPackagedCoreSandboxPolicyExports() {
   if (!fs.existsSync(coreIndexPath)) return false;
 
   const before = fs.readFileSync(coreIndexPath, "utf8");
-  const hasBuildVariantExports = before.includes("export const BUILD_VARIANTS");
+  // Packaged @elizaos/core may already export BUILD_VARIANTS via esbuild's
+  // `var BUILD_VARIANTS = ...; export { BUILD_VARIANTS, ... }` shape. Checking
+  // only for `export const BUILD_VARIANTS` false-negatives and appends a second
+  // binding, which Node rejects with "Identifier 'BUILD_VARIANTS' has already
+  // been declared".
+  const hasBuildVariantExports =
+    before.includes("export const BUILD_VARIANTS") ||
+    before.includes("var BUILD_VARIANTS =") ||
+    before.includes("const BUILD_VARIANTS =") ||
+    before.includes("let BUILD_VARIANTS =");
   const hasSandboxPolicyExports = before.includes(
     "isLocalCodeExecutionAllowed",
   );
   if (hasBuildVariantExports && hasSandboxPolicyExports) return false;
 
+  // Strip a previously-appended broken BUILD_VARIANTS block that sat after the
+  // sourceMappingURL (leftover from the over-eager patch above).
+  let source = before;
+  const mapMarker = "//# sourceMappingURL=index.node.js.map\n";
+  const mapIdx = source.lastIndexOf(mapMarker);
+  if (mapIdx >= 0) {
+    const afterMap = source.slice(mapIdx + mapMarker.length);
+    if (afterMap.includes("export const BUILD_VARIANTS")) {
+      // Keep only sandbox-policy additions that may follow; drop the
+      // duplicate build-variant append.
+      const sandboxStart = afterMap.indexOf(
+        "export function isLocalCodeExecutionAllowed",
+      );
+      const sandboxConstStart = afterMap.indexOf(
+        "const __elizaosSandboxBuildVariants",
+      );
+      const keepFrom =
+        sandboxConstStart >= 0
+          ? sandboxConstStart
+          : sandboxStart >= 0
+            ? sandboxStart
+            : -1;
+      source =
+        source.slice(0, mapIdx + mapMarker.length) +
+        (keepFrom >= 0 ? afterMap.slice(keepFrom) : "");
+      // Recompute flags after cleanup.
+      if (source.includes("isLocalCodeExecutionAllowed")) {
+        // sandbox already present after cleanup
+      }
+    }
+  }
+
+  const hasSandboxAfterCleanup = source.includes(
+    "isLocalCodeExecutionAllowed",
+  );
+  // Intentionally do not re-append BUILD_VARIANTS when the bundle already
+  // declares it. Older packaged cores that truly lack the export are rare
+  // after 2.0.3-beta; sandbox-policy is the only remaining backfill.
   let jsPatch = "";
-  if (!hasBuildVariantExports) {
-    jsPatch += `
-export const BUILD_VARIANTS = ["store", "direct"];
-export const DEFAULT_BUILD_VARIANT = "direct";
-const __elizaosBuildVariantValues = new Set(BUILD_VARIANTS);
-const __elizaosBuildVariantDirectDownloadUrl = "https://eliza.so/download";
-let __elizaosBuildVariantResolved = null;
-
-export function getBuildVariant() {
-  if (__elizaosBuildVariantResolved !== null) {
-    return __elizaosBuildVariantResolved;
-  }
-  const raw =
-    (typeof process !== "undefined" &&
-      process.env?.ELIZA_BUILD_VARIANT) ||
-    "";
-  const normalized = raw.trim().toLowerCase();
-  __elizaosBuildVariantResolved = __elizaosBuildVariantValues.has(normalized)
-    ? normalized
-    : DEFAULT_BUILD_VARIANT;
-  return __elizaosBuildVariantResolved;
-}
-
-export function getDirectDownloadUrl() {
-  return __elizaosBuildVariantDirectDownloadUrl;
-}
-
-export function isStoreBuild() {
-  return getBuildVariant() === "store";
-}
-
-export function isDirectBuild() {
-  return getBuildVariant() === "direct";
-}
-
-export function _resetBuildVariantForTests() {
-  __elizaosBuildVariantResolved = null;
-}
-`;
-  }
-
-  if (!hasSandboxPolicyExports) {
+  if (!hasSandboxAfterCleanup) {
     jsPatch += `
 const __elizaosSandboxBuildVariants = new Set(["store", "direct"]);
 const __elizaosSandboxDirectDownloadUrl = "https://eliza.so/download";
@@ -340,7 +346,11 @@ export function buildStoreVariantBlockedMessage(featureLabel) {
 `;
   }
 
-  fs.appendFileSync(coreIndexPath, jsPatch);
+  if (source !== before || jsPatch) {
+    fs.writeFileSync(coreIndexPath, source + jsPatch);
+  } else {
+    return false;
+  }
 
   for (const dtsPath of [
     path.join(nodeModulesDir, "@elizaos", "core", "dist", "index.d.ts"),
