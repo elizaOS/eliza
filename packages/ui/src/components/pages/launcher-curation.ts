@@ -43,6 +43,10 @@ export const LAUNCHER_APPS_ORDER: readonly string[] = [
   "wallet",
   "tasks",
   "calendar",
+  // The runtime-backed compact Calendar keeps its own route id so launcher
+  // navigation reaches the registered bundle, but occupies Calendar's curated
+  // slot when it supersedes the connected-calendar surface below.
+  "simple-calendar",
   "notes",
   "automations",
   "my-apps",
