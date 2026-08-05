@@ -238,6 +238,8 @@ def test_partial_report_is_scored_but_never_publishable(tmp_path: Path) -> None:
     assert report["row_count"] == 1
     assert report["metrics"] == {"ctem": 1.0, "tsr": 1.0, "wer": 0.0, "cer": 0.0}
     assert report["hashes"]["dataset_revision"] == entry.dataset_revision
+    assert report["scoring_metadata"]["judge_assisted"] is False
+    assert "macro mean" in report["scoring_metadata"]["wer"]
     assert report["provider_metadata"]["artifact_revision"].endswith(
         "immutable-revision-unavailable-from-provider"
     )

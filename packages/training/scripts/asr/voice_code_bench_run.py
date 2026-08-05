@@ -573,6 +573,22 @@ def build_report(
             "sample_rate_hz": sample_rate,
             "run_started_at": started_at,
         },
+        "scoring_metadata": {
+            "ctem": (
+                "deterministic exact canonical-or-acoustic entity recovery after "
+                "punctuation normalization; phone digits accept common spoken aliases"
+            ),
+            "tsr": "row passes only when every structured entity is recovered",
+            "wer": (
+                "macro mean of row-level word error rates using acoustic/canonical "
+                "entity alternatives"
+            ),
+            "cer": (
+                "macro mean of row-level character error rates using acoustic/canonical "
+                "entity alternatives"
+            ),
+            "judge_assisted": False,
+        },
         "hashes": {
             "dataset_revision": revision,
             "row_id": aggregate_hash(

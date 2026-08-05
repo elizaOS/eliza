@@ -103,6 +103,12 @@ The gate reports:
 - `wer`: normalized word error rate,
 - `cer`: normalized character error rate.
 
+Runner reports label their scoring method explicitly. CTEM/TSR are
+deterministic exact-recovery scores using canonical and acoustic entity forms;
+they do not use the upstream benchmark's optional judge-assisted entity
+verifier. WER/CER are macro means of row-level format-invariant error rates,
+where each structured span accepts its acoustic or canonical rendering.
+
 Synthetic/unit results are never publishable. A publishable report must mark
 `publishable: true` and include a real ASR provider/model, artifact revision,
 sample rate, dataset/hash metadata, score JSON, logs, and manually reviewed
