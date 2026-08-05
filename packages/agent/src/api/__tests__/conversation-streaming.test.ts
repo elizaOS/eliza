@@ -1048,6 +1048,36 @@ describe("generateChatResponse token streaming", () => {
     );
   });
 
+  it("keeps device-bridge chat on the full host runtime without explicit local-reply opt-in", async () => {
+    const messageService = createStreamingMessageService([
+      "Host planner reply.",
+    ]);
+    const handleMessage = vi.spyOn(messageService, "handleMessage");
+    const useModel = createUseModelMock(async () => "Unexpected local reply.");
+    const runtime = createRuntime({
+      getSetting: (key: string) => {
+        const values: Record<string, string> = {
+          ELIZA_MOBILE_PLATFORM: "android",
+          ELIZA_DEVICE_BRIDGE_ENABLED: "1",
+        };
+        return values[key] ?? null;
+      },
+      messageService,
+      useModel,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("hello from the phone"),
+      "Streaming Agent",
+    );
+
+    expect(handleMessage).toHaveBeenCalledOnce();
+    expect(useModel).not.toHaveBeenCalled();
+    expect(result.text).toBe("Host planner reply.");
+    expect(result.localInference).toBeUndefined();
+  });
+
   it("finalizes an Android local result that wins the cancellation race", async () => {
     const caller = new AbortController();
     const useModel = createUseModelMock(async () => {

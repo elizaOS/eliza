@@ -186,9 +186,8 @@ export const commandsPlugin: Plugin = {
 	// actions are also registered so the planner can route to them as a fallback.
 	actions: commandActions,
 
-	// Slash-command shortcuts (#8791): the pre-LLM gate matches these explicit
-	// aliases and fires the matching *_COMMAND action deterministically, before
-	// any model call, identically on every surface.
+	// A slash prefix is an explicit protocol invocation, so only slash-command
+	// aliases may resolve before inference. Ordinary language stays model-owned.
 	shortcuts: commandShortcuts,
 
 	// Self-declared auto-enable: activate when features.commands is enabled.

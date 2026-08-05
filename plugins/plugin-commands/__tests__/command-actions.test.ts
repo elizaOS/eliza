@@ -11,7 +11,6 @@ import {
 	dispatchCommandMessage,
 	explicitCommandShortcuts,
 	getCommandSettings,
-	naturalShortcuts,
 	resolveCommand,
 } from "../src/actions";
 import {
@@ -278,12 +277,9 @@ describe("command shortcuts ↔ actions linkage (#8790 × #8791)", () => {
 	it("every shortcut targets a registered command action", () => {
 		const actionNames = new Set(commandActions.map((a) => a.name));
 		expect(commandShortcuts.length).toBeGreaterThan(0);
-		// commandShortcuts = explicit slash shortcuts + narrow natural ones.
-		expect(commandShortcuts).toEqual([
-			...explicitCommandShortcuts,
-			...naturalShortcuts,
-		]);
+		expect(commandShortcuts).toEqual(explicitCommandShortcuts);
 		for (const shortcut of commandShortcuts) {
+			expect(shortcut.kind).toBe("explicit");
 			expect(shortcut.target.kind).toBe("action");
 			if (shortcut.target.kind === "action") {
 				expect(actionNames.has(shortcut.target.name)).toBe(true);
@@ -299,14 +295,6 @@ describe("command shortcuts ↔ actions linkage (#8790 × #8791)", () => {
 			for (const alias of shortcut.aliases ?? []) {
 				expect(alias.startsWith("/")).toBe(true);
 			}
-		}
-	});
-
-	it("natural shortcuts carry no slash aliases (anchored patterns)", () => {
-		for (const shortcut of naturalShortcuts) {
-			expect(shortcut.kind).toBe("natural");
-			expect(shortcut.aliases ?? []).toHaveLength(0);
-			expect(shortcut.patterns && shortcut.patterns.length > 0).toBe(true);
 		}
 	});
 
