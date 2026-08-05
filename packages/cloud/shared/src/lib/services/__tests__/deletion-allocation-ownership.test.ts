@@ -1,0 +1,779 @@
+/**
+ * Durable deletion-allocation ownership (#17185): one logical managed Docker
+ * allocation gives back exactly one `docker_nodes.allocated_count` slot, however
+ * many times its teardown runs.
+ *
+ * The defect these pin is a double-free, not a leak. Remote teardown is
+ * retryable and treats "No such container" as success, but the sandbox row keeps
+ * its node locator until the row is deleted — so a retry after any post-stop
+ * failure used to decrement the same node again and free a LIVE sibling's slot,
+ * with `GREATEST(count - 1, 0)` hiding the underflow. Ownership makes the second
+ * release a no-op instead.
+ *
+ * Drives the REAL repository CAS and the REAL workload-reconciliation query
+ * against in-process PGlite (real Drizzle schema via pushSchema) with NOTHING
+ * mocked, so the actual SQL — the cross-table transaction, the locator
+ * predicate, the `allocated_count > 0` guard — executes. Fails LOUDLY if
+ * PGlite/pushSchema is unavailable; it never silently passes.
+ */
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
+const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
+const CAN_USE_ISOLATED_PGLITE =
+  AMBIENT_DATABASE_URL === "" || AMBIENT_DATABASE_URL.startsWith("pglite");
+process.env.DATABASE_URL ||= "pglite://memory";
+process.env.NODE_ENV ||= "test";
+process.env.MOCK_REDIS = "1";
+
+import { pushSchema } from "drizzle-kit/api";
+import { eq } from "drizzle-orm";
+import { agentSandboxes } from "../../../db/schemas/agent-sandboxes";
+import { apiKeys } from "../../../db/schemas/api-keys";
+import { containers } from "../../../db/schemas/containers";
+import { dockerNodes } from "../../../db/schemas/docker-nodes";
+import { generations } from "../../../db/schemas/generations";
+import { jobs } from "../../../db/schemas/jobs";
+import { organizations } from "../../../db/schemas/organizations";
+import { usageRecords } from "../../../db/schemas/usage-records";
+import { userCharacters } from "../../../db/schemas/user-characters";
+import { users } from "../../../db/schemas/users";
+import {
+  holdsCountedNodeSlot,
+  isDeletionContinuation,
+  TERMINAL_SANDBOX_STATUSES,
+} from "../docker-node-workload-queries";
+
+const PGLITE_TIMEOUT = 60_000;
+
+let pgliteReady = true;
+let dbWrite: typeof import("../../../db/client").dbWrite;
+let closeDb: typeof import("../../../db/client").closeDatabaseConnectionsForTests | undefined;
+let agentSandboxesRepository: typeof import("../../../db/repositories/agent-sandboxes").agentSandboxesRepository;
+let countAllocatedWorkloadsOnNodeWithDatabase: typeof import("../docker-node-workload-queries").countAllocatedWorkloadsOnNodeWithDatabase;
+let ElizaSandboxService: typeof import("../eliza-sandbox").ElizaSandboxService;
+let ProvisioningJobService: typeof import("../provisioning-jobs").ProvisioningJobService;
+
+let seq = 0;
+function uniq(p: string): string {
+  seq += 1;
+  return `${p}-${seq}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+beforeAll(async () => {
+  if (!CAN_USE_ISOLATED_PGLITE) {
+    pgliteReady = false;
+    console.error("[deletion-allocation-ownership.test] non-PGlite DATABASE_URL; failing.");
+    return;
+  }
+  try {
+    ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../../db/client"));
+    ({ agentSandboxesRepository } = await import("../../../db/repositories/agent-sandboxes"));
+    ({ countAllocatedWorkloadsOnNodeWithDatabase } = await import(
+      "../docker-node-workload-queries"
+    ));
+    ({ ElizaSandboxService } = await import("../eliza-sandbox"));
+    ({ ProvisioningJobService } = await import("../provisioning-jobs"));
+
+    const schema = {
+      organizations,
+      users,
+      userCharacters,
+      agentSandboxes,
+      apiKeys,
+      generations,
+      usageRecords,
+      jobs,
+      dockerNodes,
+      containers,
+    };
+    const { apply } = await pushSchema(schema as never, dbWrite as never);
+    await apply();
+  } catch (error) {
+    pgliteReady = false;
+    console.error(
+      "[deletion-allocation-ownership.test] PGlite/pushSchema unavailable — failing.",
+      error,
+    );
+  }
+}, PGLITE_TIMEOUT);
+
+afterAll(async () => {
+  if (closeDb) await closeDb();
+});
+
+/**
+ * A node carrying two allocations: the row under test plus a live sibling. The
+ * sibling is the thing a double-free actually harms, so every release assertion
+ * below is really "did the sibling keep its slot".
+ */
+async function seedNodeWithTargetAndSibling(options: {
+  allocationCounted: boolean | null;
+  status?: "running" | "stopped" | "sleeping" | "deletion_pending" | "deletion_failed";
+  withDeletionIntent?: boolean;
+}): Promise<{ agentId: string; orgId: string; nodeId: string; deletionAttemptId: string }> {
+  const nodeId = uniq("node");
+  const deletionAttemptId = crypto.randomUUID();
+
+  const [org] = await dbWrite
+    .insert(organizations)
+    .values({ name: "Org", slug: uniq("org"), credit_balance: "5.000000" })
+    .returning();
+  const [user] = await dbWrite
+    .insert(users)
+    .values({ steward_user_id: uniq("steward"), organization_id: org.id })
+    .returning();
+
+  await dbWrite
+    .insert(dockerNodes)
+    .values({ node_id: nodeId, hostname: `${nodeId}.test.invalid`, allocated_count: 2 });
+
+  const withIntent = options.withDeletionIntent ?? true;
+  const [agent] = await dbWrite
+    .insert(agentSandboxes)
+    .values({
+      organization_id: org.id,
+      user_id: user.id,
+      agent_name: uniq("agent"),
+      status: options.status ?? "deletion_pending",
+      node_id: nodeId,
+      container_name: uniq("container"),
+      ...(withIntent
+        ? { deletion_attempt_id: deletionAttemptId, deletion_started_at: new Date() }
+        : {}),
+      deletion_allocation_counted: options.allocationCounted,
+    })
+    .returning();
+
+  return { agentId: agent.id, orgId: org.id, nodeId, deletionAttemptId };
+}
+
+async function allocatedCount(nodeId: string): Promise<number> {
+  const [row] = await dbWrite
+    .select({ n: dockerNodes.allocated_count })
+    .from(dockerNodes)
+    .where(eq(dockerNodes.node_id, nodeId));
+  return Number(row.n);
+}
+
+/** A real agent row created through the service, so the delete path sees a genuine one. */
+async function seedAgentViaService(): Promise<{
+  agentId: string;
+  orgId: string;
+  userId: string;
+}> {
+  const [org] = await dbWrite
+    .insert(organizations)
+    .values({ name: "Org", slug: uniq("org"), credit_balance: "5.000000" })
+    .returning();
+  const [user] = await dbWrite
+    .insert(users)
+    .values({ steward_user_id: uniq("steward"), organization_id: org.id })
+    .returning();
+  const res = await new ElizaSandboxService().createAgent({
+    organizationId: org.id,
+    userId: user.id,
+    agentName: uniq("agent"),
+    executionTier: "dedicated-always",
+    maxNonTerminalAgents: 10,
+  });
+  return { agentId: res.agent.id, orgId: org.id, userId: user.id };
+}
+
+async function deletionAttemptId(agentId: string): Promise<string> {
+  const [row] = await dbWrite
+    .select({ id: agentSandboxes.deletion_attempt_id })
+    .from(agentSandboxes)
+    .where(eq(agentSandboxes.id, agentId));
+  if (!row.id) throw new Error("expected a deletion attempt id to be stamped");
+  return row.id;
+}
+
+async function ownership(agentId: string): Promise<boolean | null> {
+  const [row] = await dbWrite
+    .select({ owned: agentSandboxes.deletion_allocation_counted })
+    .from(agentSandboxes)
+    .where(eq(agentSandboxes.id, agentId));
+  return row.owned;
+}
+
+describe("tryReleaseDeletionAllocation — releases exactly once", () => {
+  test(
+    "retry after a post-stop failure does not free the live sibling's slot",
+    async () => {
+      if (!pgliteReady) return;
+      const { agentId, orgId, nodeId, deletionAttemptId } = await seedNodeWithTargetAndSibling({
+        allocationCounted: true,
+      });
+
+      // First pass: teardown succeeded, slot handed back. 2 -> 1.
+      expect(
+        await agentSandboxesRepository.tryReleaseDeletionAllocation(
+          agentId,
+          orgId,
+          deletionAttemptId,
+          nodeId,
+        ),
+      ).toBe("released");
+      expect(await allocatedCount(nodeId)).toBe(1);
+      expect(await ownership(agentId)).toBe(false);
+
+      // Credential revocation / row-delete / job-status failed downstream, so the
+      // whole delete re-runs and the remote stop reports "No such container".
+      // The sibling's slot must survive.
+      expect(
+        await agentSandboxesRepository.tryReleaseDeletionAllocation(
+          agentId,
+          orgId,
+          deletionAttemptId,
+          nodeId,
+        ),
+      ).toBe("not-owned");
+      expect(await allocatedCount(nodeId)).toBe(1);
+
+      // A third recovery sweep is still a no-op.
+      expect(
+        await agentSandboxesRepository.tryReleaseDeletionAllocation(
+          agentId,
+          orgId,
+          deletionAttemptId,
+          nodeId,
+        ),
+      ).toBe("not-owned");
+      expect(await allocatedCount(nodeId)).toBe(1);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a second release of an already-spent generation is a no-op",
+    async () => {
+      if (!pgliteReady) return;
+      const { agentId, orgId, nodeId, deletionAttemptId } = await seedNodeWithTargetAndSibling({
+        allocationCounted: true,
+      });
+
+      const results = await Promise.all([
+        agentSandboxesRepository.tryReleaseDeletionAllocation(
+          agentId,
+          orgId,
+          deletionAttemptId,
+          nodeId,
+        ),
+        agentSandboxesRepository.tryReleaseDeletionAllocation(
+          agentId,
+          orgId,
+          deletionAttemptId,
+          nodeId,
+        ),
+      ]);
+
+      // This harness cannot demonstrate a race, and the test does not claim to.
+      // PGlite is a single WASM backend behind one connection, so these two
+      // transactions cannot interleave — the second queues and begins after the
+      // first commits. What is pinned is the property the retry path actually
+      // relies on: releasing an already-spent generation returns `not-owned` and
+      // does not decrement twice.
+      //
+      // NOT covered here: real row-lock contention, where a second transaction
+      // blocks on the UPDATE and then re-evaluates its WHERE against the updated
+      // row under READ COMMITTED. That needs two independent PostgreSQL
+      // connections, and the isolation level matters — under REPEATABLE READ the
+      // loser raises a serialization failure instead of returning `not-owned`,
+      // and no caller here catches that.
+      //
+      // Assert the outcomes by name: every outcome is a truthy string, so a
+      // truthiness count would pass whichever two came back.
+      expect(results.filter((r) => r === "released")).toHaveLength(1);
+      expect(results.filter((r) => r === "not-owned")).toHaveLength(1);
+      expect(await allocatedCount(nodeId)).toBe(1);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a suspended row that never owned a slot never decrements one",
+    async () => {
+      if (!pgliteReady) return;
+      // Suspend already handed the slot back while keeping the locator — the
+      // exact shape that let a later delete decrement a second time.
+      const { agentId, orgId, nodeId, deletionAttemptId } = await seedNodeWithTargetAndSibling({
+        allocationCounted: false,
+      });
+
+      expect(
+        await agentSandboxesRepository.tryReleaseDeletionAllocation(
+          agentId,
+          orgId,
+          deletionAttemptId,
+          nodeId,
+        ),
+      ).toBe("not-owned");
+      expect(await allocatedCount(nodeId)).toBe(2);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a stale deletion generation cannot release the current one's slot",
+    async () => {
+      if (!pgliteReady) return;
+      const { agentId, orgId, nodeId } = await seedNodeWithTargetAndSibling({
+        allocationCounted: true,
+      });
+
+      expect(
+        await agentSandboxesRepository.tryReleaseDeletionAllocation(
+          agentId,
+          orgId,
+          crypto.randomUUID(), // a superseded attempt id
+          nodeId,
+        ),
+      ).toBe("not-owned");
+      expect(await allocatedCount(nodeId)).toBe(2);
+      expect(await ownership(agentId)).toBe(true);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a stale node locator cannot release a different node's capacity",
+    async () => {
+      if (!pgliteReady) return;
+      const { agentId, orgId, nodeId, deletionAttemptId } = await seedNodeWithTargetAndSibling({
+        allocationCounted: true,
+      });
+      const otherNodeId = uniq("node");
+      await dbWrite.insert(dockerNodes).values({
+        node_id: otherNodeId,
+        hostname: `${otherNodeId}.test.invalid`,
+        allocated_count: 2,
+      });
+
+      expect(
+        await agentSandboxesRepository.tryReleaseDeletionAllocation(
+          agentId,
+          orgId,
+          deletionAttemptId,
+          otherNodeId,
+        ),
+      ).toBe("not-owned");
+      expect(await allocatedCount(otherNodeId)).toBe(2);
+      expect(await allocatedCount(nodeId)).toBe(2);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "another organization cannot release this row's slot",
+    async () => {
+      if (!pgliteReady) return;
+      const { agentId, nodeId, deletionAttemptId } = await seedNodeWithTargetAndSibling({
+        allocationCounted: true,
+      });
+
+      expect(
+        await agentSandboxesRepository.tryReleaseDeletionAllocation(
+          agentId,
+          crypto.randomUUID(),
+          deletionAttemptId,
+          nodeId,
+        ),
+      ).toBe("not-owned");
+      expect(await allocatedCount(nodeId)).toBe(2);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "an already-zero counter is left alone rather than driven negative",
+    async () => {
+      if (!pgliteReady) return;
+      const { agentId, orgId, nodeId, deletionAttemptId } = await seedNodeWithTargetAndSibling({
+        allocationCounted: true,
+      });
+      await dbWrite
+        .update(dockerNodes)
+        .set({ allocated_count: 0 })
+        .where(eq(dockerNodes.node_id, nodeId));
+
+      // Ownership IS consumed — the claim was real — but the guard blocks the
+      // underflow. The outcome must say so: `counter-unchanged` is an accounting
+      // mismatch worth a warn, distinct from the benign `not-owned` retry.
+      expect(
+        await agentSandboxesRepository.tryReleaseDeletionAllocation(
+          agentId,
+          orgId,
+          deletionAttemptId,
+          nodeId,
+        ),
+      ).toBe("counter-unchanged");
+      expect(await allocatedCount(nodeId)).toBe(0);
+      expect(await ownership(agentId)).toBe(false);
+    },
+    PGLITE_TIMEOUT,
+  );
+});
+
+describe("a deletion continuation never re-derives ownership from its own state", () => {
+  test(
+    "a deletion_pending row with NULL intent columns is not armed by a re-enqueue",
+    async () => {
+      if (!pgliteReady) return;
+      // The #17249 shape: the row is already in a deletion state but carries no
+      // intent columns. Under the narrow `deletion_started_at === null` test this
+      // reads as a FRESH deletion, so ownership is re-derived from the row's own
+      // `deletion_pending` status — which scores as still-counted — arming a
+      // release for a slot the pre-ownership provider already decremented.
+      const { agentId, orgId, userId } = await seedAgentViaService();
+      const nodeId = uniq("node");
+      await dbWrite
+        .insert(dockerNodes)
+        .values({ node_id: nodeId, hostname: `${nodeId}.test.invalid`, allocated_count: 2 });
+      await dbWrite
+        .update(agentSandboxes)
+        .set({
+          status: "deletion_pending",
+          node_id: nodeId,
+          container_name: uniq("container"),
+          deletion_attempt_id: null,
+          deletion_started_at: null,
+          deletion_allocation_counted: null,
+        })
+        .where(eq(agentSandboxes.id, agentId));
+
+      await new ProvisioningJobService().enqueueAgentDeleteOnce({
+        agentId,
+        organizationId: orgId,
+        userId,
+      });
+
+      // Ownership must stay unrecorded: this generation cannot prove it owns a
+      // slot, and guessing "true" is the double-free.
+      expect(await ownership(agentId)).toBeNull();
+
+      const attemptId = await deletionAttemptId(agentId);
+      expect(
+        await agentSandboxesRepository.tryReleaseDeletionAllocation(
+          agentId,
+          orgId,
+          attemptId,
+          nodeId,
+        ),
+      ).toBe("not-owned");
+      expect(await allocatedCount(nodeId)).toBe(2);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test("isDeletionContinuation covers the shapes the narrow test misses", () => {
+    const fresh = { status: "running", deletion_attempt_id: null, deletion_started_at: null };
+    expect(isDeletionContinuation(fresh)).toBe(false);
+
+    // Each of these is a continuation the `deletion_started_at` test alone misses.
+    for (const row of [
+      { status: "deletion_pending", deletion_attempt_id: null, deletion_started_at: null },
+      { status: "deletion_failed", deletion_attempt_id: null, deletion_started_at: null },
+      { status: "running", deletion_attempt_id: crypto.randomUUID(), deletion_started_at: null },
+      { status: "running", deletion_attempt_id: null, deletion_started_at: new Date() },
+    ]) {
+      expect(isDeletionContinuation(row)).toBe(true);
+    }
+  });
+});
+
+describe("releaseDeletionAllocationOnReap — absence proven by the orphan reaper", () => {
+  test(
+    "an abandoned deletion stops counting once its container is reaped",
+    async () => {
+      if (!pgliteReady) return;
+      // The delete could not prove absence (bounded timeout, or the row went
+      // deletion_failed), so it kept ownership and the slot stayed counted.
+      // Without this release the slot would be held forever once
+      // reEnqueueFailedDeletions hits its circuit breaker — the #15378 shape.
+      const { agentId, nodeId } = await seedNodeWithTargetAndSibling({
+        allocationCounted: true,
+        status: "deletion_failed",
+      });
+      expect(await countAllocatedWorkloadsOnNodeWithDatabase(dbWrite, nodeId)).toBe(1);
+
+      expect(await agentSandboxesRepository.releaseDeletionAllocationOnReap(agentId, nodeId)).toBe(
+        "released",
+      );
+      expect(await allocatedCount(nodeId)).toBe(1);
+      expect(await ownership(agentId)).toBe(false);
+      expect(await countAllocatedWorkloadsOnNodeWithDatabase(dbWrite, nodeId)).toBe(0);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a second reap of the same agent does not free the live sibling's slot",
+    async () => {
+      if (!pgliteReady) return;
+      const { agentId, nodeId } = await seedNodeWithTargetAndSibling({
+        allocationCounted: true,
+        status: "deletion_failed",
+      });
+
+      await agentSandboxesRepository.releaseDeletionAllocationOnReap(agentId, nodeId);
+      expect(await agentSandboxesRepository.releaseDeletionAllocationOnReap(agentId, nodeId)).toBe(
+        "not-owned",
+      );
+      expect(await allocatedCount(nodeId)).toBe(1);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "reaping cannot release capacity on a node the row has since left",
+    async () => {
+      if (!pgliteReady) return;
+      const { agentId, nodeId } = await seedNodeWithTargetAndSibling({
+        allocationCounted: true,
+        status: "deletion_failed",
+      });
+      const otherNodeId = uniq("node");
+      await dbWrite.insert(dockerNodes).values({
+        node_id: otherNodeId,
+        hostname: `${otherNodeId}.test.invalid`,
+        allocated_count: 2,
+      });
+
+      expect(
+        await agentSandboxesRepository.releaseDeletionAllocationOnReap(agentId, otherNodeId),
+      ).toBe("not-owned");
+      expect(await allocatedCount(otherNodeId)).toBe(2);
+      expect(await allocatedCount(nodeId)).toBe(2);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a row that never owned a slot is untouched by a reap",
+    async () => {
+      if (!pgliteReady) return;
+      const { agentId, nodeId } = await seedNodeWithTargetAndSibling({
+        allocationCounted: false,
+        status: "deletion_failed",
+      });
+
+      expect(await agentSandboxesRepository.releaseDeletionAllocationOnReap(agentId, nodeId)).toBe(
+        "not-owned",
+      );
+      expect(await allocatedCount(nodeId)).toBe(2);
+    },
+    PGLITE_TIMEOUT,
+  );
+});
+
+describe("holdsCountedNodeSlot — ownership initialization from pre-delete state", () => {
+  test("a placed, running row owns its slot", () => {
+    expect(holdsCountedNodeSlot({ status: "running", node_id: "node-1" })).toBe(true);
+  });
+
+  test("suspended and sleeping rows already gave the slot back", () => {
+    expect(holdsCountedNodeSlot({ status: "stopped", node_id: "node-1" })).toBe(false);
+    expect(holdsCountedNodeSlot({ status: "sleeping", node_id: "node-1" })).toBe(false);
+  });
+
+  test("an unplaced row never had a slot", () => {
+    expect(holdsCountedNodeSlot({ status: "running", node_id: null })).toBe(false);
+    expect(holdsCountedNodeSlot({ status: "pending", node_id: null })).toBe(false);
+  });
+
+  test("a disconnected container still occupies its node", () => {
+    expect(holdsCountedNodeSlot({ status: "disconnected", node_id: "node-1" })).toBe(true);
+  });
+
+  test("statuses the capacity recount treats as free are never owned here", () => {
+    // `syncAllocatedCounts` recomputes allocated_count from
+    // TERMINAL_SANDBOX_STATUSES. Any status it drops has already had its slot
+    // reclaimed, so stamping ownership for one would release it a second time —
+    // the double-free this issue closes. Derivation keeps the two in lockstep.
+    for (const status of TERMINAL_SANDBOX_STATUSES) {
+      expect(holdsCountedNodeSlot({ status, node_id: "node-1" })).toBe(false);
+    }
+  });
+});
+
+describe("workload reconciliation counts a deletion row exactly while it owns a slot", () => {
+  test(
+    "deletion_pending counts before release and stops counting after",
+    async () => {
+      if (!pgliteReady) return;
+      const { agentId, orgId, nodeId, deletionAttemptId } = await seedNodeWithTargetAndSibling({
+        allocationCounted: true,
+        status: "deletion_pending",
+      });
+
+      expect(await countAllocatedWorkloadsOnNodeWithDatabase(dbWrite, nodeId)).toBe(1);
+
+      await agentSandboxesRepository.tryReleaseDeletionAllocation(
+        agentId,
+        orgId,
+        deletionAttemptId,
+        nodeId,
+      );
+
+      // The row lingers in deletion_pending until the row delete commits, but it
+      // no longer consumes capacity — a status-only rule kept counting it here.
+      expect(await countAllocatedWorkloadsOnNodeWithDatabase(dbWrite, nodeId)).toBe(0);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "deletion_failed still counts while it owns a slot",
+    async () => {
+      if (!pgliteReady) return;
+      const { nodeId } = await seedNodeWithTargetAndSibling({
+        allocationCounted: true,
+        status: "deletion_failed",
+      });
+
+      // deletion_failed is a TERMINAL_SANDBOX_STATUS, so the status-only rule
+      // reported this node as free while its container was still placed.
+      expect(await countAllocatedWorkloadsOnNodeWithDatabase(dbWrite, nodeId)).toBe(1);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "pre-migration NULL ownership keeps the original status-only behaviour",
+    async () => {
+      if (!pgliteReady) return;
+      const pending = await seedNodeWithTargetAndSibling({
+        allocationCounted: null,
+        status: "deletion_pending",
+      });
+      const failed = await seedNodeWithTargetAndSibling({
+        allocationCounted: null,
+        status: "deletion_failed",
+      });
+
+      expect(await countAllocatedWorkloadsOnNodeWithDatabase(dbWrite, pending.nodeId)).toBe(1);
+      expect(await countAllocatedWorkloadsOnNodeWithDatabase(dbWrite, failed.nodeId)).toBe(0);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a live row with no deletion intent is unaffected",
+    async () => {
+      if (!pgliteReady) return;
+      const { nodeId } = await seedNodeWithTargetAndSibling({
+        allocationCounted: null,
+        status: "running",
+        withDeletionIntent: false,
+      });
+
+      expect(await countAllocatedWorkloadsOnNodeWithDatabase(dbWrite, nodeId)).toBe(1);
+    },
+    PGLITE_TIMEOUT,
+  );
+});
+
+describe("enqueueAgentDeleteOnce initializes ownership from the pre-delete state", () => {
+  test(
+    "a placed, running agent starts its deletion owning one slot; a re-enqueue keeps that answer",
+    async () => {
+      if (!pgliteReady) return;
+      const { agentId, orgId, userId } = await seedAgentViaService();
+      const nodeId = uniq("node");
+      await dbWrite
+        .insert(dockerNodes)
+        .values({ node_id: nodeId, hostname: `${nodeId}.test.invalid`, allocated_count: 2 });
+      await dbWrite
+        .update(agentSandboxes)
+        .set({ status: "running", node_id: nodeId, container_name: uniq("container") })
+        .where(eq(agentSandboxes.id, agentId));
+
+      await new ProvisioningJobService().enqueueAgentDeleteOnce({
+        agentId,
+        organizationId: orgId,
+        userId,
+      });
+      expect(await ownership(agentId)).toBe(true);
+
+      // Release, then let a recovery sweep re-enqueue. Re-deriving ownership here
+      // would read the row's own `deletion_pending` status as "still counted" and
+      // free a slot on every sweep; inheriting keeps the released answer.
+      const attemptId = await deletionAttemptId(agentId);
+      await agentSandboxesRepository.tryReleaseDeletionAllocation(
+        agentId,
+        orgId,
+        attemptId,
+        nodeId,
+      );
+      expect(await allocatedCount(nodeId)).toBe(1);
+
+      await new ProvisioningJobService().enqueueAgentDeleteOnce({
+        agentId,
+        organizationId: orgId,
+        userId,
+      });
+      expect(await ownership(agentId)).toBe(false);
+      expect(await allocatedCount(nodeId)).toBe(1);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a suspended agent starts its deletion owning nothing",
+    async () => {
+      if (!pgliteReady) return;
+      const { agentId, orgId, userId } = await seedAgentViaService();
+      const nodeId = uniq("node");
+      await dbWrite
+        .insert(dockerNodes)
+        .values({ node_id: nodeId, hostname: `${nodeId}.test.invalid`, allocated_count: 2 });
+      // Suspend already gave the slot back while keeping the locator.
+      await dbWrite
+        .update(agentSandboxes)
+        .set({ status: "stopped", node_id: nodeId, container_name: uniq("container") })
+        .where(eq(agentSandboxes.id, agentId));
+
+      await new ProvisioningJobService().enqueueAgentDeleteOnce({
+        agentId,
+        organizationId: orgId,
+        userId,
+      });
+
+      expect(await ownership(agentId)).toBe(false);
+      const attemptId = await deletionAttemptId(agentId);
+      await agentSandboxesRepository.tryReleaseDeletionAllocation(
+        agentId,
+        orgId,
+        attemptId,
+        nodeId,
+      );
+      expect(await allocatedCount(nodeId)).toBe(2);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "an unplaced (shared-tier) agent starts its deletion owning nothing",
+    async () => {
+      if (!pgliteReady) return;
+      const { agentId, orgId, userId } = await seedAgentViaService();
+
+      await new ProvisioningJobService().enqueueAgentDeleteOnce({
+        agentId,
+        organizationId: orgId,
+        userId,
+      });
+
+      expect(await ownership(agentId)).toBe(false);
+    },
+    PGLITE_TIMEOUT,
+  );
+});
+
+// Loud guard: PGlite is in-process (no network), so `pgliteReady` must be true.
+// Without this a pushSchema failure would early-return every case above and a
+// capacity-safety proof would masquerade as a vacuous green.
+test("pglite schema applied — never a silent skip", () => {
+  expect(pgliteReady).toBe(true);
+});
