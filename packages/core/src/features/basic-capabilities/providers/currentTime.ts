@@ -2,8 +2,9 @@
  * The CURRENT_TIME provider: injects the current date and time into the prompt
  * in several formats (ISO, unix, date-only, time-only, day-of-week, and a human
  * readable full form), resolved against the sending client's IANA timezone
- * when available and otherwise the agent's TIMEZONE setting. Turn-local time
- * keeps relative dates aligned with the device the user is actively using.
+ * when available, then the agent's TIMEZONE setting, then the runtime host's
+ * IANA timezone. Turn-local time keeps relative dates aligned with the device
+ * the user is actively using while direct API callers remain local-time safe.
  * Text content comes from the centralized CURRENT_TIME provider spec.
  */
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
@@ -37,6 +38,25 @@ function clientTimeZone(message: Memory): string | null {
 	}
 }
 
+function validTimeZone(value: unknown): string | null {
+	if (typeof value !== "string" || value.trim().length === 0) return null;
+	const timeZone = value.trim();
+	try {
+		new Intl.DateTimeFormat("en-US", { timeZone }).format(0);
+		return timeZone;
+	} catch {
+		// error-policy:J3 runtime settings cross a configuration boundary; an
+		// unknown IANA zone is explicitly rejected before prompt composition.
+		return null;
+	}
+}
+
+function hostTimeZone(): string {
+	return (
+		validTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone) ?? "UTC"
+	);
+}
+
 /**
  * Current time provider function that retrieves the current date and time
  * in various formats for use in time-based operations or responses.
@@ -57,10 +77,10 @@ export const currentTimeProvider: Provider = {
 
 	get: async (_runtime: IAgentRuntime, _message: Memory, _state: State) => {
 		const now = new Date();
-		const setting = _runtime.getSetting("TIMEZONE");
-		const configuredTimeZone =
-			(typeof setting === "string" ? setting : "UTC") || "UTC";
-		const timeZone = clientTimeZone(_message) ?? configuredTimeZone;
+		const timeZone =
+			clientTimeZone(_message) ??
+			validTimeZone(_runtime.getSetting("TIMEZONE")) ??
+			hostTimeZone();
 
 		const isoTimestamp = now.toISOString();
 		const unixTimestamp = Math.floor(now.getTime() / 1000);
