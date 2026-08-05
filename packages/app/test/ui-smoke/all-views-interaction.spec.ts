@@ -406,6 +406,12 @@ function documentedClickNoop(
   ) {
     return "active tab re-selection leaves the selected tab unchanged";
   }
+  if (
+    details.attributes["aria-pressed"] === "true" &&
+    after.details?.attributes["aria-pressed"] === "true"
+  ) {
+    return "active pressed-control re-selection leaves the selected value unchanged";
+  }
   if (details.href) {
     try {
       const beforeUrl = new URL(before.url);
