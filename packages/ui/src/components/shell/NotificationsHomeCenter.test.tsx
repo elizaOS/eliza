@@ -62,7 +62,6 @@ import {
 import { NOTIFICATION_ROW_SETTLE_MS } from "./notification-shade-content";
 import {
   notificationPullOvershootOffset,
-  notificationPullPresentation,
   PULL_TRAVEL_PX,
 } from "./notification-shade-presentation";
 
@@ -610,28 +609,6 @@ describe("dampenPull", () => {
     expect(notificationPullOvershootOffset(PULL_TRAVEL_PX)).toBe(0);
     expect(notificationPullOvershootOffset(overpull)).toBeCloseTo(9.8, 1);
     expect(notificationPullOvershootOffset(-overpull)).toBeCloseTo(-9.8, 1);
-  });
-
-  it("fades the count before upward overpull reaches its clipping boundary", () => {
-    const atCloseDetent = notificationPullPresentation(
-      -PULL_TRAVEL_PX,
-      true,
-      false,
-    );
-    const midwayThroughBoundaryFade = notificationPullPresentation(
-      -(PULL_TRAVEL_PX + 4),
-      true,
-      false,
-    );
-    const pastBoundaryFade = notificationPullPresentation(
-      -(PULL_TRAVEL_PX + 8),
-      true,
-      false,
-    );
-
-    expect(atCloseDetent.notificationCountVisibility).toBe(1);
-    expect(midwayThroughBoundaryFade.notificationCountVisibility).toBe(0.5);
-    expect(pastBoundaryFade.notificationCountVisibility).toBe(0);
   });
 });
 
@@ -1750,7 +1727,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(screen.queryByText("Files updated")).toBeNull();
   });
 
-  it("fades expanded cards while retaining the resting priority stack", () => {
+  it("closes every card while retaining priority shells for stable geometry", () => {
     seedTriage();
     renderRestedNotifications();
     const list = screen.getByTestId("home-notification-list");
@@ -1830,6 +1807,18 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     finishShadeCollapse();
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
     expect(screen.getByTestId("notification-row")).toBe(priorityRow);
+    expect(priorityGroupContent?.style.opacity).toBe("0");
+    expect(priorityGroupContent?.style.transition).toBe("none");
+    expect(
+      priorityGroupContent
+        ?.closest("[data-notification-group]")
+        ?.getAttribute("aria-hidden"),
+    ).toBe("true");
+    expect(
+      priorityGroupContent
+        ?.closest("[data-notification-group]")
+        ?.hasAttribute("inert"),
+    ).toBe(true);
   });
 
   it("keeps the same card material through a reversible upward drag", () => {
@@ -1870,6 +1859,10 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     const agentSurface = screen
       .getByText("Agent summary")
       .closest<HTMLElement>('[data-testid="notification-row-swipe"]');
+    const mailGroup = screen
+      .getByText("Urgent mail")
+      .closest("[data-notification-group]")
+      ?.querySelector<HTMLElement>("[data-notification-group-content]");
     const filesContent = filesSurface?.querySelector<HTMLElement>(
       ".eliza-notif-row-content",
     );
@@ -1893,6 +1886,9 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     });
 
     expect(list.hasAttribute("data-shade-dragging")).toBe(true);
+    // Count and clear controls own no layout space, so gesture presentation
+    // must never move an already-visible priority stack to compensate for them.
+    expect(mailGroup?.style.transform).toBe("translate3d(0, 0px, 0)");
     const css = list.parentElement?.querySelector("style")?.textContent ?? "";
     const activeDragRule = css.match(
       /\.eliza-notif-scroll\[data-shade-dragging\]\s*\{([^}]*)\}/,
@@ -2702,7 +2698,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     const previewGroups = Array.from(
       list.querySelectorAll<HTMLElement>("[data-notification-pull-reveal]"),
     );
-    expect(previewGroups).toHaveLength(2);
+    expect(previewGroups).toHaveLength(3);
     expect(screen.queryByTestId("notifications-collapse")).toBeNull();
     fireEvent.pointerUp(list, {
       pointerType: "mouse",
@@ -2746,7 +2742,15 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(center.hasAttribute("data-notification-shade-cancelling")).toBe(
       false,
     );
-    expect(previewGroups.every((group) => !group.isConnected)).toBe(true);
+    const retainedGroups = previewGroups.filter((group) => group.isConnected);
+    expect(retainedGroups).toHaveLength(1);
+    expect(retainedGroups[0]?.getAttribute("aria-hidden")).toBe("true");
+    expect(retainedGroups[0]?.hasAttribute("inert")).toBe(true);
+    expect(
+      retainedGroups[0]?.querySelector<HTMLElement>(
+        "[data-notification-group-content]",
+      )?.style.opacity,
+    ).toBe("0");
     expect(screen.queryByTestId("notifications-collapse")).toBeNull();
     expect(screen.queryAllByTestId("notification-row")).toHaveLength(1);
   });
