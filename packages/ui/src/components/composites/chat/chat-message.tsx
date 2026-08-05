@@ -1136,12 +1136,12 @@ export const ChatMessage = memo(function ChatMessage({
             "relative flex flex-col",
             // Fine pointers keep a stable hover lane so moving onto its controls
             // never reflows the transcript. Touch has no hover transition to
-            // protect, so it stays compact until a tap reveals the 44px targets;
-            // the shared glass easing makes that space open and close with them.
+            // protect, so it stays compact until a tap opens the action cluster;
+            // the shared glass easing makes that space open and close with it.
             hasActionLane &&
               "transition-[padding-bottom] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:duration-100",
             hasActionLane &&
-              (supportsHover ? "pb-6" : accessoryVisible ? "pb-12" : "pb-0"),
+              (supportsHover ? "pb-6" : accessoryVisible ? "pb-9" : "pb-0"),
             isFirstRun
               ? "max-w-[22rem] items-start"
               : isUser
