@@ -2204,6 +2204,11 @@ export class AgentSandboxesRepository {
     nodeId: string,
     claimWhere: SQL,
   ): Promise<DeletionAllocationRelease> {
+    // Memoized per database URL, so this is a settled-promise await after the
+    // first call in an isolate rather than DDL on every teardown. It stays on
+    // this path because the deletion writers can reach the column before the
+    // migration has run — `deploy-eliza-provisioning-worker.yml` has no
+    // `migrate-db` gate.
     await ensureAgentSandboxSchema();
     return dbWrite.transaction(async (tx) => {
       const [claimed] = await tx
@@ -2222,6 +2227,12 @@ export class AgentSandboxesRepository {
         .where(and(eq(dockerNodes.node_id, nodeId), gt(dockerNodes.allocated_count, 0)))
         .returning({ nodeId: dockerNodes.node_id });
       if (decremented.length === 0) {
+        // Committing the flip is still correct. Either the counter was already
+        // 0, or the `docker_nodes` row is gone — and when the row goes its
+        // `allocated_count` goes with it, so there is no counter left to leak
+        // into. A transiently-absent node self-heals anyway: `syncAllocatedCounts`
+        // recomputes from surviving rows, and the error direction only ever
+        // under-packs a node, never over-packs one.
         logger.warn(
           `[agent-sandboxes] Deletion allocation ownership consumed for node ${nodeId} but allocated_count was not decremented — counter already at 0 or node row missing`,
         );
@@ -2272,6 +2283,13 @@ export class AgentSandboxesRepository {
    * absence directly, which supersedes whichever deletion attempt was in
    * flight. The node is still matched, so a row since re-placed elsewhere
    * cannot have the wrong node's capacity released.
+   *
+   * The missing `organization_id` predicate is deliberate and not a weaker
+   * fence: `agent_sandboxes.id` is the primary key, so scoping by org selects
+   * the same row or none. `tryReleaseDeletionAllocation` carries it because its
+   * caller holds an org-scoped request context and passing it through keeps the
+   * tenant boundary explicit at that entry point; the reaper has no such
+   * context, having started from a container name on a node.
    */
   async releaseDeletionAllocationOnReap(
     agentId: string,

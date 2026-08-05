@@ -246,7 +246,7 @@ describe("tryReleaseDeletionAllocation — releases exactly once", () => {
   );
 
   test(
-    "concurrent releases of one generation decrement once",
+    "a second release of an already-spent generation is a no-op",
     async () => {
       if (!pgliteReady) return;
       const { agentId, orgId, nodeId, deletionAttemptId } = await seedNodeWithTargetAndSibling({
@@ -268,10 +268,22 @@ describe("tryReleaseDeletionAllocation — releases exactly once", () => {
         ),
       ]);
 
-      // Exactly one caller wins the row lock and spends the ownership; the other
-      // re-evaluates against the committed row and finds nothing to claim. Assert
-      // the outcomes by name — every outcome is a truthy string, so a
-      // truthiness count would pass no matter which two came back.
+      // This harness cannot demonstrate a race, and the test does not claim to.
+      // PGlite is a single WASM backend behind one connection, so these two
+      // transactions cannot interleave — the second queues and begins after the
+      // first commits. What is pinned is the property the retry path actually
+      // relies on: releasing an already-spent generation returns `not-owned` and
+      // does not decrement twice.
+      //
+      // NOT covered here: real row-lock contention, where a second transaction
+      // blocks on the UPDATE and then re-evaluates its WHERE against the updated
+      // row under READ COMMITTED. That needs two independent PostgreSQL
+      // connections, and the isolation level matters — under REPEATABLE READ the
+      // loser raises a serialization failure instead of returning `not-owned`,
+      // and no caller here catches that.
+      //
+      // Assert the outcomes by name: every outcome is a truthy string, so a
+      // truthiness count would pass whichever two came back.
       expect(results.filter((r) => r === "released")).toHaveLength(1);
       expect(results.filter((r) => r === "not-owned")).toHaveLength(1);
       expect(await allocatedCount(nodeId)).toBe(1);
