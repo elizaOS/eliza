@@ -887,6 +887,58 @@ const MODEL_CONTEXT_PROVIDER_EXCLUSION_SET = new Set<string>(
  * be recallable on the simple path (see CORE_RESPONSE_STATE_PROVIDERS).
  */
 const STAGE1_EXTRA_PROVIDER_EXCLUSIONS = ["ENTITIES", "DOCUMENTS"] as const;
+
+/**
+ * Providers withheld from EVERY composition pass and EVERY render of an
+ * unaddressed text-group turn. Internal diagnostics belong in turns where the
+ * agent is acting or its operator is engaging; rendered into the context of
+ * ambient group chatter they hijack routing — a live "available_apps provider
+ * timeout" block led Stage 1 to answer a bystander's crypto question as if it
+ * were about the internal error (tj-f8249b30e986d6). The exclusion must own
+ * the whole turn, not just Stage 1: the planner recompose re-adds every
+ * `alwaysInResponseState` provider (selectV5PlannerStateProviderNames), and
+ * composeState's turn cache can carry a previously composed block back into
+ * any later state object — so the ambient gate is applied to the Stage-1
+ * include list, to the planner include list, AND as a render exclusion on the
+ * planner context (createV5MessageContextObject), keeping cached provider
+ * state out of the prompt even when composition never requested it this pass.
+ */
+const AMBIENT_TURN_PROVIDER_EXCLUSIONS = ["RECENT_ERRORS"] as const;
+
+/**
+ * The ambient exclusions, gated on the structural classifier the Stage-1
+ * prompt tier branches on (channel type + addressing + source metadata, never
+ * message-text heuristics). Anything not positively identified as unaddressed
+ * group traffic — DMs, mentions, replies, name-drops, autonomous/sub-agent
+ * turns, unknown channels — gets an empty list, so addressed turns keep the
+ * full provider set byte-identical to before.
+ */
+function ambientTurnProviderExclusions(
+	runtime: IAgentRuntime,
+	message: Memory,
+): readonly string[] {
+	if (
+		isUnaddressedTextGroupTurn(
+			message,
+			messageExplicitlyAddressesAgent(runtime, message),
+		)
+	) {
+		return AMBIENT_TURN_PROVIDER_EXCLUSIONS;
+	}
+	return [];
+}
+
+/** Per-turn Stage-1 exclusions: the static set plus the ambient-turn gate. */
+function stage1ExtraProviderExclusions(
+	runtime: IAgentRuntime,
+	message: Memory,
+): readonly string[] {
+	return [
+		...STAGE1_EXTRA_PROVIDER_EXCLUSIONS,
+		...ambientTurnProviderExclusions(runtime, message),
+	];
+}
+
 function hasInboundBenchmarkContext(message: Memory): boolean {
 	const metadata = message.metadata as Record<string, unknown> | undefined;
 	const benchmarkContext = metadata?.benchmarkContext;
@@ -1088,7 +1140,9 @@ export function stage1ResponseStateProviderNames(
 	runtime: IAgentRuntime,
 	message: Memory,
 ): string[] {
-	const exclusions = new Set<string>(STAGE1_EXTRA_PROVIDER_EXCLUSIONS);
+	const exclusions = new Set<string>(
+		stage1ExtraProviderExclusions(runtime, message),
+	);
 	return [
 		...CORE_RESPONSE_STATE_PROVIDERS,
 		...alwaysOnResponseStateProviderNames(runtime),
@@ -1162,6 +1216,19 @@ export function selectV5PlannerStateProviderNames(args: {
 			continue;
 		}
 		providerNames.add(name);
+	}
+
+	// The ambient gate owns this composition pass too: without it, the
+	// always-on re-add above restores RECENT_ERRORS for ambient turns routed
+	// to planning, undoing the Stage-1 exclusion exactly on the turns that
+	// reach a model twice. Stage-1-only exclusions (ENTITIES/DOCUMENTS) are
+	// deliberately NOT subtracted here — the planner legitimately re-adds
+	// them; the ambient exclusions are turn-scoped, not stage-scoped.
+	for (const excluded of ambientTurnProviderExclusions(
+		args.runtime,
+		args.message,
+	)) {
+		providerNames.delete(excluded);
 	}
 
 	return [...providerNames];
@@ -2907,6 +2974,14 @@ async function createV5MessageContextObject(args: {
 	extraProviderExclusions?: readonly string[];
 	preselectedActions?: readonly Action[];
 	actionSurface?: V5PlannerActionSurface;
+	/**
+	 * Structural "this turn does not address the agent" signal (the
+	 * isUnaddressedTextGroupTurn classifier — channel type + addressing +
+	 * source metadata, never message text). When set, the rendered context
+	 * carries the ambient-turn policy instruction; absent/false renders
+	 * byte-identical to before, so addressed turns are untouched.
+	 */
+	ambientTurn?: boolean;
 }): Promise<ContextObject> {
 	const events: ContextEvent[] = [];
 
@@ -2968,6 +3043,27 @@ async function createV5MessageContextObject(args: {
 				: " Your own prior replies are the prior_message:agent blocks: when asked what YOU said, told, or promised earlier, answer only from those blocks — never assert you said something that does not appear in them, and never deny saying something that does.") +
 			' Before saying you cannot find something, read the final message:user itself: if the asker states a fact and asks about it in the same message ("my favorite color is teal, what is my favorite color?"), answer from the current message directly. Only when the asked-about token appears neither in the current message nor in any visible prior_message block, say so plainly ("I don\'t see X in the recent messages I can see") rather than claiming you searched beyond the visible window or fabricating an action — the prior_message blocks are the only window you have, and there is no separate chat-history search tool. This "no chat-history search" limit is about CHAT recall ONLY. It does NOT apply to what a task, build, deploy, or sub-agent YOU ran actually did: that run status IS verifiable with the task/sub-agent tools. So when the final message asks "what happened with [the build/app/task]" or disputes whether something you ran actually worked, treat it as a live verification request (set requiresTool) and CHECK the current task/sub-agent status with a tool before reporting, disclaiming, or conceding — never say you cannot verify a run you can look up.',
 	});
+
+	// Ambient-turn policy (live incident tj-f637475edcb7bd): on an unaddressed
+	// group turn the planner ran, produced no tool activity, and still shipped
+	// the filler completion "I handled the available step." as the reply. The
+	// planner prompt never told the model the turn was ambient, so it treated
+	// "end the turn" as "compose a status". Rendered only when the caller's
+	// structural classifier flagged the turn ambient — addressed turns (and
+	// callers that do not pass the flag) render byte-identical context, and
+	// the IGNORE terminal invoked here already flows to deliberate,
+	// recorded non-delivery (see the planner deliberate-silence terminal in
+	// runV5MessageRuntimeStage1).
+	if (args.ambientTurn) {
+		events.push({
+			id: "ambient-turn-policy",
+			type: "instruction",
+			source: "message-service",
+			stable: false,
+			content:
+				'ambient_turn_policy: The final message:user below was not addressed to you — it is other participants talking to each other, and no reply is expected from you. Contribute only if this turn\'s work produced something concrete and useful to those participants (a tool result, a substantive answer to what they are discussing). If your work yields nothing concrete to contribute, end the turn by calling the IGNORE tool — deliberate silence — instead of composing a reply. Never send a status update, a progress note, or a description of your own process (for example "I handled the available step") as the reply: on an unaddressed message, an empty outcome means silence.',
+		});
+	}
 
 	const replyReferenceEvent = replyReferenceEventForContext(args.message);
 	if (replyReferenceEvent) {
@@ -4107,7 +4203,13 @@ export async function renderMessageHandlerStablePrefix(
 		state,
 		userRoles: [senderRole],
 		availableContexts,
-		extraProviderExclusions: STAGE1_EXTRA_PROVIDER_EXCLUSIONS,
+		// Per-turn exclusions so the stable-prefix render is owned by the same
+		// gate as every live render; the synthetic VOICE_DM message classifies
+		// as addressed, so today this resolves to the static set.
+		extraProviderExclusions: stage1ExtraProviderExclusions(
+			runtime,
+			syntheticMessage,
+		),
 	});
 	const rendered = renderContextObject(context);
 	const stableSegments = rendered.promptSegments.filter(
@@ -6631,7 +6733,13 @@ export async function runV5MessageRuntimeStage1(args: {
 		...args,
 		userRoles: [senderRole],
 		availableContexts,
-		extraProviderExclusions: STAGE1_EXTRA_PROVIDER_EXCLUSIONS,
+		// Per-turn exclusions (not the static list): even if a cached compose
+		// left RECENT_ERRORS in state, an unaddressed group turn must not
+		// render internal diagnostics into its Stage-1 context.
+		extraProviderExclusions: stage1ExtraProviderExclusions(
+			args.runtime,
+			args.message,
+		),
 	});
 	const stage1PreprocessStartedAt = performance.now();
 
@@ -6687,18 +6795,25 @@ export async function runV5MessageRuntimeStage1(args: {
 			args.message.content?.channelType === ChannelType.DM ||
 			args.message.content?.channelType === ChannelType.API ||
 			args.message.content?.channelType === ChannelType.SELF;
+		// Ambient turn = a positively-identified unaddressed text-group turn
+		// (structural classifier only — channel type + addressing + source
+		// metadata, never message text; anything uncertain fails open to
+		// addressed). Drives the planner's ambient-turn policy instruction and
+		// the deliberate-silence terminal below, independent of the Stage-1
+		// compact-tier env lever.
+		const ambientTurn =
+			!directMessageChannel &&
+			isUnaddressedTextGroupTurn(
+				args.message,
+				messageExplicitlyAddressesAgent(args.runtime, args.message),
+			);
 		// Compact-triage tier: an unaddressed text-group turn usually ends in
 		// IGNORE, so it gets the compact template + compact context catalog +
 		// compressed field docs instead of the full ~27KB static rule block.
 		// Structural signals only; anything uncertain fails open to the full
 		// tier (see stage1-prompt-tier.ts).
 		const groupTriageTurn =
-			!directMessageChannel &&
-			isUnaddressedTextGroupTurn(
-				args.message,
-				messageExplicitlyAddressesAgent(args.runtime, args.message),
-			) &&
-			isStage1GroupTriageTierEnabled(args.runtime);
+			ambientTurn && isStage1GroupTriageTierEnabled(args.runtime);
 		const stage1TurnSignal =
 			getStreamingContext()?.abortSignal ?? new AbortController().signal;
 
@@ -7573,6 +7688,15 @@ export async function runV5MessageRuntimeStage1(args: {
 			availableContexts,
 			preselectedActions: exposedPlannerActions,
 			actionSurface,
+			ambientTurn,
+			// Render-side half of the ambient gate: the include-list exclusion in
+			// selectV5PlannerStateProviderNames stops fresh composition, but
+			// composeState merges the whole turn cache into the state it returns,
+			// so a block composed earlier in the turn would still render here.
+			// The exclusion must own cached rendering as well as composition.
+			...(ambientTurn
+				? { extraProviderExclusions: AMBIENT_TURN_PROVIDER_EXCLUSIONS }
+				: {}),
 		});
 		const responseHandlerContextSlices = stringArrayProperty(
 			(messageHandler.plan as { contextSlices?: unknown }).contextSlices,
@@ -7954,17 +8078,53 @@ export async function runV5MessageRuntimeStage1(args: {
 			plannedTextRaw,
 			deliveredMediaUrls,
 		);
+		// Planner deliberate silence on an ambient turn: the ambient-turn policy
+		// instruction tells the planner to end an empty unaddressed turn with
+		// IGNORE, so honor that choice the same way a Stage-1 IGNORE is honored —
+		// a terminal decision handleMessage records observably (an
+		// actions:["IGNORE"] terminal memory + MESSAGE_SENT), not a bare
+		// mode-"none" result indistinguishable from a dropped turn. Scoped to
+		// turns where nothing reached the user (no early ack, no action results,
+		// no planner text): once anything was delivered, the existing
+		// planned-reply bookkeeping below must keep owning dedupe and delivery.
+		// This also pre-empts the stage-one-ack fallback below — on an ambient
+		// turn an undelivered drafted ack is exactly the filler the policy
+		// exists to suppress. Addressed turns never take this branch, so the
+		// turn-delivery floor (an addressed turn always delivers) is untouched.
+		if (
+			ambientTurn &&
+			plannerResult.endedWithDeliberateSilence === true &&
+			!earlyReplySent &&
+			actionResults.length === 0 &&
+			!plannedText
+		) {
+			return {
+				kind: "terminal",
+				action: plannerResult.silentTerminalAction ?? "IGNORE",
+				messageHandler,
+				state: finalPlannerState,
+			};
+		}
 		// Some action turns intentionally finish without planner prose. For async
 		// work (for example spawning a coding task), still return a non-empty
 		// synchronous acknowledgement so HTTP/connector callers don't render a blank
 		// "(no response)" while the real work continues in the background. Respect
 		// explicit suppressPlannerReply terminal actions (IGNORE/STOP-style flows),
 		// which are deliberately silent.
-		const suppressesPlannerReply = actionResults.some(
-			(result) =>
-				(result.data as { suppressPlannerReply?: unknown } | undefined)
-					?.suppressPlannerReply === true,
-		);
+		// Ambient deliberate silence counts as suppression even after tool work:
+		// the ambient-turn policy invites the planner to attempt work before
+		// choosing IGNORE, so a turn that ran a tool and then ended on a silent
+		// terminal must not have the ack fallback below "fix" that silence into
+		// filler ("on it, working on that now.") — the exact narration the
+		// policy suppresses — nor resurrect a preserved stage-0 draft the
+		// planner deliberately declined to send.
+		const suppressesPlannerReply =
+			actionResults.some(
+				(result) =>
+					(result.data as { suppressPlannerReply?: unknown } | undefined)
+						?.suppressPlannerReply === true,
+			) ||
+			(ambientTurn && plannerResult.endedWithDeliberateSilence === true);
 		const ranNonSilentAction =
 			actionResults.length > 0 && !suppressesPlannerReply;
 		const stageOneAck =
