@@ -6859,6 +6859,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		const messageHandlerStartedAt = Date.now();
 		const directMessageChannel =
 			args.message.content?.channelType === ChannelType.DM ||
+			args.message.content?.channelType === ChannelType.VOICE_DM ||
 			args.message.content?.channelType === ChannelType.API ||
 			args.message.content?.channelType === ChannelType.SELF;
 		// Ambient turn = a positively-identified unaddressed text-group turn
@@ -7065,6 +7066,10 @@ export async function runV5MessageRuntimeStage1(args: {
 			// remains buffered until routing and effect validation complete. Cloud
 			// adapters ignore the flag and return the result whole.
 			streamStructured: true,
+			// This is the only Stage 1 field intended for the user. Local voice
+			// consumes the validated replyText field; planner/evaluator calls leave
+			// this unset and therefore cannot leak their structured output to TTS.
+			voiceOutput: "user-visible" as const,
 			responseSkeleton: responseGrammar.responseSkeleton,
 			grammar: responseGrammar.grammar,
 			spanSamplerPlan: stage1SpanSamplerPlan,

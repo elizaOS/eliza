@@ -709,7 +709,7 @@ class GbnfBuilder {
 
 const stage1Cache = new Map<string, ResponseGrammarResult>();
 
-const DIRECT_CHANNEL_TYPES = new Set(["DM", "API", "SELF"]);
+const DIRECT_CHANNEL_TYPES = new Set(["DM", "VOICE_DM", "API", "SELF"]);
 const DIRECT_CHANNEL_OMITTED_RESPONSE_FIELDS = new Set([
 	"shouldRespond",
 	"facts",
