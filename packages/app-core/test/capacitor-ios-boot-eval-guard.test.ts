@@ -43,6 +43,8 @@ const REPO_ROOT = path.resolve(
 
 const GUARD_LINE =
   "guard let self = self, case .subsequentLoad = self.webViewDelegationHandler.webViewLoadingState else {";
+const SCENE_GUARD =
+  "if let scene = notification.object as? UIWindowScene, scene === self?.viewController?.view.window?.windowScene {";
 
 function readJson(relPath: string): Record<string, unknown> {
   return JSON.parse(readFileSync(path.join(REPO_ROOT, relPath), "utf8"));
@@ -191,6 +193,20 @@ describe("@capacitor/ios boot-time resume/pause eval guard (issue #11030)", () =
           "must carry the resume+pause cold-launch guard — bun install did not " +
           "apply patches/@capacitor%2Fios patch",
       ).toBe(2);
+      expect(
+        bridgeSource.split("\n").filter((line) => line.includes(SCENE_GUARD))
+          .length,
+        "the patch must preserve both UIScene identity checks around the " +
+          "resume/pause observers",
+      ).toBe(2);
+      expect(bridgeSource).not.toMatch(
+        /self\?\.triggerDocumentJSEvent\(eventName: "(?:resume|pause)"\)/,
+      );
+      expect(
+        bridgeSource.match(
+          /self\.triggerDocumentJSEvent\(eventName: "(?:resume|pause)"\)/g,
+        ),
+      ).toHaveLength(2);
     },
   );
 });

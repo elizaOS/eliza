@@ -1,7 +1,8 @@
 diff --git a/Capacitor/Capacitor/CapacitorBridge.swift b/Capacitor/Capacitor/CapacitorBridge.swift
+index 26343639508383f9c2fdf195cd00c04c6614d41f..27e65565597e219c9a4a831e315a75d95118d941 100644
 --- a/Capacitor/Capacitor/CapacitorBridge.swift
 +++ b/Capacitor/Capacitor/CapacitorBridge.swift
-@@ -264,13 +264,25 @@ open class CapacitorBridge: NSObject, CAPBridgeProtocol {
+@@ -265,13 +265,25 @@ open class CapacitorBridge: NSObject, CAPBridgeProtocol {
          } else {
              observers.append(NotificationCenter.default.addObserver(forName: UIScene.willEnterForegroundNotification, object: nil, queue: OperationQueue.main) { [weak self] notification in
                  if let scene = notification.object as? UIWindowScene, scene === self?.viewController?.view.window?.windowScene {
