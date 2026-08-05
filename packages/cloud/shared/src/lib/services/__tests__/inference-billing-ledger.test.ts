@@ -830,6 +830,107 @@ describe("resolveInferenceBillingLedger — backstop selector", () => {
 
 // Loud guard: PGlite is in-process (no network), so `pgliteReady` must be true.
 // If pushSchema/PGlite ever fails to init, the DB-dependent tests above
+describe("settleLedgerCharge post-debit gate-hint lifetime (#17768)", () => {
+  beforeEach(async () => {
+    if (!pgliteReady) return;
+    await seedOrg("10.000000");
+    // The hint cache and refusal memory persist across tests (mock Redis /
+    // isolate-local LRU); reset both so each case observes only its own writes.
+    const { invalidateOrgBalanceHint } = await import("../inference-auth-cache");
+    const { clearAllOrgAdmissionRefusals } = await import("../inference-admission-refusal");
+    await invalidateOrgBalanceHint(ORG_ID);
+    clearAllOrgAdmissionRefusals();
+  });
+
+  test(
+    "a settled inline charge leaves a WARM hint so the next cacheOnly read cannot 503",
+    async () => {
+      if (!pgliteReady) return;
+      const { readOrgBalanceHint } = await import("../inference-auth-cache");
+      const { getGateBalanceUsd } = await import("../inference-billing-fast-path");
+      const reqId = nextRequestId();
+      await ledger.admitInferenceChargeViaLedger({
+        charge: charge(reqId),
+        estimatedCostUsd: 3,
+        thresholdUsd: 1,
+      });
+      await ledger.createLedgerDebitSettler(charge(reqId))(2.5);
+
+      // The settled turn must NOT leave the org unhinted (the pre-#17745 flap:
+      // onCreditMutation deletes the hint; an unrepaired absence turns the next
+      // Worker turn's cacheOnly read into a hard "warming" 503).
+      const hint = await readOrgBalanceHint(ORG_ID);
+      expect(hint).not.toBeNull();
+      expect(hint?.balanceUsd).toBeCloseTo(7.5, 6);
+      // And the next turn's hot-path read resolves instead of throwing
+      // InferenceBalanceCacheWarmingError.
+      await expect(getGateBalanceUsd(ORG_ID, { cacheOnly: true })).resolves.toBeCloseTo(7.5, 6);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "an uncollected charge leaves the hint ABSENT so the drained org slow-paths",
+    async () => {
+      if (!pgliteReady) return;
+      const { readOrgBalanceHint, writeOrgBalanceHint } = await import("../inference-auth-cache");
+      const reqId = nextRequestId();
+      await ledger.admitInferenceChargeViaLedger({
+        charge: charge(reqId),
+        estimatedCostUsd: 1,
+        thresholdUsd: 0.5,
+      });
+      // A stale pre-attempt hint is exactly what the awaited invalidate must
+      // clear: without it the drained org keeps fast-path admitting until the
+      // sweep corrects the view.
+      await writeOrgBalanceHint(ORG_ID, 10, Date.now(), "1");
+      await dbWrite.execute(
+        `UPDATE organizations SET credit_balance = '0.500000' WHERE id = '${ORG_ID}';`,
+      );
+      await ledger.createLedgerDebitSettler(charge(reqId))(5);
+
+      expect(await readOrgBalanceHint(ORG_ID)).toBeNull();
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a failed republish is contained: settle outcome intact, admission refused, hint absent",
+    async () => {
+      if (!pgliteReady) return;
+      const { readOrgBalanceHint } = await import("../inference-auth-cache");
+      const { isOrgAdmissionRefused } = await import("../inference-admission-refusal");
+      const reqId = nextRequestId();
+      await ledger.admitInferenceChargeViaLedger({
+        charge: charge(reqId),
+        estimatedCostUsd: 3,
+        thresholdUsd: 1,
+      });
+      // Fail the authoritative re-read the republish depends on. The debit has
+      // already committed by then, so the settle must still report success —
+      // the claim row is consumed and a retry would claim nothing.
+      const snapshot = spyOn(
+        creditsService,
+        "getOrganizationBalanceSnapshot",
+      ).mockRejectedValueOnce(new Error("infra down"));
+      try {
+        const reconciliation = await ledger.createLedgerDebitSettler(charge(reqId))(2.5);
+        expect(reconciliation).toMatchObject({ actualCost: 2.5, adjustmentType: "none" });
+        expect(await readBalance()).toBeCloseTo(7.5, 6);
+        expect((await pendingRows())[0]).toMatchObject({ status: "settled" });
+        // Compensation: the org is forced off the fast path (slow-path
+        // authoritative read next turn, never an absent-hint 503) and no
+        // partial hint survives.
+        expect(isOrgAdmissionRefused(ORG_ID)).toBe(true);
+        expect(await readOrgBalanceHint(ORG_ID)).toBeNull();
+      } finally {
+        snapshot.mockRestore();
+      }
+    },
+    PGLITE_TIMEOUT,
+  );
+});
+
 // early-return; this turns that silent no-op into a hard CI failure so a
 // money-path proof can never masquerade as a vacuous green.
 test("pglite schema applied — never a silent skip", () => {

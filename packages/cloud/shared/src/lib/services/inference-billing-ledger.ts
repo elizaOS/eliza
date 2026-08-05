@@ -46,6 +46,7 @@ import { invalidateOrganizationCache } from "../cache/organizations-cache";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import { type CreditReconciliationResult, creditsService } from "./credits";
+import { markOrgAdmissionRefused } from "./inference-admission-refusal";
 import { invalidateOrgBalanceHint } from "./inference-auth-cache";
 import { republishOrgBalanceHintAfterDebit } from "./inference-balance-republish";
 
@@ -322,9 +323,27 @@ async function settleLedgerCharge(
     // a missing hint is read `cacheOnly`, so an absent entry turns the NEXT
     // turn into a user-visible "Billing authorization is warming" 503 rather
     // than a slow read. Same defect as the KV fast-path settler.
-    republishOrgBalanceHintAfterDebit(ctx.organizationId).catch(
-      reportInvalidationFailure(ctx.organizationId, "balance-hint"),
-    );
+    //
+    // Awaited on purpose (#17768): unlike the cheap invalidations above, this
+    // is a Postgres round-trip whose loss silently reinstates the 503 flap,
+    // and a floating promise has no lifetime of its own once the response
+    // returns — the KV settler awaits its identical repair. Failure still must
+    // not convert a committed debit into a reported settle failure: the claim
+    // row is already `settled`, so a retry would claim nothing and misreport
+    // the outcome. Instead mark the org's admission refused so its next turn
+    // takes the authoritative slow path rather than 503ing on the absent
+    // hint, best-effort clear any partial write, and surface the failure.
+    // error-policy:J7 side-effect must not fail the settled charge; failure is
+    // logged and compensated via the refusal mark.
+    try {
+      await republishOrgBalanceHintAfterDebit(ctx.organizationId);
+    } catch (error) {
+      markOrgAdmissionRefused(ctx.organizationId);
+      await invalidateOrgBalanceHint(ctx.organizationId).catch(
+        reportInvalidationFailure(ctx.organizationId, "balance-hint"),
+      );
+      reportInvalidationFailure(ctx.organizationId, "balance-hint")(error);
+    }
     // Parity with deductCredits: fire low-credits email + auto-top-up + the waifu
     // hosted-agent pause webhook so an org draining via optimistic inference still
     // gets low-balance warnings (the ledger debits with its own SQL, not deductCredits).
@@ -347,7 +366,10 @@ async function settleLedgerCharge(
       amountUsd,
       source,
     });
-    invalidateOrgBalanceHint(ctx.organizationId).catch(
+    // Awaited for the same lifetime reason as the debited branch (#17768): a
+    // dropped invalidation here leaves a stale pre-attempt hint that can
+    // over-admit a drained org until the sweep corrects it.
+    await invalidateOrgBalanceHint(ctx.organizationId).catch(
       reportInvalidationFailure(ctx.organizationId, "balance-hint"),
     );
   }
