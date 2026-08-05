@@ -715,7 +715,8 @@ describe("voice-session WS lifecycle", () => {
         reference_id: "fish-voice",
         format: "pcm",
         sample_rate: 16000,
-        latency: "normal",
+        latency: "balanced",
+        chunk_length: 100,
       },
     });
     expect(fish.sentText()).toBe(
