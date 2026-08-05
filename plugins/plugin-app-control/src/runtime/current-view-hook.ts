@@ -9,6 +9,7 @@
  */
 import type { PipelineHookContextForPhase } from "@elizaos/core";
 import { resolveIntentView } from "../actions/views-show.js";
+import { userRequestMessageText } from "../params.js";
 import { hasFreshViewSwitch } from "./view-switch-signal.js";
 
 export const CURRENT_VIEW_HOOK_ID = "app-control:current-view-on-switch";
@@ -30,10 +31,9 @@ export function applyCurrentViewComposeHook(
 ): void {
 	if (!ctx.onlyInclude) return;
 	if (ctx.providers.current.includes("current_view")) return;
-	const text =
-		typeof ctx.message?.content?.text === "string"
-			? ctx.message.content.text
-			: "";
+	// Security-unwrapped user words — the envelope must never look like an
+	// imminent view-switch command.
+	const text = userRequestMessageText(ctx.message);
 	const imminent = resolveIntentView(text) != null;
 	const recent = hasFreshViewSwitch(ctx.message?.roomId);
 	if (imminent || recent) {
