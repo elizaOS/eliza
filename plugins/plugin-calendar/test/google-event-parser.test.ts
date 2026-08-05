@@ -6,7 +6,7 @@
 import type {
   GoogleCalendarEvent,
   GoogleCalendarListEntry,
-} from "@elizaos/plugin-google";
+} from "@elizaos/plugin-google-workspace";
 import type { LifeOpsConnectorGrant } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 
@@ -39,7 +39,7 @@ const ownerGrant: LifeOpsConnectorGrant = {
   updatedAt: "2026-06-16T00:00:00.000Z",
 };
 
-// Shape produced by plugin-google `mapEvent` for a normal timed event.
+// Shape produced by plugin-google-workspace `mapEvent` for a normal timed event.
 const timedGoogleEvent: GoogleCalendarEvent = {
   id: "evt_abc123",
   calendarId: "owner@example.com",

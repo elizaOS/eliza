@@ -1,4 +1,8 @@
-/** Supports app-core build, packaging, or development orchestration for run release contract suite mjs. */
+/**
+ * Runs the release-contract vitest files (asset CDN, docker contract, workflow
+ * drift, release-check, static asset manifest) against whichever repo layout is
+ * present, writing build info first.
+ */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";

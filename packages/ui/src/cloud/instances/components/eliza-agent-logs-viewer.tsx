@@ -291,7 +291,7 @@ export function ElizaAgentLogsViewer({
       childrenBeforeSearch={
         <>
           {showAdvancedHint && (
-            <p className="text-xs text-white/40">
+            <p className="text-xs text-white/60">
               Raw container output stays separate in the admin Docker logs panel
               below.
             </p>

@@ -14,7 +14,6 @@ export function registerModelsCli(program: Command) {
       const envKeys = [
         ["ANTHROPIC_API_KEY", "Anthropic (Claude)"],
         ["OPENAI_API_KEY", "OpenAI (GPT)"],
-        ["AI_GATEWAY_API_KEY", "Vercel AI Gateway"],
         ["GOOGLE_API_KEY", "Google (Gemini)"],
         ["GOOGLE_CLOUD_API_KEY", "Google Antigravity (Vertex AI)"],
         ["GROQ_API_KEY", "Groq"],

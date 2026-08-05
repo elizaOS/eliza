@@ -6,7 +6,7 @@
     "Blocked script execution in '<url> because the document's frame is sandboxed and the 'allow-scripts' permission is not set."
   ],
   "pages-databasepageview--vectors": [
-    "DynamicViewLoader failed to load view \"vector-browser\" from /api/views/vector-browser/bundle.js TypeError: Failed to fetch dynamically imported module: <url>"
+    "%c Error font-size: <n>px; color: #ff<n>; [RendererDiagnostic] dynamic-view.load (diagnostic={\"scope\":\"dynamic-view.load\",\"message\":\"Failed to fetch dynamically imported module: <url>"
   ],
   "primitives-errorboundary--caught-error": [
     "Error: Simulated render failure in a child component.\n    at <fn> (<url>)\n    at <fn> (<url>)\n    at <fn> (<url>)\n    at <fn> (<url>"
@@ -15,12 +15,12 @@
     "Error: Simulated render failure in a child component.\n    at <fn> (<url>)\n    at <fn> (<url>)\n    at <fn> (<url>)\n    at <fn> (<url>"
   ],
   "views-dynamicviewloader--failed-to-load": [
-    "DynamicViewLoader failed to load view \"broken.view\" from <url> Error: DynamicViewLoader: refusing to import a cross-origin view bundle (<url>). View bundles must be served same-origin from /api/views/.\n    at <fn>"
+    "%c Error font-size: <n>px; color: #ff<n>; [RendererDiagnostic] dynamic-view.load (diagnostic={\"scope\":\"dynamic-view.load\",\"message\":\"DynamicViewLoader: refusing to import a cross-origin view bundle (<url>). View bundles must be served same-origin from /api"
   ],
   "views-dynamicviewloader--loading": [
-    "DynamicViewLoader failed to load view \"wallet.inventory\" from /api/views/wallet.inventory/bundle.js TypeError: Failed to fetch dynamically imported module: <url>"
+    "%c Error font-size: <n>px; color: #ff<n>; [RendererDiagnostic] dynamic-view.load (diagnostic={\"scope\":\"dynamic-view.load\",\"message\":\"Failed to fetch dynamically imported module: <url>"
   ],
   "views-dynamicviewloader--with-forwarded-props": [
-    "DynamicViewLoader failed to load view \"feed.timeline\" from /api/views/feed.timeline/bundle.js TypeError: Failed to fetch dynamically imported module: <url>"
+    "%c Error font-size: <n>px; color: #ff<n>; [RendererDiagnostic] dynamic-view.load (diagnostic={\"scope\":\"dynamic-view.load\",\"message\":\"Failed to fetch dynamically imported module: <url>"
   ]
 }

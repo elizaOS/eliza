@@ -7,7 +7,7 @@
  *   voice-bench gpu --bundle eliza-1-9b
  *
  * The legacy mock-only benchmark path is intentionally disabled. Use the
- * real VoiceBench runner under `packages/benchmarks/voicebench/run.sh`.
+ * real VoiceBench runner in https://github.com/elizaOS/benchmarks (voicebench/run.sh).
  */
 
 import { readFileSync, existsSync } from "node:fs";
@@ -30,7 +30,7 @@ async function main(): Promise<void> {
   process.stderr.write(
     `[voice-bench] the runnable benchmark path is now real-only; the old mock driver is disabled.\n` +
       `[voice-bench] requested backend=${args.backend} bundle=${args.bundle} scenario=${args.scenario} runs=${args.runs}\n` +
-      `[voice-bench] run packages/benchmarks/voicebench/run.sh --profile=groq|elevenlabs with real credentials and real audio fixtures.\n`,
+      `[voice-bench] run voicebench/run.sh from https://github.com/elizaOS/benchmarks --profile=groq|elevenlabs with real credentials and real audio fixtures.\n`,
   );
   process.exit(2);
 }

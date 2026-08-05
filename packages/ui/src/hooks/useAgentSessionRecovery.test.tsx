@@ -18,6 +18,8 @@ const mockActiveServer = vi.fn();
 const mockBootConfig = vi.fn(() => ({ cloudApiBase: "https://elizacloud.ai" }));
 const mockRunRecovery = vi.fn();
 const mockSetAgentToken = vi.fn();
+const mockPersistCloudPairApiToken = vi.fn();
+const mockPersistActiveServerCredential = vi.fn();
 const mockIsAuthenticated = vi.fn(() => false);
 // Silent cookie->session recovery for the returning-PWA dead-end. Default:
 // no cookie (returns null) so pre-existing cases keep their old behavior.
@@ -40,6 +42,14 @@ vi.mock("../config/boot-config", () => ({
 }));
 vi.mock("../state/agent-session-recovery-runner", () => ({
   runAgentSessionRecovery: (...args: unknown[]) => mockRunRecovery(...args),
+}));
+vi.mock("../components/auth/CloudPairRelay", () => ({
+  persistCloudPairApiToken: (token: string) =>
+    mockPersistCloudPairApiToken(token),
+}));
+vi.mock("../state/active-server-credential", () => ({
+  persistActiveServerCredential: (token: string) =>
+    mockPersistActiveServerCredential(token),
 }));
 vi.mock("../api", () => ({
   client: { setToken: (token: string) => mockSetAgentToken(token) },
@@ -166,7 +176,9 @@ describe("useAgentSessionRecovery", () => {
     expect(mockRunRecovery).toHaveBeenCalledWith(
       expect.objectContaining({
         consumeRedirectInProcess: true,
-        onPairedInProcess: expect.any(Function),
+        signal: expect.any(AbortSignal),
+        isRecoveryTargetCurrent: expect.any(Function),
+        commitPairedInProcess: expect.any(Function),
       }),
     );
   });
@@ -191,9 +203,15 @@ describe("useAgentSessionRecovery", () => {
 
     await waitFor(() => expect(mockRunRecovery).toHaveBeenCalledTimes(1));
     const deps = mockRunRecovery.mock.calls[0][0] as {
-      onPairedInProcess?: (apiToken: string) => Promise<void>;
+      commitPairedInProcess?: (apiToken: string) => Promise<void>;
     };
-    await deps.onPairedInProcess?.("fresh-agent-bearer");
+    await deps.commitPairedInProcess?.("fresh-agent-bearer");
+    expect(mockPersistCloudPairApiToken).toHaveBeenCalledWith(
+      "fresh-agent-bearer",
+    );
+    expect(mockPersistActiveServerCredential).toHaveBeenCalledWith(
+      "fresh-agent-bearer",
+    );
     expect(mockSetAgentToken).toHaveBeenCalledWith("fresh-agent-bearer");
     expect(onRecovered).toHaveBeenCalledOnce();
   });
@@ -219,9 +237,9 @@ describe("useAgentSessionRecovery", () => {
 
     await waitFor(() => expect(mockRunRecovery).toHaveBeenCalledTimes(1));
     const deps = mockRunRecovery.mock.calls[0][0] as {
-      onPairedInProcess?: (apiToken: string) => Promise<void>;
+      commitPairedInProcess?: (apiToken: string) => Promise<void>;
     };
-    await deps.onPairedInProcess?.("fresh-agent-bearer");
+    await deps.commitPairedInProcess?.("fresh-agent-bearer");
     expect(onRecovered).toHaveBeenCalledOnce();
 
     view.rerender(
@@ -244,6 +262,64 @@ describe("useAgentSessionRecovery", () => {
     );
     await waitFor(() => expect(statuses.at(-1)).toBe("cloud-retry-required"));
     expect(mockRunRecovery).toHaveBeenCalledTimes(1);
+  });
+
+  it("aborts the owned recovery transaction when the auth-gate cycle unmounts", async () => {
+    (globalThis as { Capacitor?: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+    };
+    mockCloudToken.mockReturnValue("steward.jwt.token");
+    mockActiveServer.mockReturnValue(cloudServer("agent-1"));
+    mockRunRecovery.mockReturnValue(new Promise(() => {}));
+
+    const view = render(
+      <Probe active reason="remote_auth_required" onStatus={() => {}} />,
+    );
+
+    await waitFor(() => expect(mockRunRecovery).toHaveBeenCalledTimes(1));
+    const { signal } = mockRunRecovery.mock.calls[0][0] as {
+      signal: AbortSignal;
+    };
+    expect(signal.aborted).toBe(false);
+
+    view.unmount();
+
+    expect(signal.aborted).toBe(true);
+  });
+
+  it("rejects a late native bearer when the active agent changed before commit", async () => {
+    (globalThis as { Capacitor?: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+    };
+    mockCloudToken.mockReturnValue("steward.jwt.token");
+    mockActiveServer.mockReturnValue(cloudServer("agent-1"));
+    mockRunRecovery.mockReturnValue(new Promise(() => {}));
+    const onRecovered = vi.fn();
+
+    render(
+      <Probe
+        active
+        reason="remote_auth_required"
+        onRecovered={onRecovered}
+        onStatus={() => {}}
+      />,
+    );
+
+    await waitFor(() => expect(mockRunRecovery).toHaveBeenCalledTimes(1));
+    const deps = mockRunRecovery.mock.calls[0][0] as {
+      signal: AbortSignal;
+      commitPairedInProcess: (apiToken: string) => Promise<void>;
+    };
+    mockActiveServer.mockReturnValue(cloudServer("agent-2"));
+
+    await expect(
+      deps.commitPairedInProcess("late-agent-1-bearer"),
+    ).rejects.toThrow("target changed");
+    expect(deps.signal.aborted).toBe(true);
+    expect(mockPersistCloudPairApiToken).not.toHaveBeenCalled();
+    expect(mockPersistActiveServerCredential).not.toHaveBeenCalled();
+    expect(mockSetAgentToken).not.toHaveBeenCalled();
+    expect(onRecovered).not.toHaveBeenCalled();
   });
 
   it("stays idle (wall) when there is no cloud session AND no recoverable cookie", async () => {

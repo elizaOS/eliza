@@ -2,7 +2,7 @@
  * Riscv64 strategy: `capacitor-llama` ships native prebuilts for
  * linux-{x64,arm64}, darwin-arm64, win-x64. No riscv64 prebuild exists; we
  * also can't realistically NAPI-build it on-device. Instead the
- * `plugin-aosp-local-inference` FFI loader (which dlopens `libllama.so` +
+ * `plugin-native-inference` FFI loader (which dlopens `libllama.so` +
  * the eliza-llama-shim via `bun:ffi`) is registered as the
  * `localInferenceLoader` service on riscv64 hosts, satisfying the same
  * contract `capacitor-llama` would otherwise satisfy on x64/arm64. The
@@ -12,7 +12,7 @@
  * This test covers the *selection* logic — i.e. the predicate that decides
  * whether to attempt registering the AOSP/FFI loader. The actual loader
  * registration is exercised by the integration tests in
- * `plugin-aosp-local-inference/__tests__/`.
+ * `plugin-native-inference/__tests__/`.
  */
 import { describe, expect, it } from "vitest";
 import { shouldAttemptAospLlamaLoader } from "./ensure-local-inference-handler";

@@ -14,10 +14,8 @@ Why this exists (justification for a new script under scripts/):
     `${STATE_DIR}/trajectories/<agentId>/`) writes a richer per-stage shape
     that is NOT yet `eliza_native_v1`. Harvesting THOSE for training needs a
     faithful converter that preserves the verbatim model output (never
-    re-synthesizes it). The in-runtime TS path (`plugins/plugin-training`
-    `buildElizaNativeTrajectoryRows`) does this inside a live AgentRuntime;
-    this standalone, dependency-free script does the same conversion offline
-    so the harvest → JSONL link is runnable without booting the runtime.
+    re-synthesizes it). This standalone, dependency-free conversion keeps the
+    harvest → JSONL link runnable without booting the runtime.
 
 Both paths funnel through `lib.native_record.validate_native_record` — the
 same acceptance gate `format_for_training` uses — so nothing invalid or

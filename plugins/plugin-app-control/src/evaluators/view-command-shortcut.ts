@@ -27,10 +27,12 @@ import {
 function shouldShortcut(
 	context: ResponseHandlerEvaluatorContext,
 ): string | null {
-	if (context.messageHandler.processMessage === "STOP") return null;
 	// This shortcut is only for explicit navigation commands. Passive/domain
 	// intent ("fix my app", "how much did I spend") belongs to the contextual
-	// evaluator or planner so it cannot preempt coding/content actions.
+	// evaluator or planner so it cannot preempt coding/content actions. A Stage 1
+	// STOP does not suppress an exact rigid match: weak models commonly classify
+	// a bare command such as "settings" as a conversational reply, but the
+	// deterministic navigation contract must still win.
 	return resolveViewCommandShortcut(context);
 }
 

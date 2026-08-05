@@ -3,9 +3,7 @@
  */
 import { describe, expect, test } from "bun:test";
 import {
-  chmodSync,
   existsSync,
-  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -118,27 +116,24 @@ function runDemoPromotion(overrides: Partial<Record<string, string>> = {}): {
   const temporaryDirectory = mkdtempSync(
     join(tmpdir(), "eliza-image-promotion-"),
   );
-  const binaryDirectory = join(temporaryDirectory, "bin");
-  const cranePath = join(binaryDirectory, "crane");
+  const bashEnv = join(temporaryDirectory, "bash-env");
   const craneLog = join(temporaryDirectory, "crane.log");
   const githubOutput = join(temporaryDirectory, "github-output");
-  mkdirSync(binaryDirectory);
   writeFileSync(
-    cranePath,
-    `#!/usr/bin/env bash
-set -euo pipefail
-if [ "$1" = "copy" ]; then
-  printf '%s\\n' "$2" "$3" > "$CRANE_LOG"
-  exit 0
-fi
-if [ "$1" = "digest" ]; then
-  printf '%s\\n' "$MOCK_CRANE_DIGEST"
-  exit 0
-fi
-exit 91
+    bashEnv,
+    `crane() {
+  if [ "$1" = "copy" ]; then
+    printf '%s\\n' "$2" "$3" > "$CRANE_LOG"
+    return 0
+  fi
+  if [ "$1" = "digest" ]; then
+    printf '%s\\n' "$MOCK_CRANE_DIGEST"
+    return 0
+  fi
+  return 91
+}
 `,
   );
-  chmodSync(cranePath, 0o755);
   const sourceDigest = `sha256:${"a".repeat(64)}`;
   const result = Bun.spawnSync(
     [
@@ -149,11 +144,11 @@ exit 91
     {
       env: {
         ...process.env,
+        BASH_ENV: bashEnv,
         CRANE_LOG: craneLog,
         DESTINATION_REPOSITORY: "ghcr.io/elizaos/eliza-demo",
         GITHUB_OUTPUT: githubOutput,
         MOCK_CRANE_DIGEST: sourceDigest,
-        PATH: `${binaryDirectory}:${process.env.PATH}`,
         SOURCE_DIGEST: sourceDigest,
         SOURCE_IMMUTABLE_TAG: "ghcr.io/elizaos/eliza:sha-abcdef0",
         SOURCE_REPOSITORY: "ghcr.io/elizaos/eliza",
@@ -403,23 +398,19 @@ describe("build-agent-image workflow", () => {
       "@elizaos/plugin-commands",
       "@elizaos/plugin-computeruse",
       "@elizaos/plugin-discord",
-      "@elizaos/plugin-edge-tts",
       "@elizaos/plugin-elizacloud",
       "@elizaos/plugin-imessage",
       "@elizaos/plugin-local-inference",
       "@elizaos/plugin-mcp",
       "@elizaos/plugin-native-filesystem",
       "@elizaos/plugin-pdf",
-      "@elizaos/plugin-shell",
       "@elizaos/plugin-signal",
       "@elizaos/plugin-sql",
-      "@elizaos/plugin-streaming",
       "@elizaos/plugin-telegram",
       "@elizaos/plugin-video",
       "@elizaos/plugin-wallet",
       "@elizaos/plugin-whatsapp",
       "@elizaos/plugin-workflow",
-      "@elizaos/plugin-x402",
     ]);
   });
 

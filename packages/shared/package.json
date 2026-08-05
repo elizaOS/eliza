@@ -413,7 +413,6 @@
     "directory": "dist"
   },
   "dependencies": {
-    "@elizaos/contracts": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/registry": "workspace:*",
     "chalk": "^5.3.0",

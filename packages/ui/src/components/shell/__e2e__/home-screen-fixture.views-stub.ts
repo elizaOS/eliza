@@ -112,16 +112,13 @@ function heroDataUri(hue: number, glyphId: string): string {
 export function useRoutableViews() {
   return {
     views: [
-      // Shell surfaces + removed apps — kept so the e2e asserts their ABSENCE.
+      // Shell surfaces are kept so the e2e asserts their absence.
       builtinView("chat", "Chat", "/chat"),
       builtinView("views", "Views", "/views"),
-      builtinView("shopify", "Shopify", "/shopify", "ShoppingBag", true),
-      // Wallet sub-page: the real plugin-hyperliquid registration carries
-      // `group: "wallet"`, which is what launcher curation keys on to fold it
-      // under the single Wallet tile (#12521) — mirror it here so the e2e
-      // exercises the real group-based hide, not the removed id blocklist.
+      // Wallet sub-pages carry `group: "wallet"`, which launcher curation uses
+      // to fold them under the single Wallet tile (#12521).
       {
-        ...builtinView("hyperliquid", "Hyperliquid", "/hyperliquid", "TrendingUp", true),
+        ...builtinView("wallet-trading", "Trading", "/wallet/trading", "TrendingUp", true),
         group: "wallet",
       },
       // Page 1 — everyday apps (curated order is enforced by launcher-curation).
@@ -139,7 +136,6 @@ export function useRoutableViews() {
       builtinView("transcripts", "Transcripts", "/apps/transcripts", "AudioLines", true),
       builtinView("relationships", "Relationships", "/apps/relationships", "Network", true),
       builtinView("memories", "Memories", "/apps/memories", "Brain", true),
-      builtinView("feed", "Feed", "/feed", "Rss", true),
       builtinView("stream", "Stream", "/stream", "Radio", true),
       builtinView("settings", "Settings", "/settings", "Settings", false, heroDataUri(28, "settings")),
       // Page 2 — developer tools.

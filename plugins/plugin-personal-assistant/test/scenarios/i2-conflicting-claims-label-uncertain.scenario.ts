@@ -2,8 +2,9 @@
  * I2 conflicting claims are labeled uncertain. The assistant records both
  * inbound positions as evidence without collapsing them into a verdict.
  */
+
+import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { judgeRubric } from "../../../../packages/test/scenarios/_helpers/action-assertions.ts";
 
 export default scenario({
   lane: "live-only",

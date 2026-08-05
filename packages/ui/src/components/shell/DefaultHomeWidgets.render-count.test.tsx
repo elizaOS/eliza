@@ -1,3 +1,4 @@
+/** Verifies DefaultHomeWidgets render count (#14559) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

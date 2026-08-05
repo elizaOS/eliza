@@ -11,6 +11,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  extractLocalStoryImports,
+  findStoryCoverageRegressions,
+  resolveLocalStoryImport,
+} from "./story-coverage-ratchet.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const pkgRoot = path.resolve(here, "..");
@@ -18,6 +23,8 @@ const componentsRoot = path.resolve(pkgRoot, "src/components");
 
 const args = process.argv.slice(2);
 const onlyComponents = !args.includes("--all");
+const updateBaseline = args.includes("--update-baseline");
+const writeReport = args.includes("--write-report");
 
 function* walk(dir) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -39,9 +46,27 @@ function* walk(dir) {
       !e.name.endsWith(".test.tsx") &&
       !e.name.endsWith(".spec.tsx") &&
       !e.name.endsWith(".helpers.tsx") &&
-      !e.name.endsWith(".hooks.tsx")
+      !e.name.endsWith(".hooks.tsx") &&
+      !e.name.endsWith("Provider.tsx") &&
+      !e.name.endsWith("Context.tsx")
     )
       yield full;
+  }
+}
+
+function* walkStoryFiles(dir) {
+  if (!fs.existsSync(dir)) return;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) yield* walkStoryFiles(full);
+    else if (
+      entry.isFile() &&
+      (entry.name.endsWith(".stories.tsx") ||
+        entry.name.endsWith(".stories.ts"))
+    ) {
+      yield full;
+    }
   }
 }
 
@@ -73,11 +98,29 @@ for (const f of files) {
   componentFiles.push(f);
 }
 
+const storyImports = new Set();
+for (const storyRoot of [
+  path.resolve(pkgRoot, "src"),
+  path.resolve(pkgRoot, "stories"),
+]) {
+  for (const storyFile of walkStoryFiles(storyRoot)) {
+    const source = fs.readFileSync(storyFile, "utf8");
+    for (const specifier of extractLocalStoryImports(source)) {
+      const resolved = resolveLocalStoryImport(
+        storyFile,
+        specifier,
+        fs.existsSync,
+      );
+      if (resolved) storyImports.add(path.normalize(resolved));
+    }
+  }
+}
+
 const missing = [];
 const present = [];
 for (const f of componentFiles) {
   const stories = f.replace(/\.tsx$/, ".stories.tsx");
-  if (fs.existsSync(stories)) {
+  if (fs.existsSync(stories) || storyImports.has(path.normalize(f))) {
     present.push(path.relative(pkgRoot, f));
   } else {
     missing.push(path.relative(pkgRoot, f));
@@ -91,7 +134,7 @@ const report = {
   componentFiles: componentFiles.length,
   withStories: present.length,
   missingStories: missing.length,
-  coverage: ((present.length / componentFiles.length) * 100).toFixed(1) + "%",
+  coverage: `${((present.length / componentFiles.length) * 100).toFixed(1)}%`,
   missing,
   present,
 };
@@ -122,18 +165,44 @@ for (const [area, list] of [...byDir.entries()].sort(
   for (const f of list) lines.push(`- ${f}`);
 }
 
-fs.writeFileSync(
-  path.join(here, "stories-coverage-report.json"),
-  JSON.stringify(report, null, 2),
-);
-fs.writeFileSync(
-  path.join(here, "stories-coverage-report.md"),
-  lines.join("\n"),
-);
+if (writeReport) {
+  fs.writeFileSync(
+    path.join(here, "stories-coverage-report.json"),
+    JSON.stringify(report, null, 2),
+  );
+}
+
+const baselinePath = path.join(here, "stories-coverage-baseline.json");
+const baseline = {
+  componentFiles: report.componentFiles,
+  withStories: report.withStories,
+  missingStories: report.missingStories,
+  missing: report.missing,
+};
+if (updateBaseline) {
+  fs.writeFileSync(baselinePath, `${JSON.stringify(baseline, null, 2)}\n`);
+} else {
+  const previous = JSON.parse(fs.readFileSync(baselinePath, "utf8"));
+  const regressions = findStoryCoverageRegressions(report, previous);
+  if (regressions.length > 0) {
+    throw new Error(
+      `Story coverage regressed with ${regressions.length} newly uncovered component${regressions.length === 1 ? "" : "s"}:\n${regressions.map((file) => `- ${file}`).join("\n")}`,
+    );
+  }
+}
+if (writeReport) {
+  fs.writeFileSync(
+    path.join(here, "stories-coverage-report.md"),
+    lines.join("\n"),
+  );
+}
 
 console.log(`Components: ${componentFiles.length}`);
 console.log(`With stories: ${present.length}`);
 console.log(`Missing: ${missing.length}`);
 console.log(`Coverage: ${report.coverage}`);
-console.log(`\nWrote: scripts/stories-coverage-report.json`);
-console.log(`Wrote: scripts/stories-coverage-report.md`);
+if (writeReport) {
+  console.log(`\nWrote: scripts/stories-coverage-report.json`);
+  console.log(`Wrote: scripts/stories-coverage-report.md`);
+}
+if (updateBaseline) console.log("Updated story coverage baseline.");

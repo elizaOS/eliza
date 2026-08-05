@@ -1,3 +1,4 @@
+/** Verifies getCloudCompatAgents on hosted web with no agent baseUrl (join flow) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

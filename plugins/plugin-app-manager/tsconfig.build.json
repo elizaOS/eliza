@@ -6,6 +6,16 @@
     "declaration": true,
     "declarationDir": "dist",
     "rootDir": "src",
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "paths": {
+      "@elizaos/plugin-app-manager": ["./src/index.ts"],
+      "@elizaos/plugin-app-manager/*": ["./src/*"],
+      "@elizaos/core": ["../../packages/core/dist/index.d.ts"],
+      "@elizaos/core/*": ["../../packages/core/dist/*"],
+      "@elizaos/shared": ["../../packages/shared/dist/index.d.ts"],
+      "@elizaos/shared/*": ["../../packages/shared/dist/*"],
+      "@elizaos/agent": ["../../packages/agent/dist/index.d.ts"],
+      "@elizaos/agent/*": ["../../packages/agent/dist/*"]
+    }
   }
 }

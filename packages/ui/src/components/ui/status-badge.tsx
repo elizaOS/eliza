@@ -20,7 +20,7 @@ export type StatusTone = StatusVariant;
 
 export interface StatusBadgeProps
   extends React.HTMLAttributes<HTMLSpanElement> {
-  label: string;
+  label: React.ReactNode;
   status?: StatusVariant;
   variant?: StatusVariant;
   tone?: StatusTone;

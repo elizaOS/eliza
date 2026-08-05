@@ -1,3 +1,4 @@
+/** Verifies inline widget parser streaming prefixes through the package's configured test harness. */
 // Streaming guarantee for the inline-widget region finders: a partially streamed
 // block emits no region until its closing marker has fully arrived, so half-typed
 // markers never flash a broken widget mid-stream. Pure functions — no jsdom.

@@ -1,3 +1,4 @@
+/** Verifies shouldUseSameTabCloudLogin through the package's configured test harness. */
 // @vitest-environment jsdom
 // @vitest-environment-options { "url": "https://app.elizacloud.ai/" }
 //

@@ -1,3 +1,4 @@
+/** Verifies background config persistence through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Background-config persistence (`persistence`): load/save round-trip and

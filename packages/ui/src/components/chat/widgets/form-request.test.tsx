@@ -1,3 +1,4 @@
+/** Verifies htmlInputTypeForField through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Renderer coverage for the [FORM] widget: the field-type → HTML input-type

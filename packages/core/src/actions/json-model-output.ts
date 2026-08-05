@@ -29,6 +29,8 @@ export function parseJsonModelOutput(raw: string): unknown | null {
 	try {
 		return JSON.parse(candidate) as unknown;
 	} catch {
+		// error-policy:J3 model output is untrusted input; malformed JSON is an
+		// explicit invalid parse result for the caller to handle.
 		return null;
 	}
 }

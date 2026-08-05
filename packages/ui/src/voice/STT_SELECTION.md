@@ -83,7 +83,7 @@ The remaining unmeasured cells are OS engines that only exist on provisioned
 hardware. They are benchmarked through the **Stage-B** machinery, not ad-hoc
 scripts (schema and gates in [`VOICE_LIVE_MATRIX.md`](./VOICE_LIVE_MATRIX.md)):
 
-- **macOS/iOS `SFSpeechRecognizer`** — `node packages/scripts/stage-b-stt-bench.mjs`
+- **macOS/iOS `SFSpeechRecognizer`** — `node packages/app-core/scripts/voice/stage-b-stt-bench.mjs`
   on a macOS host (cell `stt.stage-b.apple-sfspeech`; Apple-silicon run already
   committed). iOS battery/energy telemetry still needs a real iOS device +
   Instruments.
@@ -93,7 +93,7 @@ scripts (schema and gates in [`VOICE_LIVE_MATRIX.md`](./VOICE_LIVE_MATRIX.md)):
 - **Fused ASR on-device (steady-state)** — `bun plugins/plugin-local-inference/native/verify/asr_bench.ts
   --wav-dir <corpus> --real-recorded` on the provisioned device bundle.
 - The combined decision cell `stt.stage-b.evaluation` goes green only when
-  `packages/scripts/voice-stage-b-eval.mjs` validates a reviewed
+  `packages/app-core/scripts/voice/voice-stage-b-eval.mjs` validates a reviewed
   `eliza_voice_stage_b_stt_eval_v1` report covering `ios-sfspeechrecognizer`,
   `android-speechrecognizer`, and `fused-asr` with real hardware, latency, WER,
   and power telemetry:

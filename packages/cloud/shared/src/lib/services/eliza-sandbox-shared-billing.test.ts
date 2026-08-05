@@ -343,9 +343,7 @@ describe("ElizaSandboxService shared runtime billing", () => {
       "findRunningSandbox",
     ).mockResolvedValue(sandbox);
     const historyGetSpy = spyOn(sharedRuntimeHistoryRepository, "get").mockResolvedValue([]);
-    const historyUpsertSpy = spyOn(sharedRuntimeHistoryRepository, "upsert").mockResolvedValue(
-      undefined,
-    );
+    const historyMergeSpy = spyOn(sharedRuntimeHistoryRepository, "merge").mockResolvedValue([]);
 
     try {
       const response = await runWithCloudBindings(
@@ -422,11 +420,11 @@ describe("ElizaSandboxService shared runtime billing", () => {
         }),
       );
       expect(historyGetSpy).toHaveBeenCalled();
-      expect(historyUpsertSpy).toHaveBeenCalled();
+      expect(historyMergeSpy).toHaveBeenCalled();
     } finally {
       findRunningSandboxSpy.mockRestore();
       historyGetSpy.mockRestore();
-      historyUpsertSpy.mockRestore();
+      historyMergeSpy.mockRestore();
     }
   });
 
@@ -532,9 +530,7 @@ describe("ElizaSandboxService shared runtime billing", () => {
       "findRunningSandbox",
     ).mockResolvedValue(sandbox);
     const historyGetSpy = spyOn(sharedRuntimeHistoryRepository, "get").mockResolvedValue([]);
-    const historyUpsertSpy = spyOn(sharedRuntimeHistoryRepository, "upsert").mockResolvedValue(
-      undefined,
-    );
+    const historyMergeSpy = spyOn(sharedRuntimeHistoryRepository, "merge").mockResolvedValue([]);
     runSharedAgentTurnStream.mockImplementationOnce(async () => ({
       model: "gpt-oss-120b",
       degraded: false,
@@ -553,12 +549,12 @@ describe("ElizaSandboxService shared runtime billing", () => {
       expect(response).toBeInstanceOf(Response);
       expect(await response?.text()).toContain("Shared runtime stream did not start");
       expect(reconcileReservation).toHaveBeenCalledWith(0);
-      expect(historyUpsertSpy).not.toHaveBeenCalled();
+      expect(historyMergeSpy).not.toHaveBeenCalled();
       expect(billUsage).not.toHaveBeenCalled();
     } finally {
       findRunningSandboxSpy.mockRestore();
       historyGetSpy.mockRestore();
-      historyUpsertSpy.mockRestore();
+      historyMergeSpy.mockRestore();
     }
   });
 
@@ -570,9 +566,7 @@ describe("ElizaSandboxService shared runtime billing", () => {
       "findRunningSandbox",
     ).mockResolvedValue(sandbox);
     const historyGetSpy = spyOn(sharedRuntimeHistoryRepository, "get").mockResolvedValue([]);
-    const historyUpsertSpy = spyOn(sharedRuntimeHistoryRepository, "upsert").mockResolvedValue(
-      undefined,
-    );
+    const historyMergeSpy = spyOn(sharedRuntimeHistoryRepository, "merge").mockResolvedValue([]);
     let finishModel!: () => void;
     const modelCompletion = new Promise<void>((resolve) => {
       finishModel = resolve;
@@ -631,7 +625,7 @@ describe("ElizaSandboxService shared runtime billing", () => {
       expect(events[1]?.data.fullText).toBe("metered reply");
       expect(events[2]?.data.text).toBe("metered reply");
       expect(reserveCredits).toHaveBeenCalledTimes(1);
-      expect(historyUpsertSpy).toHaveBeenCalledTimes(1);
+      expect(historyMergeSpy).toHaveBeenCalledTimes(1);
       expect(billUsage).toHaveBeenCalledWith(
         expect.objectContaining({
           organizationId: sandbox.organization_id,
@@ -663,7 +657,7 @@ describe("ElizaSandboxService shared runtime billing", () => {
       finishModel();
       findRunningSandboxSpy.mockRestore();
       historyGetSpy.mockRestore();
-      historyUpsertSpy.mockRestore();
+      historyMergeSpy.mockRestore();
     }
   });
 });

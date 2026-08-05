@@ -1,13 +1,4 @@
-/**
- * Retry and backoff utilities for robust async operations.
- *
- * Provides:
- * - Exponential backoff with jitter
- * - Configurable retry logic
- * - Abort signal support
- *
- * @module utils/retry
- */
+/** Runs abortable asynchronous retries with configurable exponential backoff and jitter. */
 
 // ============================================================================
 // Sleep Utilities
@@ -242,6 +233,8 @@ export async function retryAsync<T>(
 			try {
 				return await fn();
 			} catch (err) {
+				// error-policy:J4 Retry attempts are bounded and the final error
+				// is rethrown after exponential backoff.
 				lastErr = err;
 				if (i === attempts - 1) {
 					break;
@@ -270,6 +263,8 @@ export async function retryAsync<T>(
 		try {
 			return await fn();
 		} catch (err) {
+			// error-policy:J4 Policy-driven retries are bounded and exhaustion
+			// returns an explicit failed RetryResult.
 			lastErr = err;
 			if (attempt >= maxAttempts || !shouldRetry(err, attempt)) {
 				break;

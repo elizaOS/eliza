@@ -110,6 +110,11 @@ export async function maybeStoreTaskClipboardItem(
 			snapshot,
 		};
 	} catch (error) {
+		// error-policy:J1 clipboard persistence translates failure into an
+		// explicit unstored result and reports it to the agent.
+		runtime.reportError("TaskClipboardPersistence.store", error, {
+			roomId: message.roomId,
+		});
 		return {
 			requested: true,
 			stored: false,

@@ -179,9 +179,7 @@ function createRuntime(
     updateWorld: vi.fn(async () => undefined),
     getWorld: vi.fn(async () => null),
     getRoom: vi.fn(async () => null),
-    getParticipantsForRoom: vi.fn(async (roomId: UUID) => [
-      ...(participantsByRoom.get(roomId) ?? []),
-    ]),
+    getParticipantsForRoom: vi.fn(async () => []),
     getService: vi.fn(() => null),
     getServiceLoadPromise: vi.fn(async () => undefined),
     // The route's J7 diagnostic paths (inference-timing persistence, recovery
@@ -312,7 +310,7 @@ describe("document-query-recovery is skipped on a plain turn through the message
 
     const handled = await invoke();
     expect(handled).toBe(true);
-    expect(record.status).toBe(200);
+    expect(record.status, JSON.stringify(parseResponseBody(record))).toBe(200);
 
     const body = parseResponseBody(record) as { response?: string };
     expect(body.response).toBe("just here, ready to help");

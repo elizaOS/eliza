@@ -57,7 +57,6 @@ describe("CORE_PLUGIN_PROFILE_METADATA drift guard", () => {
   it("derives MOBILE_CORE_PLUGINS from the metadata table (unchanged membership)", () => {
     sameMembers(MOBILE_CORE_PLUGINS, [
       "@elizaos/plugin-sql",
-      "@elizaos/plugin-background-runner",
       "@elizaos/plugin-native-filesystem",
       "@elizaos/plugin-vision",
       "@elizaos/plugin-scheduling",
@@ -86,7 +85,6 @@ describe("CORE_PLUGIN_PROFILE_METADATA drift guard", () => {
     // orchestrator leads the desktop list but must load LAST here, driven by
     // aospTerminalOrder rather than the metadata row order. Assert exact order.
     expect([...ELIZAOS_ANDROID_TERMINAL_PLUGINS]).toEqual([
-      "@elizaos/plugin-shell",
       "@elizaos/plugin-coding-tools",
       "agent-orchestrator",
     ]);

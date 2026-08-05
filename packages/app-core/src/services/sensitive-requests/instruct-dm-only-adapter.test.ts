@@ -59,12 +59,6 @@ function buildRequest(
 }
 
 describe("instructDmOnlySensitiveRequestAdapter", () => {
-  it("declares the instruct_dm_only target", () => {
-    expect(instructDmOnlySensitiveRequestAdapter.target).toBe(
-      "instruct_dm_only",
-    );
-  });
-
   it("delivers successfully with formRendered=false and no url", async () => {
     const request = buildRequest();
     const result = await instructDmOnlySensitiveRequestAdapter.deliver({

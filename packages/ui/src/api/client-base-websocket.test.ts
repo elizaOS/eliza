@@ -1,3 +1,4 @@
+/** Verifies ElizaClient websocket connection policy through the package's configured test harness. */
 // @vitest-environment jsdom
 // @vitest-environment-options {"url":"https://localhost/"}
 

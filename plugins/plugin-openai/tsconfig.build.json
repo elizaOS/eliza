@@ -28,6 +28,6 @@
     "__tests__",
     "**/*.test.ts",
     "build.ts",
-    "vitest.harness.config.ts"
+    "vitest.real-runtime.config.ts"
   ]
 }

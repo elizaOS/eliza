@@ -31,14 +31,6 @@ const cloudMock = vi.hoisted(() => ({
   getCloudAuthToken: vi.fn(() => null as string | null),
 }));
 
-const agentSessionRecoveryMock = vi.hoisted(() => ({
-  runAgentSessionRecovery: vi.fn(),
-}));
-
-const cloudPairTokenMock = vi.hoisted(() => ({
-  clearStalePairCredentialsForAgent: vi.fn(),
-}));
-
 const cloudHandoffMock = vi.hoisted(() => ({
   resumePendingCloudHandoff: vi.fn(),
 }));
@@ -75,15 +67,6 @@ vi.mock("../api/client-cloud", () => ({
   isDirectCloudSharedAgentBase: (url: string | null | undefined) =>
     !!url &&
     /\/api\/v1\/eliza\/agents\/[^/]+(?:\/bridge)?\/?$/.test(url.trim()),
-}));
-
-vi.mock("./agent-session-recovery-runner", () => ({
-  runAgentSessionRecovery: agentSessionRecoveryMock.runAgentSessionRecovery,
-}));
-
-vi.mock("./cloud-pair-token", () => ({
-  clearStalePairCredentialsForAgent:
-    cloudPairTokenMock.clearStalePairCredentialsForAgent,
 }));
 
 vi.mock("../cloud/handoff/resume-pending-handoff", () => ({
@@ -187,10 +170,6 @@ beforeEach(() => {
     false,
   );
   cloudMock.getCloudAuthToken.mockReturnValue(null);
-  agentSessionRecoveryMock.runAgentSessionRecovery.mockResolvedValue({
-    ok: true,
-    redirectUrl: "https://agent-123.elizacloud.ai/pair?token=pairing",
-  });
 });
 
 afterEach(() => {
@@ -1083,9 +1062,12 @@ describe("runPollingBackend", () => {
     });
   });
 
-  it("re-pairs a stale dedicated Cloud credential during backend polling instead of reaching the password wall", async () => {
+  it("hands a stale managed Cloud bearer from native cold boot to the top-level auth recovery gate", async () => {
     const deps = createDeps();
     const dispatch = vi.fn();
+    (globalThis as Record<string, unknown>).Capacitor = {
+      isNativePlatform: () => true,
+    };
     (globalThis as { window?: unknown }).window = {
       location: {
         origin: "http://localhost:2138",
@@ -1136,35 +1118,28 @@ describe("runPollingBackend", () => {
       { current: null },
     );
 
-    expect(
-      agentSessionRecoveryMock.runAgentSessionRecovery,
-    ).toHaveBeenCalledWith(
-      expect.objectContaining({
-        cloudApiBase: "https://elizacloud.ai",
-        agentId: "agent-123",
-        cloudToken: "steward.jwt.token",
-        navigate: expect.any(Function),
-        clearStalePairCredentials: expect.any(Function),
-      }),
-    );
-    // The opt-in purge must be scoped to the agent whose adopted bearer this
-    // poll observed rejected — never a global credential clear (#16666).
-    const recoveryDeps = agentSessionRecoveryMock.runAgentSessionRecovery.mock
-      .calls[0][0] as { clearStalePairCredentials: () => void };
-    recoveryDeps.clearStalePairCredentials();
-    expect(
-      cloudPairTokenMock.clearStalePairCredentialsForAgent,
-    ).toHaveBeenCalledWith("agent-123");
+    // Startup must not read the Cloud credential or execute pairing itself.
+    // It retains the rejected target and advances so useAuthStatus can publish
+    // remote_auth_required to the one recovery owner in App.tsx.
+    expect(cloudMock.getCloudAuthToken).not.toHaveBeenCalled();
+    expect(clearPersistedActiveServer).not.toHaveBeenCalled();
+    expect(clientMock.setToken).not.toHaveBeenCalled();
+    expect(clientMock.setBaseUrl).not.toHaveBeenCalled();
+    expect(deps.setAuthRequired).toHaveBeenCalledWith(false);
+    expect(deps.setFirstRunComplete).toHaveBeenCalledWith(true);
+    expect(deps.setFirstRunLoading).toHaveBeenCalledWith(false);
     expect(dispatch).not.toHaveBeenCalledWith({
       type: "BACKEND_AUTH_REQUIRED",
     });
-    expect(dispatch).not.toHaveBeenCalledWith({
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(dispatch).toHaveBeenCalledWith({
       type: "BACKEND_REACHED",
       firstRunComplete: true,
     });
+    delete (globalThis as Record<string, unknown>).Capacitor;
   });
 
-  it("routes a stale saved Cloud agent with no Cloud session back to onboarding, not the password wall", async () => {
+  it("retains a stale managed Cloud target while late native Cloud auth is still unavailable", async () => {
     const deps = createDeps();
     const dispatch = vi.fn();
     (globalThis as { window?: unknown }).window = {
@@ -1190,14 +1165,12 @@ describe("runPollingBackend", () => {
     clientMock.getBaseUrl.mockReturnValue("https://agent-123.elizacloud.ai");
     clientMock.hasToken.mockReturnValue(true);
     cloudMock.getCloudAuthToken.mockReturnValue(null);
-    clientMock.getAuthStatus.mockReset();
-    clientMock.getAuthStatus.mockRejectedValue(
-      Object.assign(new Error("Unauthorized"), {
-        kind: "http",
-        status: 401,
-        path: "/api/auth/status",
-      }),
-    );
+    clientMock.getAuthStatus.mockResolvedValue({
+      required: true,
+      authenticated: false,
+      pairingEnabled: false,
+      expiresAt: null,
+    });
 
     await runPollingBackend(
       deps,
@@ -1216,14 +1189,16 @@ describe("runPollingBackend", () => {
       { current: null },
     );
 
-    expect(
-      agentSessionRecoveryMock.runAgentSessionRecovery,
-    ).not.toHaveBeenCalled();
-    expect(clearPersistedActiveServer).toHaveBeenCalled();
-    expect(deps.setFirstRunComplete).toHaveBeenCalledWith(false);
+    // The poller does not own Cloud reauth. Clearing the target here would
+    // prevent useAgentSessionRecovery from accepting a late SIWE token.
+    expect(cloudMock.getCloudAuthToken).not.toHaveBeenCalled();
+    expect(clearPersistedActiveServer).not.toHaveBeenCalled();
+    expect(clientMock.setToken).not.toHaveBeenCalled();
+    expect(deps.setAuthRequired).toHaveBeenCalledWith(false);
+    expect(deps.setFirstRunComplete).toHaveBeenCalledWith(true);
     expect(dispatch).toHaveBeenCalledWith({
       type: "BACKEND_REACHED",
-      firstRunComplete: false,
+      firstRunComplete: true,
     });
     expect(dispatch).not.toHaveBeenCalledWith({
       type: "BACKEND_AUTH_REQUIRED",

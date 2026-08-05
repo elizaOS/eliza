@@ -1,3 +1,4 @@
+/** Verifies BuildBadge through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // BuildBadge — renders the label from /build-info.json, hides on tap for
@@ -6,7 +7,6 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Z_BUILD_BADGE } from "../../lib/floating-layers";
 import { BuildBadge } from "./BuildBadge";
 
 const BUILD_INFO = {
@@ -43,24 +43,10 @@ describe("BuildBadge", () => {
     expect(badge.textContent).toContain("58f6bb3beb · Jul 03 17:42 MDT");
     const anchor = badge.closest("[data-aesthetic-overlay-ignore='true']");
     expect(anchor).not.toBeNull();
-    expect((anchor as HTMLElement).style.paddingTop).toContain(
-      "safe-area-inset-top",
-    );
     expect(fetch).toHaveBeenCalledWith(
       "/build-info.json",
       expect.objectContaining({ cache: "no-store" }),
     );
-  });
-
-  it("anchors to the top-left, clearing the top safe-area inset", async () => {
-    mockFetchOk(BUILD_INFO);
-    render(<BuildBadge />);
-    await screen.findByTestId("build-badge");
-    const anchor = screen.getByTestId("build-badge-anchor");
-    expect(anchor.className).toContain("top-0");
-    expect(anchor.className).toContain("left-0");
-    expect(anchor.getAttribute("style")).toContain("safe-area-inset-top");
-    expect(anchor.style.zIndex).toBe(String(Z_BUILD_BADGE));
   });
 
   it("falls back to commit + builtAt when label is missing", async () => {

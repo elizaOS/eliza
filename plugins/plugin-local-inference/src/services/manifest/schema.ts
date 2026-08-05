@@ -552,7 +552,7 @@ export const Eliza1EvalsSchema = z.object({
 	// Voice Wave 2 (2026-05-14): acoustic-emotion classifier eval gates.
 	// Required when `files.emotion` is non-empty (validator enforces).
 	// Thresholds applied by the bench harness under
-	// `packages/benchmarks/voice-emotion/`:
+	// the voice-emotion suite in https://github.com/elizaOS/benchmarks:
 	//   macroF1Meld     ≥ EMOTION_CLASSIFIER_MELD_F1_THRESHOLD     (0.35)
 	//   macroF1Iemocap  ≥ EMOTION_CLASSIFIER_IEMOCAP_F1_THRESHOLD  (0.60)
 	// The MELD threshold is intentionally low — 7-class conversational SER

@@ -45,7 +45,7 @@ interface ParsedEncryptedValue {
  * Table/row/column that a ciphertext belongs to. When supplied, the coordinates
  * are bound into the AES-GCM AAD (`table|rowId|column`) so a ciphertext cannot
  * be relocated to a different row/column and still decrypt. Mirrors the pattern
- * in `db/crypto/field-crypto.ts` / `@elizaos/security/crypto/aead`.
+ * in `db/crypto/field-crypto.ts` / `@elizaos/core/security/kms`.
  */
 export interface FieldCoords {
   table: string;

@@ -29,7 +29,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 /** Resting — nothing visible until the user presses Shift+? to summon it. */
-export const Closed: Story = {};
+export const Closed: Story = { tags: ["story-gate-expect-blank"] };
 
 /** The cheat sheet open: shortcuts grouped by scope with formatted key caps. */
 export const Open: Story = {

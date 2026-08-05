@@ -1,9 +1,8 @@
-# @elizaos/registry
+# `@elizaos/registry`
 
-In-repo source of truth for the elizaOS community plugin registry. Replaces the
-archived external `elizaos-plugins/registry` repo
-([elizaOS/eliza#8173](https://github.com/elizaOS/eliza/issues/8173)). Repo-wide
-rules live in the root [AGENTS.md](../../AGENTS.md).
+Source of truth for the elizaOS community plugin registry and the curated
+first-party catalog. This guide adds package-specific rules to the root
+[CLAUDE.md](../../CLAUDE.md); the root guide remains binding.
 
 ## Role
 
@@ -13,8 +12,9 @@ their schemas** (they model different things):
 - **`.` (community / third-party)** — the third-party plugin registry **data**
   plus the **tooling** to validate it and build the wire format the runtime
   fetches. Consumed as registry data (over HTTP at `plugins.elizacloud.ai`) and,
-  optionally, as a typed loader via `workspace:*`. Dependency-free, hand-rolled
-  validation.
+  optionally, as a typed loader via `workspace:*`. Its validation is
+  deliberately hand-written so the published JSON Schema and runtime wire
+  contract remain explicit.
 - **`./first-party` (curated, in-repo)** — the first-party curated registry of
   bundled apps / plugins / connectors (moved here from `@elizaos/app-core`). Rich
   Zod schema with `config` fields, `render` hints, `launch.routePlugin`, and
@@ -22,14 +22,9 @@ their schemas** (they model different things):
   plugin-side `registerRegistryEntry()` runtime overlay. Re-exported by
   `@elizaos/app-core/registry` for backwards compatibility.
 
-Published to npm (`@elizaos/registry`, `publishConfig.access: public`). It ships
-its `src/` as raw TypeScript — same publish-as-source convention as
-`@elizaos/prompts` — with `files: ["src"]` so the first-party JSON under
-`src/first-party/` travels with it. It was un-privatized in #15833: published
-`@elizaos/shared` / `@elizaos/agent` / `@elizaos/app-core` pin it via
-`workspace:*`, so while it was `private: true` the rewritten pin 404'd for every
-external `npm install` of the beta line. `packages/scripts/publish-graph-guard.mjs`
-guards that invariant for the whole workspace going forward.
+The public npm package ships `src/` as TypeScript, including the generated
+first-party JSON. Published workspace consumers depend on it, so it must remain
+public and pass `packages/scripts/publish-graph-guard.mjs`.
 
 ## Layout
 
@@ -90,6 +85,8 @@ bun run --cwd packages/registry validate   # exits non-zero on a malformed entry
 bun run --cwd packages/registry generate   # regenerate generated-registry.json
 bun run --cwd packages/registry test       # vitest
 bun run --cwd packages/registry typecheck
+bun run --cwd packages/registry lint:check
+bun run --cwd packages/registry format:check
 ```
 
 ## How to extend
@@ -107,47 +104,15 @@ bun run --cwd packages/registry typecheck
   rejects it in source entries.
 - `generate.ts` and `validate-cli.ts` are run with `bun` (TypeScript directly);
   there is no `dist` build step beyond regenerating the JSON.
-- Keep the package dependency-free (validation is hand-rolled) so the tooling
-  runs in any CI context without install ordering concerns.
+- `zod` supports the first-party catalog. Do not make community-registry
+  validation depend on first-party catalog types or schemas.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
-## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+## Verification
 
-> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
-> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
-> works **without reading the code**, from the artifacts you attach. This applies to **every**
-> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
-
-- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
-  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
-  providers/context, the raw model output, every tool/action call, and the result. Then **open
-  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
-  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
-- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
-  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
-  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
-  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
-  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
-  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
-  them is part of your change.
-- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
-  the entire feature or view, start to finish (`bun run test:e2e:record`).
-- **Manually review every artifact the change touches** — never just the green check: client
-  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
-  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
-- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
-  blocker by the **hard path**: build the real architecture, stand up the real
-  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
-  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
-  highest-effort, production-ready version. Keep going until every possibility is exhausted.
-
-Artifacts → attached inline in the PR (MP4 video, JPG screenshots, logs in `<details>`); attach each evidence type **or**
-explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
-behavior, **re-capture** evidence; stale proof is worse than none.
-
-**Capture & manually review for this package — runtime / framework:**
-- A **live-LLM** scenario trajectory for the runtime path you touched — provider → model → action → evaluator — with the raw `<response>` XML and every tool/action call visible and **read**.
-- Backend `[ClassName]` logs proving the message loop, task scheduler, or service actually fired end to end.
-- The memory/state artifacts produced — rows written, embeddings, room/world/entity records, scheduled-task rows — inspected, not assumed.
-- For shared modules: `build:node` vs full `build` so the browser/edge bundles still compile.
-<!-- END: evidence-and-e2e-mandate -->
+Run `validate`, `generate`, `generate:first-party:check`, `test`, and
+`typecheck`. Inspect both generated JSON diffs rather than accepting generation
+as proof by itself. Changes to schemas or loaders also need an end-to-end check
+through the consuming registry client or app catalog, including malformed,
+reserved-scope, and incompatible entries. Follow the root evidence standard and
+attach the generated artifacts and observable failure output relevant to the
+change.

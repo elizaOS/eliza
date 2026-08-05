@@ -1,5 +1,9 @@
 "use client";
 
+/**
+ * Adapts the shadcn message scroller to elizaOS styling and scroll controls.
+ */
+
 import {
   MessageScroller as MessageScrollerPrimitive,
   useMessageScroller,

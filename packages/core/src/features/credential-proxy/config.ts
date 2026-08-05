@@ -25,7 +25,6 @@
  *   - `ELIZA_CREDENTIAL_PROXY_ROUTES`      optional JSON override of the
  *                                          per-host allowlist.
  *
- * @module features/credential-proxy/config
  */
 
 import { isTruthyEnvValue } from "../../env-utils.ts";

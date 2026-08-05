@@ -1,3 +1,4 @@
+/** Verifies inline widgets are wired to their exported comparator through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Streaming render-count lock for the inline chat-reply widgets

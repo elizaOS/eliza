@@ -434,6 +434,8 @@ export async function executePlannedToolCall(
 				handlerOptions,
 			);
 		} catch (error) {
+			// error-policy:J1 Tool validation failures are translated into the
+			// planner-visible failed tool result with the original error attached.
 			return emitToolResult(
 				toolCall,
 				failureResult(action.name, stringifyError(error), { error }),
@@ -489,6 +491,12 @@ export async function executePlannedToolCall(
 				content: actionStartContent,
 			})
 			.catch((err) => {
+				// error-policy:J7 Lifecycle events are diagnostics; a broken observer
+				// cannot block tool execution but remains visible to the runtime.
+				runtime.reportError("ExecutePlannedToolCall.emitEvent", err, {
+					action: action.name,
+					eventType: EventType.ACTION_STARTED,
+				});
 				runtime.logger.warn(
 					{
 						src: "execute-planned-tool-call",
@@ -625,6 +633,12 @@ export async function executePlannedToolCall(
 				},
 			})
 			.catch((err) => {
+				// error-policy:J7 The settled action result is authoritative; report a
+				// failed completion event without rewriting the tool outcome.
+				runtime.reportError("ExecutePlannedToolCall.emitEvent", err, {
+					action: action.name,
+					eventType: EventType.ACTION_COMPLETED,
+				});
 				runtime.logger.warn(
 					{
 						src: "execute-planned-tool-call",

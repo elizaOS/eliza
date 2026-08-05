@@ -1,11 +1,4 @@
-/**
- * Code fence parsing utilities for markdown.
- *
- * Parses fenced code blocks (``` or ~~~) and provides utilities
- * to check if a position is inside a fence or if a break is safe.
- *
- * @module markdown/fences
- */
+/** Parses Markdown code fences and identifies positions where text can be split safely. */
 
 /**
  * Represents a fenced code block span in the text.

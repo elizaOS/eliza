@@ -27,6 +27,10 @@ import type {
   CartesiaWebSocketLike,
 } from "@/lib/services/cartesia-sonic-tts";
 import type {
+  FishAudioWebSocketFactory,
+  FishAudioWebSocketLike,
+} from "@/lib/services/fish-audio-tts";
+import type {
   DeepgramFluxWebSocket,
   DeepgramFluxWebSocketFactory,
 } from "../../stt/providers/deepgram-flux";
@@ -82,6 +86,16 @@ export function createWorkerCartesiaFactory(): CartesiaWebSocketFactory {
       url,
       options.headers,
     ) as unknown as CartesiaWebSocketLike;
+  };
+}
+
+/** Fish Audio factory using the Workers header-preserving outbound upgrade. */
+export function createWorkerFishAudioFactory(): FishAudioWebSocketFactory {
+  return (url, options) => {
+    return openWorkerSocket(
+      url,
+      options.headers,
+    ) as unknown as FishAudioWebSocketLike;
   };
 }
 

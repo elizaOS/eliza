@@ -28,17 +28,11 @@
 export const OPTIONAL_STATIC_PLUGIN_PACKAGES: readonly string[] = [
   "@elizaos/plugin-agent-orchestrator",
   "@elizaos/plugin-task-coordinator",
-  "@elizaos/plugin-shell",
   "@elizaos/plugin-coding-tools",
   // Opt-in only: dormant unless a character lists @elizaos/plugin-pty (no
   // autoEnable). Registers PTY_SERVICE so the web terminal can drive a real
   // interactive CLI (eliza-code on Eliza Cloud/cerebras).
   "@elizaos/plugin-pty",
-  // Auto-on only when the host has the birdclaw CLI or an existing ~/.birdclaw
-  // data root (see birdclawRequested in plugin-collector.ts). Registers
-  // BIRDCLAW_SERVICE + the local Twitter/X archive view/action.
-  "@elizaos/plugin-birdclaw",
-  "@elizaos/plugin-ollama",
   "@elizaos/plugin-elizacloud",
   "@elizaos/plugin-commands",
   "@elizaos/plugin-video",
@@ -48,7 +42,6 @@ export const OPTIONAL_STATIC_PLUGIN_PACKAGES: readonly string[] = [
   // bundle could never resolve it: the renderer OCR poller polled
   // /api/vision/ocr-requests into a 404 forever (verified on emulator-5554).
   "@elizaos/plugin-vision",
-  "@elizaos/plugin-background-runner",
   // The remaining MOBILE_CORE_PLUGINS + MOBILE_VIEW_PLUGINS entries. The mobile
   // resolver can only load @elizaos plugins that are pre-registered in
   // STATIC_ELIZA_PLUGINS (no node_modules tree ships in the APK), so every
@@ -202,12 +195,12 @@ export function renderOptionalPluginImportsModule(
       return `${comments}  "${pkg}": () => import("${specifier}"),`;
     })
     .join("\n");
-  return `// GENERATED FILE — DO NOT EDIT BY HAND.
-// Source of truth: ./optional-plugins.ts (OPTIONAL_STATIC_PLUGIN_PACKAGES).
-// Regenerate: bun run --cwd packages/agent gen:optional-plugin-imports
-//
-// Literal \`import()\` specifiers so Bun.build inlines each optional plugin into
-// the mobile bundle. The runtime looks each up by name in loadOptionalPlugin().
+  return `/**
+ * Generated literal import map that lets Bun inline optional mobile plugins.
+ * The source of truth is OPTIONAL_STATIC_PLUGIN_PACKAGES in optional-plugins.ts;
+ * regenerate with \`bun run --cwd packages/agent gen:optional-plugin-imports\`.
+ * Do not edit this output by hand.
+ */
 
 export const OPTIONAL_PLUGIN_IMPORTERS: Record<
   string,

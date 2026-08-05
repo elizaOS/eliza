@@ -16,6 +16,11 @@
 			"import": "./dist/android/bridge.js",
 			"default": "./dist/android/bridge.js"
 		},
+		"./android/dispatch": {
+			"types": "./dist/android/dispatch.d.ts",
+			"import": "./dist/android/dispatch.js",
+			"default": "./dist/android/dispatch.js"
+		},
 		"./ios/bridge": {
 			"types": "./dist/ios/bridge.d.ts",
 			"import": "./dist/ios/bridge.js",
@@ -30,6 +35,11 @@
 			"types": "./dist/shared/fs-shim.d.ts",
 			"import": "./dist/shared/fs-shim.js",
 			"default": "./dist/shared/fs-shim.js"
+		},
+		"./shared/stdio-bridge": {
+			"types": "./dist/shared/stdio-bridge.d.ts",
+			"import": "./dist/shared/stdio-bridge.js",
+			"default": "./dist/shared/stdio-bridge.js"
 		},
 		"./*.css": "./dist/*.css",
 		"./*": {

@@ -98,6 +98,9 @@ export const registryPluginsProvider: Provider & {
 		try {
 			registryPlugins = await getAllPlugins();
 		} catch (error) {
+			// error-policy:J4 The provider returns an explicit registry error alongside
+			// still-authoritative installed-plugin state.
+			runtime.reportError("RegistryPluginsProvider.fetch", error);
 			const message = error instanceof Error ? error.message : String(error);
 			logger.warn(
 				`[registryPluginsProvider] Failed to fetch registry: ${message}`,

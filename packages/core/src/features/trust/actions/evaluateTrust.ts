@@ -60,7 +60,8 @@ export async function evaluateTrustHandler(
 	try {
 		parsed = parseJSONObjectFromText(text);
 	} catch {
-		// Not JSON -- treat as plain text request
+		// error-policy:J3 Action text is untrusted dual-format input; invalid JSON is
+		// explicitly interpreted as the documented plain-text request form.
 	}
 	const requestData = { ...(parsed ?? {}), ...params } as {
 		entityId?: string;
@@ -170,6 +171,8 @@ Last Updated: ${new Date(trustProfile.lastCalculated).toLocaleString()}`,
 			},
 		};
 	} catch (error) {
+		// error-policy:J1 the action boundary translates evaluation failure into
+		// an explicit unsuccessful tool result visible to the model.
 		logger.error({ error }, "[EvaluateTrust] Error evaluating trust:");
 		return {
 			success: false,

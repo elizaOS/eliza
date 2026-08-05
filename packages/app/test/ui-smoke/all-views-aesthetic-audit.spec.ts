@@ -70,11 +70,6 @@ const AESTHETIC_VERDICT_DEBT: AestheticVerdictDebt = {
   "builtin-background-ipad-portrait": "needs-work",
   "builtin-background-mobile-landscape": "needs-work",
   "builtin-background-mobile-portrait": "needs-work",
-  "builtin-fine-tuning-ipad-portrait": "needs-work",
-  "builtin-fine-tuning-mobile-portrait": "needs-work",
-  "plugin-model-tester-gui-mobile-landscape": "needs-work",
-  "plugin-training-gui-ipad-portrait": "needs-work",
-  "plugin-training-gui-mobile-portrait": "needs-work",
 };
 
 // "Her"-minimal ratchet baseline (#9950) — the committed per-view record of the
@@ -1112,7 +1107,13 @@ async function forceRemoteBundleAuditRoute(
   view: AuditViewCase,
 ): Promise<RemoteBundleAuditProof | null> {
   if (view.kind !== "plugin") return null;
-  const registryResponse = await page.request.get("/api/views");
+  // The long capture matrix keeps the fixture server busy enough for a single
+  // socket reset to occur without indicating an application failure. Playwright
+  // limits maxRetries to ECONNRESET, while HTTP and parse failures still fail
+  // this registry boundary immediately.
+  const registryResponse = await page.request.get("/api/views", {
+    maxRetries: 2,
+  });
   expect(registryResponse.ok(), "plugin view registry must load").toBe(true);
   const payload: unknown = await registryResponse.json();
   const registered = findRemoteBundleDeclaration(

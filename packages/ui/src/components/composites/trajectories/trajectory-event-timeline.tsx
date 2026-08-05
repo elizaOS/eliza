@@ -56,7 +56,7 @@ export function TrajectoryEventTimeline({
 }: TrajectoryEventTimelineProps) {
   return (
     <PagePanel variant="section" className="px-5 py-4">
-      <div className="mb-3 text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
+      <div className="mb-3 text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted">
         {heading}
       </div>
       {events.length === 0 ? (
@@ -95,7 +95,7 @@ export function TrajectoryEventTimeline({
                   </div>
                 ) : null}
                 {event.meta ? (
-                  <div className="mt-2 text-xs-tight text-muted/80">
+                  <div className="mt-2 text-xs-tight text-muted">
                     {event.meta}
                   </div>
                 ) : null}

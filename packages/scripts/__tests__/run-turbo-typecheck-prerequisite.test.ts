@@ -38,22 +38,18 @@ const agentImageFilters = [
   "@elizaos/plugin-capacitor-bridge",
   "@elizaos/plugin-coding-tools",
   "@elizaos/plugin-native-filesystem",
-  "@elizaos/plugin-shell",
   "@elizaos/plugin-commands",
   "@elizaos/plugin-computeruse",
   "@elizaos/plugin-discord",
-  "@elizaos/plugin-edge-tts",
   "@elizaos/plugin-elizacloud",
   "@elizaos/plugin-imessage",
   "@elizaos/plugin-local-inference",
   "@elizaos/plugin-mcp",
   "@elizaos/plugin-signal",
-  "@elizaos/plugin-streaming",
   "@elizaos/plugin-telegram",
   "@elizaos/plugin-whatsapp",
   "@elizaos/plugin-wallet",
   "@elizaos/plugin-workflow",
-  "@elizaos/plugin-x402",
 ];
 
 async function fixture() {

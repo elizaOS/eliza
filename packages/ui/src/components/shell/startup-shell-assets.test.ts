@@ -1,3 +1,4 @@
+/** Verifies startup shell assets through the package's configured test harness. */
 // Source-grep guard: asserts StartupShell.tsx stays a pure pre-boot renderer —
 // free of app-state/API/bridge/voice behavior imports and of references to
 // removed legacy startup background images. Reads the file off disk; no render.

@@ -17,8 +17,6 @@ const ORIGINAL_FETCH = globalThis.fetch;
 
 delete process.env.BITROUTER_API_KEY;
 delete process.env.BITROUTER_BASE_URL;
-delete process.env.AI_GATEWAY_API_KEY;
-delete process.env.AIGATEWAY_API_KEY;
 delete process.env.OPENROUTER_BASE_URL;
 process.env.CEREBRAS_API_KEY = "test-cerebras-key";
 process.env.OPENAI_API_KEY = "test-openai-key";

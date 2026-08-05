@@ -15,7 +15,9 @@ Use the `@elizaos/plugin-<name>` scope when contributing to the core registry, o
 bun run build
 ```
 
-The default template uses `tsdown` to produce ESM + CJS + type declarations under `dist/`. Verify `package.json` `main`, `module`, `types`, and `exports` point into `dist/`.
+The default template uses Bun to produce an ESM runtime bundle and TypeScript
+declarations under `dist/`. Verify `main`, `module`, `types`, and `exports`
+point into that directory.
 
 ## Test
 
@@ -32,15 +34,17 @@ E2E tests boot a real `AgentRuntime` with your plugin loaded — they catch boot
 npm publish --access public
 ```
 
-Use the `alpha` dist-tag for pre-release work to match the rest of the `@elizaos/*` packages:
+Use an explicit prerelease dist-tag so you do not move npm's `latest` tag:
 
 ```bash
-npm publish --tag alpha --access public
+npm publish --tag beta --access public
 ```
 
 ## Discovery
 
-A character can load any plugin published to a registry the agent can reach. Once published, document the plugin in your README — the agent CLI's `--help` and the dashboard's plugin manager will pick it up automatically by package name.
+A character can load any installed plugin package. npm packages whose keywords
+include `elizaos` are recognized for discovery; curated registry submission is
+documented in the full publish guide.
 
 ## See also
 

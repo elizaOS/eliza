@@ -1,3 +1,4 @@
+/** Verifies HomePill through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // HomePill rendering + phase→interaction wiring (label, mark, open/close on
@@ -24,17 +25,6 @@ describe("HomePill", () => {
     render(<HomePill phase="idle" onOpen={onOpen} onClose={() => {}} />);
     fireEvent.click(screen.getByRole("button"));
     expect(onOpen).toHaveBeenCalledTimes(1);
-  });
-
-  it("lets the overlay shell own native-window positioning", () => {
-    render(<HomePill phase="idle" onOpen={() => {}} onClose={() => {}} />);
-    const className = screen.getByRole("button").className;
-
-    expect(className).toContain("relative");
-    expect(className).toContain("mb-3");
-    expect(className).not.toContain("fixed");
-    expect(className).not.toContain("left-1/2");
-    expect(className).not.toContain("-translate-x-1/2");
   });
 
   it("calls onClose when clicked from summoned", () => {

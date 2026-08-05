@@ -144,47 +144,81 @@ export interface EjectedPluginInfo {
 	upstream: UpstreamMetadata | null;
 }
 
-export interface EjectResult {
-	success: boolean;
-	pluginName: string;
-	ejectedPath: string;
-	upstreamCommit: string;
-	requiresRestart: boolean;
-	error?: string;
-}
+export type EjectResult =
+	| {
+			success: true;
+			pluginName: string;
+			ejectedPath: string;
+			upstreamCommit: string;
+			requiresRestart: boolean;
+	  }
+	| {
+			success: false;
+			pluginName: string;
+			requiresRestart: false;
+			error: string;
+			ejectedPath?: string;
+	  };
 
-export interface SyncResult {
-	success: boolean;
-	pluginName: string;
-	ejectedPath: string;
-	upstreamCommits: number;
-	localChanges: boolean;
-	conflicts: string[];
-	commitHash: string;
-	requiresRestart: boolean;
-	error?: string;
-}
+export type SyncResult =
+	| {
+			success: true;
+			pluginName: string;
+			ejectedPath: string;
+			upstreamCommits: number;
+			localChanges: boolean;
+			conflicts: string[];
+			commitHash: string;
+			requiresRestart: boolean;
+	  }
+	| {
+			success: false;
+			pluginName: string;
+			requiresRestart: false;
+			error: string;
+			ejectedPath?: string;
+			upstreamCommits?: number;
+			localChanges?: boolean;
+			conflicts?: string[];
+	  };
 
-export interface ReinjectResult {
-	success: boolean;
-	pluginName: string;
-	removedPath: string;
-	requiresRestart: boolean;
-	error?: string;
-}
+export type ReinjectResult =
+	| {
+			success: true;
+			pluginName: string;
+			removedPath: string;
+			requiresRestart: boolean;
+	  }
+	| {
+			success: false;
+			pluginName: string;
+			requiresRestart: false;
+			error: string;
+			removedPath?: string;
+	  };
 
-export interface InstallResult {
-	success: boolean;
-	pluginName: string;
-	version: string;
-	installPath: string;
-	requiresRestart: boolean;
-	error?: string;
-}
+export type InstallResult =
+	| {
+			success: true;
+			pluginName: string;
+			version: string;
+			installPath: string;
+			requiresRestart: true;
+	  }
+	| {
+			success: false;
+			pluginName: string;
+			requiresRestart: false;
+			error: string;
+			version?: string;
+			installPath?: string;
+	  };
 
-export interface UninstallResult {
-	success: boolean;
-	pluginName: string;
-	requiresRestart: boolean;
-	error?: string;
-}
+export type UninstallResult =
+	| { success: true; pluginName: string; requiresRestart: true }
+	| {
+			success: false;
+			pluginName: string;
+			requiresRestart: false;
+			error: string;
+	  };

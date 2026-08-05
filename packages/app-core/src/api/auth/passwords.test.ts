@@ -2,12 +2,28 @@
  * Tests the password-strength guard enforced at the auth sign-up/reset boundary:
  * `assertPasswordStrong` acceptance, and the too-short / missing-letter /
  * missing-digit-or-symbol rejections plus the typed `WeakPasswordError.reason`.
- * Pure-function assertions, no server harness.
+ * Password strength is pure; Argon2 calls use a mocked native boundary so the
+ * suite also verifies parameter and argument forwarding without loading an
+ * architecture-specific binary.
  */
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const { hashMock, verifyMock } = vi.hoisted(() => ({
+  hashMock: vi.fn(),
+  verifyMock: vi.fn(),
+}));
+
+vi.mock("@node-rs/argon2", () => ({
+  hash: hashMock,
+  verify: verifyMock,
+}));
+
 import {
+  ARGON2_PARAMS,
   assertPasswordStrong,
+  hashPassword,
   PASSWORD_MIN_LENGTH,
+  verifyPassword,
   WeakPasswordError,
 } from "./passwords";
 
@@ -48,5 +64,36 @@ describe("assertPasswordStrong", () => {
       expect(e).toBeInstanceOf(WeakPasswordError);
       expect((e as WeakPasswordError).reason).toBe("too_short");
     }
+  });
+});
+
+describe("password hashing boundary", () => {
+  beforeEach(() => {
+    hashMock.mockReset();
+    verifyMock.mockReset();
+  });
+
+  it("loads Argon2 on demand and forwards the configured parameters", async () => {
+    hashMock.mockResolvedValue("encoded-hash");
+
+    await expect(hashPassword("a strong password 123")).resolves.toBe(
+      "encoded-hash",
+    );
+    expect(hashMock).toHaveBeenCalledWith(
+      "a strong password 123",
+      ARGON2_PARAMS,
+    );
+  });
+
+  it("forwards the encoded hash before the plain-text password", async () => {
+    verifyMock.mockResolvedValue(true);
+
+    await expect(
+      verifyPassword("a strong password 123", "encoded-hash"),
+    ).resolves.toBe(true);
+    expect(verifyMock).toHaveBeenCalledWith(
+      "encoded-hash",
+      "a strong password 123",
+    );
   });
 });

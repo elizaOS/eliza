@@ -3,7 +3,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { localInferencePlugin } from "../provider";
 import { localInferenceManagementAction } from "./local-inference-management";
 
 describe("LOCAL_INFERENCE action twins", () => {
@@ -19,12 +18,6 @@ describe("LOCAL_INFERENCE action twins", () => {
 		if (previousStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
 		else process.env.ELIZA_STATE_DIR = previousStateDir;
 		rmSync(stateDir, { recursive: true, force: true });
-	});
-
-	it("registers the builtin-view mutation twin on the local-inference plugin", () => {
-		expect(
-			localInferencePlugin.actions?.map((action) => action.name),
-		).toContain("LOCAL_INFERENCE");
 	});
 
 	it("mutates routing preferences from chat/voice action parameters", async () => {

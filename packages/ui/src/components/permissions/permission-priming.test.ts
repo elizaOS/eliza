@@ -1,3 +1,4 @@
+/** Verifies resolvePrimingSet through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // permission-priming policy: the per-platform priming set (voice-first on iOS,

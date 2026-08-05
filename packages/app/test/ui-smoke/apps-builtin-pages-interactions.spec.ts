@@ -1,6 +1,6 @@
 // Real interaction coverage for the built-in app page-views that all-pages-
 // clicksafe only render-smokes (runtime, plugins, database, skills, trajectories,
-// relationships, stream, fine-tuning, rolodex). Each test proves the page is
+// relationships, stream, and rolodex). Each test proves the page is
 // wired to a real endpoint (fires its data query on load) AND that a primary
 // control does something — not just that the page renders. Sibling of
 // apps-diagnostics-interactions.spec.ts; runs keyless against the stub.
@@ -152,9 +152,6 @@ test("stream view renders the offline status surface", async ({ page }) => {
     timeout: 60_000,
   });
 });
-
-// NOTE: /apps/fine-tuning (the "training" view) is interaction-covered by
-// apps-model-training-interactions.spec.ts — not duplicated here.
 
 test("rolodex resolves to the launcher with registered view tiles", async ({
   page,

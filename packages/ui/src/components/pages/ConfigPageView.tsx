@@ -83,6 +83,7 @@ function CloudLoginFallbackLink({ browserUrl }: { browserUrl: string }) {
         Sign-in window did not open?
       </p>
       <Button
+        aria-label="Open Eliza Cloud sign-in in your browser"
         variant="ghost"
         className="block h-auto w-full whitespace-normal break-all px-0 py-0 text-left text-xs font-normal text-accent underline-offset-2 hover:bg-transparent hover:underline"
         onClick={() => void openExternalUrl(browserUrl)}
@@ -408,7 +409,7 @@ export function ConfigPageView({
             className={`relative flex flex-col items-start gap-1.5 rounded-sm border-2 p-4 text-left transition-all h-auto !whitespace-normal ${
               rpcMode === "cloud"
                 ? "border-accent bg-accent/8"
-                : "border-border/40 bg-card/30 opacity-50 grayscale hover:opacity-70 hover:grayscale-0"
+                : "border-border/40 bg-card/30 hover:border-border"
             }`}
           >
             <div className="flex items-center gap-2">
@@ -457,7 +458,7 @@ export function ConfigPageView({
             className={`relative flex flex-col items-start gap-1.5 rounded-sm border-2 p-4 text-left transition-all h-auto !whitespace-normal ${
               rpcMode === "custom"
                 ? "border-accent bg-accent/8"
-                : "border-border/40 bg-card/30 opacity-50 grayscale hover:opacity-70 hover:grayscale-0"
+                : "border-border/40 bg-card/30 hover:border-border"
             }`}
           >
             <div className="flex items-center gap-2">
@@ -605,7 +606,7 @@ export function ConfigPageView({
                 variant="default"
                 size="sm"
                 data-testid="wallet-rpc-save"
-                className="text-xs-tight"
+                className="text-xs-tight !text-black"
                 {...saveEl.agentProps}
                 onClick={() => {
                   void handleWalletSaveAll();
@@ -733,7 +734,7 @@ export function ConfigPageView({
                 variant="default"
                 size="sm"
                 data-testid="wallet-rpc-save"
-                className="text-xs-tight"
+                className="text-xs-tight !text-black"
                 {...saveEl.agentProps}
                 onClick={() => {
                   void handleWalletSaveAll();

@@ -175,6 +175,8 @@ function parseFormBody(body: string): FormInteraction | null {
 	try {
 		parsed = JSON.parse(body.trim());
 	} catch {
+		// error-policy:J3 interaction bodies are untrusted transport input;
+		// malformed JSON is an explicit invalid form.
 		return null;
 	}
 	if (!parsed || typeof parsed !== "object") return null;

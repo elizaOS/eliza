@@ -7,7 +7,6 @@ import {
   assertReadyChecks,
   hideChatOverlay,
   installDefaultAppRoutes,
-  openSettingsSection,
   seedAppStorage,
 } from "./helpers";
 
@@ -49,8 +48,6 @@ type FixtureWindow = Window & {
   };
   CapacitorCustomPlatform?: { name: string };
   androidBridge?: Record<string, unknown>;
-  __evenBridge?: Record<string, unknown>;
-  __mentraBridge?: Record<string, unknown>;
   __elizaNativeFixture?: {
     clipboard: string;
     phone: {
@@ -71,16 +68,6 @@ type FixtureWindow = Window & {
       openedUrls: string[];
       sent: string[];
     };
-    smartglasses: {
-      writes: Array<{ side: string; hex: string }>;
-      micStates: boolean[];
-      wifiCredentials: Array<{ ssid: string; password: string }>;
-      wifiSetupRequests: string[];
-    };
-  };
-  facewearSmartglassesReport?: {
-    connected?: boolean;
-    wifi?: { networks?: string[]; status?: string };
   };
 };
 
@@ -485,12 +472,6 @@ async function installDeterministicNativeBridge(
           openedUrls: [] as string[],
           sent: [] as string[],
         },
-        smartglasses: {
-          writes: [] as Array<{ side: string; hex: string }>,
-          micStates: [] as boolean[],
-          wifiCredentials: [] as Array<{ ssid: string; password: string }>,
-          wifiSetupRequests: [] as string[],
-        },
       };
 
       win.__elizaNativeFixture = fixture;
@@ -587,12 +568,6 @@ async function installDeterministicNativeBridge(
 
       function clone<T>(value: T): T {
         return JSON.parse(JSON.stringify(value)) as T;
-      }
-
-      function hex(data: Uint8Array): string {
-        return Array.from(data)
-          .map((byte) => byte.toString(16).padStart(2, "0"))
-          .join("");
       }
 
       function messages() {
@@ -1008,69 +983,6 @@ async function installDeterministicNativeBridge(
         ]),
       };
       win.Capacitor = cap;
-
-      const bridgeListeners = new Set<(event: unknown) => void>();
-      const emitBridgeEvent = (event: unknown) => {
-        for (const callback of bridgeListeners) callback(event);
-      };
-      win.__evenBridge = {
-        onEvent(callback: (event: unknown) => void) {
-          bridgeListeners.add(callback);
-          return () => bridgeListeners.delete(callback);
-        },
-        write(side: string, data: Uint8Array | number[]) {
-          const bytes =
-            data instanceof Uint8Array ? data : Uint8Array.from(data);
-          fixture.smartglasses.writes.push({ side, hex: hex(bytes) });
-          return Promise.resolve({ ok: true });
-        },
-        send(side: string, data: Uint8Array | number[]) {
-          const bytes =
-            data instanceof Uint8Array ? data : Uint8Array.from(data);
-          fixture.smartglasses.writes.push({ side, hex: hex(bytes) });
-          return Promise.resolve({ ok: true });
-        },
-        setMicState(enabled: boolean) {
-          fixture.smartglasses.micStates.push(Boolean(enabled));
-          if (enabled) {
-            window.setTimeout(
-              () =>
-                emitBridgeEvent({
-                  type: "mic_pcm",
-                  pcm: [1, 2, 3, 4, 5, 6, 7, 8],
-                }),
-              0,
-            );
-          }
-          return Promise.resolve({ ok: true });
-        },
-        audioControl(enabled: boolean) {
-          fixture.smartglasses.micStates.push(Boolean(enabled));
-          return Promise.resolve({ ok: true });
-        },
-        requestWifiScan() {
-          return Promise.resolve({
-            networks: [{ ssid: "LabNet" }, { ssid: "DeviceRig" }],
-          });
-        },
-        requestWifiStatus() {
-          return Promise.resolve({
-            connected: true,
-            ssid: "LabNet",
-            localIp: "192.168.4.8",
-            networks: ["LabNet", "DeviceRig"],
-          });
-        },
-        setWifiCredentials(ssid: string, password: string) {
-          fixture.smartglasses.wifiCredentials.push({ ssid, password });
-          return Promise.resolve({ status: `Credentials sent for ${ssid}` });
-        },
-        requestWifiSetup(reason?: string) {
-          fixture.smartglasses.wifiSetupRequests.push(String(reason ?? ""));
-          return Promise.resolve({ status: "Native Wi-Fi setup requested" });
-        },
-      };
-      win.__mentraBridge = win.__evenBridge;
     },
     { headers: PLUGIN_HEADERS, nativePlatform, qr: pairingQr },
   );
@@ -1297,114 +1209,5 @@ test.describe("Android communications app interactions", () => {
     ).toBeVisible();
 
     await expectNoIssues(page, issues.splice(0), "phone companion pairing");
-  });
-});
-
-test.describe("Smartglasses GUI interactions", () => {
-  test.beforeEach(async ({ page }) => {
-    await installDeterministicNativeBridge(page, { nativePlatform: false });
-  });
-
-  test("smartglasses device flow performs deterministic connect and bridge actions", async ({
-    page,
-  }) => {
-    const issues = installIssueGuards(page);
-    await hideChatOverlay(page);
-
-    await installDefaultAppRoutes(page);
-    await openSettingsSection(page, "Wearables");
-    // Scope to the settings work area: the persistent desktop settings rail
-    // (#16354) stays visible beside the pane, and its "Connectors" item
-    // substring-matches an unscoped getByRole("button", { name: "Connect" }).
-    const workArea = page.getByTestId("desktop-settings-work-area");
-    await expect(
-      workArea.getByRole("heading", { name: "Smartglasses" }),
-    ).toBeVisible({ timeout: 90_000 });
-    await expect(
-      workArea.getByRole("button", { name: "Connect", exact: true }),
-    ).toBeVisible();
-    await expect(workArea.getByText("Bridge", { exact: true })).toBeVisible();
-    await workArea
-      .getByRole("button", { name: "Connect", exact: true })
-      .click();
-    await expect(
-      page.getByText("Whole headset connected", { exact: true }),
-    ).toBeVisible();
-    await expect(
-      page.getByText("Whole headset", { exact: true }),
-    ).toBeVisible();
-
-    await page.getByRole("button", { name: "Run Check" }).click();
-    await expect
-      .poll(async () => (await readFixture(page))?.smartglasses.writes.length)
-      .toBeGreaterThan(4);
-    await expect(page.getByText("Requested serial/battery")).toBeVisible();
-
-    await expect(
-      page.getByRole("button", { name: "Send Display" }),
-    ).toBeEnabled();
-    await page.getByRole("button", { name: "Send Display" }).click();
-    await expect(page.getByText(/Sent \d+ display page/).first()).toBeVisible();
-    await page.getByRole("button", { name: "Clear" }).click();
-    await expect(page.getByText("Cleared display")).toBeVisible();
-
-    await page.getByRole("button", { name: "Mic On" }).click();
-    await expect(page.getByRole("button", { name: "Mic Off" })).toBeVisible();
-    await expect
-      .poll(async () =>
-        (await readFixture(page))?.smartglasses.micStates.at(-1),
-      )
-      .toBe(true);
-    await page.getByRole("button", { name: "Mic Off" }).click();
-    await expect
-      .poll(async () =>
-        (await readFixture(page))?.smartglasses.micStates.at(-1),
-      )
-      .toBe(false);
-
-    await page.getByPlaceholder("SSID").fill("LabNet");
-    await page.getByPlaceholder("Password").fill("correct horse");
-    await page.getByRole("button", { name: "Scan" }).click();
-    await expect(page.getByText("Found 2 network(s)")).toBeVisible();
-    await expect(page.getByText("DeviceRig")).toBeVisible();
-    await page.getByRole("button", { name: "Refresh Wi-Fi Status" }).click();
-    await expect(
-      page.getByText("Connected to LabNet at 192.168.4.8"),
-    ).toBeVisible();
-    await page.getByRole("button", { name: "Configure Wi-Fi" }).click();
-    await expect(page.getByText("Credentials sent for LabNet")).toBeVisible();
-    await expect
-      .poll(async () =>
-        (await readFixture(page))?.smartglasses.wifiCredentials.at(-1),
-      )
-      .toEqual({ ssid: "LabNet", password: "correct horse" });
-    await page
-      .getByRole("button", { name: /^(Native Setup|Native Wi-Fi Setup)$/ })
-      .click();
-    await expect(page.getByText("Native Wi-Fi setup requested")).toBeVisible();
-
-    await page.getByRole("button", { name: "Android" }).click();
-    await expect(page.getByText("Native bridge preferred")).toBeVisible();
-    await expect(
-      page.getByText("Pair and configure in the host."),
-    ).toBeVisible();
-    await page.getByRole("button", { name: "Guided Validation" }).click();
-    await expect(
-      page.getByText("Tap and microphone validation requires").last(),
-    ).toBeVisible();
-    await page.getByRole("button", { name: "Copy" }).click();
-    await expect
-      .poll(async () =>
-        page.evaluate(
-          () => (window as FixtureWindow).facewearSmartglassesReport?.connected,
-        ),
-      )
-      .toBe(true);
-
-    await expectNoIssues(
-      page,
-      issues.splice(0),
-      "smartglasses bridge controls",
-    );
   });
 });

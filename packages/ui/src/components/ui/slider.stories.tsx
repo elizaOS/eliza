@@ -16,6 +16,7 @@ const meta = {
     disabled: { control: "boolean" },
   },
   args: {
+    "aria-label": "Example value",
     defaultValue: [50],
     min: 0,
     max: 100,

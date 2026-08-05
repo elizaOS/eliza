@@ -21,8 +21,6 @@
 		"incremental": false,
 		"skipLibCheck": true,
 		"paths": {
-			"@elizaos/contracts": ["../contracts/dist/index.d.ts"],
-			"@elizaos/contracts/*": ["../contracts/dist/*.d.ts"],
 			"@elizaos/cloud-routing": ["../cloud/routing/dist/index.d.ts"],
 			"@elizaos/logger": ["../logger/dist/index.d.ts"],
 			"@elizaos/core": ["./src/index.node.ts"],
@@ -34,6 +32,9 @@
 		"src/index.ts",
 		"src/index.node.ts",
 		"src/index.browser.ts",
+		"src/security/kms/index.ts",
+		"src/security/mcp-server-config.ts",
+		"src/utils/atomic-json.ts",
 		"src/testing/**/*.ts"
 	],
 	"exclude": ["src/**/*.test.ts", "src/**/*.spec.ts", "src/__tests__/**/*"]

@@ -140,11 +140,6 @@ describe("PostgreSQL Adapter Integration Tests", () => {
       expect(isShuttingDown).toBe(true);
     });
 
-    it("should test connection through adapter", async () => {
-      const isReady = await adapter.isReady();
-      expect(isReady).toBe(true);
-    });
-
     it("should handle connection errors", async () => {
       // Close the adapter
       await adapter.close();

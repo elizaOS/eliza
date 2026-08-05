@@ -264,7 +264,7 @@ export function ProjectionsChart({ data }: ProjectionsChartProps) {
                 {lastHistoricalDate && (
                   <ReferenceLine
                     x={lastHistoricalDate}
-                    stroke="#6B7280"
+                    stroke="var(--muted)"
                     strokeDasharray="2 2"
                     label={{
                       value: t("cloud.projectionsChart.today", {

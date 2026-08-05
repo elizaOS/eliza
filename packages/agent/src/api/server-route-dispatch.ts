@@ -54,9 +54,6 @@ function getCloudRoutesPlugin(): Promise<CloudHostRoutesModule> {
 }
 
 type ChatRouteArg = Parameters<typeof handleChatRoutes>[0];
-type ConversationRouteArg = Parameters<typeof handleConversationRoutes>[0];
-
-const coerce = <T>(value: unknown): T => value as T;
 
 interface DispatchRouteHelpers {
   json: (res: http.ServerResponse, data: unknown, status?: number) => void;
@@ -295,7 +292,7 @@ export async function handleConversationRouteGroup({
       readJsonBody,
       json,
       error,
-      state: coerce<ConversationRouteArg["state"]>(state),
+      state,
       callerAuthorization,
     });
   }
@@ -319,7 +316,7 @@ export async function handleConversationRouteGroup({
     readJsonBody,
     json,
     error,
-    state: coerce<ChatRouteArg["state"]>(state),
+    state,
     callerAuthorization,
   });
 }

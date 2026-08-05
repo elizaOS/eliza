@@ -1,3 +1,8 @@
+/**
+ * Resolves the home composer's local-model readiness from runtime mode,
+ * authentication, status probes, and the inference event stream.
+ */
+
 import { useEffect, useRef, useState } from "react";
 
 import { client } from "../../api";

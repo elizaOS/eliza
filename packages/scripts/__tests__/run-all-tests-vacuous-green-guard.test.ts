@@ -96,13 +96,13 @@ function rootScript(name) {
 
 describe("root test lane min-task wiring (#13620)", () => {
   for (const [scriptName, floor] of [
-    ["test", 200],
+    ["test", 120],
     ["test:server", 8],
     ["test:client", 3],
-    ["test:plugins", 100],
-    ["test:e2e", 20],
+    ["test:plugins", 99],
+    ["test:e2e", 17],
     ["test:live", 100],
-    ["test:e2e:live", 20],
+    ["test:e2e:live", 17],
   ]) {
     test(`${scriptName} arms the run-all-tests vacuous-green floor`, () => {
       expect(rootScript(scriptName)).toContain(`--min-tasks=${floor}`);

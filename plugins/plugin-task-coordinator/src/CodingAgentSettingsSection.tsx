@@ -7,7 +7,9 @@
  * agent prefs API, keyed by the env-prefix constants in
  * coding-agent-settings-shared.
  */
-import { type AgentPreflightResult, client, useAppSelector } from "@elizaos/ui";
+import { client } from "@elizaos/ui/api";
+import type { AgentPreflightResult } from "@elizaos/ui/api/client-types-cloud";
+import { useAppSelector } from "@elizaos/ui/state";
 import { ExternalLink, Terminal } from "lucide-react";
 import {
   type ReactNode,

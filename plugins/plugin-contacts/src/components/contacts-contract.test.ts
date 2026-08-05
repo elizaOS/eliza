@@ -10,7 +10,7 @@
 // displayName/vcardText validation, the web-fallback throws, or the
 // ContactSummary/ImportedContactSummary field shape) fails this test.
 //
-// Source of the contract: plugins/plugin-native-contacts/src/web.ts +
+// Source of the contract: /capacitor-contacts/web.ts +
 // definitions.ts (ContactsWeb implements ContactsPlugin; ContactSummary /
 // ImportedContactSummary field shapes).
 

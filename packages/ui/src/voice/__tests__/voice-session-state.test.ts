@@ -1,3 +1,4 @@
+/** Verifies voice-session-state machine (§7.4) through the package's configured test harness. */
 import { describe, expect, it } from "vitest";
 import type { ServerControlFrame } from "../voice-session-protocol";
 import {

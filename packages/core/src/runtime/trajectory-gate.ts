@@ -2,9 +2,7 @@
  * Single on/off resolver for trajectory persistence, consulted by both the
  * file recorder (`isTrajectoryRecordingEnabled`, trajectory-recorder.ts) and
  * the DB logger (`shouldEnableTrajectoryLoggingByDefault`,
- * agent/trajectory-internals.ts) so the two recorders can no longer disagree —
- * the prior split had prod dark for the DB viewer while files kept writing, and
- * test-off for the DB while files stayed on (#13775).
+ * agent/trajectory-internals.ts) so both recorders apply one policy (#13775).
  *
  * The policy encodes SOC2 O-5 (production is opt-in, never on by default) and a
  * test default of off (keeps the test runner free of background trajectory

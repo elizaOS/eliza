@@ -62,9 +62,9 @@ variable "master_authorized_cidrs" {
 
 # GitHub
 variable "github_repos" {
-  description = "GitHub repos allowed to deploy via WIF (e.g. [\"elizaOS/cloud\"])"
+  description = "GitHub repos allowed to deploy via WIF (e.g. [\"elizaOS/eliza\"])"
   type        = list(string)
-  default     = ["elizaOS/cloud"]
+  default     = ["elizaOS/eliza"]
 }
 
 variable "deletion_protection" {

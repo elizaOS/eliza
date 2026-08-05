@@ -5,7 +5,6 @@
     "paths": {
       "@elizaos/app-core": ["../app-core/dist/index.d.ts"],
       "@elizaos/app-core/*": ["../app-core/dist/*"],
-      "@elizaos/app-core/agent-bridge": ["../app-core/dist/agent-bridge.d.ts"],
       "@elizaos/app-core/first-run/first-run-config": [
         "../app-core/dist/first-run/first-run-config.d.ts"
       ],
@@ -21,46 +20,19 @@
       "@elizaos/plugin-blocker/native": [
         "../../plugins/plugin-blocker/src/native.ts"
       ],
-      "@elizaos/plugin-messages/register": [
-        "../../plugins/plugin-messages/src/register.ts"
-      ],
-      "@elizaos/plugin-native-settings/register": [
-        "../../plugins/plugin-native-settings/src/register.ts"
-      ],
-      "@elizaos/plugin-vector-browser/register": [
-        "../../plugins/plugin-vector-browser/src/register.ts"
-      ],
       "@elizaos/plugin-phone": ["./src/types/app-plugin-modules.d.ts"],
-      "@elizaos/plugin-shopify": [
-        "../../plugins/plugin-shopify/dist/index.d.ts"
-      ],
-      "@elizaos/plugin-training": ["./src/types/app-plugin-modules.d.ts"],
-      "@elizaos/plugin-wallet-ui": [
-        "../../plugins/plugin-wallet-ui/dist/index.d.ts"
+      "@elizaos/plugin-wallet/ui": [
+        "../../plugins/plugin-wallet/dist/ui/index.d.ts"
       ],
       "@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/dist/index.d.ts"],
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.node.ts"],
       "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/src/*"],
       "@elizaos/agent": ["../agent/src/index.ts"],
-      "@elizaos/plugin-remote-manifest": [
-        "../plugin-remote-manifest/src/index.ts"
-      ],
-      "@elizaos/plugin-remote-manifest/*": ["../plugin-remote-manifest/src/*"],
-      "@elizaos/plugin-worker-runtime": [
-        "../plugin-worker-runtime/src/index.ts"
-      ],
-      "@elizaos/plugin-worker-runtime/*": ["../plugin-worker-runtime/src/*"],
       "@elizaos/plugin-app-manager": [
         "../../plugins/plugin-app-manager/src/index.ts"
       ],
       "@elizaos/plugin-app-manager/*": [
         "../../plugins/plugin-app-manager/src/*"
-      ],
-      "@elizaos/plugin-capacitor-bridge": [
-        "../../plugins/plugin-capacitor-bridge/src/index.ts"
-      ],
-      "@elizaos/plugin-capacitor-bridge/*": [
-        "../../plugins/plugin-capacitor-bridge/src/*"
       ],
       "@elizaos/plugin-agent-skills": [
         "../../plugins/plugin-agent-skills/src/index.ts"
@@ -88,11 +60,44 @@
         "../../plugins/plugin-commands/src/index.ts"
       ],
       "@elizaos/plugin-whatsapp": [
-        "../../plugins/plugin-whatsapp/dist/src/index.d.ts"
+        "../../plugins/plugin-whatsapp/src/index.ts"
       ],
       "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
-      "@elizaos/plugin-google": ["../../plugins/plugin-google/dist/index.d.ts"],
+      "@elizaos/plugin-google-workspace": [
+        "../../plugins/plugin-google-workspace/dist/index.d.ts"
+      ],
       "@elizaos/plugin-telegram": ["../../plugins/plugin-telegram/dist/index"],
+      "@elizaos/core": ["../core/src/index.ts"],
+      "@elizaos/logger": ["../logger/src/index.ts"],
+      "@elizaos/logger/*": ["../logger/src/*"],
+      "@elizaos/shared": ["../shared/src/index.ts"],
+      "@elizaos/shared/*": ["../shared/src/*"],
+      "@elizaos/ui": ["../ui/src/index.ts"],
+      "@elizaos/ui/*": ["../ui/src/*"],
+      "@elizaos/cloud-shared": ["../cloud/shared/src/index.ts"],
+      "@elizaos/cloud-shared/*": ["../cloud/shared/src/*"],
+      "csstype": [
+        "../../node_modules/.bun/csstype@3.2.3/node_modules/csstype/index.d.ts"
+      ],
+      "react": ["../../node_modules/@types/react/index.d.ts"],
+      "react/jsx-runtime": ["../../node_modules/@types/react/jsx-runtime.d.ts"],
+      "react/jsx-dev-runtime": [
+        "../../node_modules/@types/react/jsx-dev-runtime.d.ts"
+      ],
+      "react-dom": ["../../node_modules/@types/react-dom/index.d.ts"],
+      "react-dom/client": ["../../node_modules/@types/react-dom/client.d.ts"],
+      "@elizaos/plugin-workflow": [
+        "../../plugins/plugin-workflow/dist/index.d.ts"
+      ],
+      "@elizaos/plugin-native-settings/register": [
+        "../../plugins/plugin-native-settings/src/register.ts"
+      ],
+      "@elizaos/plugin-capacitor-bridge": [
+        "../../plugins/plugin-capacitor-bridge/src/index.ts"
+      ],
+      "@elizaos/plugin-capacitor-bridge/*": [
+        "../../plugins/plugin-capacitor-bridge/src/*"
+      ],
       "@elizaos/plugin-local-inference": [
         "../../plugins/plugin-local-inference/src/index.ts"
       ],
@@ -105,11 +110,6 @@
       "@elizaos/plugin-local-inference/services": [
         "../../plugins/plugin-local-inference/src/services/index.ts"
       ],
-      "@elizaos/core": ["../core/src/index.ts"],
-      "@elizaos/logger": ["../logger/src/index.ts"],
-      "@elizaos/logger/*": ["../logger/src/*"],
-      "@elizaos/shared": ["../shared/src/index.ts"],
-      "@elizaos/shared/*": ["../shared/src/*"],
       "@elizaos/capacitor-agent": [
         "../../plugins/plugin-native-agent/src/index.ts"
       ],
@@ -145,30 +145,6 @@
       ],
       "@elizaos/capacitor-websiteblocker": [
         "../../plugins/plugin-native-websiteblocker/src/index.ts"
-      ],
-      "@elizaos/ui": ["../ui/src/index.ts"],
-      "@elizaos/ui/*": ["../ui/src/*"],
-      "@elizaos/import-conversations": ["../import-conversations/src/index.ts"],
-      "@elizaos/import-conversations/*": ["../import-conversations/src/*"],
-      "@elizaos/import-conversations/browser": [
-        "../import-conversations/src/browser.ts"
-      ],
-      "@elizaos/cloud-ui": ["../cloud-ui/src/index.ts"],
-      "@elizaos/cloud-ui/*": ["../cloud-ui/src/*"],
-      "@elizaos/cloud-shared": ["../cloud/shared/src/index.ts"],
-      "@elizaos/cloud-shared/*": ["../cloud/shared/src/*"],
-      "csstype": [
-        "../../node_modules/.bun/csstype@3.2.3/node_modules/csstype/index.d.ts"
-      ],
-      "react": ["../../node_modules/@types/react/index.d.ts"],
-      "react/jsx-runtime": ["../../node_modules/@types/react/jsx-runtime.d.ts"],
-      "react/jsx-dev-runtime": [
-        "../../node_modules/@types/react/jsx-dev-runtime.d.ts"
-      ],
-      "react-dom": ["../../node_modules/@types/react-dom/index.d.ts"],
-      "react-dom/client": ["../../node_modules/@types/react-dom/client.d.ts"],
-      "@elizaos/plugin-workflow": [
-        "../../plugins/plugin-workflow/dist/index.d.ts"
       ],
       "@elizaos/capacitor-messages": [
         "../../plugins/plugin-native-messages/src/index.ts"

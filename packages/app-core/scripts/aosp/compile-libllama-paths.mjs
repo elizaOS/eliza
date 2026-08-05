@@ -1,4 +1,8 @@
-/** Supports app-core build, packaging, or development orchestration for compile libllama paths mjs. */
+/**
+ * Toolchain path helpers for the AOSP/Android libllama cross-compile: zig-style
+ * semver comparison and Android NDK prebuilt host-toolchain directory
+ * resolution, shared by the llama.cpp build scripts and their tests.
+ */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

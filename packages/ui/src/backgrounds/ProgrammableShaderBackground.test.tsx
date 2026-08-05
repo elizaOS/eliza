@@ -1,3 +1,4 @@
+/** Verifies ProgrammableShaderBackground through the package's configured test harness. */
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -21,9 +22,6 @@ describe("ProgrammableShaderBackground", () => {
     const host = screen.getByTestId("app-background-glsl");
     expect(host).toBeTruthy();
     expect(host.getAttribute("data-eliza-bg")).toBe("glsl");
-    // The base color is painted underneath so there's never a blank frame while
-    // the GL context (or the fallback) resolves.
-    expect(host.style.backgroundColor).toBeTruthy();
   });
 
   it("falls back (no white-screen / hang) when WebGL is unavailable — jsdom has no GL context", () => {

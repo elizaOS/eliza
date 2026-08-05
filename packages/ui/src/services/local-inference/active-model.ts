@@ -14,6 +14,7 @@ import { existsSync } from "node:fs";
 import { join as pathJoin } from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
 import { resolvePlatform } from "@elizaos/shared/runtime-env";
+import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
 import {
   ELIZA_1_PLACEHOLDER_IDS,
   FIRST_RUN_DEFAULT_MODEL_ID,
@@ -381,11 +382,14 @@ export async function resolveLocalInferenceLoadArgs(
       // `mtp/drafter-<tier>.gguf` on disk. The drafter is a perf-only
       // speculative-decoding artifact — never brick an installed model over
       // it. Load without MTP; re-downloading the bundle picks the drafter up.
-      console.warn(
-        `[local-inference] ${installed.id} declares a separate-drafter MTP but no drafter GGUF was found${
-          installed.bundleRoot ? ` under ${installed.bundleRoot}` : ""
-        }; loading without speculative decoding. Re-download the model to enable the MTP drafter.`,
-      );
+      reportRendererDiagnostic({
+        scope: "local-inference.mtp-drafter",
+        severity: "warning",
+        error: new Error(
+          `${installed.id} declares a separate-drafter MTP but no drafter GGUF was found; loading without speculative decoding`,
+        ),
+        context: { modelId: installed.id, bundleRoot: installed.bundleRoot },
+      });
     } else {
       args.useGpu = true;
       args.draftModelPath = drafterPath;

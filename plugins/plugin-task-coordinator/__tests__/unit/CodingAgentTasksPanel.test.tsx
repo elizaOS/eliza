@@ -44,7 +44,7 @@ vi.mock("@elizaos/ui/agent-surface", () => ({
   useAgentElement: () => ({ ref: () => {}, agentProps: {} }),
 }));
 
-vi.mock("@elizaos/ui", () => ({
+vi.mock("@elizaos/ui/api", () => ({
   client: {
     listCodingAgentTaskThreads: (...a: unknown[]) =>
       listCodingAgentTaskThreads(...a),
@@ -54,6 +54,7 @@ vi.mock("@elizaos/ui", () => ({
       archiveCodingAgentTaskThread(...a),
     reopenCodingAgentTaskThread: (...a: unknown[]) =>
       reopenCodingAgentTaskThread(...a),
+    listProjects: vi.fn(async () => ({ projects: [] })),
   },
   // Translate stub that mirrors the production i18n contract the view relies on:
   // render the defaultValue and interpolate `{{var}}` placeholders from `vars`
@@ -91,6 +92,16 @@ vi.mock("@elizaos/ui", () => ({
     </button>
   ),
 }));
+
+vi.mock("@elizaos/ui/state", () => ({
+  useAppSelectorShallow: (selector: (s: Record<string, unknown>) => unknown) =>
+    selector(mockAppValue),
+}));
+
+vi.mock("@elizaos/ui/components/ui/button", async () => {
+  const apiMock = await import("@elizaos/ui/api");
+  return { Button: apiMock.Button };
+});
 
 import { CodingAgentTasksPanel } from "../../src/CodingAgentTasksPanel";
 

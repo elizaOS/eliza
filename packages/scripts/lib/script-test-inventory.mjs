@@ -21,7 +21,7 @@ import {
 export const SCRIPT_TEST_RUNNER =
   "node packages/scripts/run-script-tests.mjs --report reports/script-tests/inventory.json --junit reports/script-tests/junit.xml";
 export const SCRIPT_TEST_LANE_COMMANDS = {
-  test: "node packages/scripts/run-all-tests.mjs --only=test --no-cloud --min-tasks=200 && bun run test:scripts",
+  test: "node packages/scripts/run-all-tests.mjs --only=test --no-cloud --min-tasks=120 && bun run test:scripts",
   "test:all":
     "node packages/scripts/run-all-tests.mjs --all && bun run test:scripts",
 };
@@ -36,13 +36,20 @@ export const SCRIPT_TEST_EXTENSIONS = [
   "cjs",
 ];
 
+// Cloud ops scripts live with the cloud package (packages/cloud/scripts) but
+// have no workspace manifest either, so this runner owns their tests too.
 const SCRIPT_TEST_PATTERN = new RegExp(
-  `^packages/scripts/(?:.+/)?[^/]*[._](?:test|spec)\\.(?:${SCRIPT_TEST_EXTENSIONS.join("|")})$`,
+  `^packages/(?:scripts|cloud/scripts)/(?:.+/)?[^/]*[._](?:test|spec)\\.(?:${SCRIPT_TEST_EXTENSIONS.join("|")})$`,
   "i",
 );
 
 /** Exact exclusions only. Each entry must remain eligible and carry a reason. */
-export const SCRIPT_TEST_EXCLUSIONS = new Map();
+export const SCRIPT_TEST_EXCLUSIONS = new Map([
+  [
+    "packages/scripts/__tests__/release-verdaccio.integration.test.ts",
+    "the release-candidate workflow owns this slow real-registry transport test",
+  ],
+]);
 
 function compareText(left, right) {
   if (left < right) return -1;

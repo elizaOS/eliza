@@ -1,8 +1,0 @@
-#!/bin/sh
-
-Remount_Proc_Fs ()
-{
-	mount -o remount /proc
-}
-
-Remount_Proc_Fs

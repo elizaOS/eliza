@@ -196,7 +196,7 @@ export function ChatComposer({
         ? t("chat.agentStarting")
         : t("common.send")
       : t("chat.stopSpeaking");
-  const actionButtonLabel = isGameModal ? undefined : actionButtonTitle;
+  const actionButtonLabel = actionButtonTitle;
   const inputPlaceholder = t("common.message");
   const voiceButtonTitle = isAgentStarting
     ? t("chat.agentStarting")

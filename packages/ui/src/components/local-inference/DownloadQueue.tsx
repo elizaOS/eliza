@@ -1,3 +1,5 @@
+/** Renders resumable local-model downloads from the live inference snapshot. */
+
 import type {
   CatalogModel,
   DownloadJob,

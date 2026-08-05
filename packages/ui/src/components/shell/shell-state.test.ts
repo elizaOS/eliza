@@ -1,3 +1,4 @@
+/** Verifies selectVisibleShellMessages (#9141 gap 4 windowing) through the package's configured test harness. */
 // Unit coverage for selectVisibleShellMessages — the pure selector that windows
 // the rendered shell transcript (dropping empty turns except an in-flight
 // assistant turn while responding, capped at MAX_RENDERED_SHELL_MESSAGES).
@@ -93,11 +94,12 @@ describe("selectVisibleShellMessages (#9141 gap 4 windowing)", () => {
   });
 
   it("defaults to the exported render cap", () => {
-    expect(MAX_RENDERED_SHELL_MESSAGES).toBe(80);
     const big = Array.from({ length: 100 }, (_, i) =>
       msg(`m${i}`, "user", `t${i}`),
     );
-    expect(selectVisibleShellMessages(big, "idle")).toHaveLength(80);
+    expect(selectVisibleShellMessages(big, "idle")).toHaveLength(
+      MAX_RENDERED_SHELL_MESSAGES,
+    );
   });
 
   it("is exhaustive over ShellPhase for the empty-assistant exception", () => {

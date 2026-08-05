@@ -1,9 +1,9 @@
 /**
  * Google Drive domain for LifeOps: maps the owner's Drive files and required
- * OAuth scopes from `@elizaos/plugin-google` into the assistant's connector
+ * OAuth scopes from `@elizaos/plugin-google-workspace` into the assistant's connector
  * status/grant DTOs. Drive API calls live in the google plugin.
  */
-import type { GoogleDriveFile } from "@elizaos/plugin-google";
+import type { GoogleDriveFile } from "@elizaos/plugin-google-workspace";
 import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
@@ -74,7 +74,7 @@ function hasDriveWrite(grant: LifeOpsConnectorGrant): boolean {
 
 /**
  * Google Drive / Docs / Sheets reads and writes backed by
- * `@elizaos/plugin-google`. Depends on the `google` domain's
+ * `@elizaos/plugin-google-workspace`. Depends on the `google` domain's
  * `getGoogleConnectorStatus` injected via {@link DriveDomainDeps}; Drive grant
  * resolution itself is owned by this domain.
  */
@@ -103,7 +103,7 @@ export class DriveDomain {
     if (!hasDriveRead(grant)) {
       fail(
         403,
-        "Google Drive read access has not been granted. Reconnect Google through @elizaos/plugin-google with Drive scope.",
+        "Google Drive read access has not been granted. Reconnect Google through @elizaos/plugin-google-workspace with Drive scope.",
       );
     }
     return grant;
@@ -124,7 +124,7 @@ export class DriveDomain {
     if (!hasDriveWrite(grant)) {
       fail(
         403,
-        "Google Drive write access has not been granted. Reconnect Google through @elizaos/plugin-google with Drive write scope.",
+        "Google Drive write access has not been granted. Reconnect Google through @elizaos/plugin-google-workspace with Drive write scope.",
       );
     }
     return grant;

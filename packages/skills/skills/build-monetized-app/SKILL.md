@@ -9,7 +9,7 @@ Use this skill when you need to build an app that takes a markup on every chat o
 
 Read `references/sdk-flow.md` for the 6-step build flow with a self-contained code example. External references (all public):
 
-- **Working chat-app**: [`packages/examples/cloud/edad`](https://github.com/elizaos/eliza/tree/develop/packages/examples/cloud/edad) — copyable end-to-end implementation. Read its `server.ts` for the canonical chat-forwarder shape using `@elizaos/cloud-sdk`.
+- **Implementation contract**: use the Cloud SDK registration, same-origin OAuth proxy, `/api/v1/messages` forwarding, health check, and container-deploy flow described below. Do not substitute a legacy message route or a client-side owner key.
 - **SDK reference**: [`@elizaos/cloud-sdk` README](https://github.com/elizaos/eliza/blob/develop/packages/cloud/sdk/README.md) — typed methods + helpers + auth.
 - **Human-readable recipe**: [`packages/docs/cloud/monetized-apps.mdx`](https://github.com/elizaos/eliza/blob/develop/packages/docs/cloud/monetized-apps.mdx) — same loop, narrative form, with the schema fields explained.
 

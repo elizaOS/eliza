@@ -42,7 +42,7 @@ describe("deployApp (#9145)", () => {
     const input = {
       repoUrl: "https://github.com/elizaOS/eliza.git",
       ref: "0123456789abcdef0123456789abcdef01234567",
-      dockerfile: "packages/examples/cloud/Dockerfile",
+      dockerfile: "apps/example/Dockerfile",
     };
 
     await deployApp("app_42", input);
@@ -82,14 +82,14 @@ describe("deploy app source validation (#13425)", () => {
       validateDeployAppInput({
         repoUrl: "https://github.com/elizaOS/eliza.git",
         ref: "0123456789abcdef0123456789abcdef01234567",
-        dockerfile: "packages/examples/cloud/Dockerfile",
+        dockerfile: "apps/example/Dockerfile",
       }),
     ).toEqual({
       ok: true,
       value: {
         repoUrl: "https://github.com/elizaOS/eliza.git",
         ref: "0123456789abcdef0123456789abcdef01234567",
-        dockerfile: "packages/examples/cloud/Dockerfile",
+        dockerfile: "apps/example/Dockerfile",
       },
     });
   });

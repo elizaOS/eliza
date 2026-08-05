@@ -1,3 +1,4 @@
+/** Verifies FilesView through the package's configured test harness. */
 // @vitest-environment jsdom
 
 // Renders the real FilesView against a mocked `../../api` client to cover the

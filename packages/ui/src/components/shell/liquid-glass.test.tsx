@@ -1,3 +1,4 @@
+/** Verifies liquid-glass through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Unit coverage for the shared liquid-glass recipe (chat sheet + notification

@@ -28,7 +28,10 @@ import {
   createIosPolicy,
   createMobilePolicy,
   createWebPolicy,
+  getStartupStatusMessageKey,
   INITIAL_STARTUP_STATE,
+  isShellPaintable,
+  isStartupInteractive,
   isStartupLoading,
   isStartupTerminal,
   type PlatformPolicy,
@@ -36,8 +39,8 @@ import {
   type StartupErrorReason,
   type StartupEvent,
   type StartupState,
+  type StartupStatusMessageKey,
   startupReducer,
-  toLegacyStartupPhase,
 } from "./startup-coordinator";
 import {
   bindReadyPhase,
@@ -59,15 +62,12 @@ import {
   type StartingRuntimeDeps,
 } from "./startup-phase-runtime";
 import { markStartup } from "./startup-telemetry";
+import { STARTUP_TIMING_POLICY } from "./startup-timing-policy";
 
 // Auto-recovery backoff: probe the backend after a transient startup error,
 // backing off 2.5s → 5s → 10s → 20s → cap 30s, and give up after a bounded
 // number of attempts so a genuinely-down backend stops thrashing and the user
 // falls back to the manual Retry button.
-const RECOVERY_BASE_DELAY_MS = 2_500;
-const RECOVERY_MAX_DELAY_MS = 30_000;
-const RECOVERY_MAX_ATTEMPTS = 8;
-
 function isRecoverableStartupErrorReason(reason: StartupErrorReason): boolean {
   return (
     reason === "backend-timeout" ||
@@ -116,18 +116,12 @@ export async function recoverTerminalStartupError(
 
 // ── Deps interface ──────────────────────────────────────────────────
 // Composed from per-phase slices defined in each startup-phase-*.ts module.
-// The only member unique to the hook itself is `setStartupPhase` (legacy sync).
 
 export type StartupCoordinatorDeps = RestoringSessionDeps &
   PollingBackendDeps &
   StartingRuntimeDeps &
   HydratingDeps &
-  ReadyPhaseDeps & {
-    /** Legacy lifecycle setter — driven by the coordinator sync effect. */
-    setStartupPhase: (
-      v: "starting-backend" | "initializing-agent" | "ready",
-    ) => void;
-  };
+  ReadyPhaseDeps;
 
 // ── Handle ──────────────────────────────────────────────────────────
 
@@ -139,9 +133,12 @@ export interface StartupCoordinatorHandle {
   pairingSuccess: () => void;
   firstRunComplete: () => void;
   policy: PlatformPolicy;
-  legacyPhase: "starting-backend" | "initializing-agent" | "ready";
   loading: boolean;
   terminal: boolean;
+  isShellPaintable: boolean;
+  isInteractive: boolean;
+  statusMessageKey: StartupStatusMessageKey;
+  error: Extract<StartupState, { phase: "error" }> | null;
   target: RuntimeTarget | null;
   phase: StartupState["phase"];
 }
@@ -177,13 +174,6 @@ export function useStartupCoordinator(
 
   // Track whether the ready-phase WS bindings have been set up
   const wsBindingsActiveRef = useRef(false);
-
-  // ── Legacy sync — derive startupPhase from coordinator state ────
-  const legacyPhase = toLegacyStartupPhase(state);
-  useEffect(() => {
-    if (!depsReady) return;
-    depsRef.current?.setStartupPhase(legacyPhase);
-  }, [legacyPhase, depsReady]);
 
   // ── Startup telemetry — mark each coordinator phase the first time it is
   // reached (issue #9565). Pure observation: markStartup dedupes by name, so
@@ -387,10 +377,14 @@ export function useStartupCoordinator(
     let timer = 0;
     let attempt = 0;
     const scheduleNext = () => {
-      if (cancelled.current || attempt >= RECOVERY_MAX_ATTEMPTS) return;
+      if (
+        cancelled.current ||
+        attempt >= STARTUP_TIMING_POLICY.recoveryMaxAttempts
+      )
+        return;
       const delay = Math.min(
-        RECOVERY_BASE_DELAY_MS * 2 ** attempt,
-        RECOVERY_MAX_DELAY_MS,
+        STARTUP_TIMING_POLICY.recoveryBaseDelayMs * 2 ** attempt,
+        STARTUP_TIMING_POLICY.recoveryMaxDelayMs,
       );
       attempt += 1;
       timer = window.setTimeout(() => {
@@ -401,7 +395,14 @@ export function useStartupCoordinator(
             // the attempt cap is reached, leaving the user-actionable Retry path.
             if (!recovered) scheduleNext();
           })
-          .catch(() => {
+          .catch((err: unknown) => {
+            // error-policy:J4 the terminal startup error remains visible while
+            // automatic recovery retries; log the failed recovery operation so
+            // the attempt cap cannot exhaust without diagnostics.
+            logger.warn(
+              { err, attempt },
+              "[useStartupCoordinator] automatic startup recovery failed",
+            );
             scheduleNext();
           });
       }, delay);
@@ -445,9 +446,12 @@ export function useStartupCoordinator(
     pairingSuccess,
     firstRunComplete: firstRunCompleteFn,
     policy,
-    legacyPhase: toLegacyStartupPhase(state),
     loading: isStartupLoading(state),
     terminal: isStartupTerminal(state),
+    isShellPaintable: isShellPaintable(state.phase),
+    isInteractive: isStartupInteractive(state),
+    statusMessageKey: getStartupStatusMessageKey(state),
+    error: state.phase === "error" ? state : null,
     target,
     phase: state.phase,
   };

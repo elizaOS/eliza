@@ -4,14 +4,15 @@ Discord connector plugin for elizaOS — connects an Eliza agent to Discord serv
 
 ## Purpose / role
 
-This plugin registers the `DiscordService` (and companion services) with the elizaOS runtime, giving an Eliza agent the ability to send and receive messages, handle voice, manage slash commands, track permission changes, and bridge the Discord desktop app via a local IPC connector. It is auto-enabled when `discord` appears in the character's connector keys (`autoEnable.connectorKeys: ["discord"]`). No actions or providers are registered; all behavior flows through services and events.
+This plugin registers the `DiscordService` (and companion services) with the elizaOS runtime, giving an Eliza agent the ability to send and receive messages, handle voice, manage slash commands, track permission changes, and bridge the Discord desktop app via a local IPC connector. It has two config-selected modes in one package: **bot-API mode** (`DiscordService`, activated by `DISCORD_API_TOKEN` / `DISCORD_BOT_TOKENS`) and **local desktop mode** (`DiscordLocalService`, activated by `DISCORD_LOCAL_CLIENT_ID` + `DISCORD_LOCAL_CLIENT_SECRET`); each service self-gates on its own credentials and stays dormant otherwise, so the modes can run independently or together. The former `@elizaos/plugin-discord-local` package is merged into this one (its old package name aliases here via the agent plugin collector). It is auto-enabled when `discord` appears in the character's connector keys (`autoEnable.connectorKeys: ["discord"]`). No actions or providers are registered; all behavior flows through services and events.
 
 ## Plugin surface
 
 ### Services
 | Name | Type key | Purpose |
 |---|---|---|
-| `DiscordService` | `"discord"` | Main gateway service — connects to Discord API, handles messages, voice, slash commands, reactions, history backfill, and emits `DiscordEventTypes.*` events |
+| `DiscordService` | `"discord"` | Main gateway service (bot-API mode) — connects to Discord API, handles messages, voice, slash commands, reactions, history backfill, and emits `DiscordEventTypes.*` events |
+| `DiscordLocalService` | `"discord-local"` | Local mode — IPC connector to the Discord desktop app (OAuth over the local RPC socket + macOS UI-automation replies). Dormant unless `DISCORD_LOCAL_CLIENT_ID` / `DISCORD_LOCAL_CLIENT_SECRET` are configured |
 | `DiscordOwnerPairingServiceImpl` | `"OWNER_PAIRING_DISCORD"` | Registers the `/eliza-pair` slash command; relays pairing codes to the backend owner-bind service and DMs login links |
 | `DiscordUserAccountScraperImpl` | `"discord_user_account_scraper"` | Scrapes message history and DM inboxes from the Discord desktop app via CDP/browser automation |
 
@@ -136,6 +137,12 @@ bun run --cwd plugins/plugin-discord clean       # rm dist + .turbo + generated 
 | `DISCORD_STATUS_REACTIONS` | No | Scope of the acknowledgement emoji reaction on handled inbound messages: `all` / `group-mentions` / `none` (default: `all`). |
 | `DISCORD_SYNC_PROFILE` | No | `"false"` to skip bot profile sync on startup (default: `true`) |
 | `DISCORD_IPC_DIR` | No | Override the IPC socket directory searched by `DiscordLocalService` when connecting to the Discord desktop app |
+| `DISCORD_LOCAL_CLIENT_ID` | No | Discord application client ID for local (desktop IPC) mode — with `DISCORD_LOCAL_CLIENT_SECRET`, activates `DiscordLocalService` |
+| `DISCORD_LOCAL_CLIENT_SECRET` | No | Discord application client secret for local mode |
+| `DISCORD_LOCAL_ENABLED` | No | `"false"` to disable local mode even when local credentials are set (default: enabled when credentials present) |
+| `DISCORD_LOCAL_SCOPES` | No | Comma-separated OAuth scopes for local mode (default `rpc,identify,rpc.notifications.read`) |
+| `DISCORD_LOCAL_MESSAGE_CHANNEL_IDS` | No | Comma-separated channel IDs to subscribe to `MESSAGE_CREATE` in local mode |
+| `DISCORD_LOCAL_SEND_DELAY_MS` | No | Milliseconds to wait after focusing Discord before typing in local mode (default 900, min 100) |
 | `DISCORD_GENERATION_TIMEOUT_MS` | No | Milliseconds cap for generation before the pending Discord message is discarded |
 | `MESSAGE_TIMEOUT_MS` | No | Fallback generation timeout in ms (used when `DISCORD_GENERATION_TIMEOUT_MS` is not set) |
 | `DISCORD_TEST_CHANNEL_ID` | No | Channel used by `DiscordTestSuite` |
@@ -160,46 +167,12 @@ All settings can also be provided in the character file under `settings.discord`
 - **Voice requires ffmpeg.** The `fluent-ffmpeg` dep expects a system `ffmpeg` binary on `PATH` for audio processing.
 - **Multi-account mode** is activated by setting `DISCORD_BOT_TOKENS` (comma-separated) instead of `DISCORD_API_TOKEN`. See `accounts.ts` for resolution order.
 - **`autoReply` is true by default** in `DiscordSettings` — the agent auto-answers inbound messages. Set `DISCORD_AUTO_REPLY=false` (or `character.settings.discord.autoReply=false`, or the per-account `autoReply`) to ingest messages into memory without replying.
-- See root `AGENTS.md` for repo-wide architecture rules, logger-only logging, ESM conventions, and naming standards.
+- See root `CLAUDE.md` for repo-wide architecture rules, logger-only logging, ESM conventions, and naming standards.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
-## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+## Verification
 
-> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
-> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
-> works **without reading the code**, from the artifacts you attach. This applies to **every**
-> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
-
-- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
-  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
-  providers/context, the raw model output, every tool/action call, and the result. Then **open
-  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
-  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
-- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
-  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
-  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
-  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
-  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
-  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
-  them is part of your change.
-- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
-  the entire feature or view, start to finish (`bun run test:e2e:record`).
-- **Manually review every artifact the change touches** — never just the green check: client
-  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
-  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
-- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
-  blocker by the **hard path**: build the real architecture, stand up the real
-  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
-  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
-  highest-effort, production-ready version. Keep going until every possibility is exhausted.
-
-Artifacts → attached inline in the PR (MP4 video, JPG screenshots, logs in `<details>`); attach each evidence type **or**
-explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
-behavior, **re-capture** evidence; stale proof is worse than none.
-
-**Capture & manually review for this package — platform connector:**
-- A real (or sandbox-account) round-trip on the platform: inbound message → agent → outbound reply, captured as logs **and** a screenshot/recording of the actual conversation.
-- The raw inbound event/webhook payload and the outbound API request/response, with IDs mapped correctly (`stringToUuid` / `createUniqueUuid`).
-- Attachments, threads/replies, edits, multi-account, and rate-limit/error paths — not just a single text ping.
-- The agent trajectory for the turn the connector drove.
-<!-- END: evidence-and-e2e-mandate -->
+Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+the package's relevant build, typecheck, lint, and test commands, then exercise
+the real integration boundary changed by the work. Inspect the produced domain
+artifacts and failure behavior; do not substitute mocked success for the system
+under test.

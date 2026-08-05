@@ -40,4 +40,7 @@ export const ErrorState: Story = {
 };
 
 /** Returns null when there are no unsaved changes. */
-export const Clean: Story = { args: { dirty: false } };
+export const Clean: Story = {
+  tags: ["story-gate-expect-blank"],
+  args: { dirty: false },
+};

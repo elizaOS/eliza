@@ -18,15 +18,17 @@ npx elizaos create [name] --template project
 
 ## What you get
 
-The `project` template scaffolds a package-first elizaOS project:
+The `project` template scaffolds a package-first product workspace:
 
-- `character.ts` — your agent's identity and plugin list.
-- `src/` — runtime entry point and any custom code.
-- `package.json` — wired to `@elizaos/core` and the default plugin set, plus a `dev` / `build` / `test` script set.
-- `bunfig.toml`, `tsconfig.json` — build config.
-- `.env.example` — required env variables for the included plugins.
+- `apps/app/` — branded web, desktop, and mobile app shell.
+- `eliza/` — the local upstream checkout initialized by the template.
+- `package.json` — project-level development, build, test, lint, and typecheck scripts.
+- `scripts/` — source-mode and app-core command adapters.
+- `.elizaos/template.json` — managed-file hashes and template metadata used by `upgrade`.
+- `.env.example` and `apps/app/.env.example` — runtime and app environment templates.
 
-Optional local-source mode (`ELIZA_ELIZA_SOURCE=local`) links against a repo-local `eliza/` checkout so you can patch upstream alongside your project. Set `--skip-upstream` to opt out.
+The default project initializes the `eliza/` upstream checkout. Set
+`--skip-upstream` when you intentionally want only the generated shell.
 
 ## Next steps
 
@@ -37,7 +39,9 @@ cp .env.example .env   # fill in model provider key
 bun run dev
 ```
 
-`bun run dev` starts the agent + dashboard. There is no `eliza start` — running an agent is a project script, not a CLI command.
+`bun run dev` starts the generated project's development workflow. There is no
+`elizaos start`; running the product is a project script, not a scaffold-CLI
+command.
 
 ## See also
 

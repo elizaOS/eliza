@@ -243,7 +243,7 @@ async function ensurePGliteBridge() {
   );
   const child = spawn(
     bun,
-    ["run", "packages/scripts/cloud/admin/dev/pglite-server.ts"],
+    ["run", "packages/cloud/scripts/admin/dev/pglite-server.ts"],
     {
       cwd: repoRoot,
       stdio: ["ignore", "inherit", "inherit"],

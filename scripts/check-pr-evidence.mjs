@@ -54,7 +54,7 @@ export function hasMatchingEvidenceHead(body, headSha) {
  * editing its `*.test.tsx` or `*.stories.tsx` does not.
  */
 const SURFACE_PATH_RE =
-  /(^|\/)(packages\/(app|ui|tui|homepage|eliza-computer)|apps\/app|packages\/cloud\/frontend|packages\/os\/landing)\//i;
+  /(^|\/)(packages\/(app|ui|tui|homepage)|apps\/app|packages\/cloud\/frontend)\//i;
 const SURFACE_VISUAL_EXT_RE = /\.(tsx|jsx|css|scss|sass|less|svg|html|vue)$/i;
 const SURFACE_NON_VISUAL_RE =
   /(\.(test|spec|stories|story|bench)\.|\.d\.ts$|(^|\/)(__tests__|__e2e__|__mocks__|__fixtures__|test|tests|e2e|stories)\/)/i;

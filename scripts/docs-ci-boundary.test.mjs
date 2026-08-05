@@ -64,7 +64,6 @@ describe("docs CI untrusted patch boundary", () => {
       "packages/docs/guide.mdx",
       "packages/docs/guides/setup.md",
       "packages/docs/docs.json",
-      "packages/docs/mint.json",
     ]) {
       assert.equal(isAllowedDocsPath(path), true, path);
     }

@@ -1,3 +1,4 @@
+/** Verifies chat widgets __e2e__/output hygiene (#13896) through the package's configured test harness. */
 // Regression guard for #13896: PR #13732 committed a 13,480-line esbuild
 // bundle (task-pipeline.html) plus 2 PNGs inside
 // packages/ui/src/components/chat/widgets/__e2e__/output/ — generated

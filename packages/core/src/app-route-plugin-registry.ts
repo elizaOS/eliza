@@ -104,9 +104,9 @@ export function listAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
  * drain adds nothing rather than double-registering hundreds of routes.
  *
  * Routes are pushed with their absolute `rawPath` (no `/<pluginName>/` prefix)
- * so `tryHandleRuntimePluginRoute` matches them. Per-loader failures are
- * isolated: an optional-unavailable loader is debug-logged and contributes no
- * routes; any other failure is warn-logged and skipped, never aborting the rest.
+ * so `tryHandleRuntimePluginRoute` matches them. An intentionally absent
+ * optional plugin contributes no routes; unexpected loader failures abort
+ * registration so a broken deployment cannot appear partially healthy.
  */
 export async function drainAppRoutePluginLoaders(
 	target: { routes: Route[] },
@@ -121,17 +121,14 @@ export async function drainAppRoutePluginLoaders(
 				// The optional-unavailable error is thrown by loaders whose plugin is
 				// intentionally absent in this deployment.
 				if (isOptionalAppRoutePluginUnavailableError(err)) {
+					// error-policy:J4 optional route packages are explicitly unavailable
+					// in deployments that do not install them.
 					logger.debug(
 						`[app-routes] App route plugin ${id} unavailable, skipping route registration`,
 					);
 					return null;
 				}
-				logger.warn(
-					`[app-routes] Failed to register app route plugin ${id}: ${
-						err instanceof Error ? err.message : String(err)
-					}`,
-				);
-				return null;
+				throw err;
 			}
 		}),
 	);

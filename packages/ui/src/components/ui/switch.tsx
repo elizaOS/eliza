@@ -58,7 +58,7 @@ const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(
           className,
         )}
         {...props}
-        aria-checked={active}
+        aria-checked={active ? "true" : "false"}
         data-state={state}
         disabled={disabled}
         onClick={handleClick}

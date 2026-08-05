@@ -21,7 +21,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
-} from "../../../packages/test/helpers/real-runtime.ts";
+} from "../../../packages/app-core/test/helpers/real-runtime.ts";
 
 // Registering the KG service + schema makes runtime.initialize() start the
 // service and migrate the app_lifeops knowledge-graph tables — exactly what the

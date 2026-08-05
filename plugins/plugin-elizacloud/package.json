@@ -68,9 +68,8 @@
     }
   },
   "dependencies": {
-    "@ai-sdk/gateway": "3.0.133",
     "@ai-sdk/openai": "^3.0.9",
-    "@ai-sdk/provider": "3.0.13",
+    "@ai-sdk/provider": "3.0.14",
     "@ai-sdk/provider-utils": "5.0.5",
     "@elizaos/cloud-sdk": "workspace:*",
     "@elizaos/core": "workspace:*",
@@ -86,7 +85,7 @@
     "jose": "^6.2.2",
     "js-tiktoken": "^1.0.21",
     "ox": "0.14.20",
-    "undici": "8.5.0",
+    "undici": "8.9.0",
     "viem": "^2.48.8",
     "ws": "8.21.0"
   },
@@ -132,7 +131,8 @@
     "test:unit": "vitest run __tests__/unit/",
     "test:integration": "vitest run __tests__/integration/",
     "lint:check": "bunx @biomejs/biome check .",
-    "build": "bun run build.ts && bun run build:views && node scripts/verify-built-package.mjs",
+    "build": "node ../../packages/scripts/with-package-build-lock.mjs plugins/plugin-elizacloud -- bun run build:unlocked",
+    "build:unlocked": "bun run build.ts && bun run build:views && node scripts/verify-built-package.mjs",
     "build:ts": "bun run build.ts",
     "build:views": "bunx --bun vite build --config vite.config.views.ts",
     "test:e2e": "node ../../packages/app-core/scripts/run-local-plugin-live-smoke.mjs",

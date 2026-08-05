@@ -1,3 +1,4 @@
+/** Verifies useChatState — unread badge clears on open (#FIX3) through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // `useChatState` unread-badge clearing: opening a conversation must clear its

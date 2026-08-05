@@ -1,4 +1,7 @@
-/** Supports app-core build, packaging, or development orchestration for start eliza live ts. */
+/**
+ * Boots the real app-core runtime (startEliza) as a child process for live
+ * streaming tests; exits non-zero on startup failure.
+ */
 import { startEliza } from "../../src/runtime/eliza.ts";
 
 startEliza().catch((error) => {

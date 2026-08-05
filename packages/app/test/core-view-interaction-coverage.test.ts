@@ -293,20 +293,6 @@ const CORE_VIEW_INTERACTIONS: Readonly<Record<string, CoreViewInteraction>> = {
       },
     ],
   },
-  feed: {
-    owners: [
-      PLUGIN_AGENT_BRIDGE_OWNER,
-      {
-        spec: "packages/app/test/ui-smoke/apps-personal-assistant-feed-interactions.spec.ts",
-        proves:
-          "Exercises the Feed GUI no-run state and command routing through deterministic interact routes.",
-        signals: [
-          "feed gui no-run state",
-          "Feed route exposes reachable GUI state",
-        ],
-      },
-    ],
-  },
   relationships: {
     owners: [
       SHELL_AGENT_BRIDGE_OWNER,

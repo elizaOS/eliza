@@ -6,6 +6,7 @@
  * locks before opening the database.
  */
 
+import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -24,7 +25,7 @@ import type {
   VaultStats,
 } from "./types.js";
 import type { SetOptions, Vault } from "./vault-types.js";
-import { VaultMissError } from "./vault-types.js";
+import { VaultDecryptionError, VaultMissError } from "./vault-types.js";
 
 /**
  * PGlite-backed Vault implementation.
@@ -57,6 +58,20 @@ const SCHEMA_SETUP = `
     last_modified  BIGINT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_vault_entries_kind ON vault_entries(kind);
+  CREATE TABLE IF NOT EXISTS vault_quarantined_entries (
+    quarantine_id  TEXT PRIMARY KEY,
+    original_key   TEXT NOT NULL,
+    kind           TEXT NOT NULL,
+    value          TEXT,
+    ciphertext     TEXT,
+    ref_source     TEXT,
+    ref_path       TEXT,
+    last_modified  BIGINT NOT NULL,
+    quarantined_at BIGINT NOT NULL,
+    reason         TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_vault_quarantine_original_key
+    ON vault_quarantined_entries(original_key);
 `;
 
 const MIGRATION_SENTINEL_KEY = "_migrated_from_file_v1";
@@ -202,6 +217,37 @@ export class PgliteVaultImpl implements Vault {
     await this.audit.record({ action: "set", key, ...optsCaller(opts) });
   }
 
+  async setIfAbsent(
+    key: string,
+    value: string,
+    opts: SetOptions = {},
+  ): Promise<boolean> {
+    assertKey(key);
+    if (typeof value !== "string") {
+      throw new TypeError("vault.setIfAbsent: value must be a string");
+    }
+    const db = await this.db();
+    const lastModified = Date.now();
+    const result = opts.sensitive
+      ? await db.query<{ key: string }>(
+          `INSERT INTO vault_entries (key, kind, ciphertext, last_modified)
+           VALUES ($1, 'secret', $2, $3)
+           ON CONFLICT (key) DO NOTHING
+           RETURNING key`,
+          [key, encrypt(await this.loadMasterKey(), value, key), lastModified],
+        )
+      : await db.query<{ key: string }>(
+          `INSERT INTO vault_entries (key, kind, value, last_modified)
+           VALUES ($1, 'value', $2, $3)
+           ON CONFLICT (key) DO NOTHING
+           RETURNING key`,
+          [key, value, lastModified],
+        );
+    if (result.rows.length === 0) return false;
+    await this.audit.record({ action: "set", key, ...optsCaller(opts) });
+    return true;
+  }
+
   async setReference(
     key: string,
     ref: PasswordManagerReference,
@@ -263,6 +309,64 @@ export class PgliteVaultImpl implements Vault {
     const db = await this.db();
     await db.query(`DELETE FROM vault_entries WHERE key = $1`, [key]);
     await this.audit.record({ action: "remove", key });
+  }
+
+  async quarantineUnreadable(
+    key: string,
+    reason: string,
+    caller?: string,
+  ): Promise<boolean> {
+    assertKey(key);
+    const normalizedReason = reason.trim();
+    if (!normalizedReason) {
+      throw new TypeError("vault.quarantineUnreadable: reason required");
+    }
+    const db = await this.db();
+    await db.exec("BEGIN");
+    try {
+      const row = (
+        await db.query<EntryRow>(
+          `SELECT key, kind, value, ciphertext, ref_source, ref_path, last_modified
+             FROM vault_entries WHERE key = $1 LIMIT 1`,
+          [key],
+        )
+      ).rows[0];
+      if (!row) {
+        await db.exec("COMMIT");
+        return false;
+      }
+      await db.query(
+        `INSERT INTO vault_quarantined_entries (
+           quarantine_id, original_key, kind, value, ciphertext, ref_source,
+           ref_path, last_modified, quarantined_at, reason
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          randomUUID(),
+          row.key,
+          row.kind,
+          row.value,
+          row.ciphertext,
+          row.ref_source,
+          row.ref_path,
+          row.last_modified,
+          Date.now(),
+          normalizedReason.slice(0, 500),
+        ],
+      );
+      await db.query(`DELETE FROM vault_entries WHERE key = $1`, [key]);
+      await db.exec("COMMIT");
+    } catch (error) {
+      // error-policy:J2 The original row must remain active unless its opaque
+      // bytes were preserved successfully; roll back and surface the failure.
+      await db.exec("ROLLBACK");
+      throw error;
+    }
+    await this.audit.record({
+      action: "quarantine",
+      key,
+      ...(caller ? { caller } : {}),
+    });
+    return true;
   }
 
   async list(prefix?: string): Promise<readonly string[]> {
@@ -400,12 +504,7 @@ export class PgliteVaultImpl implements Vault {
         // error-policy:J2 context-adding rethrow — a decrypt failure means the
         // stored secret is unreadable; surface it, never return a fabricated
         // or empty value that a caller would treat as the real secret.
-        throw new Error(
-          `vault: failed to decrypt ${JSON.stringify(key)} (wrong master key or corrupt ciphertext): ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-          { cause: err },
-        );
+        throw new VaultDecryptionError(key, { cause: err });
       }
     }
     if (

@@ -1,4 +1,8 @@
-/** Supports app-core build, packaging, or development orchestration for mobile web build reuse mjs. */
+/**
+ * Decides whether a mobile lane can reuse the existing Vite renderer dist by
+ * checking the renderer build manifest's variant, target, and runtime mode
+ * against what the lane expects.
+ */
 import fs from "node:fs";
 import path from "node:path";
 

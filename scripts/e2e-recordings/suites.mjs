@@ -22,7 +22,7 @@ export const UI_E2E_SUITES = [
   {
     name: "cloud-e2e",
     displayName: "Cloud full-stack mock e2e",
-    configDir: "packages/test/cloud-e2e",
+    configDir: "packages/cloud/e2e",
     script: "test",
     coverage:
       "Boots the local cloud API, cloud frontend, auth cookie login, provisioning flows, screenshots, traces, and videos.",
@@ -34,22 +34,6 @@ export const UI_E2E_SUITES = [
     script: "test:e2e",
     coverage:
       "Runs marketing routes, navigation, onboarding controls, contact capture, route coverage, screenshots, traces, and videos.",
-  },
-  {
-    name: "os-homepage",
-    displayName: "OS homepage",
-    configDir: "packages/os/homepage",
-    script: "test:e2e",
-    coverage:
-      "Runs OS homepage routes, checkout/preorder flows, link resilience, mobile/desktop screenshots, traces, and videos.",
-  },
-  {
-    name: "os-usb-installer",
-    displayName: "OS USB installer",
-    configDir: "packages/os/usb-installer",
-    script: "test:e2e",
-    coverage:
-      "Runs the installer wizard UI, visual pages, mobile/desktop screenshots, traces, and videos against the mocked installer API.",
   },
   {
     name: "ui-agent-surface",
@@ -66,14 +50,6 @@ export const UI_E2E_SUITES = [
     script: "test:launcher-e2e",
     coverage:
       "Runs the Launcher launcher fixture in Chromium, asserts tiles + image tiles render, captures desktop/mobile rest + edit screenshots, drives tap-launch/long-press-edit/favorite/page-nav with a recorded video, and asserts the view-interaction telemetry stream fired.",
-  },
-  {
-    name: "feed-dag-visualizer",
-    displayName: "Feed DAG visualizer",
-    configDir: "packages/feed/tools/dag-visualizer",
-    script: "test",
-    coverage:
-      "Runs the standalone Feed DAG visualizer browser e2e with screenshots, traces, and videos.",
   },
   {
     name: "android-emu",
@@ -118,31 +94,9 @@ export const UI_E2E_COVERED_BY_APP = [
     reason:
       "Plugin view packages are registered and clicked through inside packages/app/test/ui-smoke plugin and app interaction suites.",
   },
-  {
-    name: "feed-web",
-    configDir: "packages/feed",
-    coveredBy: "feed-dag-visualizer",
-    reason:
-      "The full Feed web e2e lanes require an external app stack, wallet extension, and optional DB/services; deterministic standalone Feed UI recording is covered by the DAG visualizer suite.",
-  },
 ];
 
-export const SKIPPED_EXTERNAL_UI_E2E_SUITES = [
-  {
-    name: "feed-browser-wallet",
-    configDir: "packages/feed/tools/e2e",
-    script: "test",
-    reason:
-      "Requires RUN_FEED_E2E=1, a live Feed app on :3000, and the MetaMask extension.",
-  },
-  {
-    name: "feed-chroma-wallet",
-    configDir: "packages/feed/tools/chroma",
-    script: "test",
-    reason:
-      "Requires RUN_FEED_E2E=1, a Feed app on :3100, Anvil, deployed contracts, and wallet state.",
-  },
-];
+export const SKIPPED_EXTERNAL_UI_E2E_SUITES = [];
 
 export function suiteByName(name) {
   return UI_E2E_SUITES.find((suite) => suite.name === name) ?? null;

@@ -1,0 +1,50 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "Preserve",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "strict": true,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": "./src",
+    "types": ["node"],
+    "paths": {
+      "@elizaos/core": ["../../packages/core/dist/index.d.ts"],
+      "@elizaos/core/*": ["../../packages/core/dist/*"],
+      "@elizaos/shared": ["../../packages/shared/dist/index.d.ts"],
+      "@elizaos/shared/*": ["../../packages/shared/dist/*"],
+      "@elizaos/ui": ["../../packages/ui/dist/index.d.ts"],
+      "@elizaos/ui/agent-surface": [
+        "../../packages/ui/dist/agent-surface/index.d.ts"
+      ],
+      "@elizaos/ui/api": ["../../packages/ui/dist/api/index.d.ts"],
+      "@elizaos/ui/api/*": ["../../packages/ui/dist/api/*"],
+      "@elizaos/ui/app-shell-registry": [
+        "../../packages/ui/dist/app-shell-registry.d.ts"
+      ],
+      "@elizaos/ui/bridge": ["../../packages/ui/dist/bridge/index.d.ts"],
+      "@elizaos/ui/components": [
+        "../../packages/ui/dist/components/index.d.ts"
+      ],
+      "@elizaos/ui/components/*": ["../../packages/ui/dist/components/*"],
+      "@elizaos/ui/hooks": ["../../packages/ui/dist/hooks/index.d.ts"],
+      "@elizaos/ui/spatial": ["../../packages/ui/dist/spatial/index.d.ts"],
+      "@elizaos/ui/state": ["../../packages/ui/dist/state/index.d.ts"],
+      "@elizaos/ui/state/*": ["../../packages/ui/dist/state/*"],
+      "@elizaos/ui/utils": ["../../packages/ui/dist/utils/index.d.ts"],
+      "@elizaos/ui/utils/*": ["../../packages/ui/dist/utils/*"],
+      "@elizaos/ui/widgets": ["../../packages/ui/dist/widgets/index.d.ts"],
+      "@elizaos/ui/*": ["../../packages/ui/dist/*"]
+    }
+  },
+  "include": ["src/ui", "src/ui.ts", "src/register.ts"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/**/__tests__/**"]
+}

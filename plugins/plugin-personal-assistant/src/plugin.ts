@@ -35,10 +35,9 @@ import {
   handleMeetingJoinDispatch,
   MEETING_JOIN_CHANNEL_KEY,
 } from "@elizaos/plugin-calendar";
-import { CalendlyAdapter } from "@elizaos/plugin-calendly";
 import { financesPlugin } from "@elizaos/plugin-finances/plugin";
 import { goalsPlugin } from "@elizaos/plugin-goals/plugin";
-import { GoogleGmailAdapter } from "@elizaos/plugin-google";
+import { GoogleGmailAdapter } from "@elizaos/plugin-google-workspace";
 import {
   createDefaultCircadianInsightContract,
   healthPlugin,
@@ -50,7 +49,6 @@ import {
 } from "@elizaos/plugin-health";
 import { inboxPlugin } from "@elizaos/plugin-inbox/plugin";
 import { remindersPlugin } from "@elizaos/plugin-reminders";
-import { remoteDesktopPlugin } from "@elizaos/plugin-remote-desktop";
 import { XDmAdapter } from "@elizaos/plugin-x/lifeops-message-adapter";
 import type {
   IPermissionsRegistry,
@@ -297,7 +295,7 @@ const localConditionsAction = createLocalConditionsAction({
   authorize: hasLifeOpsAccess,
 });
 
-const GOOGLE_CONNECTOR_PLUGIN_PACKAGE = "@elizaos/plugin-google";
+const GOOGLE_CONNECTOR_PLUGIN_PACKAGE = "@elizaos/plugin-google-workspace";
 const GOOGLE_CONNECTOR_PLUGIN_NAME = "google";
 const PERMISSIONS_REGISTRY_SERVICE = "eliza_permissions_registry";
 
@@ -479,7 +477,7 @@ async function importGoogleConnectorPluginModule(): Promise<
     >;
   } catch (error) {
     const stagedDependencyUrl = new URL(
-      "../node_modules/@elizaos/plugin-google/dist/index.js",
+      "../node_modules/@elizaos/plugin-google-workspace/dist/index.js",
       import.meta.url,
     );
     try {
@@ -601,25 +599,6 @@ export async function ensureLifeOpsInboxPluginRegistered(
     return;
   }
   await runtime.registerPlugin(inboxPlugin);
-}
-
-/**
- * Register `@elizaos/plugin-remote-desktop` if it is not already in the
- * runtime. The remote-desktop domain (the REMOTE_DESKTOP action, the
- * backend-detection engine, and the in-process RemoteSessionService control
- * plane) moved out of PA into the remote-desktop plugin, which now registers
- * the action. PA no longer registers REMOTE_DESKTOP itself, so the
- * remote-desktop plugin MUST be loaded whenever PA is. No DB, static import.
- */
-export async function ensureLifeOpsRemoteDesktopPluginRegistered(
-  runtime: IAgentRuntime,
-): Promise<void> {
-  if (
-    runtime.plugins.some((plugin) => plugin.name === remoteDesktopPlugin.name)
-  ) {
-    return;
-  }
-  await runtime.registerPlugin(remoteDesktopPlugin);
 }
 
 /**
@@ -929,7 +908,6 @@ const rawPersonalAssistantPlugin: Plugin = {
     await ensureLifeOpsRemindersPluginRegistered(runtime);
     await ensureLifeOpsGoalsPluginRegistered(runtime);
     await ensureLifeOpsInboxPluginRegistered(runtime);
-    await ensureLifeOpsRemoteDesktopPluginRegistered(runtime);
 
     // Inject the LifeOps-backed calendar gate once the runtime has finished
     // initializing both plugins, so calendar events keep firing reminders and
@@ -1103,7 +1081,6 @@ const rawPersonalAssistantPlugin: Plugin = {
     const triage = getDefaultTriageService();
     triage.register(new GoogleGmailAdapter());
     triage.register(new XDmAdapter());
-    triage.register(new CalendlyAdapter());
     triage.register(new BrowserBridgeAdapter());
 
     // Register the activity-profile maintenance worker. One scheduler

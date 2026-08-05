@@ -1,3 +1,4 @@
+/** Verifies isReadOnlyViewCapability through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Capability broker (#13452): a plugin view only gets the mutating agent-surface

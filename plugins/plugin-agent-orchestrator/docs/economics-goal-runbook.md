@@ -23,7 +23,7 @@ within a spend cap.
 - **The Cloud loop itself.** `apps.create → monetization.update → domains.buy
   (real credit debit) → earnings → survival economics` is exercised end-to-end
   against the mock stack by
-  `packages/test/cloud-e2e/tests/monetized-app-loop.spec.ts`.
+  `packages/cloud/e2e/tests/monetized-app-loop.spec.ts`.
 
 ## Runbook
 

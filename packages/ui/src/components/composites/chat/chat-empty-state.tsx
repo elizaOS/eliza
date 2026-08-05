@@ -94,7 +94,7 @@ export function ChatEmptyState({
         ))}
       </div>
       {hint ? (
-        <div className="mt-4 max-w-sm text-xs-tight uppercase tracking-[0.16em] text-muted/74">
+        <div className="mt-4 max-w-sm text-xs-tight uppercase tracking-[0.16em] text-muted">
           {hint}
         </div>
       ) : null}

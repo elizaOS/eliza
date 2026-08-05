@@ -1,3 +1,4 @@
+/** Verifies protectedAgentProbesEnabled (pure gate — #16242) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

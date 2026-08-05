@@ -104,6 +104,7 @@ export {
   attestationMasterKey,
   defaultMasterKey,
   inMemoryMasterKey,
+  loadDefaultMasterKeySync,
   MasterKeyUnavailableError,
   osKeychainMasterKey,
   passphraseMasterKey,
@@ -146,5 +147,6 @@ export type {
 export {
   createVault,
   resolveDefaultVaultDataDir,
+  VaultDecryptionError,
   VaultMissError,
 } from "./vault.js";

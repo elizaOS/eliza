@@ -538,9 +538,7 @@ function anthropicError(
 /**
  * Client-facing message for an unresolvable model. Mirrors the
  * /v1/chat/completions boundary (#13913): when `getLanguageModel` /
- * the gateway raises a provider-configuration error (e.g. an unknown model on a
- * deployment where only `AI_GATEWAY_API_KEY` is set, whose GatewayError message
- * embeds internal setup guidance), the caller must see a clean, model-scoped
+ * provider resolution raises a configuration error, the caller must see a clean, model-scoped
  * error — never the internal provider/gateway config detail.
  */
 function modelNotAvailableMessage(model: string): string {

@@ -1,3 +1,4 @@
+/** Verifies ChatSurface evidence through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Evidence generator (#12348, not a behavioural gate): renders the REAL

@@ -1,3 +1,4 @@
+/** Verifies bindReadyPhase voice-control agent-event bridge through the package's configured test harness. */
 // @vitest-environment jsdom
 
 // Closes the renderer half of the transcripts/voice-control round-trip that

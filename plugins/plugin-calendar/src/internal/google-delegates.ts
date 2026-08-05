@@ -1,5 +1,5 @@
 /**
- * Google Calendar → LifeOps mapping delegates: convert `@elizaos/plugin-google`
+ * Google Calendar → LifeOps mapping delegates: convert `@elizaos/plugin-google-workspace`
  * wire objects (events, attendees, calendar-list entries, connector status)
  * into contract-shaped `LifeOps*` calendar types, and resolve which Google
  * connector account a request runs against. The external-API boundary for the
@@ -18,7 +18,7 @@ import type {
   GoogleCalendarEventPatchInput,
   GoogleCalendarListEntry,
   IGoogleWorkspaceService,
-} from "@elizaos/plugin-google";
+} from "@elizaos/plugin-google-workspace";
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarEventAttendee,
@@ -404,7 +404,7 @@ function requireGoogleWorkspaceService(
   if (!service || typeof service !== "object") {
     fail(
       503,
-      "Google Workspace service is not registered. Enable @elizaos/plugin-google before using calendar Google features.",
+      "Google Workspace service is not registered. Enable @elizaos/plugin-google-workspace before using calendar Google features.",
     );
   }
   return service as IGoogleWorkspaceService;
@@ -418,7 +418,7 @@ export function requireGoogleServiceMethod<
   if (typeof fn !== "function") {
     fail(
       501,
-      `@elizaos/plugin-google does not expose ${String(method)} for account-scoped calendar access.`,
+      `@elizaos/plugin-google-workspace does not expose ${String(method)} for account-scoped calendar access.`,
     );
   }
   return fn.bind(service) as IGoogleWorkspaceService[K];

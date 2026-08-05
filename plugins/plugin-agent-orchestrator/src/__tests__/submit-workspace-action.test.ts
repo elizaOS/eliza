@@ -244,6 +244,7 @@ describe("TASKS submit_workspace (real service, real git, bare remote)", () => {
     });
 
     expect(result.success, JSON.stringify({ result, replies })).toBe(true);
+    expect(result.text).toContain("Workspace changes committed and pushed.");
     const data = result.data as { commitHash: string; workspaceId: string };
     expect(result.text).toBe(
       `Workspace changes committed and pushed.\nCommit: ${data.commitHash.slice(0, 8)}`,
@@ -302,10 +303,7 @@ describe("TASKS submit_workspace (real service, real git, bare remote)", () => {
     expect(result.success).toBe(false);
     expect(result.error).toBe("FINALIZE_FAILED");
     expect(replies).toEqual([]);
-    expect(result.text).toEqual(
-      expect.stringContaining("Failed to finalize workspace"),
-    );
-    expect(result.userFacingText).toBe(String(result.text).trim());
+    expect(result.userFacingText).toContain("Failed to finalize workspace");
     expect(result.effectReceipts).toEqual([
       expect.objectContaining({
         outcome: "failed",
@@ -354,10 +352,7 @@ describe("TASKS submit_workspace (real service, real git, bare remote)", () => {
     expect(result.success).toBe(false);
     expect(result.error).toBe("FINALIZE_FAILED");
     expect(replies).toEqual([]);
-    expect(result.text).toEqual(
-      expect.stringContaining("Failed to finalize workspace"),
-    );
-    expect(result.userFacingText).toBe(String(result.text).trim());
+    expect(result.userFacingText).toContain("Failed to finalize workspace");
     expect(result.effectReceipts).toEqual([
       expect.objectContaining({
         outcome: "failed",

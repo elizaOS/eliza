@@ -8,17 +8,17 @@ import path from "node:path";
 import { createElizaPlugin } from "@elizaos/agent";
 import { documentsPlugin } from "@elizaos/plugin-documents";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { describeIf } from "../../../packages/test/helpers/conditional-tests.ts";
+import { describeIf } from "../../../packages/app-core/test/helpers/conditional-tests.ts";
 import {
   createConversation,
   postConversationMessage,
   req,
-} from "../../../packages/test/helpers/http";
+} from "../../../packages/app-core/test/helpers/http";
 import {
   isLiveTestEnabled,
   selectLiveProvider,
-} from "../../../packages/test/helpers/live-provider";
-import { createRealTestRuntime } from "../../../packages/test/helpers/real-runtime.ts";
+} from "../../../packages/app-core/test/helpers/live-provider";
+import { createRealTestRuntime } from "../../../packages/app-core/test/helpers/real-runtime.ts";
 
 const envPath = path.resolve(
   import.meta.dirname,

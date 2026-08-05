@@ -3,7 +3,7 @@
 // The view-facing data layer (loadPhoneState + interact("phone-state"))
 // consumes the @elizaos/capacitor-phone CallLogEntry shape. This test feeds a
 // FULL, real-shaped CallLogEntry — every field declared in
-// plugins/plugin-native-phone/src/definitions.ts (CallLogEntry has 15 fields;
+// /capacitor-phone/definitions.ts (CallLogEntry has 15 fields;
 // PhoneStatus has 4) — through the real parsers and locks down exactly which
 // fields survive into the projected DTO, so a native API field addition cannot
 // silently leak into the view contract.

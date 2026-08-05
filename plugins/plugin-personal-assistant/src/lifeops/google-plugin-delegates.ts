@@ -1,5 +1,5 @@
 /**
- * Delegation seam from LifeOps to `@elizaos/plugin-google`: resolves the owner's
+ * Delegation seam from LifeOps to `@elizaos/plugin-google-workspace`: resolves the owner's
  * Google connector accounts and grants from the core connector-account manager
  * and adapts the google workspace service methods LifeOps' Gmail/Drive/Google
  * domains call. Keeps Google API specifics out of the LifeOps domains.
@@ -16,7 +16,7 @@ import type {
   GoogleMessageSummary,
   GoogleSendEmailInput,
   IGoogleWorkspaceService,
-} from "@elizaos/plugin-google";
+} from "@elizaos/plugin-google-workspace";
 import type {
   LifeOpsConnectorGrant,
   LifeOpsConnectorMode,
@@ -416,7 +416,7 @@ export function requireGoogleWorkspaceService(
   if (!service || typeof service !== "object") {
     fail(
       503,
-      "Google Workspace service is not registered. Enable @elizaos/plugin-google before using LifeOps Google features.",
+      "Google Workspace service is not registered. Enable @elizaos/plugin-google-workspace before using LifeOps Google features.",
     );
   }
   return service as IGoogleWorkspaceService;
@@ -430,7 +430,7 @@ export function requireGoogleServiceMethod<
   if (typeof fn !== "function") {
     fail(
       501,
-      `@elizaos/plugin-google does not expose ${String(method)} for account-scoped LifeOps access.`,
+      `@elizaos/plugin-google-workspace does not expose ${String(method)} for account-scoped LifeOps access.`,
     );
   }
   return fn.bind(service) as IGoogleWorkspaceService[K];

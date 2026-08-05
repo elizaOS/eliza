@@ -424,8 +424,6 @@ const TAB_ICON_NAMES: Partial<Record<BuiltinTab, string>> = {
   files: "FolderClosed",
   plugins: "Plug",
   skills: "Sparkles",
-  advanced: "BrainCircuit",
-  "fine-tuning": "BrainCircuit",
   trajectories: "Activity",
   transcripts: "FileText",
   relationships: "Network",

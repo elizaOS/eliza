@@ -244,7 +244,7 @@ export const SYSTEM_PERMISSIONS: PermissionDef[] = [
     descriptionKey: "permissionssection.permission.bluetooth.description",
     icon: "bluetooth",
     platforms: ["ios", "android"],
-    requiredForFeatures: ["facewear", "gateway"],
+    requiredForFeatures: ["gateway"],
   },
   {
     id: "app-blocking",

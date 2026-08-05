@@ -74,7 +74,9 @@ const _binDebugLog = isAndroidMobile()
       try {
         _earlyFs.mkdirSync(stateDir, { recursive: true });
       } catch {
-        /* ignore */
+        // error-policy:J7 early Android diagnostics cannot depend on the logger;
+        // failure to create the diagnostic directory is observed by the later
+        // fatal stderr path.
       }
       return (msg: string) => {
         try {
@@ -83,7 +85,8 @@ const _binDebugLog = isAndroidMobile()
             `${new Date().toISOString()} ${msg}\n`,
           );
         } catch {
-          /* ignore */
+          // error-policy:J7 the raw diagnostic sink must never mask the boot
+          // error it is attempting to record.
         }
       };
     })()
@@ -103,11 +106,11 @@ async function bootstrapMobileEntrypoint(): Promise<void> {
     _binDebugLog("[bin.ts] entering android block");
     try {
       // Bundle anchor: evaluating this literal-specifier import forces
-      // @elizaos/plugin-aosp-local-inference into the mobile bundle. Its exports
+      // @elizaos/plugin-native-inference into the mobile bundle. Its exports
       // are re-imported and consumed by the runtime independently
       // (eliza.ts ensureAospLocalInferenceHandlers; plugin-local-inference's
       // registerAospLlamaLoader), so nothing is captured here.
-      await import(/* @vite-ignore */ "@elizaos/plugin-aosp-local-inference");
+      await import(/* @vite-ignore */ "@elizaos/plugin-native-inference");
     } catch (e) {
       // Android-only local inference is optional outside the privileged AOSP build.
       _binDebugLog(

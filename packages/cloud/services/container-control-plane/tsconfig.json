@@ -23,8 +23,6 @@
       "@elizaos/core/*": ["../../../../packages/core/src/*"],
       "@elizaos/logger": ["../../../logger/src/index.ts"],
       "@elizaos/logger/*": ["../../../logger/src/*"],
-      "@elizaos/security": ["../../../../packages/security/src/index.ts"],
-      "@elizaos/security/*": ["../../../../packages/security/src/*"],
       "drizzle-orm": ["../../../node_modules/drizzle-orm"],
       "drizzle-orm/*": ["../../../node_modules/drizzle-orm/*"],
       "@/*": ["../../../*"]

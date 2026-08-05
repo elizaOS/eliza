@@ -19,12 +19,15 @@ const EXCLUDED_ASSET_DIRS = new Set([
   ".turbo",
   ".venv",
   "ENV",
+  "__tests__",
   "__pycache__",
   "artifacts",
   "build",
   "dist",
   "env",
   "node_modules",
+  "Pods",
+  "tmp",
   "venv",
 ]);
 const EXCLUDED_ASSET_EXTENSIONS = new Set([".pyc", ".pyo"]);
@@ -42,6 +45,8 @@ export function shouldCopyAsset(packageDir, src) {
         EXCLUDED_ASSET_DIRS.has(segment) || segment.endsWith(".egg-info"),
     ) &&
     !leaf.startsWith(".coverage") &&
+    !leaf.includes(".test.") &&
+    !leaf.includes(".spec.") &&
     !EXCLUDED_ASSET_EXTENSIONS.has(path.extname(leaf))
   );
 }
