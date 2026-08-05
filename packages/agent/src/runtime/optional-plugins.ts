@@ -130,6 +130,24 @@ export interface OptionalStaticPluginOverride {
   readonly suppressTypeResolutionReason?: string;
 }
 
+/**
+ * Whether this process explicitly requested the workspace-source export
+ * condition. Bun exposes command-line conditions through `process.execArgv`,
+ * including when the entry process was launched with `--no-install`.
+ */
+export function hasElizaSourceRuntimeCondition(
+  execArgv: readonly string[] = process.execArgv,
+): boolean {
+  for (let index = 0; index < execArgv.length; index += 1) {
+    const argument = execArgv[index];
+    if (argument === "--conditions=eliza-source") return true;
+    if (argument === "--conditions" && execArgv[index + 1] === "eliza-source") {
+      return true;
+    }
+  }
+  return false;
+}
+
 export const OPTIONAL_STATIC_PLUGIN_OVERRIDES: Readonly<
   Record<string, OptionalStaticPluginOverride>
 > = {

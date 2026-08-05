@@ -405,6 +405,10 @@ const PANEL_RADIUS_PX = 32;
 // to the window shape. Keeping the decision in visible-height space avoids the
 // old "near-full but still showing wallpaper above it" resting state.
 const FULLSCREEN_SNAP_VH = 0.9;
+// Keep a committed full-screen snap stable through a few pixels of pointer
+// noise. The entry threshold is still the visible 90% line; reversing farther
+// than this hands height authority back to the inset sheet.
+const FULLSCREEN_RELEASE_HYSTERESIS_PX = 12;
 
 export {
   grabberBarOpacity,
@@ -1277,6 +1281,10 @@ export function ChatOverlay({
   // leave-full transition resets it. Pinned sessions start here: first-run opens
   // edge-to-edge full-screen, then its falling edge collapses to half.
   const [maximized, setMaximized] = React.useState(pinnedOpen);
+  // Live mirror for threshold commits and reversals that can occur in one
+  // pointer event before React has flushed the maximized state update.
+  const maximizedRef = React.useRef(maximized);
+  maximizedRef.current = maximized;
   // A restore drag is in flight (pull-down out of full-bleed). Declared up here
   // (not by the restore binding) because `fullBleedFrame` below reads it to keep
   // the panel MAX-HEIGHT full-screen-sized for the drag (so the height can track
@@ -1470,6 +1478,9 @@ export function ChatOverlay({
   // so releasing on either side of the line cannot disagree with what the user
   // saw while holding the sheet.
   const maxPullRawRef = React.useRef(0);
+  // Once a held gesture crosses the full-screen line and then reverses below
+  // it, release must honor the reversal instead of the earlier high-water mark.
+  const maximizeReversedRef = React.useRef(false);
   // Thread height at the START of the current gesture. Release paths that land
   // at the bottom use it to tell a big yank (started at/above the half detent →
   // the user is putting the chat away → PILL) from a short close (started low →
@@ -1532,6 +1543,7 @@ export function ChatOverlay({
 
   const resetPullPeak = React.useCallback(() => {
     maxPullRawRef.current = 0;
+    maximizeReversedRef.current = false;
     fullscreenCrossContRef.current = null;
   }, []);
   // At rest the collapsed composer should not carry hidden transcript/header
@@ -4399,7 +4411,8 @@ export function ChatOverlay({
       );
       const crossedFullscreenLine =
         fullscreenCrossContRef.current != null
-          ? cont >= fullscreenCrossContRef.current
+          ? cont >=
+            fullscreenCrossContRef.current - FULLSCREEN_RELEASE_HYSTERESIS_PX
           : livePanelH >= fullscreenSnapH;
       if (dy > 0 && livePanelH > maxPullRawRef.current) {
         maxPullRawRef.current = livePanelH;
@@ -4422,7 +4435,7 @@ export function ChatOverlay({
       // settles at the inset FULL detent instead.
       if (
         crossedFullscreenLine &&
-        !maximized &&
+        !maximizedRef.current &&
         fullscreenCrossContRef.current == null &&
         !keyboardBlocksMaximize
       ) {
@@ -4433,6 +4446,8 @@ export function ChatOverlay({
         // Sync the live mirrors — the release can run before React flushes.
         modeRef.current = "full";
         freeHRef.current = null;
+        maximizedRef.current = true;
+        maximizeReversedRef.current = false;
         focusThreadRef.current = true;
         if (reduce) threadHeight.set(fullPanelMaxH);
         else animateThreadHeight(fullPanelMaxH);
@@ -4441,7 +4456,7 @@ export function ChatOverlay({
         detentHaptic();
       } else if (
         !crossedFullscreenLine &&
-        maximized &&
+        maximizedRef.current &&
         // A RESTORE drag owns its own visible-height crossing in onRestoreDrag;
         // this branch is only for a same-gesture reversal on the grabber. Letting
         // it also fire here
@@ -4451,6 +4466,8 @@ export function ChatOverlay({
         !restoreGestureRef.current
       ) {
         setMaximized(false);
+        maximizedRef.current = false;
+        maximizeReversedRef.current = true;
         // Restore the gesture's STARTING pose: the mid-drag commit flipped
         // mode to "full" (and cleared freeH); leaving that in place made a
         // cancel settle at FULL instead of the detent the drag began on, and
@@ -4520,7 +4537,6 @@ export function ChatOverlay({
       animateThreadHeight,
       setDragPreviewMounted,
       getPanelElement,
-      maximized,
       keyboardBlocksMaximize,
     ],
   );
@@ -4533,6 +4549,7 @@ export function ChatOverlay({
   // screen on release; ordinary window drags use the visible 90% line.
   const maybeMaximizeOnRelease = React.useCallback((): boolean => {
     if (pinnedOpen) return false;
+    if (maximizeReversedRef.current) return false;
     // A real keyboard blocks the release-time maximize too (mirrors the mid-drag
     // gate): a pull-to-full with the keyboard up settles at the inset FULL detent
     // instead of an edge-to-edge maximize that would spill above the visible area.

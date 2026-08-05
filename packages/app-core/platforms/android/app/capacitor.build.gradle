@@ -9,7 +9,7 @@ android {
 
 apply from: "../capacitor-cordova-android-plugins/cordova.variables.gradle"
 dependencies {
-    implementation project(':elizaos-capacitor-bun-runtime')
+    implementation project(':capacitor-community-bluetooth-le')
     implementation project(':capacitor-app')
     implementation project(':capacitor-background-runner')
     implementation project(':capacitor-barcode-scanner')
@@ -27,6 +27,7 @@ dependencies {
     implementation project(':elizaos-capacitor-agent')
     implementation project(':elizaos-capacitor-appblocker')
     implementation project(':elizaos-capacitor-browser-surface')
+    implementation project(':elizaos-capacitor-bun-runtime')
     implementation project(':elizaos-capacitor-camera')
     implementation project(':elizaos-capacitor-canvas')
     implementation project(':elizaos-capacitor-contacts')

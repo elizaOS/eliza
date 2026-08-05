@@ -127,6 +127,8 @@ mock.module("@/lib/api/cloud-worker-errors", () => ({
 }));
 mock.module("@/lib/services/pcm16-wav", () => ({
   drainPcm16Stream: async () => new Uint8Array(),
+  drainPcm16ToWav: async () => new Uint8Array(),
+  pcm16ChunksToWav: () => new Uint8Array(),
   pcm16ToWav: () => new Uint8Array(),
 }));
 mock.module("@/lib/services/tts-first-line-cache", () => ({

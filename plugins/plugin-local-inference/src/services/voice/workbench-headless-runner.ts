@@ -25,15 +25,18 @@ import type {
 	CorpusTurnLabel,
 	GeneratedVoiceCorpus,
 } from "./corpus-generator";
+import type { DiarizationSegment } from "./diarization-error-rate";
 import {
 	type DiarizationTurnSample,
 	scoreBargeInGating,
+	scoreDiarizationSegments,
 	scoreDiarizationTimeline,
 	scoreEchoRejection,
 	scoreEntityExtraction,
 	scoreEotDecision,
 	scoreErle,
 	scoreFirstResponseLatency,
+	scoreMeasurementCoverage,
 	scoreOwnerSecurity,
 	scorePartialMonotonicity,
 	scoreRespondDecision,
@@ -86,7 +89,15 @@ export interface VoiceTurnObservation {
 	partialTranscripts?: string[];
 }
 
+/** One real diarizer segment in stream-relative time. */
+export interface VoiceDiarizationObservation extends DiarizationSegment {
+	confidence?: number;
+	hasOverlap?: boolean;
+}
+
 export interface VoiceWorkbenchServices {
+	/** Real evidence lanes fail when a scenario's asserted signal has no samples. */
+	strictMeasurementCoverage?: boolean;
 	/**
 	 * Optional one-shot hook before a scenario's turns are scored. Real services
 	 * use this to enroll speaker centroids from the generated corpus; mock
@@ -96,6 +107,15 @@ export interface VoiceWorkbenchServices {
 		scenario: VoiceScenario;
 		corpus: GeneratedVoiceCorpus;
 	}): Promise<void> | void;
+	/**
+	 * Diarize the complete scenario stream. Real services use this seam so DER
+	 * scores provider-produced boundaries and overlap instead of copying the
+	 * reference turn spans into the hypothesis.
+	 */
+	observeDiarization?(args: {
+		audio: Float32Array;
+		sampleRate: number;
+	}): Promise<VoiceDiarizationObservation[]>;
 	/**
 	 * Feed one turn's audio slice through the real services and report what was
 	 * observed. The `label` carries the turn's ground truth (so a mock can echo
@@ -188,6 +208,10 @@ export async function runVoiceScenarioHeadless(
 	const assertions = scenario.assertions ?? {};
 	const cases: VoiceE2eCaseResult[] = [];
 	await services.prepareScenario?.({ scenario, corpus });
+	const observedDiarization = await services.observeDiarization?.({
+		audio: corpus.pcm,
+		sampleRate: corpus.sampleRate,
+	});
 
 	// When a capture sink is active, write the full corpus once + each per-turn
 	// slice as `.wav` artifacts and record their (run-dir-relative) paths.
@@ -282,7 +306,7 @@ export async function runVoiceScenarioHeadless(
 		// Diarization scores REAL speaker turns only — an agent-echo turn is the
 		// agent's own voice bleeding back, not a speaker to attribute, so it is
 		// handled by the echo-rejection scorer instead.
-		if (!label.isAgentEcho) {
+		if (!label.isAgentEcho && observedDiarization === undefined) {
 			diarTurns.push({
 				predictedLabel: obs.predictedSpeakerLabel,
 				expectedLabel: label.speaker,
@@ -352,7 +376,22 @@ export async function runVoiceScenarioHeadless(
 				: {}),
 		}),
 	);
-	if (diarTurns.length > 0) {
+	if (observedDiarization !== undefined) {
+		const referenceDiarization: DiarizationSegment[] = corpus.groundTruth.turns
+			.filter((label) => !label.isAgentEcho)
+			.map((label) => ({
+				speaker: label.speaker,
+				startMs: (label.speechStartSample / corpus.sampleRate) * 1000,
+				endMs: (label.speechEndSample / corpus.sampleRate) * 1000,
+			}));
+		cases.push(
+			scoreDiarizationSegments(referenceDiarization, observedDiarization, {
+				...(assertions.maxDer !== undefined
+					? { maxDer: assertions.maxDer }
+					: {}),
+			}),
+		);
+	} else if (diarTurns.length > 0) {
 		cases.push(
 			scoreDiarizationTimeline(diarTurns, {
 				...(assertions.maxDer !== undefined
@@ -430,6 +469,68 @@ export async function runVoiceScenarioHeadless(
 		);
 	}
 	cases.push(...partialCases);
+
+	if (services.strictMeasurementCoverage) {
+		const requiredCoverage: Array<{
+			metric: string;
+			count: number;
+			required: boolean;
+		}> = [
+			{
+				metric: "diarization-segments",
+				count: observedDiarization?.length ?? 0,
+				required:
+					assertions.maxDer !== undefined ||
+					scenario.classes.includes("diarization"),
+			},
+			{
+				metric: "first-audio-latency",
+				count: cases.filter((entry) => entry.kind === "first-response-latency")
+					.length,
+				required: assertions.maxFirstAudioMs !== undefined,
+			},
+			{
+				metric: "voice-entity-match",
+				count: voiceEntitySamples.length,
+				required: assertions.minVoiceEntityMatchRate !== undefined,
+			},
+			{
+				metric: "entity-extraction",
+				count: expectedEntities.length,
+				required: assertions.minEntityF1 !== undefined,
+			},
+			{
+				metric: "echo-rejection",
+				count: echoSamples.length,
+				required: assertions.minEchoRejectionRate !== undefined,
+			},
+			{
+				metric: "owner-security",
+				count: ownerSamples.length,
+				required: assertions.minOwnerAccuracy !== undefined,
+			},
+			{
+				metric: "barge-in-cancel",
+				count: bargeInSamples.length,
+				required: assertions.maxBargeInCancelMs !== undefined,
+			},
+			{
+				metric: "erle",
+				count: erleSamples.length,
+				required: assertions.minErleDb !== undefined,
+			},
+			{
+				metric: "streaming-partials",
+				count: partialCases.length,
+				required: scenario.classes.includes("streaming-partials"),
+			},
+		];
+		for (const coverage of requiredCoverage) {
+			if (coverage.required) {
+				cases.push(scoreMeasurementCoverage(coverage.metric, coverage.count));
+			}
+		}
+	}
 
 	return {
 		scenarioId: scenario.id,

@@ -26,6 +26,7 @@ const pluginSchedulingSrc = path.join(
   "plugin-scheduling",
   "src",
 );
+const sharedSrc = path.join(elizaRoot, "packages", "shared", "src");
 const uiSrc = path.join(elizaRoot, "packages", "ui", "src");
 const coreSrc = path.join(elizaRoot, "packages", "core", "src");
 const loggerSrc = path.join(elizaRoot, "packages", "logger", "src");
@@ -106,6 +107,14 @@ export default defineConfig({
       {
         find: /^@elizaos\/agent$/,
         replacement: groundedActionReply,
+      },
+      {
+        find: /^@elizaos\/shared$/,
+        replacement: path.join(sharedSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/shared\/(.+)$/,
+        replacement: path.join(sharedSrc, "$1"),
       },
       {
         find: /^@elizaos\/app-core\/platform\/native-library-policy$/,

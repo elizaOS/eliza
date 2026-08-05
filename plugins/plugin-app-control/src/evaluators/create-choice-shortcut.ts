@@ -16,15 +16,16 @@ import {
 	isChoiceReply as isAppCreateChoiceReply,
 } from "../actions/app-create.js";
 import { hasPendingViewsCreateIntent } from "../actions/views-create.js";
+import { userRequestMessageText } from "../params.js";
 
 const APP_ACTION_NAME = "APP";
 const VIEWS_ACTION_NAME = "VIEWS";
 const GENERAL_CONTEXT = "general";
 
 function messageText(context: ResponseHandlerEvaluatorContext): string {
-	return typeof context.message.content?.text === "string"
-		? context.message.content.text
-		: "";
+	// Security-unwrapped user words — a choice reply ("cancel", "edit-1") must
+	// be read from the payload, never from envelope armor.
+	return userRequestMessageText(context.message);
 }
 
 function roomId(context: ResponseHandlerEvaluatorContext): string {

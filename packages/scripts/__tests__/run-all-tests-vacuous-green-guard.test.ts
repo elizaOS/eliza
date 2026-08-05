@@ -6,10 +6,10 @@
  * a test-file mismatch cannot exit green without exercising the runner path.
  */
 import { describe, expect, test } from "bun:test";
-import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 
 const runner = fileURLToPath(new URL("../run-all-tests.mjs", import.meta.url));
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
