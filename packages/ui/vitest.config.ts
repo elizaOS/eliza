@@ -14,10 +14,6 @@ const coreSrc = resolve(monorepoRoot, "packages/core/src");
 const cloudRoutingSrc = resolve(monorepoRoot, "packages/cloud/routing/src");
 const cloudSharedSrc = resolve(monorepoRoot, "packages/cloud/shared/src");
 const loggerSrc = resolve(monorepoRoot, "packages/logger/src");
-const bunRuntimeSrc = resolve(
-  monorepoRoot,
-  "plugins/plugin-native-bun-runtime/src/index.ts",
-);
 const hostExternalStub = resolve(packageRoot, "test/stubs/host-external.ts");
 
 // Resolve react/react-dom using the same version that lucide-react (or any
@@ -135,10 +131,6 @@ export default defineConfig({
         ),
       },
       {
-        find: /^@elizaos\/capacitor-bun-runtime$/,
-        replacement: bunRuntimeSrc,
-      },
-      {
         find: /^react$/,
         replacement: resolve(reactPath, "index.js"),
       },
@@ -181,6 +173,13 @@ export default defineConfig({
         replacement: resolve(
           packageRoot,
           "test/stubs/elizaos-capacitor-llama.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/capacitor-bun-runtime$/,
+        replacement: resolve(
+          packageRoot,
+          "test/stubs/elizaos-capacitor-bun-runtime.ts",
         ),
       },
       {
