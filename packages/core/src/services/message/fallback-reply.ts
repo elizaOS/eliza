@@ -11,6 +11,7 @@
 import { ModelType } from "../../types/model";
 
 type ErrorWithStatus = {
+	code?: unknown;
 	status?: unknown;
 	statusCode?: unknown;
 	lastError?: unknown;
@@ -269,6 +270,12 @@ export function isModelProviderFallbackError(
 		return false;
 	}
 	const unwrapped = unwrapRetryError(error);
+	// Local inference can disappear after registration (model unload, device
+	// disconnect, or an unavailable native binding). Its typed capability error
+	// means another text provider may safely answer the same request.
+	if (asErrorObject(unwrapped)?.code === "LOCAL_INFERENCE_UNAVAILABLE") {
+		return true;
+	}
 	if (isRateLimitError(error)) {
 		return true;
 	}
