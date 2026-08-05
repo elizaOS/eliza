@@ -173,35 +173,46 @@ test("cache-only token pricing without a Worker lifetime is explicitly unavailab
 });
 
 test("cold flat pricing warms outside the Worker request and serves the retry", async () => {
-  __clearPersistedPricingCache();
-  const entry = {
-    billingSource: "fal",
-    provider: "fal",
-    model: "fal-ai/test",
-    productFamily: "image",
-    chargeType: "generation",
-    unit: "image",
-    unitPrice: 0.01,
-  } as PreparedPricingEntry;
-  const loader = mock(async () => entry);
-  const background: Promise<unknown>[] = [];
-  const options = {
-    cacheOnly: true,
-    executionCtx: {
-      waitUntil: (promise: Promise<unknown>) => background.push(promise),
-    },
-  };
+  const previousBackend = process.env.CACHE_BACKEND;
+  const previousEnabled = process.env.CACHE_ENABLED;
+  process.env.CACHE_BACKEND = "memory";
+  process.env.CACHE_ENABLED = "true";
+  try {
+    __clearPersistedPricingCache();
+    const entry = {
+      billingSource: "fal",
+      provider: "fal",
+      model: "fal-ai/test",
+      productFamily: "image",
+      chargeType: "generation",
+      unit: "image",
+      unitPrice: 0.01,
+    } as PreparedPricingEntry;
+    const loader = mock(async () => entry);
+    const background: Promise<unknown>[] = [];
+    const options = {
+      cacheOnly: true,
+      executionCtx: {
+        waitUntil: (promise: Promise<unknown>) => background.push(promise),
+      },
+    };
 
-  await expect(getCachedFlatPricingEntry("flat-worker-warm", loader, options)).rejects.toThrow(
-    "warming",
-  );
-  expect(background).toHaveLength(1);
-  await background[0];
+    await expect(getCachedFlatPricingEntry("flat-worker-warm", loader, options)).rejects.toThrow(
+      "warming",
+    );
+    expect(background).toHaveLength(1);
+    await background[0];
 
-  await expect(getCachedFlatPricingEntry("flat-worker-warm", loader, options)).resolves.toEqual(
-    entry,
-  );
-  expect(loader).toHaveBeenCalledTimes(1);
+    await expect(getCachedFlatPricingEntry("flat-worker-warm", loader, options)).resolves.toEqual(
+      entry,
+    );
+    expect(loader).toHaveBeenCalledTimes(1);
+  } finally {
+    if (previousBackend === undefined) delete process.env.CACHE_BACKEND;
+    else process.env.CACHE_BACKEND = previousBackend;
+    if (previousEnabled === undefined) delete process.env.CACHE_ENABLED;
+    else process.env.CACHE_ENABLED = previousEnabled;
+  }
 });
 
 test("cache-only flat pricing without a Worker lifetime is explicitly unavailable", async () => {
