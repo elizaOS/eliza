@@ -37,7 +37,12 @@ on:
       channel:
         description: Snap Store channel (edge | beta | candidate | stable)
         required: false
-        type: string
+        type: choice
+        options:
+          - stable
+          - candidate
+          - beta
+          - edge
         default: stable
       tag:
         description: Git tag e.g. v2.0.1
@@ -81,6 +86,9 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
         run: |
+          case "$VERSION" in
+            *[!0-9.]*|.*|*..*|*.) echo "::error::version must be numeric dotted, got: $VERSION"; exit 1 ;;
+          esac
           # Update the version in snapcraft.yaml to match the release
           sed -i "s/^version: .*/version: \"${VERSION}\"/" packages/app-core/packaging/snap/snapcraft.yaml
 
@@ -98,6 +106,10 @@ jobs:
         env:
           CHANNEL: ${{ inputs.channel }}
         run: |
+          case "$CHANNEL" in
+            stable|candidate|beta|edge) ;;
+            *) echo "::error::channel must be stable|candidate|beta|edge, got: $CHANNEL"; exit 1 ;;
+          esac
           cd packages/app-core/packaging/snap
           snapcraft upload "$SNAP_FILE" --release "$CHANNEL"
           echo "Published snap to channel: $CHANNEL"
