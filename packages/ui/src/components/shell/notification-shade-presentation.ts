@@ -52,6 +52,19 @@ export function notificationPullRevealStyle(
   };
 }
 
+/**
+ * Keep the glass material visually stable as a close gesture leaves rest.
+ * Geometry and copy track the finger linearly, but a zero-slope material fade
+ * prevents the first sampled pointer move from reading as a lighting change.
+ */
+export function notificationMaterialVisibility(
+  contentVisibility: number,
+): number {
+  const visibility = Math.min(1, Math.max(0, contentVisibility));
+  const closeProgress = 1 - visibility;
+  return 1 - closeProgress * closeProgress;
+}
+
 export function notificationPullPresentation(
   pullPx: number,
   shadeExpanded: boolean,
@@ -279,6 +292,8 @@ export function applyNotificationPullPresentation(
       preservesCardMaterialDuringDrag || preservesCommittedCloseMaterial;
     const contentVisibility =
       pullRevealed || !rested || preservesCardMaterial ? groupVisibility : 1;
+    const materialVisibility =
+      notificationMaterialVisibility(contentVisibility);
     if (content) {
       const contentPullOffset = pullRevealed
         ? (1 - groupVisibility) * -8
@@ -298,8 +313,13 @@ export function applyNotificationPullPresentation(
           "--eliza-notif-group-content-visibility",
           String(contentVisibility),
         );
+        content.style.setProperty(
+          "--eliza-notif-group-surface-visibility",
+          String(materialVisibility),
+        );
       } else if (!shadeClosing) {
         content.style.removeProperty("--eliza-notif-group-content-visibility");
+        content.style.removeProperty("--eliza-notif-group-surface-visibility");
       }
       content.style.transform = `translate3d(0, ${
         containerOffset + contentPullOffset + presentation.pullOvershootOffset
@@ -358,13 +378,9 @@ export function applyNotificationPullPresentation(
             ? presentation.pullContentVisibility
             : 1;
       const collapseVisibility =
-        preservesCardMaterialDuringDrag &&
-        (mode === "static" || mode === "close")
-          ? 1
-          : preservesCommittedCloseMaterial &&
-              (mode === "static" || mode === "close")
-            ? presentation.pullContentVisibility
-            : visibility;
+        preservesCardMaterial && (mode === "static" || mode === "close")
+          ? presentation.pullContentVisibility
+          : visibility;
       peek.style.opacity = String(baseOpacity * collapseVisibility);
     }
   }
@@ -384,6 +400,7 @@ export function clearNotificationPullVisibilityOverrides(
     "[data-notification-group-content]",
   )) {
     content.style.removeProperty("--eliza-notif-group-content-visibility");
+    content.style.removeProperty("--eliza-notif-group-surface-visibility");
   }
   for (const row of root.querySelectorAll<HTMLElement>(
     "[data-notification-disposable-row]",
