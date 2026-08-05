@@ -358,6 +358,15 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
 .eliza-notif-scroll[data-shade-dragging] [data-notification-group-content] .eliza-notif-row-surface {
   transition: none;
 }
+/* Every visible glass layer keeps the same rim while it is physically under
+   the pointer. Stack peeks are siblings of the front row and carry their own
+   inline fade, so a row-only override lets their faint right edge disappear
+   on the first pull frame. The committed settle removes this selector and
+   fades every complete surface to the rested projection. */
+.eliza-notif-scroll[data-shade-dragging] [data-notification-group-content] .eliza-notif-glass {
+  opacity: 1 !important;
+  transition: none;
+}
 /* A cancelled pull reverses the information fade on the same presentation
    clock while the unchanged glass shell stays in place. */
 [data-notification-shade-cancelling] .eliza-notif-row-content {
