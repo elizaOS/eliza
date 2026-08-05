@@ -1,4 +1,4 @@
-import { SupportedChain, WalletExposureSummary } from "../types";
+import { isEvmChain, SupportedChain, WalletExposureSummary } from "../types";
 
 export type ExposureRegistryEntry =
   WalletExposureSummary["matches"][number];
@@ -88,11 +88,51 @@ const STATIC_ETHEREUM_EXPOSURE_REGISTRY: Record<string, ExposureRegistryEntry> =
   },
 };
 
+// BNB Smart Chain addresses are stored lowercase, same convention as
+// Ethereum's - see isEvmChain() in ../types.
+//
+// Both entries below were independently forensically verified (real
+// on-chain transaction history pulled directly via Moralis, not just
+// BscScan's own "Heist" labels or press coverage) before being added:
+// Rug 1 deployed a proxy contract holding real SQUID/SQUID-derivative
+// tokens (SQUIDv2, SQUID.S2, SQUID INU) and interacted with it 26 times in
+// a ~50-minute burst on 2021-11-01, the exact day of the SQUID rug pull.
+// Rug 2 directly received 48M+ of the real SQUID token
+// (0x87230146e138d3f296a9a77e497a2a83012e9bc5, cross-checked against the
+// live contract address), executed dozens of small probing token-transfer
+// transactions to a fixed counterparty, and received/forwarded a 27.45 BNB
+// inflow with only a 26-second gap before a 5 BNB outflow - both during
+// the token's live trading window (2021-10-29, ~3 days before the Nov 1
+// liquidity pull), not merely "labeled," genuinely tied to the scam
+// token's own contract and timeline.
+const STATIC_BNB_EXPOSURE_REGISTRY: Record<string, ExposureRegistryEntry> = {
+  "0x1f5eabba9c56bca4a7828969b79bc87051125b31": {
+    address: "0x1f5eabba9c56bca4a7828969b79bc87051125b31",
+    label: "SQUID Token Rug 1",
+    category: "rug_pull",
+    confidence: "high",
+    source: "static_registry",
+    relationship: "self",
+    contributesToScore: true,
+  },
+
+  "0x34400280a169f4685193926a513618cf7fe7f0aa": {
+    address: "0x34400280a169f4685193926a513618cf7fe7f0aa",
+    label: "SQUID Token Rug 2",
+    category: "rug_pull",
+    confidence: "high",
+    source: "static_registry",
+    relationship: "self",
+    contributesToScore: true,
+  },
+};
+
 const CHAIN_EXPOSURE_REGISTRIES: Partial<
   Record<SupportedChain, Readonly<Record<string, ExposureRegistryEntry>>>
 > = {
   solana: STATIC_SOLANA_EXPOSURE_REGISTRY,
   ethereum: STATIC_ETHEREUM_EXPOSURE_REGISTRY,
+  bnb: STATIC_BNB_EXPOSURE_REGISTRY,
 };
 
 export function lookupStaticExposure(
@@ -109,15 +149,17 @@ export function lookupStaticExposure(
     return null;
   }
 
-  // Ethereum addresses are checksummed (mixed-case) by convention from
-  // most providers including Moralis, but this registry's Ethereum keys
-  // are stored lowercase - normalize here, once, rather than at every
-  // caller (self-address, funding-wallet address, and any future
-  // counterparty check). Deliberately scoped to "ethereum" only, not
-  // "every non-Solana chain": Solana addresses are base58 and
+  // EVM addresses are checksummed (mixed-case) by convention from most
+  // providers including Moralis, but this registry's EVM-chain keys are
+  // stored lowercase - normalize here, once, rather than at every caller
+  // (self-address, funding-wallet address, and any future counterparty
+  // check). isEvmChain() keeps this from needing a repeat fix per chain
+  // (fixed once already for Ethereum alone, would have needed a second
+  // repeat for BSC without it): Solana addresses are base58 and
   // case-sensitive, so lowercasing them would corrupt the lookup.
-  const normalizedAddress =
-    chain === "ethereum" ? address.toLowerCase() : address;
+  const normalizedAddress = isEvmChain(chain)
+    ? address.toLowerCase()
+    : address;
 
   return registry[normalizedAddress] ?? null;
 }

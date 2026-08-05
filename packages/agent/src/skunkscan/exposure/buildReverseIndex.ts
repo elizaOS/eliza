@@ -96,7 +96,12 @@ async function scanFlaggedAddress(address: string): Promise<ScanResult> {
 
     for (let attempt = 0; attempt < RETRIES_PER_PAGE; attempt++) {
       try {
-        result = await getEthereumTransactions(address, PAGE_SIZE, cursor);
+        result = await getEthereumTransactions(
+          address,
+          "eth",
+          PAGE_SIZE,
+          cursor,
+        );
         break;
       } catch (err) {
         lastErr = err;

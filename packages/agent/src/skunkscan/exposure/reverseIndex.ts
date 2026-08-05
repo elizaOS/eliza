@@ -1,7 +1,11 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { SupportedChain, WalletRelationshipDirection } from "../types";
+import {
+  isEvmChain,
+  SupportedChain,
+  WalletRelationshipDirection,
+} from "../types";
 
 // The reverse-index inverts the usual exposure check. Instead of asking
 // "does this wallet's own (sampled) history touch a flagged registry
@@ -109,13 +113,14 @@ export function lookupReverseExposureIndex(
     return null;
   }
 
-  // Same lowercase-only-for-ethereum convention as the static exposure
+  // Same isEvmChain() lowercase convention as the static exposure
   // registry: Solana addresses are base58 and case-sensitive (no
   // alternate valid casing for the same address to normalize between);
-  // Ethereum addresses are checksummed by convention from most providers
-  // but stored lowercase here.
-  const normalizedAddress =
-    chain === "ethereum" ? address.toLowerCase() : address;
+  // EVM addresses are checksummed by convention from most providers but
+  // stored lowercase here.
+  const normalizedAddress = isEvmChain(chain)
+    ? address.toLowerCase()
+    : address;
 
   return chainIndex[normalizedAddress] ?? null;
 }
@@ -130,8 +135,9 @@ export function getRegistryAddressScanCoverage(
     return null;
   }
 
-  const normalizedAddress =
-    chain === "ethereum" ? flaggedAddress.toLowerCase() : flaggedAddress;
+  const normalizedAddress = isEvmChain(chain)
+    ? flaggedAddress.toLowerCase()
+    : flaggedAddress;
 
   return chainCoverage[normalizedAddress] ?? null;
 }

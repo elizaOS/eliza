@@ -30,33 +30,36 @@ import {
   TransactionPageResult,
 } from "./types";
 
-const ETHEREUM_CHAIN_ID = "ethereum";
-const WEI_PER_ETH = 1_000_000_000_000_000_000;
+// "bnb" is this codebase's internal chain identifier (SupportedChain), NOT
+// the same string Moralis expects on the wire - Moralis's own chain param
+// for BSC is "bsc" (confirmed live and against Moralis's docs). Every
+// moralis.ts call below passes "bsc" explicitly; do not conflate the two.
+const BNB_CHAIN_ID = "bnb";
+const MORALIS_CHAIN = "bsc" as const;
+const WEI_PER_BNB = 1_000_000_000_000_000_000;
 
-const ETHEREUM_NATIVE_ASSET: UniversalAssetIdentifier = {
-  chainId: ETHEREUM_CHAIN_ID,
+const BNB_NATIVE_ASSET: UniversalAssetIdentifier = {
+  chainId: BNB_CHAIN_ID,
   assetType: "native",
-  assetId: "ethereum:native:ETH",
-  symbol: "ETH",
-  name: "Ethereum",
+  assetId: "bnb:native:BNB",
+  symbol: "BNB",
+  name: "BNB",
   decimals: 18,
   contractAddress: null,
   tokenId: null,
 };
 
-// Partial support level, same spirit as Solana's descriptor: real balance/
-// token/NFT/transaction-list retrieval, but transaction contents aren't
-// decoded on THIS connector's own getTransactions/getTransaction/
-// getOldestTransaction path (createUniversalTransaction below still
-// hardcodes empty transfers/programOrContractIds).
-//
-// FIXME: transactionParsing/protocolDetection below are stale relative to
-// the actual investigateWallet pipeline (wallet.ts's "ethereum" branch),
-// which bypasses this connector's createUniversalTransaction entirely and
+// Same partial-support shape as the Ethereum connector, for the same
+// reason: real balance/token/NFT/transaction-list retrieval, but
+// transaction contents aren't decoded on THIS connector's own
+// getTransactions/getTransaction/getOldestTransaction path
+// (createUniversalTransaction below still hardcodes empty transfers/
+// programOrContractIds). investigateWallet's "bnb" branch in wallet.ts
 // gets real parsing + protocol detection via parsers/ethereumTransaction.ts
-// + the protocols/ethereum registry. Flagged, not fixed here - out of
-// scope for the case-normalization fix this comment was added alongside.
-const ETHEREUM_CAPABILITIES: ChainAdapterCapabilities = {
+// (genuinely EVM-generic, reused as-is) + the protocols/bnb registry,
+// bypassing this connector's createUniversalTransaction entirely - same
+// arrangement as Ethereum.
+const BNB_CAPABILITIES: ChainAdapterCapabilities = {
   addressValidation: true,
   balanceRetrieval: true,
   transactionRetrieval: true,
@@ -68,7 +71,7 @@ const ETHEREUM_CAPABILITIES: ChainAdapterCapabilities = {
   historicalTransactionRetrieval: true,
 };
 
-function isValidEthereumAddress(address: string): boolean {
+function isValidBnbAddress(address: string): boolean {
   return /^0x[0-9a-fA-F]{40}$/.test(address.trim());
 }
 
@@ -90,7 +93,7 @@ function createErrorResult<T>(
   const message =
     error instanceof Error
       ? error.message
-      : "Unknown Ethereum connector error";
+      : "Unknown BNB Smart Chain connector error";
 
   return {
     status: "error",
@@ -103,15 +106,11 @@ function createErrorResult<T>(
   };
 }
 
-// No transaction contents have been decoded yet (PR 4's job) - this
-// produces a real transaction record (id, block, timestamp, status) with
-// empty transfers/programOrContractIds, the same "honest partial" shape
-// Solana's own connector used before its transaction parsing existed.
 function createUniversalTransaction(
   transaction: EthereumTransaction,
 ): UniversalTransaction {
   return {
-    chainId: ETHEREUM_CHAIN_ID,
+    chainId: BNB_CHAIN_ID,
     transactionId: transaction.hash,
     blockIdentifier:
       transaction.blockNumber !== null
@@ -144,41 +143,41 @@ function createUniversalTransaction(
   };
 }
 
-function createEthereumNftAsset(
+function createBnbNftAsset(
   nft: EthereumNftHolding,
 ): UniversalAssetIdentifier {
   return {
-    chainId: ETHEREUM_CHAIN_ID,
+    chainId: BNB_CHAIN_ID,
     assetType: "nft",
-    assetId: `ethereum:nft:${nft.contractAddress}:${nft.tokenId}`,
+    assetId: `bnb:nft:${nft.contractAddress}:${nft.tokenId}`,
     decimals: null,
     contractAddress: nft.contractAddress,
     tokenId: nft.tokenId,
   };
 }
 
-export const ethereumConnectorDescriptor: BlockchainConnectorDescriptor = {
-  chainId: ETHEREUM_CHAIN_ID,
+export const bnbConnectorDescriptor: BlockchainConnectorDescriptor = {
+  chainId: BNB_CHAIN_ID,
   family: "evm",
   supportLevel: "partial",
-  capabilities: ETHEREUM_CAPABILITIES,
+  capabilities: BNB_CAPABILITIES,
   providerNames: ["Moralis"],
   limitations: [
     "Transaction contents (native/token transfers, contract interactions) are not yet decoded - transactions are listed but not parsed.",
     "Program/protocol classifications are not yet connected.",
-    "Balance, token holdings, NFT holdings, and transaction-list shapes are live-spot-checked against Moralis (see moralis.ts's header comment); pagination cursor-threading on the transaction-history endpoint is not yet live-verified.",
+    "Balance, token holdings, NFT holdings, and transaction-list shapes reuse the same Moralis wallet-history endpoint already live-verified for Ethereum, with chain=bsc instead of chain=eth - same response shape, per Moralis's docs.",
     "For wallets holding an extremely large number of distinct tokens, Moralis's token-balances endpoint refuses the request outright regardless of pagination - the token list degrades to partial/empty with a warning rather than failing the whole wallet investigation.",
   ],
 };
 
-export class EthereumBlockchainConnector implements BlockchainConnector {
+export class BnbBlockchainConnector implements BlockchainConnector {
   readonly network = {
-    id: ETHEREUM_CHAIN_ID,
-    name: "Ethereum",
+    id: BNB_CHAIN_ID,
+    name: "BNB Smart Chain",
     family: "evm" as const,
     networkType: "mainnet" as const,
     addressModel: "account" as const,
-    nativeAssetSymbol: "ETH",
+    nativeAssetSymbol: "BNB",
     nativeAssetDecimals: 18,
     finalityType: "probabilistic" as const,
     capabilities: {
@@ -193,21 +192,21 @@ export class EthereumBlockchainConnector implements BlockchainConnector {
       supportsTransactionLogs: true,
       supportsTokenApprovals: true,
     },
-    explorerUrl: "https://etherscan.io",
-    chainReference: "ethereum-mainnet",
+    explorerUrl: "https://bscscan.com",
+    chainReference: "bnb-mainnet",
     isEnabled: true,
   };
 
-  readonly descriptor = ethereumConnectorDescriptor;
+  readonly descriptor = bnbConnectorDescriptor;
 
   async validateAddress(
     address: string,
   ): Promise<ChainOperationResult<AddressValidationResult>> {
     const normalizedAddress = address.trim();
-    const isValid = isValidEthereumAddress(normalizedAddress);
+    const isValid = isValidBnbAddress(normalizedAddress);
 
     return createSuccessResult({
-      chainId: ETHEREUM_CHAIN_ID,
+      chainId: BNB_CHAIN_ID,
       address,
       normalizedAddress: normalizedAddress || null,
       isValid,
@@ -215,7 +214,7 @@ export class EthereumBlockchainConnector implements BlockchainConnector {
       memoOrTagRequired: false,
       reason: isValid
         ? null
-        : "Address does not match the expected Ethereum 0x-prefixed 40-hex-character format.",
+        : "Address does not match the expected BNB Smart Chain 0x-prefixed 40-hex-character format.",
     });
   }
 
@@ -223,25 +222,22 @@ export class EthereumBlockchainConnector implements BlockchainConnector {
     address: string,
   ): Promise<ChainOperationResult<NativeBalanceResult>> {
     try {
-      const balance = await getEthereumBalance(address, "eth");
+      const balance = await getEthereumBalance(address, MORALIS_CHAIN);
       const wei = Number(balance.wei);
 
       return createSuccessResult({
-        chainId: ETHEREUM_CHAIN_ID,
+        chainId: BNB_CHAIN_ID,
         address: balance.address,
-        asset: ETHEREUM_NATIVE_ASSET,
+        asset: BNB_NATIVE_ASSET,
         rawAmount: balance.wei,
         decimalAmount: Number.isFinite(wei)
-          ? String(wei / WEI_PER_ETH)
+          ? String(wei / WEI_PER_BNB)
           : null,
         estimatedUsdValue: null,
         retrievedAt: new Date().toISOString(),
       });
     } catch (error) {
-      return createErrorResult(
-        error,
-        "ETHEREUM_BALANCE_RETRIEVAL_FAILED",
-      );
+      return createErrorResult(error, "BNB_BALANCE_RETRIEVAL_FAILED");
     }
   }
 
@@ -251,18 +247,18 @@ export class EthereumBlockchainConnector implements BlockchainConnector {
     try {
       const { holdings, truncated } = await getEthereumTokenHoldings(
         address,
-        "eth",
+        MORALIS_CHAIN,
       );
 
       return createSuccessResult(
         {
-          chainId: ETHEREUM_CHAIN_ID,
+          chainId: BNB_CHAIN_ID,
           address: address.trim(),
           balances: holdings.map((holding) => ({
             asset: {
-              chainId: ETHEREUM_CHAIN_ID,
+              chainId: BNB_CHAIN_ID,
               assetType: "fungible_token",
-              assetId: `ethereum:token:${holding.contractAddress}`,
+              assetId: `bnb:token:${holding.contractAddress}`,
               symbol: holding.symbol,
               name: holding.name,
               decimals: holding.decimals,
@@ -278,7 +274,7 @@ export class EthereumBlockchainConnector implements BlockchainConnector {
         truncated
           ? [
               {
-                code: "ETHEREUM_TOKEN_BALANCE_COUNT_EXCEEDS_PROVIDER_LIMIT",
+                code: "BNB_TOKEN_BALANCE_COUNT_EXCEEDS_PROVIDER_LIMIT",
                 message:
                   "This wallet holds more distinct tokens than Moralis's token-balances endpoint can enumerate - the token list below is incomplete, not an accurate 'this wallet holds no/few tokens' result.",
               },
@@ -286,10 +282,7 @@ export class EthereumBlockchainConnector implements BlockchainConnector {
           : [],
       );
     } catch (error) {
-      return createErrorResult(
-        error,
-        "ETHEREUM_TOKEN_BALANCE_RETRIEVAL_FAILED",
-      );
+      return createErrorResult(error, "BNB_TOKEN_BALANCE_RETRIEVAL_FAILED");
     }
   }
 
@@ -297,13 +290,13 @@ export class EthereumBlockchainConnector implements BlockchainConnector {
     address: string,
   ): Promise<ChainOperationResult<NftHoldingsResult>> {
     try {
-      const holdings = await getEthereumNftHoldings(address, "eth");
+      const holdings = await getEthereumNftHoldings(address, MORALIS_CHAIN);
 
       return createSuccessResult({
-        chainId: ETHEREUM_CHAIN_ID,
+        chainId: BNB_CHAIN_ID,
         address: address.trim(),
         holdings: holdings.map((nft) => ({
-          asset: createEthereumNftAsset(nft),
+          asset: createBnbNftAsset(nft),
           name: nft.name,
           collection: null,
           imageUrl: nft.imageUrl,
@@ -311,10 +304,7 @@ export class EthereumBlockchainConnector implements BlockchainConnector {
         retrievedAt: new Date().toISOString(),
       });
     } catch (error) {
-      return createErrorResult(
-        error,
-        "ETHEREUM_NFT_RETRIEVAL_FAILED",
-      );
+      return createErrorResult(error, "BNB_NFT_RETRIEVAL_FAILED");
     }
   }
 
@@ -331,7 +321,7 @@ export class EthereumBlockchainConnector implements BlockchainConnector {
       const { transactions: rawTransactions, nextCursor } =
         await getEthereumTransactions(
           address,
-          "eth",
+          MORALIS_CHAIN,
           limit,
           request.cursor,
         );
@@ -340,7 +330,7 @@ export class EthereumBlockchainConnector implements BlockchainConnector {
 
       return createSuccessResult(
         {
-          chainId: ETHEREUM_CHAIN_ID,
+          chainId: BNB_CHAIN_ID,
           address: address.trim(),
           transactions,
           nextCursor,
@@ -349,17 +339,14 @@ export class EthereumBlockchainConnector implements BlockchainConnector {
         },
         [
           {
-            code: "ETHEREUM_TRANSACTION_COVERAGE_PARTIAL",
+            code: "BNB_TRANSACTION_COVERAGE_PARTIAL",
             message:
               "Transactions are listed but not yet parsed - transfers and program/contract IDs are not yet populated.",
           },
         ],
       );
     } catch (error) {
-      return createErrorResult(
-        error,
-        "ETHEREUM_TRANSACTION_RETRIEVAL_FAILED",
-      );
+      return createErrorResult(error, "BNB_TRANSACTION_RETRIEVAL_FAILED");
     }
   }
 
@@ -374,7 +361,7 @@ export class EthereumBlockchainConnector implements BlockchainConnector {
           status: "error",
           warnings: [],
           error: {
-            code: "ETHEREUM_TRANSACTION_ID_REQUIRED",
+            code: "BNB_TRANSACTION_ID_REQUIRED",
             message: "Transaction ID is required.",
             retryable: false,
           },
@@ -383,7 +370,7 @@ export class EthereumBlockchainConnector implements BlockchainConnector {
 
       const rawTransaction = await getEthereumTransaction(
         cleanedTransactionId,
-        "eth",
+        MORALIS_CHAIN,
       );
 
       const transaction = rawTransaction
@@ -392,7 +379,7 @@ export class EthereumBlockchainConnector implements BlockchainConnector {
 
       return createSuccessResult(
         {
-          chainId: ETHEREUM_CHAIN_ID,
+          chainId: BNB_CHAIN_ID,
           transactionId: cleanedTransactionId,
           transaction,
           retrievedAt: new Date().toISOString(),
@@ -400,23 +387,20 @@ export class EthereumBlockchainConnector implements BlockchainConnector {
         transaction
           ? [
               {
-                code: "ETHEREUM_TRANSACTION_COVERAGE_PARTIAL",
+                code: "BNB_TRANSACTION_COVERAGE_PARTIAL",
                 message:
                   "The transaction was found but not yet parsed for transfers or contract interactions.",
               },
             ]
           : [
               {
-                code: "ETHEREUM_TRANSACTION_NOT_FOUND",
+                code: "BNB_TRANSACTION_NOT_FOUND",
                 message: "No transaction data was returned for this transaction ID.",
               },
             ],
       );
     } catch (error) {
-      return createErrorResult(
-        error,
-        "ETHEREUM_TRANSACTION_LOOKUP_FAILED",
-      );
+      return createErrorResult(error, "BNB_TRANSACTION_LOOKUP_FAILED");
     }
   }
 
@@ -424,22 +408,17 @@ export class EthereumBlockchainConnector implements BlockchainConnector {
     address: string,
   ): Promise<ChainOperationResult<OldestTransactionResult>> {
     try {
-      // Moralis's wallet-history endpoint accepts order=ASC, which
-      // returns the oldest transaction directly in a single call -
-      // live-verified against a wallet with 10 years of history. An
-      // earlier version of this method walked pages forward via cursor
-      // with a capped scan window and returned the last transaction it
-      // happened to see, which silently mislabeled a transaction from
-      // deep in the capped window as "oldest" for any wallet with more
-      // history than the cap covered - confirmed broken before this fix.
+      // Same order=ASC&limit=1 single-call approach already live-verified
+      // for Ethereum - Moralis's wallet-history endpoint supports it
+      // identically for chain=bsc.
       const oldestTransaction = await getEthereumOldestTransaction(
         address,
-        "eth",
+        MORALIS_CHAIN,
       );
 
       if (!oldestTransaction) {
         return createSuccessResult({
-          chainId: ETHEREUM_CHAIN_ID,
+          chainId: BNB_CHAIN_ID,
           address: address.trim(),
           transactionId: null,
           transaction: null,
@@ -449,7 +428,7 @@ export class EthereumBlockchainConnector implements BlockchainConnector {
       }
 
       return createSuccessResult({
-        chainId: ETHEREUM_CHAIN_ID,
+        chainId: BNB_CHAIN_ID,
         address: address.trim(),
         transactionId: oldestTransaction.hash,
         transaction: createUniversalTransaction(oldestTransaction),
@@ -457,10 +436,7 @@ export class EthereumBlockchainConnector implements BlockchainConnector {
         retrievedAt: new Date().toISOString(),
       });
     } catch (error) {
-      return createErrorResult(
-        error,
-        "ETHEREUM_OLDEST_TRANSACTION_FAILED",
-      );
+      return createErrorResult(error, "BNB_OLDEST_TRANSACTION_FAILED");
     }
   }
 
@@ -468,7 +444,7 @@ export class EthereumBlockchainConnector implements BlockchainConnector {
     const apiKeyAvailable = Boolean(process.env.MORALIS_API_KEY?.trim());
 
     return {
-      chainId: ETHEREUM_CHAIN_ID,
+      chainId: BNB_CHAIN_ID,
       status: apiKeyAvailable ? "healthy" : "unavailable",
       checkedAt: new Date().toISOString(),
       providerNames: ["Moralis"],
@@ -482,4 +458,4 @@ export class EthereumBlockchainConnector implements BlockchainConnector {
   }
 }
 
-export const ethereumBlockchainConnector = new EthereumBlockchainConnector();
+export const bnbBlockchainConnector = new BnbBlockchainConnector();

@@ -3,6 +3,19 @@ import { InvestorEvidenceCollection } from "./explainability/evidenceCollection"
 
 export type SupportedChain = "solana" | "ethereum" | "base" | "bnb";
 
+// Every EVM-family chain uses the same checksummed-hex addressing (no
+// alternate valid casing to normalize, unlike Solana's case-sensitive
+// base58) - registry lookups across exposure/labels/reverse-index all
+// need to lowercase-normalize EVM addresses before comparing against their
+// (lowercase-stored) keys. This was fixed twice already scoped to the
+// literal "ethereum" only (missing BSC would have been a third repeat of
+// the same bug) - centralizing the "is this chain EVM" question here means
+// the next EVM chain (e.g. Base, already a SupportedChain member) needs no
+// further casing fix at all.
+export function isEvmChain(chain: SupportedChain): boolean {
+  return chain === "ethereum" || chain === "bnb" || chain === "base";
+}
+
 /**
  * Universal blockchain architecture.
  *

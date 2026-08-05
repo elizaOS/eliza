@@ -485,7 +485,7 @@ warnings: [],
         // same flat 150 CU cost as limit=50 - confirmed via x-request-weight
         // on both sizes, so this is free headroom, not an added cost.
         const { transactions: rawTransactions } =
-          await getEthereumTransactions(walletAddress, 100);
+          await getEthereumTransactions(walletAddress, "eth", 100);
 
         const normalizedRecentParsedTransactions =
           rawTransactions.map(parseEthereumTransaction);
@@ -500,7 +500,7 @@ warnings: [],
           }));
 
         const oldestTransaction =
-          await getEthereumOldestTransaction(walletAddress);
+          await getEthereumOldestTransaction(walletAddress, "eth");
 
         const firstParsedTransaction = parseEthereumTransaction(
           oldestTransaction,
@@ -738,8 +738,294 @@ warnings: [],
       }
     }
 
+    case "bnb": {
+      try {
+        const connector = requireBlockchainConnector(chain);
+
+        const nativeBalanceResult =
+          await connector.getNativeBalance(walletAddress);
+
+        if (
+          nativeBalanceResult.status === "error" ||
+          nativeBalanceResult.status === "unsupported" ||
+          !nativeBalanceResult.data
+        ) {
+          throw new Error(
+            nativeBalanceResult.error?.message ??
+              "Unable to retrieve the wallet native balance.",
+          );
+        }
+
+        const rawWei = Number(nativeBalanceResult.data.rawAmount);
+        const bnbBalance = Number(
+          nativeBalanceResult.data.decimalAmount ?? "0",
+        );
+
+        if (!Number.isFinite(rawWei) || !Number.isFinite(bnbBalance)) {
+          throw new Error(
+            "The BNB Smart Chain connector returned an invalid balance.",
+          );
+        }
+
+        // Same rationale as the Ethereum branch: fetched directly from
+        // moralis.ts rather than through connector.getTransactions(), which
+        // discards transfers into an empty array by design (see
+        // chains/bnb.ts's createUniversalTransaction). Moralis's
+        // wallet-history endpoint behaves identically for chain=bsc as for
+        // chain=eth (same hard cap at limit=100, same flat 150 CU cost -
+        // both live-verified), so the same sample size applies here.
+        const { transactions: rawTransactions } =
+          await getEthereumTransactions(walletAddress, "bsc", 100);
+
+        const normalizedRecentParsedTransactions =
+          rawTransactions.map(parseEthereumTransaction);
+
+        const recentTransactions: WalletRecentTransaction[] =
+          rawTransactions.map((transaction) => ({
+            transactionId: transaction.hash,
+            blockHeight: transaction.blockNumber ?? undefined,
+            blockTime: transaction.blockTimestamp ?? undefined,
+            status:
+              transaction.status === "failed" ? "failed" : "success",
+          }));
+
+        const oldestTransaction =
+          await getEthereumOldestTransaction(walletAddress, "bsc");
+
+        const firstParsedTransaction = parseEthereumTransaction(
+          oldestTransaction,
+        );
+
+        const tokenBalancesResult =
+          await connector.getTokenBalances(walletAddress);
+
+        if (
+          tokenBalancesResult.status === "error" ||
+          tokenBalancesResult.status === "unsupported" ||
+          !tokenBalancesResult.data
+        ) {
+          throw new Error(
+            tokenBalancesResult.error?.message ??
+              "Unable to retrieve the wallet token balances.",
+          );
+        }
+
+        const investigationWarnings: string[] =
+          tokenBalancesResult.warnings.map((warning) => warning.message);
+
+        const tokenBalanceCountExceedsProviderLimit =
+          tokenBalancesResult.warnings.some(
+            (warning) =>
+              warning.code ===
+              "BNB_TOKEN_BALANCE_COUNT_EXCEEDS_PROVIDER_LIMIT",
+          );
+
+        // Supplementary fallback, not a replacement for tokenHoldings -
+        // only derived when tokenHoldings is already known-incomplete.
+        // deriveRecentEthereumTokenActivity is genuinely EVM-generic
+        // despite its name (reshapes rawTransactions' tokenTransfers, no
+        // Ethereum-specific logic) - reused as-is, same as
+        // parseEthereumTransaction.
+        const recentTokenActivity = tokenBalanceCountExceedsProviderLimit
+          ? deriveRecentEthereumTokenActivity(walletAddress, rawTransactions)
+          : [];
+
+        if (recentTokenActivity.length > 0) {
+          investigationWarnings.push(
+            `Showing ${recentTokenActivity.length} token(s) seen in recent activity (not a complete holdings list) as a fallback, since the full token list couldn't be retrieved for this wallet - these reflect recent transfers, not current balances, and may not represent the wallet's largest actual holdings.`,
+          );
+        }
+
+        const tokenHoldings: WalletTokenHolding[] =
+          tokenBalancesResult.data.balances.map((tokenBalance) => {
+            const contractAddress = tokenBalance.asset.contractAddress;
+            const decimals = tokenBalance.asset.decimals;
+            const amount = Number(tokenBalance.decimalAmount ?? "0");
+
+            if (!contractAddress) {
+              throw new Error(
+                "The BNB Smart Chain connector returned a token without a contract address.",
+              );
+            }
+
+            if (
+              typeof decimals !== "number" ||
+              !Number.isInteger(decimals) ||
+              decimals < 0
+            ) {
+              throw new Error(
+                `The BNB Smart Chain connector returned invalid decimals for token "${contractAddress}".`,
+              );
+            }
+
+            if (!Number.isFinite(amount)) {
+              throw new Error(
+                `The BNB Smart Chain connector returned an invalid amount for token "${contractAddress}".`,
+              );
+            }
+
+            return {
+              tokenId: contractAddress,
+              amount,
+              decimals,
+              rawAmount: tokenBalance.rawAmount,
+            };
+          });
+
+        const nftHoldingsResult =
+          await connector.getNftHoldings?.(walletAddress);
+
+        const nftHoldings: UniversalNftHolding[] =
+          nftHoldingsResult?.data?.holdings ?? [];
+
+        // Neither WRAPPED_NATIVE_ASSET_ID nor the pricing registry has a
+        // BNB entry yet - both already degrade to "no prices" rather than
+        // throwing, same as Ethereum before its pricing entry existed.
+        const nativeAssetId = WRAPPED_NATIVE_ASSET_ID[chain];
+        const priceProvider = getTokenPriceProvider(chain);
+        const tokenPrices = priceProvider
+          ? await priceProvider.getTokenPrices([
+              ...tokenHoldings.map((token) => token.tokenId),
+              ...(nativeAssetId ? [nativeAssetId] : []),
+            ])
+          : {};
+
+        const walletBalance: WalletBalance = {
+          nativeAmount: bnbBalance,
+          nativeSymbol: "BNB",
+          rawAmount: rawWei,
+        };
+
+        const pipeline = await runWalletPipeline({
+          chain,
+          address: walletAddress,
+          balance: walletBalance,
+          tokenHoldings,
+          recentTransactions,
+          oldestTransactionId: oldestTransaction?.hash,
+          oldestTransactionTimestamp:
+            oldestTransaction?.blockTimestamp ?? undefined,
+          firstParsedTransaction,
+          normalizedRecentParsedTransactions,
+          tokenPrices,
+        });
+
+        const {
+          activity,
+          age,
+          funding,
+          portfolio,
+          risk,
+          whale,
+          defi,
+          protocols,
+          protocolIntelligence,
+          behavior,
+          exposure,
+          relationships,
+          custodyProfile,
+          complianceScreening,
+          intelligenceSources,
+          trust,
+          display,
+          transactionRisk,
+          smartMoney,
+          strategy,
+          conviction,
+          alpha,
+          investmentStyle,
+          profitability,
+          reputation,
+          skunkScore,
+          investigationReplay,
+          evidenceRecords,
+          assessment,
+          intelligenceBrief,
+          evidence,
+          executiveVerdict,
+        } = pipeline;
+
+        const investigation = createWalletInvestigation({
+          chain,
+          address: walletAddress,
+          executiveVerdict,
+          assessment,
+          intelligenceBrief,
+          evidence,
+          evidenceRecords,
+          risk,
+          trust,
+          portfolio,
+          whale,
+          funding,
+          activity,
+        });
+
+        void investigation;
+
+        return {
+          chain,
+          address: walletAddress,
+          status: "supported",
+          balance: walletBalance,
+          tokenHoldings,
+          portfolio,
+          nftHoldings,
+          recentTokenActivity:
+            recentTokenActivity.length > 0 ? recentTokenActivity : undefined,
+          whale,
+          defi,
+          protocols,
+          protocolIntelligence,
+          behavior,
+          exposure,
+          relationships,
+          display,
+          assessment,
+          intelligenceBrief,
+          custodyProfile,
+          complianceScreening,
+          intelligenceSources,
+          trust,
+          investigationReplay,
+          evidence,
+          evidenceRecords,
+          recentTransactions,
+          transactionCountSample: recentTransactions.length,
+          activity,
+          age,
+          funding,
+          risk,
+          transactionRisk,
+          smartMoney,
+          strategy,
+          conviction,
+          alpha,
+          investmentStyle,
+          profitability,
+          reputation,
+          skunkScore,
+          summary: `Wallet found. Current balance: ${bnbBalance.toFixed(
+            6,
+          )} BNB. Recent transaction sample: ${recentTransactions.length}.`,
+          warnings: investigationWarnings,
+        };
+      } catch (error) {
+        return {
+          chain,
+          address: walletAddress,
+          status: "error",
+          summary: "Unable to investigate this wallet.",
+          warnings: [
+            error instanceof Error
+              ? error.message
+              : "Unknown investigation error.",
+          ],
+        };
+      }
+    }
+
     case "base":
-    case "bnb":
       return {
         chain,
         address: walletAddress,
