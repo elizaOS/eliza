@@ -212,3 +212,28 @@ export function lookupStaticBnbWalletLabel(
 
   return STATIC_BNB_LABELS[address.toLowerCase()] ?? null;
 }
+
+// Same unconditional-lowercase convention as the functions above, for the
+// same reason: only ever called from labelEngine.ts's "base" switch case.
+//
+// Verified directly against BaseScan: labeled "Coinbase 42", tagged as an
+// exchange wallet, 884,350 transactions, 2,578+ ETH balance.
+const STATIC_BASE_LABELS: Record<string, WalletLabel> = {
+  "0x40ebc1ac8d4fedd2e144b75fe9c0420be82750c6": {
+    address: "0x40ebc1ac8d4fedd2e144b75fe9c0420be82750c6",
+    label: "Coinbase 42",
+    category: "centralized_exchange",
+    confidence: "high",
+    source: "static_registry",
+  },
+};
+
+export function lookupStaticBaseWalletLabel(
+  address: string | null | undefined,
+): WalletLabel | null {
+  if (!address) {
+    return null;
+  }
+
+  return STATIC_BASE_LABELS[address.toLowerCase()] ?? null;
+}

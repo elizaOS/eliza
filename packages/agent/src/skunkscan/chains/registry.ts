@@ -8,6 +8,7 @@ import {
 import { solanaBlockchainConnector } from "./solana";
 import { ethereumBlockchainConnector } from "./ethereum";
 import { bnbBlockchainConnector } from "./bnb";
+import { baseBlockchainConnector } from "./base";
 
 export class DefaultBlockchainConnectorRegistry
   implements BlockchainConnectorRegistry
@@ -66,6 +67,11 @@ blockchainConnectorRegistry.register(
 // its chain if this line is missing. Do not skip it for a future chain.
 blockchainConnectorRegistry.register(
   bnbBlockchainConnector,
+);
+
+// Same critical step as above - do not skip it for Base either.
+blockchainConnectorRegistry.register(
+  baseBlockchainConnector,
 );
 
 export function getBlockchainConnector(
