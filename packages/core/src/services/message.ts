@@ -11118,7 +11118,7 @@ export class DefaultMessageService implements IMessageService {
 				{ src: "service:message", agentId: runtime.agentId },
 				"Skipping message from self",
 			);
-			await this.emitRunEnded(runtime, runId, message, startTime, "self");
+			this.emitRunEnded(runtime, runId, message, startTime, "self");
 			return {
 				didRespond: false,
 				responseContent: null,
@@ -11193,7 +11193,7 @@ export class DefaultMessageService implements IMessageService {
 
 		if (defLllmOff && agentUserState === null) {
 			runtime.logger.debug({ src: "service:message" }, "LLM is off by default");
-			await this.emitRunEnded(runtime, runId, message, startTime, "off");
+			this.emitRunEnded(runtime, runId, message, startTime, "off");
 			return {
 				didRespond: false,
 				responseContent: null,
@@ -11236,7 +11236,7 @@ export class DefaultMessageService implements IMessageService {
 				},
 				"Ignoring muted room",
 			);
-			await this.emitRunEnded(runtime, runId, message, startTime, "muted");
+			this.emitRunEnded(runtime, runId, message, startTime, "muted");
 			return {
 				didRespond: false,
 				responseContent: null,
@@ -11271,7 +11271,7 @@ export class DefaultMessageService implements IMessageService {
 					},
 					"Reply suppressed by personality reply_gate",
 				);
-				await this.emitRunEnded(
+				this.emitRunEnded(
 					runtime,
 					runId,
 					message,
@@ -11312,13 +11312,7 @@ export class DefaultMessageService implements IMessageService {
 				},
 				"Unaddressed bot/webhook message ignored by small-model triage (skipped Stage 1)",
 			);
-			await this.emitRunEnded(
-				runtime,
-				runId,
-				message,
-				startTime,
-				"bot_noise_triage",
-			);
+			this.emitRunEnded(runtime, runId, message, startTime, "bot_noise_triage");
 			return {
 				didRespond: false,
 				responseContent: null,
@@ -12223,7 +12217,7 @@ export class DefaultMessageService implements IMessageService {
 					},
 					"Ignore response discarded - newer message being processed",
 				);
-				await this.emitRunEnded(runtime, runId, message, startTime, "replaced");
+				this.emitRunEnded(runtime, runId, message, startTime, "replaced");
 				return {
 					didRespond: false,
 					responseContent: null,
@@ -12238,13 +12232,7 @@ export class DefaultMessageService implements IMessageService {
 					{ src: "service:message", agentId: runtime.agentId },
 					"Message ID is missing, cannot create ignore response",
 				);
-				await this.emitRunEnded(
-					runtime,
-					runId,
-					message,
-					startTime,
-					"noMessageId",
-				);
+				this.emitRunEnded(runtime, runId, message, startTime, "noMessageId");
 				return {
 					didRespond: false,
 					responseContent: null,
@@ -13248,27 +13236,32 @@ export class DefaultMessageService implements IMessageService {
 	}
 
 	/**
-	 * Helper to emit run ended events
+	 * Emit RUN_ENDED after the handler return path is free. Lifecycle observers
+	 * and persistence attached to RUN_ENDED must not delay early-exit replies
+	 * (self/mute/off/replaced/…); failures stay observable through the
+	 * post-delivery tracker (residual #17072).
 	 */
-	private async emitRunEnded(
+	private emitRunEnded(
 		runtime: IAgentRuntime,
 		runId: UUID,
 		message: Memory,
 		startTime: number,
 		status: string,
-	): Promise<void> {
-		await runtime.emitEvent(EventType.RUN_ENDED, {
-			runtime,
-			source: "messageHandler",
-			runId,
-			messageId: message.id,
-			roomId: message.roomId,
-			entityId: message.entityId,
-			startTime,
-			status: status as "completed" | "timeout",
-			endTime: Date.now(),
-			duration: Date.now() - startTime,
-		} as RunEventPayload);
+	): void {
+		detachPostDeliverySideEffect(runtime, "RUN_ENDED", () =>
+			runtime.emitEvent(EventType.RUN_ENDED, {
+				runtime,
+				source: "messageHandler",
+				runId,
+				messageId: message.id,
+				roomId: message.roomId,
+				entityId: message.entityId,
+				startTime,
+				status: status as "completed" | "timeout",
+				endTime: Date.now(),
+				duration: Date.now() - startTime,
+			} as RunEventPayload),
+		);
 	}
 
 	private async emitMessageSent(
