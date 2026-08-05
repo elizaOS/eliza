@@ -71,6 +71,20 @@ jobs:
         with:
           bun-version: "1.3.14"
 
+      - name: Generate shared i18n data
+        run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
+
+      # The bundle ingests evidence silos produced by real lanes on the
+      # certified sha; a fresh runner has none, and certify:sign honestly
+      # refuses an empty verdicts document (proven by hosted run
+      # 31056825214). Run the same deterministic scenario lane the
+      # develop-exhaustive matrix runs — real runtime, deterministic model,
+      # keyless — which writes the reports/scenarios silo.
+      - name: Produce evidence — deterministic scenario lane
+        env:
+          TZ: UTC
+        run: bun run --cwd packages/scenario-runner test:pr:e2e
+
       - name: Run certification chain (bundle:create → rollup → sign)
         env:
           ELIZA_CERT_SIGNING_KEY: ${{ secrets.ELIZA_CERT_SIGNING_KEY }}
