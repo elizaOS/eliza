@@ -40,6 +40,46 @@ afterEach(() => {
 });
 
 describe("saveElizaConfig bind-mount fallback", () => {
+  it("retires the former aggregate view plugin without removing canonical views", () => {
+    fs.writeFileSync(
+      configPath,
+      `${JSON.stringify(
+        {
+          plugins: {
+            entries: {
+              "simple-views": { enabled: true },
+              notes: { enabled: true },
+              calendar: { enabled: true },
+            },
+            allow: [
+              "simple-views",
+              "@elizaos/plugin-simple-views",
+              "notes",
+              "calendar",
+            ],
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+
+    const config = loadElizaConfig();
+    expect(config.plugins?.entries).toEqual({
+      notes: { enabled: true },
+      calendar: { enabled: true },
+    });
+    expect(config.plugins?.allow).toEqual(["notes", "calendar"]);
+
+    saveElizaConfig(config);
+    const persisted = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    expect(persisted.plugins.entries).toEqual({
+      notes: { enabled: true },
+      calendar: { enabled: true },
+    });
+    expect(persisted.plugins.allow).toEqual(["notes", "calendar"]);
+  });
+
   it("commits a durable state overlay when rename onto the config returns EBUSY", () => {
     const realRename = fs.renameSync.bind(fs);
     __setConfigRenameSyncForTests((from, to) => {
