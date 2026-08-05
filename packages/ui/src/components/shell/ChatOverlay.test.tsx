@@ -1510,6 +1510,59 @@ describe("ChatOverlay", () => {
     expect(thread?.querySelector('[data-message-id^="temp-"]')).toBeNull();
   });
 
+  it("paints optimistic turns immediately during a fast view handoff", () => {
+    const { rerender } = render(
+      <ChatOverlay
+        controller={makeController({
+          messages: [
+            {
+              id: "assistant-old",
+              role: "assistant",
+              content: "Earlier reply",
+              createdAt: 1,
+            },
+          ],
+        })}
+      />,
+    );
+    fireEvent.focus(screen.getByLabelText("message"));
+
+    rerender(
+      <ChatOverlay
+        controller={makeController({
+          messages: [
+            {
+              id: "assistant-old",
+              role: "assistant",
+              content: "Earlier reply",
+              createdAt: 1,
+            },
+            {
+              id: "temp-navigation-request",
+              role: "user",
+              content: "open notes",
+              createdAt: 2,
+            },
+            {
+              id: "temp-navigation-reply",
+              role: "assistant",
+              content: "Opened Notes.",
+              createdAt: 3,
+            },
+          ],
+        })}
+      />,
+    );
+
+    for (const text of ["open notes", "Opened Notes."]) {
+      const row = screen
+        .getByText(text)
+        .closest<HTMLElement>('[data-testid="thread-line"]');
+      expect(row).not.toBeNull();
+      expect(row?.style.opacity).not.toBe("0");
+    }
+  });
+
   it("composes the in-flight status as a busy transcript row", () => {
     render(
       <ChatOverlay
@@ -2466,7 +2519,7 @@ describe("ChatOverlay", () => {
     expect(normal.closest('[data-failure="no_provider"]')).toBeNull();
   });
 
-  it("press-and-hold copies an assistant message and flashes confirmation", () => {
+  it("press-and-hold copies without mounting a floating confirmation", () => {
     vi.useFakeTimers();
     try {
       vi.mocked(copyTextToClipboard).mockClear();
@@ -2494,7 +2547,7 @@ describe("ChatOverlay", () => {
         vi.advanceTimersByTime(450); // past the hold threshold
       });
       expect(copyTextToClipboard).toHaveBeenCalledWith("the answer is 42");
-      expect(screen.getByTestId("thread-line-copied")).toBeTruthy();
+      expect(screen.queryByTestId("thread-line-copied")).toBeNull();
     } finally {
       vi.useRealTimers();
     }
@@ -4101,7 +4154,7 @@ describe("ChatOverlay — streaming + consumer activity render (#10712)", () => 
     expect(screen.queryByText("Result")).toBeNull();
   });
 
-  it("replaces Thinking with token one in the same assistant row", () => {
+  it("replaces Thinking with token one in the same assistant row", async () => {
     let conversationMessages: ConversationMessage[] = [
       {
         id: "u-stream",
@@ -4143,6 +4196,11 @@ describe("ChatOverlay — streaming + consumer activity render (#10712)", () => 
       .getByTestId("turn-status-indicator")
       .closest('[data-testid="thread-line"]');
     expect(pendingRow).toBeTruthy();
+    const stableAssistantBody = screen.getByTestId(
+      "overlay-assistant-turn-body",
+    );
+    expect(stableAssistantBody.getAttribute("data-phase")).toBe("status");
+    expect(stableAssistantBody.className).toContain("min-h-[1.4375rem]");
 
     applyStreamingTextModification(setConversationMessages, {
       messageId: "a-stream",
@@ -4161,7 +4219,13 @@ describe("ChatOverlay — streaming + consumer activity render (#10712)", () => 
     const token = screen.getByText("Token one");
     expect(token).toBeTruthy();
     expect(token.closest('[data-testid="thread-line"]')).toBe(pendingRow);
-    expect(screen.queryByTestId("turn-status-indicator")).toBeNull();
+    expect(screen.getByTestId("overlay-assistant-turn-body")).toBe(
+      stableAssistantBody,
+    );
+    expect(stableAssistantBody.getAttribute("data-phase")).toBe("reply");
+    await waitFor(() => {
+      expect(screen.queryByTestId("turn-status-indicator")).toBeNull();
+    });
     expect(screen.queryByText("Token one and two")).toBeNull();
     expect(screen.queryByRole("button", { name: /thinking/i })).toBeNull();
 
