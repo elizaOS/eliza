@@ -10,8 +10,8 @@ import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { userCharactersRepository } from "@/db/repositories/characters";
 import { cache } from "@/lib/cache/client";
 import { CacheKeys, CacheTTL } from "@/lib/cache/keys";
-import { logger } from "@/lib/utils/logger";
 import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
+import { logger } from "@/lib/utils/logger";
 import type { Bindings } from "@/types/cloud-worker-env";
 import type { InternalElizaConversationFetchClaims } from "./internal-eliza-conversation-fetch";
 
@@ -50,10 +50,11 @@ export async function hydrateVoiceSharedAgentScope(
           if (!characterId) return;
           const cacheKey = `character:data:${characterId}`;
           if (await cache.get(cacheKey)) return;
-          const character = await userCharactersRepository.findByIdInOrganization(
-            characterId,
-            claims.organizationId,
-          );
+          const character =
+            await userCharactersRepository.findByIdInOrganization(
+              characterId,
+              claims.organizationId,
+            );
           if (!character) return;
           await cache.set(cacheKey, character, CacheTTL.agent.characterData);
         };
