@@ -13,6 +13,7 @@ import {
 	getCommandSettings,
 	resolveCommand,
 } from "../src/actions";
+import { commandRegistryProvider } from "../src/index";
 import {
 	getEnabledCommandsForRuntime,
 	initForRuntime,
@@ -270,6 +271,23 @@ describe("command actions — slash-only validate (#8790)", () => {
 				expect(simile.startsWith("/")).toBe(true);
 			}
 		}
+	});
+});
+
+describe("command registry provider", () => {
+	it("keeps conversational command discovery model-owned and out of VIEWS", async () => {
+		initForRuntime("agent-1");
+		const runtime = makeRuntime();
+		const result = await commandRegistryProvider.get(
+			runtime,
+			msg("show me the commands"),
+			{} as never,
+		);
+
+		expect(result.text).toContain("`/commands` displays the list");
+		expect(result.text).toContain("do not ask a clarifying question");
+		expect(result.text).toContain("route that request to VIEWS");
+		expect(result.values?.isCommand).toBe(false);
 	});
 });
 
