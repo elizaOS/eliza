@@ -23,6 +23,7 @@ import {
 } from "@elizaos/shared/voice/respond-gate";
 import { scoreEndOfTurnHeuristic } from "@elizaos/shared/voice-eot";
 import { resolveFusedLibraryPath } from "../desktop-fused-ffi-backend-runtime";
+import { OnlineSpeakerClusterer } from "./acoustic-speaker-attribution";
 import type {
 	CorpusGroundTruth,
 	CorpusTtsSynthesizer,
@@ -32,6 +33,10 @@ import { createKokoroTtsBackend } from "./engine-bridge";
 import { type ElizaInferenceFfi, loadElizaInferenceFfi } from "./ffi-bindings";
 import type { KokoroTtsBackend } from "./kokoro/kokoro-backend";
 import { resolveKokoroEngineConfig } from "./kokoro/kokoro-engine-discovery";
+import {
+	type DiarizerOutput,
+	PYANNOTE_WINDOW_SECONDS,
+} from "./speaker/diarizer";
 import { FusedDiarizer } from "./speaker/diarizer-fused";
 import { averageEmbeddings } from "./speaker/encoder";
 import { FusedSpeakerEncoder } from "./speaker/encoder-fused";
@@ -40,6 +45,7 @@ import { cosineSimilarity } from "./speaker-imprint";
 import { resampleLinear } from "./transcriber";
 import type { VoiceScenario } from "./voice-scenario";
 import type {
+	VoiceDiarizationObservation,
 	VoiceTurnObservation,
 	VoiceWorkbenchServices,
 } from "./workbench-headless-runner";
@@ -191,6 +197,17 @@ function ensureMinSpeakerSamples(pcm: Float32Array): Float32Array {
 	return out;
 }
 
+function concatPcm(parts: ReadonlyArray<Float32Array>): Float32Array {
+	const total = parts.reduce((sum, part) => sum + part.length, 0);
+	const out = new Float32Array(total);
+	let offset = 0;
+	for (const part of parts) {
+		out.set(part, offset);
+		offset += part.length;
+	}
+	return out;
+}
+
 function diarizerWindow(pcm: Float32Array): Float32Array {
 	const targetSamples = SAMPLE_RATE * 5;
 	if (pcm.length === targetSamples) return pcm;
@@ -198,6 +215,81 @@ function diarizerWindow(pcm: Float32Array): Float32Array {
 	const out = new Float32Array(targetSamples);
 	out.set(pcm);
 	return out;
+}
+
+export interface VoiceWorkbenchStreamDiarizationArgs {
+	audio: Float32Array;
+	sampleRate: number;
+	diarizeWindow(pcm: Float32Array): Promise<DiarizerOutput>;
+	encodeSpeaker(pcm: Float32Array): Promise<Float32Array>;
+}
+
+/** Diarize every model window and preserve provider-produced stream offsets. */
+export async function diarizeVoiceWorkbenchStream(
+	args: VoiceWorkbenchStreamDiarizationArgs,
+): Promise<VoiceDiarizationObservation[]> {
+	const audio16 = ensureSampleRate(args.audio, args.sampleRate, SAMPLE_RATE);
+	const windowSamples = SAMPLE_RATE * PYANNOTE_WINDOW_SECONDS;
+	const clusterer = new OnlineSpeakerClusterer();
+	const observations: VoiceDiarizationObservation[] = [];
+
+	for (
+		let windowStartSample = 0;
+		windowStartSample < audio16.length;
+		windowStartSample += windowSamples
+	) {
+		const availableSamples = Math.min(
+			windowSamples,
+			audio16.length - windowStartSample,
+		);
+		const windowPcm = new Float32Array(windowSamples);
+		windowPcm.set(
+			audio16.subarray(windowStartSample, windowStartSample + availableSamples),
+		);
+		const output = await args.diarizeWindow(windowPcm);
+		const byLocalSpeaker = new Map<number, typeof output.segments>();
+		for (const segment of output.segments) {
+			const existing = byLocalSpeaker.get(segment.localSpeakerId) ?? [];
+			existing.push(segment);
+			byLocalSpeaker.set(segment.localSpeakerId, existing);
+		}
+
+		for (const segments of byLocalSpeaker.values()) {
+			const audioParts = segments.flatMap((segment) => {
+				const start = Math.max(
+					0,
+					Math.floor((segment.startMs / 1000) * SAMPLE_RATE),
+				);
+				const end = Math.min(
+					availableSamples,
+					Math.ceil((segment.endMs / 1000) * SAMPLE_RATE),
+				);
+				return end > start ? [windowPcm.subarray(start, end)] : [];
+			});
+			if (audioParts.length === 0) continue;
+			const embedding = await args.encodeSpeaker(
+				ensureMinSpeakerSamples(concatPcm(audioParts)),
+			);
+			const clusterId = clusterer.assign(embedding);
+			if (!clusterId) continue;
+
+			const windowStartMs = (windowStartSample / SAMPLE_RATE) * 1000;
+			const availableMs = (availableSamples / SAMPLE_RATE) * 1000;
+			for (const segment of segments) {
+				const endMs = Math.min(segment.endMs, availableMs);
+				if (endMs <= segment.startMs) continue;
+				observations.push({
+					speaker: clusterId,
+					startMs: windowStartMs + segment.startMs,
+					endMs: windowStartMs + endMs,
+					confidence: segment.confidence,
+					hasOverlap: segment.hasOverlap,
+				});
+			}
+		}
+	}
+
+	return observations;
 }
 
 function pcm16ToFloat32(bytes: Uint8Array): Float32Array {
@@ -309,7 +401,9 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 			synthesize: (input) => this.synthesizeCorpusTurn(input),
 		};
 		this.services = {
+			strictMeasurementCoverage: true,
 			prepareScenario: (input) => this.prepareScenario(input),
+			observeDiarization: (input) => this.observeDiarization(input),
 			observeTurn: (input) => this.observeTurn(input),
 		};
 	}
@@ -501,6 +595,17 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 			matchedEntityId,
 			predictedOwner,
 		};
+	}
+
+	private async observeDiarization(args: {
+		audio: Float32Array;
+		sampleRate: number;
+	}): Promise<VoiceDiarizationObservation[]> {
+		return diarizeVoiceWorkbenchStream({
+			...args,
+			diarizeWindow: (pcm) => this.diarizer.diarizeWindow(pcm),
+			encodeSpeaker: (pcm) => this.encoder.encode(pcm),
+		});
 	}
 
 	private async synthesizeCorpusTurn(args: {
