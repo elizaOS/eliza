@@ -16,7 +16,11 @@ import type { ResponseHandlerEvaluatorContext } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { viewFollowupRoutingEvaluator } from "../evaluators/view-followup-routing.js";
 import { runCreate } from "./app-create.js";
-import { createViewsAction, createViewsAliasAction } from "./views.js";
+import {
+	createOpenViewAction,
+	createViewsAction,
+	createViewsAliasAction,
+} from "./views.js";
 import type { ViewSummary } from "./views-client.js";
 import { runViewsCreate } from "./views-create.js";
 import { runViewsDelete } from "./views-delete.js";
@@ -2103,6 +2107,44 @@ describe("view management actions", () => {
 			expect.objectContaining({ text: "Closed Settings." }),
 		);
 		expect(client.getCurrentView).not.toHaveBeenCalled();
+	});
+
+	it("routes OPEN_VIEW through the same verified shell boundary with a narrow planner contract", async () => {
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const client = {
+			listViews: vi.fn(async () => [
+				view({ id: "notes", label: "Notes", path: "/notes" }),
+			]),
+			getCurrentView: vi.fn(async () => null),
+		};
+		const action = createOpenViewAction({
+			client,
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+
+		const result = await action.handler(
+			runtime as never,
+			message("open notes") as never,
+			undefined,
+			{ view: "notes" },
+			callback,
+		);
+
+		expect(action.parameters?.map((parameter) => parameter.name)).toEqual([
+			"view",
+			"subview",
+			"viewType",
+		]);
+		expect(action.plannerStateProviderExclusions).toEqual([
+			"workspaceContext",
+			"uiWidgets",
+		]);
+		expect(result?.success).toBe(true);
+		expect(result?.values).toMatchObject({ mode: "show", viewId: "notes" });
+		expect(callback).toHaveBeenCalledWith(
+			expect.objectContaining({ text: "Opened Notes." }),
+		);
 	});
 
 	it('treats VIEWS action=delete for "close all views" as close-all, not plugin deletion', async () => {
