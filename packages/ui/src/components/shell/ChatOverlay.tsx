@@ -415,11 +415,10 @@ const PANEL_RADIUS_PX = 32;
 // to the window shape. Keeping the decision in visible-height space avoids the
 // old "near-full but still showing wallpaper above it" resting state.
 const FULLSCREEN_SNAP_VH = 0.9;
-// Once full-screen commits, require a deliberate reversal before releasing it.
-// Touch samples jitter around a held finger; sharing this band between height
-// and shape ownership prevents a one-frame maximize/unmaximize flash without
-// making the downward restore feel sticky.
-const FULLSCREEN_RELEASE_HYSTERESIS_PX = 24;
+// Keep a committed full-screen snap stable through a few pixels of pointer
+// noise. The entry threshold is still the visible 90% line; reversing farther
+// than this hands height authority back to the inset sheet.
+const FULLSCREEN_RELEASE_HYSTERESIS_PX = 12;
 
 export {
   grabberBarOpacity,
@@ -4467,10 +4466,9 @@ export function ChatOverlay({
       // the capsule and crossfades out under the finger — in BOTH directions);
       // above 0 it is the thread height.
       openProgress.set(cont < 0 ? clamp01(1 + cont / PILL_OPEN_DISTANCE) : 1);
-      const fullscreenCrossCont = fullscreenCrossContRef.current;
       const snappedAboveThreshold =
-        fullscreenCrossCont != null &&
-        cont >= fullscreenCrossCont - FULLSCREEN_RELEASE_HYSTERESIS_PX;
+        fullscreenCrossContRef.current != null &&
+        cont >= fullscreenCrossContRef.current;
       if (!snappedAboveThreshold) {
         // A same-gesture reversal below the snap line takes height authority
         // back from the full-screen spring on its first pixel.
@@ -4608,7 +4606,7 @@ export function ChatOverlay({
         // stream reverses. The synchronous crossing ref is the authoritative
         // proof that this gesture entered full-screen and must now relinquish
         // its peak instead of re-maximizing on release.
-        (maximizedRef.current || fullscreenCrossContRef.current != null) &&
+        maximizedRef.current &&
         // A RESTORE drag owns its own visible-height crossing in onRestoreDrag;
         // this branch is only for a same-gesture reversal on the grabber. Letting
         // it also fire here
