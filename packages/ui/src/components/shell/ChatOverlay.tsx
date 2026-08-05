@@ -1518,6 +1518,10 @@ export function ChatOverlay({
   // this coordinate; reversing below it hands height back to the finger and
   // restores the window shape.
   const fullscreenCrossContRef = React.useRef<number | null>(null);
+  // A release-time long-haul may maximize a pull that never quite reached the
+  // visible snap line. Once this gesture crossed full-screen and deliberately
+  // reversed below it, that fallback must be disarmed until it crosses again.
+  const abandonedFullscreenCrossRef = React.useRef(false);
   // TRUE while the current gesture is a maximize-restore drag (the top strip).
   // The restore drag owns its own 90% crossing; the integrator must not also
   // un-maximize on frame 1 —
@@ -1551,6 +1555,7 @@ export function ChatOverlay({
   const resetPullPeak = React.useCallback(() => {
     maxPullRawRef.current = 0;
     fullscreenCrossContRef.current = null;
+    abandonedFullscreenCrossRef.current = false;
   }, []);
   // At rest the collapsed composer should not carry hidden transcript/header
   // DOM. During an upward pull, though, the sheet needs a mounted body so the
@@ -4584,6 +4589,7 @@ export function ChatOverlay({
         !keyboardBlocksMaximize
       ) {
         fullscreenCrossContRef.current = cont;
+        abandonedFullscreenCrossRef.current = false;
         setFreeH(null);
         setMode("full");
         setMaximized(true);
@@ -4598,7 +4604,11 @@ export function ChatOverlay({
         detentHaptic();
       } else if (
         !crossedFullscreenLine &&
-        maximized &&
+        // React may not have committed `maximized` before a coalesced pointer
+        // stream reverses. The synchronous crossing ref is the authoritative
+        // proof that this gesture entered full-screen and must now relinquish
+        // its abandoned peak instead of re-maximizing on release.
+        (maximized || fullscreenCrossContRef.current != null) &&
         // A RESTORE drag owns its own visible-height crossing in onRestoreDrag;
         // this branch is only for a same-gesture reversal on the grabber. Letting
         // it also fire here
@@ -4617,6 +4627,7 @@ export function ChatOverlay({
         modeRef.current = dragStartModeRef.current;
         freeHRef.current = dragStartFreeHRef.current;
         fullscreenCrossContRef.current = null;
+        abandonedFullscreenCrossRef.current = true;
         if (reduce) fullBleedT.set(0);
         else animateFullBleedTo(0);
         // Void the peak so the release decision does not re-maximize from an
@@ -4690,6 +4701,7 @@ export function ChatOverlay({
   // screen on release; ordinary window drags use the visible 90% line.
   const maybeMaximizeOnRelease = React.useCallback((): boolean => {
     if (pinnedOpen) return false;
+    if (abandonedFullscreenCrossRef.current) return false;
     // A real keyboard blocks the release-time maximize too (mirrors the mid-drag
     // gate): a pull-to-full with the keyboard up settles at the inset FULL detent
     // instead of an edge-to-edge maximize that would spill above the visible area.
