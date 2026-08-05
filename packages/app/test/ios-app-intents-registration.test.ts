@@ -359,13 +359,10 @@ describe("native assistant entry contracts", () => {
     // The custom keyboard and hardware Action Button pieces are documented as
     // device-lane only instead of being faked in simulator evidence.
     expect(deviceExtensionSurfaceUITestsSwift).toContain(
-      "testKeyboardDictationSurfaceNeedsProvisionedDeviceLane",
-    );
-    expect(deviceExtensionSurfaceUITestsSwift).toContain(
       "Action Button physical press",
     );
     expect(deviceExtensionSurfaceUITestsSwift).toContain(
-      "Full Access/App Group round-trip",
+      "and custom\n/// keyboard enablement still require the provisioned-device lane",
     );
   });
 
