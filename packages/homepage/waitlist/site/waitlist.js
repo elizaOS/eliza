@@ -25,15 +25,11 @@ form?.addEventListener("submit", async (event) => {
       body: JSON.stringify({ email, companyWebsite, source: "eliza.app" }),
     });
     const result = await response.json().catch(() => ({}));
-    if (!response.ok)
-      throw new Error(result.error || "Could not join right now.");
+    if (!response.ok) throw new Error(result.error || "Could not join right now.");
     form.reset();
-    status.textContent = result.alreadyJoined
-      ? "You're already on the list."
-      : "You're in. We'll be in touch.";
+    status.textContent = result.alreadyJoined ? "You're already on the list." : "You're in. We'll be in touch.";
   } catch (error) {
-    status.textContent =
-      error instanceof Error ? error.message : "Could not join right now.";
+    status.textContent = error instanceof Error ? error.message : "Could not join right now.";
     status.classList.add("error");
   } finally {
     button.disabled = false;
