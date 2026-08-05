@@ -7,6 +7,7 @@ import {
 
 import { solanaBlockchainConnector } from "./solana";
 import { ethereumBlockchainConnector } from "./ethereum";
+import { bnbBlockchainConnector } from "./bnb";
 
 export class DefaultBlockchainConnectorRegistry
   implements BlockchainConnectorRegistry
@@ -57,6 +58,14 @@ blockchainConnectorRegistry.register(
 
 blockchainConnectorRegistry.register(
   ethereumBlockchainConnector,
+);
+
+// This exact ".register()" call is the step PR #5's critical fix had to
+// add after the Ethereum connector shipped without it - a fully-built,
+// working connector silently resolves to "no connector registered" for
+// its chain if this line is missing. Do not skip it for a future chain.
+blockchainConnectorRegistry.register(
+  bnbBlockchainConnector,
 );
 
 export function getBlockchainConnector(

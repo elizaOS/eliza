@@ -36,6 +36,14 @@
 
 const MORALIS_BASE_URL = "https://deep-index.moralis.io/api/v2.2";
 
+// Moralis's own `chain` query-parameter values - NOT the same strings as
+// this codebase's internal SupportedChain identifiers ("ethereum"/"bnb").
+// BSC in particular is "bsc" on the wire, not "bnb" - confirmed live and
+// against Moralis's docs (chainList enum). Every exported function below
+// takes this explicitly rather than defaulting to "eth", so a caller can
+// never silently query the wrong chain.
+export type MoralisEvmChain = "eth" | "bsc";
+
 function getMoralisApiKey(): string {
   const apiKey = process.env.MORALIS_API_KEY?.trim();
 
@@ -123,6 +131,7 @@ export type MoralisNativeBalanceResponse = {
 
 export async function getEthereumBalance(
   address: string,
+  chain: MoralisEvmChain,
 ): Promise<{ address: string; wei: string }> {
   if (!address || address.trim().length === 0) {
     throw new Error("Wallet address is required");
@@ -132,7 +141,7 @@ export async function getEthereumBalance(
 
   const data = await callMoralisRest<MoralisNativeBalanceResponse>(
     `/${walletAddress}/balance`,
-    { chain: "eth" },
+    { chain },
   );
 
   return {
@@ -187,6 +196,7 @@ export type EthereumTokenHoldingsResult = {
 
 export async function getEthereumTokenHoldings(
   address: string,
+  chain: MoralisEvmChain,
   options: { excludeSpam?: boolean } = {},
 ): Promise<EthereumTokenHoldingsResult> {
   if (!address || address.trim().length === 0) {
@@ -202,7 +212,7 @@ export async function getEthereumTokenHoldings(
 
   for (let page = 0; page < MAX_TOKEN_HOLDING_PAGES; page += 1) {
     const searchParams: Record<string, string> = {
-      chain: "eth",
+      chain,
       limit: "100",
       exclude_spam: String(excludeSpam),
     };
@@ -274,6 +284,7 @@ export type EthereumNftHolding = {
 
 export async function getEthereumNftHoldings(
   address: string,
+  chain: MoralisEvmChain,
 ): Promise<EthereumNftHolding[]> {
   const walletAddress = address.trim();
 
@@ -283,7 +294,7 @@ export async function getEthereumNftHoldings(
 
   const data = await callMoralisRest<MoralisWalletNftsResponse>(
     `/${walletAddress}/nft`,
-    { chain: "eth", format: "decimal" },
+    { chain, format: "decimal" },
   );
 
   const items = Array.isArray(data.result) ? data.result : [];
@@ -412,6 +423,7 @@ function toEthereumTransaction(
 
 export async function getEthereumTransactions(
   address: string,
+  chain: MoralisEvmChain,
   limit = 20,
   cursor?: string | null,
   order?: "ASC" | "DESC",
@@ -423,7 +435,7 @@ export async function getEthereumTransactions(
   }
 
   const searchParams: Record<string, string> = {
-    chain: "eth",
+    chain,
     limit: String(limit),
   };
 
@@ -461,14 +473,22 @@ export async function getEthereumTransactions(
 // (confirmed broken on this exact wallet before this fix).
 export async function getEthereumOldestTransaction(
   address: string,
+  chain: MoralisEvmChain,
 ): Promise<EthereumTransaction | null> {
-  const { transactions } = await getEthereumTransactions(address, 1, null, "ASC");
+  const { transactions } = await getEthereumTransactions(
+    address,
+    chain,
+    1,
+    null,
+    "ASC",
+  );
 
   return transactions[0] ?? null;
 }
 
 export async function getEthereumTransaction(
   transactionHash: string,
+  chain: MoralisEvmChain,
 ): Promise<EthereumTransaction | null> {
   const cleanedHash = transactionHash.trim();
 
@@ -478,7 +498,7 @@ export async function getEthereumTransaction(
 
   const data = await callMoralisRest<MoralisWalletTransaction>(
     `/transaction/${cleanedHash}`,
-    { chain: "eth" },
+    { chain },
   );
 
   return toEthereumTransaction(data);

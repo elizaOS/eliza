@@ -104,10 +104,10 @@ export function lookupStaticSolanaWalletLabel(
 // protocol and exposure registries: EIP-55 checksum casing is
 // display-only. lookupStaticEthereumWalletLabel() below lowercases its
 // input before the lookup - safe to do unconditionally here (unlike
-// lookupStaticExposure, which is chain-generic and has to check
-// chain === "ethereum" first) because this function is only ever called
-// from labelEngine.ts's "ethereum" switch case; it never sees a Solana
-// address, so there's no base58 case-sensitivity concern to guard against.
+// lookupStaticExposure, which is chain-generic and uses isEvmChain())
+// because this function is only ever called from labelEngine.ts's
+// "ethereum" switch case; it never sees a Solana address, so there's no
+// base58 case-sensitivity concern to guard against.
 const STATIC_ETHEREUM_LABELS: Record<string, WalletLabel> = {
   "0x71660c4005ba85c37ccec55d0c4493e66fe775d3": {
     address: "0x71660c4005ba85c37ccec55d0c4493e66fe775d3",
@@ -182,4 +182,33 @@ export function lookupStaticEthereumWalletLabel(
   }
 
   return STATIC_ETHEREUM_LABELS[address.toLowerCase()] ?? null;
+}
+
+// Same unconditional-lowercase convention as
+// lookupStaticEthereumWalletLabel() above, for the same reason: this
+// function is only ever called from labelEngine.ts's "bnb" switch case,
+// so it never sees a Solana address - no base58 case-sensitivity guard
+// needed here (unlike lookupStaticExposure, which is chain-generic and
+// uses isEvmChain()).
+//
+// Verified directly against BscScan: labeled "Binance: Hot Wallet 11",
+// tagged "Binance"/"Exchange", 31,041,368 transactions.
+const STATIC_BNB_LABELS: Record<string, WalletLabel> = {
+  "0x161ba15a5f335c9f06bb5bbb0a9ce14076fbb645": {
+    address: "0x161ba15a5f335c9f06bb5bbb0a9ce14076fbb645",
+    label: "Binance: Hot Wallet 11",
+    category: "centralized_exchange",
+    confidence: "high",
+    source: "static_registry",
+  },
+};
+
+export function lookupStaticBnbWalletLabel(
+  address: string | null | undefined,
+): WalletLabel | null {
+  if (!address) {
+    return null;
+  }
+
+  return STATIC_BNB_LABELS[address.toLowerCase()] ?? null;
 }

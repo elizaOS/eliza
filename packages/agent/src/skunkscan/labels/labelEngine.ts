@@ -2,6 +2,7 @@ import { WalletLabel, SupportedChain } from "../types";
 import {
   lookupStaticSolanaWalletLabel,
   lookupStaticEthereumWalletLabel,
+  lookupStaticBnbWalletLabel,
 } from "./staticRegistry";
 
 export function getUnknownWalletLabel(
@@ -33,8 +34,11 @@ export function lookupWalletLabel(
       return lookupStaticEthereumWalletLabel(address) ?? getUnknownWalletLabel(address);
     }
 
+    case "bnb": {
+      return lookupStaticBnbWalletLabel(address) ?? getUnknownWalletLabel(address);
+    }
+
     case "base":
-    case "bnb":
       return getUnknownWalletLabel(address);
 
     default:
