@@ -475,8 +475,12 @@ warnings: [],
         // wasted round trip producing throwaway data. Unlike Solana, Moralis
         // doesn't split "get IDs" from "get rich content" into separate
         // calls, so there's no equivalent bypass-and-refetch needed here.
+        // Moralis hard-caps this endpoint at limit=100 (verified: limit=150+
+        // returns a documented 400 "Limit has a maximum of 100"), at the
+        // same flat 150 CU cost as limit=50 - confirmed via x-request-weight
+        // on both sizes, so this is free headroom, not an added cost.
         const { transactions: rawTransactions } =
-          await getEthereumTransactions(walletAddress, 50);
+          await getEthereumTransactions(walletAddress, 100);
 
         const normalizedRecentParsedTransactions =
           rawTransactions.map(parseEthereumTransaction);
