@@ -59,23 +59,71 @@ function tryRemoveFromStorage(remove: () => void): boolean {
  * the write channel, which uses raw window storage; there is no
  * shellSessionStorage wrapper).
  */
+/** Prefix for all per-agent cloud-pair token keys */
+const CLOUD_PAIR_SCOPED_PREFIX = "eliza:cloud-pair:api-token:";
+
+/**
+ * Remove all scoped cloud-pair token keys from localStorage.
+ * Used when an explicit disconnect happens but we can't resolve a specific agentId.
+ */
+function clearAllScopedCloudPairKeys(): void {
+  tryRemoveFromStorage(() => {
+    const keysToRemove: string[] = [];
+    // shellLocalStorage only has setItem/removeItem/clear, enumerate via raw localStorage
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const key = window.localStorage.key(i);
+      if (key && key.startsWith(CLOUD_PAIR_SCOPED_PREFIX)) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach(k => shellLocalStorage.removeItem(k));
+    // Legacy single-key format
+    shellLocalStorage.removeItem(CLOUD_PAIR_LOCAL_STORAGE_KEY);
+  });
+}
+
+/**
+ * Remove all scoped cloud-pair token keys from sessionStorage.
+ */
+function clearAllScopedCloudPairKeysSession(): void {
+  tryRemoveFromStorage(() => {
+    if (typeof window !== "undefined") {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < window.sessionStorage.length; i++) {
+        const key = window.sessionStorage.key(i);
+        if (key && key.startsWith(CLOUD_PAIR_SCOPED_PREFIX)) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(k => window.sessionStorage.removeItem(k));
+      window.sessionStorage.removeItem(CLOUD_PAIR_SESSION_STORAGE_KEY);
+    }
+  });
+}
+
 export function clearCloudPairApiToken(agentId?: string): void {
   const scopedKey = agentId?.trim()
     ? cloudPairTokenKeyForAgent(agentId.trim())
     : null;
-  tryRemoveFromStorage(() => {
-    if (scopedKey) shellLocalStorage.removeItem(scopedKey);
-    // Legacy single-key format — cleared unconditionally so a pre-#17579
-    // global bearer cannot be re-adopted by ANY agent after an explicit
-    // disconnect/sign-out.
-    shellLocalStorage.removeItem(CLOUD_PAIR_LOCAL_STORAGE_KEY);
-  });
-  tryRemoveFromStorage(() => {
-    if (typeof window !== "undefined") {
-      if (scopedKey) window.sessionStorage.removeItem(scopedKey);
-      window.sessionStorage.removeItem(CLOUD_PAIR_SESSION_STORAGE_KEY);
-    }
-  });
+  
+  if (scopedKey) {
+    // Clear specific agent's scoped key + legacy global key
+    tryRemoveFromStorage(() => {
+      shellLocalStorage.removeItem(scopedKey);
+      shellLocalStorage.removeItem(CLOUD_PAIR_LOCAL_STORAGE_KEY);
+    });
+    tryRemoveFromStorage(() => {
+      if (typeof window !== "undefined") {
+        window.sessionStorage.removeItem(scopedKey);
+        window.sessionStorage.removeItem(CLOUD_PAIR_SESSION_STORAGE_KEY);
+      }
+    });
+  } else {
+    // No agentId resolved — explicit disconnect with global intent.
+    // Clear ALL scoped keys + legacy key from both storages.
+    clearAllScopedCloudPairKeys();
+    clearAllScopedCloudPairKeysSession();
+  }
 }
 
 /** A cloud profile belongs to `agentId` via its explicit id or its API base. */
