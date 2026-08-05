@@ -130,6 +130,9 @@ export function emitModelUsageEvent(
             cacheReadInputTokens: normalized.cachedPromptTokens,
           }
         : {}),
+      ...(normalized.reasoningTokens !== undefined
+        ? { reasoningTokens: normalized.reasoningTokens }
+        : {}),
     },
   };
 

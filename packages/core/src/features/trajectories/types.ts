@@ -94,6 +94,15 @@ export interface LLMCall {
 	cacheCreationInputTokens?: number;
 
 	/**
+	 * Hidden reasoning tokens reported inside the completion budget by
+	 * reasoning models (Cerebras zai-glm-4.7, OpenAI o-series, gpt-oss).
+	 * Surfaced so a tail-latency burst is attributable per call (#16394).
+	 * Missing stays missing — never zero — so an unattributed burst is
+	 * distinguishable from a confirmed-none call.
+	 */
+	reasoningTokens?: number;
+
+	/**
 	 * Pipeline stage identifier. Canonical values:
 	 * "action" | "reasoning" | "evaluation" | "response" |
 	 * "should_respond" | "compose_state" | "other".

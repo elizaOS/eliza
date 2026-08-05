@@ -221,4 +221,25 @@ describe("DefaultMessageService structured failure replies", () => {
 		expect(result.responseContent?.text).not.toContain('"action"');
 		expect(runtime.reportError).toHaveBeenCalledTimes(4);
 	});
+
+	it("bounds reasoning on every failure-reply model slot (thinking=off)", async () => {
+		// #16394: the failure-reply fallback is a plain-text path that must stay
+		// low-latency on reasoning models. Every useModel call it makes carries
+		// providerOptions.eliza.thinking = "off", matching Stage-1, the
+		// evaluator, and every planner iteration.
+		const service =
+			new DefaultMessageService() as unknown as FailureReplyService;
+		const runtime = makeRuntimeReturning(["Sorry, that broke on my side."]);
+		await service.generateFailureReplyText(runtime, "recent messages", "test");
+		const useModel = runtime.useModel as unknown as {
+			mock: { calls: unknown[][] };
+		};
+		expect(useModel.mock.calls.length).toBeGreaterThanOrEqual(1);
+		for (const call of useModel.mock.calls) {
+			const params = call[1] as {
+				providerOptions?: { eliza?: { thinking?: string } };
+			};
+			expect(params?.providerOptions?.eliza?.thinking).toBe("off");
+		}
+	});
 });

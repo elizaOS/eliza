@@ -44,6 +44,7 @@ import {
 } from "./features/basic-capabilities/index";
 import {
 	INFERENCE_MARKS,
+	type InferenceTimingMeta,
 	markInference,
 	recordInferenceSpan,
 	setInferenceModelProvider,
@@ -756,6 +757,64 @@ function isTextStreamResult(
 		"usage" in value &&
 		"finishReason" in value
 	);
+}
+
+/**
+ * Read the hidden reasoning-token count from a model response so it can be
+ * surfaced on the successful model span (#16394). Native results (tool-call
+ * shape) carry a `.usage` object; plain-text results do not, and the field is
+ * left undefined there. Returns a finite non-negative number or `undefined`;
+ * missing is preserved as missing rather than coerced to zero so an
+ * unattributed burst stays distinguishable from a confirmed-none call.
+ *
+ * Covers the elizaOS `TokenUsage.reasoningTokens` field plus the two raw
+ * provider shapes the AI SDK exposes (`usage.reasoningTokens` and
+ * `providerMetadata.completion_tokens_details.reasoning_tokens`).
+ */
+export function readReasoningTokensFromResponse(
+	response: unknown,
+): number | undefined {
+	if (typeof response !== "object" || response === null) return undefined;
+	const record = response as Record<string, unknown>;
+	const usageRaw = isPlainObject(record.usage) ? record.usage : undefined;
+	const usage = usageRaw as Record<string, unknown> | undefined;
+	const fromUsage =
+		usage && typeof usage.reasoningTokens === "number"
+			? usage.reasoningTokens
+			: undefined;
+	if (fromUsage !== undefined) {
+		return Number.isFinite(fromUsage) && fromUsage >= 0 ? fromUsage : undefined;
+	}
+	// Fall back to provider metadata when the adapter did not normalize the
+	// field into the usage object (some OpenAI-compatible paths expose it only
+	// under completion_tokens_details).
+	const providerMetadataRaw = isPlainObject(record.providerMetadata)
+		? record.providerMetadata
+		: undefined;
+	const providerMetadata = providerMetadataRaw as
+		| Record<string, unknown>
+		| undefined;
+	const detailsRaw = providerMetadata
+		? isPlainObject(providerMetadata.completion_tokens_details)
+			? providerMetadata.completion_tokens_details
+			: isPlainObject(providerMetadata.completionTokensDetails)
+				? providerMetadata.completionTokensDetails
+				: undefined
+		: undefined;
+	const details = detailsRaw as Record<string, unknown> | undefined;
+	const fromDetails = details
+		? typeof details.reasoning_tokens === "number"
+			? details.reasoning_tokens
+			: typeof details.reasoningTokens === "number"
+				? details.reasoningTokens
+				: undefined
+		: undefined;
+	if (fromDetails !== undefined) {
+		return Number.isFinite(fromDetails) && fromDetails >= 0
+			? fromDetails
+			: undefined;
+	}
+	return undefined;
 }
 
 function getSearchCategoryKey(category: string): string {
@@ -5944,11 +6003,20 @@ export class AgentRuntime implements IAgentRuntime {
 		// funnels through here is covered exactly once.
 		const resolvedProvider =
 			provider || this.models.get(modelKey)?.[0]?.provider || "unknown";
-		recordInferenceSpan(`model:${modelType}`, elapsedTime, {
+		// Surface reasoning-token usage on the successful model span so a
+		// reasoning burst is attributable per call (#16394). Native results
+		// (tool-call shape) carry `.usage`; plain-text results do not, in which
+		// case the field is omitted entirely — missing stays missing, never zero.
+		const spanMeta: InferenceTimingMeta = {
 			modelKey,
 			provider: resolvedProvider,
 			outcome: "success",
-		});
+		};
+		const reasoningTokens = readReasoningTokensFromResponse(response);
+		if (reasoningTokens !== undefined) {
+			spanMeta.reasoningTokens = reasoningTokens;
+		}
+		recordInferenceSpan(`model:${modelType}`, elapsedTime, spanMeta);
 		if (modelType !== ModelType.TEXT_EMBEDDING) {
 			setInferenceModelProvider(resolvedProvider);
 		}
@@ -7089,6 +7157,7 @@ export class AgentRuntime implements IAgentRuntime {
 				cacheCreationInputTokens: asNumber(
 					usageRecord.cacheCreationInputTokens,
 				),
+				reasoningTokens: asNumber(usageRecord.reasoningTokens),
 				modelSlot: args.modelType,
 				runId: trajCtx.runId,
 				roomId: trajCtx.roomId,

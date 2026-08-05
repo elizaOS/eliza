@@ -120,6 +120,7 @@ export interface TrajectoryLlmCallRecord {
 	completionTokens?: number;
 	cacheReadInputTokens?: number;
 	cacheCreationInputTokens?: number;
+	reasoningTokens?: number;
 	modelSlot?: string;
 	runId?: string;
 	roomId?: string;
@@ -332,6 +333,7 @@ export interface ElizaNativeModelResponseRecord {
 		totalTokens?: number;
 		cacheReadInputTokens?: number;
 		cacheCreationInputTokens?: number;
+		reasoningTokens?: number;
 	};
 	providerMetadata?: unknown;
 }
