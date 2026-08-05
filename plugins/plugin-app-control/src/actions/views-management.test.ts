@@ -386,9 +386,15 @@ describe("view management actions", () => {
 		expect(globalThis.fetch).not.toHaveBeenCalled();
 	});
 
-	it("advertises UI view switching in its planner routing hint", () => {
+	it("keeps view management and navigation ownership distinct in planner routing", () => {
 		const action = createViewsAction();
-		expect(action.routingHint).toContain("UI view/window/panel/app navigation");
+		const openAction = createOpenViewAction();
+		expect(action.routingHint).toContain(
+			"opening or switching one view -> OPEN_VIEW",
+		);
+		expect(openAction.routingHint).toContain(
+			"Open/show/switch/go-home requests -> OPEN_VIEW",
+		);
 		expect(action.routingHint).toContain("Close/hide means VIEWS action=close");
 		expect(action.routingHint).toContain(
 			"agent-fill and agent-click are only for an explicitly requested form-control interaction",
@@ -2112,6 +2118,11 @@ describe("view management actions", () => {
 	it("routes OPEN_VIEW through the same verified shell boundary with a narrow planner contract", async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
+		vi.mocked(globalThis.fetch).mockResolvedValue({
+			ok: true,
+			status: 200,
+			json: async () => ({ ok: true }),
+		} as Response);
 		const client = {
 			listViews: vi.fn(async () => [
 				view({ id: "notes", label: "Notes", path: "/notes" }),
