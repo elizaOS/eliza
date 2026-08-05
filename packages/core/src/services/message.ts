@@ -3043,9 +3043,12 @@ async function createV5MessageContextObject(args: {
 				if (name !== "ACTION" && name !== "OP") {
 					return false;
 				}
+				// schema is required by ActionParameter, but an untyped third-party
+				// plugin can register a malformed parameter; a capability probe must
+				// not throw on it.
 				return [
-					...(parameter.schema.enum ?? []),
-					...(parameter.schema.enumValues ?? []),
+					...(parameter.schema?.enum ?? []),
+					...(parameter.schema?.enumValues ?? []),
 				].some((value) => normalizeActionIdentifier(value) === "SEARCH");
 			});
 			return (

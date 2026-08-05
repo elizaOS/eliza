@@ -40,7 +40,12 @@ import type {
 	UUID,
 } from "../../../types/index.ts";
 import { ChannelType } from "../../../types/index.ts";
-import { addHeader, formatMessages, formatPosts } from "../../../utils.ts";
+import {
+	addHeader,
+	conversationMessagesHeader,
+	formatMessages,
+	formatPosts,
+} from "../../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("RECENT_MESSAGES");
@@ -524,7 +529,7 @@ export const recentMessagesProvider: Provider = {
 			const recentMessagesBody =
 				formattedRecentMessages && formattedRecentMessages.length > 0
 					? addHeader(
-							`# Conversation Messages (most recent ${dialogueMessages.length}; older history is not shown here)`,
+							conversationMessagesHeader(dialogueMessages.length),
 							formattedRecentMessages,
 						)
 					: "";
