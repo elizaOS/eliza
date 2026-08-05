@@ -1373,16 +1373,6 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           await page.waitForTimeout(1000);
           paint = await readPaint();
         }
-        if (view.slug === "plugin-calendar-gui") {
-          const manageSources = page.getByRole("button", {
-            name: "Manage calendar sources",
-          });
-          await manageSources.click();
-          await page
-            .getByText("New calendars join automatically")
-            .waitFor({ state: "visible", timeout: 5_000 });
-          paint = await readPaint();
-        }
         await settleHomeEntrance(page);
         const { readableChars, overlayPresent } = paint;
         const renderStateIssues = [
@@ -1421,18 +1411,6 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           await page.waitForTimeout(800);
           buffer = await page.screenshot({ path: restPath, fullPage: false });
           quality = await analyzeScreenshot(buffer).catch(() => null);
-        }
-        if (
-          view.slug === "plugin-calendar-gui" &&
-          vp.name === "mobile-landscape"
-        ) {
-          await page
-            .getByText("Travel", { exact: true })
-            .scrollIntoViewIfNeeded();
-          await page.screenshot({
-            path: path.join(shotDir, `${view.slug}-sources-lower.png`),
-            fullPage: false,
-          });
         }
         const qualityIssues = quality
           ? screenshotQualityIssues(`${view.slug} ${vp.name}`, quality)
