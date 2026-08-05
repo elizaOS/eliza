@@ -14,13 +14,14 @@ import type {
 	Memory,
 	ViewType,
 } from "@elizaos/core";
-import {
-	getUserMessageText,
-	logger,
-	resolveServerOnlyPort,
-} from "@elizaos/core";
+import { logger, resolveServerOnlyPort } from "@elizaos/core";
 import { SHARED_NAV_TARGETS } from "@elizaos/shared/views/shared-nav-targets";
 import { resolveSettingsSectionToken } from "@elizaos/ui/components/settings/settings-section-tokens";
+import {
+	describeTargetReference,
+	targetReferenceLogView,
+	userRequestMessageText,
+} from "../params.js";
 import { markViewSwitch } from "../runtime/view-switch-signal.js";
 import { matchViewCommand } from "./view-command-matcher.js";
 import type { ViewSummary, ViewsClient } from "./views-client.js";
@@ -92,7 +93,11 @@ function extractViewTarget(
 		readStringOpt(options, "name");
 	if (explicit) return explicit;
 
-	const text = getUserMessageText(message);
+	// Security-unwrapped user words: the raw content.text on a hardened
+	// connector is the whole external-content envelope, and its warning text
+	// contains show-verbs ("view", …) that would send the envelope remainder
+	// through the token scan.
+	const text = userRequestMessageText(message);
 
 	const match = SHOW_VERB_PATTERN.exec(text);
 	if (match) {
@@ -437,7 +442,7 @@ export async function runViewsShow({
 	viewType,
 	callback,
 }: RunViewsShowInput): Promise<ActionResult> {
-	const messageText = getUserMessageText(message);
+	const messageText = userRequestMessageText(message);
 	// Passive intent ("what's on my calendar", "muéstrame mi calendario") carries
 	// no explicit view name, so the verb scan yields nothing — the domain intent
 	// supplies the view id. Either source is enough to proceed.
@@ -481,15 +486,19 @@ export async function runViewsShow({
 	}
 
 	if (resolution.kind === "none") {
-		const text = `No view matches "${target}". Try \`action=list\` to see available views.`;
+		const text = `No view matches ${describeTargetReference(target)}. Try \`action=list\` to see available views.`;
 		await callback?.({ text });
-		return { success: false, text, data: { target } };
+		return {
+			success: false,
+			text,
+			data: { target: targetReferenceLogView(target) },
+		};
 	}
 
 	if (resolution.kind === "ambiguous") {
 		const candidates = resolution.candidates;
 		const list = candidates.map((v) => `- ${v.label} (${v.id})`).join("\n");
-		const text = `"${target}" matches multiple views:\n${list}\nWhich one did you mean?`;
+		const text = `${describeTargetReference(target)} matches multiple views:\n${list}\nWhich one did you mean?`;
 		await callback?.({ text });
 		return { success: false, text, data: { candidates } };
 	}

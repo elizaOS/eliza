@@ -275,7 +275,7 @@
     "typescript": "^6.0.3",
     "vite": "8.2.0",
     "vitest": "^4.0.17",
-    "verdaccio": "6.9.0",
+    "verdaccio": "6.9.1",
     "yaml": "2.9.0"
   },
   "resolutions": {

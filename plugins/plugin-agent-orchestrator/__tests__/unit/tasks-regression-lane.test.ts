@@ -20,6 +20,7 @@ import "./task-control-structural.test";
 import "./task-history.test";
 import "./tasks-action-aliases.test";
 import "./tasks-create-validator-lifecycle.test";
+import "./tasks-hardened-envelope-unwrap.test";
 import {
   createTaskAction,
   spawnAgentAction,

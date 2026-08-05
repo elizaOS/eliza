@@ -120,6 +120,7 @@ import {
 	revalidateOwnerExclusiveDisclosure,
 	trustedDeliveryAudienceCacheKey,
 } from "./security/index.js";
+import { guardOutboundEnvelopeText } from "./security/outbound-envelope-guard.js";
 import { redactWithSecrets } from "./security/redact.js";
 import {
 	parseSecretSwapExemptValues,
@@ -2055,11 +2056,16 @@ export class AgentRuntime implements IAgentRuntime {
 					);
 				}
 				// Mandatory outbound hygiene, hooks or none: strip leaked model
-				// machine syntax (#15888), then redact secrets. Runs before the
-				// content is persisted, so stored outbound memories carry the same
-				// text the connector delivers.
-				c.content.text = this.redactSecrets(
-					sanitizeOutboundText(coerceOutgoingMessageText(c.content.text)),
+				// machine syntax (#15888), redact secrets, then fail-closed block
+				// any security-envelope echo. Runs before the content is
+				// persisted, so stored outbound memories carry the same text the
+				// connector delivers.
+				c.content.text = guardOutboundEnvelopeText(
+					this,
+					this.redactSecrets(
+						sanitizeOutboundText(coerceOutgoingMessageText(c.content.text)),
+					),
+					"outgoing_before_deliver",
 				);
 				return;
 			}
@@ -11905,11 +11911,18 @@ ${section_end}`;
 		// delivers the original text rather than blocking the send.
 		const voicedContent = await ensureAgentVoice(this, content, { source });
 		// Proactive sends bypass the message-turn callback wrap, so the shared
-		// machine-syntax sanitizer (#15888) applies here — after the voice gate,
-		// whose rephrase is itself model text.
+		// machine-syntax sanitizer (#15888) and the fail-closed envelope guard
+		// apply here — after the voice gate, whose rephrase is itself model text.
 		const outboundContent =
 			typeof voicedContent.text === "string"
-				? { ...voicedContent, text: sanitizeOutboundText(voicedContent.text) }
+				? {
+						...voicedContent,
+						text: guardOutboundEnvelopeText(
+							this,
+							sanitizeOutboundText(voicedContent.text),
+							"sendMessageToTarget",
+						),
+					}
 				: voicedContent;
 		return handler(this, target, outboundContent);
 	}

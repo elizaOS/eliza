@@ -334,4 +334,149 @@ describe("gateway webhook handler e2e routing", () => {
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(adapter.replies).toEqual([]);
   });
+
+  test("routes a linked user whose agent is still provisioning to onboarding", async () => {
+    // Identity resolve returns a real user with `agent: null` while the
+    // provisioning job is still in flight. Previously resolveIdentity threw on
+    // the missing agentId, which aborted processMessage and dropped the user's
+    // message with no reply at all. The user must instead get the onboarding
+    // worker's provisioning status, and must NOT be routed to the project
+    // default agent (a runtime that belongs to nobody in particular).
+    configureEnv();
+    const redis = new MemoryRedis();
+    const event = createTwilioEvent({
+      messageId: "SM_provisioning_1",
+      text: "is my agent ready?",
+    });
+    const adapter = createAdapter(event);
+    let onboardingBody: Record<string, unknown> | null = null;
+
+    globalThis.fetch = mock(async (input, init) => {
+      const request = new Request(input, init);
+      if (
+        request.url ===
+        "https://api.elizacloud.ai/api/internal/identity/resolve"
+      ) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            userId: "user-7",
+            organizationId: "org-7",
+            agentId: null,
+            data: {
+              user: { id: "user-7", organizationId: "org-7" },
+              agent: null,
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (
+        request.url ===
+        "https://api.elizacloud.ai/api/eliza-app/onboarding/chat"
+      ) {
+        onboardingBody = (await request.json()) as Record<string, unknown>;
+        return new Response(
+          JSON.stringify({
+            success: true,
+            data: { reply: "still setting up your agent, one moment" },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      throw new Error(`Unexpected fetch: ${request.url}`);
+    }) as typeof fetch;
+
+    const response = await handleWebhook(
+      requestFor(event),
+      adapter,
+      {
+        redis,
+        cloudBaseUrl: "https://api.elizacloud.ai",
+        getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+      },
+      "eliza-app",
+    );
+
+    expect(response.status).toBe(200);
+    await waitFor(() => adapter.replies.length === 1, "provisioning reply");
+    expect(adapter.replies).toEqual([
+      "still setting up your agent, one moment",
+    ]);
+    expect(onboardingBody).toMatchObject({
+      sessionId: "platform:twilio:+15551234567",
+      platform: "twilio",
+      platformUserId: "+15551234567",
+    });
+  });
+
+  test("caches an unresolved identity only briefly so linking takes effect quickly", async () => {
+    // The negative result must be cached (so webhook retries don't stampede the
+    // resolver) but on a short TTL: the message right after the user links their
+    // account has to reach their real agent, not another onboarding turn.
+    configureEnv();
+    const redis = new MemoryRedis();
+    const event = createTwilioEvent({ messageId: "SM_negcache_1" });
+    const adapter = createAdapter(event);
+    let resolveCalls = 0;
+
+    globalThis.fetch = mock(async (input, init) => {
+      const request = new Request(input, init);
+      if (
+        request.url ===
+        "https://api.elizacloud.ai/api/internal/identity/resolve"
+      ) {
+        resolveCalls += 1;
+        return new Response(JSON.stringify({ success: false }), {
+          status: 404,
+        });
+      }
+      if (
+        request.url ===
+        "https://api.elizacloud.ai/api/eliza-app/onboarding/chat"
+      ) {
+        return new Response(
+          JSON.stringify({ success: true, data: { reply: "hi there" } }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      throw new Error(`Unexpected fetch: ${request.url}`);
+    }) as typeof fetch;
+
+    await handleWebhook(
+      requestFor(event),
+      adapter,
+      {
+        redis,
+        cloudBaseUrl: "https://api.elizacloud.ai",
+        getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+      },
+      "eliza-app",
+    );
+    await waitFor(() => adapter.replies.length === 1, "first onboarding reply");
+
+    // Second inbound message from the same still-unlinked sender reuses the
+    // cached negative result instead of re-querying the resolver.
+    const second = createTwilioEvent({ messageId: "SM_negcache_2" });
+    const secondAdapter = createAdapter(second);
+    await handleWebhook(
+      requestFor(second),
+      secondAdapter,
+      {
+        redis,
+        cloudBaseUrl: "https://api.elizacloud.ai",
+        getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+      },
+      "eliza-app",
+    );
+    await waitFor(
+      () => secondAdapter.replies.length === 1,
+      "second onboarding reply",
+    );
+
+    expect(resolveCalls).toBe(1);
+    expect(redis.store.get("identity:twilio:+15551234567")).toBe(
+      JSON.stringify({ notFound: true }),
+    );
+  });
 });
