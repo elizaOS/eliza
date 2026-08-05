@@ -102,8 +102,8 @@ permissions:
 
 env:
   CI: "true"
-  NODE_VERSION: "24"
-  BUN_VERSION: "canary"
+  NODE_VERSION: "24.15.0"
+  BUN_VERSION: "1.3.14"
   NODE_OPTIONS: "--experimental-sqlite"
 jobs:
   voice-platform-matrix-index:
@@ -270,20 +270,14 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      # setup-bun-workspace instead of a hand-rolled `bun install --frozen-lockfile`:
-      # this repo tracks bun canary, and canary rebuilds reserialize bun.lock
-      # between builds, so a bare frozen install reds with "lockfile had changes,
-      # but lockfile is frozen" on the nightly self-hosted runs (run 28548736294).
-      # The composite handles the drift fallback and restores the committed
-      # lockfile — same invocation as browser-real-bench.yml (#11231) and
-      # scenario-pr.yml. Native apt + protoc are disabled: these self-hosted
+      # Native apt + protoc are disabled: these self-hosted
       # runners build no Rust plugins, the install is --ignore-scripts, and a
       # sudo apt-get would introduce a new failure mode on the fleet.
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           install-protoc: "false"
           skip-avatar-clone: "true"
@@ -372,14 +366,11 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      # setup-bun-workspace instead of a hand-rolled `bun install --frozen-lockfile`
-      # (bun-canary reserializes bun.lock → "lockfile had changes, but lockfile is
-      # frozen"; see run 28548736294).
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           install-protoc: "false"
           skip-avatar-clone: "true"
@@ -435,33 +426,16 @@ jobs:
           bun run --cwd plugins/plugin-local-inference robustness:real \
             2>&1 | tee "$VOICE_REAL_MATRIX_OUT/robustness-real.log"
 
-      # DESIGNED LOUD SKIP (#16972) — never a green-skip: the 26-scenario
-      # workbench gates fired for the first time ever on this lane's first
-      # real execution and 24/26 scenarios fail on uncalibrated
-      # diarization/voice-entity thresholds (DER mean 0.59, voice→entity
-      # 0.36) while every other matrix entry passes. Running it red every
-      # night would recreate the exact unobservable-regression state #16945
-      # fixed. #16972 tracks the calibration campaign; flip
-      # ELIZA_VOICE_WORKBENCH_REAL_READY=1 (repo variable) to re-enable
-      # without editing this file.
+      # Hard-real authority (#16972): the workbench consumes provider-produced
+      # diarization boundaries across the full stream and fails closed when an
+      # asserted signal has no samples. Product-quality failures stay red; this
+      # job must never convert them into an omitted or warning-only matrix.
       - name: Real voice workbench scenario matrix
-        if: vars.ELIZA_VOICE_WORKBENCH_REAL_READY == '1'
         run: |
           set -euo pipefail
           bun run --cwd plugins/plugin-local-inference voice:workbench --real \
             --out "$VOICE_REAL_MATRIX_OUT/voice-workbench-real" \
             2>&1 | tee "$VOICE_REAL_MATRIX_OUT/voice-workbench-real.log"
-
-      - name: Note skipped workbench matrix (gates uncalibrated)
-        if: vars.ELIZA_VOICE_WORKBENCH_REAL_READY != '1'
-        run: |
-          echo "::warning title=voice:workbench --real skipped::The 26-scenario workbench gates are uncalibrated for CI (24/26 fail on first-ever real execution — see elizaOS/eliza#16972). Set repo variable ELIZA_VOICE_WORKBENCH_REAL_READY=1 to re-enable. All other acoustic-matrix entries ran for real above."
-
-      - name: Real packages/benchmarks/voice matrix
-        run: |
-          set -euo pipefail
-          bun packages/benchmarks/voice/voice-real-ci-matrix.mjs \
-            2>&1 | tee "$VOICE_REAL_MATRIX_OUT/benchmarks-voice-real-ci-matrix.log"
 
       # bun test, NOT vitest: these suites need bun:ffi, and vitest's node
       # workers make every one of them skip — a green-skip lie this lane bans.
@@ -513,16 +487,11 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      # setup-bun-workspace instead of a hand-rolled `bun install --frozen-lockfile`:
-      # bun-canary reserializes bun.lock between builds, so a bare frozen install
-      # reds with "lockfile had changes, but lockfile is frozen" (run 28548736294).
-      # The composite handles the drift fallback and restores the committed
-      # lockfile — same pattern as browser-real-bench.yml (#11231) / scenario-pr.yml.
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           install-protoc: "false"
           skip-avatar-clone: "true"
@@ -562,16 +531,11 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      # setup-bun-workspace instead of a hand-rolled `bun install --frozen-lockfile`:
-      # bun-canary reserializes bun.lock between builds, so a bare frozen install
-      # reds with "lockfile had changes, but lockfile is frozen" (run 28548736294).
-      # The composite handles the drift fallback and restores the committed
-      # lockfile — same pattern as browser-real-bench.yml (#11231) / scenario-pr.yml.
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           install-protoc: "false"
           skip-avatar-clone: "true"
@@ -612,16 +576,11 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      # setup-bun-workspace instead of a hand-rolled `bun install --frozen-lockfile`:
-      # bun-canary reserializes bun.lock between builds, so a bare frozen install
-      # reds with "lockfile had changes, but lockfile is frozen" (run 28548736294).
-      # The composite handles the drift fallback and restores the committed
-      # lockfile — same pattern as browser-real-bench.yml (#11231) / scenario-pr.yml.
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           install-protoc: "false"
           skip-avatar-clone: "true"
@@ -662,16 +621,11 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      # setup-bun-workspace instead of a hand-rolled `bun install --frozen-lockfile`:
-      # bun-canary reserializes bun.lock between builds, so a bare frozen install
-      # reds with "lockfile had changes, but lockfile is frozen" (run 28548736294).
-      # The composite handles the drift fallback and restores the committed
-      # lockfile — same pattern as browser-real-bench.yml (#11231) / scenario-pr.yml.
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           install-protoc: "false"
           skip-avatar-clone: "true"

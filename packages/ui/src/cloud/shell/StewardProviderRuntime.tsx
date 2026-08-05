@@ -33,6 +33,7 @@ import {
 } from "react";
 import { scrubPersistedAgentProfileTokens } from "../../state/agent-profiles";
 import { scrubPersistedActiveServerToken } from "../../state/persistence";
+import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
 import {
   clearServerStewardSessionCookies,
   clearStaleStewardSession,
@@ -49,6 +50,35 @@ import {
 const REFRESH_CHECK_INTERVAL_MS = 60_000;
 const REFRESH_AHEAD_SECS = 120;
 type StewardProviderClient = ComponentProps<typeof StewardProvider>["client"];
+
+type StewardResponseBody = { code?: string; token?: string };
+
+async function parseStewardResponseBody(
+  response: Response,
+): Promise<StewardResponseBody | undefined> {
+  try {
+    const body: unknown = await response.json();
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      throw new TypeError("Steward response body must be an object");
+    }
+    const record = body as Record<string, unknown>;
+    return {
+      ...(typeof record.code === "string" ? { code: record.code } : {}),
+      ...(typeof record.token === "string" ? { token: record.token } : {}),
+    };
+  } catch (error) {
+    // error-policy:J3 untrusted response bodies remain explicitly invalid;
+    // callers continue using the HTTP status but never mistake parse failure
+    // for a valid empty payload.
+    reportRendererDiagnostic({
+      scope: "steward.invalid-response-body",
+      error,
+      severity: "warning",
+      context: { status: response.status, url: response.url },
+    });
+    return undefined;
+  }
+}
 
 // The Steward SDK UI (<StewardLogin> on the app-auth sign-in page, wallet,
 // dashboards) otherwise renders with the SDK's default gold accent
@@ -103,21 +133,21 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
             return;
           }
 
-          // error-policy:J3 parse-sanitize — non-JSON/empty body becomes null;
-          // res.status drives the branches below, the code field is advisory.
-          const body = (await res.json().catch(() => null)) as {
-            code?: string;
-          } | null;
+          const body = await parseStewardResponseBody(res);
           if (body?.code === "server_secret_missing") {
-            console.warn(
-              "[steward] /api/auth/steward-session reports server-side secret missing - keeping localStorage token; cookie path will fail until the Worker is configured.",
-            );
+            reportRendererDiagnostic({
+              scope: "steward.server-secret-missing",
+              error: new Error("Steward server secret is not configured"),
+              severity: "warning",
+            });
             return;
           }
           if (res.status !== 401) {
-            console.warn("[steward] Server did not accept stored token", {
-              status: res.status,
-              code: body?.code,
+            reportRendererDiagnostic({
+              scope: "steward.session-token-rejected",
+              error: new Error("Server did not accept the stored token"),
+              severity: "warning",
+              context: { status: res.status, code: body?.code },
             });
             return;
           }
@@ -132,21 +162,31 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
             // once the endpoint recovers — otherwise the session would ride
             // out its lifetime with no HttpOnly cookie ever established.
             lastSyncedToken.current = null;
-            console.warn(
-              "[steward] Session-sync 401 but stored token still valid — keeping it (likely a stale control-plane proxy)",
-            );
+            reportRendererDiagnostic({
+              scope: "steward.session-sync-stale-proxy",
+              error: new Error(
+                "Session sync returned 401 for a still-valid stored token",
+              ),
+              severity: "warning",
+            });
             return;
           }
-          console.warn(
-            "[steward] Stored token rejected by server (401) - clearing",
-          );
+          reportRendererDiagnostic({
+            scope: "steward.session-token-cleared",
+            error: new Error("Stored token was rejected by the server"),
+            severity: "warning",
+          });
           lastSyncedToken.current = null;
           wasAuthenticated.current = false;
           clearStaleStewardSession();
         })
-        .catch((err) =>
-          console.warn("[steward] Failed to set session cookie", err),
-        );
+        .catch((error) => {
+          reportRendererDiagnostic({
+            scope: "steward.session-cookie-sync",
+            error,
+            severity: "warning",
+          });
+        });
     };
 
     // Single-flight: never run two refreshes at once. The refresh-token rotation
@@ -170,11 +210,7 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
             credentials: "include",
           });
           if (res.ok) {
-            // error-policy:J3 parse-sanitize — non-JSON/empty body becomes null;
-            // only a well-formed { token } is written, else the refresh no-ops.
-            const body = (await res.json().catch(() => null)) as {
-              token?: string;
-            } | null;
+            const body = await parseStewardResponseBody(res);
             if (body?.token) {
               writeStoredStewardToken(body.token);
               lastSyncedToken.current = body.token;
@@ -182,8 +218,14 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
             }
             try {
               window.dispatchEvent(new CustomEvent("steward-token-sync"));
-            } catch {
-              // ignore
+            } catch (error) {
+              // error-policy:J7 token persistence remains authoritative when
+              // an optional renderer notification cannot be delivered.
+              reportRendererDiagnostic({
+                scope: "steward.token-sync-event",
+                error,
+                severity: "warning",
+              });
             }
             return;
           }
@@ -203,13 +245,23 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
               }
               clearStaleStewardSession();
             } else {
-              console.warn(
-                "[steward] Refresh 401 but stored token still valid — keeping it (likely a stale control-plane proxy, not a revoked session)",
-              );
+              reportRendererDiagnostic({
+                scope: "steward.refresh-stale-proxy",
+                error: new Error(
+                  "Refresh returned 401 for a still-valid stored token",
+                ),
+                severity: "warning",
+              });
             }
           }
-        } catch (err) {
-          console.warn("[steward] Auto-refresh failed", err);
+        } catch (error) {
+          // error-policy:J4 a transient refresh failure leaves the still-valid
+          // session visible while surfacing the degraded refresh path.
+          reportRendererDiagnostic({
+            scope: "steward.auto-refresh",
+            error,
+            severity: "warning",
+          });
         }
       })().finally(() => {
         refreshInFlight = null;

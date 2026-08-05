@@ -49,8 +49,6 @@ import {
 	setInferenceModelProvider,
 } from "./inference-timing";
 import { createLogger } from "./logger";
-import { simpleHash } from "./optimization/ab-analysis";
-import { getOptimizationRootDir } from "./optimization-root-dir";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle";
 import { createCoreSecurityHooksPlugin } from "./plugins/core-security-hooks";
 import {
@@ -84,6 +82,7 @@ import {
 	findEquivalentFact,
 	mergeStrongerFactMetadata,
 } from "./runtime/fact-write-dedupe";
+import { stringifyForModel } from "./runtime/json-output";
 import { buildProviderCachePlan } from "./runtime/provider-cache-plan";
 import type { ResponseHandlerEvaluator } from "./runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "./runtime/response-handler-field-evaluator";
@@ -121,6 +120,7 @@ import {
 	revalidateOwnerExclusiveDisclosure,
 	trustedDeliveryAudienceCacheKey,
 } from "./security/index.js";
+import { guardOutboundEnvelopeText } from "./security/outbound-envelope-guard.js";
 import { redactWithSecrets } from "./security/redact.js";
 import {
 	parseSecretSwapExemptValues,
@@ -316,11 +316,12 @@ import {
 	getActiveRoutingContextsForTurn,
 	shouldIncludeByContext,
 } from "./utils/context-routing";
-import { buildDeterministicSeed } from "./utils/deterministic";
+import { buildDeterministicSeed, shortStringHash } from "./utils/deterministic";
 import { getNumberEnv } from "./utils/environment";
 import { getErrorMessage, isTransientModelError } from "./utils/model-errors";
 import { captureModelLookupCaller } from "./utils/model-lookup-caller";
 import { PromptBatcher, PromptDispatcher } from "./utils/prompt-batcher";
+import { getOptimizationRootDir } from "./utils/state-dir";
 import {
 	ResponseSkeletonStreamExtractor,
 	StructuredFieldStreamExtractor,
@@ -537,6 +538,15 @@ export interface EmbeddingProbeAttempt {
 	error: string;
 }
 
+/** Providers that satisfy the app's explicit on-device embedding contract. */
+const LOCAL_EMBEDDING_PROVIDERS = new Set([
+	"eliza-router",
+	"eliza-local-inference",
+	"eliza-device-bridge",
+	"capacitor-llama",
+	"eliza-aosp-llama",
+]);
+
 /**
  * Thrown by `AgentRuntime.ensureEmbeddingDimension` when EVERY registered
  * TEXT_EMBEDDING provider failed the null dimension probe. Carries the
@@ -596,11 +606,7 @@ function coerceOutgoingMessageText(text: unknown): string {
 }
 
 function stringifyStructuredForPrompt(value: unknown): string {
-	try {
-		return JSON.stringify(value, null, 2);
-	} catch {
-		return String(value);
-	}
+	return stringifyForModel(value);
 }
 
 function resolveDynamicPromptModelType(
@@ -1766,6 +1772,8 @@ export class AgentRuntime implements IAgentRuntime {
 			try {
 				await entry.handler(this, ctx);
 			} catch (error) {
+				// error-policy:J4 Hooks are isolated so one plugin cannot suppress
+				// later hooks; the failure is surfaced to the agent explicitly.
 				errorMessage = error instanceof Error ? error.message : String(error);
 				this.logger.error(
 					{
@@ -1777,6 +1785,10 @@ export class AgentRuntime implements IAgentRuntime {
 					},
 					`${logLabel} threw; continuing`,
 				);
+				this.reportError("AgentRuntime.pipelineHook", error, {
+					hookId: entry.id,
+					phase: entry.phase,
+				});
 			}
 			{
 				const durationMs = Math.round(performance.now() - t0);
@@ -1836,6 +1848,8 @@ export class AgentRuntime implements IAgentRuntime {
 							...(errorMessage !== undefined ? { error: errorMessage } : {}),
 						});
 					} catch (metricError) {
+						// error-policy:J7 Hook metrics are diagnostics and cannot
+						// interrupt the pipeline they observe.
 						this.logger.debug(
 							{
 								src: "pipeline_hook",
@@ -1849,6 +1863,10 @@ export class AgentRuntime implements IAgentRuntime {
 							},
 							"PIPELINE_HOOK_METRIC listener failed",
 						);
+						this.reportError("AgentRuntime.pipelineHookMetric", metricError, {
+							hookId: entry.id,
+							phase,
+						});
 					}
 				}
 			}
@@ -2036,11 +2054,16 @@ export class AgentRuntime implements IAgentRuntime {
 					);
 				}
 				// Mandatory outbound hygiene, hooks or none: strip leaked model
-				// machine syntax (#15888), then redact secrets. Runs before the
-				// content is persisted, so stored outbound memories carry the same
-				// text the connector delivers.
-				c.content.text = this.redactSecrets(
-					sanitizeOutboundText(coerceOutgoingMessageText(c.content.text)),
+				// machine syntax (#15888), redact secrets, then fail-closed block
+				// any security-envelope echo. Runs before the content is
+				// persisted, so stored outbound memories carry the same text the
+				// connector delivers.
+				c.content.text = guardOutboundEnvelopeText(
+					this,
+					this.redactSecrets(
+						sanitizeOutboundText(coerceOutgoingMessageText(c.content.text)),
+					),
+					"outgoing_before_deliver",
 				);
 				return;
 			}
@@ -2345,6 +2368,8 @@ export class AgentRuntime implements IAgentRuntime {
 				// awaits initPromise which resolves after initialize() completes
 				// (after all registerPlugin calls finish). Awaiting would deadlock.
 				this._ensureServiceStarted(serviceType).catch((err) => {
+					// error-policy:J5 eager startup is fire-and-forget; _runServiceStart
+					// reports the failure and service-load callers observe the rejection.
 					this.logger.error(
 						{
 							src: "agent",
@@ -2548,6 +2573,8 @@ export class AgentRuntime implements IAgentRuntime {
 			try {
 				await Promise.resolve().then(() => maybe.stop?.());
 			} catch (err) {
+				// error-policy:J6 Service shutdown is best-effort so every
+				// registered service receives its teardown opportunity.
 				this.logger.warn(
 					{
 						src: "agent",
@@ -2585,6 +2612,8 @@ export class AgentRuntime implements IAgentRuntime {
 		try {
 			await this._initializeCore(options);
 		} catch (err) {
+			// error-policy:J2 Release initialization waiters before preserving
+			// the original initialization failure for the caller.
 			// Always resolve initPromise so eager service starts and stop()
 			// do not hang waiting on a promise that never settles.
 			if (this.initResolver) {
@@ -2627,6 +2656,37 @@ export class AgentRuntime implements IAgentRuntime {
 		const basicCapabilitiesPlugin = createBasicCapabilitiesPlugin(
 			this.capabilityOptions,
 		);
+		// Extended capabilities predate the native relationships feature and still
+		// export its MESSAGE/POST actions, relationship providers, and evaluators
+		// for compatibility. When the native feature is enabled (the default), it
+		// owns those components. Remove the legacy copies before registration so
+		// startup does not register the same capability family twice.
+		if (this.resolveNativeFeatureEnabled("relationships")) {
+			const nativeRelationships =
+				getNativeRuntimeFeaturePlugin("relationships");
+			const actionNames = new Set(
+				(nativeRelationships.actions ?? []).map((action) => action.name),
+			);
+			const providerNames = new Set(
+				(nativeRelationships.providers ?? []).map((provider) => provider.name),
+			);
+			const evaluatorNames = new Set(
+				(nativeRelationships.evaluators ?? []).map(
+					(evaluator) => evaluator.name,
+				),
+			);
+			basicCapabilitiesPlugin.actions = basicCapabilitiesPlugin.actions?.filter(
+				(action) => !actionNames.has(action.name),
+			);
+			basicCapabilitiesPlugin.providers =
+				basicCapabilitiesPlugin.providers?.filter(
+					(provider) => !providerNames.has(provider.name),
+				);
+			basicCapabilitiesPlugin.evaluators =
+				basicCapabilitiesPlugin.evaluators?.filter(
+					(evaluator) => !evaluatorNames.has(evaluator.name),
+				);
+		}
 		pluginRegistrationPromises.push(
 			this.registerPlugin(basicCapabilitiesPlugin),
 		);
@@ -2927,6 +2987,14 @@ export class AgentRuntime implements IAgentRuntime {
 				if (!(error instanceof EmbeddingDimensionProbeError)) {
 					throw error;
 				}
+				const pendingLocalHandler =
+					error.attempts.length === 1 &&
+					error.attempts[0]?.provider === "local" &&
+					error.attempts[0]?.error.includes(
+						"no on-device embedding handler is registered",
+					);
+				// error-policy:J4 Embeddings enter an explicit disabled state until
+				// the deferred probe succeeds; the runtime remains otherwise usable.
 				// Every registered TEXT_EMBEDDING provider failed the dimension
 				// probe. Do not abort boot: ensureEmbeddingDimension() has already
 				// flipped the runtime into embedding-disabled mode, so memory writes
@@ -2934,14 +3002,29 @@ export class AgentRuntime implements IAgentRuntime {
 				// would silently drop against its default-sized column (#8769). The
 				// deferred boot re-probe (packages/agent) re-runs the probe after
 				// late plugins register and re-enables embeddings on success.
-				this.logger.error(
-					{
-						src: "agent",
-						agentId: this.agentId,
+				const context = {
+					src: "agent",
+					agentId: this.agentId,
+					attempts: error.attempts,
+				};
+				if (pendingLocalHandler) {
+					this.logger.info(
+						context,
+						"Local TEXT_EMBEDDING handler will register during deferred plugin boot; keeping embedding generation disabled until the deferred probe",
+					);
+				} else {
+					this.logger.error(
+						{
+							src: "agent",
+							agentId: this.agentId,
+							attempts: error.attempts,
+						},
+						"All registered TEXT_EMBEDDING providers failed the dimension probe; continuing boot with embedding generation disabled — memory recall over new memories is degraded until a provider recovers",
+					);
+					this.reportError("AgentRuntime.embeddingDimensionProbe", error, {
 						attempts: error.attempts,
-					},
-					"All registered TEXT_EMBEDDING providers failed the dimension probe; continuing boot with embedding generation disabled — memory recall over new memories is degraded until a provider recovers",
-				);
+					});
+				}
 			}
 		}
 
@@ -3488,30 +3571,45 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	registerProvider(provider: Provider) {
+		if (this.providers.includes(provider)) {
+			this.logger.debug(
+				{ src: "agent", agentId: this.agentId, provider: provider.name },
+				"Provider instance already registered, skipping",
+			);
+			return;
+		}
 		const canonical = withCanonicalProviderDocs(provider);
+		Object.assign(provider, canonical);
 		const existingIndex = this.providers.findIndex(
-			(p) => p.name === canonical.name,
+			(p) => p.name === provider.name,
 		);
 		if (existingIndex !== -1) {
 			if (
 				this.resolveComponentCollision(
 					"provider",
-					canonical.name,
-					canonical.override,
+					provider.name,
+					provider.override,
 				)
 			) {
-				this.providers[existingIndex] = canonical;
+				this.providers[existingIndex] = provider;
 			}
 			return;
 		}
-		this.providers.push(canonical);
+		this.providers.push(provider);
 		this.logger.debug(
-			{ src: "agent", agentId: this.agentId, provider: canonical.name },
+			{ src: "agent", agentId: this.agentId, provider: provider.name },
 			"Provider registered",
 		);
 	}
 
 	registerAction(action: Action) {
+		if (this.actions.includes(action)) {
+			this.logger.debug(
+				{ src: "agent", agentId: this.agentId, action: action.name },
+				"Action instance already registered, skipping",
+			);
+			return;
+		}
 		const canonical = withCanonicalActionDocs(action);
 		Object.assign(action, canonical);
 		const existingIndex = this.actions.findIndex((a) => a.name === action.name);
@@ -3583,6 +3681,13 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	registerEvaluator(evaluator: RegisteredEvaluator) {
+		if (this.evaluators.includes(evaluator)) {
+			this.logger.debug(
+				{ src: "agent", agentId: this.agentId, evaluator: evaluator.name },
+				"Evaluator instance already registered, skipping",
+			);
+			return;
+		}
 		const existingIndex = this.evaluators.findIndex(
 			(item) => item.name === evaluator.name,
 		);
@@ -3870,6 +3975,8 @@ export class AgentRuntime implements IAgentRuntime {
 					const ok = await action.validate(this, message, state);
 					if (ok) validated.push(action);
 				} catch (err) {
+					// error-policy:J4 Mode actions are isolated; failed validation is
+					// reported while independent actions remain eligible.
 					this.logger.warn(
 						{
 							src: "agent",
@@ -3880,6 +3987,10 @@ export class AgentRuntime implements IAgentRuntime {
 						},
 						"runActionsByMode validate failed",
 					);
+					this.reportError("AgentRuntime.modeActionValidate", err, {
+						action: action.name,
+						mode,
+					});
 				}
 			}),
 		);
@@ -3996,6 +4107,8 @@ export class AgentRuntime implements IAgentRuntime {
 					}
 				}
 			} catch (err) {
+				// error-policy:J1 The mode-action boundary records an explicit
+				// failed result while allowing independent actions to complete.
 				success = false;
 				errorMsg = err instanceof Error ? err.message : String(err);
 				this.logger.warn(
@@ -4008,6 +4121,10 @@ export class AgentRuntime implements IAgentRuntime {
 					},
 					"runActionsByMode handler failed",
 				);
+				this.reportError("AgentRuntime.modeActionHandler", err, {
+					action: action.name,
+					mode,
+				});
 			}
 
 			await this.emitEvent(EventType.ACTION_COMPLETED, {
@@ -5121,12 +5238,11 @@ export class AgentRuntime implements IAgentRuntime {
 		this.serviceRegistrationStatus.set(key, "registering");
 		await this.initPromise;
 		if (typeof serviceDef.start !== "function") {
-			this.logger.error(
-				{ src: "agent", agentId: this.agentId, serviceType },
-				"Service class has no static start method",
-			);
 			this.serviceRegistrationStatus.set(key, "failed");
-			return null;
+			throw new ElizaError("Service class has no static start method", {
+				code: "SERVICE_START_METHOD_MISSING",
+				context: { serviceType },
+			});
 		}
 		try {
 			if (this.stopped) {
@@ -5136,7 +5252,10 @@ export class AgentRuntime implements IAgentRuntime {
 			const serviceInstance = await serviceDef.start(this);
 			if (!serviceInstance) {
 				this.serviceRegistrationStatus.set(key, "failed");
-				return null;
+				throw new ElizaError("Service start returned no instance", {
+					code: "SERVICE_START_RESULT_INVALID",
+					context: { serviceType },
+				});
 			}
 			if (this.stopped) {
 				await this._stopServiceInstance(
@@ -5165,6 +5284,7 @@ export class AgentRuntime implements IAgentRuntime {
 			this.serviceRegistrationStatus.set(key, "registered");
 			return serviceInstance;
 		} catch (error) {
+			// error-policy:J2 service startup adds service identity and preserves the cause
 			this.reportError("AgentRuntime.serviceStart", error, {
 				serviceType,
 			});
@@ -5177,7 +5297,11 @@ export class AgentRuntime implements IAgentRuntime {
 				this.servicePromises.delete(serviceType);
 			}
 			this.serviceRegistrationStatus.set(key, "failed");
-			return null;
+			throw new ElizaError(`Service ${serviceType} failed to start`, {
+				code: "SERVICE_START_FAILED",
+				cause: error,
+				context: { serviceType },
+			});
 		}
 	}
 
@@ -5320,11 +5444,10 @@ export class AgentRuntime implements IAgentRuntime {
 		const serviceName = (serviceDef as { name?: string }).name || "Unknown";
 
 		if (!serviceType) {
-			this.logger.warn(
-				{ src: "agent", agentId: this.agentId, serviceName },
-				"Service missing serviceType property",
-			);
-			return;
+			throw new ElizaError("Service is missing its serviceType property", {
+				code: "SERVICE_TYPE_MISSING",
+				context: { serviceName },
+			});
 		}
 		this.logger.debug(
 			{ src: "agent", agentId: this.agentId, serviceType },
@@ -5340,7 +5463,10 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 		const serviceClassList = this.serviceTypes.get(serviceType);
 		if (!serviceClassList) {
-			return;
+			throw new ElizaError("Service type registry initialization failed", {
+				code: "SERVICE_TYPE_REGISTRY_INVALID",
+				context: { serviceType },
+			});
 		}
 		serviceClassList.push(serviceDef);
 	}
@@ -5854,6 +5980,8 @@ export class AgentRuntime implements IAgentRuntime {
 				},
 			])
 			.catch((error) => {
+				// error-policy:J7 Model-call logs are diagnostic; report failed
+				// persistence without altering the completed model response.
 				this.logger.debug(
 					{
 						src: "agent",
@@ -5863,6 +5991,9 @@ export class AgentRuntime implements IAgentRuntime {
 					},
 					"Model call log write failed",
 				);
+				this.reportError("AgentRuntime.modelCallLog", error, {
+					model: modelKey,
+				});
 			});
 	}
 
@@ -6819,6 +6950,8 @@ export class AgentRuntime implements IAgentRuntime {
 				);
 				return resultRef.current as R;
 			} catch (error) {
+				// error-policy:J4 Provider failover is an explicit degraded path;
+				// the final provider failure is rethrown if no alternative succeeds.
 				if (handlerStartedAt === null) {
 					recordInferenceSpan(
 						`model-preprocess:${String(modelType)}`,
@@ -6943,8 +7076,10 @@ export class AgentRuntime implements IAgentRuntime {
 						? resultRecord.finishReason
 						: undefined,
 				providerMetadata: resultRecord.providerMetadata,
-				temperature: typeof tempRaw === "number" ? tempRaw : 0,
-				maxTokens: typeof maxTokensRaw === "number" ? maxTokensRaw : 0,
+				...(typeof tempRaw === "number" ? { temperature: tempRaw } : {}),
+				...(typeof maxTokensRaw === "number"
+					? { maxTokens: maxTokensRaw }
+					: {}),
 				purpose: trajCtx.purpose ?? "action",
 				actionType: "runtime.useModel",
 				latencyMs: Math.max(0, Math.round(args.elapsedTime)),
@@ -6962,8 +7097,15 @@ export class AgentRuntime implements IAgentRuntime {
 				providerOrder: trajCtx.providerOrder,
 				providerAttributions: trajCtx.providerAttributions,
 			});
-		} catch {
-			// Trajectory logging must never break core model flow.
+		} catch (error) {
+			// error-policy:J7 Trajectory logging must never break core model flow.
+			this.logger.warn(
+				{ error, modelType: args.modelType },
+				"Failed to record model-call trajectory",
+			);
+			this.reportError("AgentRuntime.recordUseModelTrajectory", error, {
+				modelType: args.modelType,
+			});
 		}
 	}
 
@@ -7332,10 +7474,15 @@ export class AgentRuntime implements IAgentRuntime {
 					traceVariant = merged.variant;
 					traceArtifactVersion = merged.artifactVersion;
 				} catch (optErr) {
+					// error-policy:J4 Prompt optimization is optional; the
+					// unoptimized baseline remains the explicit degraded path.
 					this.logger.warn(
 						{ error: optErr },
 						"Optimization artifact lookup failed",
 					);
+					this.reportError("AgentRuntime.promptOptimizationLookup", optErr, {
+						promptKey: tracePromptKey,
+					});
 				}
 			}
 
@@ -7684,6 +7831,8 @@ ${section_end}`;
 					this.useModel(resolvedModelType, modelParams, options.model),
 				);
 			} catch (modelError) {
+				// error-policy:J4 Structured generation retries transient model
+				// failures and records an explicit failure state on exhaustion.
 				const modelErrorMessage = getErrorMessage(modelError);
 				const isTransientFailure = isTransientModelError(modelError);
 				const willRetry = currentRetry + 1 <= maxRetries;
@@ -7764,6 +7913,8 @@ ${section_end}`;
 					`dynamicPromptExecFromState parsed: ${JSON.stringify(responseContent)}`,
 				);
 			} catch (e) {
+				// error-policy:J3 Model output is untrusted input; parse failure
+				// becomes an explicit invalid attempt for schema retry.
 				parseErrorMessage = e instanceof Error ? e.message : String(e);
 				this.logger.error(
 					`dynamicPromptExecFromState parse error: ${parseErrorMessage}`,
@@ -7971,7 +8122,7 @@ ${section_end}`;
 							typeof params.prompt === "string"
 								? params.prompt
 								: tracePromptKey;
-						const computedTemplateHash = simpleHash(templateHashInput);
+						const computedTemplateHash = shortStringHash(templateHashInput);
 
 						const trace: ExecutionTrace = {
 							id: uuidv4(),
@@ -8018,20 +8169,37 @@ ${section_end}`;
 								schema: JSON.parse(JSON.stringify(schema)) as SchemaRow[],
 							})
 							.catch((err) => {
+								// error-policy:J7 Optimization registries are diagnostic.
 								this.logger.warn(
 									{ error: err, src: "dpe" },
 									"Failed to write prompt optimization registry",
+								);
+								this.reportError(
+									"AgentRuntime.promptOptimizationRegistry",
+									err,
+									{ promptKey: tracePromptKey },
 								);
 							});
 						void optimizationHooks
 							.appendBaselineTrace(this, { trace })
 							.catch((err) => {
+								// error-policy:J7 Optimization traces are diagnostic.
 								this.logger.warn("Failed to write optimization trace", err);
+								this.reportError("AgentRuntime.promptOptimizationTrace", err, {
+									promptKey: tracePromptKey,
+								});
 							});
 					} catch (traceErr) {
+						// error-policy:J7 Optimization traces are diagnostic and
+						// cannot change an otherwise valid structured response.
 						this.logger.warn(
 							{ error: traceErr },
 							"Failed to build optimization trace",
+						);
+						this.reportError(
+							"AgentRuntime.buildPromptOptimizationTrace",
+							traceErr,
+							{ promptKey: tracePromptKey },
 						);
 					}
 				}
@@ -8230,7 +8398,7 @@ ${section_end}`;
 					reason: "All retry attempts exhausted",
 				});
 
-				const failTemplateHash = simpleHash(
+				const failTemplateHash = shortStringHash(
 					typeof params.prompt === "string" ? params.prompt : tracePromptKey,
 				);
 
@@ -8266,18 +8434,35 @@ ${section_end}`;
 						schema: JSON.parse(JSON.stringify(schema)) as SchemaRow[],
 					})
 					.catch((err) => {
+						// error-policy:J7 Optimization registries are diagnostic.
 						this.logger.warn(
 							{ error: err, src: "dpe" },
 							"Failed to write prompt optimization registry",
 						);
+						this.reportError("AgentRuntime.promptOptimizationRegistry", err, {
+							promptKey: tracePromptKey,
+						});
 					});
 				void optimizationHooks
 					.appendFailureTrace(this, { trace })
 					.catch((err) => {
+						// error-policy:J7 Optimization traces are diagnostic.
 						this.logger.warn("Failed to write failure trace", err);
+						this.reportError(
+							"AgentRuntime.promptOptimizationFailureTrace",
+							err,
+							{ promptKey: tracePromptKey },
+						);
 					});
 			} catch (traceErr) {
+				// error-policy:J7 Failure traces are diagnostic and cannot replace
+				// the structured failure already returned to the caller.
 				this.logger.warn({ error: traceErr }, "Failed to build failure trace");
+				this.reportError(
+					"AgentRuntime.buildPromptOptimizationFailureTrace",
+					traceErr,
+					{ promptKey: tracePromptKey },
+				);
 			}
 		}
 
@@ -9391,15 +9576,55 @@ ${section_end}`;
 				"Database adapter not initialized before ensureEmbeddingDimension",
 			);
 		}
-		const registrations = this.resolveModelRegistrations(
+		const allRegistrations = this.resolveModelRegistrations(
 			ModelType.TEXT_EMBEDDING,
 		);
-		if (registrations.length === 0) {
+		if (allRegistrations.length === 0) {
 			throw new Error("No TEXT_EMBEDDING model registered");
 		}
 
-		// Probe every registered TEXT_EMBEDDING provider in the same priority
-		// order useModel resolves them. The probe passes null; handlers return a
+		// EMBEDDING_PROVIDER=local is an ownership boundary, not a preference.
+		// In particular, the dimension probe must not bypass the local router and
+		// explicitly invoke cloud handlers: doing so caused clean local app boots
+		// to send embedding batches to Eliza Cloud when the GGUF was still staging.
+		// Prefer the router when present because it owns local device selection;
+		// otherwise fail over only among concrete on-device handlers.
+		const configuredProvider = String(
+			this.getSetting("EMBEDDING_PROVIDER") ?? "",
+		)
+			.trim()
+			.toLowerCase();
+		const localOnly = configuredProvider === "local";
+		const localRegistrations = localOnly
+			? allRegistrations.filter((registration) =>
+					LOCAL_EMBEDDING_PROVIDERS.has(registration.provider),
+				)
+			: [];
+		const routerRegistrations = localRegistrations.filter(
+			(registration) => registration.provider === "eliza-router",
+		);
+		const registrations = localOnly
+			? routerRegistrations.length > 0
+				? routerRegistrations
+				: localRegistrations
+			: allRegistrations;
+		if (localOnly && registrations.length === 0) {
+			const probeError = new EmbeddingDimensionProbeError([
+				{
+					provider: "local",
+					modelKey: ModelType.TEXT_EMBEDDING,
+					error:
+						"EMBEDDING_PROVIDER=local but no on-device embedding handler is registered",
+				},
+			]);
+			this.disableEmbeddingGeneration(probeError.message);
+			throw probeError;
+		}
+
+		// Probe every eligible TEXT_EMBEDDING provider in the same priority order
+		// useModel resolves them. An explicit local policy limits eligibility to
+		// on-device handlers; it never falls through to a remote provider. The
+		// probe passes null; handlers return a
 		// zero-filled vector of their real output width. A provider that cannot
 		// answer the null probe cannot produce usable vectors either, so ANY
 		// probe failure — not just a rate limit — advances to the next
@@ -9423,6 +9648,8 @@ ${section_end}`;
 					registration.provider,
 				);
 			} catch (error) {
+				// error-policy:J4 Probe each registered provider independently;
+				// exhaustion throws EmbeddingDimensionProbeError below.
 				if (!(error instanceof NoModelProviderConfiguredError)) {
 					allFailuresBenign = false;
 				}
@@ -9438,7 +9665,9 @@ ${section_end}`;
 						provider: registration.provider,
 						error: error instanceof Error ? error.message : String(error),
 					},
-					"TEXT_EMBEDDING provider failed the dimension probe; trying next registered provider",
+					localOnly
+						? "Local TEXT_EMBEDDING provider failed the dimension probe; remote fallback is disabled"
+						: "TEXT_EMBEDDING provider failed the dimension probe; trying next registered provider",
 				);
 				continue;
 			}
@@ -9455,7 +9684,9 @@ ${section_end}`;
 						agentId: this.agentId,
 						provider: registration.provider,
 					},
-					"TEXT_EMBEDDING provider returned an invalid probe embedding; trying next registered provider",
+					localOnly
+						? "Local TEXT_EMBEDDING provider returned an invalid probe embedding; remote fallback is disabled"
+						: "TEXT_EMBEDDING provider returned an invalid probe embedding; trying next registered provider",
 				);
 				continue;
 			}
@@ -9871,6 +10102,8 @@ ${section_end}`;
 			maxRetries: 3,
 			runId: this.getCurrentRunId(),
 		}).catch((error) => {
+			// error-policy:J7 The asynchronous request must surface even though
+			// it cannot block the memory write that scheduled it.
 			this.logger.warn(
 				{
 					src: "runtime",
@@ -9880,6 +10113,10 @@ ${section_end}`;
 				},
 				"Embedding generation request failed",
 			);
+			this.reportError("AgentRuntime.embeddingGenerationRequest", error, {
+				memoryId: memory.id,
+				priority,
+			});
 		});
 	}
 	async getMemories(params: {
@@ -11402,11 +11639,18 @@ ${section_end}`;
 		// delivers the original text rather than blocking the send.
 		const voicedContent = await ensureAgentVoice(this, content, { source });
 		// Proactive sends bypass the message-turn callback wrap, so the shared
-		// machine-syntax sanitizer (#15888) applies here — after the voice gate,
-		// whose rephrase is itself model text.
+		// machine-syntax sanitizer (#15888) and the fail-closed envelope guard
+		// apply here — after the voice gate, whose rephrase is itself model text.
 		const outboundContent =
 			typeof voicedContent.text === "string"
-				? { ...voicedContent, text: sanitizeOutboundText(voicedContent.text) }
+				? {
+						...voicedContent,
+						text: guardOutboundEnvelopeText(
+							this,
+							sanitizeOutboundText(voicedContent.text),
+							"sendMessageToTarget",
+						),
+					}
 				: voicedContent;
 		return handler(this, target, outboundContent);
 	}

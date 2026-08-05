@@ -225,11 +225,7 @@ export function stripOptionalHostPort(value: string): string {
 
 	const lower = trimmed.toLowerCase();
 	if (lower.startsWith("http://") || lower.startsWith("https://")) {
-		try {
-			return new URL(lower).hostname.toLowerCase();
-		} catch {
-			return lower;
-		}
+		return new URL(lower).hostname.toLowerCase();
 	}
 
 	if (lower.startsWith("[")) {

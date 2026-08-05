@@ -221,32 +221,33 @@ curl -X POST "https://elizacloud.ai/api/a2a" \
   -d '...'
 ```
 
-## Registering Your Agent
+## Publishing an Agent for A2A
 
-Make your agent discoverable:
+Publish an existing agent and enable its A2A endpoint:
 
 ```bash
-curl -X POST "https://elizacloud.ai/api/agents/{agentId}/registration.json" \
+curl -X POST "https://elizacloud.ai/api/v1/agents/{agentId}/publish" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "My Custom Agent",
-    "skills": ["chat", "analysis"],
-    "pricing": {
-      "perMessage": 0.002
-    },
-    "visibility": "public"
+    "a2aEnabled": true,
+    "mcpEnabled": false,
+    "enableMonetization": false
   }'
 ```
+
+The response includes the agent-specific endpoint at
+`/api/agents/{agentId}/a2a`. `GET` returns its Agent Card; `POST` accepts
+authenticated JSON-RPC requests.
 
 ## Protocol Specification
 
 A2A follows the Google A2A specification with extensions:
 
 - JSON-RPC 2.0 transport
-- Server-Sent Events for streaming
-- Standard task lifecycle
-- Artifact types for multi-modal output
+- Synchronous JSON-RPC requests
+- Agent Card discovery
+- Per-agent billing and access control
 
 <Info>
   See the [A2A specification](https://github.com/google/a2a) for full protocol

@@ -19,11 +19,11 @@ const packageRoot = path.resolve(
 );
 
 const VALID: RegistryEntry = {
-  package: "elizaos-plugin-echo",
-  repository: "github:elizaOS/eliza",
+  package: "example-plugin",
+  repository: "github:example/example-plugin",
   kind: "plugin",
   description: "Echoes a message.",
-  directory: "packages/examples/plugin-echo",
+  directory: "plugins/example-plugin",
   tags: ["example"],
 };
 
@@ -65,7 +65,7 @@ describe("validateRegistryEntry", () => {
   it("rejects the reserved @elizaos scope", () => {
     const errors = validateRegistryEntry({
       ...VALID,
-      package: "@elizaos/plugin-echo",
+      package: "@elizaos/example-plugin",
     });
     expect(errors).toContain(
       "package must not use the reserved @elizaos/* scope",
@@ -136,12 +136,12 @@ describe("validateRegistryEntry", () => {
 describe("toGeneratedEntry", () => {
   it("maps a source entry to the wire format", () => {
     const wire = toGeneratedEntry(VALID);
-    expect(wire.git.repo).toBe("elizaOS/eliza");
-    expect(wire.npm.repo).toBe("elizaos-plugin-echo");
+    expect(wire.git.repo).toBe("example/example-plugin");
+    expect(wire.npm.repo).toBe("example-plugin");
     expect(wire.thirdParty).toBe(true);
     expect(wire.firstParty).toBe(false);
     expect(wire.supports).toEqual({ v0: false, v1: false, v2: true });
-    expect(wire.directory).toBe("packages/examples/plugin-echo");
+    expect(wire.directory).toBe("plugins/example-plugin");
   });
 
   it("preserves app launch metadata in the wire format", () => {
@@ -158,12 +158,11 @@ describe("toGeneratedEntry", () => {
 });
 
 describe("on-disk entries", () => {
-  it("all entries are valid and include the echo example", () => {
+  it("all entries are valid and generate a complete registry", () => {
     const entries = loadThirdPartyEntries();
     expect(entries.length).toBeGreaterThan(0);
-    expect(entries.some((e) => e.package === "elizaos-plugin-echo")).toBe(true);
     const { registry } = generateRegistry(entries);
-    expect(registry["elizaos-plugin-echo"]).toBeDefined();
+    expect(Object.keys(registry)).toHaveLength(entries.length);
   });
 
   it("keeps generated-registry.json in sync with source entries", () => {

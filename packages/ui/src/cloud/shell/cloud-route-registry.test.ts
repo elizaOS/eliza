@@ -53,7 +53,8 @@ describe("cloud route public registration policy", () => {
     });
 
     expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining("re-registered from private to public"),
+      expect.anything(),
+      expect.stringContaining("cloud-routes.private-to-public-reregistration"),
     );
   });
 });

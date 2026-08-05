@@ -59,7 +59,7 @@ test.describe("in-chat onboarding → home → launcher", () => {
 
   test.afterEach(async ({ page }, testInfo) => {
     // The chat-native tour narrates through the real voice engine the moment
-    // "Take the tutorial" completes onboarding; the keyless harness's stubbed
+    // "Take the tutorial" completes onboarding; the deterministic model-provider runtime's stubbed
     // TTS audio can't be decoded, and useVoiceChat's designed fail-closed path
     // logs exactly that one error. Everything else must stay clean.
     await expectOnlyAllowedPageDiagnostics(page, testInfo.title, [

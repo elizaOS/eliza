@@ -147,7 +147,7 @@ const KEYWORD_ICONS: Array<[RegExp, LucideIcon]> = [
   [/vector|database|memory|embedding|knowledge/, Database],
   [/trajector|\blog/, Activity],
   [/feed|social|alpha/, Rss],
-  [/glass|facewear|smart ?glass|\bxr\b|spatial|vr\b/, Glasses],
+  [/glass|\bxr\b|spatial|vr\b/, Glasses],
   [/arcade|\bgame/, Gamepad2],
   [/coordinat|orchestrat|builder|maker|coding|workflow/, Bot],
   [/plugin|catalog|apps?\b/, LayoutGrid],

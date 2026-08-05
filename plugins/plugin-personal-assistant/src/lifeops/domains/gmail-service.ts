@@ -1,7 +1,7 @@
 /**
  * Gmail domain for LifeOps: the assistant's inbox-triage surface over the
  * owner's Gmail — search, unresponded/needs-response feeds, spam review, reply
- * drafting and batch sends. Projects `@elizaos/plugin-google` results into
+ * drafting and batch sends. Projects `@elizaos/plugin-google-workspace` results into
  * assistant DTOs; the actual Gmail API access lives in the google plugin.
  */
 import crypto from "node:crypto";
@@ -199,7 +199,7 @@ function draftForMessage(
 
 /**
  * Gmail triage, search, drafting, and send/manage flows backed by
- * `@elizaos/plugin-google`. Depends on the `google` domain's grant resolution
+ * `@elizaos/plugin-google-workspace`. Depends on the `google` domain's grant resolution
  * (`requireGoogleGmailGrant` / `requireGoogleGmailSendGrant`) injected via
  * {@link GmailDomainDeps}.
  */
@@ -580,7 +580,7 @@ export class GmailDomain {
     if (!grant.capabilities.includes("google.gmail.manage")) {
       fail(
         403,
-        "Gmail management access has not been granted. Reconnect Google through @elizaos/plugin-google with Gmail manage scope.",
+        "Gmail management access has not been granted. Reconnect Google through @elizaos/plugin-google-workspace with Gmail manage scope.",
       );
     }
 
@@ -699,7 +699,7 @@ export class GmailDomain {
 
     await this.ctx.recordConnectorAudit(
       grant.id,
-      "gmail messages managed through plugin-google",
+      "gmail messages managed through plugin-google-workspace",
       {
         operation,
         query,

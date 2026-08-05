@@ -120,7 +120,7 @@ export function VoiceTierBanner({
         ) : null}
         {summary ? (
           <p
-            className="mt-0.5 text-xs text-muted/80"
+            className="mt-0.5 text-xs text-muted"
             data-testid="voice-tier-summary"
           >
             {summary}

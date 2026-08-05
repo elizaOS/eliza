@@ -1,3 +1,4 @@
+/** Verifies TaskWidget through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // TaskWidget: fallback title until the first fetch, then the fetched title /

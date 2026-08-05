@@ -11,9 +11,25 @@ import { getUsageProvider } from "./config";
 
 const MAX_PROMPT_LENGTH = 200;
 
+/**
+ * Transient-retry totals for one model call. Accumulated by the retry loops in
+ * `models/text.ts` and surfaced on MODEL_USED (and the call result's
+ * `providerMetadata`) so a served response that survived provider hiccups is
+ * distinguishable from a clean first-attempt response — an opaque retry loop
+ * hides exactly the failure signal operators need when a provider degrades.
+ */
+export interface ModelRetryTelemetry {
+  /** Transient attempts re-issued before this call was served; 0 = first attempt. */
+  retryCount: number;
+  /** Provider error message behind the most recent retry, when any occurred. */
+  lastRetryReason: string | undefined;
+}
+
 type OpenAIModelUsageEventPayload = ModelEventPayload & {
   source: "openai";
   prompt: string;
+  retryCount?: number;
+  lastRetryReason?: string;
 };
 
 interface AISDKUsage {
@@ -77,7 +93,8 @@ export function emitModelUsageEvent(
   type: ModelTypeName,
   prompt: string,
   usage: ModelUsage,
-  modelName: string
+  modelName: string,
+  retry?: ModelRetryTelemetry
 ): void {
   const normalized = normalizeUsage(usage);
   const model = modelName.trim();
@@ -94,6 +111,14 @@ export function emitModelUsageEvent(
     modelName: model,
     modelLabel: String(type),
     prompt: truncatePrompt(prompt),
+    ...(retry
+      ? {
+          retryCount: retry.retryCount,
+          ...(retry.lastRetryReason !== undefined
+            ? { lastRetryReason: retry.lastRetryReason }
+            : {}),
+        }
+      : {}),
     tokens: {
       prompt: normalized.promptTokens,
       completion: normalized.completionTokens,

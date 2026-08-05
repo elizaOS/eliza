@@ -29,6 +29,15 @@ export function hashStringToUint32(value: string): number {
 	return hash >>> 0;
 }
 
+/** Produce the compact non-cryptographic fingerprint used for trace keys. */
+export function shortStringHash(value: string): string {
+	let hash = 5381;
+	for (let index = 0; index < value.length; index += 1) {
+		hash = ((hash * 31) ^ value.charCodeAt(index)) >>> 0;
+	}
+	return hash.toString(16);
+}
+
 export function createDeterministicRandom(seed: string | number): () => number {
 	let state =
 		typeof seed === "number" ? seed >>> 0 : hashStringToUint32(String(seed));

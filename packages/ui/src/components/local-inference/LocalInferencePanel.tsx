@@ -23,6 +23,7 @@ import { useAppSelectorShallow } from "../../state";
 import { resolveApiUrl } from "../../utils/asset-url";
 import { getElizaApiToken } from "../../utils/eliza-globals";
 import { openEventSource } from "../../utils/event-source";
+import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
 import { AdvancedSettingsDisclosure } from "../settings/settings-control-primitives";
 import { Button } from "../ui/button";
 import { ActiveModelBar } from "./ActiveModelBar";
@@ -483,7 +484,11 @@ function VoiceModelUpdatesSection() {
           })),
         );
       } catch (err) {
-        console.warn("[voice-models] bootstrap failed", err);
+        reportRendererDiagnostic({
+          scope: "voice-models.bootstrap",
+          error: err,
+          severity: "warning",
+        });
       }
     })();
     return () => {

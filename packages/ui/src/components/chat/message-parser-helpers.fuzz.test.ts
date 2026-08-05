@@ -1,3 +1,4 @@
+/** Verifies sanitizePatchValue — fuzz through the package's configured test harness. */
 // Fuzz / hardening pass for the chat parser security boundaries. parseSegments,
 // the JSONL-patch compiler, and sanitizePatchValue all consume UNTRUSTED agent
 // output, so the load-bearing invariants are:

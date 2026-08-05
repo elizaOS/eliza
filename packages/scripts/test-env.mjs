@@ -74,7 +74,7 @@ if (lane === "pr") {
   const exports = [
     ["TEST_LANE", "pr"],
     ["ELIZA_LIVE_TEST", "0"],
-    ["SCENARIO_USE_LLM_PROXY", "1"],
+    ["SCENARIO_USE_DETERMINISTIC_MODEL", "1"],
   ];
 
   for (const [key, value] of exports) {

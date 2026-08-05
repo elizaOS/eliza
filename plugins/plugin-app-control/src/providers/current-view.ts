@@ -30,6 +30,7 @@ import type {
 import { logger } from "@elizaos/core";
 import { createViewsClient } from "../actions/views-client.js";
 import { resolveIntentView } from "../actions/views-show.js";
+import { userRequestMessageText } from "../params.js";
 
 const EMPTY: ProviderResult = { text: "", values: {}, data: {} };
 
@@ -46,6 +47,10 @@ export const currentViewProvider: Provider = {
 	name: "current_view",
 	description:
 		"The UI view the user is currently looking at — and whether the agent just switched it — so replies acknowledge the move and stay aware of view switches.",
+	// Explicitly retain the historical general-context fallback. The compose hook
+	// below remains the authority that adds this provider to Stage 1 only for
+	// switch turns, so declaring the context does not make it always-on.
+	contexts: ["general"],
 	// Just after available_apps. Composed in the planner state by default; pulled
 	// into the Stage-1 response state on switch turns by the compose hook.
 	position: -7,
@@ -54,8 +59,8 @@ export const currentViewProvider: Provider = {
 		message: Memory,
 	): Promise<ProviderResult> => {
 		try {
-			const text =
-				typeof message?.content?.text === "string" ? message.content.text : "";
+			// Security-unwrapped user words — never raw (possibly enveloped) text.
+			const text = userRequestMessageText(message);
 			// Imminent explicit switch: the early shortcut will force VIEWS for this
 			// exact phrase, so the reply being generated now can acknowledge it.
 			const intentTargetId = resolveIntentView(text);

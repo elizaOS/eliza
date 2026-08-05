@@ -53,16 +53,20 @@ export interface SetupStartParams {
 /**
  * Result of setup.start RPC.
  */
-export interface SetupStartResult {
-	/** Whether start was successful */
-	success: boolean;
-	/** Session ID for subsequent calls */
-	sessionId: string;
-	/** Initial state */
-	state: SetupRpcState;
-	/** Error message if failed */
-	error?: string;
-}
+export type SetupStartResult =
+	| {
+			/** A new or restored setup session is ready. */
+			success: true;
+			/** Session ID for subsequent calls. */
+			sessionId: string;
+			/** Initial state. */
+			state: SetupRpcState;
+	  }
+	| {
+			/** Session creation failed before usable state existed. */
+			success: false;
+			error: string;
+	  };
 
 /**
  * Parameters for setup.step RPC.
@@ -77,16 +81,20 @@ export interface SetupStepParams {
 /**
  * Result of setup.step RPC.
  */
-export interface SetupStepResult {
-	/** Whether step was successful */
-	success: boolean;
-	/** Updated state after step */
-	state: SetupRpcState;
-	/** Error if step failed */
-	error?: string;
-	/** Message for the user */
-	message?: string;
-}
+export type SetupStepResult =
+	| {
+			success: true;
+			/** Updated state after a successful transition. */
+			state: SetupRpcState;
+			message?: string;
+	  }
+	| {
+			success: false;
+			/** State is present only when a real session was available. */
+			state?: SetupRpcState;
+			error: string;
+			message?: string;
+	  };
 
 /**
  * Parameters for setup.getState RPC.
@@ -208,6 +216,7 @@ export class SetupRPCService {
 			try {
 				callback(sessionId, oldState, newState);
 			} catch (err) {
+				// error-policy:J1 state-change notification isolates independent RPC subscribers
 				logger.error(
 					{ err, sessionId },
 					"[SetupRPCService] Error in state change callback",
@@ -301,11 +310,10 @@ export class SetupRPCService {
 				state: this.toSetupRpcState(machine),
 			};
 		} catch (err) {
+			// error-policy:J1 the RPC boundary returns an explicit failed-start variant
 			logger.error({ err }, "[SetupRPCService] Error starting setup");
 			return {
 				success: false,
-				sessionId: "",
-				state: {} as SetupRpcState,
 				error: err instanceof Error ? err.message : String(err),
 			};
 		}
@@ -319,7 +327,6 @@ export class SetupRPCService {
 		if (!machine) {
 			return {
 				success: false,
-				state: {} as SetupRpcState,
 				error: `Session not found: ${params.sessionId}`,
 			};
 		}
@@ -333,13 +340,16 @@ export class SetupRPCService {
 				this.notifyStateChange(params.sessionId, oldState, newState);
 			}
 
-			return {
-				success: result.success,
-				state: newState,
-				error: result.error?.message,
-				message: result.message,
-			};
+			return result.success
+				? { success: true, state: newState, message: result.message }
+				: {
+						success: false,
+						state: newState,
+						error: result.error?.message ?? "Setup step failed",
+						message: result.message,
+					};
 		} catch (err) {
+			// error-policy:J1 the RPC boundary preserves the real session state on failure
 			logger.error(
 				{ err, sessionId: params.sessionId },
 				"[SetupRPCService] Error processing step",
@@ -409,7 +419,6 @@ export class SetupRPCService {
 		if (!machine) {
 			return {
 				success: false,
-				state: {} as SetupRpcState,
 				error: `Session not found: ${params.sessionId}`,
 			};
 		}
@@ -423,13 +432,16 @@ export class SetupRPCService {
 				this.notifyStateChange(params.sessionId, oldState, newState);
 			}
 
-			return {
-				success: result.success,
-				state: newState,
-				error: result.error?.message,
-				message: result.message,
-			};
+			return result.success
+				? { success: true, state: newState, message: result.message }
+				: {
+						success: false,
+						state: newState,
+						error: result.error?.message ?? "Setup navigation failed",
+						message: result.message,
+					};
 		} catch (err) {
+			// error-policy:J1 the RPC boundary preserves the real session state on failure
 			logger.error(
 				{ err, sessionId: params.sessionId },
 				"[SetupRPCService] Error going back",
@@ -450,7 +462,6 @@ export class SetupRPCService {
 		if (!machine) {
 			return {
 				success: false,
-				state: {} as SetupRpcState,
 				error: `Session not found: ${params.sessionId}`,
 			};
 		}
@@ -464,13 +475,16 @@ export class SetupRPCService {
 				this.notifyStateChange(params.sessionId, oldState, newState);
 			}
 
-			return {
-				success: result.success,
-				state: newState,
-				error: result.error?.message,
-				message: result.message,
-			};
+			return result.success
+				? { success: true, state: newState, message: result.message }
+				: {
+						success: false,
+						state: newState,
+						error: result.error?.message ?? "Setup skip failed",
+						message: result.message,
+					};
 		} catch (err) {
+			// error-policy:J1 the RPC boundary preserves the real session state on failure
 			logger.error(
 				{ err, sessionId: params.sessionId },
 				"[SetupRPCService] Error skipping step",

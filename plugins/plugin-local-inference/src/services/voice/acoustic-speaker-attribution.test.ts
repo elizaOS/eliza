@@ -58,13 +58,6 @@ describe("extractTimbreEmbedding", () => {
 		const emb = extractTimbreEmbedding(silent, SR);
 		expect(emb.every((v) => v === 0)).toBe(true);
 	});
-
-	it("is deterministic (byte-stable across calls)", () => {
-		const t = speakerTimbreForIndex(1, 3);
-		expect(extractTimbreEmbedding(clip(t, 7), SR)).toEqual(
-			extractTimbreEmbedding(clip(t, 7), SR),
-		);
-	});
 });
 
 describe("OnlineSpeakerClusterer", () => {

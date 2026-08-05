@@ -150,6 +150,30 @@ describe("RECENT_ERRORS provider", () => {
 		expect(result.text).not.toContain("TASK_TICK_FAILED");
 	});
 
+	it("frames the block as internal diagnostics that never absorb user questions", async () => {
+		// A live "available_apps provider timeout" rendered without this framing
+		// got answered as if it were the user's question (tj-f8249b30e986d6).
+		const entries: ReportedError[] = [
+			{
+				scope: "provider:available_apps",
+				code: "PROVIDER_TIMEOUT",
+				message: "available_apps provider timeout",
+				at: Date.now() - 100,
+			},
+		];
+		const result = await recentErrorsProvider.get(
+			runtimeWith(entries),
+			message,
+			state,
+		);
+		expect(result.text).toContain("internal diagnostics");
+		expect(result.text).toContain(
+			"Never assume a user's message refers to them unless the user explicitly asks about errors.",
+		);
+		// The self-healing / escalation instruction is unchanged.
+		expect(result.text).toContain("tell the owner");
+	});
+
 	it("exports the quiet-code set with the scheduler plumbing codes", () => {
 		expect(QUIET_ERROR_CODES.has("TASK_TICK_FAILED")).toBe(true);
 		expect(QUIET_ERROR_CODES.has("TASK_WORKER_MISSING")).toBe(true);

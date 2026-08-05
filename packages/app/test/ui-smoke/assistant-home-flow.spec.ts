@@ -825,7 +825,7 @@ test.describe("assistant home app flow", () => {
       }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: /Open RPC settings/i }),
+      page.getByRole("button", { name: "RPC settings", exact: true }),
     ).toBeVisible();
     await screenshot(page, "07-wallet-view-with-pill");
   });

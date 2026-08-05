@@ -1,3 +1,4 @@
+/** Verifies useShellVoiceOutput through the package's configured test harness. */
 // @vitest-environment jsdom
 
 import { act, cleanup, renderHook } from "@testing-library/react";
@@ -155,6 +156,35 @@ describe("useShellVoiceOutput", () => {
       conversationMessages: [...messages],
     });
     expect(hoisted.queueAssistantSpeech).toHaveBeenCalledTimes(1);
+  });
+
+  it("marks a replaced temporary id as the same streaming response (#16094)", () => {
+    const { rerender } = render({
+      ...BASE,
+      lastTurnVoice: true,
+      chatSending: true,
+      conversationMessages: [
+        userMsg("u1", "hi"),
+        assistantMsg("temp-1", "This answer is still streaming."),
+      ],
+    });
+
+    rerender({
+      ...BASE,
+      lastTurnVoice: true,
+      chatSending: false,
+      conversationMessages: [
+        userMsg("u1", "hi"),
+        assistantMsg("server-1", "This answer is still streaming."),
+      ],
+    });
+
+    expect(hoisted.queueAssistantSpeech).toHaveBeenLastCalledWith(
+      "server-1",
+      "This answer is still streaming.",
+      true,
+      { replace: true, continuationOfMessageId: "temp-1" },
+    );
   });
 
   it("speaks streaming growth as it arrives, then the final text", () => {

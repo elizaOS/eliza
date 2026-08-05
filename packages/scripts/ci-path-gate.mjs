@@ -81,8 +81,8 @@ const CONFIGS = {
       },
       {
         lanes: ["server"],
-        patterns: ["packages/security/**", "packages/vault/**"],
-        reason: "security or vault package",
+        patterns: ["packages/core/src/security/**", "packages/vault/**"],
+        reason: "core security or vault package",
       },
       {
         lanes: ["server"],
@@ -155,6 +155,7 @@ const CONFIGS = {
           "packages/agent/**",
           "packages/shared/**",
           "packages/scripts/**",
+          "packages/cloud/scripts/**",
           "packages/test/**",
           "packages/prompts/**",
         ],

@@ -36,7 +36,7 @@ import {
   CLOUD_HANDOFF_PHASE_EVENT,
   type CloudHandoffPhaseDetail,
 } from "../events";
-import { getWindowNavigationPath, type Tab } from "../navigation";
+import type { Tab } from "../navigation";
 import { directCloudSharedAgentIdFromBase } from "../utils/cloud-agent-base";
 import {
   dispatchViewActionHandoff,
@@ -46,6 +46,14 @@ import {
 import type { ChatReplyTarget } from "./ChatComposerContext.hooks";
 import { clearChatDraft } from "./ChatComposerContext.hooks";
 import { isConversationRecord } from "./chat-conversation-guards";
+import {
+  buildSendFailureNotice,
+  getSendValidationFailureMessage,
+  resolveAbortRoomId,
+  sentUserTurnPresent,
+  UNDELIVERED_TURN_NOTICE,
+} from "./chat-send-failures";
+import { buildChatViewMetadata } from "./chat-view-routing";
 import {
   applyStreamingTextModification,
   formatSearchBullet,
@@ -64,11 +72,22 @@ import { streamingRenderDelayMs } from "./streaming-render-cadence";
 
 // ── Types ────────────────────────────────────────────────────────────
 
-const CONTEXT_ROUTING_METADATA_KEY = "__responseContext";
-
 type ConversationStreamResult = Awaited<
   ReturnType<typeof client.sendConversationMessageStream>
 >;
+
+interface ActiveChatTurn {
+  controller: AbortController;
+  roomId: string | null;
+  abortServerTurn: (() => void) | null;
+}
+
+export {
+  buildSendFailureNotice,
+  getSendValidationFailureMessage,
+  resolveAbortRoomId,
+  UNDELIVERED_TURN_NOTICE,
+} from "./chat-send-failures";
 
 async function handoffCompletedAction(
   actionResults: ChatActionResultSummary[] | undefined,
@@ -144,151 +163,6 @@ function isCloudAgentBase(value: string | null | undefined): boolean {
   return isLimitedCloudAgentApiBase(value);
 }
 
-interface ChatViewRouting {
-  view: string;
-  primaryContext: string;
-  secondaryContexts: string[];
-  capabilities: string[];
-}
-
-interface ActiveChatTurn {
-  controller: AbortController;
-  roomId: string | null;
-  abortServerTurn: (() => void) | null;
-}
-
-function uniq(values: string[]): string[] {
-  const seen = new Set<string>();
-  const result: string[] = [];
-  for (const value of values) {
-    const normalized = value.trim().toLowerCase();
-    if (!normalized || seen.has(normalized)) continue;
-    seen.add(normalized);
-    result.push(normalized);
-  }
-  return result;
-}
-
-function asStringList(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value.filter((item): item is string => typeof item === "string");
-  }
-  if (typeof value === "string") {
-    return value.split(/[\n,;]/);
-  }
-  return [];
-}
-
-/**
- * 4xx statuses whose response body carries a user-actionable validation reason
- * (bad/oversized/unsupported payload) rather than an infrastructure condition.
- * Auth (401/403), rate limit (429), and not-found (404) have their own
- * handling and are deliberately excluded.
- */
-const VALIDATION_FAILURE_STATUSES: ReadonlySet<number> = new Set([
-  400, 413, 415, 422,
-]);
-
-/**
- * Extract the server's validation reason from a send failure, or `null` when
- * the failure isn't a payload-validation 4xx. The client's ApiError carries
- * the server's JSON `error` body as its message (e.g. "Attachment too large
- * (max 5 MB)"), which tells the user exactly what to fix — the generic "didn't
- * go through, please resend" copy would send them into a retry loop that fails
- * identically every time. Exported for the send path and unit tests.
- */
-export function getSendValidationFailureMessage(err: unknown): string | null {
-  const status = (err as { status?: number }).status;
-  if (typeof status !== "number" || !VALIDATION_FAILURE_STATUSES.has(status)) {
-    return null;
-  }
-  const message = err instanceof Error ? err.message.trim() : "";
-  // A body-less rejection falls back to "HTTP <status>" upstream — that is not
-  // a validation reason worth surfacing over the generic copy.
-  if (!message || /^HTTP \d+$/i.test(message)) return null;
-  return message;
-}
-
-/**
- * Map a send/stream failure (HTTP status + error `kind`) to a user-facing notice
- * so a stalled turn is never silent dead air. Shared by the main-chat send path
- * and the action/inbox/connector send path — both must surface the same
- * status-specific message. (#10231) 4xx validation rejections surface the
- * server's specific reason; 5xx/network/timeout keep the generic copy (their
- * bodies are internal noise, and resending genuinely can succeed).
- */
-export function buildSendFailureNotice(err: unknown): string {
-  const status = (err as { status?: number }).status;
-  const kind = (err as { kind?: string }).kind;
-  if (status === 401 || status === 403) {
-    return "Your session expired — sign in again and resend your message.";
-  }
-  if (status === 429) {
-    return "The agent is busy right now — wait a few seconds and resend.";
-  }
-  if (status === 503 || status === 502) {
-    return "The agent is still waking up — give it a moment and resend.";
-  }
-  const validationMessage = getSendValidationFailureMessage(err);
-  if (validationMessage !== null) {
-    return `The agent couldn't accept that message: ${validationMessage}.`;
-  }
-  if (kind === "timeout") {
-    return "The agent took too long to respond — give it a moment and resend.";
-  }
-  if (kind === "network") {
-    return "Couldn't reach the agent — check your connection and resend.";
-  }
-  return "That message didn't go through — please resend.";
-}
-
-/**
- * Assistant-bubble copy for a user turn the server never accepted — e.g. sent
- * while the local model was unavailable (503), or the runtime produced
- * nothing and persisted nothing.
- * Stamped with a retryable `provider_issue` failureKind so the thread shows a
- * Retry chip instead of silently evicting the message (#11670).
- */
-export const UNDELIVERED_TURN_NOTICE =
-  "That message didn't reach the agent — it may still be starting up. Retry in a moment.";
-
-export function resolveAbortRoomId(
-  conversationId: string,
-  knownRoomId: string | null | undefined,
-  cachedRoomId: string | null | undefined,
-): string {
-  return knownRoomId?.trim() || cachedRoomId?.trim() || conversationId;
-}
-
-/**
- * Clock-skew slack for matching a just-sent user turn against the server's
- * reloaded history. The persisted turn's server timestamp lands at-or-after
- * the client's send time on the same clock; the slack tolerates a cloud
- * server clock trailing the device's.
- */
-const SENT_TURN_MATCH_SLACK_MS = 60_000;
-
-/**
- * Whether the just-sent user turn survived the post-turn history reload —
- * i.e. the server persisted it and the reload carries it (or the reload never
- * replaced local state, leaving the optimistic bubble in place). Matches by
- * text among user turns no older than the send minus clock-skew slack, so an
- * identical message from an earlier exchange can't mask an eviction.
- */
-function sentUserTurnPresent(
-  messages: readonly ConversationMessage[],
-  sentText: string,
-  sentAt: number,
-): boolean {
-  const text = sentText.trim();
-  return messages.some(
-    (message) =>
-      message.role === "user" &&
-      message.timestamp >= sentAt - SENT_TURN_MATCH_SLACK_MS &&
-      message.text.trim() === text,
-  );
-}
-
 function abortServerConversationTurn(
   roomId: string | null | undefined,
   reason: string,
@@ -301,155 +175,6 @@ function abortServerConversationTurn(
       `[useChatSend] abortConversationTurn(${roomId}) failed: ${err instanceof Error ? err.message : String(err)}`,
     );
   });
-}
-
-function normalizeViewPath(path: string | null | undefined): string {
-  const trimmed = path?.trim() ?? "";
-  if (!trimmed) return "/";
-  const withoutQuery = trimmed.split("?")[0]?.split("#")[0] ?? "/";
-  const normalized = withoutQuery.startsWith("/")
-    ? withoutQuery
-    : `/${withoutQuery}`;
-  return normalized.length > 1 && normalized.endsWith("/")
-    ? normalized.slice(0, -1)
-    : normalized;
-}
-
-function dynamicViewNameFromPath(path: string): string {
-  const slug = normalizeViewPath(path).split("/").filter(Boolean)[0];
-  return slug || "views";
-}
-
-function resolveChatViewRouting(
-  tab: Tab,
-  navigationPath: string,
-): ChatViewRouting {
-  const viewPath = normalizeViewPath(navigationPath).toLowerCase();
-  if (viewPath === "/orchestrator" || viewPath.startsWith("/orchestrator/")) {
-    return {
-      view: "orchestrator",
-      primaryContext: "code",
-      secondaryContexts: ["admin", "documents"],
-      capabilities: [
-        "orchestrator-task",
-        "coding-agent",
-        "task-history",
-        "workspace-control",
-      ],
-    };
-  }
-
-  switch (tab) {
-    case "apps":
-      return {
-        view: "apps",
-        primaryContext: "apps",
-        secondaryContexts: ["admin"],
-        capabilities: ["launch-app", "stop-app"],
-      };
-    case "character":
-    case "character-select":
-      return {
-        view: "character",
-        primaryContext: "character",
-        secondaryContexts: ["documents", "admin"],
-        capabilities: ["modify-character", "edit-character-documents"],
-      };
-    case "documents":
-      return {
-        view: "character",
-        primaryContext: "documents",
-        secondaryContexts: ["character"],
-        capabilities: ["search-documents", "add-documents", "modify-character"],
-      };
-    case "automations":
-    case "triggers":
-      return {
-        view: "automations",
-        primaryContext: "automation",
-        secondaryContexts: ["code", "admin"],
-        capabilities: ["manage-cron", "manage-workflow", "run-automation"],
-      };
-    case "browser":
-      return {
-        view: "browser",
-        primaryContext: "browser",
-        secondaryContexts: ["documents"],
-        capabilities: ["browser-session", "browse", "extract-page"],
-      };
-    case "inventory":
-      return {
-        view: "wallet",
-        primaryContext: "wallet",
-        secondaryContexts: ["documents"],
-        capabilities: ["wallet", "portfolio", "transactions"],
-      };
-    case "plugins":
-    case "runtime":
-    case "database":
-    case "logs":
-    case "settings":
-    case "voice":
-      return {
-        view: "system",
-        primaryContext: "system",
-        secondaryContexts: ["documents"],
-        capabilities: ["configure-runtime", "inspect-system"],
-      };
-    case "skills":
-    case "trajectories":
-    case "relationships":
-    case "memories":
-      return {
-        view: "documents",
-        primaryContext: "documents",
-        secondaryContexts: ["admin", "social_posting"],
-        capabilities: ["documents", "memory", "relationships"],
-      };
-    case "views":
-      return {
-        view: dynamicViewNameFromPath(viewPath),
-        primaryContext: "apps",
-        secondaryContexts: ["admin", "documents"],
-        capabilities: ["view-actions", "inspect-view", "navigate-view"],
-      };
-    default:
-      return {
-        view: "chat",
-        primaryContext: "general",
-        secondaryContexts: [],
-        capabilities: ["general-chat"],
-      };
-  }
-}
-
-function buildChatViewMetadata(
-  tab: Tab,
-  metadata?: Record<string, unknown>,
-): Record<string, unknown> {
-  const navigationPath =
-    typeof window === "undefined" ? "/" : getWindowNavigationPath();
-  const normalizedViewPath = normalizeViewPath(navigationPath);
-  const viewRouting = resolveChatViewRouting(tab, normalizedViewPath);
-  const existingRouting = asRecord(metadata?.[CONTEXT_ROUTING_METADATA_KEY]);
-  const secondaryContexts = uniq([
-    ...viewRouting.secondaryContexts,
-    ...asStringList(existingRouting?.secondaryContexts),
-    viewRouting.primaryContext,
-  ]);
-
-  return {
-    ...(metadata ?? {}),
-    uiView: viewRouting.view,
-    uiTab: tab,
-    uiViewPath: normalizedViewPath,
-    uiViewCapabilities: viewRouting.capabilities,
-    [CONTEXT_ROUTING_METADATA_KEY]: {
-      ...(existingRouting ?? {}),
-      primaryContext: viewRouting.primaryContext,
-      secondaryContexts,
-    },
-  };
 }
 
 export interface QueuedChatSend {
@@ -2155,6 +1880,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         conversationId?: string | null;
         images?: ImageAttachment[];
         metadata?: Record<string, unknown>;
+        clientMessageId?: string;
       },
     ) => {
       const hasAttachedImages = Boolean(options?.images?.length);
@@ -2197,6 +1923,7 @@ export function useChatSend(deps: UseChatSendDeps) {
             options?.conversationId ?? activeConversationIdRef.current ?? null,
           images: options?.images,
           metadata: buildChatViewMetadata(tab, metadata),
+          clientMessageId: options?.clientMessageId,
           resolve,
           reject,
         });

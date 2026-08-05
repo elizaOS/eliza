@@ -1,3 +1,4 @@
+/** Verifies computeRootCanvasPaint — what mirrors onto the canvas through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // html-canvas-paint — the canvas-propagation cure for the iOS standalone bottom

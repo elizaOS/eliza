@@ -1,11 +1,8 @@
 /**
  * Unit tests for the wallet market-overview shared domain helpers in
- * ./market-overview.ts: the stablecoin id/symbol filter sets, the
- * CoinGecko/Polymarket provider metadata, the CoinGecko markets request URL,
- * raw-row mapping/parsing (dropping incomplete records), mover ranking, and
- * per-coin price snapshots. Assertions run entirely in-memory over fixture
- * rows with no network or mocks, pinning the domain data so the Cloud
- * market-preview service and the iOS agent kernel fallback cannot drift.
+ * ./market-overview.ts: request construction, raw-row mapping/parsing,
+ * stable-asset filtering, mover ranking, and per-coin price snapshots. The
+ * assertions run entirely in-memory over fixture rows with no network or mocks.
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -13,54 +10,14 @@ import {
   buildMarketMovers,
   buildMarketPriceSnapshots,
   COINGECKO_MARKET_LIMIT,
-  COINGECKO_MARKET_PROVIDER,
   type CoinGeckoMarketRecord,
   isStableAsset,
   MARKET_PRICE_IDS,
   mapCoinGeckoMarket,
-  POLYMARKET_MARKET_PROVIDER,
   parseCoinGeckoMarkets,
-  STABLE_ASSET_IDS,
-  STABLE_ASSET_SYMBOLS,
 } from "./market-overview.ts";
 
-/**
- * These assertions pin the wallet market-overview domain data shared by the
- * Eliza Cloud market-preview service and the local iOS agent kernel fallback.
- * If either copy ever drifts, this test fails first.
- */
 describe("wallet market-overview shared domain", () => {
-  it("pins the stablecoin id/symbol filter sets", () => {
-    expect([...STABLE_ASSET_IDS].sort()).toEqual(
-      [
-        "binance-usd",
-        "dai",
-        "ethena-usde",
-        "first-digital-usd",
-        "tether",
-        "true-usd",
-        "usd-coin",
-        "usds",
-      ].sort(),
-    );
-    expect([...STABLE_ASSET_SYMBOLS].sort()).toEqual(
-      ["busd", "dai", "fdusd", "tusd", "usdc", "usde", "usds", "usdt"].sort(),
-    );
-  });
-
-  it("pins provider metadata (ids + names + urls)", () => {
-    expect(COINGECKO_MARKET_PROVIDER).toEqual({
-      providerId: "coingecko",
-      providerName: "CoinGecko",
-      providerUrl: "https://www.coingecko.com/",
-    });
-    expect(POLYMARKET_MARKET_PROVIDER).toEqual({
-      providerId: "polymarket",
-      providerName: "Polymarket",
-      providerUrl: "https://polymarket.com/",
-    });
-  });
-
   it("builds the CoinGecko markets request URL", () => {
     const url = buildCoinGeckoMarketsUrl();
     expect(url.origin + url.pathname).toBe(

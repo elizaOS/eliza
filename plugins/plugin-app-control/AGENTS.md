@@ -1,10 +1,14 @@
 # @elizaos/plugin-app-control
 
-Gives an Eliza agent the ability to launch, close, list, scaffold, and verify Eliza apps, manage UI views, and change the app background.
+Gives an Eliza agent control over app lifecycle, shell views, backgrounds,
+models, active agent profiles, and built-in settings.
 
 ## Purpose / role
 
-This plugin registers four actions, one natural-language shortcut set, two evaluators, one provider, and four services. It exposes those capabilities to any Eliza agent that loads it; it is opt-in (not default-enabled). All runtime communication with the Eliza dashboard happens over loopback HTTP (`/api/apps/*`, `/api/views/*`) discovered via `resolveServerOnlyPort`.
+This opt-in plugin registers eight actions, one shortcut set, four evaluators,
+two providers, and four services. Dashboard operations use authenticated
+loopback HTTP (`/api/apps/*`, `/api/views/*`) discovered through the existing
+port resolver.
 
 ## Plugin surface
 
@@ -16,13 +20,18 @@ This plugin registers four actions, one natural-language shortcut set, two evalu
 | `VIEWS` | `src/actions/views.ts` | Manage UI views contributed by plugins. Sub-modes: `list`, `current`, `show`/`open`, `search`, `manager`, `broadcast`, `interact`, `pin`, `window`, `create`, `edit`, `icon`, `rollback`, `delete`/`remove`. Create/edit/icon/rollback/delete are owner-gated; read modes are open. `rollback` resets a created/edited view-or-plugin workdir to the pre-edit git snapshot taken before the coding agent ran (#8915) and re-registers it via `load-from-directory`. |
 | `BACKGROUND` | `src/actions/background.ts` | Change the unified app background from chat. Ops: `set` (color name/hex, a named **programmable GLSL shader** preset — `aurora`/`lava`/`plasma`/`waves`/`nebula` — plus relative uniform tweaks like *slower*/*brighter*/*bigger* (#10694), an uploaded image attachment, or a generated image from a prompt), `undo`, `redo`, `reset`. The action names a preset id + uniform patch only; the GLSL source lives in `@elizaos/ui` (`backgrounds/shader-presets.ts`) where `useBackgroundApplyChannel` resolves id→source, validates it, and `ProgrammableShaderBackground` renders it via three.js with a compile-validate + frame-watchdog + context-loss-recovery + reduced-motion + color-field fallback. Broadcasts a `background:apply` view event via `POST /api/views/events/broadcast`; the renderer applies it to the shared `BackgroundConfig` store. Drives the SAME background as the `/background` view — there is no separate homescreen-scene surface. |
 | `SETTINGS` | `src/actions/settings.ts` | Describe, list, and change built-in settings; mutations use the same semantic routes as the UI. Successful list/set results own canonical reply text and declare a single-operation turn complete once the plan queue is drained, avoiding a redundant evaluator model call on native function-calling backends without suppressing multi-tool evaluation. Owner-gated. |
+| `MODEL_SWITCH` | `src/actions/model-switch.ts` | Select a configured model target through the canonical settings/runtime boundary. |
+| `AGENT_SWITCH` | `src/actions/agent-switch.ts` | Switch the active agent profile through the host-provided agent-switch seam. |
+| `CLOSE_VIEW` / `CLOSE_ALL_VIEWS` | `src/actions/views.ts` | Close one shell view or all open views without overloading the broader `VIEWS` dispatcher. |
 
 ### Evaluators
 
 | Name | File | Description |
 |---|---|---|
-| `viewNavigationRoutingEvaluator` | `src/evaluators/view-navigation-routing.ts` | `responseHandlerEvaluator` that inspects agent responses and automatically routes to the appropriate view via the VIEWS action. |
-| `viewFollowupRoutingEvaluator` | `src/evaluators/view-followup-routing.ts` | `responseHandlerEvaluator` that detects follow-up intent (create/delete/update) from agent output and dispatches the VIEWS action accordingly. |
+| `viewContextEvaluator` | `src/evaluators/view-context.ts` | Model-assisted contextual navigation when no explicit view command matched. |
+| `viewCommandShortcutEvaluator` | `src/evaluators/view-command-shortcut.ts` | Deterministically forces `VIEWS` for explicit navigation commands. |
+| `createChoiceShortcutEvaluator` | `src/evaluators/create-choice-shortcut.ts` | Routes replies to pending app/view creation choices without another model decision. |
+| `viewFollowupRoutingEvaluator` | `src/evaluators/view-followup-routing.ts` | Detects mutation follow-ups and dispatches `VIEWS`. |
 
 ### Shortcuts
 
@@ -30,11 +39,12 @@ This plugin registers four actions, one natural-language shortcut set, two evalu
 |---|---|---|
 | `viewNavigationShortcuts` | `src/shortcuts.ts` | Natural-language pre-LLM shortcuts for explicit view navigation phrases such as "open settings"; target the existing `VIEWS` action with `action=show` and are gated by `ELIZA_SHORTCUTS_NL=1`. |
 
-### Provider
+### Providers
 
 | Name | File | Description |
 |---|---|---|
 | `available_apps` | `src/providers/available-apps.ts` | Injects installed apps + running run counts into planner context. Active in `settings` and `automation` contexts only; cache scope is per-turn. |
+| `current_view` | `src/providers/current-view.ts` | Supplies current shell-view context and acknowledgement state for navigation turns. |
 
 ### Services
 
@@ -92,10 +102,13 @@ src/
   components/
     ViewManagerSpatialView.tsx    Presentational spatial view-manager component
   evaluators/
-    view-followup-routing.ts      viewFollowupRoutingEvaluator — dispatches VIEWS on follow-up intent
-    view-navigation-routing.ts    viewNavigationRoutingEvaluator — routes to view from agent response
+    view-context.ts               contextual view selection
+    view-command-shortcut.ts      deterministic explicit-command routing
+    create-choice-shortcut.ts     pending create-choice routing
+    view-followup-routing.ts      mutation follow-up routing
   providers/
     available-apps.ts             available_apps provider
+    current-view.ts               current_view provider
   services/
     app-registry-service.ts       AppRegistryService
     app-verification.ts           AppVerificationService (typecheck/lint/test/build/browser)
@@ -185,44 +198,10 @@ Follow the same pattern in `src/actions/views.ts` and create a `src/actions/view
 - **`resolveIntentView` is a RETAINED #10471 fast-path allow-list, not a string smell.** The deterministic intent→view matcher in `src/actions/views-show.ts` (`matchViewCommand` + `INTENT_VIEW_RULES`) is intentionally kept: it is multilingual by construction (EN + ES/FR/DE/ZH/JA/KO), fires only as a fallback after normal id/label/fuzzy resolution returns nothing, never overrides an explicit planner navigation, and is the local-first safety net a small/on-device planner relies on for cross-language navigation. Do not "clean it up" into an English-only path or delete it; extend the rules multilingually and keep them anchored on a possessive/navigation-verb + surface noun. Full written justification lives on `resolveIntentView`.
 - **Pre-edit snapshots are best-effort (#8915).** `VIEWS create`/`edit` and `APP create`/edit take a `git commit --no-verify --allow-empty` snapshot of the target workdir before dispatching the coding agent and record the SHA on a `views-snapshot`-tagged Task keyed by room/plugin. A failed snapshot (workdir not in a git work tree, no committer identity, …) only disables rollback for that edit — it must never abort the dispatch. `VIEWS rollback` resolves the most-recent snapshot for the room (or an explicit `sha`/`view`), runs `git reset --hard`, then re-registers via `load-from-directory`. On verification failure after max retries, `VerificationRoomBridgeService` surfaces a chat offer naming `VIEWS action=rollback` for plugins so the user is never left with a broken create/edit. Shell out via the injectable `GitRunner` in `views-snapshot.ts` (so tests stay deterministic); do not reach into `CodingWorkspaceService`, which is keyed by managed-workspace IDs, not local repo workdirs.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
-## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+## Verification
 
-> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
-> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
-> works **without reading the code**, from the artifacts you attach. This applies to **every**
-> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
-
-- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
-  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
-  providers/context, the raw model output, every tool/action call, and the result. Then **open
-  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
-  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
-- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
-  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
-  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
-  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
-  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
-  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
-  them is part of your change.
-- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
-  the entire feature or view, start to finish (`bun run test:e2e:record`).
-- **Manually review every artifact the change touches** — never just the green check: client
-  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
-  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
-- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
-  blocker by the **hard path**: build the real architecture, stand up the real
-  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
-  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
-  highest-effort, production-ready version. Keep going until every possibility is exhausted.
-
-Artifacts → attached inline in the PR (MP4 video, JPG screenshots, logs in `<details>`); attach each evidence type **or**
-explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
-behavior, **re-capture** evidence; stale proof is worse than none.
-
-**Capture & manually review for this package — CLI / tooling:**
-- The real command/flow invocation transcript (args in, stdout/stderr, exit code) and the artifacts it generated (files, scaffolds, manifests, screenshots/recordings).
-- Failure paths: bad args, missing deps, partial state, permission/network errors.
-- A recording/log of the actual run end to end — not a unit test of one helper.
-- Any model interaction captured as a live trajectory and reviewed.
-<!-- END: evidence-and-e2e-mandate -->
+Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+the package's relevant build, typecheck, lint, and test commands, then exercise
+the real integration boundary changed by the work. Inspect the produced domain
+artifacts and failure behavior; do not substitute mocked success for the system
+under test.

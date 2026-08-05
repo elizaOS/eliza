@@ -102,7 +102,6 @@ describe("isEncryptedSecret", () => {
 describe("hashValue / generateSecureToken / secureCompare", () => {
 	it("hashValue is a stable hex digest sensitive to input", () => {
 		expect(hashValue("a")).toMatch(/^[0-9a-f]{64}$/);
-		expect(hashValue("a")).toBe(hashValue("a"));
 		expect(hashValue("a")).not.toBe(hashValue("b"));
 		expect(hashValue("a", "sha512")).toMatch(/^[0-9a-f]{128}$/);
 	});

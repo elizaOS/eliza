@@ -1,6 +1,6 @@
 /**
  * Keyless catalog coverage for the plugin-app-control action surface against a
- * seeded set of scenario views. Runs on the pr-deterministic lane under the LLM proxy.
+ * seeded set of scenario views. Runs on the pr-deterministic lane under the model provider.
  */
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -86,7 +86,7 @@ function expectActionTurn(
 }
 
 const appLoadDirectory = "/tmp/eliza-app-control-scenario-load/apps";
-const repoRoot = path.resolve(import.meta.dirname, "../../../..");
+const repoRoot = "/tmp/eliza-app-control-scenario-load/repo";
 const feedPluginDir = path.join(repoRoot, "plugins", "plugin-feed");
 const remoteLedgerPluginDir = path.join(
   repoRoot,
@@ -391,13 +391,23 @@ export default scenario({
           force: true,
           recursive: true,
         });
-        await fs.rm(remoteLedgerPluginDir, {
-          force: true,
-          recursive: true,
-        });
         const loadedAppDir = path.join(appLoadDirectory, "app-loaded-console");
+        await fs.mkdir(feedPluginDir, { recursive: true });
         await fs.mkdir(loadedAppDir, { recursive: true });
         await fs.mkdir(remoteLedgerPluginDir, { recursive: true });
+        await fs.writeFile(
+          path.join(feedPluginDir, "package.json"),
+          `${JSON.stringify(
+            {
+              name: "@elizaos/plugin-feed",
+              version: "1.0.0",
+              files: ["dist"],
+            },
+            null,
+            2,
+          )}\n`,
+          "utf8",
+        );
         await fs.writeFile(
           path.join(remoteLedgerPluginDir, "package.json"),
           `${JSON.stringify(
@@ -539,6 +549,18 @@ export default scenario({
         };
 
         return undefined;
+      },
+    },
+  ],
+  cleanup: [
+    {
+      type: "custom",
+      name: "remove app-control source fixtures",
+      apply: async () => {
+        await fs.rm(path.dirname(appLoadDirectory), {
+          force: true,
+          recursive: true,
+        });
       },
     },
   ],

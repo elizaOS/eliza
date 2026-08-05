@@ -15,41 +15,46 @@ import {
 } from "@elizaos/app-core";
 import { Agent } from "@elizaos/capacitor-agent";
 import { Desktop } from "@elizaos/capacitor-desktop";
+import { shouldUseCloudOnlyBranding } from "@elizaos/shared";
 import {
   AGENT_READY_EVENT,
   APP_PAUSE_EVENT,
   APP_RESUME_EVENT,
-  App,
-  type AppBootConfig,
-  AppProvider,
-  applyForceFreshFirstRunReset,
-  applyLaunchConnectionFromUrl,
-  applyUiTheme,
-  type BrandingConfig,
-  CharacterEditor,
   COMMAND_PALETTE_EVENT,
   CONNECT_EVENT,
-  client,
-  dispatchAppEvent,
-  ErrorBoundary,
-  getBootConfig,
-  initializeCapacitorBridge,
-  initializeStorageBridge,
-  installDesktopPermissionsClientPatch,
-  installForceFreshFirstRunClientPatch,
-  installLocalProviderCloudPreferencePatch,
-  isDetachedWindowShell,
-  isElectrobunRuntime,
-  loadUiTheme,
-  resolveWindowShellRoute,
   SHARE_TARGET_EVENT,
-  setBootConfig,
-  shouldInstallMainWindowFirstRunPatches,
-  shouldUseCloudOnlyBranding,
-  subscribeDesktopBridgeEvent,
-  syncDetachedShellLocation,
   TRAY_ACTION_EVENT,
-} from "@elizaos/ui";
+} from "@elizaos/shared/events";
+import { App } from "@elizaos/ui/App";
+import { client } from "@elizaos/ui/api/client";
+import { initializeCapacitorBridge } from "@elizaos/ui/bridge/capacitor-bridge";
+import { subscribeDesktopBridgeEvent } from "@elizaos/ui/bridge/electrobun-rpc";
+import { isElectrobunRuntime } from "@elizaos/ui/bridge/electrobun-runtime";
+import { initializeStorageBridge } from "@elizaos/ui/bridge/storage-bridge";
+import { CharacterEditor } from "@elizaos/ui/components/character/CharacterEditor";
+import { ErrorBoundary } from "@elizaos/ui/components/ui/error-boundary";
+import {
+  type AppBootConfig,
+  type BrandingConfig,
+  getBootConfig,
+  setBootConfig,
+} from "@elizaos/ui/config";
+import { dispatchAppEvent } from "@elizaos/ui/events";
+import { applyLaunchConnectionFromUrl } from "@elizaos/ui/platform/browser-launch";
+import { installLocalProviderCloudPreferencePatch } from "@elizaos/ui/platform/cloud-preference-patch";
+import { installDesktopPermissionsClientPatch } from "@elizaos/ui/platform/desktop-permissions-client";
+import {
+  applyForceFreshFirstRunReset,
+  installForceFreshFirstRunClientPatch,
+} from "@elizaos/ui/platform/first-run-reset";
+import {
+  isDetachedWindowShell,
+  resolveWindowShellRoute,
+  shouldInstallMainWindowFirstRunPatches,
+  syncDetachedShellLocation,
+} from "@elizaos/ui/platform/window-shell";
+import { AppProvider } from "@elizaos/ui/state/AppContext";
+import { applyUiTheme, loadUiTheme } from "@elizaos/ui/state/persistence";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { APP_ENV_ALIASES } from "./brand-env";

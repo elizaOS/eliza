@@ -41,7 +41,12 @@ export const WithActions: Story = {
       title: "Agents",
       actions: (
         <div className="flex items-center gap-2">
-          <BrandButton variant="ghost" size="icon" className="h-8 w-8">
+          <BrandButton
+            aria-label="Search"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+          >
             <Search className="h-4 w-4" />
           </BrandButton>
           <BrandButton variant="primary" className="h-8 gap-2 px-3">
@@ -79,7 +84,12 @@ export const WithRightContent: Story = {
     pageInfo: { title: "Dashboard" },
     rightContent: (
       <div className="flex items-center gap-2">
-        <BrandButton variant="ghost" size="icon" className="h-8 w-8">
+        <BrandButton
+          aria-label="Notifications"
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+        >
           <Bell className="h-4 w-4" />
         </BrandButton>
         <div className="h-8 w-8 rounded-full bg-gradient-to-br from-orange-500 to-orange-700" />

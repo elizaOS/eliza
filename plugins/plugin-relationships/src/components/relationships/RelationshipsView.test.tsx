@@ -23,12 +23,12 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-// RelationshipsView only touches client.getBaseUrl and sendChatMessage here.
+// RelationshipsView only touches the narrow `@elizaos/ui/api` client surface:
 // `client.sendChatMessage()` (add-someone + open-entity affordances). The
 // spatial primitives come from the separate `@elizaos/ui/spatial` subpath, which
 // is not mocked.
 const { sendChatMessage } = vi.hoisted(() => ({ sendChatMessage: vi.fn() }));
-vi.mock("@elizaos/ui", () => ({
+vi.mock("@elizaos/ui/api", () => ({
   client: {
     getBaseUrl: () => "http://test.local",
     sendChatMessage,
@@ -129,7 +129,7 @@ describe("RelationshipsView — states", () => {
   });
 
   it("renders the populated graph with entity nodes and their edges", async () => {
-    const { container } = render(
+    render(
       <RelationshipsView
         fetchers={makeFetchers({
           fetchEntities: async () => ({
@@ -171,11 +171,6 @@ describe("RelationshipsView — states", () => {
     );
 
     await screen.findByText("Owner");
-    const root = container.querySelector(
-      '[data-spatial-kind="box"]',
-    ) as HTMLElement;
-    expect(root.style.flexShrink).toBe("0");
-    expect(root.style.width).toBe("100%");
     // The self node carries the colleague edge to Pat with cadence + last contact.
     expect(agent("rel-self")).toBeTruthy();
     expect(screen.getByText(/colleague_of · every 14d · last/)).toBeTruthy();

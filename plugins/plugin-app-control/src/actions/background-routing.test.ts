@@ -74,9 +74,9 @@ const FILLER_ACTIONS = [
 		contexts: ["messaging"],
 	},
 	{
-		name: "REMOTE_DESKTOP",
-		description: "Control a remote desktop session.",
-		contexts: ["automation"],
+		name: "VOICE_CALL",
+		description: "Place an outbound phone call or send an SMS message.",
+		contexts: ["communications"],
 	},
 ];
 

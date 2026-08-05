@@ -1,23 +1,20 @@
 {
   "extends": "../../../tsconfig.json",
   "compilerOptions": {
-    "noEmit": true
+    "noEmit": true,
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "paths": {
+      "@elizaos/scenario-runner/scenario-assertions": [
+        "../../scenario-runner/src/scenario-assertions.ts"
+      ],
+      "@elizaos/scenario-runner/missing-input-terminal-relay": [
+        "../../scenario-runner/src/missing-input-terminal-relay.ts"
+      ]
+    }
   },
-  "include": [
-    "./**/*.ts",
-    "./**/*.d.ts",
-    "../../packages/agent/src/**/*.ts",
-    "../../packages/core/src/**/*.ts",
-    "../../packages/shared/src/**/*.ts",
-    "../../packages/ui/src/**/*.ts",
-    "../../packages/ui/src/**/*.tsx",
-    "../../packages/scenario-runner/src/**/*.ts",
-    "../app-core/src/**/*.ts",
-    "../../plugins/plugin-personal-assistant/src/**/*.ts",
-    "../../plugins/plugin-personal-assistant/test/helpers/**/*.ts",
-    "../mocks/**/*.ts",
-    "../helpers/**/*.ts"
-  ],
+  "include": ["./**/*.ts", "./**/*.d.ts"],
   "exclude": [
     "**/node_modules/**",
     "**/dist/**",

@@ -531,6 +531,11 @@ export const readAttachmentAction: Action = {
 				},
 			};
 		} catch (error) {
+			// error-policy:J1 the attachment action boundary returns a structured
+			// failure and reports the underlying read error to the agent.
+			runtime.reportError("ReadAttachmentAction.handler", error, {
+				roomId: message.roomId,
+			});
 			const errorMessage =
 				error instanceof Error ? error.message : String(error);
 			logger.error("[ReadAttachment] Error:", errorMessage);

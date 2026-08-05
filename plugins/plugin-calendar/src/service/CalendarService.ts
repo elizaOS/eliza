@@ -22,7 +22,7 @@ import {
   type GoogleCalendarEvent,
   GoogleCalendarMutationError,
   GoogleCalendarSyncTokenExpiredError,
-} from "@elizaos/plugin-google";
+} from "@elizaos/plugin-google-workspace";
 import type {
   DispatchResult,
   ScheduledTaskDispatchRecord,
@@ -4696,7 +4696,7 @@ export class CalendarService extends Service {
     });
     await this.recordCalendarEventAudit(
       event.id,
-      "calendar event created through plugin-google",
+      "calendar event created through plugin-google-workspace",
       { calendarId, title: request.title },
       { externalId: event.externalId },
     );
@@ -4958,7 +4958,7 @@ export class CalendarService extends Service {
     });
     await this.recordCalendarEventAudit(
       event.id,
-      "calendar event updated through plugin-google",
+      "calendar event updated through plugin-google-workspace",
       { eventId: request.eventId },
       { externalId: event.externalId },
       "calendar_event_updated",
@@ -5305,7 +5305,7 @@ export class CalendarService extends Service {
     });
     await this.recordCalendarEventAudit(
       event.id,
-      "calendar recurring series split through plugin-google",
+      "calendar recurring series split through plugin-google-workspace",
       {
         eventId: args.request.eventId,
         recurrenceScope: "this_and_following",
@@ -5427,7 +5427,7 @@ export class CalendarService extends Service {
     });
     await this.recordCalendarEventAudit(
       context.masterEventId,
-      "calendar recurring series truncated through plugin-google",
+      "calendar recurring series truncated through plugin-google-workspace",
       {
         eventId: args.request.eventId,
         recurrenceScope: "this_and_following",
@@ -5615,7 +5615,7 @@ export class CalendarService extends Service {
     });
     await this.recordCalendarEventAudit(
       targetEventId,
-      "calendar event deleted through plugin-google",
+      "calendar event deleted through plugin-google-workspace",
       { eventId: targetEventId, recurrenceScope: recurrenceScope ?? null },
       { deleted: true },
       "calendar_event_deleted",
@@ -5737,7 +5737,7 @@ export class CalendarService extends Service {
     await this.repo.upsertCalendarEvent(event, grant.side);
     await this.recordCalendarEventAudit(
       event.id,
-      "calendar invitation response updated through plugin-google",
+      "calendar invitation response updated through plugin-google-workspace",
       {
         eventId: request.eventId,
         recurrenceScope: request.recurrenceScope ?? null,

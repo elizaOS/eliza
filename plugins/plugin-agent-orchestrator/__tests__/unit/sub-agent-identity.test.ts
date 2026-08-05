@@ -74,6 +74,7 @@ describe("writeWorkspaceIdentity", () => {
 
   it("advertises the skills bridge endpoints and originatingTask read-back", () => {
     const manual = buildSubAgentIdentityMd();
+    expect(manual).toContain("ORCHESTRATOR_SESSION_ID");
     expect(manual).toMatch(/\/skills\b/);
     expect(manual).toMatch(/skills\/<slug>/);
     expect(manual).toMatch(/originatingTask/);

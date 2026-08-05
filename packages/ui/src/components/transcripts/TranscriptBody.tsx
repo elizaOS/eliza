@@ -65,7 +65,7 @@ const TranscriptWord = React.memo(function TranscriptWord({
         onClick={() => onSeek(startMs)}
         className={cn(
           "h-auto rounded px-0.5 py-0 font-normal transition-colors hover:bg-bg-muted/40",
-          isActive && "bg-accent/16 text-accent-fg",
+          isActive && "bg-accent/16 text-txt-strong",
         )}
       >
         {text}
@@ -108,7 +108,7 @@ export function TranscriptBody({
             <p
               className={cn(
                 "rounded",
-                segActive && "bg-accent/12 px-1 text-accent-fg",
+                segActive && "bg-accent/12 px-1 text-txt-strong",
               )}
             >
               {seg.words.length > 0 ? (

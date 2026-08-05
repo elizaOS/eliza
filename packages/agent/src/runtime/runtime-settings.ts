@@ -75,6 +75,10 @@ export function buildRuntimeSettingsProjection(
         isEnvKeyAllowedForForwarding(key),
       ),
     ),
+    ...(typeof env.EMBEDDING_PROVIDER === "string" &&
+    env.EMBEDDING_PROVIDER.trim().length > 0
+      ? { EMBEDDING_PROVIDER: env.EMBEDDING_PROVIDER.trim().toLowerCase() }
+      : {}),
     // Drop unresolved `vault://` sentinels so a plugin never receives the ref
     // literal as a credential; the resolved overlay below supplies the real
     // value for refs the vault could serve (fail-closed for the rest).

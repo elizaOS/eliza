@@ -23,7 +23,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
-} from "../../../packages/test/helpers/real-runtime.ts";
+} from "../../../packages/app-core/test/helpers/real-runtime.ts";
 // Test-only: PA owns the app_lifeops audit/task tables + their schema bootstrap.
 // The goals plugin SOURCE never imports PA (verified by the boundary contract).
 import { LifeOpsRepository } from "../../plugin-personal-assistant/src/lifeops/repository.ts";

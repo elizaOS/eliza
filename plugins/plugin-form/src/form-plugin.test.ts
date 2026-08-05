@@ -337,7 +337,6 @@ describe("form_extractor evaluator", () => {
     const extractionsProcessor = formEvaluator.processors?.find(
       (p) => p.name === "formExtractions",
     );
-    expect(extractionsProcessor).toBeDefined();
     if (!extractionsProcessor)
       throw new Error("formExtractions processor missing");
     const result = await extractionsProcessor.process({
@@ -395,7 +394,6 @@ describe("form_extractor evaluator", () => {
     const intentProcessor = formEvaluator.processors?.find(
       (p) => p.name === "formIntent",
     );
-    expect(intentProcessor).toBeDefined();
     if (!intentProcessor) throw new Error("formIntent processor missing");
     const result = await intentProcessor.process({
       runtime,

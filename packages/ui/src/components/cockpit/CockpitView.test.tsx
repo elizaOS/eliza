@@ -1,3 +1,4 @@
+/** Verifies CockpitView through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Interaction tests for CockpitView: it renders the live room-deck from the

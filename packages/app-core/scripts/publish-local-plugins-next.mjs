@@ -1,5 +1,8 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for publish local plugins next mjs. */
+/**
+ * Publishes every workspace plugin under plugins/ that defines a publish:next /
+ * release:next:strict script, running each plugin's script in turn.
+ */
 
 import { spawn } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";

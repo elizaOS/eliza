@@ -26,6 +26,10 @@ function msg(text: string): Memory {
 describe("current_view acknowledgement provider (#8788)", () => {
 	beforeEach(() => h.getCurrentView.mockReset());
 
+	it("declares its intended general context explicitly", () => {
+		expect(currentViewProvider.contexts).toEqual(["general"]);
+	});
+
 	it("phrases an imminent explicit switch as a forward-looking acknowledgement", async () => {
 		h.getCurrentView.mockResolvedValue({
 			viewId: "settings",

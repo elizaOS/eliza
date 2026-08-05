@@ -6,7 +6,7 @@
  * "Local:" (or after a timeout). Cross-platform browser launch and dev-server
  * teardown (including a Windows taskkill tree-kill) are handled here.
  */
-import { theme } from "@elizaos/shared";
+import { resolveDesktopUiPort, theme } from "@elizaos/shared";
 import type { Command } from "commander";
 
 async function isPortListening(
@@ -49,20 +49,19 @@ async function openInBrowser(url: string): Promise<void> {
   child.unref();
 }
 
-const DEFAULT_PORT = 2138;
-
 export function registerDashboardCommand(program: Command) {
+  const defaultPort = resolveDesktopUiPort(process.env);
   program
     .command("dashboard")
     .description("Open the Control UI in your browser")
-    .option("--port <port>", "Server port to check", String(DEFAULT_PORT))
+    .option("--port <port>", "Server port to check", String(defaultPort))
     .option("--url <url>", "Server URL (overrides --port)")
     .action(async (opts: { port?: string; url?: string }) => {
-      const rawPort = Number(opts.port ?? DEFAULT_PORT);
+      const rawPort = Number(opts.port ?? defaultPort);
       const port =
         Number.isFinite(rawPort) && rawPort > 0 && rawPort <= 65535
           ? rawPort
-          : DEFAULT_PORT;
+          : defaultPort;
 
       if (opts.url) {
         console.log(`${theme.muted("→")} Opening Control UI: ${opts.url}`);
@@ -77,8 +76,8 @@ export function registerDashboardCommand(program: Command) {
         return;
       }
 
-      if (await isPortListening(DEFAULT_PORT)) {
-        const url = `http://localhost:${DEFAULT_PORT}`;
+      if (port !== defaultPort && (await isPortListening(defaultPort))) {
+        const url = `http://localhost:${defaultPort}`;
         console.log(
           `${theme.muted("→")} Opening Control UI (dev server): ${url}`,
         );
@@ -108,8 +107,13 @@ export function registerDashboardCommand(program: Command) {
         return;
       }
 
-      const appDir = path.join(pkgRoot, "apps", "app");
-      if (!fs.existsSync(path.join(appDir, "package.json"))) {
+      const appDir = [
+        path.join(pkgRoot, "packages", "app"),
+        path.join(pkgRoot, "apps", "app"),
+      ].find((candidate) =>
+        fs.existsSync(path.join(candidate, "package.json")),
+      );
+      if (!appDir) {
         console.log(
           theme.error("App UI is not available in this installation."),
         );
@@ -118,7 +122,7 @@ export function registerDashboardCommand(program: Command) {
         );
         console.log(
           theme.muted(
-            "Start the agent with `eliza start` and use the API at http://localhost:31337",
+            "Start the agent with `eliza start` and use the URL printed at startup.",
           ),
         );
         process.exitCode = 1;
@@ -126,14 +130,10 @@ export function registerDashboardCommand(program: Command) {
       }
 
       const { spawn, spawnSync } = await import("node:child_process");
-      const child = spawn("npx", ["vite"], {
+      const child = spawn("bun", ["run", "dev"], {
         cwd: appDir,
         stdio: ["ignore", "pipe", "pipe"],
         env: { ...process.env },
-        // npx is `npx.cmd` on Windows; Node cannot spawn a .cmd without a
-        // shell (ENOENT), so the dev dashboard never started there. The args
-        // are constant, so enabling the shell on Windows is injection-safe.
-        shell: process.platform === "win32",
       });
 
       let opened = false;
@@ -141,7 +141,7 @@ export function registerDashboardCommand(program: Command) {
       const tryOpen = () => {
         if (opened) return;
         opened = true;
-        const devUrl = `http://localhost:${DEFAULT_PORT}`;
+        const devUrl = `http://localhost:${defaultPort}`;
         console.log(`${theme.muted("→")} Opening Control UI: ${devUrl}`);
         openInBrowser(devUrl);
       };
@@ -169,8 +169,7 @@ export function registerDashboardCommand(program: Command) {
 
       const cleanup = () => {
         if (process.platform === "win32" && child.pid) {
-          // shell:true ran npx inside cmd.exe; a SIGTERM to the shell would
-          // orphan the vite grandchild, so kill the whole tree by PID.
+          // Windows does not propagate SIGTERM through Bun's child tree.
           spawnSync("taskkill", ["/pid", String(child.pid), "/t", "/f"]);
           return;
         }

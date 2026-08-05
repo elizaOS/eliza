@@ -33,7 +33,7 @@ import type { ResponseHandlerFieldEvaluator } from "./response-handler-field-eva
 /**
  * Stage-1 envelope `emotion` enum value set — kept in lock-step with
  * `EXPRESSIVE_EMOTION_ENUM` exported from
- * `plugins/plugin-local-inference/src/services/voice/expressive-tags.ts`.
+ * `/plugin-local-inference/services/voice/expressive-tags.ts`.
  *
  * It is **redeclared here** instead of imported because `@elizaos/core` may not
  * depend on `@elizaos/plugin-local-inference` (dependency direction is inward

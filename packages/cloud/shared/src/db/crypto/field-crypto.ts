@@ -11,7 +11,7 @@
  * attacker reads the raw bytes.
  */
 
-import { orgKey, systemKey } from "@elizaos/security/kms";
+import { orgKey, systemKey } from "@elizaos/core/security/kms";
 import { getKmsClient } from "./kms-client";
 
 export interface EncryptedField {

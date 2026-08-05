@@ -1,7 +1,7 @@
 /**
  * Voice next-stage preload predictor — real-MemoryArbiter test (#8809 C5).
  *
- * Mirrors `packages/benchmarks/memperf/co-residency.test.ts`: drives the REAL
+ * Mirrors the memperf co-residency test in https://github.com/elizaOS/benchmarks: drives the REAL
  * `MemoryArbiter` (no models, no FFI) with a synthetic, SIZED "text" capability
  * and a real `capacitorPressureSource`, then asserts the predictor's
  * `onAsrStageComplete()` warms the next-stage text model under nominal pressure

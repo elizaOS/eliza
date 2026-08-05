@@ -210,6 +210,8 @@ function basicAuthValid(b64: string): boolean {
 				: Buffer.from(b64, "base64").toString("latin1");
 		return decoded.includes(":") && decoded.length >= 3;
 	} catch {
+		// error-policy:J3 candidate credentials are untrusted input; decoding
+		// failure means the candidate is invalid.
 		return false;
 	}
 }

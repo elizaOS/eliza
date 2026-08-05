@@ -47,15 +47,6 @@ function routeTimeout(routeCase: RouteCase): number {
   return "timeoutMs" in routeCase ? routeCase.timeoutMs : 60_000;
 }
 
-function skipUnlessRoutesRegistered(names: readonly string[]) {
-  test.skip(
-    !names.every((name) =>
-      DIRECT_ROUTE_CASES.some((routeCase) => routeCase.name === name),
-    ),
-    `${names.join(", ")} app routes are not registered in this smoke stack.`,
-  );
-}
-
 function installIssueGuards(page: Page): string[] {
   const issues: string[] = [];
   page.on("console", (message) => {
@@ -218,164 +209,6 @@ test("utility app-window routes render without red errors or overflow", async ({
   }
 });
 
-test("vector browser controls search and switch projection modes", async ({
-  page,
-}) => {
-  const issues = installIssueGuards(page);
-  const vectorBrowser = {
-    name: "vector-browser",
-    path: "/vector-browser",
-    readyChecks: [
-      { selector: '[data-agent-id="vector-table"]' },
-      { text: "Deterministic memory fixture" },
-    ],
-    timeoutMs: 90_000,
-  } satisfies RouteCase;
-
-  await openAppWindow(page, vectorBrowser);
-  await expect(page.locator('[data-agent-id="vector-table"]')).toBeVisible();
-  await expect(page.getByPlaceholder("Search content...")).toBeVisible();
-  await expect(
-    page.getByText("Deterministic memory fixture").first(),
-  ).toBeVisible();
-
-  await page.getByPlaceholder("Search content...").fill("smoke");
-  await clickRequired(
-    page.getByRole("button", { name: /^Search$/ }),
-    "vector search",
-  );
-  await expect(
-    page.getByText("Deterministic memory fixture").first(),
-  ).toBeVisible();
-
-  await clickRequired(
-    page.getByRole("button", { name: "2D" }),
-    "vector 2D projection",
-  );
-  await expect(page.getByRole("button", { name: "2D" })).toHaveAttribute(
-    "aria-current",
-    "true",
-  );
-  await expect(page.getByText(/Not enough embeddings/i)).toBeVisible();
-
-  await clickRequired(
-    page.getByRole("button", { name: "3D" }),
-    "vector 3D projection",
-  );
-  await expect(page.getByRole("button", { name: "3D" })).toHaveAttribute(
-    "aria-current",
-    "true",
-  );
-  await expect(page.getByText(/Not enough embeddings/i)).toBeVisible();
-
-  await clickRequired(
-    page.getByRole("button", { name: "List" }),
-    "vector list view",
-  );
-  await expect(
-    page.getByText("Deterministic memory fixture").first(),
-  ).toBeVisible();
-  await expectNoIssues(page, issues, "vector browser interactions");
-});
-
-test("market utility controls show fixture data on load", async ({ page }) => {
-  // The minimal redesign dropped the GUI Refresh buttons: market data loads on
-  // mount and stays current via a quiet background poll. Assert the loaded
-  // fixture state (no user-facing refresh control to click).
-  skipUnlessRoutesRegistered(["hyperliquid", "polymarket"]);
-  const issues = installIssueGuards(page);
-
-  const hyperliquid = routeCaseByName("hyperliquid");
-  await openAppWindow(page, hyperliquid);
-  // The compact spatial view stamps each fixture market/position row with a
-  // data-agent-id (market-<name> / position-<coin>) — assert those rather than
-  // the deleted rich-shell headings.
-  await expect(
-    page.locator('[data-agent-id="market-BTC"]').first(),
-  ).toBeVisible();
-  await expect(
-    page.locator('[data-agent-id="market-ETH"]').first(),
-  ).toBeVisible();
-  await expect(
-    page.locator('[data-agent-id="position-BTC"]').first(),
-  ).toBeVisible();
-  await expectNoIssues(page, issues.splice(0), "hyperliquid load");
-
-  const polymarket = routeCaseByName("polymarket");
-  await openAppWindow(page, polymarket);
-  await expect(
-    page.locator('[data-agent-id="polymarket-root"]').first(),
-  ).toBeVisible();
-  await expectNoIssues(page, issues.splice(0), "polymarket load");
-});
-
-test("shopify utility controls exercise commerce workflows", async ({
-  page,
-}) => {
-  skipUnlessRoutesRegistered(["shopify"]);
-  const issues = installIssueGuards(page);
-
-  const shopify = routeCaseByName("shopify");
-  await openAppWindow(page, shopify);
-  // Store data loads on mount (the manual Refresh button was dropped).
-  await expect(page.getByText("smoke-store.example").first()).toBeVisible();
-  await clickRequired(
-    page.getByRole("tab", { name: /Products/i }),
-    "Shopify products tab",
-  );
-  // Per-view product search moved to the chat composer — the panel shows a
-  // hint, not a search box. Both fixture products render in the unfiltered list.
-  await expect(page.getByTestId("chat-search-hint")).toBeVisible();
-  await expect(page.getByText("Example Hoodie")).toBeVisible();
-  await expect(page.getByText("Agent Sticker Pack")).toBeVisible();
-  await clickRequired(
-    page.getByRole("button", { name: /^Create$/ }),
-    "Shopify create product",
-  );
-  await expect(
-    page.getByRole("dialog", { name: "Create product" }),
-  ).toBeVisible();
-  await page.getByLabel(/Title/).fill("Coverage Tee");
-  await page.getByLabel("Vendor").fill("Eliza Smoke Store");
-  await page.getByLabel("Product type").fill("Apparel");
-  await page.getByLabel("Base price").fill("21.38");
-  await clickRequired(
-    page.getByRole("button", { name: "Create product" }),
-    "Shopify submit product",
-  );
-  await expect(
-    page.getByRole("dialog", { name: "Create product" }),
-  ).toBeHidden();
-  await clickRequired(
-    page.getByRole("tab", { name: /Orders/i }),
-    "Shopify orders tab",
-  );
-  await clickRequired(
-    page.getByRole("button", { name: /#1001/i }),
-    "Shopify order row",
-  );
-  await expect(page.getByText("gid://shopify/Order/2001")).toBeVisible();
-  await clickRequired(
-    page.getByRole("tab", { name: /Inventory/i }),
-    "Shopify inventory tab",
-  );
-  await page.getByLabel("Location").selectOption("Main Warehouse");
-  await expect(page.getByText("MLDY-HOODIE")).toBeVisible();
-  await clickRequired(
-    page.getByRole("button", { name: "Increase inventory by 1" }).first(),
-    "Shopify inventory increase",
-  );
-  await clickRequired(
-    page.getByRole("tab", { name: /Customers/i }),
-    "Shopify customers tab",
-  );
-  // Per-view customer search also moved to the chat composer — the panel shows
-  // a hint, and the fixture customer renders in the unfiltered list.
-  await expect(page.getByTestId("chat-search-hint")).toBeVisible();
-  await expect(page.getByText("Grace Hopper")).toBeVisible();
-  await expectNoIssues(page, issues.splice(0), "shopify interactions");
-});
-
 test("wallet inventory controls update visible deterministic state", async ({
   page,
 }) => {
@@ -439,7 +272,7 @@ test("wallet inventory controls update visible deterministic state", async ({
   await expect(walletSidebar.getByText("USDC", { exact: true })).toHaveCount(0);
 
   await clickRequired(
-    walletSidebar.getByRole("button", { name: "Open RPC settings" }),
+    page.getByRole("button", { name: "RPC settings", exact: true }),
     "Wallet RPC settings action",
   );
   await expect(page).toHaveURL(/wallet-rpc/);

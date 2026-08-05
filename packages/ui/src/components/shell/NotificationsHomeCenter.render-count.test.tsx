@@ -1,3 +1,4 @@
+/** Verifies NotificationsHomeCenter render count (#14559) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**
@@ -157,9 +158,10 @@ describe("NotificationsHomeCenter render count (#14559)", () => {
       });
     }
 
-    // One render marks the gesture active. Every subsequent pointer sample is
-    // frame-coalesced DOM presentation work; memoized rows remain untouched.
-    expect(listRenders).toBe(1);
+    // At most two renders establish the collapse gesture from the default-open
+    // shade. Every subsequent pointer sample is frame-coalesced DOM
+    // presentation work; memoized rows remain untouched.
+    expect(listRenders).toBeLessThanOrEqual(2);
     expect(rowRenders).toBe(0);
   });
 
@@ -179,7 +181,9 @@ describe("NotificationsHomeCenter render count (#14559)", () => {
       vi.advanceTimersByTime(0);
     });
 
-    expect(listRenders).toBeGreaterThanOrEqual(2);
+    // Notifications start open, so the former collapsed → expanded setup
+    // render is intentionally absent.
+    expect(listRenders).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByTestId("notification-row")).toHaveLength(8);
     const times = () =>
       screen

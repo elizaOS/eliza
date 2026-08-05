@@ -1,12 +1,4 @@
-/**
- * Secret Key Constants and Aliases
- *
- * This module provides canonical secret key names, aliases for backward compatibility,
- * and mappings for model providers. All secret key naming should reference this module
- * to ensure consistency across the codebase.
- *
- * @module constants/secrets
- */
+/** Canonical secret names, accepted aliases, and model-provider mappings. */
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CANONICAL SECRET KEYS

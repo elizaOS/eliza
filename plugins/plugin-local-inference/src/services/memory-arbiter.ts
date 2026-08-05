@@ -11,7 +11,7 @@
  *     `LocalInferenceEngine` + `SharedResourceRegistry`.
  *   - `plugin-vision` loads its own TF.js / face-api models with no
  *     shared budget.
- *   - `plugin-aosp-local-inference` runs the bun:ffi llama.cpp binding
+ *   - `plugin-native-inference` runs the bun:ffi llama.cpp binding
  *     in its own world, also with no shared budget.
  *
  * On a 6 GB iPhone or an 8 GB low-tier Android, that means loading a

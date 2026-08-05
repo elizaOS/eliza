@@ -2,7 +2,7 @@
  * Live-model coverage for the WORKFLOW action path (#12362 WI-6/WI-7).
  *
  * The deterministic sibling (`deterministic-workflow-actions-routes`) proves
- * the WORKFLOW action + routes under the LLM proxy with strict fixtures. This
+ * the WORKFLOW action + routes under the model provider with strict fixtures. This
  * scenario removes the fixtures and asserts a REAL model routes a natural
  * request ("show my workflow's recent runs") to the WORKFLOW action's
  * `executions` op over a genuinely seeded + executed embedded workflow, and

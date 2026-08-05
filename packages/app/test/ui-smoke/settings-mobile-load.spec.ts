@@ -36,8 +36,6 @@ const BENIGN_CONSOLE = [
   /favicon/i,
 ];
 
-const DEVELOPER_ONLY_SECTION_IDS = new Set(["remote-plugins"]);
-
 function isBenign(message: string): boolean {
   return BENIGN_CONSOLE.some((pattern) => pattern.test(message));
 }
@@ -56,10 +54,6 @@ test.describe("settings sections load at mobile width", () => {
       test.skip(
         section.id === "wallet-rpc",
         "capability-gated; covered by wallet-keys.spec.ts",
-      );
-      test.skip(
-        DEVELOPER_ONLY_SECTION_IDS.has(section.id),
-        "developer-gated; hidden in ordinary keyless settings smoke",
       );
       await mkdir(OUT_DIR, { recursive: true });
 

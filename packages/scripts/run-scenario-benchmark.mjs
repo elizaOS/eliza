@@ -5,7 +5,7 @@
  * certification scenarios.
  *
  * Loads scenario ids from the filesystem
- * (packages/test/scenarios/executive-assistant/ and
+ * (plugins/plugin-personal-assistant/test/scenarios/corpus/executive-assistant/ and
  * packages/test/scenarios/connector-certification/), invokes the
  * `@elizaos/scenario-runner` CLI through packages/scripts/run-live-scenarios.mjs (which
  * enforces SKIP_REASON + judge thresholds), and emits a markdown report to
@@ -32,9 +32,11 @@ const REPO_ROOT = path.resolve(
 );
 const EA_DIR = path.join(
   REPO_ROOT,
-  "packages",
+  "plugins",
+  "plugin-personal-assistant",
   "test",
   "scenarios",
+  "corpus",
   "executive-assistant",
 );
 const CONNECTOR_DIR = path.join(
@@ -45,7 +47,7 @@ const CONNECTOR_DIR = path.join(
   "connector-certification",
 );
 const SCENARIO_FILE_GLOBS = [
-  "packages/test/scenarios/executive-assistant/*.scenario.ts",
+  "plugins/plugin-personal-assistant/test/scenarios/corpus/executive-assistant/*.scenario.ts",
   "packages/test/scenarios/connector-certification/*.scenario.ts",
 ];
 const REPORT_JSON = path.join(

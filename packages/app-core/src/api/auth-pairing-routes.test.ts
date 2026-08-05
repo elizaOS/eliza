@@ -18,7 +18,6 @@ import {
   setBootConfig,
 } from "@elizaos/shared";
 import {
-  afterAll,
   afterEach,
   beforeAll,
   beforeEach,
@@ -263,16 +262,6 @@ describe("auth pairing pair-code route", () => {
     const routeModule = await import("./auth-pairing-routes");
     handleAuthPairingCompatRoutes = routeModule.handleAuthPairingCompatRoutes;
     resetAuthPairingStateForTests = routeModule._resetAuthPairingStateForTests;
-  });
-
-  // Under `isolate: false` app-core suites share one module registry. This file
-  // mocks `./auth/sessions` (incl. a stubbed `createMachineSession`) and
-  // `../services/auth-store`; clear the registry on teardown so those mocks
-  // cannot leak into a later real-module suite — e.g. auth-pairing-flow, which
-  // mints a session through the genuine AuthStore and would otherwise read the
-  // stub's unpersisted session id back as null.
-  afterAll(() => {
-    vi.resetModules();
   });
 
   beforeEach(() => {

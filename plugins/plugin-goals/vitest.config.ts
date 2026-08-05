@@ -6,12 +6,19 @@
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+import baseConfig from "../../packages/scripts/vitest/default.config";
 
 const rootDir = dirname(fileURLToPath(import.meta.url));
 const sourceOf = (relative: string) => resolve(rootDir, relative);
+const uiSrc = sourceOf("../../packages/ui/src");
+const baseAliases = Array.isArray(baseConfig.resolve?.alias)
+  ? baseConfig.resolve.alias
+  : [];
 
 export default defineConfig({
+  ...baseConfig,
   resolve: {
+    ...baseConfig.resolve,
     // goals.real-db.test.ts drives PA's lifeops/repository.ts, which reads the
     // carved DB schemas/repos/factories from these server-safe plugin subpaths.
     // The package barrels re-export React views (→ @elizaos/ui → react-router)
@@ -20,6 +27,24 @@ export default defineConfig({
     // condition, so anchor each to source explicitly (the modules depend only on
     // @elizaos/core + drizzle).
     alias: [
+      {
+        find: /^@elizaos\/agent\/services\/knowledge-graph$/,
+        replacement: sourceOf(
+          "../../packages/agent/src/services/knowledge-graph/index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/ui$/,
+        replacement: resolve(uiSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/ui\/(.+)$/,
+        replacement: resolve(uiSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/plugin-app-control$/,
+        replacement: sourceOf("../plugin-app-control/src/index.ts"),
+      },
       {
         find: /^@elizaos\/plugin-goals\/db\/schema$/,
         replacement: sourceOf("src/db/schema.ts"),
@@ -62,16 +87,18 @@ export default defineConfig({
         find: /^@elizaos\/plugin-browser\/schema$/,
         replacement: sourceOf("../plugin-browser/src/schema.ts"),
       },
+      ...baseAliases,
     ],
   },
   test: {
+    ...baseConfig.test,
     environment: "node",
     include: [
       "src/**/*.{test,spec}.{ts,tsx}",
       "test/**/*.{test,spec}.{ts,tsx}",
     ],
-    // `*.harness.test.ts` boot a real PGLite runtime and need the workspace
-    // source aliases from vitest.harness.config.ts — run via `test:harness`.
-    exclude: ["**/node_modules/**", "dist/**", "**/*.harness.test.ts"],
+    // `*.real.test.ts` boot a real PGLite runtime and need the workspace
+    // source aliases from vitest.real-runtime.config.ts — run via `test:real-runtime`.
+    exclude: ["**/node_modules/**", "dist/**", "**/*.real.test.ts"],
   },
 });

@@ -1,6 +1,6 @@
 # Eliza — Package Publishing Guide
 
-This guide covers the **human steps** required to publish Eliza across all five package managers. The packaging configs are ready — this document walks through account setup, credential configuration, and publishing commands.
+This guide covers the **human steps** required to publish Eliza across the supported package managers and app stores. The packaging configs are ready — this document walks through account setup, credential configuration, and publishing commands.
 
 ---
 
@@ -8,7 +8,6 @@ This guide covers the **human steps** required to publish Eliza across all five 
 
 1. [PyPI (eliza)](#1-pypi-eliza)
 2. [Homebrew](#2-homebrew)
-3. [apt (Debian/Ubuntu)](#3-apt-debianubuntu)
 4. [Snap](#4-snap)
 5. [Flatpak](#5-flatpak)
 6. [Google Play Store (Android)](#6-google-play-store-android)
@@ -175,116 +174,6 @@ shasum -a 256 eliza.tgz
 
 # Update the formula: change url and sha256
 # Push to homebrew-tap repo
-```
-
----
-
-## 3. apt (Debian/Ubuntu)
-
-There are two approaches: a **PPA** (easier, Ubuntu-focused) or a **self-hosted apt repo** (works with all Debian-based distros).
-
-### 3.1 Option A: Launchpad PPA (Ubuntu)
-
-1. **Create a Launchpad account** at https://launchpad.net/+login
-2. **Create a GPG key** and upload to Launchpad:
-
-```bash
-# Generate a GPG key
-gpg --full-generate-key
-# Choose RSA, 4096 bits, email matching your Launchpad account
-
-# Upload to keyserver
-gpg --send-keys YOUR_KEY_ID
-
-# Add to Launchpad at https://launchpad.net/~/+editpgpkeys
-```
-
-3. **Create a PPA**:
-   - Go to https://launchpad.net/~/+activate-ppa
-   - Name: `eliza`
-   - Display name: "Eliza — Personal AI Assistant"
-
-4. **Build and upload the source package**:
-
-```bash
-cd /path/to/eliza
-
-# Copy debian/ packaging into place
-cp -r packaging/debian .
-
-# Build the source package
-dpkg-buildpackage -S -sa -k"YOUR_GPG_KEY_ID"
-
-# Upload to PPA
-dput ppa:YOUR_USERNAME/eliza ../eliza_2.0.0~beta0-1_source.changes
-```
-
-5. **Users install with**:
-
-```bash
-sudo add-apt-repository ppa:YOUR_USERNAME/eliza
-sudo apt update
-sudo apt install eliza
-```
-
-### 3.2 Option B: Self-Hosted apt Repository
-
-This gives you more control and works across all Debian-based distros.
-
-1. **Build the .deb package**:
-
-```bash
-cd /path/to/eliza
-cp -r packaging/debian .
-
-# Install build dependencies
-sudo apt install debhelper nodejs npm
-
-# Build the package
-dpkg-buildpackage -us -uc -b
-
-# The .deb will be in the parent directory
-ls ../eliza_*.deb
-```
-
-2. **Set up a repo using GitHub Pages or a server**:
-
-```bash
-# Create repo structure
-mkdir -p apt-repo/pool/main/m/eliza
-mkdir -p apt-repo/dists/stable/main/binary-amd64
-
-# Copy the .deb
-cp ../eliza_*.deb apt-repo/pool/main/m/eliza/
-
-# Generate Packages index
-cd apt-repo
-dpkg-scanpackages pool/ /dev/null | gzip -9c > dists/stable/main/binary-amd64/Packages.gz
-dpkg-scanpackages pool/ /dev/null > dists/stable/main/binary-amd64/Packages
-
-# Create Release file
-cd dists/stable
-apt-ftparchive release . > Release
-
-# Sign with GPG
-gpg --armor --detach-sign -o Release.gpg Release
-gpg --armor --clearsign -o InRelease Release
-```
-
-3. **Host the repo** (GitHub Pages, S3, Cloudflare R2, etc.)
-
-4. **Users install with**:
-
-```bash
-# Add the GPG key
-curl -fsSL https://apt.eliza.ai/gpg.key | sudo gpg --dearmor -o /usr/share/keyrings/eliza.gpg
-
-# Add the repo
-echo "deb [signed-by=/usr/share/keyrings/eliza.gpg] https://apt.eliza.ai stable main" | \
-  sudo tee /etc/apt/sources.list.d/eliza.list
-
-sudo apt update
-sudo apt install eliza
 ```
 
 ---
@@ -672,7 +561,6 @@ When releasing a new version, update these files:
 | `packaging/pypi/pyproject.toml` | `version` (use PEP 440: `2.0.0b0` not `2.0.0-beta.0`) |
 | `packaging/pypi/eliza/__init__.py` | `__version__` |
 | `packaging/snap/snapcraft.yaml` | `version` |
-| `packaging/debian/changelog` | Add new entry at top |
 | `packaging/homebrew/eliza.rb` | `url` + `sha256` (after npm publish) |
 | `packaging/flatpak/ai.elizaos.App.metainfo.xml` | Add new `<release>` entry |
 | `apps/app/android/app/build.gradle` | `versionCode` + `versionName` (via env vars in CI) |
@@ -683,7 +571,6 @@ When releasing a new version, update these files:
 |---|---|---|
 | npm | semver pre-release | `2.0.0-beta.0` |
 | PyPI (PEP 440) | beta suffix | `2.0.0b0` |
-| Debian | tilde for pre-release | `2.0.0~beta0-1` |
 | Snap | semver-ish | `2.0.0-beta.0` |
 | Flatpak | semver | `2.0.0-beta.0` |
 | Homebrew | follows npm tarball URL | (automatic) |
@@ -697,7 +584,6 @@ When releasing a new version, update these files:
 | **npm** | `npm install -g elizaai` |
 | **PyPI** | `pip install eliza` |
 | **Homebrew** | `brew install elizaOS/tap/eliza` |
-| **apt** | `sudo apt install eliza` (after adding repo) |
 | **Snap** | `sudo snap install eliza --classic` |
 | **Flatpak** | `flatpak install flathub ai.elizaos.App` |
 | **Google Play** | Search "Eliza" on Play Store |

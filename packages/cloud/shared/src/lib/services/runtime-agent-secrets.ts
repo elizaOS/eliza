@@ -14,8 +14,6 @@ export const RUNTIME_AGENT_SECRET_KEYS = [
   "LARGE_MODEL",
   "ANTHROPIC_API_KEY",
   "ANTHROPIC_BASE_URL",
-  "AI_GATEWAY_API_KEY",
-  "VERCEL_AI_GATEWAY_API_KEY",
 ] as const;
 
 export function mergeRuntimeAgentSecretsFromEnv(params: {

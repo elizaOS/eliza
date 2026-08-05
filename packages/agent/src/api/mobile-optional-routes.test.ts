@@ -13,7 +13,6 @@ const configMock = vi.hoisted(() => ({
   loadElizaConfig: vi.fn(() => ({})),
 }));
 
-vi.mock("@elizaos/plugin-streaming", () => ({}));
 vi.mock("../config/config.ts", () => configMock);
 
 import { handleMobileOptionalRoutes } from "./mobile-optional-routes.ts";

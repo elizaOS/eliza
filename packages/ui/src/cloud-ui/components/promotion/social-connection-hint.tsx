@@ -118,7 +118,7 @@ export function SocialConnectionHint({
             variant="ghost"
             type="button"
             onClick={handleDismissDiscord}
-            className="absolute top-3 right-3 p-1 rounded-sm hover:bg-white/10 transition-colors text-white/40 hover:text-white/60"
+            className="absolute top-3 right-3 p-1 rounded-sm hover:bg-white/10 transition-colors text-white/60 hover:text-white/60"
             aria-label="Dismiss Discord hint"
           >
             <X className="h-4 w-4" />
@@ -148,7 +148,7 @@ export function SocialConnectionHint({
                     <ArrowRight className="h-4 w-4 ml-2" />
                   </Link>
                 </Button>
-                <span className="text-white/40 text-xs">
+                <span className="text-white/60 text-xs">
                   Takes less than a minute
                 </span>
               </div>
@@ -164,7 +164,7 @@ export function SocialConnectionHint({
             variant="ghost"
             type="button"
             onClick={handleDismissTelegram}
-            className="absolute top-3 right-3 p-1 rounded-sm hover:bg-white/10 transition-colors text-white/40 hover:text-white/60"
+            className="absolute top-3 right-3 p-1 rounded-sm hover:bg-white/10 transition-colors text-white/60 hover:text-white/60"
             aria-label="Dismiss Telegram hint"
           >
             <X className="h-4 w-4" />
@@ -193,7 +193,7 @@ export function SocialConnectionHint({
                     <ArrowRight className="h-4 w-4 ml-2" />
                   </Link>
                 </Button>
-                <span className="text-white/40 text-xs">
+                <span className="text-white/60 text-xs">
                   Create via @BotFather
                 </span>
               </div>
@@ -204,7 +204,7 @@ export function SocialConnectionHint({
 
       {/* Both platforms connected hint - show only if both disconnected and neither dismissed */}
       {showDiscordHint && showTelegramHint && (
-        <div className="text-center text-white/40 text-xs py-2">
+        <div className="text-center text-white/60 text-xs py-2">
           Connect at least one platform to enable automated social promotion
         </div>
       )}

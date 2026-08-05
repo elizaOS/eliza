@@ -28,12 +28,12 @@ import type {
 import { ModelType } from "@elizaos/core";
 import type { ScenarioTurnExecution } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { stage1ResponseHandlerFixture } from "@elizaos/test-harness/action-route-fixtures";
-import type { LlmProxyCall } from "@elizaos/test-harness/llm-proxy";
+import { stage1ResponseHandlerFixture } from "@elizaos/core/testing";
+import type { DeterministicModelCall } from "@elizaos/core/testing";
 import {
   matchesScenarioInput,
-  type RuntimeWithScenarioLlmFixtures,
-} from "./_helpers/strict-llm-action-fixtures";
+  type RuntimeWithScenarioModelFixtures,
+} from "@elizaos/core/testing";
 
 const VIEW_ID = "scenario-active-ledger";
 const VIEW_LABEL = "Scenario Active Ledger";
@@ -149,7 +149,7 @@ const scenarioViewsRoutePlugin: Plugin = {
   ),
 };
 
-type RuntimeWithScenarioPlugins = RuntimeWithScenarioLlmFixtures & {
+type RuntimeWithScenarioPlugins = RuntimeWithScenarioModelFixtures & {
   plugins?: Array<{ name?: string }>;
   registerPlugin?: (plugin: Plugin) => Promise<void>;
 };
@@ -238,7 +238,7 @@ function plannerFixture({
 }) {
   return {
     name: `active-view-planner-${capability}-${elementId}`,
-    match: (call: LlmProxyCall) =>
+    match: (call: DeterministicModelCall) =>
       call.modelType === ModelType.ACTION_PLANNER &&
       matchesScenarioInput(input)(call.latestUserText) &&
       call.toolNames.includes("VIEWS") &&
@@ -361,7 +361,7 @@ export default scenario({
           await runtime.registerPlugin(scenarioViewsRoutePlugin);
         }
         installPromptOptimizations(runtime as never, {} as never);
-        runtime.scenarioLlmFixtures?.register(
+        runtime.scenarioModelFixtures?.register(
           stage1ResponseHandlerFixture({
             actionName: "VIEWS",
             contextIds: ["active-view", "views"],

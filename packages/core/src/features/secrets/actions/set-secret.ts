@@ -172,6 +172,8 @@ export async function setSecretHandler(
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : String(error);
 		logger.error(`[SECRETS:set] Failed to extract secrets: ${errorMessage}`);
+		// error-policy:J1 the action boundary translates extraction failure into
+		// an explicit unsuccessful result visible to the model.
 		// Planner-facing only: the canned clarification double-messaged next to
 		// the evaluator's in-voice reply. The evaluator owns asking the user.
 		return {
@@ -223,6 +225,8 @@ export async function setSecretHandler(
 				logger.info(`[SECRETS:set] Successfully set secret: ${key}`);
 			}
 		} catch (error) {
+			// error-policy:J1 Multi-secret action results expose each failed write
+			// explicitly without fabricating success for that key.
 			const errorMessage =
 				error instanceof Error ? error.message : "Unknown error";
 			results.push({ key, success: false, error: errorMessage });

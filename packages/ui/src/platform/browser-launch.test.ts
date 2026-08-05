@@ -1,3 +1,4 @@
+/** Verifies browser launch connection handling through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

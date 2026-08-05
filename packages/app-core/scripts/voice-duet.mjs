@@ -313,12 +313,12 @@ async function bootAgentRuntime({ roomId, character, modelId }) {
   });
   await runtime.initialize();
   const { ensureLocalInferenceHandler, prewarmResponseHandler } = await import(
-    "../../../plugins/plugin-local-inference/src/runtime/ensure-local-inference-handler.ts"
+    "@elizaos/plugin-local-inference/runtime/ensure-local-inference-handler"
   );
   await ensureLocalInferenceHandler(runtime);
   try {
     const { setAssignment } = await import(
-      "../../../plugins/plugin-local-inference/src/services/assignments.ts"
+      "@elizaos/plugin-local-inference/services/assignments"
     );
     if (typeof setAssignment === "function") {
       await setAssignment("TEXT_SMALL", modelId);
@@ -419,7 +419,7 @@ async function bootAgentEngine({
 async function snapshotTrace(roomId) {
   try {
     const { voiceLatencyTracer } = await import(
-      "../../../plugins/plugin-local-inference/src/services/latency-trace.ts"
+      "@elizaos/plugin-local-inference/services/latency-trace"
     );
     const all = voiceLatencyTracer.recentTraces();
     const t =
@@ -434,7 +434,7 @@ async function snapshotTrace(roomId) {
 async function snapshotHistograms() {
   try {
     const { voiceLatencyTracer } = await import(
-      "../../../plugins/plugin-local-inference/src/services/latency-trace.ts"
+      "@elizaos/plugin-local-inference/services/latency-trace"
     );
     return typeof voiceLatencyTracer.histogramSummaries === "function"
       ? voiceLatencyTracer.histogramSummaries()
@@ -591,7 +591,7 @@ async function main() {
   );
 
   const { LocalInferenceEngine } = await import(
-    "../../../plugins/plugin-local-inference/src/services/engine.ts"
+    "@elizaos/plugin-local-inference/services/engine"
   );
   // Register the bundle in the local-inference registry if it isn't already
   // (the same step `voice-interactive.mjs` does before `engine.load`).
@@ -608,7 +608,7 @@ async function main() {
     process.exit(1);
   }
   const { listInstalledModels } = await import(
-    "../../../plugins/plugin-local-inference/src/services/registry.ts"
+    "@elizaos/plugin-local-inference/services/registry"
   );
   const installed = await listInstalledModels();
   const target = installed.find((m) => m.id === args.model);
@@ -624,7 +624,7 @@ async function main() {
   const bundlePath = target.path;
 
   const { PushMicSource } = await import(
-    "../../../plugins/plugin-local-inference/src/services/voice/mic-source.ts"
+    "@elizaos/plugin-local-inference/services/voice/mic-source"
   );
   const {
     markVoiceLatency,
@@ -632,10 +632,10 @@ async function main() {
     voiceLatencyTracer,
     VoiceRunMetrics,
   } = await import(
-    "../../../plugins/plugin-local-inference/src/services/latency-trace.ts"
+    "@elizaos/plugin-local-inference/services/latency-trace"
   );
   const { parseExpressiveTags, asrEmotionToTag } = await import(
-    "../../../plugins/plugin-local-inference/src/services/voice/expressive-tags.ts"
+    "@elizaos/plugin-local-inference/services/voice/expressive-tags"
   );
 
   const charA = await loadCharacter(args.characterA, DEFAULT_CHARACTER_A);
@@ -1218,10 +1218,10 @@ async function runAsPeerB(args) {
       process.exit(1);
     }
     const { LocalInferenceEngine } = await import(
-      "../../../plugins/plugin-local-inference/src/services/engine.ts"
+      "@elizaos/plugin-local-inference/services/engine"
     );
     const { PushMicSource } = await import(
-      "../../../plugins/plugin-local-inference/src/services/voice/mic-source.ts"
+      "@elizaos/plugin-local-inference/services/voice/mic-source"
     );
     const { DuetSink } = await import("./lib/duet-bridge.mjs");
     const charB = await loadCharacter(args.characterB, DEFAULT_CHARACTER_B);

@@ -70,6 +70,32 @@ function makeEvaluator(name: string, description: string): RegisteredEvaluator {
 }
 
 describe("AgentRuntime component precedence — undeclared collisions (first-wins + WARN)", () => {
+	it("silently ignores re-registration of the exact same component instances", () => {
+		const runtime = makeRuntime("same-instance-registration");
+		const warn = vi.spyOn(runtime.logger, "warn");
+		const provider = makeProvider("SAME_PROVIDER", "same");
+		const action = makeAction("SAME_ACTION", "same");
+		const evaluator = makeEvaluator("SAME_EVALUATOR", "same");
+
+		runtime.registerProvider(provider);
+		runtime.registerAction(action);
+		runtime.registerEvaluator(evaluator);
+		runtime.registerProvider(provider);
+		runtime.registerAction(action);
+		runtime.registerEvaluator(evaluator);
+
+		expect(
+			runtime.providers.filter((item) => item.name === provider.name),
+		).toHaveLength(1);
+		expect(
+			runtime.actions.filter((item) => item.name === action.name),
+		).toHaveLength(1);
+		expect(
+			runtime.evaluators.filter((item) => item.name === evaluator.name),
+		).toHaveLength(1);
+		expect(warn).not.toHaveBeenCalled();
+	});
+
 	it("keeps the first provider and WARNs on an undeclared name collision", async () => {
 		const runtime = makeRuntime("provider-collision-warn");
 		const warn = vi.spyOn(runtime.logger, "warn");

@@ -1,3 +1,4 @@
+/** Verifies ChatMessage tap-to-reveal vs transcript scroll through the package's configured test harness. */
 // @vitest-environment jsdom
 
 // Touch tap-vs-scroll discrimination for the composite ChatMessage's

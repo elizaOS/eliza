@@ -1,5 +1,10 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for package electrobun linux mjs. */
+/**
+ * Packages the Linux Electrobun build into distributable artifacts (.deb via
+ * dpkg-deb, .rpm via rpmbuild, AppImage via appimagetool) under
+ * platforms/electrobun/artifacts, normalizing package names to each format's
+ * rules.
+ */
 
 import { execFileSync } from "node:child_process";
 import {

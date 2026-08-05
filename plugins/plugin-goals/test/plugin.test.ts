@@ -16,7 +16,7 @@
 import { describe, expect, it } from "vitest";
 
 import * as goalsExports from "../src/index.ts";
-import { GoalsCheckinService, GoalsView, goalsPlugin } from "../src/index.ts";
+import { GoalsCheckinService, goalsPlugin } from "../src/index.ts";
 
 describe("goalsPlugin manifest", () => {
   it("identifies as @elizaos/plugin-goals and depends on plugin-sql + the scheduling spine", () => {
@@ -28,11 +28,9 @@ describe("goalsPlugin manifest", () => {
   });
 
   it("registers exactly one view: the gui `goals` surface", () => {
-    expect(goalsPlugin.views).toBeDefined();
     expect(goalsPlugin.views).toHaveLength(1);
 
     const view = goalsPlugin.views?.[0];
-    expect(view).toBeDefined();
     if (!view) throw new Error("goals view missing");
 
     expect(view.id).toBe("goals");
@@ -46,13 +44,6 @@ describe("goalsPlugin manifest", () => {
     // viewType defaults to "gui" when omitted (see ViewDeclaration docs).
     expect(view.viewType === undefined || view.viewType === "gui").toBe(true);
     expect(view.tags).toContain("goals");
-  });
-
-  it("exports the GoalsView component the view registration names", () => {
-    // The `componentExport` string must resolve to a real exported component on
-    // the package barrel, since the shell loads `module[componentExport]`.
-    expect(goalsPlugin.views?.[0]?.componentExport).toBe("GoalsView");
-    expect(typeof GoalsView).toBe("function");
   });
 
   it("registers only the migrated owner action and the check-in service", () => {

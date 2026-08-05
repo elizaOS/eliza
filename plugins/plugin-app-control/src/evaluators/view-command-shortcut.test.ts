@@ -48,6 +48,7 @@ async function run(text: string, opts = {}) {
 
 describe("viewCommandShortcutEvaluator — forces VIEWS on explicit commands", () => {
 	const commands: Array<[text: string, view: string]> = [
+		["settings", "settings"],
 		["open settings", "settings"],
 		["go to settings view", "settings"],
 		["go home", "chat"],
@@ -121,7 +122,20 @@ describe("viewCommandShortcutEvaluator — does NOT fire", () => {
 	it("when VIEWS action is not registered", async () => {
 		expect(await run("open settings", { hasViews: false })).toBeNull();
 	});
-	it("when processMessage is STOP", async () => {
-		expect(await run("open settings", { processMessage: "STOP" })).toBeNull();
+});
+
+describe("viewCommandShortcutEvaluator — overrides weak-model STOP", () => {
+	it("forces a bare settings command after Stage 1 produced a reply", async () => {
+		const patch = await run("settings", { processMessage: "STOP" });
+
+		expect(patch).toMatchObject({
+			requiresTool: true,
+			clearCandidateActions: true,
+			addCandidateActions: ["VIEWS"],
+			deterministicToolCall: {
+				name: "VIEWS",
+				params: { action: "show", view: "settings" },
+			},
+		});
 	});
 });

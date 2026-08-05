@@ -62,18 +62,16 @@ a **prebuilt, allowlisted, first-party image**:
   app whose build-from-repo is off will not silently fall back to a default image
   — it fails closed until an explicit prebuilt `ghcr.io/elizaos/*` image is set.
 
-To ship genuinely custom app code, an operator publishes a first-party
-`ghcr.io/elizaos/*` image (the `build-example-app-images` workflow publishes the
-`:showcase` tags) and points the app at it via `metadata.imageTag`, or enables
-build-from-repo (deferred). Until then, the template image is the deploy artifact.
+To ship genuinely custom app code, publish an operator-owned container image
+and point the app at it via `metadata.imageTag`. A missing explicit deploy image
+is a configuration error; do not fall back to a retired example image.
 
 The first-party image (template or operator-published) listens on `$PORT`,
 exposes a `GET /health` that returns 200 quickly, and — for a chat app — forwards
 user-bearing requests upstream to the cloud's `/api/v1/messages` with the user's
 bearer token and an `x-app-id: <appId>` header (debits the user's org balance and
-records creator earnings). The canonical reference for that shape is
-[`packages/examples/cloud/edad/server.ts`](https://github.com/elizaos/eliza/blob/develop/packages/examples/cloud/edad/server.ts)
-— the same code published as the default template image.
+records creator earnings). Keep the proxy server-side so owner credentials
+never enter the browser bundle.
 
 The inline minimal version of that forwarder — a Next.js or Hono handler is
 equivalent — is:

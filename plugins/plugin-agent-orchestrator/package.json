@@ -76,7 +76,7 @@
     "@octokit/rest": "^22.0.0",
     "@smithers-orchestrator/engine": "0.29.0",
     "coding-agent-adapters": "0.16.3",
-    "drizzle-orm": "^0.45.1",
+    "drizzle-orm": "0.45.2",
     "effect": "^3.21.1",
     "universal-user-agent": "^7.0.3",
     "@elizaos/auth": "workspace:*"

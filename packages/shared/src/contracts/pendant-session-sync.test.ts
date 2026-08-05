@@ -17,7 +17,6 @@ import {
 describe("pendant session sync contract", () => {
   it("builds stable segment ids from session id and ordinal", () => {
     expect(pendantSegmentId("sess-a", 7)).toBe("sess-a:segment:7");
-    expect(pendantSegmentId("sess-a", 7)).toBe(pendantSegmentId("sess-a", 7));
   });
 
   it("defaults processing location without accepting unknown fields", () => {

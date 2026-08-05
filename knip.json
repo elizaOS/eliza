@@ -12,10 +12,6 @@
     "**/coverage/**",
     "**/storybook-static/**",
     "**/.turbo/**",
-    "packages/benchmarks/benchmark_results/**",
-    "packages/benchmarks/OSWorld/**",
-    "packages/benchmarks/openclaw-benchmark/**",
-    "packages/benchmarks/swe-bench-workspace/**",
     "plugins/plugin-local-inference/native/llama.cpp/**",
     "plugins/plugin-local-inference/native/reports/**/*.json",
     "plugins/plugin-local-inference/native/verify/bench_results/**",
@@ -121,38 +117,6 @@
       "project": ["src/**/*.ts", "vitest.config.ts"],
       "ignore": ["dist/**", ".turbo/**"]
     },
-    "packages/os/homepage": {
-      "entry": [
-        "index.html",
-        "src/main.tsx",
-        "src/index.css",
-        "scripts/**/*.mjs",
-        "tests/**/*.ts",
-        "vite.config.ts",
-        "playwright.config.ts"
-      ],
-      "project": [
-        "src/**/*.{css,ts,tsx}",
-        "scripts/**/*.mjs",
-        "tests/**/*.ts",
-        "vite.config.ts",
-        "playwright.config.ts"
-      ],
-      "ignore": ["dist/**", ".turbo/**"]
-    },
-    "packages/os/usb-installer": {
-      "entry": [
-        "index.html",
-        "src/index.ts",
-        "src/main.tsx",
-        "src/**/*.test.ts",
-        "src/**/*.test.tsx",
-        "vite.config.ts",
-        "vitest.config.ts"
-      ],
-      "project": ["src/**/*.{ts,tsx}", "vite.config.ts", "vitest.config.ts"],
-      "ignore": ["dist/**", ".turbo/**"]
-    },
     "packages/shared": {
       "entry": ["src/**/*.ts", "scripts/**/*.mjs", "vitest.config.ts"],
       "project": ["src/**/*.ts", "scripts/**/*.mjs", "vitest.config.ts"],
@@ -248,7 +212,7 @@
       "project": ["**/*.ts", "__tests__/**/*.test.ts", "vitest.config.ts"],
       "ignore": ["dist/**", ".turbo/**"]
     },
-    "plugins/plugin-aosp-local-inference": {
+    "plugins/plugin-native-inference": {
       "entry": [
         "src/index.ts",
         "src/aosp-mtp-adapter.ts",
@@ -289,6 +253,7 @@
         "vite.config.ts",
         "vite-dev-origin.ts",
         "vitest.config.ts",
+        "vitest.*.config.ts",
         "vitest.e2e.config.ts",
         "playwright.*.config.ts",
         "scripts/**/*.{mjs,ts}",
@@ -327,50 +292,58 @@
         "src/**/*.{ts,tsx}",
         "scripts/**/*.{mjs,ts}",
         "test/**/*.{ts,tsx}",
-        "platforms/**/*.{ts,tsx}",
-        "packaging/**/*.{mjs,ts}",
         "vitest.config.ts",
         "vitest.e2e.config.ts",
-        "playwright.config.ts"
+        "vitest.app-real-e2e.config.ts",
+        "vitest.harvest-live-agent.config.ts"
       ],
       "project": [
         "src/**/*.{ts,tsx}",
         "scripts/**/*.{mjs,ts}",
         "test/**/*.{ts,tsx}",
-        "platforms/**/*.{ts,tsx}",
-        "packaging/**/*.{mjs,ts}",
         "*.ts"
-      ],
-      "ignore": [
-        "dist/**",
-        "test/contracts/**",
-        "platforms/**/build/**",
-        "platforms/**/artifacts/**"
       ],
       "ignoreDependencies": [
         "@capacitor/barcode-scanner",
+        "@capacitor/background-runner",
         "@capacitor/haptics",
         "@capacitor/keyboard",
+        "@capacitor/local-notifications",
         "@capacitor/push-notifications",
+        "@elizaos/plugin-anthropic",
         "@elizaos/plugin-personal-assistant",
-        "@elizaos/plugin-browser",
-        "@elizaos/plugin-discord",
-        "@elizaos/plugin-local-inference",
-        "@elizaos/plugin-telegram",
+        "@elizaos/plugin-openai",
         "@elizaos/plugin-wallet",
         "@elizaos/plugin-wechat",
-        "@elizaos/plugin-workflow",
-        "@types/ws",
-        "discord.js",
-        "figlet",
-        "node:sqlite",
-        "node:undici",
-        "nodemailer",
-        "puppeteer-core",
-        "tailwindcss",
-        "undici",
-        "ws"
-      ]
+        "electrobun",
+        "tailwindcss"
+      ],
+      "ignoreBinaries": [
+        "adb",
+        "afconvert",
+        "anvil",
+        "brew",
+        "cmake",
+        "findstr",
+        "hf",
+        "log",
+        "netstat",
+        "ninja",
+        "nm",
+        "nvidia-smi",
+        "otool",
+        "pgrep",
+        "rg",
+        "ruby",
+        "say",
+        "secret-tool",
+        "strip",
+        "swift",
+        "tsc6",
+        "where",
+        "winget"
+      ],
+      "ignoreUnresolved": ["scripts/build.mjs"]
     },
     "packages/app-core/deploy/cloud-agent-template": {
       "entry": ["entrypoint.ts"],
@@ -381,72 +354,6 @@
         "@elizaos/plugin-elizacloud",
         "@elizaos/plugin-workflow"
       ]
-    },
-    "packages/benchmarks/eliza-1": {
-      "entry": [
-        "src/index.ts",
-        "src/metrics.ts",
-        "src/report.ts",
-        "__tests__/**/*.ts",
-        "scripts/**/*.mjs"
-      ],
-      "project": ["src/**/*.ts", "__tests__/**/*.ts", "scripts/**/*.mjs"],
-      "ignore": [".turbo/**"]
-    },
-    "packages/benchmarks/eliza-1/vision-cua-e2e": {
-      "entry": [
-        "src/pipeline.ts",
-        "*.e2e.test.ts",
-        "src/**/*.test.ts",
-        "src/**/*.e2e.test.ts",
-        "scripts/**/*.mjs",
-        "vitest.config.ts"
-      ],
-      "project": ["src/**/*.ts", "scripts/**/*.mjs", "vitest.config.ts"],
-      "ignore": [".turbo/**"]
-    },
-    "packages/benchmarks/interrupt-bench": {
-      "entry": [
-        "src/index.ts",
-        "src/runner.ts",
-        "src/scorer.ts",
-        "scripts/**/*.ts",
-        "tests/**/*.ts"
-      ],
-      "project": ["src/**/*.ts", "scripts/**/*.ts", "tests/**/*.ts"],
-      "ignore": [".turbo/**"]
-    },
-    "packages/benchmarks/lib": {
-      "entry": [
-        "src/index.ts",
-        "src/metrics-schema.ts",
-        "src/model-tiers.ts",
-        "src/local-llama-cpp.ts",
-        "src/**/*.test.ts"
-      ],
-      "project": ["src/**/*.ts"],
-      "ignore": [".turbo/**", "__pycache__/**"]
-    },
-    "packages/benchmarks/three-agent-dialogue": {
-      "entry": [
-        "runner/run-dialogue.ts",
-        "runner/**/*.ts",
-        "verify/**/*.ts",
-        "__tests__/**/*.ts",
-        "vitest.config.ts"
-      ],
-      "project": [
-        "runner/**/*.ts",
-        "verify/**/*.ts",
-        "__tests__/**/*.ts",
-        "vitest.config.ts"
-      ],
-      "ignore": [".turbo/**", "artifacts/**"]
-    },
-    "packages/contracts": {
-      "entry": ["src/index.ts"],
-      "project": ["src/**/*.ts", "!src/**/*.d.ts"],
-      "ignore": ["dist/**", ".turbo/**", "src/**/*.d.ts", "src/**/*.d.ts.map"]
     },
     "packages/app-core/platforms/electrobun": {
       "entry": [
@@ -463,36 +370,6 @@
       ],
       "ignore": ["build/**", "artifacts/**"],
       "ignoreDependencies": ["bonjour-service", "rcedit"]
-    },
-    "packages/plugin-remote-manifest": {
-      "entry": [
-        "src/**/*.ts",
-        "examples/**/*.test.ts",
-        "examples/**/worker.mjs",
-        "examples/**/plugin.json"
-      ],
-      "project": [
-        "src/**/*.ts",
-        "examples/**/*.test.ts",
-        "examples/**/worker.mjs",
-        "examples/**/plugin.json"
-      ],
-      "ignore": ["dist/**"]
-    },
-    "packages/browser-extension": {
-      "entry": [
-        "entrypoints/**/*.ts",
-        "src/**/*.ts",
-        "scripts/**/*.{mjs,ts,js}",
-        "vitest.extension.config.ts"
-      ],
-      "project": [
-        "entrypoints/**/*.ts",
-        "src/**/*.ts",
-        "scripts/**/*.{mjs,ts,js}",
-        "vitest.extension.config.ts"
-      ],
-      "ignore": ["dist/**"]
     },
     "plugins/plugin-native-gateway": {
       "ignoreBinaries": ["pod"]
@@ -514,79 +391,6 @@
         "vitest.config.ts"
       ],
       "ignore": ["dist/**", "templates/**"]
-    },
-    "packages/examples/_plugin": {
-      "entry": [
-        "src/**/*.{ts,tsx}",
-        "build.ts",
-        "vite.config.ts",
-        "tailwind.config.js",
-        "postcss.config.js"
-      ],
-      "project": [
-        "src/**/*.{ts,tsx}",
-        "build.ts",
-        "vite.config.ts",
-        "tailwind.config.js",
-        "postcss.config.js"
-      ],
-      "ignore": ["dist/**"],
-      "ignoreDependencies": ["@types/uuid", "uuid"]
-    },
-    "packages/examples/app/capacitor/frontend": {
-      "entry": ["src/**/*.{ts,tsx}", "vite.config.ts", "index.html"],
-      "project": ["src/**/*.{ts,tsx}", "vite.config.ts"],
-      "ignore": ["dist/**"]
-    },
-    "packages/examples/app/electron/backend": {
-      "entry": ["src/main.ts", "src/preload.ts"],
-      "project": ["src/**/*.ts"],
-      "ignore": ["dist/**", "renderer/**"]
-    },
-    "packages/examples/app/electron/frontend": {
-      "entry": ["src/**/*.{ts,tsx}", "vite.config.ts", "index.html"],
-      "project": ["src/**/*.{ts,tsx}", "vite.config.ts"],
-      "ignore": ["dist/**"]
-    },
-    "packages/examples/elizagotchi": {
-      "entry": ["src/**/*.{ts,tsx}", "vite.config.ts", "index.html"],
-      "project": ["src/**/*.{ts,tsx}", "vite.config.ts"],
-      "ignore": ["dist/**"]
-    },
-    "packages/examples/farcaster-miniapp": {
-      "entry": [
-        "src/**/*.{ts,tsx}",
-        "server.js",
-        "vite.config.ts",
-        "index.html"
-      ],
-      "project": ["src/**/*.{ts,tsx}", "server.js", "vite.config.ts"],
-      "ignore": ["dist/**"]
-    },
-    "packages/examples/html": {
-      "entry": ["index.html", "package.json"],
-      "project": [],
-      "ignoreBinaries": ["python3"]
-    },
-    "packages/examples/react": {
-      "entry": [
-        "src/**/*.{ts,tsx}",
-        "scripts/**/*.mjs",
-        "vite.config.ts",
-        "index.html"
-      ],
-      "project": ["src/**/*.{ts,tsx}", "scripts/**/*.mjs", "vite.config.ts"],
-      "ignore": ["dist/**", "public/pglite/**"]
-    },
-    "packages/examples/trader": {
-      "entry": ["src/**/*.{ts,tsx}", "vite.config.ts", "index.html"],
-      "project": ["src/**/*.{ts,tsx}", "vite.config.ts", "tsconfig.node.json"],
-      "ignore": ["dist/**"]
-    },
-    "packages/examples/vercel": {
-      "entry": ["api/**/*.ts", "test-client.ts", "vercel.json"],
-      "project": ["api/**/*.ts", "test-client.ts"],
-      "ignore": ["dist/**", ".vercel/**"]
     },
     "packages/homepage": {
       "entry": [
@@ -611,58 +415,6 @@
         "tw-animate-css"
       ]
     },
-    "packages/examples/aws": {
-      "entry": [
-        "handler.ts",
-        "server-local.ts",
-        "test-client.ts",
-        "test-local.ts"
-      ],
-      "project": ["*.ts"],
-      "ignore": ["dist/**", ".eliza/**"],
-      "ignoreBinaries": ["sam"]
-    },
-    "packages/examples/browser-extension": {
-      "entry": ["package.json"],
-      "project": [],
-      "ignore": ["chrome/**", "safari/**", "shared/**"]
-    },
-    "packages/examples/browser-extension/chrome": {
-      "entry": [
-        "src/**/*.ts",
-        "../shared/eliza-runtime-full.ts",
-        "../shared/types.ts",
-        "tsup.config.ts"
-      ],
-      "project": [
-        "src/**/*.ts",
-        "../shared/eliza-runtime-full.ts",
-        "../shared/types.ts",
-        "tsup.config.ts"
-      ],
-      "ignore": ["dist/**"],
-      "ignoreDependencies": [
-        "@elizaos/core",
-        "@elizaos/plugin-anthropic",
-        "@elizaos/plugin-elizacloud",
-        "@elizaos/plugin-google-genai",
-        "@elizaos/plugin-groq",
-        "@elizaos/plugin-localdb",
-        "@elizaos/plugin-openai",
-        "@elizaos/plugin-openrouter"
-      ]
-    },
-    "packages/examples/browser-extension/safari": {
-      "entry": ["package.json", "scripts/**/*.mjs"],
-      "project": ["scripts/**/*.mjs"],
-      "ignore": [".generated/**"],
-      "ignoreBinaries": ["xcrun"]
-    },
-    "packages/examples/convex": {
-      "entry": ["test-client.ts", "convex/*.ts"],
-      "project": ["test-client.ts", "convex/**/*.ts"],
-      "ignore": ["convex/_generated/**"]
-    },
     "packages/agent": {
       "entry": [
         "src/index.ts",
@@ -678,7 +430,19 @@
         "*.ts"
       ],
       "ignore": ["dist/**", "dist-mobile*/**"],
-      "ignoreDependencies": ["node:sqlite", "ws", "@types/ws", "x402-fetch"]
+      "ignoreDependencies": [
+        "@elizaos/plugin-cloud-apps",
+        "@elizaos/plugin-imessage",
+        "@elizaos/plugin-mcp",
+        "@elizaos/plugin-notes",
+        "@elizaos/plugin-signal",
+        "@elizaos/plugin-whatsapp",
+        "@elizaos/plugin-workflow",
+        "node:sqlite",
+        "ws",
+        "@types/ws",
+        "x402-fetch"
+      ]
     },
     "packages/core": {
       "entry": ["src/**/*.ts", "!src/**/*.d.ts", "build.ts"],
@@ -717,11 +481,6 @@
         "src/**/*.d.ts",
         "src/**/*.d.ts.map"
       ]
-    },
-    "packages/os": {
-      "entry": ["package.json"],
-      "project": [],
-      "ignore": ["android/**", "linux/**"]
     },
     "plugins/plugin-tailscale": {
       "entry": ["src/index.ts"],

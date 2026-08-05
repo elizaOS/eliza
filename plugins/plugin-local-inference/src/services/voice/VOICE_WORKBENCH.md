@@ -25,6 +25,11 @@ hardware lane: it generates distinct human voices with ElevenLabs, synthesizes
 agent echoes with the fused local TTS, and scores the corpus through fused ASR,
 WeSpeaker, pyannote, and the shipped respond/self-voice gate. Missing real
 artifacts are a hard failure in `--real`, not all-skipped evidence.
+The real adapter diarizes the complete corpus in consecutive model-native
+five-second windows, preserves pyannote's own segment boundaries and overlap,
+and clusters window-local speakers without reading reference labels. Assertions
+whose real signal has zero samples fail through explicit measurement-coverage
+cases rather than disappearing from a nominally green report.
 
 ### Execution lanes (`voice:workbench`)
 
@@ -32,7 +37,7 @@ artifacts are a hard failure in `--real`, not all-skipped evidence.
 | --- | --- | --- | --- |
 | `--mock` (default) | `groundTruthMockServices` echoes ground truth | runner → scorers → report wiring | ✅ always |
 | `--logic` | `realDecisionLogicServices` runs the SHIPPED EOT + respond/echo/bystander/wake-word gate + name extraction + owner inference | the **decision logic** (catches a regression the moment it lands) | ✅ always (no models) |
-| `--real` | ElevenLabs human speech + fused local TTS/ASR + WeSpeaker + pyannote | real WER/DER/EOT/respond/self-voice/owner-security measurements | ✅ provisioned nightly/hardware lane |
+| `--real` | Distinct keyless Kokoro voices (or ElevenLabs when configured) + fused local TTS/ASR + WeSpeaker + pyannote | real WER, provider-timestamp DER/overlap, EOT, respond, self-voice, owner-security, and fail-closed measurement coverage | ✅ provisioned nightly/hardware lane |
 
 The `--logic` lane is the key anti-hollow guarantee: it does NOT echo the corpus,
 it runs the same gate the UI client ships (`@elizaos/shared/voice/respond-gate`),
@@ -50,14 +55,15 @@ reply, and holds on a mid-utterance pause — asserted by tests, not assumed.
 | **Acoustic robustness corpus** | `corpus-augment.ts` | Seeded, deterministic degradation DSP: additive room noise (white/pink at a target SNR), Freeverb reverb, far-field attenuation, telephone/low-quality line (band-limit + µ-law), and competing background talkers. Wired into the corpus generator via a per-turn / per-scenario `environment` so a clean scenario and a noisy one share one schema. |
 | **Meeting acoustic stress matrix** | `meeting-acoustic-stress-matrix.ts` | `buildMeetingAcousticStressMatrix()` emits deterministic workbench scenarios plus source-manifest metadata for #12492: SNRs -5/0/5/10/20 dB, music/noise/babble/TV/outdoor backgrounds, close/far/reverb/room-mic rooms, clipping/telephone/compression/dropout quality artifacts, speech-structure stressors, 1/2/3/5/8-speaker single-stream cases, and negative expectations (`unknown`, `do_not_respond`, `needs_speaker_correction`). Generate WAVs + ground truth with `bun run scripts/generate-voice-corpus.ts --meeting-stress --out <dir>`. |
 | **Real-decision-logic adapter** | `workbench-logic-services.ts` | Runs the SHIPPED EOT + respond/echo/bystander/wake-word gate + name extraction over the corpus (no models). The `--logic` lane. |
-| **Real acoustic adapter** | `workbench-real-services.ts` | The `--real` lane: ElevenLabs-generated human speech, fused local agent TTS, fused ASR, WeSpeaker speaker centroids, pyannote speech/overlap labels, live `selfVoiceSimilarity`, owner inference, and the same respond gate. |
+| **Real acoustic adapter** | `workbench-real-services.ts` | The `--real` lane: keyless Kokoro or configured ElevenLabs human speech, fused local agent TTS/ASR, full-stream pyannote windows, blind WeSpeaker clustering across windows, live `selfVoiceSimilarity`, owner inference, and the same respond gate. DER consumes the actual diarizer spans; it never copies reference boundaries into the hypothesis. |
 | **Respond/echo gate (single source)** | `@elizaos/shared/voice/respond-gate` | `shouldRespondToVoiceTurn` + `buildVoiceTurnSignal`, promoted out of the UI so the client and the workbench share one definition. The UI re-exports it. |
 | **Owner inference** | `@elizaos/shared/voice/owner-inference` | `resolveOwnerCandidate` — proposes the owner from who speaks most/most-confidently, only when sufficient AND unambiguous, else UNDECIDED. The logic an owner-detection provider/evaluator runs when no owner is enrolled. |
 | **Echo + owner scorers** | `e2e-harness.ts` | `scoreEchoRejection` (agent-echo turns correctly suppressed) and `scoreOwnerSecurity` (owner-vs-intruder accuracy + impostor-accept rate). |
 
 Tests: `voice-workbench.test.ts`, `voice-workbench-report.test.ts`,
 `e2e-harness.test.ts`, `corpus-augment.test.ts`,
-`workbench-logic-services.test.ts`, `corpus-generator.test.ts`, and (in shared)
+`workbench-logic-services.test.ts`, `workbench-real-services.test.ts`,
+`corpus-generator.test.ts`, and (in shared)
 `voice/owner-inference.test.ts`.
 
 ### Scenario classes
@@ -79,8 +85,8 @@ The sibling-behavior classes (#12258) each pin a settled ceiling:
   NOT commit (`maxEotFalseTriggerRate`); the fused semantic-EOT gate holds
   (#12255 / #12889).
 - **`streaming-partials`** — a streaming-ASR partial stream's committed prefix
-  never retracts (`scorePartialMonotonicity`); scored only where a partial feed
-  exists, skipped honestly in batch-only lanes (#12254).
+  never retracts (`scorePartialMonotonicity`); the real lane fails measurement
+  coverage when this defining signal is absent (#12254).
 - **`speaker-gated-barge-in`** — a wake-word interjection hard-stops the TTS
   within `maxBargeInCancelMs: 250`; the agent's own echo and an unenrolled
   bystander must NOT cancel (`scoreBargeInGating`; #12255).
@@ -121,6 +127,9 @@ scenario makes the whole report `fail`. `voice:workbench --real` is the one
 exception to "skip": it **hard-fails** on any missing acoustic artifact (a clear
 `missing …` error, exit 1) — an all-skipped `--real` run would be dishonest
 "skip-as-evidence", so a provisioned lane must produce numbers or fail loud.
+The same rule applies inside a run: when a scenario asserts first-audio,
+voice/entity, echo, owner, barge-in, ERLE, diarization, or streaming-partial
+behavior, zero observed samples add a failing `measurement-coverage` case.
 
 ## Evidence bundle every voice PR files (#12258)
 
@@ -140,7 +149,7 @@ the PR (MP4/JPG/logs in `<details>`; stage locally under
    voice:latency-report`) against a running app, per-stage p50/p90/p99; required
    for any latency-touching change and cited against `maxFirstAudioMs`.
 3. **interrupt-bench numbers** — `bun run --cwd
-   packages/benchmarks/interrupt-bench test` for barge-in / interruption changes.
+   interrupt-bench test` (in https://github.com/elizaOS/benchmarks) for barge-in / interruption changes.
 4. **Captured real audio + narrated walkthrough** — `AGENTS.md` is binding
    for voice: the real STT→TTS round-trip audio, backend `[ClassName]` logs
    showing the exact path (router re-throw, AEC `echoReferenceWired` flip,
@@ -184,10 +193,10 @@ no scorer math is duplicated in the new work.
 | --- | --- |
 | `e2e-harness.ts:wordErrorRate` + `voice-selftest-harness.ts:wordErrorRate` | **Done** — one `@elizaos/shared/voice-wer`. |
 | Pure scoring lib (`e2e-harness.ts`) | **Promoted** to the single metric module (EOT/diarization/respond/entity + barge-in-gating/ERLE/partial scorers). |
-| `packages/benchmarks/interrupt-bench` (barge-in / interruption scoring) | **Wired into CI** — runs in the `voice-workbench.yml` PR lane alongside the `--logic` regression gate. |
+| `interrupt-bench` (barge-in / interruption scoring, now in https://github.com/elizaOS/benchmarks) | Runs from the standalone benchmarks repo. |
 | `packages/app-core/scripts/voice-duet.mjs` (`voice:duet`), `voice-e2e-hardware.ts`, `voice-attribution-smoke.ts`, `lib/duet-bridge.mjs` | **Planned** — route their measurements through the shared scorers + emit the schema-v1 report. Deferred (not merge-first per #12258): each is a 650–1355-line provisioned-hardware script consumed on its own CLI path; absorbing it means porting live measurements onto the observation shape without breaking the hardware lane. No new scorer math has been added inside them. |
-| `packages/benchmarks/voice/three-voice-scenario.mjs` | **Planned** — its synthetic-label DER precedent (its inline DER is trivially 0 on exact synthetic labels) is superseded by the corpus generator + `computeDiarizationErrorRate`; folding the `.mjs` corpus path in is deferred with the scripts above. |
-| `packages/benchmarks/voicebench/` (TS latency p95/p99) | The report layer mirrors its p95/p99 shape; remains a research bench linked from the workbench. |
+| `voice/three-voice-scenario.mjs` (https://github.com/elizaOS/benchmarks) | **Planned** — its synthetic-label DER precedent (its inline DER is trivially 0 on exact synthetic labels) is superseded by the corpus generator + `computeDiarizationErrorRate`; folding the `.mjs` corpus path in is deferred with the scripts above. |
+| `voicebench/` (TS latency p95/p99, https://github.com/elizaOS/benchmarks) | The report layer mirrors its p95/p99 shape; remains a research bench linked from the workbench. |
 | Per-spec inline `tinyWav()` fixtures (`packages/app/test/ui-smoke/voice-*.spec.ts`) | **Planned** — replace with the versioned corpus; deferred (owned by the app UI-smoke lane, not the workbench-merge-first set). |
 
 ## External / Device Follow-Ups

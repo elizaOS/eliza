@@ -1,3 +1,4 @@
+/** Verifies MyRuntimesContainer through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Interaction tests for MyRuntimesContainer: the runtime switch/add flow with

@@ -28,14 +28,14 @@ import {
 import { afterAll, beforeAll, describe, expect } from "vitest";
 import { pageScopedContextProvider } from "../../../agent/src/providers/page-scoped-context.js";
 import { trajectoriesPlugin } from "../../../core/src/features/trajectories/index.js";
-import { itIf } from "../../../test/helpers/conditional-tests.ts";
-import { selectLiveProvider } from "../../../test/helpers/live-provider";
 import {
   buildPageScopedRoutingMetadata,
   PAGE_SCOPE_VERSION,
   type PageScope,
 } from "../../../ui/src/components/pages/page-scoped-conversations.js";
+import { itIf } from "../helpers/conditional-tests.ts";
 import { ConversationHarness } from "../helpers/conversation-harness.js";
+import { selectLiveProvider } from "../helpers/live-provider";
 import { createRealTestRuntime } from "../helpers/real-runtime.ts";
 import {
   expectProviderAccessed,

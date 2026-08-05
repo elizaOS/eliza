@@ -237,7 +237,6 @@ describe("CodexBackend", () => {
       jitterMaxMs: 0,
       loadAuth: async () => auth,
       fetchImpl: (async (_url: string | URL | Request, init?: RequestInit) => {
-        expect(init).toBeDefined();
         if (!init) throw new Error("Expected Codex request options");
         bodies.push(JSON.parse(String(init.body)));
         const headers = init.headers as Record<string, string>;

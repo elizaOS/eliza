@@ -491,7 +491,7 @@ describe("check-pr-evidence parser", () => {
       "domain-artifacts": "- [x] OCR report [ocr](ocr.txt)",
     });
     const { ok, findings } = evaluatePrEvidence(body, REQUIRED_EVIDENCE_ROWS, {
-      changedFiles: ["packages/eliza-computer/src/App.tsx"],
+      changedFiles: ["packages/app/src/main.tsx"],
     });
     assert.equal(ok, false);
     assert.ok(
@@ -1233,14 +1233,14 @@ describe("check-pr-evidence row primitives", () => {
     });
     assert.equal(forced.ok, false);
 
-    const contributionSite = evaluatePrEvidence(body, REQUIRED_EVIDENCE_ROWS, {
+    const appShell = evaluatePrEvidence(body, REQUIRED_EVIDENCE_ROWS, {
       labels: "",
-      changedFiles: ["packages/eliza-computer/src/App.tsx"],
+      changedFiles: ["packages/app/src/main.tsx"],
     });
     assert.equal(
-      contributionSite.ok,
+      appShell.ok,
       false,
-      "eliza.army is a rendered UI surface and requires visual proof",
+      "the app shell is a rendered UI surface and requires visual proof",
     );
   });
 

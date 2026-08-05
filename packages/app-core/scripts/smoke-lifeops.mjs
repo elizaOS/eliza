@@ -1,5 +1,9 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for smoke lifeops mjs. */
+/**
+ * HTTP smoke check for deployed LifeOps agents: fetches the LifeOps overview,
+ * browser-bridge sessions, Google connector status, and calendar next-context
+ * from each base URL (argv or ELIZA_LIFEOPS_BASE_URLS) and reports failures.
+ */
 
 import { pathToFileURL } from "node:url";
 

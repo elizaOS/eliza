@@ -3,7 +3,7 @@
 
 The shared benchmark ResultsStore records individual
 ``(model_id, benchmark, score)`` rows. This script lifts those rows into the
-training-analysis artifact schema used by ``plugin-training``:
+canonical training-analysis artifact schema:
 
 * reference rows, usually ``cerebras/gpt-oss-120b``
 * base rows for an Eliza-1 tier

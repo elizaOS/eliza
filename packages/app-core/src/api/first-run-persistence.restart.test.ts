@@ -28,7 +28,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 // Import from narrow subpaths, not the "@elizaos/agent" barrel: the barrel's
-// runtime/eliza.ts has dynamic plugin imports (e.g. @elizaos/plugin-birdclaw)
+// runtime/eliza.ts has dynamic plugin imports (e.g. @elizaos/plugin-gitpathologist)
 // that the test bundler cannot resolve. These are the same production functions.
 import { applyCanonicalFirstRunConfig } from "@elizaos/agent/api/provider-switch-config";
 import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";

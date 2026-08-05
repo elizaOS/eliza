@@ -29,6 +29,7 @@ import { useProtectedAgentProbesEnabled } from "../hooks/useProtectedAgentProbes
 import type { Tab } from "../navigation";
 import { useAppSelectorShallow } from "../state";
 import { getElizaApiBase, getElizaApiToken } from "../utils/eliza-globals";
+import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
 import { loadSavedCustomCommands, normalizeSlashCommandName } from "./index";
 import { buildModelChoiceLabels, resolveModelChoices } from "./model-choices";
 import {
@@ -319,6 +320,11 @@ export function useSlashCommandController(
     }
     let cancelled = false;
     const abortController = new AbortController();
+    const cancelCatalogLoad = () => {
+      cancelled = true;
+      abortController.abort();
+    };
+    window.addEventListener("pagehide", cancelCatalogLoad, { once: true });
     setLoading(true);
     setLoadError(false);
     void (async () => {
@@ -352,10 +358,11 @@ export function useSlashCommandController(
             return [];
           }
           loadFailed = true;
-          console.error(
-            "[useSlashCommandController] Failed to load the slash-command catalog; slash menu will be empty",
+          reportRendererDiagnostic({
+            scope: "slash-commands.catalog",
             error,
-          );
+            context: { degradedFeature: "slash-command-menu" },
+          });
           return [];
         });
       const customActions: CustomActionDef[] = await client
@@ -377,10 +384,11 @@ export function useSlashCommandController(
             return [];
           }
           loadFailed = true;
-          console.error(
-            "[useSlashCommandController] Failed to load custom actions; omitting them from the slash menu",
+          reportRendererDiagnostic({
+            scope: "slash-commands.custom-actions",
             error,
-          );
+            context: { degradedFeature: "custom-actions" },
+          });
           return [];
         });
       if (cancelled) return;
@@ -412,10 +420,11 @@ export function useSlashCommandController(
             // error-policy:J4 model completions degrade to none with the
             // failure logged; an unauthenticated 401/403 is expected (#14663).
             if (isExpectedCatalogAuthError(error)) return;
-            console.error(
-              "[useSlashCommandController] Failed to load the model catalog; model completions will be empty",
+            reportRendererDiagnostic({
+              scope: "slash-commands.model-catalog",
               error,
-            );
+              context: { degradedFeature: "model-completions" },
+            });
           });
       }
       setServerCommands(catalog);
@@ -430,8 +439,8 @@ export function useSlashCommandController(
       setLoading(false);
     })();
     return () => {
-      cancelled = true;
-      abortController.abort();
+      window.removeEventListener("pagehide", cancelCatalogLoad);
+      cancelCatalogLoad();
     };
   }, [probesEnabled]);
 

@@ -19,7 +19,7 @@ outside this directory and is what `bun run test:scenarios` actually runs:
   `recurrence`, `concurrent-day`, `multiday-journey`) through the REAL
   scheduler tick (`executeLifeOpsSchedulerTask`).
 
-Both run under `SCENARIO_USE_LLM_PROXY=1 SCENARIO_LLM_PROXY_STRICT=1` — zero
+Both run under `SCENARIO_USE_DETERMINISTIC_MODEL=1` — zero
 LLM calls, zero cost, fail-closed on any unfixtured model call.
 
 `bun run test:scenarios:list` prints this live-only corpus (the old

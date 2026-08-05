@@ -1,3 +1,4 @@
+/** Verifies LauncherSurface through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Renders the real LauncherSurface with mocked view/platform hooks to cover
@@ -117,11 +118,9 @@ beforeEach(() => {
     view("inventory", "Wallet", "/wallet", { visibleInManager: false }),
     view("browser", "Browser", "/browser"),
     view("settings", "Settings", "/settings", { visibleInManager: false }),
-    view("shopify", "Shopify", "/shopify"),
-    // Mirrors the real plugin-hyperliquid registration (`group: "wallet"`,
-    // plugins/plugin-hyperliquid/src/register.ts) — the launcher collapses
-    // wallet-group sub-pages, so no standalone Hyperliquid tile.
-    view("hyperliquid", "Hyperliquid", "/hyperliquid", { group: "wallet" }),
+    // Wallet-group sub-pages collapse under the parent, so they do not create
+    // duplicate launcher tiles.
+    view("wallet-trading", "Trading", "/wallet/trading", { group: "wallet" }),
     view("phone", "Phone", "/phone", { visibleInManager: false }),
     view("trajectories", "Trajectories", "/apps/trajectories", {
       viewKind: "developer",
@@ -175,8 +174,7 @@ describe("LauncherSurface", () => {
     // chat is the home surface, never a launcher tile (#14479).
     expect(screen.queryByTestId("launcher-tile-chat")).toBeNull();
     expect(screen.queryByTestId("launcher-tile-views")).toBeNull();
-    expect(screen.queryByTestId("launcher-tile-shopify")).toBeNull();
-    expect(screen.queryByTestId("launcher-tile-hyperliquid")).toBeNull();
+    expect(screen.queryByTestId("launcher-tile-wallet-trading")).toBeNull();
   });
 
   it("collapses duplicate wallet registrations to a single tile", () => {

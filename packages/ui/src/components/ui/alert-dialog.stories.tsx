@@ -62,7 +62,7 @@ export const Destructive: Story = {
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Keep project</AlertDialogCancel>
-          <AlertDialogAction className="bg-destructive text-white">
+          <AlertDialogAction className="bg-destructive text-destructive-fg">
             Delete forever
           </AlertDialogAction>
         </AlertDialogFooter>

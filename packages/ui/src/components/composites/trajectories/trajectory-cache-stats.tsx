@@ -27,7 +27,7 @@ export function TrajectoryCacheStats({
 }: TrajectoryCacheStatsProps) {
   return (
     <PagePanel variant="section" className="px-5 py-4">
-      <div className="mb-3 text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
+      <div className="mb-3 text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted">
         {heading}
       </div>
       {metrics.length === 0 ? (
@@ -44,7 +44,7 @@ export function TrajectoryCacheStats({
                 metric.id ?? `${String(metric.label)}-${String(metric.value)}`
               }
             >
-              <div className="text-xs-tight uppercase tracking-[0.14em] text-muted/70">
+              <div className="text-xs-tight uppercase tracking-[0.14em] text-muted">
                 {metric.label}
               </div>
               <div className="mt-2 text-sm font-semibold text-txt">

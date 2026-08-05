@@ -1,4 +1,8 @@
-/** Supports app-core build, packaging, or development orchestration for mobile build decisions mjs. */
+/**
+ * Shared decision helpers for mobile builds: which Android project directory a
+ * brand uses (brand-separation invariant, #9309) and staleness gating for the
+ * llama.cpp MTP builder.
+ */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

@@ -1,6 +1,6 @@
 // Boot-time guard that refuses the ephemeral `memory` KMS backend anywhere it
 // could orphan real data (#15310: staging ran memory KMS and lost every org DEK
-// on every restart). Real getKmsClient() over the real @elizaos/security
+// on every restart). Real getKmsClient() over the real core KMS
 // factory; the deployment signal is driven through the cloud-bindings ALS the
 // same way the Worker sets it.
 

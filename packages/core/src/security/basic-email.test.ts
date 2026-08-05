@@ -1,3 +1,4 @@
+/** Exercises lightweight email validation, span extraction, redaction, and pathological-input performance. */
 import { describe, expect, it } from "vitest";
 import {
 	basicEmailValid,

@@ -11,6 +11,7 @@
  * `normalizeActionJsonSchema` (`action-schema.ts`). Tool names must match
  * `NATIVE_TOOL_NAME_PATTERN` or conversion throws.
  */
+import { ElizaError } from "../errors";
 import type { Action } from "../types";
 import type { JSONSchema, ToolDefinition } from "../types/model";
 import {
@@ -559,14 +560,13 @@ export function buildPlannerToolsFromTieredActions(
 			try {
 				emit(child);
 			} catch (error) {
-				// Re-throw with parent context so the caller can see which
-				// umbrella surfaced an invalid sub-action name. assertNativeToolName
-				// throws synchronously inside actionToPlannerTool when a name
-				// fails NATIVE_TOOL_NAME_PATTERN.
-				const message = error instanceof Error ? error.message : String(error);
-				throw new Error(
-					`Failed to expand sub-action '${subActionName}' of '${action.name}': ${message}`,
-				);
+				// error-policy:J2 Parent action context identifies which tool catalog
+				// entry contributed the invalid native tool name.
+				throw new ElizaError("Failed to expand planner sub-action", {
+					code: "INVALID_SUB_ACTION_TOOL",
+					cause: error,
+					context: { actionName: action.name, subActionName },
+				});
 			}
 		}
 	}

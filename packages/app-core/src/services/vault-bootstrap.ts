@@ -29,9 +29,8 @@ import {
   isVaultRef,
 } from "@elizaos/agent/runtime/operations/vault-bridge";
 import { logger } from "@elizaos/core";
+import { loadRegistry } from "@elizaos/registry/first-party";
 import type { Vault } from "@elizaos/vault";
-
-import { loadRegistry } from "../registry";
 import { sharedVault } from "./vault-mirror";
 
 interface AgentBridge {

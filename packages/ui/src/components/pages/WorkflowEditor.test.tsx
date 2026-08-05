@@ -1,10 +1,9 @@
-// @vitest-environment jsdom
-
 /**
  * jsdom tests for `WorkflowEditor` over a mocked `client` API: renders the graph,
  * runs a saved workflow and shows node output, keeps the editor open after a new
  * save, and restores a selected version from history.
  */
+// @vitest-environment jsdom
 
 import {
   cleanup,
@@ -199,14 +198,18 @@ describe("WorkflowEditor", () => {
     expect(screen.getByTestId("workflow-graph").textContent).toContain(
       "Manual Trigger -> Add Review Fields",
     );
-    expect(screen.getByRole("button", { name: /run now/i })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /run workflow now/i }),
+    ).toBeTruthy();
     expect(
       screen.queryByRole("button", { name: /generate from prompt/i }),
     ).toBeNull();
 
     const editPrefill = vi.fn();
     window.addEventListener("eliza:chat:prefill", editPrefill as EventListener);
-    fireEvent.click(screen.getByRole("button", { name: /edit in chat/i }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /edit workflow in chat/i }),
+    );
     expect(editPrefill).toHaveBeenCalledTimes(1);
     const editEvent = editPrefill.mock.calls[0]?.[0] as CustomEvent<{
       text: string;
@@ -221,7 +224,7 @@ describe("WorkflowEditor", () => {
       editPrefill as EventListener,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /run now/i }));
+    fireEvent.click(screen.getByRole("button", { name: /run workflow now/i }));
 
     await waitFor(() => {
       expect(clientMock.runWorkflowDefinition).toHaveBeenCalledWith(
@@ -236,7 +239,9 @@ describe("WorkflowEditor", () => {
       screen.getByText(/2 nodes \/ 2 levels \/ 1 max parallel/),
     ).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: /copy diagnostics/i }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /copy run diagnostics/i }),
+    );
 
     await waitFor(() => {
       expect(clipboardWriteText).toHaveBeenCalledWith(
@@ -303,7 +308,7 @@ describe("WorkflowEditor", () => {
     });
     expect(onSaved).toHaveBeenCalledWith(saved);
     expect(
-      await screen.findByRole("button", { name: /run now/i }),
+      await screen.findByRole("button", { name: /run workflow now/i }),
     ).toBeTruthy();
   });
 

@@ -13,7 +13,11 @@ const meta = {
     defaultChecked: { control: "boolean" },
     disabled: { control: "boolean" },
   },
-  args: { defaultChecked: false, disabled: false },
+  args: {
+    "aria-label": "Example setting",
+    defaultChecked: false,
+    disabled: false,
+  },
 } satisfies Meta<typeof Switch>;
 
 export default meta;

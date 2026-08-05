@@ -41,7 +41,7 @@ function Bubble({ children }: { children: React.ReactNode }) {
 function Panel({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <section className="flex flex-col gap-2">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/40">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/60">
         {label}
       </div>
       {children}

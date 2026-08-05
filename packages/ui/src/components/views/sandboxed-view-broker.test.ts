@@ -1,3 +1,4 @@
+/** Verifies parseSandboxedViewRequest through the package's configured test harness. */
 // postMessage capability broker (#14180): deny-by-default over the iframe
 // boundary. Pure logic — parses untrusted messages, checks grants, and returns
 // typed denials without touching a facility when a capability is not granted.

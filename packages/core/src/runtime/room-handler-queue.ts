@@ -105,6 +105,8 @@ export class RoomHandlerQueue {
 			this.emit({ type: "completed", roomId });
 			return result;
 		} catch (error) {
+			// error-policy:J1 The per-room queue boundary emits its terminal
+			// failure state and preserves the handler error.
 			this.emit({
 				type: "errored",
 				roomId,
@@ -155,6 +157,7 @@ export class RoomHandlerQueue {
 			try {
 				listener(event);
 			} catch {
+				// error-policy:J7 Queue listeners are telemetry observers.
 				// Listener errors swallowed.
 			}
 		}

@@ -111,6 +111,7 @@ function makeRuntime(fragments: Memory[]): {
       info: vi.fn(),
       warn: vi.fn(),
     },
+    reportError: vi.fn(),
   } as unknown as AgentRuntime;
 
   const documents = new DocumentService(runtime);

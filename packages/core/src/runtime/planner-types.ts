@@ -30,6 +30,11 @@ export interface PlannerToolCall {
 export type EvaluatorRoute = EvaluationResult["decision"];
 
 export interface EvaluatorRuntime {
+	reportError?(
+		scope: string,
+		error: unknown,
+		context?: Record<string, unknown>,
+	): void;
 	useModel(
 		modelType: TextGenerationModelType,
 		params: {
@@ -66,6 +71,11 @@ export type EvaluatorOutput = EvaluationResult & {
 
 export interface PlannerRuntime {
 	getService?(service: string): unknown;
+	reportError?(
+		scope: string,
+		error: unknown,
+		context?: Record<string, unknown>,
+	): void;
 	useModel(
 		modelType: TextGenerationModelType,
 		params: {
@@ -194,6 +204,15 @@ export interface PlannerLoopResult {
 	 * "fixes" deliberate silence into a synthesized reply.
 	 */
 	endedWithDeliberateSilence?: boolean;
+	/**
+	 * Which silent terminal ended the turn when `endedWithDeliberateSilence`
+	 * is set from a STOP/IGNORE/NONE-only terminal (NONE folds into IGNORE).
+	 * Lets the message handler record the turn under the action the model
+	 * actually chose instead of hardcoding IGNORE. Absent on the
+	 * `suppressPlannerReply` action path, where the silence belongs to a
+	 * real action whose result is already recorded.
+	 */
+	silentTerminalAction?: "IGNORE" | "STOP";
 }
 
 export interface PlannerLoopParams {

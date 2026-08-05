@@ -9,18 +9,18 @@ import path from "node:path";
 import { createElizaPlugin, resolveOAuthDir } from "@elizaos/agent";
 import { type AgentRuntime, getConnectorAccountManager } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { stochasticTest } from "../../../packages/app-core/test/helpers/stochastic-test";
-import { describeIf } from "../../../packages/test/helpers/conditional-tests.ts";
+import { describeIf } from "../../../packages/app-core/test/helpers/conditional-tests.ts";
 import {
   createConversation,
   postConversationMessage,
   req,
-} from "../../../packages/test/helpers/http";
+} from "../../../packages/app-core/test/helpers/http";
 import {
   isLiveTestEnabled,
   selectLiveProvider,
-} from "../../../packages/test/helpers/live-provider";
-import { saveEnv } from "../../../packages/test/helpers/test-utils";
+} from "../../../packages/app-core/test/helpers/live-provider";
+import { stochasticTest } from "../../../packages/app-core/test/helpers/stochastic-test";
+import { saveEnv } from "../../../packages/app-core/test/helpers/test-utils";
 import {
   createLifeOpsConnectorGrant,
   createLifeOpsGmailSyncState,

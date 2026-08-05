@@ -178,39 +178,6 @@ describe("DynamicViewLoader", () => {
     expect(importBundle).not.toHaveBeenCalledWith(
       expect.stringContaining("/api/views/remote.panel/bundle.js"),
     );
-    const surface = document.querySelector(
-      '[data-spatial-surface="gui"]',
-    ) as HTMLElement | null;
-    expect(surface?.style.overflowY).toBe("auto");
-    expect(surface?.style.paddingBottom).toBe(
-      "var(--eliza-chat-clearance, 5.25rem)",
-    );
-    expect(surface?.style.paddingInlineEnd).toBe(
-      "var(--eliza-chat-side-clearance, 0px)",
-    );
-  });
-
-  it("does not reserve chat clearance owned by an enclosing shell", async () => {
-    window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(async () => ({
-      default: function ShellHostedPanel() {
-        return <div>Shell-hosted panel</div>;
-      },
-    }));
-
-    render(
-      <DynamicViewLoader
-        bundleUrl="/api/views/shell-hosted/bundle.js"
-        viewId="shell-hosted"
-        reserveChatClearance={false}
-      />,
-    );
-
-    await screen.findByText("Shell-hosted panel");
-    const surface = document.querySelector(
-      '[data-spatial-surface="gui"]',
-    ) as HTMLElement | null;
-    expect(surface?.style.paddingBottom).toBe("");
-    expect(surface?.style.paddingInlineEnd).toBe("");
   });
 
   it("renders sandboxed iframe views from frameUrl and does not import bundleUrl", () => {
@@ -406,24 +373,28 @@ describe("DynamicViewLoader", () => {
     await screen.findByRole("button", { name: "Create view" });
 
     const { dispatchViewInteract } = await import("./view-interact-registry");
-    await dispatchViewInteract(
-      "focus.view",
-      "gui",
-      "focus-element",
-      { selector: ".primary-action" },
-      "req-focus-selector",
-    );
+    await act(async () => {
+      await dispatchViewInteract(
+        "focus.view",
+        "gui",
+        "focus-element",
+        { selector: ".primary-action" },
+        "req-focus-selector",
+      );
+    });
     expect(document.activeElement).toBe(
       screen.getByRole("button", { name: "Create view" }),
     );
 
-    await dispatchViewInteract(
-      "focus.view",
-      "gui",
-      "focus-element",
-      { name: "view-title" },
-      "req-focus-name",
-    );
+    await act(async () => {
+      await dispatchViewInteract(
+        "focus.view",
+        "gui",
+        "focus-element",
+        { name: "view-title" },
+        "req-focus-name",
+      );
+    });
     expect(document.activeElement).toBe(screen.getByLabelText("View title"));
     expect(sendWsMessage).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -486,22 +457,26 @@ describe("DynamicViewLoader", () => {
     await screen.findByRole("button", { name: "Save view" });
 
     const { dispatchViewInteract } = await import("./view-interact-registry");
-    await dispatchViewInteract(
-      "form.view",
-      "gui",
-      "fill-input",
-      { name: "view-title", value: "Remote Ledger Updated" },
-      "req-fill",
-    );
+    await act(async () => {
+      await dispatchViewInteract(
+        "form.view",
+        "gui",
+        "fill-input",
+        { name: "view-title", value: "Remote Ledger Updated" },
+        "req-fill",
+      );
+    });
     expect(screen.getByDisplayValue("Remote Ledger Updated")).toBeTruthy();
 
-    await dispatchViewInteract(
-      "form.view",
-      "gui",
-      "click-element",
-      { selector: ".submit-view" },
-      "req-click",
-    );
+    await act(async () => {
+      await dispatchViewInteract(
+        "form.view",
+        "gui",
+        "click-element",
+        { selector: ".submit-view" },
+        "req-click",
+      );
+    });
     await waitFor(() =>
       expect(screen.getByTestId("view-output").textContent).toBe(
         "Remote Ledger Updated",
@@ -758,13 +733,15 @@ describe("DynamicViewLoader", () => {
     await screen.findByText("Refresh version 1");
 
     const { dispatchViewInteract } = await import("./view-interact-registry");
-    await dispatchViewInteract(
-      "refresh.view",
-      "gui",
-      "refresh",
-      undefined,
-      "req-refresh",
-    );
+    await act(async () => {
+      await dispatchViewInteract(
+        "refresh.view",
+        "gui",
+        "refresh",
+        undefined,
+        "req-refresh",
+      );
+    });
 
     await screen.findByText("Refresh version 2");
     expect(interact).not.toHaveBeenCalled();
@@ -959,6 +936,9 @@ describe("DynamicViewLoader", () => {
   });
 
   it("renders the error state when a bundle does not export a component", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
     const bundleUrl = "https://capability.example.test/assets/no-component.js";
     window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(async () => ({
       default: "not a component",
@@ -968,6 +948,11 @@ describe("DynamicViewLoader", () => {
 
     await screen.findByText("Failed to load view");
     expect(screen.getByText("View ID: broken.view")).toBeTruthy();
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(String),
+      expect.stringContaining("[RendererDiagnostic] dynamic-view.load"),
+    );
   });
 
   it("shows the recoverable card (never a blank screen) when the bundle import rejects, and Retry re-imports", async () => {

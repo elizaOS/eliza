@@ -1,4 +1,4 @@
-/** Corpus guard for the LifeOps scheduling scenarios: loads every `.scenario.ts` under packages/test/scenarios/lifeops.scheduling and asserts the expected scenario-id set is present and well-formed (no live model). */
+/** Corpus guard for the LifeOps scheduling scenarios owned by plugin-personal-assistant; no model is invoked. */
 import { readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -10,7 +10,7 @@ const repoRoot = resolve(
 );
 const schedulingScenarioDir = resolve(
   repoRoot,
-  "packages/test/scenarios/lifeops.scheduling",
+  "plugins/plugin-personal-assistant/test/scenarios/corpus/lifeops.scheduling",
 );
 
 const EXPECTED_SCHEDULING_SCENARIO_IDS = [

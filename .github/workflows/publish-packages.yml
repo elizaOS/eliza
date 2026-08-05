@@ -24,15 +24,8 @@ on:
         required: false
         type: boolean
         default: true
-      apt:
-        description: "Build Debian package"
-        required: false
-        type: boolean
-        default: true
     secrets:
       SNAP_STORE_CREDENTIALS:
-        required: false
-      APT_REPO_TOKEN:
         required: false
       PYPI_API_TOKEN:
         required: false
@@ -52,10 +45,6 @@ on:
         default: true
       flatpak:
         description: "Publish Flatpak"
-        type: boolean
-        default: true
-      apt:
-        description: "Build Debian package"
         type: boolean
         default: true
 
@@ -78,10 +67,8 @@ jobs:
       version: ${{ steps.ver.outputs.version }}
       npm_version: ${{ steps.ver.outputs.npm_version }}
       pypi_version: ${{ steps.ver.outputs.pypi_version }}
-      deb_version: ${{ steps.ver.outputs.deb_version }}
       is_prerelease: ${{ steps.ver.outputs.is_prerelease }}
       snap_store_ready: ${{ steps.registry_credentials.outputs.snap_store_ready }}
-      apt_repo_ready: ${{ steps.registry_credentials.outputs.apt_repo_ready }}
     steps:
       - name: Determine versions
         id: ver
@@ -95,10 +82,6 @@ jobs:
           PYPI_VERSION=$(echo "$VERSION" | sed -E 's/-beta\.?/b/; s/-rc\.?/rc/')
           echo "pypi_version=$PYPI_VERSION" >> "$GITHUB_OUTPUT"
 
-          # Debian version: 2.0.0-beta.0 → 2.0.0~beta0-1
-          DEB_VERSION=$(echo "$VERSION" | sed -E 's/-beta\./~beta/; s/-rc\./~rc/')
-          echo "deb_version=${DEB_VERSION}-1" >> "$GITHUB_OUTPUT"
-
           # Pre-release detection
           if echo "$VERSION" | grep -qE '(beta|rc)'; then
             echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
@@ -108,38 +91,26 @@ jobs:
 
           echo "Version: $VERSION"
           echo "PyPI: $PYPI_VERSION"
-          echo "Debian: ${DEB_VERSION}-1"
           echo "Pre-release: $(echo "$VERSION" | grep -qE '(beta|rc)' && echo true || echo false)"
 
       - name: Check registry credentials
         id: registry_credentials
         env:
           INPUT_SNAP: ${{ inputs.snap }}
-          INPUT_APT: ${{ inputs.apt }}
           SNAP_STORE_CREDENTIALS: ${{ secrets.SNAP_STORE_CREDENTIALS }}
-          APT_REPO_TOKEN: ${{ secrets.APT_REPO_TOKEN }}
         run: |
-          # Downstream Snap / APT jobs gate on these readiness flags via `if:`.
+          # The downstream Snap job gates on this readiness flag via `if:`.
           # We intentionally do NOT fail the whole publish job when these
           # secrets are missing: npm + PyPI publishing must keep working for
           # forks / staging environments that have no Snap Store or APT repo
-          # access. The Snap/APT jobs themselves will skip cleanly when
-          # ready=false; an explicit warning preserves the signal in logs.
+          # access. The Snap job itself skips cleanly when ready=false; an
+          # explicit warning preserves the signal in logs.
           if [[ -n "$SNAP_STORE_CREDENTIALS" ]]; then
             echo "snap_store_ready=true" >> "$GITHUB_OUTPUT"
           else
             echo "snap_store_ready=false" >> "$GITHUB_OUTPUT"
             if [[ "$INPUT_SNAP" == "true" ]]; then
               echo "::warning::SNAP_STORE_CREDENTIALS missing — skipping Snap publish even though inputs.snap=true."
-            fi
-          fi
-
-          if [[ -n "$APT_REPO_TOKEN" ]]; then
-            echo "apt_repo_ready=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "apt_repo_ready=false" >> "$GITHUB_OUTPUT"
-            if [[ "$INPUT_APT" == "true" ]]; then
-              echo "::warning::APT_REPO_TOKEN missing — skipping APT publish even though inputs.apt=true."
             fi
           fi
 
@@ -201,7 +172,7 @@ jobs:
           "
 
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33
         with:
           packages-dir: packages/app-core/packaging/pypi/dist/
           # Falls back to API token when OIDC trusted publishing is not
@@ -266,121 +237,6 @@ jobs:
         with:
           snap: ${{ steps.snapcraft.outputs.snap }}
           release: ${{ needs.prepare.outputs.is_prerelease == 'true' && 'edge,beta' || 'stable,candidate' }}
-
-  # ── Debian / apt ───────────────────────────────────────────────────────
-  build-deb:
-    name: Build Debian Package
-    needs: prepare
-    if: inputs.apt
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    permissions:
-      contents: write  # gh release upload
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          submodules: recursive
-
-      - name: Setup Node.js (system-wide for dpkg)
-        run: |
-          # Install Node.js 22 via NodeSource so dpkg-checkbuilddeps can find it
-          curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-          sudo apt-get install -y nodejs build-essential
-          node --version
-          npm --version
-          dpkg-query -W -f='${Version} ${Provides}\n' nodejs | grep -Eq '(^|, )npm(,|$)'
-
-      - name: Setup Bun
-        run: |
-          curl -fsSL https://bun.sh/install | bash -s "canary"
-          echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
-          export PATH="$HOME/.bun/bin:$PATH"
-          bun --version
-
-      - name: Prepare debian packaging
-        run: |
-          # Copy debian directory into project root
-          cp -r packages/app-core/packaging/debian .
-
-          # Update changelog version
-          DEB_VERSION="${{ needs.prepare.outputs.deb_version }}"
-          sed -i "1s/([^)]*)/($DEB_VERSION)/" debian/changelog
-          sed -i "1s/UNRELEASED/unstable/" debian/changelog
-
-          echo "Debian version: $DEB_VERSION"
-          head -3 debian/changelog
-          dpkg-checkbuilddeps debian/control
-
-      - name: Install build dependencies
-        run: |
-          for attempt in 1 2 3; do
-            sudo apt-get update && \
-            sudo apt-get install -y debhelper devscripts fakeroot && break
-            echo "apt-get attempt $attempt failed, retrying in 10s..."
-            sleep 10
-          done
-
-      - name: Build .deb package
-        run: |
-          dpkg-buildpackage -us -uc -b
-          echo "Built packages:"
-          ls -lh ../*.deb
-          # Copy to workspace for artifact upload (upload-artifact doesn't allow ../)
-          mkdir -p deb-output
-          cp ../*.deb ../*.changes deb-output/ 2>/dev/null || cp ../*.deb deb-output/
-
-      - name: Test .deb package
-        run: |
-          debs=(deb-output/*.deb)
-          sudo dpkg -i "${debs[@]}" || sudo apt-get -f install -y
-          which elizaos-app
-          elizaos-app --version || echo "Version check completed"
-
-      - name: Upload .deb artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: debian-package
-          path: deb-output/
-          retention-days: 90
-
-      - name: Attach .deb to GitHub Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG="v${{ needs.prepare.outputs.version }}"
-          if ! gh release view "$TAG" >/dev/null 2>&1; then
-            echo "::error::No GitHub release found for $TAG; cannot attach .deb artifacts."
-            exit 1
-          fi
-          for deb in deb-output/*.deb; do
-            echo "Uploading $deb to release..."
-            gh release upload "$TAG" "$deb" --clobber
-          done
-
-      - name: Trigger APT repository update
-        if: success() && needs.prepare.outputs.apt_repo_ready == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.APT_REPO_TOKEN }}
-        run: |
-          VERSION="${{ needs.prepare.outputs.version }}"
-
-          DEB_FILE="$(find deb-output -maxdepth 1 -type f -name '*.deb' | sort | head -n 1)"
-          if [[ -z "$DEB_FILE" ]]; then
-            echo "::error::No .deb artifact found in deb-output."
-            exit 1
-          fi
-          DEB_BASENAME="$(basename "$DEB_FILE")"
-
-          TAG="v${VERSION}"
-
-          DEB_URL="https://github.com/elizaOS/eliza/releases/download/${TAG}/${DEB_BASENAME}"
-
-          echo "Dispatching APT update: version=$VERSION, deb_url=$DEB_URL"
-          gh api repos/elizaOS/apt/dispatches \
-            --method POST \
-            -f event_type=update-apt \
-            -f "client_payload[version]=$VERSION" \
-            -f "client_payload[deb_url]=$DEB_URL"
 
   # ── Flatpak ────────────────────────────────────────────────────────────
   build-flatpak:
@@ -470,7 +326,7 @@ jobs:
   # ── Summary ────────────────────────────────────────────────────────────
   publish-summary:
     name: Publish Summary
-    needs: [prepare, publish-pypi, publish-snap, build-deb, build-flatpak]
+    needs: [prepare, publish-pypi, publish-snap, build-flatpak]
     if: always()
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     steps:
@@ -486,7 +342,6 @@ jobs:
             echo "| PyPI (elizaos-app ${{ needs.prepare.outputs.pypi_version }}) | ${{ needs.publish-pypi.result || 'skipped' }} |"
             echo "| Homebrew | handled by update-homebrew.yml |"
             echo "| Snap | ${{ needs.publish-snap.result || 'skipped' }} |"
-            echo "| Debian (.deb) | ${{ needs.build-deb.result || 'skipped' }} |"
             echo "| Flatpak | ${{ needs.build-flatpak.result || 'skipped' }} |"
             echo ""
             echo "### Install commands"
@@ -512,7 +367,6 @@ jobs:
 
           require_result "PyPI" "${{ inputs.pypi }}" "${{ needs.publish-pypi.result }}"
           require_result "Snap" "${{ inputs.snap }}" "${{ needs.publish-snap.result }}"
-          require_result "Debian/APT" "${{ inputs.apt }}" "${{ needs.build-deb.result }}"
           require_result "Flatpak" "${{ inputs.flatpak }}" "${{ needs.build-flatpak.result }}"
 
           exit "$failed"

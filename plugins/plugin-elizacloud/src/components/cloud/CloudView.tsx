@@ -18,7 +18,7 @@
  */
 
 // Narrow host-external subpath: the `@elizaos/ui` barrel would drag every chat
-// widget into the jsdom test graph for one singleton (the birdclaw lesson).
+// widget into the jsdom test graph for one singleton.
 import { client } from "@elizaos/ui/api";
 import type {
   CloudApiKeys,

@@ -1,3 +1,4 @@
+/** Verifies ChatOverlay slash commands through the package's configured test harness. */
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";

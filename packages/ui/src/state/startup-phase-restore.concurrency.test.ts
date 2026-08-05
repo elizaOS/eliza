@@ -1,3 +1,4 @@
+/** Verifies cloud restore routes the client without waiting on the Steward refresh through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Boot parallelization of the restoring-session phase: (1) a cloud restore

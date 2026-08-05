@@ -1,3 +1,4 @@
+/** Verifies App in-process host-realm mutation isolation (#14179) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**
@@ -227,7 +228,11 @@ vi.mock("./state", async () => {
     setUiLanguage: vi.fn(),
     setUiTheme: vi.fn(),
     setUiThemeMode: vi.fn(),
-    startupCoordinator: { phase: "ready", retry: vi.fn() },
+    startupCoordinator: {
+      phase: "ready",
+      isShellPaintable: true,
+      retry: vi.fn(),
+    },
     startupError: null,
     systemWarnings: [],
     tab: appState.tab,
@@ -276,6 +281,9 @@ vi.mock("./components/shell/ShellControllerContext", () => ({
 }));
 vi.mock("./components/views/DynamicViewLoader", () => ({
   DynamicViewLoader: dynamicViewLoaderMock.render,
+}));
+vi.mock("./components/pages/BrowserWorkspaceView", () => ({
+  BrowserWorkspaceView: () => <div data-testid="browser-workspace-view" />,
 }));
 vi.mock("./components/shell/BugReportModal", () => ({
   BugReportModal: () => null,

@@ -14,6 +14,9 @@ export interface Vault {
   /** Store a value. Sensitive values are encrypted at rest. */
   set(key: string, value: string, opts?: SetOptions): Promise<void>;
 
+  /** Atomically store a value only when the key does not already exist. */
+  setIfAbsent(key: string, value: string, opts?: SetOptions): Promise<boolean>;
+
   /**
    * Store a reference to a password-manager item. The actual value
    * lives there, never copied to disk by this vault.
@@ -35,6 +38,18 @@ export interface Vault {
 
   /** Remove. Idempotent. */
   remove(key: string): Promise<void>;
+
+  /**
+   * Move an unreadable entry out of the active keyspace without decrypting or
+   * deleting its stored bytes. This is a narrow recovery primitive for callers
+   * that already observed {@link VaultDecryptionError}; the quarantined row is
+   * retained in the vault database for forensic/manual recovery.
+   */
+  quarantineUnreadable(
+    key: string,
+    reason: string,
+    caller?: string,
+  ): Promise<boolean>;
 
   /** List keys. Optional prefix filter. Does NOT reveal values. */
   list(prefix?: string): Promise<readonly string[]>;
@@ -79,5 +94,19 @@ export class VaultMissError extends Error {
   constructor(readonly key: string) {
     super(`vault: no entry for ${JSON.stringify(key)}`);
     this.name = "VaultMissError";
+  }
+}
+
+/** A stored secret exists but cannot be authenticated with the active key. */
+export class VaultDecryptionError extends Error {
+  constructor(
+    readonly key: string,
+    options?: ErrorOptions,
+  ) {
+    super(
+      `vault: failed to decrypt ${JSON.stringify(key)} (wrong master key or corrupt ciphertext)`,
+      options,
+    );
+    this.name = "VaultDecryptionError";
   }
 }

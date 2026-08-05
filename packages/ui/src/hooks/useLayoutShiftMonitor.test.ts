@@ -1,3 +1,4 @@
+/** Verifies startLayoutShiftMonitor through the package's configured test harness. */
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -108,8 +109,9 @@ describe("startLayoutShiftMonitor", () => {
     });
     expect(eventListener).toHaveBeenCalledTimes(1);
     expect(consoleError).toHaveBeenCalledWith(
-      "[RenderTelemetry] layout shifted 2x (CLS 0.120) within 100ms",
-      event,
+      expect.anything(),
+      expect.anything(),
+      expect.stringContaining("render-telemetry.layout-shift"),
     );
 
     stop();

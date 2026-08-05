@@ -1,11 +1,4 @@
-/**
- * Character Utilities
- *
- * Utilities for managing character secrets, plugins, and model provider detection.
- * These are immutable operations that return new character objects.
- *
- * @module character-utils
- */
+/** Immutable character transforms for secrets, plugins, and model-provider detection. */
 
 import {
 	MODEL_PROVIDER_SECRETS as _MODEL_PROVIDER_SECRETS,

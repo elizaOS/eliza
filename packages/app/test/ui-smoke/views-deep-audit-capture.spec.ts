@@ -293,14 +293,6 @@ test.describe("views deep UX audit capture", () => {
           await screenshot(page, `${viewport.name}-wallet-${tab}`);
         }
       }
-
-      await openAppPath(page, "/hyperliquid");
-      await page.waitForTimeout(800);
-      await screenshot(page, `${viewport.name}-wallet-perps-hyperliquid`);
-
-      await openAppPath(page, "/polymarket");
-      await page.waitForTimeout(800);
-      await screenshot(page, `${viewport.name}-wallet-predictions-polymarket`);
     });
 
     test(`capture browser workspace states @ ${viewport.name}`, async ({

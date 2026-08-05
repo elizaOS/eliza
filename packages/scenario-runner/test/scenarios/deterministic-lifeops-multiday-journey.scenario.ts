@@ -42,10 +42,10 @@ import type {
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {
-  type RuntimeWithScenarioLlmFixtures,
+  type RuntimeWithScenarioModelFixtures,
   registerStrictActionRouteFixtures,
   type StrictActionRouteFixture,
-} from "./_helpers/strict-llm-action-fixtures";
+} from "@elizaos/core/testing";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -133,7 +133,7 @@ const historyParameters = {
 };
 
 let createdTaskId: string | null = null;
-let scenarioRuntime: RuntimeWithScenarioLlmFixtures | null = null;
+let scenarioRuntime: RuntimeWithScenarioModelFixtures | null = null;
 
 const initialStrictRoutes: StrictActionRouteFixture[] = [
   {
@@ -288,7 +288,7 @@ async function seedJourney(ctx: ScenarioContext): Promise<string | undefined> {
     }
   }
 
-  scenarioRuntime = ctx.runtime as RuntimeWithScenarioLlmFixtures;
+  scenarioRuntime = ctx.runtime as RuntimeWithScenarioModelFixtures;
   registerStrictActionRouteFixtures(scenarioRuntime, initialStrictRoutes);
   return undefined;
 }

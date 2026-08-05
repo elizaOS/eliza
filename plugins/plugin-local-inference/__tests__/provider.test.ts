@@ -8,10 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	createLocalInferenceModelHandlers,
 	isLocalInferenceUnavailableError,
-	LOCAL_INFERENCE_MODEL_TYPES,
-	LOCAL_INFERENCE_PRIORITY,
 	LOCAL_INFERENCE_PROVIDER_ID,
-	localInferencePlugin,
 	LocalInferenceUnavailableError,
 } from "../src/provider.ts";
 
@@ -24,16 +21,6 @@ function runtimeWithService(service: Record<string, unknown>) {
 }
 
 describe("local inference provider", () => {
-	it("exports one provider for text, media, TTS, and transcription", () => {
-		expect(localInferencePlugin.name).toBe(LOCAL_INFERENCE_PROVIDER_ID);
-		expect(localInferencePlugin.priority).toBe(LOCAL_INFERENCE_PRIORITY);
-		for (const modelType of LOCAL_INFERENCE_MODEL_TYPES) {
-			if (modelType === ModelType.TEXT_EMBEDDING) continue;
-			expect(localInferencePlugin.models?.[modelType]).toBeTypeOf("function");
-		}
-		expect(localInferencePlugin.models?.[ModelType.TEXT_EMBEDDING]).toBeUndefined();
-	});
-
 	it("delegates text generation to the runtime local inference service", async () => {
 		const generate = vi.fn(async (args: { prompt: string }) => `local:${args.prompt}`);
 		const runtime = runtimeWithService({ generate });

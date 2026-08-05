@@ -16,7 +16,7 @@ import crypto from "node:crypto";
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { writeJsonAtomic } from "@elizaos/auth/atomic-json";
+import { writeJsonAtomic } from "@elizaos/core/atomic-json";
 import { resolveStateDir } from "../config/paths.ts";
 
 const DEFAULT_QUOTA_BYTES = 50 * 1024 * 1024;

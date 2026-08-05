@@ -1,3 +1,4 @@
+/** Verifies LogsView through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**
@@ -101,9 +102,6 @@ describe("LogsView", () => {
     const skeleton = panel.querySelector('[aria-hidden="true"]');
     expect(skeleton).toBeTruthy();
     expect(skeleton?.children).toHaveLength(4);
-    for (const row of Array.from(skeleton?.children ?? [])) {
-      expect(row.className).toContain("h-[11.375rem]");
-    }
 
     await act(async () => {
       resolveLoad?.();

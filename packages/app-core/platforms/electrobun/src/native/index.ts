@@ -13,7 +13,6 @@ import { getGpuWindowManager } from "./gpu-window";
 import { getLocationManager } from "./location";
 import { getMusicPlayerManager } from "./music-player";
 import { getPermissionManager } from "./permissions";
-import { getRemotePluginHost } from "./remote-plugin-host";
 import { getScreenCaptureManager } from "./screencapture";
 import { isStewardLocalEnabled, stopSteward } from "./steward";
 import { getSwabbleManager } from "./swabble";
@@ -57,7 +56,6 @@ async function disposeNativeModulesOnce(): Promise<void> {
     ["browser-workspace", getBrowserWorkspaceManager()],
     ["camera", getCameraManager()],
     ["canvas", getCanvasManager()],
-    ["remote-plugins", getRemotePluginHost()],
     ["desktop", getDesktopManager()],
     ["gateway", getGatewayDiscovery()],
     ["gpu-window", getGpuWindowManager()],

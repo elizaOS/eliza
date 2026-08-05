@@ -183,7 +183,7 @@ export function ConnectorAccountCard({
     <div
       className={cn(
         "flex flex-col gap-3 rounded-sm border border-border/45 bg-card/35 px-3 py-3 transition-opacity",
-        !enabled && "opacity-60",
+        !enabled && "bg-bg-muted/40",
         selected && "border-accent/70 bg-accent/5",
       )}
     >
@@ -271,6 +271,9 @@ export function ConnectorAccountCard({
             size="sm"
             disabled={saving || testBusy}
             onClick={() => void onTest()}
+            aria-label={t("connectoraccount.test", {
+              defaultValue: "Test connector account",
+            })}
             className="h-7 px-2 text-xs"
           >
             {testBusy ? (

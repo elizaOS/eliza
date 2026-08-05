@@ -24,7 +24,11 @@ import {
 	type AppControlClient,
 	createAppControlClient,
 } from "../client/api.js";
-import { normalizeActionOptions, readStringOption } from "../params.js";
+import {
+	normalizeActionOptions,
+	readStringOption,
+	userRequestMessageText,
+} from "../params.js";
 import { hasPendingIntent, isChoiceReply, runCreate } from "./app-create.js";
 import { runLaunch } from "./app-launch.js";
 import { runList } from "./app-list.js";
@@ -179,6 +183,11 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 			"CREATE_APP",
 			"BUILD_APP",
 			"NEW_APP",
+			"BUILD_WEB_APP",
+			"HOST_WEB_APP",
+			"MAKE_WEBSITE",
+			"PUBLISH_WEB_PAGE",
+			"CREATE_HTML_APP",
 		],
 		tags: [
 			"app",
@@ -193,11 +202,11 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 			"scaffold",
 		],
 		description:
-			"Unified control of apps installed on this device. action=launch starts a registered app; action=relaunch stops then launches (optionally with verify); action=stop stops a running app without uninstalling it; action=list shows installed + running apps; action=load_from_directory registers apps from an absolute folder; action=create runs the multi-turn create-or-edit flow that searches existing apps, asks new/edit/cancel, scaffolds from the min-app template, and dispatches a coding agent with AppVerificationService validator.",
+			"Unified control of apps installed on this device. action=launch starts a registered app; action=relaunch stops then launches (optionally with verify); action=stop stops a running app without uninstalling it; action=list shows installed + running apps; action=load_from_directory registers apps from an absolute folder; action=create BUILDS AND HOSTS a new web app / web page / website: the multi-turn create-or-edit flow searches existing apps, asks new/edit/cancel, scaffolds from the min-app template, dispatches a coding agent with AppVerificationService validator, and (when a publish target is configured) publishes the verified build and returns a live URL the user can open.",
 		descriptionCompressed:
-			"apps launch|relaunch|stop|list|load_folder|create; create scaffolds, coding-agent, verify",
+			"apps launch|relaunch|stop|list|load_folder|create; create builds a web app/page/site and publishes a live link when a publish target is configured",
 		routingHint:
-			"Installed applications themselves -> APP. 'Show me the apps', 'list my apps', 'what apps are installed/running', launching, stopping, or restarting a registered app, registering apps from a folder, or building a new app is APP (action=list|launch|stop|relaunch|load_from_directory|create) — answer installed-app-list requests with APP action=list, never with a UI view list. VIEWS covers UI views/panels and the apps *page*; APP covers the applications. The user's own Eliza Cloud apps ('my cloud apps', hosted apps/sites created or deployed on Eliza Cloud) are LIST_CLOUD_APPS, NOT this action.",
+			"Installed applications themselves -> APP. 'Show me the apps', 'list my apps', 'what apps are installed/running', launching, stopping, or restarting a registered app, registering apps from a folder, or building a new app is APP (action=list|launch|stop|relaunch|load_from_directory|create) — answer installed-app-list requests with APP action=list, never with a UI view list. Building/hosting/publishing a NEW web app, web page, or interactive HTML the user wants a live link for ('teach me with an interactive page', 'host it and give me the link') is APP action=create — it builds and, when a publish target is configured, publishes with a live link; do not route that to a generic coding task or a Cloud deploy. VIEWS covers UI views/panels and the apps *page*; APP covers the applications. The user's own Eliza Cloud apps ('my cloud apps', hosted apps/sites created or deployed on Eliza Cloud) are LIST_CLOUD_APPS, NOT this action.",
 		suppressPostActionContinuation: true,
 
 		parameters: [
@@ -306,7 +315,7 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 			message: Memory,
 		): Promise<boolean> => {
 			if (!(await canManageApps(runtime, message))) return false;
-			const text = message.content.text ?? "";
+			const text = userRequestMessageText(message);
 
 			// Multi-turn follow-up: short reply matches a pending intent task.
 			if (isChoiceReply(text)) {
@@ -333,7 +342,7 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 			}
 
 			const client = clientFactory();
-			const text = message.content.text ?? "";
+			const text = userRequestMessageText(message);
 
 			// Follow-up choice reply always routes to create.
 			if (isChoiceReply(text)) {

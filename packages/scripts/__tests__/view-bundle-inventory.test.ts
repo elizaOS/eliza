@@ -322,21 +322,23 @@ describe("dynamic-view build inventory", () => {
   test("filtering is exact when possible and rejects ambiguity or absence", () => {
     const targets = [
       {
-        name: "plugin-feed",
-        packageName: "@elizaos/plugin-feed",
-        workspaceDir: "plugins/plugin-feed",
+        name: "plugin-alpha",
+        packageName: "@elizaos/plugin-alpha",
+        workspaceDir: "plugins/plugin-alpha",
       },
       {
-        name: "plugin-feed-reader",
-        packageName: "@elizaos/plugin-feed-reader",
-        workspaceDir: "plugins/plugin-feed-reader",
+        name: "plugin-alpha-reader",
+        packageName: "@elizaos/plugin-alpha-reader",
+        workspaceDir: "plugins/plugin-alpha-reader",
       },
     ];
 
-    expect(selectViewBundleTargets(targets, "@ELIZAOS/PLUGIN-FEED")).toEqual([
+    expect(selectViewBundleTargets(targets, "@ELIZAOS/PLUGIN-ALPHA")).toEqual([
       targets[0],
     ]);
-    expect(() => selectViewBundleTargets(targets, "feed")).toThrow(/ambiguous/);
+    expect(() => selectViewBundleTargets(targets, "alpha")).toThrow(
+      /ambiguous/,
+    );
     expect(() => selectViewBundleTargets(targets, "missing")).toThrow(
       /matched no target/,
     );

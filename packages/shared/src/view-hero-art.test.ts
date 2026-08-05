@@ -51,10 +51,6 @@ describe("view-hero-art", () => {
     }
   });
 
-  it("picks a stable hue for the same key", () => {
-    expect(hueForViewKey("calendar")).toBe(hueForViewKey("calendar"));
-  });
-
   it("maps keywords to the right icon glyph, defaulting to the grid", () => {
     const cases: Array<[string, ViewHeroIconKind]> = [
       ["calendar", "calendar"],

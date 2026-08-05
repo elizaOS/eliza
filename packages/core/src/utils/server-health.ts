@@ -53,7 +53,8 @@ async function checkHealth(
 		const response = await fetch(url, { signal: controller.signal });
 		return { ok: response.ok };
 	} catch (error) {
-		// Network errors, timeouts, aborts are expected during startup
+		// error-policy:J1 the health-check boundary translates transport and
+		// timeout failures into an explicit unhealthy result carrying the error.
 		return { ok: false, error: error as Error };
 	} finally {
 		clearTimeout(timeoutId);

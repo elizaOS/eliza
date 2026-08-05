@@ -199,7 +199,7 @@ const CORE_VIEW_INTERACTIONS: Readonly<Record<string, CoreViewInteraction>> = {
         signals: [
           "wallet inventory interactions",
           "Hide USDC",
-          "Open RPC settings",
+          'name: "RPC settings", exact: true',
         ],
       },
       {
@@ -289,20 +289,6 @@ const CORE_VIEW_INTERACTIONS: Readonly<Record<string, CoreViewInteraction>> = {
           "skills route is chat/voice-drivable through the agent bridge",
           "skills agent bridge exposes create controls",
           "create-skill-name",
-        ],
-      },
-    ],
-  },
-  feed: {
-    owners: [
-      PLUGIN_AGENT_BRIDGE_OWNER,
-      {
-        spec: "packages/app/test/ui-smoke/apps-personal-assistant-feed-interactions.spec.ts",
-        proves:
-          "Exercises the Feed GUI no-run state and command routing through deterministic interact routes.",
-        signals: [
-          "feed gui no-run state",
-          "Feed route exposes reachable GUI state",
         ],
       },
     ],

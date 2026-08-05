@@ -11,7 +11,7 @@
  * calendar assistant action.
  */
 import { createHash } from "node:crypto";
-import { renderGroundedActionReply } from "@elizaos/agent";
+import { renderGroundedActionReply } from "@elizaos/agent/actions/grounded-action-reply";
 import type {
   Action,
   ActionExample,
@@ -24,8 +24,11 @@ import type {
   State,
 } from "@elizaos/core";
 import {
+  describeUserReference,
   normalizeEffectReceipt,
   resolveOptimizedPromptForRuntime,
+  unwrapUserMessageText,
+  userReferenceLogView,
 } from "@elizaos/core";
 import type {
   CreateLifeOpsCalendarEventAttendee,
@@ -1068,7 +1071,11 @@ function buildAppleCalendarPermissionRequestText(
   ].join("\n");
 }
 
-function buildCalendarEventDisambiguationFallback(args: {
+// titleHint comes from model extraction over the (possibly envelope-wrapped)
+// message, so it can be an arbitrary blob — describeUserReference quotes it
+// only when name-shaped and falls back to a neutral noun otherwise. Exported
+// for regression tests.
+export function buildCalendarEventDisambiguationFallback(args: {
   action: "update" | "delete";
   candidates: LifeOpsCalendarEvent[];
   titleHint?: string;
@@ -1080,7 +1087,7 @@ function buildCalendarEventDisambiguationFallback(args: {
     return `- ${candidate.title} (${when})`;
   });
   const intro = args.titleHint
-    ? `I found multiple events matching "${args.titleHint}".`
+    ? `I found multiple events matching ${describeUserReference(args.titleHint, "that event")}.`
     : "I found multiple matching calendar events.";
   const suffix =
     args.candidates.length > 3
@@ -1091,6 +1098,18 @@ function buildCalendarEventDisambiguationFallback(args: {
     ...previewLines,
     `Tell me which one to ${args.action} by giving the title and date/time.${suffix}`,
   ].join("\n");
+}
+
+// Same blob hazard as the disambiguation intro: the hint is model-extracted
+// and must never be echoed verbatim when it is not name-shaped. Exported for
+// regression tests.
+export function buildCalendarEventNotFoundFallback(
+  action: "update" | "delete",
+  titleHint: string | undefined,
+): string {
+  return titleHint
+    ? `i couldn't find an event matching ${describeUserReference(titleHint, "that event")} in that window.`
+    : `i couldn't find any events to ${action} in that window. give me a title or a date.`;
 }
 
 async function renderCalendarActionReply(args: {
@@ -3124,18 +3143,22 @@ function formatTripWindowResults(
   return lines.join("\n");
 }
 
-function formatCalendarSearchResults(
+// The query may be a raw user message or an LLM-extracted phrase — either can
+// be a multi-line blob, so echoes go through describeUserReference. Exported
+// for regression tests.
+export function formatCalendarSearchResults(
   events: LifeOpsCalendarEvent[],
   query: string,
   label: string,
 ): string {
+  const queryEcho = describeUserReference(query, "that request");
   if (events.length === 0) {
-    return `No calendar events matched "${query}" ${label}.`;
+    return `No calendar events matched ${queryEcho} ${label}.`;
   }
   if (events.length === 1) {
     const event = events.at(0);
     if (!event) {
-      return `No calendar events matched "${query}" ${label}.`;
+      return `No calendar events matched ${queryEcho} ${label}.`;
     }
     // The fallback wording is intentionally generic ("calendar event") so it
     // is correct in any language. The grounded LLM reply renderer is what
@@ -3144,7 +3167,7 @@ function formatCalendarSearchResults(
     return `Your matching calendar event is **${event.title}** (${formatCalendarMoment(event)}).`;
   }
   const lines = [
-    `Found ${events.length} calendar event${events.length === 1 ? "" : "s"} for "${query}" ${label}:`,
+    `Found ${events.length} calendar event${events.length === 1 ? "" : "s"} for ${queryEcho} ${label}:`,
   ];
   for (const event of events.slice(0, 8)) {
     const when = event.isAllDay
@@ -3998,18 +4021,19 @@ const calendarAction: CalendarHandlerAction = {
               )
             : feed.events;
           if (candidates.length === 0) {
-            const fallback = titleHint
-              ? `i couldn't find an event matching "${titleHint}" in that window.`
-              : "i couldn't find any events to update in that window. give me a title or a date.";
+            const fallback = buildCalendarEventNotFoundFallback(
+              "update",
+              titleHint,
+            );
             return respond({
               success: false,
               text: await renderReply("update_event_not_found", fallback, {
-                titleHint,
+                titleHint: userReferenceLogView(titleHint),
               }),
               effectReceipt: calendarRequestNoopReceipt({
                 message,
                 operation: "calendar.event.update",
-                discriminator: titleHint,
+                discriminator: userReferenceLogView(titleHint),
                 reason:
                   "No matching event was found, so no update approval was created.",
               }),
@@ -4025,13 +4049,13 @@ const calendarAction: CalendarHandlerAction = {
               success: false,
               text: await renderReply("clarify_update_event_target", fallback, {
                 candidateCount: candidates.length,
-                titleHint,
+                titleHint: userReferenceLogView(titleHint),
                 candidates,
               }),
               effectReceipt: calendarRequestNoopReceipt({
                 message,
                 operation: "calendar.event.update",
-                discriminator: titleHint,
+                discriminator: userReferenceLogView(titleHint),
                 reason:
                   "Multiple events matched the request, so no update approval was created.",
               }),
@@ -4044,12 +4068,12 @@ const calendarAction: CalendarHandlerAction = {
               text: await renderReply(
                 "update_event_not_found",
                 "i couldn't find a unique event to update.",
-                { titleHint },
+                { titleHint: userReferenceLogView(titleHint) },
               ),
               effectReceipt: calendarRequestNoopReceipt({
                 message,
                 operation: "calendar.event.update",
-                discriminator: titleHint,
+                discriminator: userReferenceLogView(titleHint),
                 reason:
                   "A unique target could not be resolved, so no update approval was created.",
               }),
@@ -4303,18 +4327,19 @@ const calendarAction: CalendarHandlerAction = {
               )
             : feed.events;
           if (candidates.length === 0) {
-            const fallback = titleHint
-              ? `i couldn't find an event matching "${titleHint}" in that window.`
-              : "i couldn't find any events to delete in that window. give me a title or a date.";
+            const fallback = buildCalendarEventNotFoundFallback(
+              "delete",
+              titleHint,
+            );
             return respond({
               success: false,
               text: await renderReply("delete_event_not_found", fallback, {
-                titleHint,
+                titleHint: userReferenceLogView(titleHint),
               }),
               effectReceipt: calendarRequestNoopReceipt({
                 message,
                 operation: "calendar.event.delete",
-                discriminator: titleHint,
+                discriminator: userReferenceLogView(titleHint),
                 reason:
                   "No matching event was found, so no cancellation approval was created.",
               }),
@@ -4331,13 +4356,13 @@ const calendarAction: CalendarHandlerAction = {
               success: false,
               text: await renderReply("clarify_delete_event_target", fallback, {
                 candidateCount: candidates.length,
-                titleHint,
+                titleHint: userReferenceLogView(titleHint),
                 candidates,
               }),
               effectReceipt: calendarRequestNoopReceipt({
                 message,
                 operation: "calendar.event.delete",
-                discriminator: titleHint,
+                discriminator: userReferenceLogView(titleHint),
                 reason:
                   "Multiple events matched the request, so no cancellation approval was created.",
               }),
@@ -4575,15 +4600,21 @@ const calendarAction: CalendarHandlerAction = {
               const filteredEvents = feed.events.filter((event) =>
                 groundedIdSet.has(event.id),
               );
+              // Echo the user's actual words, not the external-content
+              // security envelope hardenIncomingUserMessage may have wrapped
+              // around content.text; the raw text stays in currentMessageText
+              // for the inference calls above/below.
+              const queryFallback =
+                unwrapUserMessageText(message) || intent || "your request";
               const fallback = formatCalendarSearchResults(
                 filteredEvents,
-                currentMessageText || intent || "your request",
+                queryFallback,
                 label,
               );
               return respond({
                 success: true,
                 text: await renderReply("search_results", fallback, {
-                  query: currentMessageText || intent,
+                  query: userReferenceLogView(queryFallback),
                   queries: [],
                   events: filteredEvents,
                   label,
@@ -4592,11 +4623,11 @@ const calendarAction: CalendarHandlerAction = {
                   feed,
                   events: filteredEvents,
                   operation: "calendar.event.search",
-                  discriminator: currentMessageText || intent,
+                  discriminator: userReferenceLogView(queryFallback),
                 }),
                 data: toActionData({
                   ...feed,
-                  query: currentMessageText || intent,
+                  query: userReferenceLogView(queryFallback),
                   queries: [],
                   events: filteredEvents,
                 }),
@@ -4736,11 +4767,16 @@ const calendarAction: CalendarHandlerAction = {
           query,
           label,
         );
+        // queriesForSearch values are LLM-extracted and can be blobs; clamp
+        // every machine-facing render while matching above kept the raw values.
+        const queryViews = queriesForSearch.map((value) =>
+          userReferenceLogView(value),
+        );
         return respond({
           success: true,
           text: await renderReply("search_results", fallback, {
-            query,
-            queries: queriesForSearch,
+            query: userReferenceLogView(query),
+            queries: queryViews,
             events: filteredEvents,
             label,
           }),
@@ -4748,12 +4784,12 @@ const calendarAction: CalendarHandlerAction = {
             feed,
             events: filteredEvents,
             operation: "calendar.event.search",
-            discriminator: JSON.stringify(queriesForSearch),
+            discriminator: userReferenceLogView(JSON.stringify(queryViews)),
           }),
           data: toActionData({
             ...feed,
-            query,
-            queries: queriesForSearch,
+            query: userReferenceLogView(query),
+            queries: queryViews,
             events: filteredEvents,
           }),
         });

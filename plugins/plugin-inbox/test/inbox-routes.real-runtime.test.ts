@@ -25,7 +25,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
-} from "../../../packages/test/helpers/real-runtime.ts";
+} from "../../../packages/app-core/test/helpers/real-runtime.ts";
 import { InboxRepository } from "../src/inbox/repository.ts";
 import type { InboundMessage, TriageEntry } from "../src/inbox/types.ts";
 import { inboxPlugin } from "../src/plugin.ts";
@@ -300,7 +300,6 @@ describe("inbox routes e2e — real plugin on real PGLite runtime", () => {
     const target = unresolved.find(
       (entry) => entry.sourceMessageId === "route-msg-question",
     );
-    expect(target).toBeDefined();
     if (!target) throw new Error("unreachable");
 
     const until = new Date(Date.now() + 60 * 60 * 1000).toISOString();
@@ -348,7 +347,6 @@ describe("inbox routes e2e — real plugin on real PGLite runtime", () => {
 
     const unresolved = await repo.getUnresolved({ limit: 1 });
     const anyEntry = unresolved[0];
-    expect(anyEntry).toBeDefined();
     if (!anyEntry) throw new Error("unreachable");
     const badTs = await call(
       "POST",
@@ -369,7 +367,6 @@ describe("inbox routes e2e — real plugin on real PGLite runtime", () => {
     const noDraft = unresolved.find(
       (entry) => !entry.draftResponse && !entry.suggestedResponse,
     );
-    expect(noDraft).toBeDefined();
     if (!noDraft) throw new Error("unreachable");
 
     const approve = await call(
@@ -399,7 +396,6 @@ describe("inbox routes e2e — real plugin on real PGLite runtime", () => {
       includeSnoozed: true,
     });
     const entry = unresolved[0];
-    expect(entry).toBeDefined();
     if (!entry) throw new Error("unreachable");
     const noBody = await call("POST", `/api/lifeops/inbox/${entry.id}/reply`, {
       params: { id: entry.id },

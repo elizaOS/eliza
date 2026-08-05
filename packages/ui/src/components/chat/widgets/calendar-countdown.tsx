@@ -19,16 +19,16 @@ import { useDocumentVisibility } from "../../../hooks";
 // timer only while the document is visible.
 const COUNTDOWN_TICK_MS = 60_000;
 
-function useVisibilityGatedNow(intervalMs: number): number {
+function useVisibilityGatedNow(intervalMs: number, enabled: boolean): number {
   const documentVisible = useDocumentVisibility();
   const [now, setNow] = useState(0);
 
   useEffect(() => {
-    if (!documentVisible) return;
+    if (!enabled || !documentVisible) return;
     setNow(Date.now());
     const id = window.setInterval(() => setNow(Date.now()), intervalMs);
     return () => window.clearInterval(id);
-  }, [documentVisible, intervalMs]);
+  }, [documentVisible, enabled, intervalMs]);
 
   return now;
 }
@@ -74,7 +74,10 @@ export function CalendarCountdown({
 }: CalendarCountdownProps): JSX.Element {
   // Own clock: returns 0 on first render (deterministic) then ticks every minute
   // while visible. A caller-injected `now` wins for tests/stories.
-  const tickNow = useVisibilityGatedNow(COUNTDOWN_TICK_MS);
+  const tickNow = useVisibilityGatedNow(
+    COUNTDOWN_TICK_MS,
+    injectedNow === undefined,
+  );
   const now = injectedNow ?? tickNow;
   const label = now === 0 ? "" : formatCountdown(date, now);
   return (

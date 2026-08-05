@@ -1,4 +1,7 @@
-/** Supports app-core build, packaging, or development orchestration for write build info ts. */
+/**
+ * Writes dist/build-info.json (package version plus git commit from env
+ * override or rev-parse) for runtime build-provenance reporting.
+ */
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";

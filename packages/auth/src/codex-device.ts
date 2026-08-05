@@ -21,11 +21,17 @@ function expiryFromJwt(token: string): number {
     const payload = JSON.parse(
       Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8"),
     ) as { exp?: unknown };
-    if (typeof payload.exp === "number") return payload.exp * 1000;
-  } catch {
-    // Fall through to a conservative one-hour lifetime.
+    if (typeof payload.exp !== "number" || !Number.isFinite(payload.exp)) {
+      throw new Error("Codex access token has no finite exp claim");
+    }
+    return payload.exp * 1000;
+  } catch (cause) {
+    // error-policy:J2 context-adding rethrow — fabricating an expiry can make an
+    // invalid token look healthy and delay required reauthentication.
+    throw new Error("Codex access token expiry could not be validated", {
+      cause,
+    });
   }
-  return Date.now() + 60 * 60 * 1000;
 }
 
 export function startCodexDeviceLogin(): Promise<CodexDeviceFlow> {
@@ -43,6 +49,8 @@ export function startCodexDeviceLogin(): Promise<CodexDeviceFlow> {
     resolveCredentials = resolve;
     rejectCredentials = reject;
   });
+  // error-policy:J5 the returned flow exposes this promise to its caller; this
+  // observer prevents a process-level rejection before the flow is consumed.
   void credentials.catch(() => undefined);
 
   return new Promise<CodexDeviceFlow>((resolve, reject) => {
@@ -100,6 +108,8 @@ export function startCodexDeviceLogin(): Promise<CodexDeviceFlow> {
             : {}),
         });
       } catch (err) {
+        // error-policy:J1 child-process boundary translation — credential-file
+        // failures reject the public flow and never fabricate a token record.
         rejectCredentials(err instanceof Error ? err : new Error(String(err)));
       } finally {
         rmSync(codexHome, { recursive: true, force: true });

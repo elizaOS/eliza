@@ -54,7 +54,7 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-scheduling": "workspace:*",
     "@elizaos/shared": "workspace:*",
-    "drizzle-orm": "^0.45.1"
+    "drizzle-orm": "0.45.2"
   },
   "peerDependencies": {
     "@elizaos/plugin-sql": "workspace:*"

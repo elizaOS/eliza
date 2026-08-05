@@ -3,10 +3,14 @@ import { jsonb, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core
 
 /** One persisted turn in a shared-runtime conversation. Mirrors `SharedTurnMessage`. */
 export type SharedRuntimeHistoryMessage = {
+  /** Stable message id used to merge DO and Postgres writes without clobbering. */
+  id?: string;
   role: "user" | "assistant";
   content: string;
   /** Epoch-ms timestamp; used to order turns merged from concurrent writers. */
   createdAt?: number;
+  /** True when an assistant message is a partial interrupted response. */
+  interrupted?: boolean;
 };
 
 /**
@@ -20,7 +24,7 @@ export type SharedRuntimeHistoryMessage = {
  * the same Postgres the Worker already uses, independent of any cache config.
  *
  * One row per `(agent_id, channel_id)` holds the capped, ordered message list,
- * upserted each turn. Kept deliberately isolated from the encrypted/billed
+ * merged by stable message id each turn. Kept deliberately isolated from the encrypted/billed
  * `conversations`/`conversation_messages` tables (the chat-completions product)
  * so the lightweight shared tier stays decoupled, as designed.
  */

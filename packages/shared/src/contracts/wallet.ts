@@ -1,8 +1,8 @@
 /**
  * Shared wallet API contracts.
  *
- * Pure type definitions are re-exported from @elizaos/contracts.
- * Runtime helpers (RPC catalog, normalizers, builders) live here.
+ * Pure type definitions are re-exported from @elizaos/core's runtime-owned
+ * wallet contract. Shared RPC builders and normalizers live here.
  */
 
 import type {
@@ -11,7 +11,7 @@ import type {
   WalletRpcChain,
   WalletRpcCredentialKey,
   WalletRpcSelections,
-} from "@elizaos/contracts";
+} from "@elizaos/core";
 
 export type {
   BscTradeExecuteRequest,
@@ -100,7 +100,7 @@ export type {
   WalletTradingProfileSummary,
   WalletTradingProfileTokenBreakdown,
   WalletTradingProfileWindow,
-} from "@elizaos/contracts";
+} from "@elizaos/core";
 
 // ── Runtime helpers ──────────────────────────────────────────────────────────
 // RPC provider catalog, normalizers, and request builders.

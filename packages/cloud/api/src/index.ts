@@ -23,8 +23,96 @@ export { OnboardingSessionCoordinator } from "./onboarding-session-coordinator";
 export { SharedRuntimeConversation } from "./shared-runtime-conversation";
 
 let appPromise: Promise<Hono<AppEnv>> | undefined;
-let inferenceAppPromise: Promise<Hono<AppEnv>> | undefined;
-const CHAT_COMPLETIONS_PATH = "/api/v1/chat/completions";
+const inferenceAppPromises = new Map<string, Promise<Hono<AppEnv>>>();
+
+interface InferenceRouteSpec {
+  key: string;
+  mountPath: string;
+  matches(pathname: string): boolean;
+  load(): Promise<{ default: Hono<AppEnv> }>;
+}
+
+function exactInferenceRoute(
+  pathname: string,
+  load: InferenceRouteSpec["load"],
+): InferenceRouteSpec {
+  return {
+    key: pathname,
+    mountPath: pathname,
+    matches: (candidate) => candidate === pathname,
+    load,
+  };
+}
+
+const INFERENCE_ROUTES: readonly InferenceRouteSpec[] = [
+  exactInferenceRoute(
+    "/api/v1/chat/completions",
+    () => import("../v1/chat/completions/route"),
+  ),
+  exactInferenceRoute("/api/v1/messages", () => import("../v1/messages/route")),
+  exactInferenceRoute(
+    "/api/v1/responses",
+    () => import("../v1/responses/route"),
+  ),
+  exactInferenceRoute(
+    "/api/v1/embeddings",
+    () => import("../v1/embeddings/route"),
+  ),
+  exactInferenceRoute("/api/v1/chat", () => import("../v1/chat/route")),
+  exactInferenceRoute(
+    "/api/v1/voice/stt",
+    () => import("../v1/voice/stt/route"),
+  ),
+  exactInferenceRoute(
+    "/api/v1/voice/tts",
+    () => import("../v1/voice/tts/route"),
+  ),
+  exactInferenceRoute(
+    "/api/v1/generate-image",
+    () => import("../v1/generate-image/route"),
+  ),
+  exactInferenceRoute(
+    "/api/v1/generate-video",
+    () => import("../v1/generate-video/route"),
+  ),
+  exactInferenceRoute(
+    "/api/v1/generate-music",
+    () => import("../v1/generate-music/route"),
+  ),
+  exactInferenceRoute(
+    "/api/v1/generate-sfx",
+    () => import("../v1/generate-sfx/route"),
+  ),
+  exactInferenceRoute(
+    "/api/v1/generate-prompts",
+    () => import("../v1/generate-prompts/route"),
+  ),
+  {
+    key: "app-chat",
+    mountPath: "/api/v1/apps/:id/chat",
+    matches: (pathname) => /^\/api\/v1\/apps\/[^/]+\/chat$/.test(pathname),
+    load: () => import("../v1/apps/[id]/chat/route"),
+  },
+  {
+    key: "app-generate-image",
+    mountPath: "/api/v1/apps/:id/generate-image",
+    matches: (pathname) =>
+      /^\/api\/v1\/apps\/[^/]+\/generate-image$/.test(pathname),
+    load: () => import("../v1/apps/[id]/generate-image/route"),
+  },
+  {
+    key: "agent-a2a",
+    mountPath: "/api/agents/:id/a2a",
+    matches: (pathname) => /^\/api\/agents\/[^/]+\/a2a$/.test(pathname),
+    load: () => import("../agents/[id]/a2a/route"),
+  },
+  {
+    key: "agent-mcp",
+    mountPath: "/api/agents/:id/mcp",
+    matches: (pathname) => /^\/api\/agents\/[^/]+\/mcp$/.test(pathname),
+    load: () => import("../agents/[id]/mcp/route"),
+  },
+];
 const AGENT_ID_RE =
   /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const DEFAULT_AGENT_BASE_DOMAIN = "elizacloud.ai";
@@ -55,11 +143,18 @@ async function getApp(): Promise<Hono<AppEnv>> {
   return appPromise;
 }
 
-async function getInferenceApp(): Promise<Hono<AppEnv>> {
-  inferenceAppPromise ??= import("./inference-app").then((m) =>
-    m.createInferenceApp(),
-  );
-  return inferenceAppPromise;
+async function getInferenceApp(
+  spec: InferenceRouteSpec,
+): Promise<Hono<AppEnv>> {
+  let promise = inferenceAppPromises.get(spec.key);
+  if (!promise) {
+    promise = Promise.all([import("./inference-app"), spec.load()]).then(
+      ([shell, route]) =>
+        shell.createInferenceApp(spec.mountPath, route.default),
+    );
+    inferenceAppPromises.set(spec.key, promise);
+  }
+  return promise;
 }
 
 export function isThinInferenceEnabled(
@@ -69,7 +164,7 @@ export function isThinInferenceEnabled(
 }
 
 export function isCanonicalInferencePath(pathname: string): boolean {
-  return pathname === CHAT_COMPLETIONS_PATH;
+  return INFERENCE_ROUTES.some((route) => route.matches(pathname));
 }
 
 async function dispatchInference(
@@ -77,16 +172,18 @@ async function dispatchInference(
   env: AppEnv["Bindings"],
   ctx: ExecutionContext,
 ): Promise<Response | null> {
-  if (
-    !isThinInferenceEnabled(env) ||
-    !isCanonicalInferencePath(new URL(request.url).pathname)
-  ) {
+  if (!isThinInferenceEnabled(env)) {
     return null;
   }
+  const pathname = new URL(request.url).pathname;
+  const route = INFERENCE_ROUTES.find((candidate) =>
+    candidate.matches(pathname),
+  );
+  if (!route) return null;
 
   const dispatchStartedAt = performance.now();
-  const moduleWasInitialized = Boolean(inferenceAppPromise);
-  const app = await getInferenceApp();
+  const moduleWasInitialized = inferenceAppPromises.has(route.key);
+  const app = await getInferenceApp(route);
   const moduleInitMs = performance.now() - dispatchStartedAt;
   const response = await app.fetch(request, env, ctx);
   const dispatchMs = performance.now() - dispatchStartedAt;
@@ -120,7 +217,7 @@ function healthResponse(env: AppEnv["Bindings"]): Response {
       // staging subdomain silently falls into the prod wildcard and starts
       // serving prod — invisible except by asking who answered. This field is
       // the beacon the cross-environment routing verifier probes
-      // (packages/scripts/cloud/verify-environment-routing.mjs).
+      // (packages/cloud/scripts/verify-environment-routing.mjs).
       environment: env.ENVIRONMENT ?? null,
     },
     {
@@ -133,29 +230,6 @@ function healthResponse(env: AppEnv["Bindings"]): Response {
 function normalizeHostname(hostname: string | undefined): string | null {
   const normalized = hostname?.trim().toLowerCase().replace(/\.+$/, "");
   return normalized || null;
-}
-
-function normalizeOriginHost(value: string | undefined): string | null {
-  const raw = value?.trim();
-  if (!raw) return null;
-
-  try {
-    const origin = new URL(raw.includes("://") ? raw : `https://${raw}`);
-    if (
-      origin.username ||
-      origin.password ||
-      origin.pathname !== "/" ||
-      origin.search ||
-      origin.hash
-    ) {
-      return null;
-    }
-    return normalizeHostname(origin.host);
-  } catch {
-    // error-policy:J3 untrusted origin header parse; null = reject (unparseable
-    // origin is not a valid host and must not be matched against the allowlist).
-    return null;
-  }
 }
 
 function getGeneratedAgentId(
@@ -194,17 +268,6 @@ export function redirectFrontendHost(
   return Response.redirect(targetUrl.toString(), 308);
 }
 
-// The Feed app's public host. Feed runs on Railway and serves both its pages and
-// its own `/api/*` from one origin, so the wildcard `*.elizacloud.ai/*` Worker
-// route would otherwise swallow it (see packages/feed/RAILWAY.md). When the
-// operator sets `FEED_ORIGIN_HOST` (the Railway host) this Worker reverse-proxies
-// the host to Railway; unset = inert (request falls through to cloud-api as before).
-const FEED_ALIAS_HOST = "feed.elizacloud.ai";
-const FEED_OBSERVABILITY_SCRIPT_PATHS = new Set([
-  "/_vercel/insights/script.js",
-  "/_vercel/speed-insights/script.js",
-]);
-const FEED_PRESET_PFP_PATTERN = /^\/assets\/user-pfps\/pfp-\d{3}\.png$/;
 const FRONTEND_ALIAS_PROXY_HEADER_DENYLIST = new Set([
   "cdn-loop",
   "connection",
@@ -221,22 +284,9 @@ const FRONTEND_ALIAS_PROXY_HEADER_DENYLIST = new Set([
   "x-real-ip",
 ]);
 
-export function getFrontendAliasProxyTarget(
-  url: URL,
-  env?: { FEED_ORIGIN_HOST?: string },
-): URL | null {
+export function getFrontendAliasProxyTarget(url: URL): URL | null {
   const hostname = normalizeHostname(url.hostname);
   if (!hostname) return null;
-
-  // Config-gated Feed passthrough. Single origin for pages + API, so no app/api
-  // split. Inert unless FEED_ORIGIN_HOST is set.
-  if (hostname === FEED_ALIAS_HOST) {
-    const feedOrigin = normalizeOriginHost(env?.FEED_ORIGIN_HOST);
-    if (!feedOrigin) return null;
-    const feedUrl = new URL(url);
-    feedUrl.host = feedOrigin;
-    return feedUrl;
-  }
 
   const target = FRONTEND_ALIAS_TARGETS[hostname];
   if (!target) return null;
@@ -270,42 +320,11 @@ export function getFrontendAliasApiProxyTarget(url: URL): URL | null {
   return targetUrl;
 }
 
-export function getFrontendAliasSyntheticResponse(url: URL): Response | null {
-  const hostname = normalizeHostname(url.hostname);
-  if (hostname !== FEED_ALIAS_HOST) return null;
-
-  if (FEED_OBSERVABILITY_SCRIPT_PATHS.has(url.pathname)) {
-    return new Response("", {
-      status: 200,
-      headers: {
-        "content-type": "application/javascript; charset=utf-8",
-        "cache-control": "public, max-age=3600",
-      },
-    });
-  }
-
-  if (FEED_PRESET_PFP_PATTERN.test(url.pathname)) {
-    const fallbackUrl = new URL(url);
-    fallbackUrl.pathname = "/blankmonkey.png";
-    fallbackUrl.search = "";
-    return Response.redirect(fallbackUrl.toString(), 302);
-  }
-
-  return null;
-}
-
 function proxyFrontendAliasRequest(
   request: Request,
   url: URL,
-  env: AppEnv["Bindings"],
 ): Promise<Response> | null {
-  const syntheticResponse = getFrontendAliasSyntheticResponse(url);
-  if (syntheticResponse) return Promise.resolve(syntheticResponse);
-
-  const targetUrl = getFrontendAliasProxyTarget(
-    url,
-    env as { FEED_ORIGIN_HOST?: string },
-  );
+  const targetUrl = getFrontendAliasProxyTarget(url);
   if (!targetUrl) return null;
 
   return fetch(
@@ -420,7 +439,7 @@ export default {
       return (await getApp()).fetch(apiRequest, env, ctx);
     }
 
-    const frontendAliasResponse = proxyFrontendAliasRequest(request, url, env);
+    const frontendAliasResponse = proxyFrontendAliasRequest(request, url);
     if (frontendAliasResponse) return frontendAliasResponse;
     const blobResponse = await serveBlobHostRequest(request, url, env);
     if (blobResponse) return blobResponse;

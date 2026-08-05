@@ -990,7 +990,7 @@ function unwrapProviderError(error: unknown): unknown {
   return error;
 }
 
-function getGatewayCallerFaultStatus(error: unknown): number | null {
+function getProviderCallerFaultStatus(error: unknown): number | null {
   if (!(error instanceof Error)) {
     return null;
   }
@@ -1005,17 +1005,6 @@ function getGatewayCallerFaultStatus(error: unknown): number | null {
   if (candidate === 400 || candidate === 404 || candidate === 429) {
     return candidate;
   }
-  if (
-    error.name === "GatewayInvalidRequestError" ||
-    error.name === "GatewayModelNotFoundError" ||
-    error.name === "GatewayRateLimitError"
-  ) {
-    return error.name === "GatewayInvalidRequestError"
-      ? 400
-      : error.name === "GatewayModelNotFoundError"
-        ? 404
-        : 429;
-  }
   return null;
 }
 
@@ -1025,9 +1014,9 @@ function getRecoverableProviderErrorStatus(error: unknown): number | null {
     error instanceof Error
       ? error.message.toLowerCase()
       : String(error).toLowerCase();
-  const gatewayCallerFaultStatus = getGatewayCallerFaultStatus(providerError);
-  if (gatewayCallerFaultStatus !== null) {
-    return gatewayCallerFaultStatus;
+  const providerCallerFaultStatus = getProviderCallerFaultStatus(providerError);
+  if (providerCallerFaultStatus !== null) {
+    return providerCallerFaultStatus;
   }
 
   if (APICallError.isInstance(providerError)) {
@@ -1992,9 +1981,8 @@ export async function handleChatCompletionsPOST(
             )
           : undefined,
     });
-    // Provider-configuration failures (missing/invalid provider keys) carry
-    // internal setup guidance ("... AI_GATEWAY_API_KEY ...") that must never
-    // reach a direct API caller; the raw detail is already in the log above.
+    // Provider-configuration failures carry internal setup guidance that must
+    // never reach a direct API caller; the raw detail is already in the log above.
     // To the caller the deterministic truth is that this deployment cannot
     // serve the requested model.
     if (isProviderConfigurationError(error)) {

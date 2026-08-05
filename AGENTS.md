@@ -1,79 +1,106 @@
-# elizaOS — repository guide for agents
+# elizaOS repository guide
 
-This is the **elizaOS** monorepo: an open-source framework for building and
-deploying autonomous AI agents, plus the runtime, CLI, dashboard, cloud
-backend, native bridges, and first-party plugins built on top of it. The repo
-is **self-contained** — everything needed to run, test, and ship an Eliza agent
-lives here.
+This monorepo contains the elizaOS agent framework and the product stack built
+on it: the core runtime, standalone agent host, Eliza application, CLI, cloud
+services, native bridges, documentation, tests, and first-party plugins.
+Bootable Linux and AOSP distributions are maintained separately in
+[`elizaOS/os`](https://github.com/elizaOS/os).
 
-`CLAUDE.md` and `AGENTS.md` in every directory are **identical** — author
-`CLAUDE.md`, then copy it to `AGENTS.md`. Read the package-local `CLAUDE.md`
-before working inside any package or plugin; this root file is the map.
+## How repository instructions work
+
+- Read this guide before changing the repository.
+- Before working in a package or plugin, read the nearest `CLAUDE.md` and its
+  `README.md`. A local guide adds package-specific architecture, commands, and
+  validation requirements; repository-wide rules in this guide remain binding.
+- `CLAUDE.md` and `AGENTS.md` in the same directory must be byte-for-byte
+  identical. Author `CLAUDE.md`, copy the finished content to `AGENTS.md`, and
+  run `bun run check:agents-claude`.
+- The `AGENTS.md` files under
+  `packages/elizaos/src/migrate/__tests__/fixtures/` are migration inputs, not
+  repository instructions. They are intentionally unpaired and must change only
+  when the corresponding migration fixture changes.
+- Treat package manifests, exports, executable scripts, tests, and current
+  source as the factual authority. Documentation is a map, not evidence that a
+  feature still exists.
 
 ## Naming
 
-Write **elizaOS** (not `ElizaOS`). npm scope is `@elizaos/*`. In plain language,
-say **Eliza agents**. Exception: the **Eliza Classic** plugin keeps `Eliza`
-(the 1966 chatbot it reimplements).
+Write **elizaOS**, never `ElizaOS`. The npm scope is `@elizaos/*`. Use
+**Eliza agents** for agents built with the framework. The **Eliza Classic**
+plugin is the deliberate exception because it reimplements the 1966 chatbot.
+
+## Before editing
+
+1. Run `git status --short --branch`. This is a shared working tree and existing
+   changes belong to their authors; do not discard, rewrite, or stage unrelated
+   work.
+2. Identify the owning workspace and read its local guide, README, manifest,
+   exports, and relevant tests.
+3. Search for callers and contract tests before changing a public type, route,
+   event, environment variable, script, or package export.
+4. Use the narrowest relevant command while iterating, then run the required
+   package and repository gates before declaring the work complete.
 
 ## Toolchain
 
-- **Runtime:** [Bun](https://bun.sh) (`packageManager` is pinned in
-  `package.json`) on **Node 24** (`engines.node`). ESM only (`"type": "module"`).
-- **Monorepo:** [Turbo](https://turbo.build) drives `build` / `typecheck` /
-  `lint` / `test` across workspaces. Workspace globs are in `package.json`
-  (`packages/*`, `plugins/*`, `packages/native/*`, `packages/os/*`,
-  `packages/examples/*`, `packages/cloud/services/*`, …).
-- **Lint/format:** [Biome](https://biomejs.dev) (`biome.json`). Ignore globs in
-  `.biomeignore`.
-- **Tests:** Vitest, orchestrated by `packages/scripts/run-all-tests.mjs`.
-- **TypeScript:** project-references build; root `tsconfig.json`,
-  `tsconfig.base.json`, per-package `tsconfig.json`.
+- **Runtime:** Bun `1.3.14` and Node `24.15.0` are pinned in `package.json`.
+  Use the pinned versions; do not silently substitute npm, pnpm, Yarn, or an
+  older Node runtime.
+- **Modules:** ESM only (`"type": "module"`). Do not introduce CommonJS.
+- **Workspace orchestration:** Turbo drives package `build`, `typecheck`,
+  `lint`, and test tasks. Workspace globs are defined in `package.json`.
+- **TypeScript:** the repository uses project references through root and
+  package `tsconfig` files.
+- **Formatting and linting:** Biome is pinned by the repository. Configuration
+  lives in `biome.json` and exclusions in `.biomeignore`.
+- **Tests:** Vitest is the primary runner; repository lanes are orchestrated by
+  `packages/scripts/run-all-tests.mjs`.
 
 ## Root commands
 
 ```bash
-bun install            # workspace install (runs postinstall: submodules, patches)
-bun run install:light  # install without downloading the large artifact bundle
-bun run dev            # boot the API + dashboard UI (packages/app-core dev-ui)
-bun run build          # turbo build across the workspace
-bun run verify         # typecheck + lint (alias: bun run check) — run before "done"
-bun run lint           # biome lint via turbo
-bun run format         # biome format via turbo
-bun run typecheck      # tsc across workspace (8 GB heap)
-bun run test           # full suite (run-all-tests.mjs)
-bun run test:server    # core/agent/app-core/shared/vault/elizaos/skills/scenario-runner
-bun run test:client    # app/ui + lifeops/training plugins
+bun install            # install workspaces, prepare submodules, apply patches, sync artifacts
+bun run install:light  # install without the large artifact sync
+bun run dev            # start the API and Eliza app development UI
+bun run start          # start the standalone agent host
+bun run build          # build the workspace through Turbo
+bun run verify         # parity, dependency, type, lint, and repository audit gates
+bun run lint           # workspace lint tasks
+bun run format         # workspace formatting tasks
+bun run typecheck      # workspace TypeScript checks
+bun run test           # repository unit and integration lane
+bun run test:server    # server package lane
+bun run test:client    # client package lane
 bun run test:e2e       # end-to-end lane
-bun run start          # run an agent (packages/agent start)
-bun run clean          # nuke dist/.turbo/node_modules and local state
-bun run reset          # clean, reinstall, rebuild
-bun run cloud:mock     # boot the full local cloud stack with mocks
+bun run cloud:mock     # start the local cloud stack with mocks
+bun run clean          # remove generated build, cache, install, and local-state output
+bun run reset          # clean, reinstall, and rebuild
 ```
 
-Scope any command to one package with `--cwd`:
-`bun run --cwd packages/core test`. The repo has 188 root scripts; the list
-above is the day-to-day set. Use `bun run` with no args to print them all.
-
-### Shared dev server for parallel lanes
-
-When several worktrees are active on the same VPS, do **not** have every lane bind
-the default app UI port (`2138`). `packages/app` keeps `bun run dev` unchanged
-for single-lane local work, but concurrent agents should use the shared scripts:
+Run `bun run` with no arguments for the live script inventory. Scope a package
+command with `bun run --cwd <workspace> <script>`, for example:
 
 ```bash
-cd packages/app
-bun run dev:shared   # long-lived Vite server on a deterministic worktree port
-bun run dev:status   # list running shared dev servers (port, worktree, pid)
-bun run dev:rebuild  # explicit Vite full-reload trigger for this worktree
+bun run --cwd packages/core test
+bun run --cwd plugins/plugin-browser typecheck
 ```
 
-Ports are reserved in `~/.eliza/dev-server-registry.json` (override with
-`ELIZA_DEV_SERVER_REGISTRY`) from the normalized worktree path, with registry
-locking and linear probing so active lanes do not collide. See
+### Shared app development server
+
+Use the normal `bun run dev` flow for a single checkout. Concurrent worktrees
+must not all bind the default app port. From `packages/app` use:
+
+```bash
+bun run dev:shared   # start or reuse this worktree's deterministic Vite port
+bun run dev:status   # list registered shared servers
+bun run dev:rebuild  # request a full Vite reload for this worktree
+```
+
+Reservations live in `~/.eliza/dev-server-registry.json` and may be redirected
+with `ELIZA_DEV_SERVER_REGISTRY`. See
 [`packages/docs/development/shared-dev-server.md`](packages/docs/development/shared-dev-server.md).
 
-### Removed Root Command Migrations
+### Removed root command migrations
 
 | Removed command | Use instead |
 | --- | --- |
@@ -115,402 +142,265 @@ locking and linear probing so active lanes do not collide. See
 | `bun run mvp:board-readiness` | `bun run mvp:closeout-audit` |
 | `bun run mvp:evidence-matrix` | `bun run mvp:closeout-audit` |
 
-## Repo map — where to find what
+## Repository map
 
-```
-packages/        framework, shared libraries, and product surfaces
-  core/          @elizaos/core — runtime, types, agent loop, memory/state, model layer
-  agent/         @elizaos/agent — AgentRuntime, plugin loader, default plugin map
-  app-core/      API + dashboard host; dev/build orchestration (scripts/dev-ui.mjs)
-  elizaos/       the `elizaos` CLI — create / info / upgrade / version; project + plugin templates
-  prompts/       shared prompt scaffolding
-  shared/        cross-package utilities + brand assets
-  ui/            shared React component library
-  app/           web + desktop dashboard, desktop shell, and current cloud apex UI
-  eliza-computer/ eliza.army contribution hub, live work queue, leaderboard, and skill download
-  tui/           terminal UI
-  skills/        runtime skills knowledge base (USE_SKILL)
-  scenario-runner/ scenario + eval harness
-  cloud/api/     managed backend API (Hono on Cloudflare Workers)
-  cloud/docs-redirect/ Eliza Cloud docs redirects
-  cloud/shared/  shared cloud backend: db (Drizzle), billing, services, types
-  cloud/sdk/ cloud/routing/ cloud/infra/  cloud client SDK, model routing, IaC
-  contracts/     on-chain contracts + ABIs
-  security/ security/soc2-verify/ vault/  secrets, key management, compliance tooling
-  os/ robot/                     device/OS images, OS landing, robotics
-  plugin-remote-manifest/ plugin-worker-runtime/
-                 remote plugin manifests, host shims, and worker runtime support
-  homepage/ docs/  marketing site and docs site
-  examples/      30+ standalone runnable examples (each has its own README)
-  benchmarks/    30+ evaluation suites (each has its own README + harness)
+```text
+packages/
+  core/             @elizaos/core: AgentRuntime, contracts, message loop, memory, models
+  agent/            @elizaos/agent: standalone runtime assembly and HTTP backend
+  app-core/         shared application host, APIs, startup, build, and platform tooling
+  app/              Eliza web, desktop, and mobile UI application
+  auth/             shared account credentials, OAuth, subscription, and refresh logic
+  ui/               shared React primitives and product surfaces
+  elizaos/          the elizaos CLI and packaged project/plugin templates
+  prompts/          shared prompt templates across supported languages
+  shared/           cross-package utilities, contracts, and brand assets
+  logger/           structured logging package
+  vault/            secrets and configuration storage adapters
+  skills/           bundled runtime skills and loading utilities
+  registry/         first-party and community plugin registry data and validation
+  scenario-runner/  real-runtime scenario execution and report generation
+  test/             repository-wide scenarios and test corpus
+  evidence/         evidence manifest, bundle, verification, and ingestion foundation
+  docs/             documentation site source
+  homepage/         public Eliza product and download site
+  training/         Eliza-1 training, evaluation, conversion, and release tooling
+  cloud/            API, shared libraries, routing, SDK, infrastructure, tests, services
+  native/           native runtimes, third-party dependencies, and C/C++ plugins
 
-plugins/         runtime plugins and app plugins
-  plugin-<model>/      openai, anthropic, google-genai, groq, openrouter, xai, ollama, …
-  plugin-<connector>/  discord, telegram, farcaster, slack, imessage, whatsapp, x, …
-  plugin-native-*/     native device bridges (camera, contacts, calendar, location, …)
-  plugin-local-inference/  on-device llama.cpp (Kokoro TTS folded in) / whisper (git submodules under native/)
-  plugin-sql/ plugin-localdb/ plugin-inmemorydb/  storage adapters
-  plugin-documents/ plugin-personal-assistant/ plugin-health/ …  app plugins
+plugins/
+  plugin-<provider>/ model and inference providers
+  plugin-<channel>/  messaging and workspace connectors
+  plugin-native-*/   platform and device bridges
+  plugin-*/          domain capabilities, app views, storage, tools, and orchestration
 
-scripts/         repo automation        patches/   dependency patches
-turbo.json knip.json  build + dead-code config
+scripts/            repository-wide checks, CI helpers, evidence, security, and release tools
+patches/            dependency patches applied during installation
 ```
 
-Every package and plugin carries its own `CLAUDE.md` / `AGENTS.md` (identical)
-and `README.md`. **Read the package-local doc first** — it lists that package's
-layout, exports, scripts, env vars, and gotchas.
+Some directories are organizational roots rather than npm workspaces. Use the
+nearest manifest and local guide instead of inferring ownership from directory
+depth.
 
-## Runtime architecture in 60 seconds
+## Runtime architecture
 
-- **`@elizaos/core`** is the framework: the agent loop, the plugin model, and
-  the message / memory / state primitives, with a model-agnostic LLM layer.
-  If your code depends on `@elizaos/core`, you are using the framework.
-- **`@elizaos/agent`** wires a runnable agent: `AgentRuntime`, the plugin
-  loader, and the default plugin map.
-- A **plugin** is `src/index.ts` exporting a `Plugin` object that registers:
-  - **actions** — things the agent can *do* (validate + handler),
-  - **providers** — context injected into the prompt,
-  - **services** — long-lived singletons (clients, schedulers, connectors),
-  - **evaluators** — post-response processing,
-  - plus routes, events, and model handlers.
-- **`@elizaos/app-core`** hosts the HTTP API + dashboard that runs agents.
-- The **`elizaos` CLI** is intentionally minimal: scaffolding (`create`),
-  info, and template upgrades. Project/plugin scaffolds live in
-  `packages/elizaos/templates/` (`min-project`, `min-plugin` have `SCAFFOLD.md`
-  contracts).
+- `@elizaos/core` owns `AgentRuntime`, the canonical public types, the plugin
+  contract, the message loop, model abstraction, memory/state primitives, and
+  framework services.
+- `@elizaos/agent` assembles a runnable backend around core. It owns the
+  standalone process, plugin loading policy, HTTP/WebSocket surfaces, and
+  host-level services.
+- `@elizaos/app-core` hosts Eliza application targets and their compatibility
+  APIs, startup flow, platform integration, and build orchestration.
+- `@elizaos/app` and `@elizaos/ui` render product state. Business values belong
+  in use-cases and DTOs, not recomputed in view or proxy layers.
+- A plugin normally exports a `Plugin` from `src/index.ts`. Plugins may
+  contribute actions, providers, evaluators, services, model handlers, routes,
+  events, tests, and app views.
+- The `elizaos` CLI is package-first. Its templates under
+  `packages/elizaos/templates/` are governed by their `SCAFFOLD.md` contracts.
 
-To build on the runtime from your own TypeScript with no CLI/UI, import
-`@elizaos/core` directly — see `packages/examples/` (30+ standalone references).
+When code needs only the framework, depend on `@elizaos/core`. Do not depend on
+an application host to reach a core abstraction.
 
-## Repo-wide conventions
+## Engineering conventions
 
-- **Logger only, never `console`** in server code. Use the structured logger,
-  prefix messages with `[ClassName]`, attach context objects on errors.
-- **ESM only.** No CommonJS.
-- **No business computation in proxy/route layers.** Derive values in
-  use-cases and return DTO fields the client just renders. Clients display,
-  never compute.
-- **DTO fields are required by default;** don't paper over a broken pipeline
-  with `?? 0` or `as` casts.
-- Keep weak types (`any` / `unknown` / unsafe casts) out; validate at runtime
-  boundaries and type the validated result.
+- Use the structured logger in server/runtime code; never use `console` there.
+  Prefix human-readable messages with the owning class or subsystem and attach
+  structured context to errors.
+- Keep boundary types explicit. Validate untrusted input once, then use the
+  validated type. Avoid `any`, broad `unknown`, unchecked casts, and optional
+  chaining that hides a required collaborator.
+- DTO fields are required by default. If the producer failed to load a value,
+  represent that as an error or explicit unavailable state rather than a
+  healthy-looking zero, empty string, or empty collection.
+- Route, proxy, and compatibility layers translate protocols. Business
+  computation belongs in domain services or use-cases, and clients render the
+  resulting DTO.
+- Preserve public compatibility deliberately. Search exports, consumers,
+  templates, generated registry data, and contract tests before changing a
+  public surface.
 
-## GitHub project coordination
+## Error policy: fail fast inside, handle at boundaries
 
-For agent/human work coordinated through GitHub Projects, read
-[`CONTRIBUTING.md`](CONTRIBUTING.md) before claiming work. Permanent process
-lives in that doc, not in a long issue-comment thread.
+Inner data paths throw typed errors. A designated process, transport, or UI
+boundary may translate the failure into a structured response or a visibly
+distinct error/unavailable state. Do not catch and continue with fabricated
+success.
 
-- Issues are scoped work cards with acceptance criteria and evidence.
-- GitHub Projects are the live kanban state: `Todo` -> `Claimed` ->
-  `In progress` -> `Needs-agent-verify` -> `needs-human-verify` -> `Done`.
-- Set the Project `Claimed by` field to your lane/agent tag when you claim a
-  card, and keep `Status` accurate.
-- Discussions are for coordination, handoffs, and noisy multi-card chat; roll
-  durable decisions back into docs, issue bodies, or Project readmes.
-- PRs carry the code and the proof required by this guide; link the issue
-  or Project card they resolve.
-- Do not move cards to `Done` unless the board explicitly grants that authority
-  to your role. Human verification owns final done for launch/QA boards.
+New or rewritten domain failures use `ElizaError` from
+`packages/core/src/errors.ts` with an actionable `code`, relevant `context`, a
+`cause` when wrapping, and severity when appropriate. Diagnostic failures in
+providers, services, background jobs, and event handlers call
+`runtime.reportError(scope, error, context?)`; the runtime logs them, emits
+`EventType.ERROR_REPORTED`, exposes them through `RECENT_ERRORS`, and supports
+owner escalation. Action/tool failures already return to the planner path.
 
-Current Launch QA routing: Project
-<https://github.com/orgs/elizaOS/projects/12>, Discussion
-<https://github.com/orgs/elizaOS/discussions/14292>, tracker/history
-<https://github.com/elizaOS/eliza/issues/13406>.
+Every retained catch must document one of these grep-able categories on the
+handler with `// error-policy:J<N> <reason>`:
 
-LifeOps Personal Assistant MVP routing: Project
-<https://github.com/orgs/elizaOS/projects/15>. Product scope, the seven
-personas, and the per-workstream acceptance bar live in
-[`packages/docs/ongoing-development/mvp/MVP.md`](packages/docs/ongoing-development/mvp/MVP.md);
-in-flight design docs (per-workstream research + status snapshots) live under
-[`packages/docs/ongoing-development/`](packages/docs/ongoing-development/README.md).
-This folder adds a **design-doc layer** to the workflow above: discussion →
-design doc here → issues on the board → PR with evidence → doc updated on merge.
+- **J1 — boundary translation:** the outer process or transport boundary
+  returns a structured failure.
+- **J2 — context-adding rethrow:** wrap with a typed error and preserve `cause`.
+- **J3 — untrusted-input sanitizing:** parsing produces an explicit invalid
+  result, never a fake-valid default.
+- **J4 — user-facing degrade:** only an expected error shape becomes a visibly
+  distinct unavailable/error state.
+- **J5 — unhandled-rejection suppression:** the comment names where the same
+  rejection is observed.
+- **J6 — best-effort teardown:** teardown-only failure is logged at debug/warn.
+- **J7 — diagnostics must not kill the loop:** telemetry/trajectory failure is
+  warned and reported through `runtime.reportError`.
 
-Evidence attaches **inline in the issue/PR**, not committed to the repo: MP4
-video (renders inline in GitHub), JPG over PNG for screenshots, logs in a
-`<details>` block. Bug reports include a screenshot or recording of the *wrong*
-behavior. `.github/issue-evidence/` is retired; the full standard is
-in this guide and `CONTRIBUTING.md`.
+Empty catches, `.catch(() => {})`, log-and-continue data paths, default returns
+from catches, and `?? <literal>` used to disguise missing required data are not
+valid recovery. In UI code, loading, designed-empty, and error are three
+different states. The established examples are
+`packages/ui/src/components/pages/StreamView.tsx` and
+`packages/ui/src/state/usePluginsSkillsState.ts`.
 
-## Error-Handling Simplification
+## File headers and comments
 
-Binding policy for all error handling (parent #12182, foundation #12263). The
-codebase is full of defensive sludge — empty catches, log-and-continue that
-fabricates a result, `return <default>` from catch, `.catch(() => {})` on writes
-that matter, `?? <literal>` standing in for failed/missing data — that
-**swallows failures and makes broken pipelines look healthy**. Remove it.
+Every maintained source file begins with one prose `/** ... */` header after a
+shebang or third-party license block and before imports. The first sentence
+states the file's system responsibility without repeating its filename. Add
+only the context a reader cannot infer from the code: consumers, inputs,
+invariants, protocol constraints, ownership boundaries, and non-obvious
+consequences.
 
-**Doctrine — fail fast inside, handle at the boundary.** Inner code throws typed
-errors; it does not catch-and-continue. Only designated boundaries translate
-those errors into a structured failure, a user-facing error state, or an
-escalation. This is crash-only design (Candea & Fox, "Crash-Only Software",
-HotOS IX 2003): transparent recovery at a designed boundary beats ad-hoc
-continue-on-error in every function. A failure must surface **observably** —
-either the **agent** sees it (and can retry / reconfigure / disable the failing
-feature) or it is **raised to the owner/developers** when systemic.
+- Tiny barrels and type files usually need one line; ordinary modules need two
+  to six; load-bearing modules may use two or three short paragraphs. Keep the
+  header under roughly 25 lines.
+- Test headers state the surface under test and whether the harness is real,
+  integration-backed, deterministic, or mocked.
+- Exported-symbol JSDoc serves callers. In-body `//` comments explain why a
+  design or ordering constraint exists.
+- Delete code narration, change history, migration stories, status notes,
+  commented-out code, and comments that merely restate the next statement.
+- Never edit generated files or third-party license text as part of comment
+  cleanup.
 
-**"Not loaded" must never read as "zero"/"empty".** A `?? 0`, `?? []`, `?? ""`,
-or `return 0`/`return []` from a catch that substitutes for failed or missing
-data conflates a broken pipeline with a legitimately empty result. Banned. DTO
-fields are required by default; fix the pipeline, don't paper over it.
+Use these tone references:
 
-**Fast-fail on data paths; throw, never fabricate.** Precedent: issue #9324
-(closed) removed fabricated zero/marker embedding vectors in favor of throwing;
-`plugins/plugin-embeddings/AGENTS.md:32` codifies "THROW, never fabricate".
+- `packages/agent/src/api/media-store.ts`
+- `packages/ui/src/components/RoleGate.tsx`
+- `packages/scripts/run-all-tests.mjs`
+- `.gitmodules`
 
-**UI three-state rule.** `loading` / designed-`empty` / `error` are three
-distinguishable renders — never render healthy-empty from a catch. A
-404-from-unloaded-plugin may degrade to a designed "unavailable" state (J4);
-5xx/transport/parse failures set an error state. Canonical pattern:
-`packages/ui/src/components/pages/StreamView.tsx:55-63`; repaired load shape:
-`packages/ui/src/state/usePluginsSkillsState.ts:195-220`. See the view audit
-`scripts/view-audit/output/MASTER-REPORT.md` §6.A/§6.D.
+Comment-only work must pass `bun run check:comment-only`, which verifies that
+the code token stream is unchanged.
 
-**Use the foundation.** New/rewritten throw sites use `ElizaError`
-(`packages/core/src/errors.ts`, `{ code, context, cause, severity }`).
-Diagnostic call sites outside the action path (providers, services, background
-jobs, event handlers) call `runtime.reportError(scope, error, context?)` — it
-logs, emits `EventType.ERROR_REPORTED`, surfaces the failure to the agent via
-the `RECENT_ERRORS` provider, and drives owner escalation on repeated systemic
-failure. Action/tool failures already reach the model via the planner loop —
-keep that.
+## Cross-package invariants
 
-### Justified categories (J1–J7) — keep, annotated `// error-policy:J<N> <reason>`
+### Scheduling and personal-assistant domains
 
-Every kept handler carries a grep-able `// error-policy:J<N> <reason>` comment
-so "remaining handlers each have a documented justification" is mechanically
-checkable. A justified handler still may not fabricate a success value: J1
-returns a *failure*, J3 returns an explicit *invalid* signal, J4 renders an
-*error/unavailable* state.
+There is one clock and one scheduled-item architecture. Core `TaskService`
+owns when work runs. `@elizaos/plugin-scheduling` owns the storage-agnostic
+`ScheduledTask` state machine and runner. Personal-assistant and health domains
+contribute structural records and registries; they do not create competing
+schedulers.
 
-- **J1 boundary translation** — one outermost handler per process/transport
-  boundary producing a structured failure.
-- **J2 context-adding rethrow** — must use `cause`.
-- **J3 untrusted-input sanitizing** — parse failures produce an explicit typed
-  "invalid" result, never a fake-valid default.
-- **J4 explicit user-facing degrade** — designed, visually-distinguishable
-  unavailable/error states; only expected error shapes degrade.
-- **J5 unhandled-rejection suppression** — with a comment naming where the
-  rejection IS observed.
-- **J6 best-effort teardown** — debug/warn, teardown paths only.
-- **J7 diagnostics-must-not-kill-the-loop** — trajectory/telemetry writes may
-  catch but must warn + `runtime.reportError`.
+Behavior must branch on typed fields such as `kind`, `trigger`, `shouldFire`,
+`completionCheck`, and `pipeline`, never on prose in `promptInstructions`.
+Connector delivery returns typed `DispatchResult`, not a boolean. Identity and
+relationship changes go through the shared `EntityStore`, `RelationshipStore`,
+and merge engine. The authoritative implementation and contribution contracts
+are in:
 
-Everything else is slop — including every empty catch, log-and-continue that
-fabricates the function's result, `return <default>` from catch,
-`.catch(() => {})` on writes that matter, `?? <literal>` substituting for
-failed/missing data, optional-chaining-as-guard on required collaborators, and
-fallback code paths whose only purpose is masking a primary failure. Every catch
-without an annotation must be either newly-obvious slop or a J1 route boundary in
-a directory documented as such in the batch PR.
+- `plugins/plugin-scheduling/README.md`
+- `plugins/plugin-personal-assistant/README.md`
+- `plugins/plugin-health/README.md`
+- `plugins/plugin-relationships/README.md`
 
-## Slop and Comment Cleanup
+### Attachments and media
 
-Every file is legible on its own: a purpose-explaining prose header at the top,
-then in-body comments that explain **why the code is the way it is** — the
-design rationale, the constraint that forced the approach, what consumes it —
-never a restatement of *what* it does. The reader can read the code; a comment
-earns its place only by adding what the code cannot show. No change-narration.
-Write for the next engineer opening this file cold in a **greenfield** codebase:
-there is no legacy to apologize for and no diff history to narrate — these
-comments are the codified, durable explanation of the system. The rules below
-are binding for new code and for the repo-wide cleanup (#12181).
+Attachment bytes use the single content-addressed store in
+`packages/agent/src/api/media-store.ts`:
+`${STATE_DIR}/media/<sha256>.<ext>`, served from
+`/api/media/<sha256>.<ext>`. The SHA-256 URL is the canonical deduplicated
+capability handle; `Media` in `packages/core/src/types/primitives.ts` is the
+in-message reference and may only be widened additively.
 
-1. **Header form — one `/** … */` prose block at the very top** (after a `#!`
-   shebang; after a third-party license block in the few files that carry one;
-   before imports). Plain prose, not a template: no `@fileoverview`, no
-   `@author`/`@date`/`@version`. Position is the signal.
-2. **First sentence states what the file does in system terms; never repeat the
-   filename** ("Local content-addressed media store for chat attachments.").
-   Then, only as warranted, give the reader a sense of the file's place in the
-   system: **who consumes it and what it consumes** (the boundary it sits on),
-   the invariants/constraints it must uphold, why it is shaped the way it is, and
-   gotchas to know before editing. Issue refs like `(#9948)` are welcome when
-   they anchor non-obvious rationale — never as a substitute for stating it.
-3. **Length scales with weight, hard ceiling ~25 lines.** Barrel `index.ts` /
-   tiny type files: 1 line. Typical modules: 2–6 lines. Load-bearing modules:
-   2–3 short paragraphs. Longer than that belongs in the package
-   `CLAUDE.md`/`README.md` — reference it instead. Test files: 1–3 lines — what
-   surface is under test and how real the harness is (live model vs
-   deterministic proxy, real DB vs in-memory).
-4. **In-body comments explain the *why*, never the *what*.** The reader can see
-   what the code does; a comment earns its place only by adding what the code
-   cannot show — the design rationale (why this approach and not the obvious
-   alternative), the invariant or constraint that forced it, units and boundary
-   conditions, protocol quirks, ordering constraints, and non-obvious
-   consequences for callers. Keep the two-tier split — `/** JSDoc */` on exported
-   symbols (for callers), `//` for implementation notes. Delete restatement,
-   change-narration, status updates, migration stories, and commented-out code.
-   Do not blanket-comment: a file whose code is clear needs a header and nothing
-   else.
-5. **Churn test = durability test.** Would the comment be true and useful to
-   someone who never saw the previous version? If it only makes sense as a diff
-   annotation, delete it; if the fact is durable but churn-phrased, rewrite it to
-   present tense. History lives in git.
-6. **Accuracy over coverage.** A wrong header is worse than no header. Read the
-   package's `CLAUDE.md` first; if a file's purpose can't be determined, flag it
-   in the PR instead of guessing.
+Do not add a second file store, a storage selector, a `files` table, reference
+counting, a second garbage collector, or a `fileId` field on `Media`. The
+existing store uses `gcUnreferencedMedia` with a grace window. Server-side
+attachment fetches must pass through the SSRF guard in
+`packages/core/src/network` and `packages/core/src/media/fetch.ts`. The
+pre-authenticated read route must not rewrite or rehost bytes; authenticated
+writes may rehost. `ContentType` is frozen and append-only, so derive finer
+kinds from `mimeType` at read time.
 
-Copy the tone from these in-repo exemplars, don't invent one:
-[`packages/agent/src/api/media-store.ts:1`](packages/agent/src/api/media-store.ts)
-(service), [`packages/ui/src/components/RoleGate.tsx:1`](packages/ui/src/components/RoleGate.tsx)
-(React component), [`packages/scripts/run-all-tests.mjs:1`](packages/scripts/run-all-tests.mjs)
-(script — but don't copy its filename-repetition opener), and `.gitmodules`
-(config prose). Never touch code, string/template literals, third-party license
-blocks (header goes below them), or generated files. Comment-only changes are
-machine-checked by `bun run check:comment-only`
-([`scripts/assert-comment-only-diff.mjs`](scripts/assert-comment-only-diff.mjs)):
-it asserts the code token stream is byte-for-byte unchanged.
+## Testing and verification
 
-## App visual review — REQUIRED for UI changes in `packages/app/`
+Run focused checks while iterating, then expand in proportion to the affected
+surface. At minimum, documentation changes must pass guide parity and link/path
+validation; code changes must pass the owning package's tests, typecheck, and
+lint plus the root `bun run verify` gate.
 
-Any change in `packages/app/` (or a shared package whose UI bleeds into it) MUST
-pass the screenshot + manual-review loop before it is "done":
+Tests must exercise the real contract being changed. Cover error, empty,
+invalid-input, concurrency, authorization, and adversarial paths where they are
+meaningful. A mock or stub standing in for the system under test is useful for
+unit coverage but is not end-to-end proof.
+
+### App visual review
+
+Any change in `packages/app`, or a shared UI change that reaches it, must run:
 
 ```bash
 bun run --cwd packages/app audit:app
 ```
 
-This walks the app views (desktop + mobile, rest + hover), captures the
-populated UI, and auto-stubs `aesthetic-audit-output/manual-review/<slug>.md`
-per view. Use those Markdown files for human notes and eyeballing; CI enforces
-the computed verdicts in `report.json` / the Playwright run, not edited
-manual-review Markdown. Review every page you touched or can reach via shared
-layout/theme/components.
+Review every affected desktop and mobile capture, including rest and hover
+states. No touched view may retain a computed `needs-work` or `broken` verdict.
+Run at least five audit/inspection/iteration cycles for a meaningful redesign.
+Orange is the accent; do not introduce blue, and use darker orange—not black—
+for an orange resting control's hover state. The full visual contract lives in
+`packages/app/CLAUDE.md`.
 
-- No computed page verdict may stay `needs-work` / `broken` when a UI task is
-  declared done.
-- Iterate the loop ≥5× for any meaningful redesign.
-- Orange is accent only; no blue anywhere; orange-resting → darker-orange hover
-  (never orange→black). Full package rules: `packages/app/AGENTS.md`.
+## GitHub workflow and definition of done
 
-## LifeOps + health: one scheduler, structural behavior
+Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before claiming coordinated work or
+opening a pull request. Issues define scoped acceptance criteria; GitHub
+Projects track live ownership and status; discussions coordinate across work;
+the pull request carries the implementation and proof. Do not move a card to
+`Done` unless the board explicitly grants that authority.
 
-`@elizaos/plugin-personal-assistant` and `@elizaos/plugin-health` share one
-scheduled-item architecture. Reminders, check-ins, follow-ups, watchers,
-recaps, approvals, and outputs are all `ScheduledTask` records routed through a
-single runner (`plugins/plugin-scheduling/src/scheduled-task/runner.ts`),
-which pattern-matches on structural fields (`kind`, `trigger`, `shouldFire`,
-`completionCheck`, `pipeline`, …), never on `promptInstructions` text. Health
-contributes through registries; LifeOps does not import its internals.
+- Open an issue before a non-trivial change.
+- Use a `feat/`, `fix/`, `docs/`, or `chore/` branch and target `develop`.
+- Before opening or updating a PR, fetch and rebase on `origin/develop`, resolve
+  every conflict, run `bun install`, and run `bun run verify`.
+- Never push feature or fix work directly to `develop`.
 
-For the full automation vocabulary — how a **workflow**, **trigger**, **task**,
-**scheduled item**, **coding task**, and **automation** differ and what fires
-each (one clock, two consumers) — see [`docs/automation-glossary.md`](docs/automation-glossary.md).
+A reviewer must be able to verify the behavior without reading the code:
 
-**Do not add:** a second LifeOps scheduling mechanism, a second knowledge-graph
-store (use `EntityStore` / `RelationshipStore`), behavior driven by
-`promptInstructions` string content, a `boolean` return from a connector
-dispatch (use the typed `DispatchResult`), or an identity-merge that bypasses
-the merge engine. Architecture, frozen contracts, and contribution paths live in
-`plugins/plugin-personal-assistant/README.md` and `plugins/plugin-health/README.md`.
+1. Exercise the real path and inspect the result yourself. Green automation is
+   not a substitute for reviewing the generated artifact, pixels, audio, logs,
+   model trajectory, database row, scheduled item, or on-chain result.
+2. Use real integrations for end-to-end evidence. When agent behavior changes,
+   record live-model inputs and outputs; when a native/device/connector path
+   changes, run it on the real supported target.
+3. Leave no TODO, stub, fabricated success, or undocumented follow-up in the
+   delivered scope.
 
-## Attachments & files: one content-addressed store, additive model
+For frontend-testable work, include before/after full-page desktop and mobile
+screenshots, an MP4 walkthrough, backend logs, frontend console/network logs,
+and any applicable live-model trajectories. Use `bun run test:matrix:review`
+for the full evidence matrix, `bun run test:e2e:record:review` for scoped UI
+recording, and the platform capture commands documented in `CONTRIBUTING.md` for
+native targets. Build, install, and verify the current revision before capture;
+capture tools do not prove that the installed application is current.
 
-Attachment bytes live in a **single content-addressed store** —
-`packages/agent/src/api/media-store.ts` (`${STATE_DIR}/media/<sha256>.<ext>`,
-served at `/api/media/<sha256>.<ext>`). The sha256 URL is the canonical,
-unguessable, deduped handle; `Media` (`packages/core/src/types/primitives.ts`)
-is the in-message reference and is widened **additively only**. Bytes are served
-pre-auth (the hash is the capability), with `nosniff` + a download
-`Content-Disposition` for SVG/active types; every server-side attachment fetch
-must go through the SSRF guard (`packages/core/src/network` + `media/fetch.ts`).
+Evidence belongs inline in the issue and PR, not committed to the repository.
+Prefer JPG screenshots, MP4 video, and collapsible log blocks. Mark a genuinely
+inapplicable evidence row `N/A` with a reason rather than leaving it blank.
 
-**Do not add:** a second file store or storage abstraction/selector; a
-`files`/`file_references` DB table or a refcount/GC engine (the store already
-GCs via `gcUnreferencedMedia` + a grace window); a `fileId` on `Media`; a
-rewrite/rehost on the pre-auth serve path (rehost only on authenticated write);
-or a repurpose/removal of a `ContentType` enum value (it is **frozen,
-append-only** — derive fine-grained kind from `mimeType` at read time). Scope,
-deferrals, and rationale live in issue #8876.
+## Security and contribution references
 
-## Definition of Done — sync, PR, and human-verifiable evidence
+Report suspected vulnerabilities privately through
+[GitHub Security Advisories](https://github.com/elizaOS/eliza/security/advisories/new).
+Do not place exploit details, secrets, or embargoed dependency information in a
+public issue, PR, log, or agent transcript. Product security documentation is
+in [`packages/docs/security.md`](packages/docs/security.md).
 
-Every fix/feature ships through a **PR against `develop`**, and a reviewer must
-be able to confirm it works **without reading the code**. This section is the
-binding standard. **The same standard is restated in every package's
-`CLAUDE.md` / `AGENTS.md` and is non-negotiable.**
-
-**The three laws of "done"** (the whole standard expands these):
-
-1. **Prove the real thing happened — and look at it yourself.** Record the
-   actual model trajectories (inputs *and* outputs from a **live** model, not the
-   proxy, not a mock), the real client + server logs, the real pixels/audio, and
-   the real domain artifacts (memories, knowledge, DB rows, scheduled tasks,
-   wallet balance, on-chain results, generated files). Then **open every artifact
-   and review it by hand.** Capturing is not reviewing; green CI is not proof.
-2. **Test everything for real — no larp.** Every change ships detailed,
-   full-featured **end-to-end** tests that drive the *real* path — not the happy
-   "front door" only. Cover error paths, edges, empty/invalid input, concurrency,
-   roles/permissions, and adversarial input. A test asserting against a
-   mock/stub standing in for the thing under test does **not** count; if the real
-   model/device/chain/connector is hard to reach, make it reachable — that's the
-   work. If the existing tests you touch are shallow or mocked, fixing them is
-   part of your change. (See the standing backlog: #9943, #9950, #9954, #9958,
-   #9967, #9970.)
-3. **No residuals, no shortcuts.** The goal is not "done," it is *everything*
-   done. Clear blockers by the **hard path** — build the real architecture, stand
-   up the real model/device/service, actually test it. No TODOs, stubs,
-   stepping-stones, or "follow-ups." When unsure, research, weigh options, and
-   ship the best production-ready version. Keep going until every possibility is
-   exhausted.
-
-The non-negotiables in practice:
-
-- **Always PR; never push feature/fix work straight to `develop`.** Branch as
-  `feat|fix|docs|chore/<slug>`; open an issue first for anything non-trivial.
-- **Always sync before opening or updating a PR.** `git fetch origin &&
-  git rebase origin/develop`, resolve **every** conflict, `bun install`, then
-  `bun run verify`. A branch that can't fast-forward onto `develop` is not ready.
-- **Frontend-testable changes are not done without rendered proof.** Any change a
-  user can exercise in the web, desktop, mobile, or cloud UI must attach a video
-  walkthrough; before and after full-page screenshots for desktop and mobile;
-  backend structured logs; frontend console and network logs; and real-LLM
-  trajectories when agent/action/provider/prompt/model behavior changes. If one
-  row does not apply, keep it visible and write `N/A - <reason>` in the PR and
-  issue evidence.
-- **Attach complete, real, manually-reviewed evidence** — prove the real thing
-  happened, not a mock of it:
-  - **Real-LLM trajectories** for agent/action/prompt/model changes —
-    `packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`
-    against a **live** model (JSON report + run viewer + native jsonl) — **and
-    read them.**
-  - **Backend logs** (structured `[ClassName] …`) and **frontend logs**
-    (console + network) showing the actual code path firing.
-  - **Before/after full-page screenshots** (desktop + mobile) + a **video
-    walkthrough** of the whole flow — default to `bun run test:matrix:review`
-    so the full matrix writes `evidence/matrix-run.json` and opens the unified
-    reviewer. For scoped UI evidence, use `bun run test:e2e:record:review`;
-    for app UI, use `bun run --cwd packages/app audit:app`.
-  - **Per-platform capture** (screenshot + recording + logs) for native/mobile/
-    desktop changes — `bun run --cwd packages/app capture:ios-sim` /
-    `capture:android-emu` / `capture:linux-desktop` / `capture:windows-desktop`,
-    electrobun `GET /api/dev/cursor-screenshot`. Run native features on the real
-    device/simulator/platform matrix, not mocked-bridge desktop Chromium. The
-    command matrix lives in `CONTRIBUTING.md`.
-  - **Always build + deploy the latest before capturing.** Capture helpers
-    screenshot whatever is **already installed/running** — they do not build.
-    Before any on-device/simulator/desktop capture, rebuild and redeploy the
-    current tree (mobile: `build:android` / `build:ios` cap sync **and
-    reinstall** — a Capacitor app bakes the web bundle into the APK/IPA at build
-    time, so restarting the old app never picks up a renderer change). Confirm
-    the running build is yours (`versionName` / a known on-screen change) — a
-    screenshot of a stale install proves nothing.
-  - **Audio + narrated walkthrough** for voice/transcript/TTS/STT changes.
-  - **Domain artifacts** — the things the change produced (memory/knowledge/DB
-    rows, scheduled tasks, wallet balance before/after, on-chain tx hashes,
-    generated files, device output) — inspected by hand and shown.
-  - Evidence is posted **inline in the issue/PR itself** (drag-and-drop):
-    videos as **MP4** (GitHub renders MP4 inline — convert `.mov`/`.webm`),
-    screenshots as **JPG** rather than PNG where possible, long logs in a
-    `<details>` block. Do not commit evidence files to the repo
-    (`.github/issue-evidence/` is retired). Each evidence type is attached
-    **or** explicitly marked N/A with a reason — never left blank. If `develop`
-    moved and changed behavior, **re-capture** evidence; stale proof is worse
-    than none.
-
-## Contributing
-
-Open an issue before a non-trivial PR. License: MIT (`LICENSE`). Security
-policy: `SECURITY.md`. Shipping workflow: `CONTRIBUTING.md`.
+The repository is MIT licensed. Contribution workflow and evidence policy live
+in [`CONTRIBUTING.md`](CONTRIBUTING.md).

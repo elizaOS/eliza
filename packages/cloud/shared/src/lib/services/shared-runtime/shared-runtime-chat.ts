@@ -48,8 +48,10 @@ import {
 } from "./run-shared-agent-turn";
 import { navIntentActionResult } from "./shared-nav-intent";
 import { SharedRuntimeCacheWarmingError } from "./shared-runtime-errors";
+import { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
 
-export const MAX_HISTORY_MESSAGES = 40;
+export { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
+
 const BRIDGE_INSUFFICIENT_CREDITS_CODE = -32002;
 
 export type BridgeExecutionContext = {
@@ -58,10 +60,15 @@ export type BridgeExecutionContext = {
 
 export interface SharedRuntimeHistoryStore {
   load(agentId: string, channelId: string): Promise<SharedTurnMessage[]>;
-  save(agentId: string, channelId: string, history: SharedTurnMessage[]): Promise<void>;
+  merge(
+    agentId: string,
+    channelId: string,
+    messages: SharedTurnMessage[],
+  ): Promise<SharedTurnMessage[]>;
 }
 
 export interface SharedRuntimeChatOptions {
+  abortSignal?: AbortSignal;
   executionCtx?: BridgeExecutionContext;
   historyStore?: SharedRuntimeHistoryStore;
 }
@@ -88,6 +95,28 @@ function stableUuid(raw: string): string {
   }
   const hash = crypto.createHash("sha256").update(raw).digest("hex");
   return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
+}
+
+function rpcTurnIdentity(rpc: BridgeRequest): string {
+  if (typeof rpc.id === "string" || typeof rpc.id === "number") {
+    return String(rpc.id);
+  }
+  return crypto.randomUUID();
+}
+
+function turnMessageIds(
+  agentId: string,
+  roomId: string,
+  rpc: BridgeRequest,
+): {
+  user: string;
+  assistant: string;
+} {
+  const turn = rpcTurnIdentity(rpc);
+  return {
+    user: stableUuid(`shared-runtime:${agentId}:${roomId}:${turn}:user`),
+    assistant: stableUuid(`shared-runtime:${agentId}:${roomId}:${turn}:assistant`),
+  };
 }
 
 function channelId(agentId: string, params: Record<string, unknown>): string {
@@ -117,21 +146,28 @@ async function loadHistory(
   return history.filter(isTurn);
 }
 
-async function saveHistory(
+async function mergeHistory(
   agentId: string,
   roomId: string,
-  history: SharedTurnMessage[],
+  messages: SharedTurnMessage[],
   store?: SharedRuntimeHistoryStore,
-): Promise<void> {
-  const capped = history.slice(-MAX_HISTORY_MESSAGES);
-  if (store) {
-    await store.save(agentId, roomId, capped);
-  } else {
-    const { sharedRuntimeHistoryRepository } = await import(
-      "../../../db/repositories/shared-runtime-history"
-    );
-    await sharedRuntimeHistoryRepository.upsert(agentId, roomId, capped);
+): Promise<SharedTurnMessage[]> {
+  const valid = messages.filter(isTurn);
+  if (!valid.length) {
+    return await loadHistory(agentId, roomId, store);
   }
+  if (store) {
+    return await store.merge(agentId, roomId, valid);
+  }
+  const { sharedRuntimeHistoryRepository } = await import(
+    "../../../db/repositories/shared-runtime-history"
+  );
+  return (await sharedRuntimeHistoryRepository.merge(
+    agentId,
+    roomId,
+    valid,
+    MAX_HISTORY_MESSAGES,
+  )) as SharedTurnMessage[];
 }
 
 async function characterFor(
@@ -540,12 +576,14 @@ export class SharedRuntimeChatService {
       throw error;
     }
 
+    const messageIds = turnMessageIds(agent.id, roomId, rpc);
     let turn: RunSharedAgentTurnResult;
     try {
       turn = await runSharedAgentTurn({
         character,
         history,
         message: text,
+        messageIds,
         onProviderDispatch: billing?.markProviderDispatched,
       });
     } catch (error) {
@@ -566,7 +604,14 @@ export class SharedRuntimeChatService {
       if (turn.degraded) {
         await billing?.settle(0);
       } else {
-        await saveHistory(agent.id, roomId, turn.history, options.historyStore);
+        await mergeHistory(
+          agent.id,
+          roomId,
+          turn.history.filter(
+            (message) => message.id === messageIds.user || message.id === messageIds.assistant,
+          ),
+          options.historyStore,
+        );
         if (turn.navIntent) {
           await billing?.settle(0);
         } else if (billing) {
@@ -580,6 +625,8 @@ export class SharedRuntimeChatService {
         id: rpc.id,
         result: {
           text: turn.reply,
+          messageId: messageIds.assistant,
+          userMessageId: messageIds.user,
           agentName: character.name,
           channelId: roomId,
           model: turn.model,
@@ -635,15 +682,32 @@ export class SharedRuntimeChatService {
       }
       throw error;
     }
+    const messageIds = turnMessageIds(agent.id, roomId, rpc);
+    const generationAbort = new AbortController();
+    const abortFromRequest = () => {
+      generationAbort.abort(options.abortSignal?.reason);
+    };
+    if (options.abortSignal?.aborted) {
+      abortFromRequest();
+    } else {
+      options.abortSignal?.addEventListener("abort", abortFromRequest, {
+        once: true,
+      });
+    }
+    const detachRequestAbort = () =>
+      options.abortSignal?.removeEventListener("abort", abortFromRequest);
     let turn: Awaited<ReturnType<typeof runSharedAgentTurnStream>>;
     try {
       turn = await runSharedAgentTurnStream({
+        abortSignal: generationAbort.signal,
         character,
         history,
         message: text,
+        messageIds,
         onProviderDispatch: billing?.markProviderDispatched,
       });
     } catch (error) {
+      detachRequestAbort();
       await settleFailedProviderWorkOffPath(
         agent,
         billing,
@@ -654,12 +718,14 @@ export class SharedRuntimeChatService {
       throw error;
     }
     if (turn.degraded) {
+      detachRequestAbort();
       await billing?.settle(0);
       return new Response(turn.reply ?? "", {
         headers: { "Content-Type": "text/event-stream; charset=utf-8" },
       });
     }
     if (!turn.parts) {
+      detachRequestAbort();
       await settleAmbiguousProviderWorkOffPath(
         agent,
         billing,
@@ -669,26 +735,78 @@ export class SharedRuntimeChatService {
       return sseError("Shared runtime stream did not start");
     }
 
-    const messageId = crypto.randomUUID();
     const encoder = new TextEncoder();
+    const makeTurnMessages = (reply: string, interrupted: boolean): SharedTurnMessage[] => {
+      const sentAt = Date.now();
+      const messages: SharedTurnMessage[] = [
+        { id: messageIds.user, role: "user", content: text, createdAt: sentAt },
+      ];
+      const assistantText = reply.trim();
+      if (assistantText) {
+        messages.push({
+          id: messageIds.assistant,
+          role: "assistant",
+          content: assistantText,
+          createdAt: sentAt + 1,
+          interrupted,
+        });
+      }
+      return messages;
+    };
+    let finalizationPromise: Promise<void> | null = null;
+    let finalized = false;
+    let streamedReply = "";
+    let terminalSettlementStarted = false;
+    let consumerCanceled = false;
+    const settleInterruptedTurn = async (reason: string): Promise<void> => {
+      if (terminalSettlementStarted) return;
+      terminalSettlementStarted = true;
+      if (turn.navIntent) {
+        await billing?.settle(0);
+        return;
+      }
+      await settleAmbiguousProviderWorkOffPath(agent, billing, options.executionCtx, reason);
+    };
+    const finalizeMessages = (
+      reply: string,
+      interrupted: boolean,
+      afterWrite?: () => Promise<void>,
+    ): Promise<void> => {
+      if (finalized) return finalizationPromise ?? Promise.resolve();
+      if (finalizationPromise) return finalizationPromise;
+      finalizationPromise = (async () => {
+        await mergeHistory(
+          agent.id,
+          roomId,
+          makeTurnMessages(reply, interrupted),
+          options.historyStore,
+        );
+        await afterWrite?.();
+        finalized = true;
+      })().catch((error) => {
+        finalizationPromise = null;
+        throw error;
+      });
+      return finalizationPromise;
+    };
     const stream = new ReadableStream<Uint8Array>({
       start: async (controller) => {
-        let reply = "";
         let finished = false;
-        let terminalSettlementStarted = false;
         try {
           for await (const part of turn.parts!) {
             if (part.type === "text-delta") {
-              reply += part.text;
+              streamedReply += part.text;
+              if (consumerCanceled) continue;
               controller.enqueue(
                 encoder.encode(
-                  `event: chunk\ndata: ${JSON.stringify({ messageId, chunk: part.text, text: part.text, fullText: reply, timestamp: Date.now() })}\n\n`,
+                  `event: chunk\ndata: ${JSON.stringify({ messageId: messageIds.assistant, userMessageId: messageIds.user, chunk: part.text, text: part.text, fullText: streamedReply, timestamp: Date.now() })}\n\n`,
                 ),
               );
               continue;
             }
+            if (consumerCanceled) continue;
             finished = true;
-            const finalReply = part.text.trim() || reply.trim();
+            const finalReply = part.text.trim() || streamedReply.trim();
             if (!finalReply) {
               // An empty completion is a failed turn: never fabricate, persist,
               // or bill a placeholder reply (repo policy: throw, never fabricate).
@@ -706,77 +824,92 @@ export class SharedRuntimeChatService {
               );
               continue;
             }
-            const sentAt = Date.now();
-            await saveHistory(
-              agent.id,
-              roomId,
-              [
-                ...history,
-                { role: "user", content: text, createdAt: sentAt },
-                {
-                  role: "assistant",
-                  content: finalReply,
-                  createdAt: sentAt + 1,
-                },
-              ],
-              options.historyStore,
-            );
-            if (turn.navIntent) {
-              terminalSettlementStarted = true;
-              await billing?.settle(0);
-            } else if (billing) {
-              terminalSettlementStarted = true;
-              await settleOffResponsePath(options.executionCtx, () =>
-                finishBilling(agent, billing, finalReply, text, part.usage),
-              );
-            }
+            await finalizeMessages(finalReply, false, async () => {
+              if (turn.navIntent) {
+                terminalSettlementStarted = true;
+                await billing?.settle(0);
+              } else if (billing) {
+                terminalSettlementStarted = true;
+                await settleOffResponsePath(options.executionCtx, () =>
+                  finishBilling(agent, billing, finalReply, text, part.usage),
+                );
+              }
+            });
             const done = turn.navIntent
               ? {
-                  messageId,
+                  messageId: messageIds.assistant,
+                  userMessageId: messageIds.user,
                   text: finalReply,
                   actionResults: [navIntentActionResult(turn.navIntent)],
                 }
-              : { messageId, text: finalReply };
+              : {
+                  messageId: messageIds.assistant,
+                  userMessageId: messageIds.user,
+                  text: finalReply,
+                };
             controller.enqueue(encoder.encode(`event: done\ndata: ${JSON.stringify(done)}\n\n`));
           }
           if (!finished) {
-            terminalSettlementStarted = true;
-            await settleAmbiguousProviderWorkOffPath(
-              agent,
-              billing,
-              options.executionCtx,
-              "provider stream ended without completion",
+            await finalizeMessages(streamedReply, true, () =>
+              settleInterruptedTurn("provider stream ended without completion"),
             );
-            controller.enqueue(
-              encoder.encode(
-                `event: error\ndata: ${JSON.stringify({ message: "Shared runtime stream ended without completion" })}\n\n`,
-              ),
-            );
+            if (!consumerCanceled) {
+              controller.enqueue(
+                encoder.encode(
+                  `event: error\ndata: ${JSON.stringify({ message: "Shared runtime stream ended without completion" })}\n\n`,
+                ),
+              );
+            }
           }
         } catch (error) {
           // error-policy:J1 partial SSE cannot become an HTTP error.
-          if (!terminalSettlementStarted) {
-            terminalSettlementStarted = true;
-            await settleFailedProviderWorkOffPath(
-              agent,
-              billing,
-              options.executionCtx,
-              error,
-              "provider stream failed after dispatch",
-              reply.length > 0,
-            );
-          }
+          await finalizeMessages(streamedReply, true, async () => {
+            if (!terminalSettlementStarted) {
+              terminalSettlementStarted = true;
+              await settleFailedProviderWorkOffPath(
+                agent,
+                billing,
+                options.executionCtx,
+                error,
+                "provider stream failed after dispatch",
+                streamedReply.length > 0,
+              );
+            }
+          });
           logger.warn("[SharedRuntimeChatService] stream failed", {
             agentId: agent.id,
             error: error instanceof Error ? error.message : String(error),
           });
-          controller.enqueue(
-            encoder.encode(
-              `event: error\ndata: ${JSON.stringify({ message: "Shared runtime stream failed" })}\n\n`,
-            ),
-          );
+          if (!consumerCanceled) {
+            controller.enqueue(
+              encoder.encode(
+                `event: error\ndata: ${JSON.stringify({ message: "Shared runtime stream failed" })}\n\n`,
+              ),
+            );
+          }
         } finally {
-          controller.close();
+          detachRequestAbort();
+          if (!consumerCanceled) {
+            controller.close();
+          }
+        }
+      },
+      cancel: async (reason) => {
+        consumerCanceled = true;
+        const persistence = finalizeMessages(streamedReply, true, () =>
+          settleInterruptedTurn("consumer canceled stream"),
+        );
+        generationAbort.abort(reason);
+        const providerCancellation = turn.cancel?.(reason) ?? Promise.resolve();
+        const [providerResult, persistenceResult] = await Promise.allSettled([
+          providerCancellation,
+          persistence,
+        ]);
+        if (persistenceResult.status === "rejected") {
+          throw persistenceResult.reason;
+        }
+        if (providerResult.status === "rejected") {
+          throw providerResult.reason;
         }
       },
     });

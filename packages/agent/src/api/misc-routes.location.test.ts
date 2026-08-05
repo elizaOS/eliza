@@ -62,7 +62,7 @@ function makeLocationContext(): MiscRouteContext {
     state: {
       config: {} as MiscRouteContext["state"]["config"],
       runtime: null,
-      agentState: "ready",
+      agentState: "running",
       agentName: "Eliza",
       shellEnabled: true,
       broadcastWs: vi.fn(),
@@ -70,7 +70,7 @@ function makeLocationContext(): MiscRouteContext {
       nextEventId: 1,
       eventBuffer: [],
       shareIngestQueue: [],
-      startup: {},
+      startup: { phase: "running", attempt: 0 },
       broadcastStatus: vi.fn(),
       pendingRestartReasons: [],
     },

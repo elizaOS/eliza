@@ -43,7 +43,7 @@ function SegmentBlock({
   testId: string;
 }): React.JSX.Element {
   return (
-    <div data-testid={testId} className={cn(muted && "text-muted/70")}>
+    <div data-testid={testId} className={cn(muted && "text-muted")}>
       {segment.speakerLabel ? (
         <div className="mb-0.5 text-xs font-medium text-muted">
           {segment.speakerLabel}

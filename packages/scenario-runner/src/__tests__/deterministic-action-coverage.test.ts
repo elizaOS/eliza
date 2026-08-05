@@ -27,13 +27,9 @@ import agentSkillsPlugin from "@elizaos/plugin-agent-skills";
 import appControlPlugin from "@elizaos/plugin-app-control";
 import codingToolsPlugin from "@elizaos/plugin-coding-tools";
 import commandsPlugin from "@elizaos/plugin-commands";
-import facewearPlugin from "@elizaos/plugin-facewear";
 import githubPlugin from "@elizaos/plugin-github";
-import gitPathologyPlugin from "@elizaos/plugin-gitpathologist";
 import localInferencePlugin from "@elizaos/plugin-local-inference";
 import deviceFilesystemPlugin from "@elizaos/plugin-native-filesystem";
-import shellPlugin from "@elizaos/plugin-shell";
-import streamingPlugin from "@elizaos/plugin-streaming";
 import todosPlugin from "@elizaos/plugin-todos";
 import videoPlugin from "@elizaos/plugin-video";
 import workflowPlugin from "@elizaos/plugin-workflow";
@@ -58,10 +54,7 @@ const IMPORTED_CORE_PLUGINS: Record<string, Plugin> = {
   "@elizaos/plugin-commands": commandsPlugin,
   "@elizaos/plugin-agent-skills": agentSkillsPlugin,
   "@elizaos/plugin-local-inference": localInferencePlugin,
-  "@elizaos/plugin-gitpathologist": gitPathologyPlugin,
   "@elizaos/plugin-todos": todosPlugin,
-  "@elizaos/plugin-streaming": streamingPlugin,
-  "@elizaos/plugin-facewear": facewearPlugin,
   "@elizaos/plugin-mcp": mcpPlugin,
   "@elizaos/plugin-workflow": workflowPlugin,
   "@elizaos/plugin-github": githubPlugin,
@@ -123,17 +116,7 @@ const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
     "START_TRANSCRIPTION",
     "STOP_TRANSCRIPTION",
   ],
-  "@elizaos/plugin-gitpathologist": ["GIT_PATHOLOGY"],
   "@elizaos/plugin-todos": ["TODO"],
-  "@elizaos/plugin-streaming": ["STREAM"],
-  "@elizaos/plugin-facewear": [
-    "FACEWEAR_CONNECT",
-    "FACEWEAR_DEBUG",
-    "SMARTGLASSES_CONTROL",
-    "SMARTGLASSES_DISPLAY_TEXT",
-    "SMARTGLASSES_MICROPHONE",
-    "SMARTGLASSES_STATUS",
-  ],
   "@elizaos/plugin-mcp": [
     "MCP",
     "MCP_CALL_TOOL",
@@ -158,7 +141,6 @@ const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
 
 /** Core plugins that intentionally expose no agent actions (service/registry only). */
 const ACTIONLESS_CORE_PLUGINS: Record<string, Plugin> = {
-  "@elizaos/plugin-shell": shellPlugin,
   "@elizaos/plugin-video": videoPlugin,
   "@elizaos/plugin-native-filesystem": deviceFilesystemPlugin,
 };
@@ -232,15 +214,6 @@ const KNOWN_UNCOVERED: readonly string[] = [
   "MODEL_SWITCH",
   // Local-inference management action; no deterministic keyless scenario yet.
   "LOCAL_INFERENCE",
-  // Facewear owns smartglasses connection/runtime actions. The device-facing
-  // actions need dedicated keyless scenarios before they can leave this
-  // baseline.
-  "FACEWEAR_CONNECT",
-  "FACEWEAR_DEBUG",
-  "SMARTGLASSES_CONTROL",
-  "SMARTGLASSES_DISPLAY_TEXT",
-  "SMARTGLASSES_MICROPHONE",
-  "SMARTGLASSES_STATUS",
   // plugin-commands slash-command actions (/help, /status, /reset, /compact,
   // /think, /model, /tts, …) are dispatched through the command palette, not
   // the keyless scenario pipeline, so they have no deterministic scenario yet.
@@ -284,7 +257,6 @@ const COVERED_ACTIONS: readonly string[] = [
   "DOCUMENT",
   "FILE",
   "GENERATE_MEDIA",
-  "GIT_PATHOLOGY",
   "GITHUB",
   "GITHUB_ISSUE_ASSIGN",
   "GITHUB_ISSUE_CLOSE",
@@ -310,7 +282,6 @@ const COVERED_ACTIONS: readonly string[] = [
   "SHELL",
   "SCHEDULED_TASKS",
   "SETTINGS",
-  "STREAM",
   "TODO",
   "USE_SKILL",
   "VIEWS",
@@ -323,7 +294,7 @@ const COVERED_FLOOR = COVERED_ACTIONS.length;
 
 /**
  * Plugins whose remaining action surface needs live credentials, a real
- * browser, or a local model. Documented for honesty; the keyless mock LLM
+ * browser, or a local model. Documented for honesty; the keyless deterministic model provider
  * cannot stand in for these without faking the integration. Note that browser
  * (web/JSDOM mode) and lifeops (scheduled tasks) ARE partially keyless-covered
  * — see COVERED_ACTIONS — so the reason describes only the remainder.
@@ -369,8 +340,8 @@ const BOOTED_PLUGIN_ACTION_SURFACE: Record<
   string,
   { files: readonly string[]; actions: readonly string[] }
 > = {
-  "@elizaos/plugin-google": {
-    files: ["plugins/plugin-google/src/index.ts"],
+  "@elizaos/plugin-google-workspace": {
+    files: ["plugins/plugin-google-workspace/src/index.ts"],
     actions: [],
   },
   "@elizaos/plugin-browser": {
@@ -633,7 +604,7 @@ const REQUIRED_APP_CONTROL_NL_TURNS: readonly string[] = [
 
 /**
  * Actions that are currently exercised through real message turns using the
- * strict deterministic LLM proxy. This is intentionally separate from
+ * strict deterministic model provider. This is intentionally separate from
  * COVERED_ACTIONS: most deterministic coverage is still direct handler
  * coverage, which is useful but must not be reported as NL routing coverage.
  */
@@ -659,7 +630,6 @@ const STRICT_LLM_ROUTED_ACTIONS: readonly string[] = [
   "GITHUB_NOTIFICATION_TRIAGE",
   "GITHUB_PR_LIST",
   "GITHUB_PR_REVIEW",
-  "GIT_PATHOLOGY",
   "MCP",
   "MCP_CALL_TOOL",
   "MCP_LIST_CONNECTIONS",
@@ -674,7 +644,6 @@ const STRICT_LLM_ROUTED_ACTIONS: readonly string[] = [
   "SKILL_SYNC",
   "SKILL_TOGGLE",
   "SKILL_UNINSTALL",
-  "STREAM",
   "TODO",
   "USE_SKILL",
   "VIEWS",
@@ -749,10 +718,6 @@ const STRICT_LLM_ROUTING_SCENARIOS: Record<
     ],
     minMessageTurns: 11,
   },
-  "deterministic-gitpathology-actions": {
-    actionNames: ["GIT_PATHOLOGY"],
-    minMessageTurns: 1,
-  },
   "deterministic-media-actions": {
     actionNames: ["GENERATE_MEDIA"],
     minMessageTurns: 2,
@@ -774,10 +739,6 @@ const STRICT_LLM_ROUTING_SCENARIOS: Record<
       "MCP_SEARCH_ACTIONS",
     ],
     minMessageTurns: 5,
-  },
-  "deterministic-streaming-actions": {
-    actionNames: ["STREAM"],
-    minMessageTurns: 4,
   },
   "deterministic-todos-actions": {
     actionNames: ["TODO"],
@@ -1150,12 +1111,12 @@ describe("deterministic action coverage", () => {
     // Google wires `actions: []`; assert the empty-array literal stays so the
     // empty manifest above can't be silently bypassed by wiring an action.
     const googleSource = readFileSync(
-      resolve(repoRoot, "plugins/plugin-google/src/index.ts"),
+      resolve(repoRoot, "plugins/plugin-google-workspace/src/index.ts"),
       "utf8",
     );
     if (!/actions:\s*\[\s*\]/.test(googleSource)) {
       drift.push(
-        "@elizaos/plugin-google: index.ts no longer declares `actions: []` — " +
+        "@elizaos/plugin-google-workspace: index.ts no longer declares `actions: []` — " +
           "it now wires an action surface that must be classified and added to BOOTED_PLUGIN_ACTION_SURFACE.",
       );
     }
@@ -1262,15 +1223,12 @@ describe("deterministic action coverage", () => {
         problems.push(`${id}: source file was not found`);
         continue;
       }
-      // `_helpers/strict-llm-action-fixtures.ts` re-exports the canonical
-      // template from `@elizaos/test-harness`; scenarios may also import the
-      // stage1/planner fixture builders from that harness directly. Either
-      // way, read the harness file for the fixture literals
-      // (RESPONSE_HANDLER / ACTION_PLANNER / register call).
+      // Fixture templates live in core testing so scenarios and package-local
+      // runtime tests exercise the same response-handler/planner contract.
       const fixtureSource =
         source.includes("registerStrictActionRouteFixtures") ||
         source.includes("stage1ResponseHandlerFixture")
-          ? `${source}\n${readFileSync(resolve(repoRoot, "packages/test/harness/action-route-fixtures.ts"), "utf8")}`
+          ? `${source}\n${readFileSync(resolve(repoRoot, "packages/core/src/testing/deterministic-action-fixtures.ts"), "utf8")}`
           : source;
 
       const messageTurns = messageTurnCount(scenario);
@@ -1279,8 +1237,8 @@ describe("deterministic action coverage", () => {
           `${id}: expected at least ${spec.minMessageTurns} message turns, saw ${messageTurns}`,
         );
       }
-      if (!/scenarioLlmFixtures\?\.register\(/.test(fixtureSource)) {
-        problems.push(`${id}: no scenarioLlmFixtures.register call`);
+      if (!/scenarioModelFixtures\?\.register\(/.test(fixtureSource)) {
+        problems.push(`${id}: no scenarioModelFixtures.register call`);
       }
       if (!fixtureSource.includes("ModelType.RESPONSE_HANDLER")) {
         problems.push(`${id}: no RESPONSE_HANDLER fixture`);

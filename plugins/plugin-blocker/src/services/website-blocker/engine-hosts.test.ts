@@ -76,7 +76,6 @@ describe("buildSelfControlManagedHostsBlock", () => {
     const metaLine = buildSelfControlManagedHostsBlock(m)
       .split("\n")
       .find((l) => l.startsWith(META_PREFIX));
-    expect(metaLine).toBeDefined();
     if (!metaLine) {
       throw new Error("missing metadata line");
     }

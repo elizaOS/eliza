@@ -35,6 +35,7 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 		findCodingDelegationActionName: actual.findCodingDelegationActionName,
 		getUserMessageText: actual.getUserMessageText,
 		resolveStateDir: actual.resolveStateDir,
+		unwrapUserMessageText: actual.unwrapUserMessageText,
 	};
 });
 
@@ -55,9 +56,9 @@ function createRuntime() {
 	};
 }
 
-// Production-shape registry: the real plugin-simple-views Notes + Calendar
-// catalog entries (labels, tags, capability ids/descriptions) plus the builtin
-// chat/home surface.
+// Production-shape registry: the real plugin-notes Notes and plugin-calendar
+// Calendar catalog entries (labels, tags, capability ids/descriptions) plus
+// the builtin chat/home surface.
 const notesView = (): ViewSummary =>
 	({
 		id: "notes",
@@ -88,27 +89,14 @@ const notesView = (): ViewSummary =>
 
 const calendarView = (): ViewSummary =>
 	({
-		id: "simple-calendar",
+		id: "calendar",
 		label: "Calendar",
 		viewType: "gui",
-		path: "/simple-calendar",
+		path: "/calendar",
 		description:
-			"A durable Cloud calendar for agent-driven events and view switching.",
-		tags: [
-			"calendar",
-			"calender",
-			"simple calendar",
-			"events",
-			"schedule",
-			"view switching",
-		],
-		capabilities: [
-			{
-				id: "get-calendar-state",
-				description:
-					"Read selected date and calendar events as structured data.",
-			},
-		],
+			"Unified Google, Microsoft, Apple, and ICS calendar with day/week/month tabs and inline conflict detection.",
+		tags: ["calendar", "schedule", "events"],
+		capabilities: [],
 	}) as unknown as ViewSummary;
 
 const chatView = (): ViewSummary =>

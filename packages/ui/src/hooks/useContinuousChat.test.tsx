@@ -1,3 +1,4 @@
+/** Verifies ContinuousChatToggle + useContinuousChat integration through the package's configured test harness. */
 // @vitest-environment jsdom
 
 import {

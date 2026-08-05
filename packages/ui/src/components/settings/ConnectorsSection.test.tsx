@@ -1,3 +1,4 @@
+/** Verifies ConnectorsSection through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Renders ConnectorsSection with a mocked App context and connector-mode

@@ -13,6 +13,7 @@ import {
 	isStandaloneNotesSurfaceRequest,
 	resolveIntentView,
 } from "../actions/views-show.js";
+import { userRequestMessageText } from "../params.js";
 import { markViewSwitch } from "../runtime/view-switch-signal.js";
 
 const VIEWS_ACTION_NAME = "VIEWS";
@@ -92,8 +93,8 @@ const navigateToContextualView: EvaluatorProcessor<ViewContextOutput> = {
 				? output.viewId.trim().toLowerCase()
 				: "";
 		if (!viewId || viewId === NONE) return undefined;
-		const messageText =
-			typeof message?.content?.text === "string" ? message.content.text : "";
+		// Security-unwrapped user words — never raw (possibly enveloped) text.
+		const messageText = userRequestMessageText(message);
 		if (
 			viewId === "documents" &&
 			isStandaloneNotesSurfaceRequest(messageText)
@@ -174,8 +175,9 @@ export const viewContextEvaluator: Evaluator<ViewContextOutput> = {
 			(action) => action.name?.toUpperCase() === VIEWS_ACTION_NAME,
 		);
 		if (!hasViews) return false;
-		const text =
-			typeof message.content?.text === "string" ? message.content.text : "";
+		// Security-unwrapped user words — the envelope's warning would satisfy
+		// the length gate and feed activity hints the user never expressed.
+		const text = userRequestMessageText(message);
 		if (text.trim().length < 8) return false;
 		if (isStandaloneNotesSurfaceRequest(text)) return false;
 		// Direct nav commands belong to the VIEWS action — only infer contextually
@@ -185,8 +187,8 @@ export const viewContextEvaluator: Evaluator<ViewContextOutput> = {
 		return ACTIVITY_HINT_RE.test(text);
 	},
 	prompt({ runtime, message }) {
-		const text =
-			typeof message.content?.text === "string" ? message.content.text : "";
+		// The model classifies the user's words, not the envelope armor.
+		const text = userRequestMessageText(message);
 		// The instruction half is the GEPA-optimizable `view_context` prompt; the
 		// per-turn user message is appended after it.
 		const instruction = resolveOptimizedPromptForRuntime(

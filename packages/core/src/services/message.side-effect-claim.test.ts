@@ -652,6 +652,34 @@ describe("evaluatePlannedReplyEgress", () => {
 		).toEqual({ verdict: "allow" });
 	});
 
+	it("allows a completion claim grounded by a replayed no-op (already exists)", () => {
+		// The idempotent-duplicate outcome: the handler verified this turn that
+		// an equivalent committed item already satisfies the request. A truthful
+		// "already covered" ack must pass, while the non-replayed no-op case in
+		// the table below stays rejected.
+		const replayedNoop: EffectReceipt = {
+			...effectBase,
+			idempotency: { key: "request-1", replayed: true },
+			outcome: "noop",
+			reason: "an equivalent reminder already exists",
+		};
+		const deduped: ActionResult = {
+			success: true,
+			userFacingText: FABRICATED_ALL_SET_REPLY,
+			verifiedUserFacing: true,
+			effectReceipts: [replayedNoop],
+			userFacingEffectReceiptIds: [replayedNoop.receiptId],
+			data: { actionName: "OWNER_REMINDERS", action: "create" },
+		};
+		expect(
+			evaluatePlannedReplyEgress({
+				reply: FABRICATED_ALL_SET_REPLY,
+				actionResults: [deduped],
+				actions: [reminderSurface],
+			}),
+		).toEqual({ verdict: "allow" });
+	});
+
 	it.each([
 		{
 			name: "bare success",

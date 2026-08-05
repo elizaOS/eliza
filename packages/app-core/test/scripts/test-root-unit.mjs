@@ -1,4 +1,8 @@
-/** Supports app-core build, packaging, or development orchestration for test root unit mjs. */
+/**
+ * Collects plain unit tests (*.test.ts(x), excluding live/real/integration/e2e
+ * variants) from the root surfaces and runs them under the managed test-command
+ * lock.
+ */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -97,20 +101,13 @@ const lifeOpsSourceTestFiles = collectTestFiles(
   "eliza/plugins/plugin-personal-assistant/src",
 );
 const appsAndPluginsSourceTestFiles = [
-  ...collectTestFiles(
-    "eliza/plugins/plugin-shopify/src",
-    "packages/plugin-wechat/src",
-  ),
-  ...[
-    "eliza/plugins/plugin-discord/__tests__/smoke.test.ts",
-    "eliza/plugins/plugin-discord/__tests__/draft-stream.test.ts",
-  ].filter((file) => fs.existsSync(path.join(repoRoot, file))),
-];
+  "eliza/plugins/plugin-discord/__tests__/smoke.test.ts",
+  "eliza/plugins/plugin-discord/__tests__/draft-stream.test.ts",
+].filter((file) => fs.existsSync(path.join(repoRoot, file)));
 const workspaceTestFiles = collectTestFiles(
   "src",
   "scripts",
   "apps/chrome-extension",
-  "eliza/test/helpers",
 );
 
 const unitShards = [
@@ -131,7 +128,6 @@ const unitShards = [
         "eliza/packages/shared/src",
         "eliza/packages/app-core/test/live-agent",
         "eliza/packages/app-core/scripts",
-        "eliza/plugins/plugin-native-llama/src",
       ),
       ...[
         "eliza/packages/app-core/platforms/electrobun/src/menu-reset-from-main.test.ts",
@@ -157,7 +153,7 @@ for (const shard of unitShards) {
       "./node_modules/.bin/vitest",
       "run",
       "--config",
-      "eliza/packages/test/vitest/default.config.ts",
+      "eliza/packages/scripts/vitest/default.config.ts",
       "--reporter=dot",
       ...shard.patterns,
     ],

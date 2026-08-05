@@ -135,7 +135,20 @@ export type {
 	PlannerTrajectory,
 } from "./planner-types";
 
-const DEFAULT_PLANNER_MAX_TOKENS = 1024;
+/**
+ * Chat-lane planner output budget. Reasoning models spend completion tokens on
+ * deliberation BEFORE the tool call, and with `toolChoice: required` a budget
+ * exhausted mid-reasoning means the required call is never emitted — Cerebras
+ * then terminates the stream with an in-stream "server error", which reads as
+ * a transient provider failure but reproduces 100% on any ask ambiguous
+ * enough to burn the budget (live 2026-08-03: nine identical failures on one
+ * build-and-host ask; wire capture showed the entire old 1024-token budget
+ * consumed by reasoning deltas with no tool call). 4096 leaves deliberation
+ * headroom while staying chat-sized; `ELIZA_PLANNER_MAX_TOKENS` overrides.
+ * The coding lane's larger budget below exists for the same failure class
+ * (#10132).
+ */
+const DEFAULT_PLANNER_MAX_TOKENS = 4096;
 
 /**
  * Coding/full-surface mode is on when the eliza-code sub-agent sets
@@ -168,7 +181,12 @@ const DEFAULT_CODING_PLANNER_MAX_TOKENS = 16384;
  * `ELIZA_CODING_PLANNER_MAX_TOKENS`).
  */
 function resolvePlannerMaxTokens(): number {
-	if (!isCodingFullSurfaceMode()) return DEFAULT_PLANNER_MAX_TOKENS;
+	if (!isCodingFullSurfaceMode()) {
+		const chatRaw = Number(process.env.ELIZA_PLANNER_MAX_TOKENS);
+		return Number.isFinite(chatRaw) && chatRaw > 0
+			? Math.floor(chatRaw)
+			: DEFAULT_PLANNER_MAX_TOKENS;
+	}
 	const raw = Number(process.env.ELIZA_CODING_PLANNER_MAX_TOKENS);
 	return Number.isFinite(raw) && raw > 0
 		? Math.floor(raw)
@@ -837,6 +855,7 @@ async function runPlannerLoopIterations(
 				if (shouldRecordTerminalEvaluation) {
 					const terminalEvalStartedAt = Date.now();
 					await recordGatedEvaluationStage({
+						runtime: params.runtime,
 						recorder: params.recorder,
 						trajectoryId: params.trajectoryId,
 						parentStageId: params.parentStageId,
@@ -871,7 +890,21 @@ async function runPlannerLoopIterations(
 								),
 					// STOP/IGNORE-only terminals chose silence; a textless REPLY did
 					// not (the model tried to answer and failed to carry text).
-					...(hasReplyCall ? {} : { endedWithDeliberateSilence: true }),
+					// The silent terminal's name travels with the result so the
+					// message handler can record the turn under the action the
+					// model actually chose (STOP vs IGNORE); NONE folds into
+					// IGNORE — both mean "nothing to say", only STOP carries the
+					// distinct "stand down" semantics.
+					...(hasReplyCall
+						? {}
+						: {
+								endedWithDeliberateSilence: true,
+								silentTerminalAction: plannerOutput.toolCalls.some(
+									(toolCall) => toolCall.name.toUpperCase() === "STOP",
+								)
+									? ("STOP" as const)
+									: ("IGNORE" as const),
+							}),
 				};
 			}
 
@@ -1033,6 +1066,7 @@ async function runPlannerLoopIterations(
 		}
 
 		await maybeCompactBeforeNextModelCall({
+			runtime: params.runtime,
 			trajectory,
 			config,
 			tools: params.tools,
@@ -1077,6 +1111,7 @@ async function runPlannerLoopIterations(
 				evaluator: gated,
 			});
 			await recordGatedEvaluationStage({
+				runtime: params.runtime,
 				recorder: params.recorder,
 				trajectoryId: params.trajectoryId,
 				parentStageId: params.parentStageId,
@@ -1780,6 +1815,7 @@ async function callPlanner(params: {
 	});
 	if (modelInputBudget.shouldCompact && params.config.compactionEnabled) {
 		const compacted = await maybeCompactPlannerTrajectory({
+			runtime: params.runtime,
 			trajectory: params.trajectory,
 			budget: modelInputBudget,
 			config: params.config,
@@ -1958,7 +1994,10 @@ async function callPlanner(params: {
 	// stage-level usages.
 	if (params.onUsage) {
 		const usage = extractUsage(raw);
-		if (usage) {
+		if (
+			usage?.promptTokens !== undefined &&
+			usage.completionTokens !== undefined
+		) {
 			params.onUsage({
 				promptTokens: usage.promptTokens,
 				completionTokens: usage.completionTokens,
@@ -1967,6 +2006,7 @@ async function callPlanner(params: {
 	}
 
 	await recordPlannerStage({
+		runtime: params.runtime,
 		recorder: params.recorder,
 		trajectoryId: params.trajectoryId,
 		parentStageId: params.parentStageId,
@@ -1988,6 +2028,7 @@ async function callPlanner(params: {
 }
 
 async function maybeCompactPlannerTrajectory(args: {
+	runtime?: PlannerRuntime;
 	trajectory: PlannerTrajectory;
 	budget: ModelInputBudget;
 	config: ChainingLoopConfig;
@@ -2055,6 +2096,7 @@ async function maybeCompactPlannerTrajectory(args: {
 	});
 	const endedAt = Date.now();
 	await recordCompactionStage({
+		runtime: args.runtime,
 		recorder: args.recorder,
 		trajectoryId: args.trajectoryId,
 		parentStageId: args.parentStageId,
@@ -2071,6 +2113,7 @@ async function maybeCompactPlannerTrajectory(args: {
 }
 
 async function maybeCompactBeforeNextModelCall(args: {
+	runtime?: PlannerRuntime;
 	trajectory: PlannerTrajectory;
 	config: ChainingLoopConfig;
 	tools?: ToolDefinition[];
@@ -2102,6 +2145,7 @@ async function maybeCompactBeforeNextModelCall(args: {
 		return false;
 	}
 	return maybeCompactPlannerTrajectory({
+		runtime: args.runtime,
 		trajectory: args.trajectory,
 		budget,
 		config: args.config,
@@ -2172,6 +2216,7 @@ function compactText(value: string, maxLength: number): string {
  * thought marker. No `model` block is included because no LLM call happened.
  */
 async function recordGatedEvaluationStage(args: {
+	runtime?: PlannerRuntime;
 	recorder?: TrajectoryRecorder;
 	trajectoryId?: string;
 	parentStageId?: string;
@@ -2204,14 +2249,20 @@ async function recordGatedEvaluationStage(args: {
 		};
 		await args.recorder.recordStage(args.trajectoryId, stage);
 	} catch (err) {
+		// error-policy:J7 Trajectory persistence is diagnostic and cannot alter
+		// the planner decision it records.
 		args.logger?.warn?.(
 			{ err: (err as Error).message, trajectoryId: args.trajectoryId },
 			"[TrajectoryRecorder] failed to record gated evaluation stage",
 		);
+		args.runtime?.reportError?.("PlannerLoop.recordGatedEvaluation", err, {
+			trajectoryId: args.trajectoryId,
+		});
 	}
 }
 
 async function recordCompactionStage(args: {
+	runtime?: PlannerRuntime;
 	recorder?: TrajectoryRecorder;
 	trajectoryId?: string;
 	parentStageId?: string;
@@ -2254,14 +2305,20 @@ async function recordCompactionStage(args: {
 		};
 		await args.recorder.recordStage(args.trajectoryId, stage);
 	} catch (err) {
+		// error-policy:J7 Trajectory persistence is diagnostic and cannot alter
+		// the compaction decision it records.
 		args.logger?.warn?.(
 			{ err: (err as Error).message, trajectoryId: args.trajectoryId },
 			"[TrajectoryRecorder] failed to record compaction stage",
 		);
+		args.runtime?.reportError?.("PlannerLoop.recordCompaction", err, {
+			trajectoryId: args.trajectoryId,
+		});
 	}
 }
 
 async function recordPlannerStage(args: {
+	runtime?: PlannerRuntime;
 	recorder?: TrajectoryRecorder;
 	trajectoryId?: string;
 	parentStageId?: string;
@@ -2309,7 +2366,7 @@ async function recordPlannerStage(args: {
 			model: {
 				modelType: String(args.modelType),
 				modelName,
-				provider: args.provider ?? "default",
+				provider: extractProviderName(args.raw) ?? args.provider,
 				messages: args.modelParams.messages,
 				tools: args.modelParams.tools,
 				toolChoice: args.modelParams.toolChoice,
@@ -2333,10 +2390,15 @@ async function recordPlannerStage(args: {
 		};
 		await args.recorder.recordStage(args.trajectoryId, stage);
 	} catch (err) {
+		// error-policy:J7 Trajectory persistence is diagnostic and cannot alter
+		// the planner output it records.
 		args.logger?.warn?.(
 			{ err: (err as Error).message, trajectoryId: args.trajectoryId },
 			"[TrajectoryRecorder] failed to record planner stage",
 		);
+		args.runtime?.reportError?.("PlannerLoop.recordPlanner", err, {
+			trajectoryId: args.trajectoryId,
+		});
 	}
 }
 
@@ -2390,6 +2452,24 @@ function extractModelName(
 		if (typeof direct === "string") return direct;
 		const model = (meta as Record<string, unknown>).model;
 		if (typeof model === "string") return model;
+	}
+	return undefined;
+}
+
+function extractProviderName(
+	raw: string | GenerateTextResult,
+): string | undefined {
+	if (typeof raw === "string") return undefined;
+	const meta = raw.providerMetadata;
+	if (!meta || typeof meta !== "object" || Array.isArray(meta)) {
+		return undefined;
+	}
+	const record = meta as Record<string, unknown>;
+	for (const key of ["provider", "providerName"]) {
+		const value = record[key];
+		if (typeof value === "string" && value.trim().length > 0) {
+			return value.trim();
+		}
 	}
 	return undefined;
 }
@@ -2632,6 +2712,8 @@ async function executeQueuedToolCall(params: {
 			iteration: params.iteration,
 		});
 	} catch (error) {
+		// error-policy:J1 Tool execution is the planner action boundary; preserve
+		// the actual error in an explicit failed tool result.
 		result = {
 			success: false,
 			error,
@@ -2707,6 +2789,7 @@ async function executeQueuedToolCall(params: {
 		(tool) => tool.name === params.toolCall.name,
 	);
 	await recordToolStage({
+		runtime: params.params.runtime,
 		recorder: params.params.recorder,
 		trajectoryId: params.params.trajectoryId,
 		parentStageId: params.params.parentStageId,
@@ -2720,6 +2803,7 @@ async function executeQueuedToolCall(params: {
 }
 
 async function recordToolStage(args: {
+	runtime?: PlannerRuntime;
 	recorder?: TrajectoryRecorder;
 	trajectoryId?: string;
 	parentStageId?: string;
@@ -2760,10 +2844,16 @@ async function recordToolStage(args: {
 		};
 		await args.recorder.recordStage(args.trajectoryId, stage);
 	} catch (err) {
+		// error-policy:J7 Trajectory persistence is diagnostic and cannot alter
+		// the tool result it records.
 		args.logger?.warn?.(
 			{ err: (err as Error).message, trajectoryId: args.trajectoryId },
 			"[TrajectoryRecorder] failed to record tool stage",
 		);
+		args.runtime?.reportError?.("PlannerLoop.recordTool", err, {
+			trajectoryId: args.trajectoryId,
+			tool: args.toolCall.name,
+		});
 	}
 }
 
@@ -2835,6 +2925,8 @@ function parseEmbeddedToolCalls(text: string | undefined): PlannerToolCall[] {
 		try {
 			parsed = JSON.parse(objectText);
 		} catch {
+			// error-policy:J3 Embedded tool envelopes are untrusted model output;
+			// malformed candidates are invalid while later objects remain parseable.
 			continue;
 		}
 		const call = normalizeToolCall(parsed);
@@ -3479,6 +3571,88 @@ function latestToolResultText(
 	return undefined;
 }
 
+/**
+ * Floor for the echo comparison, in normalized characters. Below it a match
+ * is likelier to be a coincidence than a reproduction (a distilled answer
+ * like "3" is a byte-prefix of "3 tasks found …"); at or above it a
+ * byte-exact overlap with planner-facing tool text only occurs when the
+ * model reproduced that text rather than answering in its own words.
+ */
+const RAW_TOOL_TEXT_ECHO_MIN_CHARS = 24;
+
+function normalizeForEchoComparison(text: string): string {
+	// Case-folded so a letter-case variant of the raw text cannot slip the
+	// verbatim/head-anchored comparison; still not a prose heuristic.
+	return text.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+/**
+ * Structural gate keeping typed tool data non-user-facing at the
+ * evaluator/planner boundary. `result.text` is planner-facing by contract
+ * (planner-types.ts): only the opt-in `userFacingText` — or a structural
+ * marker whose deterministic relay deliberately surfaces `text`
+ * (requiresConfirmation / awaitingUserInput / noop) — licenses tool output
+ * for the user channel. A weak model repeats the raw text verbatim after a
+ * protocol-failure replan (live tj-f730d907139bb2), and because an explicit
+ * model reply outranks tool text in the final-message precedence, that echo
+ * would promote planner-facing material into chat. The gate byte-compares
+ * the candidate against every unlicensed `result.text` in the trajectory,
+ * rejecting head-anchored reproduction: the exact text, an exact head of it
+ * (truncated echo), or the exact text plus a trailing addendum — so the
+ * caller falls through to typed user-facing data or ends the turn. Verbatim,
+ * head-anchored comparison only, never a prose heuristic: a genuine
+ * paraphrase differs bytewise, and a genuine synthesis that merely quotes a
+ * tool fragment mid-sentence does not START with the raw text; both pass
+ * untouched.
+ */
+function isEchoOfPlannerFacingToolText(
+	candidate: string,
+	trajectory: PlannerTrajectory,
+): boolean {
+	const normalizedCandidate = normalizeForEchoComparison(candidate);
+	if (normalizedCandidate.length < RAW_TOOL_TEXT_ECHO_MIN_CHARS) return false;
+	for (const step of trajectory.steps) {
+		if (!step.toolCall || isTerminalToolCall(step.toolCall)) continue;
+		const result = step.result;
+		if (!result) continue;
+		const rawText = getNonEmptyString(result.text);
+		if (!rawText) continue;
+		if (
+			hasRequiresConfirmationMarker(result) ||
+			hasAwaitingUserInputMarker(result) ||
+			hasNoopMarker(result) ||
+			// Internal-transcript results are DESIGNED to pass through the reply
+			// channel byte-exact: the delivery boundary matches the reply against
+			// the result text and stamps the outgoing message
+			// transcriptVisibility:"internal" (resolveActionResultTranscript-
+			// Visibility), so it never renders as assistant prose. Gating the
+			// echo here would break that stamping match.
+			result.transcriptVisibility === "internal"
+		) {
+			continue;
+		}
+		const normalizedRaw = normalizeForEchoComparison(rawText);
+		if (normalizedRaw.length < RAW_TOOL_TEXT_ECHO_MIN_CHARS) continue;
+		// When the tool's own userFacingText carries the raw text, the raw text
+		// IS the sanctioned user projection — repeating it is not a leak.
+		const userFacing = getNonEmptyString(result.userFacingText);
+		if (
+			userFacing &&
+			normalizeForEchoComparison(userFacing).includes(normalizedRaw)
+		) {
+			continue;
+		}
+		if (
+			normalizedCandidate === normalizedRaw ||
+			normalizedRaw.startsWith(normalizedCandidate) ||
+			normalizedCandidate.startsWith(normalizedRaw)
+		) {
+			return true;
+		}
+	}
+	return false;
+}
+
 function hasSuccessfulNonTerminalToolStep(
 	trajectory: PlannerTrajectory,
 ): boolean {
@@ -3880,8 +4054,16 @@ function preferredFinalMessageFromToolOrModel(
 	fallback?: unknown,
 ): string | undefined {
 	const modelText = getNonEmptyString(modelMessage);
+	// Rejecting a raw-tool-text echo HERE (not only in userSafeFinalMessage)
+	// lets the precedence chain below recover the turn from typed data — the
+	// tool's opt-in `userFacingText` or the caller's explicit fallback —
+	// instead of degrading straight to the handled-step placeholder.
 	const usableModelText =
-		modelText && !isToolMetaNarration(modelText) ? modelText : undefined;
+		modelText &&
+		!isToolMetaNarration(modelText) &&
+		!isEchoOfPlannerFacingToolText(modelText, trajectory)
+			? modelText
+			: undefined;
 	const widgetReply = userSafeWidgetReplyCandidate(usableModelText);
 	const widgetCollectsLatestMissingInput =
 		widgetReply !== undefined && latestToolResultAwaitsUserInput(trajectory);
@@ -4320,7 +4502,16 @@ function userSafeFinalMessage(
 	// rejected wholesale (or worse, sent verbatim when the unsafe-text heuristic
 	// doesn't match the markup shape).
 	const candidate = sanitizePlannerMessage(message);
-	if (candidate && !isUnsafeUserVisibleText(candidate)) {
+	if (
+		candidate &&
+		!isUnsafeUserVisibleText(candidate) &&
+		// Hard boundary for the raw-tool-text echo: every finished-turn path
+		// funnels through here, so a candidate that reproduces planner-facing
+		// `result.text` (weak-model echo after a protocol failure) degrades to
+		// the tool's typed userFacingText or the placeholder — the raw text
+		// itself can never ship.
+		!isEchoOfPlannerFacingToolText(candidate, trajectory)
+	) {
 		return candidate;
 	}
 	const latest = sanitizePlannerMessage(latestToolResultText(trajectory));
@@ -4616,12 +4807,8 @@ export function summarizeActionResultForPlanner(
 	if (result.success !== true || typeof action?.summarize !== "function") {
 		return undefined;
 	}
-	try {
-		const summary = action.summarize(result, params)?.trim();
-		return summary || undefined;
-	} catch {
-		return undefined;
-	}
+	const summary = action.summarize(result, params)?.trim();
+	return summary || undefined;
 }
 
 function getNonEmptyString(value: unknown): string | undefined {
@@ -4649,7 +4836,7 @@ function getNonEmptyString(value: unknown): string | undefined {
 let cachedDiskOptimizedPlannerPrompt: string | null = null;
 let cachedDiskOptimizedPlannerLoaded = false;
 
-function loadOptimizedPlannerFromDisk(): string | null {
+function loadOptimizedPlannerFromDisk(runtime: PlannerRuntime): string | null {
 	const dir = join(resolveStateDir(), "optimized-prompts", "action_planner");
 	if (!existsSync(dir)) return null;
 
@@ -4671,10 +4858,15 @@ function loadOptimizedPlannerFromDisk(): string | null {
 				return parsed.prompt;
 			}
 		} catch (err) {
+			// error-policy:J4 A malformed optional optimization artifact degrades
+			// to the next candidate while the failure remains observable.
 			logger.warn(
 				{ path: currentPath, err: (err as Error).message },
 				"[PlannerLoop] malformed action_planner 'current' artifact; falling back to mtime scan",
 			);
+			runtime.reportError?.("PlannerLoop.optimizedPromptCurrent", err, {
+				path: currentPath,
+			});
 		}
 	}
 
@@ -4701,10 +4893,15 @@ function loadOptimizedPlannerFromDisk(): string | null {
 				return parsed.prompt;
 			}
 		} catch (err) {
+			// error-policy:J4 A malformed optional optimization artifact degrades
+			// to the next candidate while the failure remains observable.
 			logger.warn(
 				{ path: entry.path, err: (err as Error).message },
 				"[PlannerLoop] malformed action_planner artifact; trying next candidate",
 			);
+			runtime.reportError?.("PlannerLoop.optimizedPromptArtifact", err, {
+				path: entry.path,
+			});
 		}
 	}
 	return null;
@@ -4729,8 +4926,10 @@ function resolveOptimizedPlannerTemplate(runtime: PlannerRuntime): string {
 	// path that hasn't gotten the service registered yet.
 	if (!cachedDiskOptimizedPlannerLoaded) {
 		try {
-			cachedDiskOptimizedPlannerPrompt = loadOptimizedPlannerFromDisk();
+			cachedDiskOptimizedPlannerPrompt = loadOptimizedPlannerFromDisk(runtime);
 		} catch (err) {
+			// error-policy:J4 Disk optimization is optional; use the bundled
+			// template and report the unavailable optimization.
 			// readdir/stat failures on the optimized-prompts directory are
 			// non-fatal: we fall back to the bundled `plannerTemplate`. Log so
 			// repeated boot failures show up in operator output rather than
@@ -4739,6 +4938,7 @@ function resolveOptimizedPlannerTemplate(runtime: PlannerRuntime): string {
 				{ err: (err as Error).message },
 				"[PlannerLoop] optimized planner disk load failed; using bundled template",
 			);
+			runtime.reportError?.("PlannerLoop.optimizedPromptDisk", err);
 			cachedDiskOptimizedPlannerPrompt = null;
 		}
 		cachedDiskOptimizedPlannerLoaded = true;

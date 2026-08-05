@@ -1,3 +1,7 @@
+/**
+ * Exercises agent-surface registration and DOM interaction against a real
+ * jsdom-rendered provider rather than registry-only mocks.
+ */
 // @vitest-environment jsdom
 import { cleanup, render } from "@testing-library/react";
 import { useState } from "react";
@@ -48,6 +52,11 @@ describe("agent-surface render integration", () => {
     ) as AgentElementSnapshot[];
     expect(elements.map((e) => e.id).sort()).toEqual(["amount", "swap"]);
     expect(elements.find((e) => e.id === "swap")?.label).toBe("Swap");
+    expect(
+      document
+        .querySelector("[data-agent-id='amount']")
+        ?.getAttribute("aria-label"),
+    ).toBe("Amount");
 
     // agent-fill drives the real <input>, firing React's onChange.
     handleAgentSurfaceCapability(registry, "agent-fill", {

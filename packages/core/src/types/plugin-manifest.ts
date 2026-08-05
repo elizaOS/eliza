@@ -1,12 +1,4 @@
-/**
- * Plugin Manifest Types
- *
- * Defines the structure for plugin manifests (elizaos.plugin.json).
- * These manifests describe plugin metadata, configuration schemas,
- * and capabilities for discovery and loading.
- *
- * @module types/plugin-manifest
- */
+/** Contracts for plugin discovery metadata, configuration schemas, and capabilities. */
 
 import type { JsonValue } from "./primitives.ts";
 

@@ -13,7 +13,7 @@
 # LLAMA_SERVER_BIN or build an image from spiritbuun/buun-llama-cpp.
 #
 # Required template env vars (set in the Vast template definition):
-#   PYWORKER_REPO       — git URL of cloud/ (e.g. https://github.com/elizaOS/cloud.git)
+#   PYWORKER_REPO       — git URL of the eliza monorepo.
 #   PYWORKER_REF        — branch / tag / commit (use a pinned commit in prod)
 #   MODEL_REPO          — HuggingFace repo id of the GGUF (default: DavidAU…)
 #   MODEL_FILE          — GGUF file inside the repo (default: Q6_K)
@@ -58,7 +58,7 @@
 
 set -euo pipefail
 
-PYWORKER_REPO="${PYWORKER_REPO:-https://github.com/elizaOS/cloud.git}"
+PYWORKER_REPO="${PYWORKER_REPO:-https://github.com/elizaOS/eliza.git}"
 PYWORKER_REF="${PYWORKER_REF:-develop}"
 # llama.cpp can resolve subpaths inside an HF repo, so the canonical default
 # is the canonical bundle repo elizaos/eliza-1 + bundles/<tier>/...
@@ -106,10 +106,14 @@ if [ -d "$PYWORKER_DIR/.git" ]; then
   git -C "$PYWORKER_DIR" checkout FETCH_HEAD
 else
   git clone --depth=1 --branch "$PYWORKER_REF" "$PYWORKER_REPO" "$PYWORKER_DIR" \
-    || git clone --depth=1 "$PYWORKER_REPO" "$PYWORKER_DIR"
+    || {
+      git clone --filter=blob:none --no-checkout "$PYWORKER_REPO" "$PYWORKER_DIR"
+      git -C "$PYWORKER_DIR" fetch --depth=1 origin "$PYWORKER_REF"
+      git -C "$PYWORKER_DIR" checkout --detach FETCH_HEAD
+    }
 fi
 
-cd "$PYWORKER_DIR/services/vast-pyworker"
+cd "$PYWORKER_DIR/packages/cloud/services/vast-pyworker"
 
 # 2. Install Python deps for the PyWorker (NOT for llama-server — that's
 #    the bundled binary in the image).

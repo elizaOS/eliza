@@ -1,3 +1,4 @@
+/** Verifies useHorizontalPager — velocity-aware momentum settle (#10717) through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Unit coverage for useHorizontalPager (#10717): velocity-aware momentum settle

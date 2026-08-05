@@ -1,3 +1,4 @@
+/** Verifies CockpitModePicker through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Interaction tests for CockpitModePicker: selecting a mode emits the right

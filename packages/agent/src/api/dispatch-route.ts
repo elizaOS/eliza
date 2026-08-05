@@ -38,6 +38,7 @@ import {
   type RuntimeRouteHostContext,
   setRuntimeRouteHostContext,
 } from "@elizaos/core";
+import type { X402PluginModule } from "./x402-contract.ts";
 
 // `@elizaos/plugin-x402` is optional: it is a desktop/cloud-only plugin and is
 // aliased to a null stub in the mobile agent bundle. Mirror the guarded loader
@@ -50,8 +51,6 @@ import {
 //     subsequent invocation would be an unhandled TypeError.
 // A `null` result means "no usable payment wrapper" — callers fall through to
 // the unwrapped legacy handler.
-type X402PluginModule = typeof import("@elizaos/plugin-x402");
-
 /**
  * Vet a resolved `@elizaos/plugin-x402` module: return it only when it exposes
  * usable payment helpers, otherwise `null`. The mobile bundle aliases the

@@ -72,6 +72,8 @@ function incomingMessageToWebBody(
 				}
 				controller.enqueue(nodeReadableChunkToUint8Array(next.value));
 			} catch (error) {
+				// error-policy:J1 The Web Stream controller is the consumer-facing
+				// transport boundary for failures from the Node response iterator.
 				cleanup();
 				controller.error(error);
 			}

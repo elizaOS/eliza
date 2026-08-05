@@ -1,4 +1,8 @@
-/** Supports app-core build, packaging, or development orchestration for pre review local mjs. */
+/**
+ * Local pre-review gate over the branch diff: scans changed source files for
+ * weak-typing patterns (`any`, @ts-expect-error) and checks that behavior
+ * changes come with tests, with an exemption list for docs/CI/tooling files.
+ */
 import { execFileSync, execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
@@ -51,11 +55,7 @@ export function isTestExempt(file) {
     )
   )
     return true;
-  if (
-    file.startsWith("test/helpers/") ||
-    file.startsWith("eliza/test/helpers/") ||
-    /(^|\/)test\/helpers\//.test(file)
-  )
+  if (file.startsWith("test/helpers/") || /(^|\/)test\/helpers\//.test(file))
     return true;
   // Submodule pointer changes appear as a single path with no extension.
   if (file === "eliza" || file === "eliza/cloud" || file === "eliza/steward-fi")
@@ -305,7 +305,7 @@ export function resolveRunnableTestFiles(testFiles, cwd = process.cwd()) {
 }
 
 export function buildRepoTestCommand(repoTests) {
-  return `bunx vitest run --config eliza/packages/test/vitest/unit.config.ts ${repoTests.join(" ")}`;
+  return `bunx vitest run --config eliza/packages/scripts/vitest/unit.config.ts ${repoTests.join(" ")}`;
 }
 
 export function shouldRunTargetedRegressionTests({
@@ -507,7 +507,7 @@ export function runChecks() {
 
         if (repoE2eTests.length > 0) {
           testCommands.push(
-            `bunx vitest run --config eliza/packages/test/vitest/e2e.config.ts ${repoE2eTests.join(" ")}`,
+            `bunx vitest run --config eliza/packages/scripts/vitest/e2e.config.ts ${repoE2eTests.join(" ")}`,
           );
         }
 

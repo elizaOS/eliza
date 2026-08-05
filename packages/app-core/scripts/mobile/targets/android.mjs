@@ -1,4 +1,8 @@
-/** Supports app-core build, packaging, or development orchestration for android mjs. */
+/**
+ * Frozen build-target definitions for the Android lanes (sideload, cloud, AOSP,
+ * ...): web target, gradle flags, cleartext policy, overlay options, and
+ * agent-runtime settings per lane.
+ */
 import {
   ANDROID_AOSP_GRADLE_FLAG,
   ANDROID_CLOUD_GRADLE_FLAGS,

@@ -1,3 +1,4 @@
+/** Verifies runStartingRuntime — managed cloud cold-boot warmup through the package's configured test harness. */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runStartingRuntime } from "./startup-phase-runtime";
 

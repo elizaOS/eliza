@@ -1,3 +1,4 @@
+/** Verifies free-rest release bands + detent magnetism (matrix: FREE / slow drag rows) through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // State-matrix gap coverage for the continuous chat sheet — the rows of
@@ -11,6 +12,7 @@
 // performance.now (jsdom otherwise reads every move as a flick).
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -96,14 +98,18 @@ const variant = () => sheet().getAttribute("data-variant");
  *  mid-gesture pointermove (release-time moves are flushed synchronously, but
  *  a sequence that must be OBSERVED in order — a reversal, a mid-drag commit —
  *  needs every critical sample delivered before the next). */
-const frame = (): Promise<void> =>
-  new Promise((resolve) => {
-    if (typeof requestAnimationFrame === "function") {
-      requestAnimationFrame(() => resolve());
-    } else {
-      resolve();
-    }
-  });
+const frame = async (): Promise<void> => {
+  await act(
+    () =>
+      new Promise<void>((resolve) => {
+        if (typeof requestAnimationFrame === "function") {
+          requestAnimationFrame(() => resolve());
+        } else {
+          resolve();
+        }
+      }),
+  );
+};
 
 /**
  * A deliberate SLOW drag: mocked monotonic clock + bridged event timestamps so
@@ -398,6 +404,7 @@ describe("no lingering state across consecutive gestures", () => {
     // A fresh short flick up must step to FULL — the previous gesture's
     // maximize peak is that gesture's state, not this one's.
     flick(grabber(), 400, 340);
+    await frame();
     expect(detent()).toBe("full");
     expect(maximized()).toBeNull();
   });
@@ -516,13 +523,14 @@ describe("one haptic per detent change; none sub-threshold (matrix invariant)", 
 });
 
 describe("thread-less grabber tap (matrix: INPUT tap row)", () => {
-  it("focuses the composer instead of opening an empty sheet", () => {
+  it("focuses the composer instead of opening an empty sheet", async () => {
     render(
       <ChatOverlay controller={makeController({ messages: [] } as never)} />,
     );
     const input = screen.getByLabelText("message");
     fireEvent.pointerDown(grabber(), { clientY: 420, pointerId: 47 });
     fireEvent.pointerUp(grabber(), { clientY: 420, pointerId: 47 });
+    await frame();
     expect(variant()).toBe("closed");
     expect(document.activeElement).toBe(input);
   });

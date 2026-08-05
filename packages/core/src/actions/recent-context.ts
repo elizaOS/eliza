@@ -4,9 +4,9 @@
  * array), strips language-agnostic speaker-prefix labels ("Name: …"), and dedupes
  * while preserving order. `recentConversationTexts` additionally falls back to
  * `runtime.getMemories` on the room's `messages` table when state alone is too
- * thin, degrading to state-only context if that read fails.
+ * thin. Storage failures propagate so missing history is not mistaken for a
+ * legitimately short conversation.
  */
-import { logger } from "../logger";
 import { getRecentMessagesData } from "../recent-messages-state";
 import type { IAgentRuntime, Memory, State } from "../types";
 
@@ -100,15 +100,9 @@ export async function recentConversationTexts(args: {
 			: [];
 		return dedupePreservingOrder([...memoryTexts, ...stateTexts].slice(-limit));
 	} catch (error) {
-		logger.warn(
-			{
-				boundary: "lifeops",
-				component: "life-recent-context",
-				roomId,
-				detail: error instanceof Error ? error.message : String(error),
-			},
-			"[life-recent-context] getMemories failed; falling back to state-only context",
-		);
-		return stateTexts;
+		// error-policy:J2 A failed history read is not equivalent to an empty room;
+		// report the room context and preserve the storage error.
+		args.runtime.reportError("RecentContext.getMemories", error, { roomId });
+		throw error;
 	}
 }

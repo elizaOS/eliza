@@ -1,3 +1,4 @@
+/** Verifies layout-shift-intent marker (#15257) through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Adversarial MOUSE-DRAG suite for the chat sheet's follow-the-finger contract,
@@ -25,6 +26,7 @@
 // ceiling 768, halfH 353, detent magnet 64.
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -105,13 +107,16 @@ function basisPx(): number | null {
  *  thread is mounted (a gesture through the pill unmounts it). */
 async function settleFrames(n = 3): Promise<void> {
   for (let i = 0; i < n; i += 1) {
-    await new Promise<void>((resolve) => {
-      if (typeof requestAnimationFrame === "function") {
-        requestAnimationFrame(() => resolve());
-      } else {
-        resolve();
-      }
-    });
+    await act(
+      () =>
+        new Promise<void>((resolve) => {
+          if (typeof requestAnimationFrame === "function") {
+            requestAnimationFrame(() => resolve());
+          } else {
+            resolve();
+          }
+        }),
+    );
   }
 }
 
