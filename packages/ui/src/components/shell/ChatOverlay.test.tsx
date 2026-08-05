@@ -1547,6 +1547,7 @@ describe("ChatOverlay", () => {
 
     const fade = screen.getByTestId("chat-thread-top-fade");
     const rim = screen.getByTestId("chat-sheet-rim");
+    const surface = screen.getByTestId("chat-sheet-surface");
     const viewport = screen.getByTestId("chat-thread-scroll");
     expect(fade.className).toContain("pointer-events-none");
     expect(fade.className).toContain("absolute");
@@ -1558,6 +1559,7 @@ describe("ChatOverlay", () => {
     expect(fade.style.backgroundImage).toContain("28%");
     expect(rim.className).toContain("z-40");
     expect(rim.className).toContain("border-border-strong");
+    expect(surface.className.split(/\s+/)).not.toContain("border");
     const content = screen.getByTestId("chat-content");
     expect(content.style.clipPath).toContain("inset(1px round");
     expect(viewport.style.maskImage).toBe("");
@@ -3699,7 +3701,7 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     });
   });
 
-  it("renders the top-20% pull-down restore zone ONLY while maximized", () => {
+  it("renders the top-bar pull-down restore zone ONLY while maximized", () => {
     const { controller } = makeSwipeController();
     render(<ChatOverlay controller={controller} />);
     // Not present at rest / half.
@@ -3708,6 +3710,7 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     // Appears once maximized.
     bigPullUp();
     expect(screen.getByTestId("chat-maximize-restore-zone")).toBeTruthy();
+    expect(screen.queryByTestId("chat-maximize-restore-handle")).toBeNull();
   });
 
   it("a downward pull in the top-20% restore zone exits full-bleed back to the overlay (not a full collapse)", () => {
@@ -3729,7 +3732,7 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(sheet.getAttribute("data-variant")).toBe("open");
   });
 
-  it("keeps full-screen filled until a restore pull crosses below 90%", async () => {
+  it("keeps a tap inert but follows a deliberate restore pull immediately", async () => {
     const { controller } = makeSwipeController();
     render(<ChatOverlay controller={controller} />);
     const sheet = screen.getByTestId("chat-sheet");
@@ -3739,9 +3742,8 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     const zone = screen.getByTestId("chat-maximize-restore-zone");
     const startY = 20;
     fireEvent.pointerDown(zone, { clientY: startY, pointerId: 81 });
-    const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
     fireEvent.pointerMove(zone, {
-      clientY: startY + viewportHeight * 0.05,
+      clientY: startY + 4,
       pointerId: 81,
     });
     await waitFor(() =>
@@ -3749,17 +3751,20 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     );
 
     fireEvent.pointerMove(zone, {
-      clientY: startY + viewportHeight * 0.12,
+      clientY: startY + 24,
+      pointerId: 81,
+    });
+    expect(sheet.getAttribute("data-maximized")).toBe("true");
+    expect(screen.queryByTestId("chat-maximize-restore-handle")).toBeNull();
+    expect(screen.queryByTestId("chat-sheet-grabber")).toBeNull();
+    expect(sheet.style.height).toBe("auto");
+    fireEvent.pointerUp(zone, {
+      clientY: startY + 24,
       pointerId: 81,
     });
     await waitFor(() =>
       expect(sheet.getAttribute("data-maximized")).toBeNull(),
     );
-    expect(sheet.style.height).toBe("auto");
-    fireEvent.pointerUp(zone, {
-      clientY: startY + viewportHeight * 0.12,
-      pointerId: 81,
-    });
   });
 
   it("rests a maximized restore below half at the released window height", async () => {
@@ -3771,9 +3776,8 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     const zone = screen.getByTestId("chat-maximize-restore-zone");
     fireEvent.pointerDown(zone, { clientY: 20, pointerId: 82 });
     fireEvent.pointerMove(zone, { clientY: 500, pointerId: 82 });
-    await waitFor(() =>
-      expect(sheet.getAttribute("data-maximized")).toBeNull(),
-    );
+    expect(sheet.getAttribute("data-maximized")).toBe("true");
+    expect(screen.queryByTestId("chat-sheet-grabber")).toBeNull();
     fireEvent.pointerUp(zone, { clientY: 500, pointerId: 82 });
 
     await waitFor(() =>
