@@ -2196,6 +2196,28 @@ function eventDateSearchTerms(event: LifeOpsCalendarEvent): Set<string> {
   );
 }
 
+function formatCalendarLocalDate(parts: {
+  year: number;
+  month: number;
+  day: number;
+}): string {
+  return `${String(parts.year).padStart(4, "0")}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+}
+
+function buildCalendarLocalDateAnchors(now: Date, timeZone: string): string {
+  const localDateParts = getZonedDateParts(now, timeZone);
+  const localDate = {
+    year: localDateParts.year,
+    month: localDateParts.month,
+    day: localDateParts.day,
+  };
+  return [
+    `yesterday = ${formatCalendarLocalDate(addDaysToLocalDate(localDate, -1))}`,
+    `today = ${formatCalendarLocalDate(localDate)}`,
+    `tomorrow = ${formatCalendarLocalDate(addDaysToLocalDate(localDate, 1))}`,
+  ].join(", ");
+}
+
 export async function extractCalendarPlanWithLlm(
   runtime: IAgentRuntime,
   message: Memory,
@@ -2212,46 +2234,7 @@ export async function extractCalendarPlanWithLlm(
     dateStyle: "full",
     timeStyle: "long",
   }).format(now);
-  // Derive "today/tomorrow/yesterday" explicitly in the user's timezone so the
-  // LLM does not have to do date arithmetic across the UTC/local boundary.
-  // Without this anchor we have observed the planner shift "tomorrow" by one
-  // day whenever local-midnight crosses the UTC day line.
-  const localDateParts = getZonedDateParts(now, timeZone);
-  const todayLocal = addDaysToLocalDate(
-    {
-      year: localDateParts.year,
-      month: localDateParts.month,
-      day: localDateParts.day,
-    },
-    0,
-  );
-  const tomorrowLocal = addDaysToLocalDate(
-    {
-      year: localDateParts.year,
-      month: localDateParts.month,
-      day: localDateParts.day,
-    },
-    1,
-  );
-  const yesterdayLocal = addDaysToLocalDate(
-    {
-      year: localDateParts.year,
-      month: localDateParts.month,
-      day: localDateParts.day,
-    },
-    -1,
-  );
-  const formatLocalDate = (parts: {
-    year: number;
-    month: number;
-    day: number;
-  }) =>
-    `${String(parts.year).padStart(4, "0")}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
-  const localDateAnchors = [
-    `yesterday = ${formatLocalDate(yesterdayLocal)}`,
-    `today = ${formatLocalDate(todayLocal)}`,
-    `tomorrow = ${formatLocalDate(tomorrowLocal)}`,
-  ].join(", ");
+  const localDateAnchors = buildCalendarLocalDateAnchors(now, timeZone);
   const instructions = resolveOptimizedPromptForRuntime(
     runtime,
     "calendar_extract",
@@ -2718,6 +2701,7 @@ async function inferCreateEventDetails(
     dateStyle: "full",
     timeStyle: "long",
   }).format(now);
+  const localDateAnchors = buildCalendarLocalDateAnchors(now, timeZone);
   const prompt = [
     "Extract calendar event creation fields from the request.",
     "The user may speak in any language.",
@@ -2739,8 +2723,8 @@ async function inferCreateEventDetails(
     "title: event title",
     "description: optional description",
     "location: optional location",
-    "startAt: ISO datetime if explicit or resolvable from a date phrase",
-    "endAt: ISO datetime if explicit",
+    "startAt: RFC 3339 datetime if explicit or resolvable from a date phrase; include the numeric UTC offset that represents the requested wall-clock time in the calendar timezone",
+    "endAt: RFC 3339 datetime if explicit; use the same offset rules as startAt",
     "durationMinutes: number if implied",
     "windowPreset: tomorrow_morning|tomorrow_afternoon|tomorrow_evening",
     "timeZone: IANA timezone if stated",
@@ -2750,8 +2734,10 @@ async function inferCreateEventDetails(
     "",
     `Current timezone: ${timeZone}`,
     `Calendar timezone for scheduling: ${calendarTimeZone}`,
+    `LOCAL DATE ANCHORS (authoritative — IGNORE UTC day for date arithmetic): ${localDateAnchors}.`,
     `Current local datetime: ${nowReadable}`,
-    `Current ISO datetime: ${nowIso}`,
+    `Current ISO datetime (informational only — do NOT use for 'today/tomorrow/yesterday'): ${nowIso}`,
+    "Resolve relative dates from the LOCAL DATE ANCHORS. Preserve the requested local clock time: for 9am in America/Los_Angeles emit 09:00 with the applicable -07:00/-08:00 offset, never 09:00Z. Use Z only when the calendar timezone is UTC.",
     "",
     `Current request:\n${currentMessage}`,
     `Resolved intent:\n${intent}`,
@@ -3820,6 +3806,10 @@ const calendarAction: CalendarHandlerAction = {
           explicitTitle,
           inferredTitle,
           intent,
+          // The outer planner identifies CALENDAR and supplies hints; this
+          // domain-specific extraction has the authoritative calendar context,
+          // timezone, and local-date anchors needed to normalize wall time.
+          preferExtractedDetails: true,
         });
         const { title, resolvedStartAt, resolvedWindowPreset, request } =
           createEventBuild;
@@ -4900,6 +4890,7 @@ const calendarAction: CalendarHandlerAction = {
       name: "details",
       description:
         "Optional structured calendar fields such as time bounds, timezone, calendar id, create-event timing, location, attendees, " +
+        "start/end datetimes must be RFC 3339 with a numeric offset matching timeZone (use Z only for UTC); " +
         'recurrence (RFC 5545 RRULE line(s) like "RRULE:FREQ=WEEKLY;BYDAY=MO" for repeating events), and recurrenceScope ' +
         '("instance" for one occurrence, "this_and_following" to split at the selected occurrence, "series" for the whole series).',
       required: false,
