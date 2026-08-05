@@ -424,6 +424,10 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 					"[voice:workbench --real] fused library does not support diarizer ABI",
 				);
 			}
+			// The workbench transcribes the entire matrix. Keep ASR resident for the
+			// run, matching LiveDiarizationSession, instead of reloading the model and
+			// audio projector for every scored turn.
+			ffi.mmapAcquire(ctx, "asr");
 			const encoder = await FusedSpeakerEncoder.load({
 				ffi,
 				ctx,
@@ -731,19 +735,14 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 	}
 
 	private async transcribe(pcm: Float32Array): Promise<string> {
-		this.ffi.mmapAcquire(this.ctx, "asr");
-		try {
-			if (this.ffi.timedAsrSupported?.()) {
-				return this.ffi
-					.asrTranscribeTimed({ ctx: this.ctx, pcm, sampleRateHz: SAMPLE_RATE })
-					.text.trim();
-			}
+		if (this.ffi.timedAsrSupported?.()) {
 			return this.ffi
-				.asrTranscribe({ ctx: this.ctx, pcm, sampleRateHz: SAMPLE_RATE })
-				.trim();
-		} finally {
-			this.ffi.mmapEvict(this.ctx, "asr");
+				.asrTranscribeTimed({ ctx: this.ctx, pcm, sampleRateHz: SAMPLE_RATE })
+				.text.trim();
 		}
+		return this.ffi
+			.asrTranscribe({ ctx: this.ctx, pcm, sampleRateHz: SAMPLE_RATE })
+			.trim();
 	}
 
 	async dispose(): Promise<void> {
@@ -756,8 +755,12 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 				try {
 					await this.diarizer.dispose();
 				} finally {
-					this.ffi.destroy(this.ctx);
-					this.ffi.close();
+					try {
+						this.ffi.mmapEvict(this.ctx, "asr");
+					} finally {
+						this.ffi.destroy(this.ctx);
+						this.ffi.close();
+					}
 				}
 			}
 		}
