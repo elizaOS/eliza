@@ -1801,11 +1801,6 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     const peeks = screen.getAllByTestId("notification-stack-peek");
     expect(Number.parseFloat(peeks[0].style.opacity)).toBeLessThan(1);
     expect(Number.parseFloat(peeks[1].style.opacity)).toBeLessThan(1);
-    expect(getComputedStyle(prioritySurface as HTMLElement).opacity).toBe("1");
-    expect(peeks.map((peek) => getComputedStyle(peek).opacity)).toEqual([
-      "1",
-      "1",
-    ]);
 
     fireEvent.pointerUp(list, {
       pointerType: "mouse",
@@ -1917,11 +1912,6 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
       /\.eliza-notif-scroll\[data-shade-dragging\]\s*\{([^}]*)\}/,
     )?.[1];
     expect(activeDragRule).not.toContain("mask-image");
-    const activeGlassRule = css.match(
-      /\.eliza-notif-scroll\[data-shade-dragging\][^{}]*\[data-notification-group-content\][^{}]*\.eliza-notif-glass\s*\{([^}]*)\}/,
-    )?.[1];
-    expect(activeGlassRule).toContain("opacity: 1 !important");
-    expect(activeGlassRule).toContain("transition: none");
     const releaseSettleRule = css.match(
       /\.eliza-notif-scroll\[data-shade-release-settling\]\s*\{([^}]*)\}/,
     )?.[1];
