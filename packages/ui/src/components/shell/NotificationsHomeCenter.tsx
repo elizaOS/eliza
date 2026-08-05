@@ -16,9 +16,9 @@
  *
  * Two shade modes:
  *
- *  - RESTED is triage: interrupt-tier (`high`/`urgent`) producer stacks remain
- *    visible above the interactive total while quieter notifications stay folded
- *    behind the same producer's visible stack depth.
+ *  - RESTED is closed: no notification card remains visible or interactive.
+ *    Interrupt-tier producer shells stay mounted only to preserve identity and
+ *    geometry across the close/reopen transition.
  *  - EXPANDED shows every priority and preserves each producer stack until the
  *    user fans that group out in place; the list is height-capped and scrolls
  *    internally.
@@ -133,7 +133,6 @@ import {
   applyNotificationPullPresentation,
   clearNotificationPullVisibilityOverrides,
   dampenPull,
-  notificationGroupContainerOffset,
   notificationGroupPullOffset,
   notificationGroupPullVisibility,
   notificationPullOvershootOffset,
@@ -2478,6 +2477,7 @@ export function NotificationsHomeCenter({
   const previewingExpansion =
     canExpand &&
     (pullDirection === "expand" || pullCancellingDirection === "expand");
+  const shadeAtRest = !shadeExpanded && !previewingExpansion;
   const groups = shadeExpanded
     ? expandedGroups
     : previewingExpansion
@@ -2657,7 +2657,8 @@ export function NotificationsHomeCenter({
         {groups.map((group, groupIndex) => {
           const allGroupRows = allGroupRowsByKey.get(group.key) ?? group.rows;
           const groupWasRested = restedGroupKeys.has(group.key);
-          const pullRevealed = previewingExpansion && !groupWasRested;
+          const pullRevealed = previewingExpansion;
+          const groupAtRest = shadeAtRest && groupWasRested;
           const revealProgress = pullRevealed
             ? notificationGroupPullVisibility(
                 pullPx,
@@ -2680,17 +2681,14 @@ export function NotificationsHomeCenter({
             closeVisibility,
             shadeOpenVisibility,
           );
-          const groupContainerOffset = notificationGroupContainerOffset(
-            pullPx,
-            shadeExpanded,
-            shadeClosing,
-          );
           const preservingCardMaterial =
             shadeExpanded && (pullDirection === "collapse" || shadeClosing);
           const groupContentVisibility = pullRevealed
             ? revealProgress
             : groupWasRested && !preservingCardMaterial
-              ? 1
+              ? groupAtRest
+                ? 0
+                : 1
               : groupVisibility;
           // A card follows the finger as one physical surface. Fading its
           // ancestor during direct manipulation also fades the glass rim,
@@ -2703,19 +2701,16 @@ export function NotificationsHomeCenter({
           const groupContentPullOffset = pullRevealed
             ? (1 - revealProgress) * -8
             : groupWasRested
-              ? 0
-              : notificationGroupPullOffset(
-                  pullPx,
-                  shadeExpanded,
-                  shadeClosing,
-                  groupVisibility,
-                );
+              ? groupAtRest
+                ? -8
+                : 0
+              : notificationGroupPullOffset(groupVisibility);
           // Framer Motion owns the outer group's layout transform. Keeping the
           // finger-tracked transform on this stable child lets a committed
           // preview continue into its CSS settle without either system
           // replacing the other's transform at pointer-up.
           const groupContentOffset =
-            groupContainerOffset + groupContentPullOffset + pullOvershootOffset;
+            groupContentPullOffset + pullOvershootOffset;
           const stackExpanded = expandedStacks.has(group.key);
           // Every presentation shares one shell, so the top NotificationRow
           // stays under the same parent/key while a fanned stack closes.
@@ -2807,7 +2802,8 @@ export function NotificationsHomeCenter({
               data-notification-stack-closing={stackClosing ? "" : undefined}
               data-rested-notification-group={groupWasRested ? "" : undefined}
               data-notification-pull-reveal={pullRevealed ? "" : undefined}
-              inert={pullRevealed ? true : undefined}
+              aria-hidden={groupAtRest ? true : undefined}
+              inert={pullRevealed || groupAtRest ? true : undefined}
               className={cn(
                 "relative flex flex-col",
                 pullRevealed &&
@@ -2833,7 +2829,7 @@ export function NotificationsHomeCenter({
                       : 0,
                   opacity: groupPresentationVisibility,
                   transform: `translate3d(0, ${groupContentOffset}px, 0)`,
-                  transition: isPulling ? "none" : undefined,
+                  transition: isPulling || groupAtRest ? "none" : undefined,
                 }}
               >
                 {fanned ? (
