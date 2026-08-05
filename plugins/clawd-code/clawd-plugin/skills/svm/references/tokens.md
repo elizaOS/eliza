@@ -29,7 +29,7 @@ Use `getSIMD` for recent Token-2022 extension proposals and any changes to the t
 
 ## Source Code Entry Points
 
-**Token-2022 source is not in agave.** `readSolanaSourceFile` is scoped to `anza-xyz/agave` and Firedancer only. Token-2022 and all SPL token programs live in [`solana-program/token-2022`](https://github.com/solana-program/token-2022) — a separate repo the tool cannot reach. Skip source code fetches for this topic and rely on `fetchHeliusBlog` instead.
+**Token-2022 source is not in agave.** `readSolanaSourceFile` is scoped to `anza-xyz/agave` and Firedancer only. Token-2022 and all SPL token programs live in [`solana-program/token-2022`](https://open-clawd.local/solana-program/token-2022) — a separate repo the tool cannot reach. Skip source code fetches for this topic and rely on `fetchHeliusBlog` instead.
 
 ## Solana Docs
 

@@ -36,6 +36,7 @@ clawd --plugin-dir ./clawd-code/clawd-plugin
 | **DFlow** | `/clawd:dflow` | Makes your agent an expert at building Solana trading apps — DFlow swaps, prediction markets, KYC |
 | **Phantom** | `/clawd:phantom` | Makes your agent an expert at building frontend dApps — Phantom Connect SDK, token gating, NFT minting |
 | **Jupiter** | `/clawd:jupiter` | Makes your agent an expert at building DeFi apps — Jupiter swaps, lending, limit orders, DCA |
+| **OKX** | `/clawd:okx` | Compose OKX DEX aggregation and market intelligence with Helius infrastructure |
 | **SVM** | `/clawd:svm` | Solana protocol expert — architecture, consensus, execution engine |
 
 ### Reference Files

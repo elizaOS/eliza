@@ -71,6 +71,20 @@ Eliza Cloud as a backend, and application development. It also ships
 issues and independently reviewing or repairing open pull requests with exact
 model attribution.
 
+Solana / Helius skills are also bundled for agent builders:
+
+| Skill | Use for |
+| --- | --- |
+| `helius` | Helius RPC, DAS, Sender, webhooks, streaming, wallet API |
+| `helius-dflow` | DFlow spot/PM trading composed with Helius |
+| `helius-jupiter` | Jupiter DeFi + Helius execution |
+| `helius-okx` | OKX aggregation + Helius infrastructure |
+| `helius-phantom` | Phantom Connect frontends + Helius |
+| `svm` | Solana architecture and protocol internals |
+
+Operator notes for the Helius suite live under `docs/helius-skills.md` and
+`docs/helius-system-prompts.md`.
+
 ## Skill Discovery
 
 Skills are loaded from multiple locations in precedence order (later overrides earlier):

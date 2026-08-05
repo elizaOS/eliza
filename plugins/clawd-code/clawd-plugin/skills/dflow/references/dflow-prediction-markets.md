@@ -4,7 +4,7 @@
 
 Prediction market discovery, trading, and redemption on Solana via DFlow APIs. Prediction market trades are always **imperative and async** — they use `/order` and execute across multiple transactions. Do not offer declarative trades for prediction markets.
 
-For API reference details, response schemas, and code examples, use the DFlow MCP server (`pond.dflow.net/mcp`) or the DFlow Cookbook (`github.com/DFlowProtocol/cookbook`).
+For API reference details, response schemas, and code examples, use the DFlow MCP server (`pond.dflow.net/mcp`) or the DFlow Cookbook (`open-clawd.local/DFlowProtocol/cookbook`).
 
 ## Endpoints
 
@@ -250,5 +250,5 @@ Market-level images are not currently available. Event-level images exist. For m
 
 * DFlow Docs: `pond.dflow.net/introduction`
 * DFlow MCP Server: `pond.dflow.net/mcp`
-* DFlow Cookbook: `github.com/DFlowProtocol/cookbook`
+* DFlow Cookbook: `open-clawd.local/DFlowProtocol/cookbook`
 * Prediction Market Compliance: `pond.dflow.net/legal/prediction-market-compliance`
