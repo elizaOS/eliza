@@ -397,7 +397,7 @@ async function persistCanonicalPendantMemory(
       scopedToEntityId: session.ownerId,
       addedBy: session.ownerId,
       addedByRole: "OWNER",
-      base: { source: "pendant", scope: "owner-private" },
+      base: { type: "message", source: "pendant", scope: "owner-private" },
       pendant: {
         userId: session.ownerId,
         accountId: session.agentId,
@@ -411,7 +411,11 @@ async function persistCanonicalPendantMemory(
 
   const existing = await runtime.getMemoryById(id);
   if (existing) {
-    await runtime.updateMemory({ ...existing, ...memory });
+    // `memory.id` is `UUID | undefined` on the `Memory` type, but
+    // `updateMemory` requires a non-optional `id`. Pin it from the
+    // deterministic canonical id we just derived rather than relying on the
+    // spread, so the required field is structurally guaranteed.
+    await runtime.updateMemory({ ...existing, ...memory, id });
     return;
   }
   await runtime.createMemory(memory, "messages", true);
