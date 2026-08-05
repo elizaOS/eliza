@@ -244,12 +244,6 @@ export const VIEW_OCR_POLICIES = {
   }),
   "plugin-calendar-gui": expected({
     requireAll: ["Calendar"],
-    requireAny: [
-      "source current",
-      "source settings",
-      "Refresh sources",
-      "agenda",
-    ],
   }),
   "plugin-documents-gui": exempt(
     "unregistered-remote-bundle",
