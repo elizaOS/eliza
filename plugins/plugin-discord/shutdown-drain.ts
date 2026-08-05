@@ -24,9 +24,22 @@ import type { StatusReactionController } from "./status-reactions";
  */
 export const DISCORD_SHUTDOWN_DRAIN_TIMEOUT_MS = 10_000;
 
+/**
+ * Second, shorter ceiling on waiting for an ABANDONED reaction to reach its
+ * terminal emoji. `abandon()` only enqueues that transition on the controller's
+ * serial chain, so returning immediately would let `stop()` destroy the client
+ * mid-reconcile — but this path is already the one where something is not
+ * finishing, so the wait must be tightly bounded rather than generous.
+ */
+export const DISCORD_REACTION_RECONCILE_TIMEOUT_MS = 2_000;
+
 interface TrackedTurn {
 	promise: Promise<unknown>;
 	statusReactions: StatusReactionController | null;
+	/** The handler promise has settled (resolved or rejected). */
+	handlerSettled: boolean;
+	/** The status reaction reached a terminal state, or there is none to reach. */
+	reactionSettled: boolean;
 }
 
 export interface DiscordDrainResult {
@@ -60,7 +73,14 @@ export interface DiscordTurnDrainRegistry {
 export function createTurnDrainRegistry(): DiscordTurnDrainRegistry {
 	const turns = new Map<string, TrackedTurn>();
 
-	const untrack = (messageId: string, entry: TrackedTurn): void => {
+	// A turn leaves the registry only when BOTH halves are done: the handler has
+	// settled AND its status reaction reached a terminal state. Retiring on the
+	// handler alone removed the entry while its reaction was still mid-chain, so
+	// a drain running in that window never saw the turn at all — it reported the
+	// success path and left the reaction stranded in-progress, which is the
+	// exact state this module exists to prevent (#17749 review, @wtfsayo).
+	const untrackIfComplete = (messageId: string, entry: TrackedTurn): void => {
+		if (!entry.handlerSettled || !entry.reactionSettled) return;
 		if (turns.get(messageId) === entry) {
 			turns.delete(messageId);
 		}
@@ -73,8 +93,13 @@ export function createTurnDrainRegistry(): DiscordTurnDrainRegistry {
 		const entry = turns.get(messageId) ?? {
 			promise,
 			statusReactions: null,
+			handlerSettled: false,
+			// No controller registered means there is no reaction to reconcile;
+			// trackStatusReaction flips this back when one arrives.
+			reactionSettled: true,
 		};
 		entry.promise = promise;
+		entry.handlerSettled = false;
 		turns.set(messageId, entry);
 		promise
 			// error-policy:J5 the real rejection is observed and handled by
@@ -84,7 +109,10 @@ export function createTurnDrainRegistry(): DiscordTurnDrainRegistry {
 			// sites). This chain only needs settlement to know the turn is no
 			// longer in flight, not the error value.
 			.catch(() => undefined)
-			.finally(() => untrack(messageId, entry));
+			.finally(() => {
+				entry.handlerSettled = true;
+				untrackIfComplete(messageId, entry);
+			});
 	};
 
 	const trackStatusReaction = (
@@ -94,10 +122,18 @@ export function createTurnDrainRegistry(): DiscordTurnDrainRegistry {
 		const entry = turns.get(messageId) ?? {
 			promise: Promise.resolve(),
 			statusReactions: controller,
+			// A reaction registered before its turn: the handler half is not
+			// outstanding until trackTurn supplies one.
+			handlerSettled: true,
+			reactionSettled: false,
 		};
 		entry.statusReactions = controller;
+		entry.reactionSettled = false;
 		turns.set(messageId, entry);
-		controller.whenFinished.then(() => untrack(messageId, entry));
+		controller.whenFinished.then(() => {
+			entry.reactionSettled = true;
+			untrackIfComplete(messageId, entry);
+		});
 	};
 
 	const pendingCount = (): number => turns.size;
@@ -146,11 +182,39 @@ export function createTurnDrainRegistry(): DiscordTurnDrainRegistry {
 
 		const abandonedMessageIds: string[] = [];
 		if (timedOut) {
+			// Decide from the SNAPSHOT and from the reaction's own state, never
+			// from `turns.has()`: the handler's `finally` untracks the entry as
+			// soon as the handler settles, so a turn whose handler finished
+			// while its reaction was still mid-chain is already gone from the
+			// map by the time the timeout fires. Gating on membership therefore
+			// skipped exactly the case that needs reconciling — leaving an
+			// in-progress reaction stranded AND reporting the success path,
+			// because `abandonedMessageIds` came back empty (#17749 review,
+			// @wtfsayo).
+			const reconciled: Array<Promise<void>> = [];
 			for (const [messageId, entry] of entries) {
-				if (turns.has(messageId)) {
-					entry.statusReactions?.abandon();
-					abandonedMessageIds.push(messageId);
-				}
+				const reactions = entry.statusReactions;
+				if (!reactions || entry.reactionSettled) continue;
+				reactions.abandon();
+				abandonedMessageIds.push(messageId);
+				reconciled.push(reactions.whenFinished);
+			}
+			// `abandon()` only enqueues the terminal transition on the
+			// controller's serial chain; the Discord API call is async. Awaiting
+			// the resulting `whenFinished` keeps `stop()` from destroying the
+			// client mid-reconcile — under its own ceiling, because the whole
+			// point of this path is that something is already not finishing.
+			if (reconciled.length > 0) {
+				await Promise.race([
+					Promise.all(reconciled).then(() => undefined),
+					new Promise<void>((resolve) => {
+						const reconcileTimer = setTimeout(
+							resolve,
+							DISCORD_REACTION_RECONCILE_TIMEOUT_MS,
+						);
+						reconcileTimer.unref?.();
+					}),
+				]);
 			}
 		}
 		return { observedCount: entries.length, abandonedMessageIds };

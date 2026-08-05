@@ -82,11 +82,27 @@ describe("DiscordService#stop shutdown drain", () => {
 		const service = makeService(runtime);
 		const controller = makeController();
 
-		service.trackInFlightTurn("msg-inflight", delay(5));
+		// The turn must settle its REACTION as well as its handler, exactly as a
+		// real turn does by calling setDone() on its way out. Tracking only a
+		// resolving handler leaves `whenFinished` pending forever, so the drain
+		// can only end via the timeout — and the case would pass for the wrong
+		// reason while claiming to prove the success path. Caught in review by
+		// @wtfsayo, who spotted the 10s duration on a test that should be
+		// instant; the elapsed-time assertion below is what keeps it honest.
+		const turn = delay(5).then(() => {
+			controller.setDone();
+		});
+		service.trackInFlightTurn("msg-inflight", turn);
 		service.trackStatusReaction("msg-inflight", controller);
 
+		const startedAt = Date.now();
 		await service.stop();
+		const elapsedMs = Date.now() - startedAt;
 
+		// Well under DISCORD_SHUTDOWN_DRAIN_TIMEOUT_MS: the drain must have won
+		// on settleAll, not on the timer.
+		expect(elapsedMs).toBeLessThan(1_000);
+		expect(controller.setDone).toHaveBeenCalledTimes(1);
 		expect(controller.abandon).not.toHaveBeenCalled();
 		expect(runtime.logger.warn).not.toHaveBeenCalledWith(
 			expect.anything(),

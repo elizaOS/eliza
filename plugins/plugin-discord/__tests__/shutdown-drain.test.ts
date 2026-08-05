@@ -42,7 +42,12 @@ describe("createTurnDrainRegistry", () => {
 	it("drains an in-flight turn that resolves before the timeout", async () => {
 		const registry = createTurnDrainRegistry();
 		const controller = makeController();
-		const turn = delay(5);
+		// A real turn reconciles its own reaction on the way out (setDone), so
+		// the fixture must too — a handler that settles while its reaction stays
+		// pending forever is the STRANDED case, covered separately below.
+		const turn = delay(5).then(() => {
+			controller.setDone();
+		});
 
 		registry.trackTurn("msg-1", turn);
 		registry.trackStatusReaction("msg-1", controller);
@@ -101,7 +106,11 @@ describe("createTurnDrainRegistry", () => {
 
 		const result = await registry.drain(20);
 
-		expect(result.abandonedMessageIds).toEqual(["msg-no-reaction"]);
+		// Nothing to reconcile: abandonment now reports the reactions that were
+		// forced to a terminal state, and this turn never had one. It is still
+		// observed, so the operator still sees that a turn was outstanding.
+		expect(result.observedCount).toBe(1);
+		expect(result.abandonedMessageIds).toEqual([]);
 	});
 
 	it("tracks a status reaction registered before the turn promise itself", async () => {
@@ -125,7 +134,12 @@ describe("createTurnDrainRegistry", () => {
 		const fastController = makeController();
 		const slowController = makeController();
 
-		registry.trackTurn("msg-fast", delay(1));
+		registry.trackTurn(
+			"msg-fast",
+			delay(1).then(() => {
+				fastController.setDone();
+			}),
+		);
 		registry.trackStatusReaction("msg-fast", fastController);
 		registry.trackTurn("msg-slow", new Promise<void>(() => undefined));
 		registry.trackStatusReaction("msg-slow", slowController);
@@ -223,5 +237,27 @@ describe("createTurnDrainRegistry", () => {
 		const result = await drained;
 		expect(result.abandonedMessageIds).toEqual([]);
 		expect(controller.abandon).not.toHaveBeenCalled();
+	});
+	it("abandons a reaction still mid-transition even after its handler untracked the entry (#17749 review)", async () => {
+		// The handler's `finally` removes the entry as soon as the handler
+		// settles, so a turn whose reaction is still mid-chain at the bound is
+		// already gone from the map. Gating abandonment on map membership
+		// therefore skipped exactly the case that needs reconciling: the
+		// reaction stayed stranded in-progress AND the drain reported the
+		// success path. Requested by @wtfsayo; fails against the previous
+		// implementation, which returned no abandoned ids here.
+		const registry = createTurnDrainRegistry();
+		const controller = makeController();
+
+		// Handler resolves immediately; the reaction never reaches a terminal
+		// state on its own.
+		registry.trackTurn("msg-stranded", Promise.resolve());
+		registry.trackStatusReaction("msg-stranded", controller);
+		await new Promise((resolve) => setTimeout(resolve, 10));
+
+		const result = await registry.drain(30);
+
+		expect(result.abandonedMessageIds).toEqual(["msg-stranded"]);
+		expect(controller.abandon).toHaveBeenCalledTimes(1);
 	});
 });
