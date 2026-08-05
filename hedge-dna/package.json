@@ -1,0 +1,17 @@
+{
+  "name": "@openclawd/hedge-dna",
+  "version": "1.0.0",
+  "description": "Hybrid of hedge lobster personas and DNA soul/identity continuity for OpenClawd agents.",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "validate": "node validate.mjs"
+  },
+  "files": [
+    "*.json",
+    "*.md",
+    "README.md",
+    "validate.mjs"
+  ]
+}

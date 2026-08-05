@@ -1,0 +1,37 @@
+{
+  "name": "@openclawd/hedge-dna",
+  "version": "1.0.0",
+  "description": "Hybrid hedge lobster persona set fused with DNA soul continuity.",
+  "local_personas": [
+    "hedgedna.json"
+  ],
+  "dna": [
+    "IDENTITY.md",
+    "SOUL.md",
+    "TOOLS.md",
+    "USER.md"
+  ],
+  "lineage": {
+    "hedge": [
+      "activistpinch.json",
+      "latticeclaw.json",
+      "moatmaw.json",
+      "soltoshi.json",
+      "valueclaw.json"
+    ],
+    "dna": [
+      "IDENTITY.MD",
+      "SOUL.MD",
+      "TOOLS.MD",
+      "USER.MD",
+      "BOOTSTRAP.MD.COMPLETED"
+    ]
+  },
+  "modes": [
+    "value",
+    "moat",
+    "lattice",
+    "activist",
+    "builder"
+  ]
+}
