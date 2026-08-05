@@ -1,12 +1,16 @@
 /**
  * Fish Audio plugin TTS tests with an in-memory WebSocket.
  *
- * Live Fish Audio coverage runs only with explicitly supplied credentials:
+ * Live Fish Audio coverage runs only with explicitly supplied credentials and
+ * can write an inspectable WAV when `FISH_AUDIO_EVIDENCE_PATH` is provided:
  * `ELIZA_TTS_FISH_ENABLED=true FISH_AUDIO_API_KEY=... FISH_AUDIO_REFERENCE_ID=... \
+ * FISH_AUDIO_EVIDENCE_PATH=/tmp/fish-audio-evidence.wav \
  * bun run --cwd plugins/plugin-fish-audio test -- \
  * --testNamePattern "live Fish Audio"`.
  */
 
+import { createHash } from "node:crypto";
+import { writeFile } from "node:fs/promises";
 import { type IAgentRuntime, ModelType } from "@elizaos/core";
 import { decode, encode } from "@msgpack/msgpack";
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -88,6 +92,27 @@ function runtime(
     getSetting: (key: string) => settings[key],
     registerModel: vi.fn(),
   } as unknown as IAgentRuntime;
+}
+
+function wrapPcm16MonoAsWav(pcm: Uint8Array, sampleRate: number): Uint8Array {
+  const header = Buffer.alloc(44);
+  header.write("RIFF", 0, "ascii");
+  header.writeUInt32LE(36 + pcm.byteLength, 4);
+  header.write("WAVE", 8, "ascii");
+  header.write("fmt ", 12, "ascii");
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(1, 22);
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(sampleRate * 2, 28);
+  header.writeUInt16LE(2, 32);
+  header.writeUInt16LE(16, 34);
+  header.write("data", 36, "ascii");
+  header.writeUInt32LE(pcm.byteLength, 40);
+  const wav = new Uint8Array(header.byteLength + pcm.byteLength);
+  wav.set(header);
+  wav.set(pcm, header.byteLength);
+  return wav;
 }
 
 function sentFrames(): Record<string, unknown>[] {
@@ -258,10 +283,23 @@ describe("fishAudioPlugin", () => {
     expect(result).toEqual(new Uint8Array([5, 6]));
   });
 
+  test("wraps live PCM evidence in a valid mono WAV container", () => {
+    const wav = wrapPcm16MonoAsWav(new Uint8Array([1, 2, 3, 4]), 24_000);
+    const view = new DataView(wav.buffer, wav.byteOffset, wav.byteLength);
+
+    expect(Buffer.from(wav.subarray(0, 4)).toString("ascii")).toBe("RIFF");
+    expect(Buffer.from(wav.subarray(8, 12)).toString("ascii")).toBe("WAVE");
+    expect(view.getUint16(22, true)).toBe(1);
+    expect(view.getUint32(24, true)).toBe(24_000);
+    expect(view.getUint16(34, true)).toBe(16);
+    expect(view.getUint32(40, true)).toBe(4);
+    expect(wav.subarray(44)).toEqual(new Uint8Array([1, 2, 3, 4]));
+  });
+
+  const liveReferenceId =
+    process.env.FISH_AUDIO_REFERENCE_ID ?? process.env.FISH_AUDIO_VOICE_ID;
   const liveTest =
-    process.env.FISH_AUDIO_API_KEY && process.env.FISH_AUDIO_REFERENCE_ID
-      ? test
-      : test.skip;
+    process.env.FISH_AUDIO_API_KEY && liveReferenceId ? test : test.skip;
 
   liveTest(
     "live Fish Audio realtime WebSocket returns PCM bytes",
@@ -269,18 +307,46 @@ describe("fishAudioPlugin", () => {
       configureFishAudioWebSocketFactory(
         (url, options) => new WebSocket(url, { headers: options.headers }),
       );
+      const startedAt = performance.now();
       const result = await handleFishAudioTextToSpeech(
         runtime({
           ELIZA_TTS_FISH_ENABLED: "true",
           FISH_AUDIO_API_KEY: process.env.FISH_AUDIO_API_KEY,
-          FISH_AUDIO_REFERENCE_ID: process.env.FISH_AUDIO_REFERENCE_ID,
+          FISH_AUDIO_REFERENCE_ID: liveReferenceId,
         }),
-        { text: "Fish Audio live integration test." },
+        { text: "Fish Audio live integration test.", audioStream: true },
       );
-      if (!(result instanceof Uint8Array))
-        throw new Error("Expected buffered PCM bytes");
-      expect(result.byteLength).toBeGreaterThan(0);
+      if (result instanceof Uint8Array)
+        throw new Error("Expected streaming Fish Audio result");
+
+      let firstAudioMs: number | undefined;
+      for await (const chunk of result.audioStream) {
+        if (chunk.byteLength > 0 && firstAudioMs === undefined)
+          firstAudioMs = performance.now() - startedAt;
+      }
+      const pcm = await result.bytes;
+      const totalMs = performance.now() - startedAt;
+      expect(firstAudioMs).toBeDefined();
+      expect(pcm.byteLength).toBeGreaterThan(0);
+      expect(pcm.byteLength % 2).toBe(0);
+
+      const wav = wrapPcm16MonoAsWav(pcm, 24_000);
+      const evidencePath = process.env.FISH_AUDIO_EVIDENCE_PATH;
+      if (evidencePath) await writeFile(evidencePath, wav);
+      process.stdout.write(
+        `${JSON.stringify({
+          event: "fish_audio_live_evidence",
+          model: process.env.FISH_AUDIO_MODEL ?? "s2.1-pro",
+          sampleRate: 24_000,
+          firstAudioMs: Math.round(firstAudioMs ?? 0),
+          totalMs: Math.round(totalMs),
+          pcmBytes: pcm.byteLength,
+          wavBytes: wav.byteLength,
+          wavSha256: createHash("sha256").update(wav).digest("hex"),
+          evidenceWritten: evidencePath !== undefined,
+        })}\n`,
+      );
     },
-    30_000,
+    60_000,
   );
 });
