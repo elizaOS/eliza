@@ -84,7 +84,7 @@ export interface FirstRunFinishPorts {
    * Interactive Cloud login entry point: pre-opens the named popup window
    * itself, so the first-run flow cannot omit it (#17129). Use this for
    * user-facing login; the deliberate same-tab boot-recovery path lives on
-   * `handleCloudLoginRecovery` (use-boot-recovery-conductor).
+   * the separately-named recovery entry point (use-boot-recovery-conductor).
    */
   handleInteractiveCloudLogin: (options?: CloudLoginOptions) => Promise<void>;
   setRuntimeState: (

@@ -52,6 +52,7 @@ import {
   navigateToSameTabCloudLogin,
   preOpenCloudLoginWindow,
   shouldUseSameTabCloudLogin,
+  takeClaimedCloudLoginWindow,
 } from "./cloud-login-launch";
 import {
   getInjectedEthereumProvider,
@@ -1192,18 +1193,26 @@ export function useCloudState({
 
   /**
    * Interactive Cloud login entry point for user-facing buttons (Settings,
-   * dashboard, onboarding, connectors upsell). It pre-opens the named popup
-   * window itself, so an interactive call site CANNOT omit the popup — the
-   * defect class fixed in #17064 (an interactive caller forgetting the popup
-   * and silently choosing document-destroying same-tab navigation on hosted
-   * desktop) is unrepresentable through this entry point. Callers that
-   * deliberately need the same-tab recovery path (non-interactive boot
-   * recovery, use-boot-recovery-conductor) use `handleCloudLoginRecovery`
-   * with no window — that path is separately named and deliberate there.
+   * dashboard, onboarding, connectors upsell). It is reached from a click
+   * handler whose user activation the handler already used to pre-open the
+   * popup synchronously (claimCloudLoginWindow); it consumes that handle here.
+   * A window.open inside THIS function would run only after the awaits that
+   * precede it (first-run provisioning, status probes), when transient user
+   * activation has lapsed and the browser would block it — falling back to
+   * same-tab and re-opening the #17064 defect. The type-level contract is
+   * preserved: interactive call sites cannot omit the popup, and the raw
+   * null-window path stays off AppActions (handleCloudLoginRecovery is the
+   * only sanctioned route to it). Callers that deliberately need the same-tab
+   * recovery path (non-interactive boot recovery, use-boot-recovery-conductor)
+   * use `handleCloudLoginRecovery` with no window — separately named there.
    */
   const handleInteractiveCloudLogin = useCallback(
     (options?: CloudLoginOptions): Promise<void> => {
-      const prePoppedWindow = preOpenCloudLoginWindow();
+      // Prefer the handle claimed synchronously in the click handler; fall back
+      // to a here-and-now pre-open only for callers that reach this entry point
+      // without an explicit claim (keeps it best-effort and popup-safe).
+      const prePoppedWindow =
+        takeClaimedCloudLoginWindow() ?? preOpenCloudLoginWindow();
       return handleCloudLogin(prePoppedWindow, options);
     },
     [handleCloudLogin],

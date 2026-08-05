@@ -91,6 +91,36 @@ export function preOpenCloudLoginWindow(): Window | null {
   return preOpenWindow(CLOUD_LOGIN_POPUP_NAME);
 }
 
+// Stash for a popup opened synchronously inside a user gesture. The interactive
+// login entry point may be reached only after network round-trips (first-run
+// provisioning), which consume transient user activation — a window.open there
+// gets blocked. Interactive call sites instead call `claimCloudLoginWindow()`
+// first, inside their click handler while the browser still considers the page
+// user-activated; the entry point then consumes the stashed handle. Keeping it
+// a plain module handle (not passed as an argument) preserves the type-level
+// contract: the raw null-window path stays off AppActions.
+let stashedCloudLoginWindow: Window | null = null;
+
+/**
+ * Synchronously pre-open the cloud-login popup and stash the handle. Call this
+ * in a click handler — while user activation is still live — right before the
+ * (possibly async) interactive login entry point. Returns the stashed window.
+ */
+export function claimCloudLoginWindow(): Window | null {
+  stashedCloudLoginWindow = preOpenCloudLoginWindow();
+  return stashedCloudLoginWindow;
+}
+
+/**
+ * Consume the gesture-claimed popup handle, if any. The interactive login entry
+ * point calls this instead of (or before falling back to) pre-opening itself.
+ */
+export function takeClaimedCloudLoginWindow(): Window | null {
+  const claimed = stashedCloudLoginWindow;
+  stashedCloudLoginWindow = null;
+  return claimed;
+}
+
 /**
  * Whether the cloud sign-in should navigate THIS tab to the same-origin
  * `/login` page instead of driving the popup device-code flow. True on plain

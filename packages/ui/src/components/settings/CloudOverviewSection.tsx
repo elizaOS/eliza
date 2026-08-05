@@ -19,6 +19,7 @@ import {
 import { useCallback } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { useAppSelectorShallow } from "../../state";
+import { claimCloudLoginWindow } from "../../state/cloud-login-launch";
 import { Button } from "../ui/button";
 import { CloudAgentsSection } from "./CloudAgentsSection";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
@@ -78,6 +79,10 @@ export function CloudOverviewSection() {
   }));
 
   const handleConnect = useCallback(() => {
+    // Pre-open the popup synchronously while the click's user activation is
+    // still live — the login entry point is async and would otherwise lose
+    // activation to its awaits (#17064 regression guard).
+    claimCloudLoginWindow();
     void handleInteractiveCloudLogin().catch((error) => {
       setActionNotice(
         error instanceof Error ? error.message : "Could not start Cloud login.",

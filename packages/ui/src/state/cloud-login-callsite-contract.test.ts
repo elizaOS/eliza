@@ -3,9 +3,13 @@
  *
  * Dynamically enumerates every production `.ts`/`.tsx` source under
  * `packages/ui/src`, excludes tests/specs/generated, and asserts:
- *   1. No source invokes the raw null-window path (`handleCloudLogin(`).
+ *   1. No source references the raw null-window path (`handleCloudLogin` —
+ *      call or alias). Recovery (`handleCloudLoginRecovery`) and interactive
+ *      (`handleInteractiveCloudLogin`) longer identifiers are distinct.
  *   2. The sanctioned interactive sites use `handleInteractiveCloudLogin`.
- *   3. Only the sanctioned recovery sites invoke `handleCloudLoginRecovery`.
+ *   3. ONLY the sanctioned recovery sites invoke `handleCloudLoginRecovery`,
+ *      and EACH of them individually does (both App.tsx and
+ *      use-boot-recovery-conductor.ts) — not merely "at least one".
  *   4. The public surface (`types.ts`) does not expose the raw path.
  *   5. The public surface does expose the interactive entry point.
  */
@@ -13,7 +17,11 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const UI_SRC = join(import.meta.dirname, "..", "..");
+// This test lives at packages/ui/src/state/. The package source root is
+// packages/ui (walk below yields paths like "src/App.tsx"). Kept as the
+// package root so `readSource` + `walk` both resolve against it consistently;
+// the name states what it is so a future move of this file re-checked here.
+const UI_PACKAGE_ROOT = join(import.meta.dirname, "..", "..");
 
 const SANCTIONED_RECOVERY_SITES = new Set([
   "src/App.tsx",
@@ -75,37 +83,54 @@ function walk(dir: string, prefix: string): string[] {
 }
 
 function readSource(rel: string): string {
-  const abs = join(UI_SRC, rel);
+  const abs = join(UI_PACKAGE_ROOT, rel);
   if (!existsSync(abs)) return "";
   return readFileSync(abs, "utf8");
 }
 
-function hasCall(source: string, name: string): boolean {
-  // Non-stateful regex test (no lastIndex carryover).
+/**
+ * Reference check that matches the identifier, not just a call — an alias such
+ * as `const login = s.handleCloudLogin; login()` must be caught too. The
+ * negative lookahead keeps `handleCloudLoginRecovery` and
+ * `handleInteractiveCloudLogin` (distinct, sanctioned longer identifiers) from
+ * matching the raw name. Non-stateful (fresh RegExp per call).
+ */
+function referencesIdentifier(source: string, name: string): boolean {
+  const re = new RegExp(`\\b${name}(?!Recovery|InteractiveCloudLogin)\\b`);
+  return re.test(source);
+}
+
+/**
+ * Call-syntax check for the RECOVERY entry point. We forbid *calling* the
+ * recovery API outside the sanctioned boot sites. A pure identifier match would
+ * false-positive on the legitimate public-surface wiring (AppContext.tsx and
+ * types.ts broker the method into AppActions, they do not call it), so here we
+ * require the `(`-invocation shape instead. Alias-indirection on recovery is
+ * not a real bypass: a caller still has to invoke it, which this catches.
+ */
+function invokesCall(source: string, name: string): boolean {
   return new RegExp(`\\b${name}\\s*\\(`).test(source);
 }
 
-function callsCount(source: string, name: string): number {
-  const m = source.match(new RegExp(`\\b${name}\\s*\\(`, "g"));
-  return m ? m.length : 0;
-}
-
 describe("cloud login callsite contract (#17129)", () => {
-  const allSources = walk(UI_SRC, "").filter((f) => !EXCLUDE_FILES.has(f));
+  const allSources = walk(UI_PACKAGE_ROOT, "").filter(
+    (f) => !EXCLUDE_FILES.has(f),
+  );
 
-  it("no source invokes the raw null-window path", () => {
+  it("no source references the raw null-window path (call or alias)", () => {
     const violations = allSources.filter((rel) =>
-      hasCall(readSource(rel), "handleCloudLogin"),
+      referencesIdentifier(readSource(rel), "handleCloudLogin"),
     );
     expect(
       violations,
-      `raw handleCloudLogin must not be invoked anywhere; violations: ${violations.join(", ")}`,
+      `raw handleCloudLogin must not be referenced anywhere (call or alias); violations: ${violations.join(", ")}`,
     ).toEqual([]);
   });
 
   it("sanctioned interactive surfaces use the interactive entry point", () => {
     const missing = [...SANCTIONED_INTERACTIVE_SITES].filter(
-      (rel) => !hasCall(readSource(rel), "handleInteractiveCloudLogin"),
+      (rel) =>
+        !referencesIdentifier(readSource(rel), "handleInteractiveCloudLogin"),
     );
     expect(
       missing,
@@ -113,18 +138,23 @@ describe("cloud login callsite contract (#17129)", () => {
     ).toEqual([]);
   });
 
-  it("recovery entry point is only invoked at the sanctioned recovery sites", () => {
-    const allRecoveryCalls = allSources.filter((rel) =>
-      hasCall(readSource(rel), "handleCloudLoginRecovery"),
-    );
+  it("recovery entry point is invoked at EACH sanctioned site, and nowhere else", () => {
+    // Positive: every sanctioned recovery site individually invokes the
+    // recovery API (not merely "at least one" — a dropped boot site must fail).
+    for (const site of SANCTIONED_RECOVERY_SITES) {
+      expect(
+        invokesCall(readSource(site), "handleCloudLoginRecovery"),
+        `${site} must invoke handleCloudLoginRecovery`,
+      ).toBe(true);
+    }
 
-    const sanctionedHits = allRecoveryCalls.filter((r) =>
-      SANCTIONED_RECOVERY_SITES.has(r),
-    );
-    expect(sanctionedHits.length).toBeGreaterThan(0);
-
-    const nonSanctioned = allRecoveryCalls.filter(
-      (r) => !SANCTIONED_RECOVERY_SITES.has(r),
+    // Negative: no OTHER *call site* may invoke it. (AppContext.tsx and
+    // types.ts legitimately broker the method into AppActions without calling
+    // it, so the check is call-shaped, not identifier-shaped.)
+    const nonSanctioned = allSources.filter(
+      (rel) =>
+        !SANCTIONED_RECOVERY_SITES.has(rel) &&
+        invokesCall(readSource(rel), "handleCloudLoginRecovery"),
     );
     expect(
       nonSanctioned,
@@ -135,7 +165,7 @@ describe("cloud login callsite contract (#17129)", () => {
   it("the raw handleCloudLogin is not part of the public AppActions surface", () => {
     const typesSource = readSource("src/state/types.ts");
     // Raw path must not be callable (only handleCloudLoginRecovery exists).
-    expect(hasCall(typesSource, "handleCloudLogin")).toBe(false);
+    expect(referencesIdentifier(typesSource, "handleCloudLogin")).toBe(false);
     expect(typesSource).toContain("handleCloudLoginRecovery");
   });
 

@@ -14,6 +14,7 @@ import { CloudOverviewSection } from "./CloudOverviewSection";
 const cloudLoginWindow = vi.hoisted(() => ({
   popup: { closed: false } as unknown as Window,
   preOpen: vi.fn(),
+  claim: vi.fn(),
 }));
 
 vi.mock("../../agent-surface", () => ({
@@ -22,6 +23,7 @@ vi.mock("../../agent-surface", () => ({
 
 vi.mock("../../state/cloud-login-launch", () => ({
   preOpenCloudLoginWindow: cloudLoginWindow.preOpen,
+  claimCloudLoginWindow: cloudLoginWindow.claim,
 }));
 
 function t(_key: string, opts?: { defaultValue?: string; id?: string }) {
@@ -63,17 +65,19 @@ afterEach(() => {
 });
 
 describe("CloudOverviewSection", () => {
-  it("invokes the interactive login entry point and does not pre-open the window itself", () => {
+  it("invokes the interactive login entry point and claims the popup inside the click gesture", () => {
     const handleInteractiveCloudLogin = vi.fn(async () => undefined);
     seedCloudOverviewState({ handleInteractiveCloudLogin });
 
     render(<CloudOverviewSection />);
     fireEvent.click(screen.getByRole("button", { name: "Connect Cloud" }));
 
-    // #17129: the interactive entry point owns popup pre-opening. The
-    // component must call the entry point and must NOT call the raw
-    // pre-open/window path itself.
+    // #17129 + #17064 regression guard: user activation is only live during the
+    // click, so the component must claim (pre-open) the popup synchronously in
+    // the gesture and then call the interactive entry point, which consumes the
+    // claimed handle. The raw pre-open/window path itself stays off the component.
     expect(handleInteractiveCloudLogin).toHaveBeenCalledTimes(1);
+    expect(cloudLoginWindow.claim).toHaveBeenCalledTimes(1);
     expect(cloudLoginWindow.preOpen).not.toHaveBeenCalled();
   });
 

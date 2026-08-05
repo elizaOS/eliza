@@ -14,11 +14,13 @@ import {
   buildSameTabCloudLoginPath,
   CLOUD_LOGIN_POPUP_NAME,
   canNavigateSameTabForBlockedPopup,
+  claimCloudLoginWindow,
   hasSameOriginStewardLogin,
   isTouchPrimaryWebBrowser,
   preOpenCloudLoginWindow,
   resolveCloudSignInPageUrl,
   shouldUseSameTabCloudLogin,
+  takeClaimedCloudLoginWindow,
 } from "./cloud-login-launch";
 
 const globalWithPlatform = globalThis as typeof globalThis & {
@@ -180,6 +182,36 @@ describe("preOpenCloudLoginWindow", () => {
     const openSpy = vi.spyOn(window, "open").mockReturnValue(popup);
     expect(preOpenCloudLoginWindow()).toBe(popup);
     expect(openSpy).toHaveBeenCalledWith("about:blank", CLOUD_LOGIN_POPUP_NAME);
+  });
+});
+
+describe("claimCloudLoginWindow / takeClaimedCloudLoginWindow (gesture stash)", () => {
+  it("claim stub plays the popup and take consumes it exactly once", () => {
+    const popup = makePopup(false);
+    vi.spyOn(window, "open").mockReturnValue(popup);
+    // Non-touch web so the claim actually pre-opens.
+    expect(claimCloudLoginWindow()).toBe(popup);
+    // First consume returns the stashed handle; second returns null (cleared).
+    expect(takeClaimedCloudLoginWindow()).toBe(popup);
+    expect(takeClaimedCloudLoginWindow()).toBeNull();
+  });
+
+  it("claim on touch-primary web stubs null (redirect-first), take returns null", () => {
+    stubMatchMedia(true);
+    const openSpy = vi.spyOn(window, "open");
+    expect(claimCloudLoginWindow()).toBeNull();
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(takeClaimedCloudLoginWindow()).toBeNull();
+  });
+
+  it("does not reset a previously consumed handle on a later claim", () => {
+    const popup = makePopup(false);
+    vi.spyOn(window, "open").mockReturnValue(popup);
+    expect(claimCloudLoginWindow()).toBe(popup);
+    void takeClaimedCloudLoginWindow();
+    // A fresh claim stashes a new handle even after the old one was consumed.
+    vi.spyOn(window, "open").mockReturnValue(makePopup(false));
+    expect(claimCloudLoginWindow()).not.toBeNull();
   });
 });
 

@@ -75,6 +75,7 @@ import {
 import { APP_RESUME_EVENT } from "../events";
 import { ACCENT_PRESETS, useAppSelectorShallow } from "../state";
 import { useConversationMessages } from "../state/ConversationMessagesContext.hooks";
+import { claimCloudLoginWindow } from "../state/cloud-login-launch";
 import { hasUsableStoredStewardToken } from "../state/cloud-steward-login";
 import { startTutorial } from "../tutorial/tutorial-service";
 import { clearFirstRunTranscriptMessages } from "./clear-first-run-transcript";
@@ -787,9 +788,13 @@ export function useFirstRunConductor(): void {
   // ── Flow launchers (shared by the action handler + the auto-resume) ──────
   const startCloudProvisionFlow = React.useCallback(() => {
     busyRef.current = true;
-    // Popup lifecycle is owned by the store's handleInteractiveCloudLogin
-    // entry point itself (#17129) — the conductor no longer pre-opens or
-    // closes the auth window.
+    // Pre-open the cloud-login popup synchronously NOW — the action handler is
+    // still inside the user gesture, but the provision flow below awaits
+    // several network round-trips before reaching the (async) interactive login
+    // entry point. User activation does not survive those awaits, so opening the
+    // window here keeps the popup path (#15143) while entry point's named
+    // `window.open` would be blocked (#17064 regression guard).
+    claimCloudLoginWindow();
     void listOrAutoProvisionCloudAgent(draftRef.current, portsRef.current)
       .then((outcome) => {
         if (
@@ -815,6 +820,10 @@ export function useFirstRunConductor(): void {
 
   const startProviderFinish = React.useCallback(() => {
     busyRef.current = true;
+    // Same gesture-window rationale as startCloudProvisionFlow: hybrid/local
+    // finishes may await device-RAM gates and status probes before reaching the
+    // interactive login entry point — open the popup synchronously now.
+    claimCloudLoginWindow();
     void runFirstRunFinish(draftRef.current, portsRef.current)
       .then(handleOutcome)
       .finally(() => {

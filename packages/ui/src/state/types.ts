@@ -512,9 +512,9 @@ export interface AppState {
    * can render a copyable "didn't open? visit this link" fallback panel
    * underneath the spinner. Cleared when polling stops.
    *
-   * See useCloudState.handleCloudLogin for the setter and the rationale —
-   * some desktop environments (notably Tails routing xdg-open to Tor
-   * Browser flatpak) open without crashing but never surface a usable
+   * See useCloudState's interactive login entry point for the setter and the
+   * rationale — some desktop environments (notably Tails routing xdg-open to
+   * Tor Browser flatpak) open without crashing but never surface a usable
    * window, leaving the user stuck.
    */
   elizaCloudLoginFallbackUrl: string | null;
