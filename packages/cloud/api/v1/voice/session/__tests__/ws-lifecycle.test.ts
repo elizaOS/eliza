@@ -221,8 +221,8 @@ class FakeFishAudioSocket implements FishAudioWebSocketLike {
   emitAudio(bytes = new Uint8Array([9, 8, 7, 6])) {
     this.fire("message", { data: encode({ event: "audio", audio: bytes }) });
   }
-  emitDone() {
-    this.fire("message", { data: encode({ event: "finish", reason: "stop" }) });
+  emitDone(reason: "stop" | "error" = "stop") {
+    this.fire("message", { data: encode({ event: "finish", reason }) });
   }
   emitTransportError(message = "fish connect failed") {
     this.fire("error", { message });
@@ -697,7 +697,7 @@ describe("voice-session WS lifecycle", () => {
     const client = new FakeClientSocket();
     await connectSession({
       client,
-      fetchImpl: makeSseFetch(["Fish primary."]),
+      fetchImpl: makeSseFetch(["Fish primary response reaches audio quickly."]),
       fish: { enabled: true },
     });
 
@@ -714,16 +714,15 @@ describe("voice-session WS lifecycle", () => {
         text: "",
         reference_id: "fish-voice",
         format: "pcm",
-        sample_rate: 24000,
+        sample_rate: 16000,
         latency: "normal",
-        model: "s2.1-pro",
       },
     });
-    expect(fish.sentFrames().filter((frame) => frame.event === "text")).toEqual(
-      [{ event: "text", text: "Fish primary." }],
+    expect(fish.sentText()).toBe(
+      "Fish primary response reaches audio quickly.",
     );
+    expect(fish.sentFrames()).toContainEqual({ event: "flush" });
     expect(fish.sentFrames().at(-1)).toEqual({ event: "stop" });
-    expect(fish.sentText()).toContain("Fish primary.");
     expect(client.audioFrames.at(-1)).toEqual(new Uint8Array([9, 8, 7, 6]));
   });
 

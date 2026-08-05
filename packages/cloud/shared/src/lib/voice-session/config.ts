@@ -11,6 +11,13 @@
  */
 
 import { CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../models/catalog";
+import {
+  FISH_AUDIO_MODEL_S1,
+  FISH_AUDIO_MODEL_S2_PRO,
+  FISH_AUDIO_MODEL_S21_PRO,
+  FISH_AUDIO_MODEL_S21_PRO_FREE,
+  type FishAudioModel,
+} from "../services/fish-audio-tts";
 import type { VoiceUsageLimits } from "../services/voice-usage-meter";
 
 export interface VoiceRealtimeEnv {
@@ -65,7 +72,26 @@ export function isFishRealtimeTtsEnabled(env: VoiceRealtimeEnv | undefined): boo
 }
 
 export function resolveFishRealtimeSampleRate(env: VoiceRealtimeEnv | undefined): number {
-  return parsePositiveInt(env?.FISH_AUDIO_SAMPLE_RATE, 24_000);
+  const raw = env?.FISH_AUDIO_SAMPLE_RATE;
+  if (typeof raw !== "string" || raw.trim() === "") return 16_000;
+  return Number(raw.trim()) === 16_000 ? 16_000 : Number.NaN;
+}
+
+export function resolveFishRealtimeModel(
+  env: VoiceRealtimeEnv | undefined,
+): FishAudioModel | undefined {
+  const raw = env?.FISH_AUDIO_MODEL;
+  if (typeof raw !== "string" || raw.trim() === "") return FISH_AUDIO_MODEL_S21_PRO;
+  const model = raw.trim();
+  if (
+    model === FISH_AUDIO_MODEL_S1 ||
+    model === FISH_AUDIO_MODEL_S2_PRO ||
+    model === FISH_AUDIO_MODEL_S21_PRO ||
+    model === FISH_AUDIO_MODEL_S21_PRO_FREE
+  ) {
+    return model;
+  }
+  return undefined;
 }
 
 export function resolveFishRealtimeFirstAudioTimeoutMs(env: VoiceRealtimeEnv | undefined): number {

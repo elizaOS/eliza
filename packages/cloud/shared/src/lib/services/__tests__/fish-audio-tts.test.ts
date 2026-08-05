@@ -1,14 +1,12 @@
 /**
  * Fish Audio realtime adapter contract tests using in-memory WebSockets.
  *
- * The harness drives the real adapter and only mocks transport. A live provider
- * round trip is intentionally skipped unless credentials are explicitly passed:
- * `FISH_AUDIO_API_KEY=... FISH_AUDIO_REFERENCE_ID=... bun test \
- * packages/cloud/shared/src/lib/services/__tests__/fish-audio-tts.test.ts \
- * --test-name-pattern "live Fish Audio"`.
+ * The harness drives the real adapter and only mocks transport. The standalone
+ * plugin suite owns the credential-gated provider round trip.
  */
 
 import { describe, expect, test } from "bun:test";
+import { ElizaError } from "@elizaos/core";
 import { decode, encode } from "@msgpack/msgpack";
 import {
   FISH_AUDIO_MODEL_S21_PRO,
@@ -70,9 +68,9 @@ class FakeFishSocket implements FishAudioWebSocketLike {
     }
   }
 
-  emitDone(): void {
+  emitDone(reason: "stop" | "error" = "stop"): void {
     for (const listener of this.listeners.message) {
-      listener({ data: encode({ event: "finish", reason: "stop" }) });
+      listener({ data: encode({ event: "finish", reason }) });
     }
   }
 
@@ -117,12 +115,14 @@ describe("FishAudioTtsAdapter", () => {
 
     expect(calls[0]).toEqual({
       url: FISH_AUDIO_TTS_WEBSOCKET_URL,
-      options: { headers: { Authorization: "Bearer fish-key" } },
+      options: {
+        headers: { Authorization: "Bearer fish-key", model: "s2.1-pro" },
+      },
     });
     expect(adapter.metadata).toMatchObject({
       provider: "fish-audio",
       modelId: FISH_AUDIO_MODEL_S21_PRO,
-      output: { container: "raw", encoding: "pcm_s16le", sampleRate: 24000, channels: 1 },
+      output: { container: "raw", encoding: "pcm_s16le", sampleRate: 16000, channels: 1 },
     });
     expect(sentFrames(socket())).toEqual([
       {
@@ -131,9 +131,8 @@ describe("FishAudioTtsAdapter", () => {
           text: "",
           reference_id: "voice-1",
           format: "pcm",
-          sample_rate: 24000,
+          sample_rate: 16000,
           latency: "normal",
-          model: "s2.1-pro",
         },
       },
       { event: "text", text: "Hello Fish." },
@@ -163,6 +162,33 @@ describe("FishAudioTtsAdapter", () => {
     expect(frames).toEqual([new Uint8Array([1, 2, 3, 4])]);
   });
 
+  test("flushes continuation text so short realtime phrases synthesize immediately", () => {
+    const { adapter, socket } = makeHarness();
+    const stream = adapter.createStream({ contextId: "ctx-1" }, {});
+    socket().emitOpen();
+
+    stream.sendPhrase({ text: "Short phrase. ", continueContext: true, flush: true });
+
+    expect(sentFrames(socket()).slice(1)).toEqual([
+      { event: "text", text: "Short phrase. " },
+      { event: "flush" },
+    ]);
+  });
+
+  test("treats a finish frame with reason error as provider failure", () => {
+    const { adapter, socket } = makeHarness();
+    const codes: Array<string | undefined> = [];
+    adapter.createStream(
+      { contextId: "ctx-1" },
+      { onProviderError: (event) => codes.push(event.code) },
+    );
+    socket().emitOpen();
+
+    socket().emitDone("error");
+
+    expect(codes).toEqual(["provider_finish_error"]);
+  });
+
   test("reports an opened socket closing before audio as a fallback-eligible transport error", () => {
     const { adapter, socket } = makeHarness();
     const codes: Array<string | undefined> = [];
@@ -188,6 +214,16 @@ describe("FishAudioTtsAdapter", () => {
     );
   });
 
+  test("rejects an invalid per-stream first-audio timeout with a structured error", () => {
+    const { adapter } = makeHarness();
+
+    expect(() => adapter.createStream({ contextId: "ctx-1", firstAudioTimeoutMs: 0 }, {})).toThrow(
+      expect.objectContaining<Partial<ElizaError>>({
+        code: "CONFIG_FIRST_AUDIO_TIMEOUT_INVALID",
+      }),
+    );
+  });
+
   test("abort/barge-in cancellation closes socket and suppresses later audio", () => {
     const { adapter, socket, sockets } = makeHarness();
     const frames: Uint8Array[] = [];
@@ -198,6 +234,8 @@ describe("FishAudioTtsAdapter", () => {
         onAudioFrame: (event) => frames.push(event.bytes),
       },
     );
+    void stream.opened.catch(() => undefined);
+    void liveStream.opened.catch(() => undefined);
 
     stream.sendPhrase({ text: "queued", continueContext: true });
     stream.cancel("barge-in");
@@ -208,13 +246,5 @@ describe("FishAudioTtsAdapter", () => {
     expect(sentFrames(socket())).toEqual([]);
     expect(socket().closes.at(-1)).toEqual({ code: 1000, reason: "barge-in" });
     expect(frames).toEqual([]);
-  });
-
-  test.skip("live Fish Audio realtime WebSocket returns PCM bytes", () => {
-    // Run manually with:
-    // FISH_AUDIO_API_KEY=... FISH_AUDIO_REFERENCE_ID=... bun test \
-    // packages/cloud/shared/src/lib/services/__tests__/fish-audio-tts.test.ts \
-    // --test-name-pattern "live Fish Audio"
-    // Skipped until a funded key and consented reference voice are supplied.
   });
 });

@@ -347,8 +347,8 @@ describe("voice-session ws upgrade (happy path)", () => {
       ELIZA_TTS_FISH_ENABLED: "true",
       FISH_AUDIO_API_KEY: "fish-key",
       FISH_AUDIO_REFERENCE_ID: "fish-voice",
-      FISH_AUDIO_MODEL: "s2.1",
-      FISH_AUDIO_SAMPLE_RATE: "24000",
+      FISH_AUDIO_MODEL: "s2.1-pro-free",
+      FISH_AUDIO_SAMPLE_RATE: "16000",
       FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS: "25",
     });
     expect(res.status).toBe(101);
@@ -356,10 +356,34 @@ describe("voice-session ws upgrade (happy path)", () => {
     expect(session.config.fishAudioEnabled).toBe(true);
     expect(session.config.fishAudioApiKey).toBe("fish-key");
     expect(session.config.fishAudioReferenceId).toBe("fish-voice");
-    expect(session.config.fishAudioModel).toBe("s2.1");
-    expect(session.config.fishAudioSampleRate).toBe(24000);
+    expect(session.config.fishAudioModel).toBe("s2.1-pro-free");
+    expect(session.config.fishAudioSampleRate).toBe(16000);
     expect(session.config.fishAudioFirstAudioTimeoutMs).toBe(25);
     expect(typeof session.config.fishAudioWebSocketFactory).toBe("function");
+  });
+
+  test("refuses the upgrade when Fish config would violate the voice PCM contract", async () => {
+    const res = await upgrade({
+      ELIZA_TTS_FISH_ENABLED: "true",
+      FISH_AUDIO_API_KEY: "fish-key",
+      FISH_AUDIO_REFERENCE_ID: "fish-voice",
+      FISH_AUDIO_SAMPLE_RATE: "24000",
+    });
+
+    expect(res.status).toBe(503);
+    expect(attachCalls).toHaveLength(0);
+  });
+
+  test("refuses the upgrade when the configured Fish model is unsupported", async () => {
+    const res = await upgrade({
+      ELIZA_TTS_FISH_ENABLED: "true",
+      FISH_AUDIO_API_KEY: "fish-key",
+      FISH_AUDIO_REFERENCE_ID: "fish-voice",
+      FISH_AUDIO_MODEL: "s2.1",
+    });
+
+    expect(res.status).toBe(503);
+    expect(attachCalls).toHaveLength(0);
   });
 
   test("returns 503 transport-unavailable when WebSocketPair is absent", async () => {

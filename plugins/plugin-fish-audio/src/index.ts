@@ -14,7 +14,7 @@ import type {
   ProcessEnvLike,
   TextToSpeechParams,
 } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import { ElizaError, logger, ModelType } from "@elizaos/core";
 import { decode, encode } from "@msgpack/msgpack";
 
 export const FISH_AUDIO_TTS_WEBSOCKET_URL = "wss://api.fish.audio/v1/tts/live";
@@ -24,7 +24,7 @@ const DEFAULT_FORMAT = "pcm";
 const DEFAULT_MIME_TYPE = "audio/pcm; codecs=pcm_s16le; rate=24000";
 const TRUEY = new Set(["1", "true", "yes", "on"]);
 
-type FishAudioModel = "s2.1" | "s2.1-pro";
+type FishAudioModel = "s1" | "s2-pro" | "s2.1-pro" | "s2.1-pro-free";
 type FishAudioFormat = "pcm";
 type TtsInput =
   | string
@@ -36,7 +36,7 @@ type TtsInput =
 
 interface FishAudioWebSocketLike {
   readonly readyState: number;
-  binaryType?: BinaryType;
+  binaryType?: string;
   send(data: Uint8Array): void;
   close(code?: number, reason?: string): void;
   addEventListener(type: "open", listener: () => void): void;
@@ -60,6 +60,24 @@ interface FishAudioWebSocketLike {
   ): void;
 }
 
+interface FishAudioWebSocketFactoryOptions {
+  readonly headers: Record<string, string>;
+}
+
+type FishAudioWebSocketFactory = (
+  url: string,
+  options: FishAudioWebSocketFactoryOptions,
+) => FishAudioWebSocketLike;
+
+let configuredWebSocketFactory: FishAudioWebSocketFactory | undefined;
+
+/** @internal Configures the platform transport used by package entrypoints. */
+export function configureFishAudioWebSocketFactory(
+  factory: FishAudioWebSocketFactory | undefined,
+): void {
+  configuredWebSocketFactory = factory;
+}
+
 function getProcessEnv(): ProcessEnvLike {
   if (typeof process === "undefined") return {};
   return process.env as ProcessEnvLike;
@@ -78,29 +96,46 @@ function isEnabled(runtime: IAgentRuntime): boolean {
 
 function resolveConfig(runtime: IAgentRuntime, input: TtsInput) {
   if (!isEnabled(runtime)) {
-    throw new Error(
+    throw new ElizaError(
       "Fish Audio TTS is disabled; set ELIZA_TTS_FISH_ENABLED=true",
+      { code: "FISH_AUDIO_DISABLED" },
     );
   }
   const apiKey = getSetting(runtime, "FISH_AUDIO_API_KEY");
-  if (!apiKey) throw new Error("FISH_AUDIO_API_KEY is required");
+  if (!apiKey) {
+    throw new ElizaError("FISH_AUDIO_API_KEY is required", {
+      code: "FISH_AUDIO_API_KEY_MISSING",
+    });
+  }
   const text = typeof input === "string" ? input : input.text;
-  if (!text || text.trim().length === 0)
-    throw new Error("TEXT_TO_SPEECH requires non-empty text");
+  if (!text || text.trim().length === 0) {
+    throw new ElizaError("TEXT_TO_SPEECH requires non-empty text", {
+      code: "FISH_AUDIO_TEXT_EMPTY",
+    });
+  }
   const voice = typeof input === "string" ? undefined : input.voice;
   const referenceId =
     voice ??
     getSetting(runtime, "FISH_AUDIO_REFERENCE_ID") ??
     getSetting(runtime, "FISH_AUDIO_VOICE_ID");
   if (!referenceId)
-    throw new Error(
+    throw new ElizaError(
       "FISH_AUDIO_REFERENCE_ID or FISH_AUDIO_VOICE_ID is required",
+      { code: "FISH_AUDIO_REFERENCE_ID_MISSING" },
     );
   const model = ((typeof input === "string" ? undefined : input.model) ??
     getSetting(runtime, "FISH_AUDIO_MODEL") ??
     DEFAULT_MODEL) as FishAudioModel;
-  if (model !== "s2.1" && model !== "s2.1-pro")
-    throw new Error(`Unsupported Fish Audio model: ${model}`);
+  if (
+    model !== "s1" &&
+    model !== "s2-pro" &&
+    model !== "s2.1-pro" &&
+    model !== "s2.1-pro-free"
+  )
+    throw new ElizaError(`Unsupported Fish Audio model: ${model}`, {
+      code: "FISH_AUDIO_MODEL_INVALID",
+      context: { model },
+    });
   const format =
     (typeof input === "string" ? undefined : input.format) ??
     (getSetting(runtime, "FISH_AUDIO_FORMAT") as FishAudioFormat | undefined) ??
@@ -110,10 +145,18 @@ function resolveConfig(runtime: IAgentRuntime, input: TtsInput) {
       getSetting(runtime, "FISH_AUDIO_SAMPLE_RATE") ??
       DEFAULT_SAMPLE_RATE,
   );
-  if (format !== "pcm")
-    throw new Error(`Unsupported Fish Audio format: ${format}`);
-  if (sampleRate !== DEFAULT_SAMPLE_RATE)
-    throw new Error("Fish Audio sampleRate must be 24000");
+  if (format !== "pcm") {
+    throw new ElizaError(`Unsupported Fish Audio format: ${format}`, {
+      code: "FISH_AUDIO_FORMAT_INVALID",
+      context: { format },
+    });
+  }
+  if (sampleRate !== DEFAULT_SAMPLE_RATE) {
+    throw new ElizaError("Fish Audio sampleRate must be 24000", {
+      code: "FISH_AUDIO_SAMPLE_RATE_INVALID",
+      context: { sampleRate },
+    });
+  }
   return {
     apiKey,
     text,
@@ -151,7 +194,7 @@ function createFishAudioStream(
     resolveBytes = resolve;
     rejectBytes = reject;
   });
-  const socket = openSocket(config.apiKey);
+  const socket = openSocket(config.apiKey, config.model);
   socket.binaryType = "arraybuffer";
 
   const finish = () => {
@@ -163,9 +206,13 @@ function createFishAudioStream(
     }
   };
   const fail = (error: unknown) => {
+    if (done) return;
+    done = true;
     failure = error;
     rejectBytes(error);
-    finish();
+    while (waiters.length > 0) {
+      waiters.shift()?.({ done: true, value: undefined });
+    }
   };
   const push = (chunk: Uint8Array) => {
     bufferedChunks.push(chunk);
@@ -188,11 +235,11 @@ function createFishAudioStream(
           format: "pcm",
           sample_rate: 24000,
           latency: "normal",
-          model: config.model,
         },
       }),
     );
     socket.send(encode({ event: "text", text: config.text }));
+    socket.send(encode({ event: "flush" }));
     socket.send(encode({ event: "stop" }));
   });
   socket.addEventListener("message", (event) => {
@@ -200,33 +247,71 @@ function createFishAudioStream(
       const frame = decodeFrame(event.data);
       const audio = frame.audio;
       if (audio instanceof Uint8Array) push(audio);
-      if (frame.event === "finish") finish();
+      if (frame.event === "finish") {
+        if (frame.reason === "error") {
+          fail(
+            new ElizaError(
+              String(
+                frame.message ?? "Fish Audio TTS failed to finish synthesis",
+              ),
+              { code: "FISH_AUDIO_PROVIDER_FINISH_ERROR" },
+            ),
+          );
+        } else {
+          finish();
+        }
+      }
       if (frame.event === "error" || frame.error) {
         fail(
-          new Error(
+          new ElizaError(
             String(frame.message ?? frame.error ?? "Fish Audio TTS failed"),
+            { code: "FISH_AUDIO_PROVIDER_ERROR" },
           ),
         );
       }
     } catch (error) {
+      // error-policy:J1 provider frame handling is the transport boundary;
+      // decoded provider failures reject the model result explicitly.
       fail(error);
     }
   });
   socket.addEventListener("error", (event) =>
     fail(
-      new Error(
+      new ElizaError(
         event.message ??
           (event.error instanceof Error
             ? event.error.message
             : "Fish Audio WebSocket error"),
+        {
+          code: "FISH_AUDIO_WEBSOCKET_ERROR",
+          cause: event.error,
+        },
       ),
     ),
   );
-  socket.addEventListener("close", () => finish());
-  config.signal?.addEventListener("abort", () => {
-    fail(new Error("Fish Audio TTS aborted"));
-    socket.close(1000, "aborted");
+  socket.addEventListener("close", (event) => {
+    if (done) return;
+    const detail = event.reason ? `: ${event.reason}` : "";
+    fail(
+      new ElizaError(`Fish Audio WebSocket closed before finish${detail}`, {
+        code: "FISH_AUDIO_WEBSOCKET_CLOSED_EARLY",
+        context: { statusCode: event.code, reason: event.reason },
+      }),
+    );
   });
+  const abort = () => {
+    fail(
+      new ElizaError("Fish Audio TTS aborted", {
+        code: "FISH_AUDIO_STREAM_ABORTED",
+      }),
+    );
+    socket.close(1000, "aborted");
+  };
+  if (config.signal?.aborted) {
+    abort();
+  } else {
+    config.signal?.addEventListener("abort", abort, { once: true });
+  }
 
   const audioStream: AsyncIterable<Uint8Array> = {
     [Symbol.asyncIterator]() {
@@ -252,7 +337,19 @@ function createFishAudioStream(
   };
 }
 
-function openSocket(apiKey: string): FishAudioWebSocketLike {
+function openSocket(
+  apiKey: string,
+  model: FishAudioModel,
+): FishAudioWebSocketLike {
+  const options = {
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      model,
+    },
+  };
+  if (configuredWebSocketFactory) {
+    return configuredWebSocketFactory(FISH_AUDIO_TTS_WEBSOCKET_URL, options);
+  }
   const WebSocketCtor = (
     globalThis as {
       WebSocket?: new (
@@ -265,9 +362,11 @@ function openSocket(apiKey: string): FishAudioWebSocketLike {
       ) => FishAudioWebSocketLike;
     }
   ).WebSocket;
-  if (!WebSocketCtor)
-    throw new Error("WebSocket is not available for Fish Audio TTS");
-  const options = { headers: { Authorization: `Bearer ${apiKey}` } };
+  if (!WebSocketCtor) {
+    throw new ElizaError("WebSocket is not available for Fish Audio TTS", {
+      code: "FISH_AUDIO_WEBSOCKET_UNAVAILABLE",
+    });
+  }
   try {
     return new WebSocketCtor(FISH_AUDIO_TTS_WEBSOCKET_URL, undefined, options);
   } catch {
@@ -284,8 +383,11 @@ function decodeFrame(data: unknown): Record<string, unknown> {
       : ArrayBuffer.isView(data)
         ? decode(new Uint8Array(data.buffer, data.byteOffset, data.byteLength))
         : decode(data as Uint8Array);
-  if (typeof frame !== "object" || frame === null)
-    throw new Error("Fish Audio frame must be an object");
+  if (typeof frame !== "object" || frame === null) {
+    throw new ElizaError("Fish Audio frame must be an object", {
+      code: "FISH_AUDIO_PROVIDER_MESSAGE_INVALID",
+    });
+  }
   return frame as Record<string, unknown>;
 }
 

@@ -1,7 +1,7 @@
 /**
  * Fish Audio plugin TTS tests with an in-memory WebSocket.
  *
- * Live Fish Audio coverage is skipped pending funded credentials. Run manually:
+ * Live Fish Audio coverage runs only with explicitly supplied credentials:
  * `ELIZA_TTS_FISH_ENABLED=true FISH_AUDIO_API_KEY=... FISH_AUDIO_REFERENCE_ID=... \
  * bun run --cwd plugins/plugin-fish-audio test -- \
  * --testNamePattern "live Fish Audio"`.
@@ -10,10 +10,17 @@
 import { type IAgentRuntime, ModelType } from "@elizaos/core";
 import { decode, encode } from "@msgpack/msgpack";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { fishAudioPlugin, handleFishAudioTextToSpeech } from "../src/index";
+import WebSocket from "ws";
+import {
+  configureFishAudioWebSocketFactory,
+  fishAudioPlugin,
+  handleFishAudioTextToSpeech,
+} from "../src/index";
 
 class FakeFishSocket {
   static instances: FakeFishSocket[] = [];
+  static respondToText = true;
+  static finishReason: "stop" | "error" = "stop";
   static calls: Array<{
     url: string;
     protocols?: string | string[];
@@ -40,26 +47,33 @@ class FakeFishSocket {
   send(data: Uint8Array): void {
     this.sent.push(data);
     const frame = decode(data) as { event?: string; text?: string };
-    if (frame.event === "text" && frame.text) {
+    if (FakeFishSocket.respondToText && frame.event === "text" && frame.text) {
       queueMicrotask(() => {
         this.fire("message", {
           data: encode({ event: "audio", audio: new Uint8Array([5, 6]) }),
         });
         this.fire("message", {
-          data: encode({ event: "finish", reason: "stop" }),
+          data: encode({
+            event: "finish",
+            reason: FakeFishSocket.finishReason,
+          }),
         });
       });
     }
   }
 
-  close(): void {
+  close(_code?: number, reason?: string): void {
     this.readyState = 3;
-    this.fire("close", {});
+    this.fire("close", { reason });
   }
 
   addEventListener(type: string, listener: (event: never) => void): void {
-    if (!this.listeners.has(type)) this.listeners.set(type, new Set());
-    this.listeners.get(type)!.add(listener as (event: unknown) => void);
+    let listeners = this.listeners.get(type);
+    if (!listeners) {
+      listeners = new Set();
+      this.listeners.set(type, listeners);
+    }
+    listeners.add(listener as (event: unknown) => void);
   }
 
   private fire(type: string, event: unknown): void {
@@ -77,14 +91,17 @@ function runtime(
 }
 
 function sentFrames(): Record<string, unknown>[] {
-  return FakeFishSocket.instances
-    .at(-1)!
-    .sent.map((frame) => decode(frame) as Record<string, unknown>);
+  const socket = FakeFishSocket.instances.at(-1);
+  if (!socket) throw new Error("Expected a Fish Audio WebSocket");
+  return socket.sent.map((frame) => decode(frame) as Record<string, unknown>);
 }
 
 afterEach(() => {
   FakeFishSocket.instances = [];
   FakeFishSocket.calls = [];
+  FakeFishSocket.respondToText = true;
+  FakeFishSocket.finishReason = "stop";
+  configureFishAudioWebSocketFactory(undefined);
   Reflect.deleteProperty(globalThis, "WebSocket");
 });
 
@@ -140,7 +157,9 @@ describe("fishAudioPlugin", () => {
     expect(FakeFishSocket.calls.at(-1)).toEqual({
       url: "wss://api.fish.audio/v1/tts/live",
       protocols: undefined,
-      options: { headers: { Authorization: "Bearer key" } },
+      options: {
+        headers: { Authorization: "Bearer key", model: "s2.1-pro" },
+      },
     });
     expect(sentFrames()).toEqual([
       {
@@ -151,12 +170,76 @@ describe("fishAudioPlugin", () => {
           format: "pcm",
           sample_rate: 24000,
           latency: "normal",
-          model: "s2.1-pro",
         },
       },
       { event: "text", text: "hello" },
+      { event: "flush" },
       { event: "stop" },
     ]);
+  });
+
+  test("rejects when Fish closes before a finish frame", async () => {
+    FakeFishSocket.respondToText = false;
+    Object.defineProperty(globalThis, "WebSocket", {
+      value: FakeFishSocket,
+      configurable: true,
+    });
+    const result = await handleFishAudioTextToSpeech(
+      runtime({
+        ELIZA_TTS_FISH_ENABLED: "true",
+        FISH_AUDIO_API_KEY: "key",
+        FISH_AUDIO_REFERENCE_ID: "voice",
+      }),
+      { text: "close early", audioStream: true },
+    );
+    if (!("bytes" in result)) throw new Error("Expected streaming result");
+    await Promise.resolve();
+    FakeFishSocket.instances.at(-1)?.close(1011, "provider failed");
+
+    await expect(result.bytes).rejects.toThrow(
+      "Fish Audio WebSocket closed before finish: provider failed",
+    );
+  });
+
+  test("rejects a provider finish frame whose reason is error", async () => {
+    FakeFishSocket.finishReason = "error";
+    Object.defineProperty(globalThis, "WebSocket", {
+      value: FakeFishSocket,
+      configurable: true,
+    });
+    const result = await handleFishAudioTextToSpeech(
+      runtime({
+        ELIZA_TTS_FISH_ENABLED: "true",
+        FISH_AUDIO_API_KEY: "key",
+        FISH_AUDIO_REFERENCE_ID: "voice",
+      }),
+      { text: "provider error", audioStream: true },
+    );
+    if (!("bytes" in result)) throw new Error("Expected streaming result");
+
+    await expect(result.bytes).rejects.toThrow(
+      "Fish Audio TTS failed to finish synthesis",
+    );
+  });
+
+  test("rejects an already-aborted request", async () => {
+    Object.defineProperty(globalThis, "WebSocket", {
+      value: FakeFishSocket,
+      configurable: true,
+    });
+    const controller = new AbortController();
+    controller.abort();
+    const result = await handleFishAudioTextToSpeech(
+      runtime({
+        ELIZA_TTS_FISH_ENABLED: "true",
+        FISH_AUDIO_API_KEY: "key",
+        FISH_AUDIO_REFERENCE_ID: "voice",
+      }),
+      { text: "cancelled", audioStream: true, signal: controller.signal },
+    );
+    if (!("bytes" in result)) throw new Error("Expected streaming result");
+
+    await expect(result.bytes).rejects.toThrow("Fish Audio TTS aborted");
   });
 
   test("buffers bytes when audioStream is false", async () => {
@@ -183,6 +266,9 @@ describe("fishAudioPlugin", () => {
   liveTest(
     "live Fish Audio realtime WebSocket returns PCM bytes",
     async () => {
+      configureFishAudioWebSocketFactory(
+        (url, options) => new WebSocket(url, { headers: options.headers }),
+      );
       const result = await handleFishAudioTextToSpeech(
         runtime({
           ELIZA_TTS_FISH_ENABLED: "true",

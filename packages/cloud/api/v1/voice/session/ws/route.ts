@@ -19,6 +19,7 @@ import {
   isVoiceRealtimeWsEnabled,
   resolveElizaModel,
   resolveFishRealtimeFirstAudioTimeoutMs,
+  resolveFishRealtimeModel,
   resolveFishRealtimeSampleRate,
   resolveMaxSessions,
   resolveVoiceUsageLimits,
@@ -105,6 +106,8 @@ app.get("/", (c) => {
   const fishAudioApiKey = env.FISH_AUDIO_API_KEY;
   const fishAudioReferenceId =
     env.FISH_AUDIO_REFERENCE_ID ?? env.FISH_AUDIO_VOICE_ID;
+  const fishAudioModel = resolveFishRealtimeModel(env);
+  const fishAudioSampleRate = resolveFishRealtimeSampleRate(env);
   const elizaEndpoint = env.VOICE_REALTIME_ELIZA_ENDPOINT;
   // The WS is headerless (WebView 113), so the client's Authorization is not
   // usable for the LLM leg. The server presents its own held credential; the
@@ -114,7 +117,11 @@ app.get("/", (c) => {
     !deepgramApiKey ||
     !cartesiaApiKey ||
     !cartesiaVoiceId ||
-    (fishAudioEnabled && (!fishAudioApiKey || !fishAudioReferenceId)) ||
+    (fishAudioEnabled &&
+      (!fishAudioApiKey ||
+        !fishAudioReferenceId ||
+        !fishAudioModel ||
+        fishAudioSampleRate !== 16_000)) ||
     !elizaEndpoint ||
     !elizaAuthorization
   ) {
@@ -235,8 +242,8 @@ app.get("/", (c) => {
         fishAudioEnabled,
         fishAudioApiKey,
         fishAudioReferenceId,
-        fishAudioModel: env.FISH_AUDIO_MODEL === "s2.1" ? "s2.1" : "s2.1-pro",
-        fishAudioSampleRate: resolveFishRealtimeSampleRate(env),
+        fishAudioModel,
+        fishAudioSampleRate,
         fishAudioFirstAudioTimeoutMs:
           resolveFishRealtimeFirstAudioTimeoutMs(env),
         fishAudioWebSocketFactory: createWorkerFishAudioFactory(),

@@ -948,6 +948,9 @@ class FishPrimaryRealtimeTtsStream implements RealtimeTtsStream {
   private cancelled = false;
   private suppressFishFallback = false;
   private resolveOpened!: () => void;
+  private rejectOpened!: (error: unknown) => void;
+  private openedSettled = false;
+  private resolveClosed!: () => void;
 
   constructor(
     private readonly input: {
@@ -957,8 +960,12 @@ class FishPrimaryRealtimeTtsStream implements RealtimeTtsStream {
       readonly callbacks: RealtimeTtsStreamCallbacks;
     },
   ) {
-    this.opened = new Promise((resolve) => {
+    this.opened = new Promise((resolve, reject) => {
       this.resolveOpened = resolve;
+      this.rejectOpened = reject;
+    });
+    this.closed = new Promise((resolve) => {
+      this.resolveClosed = resolve;
     });
     this.active = this.input.fishAudioAdapter.createStream(
       { traceId: input.traceId },
@@ -966,7 +973,7 @@ class FishPrimaryRealtimeTtsStream implements RealtimeTtsStream {
         onFirstAudio: (event) => {
           this.fishAudioProduced = true;
           this.phrases.length = 0;
-          this.resolveOpened();
+          this.resolveOpenedOnce();
           this.input.callbacks.onFirstAudio?.(event);
         },
         onAudioFrame: (event) => this.input.callbacks.onAudioFrame?.(event),
@@ -974,20 +981,36 @@ class FishPrimaryRealtimeTtsStream implements RealtimeTtsStream {
         onProviderError: (event) => this.handleFishProviderError(event.code),
       },
     );
-    this.closed = this.active.closed;
+    this.watchActiveClosed(this.active);
     void this.active.opened
-      .then(() => this.resolveOpened())
-      .catch(() => undefined);
+      .then(() => this.resolveOpenedOnce())
+      .catch((error) => {
+        if (!this.usingCartesia) this.rejectOpenedOnce(error);
+      });
   }
 
   sendPhrase(phrase: RealtimeTtsPhraseInput): void {
     if (!this.usingCartesia && !this.fishAudioProduced)
       this.phrases.push(phrase);
-    this.active.sendPhrase(phrase);
+    this.active.sendPhrase(
+      this.usingCartesia
+        ? phrase
+        : {
+            ...phrase,
+            // Fish buffers short text events until its generation threshold.
+            // Flush every continuation phrase so the 24-character voice
+            // aggregator remains genuinely realtime; the final stop flushes
+            // the terminal phrase itself.
+            flush: phrase.continueContext || phrase.flush,
+          },
+    );
   }
 
   cancel(reason?: string): void {
     this.cancelled = true;
+    this.rejectOpenedOnce(
+      new Error(`Fish TTS stream cancelled${reason ? `: ${reason}` : ""}`),
+    );
     this.active.cancel(reason);
   }
 
@@ -997,6 +1020,7 @@ class FishPrimaryRealtimeTtsStream implements RealtimeTtsStream {
       this.input.callbacks.onProviderError?.({
         code: code ?? "fish_tts_error",
       });
+      this.rejectOpenedOnce(new Error(code ?? "fish_tts_error"));
       return;
     }
     this.usingCartesia = true;
@@ -1004,11 +1028,30 @@ class FishPrimaryRealtimeTtsStream implements RealtimeTtsStream {
     this.active.cancel(`fish_pre_audio_fallback:${code ?? "provider_error"}`);
     this.suppressFishFallback = false;
     this.active = this.input.createCartesia();
+    this.watchActiveClosed(this.active);
     void this.active.opened
-      .then(() => this.resolveOpened())
-      .catch(() => undefined);
+      .then(() => this.resolveOpenedOnce())
+      .catch((error) => this.rejectOpenedOnce(error));
     for (const phrase of this.phrases) this.active.sendPhrase(phrase);
     this.phrases.length = 0;
+  }
+
+  private resolveOpenedOnce(): void {
+    if (this.openedSettled) return;
+    this.openedSettled = true;
+    this.resolveOpened();
+  }
+
+  private rejectOpenedOnce(error: unknown): void {
+    if (this.openedSettled) return;
+    this.openedSettled = true;
+    this.rejectOpened(error);
+  }
+
+  private watchActiveClosed(stream: RealtimeTtsStream): void {
+    void stream.closed.then(() => {
+      if (this.active === stream) this.resolveClosed();
+    });
   }
 }
 

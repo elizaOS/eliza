@@ -1,23 +1,34 @@
-/** Builds the Fish Audio plugin for node and browser package entrypoints. */
+#!/usr/bin/env bun
+/**
+ * Defines the Node and browser package builds for the Fish Audio plugin while
+ * delegating orchestration to the repository's shared plugin build driver.
+ */
+import { buildPlugin } from "../plugin-build";
 
-await Bun.build({
-  entrypoints: ["index.node.ts"],
-  outdir: "dist/node",
-  target: "node",
-  format: "esm",
-  sourcemap: "external",
+const reexport =
+  "export * from '../index';\nexport { default } from '../index';\n";
+
+await buildPlugin({
+  name: "@elizaos/plugin-fish-audio",
+  targets: [
+    {
+      label: "Node",
+      entry: "index.node.ts",
+      outSubdir: "node",
+      target: "node",
+      format: "esm",
+    },
+    {
+      label: "Browser",
+      entry: "index.browser.ts",
+      outSubdir: "browser",
+      target: "browser",
+      format: "esm",
+    },
+  ],
+  dtsProject: "tsconfig.build.json",
+  dtsShims: [
+    { path: "node/index.d.ts", content: reexport },
+    { path: "browser/index.d.ts", content: reexport },
+  ],
 });
-
-await Bun.build({
-  entrypoints: ["index.browser.ts"],
-  outdir: "dist/browser",
-  target: "browser",
-  format: "esm",
-  sourcemap: "external",
-});
-
-const declaration = Bun.spawnSync(["tsc", "-p", "tsconfig.build.json"]);
-if (!declaration.success) {
-  process.stderr.write(declaration.stderr);
-  process.exit(declaration.exitCode ?? 1);
-}

@@ -158,13 +158,13 @@ export interface Bindings {
   ELIZA_TTS_FISH_ENABLED?: string;
   /** Server-side Fish Audio API key for realtime TTS. */
   FISH_AUDIO_API_KEY?: string;
-  /** Fish realtime model, either s2.1 or s2.1-pro. */
+  /** Fish realtime model: s1, s2-pro, s2.1-pro, or s2.1-pro-free. */
   FISH_AUDIO_MODEL?: string;
   /** Fish reference/voice id for realtime TTS. */
   FISH_AUDIO_REFERENCE_ID?: string;
   /** Legacy alias for the Fish realtime reference id. */
   FISH_AUDIO_VOICE_ID?: string;
-  /** Fish realtime output sample rate; protocol is raw PCM at 24 kHz. */
+  /** Fish realtime output sample rate; the voice-session contract is raw PCM at 16 kHz. */
   FISH_AUDIO_SAMPLE_RATE?: string;
   /** Pre-first-audio timeout that permits Fish -> Cartesia fallback. */
   FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS?: string;

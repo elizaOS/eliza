@@ -7,23 +7,35 @@
  * policy, playback, and billing responsibility.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { decode, encode } from "@msgpack/msgpack";
 
 export const FISH_AUDIO_PROVIDER_ID = "fish-audio";
-export const FISH_AUDIO_MODEL_S21 = "s2.1";
+export const FISH_AUDIO_MODEL_S1 = "s1";
+export const FISH_AUDIO_MODEL_S2_PRO = "s2-pro";
 export const FISH_AUDIO_MODEL_S21_PRO = "s2.1-pro";
+export const FISH_AUDIO_MODEL_S21_PRO_FREE = "s2.1-pro-free";
 export const FISH_AUDIO_TTS_WEBSOCKET_URL = "wss://api.fish.audio/v1/tts/live";
 
-const DEFAULT_SAMPLE_RATE = 24_000;
+const DEFAULT_SAMPLE_RATE = 16_000;
 const DEFAULT_CHANNELS = 1;
 const DEFAULT_FORMAT = "pcm";
 const DEFAULT_MODEL = FISH_AUDIO_MODEL_S21_PRO;
 const DEFAULT_LATENCY = "normal";
 const DEFAULT_FIRST_AUDIO_TIMEOUT_MS = 1_500;
 const DEFAULT_MAX_QUEUED_FRAMES = 128;
-const SUPPORTED_MODELS = new Set([FISH_AUDIO_MODEL_S21, FISH_AUDIO_MODEL_S21_PRO]);
+const SUPPORTED_MODELS = new Set([
+  FISH_AUDIO_MODEL_S1,
+  FISH_AUDIO_MODEL_S2_PRO,
+  FISH_AUDIO_MODEL_S21_PRO,
+  FISH_AUDIO_MODEL_S21_PRO_FREE,
+]);
 
-export type FishAudioModel = typeof FISH_AUDIO_MODEL_S21 | typeof FISH_AUDIO_MODEL_S21_PRO;
+export type FishAudioModel =
+  | typeof FISH_AUDIO_MODEL_S1
+  | typeof FISH_AUDIO_MODEL_S2_PRO
+  | typeof FISH_AUDIO_MODEL_S21_PRO
+  | typeof FISH_AUDIO_MODEL_S21_PRO_FREE;
 export type FishAudioFormat = "pcm";
 
 export interface FishAudioProviderMetadata {
@@ -101,7 +113,7 @@ export interface FishAudioCompleteEvent {
 }
 
 export interface FishAudioProviderErrorEvent {
-  readonly contextId?: string;
+  readonly contextId: string;
   readonly traceId?: string;
   readonly title: string;
   readonly message: string;
@@ -156,15 +168,15 @@ type FishOutgoingFrame =
         readonly text: "";
         readonly reference_id: string;
         readonly format: "pcm";
-        readonly sample_rate: 24_000;
+        readonly sample_rate: 16_000;
         readonly latency: "normal" | "balanced";
-        readonly model: FishAudioModel;
       };
     }
   | {
       readonly event: "text";
       readonly text: string;
     }
+  | { readonly event: "flush" }
   | { readonly event: "stop" };
 
 interface FishIncomingFrame {
@@ -173,17 +185,14 @@ interface FishIncomingFrame {
   readonly error?: unknown;
   readonly message?: unknown;
   readonly code?: unknown;
+  readonly reason?: unknown;
 }
 
-export class FishAudioTtsError extends Error {
-  constructor(
-    message: string,
-    readonly code: string,
-    readonly context?: Record<string, unknown>,
-    readonly cause?: unknown,
-  ) {
-    super(message);
-    this.name = "FishAudioTtsError";
+export class FishAudioTtsError extends ElizaError {
+  override readonly name = "FishAudioTtsError";
+
+  constructor(message: string, code: string, context?: Record<string, unknown>, cause?: unknown) {
+    super(message, { code, context, cause });
   }
 }
 
@@ -211,11 +220,19 @@ export class FishAudioTtsAdapter {
     options: FishAudioStreamOptions,
     callbacks: FishAudioStreamCallbacks,
   ): FishAudioTtsStream {
+    const firstAudioTimeoutMs = options.firstAudioTimeoutMs ?? this.config.firstAudioTimeoutMs;
+    if (!Number.isFinite(firstAudioTimeoutMs) || firstAudioTimeoutMs <= 0) {
+      throw new FishAudioTtsError(
+        "Fish firstAudioTimeoutMs must be a positive finite number",
+        "CONFIG_FIRST_AUDIO_TIMEOUT_INVALID",
+        { firstAudioTimeoutMs },
+      );
+    }
     return new FishAudioTtsStream({
       ...this.config,
       contextId: options.contextId ?? crypto.randomUUID(),
       traceId: options.traceId,
-      firstAudioTimeoutMs: options.firstAudioTimeoutMs ?? this.config.firstAudioTimeoutMs,
+      firstAudioTimeoutMs,
       callbacks,
     });
   }
@@ -256,6 +273,7 @@ export class FishAudioTtsStream {
   private cancelled = false;
   private completed = false;
   private socketOpened = false;
+  private openedSettled = false;
   private firstAudioEmitted = false;
   private providerErrorEmitted = false;
   private firstAudioTimer: ReturnType<typeof setTimeout> | null = null;
@@ -275,7 +293,10 @@ export class FishAudioTtsStream {
       this.resolveClosed = resolve;
     });
     this.socket = input.websocketFactory(input.websocketUrl, {
-      headers: { Authorization: `Bearer ${input.apiKey}` },
+      headers: {
+        Authorization: `Bearer ${input.apiKey}`,
+        model: input.model,
+      },
     });
     this.socket.binaryType = "arraybuffer";
     this.attachSocketListeners();
@@ -300,6 +321,15 @@ export class FishAudioTtsStream {
         },
       );
     }
+    if (this.providerErrorEmitted) {
+      throw new FishAudioTtsError(
+        "Cannot send a Fish phrase after provider failure",
+        "STREAM_FAILED",
+        {
+          contextId: this.contextId,
+        },
+      );
+    }
 
     if (!this.firstAudioTimer && phrase.text.trim().length > 0) {
       this.startFirstAudioTimer();
@@ -308,6 +338,7 @@ export class FishAudioTtsStream {
       event: "text",
       text: phrase.text,
     });
+    if (phrase.flush) this.sendOrQueue({ event: "flush" });
     if (!phrase.continueContext) this.sendOrQueue({ event: "stop" });
   }
 
@@ -316,6 +347,11 @@ export class FishAudioTtsStream {
     this.cancelled = true;
     this.clearFirstAudioTimer();
     this.discardQueuedOutbound();
+    this.rejectOpenedOnce(
+      new FishAudioTtsError("Fish WebSocket closed during cancellation", "STREAM_CANCELLED", {
+        contextId: this.contextId,
+      }),
+    );
     this.input.callbacks.onCancelled?.({
       contextId: this.contextId,
       traceId: this.traceId,
@@ -332,6 +368,7 @@ export class FishAudioTtsStream {
         return;
       }
       this.socketOpened = true;
+      this.openedSettled = true;
       this.resolveOpened();
       this.socket.send(
         encode({
@@ -340,9 +377,8 @@ export class FishAudioTtsStream {
             text: "",
             reference_id: this.input.referenceId,
             format: "pcm",
-            sample_rate: 24_000,
+            sample_rate: 16_000,
             latency: this.input.latency,
-            model: this.input.model,
           },
         } satisfies FishOutgoingFrame),
       );
@@ -360,7 +396,8 @@ export class FishAudioTtsStream {
           event.message ?? (event.error instanceof Error ? event.error.message : "WebSocket error"),
         code: "websocket_error",
       });
-      this.rejectOpened(new FishAudioTtsError("Fish WebSocket error", "websocket_error"));
+      this.rejectOpenedOnce(new FishAudioTtsError("Fish WebSocket error", "websocket_error"));
+      this.socket.close(1011, "Fish WebSocket error");
     });
     this.socket.addEventListener("close", (event) => {
       this.clearFirstAudioTimer();
@@ -383,7 +420,7 @@ export class FishAudioTtsStream {
           code,
           statusCode: event.code,
         });
-        if (beforeOpen) this.rejectOpened(new FishAudioTtsError(message, code));
+        if (beforeOpen) this.rejectOpenedOnce(new FishAudioTtsError(message, code));
       }
       this.resolveClosed();
     });
@@ -459,6 +496,20 @@ export class FishAudioTtsStream {
     }
 
     if (frame.event === "finish") {
+      if (frame.reason === "error") {
+        this.emitProviderError({
+          contextId: this.contextId,
+          traceId: this.traceId,
+          title: "Fish provider failed to finish synthesis",
+          message:
+            typeof frame.message === "string"
+              ? frame.message
+              : "Fish provider finished synthesis with an error",
+          code: typeof frame.code === "string" ? frame.code : "provider_finish_error",
+        });
+        this.socket.close(1011, "Fish provider finish error");
+        return;
+      }
       this.completed = true;
       this.clearFirstAudioTimer();
       this.input.callbacks.onComplete?.({
@@ -535,6 +586,12 @@ export class FishAudioTtsStream {
     this.firstAudioTimer = null;
   }
 
+  private rejectOpenedOnce(error: FishAudioTtsError): void {
+    if (this.openedSettled) return;
+    this.openedSettled = true;
+    this.rejectOpened(error);
+  }
+
   private emitMetric(
     name: FishAudioMetricEvent["name"],
     attributes: FishAudioMetricEvent["attributes"],
@@ -572,7 +629,7 @@ function validateFishAudioConfig(config: FishAudioAdapterConfig): NormalizedConf
   const sampleRate = config.sampleRate ?? DEFAULT_SAMPLE_RATE;
   if (sampleRate !== DEFAULT_SAMPLE_RATE) {
     throw new FishAudioTtsError(
-      "Fish realtime sampleRate must be 24000",
+      "Fish realtime sampleRate must be 16000 for the voice-session PCM contract",
       "CONFIG_SAMPLE_RATE_INVALID",
       {
         sampleRate,
@@ -605,6 +662,24 @@ function validateFishAudioConfig(config: FishAudioAdapterConfig): NormalizedConf
     });
   }
 
+  const firstAudioTimeoutMs = config.firstAudioTimeoutMs ?? DEFAULT_FIRST_AUDIO_TIMEOUT_MS;
+  if (!Number.isFinite(firstAudioTimeoutMs) || firstAudioTimeoutMs <= 0) {
+    throw new FishAudioTtsError(
+      "Fish firstAudioTimeoutMs must be a positive finite number",
+      "CONFIG_FIRST_AUDIO_TIMEOUT_INVALID",
+      { firstAudioTimeoutMs },
+    );
+  }
+
+  const maxQueuedFrames = config.maxQueuedFrames ?? DEFAULT_MAX_QUEUED_FRAMES;
+  if (!Number.isInteger(maxQueuedFrames) || maxQueuedFrames <= 0) {
+    throw new FishAudioTtsError(
+      "Fish maxQueuedFrames must be a positive integer",
+      "CONFIG_MAX_QUEUED_FRAMES_INVALID",
+      { maxQueuedFrames },
+    );
+  }
+
   return {
     apiKey,
     referenceId,
@@ -615,8 +690,8 @@ function validateFishAudioConfig(config: FishAudioAdapterConfig): NormalizedConf
     channels: DEFAULT_CHANNELS,
     format,
     latency,
-    firstAudioTimeoutMs: config.firstAudioTimeoutMs ?? DEFAULT_FIRST_AUDIO_TIMEOUT_MS,
-    maxQueuedFrames: config.maxQueuedFrames ?? DEFAULT_MAX_QUEUED_FRAMES,
+    firstAudioTimeoutMs,
+    maxQueuedFrames,
     metrics: config.metrics,
   };
 }
