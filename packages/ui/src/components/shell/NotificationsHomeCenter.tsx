@@ -134,7 +134,6 @@ import {
   clearNotificationPullVisibilityOverrides,
   dampenPull,
   notificationGroupContainerOffset,
-  notificationGroupPixelAlignedOffset,
   notificationGroupPullOffset,
   notificationGroupPullVisibility,
   notificationPullOvershootOffset,
@@ -2689,12 +2688,6 @@ export function NotificationsHomeCenter({
           // replacing the other's transform at pointer-up.
           const groupContentOffset =
             groupContainerOffset + groupContentPullOffset + pullOvershootOffset;
-          const pixelAlignedGroupContentOffset =
-            notificationGroupPixelAlignedOffset(
-              groupContentOffset,
-              centerRef.current?.ownerDocument.defaultView?.devicePixelRatio ??
-                1,
-            );
           const stackExpanded = expandedStacks.has(group.key);
           // Every presentation shares one shell, so the top NotificationRow
           // stays under the same parent/key while a fanned stack closes.
@@ -2811,7 +2804,7 @@ export function NotificationsHomeCenter({
                       ? stackTailPx
                       : 0,
                   opacity: groupPresentationVisibility,
-                  transform: `translate3d(0, ${pixelAlignedGroupContentOffset}px, 0)`,
+                  transform: `translate3d(0, ${groupContentOffset}px, 0)`,
                   transition: isPulling ? "none" : undefined,
                 }}
               >

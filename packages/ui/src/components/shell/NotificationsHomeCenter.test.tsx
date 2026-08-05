@@ -61,7 +61,6 @@ import {
 } from "./NotificationsHomeCenter";
 import { NOTIFICATION_ROW_SETTLE_MS } from "./notification-shade-content";
 import {
-  notificationGroupPixelAlignedOffset,
   notificationMaterialVisibility,
   notificationPullOvershootOffset,
   notificationPullPresentation,
@@ -619,13 +618,6 @@ describe("dampenPull", () => {
     expect(notificationMaterialVisibility(0.98)).toBeCloseTo(0.9996, 4);
     expect(notificationMaterialVisibility(0.5)).toBe(0.75);
     expect(notificationMaterialVisibility(0)).toBe(0);
-  });
-
-  it("keeps the glass rim aligned to physical pixels during a pull", () => {
-    expect(notificationGroupPixelAlignedOffset(-0.1818, 1)).toBe(0);
-    expect(notificationGroupPixelAlignedOffset(-0.26, 2)).toBe(-0.5);
-    expect(notificationGroupPixelAlignedOffset(39.09, 3)).toBe(39);
-    expect(notificationGroupPixelAlignedOffset(1.6, 0)).toBe(2);
   });
 
   it("fades the count before upward overpull reaches its clipping boundary", () => {
@@ -1915,14 +1907,6 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     });
 
     expect(list.hasAttribute("data-shade-dragging")).toBe(true);
-    const filesGroupOffset = Number.parseFloat(
-      filesGroup?.style.transform.match(/translate3d\(0, ([^p]+)px/)?.[1] ??
-        "NaN",
-    );
-    expect(Number.isFinite(filesGroupOffset)).toBe(true);
-    expect(filesGroupOffset * window.devicePixelRatio).toBe(
-      Math.round(filesGroupOffset * window.devicePixelRatio),
-    );
     const css = list.parentElement?.querySelector("style")?.textContent ?? "";
     const activeDragRule = css.match(
       /\.eliza-notif-scroll\[data-shade-dragging\]\s*\{([^}]*)\}/,
@@ -2622,7 +2606,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     act(() => vi.advanceTimersByTime(20));
 
     const overpull = notificationPullOvershootOffset(dampenPull(132));
-    const expectedTransform = `translate3d(0, ${notificationGroupPixelAlignedOffset(overpull, window.devicePixelRatio)}px, 0)`;
+    const expectedTransform = `translate3d(0, ${overpull}px, 0)`;
     const groupContent = list.querySelector<HTMLElement>(
       "[data-notification-group-content]",
     );
