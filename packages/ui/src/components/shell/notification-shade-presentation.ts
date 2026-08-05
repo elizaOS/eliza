@@ -52,19 +52,6 @@ export function notificationPullRevealStyle(
   };
 }
 
-/**
- * Keep the glass material visually stable as a close gesture leaves rest.
- * Geometry and copy track the finger linearly, but a zero-slope material fade
- * prevents the first sampled pointer move from reading as a lighting change.
- */
-export function notificationMaterialVisibility(
-  contentVisibility: number,
-): number {
-  const visibility = Math.min(1, Math.max(0, contentVisibility));
-  const closeProgress = 1 - visibility;
-  return 1 - closeProgress * closeProgress;
-}
-
 export function notificationPullPresentation(
   pullPx: number,
   shadeExpanded: boolean,
@@ -292,8 +279,6 @@ export function applyNotificationPullPresentation(
       preservesCardMaterialDuringDrag || preservesCommittedCloseMaterial;
     const contentVisibility =
       pullRevealed || !rested || preservesCardMaterial ? groupVisibility : 1;
-    const materialVisibility =
-      notificationMaterialVisibility(contentVisibility);
     if (content) {
       const contentPullOffset = pullRevealed
         ? (1 - groupVisibility) * -8
@@ -315,7 +300,7 @@ export function applyNotificationPullPresentation(
         );
         content.style.setProperty(
           "--eliza-notif-group-surface-visibility",
-          String(materialVisibility),
+          String(contentVisibility),
         );
       } else if (!shadeClosing) {
         content.style.removeProperty("--eliza-notif-group-content-visibility");

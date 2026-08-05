@@ -61,7 +61,6 @@ import {
 } from "./NotificationsHomeCenter";
 import { NOTIFICATION_ROW_SETTLE_MS } from "./notification-shade-content";
 import {
-  notificationMaterialVisibility,
   notificationPullOvershootOffset,
   notificationPullPresentation,
   PULL_TRAVEL_PX,
@@ -611,13 +610,6 @@ describe("dampenPull", () => {
     expect(notificationPullOvershootOffset(PULL_TRAVEL_PX)).toBe(0);
     expect(notificationPullOvershootOffset(overpull)).toBeCloseTo(9.8, 1);
     expect(notificationPullOvershootOffset(-overpull)).toBeCloseTo(-9.8, 1);
-  });
-
-  it("eases glass material away from rest without a first-frame shade step", () => {
-    expect(notificationMaterialVisibility(1)).toBe(1);
-    expect(notificationMaterialVisibility(0.98)).toBeCloseTo(0.9996, 4);
-    expect(notificationMaterialVisibility(0.5)).toBe(0.75);
-    expect(notificationMaterialVisibility(0)).toBe(0);
   });
 
   it("fades the count before upward overpull reaches its clipping boundary", () => {
@@ -1826,20 +1818,14 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(settledContentRule).not.toContain(
       "--eliza-notif-group-content-visibility",
     );
-    const settledSurfaceRule = [
-      ...(list.parentElement
-        ?.querySelector("style")
-        ?.textContent?.matchAll(
-          /\.eliza-notif-scroll:is\(\[data-shade-dragging\], \[data-shade-settling\]\)[^{}]*\.eliza-notif-row-surface\s*\{([^}]*)\}/g,
-        ) ?? []),
-    ]
-      .map((match) => match[1])
-      .find((rule) => rule.includes("opacity:"));
-    expect(settledSurfaceRule).toContain("opacity:");
-    expect(settledSurfaceRule).toContain("!important");
-    expect(settledSurfaceRule).toContain("transition:");
+    const settledMaterialRule = list.parentElement
+      ?.querySelector("style")
+      ?.textContent?.match(
+        /\.eliza-notif-scroll\[data-shade-mode="expanded"\]\[data-shade-settling\][^{}]*\.eliza-notif-glass::after\s*\{([^}]*)\}/,
+      )?.[1];
+    expect(settledMaterialRule).toContain("transition: opacity");
     expect(list.parentElement?.querySelector("style")?.textContent).toContain(
-      ".eliza-notif-scroll:is([data-shade-dragging], [data-shade-settling]) [data-notification-group-content] .eliza-notif-row-surface",
+      '.eliza-notif-scroll[data-shade-mode="expanded"]:is([data-shade-dragging], [data-shade-settling]) [data-notification-group-content] .eliza-notif-glass',
     );
     finishShadeCollapse();
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
@@ -1955,8 +1941,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
         "--eliza-notif-group-surface-visibility",
       ) ?? "0",
     );
-    expect(filesSurfaceOpacity).toBeGreaterThan(filesContentOpacity);
-    expect(filesSurfaceOpacity).toBeLessThan(1);
+    expect(filesSurfaceOpacity).toBeCloseTo(filesContentOpacity, 6);
     expect(screen.queryByTestId("notifications-count")).toBeNull();
     expect(screen.queryByTestId("notifications-collapse-footer")).toBeNull();
 
