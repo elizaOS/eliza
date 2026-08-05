@@ -42,7 +42,11 @@ import { averageEmbeddings } from "./speaker/encoder";
 import { FusedSpeakerEncoder } from "./speaker/encoder-fused";
 import { SPEAKER_GGML_MIN_SAMPLES } from "./speaker/encoder-ggml";
 import { cosineSimilarity } from "./speaker-imprint";
-import { resampleLinear } from "./transcriber";
+import {
+	StabilizedStreamingTranscriber,
+	StreamingAsrFeeder,
+} from "./streaming-asr/streaming-pipeline-adapter";
+import { FfiStreamingTranscriber, resampleLinear } from "./transcriber";
 import type { VoiceScenario } from "./voice-scenario";
 import type {
 	VoiceDiarizationObservation,
@@ -59,6 +63,7 @@ const SAMPLE_RATE = 16_000;
 const EOT_COMMIT_THRESHOLD = 0.5;
 const DEFAULT_OWNER_THRESHOLD = 0.78;
 const MAX_AGENT_TTS_SECONDS = 12;
+const STREAMING_ASR_FRAME_SAMPLES = SAMPLE_RATE / 5;
 const SPEAKER_ENROLLMENT_PHRASE =
 	"This is my voice enrollment sample for reliable speaker recognition.";
 
@@ -105,6 +110,11 @@ interface SpeakerProfile {
 interface SpeakerMatch {
 	profile: SpeakerProfile;
 	similarity: number;
+}
+
+interface MeasuredSynthesis {
+	pcm: Float32Array;
+	firstAudioMs: number;
 }
 
 export interface RealVoiceWorkbenchRuntime {
@@ -521,6 +531,7 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 				`[voice:workbench --real] scenario ${args.groundTruth.scenarioId} was not prepared before observeTurn`,
 			);
 		}
+		const endpointStartedAtMs = performance.now();
 		const audio16 = ensureSampleRate(args.audio, args.sampleRate, SAMPLE_RATE);
 		const speakerPcm = ensureMinSpeakerSamples(audio16);
 		const embedding = await this.encoder.encode(speakerPcm);
@@ -548,7 +559,14 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 				? matchedEntityId === ownerCandidate.ownerEntityId
 				: speakerMatch?.profile.isOwner === true;
 
-		const transcript = await this.transcribe(audio16);
+		const streamingResult =
+			args.groundTruth.classes.includes("streaming-partials") &&
+			this.ffi.asrStreamSupported()
+				? await this.transcribeStreaming(audio16)
+				: null;
+		const transcript = streamingResult
+			? streamingResult.transcript
+			: await this.transcribe(audio16);
 		const eotProbability = scoreEndOfTurnHeuristic(transcript);
 		const eotDecided = eotProbability >= EOT_COMMIT_THRESHOLD;
 		const selfVoiceSimilarity = this.selfVoiceSimilarity(embedding);
@@ -585,9 +603,17 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 			if (participant?.entityId) inferredEntities.push(participant.entityId);
 		}
 
-		if (responded && args.label.agentReplyText) {
-			this.lastAgentReply = args.label.agentReplyText;
-			await this.observeAgentReply(args.label.agentReplyText);
+		let firstAudioMs: number | undefined;
+		if (responded) {
+			const replyText = args.label.agentReplyText ?? "I heard you.";
+			const synthesisStartedAtMs = performance.now();
+			firstAudioMs =
+				synthesisStartedAtMs -
+				endpointStartedAtMs +
+				(await this.observeAgentReply(replyText));
+			if (args.label.agentReplyText) {
+				this.lastAgentReply = args.label.agentReplyText;
+			}
 		}
 
 		return {
@@ -597,7 +623,11 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 			responded,
 			inferredEntities,
 			matchedEntityId,
+			...(firstAudioMs !== undefined ? { firstAudioMs } : {}),
 			predictedOwner,
+			...(streamingResult
+				? { partialTranscripts: streamingResult.partials }
+				: {}),
 		};
 	}
 
@@ -672,8 +702,17 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 		text: string,
 		voiceId: string,
 	): Promise<Float32Array> {
+		return (await this.synthesizeKokoroMeasured(text, voiceId)).pcm;
+	}
+
+	private async synthesizeKokoroMeasured(
+		text: string,
+		voiceId: string,
+	): Promise<MeasuredSynthesis> {
 		const chunks: Float32Array[] = [];
 		let sampleRate = 0;
+		const startedAtMs = performance.now();
+		let firstAudioMs: number | undefined;
 		await this.kokoroBackend.synthesizeStream({
 			phrase: {
 				id: 1,
@@ -690,6 +729,7 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 			cancelSignal: { cancelled: false },
 			onChunk: (c) => {
 				if (!c.isFinal && c.pcm.length > 0) {
+					firstAudioMs ??= performance.now() - startedAtMs;
 					chunks.push(c.pcm);
 					sampleRate = c.sampleRate;
 				}
@@ -697,7 +737,7 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 			},
 		});
 		const total = chunks.reduce((n, c) => n + c.length, 0);
-		if (total === 0 || sampleRate === 0) {
+		if (total === 0 || sampleRate === 0 || firstAudioMs === undefined) {
 			throw new Error(
 				`[voice:workbench --real] Kokoro produced no audio for "${text}" [${voiceId}]`,
 			);
@@ -709,21 +749,28 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 			off += c.length;
 		}
 		const capped = Math.min(pcm.length, sampleRate * MAX_AGENT_TTS_SECONDS);
-		return resampleLinear(pcm.subarray(0, capped), sampleRate, SAMPLE_RATE);
+		return {
+			pcm: resampleLinear(pcm.subarray(0, capped), sampleRate, SAMPLE_RATE),
+			firstAudioMs,
+		};
 	}
 
 	private async synthesizeAgent(text: string): Promise<Float32Array> {
 		return this.synthesizeKokoro(text, KOKORO_AGENT_VOICE);
 	}
 
-	private async observeAgentReply(text: string): Promise<void> {
-		const pcm = await this.synthesizeAgent(text);
+	private async observeAgentReply(text: string): Promise<number> {
+		const synthesis = await this.synthesizeKokoroMeasured(
+			text,
+			KOKORO_AGENT_VOICE,
+		);
 		this.selfVoiceEmbeddings.push(
-			await this.encoder.encode(ensureMinSpeakerSamples(pcm)),
+			await this.encoder.encode(ensureMinSpeakerSamples(synthesis.pcm)),
 		);
 		while (this.selfVoiceEmbeddings.length > 8) {
 			this.selfVoiceEmbeddings.shift();
 		}
+		return synthesis.firstAudioMs;
 	}
 
 	private selfVoiceSimilarity(embedding: Float32Array): number | null {
@@ -743,6 +790,46 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 		return this.ffi
 			.asrTranscribe({ ctx: this.ctx, pcm, sampleRateHz: SAMPLE_RATE })
 			.trim();
+	}
+
+	private async transcribeStreaming(
+		pcm: Float32Array,
+	): Promise<{ transcript: string; partials: string[] }> {
+		const transcriber = new StabilizedStreamingTranscriber(
+			new FfiStreamingTranscriber({
+				ffi: this.ffi,
+				getContext: () => this.ctx,
+			}),
+		);
+		const partials: string[] = [];
+		const feeder = new StreamingAsrFeeder({
+			transcriber,
+			events: {
+				onPartial: (update) => partials.push(update.partial),
+			},
+		});
+		try {
+			const startedAtMs = performance.now();
+			for (
+				let offset = 0;
+				offset < pcm.length;
+				offset += STREAMING_ASR_FRAME_SAMPLES
+			) {
+				feeder.feedFrame({
+					pcm: pcm.subarray(
+						offset,
+						Math.min(pcm.length, offset + STREAMING_ASR_FRAME_SAMPLES),
+					),
+					sampleRate: SAMPLE_RATE,
+					timestampMs: startedAtMs + (offset / SAMPLE_RATE) * 1000,
+				});
+			}
+			const final = await feeder.finalize();
+			return { transcript: final.partial.trim(), partials };
+		} finally {
+			feeder.dispose();
+			transcriber.dispose();
+		}
 	}
 
 	async dispose(): Promise<void> {
