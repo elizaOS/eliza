@@ -304,10 +304,11 @@ describe("Stage-1 prompt tiering", () => {
 			"Never claim the view opened before VIEWS succeeds.",
 		);
 		expect(systemContent).toContain(
-			"View-backed records and native device controls are also device/app control",
+			"Sticky Notes and native device controls are also device/app control",
 		);
+		expect(systemContent).toContain('candidateActionNames=["CALENDAR"]');
 		expect(systemContent).toContain(
-			"UI navigation and view-backed Notes/Calendar/device operations -> VIEWS.",
+			"UI navigation and view-backed Notes/device operations -> VIEWS; calendar events -> CALENDAR.",
 		);
 		expect(systemContent).not.toContain(GROUP_TRIAGE_MARKER);
 		expect(systemContent).not.toContain(FULL_TEMPLATE_MARKER);
