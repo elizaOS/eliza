@@ -81,6 +81,7 @@ function getRepoLocalElizaCoreRoot(
 	}
 
 	const elizaRoots = [
+		path.resolve(repoRoot),
 		path.resolve(repoRoot, "eliza"),
 		path.resolve(repoRoot, "..", "eliza"),
 	];
