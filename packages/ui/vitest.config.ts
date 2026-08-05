@@ -202,6 +202,13 @@ export default defineConfig({
         ),
       },
       {
+        find: /^@elizaos\/capacitor-bun-runtime$/,
+        replacement: resolve(
+          packageRoot,
+          "test/stubs/elizaos-capacitor-bun-runtime.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/capacitor-agent$/,
         replacement: resolve(
           packageRoot,
