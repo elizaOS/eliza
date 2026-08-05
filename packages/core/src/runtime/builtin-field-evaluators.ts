@@ -175,7 +175,7 @@ export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
 	description:
 		"Likely UPPER_SNAKE_CASE action names. Prefer available_actions; confident unlisted names ok. Life-management (goals/todos/reminders/routines) -> the matching AVAILABLE action (OWNER_REMINDERS, TRIGGER); hint, not a claim. Empty when no action likely.",
 	descriptionCompressed:
-		"Likely UPPER_SNAKE_CASE action names; empty when no action likely.",
+		"Likely UPPER_SNAKE_CASE action names. UI open/show/switch/go-home -> VIEWS. Empty only when no action is needed.",
 	priority: 50,
 	schema: {
 		type: "array",
