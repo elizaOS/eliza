@@ -352,7 +352,7 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
    The important override is deliberate because NotificationRow keeps its
    gesture surface at inline opacity 1 while it owns horizontal dismissing. */
 .eliza-notif-scroll:is([data-shade-dragging], [data-shade-settling]) [data-notification-group-content] .eliza-notif-row-surface {
-  opacity: var(--eliza-notif-group-content-visibility, 1) !important;
+  opacity: var(--eliza-notif-group-surface-visibility, 1) !important;
   transition: opacity var(--eliza-notif-opacity-duration, var(--eliza-notif-settle-duration, ${SHADE_SETTLE_MS}ms)) ${SHADE_EASING};
 }
 .eliza-notif-scroll[data-shade-dragging] [data-notification-group-content] .eliza-notif-row-surface {
