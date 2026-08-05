@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
  * (issue #11030, leg C).
  *
  * Root cause: `CapacitorBridge.setupCordovaCompatibility()` registers a
- * `UIApplication.willEnterForegroundNotification` observer that evals
+ * foreground-scene observer that evals
  * `window.Capacitor.triggerEvent('resume', 'document')`. With a UIScene-based
  * lifecycle (this app ships `SceneDelegate.swift`), that notification ALSO
  * fires at cold launch — before the WKWebView has committed the initial page,
@@ -118,11 +118,11 @@ describe("@capacitor/ios boot-time resume/pause eval guard (issue #11030)", () =
     );
 
     // Both unguarded evals removed…
-    expect(patch).toContain(
-      `-                self?.triggerDocumentJSEvent(eventName: "resume")`,
+    expect(patch).toMatch(
+      /^-\s+self\?\.triggerDocumentJSEvent\(eventName: "resume"\)$/m,
     );
-    expect(patch).toContain(
-      `-                self?.triggerDocumentJSEvent(eventName: "pause")`,
+    expect(patch).toMatch(
+      /^-\s+self\?\.triggerDocumentJSEvent\(eventName: "pause"\)$/m,
     );
 
     // …and replaced by loading-state-gated versions.
@@ -134,11 +134,11 @@ describe("@capacitor/ios boot-time resume/pause eval guard (issue #11030)", () =
       "the patch must add the webViewLoadingState guard to both the resume " +
         "and pause observers",
     ).toBe(2);
-    expect(patch).toContain(
-      `+                self.triggerDocumentJSEvent(eventName: "resume")`,
+    expect(patch).toMatch(
+      /^\+\s+self\.triggerDocumentJSEvent\(eventName: "resume"\)$/m,
     );
-    expect(patch).toContain(
-      `+                self.triggerDocumentJSEvent(eventName: "pause")`,
+    expect(patch).toMatch(
+      /^\+\s+self\.triggerDocumentJSEvent\(eventName: "pause"\)$/m,
     );
   });
 
