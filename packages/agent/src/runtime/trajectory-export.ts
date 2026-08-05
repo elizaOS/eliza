@@ -203,7 +203,13 @@ export function persistedTrajectoryToDetailRecord(
     steps: persisted.steps.map((step) =>
       toPublicTrajectoryStep(step, persisted.id),
     ),
-    metrics: { finalStatus: persisted.status },
+    // Viewer + Core duck contracts require episodeLength + finalStatus on
+    // metrics. Actionless LLM steps stay action-optional; read routes map
+    // those to toolEvents: [] without fabrication (#17730).
+    metrics: {
+      episodeLength: persisted.steps.length,
+      finalStatus: persisted.status,
+    },
     metadata: persisted.metadata as Record<string, JsonValue | undefined>,
     stepsJson: JSON.stringify(persisted.steps),
   };
