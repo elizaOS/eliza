@@ -8,6 +8,7 @@
  */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { claimsStrictRelease } from "./manifest/release-policy";
 
 export const QWEN_PROVENANCE_RE = /\bqwen/i;
 
@@ -53,23 +54,27 @@ export function readBundleAsrProvenanceBlockers(bundleRoot: string): string[] {
 	} catch {
 		return [];
 	}
+	if (!claimsStrictRelease(parsed, { allowVersionStaging: true })) return [];
 	return collectQwenAsrProvenanceBlockers(parsed);
-}
-
-function directoryHasRegularFile(dir: string): boolean {
-	for (const entry of readdirSync(dir, { withFileTypes: true })) {
-		const child = path.join(dir, entry.name);
-		if (entry.isFile()) return true;
-		if (entry.isDirectory() && directoryHasRegularFile(child)) return true;
-	}
-	return false;
 }
 
 export function bundleHasAsrModelFiles(bundleRoot: string): boolean {
 	const asrDir = path.join(bundleRoot, "asr");
 	if (!existsSync(asrDir)) return false;
 	try {
-		return directoryHasRegularFile(asrDir);
+		let hasTextModel = false;
+		let hasProjector = false;
+		for (const entry of readdirSync(asrDir, { withFileTypes: true })) {
+			if (!entry.isFile() || !entry.name.toLowerCase().endsWith(".gguf")) {
+				continue;
+			}
+			if (/mmproj|proj/i.test(entry.name)) {
+				hasProjector = true;
+			} else {
+				hasTextModel = true;
+			}
+		}
+		return hasTextModel && hasProjector;
 	} catch {
 		return false;
 	}

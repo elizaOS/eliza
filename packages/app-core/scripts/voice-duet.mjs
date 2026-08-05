@@ -295,7 +295,7 @@ function printPrereqs(report, model) {
 // ---------------------------------------------------------------------------
 
 async function bootAgentRuntime({ roomId, character, modelId }) {
-  const { AgentRuntime } = await import("@elizaos/core");
+  const { AgentRuntime, stringToUuid } = await import("@elizaos/core");
   let sqlPlugin;
   try {
     sqlPlugin =
@@ -312,6 +312,19 @@ async function bootAgentRuntime({ roomId, character, modelId }) {
     plugins: [sqlPlugin],
   });
   await runtime.initialize();
+  const persistedRoomId = stringToUuid(roomId);
+  const entityId = stringToUuid(`${persistedRoomId}:peer`);
+  const worldId = stringToUuid(`${persistedRoomId}:world`);
+  runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", entityId, false);
+  await runtime.ensureConnection({
+    entityId,
+    roomId: persistedRoomId,
+    worldId,
+    userName: "Voice peer",
+    source: "voice-duet",
+    channelId: persistedRoomId,
+    type: "VOICE_DM",
+  });
   const { ensureLocalInferenceHandler, prewarmResponseHandler } = await import(
     "@elizaos/plugin-local-inference/runtime/ensure-local-inference-handler"
   );
@@ -332,13 +345,16 @@ async function bootAgentRuntime({ roomId, character, modelId }) {
         "[voice-duet] runtime.messageService.handleMessage unavailable after initialize()",
       );
     }
-    const entityId = `${roomId}-peer`;
     const incoming = {
-      id: `${roomId}-${Date.now()}`,
-      content: { text: request.transcript, source: "voice-duet" },
+      id: stringToUuid(`${persistedRoomId}:message:${Date.now()}`),
+      content: {
+        text: request.transcript,
+        source: "voice-duet",
+        channelType: "VOICE_DM",
+      },
       entityId,
       agentId: runtime.agentId,
-      roomId,
+      roomId: persistedRoomId,
       createdAt: Date.now(),
     };
     let replyText = "";
@@ -372,7 +388,12 @@ async function bootAgentRuntime({ roomId, character, modelId }) {
       ...(request.turn ? { turn: request.turn } : {}),
     };
   };
-  return { runtime, generate, prewarmResponseHandler };
+  return {
+    runtime,
+    generate,
+    prewarmResponseHandler,
+    roomId: persistedRoomId,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -382,7 +403,6 @@ async function bootAgentRuntime({ roomId, character, modelId }) {
 async function bootAgentEngine({
   EngineClass,
   bundleRoot,
-  modelId,
   bundlePath,
   sink,
   roomId,
@@ -631,17 +651,16 @@ async function main() {
     endVoiceLatencyTurn,
     voiceLatencyTracer,
     VoiceRunMetrics,
-  } = await import(
-    "@elizaos/plugin-local-inference/services/latency-trace"
-  );
+  } = await import("@elizaos/plugin-local-inference/services/latency-trace");
   const { parseExpressiveTags, asrEmotionToTag } = await import(
     "@elizaos/plugin-local-inference/services/voice/expressive-tags"
   );
 
   const charA = await loadCharacter(args.characterA, DEFAULT_CHARACTER_A);
   const charB = await loadCharacter(args.characterB, DEFAULT_CHARACTER_B);
-  const roomA = "voice-duet-A";
-  const roomB = "voice-duet-B";
+  const { stringToUuid } = await import("@elizaos/core");
+  const roomA = stringToUuid("voice-duet-A");
+  const roomB = stringToUuid("voice-duet-B");
 
   // PushMicSources (16 kHz — the ASR/VAD rate the bridge resamples to).
   const pushA = new PushMicSource({ sampleRate: 16_000 });
@@ -870,7 +889,6 @@ async function main() {
   const engineA = await bootAgentEngine({
     EngineClass: LocalInferenceEngine,
     bundleRoot,
-    modelId: args.model,
     bundlePath,
     sink: bridge.sinkForA(),
     roomId: roomA,
@@ -893,7 +911,6 @@ async function main() {
     engineB = await bootAgentEngine({
       EngineClass: LocalInferenceEngine,
       bundleRoot,
-      modelId: args.model,
       bundlePath,
       sink: bridge.sinkForB(),
       roomId: roomB,
@@ -1225,7 +1242,8 @@ async function runAsPeerB(args) {
     );
     const { DuetSink } = await import("./lib/duet-bridge.mjs");
     const charB = await loadCharacter(args.characterB, DEFAULT_CHARACTER_B);
-    const roomB = "voice-duet-B";
+    const { stringToUuid } = await import("@elizaos/core");
+    const roomB = stringToUuid("voice-duet-B");
     const booted = await bootAgentRuntime({
       roomId: roomB,
       character: charB,

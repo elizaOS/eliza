@@ -249,8 +249,20 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 		// by `resolveGuidedDecodeForParams`, mirroring `engine.ts`'s
 		// `resolveBindingGrammarSource`). The native session installs it FIRST
 		// in the sampler chain so every sampled token is grammar-constrained.
-		const gbnfGrammar =
-			resolveGuidedDecodeForParams(args).grammar?.source ?? null;
+		const guidedDecode = resolveGuidedDecodeForParams(args);
+		const gbnfGrammar = guidedDecode.grammar?.source ?? null;
+		const outputPrefix = guidedDecode.outputPrefix ?? "";
+		let outputPrefixEmitted = false;
+		const onTextChunk =
+			args.onTextChunk && outputPrefix.length > 0
+				? async (chunk: string) => {
+						if (!outputPrefixEmitted && chunk.length > 0) {
+							outputPrefixEmitted = true;
+							await args.onTextChunk?.(outputPrefix);
+						}
+						await args.onTextChunk?.(chunk);
+					}
+				: args.onTextChunk;
 		const result = await runner.generateWithUsage({
 			promptTokens: tokenize(args.prompt),
 			slotId: args.slotId ?? -1,
@@ -270,11 +282,14 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 			contextSize: loadConfig?.contextSize,
 			signal: args.signal,
 			maxTokensPerStep: args.maxTokensPerStep,
-			onTextChunk: args.onTextChunk,
+			onTextChunk,
 			onVerifierEvent: args.onVerifierEvent,
 		});
 		return {
-			text: result.text,
+			// The native grammar starts after the deterministic leading run. Restore
+			// that omitted run once here so parsing, UI streaming, trajectories, and
+			// voice all consume the same complete logical response.
+			text: `${outputPrefix}${result.text}`,
 			slotId: result.slotId,
 			firstTokenMs: result.firstTokenMs,
 			usage: {
