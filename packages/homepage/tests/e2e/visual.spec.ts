@@ -18,6 +18,8 @@ const ROUTES = [
   { path: "/connected", name: "connected" },
   { path: "/get-started", name: "get-started" },
   { path: "/leaderboard", name: "leaderboard" },
+  // "*" is the App.tsx catch-all; exercised via a representative unknown path.
+  { path: "*", name: "not-found", goto: "/this-page-does-not-exist" },
 ] as const;
 
 const VIEWPORTS = [
@@ -102,7 +104,8 @@ for (const viewport of VIEWPORTS) {
       test(`${route.name} (${viewport.name})`, async ({ page }) => {
         test.setTimeout(60_000);
         await page.clock.setFixedTime(FIXED_TIME);
-        await page.goto(route.path, { waitUntil: "domcontentloaded" });
+        const target = "goto" in route ? route.goto : route.path;
+        await page.goto(target, { waitUntil: "domcontentloaded" });
         await prepare(page, route.path);
         await captureScreenshotWithQualityRetry(
           page,
