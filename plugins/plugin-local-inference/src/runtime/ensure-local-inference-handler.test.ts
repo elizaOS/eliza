@@ -399,6 +399,36 @@ describe("ensureLocalInferenceHandler", () => {
 		}
 	});
 
+	it("routes only explicitly user-visible generations to local voice", async () => {
+		const { registrations, runtime } = makeRuntime();
+		engineState.hasLoadedModel.mockReturnValue(true);
+
+		await ensureLocalInferenceHandler(runtime);
+		const handler = findRegisteredHandler(
+			registrations,
+			ModelType.RESPONSE_HANDLER,
+		);
+
+		await handler(runtime, {
+			prompt: "internal structured work",
+			stream: true,
+			onStreamChunk: () => {},
+		});
+		expect(engineState.generate).toHaveBeenLastCalledWith(
+			expect.objectContaining({ voiceOutput: undefined }),
+		);
+
+		await handler(runtime, {
+			prompt: "visible reply",
+			stream: true,
+			onStreamChunk: () => {},
+			voiceOutput: "user-visible",
+		});
+		expect(engineState.generate).toHaveBeenLastCalledWith(
+			expect.objectContaining({ voiceOutput: "user-visible" }),
+		);
+	});
+
 	it("passes hardware-aware load args through desktop lazy assignment loads", async () => {
 		const installed = {
 			id: "eliza-1-2b",

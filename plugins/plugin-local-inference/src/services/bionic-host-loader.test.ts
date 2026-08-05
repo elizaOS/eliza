@@ -63,6 +63,10 @@ function makeBundleModelPath(manifest: unknown = {}): string {
 	fs.mkdirSync(path.join(bundleRoot, "asr"), { recursive: true });
 	fs.writeFileSync(path.join(bundleRoot, "asr", "gemma-asr.gguf"), "asr");
 	fs.writeFileSync(
+		path.join(bundleRoot, "asr", "gemma-asr-mmproj.gguf"),
+		"asr-projector",
+	);
+	fs.writeFileSync(
 		path.join(bundleRoot, "eliza-1.manifest.json"),
 		JSON.stringify(manifest),
 	);

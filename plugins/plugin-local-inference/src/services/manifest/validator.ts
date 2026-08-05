@@ -27,6 +27,7 @@ import {
 	QWEN_PROVENANCE_RE,
 } from "../asr-provenance";
 import { readBundleTextArchitectureBlockers } from "../text-provenance";
+import { claimsStrictRelease } from "./release-policy";
 import {
 	bundleTierSlug,
 	ELIZA_1_TOKENIZER_FAMILY,
@@ -191,12 +192,6 @@ export function isStrictReleaseManifest(manifest: Eliza1Manifest): boolean {
 // refinement already enforces that for the base-v1 channel; the validator now
 // honours the release-state vocabulary instead of applying the auto-default
 // bar to every manifest).
-const STRICT_RELEASE_STATES: ReadonlySet<string> = new Set([
-	"base-v1",
-	"finetuned-v2",
-	"final",
-]);
-
 const VISION_TIERS: ReadonlySet<Eliza1Tier> = new Set([
 	"2b",
 	"4b",
@@ -215,38 +210,13 @@ const MTP_TIERS: ReadonlySet<Eliza1Tier> = new Set([
 
 const MIN_TEXT_CONTEXT = 131072;
 
-const STAGING_VERSION_TOKENS: ReadonlySet<string> = new Set([
-	"candidate",
-	"staged",
-	"dev",
-	"local",
-]);
-
-function isStagingManifestVersion(version: string): boolean {
-	const prerelease = version.match(
-		/^[0-9]+\.[0-9]+\.[0-9]+-([^+]+)(?:\+.*)?$/,
-	)?.[1];
-	if (!prerelease) return false;
-	return prerelease
-		.split(/[.-]/)
-		.some((token) => STAGING_VERSION_TOKENS.has(token.toLowerCase()));
-}
-
 function collectContractErrors(
 	m: Eliza1Manifest,
 	options: { allowVersionStaging?: boolean } = {},
 ): string[] {
 	const errors: string[] = [];
 
-	const releaseState = m.provenance?.releaseState;
-	const strictRelease =
-		m.defaultEligible === true ||
-		(releaseState === undefined &&
-			!(
-				options.allowVersionStaging === true &&
-				isStagingManifestVersion(m.version)
-			)) ||
-		(releaseState !== undefined && STRICT_RELEASE_STATES.has(releaseState));
+	const strictRelease = claimsStrictRelease(m, options);
 
 	// Gemma 4 cutover: a release-shaped (strict/defaultEligible) bundle must be
 	// the real Gemma-4 base, never the Qwen3.5 / local-standin placeholder the

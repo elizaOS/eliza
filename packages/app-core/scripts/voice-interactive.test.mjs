@@ -3,7 +3,10 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { resolveInstalledBundleRoot } from "./voice-interactive.mjs";
+import {
+  resolveInstalledBundleRoot,
+  shouldPrewarmAfterTurn,
+} from "./voice-interactive.mjs";
 
 const tempDirs = [];
 
@@ -58,5 +61,18 @@ describe("resolveInstalledBundleRoot", () => {
       bundleRoot,
       textPath,
     });
+  });
+});
+
+describe("shouldPrewarmAfterTurn", () => {
+  it("keeps idle prewarming out of one-shot say and WAV proofs", () => {
+    expect(shouldPrewarmAfterTurn({ say: "hello", wav: null })).toBe(false);
+    expect(shouldPrewarmAfterTurn({ say: null, wav: "speech.wav" })).toBe(
+      false,
+    );
+  });
+
+  it("keeps idle prewarming enabled for sustained interactive voice", () => {
+    expect(shouldPrewarmAfterTurn({ say: null, wav: null })).toBe(true);
   });
 });
