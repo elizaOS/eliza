@@ -366,6 +366,28 @@ export function applyNotificationPullPresentation(
   }
 }
 
+/**
+ * Release gesture-only visibility overrides when React resumes ownership of a
+ * settled shade. These custom properties are written outside React during a
+ * pull, so leaving them on persistent keyed rows lets a later drag reactivate
+ * the previous cycle's terminal opacity before its first presentation frame.
+ */
+export function clearNotificationPullVisibilityOverrides(
+  root: HTMLElement | null,
+): void {
+  if (!root) return;
+  for (const content of root.querySelectorAll<HTMLElement>(
+    "[data-notification-group-content]",
+  )) {
+    content.style.removeProperty("--eliza-notif-group-content-visibility");
+  }
+  for (const row of root.querySelectorAll<HTMLElement>(
+    "[data-notification-disposable-row]",
+  )) {
+    row.style.removeProperty("--eliza-notif-row-content-visibility");
+  }
+}
+
 /** Limit direct manipulation to groups near the scrollport. */
 export function visibleNotificationGroups(
   root: HTMLElement | null,
