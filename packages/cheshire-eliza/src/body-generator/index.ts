@@ -84,7 +84,12 @@ export function generateAgentBody(input: BodyGeneratorInput): GeneratedAgentBody
     ...rails.map((r) => (r === "solana" ? "Solana" : "Robinhood Chain")),
   ];
 
-  const plugins = ["@elizaos/plugin-sql", "@elizaos/plugin-bootstrap"];
+  // elizaOS order: storage → bootstrap → model → domain
+  const plugins = [
+    "@elizaos/plugin-sql",
+    "@elizaos/plugin-bootstrap",
+    "@elizaos/plugin-openai",
+  ];
   if (input.includeForge !== false) {
     plugins.push("@elizaos/plugin-robinhood", "@elizaos/plugin-solana-forging");
   }

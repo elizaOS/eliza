@@ -42,6 +42,11 @@ export { searchClawdToolsAction } from "./actions/search-tools.js";
 export { describeClawdToolAction } from "./actions/describe-tool.js";
 export { listClawdToolsAction } from "./actions/list-tools.js";
 export { clawdBrowserToolsProvider } from "./providers/tools-catalog.js";
+export {
+  actionFailure,
+  actionSuccess,
+  getPriorActionResult,
+} from "./action-result.js";
 
 /** Service class adapter for runtime.registerService */
 class ClawdBrowserCatalogServiceClass {

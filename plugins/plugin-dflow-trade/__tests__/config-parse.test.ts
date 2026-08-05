@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  actionSuccess,
+  getPriorActionResult,
+} from "../src/action-result.ts";
+import {
   readDflowTradeConfig,
   resolveMint,
   toAtomicAmount,
@@ -67,5 +71,41 @@ describe("parseTradeIntent", () => {
   it("keeps preview when dry-run said", () => {
     const p = parseTradeIntent("swap 1 USDC to SOL dry-run");
     expect(p!.previewOnly).toBe(true);
+  });
+});
+
+describe("elizaOS multi-step ActionResult", () => {
+  it("tags data.actionName for getPreviousResult matching", () => {
+    const result = actionSuccess("DFLOW_QUOTE", "ok", {
+      atomicAmount: "10000000",
+      parsed: { humanAmount: "0.01" },
+    });
+    expect(result.success).toBe(true);
+    expect(result.data?.actionName).toBe("DFLOW_QUOTE");
+    expect(result.userFacingText).toBe("ok");
+  });
+
+  it("getPriorActionResult finds quote in actionContext", () => {
+    const quote = actionSuccess("DFLOW_QUOTE", "quoted", {
+      atomicAmount: "10000000",
+    });
+    const found = getPriorActionResult("DFLOW_QUOTE", {
+      actionContext: {
+        previousResults: [quote],
+        getPreviousResult: (name) =>
+          name === "DFLOW_QUOTE" ? quote : undefined,
+      },
+    });
+    expect(found?.data?.atomicAmount).toBe("10000000");
+  });
+
+  it("getPriorActionResult falls back to state.data.actionResults", () => {
+    const quote = actionSuccess("DFLOW_QUOTE", "quoted", { x: 1 });
+    const found = getPriorActionResult(
+      "DFLOW_QUOTE",
+      {},
+      { data: { actionResults: [quote] }, values: {}, text: "" } as never,
+    );
+    expect(found?.data?.x).toBe(1);
   });
 });

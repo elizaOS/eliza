@@ -32,4 +32,27 @@ describe("cheshire-eliza body generator", () => {
       "@elizaos/plugin-dflow-trade",
     );
   });
+
+  it("matches elizaOS plugin order: sql → bootstrap → model → domain", () => {
+    const p = solizardCheshireCharacter.plugins;
+    const sql = p.indexOf("@elizaos/plugin-sql");
+    const boot = p.indexOf("@elizaos/plugin-bootstrap");
+    const openai = p.indexOf("@elizaos/plugin-openai");
+    const dflow = p.indexOf("@elizaos/plugin-dflow-trade");
+    expect(sql).toBeGreaterThanOrEqual(0);
+    expect(boot).toBeGreaterThan(sql);
+    expect(openai).toBeGreaterThan(boot);
+    expect(dflow).toBeGreaterThan(openai);
+  });
+
+  it("includes multi-action messageExamples for ActionPlan", () => {
+    const multi = solizardCheshireCharacter.messageExamples.some((ex) =>
+      ex.some(
+        (m) =>
+          Array.isArray(m.content.actions) && m.content.actions.length >= 2,
+      ),
+    );
+    expect(multi).toBe(true);
+    expect(solizardCheshireCharacter.system).toMatch(/ActionPlan|multi-step/i);
+  });
 });

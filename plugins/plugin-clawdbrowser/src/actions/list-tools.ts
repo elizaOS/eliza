@@ -2,15 +2,19 @@ import type {
   Action,
   ActionResult,
   HandlerCallback,
+  HandlerOptions,
   IAgentRuntime,
   Memory,
   State,
 } from "@elizaos/core";
+import { actionFailure, actionSuccess } from "../action-result.js";
 import { formatToolBrief } from "../catalog/parse-tools-md.js";
 import {
   CLAWDBROWSER_SERVICE_TYPE,
   ClawdBrowserCatalogService,
 } from "../services/catalog-service.js";
+
+const ACTION = "LIST_CLAWD_TOOLS";
 
 function getService(runtime: IAgentRuntime): ClawdBrowserCatalogService {
   const existing = runtime.getService?.(CLAWDBROWSER_SERVICE_TYPE) as
@@ -33,10 +37,10 @@ function extractGroup(text: string): string | undefined {
 }
 
 export const listClawdToolsAction: Action = {
-  name: "LIST_CLAWD_TOOLS",
+  name: ACTION,
   similes: ["LIST_SOL_GPT_TOOLS", "SHOW_CLAWD_TOOLS", "CLAWD_TOOL_GROUPS"],
   description:
-    "List ClawdBrowser tool groups or tools in a group (phoenix, imperial, market, wallet, trading, browser, …).",
+    "List ClawdBrowser tool groups or tools in a group. Structured data for multi-step plans.",
   validate: async (_runtime, message) => {
     const text = message.content?.text || "";
     return /list\s+(clawd\s*)?(browser\s*)?tools|show\s+tool\s+groups|tool groups|catalog groups/i.test(
@@ -47,7 +51,7 @@ export const listClawdToolsAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
-    _options?: unknown,
+    _options?: HandlerOptions | Record<string, unknown>,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const svc = getService(runtime);
@@ -55,12 +59,13 @@ export const listClawdToolsAction: Action = {
     if (!catalog) {
       const err = svc.getLastError() || "catalog missing";
       const text = `ClawdBrowser tools unavailable: ${err}`;
-      if (callback) await callback({ text, actions: ["LIST_CLAWD_TOOLS"] });
-      return { success: false, text, error: new Error(err) };
+      if (callback) await callback({ text }, ACTION);
+      return actionFailure(ACTION, text);
     }
 
     const group = extractGroup(message.content?.text || "");
     let body: string;
+    let toolNames: string[] = [];
     if (!group) {
       body = [
         `ClawdBrowser catalog — **${catalog.totalTools}** tools (${catalog.coreCount} core)`,
@@ -74,6 +79,7 @@ export const listClawdToolsAction: Action = {
       ].join("\n");
     } else {
       const tools = svc.listGroup(group);
+      toolNames = tools.map((t) => t.name);
       if (tools.length === 0) {
         body = `No tools in group \`${group}\`. Groups: ${catalog.groups.map((g) => g.id).join(", ")}`;
       } else {
@@ -87,12 +93,13 @@ export const listClawdToolsAction: Action = {
       }
     }
 
-    if (callback) await callback({ text: body, actions: ["LIST_CLAWD_TOOLS"] });
-    return {
-      success: true,
-      text: body,
-      data: { group: group || null, total: catalog.totalTools },
-    };
+    if (callback) await callback({ text: body }, ACTION);
+    return actionSuccess(
+      ACTION,
+      body,
+      { group: group || null, toolNames, total: catalog.totalTools },
+      { turnComplete: true, verifiedUserFacing: true },
+    );
   },
   examples: [
     [

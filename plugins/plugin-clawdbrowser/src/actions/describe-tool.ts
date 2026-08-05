@@ -2,14 +2,22 @@ import type {
   Action,
   ActionResult,
   HandlerCallback,
+  HandlerOptions,
   IAgentRuntime,
   Memory,
   State,
 } from "@elizaos/core";
 import {
+  actionFailure,
+  actionSuccess,
+  getPriorActionResult,
+} from "../action-result.js";
+import {
   CLAWDBROWSER_SERVICE_TYPE,
   ClawdBrowserCatalogService,
 } from "../services/catalog-service.js";
+
+const ACTION = "DESCRIBE_CLAWD_TOOL";
 
 function getService(runtime: IAgentRuntime): ClawdBrowserCatalogService {
   const existing = runtime.getService?.(CLAWDBROWSER_SERVICE_TYPE) as
@@ -30,28 +38,25 @@ function extractToolName(text: string): string | null {
   const m = text.match(
     /(?:describe|explain|what is|docs? for)\s+(?:tool\s+)?([a-zA-Z][a-zA-Z0-9_]*)/i,
   );
-  if (m?.[1] && !/^(tool|the|a|an)$/i.test(m[1])) return m[1];
-  // bare snake_case token
+  if (m?.[1] && !/^(tool|the|a|an|top|first|best)$/i.test(m[1])) return m[1];
   const bare = text.match(/\b([a-z]+_[a-z0-9_]+)\b/);
   return bare?.[1] || null;
 }
 
 export const describeClawdToolAction: Action = {
-  name: "DESCRIBE_CLAWD_TOOL",
+  name: ACTION,
   similes: ["EXPLAIN_CLAWD_TOOL", "CLAWD_TOOL_DOCS", "SOL_GPT_TOOL_INFO"],
   description:
-    "Describe one ClawdBrowser / SOL GPT tool from tools.md (name, group, core flag, description).",
+    "Describe one ClawdBrowser tool. Chains after SEARCH_CLAWD_TOOLS — uses first hit when name omitted (“describe the top one”).",
   validate: async (_runtime, message) => {
     const text = message.content?.text || "";
-    return /describe\s+(tool\s+)?[a-z_]+|what is\s+[a-z]+_|explain\s+`?[a-z]+_/i.test(
-      text,
-    );
+    return /describe|explain|what is|top one|first hit|tool docs/i.test(text);
   },
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    _state?: State,
-    _options?: unknown,
+    state?: State,
+    options?: HandlerOptions | Record<string, unknown>,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const svc = getService(runtime);
@@ -59,23 +64,29 @@ export const describeClawdToolAction: Action = {
     if (!catalog) {
       const err = svc.getLastError() || "catalog missing";
       const text = `ClawdBrowser tools unavailable: ${err}`;
-      if (callback) await callback({ text, actions: ["DESCRIBE_CLAWD_TOOL"] });
-      return { success: false, text, error: new Error(err) };
+      if (callback) await callback({ text }, ACTION);
+      return actionFailure(ACTION, text);
     }
 
-    const name = extractToolName(message.content?.text || "");
+    let name = extractToolName(message.content?.text || "");
+    const prior = getPriorActionResult("SEARCH_CLAWD_TOOLS", options, state);
+    if (!name && prior?.data) {
+      const hitNames = prior.data.hitNames as string[] | undefined;
+      if (hitNames?.[0]) name = hitNames[0];
+    }
+
     if (!name) {
       const text =
-        "Name a tool to describe (e.g. describe tool `get_phoenix_mark_price`).";
-      if (callback) await callback({ text, actions: ["DESCRIBE_CLAWD_TOOL"] });
-      return { success: false, text };
+        "Name a tool to describe (e.g. describe tool `get_phoenix_mark_price`), or chain after SEARCH_CLAWD_TOOLS.";
+      if (callback) await callback({ text }, ACTION);
+      return actionFailure(ACTION, text);
     }
 
     const tool = svc.describe(name);
     if (!tool) {
       const text = `No tool named \`${name}\` in ClawdBrowser catalog (${catalog.totalTools} tools). Try SEARCH_CLAWD_TOOLS.`;
-      if (callback) await callback({ text, actions: ["DESCRIBE_CLAWD_TOOL"] });
-      return { success: false, text };
+      if (callback) await callback({ text }, ACTION);
+      return actionFailure(ACTION, text);
     }
 
     const body = [
@@ -83,19 +94,24 @@ export const describeClawdToolAction: Action = {
       `- **Group:** ${tool.group} (\`${tool.groupId}\`)`,
       `- **Core (Kimi first-turn):** ${tool.core ? "yes" : "no"}`,
       `- **Description:** ${tool.description}`,
+      prior ? `- **Chained from:** SEARCH_CLAWD_TOOLS` : "",
       "",
       "Execution model: research tools return JSON; `prepare_*` live tools are user-signed only (no server hot wallet).",
-    ].join("\n");
+    ]
+      .filter(Boolean)
+      .join("\n");
 
-    if (callback) {
-      await callback({ text: body, actions: ["DESCRIBE_CLAWD_TOOL"] });
-    }
-    return {
-      success: true,
-      text: body,
-      data: { tool },
-      values: { lastDescribedClawdTool: tool.name },
-    };
+    if (callback) await callback({ text: body }, ACTION);
+    return actionSuccess(
+      ACTION,
+      body,
+      { tool, chainedFrom: prior ? "SEARCH_CLAWD_TOOLS" : null },
+      {
+        values: { lastDescribedClawdTool: tool.name },
+        turnComplete: true,
+        verifiedUserFacing: true,
+      },
+    );
   },
   examples: [
     [
@@ -106,7 +122,7 @@ export const describeClawdToolAction: Action = {
       {
         name: "{{agent}}",
         content: {
-          text: "Looking up get_phoenix_mark_price in ClawdBrowser tools.md…",
+          text: "Looking up get_phoenix_mark_price…",
           actions: ["DESCRIBE_CLAWD_TOOL"],
         },
       },

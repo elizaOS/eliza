@@ -24,6 +24,11 @@ export { dflowQuoteAction } from "./actions/quote.js";
 export { dflowSwapAction } from "./actions/swap.js";
 export { dflowBalanceAction } from "./actions/balance.js";
 export { dflowTradeContextProvider } from "./providers/trade-context.js";
+export {
+  actionFailure,
+  actionSuccess,
+  getPriorActionResult,
+} from "./action-result.js";
 
 export const dflowTradePlugin: Plugin = {
   name: "@elizaos/plugin-dflow-trade",

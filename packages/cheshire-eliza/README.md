@@ -56,4 +56,5 @@ export HELIUS_RPC_URL=https://mainnet.helius-rpc.com/?api-key=...
 
 Agent utterances: “quote 0.01 SOL to USDC”, “swap 1 USDC to SOL preview”, “trade readiness”.
 
-See [docs/PR_PATH.md](./docs/PR_PATH.md) for PR + remote map.
+See [docs/PR_PATH.md](./docs/PR_PATH.md) for PR + remote map.  
+See [docs/ELIZA_ALIGNMENT.md](./docs/ELIZA_ALIGNMENT.md) for ActionPlan / bootstrap conventions.

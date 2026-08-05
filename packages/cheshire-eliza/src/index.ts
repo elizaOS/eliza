@@ -1,4 +1,7 @@
 export {
+  CHESTER_CORE_PLUGINS,
+  CHESTER_DOMAIN_PLUGINS,
+  CHESTER_MODEL_PLUGINS,
   CHESTER_PLUGIN_BUNDLE,
   cheshireTerminalCharacter,
   solizardCheshireCharacter,
