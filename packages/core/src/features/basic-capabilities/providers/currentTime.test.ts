@@ -4,11 +4,11 @@
  * model or wall-clock assumptions.
  */
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { IAgentRuntime, Memory } from "../../../types/index.ts";
 import { currentTimeProvider } from "./currentTime.ts";
 
-function runtime(timeZone: string): IAgentRuntime {
+function runtime(timeZone?: string): IAgentRuntime {
 	return {
 		getSetting: (key: string) => (key === "TIMEZONE" ? timeZone : null),
 	} as IAgentRuntime;
@@ -29,7 +29,13 @@ function expectedDate(iso: unknown, timeZone: string): string {
 }
 
 describe("currentTimeProvider", () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
 	it("formats relative-date context in the sending device timezone", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-08-05T02:41:04.618Z"));
 		const result = await currentTimeProvider.get(
 			runtime("UTC"),
 			message("America/Los_Angeles"),
@@ -40,7 +46,24 @@ describe("currentTimeProvider", () => {
 		expect(result.data?.date).toBe(
 			expectedDate(result.data?.iso, "America/Los_Angeles"),
 		);
+		expect(result.data?.date).toBe("2026-08-04");
+		expect(result.text).toContain("- Date: 2026-08-04");
 		expect(result.text).toContain("America/Los_Angeles");
+	});
+
+	it("uses the runtime host timezone when neither client nor agent config supplies one", async () => {
+		const result = await currentTimeProvider.get(
+			runtime(),
+			message(),
+			{} as never,
+		);
+		const hostTimeZone =
+			Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+
+		expect(result.data?.timeZone).toBe(hostTimeZone);
+		expect(result.data?.date).toBe(
+			expectedDate(result.data?.iso, hostTimeZone),
+		);
 	});
 
 	it("rejects an invalid client timezone and uses the configured timezone", async () => {
@@ -54,6 +77,19 @@ describe("currentTimeProvider", () => {
 		expect(result.data?.date).toBe(
 			expectedDate(result.data?.iso, "Europe/Paris"),
 		);
+		expect(result.text).not.toContain("Mars/Olympus_Mons");
+	});
+
+	it("rejects an invalid configured timezone and uses the runtime host timezone", async () => {
+		const result = await currentTimeProvider.get(
+			runtime("Mars/Olympus_Mons"),
+			message(),
+			{} as never,
+		);
+		const hostTimeZone =
+			Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+
+		expect(result.data?.timeZone).toBe(hostTimeZone);
 		expect(result.text).not.toContain("Mars/Olympus_Mons");
 	});
 });

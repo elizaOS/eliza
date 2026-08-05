@@ -6,7 +6,7 @@
  */
 
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   type CalendarActionDeps,
   createCalendarActionRunner,
@@ -45,6 +45,10 @@ function runtimeWithOptimizedPrompt(promptByTask: Record<string, string>) {
 }
 
 describe("createCalendarActionRunner", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("returns the CALENDAR action wired with the injected deps", () => {
     const action = createCalendarActionRunner(fakeDeps());
     expect(action.name).toBe("CALENDAR");
@@ -119,5 +123,43 @@ describe("createCalendarActionRunner", () => {
     expect(capturedPrompt).toContain(
       "Current request:\nSchedule lunch with Maya tomorrow at noon.",
     );
+  });
+
+  it("anchors tomorrow to the user's local date across the UTC day boundary", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-05T02:41:04.618Z"));
+    let capturedPrompt = "";
+    const deps: CalendarActionDeps = {
+      runTextModel: vi.fn(async () => null),
+      runJsonModel: vi.fn(async (args) => {
+        capturedPrompt = args.prompt;
+        return {
+          rawResponse:
+            '{"subaction":"create_event","shouldAct":true,"response":"","queries":[]}',
+          parsed: {
+            subaction: "create_event",
+            shouldAct: true,
+            response: "",
+            queries: [],
+          },
+        };
+      }),
+      recentConversationTexts: vi.fn(async () => []),
+    };
+    createCalendarActionRunner(deps);
+
+    await extractCalendarPlanWithLlm(
+      runtimeWithOptimizedPrompt({}),
+      message("Add demo tomorrow at 9am."),
+      undefined,
+      "calendar",
+      "America/Los_Angeles",
+    );
+
+    expect(capturedPrompt).toContain("Current timezone: America/Los_Angeles");
+    expect(capturedPrompt).toContain(
+      "yesterday = 2026-08-03, today = 2026-08-04, tomorrow = 2026-08-05",
+    );
+    expect(capturedPrompt).not.toContain("tomorrow = 2026-08-06");
   });
 });
