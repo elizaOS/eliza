@@ -18,6 +18,7 @@ import { pathForTab, shouldUseHashNavigation, type Tab } from "../navigation";
 import { shellHistory } from "../surface-realm-channel";
 import {
   loadLastNativeTab,
+  type SetTabOptions,
   type ShellView,
   saveLastNativeTab,
   saveUiShellMode,
@@ -72,11 +73,12 @@ export function useNavigationState(deps: NavigationStateDeps) {
   // ── setTab (with URL sync) ──────────────────────────────────────────
 
   const setTab = useCallback(
-    (newTab: Tab) => {
+    (newTab: Tab, options: SetTabOptions = {}) => {
       setTabRaw(newTab);
       if (newTab === "apps") {
         setAppsSubTab(hasActiveGameRun ? "games" : "browse");
       }
+      if (options.history === "preserve") return;
       const path = pathForTab(newTab);
       try {
         if (shouldUseHashNavigation()) {
