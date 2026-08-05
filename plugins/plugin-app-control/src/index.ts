@@ -20,6 +20,7 @@ import { settingsAction } from "./actions/settings.js";
 import {
 	closeAllViewsAction,
 	closeViewAction,
+	openViewAction,
 	viewsAction,
 } from "./actions/views.js";
 import { createViewsClient } from "./actions/views-client.js";
@@ -89,8 +90,10 @@ export type { ViewsMode } from "./actions/views.js";
 export {
 	closeAllViewsAction,
 	closeViewAction,
+	createOpenViewAction,
 	createViewsAction,
 	createViewsAliasAction,
+	openViewAction,
 	viewsAction,
 } from "./actions/views.js";
 export type { ViewSummary } from "./actions/views-client.js";
@@ -146,6 +149,7 @@ export const appControlPlugin: Plugin = {
 		"Launch, close, list, relaunch, load, and create Eliza apps from agent chat. Backed by the Eliza dashboard /api/apps/* HTTP surface. Also manages UI views via the VIEWS action.",
 	actions: [
 		appAction,
+		openViewAction,
 		viewsAction,
 		closeViewAction,
 		closeAllViewsAction,

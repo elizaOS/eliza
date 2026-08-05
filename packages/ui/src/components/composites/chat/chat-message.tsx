@@ -16,7 +16,7 @@
  * Presentation only — actions are delegated to callbacks.
  */
 import { Check, LoaderCircle, RotateCcw, Sparkles, X } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
+import { motion } from "motion/react";
 import type * as React from "react";
 import {
   type FocusEvent,
@@ -495,9 +495,6 @@ export const ChatMessage = memo(function ChatMessage({
 }: ChatMessageProps) {
   const glass = appearance === "glass";
   const [copied, flashCopied] = useCopiedFlash(glass ? 1100 : 2000);
-  // The press-and-hold "Copied" chip (glass) — separate from the action-row
-  // copy state so a hold-flash never lights the row button and vice versa.
-  const [holdCopied, flashHoldCopied] = useCopiedFlash(1100);
   const [showActions, setShowActions] = useState(false);
   const supportsHover = useSupportsHover();
   const [isEditing, setIsEditing] = useState(false);
@@ -598,9 +595,8 @@ export const ChatMessage = memo(function ChatMessage({
     onReply?.(message);
   }, [message, onReply, glass, supportsHover, focusMessageSurface]);
 
-  // Press-and-hold to copy an assistant answer (glass) — the only extraction
-  // affordance on touch. A still hold past COPY_HOLD_MS copies + flashes
-  // "Copied"; real finger travel cancels (shared usePointerPressAndHold).
+  // Press-and-hold shares the action row's existing confirmation state so copy
+  // feedback never creates a second floating surface over nearby messages.
   const canHoldCopy =
     glass && isAssistant && !!onLongPressCopy && trimmedText.length > 0;
   const holdBinding = usePointerPressAndHold<HTMLDivElement>({
@@ -609,7 +605,7 @@ export const ChatMessage = memo(function ChatMessage({
     canBegin: (e) => !isNestedInteractiveTarget(e.currentTarget, e.target),
     onHold: () => {
       onLongPressCopy?.(message.text);
-      flashHoldCopied();
+      flashCopied();
     },
   });
   const holdHandlers = canHoldCopy ? holdBinding : null;
@@ -904,13 +900,9 @@ export const ChatMessage = memo(function ChatMessage({
 
   // ── Glass chrome (the continuous overlay's floating row) ──────────────────
   if (glass) {
-    const initial = enterOnMount
-      ? reduceMotion
-        ? { opacity: 0 }
-        : { opacity: 0, y: 14 }
-      : false;
+    const initial = enterOnMount ? { opacity: 0 } : false;
     const transition = {
-      duration: reduceMotion ? 0.15 : 0.52,
+      duration: reduceMotion ? 0.05 : 0.09,
       ease: GLASS_EASE,
     };
     // A failure the user can't recover from without wiring a provider renders a
@@ -926,7 +918,7 @@ export const ChatMessage = memo(function ChatMessage({
           data-role={message.role}
           data-failure="no_provider"
           initial={initial}
-          animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
+          animate={{ opacity: 1 }}
           transition={transition}
           className="mb-2.5 flex w-full justify-start"
         >
@@ -1060,21 +1052,6 @@ export const ChatMessage = memo(function ChatMessage({
               children ??
               message.text}
           </div>
-          <AnimatePresence>
-            {holdCopied ? (
-              <motion.span
-                key="copied"
-                data-testid="thread-line-copied"
-                initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: reduceMotion ? 0 : 0.18 }}
-                className="pointer-events-none absolute -top-2 right-2 rounded-full bg-white/90 px-2 py-0.5 text-[11px] font-medium text-black"
-              >
-                Copied
-              </motion.span>
-            ) : null}
-          </AnimatePresence>
         </>
       );
 
@@ -1106,10 +1083,10 @@ export const ChatMessage = memo(function ChatMessage({
         align={isUser ? "end" : "start"}
         data-testid="thread-line"
         data-role={message.role}
-        // New turns rise+fade in. Transform/opacity only; reduced motion
-        // collapses it to a quick fade with no positional movement.
+        // A very short opacity-only entrance keeps fast-model turns immediate
+        // without fighting the scroller's bottom anchor.
         initial={initial}
-        animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
+        animate={{ opacity: 1 }}
         transition={transition}
         className="mb-0"
         onMouseEnter={

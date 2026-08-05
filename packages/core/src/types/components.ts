@@ -569,6 +569,16 @@ export interface Action {
 	/** Declarative context gate for v5 native tool planning. */
 	contextGate?: ContextGate;
 
+	/**
+	 * Provider blocks that cannot affect this action's parameterization.
+	 *
+	 * The message router applies these exclusions only when every Stage-1
+	 * candidate resolves to an action that declares the same exclusion. This
+	 * keeps narrow actions from inheriting unrelated planner context while
+	 * preserving the full state whenever routing is ambiguous.
+	 */
+	plannerStateProviderExclusions?: string[];
+
 	/** Whether prompt/tool metadata for this action is stable enough to cache. */
 	cacheStable?: boolean;
 

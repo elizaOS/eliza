@@ -2163,10 +2163,9 @@ function withViewsUserFacingText(result: ActionResult): ActionResult {
 }
 
 const VIEWS_ROUTING_HINT = [
-	"UI view/window/panel/app navigation and layout -> VIEWS.",
-	"View switching is a common proactive response in app chat: use action=show when the user asks to open, show, switch to, or pull up a matching surface, including a bare surface name in any language.",
-	"Use VIEWS for navigation, close/hide, the view manager, split/tile/window/pin layouts, and capabilities that the selected view actually declares.",
-	"Opening the Calendar surface uses VIEWS action=show; reading or changing calendar events uses the CALENDAR action because the first-party Calendar view is read-only.",
+	"View capabilities, management, and layout -> VIEWS; opening or switching one view -> OPEN_VIEW.",
+	"Use VIEWS for close/hide, the view manager, split/tile/window/pin layouts, and capabilities that the selected view actually declares.",
+	"Opening the Calendar surface uses OPEN_VIEW; reading or changing calendar events uses the CALENDAR action because the first-party Calendar view is read-only.",
 	"Sticky Notes operations use the registered Notes capabilities. Do not route them to documents or Knowledge.",
 	"For declared domain capabilities, use action=interact with an explicit view and capability. Semantic record capabilities are required; agent-fill and agent-click are only for an explicitly requested form-control interaction. Pass parameters in params rather than dotted keys.",
 	"Close/hide means VIEWS action=close, never delete/remove.",
@@ -2327,9 +2326,9 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			"task-coordinator",
 		],
 		description:
-			"Manage and navigate UI views. List available views, report the current view, open or close a view, search views, show the view manager, arrange layouts, and invoke capabilities that a view declares, including Notes. Calendar event reads and writes belong to the CALENDAR action; VIEWS only opens the Calendar surface.",
+			"Manage UI views. List available views, report or close the current view, search views, show the view manager, arrange layouts, and invoke capabilities that a view declares, including Notes. Use OPEN_VIEW to open or switch one surface. Calendar event reads and writes belong to CALENDAR.",
 		descriptionCompressed:
-			"navigate/close/arrange UI views; invoke declared Notes capabilities; Calendar records use CALENDAR",
+			"manage/close/arrange views; invoke declared Notes capabilities; opening uses OPEN_VIEW; Calendar records use CALENDAR",
 		routingHint: VIEWS_ROUTING_HINT,
 		allowAdditionalParameters: true,
 		toolSchemaStrict: false,
@@ -3422,6 +3421,85 @@ export function createViewsAliasAction(
 	};
 }
 
+export function createOpenViewAction(deps: ViewsActionDeps = {}): Action {
+	const action = createViewsAction(deps);
+	return {
+		...action,
+		name: "OPEN_VIEW",
+		similes: [
+			"SHOW_VIEW",
+			"SWITCH_VIEW",
+			"GO_TO_VIEW",
+			"NAVIGATE_TO_VIEW",
+			"OPEN_APP_VIEW",
+		],
+		tags: ["views", "ui", "navigation", "window", "panel", "app"],
+		description:
+			"Open or switch to one existing UI view. Use VIEWS for capabilities, view management, close, and multi-view layouts.",
+		descriptionCompressed:
+			"open or switch to one existing UI view by name, label, or id",
+		routingHint:
+			"Open/show/switch/go-home requests -> OPEN_VIEW. View content operations and device capabilities -> VIEWS; calendar-event operations -> CALENDAR.",
+		plannerStateProviderExclusions: ["workspaceContext", "uiWidgets"],
+		allowAdditionalParameters: false,
+		toolSchemaStrict: true,
+		parameters: [
+			{
+				name: "view",
+				description: "Existing view name, label, or id to open.",
+				required: true,
+				schema: { type: "string" },
+			},
+			{
+				name: "subview",
+				description: "Optional section within the target view.",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "viewType",
+				description: "Presentation type; defaults to gui.",
+				required: false,
+				schema: { type: "string", enum: ["gui", "tui", "xr"] },
+			},
+		],
+		examples: [
+			[
+				{ name: "{{user1}}", content: { text: "open notes" } },
+				{
+					name: "{{agentName}}",
+					content: { text: "Opened Notes.", action: "OPEN_VIEW" },
+				},
+			],
+			[
+				{ name: "{{user1}}", content: { text: "go home" } },
+				{
+					name: "{{agentName}}",
+					content: { text: "Opened Home.", action: "OPEN_VIEW" },
+				},
+			],
+		],
+		validate: (runtime, message, state, options) =>
+			action.validate(runtime, message, state, {
+				...normalizeActionOptions(options),
+				action: "show",
+				mode: "show",
+			}),
+		handler: (runtime, message, state, options, callback) =>
+			action.handler(
+				runtime,
+				message,
+				state,
+				{
+					...normalizeActionOptions(options),
+					action: "show",
+					mode: "show",
+				},
+				callback,
+			),
+	};
+}
+
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
@@ -3773,6 +3851,7 @@ async function broadcastViewEvent(
 }
 
 export const viewsAction: Action = createViewsAction();
+export const openViewAction: Action = createOpenViewAction();
 export const closeViewAction: Action = createViewsAliasAction("CLOSE_VIEW");
 export const closeAllViewsAction: Action =
 	createViewsAliasAction("CLOSE_ALL_VIEWS");
