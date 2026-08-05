@@ -166,7 +166,9 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
 			id: "calendar",
 			label: "Calendar",
 			description:
-				"Availability, events, meetings, appointments, invites, travel time, scheduling constraints, reschedules, and calendar-derived reminders.",
+				"Availability, events, meetings, appointments, invites, travel time, scheduling constraints, reschedules, and calendar-derived reminders. A timed request such as 'add demo tomorrow at 9am' is a calendar event unless the user explicitly asks for a task or reminder.",
+			descriptionCompressed:
+				"Read/write calendar events and schedules; timed add-X requests are events unless explicitly tasks/reminders",
 			sensitivity: "private",
 			cacheScope: "turn",
 			roleGate: { minRole: "ADMIN" },
