@@ -18,8 +18,8 @@ import { clearOrgAdmissionRefused, markOrgAdmissionRefused } from "./inference-a
 import {
   INFERENCE_AUTH_CONTEXT_VERSION,
   invalidateOrgBalanceHint,
-  lowerOrgBalanceHint,
   readOrgBalanceHint,
+  republishOrgBalanceHint,
   writeOrgBalanceHint,
 } from "./inference-auth-cache";
 
@@ -182,6 +182,40 @@ export function scheduleOrgBalanceHintHydration(
   executionCtx.waitUntil(
     observeBackgroundBalanceRefresh(organizationId, refreshOrgBalanceHint(organizationId)),
   );
+}
+
+/**
+ * Republish the gate hint with authoritative state after a committed inference
+ * debit.
+ *
+ * A debit necessarily runs `CacheInvalidation.onCreditMutation`, which DELETES
+ * `CacheKeys.inference.orgBalance`. That delete is correct for mutations whose
+ * caller cannot know the resulting balance (top-ups, refunds, admin
+ * adjustments), but the inference settler is the one mutation that both lowers
+ * the balance and immediately knows the new value. Leaving the key absent made
+ * the *next* turn a full miss, and on the Worker hot path a full miss is read
+ * `cacheOnly` — a hard, user-visible 503 "Billing authorization is warming",
+ * not a slow read. Every settled turn therefore armed a guaranteed failure for
+ * the following turn (observed on staging as a strict 200/503 alternation).
+ *
+ * `lowerOrgBalanceHint` cannot repair this: it is lower-only and bails when no
+ * entry exists, so after the delete it is always a no-op.
+ *
+ * Republishing authoritatively (balance AND revision) costs nothing net: the
+ * identical `getOrganizationBalanceSnapshot` read already happened moments
+ * later as the 503's background hydration. This only moves that read off the
+ * next request's critical path, and it keeps the revision fresh rather than
+ * preserving a stale one.
+ *
+ * The write is min-clamped (`republishOrgBalanceHint`) so the #9899 over-admit
+ * bound survives: a concurrent debit that published a STRICTER gate while this
+ * snapshot was in flight is never raised back up.
+ */
+export async function republishOrgBalanceHintAfterDebit(organizationId: string): Promise<void> {
+  const balanceAt = Date.now();
+  const snapshot = await creditsService.getOrganizationBalanceSnapshot(organizationId);
+  await republishOrgBalanceHint(organizationId, snapshot.balanceUsd, balanceAt, snapshot.revision);
+  clearOrgAdmissionRefused(organizationId);
 }
 
 export async function getGateBalanceHint(
@@ -430,11 +464,13 @@ export async function debitInferenceCost(
         persistedAmountUsd,
       });
     }
-    // Lower-only: a debit can only REDUCE the balance, so never let an
-    // out-of-order concurrent debit raise the cached gate hint (#9899 #12).
-    // Top-ups go through a separate path that invalidates the hint.
+    // The committed debit already evicted the gate hint via onCreditMutation.
+    // Republish authoritative balance + revision so the NEXT turn hits a warm
+    // entry instead of a fail-closed cache-warming 503. A concurrent debit can
+    // only lower the value afterwards (lowerOrgBalanceHint), so this can never
+    // raise the gate above authoritative state.
     try {
-      await lowerOrgBalanceHint(ctx.organizationId, result.newBalance, Date.now());
+      await republishOrgBalanceHintAfterDebit(ctx.organizationId);
     } catch (cause) {
       markOrgAdmissionRefused(ctx.organizationId);
       try {

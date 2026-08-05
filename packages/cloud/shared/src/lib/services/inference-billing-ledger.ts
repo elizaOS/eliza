@@ -47,6 +47,7 @@ import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import { type CreditReconciliationResult, creditsService } from "./credits";
 import { invalidateOrgBalanceHint } from "./inference-auth-cache";
+import { republishOrgBalanceHintAfterDebit } from "./inference-billing-fast-path";
 
 export type InferenceBillingLedger = "db" | "kv";
 
@@ -316,7 +317,12 @@ async function settleLedgerCharge(
     invalidateOrganizationCache(ctx.organizationId).catch(
       reportInvalidationFailure(ctx.organizationId, "organization-cache"),
     );
-    invalidateOrgBalanceHint(ctx.organizationId).catch(
+    // onCreditMutation above already DELETED the gate hint. Republish it with
+    // authoritative state instead of leaving it absent: on the Worker hot path
+    // a missing hint is read `cacheOnly`, so an absent entry turns the NEXT
+    // turn into a user-visible "Billing authorization is warming" 503 rather
+    // than a slow read. Same defect as the KV fast-path settler.
+    republishOrgBalanceHintAfterDebit(ctx.organizationId).catch(
       reportInvalidationFailure(ctx.organizationId, "balance-hint"),
     );
     // Parity with deductCredits: fire low-credits email + auto-top-up + the waifu
