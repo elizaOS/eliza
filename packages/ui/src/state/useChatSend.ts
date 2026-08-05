@@ -1880,6 +1880,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         conversationId?: string | null;
         images?: ImageAttachment[];
         metadata?: Record<string, unknown>;
+        clientMessageId?: string;
       },
     ) => {
       const hasAttachedImages = Boolean(options?.images?.length);
@@ -1922,6 +1923,7 @@ export function useChatSend(deps: UseChatSendDeps) {
             options?.conversationId ?? activeConversationIdRef.current ?? null,
           images: options?.images,
           metadata: buildChatViewMetadata(tab, metadata),
+          clientMessageId: options?.clientMessageId,
           resolve,
           reject,
         });

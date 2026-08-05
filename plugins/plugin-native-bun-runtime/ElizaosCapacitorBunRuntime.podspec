@@ -12,7 +12,7 @@ swift_flags += ' -D ELIZA_IOS_FULL_BUN_ENGINE' if include_full_bun_engine
 other_ldflags = '$(inherited) -ObjC'
 other_ldflags += ' -l"llama"' if include_llama
 library_search_paths = '$(inherited)'
-library_search_paths += ' "${PODS_XCFRAMEWORKS_BUILD_DIR}/LlamaCpp"' if include_llama
+library_search_paths += ' "${PODS_XCFRAMEWORKS_BUILD_DIR}/LlamaCppCapacitor"' if include_llama
 source_files = if include_full_bun_engine
   [
     'ios/Sources/ElizaBunRuntimePlugin/ElizaBunRuntimePlugin.swift',
@@ -39,7 +39,6 @@ Pod::Spec.new do |s|
   s.source_files = source_files
   s.ios.deployment_target = '15.0'
   s.dependency 'Capacitor'
-  s.dependency 'LlamaCpp' if include_llama
   s.dependency 'LlamaCppCapacitor' if include_llama
   s.dependency 'ElizaBunEngine' if include_full_bun_engine
   s.frameworks = frameworks

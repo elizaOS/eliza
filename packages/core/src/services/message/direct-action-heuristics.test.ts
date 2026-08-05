@@ -336,6 +336,43 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 		).toEqual({ names: ["VIEWS"], kind: "view-navigation" });
 	});
 
+	it("routes explicit voice preference writes to SETTINGS ahead of view navigation", () => {
+		const settingsAction: Pick<Action, "name" | "similes" | "tags"> = {
+			name: "SETTINGS",
+			similes: ["UPDATE_SETTINGS", "VOICE_SETTINGS"],
+			tags: [],
+		};
+		for (const message of [
+			"In this Eliza app's voice settings, turn continuous chat on in always-on mode.",
+			"Update my voice settings: set the end-of-turn silence to 1200 ms.",
+			"Switch hands-free voice off",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[viewsAction, settingsAction],
+					message,
+				),
+			).toEqual({ names: ["SETTINGS"], kind: "settings-write" });
+		}
+	});
+
+	it("does not turn voice-setting navigation, explanations, or negations into writes", () => {
+		const settingsAction: Pick<Action, "name" | "similes" | "tags"> = {
+			name: "SETTINGS",
+			similes: ["VOICE_SETTINGS"],
+			tags: [],
+		};
+		for (const message of [
+			"How do I change my voice settings?",
+			"Open my voice settings",
+			"Don't change my voice settings",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference([settingsAction], message),
+			).toEqual({ names: [], kind: null });
+		}
+	});
+
 	it("classifies shell and web detections under their own kinds", () => {
 		const shellAction: Pick<Action, "name" | "similes" | "tags"> = {
 			name: "SHELL",

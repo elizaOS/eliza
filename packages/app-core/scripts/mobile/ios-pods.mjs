@@ -211,12 +211,6 @@ export const MOBILE_CAPACITOR_PLUGIN_MANIFEST = [
     packageName: "llama-cpp-capacitor",
     iosPods: [
       {
-        name: "LlamaCpp",
-        kind: "custom",
-        include: "llama",
-        spmHandling: "cocoapods-owned",
-      },
-      {
         name: "LlamaCppCapacitor",
         kind: "custom",
         include: "llama",

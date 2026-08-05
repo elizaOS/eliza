@@ -57,6 +57,16 @@ mock.module("./credits", () => ({
         idempotencyKey: args.stripePaymentIntentId,
       });
       if (deductError) throw deductError;
+      // Mirror production: a committed debit runs
+      // `CacheInvalidation.onCreditMutation`, which DELETES the org-balance
+      // gate hint before the settler's post-debit cache step runs. Modelling
+      // this is what makes the "next turn is warm" assertions real — without
+      // it the hint survives and the test cannot observe the 503 flap.
+      if (deductResult.success) {
+        const { CacheKeys: Keys } = await import("../cache/keys");
+        const { cache: c } = await import("../cache/client");
+        await c.del(Keys.inference.orgBalance(args.organizationId));
+      }
       if (deductResult.success) {
         return {
           ...deductResult,
@@ -379,13 +389,74 @@ describe("createOptimisticDebitSettler", () => {
     expect(await cache.get(CacheKeys.inference.pendingCharge(input.requestId))).toBeNull();
   });
 
-  test("on debit success lowers an existing org-balance hint", async () => {
+  test("on debit success republishes the org-balance hint the credit mutation evicted", async () => {
     const input = chargeInput();
     deductResult = { success: true, newBalance: 7.5, transaction: { id: "debit-2" } };
+    // Authoritative post-debit balance the republish must pick up.
+    freshBalanceUsd = 7.5;
     await writeOrgBalanceHint(input.organizationId, 10, Date.now(), "1");
     await writePendingInferenceCharge(input, Date.now());
     await createOptimisticDebitSettler(input)(0.02);
     expect((await readOrgBalanceHint(input.organizationId))?.balanceUsd).toBe(7.5);
+  });
+
+  // REGRESSION (staging 2026-08-05): every settled turn left the gate hint
+  // ABSENT, because the committed debit's `onCreditMutation` deletes it and the
+  // old lower-only repair bails when no entry exists. On the Worker hot path a
+  // missing hint is read `cacheOnly`, so the next turn fail-closed with a
+  // user-visible 503 "Billing authorization is warming" — producing a strict
+  // 200/503 alternation on a healthy, funded org.
+  test("leaves a warm hint so the NEXT turn does not fail closed on a cacheOnly read", async () => {
+    const input = chargeInput();
+    deductResult = { success: true, newBalance: 4.25, transaction: { id: "debit-flap" } };
+    freshBalanceUsd = 4.25;
+    await writeOrgBalanceHint(input.organizationId, 9, Date.now(), "1");
+    await writePendingInferenceCharge(input, Date.now());
+
+    await createOptimisticDebitSettler(input)(0.02);
+
+    // The settled turn must NOT leave the org unhinted.
+    expect(await readOrgBalanceHint(input.organizationId)).not.toBeNull();
+    // And the next turn's hot-path read must succeed instead of throwing the
+    // cache-warming error the route surfaces as a 503.
+    await expect(getGateBalanceUsd(input.organizationId, { cacheOnly: true })).resolves.toBe(4.25);
+  });
+
+  // Opposite direction: the republish must not resurrect a hint for an org the
+  // settler deliberately forced off the fast path.
+  test("a REFUSED debit still leaves the hint absent so the next turn slow-paths", async () => {
+    const input = chargeInput();
+    deductResult = {
+      success: false,
+      newBalance: 0,
+      transaction: null,
+      reason: "insufficient_balance",
+    };
+    await writeOrgBalanceHint(input.organizationId, 999, Date.now(), "1");
+    await writePendingInferenceCharge(input, Date.now());
+
+    await createOptimisticDebitSettler(input)(0.02);
+
+    expect(await readOrgBalanceHint(input.organizationId)).toBeNull();
+    await expect(
+      getGateBalanceUsd(input.organizationId, { cacheOnly: true }),
+    ).rejects.toBeInstanceOf(InferenceBalanceCacheWarmingError);
+  });
+
+  test("republished hint carries authoritative balance AND revision, not the stale pre-debit ones", async () => {
+    const input = chargeInput();
+    deductResult = { success: true, newBalance: 3, transaction: { id: "debit-rev" } };
+    freshBalanceUsd = 3;
+    // Stale entry: higher balance, older revision "1". The credits seam reports
+    // revision "2" as authoritative.
+    await writeOrgBalanceHint(input.organizationId, 42, Date.now(), "1");
+    await writePendingInferenceCharge(input, Date.now());
+
+    await createOptimisticDebitSettler(input)(0.02);
+
+    const hint = await readOrgBalanceHint(input.organizationId);
+    expect(hint?.balanceUsd).toBe(3);
+    expect(hint?.balanceRevision).toBe("2");
   });
 
   test("on FAILED debit (insufficient) forces org off the fast path", async () => {
@@ -596,21 +667,45 @@ describe("#9899 hardening: backstop durability, lower-only hint, claim atomicity
     expect(isOptimisticBackstopAvailable()).toBe(true);
   });
 
-  test("debit hint write is lower-only: a stale-high concurrent debit never raises the gate", async () => {
+  // The gate must never be raised above authoritative state by an out-of-order
+  // debit (#9899 over-admit bound). The settler no longer trusts the debit's
+  // own `newBalance` for this at all: the committed debit's `onCreditMutation`
+  // evicts the hint, so the settler re-reads AUTHORITATIVE state and republishes
+  // that. A transaction reporting a stale-high balance therefore cannot raise
+  // the gate, because its reported number is never written.
+  test("a stale-high debit report never raises the gate; authoritative state wins", async () => {
     const input = chargeInput();
     await writeOrgBalanceHint(input.organizationId, 10, Date.now(), "1");
-    // A debit that reports a HIGHER balance (out-of-order) must NOT raise the hint.
+    // Out-of-order: the debit claims 20, but the database says 6.
     deductResult = { success: true, newBalance: 20, transaction: { id: "debit-high" } };
+    freshBalanceUsd = 6;
     await writePendingInferenceCharge(input, Date.now());
     await createOptimisticDebitSettler(input)(0.01);
-    expect((await readOrgBalanceHint(input.organizationId))?.balanceUsd).toBe(10);
+    // The stale-high 20 is never published; the authoritative 6 is.
+    expect((await readOrgBalanceHint(input.organizationId))?.balanceUsd).toBe(6);
 
-    // A debit that reports a LOWER balance DOES lower the hint.
+    // A subsequent debit lowers it further, still from authoritative state.
     const input2 = chargeInput({ organizationId: input.organizationId });
     deductResult = { success: true, newBalance: 4, transaction: { id: "debit-low" } };
+    freshBalanceUsd = 4;
     await writePendingInferenceCharge(input2, Date.now());
     await createOptimisticDebitSettler(input2)(0.01);
     expect((await readOrgBalanceHint(input.organizationId))?.balanceUsd).toBe(4);
+  });
+
+  // Clamp direction: if a concurrent debit published a STRICTER gate between
+  // this settler's authoritative read and its write, that stricter value must
+  // survive — while the entry still stays PRESENT (never absent).
+  test("republish is min-clamped against a concurrent stricter gate", async () => {
+    const { republishOrgBalanceHint } = await import("./inference-auth-cache");
+    const orgId = uid("org");
+    await writeOrgBalanceHint(orgId, 2, Date.now(), "5");
+    // An authoritative snapshot that is HIGHER than what a concurrent debit
+    // already published must not raise the gate back up.
+    await republishOrgBalanceHint(orgId, 9, Date.now(), "6");
+    const hint = await readOrgBalanceHint(orgId);
+    expect(hint?.balanceUsd).toBe(2);
+    expect(hint).not.toBeNull();
   });
 
   test("two concurrent inline claims of one request charge exactly once (atomic getAndDelete)", async () => {

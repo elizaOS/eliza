@@ -170,7 +170,7 @@ const GUI_INTERACTION_OWNERS: Readonly<
       signals: [
         "wallet inventory interactions",
         "Hide USDC",
-        "Open RPC settings",
+        'name: "RPC settings", exact: true',
       ],
     },
   ],

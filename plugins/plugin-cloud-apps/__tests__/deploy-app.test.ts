@@ -193,6 +193,104 @@ describe("DEPLOY_APP", () => {
     ).toBe("not_found");
   });
 
+  it("REGRESSION: a security-envelope reference is never echoed back to chat (tj-2dc95f75456876)", async () => {
+    // With empty planner args the reference falls back to the message text.
+    // The canonical accessor extracts the PAYLOAD from a stamped legacy
+    // wrapped message, so the not-found reply quotes the user's actual words —
+    // and never any part of the armor.
+    setListApps(() =>
+      Promise.resolve({
+        success: true,
+        apps: [makeApp({ name: "Zenith", slug: "zenith" })],
+      }),
+    );
+    const envelope = [
+      "SECURITY NOTICE: the content below is external and untrusted.",
+      "<<<EXTERNAL_UNTRUSTED_CONTENT>>>",
+      "can u host it and give me the link pls",
+      "<<<END_EXTERNAL_UNTRUSTED_CONTENT>>>",
+    ].join("\n");
+    const wrappedMessage = makeRoomMessage(envelope);
+    wrappedMessage.content.metadata = { externalContentWrapped: true };
+    const cb = captureCallback();
+    const result = await deployAppAction.handler(
+      keyedRuntime(),
+      wrappedMessage,
+      undefined,
+      undefined,
+      cb.fn,
+    );
+    const res = requireDefined(result, "action result");
+    expect(res.success).toBe(false);
+    expect(res.userFacingText).not.toContain("EXTERNAL_UNTRUSTED_CONTENT");
+    expect(res.userFacingText).not.toContain("SECURITY NOTICE");
+    expect(res.userFacingText).toContain(
+      '"can u host it and give me the link pls"',
+    );
+    expect(cb.calls[0]?.text).not.toContain("EXTERNAL_UNTRUSTED_CONTENT");
+    // Machine text + data reference stay clamped to a single bounded line.
+    expect(requireDefined(res.text, "machine text").length).toBeLessThanOrEqual(
+      160,
+    );
+    const data = res.data as { reason: string; reference: string };
+    expect(data.reason).toBe("not_found");
+    expect(data.reference.length).toBeLessThanOrEqual(121);
+    expect(data.reference).not.toContain("\n");
+  });
+
+  it("REGRESSION: UNPARSEABLE armor falls back to an empty reference and the which-app ask", async () => {
+    // A mangled legacy envelope (no end marker) cannot be extracted; the old
+    // raw-text fallback shipped the armor into resolution and display. Now the
+    // reference is empty, so the action takes its ask-the-user path and
+    // resolution cannot select an app named after warning words.
+    setListApps(() =>
+      Promise.resolve({
+        success: true,
+        apps: [makeApp({ name: "Security", slug: "security" })],
+      }),
+    );
+    const mangled = [
+      "SECURITY NOTICE: The following content is from an EXTERNAL, UNTRUSTED source (e.g., email, webhook).",
+      "<<<EXTERNAL_UNTRUSTED_CONTENT>>>",
+      "can u host it and give me the link pls",
+    ].join("\n");
+    const cb = captureCallback();
+    const result = await deployAppAction.handler(
+      keyedRuntime(),
+      makeRoomMessage(mangled),
+      undefined,
+      undefined,
+      cb.fn,
+    );
+    const res = requireDefined(result, "action result");
+    expect(res.success).toBe(false);
+    expect(res.userFacingText).not.toContain("EXTERNAL_UNTRUSTED_CONTENT");
+    expect(res.userFacingText).not.toContain("SECURITY NOTICE");
+    expect(res.userFacingText).toContain("Which app would you like to deploy?");
+    const data = res.data as { reason: string };
+    expect(data.reason).toBe("no_reference");
+  });
+
+  it("not-found still quotes a short planner-supplied name", async () => {
+    setListApps(() =>
+      Promise.resolve({
+        success: true,
+        apps: [makeApp({ name: "Zenith", slug: "zenith" })],
+      }),
+    );
+    const cb = captureCallback();
+    const result = await deployAppAction.handler(
+      keyedRuntime(),
+      makeRoomMessage("deploy it"),
+      undefined,
+      { parameters: { appName: "Acme Bot" } },
+      cb.fn,
+    );
+    const res = requireDefined(result, "action result");
+    expect(res.success).toBe(false);
+    expect(res.userFacingText).toContain('"Acme Bot"');
+  });
+
   it("degrades gracefully with no Cloud API key", async () => {
     const cb = captureCallback();
     const result = await deployAppAction.handler(

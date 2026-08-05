@@ -1,7 +1,7 @@
 /** Verifies PCM16 stream validation and the exact RIFF/WAV bytes consumed by codec-less clients. */
 
 import { describe, expect, test } from "bun:test";
-import { drainPcm16Stream, pcm16ToWav } from "../pcm16-wav";
+import { drainPcm16Stream, drainPcm16ToWav, pcm16ChunksToWav, pcm16ToWav } from "../pcm16-wav";
 
 function stream(...chunks: number[][]): ReadableStream<Uint8Array> {
   return new ReadableStream({
@@ -29,6 +29,16 @@ describe("PCM16 WAV encoding", () => {
     expect(view.getUint16(34, true)).toBe(16);
     expect(view.getUint32(40, true)).toBe(4);
     expect([...wav.subarray(44)]).toEqual([0x01, 0x02, 0x03, 0x04]);
+  });
+
+  test("encodes stream chunks directly into the exact WAV allocation", async () => {
+    const wav = await drainPcm16ToWav(stream([0x01, 0x02], [0x03, 0x04]), 1024, 24_000);
+    expect(wav.buffer.byteLength).toBe(48);
+    expect([...wav.subarray(44)]).toEqual([0x01, 0x02, 0x03, 0x04]);
+  });
+
+  test("rejects a mismatched chunk byte declaration", () => {
+    expect(() => pcm16ChunksToWav([Uint8Array.of(1, 2)], 4, 24_000)).toThrow("declared byte count");
   });
 
   test("rejects empty and partial samples", async () => {

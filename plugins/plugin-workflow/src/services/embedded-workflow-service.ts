@@ -1640,7 +1640,7 @@ export class EmbeddedWorkflowService extends Service {
 
   static async start(runtime: IAgentRuntime): Promise<EmbeddedWorkflowService> {
     const service = new EmbeddedWorkflowService(runtime);
-    logger.info(
+    logger.debug(
       { src: 'plugin:workflow:embedded' },
       'Embedded workflow service registered (lazy runtime load)'
     );

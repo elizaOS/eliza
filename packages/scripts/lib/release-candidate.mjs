@@ -5,7 +5,6 @@
  * every later manifest, commit, or artifact mutation.
  */
 
-import { execFileSync, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
   existsSync,
@@ -34,6 +33,7 @@ import {
   validateReleasePlan,
   validateReleaseState,
 } from "./release-contract.mjs";
+import { execFileSync, spawnSync } from "./spawn-sync-captured.mjs";
 
 export const RELEASE_PLAN_FILENAME = "release-plan.json";
 export const RELEASE_STATE_FILENAME = "release-state.json";
