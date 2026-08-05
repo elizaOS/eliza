@@ -180,6 +180,9 @@ describe("follow-the-finger after an over-pull past the top (overshoot rebase)",
       (screen.queryByTestId("chat-thread") as HTMLElement | null)?.style
         .flexBasis;
     const now = vi.spyOn(performance, "now");
+    const eventTime = vi
+      .spyOn(Event.prototype, "timeStamp", "get")
+      .mockImplementation(() => performance.now() || Number.MIN_VALUE);
     now.mockReturnValue(0);
     fireEvent.pointerDown(el, { clientY: 800, pointerId: 1 });
     now.mockReturnValue(200);
@@ -200,11 +203,13 @@ describe("follow-the-finger after an over-pull past the top (overshoot rebase)",
     // start-relative 700.
     now.mockReturnValue(2000);
     fireEvent.pointerMove(el, { clientY: 90, pointerId: 1 });
-    await frame();
+    await waitFor(() => expect(threadBasis()).toBe("446px"));
     now.mockReturnValue(2900);
     fireEvent.pointerMove(el, { clientY: 100, pointerId: 1 });
+    await waitFor(() => expect(threadBasis()).toBe("436px"));
     now.mockReturnValue(3000); // 700px net over 3s ⇒ deliberate drag ⇒ free-rest
     fireEvent.pointerUp(el, { clientY: 100, pointerId: 1 });
+    eventTime.mockRestore();
     now.mockRestore();
 
     // 436px is in the open gap between HALF (353) and FULL (696), outside the
@@ -212,9 +217,11 @@ describe("follow-the-finger after an over-pull past the top (overshoot rebase)",
     // and the label folds to "half". Under the old banked-overshoot math the
     // un-consumed excess held the height at ~700 → this read "full" (or even
     // re-maximized off the abandoned peak).
-    expect(sheet().getAttribute("data-detent")).toBe("half");
-    expect(sheet().getAttribute("data-chat-state")).toBe("OPEN_HALF_OR_OVER");
-    expect(sheet().getAttribute("data-maximized")).toBeNull();
+    await waitFor(() => {
+      expect(sheet().getAttribute("data-detent")).toBe("half");
+      expect(sheet().getAttribute("data-chat-state")).toBe("OPEN_HALF_OR_OVER");
+      expect(sheet().getAttribute("data-maximized")).toBeNull();
+    });
   });
 });
 

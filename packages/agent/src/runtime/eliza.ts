@@ -51,6 +51,7 @@ import {
 } from "./operations/vault-bridge.ts";
 import { OPTIONAL_PLUGIN_IMPORTERS } from "./optional-plugin-imports.generated.ts";
 import {
+  hasElizaSourceRuntimeCondition,
   OPTIONAL_STATIC_PLUGIN_OVERRIDES,
   OPTIONAL_STATIC_PLUGIN_REGISTRATIONS,
   optionalPluginImportSpecifier,
@@ -421,6 +422,26 @@ function resolveWorkspacePluginSourceEntry(packageName: string): string | null {
 // generated importer. Plugins not in the map (e.g. desktop-only gitpathologist)
 // load through a bare dynamic import from a node_modules/desktop install.
 const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
+  // Bun 1.3.x can resolve a literal dynamic import nested in the generated
+  // importer map through the package's `bun`/dist condition when launched with
+  // both `--no-install` and `--conditions=eliza-source`, even though a direct
+  // import and import.meta.resolve() select the source condition. Make the
+  // operator's explicit source request authoritative so dev boot never runs a
+  // stale dist artifact after a source edit. Packaged/mobile processes do not
+  // carry this condition and keep using the literal importers below.
+  if (
+    hasElizaSourceRuntimeCondition() &&
+    isWorkspacePluginSourceFallbackAllowed()
+  ) {
+    const sourceEntry = resolveWorkspacePluginSourceEntry(packageName);
+    if (sourceEntry) {
+      logger.debug(
+        `[eliza] Loading ${packageName} from explicitly requested workspace source at ${sourceEntry}`,
+      );
+      return await import(pathToFileURL(sourceEntry).href);
+    }
+  }
+
   try {
     const importer = OPTIONAL_PLUGIN_IMPORTERS[packageName];
     if (importer) return await importer();
@@ -594,6 +615,7 @@ let _blockingStaticPluginsRegistered = false;
 let _deferredStaticPluginsRegistered = false;
 let _blockingStaticPluginsRegistrationPromise: Promise<void> | null = null;
 let _deferredStaticPluginsRegistrationPromise: Promise<void> | null = null;
+let lastLoggedLocalEmbeddingConfig: string | undefined;
 
 function isTruthyEnvFlag(value: string | undefined): boolean {
   if (!value) return false;
@@ -663,7 +685,7 @@ async function registerStaticPluginPhase(
       STATIC_ELIZA_PLUGINS[
         registration.registryName ?? registration.packageName
       ] = mod;
-      logger.info(
+      logger.debug(
         `[boot] ${registration.packageName} loaded in ${Date.now() - startedAt}ms`,
       );
     } catch (err) {
@@ -742,7 +764,7 @@ async function ensureStaticPluginsRegisteredByName(
         abortSignal?.throwIfAborted();
         if (mod) {
           STATIC_ELIZA_PLUGINS[registryName] = mod;
-          logger.info(
+          logger.debug(
             `[boot] configured provider plugin ${registration.packageName} loaded before runtime initialization`,
           );
         }
@@ -1030,9 +1052,20 @@ export async function configureLocalEmbeddingPlugin(
   // this configuration off when cloud embeddings are explicitly enabled.
   process.env.EMBEDDING_PROVIDER = "local";
 
-  logger.info(
-    `[eliza] Configured local embedding env: ${process.env.LOCAL_EMBEDDING_MODEL} (repo: ${process.env.LOCAL_EMBEDDING_MODEL_REPO ?? "auto"}, dims: ${process.env.LOCAL_EMBEDDING_DIMENSIONS ?? "auto"}, ctx: ${process.env.LOCAL_EMBEDDING_CONTEXT_SIZE ?? "auto"}, GPU: ${process.env.LOCAL_EMBEDDING_GPU_LAYERS}, mmap: ${process.env.LOCAL_EMBEDDING_USE_MMAP})`,
-  );
+  const embeddingConfigSummary =
+    `${process.env.LOCAL_EMBEDDING_MODEL} (repo: ${process.env.LOCAL_EMBEDDING_MODEL_REPO ?? "auto"}, ` +
+    `dims: ${process.env.LOCAL_EMBEDDING_DIMENSIONS ?? "auto"}, ` +
+    `ctx: ${process.env.LOCAL_EMBEDDING_CONTEXT_SIZE ?? "auto"}, ` +
+    `GPU: ${process.env.LOCAL_EMBEDDING_GPU_LAYERS}, ` +
+    `mmap: ${process.env.LOCAL_EMBEDDING_USE_MMAP})`;
+  if (lastLoggedLocalEmbeddingConfig !== embeddingConfigSummary) {
+    lastLoggedLocalEmbeddingConfig = embeddingConfigSummary;
+    logger.info(
+      `[eliza] Configured local embedding env: ${embeddingConfigSummary}`,
+    );
+  } else {
+    logger.debug("[eliza] Local embedding environment already configured");
+  }
 }
 
 /**
@@ -1049,9 +1082,11 @@ export async function configureLocalEmbeddingPlugin(
  * version, and the runtime never fails back to the local model — breaking
  * memory embedding writes and bundled-document seeding.
  *
- * Guard: shouldWarmupLocalEmbeddingModel() returns false when local embeddings
- * are disabled or Eliza Cloud embeddings are explicitly configured, so this is a
+ * Guard: shouldUseLocalEmbeddingModel() returns false when local embeddings are
+ * disabled or Eliza Cloud embeddings are explicitly configured, so this is a
  * no-op in those setups and never forces local env over an intended cloud path.
+ * It deliberately ignores the prefetch-only skip flag: packaged desktop can
+ * postpone a download without ceding provider ownership to a remote handler.
  * The underlying env writes use setEnvIfMissing (idempotent), so a later
  * warmEmbeddingModel() call is unaffected. Best-effort: any failure is logged
  * and swallowed so it can never block or crash the deferred boot phase.
@@ -1066,10 +1101,10 @@ export async function configureLocalEmbeddingEnvEarlyIfNeeded(
   try {
     const li = await getPluginLocalEmbedding();
     if (!li) return;
-    const { shouldWarmupLocalEmbeddingModel } = await import(
+    const { shouldUseLocalEmbeddingModel } = await import(
       /* @vite-ignore */ "@elizaos/plugin-local-inference/runtime"
     );
-    if (!shouldWarmupLocalEmbeddingModel()) return;
+    if (!shouldUseLocalEmbeddingModel()) return;
     await configureLocalEmbeddingPlugin({} as Plugin, config);
   } catch (err) {
     logger.warn(
@@ -2062,7 +2097,7 @@ export async function autoResolveDiscordAppId(
     if (!app.id) return;
 
     process.env.DISCORD_APPLICATION_ID = app.id;
-    logger.info(`[eliza] Auto-resolved Discord Application ID: ${app.id}`);
+    logger.debug(`[eliza] Auto-resolved Discord Application ID: ${app.id}`);
   } catch (err) {
     logger.warn(
       `[eliza] Could not auto-resolve Discord Application ID: ${err}`,
@@ -2524,7 +2559,7 @@ export function applyDatabaseConfigToEnv(config: ElizaConfig): void {
     if (dataDir) {
       const alreadyExisted = existsSync(dataDir);
       mkdirSync(dataDir, { recursive: true });
-      logger.info(
+      logger.debug(
         `[eliza] PGlite data dir: ${dataDir} (${alreadyExisted ? "existed" : "created"})`,
       );
 
@@ -3363,12 +3398,12 @@ async function preregisterCorePluginsInDependencyWaves(args: {
     try {
       args.abortSignal?.throwIfAborted();
       const regStart = Date.now();
-      logger.info(`[eliza] ${context}Pre-registering core plugin: ${name}...`);
+      logger.debug(`[eliza] ${context}Pre-registering core plugin: ${name}...`);
       await args.runtime.registerPlugin(
         applyHostActionOwnership(args.runtime, resolved.plugin),
       );
       registered.add(name);
-      logger.info(
+      logger.debug(
         `[eliza] ${context}✓ ${name} pre-registered (${Date.now() - regStart}ms)`,
       );
     } catch (err) {
@@ -4448,7 +4483,7 @@ export async function startEliza(
       getSkillsDir: () => string;
     };
     bundledSkillsDir = getSkillsDir();
-    logger.info(`[eliza] Bundled skills dir: ${bundledSkillsDir}`);
+    logger.debug(`[eliza] Bundled skills dir: ${bundledSkillsDir}`);
   } catch {
     logger.debug(
       "[eliza] @elizaos/skills not available — bundled skills will not be loaded",
@@ -4685,12 +4720,12 @@ export async function startEliza(
   //     shell, coding-tools, agent-skills, commands, google, lifeops, browser,
   //     video) are NOT essential to the chat path and are loaded in the
   //     background after the runtime is ready — see runDeferredBoot below.
-  logger.info("[eliza] Pre-registering roles capability...");
+  logger.debug("[eliza] Pre-registering roles capability...");
   // AgentRuntime installs the same core roleAction during initialize(). This
   // early plugin owns role state/provider bootstrap only; registering the
   // identical action twice made every healthy boot emit a collision warning.
   await runtime.registerPlugin({ ...rolesPlugin, actions: [] });
-  logger.info("[eliza] ✓ roles capability pre-registered");
+  logger.debug("[eliza] ✓ roles capability pre-registered");
   bootTimer.lap("svc:roles-register");
 
   const registerConnectorSetupService = async (): Promise<void> => {
@@ -4770,7 +4805,7 @@ export async function startEliza(
       const message =
         "[eliza] boot continuing with embedding generation disabled: memory writes persist without vectors until the deferred re-probe finds a working provider";
       if (process.env.EMBEDDING_PROVIDER === "local") {
-        logger.info(`${message} (local handler registration is pending)`);
+        logger.debug(`${message} (local handler registration is pending)`);
       } else {
         logger.warn(message);
       }
@@ -4958,7 +4993,7 @@ export async function startEliza(
           "Read-only co-participant context for post-turn evaluators",
         providers: [conversationProximityProvider],
       });
-      logger.info("[eliza] ✓ conversation-proximity provider registered");
+      logger.debug("[eliza] ✓ conversation-proximity provider registered");
     } catch (err) {
       logger.debug(
         `[eliza] Conversation-proximity provider skipped: ${formatError(err)}`,
@@ -5336,9 +5371,9 @@ export async function startEliza(
       const startedAt = Date.now();
       try {
         abortSignal.throwIfAborted();
-        logger.info(`[eliza] deferred: Registering plugin: ${plugin.name}...`);
+        logger.debug(`[eliza] deferred: Registering plugin: ${plugin.name}...`);
         await runtime.registerPlugin(plugin);
-        logger.info(
+        logger.debug(
           `[eliza] deferred: ✓ ${plugin.name} registered (${Date.now() - startedAt}ms)`,
         );
       } catch (err) {
@@ -5414,6 +5449,9 @@ export async function startEliza(
   // this group, so the existing wave algorithm preserves ordering.
   const runDeferredBoot = async (abortSignal: AbortSignal): Promise<void> => {
     abortSignal.throwIfAborted();
+    // This task is intentionally scheduled after the host's ready handoff.
+    // Do not charge that idle scheduling gap to vault hydration.
+    bootTimer.resetLapWindow();
     // Vault boot hydration must land before the deferred plugin waves: it
     // writes wallet/steward keys into process.env that the deferred plugin
     // auto-enable and wallet/connector plugins read. Single-flight — a
@@ -5806,9 +5844,7 @@ export async function startEliza(
       runtime.reportError("eliza.hooksTask", err);
       logger.warn(`[eliza] Hooks system load failed: ${formatError(err)}`);
     });
-    logger.info(
-      "[eliza] Runtime initialised in headless mode (autonomy enabled)",
-    );
+    logger.info("[eliza] Runtime initialised in headless mode");
     return runtime;
   }
 

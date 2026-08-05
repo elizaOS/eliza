@@ -92,6 +92,7 @@ android {
         if (lp3ColorPolicyBuildEnabled) {
             debug.java.srcDir file('../lp3-color-policy/src/debug/java')
             debug.manifest.srcFile file('../lp3-color-policy/src/debug/AndroidManifest.xml')
+            debug.res.srcDir file('../lp3-color-policy/src/debug/res')
             // Release artifacts cannot see the policy, but release unit tests
             // still compile the shared policy contract outside the main APK.
             testRelease.java.srcDir file('../lp3-color-policy/src/debug/java')

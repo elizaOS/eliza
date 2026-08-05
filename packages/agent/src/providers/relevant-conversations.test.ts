@@ -9,7 +9,7 @@
  */
 import type { IAgentRuntime, Memory, Room, State } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/core/testing";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The provider closes over `embedRecallQuery` from @elizaos/core at import time.
 // Partially mock the module so we can drive the shared recall embed to a
@@ -17,10 +17,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 // (relied on by @elizaos/shared and the provider's helper modules) intact.
 const embedRecallQuery =
   vi.fn<(runtime: IAgentRuntime, text: string) => Promise<number[] | null>>();
+const buildAccessContext = vi.fn();
 vi.mock("@elizaos/core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@elizaos/core")>();
   return {
     ...actual,
+    buildAccessContext: (...args: unknown[]) => buildAccessContext(...args),
     embedRecallQuery: (runtime: IAgentRuntime, text: string) =>
       embedRecallQuery(runtime, text),
   };
@@ -73,8 +75,16 @@ function makeMessage(text: string): Memory {
 const EMPTY_STATE = { values: {}, data: {}, text: "" } as unknown as State;
 
 describe("relevantConversationsProvider — shared recall embed fail-open", () => {
+  beforeEach(() => {
+    buildAccessContext.mockResolvedValue({
+      requesterEntityId: "00000000-0000-0000-0000-0000000000e0",
+      isOwner: false,
+    });
+  });
+
   afterEach(() => {
     embedRecallQuery.mockReset();
+    buildAccessContext.mockReset();
   });
 
   it("returns the empty result and never searches when the shared embed fails open (null)", async () => {
@@ -162,5 +172,73 @@ describe("relevantConversationsProvider — shared recall embed fail-open", () =
 
     expect(result).toEqual({ text: "", values: {}, data: {} });
     expect(embedRecallQuery).not.toHaveBeenCalled();
+  });
+
+  it("omits owner-private pendant memories from a non-owner recall", async () => {
+    embedRecallQuery.mockResolvedValue([0.1, 0.2]);
+    const searchMemories = vi.fn(async () => [
+      {
+        id: "00000000-0000-0000-0000-0000000000p1",
+        roomId: OTHER_ROOM,
+        entityId: "00000000-0000-0000-0000-0000000000e0",
+        content: { text: "owner pendant canary" },
+        metadata: {
+          type: "message",
+          scope: "owner-private",
+          scopedToEntityId: "00000000-0000-0000-0000-0000000000e0",
+        },
+        createdAt: 4,
+      } as unknown as Memory,
+      {
+        id: "00000000-0000-0000-0000-0000000000g1",
+        roomId: OTHER_ROOM,
+        entityId: "00000000-0000-0000-0000-0000000000e2",
+        content: { text: "shared launch note" },
+        metadata: { type: "message", scope: "shared" },
+        createdAt: 3,
+      } as unknown as Memory,
+    ]);
+    const { runtime } = makeRuntime({ searchMemories });
+
+    const result = await relevantConversationsProvider.get(
+      runtime,
+      makeMessage("what was the private launch note"),
+      EMPTY_STATE,
+    );
+
+    expect(result.text).toContain("shared launch note");
+    expect(result.text).not.toContain("owner pendant canary");
+  });
+
+  it("allows the authenticated owner to recall owner-private pendant memory", async () => {
+    buildAccessContext.mockResolvedValue({
+      requesterEntityId: "00000000-0000-0000-0000-0000000000e0",
+      isOwner: true,
+      role: "OWNER",
+    });
+    embedRecallQuery.mockResolvedValue([0.1, 0.2]);
+    const searchMemories = vi.fn(async () => [
+      {
+        id: "00000000-0000-0000-0000-0000000000p1",
+        roomId: OTHER_ROOM,
+        entityId: "00000000-0000-0000-0000-0000000000e0",
+        content: { text: "owner pendant canary" },
+        metadata: {
+          type: "message",
+          scope: "owner-private",
+          scopedToEntityId: "00000000-0000-0000-0000-0000000000e0",
+        },
+        createdAt: 4,
+      } as unknown as Memory,
+    ]);
+    const { runtime } = makeRuntime({ searchMemories });
+
+    const result = await relevantConversationsProvider.get(
+      runtime,
+      makeMessage("what was the private launch note"),
+      EMPTY_STATE,
+    );
+
+    expect(result.text).toContain("owner pendant canary");
   });
 });
