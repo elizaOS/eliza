@@ -25,7 +25,6 @@ import {
 import { createViewsClient } from "./actions/views-client.js";
 import { createChoiceShortcutEvaluator } from "./evaluators/create-choice-shortcut.js";
 import { viewContextEvaluator } from "./evaluators/view-context.js";
-import { viewFollowupRoutingEvaluator } from "./evaluators/view-followup-routing.js";
 import { availableAppsProvider } from "./providers/available-apps.js";
 import { currentViewProvider } from "./providers/current-view.js";
 import {
@@ -164,12 +163,10 @@ export const appControlPlugin: Plugin = {
 	//     Its gate defers whenever resolveIntentView already matches a direct
 	//     surface (the rigid matchViewCommand matcher, or the legacy intent
 	//     rules it falls back to), so it never contends with the action.
-	// view-followup-routing handles mutation follow-ups on the active view.
 	evaluators: [viewContextEvaluator],
-	responseHandlerEvaluators: [
-		createChoiceShortcutEvaluator,
-		viewFollowupRoutingEvaluator,
-	],
+	// Persisted choice widgets are an explicit continuation protocol. Ordinary
+	// view navigation and follow-up language stays with Stage 1 and the planner.
+	responseHandlerEvaluators: [createChoiceShortcutEvaluator],
 	providers: [availableAppsProvider, currentViewProvider],
 	services: [
 		AppRegistryService,
