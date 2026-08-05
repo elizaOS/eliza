@@ -217,7 +217,9 @@
 				"server"
 			],
 			"buildModel": {
-				"doubleCheck": true
+				"doubleCheck": {
+					"reason": "declaration post-processing requires a checked tsc6 emit before rewriting relative specifiers"
+				}
 			}
 		}
 	}

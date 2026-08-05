@@ -124,7 +124,7 @@ export function nearestPackageName(filePath, root = repoRoot) {
 
 /** A compatibility tsc6 invocation that emits and does not skip checking. */
 export function isFullTscEmit(script) {
-  if (!/\btsc6\b/.test(script)) return false;
+  if (!/\btsc6\b|resolveTscBin\(\)/.test(script)) return false;
   const emits =
     /--emitDeclarationOnly|--declaration\b/.test(script) ||
     /(?:^|[\s"',])(?:-p|--project)(?:[\s"',]+)tsconfig/.test(script);
@@ -138,15 +138,44 @@ export function isFullTscEmit(script) {
   return true;
 }
 
-export function auditBuildTypecheck(options = {}) {
+function normalizeExceptionMap(exceptions) {
+  if (exceptions instanceof Map) return exceptions;
+  return new Map(
+    [...(exceptions ?? [])].map((packageName) => [
+      packageName,
+      "test-provided exception",
+    ]),
+  );
+}
+
+export function analyzeBuildTypecheck(options = {}) {
   const root = options.repoRoot ?? repoRoot;
   const rootPkg =
     options.rootPackage ??
     JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"));
   const globs = options.workspaceGlobs ?? rootPkg.workspaces;
-  const allow =
+  const resolvedAllow =
     options.allow ?? resolveBuildModelExceptions({ repoRoot: root });
+  const allow = {
+    doubleCheck: normalizeExceptionMap(resolvedAllow.doubleCheck),
+    tscTypecheck: normalizeExceptionMap(resolvedAllow.tscTypecheck),
+    invalid: resolvedAllow.invalid ?? [],
+  };
+  const usedExceptions = {
+    doubleCheck: new Set(),
+    tscTypecheck: new Set(),
+  };
+  const packageDirs = options.packageDirs ?? listPackageDirs(root, globs);
+  const buildFiles = options.buildFiles ?? listBuildFiles(root);
+  const counts = {
+    declared: packageDirs.length,
+    scanned: 0,
+    typechecked: 0,
+    excepted: 0,
+  };
   const violations = [];
+
+  violations.push(...allow.invalid);
 
   if (rootPkg.devDependencies?.["@typescript/native-preview"]) {
     violations.push("root still depends on retired @typescript/native-preview");
@@ -174,18 +203,20 @@ export function auditBuildTypecheck(options = {}) {
     }
   }
 
-  for (const dir of options.packageDirs ?? listPackageDirs(root, globs)) {
+  for (const dir of packageDirs) {
     let pkg;
     try {
       pkg = JSON.parse(readFileSync(path.join(dir, "package.json"), "utf8"));
     } catch {
       continue;
     }
+    counts.scanned += 1;
     const name = pkg.name ?? path.relative(root, dir);
     const scripts = pkg.scripts ?? {};
     const build = scripts.build ?? "";
     const typecheck = scripts.typecheck ?? "";
     const hasSeparateTypecheck = /\btsc6?\b/.test(typecheck);
+    if (hasSeparateTypecheck) counts.typechecked += 1;
     const nativeTypeScript =
       pkg.dependencies?.["@typescript/native"] ??
       pkg.devDependencies?.["@typescript/native"];
@@ -202,15 +233,15 @@ export function auditBuildTypecheck(options = {}) {
       );
     }
 
-    if (
-      isFullTscEmit(build) &&
-      hasSeparateTypecheck &&
-      !allow.doubleCheck.has(name)
-    ) {
-      violations.push(
-        `${name}: build double-type-checks (add --noCheck to its tsc6 emit) — ${build.trim()}`,
-      );
-    } else if (hasSeparateTypecheck && !allow.doubleCheck.has(name)) {
+    if (isFullTscEmit(build) && hasSeparateTypecheck) {
+      if (allow.doubleCheck.has(name)) {
+        usedExceptions.doubleCheck.add(name);
+      } else {
+        violations.push(
+          `${name}: build double-type-checks (add --noCheck to its tsc6 emit) — ${build.trim()}`,
+        );
+      }
+    } else if (hasSeparateTypecheck) {
       // A build script may delegate to build.ts/build.mjs, so inspect it for a
       // compatibility declaration emit that omits --noCheck.
       for (const buildFile of ["build.ts", "build.mjs"]) {
@@ -225,9 +256,13 @@ export function auditBuildTypecheck(options = {}) {
         for (const line of body.split("\n")) {
           if (/^\s*(\/\/|\*)/.test(line)) continue; // skip comments
           if (isFullTscEmit(line)) {
-            violations.push(
-              `${name}: ${buildFile} runs a full tsc6 type-check (add --noCheck) — ${line.trim()}`,
-            );
+            if (allow.doubleCheck.has(name)) {
+              usedExceptions.doubleCheck.add(name);
+            } else {
+              violations.push(
+                `${name}: ${buildFile} runs a full tsc6 type-check (add --noCheck) — ${line.trim()}`,
+              );
+            }
             break;
           }
         }
@@ -237,32 +272,34 @@ export function auditBuildTypecheck(options = {}) {
       violations.push(
         `${name}: typecheck is a no-op (\`tsc --noEmit --noCheck\` checks nothing)`,
       );
-    } else if (
-      /\btsc6\b/.test(typecheck) &&
-      /--noEmit/.test(typecheck) &&
-      !allow.tscTypecheck.has(name)
-    ) {
+    } else if (/\btsc6\b/.test(typecheck) && /--noEmit/.test(typecheck)) {
       // `tsc6 -b` is a deliberately different mode. Only compatibility
       // `tsc6 --noEmit` is a checker-model violation here.
-      violations.push(
-        `${name}: typecheck uses compatibility tsc6 --noEmit, not stable tsc — ${typecheck.trim()}`,
-      );
+      if (allow.tscTypecheck.has(name)) {
+        usedExceptions.tscTypecheck.add(name);
+      } else {
+        violations.push(
+          `${name}: typecheck uses compatibility tsc6 --noEmit, not stable tsc — ${typecheck.trim()}`,
+        );
+      }
     }
   }
 
-  for (const file of options.buildFiles ?? listBuildFiles(root)) {
-    const rel = path.relative(root, file);
+  for (const file of buildFiles) {
+    const rel = path.relative(root, file).split(path.sep).join("/");
     const body = readFileSync(file, "utf8");
     const owner = nearestPackageName(file, root);
-    if (!allow.doubleCheck.has(owner)) {
-      for (const line of body.split("\n")) {
-        if (/^\s*(\/\/|\*)/.test(line)) continue;
-        if (isFullTscEmit(line)) {
+    for (const line of body.split("\n")) {
+      if (/^\s*(\/\/|\*)/.test(line)) continue;
+      if (isFullTscEmit(line)) {
+        if (allow.doubleCheck.has(owner)) {
+          usedExceptions.doubleCheck.add(owner);
+        } else {
           violations.push(
             `${rel}: build script runs tsc6 declaration emit without --noCheck — ${line.trim()}`,
           );
-          break;
         }
+        break;
       }
     }
 
@@ -285,11 +322,32 @@ export function auditBuildTypecheck(options = {}) {
     }
   }
 
-  return violations;
+  for (const key of ["doubleCheck", "tscTypecheck"]) {
+    for (const [name, reason] of allow[key]) {
+      if (!usedExceptions[key].has(name)) {
+        violations.push(
+          `${name}: stale buildModel.${key} exception is not exercised — ${reason}`,
+        );
+      }
+    }
+  }
+  counts.excepted =
+    usedExceptions.doubleCheck.size + usedExceptions.tscTypecheck.size;
+
+  return { violations, counts };
+}
+
+export function auditBuildTypecheck(options = {}) {
+  return analyzeBuildTypecheck(options).violations;
+}
+
+function formatCounts(counts) {
+  return `declared=${counts.declared} scanned=${counts.scanned} typechecked=${counts.typechecked} excepted=${counts.excepted}`;
 }
 
 export function runAuditBuildTypecheck(options = {}) {
-  const violations = auditBuildTypecheck(options);
+  const { violations, counts } = analyzeBuildTypecheck(options);
+  console.log(`[audit-build-typecheck] ${formatCounts(counts)}`);
   if (violations.length > 0) {
     console.error(
       `[audit-build-typecheck] ${violations.length} compiler-model violation(s):\n`,
