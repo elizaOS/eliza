@@ -11,4 +11,12 @@ import { smokeStoryModules } from "../../../../test/portable-stories";
 
 const modules = import.meta.glob("../*.stories.tsx", { eager: true });
 
-smokeStoryModules("primitive", modules, { minModules: 20 });
+smokeStoryModules("primitive", modules, {
+  minModules: 20,
+  expectedConsoleErrors: {
+    "error-boundary/CaughtError":
+      /Simulated render failure in a child component/,
+    "error-boundary/CustomLabels":
+      /Simulated render failure in a child component/,
+  },
+});
