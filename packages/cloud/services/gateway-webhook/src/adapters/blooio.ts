@@ -55,6 +55,13 @@ function extractMediaUrls(
     .filter((url) => isValidMediaUrl(url));
 }
 
+// Blooio's documented verification contract rejects deliveries older than
+// 300 seconds, and their retry backoff can legitimately land near that edge.
+// A tighter local window (this was 120s) silently drops valid retried
+// deliveries — a lost inbound message on the exact surface new users arrive
+// through. Match the provider's contract.
+const SIGNATURE_TOLERANCE_SECONDS = 300;
+
 async function verifySignature(
   secret: string,
   signatureHeader: string,
@@ -72,7 +79,7 @@ async function verifySignature(
     const expectedSignature = signaturePart.substring(3);
 
     const now = Math.floor(Date.now() / 1000);
-    if (Math.abs(now - timestamp) > 120) return false;
+    if (Math.abs(now - timestamp) > SIGNATURE_TOLERANCE_SECONDS) return false;
 
     const signedPayload = `${timestamp}.${rawBody}`;
     const encoder = new TextEncoder();
@@ -150,6 +157,17 @@ export const blooioAdapter: PlatformAdapter = {
     if (event.event !== "message.received") return null;
     if (event.is_group) return null;
 
+    // The schema allows a nullish sender, but an event without one is
+    // unroutable: chatId/senderId would be empty strings, identity-resolve
+    // would run against an empty platform user id, and sendReply would POST
+    // to /chats//messages. Skip it instead of forwarding garbage.
+    if (!event.sender) {
+      logger.warn("Blooio event missing sender; skipping", {
+        messageId: event.message_id ?? event.internal_id ?? null,
+      });
+      return null;
+    }
+
     const text = event.text ?? "";
     if (!text && !event.attachments?.length) return null;
 
@@ -158,8 +176,8 @@ export const blooioAdapter: PlatformAdapter = {
     return {
       platform: "blooio",
       messageId: event.message_id ?? event.internal_id ?? `${Date.now()}`,
-      chatId: event.sender ?? "",
-      senderId: event.sender ?? "",
+      chatId: event.sender,
+      senderId: event.sender,
       text:
         mediaUrls.length > 0 && !text
           ? `[media: ${mediaUrls.join(", ")}]`
@@ -180,6 +198,11 @@ export const blooioAdapter: PlatformAdapter = {
     const headers: Record<string, string> = {
       Authorization: `Bearer ${config.apiKey}`,
       "Content-Type": "application/json",
+      // The gateway dedup key guarantees at most one reply per inbound
+      // message, so the inbound messageId is a stable idempotency scope: a
+      // send that times out client-side after Blooio accepted it must not
+      // double-text the user when retried.
+      "Idempotency-Key": `gw-reply-${event.messageId}`,
     };
     if (config.fromNumber) headers["X-From-Number"] = config.fromNumber;
 
