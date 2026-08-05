@@ -46,6 +46,7 @@ import { invalidateOrganizationCache } from "../cache/organizations-cache";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import { type CreditReconciliationResult, creditsService } from "./credits";
+import { markOrgAdmissionRefused } from "./inference-admission-refusal";
 import { invalidateOrgBalanceHint } from "./inference-auth-cache";
 import { republishOrgBalanceHintAfterDebit } from "./inference-balance-republish";
 
@@ -322,9 +323,28 @@ async function settleLedgerCharge(
     // a missing hint is read `cacheOnly`, so an absent entry turns the NEXT
     // turn into a user-visible "Billing authorization is warming" 503 rather
     // than a slow read. Same defect as the KV fast-path settler.
-    republishOrgBalanceHintAfterDebit(ctx.organizationId).catch(
-      reportInvalidationFailure(ctx.organizationId, "balance-hint"),
-    );
+    //
+    // Awaited (not fire-and-forget): this is a Postgres snapshot + cache write,
+    // and a floating promise is not guaranteed to survive Worker isolate
+    // teardown after settle returns (#17768). Match the KV settler's lifetime
+    // guarantee; on failure force the org off the fast path rather than leave a
+    // silent absent hint.
+    try {
+      await republishOrgBalanceHintAfterDebit(ctx.organizationId);
+    } catch (cause) {
+      markOrgAdmissionRefused(ctx.organizationId);
+      await invalidateOrgBalanceHint(ctx.organizationId).catch(
+        reportInvalidationFailure(ctx.organizationId, "balance-hint"),
+      );
+      logger.error(
+        "[InferenceLedger] post-debit balance-hint republish failed; org forced off fast path",
+        {
+          organizationId: ctx.organizationId,
+          requestId: ctx.requestId,
+          error: cause instanceof Error ? cause.message : String(cause),
+        },
+      );
+    }
     // Parity with deductCredits: fire low-credits email + auto-top-up + the waifu
     // hosted-agent pause webhook so an org draining via optimistic inference still
     // gets low-balance warnings (the ledger debits with its own SQL, not deductCredits).
