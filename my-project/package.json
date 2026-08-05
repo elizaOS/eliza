@@ -12,11 +12,27 @@
     "apps/*"
   ],
   "overrides": {
+    "@elizaos/app-core": "beta",
+    "@elizaos/core": "beta",
+    "@elizaos/shared": "beta",
+    "@elizaos/ui": "beta",
+    "@elizaos/registry": "npm:empty-npm-package@1.0.0",
+    "@elizaos/cloud-shared": "npm:empty-npm-package@1.0.0",
+    "@elizaos/plugin-remote-manifest": "npm:empty-npm-package@1.0.0",
+    "@elizaos/plugin-worker-runtime": "npm:empty-npm-package@1.0.0",
     "@elizaos/plugin-local-inference": "npm:empty-npm-package@1.0.0",
     "@whiskeysockets/baileys": "npm:empty-npm-package@1.0.0",
     "node-llama-cpp": "npm:empty-npm-package@1.0.0"
   },
   "resolutions": {
+    "@elizaos/app-core": "beta",
+    "@elizaos/core": "beta",
+    "@elizaos/shared": "beta",
+    "@elizaos/ui": "beta",
+    "@elizaos/registry": "npm:empty-npm-package@1.0.0",
+    "@elizaos/cloud-shared": "npm:empty-npm-package@1.0.0",
+    "@elizaos/plugin-remote-manifest": "npm:empty-npm-package@1.0.0",
+    "@elizaos/plugin-worker-runtime": "npm:empty-npm-package@1.0.0",
     "@elizaos/plugin-local-inference": "npm:empty-npm-package@1.0.0",
     "@whiskeysockets/baileys": "npm:empty-npm-package@1.0.0",
     "node-llama-cpp": "npm:empty-npm-package@1.0.0"
