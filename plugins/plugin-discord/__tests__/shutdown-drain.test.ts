@@ -137,4 +137,49 @@ describe("createTurnDrainRegistry", () => {
 		expect(fastController.abandon).not.toHaveBeenCalled();
 		expect(slowController.abandon).toHaveBeenCalledTimes(1);
 	});
+	it("clears the drain timer once the turns settle, so a clean drain does not hold the event loop (#17749 review)", async () => {
+		// A drain that wins the race must not leave an armed timer behind: an
+		// active Node timer keeps the event loop alive, so a shutdown that
+		// LOOKS instant in the logs still delays process exit by the full
+		// timeout. Caught in review by krutftw on the first head.
+		const registry = createTurnDrainRegistry();
+		const armed = new Set<ReturnType<typeof setTimeout>>();
+		const realSetTimeout = globalThis.setTimeout;
+		const realClearTimeout = globalThis.clearTimeout;
+		const setSpy = vi.spyOn(globalThis, "setTimeout").mockImplementation(((
+			fn: () => void,
+			ms?: number,
+		) => {
+			const handle = realSetTimeout(fn, ms);
+			armed.add(handle);
+			return handle;
+		}) as typeof globalThis.setTimeout);
+		const clearSpy = vi.spyOn(globalThis, "clearTimeout").mockImplementation(((
+			handle: ReturnType<typeof setTimeout>,
+		) => {
+			armed.delete(handle);
+			realClearTimeout(handle);
+		}) as typeof globalThis.clearTimeout);
+
+		try {
+			let finish: () => void = () => undefined;
+			registry.trackTurn(
+				"msg-fast",
+				new Promise<void>((resolve) => {
+					finish = resolve;
+				}),
+			);
+			const drained = registry.drain(60_000);
+			finish();
+			const result = await drained;
+
+			expect(result.abandonedMessageIds).toEqual([]);
+			// The race is over; nothing may still be armed.
+			expect(armed.size).toBe(0);
+			expect(clearSpy).toHaveBeenCalled();
+		} finally {
+			setSpy.mockRestore();
+			clearSpy.mockRestore();
+		}
+	});
 });

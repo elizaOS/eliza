@@ -116,13 +116,23 @@ export function createTurnDrainRegistry(): DiscordTurnDrainRegistry {
 				entry.promise.catch(() => undefined),
 			),
 		);
+		// The handle must be captured and cleared: an armed Node timer keeps the
+		// event loop alive, so a drain that settles promptly would still hold
+		// process exit for the full timeout — a shutdown that reads as instant
+		// in the logs while the process appears to hang, which is exactly the
+		// misdiagnosis this module exists to prevent (#17749 review).
+		let timer: ReturnType<typeof setTimeout> | undefined;
 		const timeout = new Promise<void>((resolve) => {
-			setTimeout(() => {
+			timer = setTimeout(() => {
 				timedOut = true;
 				resolve();
 			}, timeoutMs);
 		});
-		await Promise.race([settleAll, timeout]);
+		try {
+			await Promise.race([settleAll, timeout]);
+		} finally {
+			if (timer !== undefined) clearTimeout(timer);
+		}
 
 		const abandonedMessageIds: string[] = [];
 		if (timedOut) {
