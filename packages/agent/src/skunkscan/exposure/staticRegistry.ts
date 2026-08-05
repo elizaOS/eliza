@@ -127,12 +127,41 @@ const STATIC_BNB_EXPOSURE_REGISTRY: Record<string, ExposureRegistryEntry> = {
   },
 };
 
+// Base addresses are stored lowercase, same convention as Ethereum/BNB's -
+// see isEvmChain() in ../types (already covered "base" before this
+// registry existed, confirmed rather than assumed).
+//
+// Forensically verified directly via Moralis (real on-chain history, not
+// just BaseScan's own labels or press coverage) before being added: this
+// is the BALD token deployer/liquidity-operations wallet, repeatedly
+// depositing large, escalating native ETH amounts (0.1 through 100 ETH per
+// transaction) into the real BALD/WETH LP pool
+// (0xe96df8f5ef1a8790415068c798765b07d57643bd) and swapping BALD out for
+// ETH via the pool's counterparty contract, active precisely through
+// 2023-07-29 to 2023-07-31 - the exact documented window of the BALD rug
+// pull (the deployer removed ~10,700 ETH of liquidity on 2023-07-31,
+// crashing the token 90%+). Directly tied to the real token contract
+// (0x27d2decb4bfc9c76f0309b8e88dec3a601fe25a8) and the documented
+// mechanism, not merely labeled.
+const STATIC_BASE_EXPOSURE_REGISTRY: Record<string, ExposureRegistryEntry> = {
+  "0xccfa0530b9d52f970d1a2daea670ce58e4176389": {
+    address: "0xccfa0530b9d52f970d1a2daea670ce58e4176389",
+    label: "BALD Token Deployer / Liquidity Rug",
+    category: "rug_pull",
+    confidence: "high",
+    source: "static_registry",
+    relationship: "self",
+    contributesToScore: true,
+  },
+};
+
 const CHAIN_EXPOSURE_REGISTRIES: Partial<
   Record<SupportedChain, Readonly<Record<string, ExposureRegistryEntry>>>
 > = {
   solana: STATIC_SOLANA_EXPOSURE_REGISTRY,
   ethereum: STATIC_ETHEREUM_EXPOSURE_REGISTRY,
   bnb: STATIC_BNB_EXPOSURE_REGISTRY,
+  base: STATIC_BASE_EXPOSURE_REGISTRY,
 };
 
 export function lookupStaticExposure(

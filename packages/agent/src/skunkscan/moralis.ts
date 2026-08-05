@@ -39,10 +39,13 @@ const MORALIS_BASE_URL = "https://deep-index.moralis.io/api/v2.2";
 // Moralis's own `chain` query-parameter values - NOT the same strings as
 // this codebase's internal SupportedChain identifiers ("ethereum"/"bnb").
 // BSC in particular is "bsc" on the wire, not "bnb" - confirmed live and
-// against Moralis's docs (chainList enum). Every exported function below
-// takes this explicitly rather than defaulting to "eth", so a caller can
-// never silently query the wrong chain.
-export type MoralisEvmChain = "eth" | "bsc";
+// against Moralis's docs (chainList enum). "base" happens to match the
+// internal SupportedChain identifier ("base") exactly - confirmed against
+// Moralis's own chain-parameter enum, not assumed just because the
+// strings look the same. Every exported function below takes this
+// explicitly rather than defaulting to "eth", so a caller can never
+// silently query the wrong chain.
+export type MoralisEvmChain = "eth" | "bsc" | "base";
 
 function getMoralisApiKey(): string {
   const apiKey = process.env.MORALIS_API_KEY?.trim();

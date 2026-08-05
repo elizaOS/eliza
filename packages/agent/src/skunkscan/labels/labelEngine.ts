@@ -3,6 +3,7 @@ import {
   lookupStaticSolanaWalletLabel,
   lookupStaticEthereumWalletLabel,
   lookupStaticBnbWalletLabel,
+  lookupStaticBaseWalletLabel,
 } from "./staticRegistry";
 
 export function getUnknownWalletLabel(
@@ -38,8 +39,9 @@ export function lookupWalletLabel(
       return lookupStaticBnbWalletLabel(address) ?? getUnknownWalletLabel(address);
     }
 
-    case "base":
-      return getUnknownWalletLabel(address);
+    case "base": {
+      return lookupStaticBaseWalletLabel(address) ?? getUnknownWalletLabel(address);
+    }
 
     default:
       return getUnknownWalletLabel(address);
