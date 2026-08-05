@@ -174,6 +174,24 @@ export function notificationGroupPullOffset(
   return countSlotCompensation + (1 - groupVisibility) * -8;
 }
 
+/**
+ * Align the moving card shell to physical pixels. The one-pixel masked glass
+ * rim otherwise gets re-rasterized at a different coverage on the first
+ * fractional translate, which reads as an instantaneous lighting change even
+ * though none of its material styles changed.
+ */
+export function notificationGroupPixelAlignedOffset(
+  offsetPx: number,
+  devicePixelRatio: number,
+): number {
+  const ratio =
+    Number.isFinite(devicePixelRatio) && devicePixelRatio > 0
+      ? devicePixelRatio
+      : 1;
+  const aligned = Math.round(offsetPx * ratio) / ratio;
+  return Object.is(aligned, -0) ? 0 : aligned;
+}
+
 export function notificationGroupPullVisibility(
   pullPx: number,
   groupIndex: number,
@@ -261,6 +279,8 @@ export function applyNotificationPullPresentation(
   const groups =
     visibleGroups ??
     root.querySelectorAll<HTMLElement>("[data-notification-group]");
+  const devicePixelRatio =
+    root.ownerDocument.defaultView?.devicePixelRatio ?? 1;
   for (const group of groups) {
     const groupIndex = Number(group.dataset.notificationGroupIndex ?? 0);
     const pullRevealed = group.hasAttribute("data-notification-pull-reveal");
@@ -321,9 +341,11 @@ export function applyNotificationPullPresentation(
         content.style.removeProperty("--eliza-notif-group-content-visibility");
         content.style.removeProperty("--eliza-notif-group-surface-visibility");
       }
-      content.style.transform = `translate3d(0, ${
-        containerOffset + contentPullOffset + presentation.pullOvershootOffset
-      }px, 0)`;
+      const groupOffset = notificationGroupPixelAlignedOffset(
+        containerOffset + contentPullOffset + presentation.pullOvershootOffset,
+        devicePixelRatio,
+      );
+      content.style.transform = `translate3d(0, ${groupOffset}px, 0)`;
     }
     if (!shadeExpanded && pullPx > 0) {
       if (content?.hasAttribute("data-notification-stacked")) {
