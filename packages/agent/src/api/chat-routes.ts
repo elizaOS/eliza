@@ -423,11 +423,15 @@ function readPositiveIntegerSetting(
 }
 
 function isAndroidLocalDirectChatRuntime(runtime: AgentRuntime): boolean {
-  const optOut = readRuntimeStringSetting(
+  const optIn = readRuntimeStringSetting(
     runtime,
     "ELIZA_MOBILE_LOCAL_DIRECT_REPLY",
   );
-  if (/^(0|false|no|off)$/i.test(optOut ?? "")) {
+  // A native device bridge says where capabilities execute, not which model
+  // owns conversation. Bypassing the full Eliza planner is therefore explicit
+  // opt-in; merely connecting an Android/iOS bridge must keep chat on the host
+  // runtime and its configured model providers.
+  if (!/^(1|true|yes|on)$/i.test(optIn ?? "")) {
     return false;
   }
   const platform =
