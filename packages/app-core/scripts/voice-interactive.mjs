@@ -86,6 +86,10 @@ function parseArgs(argv) {
   return out;
 }
 
+function shouldPrewarmAfterTurn(args) {
+  return args.say == null && args.wav == null;
+}
+
 const USAGE = `Usage: bun run --cwd packages/app-core voice:interactive [-- <options>]
 
   --list-active        print which optimizations are active, then exit
@@ -1026,7 +1030,7 @@ async function bootStandaloneRuntime({ roomId }) {
   // The runtime needs plugin-sql (storage) + the local-inference model handler.
   // Core wires DefaultMessageService during initialize(). Fail loudly if a
   // piece is missing rather than half-booting.
-  const { AgentRuntime } = await import("@elizaos/core");
+  const { AgentRuntime, stringToUuid } = await import("@elizaos/core");
   let sqlPlugin;
   try {
     sqlPlugin =
@@ -1055,6 +1059,20 @@ async function bootStandaloneRuntime({ roomId }) {
     plugins: [sqlPlugin],
   });
   await runtime.initialize();
+
+  const persistedRoomId = stringToUuid(roomId);
+  const entityId = stringToUuid(`${persistedRoomId}:user`);
+  const worldId = stringToUuid(`${persistedRoomId}:world`);
+  runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", entityId, false);
+  await runtime.ensureConnection({
+    entityId,
+    roomId: persistedRoomId,
+    worldId,
+    userName: "Voice user",
+    source: "voice-interactive",
+    channelId: persistedRoomId,
+    type: "VOICE_DM",
+  });
 
   // Register the local-inference model handlers (TEXT_SMALL / TEXT_LARGE /
   // TRANSCRIPTION / TEXT_TO_SPEECH) + prewarmResponseHandler / prewarmSystemPrefix.
@@ -1086,9 +1104,8 @@ async function bootStandaloneRuntime({ roomId }) {
         "[voice] runtime.messageService.handleMessage is unavailable after initialize()",
       );
     }
-    const entityId = `${roomId}-user`;
     const incoming = {
-      id: `${roomId}-${Date.now()}`,
+      id: stringToUuid(`${persistedRoomId}:message:${Date.now()}`),
       content: {
         text: request.transcript,
         source: "voice-interactive",
@@ -1108,7 +1125,7 @@ async function bootStandaloneRuntime({ roomId }) {
       },
       entityId,
       agentId: runtime.agentId,
-      roomId,
+      roomId: persistedRoomId,
       createdAt: Date.now(),
     };
     let replyText = "";
@@ -1147,7 +1164,12 @@ async function bootStandaloneRuntime({ roomId }) {
     };
   };
 
-  return { runtime, generate, prewarmResponseHandler };
+  return {
+    runtime,
+    generate,
+    prewarmResponseHandler,
+    roomId: persistedRoomId,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1312,11 +1334,13 @@ async function main() {
   let runtime;
   let generate;
   let prewarmResponseHandler;
+  let runtimeRoomId;
   try {
     const booted = await bootStandaloneRuntime({ roomId: args.room });
     runtime = booted.runtime;
     generate = booted.generate;
     prewarmResponseHandler = booted.prewarmResponseHandler;
+    runtimeRoomId = booted.roomId;
   } catch (err) {
     log(
       c(
@@ -1500,9 +1524,16 @@ async function main() {
         "green",
         `shouldRespond=${outcome.replyText && outcome.replyText.length > 0 ? "RESPOND" : "IGNORE/STOP"} replyText.len=${outcome.replyText?.length ?? 0}`,
       );
-      await printTurnLatency(args.room);
-      // Idle-time phrase-cache prewarm after each turn.
-      engine.prewarmIdleVoicePhrases().catch(() => {});
+      await printTurnLatency(runtimeRoomId);
+      // One-shot QA must settle only the requested reply. Interactive sessions
+      // stay alive and use their idle window to build the phrase cache.
+      if (shouldPrewarmAfterTurn(args)) {
+        void engine.prewarmIdleVoicePhrases().catch((error) => {
+          // error-policy:J7 Phrase-cache warming is optional; the CLI reports
+          // the failure while the live conversation remains usable.
+          tag("prewarm", "yellow", error?.message ?? String(error));
+        });
+      }
     },
     onError: (err) => tag("error", "red", err?.message ?? String(err)),
   };
@@ -1517,8 +1548,8 @@ async function main() {
       const { markVoiceLatency } = await import(
         "@elizaos/plugin-local-inference/services/latency-trace"
       );
-      markVoiceLatency(args.room, "vad-trigger");
-      markVoiceLatency(args.room, "asr-final");
+      markVoiceLatency(runtimeRoomId, "vad-trigger");
+      markVoiceLatency(runtimeRoomId, "asr-final");
       const signal = new AbortController().signal;
       const outcome = await wrappedGenerate({
         transcript: args.say,
@@ -1571,7 +1602,7 @@ async function main() {
       // The engine constructs the fused Silero VAD (via the libelizainference
       // VAD ABI) from its own bridge ffi/ctx when no `vad` is supplied.
       controller = await engine.startVoiceSession({
-        roomId: args.room,
+        roomId: runtimeRoomId,
         micSource: push,
         generate: wrappedGenerate,
         prewarm: async (rid) => {
@@ -1628,7 +1659,7 @@ async function main() {
     // The engine constructs the fused Silero VAD (via the libelizainference
     // VAD ABI) from its own bridge ffi/ctx when no `vad` is supplied.
     controller = await engine.startVoiceSession({
-      roomId: args.room,
+      roomId: runtimeRoomId,
       micSource,
       generate: wrappedGenerate,
       prewarm: async (rid) => {
@@ -1729,7 +1760,11 @@ async function main() {
   }
 
   // Fire an initial idle phrase-cache prewarm.
-  engine.prewarmIdleVoicePhrases().catch(() => {});
+  void engine.prewarmIdleVoicePhrases().catch((error) => {
+    // error-policy:J7 Phrase-cache warming is optional; the CLI reports the
+    // failure while the live conversation remains usable.
+    tag("prewarm", "yellow", error?.message ?? String(error));
+  });
 
   // Keep the process alive; shutdown happens via 'q' / Ctrl-C / signals.
   process.on("SIGINT", () => {
@@ -1750,6 +1785,7 @@ export {
   PLATFORM_MATRIX,
   printPlatformReport,
   resolveInstalledBundleRoot,
+  shouldPrewarmAfterTurn,
 };
 
 if (import.meta.main) {
