@@ -1,0 +1,59 @@
+{
+  "name": "@elizaos/plugin-clawdbrowser",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Official elizaOS plugin: expose ClawdBrowser SOL GPT tool catalog (tools.md) to agents — search, describe, list 171 non-custodial Solana tools.",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "README.md", "package.json", "registry-entry.json"],
+  "scripts": {
+    "build": "bun run build.ts",
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "elizaos": {
+    "plugin": {
+      "capabilities": [
+        "clawdbrowser",
+        "sol-gpt",
+        "tool-catalog",
+        "solana-research",
+        "phoenix-perps",
+        "non-custodial"
+      ]
+    }
+  },
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "clawdbrowser",
+    "sol-gpt",
+    "solana",
+    "phoenix",
+    "cheshire",
+    "tool-catalog"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Solizardking/eliza.git",
+    "directory": "plugins/plugin-clawdbrowser"
+  }
+}

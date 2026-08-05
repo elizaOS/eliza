@@ -1,0 +1,37 @@
+{
+  "name": "@elizaos/cheshire-eliza",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Cheshire Terminal / Solizard elizaOS characters, body generator, and plugin bundle for dual-rail agent forge.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./character": {
+      "import": "./src/characters/solizard-cheshire.ts",
+      "default": "./src/characters/solizard-cheshire.ts"
+    },
+    "./body-generator": {
+      "import": "./src/body-generator/index.ts",
+      "default": "./src/body-generator/index.ts"
+    }
+  },
+  "scripts": {
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "keywords": ["cheshire", "solizard", "elizaos", "character", "forge"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Solizardking/eliza.git",
+    "directory": "packages/cheshire-eliza"
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "name": "@elizaos/plugin-e2b-computer",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "E2B sandbox computer for Cheshire/elizaOS agents — code interpreter, file ops, isolated VM sessions.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "README.md", "package.json"],
+  "scripts": {
+    "build": "bun run build.ts",
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "optionalDependencies": {
+    "@e2b/code-interpreter": "^1.5.0"
+  },
+  "elizaos": {
+    "plugin": {
+      "capabilities": ["e2b-sandbox", "computer", "code-interpreter"]
+    }
+  },
+  "keywords": ["elizaos", "e2b", "sandbox", "cheshire", "computer"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Solizardking/eliza.git",
+    "directory": "plugins/plugin-e2b-computer"
+  }
+}

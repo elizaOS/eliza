@@ -1,0 +1,65 @@
+{
+  "id": "clawdbrowser",
+  "name": "ClawdBrowser Tools",
+  "description": "Official plugin: expose ClawdBrowser SOL GPT tools.md catalog to elizaOS agents — search, describe, list 171 non-custodial Solana research + user-signed prepare tools.",
+  "npmName": "@elizaos/plugin-clawdbrowser",
+  "version": "0.1.0",
+  "source": "bundled",
+  "tags": [
+    "clawdbrowser",
+    "sol-gpt",
+    "solana",
+    "phoenix",
+    "imperial",
+    "tool-catalog",
+    "non-custodial",
+    "cheshire"
+  ],
+  "config": {
+    "CLAWDBROWSER_TOOLS_MD": {
+      "type": "file-path",
+      "required": false,
+      "sensitive": false,
+      "label": "tools.md path",
+      "help": "Absolute path to ClawdBrowser tools.md (default: ~/ClawdBrowser/tools.md or /Users/8bit/ClawdBrowser/tools.md)",
+      "advanced": false
+    },
+    "CLAWDBROWSER_ROOT": {
+      "type": "file-path",
+      "required": false,
+      "sensitive": false,
+      "label": "ClawdBrowser root",
+      "help": "ClawdBrowser checkout root; tools.md is resolved as <root>/tools.md",
+      "advanced": false
+    },
+    "CLAWDBROWSER_API_URL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "API base URL",
+      "help": "Optional ClawdBrowser / sol-gpt API base for future live tool relay",
+      "advanced": true
+    },
+    "CLAWDBROWSER_ENABLED": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Enabled",
+      "help": "Set false to disable catalog loading",
+      "advanced": true
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Wrench",
+    "group": "agents",
+    "groupOrder": 8,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "agents"
+}

@@ -1,0 +1,42 @@
+{
+  "name": "@elizaos/plugin-solana-forging",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Cheshire Terminal Solana agent forging for elizaOS — Metaplex Core mint intents, dual-rail omni link preview.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "README.md", "package.json"],
+  "scripts": {
+    "build": "bun run build.ts",
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "elizaos": {
+    "plugin": {
+      "capabilities": ["solana-forge", "metaplex-core", "cheshire-terminal"]
+    }
+  },
+  "keywords": ["elizaos", "plugin", "solana", "metaplex", "cheshire", "agent-mint"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Solizardking/eliza.git",
+    "directory": "plugins/plugin-solana-forging"
+  }
+}

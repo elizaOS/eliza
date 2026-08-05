@@ -1,0 +1,42 @@
+{
+  "name": "@elizaos/plugin-cheshire-memory",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Persistent trading + chat memory for Cheshire agents via HERMES_API_KEY and HONCHO_API_KEY.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "README.md", "package.json"],
+  "scripts": {
+    "build": "bun run build.ts",
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "elizaos": {
+    "plugin": {
+      "capabilities": ["persistent-memory", "honcho", "hermes", "trading-memory"]
+    }
+  },
+  "keywords": ["elizaos", "honcho", "hermes", "memory", "cheshire", "trading"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Solizardking/eliza.git",
+    "directory": "plugins/plugin-cheshire-memory"
+  }
+}

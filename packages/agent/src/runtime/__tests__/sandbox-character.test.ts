@@ -2,12 +2,17 @@
  * Unit tests for the cloud sandbox character loader (Path A fix #1).
  */
 
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   applySandboxCharacterFromEnv,
   applySandboxIdentityFromEnv,
   prepareSandboxRuntimeConfig,
+  resolveSandboxCharacterJsonFromEnv,
   resolveSandboxRouteAgentId,
+  resolveSystemFromCharacter,
 } from "../sandbox-character.ts";
 
 vi.mock("@elizaos/core", () => ({
@@ -15,11 +20,59 @@ vi.mock("@elizaos/core", () => ({
 }));
 
 describe("applySandboxCharacterFromEnv", () => {
-  it("is a no-op when ELIZA_AGENT_CHARACTER_JSON is absent", () => {
+  it("is a no-op when ELIZA_AGENT_CHARACTER_JSON and PATH are absent", () => {
     const config = { agents: { list: [] } } as never;
     const out = applySandboxCharacterFromEnv(config, {});
     expect(out).toBe(config);
     expect((out as { agents?: { list?: unknown[] } }).agents?.list).toEqual([]);
+  });
+
+  it("loads character from ELIZA_AGENT_CHARACTER_PATH", () => {
+    const dir = mkdtempSync(join(tmpdir(), "eliza-char-"));
+    const path = join(dir, "clawd.json");
+    writeFileSync(
+      path,
+      JSON.stringify({
+        name: "Clawd",
+        bio: ["On-chain oracle."],
+        lore: ["Forked from solana-gpt-oracle."],
+        topics: ["Solana"],
+        adjectives: ["precise"],
+        style: { all: ["Lead with the answer."] },
+      }),
+    );
+
+    const config = {} as never;
+    const out = applySandboxCharacterFromEnv(config, {
+      ELIZA_AGENT_CHARACTER_PATH: path,
+    });
+    const entry = (out as { agents: { list: Array<Record<string, unknown>> } })
+      .agents.list[0];
+    expect(entry.name).toBe("Clawd");
+    expect(entry.bio).toEqual(["On-chain oracle."]);
+    expect(entry.topics).toEqual(["Solana"]);
+    expect(String(entry.system)).toContain("You are Clawd.");
+    expect(String(entry.system)).toContain("On-chain oracle.");
+    expect(String(entry.system)).toContain("Forked from solana-gpt-oracle.");
+    expect(entry.default).toBe(true);
+  });
+
+  it("prefers ELIZA_AGENT_CHARACTER_JSON over PATH", () => {
+    const dir = mkdtempSync(join(tmpdir(), "eliza-char-"));
+    const path = join(dir, "file.json");
+    writeFileSync(path, JSON.stringify({ name: "FromFile", system: "file" }));
+
+    const out = applySandboxCharacterFromEnv({} as never, {
+      ELIZA_AGENT_CHARACTER_JSON: JSON.stringify({
+        name: "FromJson",
+        system: "json",
+      }),
+      ELIZA_AGENT_CHARACTER_PATH: path,
+    });
+    const entry = (out as { agents: { list: Array<Record<string, unknown>> } })
+      .agents.list[0];
+    expect(entry.name).toBe("FromJson");
+    expect(entry.system).toBe("json");
   });
 
   it("merges the injected character onto config.agents.list[0]", () => {
@@ -106,6 +159,35 @@ describe("applySandboxCharacterFromEnv", () => {
     const entry = (out as { agents: { list: Array<Record<string, unknown>> } })
       .agents.list[0];
     expect(entry.name).toBe("Nyx");
+  });
+});
+
+describe("resolveSandboxCharacterJsonFromEnv / resolveSystemFromCharacter", () => {
+  it("reads path and synthesizes system from bio/lore", () => {
+    const dir = mkdtempSync(join(tmpdir(), "eliza-char-"));
+    const path = join(dir, "c.json");
+    writeFileSync(
+      path,
+      JSON.stringify({
+        name: "Clawd",
+        bio: ["bio-line"],
+        lore: ["lore-line"],
+      }),
+    );
+    const resolved = resolveSandboxCharacterJsonFromEnv({
+      ELIZA_AGENT_CHARACTER_PATH: path,
+    });
+    expect(resolved?.source).toBe("path");
+    expect(resolved?.path).toBe(path);
+    const parsed = JSON.parse(resolved!.raw) as {
+      name: string;
+      bio: string[];
+      lore: string[];
+    };
+    const system = resolveSystemFromCharacter(parsed);
+    expect(system).toContain("You are Clawd.");
+    expect(system).toContain("bio-line");
+    expect(system).toContain("lore-line");
   });
 });
 

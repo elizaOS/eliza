@@ -8,42 +8,54 @@
  * `buildCharacterFromConfig` falls back to the default style preset because
  * `config.agents.list[0]` is empty in a fresh container.
  *
- * This module parses that env var and merges it onto `config.agents.list[0]`
- * so the existing `buildCharacterFromConfig` path picks up the right name,
- * system prompt, bio, examples, topics, adjectives and style. It returns the
- * config unchanged when the env var is absent or unparseable,
- * so it is inert for every non-provisioned runtime.
+ * Local / monorepo operators can instead set `ELIZA_AGENT_CHARACTER_PATH` to a
+ * character JSON file (e.g. `characters/clawd.json`). Path is preferred only
+ * when the inline JSON env var is unset, so provisioned containers keep their
+ * existing contract.
+ *
+ * This module parses that env var / file and merges it onto
+ * `config.agents.list[0]` so the existing `buildCharacterFromConfig` path
+ * picks up the right name, system prompt, bio, examples, topics, adjectives
+ * and style. It returns the config unchanged when neither source is present
+ * or the payload is unparseable, so it is inert for every non-provisioned
+ * runtime.
  */
 
 import { type CharacterSettings, logger } from "@elizaos/core";
 import type { AgentConfig } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
+import {
+  asStringArray,
+  type CharacterFileJson,
+  resolveCharacterFilePath,
+  resolveSandboxCharacterJsonFromEnv as resolveCharacterJsonFromEnv,
+  resolveSystemFromCharacter,
+} from "./character-file.ts";
+
+export {
+  asStringArray,
+  resolveCharacterFilePath,
+  resolveSystemFromCharacter,
+} from "./character-file.ts";
 
 /** Raw character shape as stored in `agent_sandboxes.agent_config`. */
-interface SandboxCharacterJson {
-  id?: string;
-  name?: string;
-  username?: string;
-  system?: string;
-  bio?: string[] | string;
-  topics?: string[];
-  adjectives?: string[];
-  postExamples?: string[];
-  style?: { all?: string[]; chat?: string[]; post?: string[] };
-  // messageExamples may arrive in either the legacy [[{user,content}]] form
-  // or the @elizaos/core {examples:[{name,content}]} form; buildCharacterFromConfig
-  // normalises both, so we pass it through untouched.
-  messageExamples?: unknown;
+type SandboxCharacterJson = CharacterFileJson & {
   settings?: CharacterSettings;
   knowledge?: AgentConfig["knowledge"];
-  /**
-   * Per-character connector config (e.g. `{ discord: { ... }, telegram: {...} }`).
-   * Only applied when the container is the connector owner
-   * (ELIZA_SANDBOX_OWNS_CONNECTORS=1) to avoid double-connecting the same bot
-   * token from both the gateway and the container.
-   */
-  connectors?: Record<string, unknown>;
-  [key: string]: unknown;
+};
+
+/**
+ * Resolve the raw character JSON string from env.
+ * Precedence: `ELIZA_AGENT_CHARACTER_JSON` > file at `ELIZA_AGENT_CHARACTER_PATH`.
+ * Returns null when neither source yields content.
+ */
+export function resolveSandboxCharacterJsonFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+  cwd: string = process.cwd(),
+): { raw: string; source: "json" | "path"; path?: string } | null {
+  return resolveCharacterJsonFromEnv(env, cwd, (message) =>
+    logger.warn(message),
+  );
 }
 
 /**
@@ -57,14 +69,6 @@ export function sandboxOwnsConnectors(
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
   return env.ELIZA_SANDBOX_OWNS_CONNECTORS?.trim() === "1";
-}
-
-function asStringArray(value: unknown): string[] | undefined {
-  if (Array.isArray(value)) {
-    return value.filter((v): v is string => typeof v === "string");
-  }
-  if (typeof value === "string" && value.trim()) return [value];
-  return undefined;
 }
 
 /**
@@ -90,15 +94,21 @@ export function applySandboxCharacterFromEnv(
   config: ElizaConfig,
   env: NodeJS.ProcessEnv = process.env,
 ): ElizaConfig {
-  const raw = env.ELIZA_AGENT_CHARACTER_JSON?.trim();
-  if (!raw) return config;
+  const resolved = resolveSandboxCharacterJsonFromEnv(env);
+  if (!resolved) return config;
+
+  const { raw, source, path: characterPath } = resolved;
 
   let parsed: SandboxCharacterJson;
   try {
     parsed = JSON.parse(raw) as SandboxCharacterJson;
   } catch (err) {
+    const label =
+      source === "path"
+        ? `ELIZA_AGENT_CHARACTER_PATH (${characterPath})`
+        : "ELIZA_AGENT_CHARACTER_JSON";
     logger.warn(
-      `[sandbox-character] ELIZA_AGENT_CHARACTER_JSON is not valid JSON; booting with default character: ${err instanceof Error ? err.message : String(err)}`,
+      `[sandbox-character] ${label} is not valid JSON; booting with default character: ${err instanceof Error ? err.message : String(err)}`,
     );
     return config;
   }
@@ -126,12 +136,14 @@ export function applySandboxCharacterFromEnv(
     env.SANDBOX_AGENT_ID?.trim() ||
     name.toLowerCase().replace(/\s+/g, "-");
 
+  const system = resolveSystemFromCharacter(parsed);
+
   const entry: AgentConfig = {
     id,
     default: true,
     name,
     ...(parsed.username ? { username: parsed.username } : {}),
-    ...(parsed.system ? { system: parsed.system } : {}),
+    ...(system ? { system } : {}),
     ...(asStringArray(parsed.bio) ? { bio: asStringArray(parsed.bio) } : {}),
     ...(asStringArray(parsed.topics)
       ? { topics: asStringArray(parsed.topics) }
@@ -195,8 +207,12 @@ export function applySandboxCharacterFromEnv(
     );
   }
 
+  const sourceLabel =
+    source === "path"
+      ? `ELIZA_AGENT_CHARACTER_PATH (${characterPath})`
+      : "ELIZA_AGENT_CHARACTER_JSON";
   logger.info(
-    `[sandbox-character] Loaded injected character "${name}" (id=${id}) from ELIZA_AGENT_CHARACTER_JSON`,
+    `[sandbox-character] Loaded injected character "${name}" (id=${id}) from ${sourceLabel}`,
   );
   return config;
 }
