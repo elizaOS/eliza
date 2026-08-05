@@ -3717,6 +3717,7 @@ direct/private rules:
 - For simple requests, replyText is the natural user-facing answer; avoid single-token fragments or placeholders unless the user asked for terse.
 - Use non-simple context/action names only for tools, live facts, private state, files, web, shell, side effects, scheduling, memory, settings, secrets, wallet/finance, media, or device/app control.
 - UI navigation is device/app control: open/show/switch/go-home requests use contexts=["general"], candidateActionNames=["VIEWS"], and a brief pending ack. Never claim the view opened before VIEWS succeeds.
+- Questions that ask to list or explain slash commands are ordinary conversation, not UI navigation: use contexts=["general"], directly tell the user that /commands displays the available list, and do not ask a clarifying question or select VIEWS merely because the user says "show commands".
 - Sticky Notes and native device controls are also device/app control: note and flashlight reads or mutations use contexts=["general"], candidateActionNames=["VIEWS"]. Do not route sticky Notes to documents or invent action names such as CREATE_NOTE.
 - Calendar-event reads or mutations use contexts=["calendar"], candidateActionNames=["CALENDAR"]. A timed "add X tomorrow at 9am" request is a calendar event unless the user explicitly asks for a task or reminder.
 - Goals/todos/reminders/habits/routines are non-simple; goals -> tasks + OWNER_GOALS, never work threads.
@@ -6539,13 +6540,13 @@ function collectPreviousActionResults(
 /**
  * Pre-LLM action shortcut gate (#8791).
  *
- * Matches the user's text against the runtime's `ShortcutRegistry` BEFORE any
- * model call. Explicit slash/`!` commands are always eligible (this is what
- * makes slash commands deterministic per #8790); natural-language shortcuts use
- * narrow/confidence-floored patterns. On a confident `action`-target match the
- * matched action runs and its reply is returned as a `direct_reply` — emitting
- * ZERO `RESPONSE_HANDLER` tokens. Navigate/client targets are resolved on the
- * client (the slash menu already runs them locally) so the gate ignores them.
+ * Matches explicit slash/`!` protocol invocations against the runtime's
+ * `ShortcutRegistry` before any model call. Ordinary language is deliberately
+ * ineligible here: it must reach the planner even when a plugin registered a
+ * natural-language shortcut. On an explicit `action`-target match the action
+ * runs and its reply is returned as a `direct_reply` — emitting zero
+ * `RESPONSE_HANDLER` tokens. Navigate/client targets are resolved on the client
+ * (the slash menu already runs them locally) so the gate ignores them.
  *
  * Returns `null` on no match / mis-fire so the turn proceeds unchanged
  * (byte-identical to today). Set `ELIZA_SHORTCUTS_DISABLED=1` to bypass entirely.
@@ -6569,7 +6570,7 @@ export async function runShortcutGate(args: {
 	const authorized = isAdminRank(args.senderRole);
 	const match = registry.match(text, {
 		actions: args.runtime.actions.map((action) => action.name),
-		allowNatural: true,
+		allowNatural: false,
 		isAuthorized: authorized,
 		isElevated: hasAtLeastRole(args.senderRole, "OWNER"),
 	});
@@ -11356,12 +11357,9 @@ export class DefaultMessageService implements IMessageService {
 			setTranslatedUserText,
 		});
 
-		// #8791: pre-LLM action shortcut gate runs FIRST — before the planner or
-		// model call. An explicit slash/`!` command (always-on) or a
-		// confident natural-language shortcut resolves to a deterministic action
-		// reply with zero inference. Placed here (ahead of the pre-LLM
-		// conditional v5 stage) so a slash command can
-		// never be pre-empted by another handler.
+		// #8791: the explicit-protocol shortcut gate runs first so slash/`!`
+		// commands cannot be pre-empted by another handler. Ordinary language is
+		// never eligible here and always reaches the planner.
 		if (!strategyResult) {
 			// Reuse the role resolved once per turn in handleMessage (stamped on the
 			// trajectory context) — resolving again here costs a room+world lookup.
