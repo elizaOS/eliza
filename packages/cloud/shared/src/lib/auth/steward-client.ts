@@ -91,6 +91,12 @@ export interface StewardVerifyEnv {
 
 export interface StewardVerifyOptions {
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
+  /**
+   * Skip the distributed verification memo after the in-isolate check. Local
+   * signature verification is cheaper than a second Worker KV round-trip and
+   * keeps inference-session authorization to one remote cache decision.
+   */
+  skipDistributedCache?: boolean;
 }
 
 export const STEWARD_ACCESS_TOKEN_TTL_SECONDS = 60 * 60;
@@ -233,8 +239,11 @@ export async function verifyStewardTokenCached(
       return inMemoryCached;
     }
 
-    // 1. Check Redis cache
-    const cached = await cache.get<CachedStewardClaims>(cacheKey);
+    // 1. Check the distributed memo unless the caller deliberately prefers
+    // local crypto to a second network lookup (the inference hot path).
+    const cached = options.skipDistributedCache
+      ? null
+      : await cache.get<CachedStewardClaims>(cacheKey);
     if (cached && cached.expiration > now) {
       logger.debug("[StewardClient] ✓ Redis cache hit", {
         tokenHash: tokenHash.substring(0, 8),
