@@ -1,5 +1,9 @@
 import { lookupStaticExposure } from "../exposure/staticRegistry";
 import {
+  getRegistryAddressScanCoverage,
+  lookupReverseExposureIndex,
+} from "../exposure/reverseIndex";
+import {
   SupportedChain,
   WalletExposureSummary,
   WalletFundingSummary,
@@ -17,6 +21,13 @@ export function analyzeWalletExposure(
 ): WalletExposureSummary {
   const matches: WalletExposureSummary["matches"] = [];
 
+  // Dedup key: which flagged registry addresses have already produced a
+  // match, regardless of which check (self/funder/reverse-index/live
+  // counterparty) found them - every match's own `address` field is the
+  // flagged address itself (carried over from the registry entry via
+  // spread), so this is the right key across all four sources.
+  const matchedFlaggedAddresses = new Set<string>();
+
   const selfMatch = lookupStaticExposure(chain, walletAddress);
 
   if (selfMatch) {
@@ -25,6 +36,7 @@ export function analyzeWalletExposure(
       relationship: "self",
       contributesToScore: true,
     });
+    matchedFlaggedAddresses.add(selfMatch.address);
   }
 
   if (funding.fundingWallet) {
@@ -40,16 +52,65 @@ export function analyzeWalletExposure(
         contributesToScore: true,
         direction: "incoming",
       });
+      matchedFlaggedAddresses.add(fundingMatch.address);
+    }
+  }
+
+  // Reverse-index check: an O(1) lookup of "every flagged address this
+  // wallet has ever transacted with," precomputed by periodically
+  // scanning the (small, fixed) set of flagged registry addresses' own
+  // transaction history (see exposure/buildReverseIndex.ts). This gives
+  // exposure coverage independent of the wallet's own sample depth - it
+  // doesn't depend on `relationships` at all.
+  const partiallyScannedMatchLabels: string[] = [];
+
+  const reverseIndexEntry = lookupReverseExposureIndex(chain, walletAddress);
+
+  if (reverseIndexEntry) {
+    for (const reverseMatch of reverseIndexEntry.matches) {
+      if (matchedFlaggedAddresses.has(reverseMatch.flaggedAddress)) {
+        continue;
+      }
+
+      const registryEntry = lookupStaticExposure(
+        chain,
+        reverseMatch.flaggedAddress,
+      );
+
+      if (!registryEntry) {
+        continue;
+      }
+
+      matches.push({
+        ...registryEntry,
+        relationship: "counterparty",
+        source: "reverse_index",
+        contributesToScore: reverseMatch.contributesToScore,
+        direction: reverseMatch.direction,
+        transactionSignatures: reverseMatch.transactionSignatures,
+      });
+      matchedFlaggedAddresses.add(registryEntry.address);
+
+      const coverage = getRegistryAddressScanCoverage(
+        chain,
+        reverseMatch.flaggedAddress,
+      );
+
+      // A "failed" source (zero transactions ever scanned) can never
+      // produce a match by construction - only "capped" (real partial
+      // data, more may exist beyond what's indexed) is relevant here.
+      if (coverage?.status === "capped") {
+        partiallyScannedMatchLabels.push(registryEntry.label);
+      }
     }
   }
 
   // Every relationship counterparty discovered by relationships.ts gets
-  // checked too - not just self and the single funding wallet above. The
-  // funder's own address is skipped here since it's already covered by the
-  // dedicated check above; without this skip the same address could
-  // produce two matches (once as "funder", once as "counterparty").
+  // checked too - not just self, the funding wallet, and the reverse
+  // index above. Anything already matched by one of those is skipped, so
+  // the same flagged address never produces two entries in `matches`.
   for (const relationship of relationships) {
-    if (relationship.address === funding.fundingWallet) {
+    if (matchedFlaggedAddresses.has(relationship.address)) {
       continue;
     }
 
@@ -77,6 +138,7 @@ export function analyzeWalletExposure(
       direction,
       transactionSignatures: relationship.transactionSignatures,
     });
+    matchedFlaggedAddresses.add(counterpartyMatch.address);
   }
 
   const scoringEligibleMatches = matches.filter(
@@ -162,6 +224,25 @@ export function analyzeWalletExposure(
       : [
           "Exposure assessment is based on known registry matches.",
         ];
+
+  // Distinct labels only, in case a single flagged address somehow
+  // contributed more than once (shouldn't happen given the dedup above,
+  // but this keeps the note honest either way).
+  const distinctPartiallyScannedLabels = Array.from(
+    new Set(partiallyScannedMatchLabels),
+  );
+
+  if (distinctPartiallyScannedLabels.length === 1) {
+    notes.push(
+      `The match against ${distinctPartiallyScannedLabels[0]} reflects a partial scan of that address's own transaction history - more matching activity may exist beyond what's been indexed so far.`,
+    );
+  } else if (distinctPartiallyScannedLabels.length > 1) {
+    const labelList = `${distinctPartiallyScannedLabels.slice(0, -1).join(", ")} and ${distinctPartiallyScannedLabels[distinctPartiallyScannedLabels.length - 1]}`;
+
+    notes.push(
+      `Matches against ${labelList} reflect partial scans of those addresses' own transaction history - more matching activity may exist beyond what's been indexed so far.`,
+    );
+  }
 
   return {
     exposureScore,
