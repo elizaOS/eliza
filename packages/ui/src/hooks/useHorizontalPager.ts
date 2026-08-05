@@ -299,14 +299,12 @@ export function useHorizontalPager<
   // Center). Without a promotion hint WebKit/iOS Safari rasterizes the rail into
   // its parent layer, so every frame of a horizontal pan re-rasterizes the
   // blurred/masked subtree as it translates (the installed-PWA left↔right
-  // micro-stutter). Hinting `will-change: transform` on the rail up front lets
-  // the compositor promote the whole surface to its own layer and translate it
-  // without a per-frame repaint. Deliberately NOT permanent — a resident hint
-  // keeps a promoted layer (and its GPU memory) alive at rest for no benefit, so
-  // it is dropped the instant the settle transition ends (see `armRailPromotion`
-  // / `dropRailPromotion` below). Written imperatively on the same element as
-  // the transform (the pager already bypasses React for the per-frame drag), so
-  // it never triggers a re-render.
+  // micro-stutter). Hinting `will-change: transform` once horizontal intent is
+  // established lets the compositor promote the surface before the first
+  // rAF-scheduled translate without perturbing a tap or vertical gesture. The
+  // hint is deliberately NOT permanent — a resident layer costs GPU memory at
+  // rest — so it is dropped when the settle transition ends. Written
+  // imperatively on the transform owner, it never triggers a React render.
   const railPromotedRef = React.useRef(false);
   const dropRailPromotion = React.useCallback(() => {
     const rail = railRef.current;
@@ -333,9 +331,8 @@ export function useHorizontalPager<
   }, []);
 
   // Offset of the most recent transform write. Lets the settle paths detect a
-  // ZERO-DELTA write (a tap, or an abandoned drag that never moved): such a
-  // write changes nothing, so no `transitionend` will ever fire to drop the
-  // pointerdown-armed rail promotion — the caller must drop it directly.
+  // ZERO-DELTA write after horizontal intent was armed: such a write changes
+  // nothing, so no `transitionend` will fire to drop the promotion.
   const lastWrittenOffsetRef = React.useRef(0);
   const writeOffset = React.useCallback(
     (offset: number, transitionMs: number | null) => {
@@ -422,9 +419,9 @@ export function useHorizontalPager<
     const target = pageOffset(state.page, measureWidth());
     const noMove = Math.abs(target - lastWrittenOffsetRef.current) < 1;
     writeOffset(target, SETTLE_MS);
-    // A no-move abandon (press, then the button released off-surface before any
-    // travel) writes the same transform back — no settle transition runs, so no
-    // `transitionend` will drop the pointerdown-armed promotion. Drop it here.
+    // A horizontal drag can return to its resting offset before the button is
+    // released off-surface. No transition runs in that case, so drop the
+    // already-armed promotion directly.
     if (noMove) dropRailPromotion();
   }, [
     cancelScheduledOffset,
@@ -532,6 +529,10 @@ export function useHorizontalPager<
       // intentionally discard that queued value and return from the last frame
       // that was actually shown.
       if (!cancelled && releaseAxis === "horizontal") {
+        // Some touch stacks coalesce down→up without a move event. The axis
+        // resolves here in that case, so arm before the release-driven settle
+        // just as the move path arms before its first scheduled translate.
+        armRailPromotion();
         flushScheduledOffset();
         commitRailDragFrame(railRef.current);
       } else {
@@ -626,6 +627,7 @@ export function useHorizontalPager<
       }
     },
     [
+      armRailPromotion,
       canMove,
       cancelScheduledOffset,
       clickSuppression,
@@ -698,16 +700,8 @@ export function useHorizontalPager<
         hadButtons: event.pointerType !== "touch" && event.buttons > 0,
       };
       writeOffset(baseOffset, null);
-      // Promote the rail NOW, not on the first horizontal-committed move frame:
-      // arming at pointerdown gives the compositor the whole slop window to
-      // build the layer before the first tracked translate, so the opening
-      // frames of a swipe composite instead of paying the promotion raster
-      // right when the finger starts moving. A gesture that commits VERTICAL
-      // drops the promotion immediately (see onPointerMove); a plain tap drops
-      // it in finish()'s zero-delta path.
-      armRailPromotion();
     },
-    [armRailPromotion, cancelScheduledOffset, measureWidth, writeOffset],
+    [cancelScheduledOffset, measureWidth, writeOffset],
   );
 
   const onPointerMove = React.useCallback(
@@ -740,13 +734,10 @@ export function useHorizontalPager<
         // cancelled otherwise-valid swipes after only a few pixels of jitter.
         state.axis = resolveGestureAxis(dx, dy);
         if (state.axis === "pending") return;
-        // The promotion was armed at pointerdown (so the compositor had the
-        // slop window to build the layer before the first tracked frame). A
-        // gesture that commits VERTICAL is the home widget list scrolling, not
-        // a rail pan — the rail will not move, so drop the layer (and release
-        // the rail-gesture signal) immediately instead of holding GPU memory
-        // and parked widget flushes through a scroll.
-        if (state.axis === "vertical") dropRailPromotion();
+        // Pending input is visually inert: a tap or vertical shade/list gesture
+        // must not change the rail layer or any descendant glass material. Arm
+        // only after horizontal intent is proven, before the first rAF write.
+        if (state.axis === "horizontal") armRailPromotion();
       }
       if (state.axis !== "horizontal") return;
 
@@ -782,7 +773,7 @@ export function useHorizontalPager<
       }
       scheduleOffset(state.baseOffset + visualDragOffset(state, dx));
     },
-    [abandonDrag, dropRailPromotion, scheduleOffset, visualDragOffset],
+    [abandonDrag, armRailPromotion, scheduleOffset, visualDragOffset],
   );
 
   const onPointerUp = React.useCallback(

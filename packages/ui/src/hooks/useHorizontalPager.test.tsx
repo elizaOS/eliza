@@ -566,21 +566,27 @@ describe("useHorizontalPager — drag-scoped GPU promotion (#swipe-smoothness)",
     });
   }
 
-  it("promotes the rail at pointerdown, holds through the drag, drops on settle end", () => {
+  it("keeps pending input inert, then promotes on horizontal commit through settle", () => {
     const { getByTestId } = render(<Harness />);
     const rail = getByTestId("rail");
     act(() => {
       clock = 1000;
       fireEvent.pointerDown(rail, { ...touch, clientX: 800 });
-      // Armed at pointerdown — the compositor gets the whole slop window to
-      // build the layer before the first tracked frame — and the rail-gesture
-      // signal opens with it.
-      expect(rail.style.willChange).toBe("transform");
-      expect(rail.hasAttribute("data-rail-gesture-active")).toBe(true);
-      expect(isRailGestureActive()).toBe(true);
+      expect(rail.style.willChange).toBe("");
+      expect(rail.hasAttribute("data-rail-gesture-active")).toBe(false);
+      expect(isRailGestureActive()).toBe(false);
+      fireEvent.pointerMove(rail, {
+        ...touch,
+        clientX: 792,
+        clientY: 308,
+      });
+      expect(rail.style.willChange).toBe("");
+      expect(isRailGestureActive()).toBe(false);
       fireEvent.pointerMove(rail, { ...touch, clientX: 770 });
     });
     expect(rail.style.willChange).toBe("transform");
+    expect(rail.hasAttribute("data-rail-gesture-active")).toBe(true);
+    expect(isRailGestureActive()).toBe(true);
     // Held through the drag frames + the release settle.
     act(() => {
       fireEvent.pointerMove(rail, { ...touch, clientX: 400 });
@@ -597,17 +603,16 @@ describe("useHorizontalPager — drag-scoped GPU promotion (#swipe-smoothness)",
     expect(isRailGestureActive()).toBe(false);
   });
 
-  it("drops the pointerdown promotion the moment a gesture commits VERTICAL", () => {
+  it("never promotes a pointerdown or vertical gesture", () => {
     const { getByTestId } = render(<Harness />);
     const rail = getByTestId("rail");
     act(() => {
       clock = 1000;
       fireEvent.pointerDown(rail, { ...touch, clientX: 500 });
-      expect(rail.style.willChange).toBe("transform");
-      expect(isRailGestureActive()).toBe(true);
-      // Vertical-dominant move: axis commits to Y — this is the widget list
-      // scrolling, not a rail pan, so the promotion (and the signal) must
-      // release immediately, not linger through the scroll.
+      expect(rail.style.willChange).toBe("");
+      expect(isRailGestureActive()).toBe(false);
+      // Vertical-dominant movement belongs to the shade/list and must stay
+      // visually inert from contact through release.
       fireEvent.pointerMove(rail, { ...touch, clientX: 505, clientY: 400 });
       expect(rail.style.willChange).toBe("");
       expect(rail.hasAttribute("data-rail-gesture-active")).toBe(false);
@@ -638,7 +643,7 @@ describe("useHorizontalPager — drag-scoped GPU promotion (#swipe-smoothness)",
         clientX: 792,
         clientY: 308,
       });
-      expect(isRailGestureActive()).toBe(true);
+      expect(isRailGestureActive()).toBe(false);
 
       clock = 1500;
       fireEvent.pointerMove(rail, {
@@ -646,6 +651,7 @@ describe("useHorizontalPager — drag-scoped GPU promotion (#swipe-smoothness)",
         clientX: 430,
         clientY: 312,
       });
+      expect(isRailGestureActive()).toBe(true);
       clock = 2200;
       fireEvent.pointerUp(rail, {
         ...touch,
@@ -656,19 +662,42 @@ describe("useHorizontalPager — drag-scoped GPU promotion (#swipe-smoothness)",
     expect(onChange).toHaveBeenCalledWith(1);
   });
 
-  it("drops the pointerdown promotion after a plain tap (zero-delta settle, no transitionend)", () => {
+  it("keeps a plain tap visually inert", () => {
     const { getByTestId } = render(<Harness />);
     const rail = getByTestId("rail");
     act(() => {
       clock = 1000;
       fireEvent.pointerDown(rail, { ...touch, clientX: 500 });
-      expect(rail.style.willChange).toBe("transform");
+      expect(rail.style.willChange).toBe("");
+      expect(rail.hasAttribute("data-rail-gesture-active")).toBe(false);
+      expect(isRailGestureActive()).toBe(false);
       clock = 1050;
-      // No movement: the settle writes the same transform back, so no
-      // transitionend will ever fire — finish() must drop the promotion (and
-      // release the signal) itself or it would leak until the next gesture.
       fireEvent.pointerUp(rail, { ...touch, clientX: 500 });
     });
+    expect(rail.style.willChange).toBe("");
+    expect(isRailGestureActive()).toBe(false);
+  });
+
+  it("arms a coalesced down→up horizontal flick before its release settle", () => {
+    const onChange = vi.fn();
+    const { getByTestId } = render(<Harness onPageChange={onChange} />);
+    const rail = getByTestId("rail");
+    act(() => {
+      clock = 1000;
+      fireEvent.pointerDown(rail, { ...touch, clientX: 800 });
+      expect(isRailGestureActive()).toBe(false);
+      clock = 1080;
+      fireEvent.pointerUp(rail, {
+        ...touch,
+        clientX: 680,
+        clientY: 302,
+      });
+    });
+    expect(onChange).toHaveBeenCalledWith(1);
+    expect(rail.style.willChange).toBe("transform");
+    expect(rail.hasAttribute("data-rail-gesture-active")).toBe(true);
+    expect(isRailGestureActive()).toBe(true);
+    endTransform(rail);
     expect(rail.style.willChange).toBe("");
     expect(isRailGestureActive()).toBe(false);
   });
