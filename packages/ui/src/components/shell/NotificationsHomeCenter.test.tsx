@@ -2120,6 +2120,116 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
   });
 
+  it("clears gesture-owned visibility before a reopened shade starts its next close", () => {
+    __ingestNotificationForTests(
+      makeNotification({
+        priority: "urgent",
+        source: "mail",
+        title: "Urgent mail",
+      }),
+    );
+    __ingestNotificationForTests(
+      makeNotification({
+        priority: "normal",
+        source: "files",
+        title: "Files updated",
+      }),
+    );
+    __ingestNotificationForTests(
+      makeNotification({
+        priority: "low",
+        source: "agent",
+        title: "Agent summary",
+      }),
+    );
+    renderRestedNotifications();
+    const list = expandShade();
+    const priorityRow = screen
+      .getByText("Urgent mail")
+      .closest<HTMLElement>('[data-testid="notification-row"]');
+    if (!priorityRow) throw new Error("Expected the urgent notification row");
+    const priorityGroup = priorityRow.closest<HTMLElement>(
+      "[data-notification-group-content]",
+    );
+    const prioritySurface = priorityRow.closest<HTMLElement>(
+      '[data-testid="notification-row-swipe"]',
+    );
+
+    fireEvent.pointerDown(list, {
+      pointerType: "mouse",
+      isPrimary: true,
+      pointerId: 87,
+      clientX: 12,
+      clientY: 160,
+    });
+    fireEvent.pointerMove(list, {
+      pointerType: "mouse",
+      pointerId: 87,
+      clientX: 12,
+      clientY: 20,
+    });
+    fireEvent.pointerUp(list, {
+      pointerType: "mouse",
+      pointerId: 87,
+      clientX: 12,
+      clientY: 20,
+    });
+    expect(list.hasAttribute("data-shade-settling")).toBe(true);
+    finishShadeCollapse();
+
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+    expect(
+      priorityGroup?.style.getPropertyValue(
+        "--eliza-notif-group-content-visibility",
+      ),
+    ).toBe("");
+    expect(
+      priorityGroup
+        ?.querySelector<HTMLElement>("[data-notification-disposable-row]")
+        ?.style.getPropertyValue("--eliza-notif-row-content-visibility") ?? "",
+    ).toBe("");
+
+    expandShade();
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(
+      priorityGroup?.style.getPropertyValue(
+        "--eliza-notif-group-content-visibility",
+      ),
+    ).toBe("");
+    expect(prioritySurface?.style.opacity).toBe("1");
+
+    fireEvent.pointerDown(list, {
+      pointerType: "mouse",
+      isPrimary: true,
+      pointerId: 88,
+      clientX: 12,
+      clientY: 160,
+    });
+    expect(list.hasAttribute("data-shade-dragging")).toBe(false);
+    expect(
+      priorityGroup?.style.getPropertyValue(
+        "--eliza-notif-group-content-visibility",
+      ),
+    ).toBe("");
+    expect(prioritySurface?.style.opacity).toBe("1");
+
+    fireEvent.pointerMove(list, {
+      pointerType: "mouse",
+      pointerId: 88,
+      clientX: 12,
+      clientY: 116,
+    });
+    expect(list.hasAttribute("data-shade-dragging")).toBe(true);
+    expect(prioritySurface?.style.opacity).toBe("1");
+    expect(
+      Number.parseFloat(
+        priorityGroup?.style.getPropertyValue(
+          "--eliza-notif-group-content-visibility",
+        ) ?? "0",
+      ),
+    ).toBeGreaterThan(0);
+  });
+
   it("fades fanned contents without dimming their card material", () => {
     __ingestNotificationForTests(
       makeNotification({
