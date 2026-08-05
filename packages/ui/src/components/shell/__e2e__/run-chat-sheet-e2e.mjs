@@ -531,9 +531,8 @@ async function openToFullDetent(p, pointer, label = "open to FULL") {
 async function restoreFromMaximized(p, pointer = "mouse", keyboardTouch = false) {
   const zone = p.getByTestId("chat-maximize-restore-zone");
   await zone.waitFor();
-  // Cross the component's 90% restore line on every viewport. A fixed 120px
-  // pull works on desktop but remains inside the top 10% band on the tall mobile
-  // fixture, where full-screen must intentionally stay filled.
+  // Pull far enough to exercise the complete restore shape on every viewport;
+  // the component itself hands control to the finger after only a small slop.
   const restoreDistance = Math.max(120, Math.ceil((await viewportH(p)) * 0.12));
   if (pointer === "touch" && keyboardTouch) {
     await zone.focus();
@@ -1511,11 +1510,33 @@ async function sampleGrabberDrag(
       (await page
         .getByTestId("chat-sheet")
         .getAttribute("data-maximized")) === "true";
+    const material = await page.evaluate(() => {
+      const rim = document.querySelector('[data-testid="chat-sheet-rim"]');
+      const surface = document.querySelector(
+        '[data-testid="chat-sheet-surface"]',
+      );
+      return {
+        rimMounted: rim != null,
+        rimOpacity: rim
+          ? Number.parseFloat(getComputedStyle(rim).opacity)
+          : null,
+        sheetGrabbers: document.querySelectorAll(
+          '[data-testid="chat-sheet-grabber"]',
+        ).length,
+        restoreHandles: document.querySelectorAll(
+          '[data-testid="chat-maximize-restore-handle"]',
+        ).length,
+        surfaceBorderWidth: surface
+          ? Number.parseFloat(getComputedStyle(surface).borderTopWidth)
+          : null,
+      };
+    });
     rows.push({
       cursorY,
       top,
       maximized,
       div: top == null ? null : top - cursorY,
+      ...material,
     });
   }
   await page.mouse.up();
@@ -1567,49 +1588,69 @@ function assertFingerTracking(rows, band, label, topFloor = 40) {
 // geometry reads.
 async function runFingerTrackingSuite(page) {
   // (A) OPEN → drag the grabber past the very top (maximize). Below the inset
-  // ceiling the panel top tracks the finger 1:1; the last stretch to the screen
-  // top is the DISCRETE maximize spring, so the 1:1 band is measured on the
-  // sub-ceiling samples (topFloor 90) and the drag runs PAST the top so the
-  // discrete commit fires and the panel reaches the edge.
+  // ceiling the panel top tracks the finger 1:1; the final rounded→full-bleed
+  // interval shares that same live motion coordinate, and the state commit only
+  // chooses its resting endpoint.
   await gesture(page, 160, { pointer: "mouse", slow: false, steps: 1 });
   await page.waitForTimeout(SETTLE);
   const vh = await viewportH(page);
   const up = await sampleGrabberDrag(page, -30);
   const upStats = assertFingerTracking(up, 28, "[finger] UP open→top", 90);
-  // The top must actually be reachable in one drag. The 90% crossing starts a
-  // discrete spring, so the last finger sample may catch that spring in flight;
-  // verify its settled endpoint instead of requiring the animation to finish
-  // inside the sampling loop's final 20ms slice.
+  // The top must actually be reachable in one drag. Verify the settled endpoint
+  // too so the release cannot rebound after a correct held frame.
   const minTop = Math.min(...up.filter((r) => r.top != null).map((r) => r.top));
   await page.waitForTimeout(SETTLE);
   const settledUpTop = await panelTop(page);
   assert(
     settledUpTop <= 8,
-    `[finger] UP drag snaps from 90% to the screen top (sample min ${Math.round(minTop)}px, settled top ${Math.round(settledUpTop)}px ≤ 8px)`,
+    `[finger] UP drag reaches and settles at the screen top (sample min ${Math.round(minTop)}px, settled top ${Math.round(settledUpTop)}px ≤ 8px)`,
   );
 
-  // (B) MAXIMIZED → drag the restore strip all the way down. Full-screen stays
-  // pinned while the finger remains above the 90% crossing, then the window
-  // edge follows 1:1 and the chat ends collapsed at the bottom (pill/input).
+  // (B) MAXIMIZED → drag the restore strip all the way down. A tiny accidental
+  // wobble is inert; the first deliberate movement exits full-screen and the
+  // window edge follows 1:1 to the bottom.
   const down = await sampleGrabberDrag(
     page,
     vh - 8,
     34,
     "chat-maximize-restore-zone",
   );
-  const downMaximized = down.filter(
-    (row) => row.maximized && row.top != null,
+  const firstMovingIndex = down.findIndex(
+    (row) => row.top != null && row.top > 4,
   );
   assert(
-    downMaximized.length > 0 && downMaximized.every((row) => row.top <= 8),
-    `[finger] DOWN restore keeps full-screen pinned above the 90% crossing`,
+    firstMovingIndex >= 0 && firstMovingIndex <= 1,
+    `[finger] DOWN restore hands control to the finger on its first deliberate sample (index ${firstMovingIndex})`,
   );
-  const firstWindowRow = down.find(
-    (row) => !row.maximized && row.top != null,
+  const firstMovingRow = down.find((row) => row.top != null && row.top > 4);
+  assert(
+    firstMovingRow != null && firstMovingRow.top <= 80,
+    `[finger] DOWN restore begins near the finger with no viewport dead zone (top ${Math.round(firstMovingRow?.top ?? -1)}px)`,
   );
   assert(
-    firstWindowRow != null && firstWindowRow.top <= vh * 0.1 + 40,
-    `[finger] DOWN restore animates to window mode near 90% (top ${Math.round(firstWindowRow?.top ?? -1)}px)`,
+    firstMovingRow?.rimOpacity != null && firstMovingRow.rimOpacity < 0.75,
+    `[finger] DOWN restore unwinds fullscreen material continuously on its first frame (rim opacity ${firstMovingRow?.rimOpacity?.toFixed(2) ?? "n/a"} < 0.75)`,
+  );
+  assert(
+    down.every((row) => row.maximized),
+    `[finger] held restore keeps one committed render state until pointer-up`,
+  );
+  assert(
+    down.every(
+      (row) => row.sheetGrabbers === 0 && row.restoreHandles === 0,
+    ),
+    `[finger] held restore does not paint a second handle over the sheet chrome`,
+  );
+  assert(
+    down.every((row) => row.rimMounted),
+    `[finger] restore keeps one persistent outer rim mounted through full-screen and window states`,
+  );
+  assert(
+    down.every(
+      (row) =>
+        row.surfaceBorderWidth != null && row.surfaceBorderWidth === 0,
+    ),
+    `[finger] restore keeps the painted surface borderless so the rim has one owner`,
   );
   const downStats = assertFingerTracking(
     down,
@@ -1652,9 +1693,19 @@ async function runFingerTrackingSuite(page) {
         .getByTestId("chat-sheet")
         .evaluate((sheet) => ({
           top: sheet.getBoundingClientRect().top,
+          bottom: sheet.getBoundingClientRect().bottom,
+          surfaceBottom:
+            document
+              .querySelector('[data-testid="chat-sheet-surface"]')
+              ?.getBoundingClientRect().bottom ?? null,
           maximized: sheet.getAttribute("data-maximized") === "true",
         }))
-        .catch(() => ({ top: null, maximized: false }));
+        .catch(() => ({
+          top: null,
+          bottom: null,
+          surfaceBottom: null,
+          maximized: false,
+        }));
       rows.push({ phase, cursorY, ...state });
     };
     await page.mouse.move(cx, startY);
@@ -1689,6 +1740,17 @@ async function runFingerTrackingSuite(page) {
       upTop <= 8,
       `[finger] FULL→top drag reaches the screen top under the finger (min top ${Math.round(upTop)}px ≤ 8px — no freeze)`,
     );
+    const heldBottomEdgeDeltas = rows
+      .filter(
+        (r) =>
+          r.maximized && r.bottom != null && r.surfaceBottom != null,
+      )
+      .map((r) => Math.abs(r.bottom - r.surfaceBottom));
+    const maxHeldBottomEdgeDelta = Math.max(...heldBottomEdgeDeltas, 0);
+    assert(
+      heldBottomEdgeDeltas.length > 0 && maxHeldBottomEdgeDelta <= 2,
+      `[finger] held maximize keeps one shared sheet/surface bottom edge (max delta ${Math.round(maxHeldBottomEdgeDelta)}px ≤ 2px)`,
+    );
     // While the pull remains above the 90% restore line, MAXIMIZED must mean
     // truly full-height: no wallpaper strip is allowed above the panel. Once
     // the finger crosses below 90%, the state flips back to the inset window.
@@ -1713,7 +1775,7 @@ async function runFingerTrackingSuite(page) {
   }
 
   console.log(
-    `  ℹ finger tracking: up/down drift ${Math.round(upStats?.worst ?? -1)}/${Math.round(downStats?.worst ?? -1)}px (handle offsets ${Math.round(upStats?.median ?? 0)}/${Math.round(downStats?.median ?? 0)}px); restore crossed to window at top ${Math.round(firstWindowRow?.top ?? -1)}px`,
+    `  ℹ finger tracking: up/down drift ${Math.round(upStats?.worst ?? -1)}/${Math.round(downStats?.worst ?? -1)}px (handle offsets ${Math.round(upStats?.median ?? 0)}/${Math.round(downStats?.median ?? 0)}px); restore began moving at top ${Math.round(firstMovingRow?.top ?? -1)}px`,
   );
 }
 
@@ -3244,8 +3306,11 @@ try {
   // clearance), so the panel must fill the WHOLE viewport. The bug: panelMaxH
   // still subtracted the stale bottomPad, so the maximized panel floated a
   // gesture-inset BELOW the top — a hard-cut glass seam under the status bar and
-  // the safe-area-padded status strip pushed down. Assert: panel reaches y≈0 AND
-  // the header strip starts at the viewport top, not a gesture-inset lower.
+  // the safe-area-padded status strip pushed down. The rounded surface must stay
+  // coincident with the sheet while that inset closes; extending the rounded
+  // surface below the sheet paints a second bottom rim. Assert: one shared
+  // bottom edge throughout, then a gap-free final endpoint; panel reaches y≈0
+  // and the header strip starts at the viewport top.
   {
     const p = await ctrl();
     attachConsole(p, sink);
@@ -3273,6 +3338,7 @@ try {
         if (sheet && surface) {
           globalThis.__maximizeBottomFrames.push({
             maximized: sheet.getAttribute("data-maximized") === "true",
+            sheetBottom: sheet.getBoundingClientRect().bottom,
             surfaceBottom: surface.getBoundingClientRect().bottom,
             viewportHeight: window.innerHeight,
           });
@@ -3294,15 +3360,23 @@ try {
       () => globalThis.__maximizeBottomFrames,
     );
     const committedFrames = maximizeFrames.filter((frame) => frame.maximized);
-    const maxFloorGap = Math.max(
+    const maxBottomEdgeDelta = Math.max(
       0,
       ...committedFrames.map(
-        (frame) => frame.viewportHeight - frame.surfaceBottom,
+        (frame) => Math.abs(frame.sheetBottom - frame.surfaceBottom),
       ),
     );
     assert(
-      committedFrames.length > 2 && maxFloorGap <= 1,
-      `MAX-INSET: painted glass covers the bottom throughout the maximize animation (max gap ${maxFloorGap.toFixed(1)}px)`,
+      committedFrames.length > 2 && maxBottomEdgeDelta <= 1,
+      `MAX-INSET: sheet and painted glass retain one bottom edge throughout maximize (max delta ${maxBottomEdgeDelta.toFixed(1)}px)`,
+    );
+    const finalFrame = committedFrames.at(-1);
+    const finalFloorGap = finalFrame
+      ? finalFrame.viewportHeight - finalFrame.surfaceBottom
+      : Number.POSITIVE_INFINITY;
+    assert(
+      finalFloorGap <= 1,
+      `MAX-INSET: settled painted glass reaches the viewport floor (gap ${finalFloorGap.toFixed(1)}px)`,
     );
     const box = await p.getByTestId("chat-sheet").boundingBox();
     assert(
