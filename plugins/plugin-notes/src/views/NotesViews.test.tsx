@@ -11,7 +11,10 @@ import type { NotesState } from "./useNotesState.js";
 const stateHook = vi.hoisted(() => vi.fn());
 
 vi.mock("@elizaos/ui/agent-surface", () => ({
-  useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
+  useAgentElement: (definition: { id: string }) => ({
+    ref: { current: null },
+    agentProps: { "data-agent-id": definition.id },
+  }),
 }));
 
 vi.mock("./useNotesState.js", () => ({
@@ -172,6 +175,11 @@ describe("chat-only presentation", () => {
 
     expect(screen.getByText("Release checklist")).toBeTruthy();
     expect(screen.getByText("Verify the signed build")).toBeTruthy();
+    expect(
+      notes.container
+        .querySelector("[data-agent-id]")
+        ?.getAttribute("data-agent-id"),
+    ).toBe("note-1");
     expectNoDirectControls(notes.container);
     expect(mutate).not.toHaveBeenCalled();
   });
