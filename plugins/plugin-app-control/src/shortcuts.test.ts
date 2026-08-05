@@ -23,6 +23,11 @@ describe("viewNavigationShortcuts (#8791)", () => {
 				(evaluator) => evaluator.name,
 			),
 		).not.toContain("app-control.view-command-shortcut");
+		expect(
+			appControlPlugin.responseHandlerEvaluators?.map(
+				(evaluator) => evaluator.name,
+			),
+		).not.toContain("app-control.view-followup-routing");
 	});
 
 	it("resolves explicit typed and ASR-normalized view navigation to VIEWS", () => {
