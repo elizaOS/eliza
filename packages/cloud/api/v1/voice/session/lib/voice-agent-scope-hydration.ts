@@ -7,8 +7,10 @@
 
 import { runWithDbCacheAsync } from "@/db/client";
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
+import { userCharactersRepository } from "@/db/repositories/characters";
 import { cache } from "@/lib/cache/client";
 import { CacheKeys, CacheTTL } from "@/lib/cache/keys";
+import { logger } from "@/lib/utils/logger";
 import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
 import type { Bindings } from "@/types/cloud-worker-env";
 import type { InternalElizaConversationFetchClaims } from "./internal-eliza-conversation-fetch";
@@ -34,6 +36,39 @@ export async function hydrateVoiceSharedAgentScope(
         ) {
           return;
         }
+
+        // The turn needs BOTH cold caches. Hydrating only the scope entry left
+        // the linked-character entry cold, so the very next turn passed the
+        // scope gate and then threw SharedRuntimeCacheWarmingError from
+        // `characterFor` (cacheOnly) — a SECOND burned turn, and on a session
+        // whose turns are spaced by human think-time the two 503s could
+        // alternate indefinitely. Warm the character entry in the SAME
+        // background task, under the same db/bindings context, so one
+        // hydration makes the next turn fully serviceable.
+        const characterId = agent.character_id;
+        const hydrateCharacter = async (): Promise<void> => {
+          if (!characterId) return;
+          const cacheKey = `character:data:${characterId}`;
+          if (await cache.get(cacheKey)) return;
+          const character = await userCharactersRepository.findByIdInOrganization(
+            characterId,
+            claims.organizationId,
+          );
+          if (!character) return;
+          await cache.set(cacheKey, character, CacheTTL.agent.characterData);
+        };
+
+        // The scope entry is the authorization gate: never let an optional
+        // character prefill failure prevent it from being written.
+        // error-policy:J7 a failed character prefill leaves the next turn on
+        // its existing retryable warming path rather than failing hydration.
+        await hydrateCharacter().catch((error) => {
+          logger.warn("[voice-scope-hydration] character prefill failed", {
+            agentId: claims.agentId,
+            characterId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
 
         await cache.set(
           CacheKeys.sharedAgentScope.voice(
