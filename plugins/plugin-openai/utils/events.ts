@@ -37,6 +37,11 @@ interface AISDKUsage {
   outputTokens?: number;
   totalTokens?: number;
   cachedInputTokens?: number;
+  /** Hidden reasoning tokens the provider reports inside the output budget. */
+  reasoningTokens?: number;
+  outputTokenDetails?: {
+    reasoningTokens?: number;
+  };
 }
 
 interface OpenAIAPIUsage {
@@ -44,6 +49,8 @@ interface OpenAIAPIUsage {
   completionTokens?: number;
   totalTokens?: number;
   cachedPromptTokens?: number;
+  /** Hidden reasoning tokens the provider reports inside the completion budget. */
+  reasoningTokens?: number;
   promptTokensDetails?: {
     cachedTokens?: number;
   };
@@ -63,22 +70,31 @@ function normalizeUsage(usage: ModelUsage): TokenUsage {
     const promptTokensDetails =
       "promptTokensDetails" in usage ? usage.promptTokensDetails : undefined;
     const cachedPromptTokens = usage.cachedPromptTokens ?? promptTokensDetails?.cachedTokens;
+    const reasoning = usage.reasoningTokens;
     return {
       promptTokens: usage.promptTokens ?? 0,
       completionTokens: usage.completionTokens ?? 0,
       totalTokens: usage.totalTokens ?? (usage.promptTokens ?? 0) + (usage.completionTokens ?? 0),
       cachedPromptTokens,
+      ...(typeof reasoning === "number" && Number.isFinite(reasoning) && reasoning >= 0
+        ? { reasoningTokens: reasoning }
+        : {}),
     };
   }
   if ("inputTokens" in usage || "outputTokens" in usage) {
     const input = (usage as AISDKUsage).inputTokens ?? 0;
     const output = (usage as AISDKUsage).outputTokens ?? 0;
     const total = (usage as AISDKUsage).totalTokens ?? input + output;
+    const details = (usage as AISDKUsage).outputTokenDetails;
+    const reasoning = details?.reasoningTokens ?? (usage as AISDKUsage).reasoningTokens;
     return {
       promptTokens: input,
       completionTokens: output,
       totalTokens: total,
       cachedPromptTokens: (usage as AISDKUsage).cachedInputTokens,
+      ...(typeof reasoning === "number" && Number.isFinite(reasoning) && reasoning >= 0
+        ? { reasoningTokens: reasoning }
+        : {}),
     };
   }
   return {
