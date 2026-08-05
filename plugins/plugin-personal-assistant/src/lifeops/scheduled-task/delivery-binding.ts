@@ -2,9 +2,45 @@ import {
   evaluateOwnerExclusiveDisclosure,
   getTrustedDeliveryAudience,
   type IAgentRuntime,
+  MESSAGE_SOURCES,
   type Memory,
+  type MessageSourceSentinel,
 } from "@elizaos/core";
 import type { ScheduledTaskDispatchRecord } from "./index.js";
+
+/**
+ * Provenances that must never reach outbound connector dispatch.
+ *
+ * Enumerated deliberately rather than derived from `Object.values`. This is a
+ * fail-open boundary: a provenance the guard does not name is BOUND, so the
+ * cost of forgetting one is an internal turn rewritten into an unavailable
+ * connector send. Spelling every sentinel out means adding one to
+ * `@elizaos/core`'s `message-source.ts` leaves a missing key here and fails
+ * typecheck, forcing a decision instead of silently widening the guard.
+ *
+ * `api` is not a core sentinel — it is a first-party transport label — so it
+ * lives alongside the record rather than inside it.
+ */
+const INTERNAL_MESSAGE_SOURCES: Record<MessageSourceSentinel, true> = {
+  [MESSAGE_SOURCES.CLIENT_CHAT]: true,
+  [MESSAGE_SOURCES.SUB_AGENT]: true,
+  [MESSAGE_SOURCES.CODING_AGENT]: true,
+  [MESSAGE_SOURCES.AGENT_GREETING]: true,
+  [MESSAGE_SOURCES.TRIGGER_PROMPT]: true,
+};
+
+const API_TRANSPORT_SOURCE = "api";
+
+/** Whether `source` names an internally-originated turn (#17747). */
+export function isInternalMessageSource(
+  source: string | undefined,
+): source is string {
+  if (!source) return false;
+  return (
+    source === API_TRANSPORT_SOURCE ||
+    Object.hasOwn(INTERNAL_MESSAGE_SOURCES, source)
+  );
+}
 
 export const SCHEDULED_TASK_DELIVERY_BINDING_KEY = "chatDeliveryBinding";
 
@@ -71,7 +107,7 @@ export async function bindScheduledTaskToInboundChat(
   const inboundSource =
     stringField(message.metadata?.source) ??
     stringField(message.content.source);
-  if (inboundSource === "api" || inboundSource === "client_chat") {
+  if (isInternalMessageSource(inboundSource)) {
     return null;
   }
 
@@ -81,7 +117,7 @@ export async function bindScheduledTaskToInboundChat(
   if (!room || !source || !channelId || room.id !== audience.roomId) {
     return null;
   }
-  if (source === "api" || source === "client_chat" || channelId === room.id) {
+  if (isInternalMessageSource(source) || channelId === room.id) {
     return null;
   }
 
