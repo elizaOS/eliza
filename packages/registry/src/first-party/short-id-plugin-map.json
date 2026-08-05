@@ -18,6 +18,7 @@
   "elizacloud": "@elizaos/plugin-elizacloud",
   "evm": "@elizaos/plugin-wallet",
   "form": "@elizaos/plugin-form",
+  "ollama": "@elizaos/plugin-ollama",
   "selfcontrol": "@elizaos/plugin-personal-assistant",
   "solana": "@elizaos/plugin-wallet",
   "vision": "@elizaos/plugin-vision",

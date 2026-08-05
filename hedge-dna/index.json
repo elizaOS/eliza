@@ -4,6 +4,7 @@
   "description": "eliZERO-class Clawd hedge spawn: five-claw persona + DNA continuity + $CLAWD Zero power.",
   "characterSeed": "hedgedna",
   "characterFile": "character.json",
+  "catalogFile": "manifest.json",
   "clawdPowerFile": "clawd-power.json",
   "local_personas": [
     "hedgedna.json"

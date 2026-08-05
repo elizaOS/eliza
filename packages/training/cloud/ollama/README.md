@@ -1,6 +1,15 @@
 # Ollama Modelfiles for the Eliza-1 series
 
-Three Modelfiles, one per published size, all pulling GGUF artifacts from the
+For the **8bit / ordlibrary Clawd agent roster** already on this machine
+(`8bit/solana-clawd-core-ai`, `8bit/solana-trading-factory`,
+`8bit/hauhau-qwen36-onchain`, …), see:
+
+- [`CLAWD-MODELS.md`](./CLAWD-MODELS.md) — env key → tag map for `@elizaos/plugin-ollama`
+- [`fly/README.md`](./fly/README.md) — deploy a private Ollama server on Fly.io
+
+---
+
+Three Modelfiles, one per published Eliza-1 size, all pulling GGUF artifacts from the
 public consolidated `elizaos/eliza-1` bundle repo on HuggingFace.
 
 | File | Size | Target GPU | Resident VRAM |

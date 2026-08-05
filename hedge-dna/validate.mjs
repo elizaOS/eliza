@@ -1,7 +1,6 @@
 /**
- * Validates the hedge-dna bundle: persona JSON stays self-contained and named,
- * DNA continuity files exist, and the eliZERO-style eliza character + clawd-power
- * files remain coherent with the persona.
+ * Validates the hedge-dna bundle to the same Clawd contract as
+ * zero-clawd/agent/eliza/eliZERO: persona + DNA + character + clawd-power + catalog.
  */
 import assert from "node:assert/strict";
 import { readFile, realpath, stat } from "node:fs/promises";
@@ -9,6 +8,11 @@ import { dirname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const bundleDirectory = dirname(fileURLToPath(import.meta.url));
+
+/** Same defaults as pkg/birthfund and eliZERO/clawd-power.json */
+export const DEFAULT_CLAWD_MINT = "8cHzQHUS2s2h8TzCmfqPKYiM4dSt4roa3n7MyRLApump";
+export const DEFAULT_CLAWD_AMOUNT = "1000";
+export const DEFAULT_SOL_AMOUNT = "0.069420";
 
 async function assertInsideBundle(bundleDir, bundleRealDir, reference, label) {
   assert.equal(typeof reference, "string", `${label} reference must be a string`);
@@ -92,9 +96,10 @@ export async function validateBundle(options = {}) {
     assert.ok(body.includes("#"), `dna file should be markdown with a heading: ${reference}`);
   }
 
-  // eliZERO-class Clawd character (eliza character.json + clawd-power.json)
+  // eliZERO-class Clawd character + power + catalog (same shape as agent/eliza/eliZERO)
   const characterRef = manifest.characterFile ?? "character.json";
   const clawdPowerRef = manifest.clawdPowerFile ?? "clawd-power.json";
+  const catalogRef = manifest.catalogFile ?? "manifest.json";
   let characterName = "";
   let clawdMint = "";
 
@@ -111,9 +116,20 @@ export async function validateBundle(options = {}) {
   assert.ok(character.settings?.clawd?.mint, "character.settings.clawd.mint required");
   assert.ok(character.settings?.zero?.engine, "character.settings.zero.engine required");
   assert.ok(Array.isArray(character.bio) && character.bio.length > 0, "character.bio required");
+  assert.ok(Array.isArray(character.lore) && character.lore.length > 0, "character.lore required");
   assert.ok(typeof character.system === "string" && character.system.length > 0, "character.system required");
   characterName = character.name.trim();
   clawdMint = String(character.settings.clawd.mint);
+  assert.equal(clawdMint, DEFAULT_CLAWD_MINT, "character.settings.clawd.mint must match DefaultCLAWDMint");
+  assert.ok(
+    character.bio.some((line) => String(line).includes("$CLAWD") || String(line).includes("CLAWD")),
+    "bio must reference $CLAWD powering",
+  );
+  assert.ok(
+    character.lore.some((line) => String(line).includes(DEFAULT_CLAWD_MINT)),
+    "lore must include $CLAWD mint",
+  );
+  assert.ok(character.system.includes(characterName), "system prompt must name the agent");
 
   if (personaName) {
     assert.equal(
@@ -130,20 +146,47 @@ export async function validateBundle(options = {}) {
     "clawd-power",
   );
   const clawdPower = JSON.parse(await readFile(clawdPowerPath, "utf8"));
-  assert.equal(typeof clawdPower?.mint, "string", "clawd-power.mint required");
-  assert.equal(
-    clawdPower.mint,
-    clawdMint,
-    `clawd-power.mint must match character.settings.clawd.mint (${clawdMint})`,
-  );
+  assert.equal(clawdPower.schemaVersion, 1, "clawd-power.schemaVersion must be 1");
+  assert.equal(clawdPower.agent, characterName, "clawd-power.agent must match character.name");
+  assert.equal(clawdPower.poweredBy, "$CLAWD", "clawd-power.poweredBy must be $CLAWD");
+  assert.equal(clawdPower.required, true, "clawd-power.required must be true");
+  assert.equal(clawdPower.token?.mint, DEFAULT_CLAWD_MINT, "clawd-power.token.mint");
+  assert.equal(clawdPower.token?.symbol, "CLAWD", "clawd-power.token.symbol");
+  assert.equal(clawdPower.token?.mint, clawdMint, "clawd-power.token.mint must match character mint");
+  assert.equal(clawdPower.birthFunding?.clawdAmount, DEFAULT_CLAWD_AMOUNT, "birth clawd amount");
+  assert.equal(clawdPower.birthFunding?.solAmount, DEFAULT_SOL_AMOUNT, "birth sol amount");
+  assert.equal(clawdPower.payments?.protocol, "x402", "payments.protocol");
   assert.ok(
     Array.isArray(clawdPower.zero?.invariants) && clawdPower.zero.invariants.length > 0,
     "clawd-power.zero.invariants required",
   );
 
+  const catalogPath = await assertInsideBundle(root, bundleRealDirectory, catalogRef, "catalog");
+  const catalog = JSON.parse(await readFile(catalogPath, "utf8"));
+  assert.equal(catalog.schemaVersion, 1, "catalog.schemaVersion");
+  assert.equal(catalog.identifier, "hedgedna", "catalog.identifier");
+  assert.equal(catalog.meta?.title, characterName, "catalog.meta.title");
+  assert.equal(catalog.config?.clawdPower?.mint, DEFAULT_CLAWD_MINT, "catalog clawdPower.mint");
+  assert.equal(catalog.solana?.token?.mint, DEFAULT_CLAWD_MINT, "catalog solana.token.mint");
+  assert.ok(
+    typeof catalog.config?.systemRole === "string" && catalog.config.systemRole.includes(characterName),
+    "systemRole must describe HedgeDNA",
+  );
+  assert.ok(
+    catalog.config?.runtime?.smokeCommand?.includes("validate.mjs"),
+    "runtime.smokeCommand must point at validate.mjs",
+  );
+
+  for (const md of ["IDENTITY.md", "SOUL.md"]) {
+    const body = await readFile(resolve(root, md), "utf8");
+    assert.ok(body.includes(characterName), `${md} must name ${characterName}`);
+    assert.ok(body.includes("CLAWD") || body.includes("$CLAWD"), `${md} must reference $CLAWD`);
+    assert.ok(body.includes("eliZERO") || body.includes("eliZERO"), `${md} should reference sibling eliZERO`);
+  }
+
   if (!quiet) {
     console.log(
-      `Validated ${seen.size} hedge-dna persona(s), ${dnaSeen.size} DNA file(s), character=${characterName}, clawd=${clawdPower.symbol ?? "CLAWD"}.`,
+      `Validated ${seen.size} hedge-dna persona(s), ${dnaSeen.size} DNA file(s), character=${characterName}, clawd=${clawdPower.token?.symbol ?? "CLAWD"}, catalog=${catalog.identifier}.`,
     );
   }
 
@@ -153,6 +196,7 @@ export async function validateBundle(options = {}) {
     personaName,
     characterName,
     clawdMint,
+    identifier: catalog.identifier,
     modes,
   };
 }

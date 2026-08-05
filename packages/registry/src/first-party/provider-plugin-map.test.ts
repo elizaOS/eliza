@@ -20,6 +20,8 @@ const expectedProviderPluginMap = {
   GOOGLE_API_KEY: "@elizaos/plugin-google-genai",
   GOOGLE_GENERATIVE_AI_API_KEY: "@elizaos/plugin-google-genai",
   NEARAI_API_KEY: "@elizaos/plugin-nearai",
+  OLLAMA_API_ENDPOINT: "@elizaos/plugin-ollama",
+  OLLAMA_BASE_URL: "@elizaos/plugin-ollama",
   OPENAI_API_KEY: "@elizaos/plugin-openai",
   ZAI_API_KEY: "@elizaos/plugin-zai",
   Z_AI_API_KEY: "@elizaos/plugin-zai",

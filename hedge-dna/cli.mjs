@@ -134,9 +134,13 @@ async function cmdWake(flags) {
     name: result.personaName,
     character: result.characterName,
     clawdMint: result.clawdMint,
-    clawdSymbol: clawdPower.symbol ?? "CLAWD",
+    clawdSymbol: clawdPower.token?.symbol ?? clawdPower.symbol ?? "CLAWD",
     zero: clawdPower.zero ?? {},
-    sibling: "eliZERO",
+    sibling: clawdPower.sibling ?? "eliZERO",
+    birth: {
+      clawd: clawdPower.birthFunding?.clawdAmount,
+      sol: clawdPower.birthFunding?.solAmount,
+    },
     modes: result.modes,
     defaultStack: ["value", "lattice", "moat"],
     continuity: personaDoc.continuity ?? {},
@@ -189,13 +193,18 @@ async function cmdClawd(flags) {
     console.log(JSON.stringify(clawdPower, null, 2));
     return 0;
   }
-  console.log(`$${clawdPower.symbol ?? "CLAWD"} ${clawdPower.mint}`);
-  console.log(`Powering: ${clawdPower.powering} · Payment: ${clawdPower.payment}`);
-  console.log(
-    `Birth: ${clawdPower.birthFunding?.clawd ?? "?"} CLAWD + ${clawdPower.birthFunding?.sol ?? "?"} SOL`,
-  );
-  console.log(`Loop: ${clawdPower.loop}`);
-  console.log(`Zero: ${clawdPower.zero?.loop} · ${(clawdPower.zero?.invariants ?? []).join(", ")}`);
+  const symbol = clawdPower.token?.symbol ?? clawdPower.symbol ?? "CLAWD";
+  const mint = clawdPower.token?.mint ?? clawdPower.mint ?? "?";
+  const clawdAmt = clawdPower.birthFunding?.clawdAmount ?? clawdPower.birthFunding?.clawd ?? "?";
+  const solAmt = clawdPower.birthFunding?.solAmount ?? clawdPower.birthFunding?.sol ?? "?";
+  const loop = clawdPower.payments?.economicLoop ?? clawdPower.loop ?? "";
+  console.log(`$${symbol} ${mint}`);
+  console.log(`Agent: ${clawdPower.agent ?? "?"} · poweredBy: ${clawdPower.poweredBy ?? "?"} · required: ${clawdPower.required === true}`);
+  console.log(`Sibling: ${clawdPower.sibling ?? "eliZERO"}`);
+  console.log(`Payment: ${clawdPower.payments?.protocol ?? "x402"} · gateway: ${clawdPower.payments?.gateway ?? ""}`);
+  console.log(`Birth: ${clawdAmt} CLAWD + ${solAmt} SOL`);
+  console.log(`Loop: ${loop}`);
+  console.log(`Zero: ${clawdPower.zero?.loop ?? "flat-fifo"} · ${(clawdPower.zero?.invariants ?? []).join(", ")}`);
   console.log("Laws:");
   for (const [k, v] of Object.entries(clawdPower.laws ?? {})) {
     console.log(`  ${k}. ${v}`);
@@ -286,6 +295,7 @@ async function cmdPaths(flags) {
     persona: resolve(flags.root, "hedgedna.json"),
     character: resolve(flags.root, "character.json"),
     characterSeed: resolve(flags.root, "character.seed.json"),
+    catalog: resolve(flags.root, "manifest.json"),
     clawdPower: resolve(flags.root, "clawd-power.json"),
     identity: resolve(flags.root, "IDENTITY.md"),
     soul: resolve(flags.root, "SOUL.md"),
