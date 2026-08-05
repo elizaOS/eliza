@@ -214,6 +214,12 @@ describe("check-i18n contract", () => {
     expect(result.ok).toBe(true);
   });
 
+  // Unlike every fixture case above, this one walks the real packages/ui/src and
+  // packages/app-core/src trees synchronously: ~5-8s locally, and a CI runner on
+  // a cold filesystem is not faster. bun's default per-test budget is 5s, so
+  // without an explicit one this test fails on duration alone — which is the
+  // wrong signal from the very case that exists to prove the checker is
+  // wireable into CI.
   test("the real repo satisfies the contract (wireable: gaps stay warnings)", () => {
     const result = runI18nCheck({ repoRoot: REAL_REPO_ROOT }) as CheckResult;
     expect(result.errors).toEqual([]);
@@ -223,5 +229,5 @@ describe("check-i18n contract", () => {
     expect(result.warnings.some((w) => /missing \d+ translation/.test(w))).toBe(
       true,
     );
-  });
+  }, 60_000);
 });
