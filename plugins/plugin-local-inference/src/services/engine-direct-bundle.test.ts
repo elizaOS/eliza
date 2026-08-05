@@ -69,6 +69,10 @@ describe("LocalInferenceEngine direct Eliza-1 bundle loads", () => {
 		fs.mkdirSync(path.join(bundleRoot, "asr"), { recursive: true });
 		fs.writeFileSync(path.join(bundleRoot, "asr", "model.gguf"), "asr");
 		fs.writeFileSync(
+			path.join(bundleRoot, "asr", "model-mmproj.gguf"),
+			"asr-projector",
+		);
+		fs.writeFileSync(
 			path.join(bundleRoot, "eliza-1.manifest.json"),
 			JSON.stringify({ lineage: { asr: { base: "Qwen3-ASR" } } }),
 		);
