@@ -11,7 +11,18 @@ Skills define *how* tools work. This file is for *your* specifics — the stuff 
 | `SOUL.md` | Constitution and boundaries |
 | `USER.md` | Human context |
 | `index.json` | Bundle manifest |
-| `validate.mjs` | Self-containment check |
+| `validate.mjs` | Self-containment check (importable) |
+| `cli.mjs` | Operator CLI (`hedge-dna` bin) |
+
+## CLI quick commands
+
+```bash
+node cli.mjs validate
+node cli.mjs wake
+node cli.mjs mode lattice
+node cli.mjs show soul
+node cli.mjs paths
+```
 
 ## Parent lineage (read-only references)
 

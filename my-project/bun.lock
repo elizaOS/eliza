@@ -41,12 +41,12 @@
   },
   "overrides": {
     "@elizaos/app-core": "beta",
-    "@elizaos/cloud-shared": "npm:empty-npm-package@1.0.0",
+    "@elizaos/cloud-shared": "file:../packages/cloud/shared",
     "@elizaos/core": "beta",
     "@elizaos/plugin-local-inference": "npm:empty-npm-package@1.0.0",
     "@elizaos/plugin-remote-manifest": "npm:empty-npm-package@1.0.0",
     "@elizaos/plugin-worker-runtime": "npm:empty-npm-package@1.0.0",
-    "@elizaos/registry": "npm:empty-npm-package@1.0.0",
+    "@elizaos/registry": "file:../packages/registry",
     "@elizaos/shared": "beta",
     "@elizaos/ui": "beta",
     "@whiskeysockets/baileys": "npm:empty-npm-package@1.0.0",
@@ -279,8 +279,6 @@
 
     "@elizaos/cloud-sdk": ["@elizaos/cloud-sdk@2.0.3-beta.7", "", {}, "sha512-rAHaddDNbxIyaiGgRtpqOAmCj1GG8oOLVPg+GpeL9VCFs0hqQfpW87OfA3k2u688OQhdphqQUg0tX4hkP9Pt0A=="],
 
-    "@elizaos/cloud-shared": ["empty-npm-package@1.0.0", "", {}, "sha512-q4Mq/+XO7UNDdMiPpR/LIBIW1Zl4V0Z6UT9aKGqIAnBCtCb3lvZJM1KbDbdzdC8fKflwflModfjR29Nt0EpcwA=="],
-
     "@elizaos/contracts": ["@elizaos/contracts@2.0.3-beta.7", "", {}, "sha512-XGWtP3XyGGwF8yTPfo0UaC8/xqL9X/sstU4pF05QrfOlrFhCem2wYx3Tnn26mQ4xRpvGP1zxqFtgPpOF33k5dw=="],
 
     "@elizaos/core": ["@elizaos/core@2.0.3-beta.7", "", { "dependencies": { "@ai-sdk/anthropic": "^3.0.13", "@ai-sdk/gateway": "3.0.133", "@ai-sdk/google": "^3.0.8", "@ai-sdk/openai": "^3.0.9", "@ai-sdk/provider": "3.0.10", "@ai-sdk/provider-utils": "4.0.26", "@bufbuild/protobuf": "^2.12.0", "@elizaos/contracts": "2.0.3-beta.7", "@elizaos/logger": "2.0.3-beta.7", "@elizaos/prompts": "2.0.3-beta.7", "@noble/ciphers": "2.2.0", "@noble/hashes": "2.2.0", "@openrouter/ai-sdk-provider": "^2.0.0", "@opentelemetry/api": "1.9.1", "adze": "^2.2.5", "ai": "^6.0.30", "dedent": "^1.7.1", "dotenv": "^17.2.3", "drizzle-orm": "0.45.2", "fast-redact": "^3.5.0", "file-type": "^22.0.0", "fs-extra": "^11.3.2", "handlebars": "^4.7.8", "json5": "^2.2.3", "mammoth": "^1.9.0", "markdown-it": "^14.1.0", "underscore": "^1.13.8", "unpdf": "^1.4.0", "uuid": "^14.0.0", "yaml": "^2.7.0", "zod": "^4.4.3" } }, "sha512-8ZtJcH3NPT/iQrHbm7oxxCzZ0SL9vbf3mOUuICZRobwqqKWkUD6y+I2cIUpKkhjU4/wcO6k2gh7vnm3H40c0yw=="],
@@ -372,8 +370,6 @@
     "@elizaos/plugin-x402": ["@elizaos/plugin-x402@2.0.3-beta.7", "", { "dependencies": { "@elizaos/core": "2.0.3-beta.7", "@solana/web3.js": "1.98.4", "drizzle-orm": "0.45.2", "viem": "^2.48.8" } }, "sha512-GRoLGRNhW0vuVIa43jXWjP9VjjRdIX7LKhBKIQS/rKJgbYPlnMBaLKYjS2Pwucvafh8qSMXme2BhLR/2OHbXrA=="],
 
     "@elizaos/prompts": ["@elizaos/prompts@2.0.3-beta.7", "", {}, "sha512-eUWkO5AgZXaIAg5tjmGcJc96gKSSQIyVkjJH/WFOkeafuxSK64RIRN22M06F3GTVaVs6Gd5LCw00xhaJSm+w1Q=="],
-
-    "@elizaos/registry": ["empty-npm-package@1.0.0", "", {}, "sha512-q4Mq/+XO7UNDdMiPpR/LIBIW1Zl4V0Z6UT9aKGqIAnBCtCb3lvZJM1KbDbdzdC8fKflwflModfjR29Nt0EpcwA=="],
 
     "@elizaos/security": ["@elizaos/security@2.0.3-beta.7", "", { "dependencies": { "zod": "^4.4.3" } }, "sha512-lGtEAZA4tSwCgiGO/H2uioKnPJ/9G8YNClfFMRIv1gNuuFnvoNhElSLXaivbkkPhRELyJqdiuq0Col/d//mgCA=="],
 
@@ -4559,7 +4555,11 @@
 
     "@effect/sql/uuid": ["uuid@11.1.1", "", { "bin": { "uuid": "dist/esm/bin/uuid" } }, "sha512-vIYxrBCC/N/K+Js3qSN88go7kIfNPssr/hHCesKCQNAjmgvYS2oqr69kIufEG+O4+PfezOH4EbIeHCfFov8ZgQ=="],
 
+    "@elizaos/agent/@elizaos/registry": ["@elizaos/registry@file:../packages/registry", {}],
+
     "@elizaos/app-core/@capacitor/core": ["@capacitor/core@8.4.0", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-LrS1xPIrqLtJABBIPDGXxxKmI9OyesrzWw8DiHbxhSC9JoiLUleUAJlX1a0LWIVLRbuY4Szgf9huFeRqYH2SAQ=="],
+
+    "@elizaos/app-core/@elizaos/registry": ["@elizaos/registry@file:../packages/registry", {}],
 
     "@elizaos/app-core/commander": ["commander@15.0.0", "", {}, "sha512-z67u4ZhzCL/Tydu1lJARtEZYWbWaN7oYLHbsuzocr6y4N6WZAagG3RQ4FW61V1/0+jImpj293XfrcYnd1qxtPg=="],
 
@@ -4581,7 +4581,11 @@
 
     "@elizaos/plugin-wallet/uuid": ["uuid@11.1.1", "", { "bin": { "uuid": "dist/esm/bin/uuid" } }, "sha512-vIYxrBCC/N/K+Js3qSN88go7kIfNPssr/hHCesKCQNAjmgvYS2oqr69kIufEG+O4+PfezOH4EbIeHCfFov8ZgQ=="],
 
+    "@elizaos/shared/@elizaos/registry": ["@elizaos/registry@file:../packages/registry", {}],
+
     "@elizaos/ui/@capacitor/core": ["@capacitor/core@8.4.0", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-LrS1xPIrqLtJABBIPDGXxxKmI9OyesrzWw8DiHbxhSC9JoiLUleUAJlX1a0LWIVLRbuY4Szgf9huFeRqYH2SAQ=="],
+
+    "@elizaos/ui/@elizaos/cloud-shared": ["@elizaos/cloud-shared@file:../packages/cloud/shared", {}],
 
     "@ethereumjs/common/@ethereumjs/util": ["@ethereumjs/util@10.1.2", "", { "dependencies": { "@ethereumjs/rlp": "^10.1.2", "@noble/curves": "^2.0.1", "@noble/hashes": "^2.0.1" } }, "sha512-UPBgXtHHfQugoXOSAoeG3jdmPbl37cwV9y3XqTPAnw8tJj8np14TPV2uc5lOs7C2LMF9Ubn66zyaiYxgwGppng=="],
 

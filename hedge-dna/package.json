@@ -5,13 +5,21 @@
   "private": true,
   "license": "MIT",
   "type": "module",
+  "bin": {
+    "hedge-dna": "./cli.mjs"
+  },
   "scripts": {
-    "validate": "node validate.mjs"
+    "validate": "node validate.mjs",
+    "hedge-dna": "node cli.mjs",
+    "cli": "node cli.mjs",
+    "wake": "node cli.mjs wake",
+    "test": "node cli.mjs validate && node cli.mjs wake --json >/dev/null && node cli.mjs mode lattice --json >/dev/null"
   },
   "files": [
     "*.json",
     "*.md",
-    "README.md",
-    "validate.mjs"
+    "cli.mjs",
+    "validate.mjs",
+    "README.md"
   ]
 }
