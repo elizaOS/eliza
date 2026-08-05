@@ -1264,9 +1264,28 @@ export class MessageManager {
 	/**
 	 * Handles incoming Discord messages and processes them accordingly.
 	 *
+	 * Thin wrapper: registers the returned promise with the connector's
+	 * shutdown-drain registry (shutdown-drain.ts) before delegating to the
+	 * real handler, so `DiscordService#stop` can await outstanding turns
+	 * within a bounded window instead of destroying the client mid-turn. The
+	 * registration is fire-and-forget from this call's perspective — it does
+	 * not change what this method returns or throws.
+	 *
 	 * @param {DiscordMessage} message - The Discord message to be handled
 	 */
-	async handleMessage(message: DiscordMessage) {
+	async handleMessage(message: DiscordMessage): Promise<void> {
+		const turn = this.runMessageTurn(message);
+		this.discordService.trackInFlightTurn?.(message.id, turn);
+		return turn;
+	}
+
+	/**
+	 * Real Discord message handler; see `handleMessage` for the shutdown-drain
+	 * registration this is wrapped with.
+	 *
+	 * @param {DiscordMessage} message - The Discord message to be handled
+	 */
+	private async runMessageTurn(message: DiscordMessage) {
 		// this filtering is already done in setupEventListeners
 		/*
     if (
@@ -2006,6 +2025,12 @@ export class MessageManager {
 			const statusReactions = useReactions
 				? createStatusReactionController(message)
 				: null;
+			if (statusReactions) {
+				// Let the shutdown-drain registry reach this controller if the
+				// connector stops while this turn is still in flight, so the
+				// reaction gets reconciled instead of orphaned on the message.
+				this.discordService.trackStatusReaction?.(message.id, statusReactions);
+			}
 			const draftStream = this.draftStreamingEnabled
 				? createDraftStreamController({
 						log: (entry) =>
