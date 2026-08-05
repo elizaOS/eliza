@@ -5790,12 +5790,12 @@ export function ChatOverlay({
                             className="sticky top-0 z-[2] -mx-5 mb-1 bg-gradient-to-b from-scrim to-transparent px-5"
                           />
                         ) : null}
-                        {/* Inset chat consumes the free space in short threads so
-                  the latest line stays near its composer. Fullscreen is a
-                  transcript canvas, so it retains the top-led reading flow of
-                  the canonical shell instead of packing every short exchange
-                  against the bottom edge. First-run also starts at the top so
-                  the opening prompt reads like the first turn. */}
+                        {/* Normal chat consumes only the free space in genuinely
+                  short threads to keep their latest line near the composer.
+                  Once content fills the viewport there is no free space to
+                  distribute, so long transcripts retain their natural flow.
+                  First-run starts at the top so the opening prompt reads like
+                  the first turn. */}
                         <MessageScrollerContent
                           ref={threadContentRef}
                           aria-busy={responding}
@@ -5803,10 +5803,7 @@ export function ChatOverlay({
                             "flex flex-col gap-0",
                             firstRunOpen
                               ? "shrink-0 pt-8"
-                              : cn(
-                                  "mt-auto pb-3 pt-8",
-                                  !fullBleed && "justify-end",
-                                ),
+                              : "mt-auto justify-end pb-3 pt-8",
                           )}
                         >
                           {/* Top sentinel for infinite upward scroll (#13532, #14279):
@@ -5913,21 +5910,23 @@ export function ChatOverlay({
                     </AnimatePresence>
                   </MessageScroller>
                 </MessageScrollerProvider>
-                {!firstRunOpen && !fullBleed ? (
+                {!firstRunOpen ? (
                   <motion.div
                     data-testid="chat-thread-top-fade"
                     aria-hidden="true"
                     className="pointer-events-none absolute inset-x-px top-px z-30 h-12"
                     style={{
                       opacity: threadContentOpacity,
-                      // The inset sheet needs a fixed compositor layer beneath
-                      // its floating grabber. Fullscreen has no grabber and
-                      // deliberately omits this layer so the transcript begins
-                      // directly on the canonical edge-to-edge canvas. WebKit
-                      // re-rasterizes CSS-masked scrollers while their flex basis
-                      // changes, so keep the inset fade outside the scroller.
-                      backgroundImage:
-                        "linear-gradient(to bottom, var(--card) 0%, var(--card) 28%, color-mix(in srgb, var(--card) 62%, transparent) 64%, transparent 100%)",
+                      // A fixed compositor layer lets messages dissolve beneath
+                      // the floating grabber without masking the scrolling
+                      // subtree. WebKit re-rasterizes CSS-masked scrollers while
+                      // their flex basis changes, which makes the pull gesture
+                      // stutter. Hold the panel color through the grabber's
+                      // footprint before beginning the dissolve so no glyph can
+                      // ghost through the antialiased rim or the handle itself.
+                      backgroundImage: fullBleed
+                        ? "linear-gradient(to bottom, var(--bg) 0%, var(--bg) 28%, color-mix(in srgb, var(--bg) 72%, transparent) 64%, transparent 100%)"
+                        : "linear-gradient(to bottom, var(--card) 0%, var(--card) 28%, color-mix(in srgb, var(--card) 62%, transparent) 64%, transparent 100%)",
                     }}
                   />
                 ) : null}
