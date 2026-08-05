@@ -110,7 +110,9 @@ test.describe("launcher catalog interactions", () => {
 
     for (const viewport of [
       { name: "desktop", size: { width: 1440, height: 1000 } },
-      { name: "mobile", size: { width: 390, height: 844 } },
+      // Use a compact phone height so the touch-scroll contract remains
+      // exercised even when the curated catalog happens to fit at 390x844.
+      { name: "mobile", size: { width: 390, height: 700 } },
     ] as const) {
       test(`single grid, real-touch scrolling, and Browser tile launch on ${viewport.name}`, async ({
         page,
