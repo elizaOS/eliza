@@ -68,6 +68,31 @@ function stage1DirectReply(replyText: string) {
 	};
 }
 
+function stage1ActionPlan(actionName: string) {
+	return {
+		text: "",
+		toolCalls: [
+			{
+				id: "handle-response-action",
+				name: "HANDLE_RESPONSE",
+				arguments: {
+					shouldRespond: "RESPOND",
+					thought: "The requested operation needs a registered action.",
+					contexts: ["general"],
+					intents: ["perform requested operation"],
+					candidateActionNames: [actionName],
+					replyText: "Working on it.",
+					facts: [],
+					relationships: [],
+					addressedTo: [],
+					requiresTool: true,
+				},
+			},
+		],
+		finishReason: "tool_calls",
+	};
+}
+
 interface Harness {
 	runtime: IAgentRuntime;
 	service: DefaultMessageService;
@@ -420,6 +445,83 @@ describe("race-superseded turns keep addressed responses", () => {
 		expect(result.didRespond).toBe(true);
 	});
 
+	it("keeps an addressed action-mode result when a newer message completes first", async () => {
+		const actionName = "TEST_ADDRESS_ACTION";
+		const firstReply = `action complete. probe-${v4()}`;
+		const secondReply = `second answer. probe-${v4()}`;
+		const firstDeliveries: Content[] = [];
+		const secondDeliveries: Content[] = [];
+		let secondTurn: Promise<unknown> | null = null;
+		let responseHandlerCalls = 0;
+		let actionPlannerCalls = 0;
+
+		const h = createHarness(async (getHarness, modelType) => {
+			if (modelType === "RESPONSE_HANDLER") {
+				responseHandlerCalls += 1;
+				return responseHandlerCalls === 1
+					? stage1ActionPlan(actionName)
+					: stage1DirectReply(secondReply);
+			}
+			if (modelType === "ACTION_PLANNER") {
+				actionPlannerCalls += 1;
+				if (actionPlannerCalls !== 1) throw RATE_LIMIT_ERROR;
+				const inner = getHarness();
+				secondTurn = inner.service.handleMessage(
+					inner.runtime,
+					inner.makeMessage("also answer this newer question"),
+					async (content) => {
+						secondDeliveries.push(content);
+						return [];
+					},
+				);
+				await secondTurn;
+				return {
+					thought: "Run the requested registered action.",
+					toolCalls: [
+						{
+							id: "addressed-action-1",
+							name: actionName,
+							args: {},
+						},
+					],
+				};
+			}
+			throw RATE_LIMIT_ERROR;
+		});
+		const actionHandler = vi.fn(async () => ({
+			success: true,
+			text: firstReply,
+			continueChain: false,
+			data: { actionName },
+		}));
+		h.runtime.actions = [
+			{
+				name: actionName,
+				similes: [],
+				description: "Exercise addressed action-mode race delivery.",
+				examples: [],
+				validate: async () => true,
+				handler: actionHandler,
+			},
+		] as never;
+
+		const result = await h.service.handleMessage(
+			h.runtime,
+			h.makeMessage("perform the requested operation"),
+			async (content) => {
+				firstDeliveries.push(content);
+				return [];
+			},
+		);
+		await drainPostDeliveryTasks(h.runtime);
+
+		expect(secondTurn).not.toBeNull();
+		expect(actionHandler).toHaveBeenCalledTimes(1);
+		expect(visibleTexts(firstDeliveries)).toEqual([firstReply]);
+		expect(visibleTexts(secondDeliveries)).toEqual([secondReply]);
+		expect(result.didRespond).toBe(true);
+	});
+
 	it("still delivers the honest failure reply when the failing turn was superseded mid-generation", async () => {
 		// The dropped-turn incident on a slow backend: turn 1's model call dies
 		// AND a newer message already superseded the turn. The failure reply
@@ -485,10 +587,16 @@ describe("resolveSupersededResponseKeepReason policy", () => {
 		);
 	});
 
-	it("discards non-reply shapes — every deliverable constructor sets REPLY", () => {
+	it("discards a non-reply shape when the turn was not addressed", () => {
 		expect(
 			resolveSupersededResponseKeepReason({ actions: ["TASKS"] }),
 		).toBeNull();
+	});
+
+	it("keeps a non-reply action result when transport context addressed the turn", () => {
+		expect(
+			resolveSupersededResponseKeepReason({ actions: ["TASKS"] }, true),
+		).toBe("deterministically addressed action-mode turn");
 	});
 
 	it("discards when there is no response content to keep", () => {

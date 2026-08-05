@@ -9321,17 +9321,21 @@ function hasExplicitReplyIntent(
 /**
  * Race-keep policy for a finished response that a newer same-room message
  * superseded mid-generation. Returns the human-readable keep reason, or null
- * when the response should be discarded. Kept only when the planner
- * deliberately chose to converse (explicit REPLY/RESPOND): every deliverable
- * response constructor in this pipeline sets `actions:["REPLY"]`, so this is
- * the complete keep set — a discard is always a non-deliverable shape, and it
- * ends the run with the observable "replaced" terminal instead of vanishing.
+ * when the response should be discarded. An explicit conversational reply is
+ * always kept. Action-mode responses omit REPLY, so they are also kept when
+ * the transport context deterministically establishes that the turn addressed
+ * the agent. Unaddressed, non-conversational work remains replaceable.
  */
 export function resolveSupersededResponseKeepReason(
 	responseContent: Pick<Content, "actions"> | null | undefined,
+	deterministicallyAddressed = false,
 ): string | null {
+	if (!responseContent) return null;
 	if (hasExplicitReplyIntent(responseContent)) {
 		return "explicit REPLY for an addressed message";
+	}
+	if (deterministicallyAddressed) {
+		return "deterministically addressed action-mode turn";
 	}
 	return null;
 }
@@ -11863,7 +11867,18 @@ export class DefaultMessageService implements IMessageService {
 			// keeping the older response never double-replies to either message.
 			const currentResponseId = agentResponses.get(message.roomId);
 			if (currentResponseId !== responseId && !opts.keepExistingResponses) {
-				const keepReason = resolveSupersededResponseKeepReason(responseContent);
+				const addressedTurn = this.isDeterministicallyAddressedTurn({
+					runtime,
+					message,
+					room,
+					mentionContext,
+					isAutonomous,
+					hasDeliveredEarlyReply: earlyReplyMessages.length > 0,
+				});
+				const keepReason = resolveSupersededResponseKeepReason(
+					responseContent,
+					addressedTurn.addressed,
+				);
 				if (keepReason) {
 					runtime.logger.info(
 						{
