@@ -770,10 +770,13 @@ warnings: [],
         // Same rationale as the Ethereum branch: fetched directly from
         // moralis.ts rather than through connector.getTransactions(), which
         // discards transfers into an empty array by design (see
-        // chains/bnb.ts's createUniversalTransaction). Moralis's
+        // chains/bnb.ts's createUniversalTransaction). limit=100 was
+        // carried over from Ethereum's already-bumped sample size when this
+        // branch was first written, on the assumption that Moralis's
         // wallet-history endpoint behaves identically for chain=bsc as for
-        // chain=eth (same hard cap at limit=100, same flat 150 CU cost -
-        // both live-verified), so the same sample size applies here.
+        // chain=eth - that assumption was confirmed correct in a dedicated
+        // follow-up investigation (same hard cap at limit=100, same flat
+        // 150 CU cost, both live-verified against chain=bsc specifically).
         const { transactions: rawTransactions } =
           await getEthereumTransactions(walletAddress, "bsc", 100);
 
