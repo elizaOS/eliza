@@ -72,11 +72,11 @@ function clearAllScopedCloudPairKeys(): void {
     // shellLocalStorage only has setItem/removeItem/clear, enumerate via raw localStorage
     for (let i = 0; i < window.localStorage.length; i++) {
       const key = window.localStorage.key(i);
-      if (key && key.startsWith(CLOUD_PAIR_SCOPED_PREFIX)) {
+      if (key?.startsWith(CLOUD_PAIR_SCOPED_PREFIX)) {
         keysToRemove.push(key);
       }
     }
-    keysToRemove.forEach(k => shellLocalStorage.removeItem(k));
+    for (const k of keysToRemove) shellLocalStorage.removeItem(k);
     // Legacy single-key format
     shellLocalStorage.removeItem(CLOUD_PAIR_LOCAL_STORAGE_KEY);
   });
@@ -91,11 +91,11 @@ function clearAllScopedCloudPairKeysSession(): void {
       const keysToRemove: string[] = [];
       for (let i = 0; i < window.sessionStorage.length; i++) {
         const key = window.sessionStorage.key(i);
-        if (key && key.startsWith(CLOUD_PAIR_SCOPED_PREFIX)) {
+        if (key?.startsWith(CLOUD_PAIR_SCOPED_PREFIX)) {
           keysToRemove.push(key);
         }
       }
-      keysToRemove.forEach(k => window.sessionStorage.removeItem(k));
+      for (const k of keysToRemove) window.sessionStorage.removeItem(k);
       window.sessionStorage.removeItem(CLOUD_PAIR_SESSION_STORAGE_KEY);
     }
   });
@@ -105,7 +105,7 @@ export function clearCloudPairApiToken(agentId?: string): void {
   const scopedKey = agentId?.trim()
     ? cloudPairTokenKeyForAgent(agentId.trim())
     : null;
-  
+
   if (scopedKey) {
     // Clear specific agent's scoped key + legacy global key
     tryRemoveFromStorage(() => {
