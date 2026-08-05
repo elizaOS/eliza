@@ -414,17 +414,13 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
   overflow-anchor: none;
 }
 .eliza-notif-scroll[data-shade-dragging] {
-  -webkit-mask-image: none;
-  mask-image: none;
   transition: none;
 }
-/* The retained overshoot padding is the release runway. Keep the edge mask off
-   until the cards finish crossing it; otherwise the mask darkens the lowest
-   physical stack layers and then brightens them as they settle upward. */
+/* The scroll-edge mask is part of the settled material. Keeping it mounted
+   through direct manipulation lets cards fade continuously as they cross the
+   edge instead of changing every card's compositing on the first drag frame. */
 .eliza-notif-scroll[data-shade-release-settling] {
   animation: none;
-  -webkit-mask-image: none;
-  mask-image: none;
 }
 .eliza-notif-scroll [data-notification-group] {
   position: relative;

@@ -1876,6 +1876,9 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     const agentSurface = screen
       .getByText("Agent summary")
       .closest<HTMLElement>('[data-testid="notification-row-swipe"]');
+    const filesContent = filesSurface?.querySelector<HTMLElement>(
+      ".eliza-notif-row-content",
+    );
 
     fireEvent.pointerDown(list, {
       pointerType: "mouse",
@@ -1884,6 +1887,10 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
       clientX: 12,
       clientY: 160,
     });
+    expect(list.hasAttribute("data-shade-dragging")).toBe(false);
+    expect(filesSurface?.style.transform).toBe("");
+    expect(filesContent?.style.transform).toBe("");
+    expect(filesContent?.className).not.toContain("active:scale");
     fireEvent.pointerMove(list, {
       pointerType: "mouse",
       pointerId: 83,
@@ -1896,8 +1903,11 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     const activeDragRule = css.match(
       /\.eliza-notif-scroll\[data-shade-dragging\]\s*\{([^}]*)\}/,
     )?.[1];
-    expect(activeDragRule).toContain("-webkit-mask-image: none");
-    expect(activeDragRule).toContain("mask-image: none");
+    expect(activeDragRule).not.toContain("mask-image");
+    const releaseSettleRule = css.match(
+      /\.eliza-notif-scroll\[data-shade-release-settling\]\s*\{([^}]*)\}/,
+    )?.[1];
+    expect(releaseSettleRule).not.toContain("mask-image");
     // A pull may animate compositor properties, but changing which element
     // paints the fill produces a visible first-frame color/rim discontinuity.
     const gestureMaterialRules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
@@ -1910,7 +1920,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
       .map((match) => match[2] ?? "")
       .join("\n");
     expect(gestureMaterialRules).not.toMatch(
-      /background-(?:color|image)|backdrop-filter/,
+      /background-(?:color|image)|backdrop-filter|mask-image/,
     );
 
     let filesOpacity = Number.parseFloat(filesGroup?.style.opacity ?? "1");
