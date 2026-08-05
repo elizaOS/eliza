@@ -43,7 +43,12 @@ function runChildAt(
   timeoutMs = 15_000,
 ): Promise<number> {
   return new Promise((resolve, reject) => {
-    const child = spawn("bun", [childPath], {
+    // Workspace packages export through the `eliza-source` condition
+    // (source TS). Without it, children that import `@elizaos/shared` /
+    // core re-exports fail module resolution and exit 1 — which masks as
+    // a false pass for the "exit policy" case and fails restart/keep-alive.
+    // Same pattern as test/api/runtime-mode-gate.real-server.test.ts.
+    const child = spawn("bun", ["--conditions=eliza-source", childPath], {
       env: { ...process.env, NODE_ENV: "test", ...env },
       stdio: ["ignore", "ignore", "ignore"],
     });

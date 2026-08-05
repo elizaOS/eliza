@@ -162,6 +162,12 @@ const workspacePluginSourceAliases = getWorkspacePluginAliases(repoRoot, [
   "plugin-health",
   "plugin-imessage",
   "plugin-local-inference",
+  // plugin-meetings ships only a built `dist/` entry; Discord voice-meeting
+  // seams import its barrel, so agent-lane tests that load plugin-discord
+  // fail with "Failed to resolve entry for @elizaos/plugin-meetings" unless
+  // the barrel is source-aliased (mirrors root vitest.config.ts and
+  // plugin-discord/vitest.config.ts).
+  "plugin-meetings",
   "plugin-mcp",
   "plugin-phone",
   "plugin-signal",
