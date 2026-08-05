@@ -36,7 +36,10 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { registerMessageHistoryCompactionHook } from "@elizaos/core";
+import {
+  conversationMessagesHeader,
+  registerMessageHistoryCompactionHook,
+} from "@elizaos/core";
 import {
   compactors,
   findSafeCompactionBoundary,
@@ -587,7 +590,15 @@ export function serializeTranscriptToPrompt(
     }
   }
 
-  const newRegion = `${CONVERSATION_HEADER}\n${parts.join("\n")}`;
+  // Re-emit the matched header line verbatim rather than the bare constant:
+  // the provider annotates the header with the bounded-window disclosure
+  // ("most recent N; older history is not shown here"), and rebuilding from
+  // CONVERSATION_HEADER would silently strip that signal on every compaction
+  // pass — precisely on the long conversations where it matters most.
+  const headerEnd = region.region.indexOf("\n");
+  const headerLine =
+    headerEnd === -1 ? region.region : region.region.slice(0, headerEnd);
+  const newRegion = `${headerLine}\n${parts.join("\n")}`;
   return `${region.prefix}${newRegion}${
     region.suffix.startsWith("\n") ? "" : "\n"
   }${region.suffix}`;
@@ -1129,7 +1140,12 @@ function renderCompactedRecentMessagesProvider(args: {
     sections.push(`# Conversation Compact Ledger\n${args.priorLedger.trim()}`);
   }
   if (historyLines.length > 0) {
-    sections.push(`# Conversation Messages\n${historyLines.join("\n")}`);
+    // The rewritten provider block must keep the bounded-window disclosure the
+    // core provider emits; the shared helper also keeps the visible-count
+    // honest after compaction shrinks the raw history.
+    sections.push(
+      `${conversationMessagesHeader(historyLines.length)}\n${historyLines.join("\n")}`,
+    );
   }
   const receivedText = safeMemoryText(args.message);
   if (receivedText) {
