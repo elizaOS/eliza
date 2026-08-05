@@ -43,18 +43,21 @@ describe("smoke view declaration parity (#15791)", () => {
     }
   });
 
-  it("declares both managed simple views used by the visual audit", () => {
+  it("declares the canonical Notes and Calendar views used by the visual audit", () => {
     expect(smokeViewDeclarations).toEqual(
       expect.arrayContaining([
-        ["notes", "Notes", "plugin-simple-views", "/notes", "NotesView"],
+        ["notes", "Notes", "plugin-notes", "/notes", "NotesView"],
         [
-          "simple-calendar",
+          "calendar",
           "Calendar",
-          "plugin-simple-views",
-          "/simple-calendar",
-          "SimpleCalendarView",
+          "plugin-calendar",
+          "/calendar",
+          "CalendarView",
         ],
       ]),
+    );
+    expect(smokeViewDeclarations.map(([id]) => id)).not.toContain(
+      "simple-calendar",
     );
   });
 
