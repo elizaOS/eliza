@@ -28,6 +28,120 @@ const REPLY_TOKENS = [
 const FORCED_GRAMMAR = 'root ::= "{" [^}]* "}"';
 
 describe("LocalInferenceEngine.generateInConversation streaming (chat path)", () => {
+	const gatedVoiceSkeleton: GenerateArgs["responseSkeleton"] = {
+		spans: [
+			{ kind: "literal", value: '{"shouldRespond":"' },
+			{
+				kind: "enum",
+				key: "shouldRespond",
+				enumValues: ["RESPOND", "IGNORE", "STOP"],
+			},
+			{ kind: "literal", value: '","replyText":"' },
+			{ kind: "free-string", key: "replyText" },
+			{ kind: "literal", value: '"}' },
+		],
+	};
+
+	function voiceHarness() {
+		const engine = new LocalInferenceEngine();
+		const pushed: string[] = [];
+		const internals = engine as unknown as {
+			voiceBridge: {
+				lifecycle: { current: () => { kind: string } };
+				scheduler: {
+					bargeIn: { onSignal: () => () => void };
+				};
+				pushAcceptedToken: (token: { text: string }) => Promise<void>;
+				settle: () => Promise<void>;
+			};
+			voiceStreamingArgs: (args: GenerateArgs) => {
+				args: GenerateArgs;
+				finish: (text: string) => Promise<void>;
+			};
+		};
+		internals.voiceBridge = {
+			lifecycle: { current: () => ({ kind: "voice-on" }) },
+			scheduler: { bargeIn: { onSignal: () => () => {} } },
+			pushAcceptedToken: async (token) => {
+				pushed.push(token.text);
+			},
+			settle: async () => {},
+		};
+		return { internals, pushed };
+	}
+
+	it("speaks only replyText when the structured decision is RESPOND", async () => {
+		const { internals, pushed } = voiceHarness();
+		const text = '{"shouldRespond":"RESPOND","replyText":"Hello Nubs."}';
+		const streaming = internals.voiceStreamingArgs({
+			prompt: "visible response",
+			voiceOutput: "user-visible",
+			streamStructured: true,
+			responseSkeleton: gatedVoiceSkeleton,
+		});
+
+		await streaming.args.onTextChunk?.(text);
+		await streaming.finish(text);
+
+		expect(pushed.join("")).toBe("Hello Nubs.");
+	});
+
+	it("speaks nothing when an enum shouldRespond gate says IGNORE", async () => {
+		const { internals, pushed } = voiceHarness();
+		const text =
+			'{"shouldRespond":"IGNORE","replyText":"This must stay silent."}';
+		const streaming = internals.voiceStreamingArgs({
+			prompt: "ignored response",
+			voiceOutput: "user-visible",
+			streamStructured: true,
+			responseSkeleton: gatedVoiceSkeleton,
+		});
+
+		await streaming.args.onTextChunk?.(text);
+		await streaming.finish(text);
+
+		expect(pushed).toEqual([]);
+	});
+
+	it("does not promote an internal structured stream into voice output", async () => {
+		const engine = new LocalInferenceEngine();
+		let pushed = 0;
+		const internals = engine as unknown as {
+			voiceBridge: {
+				lifecycle: { current: () => { kind: string } };
+				pushAcceptedToken: () => Promise<void>;
+			};
+			voiceStreamingArgs: (args: GenerateArgs) => {
+				args: GenerateArgs;
+				finish: (text: string) => Promise<void>;
+			};
+		};
+		internals.voiceBridge = {
+			lifecycle: { current: () => ({ kind: "voice-on" }) },
+			pushAcceptedToken: async () => {
+				pushed += 1;
+			},
+		};
+		const args: GenerateArgs = {
+			prompt: "internal structured work",
+			streamStructured: true,
+			responseSkeleton: {
+				spans: [
+					{ kind: "literal", text: '{"replyText":' },
+					{ kind: "field", key: "replyText", valueType: "string" },
+					{ kind: "literal", text: "}" },
+				],
+			},
+			onTextChunk: () => {},
+		};
+
+		const streaming = internals.voiceStreamingArgs(args);
+		await streaming.finish('{"replyText":"private planner output"}');
+
+		expect(streaming.args).toBe(args);
+		expect(pushed).toBe(0);
+	});
+
 	it("forwards onTextChunk per token through the dispatcher when voice is off", async () => {
 		// The production chat reply has a conversationId, so the local handler
 		// routes through `generateInConversation` (NOT `engine.generate`). With no
