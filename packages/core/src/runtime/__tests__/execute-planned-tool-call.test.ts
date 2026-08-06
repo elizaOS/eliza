@@ -151,6 +151,10 @@ describe("executePlannedToolCall", () => {
 		expect(String(result.error)).toContain(
 			"Argument 'title' expected string, got number",
 		);
+		expect(result.data).toMatchObject({
+			parameterErrors: ["Argument 'title' expected string, got number"],
+			invalidParameterNames: ["title"],
+		});
 		expect(handler).not.toHaveBeenCalled();
 	});
 
