@@ -1404,7 +1404,8 @@ function renderRoutingHintsBlock(context: ContextObject): string | null {
 	if (events && ROUTING_HINTS_MEMO.has(events)) {
 		return ROUTING_HINTS_MEMO.get(events) ?? null;
 	}
-	const seen = new Set<string>();
+	const seenOwners = new Set<string>();
+	const seenHints = new Set<string>();
 	const lines: string[] = [];
 	for (const event of events ?? []) {
 		if (event.type !== "tool" || !("tool" in event)) continue;
@@ -1421,8 +1422,10 @@ function renderRoutingHintsBlock(context: ContextObject): string | null {
 		const key = normalizePlannerToolName(
 			own ? tool.name : (promoted?.parent ?? tool.name),
 		);
-		if (seen.has(key)) continue;
-		seen.add(key);
+		const normalizedHint = hint.replace(/\s+/g, " ").trim().toLowerCase();
+		if (seenOwners.has(key) || seenHints.has(normalizedHint)) continue;
+		seenOwners.add(key);
+		seenHints.add(normalizedHint);
 		lines.push(`- ${hint}`);
 	}
 	const result =
