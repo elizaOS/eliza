@@ -185,6 +185,18 @@ const FFI_STUB_DIR = path.resolve(
 	"scripts",
 	"ffi-stub",
 );
+const NATIVE_FFI_HEADER = path.resolve(
+	__dirname,
+	"..",
+	"..",
+	"..",
+	"native",
+	"llama.cpp",
+	"tools",
+	"omnivoice",
+	"include",
+	"eliza-inference-ffi.h",
+);
 const STUB_BUILD_DIR = mkdtempSync(path.join(tmpdir(), "eliza-ffi-stub-"));
 const STUB_DYLIB = path.join(
 	STUB_BUILD_DIR,
@@ -250,6 +262,14 @@ function bunOnPath(): string | null {
 describe("ffi-bindings — pure unit (no Bun, no dylib)", () => {
 	it("ELIZA_INFERENCE_ABI_VERSION is 15 (exact-size Kokoro PCM allocation)", () => {
 		expect(ELIZA_INFERENCE_ABI_VERSION).toBe(15);
+	});
+
+	it("keeps the TypeScript ABI version aligned with the pinned native header", () => {
+		const header = readFileSync(NATIVE_FFI_HEADER, "utf8");
+		const declared = header.match(
+			/^#define ELIZA_INFERENCE_ABI_VERSION (\d+)$/m,
+		)?.[1];
+		expect(declared).toBe(String(ELIZA_INFERENCE_ABI_VERSION));
 	});
 
 	it("loadElizaInferenceFfi throws VoiceLifecycleError when FFI is unavailable", () => {
