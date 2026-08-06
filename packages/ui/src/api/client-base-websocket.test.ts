@@ -173,6 +173,18 @@ describe("ElizaClient websocket connection policy", () => {
     expect(createdUrls[0]).toContain("token=agent-token");
   });
 
+  it("opens same-origin websocket when the Capacitor web runtime is present but not native", () => {
+    const createdUrls = stubWebSocket();
+    stubWindowOrigin("https:", "web-build.example.test");
+    vi.stubGlobal("Capacitor", { isNativePlatform: () => false });
+
+    const client = new ElizaClient("", "agent-token");
+    client.connectWs();
+
+    expect(createdUrls).toHaveLength(1);
+    expect(createdUrls[0]).toContain("wss://web-build.example.test/ws?");
+  });
+
   it("still skips the synthetic-host websocket on Capacitor native", () => {
     const createdUrls = stubWebSocket();
     stubWindowOrigin("https:", "myapp.app");
