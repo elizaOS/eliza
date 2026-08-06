@@ -195,7 +195,12 @@ export async function touchTap(page: Page, selector: string): Promise<void> {
         "pointerup",
         (event) => {
           const pointerEvent = event as PointerEvent;
-          if (pointerEvent.pointerId === probe.pointerId) probe.terminal = "up";
+          if (
+            pointerEvent.pointerId === probe.pointerId &&
+            probe.terminal === null
+          ) {
+            probe.terminal = "up";
+          }
         },
         { once: true },
       );
@@ -203,8 +208,12 @@ export async function touchTap(page: Page, selector: string): Promise<void> {
         "pointercancel",
         (event) => {
           const pointerEvent = event as PointerEvent;
-          if (pointerEvent.pointerId === probe.pointerId)
+          if (
+            pointerEvent.pointerId === probe.pointerId &&
+            probe.terminal === null
+          ) {
             probe.terminal = "cancel";
+          }
         },
         { once: true },
       );
@@ -264,6 +273,12 @@ export async function touchTap(page: Page, selector: string): Promise<void> {
     if (terminal !== "up") {
       throw new Error(`real-touch: tap ended with pointer${terminal}`);
     }
+    // Keep the input session alive until the release has crossed two renderer
+    // frames. The target's native pointerup precedes React's delegated state
+    // commit; a physical next gesture begins from the released frame the user
+    // can see, so make that ordering part of this real-touch helper too.
+    await settleMainThread(page);
+    await settleMainThread(page);
   } finally {
     try {
       await page.evaluate(() => {
