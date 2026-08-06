@@ -777,6 +777,12 @@ interface PoolReplenishSummary {
   reason: string;
 }
 
+interface PoolHealthCheckSummary {
+  probed: number;
+  alive: number;
+  removed: number;
+}
+
 /**
  * Health-checks every enabled `docker_nodes` row (SSH + `docker info`) and
  * persists the resulting status. Runs on the orchestrator host that already
@@ -1050,6 +1056,38 @@ async function processPoolDrainIdleCycle(): Promise<PoolDrainSummary> {
   const pool = await getWarmPoolManager();
   const result = await pool.drainIdle(image);
   return { drained: result.drained.length };
+}
+
+/**
+ * Probe every ready warm-pool entry and destroy the ones whose container is
+ * gone. THIS IS THE MISSING CALLER, the same omission as `replenish` below and
+ * with a worse consequence: `WarmPoolManager.healthCheck()` was reachable only
+ * from `/api/v1/cron/pool-health-check` on the deprecated container-control-
+ * plane, so nothing has probed a ready pool entry since that service stopped
+ * being deployed.
+ *
+ * Nothing else can see those entries. The heartbeat sweep skips them —
+ * `listRunning()` filters on `execution_tier != 'shared'` and `createPoolEntry`
+ * never sets the tier, so every pool row defaults to `shared` while still
+ * holding a real `node_id` and `container_name`. `reconcileUnclaimable` cannot
+ * reach them either: its candidate query excludes rows that ARE ready. So a
+ * ready pool entry whose container died stayed `running` forever, kept its slot,
+ * counted against the node's allocation, and — because `findDrainCandidates`
+ * treats any allocation as proof of a workload — made its node permanently
+ * undrainable. Measured on production 2026-08-06: three autoscaled nodes empty
+ * of containers, four such rows each, counted full for ten days.
+ *
+ * Runs BEFORE replenish so the refill decision sees the depth left after dead
+ * entries are collected, and self-gates on `WARM_POOL_ENABLED`.
+ */
+export async function processPoolHealthCheckCycle(): Promise<PoolHealthCheckSummary> {
+  const pool = await getWarmPoolManager();
+  const result = await pool.healthCheck();
+  return {
+    probed: result.probed,
+    alive: result.alive,
+    removed: result.removed.length,
+  };
 }
 
 /**
@@ -1760,6 +1798,25 @@ async function runInfraMaintenanceCycle(
       if (result.drained > 0) {
         logger.info("[provisioning-worker] warm pool drain cycle complete", {
           drained: result.drained,
+        });
+      }
+    },
+  );
+
+  // Probe ready warm-pool entries and collect the ones whose container is gone.
+  // Runs BEFORE replenish so the refill decision sees real depth, and after
+  // drain so it does not probe entries the drain just removed.
+  await runBoundedPhase(
+    logger,
+    "warm pool health check cycle",
+    () => processPoolHealthCheckCycle(),
+    (result) => {
+      if (result.removed > 0) {
+        logger.info("[provisioning-worker] warm pool health check complete", {
+          event: "warm_pool.dead_entries_collected",
+          probed: result.probed,
+          alive: result.alive,
+          removed: result.removed,
         });
       }
     },
