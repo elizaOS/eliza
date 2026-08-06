@@ -273,6 +273,25 @@ describe("collectPluginNames runtime mode provider policy", () => {
     expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
   });
 
+  it("does not load an arbitrary package for an unknown direct backend", () => {
+    const config: ElizaConfig = {
+      deploymentTarget: {
+        runtime: "cloud",
+        provider: "elizacloud",
+      },
+      serviceRouting: {
+        llmText: {
+          backend: "not-a-provider",
+          transport: "direct",
+        },
+      },
+    } as ElizaConfig;
+
+    const names = collectPluginNames(config);
+
+    expect(names.has("@elizaos/plugin-not-a-provider")).toBe(false);
+  });
+
   it("keeps OpenAI embeddings when Cloud owns text", () => {
     process.env.OPENAI_API_KEY = "sk-test";
 
