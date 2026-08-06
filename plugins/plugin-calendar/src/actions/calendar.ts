@@ -14,6 +14,16 @@ import {
 import { createCalendarActionRunner } from "./calendar-handler.js";
 import type { CalendarActionDeps, CalendarModelCallArgs } from "./deps.js";
 
+/** Rejects planner/schema output before it can replace the grounded fallback. */
+export function looksLikeStructuredCalendarReply(raw: string): boolean {
+  const trimmed = raw.trim();
+  if (!trimmed || /^<[^>]+>/.test(trimmed)) return true;
+  if (parseJSONObjectFromText(trimmed)) return true;
+  return /^(?:subaction|shouldAct|response|operation|confidence|missing)\s*:/m.test(
+    trimmed,
+  );
+}
+
 const standaloneCalendarDeps: CalendarActionDeps = {
   async runTextModel(args) {
     if (typeof args.runtime.useModel !== "function") return null;
@@ -75,7 +85,7 @@ const standaloneCalendarDeps: CalendarActionDeps = {
         prompt,
       });
       const raw = typeof result === "string" ? result.trim() : "";
-      if (!raw || parseJSONObjectFromText(raw)) return args.fallback;
+      if (looksLikeStructuredCalendarReply(raw)) return args.fallback;
       return raw.replace(/^["'`]+|["'`]+$/g, "").trim() || args.fallback;
     } catch (error) {
       // error-policy:J4 Reply synthesis is optional; the grounded action result
