@@ -11,7 +11,11 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { IAgentRuntime, Memory } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  Memory,
+  VoiceSpeakerNameInferencePayload,
+} from "@elizaos/core";
 import { EventType } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -56,13 +60,23 @@ function makeRuntime(entityId: string): {
   emitEvent: ReturnType<typeof vi.fn>;
 } {
   const emitEvent = vi.fn(
-    async (type: string, payload: { imprintClusterId: string; text: string }) => {
+    async (
+      type: string,
+      payload: {
+        imprintClusterId: string;
+        text: string;
+        speakerNameInference?: VoiceSpeakerNameInferencePayload;
+      },
+    ) => {
       if (type === EventType.VOICE_TURN_OBSERVED) {
         await handleVoiceEntityBound({
           runtime: {} as IAgentRuntime,
           imprintClusterId: payload.imprintClusterId,
           entityId,
           displayName: payload.text.replace(/^This is\s+/, "").replace(/\.$/, ""),
+          ...(payload.speakerNameInference
+            ? { speakerNameInference: payload.speakerNameInference }
+            : {}),
         });
       }
     },
@@ -132,12 +146,31 @@ describe("identifySpeakerAction", () => {
     expect(emitEvent).toHaveBeenCalledTimes(1);
     const [eventType, payload] = emitEvent.mock.calls[0] as [
       string,
-      { imprintClusterId: string; text: string; matchedEntityId: string | null },
+      {
+        imprintClusterId: string;
+        text: string;
+        matchedEntityId: string | null;
+        speakerNameInference: VoiceSpeakerNameInferencePayload;
+      },
     ];
     expect(eventType).toBe(EventType.VOICE_TURN_OBSERVED);
     expect(payload.imprintClusterId).toBe("cluster_unknown");
     expect(payload.text).toBe("This is Jill.");
     expect(payload.matchedEntityId).toBeNull();
+    expect(payload.speakerNameInference).toMatchObject({
+      resolution: "confirmed",
+      displayName: "Jill",
+      confidence: 1,
+      requiresReview: false,
+    });
+    expect(payload.speakerNameInference.provenance).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "user_correction",
+          profileId: unknown.profileId,
+        }),
+      ]),
+    );
 
     expect(result).toMatchObject({ success: true });
     expect((result as { data?: Record<string, unknown> }).data).toMatchObject({
@@ -146,7 +179,13 @@ describe("identifySpeakerAction", () => {
       name: "Jill",
     });
     // The profile is now bound.
-    expect((await store.get(unknown.profileId))?.entityId).toBe("ent_jill");
+    const bound = await store.get(unknown.profileId);
+    expect(bound?.entityId).toBe("ent_jill");
+    expect(bound?.metadata?.label).toBe("Jill");
+    expect(bound?.metadata?.speakerNameInference).toMatchObject({
+      resolution: "confirmed",
+      displayName: "Jill",
+    });
   });
 
   it("fails cleanly when no name can be resolved", async () => {
@@ -181,6 +220,31 @@ describe("identifySpeakerAction", () => {
     );
     expect(result).toMatchObject({ success: false });
     expect(emitEvent).not.toHaveBeenCalled();
+  });
+
+  it("fails visibly when no entity consumer persists the correction", async () => {
+    const profile = await store.createProfile({
+      centroid: unit([0, 1, 0, 0]),
+      embeddingModel: MODEL,
+      imprintClusterId: "cluster_no_consumer",
+      confidence: 0.5,
+      durationMs: 1500,
+    });
+    const emitEvent = vi.fn(async () => undefined);
+    const result = await identifySpeakerAction.handler!(
+      { emitEvent } as unknown as IAgentRuntime,
+      makeMessage("that was Jill"),
+      undefined,
+      undefined,
+      undefined,
+    );
+
+    expect(emitEvent).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({
+      success: false,
+      error: expect.stringContaining("identity sync is unavailable"),
+    });
+    expect((await store.get(profile.profileId))?.entityId).toBeNull();
   });
 
   it("honors an explicit profileId option", async () => {

@@ -171,6 +171,73 @@ describe("VoiceProfileStore — basic round-trip", () => {
 		expect(unbound?.entityId).toBeNull();
 	});
 
+	it("reuses only confirmed provenance-backed names on recurring matches", async () => {
+		const store = await newStore();
+		const centroid = unit([0, 1, 0, 0]);
+		const rec = await store.createProfile({
+			centroid,
+			embeddingModel: MODEL,
+			confidence: 0.9,
+			durationMs: 1500,
+		});
+		await store.bindEntity({
+			profileId: rec.profileId,
+			entityId: "ent_sarah",
+			label: "untrusted-label",
+		});
+		await store.updateMetadata(rec.profileId, {
+			speakerNameInference: {
+				resolution: "confirmed",
+				displayName: "Sarah",
+				confidence: 1,
+				candidateNames: [],
+				provenance: [
+					{
+						source: "user_correction",
+						confidence: 1,
+						profileId: rec.profileId,
+					},
+				],
+				reasonCodes: ["owner_correction"],
+				requiresReview: false,
+			},
+		});
+
+		const reloaded = new VoiceProfileStore({ rootDir: tmpRoot });
+		await reloaded.init();
+		const match = await reloaded.findBestMatch({
+			embedding: centroid,
+			embeddingModel: MODEL,
+		});
+		expect(match?.profile).toMatchObject({
+			entityId: "ent_sarah",
+			label: "Sarah",
+			displayName: "Sarah",
+		});
+		expect(match?.profile.metadata?.speakerNameInference).toMatchObject({
+			resolution: "confirmed",
+			confidence: 1,
+			provenance: [{ source: "user_correction", confidence: 1 }],
+		});
+
+		await reloaded.updateMetadata(rec.profileId, {
+			speakerNameInference: {
+				resolution: "needs_confirmation",
+				displayName: "Wrong Name",
+				confidence: 0.65,
+				provenance: [
+					{ source: "platform_roster", confidence: 0.65 },
+				],
+			},
+		});
+		const withheld = await reloaded.findBestMatch({
+			embedding: centroid,
+			embeddingModel: MODEL,
+		});
+		expect(withheld?.profile.displayName).toBeUndefined();
+		expect(withheld?.profile.label).toBeUndefined();
+	});
+
 	it("deleteProfile refuses bound profiles unless allowBoundEntity", async () => {
 		const store = await newStore();
 		const rec = await store.createProfile({

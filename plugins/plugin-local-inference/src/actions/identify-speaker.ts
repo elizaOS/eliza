@@ -25,7 +25,12 @@ import {
 	type IAgentRuntime,
 	logger,
 	type Memory,
+	type VoiceSpeakerNameInferencePayload,
 } from "@elizaos/core";
+import {
+	inferSpeakerName,
+	type SpeakerNameEvidence,
+} from "../runtime/speaker-name-inference.js";
 import {
 	emitVoiceTurnObserved,
 	getVoiceProfileStore,
@@ -87,6 +92,72 @@ function optionString(options: unknown, key: string): string | null {
 		: null;
 }
 
+function metadataLabel(record: VoiceProfileRecord): string | null {
+	const label = record.metadata?.label;
+	return typeof label === "string" && label.trim() ? label.trim() : null;
+}
+
+function buildSpeakerNameInference(args: {
+	name: string;
+	message: Memory;
+	target: VoiceProfileRecord;
+	records: VoiceProfileRecord[];
+}): VoiceSpeakerNameInferencePayload {
+	const evidence: SpeakerNameEvidence[] = [
+		{
+			source: "user_correction",
+			name: args.name,
+			confidence: 1,
+			profileId: args.target.profileId,
+			...(typeof args.message.id === "string"
+				? { evidenceId: args.message.id }
+				: {}),
+		},
+	];
+	const targetLabel = metadataLabel(args.target);
+	if (targetLabel) {
+		evidence.push({
+			source: "voice_profile",
+			name: targetLabel,
+			confidence: args.target.confidence,
+			profileId: args.target.profileId,
+			...(args.target.entityId ? { entityId: args.target.entityId } : {}),
+		});
+	}
+	for (const record of args.records) {
+		if (
+			record.profileId === args.target.profileId ||
+			record.imprintClusterId !== args.target.imprintClusterId
+		) {
+			continue;
+		}
+		const label = metadataLabel(record);
+		if (!label) continue;
+		evidence.push({
+			source: "speaker_memory",
+			name: label,
+			confidence: record.confidence,
+			profileId: record.profileId,
+			...(record.entityId ? { entityId: record.entityId } : {}),
+			observedAt: record.lastObservedAt,
+		});
+	}
+	const inferred = inferSpeakerName({
+		speakerId: args.target.profileId,
+		imprintClusterId: args.target.imprintClusterId,
+		evidence,
+	});
+	return {
+		resolution: inferred.resolution,
+		...(inferred.displayName ? { displayName: inferred.displayName } : {}),
+		confidence: inferred.confidence,
+		candidateNames: inferred.candidateNames,
+		provenance: inferred.provenance,
+		reasonCodes: inferred.reasonCodes,
+		requiresReview: inferred.requiresReview,
+	};
+}
+
 async function handler(
 	runtime: IAgentRuntime,
 	message: Memory,
@@ -111,6 +182,24 @@ async function handler(
 		await callback?.({ text: out });
 		return { success: false, text: out };
 	}
+	const speakerNameInference = buildSpeakerNameInference({
+		name,
+		message,
+		target,
+		records,
+	});
+	if (
+		speakerNameInference.resolution !== "confirmed" ||
+		!speakerNameInference.displayName
+	) {
+		const out = `I need confirmation before binding that voice to ${name}.`;
+		await callback?.({ text: out });
+		return {
+			success: false,
+			text: out,
+			data: { speakerNameInference },
+		};
+	}
 
 	// Drive the merge engine through the event seam. `emitEvent` awaits all
 	// handlers, so when this resolves the round-trip binding has run.
@@ -122,6 +211,7 @@ async function handler(
 			matchConfidence: 1,
 			matchedEntityId: null,
 			isOwner: false,
+			speakerNameInference,
 		});
 	} catch (err) {
 		logger.error(
@@ -135,9 +225,23 @@ async function handler(
 
 	const updated = await store.get(target.profileId);
 	const entityId = updated?.entityId ?? null;
-	const out = entityId
-		? `Got it — I'll remember ${name}'s voice from now on.`
-		: `Noted ${name}. I'll bind the voice once identity sync is available.`;
+	if (!entityId) {
+		const out = `I couldn't bind ${name}'s voice because identity sync is unavailable.`;
+		await callback?.({ text: out });
+		return {
+			success: false,
+			text: out,
+			error: out,
+			data: {
+				profileId: target.profileId,
+				imprintClusterId: target.imprintClusterId,
+				entityId,
+				name,
+				speakerNameInference,
+			},
+		};
+	}
+	const out = `Got it — I'll remember ${name}'s voice from now on.`;
 	await callback?.({ text: out });
 	return {
 		success: true,
@@ -147,6 +251,7 @@ async function handler(
 			imprintClusterId: target.imprintClusterId,
 			entityId,
 			name,
+			speakerNameInference,
 		},
 	};
 }

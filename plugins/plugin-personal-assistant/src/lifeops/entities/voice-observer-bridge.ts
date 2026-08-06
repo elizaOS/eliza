@@ -74,6 +74,22 @@ export async function handleVoiceTurnObserved(
   payload: VoiceTurnObservedPayload,
 ): Promise<void> {
   const { runtime } = payload;
+  if (
+    payload.speakerNameInference &&
+    (payload.speakerNameInference.resolution !== "confirmed" ||
+      !payload.speakerNameInference.displayName?.trim())
+  ) {
+    logger.info(
+      {
+        turnId: payload.turnId,
+        imprintClusterId: payload.imprintClusterId,
+        resolution: payload.speakerNameInference.resolution,
+        reasonCodes: payload.speakerNameInference.reasonCodes,
+      },
+      "[lifeops] speaker name withheld pending confirmation",
+    );
+    return;
+  }
   let entityId: string;
   let wasCreated: boolean;
   let displayName: string | undefined;
@@ -87,11 +103,15 @@ export async function handleVoiceTurnObserved(
       matchedEntityId: payload.matchedEntityId,
       ...(payload.observedAt ? { observedAt: payload.observedAt } : {}),
       ...(payload.isOwner !== undefined ? { isOwner: payload.isOwner } : {}),
+      ...(payload.speakerNameInference
+        ? { speakerNameInference: payload.speakerNameInference }
+        : {}),
     });
     entityId = result.binding.entityId;
     wasCreated = result.binding.wasCreated;
     displayName = result.binding.resolvedClaimedName ?? undefined;
   } catch (err) {
+    // error-policy:J7 voice attribution diagnostics must not kill capture.
     logger.error(
       {
         err,
@@ -100,6 +120,10 @@ export async function handleVoiceTurnObserved(
       },
       "[lifeops] VOICE_TURN_OBSERVED ingest failed",
     );
+    runtime.reportError("LifeOps.voiceTurnObserved", err, {
+      turnId: payload.turnId,
+      imprintClusterId: payload.imprintClusterId,
+    });
     return;
   }
 
@@ -109,5 +133,8 @@ export async function handleVoiceTurnObserved(
     entityId,
     wasCreated,
     ...(displayName ? { displayName } : {}),
+    ...(payload.speakerNameInference
+      ? { speakerNameInference: payload.speakerNameInference }
+      : {}),
   });
 }

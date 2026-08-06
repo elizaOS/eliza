@@ -295,7 +295,9 @@ export function getAgentSourceAliases(
     return [
       {
         find: /^@elizaos\/agent\/(.+)$/,
-        replacement: toPosix(path.join(sourceRoot, "$1.ts")),
+        // Leave the target extensionless so Vite can resolve both source
+        // files and public directory entries such as services/knowledge-graph.
+        replacement: toPosix(path.join(sourceRoot, "$1")),
       },
       ...getPackageSourceAliases("agent", sourceRoot, {
         includeElizaAlias: options.includeElizaAlias,

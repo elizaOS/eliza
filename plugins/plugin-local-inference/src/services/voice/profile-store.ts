@@ -96,6 +96,59 @@ export interface VoiceImprintMatchHandle {
 const DEFAULT_HOT_CACHE = 30;
 const DEFAULT_COLD_DISK = 200;
 const DEFAULT_UNMATCHED_THRESHOLD = 0.55;
+const SPEAKER_NAME_EVIDENCE_SOURCES = new Set([
+	"platform_roster",
+	"calendar_attendee",
+	"self_introduction",
+	"user_correction",
+	"voice_profile",
+	"speaker_memory",
+]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Return a name only when its stored decision remains auditable and confirmed. */
+function confirmedSpeakerName(
+	metadata: Record<string, unknown> | undefined,
+): string | undefined {
+	const inference = metadata?.speakerNameInference;
+	if (!isRecord(inference) || inference.resolution !== "confirmed") {
+		return undefined;
+	}
+	const name =
+		typeof inference.displayName === "string"
+			? inference.displayName.trim()
+			: "";
+	const confidence = inference.confidence;
+	const provenance = inference.provenance;
+	if (
+		!name ||
+		typeof confidence !== "number" ||
+		!Number.isFinite(confidence) ||
+		confidence < 0 ||
+		confidence > 1 ||
+		!Array.isArray(provenance) ||
+		provenance.length === 0
+	) {
+		return undefined;
+	}
+	for (const evidence of provenance) {
+		if (
+			!isRecord(evidence) ||
+			typeof evidence.source !== "string" ||
+			!SPEAKER_NAME_EVIDENCE_SOURCES.has(evidence.source) ||
+			typeof evidence.confidence !== "number" ||
+			!Number.isFinite(evidence.confidence) ||
+			evidence.confidence < 0 ||
+			evidence.confidence > 1
+		) {
+			return undefined;
+		}
+	}
+	return name;
+}
 
 function iso(): string {
 	return new Date().toISOString();
@@ -422,14 +475,15 @@ export class VoiceProfileStore {
 	private recordToImprintProfile(
 		record: VoiceProfileRecord,
 	): VoiceImprintProfile {
+		const displayName = confirmedSpeakerName(record.metadata);
 		return {
 			id: record.profileId,
 			centroidEmbedding: record.centroid,
 			embeddingModel: record.embeddingModel,
 			sampleCount: record.sampleCount,
 			confidence: record.confidence,
-			label: undefined,
-			displayName: undefined,
+			label: displayName,
+			displayName,
 			entityId: record.entityId,
 			sourceKind: undefined,
 			sourceScopeId: record.imprintClusterId,
