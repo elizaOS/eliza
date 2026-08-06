@@ -83,6 +83,12 @@ export type ServerControlFrame =
   | { t: "llm_first_text"; traceId: string }
   | { t: "speaking_start"; traceId: string }
   | { t: "speaking_end"; traceId: string }
+  | {
+      t: "navigate_view";
+      viewId: string;
+      subview?: string;
+      traceId: string;
+    }
   | { t: "interrupted"; reason: "acoustic" | "explicit"; traceId: string }
   | {
       t: "error";

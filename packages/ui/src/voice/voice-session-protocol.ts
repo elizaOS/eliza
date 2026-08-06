@@ -104,6 +104,13 @@ export interface ServerSpeakingEndEvent {
   traceId: string;
 }
 
+export interface ServerNavigateViewEvent {
+  t: "navigate_view";
+  viewId: string;
+  subview?: string;
+  traceId: string;
+}
+
 export type InterruptionReason = "acoustic" | "explicit";
 
 export interface ServerInterruptedEvent {
@@ -136,6 +143,7 @@ export type ServerControlFrame =
   | ServerLlmFirstTextEvent
   | ServerSpeakingStartEvent
   | ServerSpeakingEndEvent
+  | ServerNavigateViewEvent
   | ServerInterruptedEvent
   | ServerErrorEvent
   | ServerUsageEvent;
@@ -188,6 +196,24 @@ export function parseServerControl(raw: string): ServerControlFrame | null {
   const t = (parsed as { t?: unknown }).t;
   if (typeof t !== "string") return null;
   if (!isKnownServerType(t)) return null;
+  if (t === "navigate_view") {
+    const viewId = readBoundedString((parsed as { viewId?: unknown }).viewId);
+    const traceId = readBoundedString(
+      (parsed as { traceId?: unknown }).traceId,
+    );
+    const rawSubview = (parsed as { subview?: unknown }).subview;
+    const subview =
+      rawSubview === undefined ? null : readBoundedString(rawSubview);
+    if (!viewId || !traceId || (rawSubview !== undefined && !subview)) {
+      return null;
+    }
+    return {
+      t,
+      viewId,
+      ...(subview ? { subview } : {}),
+      traceId,
+    };
+  }
   return parsed as ServerControlFrame;
 }
 
@@ -199,6 +225,7 @@ const SERVER_TYPES: ReadonlySet<string> = new Set<ServerControlType>([
   "llm_first_text",
   "speaking_start",
   "speaking_end",
+  "navigate_view",
   "interrupted",
   "error",
   "usage",
@@ -206,6 +233,12 @@ const SERVER_TYPES: ReadonlySet<string> = new Set<ServerControlType>([
 
 function isKnownServerType(t: string): t is ServerControlType {
   return SERVER_TYPES.has(t);
+}
+
+function readBoundedString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized.length > 0 && normalized.length <= 256 ? normalized : null;
 }
 
 /** Type guard: is this mint response usable (has url + token + sessionId). */

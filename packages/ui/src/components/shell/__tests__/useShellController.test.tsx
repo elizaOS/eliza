@@ -8,7 +8,10 @@
 // store, and voice-output hook are mocked; localStorage is backed by an
 // in-memory Storage so hands-free persistence is real.
 
-import { VOICE_SETTINGS_APPLY_EVENT } from "@elizaos/shared/events";
+import {
+  NAVIGATE_VIEW_EVENT,
+  VOICE_SETTINGS_APPLY_EVENT,
+} from "@elizaos/shared/events";
 import { act, cleanup, renderHook } from "@testing-library/react";
 import {
   afterEach,
@@ -2235,6 +2238,37 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
       });
     } finally {
       window.removeEventListener(RESYNC_EVENT, onResync);
+    }
+  });
+
+  it("dispatches a validated realtime voice view handoff through the shell navigation event", () => {
+    const navigationEvents: CustomEvent[] = [];
+    const onNavigate = (event: Event) => {
+      navigationEvents.push(event as CustomEvent);
+    };
+    window.addEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
+    try {
+      renderHook(() => useShellController());
+      const onServerEvent =
+        realtimeVoiceMock.options?.clientOptions?.onServerEvent;
+
+      act(() => {
+        onServerEvent?.({
+          t: "navigate_view",
+          viewId: "notes",
+          subview: "recent",
+          traceId: "trace-voice-navigation",
+        });
+      });
+
+      expect(navigationEvents).toHaveLength(1);
+      expect(navigationEvents[0]?.detail).toEqual({
+        viewId: "notes",
+        source: "agent",
+        subview: "recent",
+      });
+    } finally {
+      window.removeEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
     }
   });
 });

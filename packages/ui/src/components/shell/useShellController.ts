@@ -27,6 +27,7 @@ import type { AsrProvider } from "../../api/client-types-config";
 import {
   APP_PAUSE_EVENT,
   APP_RESUME_EVENT,
+  dispatchNavigateViewEvent,
   VOICE_CONTROL_EVENT,
   type VoiceControlEventDetail,
 } from "../../events";
@@ -463,6 +464,14 @@ export function useShellController(): ShellController {
 
   const handleRealtimeVoiceServerEvent = React.useCallback(
     (event: ServerControlFrame) => {
+      if (event.t === "navigate_view") {
+        dispatchNavigateViewEvent({
+          viewId: event.viewId,
+          source: "agent",
+          ...(event.subview ? { subview: event.subview } : {}),
+        });
+        return;
+      }
       // The voice gateway submits through the canonical conversation stream,
       // outside this renderer's useChatSend instance. Reconcile at first model
       // text so the committed user turn appears promptly, then at terminal usage
