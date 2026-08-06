@@ -1012,6 +1012,12 @@ async function runContinuumSuite(p, pointer, tag) {
     (await detent(p)) === "half",
     `[${tag}-continuum] grabber tap from INPUT reveals the thread at HALF`,
   );
+  assert(
+    (await p.evaluate(
+      () => document.activeElement?.getAttribute("data-testid"),
+    )) !== "chat-composer-textarea",
+    `[${tag}-continuum] grabber tap keeps the keyboard down after the handle moves`,
+  );
   await grabberTap();
   assert(
     (await detent(p)) === "collapsed" && (await variant(p)) === "closed",
