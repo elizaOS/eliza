@@ -6370,14 +6370,24 @@ function collectPlannerTools(
 	if (!hasAnyAction) return [];
 	const actions = narrowedActions ?? collectActionsFromContext(context);
 	const tierAParents = readTierAParentsFromContext(context);
+	const actionTools = buildPlannerToolsFromTieredActions(actions, {
+		tierAParents,
+		actionLookup: new Map(
+			actions.map((action) => [action.name, action] as const),
+		),
+		tierAChildrenByParent: readTierAChildrenByParentFromContext(context),
+	});
+	const terminalNames = new Set(
+		CORE_PLANNER_TERMINALS.map((tool) => normalizeActionIdentifier(tool.name)),
+	);
+	// REPLY/IGNORE may also be registered runtime actions. The planner-loop owns
+	// these protocol terminals, so keep its canonical definitions exactly once;
+	// duplicate native tool names waste schema tokens and are ambiguous to model
+	// providers that preserve both entries.
 	return [
-		...buildPlannerToolsFromTieredActions(actions, {
-			tierAParents,
-			actionLookup: new Map(
-				actions.map((action) => [action.name, action] as const),
-			),
-			tierAChildrenByParent: readTierAChildrenByParentFromContext(context),
-		}),
+		...actionTools.filter(
+			(tool) => !terminalNames.has(normalizeActionIdentifier(tool.name)),
+		),
 		...CORE_PLANNER_TERMINALS,
 	];
 }
