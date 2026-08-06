@@ -504,6 +504,23 @@ function shouldUseRestOnlyForInsecureWebSocket(
   return rendererProtocol === "https:" || rendererProtocol === "capacitor:";
 }
 
+/**
+ * True only inside a Capacitor native app, where the page origin is a synthetic
+ * bundle host with no server behind it. Plain browsers keep same-origin WS.
+ */
+function isCapacitorNativeRuntime(): boolean {
+  try {
+    const cap = (globalThis as Record<string, unknown>).Capacitor as
+      | { isNativePlatform?: () => boolean }
+      | undefined;
+    return Boolean(cap?.isNativePlatform?.());
+  } catch {
+    // error-policy:J4 capability probe — an unanswerable Capacitor check
+    // means this is not a native mobile shell.
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Network status — listens for the bridged Capacitor `networkStatusChange`
 // event so the WS reconnect scheduler can park itself during airplane mode
@@ -1432,9 +1449,13 @@ export class ElizaClient {
 
     // On Capacitor native (iosScheme/androidScheme = "https"), the origin host
     // is a synthetic bundle host (e.g. "localhost" with no server behind it).
-    // Skip WS if we have no explicit baseUrl and the host doesn't look like a
-    // real backend (no port, not an IP, not a known API domain).
-    if (!this.baseUrl && typeof host === "string") {
+    // Only the native shell gets this exception. A browser on portless HTTPS
+    // commonly has nginx forwarding its real same-origin /ws endpoint.
+    if (
+      !this.baseUrl &&
+      isCapacitorNativeRuntime() &&
+      typeof host === "string"
+    ) {
       const hasPort = host.includes(":");
       const isLoopback =
         host.startsWith("127.") || host.startsWith("localhost:");
