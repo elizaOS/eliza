@@ -26,7 +26,7 @@ jobs:
 const MANUAL_FLEET_WORKFLOW = `name: Test
 jobs:
   test:
-    runs-on: \${{ fromJSON(inputs.runner == 'robot' && vars.HETZNER_FLEET_ONLINE == 'true' && '["self-hosted","hetzner-robot"]' || '["ubuntu-24.04"]') }}
+    runs-on: \${{ fromJSON(inputs.runner != 'robot' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
 `;
 const SAFE_MATRIX_WORKFLOW = `name: Test
 jobs:
@@ -113,7 +113,7 @@ describe("Hetzner fleet routing contract", () => {
   test("rejects a manual fleet choice without the repository opt-in", () => {
     const root = buildRepo(
       MANUAL_FLEET_WORKFLOW.replace(
-        " && vars.HETZNER_FLEET_ONLINE == 'true'",
+        "vars.HETZNER_FLEET_ONLINE != 'true' && '[\"ubuntu-24.04\"]' || ",
         "",
       ),
     );
