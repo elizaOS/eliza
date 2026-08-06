@@ -358,6 +358,23 @@ async function loadPersistedDraft(args: {
   return parseStoredDraft(document.content.text, args.documentId);
 }
 
+async function findStandingDraftDocumentId(args: {
+  documents: CreativeDraftDocumentService;
+  message: Memory;
+}): Promise<string | null> {
+  const documents = await args.documents.listDocuments(args.message, {
+    addedBy: args.message.entityId,
+    scope: "owner-private",
+    tags: ["creative-draft"],
+    limit: 25,
+  });
+  const standing = documents.find((document) => {
+    const metadata = document.metadata as Record<string, unknown> | undefined;
+    return metadata?.documentKind === CREATIVE_DRAFT_DOCUMENT_KIND;
+  });
+  return standing?.id ?? null;
+}
+
 async function updatePersistedDraft(args: {
   documents: CreativeDraftDocumentService;
   message: Memory;
@@ -515,21 +532,21 @@ export const creativeDraftAction: Action & {
       });
 
       if (subaction === "revise") {
-        if (
-          (!params.draftDocumentId && !params.currentDraft) ||
-          !params.revision
-        ) {
+        if (!params.revision) {
           return {
             success: false,
-            text: "To revise, supply the persisted draft document id and the revision.",
+            text: "To revise, supply the requested revision.",
             data: { error: "MISSING_REVISION_INPUT" },
           };
         }
-        const currentDraft = params.draftDocumentId
+        const standingDraftDocumentId =
+          params.draftDocumentId ??
+          (await findStandingDraftDocumentId({ documents, message }));
+        const currentDraft = standingDraftDocumentId
           ? await loadPersistedDraft({
               documents,
               message,
-              documentId: params.draftDocumentId,
+              documentId: standingDraftDocumentId,
             })
           : params.currentDraft;
         if (!currentDraft) {
@@ -555,18 +572,18 @@ export const creativeDraftAction: Action & {
             ? scoreOwnerVoiceFidelity(narrative, styleCard)
             : undefined;
         const draftDocumentId =
-          params.draftDocumentId ??
+          standingDraftDocumentId ??
           (await persistNewDraft({
             runtime,
             documents,
             message,
             draft: revised,
           }));
-        if (params.draftDocumentId) {
+        if (standingDraftDocumentId) {
           await updatePersistedDraft({
             documents,
             message,
-            documentId: params.draftDocumentId,
+            documentId: standingDraftDocumentId,
             draft: revised,
           });
         }

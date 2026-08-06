@@ -63,7 +63,28 @@ function ownerSourceDocument(): Memory {
 
 function harness(options: { transcript?: string } = {}) {
   const stored = new Map<string, string>();
-  const listDocuments = vi.fn(async () => [ownerSourceDocument()]);
+  const listDocuments = vi.fn(async () => {
+    const draftContent = stored.get(DRAFT_DOCUMENT_ID);
+    return [
+      ownerSourceDocument(),
+      ...(draftContent
+        ? [
+            {
+              id: DRAFT_DOCUMENT_ID,
+              agentId: AGENT_ID,
+              entityId: OWNER_ID,
+              roomId: ROOM_ID,
+              content: { text: draftContent },
+              metadata: {
+                documentKind: "creative-owner-voice-draft",
+                scope: "owner-private",
+                tags: ["creative-draft", "owner-voice"],
+              },
+            } satisfies Memory,
+          ]
+        : []),
+    ];
+  });
   const addDocument = vi.fn(async (input: AddDocumentOptions) => {
     stored.set(DRAFT_DOCUMENT_ID, input.content);
     return {
@@ -238,7 +259,6 @@ describe("CREATIVE_DRAFT persisted voice-memo workflow", () => {
       },
       {
         action: "revise",
-        draftDocumentId: DRAFT_DOCUMENT_ID,
         revision: {
           instruction: "Keep the sharper opening.",
           acceptedEdit: "Sharper opening approved.",
