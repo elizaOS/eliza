@@ -553,7 +553,13 @@ export async function executeTriggerTask(
           error: errorMessage,
         },
       })
-      .catch(() => {});
+      .catch((error) => {
+        // error-policy:J7 notification diagnostics must not mask dispatch failure.
+        runtime.reportError("TriggerRuntime.notifyFailure", error, {
+          taskId: task.id,
+          triggerId: trigger.triggerId,
+        });
+      });
   }
 
   if (status === "success") {
@@ -587,7 +593,13 @@ export async function executeTriggerTask(
           workflowExecutionId,
         },
       })
-      .catch(() => {});
+      .catch((error) => {
+        // error-policy:J7 notification diagnostics must not change run success.
+        runtime.reportError("TriggerRuntime.notifySuccess", error, {
+          taskId: task.id,
+          triggerId: trigger.triggerId,
+        });
+      });
   }
 
   const finishedAt = Date.now();

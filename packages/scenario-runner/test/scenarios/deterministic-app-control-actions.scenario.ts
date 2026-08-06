@@ -1,6 +1,6 @@
 /**
  * Keyless catalog coverage for the plugin-app-control action surface against a
- * seeded set of scenario views. Runs on the pr-deterministic lane under the LLM proxy.
+ * seeded set of scenario views. Runs on the pr-deterministic lane under the model provider.
  */
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -86,7 +86,7 @@ function expectActionTurn(
 }
 
 const appLoadDirectory = "/tmp/eliza-app-control-scenario-load/apps";
-const repoRoot = path.resolve(import.meta.dirname, "../../../..");
+const repoRoot = "/tmp/eliza-app-control-scenario-load/repo";
 const feedPluginDir = path.join(repoRoot, "plugins", "plugin-feed");
 const remoteLedgerPluginDir = path.join(
   repoRoot,
@@ -203,16 +203,16 @@ function stopResponse(runId: string) {
   };
 }
 
-function unloadPluginResponse(pluginName: string) {
+function stopByNameResponse() {
   return {
     success: true,
     appName: "feed",
     runId: null,
     stoppedAt: "2026-05-29T12:02:00.000Z",
-    pluginUninstalled: true,
-    needsRestart: true,
-    stopScope: "plugin-uninstalled",
-    message: `Plugin ${pluginName} unloaded.`,
+    pluginUninstalled: false,
+    needsRestart: false,
+    stopScope: "viewer-session",
+    message: "Feed stopped.",
   };
 }
 
@@ -341,7 +341,7 @@ export default scenario({
             request.method === "POST" &&
             request.pathname === "/api/apps/stop"
           ) {
-            return jsonResponse(unloadPluginResponse("@elizaos/plugin-feed"));
+            return jsonResponse(stopByNameResponse());
           }
 
           // VIEWS/delete now performs a real uninstall via POST
@@ -391,13 +391,23 @@ export default scenario({
           force: true,
           recursive: true,
         });
-        await fs.rm(remoteLedgerPluginDir, {
-          force: true,
-          recursive: true,
-        });
         const loadedAppDir = path.join(appLoadDirectory, "app-loaded-console");
+        await fs.mkdir(feedPluginDir, { recursive: true });
         await fs.mkdir(loadedAppDir, { recursive: true });
         await fs.mkdir(remoteLedgerPluginDir, { recursive: true });
+        await fs.writeFile(
+          path.join(feedPluginDir, "package.json"),
+          `${JSON.stringify(
+            {
+              name: "@elizaos/plugin-feed",
+              version: "1.0.0",
+              files: ["dist"],
+            },
+            null,
+            2,
+          )}\n`,
+          "utf8",
+        );
         await fs.writeFile(
           path.join(remoteLedgerPluginDir, "package.json"),
           `${JSON.stringify(
@@ -539,6 +549,18 @@ export default scenario({
         };
 
         return undefined;
+      },
+    },
+  ],
+  cleanup: [
+    {
+      type: "custom",
+      name: "remove app-control source fixtures",
+      apply: async () => {
+        await fs.rm(path.dirname(appLoadDirectory), {
+          force: true,
+          recursive: true,
+        });
       },
     },
   ],
@@ -873,6 +895,28 @@ export default scenario({
     },
     {
       kind: "action",
+      name: "stop feed app",
+      text: "Stop the feed app",
+      actionName: "APP",
+      options: { action: "stop", app: "feed" },
+      responseIncludesAny: ["Feed stopped."],
+      assertTurn: (execution) =>
+        expectActionTurn(execution, {
+          actionName: "APP",
+          parameters: { action: "stop", app: "feed" },
+          responseText: "Feed stopped.",
+          resultFields: {
+            "values.mode": "stop",
+            "values.appName": "feed",
+            "values.runId": null,
+            "values.stopScope": "viewer-session",
+            "data.stop.pluginUninstalled": false,
+            "data.stop.needsRestart": false,
+          },
+        }),
+    },
+    {
+      kind: "action",
       name: "create-mode edit feed board view",
       text: "Create improvements for the feed board view",
       actionName: "VIEWS",
@@ -911,7 +955,7 @@ export default scenario({
         intent: "Make feed board show denser queue rows",
         view: "feed-board",
       },
-      responseIncludesAny: ["Started view edit task for Feed Board"],
+      responseIncludesAny: ["Started editing Feed Board"],
       assertTurn: (execution) =>
         expectActionTurn(execution, {
           actionName: "VIEWS",
@@ -920,7 +964,8 @@ export default scenario({
             intent: "Make feed board show denser queue rows",
             view: "feed-board",
           },
-          responseText: `Started view edit task for Feed Board at ${feedPluginDir}. Task session scenario-edit-view-feed-board is running.`,
+          responseText:
+            "Started editing Feed Board — I'll report back here when the change is done.",
           resultFields: {
             "values.mode": "edit",
             "values.viewId": "feed-board",
@@ -1015,7 +1060,9 @@ export default scenario({
         editTarget: "feed",
         intent: "Tighten the feed app table density",
       },
-      responseIncludesAny: ["Started app edit task for Feed"],
+      // Chat gets one human sentence; the dispatch internals (workdir, session
+      // id, APP_CREATE_DONE) stay planner-facing in the action result text.
+      responseIncludesAny: ["Updating Feed now"],
       assertTurn: (execution) =>
         expectActionTurn(execution, {
           actionName: "APP",
@@ -1024,8 +1071,10 @@ export default scenario({
             editTarget: "feed",
             intent: "Tighten the feed app table density",
           },
-          responseText: `Started app edit task for Feed at ${feedPluginDir}. Task session scenario-edit-app-feed is running; verification will run when it emits APP_CREATE_DONE.`,
+          responseText:
+            "Updating Feed now — I'll post the link once the changes are live.",
           resultFields: {
+            text: `Started app edit task for Feed at ${feedPluginDir}. Task session scenario-edit-app-feed is running; verification runs when it emits APP_CREATE_DONE.`,
             "values.mode": "create",
             "values.subMode": "edit",
             "values.name": "feed",
@@ -1047,7 +1096,7 @@ export default scenario({
       type: "actionCalled",
       actionName: "APP",
       status: "success",
-      minCount: 5,
+      minCount: 6,
     },
     {
       type: "selectedActionArguments",
@@ -1080,6 +1129,7 @@ export default scenario({
         /"list"/,
         /"launch"/,
         /"relaunch"/,
+        /"stop"/,
         /"load_from_directory"/,
         /"create"/,
         /run-feed-launch-1/,
@@ -1296,6 +1346,23 @@ export default scenario({
             pathname: "/api/apps/launch",
             response: {
               body: launchResponse("run-feed-relaunch-2"),
+              status: 200,
+            },
+            search: "",
+          },
+          {
+            body: null,
+            method: "GET",
+            pathname: "/api/apps/installed",
+            response: { body: installedApps, status: 200 },
+            search: "",
+          },
+          {
+            body: { name: "feed" },
+            method: "POST",
+            pathname: "/api/apps/stop",
+            response: {
+              body: stopByNameResponse(),
               status: 200,
             },
             search: "",

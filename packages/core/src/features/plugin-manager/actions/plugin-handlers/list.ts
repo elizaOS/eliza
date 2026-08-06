@@ -1,9 +1,4 @@
-/**
- * @module features/plugin-manager/actions/plugin-handlers/list
- *
- * `list` sub-mode of the PLUGIN action. Reports the loaded
- * plugins in the runtime as tracked by PluginManagerService.
- */
+/** Reports plugins loaded in the runtime and tracked by the plugin manager. */
 
 import type {
 	ActionResult,
@@ -25,8 +20,9 @@ export async function runList({
 		"plugin_manager",
 	) as PluginManagerService | null;
 	if (!service) {
+		// Planner-facing only: raw service-availability tool-speak stays out of
+		// chat; the evaluator owns telling the user, in voice.
 		const text = "Plugin manager service not available";
-		await callback?.({ text });
 		return { success: false, text };
 	}
 
@@ -37,7 +33,17 @@ export async function runList({
 	if (all.length === 0 && installed.length === 0) {
 		const text = "No plugins are loaded or installed.";
 		await callback?.({ text });
-		return { success: true, text, values: { mode: "list", count: 0 } };
+		// The listing is the complete answer to a single-operation turn: verified
+		// + turnComplete make the callback the sole delivery instead of
+		// double-messaging with the evaluator.
+		return {
+			success: true,
+			text,
+			userFacingText: text,
+			verifiedUserFacing: true,
+			turnComplete: true,
+			values: { mode: "list", count: 0 },
+		};
 	}
 
 	if (all.length > 0) {
@@ -60,6 +66,9 @@ export async function runList({
 	return {
 		success: true,
 		text,
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		values: {
 			mode: "list",
 			loadedCount: all.length,

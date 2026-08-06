@@ -7,8 +7,9 @@ This directory contains GitHub Actions workflows for the elizaOS project (v2.0.0
 | Workflow | Trigger | Purpose |
 |----------|---------|---------|
 | `ci.yaml` | Push/PR to main | Main-specific CI - typecheck, tests, lint, build, dev startup |
-| `develop-pr.yml` | PR to develop | Lightweight lint, typecheck, build, and deterministic lane-integrity checks |
-| `develop-pr-gate.yml` | PR target to develop, manual canaries | Stable fail-closed aggregate over the nine lightweight required contexts |
+| `develop-pr.yml` | PR to develop | Lightweight lint, typecheck, and build checks |
+| `develop-pr-gate.yml` | PR target to develop, manual canaries | Base-trusted exact-head aggregate for merge-critical PR checks |
+| `stale-base-guard.yml` | PRs | Content-level silent-revert detection with explicit acknowledgement |
 | `test.yml` | Push to develop, manual, schedule | Broader post-merge develop tests; live jobs are separate |
 | `quality.yml` | PR to main, push main/develop, manual | Extended format, homepage, secret, UI-determinism, and lint checks |
 | `scenario-pr.yml` | PR to main, push develop, manual/schedule | Secret-free deterministic scenario/browser E2E gate |
@@ -16,12 +17,11 @@ This directory contains GitHub Actions workflows for the elizaOS project (v2.0.0
 | `release-orchestrator.yml` | Manual on protected `develop` | Sole full-cohort npm/GitHub Release entry; exact-SHA gate before distribution fan-out |
 | `release.yaml` | Reusable call only | Exact-SHA transactional npm, tag, and GitHub release |
 | `release-candidate-pr.yml` | PRs changing release authority | Credential-free candidate plus real local transport receipts |
-| `elizaos-os-full-release.yml` | Release created, manual | Configured automatic OS artifact/manifest path; currently startup-invalid |
-| `update-os-release-manifest.yml` | Manual only | SHA- and exact-asset-bound OS manifest recovery through a draft pull request |
 | `claude.yml` | @claude mentions | Interactive Claude assistance |
 | `claude-code-review.yml` | PR opened | Automated code review |
 | `claude-security-review.yml` | PR opened | Security-focused review |
 | `docs-ci.yml` | PR (docs paths), Manual | Documentation quality checks |
+| `skill-review.yml` | PRs changing `SKILL.md` | Secretless deterministic validation with the trusted canonical validator |
 | `build-agent-image.yml` | Push develop/main, Release, Manual | Docker image builds (`:develop`, `:stable`, `:latest`, release tags) |
 | `build-llama-ffi-android.yml` | Native-source push to develop, tag, manual, reusable | Canonical fused Android producer: arm64-v8a Vulkan and x86_64 CPU artifacts |
 | `build-android.yml` | Manual | Android app build; finds an input-compatible native producer run through the Actions API |
@@ -29,19 +29,14 @@ This directory contains GitHub Actions workflows for the elizaOS project (v2.0.0
 | `apple-store-release.yml` | Manual, reusable | Canonical signed iOS/macOS store build and publish authority |
 | `tee-build-deploy.yml` | Push to main, Manual | TEE deployment to Phala Cloud |
 | `weekly-maintenance.yml` | Weekly, Manual | Dependency/security audits |
-| `jsdoc-automation.yml` | Manual | JSDoc generation |
 
 ## Release Workflows
 
-The retained automated graph has three distinct responsibilities:
+The retained automated graph has two distinct responsibilities:
 `release-orchestrator.yml` is the sole full-cohort entry point,
-`release.yaml` performs the transactional npm/tag/GitHub Release operation,
-and `elizaos-os-full-release.yml` is the only configured automatic OS
-artifact/manifest path. The manual
-`update-os-release-manifest.yml` recovery workflow is intentionally outside
-that graph: it can only propose a SHA-bound checksum repair through a pull
-request. Do not add another automatic aggregate or direct protected-branch
-manifest writer.
+and `release.yaml` performs the transactional npm/tag/GitHub Release operation.
+Operating-system images and manifests are released from
+[`elizaOS/os`](https://github.com/elizaOS/os).
 
 The orchestrator waits for complete npm registry, annotated tag, and GitHub
 Release readback before passing those exact outputs to enabled downstream
@@ -79,37 +74,13 @@ Coordinates npm, Android, Apple, desktop, Homebrew, and homepage release jobs.
 Every enabled distribution requires the transactional npm result; homepage
 publication additionally waits for every enabled distribution to succeed.
 
-### OS artifact manifest (`elizaos-os-full-release.yml`)
-
-This is intended to build and verify Linux OS artifacts, populate their release
-manifest, generate canonical checksums, validate publishability, and upload the
-result. It is the only automatic workflow configured to do so, but its recorded
-runs are startup failures, so it is not a working release authority. Its
-reusable-workflow permissions and end-to-end repair remain in #16279.
-
-### Manual OS manifest recovery (`update-os-release-manifest.yml`)
-
-This manual-only workflow preserves the separate recovery operation needed when
-release assets already exist. Operators must provide the current full
-`origin/develop` SHA and the release tag's full commit SHA. The workflow refuses
-stale or mismatched identities, captures every stable asset database/node ID,
-filename, size, and available GitHub SHA-256, then downloads each asset by its
-captured database ID. It rejects missing or extra files, size/digest mismatches,
-asset replacements, and any
-pre/post API inventory drift before regenerating publishable checksums. The only
-output is a dedicated draft pull request containing all seven evidence rows and
-the exact base, tag, asset, downloaded-byte, and workflow-log receipts. It has no
-`release`, `push`, or `workflow_call` trigger and never pushes to `develop`
-directly.
-
 ## Test Workflows
 
 ### Linux Runner Policy
 
 The heavy post-merge develop **test lanes** in `test.yml` run on the self-hosted
 `self-hosted, hetzner-robot` pool (GitHub-hosted minutes are billing-frozen for
-this org, #13481). Everything the pre-merge **Develop PR Gate** depends on is
-the lightweight PR surface and remains independent of the exhaustive fleet:
+this org, #13481). Pre-merge checks remain independent of the exhaustive fleet:
 
 - **Path classifiers** (`Classify changed paths`) across `test.yml`,
   `scenario-pr.yml`, `dev-smoke.yml`, `docker-ci-smoke.yml`,
@@ -117,39 +88,34 @@ the lightweight PR surface and remains independent of the exhaustive fleet:
   `windows-desktop-preload-smoke.yml` run on `ubuntu-24.04`. They are git-diff +
   node scripts with no self-hosted needs; pinning them to the fleet (#8501) once
   left every downstream job queued indefinitely and gridlocked develop.
-- **`Develop PR Gate`** runs on `ubuntu-24.04` and only observes check metadata
-  from the nine lightweight component contexts. It never waits for post-merge,
-  scheduled, device, aesthetic, or exhaustive suites.
-- **`ci-ok`**, `plugin-tests-status`, and `merge-quality-gate` remain hosted
-  roll-ups inside the post-merge `test.yml` orchestrator. They report branch
-  health after a develop push; they are not the pre-merge required context.
+- **`Develop PR Gate`** is a read-only `pull_request_target` aggregate. It
+  checks out only the base SHA and binds every required result to the PR's exact
+  head SHA, owning workflow, GitHub Actions app, trigger, and terminal success.
+  Missing, stale, skipped, cancelled, timed-out, and failed checks stay red.
+- **`ci-ok`** and `plugin-tests-status` remain result roll-ups inside the
+  post-merge `test.yml` orchestrator. `ci-ok` also depends on the unconditional
+  repo-wide quality job and Linux script-test inventory.
 
-The aggregate contract runs directly under Node in
-`packages/scripts/develop-pr-aggregate.self-test.mjs`; the changed-file gate
-loads the same assertions through
-`packages/scripts/develop-pr-aggregate.test.mjs` so the implementation also
-appears in changed-source coverage reporting.
+The standalone stale-base workflow detects byte-identical historical blob
+restoration inside a PR diff, including the fresh-merge-base failure shape from
+#11271. It intentionally has no commit-count or elapsed-time threshold. The
+`stale-base-ack` label records a deliberate human override.
 
-Two SPOF guards, enforced by `packages/scripts/ci-merge-gate-contract.mjs` (run
-in the `changes` job, #13617):
+`packages/scripts/ci-workflow-invariants.mjs` parses workflow YAML and enforces
+unconditional lint, format, typecheck, gitleaks, and script-test execution plus
+their final-gate dependency edges. The develop PR lint job also runs pinned,
+checksum-verified `actionlint` and `zizmor` binaries.
 
-1. **Fleet-drain toggle.** Every self-hosted lane in `test.yml` reads
-   `runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}`.
-   Unset/anything-but-`false` keeps the current self-hosted placement; there is
-   no way to probe fleet health from a `runs-on:` expression, so during an
-   outage an admin sets repo **variable** `HETZNER_FLEET_ONLINE=false` once and
-   the whole workflow falls back to hosted — one flip unblocks the entire queue
-   instead of per-PR admin-bypass. Keep the runner-agnostic step hardening (no
-   `sudo`-only install/cleanup) so lanes run on either runner type.
-2. **Post-merge quality parity.** `merge-quality-gate` runs the same read-only lint /
-   `format:check` / repo-wide `typecheck` / gitleaks secret scan that guard
-   `main`, and `ci-ok` needs it on develop `push`. The pre-merge
-   `develop-pr.yml` lint job runs `format:check`, and the stable aggregate waits
-   for that exact job, so formatting is refused before merge even when a busy
-   push wave supersedes post-merge quality runs (#15959).
+The self-hosted test lanes require `HETZNER_FLEET_ONLINE=true` to opt into the
+Hetzner fleet. Missing, empty, and false values route to GitHub-hosted runners;
+this fail-safe default is required because repository variables are unavailable
+to fork pull requests. Pull-request lint, format, typecheck, build, and secret
+checks are the only quality checks for the proposed change; the post-merge
+workflow concentrates on running the broader test surface.
 
-GPU / KVM / macOS jobs (labels `gpu-cuda-12.6`, `kvm`, `eliza-e2e-macos`) are a
-separate purpose-built fleet and are unaffected by this policy.
+GPU and macOS jobs (labels `gpu-cuda-12.6` and `eliza-e2e-macos`) are a separate
+purpose-built fleet and are unaffected by this policy. OS-image KVM runners are
+owned by the standalone `elizaOS/os` repository.
 
 The retired `gpu-bench-nightly.yml` scaffold never ran substantive work on its
 schedule: both jobs required an opt-in manual dispatch and invoked removed
@@ -173,6 +139,14 @@ the exact candidate head passes and a maintainer manually reviews the downloaded
 artifacts. Only then may the old leg be retired and the inventory's
 `migrationState` changed. A code-only/non-GPU contract pass is not hardware
 proof and must not close #16449.
+
+`local-inference-matrix.yml` separately protects host execution on changed
+local-inference code. Every selected runner builds `llama-server` from the exact
+native gitlink, verifies a revision- and SHA-256-pinned smoke model, requires two
+successful variants with three samples each, compares backend-specific median
+ratios against the same-run baseline, and uploads an attestation containing the
+binary, model, report, source, workflow, and host identities. Empty caches,
+missing binaries, skipped variants, zero-work reports, and unverified bytes fail.
 
 ### PR Path Gates
 
@@ -258,12 +232,11 @@ Runs on PRs and pushes to main:
 - Linting and formatting checks
 - Build verification
 - Dev startup + HMR propagation
-- Interop TypeScript tests (`packages/interop`)
 
 The broader `test.yml` orchestrator runs after pushes to `develop` to avoid
-duplicating the main-branch CI gate on every PR. The lightweight develop PR
-surface is owned by `develop-pr.yml` and aggregated by `develop-pr-gate.yml`;
-`test.yml` keeps the broader develop push, manual, and scheduled coverage.
+duplicating the main-branch CI surface on every PR. The lightweight develop PR
+checks run directly in `develop-pr.yml`; `test.yml` keeps the broader develop
+push, manual, and scheduled coverage.
 
 ### Live E2E
 
@@ -290,7 +263,13 @@ Dedicated security-focused review for code changes.
 
 ### Claude Interactive (`claude.yml`)
 
-Responds to `@claude` mentions in issues and PRs.
+Responds to authenticated maintainer and collaborator `@claude` mentions in
+issues and PRs. This lane is disabled by default; a repository administrator
+must set `CLAUDE_INTERACTIVE_ENABLED=true` only after accepting the pinned
+third-party action's broad runner filesystem-read boundary, which is not
+confined to the repository. When enabled, the workflow uses an ephemeral
+runner, signed GitHub file operations, no shell or web tools, and a separate
+read-only attribution audit.
 
 ## Documentation Workflows
 
@@ -300,12 +279,10 @@ Documentation quality workflow:
 
 - **Dead Link Checking:** Scans for broken internal/external links
 - **Quality Checks:** Double headers, missing frontmatter, heading hierarchy
+- **Failure policy:** Model failures fail closed, even when no partial edit was
+  written
 
 Automatically creates PRs with fixes when issues are found.
-
-### JSDoc Automation (`jsdoc-automation.yml`)
-
-Manual workflow for generating JSDoc documentation.
 
 ## Manual Release Process
 
@@ -345,8 +322,8 @@ may only use the manual PR boundary documented above.
 | `PHALA_CLOUD_API_KEY` | TEE deployment |
 | `GH_PAT` | Cross-repo operations |
 
-Turbo caching is GitHub-native (`.github/actions/turbo-cache-github` via
-`setup-bun-workspace`) — no Vercel SaaS remote cache, so `TURBO_TOKEN` /
+Turbo caching is GitHub-native through `setup-bun-workspace` — no Vercel SaaS
+remote cache, so `TURBO_TOKEN` /
 `TURBO_TEAM` are no longer used and are banned by
 `ci-workflow-dedup-contract.mjs` (#12341).
 

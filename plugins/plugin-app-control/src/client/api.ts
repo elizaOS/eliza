@@ -6,7 +6,7 @@
  * caller-supplied abort signal can cancel it with the surrounding turn.
  */
 
-import { resolveServerOnlyPort } from "@elizaos/core";
+import { ElizaError, resolveServerOnlyPort } from "@elizaos/core";
 import { createViewsRequestHeaders } from "../actions/views-request-auth.js";
 import type {
 	AppControlErrorPayload,
@@ -16,7 +16,11 @@ import type {
 	InstalledAppInfo,
 } from "../types.js";
 
-const LOOPBACK_READ_DEADLINE_MS = 2_000;
+// The installed-apps route can run a cold app/plugin registry discovery scan
+// (filesystem walk) that legitimately exceeds 2s on slower hosts; a read
+// deadline below the route's real workload guarantees TimeoutError on every
+// cold list. 10s bounds the read without starving the scan.
+const LOOPBACK_READ_DEADLINE_MS = 10_000;
 const LOOPBACK_STOP_DEADLINE_MS = 10_000;
 const APP_LAUNCH_DEADLINE_MS = 120_000;
 
@@ -24,6 +28,7 @@ export interface AppControlClient {
 	listInstalledApps(signal?: AbortSignal): Promise<InstalledAppInfo[]>;
 	listAppRuns(signal?: AbortSignal): Promise<AppRunSummary[]>;
 	launchApp(name: string, signal?: AbortSignal): Promise<AppLaunchResult>;
+	stopApp(name: string, signal?: AbortSignal): Promise<AppStopResult>;
 	stopAppRun(runId: string, signal?: AbortSignal): Promise<AppStopResult>;
 }
 
@@ -62,20 +67,47 @@ async function requestJson<T>(
 	parse: (body: unknown) => T,
 	errorContext: string,
 	deadlineMs: number,
+	acceptExplicitFailure = false,
 ): Promise<T> {
 	const url = `${getApiBase()}${path}`;
 	const deadlineSignal = AbortSignal.timeout(deadlineMs);
 	const callerSignal = init.signal;
-	const response = await fetch(url, {
-		...init,
-		headers: {
-			...createViewsRequestHeaders(),
-			...(init.headers ?? {}),
-		},
-		signal: callerSignal
-			? AbortSignal.any([callerSignal, deadlineSignal])
-			: deadlineSignal,
-	});
+	let response: Response;
+	try {
+		response = await fetch(url, {
+			...init,
+			headers: {
+				...createViewsRequestHeaders(),
+				...(init.headers ?? {}),
+			},
+			signal: callerSignal
+				? AbortSignal.any([callerSignal, deadlineSignal])
+				: deadlineSignal,
+		});
+	} catch (err) {
+		// A caller abort owns turn teardown and must retain its original reason.
+		if (callerSignal?.aborted) throw callerSignal.reason ?? err;
+
+		// error-policy:J2 attach stable transport codes at the HTTP boundary so
+		// action handlers never have to infer network failures from Error classes.
+		if (err instanceof Error && err.name === "TimeoutError") {
+			throw new ElizaError(`Loopback request timed out: ${path}`, {
+				code: "LOOPBACK_TIMEOUT",
+				cause: err,
+				context: { path, deadlineMs },
+				severity: "ephemeral",
+			});
+		}
+		if (err instanceof TypeError) {
+			throw new ElizaError(`Loopback service is unreachable: ${path}`, {
+				code: "LOOPBACK_UNREACHABLE",
+				cause: err,
+				context: { path },
+				severity: "ephemeral",
+			});
+		}
+		throw err;
+	}
 
 	const rawText = await response.text();
 	let body: unknown = null;
@@ -94,10 +126,10 @@ async function requestJson<T>(
 		throw new Error(extractErrorMessage(response.status, body, errorContext));
 	}
 
-	// The server sometimes returns { success: false } with a 200 status (e.g.
-	// app not found). Surface those as explicit errors instead of trying to
-	// parse them into a typed result.
+	// A small number of mutation routes use HTTP 200 for a typed no-op result.
+	// Only callers with a parser for that explicit failure shape may opt in.
 	if (
+		!acceptExplicitFailure &&
 		body &&
 		typeof body === "object" &&
 		(body as AppControlErrorPayload).success === false
@@ -218,12 +250,20 @@ function parseStopResult(body: unknown): AppStopResult {
 	const stoppedAt = entry.stoppedAt;
 	const stopScope = entry.stopScope;
 	const message = entry.message;
+	const success = entry.success;
+	const pluginUninstalled = entry.pluginUninstalled;
+	const needsRestart = entry.needsRestart;
+	const runId = entry.runId;
 	if (
 		typeof appName !== "string" ||
 		typeof stoppedAt !== "string" ||
-		typeof message !== "string"
+		typeof message !== "string" ||
+		typeof success !== "boolean" ||
+		typeof pluginUninstalled !== "boolean" ||
+		typeof needsRestart !== "boolean" ||
+		(runId !== null && typeof runId !== "string")
 	) {
-		throw new Error("Malformed stop result: missing required string fields");
+		throw new Error("Malformed stop result: missing required fields");
 	}
 	if (
 		stopScope !== "plugin-uninstalled" &&
@@ -232,14 +272,13 @@ function parseStopResult(body: unknown): AppStopResult {
 	) {
 		throw new Error(`Malformed stop result: unexpected stopScope ${stopScope}`);
 	}
-	const runId = entry.runId;
 	return {
-		success: entry.success !== false,
+		success,
 		appName,
-		runId: typeof runId === "string" ? runId : null,
+		runId,
 		stoppedAt,
-		pluginUninstalled: Boolean(entry.pluginUninstalled),
-		needsRestart: Boolean(entry.needsRestart),
+		pluginUninstalled,
+		needsRestart,
 		stopScope,
 		message,
 	};
@@ -281,6 +320,21 @@ export function createAppControlClient(): AppControlClient {
 			);
 		},
 
+		async stopApp(name: string, signal?: AbortSignal) {
+			return requestJson(
+				"/api/apps/stop",
+				{
+					method: "POST",
+					body: JSON.stringify({ name }),
+					signal,
+				},
+				parseStopResult,
+				`Failed to stop app ${name}`,
+				LOOPBACK_STOP_DEADLINE_MS,
+				true,
+			);
+		},
+
 		async stopAppRun(runId: string, signal?: AbortSignal) {
 			return requestJson(
 				`/api/apps/runs/${encodeURIComponent(runId)}/stop`,
@@ -288,6 +342,7 @@ export function createAppControlClient(): AppControlClient {
 				parseStopResult,
 				`Failed to stop app run ${runId}`,
 				LOOPBACK_STOP_DEADLINE_MS,
+				true,
 			);
 		},
 	};

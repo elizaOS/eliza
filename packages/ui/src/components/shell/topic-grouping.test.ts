@@ -1,3 +1,4 @@
+/** Verifies groupMessagesByTopic through the package's configured test harness. */
 // Unit coverage for the pure topic-clustering helpers (#8928): groupMessagesByTopic
 // segments a transcript by dominant topic (untagged messages extend the current
 // run, no fragmentation) and deriveChannelTopics ranks the channel's chips.

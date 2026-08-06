@@ -405,6 +405,7 @@ function selectConnectorFallback(payload: {
 
 async function buildSynthesisResultText(payload: {
   tasks: Array<{
+    label?: string;
     originalTask: string;
     completionSummary: string;
     validationSummary?: string;
@@ -421,13 +422,36 @@ async function buildSynthesisResultText(payload: {
 }
 
 async function buildTaskResultLine(task: {
+  label?: string;
   originalTask: string;
   completionSummary: string;
   validationSummary?: string;
+  status: string;
   agentType: string;
   workdir?: string;
 }): Promise<string> {
   const validationSummary = task.validationSummary?.trim();
+  // Lifecycle-only relay for any task that did not complete cleanly. A
+  // stopped/errored session's transcript tail is mid-task inner monologue and
+  // its completionSummary can carry raw lastOutput — neither is a result the
+  // user should see. The verification verdict (validationSummary) is the one
+  // user-actionable payload such a task owns; otherwise state what happened.
+  if (task.status !== "completed") {
+    if (validationSummary) return validationSummary;
+    // originalTask can be the ENTIRE composed kickoff prompt (the tasks.ts
+    // "--- Swarm Coordination ---" scaffold plus embedded examples) — relaying
+    // it raw posted a wall of prompt text to a live Discord room. Prefer the
+    // spawn label; a kickoff-shaped originalTask is never usable, otherwise a
+    // single capped line keeps the lifecycle notice a notice.
+    const label = task.label?.trim();
+    const firstLine = task.originalTask.split("\n", 1)[0]?.trim() ?? "";
+    const ask =
+      label ||
+      (task.originalTask.includes("--- Swarm Coordination ---")
+        ? "coding task"
+        : firstLine.slice(0, 140) || "coding task");
+    return `${ask} — ${task.status} before completion.`;
+  }
   // Defense-in-depth for issue elizaOS/eliza#11578: strip any captured
   // `[tool output: …]` envelope blocks from the completionSummary before it is
   // relayed VERBATIM to the connector. The coordinator now sanitizes at the
@@ -452,9 +476,17 @@ async function buildTaskResultLine(task: {
       : completionSummary;
   }
   if (validationSummary) return validationSummary;
+  // Same rule as the non-completed branch: originalTask can be the entire
+  // composed kickoff prompt — never echo it raw. Prefer the label; a
+  // kickoff-shaped task is unusable; otherwise one capped line.
+  const taskLine = task.originalTask.includes("--- Swarm Coordination ---")
+    ? task.label?.trim() || "Task completed."
+    : task.originalTask.split("\n", 1)[0]?.trim().slice(0, 140) ||
+      task.label?.trim() ||
+      "Task completed.";
   const portMatch = task.originalTask.match(/port\s+(\d+)/i);
   const port = portMatch?.[1];
-  if (!port) return task.originalTask;
+  if (!port) return taskLine;
   if (await isPortServing(port)) {
     const host = process.env.ELIZA_PUBLIC_HOST ?? "localhost";
     return `built and serving at http://${host}:${port}`;

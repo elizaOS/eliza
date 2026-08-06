@@ -1,3 +1,4 @@
+/** Verifies startup-telemetry through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * The startup trace recorder (`startup-telemetry`): mark/measure accumulation,

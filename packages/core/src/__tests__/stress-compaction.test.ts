@@ -164,6 +164,8 @@ function makeRuntime(opts: {
 		character: { name: "Test Agent", system: "You are concise." },
 		actions: opts.actions,
 		providers: [],
+		getRoom: vi.fn(async () => null),
+		reportError: vi.fn(),
 		contexts: opts.contextRegistry,
 		responseHandlerFieldRegistry,
 		responseHandlerFieldEvaluators: [

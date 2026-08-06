@@ -26,6 +26,7 @@ interface ReportedElement {
 
 export function buildPayload(registry: ViewAgentRegistry): {
   viewId: string;
+  viewType: "gui" | "tui" | "xr";
   elements: ReportedElement[];
 } {
   const snap = registry.snapshot();
@@ -36,7 +37,7 @@ export function buildPayload(registry: ViewAgentRegistry): {
     ...(!e.sensitive && typeof e.value === "string" ? { value: e.value } : {}),
     ...(e.focused ? { focused: true } : {}),
   }));
-  return { viewId: snap.viewId, elements };
+  return { viewId: snap.viewId, viewType: snap.viewType, elements };
 }
 
 /**
@@ -57,15 +58,20 @@ export function useAgentSurfaceElementReporter(
     let cancelled = false;
 
     const flush = () => {
-      const { viewId, elements } = buildPayload(registry);
+      const { viewId, viewType, elements } = buildPayload(registry);
       // Nothing addressable yet (e.g. before any useAgentElement mounts, or a
       // non-instrumented view) → skip the POST. Navigation clears server-side
       // elements on view switch, so we never need to push an empty snapshot.
       if (elements.length === 0) return;
       void (async () => {
         try {
-          const [{ fetchWithCsrf }, { resolveApiUrl }] = await Promise.all([
+          const [
+            { fetchWithCsrf },
+            { getWindowNavigationPath },
+            { resolveApiUrl },
+          ] = await Promise.all([
             import("../api/csrf-client"),
+            import("../navigation"),
             import("../utils/asset-url"),
           ]);
           await fetchWithCsrf(
@@ -73,7 +79,13 @@ export function useAgentSurfaceElementReporter(
             {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ elements }),
+              // The route path lets a freshly restarted backend restore the
+              // visible surface without promoting a retained/background view.
+              body: JSON.stringify({
+                elements,
+                viewPath: getWindowNavigationPath(),
+                viewType,
+              }),
             },
           );
         } catch {

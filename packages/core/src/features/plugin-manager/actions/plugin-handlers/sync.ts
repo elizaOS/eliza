@@ -1,9 +1,4 @@
-/**
- * @module features/plugin-manager/actions/plugin-handlers/sync
- *
- * `sync` sub-mode of the PLUGIN action. Pulls upstream changes
- * for an ejected plugin.
- */
+/** Pulls upstream changes into a managed local plugin checkout. */
 
 import type {
 	ActionResult,
@@ -46,13 +41,18 @@ export async function runSync({
 		return { success: false, text };
 	}
 
+	// Human wording, no commit-hash git-jargon (it stays in values/data);
+	// verified + turnComplete make the confirmation the sole delivery.
 	const text =
-		`Synced ${result.pluginName}: ${result.upstreamCommits} new upstream commit(s) at ${result.commitHash.slice(0, 8)}` +
-		(result.requiresRestart ? "\nRestart required." : "");
+		`Synced ${result.pluginName} with ${result.upstreamCommits} new upstream update(s).` +
+		(result.requiresRestart ? " A restart is needed to pick them up." : "");
 	await callback?.({ text });
 	return {
 		success: true,
 		text,
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		values: {
 			mode: "sync",
 			name: result.pluginName,

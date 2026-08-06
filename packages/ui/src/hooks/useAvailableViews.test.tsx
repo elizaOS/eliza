@@ -150,7 +150,7 @@ describe("useAvailableViews", () => {
     fetchWithCsrf.mockResolvedValueOnce(
       response(200, {
         views: [
-          view("birdclaw", {
+          view("cockpit", {
             capabilities: [
               {
                 id: "get-state",
@@ -168,7 +168,7 @@ describe("useAvailableViews", () => {
     expect(result.current.error).toBeNull();
     expect(result.current.views).toEqual([
       expect.objectContaining({
-        id: "birdclaw",
+        id: "cockpit",
         capabilities: [
           {
             id: "get-state",
@@ -310,6 +310,12 @@ describe("useAvailableViews", () => {
         builtin: true,
         visibleInManager: false,
         desktopTabEnabled: true,
+      }),
+    );
+    expect(routable.result.current.views).toContainEqual(
+      expect.objectContaining({
+        id: "my-apps",
+        icon: "Boxes",
       }),
     );
   });

@@ -227,13 +227,10 @@ export function normalizeBackgroundConfig(value: unknown): BackgroundConfig {
   return { mode: "shader", color };
 }
 
-// One-shot boot-default migration flag. The boot default changed from the
-// black ember shader to the Canopy wallpaper, but the previous default was
-// eagerly persisted on first boot — "never chose a background" is stored as
-// exactly {mode:"shader", color:#000000} and is indistinguishable from a
-// deliberate pick of the plain black field. The migration rewrites that one
-// shape to the new default a single time; the flag guarantees a user who
-// deliberately returns to the black shader AFTERWARDS keeps it forever.
+// Early builds eagerly persisted untouched fresh state as the exact black
+// shader shape, making it indistinguishable from an intentional selection.
+// This flag permits one safe normalization of that shape. Wallpaper records
+// are never remapped because they lack selected-vs-default provenance.
 const UI_BACKGROUND_DEFAULT_MIGRATION_KEY = "eliza:ui-background-default-v2";
 
 export function loadBackgroundConfig(): BackgroundConfig {
@@ -244,8 +241,8 @@ export function loadBackgroundConfig(): BackgroundConfig {
         UI_BACKGROUND_DEFAULT_MIGRATION_KEY,
       );
       if (!migrated) {
-        // Stamp on the first load either way: a fresh install starts on the
-        // new default, so any later shader-black pick is deliberate.
+        // Stamping before a future selection preserves deliberate black-shader
+        // choices while keeping the normalization one-shot.
         shellLocalStorage.setItem(UI_BACKGROUND_DEFAULT_MIGRATION_KEY, "1");
       }
       if (!raw) return { ...DEFAULT_BACKGROUND_CONFIG };
@@ -690,8 +687,6 @@ export function saveUiShellMode(mode: UiShellMode): void {
 
 function normalizeLastNativeTab(tab: unknown): Tab {
   switch (tab) {
-    case "advanced":
-      return "fine-tuning";
     case "chat":
     case "stream":
     case "apps":
@@ -701,7 +696,6 @@ function normalizeLastNativeTab(tab: unknown): Tab {
     case "triggers":
     case "plugins":
     case "skills":
-    case "fine-tuning":
     case "trajectories":
     case "relationships":
     case "voice":

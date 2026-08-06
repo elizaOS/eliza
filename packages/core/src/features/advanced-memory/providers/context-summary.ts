@@ -5,7 +5,6 @@
  * `runtime.getService("memory")`, trimming the body and topic list to bounded
  * lengths; contributes nothing when no service or summary exists.
  */
-import { logger } from "../../../logger.ts";
 import type {
 	IAgentRuntime,
 	Memory,
@@ -28,6 +27,8 @@ export const contextSummaryProvider: Provider = {
 	contextGate: { anyOf: ["general"] },
 	cacheStable: false,
 	cacheScope: "turn",
+	timeoutMs: 10_000,
+	timeoutMode: "degrade",
 	roleGate: { minRole: "USER" },
 
 	get: async (
@@ -107,7 +108,7 @@ export const contextSummaryProvider: Provider = {
 					topicCount: currentSummary.topics?.length ?? 0,
 				},
 				query: {
-					roomId,
+					roomId: message.roomId,
 				},
 			});
 
@@ -123,16 +124,18 @@ export const contextSummaryProvider: Provider = {
 			};
 		} catch (error) {
 			const err = error instanceof Error ? error.message : String(error);
-			logger.error(
-				{ src: "provider:memory", err },
-				"Error in contextSummaryProvider",
-			);
+			// error-policy:J4 session summaries become explicitly unavailable; a
+			// failed memory read is not an empty session history.
+			runtime.reportError("ContextSummaryProvider.get", error, {
+				roomId: message.roomId,
+			});
 			return {
 				data: {
+					available: false,
 					error: err,
 				},
-				values: { sessionSummaries: "", sessionSummariesWithTopics: "" },
-				text: "",
+				values: { sessionSummariesAvailable: false },
+				text: "Session summaries are unavailable.",
 			};
 		}
 	},

@@ -119,6 +119,41 @@ function options(parameters: Record<string, unknown>): HandlerOptions {
 }
 
 describe("documentAction.validate", () => {
+	it("offers an explicit no-filter scope for strict guided decoding", () => {
+		const scope = documentAction.parameters?.find(
+			(parameter) => parameter.name === "scope",
+		);
+
+		expect(scope?.schema).toMatchObject({
+			type: "string",
+			enum: [
+				"global",
+				"owner-private",
+				"user-private",
+				"agent-private",
+				"all-visible",
+			],
+		});
+		expect(scope?.description).toContain(
+			"use all-visible unless the user explicitly names",
+		);
+	});
+
+	it("allows the strict-decoder zero sentinel for irrelevant limit fields", () => {
+		const limit = documentAction.parameters?.find(
+			(parameter) => parameter.name === "limit",
+		);
+
+		expect(limit?.schema).toMatchObject({
+			type: "number",
+			minimum: 0,
+			maximum: 100,
+		});
+		expect(limit?.description).toContain(
+			"Use 0 when this field is not applicable",
+		);
+	});
+
 	it("is service-presence only — true when the service is registered", async () => {
 		const service = makeService();
 		const { runtime } = makeRuntime(service);
@@ -190,6 +225,69 @@ describe("documentAction.handler structured routing", () => {
 			expect(service[method]).toHaveBeenCalledTimes(1);
 		},
 	);
+
+	it("treats all-visible as no scope filter for list", async () => {
+		const service = makeService();
+		const { runtime } = makeRuntime(service);
+
+		await documentAction.handler?.(
+			runtime,
+			makeMessage("What documents are stored right now?"),
+			undefined,
+			options({ action: "list", scope: "all-visible" }),
+		);
+
+		expect(service.listDocumentsDetailed).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({ scope: undefined }),
+		);
+	});
+
+	it("ignores ungrounded strict-decoder zero sentinels on list", async () => {
+		const service = makeService();
+		const { runtime } = makeRuntime(service);
+
+		await documentAction.handler?.(
+			runtime,
+			makeMessage("List my documents"),
+			undefined,
+			options({
+				action: "list",
+				limit: 0,
+				query: "0",
+				timeRangeStart: "0",
+				timeRangeEnd: "0",
+				scope: "all-visible",
+			}),
+		);
+
+		expect(service.listDocumentsDetailed).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({
+				limit: 25,
+				query: undefined,
+				timeRangeStart: undefined,
+				timeRangeEnd: undefined,
+			}),
+		);
+	});
+
+	it("preserves zero when the user explicitly asks for it", async () => {
+		const service = makeService();
+		const { runtime } = makeRuntime(service);
+
+		await documentAction.handler?.(
+			runtime,
+			makeMessage("List documents matching 0"),
+			undefined,
+			options({ action: "list", query: "0", scope: "all-visible" }),
+		);
+
+		expect(service.listDocumentsDetailed).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({ query: "0" }),
+		);
+	});
 
 	it("keeps query-miss fallback documents separate from matched documents", async () => {
 		const service = makeService();
@@ -411,7 +509,9 @@ describe("documentAction.handler structured routing", () => {
 			error: "missing_sub_action",
 			missing: ["query"],
 		});
-		expect(clarifications).toHaveLength(1);
+		// Planner-facing contract: the clarification ask rides result.text;
+		// no visible callback fires (the evaluator voices the question).
+		expect(clarifications).toHaveLength(0);
 	});
 
 	it("asks for clarification when write has no text the extractor can supply", async () => {
@@ -447,7 +547,9 @@ describe("documentAction.handler structured routing", () => {
 			error: "missing_sub_action",
 			missing: ["text"],
 		});
-		expect(clarifications).toHaveLength(1);
+		// Planner-facing contract: the clarification ask rides result.text;
+		// no visible callback fires (the evaluator voices the question).
+		expect(clarifications).toHaveLength(0);
 	});
 
 	it("forwards a structured documentId to read without scanning the text", async () => {

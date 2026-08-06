@@ -19,7 +19,6 @@ import { ServiceType } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/core/testing";
 import { describe, expect, it, vi } from "vitest";
 import {
-  APPROVAL_SERVICE,
   type ApprovalEnqueueInput,
   ApprovalNotFoundError,
   ApprovalService,
@@ -300,11 +299,6 @@ function messageInput(
 }
 
 describe("ApprovalService", () => {
-  it("exposes the canonical serviceType literal", () => {
-    expect(ApprovalService.serviceType).toBe("eliza_approval");
-    expect(APPROVAL_SERVICE).toBe("eliza_approval");
-  });
-
   it("resolveApprovalService returns null when unregistered", () => {
     const runtime = createMockRuntime({ getService: () => null });
     expect(resolveApprovalService(runtime)).toBeNull();

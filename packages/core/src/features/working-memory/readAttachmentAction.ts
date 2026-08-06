@@ -243,6 +243,10 @@ async function saveAttachmentAsDocument(params: {
 	actionParams: Record<string, unknown>;
 	callback?: HandlerCallback;
 }): Promise<ActionResult> {
+	// suppressPostActionContinuation makes these callbacks the turn's sole
+	// delivery — removing them would end the turn silently, so the failure
+	// texts stay visible but in voice, marked verified (no turnComplete: the
+	// results are failures).
 	if (!params.content.trim()) {
 		const text = missingReadableContentMessage(params.records);
 		await params.callback?.({
@@ -253,6 +257,8 @@ async function saveAttachmentAsDocument(params: {
 		return {
 			success: false,
 			text,
+			userFacingText: text,
+			verifiedUserFacing: true,
 			data: {
 				actionName: "ATTACHMENT",
 				action: "save_as_document",
@@ -265,7 +271,8 @@ async function saveAttachmentAsDocument(params: {
 		DocumentService.serviceType,
 	);
 	if (!service) {
-		const text = "Documents service not available.";
+		const text =
+			"I can't save documents right now — document storage isn't available.";
 		await params.callback?.({
 			text,
 			actions: ["ATTACHMENT_SAVE_AS_DOCUMENT_FAILED"],
@@ -274,6 +281,8 @@ async function saveAttachmentAsDocument(params: {
 		return {
 			success: false,
 			text,
+			userFacingText: text,
+			verifiedUserFacing: true,
 			error: "DOCUMENTS_SERVICE_UNAVAILABLE",
 			data: { actionName: "ATTACHMENT", action: "save_as_document" },
 		};
@@ -318,7 +327,10 @@ async function saveAttachmentAsDocument(params: {
 			attachmentTitles: params.records.map(titleForRecord),
 		},
 	});
-	const text = `Saved "${title}" as a document. Document id: ${stored.clientDocumentId}.`;
+	// No raw UUID in chat — the document id stays planner-facing in data. The
+	// save confirmation is the complete answer to a single-operation turn:
+	// verified + turnComplete make it the sole delivery.
+	const text = `Saved "${title}" as a document.`;
 	await params.callback?.({
 		text,
 		actions: ["ATTACHMENT_SAVE_AS_DOCUMENT_SUCCESS"],
@@ -327,6 +339,9 @@ async function saveAttachmentAsDocument(params: {
 	return {
 		success: true,
 		text,
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		data: {
 			actionName: "ATTACHMENT",
 			action: "save_as_document",
@@ -406,9 +421,18 @@ export const readAttachmentAction: Action = {
 						source: message.content.source,
 					});
 				}
+				// The attachment menu (or "nothing to read") IS the answer the
+				// user must act on: verified + turnComplete make it the sole
+				// delivery instead of pairing it with a second evaluator reply.
 				return {
-					success: false,
-					text: fallback,
+					success: true,
+					text: attachments.length
+						? "No attachment matched; showed the user the available attachments to pick from"
+						: fallback,
+					userFacingText: fallback,
+					verifiedUserFacing: true,
+					turnComplete: true,
+					values: { awaitingSelection: attachments.length > 0 },
 					data: { actionName: "ATTACHMENT", action },
 				};
 			}
@@ -485,9 +509,14 @@ export const readAttachmentAction: Action = {
 				});
 			}
 
+			// The read answer is the complete answer to a single-operation turn:
+			// verified + turnComplete make the callback the sole delivery.
 			return {
 				success: true,
 				text: visibleText,
+				userFacingText: visibleText,
+				verifiedUserFacing: true,
+				turnComplete: true,
 				data: {
 					actionName: "ATTACHMENT",
 					action: "read",
@@ -502,6 +531,11 @@ export const readAttachmentAction: Action = {
 				},
 			};
 		} catch (error) {
+			// error-policy:J1 the attachment action boundary returns a structured
+			// failure and reports the underlying read error to the agent.
+			runtime.reportError("ReadAttachmentAction.handler", error, {
+				roomId: message.roomId,
+			});
 			const errorMessage =
 				error instanceof Error ? error.message : String(error);
 			logger.error("[ReadAttachment] Error:", errorMessage);

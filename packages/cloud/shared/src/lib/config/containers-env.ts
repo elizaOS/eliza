@@ -114,6 +114,66 @@ export const containersEnv = {
     return pick(env.CONTAINERS_DOCKER_NETWORK, env.AGENT_DOCKER_NETWORK) ?? "containers-isolated";
   },
 
+  /**
+   * Image for the per-node local-embedding sidecar (text-embeddings-inference,
+   * CPU build). Pinned to a known tag rather than `latest` so every node in the
+   * fleet runs the same server; bump deliberately via this env.
+   */
+  embeddingSidecarImage(): string {
+    const env = getCloudAwareEnv();
+    return (
+      pick(env.CONTAINERS_EMBEDDING_SIDECAR_IMAGE, env.ELIZA_EMBEDDING_SIDECAR_IMAGE) ??
+      "ghcr.io/huggingface/text-embeddings-inference:cpu-1.8"
+    );
+  },
+
+  /**
+   * Model the embedding sidecar serves. gte-small is the platform's local
+   * embedding standard (384-dim, ~50ms on node CPU) — the same model the
+   * on-device `plugin-local-inference` path uses, so a per-agent cutover to the
+   * sidecar never changes vector width.
+   */
+  embeddingSidecarModelId(): string {
+    const env = getCloudAwareEnv();
+    return (
+      pick(env.CONTAINERS_EMBEDDING_SIDECAR_MODEL_ID, env.ELIZA_EMBEDDING_SIDECAR_MODEL_ID) ??
+      "thenlper/gte-small"
+    );
+  },
+
+  /**
+   * Loopback host port the sidecar publishes on each node (127.0.0.1 only —
+   * the node-side health probe curls it; agents use the bridge network, and
+   * nothing is reachable off-node). Default 8290. Clamped to [1, 65535].
+   */
+  embeddingSidecarHostPort(): number {
+    const env = getCloudAwareEnv();
+    const raw = pick(
+      env.CONTAINERS_EMBEDDING_SIDECAR_HOST_PORT,
+      env.ELIZA_EMBEDDING_SIDECAR_HOST_PORT,
+    );
+    const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+    return Number.isFinite(parsed) && parsed >= 1 && parsed <= 65535 ? parsed : 8290;
+  },
+
+  /**
+   * Whether the node health loop may (re)install a missing embedding sidecar.
+   *
+   * DEFAULT: ON — the durable remediation this exists for: nodes provisioned
+   * before the sidecar shipped in bootstrap converge on the next health cycle
+   * instead of waiting for a hand-install (the failure mode that lost the
+   * fleet's sidecars in the first place). The health verdict is persisted
+   * either way, so disabling self-heal (`false`/`0`) still surfaces absence.
+   */
+  embeddingSidecarSelfHealEnabled(): boolean {
+    const env = getCloudAwareEnv();
+    const raw = pick(
+      env.CONTAINERS_EMBEDDING_SIDECAR_SELF_HEAL,
+      env.ELIZA_EMBEDDING_SIDECAR_SELF_HEAL,
+    );
+    return raw !== "false" && raw !== "0";
+  },
+
   /** Username used for Docker registry pulls on container nodes. */
   registryUsername(): string | undefined {
     const env = getCloudAwareEnv();
@@ -283,11 +343,9 @@ export const containersEnv = {
    * user repo) at create time, so create -> deploy resolves to a prebuilt,
    * allowlisted image instead of failing with "no image to deploy".
    *
-   * Defaults to the published example-app image at the `:showcase` tag that
-   * `.github/workflows/build-example-app-images.yml` publishes (and gates on a
-   * working container before pushing). It sits under `ghcr.io/elizaos/*`, so the
-   * apps-deploy allowlist permits it unchanged. Override the whole ref via
-   * `APP_DEFAULT_TEMPLATE_IMAGE`.
+   * Defaults to the retained `:showcase` template image. It sits under
+   * `ghcr.io/elizaos/*`, so the apps-deploy allowlist permits it unchanged.
+   * Override the whole ref via `APP_DEFAULT_TEMPLATE_IMAGE`.
    *
    * TODO(ops, digest-pin): `:showcase` is a MUTABLE tag — the registry could
    * re-point it after the deploy-time allowlist check. Once a stable showcase

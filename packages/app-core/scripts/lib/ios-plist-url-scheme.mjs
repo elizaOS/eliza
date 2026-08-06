@@ -1,4 +1,8 @@
-/** Supports app-core build, packaging, or development orchestration for ios plist url scheme mjs. */
+/**
+ * String-level Info.plist editing for iOS URL schemes: escapes XML, locates or
+ * creates the CFBundleURLTypes array, and inserts scheme entries without a
+ * plist parser so build scripts can patch generated projects.
+ */
 function escapeXmlText(value) {
   return String(value)
     .replace(/&/g, "&amp;")

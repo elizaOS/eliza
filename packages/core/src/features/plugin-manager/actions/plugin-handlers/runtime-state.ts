@@ -1,8 +1,4 @@
-/**
- * @module features/plugin-manager/actions/plugin-handlers/runtime-state
- *
- * Read and mutate runtime plugin state for the MANAGE_PLUGINS action.
- */
+/** Reads and mutates runtime plugin state for the plugin-management action. */
 
 import type {
 	ActionResult,
@@ -131,9 +127,14 @@ export async function runPluginStatus({
 
 		const text = lines.join("\n");
 		await callback?.({ text });
+		// The status dump IS the answer: verified + turnComplete make it the
+		// sole delivery instead of double-messaging with the evaluator.
 		return {
 			success: true,
 			text,
+			userFacingText: text,
+			verifiedUserFacing: true,
+			turnComplete: true,
 			values: {
 				mode: "status",
 				name,
@@ -169,9 +170,13 @@ export async function runPluginStatus({
 		`  ejected: ${ejected.length}`,
 	].join("\n");
 	await callback?.({ text });
+	// Same single-delivery contract as the per-plugin status dump.
 	return {
 		success: true,
 		text,
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		values: {
 			mode: "status",
 			totalPlugins: all.length,
@@ -235,9 +240,13 @@ export async function runPluginDetails({
 
 	const text = lines.join("\n");
 	await callback?.({ text });
+	// Same single-delivery contract as the status dumps.
 	return {
 		success: true,
 		text,
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		values: {
 			mode: "details",
 			name: registry?.name ?? state?.name ?? name,
@@ -280,11 +289,16 @@ async function setPluginEnabled({
 			await service.unloadPlugin({ pluginId: state.id });
 		}
 		const updated = service.getPlugin(state.id);
-		const text = `Plugin ${state.name} ${enabled ? "enabled" : "disabled"} (${updated?.status ?? state.status}).`;
+		const text = `${enabled ? "Enabled" : "Disabled"} the ${state.name} plugin.`;
 		await callback?.({ text });
+		// The confirmation is the complete answer: verified + turnComplete make
+		// it the sole delivery; the raw status stays in values.
 		return {
 			success: true,
 			text,
+			userFacingText: text,
+			verifiedUserFacing: true,
+			turnComplete: true,
 			values: {
 				mode: enabled ? "enable" : "disable",
 				name: state.name,
@@ -294,11 +308,15 @@ async function setPluginEnabled({
 		};
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		const text = `Failed to ${enabled ? "enable" : "disable"} ${state.name}: ${message}`;
-		await callback?.({ text });
+		// Humanized callback; the raw error stays planner-facing in the result.
+		await callback?.({
+			text: `I couldn't ${enabled ? "enable" : "disable"} the ${state.name} plugin — something went wrong on my end.`,
+		});
+		// error-policy:J1 the action boundary returns an explicit unsuccessful
+		// result after presenting the failure to the user.
 		return {
 			success: false,
-			text,
+			text: `Failed to ${enabled ? "enable" : "disable"} ${state.name}: ${message}`,
 			error: message,
 			values: { name: state.name, enabled },
 		};

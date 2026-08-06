@@ -24,6 +24,7 @@ import type {
 import {
   ChannelType,
   createMessageMemory,
+  ElizaError,
   logger,
   MemoryType,
   stringToUuid,
@@ -400,12 +401,12 @@ type ScenarioRouteRequest = http.IncomingMessage &
 
 type ScenarioRouteResponse = http.ServerResponse & RouteResponse;
 
-type RuntimeWithScenarioLlmFixtures = AgentRuntime & {
-  scenarioLlmFixtures?: {
+type RuntimeWithScenarioModelFixtures = AgentRuntime & {
+  scenarioModelFixtures?: {
     clear?: () => void;
     resetConsumption?: () => void;
   };
-  assertScenarioLlmFixturesConsumed?: () => void;
+  assertScenarioModelFixturesConsumed?: () => void;
 };
 
 type SeedRunResult = {
@@ -425,9 +426,9 @@ function stringifyForJudge(value: unknown, maxLength = 1_200): string {
   }
 }
 
-function resetScenarioLlmFixtures(runtime: AgentRuntime): void {
-  const registry = (runtime as RuntimeWithScenarioLlmFixtures)
-    .scenarioLlmFixtures;
+function resetScenarioModelFixtures(runtime: AgentRuntime): void {
+  const registry = (runtime as RuntimeWithScenarioModelFixtures)
+    .scenarioModelFixtures;
   if (typeof registry?.clear === "function") {
     registry.clear();
     return;
@@ -464,11 +465,11 @@ async function resetSharedSchedulingState(
   await resetLifeOpsScenarioState(runtime);
 }
 
-function assertScenarioLlmFixturesConsumed(
+function assertScenarioModelFixturesConsumed(
   runtime: AgentRuntime,
 ): string | undefined {
-  const assertConsumed = (runtime as RuntimeWithScenarioLlmFixtures)
-    .assertScenarioLlmFixturesConsumed;
+  const assertConsumed = (runtime as RuntimeWithScenarioModelFixtures)
+    .assertScenarioModelFixturesConsumed;
   if (typeof assertConsumed !== "function") {
     return undefined;
   }
@@ -1553,6 +1554,14 @@ async function executeMessageTurn(
   const message: Memory = createMessageMemory({
     id: crypto.randomUUID() as UUID,
     entityId: room.userId,
+    // Real transports stamp the receiving agent on every inbound turn, and the
+    // owner-private disclosure gate REQUIRES it: an absent `agentId` is denied
+    // as `agent_mismatch`, which silently drops every owner-private action from
+    // the planner's tool surface. The planner is then handed an empty tool list
+    // and the turn degrades to REPLY, so a scenario asserting an owner action
+    // fails with no visible cause. Also flips memory scope to `private`, which
+    // is what a one-to-one owner turn actually is.
+    agentId: runtime.agentId,
     roomId: room.roomId,
     content: {
       ...turnContent,
@@ -1675,6 +1684,9 @@ async function executeActionTurn(
   const message: Memory = createMessageMemory({
     id: crypto.randomUUID() as UUID,
     entityId: room.userId,
+    // See the message-turn construction above: the owner-private disclosure
+    // gate denies an agentId-less turn as `agent_mismatch`.
+    agentId: runtime.agentId,
     roomId: room.roomId,
     content: {
       ...turnContent,
@@ -2355,7 +2367,7 @@ export async function runScenario(
   let apiServer: ScenarioApiServer | null = null;
 
   try {
-    resetScenarioLlmFixtures(runtime);
+    resetScenarioModelFixtures(runtime);
     await resetSharedSchedulingState(runtime);
 
     runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", primaryRoom.userId, false);
@@ -2412,12 +2424,26 @@ export async function runScenario(
         const candidate = await loadScenarioRequiredPlugin(pkg, "simulated");
         if (candidate) {
           await runtime.registerPlugin(candidate);
+          // Required-plugin registration waits for every service attempt to
+          // settle so the first scenario turn cannot race a usable service.
+          // A plugin may also bundle credential-gated services the scenario
+          // never touches; their failures are already observable through
+          // AgentRuntime.serviceStart/reportError and do not invalidate the
+          // successfully registered actions or sibling services.
+          await Promise.allSettled(
+            (candidate.services ?? []).map((service) =>
+              runtime.getServiceLoadPromise(service.serviceType),
+            ),
+          );
           autoLoaded.add(pkg);
         }
       } catch (err) {
-        logger.debug(
-          `[scenario-runner] failed to auto-load required plugin ${pkg}: ${err instanceof Error ? err.message : String(err)}`,
-        );
+        // error-policy:J2 Required-plugin startup failures need package context.
+        throw new ElizaError(`Failed to initialize required plugin ${pkg}`, {
+          code: "SCENARIO_REQUIRED_PLUGIN_INIT_FAILED",
+          context: { packageName: pkg },
+          cause: err,
+        });
       }
     }
     const missing = requiredPlugins.filter(
@@ -2643,11 +2669,11 @@ export async function runScenario(
       }
     }
 
-    const fixtureFailure = assertScenarioLlmFixturesConsumed(runtime);
+    const fixtureFailure = assertScenarioModelFixturesConsumed(runtime);
     if (fixtureFailure) {
       report.status = "failed";
       report.failedAssertions.push({
-        label: "llmFixtures",
+        label: "modelFixtures",
         detail: fixtureFailure,
       });
     }

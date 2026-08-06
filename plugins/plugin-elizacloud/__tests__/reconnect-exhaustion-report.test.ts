@@ -13,6 +13,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConnectionMonitor } from "../src/cloud/reconnect";
 
+const HEARTBEAT_INTERVAL_MS = 1_000_000;
+
 /** Minimal client stub: heartbeat + provision both always fail. */
 function deadClient() {
   return {
@@ -32,8 +34,9 @@ describe("ConnectionMonitor reconnect-exhaustion observability (#14415)", () => 
 
   it("fires onReconnectExhausted exactly once with the attempt count", async () => {
     const onReconnectExhausted = vi.fn();
-    // Tiny heartbeat interval + maxFailures=1 so a single failed tick trips
-    // the reconnect loop immediately.
+    // Keep the next heartbeat beyond the entire reconnect window. A tiny
+    // interval would enqueue tens of thousands of no-op ticks under fake time
+    // and can start a second reconnect cycle after the first exhaustion.
     const monitor = new ConnectionMonitor(
       deadClient(),
       "agent-1",
@@ -43,13 +46,13 @@ describe("ConnectionMonitor reconnect-exhaustion observability (#14415)", () => 
         onStatusChange: vi.fn(),
         onReconnectExhausted,
       },
-      10, // heartbeatIntervalMs
+      HEARTBEAT_INTERVAL_MS,
       1 // maxFailures
     );
 
     monitor.start();
     // Fire the first heartbeat tick (heartbeat resolves false → reconnect).
-    await vi.advanceTimersByTimeAsync(10);
+    await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS);
     // Drive all 10 reconnect attempts + their exponential backoff sleeps to
     // completion. Backoff is capped at 60s/attempt; advancing well past the
     // worst-case total flushes the loop.
@@ -75,12 +78,12 @@ describe("ConnectionMonitor reconnect-exhaustion observability (#14415)", () => 
         onStatusChange,
         onReconnectExhausted,
       },
-      10,
+      HEARTBEAT_INTERVAL_MS,
       1
     );
 
     monitor.start();
-    await vi.advanceTimersByTimeAsync(10);
+    await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS);
     // Must not throw out of the monitor's own timer callback (the try/catch in
     // attemptReconnect absorbs the host handler's throw).
     let threw = false;

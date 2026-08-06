@@ -13,12 +13,8 @@ export default defineConfig({
   resolve: {
     alias: [
       {
-        find: "@elizaos/security/mcp-server-config",
-        replacement: path.resolve(rootDir, "../../packages/security/src/mcp-server-config.ts"),
-      },
-      {
-        find: "@elizaos/security",
-        replacement: path.resolve(rootDir, "../../packages/security/src/index.ts"),
+        find: "@elizaos/core/security/mcp-server-config",
+        replacement: path.resolve(rootDir, "../../packages/core/src/security/mcp-server-config.ts"),
       },
       {
         find: "@elizaos/core",

@@ -1,3 +1,8 @@
+/**
+ * Drives the cloud shell's lightweight route-change progress cue. It reflects
+ * navigation presence rather than individual data requests.
+ */
+
 /// <reference path="../types/nprogress.d.ts" />
 import nprogress from "nprogress";
 import { useEffect, useRef } from "react";
@@ -5,15 +10,6 @@ import { useLocation } from "react-router-dom";
 
 nprogress.configure({ showSpinner: false, trickleSpeed: 120, minimum: 0.15 });
 
-/**
- * Drives the nprogress bar from react-router navigation.
- *
- * Strategy: when the location changes, start the bar and finish it shortly
- * after — the bar is a presence cue, not an in-flight indicator (the SPA
- * does its own data fetching with TanStack Query). The previous version
- * had `[]` deps and only fired once; this version reacts to every
- * navigation.
- */
 export function NavigationProgress() {
   const { pathname, search } = useLocation();
   const isFirstRender = useRef(true);

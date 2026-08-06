@@ -70,6 +70,9 @@ export interface Bindings {
    */
   ANONYMOUS_CHAT_GATES?: RuntimeDurableObjectNamespace;
 
+  /** One strongly ordered transcript and replay ledger per onboarding session. */
+  ONBOARDING_SESSIONS?: RuntimeDurableObjectNamespace;
+
   // ---- Cloudflare machine-local protective rate limits ----
   GLOBAL_RATE_LIMITER?: RuntimeRateLimitBinding;
   CHAT_ROUTE_RATE_LIMITER?: RuntimeRateLimitBinding;
@@ -151,6 +154,21 @@ export interface Bindings {
   VOICE_REALTIME_WS_ENABLED?: string;
   /** Cartesia voice id (UUID) used for the realtime downlink. */
   VOICE_REALTIME_CARTESIA_VOICE_ID?: string;
+  /** Default-off flag that promotes Fish Audio to primary realtime TTS. */
+  ELIZA_TTS_FISH_ENABLED?: string;
+  FISH_AUDIO_DATA_GOVERNANCE_APPROVED?: string;
+  /** Server-side Fish Audio API key for realtime TTS. */
+  FISH_AUDIO_API_KEY?: string;
+  /** Fish realtime model: s1, s2-pro, s2.1-pro, or s2.1-pro-free. */
+  FISH_AUDIO_MODEL?: string;
+  /** Fish reference/voice id for realtime TTS. */
+  FISH_AUDIO_REFERENCE_ID?: string;
+  /** Legacy alias for the Fish realtime reference id. */
+  FISH_AUDIO_VOICE_ID?: string;
+  /** Fish realtime output sample rate; the voice-session contract is raw PCM at 16 kHz. */
+  FISH_AUDIO_SAMPLE_RATE?: string;
+  /** Pre-first-audio timeout that permits Fish -> Cartesia fallback. */
+  FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS?: string;
   /**
    * API origin for the LLM leg. The bridge constructs the canonical
    * `/eliza/agents/:agentId/api/conversations/:conversationId/messages/stream`
@@ -201,9 +219,6 @@ export interface Bindings {
    * bytes. Unset uses the route default.
    */
   HF_PROXY_MONTHLY_EGRESS_LIMIT_BYTES?: string;
-  AI_GATEWAY_API_KEY?: string;
-  AIGATEWAY_API_KEY?: string;
-  AI_GATEWAY_BASE_URL?: string;
   VERCEL_OIDC_TOKEN?: string;
   /**
    * Public hostname that serves the BLOB R2 bucket. Used to construct sample

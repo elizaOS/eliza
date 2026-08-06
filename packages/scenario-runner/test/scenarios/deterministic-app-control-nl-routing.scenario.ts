@@ -1,11 +1,12 @@
 /**
  * Keyless coverage that natural-language requests route to the correct
  * plugin-app-control action against seeded scenario views. Runs on the
- * pr-deterministic lane under the LLM proxy (fixtures pin the routing).
+ * pr-deterministic lane under the model provider (fixtures pin the routing).
  */
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { ModelType } from "@elizaos/core";
+import { matchesScenarioInput } from "@elizaos/core/testing";
 import type {
   CapturedAction,
   ScenarioTurnExecution,
@@ -17,9 +18,8 @@ import {
   registerAppControlHttpHandler,
   resetAppControlHttpLoopback,
 } from "./_helpers/app-control-http-loopback";
-import { matchesScenarioInput } from "./_helpers/strict-llm-action-fixtures";
 
-type RuntimeWithScenarioLlmFixtures = {
+type RuntimeWithScenarioModelFixtures = {
   actions?: Array<{
     name: string;
     validate?: (...args: unknown[]) => Promise<boolean> | boolean;
@@ -30,7 +30,7 @@ type RuntimeWithScenarioLlmFixtures = {
   deleteTask?: (taskId: string) => Promise<void>;
   getService?: (serviceType: string) => unknown;
   getTasks?: (query?: Record<string, unknown>) => Promise<unknown[]>;
-  scenarioLlmFixtures?: {
+  scenarioModelFixtures?: {
     register: (...fixtures: Array<Record<string, unknown>>) => void;
   };
 };
@@ -185,7 +185,7 @@ const views = [
 ];
 
 const appLoadDirectory = "/tmp/eliza-app-control-nl-routing/apps";
-const repoRoot = path.resolve(import.meta.dirname, "../../../..");
+const repoRoot = "/tmp/eliza-app-control-nl-routing/repo";
 const feedPluginDir = path.join(repoRoot, "plugins", "plugin-feed");
 const loadAppsInput = `Load apps from ${appLoadDirectory} directory`;
 const editFeedBoardInput = "Edit view feed-board plugin";
@@ -247,16 +247,16 @@ function stopResponse(runId: string) {
   };
 }
 
-function unloadPluginResponse(pluginName: string) {
+function stopByNameResponse() {
   return {
     success: true,
     appName: "feed",
     runId: null,
     stoppedAt: "2026-05-29T12:02:00.000Z",
-    pluginUninstalled: true,
-    needsRestart: true,
-    stopScope: "plugin-uninstalled",
-    message: `Plugin ${pluginName} unloaded.`,
+    pluginUninstalled: false,
+    needsRestart: false,
+    stopScope: "viewer-session",
+    message: "Feed stopped.",
   };
 }
 
@@ -293,14 +293,28 @@ export default scenario({
         process.env.ELIZA_REPO_ROOT = repoRoot;
         process.env.ELIZA_WORKSPACE_DIR = repoRoot;
         resetAppControlHttpLoopback();
-        const runtime = ctx.runtime as RuntimeWithScenarioLlmFixtures;
+        const runtime = ctx.runtime as RuntimeWithScenarioModelFixtures;
 
         await fs.rm(path.dirname(appLoadDirectory), {
           force: true,
           recursive: true,
         });
         const loadedAppDir = path.join(appLoadDirectory, "app-loaded-console");
+        await fs.mkdir(feedPluginDir, { recursive: true });
         await fs.mkdir(loadedAppDir, { recursive: true });
+        await fs.writeFile(
+          path.join(feedPluginDir, "package.json"),
+          `${JSON.stringify(
+            {
+              name: "@elizaos/plugin-feed",
+              version: "1.0.0",
+              files: ["dist"],
+            },
+            null,
+            2,
+          )}\n`,
+          "utf8",
+        );
         await fs.writeFile(
           path.join(loadedAppDir, "package.json"),
           `${JSON.stringify(
@@ -431,7 +445,7 @@ export default scenario({
         };
 
         let launchCount = 0;
-        runtime.scenarioLlmFixtures?.register(
+        runtime.scenarioModelFixtures?.register(
           handleResponseFixture("Open the settings view", "VIEWS"),
           plannerFixture(
             "Open the settings view",
@@ -473,6 +487,16 @@ export default scenario({
               app: "feed",
             },
             "Relaunched Feed. New run ID: run-feed-nl-2.",
+          ),
+          handleResponseFixture("Stop the feed app", "APP"),
+          plannerFixture(
+            "Stop the feed app",
+            "APP",
+            {
+              action: "stop",
+              app: "feed",
+            },
+            "Feed stopped.",
           ),
           handleResponseFixture(loadAppsInput, "APP"),
           plannerFixture(
@@ -524,7 +548,10 @@ export default scenario({
               editTarget: "feed",
               intent: "Tighten the feed app table density",
             },
-            `Started app edit task for Feed at ${feedPluginDir}. Task session scenario-edit-app-feed is running; verification will run when it emits APP_CREATE_DONE.`,
+            // Deliberately distinct from the action's own callback text: the APP
+            // edit path opts into single delivery, so this planner bubble must
+            // never reach chat. The turn asserts the callback sentence instead.
+            "Planner re-render that must not be delivered for the APP edit turn.",
           ),
           handleResponseFixture("Delete the remote ledger view", "VIEWS"),
           plannerFixture(
@@ -534,7 +561,7 @@ export default scenario({
               action: "delete",
               view: "remote-ledger",
               // The VIEWS action declares `confirm` as schema type boolean; the
-              // strict LLM proxy validates fixture toolCalls against that
+              // strict model provider validates fixture toolCalls against that
               // schema, so a string "true" is rejected before the handler runs.
               confirm: true,
             },
@@ -604,10 +631,7 @@ export default scenario({
             request.method === "POST" &&
             request.pathname === "/api/apps/stop"
           ) {
-            const pluginName = String(
-              toRecord(request.body).name ?? "@elizaos/plugin-remote-ledger",
-            );
-            return jsonResponse(unloadPluginResponse(pluginName));
+            return jsonResponse(stopByNameResponse());
           }
 
           // VIEWS/delete now uninstalls via POST /api/plugins/uninstall
@@ -629,6 +653,18 @@ export default scenario({
         });
 
         return undefined;
+      },
+    },
+  ],
+  cleanup: [
+    {
+      type: "custom",
+      name: "remove app-control source fixtures",
+      apply: async () => {
+        await fs.rm(path.dirname(appLoadDirectory), {
+          force: true,
+          recursive: true,
+        });
       },
     },
   ],
@@ -700,6 +736,25 @@ export default scenario({
             "values.mode": "relaunch",
             "values.appName": "feed",
             "values.runId": "run-feed-nl-2",
+          },
+        }),
+    },
+    {
+      kind: "message",
+      name: "natural language stops an app",
+      text: "Stop the feed app",
+      responseIncludesAny: ["Feed stopped."],
+      assertTurn: (execution) =>
+        expectRoutedAction(execution, {
+          actionName: "APP",
+          parameters: { action: "stop", app: "feed" },
+          resultFields: {
+            "values.mode": "stop",
+            "values.appName": "feed",
+            "values.runId": null,
+            "values.stopScope": "viewer-session",
+            "data.stop.pluginUninstalled": false,
+            "data.stop.needsRestart": false,
           },
         }),
     },
@@ -786,7 +841,9 @@ export default scenario({
       kind: "message",
       name: "natural language edits an app",
       text: "Edit the feed app",
-      responseIncludesAny: ["Started app edit task for Feed"],
+      // The APP edit path delivers a single human sentence to chat; the dispatch
+      // detail below stays planner-facing in the action result text.
+      responseIncludesAny: ["Updating Feed now"],
       assertTurn: (execution) =>
         expectRoutedAction(execution, {
           actionName: "APP",
@@ -796,6 +853,7 @@ export default scenario({
             intent: "Tighten the feed app table density",
           },
           resultFields: {
+            text: `Started app edit task for Feed at ${feedPluginDir}. Task session scenario-edit-app-feed is running; verification runs when it emits APP_CREATE_DONE.`,
             "values.mode": "create",
             "values.subMode": "edit",
             "values.name": "feed",
@@ -835,7 +893,7 @@ export default scenario({
       type: "actionCalled",
       actionName: "APP",
       status: "success",
-      minCount: 6,
+      minCount: 7,
     },
     {
       type: "custom",
@@ -909,6 +967,20 @@ export default scenario({
             method: "POST",
             pathname: "/api/apps/launch",
             response: { body: launchResponse("run-feed-nl-2"), status: 200 },
+            search: "",
+          },
+          {
+            body: null,
+            method: "GET",
+            pathname: "/api/apps/installed",
+            response: { body: installedApps, status: 200 },
+            search: "",
+          },
+          {
+            body: { name: "feed" },
+            method: "POST",
+            pathname: "/api/apps/stop",
+            response: { body: stopByNameResponse(), status: 200 },
             search: "",
           },
           {

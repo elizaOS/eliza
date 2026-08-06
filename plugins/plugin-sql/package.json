@@ -87,6 +87,8 @@
     "test:live": "bun run test:e2e"
   },
   "dependencies": {
+    "@electric-sql/client": "1.0.14",
+    "@electric-sql/experimental": "1.0.14",
     "@electric-sql/pglite": "^0.4.0",
     "@electric-sql/pglite-sync": "0.5.6",
     "@neondatabase/serverless": "^1.1.0",

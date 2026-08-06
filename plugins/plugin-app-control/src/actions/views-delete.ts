@@ -23,7 +23,11 @@ import type {
 	Memory,
 } from "@elizaos/core";
 import { logger, resolveServerOnlyPort } from "@elizaos/core";
-import { readStringOption } from "../params.js";
+import {
+	describeTargetReference,
+	readStringOption,
+	targetReferenceLogView,
+} from "../params.js";
 import { isProtected, resolveProtectedApps } from "../protected-apps.js";
 import type { ViewSummary } from "./views-client.js";
 import { createViewsRequestHeaders } from "./views-request-auth.js";
@@ -395,16 +399,20 @@ export async function runViewsDelete({
 	const resolution = resolveTargetView(targetStr, views);
 
 	if (resolution.kind === "none") {
-		const text = `No view matches "${targetStr}". Try \`action=list\` to see available views.`;
+		const text = `No view matches ${describeTargetReference(targetStr)}. Try \`action=list\` to see available views.`;
 		await callback?.({ text });
-		return { success: false, text, data: { target: targetStr } };
+		return {
+			success: false,
+			text,
+			data: { target: targetReferenceLogView(targetStr) },
+		};
 	}
 
 	if (resolution.kind === "ambiguous") {
 		const list = resolution.candidates
 			.map((v) => `- ${v.label} (${v.id})`)
 			.join("\n");
-		const text = `"${targetStr}" matches multiple views:\n${list}\nWhich one did you want to delete?`;
+		const text = `${describeTargetReference(targetStr)} matches multiple views:\n${list}\nWhich one did you want to delete?`;
 		await callback?.({ text });
 		return {
 			success: false,
@@ -454,7 +462,9 @@ export async function runViewsDelete({
 		pluginName: view.pluginName,
 	});
 
-	const text = `Are you sure you want to delete the ${view.label} view (${view.pluginName})? Confirm with confirm=true, or cancel with confirm=false.`;
+	// The chat bubble stays human (no confirm=true/plugin-name tool syntax);
+	// the confirm mechanics live in the planner-facing result text.
+	const text = `Are you sure you want to delete the ${view.label} view? Say yes to delete it or no to keep it.`;
 	await callback?.({ text });
 	logger.info(
 		`[plugin-app-control] VIEWS/delete awaiting confirmation viewId=${view.id} pluginName=${view.pluginName} room=${roomId}`,
@@ -462,7 +472,7 @@ export async function runViewsDelete({
 
 	return {
 		success: true,
-		text,
+		text: `Asked the user to confirm deleting ${view.label} (${view.pluginName}); re-run with confirm=true to delete or confirm=false to cancel.`,
 		values: {
 			mode: "delete",
 			subMode: "confirm",

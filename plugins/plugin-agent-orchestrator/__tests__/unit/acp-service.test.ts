@@ -125,7 +125,6 @@ vi.mock("../../src/services/acp-native-transport.js", () => {
 
 import {
   AcpService,
-  ensureWorkspaceElizaCodeAcp,
   normalizeClaudeAcpModelId,
 } from "../../src/services/acp-service.js";
 import { InMemorySessionStore } from "../../src/services/session-store.js";
@@ -340,15 +339,6 @@ async function waitForNativeClient(
 }
 
 describe("AcpService", () => {
-  it("falls back when the current checkout has no workspace ACP package", () => {
-    const root = mkdtempSync(join(tmpdir(), "acp-no-workspace-package-"));
-    try {
-      expect(ensureWorkspaceElizaCodeAcp(root)).toBeUndefined();
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
   it("fails with a clear diagnostic when acpx is missing on Android", async () => {
     const previousPlatform = process.env.ELIZA_PLATFORM;
     process.env.ELIZA_PLATFORM = "android";
@@ -437,7 +427,7 @@ describe("AcpService", () => {
     const env = spawnMock.mock.calls[0]?.[2]?.env as
       | Record<string, string>
       | undefined;
-    expect(env?.PARALLAX_SESSION_ID).toBe(result.sessionId);
+    expect(env?.ORCHESTRATOR_SESSION_ID).toBe(result.sessionId);
   });
 
   it("normalizes Claude ACP model context suffixes on explicit spawn models", async () => {
@@ -768,9 +758,9 @@ describe("AcpService", () => {
     expect(nativeClientMock.instances[0]?.opts.command).toBe(
       "codex-acp --stdio",
     );
-    expect(nativeClientMock.instances[0]?.opts.env?.PARALLAX_SESSION_ID).toBe(
-      spawned.sessionId,
-    );
+    expect(
+      nativeClientMock.instances[0]?.opts.env?.ORCHESTRATOR_SESSION_ID,
+    ).toBe(spawned.sessionId);
   });
 
   it("pins the default coding git identity over inherited GIT env on native spawns", async () => {
@@ -830,7 +820,7 @@ describe("AcpService", () => {
     // The "elizaos" agent type resolves to the eliza-code ACP server binary
     // (the elizaos CLI has no ACP mode); the spawn command is eliza-code-acp.
     expect(nativeClientMock.instances[0]?.opts.command).toMatch(
-      /eliza-code-acp|packages\/examples\/code\/dist\/acp\.js/,
+      /eliza-code-acp/,
     );
   });
 
@@ -1731,7 +1721,7 @@ describe("AcpService", () => {
     const promptEnv = spawnMock.mock.calls[1]?.[2]?.env as
       | Record<string, string>
       | undefined;
-    expect(promptEnv?.PARALLAX_SESSION_ID).toBe(sessionId);
+    expect(promptEnv?.ORCHESTRATOR_SESSION_ID).toBe(sessionId);
     expect(result.response).toContain("done");
     expect(result.response).toContain("[tool output: Running tool]");
     expect(result.response).toContain("/dev/root        45G");

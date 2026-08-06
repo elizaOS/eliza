@@ -22,6 +22,11 @@ import {
   resolveAuditStrictFlags,
 } from "./aesthetic-audit-rules";
 import {
+  type AuditViewCase,
+  BUILTIN_TAB_PATHS,
+  buildAuditViewCases,
+} from "./aesthetic-audit-view-cases";
+import {
   installDefaultAppRoutes,
   openAppPath,
   seedAppStorage,
@@ -35,7 +40,6 @@ import {
   type ScreenshotQuality,
   screenshotQualityIssues,
 } from "./helpers/screenshot-quality";
-import { VIEW_CASES } from "./plugin-view-cases";
 import { VIEW_ROUTES } from "./view-routes";
 
 // Strict-gate config (#9304, #10710). The audit was a pure reporter — `broken` /
@@ -66,11 +70,6 @@ const AESTHETIC_VERDICT_DEBT: AestheticVerdictDebt = {
   "builtin-background-ipad-portrait": "needs-work",
   "builtin-background-mobile-landscape": "needs-work",
   "builtin-background-mobile-portrait": "needs-work",
-  "builtin-fine-tuning-ipad-portrait": "needs-work",
-  "builtin-fine-tuning-mobile-portrait": "needs-work",
-  "plugin-model-tester-gui-mobile-landscape": "needs-work",
-  "plugin-training-gui-ipad-portrait": "needs-work",
-  "plugin-training-gui-mobile-portrait": "needs-work",
 };
 
 // "Her"-minimal ratchet baseline (#9950) — the committed per-view record of the
@@ -109,84 +108,12 @@ const MINIMALISM_BASELINE = parseMinimalismBaseline(
  * `plugin-view-cases.ts` — the union so no view is silently omitted.
  */
 
-// The canonical built-in route table (mirrors @elizaos/ui navigation TAB_PATHS;
-// inlined to avoid importing the UI bundle into the Playwright runner).
-// Full built-in coverage (#8796): mirrors @elizaos/ui navigation TAB_PATHS so the
-// audit walks EVERY built-in view, not a subset. The `builtin coverage matches
-// navigation TAB_PATHS` guard test below fails if this drifts from navigation.
-const BUILTIN_TAB_PATHS: Record<string, string> = {
-  chat: "/chat",
-  phone: "/phone",
-  messages: "/messages",
-  contacts: "/contacts",
-  camera: "/camera",
-  tasks: "/apps/tasks",
-  browser: "/browser",
-  stream: "/stream",
-  "pendant-transcript": "/pendant/transcript",
-  apps: "/apps",
-  views: "/views",
-  character: "/character",
-  "character-select": "/character/select",
-  automations: "/automations",
-  inventory: "/wallet",
-  documents: "/character/documents",
-  "character-skills": "/character/skills",
-  experience: "/character/experience",
-  files: "/apps/files",
-  plugins: "/apps/plugins",
-  skills: "/apps/skills",
-  "fine-tuning": "/apps/fine-tuning",
-  trajectories: "/apps/trajectories",
-  transcripts: "/apps/transcripts",
-  relationships: "/apps/relationships",
-  memories: "/apps/memories",
-  rolodex: "/rolodex",
-  runtime: "/apps/runtime",
-  database: "/apps/database",
-  desktop: "/desktop",
-  settings: "/settings",
-  logs: "/apps/logs",
-  background: "/background",
-};
-
 // ── navigation TAB_PATHS coverage guard (#8796) ──────────────────────────────
 // Parse the canonical TAB_PATHS straight from the @elizaos/ui navigation source
 // (no UI-bundle import) so the guard reads the real table, not a stale copy.
 const NAV_INDEX_PATH = fileURLToPath(
   new URL("../../../ui/src/navigation/index.ts", import.meta.url),
 );
-
-interface AuditCase {
-  id: string;
-  slug: string;
-  path: string;
-  viewType: "gui" | "tui";
-  kind: "builtin" | "plugin";
-}
-
-function buildAuditCases(): AuditCase[] {
-  const cases: AuditCase[] = [];
-  for (const [id, viewPath] of Object.entries(BUILTIN_TAB_PATHS)) {
-    cases.push({
-      id,
-      slug: `builtin-${id}`,
-      path: viewPath,
-      viewType: "gui",
-      kind: "builtin",
-    });
-  }
-  for (const view of VIEW_CASES) {
-    cases.push({
-      id: view.id,
-      slug: `plugin-${view.id}-${view.viewType}`,
-      path: view.path,
-      viewType: view.viewType,
-      kind: "plugin",
-    });
-  }
-  return cases;
-}
 
 // {desktop,mobile} × {landscape,portrait}. "desktop" (landscape) and "mobile"
 // (portrait) keep their original names so existing AESTHETIC_VERDICT_DEBT keys
@@ -398,6 +325,32 @@ async function readViewPaint(
   );
   const loadingViewPresent = await loadingView.isVisible();
   return { readableChars, overlayPresent, loadingViewPresent };
+}
+
+async function settleHomeEntrance(page: Page): Promise<void> {
+  const home = page.getByTestId("home-screen");
+  if ((await home.count()) === 0) return;
+
+  // Readable clock text appears before the staggered home cards have reached
+  // full opacity, so the generic paint probe is intentionally insufficient for
+  // this one surface. Wait on the named production animation instead of a fixed
+  // timeout so screenshots and OCR observe the same settled pixels at every
+  // viewport and remain fast when the animation has already completed.
+  await page.waitForFunction(
+    () => {
+      const root = document.querySelector('[data-testid="home-screen"]');
+      if (!(root instanceof HTMLElement)) return false;
+      return !root
+        .getAnimations({ subtree: true })
+        .some(
+          (animation) =>
+            (animation as CSSAnimation).animationName === "home-enter" &&
+            animation.playState !== "finished",
+        );
+    },
+    undefined,
+    { timeout: 5_000 },
+  );
 }
 
 /**
@@ -1177,10 +1130,16 @@ interface RemoteBundleAuditProof {
 
 async function forceRemoteBundleAuditRoute(
   page: Page,
-  view: AuditCase,
+  view: AuditViewCase,
 ): Promise<RemoteBundleAuditProof | null> {
   if (view.kind !== "plugin") return null;
-  const registryResponse = await page.request.get("/api/views");
+  // The long capture matrix keeps the fixture server busy enough for a single
+  // socket reset to occur without indicating an application failure. Playwright
+  // limits maxRetries to ECONNRESET, while HTTP and parse failures still fail
+  // this registry boundary immediately.
+  const registryResponse = await page.request.get("/api/views", {
+    maxRetries: 2,
+  });
   expect(registryResponse.ok(), "plugin view registry must load").toBe(true);
   const payload: unknown = await registryResponse.json();
   const registered = findRemoteBundleDeclaration(
@@ -1328,7 +1287,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
     ).rejects.toThrow(/strict mode violation/);
   });
 
-  for (const view of buildAuditCases()) {
+  for (const view of buildAuditViewCases()) {
     for (const vp of VIEWPORTS) {
       test(`${view.slug} ${vp.name}`, async ({ page }) => {
         const reviewDir = path.join(outputDir, "manual-review");
@@ -1414,16 +1373,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           await page.waitForTimeout(1000);
           paint = await readPaint();
         }
-        if (view.slug === "plugin-calendar-gui") {
-          const manageSources = page.getByRole("button", {
-            name: "Manage calendar sources",
-          });
-          await manageSources.click();
-          await page
-            .getByText("New calendars are included automatically")
-            .waitFor({ state: "visible", timeout: 5_000 });
-          paint = await readPaint();
-        }
+        await settleHomeEntrance(page);
         const { readableChars, overlayPresent } = paint;
         const renderStateIssues = [
           ...(paint.loadingViewPresent
@@ -1461,18 +1411,6 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           await page.waitForTimeout(800);
           buffer = await page.screenshot({ path: restPath, fullPage: false });
           quality = await analyzeScreenshot(buffer).catch(() => null);
-        }
-        if (
-          view.slug === "plugin-calendar-gui" &&
-          vp.name === "mobile-landscape"
-        ) {
-          await page
-            .getByText("Travel", { exact: true })
-            .scrollIntoViewIfNeeded();
-          await page.screenshot({
-            path: path.join(shotDir, `${view.slug}-sources-lower.png`),
-            fullPage: false,
-          });
         }
         const qualityIssues = quality
           ? screenshotQualityIssues(`${view.slug} ${vp.name}`, quality)

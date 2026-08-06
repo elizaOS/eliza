@@ -1,3 +1,4 @@
+/** Verifies buildPairingCodeCommandInfo through the package's configured test harness. */
 // Unit coverage for buildPairingCodeCommandInfo — the pure builder that turns a
 // backend URL into the pairing-code fetch command (SSH-wrapped for remote hosts,
 // bare for loopback, with the local agent port defaulted). Pure string math, no

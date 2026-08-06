@@ -133,6 +133,17 @@ html.eliza-chat-overlay-shell #root {
   background: transparent;
 }
 
+/* The native shell hosts the image wallpaper below the WebView (see
+   glass/native-backdrop.ts). Every root-canvas layer must go transparent
+   together — hiding only the DOM ImageBackground would leave the launch-bg
+   fill on html/body/#root as an opaque near-black hole over the native
+   pixels. Toggled exclusively by applyRootCanvasPaint (single owner). */
+html.eliza-native-backdrop,
+html.eliza-native-backdrop body,
+html.eliza-native-backdrop #root {
+  background: transparent;
+}
+
 html.eliza-chat-overlay-shell #root {
   pointer-events: none;
 }

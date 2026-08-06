@@ -154,6 +154,9 @@ export class MemoryService extends Service {
 				const loaded = await runtime.getServiceLoadPromise("memoryStorage");
 				provider = isMemoryStorageProvider(loaded) ? loaded : null;
 			} catch (error) {
+				// error-policy:J4 advanced memory remains explicitly unavailable when
+				// its optional storage service cannot start; report the operational failure.
+				runtime.reportError("MemoryService.initializeStorage", error);
 				const err = error instanceof Error ? error.message : String(error);
 				logger.warn(
 					{ src: "service:memory", agentId: runtime.agentId, err },
@@ -274,6 +277,9 @@ export class MemoryService extends Service {
 					await this.runtime.getServiceLoadPromise("memoryStorage");
 				this.storage = isMemoryStorageProvider(loaded) ? loaded : null;
 			} catch (error) {
+				// error-policy:J4 lazy storage resolution preserves the service's
+				// unavailable state, while the failure remains visible to the agent.
+				this.runtime.reportError("MemoryService.resolveStorage", error);
 				const err = error instanceof Error ? error.message : String(error);
 				logger.warn(
 					{ src: "service:memory", agentId: this.runtime.agentId, err },
@@ -357,20 +363,11 @@ export class MemoryService extends Service {
 			return cached;
 		}
 
-		try {
-			const checkpoint = await this.runtime.getCache<number>(key);
-			const messageCount = checkpoint ?? 0;
-			this.lastExtractionCheckpoints.set(key, messageCount);
-			this.capSessionMap(this.lastExtractionCheckpoints);
-			return messageCount;
-		} catch (error) {
-			const err = error instanceof Error ? error.message : String(error);
-			logger.warn(
-				{ src: "service:memory", err },
-				"Failed to get extraction checkpoint from cache",
-			);
-			return 0;
-		}
+		const checkpoint = await this.runtime.getCache<number>(key);
+		const messageCount = checkpoint ?? 0;
+		this.lastExtractionCheckpoints.set(key, messageCount);
+		this.capSessionMap(this.lastExtractionCheckpoints);
+		return messageCount;
 	}
 
 	async setLastExtractionCheckpoint(
@@ -379,22 +376,13 @@ export class MemoryService extends Service {
 		messageCount: number,
 	): Promise<void> {
 		const key = this.getExtractionKey(entityId, roomId);
+		await this.runtime.setCache(key, messageCount);
 		this.lastExtractionCheckpoints.set(key, messageCount);
 		this.capSessionMap(this.lastExtractionCheckpoints);
-
-		try {
-			await this.runtime.setCache(key, messageCount);
-			logger.debug(
-				{ src: "service:memory" },
-				`Set extraction checkpoint for ${entityId} in room ${roomId} at count ${messageCount}`,
-			);
-		} catch (error) {
-			const err = error instanceof Error ? error.message : String(error);
-			logger.error(
-				{ src: "service:memory", err },
-				"Failed to persist extraction checkpoint to cache",
-			);
-		}
+		logger.debug(
+			{ src: "service:memory" },
+			`Set extraction checkpoint for ${entityId} in room ${roomId} at count ${messageCount}`,
+		);
 	}
 
 	async shouldRunExtraction(
@@ -620,6 +608,12 @@ export class MemoryService extends Service {
 				similarity: x.similarity,
 			}));
 		} catch (error) {
+			// error-policy:J4 semantic retrieval may explicitly degrade to recent
+			// memories, but the loss of vector search quality must remain observable.
+			this.runtime.reportError("MemoryService.vectorSearch", error, {
+				entityId,
+				limit,
+			});
 			logger.warn(
 				{ error },
 				"Vector search failed, falling back to recent memories",

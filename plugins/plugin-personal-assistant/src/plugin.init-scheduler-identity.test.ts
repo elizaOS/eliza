@@ -17,9 +17,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // re-runs contributed by plugin-health depend on registries created later in
 // init, which is the boot-order seam these hooks exist to paper over — not the
 // behavior this test asserts.
-vi.mock("@elizaos/plugin-google", async (importOriginal) => ({
+vi.mock("@elizaos/plugin-google-workspace", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
-  googlePlugin: { name: "@elizaos/plugin-google", init: vi.fn() },
+  googlePlugin: { name: "@elizaos/plugin-google-workspace", init: vi.fn() },
 }));
 vi.mock("@elizaos/plugin-health", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -31,6 +31,7 @@ vi.mock("@elizaos/plugin-health", async (importOriginal) => ({
   createDefaultCircadianInsightContract: vi.fn(() => ({})),
 }));
 
+import { areLifeOpsActivitySignalsActive } from "./lifeops/activity-signal-lifecycle.js";
 import { personalAssistantPlugin } from "./plugin.js";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000ab" as UUID;
@@ -73,6 +74,11 @@ function createRecordingRuntime(): RecordingRuntime {
     getService: () => null,
     getRoom: async () => null,
     getMemories: async () => [],
+    getTasks: async () => [],
+    deleteTask: async () => undefined,
+    unregisterTaskWorker: (name: string) => {
+      taskWorkers.delete(name);
+    },
   };
   const noopCache = new Map<string, unknown>();
   const runtime = new Proxy(explicit, {
@@ -114,6 +120,18 @@ describe("personalAssistantPlugin.init scheduler identity", () => {
     expect(worker).toBeDefined();
     // Disabled worker keeps a valid identity but never executes.
     await expect(worker?.shouldRun?.(runtime)).resolves.toBe(false);
+  });
+
+  it("activates activity-signal routes during init and clears them during dispose", async () => {
+    process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER = "1";
+    const { runtime } = createRecordingRuntime();
+
+    expect(areLifeOpsActivitySignalsActive(runtime)).toBe(false);
+    await personalAssistantPlugin.init?.({}, runtime);
+    expect(areLifeOpsActivitySignalsActive(runtime)).toBe(true);
+
+    await personalAssistantPlugin.dispose?.(runtime);
+    expect(areLifeOpsActivitySignalsActive(runtime)).toBe(false);
   });
 
   it("registers a LifeOps worker whose shouldRun is gated by app state when enabled", async () => {

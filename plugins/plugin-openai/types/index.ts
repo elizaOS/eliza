@@ -280,6 +280,23 @@ export interface TextStreamResult {
 
   /** Promise resolving to finish reason */
   finishReason: Promise<string | undefined>;
+
+  /** Native tool calls when the caller requested a tool-capable result. */
+  toolCalls?: Promise<unknown[] | undefined>;
+
+  /** Concrete backend and model identity retained through runtime stream consumption. */
+  providerMetadata?: {
+    modelName: string;
+    provider: "cerebras" | "evolink" | "openai";
+    /**
+     * Transient attempts re-issued before this stream was served; 0 = clean
+     * first attempt. Present so consumers can tell a degraded-provider success
+     * from a healthy one without scraping logs.
+     */
+    retryCount?: number;
+    /** Provider error message behind the most recent retry, when any occurred. */
+    lastRetryReason?: string;
+  };
 }
 
 /**

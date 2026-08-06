@@ -455,6 +455,8 @@ function parseActionParamsJson(input: string): Record<string, unknown> | null {
 			? (parsed as Record<string, unknown>)
 			: null;
 	} catch {
+		// error-policy:J3 action parameters cross an untrusted model boundary;
+		// malformed JSON is an explicit invalid result.
 		return null;
 	}
 }
@@ -563,7 +565,8 @@ function coerceActionParamValue(
 				return parsed.map((entry) => toActionParameterValue(entry));
 			}
 		} catch {
-			// Fall through to the permissive string coercion path below.
+			// error-policy:J3 This field accepts either a JSON array or its documented
+			// delimited-string form; malformed JSON remains untrusted string input.
 		}
 	}
 

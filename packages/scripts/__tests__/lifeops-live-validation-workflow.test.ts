@@ -27,7 +27,7 @@ const workflowText = readFileSync(
   "utf8",
 );
 const integrationConfig = readFileSync(
-  new URL("packages/test/vitest/integration.config.ts", repoRoot),
+  new URL("packages/scripts/vitest/integration.config.ts", repoRoot),
   "utf8",
 );
 
@@ -119,7 +119,7 @@ describe("#11632 LifeOps live-validation workflow", () => {
     expect(integrationConfig).toContain('"index.node.ts"');
     expect(integrationConfig).toContain('conditions: ["eliza-source"]');
     expect(integrationConfig).toContain(
-      "...buildHarnessSourceAliases(elizaWorkspaceRoot)",
+      "...buildWorkspaceSourceAliases(elizaWorkspaceRoot)",
     );
   });
 

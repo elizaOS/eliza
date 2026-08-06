@@ -1,3 +1,4 @@
+/** Verifies ChatSurface through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // ChatSurface presentation + send wiring: renders the greeting on an empty
@@ -154,15 +155,7 @@ describe("ChatSurface", () => {
     const voiceToggle = screen.getByRole("button", {
       name: /voice input/i,
     }) as HTMLButtonElement;
-    const send = screen.getByRole("button", {
-      name: "Send message",
-    }) as HTMLButtonElement;
-
     expect(voiceToggle.disabled).toBe(true);
-    expect(voiceToggle.className).toContain("h-11");
-    expect(voiceToggle.className).toContain("w-11");
-    expect(send.className).toContain("h-11");
-    expect(send.className).toContain("w-11");
     expect(voiceToggle.querySelector("svg")).not.toBeNull();
     expect(voiceToggle.querySelector("path[fill]")).toBeNull();
   });

@@ -279,6 +279,30 @@ export async function resolveDocumentRequester(
 	}
 }
 
+type DocumentRequesterResolver = () => Promise<DocumentRequester>;
+
+/**
+ * Coalesces requester authorization only for one caller-owned read composition.
+ * Rejections are evicted so a retry re-reads the authoritative role and room
+ * membership instead of retaining a transient authorization failure.
+ */
+export function createDocumentProviderRequesterResolver(
+	runtime: IAgentRuntime,
+	message?: Memory,
+): DocumentRequesterResolver {
+	let pending: Promise<DocumentRequester> | undefined;
+	return () => {
+		if (pending) return pending;
+		const current = resolveDocumentRequester(runtime, message);
+		pending = current;
+		// error-policy:J5 callers await current; this observer only evicts a rejected read memo.
+		void current.catch(() => {
+			if (pending === current) pending = undefined;
+		});
+		return current;
+	};
+}
+
 function normalizeDocumentScope(
 	scope: AddDocumentOptions["scope"] | undefined,
 ): DocumentVisibilityScope {
@@ -356,6 +380,13 @@ function describeEmbeddingConfig(config: {
 }
 
 export class DocumentService extends Service {
+	reportError(
+		scope: string,
+		error: unknown,
+		context?: Record<string, unknown>,
+	): void {
+		this.runtime.reportError(scope, error, context);
+	}
 	static readonly serviceType = "documents";
 	public override config: Metadata = {};
 	capabilityDescription =
@@ -392,7 +423,11 @@ export class DocumentService extends Service {
 				logger.info(`Loaded ${result.successful} documents on startup`);
 			}
 		} catch (error) {
+			// error-policy:J7 Startup document loading is detached so service
+			// registration is not delayed; failures remain observable.
 			logger.error({ error }, "Error loading documents on startup");
+			this.runtime.reportError("DocumentService.loadInitialDocuments", error);
+			throw error;
 		}
 	}
 
@@ -428,24 +463,17 @@ export class DocumentService extends Service {
 
 		if (service.config.LOAD_DOCS_ON_STARTUP) {
 			service.loadInitialDocuments().catch((error) => {
+				// error-policy:J5 loadInitialDocuments reports the failure before
+				// this detached startup task suppresses its rejection.
 				logger.error({ error }, "Error loading initial documents");
 			});
 		}
 
-		await service.migratePreDocumentsPartition().catch((err) => {
-			logger.error({ error: err }, "Error migrating pre-documents rows");
-		});
-
-		await service.backfillDocumentScopes().catch((err) => {
-			logger.error({ error: err }, "Error backfilling document scopes");
-		});
+		await service.migratePreDocumentsPartition();
+		await service.backfillDocumentScopes();
 
 		if (characterDocuments.length > 0) {
-			await service
-				.processCharacterDocuments(characterDocuments)
-				.catch((err) => {
-					logger.error({ error: err }, "Error processing character documents");
-				});
+			await service.processCharacterDocuments(characterDocuments);
 		}
 
 		return service;
@@ -513,6 +541,15 @@ export class DocumentService extends Service {
 		message?: Memory,
 		options: DocumentListOptions = {},
 	): Promise<DocumentListResult> {
+		return this.listDocumentsDetailedWithRequester(options, () =>
+			resolveDocumentRequester(this.runtime, message),
+		);
+	}
+
+	private async listDocumentsDetailedWithRequester(
+		options: DocumentListOptions,
+		resolveRequester: DocumentRequesterResolver,
+	): Promise<DocumentListResult> {
 		const limit =
 			typeof options.limit === "number" && Number.isFinite(options.limit)
 				? Math.max(
@@ -544,7 +581,7 @@ export class DocumentService extends Service {
 			);
 		}
 
-		const requester = await resolveDocumentRequester(this.runtime, message);
+		const requester = await resolveRequester();
 		const query = options.query?.trim();
 		const normalizedQuery = query?.toLowerCase();
 		const queryParams: DocumentListQueryParams = {
@@ -607,6 +644,29 @@ export class DocumentService extends Service {
 		};
 	}
 
+	/** Runs the DOCUMENTS provider's search and inventory reads on one snapshot. */
+	async composeProviderDocuments(
+		message: Memory,
+		listOptions: DocumentListOptions,
+	): Promise<{ relevantFragments: StoredDocument[]; documents: Memory[] }> {
+		const resolveRequester = createDocumentProviderRequesterResolver(
+			this.runtime,
+			message,
+		);
+		const [relevantFragments, listResult] = await Promise.all([
+			this.searchDocumentsWithRequester(
+				message,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				resolveRequester,
+			),
+			this.listDocumentsDetailedWithRequester(listOptions, resolveRequester),
+		]);
+		return { relevantFragments, documents: listResult.documents };
+	}
+
 	async deleteDocument(documentId: UUID, message?: Memory): Promise<void> {
 		const requester = await resolveDocumentRequester(this.runtime, message);
 		const document = await this.runtime.adapter.getDocument({
@@ -617,14 +677,14 @@ export class DocumentService extends Service {
 			requesterRole: requester.role,
 		});
 		if (!document) {
-			// The read above is scoped to the requester, so a document the caller
-			// cannot READ is indistinguishable from one that does not exist — and
-			// reporting NOT_FOUND here made the adapter's `forbidden` verdict
-			// unreachable for exactly the case it exists for (a non-owner trying to
-			// delete a global / owner-private document). Distinguish the two with an
-			// unscoped existence probe so the mutation wall renders the real reason.
-			const existsUnscoped = await this.runtime.getMemoryById(documentId);
-			if (existsUnscoped) {
+			// A hidden document owned by this runtime is a forbidden mutation, while
+			// foreign-agent and non-document rows remain indistinguishable from a
+			// missing UUID. This preserves tenant isolation across the unscoped probe.
+			const existingUnscoped = await this.runtime.getMemoryById(documentId);
+			if (
+				existingUnscoped?.agentId === this.runtime.agentId &&
+				readDocumentMutationSnapshot(existingUnscoped)
+			) {
 				throw new ElizaError(
 					`Document ${documentId} cannot be deleted by this requester`,
 					{
@@ -840,36 +900,29 @@ export class DocumentService extends Service {
 			`Processing "${options.originalFilename}" (${options.contentType})`,
 		);
 
-		try {
-			const existingDocument = await this.runtime.getMemoryById(contentBasedId);
-			if (
-				existingDocument &&
-				(existingDocument.metadata?.type === MemoryType.DOCUMENT ||
-					existingDocument.metadata?.type === MemoryType.CUSTOM)
-			) {
-				const fragmentCount =
-					await this.getDocumentFragmentCount(contentBasedId);
-				if (fragmentCount === 0) {
-					logger.warn(
-						`"${options.originalFilename}" already exists with 0 fragments; deleting stale document stub and reprocessing`,
-					);
-					await this.runtime.deleteMemory(contentBasedId);
-				} else {
-					logger.info(
-						`"${options.originalFilename}" already exists with ${fragmentCount} fragments - skipping`,
-					);
+		const existingDocument = await this.runtime.getMemoryById(contentBasedId);
+		if (
+			existingDocument &&
+			(existingDocument.metadata?.type === MemoryType.DOCUMENT ||
+				existingDocument.metadata?.type === MemoryType.CUSTOM)
+		) {
+			const fragmentCount = await this.getDocumentFragmentCount(contentBasedId);
+			if (fragmentCount === 0) {
+				logger.warn(
+					`"${options.originalFilename}" already exists with 0 fragments; deleting stale document stub and reprocessing`,
+				);
+				await this.runtime.deleteMemory(contentBasedId);
+			} else {
+				logger.info(
+					`"${options.originalFilename}" already exists with ${fragmentCount} fragments - skipping`,
+				);
 
-					return {
-						clientDocumentId: contentBasedId,
-						storedDocumentMemoryId: existingDocument.id as UUID,
-						fragmentCount,
-					};
-				}
+				return {
+					clientDocumentId: contentBasedId,
+					storedDocumentMemoryId: existingDocument.id as UUID,
+					fragmentCount,
+				};
 			}
-		} catch (error) {
-			logger.debug(
-				`Document ${contentBasedId} not found or error checking existence, proceeding with processing: ${error instanceof Error ? error.message : String(error)}`,
-			);
 		}
 
 		return this.processDocument({
@@ -916,12 +969,19 @@ export class DocumentService extends Service {
 				try {
 					fileBuffer = Buffer.from(content, "base64");
 				} catch (e) {
+					// error-policy:J2 Preserve the decoder failure as the cause of
+					// a document-specific validation error.
 					logger.error(
 						{ error: e },
 						`Failed to convert base64 to buffer for ${originalFilename}`,
 					);
-					throw new Error(
+					throw new ElizaError(
 						`Invalid base64 content for PDF file ${originalFilename}`,
+						{
+							code: "DOCUMENT_BASE64_INVALID",
+							context: { originalFilename, contentType },
+							cause: e,
+						},
 					);
 				}
 				extractedText = await extractTextFromDocument(
@@ -934,12 +994,19 @@ export class DocumentService extends Service {
 				try {
 					fileBuffer = Buffer.from(content, "base64");
 				} catch (e) {
+					// error-policy:J2 Preserve the decoder failure as the cause of
+					// a document-specific validation error.
 					logger.error(
 						{ error: e },
 						`Failed to convert base64 to buffer for ${originalFilename}`,
 					);
-					throw new Error(
+					throw new ElizaError(
 						`Invalid base64 content for binary file ${originalFilename}`,
+						{
+							code: "DOCUMENT_BASE64_INVALID",
+							context: { originalFilename, contentType },
+							cause: e,
+						},
 					);
 				}
 				extractedText = await extractTextFromDocument(
@@ -970,12 +1037,19 @@ export class DocumentService extends Service {
 						extractedText = decodedText;
 						documentContentToStore = decodedText;
 					} catch (e) {
+						// error-policy:J2 Preserve the decoding failure as the cause
+						// of a document-specific validation error.
 						logger.error(
 							{ error: e instanceof Error ? e : new Error(String(e)) },
 							`Failed to decode base64 for ${originalFilename}`,
 						);
-						throw new Error(
+						throw new ElizaError(
 							`File ${originalFilename} appears to be corrupted or incorrectly encoded`,
+							{
+								code: "DOCUMENT_ENCODING_INVALID",
+								context: { originalFilename, contentType },
+								cause: e,
+							},
 						);
 					}
 				} else {
@@ -1068,8 +1142,13 @@ export class DocumentService extends Service {
 				fragmentCount,
 			};
 		} catch (error) {
+			// error-policy:J2 Attach document identity while preserving the cause.
 			logger.error({ error }, `Error processing document ${originalFilename}`);
-			throw error;
+			throw new ElizaError(`Failed to process document ${originalFilename}`, {
+				code: "DOCUMENT_PROCESSING_FAILED",
+				context: { originalFilename, contentType },
+				cause: error,
+			});
 		}
 	}
 
@@ -1118,6 +1197,24 @@ export class DocumentService extends Service {
 		accessContext?: AccessContext,
 		options?: { turnMessageId?: UUID; signal?: AbortSignal },
 	): Promise<StoredDocument[]> {
+		return this.searchDocumentsWithRequester(
+			message,
+			scope,
+			searchMode,
+			accessContext,
+			options,
+			() => resolveDocumentRequester(this.runtime, message),
+		);
+	}
+
+	private async searchDocumentsWithRequester(
+		message: Memory,
+		scope: { roomId?: UUID; worldId?: UUID; entityId?: UUID } | undefined,
+		searchMode: SearchMode | undefined,
+		accessContext: AccessContext | undefined,
+		options: { turnMessageId?: UUID; signal?: AbortSignal } | undefined,
+		resolveRequester: DocumentRequesterResolver,
+	): Promise<StoredDocument[]> {
 		if (!message.content.text || message.content.text.trim().length === 0) {
 			logger.warn("Invalid or empty message content for document query");
 			return [];
@@ -1134,7 +1231,7 @@ export class DocumentService extends Service {
 					this.runtime,
 					accessContext,
 				)
-			: await resolveDocumentRequester(this.runtime, message);
+			: await resolveRequester();
 		const filterScope: { roomId?: UUID; worldId?: UUID; entityId?: UUID } = {};
 		if (scope?.roomId) filterScope.roomId = scope.roomId;
 		if (scope?.worldId) filterScope.worldId = scope.worldId;
@@ -1403,10 +1500,17 @@ export class DocumentService extends Service {
 				metadata: updatedMetadata,
 			});
 		} catch (error) {
+			// error-policy:J7 RAG usage metadata is diagnostic enrichment; the
+			// conversation memory remains valid and the failure is reported.
 			const errorMessage =
 				error instanceof Error ? error.message : String(error);
 			logger.warn(
 				`Failed to enrich conversation memory ${memoryId} with RAG data: ${errorMessage}`,
+			);
+			this.runtime.reportError(
+				"DocumentService.enrichConversationMemory",
+				error,
+				{ memoryId },
 			);
 		}
 	}
@@ -1491,11 +1595,14 @@ export class DocumentService extends Service {
 				}
 			}
 		} catch (error) {
+			// error-policy:J7 Pending RAG metadata is diagnostic enrichment; the
+			// underlying conversation remains valid and failure is reported.
 			const errorMessage =
 				error instanceof Error ? error.message : String(error);
 			logger.warn(
 				`Error enriching recent memories with RAG data: ${errorMessage}`,
 			);
+			this.runtime.reportError("DocumentService.enrichRecentMemories", error);
 		}
 	}
 
@@ -1664,8 +1771,6 @@ export class DocumentService extends Service {
 						worldId: this.runtime.agentId,
 					},
 				);
-			} catch (error) {
-				logger.error({ error }, "Error processing character documents");
 			} finally {
 				this.documentProcessingSemaphore.release();
 			}
@@ -1957,8 +2062,16 @@ export class DocumentService extends Service {
 
 			await this.runtime.createMemory(fragment, DOCUMENT_FRAGMENTS_TABLE);
 		} catch (error) {
+			// error-policy:J2 Attach fragment identity while preserving the cause.
 			logger.error({ error }, `Error processing fragment ${fragment.id}`);
-			throw error;
+			throw new ElizaError(
+				`Failed to process document fragment ${fragment.id}`,
+				{
+					code: "DOCUMENT_FRAGMENT_PROCESSING_FAILED",
+					context: { fragmentId: fragment.id },
+					cause: error,
+				},
+			);
 		}
 	}
 
@@ -2039,9 +2152,18 @@ export class DocumentService extends Service {
 				);
 			}
 		} catch (error) {
+			// error-policy:J4 Batch embedding has an explicit serial fallback;
+			// report the degraded path before retrying each fragment.
 			logger.warn(
 				{ error },
 				"[DocumentService] Batch fragment embedding failed; falling back to serial per-fragment embedding",
+			);
+			this.runtime.reportError(
+				"DocumentService.batchFragmentEmbedding",
+				error,
+				{
+					fragmentCount: fragments.length,
+				},
 			);
 			await this.processDocumentFragmentsSerial(fragments, options);
 			return;
@@ -2063,6 +2185,13 @@ export class DocumentService extends Service {
 				if (!options.continueOnError) {
 					throw error;
 				}
+				// error-policy:J4 continueOnError explicitly requests partial
+				// persistence; every omitted fragment is reported.
+				this.runtime.reportError(
+					"DocumentService.persistDocumentFragment",
+					error,
+					{ fragmentId: fragment.id },
+				);
 			}
 		}
 	}
@@ -2082,9 +2211,16 @@ export class DocumentService extends Service {
 				if (!options.continueOnError) {
 					throw error;
 				}
+				// error-policy:J4 continueOnError explicitly requests partial
+				// persistence; every omitted fragment is reported.
 				logger.error(
 					{ error },
 					`[DocumentService] Error processing fragment ${fragment.id} during serial fallback`,
+				);
+				this.runtime.reportError(
+					"DocumentService.processDocumentFragment",
+					error,
+					{ fragmentId: fragment.id },
 				);
 			}
 		}

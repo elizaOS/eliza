@@ -41,7 +41,7 @@ permissions:
 jobs:
   sleep-wake:
     name: provision -> sleep(backup+destroy) -> wake(reprovision+restore)
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     environment: ci-hetzner-e2e
     timeout-minutes: 30
     env:
@@ -69,7 +69,7 @@ jobs:
               echo "Missing secrets in GitHub environment \`ci-hetzner-e2e\`:"
               for s in "${missing[@]}"; do echo "- \`$s\`"; done
               echo ""
-              echo "See \`packages/scripts/cloud/admin/hetzner-e2e/README.md\` for setup."
+              echo "See \`packages/cloud/scripts/admin/hetzner-e2e/README.md\` for setup."
             } >> "$GITHUB_STEP_SUMMARY"
             if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
               echo "::error::Manual dispatch requires all hetzner-e2e secrets."
@@ -87,11 +87,11 @@ jobs:
         if: steps.secret_config.outputs.configured == 'true'
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
-          bun-version: canary
+          bun-version: "1.3.14"
 
       - name: Install deps
         if: steps.secret_config.outputs.configured == 'true'
-        run: bun install --no-save --ignore-scripts
+        run: bun install --frozen-lockfile --no-save --ignore-scripts
 
       - name: Ensure generated shared i18n data
         if: steps.secret_config.outputs.configured == 'true'
@@ -189,7 +189,7 @@ jobs:
         run: |
           log=/tmp/hetzner-sleep-wake-provision.log
           set +e
-          bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-provision.ts 2>&1 | tee "$log"
+          bun run packages/cloud/scripts/admin/hetzner-e2e/hetzner-e2e-provision.ts 2>&1 | tee "$log"
           rc=${PIPESTATUS[0]}
           set -e
           if [ "$rc" -eq 0 ]; then
@@ -219,13 +219,13 @@ jobs:
 
       - name: Wait A ready
         if: steps.provision_a.outputs.provisioned == 'true'
-        run: bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-wait-ready.ts
+        run: bun run packages/cloud/scripts/admin/hetzner-e2e/hetzner-e2e-wait-ready.ts
 
       # ── Write agent state on A, then BACK IT UP off-box ─────────────────
       - name: Write + back up agent state from A
         if: steps.provision_a.outputs.provisioned == 'true'
         run: |
-          IP_A=$(jq -r .ip "$HETZNER_E2E_STATE_FILE"); ID_A=$(jq -r .id "$HETZNER_E2E_STATE_FILE")
+          IP_A=$(jq -r .ip "$HETZNER_E2E_STATE_FILE"); ID_A=$(jq -er .server_id "$HETZNER_E2E_STATE_FILE")
           echo "box A: id=$ID_A ip=$IP_A"
           echo "$ID_A" > /tmp/box-a-id
           # Simulate agent state (mirrors AgentBackupStateData shape).
@@ -241,7 +241,7 @@ jobs:
       - name: Sleep — de-provision (destroy) box A
         if: steps.provision_a.outputs.provisioned == 'true'
         run: |
-          bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-teardown.ts
+          bun run packages/cloud/scripts/admin/hetzner-e2e/hetzner-e2e-teardown.ts
           ID_A=$(cat /tmp/box-a-id)
           code=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $HCLOUD_TOKEN_CI" "https://api.hetzner.cloud/v1/servers/$ID_A")
           echo "GET server $ID_A after teardown -> $code (expect 404)"
@@ -250,14 +250,14 @@ jobs:
       # ── WAKE: re-provision a NEW box B + restore from backup ────────────
       - name: Wake — re-provision box B
         if: steps.provision_a.outputs.provisioned == 'true'
-        run: bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-provision.ts
+        run: bun run packages/cloud/scripts/admin/hetzner-e2e/hetzner-e2e-provision.ts
       - name: Wait B ready
         if: steps.provision_a.outputs.provisioned == 'true'
-        run: bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-wait-ready.ts
+        run: bun run packages/cloud/scripts/admin/hetzner-e2e/hetzner-e2e-wait-ready.ts
       - name: Restore backup onto B + verify state survived
         if: steps.provision_a.outputs.provisioned == 'true'
         run: |
-          IP_B=$(jq -r .ip "$HETZNER_E2E_STATE_FILE"); ID_B=$(jq -r .id "$HETZNER_E2E_STATE_FILE")
+          IP_B=$(jq -r .ip "$HETZNER_E2E_STATE_FILE"); ID_B=$(jq -er .server_id "$HETZNER_E2E_STATE_FILE")
           ID_A=$(cat /tmp/box-a-id)
           echo "box B: id=$ID_B ip=$IP_B (was A id=$ID_A)"
           [ "$ID_B" != "$ID_A" ] || { echo "::error::wake did not create a NEW box"; exit 1; }
@@ -278,4 +278,4 @@ jobs:
         if: always() && steps.provision_a.outcome != 'skipped'
         env:
           DEPLOY_PROVISIONED: ${{ steps.provision_a.outputs.provisioned }}
-        run: bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-teardown.ts
+        run: bun run packages/cloud/scripts/admin/hetzner-e2e/hetzner-e2e-teardown.ts

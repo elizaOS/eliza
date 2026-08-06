@@ -11,8 +11,6 @@ docs
 plugins
 packages/app
 packages/steward
-packages/os
-packages/os/homepage
 packages/benchmarks/*
 !packages/benchmarks/lib
 packages/native

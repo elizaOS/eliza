@@ -1,10 +1,9 @@
 /**
- * @module plugin-app-control
- * @description elizaOS plugin that lets the Eliza agent launch, close, list,
- * relaunch, load-from-directory, and create Eliza apps.
+ * Registers the app lifecycle, shell-view, settings, and background controls
+ * exposed to Eliza agents.
  *
  * Surface:
- * - One unified `APP` action (sub-modes: launch / relaunch / list /
+ * - One unified `APP` action (sub-modes: launch / relaunch / stop / list /
  *   load_from_directory / create).
  * - `available_apps` provider — installed + running apps for the planner.
  * - `AppRegistryService` — persists load_from_directory registrations and
@@ -25,9 +24,7 @@ import {
 } from "./actions/views.js";
 import { createViewsClient } from "./actions/views-client.js";
 import { createChoiceShortcutEvaluator } from "./evaluators/create-choice-shortcut.js";
-import { viewCommandShortcutEvaluator } from "./evaluators/view-command-shortcut.js";
 import { viewContextEvaluator } from "./evaluators/view-context.js";
-import { viewFollowupRoutingEvaluator } from "./evaluators/view-followup-routing.js";
 import { availableAppsProvider } from "./providers/available-apps.js";
 import { currentViewProvider } from "./providers/current-view.js";
 import {
@@ -38,7 +35,6 @@ import { AppRegistryService } from "./services/app-registry-service.js";
 import { AppVerificationService } from "./services/app-verification.js";
 import { AppWorkerHostService } from "./services/app-worker-host-service.js";
 import { VerificationRoomBridgeService } from "./services/verification-room-bridge.js";
-import { viewNavigationShortcuts } from "./shortcuts.js";
 
 export {
 	type AgentSwitchActionDeps,
@@ -158,25 +154,19 @@ export const appControlPlugin: Plugin = {
 		agentSwitchAction,
 		settingsAction,
 	],
-	shortcuts: viewNavigationShortcuts,
-	// Three-stage view-switch cascade:
-	//  1. EARLY  — viewCommandShortcutEvaluator (responseHandlerEvaluator, no
-	//     model): on an explicit multilingual command ("open settings"), FORCES
-	//     the VIEWS action so navigation never depends on weak-model selection.
-	//  2. ACTION — viewsAction: navigates; deterministic target via
-	//     resolveIntentView → matchViewCommand. The agent may also pick it.
-	//  3. POST   — viewContextEvaluator (small model): catches CONTEXTUAL intent
+	// Model-owned view-switch cascade:
+	//  1. PLAN   — the response handler/planner selects VIEWS from the registered
+	//     action contract, including explicit multilingual navigation requests.
+	//  2. ACTION — viewsAction resolves the selected target and navigates.
+	//  3. POST   — viewContextEvaluator (small model) catches contextual intent
 	//     the user never spelled out ("fix the login bug" -> task-coordinator).
 	//     Its gate defers whenever resolveIntentView already matches a direct
 	//     surface (the rigid matchViewCommand matcher, or the legacy intent
 	//     rules it falls back to), so it never contends with the action.
-	// view-followup-routing handles mutation follow-ups on the active view.
 	evaluators: [viewContextEvaluator],
-	responseHandlerEvaluators: [
-		viewCommandShortcutEvaluator,
-		createChoiceShortcutEvaluator,
-		viewFollowupRoutingEvaluator,
-	],
+	// Persisted choice widgets are an explicit continuation protocol. Ordinary
+	// view navigation and follow-up language stays with Stage 1 and the planner.
+	responseHandlerEvaluators: [createChoiceShortcutEvaluator],
 	providers: [availableAppsProvider, currentViewProvider],
 	services: [
 		AppRegistryService,
@@ -185,8 +175,8 @@ export const appControlPlugin: Plugin = {
 		VerificationRoomBridgeService,
 	],
 	async init(_config, runtime) {
-		// Inject the `current_view` acknowledgement provider into the curated
-		// Stage-1 response state ONLY on switch turns (gating in
+		// Inject the `current_view` state provider into the curated Stage-1
+		// response state only on explicit switch turns (gating in
 		// applyCurrentViewComposeHook), so non-switch turns pay no prompt/token
 		// cost. The planner state already composes `current_view` by default.
 		runtime.registerPipelineHook({

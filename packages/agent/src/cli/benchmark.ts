@@ -1,16 +1,8 @@
 /**
- * CLI subcommand for headless benchmark execution.
- *
- * Accepts a task as JSON (from --task <file> or stdin), boots the runtime
- * in headless mode, sends the prompt through handleMessage (the real agent
- * loop including action selection), captures the response, and writes a
- * JSON result to stdout.
- *
- * Task prompts are augmented with type-aware instructions so the agent
- * produces thorough, structured responses through its normal flow.
- *
- * Server mode (--server) keeps the runtime alive and reads line-delimited
- * JSON from stdin, writing one result line per task.
+ * Runs headless benchmark tasks through the production message loop. One-shot
+ * and line-delimited server modes share a process-owned cancellation signal;
+ * the command does not invent a response deadline, and runtime shutdown drains
+ * tracked post-delivery work before the database closes.
  */
 import crypto from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -26,7 +18,7 @@ import {
 } from "@elizaos/core";
 
 /** Input task schema accepted from the orchestrator. */
-interface BenchmarkTask {
+export interface BenchmarkTask {
   id: string;
   type?: string;
   prompt: string;
@@ -35,7 +27,7 @@ interface BenchmarkTask {
 }
 
 /** Output result schema written to stdout. */
-interface BenchmarkResult {
+export interface BenchmarkResult {
   id: string;
   response: string;
   task_type: string;
@@ -44,19 +36,6 @@ interface BenchmarkResult {
   success: boolean;
   error?: string;
 }
-
-// ---------------------------------------------------------------------------
-// Prompt augmentation — steers the agent via the normal message flow
-// ---------------------------------------------------------------------------
-
-const RESEARCH_AUGMENTATION =
-  "\n\nPlease give a thorough, structured answer with ## headings, bullet points, and a conclusion. Be detailed and comprehensive.";
-
-const CODING_AUGMENTATION =
-  "\n\nPlease write the complete code implementation directly in your response using ```typescript blocks. Include all imports, types, and error handling. Do not delegate — write the code yourself.";
-
-const DEFAULT_AUGMENTATION =
-  "\n\nPlease give a detailed, structured answer with headings and bullet points.";
 
 function detectTaskType(task: BenchmarkTask): string {
   if (task.type) return task.type;
@@ -70,26 +49,11 @@ function detectTaskType(task: BenchmarkTask): string {
   return "research";
 }
 
-function augmentPrompt(task: BenchmarkTask): string {
-  const taskType = detectTaskType(task);
-  switch (taskType) {
-    case "research":
-      return task.prompt + RESEARCH_AUGMENTATION;
-    case "coding":
-      return task.prompt + CODING_AUGMENTATION;
-    default:
-      return task.prompt + DEFAULT_AUGMENTATION;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Task execution — uses handleMessage (the real agent loop)
-// ---------------------------------------------------------------------------
-
-async function runTask(
+/** Runs one task through the same message service used by interactive hosts. */
+export async function runBenchmarkTask(
   runtime: AgentRuntime,
   task: BenchmarkTask,
-  timeoutMs: number,
+  abortSignal: AbortSignal,
 ): Promise<BenchmarkResult> {
   const start = performance.now();
   const taskType = detectTaskType(task);
@@ -97,8 +61,12 @@ async function runTask(
   const roomId = stringToUuid(`benchmark-${task.id}`);
   const worldId = stringToUuid(`benchmark-world-${task.id}`);
   const messageServerId = stringToUuid(`benchmark-server-${task.id}`) as UUID;
+  let callbackText = "";
+  let streamText = "";
+  const actionsTaken: string[] = [];
 
   try {
+    abortSignal.throwIfAborted();
     await runtime.ensureConnection({
       entityId: userId,
       roomId,
@@ -110,19 +78,24 @@ async function runTask(
       messageServerId,
       metadata: { ownership: { ownerId: userId } },
     });
-
-    const augmentedPrompt = augmentPrompt(task);
+    abortSignal.throwIfAborted();
 
     const message = createMessageMemory({
       id: crypto.randomUUID() as UUID,
       entityId: userId,
       roomId,
       content: {
-        text: augmentedPrompt,
+        text: task.prompt,
         source: "benchmark",
         channelType: ChannelType.DM,
       },
     });
+    if (task.context) {
+      if (message.metadata?.type !== "message") {
+        throw new Error("Benchmark message is missing message metadata");
+      }
+      message.metadata.benchmarkContext = JSON.stringify(task.context);
+    }
 
     if (!runtime.messageService) {
       return {
@@ -136,98 +109,36 @@ async function runTask(
       };
     }
 
-    let callbackText = "";
-    let streamText = "";
-    const actionsTaken: string[] = [];
+    const result = await runtime.messageService.handleMessage(
+      runtime,
+      message,
+      async (content, actionName) => {
+        if (content.text) callbackText += content.text;
+        if (actionName && !actionsTaken.includes(actionName)) {
+          actionsTaken.push(actionName);
+        }
+        return [];
+      },
+      {
+        abortSignal,
+        onStreamChunk: async (chunk: string) => {
+          if (chunk) streamText += chunk;
+        },
+      },
+    );
 
-    // Race message handling against the timeout.
-    // Text can arrive via three channels:
-    //   1. callback — action handler results
-    //   2. onStreamChunk — streamed LLM tokens
-    //   3. result.responseContent — final composed response
-    // We capture all three and deduplicate.
-    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
-    const result = (await Promise.race([
-      (async () => {
-        const handleResult = await runtime.messageService?.handleMessage(
-          runtime,
-          message,
-          async (content) => {
-            if (content.text) {
-              callbackText += content.text;
-            }
-            // Track actions taken
-            const action = (content as Record<string, unknown>)?.action;
-            if (typeof action === "string" && !actionsTaken.includes(action)) {
-              actionsTaken.push(action);
-            }
-            return [];
-          },
-          {
-            onStreamChunk: async (chunk: string) => {
-              if (chunk) streamText += chunk;
-            },
-          },
-        );
-        return handleResult;
-      })(),
-      new Promise<"timeout">((resolve) => {
-        timeoutHandle = setTimeout(() => resolve("timeout"), timeoutMs);
-      }),
-    ]).finally(() => {
-      if (timeoutHandle) clearTimeout(timeoutHandle);
-    })) as unknown;
-
-    if (result === "timeout") {
-      const responseText = streamText || callbackText;
-      return {
-        id: task.id,
-        response: responseText,
-        task_type: taskType,
-        actions_taken: actionsTaken,
-        duration_ms: Math.round(performance.now() - start),
-        success: false,
-        error: `Timeout after ${timeoutMs}ms`,
-      };
-    }
-
-    // Extract text from all channels, preferring the richest source.
-    // result.responseContent has the final composed text from the LLM.
-    const resultRecord =
-      typeof result === "object" && result !== null
-        ? (result as Record<string, unknown>)
-        : null;
-    const responseContent =
-      resultRecord?.responseContent &&
-      typeof resultRecord.responseContent === "object"
-        ? (resultRecord.responseContent as Record<string, unknown>)
-        : null;
-    const resultText =
-      responseContent && typeof responseContent.text === "string"
-        ? responseContent.text
-        : "";
-
-    // Also check responseMessages for additional text
-    const responseMessages = Array.isArray(resultRecord?.responseMessages)
-      ? (resultRecord.responseMessages as Array<{
-          content?: { text?: string };
-        }>)
-      : [];
-    const messagesText = responseMessages
+    const resultText = result.responseContent?.text ?? "";
+    const messagesText = result.responseMessages
       .map((m) => m.content?.text ?? "")
       .filter(Boolean)
       .join("\n");
 
-    // Pick the best source — longest non-empty wins, since the same
-    // text may appear in multiple channels.
-    const candidates = [
-      resultText,
-      messagesText,
-      streamText,
-      callbackText,
-    ].filter(Boolean);
+    // The message service's final response is authoritative. Stream and callback
+    // channels are delivery transports, so choosing the longest text can replace
+    // the final answer with duplicated chunks or verbose action output.
     const responseText =
-      candidates.sort((a, b) => b.length - a.length)[0] ?? "";
+      resultText || messagesText || streamText || callbackText || "";
+    const success = result.didRespond && responseText.trim().length > 0;
 
     return {
       id: task.id,
@@ -235,14 +146,18 @@ async function runTask(
       task_type: taskType,
       actions_taken: actionsTaken,
       duration_ms: Math.round(performance.now() - start),
-      success: true,
+      success,
+      ...(!success
+        ? { error: result.reason ?? "Agent completed without a response" }
+        : {}),
     };
   } catch (err) {
+    // error-policy:J1 the command boundary serializes task failures for its caller.
     return {
       id: task.id,
-      response: "",
+      response: streamText || callbackText,
       task_type: taskType,
-      actions_taken: [],
+      actions_taken: actionsTaken,
       duration_ms: Math.round(performance.now() - start),
       success: false,
       error: err instanceof Error ? err.message : String(err),
@@ -250,20 +165,59 @@ async function runTask(
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 /** Parse a JSON string into a BenchmarkTask, throwing on invalid input. */
-function parseTask(raw: string): BenchmarkTask {
+export function parseBenchmarkTask(raw: string): BenchmarkTask {
   const parsed: unknown = JSON.parse(raw);
+  if (!isRecord(parsed)) {
+    throw new Error("Invalid task JSON: expected an object");
+  }
+  const candidate = parsed;
   if (
-    typeof parsed !== "object" ||
-    parsed === null ||
-    !("id" in parsed) ||
-    !("prompt" in parsed)
+    typeof candidate.id !== "string" ||
+    candidate.id.trim() === "" ||
+    typeof candidate.prompt !== "string" ||
+    candidate.prompt.trim() === ""
   ) {
     throw new Error(
-      'Invalid task JSON: must contain at minimum "id" and "prompt" fields',
+      'Invalid task JSON: "id" and "prompt" must be non-empty strings',
     );
   }
-  return parsed as BenchmarkTask;
+  if (candidate.type !== undefined && typeof candidate.type !== "string") {
+    throw new Error('Invalid task JSON: "type" must be a string when provided');
+  }
+  if (
+    candidate.expected !== undefined &&
+    typeof candidate.expected !== "string"
+  ) {
+    throw new Error(
+      'Invalid task JSON: "expected" must be a string when provided',
+    );
+  }
+  if (
+    candidate.context !== undefined &&
+    (typeof candidate.context !== "object" ||
+      candidate.context === null ||
+      Array.isArray(candidate.context))
+  ) {
+    throw new Error(
+      'Invalid task JSON: "context" must be an object when provided',
+    );
+  }
+  return {
+    id: candidate.id,
+    prompt: candidate.prompt,
+    ...(typeof candidate.type === "string" ? { type: candidate.type } : {}),
+    ...(typeof candidate.expected === "string"
+      ? { expected: candidate.expected }
+      : {}),
+    ...(typeof candidate.context === "object" && candidate.context !== null
+      ? { context: candidate.context as Record<string, unknown> }
+      : {}),
+  };
 }
 
 /** Write a result as a single JSON line to stdout. */
@@ -271,46 +225,192 @@ function writeResult(result: BenchmarkResult): void {
   process.stdout.write(`${JSON.stringify(result)}\n`);
 }
 
-/**
- * Server mode: read line-delimited JSON tasks from stdin, process each
- * against the running runtime, and write results to stdout.
- */
-async function runServerMode(
+/** Runs line-delimited tasks until input closes or the process owner cancels. */
+export async function runBenchmarkServer(
   runtime: AgentRuntime,
-  timeoutMs: number,
+  abortSignal: AbortSignal,
+  input: NodeJS.ReadableStream = process.stdin,
+  output: (result: BenchmarkResult) => void = writeResult,
 ): Promise<void> {
   const rl = readline.createInterface({
-    input: process.stdin,
+    input,
     terminal: false,
   });
+  const closeOnAbort = () => rl.close();
+  abortSignal.addEventListener("abort", closeOnAbort, { once: true });
 
-  for await (const line of rl) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
+  try {
+    for await (const line of rl) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
 
-    try {
-      const task = parseTask(trimmed);
-      const result = await runTask(runtime, task, timeoutMs);
-      writeResult(result);
-    } catch (err) {
-      const errorResult: BenchmarkResult = {
-        id: "unknown",
-        response: "",
-        task_type: "",
-        actions_taken: [],
-        duration_ms: 0,
-        success: false,
-        error: `Failed to parse task: ${err instanceof Error ? err.message : String(err)}`,
-      };
-      writeResult(errorResult);
+      let task: BenchmarkTask;
+      try {
+        task = parseBenchmarkTask(trimmed);
+      } catch (err) {
+        // error-policy:J1 each line is an independent input boundary.
+        output({
+          id: "unknown",
+          response: "",
+          task_type: "",
+          actions_taken: [],
+          duration_ms: 0,
+          success: false,
+          error: `Failed to parse task: ${err instanceof Error ? err.message : String(err)}`,
+        });
+        continue;
+      }
+
+      const result = await runBenchmarkTask(runtime, task, abortSignal);
+      // A broken stdout/transport is process-fatal; it is not malformed input.
+      output(result);
     }
+  } finally {
+    abortSignal.removeEventListener("abort", closeOnAbort);
+    rl.close();
   }
 }
 
 export interface BenchmarkCommandOptions {
   task?: string;
   server?: boolean;
-  timeout: string;
+}
+
+/** Parses the autonomous CLI benchmark flags with the same strictness as Commander. */
+export function parseBenchmarkCommandOptions(
+  argv: readonly string[],
+  startIndex = 3,
+): BenchmarkCommandOptions {
+  const options: BenchmarkCommandOptions = {};
+  for (let index = startIndex; index < argv.length; index += 1) {
+    const argument = argv[index];
+    if (argument === "--server") {
+      options.server = true;
+      continue;
+    }
+    if (argument === "--task") {
+      const path = argv[index + 1];
+      if (!path || path.startsWith("--")) {
+        throw new Error("benchmark --task requires a path");
+      }
+      options.task = path;
+      index += 1;
+      continue;
+    }
+    throw new Error(`Unknown benchmark option: ${argument}`);
+  }
+  return options;
+}
+
+type RuntimeShutdown = (
+  runtime: AgentRuntime | null | undefined,
+  context: string,
+) => Promise<void>;
+
+/** @internal Installs the benchmark process boundary's SIGINT/SIGTERM owner. */
+export function installOwnerSignalHandlers(
+  controller: AbortController,
+): () => void {
+  const handleSignal = (signal: NodeJS.Signals) => {
+    if (controller.signal.aborted) return;
+    process.exitCode = signal === "SIGINT" ? 130 : 143;
+    controller.abort(new Error(`Benchmark owner received ${signal}`));
+  };
+  const handleInterrupt = () => handleSignal("SIGINT");
+  const handleTerminate = () => handleSignal("SIGTERM");
+  process.once("SIGINT", handleInterrupt);
+  process.once("SIGTERM", handleTerminate);
+  return () => {
+    process.off("SIGINT", handleInterrupt);
+    process.off("SIGTERM", handleTerminate);
+  };
+}
+
+/** Reads one task from a stream until EOF or owner cancellation. */
+export async function readBenchmarkInput(
+  abortSignal: AbortSignal,
+  input: NodeJS.ReadableStream = process.stdin,
+): Promise<string> {
+  const chunks: Buffer[] = [];
+  return new Promise<string>((resolve, reject) => {
+    const cleanup = () => {
+      input.off("data", handleData);
+      input.off("end", handleEnd);
+      input.off("error", handleError);
+      abortSignal.removeEventListener("abort", handleAbort);
+    };
+    const handleData = (chunk: Buffer | string) => {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    };
+    const handleEnd = () => {
+      cleanup();
+      resolve(Buffer.concat(chunks).toString("utf-8").trim());
+    };
+    const handleError = (error: Error) => {
+      cleanup();
+      reject(error);
+    };
+    const handleAbort = () => {
+      cleanup();
+      reject(abortSignal.reason);
+    };
+
+    input.on("data", handleData);
+    input.once("end", handleEnd);
+    input.once("error", handleError);
+    abortSignal.addEventListener("abort", handleAbort, { once: true });
+    if (abortSignal.aborted) handleAbort();
+  });
+}
+
+async function readOneShotTask(
+  taskPath: string | undefined,
+  abortSignal: AbortSignal,
+): Promise<BenchmarkTask | undefined> {
+  let taskJson: string;
+  if (taskPath) {
+    try {
+      taskJson = readFileSync(taskPath, "utf-8");
+    } catch (err) {
+      // error-policy:J1 file input is a CLI boundary with an explicit exit status.
+      process.stderr.write(
+        `[benchmark] Failed to read task file: ${err instanceof Error ? err.message : String(err)}\n`,
+      );
+      process.exitCode = 2;
+      return undefined;
+    }
+  } else {
+    try {
+      taskJson = await readBenchmarkInput(abortSignal);
+    } catch (err) {
+      // error-policy:J1 stdin and owner cancellation terminate the one-shot command.
+      if (!abortSignal.aborted) {
+        process.stderr.write(
+          `[benchmark] Failed to read stdin: ${err instanceof Error ? err.message : String(err)}\n`,
+        );
+        process.exitCode = 2;
+      }
+      return undefined;
+    }
+    if (!taskJson) {
+      process.stderr.write(
+        "[benchmark] No task provided. Use --task <file> or pipe JSON to stdin.\n",
+      );
+      process.exitCode = 2;
+      return undefined;
+    }
+  }
+
+  try {
+    return parseBenchmarkTask(taskJson);
+  } catch (err) {
+    // error-policy:J1 invalid untrusted input is reported at the CLI boundary.
+    process.stderr.write(
+      `[benchmark] Invalid task JSON: ${err instanceof Error ? err.message : String(err)}\n`,
+    );
+    process.exitCode = 2;
+    return undefined;
+  }
 }
 
 /**
@@ -319,78 +419,81 @@ export interface BenchmarkCommandOptions {
 export async function runBenchmark(
   opts: BenchmarkCommandOptions,
 ): Promise<void> {
-  const timeoutMs = Number.parseInt(opts.timeout, 10);
-  if (Number.isNaN(timeoutMs) || timeoutMs <= 0) {
-    console.error("[benchmark] Invalid timeout value");
-    process.exit(2);
-  }
-
-  // Suppress noisy runtime logs — benchmark output must be clean JSON on stdout
   if (!process.env.LOG_LEVEL) {
     process.env.LOG_LEVEL = "error";
   }
   process.env.ELIZA_HEADLESS = "1";
 
-  const { bootElizaRuntime } = await import("../runtime/eliza.ts");
-  let runtime: AgentRuntime;
+  const ownerController = new AbortController();
+  const removeSignalHandlers = installOwnerSignalHandlers(ownerController);
+  let runtime: AgentRuntime | undefined;
+  let shutdownRuntime: RuntimeShutdown | undefined;
   try {
-    runtime = await bootElizaRuntime();
-  } catch (err) {
-    const errorResult: BenchmarkResult = {
-      id: opts.task ? "file" : "stdin",
-      response: "",
-      task_type: "",
-      actions_taken: [],
-      duration_ms: 0,
-      success: false,
-      error: `Runtime boot failed: ${err instanceof Error ? err.message : String(err)}`,
-    };
-    writeResult(errorResult);
-    process.exit(1);
-  }
+    const oneShotTask = opts.server
+      ? undefined
+      : await readOneShotTask(opts.task, ownerController.signal);
+    if (!opts.server && !oneShotTask) return;
 
-  if (opts.server) {
-    await runServerMode(runtime, timeoutMs);
-    logger.info("[benchmark] EOF on stdin, shutting down");
-    process.exit(0);
-  }
-
-  // Single-task mode
-  let taskJson: string;
-  if (opts.task) {
     try {
-      taskJson = readFileSync(opts.task, "utf-8");
+      const runtimeModule = await import("../runtime/eliza.ts");
+      shutdownRuntime = runtimeModule.shutdownRuntime;
+      runtime = await runtimeModule.bootElizaRuntime({
+        abortSignal: ownerController.signal,
+      });
     } catch (err) {
-      console.error(
-        `[benchmark] Failed to read task file: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      process.exit(2);
+      if (ownerController.signal.aborted) return;
+      // error-policy:J1 the CLI renders boot failure as its machine-readable result.
+      writeResult({
+        id: oneShotTask?.id ?? (opts.task ? "file" : "stdin"),
+        response: "",
+        task_type: "",
+        actions_taken: [],
+        duration_ms: 0,
+        success: false,
+        error: `Runtime boot failed: ${err instanceof Error ? err.message : String(err)}`,
+      });
+      if (process.exitCode === undefined) process.exitCode = 1;
+      return;
     }
-  } else {
-    const chunks: Buffer[] = [];
-    for await (const chunk of process.stdin) {
-      chunks.push(chunk as Buffer);
-    }
-    taskJson = Buffer.concat(chunks).toString("utf-8").trim();
-    if (!taskJson) {
-      console.error(
-        "[benchmark] No task provided. Use --task <file> or pipe JSON to stdin.",
-      );
-      process.exit(2);
-    }
-  }
 
-  let task: BenchmarkTask;
-  try {
-    task = parseTask(taskJson);
-  } catch (err) {
-    console.error(
-      `[benchmark] Invalid task JSON: ${err instanceof Error ? err.message : String(err)}`,
+    if (ownerController.signal.aborted) return;
+
+    if (opts.server) {
+      await runBenchmarkServer(runtime, ownerController.signal);
+      logger.info(
+        ownerController.signal.aborted
+          ? "[benchmark] Owner cancelled server input, shutting down"
+          : "[benchmark] EOF on stdin, shutting down",
+      );
+      if (!ownerController.signal.aborted) process.exitCode = 0;
+      return;
+    }
+    if (!oneShotTask) return;
+
+    const result = await runBenchmarkTask(
+      runtime,
+      oneShotTask,
+      ownerController.signal,
     );
-    process.exit(2);
+    writeResult(result);
+    if (!ownerController.signal.aborted) {
+      process.exitCode = result.success ? 0 : 1;
+    }
+  } finally {
+    try {
+      if (runtime && shutdownRuntime) {
+        await shutdownRuntime(runtime, "benchmark shutdown");
+      }
+    } catch (err) {
+      // error-policy:J1 shutdown failure is visible through stderr and exit status.
+      process.stderr.write(
+        `[benchmark] Runtime shutdown failed: ${err instanceof Error ? err.message : String(err)}\n`,
+      );
+      if (process.exitCode === undefined || process.exitCode === 0) {
+        process.exitCode = 1;
+      }
+    } finally {
+      removeSignalHandlers();
+    }
   }
-
-  const result = await runTask(runtime, task, timeoutMs);
-  writeResult(result);
-  process.exit(result.success ? 0 : 1);
 }

@@ -46,84 +46,14 @@ permissions:
   contents: read
 
 jobs:
-  stale-base-preflight:
-    name: PR stale-base preflight
-    # PR-only in EFFECT — every step gates on github.event_name ==
-    # 'pull_request' — but the JOB itself runs (and no-op-succeeds) on every
-    # event. It used to be job-level `if: github.event_name == 'pull_request'`,
-    # which SKIPPED it on push; because `changes` needs this job and GitHub
-    # evaluates the implicit success() over the TRANSITIVE needs chain
-    # (actions/runner#491), that one skipped ancestor silently skip-cascaded
-    # every push-event lane downstream of `changes` whose `if` carries no
-    # status-check function — develop push runs went vacuously red from the
-    # moment the needs edge landed. Step-level gating keeps the PR-only
-    # contract (ci-merge-gate-contract.mjs) and the `changes` ordering while
-    # letting push/schedule/dispatch fan-outs actually run.
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 10
-    env:
-      BASE_REF: ${{ github.event.pull_request.base.ref }}
-      HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
-      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-      ACK: ${{ contains(github.event.pull_request.labels.*.name, 'stale-base-ack') && '1' || '' }}
-    steps:
-      - name: Checkout target branch (guard logic comes from the base, not the PR)
-        if: github.event_name == 'pull_request'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          ref: ${{ github.event.pull_request.base.ref }}
-          # The guard disables lazy promisor fetches while it runs. Fetch the
-          # same bounded history window up front so merge commits can resolve
-          # their parents without network fallback.
-          fetch-depth: 1500
-          filter: blob:none
-          submodules: false
-
-      - name: Setup Node.js for stale-base guard
-        if: github.event_name == 'pull_request'
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Fetch PR head + bounded history (blobless)
-        if: github.event_name == 'pull_request'
-        run: |
-          set -euo pipefail
-          git fetch --quiet --no-tags --filter=blob:none --depth=1500 \
-            "https://github.com/${HEAD_REPO}.git" "$HEAD_SHA"
-          git fetch --quiet --no-tags --filter=blob:none --depth=1500 origin \
-            "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
-
-      - name: Self-test the guard on fixture repos
-        if: github.event_name == 'pull_request'
-        run: node packages/scripts/stale-base-guard.self-test.mjs
-
-      - name: Detect silent reverts + stale base before fanning out tests
-        if: github.event_name == 'pull_request'
-        env:
-          GIT_NO_LAZY_FETCH: "1"
-        run: |
-          set -euo pipefail
-          node packages/scripts/stale-base-guard.mjs \
-            --base "refs/remotes/origin/${BASE_REF}" \
-            --head "$HEAD_SHA" \
-            --window 1200 \
-            --max-behind-commits 200 \
-            --max-behind-hours 72 \
-            ${ACK:+--ack} \
-            --github \
-            --summary "$GITHUB_STEP_SUMMARY"
-
   changes:
     name: Classify changed paths
-    needs: stale-base-preflight
-    if: always() && (github.event_name != 'pull_request' || needs.stale-base-preflight.result == 'success')
     # Route with the same fleet-aware conditional as the test lanes. GitHub-hosted
     # runners are billing-frozen (#13481), so a hardcoded ubuntu-24.04 here queued
     # forever and — since every lane needs this classifier — stalled the entire
     # ci-ok chain while the self-hosted fleet sat idle. Self-hosted when online;
     # hosted only when an operator flags the fleet down (and billing is restored).
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 10
     outputs:
       server: ${{ steps.filter.outputs.server }}
@@ -155,6 +85,14 @@ jobs:
       - name: Validate CI Bun version pin contract
         run: node packages/scripts/ci-bun-version-contract.mjs
 
+      - name: Install workflow-invariants parser dependency
+        run: npm install --prefix "$RUNNER_TEMP/workflow-invariants-deps" --no-save --no-package-lock --ignore-scripts yaml@2.9.0
+
+      - name: Validate merge-critical workflow invariants
+        env:
+          NODE_PATH: ${{ runner.temp }}/workflow-invariants-deps/node_modules
+        run: node packages/scripts/ci-workflow-invariants.mjs
+
       - name: Validate zero-key command ownership contract
         run: node packages/scripts/ci-zero-key-command-ownership-contract.mjs
 
@@ -168,12 +106,6 @@ jobs:
         env:
           NODE_PATH: ${{ runner.temp }}/alias-read-guard-deps/node_modules
         run: node packages/scripts/alias-read-guard.mjs --self-test
-
-      - name: Validate merge-gate robustness contract self-test
-        run: node packages/scripts/ci-merge-gate-contract.mjs --self-test
-
-      - name: Validate merge-gate robustness contract
-        run: node packages/scripts/ci-merge-gate-contract.mjs
 
       - name: Determine affected test lanes
         id: filter
@@ -217,7 +149,7 @@ jobs:
     # #13620/#12342: this guard protects the ordinary PR path from runner lanes
     # that collect no real tests or swallow a failure as "no tests found".
     # Keep it outside path gates and outside the opt-in `ci:full` heavy family.
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -236,7 +168,7 @@ jobs:
     name: Server Tests
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.server == 'true'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 60
     env:
       PGLITE_WASM_MODE: node
@@ -254,7 +186,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install
+          install-command: bun install --frozen-lockfile
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -263,7 +195,7 @@ jobs:
         run: bun run build:views
 
       - name: Views system tests
-        run: bunx vitest run packages/agent/src/__tests__/views-system-smoke.test.ts packages/agent/src/__tests__/views-registry-integration.test.ts packages/agent/src/__tests__/plugin-tui-view-coverage.test.ts
+        run: bunx vitest run packages/agent/src/__tests__/views-system-smoke.test.ts packages/agent/src/__tests__/views-registry-integration.test.ts
 
       - name: Remote capability router tests
         run: bun run test:remote-capabilities
@@ -308,7 +240,7 @@ jobs:
     name: Client Tests
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.client == 'true'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -324,7 +256,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install
+          install-command: bun install --frozen-lockfile
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -360,7 +292,7 @@ jobs:
     name: Plugin Tests (${{ matrix.shard }}/4)
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.plugins == 'true'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 95
     strategy:
       fail-fast: false
@@ -390,7 +322,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install
+          install-command: bun install --frozen-lockfile
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -413,7 +345,7 @@ jobs:
 
       - name: Run plugin tests
         # Cap step below the 95m job budget so a flaky plugin
-        # (most recently plugin-shell rust PTY tests in run 25234887145)
+        # (most recently shell rust PTY tests in run 25234887145)
         # fails fast instead of burning the whole job's wall clock.
         timeout-minutes: 85
         run: bun run test:plugins
@@ -439,7 +371,7 @@ jobs:
       - plugin-tests
     if: ${{ !cancelled() && always() }}
     # Fleet-aware (see `changes`): hardcoded hosted froze this ci-ok dependency.
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 10
     steps:
       - name: Check plugin shard results
@@ -459,7 +391,7 @@ jobs:
           exit 1
 
   # First CI consumer of the repo-level integration lane
-  # (packages/test/vitest/integration.config.ts). The lane was dead in CI:
+  # (packages/scripts/vitest/integration.config.ts). The lane was dead in CI:
   # nothing invoked the config, its @elizaos/core alias broke the /node
   # subpath, and its eliza/-prefixed paths matched zero files in a flat
   # checkout (#11047). Runs plugin-personal-assistant's test:integration —
@@ -471,7 +403,7 @@ jobs:
     name: Integration Lane (personal-assistant)
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.plugins == 'true' || needs.changes.outputs.server == 'true'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 45
     env:
       PGLITE_WASM_MODE: node
@@ -489,13 +421,13 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install
+          install-command: bun install --frozen-lockfile
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
-      # The personal-assistant barrel imports sibling plugin dists (e.g.
-      # plugin-calendly pulls "@elizaos/core/node") straight from
+      # The personal-assistant barrel imports sibling plugin dists that pull
+      # "@elizaos/core/node" straight from
       # node_modules, so the lane needs the package's workspace dependency
       # graph built. Turbo replays warm runs from cache.
       - name: Build personal-assistant dependency graph
@@ -509,7 +441,7 @@ jobs:
     name: Electrobun Desktop Contract
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.desktop == 'true'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -525,7 +457,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install
+          install-command: bun install --frozen-lockfile
           install-native-deps: "false"
 
       - name: Build workspace packages for Vitest resolution
@@ -539,12 +471,12 @@ jobs:
     name: Zero-Key unit + UI coverage
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.zero_key == 'true'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 30
     env:
       TEST_LANE: "pr"
       ELIZA_LIVE_TEST: "0"
-      SCENARIO_USE_LLM_PROXY: "1"
+      SCENARIO_USE_DETERMINISTIC_MODEL: "1"
       CEREBRAS_API_KEY: ""
       OPENAI_API_KEY: ""
       ANTHROPIC_API_KEY: ""
@@ -568,7 +500,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -582,9 +514,8 @@ jobs:
       - name: Scenario runner unit coverage
         run: bun run --cwd packages/scenario-runner test -- src/executor.test.ts src/runtime-factory.test.ts src/scenario-pr-workflow.test.ts
 
-      - name: Deterministic LLM proxy unit coverage
-        working-directory: packages
-        run: bunx vitest run --config test/mocks/vitest.config.ts test/mocks/__tests__/llm-proxy-plugin.test.ts
+      - name: Deterministic model provider unit coverage
+        run: bun run --cwd packages/core test -- src/testing/deterministic-model-plugin.test.ts
 
       - name: UI voice interaction coverage
         run: bun run --cwd packages/ui test -- src/hooks/useVoiceChat.bidirectional.test.tsx src/hooks/useContinuousChat.test.tsx
@@ -599,12 +530,12 @@ jobs:
     name: Zero-Key app browser
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.zero_key == 'true'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 35
     env:
       TEST_LANE: "pr"
       ELIZA_LIVE_TEST: "0"
-      SCENARIO_USE_LLM_PROXY: "1"
+      SCENARIO_USE_DETERMINISTIC_MODEL: "1"
       CEREBRAS_API_KEY: ""
       OPENAI_API_KEY: ""
       ANTHROPIC_API_KEY: ""
@@ -628,7 +559,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -649,7 +580,7 @@ jobs:
         run: bun run --cwd packages/app test:e2e test/ui-smoke/tts-stt-e2e.spec.ts --project=chromium
 
       - name: Actual app plugin view browser coverage
-        run: bun run --cwd packages/app test:e2e test/ui-smoke/plugin-views-visual.spec.ts test/ui-smoke/plugin-views-interaction.spec.ts test/ui-smoke/orchestrator-gui-workbench.spec.ts test/ui-smoke/screenshare-gui-interactions.spec.ts test/ui-smoke/task-coordinator-gui-interactions.spec.ts --project=chromium
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/plugin-views-visual.spec.ts test/ui-smoke/plugin-views-interaction.spec.ts test/ui-smoke/orchestrator-gui-workbench.spec.ts test/ui-smoke/task-coordinator-gui-interactions.spec.ts --project=chromium
 
       # WebKit cross-engine pointer/focus lane (#10722): the playwright config's
       # opt-in `webkit` project (Desktop Safari) over the keyless chat
@@ -674,12 +605,12 @@ jobs:
     name: Zero-Key diagnostics
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.zero_key == 'true'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 30
     env:
       TEST_LANE: "pr"
       ELIZA_LIVE_TEST: "0"
-      SCENARIO_USE_LLM_PROXY: "1"
+      SCENARIO_USE_DETERMINISTIC_MODEL: "1"
       CEREBRAS_API_KEY: ""
       OPENAI_API_KEY: ""
       ANTHROPIC_API_KEY: ""
@@ -703,7 +634,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -736,12 +667,12 @@ jobs:
     name: Zero-Key scenario runner
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.zero_key == 'true'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 30
     env:
       TEST_LANE: "pr"
       ELIZA_LIVE_TEST: "0"
-      SCENARIO_USE_LLM_PROXY: "1"
+      SCENARIO_USE_DETERMINISTIC_MODEL: "1"
       CEREBRAS_API_KEY: ""
       OPENAI_API_KEY: ""
       ANTHROPIC_API_KEY: ""
@@ -765,7 +696,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -806,16 +737,16 @@ jobs:
         if: always()
         run: node packages/scripts/rm-path-recursive.mjs reports/scenarios/pr-deterministic reports/scenarios/pr-deterministic-corpus reports/scenarios/pr-deterministic-orchestrator reports/scenarios/pr-deterministic-lifeops reports/scenarios/catalog-inventory packages/app/playwright-report packages/app/test-results
 
-  zero-key-harness-e2e:
+  zero-key-model-provider-e2e:
     name: Zero-Key harness E2E
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.zero_key == 'true'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 15
     env:
       TEST_LANE: "pr"
       ELIZA_LIVE_TEST: "0"
-      SCENARIO_USE_LLM_PROXY: "1"
+      SCENARIO_USE_DETERMINISTIC_MODEL: "1"
       CEREBRAS_API_KEY: ""
       OPENAI_API_KEY: ""
       ANTHROPIC_API_KEY: ""
@@ -839,7 +770,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -847,14 +778,13 @@ jobs:
       - name: Ensure generated shared i18n data
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
-      - name: Keyless harness e2e (mock-LLM + recorded fixtures)
-        working-directory: packages
-        run: bunx vitest run --config test/mocks/vitest.config.ts test/mocks/__tests__/
+      - name: External API mock contract coverage
+        run: bunx vitest run --config packages/scenario-runner/test/mocks/vitest.config.ts
 
-      - name: Per-plugin keyless harness adoption proofs
+      - name: Per-plugin deterministic model-provider runtime adoption proofs
         run: |
-          bun run --cwd plugins/plugin-anthropic test:harness
-          bun run --cwd plugins/plugin-discord test:harness
+          bun run --cwd plugins/plugin-anthropic test:real-runtime
+          bun run --cwd plugins/plugin-discord test:real-runtime
 
   zero-key-e2e:
     name: Zero-Key Deterministic E2E
@@ -864,9 +794,9 @@ jobs:
       - zero-key-browser
       - zero-key-diagnostics
       - zero-key-scenario-runner
-      - zero-key-harness-e2e
+      - zero-key-model-provider-e2e
     if: ${{ !cancelled() && always() && (github.event_name != 'pull_request' || needs.changes.outputs.zero_key == 'true') }}
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     steps:
       - name: Check zero-key slices
         shell: bash
@@ -878,7 +808,7 @@ jobs:
             "zero-key-browser:${{ needs.zero-key-browser.result }}" \
             "zero-key-diagnostics:${{ needs.zero-key-diagnostics.result }}" \
             "zero-key-scenario-runner:${{ needs.zero-key-scenario-runner.result }}" \
-            "zero-key-harness-e2e:${{ needs.zero-key-harness-e2e.result }}"; do
+            "zero-key-model-provider-e2e:${{ needs.zero-key-model-provider-e2e.result }}"; do
             name="${pair%%:*}"
             result="${pair##*:}"
             echo "$name: $result"
@@ -896,7 +826,7 @@ jobs:
     name: Cloud Live E2E (Eliza Cloud)
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.cloud == 'true'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 60
     outputs:
       skip: ${{ steps.cloud.outputs.skip }}
@@ -957,7 +887,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install
+          install-command: bun install --frozen-lockfile
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -1040,7 +970,7 @@ jobs:
 
   provider-live-e2e:
     name: Remote Capability Provider Live E2E
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 45
     outputs:
       skip: ${{ steps.providers.outputs.skip }}
@@ -1104,7 +1034,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install
+          install-command: bun install --frozen-lockfile
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -1171,7 +1101,7 @@ jobs:
       - cloud-live-e2e
       - provider-live-e2e
     if: always() && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && (needs.cloud-live-e2e.outputs.capability_skip != 'true' || needs.provider-live-e2e.outputs.skip != 'true')
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 15
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -1185,7 +1115,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install
+          install-command: bun install --frozen-lockfile
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -1210,28 +1140,44 @@ jobs:
         if: needs.provider-live-e2e.result == 'success' && needs.provider-live-e2e.outputs.skip != 'true'
         run: bun run test:remote-capabilities:validate-live-reports --kind provider --expect-count 3..4 --max-age-minutes 120 --max-future-minutes 5 --allowed-providers e2b,home-machine,mobile-companion,desktop-companion --require-providers e2b,home-machine,mobile-companion --require-ci --require-file-identity reports/remote-capabilities/providers
 
-  # The merge queue's sole required context is `ci-ok`, and until now `ci-ok`
-  # needed only the test lanes — so a change that breaks repo-wide typecheck,
-  # fails biome lint, is unformatted, or commits a secret could still merge to
-  # develop as long as tests passed (all of these are required on `main` but were
-  # advisory on develop; #13617 F2). This job restores parity: it runs the same
-  # lint / format / typecheck / secret-scan gates that guard `main`, and `ci-ok`
-  # needs it. It runs anywhere `ci-ok` treats skipped jobs as failures (merge
-  # queue, develop push, manual dispatch, and nightly schedule); on PRs
-  # quality.yml already covers this surface, so the job self-skips and `ci-ok`'s
-  # lenient PR path lets the skip pass. Runner: fleet-aware like the test lanes —
-  # it was pinned to GitHub-hosted for independence from the self-hosted fleet,
-  # but with hosted runners billing-frozen (#13481) that pin froze this ci-ok
-  # dependency; route to self-hosted while the fleet is online.
+  script-tests:
+    name: Script Tests (Linux)
+    needs: changes
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+
+      - name: Run the complete isolated script-test inventory
+        run: bun run test:scripts
+
+      - name: Upload script-test evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: script-tests-linux
+          path: reports/script-tests/
+          if-no-files-found: error
+          retention-days: 7
+
   merge-quality-gate:
     name: Merge Queue Quality Gate
     needs: changes
-    if: >-
-      github.event_name == 'merge_group' ||
-      github.event_name == 'push' ||
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'schedule'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -1256,61 +1202,32 @@ jobs:
         run: bun run format:check
 
       - name: Repo-wide typecheck
-        # Match the bounded PR lane: the full graph otherwise starts enough
-        # native TypeScript workers to terminate a four-vCPU hosted runner.
         run: NODE_OPTIONS='--max-old-space-size=8192' node packages/scripts/run-turbo.mjs run typecheck --concurrency=4
 
-      - name: Stale base guard
-        env:
-          CURRENT_SHA: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          if git rev-parse -q --verify "${CURRENT_SHA}^" >/dev/null 2>&1; then
-            BASE_SHA="$(git rev-parse "${CURRENT_SHA}^1")"
-            node packages/scripts/stale-base-guard.self-test.mjs
-            node packages/scripts/stale-base-guard.mjs \
-              --base "$BASE_SHA" \
-              --head "$CURRENT_SHA" \
-              --merge-base "$BASE_SHA" \
-              --window 1200 \
-              --max-behind-commits 200 \
-              --max-behind-hours 72 \
-              --github \
-              --summary "$GITHUB_STEP_SUMMARY"
-          else
-            echo "::notice::Current SHA has no parent; stale-base guard has no target branch parent to compare."
-          fi
-
-      - name: Install gitleaks (OSS binary — no license required)
+      - name: Install gitleaks
         run: |
           set -euo pipefail
           GITLEAKS_VERSION=8.30.1
-          curl -sSL -o /tmp/gitleaks.tar.gz \
+          curl --fail --location --silent --show-error --retry 3 \
+            --output "$RUNNER_TEMP/gitleaks.tar.gz" \
             "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
-          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$RUNNER_TEMP" gitleaks
           mkdir -p "$HOME/.local/bin"
-          install -m 0755 /tmp/gitleaks "$HOME/.local/bin/gitleaks"
+          install -m 0755 "$RUNNER_TEMP/gitleaks" "$HOME/.local/bin/gitleaks"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          "$HOME/.local/bin/gitleaks" version
 
       - name: Secret scan (gitleaks)
         env:
           CURRENT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          # Scan the queue/tip commit only. New content is what the merge
-          # introduces; a full-history re-scan re-flags long-known vendored
-          # artifacts (see gitleaks.yml for the same rationale). Merge queue
-          # SHAs are merge commits, and `git log -p -1 <merge>` emits no patch
-          # by default, so use `-m -p` whenever the tip has multiple parents.
           parent_count="$(git rev-list --parents -n 1 "$CURRENT_SHA" | wc -w | tr -d ' ')"
           if [ "$parent_count" -gt 2 ]; then
             RANGE_ARGS=(--log-opts "-m -p -1 ${CURRENT_SHA}")
           elif [ "$parent_count" -eq 2 ]; then
             RANGE_ARGS=(--log-opts "-1 ${CURRENT_SHA}")
           else
-            echo "gitleaks: tip ${CURRENT_SHA} is an orphan/root baseline commit (no parent);"
-            echo "its content was already scanned incrementally on develop. Skipping full-tree re-scan."
+            echo "gitleaks: root baseline was already scanned incrementally"
             exit 0
           fi
           gitleaks detect \
@@ -1327,9 +1244,9 @@ jobs:
     name: ci-ok
     if: ${{ !cancelled() && always() }}
     needs:
-      - stale-base-preflight
       - changes
       - test-runner-vacuous-green-guard
+      - script-tests
       - merge-quality-gate
       - server-tests
       - client-tests
@@ -1343,7 +1260,7 @@ jobs:
     # Fleet-aware (see `changes`): the aggregate gate itself must run to report a
     # conclusion — a hardcoded hosted pin froze `ci-ok` on the billing-frozen
     # fleet (#13481), so the required check never posted and nothing could merge.
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 10
     steps:
       - name: Check test results
@@ -1351,9 +1268,9 @@ jobs:
         run: |
           set -u
           echo "=== Required test job results ==="
-          echo "stale-base-preflight:${{ needs.stale-base-preflight.result }}"
           echo "changes:          ${{ needs.changes.result }}"
           echo "runner guard:     ${{ needs.test-runner-vacuous-green-guard.result }}"
+          echo "script-tests:     ${{ needs.script-tests.result }}"
           echo "merge-quality-gate:${{ needs.merge-quality-gate.result }}"
           echo "server-tests:     ${{ needs.server-tests.result }}"
           echo "client-tests:     ${{ needs.client-tests.result }}"
@@ -1368,9 +1285,9 @@ jobs:
           strict_results="${{ github.event_name == 'push' || github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' }}"
           bad=0
           for pair in \
-            "stale-base-preflight:${{ needs.stale-base-preflight.result }}" \
             "changes:${{ needs.changes.result }}" \
             "test-runner-vacuous-green-guard:${{ needs.test-runner-vacuous-green-guard.result }}" \
+            "script-tests:${{ needs.script-tests.result }}" \
             "merge-quality-gate:${{ needs.merge-quality-gate.result }}" \
             "server-tests:${{ needs.server-tests.result }}" \
             "client-tests:${{ needs.client-tests.result }}" \
@@ -1383,10 +1300,6 @@ jobs:
             "github-live-artifact-validate:${{ needs.github-live-artifact-validate.result }}"; do
             name="${pair%%:*}"
             result="${pair##*:}"
-            if [ "$name" = "stale-base-preflight" ] && [ "$result" = "skipped" ] && [ "${{ github.event_name }}" != "pull_request" ]; then
-              echo "::notice title=Test gate::PR stale-base preflight is skipped for ${{ github.event_name }}; merge-quality-gate runs the strict stale-base guard for this event."
-              continue
-            fi
             if [ "$name" = "github-live-artifact-validate" ] && [ "$result" = "skipped" ] && [ "${{ github.event_name }}" != "workflow_dispatch" ] && [ "${{ github.event_name }}" != "schedule" ]; then
               echo "::notice title=Test gate::Live artifact validation is observed only on workflow_dispatch/schedule, so its skip is allowed for ${{ github.event_name }}."
               continue

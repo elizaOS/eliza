@@ -175,6 +175,79 @@ describe("AgentRuntime structured streaming", () => {
 		});
 	});
 
+	it("preserves native stream metadata when the tool-call list is empty", async () => {
+		const runtime = makeRuntime();
+		const usage = { promptTokens: 13, completionTokens: 5, totalTokens: 18 };
+		const handler = vi.fn(async () => ({
+			textStream: (async function* () {
+				yield "Direct answer.";
+			})(),
+			text: Promise.resolve("Direct answer."),
+			// Presence of this field selects the native-result contract. An empty
+			// list is a valid direct reply, not permission to erase its metadata.
+			toolCalls: Promise.resolve([]),
+			finishReason: Promise.resolve("stop"),
+			usage: Promise.resolve(usage),
+			providerMetadata: { modelName: "gemma-4-31b", provider: "cerebras" },
+		}));
+		runtime.registerModel(ModelType.RESPONSE_HANDLER, handler, "openai");
+
+		const result = await runWithStreamingContext(
+			{
+				messageId: "message-native-empty-tools",
+				onStreamChunk: vi.fn(),
+			},
+			() =>
+				runtime.useModel(ModelType.RESPONSE_HANDLER, {
+					messages: [],
+					tools: [],
+				}),
+		);
+
+		expect(result).toEqual({
+			text: "Direct answer.",
+			toolCalls: [],
+			finishReason: "stop",
+			usage,
+			providerMetadata: { modelName: "gemma-4-31b", provider: "cerebras" },
+		});
+	});
+
+	it("surfaces native stream metadata failures instead of fabricating empty usage", async () => {
+		const runtime = makeRuntime();
+		const usageFailure = new Error("provider usage failed");
+		let rejectUsage: ((reason: Error) => void) | undefined;
+		const usage = new Promise<never>((_resolve, reject) => {
+			rejectUsage = reject;
+		});
+		const handler = vi.fn(async () => ({
+			textStream: (async function* () {
+				yield "Direct answer.";
+				rejectUsage?.(usageFailure);
+			})(),
+			text: Promise.resolve("Direct answer."),
+			toolCalls: Promise.resolve([]),
+			finishReason: Promise.resolve("stop"),
+			usage,
+			providerMetadata: { modelName: "gemma-4-31b", provider: "cerebras" },
+		}));
+		runtime.registerModel(ModelType.RESPONSE_HANDLER, handler, "openai");
+
+		await expect(
+			runWithStreamingContext(
+				{
+					messageId: "message-native-usage-failure",
+					onStreamChunk: vi.fn(),
+				},
+				() =>
+					runtime.useModel(ModelType.RESPONSE_HANDLER, {
+						messages: [],
+						tools: [],
+					}),
+			),
+		).rejects.toThrow("provider usage failed");
+	});
+
 	it("stops emitting non-local stream chunks once the abort signal fires mid-stream", async () => {
 		// runtime.ts: the non-local textStream loop checks `abortSignal?.aborted`
 		// at the top of each iteration. Aborting after the first chunk must break

@@ -1,4 +1,4 @@
-/** Corpus guard for the LifeOps travel scenarios: loads every `.scenario.ts` under packages/test/scenarios/lifeops.travel and asserts the expected scenario-id set is present and well-formed (no live model). */
+/** Corpus guard for the LifeOps travel scenarios owned by plugin-personal-assistant; no model is invoked. */
 import { readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -10,7 +10,7 @@ const repoRoot = resolve(
 );
 const travelScenarioDir = resolve(
   repoRoot,
-  "packages/test/scenarios/lifeops.travel",
+  "plugins/plugin-personal-assistant/test/scenarios/corpus/lifeops.travel",
 );
 
 const EXPECTED_TRAVEL_SCENARIO_IDS = [

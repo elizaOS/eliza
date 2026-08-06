@@ -258,6 +258,21 @@ export interface EvaluatorEventPayload extends EventPayload {
  */
 export interface ModelEventPayload extends EventPayload {
 	type: ModelTypeName;
+	/**
+	 * Backend that served the request. This is distinct from the plugin source:
+	 * the OpenAI-compatible plugin may route to OpenAI, Cerebras, or EvoLink.
+	 */
+	provider?: string;
+	/** Concrete provider model id used for pricing and attribution. */
+	model?: string;
+	/** Alias of `model` retained for existing trajectory consumers. */
+	modelName?: string;
+	/** Human-readable logical slot, normally the string form of `type`. */
+	modelLabel?: string;
+	/** Authoritative provider-reported cost when one is available. */
+	costUsd?: number;
+	/** True when token counts were estimated instead of provider-reported. */
+	usageEstimated?: boolean;
 	tokens?: {
 		prompt: number;
 		completion: number;
@@ -265,6 +280,9 @@ export interface ModelEventPayload extends EventPayload {
 		cacheReadInputTokens?: number;
 		cacheCreationInputTokens?: number;
 		cachedInputTokens?: number;
+		/** @deprecated Use `cachedInputTokens` or `cacheReadInputTokens`. */
+		cached?: number;
+		estimated?: boolean;
 	};
 }
 

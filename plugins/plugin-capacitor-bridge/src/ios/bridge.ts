@@ -25,10 +25,11 @@ import {
 	type UUID,
 } from "@elizaos/core";
 import {
+	buildBrandEnvAliases,
 	getBootConfig,
+	readAliasedEnv,
 	setBootConfig,
-} from "@elizaos/shared/config/boot-config-store";
-import { buildBrandEnvAliases } from "@elizaos/shared/config/brand-env-aliases";
+} from "@elizaos/shared";
 import {
 	summarizeTranscript,
 	type Transcript,
@@ -40,7 +41,6 @@ import {
 	transcriptPreview,
 	transcriptSpeakerCount,
 } from "@elizaos/shared/transcripts";
-import { readAliasedEnv } from "@elizaos/shared/utils/env";
 import {
 	createWriteStream,
 	existsSync,

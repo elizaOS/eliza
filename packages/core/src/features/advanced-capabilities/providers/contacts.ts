@@ -122,10 +122,16 @@ export const advancedContactsProvider: Provider = {
 				data: categoryCounts,
 			};
 		} catch (error) {
+			// error-policy:J4 contact context becomes explicitly unavailable; a
+			// failed query is not a legitimate zero-contact result.
+			runtime.reportError("ContactsProvider.get", error, {
+				roomId: _message.roomId,
+			});
 			return {
-				text: "",
-				values: { contactCount: 0 },
+				text: "Contact context is unavailable.",
+				values: { contactsAvailable: false },
 				data: {
+					available: false,
 					error: error instanceof Error ? error.message : String(error),
 				},
 			};

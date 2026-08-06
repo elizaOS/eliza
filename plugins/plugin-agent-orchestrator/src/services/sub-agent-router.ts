@@ -42,6 +42,10 @@ import {
   reportCodingAccountFailure,
 } from "./coding-account-selection.js";
 import {
+  beginPendingHandoff,
+  settlePendingHandoff,
+} from "./handoff-pending.js";
+import {
   readSessionRetryCount,
   resolveStateLostRespawnCap,
   SESSION_RETRY_METADATA_KEY,
@@ -103,6 +107,25 @@ const SHARED_SUB_AGENT_ENTITY_NAME = "sub-agents";
 // the successor's sessionId (for traceability); presence is what matters. Kept
 // as a matching local literal in swarm-coordinator-service.ts (no cross-import).
 const HANDED_OFF_SUCCESSOR_META_KEY = "handedOffToSuccessorSessionId";
+// Metadata marker stamped on a session at the MOMENT the router decides to
+// hand its work to a successor (verify-retry or state-lost/failover respawn),
+// BEFORE the successor spawn is awaited. The successor stamp above only lands
+// after spawnSession resolves — seconds later when the subprocess is slow to
+// boot — and the original session's teardown `stopped` can be processed inside
+// that window, where every swarm-coordinator guard reads pre-stamp state and
+// synthesizes a false "stopped before completion" into the origin room. This
+// marker makes the in-flight decision observable. It is meant to exist ONLY
+// between the handoff decision and spawn settlement: markSessionHandedOff
+// replaces it with the successor stamp on success, and the spawn-failure catch
+// clears it so the surfaced failure and any later genuine stop still
+// synthesize. Because the persisted value can nonetheless outlive the handoff
+// (crash between stamp and settle, swallowed best-effort clear), presence
+// alone is NOT authority: the value is the handoff's generation token
+// (handoff-pending.ts), and the coordinator honors it only while that exact
+// token is registered in-flight — stale persisted markers are ignored and
+// cleared, so they can never suppress a later legitimate stop. Matching local
+// key literal in swarm-coordinator-service.ts (no cross-import).
+const HANDOFF_PENDING_META_KEY = "routerHandoffPendingAt";
 // Metadata marker the router stamps on a successor session (verify-retry,
 // state-lost respawn, account failover) when it re-points the forwarded
 // `roomId` away from the origin session's raw value. Presence tells downstream
@@ -163,7 +186,12 @@ function collectVerifiableUrlCandidates(
     // the template stem as if the sub-agent claimed that directory is live.
     if (suffix.startsWith("<") || suffix.startsWith("&lt;")) continue;
 
-    const url = raw.replace(/[.,;:]+$/, "");
+    // Trailing sentence punctuation is prose delimiting, not part of the URL
+    // ("live at https://host/app/!" probed the literal `/!` path, got a 404,
+    // and declared a live app dead — triggering a pointless verify-retry).
+    // Trimmed only at end-of-token; interior `!`/`?` (query strings, bang
+    // routes) are untouched.
+    const url = raw.replace(/[.,;:!?]+$/, "");
     // Raw `curl -i` output includes CDN reporting endpoints in `report-to`
     // headers. They are not part of the built app, and letting them into the
     // bounded verifier list crowds out real page/assets.
@@ -2013,6 +2041,10 @@ export class SubAgentRouter extends Service {
     const resumeMeta = resumeContext
       ? { [RESUME_CONTEXT_METADATA_KEY]: resumeContext }
       : {};
+    // Pre-stamp the respawn decision BEFORE awaiting the spawn — same race as
+    // the verify-retry path: the dead session's teardown `stopped` can be
+    // processed while the replacement spawn is still in flight.
+    const pendingToken = await this.markHandoffPending(session.id);
     try {
       const result = await service.spawnSession({
         agentType: session.agentType,
@@ -2071,9 +2103,16 @@ export class SubAgentRouter extends Service {
       }
       // Same handoff stamp as verify-retry (#11711): the old session's teardown
       // `stopped` is plumbing, not a user-facing completion — the respawn posts.
-      await this.markSessionHandedOff(session.id, result.sessionId);
+      await this.markSessionHandedOff(
+        session.id,
+        result.sessionId,
+        pendingToken,
+      );
       return true;
     } catch (err) {
+      // Clear the pending marker: no successor exists, so the honest failure
+      // path (and any later genuine stop) must synthesize normally.
+      await this.clearHandoffPending(session.id, pendingToken);
       this.log(
         "warn",
         `${reason} respawn spawn failed; surfacing the failure instead`,
@@ -2174,15 +2213,70 @@ export class SubAgentRouter extends Service {
   private async markSessionHandedOff(
     oldSessionId: string,
     successorSessionId: string,
+    pendingToken: string,
+  ): Promise<void> {
+    await this.patchHandoffMetadata(oldSessionId, {
+      [HANDED_OFF_SUCCESSOR_META_KEY]: successorSessionId,
+      // Same update: the pending decision marker is superseded by the real
+      // successor stamp, so no window exists where both are absent.
+      [HANDOFF_PENDING_META_KEY]: null,
+    });
+    // Registry retire AFTER the successor stamp lands: a stop processed in
+    // between reads the successor stamp, so no window opens where the marker
+    // is current-but-unstamped. If the patch was swallowed, the persisted
+    // marker is now stale (registry retired) and the coordinator ignores and
+    // clears it — failing toward the prior duplicate-post, never suppression.
+    settlePendingHandoff(oldSessionId, pendingToken);
+  }
+
+  /**
+   * Stamp the pending-handoff marker on a session whose successor spawn is
+   * about to be awaited, so its teardown `stopped` — which can be processed
+   * while the spawn is still in flight — is recognized by swarm-synthesis as
+   * handoff plumbing rather than a genuine terminal. Must be called BEFORE
+   * `spawnSession` is awaited. Returns the generation token that scopes the
+   * marker to THIS handoff: the coordinator only honors the marker while the
+   * token is registered in-flight, so a persisted marker that outlives its
+   * handoff (crash, swallowed clear) can never suppress a later legitimate
+   * stop. Pair with {@link clearHandoffPending} in the spawn-failure path and
+   * pass the token to {@link markSessionHandedOff} on success. Best-effort on
+   * the metadata write, same contract as markSessionHandedOff.
+   */
+  private async markHandoffPending(sessionId: string): Promise<string> {
+    const token = beginPendingHandoff(sessionId);
+    await this.patchHandoffMetadata(sessionId, {
+      [HANDOFF_PENDING_META_KEY]: token,
+    });
+    return token;
+  }
+
+  /**
+   * Remove the pending-handoff marker after a FAILED successor spawn, so the
+   * caller's surfaced-failure post and any later genuine stop synthesize
+   * exactly as before the decision was made. The registry retire comes first
+   * and is unconditional: even when the metadata clear is swallowed, the
+   * persisted marker is no longer current and cannot suppress anything.
+   */
+  private async clearHandoffPending(
+    sessionId: string,
+    pendingToken: string,
+  ): Promise<void> {
+    settlePendingHandoff(sessionId, pendingToken);
+    await this.patchHandoffMetadata(sessionId, {
+      [HANDOFF_PENDING_META_KEY]: null,
+    });
+  }
+
+  private async patchHandoffMetadata(
+    sessionId: string,
+    patch: Record<string, unknown>,
   ): Promise<void> {
     const service =
       this.acp ??
       (this.runtime.getService("ACP_SUBPROCESS_SERVICE") as AcpService | null);
     if (typeof service?.updateSessionMetadata !== "function") return;
     try {
-      await service.updateSessionMetadata(oldSessionId, {
-        [HANDED_OFF_SUCCESSOR_META_KEY]: successorSessionId,
-      });
+      await service.updateSessionMetadata(sessionId, patch);
     } catch {
       // error-policy:J6 best-effort handoff marker; a missed stamp only risks the
       // prior duplicate-post, never a dropped terminal.
@@ -2247,9 +2341,21 @@ export class SubAgentRouter extends Service {
       cachedDead.length > 0
         ? `\nThese URL(s) are stale cached 404s. Their exact filenames are unavailable for this retry; do not recreate them and do not leave any HTML reference pointing to them. Create fresh asset filenames in the same app directory (for example, add a version suffix), update every HTML reference to the fresh filenames, then verify the fresh public URLs:\n${formatDeadLines(cachedDead)}\n`
         : "";
+    // A root-absolute asset path under a sub-path deploy is the dominant
+    // real-world cause of a dead sub-resource (vite base "/" emitting
+    // /assets/... for a page served at /apps/<slug>/). Name that diagnosis
+    // explicitly — the generic "files missing, create them" framing sent
+    // every retry rebuilding fresh files without ever touching the base,
+    // burning the whole retry budget on an unfixable path.
+    const rootAbsoluteDead = missingDead.some((d) =>
+      /^https?:\/\/[^/]+\/(?:assets|static)\//.test(d.url),
+    );
+    const basePathHint = rootAbsoluteDead
+      ? `\nAt least one dead URL is a ROOT-absolute asset path (e.g. /assets/…) while the page is served under a sub-path. This is a build base-path problem, NOT a missing file: rebuild with a relative base (vite: \`--base ./\` or base: "./" in vite.config), redeploy the build output, and verify the page's referenced asset URLs resolve UNDER the page's own path.\n`
+      : "";
     const missingFeedback =
       missingDead.length > 0
-        ? `\nThese URL(s) are not reachable, which means the corresponding files are missing, empty, or served from the wrong path. Create or fix every one of these files in the location the task specifies, then verify each file exists and is non-empty:\n${formatDeadLines(missingDead)}\n`
+        ? `\nThese URL(s) are not reachable:\n${formatDeadLines(missingDead)}\n${basePathHint || "\nThe corresponding files are missing, empty, or served from the wrong path. Create or fix every one of these files in the location the task specifies, then verify each file exists and is non-empty.\n"}`
         : "";
     const retryTask = `--- VERIFICATION FEEDBACK (retry ${nextRetry}/${maxRetries}) ---
 The previous attempt reported the task complete, but verification failed. This feedback overrides conflicting filename or URL instructions in the original task.${cachedFeedback}${missingFeedback}
@@ -2258,6 +2364,12 @@ ${originalTask}
 
 Do not report done until every referenced URL in the final page resolves without verification errors.`;
 
+    // Pre-stamp the retry decision BEFORE awaiting the spawn: the retry
+    // subprocess can take seconds to become ready, and the original session's
+    // teardown `stopped` fires inside that window — a post-spawn-only stamp
+    // (the prior shape) let synthesis post a false "stopped before
+    // completion" for a build whose retry was already in flight.
+    const pendingToken = await this.markHandoffPending(session.id);
     try {
       const result = await service.spawnSession({
         agentType: session.agentType,
@@ -2287,13 +2399,21 @@ Do not report done until every referenced URL in the final page resolves without
         maxRetries,
         deadCount: dead.length,
       });
-      // Mark the old session as handed off BEFORE its teardown `stopped` fires
-      // so synthesis treats that stop as plumbing, not a second completion
-      // (#11711). Best-effort: a missed stamp only risks the prior duplicate
-      // post, never a dropped genuine terminal.
-      await this.markSessionHandedOff(session.id, result.sessionId);
+      // Record the real successor id (#11711) — lineage-continuation readers
+      // consume it. The teardown-`stopped` race itself is closed by the
+      // pending marker stamped before the spawn, not by this call: the stop
+      // can land while spawnSession is still in flight.
+      await this.markSessionHandedOff(
+        session.id,
+        result.sessionId,
+        pendingToken,
+      );
       return true;
     } catch (err) {
+      // The decision did not survive: clear the pending marker BEFORE
+      // returning so the caller's surfaced verification failure and any later
+      // genuine stop synthesize normally.
+      await this.clearHandoffPending(session.id, pendingToken);
       this.log(
         "warn",
         "verify-retry spawn failed; surfacing the failure instead",
@@ -3493,6 +3613,11 @@ export async function annotateUnverifiedUrls(
     return result;
   };
   const dead: DeadUrl[] = [];
+  // Dead sub-resources on a THIRD-PARTY origin (font-CDN roots, analytics
+  // beacons, preconnect hint origins) are collected separately: their bare
+  // roots routinely 404 by design, so their unreachability must never read
+  // as "the build did not complete". Deploy-scoped dead URLs stay in `dead`.
+  const deadThirdParty: DeadUrl[] = [];
   await Promise.all(
     urls.map(async (url) => {
       const result = await probe(url);
@@ -3517,7 +3642,16 @@ export async function annotateUnverifiedUrls(
           subResources.map(async (subUrl) => {
             const subResult = await probe(subUrl);
             if (subResult.status !== null) {
-              dead.push({ url: subUrl, status: subResult.status, via: url });
+              // Same-origin and route-mapped (deploy-host) sub-resources are
+              // part of the artifact under verification — a missing style.css
+              // IS a broken build. A cross-origin third party is not; keyed on
+              // structured URL origins, never on narration text.
+              const entry = { url: subUrl, status: subResult.status, via: url };
+              if (isThirdPartySubResource(subUrl, url, routeVerification)) {
+                deadThirdParty.push(entry);
+              } else {
+                dead.push(entry);
+              }
               return;
             }
             const subLocalStatus = verifyMappedLocalUrl(
@@ -3533,12 +3667,28 @@ export async function annotateUnverifiedUrls(
       }
     }),
   );
+  // Tally page-level dead against the mentioned set and sub-resource dead
+  // separately: sub-resources are DISCOVERED from page HTML, not mentioned,
+  // so folding them into one "N dead of M mentioned" count let N exceed M.
+  const pageDeadCount = dead.filter((d) => d.via === undefined).length;
   log?.(
-    `[verify] done @ ${new Date().toISOString()} — ${dead.length} dead of ${urls.length} mentioned`,
+    `[verify] done @ ${new Date().toISOString()} — ${pageDeadCount} dead of ${urls.length} mentioned, ${dead.length - pageDeadCount} dead sub-resource(s), ${deadThirdParty.length} third-party sub-resource(s) unreachable (informational)`,
   );
   if (dead.length === 0) {
+    // Only third-party sub-resources (if anything) failed to respond: every
+    // claimed page probed live, so completion proceeds with all verified URLs
+    // intact. A single-line note keeps the signal observable to the planner
+    // and the trajectory WITHOUT instructing the model to report a failure
+    // that did not happen. Single line by contract: the completion-summary
+    // and annotation strippers key on the "[verification note:" line prefix,
+    // which is deliberately disjoint from the "[verification:" failure marker
+    // the completion evaluator treats as a failed build.
+    const annotated =
+      deadThirdParty.length === 0
+        ? text
+        : `${text}\n\n[verification note: referenced page URL(s) verified reachable. ${deadThirdParty.length} cross-origin third-party sub-resource(s) did not respond to a probe (${deadThirdParty.map((d) => `${d.url} → ${d.status}`).join(", ")}) — common by design for font/CDN/analytics hosts; this is not a build failure]`;
     return {
-      text,
+      text: annotated,
       dead,
       verifiedUrls: canonicalUserFacingVerifiedUrls(urls, routeVerification),
     };
@@ -3560,6 +3710,42 @@ export async function annotateUnverifiedUrls(
       routeVerification,
     ),
   };
+}
+
+// Scope verification FAILURE semantics to the deploy surface. A dead
+// sub-resource is deploy-scoped — a hard verification failure — only when it
+// shares the referencing page's origin or lands on a configured route-mapping
+// origin (the deploy host or its public/loopback alias). Any other
+// cross-origin target (a Google-Fonts preconnect hint origin, a beacon, a CDN
+// root) is outside the build: those roots routinely 404 or refuse GETs by
+// design, and treating them as build failures produced false "not live"
+// reports for pages that themselves probed 200. Keys only on structured URL
+// origins and the route-mapping shape — never on prose or hostname lists.
+function isThirdPartySubResource(
+  subUrl: string,
+  pageUrl: string,
+  routeVerification: RouteUrlVerification | undefined,
+): boolean {
+  let sub: URL;
+  let page: URL;
+  try {
+    sub = new URL(subUrl);
+    page = new URL(pageUrl);
+  } catch {
+    // error-policy:J3 URL parse of untrusted probe targets; an unclassifiable
+    // ref keeps the strict (hard-failure) path rather than silently degrading.
+    return false;
+  }
+  if (sub.origin === page.origin) return false;
+  if (!routeVerification) return true;
+  return !routeVerification.mappings.some((mapping) => {
+    try {
+      return new URL(mapping.urlPrefix).origin === sub.origin;
+    } catch {
+      // error-policy:J3 URL parse of an untrusted route prefix; no match.
+      return false;
+    }
+  });
 }
 
 // A reachable URL is only a user-facing *deliverable* when it is a routed
@@ -3763,18 +3949,46 @@ async function detectCachedMiss(
     : null;
 }
 
+// <link> rel values that declare network hints — origins the browser MAY
+// warm up — rather than resources the page needs to render. A hint href is
+// typically a bare third-party root (https://fonts.googleapis.com) that 404s
+// by design, so probing it fails verification of a perfectly healthy build.
+const HINT_LINK_RELS = new Set([
+  "preconnect",
+  "dns-prefetch",
+  "prefetch",
+  "prerender",
+  "modulepreload",
+]);
+
 /**
  * Extract the sub-resource URLs an HTML document declares via common
  * resource-bearing attributes, resolved absolute against the page URL.
  * Mechanical extraction from a structured document — not intent
- * classification. Skips in-page anchors and data:/mailto: refs, and caps
+ * classification. Skips in-page anchors, data:/mailto: refs, and <link>
+ * hint rels (a preconnect origin is not a page dependency), and caps
  * the result so a pathological page can't fan out unbounded probes.
  */
 export function extractSubResources(html: string, pageUrl: string): string[] {
   const refs = new Set<string>();
-  const attrRe =
-    /<(?:link|script|img|source|video|audio|iframe)\b[^>]*?\b(?:href|src)\s*=\s*["']([^"']+)["']/gi;
+  // Tags are matched whole (name + attribute chunk) rather than jumping
+  // straight to href/src: a <link>'s meaning depends on its rel attribute,
+  // so the extractor must see the full attribute list before following.
+  const tagRe = /<(link|script|img|source|video|audio|iframe)\b([^>]*)/gi;
+  const urlAttrRe = /\b(?:href|src)\s*=\s*["']([^"']+)["']/i;
+  const relAttrRe = /\brel\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i;
   const srcsetRe = /<(?:img|source)\b[^>]*?\bsrcset\s*=\s*["']([^"']+)["']/gi;
+  // Anchors the bare-root guard in addRef below; an unparseable page URL
+  // leaves it null, so every absolute bare-root ref reads as cross-origin —
+  // the conservative direction for that guard. In practice pageUrl was
+  // already fetched successfully by the caller, so it always parses.
+  let pageOrigin: string | null = null;
+  try {
+    pageOrigin = new URL(pageUrl).origin;
+  } catch {
+    // error-policy:J3 URL parse of the caller-supplied page URL; relative
+    // refs already fail to resolve in addRef when it is unparseable.
+  }
   const addRef = (rawRef: string | undefined) => {
     const ref = rawRef?.trim();
     if (
@@ -3787,9 +4001,17 @@ export function extractSubResources(html: string, pageUrl: string): string[] {
     }
     try {
       const resolved = new URL(ref, pageUrl);
-      if (resolved.protocol === "http:" || resolved.protocol === "https:") {
-        refs.add(resolved.toString());
+      if (resolved.protocol !== "http:" && resolved.protocol !== "https:") {
+        return;
       }
+      // Belt-and-braces under the rel filter: a bare cross-origin root is
+      // never a real page dependency (no site serves an app asset at "/"),
+      // whatever element carried it — it is the origin half of a hint or
+      // weak-model boilerplate, and CDN roots commonly 404 by design.
+      if (resolved.pathname === "/" && resolved.origin !== pageOrigin) {
+        return;
+      }
+      refs.add(resolved.toString());
     } catch {
       // error-policy:J3 URL parse of an untrusted HTML ref; unparseable → skip.
       // unparseable ref — skip
@@ -3797,8 +4019,22 @@ export function extractSubResources(html: string, pageUrl: string): string[] {
   };
   let match: RegExpExecArray | null;
   // biome-ignore lint/suspicious/noAssignInExpressions: standard regex-exec loop
-  while ((match = attrRe.exec(html)) !== null) {
-    addRef(match[1]);
+  while ((match = tagRe.exec(html)) !== null) {
+    if ((match[1] ?? "").toLowerCase() === "link") {
+      const relMatch = relAttrRe.exec(match[2] ?? "");
+      const rel = (
+        relMatch?.[1] ??
+        relMatch?.[2] ??
+        relMatch?.[3] ??
+        ""
+      ).toLowerCase();
+      // rel is a space-separated token list; any hint token disqualifies —
+      // a rel mixing a hint with a real keyword is malformed boilerplate.
+      if (rel.split(/\s+/).some((token) => HINT_LINK_RELS.has(token))) {
+        continue;
+      }
+    }
+    addRef(urlAttrRe.exec(match[2] ?? "")?.[1]);
     if (refs.size >= 10) break;
   }
   // biome-ignore lint/suspicious/noAssignInExpressions: standard regex-exec loop

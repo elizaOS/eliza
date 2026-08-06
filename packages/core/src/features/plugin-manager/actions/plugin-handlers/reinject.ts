@@ -1,9 +1,4 @@
-/**
- * @module features/plugin-manager/actions/plugin-handlers/reinject
- *
- * `reinject` sub-mode of the PLUGIN action. Removes an ejected
- * plugin's local copy so the agent falls back to the npm-installed version.
- */
+/** Removes a managed local plugin copy so package resolution uses the installed release. */
 
 import type {
 	ActionResult,
@@ -46,13 +41,18 @@ export async function runReinject({
 		return { success: false, text };
 	}
 
+	// Human wording, no raw removed-path (it stays in values/data); verified +
+	// turnComplete make the confirmation the sole delivery.
 	const text =
-		`Reinjected ${result.pluginName} (removed ${result.removedPath})` +
-		(result.requiresRestart ? "\nRestart required." : "");
+		`Reinjected ${result.pluginName} — back on the standard installed version.` +
+		(result.requiresRestart ? " A restart is needed to pick it up." : "");
 	await callback?.({ text });
 	return {
 		success: true,
 		text,
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		values: {
 			mode: "reinject",
 			name: result.pluginName,

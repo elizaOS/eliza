@@ -5,7 +5,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { Stack } from "./stack";
 
 const Box = ({ children }: { children: React.ReactNode }) => (
-  <div className="rounded-md bg-muted px-4 py-2 text-sm">{children}</div>
+  <div className="rounded-md bg-bg-muted px-4 py-2 text-sm">{children}</div>
 );
 
 const meta = {

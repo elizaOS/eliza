@@ -13,6 +13,7 @@ import {
 	getInferenceTimer,
 	INFERENCE_MARKS,
 	InferenceTurnTimer,
+	inferenceTimingRegistry,
 	markInference,
 	nextInferenceTurnId,
 	recordInferenceSpan,
@@ -372,6 +373,34 @@ describe("emit + format + registry", () => {
 		expect(
 			payload.spanHistograms["model:RESPONSE_HANDLER"]?.count,
 		).toBeGreaterThan(0);
+	});
+
+	it("clears derived histograms together with turns and spans on reset", () => {
+		inferenceTimingRegistry.reset();
+		const timer = new InferenceTurnTimer({
+			turnId: "reset-derived",
+			label: "message-turn",
+		});
+		timer.recordSpan("model:RESPONSE_HANDLER", 77);
+		timer.mark(INFERENCE_MARKS.firstToken, timer.t0EpochMs + 10);
+		timer.mark(INFERENCE_MARKS.firstVisibleReply, timer.t0EpochMs + 20);
+		timer.mark(INFERENCE_MARKS.replyDelivered, timer.t0EpochMs + 30);
+		timer.mark(INFERENCE_MARKS.responseFinalized, timer.t0EpochMs + 40);
+		inferenceTimingRegistry.record(timer.close());
+		expect(
+			buildInferenceTimingDevPayload().derivedHistograms.timeToFirstTokenMs
+				?.count,
+		).toBe(1);
+
+		inferenceTimingRegistry.reset();
+		const payload = buildInferenceTimingDevPayload();
+		expect(payload.turns).toEqual([]);
+		expect(payload.spanHistograms).toEqual({});
+		expect(
+			Object.values(payload.derivedHistograms).every(
+				(summary) => summary.count === 0,
+			),
+		).toBe(true);
 	});
 
 	it("emitInferenceTiming is no-op-safe for an undefined timer", () => {

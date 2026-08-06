@@ -21,7 +21,9 @@ import { main as auditScenarioCoverage } from "../check-scenario-workflow-covera
 import { PLUGIN_ROUTE_COVERAGE } from "../e2e-coverage/manifest.ts";
 import {
   evaluatePrerequisites,
+  gateShardOutcomes,
   loadShard,
+  resolveShardMatrix,
   verifyEvidence,
   writeOutcome,
 } from "../live-scenario-contract.mjs";
@@ -45,6 +47,12 @@ const workflowReadmePath = fileURLToPath(
 );
 const defaultScenarioRoot = fileURLToPath(
   new URL("../../test/scenarios/", import.meta.url),
+);
+const orchestratorScenarioRoot = fileURLToPath(
+  new URL(
+    "../../../plugins/plugin-agent-orchestrator/test/scenarios/",
+    import.meta.url,
+  ),
 );
 
 function captureLogger(): {
@@ -70,6 +78,10 @@ function captureLogger(): {
   };
 }
 
+// GitHub expression literals are assembled rather than written inline so the
+// `${{` sequence is not read as a JS template placeholder.
+const ghExpr = (body: string): string => `$\{{ ${body} }}`;
+
 function exitingChild(
   code: number | null,
   signal: string | null = null,
@@ -86,13 +98,20 @@ test("pins an authoritative, bounded shard catalog", () => {
   const { manifest, shard } = loadShard(manifestPath, "plugin-health");
   expect(manifest.authority).toBe(".github/workflows/live-scenarios.yml");
   expect(manifest.costCeiling).toMatchObject({
-    maxConcurrentShards: 1,
-    maxWorkflowMinutes: 120,
+    maxConcurrentShards: 5,
+    maxWorkflowMinutes: 330,
   });
+  // Every shard's ceiling must stay inside the 6-hour GitHub-hosted job cap,
+  // which is what the serial single-job lane could never satisfy.
+  for (const entry of manifest.shards as { timeoutMinutes: number }[]) {
+    expect(entry.timeoutMinutes).toBeGreaterThan(0);
+    expect(entry.timeoutMinutes).toBeLessThanOrEqual(330);
+  }
   expect(manifest.shards.map((entry: { id: string }) => entry.id)).toEqual([
     "lifeops-connectors",
     "plugin-health",
     "app-control",
+    "agent-orchestrator",
     "scenario-runner-view-chat",
   ]);
   expect(shard.artifactContract).toEqual([
@@ -178,15 +197,138 @@ test("fails evidence verification when any contracted artifact is absent", () =>
 
 test("keeps shard failures non-short-circuiting and enforces one aggregate result", () => {
   const workflow = readFileSync(workflowPath, "utf8");
-  expect(workflow.match(/continue-on-error: true/g)).toHaveLength(5);
+  expect(workflow.match(/continue-on-error: true/g)).toHaveLength(3);
+  expect(workflow).toContain("fail-fast: false");
+  expect(workflow).toContain(
+    `matrix: ${ghExpr("fromJSON(needs.plan.outputs.matrix)")}`,
+  );
+  expect(workflow).toContain(
+    `timeout-minutes: ${ghExpr("matrix.timeout_minutes")}`,
+  );
   expect(workflow).toContain("Enforce aggregate shard result");
   expect(workflow).toContain("if-no-files-found: error");
-  expect(workflow).toContain('live-scenario-contract.mjs verify "$shard"');
+  expect(workflow).toContain(
+    `live-scenario-contract.mjs verify "${ghExpr("matrix.shard")}"`,
+  );
+  expect(workflow).toContain("live-scenario-contract.mjs gate");
+  // Per-shard artifact names must not collide across matrix legs, or the
+  // aggregate gate cannot tell which shard published which evidence.
+  expect(workflow).toContain(
+    `name: live-scenario-report-${ghExpr("matrix.shard")}`,
+  );
+});
+
+test("exempts the live lane from the zombie janitor's age+idle reaper", () => {
+  const janitor = readFileSync(
+    fileURLToPath(
+      new URL(
+        "../../../.github/workflows/actions-zombie-janitor.yml",
+        import.meta.url,
+      ),
+    ),
+    "utf8",
+  );
+  expect(janitor).toContain("'Live Scenarios'");
+  expect(janitor).not.toContain("ElizaOS Cuttlefish");
+  expect(janitor).not.toContain("ElizaOS OpenAgent E1");
+});
+
+test("fans every requested shard out of the manifest and rejects ambiguity", () => {
+  const manifest = JSON.parse(
+    readFileSync(
+      fileURLToPath(new URL("../live-scenario-shards.json", import.meta.url)),
+      "utf8",
+    ),
+  );
+
+  const scheduled = resolveShardMatrix(manifest, { EVENT_NAME: "schedule" });
+  expect(
+    scheduled.include.map((entry: { shard: string }) => entry.shard),
+  ).toEqual([
+    "lifeops-connectors",
+    "plugin-health",
+    "app-control",
+    "agent-orchestrator",
+    "scenario-runner-view-chat",
+  ]);
+  const viewChat = scheduled.include.find(
+    (entry: { shard: string }) => entry.shard === "scenario-runner-view-chat",
+  );
+  expect(viewChat).toMatchObject({
+    scenario_filter: "live-document-delete",
+    lane_args: "--lane live-only",
+  });
+  expect(
+    scheduled.include.find(
+      (entry: { shard: string }) => entry.shard === "lifeops-connectors",
+    ),
+  ).toMatchObject({ lane_args: "", root: "packages/test/scenarios" });
+
+  const manual = resolveShardMatrix(manifest, {
+    EVENT_NAME: "workflow_dispatch",
+    SCENARIO_SHARD: "lifeops-connectors",
+    SCENARIO_FILTER: "app-control:settings-voice-toggle",
+  });
+  expect(manual.include).toHaveLength(1);
+  expect(manual.include[0]).toMatchObject({
+    shard: "app-control",
+    scenario_filter: "app-control:settings-voice-toggle",
+  });
+
+  expect(() =>
+    resolveShardMatrix(manifest, {
+      EVENT_NAME: "workflow_dispatch",
+      SCENARIO_SHARD: "all",
+      SCENARIO_FILTER: "some-scenario",
+    }),
+  ).toThrow("'all' is ambiguous");
+  expect(() =>
+    resolveShardMatrix(manifest, {
+      EVENT_NAME: "workflow_dispatch",
+      SCENARIO_SHARD: "not-a-shard",
+    }),
+  ).toThrow("unknown scenario_shard");
+});
+
+test("reads a missing or failed shard outcome as a lane failure", () => {
+  const tempRoot = mkdtempSync(path.join(tmpdir(), "scenario-gate-"));
+  try {
+    // Nested exactly as the download lays the shard's run directory out, to
+    // pin that the gate finds the record by content and not by path depth.
+    const write = (shard: string, status: string) => {
+      const dir = path.join(
+        tempRoot,
+        `live-scenario-report-${shard}`,
+        "scenario-runs",
+        shard,
+      );
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        path.join(dir, "shard-outcome.json"),
+        JSON.stringify({ shard, status }),
+      );
+    };
+    write("plugin-health", "success");
+    expect(gateShardOutcomes(["plugin-health"], tempRoot)).toEqual({
+      status: "pass",
+      failures: [],
+    });
+    // A shard reaped mid-run uploads nothing; that must not read as silence.
+    expect(
+      gateShardOutcomes(["plugin-health", "app-control"], tempRoot).failures,
+    ).toEqual(["app-control=no-outcome-artifact"]);
+    write("app-control", "failure");
+    expect(
+      gateShardOutcomes(["plugin-health", "app-control"], tempRoot).failures,
+    ).toEqual(["app-control=failure"]);
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
 });
 
 test("builds the dist-exported runtime packages before the scenario CLI starts", () => {
   const workflow = readFileSync(workflowPath, "utf8");
-  const runStep = "- name: Run EA + connector live scenarios";
+  const runStep = "- name: Run live scenarios";
 
   expect(workflow).toMatch(
     /package_dirs=\([\s\S]*plugins\/plugin-local-inference[\s\S]*plugins\/plugin-app-control[\s\S]*plugins\/plugin-health[\s\S]*\)[\s\S]*for package_dir in "\$\{package_dirs\[@\]\}"/,
@@ -201,26 +343,16 @@ test("builds the dist-exported runtime packages before the scenario CLI starts",
 
 test("runs every live scenario root against workspace source exports", () => {
   const workflow = readFileSync(workflowPath, "utf8");
+  // One matrix leg, one source-conditions declaration: the per-shard roots now
+  // come from the manifest instead of four hand-copied run steps.
   const sourceConditionEntries = [
     ...workflow.matchAll(/NODE_OPTIONS: "--conditions=eliza-source"/g),
   ];
-  expect(sourceConditionEntries).toHaveLength(4);
-  for (const shard of [
-    "lifeops-connectors",
-    "plugin-health",
-    "app-control",
-    "scenario-runner-view-chat",
-  ]) {
-    expect(workflow).toContain(`steps.selection.outputs.shard == '${shard}'`);
-    expect(workflow).toContain(`SCENARIO_SHARD: ${shard}`);
-  }
-  expect(workflow).toContain('app-control:*) selected="app-control"');
+  expect(sourceConditionEntries).toHaveLength(1);
+  expect(workflow).toContain(`SCENARIO_ROOT: ${ghExpr("matrix.root")}`);
+  expect(workflow).toContain(`SCENARIO_SHARD: ${ghExpr("matrix.shard")}`);
   expect(workflow).toContain(
-    "SCENARIO_FILTER: $" +
-      "{{ inputs.scenario_filter || 'live-document-delete' }}",
-  );
-  expect(workflow).toContain(
-    "scenario_filter requires one named scenario_shard; 'all' is ambiguous",
+    `SCENARIO_FILTER: ${ghExpr("matrix.scenario_filter")}`,
   );
 });
 
@@ -286,7 +418,7 @@ test("reports uncovered live-only scenarios as explicit deferrals", () => {
 
 test("discovers the orchestrator live evidence in the scheduled catalog", async () => {
   const metadata = await listScenarioMetadata(
-    defaultScenarioRoot,
+    orchestratorScenarioRoot,
     undefined,
     undefined,
     false,

@@ -27,11 +27,13 @@ const sidebarScrollRegionVariants = cva("", {
 
 export function SidebarScrollRegion({
   className,
+  tabIndex = 0,
   variant = "default",
   ...props
 }: SidebarScrollRegionProps) {
   return (
     <div
+      tabIndex={tabIndex}
       className={cn(sidebarScrollRegionVariants({ variant }), className)}
       {...props}
     />

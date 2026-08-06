@@ -64,11 +64,9 @@ function collectSourceFiles(dir: string, out: string[] = []): string[] {
 const ALLOWED_BLUR = new Set<string>([
   "packages/ui/src/components/shell/liquid-glass.tsx",
   "packages/ui/src/components/shell/liquid-glass.stories.tsx",
-  "packages/ui/src/components/shell/home-glass.ts",
   "packages/ui/src/components/shell/wallpaper-idiom.ts",
   "packages/ui/src/components/shell/ChatOverlay.tsx",
   "packages/ui/src/components/shell/NotificationsHomeCenter.tsx",
-  "packages/ui/src/components/shell/NotificationBanners.tsx",
   "packages/ui/src/components/shell/BuildBadge.tsx",
   "packages/ui/src/components/chat/widgets/home-widget-card.tsx",
   // First-run has no shared chat panel behind assistant turns. Its greeting
@@ -84,6 +82,10 @@ const ALLOWED_BLUR = new Set<string>([
   "packages/ui/src/glass/GlassSurface.tsx",
   "packages/ui/src/glass/tokens.ts",
   "packages/ui/src/glass/useNativeGlass.ts",
+  // Comment-only reference (documents WHY the wallpaper is native-hosted only
+  // while an anchor holds it: backdrop-filter cannot sample below the
+  // WebView); no runtime backdrop-filter of its own.
+  "packages/ui/src/glass/native-backdrop.ts",
   // The theme-aware wallpaper readability scrim (`app-background-scrim`): a
   // frosted veil (bg/75 + blur) applied ONLY on text-dense shared-background
   // views (`wallpaperScrimActive`), so agent copy stays legible over any

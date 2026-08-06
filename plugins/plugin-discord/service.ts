@@ -1328,8 +1328,13 @@ export class DiscordService extends Service implements IDiscordService {
 			},
 			registerSlashCommands: (commands: DiscordSlashCommand[]) =>
 				parent.registerSlashCommands(commands, state?.accountId),
-			clientReadyPromise:
-				state?.clientReadyPromise ?? parent.clientReadyPromise,
+			// MessageManager is constructed before initializeAccount assigns the
+			// ready promise. Keep this live rather than snapshotting the initial null,
+			// otherwise a messageCreate racing ClientReady can be attributed before
+			// onReady hydrates the canonical Discord owner aliases.
+			get clientReadyPromise() {
+				return state?.clientReadyPromise ?? parent.clientReadyPromise;
+			},
 			accountToken: state?.account.token,
 		};
 		return facade;
@@ -4025,6 +4030,7 @@ export class DiscordService extends Service implements IDiscordService {
 		for (const state of states) {
 			try {
 				state.voiceManager?.stop();
+				state.messageManager?.destroy();
 				this.voiceTargets.unregisterAccount(state.accountId);
 			} catch (error) {
 				this.runtime.logger.warn(

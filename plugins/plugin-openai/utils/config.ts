@@ -130,6 +130,21 @@ export function isEvoLinkMode(runtime: IAgentRuntime): boolean {
   return false;
 }
 
+/**
+ * Identifies the backend selected by this OpenAI-compatible plugin. Telemetry
+ * must distinguish the transport implementation from the service that
+ * actually handled and billed the request.
+ */
+export function getUsageProvider(runtime: IAgentRuntime): "cerebras" | "evolink" | "openai" {
+  if (isCerebrasMode(runtime)) {
+    return "cerebras";
+  }
+  if (isEvoLinkMode(runtime)) {
+    return "evolink";
+  }
+  return "openai";
+}
+
 export function getApiKey(runtime: IAgentRuntime): string | undefined {
   // Cerebras serves an OpenAI-compatible API. When the runtime is pointed at
   // Cerebras (either via `ELIZA_PROVIDER=cerebras` or an `OPENAI_BASE_URL`
@@ -184,7 +199,7 @@ function authHeaderForKey(runtime: IAgentRuntime, key: string | undefined): Reco
 
 /**
  * Route to the wire-level mock server when one is running. `ELIZA_MOCK_OPENAI_BASE`
- * is set only by the in-process mock runner (`packages/test/mocks`) and never in
+ * is set only by the in-process mock runner (`packages/scenario-runner/test/mocks`) and never in
  * production — honoring it directly mirrors how LifeOps consumes its sibling
  * `ELIZA_MOCK_*_BASE` vars (`mockoon-redirect.ts`). It is authoritative when set
  * (a deliberate test action), so it wins over any configured base or provider

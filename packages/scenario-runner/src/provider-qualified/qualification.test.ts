@@ -10,6 +10,7 @@ import {
   type KeyObject,
   sign as signPayload,
 } from "node:crypto";
+import { resolve } from "node:path";
 import type { ScenarioDefinition } from "@elizaos/scenario-runner/schema";
 import { describe, expect, it } from "vitest";
 import type {
@@ -210,7 +211,7 @@ function fixture(): DeriveProviderQualificationInput & {
     scenarioId: manifest.scenario.id,
     scenarioStartedAtIso: "2026-05-23T00:00:00.000Z",
     scenarioEndedAtIso: "2026-05-23T00:01:00.000Z",
-    runDirectoryRealPath: "/run/provider-1",
+    runDirectoryRealPath: resolve("run", "provider-1"),
     verifiedAtIso: "2026-05-23T00:01:05.000Z",
     setSha256: "0".repeat(64),
     trajectories: [

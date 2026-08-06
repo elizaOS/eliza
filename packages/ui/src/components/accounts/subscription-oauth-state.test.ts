@@ -1,3 +1,4 @@
+/** Verifies subscription OAuth persistence through the package's configured test harness. */
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from "vitest";

@@ -107,9 +107,15 @@ export async function requestSecretHandler(
 			if (exists) {
 				const text = `The secret '${key}' is already available. You can use it now.`;
 				if (callback) await callback({ text, action: "SECRETS" });
+				// The already-available confirmation is the complete answer to a
+				// single-operation turn: verified + turnComplete make the callback
+				// the sole delivery instead of double-messaging with the evaluator.
 				return {
 					success: true,
 					text,
+					userFacingText: text,
+					verifiedUserFacing: true,
+					turnComplete: true,
 					data: {
 						actionName: "SECRETS",
 						action: "request",
@@ -153,6 +159,8 @@ export async function requestSecretHandler(
 			data: { actionName: "SECRETS", action: "request", key, exists: false },
 		};
 	} catch (error) {
+		// error-policy:J1 the action boundary translates the request failure into
+		// an explicit unsuccessful result visible to the model.
 		logger.error("[SECRETS:request] Error:", String(error));
 		return {
 			success: false,
@@ -164,11 +172,7 @@ export async function requestSecretHandler(
 }
 
 function runtimeSetting(runtime: IAgentRuntime, key: string): unknown {
-	try {
-		return runtime.getSetting(key);
-	} catch {
-		return undefined;
-	}
+	return runtime.getSetting(key);
 }
 
 function buildSecretRequestEnvironment(

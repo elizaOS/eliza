@@ -210,7 +210,7 @@ export default function ConnectedPage() {
     return (
       <main
         className="theme-app brand-section brand-section--orange min-h-screen flex flex-col items-center justify-center px-4"
-        style={{ fontFamily: "Poppins, system-ui, sans-serif" }}
+        style={{ fontFamily: "Geist, system-ui, sans-serif" }}
       >
         <div className="text-black/70 animate-pulse font-semibold">
           {t("homepage_eliza.common.loading", { defaultValue: "Loading…" })}
@@ -223,7 +223,7 @@ export default function ConnectedPage() {
     return (
       <main
         className="theme-app brand-section brand-section--orange min-h-screen flex flex-col items-center justify-center px-4"
-        style={{ fontFamily: "Poppins, system-ui, sans-serif" }}
+        style={{ fontFamily: "Geist, system-ui, sans-serif" }}
       >
         <div className="text-black/70 animate-pulse font-semibold">
           {t("homepage_eliza.common.redirecting", {
@@ -251,7 +251,7 @@ export default function ConnectedPage() {
   return (
     <main
       className="theme-app brand-section brand-section--orange min-h-screen flex flex-col items-center justify-center px-4 relative"
-      style={{ fontFamily: "Poppins, system-ui, sans-serif" }}
+      style={{ fontFamily: "Geist, system-ui, sans-serif" }}
     >
       <header className="absolute top-0 inset-x-0 z-10 p-4 flex items-center justify-between pointer-events-none">
         <Link
@@ -330,7 +330,7 @@ export default function ConnectedPage() {
       <div className="w-full max-w-[440px] flex flex-col gap-8">
         <div className="flex flex-col items-center">
           <img
-            src="/eliza-app-profile-image.png"
+            src="/eliza-app-profile-image.webp"
             alt={t("homepage_eliza.connected.profileAlt", {
               defaultValue: "Eliza",
             })}

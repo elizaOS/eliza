@@ -1,3 +1,4 @@
+/** Verifies DatabaseView through the package's configured test harness. */
 // @vitest-environment jsdom
 
 // Renders the real DatabaseView against a mocked `../../api` client to cover the

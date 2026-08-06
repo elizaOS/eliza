@@ -25,7 +25,7 @@ import type {
 	State,
 } from "@elizaos/core";
 import { logger, resolveServerOnlyPort } from "@elizaos/core";
-import { readStringOption } from "../params.js";
+import { readStringOption, userRequestMessageText } from "../params.js";
 import { createViewsRequestHeaders } from "./views-request-auth.js";
 
 /** Parsed wire response of POST /api/runtime/agent-switch. */
@@ -180,7 +180,8 @@ export function createAgentSwitchAction(
 			message: Memory,
 		): Promise<boolean> => {
 			return (
-				inferAgentSwitchProfile(message.content.text ?? "", undefined) !== null
+				inferAgentSwitchProfile(userRequestMessageText(message), undefined) !==
+				null
 			);
 		},
 
@@ -192,14 +193,24 @@ export function createAgentSwitchAction(
 			callback?: HandlerCallback,
 		): Promise<ActionResult> => {
 			const profile = inferAgentSwitchProfile(
-				message.content.text ?? "",
+				userRequestMessageText(message),
 				options,
 			);
 			if (!profile) {
+				// The ask IS the turn's complete answer: verified + turnComplete
+				// make the callback the sole delivery instead of double-messaging
+				// with the evaluator; the un-resolved state stays in values.
 				const reply =
 					'Tell me which agent to switch to — e.g. "switch to my cloud agent" or "use the laptop runtime".';
 				await callback?.({ text: reply });
-				return { success: false, text: reply };
+				return {
+					success: true,
+					text: "No target agent named; asked the user which agent to switch to.",
+					userFacingText: reply,
+					verifiedUserFacing: true,
+					turnComplete: true,
+					values: { awaitingProfile: true },
+				};
 			}
 
 			logger.info(`[plugin-app-control] AGENT_SWITCH profile="${profile}"`);
@@ -207,20 +218,31 @@ export function createAgentSwitchAction(
 			try {
 				const outcome = await switchAgent(profile);
 				if (!outcome.ok) {
+					// Refusals stay unsuccessful for the planner, but the narration
+					// is already in-voice — verified provenance stops the evaluator
+					// from re-voicing it as a second message.
 					const reply = narrateRefusal(outcome.reason, profile);
 					await callback?.({ text: reply });
 					return {
 						success: false,
 						text: reply,
+						userFacingText: reply,
+						verifiedUserFacing: true,
 						values: { profile, reason: outcome.reason },
 					};
 				}
 				const label = outcome.profileLabel ?? outcome.profileId ?? profile;
 				const reply = `Switched the app to "${label}".`;
 				await callback?.({ text: reply });
+				// The switch confirmation is the complete answer to a
+				// single-operation turn: verified + turnComplete make the callback
+				// the sole delivery instead of double-messaging with the evaluator.
 				return {
 					success: true,
 					text: reply,
+					userFacingText: reply,
+					verifiedUserFacing: true,
+					turnComplete: true,
 					values: {
 						profile,
 						profileId: outcome.profileId,

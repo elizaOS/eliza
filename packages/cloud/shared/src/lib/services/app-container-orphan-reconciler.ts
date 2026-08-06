@@ -10,18 +10,17 @@
  */
 
 import { inArray } from "drizzle-orm";
-import { dbRead } from "../../db/helpers";
+import { dbWrite } from "../../db/helpers";
 import { containers } from "../../db/schemas/containers";
 import { APP_DB_AMBASSADOR_NAME_PREFIX, appContainerNameForAmbassador } from "./app-db-ambassador";
 import {
+  DEFAULT_ROWLESS_GRACE_MS,
   type LiveContainerRef,
   type OrphanReconcileResult,
   type OrphanReconcilerConfig,
   reconcileOrphanContainersOnNodes,
 } from "./orphan-container-reconciler";
 
-// Re-export the shared result type so existing importers (the daemon) keep
-// `AppOrphanReconcileResult` from this module.
 export type { OrphanReconcileResult as AppOrphanReconcileResult } from "./orphan-container-reconciler";
 
 /**
@@ -75,14 +74,15 @@ export function appContainerKeyOf(name: string): string | null {
  * deterministic `app-<first 12 of app id>` with no unique constraint, so an app
  * accumulates one row per deploy. The shared diff groups these per key and only
  * reaps when every row is terminal, so returning the full (unordered) set here
- * is correct and fail-safe.
+ * is correct and fail-safe. The query uses the primary because replica lag
+ * cannot be allowed to make a live workload appear rowless.
  */
 async function loadContainerStatusesByNames(names: readonly string[]): Promise<LiveContainerRef[]> {
   if (names.length === 0) return [];
-  return dbRead
+  return dbWrite
     .select({ key: containers.name, status: containers.status })
     .from(containers)
-    .where(inArray(containers.name, names as string[]));
+    .where(inArray(containers.name, [...names]));
 }
 
 /** The three app-specific deltas injected into the shared reconciler. */
@@ -92,6 +92,7 @@ const APP_ORPHAN_RECONCILER_CONFIG: OrphanReconcilerConfig = {
   terminalStatuses: TERMINAL_CONTAINER_STATUSES,
   loadStatuses: loadContainerStatusesByNames,
   logScope: "app-orphan-reconciler",
+  rowlessGraceMs: DEFAULT_ROWLESS_GRACE_MS,
 };
 
 /**

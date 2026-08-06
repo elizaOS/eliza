@@ -16,7 +16,8 @@
 
 import crypto from "node:crypto";
 import path from "node:path";
-import { loadElizaConfig, resolveOAuthDir } from "@elizaos/agent";
+import { loadElizaConfig } from "@elizaos/agent/config/config";
+import { resolveOAuthDir } from "@elizaos/agent/config/paths";
 import { type IAgentRuntime, logger } from "@elizaos/core";
 import {
   type ElizaCloudManagedClientConfig,

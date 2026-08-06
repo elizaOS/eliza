@@ -18,12 +18,8 @@
  * sent to SSE/WS clients. This service registers on `start()` and
  * unsubscribes on `stop()`.
  *
- * Privacy filter: the privacy filter at
- * `eliza/plugins/plugin-training/src/core/privacy-filter.ts` exists for
- * trajectory exports — it anonymizes user-content trajectories before
- * disk/cloud writes. Messages this service writes are agent-authored
- * verification results and contain no user trajectory data, so the
- * filter does not apply here.
+ * Messages this service writes are agent-authored verification results and
+ * contain no user trajectory data.
  *
  * Owner gating: this service only writes to the originRoomId that the
  * dispatcher itself stamped onto the START_CODING_TASK metadata. The
@@ -33,7 +29,6 @@
  */
 
 import { randomUUID } from "node:crypto";
-import path from "node:path";
 import type { IAgentRuntime, Memory, SwarmEvent, UUID } from "@elizaos/core";
 import {
 	getSwarmCoordinatorService,
@@ -42,6 +37,7 @@ import {
 	Service,
 } from "@elizaos/core";
 import { createViewsRequestHeaders } from "../actions/views-request-auth.js";
+import { loadAppFromWorkdir } from "./verification-helpers.js";
 
 export const VERIFICATION_ROOM_BRIDGE_SERVICE_TYPE = "verification-room-bridge";
 
@@ -208,70 +204,6 @@ async function loadPluginFromWorkdir(
 				typeof body.error === "string"
 					? body.error
 					: `load returned HTTP ${resp.status}`,
-		};
-	} catch (err) {
-		return {
-			ok: false,
-			error: err instanceof Error ? err.message : String(err),
-		};
-	}
-}
-
-interface RegisteredAppItem {
-	slug: string;
-	canonicalName: string;
-}
-
-/**
- * Register a freshly built app into the running runtime via the loopback agent
- * API so a subsequent `launch <name>` resolves. The
- * `/api/apps/load-from-directory` route scans a *parent* directory for app
- * subdirs and registers each valid one through the AppRegistryService
- * (`trust: "external"`), so we pass the workdir's parent, not the workdir
- * itself. That register is idempotent by slug and the worker host returns the
- * existing worker for an already-registered sibling, so re-scanning the shared
- * apps dir does not churn unrelated apps. Returns the registered items so the
- * verdict message can confirm the app is actually launchable instead of
- * promising a `launch` that would fail with "No installed app matches".
- */
-async function loadAppFromWorkdir(
-	workdir: string,
-): Promise<
-	{ ok: true; items: RegisteredAppItem[] } | { ok: false; error: string }
-> {
-	const port = resolveServerOnlyPort(process.env);
-	const directory = path.dirname(workdir);
-	try {
-		const resp = await fetch(
-			`http://127.0.0.1:${port}/api/apps/load-from-directory`,
-			{
-				method: "POST",
-				headers: createViewsRequestHeaders(),
-				body: JSON.stringify({ directory }),
-				signal: AbortSignal.timeout(30_000),
-			},
-		);
-		const body = (await resp.json().catch(() => ({}))) as Record<
-			string,
-			unknown
-		>;
-		if (resp.ok && body.ok === true) {
-			const items = Array.isArray(body.items)
-				? body.items.filter(
-						(item): item is RegisteredAppItem =>
-							isRecord(item) &&
-							typeof item.slug === "string" &&
-							typeof item.canonicalName === "string",
-					)
-				: [];
-			return { ok: true, items };
-		}
-		return {
-			ok: false,
-			error:
-				typeof body.error === "string"
-					? body.error
-					: `register returned HTTP ${resp.status}`,
 		};
 	} catch (err) {
 		return {

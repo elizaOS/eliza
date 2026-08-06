@@ -1,3 +1,4 @@
+/** Verifies InlinePluginConfig render isolation (#14412) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

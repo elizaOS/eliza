@@ -88,8 +88,8 @@ export const SETTINGS_SECTION_META: SettingsSectionMeta[] = [
     aliases: ["connections", "integrations"],
   },
   // System group: most-used personalization first (appearance, background),
-  // then infrastructure (runtime, wallet, remote plugins), then maintenance
-  // (updates, backups) last so common taps are not buried behind rare ones.
+  // then infrastructure (runtime, wallet), then maintenance (updates,
+  // backups) last so common taps are not buried behind rare ones.
   {
     id: "appearance",
     defaultLabel: "Appearance",
@@ -111,12 +111,6 @@ export const SETTINGS_SECTION_META: SettingsSectionMeta[] = [
     aliases: ["wallet", "rpc"],
   },
   {
-    id: "remote-plugins",
-    defaultLabel: "Remote Plugins",
-    group: "system",
-    aliases: ["remote"],
-  },
-  {
     id: "updates",
     defaultLabel: "Updates",
     group: "system",
@@ -126,7 +120,7 @@ export const SETTINGS_SECTION_META: SettingsSectionMeta[] = [
     id: "advanced",
     defaultLabel: "Backups",
     group: "system",
-    aliases: ["fine-tuning", "backup", "backups"],
+    aliases: ["backup", "backups"],
   },
   // Security group: the everyday key/secret store (Vault) first, then the two
   // permission surfaces, then the host-only remote-access section last.

@@ -9,6 +9,7 @@ Loading this plugin gives an Eliza agent three new actions:
 **APP** — Unified app lifecycle control. The agent can:
 - Launch a registered app by name (`"launch shopify"`)
 - Relaunch (stop then start) a running app, optionally running verification after (`"relaunch shopify and verify"`)
+- Stop a running app without uninstalling or relaunching it (`"stop the shopify app"`)
 - List installed and currently-running apps (`"what apps are open?"`)
 - Load apps from a local directory into the registry (`"load apps from /my/dev/apps"`)
 - Scaffold a new Eliza app through a multi-turn flow that asks new/edit/cancel, scaffolds from the min-app template, and dispatches a coding agent with AppVerificationService validation (`"build me a note-taking app"`)

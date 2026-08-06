@@ -456,8 +456,26 @@ export async function handleMemoryRoutes(
     }
     const text = parsedRem.data.text;
     const createdAt = Date.now();
+    const memoryId = parsedRem.data.idempotencyKey
+      ? (stringToUuid(
+          `${HASH_MEMORY_SOURCE}:${runtime.agentId}:${parsedRem.data.idempotencyKey}`,
+        ) as UUID)
+      : (crypto.randomUUID() as UUID);
+    const existing = parsedRem.data.idempotencyKey
+      ? await runtime.getMemoryById(memoryId)
+      : null;
+    if (existing) {
+      json(res, {
+        ok: true,
+        id: existing.id,
+        text: existing.content.text ?? text,
+        createdAt: existing.createdAt,
+        replayed: true,
+      });
+      return true;
+    }
     const message = createMessageMemory({
-      id: crypto.randomUUID() as UUID,
+      id: memoryId,
       entityId,
       roomId,
       content: {
@@ -472,6 +490,7 @@ export async function handleMemoryRoutes(
       id: message.id,
       text,
       createdAt,
+      replayed: false,
     });
     return true;
   }

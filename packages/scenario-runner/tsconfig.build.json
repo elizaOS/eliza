@@ -12,13 +12,7 @@
     "paths": {
       "@elizaos/core": ["../core/dist/index.node.d.ts"],
       "@elizaos/core/testing": ["../core/dist/testing/index.d.ts"],
-      "@elizaos/core/*": ["../core/dist/*"],
-      "@elizaos/capacitor-appblocker": [
-        "../native-plugins/appblocker/src/index.ts"
-      ],
-      "@elizaos/capacitor-mobile-signals": [
-        "../native-plugins/mobile-signals/src/index.ts"
-      ]
+      "@elizaos/core/*": ["../core/dist/*"]
     }
   },
   "include": ["src/**/*.ts"],

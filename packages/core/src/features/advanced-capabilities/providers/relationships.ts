@@ -9,6 +9,7 @@
  */
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
 import { getRelatedEntityIds } from "../../../identity-clusters.ts";
+import { stringifyForDiagnostics } from "../../../runtime/json-output.ts";
 import type {
 	Entity,
 	IAgentRuntime,
@@ -75,34 +76,30 @@ async function formatRelationships(
 		),
 	);
 
-	// Fetch all required entities in a single batch operation
-	const entities = await Promise.all(
-		uniqueEntityIds.map((id) => runtime.getEntityById(id)),
-	);
+	// Relationship fan-out can contain dozens of counterparts. One adapter
+	// query keeps provider latency constant instead of paying one SQL round-trip
+	// per entity.
+	const entities =
+		uniqueEntityIds.length > 0
+			? await runtime.getEntitiesByIds(uniqueEntityIds)
+			: [];
 
 	// Create a lookup map for efficient access
-	const entityMap = new Map<string, Entity | null>();
-	entities.forEach((entity, index) => {
-		if (entity) {
-			entityMap.set(uniqueEntityIds[index], entity);
-		}
-	});
+	const entityMap = new Map<string, Entity>(
+		entities.flatMap((entity) =>
+			entity.id === undefined ? [] : [[entity.id, entity] as const],
+		),
+	);
 
 	const formatMetadata = (metadata?: Metadata) => {
 		if (!metadata) return "";
 		const lines: string[] = [];
 		let used = 0;
 		for (const [key, value] of Object.entries(metadata)) {
-			let line: string;
-			if (value && typeof value === "object") {
-				try {
-					line = JSON.stringify({ [key]: value });
-				} catch {
-					line = `${key}: ${String(value)}`;
-				}
-			} else {
-				line = `${key}: ${String(value)}`;
-			}
+			const line =
+				value && typeof value === "object"
+					? stringifyForDiagnostics({ [key]: value })
+					: `${key}: ${String(value)}`;
 			// Bound per entity: skip once the cap is reached so a single
 			// metadata-heavy entity can't dominate the provider output.
 			if (used + line.length > MAX_METADATA_CHARS_PER_ENTITY) {
@@ -173,6 +170,7 @@ const relationshipsProvider: Provider = {
 	contextGate: { anyOf: ["contacts", "memory"] },
 	cacheStable: false,
 	cacheScope: "turn",
+	timeoutMs: 8_000,
 	roleGate: { minRole: "USER" },
 
 	get: async (runtime: IAgentRuntime, message: Memory) => {

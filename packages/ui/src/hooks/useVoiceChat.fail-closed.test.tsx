@@ -1,3 +1,4 @@
+/** Verifies useVoiceChat TTS fails closed (#12253) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

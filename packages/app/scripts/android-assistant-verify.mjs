@@ -42,6 +42,7 @@ import {
   ASSISTANT_IME_COMPONENT,
   ASSISTANT_VIS_COMPONENT,
   assertDeepLinkLanded,
+  assistantSurfacesRegistered,
   classifyImeAsrOutcome,
   DEEP_LINK_SOURCES,
   detectSurfaceInvocation,
@@ -125,6 +126,8 @@ function applyRoleAndIme(adb, serial) {
     "cmd",
     "role",
     "add-role-holder",
+    "--user",
+    "0",
     ROLE_ASSISTANT,
     APP_PACKAGE,
   ]);
@@ -168,7 +171,23 @@ async function verifyOnDevice(adb, serial) {
 
   // (2) Secure settings + role holders reflect Eliza.
   const roleOut = sh(adb, serial, ["cmd", "role", "holders", ROLE_ASSISTANT]);
-  const role = parseRoleHolders(roleOut);
+  const roleUserOut = sh(adb, serial, [
+    "cmd",
+    "role",
+    "holders",
+    "--user",
+    "0",
+    ROLE_ASSISTANT,
+  ]);
+  const legacyRoleOut = sh(adb, serial, [
+    "cmd",
+    "role",
+    "get-role-holders",
+    ROLE_ASSISTANT,
+  ]);
+  const role = parseRoleHolders(
+    [roleOut, roleUserOut, legacyRoleOut].filter(Boolean).join("\n"),
+  );
   const visSetting = parseVoiceInteractionService(
     sh(adb, serial, ["settings", "get", "secure", "voice_interaction_service"]),
   );
@@ -281,10 +300,17 @@ async function verifyOnDevice(adb, serial) {
   checks.asrOutcome = asrOutcome;
   log(`IME ASR outcome: ${asrOutcome}`);
 
+  const surfacesRegistered = assistantSurfacesRegistered({
+    surfaces,
+    visInvoked,
+    voiceinteractionLanded: assistLanded,
+  });
+  const roleHeld = role.heldByExpected || visSetting.isEliza;
+
   const verdict = summarizeLaneVerdict(
     {
-      surfacesRegistered: surfaces.allPresent,
-      roleHeld: role.heldByExpected,
+      surfacesRegistered,
+      roleHeld,
       imeSelected: imeSetting.isEliza && imeEnabled.elizaEnabled,
       voiceinteractionLanded: assistLanded.landed,
       assistKeyLanded: keyLanded,

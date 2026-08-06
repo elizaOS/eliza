@@ -1,3 +1,4 @@
+/** Verifies MessageContent sensitive requests through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // SensitiveRequestBlock in MessageContent: public requests render status-only

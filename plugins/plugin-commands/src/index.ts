@@ -16,8 +16,9 @@
  * - Similes use ONLY slash-command forms (no natural language) so the LLM
  *   won't accidentally route "I need help" to HELP_COMMAND instead of REPLY.
  * - The registry is scoped per runtime to prevent cross-agent state leaks.
- * - The COMMAND_REGISTRY provider includes the command list in the LLM context
- *   ONLY when the message is a command, reducing prompt noise for normal messages.
+ * - The COMMAND_REGISTRY provider includes the full command list only for a
+ *   command message; ordinary turns receive one routing sentence so natural
+ *   command questions stay model-owned without polluting the prompt.
  */
 
 import {
@@ -69,8 +70,8 @@ export * from "./types";
  * Provider that exposes available commands to the LLM context.
  *
  * Only injects the full command list when the message looks like a command.
- * For normal messages, returns a minimal hint so the LLM knows commands
- * exist but doesn't get a wall of command documentation in its context.
+ * Normal messages receive a minimal protocol hint so the model does not
+ * confuse command discovery with view navigation.
  */
 export const commandRegistryProvider: Provider = {
 	name: "COMMAND_REGISTRY",
@@ -109,9 +110,10 @@ export const commandRegistryProvider: Provider = {
 			};
 		}
 
-		// Minimal context for non-command messages — don't pollute the prompt
+		// Keep ordinary command questions model-owned while giving the planner
+		// enough vocabulary to avoid mistaking the command catalog for an app view.
 		return {
-			text: "",
+			text: "Slash commands are an explicit chat protocol, not an app view. If the user asks conversationally to show or list available commands, answer directly that typing `/commands` displays the list; do not ask a clarifying question or route that request to VIEWS.",
 			values: {
 				commandCount: commands.length,
 				isCommand: false,
@@ -186,9 +188,8 @@ export const commandsPlugin: Plugin = {
 	// actions are also registered so the planner can route to them as a fallback.
 	actions: commandActions,
 
-	// Slash-command shortcuts (#8791): the pre-LLM gate matches these explicit
-	// aliases and fires the matching *_COMMAND action deterministically, before
-	// any model call, identically on every surface.
+	// A slash prefix is an explicit protocol invocation, so only slash-command
+	// aliases may resolve before inference. Ordinary language stays model-owned.
 	shortcuts: commandShortcuts,
 
 	// Self-declared auto-enable: activate when features.commands is enabled.

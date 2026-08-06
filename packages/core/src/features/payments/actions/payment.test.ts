@@ -98,9 +98,9 @@ describe("PAYMENT", () => {
 
 		expect(result.success).toBe(true);
 		expect(create).toHaveBeenCalledTimes(1);
-		expect(callback).toHaveBeenCalledWith(
-			expect.objectContaining({ action: "PAYMENT" }),
-		);
+		// No visible callback: delivery-target machinery is planner-facing
+		// (the evaluator voices the user-facing message).
+		expect(callback).not.toHaveBeenCalled();
 		expect(result.data?.actionName).toBe("PAYMENT");
 		expect(result.data?.paymentAction).toBe("create_request");
 		expect(result.data?.paymentRequestId).toBe("pay_1");

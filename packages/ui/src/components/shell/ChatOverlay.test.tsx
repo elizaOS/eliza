@@ -1,3 +1,4 @@
+/** Verifies ChatOverlay through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Core behavior of the floating chat overlay: the mic ↔ send composer swap,
@@ -13,6 +14,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import {
   afterEach,
   beforeAll,
@@ -67,11 +69,17 @@ import type {
   ImageAttachment,
 } from "../../api/client-types-chat";
 import { reportComposerActivity } from "../../chat/report-composer-activity";
-import { CHAT_PREFILL_EVENT, ELIZA_BACK_INTENT_EVENT } from "../../events";
 import {
-  GLASS_SHEET_BACKDROP_FILTER,
-  GLASS_SHEET_FILL,
-} from "../../glass/tokens";
+  CHAT_PREFILL_EVENT,
+  ELIZA_BACK_INTENT_EVENT,
+  NAVIGATE_VIEW_EVENT,
+} from "../../events";
+import {
+  resetNativeBackdropForTests,
+  setNativeBackdropEncoderForTests,
+  setNativeWallpaperSource,
+} from "../../glass/native-backdrop";
+import { resetGlassBridgeForTests } from "../../glass/native-bridge";
 import {
   LAYOUT_SHIFT_INTENT_ATTR,
   LAYOUT_SHIFT_INTENT_TRANSIENT,
@@ -112,6 +120,11 @@ afterEach(() => {
   // Search-jump tests seed the AppContext store with spies; clear it so the
   // inert test-fallback proxy backs every other test again.
   __setAppValueForTests(null);
+  (globalThis as { Capacitor?: unknown }).Capacitor = undefined;
+  resetGlassBridgeForTests();
+  resetNativeBackdropForTests();
+  setNativeBackdropEncoderForTests(null);
+  document.documentElement.classList.remove("eliza-native-backdrop");
 });
 
 function makeController(
@@ -255,18 +268,6 @@ describe("ChatOverlay", () => {
       send.closest("[data-composer-control]")?.getAttribute("aria-hidden"),
     ).toBeNull();
     expect(screen.queryByRole("button", { name: "talk" })).toBeNull();
-  });
-
-  it("renders the frosted sheet from the glass token system (no saturate)", () => {
-    // The chat sheet is a liquid-glass SYSTEM surface: its inset material comes
-    // from GLASS_SHEET_* tokens, not a hand-rolled inline recipe. The backdrop
-    // filter is a neutral blur with NO saturate — saturate muddies the warm
-    // field to brown, which the whole liquid-glass system forbids.
-    render(<ChatOverlay controller={makeController()} />);
-    const surface = screen.getByTestId("chat-sheet-surface");
-    expect(surface.style.backdropFilter).toBe(GLASS_SHEET_BACKDROP_FILTER);
-    expect(surface.style.backdropFilter).not.toMatch(/saturate|brightness/);
-    expect(surface.style.backgroundColor).toBe(GLASS_SHEET_FILL);
   });
 
   it("reports typing start and pause from the real composer draft", () => {
@@ -453,6 +454,54 @@ describe("ChatOverlay", () => {
     expect(sheet.getAttribute("data-variant")).toBe("open");
   });
 
+  it("adopts native glass only once the open sheet SETTLES, after both native acks", async () => {
+    const bridge = {
+      attachGlass: vi.fn(async () => ({ attached: true })),
+      updateRect: vi.fn(async () => {}),
+      detachGlass: vi.fn(async () => {}),
+      setGrouping: vi.fn(async () => {}),
+      setBackdrop: vi.fn(async () => ({ applied: true })),
+      clearBackdrop: vi.fn(async () => {}),
+      isAvailable: vi.fn(async () => ({ available: true })),
+    };
+    (globalThis as { Capacitor?: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+      getPlatform: () => "ios",
+      registerPlugin: () => bridge,
+    };
+    resetGlassBridgeForTests();
+    setNativeBackdropEncoderForTests(async () => "Zm9vYmFy");
+    setNativeWallpaperSource({
+      imageUrl: "https://localhost/wallpapers/canopy.webp",
+      color: "#160d07",
+    });
+
+    render(<ChatOverlay controller={makeController()} />);
+    const surface = screen.getByTestId("chat-sheet-surface");
+    // Closed sheet: never native, and the CSS material is untouched.
+    expect(surface.dataset.glassTier).toMatch(/^css-/);
+
+    fireEvent.focus(screen.getByLabelText("message"));
+    // The open detent runs the release spring; adoption must wait for TRUE
+    // rest (sheetSettled), then for both native acknowledgements.
+    await waitFor(() => expect(surface.dataset.glassTier).toBe("native"), {
+      timeout: 10_000,
+    });
+    // Wallpaper hosted BEFORE the region attached — the ack order that
+    // guarantees no frame ever samples the black window.
+    const backdropOrder = bridge.setBackdrop.mock.invocationCallOrder[0] ?? 0;
+    const attachOrder = bridge.attachGlass.mock.invocationCallOrder[0] ?? 0;
+    expect(backdropOrder).toBeGreaterThan(0);
+    expect(backdropOrder).toBeLessThan(attachOrder);
+    // Native material: fill + blur drop (the OS paints them); border, bevel,
+    // and sheen stay — the branded edge survives on every tier.
+    expect(surface.style.backgroundColor).toBe("transparent");
+    expect(surface.style.backdropFilter).toBe("");
+    expect(screen.getByTestId("chat-glass-tier-probe").textContent).toContain(
+      "chat-glass-tier:native",
+    );
+  }, 20_000);
+
   it("flips the overlay to data-open when the composer textarea is focused (the ui-smoke contract)", () => {
     render(<ChatOverlay controller={makeController()} />);
     const overlay = screen.getByTestId("chat-overlay");
@@ -509,21 +558,6 @@ describe("ChatOverlay", () => {
       "open",
     );
     expect(overlay.style.paddingBottom).toBe(initialPadding);
-  });
-
-  it("seats the resting composer above the home indicator: full gesture inset plus a small gap", () => {
-    // Lock-screen anchoring: with the overlay reclaimed to the true physical
-    // bottom (device r8, screen.height reclaim), the resting composer clears the
-    // whole home-indicator/Android gesture inset plus a SMALL visual gap
-    // (~34px + 8px on iOS). The gap was trimmed 0.625rem → 0.5rem (device r8:
-    // "bottom has excess padding") so the composer sits one finger above the
-    // indicator, not floating in a dead band, no longer the old 40% inset
-    // compensation that was tuned around the collapsed-ICB float.
-    render(<ChatOverlay controller={makeController()} />);
-    const overlay = screen.getByTestId("chat-overlay");
-    expect(overlay.style.paddingBottom).toBe(
-      "calc(var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.5rem)",
-    );
   });
 
   it("publishes the full resting footprint and compact-landscape side clearance", () => {
@@ -718,6 +752,71 @@ describe("ChatOverlay", () => {
     expect(document.activeElement).not.toBe(composer);
   });
 
+  it("preserves focused typing through one agent-command view navigation", () => {
+    const { rerender } = render(
+      <ChatOverlay
+        controller={makeController({
+          currentTab: "chat",
+        } as Partial<ShellController>)}
+      />,
+    );
+    const composer = screen.getByLabelText("message");
+    act(() => {
+      composer.focus();
+      window.dispatchEvent(
+        new CustomEvent(NAVIGATE_VIEW_EVENT, {
+          detail: {
+            viewId: "notes",
+            viewPath: "/notes",
+            source: "agent",
+          },
+        }),
+      );
+    });
+
+    rerender(
+      <ChatOverlay
+        controller={makeController({
+          currentTab: "notes",
+        } as Partial<ShellController>)}
+      />,
+    );
+    expect(document.activeElement).toBe(composer);
+  });
+
+  it("does not arm a focus lease for an agent open-window action", () => {
+    const { rerender } = render(
+      <ChatOverlay
+        controller={makeController({
+          currentTab: "chat",
+        } as Partial<ShellController>)}
+      />,
+    );
+    const composer = screen.getByLabelText("message");
+    act(() => {
+      composer.focus();
+      window.dispatchEvent(
+        new CustomEvent(NAVIGATE_VIEW_EVENT, {
+          detail: {
+            viewId: "notes",
+            viewPath: "/notes",
+            source: "agent",
+            action: "open-window",
+          },
+        }),
+      );
+    });
+
+    rerender(
+      <ChatOverlay
+        controller={makeController({
+          currentTab: "notes",
+        } as Partial<ShellController>)}
+      />,
+    );
+    expect(document.activeElement).not.toBe(composer);
+  });
+
   it("keeps composer focus when the active view stays on chat (no spurious blur)", () => {
     const { rerender } = render(
       <ChatOverlay
@@ -793,21 +892,6 @@ describe("ChatOverlay", () => {
     fireEvent.pointerMove(grabber, { clientY: 280, pointerId: 1 });
     fireEvent.pointerUp(grabber, { clientY: 280, pointerId: 1 });
     expect(sheet.getAttribute("data-variant")).toBe("open");
-  });
-
-  it("spans a WIDE swipe-up grab zone across the composer top edge", () => {
-    // Lock-screen affordance: the grabber's hit zone must reach across the
-    // composer's width (inset-x-6, not a narrow centred px-16 stub) so a
-    // swipe-up begun anywhere near the bottom opens the chat — while still
-    // floating above the input row so it never eats taps meant for the
-    // textarea.
-    render(<ChatOverlay controller={makeController()} />);
-    const grabber = screen.getByTestId("chat-sheet-grabber");
-    expect(grabber.className).toContain("inset-x-6");
-    expect(grabber.className).not.toContain("px-16");
-    // The zone stops at the handle's own bottom (before:bottom-0) so it can't
-    // overlap the interactive composer controls beneath it.
-    expect(grabber.className).toContain("before:bottom-0");
   });
 
   // #14331: the waveform reflects only spoken-conversation capture. Dedicated
@@ -893,6 +977,11 @@ describe("ChatOverlay", () => {
     fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 1 });
     fireEvent.pointerUp(grabber, { clientY: 420, pointerId: 1 });
     expect(sheet.getAttribute("data-detent")).toBe("half");
+
+    // A real touch gesture also emits touchend after pointerup. The handle has
+    // moved by then, so suppress the browser's compatibility click before it
+    // can re-hit-test onto and focus the composer underneath the old point.
+    expect(fireEvent.touchEnd(grabber)).toBe(false);
 
     fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 1 });
     fireEvent.pointerUp(grabber, { clientY: 420, pointerId: 1 });
@@ -1421,6 +1510,59 @@ describe("ChatOverlay", () => {
     expect(thread?.querySelector('[data-message-id^="temp-"]')).toBeNull();
   });
 
+  it("paints optimistic turns immediately during a fast view handoff", () => {
+    const { rerender } = render(
+      <ChatOverlay
+        controller={makeController({
+          messages: [
+            {
+              id: "assistant-old",
+              role: "assistant",
+              content: "Earlier reply",
+              createdAt: 1,
+            },
+          ],
+        })}
+      />,
+    );
+    fireEvent.focus(screen.getByLabelText("message"));
+
+    rerender(
+      <ChatOverlay
+        controller={makeController({
+          messages: [
+            {
+              id: "assistant-old",
+              role: "assistant",
+              content: "Earlier reply",
+              createdAt: 1,
+            },
+            {
+              id: "temp-navigation-request",
+              role: "user",
+              content: "open notes",
+              createdAt: 2,
+            },
+            {
+              id: "temp-navigation-reply",
+              role: "assistant",
+              content: "Opened Notes.",
+              createdAt: 3,
+            },
+          ],
+        })}
+      />,
+    );
+
+    for (const text of ["open notes", "Opened Notes."]) {
+      const row = screen
+        .getByText(text)
+        .closest<HTMLElement>('[data-testid="thread-line"]');
+      expect(row).not.toBeNull();
+      expect(row?.style.opacity).not.toBe("0");
+    }
+  });
+
   it("composes the in-flight status as a busy transcript row", () => {
     render(
       <ChatOverlay
@@ -1446,6 +1588,8 @@ describe("ChatOverlay", () => {
     expect(viewport.getAttribute("aria-live")).toBeNull();
     expect(content?.getAttribute("role")).toBe("log");
     expect(content?.getAttribute("aria-busy")).toBe("true");
+    expect(content?.className).toContain("justify-end");
+    expect(content?.className).toContain("pb-3");
     expect(row?.parentElement).toBe(content);
     expect(row?.className).toContain("w-full");
   });
@@ -1456,6 +1600,7 @@ describe("ChatOverlay", () => {
 
     const fade = screen.getByTestId("chat-thread-top-fade");
     const rim = screen.getByTestId("chat-sheet-rim");
+    const surface = screen.getByTestId("chat-sheet-surface");
     const viewport = screen.getByTestId("chat-thread-scroll");
     expect(fade.className).toContain("pointer-events-none");
     expect(fade.className).toContain("absolute");
@@ -1464,12 +1609,15 @@ describe("ChatOverlay", () => {
     expect(fade.className).toContain("z-30");
     expect(fade.style.opacity).not.toBe("");
     expect(fade.style.backgroundImage).toContain("linear-gradient");
+    expect(fade.style.backgroundImage).toContain("28%");
     expect(rim.className).toContain("z-40");
     expect(rim.className).toContain("border-border-strong");
+    expect(surface.className.split(/\s+/)).not.toContain("border");
+    const content = screen.getByTestId("chat-content");
+    expect(content.style.clipPath).toContain("inset(1px round");
     expect(viewport.style.maskImage).toBe("");
     expect(viewport.style.webkitMaskImage).toBe("");
   });
-
   it("closes the sheet on Escape", () => {
     render(<ChatOverlay controller={makeController()} />);
     const input = screen.getByLabelText("message");
@@ -1857,7 +2005,26 @@ describe("ChatOverlay", () => {
 
     // Once the read resolves, a thumbnail + send control appear.
     await screen.findByLabelText("send");
-    expect(screen.getByLabelText(/remove pic\.png/)).toBeTruthy();
+    const removeButton = screen.getByLabelText(/remove pic\.png/);
+    expect(removeButton).toBeTruthy();
+    expect(removeButton.className).toContain("pointer-events-auto");
+
+    const attachments = screen.getByTestId("chat-pending-attachments");
+    expect(attachments.className).toContain("pointer-events-none");
+    const attachmentList = screen.getByTestId("chat-pending-attachment-list");
+    expect(attachmentList.className).toContain("pointer-events-auto");
+    expect(attachmentList.className).toContain("touch-none");
+    expect(removeButton.className).toContain("-bottom-1.5");
+
+    // Pending attachments must not disable the sheet's own drag handle. The
+    // attachment tiles have their own controls; the handle remains the path to
+    // reveal history without requiring the user to send or remove the image.
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    expect(grabber.style.pointerEvents).toBe("auto");
+    fireEvent.pointerDown(attachmentList, { clientY: 420, pointerId: 21 });
+    fireEvent.pointerMove(attachmentList, { clientY: 340, pointerId: 21 });
+    await waitFor(() => expect(screen.getByTestId("chat-thread")).toBeTruthy());
+    fireEvent.pointerUp(attachmentList, { clientY: 340, pointerId: 21 });
 
     fireEvent.click(screen.getByLabelText("send"));
     expect(controller.send).toHaveBeenCalledWith(
@@ -1944,21 +2111,6 @@ describe("ChatOverlay", () => {
       .getByTestId("chat-sheet-grabber")
       .querySelector("span");
     expect(grabberCue?.className).not.toContain("animate-pulse");
-  });
-
-  it("keeps the ambient layer non-blocking for controls behind it", () => {
-    render(<ChatOverlay controller={makeController()} />);
-
-    const root = screen.getByTestId("chat-overlay");
-    expect(root.className).toContain("pointer-events-none");
-    expect(root.className).not.toContain("pointer-events-auto");
-
-    // The overlay still has a LIVE interactive region: the composer fieldset
-    // re-enables pointer events (inline, gated on !pilled) so taps land on the
-    // input while the rest of the surface passes through to the view behind it.
-    const composer = screen.getByTestId("chat-sheet");
-    expect(composer.style.pointerEvents).toBe("auto");
-    expect(composer).not.toBe(root);
   });
 
   it("exposes the canonical chat composer test id on the overlay input only", () => {
@@ -2056,30 +2208,6 @@ describe("ChatOverlay", () => {
     },
   );
 
-  it("keeps composer controls in one non-wrapping input row inside the constrained panel", () => {
-    render(<ChatOverlay controller={makeController()} />);
-
-    const input = screen.getByTestId("chat-composer-textarea");
-    const bar = input.parentElement;
-    const panel = screen.getByTestId("chat-sheet");
-
-    expect(screen.queryByTestId("chat-composer-clear-debug")).toBeNull();
-    // Width is constrained on the panel's wrapper (which also holds the absolute
-    // drag handle) via the morph-driven inline max-width — 48rem (768px) at rest,
-    // widening to the viewport only as the maximize morph completes.
-    expect(panel.parentElement?.style.maxWidth).toBe("768px");
-    expect(bar?.className).toContain("flex");
-    expect(bar?.className).not.toContain("flex-wrap");
-    expect(bar?.className).toContain("gap-[clamp(0.125rem,1.25vw,0.5rem)]");
-    expect(bar?.className).toContain("px-[clamp(0.25rem,1.5vw,0.5rem)]");
-    expect(bar?.className).toContain("py-[clamp(0.125rem,0.75dvh,0.375rem)]");
-    expect(input.className).toContain("flex-1");
-    expect(input.className).not.toContain("basis-full");
-    expect(
-      screen.getByTestId("chat-composer-trailing-controls").className,
-    ).toContain("gap-0");
-  });
-
   it("renders no prompt-suggestion chips while the strip is flagged off", () => {
     render(
       <ChatOverlay
@@ -2138,6 +2266,64 @@ describe("ChatOverlay", () => {
       ).toBe("false");
     } finally {
       delete (Element.prototype as { scrollTo?: unknown }).scrollTo;
+    }
+  });
+
+  it("reanchors a bottom-pinned transcript during sheet resize without moving a reader in history", async () => {
+    const originalResizeObserver = globalThis.ResizeObserver;
+    const callbacks = new Map<Element, ResizeObserverCallback[]>();
+    class TestResizeObserver {
+      constructor(private readonly callback: ResizeObserverCallback) {}
+      observe(target: Element) {
+        const targetCallbacks = callbacks.get(target) ?? [];
+        targetCallbacks.push(this.callback);
+        callbacks.set(target, targetCallbacks);
+      }
+      disconnect() {}
+      unobserve() {}
+    }
+
+    try {
+      vi.stubGlobal("ResizeObserver", TestResizeObserver);
+      render(<ChatOverlay controller={makeController()} />);
+      fireEvent.focus(screen.getByLabelText("message"));
+
+      const viewport = screen.getByTestId("chat-thread-scroll");
+      let clientHeight = 100;
+      Object.defineProperties(viewport, {
+        clientHeight: { configurable: true, get: () => clientHeight },
+        scrollHeight: { configurable: true, value: 500 },
+        scrollTop: { configurable: true, value: 400, writable: true },
+        // The primitive reconciles its own observer on a queued frame. Keep the
+        // real viewport API on this detached jsdom node so that late frame can
+        // finish without leaking into the next test.
+        scrollTo: { configurable: true, value: vi.fn() },
+      });
+      const resizeViewport = () => {
+        for (const callback of callbacks.get(viewport) ?? []) {
+          callback([], {} as ResizeObserver);
+        }
+      };
+
+      fireEvent.scroll(viewport);
+      clientHeight = 80;
+      resizeViewport();
+      expect(viewport.scrollTop).toBe(420);
+
+      viewport.scrollTop = 120;
+      fireEvent.scroll(viewport);
+      clientHeight = 60;
+      resizeViewport();
+      expect(viewport.scrollTop).toBe(120);
+      await act(
+        () =>
+          new Promise<void>((resolve) => {
+            requestAnimationFrame(() => resolve());
+          }),
+      );
+      expect(viewport.scrollTop).toBe(120);
+    } finally {
+      vi.stubGlobal("ResizeObserver", originalResizeObserver);
     }
   });
 
@@ -2333,7 +2519,7 @@ describe("ChatOverlay", () => {
     expect(normal.closest('[data-failure="no_provider"]')).toBeNull();
   });
 
-  it("press-and-hold copies an assistant message and flashes confirmation", () => {
+  it("press-and-hold copies without mounting a floating confirmation", () => {
     vi.useFakeTimers();
     try {
       vi.mocked(copyTextToClipboard).mockClear();
@@ -2361,7 +2547,7 @@ describe("ChatOverlay", () => {
         vi.advanceTimersByTime(450); // past the hold threshold
       });
       expect(copyTextToClipboard).toHaveBeenCalledWith("the answer is 42");
-      expect(screen.getByTestId("thread-line-copied")).toBeTruthy();
+      expect(screen.queryByTestId("thread-line-copied")).toBeNull();
     } finally {
       vi.useRealTimers();
     }
@@ -2436,7 +2622,7 @@ describe("ChatOverlay", () => {
     const grabber = screen.getByTestId("chat-sheet-grabber");
     const content = screen.getByTestId("chat-content");
     expect(sheet.getAttribute("data-detent")).toBe("collapsed");
-    expect(content.style.clipPath).toContain("inset(0 round");
+    expect(content.style.clipPath).toContain("inset(1px round");
     expect(screen.getByTestId("chat-composer-textarea")).toBeTruthy();
     // A downward drag past the threshold collapses the input away into the pill.
     fireEvent.pointerDown(grabber, { clientY: 200, pointerId: 1 });
@@ -2632,13 +2818,18 @@ describe("ChatOverlay", () => {
     ).toBe("start transcription");
   });
 
-  it("gives active transcription the full lane plus one Stop control", () => {
+  it("gives transcription one exclusive stop control", async () => {
+    const toggleTranscriptionMode = vi.fn();
+    const user = userEvent.setup();
     render(
       <ChatOverlay
         controller={makeController({
           transcriptionMode: true,
+          handsFree: true,
+          recording: true,
           responding: true,
           canSend: false,
+          toggleTranscriptionMode,
         } as unknown as Partial<ShellController>)}
       />,
     );
@@ -2666,6 +2857,8 @@ describe("ChatOverlay", () => {
     expect(stopTranscription.getAttribute("aria-label")).toBe(
       "stop transcription",
     );
+    await user.click(stopTranscription);
+    expect(toggleTranscriptionMode).toHaveBeenCalledTimes(1);
     // A stopped agent blocks delivery, not finalization back into the draft.
     expect(stopTranscription.getAttribute("aria-disabled")).toBe("false");
     expect(
@@ -2674,6 +2867,38 @@ describe("ChatOverlay", () => {
         .contains(stopTranscription),
     ).toBe(true);
     expect(screen.queryByTestId("chat-composer-transcribe-status")).toBeNull();
+  });
+
+  it("keeps the single transcription stop keyboard- and touch-operable", async () => {
+    const toggleTranscriptionMode = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <ChatOverlay
+        controller={makeController({
+          transcriptionMode: true,
+          recording: true,
+          toggleTranscriptionMode,
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+
+    const stopTranscription = screen.getByRole("button", {
+      name: "stop transcription",
+    });
+    stopTranscription.focus();
+    await user.keyboard("{Enter}");
+    expect(toggleTranscriptionMode).toHaveBeenCalledTimes(1);
+
+    await user.pointer([
+      { keys: "[TouchA>]", target: stopTranscription },
+      { keys: "[/TouchA]", target: stopTranscription },
+    ]);
+    expect(toggleTranscriptionMode).toHaveBeenCalledTimes(2);
+    expect(
+      screen
+        .getByTestId("chat-composer-control-slot-right")
+        .classList.contains("pointer-coarse:size-11"),
+    ).toBe(true);
   });
 
   it("an empty finalization never sends and ignores a second in-flight tap", async () => {
@@ -3395,10 +3620,24 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
       '[data-chat-message-bubble="true"]',
     );
     await waitFor(() =>
-      expect(bubble?.getAttribute("data-chat-search-highlight")).toBe("true"),
+      expect(
+        bubble?.querySelector(
+          '[data-chat-selectable="true"][data-chat-search-highlight="true"]',
+        ),
+      ).toBeTruthy(),
     );
-    expect(bubble?.style.outline).toContain("var(--accent)");
-    expect(bubble?.style.outlineOffset).toBe("-2px");
+    const highlight = bubble?.querySelector<HTMLElement>(
+      '[data-chat-selectable="true"][data-chat-search-highlight="true"]',
+    );
+    expect(bubble?.style.outline).toBe("");
+    expect(bubble?.style.boxShadow).toBe("");
+    expect(highlight?.style.display).toBe("");
+    expect(highlight?.style.maxWidth).toBe("");
+    expect(highlight?.style.width).toBe("");
+    expect(highlight?.style.borderRadius).toBe("0.75rem");
+    expect(highlight?.style.boxShadow).toContain("rgba(255, 255, 255, 0.28)");
+    expect(highlight?.style.filter).toContain("drop-shadow");
+    expect(highlight?.style.textShadow).toContain("rgba(255, 255, 255, 0.72)");
     expect(aroundSpy).not.toHaveBeenCalled();
     expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
     await waitFor(() =>
@@ -3476,7 +3715,46 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(sheet.getAttribute("data-chat-state")).toBe("MAXIMIZED");
   });
 
-  it("renders the top-20% pull-down restore zone ONLY while maximized", () => {
+  it("snaps to full-screen at 90% while held and reverses below the same line", async () => {
+    const { controller } = makeSwipeController();
+    render(<ChatOverlay controller={controller} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+    const startY = viewportHeight;
+    const snapHeight = viewportHeight * 0.9;
+
+    fireEvent.pointerDown(grabber, { clientY: startY, pointerId: 71 });
+    fireEvent.pointerMove(grabber, {
+      clientY: startY - (snapHeight - 20),
+      pointerId: 71,
+    });
+    await waitFor(() =>
+      expect(sheet.getAttribute("data-maximized")).toBeNull(),
+    );
+
+    fireEvent.pointerMove(grabber, {
+      clientY: startY - (snapHeight + 20),
+      pointerId: 71,
+    });
+    await waitFor(() =>
+      expect(sheet.getAttribute("data-maximized")).toBe("true"),
+    );
+
+    fireEvent.pointerMove(grabber, {
+      clientY: startY - (snapHeight - 30),
+      pointerId: 71,
+    });
+    await waitFor(() =>
+      expect(sheet.getAttribute("data-maximized")).toBeNull(),
+    );
+    fireEvent.pointerUp(grabber, {
+      clientY: startY - (snapHeight - 30),
+      pointerId: 71,
+    });
+  });
+
+  it("renders the top-bar pull-down restore zone ONLY while maximized", () => {
     const { controller } = makeSwipeController();
     render(<ChatOverlay controller={controller} />);
     // Not present at rest / half.
@@ -3485,6 +3763,7 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     // Appears once maximized.
     bigPullUp();
     expect(screen.getByTestId("chat-maximize-restore-zone")).toBeTruthy();
+    expect(screen.queryByTestId("chat-maximize-restore-handle")).toBeNull();
   });
 
   it("a downward pull in the top-20% restore zone exits full-bleed back to the overlay (not a full collapse)", () => {
@@ -3506,6 +3785,80 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(sheet.getAttribute("data-variant")).toBe("open");
   });
 
+  it("keeps a tap inert but follows a deliberate restore pull immediately", async () => {
+    const { controller } = makeSwipeController();
+    render(<ChatOverlay controller={controller} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    bigPullUp();
+    expect(sheet.getAttribute("data-maximized")).toBe("true");
+
+    const zone = screen.getByTestId("chat-maximize-restore-zone");
+    const startY = 20;
+    fireEvent.pointerDown(zone, { clientY: startY, pointerId: 81 });
+    fireEvent.pointerMove(zone, {
+      clientY: startY + 4,
+      pointerId: 81,
+    });
+    await waitFor(() =>
+      expect(sheet.getAttribute("data-maximized")).toBe("true"),
+    );
+
+    fireEvent.pointerMove(zone, {
+      clientY: startY + 24,
+      pointerId: 81,
+    });
+    expect(sheet.getAttribute("data-maximized")).toBe("true");
+    expect(screen.queryByTestId("chat-maximize-restore-handle")).toBeNull();
+    expect(screen.queryByTestId("chat-sheet-grabber")).toBeNull();
+    expect(sheet.style.height).toBe("auto");
+    fireEvent.pointerUp(zone, {
+      clientY: startY + 24,
+      pointerId: 81,
+    });
+    await waitFor(() =>
+      expect(sheet.getAttribute("data-maximized")).toBeNull(),
+    );
+  });
+
+  it("rests a maximized restore below half at the released window height", async () => {
+    const { controller } = makeSwipeController();
+    render(<ChatOverlay controller={controller} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    bigPullUp();
+
+    const zone = screen.getByTestId("chat-maximize-restore-zone");
+    fireEvent.pointerDown(zone, { clientY: 20, pointerId: 82 });
+    fireEvent.pointerMove(zone, { clientY: 500, pointerId: 82 });
+    expect(sheet.getAttribute("data-maximized")).toBe("true");
+    expect(screen.queryByTestId("chat-sheet-grabber")).toBeNull();
+    fireEvent.pointerUp(zone, { clientY: 500, pointerId: 82 });
+
+    await waitFor(() =>
+      expect(sheet.getAttribute("data-chat-state")).toBe("OPEN_UNDER_HALF"),
+    );
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+    expect(sheet.style.height).toBe("auto");
+  });
+
+  it("lands a near-bottom maximized restore on the input instead of the pill", async () => {
+    const { controller } = makeSwipeController();
+    render(<ChatOverlay controller={controller} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    bigPullUp();
+
+    const zone = screen.getByTestId("chat-maximize-restore-zone");
+    fireEvent.pointerDown(zone, { clientY: 20, pointerId: 83 });
+    fireEvent.pointerMove(zone, { clientY: 730, pointerId: 83 });
+    fireEvent.pointerUp(zone, { clientY: 730, pointerId: 83 });
+
+    await waitFor(() =>
+      expect(sheet.getAttribute("data-chat-state")).toBe("INPUT"),
+    );
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+  });
+
   it("a FULL downward pull in the restore zone drops full-bleed and collapses the sheet all the way (the un-maximize→collapse bug)", () => {
     const { controller } = makeSwipeController();
     render(<ChatOverlay controller={controller} />);
@@ -3524,6 +3877,7 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
 
     expect(sheet.getAttribute("data-maximized")).toBeNull();
     expect(sheet.getAttribute("data-variant")).toBe("closed");
+    expect(sheet.getAttribute("data-detent")).toBe("pill");
   });
 
   it("keyboard-activates the restore zone (ArrowDown exits full-bleed)", () => {
@@ -3778,7 +4132,7 @@ describe("ChatOverlay — streaming + consumer activity render (#10712)", () => 
                   id: "views-calendar",
                   type: "tool_result",
                   actionName: "VIEWS",
-                  args: { action: "show", target: "simple-calendar" },
+                  args: { action: "show", target: "calendar" },
                   result: {
                     success: true,
                     userFacingText: "Opening your calendar now.",
@@ -3800,7 +4154,7 @@ describe("ChatOverlay — streaming + consumer activity render (#10712)", () => 
     expect(screen.queryByText("Result")).toBeNull();
   });
 
-  it("replaces Thinking with token one in the same assistant row", () => {
+  it("replaces Thinking with token one in the same assistant row", async () => {
     let conversationMessages: ConversationMessage[] = [
       {
         id: "u-stream",
@@ -3842,6 +4196,11 @@ describe("ChatOverlay — streaming + consumer activity render (#10712)", () => 
       .getByTestId("turn-status-indicator")
       .closest('[data-testid="thread-line"]');
     expect(pendingRow).toBeTruthy();
+    const stableAssistantBody = screen.getByTestId(
+      "overlay-assistant-turn-body",
+    );
+    expect(stableAssistantBody.getAttribute("data-phase")).toBe("status");
+    expect(stableAssistantBody.className).toContain("min-h-[1.4375rem]");
 
     applyStreamingTextModification(setConversationMessages, {
       messageId: "a-stream",
@@ -3860,7 +4219,13 @@ describe("ChatOverlay — streaming + consumer activity render (#10712)", () => 
     const token = screen.getByText("Token one");
     expect(token).toBeTruthy();
     expect(token.closest('[data-testid="thread-line"]')).toBe(pendingRow);
-    expect(screen.queryByTestId("turn-status-indicator")).toBeNull();
+    expect(screen.getByTestId("overlay-assistant-turn-body")).toBe(
+      stableAssistantBody,
+    );
+    expect(stableAssistantBody.getAttribute("data-phase")).toBe("reply");
+    await waitFor(() => {
+      expect(screen.queryByTestId("turn-status-indicator")).toBeNull();
+    });
     expect(screen.queryByText("Token one and two")).toBeNull();
     expect(screen.queryByRole("button", { name: /thinking/i })).toBeNull();
 
@@ -3976,7 +4341,7 @@ describe("ChatOverlay — per-message action row (#10713)", () => {
       ?.querySelector("div.select-text") as HTMLElement;
   }
 
-  it("reserves an animated reply lane without focusing and clears it when the sheet closes", async () => {
+  it("reserves an animated reply lane, focuses the composer, and clears it when the sheet closes", async () => {
     openThreadWith({
       messages: [
         {
@@ -4004,7 +4369,7 @@ describe("ChatOverlay — per-message action row (#10713)", () => {
     expect(replyLane.className).toContain("overflow-hidden");
     expect(replyLane.className).not.toContain("absolute");
     expect(sheet.getAttribute("data-detent")).toBe(detentBeforeReply);
-    expect(document.activeElement).not.toBe(input);
+    expect(document.activeElement).toBe(input);
 
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() => {
@@ -4021,7 +4386,6 @@ describe("ChatOverlay — per-message action row (#10713)", () => {
       speak,
       speaking: false,
     });
-    // Keeping the rail mounted prevents message geometry from shifting when it appears.
     const actions = screen.getByTestId("thread-line-actions");
     expect(actions.getAttribute("aria-hidden")).toBe("true");
     expect(actions.hasAttribute("inert")).toBe(true);

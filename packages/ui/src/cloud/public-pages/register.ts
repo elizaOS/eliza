@@ -47,6 +47,7 @@ const EmailCallbackPage = lazy(
 const AppAuthAuthorizePage = lazy(
   () => import("./pages/app-auth/app-authorize-page"),
 );
+const SsoBridgePage = lazy(() => import("../sso-bridge/SsoBridgeRoute"));
 const TermsOfServicePage = lazy(
   () => import("./pages/legal/terms-of-service-page"),
 );
@@ -160,6 +161,14 @@ export function registerPublicPages(): void {
   registerCloudRoute({
     path: "auth/callback/email",
     element: EmailCallbackPage,
+    ...PUBLIC_ROUTE_ACCESS,
+    group: "auth",
+  });
+  // Cross-host SSO handshake; role-switched by hostname and inert everywhere
+  // but the deployed dashboard/app pairs (see ../sso-bridge/sso-bridge.ts).
+  registerCloudRoute({
+    path: "auth/bridge",
+    element: SsoBridgePage,
     ...PUBLIC_ROUTE_ACCESS,
     group: "auth",
   });

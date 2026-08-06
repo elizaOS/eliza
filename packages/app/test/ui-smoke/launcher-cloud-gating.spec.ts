@@ -255,8 +255,11 @@ test.describe("launcher: one apps tile — cloud-apps never tiles", () => {
       state.connected = true;
       await connectButton.first().click();
       await expect(
-        page.getByRole("button", { name: /Cloud connected/i }).first(),
+        page.getByRole("button", { name: /Open Eliza Cloud/i }).first(),
       ).toBeVisible({ timeout: 60_000 });
+      await expect(
+        page.getByRole("button", { name: /Open Eliza Cloud/i }).first(),
+      ).toContainText("Cloud connected");
       await screenshot(
         page,
         testInfo,

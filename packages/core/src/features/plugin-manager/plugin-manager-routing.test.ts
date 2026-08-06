@@ -18,6 +18,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
+import { hardenIncomingUserMessage } from "../../security/incoming-message-security.ts";
 import type { HandlerCallback } from "../../types/components.ts";
 import type { Memory } from "../../types/memory.ts";
 import type { IAgentRuntime } from "../../types/runtime.ts";
@@ -32,6 +33,7 @@ function createStubPluginManager(calls: StubServiceCalls) {
 		getAllPlugins: () => [{ name: "plugin-manager", status: "LOADED" }],
 		listInstalledPlugins: async () => [],
 		listEjectedPlugins: async () => [],
+		searchRegistry: async () => [],
 		installPlugin: async (name: string) => {
 			calls.installed.push(name);
 			return {
@@ -66,6 +68,23 @@ function createMessage(text: string): Memory {
 		roomId: "room-id",
 		content: { text },
 	} as Memory;
+}
+
+/**
+ * A message as a hardened connector delivers it: content.text wrapped in
+ * core's external-content security envelope with the user's sentence as
+ * payload and `externalContentWrapped` stamped.
+ */
+function createHardenedMessage(text: string): Memory {
+	const memory = {
+		id: "message-id",
+		agentId: "agent-id",
+		entityId: "user-id",
+		roomId: "room-id",
+		content: { text, source: "discord" },
+	} as Memory;
+	hardenIncomingUserMessage(memory);
+	return memory;
 }
 
 // Owner gate is exercised elsewhere; bypass it so these tests isolate routing.
@@ -183,6 +202,66 @@ describe("MANAGE_PLUGINS subaction routing", () => {
 		expect(result?.success).toBe(false);
 		expect(result?.data?.action).toBe("clarify");
 		expect(calls.installed).toHaveLength(0);
-		expect(replies.join("\n")).toContain("which plugin operation");
+		// Planner-facing contract: the clarification rides the result; no
+		// visible callback fires (the evaluator voices the question).
+		expect(replies).toHaveLength(0);
+		expect(String(result?.data?.action)).toBe("clarify");
+	});
+});
+
+describe("MANAGE_PLUGINS search on hardened messages (envelope echo regression)", () => {
+	it("seeds the search query from the user's words, not the security envelope", async () => {
+		const calls: StubServiceCalls = { installed: [] };
+		const runtime = createRuntime({ calls });
+		const message = createHardenedMessage("find plugins for solana wallets");
+		// Sanity: the fixture really is the wrapped envelope.
+		expect(message.content.text).toContain("SECURITY NOTICE");
+		expect(message.content.text).toContain("<<<EXTERNAL_UNTRUSTED_CONTENT>>>");
+		const replies: string[] = [];
+		const callback: HandlerCallback = async (content) => {
+			if (typeof content.text === "string") replies.push(content.text);
+			return [];
+		};
+
+		const result = await action.handler?.(
+			runtime,
+			message,
+			undefined,
+			{ parameters: { action: "search" } },
+			callback,
+		);
+
+		const visible = `${replies.join("\n")}\n${String(result?.userFacingText ?? "")}`;
+		expect(visible).not.toContain("EXTERNAL_UNTRUSTED_CONTENT");
+		expect(visible).not.toContain("SECURITY NOTICE");
+		expect(visible).toContain("solana wallets");
+		expect(String(result?.text ?? "").length).toBeLessThan(300);
+	});
+
+	it("keeps the raw-text query fallback envelope-free when no query pattern matches", async () => {
+		const calls: StubServiceCalls = { installed: [] };
+		const runtime = createRuntime({ calls });
+		// No "find plugins for …" shape → dispatch falls back to the message
+		// text itself as the query; it must be the unwrapped user sentence.
+		const message = createHardenedMessage("solana wallets please");
+		const replies: string[] = [];
+		const callback: HandlerCallback = async (content) => {
+			if (typeof content.text === "string") replies.push(content.text);
+			return [];
+		};
+
+		const result = await action.handler?.(
+			runtime,
+			message,
+			undefined,
+			{ parameters: { action: "search" } },
+			callback,
+		);
+
+		const visible = `${replies.join("\n")}\n${String(result?.userFacingText ?? "")}`;
+		expect(visible).not.toContain("EXTERNAL_UNTRUSTED_CONTENT");
+		expect(visible).not.toContain("SECURITY NOTICE");
+		expect(visible).toContain('"solana wallets please"');
+		expect(String(result?.text ?? "").length).toBeLessThan(300);
 	});
 });

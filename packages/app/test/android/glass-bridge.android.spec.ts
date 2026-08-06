@@ -20,6 +20,8 @@ type RegionState = {
 
 type GlassPlugin = {
   isAvailable(): Promise<{ available: boolean }>;
+  setBackdrop(o: unknown): Promise<{ applied: boolean }>;
+  clearBackdrop(): Promise<void>;
   attachGlass(o: unknown): Promise<{ attached: boolean }>;
   updateRect(o: unknown): Promise<void>;
   detachGlass(o: unknown): Promise<void>;
@@ -101,6 +103,22 @@ test("GlassBridge native-view lifecycle, boundary validation, and rendered pixel
     if (!plugin) return { error: "GlassBridge plugin not registered" } as const;
     (window as unknown as { __glass: GlassPlugin }).__glass = plugin;
     const availability = await plugin.isAvailable();
+    // Host a wallpaper below the WebView BEFORE the panel: bytes generated in
+    // the page (canvas) and piped across the bridge — the contract has no
+    // native network/cookie machinery, so no URL can exercise this path.
+    const wallpaper = document.createElement("canvas");
+    wallpaper.width = 64;
+    wallpaper.height = 64;
+    const wallpaperCtx = wallpaper.getContext("2d");
+    if (wallpaperCtx) {
+      wallpaperCtx.fillStyle = "#123456";
+      wallpaperCtx.fillRect(0, 0, 64, 64);
+    }
+    const wallpaperDataUrl = wallpaper.toDataURL("image/png");
+    const backdrop = await plugin.setBackdrop({
+      imageBase64: wallpaperDataUrl.slice(wallpaperDataUrl.indexOf(",") + 1),
+      color: "#002244",
+    });
     // Bright saturated tint so the pixel capture proves the panel is OUR
     // native material, not the window background.
     const attach = await plugin.attachGlass({
@@ -122,6 +140,7 @@ test("GlassBridge native-view lifecycle, boundary validation, and rendered pixel
     const afterReattach = await plugin.getRegionState({ id: "e2e-probe" });
     return {
       availability,
+      backdrop,
       attach,
       reattach,
       afterAttach,
@@ -132,6 +151,7 @@ test("GlassBridge native-view lifecycle, boundary validation, and rendered pixel
   if ("error" in boot) throw new Error(String(boot.error));
 
   expect(boot.availability.available).toBe(expectedAvailable);
+  expect(boot.backdrop.applied).toBe(expectedAvailable);
   expect(boot.attach.attached).toBe(expectedAvailable);
   expect(boot.reattach.attached).toBe(expectedAvailable);
   if (!expectedAvailable) return; // pre-31 device: CSS tier, nothing to render

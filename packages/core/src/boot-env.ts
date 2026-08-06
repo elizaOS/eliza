@@ -87,6 +87,8 @@ function getProcessEnv(): Record<string, string | undefined> | null {
 			| undefined;
 		return p?.env ?? null;
 	} catch {
+		// error-policy:J4 browser and edge runtimes may expose a hostile process
+		// shim; environment aliases are explicitly unavailable there.
 		return null;
 	}
 }

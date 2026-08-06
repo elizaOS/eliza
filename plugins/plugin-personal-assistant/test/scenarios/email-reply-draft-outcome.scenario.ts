@@ -7,8 +7,9 @@
  * body), and nothing was SENT (gmailMessageSent:false, gmailNoRealWrite). The
  * MESSAGE `draft_reply` subaction is the path under test.
  */
+
+import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { judgeRubric } from "../../../../packages/test/scenarios/_helpers/action-assertions.ts";
 
 export default scenario({
   lane: "live-only",

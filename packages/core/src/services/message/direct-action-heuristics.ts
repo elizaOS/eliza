@@ -1,11 +1,11 @@
 /**
  * Pre-model heuristics that decide which registered actions a raw message should
  * directly trigger: local-shell inspection, web/live-info lookup, coding-task
- * delegation, and views/app navigation. Each detector fires on clear intent,
- * honors explicit negations ("don't run commands", "don't browse the web"), and
- * resolves action names structurally by canonical name, simile, or tag — so a
- * runtime missing a given backend action simply yields no candidate. Also derives
- * a concrete shell command or web-search query from the message text.
+ * delegation, settings writes, and views/app navigation. Each detector fires on
+ * clear intent, honors explicit negations, and resolves action names structurally
+ * by canonical name, simile, or tag — so a runtime missing a given backend action
+ * simply yields no candidate. Also derives a concrete shell command or web-search
+ * query from the message text.
  */
 import type { Action } from "../../types/components";
 
@@ -273,7 +273,8 @@ export function isShellDirectActionName(
  * Which detector produced a direct-current-request candidate inference. Lets
  * callers weigh the EVIDENCE STRENGTH of an inferred (never model-emitted)
  * candidate:
- * - "shell" / "coding" / "web": explicit intent phrasing in the message.
+ * - "shell" / "coding" / "settings-write" / "web": explicit intent phrasing
+ *   in the message.
  * - "owner-goals": concrete owner goal create/save/confirm phrasing.
  * - "view-surface": an operation verb PLUS an explicit UI-surface noun
  *   (view/window/panel/app/screen/ui) — strong navigation evidence.
@@ -288,6 +289,7 @@ export function isShellDirectActionName(
 export type DirectCurrentRequestCandidateKind =
 	| "shell"
 	| "coding"
+	| "settings-write"
 	| "owner-goals"
 	| "view-surface"
 	| "view-navigation"
@@ -315,6 +317,52 @@ const OWNER_GOALS_ACTION_NAMES = [
 	"TRIP_SAVINGS_PLAN",
 	"TRAVEL_SAVINGS_PLAN",
 ] as const;
+
+const SETTINGS_WRITE_ACTION_NAMES = [
+	"SETTINGS",
+	"UPDATE_SETTINGS",
+	"CHANGE_SETTING",
+	"SETTINGS_WRITE",
+	"VOICE_SETTINGS",
+] as const;
+
+/**
+ * Detects explicit mutations of the app's voice preferences. This is a narrow
+ * Stage-1 backstop for models that correctly understand the intent but invent a
+ * candidate name such as UPDATE_VOICE_SETTINGS, or incorrectly classify the
+ * request as simple chat. It deliberately excludes navigation, explanations,
+ * and negated writes; the semantic SETTINGS action still parses and validates
+ * the concrete section/key/value.
+ */
+function looksLikeVoiceSettingsWriteRequest(text: string): boolean {
+	const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
+	if (!normalized || looksLikeActionExplanationRequest(normalized)) {
+		return false;
+	}
+	if (
+		/\b(?:do not|don't|dont|never|without)\s+(?:change|update|set|turn|enable|disable|switch|make)\b/iu.test(
+			normalized,
+		)
+	) {
+		return false;
+	}
+
+	const hasMutation =
+		/\b(?:change|update|set|turn|enable|disable|switch|make)\b/iu.test(
+			normalized,
+		);
+	const hasVoicePreference =
+		/\b(?:voice\s+(?:setting|settings|preference|preferences|config|configuration|silence)|continuous\s+(?:voice\s+)?chat|always[- ]on\s+(?:voice\s+)?mode|hands[- ]free\s+voice|end[- ]of[- ]turn\s+silence|speech\s+rms\s+threshold|voice\s+vad|vad\s+(?:setting|settings|silence|threshold))\b/iu.test(
+			normalized,
+		);
+	return hasMutation && hasVoicePreference;
+}
+
+function findSettingsWriteActionName(
+	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
+): string | undefined {
+	return findAvailableActionName(actions, SETTINGS_WRITE_ACTION_NAMES);
+}
 
 function looksLikeLearningGoalStart(text: string): boolean {
 	if (
@@ -447,23 +495,28 @@ export function inferDirectCurrentRequestCandidateInference(
 		const codingAction = hooks.findCodingDelegationActionName?.(actions);
 		if (codingAction) return { names: [codingAction], kind: "coding" };
 	}
+	if (looksLikeVoiceSettingsWriteRequest(messageText)) {
+		const settingsAction = findSettingsWriteActionName(actions);
+		if (settingsAction) {
+			return { names: [settingsAction], kind: "settings-write" };
+		}
+	}
 	const viewShellAction = findViewShellActionName(actions, messageText);
 	if (viewShellAction) {
 		// A request that names the application surface itself ("show me the
 		// apps", "list running apps", "launch the shopify app") is ambiguous
-		// between the views/apps *page* (VIEWS) and the applications themselves
-		// (the APP control action). Surface BOTH candidates and let the planner
-		// arbitrate from the exposed routing hints; hinting only VIEWS answers
-		// every installed-apps ask with the UI view catalog instead of the app
-		// itself (#9950). Structurally anchored to a registered app-control
-		// action, so runtimes without one are unaffected.
-		const appControlAction = findAppControlActionNameForAppRequest(
-			actions,
-			messageText,
-		);
-		if (appControlAction && appControlAction !== viewShellAction) {
+		// between the views/apps *page* (VIEWS) and the applications themselves.
+		// Surface BOTH candidates and let the planner arbitrate from the exposed
+		// routing hints; hinting only VIEWS answers every installed-apps ask
+		// with the UI view catalog instead of the app itself (#9950). The app
+		// slot resolves to the local app-control action, or to the cloud-apps
+		// action when the message pins the ask to hosted Eliza Cloud apps (see
+		// findAppActionNameForAppRequest). Structurally anchored to a registered
+		// app action, so runtimes without one are unaffected.
+		const appAction = findAppActionNameForAppRequest(actions, messageText);
+		if (appAction && appAction !== viewShellAction) {
 			return {
-				names: [viewShellAction, appControlAction],
+				names: [viewShellAction, appAction],
 				kind: "view-surface",
 			};
 		}
@@ -750,7 +803,33 @@ const APP_CONTROL_ACTION_NAMES = [
 	"LAUNCH_APP",
 ] as const;
 
-function findAppControlActionNameForAppRequest(
+// Cloud-apps action names/similes, in preference order. Mirrors the cloud-apps
+// action's own simile vocabulary (plugin-cloud-apps LIST_CLOUD_APPS); consulted
+// only when an app-shaped message carries a cloud qualifier token below, so
+// agents without a cloud-apps action are unaffected.
+const CLOUD_APPS_ACTION_NAMES = [
+	"LIST_CLOUD_APPS",
+	"MY_CLOUD_APPS",
+	"CLOUD_APPS",
+] as const;
+
+// Tokens that pin an app-shaped message to the user's HOSTED Eliza Cloud apps
+// ("list my cloud apps", "my deployed apps") rather than apps installed or
+// running on this device. Compared in singular-normalized token space.
+const CLOUD_APP_QUALIFIER_TOKENS: ReadonlySet<string> = new Set<string>([
+	"CLOUD",
+	"DEPLOYED",
+	"HOSTED",
+]);
+
+// Resolve the app action an app-shaped message targets. A cloud qualifier next
+// to the APP token pins the ask to the user's hosted Eliza Cloud apps, where
+// the local app-control action is wrong by its own routing contract — without
+// this the cloud-apps action is never on the planner surface and the local APP
+// action wins by forfeit. Falls back to the local app-control surface when no
+// cloud-apps action is registered, so those runtimes keep their previous
+// candidates.
+function findAppActionNameForAppRequest(
 	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
 	messageText: string,
 ): string | undefined {
@@ -759,6 +838,13 @@ function findAppControlActionNameForAppRequest(
 	);
 	if (!tokens.some((token) => token === "APP" || token === "APPLICATION")) {
 		return undefined;
+	}
+	if (tokens.some((token) => CLOUD_APP_QUALIFIER_TOKENS.has(token))) {
+		const cloudAppsAction = findAvailableActionName(
+			actions,
+			CLOUD_APPS_ACTION_NAMES,
+		);
+		if (cloudAppsAction) return cloudAppsAction;
 	}
 	return findAvailableActionName(actions, APP_CONTROL_ACTION_NAMES);
 }

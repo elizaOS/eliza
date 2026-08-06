@@ -22,7 +22,7 @@ test.describe("bun run dev onboarding chat smoke", () => {
   test("starts dev, completes onboarding, and sends a chat message", async ({
     page,
   }) => {
-    const failures = browserFailureCollector(page);
+    const failureCollector = browserFailureCollector(page);
 
     // Onboarding submission runs here (or in a sibling spec sharing this dev
     // server, whichever runs first); ensureOnboarded is idempotent.
@@ -49,6 +49,9 @@ test.describe("bun run dev onboarding chat smoke", () => {
       .filter({ hasText: RESPONSE_MARKER });
     await expect(assistantReply.first()).toBeVisible({ timeout: 180_000 });
 
-    expect(failures, "browser/runtime failures").toEqual([]);
+    expect(
+      await failureCollector.failures(),
+      "browser/runtime failures",
+    ).toEqual([]);
   });
 });

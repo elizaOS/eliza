@@ -75,8 +75,8 @@ export interface LLMCall {
 	reasoning?: string;
 
 	// Parameters
-	temperature: number;
-	maxTokens: number;
+	temperature?: number;
+	maxTokens?: number;
 	maxTokensOmitted?: boolean;
 	topP?: number;
 
@@ -174,10 +174,10 @@ export interface EnvironmentState {
 	timestamp: number;
 
 	// Agent state
-	agentBalance: number;
-	agentPoints: number;
-	agentPnL: number;
-	openPositions: number;
+	agentBalance?: number;
+	agentPoints?: number;
+	agentPnL?: number;
+	openPositions?: number;
 
 	// Market state
 	activeMarkets?: number;
@@ -237,8 +237,8 @@ export interface Trajectory {
 
 	// Timing
 	startTime: number;
-	endTime: number;
-	durationMs: number;
+	endTime?: number;
+	durationMs?: number;
 
 	// Episode context
 	episodeId?: string;
@@ -255,7 +255,7 @@ export interface Trajectory {
 
 	metrics: {
 		episodeLength: number;
-		finalStatus: "completed" | "terminated" | "error" | "timeout";
+		finalStatus: "active" | "completed" | "terminated" | "error" | "timeout";
 		finalBalance?: number;
 		finalPnL?: number;
 		tradesExecuted?: number;
@@ -300,10 +300,10 @@ export interface ARTTrajectory {
 		scenarioId?: string;
 		groupIndex?: number;
 		environmentContext?: {
-			initialBalance: number;
-			finalBalance: number;
-			initialPnL: number;
-			finalPnL: number;
+			initialBalance?: number;
+			finalBalance?: number;
+			initialPnL?: number;
+			finalPnL?: number;
 			actionsTaken: string[];
 			errors: string[];
 		};

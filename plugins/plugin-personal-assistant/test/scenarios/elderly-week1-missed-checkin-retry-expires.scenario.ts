@@ -21,7 +21,7 @@
  * Keyless-runnable under the deterministic proxy (the fire's dispatch render is
  * satisfied by the proxy's default reply); `live-only` lane because the pinned
  * strict PR corpus currently cannot render scheduled dispatches under
- * `SCENARIO_LLM_PROXY_STRICT=1` (`dispatch-render.ts` calls `useModel` with no
+ * deterministic model mode (`dispatch-render.ts` calls `useModel` with no
  * registered strict fixture — a develop-side gap independent of this proof).
  *
  * Fail-without-fix anchor: revert the retry-then-terminal branch in

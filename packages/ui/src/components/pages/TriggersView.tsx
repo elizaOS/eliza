@@ -1050,7 +1050,7 @@ function TriggersLayout() {
                 </div>
 
                 {!hasLoadedSelectedRuns ? (
-                  <div className="flex items-center gap-2 py-6 text-sm text-muted/70">
+                  <div className="flex items-center gap-2 py-6 text-sm text-muted">
                     <div className="h-4 w-4 animate-spin rounded-full border-2 border-muted/30 border-t-muted/80" />
                     {t("appsview.Loading")}
                   </div>
@@ -1067,7 +1067,7 @@ function TriggersLayout() {
                             <StatusDot tone={toneForLastStatus(run.status)} />
                             {localizedExecutionStatus(run.status, t)}
                           </span>
-                          <span className="font-mono text-xs-tight text-muted/70">
+                          <span className="font-mono text-xs-tight text-muted">
                             {formatDateTime(run.startedAt, {
                               locale: uiLanguage,
                             })}

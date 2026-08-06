@@ -207,11 +207,7 @@ function optionalLine(label: string, value: string | undefined): string | null {
 
 function endpointHost(value: string | undefined): string | undefined {
 	if (!value) return undefined;
-	try {
-		return new URL(value).host;
-	} catch {
-		return undefined;
-	}
+	return new URL(value).host;
 }
 
 function providerEndpointHost(

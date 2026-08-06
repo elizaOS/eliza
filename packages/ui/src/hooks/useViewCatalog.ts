@@ -2,7 +2,7 @@
  * useViewCatalog — data source for the unified Launcher.
  *
  * Merges three sources into one {@link ViewEntry} list:
- *  - loaded views (`GET /api/views`, via {@link useAvailableViews}),
+ *  - routable views (the loaded registry plus built-in shell destinations),
  *  - the installable app catalog (`/api/apps`, scanned from plugin manifests on
  *    disk — no plugin load required), via {@link loadAppsCatalog},
  *  - the set of currently-active apps (`GET /api/apps/installed`).
@@ -14,12 +14,12 @@
  */
 
 import { useCallback, useMemo, useState } from "react";
-import { client } from "../api";
+import { type AppLaunchResult, client } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import { loadAppsCatalog } from "../components/apps/load-apps-catalog";
 import { getActiveViewModality } from "../platform/platform-guards";
 import { useEnabledViewKinds } from "../state/useViewKinds";
-import { useAvailableViews } from "./useAvailableViews";
+import { useRoutableViews } from "./useAvailableViews";
 import { useCachedResource } from "./useCachedResource";
 import { mergeViewCatalog, type ViewEntry } from "./view-catalog";
 
@@ -32,8 +32,13 @@ export interface UseViewCatalogResult {
   loading: boolean;
   error: Error | null;
   refresh: () => void;
-  /** Launch/install the app behind an entry; resolves when loaded or rejects. */
-  get: (entry: ViewEntry) => Promise<void>;
+  /**
+   * Launch/install the app behind an entry and return the authoritative launch
+   * result. Catalog callers need the returned run/viewer on the first click:
+   * waiting for the installed manifest to be rediscovered is too late to open
+   * a newly-installed app's viewer.
+   */
+  get: (entry: ViewEntry) => Promise<AppLaunchResult | null>;
 }
 
 export function useViewCatalog(): UseViewCatalogResult {
@@ -42,7 +47,7 @@ export function useViewCatalog(): UseViewCatalogResult {
     loading: viewsLoading,
     error: viewsError,
     refresh: refreshViews,
-  } = useAvailableViews();
+  } = useRoutableViews();
   const enabledKinds = useEnabledViewKinds();
   const activeModality = useMemo(() => getActiveViewModality(), []);
   const appShellRoutesSupported = supportsFullAppShellRoutes(
@@ -78,6 +83,7 @@ export function useViewCatalog(): UseViewCatalogResult {
       installed,
       activeModality,
       enabledKinds,
+      visibilityScope: "routable",
     });
     if (Object.keys(pending).length === 0) return merged;
     return merged.map((e) =>
@@ -94,10 +100,10 @@ export function useViewCatalog(): UseViewCatalogResult {
   const get = useCallback(
     async (entry: ViewEntry) => {
       const name = entry.appName;
-      if (!name) return;
+      if (!name) return null;
       setPending((p) => ({ ...p, [entry.key]: "installing" }));
       try {
-        await client.launchApp(name);
+        const launch = await client.launchApp(name);
         // Loading hot-registers the plugin's views; refetch so the entry flips
         // to the loaded view (Open) and drops out of the catalog section.
         refreshViews();
@@ -107,6 +113,7 @@ export function useViewCatalog(): UseViewCatalogResult {
           delete next[entry.key];
           return next;
         });
+        return launch;
       } catch (err) {
         setPending((p) => ({ ...p, [entry.key]: "error" }));
         throw err instanceof Error ? err : new Error(String(err));

@@ -1,6 +1,6 @@
 /**
  * Keyless catalog coverage for the plugin-workflow action and route surface. Runs
- * on the pr-deterministic lane under the LLM proxy.
+ * on the pr-deterministic lane under the model provider.
  */
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import type {
@@ -21,9 +21,9 @@ import {
 import type { WorkflowDefinition } from "../../../../plugins/plugin-workflow/src/types/index.ts";
 import { getUserTagName } from "../../../../plugins/plugin-workflow/src/utils/context.ts";
 import {
-  type RuntimeWithScenarioLlmFixtures,
+  type RuntimeWithScenarioModelFixtures,
   registerStrictActionRouteFixtures,
-} from "./_helpers/strict-llm-action-fixtures";
+} from "@elizaos/core/testing";
 
 const WORKFLOW_ID = "scenario-workflow-keyless-minimal";
 const WORKFLOW_NAME = "Scenario keyless workflow";
@@ -47,7 +47,7 @@ const strictWorkflowRoutes = [
 type JsonRecord = Record<string, unknown>;
 
 type RuntimeWithWorkflowScenario = IAgentRuntime &
-  RuntimeWithScenarioLlmFixtures & {
+  RuntimeWithScenarioModelFixtures & {
     db?: unknown;
     getServiceLoadPromise?: (serviceType: string) => Promise<unknown>;
     plugins?: Plugin[];
@@ -313,7 +313,24 @@ function expectWorkflowAction(
   if (!Array.isArray(executions) || executions.length !== 1) {
     return `expected one workflow execution in action result, saw ${stableStringify(action.result)}`;
   }
-  return expectSeededExecution(executions[0]);
+  // Captured action evidence is depth-bounded, so nested runData entries may be
+  // represented as null. The API turn and final service check below retain and
+  // verify the complete execution artifact.
+  for (const [path, expected] of Object.entries({
+    workflowId: WORKFLOW_ID,
+    status: "success",
+    mode: "manual",
+    finished: true,
+    id: seededExecutionId,
+  })) {
+    const failure = expectEqual(
+      readPath(executions[0], path),
+      expected,
+      `captured execution ${path}`,
+    );
+    if (failure) return failure;
+  }
+  return undefined;
 }
 
 function expectWorkflowRoute(

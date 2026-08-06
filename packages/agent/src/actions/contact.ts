@@ -1059,9 +1059,15 @@ async function handleUpdateContactInfo(
     });
   }
 
+  // The update confirmation is the complete answer to a single-operation
+  // turn: verified + turnComplete make the callback the sole delivery instead
+  // of double-messaging with the evaluator.
   return {
     success: true,
     text: responseText,
+    userFacingText: responseText,
+    verifiedUserFacing: true,
+    turnComplete: true,
     values: {
       contactId: contact.entityId,
       updatedFieldsStr: Object.keys(updateData).join(","),
@@ -1125,15 +1131,18 @@ async function handleUpdateComponent(
       createdAt: existing.createdAt,
     });
 
+    const updatedText = `I've updated the ${componentType} information for ${entityName}.`;
     if (callback) {
-      await callback({
-        text: `I've updated the ${componentType} information for ${entityName}.`,
-        action: CONTACT_ACTION,
-      });
+      await callback({ text: updatedText, action: CONTACT_ACTION });
     }
+    // Same single-delivery contract as handleUpdate: the confirmation is the
+    // complete answer to the turn.
     return {
       success: true,
-      text: `Updated ${componentType} information for ${entityName}.`,
+      text: updatedText,
+      userFacingText: updatedText,
+      verifiedUserFacing: true,
+      turnComplete: true,
       values: {
         success: true,
         entityId,
@@ -1167,15 +1176,16 @@ async function handleUpdateComponent(
     createdAt: Date.now(),
   });
 
+  const addedText = `I've added new ${componentType} information for ${entityName}.`;
   if (callback) {
-    await callback({
-      text: `I've added new ${componentType} information for ${entityName}.`,
-      action: CONTACT_ACTION,
-    });
+    await callback({ text: addedText, action: CONTACT_ACTION });
   }
   return {
     success: true,
-    text: `Added new ${componentType} information for ${entityName}.`,
+    text: addedText,
+    userFacingText: addedText,
+    verifiedUserFacing: true,
+    turnComplete: true,
     values: {
       success: true,
       entityId,
@@ -1222,13 +1232,13 @@ async function handleDelete(
     callback,
   });
   if (decision.status !== "confirmed") {
+    // requireConfirmation already fired the confirm prompt on the pending
+    // path — a second callback here showed the user the identical prompt
+    // twice. Pending/cancel detail stays planner-facing.
     const text =
       decision.status === "pending"
-        ? `${confirmPrompt} Reply yes to confirm or no to cancel.`
-        : "Contact delete cancelled.";
-    if (callback) {
-      await callback({ text, action: CONTACT_ACTION });
-    }
+        ? `Asked the user to confirm removing ${deleteTarget}; wait for their yes/no reply.`
+        : "The user cancelled the contact deletion; nothing was removed.";
     return {
       success: decision.status === "pending",
       text,
@@ -1271,15 +1281,18 @@ async function handleDelete(
         "delete",
       );
     }
+    const removedText = `I've removed ${contactName} from your contacts.`;
     if (callback) {
-      await callback({
-        text: `I've removed ${contactName} from your contacts.`,
-        action: CONTACT_ACTION,
-      });
+      await callback({ text: removedText, action: CONTACT_ACTION });
     }
+    // The removal confirmation is the complete answer to a single-operation
+    // turn: verified + turnComplete make the callback the sole delivery.
     return {
       success: true,
-      text: `Removed contact ${contactName}.`,
+      text: removedText,
+      userFacingText: removedText,
+      verifiedUserFacing: true,
+      turnComplete: true,
       values: { contactId: contact.entityId },
       data: {
         actionName: CONTACT_ACTION,

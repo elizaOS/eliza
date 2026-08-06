@@ -1,3 +1,4 @@
+/** Verifies ConnectorPluginCard config/setup-panel co-rendering through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

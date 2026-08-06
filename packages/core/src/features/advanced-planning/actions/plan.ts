@@ -245,7 +245,7 @@ async function handleCreate(
 
 	if (callback) {
 		await callback({
-			text: `I've created a comprehensive project plan with ${phases.length} phase(s).`,
+			text: `I've drafted a plan with ${phases.length} ${phases.length === 1 ? "phase" : "phases"} to build on.`,
 			actions: ["PLAN"],
 			source: "planning",
 		});
@@ -617,21 +617,29 @@ export const planAction: Action = {
 				return handleFinalize(options);
 			}
 		} catch (error) {
+			// error-policy:J1 The action result and callback are the planner/user
+			// boundaries for an explicitly failed plan mutation.
 			const errorMessage =
 				error instanceof Error ? error.message : String(error);
-			const text = `Failed to ${subaction} plan: ${errorMessage}`;
+			// Continuation is suppressed on this action, so this callback is the
+			// turn's sole delivery and can't be dropped — keep it human-worded and
+			// leave the raw error planner-facing in the result.
 			if (callback) {
 				await callback({
-					text,
+					text: `I couldn't ${subaction} that plan — something went wrong on my end.`,
 					actions: ["PLAN"],
 					source: "planning",
 				});
 			}
-			return planningFailureResult("PLAN", text, {
-				errorCode: "plan_action_failed",
-				errorMessage,
-				[CANONICAL_SUBACTION_KEY]: subaction,
-			});
+			return planningFailureResult(
+				"PLAN",
+				`Failed to ${subaction} plan: ${errorMessage}`,
+				{
+					errorCode: "plan_action_failed",
+					errorMessage,
+					[CANONICAL_SUBACTION_KEY]: subaction,
+				},
+			);
 		}
 
 		return planningFailureResult(

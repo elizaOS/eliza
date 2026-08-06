@@ -170,26 +170,6 @@ check "Has test block" grep -q 'test do' "$SCRIPT_DIR/homebrew/elizaos-app.rb"
 
 echo ""
 
-# ── 3. Debian Packaging ─────────────────────────────────────────────────────
-bold "3. Debian/apt Packaging"
-check_file "debian/control" "$SCRIPT_DIR/debian/control"
-check_file "debian/rules" "$SCRIPT_DIR/debian/rules"
-check_file "debian/changelog" "$SCRIPT_DIR/debian/changelog"
-check_file "debian/copyright" "$SCRIPT_DIR/debian/copyright"
-check_file "debian/install" "$SCRIPT_DIR/debian/install"
-check_file "debian/postinst" "$SCRIPT_DIR/debian/postinst"
-check_file "debian/source/format" "$SCRIPT_DIR/debian/source/format"
-
-check "rules is executable" test -x "$SCRIPT_DIR/debian/rules"
-check "postinst is executable" test -x "$SCRIPT_DIR/debian/postinst"
-check "Control has Package field" grep -q "^Package: elizaos-app" "$SCRIPT_DIR/debian/control"
-check "Control has Depends" grep -q "Depends:" "$SCRIPT_DIR/debian/control"
-check "Changelog has version" grep -q "elizaos-app (" "$SCRIPT_DIR/debian/changelog"
-check "Compat level 13" grep -q "debhelper-compat (= 13)" "$SCRIPT_DIR/debian/control"
-check "Source format 3.0 quilt" grep -q "3.0 (quilt)" "$SCRIPT_DIR/debian/source/format"
-
-echo ""
-
 # ── 4. Snap Package ─────────────────────────────────────────────────────────
 bold "4. Snap Package"
 check_file "snapcraft.yaml" "$SCRIPT_DIR/snap/snapcraft.yaml"
@@ -211,6 +191,7 @@ check "Has base" grep -q "^base: core22" "$SCRIPT_DIR/snap/snapcraft.yaml"
 check "Has apps section" grep -q "^apps:" "$SCRIPT_DIR/snap/snapcraft.yaml"
 check "Has node part" grep -q "^  node:" "$SCRIPT_DIR/snap/snapcraft.yaml"
 check "Has elizaos-app part" grep -q "^  elizaos-app:" "$SCRIPT_DIR/snap/snapcraft.yaml"
+check "Workspace filters and toolchain match repository" node "$SCRIPT_DIR/verify-snap-workspace-contract.mjs"
 
 echo ""
 
@@ -280,7 +261,6 @@ check "Has PyPI job" grep -q "publish-pypi:" "$WORKFLOW"
 # Homebrew is handled by the standalone update-homebrew.yml workflow
 check "Has Homebrew job" test -f "$REPO_ROOT/.github/workflows/update-homebrew.yml"
 check "Has Snap job" grep -q "publish-snap:" "$WORKFLOW"
-check "Has Debian job" grep -q "build-deb:" "$WORKFLOW"
 check "Has Flatpak job" grep -q "build-flatpak:" "$WORKFLOW"
 check "Has summary job" grep -q "publish-summary:" "$WORKFLOW"
 check "Uses trusted publishing" grep -q "id-token: write" "$WORKFLOW"
@@ -292,7 +272,6 @@ bold "7. Publishing Guide"
 check_file "PUBLISHING_GUIDE.md" "$SCRIPT_DIR/PUBLISHING_GUIDE.md"
 check "Covers PyPI" grep -q "PyPI" "$SCRIPT_DIR/PUBLISHING_GUIDE.md"
 check "Covers Homebrew" grep -q "Homebrew" "$SCRIPT_DIR/PUBLISHING_GUIDE.md"
-check "Covers apt" grep -q "apt" "$SCRIPT_DIR/PUBLISHING_GUIDE.md"
 check "Covers Snap" grep -q "Snap" "$SCRIPT_DIR/PUBLISHING_GUIDE.md"
 check "Covers Flatpak" grep -q "Flatpak" "$SCRIPT_DIR/PUBLISHING_GUIDE.md"
 check "Has version checklist" grep -q "Version Bumping" "$SCRIPT_DIR/PUBLISHING_GUIDE.md"

@@ -1,9 +1,4 @@
-/**
- * @fileoverview Ollama Model Provider for Integration Testing
- *
- * Provides real inference through local Ollama instance.
- * This is used when no cloud API keys are configured.
- */
+/** Connects integration tests to a local Ollama inference service. */
 
 import z from "zod";
 import { logger } from "../logger";

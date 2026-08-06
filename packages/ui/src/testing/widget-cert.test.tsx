@@ -1,3 +1,4 @@
+/** Verifies collectInteractive through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // biome-ignore-all lint/a11y/useButtonType: test fixtures deliberately construct edge-case DOM to exercise the interactive-control sweep

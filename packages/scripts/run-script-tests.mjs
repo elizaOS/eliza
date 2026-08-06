@@ -23,6 +23,7 @@ import { buildScriptTestInventory } from "./lib/script-test-inventory.mjs";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../..");
 const SCRIPT_TEST_BUN_CONFIG = "packages/scripts/bunfig.script-tests.toml";
+const ISOLATED_TEST_DRIVER = "packages/scripts/run-script-test-files.mjs";
 
 export function parseScriptTestArgs(args) {
   let reportPath;
@@ -410,19 +411,18 @@ export function runScriptTests(options = {}) {
   if (resolvedReport && absoluteJunitPath === resolvedReport.absolute) {
     throw new Error("--report and --junit must name different files");
   }
-  const bunArgs = [
+  const driverArgs = [
+    ISOLATED_TEST_DRIVER,
     `--config=${SCRIPT_TEST_BUN_CONFIG}`,
-    "test",
-    "--conditions=eliza-source",
+    "--concurrency=4",
+    "--timeout-ms=120000",
   ];
   if (absoluteJunitPath) {
     mkdirSync(path.dirname(absoluteJunitPath), { recursive: true });
     rmSync(absoluteJunitPath, { force: true });
-    bunArgs.push("--reporter=junit", `--reporter-outfile=${absoluteJunitPath}`);
+    driverArgs.push(`--junit=${absoluteJunitPath}`);
   }
-  // Bun stops parsing test-runner options after positional test paths, so
-  // evidence flags must precede every inventory entry.
-  bunArgs.push(...inventory.files.map(({ file }) => file));
+  driverArgs.push("--", ...inventory.files.map(({ file }) => file));
 
   if (normalizedReportPath) {
     writeReport(
@@ -431,7 +431,7 @@ export function runScriptTests(options = {}) {
         status: "running",
         childExitCode: null,
         evidenceExitCode: null,
-        command: ["bun", ...bunArgs],
+        command: ["node", ...driverArgs],
         junit:
           normalizedJunitPath === undefined
             ? null
@@ -441,10 +441,11 @@ export function runScriptTests(options = {}) {
   }
 
   const spawn = options.spawn ?? spawnSync;
-  const result = spawn("bun", bunArgs, {
+  const result = spawn("node", driverArgs, {
     cwd: REPO_ROOT,
     env: process.env,
     stdio: "inherit",
+    timeout: 20 * 60_000,
   });
   if (result.error) {
     if (normalizedReportPath) {
@@ -457,7 +458,7 @@ export function runScriptTests(options = {}) {
           evidenceExitCode: null,
           signal: null,
           spawnError: result.error.message,
-          command: ["bun", ...bunArgs],
+          command: ["node", ...driverArgs],
           junit:
             normalizedJunitPath === undefined
               ? null
@@ -505,7 +506,7 @@ export function runScriptTests(options = {}) {
         childExitCode,
         evidenceExitCode,
         signal: result.signal ?? null,
-        command: ["bun", ...bunArgs],
+        command: ["node", ...driverArgs],
         junit,
       }),
     );

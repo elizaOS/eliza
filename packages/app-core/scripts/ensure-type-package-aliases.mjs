@@ -1,5 +1,10 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for ensure type package aliases mjs. */
+/**
+ * Postinstall repair step that materializes real copies of @types/* (and
+ * related type shim) packages into the root and eliza/ node_modules trees,
+ * replacing symlinked or missing entries the package manager left behind, so
+ * typechecking resolves consistent type packages.
+ */
 
 import { spawnSync } from "node:child_process";
 import {

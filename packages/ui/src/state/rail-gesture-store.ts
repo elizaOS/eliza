@@ -3,11 +3,11 @@
  * would re-rasterize the promoted rail layer (e.g. live-widget flushes from
  * useActivityEvents) can park until the swipe settles.
  *
- * The window is exactly the pager's rail-promotion window: armed at
- * pointerdown (useHorizontalPager.armRailPromotion), released when the settle
- * transition ends / the gesture commits to the vertical axis / the surface
- * unmounts (dropRailPromotion). Reduced motion keeps a restrained spatial
- * settle, so it uses the same bounded promotion window.
+ * The window is exactly the pager's rail-promotion window: armed only after
+ * horizontal intent commits (or a coalesced down→up release resolves
+ * horizontal), then released when the settle transition ends or the surface
+ * unmounts. Pending taps and vertical gestures never enter this store. Reduced
+ * motion keeps a restrained spatial settle, so it uses the same bounded window.
  *
  * Module-level store shared via globalThis (survives HMR + reachable from the
  * pager's imperative gesture handlers outside any React subtree) +

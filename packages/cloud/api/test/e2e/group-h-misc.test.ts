@@ -291,19 +291,19 @@ describeE2E("Group H — GET /api/v1/proxy/birdeye/*", () => {
     expect(res.status).toBe(401);
   });
 
-  // The e2e DB seeds no market-data pricing rows, so the priced proxy's cost
-  // lookup misses BEFORE the BIRDEYE_API_KEY check → exactly 404
-  // resource_not_found. With a key + seeded pricing the proxy must succeed.
+  // The handler checks provider configuration before pricing so a keyless
+  // deployment reports a distinct service-unavailable state. With a key and
+  // seeded pricing the proxy must succeed.
   test.skipIf(birdeyeConfigured)(
-    "keyless: priced proxy answers 404 resource_not_found (unseeded pricing)",
+    "keyless: priced proxy reports provider configuration unavailable",
     async () => {
       const res = await api.get(
         "/api/v1/proxy/birdeye/defi/price?address=foo",
         { headers: bearerHeaders() },
       );
-      expect(res.status).toBe(404);
-      const body = (await res.json()) as { code?: string };
-      expect(body.code).toBe("resource_not_found");
+      expect(res.status).toBe(503);
+      const body = (await res.json()) as { error?: string };
+      expect(body.error).toContain("server misconfigured");
     },
   );
   test.skipIf(!birdeyeConfigured)(
@@ -337,14 +337,14 @@ describeE2E("Group H — GET /api/v1/apis/birdeye/*", () => {
   });
 
   test.skipIf(birdeyeConfigured)(
-    "keyless: priced proxy answers 404 resource_not_found (unseeded pricing)",
+    "keyless: priced proxy reports provider configuration unavailable",
     async () => {
       const res = await api.get("/api/v1/apis/birdeye/defi/price?address=foo", {
         headers: bearerHeaders(),
       });
-      expect(res.status).toBe(404);
-      const body = (await res.json()) as { code?: string };
-      expect(body.code).toBe("resource_not_found");
+      expect(res.status).toBe(503);
+      const body = (await res.json()) as { error?: string };
+      expect(body.error).toContain("server misconfigured");
     },
   );
   test.skipIf(!birdeyeConfigured)(

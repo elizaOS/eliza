@@ -425,6 +425,10 @@ export async function buildMemoryFromMessage(
 		type: "message" as const,
 		source: "discord",
 		provider: "discord",
+		// Trusted scope stamp: a connector message belongs to its room. Stamped at
+		// ingestion (not derived at read time) so fail-closed canonical recall
+		// never has to guess — an unstamped record is withheld, not widened.
+		scope: "room" as const,
 		// Top-level accountId per MessageMetadata contract. Inbound connector
 		// stamps this so outbound resolution can route replies back through the
 		// same connector account.

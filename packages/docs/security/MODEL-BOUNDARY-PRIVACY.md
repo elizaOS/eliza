@@ -1,3 +1,8 @@
+---
+title: Model-Boundary Privacy
+description: "Keep configured secrets and personal identifiers out of model-provider prompts."
+---
+
 # Model-Boundary Privacy — Secret Swap & PII Pseudonymization
 
 elizaOS can keep secrets and personal data **out of the LLM provider** entirely.
@@ -53,25 +58,23 @@ Detection is pluggable behind an async recognizer interface:
 
 - A dependency-free **regex recognizer** ships in core and catches US-style street
   addresses (emails/phones are opt-in there — the secret layer already masks them).
-- A local **NER model** — [`dslim/distilbert-NER`](https://huggingface.co/dslim/distilbert-NER)
-  (Apache-2.0), covering person / organization / location — is supplied by the
-  optional `@elizaos/plugin-pii-guard`
-  ([source](https://github.com/elizaOS/eliza/tree/main/plugins/plugin-pii-guard)) via
-  `@huggingface/transformers` on `onnxruntime` (native CPU). `@elizaos/core` never
-  hard-depends on an ONNX runtime; when the plugin is absent the layer runs
-  regex-only (addresses) — degraded coverage, but it never leaks what it *does*
-  detect.
+- A **local-LLM NER pass** — covering person / organization / location — is
+  supplied by `@elizaos/plugin-local-inference`
+  ([source](https://github.com/elizaOS/eliza/tree/main/plugins/plugin-local-inference)):
+  an extraction prompt runs on the resident local llama.cpp (Eliza-1) backend, and
+  only entities whose values appear **verbatim** in the source text are emitted.
+  `@elizaos/core` never hard-depends on an inference runtime; while no local
+  backend is active the layer runs regex-only (addresses) — degraded coverage, but
+  it never leaks what it *does* detect, and PII never leaves the device.
 
-The recognizer runs once per model call on the assembled prompt; its inference is
-offloaded to the ONNX threadpool so it overlaps the event loop rather than blocking
-other turns.
+The recognizer runs once per model call on the assembled prompt, serialized through
+the process-wide inference priority gate so it shares the single resident model
+safely with chat turns.
 
 ### Enabling it
 
-1. Add the **PII Guard** plugin so the NER model is available (find it in the plugin
-   registry as `pii-guard`, or add `@elizaos/plugin-pii-guard`). The model
-   (~260 MB fp32) downloads on first use and caches under
-   `<stateDir>/local-inference/models`.
+1. Activate a local Eliza-1 bundle (`@elizaos/plugin-local-inference`) so a
+   generation-capable local backend is resident.
 2. Set `ELIZA_PII_SWAP_ENABLED=true`.
 
 | Setting | Default | Purpose |
@@ -79,8 +82,6 @@ other turns.
 | `ELIZA_PII_SWAP_ENABLED` | `false` | Master switch (read by core). |
 | `ELIZA_PII_SWAP_EXEMPT_VALUES` | — | Comma-separated exact values to never swap (false-positive opt-out). |
 | `ELIZA_PII_SWAP_DISABLED_KINDS` | — | Comma-separated entity kinds to skip, e.g. `location,address`. |
-| `ELIZA_PII_NER_MODEL` | `dslim/distilbert-NER` | Override the token-classification model. |
-| `ELIZA_PII_NER_SCORE_THRESHOLD` | `0.5` | Minimum model confidence to swap. |
 
 `TEXT_EMBEDDING` calls are intentionally **excluded**: a per-turn-random surrogate
 would embed the same real text differently every turn and destabilize semantic
@@ -120,10 +121,9 @@ prevention system:
   (see [`../security.md`](../security.md) and the redaction utilities in
   `@elizaos/core`).
 - Detection completeness is bounded by the recognizer. The engine swaps exactly what
-  the recognizer reports; a name the NER model misses (recall) is a model-quality
-  limit, not a round-trip bug. Raise recall with a lower
-  `ELIZA_PII_NER_SCORE_THRESHOLD`, or force-protect a known contact roster via a
-  gazetteer recognizer.
+  the recognizer reports; a name the local model misses (recall) is a
+  model-quality limit, not a round-trip bug. Force-protect a known contact roster
+  via a gazetteer recognizer when completeness matters.
 - If you point `TEXT_EMBEDDING` at a **remote** embedding provider, that provider
   sees the real text (embeddings are excluded from the swap for retrieval stability).
   Keep embeddings local if that matters for your threat model.

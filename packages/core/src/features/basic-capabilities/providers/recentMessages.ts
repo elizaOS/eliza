@@ -40,7 +40,12 @@ import type {
 	UUID,
 } from "../../../types/index.ts";
 import { ChannelType } from "../../../types/index.ts";
-import { addHeader, formatMessages, formatPosts } from "../../../utils.ts";
+import {
+	addHeader,
+	conversationMessagesHeader,
+	formatMessages,
+	formatPosts,
+} from "../../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("RECENT_MESSAGES");
@@ -362,6 +367,9 @@ export const recentMessagesProvider: Provider = {
 	contextGate: { anyOf: ["memory", "messaging"] },
 	cacheStable: false,
 	cacheScope: "turn",
+	// Conversation history is correctness-critical and may span several indexed
+	// reads on remote adapters. Extend its deadline without allowing partial state.
+	timeoutMs: 8_000,
 	roleGate: { minRole: "USER" },
 
 	get: async (
@@ -515,9 +523,15 @@ export const recentMessagesProvider: Provider = {
 				.filter(Boolean)
 				.join("\n\n");
 
+			// Name the bounded window without advertising an action. Providers run
+			// on runtimes with different plugin and role surfaces; the Stage-1
+			// boundary is the authority that says whether older history is searchable.
 			const recentMessagesBody =
 				formattedRecentMessages && formattedRecentMessages.length > 0
-					? addHeader("# Conversation Messages", formattedRecentMessages)
+					? addHeader(
+							conversationMessagesHeader(dialogueMessages.length),
+							formattedRecentMessages,
+						)
 					: "";
 			const recentMessages = [compactedContext, recentMessagesBody]
 				.filter(Boolean)
@@ -750,23 +764,18 @@ export const recentMessagesProvider: Provider = {
 				text,
 			};
 		} catch (error) {
+			// error-policy:J4 recent-message context becomes explicitly unavailable;
+			// a failed query is not a legitimate empty conversation.
+			runtime.reportError("RecentMessagesProvider.get", error, {
+				roomId: message.roomId,
+			});
 			return {
 				data: {
-					recentMessages: [],
-					recentInteractions: [],
-					actionResults: [],
+					available: false,
 					error: error instanceof Error ? error.message : String(error),
 				},
-				values: {
-					recentPosts: "",
-					recentMessages: "",
-					recentMessageInteractions: "",
-					recentPostInteractions: "",
-					recentInteractions: "",
-					recentActionResults: "",
-					recentMessage: "",
-				},
-				text: "No recent messages available",
+				values: { recentMessagesAvailable: false },
+				text: "Recent conversation context is unavailable.",
 			};
 		}
 	},

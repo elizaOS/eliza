@@ -48,7 +48,7 @@ import {
   type OrchestratorTaskType,
   shouldRequireGoalContract,
 } from "./acceptance-criteria.js";
-import { AcpService } from "./acp-service.js";
+import { ACP_METADATA_ISOLATED_WORKDIR, AcpService } from "./acp-service.js";
 import {
   type AdmissionRecord,
   orderQueue,
@@ -86,6 +86,7 @@ import {
 import {
   COMPLETION_RESIDUALS_METADATA_KEY,
   COMPLETION_RESIDUALS_VERIFIER_NAME,
+  type CompletionResidualsInput,
   type CompletionResidualsResult,
   collectCompletionResiduals,
   residualDetails,
@@ -197,6 +198,10 @@ import {
   configureSpendLedger,
   createTaskStoreSpendLedger,
 } from "./spend-allowance.js";
+import {
+  TASK_SUPERVISOR_SERVICE_TYPE,
+  type TaskSupervisorService,
+} from "./task-supervisor-service.js";
 import {
   AdmissionQueueFullError,
   type ApprovalPreset,
@@ -683,6 +688,36 @@ export function residualsOrchestratorOwnedArtifacts(
   return live.length > 0
     ? live
     : readOwnedArtifactsFromMetadata(session.metadata);
+}
+
+/** Spawn-time residuals context, parsed structurally from the reporting
+ * session's metadata — every key is orchestrator-stamped at spawn
+ * (`AcpService.spawnSession` / the TASKS spawn path), never worker-writable.
+ * `codingBaselineDirty` (tracked files already dirty at spawn) becomes the
+ * gate's pre-existing-churn baseline; a `workdirRouteId` on a NON-isolated
+ * session marks a shared route-mapped app checkout
+ * (`TASK_AGENT_WORKDIR_ROUTES`, e.g. agent-home) whose git state is shared
+ * across tasks and must not block every completion there. Absent/foreign
+ * metadata contributes nothing — prior behavior is unchanged. Exported for
+ * direct unit coverage. */
+export function residualsSpawnBaseline(
+  session: Pick<OrchestratorTaskSession, "metadata"> | undefined,
+): Pick<CompletionResidualsInput, "baselineDirtyPaths" | "sharedRouteWorkdir"> {
+  const meta = session?.metadata;
+  if (!isRecord(meta)) return {};
+  const baselineDirtyPaths = Array.isArray(meta.codingBaselineDirty)
+    ? meta.codingBaselineDirty.filter(
+        (path): path is string => typeof path === "string" && path.length > 0,
+      )
+    : [];
+  const sharedRouteWorkdir =
+    typeof meta.workdirRouteId === "string" &&
+    meta.workdirRouteId.trim().length > 0 &&
+    meta[ACP_METADATA_ISOLATED_WORKDIR] !== true;
+  return {
+    ...(baselineDirtyPaths.length > 0 ? { baselineDirtyPaths } : {}),
+    ...(sharedRouteWorkdir ? { sharedRouteWorkdir: true } : {}),
+  };
 }
 
 /** Envelope-derived residuals legs from the VALID CompletionEnvelope stamped
@@ -1614,6 +1649,19 @@ export class OrchestratorTaskService extends Service {
           );
         }
         await this.advanceTaskStatus(taskId, "completion_reported");
+        // Cross-surface arbitration for the digest emitter: stamp this
+        // completion on the supervisor BEFORE its next tick, so the room's
+        // status digest yields to the completion relay the router posts for
+        // this same event instead of adding another uncoordinated message.
+        // Structural guard, not blind optional-chaining: the supervisor is a
+        // genuinely optional service, and the stamp is observability — a
+        // shape mismatch must never abort the completion pipeline.
+        const digestSupervisor = this.runtime.getService<TaskSupervisorService>(
+          TASK_SUPERVISOR_SERVICE_TYPE,
+        );
+        if (typeof digestSupervisor?.noteTaskCompletion === "function") {
+          digestSupervisor.noteTaskCompletion(taskId);
+        }
         // Issue #8124: the orchestrator should always behave like `/goal` —
         // confirm the sub-agent met every acceptance criterion before marking
         // the task done. Feed the verifier REAL completion evidence (git
@@ -3226,6 +3274,7 @@ export class OrchestratorTaskService extends Service {
             acp,
             workspaceSession,
           ),
+          ...residualsSpawnBaseline(workspaceSession),
           ...envelopeResidualLegs(doc.task.metadata),
         })
       : undefined;
@@ -3567,6 +3616,7 @@ export class OrchestratorTaskService extends Service {
             acp,
             reportingSession,
           ),
+          ...residualsSpawnBaseline(reportingSession),
           ...(parse.present && parse.ok
             ? {
                 testResults: parse.envelope.testResults,

@@ -24,7 +24,6 @@ describe("Google GenAI Integration", () => {
       const { GoogleGenAI } = await import("@google/genai");
 
       const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-      expect(apiKey).toBeDefined();
       if (!apiKey) {
         throw new Error("GOOGLE_GENERATIVE_AI_API_KEY is not set");
       }

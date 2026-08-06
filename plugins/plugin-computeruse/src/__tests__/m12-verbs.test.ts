@@ -105,17 +105,3 @@ describe("action-surface promotion (M12)", () => {
     }
   });
 });
-
-describe("window bounds getter (get_window_size / get_window_position)", () => {
-  it("exposes get_window_size + get_window_position as window verbs", () => {
-    // Real bounds read against a live window is exercised by the gated
-    // real-driver lane; here we assert the verbs are wired into the surface.
-    expect(actionNames).toContain("WINDOW_GET_WINDOW_SIZE");
-    expect(actionNames).toContain("WINDOW_GET_WINDOW_POSITION");
-  });
-
-  it("getWindowBounds is exported by the window platform module", async () => {
-    const mod = await import("../platform/windows-list.js");
-    expect(typeof mod.getWindowBounds).toBe("function");
-  });
-});

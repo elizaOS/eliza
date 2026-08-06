@@ -8,6 +8,7 @@
  */
 
 import { v4 as uuidv4 } from "uuid";
+import { ElizaError } from "../../errors.ts";
 import {
 	autonomyContinuousContinueTemplate,
 	autonomyContinuousFirstTemplate,
@@ -96,8 +97,14 @@ export class AutonomyService extends Service {
 		if (typeof raw !== "string" || raw.trim().length === 0) return null;
 		try {
 			return stringToUuid(raw.trim());
-		} catch {
-			return null;
+		} catch (error) {
+			// error-policy:J2 invalid autonomy configuration must not be treated as
+			// an absent target room; preserve the configured value and cause.
+			throw new ElizaError("Autonomy target room is not a valid UUID", {
+				code: "AUTONOMY_TARGET_ROOM_INVALID",
+				cause: error,
+				context: { value: raw.trim() },
+			});
 		}
 	}
 
@@ -398,6 +405,8 @@ export class AutonomyService extends Service {
 		try {
 			await service.initialize();
 		} catch (cause) {
+			// error-policy:J2 Release the internal actor registration before
+			// preserving the initialization failure.
 			service.releaseInternalActorRegistration();
 			service.releaseInternalActorRegistration = undefined;
 			throw cause;
@@ -440,10 +449,13 @@ export class AutonomyService extends Service {
 				}
 			}
 		} catch (err) {
+			// error-policy:J4 Stale-task cleanup is maintenance; autonomy can run
+			// while the cleanup failure remains observable.
 			this.runtime.logger.warn(
 				{ src: "autonomy", agentId: this.runtime.agentId, error: err },
 				"Could not clean orphaned autonomy tasks",
 			);
+			this.runtime.reportError("AutonomyService.cleanupOrphanedTasks", err);
 		}
 
 		if (autonomyEnabled) {
@@ -716,11 +728,15 @@ export class AutonomyService extends Service {
 		try {
 			await this.runtime.createMemory(autonomyLogMemory, "memories");
 		} catch (err) {
+			// error-policy:J2 Autonomous prompt persistence is part of the
+			// execution record; report and preserve the failed write.
 			const msg = err instanceof Error ? err.message : String(err);
 			this.runtime.logger.warn(
 				{ src: "autonomy", agentId: this.runtime.agentId, error: msg },
 				"Failed to persist autonomous prompt memory",
 			);
+			this.runtime.reportError("AutonomyService.persistPrompt", err);
+			throw err;
 		}
 
 		// Response callback - the message service handles memory creation
@@ -753,11 +769,15 @@ export class AutonomyService extends Service {
 				try {
 					await this.runtime.createMemory(responseMemory, "memories");
 				} catch (err) {
+					// error-policy:J2 Autonomous response persistence is part of
+					// the execution record; report and preserve the failed write.
 					const msg = err instanceof Error ? err.message : String(err);
 					this.runtime.logger.warn(
 						{ src: "autonomy", agentId: this.runtime.agentId, error: msg },
 						"Failed to persist autonomous response memory",
 					);
+					this.runtime.reportError("AutonomyService.persistResponse", err);
+					throw err;
 				}
 			}
 			// Return empty - the message service handles memory storage
@@ -792,10 +812,14 @@ export class AutonomyService extends Service {
 					);
 				}
 			} catch (error) {
+				// error-policy:J1 Autonomous message processing is the job
+				// boundary; surface failure to its scheduler after reporting it.
 				this.runtime.logger.error(
 					{ src: "autonomy", agentId: this.runtime.agentId, error },
 					"Error in autonomous message processing",
 				);
+				this.runtime.reportError("AutonomyService.processMessage", error);
+				throw error;
 			}
 		} else {
 			// Fallback to event-based handling for older cores
@@ -1023,11 +1047,15 @@ export class AutonomyService extends Service {
 					};
 					await this.runtime.createMemory(autonomyLogMemory, "memories");
 				} catch (err) {
+					// error-policy:J2 Autonomous prompt persistence is part of the
+					// execution record; report and preserve the failed write.
 					const msg = err instanceof Error ? err.message : String(err);
 					this.runtime.logger.warn(
 						{ src: "autonomy", agentId: this.runtime.agentId, error: msg },
 						"Failed to persist autonomous prompt memory",
 					);
+					this.runtime.reportError("AutonomyService.persistPrompt", err);
+					throw err;
 				}
 				const callback = async (content: Content): Promise<Memory[]> => {
 					this.runtime.logger.debug(
@@ -1060,11 +1088,15 @@ export class AutonomyService extends Service {
 						try {
 							await this.runtime.createMemory(responseMemory, "memories");
 						} catch (e) {
+							// error-policy:J2 Autonomous response persistence is part
+							// of the execution record; report and preserve the failed write.
 							const m = e instanceof Error ? e.message : String(e);
 							this.runtime.logger.warn(
 								{ src: "autonomy", agentId: this.runtime.agentId, error: m },
 								"Failed to persist autonomous response memory",
 							);
+							this.runtime.reportError("AutonomyService.persistResponse", e);
+							throw e;
 						}
 					}
 					return [];
@@ -1203,10 +1235,11 @@ export class AutonomyService extends Service {
 			await this.performAutonomousThink();
 			return true;
 		} catch (error) {
-			this.runtime.logger.error(
-				{ src: "autonomy", agentId: this.runtime.agentId, error },
-				"Error during manually triggered autonomous think",
-			);
+			// error-policy:J1 the manual-trigger boundary returns a failed trigger
+			// signal and reports the underlying autonomous-loop failure.
+			this.runtime.reportError("AutonomyService.triggerManualThink", error, {
+				agentId: this.runtime.agentId,
+			});
 			return false;
 		} finally {
 			this.isThinking = false;

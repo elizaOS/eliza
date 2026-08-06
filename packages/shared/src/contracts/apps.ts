@@ -813,6 +813,15 @@ export function getElizaCuratedAppDefinition(
   const trimmed = value.trim();
   if (!trimmed) return null;
 
+  // The registered-apps store is a Symbol.for global shared across every
+  // loaded copy of this module, but the lookup map below is module-local and
+  // only rebuilt by the copy that registerCuratedApp ran in. Fold the global
+  // store in before every lookup so an app registered through one module
+  // instance (e.g. a plugin's dist bundle) resolves from another (e.g. the
+  // launcher's source instance) — otherwise launch fails with
+  // "not found in the registry" for an app that IS registered.
+  _rebuildCuratedAppLookup();
+
   const directMatch = ELIZA_CURATED_APP_DEFINITION_BY_KEY.get(
     trimmed.toLowerCase(),
   );

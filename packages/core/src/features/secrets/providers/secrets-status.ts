@@ -5,7 +5,6 @@
  * to help the LLM understand what capabilities are available.
  */
 
-import { logger } from "../../../logger.ts";
 import type {
 	IAgentRuntime,
 	Memory,
@@ -146,17 +145,12 @@ No secrets are currently configured. The agent may need API keys or other creden
 			};
 		} catch (error) {
 			const errorMsg = error instanceof Error ? error.message : String(error);
-			logger.error(
-				`[SecretsStatusProvider] Error getting secrets status: ${errorMsg}`,
-			);
+			runtime.reportError("SecretsStatusProvider.get", error);
+			// error-policy:J4 A storage failure is distinct from having zero configured secrets.
 			return {
-				text: "",
-				data: { error: errorMsg },
-				values: {
-					configuredSecrets: 0,
-					invalidSecrets: 0,
-					missingSecrets: 0,
-				},
+				text: "[Secrets Status]\nSecret configuration status is unavailable.",
+				data: { available: false, error: errorMsg },
+				values: { secretsStatus: "unavailable" },
 			};
 		}
 	},
@@ -260,11 +254,12 @@ No secrets configured. User can set secrets by saying things like "Set my OPENAI
 			};
 		} catch (error) {
 			const errorMsg = error instanceof Error ? error.message : String(error);
-			logger.error(`[SecretsInfoProvider] Error: ${errorMsg}`);
+			runtime.reportError("SecretsInfoProvider.get", error);
+			// error-policy:J4 A storage failure is distinct from an empty secrets inventory.
 			return {
-				text: "",
-				data: { error: errorMsg },
-				values: { secretCount: 0 },
+				text: "[Secrets Info]\nSecret configuration details are unavailable.",
+				data: { available: false, error: errorMsg },
+				values: { secretsStatus: "unavailable" },
 			};
 		}
 	},

@@ -18,7 +18,7 @@
  * match the JSON shape PA emits.
  */
 
-import { client } from "@elizaos/ui";
+import { client } from "@elizaos/ui/api";
 
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -162,9 +162,10 @@ function requestNewTodo(): void {
   // The add-a-todo affordance routes through the assistant chat. `client` does
   // not type `sendChatMessage`, so read it through a narrow optional-method view
   // and call it only when present — no fabricated todos, best-effort dispatch.
-  const send = (client as { sendChatMessage?: (text: string) => void })
-    .sendChatMessage;
-  send?.("Add a todo for me.");
+  const chatClient = client as {
+    sendChatMessage?: (text: string) => void;
+  };
+  chatClient.sendChatMessage?.("Add a todo for me.");
 }
 
 export function TodosView(props: TodosViewProps = {}): ReactNode {

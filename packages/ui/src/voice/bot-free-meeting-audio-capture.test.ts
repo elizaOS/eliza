@@ -1,3 +1,4 @@
+/** Verifies bot-free meeting audio capture helpers through the package's configured test harness. */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   BOT_FREE_MEETING_AUDIO_SAMPLE_RATE,

@@ -7,15 +7,7 @@
  * path extraction (incl. Chromium custom-scheme URLs), and the #11030 hostile
  * Capacitor-proxy deadlock guard.
  */
-import {
-  afterAll,
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const originalGlobalFetch = globalThis.fetch;
 
@@ -148,14 +140,6 @@ describe("iOS local agent transport bridge", () => {
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
     Reflect.deleteProperty(globalThis, BOOT_CONFIG_STORE_KEY);
-  });
-
-  // Under `isolate: false` app-core suites share one module registry. This file
-  // resets and re-imports the transport per test against Capacitor / build-variant
-  // / kernel mocks; clear the registry once more on teardown so those mocks cannot
-  // leak into a later suite that imports the genuine modules.
-  afterAll(() => {
-    vi.resetModules();
   });
 
   it("installs a native-callable path-only request handler", async () => {

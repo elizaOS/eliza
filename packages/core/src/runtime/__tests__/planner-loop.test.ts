@@ -257,6 +257,18 @@ describe("v5 planner loop skeleton", () => {
 		);
 	});
 
+	it("keeps terminal planner replies human-readable unless raw output was requested", () => {
+		expect(plannerTemplate).toContain(
+			"natural conversation, not a database or debug log",
+		);
+		expect(plannerTemplate).toContain(
+			"Translate machine dates, 24-hour times, and Unix/epoch timestamps into familiar dates and times",
+		);
+		expect(plannerTemplate).toContain(
+			"unless the user explicitly asks for raw or technical output",
+		);
+	});
+
 	it("forbids using SHELL as a fallback for chat-message search/recall", () => {
 		// Regression for elizaOS/eliza#7935: Stage 1 hinted
 		// candidateActions=["SEARCH_MESSAGES"], but no matching action was
@@ -491,7 +503,7 @@ describe("v5 planner loop skeleton", () => {
 			reserveTokens: 10_000,
 			shouldCompact: false,
 		});
-		expect(plannerParams.maxTokens).toBe(1024);
+		expect(plannerParams.maxTokens).toBe(4096);
 		expect(plannerParams.providerOptions.eliza.thinking).toBe("off");
 		expect(executeToolCall).toHaveBeenCalledWith(
 			{ id: "call-1", name: "LOOKUP", params: { query: "status" } },
@@ -3249,6 +3261,9 @@ describe("v5 planner loop — evaluator gate", () => {
 		};
 		expect(dispatched.params).toMatchObject({ key: "shell", value: "off" });
 		expect(dispatched.params?.[TURN_SCOPE_ARG]).toBeUndefined();
+		expect(executeToolCall.mock.calls[0]?.[1]).toMatchObject({
+			plannerCompleted: false,
+		});
 	});
 
 	it("SKIPS in native-mode when the call declares final scope alongside a terminal action result", async () => {
@@ -3374,6 +3389,12 @@ describe("v5 planner loop — evaluator gate", () => {
 		});
 
 		expect(executeToolCall).toHaveBeenCalledTimes(2);
+		expect(executeToolCall.mock.calls[0]?.[1]).toMatchObject({
+			plannerCompleted: false,
+		});
+		expect(executeToolCall.mock.calls[1]?.[1]).toMatchObject({
+			plannerCompleted: true,
+		});
 		expect(evaluate).toHaveBeenCalledTimes(2);
 		expect(result.status).toBe("finished");
 		expect(result.finalMessage).toBe(
@@ -3850,6 +3871,28 @@ describe("routing hints — promoted-family fallback", () => {
 		expect((block ?? "").split("reminders -> TRIGGER_CREATE").length - 1).toBe(
 			1,
 		);
+	});
+
+	it("renders identical hints once across separately named actions", () => {
+		const routingHint = "UI navigation and layout -> VIEWS";
+		const actions = ["VIEWS", "CLOSE_VIEW", "CLOSE_ALL_VIEWS"].map((name) => ({
+			name,
+			description: name,
+			routingHint,
+			validate: async () => true,
+			handler: async () => ({ success: true }),
+		}));
+		const ctx = {
+			events: actions.map((action, index) => ({
+				id: `tool-${index}`,
+				type: "tool" as const,
+				tool: { name: action.name, description: action.description, action },
+			})),
+		} as unknown as Parameters<typeof __renderRoutingHintsBlockForTests>[0];
+
+		const block = __renderRoutingHintsBlockForTests(ctx);
+
+		expect((block ?? "").split(routingHint).length - 1).toBe(1);
 	});
 });
 

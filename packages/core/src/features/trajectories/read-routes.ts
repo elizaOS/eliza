@@ -7,75 +7,69 @@
  * instead of being hand-mirrored in the API host.
  *
  * The realtime trajectory viewer (`@elizaos/plugin-trajectory-logger`) polls
- * these. On desktop the richer routes from `@elizaos/plugin-training` own the
- * path (registered as runtime plugin routes) and handle the request first; this
- * handler is only reached when no plugin owns the path (mobile, or training
- * disabled). The core `TrajectoriesService` runs on every platform, so the
- * viewer works without `@elizaos/plugin-training` bundled.
- *
- * The API host mounts this AFTER runtime plugin routes, so when plugin-training
- * IS loaded its richer route wins and this handler is never reached — no
- * shadowing, no regression.
+ * these. The core `TrajectoriesService` runs on every platform, so the same
+ * owner-backed wire contract is available on desktop and mobile.
  */
 
 import type { ServerResponse } from "node:http";
+import { ElizaError } from "../../errors";
 import type { IAgentRuntime, UUID } from "../../types";
 
 interface ServiceTrajectoryListItem {
 	id: string;
-	agentId?: string;
-	source?: string;
+	agentId: string;
+	source: string;
 	roomId?: string | null;
 	entityId?: string | null;
 	metadata?: Record<string, unknown>;
 	status: "active" | "completed" | "error" | "timeout";
-	startTime?: number;
+	startTime: number;
 	endTime?: number | null;
 	durationMs?: number | null;
-	llmCallCount?: number;
-	createdAt?: string;
+	llmCallCount: number;
+	createdAt: string;
 	updatedAt?: string;
 }
 
 interface ServiceLlmCall {
-	callId?: string;
-	model?: string;
+	callId: string;
+	model: string;
 	provider?: string;
-	response?: string;
+	response: string;
 	purpose?: string;
 	actionType?: string;
 	stepType?: string;
 }
 
 interface ServiceProviderAccess {
-	providerId?: string;
-	providerName?: string;
+	providerId: string;
+	providerName: string;
 	purpose?: string;
 }
 
 interface ServiceActionAttempt {
-	attemptId?: string;
-	actionType?: string;
-	actionName?: string;
-	success?: boolean;
+	attemptId: string;
+	actionType: string;
+	actionName: string;
+	success: boolean;
 	error?: string;
 }
 
 interface ServiceTrajectoryStep {
-	stepId?: string;
-	llmCalls?: ServiceLlmCall[];
-	providerAccesses?: ServiceProviderAccess[];
+	stepId: string;
+	llmCalls: ServiceLlmCall[];
+	providerAccesses: ServiceProviderAccess[];
 	action?: ServiceActionAttempt;
 }
 
 interface ServiceTrajectory {
 	trajectoryId: string;
-	agentId?: string;
-	startTime?: number;
+	agentId: string;
+	startTime: number;
 	endTime?: number;
-	steps?: ServiceTrajectoryStep[];
-	metrics?: { finalStatus?: string };
-	metadata?: Record<string, unknown>;
+	steps: ServiceTrajectoryStep[];
+	metrics: { finalStatus: string };
+	metadata: Record<string, unknown>;
 }
 
 interface ResolvedRoomContext {
@@ -118,7 +112,11 @@ function normalizeStatus(
 	if (status === "timeout" || status === "error" || status === "terminated") {
 		return "error";
 	}
-	return status === "active" ? "active" : "completed";
+	if (status === "active" || status === "completed") return status;
+	throw new ElizaError("Trajectory list item has an invalid status", {
+		code: "TRAJECTORY_READ_SHAPE_INVALID",
+		context: { status },
+	});
 }
 
 function metadataRoomId(
@@ -141,9 +139,9 @@ function listItemToUi(
 	return {
 		id: item.id,
 		status: normalizeStatus(item.status),
-		llmCallCount: item.llmCallCount ?? 0,
+		llmCallCount: item.llmCallCount,
 		agentId: item.agentId,
-		source: item.source ?? "chat",
+		source: item.source,
 		roomId: item.roomId ?? metadataRoomId(metadata),
 		entityId: item.entityId ?? metadataEntityId(metadata),
 		metadata,
@@ -164,44 +162,40 @@ function detailToUi(
 	roomContext?: ResolvedRoomContext | null,
 ): Record<string, unknown> {
 	const id = String(traj.trajectoryId);
-	const metadata = traj.metadata ?? {};
+	const metadata = traj.metadata;
 	const llmCalls: Array<Record<string, unknown>> = [];
 	const providerAccesses: Array<Record<string, unknown>> = [];
 	const toolEvents: Array<Record<string, unknown>> = [];
 
-	const steps = traj.steps ?? [];
-	for (let s = 0; s < steps.length; s++) {
-		const step = steps[s];
-		const stepId = step.stepId ?? `step-${s}`;
-		const calls = step.llmCalls ?? [];
-		for (let i = 0; i < calls.length; i++) {
-			const c = calls[i];
+	const steps = traj.steps;
+	for (const step of steps) {
+		const calls = step.llmCalls;
+		for (const c of calls) {
 			llmCalls.push({
-				id: c.callId || `${stepId}-call-${i}`,
-				model: c.model || "unknown",
-				provider: c.provider || "",
-				response: c.response || "",
-				purpose: c.purpose || "",
-				actionType: c.actionType || "",
-				stepType: c.stepType || "",
+				id: c.callId,
+				model: c.model,
+				response: c.response,
+				...(c.provider ? { provider: c.provider } : {}),
+				...(c.purpose ? { purpose: c.purpose } : {}),
+				...(c.actionType ? { actionType: c.actionType } : {}),
+				...(c.stepType ? { stepType: c.stepType } : {}),
 			});
 		}
-		const accesses = step.providerAccesses ?? [];
-		for (let k = 0; k < accesses.length; k++) {
-			const p = accesses[k];
+		const accesses = step.providerAccesses;
+		for (const p of accesses) {
 			providerAccesses.push({
-				id: p.providerId || `${stepId}-provider-${k}`,
-				providerName: p.providerName || "unknown",
-				purpose: p.purpose || "",
+				id: p.providerId,
+				providerName: p.providerName,
+				...(p.purpose ? { purpose: p.purpose } : {}),
 			});
 		}
 		const action = step.action;
 		if (action && (action.actionName || action.actionType)) {
 			const failed = action.success === false || Boolean(action.error);
 			toolEvents.push({
-				id: action.attemptId || `${stepId}-action`,
+				id: action.attemptId,
 				type: failed ? "tool_error" : "tool_result",
-				actionName: action.actionName || action.actionType || "action",
+				actionName: action.actionName || action.actionType,
 				status: failed ? "failed" : "completed",
 				success: !failed,
 				...(action.error ? { error: action.error } : {}),
@@ -209,18 +203,17 @@ function detailToUi(
 		}
 	}
 
-	const finalStatus = traj.metrics?.finalStatus;
+	const finalStatus = traj.metrics.finalStatus;
 	const status: "active" | "completed" | "error" =
 		finalStatus === "timeout" ||
 		finalStatus === "terminated" ||
 		finalStatus === "error"
 			? "error"
-			: finalStatus === "completed" ||
-					(typeof traj.endTime === "number" && traj.endTime > 0)
+			: finalStatus === "completed"
 				? "completed"
 				: "active";
 
-	const startTime = typeof traj.startTime === "number" ? traj.startTime : 0;
+	const startTime = traj.startTime;
 	const endTime =
 		typeof traj.endTime === "number" && traj.endTime > 0 ? traj.endTime : null;
 	const durationMs =
@@ -228,8 +221,10 @@ function detailToUi(
 	return {
 		trajectory: {
 			id,
-			agentId: traj.agentId ?? "",
-			source: typeof metadata.source === "string" ? metadata.source : "chat",
+			agentId: traj.agentId,
+			...(typeof metadata.source === "string"
+				? { source: metadata.source }
+				: {}),
 			roomId: metadataRoomId(metadata),
 			entityId: metadataEntityId(metadata),
 			metadata,
@@ -240,7 +235,7 @@ function detailToUi(
 			durationMs,
 			llmCallCount: llmCalls.length,
 			providerAccessCount: providerAccesses.length,
-			createdAt: new Date(startTime > 0 ? startTime : 0).toISOString(),
+			createdAt: new Date(startTime).toISOString(),
 		},
 		llmCalls,
 		providerAccesses,
@@ -288,8 +283,8 @@ export async function tryHandleTrajectoryReadRoutes(options: {
 	if (method !== "GET" || !pathname.startsWith("/api/trajectories")) {
 		return false;
 	}
-	// Only the READ routes the viewer needs. Mutations (DELETE, export, config)
-	// remain plugin-training's responsibility; let them 404 where it's absent.
+	// Only the read routes the viewer needs belong to this boundary. Unsupported
+	// mutation and export paths fall through for the API host to reject.
 	const isList = pathname === "/api/trajectories";
 	const isStats = pathname === "/api/trajectories/stats";
 	const idMatch = pathname.match(/^\/api\/trajectories\/([^/]+)$/);
@@ -305,12 +300,8 @@ export async function tryHandleTrajectoryReadRoutes(options: {
 		| TrajectoriesServiceLike
 		| null
 		| undefined;
-	// No service at all → empty (200) so the viewer reads "no trajectories yet"
-	// instead of the "unavailable" surface a 404/503 would trigger.
 	if (!service) {
-		if (isList) sendJson(res, 200, { trajectories: [], total: 0 });
-		else if (isStats) sendJson(res, 200, { totalTrajectories: 0 });
-		else sendJson(res, 404, { error: "Trajectory not found" });
+		sendJson(res, 503, { error: "Trajectory service unavailable" });
 		return true;
 	}
 
@@ -319,17 +310,30 @@ export async function tryHandleTrajectoryReadRoutes(options: {
 
 	try {
 		if (isStats) {
-			const stats = (await service.getStats?.()) ?? { totalTrajectories: 0 };
+			if (!service.getStats) {
+				throw new ElizaError("Trajectory service does not support statistics", {
+					code: "TRAJECTORY_READ_UNSUPPORTED",
+				});
+			}
+			const stats = await service.getStats();
 			sendJson(res, 200, stats);
 			return true;
 		}
 		if (isList) {
+			if (!service.listTrajectories) {
+				throw new ElizaError(
+					"Trajectory service does not support list queries",
+					{
+						code: "TRAJECTORY_READ_UNSUPPORTED",
+					},
+				);
+			}
 			const limit = Math.min(
 				500,
 				Math.max(1, Number(url.searchParams.get("limit")) || 50),
 			);
 			const offset = Math.max(0, Number(url.searchParams.get("offset")) || 0);
-			const result = (await service.listTrajectories?.({
+			const result = await service.listTrajectories({
 				limit,
 				offset,
 				source: url.searchParams.get("source") || undefined,
@@ -343,7 +347,7 @@ export async function tryHandleTrajectoryReadRoutes(options: {
 				// /api/trajectories, so without forwarding `search` the viewer's
 				// search box returned the full unfiltered list.
 				search: url.searchParams.get("search") || undefined,
-			})) ?? { trajectories: [], total: 0 };
+			});
 			const trajectories = shouldResolveRooms
 				? await Promise.all(
 						result.trajectories.map(async (item) =>
@@ -367,9 +371,15 @@ export async function tryHandleTrajectoryReadRoutes(options: {
 			return true;
 		}
 		// detail
-		const traj = detailId
-			? await service.getTrajectoryDetail?.(detailId)
-			: null;
+		if (!service.getTrajectoryDetail) {
+			throw new ElizaError(
+				"Trajectory service does not support detail queries",
+				{
+					code: "TRAJECTORY_READ_UNSUPPORTED",
+				},
+			);
+		}
+		const traj = detailId ? await service.getTrajectoryDetail(detailId) : null;
 		if (!traj) {
 			sendJson(res, 404, { error: `Trajectory "${detailId}" not found` });
 			return true;
@@ -390,6 +400,8 @@ export async function tryHandleTrajectoryReadRoutes(options: {
 		);
 		return true;
 	} catch (err) {
+		// error-policy:J1 HTTP status and JSON form the trajectory read boundary's
+		// structured failure response.
 		sendJson(res, 500, {
 			error: err instanceof Error ? err.message : "Trajectory read failed",
 		});

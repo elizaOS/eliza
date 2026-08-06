@@ -554,21 +554,6 @@ const UPDATES_APPLY_KEY: SettingsWritableKey = {
 	},
 };
 
-const AUTO_TRAINING_KEY: SettingsWritableKey = {
-	description:
-		"Whether trajectory thresholds may automatically start the training pipeline.",
-	valueType: "boolean",
-	buildRequest: (enabled) => ({
-		method: "POST",
-		path: "/api/training/auto/config",
-		body: { autoTrain: enabled },
-	}),
-	successText: (enabled) =>
-		enabled
-			? "Auto-training is on. The training pipeline can start from trajectory thresholds."
-			: "Auto-training is off. Trajectory counters can still collect data, but automatic training will not start.",
-};
-
 /**
  * Wallet / browser / computer-use toggles persist as `ui.capabilities.<name>`
  * in the agent config store — the same field the on-screen Capabilities
@@ -1452,9 +1437,8 @@ export const SETTINGS_WRITE_REGISTRY: Readonly<
 	capabilities: {
 		kind: "route",
 		summary:
-			"Capability toggles that already have backend settings routes: wallet, browser, computer use, and automatic training.",
+			"Capability toggles that already have backend settings routes: wallet, browser, and computer use.",
 		keys: {
-			"auto-training": AUTO_TRAINING_KEY,
 			wallet: WALLET_CAPABILITY_KEY,
 			browser: BROWSER_CAPABILITY_KEY,
 			computerUse: COMPUTER_USE_CAPABILITY_KEY,
@@ -1467,13 +1451,6 @@ export const SETTINGS_WRITE_REGISTRY: Readonly<
 			"Installed-view management is handled by the VIEWS/APP surface, not a settings value.",
 		exemptionReason:
 			"APP and VIEWS own app installation, launch, creation, and view management; SETTINGS must not duplicate that workflow.",
-	},
-	"remote-plugins": {
-		kind: "unwired",
-		reason:
-			"Remote plugin host registration is developer-only and has no single-value chat write.",
-		exemptionReason:
-			"Remote plugin registration is a developer workflow without a stable single-value setting contract.",
 	},
 	"wallet-rpc": {
 		kind: "route",
@@ -1804,9 +1781,9 @@ async function handleSet(
 	callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
 	if (!request.sectionId) {
+		// Planner-facing only: the evaluator owns asking the user, in voice.
 		const reply =
-			"Tell me which settings section to change (e.g. permissions, model, background).";
-		await callback?.({ text: reply });
+			"No settings section named in the request; ask the user which section to change (e.g. permissions, model, background).";
 		return { success: false, text: reply };
 	}
 	const cap = SETTINGS_WRITE_REGISTRY[request.sectionId];
@@ -1815,8 +1792,8 @@ async function handleSet(
 		// Point the planner at the dedicated action rather than duplicating its
 		// write. routingHint already prefers that action; this is the safety net
 		// for when the planner reached SETTINGS anyway.
+		// Planner-facing only: raw action names are routing guidance, not chat.
 		const reply = `Changing ${request.sectionId} runs through the ${cap.action} action — ${cap.summary}`;
-		await callback?.({ text: reply });
 		return {
 			success: false,
 			text: reply,
@@ -1826,7 +1803,6 @@ async function handleSet(
 
 	if (cap.kind === "readonly") {
 		const reply = `${request.sectionId} is read-only: ${cap.summary}`;
-		await callback?.({ text: reply });
 		return { success: false, text: reply };
 	}
 
@@ -1842,18 +1818,45 @@ async function handleSet(
 	// with no key/chain routes to the neutral `provider` key, where
 	// buildWalletRpcSelections resolves the remaining options or refuses.
 	const requestedKeyName =
-		request.namespace ??
-		request.key ??
+		(request.sectionId === "app-permissions"
+			? (request.namespace ?? request.key)
+			: request.key) ??
 		(request.sectionId === "wallet-rpc"
 			? (request.chain?.toLowerCase() ?? "provider")
 			: null) ??
 		(request.sectionId === "permissions" && request.permission
 			? "request"
 			: Object.keys(cap.keys)[0]);
+	const voiceKeyName = (() => {
+		if (request.sectionId !== "voice" || !requestedKeyName) {
+			return requestedKeyName;
+		}
+		const normalizedKeyName = requestedKeyName
+			.trim()
+			.toLowerCase()
+			.replaceAll("_", "-")
+			.replace(/\s+/g, "-");
+		if (cap.keys[normalizedKeyName]) return normalizedKeyName;
+		if (normalizedKeyName.includes("continuous")) return "continuous-chat";
+		if (
+			normalizedKeyName.includes("silence") ||
+			normalizedKeyName.includes("end-of-turn")
+		) {
+			return "silence-ms";
+		}
+		if (
+			normalizedKeyName.includes("rms") ||
+			normalizedKeyName.includes("threshold") ||
+			normalizedKeyName.includes("sensitivity")
+		) {
+			return "rms";
+		}
+		return normalizedKeyName;
+	})();
 	const keyName =
 		request.sectionId === "app-permissions"
 			? (resolvePermissionNamespace(requestedKeyName) ?? requestedKeyName)
-			: requestedKeyName;
+			: voiceKeyName;
 	const writable = keyName ? cap.keys[keyName] : undefined;
 	if (!writable) {
 		const known = Object.keys(cap.keys).join(", ");
@@ -1927,8 +1930,8 @@ function handleGet(
 	callback: HandlerCallback | undefined,
 ): ActionResult {
 	if (!request.sectionId) {
-		const reply = "Which settings section do you want to read?";
-		void callback?.({ text: reply });
+		const reply =
+			"No settings section named in the request; ask the user which section they want to read.";
 		return { success: false, text: reply };
 	}
 	const cap = SETTINGS_WRITE_REGISTRY[request.sectionId];
@@ -1942,6 +1945,9 @@ function handleGet(
 				: cap.summary;
 	const reply = `${label}: ${summary}`;
 	void callback?.({ text: reply });
+	// Deliberately un-gated: get is a capability probe the planner composes
+	// with (the write-capability data is machine-facing), unlike list/set
+	// which own their canonical reply.
 	return {
 		success: true,
 		text: reply,
@@ -2042,11 +2048,11 @@ export function createSettingsAction(deps: SettingsActionDeps = {}): Action {
 			"VOICE_VAD_SETTINGS",
 		],
 		description:
-			"Change a built-in settings VALUE or run a built-in settings operation from chat — most importantly turning OS/runtime permissions like shell access on/off via section=permissions key=shell, requesting OS permissions via section=permissions key=request permission=microphone|camera|location|notifications|screen-recording, changing appearance values via section=appearance key=theme|accent|language|home-time-widget, changing voice continuous-chat/end-of-turn prefs via section=voice key=continuous|silence-ms|rms, turning automatic training on/off via section=capabilities key=auto-training, toggling the wallet/browser/computer-use capabilities via section=capabilities key=wallet|browser|computer-use value=on|off, selecting wallet RPC providers via section=wallet-rpc key=evm|bsc|solana value=<provider> or key=cloud, granting/revoking an app permission namespace via section=app-permissions app=<slug> key=fs|net value=on|off, creating/restoring local agent backups via section=advanced key=create-backup|restore-backup, and checking/reporting connected-agent updates via section=updates key=status|check|channel|apply. Restore requires fileName and confirm=true. Update channel requires value=stable|beta|nightly. Also reads (`action=get`) or lists (`action=list`) which settings are changeable. `action=set` writes an owned section or points to the dedicated action that owns a delegated section (models→MODEL_SWITCH, background→BACKGROUND, identity→CHARACTER, connectors→PLUGIN, secrets→SECRETS). This CHANGES a setting's value or runs an explicit settings operation; opening a settings page without changing anything is VIEWS. Never fill a settings field with agent-fill.",
+			"Change a built-in settings VALUE or run a built-in settings operation from chat — most importantly turning OS/runtime permissions like shell access on/off via section=permissions key=shell, requesting OS permissions via section=permissions key=request permission=microphone|camera|location|notifications|screen-recording, changing appearance values via section=appearance key=theme|accent|language|home-time-widget, changing voice continuous-chat/end-of-turn prefs via section=voice key=continuous|silence-ms|rms, toggling the wallet/browser/computer-use capabilities via section=capabilities key=wallet|browser|computer-use value=on|off, selecting wallet RPC providers via section=wallet-rpc key=evm|bsc|solana value=<provider> or key=cloud, granting/revoking an app permission namespace via section=app-permissions app=<slug> key=fs|net value=on|off, creating/restoring local agent backups via section=advanced key=create-backup|restore-backup, and checking/reporting connected-agent updates via section=updates key=status|check|channel|apply. Restore requires fileName and confirm=true. Update channel requires value=stable|beta|nightly. Also reads (`action=get`) or lists (`action=list`) which settings are changeable. `action=set` writes an owned section or points to the dedicated action that owns a delegated section (models→MODEL_SWITCH, background→BACKGROUND, identity→CHARACTER, connectors→PLUGIN, secrets→SECRETS). This CHANGES a setting's value or runs an explicit settings operation; opening a settings page without changing anything is VIEWS. Never fill a settings field with agent-fill.",
 		descriptionCompressed:
-			"settings get|set|list section/key/value — CHANGE a setting VALUE or run a settings operation, incl. shell access, OS permission requests, appearance, voice, auto-training, wallet RPC providers, app permissions, local backups, and updates",
+			"settings get|set|list section/key/value — CHANGE a setting VALUE or run a settings operation, incl. shell access, OS permission requests, appearance, voice, wallet RPC providers, app permissions, local backups, and updates",
 		routingHint:
-			"Semantic settings reads/writes that do NOT already have a dedicated action -> SETTINGS. Changing a PERMISSION or setting VALUE is SETTINGS action=set, NOT navigation: 'turn off shell permissions', 'disable shell access', 'turn off shell access', 'revoke shell access', 'stop the agent running shell commands', 'turn shell back on', 'change my permissions' -> SETTINGS section=permissions key=shell value=off|on. 'ask for microphone permission', 'request camera access', 'enable location permission', 'turn on notifications', 'request screen recording' -> SETTINGS section=permissions key=request permission=microphone|camera|location|notifications|screen-recording. 'switch to dark mode', 'use system theme', 'set the accent to green', 'change UI language to Spanish', 'hide/show the home time widget' -> SETTINGS section=appearance key=theme|accent|language|home-time-widget value=<value>. 'turn on continuous voice chat', 'switch voice to VAD', 'turn off hands-free voice' -> SETTINGS section=voice key=continuous value=always-on|vad-gated|off. 'set voice silence to 1200ms', 'make voice end-of-turn threshold 0.008' -> SETTINGS section=voice key=silence-ms|rms value=<number>. Wake word and voice profiles are device-local controls; open Settings > Voice for those. 'turn on auto-training', 'enable automatic training', 'disable auto training' -> SETTINGS section=capabilities key=auto-training value=on|off. 'turn off the wallet capability', 'enable the browser capability', 'disable computer use' -> SETTINGS section=capabilities key=wallet|browser|computer-use value=on|off. 'use Alchemy for EVM RPC', 'set BSC RPC to NodeReal', 'use Helius for Solana RPC' -> SETTINGS section=wallet-rpc key=evm|bsc|solana value=alchemy|infura|ankr|nodereal|quicknode|helius-birdeye|eliza-cloud. 'use Eliza Cloud RPC' -> SETTINGS section=wallet-rpc key=cloud. 'switch wallet network to testnet' -> SETTINGS section=wallet-rpc key=network value=testnet. Never put wallet API keys or RPC URLs in SETTINGS; use SECRETS for API keys and vault material. 'check for updates', 'refresh update status' -> SETTINGS section=updates key=check. 'what update version am I on' -> SETTINGS section=updates key=status. 'switch updates to beta/nightly/stable' -> SETTINGS section=updates key=channel value=beta|nightly|stable. 'apply the available update' -> SETTINGS section=updates key=apply. 'revoke network access for my-app', 'grant filesystem access to sample-app' -> SETTINGS section=app-permissions app=<slug> key=net|fs value=off|on. 'back up my agent', 'create a local backup' -> SETTINGS section=advanced key=create-backup. 'restore backup <file>' -> SETTINGS section=advanced key=restore-backup fileName=<file> confirm=true; if confirm is absent, ask for confirmation. Also 'what settings can you change' / 'list settings' -> SETTINGS action=list. Do NOT use SETTINGS for changes a dedicated action owns: switching the model is MODEL_SWITCH, the background/wallpaper is BACKGROUND, the agent identity is CHARACTER, connector plugin lifecycle/config is PLUGIN, secret/API keys are SECRETS. The distinction from VIEWS is value-vs-navigation: changing/toggling a permission or setting VALUE, requesting an OS permission, changing an appearance value, changing voice preferences, changing wallet RPC provider selection, checking update status, changing update channel, or running a backup operation, is SETTINGS even though it lives on a settings page; merely OPENING or navigating to a settings page with no value change is VIEWS. SETTINGS never fills a form field with agent-fill.",
+			"Semantic settings reads/writes that do NOT already have a dedicated action -> SETTINGS. Changing a PERMISSION or setting VALUE is SETTINGS action=set, NOT navigation: 'turn off shell permissions', 'disable shell access', 'turn off shell access', 'revoke shell access', 'stop the agent running shell commands', 'turn shell back on', 'change my permissions' -> SETTINGS section=permissions key=shell value=off|on. 'ask for microphone permission', 'request camera access', 'enable location permission', 'turn on notifications', 'request screen recording' -> SETTINGS section=permissions key=request permission=microphone|camera|location|notifications|screen-recording. 'switch to dark mode', 'use system theme', 'set the accent to green', 'change UI language to Spanish', 'hide/show the home time widget' -> SETTINGS section=appearance key=theme|accent|language|home-time-widget value=<value>. 'turn on continuous voice chat', 'switch voice to VAD', 'turn off hands-free voice' -> SETTINGS section=voice key=continuous value=always-on|vad-gated|off. 'set voice silence to 1200ms', 'make voice end-of-turn threshold 0.008' -> SETTINGS section=voice key=silence-ms|rms value=<number>. Wake word and voice profiles are device-local controls; open Settings > Voice for those. 'turn off the wallet capability', 'enable the browser capability', 'disable computer use' -> SETTINGS section=capabilities key=wallet|browser|computer-use value=on|off. 'use Alchemy for EVM RPC', 'set BSC RPC to NodeReal', 'use Helius for Solana RPC' -> SETTINGS section=wallet-rpc key=evm|bsc|solana value=alchemy|infura|ankr|nodereal|quicknode|helius-birdeye|eliza-cloud. 'use Eliza Cloud RPC' -> SETTINGS section=wallet-rpc key=cloud. 'switch wallet network to testnet' -> SETTINGS section=wallet-rpc key=network value=testnet. Never put wallet API keys or RPC URLs in SETTINGS; use SECRETS for API keys and vault material. 'check for updates', 'refresh update status' -> SETTINGS section=updates key=check. 'what update version am I on' -> SETTINGS section=updates key=status. 'switch updates to beta/nightly/stable' -> SETTINGS section=updates key=channel value=beta|nightly|stable. 'apply the available update' -> SETTINGS section=updates key=apply. 'revoke network access for my-app', 'grant filesystem access to sample-app' -> SETTINGS section=app-permissions app=<slug> key=net|fs value=off|on. 'back up my agent', 'create a local backup' -> SETTINGS section=advanced key=create-backup. 'restore backup <file>' -> SETTINGS section=advanced key=restore-backup fileName=<file> confirm=true; if confirm is absent, ask for confirmation. Also 'what settings can you change' / 'list settings' -> SETTINGS action=list. Do NOT use SETTINGS for changes a dedicated action owns: switching the model is MODEL_SWITCH, the background/wallpaper is BACKGROUND, the agent identity is CHARACTER, connector plugin lifecycle/config is PLUGIN, secret/API keys are SECRETS. The distinction from VIEWS is value-vs-navigation: changing/toggling a permission or setting VALUE, requesting an OS permission, changing an appearance value, changing voice preferences, changing wallet RPC provider selection, checking update status, changing update channel, or running a backup operation, is SETTINGS even though it lives on a settings page; merely OPENING or navigating to a settings page with no value change is VIEWS. SETTINGS never fills a form field with agent-fill.",
 		suppressPostActionContinuation: true,
 
 		parameters: [
@@ -2066,7 +2072,7 @@ export function createSettingsAction(deps: SettingsActionDeps = {}): Action {
 			{
 				name: "key",
 				description:
-					"The specific toggle or operation within the section (e.g. theme, accent, language, home-time-widget, shell, voice continuous/silence-ms/rms, auto-training, wallet-rpc evm/bsc/solana/cloud/network, fs/net, create-backup, restore-backup, status/check/channel/apply for updates). Optional; defaults to the section's primary key.",
+					"The specific toggle or operation within the section (e.g. theme, accent, language, home-time-widget, shell, voice continuous/silence-ms/rms, wallet-rpc evm/bsc/solana/cloud/network, fs/net, create-backup, restore-backup, status/check/channel/apply for updates). Optional; defaults to the section's primary key.",
 				required: false,
 				schema: { type: "string" },
 			},

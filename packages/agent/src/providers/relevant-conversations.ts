@@ -8,6 +8,7 @@
  * hash-memory hits win on id overlap. Gated to USER.
  */
 import type {
+  AccessContext,
   IAgentRuntime,
   Memory,
   Provider,
@@ -16,7 +17,12 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { embedRecallQuery, stringToUuid } from "@elizaos/core";
+import {
+  buildAccessContext,
+  embedRecallQuery,
+  filterByAccessContext,
+  stringToUuid,
+} from "@elizaos/core";
 import { getValidationKeywordTerms } from "@elizaos/shared";
 import {
   extractConversationMetadataFromRoom,
@@ -57,6 +63,7 @@ function memoryCreatedAt(memory: Memory): number {
 async function loadHashMemories(
   runtime: IAgentRuntime,
   query: string,
+  accessContext: AccessContext,
 ): Promise<Memory[]> {
   const agentName = runtime.character.name?.trim() || "Eliza";
   const roomId = stringToUuid(`${agentName}-hash-memory-room`) as UUID;
@@ -65,6 +72,7 @@ async function loadHashMemories(
     tableName: "messages",
     limit: HASH_MEMORY_SCAN_LIMIT,
     includeEmbedding: false,
+    accessContext,
   });
 
   // Only hash memories are candidates; rank them together so BM25's IDF is
@@ -103,6 +111,9 @@ export const relevantConversationsProvider: Provider = {
   contextGate: { anyOf: ["memory", "messaging"] },
   cacheStable: false,
   cacheScope: "turn",
+  // Semantic recall is supplemental and can include a remote embed/search.
+  timeoutMs: 10_000,
+  timeoutMode: "degrade",
   alwaysInResponseState: true,
   roleGate: { minRole: "USER" },
 
@@ -126,9 +137,24 @@ export const relevantConversationsProvider: Provider = {
         return { text: "", values: {}, data: {} };
       }
 
+      let accessContext: AccessContext;
+      try {
+        accessContext = await buildAccessContext(runtime, message);
+      } catch (error) {
+        runtime.logger.warn(
+          {
+            error: error instanceof Error ? error.message : String(error),
+            entityId: message.entityId,
+            roomId: message.roomId,
+          },
+          "[RelevantConversationsProvider] Access context resolution failed; using least-privileged requester scope",
+        );
+        accessContext = { requesterEntityId: message.entityId };
+      }
+
       // Lexical hash-memory recall mirrors the /api/memory/remember writer and
       // works even when no TEXT_EMBEDDING model is registered.
-      const hashMemories = await loadHashMemories(runtime, text);
+      const hashMemories = await loadHashMemories(runtime, text, accessContext);
 
       // Embed the current message for semantic search. Routes through the one
       // shared per-turn recall-query embed so this provider, document recall, and
@@ -143,13 +169,19 @@ export const relevantConversationsProvider: Provider = {
               tableName: "messages",
               match_threshold: MATCH_THRESHOLD,
               limit: MAX_RELEVANT_RESULTS + 5, // fetch extra to filter current room
+              accessContext,
             })
           : [];
 
       // Filter out messages from the current conversation to avoid echo, dedupe
       // by id (hash memories prepended so they win on overlap), then cap.
       const currentRoomId = message.roomId;
-      const filtered = [...hashMemories, ...results]
+      const readable = filterByAccessContext(
+        [...hashMemories, ...results],
+        accessContext,
+        runtime.agentId,
+      );
+      const filtered = readable
         .filter((m) => m.content.text && m.roomId !== currentRoomId)
         .filter(
           (memory, index, all) =>

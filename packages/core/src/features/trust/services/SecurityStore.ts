@@ -70,10 +70,10 @@ export interface InsertTrustEvidence {
 	evaluatorId: UUID;
 	type: string;
 	impact: number;
-	weight?: number;
-	description?: string;
-	verified?: boolean;
-	context?: Record<string, unknown>;
+	weight: number;
+	description: string;
+	verified: boolean;
+	context: Record<string, unknown>;
 }
 
 export async function insertTrustEvidence(
@@ -86,10 +86,10 @@ export async function insertTrustEvidence(
 		evaluatorId: evidence.evaluatorId,
 		type: evidence.type,
 		impact: evidence.impact,
-		weight: evidence.weight ?? 1,
-		description: evidence.description ?? "",
-		verified: evidence.verified ?? false,
-		context: evidence.context ?? {},
+		weight: evidence.weight,
+		description: evidence.description,
+		verified: evidence.verified,
+		context: evidence.context,
 	});
 }
 

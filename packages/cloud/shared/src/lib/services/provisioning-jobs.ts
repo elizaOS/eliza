@@ -36,6 +36,7 @@ import {
   jobsRepository,
   type NewJob,
   prepareJobInsertData,
+  type RecoveryFailureWritebackBuilder,
   StaleJobExecutionError,
 } from "../../db/repositories/jobs";
 import {
@@ -743,6 +744,7 @@ interface LifecycleSandboxRow {
   warm_claim_key_fingerprint: string | null;
   warm_claim_attested_environment_revision: number | null;
   environment_revision: number;
+  lifecycle_revision: number;
   user_id: string;
   sandbox_id: string | null;
   node_id: string | null;
@@ -789,7 +791,7 @@ interface LifecycleJobOptions<TData extends object> {
   /**
    * Called inside the transaction after the sandbox row is fetched and
    * before the existing-job lookup. Throw to abort the enqueue (e.g.
-   * provision's `expectedUpdatedAt` race check).
+   * provision's lifecycle-revision race check).
    */
   validateSandbox?: (sandbox: LifecycleSandboxRow) => void;
   /**
@@ -1030,6 +1032,31 @@ const SHARED_IMAGE_CHANGE_JOB_TYPES: ProvisioningJobType[] = [
   JOB_TYPES.AGENT_UPGRADE,
   JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
 ];
+
+/**
+ * Job types whose permanent failure has to settle a dependent status row. This
+ * list and the arms of `buildPermanentFailureWriteback` are ONE mapping; the
+ * exhaustiveness check in that switch fails the build if they drift apart.
+ * Recovery consults it per TYPE because resolving a writeback first hydrates
+ * the job's blob-offloaded payload, and a type owning no dependent row would
+ * pay those object-store reads only to be handed `undefined` — which would
+ * also make the stale sweep hydrate for lanes it deliberately leaves gated.
+ */
+const DEPENDENT_ROW_JOB_TYPES = [
+  JOB_TYPES.AGENT_PROVISION,
+  JOB_TYPES.AGENT_RESTART,
+  JOB_TYPES.AGENT_UPGRADE,
+  JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+  JOB_TYPES.APP_DEPLOY,
+  JOB_TYPES.CONTAINER_PROVISION,
+  JOB_TYPES.AGENT_DELETE,
+] as const satisfies readonly ProvisioningJobType[];
+
+type DependentRowJobType = (typeof DEPENDENT_ROW_JOB_TYPES)[number];
+
+function ownsDependentRow(jobType: string): jobType is DependentRowJobType {
+  return (DEPENDENT_ROW_JOB_TYPES as readonly string[]).includes(jobType);
+}
 export class ProvisioningJobService {
   private readonly executionOverride?: (job: Job) => Promise<void>;
   private readonly executionTimeoutMs: (jobType: string) => number;
@@ -1129,6 +1156,7 @@ export class ProvisioningJobService {
         warm_claim_attested_environment_revision:
           agentSandboxes.warm_claim_attested_environment_revision,
         environment_revision: agentSandboxes.environment_revision,
+        lifecycle_revision: agentSandboxes.lifecycle_revision,
         user_id: agentSandboxes.user_id,
         sandbox_id: agentSandboxes.sandbox_id,
         node_id: agentSandboxes.node_id,
@@ -1148,6 +1176,7 @@ export class ProvisioningJobService {
           eq(agentSandboxes.organization_id, opts.organizationId),
         ),
       )
+      .for("update")
       .limit(1);
 
     if (!sandbox) {
@@ -1289,7 +1318,7 @@ export class ProvisioningJobService {
     userId: string;
     agentName: string;
     webhookUrl?: string;
-    expectedUpdatedAt?: Date | string | null;
+    expectedLifecycleRevision?: number;
   }): Promise<EnqueueAgentProvisionResult> {
     return this.enqueueLifecycleJob<AgentProvisionJobData>(
       this.agentProvisionLifecycleOptions(params),
@@ -1329,9 +1358,9 @@ export class ProvisioningJobService {
     userId: string;
     agentName: string;
     webhookUrl?: string;
-    expectedUpdatedAt?: Date | string | null;
+    expectedLifecycleRevision?: number;
   }): LifecycleJobOptions<AgentProvisionJobData> {
-    const expected = params.expectedUpdatedAt;
+    const expected = params.expectedLifecycleRevision;
     return {
       jobType: JOB_TYPES.AGENT_PROVISION,
       jobData: {
@@ -1349,21 +1378,14 @@ export class ProvisioningJobService {
       // DB assignment + Docker pull/run (10-30s) + health check (up to 60s)
       estimatedDurationMs: 90_000,
       logName: "agent_provision",
-      validateSandbox: expected
-        ? (sandbox) => {
-            const expectedMs = new Date(expected).getTime();
-            const currentMs = sandbox.updated_at
-              ? new Date(sandbox.updated_at).getTime()
-              : Number.NaN;
-            if (
-              Number.isFinite(expectedMs) &&
-              Number.isFinite(currentMs) &&
-              currentMs !== expectedMs
-            ) {
-              throw new Error("Agent state changed while starting");
+      validateSandbox:
+        expected !== undefined
+          ? (sandbox) => {
+              if (sandbox.lifecycle_revision !== expected) {
+                throw new Error("Agent state changed while starting");
+              }
             }
-          }
-        : undefined,
+          : undefined,
     };
   }
 
@@ -2635,14 +2657,20 @@ export class ProvisioningJobService {
       renewalInFlight = true;
       void jobsRepository
         .renewExecutionLease(job, this.executionOwnerId, this.leaseDurationForJobType(job.type))
-        .then((renewed) => {
-          if (!renewed) {
+        .then((outcome) => {
+          if (outcome !== "renewed") {
             clearInterval(timer);
-            logger.warn("[provisioning-jobs] Execution lease ownership was lost", {
-              jobId: job.id,
-              executionGeneration: job.execution_generation,
-              executionOwnerId: this.executionOwnerId,
-            });
+            if (outcome === "lost") {
+              logger.warn("[provisioning-jobs] Execution lease ownership was lost", {
+                jobId: job.id,
+                executionGeneration: job.execution_generation,
+                executionOwnerId: this.executionOwnerId,
+              });
+            } else {
+              logger.debug("[provisioning-jobs] Lease heartbeat stopped after settlement", {
+                jobId: job.id,
+              });
+            }
           }
         })
         .catch((error) => {
@@ -2690,7 +2718,7 @@ export class ProvisioningJobService {
             this.executionOwnerId,
             this.leaseDurationForJobType(job.type),
           );
-          if (!renewed) throw error;
+          if (renewed !== "renewed") throw error;
           continue;
         }
         attempt++;
@@ -2713,11 +2741,11 @@ export class ProvisioningJobService {
     } catch (error) {
       if (
         !(error instanceof StaleJobExecutionError) ||
-        !(await jobsRepository.renewExecutionLease(
+        (await jobsRepository.renewExecutionLease(
           job,
           this.executionOwnerId,
           this.leaseDurationForJobType(job.type),
-        ))
+        )) !== "renewed"
       ) {
         throw error;
       }
@@ -2729,6 +2757,10 @@ export class ProvisioningJobService {
     // A provider mutation already in flight cannot be remotely cancelled, so
     // takeover remains barred through the full local execution timeout. Regular
     // heartbeats extend this window for legitimately detached work.
+    //
+    // A crashed worker's claim remains protected for this duration plus the
+    // 30-second takeover grace. The 16-minute cold-boot window prevents a
+    // replacement from reclaiming work that may still be mutating a provider.
     return Math.max(
       this.executionLeaseMs,
       this.executionTimeoutMs(jobType) + 2 * this.executionLeaseHeartbeatMs,
@@ -2848,6 +2880,8 @@ export class ProvisioningJobService {
       const recovered = await jobsRepository.recoverInProgressJobsStartedBefore({
         type: jobType,
         startedBefore,
+        buildFailureWriteback: this.dependentRowWritebackBuilder(jobType),
+        onPermanentFailure: (failedJob) => this.evictAppCachesAfterPermanentFailure(failedJob),
       });
       totalRecovered += recovered;
     }
@@ -3008,19 +3042,27 @@ export class ProvisioningJobService {
       ),
     );
 
-    // app_deploy keeps a post-commit cache invalidation (the apps read
-    // cache is invalidated outside the DB transaction); the row flip
-    // itself already committed atomically inside onFailedInTx above.
-    if (updated?.status === "failed" && job.type === JOB_TYPES.APP_DEPLOY) {
+    if (updated?.status === "failed") {
+      await this.evictAppCachesAfterPermanentFailure(job);
+    }
+  }
+
+  /**
+   * Post-commit read-cache eviction for a job whose dependent row was just
+   * flipped by the in-transaction writeback. The `apps` read cache lives
+   * outside the DB transaction, so it can only be evicted once the flip is
+   * durable — for app_deploy because appsService owns that cache, and for
+   * container_provision because its writeback updates apps.deployment_status
+   * with a raw in-tx statement that bypasses appsService entirely (otherwise
+   * the deploy-status route keeps reporting `building` until the 5-min TTL).
+   */
+  private async evictAppCachesAfterPermanentFailure(job: Job): Promise<void> {
+    if (job.type === JOB_TYPES.APP_DEPLOY) {
       const { appId } = readAppDeployJobData(job);
       await appsService.invalidateCache(appId);
+      return;
     }
-    // container_provision flips apps.deployment_status with a raw in-tx
-    // update (bypassing the appsService cache), so evict the app read cache
-    // here too — otherwise the cache-backed deploy-status route keeps
-    // reporting `building` until the 5-min TTL. The in-tx writeback already
-    // org-scoped the flip; an appId that matched no app is a harmless evict.
-    if (updated?.status === "failed" && job.type === JOB_TYPES.CONTAINER_PROVISION) {
+    if (job.type === JOB_TYPES.CONTAINER_PROVISION) {
       const { containerId } = readContainerProvisionJobData(job);
       const [row] = await dbWrite
         .select({ projectName: containers.project_name })
@@ -3028,6 +3070,8 @@ export class ProvisioningJobService {
         .where(eq(containers.id, containerId))
         .limit(1);
       const appId = row?.projectName;
+      // The in-tx writeback already org-scoped the flip; an appId that matched
+      // no app is a harmless evict.
       if (appId && isValidUUID(appId)) {
         await appsService.invalidateCache(appId);
       }
@@ -3038,13 +3082,14 @@ export class ProvisioningJobService {
    * Builds the in-transaction dependent-row writeback for a job that has just
    * exhausted its retries. Returned callback runs INSIDE incrementAttempt's
    * transaction (atomic with the job-status `failed` flip). Returns undefined
-   * for job types that have no dependent status row to flip.
+   * for job types outside `DEPENDENT_ROW_JOB_TYPES`, which own no such row.
    */
   private buildPermanentFailureWriteback(
     job: Job,
     errorMsg: string,
     upgradeFailure?: UpgradeFailedError,
   ): ((tx: DbTransaction, failedJob: Job) => Promise<void>) | undefined {
+    if (!ownsDependentRow(job.type)) return undefined;
     switch (job.type) {
       // Mark the sandbox "error" so the UI reflects reality instead of staying
       // stuck in "provisioning".
@@ -3295,9 +3340,27 @@ export class ProvisioningJobService {
           );
         };
       }
-      default:
-        return undefined;
+      default: {
+        // The guard above already excluded every non-dependent type, so a new
+        // arm added to DEPENDENT_ROW_JOB_TYPES without a case here fails to
+        // compile rather than silently skipping its dependent row.
+        const unhandled: never = job.type;
+        throw new Error(`No permanent-failure writeback for job type ${String(unhandled)}`);
+      }
     }
+  }
+
+  /**
+   * Resolves the writeback builder for one job TYPE, before the sweep has a job
+   * in hand. A type owning no dependent row gets no builder at all: the
+   * repository must hydrate a job's blob-offloaded payload before it can call
+   * one, and the object store has no timeout.
+   */
+  private dependentRowWritebackBuilder(
+    jobType: string,
+  ): RecoveryFailureWritebackBuilder | undefined {
+    if (!ownsDependentRow(jobType)) return undefined;
+    return (hydratedJob, error) => this.buildPermanentFailureWriteback(hydratedJob, error);
   }
 
   private async assertNoConflictingLifecycleExecution(job: Job): Promise<void> {
@@ -4834,7 +4897,7 @@ export class ProvisioningJobService {
             organizationId: r.organization_id,
             userId: r.user_id,
             agentName: r.agent_name ?? r.id,
-            expectedUpdatedAt: r.updated_at,
+            expectedLifecycleRevision: r.lifecycle_revision,
           });
           reprovisioned += 1;
         } catch (error) {
@@ -5058,6 +5121,8 @@ export class ProvisioningJobService {
         staleThresholdMs: COLD_BOOT_JOB_TYPES.has(jobType)
           ? COLD_BOOT_STALE_JOB_THRESHOLD_MS
           : DEFAULT_STALE_JOB_THRESHOLD_MS,
+        buildFailureWriteback: this.dependentRowWritebackBuilder(jobType),
+        onPermanentFailure: (failedJob) => this.evictAppCachesAfterPermanentFailure(failedJob),
       });
       totalRecovered += recovered;
     }

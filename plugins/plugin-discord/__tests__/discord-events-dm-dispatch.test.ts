@@ -61,7 +61,7 @@ function makeService() {
 		handleReactionAdd: vi.fn(),
 		handleReactionRemove: vi.fn(),
 		isChannelAllowed: vi.fn(() => true),
-		messageManager: { handleMessage: vi.fn() },
+		messageManager: { handleMessage: vi.fn(), noteHumanEdge: vi.fn() },
 		resolveDiscordEntityId: vi.fn(),
 		runtime: {
 			agentId: "agent",
@@ -88,8 +88,11 @@ function makeMessage(
 	return {
 		id,
 		content: "hello",
+		createdTimestamp: 1_700_000_000_000,
 		author: { id: "user-1", bot: false, username: "alice" },
 		channel: { id: channelId, type: channelType },
+		guild:
+			channelType === DiscordChannelType.GuildText ? { id: "guild-1" } : null,
 	};
 }
 
@@ -100,6 +103,32 @@ const tick = () => new Promise((resolve) => setImmediate(resolve));
 describe("setupDiscordEventListeners — DM dispatch", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+	});
+
+	it("holds every gateway ingress branch until ready-time identity hydration completes", async () => {
+		const service = makeService();
+		let releaseReady!: () => void;
+		service.clientReadyPromise = new Promise<void>((resolve) => {
+			releaseReady = resolve;
+		});
+		const { channelDebouncer } = setupDiscordEventListeners(service as never);
+		service.channelDebouncer = channelDebouncer as never;
+
+		service.client.emit(
+			"messageCreate",
+			makeMessage(DiscordChannelType.DM, "dm-ready-gate"),
+		);
+		await tick();
+
+		expect(service.buildMemoryFromMessage).not.toHaveBeenCalled();
+		expect(service.messageManager.noteHumanEdge).not.toHaveBeenCalled();
+		expect(service.messageManager.handleMessage).not.toHaveBeenCalled();
+		expect(debouncerState.channelEnqueue).not.toHaveBeenCalled();
+
+		releaseReady();
+		await tick();
+		await tick();
+		expect(service.messageManager.handleMessage).toHaveBeenCalledTimes(1);
 	});
 
 	it("dispatches DMs directly to handleMessage, bypassing the channel debouncer", async () => {
@@ -145,6 +174,34 @@ describe("setupDiscordEventListeners — DM dispatch", () => {
 
 		expect(debouncerState.channelEnqueue).toHaveBeenCalledTimes(1);
 		expect(service.messageManager.handleMessage).not.toHaveBeenCalled();
+		// Production gateway path: every guild human message advances the durable
+		// edge before dispatch/debounce, including messages this agent may not
+		// ultimately answer.
+		expect(service.messageManager.noteHumanEdge).toHaveBeenCalledWith(
+			"channel-1",
+			"msg-channel-1",
+			1_700_000_000_000,
+		);
+	});
+
+	it("never advances the human edge for a bot-authored guild message", async () => {
+		const service = makeService();
+		service.discordSettings.shouldIgnoreBotMessages = false;
+		const { channelDebouncer } = setupDiscordEventListeners(service as never);
+		service.channelDebouncer = channelDebouncer as never;
+		const botMessage = makeMessage(
+			DiscordChannelType.GuildText,
+			"channel-bot",
+		) as ReturnType<typeof makeMessage> & {
+			author: { id: string; bot: boolean; username: string };
+		};
+		botMessage.author = { id: "other-bot", bot: true, username: "bot" };
+
+		service.client.emit("messageCreate", botMessage);
+		await tick();
+
+		expect(service.messageManager.noteHumanEdge).not.toHaveBeenCalled();
+		expect(debouncerState.channelEnqueue).toHaveBeenCalledTimes(1);
 	});
 
 	it("serializes rapid DMs in the same channel: the second awaits the first, neither dropped", async () => {

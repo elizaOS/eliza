@@ -187,7 +187,20 @@ export function normalizeSchemaForCerebras(
 		};
 	}
 
-	if (options.strict !== false) enforceStrictObjectShape(node);
+	if (options.strict !== false) {
+		enforceStrictObjectShape(node);
+		// Cerebras's strict grammar compiler rejects `oneOf` outright
+		// ("Unsupported JSON schema fields ... oneOf") while accepting `anyOf`
+		// — verified against the live API with otherwise-identical payloads.
+		// The weakening from exclusive-or to inclusive-or is immaterial here:
+		// constrained generation emits a single value, and runtime validation
+		// re-checks the parsed arguments. Non-strict schemas keep `oneOf`.
+		if (Array.isArray(node.oneOf) && node.oneOf.length > 0) {
+			const existing = Array.isArray(node.anyOf) ? node.anyOf : [];
+			node.anyOf = [...existing, ...node.oneOf];
+			delete node.oneOf;
+		}
+	}
 
 	walkSchemaChildren(node, options);
 	return node;

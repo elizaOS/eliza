@@ -11,6 +11,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 
 const repoRoot = resolve(import.meta.dir, "../../..");
 const runTurbo = join(repoRoot, "packages/scripts/run-turbo.mjs");
@@ -51,22 +52,21 @@ async function fixture(behaviors: Array<"crash" | "fail" | "ok">) {
 }
 
 async function invoke(fakeTurbo: string, env: Record<string, string> = {}) {
-  const child = Bun.spawn([process.execPath, runTurbo, "run", "lint"], {
+  const child = spawnSync("node", [runTurbo, "run", "lint"], {
     cwd: repoRoot,
+    encoding: "utf8",
     env: {
       ...process.env,
       RUN_TURBO_BIN: fakeTurbo,
       RUN_TURBO_FORCE_INIT_CRASH_RETRY: "1",
       ...env,
     },
-    stdout: "pipe",
-    stderr: "pipe",
+    timeout: 30_000,
   });
-  await child.exited;
   return {
-    exitCode: child.exitCode,
-    stdout: await new Response(child.stdout).text(),
-    stderr: await new Response(child.stderr).text(),
+    exitCode: child.status,
+    stdout: child.stdout,
+    stderr: child.stderr,
   };
 }
 

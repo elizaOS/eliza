@@ -1,10 +1,4 @@
-/**
- * Tool Policy Types
- *
- * Types and definitions for tool/action filtering and permissions in elizaOS.
- *
- * @module tools
- */
+/** Contracts for action filtering and tool permissions. */
 
 // Re-export from channel-config to avoid duplication
 export type { ToolPolicyConfig, ToolProfileId } from "./channel-config";

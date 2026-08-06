@@ -19,7 +19,12 @@ import { pushSchema } from "drizzle-kit/api";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../db/client";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { type Job, jobsRepository } from "../../db/repositories/jobs";
-import { type AgentSandboxBackup, agentSandboxes } from "../../db/schemas/agent-sandboxes";
+import {
+  type AgentSandboxBackup,
+  agentSandboxes,
+  WARM_POOL_ORG_ID,
+  WARM_POOL_USER_ID,
+} from "../../db/schemas/agent-sandboxes";
 import { apiKeys } from "../../db/schemas/api-keys";
 import { dockerNodes } from "../../db/schemas/docker-nodes";
 import { generations } from "../../db/schemas/generations";
@@ -1623,6 +1628,17 @@ describe("admin agent image rollout on primary PGlite", () => {
     const userAgentId = "00000000-0000-4000-8000-000000000091";
     const poolRowId = "00000000-0000-4000-8000-000000000092";
     const poolEnv = { ELIZA_API_TOKEN: "transport-token" };
+    await dbWrite.insert(organizations).values({
+      id: WARM_POOL_ORG_ID,
+      name: "Warm Pool (system)",
+      slug: uniq("warm-pool-org"),
+      is_active: false,
+    });
+    await dbWrite.insert(users).values({
+      id: WARM_POOL_USER_ID,
+      steward_user_id: uniq("warm-pool-user"),
+      organization_id: WARM_POOL_ORG_ID,
+    });
     await dbWrite.insert(agentSandboxes).values([
       {
         id: userAgentId,
@@ -1633,8 +1649,8 @@ describe("admin agent image rollout on primary PGlite", () => {
       },
       {
         id: poolRowId,
-        organization_id: seeded.organizationId,
-        user_id: seeded.actorUserId,
+        organization_id: WARM_POOL_ORG_ID,
+        user_id: WARM_POOL_USER_ID,
         agent_name: "Warm Pool",
         status: "running",
         pool_status: "unclaimed",

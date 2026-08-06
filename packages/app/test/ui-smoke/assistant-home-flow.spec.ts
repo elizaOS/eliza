@@ -805,6 +805,16 @@ test.describe("assistant home app flow", () => {
     await expect(
       settingsLauncherTile.getByRole("button", { name: /Settings/i }),
     ).toBeVisible();
+    const automationsLabel = launcherTile(page, "automations").locator(
+      "[data-launcher-label]",
+    );
+    await expect(automationsLabel).toHaveText("Automations");
+    expect(
+      await automationsLabel.evaluate(
+        (label) => label.scrollWidth <= label.clientWidth,
+      ),
+      "launcher labels must fit their rendered width",
+    ).toBe(true);
     await expect(page.getByTestId("shell-home-pill")).toHaveCount(0);
     await screenshot(page, "05-views-with-pill");
 
@@ -815,7 +825,7 @@ test.describe("assistant home app flow", () => {
       }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: /Open RPC settings/i }),
+      page.getByRole("button", { name: "RPC settings", exact: true }),
     ).toBeVisible();
     await screenshot(page, "07-wallet-view-with-pill");
   });

@@ -133,6 +133,11 @@ if (!postgres) {
   jobsRepository = jobsModule.jobsRepository;
 }
 
+// 60s like the schema-push beforeAll: teardown drains live pool connections,
+// terminates straggler backends, drops the isolated database, and stops the
+// server — the final lease/quiescence test leaves real in-flight work behind,
+// and on an I/O-loaded CI host that sequence routinely blows the 5s default
+// hook budget, failing the whole suite as "(unnamed)" after every test passed.
 afterAll(async () => {
   await closeDatabaseConnectionsForTests?.();
   if (postgres && isolatedDatabaseName) {
@@ -143,7 +148,7 @@ afterAll(async () => {
   for (const [name, value] of Object.entries(ORIGINAL_ENV)) {
     restoreEnv(name as keyof typeof ORIGINAL_ENV, value);
   }
-});
+}, 60_000);
 
 const realPostgres = postgres ? describe : describe.skip;
 
@@ -242,7 +247,7 @@ realPostgres("stuck provisioning lifecycle lock", () => {
         organizationId: organization.id,
         userId: user.id,
         agentName: sandbox.agent_name ?? sandbox.id,
-        expectedUpdatedAt: sandbox.updated_at,
+        expectedLifecycleRevision: sandbox.lifecycle_revision,
       });
       await waitForAdvisoryWaiters(control, 1);
 

@@ -178,13 +178,8 @@ export const choiceAction: Action = {
 			const taskInfo = taskMap.get(taskId);
 
 			if (!taskInfo) {
-				if (callback) {
-					await callback({
-						text: `Could not find a task matching ID: ${taskId}. Please try again.`,
-						actions: ["SELECT_OPTION_ERROR"],
-						source: message.content.source,
-					});
-				}
+				// No visible callback: the model-emitted taskId is planner detail
+				// the user never typed; the evaluator delivers the miss in voice.
 				return {
 					text: `Could not find task with ID: ${taskId}`,
 					values: {
@@ -237,15 +232,22 @@ export const choiceAction: Action = {
 
 			if (selectedOption === "ABORT") {
 				await runtime.deleteTask(selectedTaskId);
+				const cancelledText = `Task "${selectedTask.name}" has been cancelled.`;
 				if (callback) {
 					await callback({
-						text: `Task "${selectedTask.name}" has been cancelled.`,
+						text: cancelledText,
 						actions: ["CHOOSE_OPTION_CANCELLED"],
 						source: message.content.source,
 					});
 				}
+				// The cancellation confirmation is the complete answer to a
+				// single-operation turn: verified + turnComplete make the callback
+				// the sole delivery instead of double-messaging with the evaluator.
 				return {
-					text: `Task "${selectedTask.name}" has been cancelled`,
+					text: cancelledText,
+					userFacingText: cancelledText,
+					verifiedUserFacing: true,
+					turnComplete: true,
 					values: {
 						success: true,
 						taskAborted: true,
@@ -272,11 +274,8 @@ export const choiceAction: Action = {
 						stateForCanExecute,
 					);
 					if (!allowed) {
-						if (callback) {
-							await callback({
-								text: "You don't have permission to execute this task.",
-							});
-						}
+						// No visible callback: the evaluator delivers the
+						// permission denial in voice, once.
 						return {
 							text: "You don't have permission to execute this task.",
 							values: { success: false, error: "FORBIDDEN" },
@@ -294,13 +293,9 @@ export const choiceAction: Action = {
 					selectedTask,
 				);
 			}
-			if (callback) {
-				await callback({
-					text: `Selected option: ${selectedOption} for task: ${selectedTask.name}`,
-					actions: ["CHOOSE_OPTION"],
-					source: message.content.source,
-				});
-			}
+			// No visible callback: "Selected option: X for task: Y" is tool-speak,
+			// and the evaluator's in-voice reply is the user's single answer. The
+			// selection detail stays planner-facing in the result text.
 			return {
 				text: `Selected option: ${selectedOption} for task: ${selectedTask.name}`,
 				values: {
@@ -346,11 +341,18 @@ export const choiceAction: Action = {
 			});
 		}
 
+		// The options menu IS the designed ask the user must answer (same shape
+		// as the two-phase confirm prompts): verified + turnComplete make it the
+		// turn's sole delivery instead of pairing it with a second evaluator
+		// reply. The un-selected state stays visible to the planner in data.
 		return {
-			text: "No valid option selected",
+			text: "No valid option selected; asked the user to pick from the open task menus",
+			userFacingText: optionsText,
+			verifiedUserFacing: true,
+			turnComplete: true,
 			values: {
-				success: false,
-				error: "NO_SELECTION",
+				success: true,
+				awaitingSelection: true,
 				availableTasksCount: tasksWithOptions.length,
 			},
 			data: {
@@ -358,7 +360,7 @@ export const choiceAction: Action = {
 				error: "No valid selection made",
 				availableTaskNames: formattedTasks.map((t) => t.name),
 			},
-			success: false,
+			success: true,
 		};
 	},
 

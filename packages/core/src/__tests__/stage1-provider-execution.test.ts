@@ -1,31 +1,40 @@
 /**
  * Proves the Stage-1 provider exclusions are EXECUTION exclusions, not just
  * render exclusions: `stage1ResponseStateProviderNames` subtracts the
- * stage-1-excluded providers from the compose include list (so ENTITIES /
- * CURRENT_TIME never run for a turn that dies at Stage 1), while the planner
- * pass still composes them via composeState's cached-state merge. Uses a real
- * in-memory AgentRuntime with call-counting providers; no database or model.
+ * stage-1-excluded providers from the compose include list (so ENTITIES
+ * never runs for a turn that dies at Stage 1), while the planner pass still
+ * composes them via composeState's cached-state merge. Also pins that
+ * CURRENT_TIME is unconditionally composed — the system prompt promises a
+ * time signal in every runtime context, so no message phrasing may drop it.
+ * Uses a real in-memory AgentRuntime with call-counting providers; no
+ * database or model.
  */
 import { describe, expect, it } from "vitest";
 import { AgentRuntime } from "../runtime";
 import { stage1ResponseStateProviderNames } from "../services/message";
 import type {
 	Character,
+	Content,
 	IAgentRuntime,
 	Memory,
 	Provider,
 	UUID,
 } from "../types";
+import { ChannelType } from "../types";
 
 const ROOM_ID = "11111111-1111-1111-1111-111111111111" as UUID;
 const ENTITY_ID = "22222222-2222-2222-2222-222222222222" as UUID;
 
-function makeMessage(id: string, text = "gm"): Memory {
+function makeMessage(
+	id: string,
+	text = "gm",
+	content: Partial<Content> = {},
+): Memory {
 	return {
 		id: id as UUID,
 		entityId: ENTITY_ID,
 		roomId: ROOM_ID,
-		content: { text },
+		content: { text, ...content },
 	};
 }
 
@@ -56,7 +65,6 @@ describe("stage1ResponseStateProviderNames", () => {
 		);
 
 		expect(names).not.toContain("ENTITIES");
-		expect(names).not.toContain("CURRENT_TIME");
 		expect(names).not.toContain("DOCUMENTS");
 		// Stage 1 still composes what it renders and routes on.
 		expect(names).toContain("RECENT_MESSAGES");
@@ -64,15 +72,25 @@ describe("stage1ResponseStateProviderNames", () => {
 		expect(names).toContain("ATTACHMENTS");
 	});
 
-	it("keeps CURRENT_TIME when the user is asking about the time", () => {
+	it("always includes CURRENT_TIME regardless of message phrasing", () => {
+		// Live incident: a regex gate re-included CURRENT_TIME only for
+		// messages that "looked like" time questions, so the apostrophe-free
+		// "whats todays date and time?" lost the time block and the model
+		// hallucinated a stale date. The signal must not depend on prose.
 		const runtime = { providers: [] } as unknown as IAgentRuntime;
-		const names = stage1ResponseStateProviderNames(
-			runtime,
-			makeMessage("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2", "what time is it?"),
-		);
-
-		expect(names).toContain("CURRENT_TIME");
-		expect(names).not.toContain("ENTITIES");
+		for (const text of [
+			"gm",
+			"whats todays date and time?",
+			"what time is it?",
+			"tell me a short joke",
+		]) {
+			const names = stage1ResponseStateProviderNames(
+				runtime,
+				makeMessage("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2", text),
+			);
+			expect(names).toContain("CURRENT_TIME");
+			expect(names).not.toContain("ENTITIES");
+		}
 	});
 
 	it("includes always-on plugin providers unless they are stage-1-excluded", () => {
@@ -116,7 +134,9 @@ describe("stage1ResponseStateProviderNames", () => {
 
 		// Stage-1 compose: excluded providers never execute, so a turn that
 		// ends at Stage 1 (group noise → IGNORE) does none of their work and
-		// its prompt footprint drops accordingly.
+		// its prompt footprint drops accordingly. CURRENT_TIME is NOT excluded
+		// — it composes on every turn so the simple path can honor the system
+		// prompt's promise of a live time signal.
 		const stage1State = await runtime.composeState(
 			message,
 			stage1Names,
@@ -124,17 +144,18 @@ describe("stage1ResponseStateProviderNames", () => {
 			false,
 		);
 		expect(entities.calls()).toBe(0);
-		expect(currentTime.calls()).toBe(0);
+		expect(currentTime.calls()).toBe(1);
 		expect(facts.calls()).toBe(1);
 		expect(recent.calls()).toBe(1);
 		expect(stage1State.text).not.toContain("ENTITIES#");
-		expect(stage1State.text).not.toContain("CURRENT_TIME#");
+		expect(stage1State.text).toContain("CURRENT_TIME#1");
 		expect(stage1State.text).toContain("FACTS#1");
 
 		// Planner recompose (mirrors selectV5PlannerStateProviderNames re-adding
 		// the core response providers, with RECENT_MESSAGES refreshed): the
 		// excluded providers are not in the turn cache, so they run now — once —
-		// and reach the planner prompt; the already-composed FACTS is reused.
+		// and reach the planner prompt; the already-composed FACTS and
+		// CURRENT_TIME are reused from the turn cache.
 		const plannerState = await runtime.composeState(
 			message,
 			[...stage1Names, "ENTITIES", "CURRENT_TIME"],
@@ -150,5 +171,131 @@ describe("stage1ResponseStateProviderNames", () => {
 		expect(plannerState.text).toContain("CURRENT_TIME#1");
 		expect(plannerState.text).toContain("FACTS#1");
 		expect(plannerState.text).toContain("RECENT_MESSAGES#2");
+	});
+});
+
+/**
+ * RECENT_ERRORS is internal diagnostics for turns where the agent is acting or
+ * its operator is engaging. Rendered into an UNADDRESSED group turn it hijacks
+ * routing — a live "available_apps provider timeout" got answered as if it
+ * were a bystander's question (tj-f8249b30e986d6). The exclusion keys off the
+ * structural addressing classifier (channel type + mention/reply/name-drop +
+ * source metadata), never message-text heuristics, and fails OPEN: anything
+ * not positively identified as unaddressed group traffic keeps the provider.
+ */
+describe("RECENT_ERRORS stage-1 exclusion on unaddressed group turns", () => {
+	const AGENT_NAME = "stage1-exec-test";
+
+	function runtimeWithRecentErrors(): IAgentRuntime {
+		return {
+			character: { name: AGENT_NAME },
+			providers: [
+				{
+					name: "RECENT_ERRORS",
+					alwaysInResponseState: true,
+					get: async () => ({}),
+				},
+			],
+		} as unknown as IAgentRuntime;
+	}
+
+	it("excludes RECENT_ERRORS from an unaddressed text-group turn", () => {
+		const names = stage1ResponseStateProviderNames(
+			runtimeWithRecentErrors(),
+			makeMessage("cccccccc-cccc-cccc-cccc-cccccccccc01", "gm", {
+				channelType: ChannelType.GROUP,
+			}),
+		);
+		expect(names).not.toContain("RECENT_ERRORS");
+		// Only the diagnostics block is withheld — routing signals stay intact.
+		expect(names).toContain("CURRENT_TIME");
+		expect(names).toContain("FACTS");
+	});
+
+	it("keeps RECENT_ERRORS on an addressed group turn (platform mention)", () => {
+		const names = stage1ResponseStateProviderNames(
+			runtimeWithRecentErrors(),
+			makeMessage("cccccccc-cccc-cccc-cccc-cccccccccc02", "gm", {
+				channelType: ChannelType.GROUP,
+				mentionContext: { isMention: true, isReply: false, isThread: false },
+			}),
+		);
+		expect(names).toContain("RECENT_ERRORS");
+	});
+
+	it("keeps RECENT_ERRORS on a reply-to-agent group turn", () => {
+		const names = stage1ResponseStateProviderNames(
+			runtimeWithRecentErrors(),
+			makeMessage("cccccccc-cccc-cccc-cccc-cccccccccc03", "gm", {
+				channelType: ChannelType.GROUP,
+				mentionContext: { isMention: false, isReply: true, isThread: false },
+			}),
+		);
+		expect(names).toContain("RECENT_ERRORS");
+	});
+
+	it("keeps RECENT_ERRORS on a name-drop group turn", () => {
+		const names = stage1ResponseStateProviderNames(
+			runtimeWithRecentErrors(),
+			makeMessage(
+				"cccccccc-cccc-cccc-cccc-cccccccccc04",
+				`hey ${AGENT_NAME}, what broke?`,
+				{ channelType: ChannelType.GROUP },
+			),
+		);
+		expect(names).toContain("RECENT_ERRORS");
+	});
+
+	it("keeps RECENT_ERRORS on DM turns and unknown channel types (fail open)", () => {
+		for (const content of [
+			{ channelType: ChannelType.DM },
+			{}, // missing channel type must fail open
+		]) {
+			const names = stage1ResponseStateProviderNames(
+				runtimeWithRecentErrors(),
+				makeMessage("cccccccc-cccc-cccc-cccc-cccccccccc05", "gm", content),
+			);
+			expect(names).toContain("RECENT_ERRORS");
+		}
+	});
+
+	it("never composes RECENT_ERRORS for an unaddressed group turn, but renders it for an addressed one", async () => {
+		const runtime = new AgentRuntime({
+			character: { name: AGENT_NAME } as Character,
+		});
+		const recentErrors = countingProvider("RECENT_ERRORS");
+		recentErrors.provider.alwaysInResponseState = true;
+		runtime.registerProvider(recentErrors.provider);
+
+		const unaddressed = makeMessage(
+			"dddddddd-dddd-dddd-dddd-dddddddddd01",
+			"is that just the feeless txes stuff?",
+			{ channelType: ChannelType.GROUP },
+		);
+		const unaddressedState = await runtime.composeState(
+			unaddressed,
+			stage1ResponseStateProviderNames(runtime, unaddressed),
+			true,
+			false,
+		);
+		expect(recentErrors.calls()).toBe(0);
+		expect(unaddressedState.text).not.toContain("RECENT_ERRORS#");
+
+		const addressed = makeMessage(
+			"dddddddd-dddd-dddd-dddd-dddddddddd02",
+			"anything failing lately?",
+			{
+				channelType: ChannelType.GROUP,
+				mentionContext: { isMention: true, isReply: false, isThread: false },
+			},
+		);
+		const addressedState = await runtime.composeState(
+			addressed,
+			stage1ResponseStateProviderNames(runtime, addressed),
+			true,
+			false,
+		);
+		expect(recentErrors.calls()).toBe(1);
+		expect(addressedState.text).toContain("RECENT_ERRORS#1");
 	});
 });

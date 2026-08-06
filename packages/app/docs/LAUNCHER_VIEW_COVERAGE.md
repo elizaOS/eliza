@@ -19,7 +19,12 @@ A `BUILTIN_VIEWS` entry appears in the launcher grid when the launcher filter
 plus the native-OS strip in [`useAvailableViews`](../../ui/src/hooks/useAvailableViews.ts))
 would ever place it there:
 
-- `visibleInManager !== false` (internal views are hidden from the grid), **and**
+- registry/plugin entries require `visibleInManager !== false`; manager-hidden
+  third-party views stay absent from the grid,
+- first-party shell fallbacks from `useRoutableViews` may enter the launcher
+  merge even though they are manager-hidden, after which
+  `curateLauncherPages` decides whether each routable destination gets a tile,
+  **and**
 - the id is **not** a native-OS-fork-only surface (`phone` / `messages` /
   `contacts` / `camera` are stripped on web, desktop, iOS, and stock Play-Store
   Android — they only exist on the AOSP ElizaOS fork).

@@ -1,3 +1,4 @@
+/** Verifies LauncherSurface through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Renders the real LauncherSurface with mocked view/platform hooks to cover
@@ -9,18 +10,39 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { AppLaunchResult } from "../../api";
 import type { ViewRegistryEntry } from "../../hooks/useAvailableViews";
-import { useRoutableViews } from "../../hooks/useAvailableViews";
+import { type ViewEntry, viewToEntry } from "../../hooks/view-catalog";
+import { __setAppValueForTests } from "../../state/app-store";
+import type { AppContextValue } from "../../state/types";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
 import { LauncherSurface } from "./LauncherSurface";
 
 let aospEnabled = false;
+const { useViewCatalogMock } = vi.hoisted(() => ({
+  useViewCatalogMock: vi.fn(),
+}));
+const getMock = vi.fn();
+const setActionNoticeMock = vi.fn();
+const setStateMock = vi.fn();
+const setTabMock = vi.fn();
 
-vi.mock("../../hooks/useAvailableViews", () => ({
-  useRoutableViews: vi.fn(),
+vi.mock("../../hooks/useViewCatalog", () => ({
+  useViewCatalog: useViewCatalogMock,
+}));
+vi.mock("../../api", () => ({
+  client: { getBaseUrl: () => "http://localhost:31337" },
+}));
+vi.mock("../../api/app-shell-capabilities", () => ({
+  isLimitedCloudAgentApiResourceUrl: () => false,
+  supportsFullAppShellRoutes: () => true,
+}));
+vi.mock("../../utils/openExternalUrl", () => ({
+  openExternalUrl: vi.fn(),
 }));
 
 vi.mock("../../state/useViewKinds", () => ({
@@ -32,12 +54,13 @@ vi.mock("../../platform/platform-guards", () => ({
   getFrontendPlatform: () => "web",
 }));
 
-vi.mock("../../navigation", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../navigation")>();
-  return { ...actual, isAospShellEnabled: () => aospEnabled };
+vi.mock("../../navigation", () => {
+  return {
+    isAospShellEnabled: () => aospEnabled,
+    LAUNCHER_AOSP_ONLY_VIEW_IDS: ["phone"],
+  };
 });
 
-const useRoutableViewsMock = vi.mocked(useRoutableViews);
 const useEnabledViewKindsMock = vi.mocked(useEnabledViewKinds);
 
 function view(
@@ -61,11 +84,16 @@ function view(
 }
 
 function setViews(views: ViewRegistryEntry[]) {
-  useRoutableViewsMock.mockReturnValue({
-    views,
+  setEntries(views.map(viewToEntry));
+}
+
+function setEntries(entries: ViewEntry[]) {
+  useViewCatalogMock.mockReturnValue({
+    entries,
     loading: false,
     error: null,
     refresh: vi.fn(),
+    get: getMock,
   });
 }
 
@@ -73,6 +101,15 @@ beforeEach(() => {
   aospEnabled = false;
   window.localStorage.clear();
   window.history.replaceState(null, "", "/");
+  getMock.mockResolvedValue(null);
+  __setAppValueForTests({
+    appRuns: [],
+    elizaCloudConnected: false,
+    setActionNotice: setActionNoticeMock,
+    setState: setStateMock,
+    setTab: setTabMock,
+    t: (key: string) => key,
+  } as unknown as AppContextValue);
   useEnabledViewKindsMock.mockReturnValue({ developer: true, preview: true });
   setViews([
     view("chat", "Chat", "/chat"),
@@ -81,11 +118,9 @@ beforeEach(() => {
     view("inventory", "Wallet", "/wallet", { visibleInManager: false }),
     view("browser", "Browser", "/browser"),
     view("settings", "Settings", "/settings", { visibleInManager: false }),
-    view("shopify", "Shopify", "/shopify"),
-    // Mirrors the real plugin-hyperliquid registration (`group: "wallet"`,
-    // plugins/plugin-hyperliquid/src/register.ts) — the launcher collapses
-    // wallet-group sub-pages, so no standalone Hyperliquid tile.
-    view("hyperliquid", "Hyperliquid", "/hyperliquid", { group: "wallet" }),
+    // Wallet-group sub-pages collapse under the parent, so they do not create
+    // duplicate launcher tiles.
+    view("wallet-trading", "Trading", "/wallet/trading", { group: "wallet" }),
     view("phone", "Phone", "/phone", { visibleInManager: false }),
     view("trajectories", "Trajectories", "/apps/trajectories", {
       viewKind: "developer",
@@ -96,6 +131,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  __setAppValueForTests(null);
 });
 
 describe("LauncherSurface", () => {
@@ -138,8 +174,33 @@ describe("LauncherSurface", () => {
     // chat is the home surface, never a launcher tile (#14479).
     expect(screen.queryByTestId("launcher-tile-chat")).toBeNull();
     expect(screen.queryByTestId("launcher-tile-views")).toBeNull();
-    expect(screen.queryByTestId("launcher-tile-shopify")).toBeNull();
-    expect(screen.queryByTestId("launcher-tile-hyperliquid")).toBeNull();
+    expect(screen.queryByTestId("launcher-tile-wallet-trading")).toBeNull();
+  });
+
+  it("keeps catalog-only and uncurated registered apps off the demo rail", () => {
+    const catalogOnly: ViewEntry = {
+      key: "app:@elizaos/plugin-birdclaw",
+      id: "@elizaos/plugin-birdclaw",
+      label: "Birdclaw",
+      modality: "gui",
+      state: "available",
+      kind: "app",
+      appName: "@elizaos/plugin-birdclaw",
+      hasHero: false,
+    };
+    setEntries([
+      viewToEntry(view("settings", "Settings", "/settings")),
+      viewToEntry(view("inbox", "Inbox", "/apps/inbox")),
+      catalogOnly,
+    ]);
+
+    render(<LauncherSurface catalogMode="demo" />);
+
+    expect(
+      screen.queryByTestId("launcher-tile-@elizaos/plugin-birdclaw"),
+    ).toBeNull();
+    expect(screen.queryByTestId("launcher-tile-inbox")).toBeNull();
+    expect(screen.getByTestId("launcher-tile-settings")).toBeTruthy();
   });
 
   it("collapses duplicate wallet registrations to a single tile", () => {
@@ -180,5 +241,55 @@ describe("LauncherSurface", () => {
     render(<LauncherSurface />);
     fireEvent.click(screen.getByRole("button", { name: "Browser" }));
     expect(window.location.pathname).toBe("/browser");
+  });
+
+  it("opens an installable app's returned viewer on the first launch", async () => {
+    const rubyHigh: ViewEntry = {
+      key: "app:@rati-osf/plugin-ruby-high",
+      id: "@rati-osf/plugin-ruby-high",
+      label: "Ruby High",
+      modality: "gui",
+      state: "available",
+      kind: "app",
+      appName: "@rati-osf/plugin-ruby-high",
+      launchType: "connect",
+      launchUrl: null,
+      hasHero: false,
+    };
+    const run = {
+      runId: "ruby-run-1",
+      appName: "@rati-osf/plugin-ruby-high",
+      displayName: "Ruby High",
+      viewer: {
+        url: "/ruby-high/viewer",
+        postMessageAuth: false,
+        sandbox: "allow-scripts allow-same-origin allow-popups",
+      },
+    };
+    setEntries([rubyHigh]);
+    getMock.mockResolvedValue({
+      pluginInstalled: true,
+      needsRestart: false,
+      displayName: "Ruby High",
+      launchType: "connect",
+      launchUrl: null,
+      viewer: run.viewer,
+      session: null,
+      run,
+    } as AppLaunchResult);
+
+    render(<LauncherSurface />);
+    fireEvent.click(screen.getByRole("button", { name: "Ruby High" }));
+
+    await waitFor(() => {
+      expect(getMock).toHaveBeenCalledWith(rubyHigh);
+      expect(setStateMock).toHaveBeenCalledWith("appRuns", [run]);
+      expect(setStateMock).toHaveBeenCalledWith(
+        "activeGameRunId",
+        "ruby-run-1",
+      );
+      expect(setStateMock).toHaveBeenCalledWith("appsSubTab", "games");
+      expect(window.location.pathname).toBe("/apps/ruby-high");
+    });
   });
 });

@@ -1,251 +1,117 @@
 ---
-title: "Publish a Plugin"
-sidebarTitle: "Publish"
-description: "How to package, version, and publish a Eliza plugin to the npm registry and submit it to the community registry."
+title: Publish a plugin
+description: Build an ESM plugin package, publish it to npm, and optionally submit it to the elizaOS registry.
 ---
 
-This guide covers the full publishing workflow for a Eliza plugin — from packaging to npm publication and community registry submission.
+An elizaOS plugin is an ESM npm package whose default export is a `Plugin`.
+Start from the [current plugin template](/plugins/create-a-plugin), which already
+contains the supported build, exports, files list, and publication metadata.
 
-## Naming Conventions
+## Package requirements
 
-Choose a package name that follows the established convention:
+Use your own npm scope or an unscoped `elizaos-plugin-*` name. The `@elizaos/*`
+scope is reserved for first-party packages.
 
-| Scope | Pattern | Example |
-|-------|---------|---------|
-| Official elizaOS | `@elizaos/plugin-{name}` | `@elizaos/plugin-openai` |
-| Community (scoped) | `@yourorg/plugin-{name}` | `@acme/plugin-analytics` |
-| Community (unscoped) | `elizaos-plugin-{name}` | `elizaos-plugin-weather` |
-
-The runtime recognizes all three patterns for auto-discovery.
-
-## package.json Requirements
-
-Your plugin's `package.json` must include these fields:
+The generated package includes these important fields:
 
 ```json
 {
-  "name": "@elizaos/plugin-my-feature",
-  "version": "1.0.0",
-  "description": "One-line description of what this plugin does",
   "type": "module",
   "main": "dist/index.js",
+  "module": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": ["dist", "elizaos.plugin.json"],
-  "keywords": ["elizaos", "eliza", "plugin"],
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/yourorg/plugin-my-feature"
+  "packageType": "plugin",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
   },
-  "peerDependencies": {
-    "@elizaos/core": ">=2.0.0-alpha"
-  },
-  "devDependencies": {
-    "@elizaos/core": "alpha",
-    "typescript": "^5.0.0"
-  }
+  "files": ["dist", "README.md", ".npmignore", ".gitignore", "package.json"],
+  "keywords": ["plugin", "elizaos"],
+  "publishConfig": { "access": "public" }
 }
 ```
 
-**Key points:**
-- Declare `@elizaos/core` as a `peerDependency` — not a direct dependency — to avoid version conflicts.
-- Include `elizaos.plugin.json` in `files` so the manifest is published alongside the code.
-- Use `"type": "module"` for ESM output.
+Keep the generated `@elizaos/core` dependency aligned with the runtime release
+you support. Do not advertise a compatibility range that you have not tested.
+Declare public settings in `agentConfig.pluginParameters` so installation
+surfaces can explain them without embedding secret values.
 
-## Build Configuration
-
-Use TypeScript targeting ESM:
-
-```json
-{
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "outDir": "dist",
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "strict": true,
-    "skipLibCheck": true
-  },
-  "include": ["src"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts"]
-}
-```
-
-## Versioning
-
-Follow [Semantic Versioning](https://semver.org/):
-
-| Change | Bump |
-|--------|------|
-| New action, provider, or feature (backward compatible) | Minor (`1.0.0` → `1.1.0`) |
-| Bug fixes only | Patch (`1.0.0` → `1.0.1`) |
-| Breaking API change | Major (`1.0.0` → `2.0.0`) |
-
-For plugins targeting the elizaOS `next` release line, use prerelease versions:
-
-```bash
-npm version prerelease --preid=next
-# 1.0.0 → 1.0.1-next.0
-```
-
-## Publishing to npm
-
-### 1. Authenticate
-
-```bash
-npm login
-```
-
-### 2. Build
+## Verify the package
 
 ```bash
 bun run build
-```
-
-Verify the `dist/` directory contains the compiled output before publishing.
-
-### 3. Dry Run
-
-Always preview what will be published:
-
-```bash
+bun run typecheck
+bun run lint:check
+bun run test
 npm publish --dry-run --access public
 ```
 
-Check that the output includes only `dist/`, `elizaos.plugin.json`, `package.json`, and `README.md`.
+Inspect the dry-run file list. Runtime source, fixtures, credentials, local
+state, and unpublished frontend artifacts should not appear in the tarball.
+Test the packed artifact from a clean host project when resolution behavior or
+exports changed.
 
-### 4. Publish
+## Publish to npm
 
 ```bash
+npm login
 npm publish --access public
 ```
 
-For prerelease versions targeting the elizaOS `next` release line:
+Use an npm dist-tag for a prerelease instead of moving `latest`:
 
 ```bash
-npm publish --access public --tag next
+npm publish --access public --tag beta
 ```
 
-### 5. Verify
+After publication, verify the public metadata and install the published version
+in a clean project:
 
 ```bash
 npm info @yourorg/plugin-my-feature
 ```
 
-## Plugin Manifest
+Any reachable npm package with the `elizaos` keyword can be recognized as a
+plugin. A curated registry entry improves discovery but is not required for
+runtime loading.
 
-Include an `elizaos.plugin.json` at the package root for rich UI integration in the Eliza admin panel:
+## Submit to the community registry
 
-```json
-{
-  "id": "my-feature",
-  "name": "My Feature Plugin",
-  "description": "Does something useful",
-  "version": "1.0.0",
-  "kind": "skill",
-
-  "requiredSecrets": ["MY_FEATURE_API_KEY"],
-  "optionalSecrets": ["MY_FEATURE_DEBUG"],
-
-  "configSchema": {
-    "type": "object",
-    "properties": {
-      "apiKey": { "type": "string" },
-      "endpoint": { "type": "string", "format": "uri" }
-    },
-    "required": ["apiKey"]
-  },
-
-  "uiHints": {
-    "apiKey": {
-      "label": "API Key",
-      "type": "password",
-      "sensitive": true
-    }
-  }
-}
-```
-
-## Best Practices
-
-**Documentation:**
-- Include a `README.md` with installation instructions, required environment variables, and usage examples.
-- Document every action with a description of when the LLM will invoke it.
-- List all required and optional env vars in a table.
-
-**Security:**
-- Never log API keys or secrets — use `runtime.logger` carefully.
-- Validate and sanitize all parameters in action handlers.
-- Use `peerDependencies` for `@elizaos/core` to prevent duplicate installations.
-
-**Compatibility:**
-- Test against the current `next` release of `@elizaos/core`.
-- Declare your `peerDependencies` version range conservatively: `"@elizaos/core": ">=2.0.0-alpha"`.
-- Export a `Plugin` type-compatible default export — do not use default exports for other purposes.
-
-**Quality:**
-- Include meaningful unit tests for the plugin's behavior. The monorepo reports
-  coverage for visibility but does not enforce percentage thresholds.
-- Run `tsc --noEmit` in CI to catch type errors.
-- Test the published package with `npm pack` before publishing.
-
-## Multi-Language Plugins
-
-Plugins can include implementations in multiple languages:
-
-```
-my-plugin/
-├── typescript/     # Primary TypeScript implementation
-│   ├── src/
-│   ├── package.json
-│   └── tsconfig.json
-├── python/         # Optional Python SDK bindings
-│   ├── src/
-│   └── pyproject.toml
-├── rust/           # Optional Rust native module
-│   ├── src/
-│   └── Cargo.toml
-└── elizaos.plugin.json
-```
-
-The TypeScript implementation is always required. Python and Rust implementations are optional and used by their respective SDKs. The `elizaos.plugin.json` manifest at the root describes the plugin for all languages.
-
-## Community Registry
-
-The public plugin registry is served at [`plugins.elizacloud.ai`](https://plugins.elizacloud.ai). The runtime discovers community plugins by fetching `https://plugins.elizacloud.ai/generated-registry.json` (falling back to `index.json`), and recognizes any npm package whose `keywords` include `elizaos` as a plugin.
-
-The community registry source of truth lives in the monorepo at [`packages/registry`](https://github.com/elizaOS/eliza/tree/main/packages/registry). It replaced the archived, read-only `elizaos-plugins/registry` repository the old docs pointed at — see [elizaOS/eliza#8173](https://github.com/elizaOS/eliza/issues/8173).
-
-After publishing to npm (the `@elizaos/*` scope is reserved — use your own scope or an unscoped `elizaos-plugin-*` name) and making your GitHub repository public, generate the entry metadata:
+Generate the proposed entry from the published plugin project:
 
 ```bash
 elizaos plugins submit . --dry-run
 ```
 
-Add the printed `entries/third-party/<package>.json` file under `packages/registry/entries/third-party/`, then validate, regenerate, and open a pull request:
+Add the resulting JSON under `packages/registry/entries/third-party/` in this
+monorepo, then validate and regenerate the wire registry:
 
 ```bash
 bun run --cwd packages/registry validate
 bun run --cwd packages/registry generate
 ```
 
-The full walkthrough — with a worked example ([`packages/examples/plugin-echo`](https://github.com/elizaOS/eliza/tree/main/packages/examples/plugin-echo)) — is in the [registry package README](https://github.com/elizaOS/eliza/tree/main/packages/registry#adding-a-third-party-plugin).
+Open a pull request containing the source entry and regenerated registry. The
+exact entry schema and filename convention are documented in the
+[`packages/registry` README](https://github.com/elizaOS/eliza/tree/develop/packages/registry).
 
-Before requesting a listing, make sure your package:
+## Release checklist
 
-1. Is published to npm (the `@elizaos/*` scope is reserved — use your own scope)
-2. Includes the `elizaos` keyword in `package.json` (this is what the runtime uses to auto-recognize it as a plugin)
-3. Ships a valid `elizaos.plugin.json` manifest
-4. Has a public GitHub repository
-5. Includes a README with setup instructions and required environment variables
-
-Community plugins are reviewed for security, functionality, and documentation quality before listing. npm keyword discovery works without a registry entry; the registry adds metadata and curation. See the [Plugin Registry Guide](/guides/registry) for details.
+- The package name, repository, license, description, and keywords are correct.
+- `src/index.ts` exports the plugin as both named and default.
+- Build, typecheck, lint, component tests, and real-runtime E2E pass.
+- Required settings and permissions are documented without exposing secrets.
+- The npm dry run contains only intentional release files.
+- The published package installs and loads in a clean agent project.
 
 ## Related
 
-- [Plugin Schemas](/plugins/schemas) — Full schema reference
-- [Create a Plugin](/plugins/create-a-plugin) — Build a plugin from scratch
-- [Plugin Registry](/tracks/plugin/publish) — Browse published plugins
+- [Create a plugin](/plugins/create-a-plugin)
+- [Testing plugins](/plugins/testing)
+- [Local plugin resolution](/plugins/local-plugins)
+- [Registry guide](/guides/registry)

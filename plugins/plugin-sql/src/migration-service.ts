@@ -38,6 +38,7 @@ export class DatabaseMigrationService {
   private registeredSchemas = new Map<string, Record<string, unknown>>();
   private migrator: RuntimeMigrator | null = null;
   private readonly databaseBackend: DatabaseBackend;
+  private messageSearchObjectsSettled = false;
 
   constructor(options: DatabaseMigrationServiceOptions = {}) {
     this.databaseBackend = options.databaseBackend ?? "unknown";
@@ -82,11 +83,14 @@ export class DatabaseMigrationService {
     logger.debug({ src: "plugin:sql", pluginName }, "Schema registered");
   }
 
-  async runAllPluginMigrations(options?: {
-    verbose?: boolean;
-    force?: boolean;
-    dryRun?: boolean;
-  }): Promise<void> {
+  async runAllPluginMigrations(
+    options?: {
+      verbose?: boolean;
+      force?: boolean;
+      dryRun?: boolean;
+    },
+    pluginNames?: readonly string[]
+  ): Promise<void> {
     if (!this.db || !this.migrator) {
       throw new Error("Database or migrator not initialized in DatabaseMigrationService");
     }
@@ -99,11 +103,18 @@ export class DatabaseMigrationService {
       dryRun: options?.dryRun ?? false,
     };
 
+    const schemasToMigrate = pluginNames
+      ? pluginNames.flatMap((pluginName) => {
+          const schema = this.registeredSchemas.get(pluginName);
+          return schema ? ([[pluginName, schema]] as const) : [];
+        })
+      : Array.from(this.registeredSchemas.entries());
+
     logger.info(
       {
         src: "plugin:sql",
         environment: isProduction ? "PRODUCTION" : "DEVELOPMENT",
-        pluginCount: this.registeredSchemas.size,
+        pluginCount: schemasToMigrate.length,
         dryRun: migrationOptions.dryRun,
       },
       "Starting migrations"
@@ -113,7 +124,7 @@ export class DatabaseMigrationService {
     let failureCount = 0;
     const errors: Array<{ pluginName: string; error: Error }> = [];
 
-    for (const [pluginName, schema] of this.registeredSchemas) {
+    for (const [pluginName, schema] of schemasToMigrate) {
       try {
         await this.migrator.migrate(pluginName, schema, migrationOptions);
         successCount++;
@@ -142,14 +153,19 @@ export class DatabaseMigrationService {
       // `memories` table (#13534). Idempotent; runs after the table exists so the
       // GIN expression indexes can be created.
       const shouldInstallSearchObjects = shouldApplyMessageSearchObjects(this.databaseBackend);
-      if (shouldInstallSearchObjects && (await messageSearchTableExists(this.db))) {
-        await applyMessageSearchObjects(this.db);
-      } else if (shouldInstallSearchObjects) {
+      if (
+        !this.messageSearchObjectsSettled &&
+        shouldInstallSearchObjects &&
+        (await messageSearchTableExists(this.db))
+      ) {
+        await applyMessageSearchObjects(this.db, this.databaseBackend);
+        this.messageSearchObjectsSettled = true;
+      } else if (!this.messageSearchObjectsSettled && shouldInstallSearchObjects) {
         logger.info(
           { src: "plugin:sql", table: "memories" },
           "[MessageSearch] deferring search-object install until the core SQL schema is migrated"
         );
-      } else {
+      } else if (!this.messageSearchObjectsSettled) {
         logger.warn(
           {
             src: "plugin:sql",
@@ -158,6 +174,7 @@ export class DatabaseMigrationService {
           },
           "[MessageSearch] skipping automatic search-object install in production Postgres; set ELIZA_APPLY_MESSAGE_SEARCH_OBJECTS=true after scheduling the generated-column/index DDL"
         );
+        this.messageSearchObjectsSettled = true;
       }
 
       const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === "true";

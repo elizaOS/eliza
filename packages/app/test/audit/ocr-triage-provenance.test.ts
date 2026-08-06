@@ -65,12 +65,12 @@ function ocrLine(viewport: string, slug: string, text: string): string {
   });
 }
 
-// Slugs with no VIEW_EXPECTATIONS so the OCR verdict cannot confound the gate
-// exit code — this test asserts provenance (which rows are triaged), not verdict.
 const CURRENT_ROWS: ReportEntry[] = [
   { slug: "builtin-chat", viewport: "desktop-landscape", verdict: "good" },
   { slug: "builtin-phone", viewport: "desktop-landscape", verdict: "good" },
 ];
+const CHAT_OCR = "Mostly clear Today";
+const PHONE_OCR = "Phone call-blocked recent";
 const STALE_SLUG = "plugin-retired-gui";
 
 describe("authorizedShots (report-authoritative selection)", () => {
@@ -120,6 +120,91 @@ describe("authorizedShots (report-authoritative selection)", () => {
   });
 });
 
+describe("audit directory resolution (#17128)", () => {
+  let root: string;
+  let isolated: string;
+  let staleDefault: string;
+  let previousCwd: string;
+  let previousEnv: string | undefined;
+
+  function seedCapture(dir: string, slug: string, text: string): void {
+    const rows: ReportEntry[] = [
+      { slug, viewport: "desktop-landscape", verdict: "good" },
+    ];
+    shot(dir, "desktop-landscape", slug);
+    writeFileSync(join(dir, "report.json"), JSON.stringify(rows));
+    writeFileSync(
+      join(dir, "ocr.ndjson"),
+      ocrLine("desktop-landscape", slug, text),
+    );
+  }
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "ocr-dir-"));
+    isolated = join(root, "isolated-run");
+    staleDefault = join(root, "aesthetic-audit-output");
+    mkdirSync(isolated);
+    mkdirSync(staleDefault);
+    seedCapture(isolated, "builtin-chat", CHAT_OCR);
+    // A populated default directory from an earlier run. If resolution ever
+    // falls back here while ELIZA_AUDIT_APP_DIR is set, the assertions below
+    // catch the false evidence binding.
+    seedCapture(staleDefault, "builtin-phone", PHONE_OCR);
+    previousCwd = process.cwd();
+    previousEnv = process.env.ELIZA_AUDIT_APP_DIR;
+    process.chdir(root);
+  });
+
+  afterEach(() => {
+    process.chdir(previousCwd);
+    if (previousEnv === undefined) {
+      delete process.env.ELIZA_AUDIT_APP_DIR;
+    } else {
+      process.env.ELIZA_AUDIT_APP_DIR = previousEnv;
+    }
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it("reads ELIZA_AUDIT_APP_DIR when no --audit-dir is passed and leaves the stale default untouched", async () => {
+    process.env.ELIZA_AUDIT_APP_DIR = isolated;
+
+    const result = await runOcrTriage(["--ocr", join(isolated, "ocr.ndjson")]);
+
+    expect(result.entries.map((entry) => entry.slug)).toEqual(["builtin-chat"]);
+    expect(existsSync(join(isolated, "ocr-triage.json"))).toBe(true);
+    expect(existsSync(join(staleDefault, "ocr-triage.json"))).toBe(false);
+  });
+
+  it("keeps an explicit --audit-dir authoritative over ELIZA_AUDIT_APP_DIR", async () => {
+    process.env.ELIZA_AUDIT_APP_DIR = staleDefault;
+
+    const result = await runOcrTriage([
+      "--audit-dir",
+      isolated,
+      "--ocr",
+      join(isolated, "ocr.ndjson"),
+    ]);
+
+    expect(result.entries.map((entry) => entry.slug)).toEqual(["builtin-chat"]);
+    expect(existsSync(join(isolated, "ocr-triage.json"))).toBe(true);
+    expect(existsSync(join(staleDefault, "ocr-triage.json"))).toBe(false);
+  });
+
+  it("falls back to the default directory when neither source is set", async () => {
+    delete process.env.ELIZA_AUDIT_APP_DIR;
+
+    const result = await runOcrTriage([
+      "--ocr",
+      join(staleDefault, "ocr.ndjson"),
+    ]);
+
+    expect(result.entries.map((entry) => entry.slug)).toEqual([
+      "builtin-phone",
+    ]);
+    expect(existsSync(join(staleDefault, "ocr-triage.json"))).toBe(true);
+  });
+});
+
 describe("ocr-triage CLI (end-to-end provenance)", () => {
   let dir: string;
   beforeEach(() => {
@@ -157,12 +242,12 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
         verdict: "good",
       },
       {
-        slug: "plugin-readable-gui",
+        slug: "plugin-cloud-gui",
         viewport: "mobile-portrait",
         verdict: "good",
       },
       {
-        slug: "plugin-broken-gui",
+        slug: "builtin-phone",
         viewport: "ipad-portrait",
         verdict: "needs-eyeball",
       },
@@ -175,19 +260,19 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
         ocrLine("desktop-landscape", "builtin-settings", "Settings Voice"),
         ocrLine(
           "mobile-portrait",
-          "plugin-readable-gui",
-          "Readable plugin content",
+          "plugin-cloud-gui",
+          "Views Refresh 24/24 ready views",
         ),
         ocrLine(
           "ipad-portrait",
-          "plugin-broken-gui",
-          "TypeError Cannot read properties",
+          "builtin-phone",
+          "Phone TypeError Cannot read properties",
         ),
       ].join("\n"),
     );
     writeFileSync(
       join(dir, "baseline.json"),
-      JSON.stringify({ known: ["plugin-broken-gui::ipad-portrait"] }),
+      JSON.stringify({ known: ["builtin-phone::ipad-portrait"] }),
     );
 
     const result = await runOcrTriage([
@@ -211,13 +296,69 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
       newRegressions: 0,
     });
     expect(result.entries.map((entry) => entry.slug)).toEqual([
-      "plugin-broken-gui",
+      "builtin-phone",
       "builtin-settings",
-      "plugin-readable-gui",
+      "plugin-cloud-gui",
     ]);
+    expect(result.entries.at(-1)?.reasons.join(" ")).toMatch(
+      /semantic OCR exemption.*Cloud GUI/,
+    );
     expect(
       JSON.parse(readFileSync(join(dir, "ocr-triage.json"), "utf8")),
     ).toEqual(result);
+  });
+
+  it("fails closed when a report introduces a slug without a semantic policy", async () => {
+    const rows: ReportEntry[] = [
+      {
+        slug: "plugin-newly-registered-gui",
+        viewport: "desktop-landscape",
+        verdict: "good",
+      },
+    ];
+    shot(dir, "desktop-landscape", "plugin-newly-registered-gui");
+    writeFileSync(join(dir, "report.json"), JSON.stringify(rows));
+    writeFileSync(
+      join(dir, "ocr.ndjson"),
+      ocrLine(
+        "desktop-landscape",
+        "plugin-newly-registered-gui",
+        "Newly registered view",
+      ),
+    );
+
+    await expect(
+      runOcrTriage(["--audit-dir", dir, "--ocr", join(dir, "ocr.ndjson")]),
+    ).rejects.toThrow(
+      /No semantic OCR policy declared for audited view plugin-newly-registered-gui/,
+    );
+  });
+
+  it("invalidates a missing-bundle exemption once that remote bundle loads", async () => {
+    const rows: ReportEntry[] = [
+      {
+        slug: "plugin-cloud-gui",
+        viewport: "desktop-landscape",
+        verdict: "good",
+        bundleProvenance: "real-dist",
+      },
+    ];
+    shot(dir, "desktop-landscape", "plugin-cloud-gui");
+    writeFileSync(join(dir, "report.json"), JSON.stringify(rows));
+    writeFileSync(
+      join(dir, "ocr.ndjson"),
+      ocrLine(
+        "desktop-landscape",
+        "plugin-cloud-gui",
+        "Views Refresh 24/24 ready views",
+      ),
+    );
+
+    await expect(
+      runOcrTriage(["--audit-dir", dir, "--ocr", join(dir, "ocr.ndjson")]),
+    ).rejects.toThrow(
+      /exemption for plugin-cloud-gui no longer applies.*real-dist/,
+    );
   });
 
   it("rejects an OCR record that is not in the current report", async () => {
@@ -228,8 +369,8 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
     writeFileSync(
       join(dir, "ocr.ndjson"),
       [
-        ocrLine("desktop-landscape", "builtin-chat", "Chat messages composer"),
-        ocrLine("desktop-landscape", "builtin-phone", "Phone dialer keypad"),
+        ocrLine("desktop-landscape", "builtin-chat", CHAT_OCR),
+        ocrLine("desktop-landscape", "builtin-phone", PHONE_OCR),
         ocrLine("desktop-landscape", STALE_SLUG, "Retired plugin screenshot"),
       ].join("\n"),
     );
@@ -254,10 +395,10 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
     for (const r of CURRENT_ROWS) shot(dir, r.viewport, r.slug);
     const shots = authorizedShots(dir, CURRENT_ROWS);
     const chat = JSON.parse(
-      ocrLine("desktop-landscape", "builtin-chat", "Chat messages composer"),
+      ocrLine("desktop-landscape", "builtin-chat", CHAT_OCR),
     );
     const phone = JSON.parse(
-      ocrLine("desktop-landscape", "builtin-phone", "Phone dialer keypad"),
+      ocrLine("desktop-landscape", "builtin-phone", PHONE_OCR),
     );
     const stale = JSON.parse(
       ocrLine("desktop-landscape", STALE_SLUG, "Retired plugin screenshot"),
@@ -312,8 +453,8 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
     writeFileSync(
       join(dir, "ocr.ndjson"),
       [
-        ocrLine("desktop-landscape", "builtin-phone", "Phone dialer keypad"),
-        ocrLine("desktop-landscape", "builtin-chat", "Chat messages composer"),
+        ocrLine("desktop-landscape", "builtin-phone", PHONE_OCR),
+        ocrLine("desktop-landscape", "builtin-chat", CHAT_OCR),
       ].join("\n"),
     );
 
@@ -340,8 +481,8 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
     writeFileSync(
       join(dir, "ocr.ndjson"),
       [
-        ocrLine("desktop-landscape", "builtin-chat", "Chat messages composer"),
-        ocrLine("desktop-landscape", "builtin-phone", "Phone dialer keypad"),
+        ocrLine("desktop-landscape", "builtin-chat", CHAT_OCR),
+        ocrLine("desktop-landscape", "builtin-phone", PHONE_OCR),
         ocrLine("desktop-landscape", STALE_SLUG, "Retired plugin screenshot"),
       ].join("\n"),
     );
@@ -367,7 +508,7 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
     writeFileSync(join(dir, "report.json"), JSON.stringify(CURRENT_ROWS));
     writeFileSync(
       join(dir, "ocr.ndjson"),
-      ocrLine("desktop-landscape", "builtin-chat", "Chat messages"),
+      ocrLine("desktop-landscape", "builtin-chat", CHAT_OCR),
     );
     await expect(
       runOcrTriage([

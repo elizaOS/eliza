@@ -1,13 +1,15 @@
 /**
  * Playwright web-server launcher for homepage e2e tests.
  *
- * The script syncs shared public assets before starting Vite on the fixed
- * homepage port so route and visual tests exercise the same static assets as
- * local development.
+ * The script syncs shared public assets before starting Vite on the homepage
+ * e2e port so route and visual tests exercise the same static assets as local
+ * development. The port is resolved per runner (see e2e-port.mjs) because a
+ * fixed one collided between concurrent jobs on a shared self-hosted host.
  */
 import { spawn, spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveHomepageE2ePort } from "./e2e-port.mjs";
 
 const homepageDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -46,7 +48,13 @@ if ((sync.status ?? 1) !== 0) {
 
 const vite = spawn(
   process.execPath,
-  [viteScript, "--host", "127.0.0.1", "--port", "4444"],
+  [
+    viteScript,
+    "--host",
+    "127.0.0.1",
+    "--port",
+    String(resolveHomepageE2ePort()),
+  ],
   {
     cwd: homepageDir,
     env: {

@@ -51,7 +51,7 @@ export type {
 };
 
 // Use server-types / types only — do not re-export from api/server or
-// api/trajectory-routes (those modules pull the full API + app-training into Vite).
+// api/trajectory-routes (those modules pull the full API into Vite).
 
 export type ConversationScope = SharedConversationScope;
 export type ConversationAutomationType = SharedConversationAutomationType;
@@ -243,11 +243,6 @@ export interface LaunchSnapshot {
     cloudProvisioned?: boolean;
     requiredGate?: "runtime" | "bootstrap" | "pairing" | null;
     error?: string | null;
-  };
-  remotes: {
-    seeded: boolean;
-    requiredStarted: boolean;
-    errors: Array<{ id: string; error: string }>;
   };
   localModel: {
     backgroundDownloadQueued: boolean;

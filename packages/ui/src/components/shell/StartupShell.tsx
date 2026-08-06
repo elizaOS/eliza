@@ -5,13 +5,12 @@
 import { type ReactNode, useEffect, useState } from "react";
 import { getBootConfig } from "../../config/boot-config-store";
 import { markStartup } from "../../state/startup-telemetry";
+import { STARTUP_TIMING_POLICY } from "../../state/startup-timing-policy";
 import { ElizaMark } from "../brand/eliza-mark";
 import { BootstrapStep } from "../setup/BootstrapStep";
 import { PairingView } from "./PairingView";
 import { StartupFailureView } from "./StartupFailureView";
 import type { StartupShellProps } from "./startup-shell-types";
-
-const FONT = "'Poppins', Arial, system-ui, sans-serif";
 
 // Launch surface for the startup splash + loading: it must match the default
 // HOME background base (#000000 = DEFAULT_BACKGROUND_COLOR, the black field
@@ -20,10 +19,9 @@ const FONT = "'Poppins', Arial, system-ui, sans-serif";
 // the theme background is white/black (`:root`/`.dark`) or the brand orange
 // #ff8a24 (`.theme-app`), none of which is the home shader base — so a
 // dedicated launch token is used. Whitelabel seam: hosts override
-// `--launch-bg` / `--accent-foreground`; the literal fallbacks are the
+// `--launch-bg` / `--launch-foreground`; the literal fallbacks are the
 // elizaOS defaults.
-const LAUNCH_SURFACE =
-  "bg-[var(--launch-bg,#000000)] text-[var(--accent-foreground,#fff)]";
+const LAUNCH_SURFACE = "bg-[var(--launch-bg)] text-[var(--launch-foreground)]";
 
 // A fast, already-cached boot flips the view through the loading state for only
 // a few milliseconds before the app is ready. Painting the full-screen orange
@@ -34,7 +32,7 @@ const LAUNCH_SURFACE =
 // interactive states the user is meant to see immediately, not fast-flash cases.
 // NOTE: during the ≤220ms null-render window the shell paints nothing — the
 // host's FOUC guard painting `--launch-bg` is what keeps the screen non-blank.
-export const STARTUP_SPLASH_DELAY_MS = 220;
+export const STARTUP_SPLASH_DELAY_MS = STARTUP_TIMING_POLICY.splashDelayMs;
 
 /**
  * True only after `active` has stayed `true` continuously for `delayMs`.
@@ -135,7 +133,7 @@ function StartupLoading(props: { phase: string; status: string }) {
       aria-live="polite"
       aria-busy="true"
       className={`fixed inset-0 flex items-center justify-center overflow-hidden ${LAUNCH_SURFACE}`}
-      style={{ fontFamily: FONT }}
+      style={{ fontFamily: "var(--font-sans)" }}
     >
       <div className="relative z-10 flex w-full max-w-[24rem] flex-col items-center gap-5 px-6 text-center">
         <div className="flex items-center justify-center gap-3">
@@ -145,10 +143,7 @@ function StartupLoading(props: { phase: string; status: string }) {
           </span>
         </div>
 
-        <p
-          style={{ fontFamily: FONT }}
-          className="min-h-5 text-sm opacity-80 animate-pulse motion-reduce:animate-none"
-        >
+        <p className="min-h-5 text-sm opacity-80 animate-pulse motion-reduce:animate-none">
           {props.status}
         </p>
       </div>
@@ -158,7 +153,7 @@ function StartupLoading(props: { phase: string; status: string }) {
 
 function BootstrapGateShell({ children }: { children: ReactNode }) {
   return (
-    <div className="relative flex min-h-full w-full flex-col bg-[#F7F6F4] text-[#1b1b1b]">
+    <div className="relative flex min-h-full w-full flex-col bg-bg text-txt">
       <div className="relative z-10 flex flex-1 items-center justify-center px-4 pb-[max(1.5rem,var(--safe-area-bottom,0px))] pt-[calc(var(--safe-area-top,0px)_+_3.75rem)] sm:px-6 md:px-8">
         <div className="flex w-full max-w-[32rem] flex-col items-center gap-4">
           {children}

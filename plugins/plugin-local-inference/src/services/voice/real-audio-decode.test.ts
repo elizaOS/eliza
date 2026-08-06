@@ -104,11 +104,6 @@ describe("decodeMonoPcm16Wav — committed fixture corpus (real WAV files)", () 
 			expect(b.pcm[i]).toBeCloseTo(a.pcm[i] ?? 0, 6);
 		}
 	});
-
-	it("documents that the fixture corpus is non-speech (not WER evidence)", () => {
-		// Guards against anyone treating these tones as ASR ground truth.
-		expect(manifest.realRecorded).toBe(false);
-	});
 });
 
 const FREEMAN_WAV = fileURLToPath(

@@ -19,6 +19,7 @@
  * lane gate is structural (extractor-assigned category + ownership + prior),
  * and the responding model decides which surfaced preferences apply.
  */
+import { ElizaError } from "../../../errors.ts";
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
 import { getRelatedEntityIds } from "../../../identity-clusters.ts";
 import type {
@@ -314,6 +315,7 @@ const factsProvider: Provider = {
 	contextGate: { anyOf: ["general"] },
 	cacheStable: false,
 	cacheScope: "turn",
+	timeoutMs: 8_000,
 	roleGate: { minRole: "USER" },
 
 	get: async (
@@ -322,12 +324,20 @@ const factsProvider: Provider = {
 		_state: State,
 	): Promise<ProviderResult> => {
 		try {
-			const recentMessages = await runtime.getMemories({
+			const recentMessagesPromise = runtime.getMemories({
 				tableName: "messages",
 				roomId: message.roomId,
 				limit: 10,
 				unique: false,
 			});
+			const relatedEntityIdsPromise = getRelatedEntityIds(
+				runtime,
+				message.entityId,
+			);
+			const [recentMessages, relatedEntityIds] = await Promise.all([
+				recentMessagesPromise,
+				relatedEntityIdsPromise,
+			]);
 
 			// Build the lexical query from the current message and recent context.
 			const lastMessageLines: string[] = [];
@@ -368,10 +378,6 @@ const factsProvider: Provider = {
 			// turns. Misattribution is prevented at render time instead — facts
 			// are attributed by provenance, so room facts about other participants
 			// never render under the sender's header.
-			const relatedEntityIds = await getRelatedEntityIds(
-				runtime,
-				message.entityId,
-			);
 			const [roomFacts, ...entityFactPools] = await Promise.all([
 				runtime.getMemories({
 					tableName: "facts",
@@ -535,17 +541,18 @@ const factsProvider: Provider = {
 				},
 				text,
 			};
-		} catch (error) {
-			return {
-				values: { facts: "" },
-				data: {
-					facts: [],
-					durableFacts: [],
-					currentFacts: [],
-					error: error instanceof Error ? error.message : String(error),
+		} catch (cause) {
+			// error-policy:J2 Add provider scope before the message boundary reports the failed turn.
+			throw new ElizaError("Facts provider read failed", {
+				code: "FACTS_PROVIDER_READ_FAILED",
+				cause,
+				context: {
+					agentId: runtime.agentId,
+					entityId: message.entityId,
+					roomId: message.roomId,
 				},
-				text: "No facts available.",
-			};
+				severity: "ephemeral",
+			});
 		}
 	},
 };

@@ -11,7 +11,7 @@ CUA × Vision EPIC (#9105) and the trycua/cua parity tracker (#9170).
 | Lane | Selects | Runs the real OS? | Command |
 |------|---------|-------------------|---------|
 | **Unit / component** | every `*.test.ts` **except** `*.real`/`*.live`/`*.e2e` | No (mocked) — but platform-gated `*.test.ts` self-skip on the wrong OS | `bun run --cwd plugins/plugin-computeruse test` · `bun run --cwd plugins/plugin-vision test` |
-| **Real-driver / live** | `*.real.test.ts` / `*.live.test.ts` (repo-wide) | **Yes** — nutjs / PowerShell / WinRT / Apple Vision / xdotool against the host | shared config `packages/test/vitest/real.config.ts` (post-merge lane via `packages/scripts/run-all-tests.mjs`) |
+| **Real-driver / live** | `*.real.test.ts` / `*.live.test.ts` (repo-wide) | **Yes** — nutjs / PowerShell / WinRT / Apple Vision / xdotool against the host | shared config `packages/scripts/vitest/real.config.ts` (post-merge lane via `packages/scripts/run-all-tests.mjs`) |
 | **Standalone probe** | a hand-written `.mts` importing `src/platform/*.js` | **Yes** — fastest Windows real smoke | `bun plugins/plugin-computeruse/<probe>.mts` |
 
 ### Unit lane
@@ -34,9 +34,9 @@ lane** and self-skip elsewhere. Examples:
 ### Real-driver / live lane
 
 `*.real.test.ts` files are **only** picked up by the shared real config
-`packages/test/vitest/real.config.ts` (include globs `**/*.real.test.ts`,
+`packages/scripts/vitest/real.config.ts` (include globs `**/*.real.test.ts`,
 `**/*.live.test.ts`). They drive the real input/capture/OCR stack. A
-`fail-on-silent-skip` setup (`packages/test/vitest/fail-on-silent-skip.setup.ts`)
+`fail-on-silent-skip` setup (`packages/scripts/vitest/fail-on-silent-skip.setup.ts`)
 **fails any test that silently skips**, so a `.real` test must either run or be
 explicitly excluded — it cannot quietly no-op.
 
@@ -45,7 +45,7 @@ so pass a file path to scope it):
 
 ```bash
 bunx vitest run plugins/plugin-computeruse/src/__tests__/cua-parity-input.real.test.ts \
-  --config packages/test/vitest/real.config.ts
+  --config packages/scripts/vitest/real.config.ts
 ```
 
 The service-level lane captures the display and moves the pointer, then reads
@@ -56,7 +56,7 @@ invocation without the acknowledgment fails before the suite starts:
 ```bash
 COMPUTER_USE_REAL_DESKTOP_TESTS=1 bunx vitest run \
   plugins/plugin-computeruse/src/__tests__/service.real.test.ts \
-  --config packages/test/vitest/real.config.ts
+  --config packages/scripts/vitest/real.config.ts
 ```
 
 `ELIZA_CI_REAL=1` additionally drops credential/upstream-gated reals

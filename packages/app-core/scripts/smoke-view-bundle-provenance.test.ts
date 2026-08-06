@@ -92,7 +92,7 @@ async function emptyBundleRoot(): Promise<string> {
 
 async function bundleRootWithWallet(): Promise<string> {
   const root = await emptyBundleRoot();
-  const bundleDir = path.join(root, "plugin-wallet-ui", "dist", "views");
+  const bundleDir = path.join(root, "plugin-wallet", "dist", "views");
   await mkdir(bundleDir, { recursive: true });
   await writeFile(
     path.join(bundleDir, "bundle.js"),
@@ -135,6 +135,16 @@ describe("smoke view bundle provenance over HTTP (#15791)", () => {
         expect(String(capability.description).trim()).not.toBe("");
       }
     }
+
+    const byId = new Map(
+      payload.views
+        .filter(isRecord)
+        .map((view) => [String(view.id), view] as const),
+    );
+    expect(byId.get("orchestrator")?.surface).toEqual({
+      capabilities: ["agent-surface"],
+    });
+    expect(byId.has("feed")).toBe(false);
   });
 
   it("audit mode returns an observable failure, never a fabricated bundle", async () => {
@@ -157,7 +167,7 @@ describe("smoke view bundle provenance over HTTP (#15791)", () => {
     const body = await response.json();
     expect(body.provenance).toBe("missing-real-bundle");
     expect(body.expectedBundlePath).toContain(
-      "plugins/plugin-wallet-ui/dist/views/bundle.js",
+      "plugins/plugin-wallet/dist/views/bundle.js",
     );
   });
 

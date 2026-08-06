@@ -33,7 +33,8 @@ export const syncCatalogTask = {
 				`AgentSkills: Catalog synced - ${result.updated} skills, ${result.added} new`,
 			);
 		} catch (error) {
-			runtime.logger.error(`AgentSkills: Sync failed: ${error}`);
+			// error-policy:J7 Periodic diagnostics must surface without ending future syncs.
+			runtime.reportError("AgentSkills.catalogSync", error);
 		}
 	},
 };
@@ -50,7 +51,8 @@ export function startSyncTask(runtime: IAgentRuntime): () => void {
 	// Periodic sync only — initial sync is handled in service initialization
 	const interval = setInterval(() => {
 		syncCatalogTask.execute(runtime).catch((err) => {
-			runtime.logger.error(`AgentSkills: Periodic sync failed: ${err}`);
+			// error-policy:J7 The interval remains scheduled after an unexpected task failure.
+			runtime.reportError("AgentSkills.catalogSyncLoop", err);
 		});
 	}, SYNC_INTERVAL_MS);
 

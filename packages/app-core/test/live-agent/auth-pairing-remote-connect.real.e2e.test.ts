@@ -52,7 +52,7 @@
  * and mints NO session, so a green run is non-vacuous proof the real handshake,
  * not a fixture, is under test.
  *
- * Keyless: the deterministic LLM proxy supplies every model handler, so no
+ * Keyless: the deterministic model provider supplies every model handler, so no
  * provider/cloud key and no native llama are needed. Boots a real runtime +
  * HTTP server, so it lives in the nightly `test:app-real-e2e` lane (this file is
  * added to `vitest.app-real-e2e.config.ts` include), NOT the PR unit lane which
@@ -68,17 +68,14 @@
  */
 
 import crypto from "node:crypto";
+import { createDeterministicModelPlugin } from "@elizaos/core/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createDeterministicLlmProxyPlugin } from "../../../test/mocks/helpers/llm-proxy-plugin.ts";
 import { SESSION_COOKIE_NAME } from "../../src/api/auth/sessions.ts";
 import {
   _resetAuthPairingStateForTests,
   ensureAuthPairingCodeForRemoteAccess,
 } from "../../src/api/auth-pairing-routes.ts";
-import {
-  getSharedCompatRuntimeState,
-  startApiServer,
-} from "../../src/api/server.ts";
+import { startApiServer } from "../../src/api/server.ts";
 import { req } from "../helpers/http.ts";
 import { useIsolatedConfigEnv } from "../helpers/isolated-config.ts";
 import { createRealTestRuntime } from "../helpers/real-runtime.ts";
@@ -125,22 +122,16 @@ describe("production auth path: pair-code → machine session; remote-connect to
     configEnv = useIsolatedConfigEnv("auth-pairing-remote-connect-");
     runtimeResult = await createRealTestRuntime({
       characterName: "PairingRemoteConnectE2E",
-      plugins: [
-        createDeterministicLlmProxyPlugin({ failOnUnhandledAction: false }),
-      ],
+      plugins: [createDeterministicModelPlugin()],
     });
     server = await startApiServer({
       port: 0,
       runtime: runtimeResult.runtime,
       skipDeferredStartupWork: true,
     });
-    // The compat routes resolve the DB through the shared runtime state; wire
-    // ours so the pair route can mint a real machine session against PGLite.
-    getSharedCompatRuntimeState().current = runtimeResult.runtime;
   }, 120_000);
 
   afterEach(async () => {
-    getSharedCompatRuntimeState().current = null;
     await server?.close().catch(() => undefined);
     await runtimeResult?.cleanup().catch(() => undefined);
     await configEnv?.restore().catch(() => undefined);

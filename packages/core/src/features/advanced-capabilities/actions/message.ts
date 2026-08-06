@@ -11,6 +11,8 @@
  * in features/messaging/triage.
  */
 
+import { buildAccessContext } from "../../../access-context.ts";
+import { searchCanonicalConversationMemories } from "../../../access-control/provenance-envelope.ts";
 import { getConnectorAccountManager } from "../../../connectors/account-manager.ts";
 import { findEntityByName } from "../../../entities.ts";
 import { getActionSpec } from "../../../generated/spec-helpers.ts";
@@ -724,9 +726,18 @@ async function resolveOptionalTarget(
 				};
 			}
 		} catch (error) {
+			// error-policy:J1 Target resolution is an action boundary; return an
+			// explicit failure instead of sending to the unresolved query.
 			logger.warn(
 				`[MESSAGE/${op}] resolveTargets failed for ${connector.source}: ${error instanceof Error ? error.message : String(error)}`,
 			);
+			runtime.reportError("MESSAGE.resolveOptionalTarget", error, {
+				op,
+				source: connector.source,
+			});
+			return {
+				error: opErrorWrap(op, error),
+			};
 		}
 	}
 	return { target: explicit.target };
@@ -1120,6 +1131,7 @@ function normalizeHookCandidate(
 }
 
 async function collectHookTargets(
+	runtime: IAgentRuntime,
 	connector: ConnectorWithHooks,
 	query: string | undefined,
 	context: MessageConnectorQueryContext,
@@ -1128,6 +1140,7 @@ async function collectHookTargets(
 	accountId?: string,
 ): Promise<SendCandidate[]> {
 	const candidates: SendCandidate[] = [];
+	let firstFailure: unknown;
 
 	if (query && connector.resolveTargets) {
 		try {
@@ -1146,9 +1159,15 @@ async function collectHookTargets(
 				if (candidate) candidates.push(candidate);
 			}
 		} catch (error) {
+			// error-policy:J4 Other connector discovery hooks may still resolve
+			// the target; report this unavailable capability before continuing.
+			firstFailure ??= error;
 			logger.warn(
 				`[MESSAGE/send] resolveTargets failed for ${connector.source}: ${error instanceof Error ? error.message : String(error)}`,
 			);
+			runtime.reportError("MESSAGE.resolveTargets", error, {
+				source: connector.source,
+			});
 		}
 	}
 
@@ -1169,9 +1188,15 @@ async function collectHookTargets(
 				if (candidate) candidates.push(candidate);
 			}
 		} catch (error) {
+			// error-policy:J4 Other connector discovery hooks may still resolve
+			// the target; report this unavailable capability before continuing.
+			firstFailure ??= error;
 			logger.warn(
 				`[MESSAGE/send] listRecentTargets failed for ${connector.source}: ${error instanceof Error ? error.message : String(error)}`,
 			);
+			runtime.reportError("MESSAGE.listRecentTargets", error, {
+				source: connector.source,
+			});
 		}
 	}
 
@@ -1198,12 +1223,21 @@ async function collectHookTargets(
 				if (candidate) candidates.push(candidate);
 			}
 		} catch (error) {
+			// error-policy:J4 Other connector discovery hooks may still resolve
+			// the target; report this unavailable capability before continuing.
+			firstFailure ??= error;
 			logger.warn(
 				`[MESSAGE/send] listRooms failed for ${connector.source}: ${error instanceof Error ? error.message : String(error)}`,
 			);
+			runtime.reportError("MESSAGE.listRooms", error, {
+				source: connector.source,
+			});
 		}
 	}
 
+	if (candidates.length === 0 && firstFailure !== undefined) {
+		throw firstFailure;
+	}
 	return candidates;
 }
 
@@ -1301,58 +1335,56 @@ async function collectEntityCandidates(
 		return [];
 	}
 
-	try {
-		const entity = await findEntityByName(
-			runtime,
-			{ ...message, content: { ...message.content, text: query } },
-			state ?? ({ values: {}, data: {}, text: "" } as State),
-		);
-		if (!entity?.id) return [];
-
-		const label = entity.names[0] ?? query;
-		const candidates: SendCandidate[] = [];
-		for (const connector of connectors) {
-			if (!connectorSupportsKind(connector, targetKind ?? "contact")) continue;
-			const matchingComponent = entity.components?.find(
-				(c) =>
-					normalizeComparable(c.type) === normalizeComparable(connector.source),
+	// An entity UUID is already an unambiguous identifier. Resolving it through
+	// the language model makes deterministic connector sends depend on provider
+	// availability and can reinterpret an exact target as a name.
+	const entity = isUuidLike(query)
+		? await runtime.getEntityById(query)
+		: await findEntityByName(
+				runtime,
+				{ ...message, content: { ...message.content, text: query } },
+				state ?? ({ values: {}, data: {}, text: "" } as State),
 			);
-			const target = {
-				source: connector.source,
-				accountId: connector.accountId ?? accountId,
-				entityId: entity.id as UUID,
-			} as TargetInfo;
-			if (matchingComponent) {
-				const channelId = componentString(matchingComponent, [
-					"channelId",
-					"chatId",
-					"conversationId",
-					"phone",
-					"phoneNumber",
-					"email",
-				]);
-				if (channelId) target.channelId = channelId;
-				const roomId = componentString(matchingComponent, ["roomId"]);
-				if (roomId) target.roomId = roomId as UUID;
-				const serverId = componentString(matchingComponent, ["serverId"]);
-				if (serverId) target.serverId = serverId;
-			}
-			candidates.push({
-				connector,
-				target,
-				label,
-				kind: targetKind ?? "contact",
-				score: matchingComponent ? 0.78 : sourceWasExact ? 0.66 : 0.56,
-				reasons: matchingComponent ? ["entity", "component"] : ["entity"],
-			});
-		}
-		return candidates;
-	} catch (error) {
-		logger.warn(
-			`[MESSAGE/send] entity resolution failed: ${error instanceof Error ? error.message : String(error)}`,
+	if (!entity?.id) return [];
+
+	const label = entity.names[0] ?? query;
+	const candidates: SendCandidate[] = [];
+	for (const connector of connectors) {
+		if (!connectorSupportsKind(connector, targetKind ?? "contact")) continue;
+		const matchingComponent = entity.components?.find(
+			(c) =>
+				normalizeComparable(c.type) === normalizeComparable(connector.source),
 		);
-		return [];
+		const target = {
+			source: connector.source,
+			accountId: connector.accountId ?? accountId,
+			entityId: entity.id as UUID,
+		} as TargetInfo;
+		if (matchingComponent) {
+			const channelId = componentString(matchingComponent, [
+				"channelId",
+				"chatId",
+				"conversationId",
+				"phone",
+				"phoneNumber",
+				"email",
+			]);
+			if (channelId) target.channelId = channelId;
+			const roomId = componentString(matchingComponent, ["roomId"]);
+			if (roomId) target.roomId = roomId as UUID;
+			const serverId = componentString(matchingComponent, ["serverId"]);
+			if (serverId) target.serverId = serverId;
+		}
+		candidates.push({
+			connector,
+			target,
+			label,
+			kind: targetKind ?? "contact",
+			score: matchingComponent ? 0.78 : sourceWasExact ? 0.66 : 0.56,
+			reasons: matchingComponent ? ["entity", "component"] : ["entity"],
+		});
 	}
+	return candidates;
 }
 
 async function currentRoomCandidate(
@@ -1553,6 +1585,7 @@ async function resolveSendTarget(
 		);
 		candidates.push(
 			...(await collectHookTargets(
+				runtime,
 				connector,
 				params.target,
 				context,
@@ -1992,10 +2025,16 @@ async function ensureSendAccountAllowed(
 	try {
 		account = await manager.getAccount(source, accountId);
 	} catch (error) {
+		// error-policy:J4 Account-policy resolution fails closed and returns a
+		// distinct refusal rather than allowing an unverified owner send.
 		// Fail CLOSED: a lookup failure must never silently bypass the gate. If we
 		// cannot resolve the account, we cannot prove it is a frictionless
 		// agent/`open` account, so we refuse the "act as the user" send rather than
 		// risk firing it ungated on what may be an unverified owner account.
+		runtime.reportError("MESSAGE.ensureSendAccountAllowed", error, {
+			source,
+			accountId,
+		});
 		return opFailure(
 			"send",
 			"OWNER_BINDING_REQUIRED",
@@ -2390,27 +2429,23 @@ async function resolveLocalChannelRoom(
 	source: string | undefined,
 	channel: string,
 ): Promise<Room | null> {
-	try {
+	if (isUuidLike(channel)) {
 		const direct = await runtime.getRoom(channel as UUID);
 		if (direct) return direct;
-	} catch {
-		// not a uuid
 	}
 	const agentRooms = await runtime.getRoomsForParticipant(runtime.agentId);
+	const rooms = await Promise.all(
+		agentRooms.map((roomId) => runtime.getRoom(roomId)),
+	);
 	const channelLower = channel.toLowerCase();
-	for (const roomId of agentRooms) {
-		try {
-			const room = await runtime.getRoom(roomId);
-			if (!room) continue;
-			const roomRecord = room as Room & { name?: string; source?: string };
-			const name = (roomRecord.name ?? "").toLowerCase();
-			const roomSource = roomRecord.source.toLowerCase();
-			if (name === channelLower || name.includes(channelLower)) {
-				if (source && roomSource !== source.toLowerCase()) continue;
-				return room;
-			}
-		} catch {
-			// ignore individual room lookup failures
+	for (const room of rooms) {
+		if (!room) continue;
+		const roomRecord = room as Room & { name?: string; source?: string };
+		const name = (roomRecord.name ?? "").toLowerCase();
+		const roomSource = (roomRecord.source ?? "").toLowerCase();
+		if (name === channelLower || name.includes(channelLower)) {
+			if (source && roomSource !== source.toLowerCase()) continue;
+			return room;
 		}
 	}
 	return null;
@@ -2497,6 +2532,7 @@ async function handleReadChannel(
 				{ source: selectedConnector.source, memories },
 			);
 		} catch (error) {
+			// error-policy:J1 Connector failures become structured action failures.
 			return opErrorWrap("read_channel", error);
 		}
 	}
@@ -2612,6 +2648,7 @@ async function handleReadChannel(
 			},
 		);
 	} catch (error) {
+		// error-policy:J1 Connector failures become structured action failures.
 		return opErrorWrap("read_channel", error);
 	}
 }
@@ -2715,6 +2752,7 @@ async function handleReadWithContact(
 			person = candidates[0] ?? null;
 		}
 	} catch (error) {
+		// error-policy:J1 Relationship lookup failures become structured action failures.
 		return opErrorWrap("read_with_contact", error);
 	}
 
@@ -2739,6 +2777,7 @@ async function handleReadWithContact(
 		lastMessageAt: string | null;
 	}> = [];
 	let totalMessages = 0;
+	let scanFailures = 0;
 
 	for (const id of entityIds) {
 		try {
@@ -2771,9 +2810,13 @@ async function handleReadWithContact(
 				totalMessages += memories.length;
 			}
 		} catch (error) {
+			// error-policy:J4 Other linked identities remain independently
+			// searchable; expose this response as partial and report the failure.
+			scanFailures++;
 			logger.debug(
 				`[MESSAGE/read_with_contact] room scan failed for entity ${id}: ${error instanceof Error ? error.message : String(error)}`,
 			);
+			runtime.reportError("MESSAGE.readWithContact", error, { entityId: id });
 		}
 	}
 
@@ -2786,12 +2829,16 @@ async function handleReadWithContact(
 
 	return opSuccess(
 		"read_with_contact",
-		`Conversations with ${person.displayName}: ${conversations.length} thread(s), ${totalMessages} messages.`,
+		scanFailures > 0
+			? `Partial conversations with ${person.displayName}: ${conversations.length} thread(s), ${totalMessages} messages; ${scanFailures} linked identity scan(s) failed.`
+			: `Conversations with ${person.displayName}: ${conversations.length} thread(s), ${totalMessages} messages.`,
 		{
 			personName: person.displayName,
 			primaryEntityId: person.primaryEntityId,
 			conversations,
 			totalMessages,
+			availability: scanFailures > 0 ? "partial" : "complete",
+			scanFailures,
 			platforms: [...new Set(conversations.map((c) => c.platform))],
 		},
 	);
@@ -2832,13 +2879,31 @@ const CONVERSATION_SEARCH_CATEGORY: SearchCategoryRegistration = {
 };
 
 function ensureConversationSearchCategory(runtime: IAgentRuntime): void {
-	try {
-		runtime.getSearchCategory(CONVERSATION_SEARCH_CATEGORY.category, {
-			includeDisabled: true,
-		});
-	} catch {
+	const registered = runtime
+		.getSearchCategories({ includeDisabled: true })
+		.some(
+			(category) => category.category === CONVERSATION_SEARCH_CATEGORY.category,
+		);
+	if (!registered) {
 		runtime.registerSearchCategory(CONVERSATION_SEARCH_CATEGORY);
 	}
+}
+
+function conversationSearchText(
+	query: string,
+	count: number,
+	availability: "complete" | "partial" | "unavailable",
+): string {
+	if (availability === "unavailable") {
+		return `No disclosable conversations matching "${query}".`;
+	}
+	if (count === 0) {
+		return `No conversations matching "${query}".`;
+	}
+	if (availability === "partial") {
+		return `Partial search results for "${query}": ${count} messages found.`;
+	}
+	return `Search results for "${query}": ${count} messages found.`;
 }
 
 async function handleSearch(
@@ -2924,6 +2989,7 @@ async function handleSearch(
 					{ source: connector.source, query, memories, mode: "connector" },
 				);
 			} catch (error) {
+				// error-policy:J1 Connector failures become structured action failures.
 				return opErrorWrap("search", error);
 			}
 		}
@@ -2946,44 +3012,53 @@ async function handleSearch(
 			);
 		}
 
-		const searchParams: Parameters<IAgentRuntime["searchMemories"]>[0] = {
-			embedding,
-			tableName: "messages",
-			match_threshold: SEARCH_MATCH_THRESHOLD,
-			count: limit + 10,
-			...(entityId ? { entityId: entityId as UUID } : {}),
-		} as Parameters<IAgentRuntime["searchMemories"]>[0];
-		let results = (await runtime.searchMemories(searchParams)) as Memory[];
-
-		// Post-filter by source platform when supplied.
-		if (source && results.length > 0) {
-			const filtered: Memory[] = [];
-			for (const mem of results) {
-				try {
-					const room = await runtime.getRoom(mem.roomId);
-					const roomSource = (
-						(room as (Room & { source?: string }) | null)?.source ??
-						room?.type ??
-						""
-					).toLowerCase();
-					if (roomSource === source.toLowerCase()) filtered.push(mem);
-				} catch {
-					// drop rooms we cannot resolve
-				}
-			}
-			results = filtered;
+		let requester: Awaited<ReturnType<typeof buildAccessContext>>;
+		try {
+			requester = await buildAccessContext(runtime, message);
+		} catch (error) {
+			// error-policy:J4 Access lookup fails closed to requester-only scope.
+			// Role/world lookup failure degrades to requester-only access, which
+			// denies elevated scopes instead of widening recall.
+			logger.warn(
+				`[MESSAGE/search] access context resolution failed: ${error instanceof Error ? error.message : String(error)}`,
+			);
+			runtime.reportError("MESSAGE.searchAccessContext", error, {
+				entityId: message.entityId,
+			});
+			requester = {
+				requesterEntityId: message.entityId,
+				source:
+					typeof message.content.source === "string"
+						? message.content.source
+						: undefined,
+			};
 		}
+		const recall = await searchCanonicalConversationMemories({
+			runtime,
+			embedding,
+			query,
+			agentId: runtime.agentId,
+			requester,
+			destinationRoomId: message.roomId,
+			count: limit + 10,
+			matchThreshold: SEARCH_MATCH_THRESHOLD,
+			...(entityId ? { entityId: entityId as UUID } : {}),
+			source,
+		});
 
-		results = results.filter((m) => m.content.text).slice(0, limit);
+		const results = recall.items
+			.map((item) => item.memory)
+			.filter((m) => m.content.text)
+			.slice(0, limit);
 		return opSuccess(
 			"search",
-			results.length === 0
-				? `No conversations matching "${query}".`
-				: `Search results for "${query}": ${results.length} messages found.`,
+			conversationSearchText(query, results.length, recall.availability),
 			{
 				query,
 				source,
 				mode: "conversation",
+				availability: recall.availability,
+				withheld: recall.withheld,
 				results: results.map((m, i) => ({
 					line: i + 1,
 					id: m.id,
@@ -2995,6 +3070,7 @@ async function handleSearch(
 			},
 		);
 	} catch (error) {
+		// error-policy:J1 Search failures become structured action failures.
 		return opErrorWrap("search", error);
 	}
 }
@@ -3070,6 +3146,7 @@ async function handleListChannels(
 			},
 		);
 	} catch (error) {
+		// error-policy:J1 Connector failures become structured action failures.
 		return opErrorWrap("list_channels", error);
 	}
 }
@@ -3129,6 +3206,7 @@ async function handleListServers(
 			},
 		);
 	} catch (error) {
+		// error-policy:J1 Connector failures become structured action failures.
 		return opErrorWrap("list_servers", error);
 	}
 }
@@ -3287,6 +3365,7 @@ async function handleJoinLeave(
 			source: connector.source,
 		});
 	} catch (error) {
+		// error-policy:J1 Connector failures become structured action failures.
 		return opErrorWrap(op, error);
 	}
 }
@@ -3423,6 +3502,7 @@ async function handleMessageMutation(
 			target,
 		});
 	} catch (error) {
+		// error-policy:J1 Connector failures become structured action failures.
 		return opErrorWrap(op, error);
 	}
 }
@@ -3479,6 +3559,7 @@ async function handleGetUser(
 			{ source: connector.source, user },
 		);
 	} catch (error) {
+		// error-policy:J1 Connector failures become structured action failures.
 		return opErrorWrap("get_user", error);
 	}
 }

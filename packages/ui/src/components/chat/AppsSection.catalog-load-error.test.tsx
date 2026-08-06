@@ -1,3 +1,4 @@
+/** Verifies AppsSection — catalog load failure surfaces through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Real error-path coverage for the sidebar catalog load in AppsSection

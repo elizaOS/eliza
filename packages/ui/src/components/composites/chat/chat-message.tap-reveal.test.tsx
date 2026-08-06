@@ -1,3 +1,4 @@
+/** Verifies ChatMessage tap-to-reveal vs transcript scroll through the package's configured test harness. */
 // @vitest-environment jsdom
 
 // Touch tap-vs-scroll discrimination for the composite ChatMessage's
@@ -111,6 +112,32 @@ describe("ChatMessage tap-to-reveal vs transcript scroll", () => {
     expect(rail.hasAttribute("inert")).toBe(true);
   });
 
+  it("lets a Reply consumer transfer focus from the hidden rail to its composer", () => {
+    render(
+      <>
+        <textarea aria-label="composer" />
+        <ChatMessage
+          message={makeMessage()}
+          onCopy={vi.fn()}
+          onReply={() => screen.getByLabelText("composer").focus()}
+        />
+      </>,
+    );
+
+    const article = getArticle();
+    fireEvent.touchStart(article, { touches: [touchPoint(50, 100)] });
+    fireEvent.touchEnd(article, { changedTouches: [touchPoint(50, 100)] });
+    const reply = screen.getByRole("button", { name: "Reply" });
+    act(() => reply.focus());
+
+    fireEvent.click(reply);
+
+    expect(document.activeElement).toBe(screen.getByLabelText("composer"));
+    const rail = screen.getByTestId("chat-message-action-rail");
+    expect(rail.getAttribute("aria-hidden")).toBe("true");
+    expect(rail.hasAttribute("inert")).toBe(true);
+  });
+
   it("reveals a glass action rail on the first touch-generated click", () => {
     render(
       <ChatMessage
@@ -125,13 +152,48 @@ describe("ChatMessage tap-to-reveal vs transcript scroll", () => {
       name: "Show message actions",
     });
     const rail = screen.getByTestId("thread-line-actions");
+    const content = rail.parentElement;
 
     // Mobile browsers focus the bubble before dispatching their synthesized
     // click. Focus alone must not pre-toggle the rail or that click hides it.
     act(() => bubble.focus());
     expect(rail.getAttribute("aria-hidden")).toBe("true");
+    expect(content?.className).toContain("pb-0");
+    expect(content?.className).not.toContain("pb-9");
     fireEvent.click(bubble);
     expect(rail.getAttribute("aria-hidden")).toBe("false");
+    expect(content?.className).toContain("pb-9");
+    expect(content?.className).not.toContain("pb-0");
+
+    fireEvent.click(bubble);
+    expect(rail.getAttribute("aria-hidden")).toBe("true");
+    expect(content?.className).toContain("pb-0");
+    expect(content?.className).not.toContain("pb-9");
+  });
+
+  it("returns the glass action space after an outside touch", () => {
+    render(
+      <ChatMessage
+        appearance="glass"
+        message={makeMessage()}
+        onCopy={vi.fn()}
+        onReply={vi.fn()}
+      />,
+    );
+    const bubble = screen.getByRole("button", {
+      name: "Show message actions",
+    });
+    const rail = screen.getByTestId("thread-line-actions");
+    const content = rail.parentElement;
+
+    fireEvent.click(bubble);
+    expect(rail.getAttribute("aria-hidden")).toBe("false");
+    expect(content?.className).toContain("pb-9");
+
+    fireEvent.pointerDown(document.body);
+    expect(rail.getAttribute("aria-hidden")).toBe("true");
+    expect(content?.className).toContain("pb-0");
+    expect(content?.className).not.toContain("pb-9");
   });
 
   it("a scroll-like touch (travel past the slop) does NOT toggle the rail", () => {

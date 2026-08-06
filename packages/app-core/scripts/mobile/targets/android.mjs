@@ -1,4 +1,8 @@
-/** Supports app-core build, packaging, or development orchestration for android mjs. */
+/**
+ * Frozen build-target definitions for the Android lanes (sideload, cloud, AOSP,
+ * ...): web target, gradle flags, cleartext policy, overlay options, and
+ * agent-runtime settings per lane.
+ */
 import {
   ANDROID_AOSP_GRADLE_FLAG,
   ANDROID_CLOUD_GRADLE_FLAGS,
@@ -30,6 +34,24 @@ export const ANDROID_BUILD_TARGETS = Object.freeze({
     preflightKey: "sideload",
     overlayOptions: { includeAospRoleLaunchers: false },
     cleartextPolicy: { allowCleartext: true, label: "sideload" },
+    agentRuntime: { bunChannel: "stable" },
+    gradle: {
+      metadataVariant: "debug",
+      finalTask: ":app:assembleDebug",
+      includeWebsiteBlockerUnitTest: true,
+      includeAospFlagFromEnv: true,
+      passFlagsToMetadata: false,
+    },
+    artifactAuditKey: "sideload",
+  }),
+  "android-cloud-hybrid": freezeAndroidBuildTarget({
+    target: "android-cloud-hybrid",
+    webTarget: "android-cloud-hybrid",
+    env: { ELIZA_ANDROID_CLOUD_HYBRID_BUILD: "1" },
+    buildMobileAgentBundle: true,
+    preflightKey: "sideload",
+    overlayOptions: { includeAospRoleLaunchers: false },
+    cleartextPolicy: { allowCleartext: true, label: "cloud-hybrid" },
     agentRuntime: { bunChannel: "stable" },
     gradle: {
       metadataVariant: "debug",

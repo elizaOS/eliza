@@ -29,6 +29,7 @@ async function rewriteFallbackActionText(args: {
   actionName: string;
   text: string;
   content?: Content;
+  abortSignal?: AbortSignal;
 }): Promise<string> {
   const text = args.text.trim();
   if (!text) return args.text;
@@ -39,7 +40,12 @@ async function rewriteFallbackActionText(args: {
         : "";
     return `I ran ${args.actionName} and got a result, but I couldn't format the details cleanly here.${error}`;
   };
-  if (typeof args.runtime.useModel !== "function") return fallback();
+  if (
+    args.abortSignal?.aborted ||
+    typeof args.runtime.useModel !== "function"
+  ) {
+    return fallback();
+  }
 
   try {
     const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, {
@@ -69,6 +75,7 @@ async function rewriteFallbackActionText(args: {
         })}`,
       ].join("\n"),
       maxTokens: 260,
+      signal: args.abortSignal,
       providerOptions: { eliza: { thinking: "off" } },
     });
     const parsed = JSON.parse(String(raw).trim()) as { response?: unknown };
@@ -142,6 +149,7 @@ export async function executeFallbackParsedActions(
   appendIncomingText: (incoming: string) => void,
   onActionCallback: (actionTag: string, hasText: boolean) => void,
   options?: {
+    abortSignal?: AbortSignal;
     getCurrentText?: () => string;
     onCallbackText?: (incoming: string) => void;
   },
@@ -164,6 +172,7 @@ export async function executeFallbackParsedActions(
   }
 
   for (const parsed of parsedActions) {
+    if (options?.abortSignal?.aborted) break;
     if (
       parsed.name === "REPLY" ||
       parsed.name === "NONE" ||
@@ -178,13 +187,33 @@ export async function executeFallbackParsedActions(
     const action =
       (await resolveBuiltInFallbackAction(parsed.name)) ??
       lookup.get(parsed.name);
+    if (options?.abortSignal?.aborted) break;
     if (!action || typeof action.handler !== "function") continue;
+    const actionHandler = action.handler;
     const parsedParameters = { ...(parsed.parameters ?? {}) };
     if (action.name === "BLOCK" && !Object.hasOwn(parsedParameters, "action")) {
       parsedParameters.action = "block";
     }
 
     let callbackSeen = false;
+    const actionValidate = action.validate;
+    const abortAwareAction = options?.abortSignal
+      ? {
+          ...action,
+          validate: async (
+            ...args: Parameters<NonNullable<Action["validate"]>>
+          ) => {
+            options.abortSignal?.throwIfAborted();
+            const valid = actionValidate ? await actionValidate(...args) : true;
+            options.abortSignal?.throwIfAborted();
+            return valid;
+          },
+          handler: (...args: Parameters<NonNullable<Action["handler"]>>) => {
+            options.abortSignal?.throwIfAborted();
+            return actionHandler(...args);
+          },
+        }
+      : action;
     const actionResult = await executePlannedToolCall(
       runtime,
       {
@@ -213,6 +242,7 @@ export async function executeFallbackParsedActions(
               actionName: actionTag,
               text: chunk,
               content: contentRecord as Content,
+              abortSignal: options?.abortSignal,
             });
             (options?.onCallbackText ?? appendIncomingText)(voicedChunk);
           }
@@ -220,7 +250,10 @@ export async function executeFallbackParsedActions(
         },
       },
       { name: action.name, params: parsedParameters },
-      { actions: [action] },
+      {
+        actions: [abortAwareAction],
+        abortSignal: options?.abortSignal,
+      },
     );
     const actionSucceeded = Boolean(
       actionResult &&
@@ -235,6 +268,7 @@ export async function executeFallbackParsedActions(
           : parsed.name,
       success: actionSucceeded,
     });
+    if (options?.abortSignal?.aborted && !actionSucceeded) break;
     if (!callbackSeen) {
       const currentText = options?.getCurrentText?.() ?? "";
       const fallbackText =
@@ -258,6 +292,7 @@ export async function executeFallbackParsedActions(
             runtime,
             actionName: parsed.name,
             text: fallbackText,
+            abortSignal: options?.abortSignal,
           });
           appendIncomingText(
             currentText.trim().length > 0

@@ -3,11 +3,11 @@
  */
 import type { Meta, StoryObj } from "@storybook/react";
 import { ThemeProvider } from "./theme-provider";
-import { ThemeToggle } from "./theme-toggle";
+import { CloudThemeToggle } from "./theme-toggle";
 
 const meta = {
   title: "CloudUI/Theme/ThemeToggle",
-  component: ThemeToggle,
+  component: CloudThemeToggle,
   tags: ["autodocs"],
   decorators: [
     (Story, context) => {
@@ -30,7 +30,7 @@ const meta = {
       );
     },
   ],
-} satisfies Meta<typeof ThemeToggle>;
+} satisfies Meta<typeof CloudThemeToggle>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;

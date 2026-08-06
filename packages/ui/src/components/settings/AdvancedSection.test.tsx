@@ -1,3 +1,4 @@
+/** Verifies AdvancedSection reset controls through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

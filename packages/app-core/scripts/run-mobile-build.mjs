@@ -6,11 +6,14 @@
  * Reads app identity from the host's app.config.ts so web, desktop, and
  * native builds share one canonical app contract.
  *
- * Usage: node scripts/run-mobile-build.mjs <android|android-sms-gateway|android-cloud|android-cloud-audit [aab-path]|android-cloud-debug|android-system|ios|ios-local|ios-overlay>
+ * Usage: node scripts/run-mobile-build.mjs <android|android-cloud-hybrid|android-sms-gateway|android-cloud|android-cloud-audit [aab-path]|android-cloud-debug|android-system|ios|ios-local|ios-overlay>
  *
  * Android targets:
  *   - android         Sideload-only debug APK with the on-device agent runtime
  *                     and AOSP/system-only permissions. NOT Play-Store-shippable.
+ *   - android-cloud-hybrid
+ *                     Sideload-only debug APK with the on-device agent runtime
+ *                     bundled and a cloud-hybrid renderer. NOT Play-Store-shippable.
  *   - android-cloud   Play-Store-compliant release AAB thin client backed by
  *                     Eliza Cloud. No on-device agent, no default-role
  *                     activities, no system-only permissions.
@@ -89,6 +92,7 @@ import {
   mtpSliceReuse,
 } from "./lib/mobile-build-decisions.mjs";
 import {
+  androidRuntimeEnvOverrideMismatches,
   evaluateIosLocalLaneRuntime,
   rendererLaneStampMismatches,
   resolveExpectedRendererStamp,
@@ -97,6 +101,7 @@ import {
   formatMobileWebDistProblems,
   mobileWebDistReuseStatus,
 } from "./lib/mobile-web-build-reuse.mjs";
+import { normalizeCapacitorSettingsFile } from "./lib/portable-capacitor-settings.mjs";
 import {
   assertStagedRendererMatchesBuild,
   overlayFreshRendererIntoPublic,
@@ -243,8 +248,12 @@ const IOS_FULL_BUN_DEPLOYMENT_TARGET = "16.0";
 // dir + APK name in `app.config.ts > aosp:`. When that block is present
 // (Eliza, etc.), stage to `<repoRoot>/os/android/vendor/<vendorDir>/
 // apps/<appName>/<appName>.apk`. When absent, fall back to the upstream
-// elizaOS path under packages/os/.
+// Canonical system images live in the sibling elizaOS/os checkout. App-only
+// Android builds never write there; the AOSP lane sets ELIZAOS_OS_REPO_ROOT.
 function resolveSystemApkStagingDir() {
+  const osRepositoryRoot = path.resolve(
+    process.env.ELIZAOS_OS_REPO_ROOT ?? path.join(elizaRepoRoot, "..", "os"),
+  );
   let variant = null;
   try {
     variant = loadAospVariantConfig({
@@ -257,7 +266,8 @@ function resolveSystemApkStagingDir() {
   }
   if (variant) {
     const vendorDir = path.join(
-      repoRoot,
+      osRepositoryRoot,
+      "packages",
       "os",
       "android",
       "vendor",
@@ -270,7 +280,7 @@ function resolveSystemApkStagingDir() {
     };
   }
   const elizaOsVendorDir = path.join(
-    repoRoot,
+    osRepositoryRoot,
     "packages",
     "os",
     "android",
@@ -477,9 +487,10 @@ export function resolveCapacitorCli({
   return capacitorCli;
 }
 
-function runCapacitor(args) {
+function runCapacitor(args, { env = process.env } = {}) {
   return run(resolveNodeExecutable(), [resolveCapacitorCli(), ...args], {
     cwd: appDir,
+    env,
   });
 }
 
@@ -1013,7 +1024,8 @@ export function resolveMobileBuildPolicy(platform) {
   const capacitorTarget =
     platform === "android-system" ||
     platform === "android-cloud" ||
-    platform === "android-cloud-debug"
+    platform === "android-cloud-debug" ||
+    platform === "android-cloud-hybrid"
       ? "android"
       : platform === "ios-overlay" || platform === "ios-local"
         ? "ios"
@@ -1026,9 +1038,11 @@ export function resolveMobileBuildPolicy(platform) {
   const androidRuntimeMode =
     platform === "android-cloud" || platform === "android-cloud-debug"
       ? "cloud"
-      : platform === "android" || platform === "android-system"
-        ? "local"
-        : null;
+      : platform === "android-cloud-hybrid"
+        ? "cloud-hybrid"
+        : platform === "android" || platform === "android-system"
+          ? "local"
+          : null;
   const iosRuntimeMode =
     platform === "ios-local"
       ? "local"
@@ -1040,7 +1054,9 @@ export function resolveMobileBuildPolicy(platform) {
   const runtimeExecutionMode =
     platform === "android-cloud" || platform === "android-cloud-debug"
       ? "cloud"
-      : platform === "android" || platform === "android-system"
+      : platform === "android" ||
+          platform === "android-system" ||
+          platform === "android-cloud-hybrid"
         ? "local-yolo"
         : platform === "ios-local"
           ? "local-safe"
@@ -1054,7 +1070,7 @@ export function resolveMobileBuildPolicy(platform) {
   const releaseAuthority =
     platform === "android-cloud"
       ? "google-play"
-      : platform === "android"
+      : platform === "android" || platform === "android-cloud-hybrid"
         ? "github-release-android-package-installer"
         : platform === "android-system"
           ? "aosp-ota"
@@ -1078,6 +1094,18 @@ export function resolveMobileBuildPolicy(platform) {
 
 async function buildWeb(platform) {
   const lanePolicy = resolveMobileBuildPolicy(platform);
+  const androidEnvMismatches = androidRuntimeEnvOverrideMismatches({
+    platform,
+    policy: lanePolicy,
+    env: process.env,
+  });
+  if (androidEnvMismatches.length > 0) {
+    throw new Error(
+      `[mobile-build] Refusing leaked Android runtime-mode env for target '${platform}':\n` +
+        `${formatMobileWebDistProblems(androidEnvMismatches)}\n` +
+        `Unset the leaked variable or use the matching Android target.`,
+    );
+  }
   const laneExpected = resolveExpectedRendererStamp({
     policy: lanePolicy,
     env: process.env,
@@ -1260,6 +1288,18 @@ async function buildWeb(platform) {
  */
 async function ensureRendererDistMatchesLane(platform) {
   const policy = resolveMobileBuildPolicy(platform);
+  const androidEnvMismatches = androidRuntimeEnvOverrideMismatches({
+    platform,
+    policy,
+    env: process.env,
+  });
+  if (androidEnvMismatches.length > 0) {
+    throw new Error(
+      `[mobile-build] Refusing leaked Android runtime-mode env before Capacitor sync for target '${platform}':\n` +
+        `${formatMobileWebDistProblems(androidEnvMismatches)}\n` +
+        `Unset the leaked variable or use the matching Android target.`,
+    );
+  }
   const expected = resolveExpectedRendererStamp({
     policy,
     env: process.env,
@@ -3735,6 +3775,16 @@ export function shouldIncludeIosFullBunEngine(env = process.env) {
   );
 }
 
+export function resolveIosCapacitorSyncEnv(env = process.env) {
+  if (!shouldIncludeIosFullBunEngine(env)) return { ...env };
+
+  // Capacitor installs discovered plugin pods before the repository-owned
+  // Podfile can add ElizaBunEngine. Keep that intermediate install on the
+  // compatibility source set; prepareIosOverlay then writes both the engine
+  // and its dependent runtime plugin into the final pod graph.
+  return { ...env, ELIZA_IOS_FULL_BUN_ENGINE: "0" };
+}
+
 export function isIosAppStoreBuild(env = process.env) {
   return (
     env.ELIZA_RELEASE_AUTHORITY === "apple-app-store" ||
@@ -5464,10 +5514,15 @@ export function resolveAndroidLp3ColorPolicyBuildEnv(env = process.env) {
   };
 }
 
+// LP3 is an elizaOS direct-debug policy, never a whitelabel capability. Build
+// entrypoints pass their resolved identity explicitly so nested hosts cannot
+// leak ambient branding into these pure policy helpers.
+const ANDROID_LP3_CANONICAL_APP_ID = "ai.elizaos.app";
+
 export function enforceAndroidLp3ColorPolicyBuildPolicy({
   targetName,
   env = process.env,
-  appId = APP.appId,
+  appId = ANDROID_LP3_CANONICAL_APP_ID,
 }) {
   if (!isAndroidLp3ColorPolicyEnabled(env)) return;
   const playSignaled =
@@ -6908,6 +6963,9 @@ export async function runAndroidBuild(
   await ensurePlatform("android");
   await ensureRendererDistMatchesLane(target.webTarget);
   await runCapacitor(["sync", "android"]);
+  normalizeCapacitorSettingsFile(
+    path.join(androidDir, "capacitor.settings.gradle"),
+  );
   ensureBunRuntimeRegistered();
   mirrorCapacitorWebPayloadIntoAndroidDir();
 
@@ -7037,6 +7095,7 @@ function auditAndroidSystemArtifact({ androidSdkRoot, javaHome } = {}) {
   assertAndroidArtifactOmitsLp3ManifestMarkers(
     dumpAndroidArtifactManifest(aapt, artifact),
     {
+      appId: APP.appId,
       label: "ordinary AOSP",
       permissions: ["WRITE_SECURE_SETTINGS"],
     },
@@ -7805,12 +7864,10 @@ function assertAndroidLp3ColorPolicyManifest(manifestText) {
 
 export function assertAndroidArtifactOmitsLp3ManifestMarkers(
   manifestText,
-  { label, permissions = [] },
+  { appId = ANDROID_LP3_CANONICAL_APP_ID, label, permissions = [] },
 ) {
   const forbiddenMarkers = [
-    ...ANDROID_LP3_POLICY_CLASSES.map(
-      (className) => `${APP.appId}.${className}`,
-    ),
+    ...ANDROID_LP3_POLICY_CLASSES.map((className) => `${appId}.${className}`),
     ...ANDROID_LP3_PRIVATE_ACTIONS,
     ...ANDROID_LP3_POLICY_MARKERS,
     ...permissions.map((permission) => `android.permission.${permission}`),
@@ -8003,6 +8060,7 @@ export function auditAndroidCloudArtifact(
         assertAndroidLp3ColorPolicyManifest(manifestText);
       } else {
         assertAndroidArtifactOmitsLp3ManifestMarkers(manifestText, {
+          appId: APP.appId,
           label: "normal Cloud",
         });
       }
@@ -8498,7 +8556,9 @@ async function buildIos({ local = false } = {}) {
   if (shouldSkipIosCapacitorSync()) {
     console.log("[mobile-build] Skipping Capacitor iOS sync.");
   } else {
-    await runCapacitor(["sync", "ios"]);
+    await runCapacitor(["sync", "ios"], {
+      env: resolveIosCapacitorSyncEnv(),
+    });
   }
   // Overlay the freshly built renderer onto ios/App/App/public and assert it
   // matches the build — never ship a stale UI whether sync ran, was skipped, or
@@ -8591,6 +8651,7 @@ export async function main(argv = process.argv.slice(2)) {
   const target = argv[0];
   if (
     target !== "android" &&
+    target !== "android-cloud-hybrid" &&
     target !== "android-sms-gateway" &&
     target !== "android-cloud" &&
     target !== "android-cloud-audit" &&
@@ -8601,12 +8662,14 @@ export async function main(argv = process.argv.slice(2)) {
     target !== "ios-overlay"
   ) {
     console.error(
-      "Usage: node scripts/run-mobile-build.mjs <android|android-sms-gateway|android-cloud|android-cloud-audit [aab-path]|android-cloud-debug|android-system|ios|ios-local|ios-overlay>",
+      "Usage: node scripts/run-mobile-build.mjs <android|android-cloud-hybrid|android-sms-gateway|android-cloud|android-cloud-audit [aab-path]|android-cloud-debug|android-system|ios|ios-local|ios-overlay>",
     );
     process.exit(1);
   }
   if (target === "android") {
     await buildAndroid();
+  } else if (target === "android-cloud-hybrid") {
+    await runAndroidBuild("android-cloud-hybrid");
   } else if (target === "android-sms-gateway") {
     await buildAndroidSmsGateway();
   } else if (target === "android-cloud") {

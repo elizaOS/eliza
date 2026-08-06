@@ -1,3 +1,4 @@
+/** Verifies PermissionCard through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Renders PermissionCard in jsdom against a stub permissions registry to cover

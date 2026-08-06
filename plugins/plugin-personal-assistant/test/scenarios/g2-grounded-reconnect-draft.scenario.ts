@@ -3,8 +3,9 @@
  * context, draft one personal reconnect note, and keep it unsent for approval.
  * Generic blasts and fabricated shared memories fail the live judge.
  */
+
+import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { judgeRubric } from "../../../../packages/test/scenarios/_helpers/action-assertions.ts";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 export default scenario({

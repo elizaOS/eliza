@@ -1,10 +1,6 @@
 /**
- * @module features/plugin-manager/actions/plugin-handlers/install
- *
- * `install` sub-mode of the PLUGIN action. Installs a plugin from
- * the registry by canonical name. The underlying service handles the
- * npm/git source selection internally — `source: "git"` simply forces a
- * clone via the `PLUGIN_MANAGER_LOCAL_CLONE` env override on this call.
+ * Installs a registry plugin by canonical name.
+ * The service owns source selection; `source: "git"` scopes the local-clone override to this call.
  */
 
 import { logger } from "../../../../logger.ts";
@@ -64,13 +60,19 @@ export async function runInstall({
 		return { success: false, text };
 	}
 
+	// Human wording, no raw filesystem path (that stays in values/data); the
+	// confirmation is the complete answer, so verified + turnComplete make it
+	// the sole delivery instead of double-messaging with the evaluator.
 	const text =
-		`Installed ${result.pluginName}@${result.version} at ${result.installPath}` +
-		(result.requiresRestart ? "\nRestart required to activate." : "");
+		`Installed ${result.pluginName} (v${result.version}).` +
+		(result.requiresRestart ? " A restart is needed before it's active." : "");
 	await callback?.({ text });
 	return {
 		success: true,
 		text,
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		values: {
 			mode: "install",
 			name: result.pluginName,

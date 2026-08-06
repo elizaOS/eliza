@@ -30,19 +30,32 @@ const ERROR_MESSAGE =
 
 export const listCloudAppsAction: Action = {
   name: "LIST_CLOUD_APPS",
+  // "LIST_APPS" is deliberately NOT claimed: plugin-app-control's APP action
+  // owns it for device-installed apps, and a simile claimed by two parents is
+  // dropped from routing as ambiguous (#16561).
   similes: [
     "MY_APPS",
     "GET_APPS",
     "WHAT_APPS_DO_I_HAVE",
     "MY_CLOUD_APPS",
-    "LIST_APPS",
+    "CLOUD_APPS",
+    "LIST_ELIZA_CLOUD_APPS",
+    "MY_DEPLOYED_APPS",
+    "MY_SITES",
   ],
   description:
-    "List the Eliza Cloud apps the user owns (name, URL, deployment status, and credits/earnings when present). Use when the user asks what apps they have, to see their apps, or to list their Cloud apps.",
-  descriptionCompressed: "List the user's Eliza Cloud apps (name/url/status).",
-  // Read-only inventory lookup; safe on any user turn.
-  contexts: ["settings", "finance", "apps"],
-  contextGate: { anyOf: ["settings", "finance", "apps"] },
+    "List the Eliza Cloud apps the user owns — the hosted apps and sites they created or deployed on Eliza Cloud (name, URL, deployment status, and credits/earnings when present). Use when the user asks what apps they have, to see their apps, their cloud apps, or the sites/apps they've made or deployed. Not for apps installed or running on this device.",
+  descriptionCompressed:
+    "List the user's Eliza Cloud apps (name/url/status); not locally installed apps.",
+  routingHint:
+    "The user's own Eliza Cloud apps -> LIST_CLOUD_APPS. 'List my apps', 'my cloud apps', 'what apps do I have on eliza cloud', 'sites/apps I've made or deployed' is LIST_CLOUD_APPS; apps installed or running on this device are APP (NOT this action).",
+  // Read-only inventory lookup; safe on any user turn. "general" mirrors the
+  // APP action's rationale (#9950): Stage-1 routinely classifies unambiguous
+  // app asks ("list my cloud apps") as general context; without it this
+  // action is context-gated off the planner surface and the local APP action
+  // wins by forfeit.
+  contexts: ["settings", "finance", "apps", "general"],
+  contextGate: { anyOf: ["settings", "finance", "apps", "general"] },
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
     return resolveCloudApiKey(runtime) !== null;
@@ -66,48 +79,13 @@ export const listCloudAppsAction: Action = {
       };
     }
 
+    let response: Awaited<ReturnType<typeof client.listApps>>;
+    // error-policy:J1 The action boundary translates only the Cloud request;
+    // connector delivery remains owned by the caller and must reject unchanged.
     try {
-      const { apps } = await client.listApps();
-
-      if (!apps || apps.length === 0) {
-        await callback?.({ text: EMPTY_MESSAGE, actions: ["LIST_CLOUD_APPS"] });
-        return {
-          success: true,
-          text: "User has no Eliza Cloud apps.",
-          userFacingText: EMPTY_MESSAGE,
-          data: { count: 0, apps: [] },
-        };
-      }
-
-      const header =
-        apps.length === 1
-          ? "You have 1 app on Eliza Cloud:"
-          : `You have ${apps.length} apps on Eliza Cloud:`;
-      const body = apps.map(formatAppLine).join("\n");
-      const reply = `${header}\n${body}`;
-
-      await callback?.({ text: reply, actions: ["LIST_CLOUD_APPS"] });
-      return {
-        success: true,
-        text: `Listed ${apps.length} Eliza Cloud app(s).`,
-        userFacingText: reply,
-        verifiedUserFacing: true,
-        data: {
-          count: apps.length,
-          apps: apps.map((a) => ({
-            id: a.id,
-            name: a.name,
-            slug: a.slug,
-            status: a.deployment_status,
-          })),
-        },
-      };
+      response = await client.listApps();
     } catch (err) {
-      logger.warn(
-        `[LIST_CLOUD_APPS] Failed to list apps: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
+      logger.warn({ err }, "[LIST_CLOUD_APPS] Failed to list apps");
       await callback?.({ text: ERROR_MESSAGE, actions: ["LIST_CLOUD_APPS"] });
       return {
         success: false,
@@ -117,6 +95,45 @@ export const listCloudAppsAction: Action = {
         data: { reason: "error" },
       };
     }
+
+    const { apps } = response;
+    if (!apps || apps.length === 0) {
+      await callback?.({ text: EMPTY_MESSAGE, actions: ["LIST_CLOUD_APPS"] });
+      return {
+        success: true,
+        text: "User has no Eliza Cloud apps.",
+        userFacingText: EMPTY_MESSAGE,
+        data: { count: 0, apps: [] },
+      };
+    }
+
+    const header =
+      apps.length === 1
+        ? "You have 1 app on Eliza Cloud:"
+        : `You have ${apps.length} apps on Eliza Cloud:`;
+    const body = apps.map(formatAppLine).join("\n");
+    const reply = `${header}\n${body}`;
+
+    await callback?.({ text: reply, actions: ["LIST_CLOUD_APPS"] });
+    return {
+      success: true,
+      text: `Listed ${apps.length} Eliza Cloud app(s).`,
+      userFacingText: reply,
+      verifiedUserFacing: true,
+      // A single-operation read whose reply IS the complete answer: opting
+      // into the gated evaluator skip keeps a small planner model from
+      // re-rendering the already-delivered list as a second message.
+      turnComplete: true,
+      data: {
+        count: apps.length,
+        apps: apps.map((a) => ({
+          id: a.id,
+          name: a.name,
+          slug: a.slug,
+          status: a.deployment_status,
+        })),
+      },
+    };
   },
 
   examples: [

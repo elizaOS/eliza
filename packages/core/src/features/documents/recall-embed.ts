@@ -43,8 +43,11 @@
  * **Fail-open on error only.** A failed embed (the model handler rejects — e.g.
  * its own request timeout aborts, or the provider errors) returns `null`; the
  * caller falls open to keyword/BM25 recall (or, for callers with no keyword
- * path, to empty recall context) — recall richness is lost, the reply is never
- * blocked on an *error*, and recall is never silently dropped (we log it).
+ * path, to empty recall context) — recall richness is lost, but the reply is
+ * never blocked on an *error*. The provider owns diagnosis of a typed, expected
+ * capability-unavailable state; every unexpected failure is reported here with
+ * a stable recall code so it remains eligible for runtime diagnostics and
+ * escalation without turning a known missing capability into chat noise.
  *
  * There is deliberately NO app-level latency timeout here. A short, arbitrary
  * race on every healthy-but-slow embed would silently degrade vector recall to
@@ -55,11 +58,75 @@
  * (fail-open), with no silent middle ground.
  */
 
+import { toElizaError } from "../../errors";
 import { recordInferenceSpan } from "../../inference-timing";
-import { logger } from "../../logger";
 import { getStreamingContext } from "../../streaming-context";
 import type { IAgentRuntime } from "../../types";
 import { ModelType } from "../../types";
+
+const LOCAL_INFERENCE_UNAVAILABLE_CODE = "LOCAL_INFERENCE_UNAVAILABLE";
+const EXPECTED_UNAVAILABLE_REASONS = new Set([
+	"backend_unavailable",
+	"capability_unavailable",
+]);
+
+interface ModelProviderFailureDetails {
+	code?: string;
+	modelType?: string;
+	provider?: string;
+	reason?: string;
+}
+
+/** Read the stable cross-package error fields exposed by model providers. */
+function modelProviderFailureDetails(
+	error: unknown,
+): ModelProviderFailureDetails {
+	if (typeof error !== "object" || error === null) return {};
+	const candidate = error as Record<string, unknown>;
+	return {
+		code: typeof candidate.code === "string" ? candidate.code : undefined,
+		modelType:
+			typeof candidate.modelType === "string" ? candidate.modelType : undefined,
+		provider:
+			typeof candidate.provider === "string" ? candidate.provider : undefined,
+		reason: typeof candidate.reason === "string" ? candidate.reason : undefined,
+	};
+}
+
+/**
+ * The local provider already diagnoses these states at registration/probe time.
+ * Re-reporting one for every recall query would turn a stable missing capability
+ * into RECENT_ERRORS and repeat-failure owner escalation.
+ */
+function isExpectedEmbeddingCapabilityUnavailable(error: unknown): boolean {
+	const details = modelProviderFailureDetails(error);
+	return (
+		details.code === LOCAL_INFERENCE_UNAVAILABLE_CODE &&
+		details.modelType === ModelType.TEXT_EMBEDDING &&
+		details.reason !== undefined &&
+		EXPECTED_UNAVAILABLE_REASONS.has(details.reason)
+	);
+}
+
+function reportUnexpectedEmbeddingFailure(
+	runtime: IAgentRuntime,
+	error: unknown,
+	phase: "synchronous" | "asynchronous",
+): void {
+	if (isExpectedEmbeddingCapabilityUnavailable(error)) return;
+	const details = modelProviderFailureDetails(error);
+	runtime.reportError(
+		"DocumentRecall.embedding",
+		toElizaError(error, "RECALL_EMBEDDING_FAILED"),
+		{
+			phase,
+			...(details.code ? { providerErrorCode: details.code } : {}),
+			...(details.modelType ? { modelType: details.modelType } : {}),
+			...(details.provider ? { provider: details.provider } : {}),
+			...(details.reason ? { reason: details.reason } : {}),
+		},
+	);
+}
 
 /** Normalize query text so trivially-different strings share one cache slot. */
 function normalizeQuery(text: string): string {
@@ -164,9 +231,12 @@ export async function embedRecallQuery(
 	let runId: string;
 	try {
 		runId = runtime.getCurrentRunId();
-	} catch {
+	} catch (error) {
+		// error-policy:J4 Pre-run callers have no active run and explicitly use
+		// the message-scoped cache key.
 		// No active run yet (a pre-run caller such as document augmentation): fall
 		// back to the messageId turn key below so the vector still caches.
+		runtime.reportError("DocumentRecall.preRunCacheKey", error);
 		runId = "";
 	}
 
@@ -211,13 +281,10 @@ export async function embedRecallQuery(
 			if (signal?.aborted) {
 				throw signal.reason ?? error;
 			}
-			logger.debug(
-				{
-					src: "core:documents:recall-embed",
-					error: error instanceof Error ? error.message : String(error),
-				},
-				"Recall-query embed threw synchronously; failing open to keyword recall",
-			);
+			// error-policy:J4 semantic recall explicitly degrades to keyword recall;
+			// unexpected failures remain observable, while a provider-owned typed
+			// unavailable state is already diagnosed at its registration/probe boundary.
+			reportUnexpectedEmbeddingFailure(runtime, error, "synchronous");
 			return null;
 		}
 		cache?.inFlight.set(normalized, pending);
@@ -231,8 +298,8 @@ export async function embedRecallQuery(
 				}
 			})
 			.catch(() => {
-				// Swallow: the awaiting caller below logs + fails open. Avoids an
-				// unhandled rejection from the detached cache-population branch.
+				// error-policy:J5 the awaiting caller below observes and reports the
+				// same rejection; this detached cache branch only suppresses duplication.
 			})
 			.finally(() => {
 				cache?.inFlight.delete(normalized);
@@ -248,13 +315,10 @@ export async function embedRecallQuery(
 		if (signal?.aborted) {
 			throw signal.reason ?? error;
 		}
-		logger.debug(
-			{
-				src: "core:documents:recall-embed",
-				error: error instanceof Error ? error.message : String(error),
-			},
-			"Recall-query embed failed; failing open to keyword recall",
-		);
+		// error-policy:J4 semantic recall explicitly degrades to keyword recall;
+		// unexpected failures remain observable, while a provider-owned typed
+		// unavailable state is already diagnosed at its registration/probe boundary.
+		reportUnexpectedEmbeddingFailure(runtime, error, "asynchronous");
 		return null;
 	}
 }
@@ -291,9 +355,12 @@ export function aliasRecallQuery(
 	let runId: string;
 	try {
 		runId = runtime.getCurrentRunId();
-	} catch {
+	} catch (error) {
+		// error-policy:J4 Pre-run callers have no active run and explicitly use
+		// the message-scoped cache key.
 		// No active run (the pre-run augmentation caller): key by messageId, the
 		// same fallback embedRecallQuery uses, so both resolve one slot.
+		runtime.reportError("DocumentRecall.preRunAliasKey", error);
 		runId = "";
 	}
 	if (runId === "" && options.messageId === undefined) {
@@ -324,8 +391,8 @@ export function aliasRecallQuery(
 			}
 		})
 		.catch(() => {
-			// Swallow: the source caller logs + fails open; an alias-text caller
-			// awaiting this shared promise fails open through its own catch.
+			// error-policy:J5 The source caller observes and reports this same
+			// rejection; this branch only prevents duplicate alias-cache work.
 		})
 		.finally(() => {
 			cache.inFlight.delete(aliasKey);

@@ -3,6 +3,7 @@
  */
 
 import { expect, type Page, test } from "playwright/test";
+import { waitForLandingIntro } from "./landing-readiness";
 
 const TEST_TOKEN = "homepage-e2e-token";
 
@@ -222,11 +223,14 @@ test("connected page exercises account menu, copy controls, link-phone form, and
   await expect(page).toHaveURL(/\/get-started\?method=discord&link=true/);
 });
 
-test("leaderboard/onboarding page renders its animated shell and primary entrypoint", async ({
+test("landing page renders its animated shell and primary entrypoint", async ({
   page,
 }) => {
-  await page.goto("/leaderboard");
+  await page.goto("/");
 
-  await expect(page.locator("main")).toBeVisible();
   await expect(page.getByLabel("Eliza")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole("button", { name: "Try Now" })).toBeVisible({
+    timeout: 20_000,
+  });
+  await waitForLandingIntro(page);
 });

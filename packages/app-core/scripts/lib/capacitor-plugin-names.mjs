@@ -1,4 +1,7 @@
-/** Supports app-core build, packaging, or development orchestration for capacitor plugin names mjs. */
+/**
+ * Discovers the workspace's native Capacitor plugins (plugin-native-*) and
+ * exports their short names and filesystem roots for mobile build scripts.
+ */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

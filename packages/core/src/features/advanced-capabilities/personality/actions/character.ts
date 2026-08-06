@@ -17,8 +17,10 @@
  * persistCharacterPatch helper, and both global paths land in the
  * character-persistence service.
  */
+import { ElizaError } from "../../../../errors.ts";
 import { logger } from "../../../../logger.ts";
 import { hasRoleAccess } from "../../../../roles.ts";
+import { stringifyForModel } from "../../../../runtime/json-output.ts";
 import type { Character } from "../../../../types/agent.ts";
 import type {
 	Action,
@@ -246,8 +248,9 @@ export const characterAction: Action = {
 		const rawOp = params.action ?? params.subaction ?? params.op;
 		const op = isCharacterOp(rawOp) ? rawOp : null;
 		if (!op) {
+			// Planner-facing only: a missing op is a planner error, not something
+			// the chat user should see as raw tool-speak.
 			const text = `CHARACTER requires an action: ${CHARACTER_OPS.join(", ")}.`;
-			await callback?.({ text, thought: "Missing or invalid action" });
 			return {
 				text,
 				success: false,
@@ -369,7 +372,6 @@ async function runUpdateIdentity(
 	if (!name && !systemPrompt) {
 		const text =
 			"Either `name` or `system` must be provided to update_identity.";
-		await callback?.({ text, thought: "Missing parameters" });
 		return {
 			text,
 			success: false,
@@ -390,8 +392,8 @@ async function runUpdateIdentity(
 	if (!persistence) {
 		if (name) character.name = previousName;
 		if (systemPrompt) character.system = previousSystem;
-		const text = "Character persistence service is not available.";
-		await callback?.({ text, thought: "Persistence service unavailable" });
+		const text =
+			"Character persistence service is not available; tell the user the identity change can't be saved right now.";
 		return {
 			text,
 			success: false,
@@ -408,8 +410,7 @@ async function runUpdateIdentity(
 	if (!result.success) {
 		if (name) character.name = previousName;
 		if (systemPrompt) character.system = previousSystem;
-		const text = `Failed to persist identity: ${result.error ?? "unknown error"}`;
-		await callback?.({ text, thought: "Persistence failed" });
+		const text = `Failed to persist identity: ${result.error ?? "unknown error"}; tell the user the change didn't save.`;
 		return {
 			text,
 			success: false,
@@ -434,8 +435,14 @@ async function runUpdateIdentity(
 		thought: "Identity updated",
 		actions: ["CHARACTER"],
 	});
+	// The confirmation is the complete answer to a single-operation turn:
+	// verified + turnComplete make the callback the sole delivery instead of
+	// double-messaging with the evaluator.
 	return {
 		text,
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		success: true,
 		values: { updated },
 		data: { action: "CHARACTER", op: "update_identity", updated },
@@ -480,7 +487,6 @@ async function runPersist(
 
 	if (Object.keys(patch).length === 0) {
 		const text = "No character fields to persist.";
-		await callback?.({ text, thought: "Empty patch" });
 		return {
 			text,
 			success: true,
@@ -491,8 +497,7 @@ async function runPersist(
 
 	const result = await persistCharacterPatch(runtime, patch);
 	if (!result.success) {
-		const text = `I couldn't persist the character: ${result.error ?? "unknown error"}`;
-		await callback?.({ text, thought: "Persistence failed" });
+		const text = `Failed to persist the character: ${result.error ?? "unknown error"}; tell the user the save didn't go through.`;
 		return {
 			text,
 			success: false,
@@ -510,6 +515,9 @@ async function runPersist(
 	});
 	return {
 		text: summary,
+		userFacingText: summary,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		success: true,
 		values: { fieldsPersisted: persistedFields, count: persistedFields.length },
 		data: {
@@ -624,9 +632,11 @@ async function runModify(
 		}
 
 		if (!modification) {
+			// Planner-facing only: the canned clarification read as corporate
+			// boilerplate in chat next to the evaluator's in-voice reply (a live
+			// double message). The evaluator owns asking the user, in voice.
 			const text =
-				"I don't see any clear modification instructions. Could you be more specific about how you'd like me to change?";
-			await callback?.({ text, thought: "No valid modification found" });
+				"No clear modification instructions found in the request; ask the user to be specific about how they'd like the character to change.";
 			return {
 				text,
 				values: { success: false, error: "no_modification_found" },
@@ -664,11 +674,8 @@ async function runModify(
 					"Applying selective modifications after safety filtering",
 				);
 			} else {
-				await callback?.({
-					text: responseText,
-					thought: `Rejected modification: ${safety.concerns.join(", ")}`,
-					actions: [],
-				});
+				// Planner-facing only: the safety-eval prose (concerns + reasoning)
+				// stays in the result for the evaluator to voice, not dumped in chat.
 				logger.warn(
 					{
 						messageText: messageText.substring(0, 100),
@@ -698,8 +705,7 @@ async function runModify(
 
 		const validation = fileManager.validateModification(modification);
 		if (!validation.valid) {
-			const text = `I can't make those changes because: ${validation.errors.join(", ")}`;
-			await callback?.({ text, thought: "Validation failed" });
+			const text = `The requested changes failed validation: ${validation.errors.join(", ")}; tell the user which parts can't be applied.`;
 			return {
 				text,
 				values: {
@@ -720,8 +726,7 @@ async function runModify(
 		const result = await fileManager.applyModification(modification);
 
 		if (!result.success) {
-			const text = `I couldn't update my character: ${result.error}`;
-			await callback?.({ text, thought: "File modification failed" });
+			const text = `Character update failed: ${result.error}; tell the user the change didn't apply.`;
 			return {
 				text,
 				values: { success: false, error: result.error },
@@ -736,8 +741,9 @@ async function runModify(
 		}
 
 		const summary = summarizeModification(modification);
+		const successText = `I've successfully updated my character. ${summary}`;
 		await callback?.({
-			text: `I've successfully updated my character. ${summary}`,
+			text: successText,
 			thought: `Applied character modification: ${summary}`,
 			actions: ["CHARACTER"],
 		});
@@ -765,19 +771,18 @@ async function runModify(
 				"modifications",
 			);
 		} catch (memoryError) {
-			logger.warn(
-				{
-					error:
-						memoryError instanceof Error
-							? memoryError.message
-							: String(memoryError),
-				},
-				"Character modification success log failed",
-			);
+			// error-policy:J7 audit persistence must not turn an applied character
+			// change into a failed action; report the diagnostic failure.
+			runtime.reportError("Character.modificationAudit", memoryError, {
+				roomId: message.roomId,
+			});
 		}
 
 		return {
-			text: `I've successfully updated my character. ${summary}`,
+			text: successText,
+			userFacingText: successText,
+			verifiedUserFacing: true,
+			turnComplete: true,
 			values: {
 				success: true,
 				modificationsApplied: true,
@@ -798,16 +803,14 @@ async function runModify(
 			success: true,
 		};
 	} catch (error) {
+		// error-policy:J1 the action boundary translates modification failure into
+		// an explicit unsuccessful result visible to the model.
 		logger.error(
 			{ error: error instanceof Error ? error.message : String(error) },
 			"Error in CHARACTER.modify",
 		);
 		const text =
-			"I encountered an error while trying to modify my character. Please try again.";
-		await callback?.({
-			text,
-			thought: `Error: ${(error as Error).message}`,
-		});
+			"Character modification failed with an unexpected error; tell the user it didn't go through and they can try again.";
 		return {
 			text,
 			values: { success: false, error: (error as Error).message },
@@ -829,15 +832,9 @@ function parseStructuredRecord(
 		const parsed = JSON.parse(response.trim()) as unknown;
 		return isRecord(parsed) ? parsed : null;
 	} catch {
+		// error-policy:J3 character model output is untrusted input; malformed
+		// JSON is an explicit invalid response.
 		return null;
-	}
-}
-
-function formatPromptData(value: unknown): string {
-	try {
-		return JSON.stringify(value, null, 2);
-	} catch {
-		return String(value);
 	}
 }
 
@@ -1051,25 +1048,39 @@ Example:
 			maxTokens: 150,
 		});
 		const raw = parseStructuredRecord(response);
-		if (!raw) return heuristic.intent;
+		if (!raw) {
+			throw new ElizaError("Character intent model returned invalid JSON", {
+				code: "CHARACTER_INTENT_INVALID",
+			});
+		}
 
-		const confidence = normalizeNumber(raw.confidence) ?? 0;
+		const confidence = normalizeNumber(raw.confidence);
+		const isModificationRequest = normalizeBoolean(raw.isModificationRequest);
+		const requestType = raw.requestType;
+		if (
+			confidence === undefined ||
+			isModificationRequest === undefined ||
+			(requestType !== "explicit" &&
+				requestType !== "suggestion" &&
+				requestType !== "none")
+		) {
+			throw new ElizaError("Character intent model returned invalid fields", {
+				code: "CHARACTER_INTENT_INVALID",
+			});
+		}
 		const llmResult = {
-			isModificationRequest:
-				(normalizeBoolean(raw.isModificationRequest) ?? false) &&
-				confidence > 0.5,
-			requestType: (typeof raw.requestType === "string"
-				? raw.requestType
-				: "none") as "explicit" | "suggestion" | "none",
+			isModificationRequest: isModificationRequest && confidence > 0.5,
+			requestType: requestType as "explicit" | "suggestion" | "none",
 			confidence,
 		};
-		return llmResult.isModificationRequest ? llmResult : heuristic.intent;
+		return llmResult;
 	} catch (error) {
-		logger.debug(
-			{ error: error instanceof Error ? error.message : String(error) },
-			"Intent detection failed, using heuristic fallback",
-		);
-		return heuristic.intent;
+		// error-policy:J2 preserve the model failure while identifying the intent
+		// classification boundary; an inconclusive rule result is not fabricated.
+		throw new ElizaError("Failed to classify character modification intent", {
+			code: "CHARACTER_INTENT_CLASSIFICATION_FAILED",
+			cause: error,
+		});
 	}
 }
 
@@ -1101,10 +1112,11 @@ async function buildRecentConversationContext(
 			})
 			.join("\n");
 	} catch (error) {
-		logger.debug(
-			{ error: error instanceof Error ? error.message : String(error) },
-			"Failed to load recent conversation context",
-		);
+		// error-policy:J4 recent context is optional for character edits, but the
+		// failed memory read remains observable to the agent.
+		runtime.reportError("Character.buildRecentConversationContext", error, {
+			roomId: message.roomId,
+		});
 		return "";
 	}
 }
@@ -1197,11 +1209,12 @@ style_post: array of post style items`;
 		if (!parsed) return null;
 		return sanitizeParsedModification(messageText, parsed);
 	} catch (error) {
-		logger.warn(
-			{ error: error instanceof Error ? error.message : String(error) },
-			"Failed to parse user modification request",
-		);
-		return null;
+		// error-policy:J2 preserve the model failure while identifying the
+		// character-modification parse boundary.
+		throw new ElizaError("Failed to parse character modification request", {
+			code: "CHARACTER_MODIFICATION_PARSE_FAILED",
+			cause: error,
+		});
 	}
 }
 
@@ -1220,7 +1233,7 @@ async function evaluateModificationSafety(
 ORIGINAL REQUEST: "${requestText}"
 
 PARSED MODIFICATION:
-${formatPromptData(modification)}
+${stringifyForModel(modification)}
 
 AGENT'S CURRENT CORE VALUES:
 - Helpful, honest, and ethical
@@ -1266,10 +1279,9 @@ acceptable_style_post: array of post style items`;
 			buildModificationFromStructuredRecord(raw, "acceptable_") ?? undefined;
 		return { isAppropriate, concerns, reasoning, acceptableChanges };
 	} catch (error) {
-		logger.warn(
-			{ error: error instanceof Error ? error.message : String(error) },
-			"Failed to evaluate modification safety",
-		);
+		// error-policy:J4 safety failure fails closed with an explicit unavailable
+		// explanation and remains observable to the agent.
+		runtime.reportError("Character.evaluateModificationSafety", error);
 		return {
 			isAppropriate: false,
 			concerns: ["Safety evaluation unavailable"],
@@ -1334,6 +1346,8 @@ function parseEvolutionData(
 			? (parsed as Record<string, unknown>)
 			: null;
 	} catch {
+		// error-policy:J3 evolution memories are untrusted persisted input;
+		// malformed JSON is an explicit invalid record.
 		return null;
 	}
 }
@@ -1398,8 +1412,13 @@ Set action: none only if the request truly does not specify any interaction pref
 				? raw.category.trim()
 				: "other";
 		return { text, category, action };
-	} catch {
-		return null;
+	} catch (error) {
+		// error-policy:J2 preserve the model failure while identifying the
+		// user-preference parse boundary.
+		throw new ElizaError("Failed to parse character preference request", {
+			code: "CHARACTER_PREFERENCE_PARSE_FAILED",
+			cause: error,
+		});
 	}
 }
 
@@ -1416,41 +1435,41 @@ async function handlePreferenceReset(
 	});
 
 	if (existingPrefs.length === 0) {
+		const noPrefsText =
+			"You don't have any custom interaction preferences set.";
 		await callback?.({
-			text: "You don't have any custom interaction preferences set.",
+			text: noPrefsText,
 			thought: "No preferences to reset",
 		});
 		return {
 			text: "No preferences to reset",
+			userFacingText: noPrefsText,
+			verifiedUserFacing: true,
+			turnComplete: true,
 			success: true,
 			values: { resetCount: 0 },
 			data: { action: "CHARACTER", op: "modify" },
 		};
 	}
 
-	let deletedCount = 0;
-	for (const pref of existingPrefs) {
-		if (pref.id) {
-			try {
-				await runtime.deleteMemory(pref.id);
-				deletedCount++;
-			} catch (err) {
-				logger.warn(
-					{ memoryId: pref.id, error: (err as Error).message },
-					"Failed to delete preference memory",
-				);
-			}
-		}
-	}
+	const preferenceIds = existingPrefs.flatMap((pref) =>
+		pref.id ? [pref.id] : [],
+	);
+	await Promise.all(preferenceIds.map((id) => runtime.deleteMemory(id)));
+	const deletedCount = preferenceIds.length;
 
+	const clearedText = `I've cleared ${deletedCount} custom interaction preference(s). I'll go back to my default interaction style with you.`;
 	await callback?.({
-		text: `I've cleared ${deletedCount} custom interaction preference(s). I'll go back to my default interaction style with you.`,
+		text: clearedText,
 		thought: `Reset ${deletedCount} user preferences`,
 		actions: ["CHARACTER"],
 	});
 
 	return {
 		text: `Reset ${deletedCount} preferences`,
+		userFacingText: clearedText,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		success: true,
 		values: { resetCount: deletedCount },
 		data: { action: "CHARACTER", op: "modify" },
@@ -1466,12 +1485,8 @@ async function handleUserPreference(
 	try {
 		const preference = await parseUserPreference(runtime, message, messageText);
 		if (!preference) {
-			await callback?.({
-				text: "I couldn't understand your preference. Could you be more specific? For example: 'be more formal with me' or 'don't use emojis when talking to me'.",
-				thought: "Failed to parse user preference",
-			});
 			return {
-				text: "Could not parse preference",
+				text: "No clear interaction preference found in the request; ask the user to state it specifically (e.g. 'be more formal with me').",
 				success: false,
 				values: { error: "parse_failed" },
 				data: { action: "CHARACTER", op: "modify" },
@@ -1490,12 +1505,8 @@ async function handleUserPreference(
 		});
 
 		if (existingPrefs.length >= MAX_PREFS_PER_USER) {
-			await callback?.({
-				text: `You already have ${MAX_PREFS_PER_USER} interaction preferences set. Please clear some first by saying "reset my interaction preferences".`,
-				thought: "User exceeded maximum preference count",
-			});
 			return {
-				text: "Preference limit reached",
+				text: `Preference limit reached (${MAX_PREFS_PER_USER}); tell the user to clear some existing interaction preferences before adding more.`,
 				success: false,
 				values: { error: "limit_exceeded", count: existingPrefs.length },
 				data: { action: "CHARACTER", op: "modify" },
@@ -1508,12 +1519,17 @@ async function handleUserPreference(
 		});
 
 		if (isDuplicate) {
+			const duplicateText =
+				"I already have that preference noted for our interactions.";
 			await callback?.({
-				text: "I already have that preference noted for our interactions.",
+				text: duplicateText,
 				thought: "Duplicate preference detected",
 			});
 			return {
 				text: "Preference already exists",
+				userFacingText: duplicateText,
+				verifiedUserFacing: true,
+				turnComplete: true,
 				success: true,
 				values: { duplicate: true },
 				data: { action: "CHARACTER", op: "modify" },
@@ -1538,14 +1554,18 @@ async function handleUserPreference(
 			USER_PREFS_TABLE,
 		);
 
+		const storedText = `Got it! I'll remember that for our interactions: "${preference.text}". This only affects how I interact with you, not my core personality.`;
 		await callback?.({
-			text: `Got it! I'll remember that for our interactions: "${preference.text}". This only affects how I interact with you, not my core personality.`,
+			text: storedText,
 			thought: `Stored per-user preference: ${preference.text}`,
 			actions: ["CHARACTER"],
 		});
 
 		return {
 			text: `Stored user preference: ${preference.text}`,
+			userFacingText: storedText,
+			verifiedUserFacing: true,
+			turnComplete: true,
 			success: true,
 			values: {
 				preferenceStored: true,
@@ -1564,16 +1584,14 @@ async function handleUserPreference(
 			},
 		};
 	} catch (error) {
+		// error-policy:J1 the action boundary translates preference persistence
+		// failure into an explicit unsuccessful result visible to the model.
 		logger.error(
 			{ error: error instanceof Error ? error.message : String(error) },
 			"Error storing user preference",
 		);
-		await callback?.({
-			text: "I encountered an error saving your preference. Please try again.",
-			thought: `Error in user preference handler: ${(error as Error).message}`,
-		});
 		return {
-			text: "Error storing preference",
+			text: "Storing the preference failed with an unexpected error; tell the user it didn't save and they can try again.",
 			success: false,
 			values: { error: (error as Error).message },
 			data: { action: "CHARACTER", op: "modify" },

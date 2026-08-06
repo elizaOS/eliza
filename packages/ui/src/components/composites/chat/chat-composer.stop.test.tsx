@@ -1,3 +1,4 @@
+/** Verifies ChatComposer stop affordance through the package's configured test harness. */
 // @vitest-environment jsdom
 
 // Component-level coverage for the chat STOP affordance — the in-composer

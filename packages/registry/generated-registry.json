@@ -227,6 +227,82 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "@rati-osf/plugin-ruby-high": {
+      "git": {
+        "repo": "cenetex/plugin-ruby-high",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@rati-osf/plugin-ruby-high",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.5"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Send an elizaOS agent to Ruby High to enroll, attend classes, answer questions, and learn alongside humans and agents.",
+      "homepage": "https://ruby-high.ai",
+      "topics": [
+        "ruby-high",
+        "education",
+        "agents",
+        "game"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "app",
+      "registryKind": "app",
+      "directory": null,
+      "app": {
+        "displayName": "Ruby High",
+        "category": "education",
+        "launchType": "connect",
+        "launchUrl": null,
+        "icon": "https://unpkg.com/@rati-osf/plugin-ruby-high@0.1.5/images/ruby-high-app-icon.png",
+        "heroImage": "https://unpkg.com/@rati-osf/plugin-ruby-high@0.1.5/images/ruby-eliza-plugin-launch.jpg",
+        "capabilities": [
+          "education",
+          "agent-gameplay",
+          "bounded-autonomy",
+          "spectate-and-steer"
+        ],
+        "runtimePlugin": "@rati-osf/plugin-ruby-high",
+        "viewer": {
+          "url": "/ruby-high/viewer",
+          "postMessageAuth": false,
+          "sandbox": "allow-scripts allow-same-origin allow-popups"
+        },
+        "session": {
+          "mode": "external",
+          "features": [
+            "commands",
+            "telemetry",
+            "suggestions"
+          ]
+        },
+        "visibleInAppStore": true,
+        "catalogSection": "other",
+        "minPlayers": null,
+        "maxPlayers": null
+      }
+    },
     "@seekdaseek/plugin-agentfeed": {
       "git": {
         "repo": "seekdaseek/plugin-agentfeed",
@@ -795,49 +871,6 @@
       "registryKind": "plugin",
       "directory": null
     },
-    "elizaos-plugin-echo": {
-      "git": {
-        "repo": "elizaOS/eliza",
-        "v0": {
-          "branch": null
-        },
-        "v1": {
-          "branch": null
-        },
-        "v2": {
-          "branch": "main"
-        }
-      },
-      "npm": {
-        "repo": "elizaos-plugin-echo",
-        "v0": null,
-        "v1": null,
-        "v2": "2.0.0-beta.0"
-      },
-      "supports": {
-        "v0": false,
-        "v1": false,
-        "v2": true
-      },
-      "description": "Reference third-party elizaOS plugin: an ECHO action that repeats a message back.",
-      "homepage": "https://github.com/elizaOS/eliza/tree/main/packages/examples/plugin-echo",
-      "topics": [
-        "example",
-        "utility",
-        "reference"
-      ],
-      "stargazers_count": 0,
-      "language": "TypeScript",
-      "origin": "third-party",
-      "source": "community",
-      "support": "community",
-      "builtIn": false,
-      "firstParty": false,
-      "thirdParty": true,
-      "kind": "plugin",
-      "registryKind": "plugin",
-      "directory": "packages/examples/plugin-echo"
-    },
     "elizaos-plugin-neynar-search": {
       "git": {
         "repo": "xavier-arosemena/elizaos-plugin-neynar-search",
@@ -1040,14 +1073,14 @@
         "repo": "elizaos-plugin-yieldsignal",
         "v0": null,
         "v1": null,
-        "v2": "0.2.0"
+        "v2": "0.2.2"
       },
       "supports": {
         "v0": false,
         "v1": false,
         "v2": true
       },
-      "description": "Buyer-side GET_YIELD_SIGNAL action: risk-weighted USDC/WETH lending APY on Base via x402, with client-side spend controls, EIP-712 response verification and schema validation.",
+      "description": "Buyer-side GET_YIELD_SIGNAL action: risk-weighted ETH liquid staking APY plus USDC/WETH lending APY on Base via x402, with client-side spend controls, EIP-712 response verification, schema validation and partial-reading disclosure.",
       "homepage": "https://yieldsignal.vercel.app",
       "topics": [
         "defi",

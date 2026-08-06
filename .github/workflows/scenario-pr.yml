@@ -34,12 +34,12 @@ concurrency:
 
 env:
   CI: "true"
-  BUN_VERSION: "canary"
+  BUN_VERSION: "1.3.14"
   NODE_VERSION: "24.15.0"
   NODE_OPTIONS: "--max-old-space-size=4096"
   TEST_LANE: "pr"
   ELIZA_LIVE_TEST: "0"
-  SCENARIO_USE_LLM_PROXY: "1"
+  SCENARIO_USE_DETERMINISTIC_MODEL: "1"
   CEREBRAS_API_KEY: ""
   OPENAI_API_KEY: ""
   ANTHROPIC_API_KEY: ""
@@ -63,7 +63,7 @@ jobs:
     # Path classifier is a git-diff + node script: no self-hosted resources.
     # Keep it on GitHub-hosted so a drained hetzner fleet cannot leave it
     # queued indefinitely and pile up runs (#13617/#8501).
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 10
     outputs:
       run_scenario_pr: ${{ steps.filter.outputs.run_scenario_pr }}
@@ -98,7 +98,7 @@ jobs:
     name: Zero-Key unit + UI coverage
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -114,7 +114,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -140,7 +140,7 @@ jobs:
     name: Zero-Key app browser core
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -156,7 +156,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -201,7 +201,7 @@ jobs:
     name: Zero-Key app browser view lifecycle
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -217,7 +217,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -261,7 +261,7 @@ jobs:
     name: Zero-Key app browser all-pages
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -277,7 +277,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -306,7 +306,7 @@ jobs:
     name: Zero-Key app browser feature interactions
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 55
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -322,7 +322,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -334,7 +334,7 @@ jobs:
         run: bunx playwright install --with-deps chromium
 
       - name: Actual app feature interaction browser coverage
-        run: bun run --cwd packages/app test:e2e test/ui-smoke/apps-utility-interactions.spec.ts test/ui-smoke/apps-model-training-interactions.spec.ts test/ui-smoke/apps-comms-device-interactions.spec.ts test/ui-smoke/apps-diagnostics-interactions.spec.ts test/ui-smoke/apps-builtin-pages-interactions.spec.ts test/ui-smoke/settings-sections-interactions.spec.ts test/ui-smoke/settings-mobile-load.spec.ts test/ui-smoke/apps-personal-assistant-decomposed-interactions.spec.ts test/ui-smoke/apps-personal-assistant-feed-interactions.spec.ts test/ui-smoke/vault-modal-interactions.spec.ts test/ui-smoke/desktop-workspace-interactions.spec.ts test/ui-smoke/settings-audit-capture.spec.ts test/ui-smoke/settings-chat-control.spec.ts test/ui-smoke/routing-matrix-dispatch.spec.ts test/ui-smoke/chat-overlay-controls-interactions.spec.ts test/ui-smoke/task-widget-in-chat.spec.ts test/ui-smoke/chat-attachment.spec.ts test/ui-smoke/chat-3d-model.spec.ts test/ui-smoke/chat-large-paste.spec.ts test/ui-smoke/chat-clear-swipe.spec.ts test/ui-smoke/files-view.spec.ts test/ui-smoke/files-view-crud.spec.ts test/ui-smoke/conversation-management.spec.ts test/ui-smoke/chat-cloud-routed.spec.ts test/ui-smoke/slash-commands.spec.ts test/ui-smoke/model-download-deferral.spec.ts test/ui-smoke/home-widget-priority.spec.ts test/ui-smoke/settings-background.spec.ts --project=chromium
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/apps-utility-interactions.spec.ts test/ui-smoke/apps-model-training-interactions.spec.ts test/ui-smoke/apps-comms-device-interactions.spec.ts test/ui-smoke/apps-diagnostics-interactions.spec.ts test/ui-smoke/apps-builtin-pages-interactions.spec.ts test/ui-smoke/settings-sections-interactions.spec.ts test/ui-smoke/settings-mobile-load.spec.ts test/ui-smoke/apps-personal-assistant-decomposed-interactions.spec.ts test/ui-smoke/vault-modal-interactions.spec.ts test/ui-smoke/desktop-workspace-interactions.spec.ts test/ui-smoke/settings-chat-control.spec.ts test/ui-smoke/routing-matrix-dispatch.spec.ts test/ui-smoke/chat-overlay-controls-interactions.spec.ts test/ui-smoke/task-widget-in-chat.spec.ts test/ui-smoke/chat-attachment.spec.ts test/ui-smoke/chat-3d-model.spec.ts test/ui-smoke/chat-large-paste.spec.ts test/ui-smoke/chat-clear-swipe.spec.ts test/ui-smoke/files-view.spec.ts test/ui-smoke/files-view-crud.spec.ts test/ui-smoke/conversation-management.spec.ts test/ui-smoke/chat-cloud-routed.spec.ts test/ui-smoke/slash-commands.spec.ts test/ui-smoke/model-download-deferral.spec.ts test/ui-smoke/home-widget-priority.spec.ts test/ui-smoke/settings-background.spec.ts --project=chromium
 
       - name: Upload app browser feature interaction artifacts
         if: always()
@@ -351,7 +351,7 @@ jobs:
     name: Zero-Key app browser cloud keyless
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -367,7 +367,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -396,7 +396,7 @@ jobs:
     name: Zero-Key app browser ratcheted
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 55
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -412,7 +412,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -424,7 +424,7 @@ jobs:
         run: bunx playwright install --with-deps chromium
 
       - name: Actual app ratcheted keyless browser coverage
-        run: bun run --cwd packages/app test:e2e test/ui-smoke/ai-qa-capture.spec.ts test/ui-smoke/android-system-apps.spec.ts test/ui-smoke/apps-session.spec.ts test/ui-smoke/apps-session-direct-a.spec.ts test/ui-smoke/apps-session-direct-b.spec.ts test/ui-smoke/auth-startup.spec.ts test/ui-smoke/automations.spec.ts test/ui-smoke/browser-workspace.spec.ts test/ui-smoke/character-editor.spec.ts test/ui-smoke/wallet-inventory.spec.ts test/ui-smoke/workflow-editor.spec.ts test/ui-smoke/computer-use.spec.ts test/ui-smoke/connectors.spec.ts test/ui-smoke/first-run-startup.spec.ts test/ui-smoke/model-download-deferral.spec.ts test/ui-smoke/history-navigation.spec.ts test/ui-smoke/orchestrator-gui-workbench.spec.ts test/ui-smoke/reset-returns-to-onboarding.spec.ts test/ui-smoke/tutorial-chat.spec.ts test/ui-smoke/warming-shell-startup.spec.ts test/ui-smoke/runtime-configurability.spec.ts test/ui-smoke/perf-load-kpi.spec.ts test/ui-smoke/perf-interaction-kpi.spec.ts test/ui-smoke/perf-reduced-motion.spec.ts test/ui-smoke/screenshare-gui-interactions.spec.ts test/ui-smoke/task-coordinator-gui-interactions.spec.ts test/ui-smoke/titlebar-navigation.spec.ts test/ui-smoke/ui-smoke.spec.ts --project=chromium
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/ai-qa-capture.spec.ts test/ui-smoke/android-system-apps.spec.ts test/ui-smoke/apps-session.spec.ts test/ui-smoke/apps-session-direct-a.spec.ts test/ui-smoke/apps-session-direct-b.spec.ts test/ui-smoke/auth-startup.spec.ts test/ui-smoke/automations.spec.ts test/ui-smoke/browser-workspace.spec.ts test/ui-smoke/character-editor.spec.ts test/ui-smoke/wallet-inventory.spec.ts test/ui-smoke/workflow-editor.spec.ts test/ui-smoke/computer-use.spec.ts test/ui-smoke/connectors.spec.ts test/ui-smoke/first-run-startup.spec.ts test/ui-smoke/model-download-deferral.spec.ts test/ui-smoke/history-navigation.spec.ts test/ui-smoke/orchestrator-gui-workbench.spec.ts test/ui-smoke/reset-returns-to-onboarding.spec.ts test/ui-smoke/tutorial-chat.spec.ts test/ui-smoke/warming-shell-startup.spec.ts test/ui-smoke/runtime-configurability.spec.ts test/ui-smoke/perf-load-kpi.spec.ts test/ui-smoke/perf-interaction-kpi.spec.ts test/ui-smoke/perf-reduced-motion.spec.ts test/ui-smoke/task-coordinator-gui-interactions.spec.ts test/ui-smoke/titlebar-navigation.spec.ts test/ui-smoke/ui-smoke.spec.ts --project=chromium
 
       - name: Upload app browser ratcheted artifacts
         if: always()
@@ -449,7 +449,7 @@ jobs:
     name: Zero-Key app browser auto-discovered specs
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -465,7 +465,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -509,7 +509,7 @@ jobs:
     name: Zero-Key app browser dashboard device matrix
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -525,7 +525,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -557,7 +557,7 @@ jobs:
     name: Zero-Key app browser Pixel-7 real-touch lane
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -573,7 +573,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -615,7 +615,7 @@ jobs:
     name: Zero-Key app browser WebKit lane
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -631,7 +631,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -660,7 +660,7 @@ jobs:
     name: Zero-Key accounts UI e2e (real API + pool + disk)
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -676,7 +676,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -688,6 +688,11 @@ jobs:
         run: bunx playwright install --with-deps chromium
 
       - name: Accounts UI browser e2e — real AccountList + real accounts routes + real AccountPool
+        env:
+          # The fixture writes encrypted credentials to a scratch ELIZA_HOME.
+          # Hosted Linux has no keychain session, so give this isolated test
+          # process a non-production passphrase instead of weakening the vault.
+          ELIZA_VAULT_PASSPHRASE: accounts-ui-e2e-headless-only
         run: bun run --cwd packages/app test:e2e:accounts-ui
 
       - name: Upload accounts-ui evidence artifacts
@@ -703,7 +708,7 @@ jobs:
     name: Zero-Key full-walkthrough (mock lane)
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -719,7 +724,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -757,7 +762,7 @@ jobs:
     name: Zero-Key app diagnostics
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -780,7 +785,7 @@ jobs:
     name: Zero-Key scenario runner E2E
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -796,7 +801,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -815,13 +820,6 @@ jobs:
 
       - name: Per-plugin keyless e2e coverage gate
         run: bun run audit:e2e-coverage
-
-      # #14549: parallel-certification compose generator drift gate + GPU queue
-      # state machine + orchestrator degradation. docker/certification is
-      # outside workspace test discovery, so keep this explicit or the
-      # committed compose.yml can silently drift from the test-runner's plan.
-      - name: Parallel-certification compose + queue tests
-        run: bun test docker/certification
 
       - name: E2E coverage matrix report
         if: always()
@@ -866,7 +864,7 @@ jobs:
       - app-diagnostics
       - scenario-runner-e2e
     if: ${{ !cancelled() && always() && needs.changes.outputs.run_scenario_pr == 'true' }}
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     steps:
       - name: Check deterministic E2E slices
         shell: bash

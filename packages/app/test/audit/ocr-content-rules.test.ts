@@ -12,7 +12,10 @@ import {
   normalize,
   type OcrResult,
 } from "../ui-smoke/ocr-content-rules";
-import { VIEW_EXPECTATIONS } from "../ui-smoke/ocr-view-expectations";
+import {
+  resolveViewOcrPolicy,
+  type SemanticOcrExpectationPolicy,
+} from "../ui-smoke/ocr-view-expectations";
 
 function ocr(text: string, over: Partial<OcrResult> = {}): OcrResult {
   const lines = text.split("\n").filter(Boolean);
@@ -24,6 +27,16 @@ function ocr(text: string, over: Partial<OcrResult> = {}): OcrResult {
     meanConfidence: 1,
     ...over,
   };
+}
+
+function expectationFor(
+  slug: string,
+): SemanticOcrExpectationPolicy["expectation"] {
+  const policy = resolveViewOcrPolicy(slug);
+  if (policy.kind !== "expectation") {
+    throw new Error(`${slug} is not an expectation policy`);
+  }
+  return policy.expectation;
 }
 
 describe("detectErrorLeaks", () => {
@@ -52,8 +65,9 @@ describe("detectPlaceholderLeaks", () => {
 });
 
 describe("normalize", () => {
-  it("lowercases and collapses whitespace", () => {
+  it("lowercases and canonicalizes punctuation and whitespace", () => {
     expect(normalize("  Ask   Eliza\n\n")).toBe("ask eliza");
+    expect(normalize("Fine-Tuning")).toBe("fine tuning");
   });
 });
 
@@ -125,6 +139,29 @@ describe("evaluateOcrContent", () => {
     expect(f.verdict).not.toBe("broken");
   });
 
+  it("keeps a matched semantic exemption visible without calling it verified", () => {
+    const f = evaluateOcrContent({
+      ocr: ocr("Settings Wallet Projects"),
+      expectation: {
+        requireAll: ["Settings", "Wallet"],
+        requireAny: ["Projects", "Calendar"],
+      },
+      semanticExemptionReason: "native-only surface",
+    });
+    expect(f.verdict).toBe("needs-eyeball");
+    expect(f.reasons).toContain("semantic OCR exemption — native-only surface");
+  });
+
+  it("still breaks an exempt surface when its observable fallback drifts", () => {
+    const f = evaluateOcrContent({
+      ocr: ocr("Unrelated readable fallback"),
+      expectation: { requireAll: ["Settings", "Wallet"] },
+      semanticExemptionReason: "native-only surface",
+    });
+    expect(f.verdict).toBe("broken");
+    expect(f.missingRequired).toEqual(["Settings", "Wallet"]);
+  });
+
   it("catches a developer string that reached the pixels", () => {
     const f = evaluateOcrContent({
       ocr: ocr("Balance: [object Object]\nSend\nReceive"),
@@ -143,6 +180,22 @@ describe("evaluateOcrContent", () => {
     });
     expect(f.verdict).toBe("verified");
     expect(f.missingRequired).toHaveLength(0);
+  });
+
+  it("tolerates OCR punctuation and word-join segmentation without fuzzy spelling", () => {
+    const f = evaluateOcrContent({
+      ocr: ocr("Fine Tuning\nNewnote"),
+      expectation: { requireAll: ["Fine-Tuning", "New note"] },
+    });
+    expect(f.verdict).toBe("verified");
+    expect(f.missingRequired).toHaveLength(0);
+
+    const misspelled = evaluateOcrContent({
+      ocr: ocr("Fine Tunning\nNew not"),
+      expectation: { requireAll: ["Fine-Tuning", "New note"] },
+    });
+    expect(misspelled.verdict).toBe("broken");
+    expect(misspelled.missingRequired).toEqual(["Fine-Tuning", "New note"]);
   });
 
   it("breaks a view missing a label it exists to show", () => {
@@ -191,7 +244,7 @@ describe("evaluateOcrContent", () => {
     ],
     [
       "builtin-character-select",
-      "hs\nEliza\nrm\nYouare za, a concise assistant for Ul smoke fests\nAsk\nEliza\n+ oi",
+      "Name\nEliza\nSystem prompt\nYou are Eliza, a concise assistant for UI smoke tests",
     ],
     [
       "builtin-database",
@@ -199,7 +252,7 @@ describe("evaluateOcrContent", () => {
     ],
     [
       "builtin-logs",
-      "< Logs\n1\n\nAlllevels ~ Alsources v Altags v\n\n25723 AM\n\nro\nsear\nch\n\nong",
+      "< Logs\nAll levels\nAll sources\nAll tags\nINFO\nsmoke\nsmoke API ready",
     ],
     [
       "builtin-relationships",
@@ -217,56 +270,35 @@ describe("evaluateOcrContent", () => {
   ])("verifies current CI OCR text for %s", (slug, text) => {
     const f = evaluateOcrContent({
       ocr: ocr(text),
-      expectation: VIEW_EXPECTATIONS[slug],
+      expectation: expectationFor(slug),
     });
     expect(f.verdict).toBe("verified");
     expect(f.missingRequired).toHaveLength(0);
   });
 
-  it("does not use stale positive text expectations for sparse builtin chat", () => {
-    expect(VIEW_EXPECTATIONS["builtin-chat"]).toBeUndefined();
-  });
-
-  // #15781: the Polymarket view once painted its caught `.ready` TypeError into
-  // the market-detail render. The expectation positively verifies the healthy
-  // chrome across every viewport's layout, and the universal developer-string
-  // rules reject the crash residue. The three OCR strings below are the exact
-  // packaged-Tesseract reads off the committed audit capture per layout.
   it.each([
-    // Desktop/tablet market-detail: "< Markets" back control renders.
     [
-      "detail (desktop/tablet)",
-      "< Wallet\nWallet Perps Predictions\n<Markets\nWill the Ul smoke suite stay green?\nYes 87% No 13%",
+      "builtin-browser",
+      "< Browser\n@Notab © + OX EnteralRL Go\nAgent Browser Bridge\n+ Ask",
     ],
-    // Mobile compact detail: no back control, but the Vol/Liq/Last metric row does.
     [
-      "compact detail (mobile)",
-      "< Wallet\nWallet Perps Predictions\nWill the Ul smoke suite stay green?\nYes 87% No 13%\nVol $45.7K - Liq $12.3K - Last 87%",
+      "plugin-notes-gui",
+      "Launch checklist Followup\nCloud agent, phone, and deck are ready.\nShare the demo recording with the team.",
     ],
-    // List state: readiness chips + the "markets" label.
-    ["list", "reads ready trading off\n2 markets\nmarkets\n01 Will BTC..."],
-  ])("verifies a healthy Polymarket render — %s", (_layout, text) => {
+  ])("verifies current macOS OCR segmentation for %s", (slug, text) => {
     const f = evaluateOcrContent({
       ocr: ocr(text),
-      expectation: VIEW_EXPECTATIONS["plugin-polymarket-gui"],
+      expectation: expectationFor(slug),
     });
     expect(f.verdict).toBe("verified");
     expect(f.missingRequired).toHaveLength(0);
   });
 
-  it("breaks the Polymarket view when the `.ready` crash string reaches the pixels", () => {
+  it("verifies the deterministic chat home semantics", () => {
     const f = evaluateOcrContent({
-      ocr: ocr(
-        "markets\nCannot read properties of undefined (reading 'ready')",
-      ),
-      expectation: VIEW_EXPECTATIONS["plugin-polymarket-gui"],
+      ocr: ocr("Mostly clear\nToday\nLearn conversational Spanish"),
+      expectation: expectationFor("builtin-chat"),
     });
-    expect(f.errorLeaks).toEqual(
-      expect.arrayContaining([
-        expect.stringMatching(/undefined/),
-        expect.stringMatching(/Cannot read propert/i),
-      ]),
-    );
-    expect(f.verdict).toBe("broken");
+    expect(f.verdict).toBe("verified");
   });
 });

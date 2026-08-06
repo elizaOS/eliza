@@ -45,6 +45,67 @@ function withEnv(values, fn) {
   }
 }
 
+test("downloadFile retries transient fetch failures before writing the artifact", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-retry-"));
+  const priorFetch = globalThis.fetch;
+  const target = path.join(tmp, "bun-linux-aarch64-musl.zip");
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    if (calls === 1) {
+      throw new TypeError("fetch failed", {
+        cause: Object.assign(new Error("other side closed"), {
+          code: "UND_ERR_SOCKET",
+        }),
+      });
+    }
+    return new Response(Buffer.from("ok"));
+  };
+  try {
+    await __testables.downloadFile(
+      "https://example.invalid/runtime.zip",
+      target,
+      {
+        retryDelayMs: 0,
+      },
+    );
+    assert.equal(calls, 2);
+    assert.equal(fs.readFileSync(target, "utf8"), "ok");
+  } finally {
+    globalThis.fetch = priorFetch;
+    removePathRecursive(tmp);
+  }
+});
+
+test("downloadFile does not retry permanent HTTP misses", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-404-"));
+  const priorFetch = globalThis.fetch;
+  const target = path.join(tmp, "missing.zip");
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return new Response("missing", { status: 404 });
+  };
+  try {
+    await assert.rejects(
+      () =>
+        __testables.downloadFile(
+          "https://example.invalid/missing.zip",
+          target,
+          {
+            retryDelayMs: 0,
+          },
+        ),
+      /HTTP 404 fetching https:\/\/example\.invalid\/missing\.zip/,
+    );
+    assert.equal(calls, 1);
+    assert.equal(fs.existsSync(target), false);
+  } finally {
+    globalThis.fetch = priorFetch;
+    removePathRecursive(tmp);
+  }
+});
+
 test("riscv64 Bun artifact path resolves from the ELIZA_BUN_RISCV64_FILE env", () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-riscv64-bun-"));
   try {
@@ -251,23 +312,33 @@ test("stock Android staging fails when the required SIGSYS shim is missing", () 
   }
 });
 
-test("runtime provenance records repo-local riscv64 artifacts as relative paths", () => {
-  const artifact = path.resolve(
-    process.cwd(),
-    "packages/app-core/scripts/bun-riscv64/dist",
+test("riscv64 Bun defaults to the external OS toolchain checkout", () => {
+  const osRepositoryRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "eliza-os-riscv64-bun-"),
+  );
+  const artifact = path.join(
+    osRepositoryRoot,
+    "packages",
+    "os",
+    "toolchains",
+    "bun-riscv64",
+    "dist",
     __testables.RISCV64_BUN_ARTIFACT_FILENAME,
   );
-  const source = withEnv(
-    {
-      ELIZA_BUN_RISCV64_FILE: artifact,
-    },
-    () => __testables.riscv64BunArtifactSource(),
-  );
-  assert.deepEqual(source, {
-    kind: "file",
-    path: "packages/app-core/scripts/bun-riscv64/dist/bun-linux-riscv64-musl.zip",
-    path_provenance: "relative_to_git_checkout",
-  });
+  try {
+    fs.mkdirSync(path.dirname(artifact), { recursive: true });
+    fs.writeFileSync(artifact, "fixture");
+    const resolved = withEnv(
+      {
+        ELIZAOS_OS_REPO_ROOT: osRepositoryRoot,
+        ELIZA_BUN_RISCV64_FILE: null,
+      },
+      () => __testables.riscv64BunFilePath(),
+    );
+    assert.equal(resolved, artifact);
+  } finally {
+    removePathRecursive(osRepositoryRoot);
+  }
 });
 
 test("runtime provenance records external artifacts by basename only", () => {

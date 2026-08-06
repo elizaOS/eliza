@@ -38,6 +38,10 @@ const LAUNCHER_RESPONSIVE_CSS = `
 [data-testid="launcher"] [data-launcher-label] {
   font-size: clamp(.75rem, calc(.68rem + .25cqi), .875rem);
 }
+[data-testid="launcher"] [data-launcher-label][data-compact-label="true"] {
+  font-size: .75rem;
+  overflow-wrap: anywhere;
+}
 @media (orientation: landscape) and (max-height: 520px) {
   [data-testid="launcher"] [data-launcher-icon] { width: 3.5rem; height: 3.5rem; }
 }
@@ -80,6 +84,9 @@ function viewKindBadge(entry: ViewEntry): {
 // tiles whose props actually changed, not the whole page.
 const IconTile = memo(function IconTile({ entry, onLaunch }: IconTileProps) {
   const badge = viewKindBadge(entry);
+  const hasLongUnbrokenLabel = entry.label
+    .split(/\s+/)
+    .some((word) => word.length > 10);
   // A long stationary press must NOT ghost-launch on release: the browser
   // synthesizes a compat click from that same press, and a bare onClick would
   // launch whatever tile the finger held (the gesture-matrix "no ghost-launch"
@@ -95,7 +102,7 @@ const IconTile = memo(function IconTile({ entry, onLaunch }: IconTileProps) {
   });
   return (
     <div
-      className="flex justify-center"
+      className="flex w-full justify-center"
       data-testid={`launcher-tile-${entry.id}`}
     >
       <button
@@ -107,7 +114,7 @@ const IconTile = memo(function IconTile({ entry, onLaunch }: IconTileProps) {
         onPointerCancel={hold.onPointerCancel}
         onClickCapture={suppression.onClickCapture}
         onClick={() => onLaunch(entry)}
-        className="group relative flex max-w-[5.5rem] flex-col items-center gap-1.5 rounded-2xl select-none"
+        className="group relative flex w-full max-w-[5.5rem] flex-col items-center gap-2.5 rounded-2xl select-none"
       >
         <div className="relative">
           <div
@@ -149,8 +156,9 @@ const IconTile = memo(function IconTile({ entry, onLaunch }: IconTileProps) {
             (#14427). line-clamp-2 still wraps multi-word labels. */}
         <span
           data-launcher-label=""
+          data-compact-label={hasLongUnbrokenLabel || undefined}
           className={cn(
-            "line-clamp-2 max-w-[5.5rem] text-center text-xs font-semibold leading-tight tracking-normal whitespace-normal",
+            "line-clamp-2 w-max max-w-[5.5rem] text-center text-xs font-bold leading-tight tracking-[0.01em] whitespace-normal",
             WALLPAPER_TEXT.base,
             WALLPAPER_FLOAT_SHADOW,
           )}
@@ -196,15 +204,18 @@ export function Launcher({
           !embedded && "min-h-0 flex-1 overflow-hidden",
         )}
       >
-        {/* The full-page variant owns vertical overflow; Home's embedded variant
-            stays natural-height so the shared app region is the sole scroller. */}
+        {/* The fixed composer sits outside this flex tree. Inner padding only
+            extends the scroll range; it cannot stop an initially visible tile
+            from painting beneath that overlay. The full-page margin therefore
+            shortens the viewport, while its small inner padding lets the final
+            row scroll fully clear. Home's app region owns embedded scrolling. */}
         <div
           data-testid="launcher-page-window"
           className={cn(
             "scrollbar-hide relative flex touch-pan-y flex-col items-center overscroll-y-contain pt-2 [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden",
             embedded
               ? "overflow-visible px-2 pb-8 [@media(orientation:landscape)_and_(max-height:520px)]:pt-0"
-              : "scroll-fade scroll-fade-t-[3.5rem] scroll-fade-b-[calc(var(--eliza-chat-clearance,5.25rem)+1.25rem)] [--scroll-fade-reveal:1px] min-h-0 flex-1 scroll-pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-chat-clearance,5.25rem)+1.75rem)] overflow-y-auto ps-6 pe-[calc(1.5rem+var(--eliza-chat-side-clearance,0px))] pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-chat-clearance,5.25rem)+1.75rem)]",
+              : "scroll-fade-b scroll-fade-b-[1.25rem] [--scroll-fade-reveal:1px] mb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-chat-clearance,5.25rem)+0.5rem)] min-h-0 flex-1 scroll-pb-7 overflow-y-auto ps-6 pe-[calc(1.5rem+var(--eliza-chat-side-clearance,0px))] pb-7",
           )}
         >
           <div className="flex w-full max-w-2xl flex-col gap-6">

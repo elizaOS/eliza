@@ -7,9 +7,10 @@
  * WebView tests reach it through adb reverse as a "remote" first-run target.
  */
 
-import { ModelType } from "@elizaos/core";
+import { readFile } from "node:fs/promises";
+import { ModelType, type Route } from "@elizaos/core";
 import { backgroundUploadImageRoute } from "../../agent/src/api/background-routes.ts";
-import { createDeterministicLlmProxyPlugin } from "../../test/mocks/helpers/llm-proxy-plugin.ts";
+import { createDeterministicModelPlugin } from "@elizaos/core/testing";
 import { startApiServer } from "../src/api/server.ts";
 import { useIsolatedConfigEnv } from "../test/helpers/isolated-config.ts";
 import { createRealTestRuntime } from "../test/helpers/real-runtime.ts";
@@ -23,6 +24,126 @@ const deviceE2eUploadImageRoute = {
 const STREAM_E2E_REPLY =
   "STREAM_E2E_OK The dashboard receives this reply through the real model callback, runtime message loop, HTTP SSE route, browser parser, and React transcript. " +
   "Each chunk is intentionally small and evenly paced so the browser lane can measure token-to-paint latency, frame cadence, layout stability, and DOM identity while the visible answer grows.";
+const GENERATED_REGISTRY_URL =
+  "https://plugins.elizacloud.ai/generated-registry.json";
+const CLOUD_API_PROBE_URL = "https://elizacloud.ai/api/v1";
+const RUBY_HIGH_EVIDENCE_ACTIONS = new Set([
+  "CONNECT_RUBY_HIGH",
+  "ENROLL_RUBY_HIGH",
+]);
+
+const rubyHighEvidenceActionRoute: Route = {
+  type: "POST",
+  path: "/api/device-e2e/ruby-high/action",
+  rawPath: true,
+  name: "device-e2e-ruby-high-action",
+  routeHandler: async (ctx) => {
+    const json = (status: number, body: unknown) => ({
+      status,
+      headers: { "content-type": "application/json; charset=utf-8" },
+      body,
+    });
+    if (process.env.ELIZA_UI_SMOKE_RUBY_HIGH_JOURNEY !== "1") {
+      return json(404, { error: "Ruby High evidence actions are disabled." });
+    }
+    const body =
+      ctx.body && typeof ctx.body === "object" && !Array.isArray(ctx.body)
+        ? (ctx.body as Record<string, unknown>)
+        : {};
+    const actionName =
+      typeof body.actionName === "string" ? body.actionName.trim() : "";
+    if (!RUBY_HIGH_EVIDENCE_ACTIONS.has(actionName)) {
+      return json(400, { error: "Unsupported Ruby High evidence action." });
+    }
+    const action = ctx.runtime.actions.find(
+      (candidate) => candidate.name === actionName,
+    );
+    if (!action) {
+      return json(409, {
+        error: `${actionName} is not registered on the runtime.`,
+      });
+    }
+    const parameters =
+      body.parameters &&
+      typeof body.parameters === "object" &&
+      !Array.isArray(body.parameters)
+        ? (body.parameters as Record<string, unknown>)
+        : {};
+    const message = {
+      content: {
+        text: `Run ${actionName} for the connected-agent evidence journey.`,
+        source: "client_chat",
+      },
+    };
+    const options = { parameters };
+    const valid = await action.validate(
+      ctx.runtime,
+      message as never,
+      undefined,
+      options as never,
+    );
+    if (!valid) {
+      return json(409, {
+        error: `${actionName} is not valid in the current state.`,
+      });
+    }
+    const callbacks: string[] = [];
+    const result = await action.handler(
+      ctx.runtime,
+      message as never,
+      undefined,
+      options as never,
+      async (content) => {
+        if (typeof content.text === "string") callbacks.push(content.text);
+      },
+    );
+    return json(200, { ok: true, actionName, callbacks, result });
+  },
+};
+
+/**
+ * Let an opt-in real-local UI smoke consume the generated registry from the
+ * exact checkout under test. Only the canonical generated-registry request is
+ * intercepted; npm downloads and every other network boundary stay real.
+ */
+async function installGeneratedRegistryFixture(): Promise<() => void> {
+  const fixturePath =
+    process.env.ELIZA_UI_SMOKE_GENERATED_REGISTRY_FIXTURE?.trim();
+  if (!fixturePath) return () => {};
+
+  const body = await readFile(fixturePath, "utf8");
+  JSON.parse(body);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input, init) => {
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url;
+    const method =
+      init?.method ??
+      (typeof input === "string" || input instanceof URL
+        ? undefined
+        : input.method);
+    if (url === CLOUD_API_PROBE_URL && method?.toUpperCase() === "HEAD") {
+      return new Response(null, { status: 204 });
+    }
+    if (url === GENERATED_REGISTRY_URL) {
+      return new Response(body, {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return originalFetch(input, init);
+  }) as typeof globalThis.fetch;
+  console.log(
+    `[device-e2e-host-agent] serving generated registry fixture: ${fixturePath}`,
+  );
+  return () => {
+    globalThis.fetch = originalFetch;
+  };
+}
 
 function resolvePort(): number {
   const raw = process.env.ELIZA_API_PORT ?? process.env.ELIZA_PORT ?? "31337";
@@ -52,6 +173,7 @@ function resolvePositiveIntegerEnv(name: string, fallback: string): number {
 
 async function main(): Promise<void> {
   const t0 = Date.now();
+  const restoreRegistryFetch = await installGeneratedRegistryFixture();
   const port = resolvePort();
   const streamIntervalMs = resolveNonNegativeIntegerEnv(
     "ELIZA_E2E_MODEL_STREAM_INTERVAL_MS",
@@ -70,13 +192,10 @@ async function main(): Promise<void> {
   process.env.ELIZA_PAIRING_DISABLED ??= "1";
 
   const configEnv = useIsolatedConfigEnv("eliza-device-e2e-host-agent-");
-  const proxy = createDeterministicLlmProxyPlugin({
-    failOnUnhandledAction: false,
+  const proxy = createDeterministicModelPlugin({
     stream: deterministicStream,
     resolve(call) {
-      if (call.modelType !== ModelType.RESPONSE_HANDLER) {
-        return null;
-      }
+      if (call.modelType !== ModelType.RESPONSE_HANDLER) return null;
       const args = {
         shouldRespond: "RESPOND",
         contexts: ["simple"],
@@ -94,12 +213,28 @@ async function main(): Promise<void> {
   const mediaRoutesPlugin = {
     name: "device-e2e-media-routes",
     description: "No-secret media-store routes for mobile device smokes.",
-    routes: [backgroundUploadImageRoute, deviceE2eUploadImageRoute],
+    routes: [
+      backgroundUploadImageRoute,
+      deviceE2eUploadImageRoute,
+      rubyHighEvidenceActionRoute,
+    ],
   };
   const runtimeResult = await createRealTestRuntime({
     characterName: "DeviceE2EHostAgent",
     plugins: [proxy, mediaRoutesPlugin],
   });
+  if (process.env.ELIZA_UI_SMOKE_RUBY_HIGH_JOURNEY === "1") {
+    const rubyHighUrl = process.env.RUBY_HIGH_URL?.trim();
+    if (!rubyHighUrl) {
+      throw new Error(
+        "RUBY_HIGH_URL is required for the Ruby High evidence journey.",
+      );
+    }
+    runtimeResult.runtime.setSetting("RUBY_HIGH_URL", rubyHighUrl, false);
+    console.log(
+      `[device-e2e-host-agent] Ruby High evidence URL: ${rubyHighUrl}`,
+    );
+  }
   const server = await startApiServer({
     port,
     runtime: runtimeResult.runtime,
@@ -120,6 +255,7 @@ async function main(): Promise<void> {
     await server.close().catch(() => undefined);
     await runtimeResult.cleanup().catch(() => undefined);
     await configEnv.restore().catch(() => undefined);
+    restoreRegistryFetch();
   };
 
   for (const signal of ["SIGINT", "SIGTERM"] as const) {

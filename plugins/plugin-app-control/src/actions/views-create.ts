@@ -15,7 +15,11 @@ import type {
 	Memory,
 } from "@elizaos/core";
 import { logger, ModelType, spawnWithTrajectoryLink } from "@elizaos/core";
-import { readStringOption } from "../params.js";
+import {
+	describeTargetReference,
+	readStringOption,
+	userRequestMessageText,
+} from "../params.js";
 import {
 	findAsyncCodingDelegationActionName,
 	preflightCodingDispatch,
@@ -733,7 +737,11 @@ async function createNewViewPlugin({
 	}
 
 	const task = dispatch.agents[0];
-	const text = `Started view create task for ${displayName} at ${workdir}. Task session ${task.sessionId} is ${task.status}.`;
+	// Chat gets one human sentence; the dispatch detail (workdir, session id)
+	// stays planner-facing in the result text — internal identifiers in a
+	// user-visible message read as a malfunction. Same contract as APP create.
+	const text = `Building the ${displayName} view now — I'll let you know once it's ready.`;
+	const dispatchDetail = `Started view create task for ${displayName} at ${workdir}. Task session ${task.sessionId} is ${task.status}.`;
 	await callback?.({ text });
 	logger.info(
 		`[plugin-app-control] VIEWS/create new name=${name} workdir=${workdir} session=${task.sessionId}`,
@@ -741,7 +749,10 @@ async function createNewViewPlugin({
 
 	return {
 		success: true,
-		text,
+		text: dispatchDetail,
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		values: {
 			mode: "create",
 			subMode: "new",
@@ -877,7 +888,7 @@ export async function runViewsCreate({
 
 	const roomId =
 		typeof message.roomId === "string" ? message.roomId : runtime.agentId;
-	const userText = (message.content.text ?? "").trim();
+	const userText = userRequestMessageText(message).trim();
 	const explicitChoice = readStringOption(options, "choice");
 	const explicitEditTarget = readStringOption(options, "editTarget");
 	const explicitIntent = readStringOption(options, "intent");
@@ -963,7 +974,7 @@ export async function runViewsCreate({
 				v.pluginName === explicitEditTarget,
 		);
 		if (!target) {
-			const text = `Cannot find an installed view named "${explicitEditTarget}".`;
+			const text = `Cannot find an installed view matching ${describeTargetReference(explicitEditTarget)}.`;
 			await callback?.({ text });
 			return { success: false, text };
 		}

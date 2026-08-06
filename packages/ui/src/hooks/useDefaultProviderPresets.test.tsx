@@ -1,3 +1,4 @@
+/** Verifies useDefaultProviderPresets through the package's configured test harness. */
 // @vitest-environment jsdom
 
 import { render, waitFor } from "@testing-library/react";

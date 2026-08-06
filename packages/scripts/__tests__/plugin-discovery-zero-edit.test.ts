@@ -11,7 +11,6 @@
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -22,6 +21,7 @@ import {
   resolveTestLaneDirs,
   resolveTestSerialPackages,
 } from "../lib/script-metadata.mjs";
+import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, "..", "..", "..");

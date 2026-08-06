@@ -1,4 +1,9 @@
-/** Supports app-core build, packaging, or development orchestration for audit server test surface mjs. */
+/**
+ * Flags mocked server/runtime patterns (vi.mock, mockReq/mockRes,
+ * startMockApiServer, ...) in test surfaces that are required to exercise the
+ * real server; prints findings or --json and exits non-zero with
+ * --fail-on-violations.
+ */
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

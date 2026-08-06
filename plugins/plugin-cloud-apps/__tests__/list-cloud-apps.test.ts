@@ -85,6 +85,11 @@ describe("LIST_CLOUD_APPS", () => {
       expect(reply).toContain("deployed");
       // userFacingText mirrors the reply for the planner terminal fallback.
       expect(result?.userFacingText).toBe(reply);
+      // The success list is a complete single-operation answer: verified +
+      // turnComplete opt into the gated evaluator skip, so the planner never
+      // re-renders the already-delivered list as a second message.
+      expect(result?.verifiedUserFacing).toBe(true);
+      expect(result?.turnComplete).toBe(true);
       expect(
         (requireDefined(result, "action result").data as { count: number })
           .count,
@@ -135,6 +140,9 @@ describe("LIST_CLOUD_APPS", () => {
           .count,
       ).toBe(0);
       expect(cb.calls[0]?.text).toContain("haven't created any apps");
+      // The canned empty message is not a verified terminal answer — the
+      // evaluator still runs and may add guidance (e.g. how to create one).
+      expect(result?.turnComplete).toBeUndefined();
     });
 
     it("degrades gracefully when no Cloud API key is configured", async () => {
@@ -173,6 +181,33 @@ describe("LIST_CLOUD_APPS", () => {
           .reason,
       ).toBe("error");
       expect(cb.calls[0]?.text).toContain("couldn't fetch");
+    });
+
+    it("does not translate a callback failure into an API error", async () => {
+      setListApps(() =>
+        Promise.resolve({
+          success: true,
+          apps: [makeApp({ name: "Delivered Once" })],
+        }),
+      );
+      const delivered: string[] = [];
+      const deliveryError = new Error("transport unavailable");
+
+      const result = listCloudAppsAction.handler(
+        keyedRuntime(),
+        makeMessage("list my cloud apps"),
+        undefined,
+        undefined,
+        async ({ text }) => {
+          delivered.push(text);
+          throw deliveryError;
+        },
+      );
+
+      await expect(result).rejects.toBe(deliveryError);
+      expect(delivered).toHaveLength(1);
+      expect(delivered[0]).toContain("Delivered Once");
+      expect(delivered[0]).not.toContain("Cloud API returned an error");
     });
   });
 });

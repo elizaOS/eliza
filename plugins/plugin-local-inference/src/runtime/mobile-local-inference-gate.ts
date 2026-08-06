@@ -20,7 +20,7 @@
  *     Auto-firing here keeps the riscv64 mobile boot path zero-config; an
  *     operator can hard-disable via `ELIZA_DISABLE_FFI_LLAMA=1` to skip the
  *     loader and route inference through Cloud instead. See
- *     `plugin-aosp-local-inference/src/aosp-llama-adapter.ts:isAospEnabled`
+ *     `plugin-native-inference/src/aosp-llama-adapter.ts:isAospEnabled`
  *     and `plugin-local-inference/src/runtime/ensure-local-inference-handler.ts:shouldAttemptAospLlamaLoader`
  *     — the three predicates agree on the trigger set.
  *

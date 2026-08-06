@@ -3,7 +3,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
-} from "../_helpers/action-assertions.ts";
+} from "@elizaos/scenario-runner/scenario-assertions";
 
 /**
  * Closes the gap from the lifeops audit (`docs/audits/lifeops-2026-05-09/

@@ -44,6 +44,21 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     platforms: ["web", "desktop", "ios", "android"],
   },
   {
+    id: "browser",
+    viewKind: "system",
+    label: "Browser",
+    description: "Isolated native browser tabs for web pages and research",
+    icon: "Globe",
+    path: "/browser",
+    order: 2,
+    tags: ["browser", "web", "internet", "research", "tabs"],
+    relatedActions: ["BROWSER"],
+    visibleInManager: false,
+    desktopTabEnabled: true,
+    platforms: ["web", "desktop", "ios", "android"],
+    surface: { isolation: "native-webview", background: "opaque" },
+  },
+  {
     id: "character",
     viewKind: "system",
     label: "Character",
@@ -179,6 +194,22 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     anticipatoryIntent:
       "Offer to create a new scheduled workflow or check on existing automations — flag any recently failed runs — grounded in the live task list.",
     visibleInManager: true,
+  },
+  {
+    id: "cloud-apps",
+    viewKind: "release",
+    label: "Cloud Apps",
+    description: "Manage, deploy, and monetize apps published on Eliza Cloud",
+    icon: "Grid3x3",
+    heroImagePath: "assets/view-heroes/plugins-page.png",
+    path: "/cloud-apps",
+    order: 58,
+    tags: ["cloud", "apps", "applications", "deploy", "monetize"],
+    // The renderer registers the native studio in-process under this same id
+    // and path. Keeping it in the server registry makes VIEWS/show resolve the
+    // My Apps navigation row instead of claiming an action that cannot open it.
+    visibleInManager: false,
+    platforms: ["web", "desktop", "ios", "android"],
   },
   {
     id: "plugins-page",

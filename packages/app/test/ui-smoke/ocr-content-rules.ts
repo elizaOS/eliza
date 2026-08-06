@@ -51,7 +51,7 @@ export interface OcrAttempt {
  * What a given view's pixels must (and must not) contain. `requireAll` labels
  * must every one appear; `requireAny` needs at least one (use for a view that can
  * legitimately show one of several states); `forbid` must never appear. Matching
- * is case-insensitive over whitespace-collapsed text.
+ * is case-insensitive over OCR-normalized text.
  */
 export interface OcrExpectation {
   requireAll?: string[];
@@ -112,9 +112,32 @@ export const PLACEHOLDER_PATTERNS: RegExp[] = [
   /\byour text here\b/i,
 ];
 
-/** Collapse to a case-insensitive, single-spaced haystack for substring checks. */
+/**
+ * Canonicalize punctuation and spacing that OCR engines segment differently
+ * across platforms. Letter and number identity remains intact, so this does
+ * not turn a misspelled label into a match.
+ */
 export function normalize(text: string): string {
-  return text.toLowerCase().replace(/\s+/g, " ").trim();
+  return text
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^\p{Letter}\p{Number}]+/gu, " ")
+    .trim();
+}
+
+function containsExpectedText(haystack: string, label: string): boolean {
+  const needle = normalize(label);
+  if (!needle) return false;
+  if (haystack.includes(needle)) return true;
+
+  // Tesseract sometimes joins adjacent words ("New note" → "Newnote").
+  // Require six real characters so removing spaces cannot make tiny labels
+  // such as "on" or "go" match inside unrelated words.
+  const compactNeedle = needle.replaceAll(" ", "");
+  return (
+    compactNeedle.length >= 6 &&
+    haystack.replaceAll(" ", "").includes(compactNeedle)
+  );
 }
 
 export function detectErrorLeaks(text: string): string[] {
@@ -146,6 +169,8 @@ export const OCR_RELIABLE_CONFIDENCE_FLOOR = 0.45;
 export interface EvaluateArgs {
   ocr: OcrResult;
   expectation?: OcrExpectation;
+  /** Durable reason this capture cannot certify the owning view's semantics. */
+  semanticExemptionReason?: string;
   /** TUI terminals and native/canvas overlays legitimately OCR to little/no text. */
   exemptFromBlank?: boolean;
 }
@@ -153,6 +178,7 @@ export interface EvaluateArgs {
 export function evaluateOcrContent({
   ocr,
   expectation,
+  semanticExemptionReason,
   exemptFromBlank = false,
 }: EvaluateArgs): OcrContentFinding {
   const reasons: string[] = [];
@@ -190,18 +216,18 @@ export function evaluateOcrContent({
   const forbiddenPresent: string[] = [];
   if (expectation && !ocrInconclusive && !blankPixels) {
     for (const label of expectation.requireAll ?? []) {
-      if (!hay.includes(normalize(label))) missingRequired.push(label);
+      if (!containsExpectedText(hay, label)) missingRequired.push(label);
     }
     const anyLabels = expectation.requireAny ?? [];
     if (
       anyLabels.length > 0 &&
-      !anyLabels.some((l) => hay.includes(normalize(l)))
+      !anyLabels.some((label) => containsExpectedText(hay, label))
     ) {
       // Report the whole disjunction as one miss so the reason is legible.
       missingRequired.push(anyLabels.join(" | "));
     }
     for (const label of expectation.forbid ?? []) {
-      if (hay.includes(normalize(label))) forbiddenPresent.push(label);
+      if (containsExpectedText(hay, label)) forbiddenPresent.push(label);
     }
   }
 
@@ -242,6 +268,9 @@ export function evaluateOcrContent({
     forbiddenPresent.length > 0
   ) {
     verdict = "needs-eyeball";
+  } else if (semanticExemptionReason) {
+    verdict = "needs-eyeball";
+    reasons.push(`semantic OCR exemption — ${semanticExemptionReason}`);
   } else if (
     expectation &&
     (expectation.requireAll?.length || expectation.requireAny?.length)

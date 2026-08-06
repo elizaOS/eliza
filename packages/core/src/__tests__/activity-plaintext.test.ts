@@ -294,6 +294,16 @@ describe("activityEventToPlaintext", () => {
 });
 
 describe("trajectory plaintext serializers", () => {
+	it("marks malformed persisted steps as unavailable instead of empty", () => {
+		const text = trajectoryToPlaintext({
+			trajectoryId: "traj-corrupt",
+			stepsJson: "not-json{",
+		});
+		expect(text).toContain(
+			"Trajectory steps unavailable: persisted data is malformed.",
+		);
+	});
+
 	it("renders a bounded trajectory summary with LLM calls and provider accesses", () => {
 		const text = trajectoryToPlaintext(
 			{

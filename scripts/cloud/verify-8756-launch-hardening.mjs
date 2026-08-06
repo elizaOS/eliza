@@ -205,7 +205,7 @@ function runSelfChecks() {
   return {
     provisioningWorkerEnvReconcile: run("bun", [
       "test",
-      "packages/scripts/cloud/admin/daemons/provisioning-worker-env-reconcile.test.ts",
+      "packages/cloud/scripts/admin/daemons/provisioning-worker-env-reconcile.test.ts",
     ]),
   };
 }

@@ -6,6 +6,9 @@
  * Deterministic: it drives the pure config mutators and asserts against
  * process.env and the in-memory config object; no live provider is contacted.
  */
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import {
   DIRECT_ACCOUNT_PROVIDER_ENV,
   DIRECT_ACCOUNT_PROVIDER_IDS,
@@ -20,12 +23,42 @@ import {
   openAiBaseUrlIsThirdParty,
 } from "./provider-switch-config";
 
+const ENV_KEYS_TO_RESTORE = ["ELIZA_HOME", "ELIZA_STATE_DIR"] as const;
+const originalEnv = new Map<string, string | undefined>();
+let isolatedElizaHome: string | undefined;
+
+beforeEach(() => {
+  for (const key of ENV_KEYS_TO_RESTORE) {
+    originalEnv.set(key, process.env[key]);
+  }
+  isolatedElizaHome = mkdtempSync(
+    path.join(tmpdir(), "eliza-provider-switch-"),
+  );
+  process.env.ELIZA_HOME = isolatedElizaHome;
+});
+
+afterEach(() => {
+  for (const key of ENV_KEYS_TO_RESTORE) {
+    const value = originalEnv.get(key);
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+  originalEnv.clear();
+  if (isolatedElizaHome) {
+    rmSync(isolatedElizaHome, { recursive: true, force: true });
+    isolatedElizaHome = undefined;
+  }
+});
+
 describe("applySubscriptionProviderConfig", () => {
   afterEach(() => {
     delete process.env.OPENAI_API_KEY;
   });
 
-  it("configures Codex subscriptions for the Codex CLI model provider", () => {
+  it("configures Codex subscriptions for the Codex CLI model provider", async () => {
     const config: Partial<ElizaConfig> = {};
 
     applySubscriptionProviderConfig(config, "openai-codex");
@@ -34,7 +67,7 @@ describe("applySubscriptionProviderConfig", () => {
     expect(config.agents?.defaults?.model?.primary).toBe("codex-cli");
   });
 
-  it("keeps Gemini CLI subscriptions out of runtime model routing", () => {
+  it("keeps Gemini CLI subscriptions out of runtime model routing", async () => {
     const config: Partial<ElizaConfig> = {};
 
     applySubscriptionProviderConfig(config, "gemini-subscription");
@@ -43,7 +76,7 @@ describe("applySubscriptionProviderConfig", () => {
     expect(config.agents?.defaults?.model?.primary).toBeUndefined();
   });
 
-  it("keeps coding-plan endpoint subscriptions out of direct API routing", () => {
+  it("keeps coding-plan endpoint subscriptions out of direct API routing", async () => {
     const config: Partial<ElizaConfig> = {};
 
     applySubscriptionProviderConfig(config, "zai-coding-subscription");
@@ -52,7 +85,7 @@ describe("applySubscriptionProviderConfig", () => {
     expect(config.agents?.defaults?.model?.primary).toBeUndefined();
   });
 
-  it("clears subscription provider settings without touching direct API env", () => {
+  it("clears subscription provider settings without touching direct API env", async () => {
     process.env.OPENAI_API_KEY = "sk-direct-openai-key";
     const config: Partial<ElizaConfig> = {};
 
@@ -108,13 +141,13 @@ describe("clearPersistedFirstRunConfig (reset everything)", () => {
     } as unknown as Partial<ElizaConfig>;
   }
 
-  it("wipes every onboarding-derived slot back to a fresh-install shape", () => {
+  it("wipes every onboarding-derived slot back to a fresh-install shape", async () => {
     process.env.OPENAI_API_KEY = "sk-config";
     process.env.ELIZAOS_CLOUD_API_KEY = "cloud-secret";
     process.env.ELIZAOS_CLOUD_ENABLED = "true";
 
     const config = buildFullyOnboardedConfig();
-    clearPersistedFirstRunConfig(config);
+    await clearPersistedFirstRunConfig(config);
 
     expect((config.meta as Record<string, unknown>)?.firstRunComplete).toBe(
       undefined,
@@ -130,41 +163,41 @@ describe("clearPersistedFirstRunConfig (reset everything)", () => {
     expect(config.serviceRouting).toBeUndefined();
   });
 
-  it("clears provider credentials from both config.env and process.env", () => {
+  it("clears provider credentials from both config.env and process.env", async () => {
     process.env.OPENAI_API_KEY = "sk-config";
 
     const config = buildFullyOnboardedConfig();
-    clearPersistedFirstRunConfig(config);
+    await clearPersistedFirstRunConfig(config);
 
     expect(config.env).toBeUndefined();
     expect(process.env.OPENAI_API_KEY).toBeUndefined();
   });
 
-  it("clears provider-specific default model env vars (no stale model leaks)", () => {
+  it("clears provider-specific default model env vars (no stale model leaks)", async () => {
     for (const key of MODEL_ENV_KEYS) process.env[key] = "stale-model";
 
-    clearPersistedFirstRunConfig(buildFullyOnboardedConfig());
+    await clearPersistedFirstRunConfig(buildFullyOnboardedConfig());
 
     for (const key of MODEL_ENV_KEYS) {
       expect(process.env[key]).toBeUndefined();
     }
   });
 
-  it("strips Eliza Cloud env keys so a fresh boot does not re-link cloud", () => {
+  it("strips Eliza Cloud env keys so a fresh boot does not re-link cloud", async () => {
     for (const key of CLOUD_ENV_KEYS) {
       process.env[key] = "stale";
     }
 
-    clearPersistedFirstRunConfig(buildFullyOnboardedConfig());
+    await clearPersistedFirstRunConfig(buildFullyOnboardedConfig());
 
     for (const key of CLOUD_ENV_KEYS) {
       expect(process.env[key]).toBeUndefined();
     }
   });
 
-  it("is a no-op-safe on an already-empty config", () => {
+  it("is a no-op-safe on an already-empty config", async () => {
     const config: Partial<ElizaConfig> = {};
-    expect(() => clearPersistedFirstRunConfig(config)).not.toThrow();
+    expect(clearPersistedFirstRunConfig(config)).toBeUndefined();
     expect(config.agents).toEqual({ list: [] });
   });
 });
@@ -187,75 +220,75 @@ describe("openAiBaseUrlIsThirdParty", () => {
     }
   });
 
-  it("returns false when OPENAI_BASE_URL is unset", () => {
+  it("returns false when OPENAI_BASE_URL is unset", async () => {
     expect(openAiBaseUrlIsThirdParty()).toBe(false);
   });
 
-  it("returns false when OPENAI_BASE_URL is whitespace-only", () => {
+  it("returns false when OPENAI_BASE_URL is whitespace-only", async () => {
     process.env.OPENAI_BASE_URL = "   ";
     expect(openAiBaseUrlIsThirdParty()).toBe(false);
   });
 
-  it("returns false when OPENAI_BASE_URL points at api.openai.com (canonical)", () => {
+  it("returns false when OPENAI_BASE_URL points at api.openai.com (canonical)", async () => {
     process.env.OPENAI_BASE_URL = "https://api.openai.com/v1";
     expect(openAiBaseUrlIsThirdParty()).toBe(false);
   });
 
-  it("returns false for api.openai.com with a trailing path / query", () => {
+  it("returns false for api.openai.com with a trailing path / query", async () => {
     process.env.OPENAI_BASE_URL = "https://api.openai.com/v1/?tracing=1";
     expect(openAiBaseUrlIsThirdParty()).toBe(false);
   });
 
-  it("returns true for the Cerebras host (the case that motivated this guard)", () => {
+  it("returns true for the Cerebras host (the case that motivated this guard)", async () => {
     process.env.OPENAI_BASE_URL = "https://api.cerebras.ai/v1";
     expect(openAiBaseUrlIsThirdParty()).toBe(true);
   });
 
-  it("returns true for Groq", () => {
+  it("returns true for Groq", async () => {
     process.env.OPENAI_BASE_URL = "https://api.groq.com/openai/v1";
     expect(openAiBaseUrlIsThirdParty()).toBe(true);
   });
 
-  it("returns true for OpenRouter", () => {
+  it("returns true for OpenRouter", async () => {
     process.env.OPENAI_BASE_URL = "https://openrouter.ai/api/v1";
     expect(openAiBaseUrlIsThirdParty()).toBe(true);
   });
 
-  it("returns true for Together AI", () => {
+  it("returns true for Together AI", async () => {
     process.env.OPENAI_BASE_URL = "https://api.together.xyz/v1";
     expect(openAiBaseUrlIsThirdParty()).toBe(true);
   });
 
-  it("returns true for localhost (vLLM / LM Studio / Ollama gateway)", () => {
+  it("returns true for localhost (vLLM / LM Studio / Ollama gateway)", async () => {
     process.env.OPENAI_BASE_URL = "http://localhost:11434/v1";
     expect(openAiBaseUrlIsThirdParty()).toBe(true);
   });
 
-  it("returns true for an arbitrary in-house gateway", () => {
+  it("returns true for an arbitrary in-house gateway", async () => {
     process.env.OPENAI_BASE_URL = "https://gateway.acme.internal/openai";
     expect(openAiBaseUrlIsThirdParty()).toBe(true);
   });
 
-  it("treats unparseable URLs as third-party (fail-safe)", () => {
+  it("treats unparseable URLs as third-party (fail-safe)", async () => {
     process.env.OPENAI_BASE_URL = "not://a real:url";
     expect(openAiBaseUrlIsThirdParty()).toBe(true);
   });
 
-  it("returns true for openai.com subdomains other than api.openai.com", () => {
+  it("returns true for openai.com subdomains other than api.openai.com", async () => {
     // Regression guard: this protects against someone pointing at
     // `platform.openai.com` or `dashboard.openai.com` by mistake.
     process.env.OPENAI_BASE_URL = "https://platform.openai.com/v1";
     expect(openAiBaseUrlIsThirdParty()).toBe(true);
   });
 
-  it("is case-insensitive on the hostname", () => {
+  it("is case-insensitive on the hostname", async () => {
     process.env.OPENAI_BASE_URL = "https://API.OpenAI.COM/v1";
     expect(openAiBaseUrlIsThirdParty()).toBe(false);
   });
 });
 
 describe("Cerebras direct-account wiring", () => {
-  it("maps the cerebras-api account to CEREBRAS_API_KEY", () => {
+  it("maps the cerebras-api account to CEREBRAS_API_KEY", async () => {
     expect(DIRECT_ACCOUNT_PROVIDER_IDS).toContain("cerebras-api");
     expect(DIRECT_ACCOUNT_PROVIDER_ENV["cerebras-api"]).toBe(
       "CEREBRAS_API_KEY",
@@ -330,7 +363,7 @@ describe("applyFirstRunConnectionConfig (Cerebras local provider)", () => {
     expect(process.env.CEREBRAS_MODEL).toBe("qwen-legacy-override");
   });
 
-  it("clears persisted Cerebras credentials and all model tiers on a full reset", () => {
+  it("clears persisted Cerebras credentials and all model tiers on a full reset", async () => {
     process.env.CEREBRAS_API_KEY = "csk-stale";
     process.env.CEREBRAS_MODEL = "legacy-stale";
     process.env.CEREBRAS_SMALL_MODEL = "small-stale";
@@ -346,7 +379,7 @@ describe("applyFirstRunConnectionConfig (Cerebras local provider)", () => {
       },
     } as Partial<ElizaConfig>;
 
-    clearPersistedFirstRunConfig(config);
+    await clearPersistedFirstRunConfig(config);
 
     expect(process.env.CEREBRAS_API_KEY).toBeUndefined();
     expect(process.env.CEREBRAS_MODEL).toBeUndefined();

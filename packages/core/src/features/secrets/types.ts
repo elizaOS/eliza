@@ -279,6 +279,8 @@ export function parseSecretHandle(value: string | null): SecretHandle | null {
 		if (parsed?.marker !== SECRET_HANDLE_MARKER) return null;
 		return parsed;
 	} catch {
+		// error-policy:J3 serialized handles are untrusted persisted input;
+		// malformed JSON is an explicit invalid handle.
 		return null;
 	}
 }

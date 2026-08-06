@@ -80,11 +80,9 @@
   },
   "dependencies": {
     "@capacitor/core": "8.4.0",
-    "@elizaos/agent": "workspace:*",
-    "@elizaos/app-core": "workspace:*",
     "@elizaos/capacitor-calendar": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-google": "workspace:*",
+    "@elizaos/plugin-google-workspace": "workspace:*",
     "@elizaos/plugin-scheduling": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",

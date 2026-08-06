@@ -11,6 +11,7 @@
 import { ModelType } from "../../types/model";
 
 type ErrorWithStatus = {
+	code?: unknown;
 	status?: unknown;
 	statusCode?: unknown;
 	lastError?: unknown;
@@ -151,14 +152,16 @@ export function isRateLimitError(error: unknown): boolean {
 }
 
 /**
- * The user-facing reply for a credit-exhausted provider. One string for every
- * delivery path: the direct chat API (`packages/agent` re-uses it) and the
- * connector failure-reply path below, so a Discord/Telegram user and a
- * dashboard user read the same actionable condition. Characters override via
+ * The user-facing reply for a credit-exhausted provider. One provider-neutral
+ * string serves every delivery path because the failure boundary does not
+ * reliably know whether routing selected Eliza Cloud or a direct provider.
+ * The direct chat API (`packages/agent` re-uses it) and connector failure-reply
+ * path therefore report the same actionable condition without misattributing
+ * billing ownership. Characters override via
  * `character.templates.insufficientCreditsReply`.
  */
 export const INSUFFICIENT_CREDITS_REPLY =
-	"Eliza Cloud credits are depleted. Top up the cloud balance and try again.";
+	"The configured AI provider is out of credits or quota. Add credits or increase its quota, then try again.";
 
 // Credits-specific phrases only — deliberately no plain rate-limit tokens
 // (e.g. `rate_limit_exceeded`), so a transient throttle can never classify as
@@ -267,6 +270,12 @@ export function isModelProviderFallbackError(
 		return false;
 	}
 	const unwrapped = unwrapRetryError(error);
+	// Local inference can disappear after registration (model unload, device
+	// disconnect, or an unavailable native binding). Its typed capability error
+	// means another text provider may safely answer the same request.
+	if (asErrorObject(unwrapped)?.code === "LOCAL_INFERENCE_UNAVAILABLE") {
+		return true;
+	}
 	if (isRateLimitError(error)) {
 		return true;
 	}

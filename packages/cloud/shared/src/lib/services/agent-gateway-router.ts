@@ -213,6 +213,7 @@ export class AgentGatewayRouterService {
     reason?: AgentGatewayRouteReason;
     agentId?: string;
     userId?: string;
+    organizationId?: string;
   }> {
     const localSessions = await agentGatewayRelayService.listOwnerSessions(organizationId, userId);
     if (localSessions.length >= 1) {
@@ -223,6 +224,7 @@ export class AgentGatewayRouterService {
           sessions: localSessions,
         },
         userId,
+        organizationId,
       };
     }
 
@@ -231,6 +233,7 @@ export class AgentGatewayRouterService {
     return {
       ...resolved,
       userId,
+      organizationId,
     };
   }
 
@@ -242,6 +245,7 @@ export class AgentGatewayRouterService {
     reason?: AgentGatewayRouteReason;
     agentId?: string;
     userId?: string;
+    organizationId?: string;
   }> {
     const senderDiscordUserId = args.senderDiscordUserId.trim();
 
@@ -637,11 +641,72 @@ export class AgentGatewayRouterService {
     });
 
     if (!resolved.target) {
+      // Unknown-owner resolution also occurs for guild traffic. Keeping the
+      // onboarding credential in a DM prevents disclosure in a public channel.
+      const isDm = !args.guildId?.trim();
+
+      if (isDm && resolved.reason === "unknown_owner") {
+        // All messaging entry points share one onboarding transcript and
+        // provisioning path so channel choice cannot change account setup.
+        const onboarding = await this.runOnboardingChat({
+          message: args.content,
+          platform: "discord",
+          platformUserId: args.sender.id,
+          platformDisplayName: args.sender.displayName ?? args.sender.username,
+          sessionId: `platform:discord:${args.sender.id}`,
+          trustedPlatformIdentity: true,
+          idempotencyKey: `discord:${args.messageId}`,
+        });
+        return {
+          handled: true,
+          replyText: onboarding.reply,
+          reason: resolved.reason,
+          userId: onboarding.session.userId,
+          organizationId: onboarding.session.organizationId,
+          agentId: onboarding.provisioning.agentId ?? undefined,
+        };
+      }
+
+      if (
+        isDm &&
+        resolved.reason === "owner_agent_not_running" &&
+        resolved.userId &&
+        resolved.organizationId &&
+        !resolved.agentId
+      ) {
+        // A known owner without any sandbox has no runtime target, so the
+        // authenticated onboarding path must finish provisioning instead.
+        const onboarding = await this.runOnboardingChat({
+          message: args.content,
+          platform: "discord",
+          platformUserId: args.sender.id,
+          platformDisplayName: args.sender.displayName ?? args.sender.username,
+          sessionId: `platform:discord:${args.sender.id}`,
+          trustedPlatformIdentity: true,
+          authenticatedUser: {
+            userId: resolved.userId,
+            organizationId: resolved.organizationId,
+          },
+          idempotencyKey: `discord:${args.messageId}`,
+        });
+        return {
+          handled: true,
+          replyText: onboarding.reply,
+          reason: resolved.reason,
+          userId: resolved.userId,
+          organizationId: resolved.organizationId,
+          agentId: onboarding.provisioning.agentId ?? undefined,
+        };
+      }
+
+      // A stopped agent remains a resolved owner resource, not an onboarding
+      // candidate; silently provisioning another agent would duplicate it.
       return {
         handled: false,
         reason: resolved.reason,
         agentId: resolved.agentId,
         userId: resolved.userId,
+        organizationId: resolved.organizationId,
       };
     }
 
@@ -683,6 +748,7 @@ export class AgentGatewayRouterService {
     return {
       ...routed,
       userId: resolved.userId,
+      organizationId: routed.organizationId ?? resolved.organizationId,
     };
   }
 
@@ -716,6 +782,9 @@ export class AgentGatewayRouterService {
         platformUserId: args.from,
         sessionId: `platform:${args.provider}:${args.from}`,
         trustedPlatformIdentity: true,
+        idempotencyKey: args.providerMessageId
+          ? `${args.provider}:${args.providerMessageId}`
+          : undefined,
       });
 
       return {
@@ -736,6 +805,9 @@ export class AgentGatewayRouterService {
           platformUserId: args.from,
           sessionId: `platform:${args.provider}:${args.from}`,
           trustedPlatformIdentity: true,
+          idempotencyKey: args.providerMessageId
+            ? `${args.provider}:${args.providerMessageId}`
+            : undefined,
         });
 
         return {
@@ -759,10 +831,14 @@ export class AgentGatewayRouterService {
           platform: args.provider,
           platformUserId: args.from,
           sessionId: `platform:${args.provider}:${args.from}`,
+          trustedPlatformIdentity: true,
           authenticatedUser: {
             userId: resolved.userId,
             organizationId: resolved.organizationId,
           },
+          idempotencyKey: args.providerMessageId
+            ? `${args.provider}:${args.providerMessageId}`
+            : undefined,
         });
 
         return {
@@ -861,10 +937,14 @@ export class AgentGatewayRouterService {
         platform: args.provider,
         platformUserId: args.from,
         sessionId: `platform:${args.provider}:${args.from}`,
+        trustedPlatformIdentity: true,
         authenticatedUser: {
           userId: resolved.userId,
           organizationId: resolved.organizationId,
         },
+        idempotencyKey: args.providerMessageId
+          ? `${args.provider}:${args.providerMessageId}`
+          : undefined,
       });
 
       return {

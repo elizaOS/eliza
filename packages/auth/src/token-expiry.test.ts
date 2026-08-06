@@ -20,14 +20,13 @@ describe("access-token expiry classification", () => {
     expect(classifyAuthFailureReason(text)).toBe("token_expired");
   });
 
-  it.each([
-    "401 unauthorized",
-    "invalid token",
-    "credentials revoked",
-  ])("does not infer expiry from a generic authorization failure: %s", (text) => {
-    expect(isTokenExpiryText(text)).toBe(false);
-    expect(classifyAuthFailureReason(text)).toBe("needs_reauth");
-  });
+  it.each(["401 unauthorized", "invalid token", "credentials revoked"])(
+    "does not infer expiry from a generic authorization failure: %s",
+    (text) => {
+      expect(isTokenExpiryText(text)).toBe(false);
+      expect(classifyAuthFailureReason(text)).toBe("needs_reauth");
+    },
+  );
 
   it("preserves missing provider detail as an unknown reason", () => {
     expect(isTokenExpiryText(undefined)).toBe(false);

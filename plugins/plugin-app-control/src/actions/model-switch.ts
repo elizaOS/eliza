@@ -25,7 +25,7 @@ import {
 	DEFAULT_ELIGIBLE_MODEL_IDS,
 	DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
 } from "@elizaos/shared";
-import { readStringOption } from "../params.js";
+import { readStringOption, userRequestMessageText } from "../params.js";
 import { createViewsRequestHeaders } from "./views-request-auth.js";
 
 export type ModelSwitchTarget = "local" | "cloud";
@@ -235,7 +235,8 @@ export function createModelSwitchAction(
 			message: Memory,
 		): Promise<boolean> => {
 			return (
-				inferModelSwitchRequest(message.content.text ?? "", undefined) !== null
+				inferModelSwitchRequest(userRequestMessageText(message), undefined) !==
+				null
 			);
 		},
 
@@ -247,14 +248,24 @@ export function createModelSwitchAction(
 			callback?: HandlerCallback,
 		): Promise<ActionResult> => {
 			const request = inferModelSwitchRequest(
-				message.content.text ?? "",
+				userRequestMessageText(message),
 				options,
 			);
 			if (!request) {
+				// The ask IS the turn's complete answer: verified + turnComplete
+				// make the callback the sole delivery instead of double-messaging
+				// with the evaluator; the un-resolved state stays in values.
 				const reply =
 					'Tell me where to run inference — "switch to the local model" or "use Eliza Cloud". You can also name a tier, e.g. "use eliza-1-4b".';
 				await callback?.({ text: reply });
-				return { success: false, text: reply };
+				return {
+					success: true,
+					text: "No inference target named; asked the user where to run inference.",
+					userFacingText: reply,
+					verifiedUserFacing: true,
+					turnComplete: true,
+					values: { awaitingTarget: true },
+				};
 			}
 
 			const refusal = sanctionedModelError(request.target, request.model);
@@ -284,9 +295,15 @@ export function createModelSwitchAction(
 				}
 				const reply = narrate(outcome);
 				await callback?.({ text: reply });
+				// The switch confirmation is the complete answer to a
+				// single-operation turn: verified + turnComplete make the callback
+				// the sole delivery instead of double-messaging with the evaluator.
 				return {
 					success: true,
 					text: reply,
+					userFacingText: reply,
+					verifiedUserFacing: true,
+					turnComplete: true,
 					values: {
 						target: outcome.target ?? request.target,
 						model: outcome.model,

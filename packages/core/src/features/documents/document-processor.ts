@@ -12,6 +12,7 @@
  */
 import type { Buffer } from "node:buffer";
 import { v4 as uuidv4 } from "uuid";
+import { ElizaError } from "../../errors";
 import { logger } from "../../logger";
 import {
 	type IAgentRuntime,
@@ -180,11 +181,7 @@ export async function extractTextFromDocument(
 				contentType.includes("application/json") ||
 				contentType.includes("application/xml")
 			) {
-				try {
-					return fileBuffer.toString("utf8");
-				} catch (_textError) {
-					logger.warn(`Failed to decode ${originalFilename} as UTF-8`);
-				}
+				return fileBuffer.toString("utf8");
 			}
 
 			return extractTextFromFileBuffer(
@@ -194,12 +191,18 @@ export async function extractTextFromDocument(
 			);
 		}
 	} catch (error) {
+		// error-policy:J2 Add document identity while preserving the extraction cause.
 		const errorMessage = error instanceof Error ? error.message : String(error);
 		logger.error(
 			`Error extracting text from ${originalFilename}: ${errorMessage}`,
 		);
-		throw new Error(
+		throw new ElizaError(
 			`Failed to extract text from ${originalFilename}: ${errorMessage}`,
+			{
+				code: "DOCUMENT_TEXT_EXTRACTION_FAILED",
+				context: { originalFilename, contentType },
+				cause: error,
+			},
 		);
 	}
 }
@@ -374,6 +377,8 @@ async function processAndSaveFragments({
 				await runtime.createMemory(fragmentMemory, "document_fragments");
 				savedCount++;
 			} catch (saveError) {
+				// error-policy:J4 Batch ingestion returns explicit failed counts;
+				// each omitted fragment is also reported to the agent.
 				const errorMessage =
 					saveError instanceof Error ? saveError.message : String(saveError);
 				logger.error(
@@ -381,6 +386,10 @@ async function processAndSaveFragments({
 				);
 				failedCount++;
 				failedChunks.push(originalChunkIndex);
+				runtime.reportError("DocumentProcessor.saveFragment", saveError, {
+					documentId,
+					chunkIndex: originalChunkIndex,
+				});
 			}
 		}
 
@@ -506,9 +515,13 @@ async function generateEmbeddingsBatch(
 				}
 			}
 		} catch (error) {
+			// error-policy:J4 Batch embedding has an explicit per-chunk fallback.
 			const errorMessage =
 				error instanceof Error ? error.message : String(error);
 			logger.error(`Batch embedding error: ${errorMessage}`);
+			runtime.reportError("DocumentProcessor.batchEmbedding", error, {
+				batchSize: batch.length,
+			});
 			for (const chunk of batch) {
 				try {
 					const result = await generateEmbeddingWithValidation(
@@ -534,6 +547,13 @@ async function generateEmbeddingsBatch(
 						});
 					}
 				} catch (fallbackError) {
+					// error-policy:J1 Per-chunk fallback failures become explicit
+					// failed EmbeddingResult entries.
+					runtime.reportError(
+						"DocumentProcessor.fallbackEmbedding",
+						fallbackError,
+						{ chunkIndex: chunk.index },
+					);
 					results.push({
 						success: false,
 						index: chunk.index,
@@ -653,11 +673,16 @@ async function generateEmbeddingsIndividual(
 				});
 			}
 		} catch (error) {
+			// error-policy:J1 Per-chunk failures become explicit failed
+			// EmbeddingResult entries returned to the ingestion boundary.
 			const errorMessage =
 				error instanceof Error ? error.message : String(error);
 			logger.error(
 				`Error generating embedding for chunk ${chunk.index}: ${errorMessage}`,
 			);
+			runtime.reportError("DocumentProcessor.generateEmbedding", error, {
+				chunkIndex: chunk.index,
+			});
 			results.push({
 				success: false,
 				index: chunk.index,
@@ -733,6 +758,7 @@ async function generateContextsInBatch(
 	);
 
 	const promptConfigs = prepareContextPrompts(
+		runtime,
 		chunks,
 		fullDocumentText,
 		contentType,
@@ -801,11 +827,16 @@ async function generateContextsInBatch(
 					index: item.originalIndex,
 				};
 			} catch (error) {
+				// error-policy:J4 Contextualization is optional; preserve the
+				// original chunk with success=false and report the failure.
 				const errorMessage =
 					error instanceof Error ? error.message : String(error);
 				logger.error(
 					`Error generating context for chunk ${item.originalIndex}: ${errorMessage}`,
 				);
+				runtime.reportError("DocumentProcessor.contextualizeChunk", error, {
+					chunkIndex: item.originalIndex,
+				});
 				return {
 					contextualizedText: item.chunkText,
 					success: false,
@@ -830,6 +861,7 @@ interface ContextPromptConfig {
 }
 
 function prepareContextPrompts(
+	runtime: IAgentRuntime,
 	chunks: string[],
 	fullDocumentText: string,
 	contentType?: string,
@@ -886,11 +918,16 @@ function prepareContextPrompts(
 				};
 			}
 		} catch (error) {
+			// error-policy:J3 Prompt construction validates derived document
+			// input and returns an explicit invalid config for this chunk.
 			const errorMessage =
 				error instanceof Error ? error.message : String(error);
 			logger.error(
 				`Error preparing prompt for chunk ${originalIndex}: ${errorMessage}`,
 			);
+			runtime.reportError("DocumentProcessor.prepareContextPrompt", error, {
+				chunkIndex: originalIndex,
+			});
 			return {
 				prompt: null,
 				originalIndex,
@@ -929,12 +966,30 @@ async function generateEmbeddingWithValidation(
 
 		return { embedding, success: true };
 	} catch (error) {
+		// error-policy:J1 Embedding provider failures become explicit failed
+		// results for the fragment-ingestion boundary.
+		runtime.reportError("DocumentProcessor.embeddingValidation", error);
 		return {
 			embedding: null,
 			success: false,
 			error: error instanceof Error ? error : new Error(String(error)),
 		};
 	}
+}
+
+function retryAfterSeconds(error: unknown): number | undefined {
+	if (typeof error !== "object" || error === null) return undefined;
+	const headers = Reflect.get(error, "headers");
+	if (typeof headers !== "object" || headers === null) return undefined;
+	const value = Reflect.get(headers, "retry-after");
+	if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+		return value;
+	}
+	if (typeof value === "string") {
+		const parsed = Number(value);
+		if (Number.isFinite(parsed) && parsed >= 0) return parsed;
+	}
+	return undefined;
 }
 
 async function withRateLimitRetry<T>(
@@ -945,17 +1000,20 @@ async function withRateLimitRetry<T>(
 	try {
 		return await operation();
 	} catch (error) {
-		const errorWithStatus = error as {
-			status?: number;
-			headers?: { "retry-after"?: number };
-		};
-		if (errorWithStatus.status === 429) {
-			const delay = retryDelay || errorWithStatus.headers?.["retry-after"] || 5;
+		// error-policy:J4 A provider-declared rate limit gets one bounded retry;
+		// all other failures propagate immediately.
+		const status =
+			typeof error === "object" && error !== null
+				? Reflect.get(error, "status")
+				: undefined;
+		if (status === 429) {
+			const delay = retryDelay ?? retryAfterSeconds(error) ?? 5;
 			await new Promise((resolve) => setTimeout(resolve, delay * 1000));
 
 			try {
 				return await operation();
 			} catch (retryError) {
+				// error-policy:J2 Log retry context and preserve the provider cause.
 				const retryErrorMessage =
 					retryError instanceof Error ? retryError.message : String(retryError);
 				logger.error(

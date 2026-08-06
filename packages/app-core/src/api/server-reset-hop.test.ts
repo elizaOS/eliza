@@ -2,8 +2,8 @@
  * Regression tests for #7409: `_clearCompatPgliteDataDirForTests` must stop the
  * runtime and delete the `.elizadb` PGlite data dir purely in-process, never
  * issuing a loopback HTTP request (which would deadlock the reset hop). Also
- * asserts the delete still runs when `runtime.stop()` never resolves (watchdog
- * timeout via fake timers), the safety guard refusing any dir not named
+ * asserts a hung `runtime.stop()` fails without deleting live state (watchdog
+ * timeout via fake timers), the safety guard rejecting any dir not named
  * `.elizadb`, and tolerance of a missing data dir. `@elizaos/core` logger and
  * `@elizaos/agent` path resolvers are mocked to keep the reset hermetic.
  */
@@ -81,7 +81,7 @@ describe("server reset hop (regression for #7409)", () => {
     expect(elapsedMs).toBeLessThan(2000);
   });
 
-  it("deletes the data dir even when runtime.stop() never resolves", async () => {
+  it("preserves the data dir when runtime.stop() never resolves", async () => {
     vi.useFakeTimers();
     try {
       const stop = vi.fn(() => new Promise<void>(() => {}));
@@ -93,11 +93,14 @@ describe("server reset hop (regression for #7409)", () => {
       } as Parameters<typeof _clearCompatPgliteDataDirForTests>[1];
 
       const pending = _clearCompatPgliteDataDirForTests(runtime, config);
+      const rejected = expect(pending).rejects.toThrow(
+        "runtime.stop() exceeded 20000ms",
+      );
       await vi.advanceTimersByTimeAsync(20_000);
-      await pending;
+      await rejected;
 
       expect(stop).toHaveBeenCalledTimes(1);
-      expect(fs.existsSync(elizadb)).toBe(false);
+      expect(fs.existsSync(elizadb)).toBe(true);
     } finally {
       vi.useRealTimers();
     }
@@ -112,7 +115,9 @@ describe("server reset hop (regression for #7409)", () => {
       database: { pglite: { dataDir: wrongDir } },
     } as Parameters<typeof _clearCompatPgliteDataDirForTests>[1];
 
-    await _clearCompatPgliteDataDirForTests(null, config);
+    await expect(
+      _clearCompatPgliteDataDirForTests(null, config),
+    ).rejects.toThrow("Refusing to delete unexpected PGlite dir");
 
     expect(fs.existsSync(wrongDir)).toBe(true);
   });

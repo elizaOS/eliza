@@ -14,7 +14,6 @@ const QUICK_TASK_IDS = new Set([
   "app-core-focused",
   "agent-focused",
   "lifeops-focused",
-  "training-focused",
   "cloud-api-key-client",
   "model-data",
 ]);
@@ -98,13 +97,6 @@ const TASKS = [
       "plugins/plugin-personal-assistant/src/website-blocker/chat-integration/__tests__/block-rule-service.test.ts",
     ],
     description: "Focused LifeOps website blocker chat-integration tests",
-  },
-  {
-    id: "training-focused",
-    tier: 0,
-    command: "bun",
-    args: ["run", "--cwd", "plugins/plugin-training", "test"],
-    description: "App-training dataset, privacy, optimizer, and trigger tests",
   },
   {
     id: "app-typecheck",

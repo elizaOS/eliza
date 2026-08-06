@@ -1,3 +1,4 @@
+/** Verifies jsdom event timeStamp ↔ performance.now bridge through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Contract test for the vitest.setup.ts event-clock bridge: under jsdom,

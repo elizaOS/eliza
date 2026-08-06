@@ -49,6 +49,21 @@ export interface NativeGlassRegionState {
   rect?: { x: number; y: number; width: number; height: number };
 }
 
+/**
+ * Wallpaper payload for the native backdrop host. The image travels as BYTES
+ * the page already loaded, downsampled, and flattened — never a URL — so the
+ * native side has no network code, no cookie handling, and no scheme parsing
+ * (the #16656 review found the URL-based design leaked the WebView cookie jar
+ * to arbitrary wallpaper origins on iOS; bytes make that class of bug
+ * unexpressible).
+ */
+export interface NativeBackdropOptions {
+  /** Base64 image bytes (no `data:` prefix). Omit to install only the color. */
+  imageBase64?: string;
+  /** Underlay/flatten color, CSS hex. */
+  color?: string;
+}
+
 interface GlassBridgePlugin {
   attachGlass(options: NativeGlassOptions): Promise<{ attached: boolean }>;
   updateRect(options: {
@@ -58,6 +73,17 @@ interface GlassBridgePlugin {
   detachGlass(options: { id: string }): Promise<void>;
   /** UIGlassContainerEffect merge distance for sibling regions. */
   setGrouping(options: { spacing: number }): Promise<void>;
+  /** Decode piped bytes and install a wallpaper layer below the WebView. */
+  setBackdrop(options: NativeBackdropOptions): Promise<{ applied: boolean }>;
+  /** Remove the wallpaper layer; restores WebView opacity when possible. */
+  clearBackdrop(): Promise<void>;
+  /**
+   * Idempotent full teardown: every region, the backdrop, and the WebView
+   * transparency flip. Native state outlives the document, so each fresh
+   * renderer calls this at boot — a region anchored by the previous page
+   * (reload, crash, HMR) must never survive under the next one.
+   */
+  reset(): Promise<void>;
   isAvailable(): Promise<{ available: boolean }>;
   /**
    * Reads the region's REAL native view state (existence, count, z-order,
@@ -109,6 +135,21 @@ export function glassBridge(): GlassBridgePlugin | null {
 }
 
 /**
+ * Which native platform the bridge would run on, independent of plugin
+ * availability. The anchor layer branches on this: iOS's translucent
+ * UIGlassEffect is the only material that needs (and rewards) an
+ * under-WebView wallpaper; Android's panel is near-opaque, so anchoring it
+ * per-sheet is pure view churn (measured in the #16200 investigation) and the
+ * sheet stays on the CSS tier there.
+ */
+export function nativeGlassPlatform(): "ios" | "android" | null {
+  const cap = capacitorGlobal();
+  if (!cap?.isNativePlatform?.()) return null;
+  const platform = cap.getPlatform?.();
+  return platform === "ios" || platform === "android" ? platform : null;
+}
+
+/**
  * One async probe, memoized: true only on iOS 26+ / Android 12+ with the
  * plugin present.
  */
@@ -128,6 +169,54 @@ export function isNativeGlassAvailable(): Promise<boolean> {
     }
   })();
   return availability;
+}
+
+/**
+ * Install the native wallpaper layer. False is the explicit fallback signal:
+ * the caller keeps the DOM wallpaper painted and native glass disabled.
+ */
+export async function setNativeBackdrop(
+  options: NativeBackdropOptions,
+): Promise<boolean> {
+  if (!(await isNativeGlassAvailable())) return false;
+  const bridge = glassBridge();
+  if (!bridge) return false;
+  try {
+    return (await bridge.setBackdrop(options)).applied;
+  } catch {
+    // error-policy:J4 capability write — a native shell predating setBackdrop
+    // throws here; the caller keeps CSS paint, never a black transparency.
+    return false;
+  }
+}
+
+/** Remove the native wallpaper layer (no-op off-native / on old shells). */
+export async function clearNativeBackdrop(): Promise<void> {
+  const bridge = glassBridge();
+  if (!bridge) return;
+  try {
+    await bridge.clearBackdrop();
+  } catch {
+    // error-policy:J4 capability write — an old shell without clearBackdrop
+    // also never installed a backdrop; there is nothing to clear.
+  }
+}
+
+/**
+ * Clear any native glass state left by a PREVIOUS document. Region views and
+ * the hosted wallpaper live outside the WebView, so JS effect cleanup cannot
+ * reach them across a reload/crash/HMR boundary; the shell root calls this
+ * once per renderer boot.
+ */
+export async function resetNativeGlassHost(): Promise<void> {
+  const bridge = glassBridge();
+  if (!bridge) return;
+  try {
+    await bridge.reset();
+  } catch {
+    // error-policy:J4 capability write — a shell predating reset() has no
+    // cross-document state contract to clean; callers proceed on CSS.
+  }
 }
 
 /** Test seam: reset memoized plugin + availability between cases. */

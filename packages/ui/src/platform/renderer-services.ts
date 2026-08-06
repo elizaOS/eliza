@@ -26,6 +26,8 @@
  * this module exists to prevent (#16504).
  */
 
+import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
+
 /**
  * Renderer window shells the app boots. Only the app shell assigns these; a
  * service declares which shells it may run in via `shells`, so background work
@@ -40,7 +42,6 @@ export type RendererShellKind =
   | "tray-popover"
   | "phone-companion"
   | "app-window"
-  | "model-tester"
   | "embed";
 
 /** Passed to a service `start`; `signal` aborts when this instance is stopped. */
@@ -142,7 +143,11 @@ const defaultReportError: RendererServiceErrorReporter = (
   error,
   phase,
 ) => {
-  console.error(`${LOG_PREFIX} service "${serviceId}" ${phase} failed:`, error);
+  reportRendererDiagnostic({
+    scope: `renderer-service.${phase}`,
+    error,
+    context: { serviceId },
+  });
 };
 
 function runCleanup(host: HostState, instance: ServiceInstance): void {

@@ -1,6 +1,6 @@
 # @elizaos/plugin-wallet
 
-Non-custodial wallet for elizaOS agents: EVM + Solana signing, x402 micropayments, CCTP bridge, Li.Fi swap/bridge routing, Jupiter routing, multi-DEX LP management, on-chain spend policies, and analytics (Birdeye, DexScreener, token info).
+Non-custodial wallet for elizaOS agents: EVM + Solana signing, x402 micropayments, CCTP bridge, Li.Fi swap/bridge routing, Jupiter routing, multi-DEX LP management, on-chain spend policies, analytics (Birdeye, DexScreener, token info), and the wallet inventory UI surface (shell page, standalone view, chat-sidebar widget).
 
 ## Purpose / role
 
@@ -134,6 +134,22 @@ plugins/plugin-wallet/
       plugin.ts                Additional plugin route exports
     types/
       wallet-router.ts         WalletRouterParams, WalletRouterResult, WalletChainHandler interface
+    register.ts                Renderer boot side-effect entry (elizaos.appRegister:"register");
+                               imports ui/register-routes.ts
+    ui.ts                      `@elizaos/plugin-wallet/ui` subpath entry (re-exports ui/index.ts)
+    ui/                        Wallet inventory UI surface
+      index.ts                 UI barrel; side-effect imports register-routes.ts
+      plugin.ts                walletAppPlugin descriptor (name "@elizaos/plugin-wallet:ui",
+                               packageName "@elizaos/plugin-wallet"; shell nav tab /inventory,
+                               GUI view /wallet via dist/views/bundle.js, wallet.status widget)
+      register-routes.ts       registerAppRoutePluginLoader + registerAppShellPage +
+                               registerBuiltinWidgets (must run once at boot)
+      InventoryView.tsx        GUI wallet view (Escape wrapper around InventoryAppView)
+      InventoryView.interact.ts  `interact` view capability handler
+      wallet-view-bundle.ts    Entry for the standalone Vite view bundle (dist/views/bundle.js)
+      components/              InventoryAppView DOM dashboard
+      inventory/               Chain config, hooks, token/NFT helpers, logos
+      widgets/                 wallet.status chat-sidebar widget
 ```
 
 ## Commands
@@ -151,7 +167,13 @@ bun run --cwd plugins/plugin-wallet format        # write formatting
 bun run --cwd plugins/plugin-wallet format:check  # read-only formatting check
 bun run --cwd plugins/plugin-wallet test          # run package tests
 bun run --cwd plugins/plugin-wallet test:watch    # watch test lane
+bun run --cwd plugins/plugin-wallet build:views   # standalone view bundle → dist/views/bundle.js
+bun run --cwd plugins/plugin-wallet build:ui-types # UI declaration emit (tsconfig.ui.json)
 ```
+
+`typecheck` runs both the Node tree (`tsconfig.json`, excludes `src/ui/**`) and the
+React UI tree (`tsconfig.ui.json`, `jsx: react-jsx`, resolves workspace deps via
+dist `.d.ts`).
 
 ## Config / env vars
 
@@ -212,45 +234,14 @@ Extend `src/analytics/birdeye/service.ts`. The service proxies all calls through
 - **Sub-plugins.** `evmPlugin` and `solanaPlugin` are composed into `walletPlugin` in `plugin.ts`. They are not intended to be loaded directly; always depend on `@elizaos/plugin-wallet`.
 - **`SDK-LICENSE`** covers the `src/sdk/` subtree (originally from agent-wallet-sdk, MIT).
 - **Auto-enable.** `auto-enable.ts` must remain a lightweight env-read module with no transitive plugin imports. The auto-enable engine loads it on every agent boot.
+- **UI surface is subpath-only.** The package root (`.`) is the server barrel and must never import `src/ui/**`. Hosts import `@elizaos/plugin-wallet/ui` (components/barrel) or rely on the manifest-driven renderer boot (`elizaos.appRegister: "register"` → `src/register.ts`). `src/ui/register-routes.ts` must execute exactly once; duplicate imports create duplicate shell pages.
+- **`walletAppPlugin` naming.** The UI descriptor is named `@elizaos/plugin-wallet:ui` with `packageName: "@elizaos/plugin-wallet"` so the views registry resolves the package dir while the app-route loader id stays distinct from the runtime `wallet` plugin. `normalizeAppRoutePluginId` strips `:ui`, so `ELIZA_SKIP_APP_ROUTE_PLUGINS=wallet` skips it.
+- **View bundle.** `dist/views/bundle.js` is built by `vite.config.views.ts` (entry `src/ui/wallet-view-bundle.ts`, export `InventoryView`), not by the Node build. Both must run for a complete dist.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
-## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+## Verification
 
-> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
-> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
-> works **without reading the code**, from the artifacts you attach. This applies to **every**
-> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
-
-- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
-  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
-  providers/context, the raw model output, every tool/action call, and the result. Then **open
-  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
-  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
-- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
-  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
-  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
-  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
-  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
-  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
-  them is part of your change.
-- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
-  the entire feature or view, start to finish (`bun run test:e2e:record`).
-- **Manually review every artifact the change touches** — never just the green check: client
-  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
-  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
-- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
-  blocker by the **hard path**: build the real architecture, stand up the real
-  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
-  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
-  highest-effort, production-ready version. Keep going until every possibility is exhausted.
-
-Artifacts → attached inline in the PR (MP4 video, JPG screenshots, logs in `<details>`); attach each evidence type **or**
-explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
-behavior, **re-capture** evidence; stale proof is worse than none.
-
-**Capture & manually review for this package — wallet / chain / contracts:**
-- On-chain transaction hash(es) + explorer link, wallet balance **before and after**, and the signed-payload/log trail — run against a testnet or fork.
-- Revert / insufficient-funds / nonce / gas-estimation-failure paths, and signature-authorization (role/permission) checks.
-- The decision trajectory when an agent initiated the on-chain action.
-- Never a mocked RPC asserted green — prove the chain state actually changed.
-<!-- END: evidence-and-e2e-mandate -->
+Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+the package's relevant build, typecheck, lint, and test commands, then exercise
+the real integration boundary changed by the work. Inspect the produced domain
+artifacts and failure behavior; do not substitute mocked success for the system
+under test.

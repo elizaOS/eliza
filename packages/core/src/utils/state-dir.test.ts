@@ -1,6 +1,7 @@
 /**
  * Tests for the state-directory resolvers (`resolveStateDir`,
- * `getElizaNamespace`, `resolveOAuthDir`, `resolveUserPath`, `migrateStateDir`):
+ * `getElizaNamespace`, `getOptimizationRootDir`, `resolveOAuthDir`,
+ * `resolveUserPath`, `migrateStateDir`):
  * env/XDG precedence and `~` expansion are checked against a platform-portable
  * fake homedir, and `migrateStateDir` runs against real temp directories.
  */
@@ -10,6 +11,7 @@ import { isAbsolute, join, resolve, sep } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
 	getElizaNamespace,
+	getOptimizationRootDir,
 	migrateStateDir,
 	resolveOAuthDir,
 	resolveStateDir,
@@ -96,6 +98,14 @@ describe("getElizaNamespace", () => {
 
 	it("returns the override when ELIZA_NAMESPACE is set", () => {
 		expect(getElizaNamespace({ ELIZA_NAMESPACE: "custom" })).toBe("custom");
+	});
+});
+
+describe("getOptimizationRootDir", () => {
+	it("preserves an explicit optimization directory", () => {
+		expect(getOptimizationRootDir("/tmp/optimization")).toBe(
+			"/tmp/optimization",
+		);
 	});
 });
 

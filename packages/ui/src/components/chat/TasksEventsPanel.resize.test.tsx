@@ -1,3 +1,4 @@
+/** Verifies TasksEventsPanel widgets-bar resize drag through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Resize-drag contract for the chat widgets bar: pointer moves apply the width

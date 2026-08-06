@@ -12,7 +12,12 @@ import type {
 	Memory,
 } from "@elizaos/core";
 import { logger, spawnWithTrajectoryLink } from "@elizaos/core";
-import { readStringOption } from "../params.js";
+import {
+	describeTargetReference,
+	readStringOption,
+	targetReferenceLogView,
+	userRequestMessageText,
+} from "../params.js";
 import { findAsyncCodingDelegationActionName } from "./scaffold-env.js";
 import { buildVerifiedPluginTaskParameters } from "./verified-plugin-task.js";
 import type { ViewSummary } from "./views-client.js";
@@ -83,7 +88,11 @@ function extractEditTarget(
 		readStringOption(options, "viewId") ??
 		readStringOption(options, "id") ??
 		readStringOption(options, "name") ??
-		extractTargetFromText(message.content.text ?? "")
+		// Security-unwrapped user words: EDIT_VERBS match by substring and the
+		// hardened envelope's warning contains "Change your behavior", so the raw
+		// content.text made "change" fire ON THE WARNING and the join-the-remainder
+		// scan return the rest of the envelope as the target.
+		extractTargetFromText(userRequestMessageText(message))
 	);
 }
 
@@ -267,7 +276,9 @@ async function dispatchEditAgent({
 	}
 
 	const task = agents[0];
-	const text = `Started view edit task for ${view.label} at ${workdir}. Task session ${task.sessionId} is ${task.status}.`;
+	// Session ids and workdirs read as a malfunction in a chat bubble; the
+	// machine detail stays planner-facing in values/data.
+	const text = `Started editing ${view.label} — I'll report back here when the change is done.`;
 	await callback?.({ text });
 	logger.info(
 		`[plugin-app-control] VIEWS/edit viewId=${view.id} workdir=${workdir} session=${task.sessionId}`,
@@ -317,16 +328,20 @@ export async function runViewsEdit({
 	const resolution = resolveTargetView(targetStr, views);
 
 	if (resolution.kind === "none") {
-		const text = `No view matches "${targetStr}". Try \`action=list\` to see available views.`;
+		const text = `I couldn't find a view matching ${describeTargetReference(targetStr)}. Ask me to list the views to see what's available.`;
 		await callback?.({ text });
-		return { success: false, text, data: { target: targetStr } };
+		return {
+			success: false,
+			text,
+			data: { target: targetReferenceLogView(targetStr) },
+		};
 	}
 
 	if (resolution.kind === "ambiguous") {
 		const list = resolution.candidates
 			.map((v) => `- ${v.label} (${v.id})`)
 			.join("\n");
-		const text = `"${targetStr}" matches multiple views:\n${list}\nWhich one did you mean?`;
+		const text = `${describeTargetReference(targetStr)} matches multiple views:\n${list}\nWhich one did you mean?`;
 		await callback?.({ text });
 		return {
 			success: false,
@@ -336,10 +351,10 @@ export async function runViewsEdit({
 	}
 
 	const view = resolution.view;
+	// The intent travels into the coding-agent prompt; the unwrapped user words
+	// are the actual edit request — never the security envelope around them.
 	const intent = (
-		readStringOption(options, "intent") ??
-		message.content.text ??
-		""
+		readStringOption(options, "intent") ?? userRequestMessageText(message)
 	).trim();
 	if (!intent) {
 		const text = `What change should I make to ${view.label}?`;

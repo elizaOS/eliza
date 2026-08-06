@@ -10,6 +10,8 @@ export interface AuditReportRow {
   viewport: string;
   viewType?: "gui" | "tui";
   verdict?: string;
+  /** Present only when the capture loaded a registered remote view bundle. */
+  bundleProvenance?: string;
 }
 
 export interface AuditScreenshot {
@@ -58,11 +60,18 @@ export function parseAuditReport(value: unknown): AuditReportRow[] {
     if (row.verdict !== undefined && typeof row.verdict !== "string") {
       throw new Error(`Invalid audit verdict at index ${index}`);
     }
+    if (
+      row.bundleProvenance !== undefined &&
+      typeof row.bundleProvenance !== "string"
+    ) {
+      throw new Error(`Invalid audit bundle provenance at index ${index}`);
+    }
     return {
       slug: row.slug,
       viewport: row.viewport,
       viewType: row.viewType,
       verdict: row.verdict,
+      bundleProvenance: row.bundleProvenance,
     };
   });
 }

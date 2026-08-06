@@ -3,10 +3,10 @@
  * provenance contracts using parsed YAML and disposable Git histories.
  */
 import { describe, expect, test } from "bun:test";
-import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 
 const workflowPath = new URL(
   "../../../.github/workflows/managed-dedicated-canary.yml",

@@ -328,7 +328,6 @@ describe("SETTINGS action: list", () => {
 		expect(result?.verifiedUserFacing).toBe(true);
 		expect(result?.turnComplete).toBe(true);
 		expect(result?.continueChain).toBeUndefined();
-		expect(result).toBeDefined();
 		if (!result) throw new Error("Expected SETTINGS list result");
 		const sections = (
 			result.data as { sections: Array<Record<string, unknown>> }
@@ -546,6 +545,43 @@ describe("SETTINGS action: set on an owned route section", () => {
 			key: "continuous",
 		});
 		expect(texts.join(" ")).toContain("continuous chat is always-on");
+	});
+
+	it("ignores generic namespace noise and canonicalizes composed voice keys", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async (request) => {
+			if (request.method === "GET") {
+				return { ok: true, data: { messages: {} } };
+			}
+			return { ok: true };
+		});
+		const { result } = await invoke(
+			{
+				action: "set",
+				section: "voice",
+				namespace: "voice",
+				key: "continuous_chat_always_on",
+				value: "on",
+			},
+			routeFetch,
+		);
+
+		expect(result?.success).toBe(true);
+		expect(result?.values).toMatchObject({
+			section: "voice",
+			key: "continuous-chat",
+		});
+		expect(routeFetch).toHaveBeenNthCalledWith(2, {
+			method: "PUT",
+			path: "/api/config",
+			body: {
+				messages: {
+					voice: {
+						continuous: "always-on",
+						vadAutoStop: DEFAULT_VOICE_SETTINGS_PREFS.vadAutoStop,
+					},
+				},
+			},
+		});
 	});
 
 	it("updates voice VAD silence while preserving existing voice prefs", async () => {
@@ -977,41 +1013,16 @@ describe("SETTINGS action: set on an owned route section", () => {
 		});
 	});
 
-	it("dispatches capabilities auto-training through the training config route", async () => {
-		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
-		const { result, texts } = await invoke(
-			{
-				action: "set",
-				section: "capabilities",
-				key: "auto-training",
-				value: "on",
-			},
-			routeFetch,
-		);
-		expect(routeFetch).toHaveBeenCalledWith({
-			method: "POST",
-			path: "/api/training/auto/config",
-			body: { autoTrain: true },
-		});
-		expect(result?.success).toBe(true);
-		expect(result?.values).toMatchObject({
-			section: "capabilities",
-			key: "auto-training",
-			value: true,
-		});
-		expect(texts.join(" ")).toContain("Auto-training is on");
-	});
-
-	it("defaults capabilities to auto-training when key is omitted", async () => {
+	it("defaults capabilities to wallet when key is omitted", async () => {
 		const routeFetch = vi.fn<SettingsRouteFetch>(async () => ({ ok: true }));
 		await invoke(
 			{ action: "set", section: "capabilities", value: "off" },
 			routeFetch,
 		);
 		expect(routeFetch).toHaveBeenCalledWith({
-			method: "POST",
-			path: "/api/training/auto/config",
-			body: { autoTrain: false },
+			method: "PUT",
+			path: "/api/config",
+			body: { ui: { capabilities: { wallet: false } } },
 		});
 	});
 
@@ -2134,7 +2145,9 @@ describe("SETTINGS action: set on delegated/readonly/unwired sections", () => {
 		expect(routeFetch).not.toHaveBeenCalled();
 		expect(result?.success).toBe(false);
 		expect(result?.data).toMatchObject({ delegateTo: "PLUGIN" });
-		expect(texts.join(" ")).toContain("PLUGIN");
+		// Planner-facing contract: routing guidance never posts to chat.
+		expect(texts).toHaveLength(0);
+		expect(result?.text).toContain("PLUGIN");
 	});
 
 	it("delegates vault settings to SECRETS, not the browser credential action", async () => {
@@ -2146,7 +2159,8 @@ describe("SETTINGS action: set on delegated/readonly/unwired sections", () => {
 		expect(routeFetch).not.toHaveBeenCalled();
 		expect(result?.success).toBe(false);
 		expect(result?.data).toMatchObject({ delegateTo: "SECRETS" });
-		expect(texts.join(" ")).toContain("SECRETS");
+		expect(texts).toHaveLength(0);
+		expect(result?.text).toContain("SECRETS");
 	});
 
 	it("refuses to write a read-only section", async () => {
@@ -2156,7 +2170,8 @@ describe("SETTINGS action: set on delegated/readonly/unwired sections", () => {
 			value: "on",
 		});
 		expect(result?.success).toBe(false);
-		expect(texts.join(" ")).toContain("read-only");
+		expect(texts).toHaveLength(0);
+		expect(result?.text).toContain("read-only");
 	});
 
 	it("refuses every unwired gap section with its stated reason", async () => {

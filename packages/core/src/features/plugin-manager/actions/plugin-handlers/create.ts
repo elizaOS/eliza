@@ -545,14 +545,15 @@ async function createNewPlugin({
 		callback,
 	});
 	if (dispatch.dispatched === false) {
+		// Planner-facing only: raw paths/reasons are tool-speak; the evaluator
+		// explains the failure to the user in voice.
 		const text = `Scaffolded ${displayName} at ${workdir}, but could not dispatch a coding agent: ${dispatch.reason}.`;
-		await callback?.({ text });
 		return { success: false, text, values: { mode: "create", workdir } };
 	}
 
 	const task = dispatch.agents[0];
+	// Planner-facing only: session ids and internal event names stay out of chat.
 	const text = `Started plugin create task for ${displayName} at ${workdir}. Task session ${task.sessionId} is ${task.status}; verification will run when it emits PLUGIN_CREATE_DONE.`;
-	await callback?.({ text });
 	logger.info(
 		`[plugin-manager] PLUGIN/create new name=${packageName} workdir=${workdir} session=${task.sessionId}`,
 	);
@@ -590,8 +591,7 @@ async function editExistingPlugin({
 	callback?: HandlerCallback;
 }): Promise<ActionResult> {
 	if (!plugin.path) {
-		const text = `Plugin "${plugin.name}" has no local source path. Eject it before editing.`;
-		await callback?.({ text });
+		const text = `Plugin "${plugin.name}" has no local source path; tell the user it must be ejected before editing.`;
 		return { success: false, text };
 	}
 	const dispatch = await dispatchCodingAgent({
@@ -604,12 +604,10 @@ async function editExistingPlugin({
 	});
 	if (dispatch.dispatched === false) {
 		const text = `Could not dispatch a coding agent to edit ${plugin.name}: ${dispatch.reason}.`;
-		await callback?.({ text });
 		return { success: false, text };
 	}
 	const task = dispatch.agents[0];
 	const text = `Started plugin edit task for ${plugin.name} at ${plugin.path}. Task session ${task.sessionId} is ${task.status}; verification will run when it emits PLUGIN_CREATE_DONE.`;
-	await callback?.({ text });
 	return {
 		success: true,
 		text,
@@ -681,8 +679,7 @@ export async function runCreate({
 				plugin.path === choice?.pluginPath,
 		);
 		if (!target) {
-			const text = `Plugin edit target "${normalized}" is no longer available.`;
-			await callback?.({ text });
+			const text = `Plugin edit target "${normalized}" is no longer available; tell the user that option has gone stale.`;
 			return { success: false, text };
 		}
 		return editExistingPlugin({
@@ -700,16 +697,16 @@ export async function runCreate({
 			(plugin) => plugin.name === targetName || plugin.path === targetName,
 		);
 		if (!target) {
-			const text = `Cannot find a local plugin named "${targetName}".`;
-			await callback?.({ text });
+			const text = `Cannot find a local plugin named "${targetName}"; tell the user no such plugin exists locally.`;
 			return { success: false, text };
 		}
 		return editExistingPlugin({ runtime, intent, plugin: target, callback });
 	}
 
 	if (!intent) {
-		const text = "Tell me what plugin you want to build.";
-		await callback?.({ text });
+		// Planner-facing only: the evaluator owns asking the user, in voice.
+		const text =
+			"No plugin intent found in the request; ask the user what plugin they want to build.";
 		return { success: false, text };
 	}
 
@@ -743,9 +740,15 @@ export async function runCreate({
 		matches,
 	);
 	await callback?.({ text });
+	// The choice block IS the designed ask the user must answer: verified +
+	// turnComplete make it the turn's sole delivery instead of pairing it with
+	// a second evaluator reply generated from a placeholder.
 	return {
 		success: true,
-		text: "Picking next step...",
+		text: "Asked the user to pick: create a new plugin, edit an existing match, or cancel.",
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		values: { mode: "create", subMode: "choice", matchCount: matches.length },
 		data: { choices, intent },
 	};

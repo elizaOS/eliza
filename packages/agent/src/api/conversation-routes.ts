@@ -54,6 +54,15 @@ import type { ElizaConfig } from "../config/config.ts";
 import { resolveStateDir } from "../config/paths.ts";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import {
+  deleteConversationMemories,
+  deleteConversationMessage,
+  truncateConversationMessages,
+} from "../services/conversation-message-service.ts";
+import {
+  createPendantSessionRepository,
+  type PendantSessionRepository,
+} from "../services/pendant-session/repository.ts";
+import {
   type SerializedMessageAttachment,
   selectAttachmentsForViewer,
 } from "./attachment-disclosure.ts";
@@ -209,11 +218,14 @@ function _readDeletedConversationIdsFromState(): Set<string> {
         .map((id) => (typeof id === "string" ? id.trim() : ""))
         .filter((id) => id.length > 0),
     );
-  } catch (err) {
-    logger.warn(
-      `[eliza-api] Failed to read deleted conversations state: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return new Set();
+  } catch (error) {
+    // error-policy:J2 an existing but unreadable tombstone file cannot be
+    // treated as an empty deletion history or deleted chats may reappear.
+    throw new ElizaError("Failed to read deleted conversation tombstones", {
+      code: "DELETED_CONVERSATION_STATE_READ_FAILED",
+      cause: error,
+      context: { filePath },
+    });
   }
 }
 
@@ -818,13 +830,7 @@ function markConversationDeleted(
     state.deletedConversationIds.delete(oldest);
   }
 
-  try {
-    persistDeletedConversationIdsToState(state.deletedConversationIds);
-  } catch (err) {
-    logger.warn(
-      `[conversations] Failed to persist deleted conversation tombstones: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
+  persistDeletedConversationIdsToState(state.deletedConversationIds);
 }
 
 async function deleteConversationRoomData(
@@ -855,69 +861,6 @@ async function deleteConversationRoomData(
       }
     },
   );
-}
-
-async function deleteConversationMemories(
-  runtime: AgentRuntime,
-  memoryIds: UUID[],
-): Promise<number> {
-  if (memoryIds.length === 0) return 0;
-
-  const runtimeWithDelete = runtime as AgentRuntime & {
-    deleteManyMemories?: (memoryIds: UUID[]) => Promise<unknown>;
-    deleteMemory?: (memoryId: UUID) => Promise<unknown>;
-    removeMemory?: (memoryId: UUID) => Promise<unknown>;
-    adapter?: {
-      db?: {
-        deleteManyMemories?: (memoryIds: UUID[]) => Promise<unknown>;
-        deleteMemory?: (memoryId: UUID) => Promise<unknown>;
-        removeMemory?: (memoryId: UUID) => Promise<unknown>;
-      };
-    };
-  };
-
-  if (typeof runtimeWithDelete.deleteManyMemories === "function") {
-    await runtimeWithDelete.deleteManyMemories(memoryIds);
-    return memoryIds.length;
-  }
-
-  const dbDeleteMany = runtimeWithDelete.adapter.db.deleteManyMemories;
-  if (typeof dbDeleteMany === "function") {
-    await dbDeleteMany.call(runtimeWithDelete.adapter.db, memoryIds);
-    return memoryIds.length;
-  }
-
-  let deletedCount = 0;
-  for (const memoryId of memoryIds) {
-    if (typeof runtimeWithDelete.deleteMemory === "function") {
-      await runtimeWithDelete.deleteMemory(memoryId);
-    } else if (typeof runtimeWithDelete.removeMemory === "function") {
-      await runtimeWithDelete.removeMemory(memoryId);
-    } else if (
-      typeof runtimeWithDelete.adapter.db.deleteMemory === "function"
-    ) {
-      await runtimeWithDelete.adapter.db.deleteMemory.call(
-        runtimeWithDelete.adapter.db,
-        memoryId,
-      );
-    } else if (
-      typeof runtimeWithDelete.adapter.db.removeMemory === "function"
-    ) {
-      await runtimeWithDelete.adapter.db.removeMemory.call(
-        runtimeWithDelete.adapter.db,
-        memoryId,
-      );
-    } else {
-      const unsupportedError = new Error(
-        "Conversation message deletion is not supported by this runtime",
-      ) as Error & { status?: number };
-      unsupportedError.status = 501;
-      throw unsupportedError;
-    }
-    deletedCount += 1;
-  }
-
-  return deletedCount;
 }
 
 function captureConversationConnection(
@@ -1166,6 +1109,139 @@ async function persistClientUserMemory(
     return;
   }
   await persistExactConversationMemory(runtime, memory);
+}
+
+interface CanonicalPendantProvenance {
+  ownerId: UUID;
+  agentId: UUID;
+  sessionId: string;
+  segmentId: string;
+  segmentRevision: number;
+}
+
+function readRequiredMetadataString(
+  metadata: Record<string, unknown>,
+  key: string,
+): string {
+  const value = metadata[key];
+  if (typeof value !== "string" || !value.trim()) {
+    throw new ElizaError(`Pendant transcript metadata is missing ${key}`, {
+      code: "PENDANT_TRANSCRIPT_PROVENANCE_INVALID",
+      context: { key },
+    });
+  }
+  return value.trim();
+}
+
+export async function verifyCanonicalPendantProvenance(
+  runtime: AgentRuntime,
+  caller: { entityId: UUID; role: WaifuChatWorldRole },
+  prompt: string,
+  metadata: Record<string, unknown> | undefined,
+  repository?: PendantSessionRepository,
+): Promise<CanonicalPendantProvenance | null> {
+  if (metadata?.voiceSource !== "pendant") return null;
+  if (caller.role !== "OWNER") {
+    throw new ElizaError(
+      "Only the authenticated owner may submit a pendant transcript",
+      {
+        code: "PENDANT_TRANSCRIPT_OWNER_REQUIRED",
+        context: { callerRole: caller.role },
+      },
+    );
+  }
+
+  const ownerId = readRequiredMetadataString(
+    metadata,
+    "pendantOwnerId",
+  ) as UUID;
+  const agentId = readRequiredMetadataString(
+    metadata,
+    "pendantAgentId",
+  ) as UUID;
+  const sessionId = readRequiredMetadataString(metadata, "pendantSessionId");
+  const segmentId = readRequiredMetadataString(metadata, "pendantSegmentId");
+  const segmentRevision = metadata.pendantSegmentRevision;
+  if (!Number.isSafeInteger(segmentRevision) || Number(segmentRevision) < 0) {
+    throw new ElizaError(
+      "Pendant transcript metadata has an invalid segment revision",
+      {
+        code: "PENDANT_TRANSCRIPT_PROVENANCE_INVALID",
+        context: { key: "pendantSegmentRevision" },
+      },
+    );
+  }
+  if (ownerId !== caller.entityId || agentId !== runtime.agentId) {
+    throw new ElizaError(
+      "Pendant transcript identity does not match the authenticated runtime",
+      {
+        code: "PENDANT_TRANSCRIPT_IDENTITY_MISMATCH",
+        context: { ownerId, agentId },
+      },
+    );
+  }
+
+  const store = repository ?? createPendantSessionRepository(runtime);
+  const stored = await store.load({
+    ownerId,
+    agentId,
+    sessionId,
+  });
+  const segment = stored?.segments.find(
+    (candidate) => candidate.id === segmentId,
+  );
+  if (
+    !stored ||
+    !segment ||
+    segment.sessionId !== sessionId ||
+    segment.status !== "resolved" ||
+    segment.revision !== segmentRevision ||
+    segment.text.trim() !== prompt.trim()
+  ) {
+    throw new ElizaError(
+      "Pendant transcript does not match a canonical resolved segment",
+      {
+        code: "PENDANT_TRANSCRIPT_SEGMENT_MISMATCH",
+        context: { sessionId, segmentId, segmentRevision },
+      },
+    );
+  }
+
+  return { ownerId, agentId, sessionId, segmentId, segmentRevision };
+}
+
+export function stampCanonicalPendantMemory(
+  messages: Awaited<ReturnType<typeof buildUserMessages>>,
+  provenance: CanonicalPendantProvenance,
+): void {
+  for (const memory of [messages.userMessage, messages.messageToStore]) {
+    memory.metadata = {
+      ...memory.metadata,
+      type: "message",
+      provider: "pendant",
+      accountId: provenance.agentId,
+      platformMessageId: provenance.segmentId,
+      sourceId: provenance.segmentId,
+      chatType: "dm",
+      scope: "owner-private",
+      scopedToEntityId: provenance.ownerId,
+      addedBy: provenance.ownerId,
+      addedByRole: "OWNER",
+      base: {
+        type: "message",
+        source: "pendant",
+        scope: "owner-private",
+      },
+      pendant: {
+        userId: provenance.ownerId,
+        accountId: provenance.agentId,
+        messageId: provenance.segmentId,
+        sessionId: provenance.sessionId,
+        segmentId: provenance.segmentId,
+        segmentRevision: provenance.segmentRevision,
+      },
+    };
+  }
 }
 
 function writeConversationDoneSse(
@@ -1619,10 +1695,14 @@ async function ensureConversationGreetingStoredUnlocked(
       tableName: "messages",
       limit: 12,
     });
-  } catch (err) {
-    throw new Error(
-      `Failed to inspect existing conversation messages: ${getErrorMessage(err)}`,
-    );
+  } catch (error) {
+    // error-policy:J2 greeting setup retains the storage cause for the route
+    // boundary instead of fabricating an empty conversation.
+    throw new ElizaError("Failed to inspect conversation messages", {
+      code: "CONVERSATION_GREETING_READ_FAILED",
+      cause: error,
+      context: { conversationId: conv.id },
+    });
   }
 
   memories.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
@@ -1684,10 +1764,14 @@ async function ensureConversationGreetingStoredUnlocked(
         },
       }),
     );
-  } catch (err) {
-    throw new Error(
-      `Failed to store greeting message: ${getErrorMessage(err)}`,
-    );
+  } catch (error) {
+    // error-policy:J2 greeting persistence is required before the route reports
+    // the greeting as stored.
+    throw new ElizaError("Failed to store conversation greeting", {
+      code: "CONVERSATION_GREETING_WRITE_FAILED",
+      cause: error,
+      context: { conversationId: conv.id },
+    });
   }
 
   conv.updatedAt = new Date().toISOString();
@@ -1697,80 +1781,6 @@ async function ensureConversationGreetingStoredUnlocked(
     generated: true,
     persisted: true,
   };
-}
-
-/**
- * Delete a SINGLE message from a conversation by id (#13533). Unlike
- * `truncateConversationMessages` (which drops the target and everything after —
- * the edit-and-resend primitive), this removes exactly one row and leaves the
- * rest of the thread intact.
- *
- * The id is resolved by store lookup and its `roomId` verified against the
- * conversation's room the same way `?around` guards a forged pivot
- * (`loadConversationMessagesAround`): a message id from another room yields a 404
- * ("not found"), never a cross-room delete. A `messageId` that resolves to no
- * memory is a 404.
- */
-async function deleteConversationMessage(
-  runtime: AgentRuntime,
-  conv: ConversationMeta,
-  messageId: string,
-): Promise<{ deletedCount: number }> {
-  const [memory] = await runtime.getMemoriesByIds(
-    [messageId as UUID],
-    "messages",
-  );
-  // Not found, or a forged id pointing at another room: treat both as 404 so a
-  // cross-room id can't confirm existence or delete foreign content.
-  if (!memory || memory.roomId !== conv.roomId) {
-    const notFoundError = new Error(
-      "Conversation message not found",
-    ) as Error & { status?: number };
-    notFoundError.status = 404;
-    throw notFoundError;
-  }
-  const deletedCount = await deleteConversationMemories(runtime, [
-    messageId as UUID,
-  ]);
-  return { deletedCount };
-}
-
-async function truncateConversationMessages(
-  runtime: AgentRuntime,
-  conv: ConversationMeta,
-  messageId: string,
-  options?: { inclusive?: boolean },
-): Promise<{ deletedCount: number }> {
-  const memories = await runtime.getMemories({
-    roomId: conv.roomId,
-    tableName: "messages",
-    limit: 1000,
-  });
-
-  memories.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
-  const targetIndex = memories.findIndex((memory) => memory.id === messageId);
-  if (targetIndex < 0) {
-    const notFoundError = new Error(
-      "Conversation message not found",
-    ) as Error & {
-      status?: number;
-    };
-    notFoundError.status = 404;
-    throw notFoundError;
-  }
-
-  const deleteStartIndex =
-    options?.inclusive === true ? targetIndex : targetIndex + 1;
-  const memoryIds = memories
-    .slice(deleteStartIndex)
-    .map((memory) => memory.id)
-    .filter(
-      (memoryId): memoryId is UUID =>
-        typeof memoryId === "string" && memoryId.trim().length > 0,
-    );
-
-  const deletedCount = await deleteConversationMemories(runtime, memoryIds);
-  return { deletedCount };
 }
 
 // ---------------------------------------------------------------------------
@@ -2664,9 +2674,14 @@ export async function handleConversationRoutes(
         await persistConversationMemory(runtime, memory);
         inserted += 1;
       } catch (err) {
-        logger.warn(
-          `[conversations] import: failed to persist message ${i}: ${getErrorMessage(err)}`,
+        // error-policy:J1 the import boundary reports the exact partial-write
+        // position and never returns a healthy skipped-count response.
+        error(
+          res,
+          `Conversation import failed at message ${i}: ${getErrorMessage(err)}`,
+          500,
         );
+        return true;
       }
     }
     conv.updatedAt = new Date().toISOString();
@@ -2913,6 +2928,12 @@ export async function handleConversationRoutes(
 
     let userMessages: Awaited<ReturnType<typeof buildUserMessages>>;
     try {
+      const pendantProvenance = await verifyCanonicalPendantProvenance(
+        runtime,
+        caller,
+        prompt,
+        chatMetadata,
+      );
       userMessages = await buildUserMessages({
         images,
         prompt,
@@ -2920,9 +2941,12 @@ export async function handleConversationRoutes(
         agentId: runtime.agentId,
         roomId: conv.roomId,
         channelType,
-        messageSource: source,
+        messageSource: pendantProvenance ? "pendant" : source,
         metadata: chatMetadata,
       });
+      if (pendantProvenance) {
+        stampCanonicalPendantMemory(userMessages, pendantProvenance);
+      }
     } catch (err) {
       return failStream(
         `Failed to prepare user message: ${getErrorMessage(err)}`,
@@ -3110,12 +3134,14 @@ export async function handleConversationRoutes(
           onSnapshot: (text) => {
             if (!text) return;
             if (
-              !streamedText ||
               disconnectTracker.isAborted() ||
               disconnectTracker.checkConnectionClosed()
             ) {
               return;
             }
+            // Action callbacks may be the first visible source for a turn. An
+            // authoritative snapshot therefore has to be able to establish the
+            // stream, not merely revise text emitted by a model-token source.
             // Structured field extractors can briefly normalize whitespace or
             // closing punctuation while the same visible field is still
             // streaming. Do not shrink the user-visible token stream for
@@ -3597,6 +3623,12 @@ export async function handleConversationRoutes(
 
     let userMessages: Awaited<ReturnType<typeof buildUserMessages>>;
     try {
+      const pendantProvenance = await verifyCanonicalPendantProvenance(
+        runtime,
+        caller,
+        prompt,
+        restMetadata,
+      );
       userMessages = await buildUserMessages({
         images,
         prompt,
@@ -3604,9 +3636,12 @@ export async function handleConversationRoutes(
         agentId: runtime.agentId,
         roomId: conv.roomId,
         channelType,
-        messageSource: source,
+        messageSource: pendantProvenance ? "pendant" : source,
         metadata: restMetadata,
       });
+      if (pendantProvenance) {
+        stampCanonicalPendantMemory(userMessages, pendantProvenance);
+      }
     } catch (err) {
       releaseChatMessageId(conv.roomId, clientMessageId ?? null);
       error(
@@ -3938,22 +3973,16 @@ export async function handleConversationRoutes(
       }
       // Get the last user message to use as the prompt for generation
       let prompt = "A generic conversation";
-      try {
-        const memories = await state.runtime.getMemories({
-          roomId: conv.roomId,
-          tableName: "messages",
-          limit: 5,
-        });
-        const lastUserMemory = memories.find(
-          (m) => m.entityId !== state.runtime?.agentId,
-        );
-        if (lastUserMemory?.content?.text) {
-          prompt = String(lastUserMemory.content.text);
-        }
-      } catch (err) {
-        logger.warn(
-          `[conversations] Failed to fetch context for title generation: ${err instanceof Error ? err.message : String(err)}`,
-        );
+      const memories = await state.runtime.getMemories({
+        roomId: conv.roomId,
+        tableName: "messages",
+        limit: 5,
+      });
+      const lastUserMemory = memories.find(
+        (m) => m.entityId !== state.runtime?.agentId,
+      );
+      if (lastUserMemory?.content?.text) {
+        prompt = String(lastUserMemory.content.text);
       }
 
       const titleAbortTracker = createRequestDisconnectAbortTracker({
@@ -4087,9 +4116,14 @@ export async function handleConversationRoutes(
           await deleteConversationMemories(state.runtime, memoryIds);
         }
       } catch (err) {
-        logger.debug(
-          `[conversations] Failed to delete messages for ${convId}: ${err instanceof Error ? err.message : String(err)}`,
+        // error-policy:J1 deletion must not create a tombstone while message
+        // rows remain; report the failed operation to the caller.
+        error(
+          res,
+          `Failed to delete conversation messages: ${getErrorMessage(err)}`,
+          500,
         );
+        return true;
       }
       try {
         await deleteConversationRoomData(state.runtime, conv.roomId);
@@ -4102,9 +4136,14 @@ export async function handleConversationRoutes(
           );
           return true;
         }
-        logger.debug(
-          `[conversations] Failed to delete room data for ${convId}: ${err instanceof Error ? err.message : String(err)}`,
+        // error-policy:J1 an incomplete room deletion is a route failure, not a
+        // successful tombstone-only delete.
+        error(
+          res,
+          `Failed to delete conversation room: ${getErrorMessage(err)}`,
+          500,
         );
+        return true;
       }
     }
     state.conversations.delete(convId);

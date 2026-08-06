@@ -1,13 +1,4 @@
-/**
- * Session key utilities for elizaOS.
- *
- * Provides functions for building, parsing, and normalizing session keys
- * used to identify agent sessions, threads, and peer connections.
- *
- * Session keys follow the format: agent:{agentId}:{rest}
- *
- * @module sessions/session-key
- */
+/** Builds, parses, and normalizes `agent:{agentId}:{rest}` session identifiers. */
 
 // ============================================================================
 // Constants

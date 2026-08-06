@@ -56,8 +56,8 @@ permissions:
   contents: read
 
 env:
-  NODE_VERSION: "24"
-  BUN_VERSION: "canary"
+  NODE_VERSION: "24.15.0"
+  BUN_VERSION: "1.3.14"
   # Published Kokoro bundle — the #9588-fixed F16 republish (2026-07-02).
   # The former `kokoro-82m-v1_0-Q4_K_M.gguf` filename 404s on the repo; the
   # canonical F16 name below is what discovery falls through to and what the
@@ -71,7 +71,7 @@ env:
 jobs:
   smoke:
     name: ubuntu-22.04 fused-cpu
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 120
     steps:
       - name: Checkout (with llama.cpp submodule)
@@ -107,8 +107,7 @@ jobs:
           cmake --version
 
       - name: Install workspace dependencies
-        run: bun install
-
+        run: bun install --frozen-lockfile
       - name: Prepare core generated sources
         run: bun run --cwd packages/core prebuild
 

@@ -6,7 +6,8 @@
  * three device shapes (web, desktop/Electrobun, native mobile). Proves it
  * posts presence once the runtime reports running, re-emits on
  * lifecycle/visibility events, dedupes rapid repeats, maps native mobile
- * snapshots, degrades quietly on runtime-unavailable/network errors, surfaces
+ * snapshots, degrades quietly on runtime-unavailable/network/signed-out (401)
+ * errors, surfaces
  * unexpected failures observably, is idempotent across repeated starts,
  * enforces the permission consent gate, survives stop() racing any awaited
  * native operation without leaking handles/monitors/intervals, and fully
@@ -644,6 +645,69 @@ describe("startLifeOpsActivitySignalCapture", () => {
 
     expect(h.captureLifeOpsActivitySignal).not.toHaveBeenCalled();
     expect(h.dispatchStatus).not.toHaveBeenCalled();
+  });
+
+  it("treats a 401 status-probe response as the expected signed-out state (no console error, no status event)", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    h.isApiError.mockImplementation(
+      (error) => typeof error === "object" && error !== null && "kind" in error,
+    );
+    h.getStatus.mockRejectedValue({ kind: "http", status: 401 });
+
+    stop = startLifeOpsActivitySignalCapture(true);
+    await settle();
+
+    expect(h.captureLifeOpsActivitySignal).not.toHaveBeenCalled();
+    expect(h.dispatchStatus).not.toHaveBeenCalled();
+    expect(consoleError).not.toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+
+  it("swallows a 401 on the capture endpoint as the signed-out state (session expired mid-capture)", async () => {
+    h.isApiError.mockImplementation(
+      (error) => typeof error === "object" && error !== null && "kind" in error,
+    );
+    h.captureLifeOpsActivitySignal.mockRejectedValue({
+      kind: "http",
+      status: 401,
+    });
+
+    stop = startLifeOpsActivitySignalCapture(true);
+    await settle();
+
+    expect(h.captureLifeOpsActivitySignal).toHaveBeenCalled();
+    expect(h.dispatchStatus).not.toHaveBeenCalledWith(
+      expect.objectContaining({ status: "capture_error" }),
+    );
+  });
+
+  it("backs off a capability-specific 503 and resumes after a bounded probe", async () => {
+    vi.useFakeTimers();
+    h.isApiError.mockImplementation(
+      (error) => typeof error === "object" && error !== null && "kind" in error,
+    );
+    h.captureLifeOpsActivitySignal.mockRejectedValue({
+      kind: "http",
+      status: 503,
+      path: "/api/lifeops/activity-signals",
+    });
+
+    stop = startLifeOpsActivitySignalCapture(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.captureLifeOpsActivitySignal).toHaveBeenCalled();
+
+    h.captureLifeOpsActivitySignal.mockClear();
+    await vi.advanceTimersByTimeAsync(55_000);
+    expect(h.getStatus.mock.calls.length).toBeGreaterThan(1);
+    expect(h.captureLifeOpsActivitySignal).not.toHaveBeenCalled();
+
+    h.captureLifeOpsActivitySignal.mockResolvedValue({
+      signal: { id: "sig-recovered" },
+    });
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(h.captureLifeOpsActivitySignal).toHaveBeenCalled();
   });
 
   it("surfaces a persistent 5xx status-probe failure instead of reading it as not-ready forever", async () => {

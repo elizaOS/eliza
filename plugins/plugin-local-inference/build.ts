@@ -51,7 +51,7 @@ export async function buildLocalInferencePlugin(
 			// It is not a declared dependency (present only on AOSP images), so the
 			// mobile bundler must treat it as external or the build fails to resolve
 			// it on every stock target.
-			"@elizaos/plugin-aosp-local-inference",
+			"@elizaos/plugin-native-inference",
 			"llama-cpp-capacitor",
 			"@reflink/reflink",
 			"ws",
@@ -72,6 +72,7 @@ export async function buildLocalInferencePlugin(
 		// (oven-sh/bun#12734).
 		entrypoints: [
 			"./src/index.ts",
+			"./src/actions/generate-media.ts",
 			"./src/local-inference-routes.ts",
 			"./src/runtime/index.ts",
 			"./src/routes/index.ts",
@@ -96,15 +97,19 @@ export async function buildLocalInferencePlugin(
 	}
 
 	console.log("📝 Generating TypeScript declarations...");
-	// Override rootDir to src so declarations land directly in dist/ rather than nested under the monorepo rootDir
+	// Declaration emit resolves workspace packages from their built types so it
+	// cannot write dependency artifacts beside source files.
 	await (
 		options.emitDeclarations ??
 		(() =>
-			$`tsc6 --emitDeclarationOnly --declaration --declarationDir dist --rootDir src --noCheck --skipLibCheck -p tsconfig.json`.quiet())
+			$`tsc6 --emitDeclarationOnly --declaration --noCheck --skipLibCheck -p tsconfig.build.json`.quiet())
 	)();
 
 	await smokeImport(
 		new URL("./dist/local-inference-routes.js", import.meta.url).href,
+	);
+	await smokeImport(
+		new URL("./dist/actions/generate-media.js", import.meta.url).href,
 	);
 	await smokeImport(new URL("./dist/voice-wake.js", import.meta.url).href);
 	await smokeImport(new URL("./dist/voice-workbench.js", import.meta.url).href);

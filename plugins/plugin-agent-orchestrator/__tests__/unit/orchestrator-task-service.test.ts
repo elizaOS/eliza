@@ -28,6 +28,7 @@ import {
 import {
   OrchestratorTaskService,
   residualsOrchestratorOwnedArtifacts,
+  residualsSpawnBaseline,
 } from "../../src/services/orchestrator-task-service.js";
 import { OrchestratorTaskStore } from "../../src/services/orchestrator-task-store.js";
 import {
@@ -2814,5 +2815,40 @@ describe("OrchestratorTaskService — residuals owned-artifact resolution", () =
         },
       }),
     ).toEqual([]);
+  });
+});
+
+describe("residualsSpawnBaseline — spawn-time metadata classification", () => {
+  it("contributes nothing for an absent session or metadata without the keys", () => {
+    expect(residualsSpawnBaseline(undefined)).toEqual({});
+    expect(residualsSpawnBaseline({ metadata: {} })).toEqual({});
+  });
+
+  it("parses the tracked-dirty-at-spawn baseline, dropping non-string entries", () => {
+    expect(
+      residualsSpawnBaseline({
+        metadata: { codingBaselineDirty: ["a.ts", 42, "b.ts", ""] },
+      }),
+    ).toEqual({ baselineDirtyPaths: ["a.ts", "b.ts"] });
+  });
+
+  it("classifies a route-mapped, non-isolated workdir as shared", () => {
+    expect(
+      residualsSpawnBaseline({ metadata: { workdirRouteId: "agent-home" } }),
+    ).toEqual({ sharedRouteWorkdir: true });
+  });
+
+  it("never classifies an isolated per-session workdir as shared, route or not", () => {
+    expect(
+      residualsSpawnBaseline({
+        metadata: { workdirRouteId: "agent-home", isolatedWorkdir: true },
+      }),
+    ).toEqual({});
+  });
+
+  it("ignores a blank route id", () => {
+    expect(
+      residualsSpawnBaseline({ metadata: { workdirRouteId: "   " } }),
+    ).toEqual({});
   });
 });

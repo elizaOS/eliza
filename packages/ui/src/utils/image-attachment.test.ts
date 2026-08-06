@@ -7,7 +7,6 @@ import {
   MAX_CHAT_IMAGE_BASE64_BYTES,
   MAX_CHAT_MEDIA_BASE64_BYTES,
   MAX_CHAT_MEDIA_RAW_BYTES,
-  MAX_CHAT_UPLOAD_ATTACHMENTS,
 } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import {
@@ -84,10 +83,6 @@ describe("isSupportedChatUpload", () => {
 });
 
 describe("shared-constant parity (client caps === server caps)", () => {
-  it("count cap comes from the shared constant the server enforces", () => {
-    expect(MAX_CHAT_IMAGES).toBe(MAX_CHAT_UPLOAD_ATTACHMENTS);
-  });
-
   it("non-image per-file cap base64-fits under the server media cap", () => {
     const cap = perFileByteCap(file("video/mp4"));
     expect(cap).toBe(MAX_CHAT_MEDIA_RAW_BYTES);

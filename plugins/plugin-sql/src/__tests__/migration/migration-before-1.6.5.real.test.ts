@@ -801,6 +801,89 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
     });
   });
 
+  describe("Flow 9: Plugin-declared public server_id columns", () => {
+    beforeEach(async () => {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS agents (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          name TEXT NOT NULL,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        )
+      `);
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS rooms (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          "agentId" UUID,
+          "createdAt" TIMESTAMP DEFAULT NOW() NOT NULL,
+          name TEXT,
+          source TEXT NOT NULL DEFAULT 'unknown',
+          type TEXT NOT NULL DEFAULT 'general'
+        )
+      `);
+      // Mirrors the production coordination row shape whose composite key
+      // depends on server_id. This table already exists on process restart,
+      // before RuntimeMigrator re-registers the Discord plugin schema.
+      await db.execute(sql`
+        CREATE TABLE discord_coordination_reply_slots (
+          server_id UUID NOT NULL,
+          trust_group_id TEXT NOT NULL,
+          channel_id TEXT NOT NULL,
+          edge_epoch TEXT NOT NULL,
+          lane TEXT NOT NULL,
+          slot_index INTEGER NOT NULL,
+          contender_token TEXT NOT NULL,
+          PRIMARY KEY (
+            server_id,
+            trust_group_id,
+            channel_id,
+            edge_epoch,
+            lane,
+            slot_index
+          )
+        )
+      `);
+      await db.execute(sql`
+        INSERT INTO discord_coordination_reply_slots (
+          server_id,
+          trust_group_id,
+          channel_id,
+          edge_epoch,
+          lane,
+          slot_index,
+          contender_token
+        ) VALUES (
+          '323e4567-e89b-12d3-a456-426614174000'::uuid,
+          'trusted-agents',
+          'discord-channel',
+          '1400000000000000001',
+          'human',
+          0,
+          'holder-a'
+        )
+      `);
+    });
+
+    it("preserves the Discord coordination tenant key and settled lease on restart", async () => {
+      await migrateToEntityRLS(mockAdapter);
+
+      const columns = await db.execute(sql`
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'discord_coordination_reply_slots'
+      `);
+      expect(columns.rows.map((row: ColumnInfoRow) => row.column_name)).toContain("server_id");
+
+      const rows = await db.execute(sql`
+        SELECT server_id, contender_token
+        FROM discord_coordination_reply_slots
+      `);
+      expect(rows.rows).toHaveLength(1);
+      expect(rows.rows[0].server_id).toBe("323e4567-e89b-12d3-a456-426614174000");
+      expect(rows.rows[0].contender_token).toBe("holder-a");
+    });
+  });
+
   describe("Idempotency", () => {
     it("should be safe to run multiple times", async () => {
       // Create tables with camelCase

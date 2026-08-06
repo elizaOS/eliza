@@ -917,7 +917,6 @@ export function createCalendarSourcesAction(
     ],
     contexts: ["general", "calendar", "connectors"],
     roleGate: { minRole: "OWNER" },
-    subActions: [...SOURCE_OPERATIONS],
     routingHint:
       "calendar source connection, reconnection, health, or including/excluding a calendar from the feed (a durable write, not just a report) -> CALENDAR_SOURCES; calendar event reads/writes -> CALENDAR",
     suppressPostActionContinuation: true,

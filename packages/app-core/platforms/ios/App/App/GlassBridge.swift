@@ -1,5 +1,6 @@
 import Capacitor
 import Foundation
+import ImageIO
 import UIKit
 import WebKit
 
@@ -14,6 +15,15 @@ import WebKit
 /// that region transparent so the native material shows through. On first
 /// attach the webview is made non-opaque with a clear background — without
 /// that, WKWebView paints an opaque backing and the glass is invisible.
+///
+/// Because the glass samples what is BELOW the webview, a glass region is only
+/// meaningful over a native-hosted wallpaper: `setBackdrop` installs the
+/// current wallpaper (pre-downsampled bytes piped from the page — never a
+/// URL, never a network fetch, never cookies) at container index 0, and
+/// `clearBackdrop` removes it and restores webview opacity. The web side owns
+/// WHEN the wallpaper is hosted natively (only while a glass region is
+/// anchored at rest) so the app is not permanently stripped of the
+/// opaque-webview fast path.
 ///
 /// Gate: `UIGlassEffect` exists only on iOS 26+, and the SYMBOL exists only in
 /// the iOS 26 SDK (Xcode 26 / Swift 6.2 toolchain). All references are
@@ -34,6 +44,9 @@ public class GlassBridge: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "updateRect", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "detachGlass", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setGrouping", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setBackdrop", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "clearBackdrop", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "reset", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getRegionState", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "isAvailable", returnType: CAPPluginReturnPromise),
     ]
@@ -44,6 +57,12 @@ public class GlassBridge: CAPPlugin, CAPBridgedPlugin {
     /// next attach (see setGrouping).
     private var groupingSpacing: CGFloat = 0
     private var webViewMadeTransparent = false
+    /// Wallpaper layer hosted below the webview (see setBackdrop). Main-thread
+    /// only, like `regions`.
+    private var backdropView: UIImageView?
+    /// Monotonic guard: a slower decode from an earlier setBackdrop call must
+    /// never install over a newer one. Main-thread only.
+    private var backdropGeneration = 0
 
     private static var glassSupported: Bool {
         #if compiler(>=6.2) && canImport(UIKit)
@@ -56,6 +75,122 @@ public class GlassBridge: CAPPlugin, CAPBridgedPlugin {
 
     @objc public func isAvailable(_ call: CAPPluginCall) {
         call.resolve(["available": Self.glassSupported])
+    }
+
+    /// Host the wallpaper below the webview so the glass has real pixels to
+    /// sample. The image arrives as base64 bytes piped from the page — the web
+    /// side already loaded, downsampled, and flattened it — so this method
+    /// never touches the network, cookies, or the bundle: no credential can
+    /// leave the device and every URL-shaped concern stays in the renderer.
+    /// The promise resolves `applied:true` only after the bytes have decoded
+    /// and the layer is installed; the web keeps its DOM wallpaper painted
+    /// until that acknowledgement, so a failure can never expose the window
+    /// background as a black region.
+    @objc public func setBackdrop(_ call: CAPPluginCall) {
+        guard Self.glassSupported else {
+            call.resolve(["applied": false])
+            return
+        }
+        let imageBase64 = call.getString("imageBase64")
+        // Untrusted Capacitor boundary: bound the ENCODED payload before any
+        // allocation. The renderer downsamples to screen scale, so anything
+        // beyond this is malformed or hostile — refuse, never decode.
+        if let imageBase64, imageBase64.count > Self.maxBackdropEncodedChars {
+            CAPLog.print("⚡️  GlassBridge setBackdrop: encoded payload over bound")
+            call.resolve(["applied": false])
+            return
+        }
+        let color = call.getString("color").flatMap(Self.color(fromCSSHex:)) ?? .black
+        DispatchQueue.main.async { [weak self] in
+            guard let self else {
+                call.resolve(["applied": false])
+                return
+            }
+            self.backdropGeneration += 1
+            let generation = self.backdropGeneration
+            guard let imageBase64 else {
+                guard let webView = self.webView, let container = webView.superview else {
+                    call.resolve(["applied": false])
+                    return
+                }
+                self.makeWebViewTransparentOnce(webView)
+                self.installBackdrop(image: nil, color: color, in: container, below: webView)
+                call.resolve(["applied": true])
+                return
+            }
+            // Decode off-main. Dimensions are read from the image METADATA
+            // (CGImageSource) and bounded before the first pixel buffer is
+            // allocated, so a decompression bomb never reaches UIImage.
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                let decoded = Data(base64Encoded: imageBase64)
+                    .flatMap(Self.decodeBoundedImage(from:))
+                // UIImage(data:) is lazy — rasterize now so installing the
+                // layer never triggers a main-thread decode on the next frame.
+                let image: UIImage?
+                if #available(iOS 15.0, *) {
+                    image = decoded?.preparingForDisplay() ?? decoded
+                } else {
+                    image = decoded
+                }
+                DispatchQueue.main.async {
+                    guard let self, generation == self.backdropGeneration else {
+                        call.resolve(["applied": false])
+                        return
+                    }
+                    guard let image, let webView = self.webView,
+                        let container = webView.superview
+                    else {
+                        CAPLog.print("⚡️  GlassBridge setBackdrop: decode or install failed")
+                        call.resolve(["applied": false])
+                        return
+                    }
+                    self.makeWebViewTransparentOnce(webView)
+                    self.installBackdrop(
+                        image: image, color: color, in: container, below: webView)
+                    call.resolve(["applied": true])
+                }
+            }
+        }
+    }
+
+    /// Remove the hosted wallpaper and, when nothing below the webview needs
+    /// transparency anymore, restore the webview's opaque backing so the
+    /// compositor regains its opaque-layer fast path.
+    @objc public func clearBackdrop(_ call: CAPPluginCall) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else {
+                call.resolve()
+                return
+            }
+            self.backdropGeneration += 1
+            self.backdropView?.removeFromSuperview()
+            self.backdropView = nil
+            self.restoreWebViewOpacityIfUnneeded()
+            call.resolve()
+        }
+    }
+
+    /// Idempotent full teardown: every glass region, the backdrop, and the
+    /// WebView transparency flip. Native views outlive the document, so a
+    /// renderer that reloads (crash, HMR, navigation) calls this at boot —
+    /// a region anchored by the previous page must never survive under the
+    /// next one, whose React ids no longer match.
+    @objc public func reset(_ call: CAPPluginCall) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else {
+                call.resolve()
+                return
+            }
+            self.backdropGeneration += 1
+            for view in self.regions.values {
+                view.removeFromSuperview()
+            }
+            self.regions.removeAll()
+            self.backdropView?.removeFromSuperview()
+            self.backdropView = nil
+            self.restoreWebViewOpacityIfUnneeded()
+            call.resolve()
+        }
     }
 
     @objc public func attachGlass(_ call: CAPPluginCall) {
@@ -74,7 +209,12 @@ public class GlassBridge: CAPPlugin, CAPBridgedPlugin {
         let colorScheme = call.getString("colorScheme") ?? "system"
 
         DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
+            guard let self else {
+                // Settle even on deallocation — an abandoned call leaves the
+                // JS promise (and the anchor state machine behind it) hung.
+                call.resolve(["attached": false])
+                return
+            }
             #if compiler(>=6.2) && canImport(UIKit)
                 if #available(iOS 26.0, *) {
                     guard let webView = self.webView, let container = webView.superview else {
@@ -119,7 +259,10 @@ public class GlassBridge: CAPPlugin, CAPBridgedPlugin {
             return
         }
         DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
+            guard let self else {
+                call.resolve()
+                return
+            }
             guard let effectView = self.regions[id], let webView = self.webView else {
                 call.resolve()
                 return
@@ -138,7 +281,12 @@ public class GlassBridge: CAPPlugin, CAPBridgedPlugin {
             return
         }
         DispatchQueue.main.async { [weak self] in
-            self?.regions.removeValue(forKey: id)?.removeFromSuperview()
+            guard let self else {
+                call.resolve()
+                return
+            }
+            self.regions.removeValue(forKey: id)?.removeFromSuperview()
+            self.restoreWebViewOpacityIfUnneeded()
             call.resolve()
         }
     }
@@ -210,8 +358,64 @@ public class GlassBridge: CAPPlugin, CAPBridgedPlugin {
         webView.scrollView.backgroundColor = .clear
     }
 
+    /// Inverse of `makeWebViewTransparentOnce`, taken only when no glass
+    /// region and no backdrop remain: a transparent webview costs the
+    /// compositor its opaque-layer optimization on every frame, so the shell
+    /// should not keep paying that while the page is fully DOM-painted.
+    private func restoreWebViewOpacityIfUnneeded() {
+        guard webViewMadeTransparent, regions.isEmpty, backdropView == nil,
+            let webView
+        else { return }
+        webViewMadeTransparent = false
+        webView.isOpaque = true
+        webView.backgroundColor = nil
+        webView.scrollView.backgroundColor = nil
+    }
+
+    /// Swap the wallpaper layer at container index 0 — below every glass
+    /// region and the webview. Insert-then-remove ordering keeps a wallpaper
+    /// on screen at all times during a replace (no flash of window black).
+    private func installBackdrop(
+        image: UIImage?, color: UIColor, in container: UIView, below webView: UIView
+    ) {
+        let next = UIImageView(frame: webView.frame)
+        next.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        next.contentMode = .scaleAspectFill
+        next.clipsToBounds = true
+        next.backgroundColor = color
+        next.image = image
+        container.insertSubview(next, at: 0)
+        backdropView?.removeFromSuperview()
+        backdropView = next
+    }
+
     /// Untrusted-boundary rect bound (CSS px) — mirrors the Android plugin.
     private static let maxRectCoordCssPx: Double = 100_000
+
+    /// Untrusted-boundary payload bounds — mirror the Android plugin. The
+    /// renderer encodes at screen scale under a 16M px canvas cap, so these
+    /// generous ceilings only ever reject malformed or hostile input.
+    private static let maxBackdropEncodedChars = 24_000_000
+    private static let maxBackdropPixels = 18_000_000
+
+    // error-policy:J3 untrusted Capacitor boundary — dimensions come from the
+    // image METADATA (no pixel allocation); an unreadable header or an
+    // over-budget pixel count produces nil → the caller resolves
+    // {applied:false}. Only a metadata-validated image reaches UIImage.
+    private static func decodeBoundedImage(from data: Data) -> UIImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+            let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil)
+                as? [CFString: Any],
+            let width = properties[kCGImagePropertyPixelWidth] as? Int,
+            let height = properties[kCGImagePropertyPixelHeight] as? Int,
+            width > 0, height > 0,
+            width * height <= Self.maxBackdropPixels
+        else {
+            CAPLog.print("⚡️  GlassBridge setBackdrop: image dimensions over bound or unreadable")
+            return nil
+        }
+        return UIImage(data: data)
+    }
 
     // error-policy:J3 untrusted Capacitor boundary — a malformed rect
     // (missing/non-finite/non-positive/out-of-envelope values) produces nil →

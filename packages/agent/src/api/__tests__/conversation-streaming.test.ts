@@ -9,10 +9,12 @@
 
 import type http from "node:http";
 import {
+  type Action,
   type AgentRuntime,
   ChannelType,
   type Content,
   createMessageMemory,
+  INSUFFICIENT_CREDITS_REPLY,
   type Memory,
   stringToUuid,
 } from "@elizaos/core";
@@ -466,6 +468,30 @@ describe("chat route helper coverage", () => {
     ).toBe("local_inference");
   });
 
+  it("uses provider-neutral credit copy for direct Cerebras and Eliza Cloud 402s", () => {
+    const directCerebrasError = Object.assign(
+      new Error("Cerebras API error: 402 Payment Required"),
+      { statusCode: 402 },
+    );
+    const elizaCloudError = Object.assign(
+      new Error("Insufficient credits. Required: $0.0014, Available: $0.0000"),
+      {
+        status: 402,
+        error: { code: "insufficient_credits" },
+      },
+    );
+
+    expect(getChatFailureReply(directCerebrasError, [])).toBe(
+      INSUFFICIENT_CREDITS_REPLY,
+    );
+    expect(getChatFailureReply(elizaCloudError, [])).toBe(
+      INSUFFICIENT_CREDITS_REPLY,
+    );
+    expect(INSUFFICIENT_CREDITS_REPLY).not.toMatch(
+      /Eliza Cloud|cloud balance/i,
+    );
+  });
+
   it("persists assistant memory with source, channel, synthetic metadata, and dedupe", async () => {
     const roomId = stringToUuid("persist-room");
     const created: Memory[] = [];
@@ -551,7 +577,6 @@ describe("generateChatResponse token streaming", () => {
       createChatMessage("hi"),
       "Streaming Agent",
       {
-        timeoutDuration: 5_000,
         onChunk: (chunk) => {
           chunks.push(chunk);
         },
@@ -611,7 +636,6 @@ describe("generateChatResponse token streaming", () => {
       createChatMessage("repeat"),
       "Streaming Agent",
       {
-        timeoutDuration: 5_000,
         onChunk: (chunk) => {
           runningTotal += chunk;
         },
@@ -672,7 +696,6 @@ describe("generateChatResponse token streaming", () => {
       createChatMessage("open notes"),
       "Streaming Agent",
       {
-        timeoutDuration: 5_000,
         onChunk: (chunk) => chunks.push(chunk),
         onSnapshot: (text) => snapshots.push(text),
       },
@@ -681,6 +704,54 @@ describe("generateChatResponse token streaming", () => {
     expect(chunks).toEqual([]);
     expect(snapshots).toEqual(["Navigated to Notes (gui)."]);
     expect(result.text).toBe("Navigated to Notes (gui).");
+  });
+
+  it("keeps a visible action callback visible when its terminal receipt is internal", async () => {
+    const text = "Opened Notes.";
+    const service: MessageService = {
+      async handleMessage(_runtime, _message, callback) {
+        await callback?.({ text }, "VIEWS");
+        return {
+          didRespond: true,
+          responseContent: { text, transcriptVisibility: "internal" as const },
+          responseMessages: [],
+          mode: "actions" as const,
+          actionResults: [
+            {
+              success: true,
+              text,
+              transcriptVisibility: "internal" as const,
+              data: { actionName: "VIEWS" },
+            },
+          ],
+        };
+      },
+      shouldRespond: () => ({
+        shouldRespond: true,
+        skipEvaluation: true,
+        reason: "visible-callback-internal-receipt-test",
+      }),
+      deleteMessage: async () => undefined,
+      clearChannel: async () => undefined,
+    };
+    const runtime = createRuntime({ messageService: service });
+    const chunks: string[] = [];
+    const snapshots: string[] = [];
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("open notes"),
+      "Streaming Agent",
+      {
+        onChunk: (chunk) => chunks.push(chunk),
+        onSnapshot: (snapshot) => snapshots.push(snapshot),
+      },
+    );
+
+    expect(chunks).toEqual([]);
+    expect(snapshots).toEqual([text]);
+    expect(result.text).toBe(text);
+    expect(result.transcriptVisibility).toBeUndefined();
   });
 
   it("uses authoritative accumulated text for an in-place stream revision", async () => {
@@ -714,7 +785,6 @@ describe("generateChatResponse token streaming", () => {
       createChatMessage("typo"),
       "Streaming Agent",
       {
-        timeoutDuration: 5_000,
         onChunk: (chunk) => chunks.push(chunk),
         onSnapshot: (text) => snapshots.push(text),
       },
@@ -757,7 +827,6 @@ describe("generateChatResponse token streaming", () => {
       createChatMessage("preserve repeated characters"),
       "Streaming Agent",
       {
-        timeoutDuration: 5_000,
         onChunk: (chunk) => chunks.push(chunk),
         onSnapshot: (text) => snapshots.push(text),
       },
@@ -799,7 +868,6 @@ describe("generateChatResponse token streaming", () => {
       createChatMessage("preserve token boundaries"),
       "Streaming Agent",
       {
-        timeoutDuration: 5_000,
         onChunk: (chunk) => chunks.push(chunk),
       },
     );
@@ -834,7 +902,6 @@ describe("generateChatResponse token streaming", () => {
       runtime,
       message,
       "Streaming Agent",
-      { timeoutDuration: 5_000 },
     );
 
     expect(getActionResults).toHaveBeenCalledWith(message.id);
@@ -887,7 +954,6 @@ describe("generateChatResponse token streaming", () => {
       runtime,
       message,
       "Streaming Agent",
-      { timeoutDuration: 5_000 },
     );
 
     expect(result.actionResults).toEqual([
@@ -934,7 +1000,6 @@ describe("generateChatResponse token streaming", () => {
       message,
       "Streaming Agent",
       {
-        timeoutDuration: 5_000,
         onChunk: (chunk) => {
           chunks.push(chunk);
         },
@@ -983,6 +1048,66 @@ describe("generateChatResponse token streaming", () => {
     );
   });
 
+  it("keeps device-bridge chat on the full host runtime without explicit local-reply opt-in", async () => {
+    const messageService = createStreamingMessageService([
+      "Host planner reply.",
+    ]);
+    const handleMessage = vi.spyOn(messageService, "handleMessage");
+    const useModel = createUseModelMock(async () => "Unexpected local reply.");
+    const runtime = createRuntime({
+      getSetting: (key: string) => {
+        const values: Record<string, string> = {
+          ELIZA_MOBILE_PLATFORM: "android",
+          ELIZA_DEVICE_BRIDGE_ENABLED: "1",
+        };
+        return values[key] ?? null;
+      },
+      messageService,
+      useModel,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("hello from the phone"),
+      "Streaming Agent",
+    );
+
+    expect(handleMessage).toHaveBeenCalledOnce();
+    expect(useModel).not.toHaveBeenCalled();
+    expect(result.text).toBe("Host planner reply.");
+    expect(result.localInference).toBeUndefined();
+  });
+
+  it("finalizes an Android local result that wins the cancellation race", async () => {
+    const caller = new AbortController();
+    const useModel = createUseModelMock(async () => {
+      caller.abort(new DOMException("socket closed", "AbortError"));
+      return "Local reply completed.";
+    });
+    const runtime = createRuntime({
+      getSetting: (key: string) => {
+        const values: Record<string, string> = {
+          ELIZA_MOBILE_PLATFORM: "android",
+          ELIZA_LOCAL_LLAMA: "1",
+          ELIZA_MOBILE_LOCAL_DIRECT_REPLY: "1",
+        };
+        return values[key] ?? null;
+      },
+      useModel,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("answer locally"),
+      "Streaming Agent",
+      { abortSignal: caller.signal },
+    );
+
+    expect(useModel).toHaveBeenCalledTimes(1);
+    expect(result.text).toBe("Local reply completed.");
+    expect(result.localInference?.provider).toBe("mobile-local-direct-reply");
+  });
+
   it("includes only six bounded recent messages and preserves multi-sentence replies", async () => {
     const roomId = stringToUuid("room");
     const memories = Array.from({ length: 8 }, (_, index) => {
@@ -1020,9 +1145,7 @@ describe("generateChatResponse token streaming", () => {
       runtime,
       message,
       "Streaming Agent",
-      {
-        timeoutDuration: 5_000,
-      },
+      {},
     );
 
     const params = useModel.mock.calls[0]?.[1] as {
@@ -1089,7 +1212,6 @@ describe("generateChatResponse token streaming", () => {
       runtime,
       message,
       "Streaming Agent",
-      { timeoutDuration: 5_000 },
     );
 
     expect(runtime.reportError).toHaveBeenCalledWith(
@@ -1138,14 +1260,11 @@ describe("generateChatResponse token streaming", () => {
     } as typeof withAttachment.content;
     const overlong = createChatMessage("x".repeat(701));
 
-    await generateChatResponse(runtime, withAttachment, "Streaming Agent", {
-      timeoutDuration: 5_000,
-    });
+    await generateChatResponse(runtime, withAttachment, "Streaming Agent", {});
     const result = await generateChatResponse(
       runtime,
       overlong,
       "Streaming Agent",
-      { timeoutDuration: 5_000 },
     );
 
     expect(useModel).not.toHaveBeenCalled();
@@ -1186,13 +1305,11 @@ describe("generateChatResponse token streaming", () => {
       runtime,
       createChatMessage("what is the weather today?"),
       "Streaming Agent",
-      { timeoutDuration: 5_000 },
     );
     const local = await generateChatResponse(
       runtime,
       createChatMessage("are you running locally on this device today?"),
       "Streaming Agent",
-      { timeoutDuration: 5_000 },
     );
 
     expect(handleMessage).toHaveBeenCalledTimes(1);
@@ -1234,7 +1351,6 @@ describe("generateChatResponse token streaming", () => {
       runtime,
       createChatMessage("say <end_of_turn> safely"),
       "Streaming Agent",
-      { timeoutDuration: 5_000 },
     );
 
     const params = useModel.mock.calls[0]?.[1] as { prompt: string };
@@ -1262,7 +1378,6 @@ describe("generateChatResponse token streaming", () => {
       runtime,
       createChatMessage("can you answer locally?"),
       "Streaming Agent",
-      { timeoutDuration: 5_000 },
     );
 
     expect(useModel).toHaveBeenCalledWith(
@@ -1312,7 +1427,6 @@ describe("generateChatResponse token streaming", () => {
       runtime,
       createChatMessage("what did I just say?"),
       "Streaming Agent",
-      { timeoutDuration: 5_000 },
     );
 
     expect(useModel).not.toHaveBeenCalled();
@@ -1352,7 +1466,6 @@ describe("generateChatResponse token streaming", () => {
       runtime,
       createChatMessage("remember that my favorite model is eliza"),
       "Streaming Agent",
-      { timeoutDuration: 5_000 },
     );
 
     expect(useModel).not.toHaveBeenCalled();
@@ -1360,23 +1473,23 @@ describe("generateChatResponse token streaming", () => {
     expect(result.text).toBe("I need the normal runtime for that.");
   });
 
-  it("aborts the message runtime when the chat generation timeout fires", async () => {
+  it("propagates caller cancellation into the message runtime", async () => {
     let signalFromOptions: AbortSignal | undefined;
-    let observedAbort: (() => void) | undefined;
-    const abortObserved = new Promise<void>((resolve) => {
-      observedAbort = resolve;
+    let runtimeStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => {
+      runtimeStarted = resolve;
     });
 
     const runtime = createRuntime({
       messageService: {
         async handleMessage(_runtime, _message, _callback, options) {
           signalFromOptions = options?.abortSignal;
-          await new Promise<void>((resolve) => {
+          runtimeStarted?.();
+          await new Promise<void>((_resolve, reject) => {
             options?.abortSignal?.addEventListener(
               "abort",
               () => {
-                observedAbort?.();
-                resolve();
+                reject(options.abortSignal?.reason);
               },
               { once: true },
             );
@@ -1397,19 +1510,283 @@ describe("generateChatResponse token streaming", () => {
       },
     });
 
+    const caller = new AbortController();
+    const generation = generateChatResponse(
+      runtime,
+      createChatMessage("cancel this request"),
+      "Streaming Agent",
+      { abortSignal: caller.signal },
+    );
+    await started;
+    caller.abort(new DOMException("Client disconnected", "AbortError"));
+
+    await expect(generation).rejects.toThrow("Client disconnected");
+    expect(signalFromOptions?.aborted).toBe(true);
+  });
+
+  it("finalizes a message result that wins the race with caller cancellation", async () => {
+    const caller = new AbortController();
+    const chunks: string[] = [];
+    const handleMessage = vi.fn(
+      async (
+        _runtime: unknown,
+        _message: unknown,
+        _callback: unknown,
+        options?: {
+          onStreamChunk?: (chunk: string) => Promise<void> | void;
+        },
+      ) => {
+        await options?.onStreamChunk?.("completed reply");
+        caller.abort(new DOMException("socket closed", "AbortError"));
+        return {
+          didRespond: true,
+          responseContent: { text: "completed reply" },
+          responseMessages: [],
+        };
+      },
+    );
+    const runtime = createRuntime({
+      messageService: {
+        handleMessage,
+        shouldRespond: () => ({
+          shouldRespond: true,
+          skipEvaluation: true,
+          reason: "streaming-test",
+        }),
+        deleteMessage: async () => undefined,
+        clearChannel: async () => undefined,
+      },
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("finish this request"),
+      "Streaming Agent",
+      {
+        abortSignal: caller.signal,
+        onChunk: (chunk) => chunks.push(chunk),
+      },
+    );
+
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    expect(chunks).toEqual(["completed reply"]);
+    expect(result.text).toBe("completed reply");
+  });
+
+  it("fails closed instead of starting fallback actions after cancellation", async () => {
+    const caller = new AbortController();
+    const fallbackHandler = vi.fn(async () => ({
+      success: true,
+      text: "Block started.",
+    }));
+    const useModel = createUseModelMock(async () =>
+      JSON.stringify({ response: "I started the block." }),
+    );
+    const runtime = createRuntime({
+      actions: [
+        {
+          name: "BLOCK",
+          description: "Start a website block.",
+          similes: [],
+          examples: [],
+          validate: async () => true,
+          handler: fallbackHandler,
+        } satisfies Action,
+      ],
+      useModel,
+      messageService: {
+        handleMessage: vi.fn(async () => {
+          caller.abort(new DOMException("socket closed", "AbortError"));
+          return {
+            didRespond: true,
+            responseContent: {
+              text: "Starting the block now.",
+              actions: ["BLOCK"],
+            },
+            responseMessages: [],
+          };
+        }),
+        shouldRespond: () => ({
+          shouldRespond: true,
+          skipEvaluation: true,
+          reason: "streaming-test",
+        }),
+        deleteMessage: async () => undefined,
+        clearChannel: async () => undefined,
+      },
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("block distractions"),
+      "Streaming Agent",
+      { abortSignal: caller.signal },
+    );
+
+    expect(fallbackHandler).not.toHaveBeenCalled();
+    expect(useModel).not.toHaveBeenCalled();
+    expect(result.text).toBe(
+      [
+        "I could not complete that request because the model returned actions that were not executed.",
+        "Unexecuted actions: BLOCK.",
+        "No side effects were applied.",
+      ].join("\n"),
+    );
+  });
+
+  it("propagates caller cancellation into chat pre-handlers", async () => {
+    let preHandlerStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => {
+      preHandlerStarted = resolve;
+    });
+    let signalFromPreHandler: AbortSignal | undefined;
+    const handleMessage = vi.fn();
+    const runtime = createRuntime({
+      drainChatPreHandlers: vi.fn(async (context) => {
+        signalFromPreHandler = context.abortSignal;
+        preHandlerStarted?.();
+        await new Promise<void>((_resolve, reject) => {
+          context.abortSignal?.addEventListener(
+            "abort",
+            () => reject(context.abortSignal?.reason),
+            { once: true },
+          );
+        });
+        return null;
+      }),
+      messageService: {
+        handleMessage,
+        shouldRespond: () => ({
+          shouldRespond: true,
+          skipEvaluation: true,
+          reason: "streaming-test",
+        }),
+        deleteMessage: async () => undefined,
+        clearChannel: async () => undefined,
+      },
+    });
+
+    const caller = new AbortController();
+    const generation = generateChatResponse(
+      runtime,
+      createChatMessage("cancel the pre-handler"),
+      "Streaming Agent",
+      { abortSignal: caller.signal },
+    );
+    await started;
+    caller.abort(new DOMException("Client disconnected", "AbortError"));
+
+    await expect(generation).rejects.toThrow("Client disconnected");
+    expect(signalFromPreHandler?.aborted).toBe(true);
+    expect(handleMessage).not.toHaveBeenCalled();
+  });
+
+  it("finalizes a pre-handler result that wins the cancellation race", async () => {
+    const caller = new AbortController();
+    const handleMessage = vi.fn();
+    const drainChatPreHandlers = vi.fn(async () => {
+      caller.abort(new DOMException("socket closed", "AbortError"));
+      return { responseText: "direct result completed" };
+    });
+    const runtime = createRuntime({
+      drainChatPreHandlers,
+      messageService: {
+        handleMessage,
+        shouldRespond: () => ({
+          shouldRespond: true,
+          skipEvaluation: true,
+          reason: "streaming-test",
+        }),
+        deleteMessage: async () => undefined,
+        clearChannel: async () => undefined,
+      },
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("run the direct handler"),
+      "Streaming Agent",
+      { abortSignal: caller.signal },
+    );
+
+    expect(drainChatPreHandlers).toHaveBeenCalledTimes(1);
+    expect(handleMessage).not.toHaveBeenCalled();
+    expect(result.text).toBe("direct result completed");
+  });
+
+  it("finalizes a committed direct action across a late cancellation", async () => {
+    const caller = new AbortController();
+    const actionHandler = vi.fn(async () => {
+      caller.abort(new DOMException("socket closed", "AbortError"));
+      return {
+        success: true,
+        text: "Task committed.",
+        data: { actionName: "START_CODING_TASK" },
+      };
+    });
+    const action = {
+      name: "START_CODING_TASK",
+      description: "Create a coding task.",
+      similes: [],
+      examples: [],
+      validate: async () => true,
+      handler: actionHandler,
+    } satisfies Action;
+    const runtime = createRuntime({
+      actions: [action],
+      getService: vi.fn((serviceType: string) =>
+        serviceType === "SWARM_COORDINATOR" ? ({} as never) : null,
+      ) as AgentRuntime["getService"],
+    });
+    const message = createChatMessage("build the durable fix");
+    message.entityId = runtime.agentId;
+    message.content = {
+      ...message.content,
+      metadata: { intent: "create_task" },
+    };
+
+    const result = await generateChatResponse(
+      runtime,
+      message,
+      "Streaming Agent",
+      { abortSignal: caller.signal },
+    );
+
+    expect(actionHandler).toHaveBeenCalledTimes(1);
+    expect(result.text).toBe("Task committed.");
+  });
+
+  it("rejects ingress hook failures before starting message generation", async () => {
+    const hookFailure = new Error("trajectory persistence failed");
+    const handleMessage = vi.fn(async () => ({
+      didRespond: true,
+      responseContent: { text: "must not be generated" },
+      responseMessages: [],
+    }));
+    const runtime = createRuntime({
+      emitEvent: vi.fn(async () => {
+        throw hookFailure;
+      }),
+      messageService: {
+        handleMessage,
+        shouldRespond: () => ({
+          shouldRespond: true,
+          skipEvaluation: true,
+          reason: "streaming-test",
+        }),
+        deleteMessage: async () => undefined,
+        clearChannel: async () => undefined,
+      },
+    });
+
     await expect(
       generateChatResponse(
         runtime,
-        createChatMessage("timeout"),
+        createChatMessage("persist ingress first"),
         "Streaming Agent",
-        {
-          timeoutDuration: 10,
-        },
       ),
-    ).rejects.toThrow("Chat generation timed out after 10ms");
-
-    await abortObserved;
-    expect(signalFromOptions?.aborted).toBe(true);
+    ).rejects.toBe(hookFailure);
+    expect(handleMessage).not.toHaveBeenCalled();
   });
 });
 
@@ -1463,7 +1840,6 @@ describe("generateConversationTitle", () => {
         runtime,
         "Can you answer from the local voice backend?",
         "Streaming Agent",
-        { timeoutMs: 5_000 },
       ),
     ).resolves.toBe("Local Voice Chat");
     expect(useModel).toHaveBeenCalledWith(
@@ -1504,12 +1880,12 @@ describe("generateConversationTitle", () => {
       runtime,
       "Could you say hello?",
       "Streaming Agent",
-      { signal: controller.signal, timeoutMs: 30_000 },
+      { signal: controller.signal },
     );
 
     controller.abort(new DOMException("client left", "AbortError"));
 
-    await expect(pending).resolves.toBeNull();
+    await expect(pending).rejects.toThrow("client left");
     expect(signalFromParams?.aborted).toBe(true);
   });
 });

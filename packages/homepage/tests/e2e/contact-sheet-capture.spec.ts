@@ -5,7 +5,7 @@
  * exists to produce *faithful* full-page renderings for visual review,
  * which means it
  *
- *   - waits long enough for animation-heavy routes (/leaderboard) to settle,
+ *   - waits long enough for the animation-heavy landing routes to settle,
  *   - does NOT mask <video> elements (Playwright fills masks with magenta
  *     by default, which destroys the brand visual on the marketing hero),
  *   - and writes its captures into a sibling directory so the aesthetic
@@ -17,6 +17,7 @@
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { expect, type Page, test } from "playwright/test";
+import { waitForLandingIntro } from "./landing-readiness";
 import { captureScreenshotWithQualityRetry } from "./screenshot-quality";
 
 const TEST_TOKEN = "homepage-contact-sheet-token";
@@ -24,6 +25,7 @@ const TEST_TOKEN = "homepage-contact-sheet-token";
 const ROUTES = [
   { path: "/", name: "landing", authed: false },
   { path: "/leaderboard", name: "leaderboard", authed: false },
+  { path: "/downloads", name: "downloads", authed: false },
   { path: "/get-started", name: "get-started", authed: false },
   { path: "/login", name: "login", authed: true },
   { path: "/connected", name: "connected", authed: true },
@@ -96,18 +98,16 @@ for (const viewport of VIEWPORTS) {
         await installCloudMocks(page);
         if (route.authed) await seedAuthed(page);
 
-        await page.goto(route.path, { waitUntil: "networkidle" });
+        await page.goto(route.path, { waitUntil: "domcontentloaded" });
         await page.evaluate(() => document.fonts.ready);
-        // The App-level Suspense fallback is just an orange <main> with a
-        // spinner. Wait for the *real* page chrome (a <header> element)
-        // before screenshotting, so we don't capture the loading state.
-        await page
-          .waitForSelector("header", { timeout: 20_000 })
-          .catch(() => {});
-        // /leaderboard runs a ~1800ms intro animation. Wait it out.
-        if (route.path === "/leaderboard") {
-          await page.waitForTimeout(2400);
+        // The landing's long-lived shader/model requests make network-idle
+        // meaningless; its own final-paint signal is the stable boundary.
+        if (route.path === "/" || route.path === "/leaderboard") {
+          await waitForLandingIntro(page);
         } else {
+          await page
+            .waitForSelector("header", { timeout: 20_000 })
+            .catch(() => {});
           await page.waitForTimeout(600);
         }
 

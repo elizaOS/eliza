@@ -1,3 +1,4 @@
+/** Verifies home WidgetHost on launch (#9304 / #9143) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

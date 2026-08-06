@@ -39,6 +39,8 @@ export class SingleFlightMemo<V, Meta = undefined> {
 	 * promise is returned unchanged so callers can `return memo.put(...)`.
 	 */
 	put(key: string, meta: Meta, promise: Promise<V>): Promise<V> {
+		// error-policy:J5 The unchanged promise is returned to every caller; this
+		// observer only evicts a rejected single-flight entry so it can be retried.
 		promise.catch(() => {
 			// Evict only if this promise is still the resident entry — a newer
 			// fetch stored after invalidation must not be dropped by an old

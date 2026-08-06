@@ -226,6 +226,13 @@ function flattenAppInfo<T extends RegistryPluginInfo>(appInfo: T): T {
     uiExtension: meta.uiExtension ?? appInfo.uiExtension,
     viewer: resolveDisplayViewerInfo(meta.viewer ?? appInfo.viewer),
     session: meta.session ?? appInfo.session,
+    developerOnly: meta.developerOnly,
+    visibleInAppStore: meta.visibleInAppStore,
+    mainTab: meta.mainTab,
+    catalogSection: meta.catalogSection,
+    featured: meta.featured,
+    defaultHidden: meta.defaultHidden,
+    scope: meta.scope,
   };
 }
 
@@ -328,17 +335,17 @@ function curateCatalogApps(
 
   for (const app of candidates) {
     const canonicalName = normalizeElizaCuratedAppName(app.name);
-    if (!canonicalName) {
-      continue;
-    }
+    const catalogName = canonicalName ?? app.name.trim();
+    if (!catalogName) continue;
 
-    const normalized = canonicalizeCuratedRegistryPlugin(
-      app,
-      canonicalName,
+    const normalized = (
+      canonicalName
+        ? canonicalizeCuratedRegistryPlugin(app, canonicalName)
+        : cloneRegistryPluginInfo(app)
     ) as RegistryAppPlugin;
-    const existing = curated.get(canonicalName);
+    const existing = curated.get(catalogName);
     if (!existing) {
-      curated.set(canonicalName, normalized);
+      curated.set(catalogName, normalized);
       continue;
     }
 

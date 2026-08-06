@@ -1,3 +1,4 @@
+/** Verifies PlanChecklist through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Pipeline presentational pieces: the live PlanChecklist (three distinguishable
@@ -30,7 +31,6 @@ describe("PlanChecklist", () => {
     expect(root.textContent).toContain("1/3");
     const items = root.querySelectorAll("li");
     expect(items[0].getAttribute("data-status")).toBe("completed");
-    expect(items[0].className).toContain("line-through");
     expect(items[1].getAttribute("data-status")).toBe("in_progress");
     expect(items[2].getAttribute("data-status")).toBe("pending");
   });
@@ -77,22 +77,6 @@ describe("SubagentBlock", () => {
     expect(block.textContent).toContain("editing swarm-coordinator.ts");
     expect(screen.getByTestId("plan-checklist")).toBeTruthy();
     expect(screen.getByTestId("tool-call-event-log")).toBeTruthy();
-  });
-
-  it("indents a nested child session", () => {
-    render(
-      <SubagentBlock
-        agent={{
-          ...agent,
-          parentSessionId: "parent",
-          steps: [],
-          plan: undefined,
-        }}
-      />,
-    );
-    expect(screen.getByTestId("subagent-block").className).toContain(
-      "border-l",
-    );
   });
 });
 

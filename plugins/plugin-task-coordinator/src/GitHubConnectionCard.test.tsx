@@ -24,7 +24,6 @@ vi.mock("@elizaos/ui", () => ({
   client: {
     fetch: (path: string, init?: RequestInit) => fetchMock(path, init),
   },
-  openExternalUrl: (url: string) => openExternalUrlMock(url),
   Button: ({
     children,
     unstyled: _unstyled,
@@ -48,6 +47,10 @@ vi.mock("@elizaos/ui", () => ({
       <input {...rest} />
     ),
   },
+}));
+
+vi.mock("@elizaos/ui/utils/openExternalUrl", () => ({
+  openExternalUrl: (url: string) => openExternalUrlMock(url),
 }));
 
 import { GitHubConnectionCard } from "./GitHubConnectionCard";

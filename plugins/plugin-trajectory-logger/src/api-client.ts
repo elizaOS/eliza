@@ -1,6 +1,7 @@
 /**
  * Wire types and fetch wrappers for trajectory logger routes.
- * The plugin-training API returns larger payloads, but this client types only the fields the widget reads and tolerates extra route fields.
+ * The core trajectory API may return larger payloads, but this client types only
+ * the fields the widget reads and tolerates extra route fields.
  */
 
 export interface TrajectoryListItem {

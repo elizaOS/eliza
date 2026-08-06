@@ -188,7 +188,8 @@ describe("runViewsCreate from a packaged install", () => {
 		// The coding agent was dispatched against that workdir.
 		expect(dispatched).toHaveLength(1);
 		expect(String(dispatched[0].task)).toContain(`sourceDir: ${workdir}`);
-		expect(texts.join("\n")).toContain("Started view create task");
+		// Human-voiced dispatch message (single-delivery contract).
+		expect(texts.join("\n")).toContain("view now");
 	});
 
 	it("answers with setup guidance and scaffolds nothing when the orchestrator is missing", async () => {

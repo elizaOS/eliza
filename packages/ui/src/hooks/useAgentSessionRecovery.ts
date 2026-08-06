@@ -21,18 +21,24 @@
 import { logger } from "@elizaos/logger";
 import { useEffect, useRef, useState } from "react";
 import { getCloudAuthToken } from "../api/client-cloud";
+import { persistCloudPairApiToken } from "../components/auth/CloudPairRelay";
 import { getBootConfig } from "../config/boot-config";
+import { persistActiveServerCredential } from "../state/active-server-credential";
 import {
   type AgentSessionUnauthReason,
   agentSessionRepairNeedsCloudToken,
   isManagedCloudAgentServer,
   type ManagedCloudAgentRecoveryStatus,
   resolveAgentSessionRecovery,
+  resolveDedicatedAgentId,
 } from "../state/agent-session-recovery";
 import { runAgentSessionRecovery } from "../state/agent-session-recovery-runner";
 import { clearStalePairCredentialsForAgent } from "../state/cloud-pair-token";
 import { ensureCloudSessionForRepair } from "../state/cloud-session-refresh-for-repair";
-import { loadPersistedActiveServer } from "../state/persistence";
+import {
+  loadPersistedActiveServer,
+  type PersistedActiveServer,
+} from "../state/persistence";
 import { useIsAuthenticated } from "./useAuthStatus";
 
 export type AgentSessionRecoveryStatus =
@@ -77,6 +83,30 @@ function shouldConsumePairRedirectInProcess(): boolean {
     // navigation remains the compatible fallback.
     return false;
   }
+}
+
+function normalizedOptionalValue(value: string | undefined): string {
+  return value?.trim() ?? "";
+}
+
+function normalizedOptionalBase(value: string | undefined): string {
+  return normalizedOptionalValue(value).replace(/\/+$/, "");
+}
+
+/** A late recovery may commit only to the exact server record that started it. */
+function recoveryTargetMatches(
+  expected: PersistedActiveServer,
+  current: PersistedActiveServer | null,
+): boolean {
+  return Boolean(
+    current &&
+      current.kind === expected.kind &&
+      current.id === expected.id &&
+      normalizedOptionalBase(current.apiBase) ===
+        normalizedOptionalBase(expected.apiBase) &&
+      normalizedOptionalValue(current.accessToken) ===
+        normalizedOptionalValue(expected.accessToken),
+  );
 }
 
 export function useAgentSessionRecovery(
@@ -150,6 +180,7 @@ export function useAgentSessionRecovery(
     }
 
     let cancelled = false;
+    const recoveryAbortController = new AbortController();
 
     const resolveInput = (
       cloudToken: string | null,
@@ -178,17 +209,38 @@ export function useAgentSessionRecovery(
         );
         return;
       }
+      if (!activeServer) {
+        showFallback("cloud-manage-required");
+        return;
+      }
       attemptedFallbackRef.current = "cloud-retry-required";
       setStatus("recovering");
+      const isRecoveryTargetCurrent = () =>
+        !recoveryAbortController.signal.aborted &&
+        resolveDedicatedAgentId(activeServer) === decision.agentId &&
+        recoveryTargetMatches(activeServer, loadPersistedActiveServer());
       void runAgentSessionRecovery({
         cloudApiBase: decision.cloudApiBase,
         agentId: decision.agentId,
         cloudToken,
         consumeRedirectInProcess,
+        signal: recoveryAbortController.signal,
+        isRecoveryTargetCurrent,
         clearStalePairCredentials: () =>
           clearStalePairCredentialsForAgent(decision.agentId),
-        onPairedInProcess: async (apiToken) => {
+        commitPairedInProcess: async (apiToken) => {
           const { client } = await import("../api");
+          if (!isRecoveryTargetCurrent()) {
+            recoveryAbortController.abort();
+            throw new Error(
+              "Agent session recovery target changed before credential commit",
+            );
+          }
+          // One synchronous commit owns every credential mirror. A later boot
+          // must not re-adopt the stale active-server/profile token after the
+          // live client has already accepted the fresh paired bearer.
+          persistCloudPairApiToken(apiToken);
+          persistActiveServerCredential(apiToken);
           client.setToken(apiToken);
           onRecovered?.();
         },
@@ -200,6 +252,11 @@ export function useAgentSessionRecovery(
           // the bearer in-process and triggers `onRecovered`. Failures retain
           // enough classification for reauth versus non-destructive retry.
           if (!result.ok) {
+            if (result.reason === "cancelled") {
+              attemptedRef.current = false;
+              setStatus("idle");
+              return;
+            }
             logger.warn(
               {
                 agentId: decision.agentId,
@@ -255,6 +312,7 @@ export function useAgentSessionRecovery(
       startRepair(initialDecision, initialCloudToken);
       return () => {
         cancelled = true;
+        recoveryAbortController.abort();
       };
     }
 
@@ -308,6 +366,7 @@ export function useAgentSessionRecovery(
 
     return () => {
       cancelled = true;
+      recoveryAbortController.abort();
     };
     // setStatus and attemptedRef are stable; all third-party inputs are listed.
   }, [

@@ -50,7 +50,7 @@ import { PendingRequestMap } from "./pending-request-map.ts";
 
 // Provider ids as registered with the routing layer. Typed against the shared
 // ProviderId union so a rename upstream fails compilation here. The string
-// values are owned by plugins/plugin-local-inference/src/provider.ts and
+// values are owned by /plugin-local-inference/provider.ts and
 // plugins/plugin-elizacloud — kept literal so this route never imports plugin
 // runtime modules.
 const LOCAL_TEXT_PROVIDER: ProviderId = "eliza-local-inference";

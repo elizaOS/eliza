@@ -125,7 +125,21 @@ async function runWatchdogStall(): Promise<WatchdogScenarioResult> {
         source: target.source,
         text: content.text ?? "",
       });
-      return undefined;
+      // The production watchdog records cap warnings only after the connector
+      // confirms provider acceptance, so the scenario boundary must model the
+      // same delivery contract instead of treating an attempted send as proof.
+      return {
+        kind: "delivered" as const,
+        receipt: {
+          providerMessageIds: [`watchdog-warning-${posts.length}`],
+          acceptedAt: NOW,
+          persistence: {
+            status: "persisted" as const,
+            memoryIds: [],
+          },
+        },
+        memories: [],
+      };
     },
   } as unknown as IAgentRuntime;
 

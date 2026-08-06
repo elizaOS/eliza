@@ -1,3 +1,4 @@
+/** Verifies resolveViewIconId through the package's configured test harness. */
 // resolveViewIconId maps plugin/builtin view ids onto their nearest baked icon,
 // passes through ids that resolve directly, and every alias target is verified
 // against the real generated VIEW_ICONS map so no alias points at a missing icon.
@@ -7,9 +8,6 @@ import { VIEW_ICONS } from "./view-icons.generated";
 
 describe("resolveViewIconId", () => {
   it("maps known plugin view ids to their nearest baked icon", () => {
-    expect(resolveViewIconId("hyperliquid")).toBe("trade");
-    expect(resolveViewIconId("shopify")).toBe("shop");
-    expect(resolveViewIconId("smartglasses")).toBe("glasses");
     expect(resolveViewIconId("trajectory-logger")).toBe("trajectory");
     expect(resolveViewIconId("phone-companion")).toBe("companion");
   });

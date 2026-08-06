@@ -1,9 +1,8 @@
 /**
- * Integration tests for runShortcutGate, the pre-LLM shortcut gate: confident
- * slash-command and natural-language matches dispatch straight to the target
- * action with zero model calls, honoring role gates, validate() failures, and
- * the disable env flag. The fake runtime's useModel throws, so any inference
- * attempt fails the test.
+ * Integration tests for runShortcutGate, the explicit-protocol pre-LLM gate.
+ * Slash commands dispatch straight to their target action while ordinary
+ * language always falls through to the planner; role gates, validation
+ * failures, and the disable flag remain covered.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ShortcutRegistry } from "../runtime/shortcut-registry";
@@ -12,6 +11,7 @@ import {
 	runWithStreamingContext,
 } from "../streaming-context";
 import type { Action } from "../types/components";
+import type { EffectReceipt } from "../types/effects";
 import { EventType } from "../types/events";
 import type { Memory, State, UUID } from "../types/index";
 import { runShortcutGate } from "./message";
@@ -125,6 +125,60 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 		]);
 	});
 
+	it("publishes a receipt-backed shortcut settlement before later turn work", async () => {
+		const receipt: EffectReceipt = {
+			receiptId: "receipt-shortcut-create-1",
+			operation: "test.shortcut.create",
+			resource: { kind: "test.shortcut", id: "created-1" },
+			artifacts: [],
+			idempotency: { key: "shortcut-create-1", replayed: false },
+			observedAt: "2026-07-31T19:00:00.000Z",
+			outcome: "applied",
+			commit: {
+				kind: "durable",
+				id: "created-1",
+				committedAt: "2026-07-31T19:00:00.000Z",
+			},
+		};
+		const text = "Shortcut item created.";
+		const action = echoAction();
+		action.tags = ["capability:write", "effect:receipt-required"];
+		action.handler = async (_rt, _message, _state, _options, callback) => {
+			await callback?.({ text });
+			return {
+				success: true,
+				text,
+				userFacingText: text,
+				verifiedUserFacing: true,
+				effectReceipts: [receipt],
+				userFacingEffectReceiptIds: [receipt.receiptId],
+			};
+		};
+		const onSettledActionResult = vi.fn();
+		const { runtime } = makeRuntime({ actions: [action] });
+
+		const result = await runShortcutGate({
+			// biome-ignore lint/suspicious/noExplicitAny: minimal fake runtime
+			runtime: runtime as any,
+			message: msg("/echo create"),
+			state: {} as State,
+			responseId,
+			senderRole: "OWNER",
+			onSettledActionResult,
+		});
+
+		expect(result?.kind).toBe("direct_reply");
+		expect(onSettledActionResult).toHaveBeenCalledTimes(1);
+		expect(onSettledActionResult).toHaveBeenCalledWith(
+			expect.objectContaining({
+				success: true,
+				effectReceipts: [
+					expect.objectContaining({ receiptId: receipt.receiptId }),
+				],
+			}),
+		);
+	});
+
 	it("returns null for a non-command message (turn proceeds to the LLM)", async () => {
 		const { runtime, useModel } = makeRuntime();
 		const result = await runShortcutGate({
@@ -230,12 +284,12 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 		expect(warn.mock.calls[0]?.[1]).toContain("failed");
 	});
 
-	it("fires a confident natural-language shortcut without an env gate (voice/typed parity)", async () => {
-		const seenOptions: Array<Record<string, unknown> | undefined> = [];
+	it("never dispatches a registered natural-language shortcut before inference", async () => {
+		const validate = vi.fn(async () => true);
 		const { runtime, useModel, emitEvent } = makeRuntime({
 			actions: [
 				echoAction({
-					onOptions: (options) => seenOptions.push(options),
+					validate,
 					parameters: [
 						{
 							name: "what",
@@ -247,7 +301,6 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 				}),
 			],
 		});
-		// A narrow natural shortcut targeting ECHO_COMMAND.
 		(runtime.shortcutRegistry as ShortcutRegistry).register({
 			id: "nl:echo",
 			kind: "natural",
@@ -263,17 +316,13 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 			responseId,
 			senderRole: "OWNER",
 		});
-		expect(result?.kind).toBe("direct_reply");
-		expect(result?.result.actionResults).toMatchObject([
-			{ success: true, data: { actionName: "ECHO_COMMAND" } },
-		]);
-		expect(result?.result.responseContent.thought).toBe("Shortcut: nl:echo");
-		expect(seenOptions[0]?.parameters).toEqual({ what: "hello there" });
+		expect(result).toBeNull();
+		expect(validate).not.toHaveBeenCalled();
 		expect(useModel).not.toHaveBeenCalled();
 		const shortcutEvents = emitEvent.mock.calls.filter(
 			(c) => c[0] === EventType.SHORTCUT_FIRED,
 		);
-		expect(shortcutEvents).toHaveLength(1);
+		expect(shortcutEvents).toHaveLength(0);
 	});
 
 	it("does not publish sensitive shortcut result data or values", async () => {

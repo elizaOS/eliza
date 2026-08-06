@@ -26,8 +26,18 @@
  */
 
 import http from "node:http";
-import type { AgentRuntime, Memory } from "@elizaos/core";
-import { logger, stringToUuid, type UUID } from "@elizaos/core";
+import type {
+  Action,
+  AgentRuntime,
+  EffectReceipt,
+  Memory,
+} from "@elizaos/core";
+import {
+  executePlannedToolCall,
+  logger,
+  stringToUuid,
+  type UUID,
+} from "@elizaos/core";
 import {
   afterAll,
   afterEach,
@@ -703,6 +713,188 @@ describe("conversation-route chat idempotency wiring", () => {
       expect.objectContaining({
         type: "done",
         fullText: "durable reply",
+        messageId: expect.any(String),
+      }),
+    ]);
+  });
+
+  it.each([
+    { failure: "transport abort", abortTransport: true },
+    { failure: "message-service exception", abortTransport: false },
+  ])(
+    "SSE: a receipt-backed planner action survives a post-commit $failure",
+    async ({ failure, abortTransport }) => {
+      const { state, handleMessage, createMemory } = createHarness();
+      let releaseAfterCommit: (() => void) | undefined;
+      const afterCommitGate = new Promise<void>((resolve) => {
+        releaseAfterCommit = resolve;
+      });
+      let notifyCommitted: (() => void) | undefined;
+      const committed = new Promise<void>((resolve) => {
+        notifyCommitted = resolve;
+      });
+      const receipt: EffectReceipt = {
+        receiptId: `receipt-post-commit-${failure}`,
+        operation: "test.reminder.create",
+        resource: { kind: "test.reminder", id: "reminder-1" },
+        artifacts: [],
+        outcome: "applied",
+        idempotency: {
+          key: `conversation-post-commit-${failure}`,
+          replayed: false,
+        },
+        observedAt: "2026-07-31T19:00:00.000Z",
+        commit: {
+          kind: "durable",
+          id: "reminder-1",
+          committedAt: "2026-07-31T19:00:00.000Z",
+        },
+      };
+      const actionText = "Reminder created for 9:00 AM.";
+      const actionHandler = vi.fn(
+        async (
+          _runtime: unknown,
+          _message: unknown,
+          _state: unknown,
+          _options: unknown,
+          callback?: (content: { text: string }) => Promise<unknown>,
+        ) => {
+          await callback?.({ text: actionText });
+          return {
+            success: true,
+            text: actionText,
+            userFacingText: actionText,
+            verifiedUserFacing: true,
+            effectReceipts: [receipt],
+            userFacingEffectReceiptIds: [receipt.receiptId],
+          };
+        },
+      );
+      const action: Action = {
+        name: "CREATE_REMINDER",
+        description: "Create a reminder.",
+        similes: [],
+        examples: [],
+        tags: ["capability:schedule", "effect:receipt-required"],
+        validate: async () => true,
+        handler: actionHandler as Action["handler"],
+      };
+      (state.runtime as AgentRuntime).actions.push(action);
+
+      handleMessage.mockImplementation(
+        async (
+          runtime: AgentRuntime,
+          message: Memory,
+          callback: Parameters<Action["handler"]>[4],
+          options?: {
+            abortSignal?: AbortSignal;
+            onSettledActionResult?: (result: unknown) => void;
+          },
+        ) => {
+          await executePlannedToolCall(
+            runtime,
+            {
+              message,
+              state: { values: {}, data: {}, text: "" },
+              userRoles: ["OWNER"],
+              activeContexts: ["general"],
+              callback,
+            },
+            { name: action.name, params: {} },
+            {
+              actions: [action],
+              abortSignal: options?.abortSignal,
+              onSettledResult: options?.onSettledActionResult,
+            },
+          );
+          notifyCommitted?.();
+          await afterCommitGate;
+          if (abortTransport) options?.abortSignal?.throwIfAborted();
+          throw new Error("message service stopped after action settlement");
+        },
+      );
+      const body = {
+        text: "remind me at 9",
+        clientMessageId: `planner-action-post-commit-${failure}`,
+      };
+
+      await runRoute("POST", STREAM_PATH, state, body, async (req) => {
+        await committed;
+        if (abortTransport) req.emit("aborted");
+        releaseAfterCommit?.();
+      });
+      const persistsAfterDisconnect = createMemory.mock.calls.length;
+
+      const retry = await runRoute("POST", STREAM_PATH, state, body);
+      expect(actionHandler).toHaveBeenCalledTimes(1);
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+      expect(createMemory).toHaveBeenCalledTimes(persistsAfterDisconnect);
+      expect(parseDataFrames(retry.record)).toEqual([
+        expect.objectContaining({
+          type: "done",
+          fullText: actionText,
+          messageId: expect.any(String),
+        }),
+      ]);
+    },
+  );
+
+  it("SSE: a late disconnect binds a safe outcome without starting fallback actions", async () => {
+    const { state, handleMessage, createMemory } = createHarness();
+    const fallbackHandler = vi.fn(async () => ({
+      success: true,
+      text: "Block started.",
+    }));
+    (state.runtime as AgentRuntime).actions.push({
+      name: "BLOCK",
+      description: "Start a website block.",
+      similes: [],
+      examples: [],
+      validate: async () => true,
+      handler: fallbackHandler,
+    } satisfies Action);
+    let releaseTurn: (() => void) | undefined;
+    const turnGate = new Promise<void>((resolve) => {
+      releaseTurn = resolve;
+    });
+    handleMessage.mockImplementationOnce(async () => {
+      await turnGate;
+      return {
+        didRespond: true,
+        responseContent: {
+          text: "Starting the block now.",
+          actions: ["BLOCK"],
+        },
+        responseMessages: [],
+      };
+    });
+    const body = {
+      text: "block distractions",
+      clientMessageId: "disconnect-before-fallback-1",
+    };
+    const safeOutcome = [
+      "I could not complete that request because the model returned actions that were not executed.",
+      "Unexecuted actions: BLOCK.",
+      "No side effects were applied.",
+    ].join("\n");
+
+    await runRoute("POST", STREAM_PATH, state, body, (req) => {
+      req.emit("aborted");
+      releaseTurn?.();
+    });
+    const persistsAfterDisconnect = createMemory.mock.calls.length;
+
+    expect(fallbackHandler).not.toHaveBeenCalled();
+    expect(persistsAfterDisconnect).toBeGreaterThan(0);
+
+    const retry = await runRoute("POST", STREAM_PATH, state, body);
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    expect(fallbackHandler).not.toHaveBeenCalled();
+    expect(createMemory).toHaveBeenCalledTimes(persistsAfterDisconnect);
+    expect(parseDataFrames(retry.record)).toEqual([
+      expect.objectContaining({
+        type: "done",
+        fullText: safeOutcome,
         messageId: expect.any(String),
       }),
     ]);

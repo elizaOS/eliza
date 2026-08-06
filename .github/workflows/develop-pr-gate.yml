@@ -6,6 +6,8 @@
 name: Develop PR Gate
 
 on:
+  # zizmor: ignore[dangerous-triggers] This read-only job checks out only the
+  # base SHA and observes exact-head check metadata; PR code and secrets never run.
   pull_request_target:
     branches: [develop]
     types: [opened, synchronize, reopened, ready_for_review, edited, labeled, unlabeled]

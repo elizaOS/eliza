@@ -1,15 +1,13 @@
 /**
- * @module plugin-app-control/actions/app
- *
- * Unified APP action with actions (`launch`, `relaunch`,
- * `load_from_directory`, `list`, `create`).
+ * Dispatches the unified APP action across launch, relaunch, stop,
+ * load-from-directory, list, and create operations.
  *
  * Validate gates on owner role + structured context + a lookup against
  * any pending APP_CREATE intent task in the same room (so the multi-turn
  * choice reply still resolves).
  *
- * Handler is pure dispatch — sub-handlers live in app-launch / app-relaunch
- * / app-list / app-load-from-directory / app-create.
+ * Sub-handlers own each operation so this module remains the planner contract
+ * and authorization boundary.
  */
 
 import path from "node:path";
@@ -26,16 +24,22 @@ import {
 	type AppControlClient,
 	createAppControlClient,
 } from "../client/api.js";
-import { normalizeActionOptions, readStringOption } from "../params.js";
+import {
+	normalizeActionOptions,
+	readStringOption,
+	userRequestMessageText,
+} from "../params.js";
 import { hasPendingIntent, isChoiceReply, runCreate } from "./app-create.js";
 import { runLaunch } from "./app-launch.js";
 import { runList } from "./app-list.js";
 import { runLoadFromDirectory } from "./app-load-from-directory.js";
 import { runRelaunch } from "./app-relaunch.js";
+import { runStop } from "./app-stop.js";
 
 export type AppMode =
 	| "launch"
 	| "relaunch"
+	| "stop"
 	| "load_from_directory"
 	| "list"
 	| "create";
@@ -43,6 +47,7 @@ export type AppMode =
 const MODES: readonly AppMode[] = [
 	"launch",
 	"relaunch",
+	"stop",
 	"load_from_directory",
 	"list",
 	"create",
@@ -53,6 +58,11 @@ const RELAUNCH_VERBS = /\b(relaunch|restart|reboot|reload)\b/i;
 const STOP_VERBS = /\b(close|stop|exit|quit|kill|shut\s*down|terminate)\b/i;
 const LIST_VERBS =
 	/\b(list|show|what['’]s open|running|whats? open|whats? running)\b/i;
+// Deletion verbs get a designed refusal, not a mode: APP deliberately has no
+// delete/uninstall — per-app deletion lives in VIEWS action=delete behind
+// confirmation + protected-app checks. Checked only after inferMode returns
+// null so stop phrasings ("kill/close the app") keep routing to stop.
+const DELETE_VERBS = /\b(delete|uninstall|remove|wipe|erase|purge)\b/i;
 const CREATE_VERBS =
 	/\b(create|build|make|new|scaffold|generate|spin up)\b.*?\b(app|application|game|tool|widget|dashboard)\b/i;
 const PLUGIN_ONLY = /\bplugin\b/i;
@@ -104,14 +114,8 @@ function inferMode(
 	if (RELAUNCH_VERBS.test(trimmed) && APP_NOUN.test(trimmed)) return "relaunch";
 
 	if (STOP_VERBS.test(trimmed) && APP_NOUN.test(trimmed)) {
-		// Stop folds into relaunch only when paired with a launch verb;
-		// otherwise it's not an APP-action concern (no close mode).
 		if (LAUNCH_VERBS.test(trimmed)) return "relaunch";
-		// Fall through — stand-alone "close X app" still routes to relaunch
-		// with verify off, treating it as a stop+relaunch is wrong; we
-		// instead route to list so the user can see candidates without
-		// silently restarting.
-		return "list";
+		return "stop";
 	}
 
 	if (LAUNCH_VERBS.test(trimmed) && APP_NOUN.test(trimmed)) return "launch";
@@ -174,9 +178,16 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 			"RUN_APP",
 			"RESTART_APP",
 			"RELAUNCH_APP",
+			"STOP_APP",
+			"CLOSE_APP",
 			"CREATE_APP",
 			"BUILD_APP",
 			"NEW_APP",
+			"BUILD_WEB_APP",
+			"HOST_WEB_APP",
+			"MAKE_WEBSITE",
+			"PUBLISH_WEB_PAGE",
+			"CREATE_HTML_APP",
 		],
 		tags: [
 			"app",
@@ -187,21 +198,22 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 			"running",
 			"launch",
 			"relaunch",
+			"stop",
 			"scaffold",
 		],
 		description:
-			"Unified app control. action=launch starts a registered app; action=relaunch stops then launches (optionally with verify); action=list shows installed + running apps; action=load_from_directory registers apps from an absolute folder; action=create runs the multi-turn create-or-edit flow that searches existing apps, asks new/edit/cancel, scaffolds from the min-app template, and dispatches a coding agent with AppVerificationService validator.",
+			"Unified control of apps installed on this device. action=launch starts a registered app; action=relaunch stops then launches (optionally with verify); action=stop stops a running app without uninstalling it; action=list shows installed + running apps; action=load_from_directory registers apps from an absolute folder; action=create BUILDS AND HOSTS a new web app / web page / website: the multi-turn create-or-edit flow searches existing apps, asks new/edit/cancel, scaffolds from the min-app template, dispatches a coding agent with AppVerificationService validator, and (when a publish target is configured) publishes the verified build and returns a live URL the user can open.",
 		descriptionCompressed:
-			"apps launch|relaunch|list|load_folder|create; create scaffolds, coding-agent, verify",
+			"apps launch|relaunch|stop|list|load_folder|create; create builds a web app/page/site and publishes a live link when a publish target is configured",
 		routingHint:
-			"Installed applications themselves -> APP. 'Show me the apps', 'list my apps', 'what apps are installed/running', launching or restarting a registered app, registering apps from a folder, or building a new app is APP (action=list|launch|relaunch|load_from_directory|create) — answer app-list requests with APP action=list, never with a UI view list. VIEWS covers UI views/panels and the apps *page*; APP covers the applications.",
+			"Installed applications themselves -> APP. 'Show me the apps', 'list my apps', 'what apps are installed/running', launching, stopping, or restarting a registered app, registering apps from a folder, or building a new app is APP (action=list|launch|stop|relaunch|load_from_directory|create) — answer installed-app-list requests with APP action=list, never with a UI view list. Building/hosting/publishing a NEW web app, web page, or interactive HTML the user wants a live link for ('teach me with an interactive page', 'host it and give me the link') is APP action=create — it builds and, when a publish target is configured, publishes with a live link; do not route that to a generic coding task or a Cloud deploy. VIEWS covers UI views/panels and the apps *page*; APP covers the applications. The user's own Eliza Cloud apps ('my cloud apps', hosted apps/sites created or deployed on Eliza Cloud) are LIST_CLOUD_APPS, NOT this action.",
 		suppressPostActionContinuation: true,
 
 		parameters: [
 			{
 				name: "action",
 				description:
-					"Operation: launch | relaunch | load_from_directory | list | create.",
+					"Operation: launch | relaunch | stop | load_from_directory | list | create.",
 				required: true,
 				schema: {
 					type: "string",
@@ -220,7 +232,7 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 			{
 				name: "app",
 				description:
-					"App name, slug, or display name (launch / relaunch / create-edit).",
+					"App name, slug, or display name (launch / relaunch / stop / create-edit).",
 				required: false,
 				schema: { type: "string" },
 			},
@@ -233,7 +245,7 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 			{
 				name: "runId",
 				description:
-					"Specific run id to stop before relaunching (relaunch mode).",
+					"Specific run id to stop (stop mode) or stop before relaunching (relaunch mode).",
 				required: false,
 				schema: { type: "string" },
 			},
@@ -303,7 +315,7 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 			message: Memory,
 		): Promise<boolean> => {
 			if (!(await canManageApps(runtime, message))) return false;
-			const text = message.content.text ?? "";
+			const text = userRequestMessageText(message);
 
 			// Multi-turn follow-up: short reply matches a pending intent task.
 			if (isChoiceReply(text)) {
@@ -324,13 +336,13 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 		): Promise<ActionResult> => {
 			const actionOptions = normalizeActionOptions(options);
 			if (!(await canManageApps(runtime, message))) {
-				const text = "Permission denied: only the owner may manage apps.";
+				const text = "Sorry — only my owner can manage apps.";
 				await callback?.({ text });
 				return { success: false, text };
 			}
 
 			const client = clientFactory();
-			const text = message.content.text ?? "";
+			const text = userRequestMessageText(message);
 
 			// Follow-up choice reply always routes to create.
 			if (isChoiceReply(text)) {
@@ -350,9 +362,27 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 
 			const mode = inferMode(text, actionOptions);
 			if (!mode) {
+				// A delete/uninstall ask has no APP mode by design. Answer with the
+				// designed refusal (with tool-owned userFacingText, so planner-loop
+				// failure authority surfaces this prose instead of the generic
+				// failed-tool fallback) rather than the mode-clarify, which invites
+				// the planner to improvise.
+				if (DELETE_VERBS.test(text) && APP_NOUN.test(text)) {
+					const bulkDelete = /\b(?:all|every)\b/i.test(text);
+					return {
+						success: false,
+						text: "APP has no delete/uninstall mode. Per-app deletion goes through VIEWS action=delete, which asks the user to confirm and enforces protected-app checks; bulk-deleting all apps is not supported. Do not retry APP for this — state it to the user in voice.",
+						userFacingText: bulkDelete
+							? "I can't bulk-delete apps. App removal is one app at a time and requires confirmation through the delete flow."
+							: "I can't uninstall apps through APP. App removal is handled one app at a time through the confirmed delete flow.",
+						data: { actionName: "APP", error: "DELETE_UNSUPPORTED" },
+					};
+				}
+				// Planner-facing only: the canned mode menu double-messaged next to
+				// the evaluator's in-voice clarification. The evaluator owns asking
+				// the user, in voice.
 				const reply =
-					'Tell me which app to control. Try: "launch shopify", "list running apps", "create a new note-taking app".';
-				await callback?.({ text: reply });
+					"No app-control mode could be inferred; ask the user whether they want to launch, relaunch, list, load, or create an app.";
 				return { success: false, text: reply };
 			}
 
@@ -374,8 +404,15 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 						options: actionOptions,
 						callback,
 					});
+				case "stop":
+					return runStop({
+						client,
+						message,
+						options: actionOptions,
+						callback,
+					});
 				case "list":
-					return runList({ client, callback });
+					return runList({ client });
 				case "load_from_directory":
 					return runLoadFromDirectory({
 						runtime,
@@ -397,6 +434,19 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 		},
 
 		examples: [
+			[
+				{
+					name: "{{user1}}",
+					content: { text: "stop the shopify app" },
+				},
+				{
+					name: "{{agentName}}",
+					content: {
+						text: "Shopify stopped.",
+						action: "APP",
+					},
+				},
+			],
 			[
 				{
 					name: "{{user1}}",

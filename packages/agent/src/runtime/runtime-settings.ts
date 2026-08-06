@@ -3,20 +3,31 @@
  * `runtime.getSetting()`. The projection is intentionally pure so cold boot and
  * hot reload can share it without reintroducing drift between startup paths.
  */
+import { resolveServiceRoutingInConfig } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import {
   collectConfigEnvVars,
   collectConnectorEnvVars,
 } from "../config/env-vars.ts";
+import { isVaultRef } from "./operations/vault-bridge.ts";
 
 export interface RuntimeSettingsProjectionOptions {
   preferredProviderId?: string;
+  brainProviderName?: string;
+  embeddingProviderName?: string;
   visionModeSetting?: string;
   managedSkillsDir?: string;
   bundledSkillsDir?: string | null;
   workspaceSkillsDir?: string | null;
   walletSettings?: Record<string, string>;
   env?: NodeJS.ProcessEnv;
+  /**
+   * Connector secrets resolved from `vault://` refs at boot
+   * (see `resolveConnectorVaultOverlay` in eliza.ts). Delivered ONLY into the
+   * runtime settings map — never process.env — so `runtime.getSetting()` hands
+   * plugins the plaintext while the environment stays clean.
+   */
+  connectorSecretsOverlay?: Record<string, string>;
 }
 
 /**
@@ -59,6 +70,10 @@ export function buildRuntimeSettingsProjection(
   options: RuntimeSettingsProjectionOptions = {},
 ): Record<string, string> {
   const env = options.env ?? process.env;
+  const hasCanonicalRouting = Object.hasOwn(config, "serviceRouting");
+  const canonicalRouting = hasCanonicalRouting
+    ? resolveServiceRoutingInConfig(config as Record<string, unknown>)
+    : undefined;
   return {
     VALIDATION_LEVEL: "fast",
     ...(env.SECRET_SALT ? { ENCRYPTION_SALT: env.SECRET_SALT } : {}),
@@ -67,9 +82,37 @@ export function buildRuntimeSettingsProjection(
         isEnvKeyAllowedForForwarding(key),
       ),
     ),
-    ...collectConnectorEnvVars(config),
+    ...(typeof env.EMBEDDING_PROVIDER === "string" &&
+    env.EMBEDDING_PROVIDER.trim().length > 0
+      ? { EMBEDDING_PROVIDER: env.EMBEDDING_PROVIDER.trim().toLowerCase() }
+      : {}),
+    // Drop unresolved `vault://` sentinels so a plugin never receives the ref
+    // literal as a credential; the resolved overlay below supplies the real
+    // value for refs the vault could serve (fail-closed for the rest).
+    ...Object.fromEntries(
+      Object.entries(collectConnectorEnvVars(config)).filter(
+        ([, value]) => !isVaultRef(value),
+      ),
+    ),
+    ...(options.connectorSecretsOverlay ?? {}),
     ...(options.preferredProviderId
       ? { MODEL_PROVIDER: options.preferredProviderId }
+      : {}),
+    ...(options.brainProviderName
+      ? { ELIZA_BRAIN_PROVIDER: options.brainProviderName }
+      : {}),
+    ...(options.embeddingProviderName
+      ? { ELIZA_EMBEDDING_PROVIDER: options.embeddingProviderName }
+      : {}),
+    ...(hasCanonicalRouting
+      ? {
+          ELIZA_CANONICAL_LLM_TEXT_ENABLED: String(
+            Boolean(canonicalRouting?.llmText),
+          ),
+          ELIZA_CANONICAL_EMBEDDINGS_ENABLED: String(
+            Boolean(canonicalRouting?.embeddings),
+          ),
+        }
       : {}),
     ...(options.visionModeSetting
       ? { VISION_MODE: options.visionModeSetting }

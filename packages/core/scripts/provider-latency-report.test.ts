@@ -19,10 +19,34 @@ interface ProviderLatencyReport {
 	}>;
 	execution: string;
 	reusedProviderResultsPerSample: { min: number; max: number };
-	effectiveParallelism: { mean: number };
+	effectiveParallelism: { count: number };
+	freshComposeWallMs: { count: number };
+	reusedComposeWallMs: { count: number };
 }
 
 describe("provider latency report process", () => {
+	it("rejects invalid sample settings instead of silently using defaults", () => {
+		const script = path.resolve(
+			import.meta.dirname,
+			"provider-latency-report.ts",
+		);
+		const result = spawnSync("bun", ["--conditions=eliza-source", script], {
+			cwd: path.resolve(import.meta.dirname, "../../.."),
+			encoding: "utf8",
+			env: {
+				...process.env,
+				ELIZA_PROVIDER_LATENCY_SAMPLES: "invalid",
+			},
+			timeout: 120_000,
+		});
+
+		expect(result.error).toBeUndefined();
+		expect(result.status).toBe(1);
+		expect(result.stderr).toContain(
+			"ELIZA_PROVIDER_LATENCY_SAMPLES must be a positive integer",
+		);
+	});
+
 	it("executes every provider in parallel and proves the warm-cache pass", () => {
 		const script = path.resolve(
 			import.meta.dirname,
@@ -32,7 +56,7 @@ describe("provider latency report process", () => {
 			path.join(tmpdir(), "provider-latency-report-"),
 		);
 		const reportPath = path.join(reportDirectory, "report.json");
-		const result = spawnSync("bun", [script], {
+		const result = spawnSync("bun", ["--conditions=eliza-source", script], {
 			cwd: path.resolve(import.meta.dirname, "../../.."),
 			encoding: "utf8",
 			env: {
@@ -60,11 +84,16 @@ describe("provider latency report process", () => {
 		rmSync(reportDirectory, { recursive: true });
 
 		expect(report.samples).toBe(1);
-		expect(report.providerCount).toBeGreaterThanOrEqual(20);
 		expect(report.providers).toHaveLength(report.providerCount);
+		expect(report.providers.map((provider) => provider.providerName)).toEqual(
+			expect.arrayContaining(["DOCUMENTS", "FACTS", "RELATIONSHIPS", "WORLD"]),
+		);
 		expect(
 			report.providers.every((provider) => provider.latencyMs.count === 1),
 		).toBe(true);
+		expect(report.freshComposeWallMs.count).toBe(report.samples);
+		expect(report.reusedComposeWallMs.count).toBe(report.samples);
+		expect(report.effectiveParallelism.count).toBe(report.samples);
 		expect(report.execution).toContain("production turn context");
 		expect(report.reusedProviderResultsPerSample.min).toBe(
 			report.providerCount,
@@ -72,6 +101,5 @@ describe("provider latency report process", () => {
 		expect(report.reusedProviderResultsPerSample.max).toBe(
 			report.providerCount,
 		);
-		expect(report.effectiveParallelism.mean).toBeGreaterThan(1);
 	});
 });

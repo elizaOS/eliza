@@ -102,11 +102,13 @@ export interface AgentHostBridge {
 
 const noopVault: Vault = {
   set: () => Promise.resolve(),
+  setIfAbsent: () => Promise.resolve(false),
   setReference: () => Promise.resolve(),
   get: () => Promise.resolve(""),
   reveal: () => Promise.resolve(""),
   has: () => Promise.resolve(false),
   remove: () => Promise.resolve(),
+  quarantineUnreadable: () => Promise.resolve(false),
   list: () => Promise.resolve([]),
   describe: () => Promise.resolve(null),
   stats: () =>

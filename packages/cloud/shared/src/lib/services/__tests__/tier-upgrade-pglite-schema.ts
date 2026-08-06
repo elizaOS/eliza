@@ -172,6 +172,7 @@ export const PROVISIONING_JOB_TEST_TABLES: readonly string[] = [
   "error_count" integer NOT NULL DEFAULT 0,
   "environment_vars" jsonb NOT NULL DEFAULT '{}'::jsonb,
   "environment_revision" integer NOT NULL DEFAULT 0,
+  "lifecycle_revision" bigint NOT NULL DEFAULT 0,
   "node_id" text,
   "container_name" text,
   "bridge_port" integer,
@@ -212,6 +213,20 @@ export const PROVISIONING_JOB_TEST_TABLES: readonly string[] = [
   "deleted_at" timestamptz,
   PRIMARY KEY ("id")
 )`,
+  `CREATE OR REPLACE FUNCTION advance_agent_sandbox_lifecycle_revision()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  NEW.lifecycle_revision := OLD.lifecycle_revision + 1;
+  RETURN NEW;
+END;
+$$`,
+  `DROP TRIGGER IF EXISTS agent_sandboxes_lifecycle_revision_trigger ON "agent_sandboxes"`,
+  `CREATE TRIGGER agent_sandboxes_lifecycle_revision_trigger
+BEFORE UPDATE ON "agent_sandboxes"
+FOR EACH ROW
+EXECUTE FUNCTION advance_agent_sandbox_lifecycle_revision()`,
   `CREATE TABLE IF NOT EXISTS "api_keys" (
   "id" uuid NOT NULL DEFAULT gen_random_uuid(),
   "name" text NOT NULL,

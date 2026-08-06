@@ -1,3 +1,4 @@
+/** Verifies ProgrammableShaderBackground — uniform tweaks must not rebuild the GL context (#11088) through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Effect-splitting contract (#11088): a uniform/color-only prop change must

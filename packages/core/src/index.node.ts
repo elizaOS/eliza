@@ -9,6 +9,7 @@
 export * from "./access-context";
 export * from "./access-control/artifact-disclosure";
 export * from "./access-control/filter";
+export * from "./access-control/provenance-envelope";
 // Export all core modules
 export * from "./account-pool-bridge";
 export * from "./action-names";
@@ -70,9 +71,23 @@ export {
 	DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
 	DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
 	type DeploymentTargetConfig,
+	type DeploymentTargetRuntime,
+	type LinkedAccountAccountSource,
+	type LinkedAccountConfig,
+	type LinkedAccountFlagConfig,
 	type LinkedAccountFlagsConfig,
+	type LinkedAccountHealth,
+	type LinkedAccountHealthDetail,
+	type LinkedAccountProviderId,
+	type LinkedAccountSource,
+	type LinkedAccountStatus,
+	type LinkedAccountsConfig,
+	type LinkedAccountUsage,
 	type ServiceCapability,
+	type ServiceRouteAccountStrategy,
+	type ServiceRouteConfig,
 	type ServiceRoutingConfig,
+	type ServiceTransport,
 } from "./contracts/service-routing";
 export * from "./contracts/wallet";
 export * from "./database";
@@ -192,7 +207,6 @@ export * from "./model-gateway";
 export * from "./name-tokens";
 // Export network utilities (SSRF protection, secure fetch)
 export * from "./network";
-export { getOptimizationRootDir } from "./optimization-root-dir";
 export * from "./plugin";
 export * from "./plugins";
 export * from "./prompts";
@@ -261,6 +275,10 @@ export {
 	SIMPLE_CONTEXT_ID,
 	type V5MessageHandlerOutput,
 } from "./runtime/message-handler";
+// The planner's generic failed-tool apology is exported so relay/delivery
+// layers (message service, orchestrator completion relays) can recognize it
+// by identity and drop it as redundant next to an authoritative outcome.
+export { FAILED_TOOL_FALLBACK_MESSAGE } from "./runtime/planner-loop";
 export * from "./runtime/response-grammar";
 export * from "./runtime/response-handler-evaluators";
 export * from "./runtime/response-handler-field-evaluator";
@@ -458,6 +476,8 @@ export * from "./utils/project-registry";
 export * from "./utils/prompt-compression";
 // Canonical env-var reader with legacy-alias back-compat
 export * from "./utils/read-env";
+// Blob-safe rendering of user/planner-supplied references in output
+export * from "./utils/reference-echo";
 // Canonical runtime-setting → env resolver (per-agent setting first, then env)
 export * from "./utils/resolve-setting";
 export * from "./utils/server-health";

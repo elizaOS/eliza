@@ -26,9 +26,10 @@ import {
 import { getPreset, listPresets } from "./actions/setup-credentials";
 import { checkDiscordDmAccess } from "./dm-access";
 import { getDiscordSettings } from "./environment";
+import { buildDiscordReplyPayload } from "./interactions";
 import { chunkDiscordText } from "./messaging";
 import type { DiscordSlashCommand } from "./types";
-import { getMessageService } from "./utils";
+import { buildDiscordComponents, getMessageService } from "./utils";
 import type { VoiceManager } from "./voice";
 
 export type SlashCommandRole = "OWNER" | "ADMIN" | "USER" | "GUEST";
@@ -708,12 +709,31 @@ const askCommand: SlashCommand = {
 			return;
 		}
 
+		// Project embedded interaction blocks ([FOLLOWUPS], [CHOICE], …) onto
+		// native Discord buttons, exactly like the channel send path in
+		// messages.ts — group DMs receive the agent ONLY through this reply, so
+		// skipping the render here shipped the raw wire markup as text.
+		const rendered = buildDiscordReplyPayload(runtime, { text: answer });
+		const components =
+			rendered.components.length > 0
+				? buildDiscordComponents(rendered.components)
+				: undefined;
+		const cleanedAnswer = rendered.text.trim() || answer;
+
 		// Discord caps a message at 2000 chars; the first chunk edits the
-		// deferred reply, the rest follow up in the same thread.
-		const chunks = chunkDiscordText(answer);
-		await interaction.editReply(chunks[0] ?? answer.slice(0, 2000));
-		for (const chunk of chunks.slice(1)) {
-			await interaction.followUp(chunk);
+		// deferred reply, the rest follow up in the same thread. Buttons ride
+		// the LAST message so they sit directly under the end of the answer.
+		const chunks = chunkDiscordText(cleanedAnswer);
+		const lastIndex = Math.max(0, chunks.length - 1);
+		await interaction.editReply({
+			content: chunks[0] ?? cleanedAnswer.slice(0, 2000),
+			...(components && lastIndex === 0 ? { components } : {}),
+		});
+		for (let i = 1; i < chunks.length; i++) {
+			await interaction.followUp({
+				content: chunks[i],
+				...(components && i === lastIndex ? { components } : {}),
+			});
 		}
 	},
 };

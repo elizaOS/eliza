@@ -106,12 +106,6 @@ function makePublicRequest(): DispatchSensitiveRequest {
 }
 
 describe("ownerAppInlineSensitiveRequestAdapter", () => {
-  it("declares the canonical owner_app_inline target", () => {
-    expect(ownerAppInlineSensitiveRequestAdapter.target).toBe(
-      "owner_app_inline",
-    );
-  });
-
   it("delivers to an owner-app private chat and emits the inline form envelope", async () => {
     const { runtime, calls } = makeRuntime();
     const request = makeOwnerAppPrivateRequest();

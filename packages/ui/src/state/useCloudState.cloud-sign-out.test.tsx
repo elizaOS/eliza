@@ -1,3 +1,4 @@
+/** Verifies useCloudState — locked Cloud account sign-out through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Locked mobile Cloud runtime can sign out of the account without disconnecting

@@ -4,14 +4,7 @@
  */
 
 import { EventEmitter } from "node:events";
-import {
-  chmodSync,
-  mkdtempSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -31,21 +24,11 @@ afterEach(() => {
   }
 });
 
-function createFixtureRunner(exitCode = 0): string {
+function createFixtureRunner(succeeds = true): string {
   const directory = mkdtempSync(path.join(tmpdir(), "cerebras-eval-runner-"));
   temporaryDirectories.push(directory);
   const runner = path.join(directory, "bunx");
-  writeFileSync(
-    runner,
-    [
-      "#!/bin/sh",
-      'printf "%s\\n" "$@" > "$ELIZA_TEST_ARGS"',
-      'printf "%s\\n" "$PWD" > "$ELIZA_TEST_CWD"',
-      `exit ${exitCode}`,
-      "",
-    ].join("\n"),
-  );
-  chmodSync(runner, 0o755);
+  symlinkSync(succeeds ? "/usr/bin/true" : "/usr/bin/false", runner);
   return directory;
 }
 
@@ -93,13 +76,9 @@ describe("Cerebras journey eval runner", () => {
   it("loads dotenv and drives a real child process with the live-suite arguments", async () => {
     const directory = createFixtureRunner();
     const envFile = path.join(directory, ".env");
-    const argsFile = path.join(directory, "args.txt");
-    const cwdFile = path.join(directory, "cwd.txt");
     writeFileSync(envFile, "CEREBRAS_API_KEY=fixture-key\n");
     const env: Record<string, string | undefined> = {
       PATH: `${directory}:${process.env.PATH}`,
-      ELIZA_TEST_ARGS: argsFile,
-      ELIZA_TEST_CWD: cwdFile,
     };
 
     const code = await runCerebrasJourneyEval({
@@ -111,25 +90,13 @@ describe("Cerebras journey eval runner", () => {
 
     expect(code).toBe(0);
     expect(env.CEREBRAS_API_KEY).toBe("fixture-key");
-    expect(readFileSync(argsFile, "utf8").trim().split("\n")).toEqual([
-      "vitest",
-      "run",
-      "--config",
-      "eliza/packages/test/vitest/live-e2e.config.ts",
-      "eliza/plugins/plugin-personal-assistant/test/journey-cerebras-eval.live.e2e.test.ts",
-    ]);
-    expect(realpathSync(readFileSync(cwdFile, "utf8").trim())).toBe(
-      realpathSync(directory),
-    );
   });
 
   it("propagates a real child process failure", async () => {
-    const directory = createFixtureRunner(7);
+    const directory = createFixtureRunner(false);
     const env: Record<string, string | undefined> = {
       CEREBRAS_API_KEY: "fixture-key",
       PATH: `${directory}:${process.env.PATH}`,
-      ELIZA_TEST_ARGS: path.join(directory, "args.txt"),
-      ELIZA_TEST_CWD: path.join(directory, "cwd.txt"),
     };
 
     await expect(
@@ -139,7 +106,14 @@ describe("Cerebras journey eval runner", () => {
         writeError() {},
         writeInfo() {},
       }),
-    ).resolves.toBe(7);
+    ).resolves.toBe(1);
+  });
+
+  it("propagates an exact numeric child exit code", async () => {
+    const child = new EventEmitter();
+    const completion = waitForChild(child);
+    child.emit("exit", 7);
+    await expect(completion).resolves.toBe(7);
   });
 
   it("treats signal-only child completion as failure", async () => {
@@ -155,9 +129,13 @@ describe("Cerebras journey eval runner", () => {
     });
     expect(invocation.command).toBe("bunx");
     expect(invocation.options.cwd).toBe("/workspace");
-    expect(invocation.args).toContain(
-      "eliza/packages/test/vitest/live-e2e.config.ts",
-    );
+    expect(invocation.args).toEqual([
+      "vitest",
+      "run",
+      "--config",
+      "eliza/packages/scripts/vitest/live-e2e.config.ts",
+      "eliza/plugins/plugin-personal-assistant/test/journey-cerebras-eval.live.e2e.test.ts",
+    ]);
 
     const moduleUrl = new URL("file:///workspace/runner.mjs");
     expect(

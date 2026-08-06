@@ -84,6 +84,18 @@ export interface RootCanvasPaint {
   backgroundColor: string;
 }
 
+export interface RootCanvasPaintOptions {
+  /**
+   * True while the native shell hosts the image wallpaper below the WebView
+   * (see glass/native-backdrop.ts): the root canvas — and, via the
+   * `eliza-native-backdrop` class this module toggles, body/#root — must go
+   * transparent together so the native pixels show through. Root paint has
+   * exactly ONE writer (this module); the #16656 review found a second writer
+   * fighting these inline styles re-covered the native wallpaper.
+   */
+  nativeImageHosted?: boolean;
+}
+
 /**
  * Compute the root-canvas paint for a background config.
  *
@@ -98,6 +110,7 @@ export interface RootCanvasPaint {
  */
 export function computeRootCanvasPaint(
   config: BackgroundConfig | null | undefined,
+  options?: RootCanvasPaintOptions,
 ): RootCanvasPaint {
   const baseColor =
     config && typeof config.color === "string" && config.color.length > 0
@@ -105,6 +118,12 @@ export function computeRootCanvasPaint(
       : DEFAULT_BACKGROUND_COLOR;
 
   if (config?.mode === "image" && config.imageUrl) {
+    // Native-hosted: the wallpaper lives BELOW the WebView, so every canvas
+    // layer must be transparent — mirroring the image here would paint an
+    // opaque WebView copy over the native one and block the glass.
+    if (options?.nativeImageHosted) {
+      return { backgroundImage: null, backgroundColor: "transparent" };
+    }
     return {
       backgroundImage: `url("${resolveWallpaperUrl(config.imageUrl)}")`,
       backgroundColor: baseColor,
@@ -129,11 +148,21 @@ export function computeRootCanvasPaint(
  */
 export function applyRootCanvasPaint(
   config: BackgroundConfig | null | undefined,
+  options?: RootCanvasPaintOptions,
 ): RootCanvasPaint {
-  const paint = computeRootCanvasPaint(config);
+  const paint = computeRootCanvasPaint(config, options);
   if (typeof document === "undefined") return paint;
   const root = document.documentElement;
   if (!root) return paint;
+
+  // body/#root also carry the launch-bg fill; the class rule (styles.css)
+  // clears them in lockstep with the inline canvas paint below.
+  root.classList.toggle(
+    "eliza-native-backdrop",
+    Boolean(
+      options?.nativeImageHosted && config?.mode === "image" && config.imageUrl,
+    ),
+  );
 
   root.style.backgroundColor = paint.backgroundColor;
   if (paint.backgroundImage) {

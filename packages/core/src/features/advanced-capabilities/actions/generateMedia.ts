@@ -224,6 +224,8 @@ function extensionFor(
 		if (mediaType === "audio" && AUDIO_EXTENSIONS.has(extension))
 			return extension;
 	} catch {
+		// error-policy:J3 Invalid model configuration is ignored only for
+		// optional media defaults, which remain explicitly selected below.
 		// Fall through to media defaults.
 	}
 	if (mediaType === "video") return "mp4";
@@ -379,6 +381,8 @@ export const generateMediaAction = {
 			);
 			result = await generateWithService(runtime, request);
 		} catch (error) {
+			// error-policy:J1 Media generation is an action boundary and returns
+			// an explicit unsuccessful result.
 			const errorMessage =
 				error instanceof Error ? error.message : String(error);
 			logger.error(

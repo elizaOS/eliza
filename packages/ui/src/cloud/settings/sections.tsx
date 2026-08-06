@@ -92,7 +92,7 @@ function ApplicationsEntry(): React.JSX.Element {
         </span>
       </span>
       <ExternalLink
-        className="h-4 w-4 shrink-0 text-muted/70 transition-colors group-hover:text-accent"
+        className="h-4 w-4 shrink-0 text-muted transition-colors group-hover:text-accent"
         aria-hidden
       />
     </Button>

@@ -1,0 +1,24 @@
+{
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"outDir": "./dist",
+		"declarationDir": "./dist",
+		"rootDir": "./src",
+		"paths": {
+			"@elizaos/plugin-local-inference": ["./src/index.ts"],
+			"@elizaos/plugin-local-inference/*": ["./src/*"],
+			"@elizaos/core": ["../../packages/core/dist/index.d.ts"],
+			"@elizaos/core/*": ["../../packages/core/dist/*"],
+			"@elizaos/shared": ["../../packages/shared/dist/index.d.ts"],
+			"@elizaos/shared/*": ["../../packages/shared/dist/*"],
+			"@elizaos/plugin-capacitor-bridge": [
+				"../plugin-capacitor-bridge/dist/index.d.ts"
+			],
+			"@elizaos/plugin-capacitor-bridge/*": [
+				"../plugin-capacitor-bridge/dist/*"
+			],
+			"@elizaos/plugin-computeruse": ["../plugin-computeruse/dist/index.d.ts"],
+			"@elizaos/plugin-computeruse/*": ["../plugin-computeruse/dist/*"]
+		}
+	}
+}

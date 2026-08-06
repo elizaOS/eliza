@@ -477,6 +477,181 @@ for (const [name, width, height] of [
   });
   console.log(`  📸 notifications-${name}-expanded.png`);
 
+  // Direct collapse keeps every visible card and its specular rim at full
+  // material opacity. Only the information inside later cards fades toward
+  // the resting projection, and reversing the same gesture restores it.
+  const verticalList = page.locator(LIST);
+  await verticalList.evaluate((list) => {
+    list.scrollTop = 0;
+  });
+  const verticalListBox = await verticalList.boundingBox();
+  const verticalX = verticalListBox.x + verticalListBox.width / 2;
+  const verticalStartY = verticalListBox.y + 96;
+  await page.mouse.move(verticalX, verticalStartY);
+  await page.mouse.down();
+  await page.mouse.move(verticalX, verticalStartY - 44, { steps: 8 });
+  await page.waitForFunction(
+    (selector) =>
+      document.querySelector(selector)?.hasAttribute("data-shade-dragging"),
+    LIST,
+  );
+  const directCollapseFrame = await verticalList.evaluate((list) => {
+    const viewport = list.getBoundingClientRect();
+    const visibleGroups = Array.from(
+      list.querySelectorAll("[data-notification-group-content]"),
+    ).filter((group) => {
+      const bounds = group.getBoundingClientRect();
+      return bounds.bottom > viewport.top && bounds.top < viewport.bottom;
+    });
+    const visibleSurfaces = Array.from(
+      list.querySelectorAll('[data-testid="notification-row-swipe"]'),
+    ).filter((surface) => {
+      const bounds = surface.getBoundingClientRect();
+      return bounds.bottom > viewport.top && bounds.top < viewport.bottom;
+    });
+    const visibleContents = Array.from(
+      list.querySelectorAll(".eliza-notif-row-content"),
+    ).filter((content) => {
+      const bounds = content.getBoundingClientRect();
+      return bounds.bottom > viewport.top && bounds.top < viewport.bottom;
+    });
+    return {
+      contentOpacities: visibleContents.map((content) =>
+        Number.parseFloat(getComputedStyle(content).opacity),
+      ),
+      groupOpacities: visibleGroups.map((group) =>
+        Number.parseFloat(getComputedStyle(group).opacity),
+      ),
+      rimOpacities: visibleSurfaces.map((surface) =>
+        Number.parseFloat(getComputedStyle(surface, "::before").opacity),
+      ),
+      surfaceOpacities: visibleSurfaces.map((surface) =>
+        Number.parseFloat(getComputedStyle(surface).opacity),
+      ),
+    };
+  });
+  check(
+    "direct collapse fades every visible glass surface while keeping one rim material",
+    directCollapseFrame.groupOpacities.length > 0 &&
+      directCollapseFrame.groupOpacities.every((opacity) => opacity === 1) &&
+      directCollapseFrame.surfaceOpacities.some(
+        (opacity) => opacity > 0 && opacity < 1,
+      ) &&
+      directCollapseFrame.rimOpacities.every((opacity) => opacity === 1),
+    JSON.stringify(directCollapseFrame),
+  );
+  check(
+    "direct collapse still fades card information toward the resting projection",
+    directCollapseFrame.contentOpacities.some(
+      (opacity) => opacity > 0 && opacity < 1,
+    ),
+    JSON.stringify(directCollapseFrame.contentOpacities),
+  );
+  await page.screenshot({
+    path: join(outDir, `notifications-${name}-during-vertical-collapse.png`),
+    fullPage: true,
+  });
+  console.log(
+    `  📸 notifications-${name}-during-vertical-collapse.png`,
+  );
+  await page.mouse.move(verticalX, verticalStartY, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForFunction(
+    (selector) =>
+      !document.querySelector(selector)?.hasAttribute("data-shade-dragging"),
+    LIST,
+  );
+  check(
+    "reversing direct collapse restores the expanded shade",
+    (await shadeMode(page)) === "expanded",
+  );
+
+  // Release a short, slow collapse so it starts its cancel animation, then
+  // immediately re-grab. The second gesture must take direct ownership:
+  // content tracks the finger with no inherited easing and the rims stay put.
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.waitForTimeout(50);
+  await page.mouse.move(verticalX, verticalStartY);
+  await page.mouse.down();
+  await page.mouse.move(verticalX, verticalStartY - 28, { steps: 8 });
+  await page.waitForTimeout(350);
+  await page.mouse.up();
+  await page.waitForFunction(() =>
+    document
+      .querySelector('[data-testid="home-notification-center"]')
+      ?.hasAttribute("data-notification-shade-cancelling"),
+  );
+  await page.mouse.move(verticalX, verticalStartY);
+  await page.mouse.down();
+  await page.mouse.move(verticalX, verticalStartY - 52, { steps: 8 });
+  await page.waitForFunction(
+    (selector) => {
+      const list = document.querySelector(selector);
+      const center = document.querySelector(
+        '[data-testid="home-notification-center"]',
+      );
+      return (
+        list?.hasAttribute("data-shade-dragging") &&
+        !center?.hasAttribute("data-notification-shade-cancelling")
+      );
+    },
+    LIST,
+  );
+  const regrabFrame = await verticalList.evaluate((list) => {
+    const contents = Array.from(
+      list.querySelectorAll(".eliza-notif-row-content"),
+    );
+    const surfaces = Array.from(
+      list.querySelectorAll('[data-testid="notification-row-swipe"]'),
+    );
+    return {
+      contentOpacities: contents.map((content) =>
+        Number.parseFloat(getComputedStyle(content).opacity),
+      ),
+      rimOpacities: surfaces.map((surface) =>
+        Number.parseFloat(getComputedStyle(surface, "::before").opacity),
+      ),
+      transitionDurations: contents.map(
+        (content) => getComputedStyle(content).transitionDuration,
+      ),
+    };
+  });
+  check(
+    "an immediate re-grab tracks directly without dimming the rims",
+    regrabFrame.contentOpacities.some(
+      (opacity) => opacity > 0 && opacity < 1,
+    ) &&
+      regrabFrame.rimOpacities.every((opacity) => opacity === 1) &&
+      regrabFrame.transitionDurations.every((duration) =>
+        duration
+          .split(",")
+          .every((part) => Number.parseFloat(part.trim()) === 0),
+      ),
+    JSON.stringify(regrabFrame),
+  );
+  await page.screenshot({
+    path: join(
+      outDir,
+      `notifications-${name}-during-cancel-regrab.png`,
+    ),
+    fullPage: true,
+  });
+  console.log(
+    `  📸 notifications-${name}-during-cancel-regrab.png`,
+  );
+  await page.mouse.move(verticalX, verticalStartY, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForFunction(
+    (selector) =>
+      !document.querySelector(selector)?.hasAttribute("data-shade-dragging"),
+    LIST,
+  );
+  check(
+    "cancelled re-grab returns to the expanded shade",
+    (await shadeMode(page)) === "expanded",
+  );
+  if (!HEADFUL) await page.emulateMedia({ reducedMotion: "reduce" });
+
   // 3. STACK FOLD/RESTORE: fanned groups expose controls above their rows.
   //    Folding restores one top card plus its peeks; tapping that stack fans
   //    the same group back out.

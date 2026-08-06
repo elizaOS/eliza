@@ -32,6 +32,8 @@ export const experienceProvider: Provider = {
 	contextGate: { anyOf: ["general"] },
 	cacheStable: false,
 	cacheScope: "turn",
+	timeoutMs: 10_000,
+	timeoutMode: "degrade",
 	roleGate: { minRole: "USER" },
 
 	async get(
@@ -103,14 +105,18 @@ export const experienceProvider: Provider = {
 				},
 			};
 		} catch (error) {
+			// error-policy:J4 experience context becomes explicitly unavailable;
+			// a failed query is not a valid zero-experience result.
+			runtime.reportError("ExperienceProvider.get", error, {
+				roomId: message.roomId,
+			});
 			return {
-				text: "",
+				text: "Relevant experiences are unavailable.",
 				data: {
-					experiences: [],
-					count: 0,
+					available: false,
 					error: error instanceof Error ? error.message : String(error),
 				},
-				values: { experienceCount: "0" },
+				values: { experienceContextAvailable: false },
 			};
 		}
 	},

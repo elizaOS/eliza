@@ -1,20 +1,9 @@
-name: UI Fixture E2E
+name: UI Extended Fixture E2E
 
-# #9310 section 3.16: the packages/ui fixture e2e runners (src/**/__e2e__/run-*.mjs)
-# esbuild-bundle REAL shipped components into a self-contained page and drive
-# them with real input in headless Chromium: no app server, no credentials,
-# fully deterministic. All were verified to run locally, but only the chat
-# gesture trio (ui-e2e-gate.yml), the swipe/perf set (chat-shell-gestures.yml),
-# and tutorial/perf-gate (test.yml) had CI legs; the ten runners below were
-# wired to NO workflow, so a regression in the agent-surface bridge, bottombar,
-# ambient background, background/launcher/connectors pages, view lifecycle, or
-# chat widgets could only be caught by hand. This gates them on packages/ui
-# changes. Mirrors ui-e2e-gate.yml (lean bun workspace + Playwright Chromium;
-# the runners self-bundle from source, so no dist build is needed).
-#
-# fused-wake is keyless too: it self-skips (exit 0 + ::notice::) unless the
-# prebuilt libwakeword + hey-eliza models are staged, so on this runner it
-# documents the skip instead of silently not existing.
+# Runs the complementary packages/ui browser fixtures that need WebKit or
+# protect specialized settings, chat, permission, localization, and performance
+# behavior. ui-e2e-gate.yml owns the core Chromium fixture set so no suite is
+# repeated across the two parallel lanes.
 
 on:
   # Reusable entry for the scheduled exhaustive develop lane (#12342).
@@ -46,12 +35,16 @@ permissions:
   contents: read
 
 env:
-  BUN_VERSION: "canary"
+  BUN_VERSION: "1.3.14"
   NODE_VERSION: "24.15.0"
 
 jobs:
   fixture-e2e:
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    # WebKit needs host libraries that the generic Hetzner fleet does not
+    # provision, and those runners do not grant the installer passwordless
+    # sudo. Keep this cross-engine lane on a disposable, fully provisionable
+    # host so a green result certifies WebKit actually launched.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -67,36 +60,19 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install
+          install-command: bun install --frozen-lockfile
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
       - name: Install Playwright Chromium + WebKit
-        run: .github/scripts/install-playwright-browsers.sh chromium webkit
+        run: PLAYWRIGHT_INSTALL_CWD=packages/ui .github/scripts/install-playwright-browsers.sh chromium webkit
 
       # The permission-priming fixture pulls @elizaos/shared, whose i18n module
       # loads generated keyword data that is gitignored. Generate it so the
       # esbuild bundle resolves (mirrors ui-e2e-gate.yml / chat-shell-gestures.yml).
       - name: Ensure generated shared i18n data
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
-
-      # Agent capability bridge: synthetic fixture + REAL plugin-task-coordinator
-      # components driven purely through window.__agentSurface.
-      - name: Agent-surface bridge e2e
-        run: bun run --cwd packages/ui test:agent-surface-e2e
-
-      # Chromeless desktop bottom bar (#9953): resting -> open -> type -> vision flow.
-      - name: Bottombar e2e
-        run: bun run --cwd packages/ui test:bottombar-e2e
-
-      # /chat ambient background: pulse phases + reduced-motion still.
-      - name: Chat ambient background e2e
-        run: bun run --cwd packages/ui test:chat-ambient-e2e
-
-      # Unified app background: swatch/upload/agent-apply/undo/redo chain.
-      - name: Background view e2e
-        run: bun run --cwd packages/ui test:background-e2e
 
       # Settings page sections and persisted local state.
       - name: Settings page e2e
@@ -112,22 +88,6 @@ jobs:
         run: bun run --cwd packages/ui test:chat-infinite-scroll-e2e
       - name: Chat infinite-scroll e2e (webkit)
         run: ENGINE=webkit bun run --cwd packages/ui test:chat-infinite-scroll-e2e
-
-      # Launcher view: tiles, tap-launch, long-press edit, page-nav, telemetry.
-      - name: Launcher e2e
-        run: bun run --cwd packages/ui test:launcher-e2e
-
-      # Connector card config/setup-panel co-rendering (#10705).
-      - name: Connectors page e2e
-        run: bun run --cwd packages/ui test:connectors-e2e
-
-      # View lifecycle contract (#10202): LRU retention, pause, evict, leaks.
-      - name: View lifecycle e2e
-        run: bun run --cwd packages/ui test:view-lifecycle-e2e
-
-      # OrchestratorAccountsView render states with a clean console.
-      - name: Orchestrator accounts widget e2e
-        run: bun run --cwd packages/ui test:orchestrator-accounts-e2e
 
       # Wallet widget default + held-balance display states.
       - name: Wallet widget e2e
@@ -163,33 +123,20 @@ jobs:
       - name: Widget certification e2e
         run: bun run --cwd packages/ui test:widget-cert-e2e
 
-      # Full-chain fused wake (#10351): self-skips with ::notice:: unless
-      # libwakeword + hey-eliza models are staged on the runner.
-      - name: Fused-wake integration e2e (self-skipping)
-        run: bun run --cwd packages/ui test:fused-wake-integration-e2e
-
-      - name: Upload fixture e2e artifacts
+      - name: Upload extended fixture e2e artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: ui-fixture-e2e-output
+          name: ui-extended-fixture-e2e-output
           path: |
-            packages/ui/src/agent-surface/__e2e__/output
-            packages/ui/src/components/shell/__e2e__/output
-            packages/ui/src/components/shell/__e2e__/output-bottombar
-            packages/ui/src/components/pages/__e2e__/output-background
             packages/ui/src/components/pages/__e2e__/output-infinite-scroll
-            packages/ui/src/components/pages/__e2e__/output-launcher
-            packages/ui/src/components/pages/__e2e__/output-connectors
             packages/ui/src/components/pages/__e2e__/output-settings
-            packages/ui/src/components/views/__e2e__/output-view-lifecycle
             packages/ui/src/components/chat/widgets/__e2e__/output
-            packages/ui/src/components/chat/widgets/__e2e__/output-ftu
             packages/ui/src/components/chat/widgets/__e2e__/output-wallet
             packages/ui/src/components/chat/__e2e__/output-activity-feedback
             packages/ui/src/components/permissions/__e2e__/output-permission-priming
             packages/ui/src/components/composites/__e2e__/output-divider-perf
-            packages/ui/src/components/shell/__e2e__/output-home-locale
+            packages/ui/tmp/home-locale-e2e
             packages/ui/src/testing/__e2e__/output-widget-cert
           retention-days: 14
           if-no-files-found: ignore

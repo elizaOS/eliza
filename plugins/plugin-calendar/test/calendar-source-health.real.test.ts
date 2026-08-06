@@ -5,7 +5,7 @@
 
 import { PGlite } from "@electric-sql/pglite";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { GoogleCalendarSyncTokenExpiredError } from "@elizaos/plugin-google";
+import { GoogleCalendarSyncTokenExpiredError } from "@elizaos/plugin-google-workspace";
 import { RuntimeMigrator } from "@elizaos/plugin-sql/runtime-migrator";
 import type {
   LifeOpsConnectorGrant,

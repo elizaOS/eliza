@@ -98,7 +98,6 @@ describe("generateChatResponse usage reporting", () => {
       runtime,
       createChatMessage("hello"),
       "Chat Agent",
-      { timeoutDuration: 5_000 },
     );
 
     expect(result.usage).toMatchObject({
@@ -148,12 +147,8 @@ describe("generateChatResponse usage reporting", () => {
     });
 
     const [first, second] = await Promise.all([
-      generateChatResponse(runtime, createChatMessage("first"), "Chat Agent", {
-        timeoutDuration: 5_000,
-      }),
-      generateChatResponse(runtime, createChatMessage("second"), "Chat Agent", {
-        timeoutDuration: 5_000,
-      }),
+      generateChatResponse(runtime, createChatMessage("first"), "Chat Agent"),
+      generateChatResponse(runtime, createChatMessage("second"), "Chat Agent"),
     ]);
 
     expect(first.usage).toMatchObject({
@@ -184,9 +179,7 @@ describe("generateChatResponse usage reporting", () => {
     });
     const message = createChatMessage("count this prompt");
 
-    const result = await generateChatResponse(runtime, message, "Chat Agent", {
-      timeoutDuration: 5_000,
-    });
+    const result = await generateChatResponse(runtime, message, "Chat Agent");
 
     expect(result.usage).toMatchObject({
       promptTokens: estimateTokenCount("count this prompt"),
@@ -216,7 +209,6 @@ describe("generateChatResponse usage reporting", () => {
       runtime,
       createChatMessage("hello"),
       "Chat Agent",
-      { timeoutDuration: 5_000 },
     );
 
     expect(result).toMatchObject({
@@ -224,6 +216,173 @@ describe("generateChatResponse usage reporting", () => {
     });
     expect(result.usedActionCallbacks).toBeUndefined();
     expect(result.actionCallbackHistory).toBeUndefined();
+  });
+
+  it("delivers a callback-only reply to append-only streaming consumers", async () => {
+    const onChunk = vi.fn();
+    const runtime = createRuntime({
+      messageService: {
+        handleMessage: vi.fn(async (_runtime, _message, callback) => {
+          await callback?.({ text: "callback reply", actions: ["REPLY"] });
+          return {
+            didRespond: true,
+            responseContent: { actions: ["REPLY"], text: "callback reply" },
+            responseMessages: [],
+          };
+        }),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("hello"),
+      "Chat Agent",
+      { onChunk },
+    );
+
+    expect(result.text).toBe("callback reply");
+    expect(onChunk).toHaveBeenCalledTimes(1);
+    expect(onChunk).toHaveBeenCalledWith("callback reply");
+  });
+
+  it("does not duplicate callback replies across snapshot and chunk transports", async () => {
+    const onChunk = vi.fn();
+    const onSnapshot = vi.fn();
+    const runtime = createRuntime({
+      messageService: {
+        handleMessage: vi.fn(async (_runtime, _message, callback) => {
+          await callback?.({ text: "callback reply", actions: ["REPLY"] });
+          return {
+            didRespond: true,
+            responseContent: { actions: ["REPLY"], text: "callback reply" },
+            responseMessages: [],
+          };
+        }),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("hello"),
+      "Chat Agent",
+      { onChunk, onSnapshot },
+    );
+
+    expect(result.text).toBe("callback reply");
+    expect(onSnapshot).toHaveBeenCalledTimes(1);
+    expect(onSnapshot).toHaveBeenCalledWith("callback reply");
+    expect(onChunk).not.toHaveBeenCalled();
+  });
+
+  it("holds progress snapshots until an append-only stream has a final reply", async () => {
+    const onChunk = vi.fn();
+    const runtime = createRuntime({
+      messageService: {
+        handleMessage: vi.fn(async (_runtime, _message, callback) => {
+          await callback?.(
+            {
+              text: "Searching...",
+              actions: ["SEARCH"],
+              actionStatus: "in_progress",
+            },
+            "SEARCH",
+          );
+          return {
+            didRespond: true,
+            responseContent: { text: "Search complete." },
+            responseMessages: [],
+            actionResults: [actionResult("SEARCH")],
+          };
+        }),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("search"),
+      "Chat Agent",
+      { onChunk },
+    );
+
+    expect(result.text).toBe("Search complete.");
+    expect(onChunk).toHaveBeenCalledTimes(1);
+    expect(onChunk).toHaveBeenCalledWith("Search complete.");
+  });
+
+  it("fails append-only finalization when emitted callback bytes diverge", async () => {
+    const onChunk = vi.fn();
+    const runtime = createRuntime({
+      messageService: {
+        handleMessage: vi.fn(async (_runtime, _message, callback) => {
+          await callback?.({
+            text: "provisional streamed reply",
+            actions: ["REPLY"],
+            merge: "append",
+          });
+          await callback?.({
+            text: "authoritative final reply",
+            actions: ["REPLY"],
+          });
+          return {
+            didRespond: true,
+            responseContent: {
+              actions: ["REPLY"],
+              text: "authoritative final reply",
+            },
+            responseMessages: [],
+          };
+        }),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    await expect(
+      generateChatResponse(runtime, createChatMessage("hello"), "Chat Agent", {
+        onChunk,
+      }),
+    ).rejects.toMatchObject({
+      code: "CHAT_APPEND_ONLY_STREAM_DIVERGENCE",
+    });
+    expect(onChunk).toHaveBeenCalledTimes(1);
+    expect(onChunk).toHaveBeenCalledWith("provisional streamed reply");
+  });
+
+  it("preserves divergent callback replacement for snapshot-capable consumers", async () => {
+    const onChunk = vi.fn();
+    const onSnapshot = vi.fn();
+    const runtime = createRuntime({
+      messageService: {
+        handleMessage: vi.fn(async (_runtime, _message, callback) => {
+          await callback?.({
+            text: "provisional streamed reply",
+            actions: ["REPLY"],
+            merge: "append",
+          });
+          await callback?.({
+            text: "authoritative final reply",
+            actions: ["REPLY"],
+          });
+          return {
+            didRespond: true,
+            responseContent: {
+              actions: ["REPLY"],
+              text: "authoritative final reply",
+            },
+            responseMessages: [],
+          };
+        }),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("hello"),
+      "Chat Agent",
+      { onChunk, onSnapshot },
+    );
+
+    expect(result.text).toBe("authoritative final reply");
+    expect(onChunk).toHaveBeenCalledWith("provisional streamed reply");
+    expect(onSnapshot).toHaveBeenLastCalledWith("authoritative final reply");
   });
 
   it("records an attributed visible callback only when its action succeeded", async () => {
@@ -252,7 +411,6 @@ describe("generateChatResponse usage reporting", () => {
       runtime,
       createChatMessage("hello"),
       "Chat Agent",
-      { timeoutDuration: 5_000 },
     );
 
     expect(result).toMatchObject({
@@ -281,7 +439,6 @@ describe("generateChatResponse usage reporting", () => {
       runtime,
       createChatMessage("hello"),
       "Chat Agent",
-      { timeoutDuration: 5_000 },
     );
 
     expect(result.text).toBe("final reply");
@@ -311,7 +468,6 @@ describe("generateChatResponse usage reporting", () => {
       runtime,
       createChatMessage("hello"),
       "Chat Agent",
-      { timeoutDuration: 5_000 },
     );
 
     expect(result.text).toBe("final reply");
@@ -347,7 +503,7 @@ describe("generateChatResponse usage reporting", () => {
       runtime,
       createChatMessage("search"),
       "Chat Agent",
-      { timeoutDuration: 5_000, onChunk },
+      { onChunk },
     );
 
     expect(result.text).toBe("streamed final");
@@ -383,7 +539,7 @@ describe("generateChatResponse usage reporting", () => {
       runtime,
       createChatMessage("search"),
       "Chat Agent",
-      { timeoutDuration: 5_000, onSnapshot },
+      { onSnapshot },
     );
 
     expect(result.text).toBe("Search complete.");
@@ -419,7 +575,6 @@ describe("generateChatResponse usage reporting", () => {
         runtime,
         createChatMessage("run it"),
         "Chat Agent",
-        { timeoutDuration: 5_000 },
       );
 
       expect(result.usedActionCallbacks).toBeUndefined();
@@ -461,7 +616,7 @@ describe("generateChatResponse usage reporting", () => {
       runtime,
       createChatMessage("what apps are available?"),
       "Chat Agent",
-      { timeoutDuration: 5_000, onChunk },
+      { onChunk },
     );
 
     expect(result.text).toBe(inventory);
@@ -500,7 +655,7 @@ describe("generateChatResponse usage reporting", () => {
       runtime,
       createChatMessage("what apps are available?"),
       "Chat Agent",
-      { timeoutDuration: 5_000, onChunk },
+      { onChunk },
     );
 
     expect(result.text).toBe(summary);
@@ -528,7 +683,7 @@ describe("generateChatResponse usage reporting", () => {
       runtime,
       createChatMessage("what apps are available?"),
       "Chat Agent",
-      { timeoutDuration: 5_000, onChunk },
+      { onChunk },
     );
 
     expect(result.transcriptVisibility).toBe("internal");
@@ -571,7 +726,7 @@ describe("generateChatResponse usage reporting", () => {
       runtime,
       createChatMessage("what apps are available?"),
       "Chat Agent",
-      { timeoutDuration: 5_000, onChunk },
+      { onChunk },
     );
 
     expect(result.text).toBe(inventory);
@@ -602,7 +757,6 @@ describe("generateChatResponse usage reporting", () => {
       runtime,
       createChatMessage("send funds"),
       "Chat Agent",
-      { timeoutDuration: 5_000 },
     );
 
     expect(result.text).toContain("actions that were not executed");
@@ -642,7 +796,6 @@ describe("generateChatResponse usage reporting", () => {
       runtime,
       createChatMessage("send funds"),
       "Chat Agent",
-      { timeoutDuration: 5_000 },
     );
 
     expect(result.text).toContain("actions that were not executed");
@@ -680,7 +833,6 @@ describe("generateChatResponse usage reporting", () => {
       runtime,
       createChatMessage("send funds"),
       "Chat Agent",
-      { timeoutDuration: 5_000 },
     );
 
     expect(result.text).toContain("actions that were not executed");
@@ -710,7 +862,6 @@ describe("generateChatResponse usage reporting", () => {
       runtime,
       createChatMessage("send funds"),
       "Chat Agent",
-      { timeoutDuration: 5_000 },
     );
 
     expect(result.text).toBe("Action completed by core.");
@@ -747,7 +898,6 @@ describe("generateChatResponse usage reporting", () => {
       runtime,
       createChatMessage("send funds"),
       "Chat Agent",
-      { timeoutDuration: 5_000 },
     );
 
     expect(result.text).toContain("actions that were not executed");
@@ -785,7 +935,6 @@ describe("generateChatResponse usage reporting", () => {
       runtime,
       createChatMessage("run the mixed action"),
       "Chat Agent",
-      { timeoutDuration: 5_000 },
     );
 
     expect(result.usedActionCallbacks).toBe(true);
@@ -811,9 +960,7 @@ describe("generateChatResponse usage reporting", () => {
       } as NonNullable<AgentRuntime["messageService"]>,
     });
 
-    const result = await generateChatResponse(runtime, message, "Chat Agent", {
-      timeoutDuration: 5_000,
-    });
+    const result = await generateChatResponse(runtime, message, "Chat Agent");
 
     expect(result.text).toBe("Action completed from recorded alias.");
     expect(runtime.logger.error).not.toHaveBeenCalledWith(
@@ -841,9 +988,7 @@ describe("generateChatResponse usage reporting", () => {
       } as NonNullable<AgentRuntime["messageService"]>,
     });
 
-    const result = await generateChatResponse(runtime, message, "Chat Agent", {
-      timeoutDuration: 5_000,
-    });
+    const result = await generateChatResponse(runtime, message, "Chat Agent");
 
     expect(result.text).toBe("Action completed from recorded result.");
     expect(runtime.getActionResults).toHaveBeenCalledWith(message.id);
@@ -875,9 +1020,7 @@ describe("generateChatResponse usage reporting", () => {
     });
     const message = createChatMessage("check my wallet balance");
 
-    const result = await generateChatResponse(runtime, message, "Chat Agent", {
-      timeoutDuration: 5_000,
-    });
+    const result = await generateChatResponse(runtime, message, "Chat Agent");
 
     expect(result.text).toBe("Your wallet balance is 4 SOL.");
     expect(result.persistedResponseMessageIds).toEqual([persistedId]);
@@ -927,7 +1070,6 @@ describe("generateChatResponse usage reporting", () => {
       runtime,
       createChatMessage("send 1 SOL to this wallet"),
       "Chat Agent",
-      { timeoutDuration: 5_000 },
     );
 
     expect(result.text).toBe("The transfer was submitted.");
@@ -965,7 +1107,6 @@ describe("generateChatResponse usage reporting", () => {
         runtime,
         createChatMessage(prompt),
         "Chat Agent",
-        { timeoutDuration: 5_000 },
       );
 
       expect(result.text).toBe(responseText);
@@ -996,7 +1137,6 @@ describe("generateChatResponse usage reporting", () => {
       runtime,
       createChatMessage("buy ETH on Hyperliquid"),
       "Chat Agent",
-      { timeoutDuration: 5_000 },
     );
 
     expect(result.text).toContain("no wallet action actually ran");
@@ -1033,7 +1173,6 @@ describe("generateChatResponse usage reporting", () => {
       runtime,
       createChatMessage("buy ETH on Hyperliquid"),
       "Chat Agent",
-      { timeoutDuration: 5_000 },
     );
 
     expect(result.text).toBe("The Hyperliquid order flow is active.");
@@ -1070,7 +1209,6 @@ describe("generateChatResponse usage reporting", () => {
       runtime,
       createChatMessage("execute this onchain governance proposal"),
       "Chat Agent",
-      { timeoutDuration: 5_000 },
     );
 
     expect(result.text).toBe("The governance proposal was executed.");
@@ -1105,7 +1243,6 @@ describe("generateChatResponse usage reporting", () => {
       runtime,
       createChatMessage("execute this onchain governance proposal"),
       "Chat Agent",
-      { timeoutDuration: 5_000 },
     );
 
     expect(result.text).toContain("no wallet action actually ran");
@@ -1134,7 +1271,6 @@ describe("generateChatResponse usage reporting", () => {
       runtime,
       createChatMessage("send 1 SOL to this wallet"),
       "Chat Agent",
-      { timeoutDuration: 5_000 },
     );
 
     expect(result.text).toContain("no wallet action actually ran");
@@ -1175,7 +1311,6 @@ describe("generateChatResponse usage reporting", () => {
         runtime,
         createChatMessage("send 1 SOL to this wallet"),
         "Chat Agent",
-        { timeoutDuration: 5_000 },
       );
 
       expect(result.text).toContain("no wallet action actually ran");
@@ -1205,7 +1340,6 @@ describe("generateChatResponse usage reporting", () => {
         runtime,
         createChatMessage("check my wallet balance"),
         "Chat Agent",
-        { timeoutDuration: 5_000 },
       );
 
       expect(result.text).toContain("no wallet action actually ran");

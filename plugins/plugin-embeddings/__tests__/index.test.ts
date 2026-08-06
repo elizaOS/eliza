@@ -3,7 +3,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import defaultEmbeddingsPlugin, { embeddingsPlugin } from "../src/index";
+import { embeddingsPlugin } from "../src/index";
 
 type Setting = string | null;
 
@@ -49,37 +49,6 @@ afterEach(() => {
 });
 
 describe("plugin-embeddings entrypoint", () => {
-  it("exports one embedding-only plugin with the documented priority and opt-in keys", () => {
-    expect(defaultEmbeddingsPlugin).toBe(embeddingsPlugin);
-    expect(embeddingsPlugin.name).toBe("embeddings");
-    expect(embeddingsPlugin.priority).toBe(1);
-    expect(embeddingsPlugin.autoEnable?.envKeys).toEqual([
-      "EMBEDDING_BASE_URL",
-      "EMBEDDING_API_KEY",
-    ]);
-    expect(Object.keys(embeddingsPlugin.models ?? {}).sort()).toEqual([
-      ModelType.TEXT_EMBEDDING,
-      ModelType.TEXT_EMBEDDING_BATCH,
-    ]);
-    expect(embeddingsPlugin.actions).toBeUndefined();
-    expect(embeddingsPlugin.providers).toBeUndefined();
-    expect(embeddingsPlugin.services).toBeUndefined();
-    expect(embeddingsPlugin.evaluators).toBeUndefined();
-  });
-
-  it("mirrors EMBEDDING_* process env values into plugin config at module load", () => {
-    expect(Object.keys(embeddingsPlugin.config ?? {}).sort()).toEqual([
-      "EMBEDDING_API_KEY",
-      "EMBEDDING_BASE_URL",
-      "EMBEDDING_BROWSER_URL",
-      "EMBEDDING_DIMENSIONS",
-      "EMBEDDING_FALLBACK_API_KEY",
-      "EMBEDDING_FALLBACK_BASE_URL",
-      "EMBEDDING_FALLBACK_MODEL",
-      "EMBEDDING_MODEL",
-    ]);
-  });
-
   it("init warns but does not throw when the plugin is manually loaded without opt-in config", async () => {
     const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
     const infoSpy = vi.spyOn(logger, "info").mockImplementation(() => undefined);

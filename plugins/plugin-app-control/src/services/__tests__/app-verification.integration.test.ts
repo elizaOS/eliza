@@ -3,7 +3,14 @@
  */
 
 import { execFile } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -38,7 +45,7 @@ if (!pkgManagerAvailable) {
 	process.env.SKIP_REASON ||= "bun or npm required to verify scaffolds";
 }
 
-const noopRuntime = {} as IAgentRuntime;
+const noopRuntime = { getSetting: () => undefined } as unknown as IAgentRuntime;
 
 const PASS_TS = `
 export type Greeting = { hello: string };
@@ -184,6 +191,193 @@ describeIntegration("AppVerificationService.verifyApp (integration)", () => {
 	);
 
 	itIf(pkgManagerAvailable)(
+		"publishes the artifact produced by the passing build using the runtime setting",
+		async () => {
+			const workdir = mkdtempSync(path.join(tmpdir(), "verify-app-publish-"));
+			const publishRoot = mkdtempSync(
+				path.join(tmpdir(), "verify-app-publish-root-"),
+			);
+			writeMinimalTsProject(workdir, PASS_TS);
+			writeFileSync(
+				path.join(workdir, "build-shim.mjs"),
+				`import { mkdirSync, writeFileSync } from "node:fs"; mkdirSync("dist", { recursive: true }); writeFileSync("dist/index.html", "fresh-build"); process.stdout.write("build ok\\n");\n`,
+				"utf8",
+			);
+			mkdirSync(path.join(publishRoot, "fresh-app"));
+			writeFileSync(
+				path.join(publishRoot, "fresh-app", "obsolete.js"),
+				"old-build",
+				"utf8",
+			);
+			const publishService = new AppVerificationService({
+				getSetting: (key: string) =>
+					key === "APP_PUBLISH_DIR" ? publishRoot : undefined,
+			} as unknown as IAgentRuntime);
+
+			const result = await publishService.verifyApp({
+				workdir,
+				appName: "fresh-app",
+				profile: "build",
+				runId: "int-app-publish",
+				packageManager: "npm",
+				structuredProof: {
+					kind: "APP_CREATE_DONE",
+					appName: "fresh-app",
+					files: ["src.ts"],
+					typecheck: "ok",
+					lint: "ok",
+					tests: { passed: 2, failed: 0 },
+				},
+			});
+
+			expect(result.verdict).toBe("pass");
+			expect(result.checks.at(-1)).toEqual(
+				expect.objectContaining({ kind: "publish", passed: true }),
+			);
+			expect(
+				readFileSync(path.join(publishRoot, "fresh-app", "index.html"), "utf8"),
+			).toBe("fresh-build");
+			expect(() =>
+				readFileSync(path.join(publishRoot, "fresh-app", "obsolete.js")),
+			).toThrow();
+			await publishService.cleanup();
+		},
+		120_000,
+	);
+
+	itIf(pkgManagerAvailable)(
+		"rejects an app name that would escape the configured publish root",
+		async () => {
+			const workdir = mkdtempSync(
+				path.join(tmpdir(), "verify-app-containment-"),
+			);
+			const publishRoot = mkdtempSync(
+				path.join(tmpdir(), "verify-app-containment-root-"),
+			);
+			const outsideName = `${path.basename(publishRoot)}-outside`;
+			const maliciousAppName = `../${outsideName}`;
+			writeMinimalTsProject(workdir, PASS_TS);
+			writeFileSync(
+				path.join(workdir, "build-shim.mjs"),
+				`import { mkdirSync, writeFileSync } from "node:fs"; mkdirSync("dist", { recursive: true }); writeFileSync("dist/index.html", "fresh-build"); process.stdout.write("build ok\\n");\n`,
+				"utf8",
+			);
+			const publishService = new AppVerificationService({
+				getSetting: (key: string) =>
+					key === "APP_PUBLISH_DIR" ? publishRoot : undefined,
+			} as unknown as IAgentRuntime);
+
+			const result = await publishService.verifyApp({
+				workdir,
+				appName: maliciousAppName,
+				profile: "build",
+				runId: "int-app-publish-containment",
+				packageManager: "npm",
+				structuredProof: {
+					kind: "APP_CREATE_DONE",
+					appName: maliciousAppName,
+					files: ["src.ts"],
+					typecheck: "ok",
+					lint: "ok",
+					tests: { passed: 2, failed: 0 },
+				},
+			});
+
+			expect(result.verdict).toBe("fail");
+			expect(result.checks.at(-1)).toEqual(
+				expect.objectContaining({
+					kind: "publish",
+					passed: false,
+					output: expect.stringContaining("one direct child"),
+				}),
+			);
+			expect(() =>
+				readFileSync(path.join(publishRoot, "..", outsideName, "index.html")),
+			).toThrow();
+			await publishService.cleanup();
+		},
+		120_000,
+	);
+
+	itIf(pkgManagerAvailable)(
+		"does not publish a stale dist artifact when the fast profile did not build",
+		async () => {
+			const workdir = mkdtempSync(path.join(tmpdir(), "verify-app-fast-"));
+			const publishRoot = mkdtempSync(
+				path.join(tmpdir(), "verify-app-fast-root-"),
+			);
+			writeMinimalTsProject(workdir, PASS_TS);
+			mkdirSync(path.join(workdir, "dist"));
+			writeFileSync(
+				path.join(workdir, "dist", "index.html"),
+				"stale-build",
+				"utf8",
+			);
+			const publishService = new AppVerificationService({
+				getSetting: (key: string) =>
+					key === "APP_PUBLISH_DIR" ? publishRoot : undefined,
+			} as unknown as IAgentRuntime);
+
+			const result = await publishService.verifyApp({
+				workdir,
+				appName: "stale-app",
+				profile: "fast",
+				runId: "int-app-fast-no-publish",
+				packageManager: "npm",
+			});
+
+			expect(result.verdict).toBe("pass");
+			expect(result.checks.some((check) => check.kind === "publish")).toBe(
+				false,
+			);
+			expect(() =>
+				readFileSync(path.join(publishRoot, "stale-app", "index.html")),
+			).toThrow();
+			await publishService.cleanup();
+		},
+		120_000,
+	);
+
+	itIf(pkgManagerAvailable)(
+		"proves the vitest summary through ANSI-colorized test output",
+		async () => {
+			const workdir = mkdtempSync(path.join(tmpdir(), "verify-ansi-proof-"));
+			writeMinimalTsProject(workdir, PASS_TS);
+			// The live failure shape: vitest colorizes because the spawn env's
+			// FORCE_COLOR/CI PRESENCE forces color on in tinyrainbow, burying the
+			// `Tests` summary line under escapes. This shim ignores NO_COLOR, so
+			// the case specifically exercises the combineOutput ANSI strip.
+			writeFileSync(
+				path.join(workdir, "test-shim.mjs"),
+				`process.stdout.write("\\x1b[2m Tests\\x1b[22m \\x1b[1m2 passed\\x1b[22m\\x1b[90m (2)\\x1b[39m\\n"); process.exit(0);\n`,
+				"utf8",
+			);
+
+			const result = await service.verifyPlugin({
+				workdir,
+				profile: "full",
+				runId: "int-ansi-proof",
+				packageManager: "npm",
+				structuredProof: {
+					kind: "PLUGIN_CREATE_DONE",
+					pluginName: "verify-ansi-fixture",
+					files: ["src.ts"],
+					typecheck: "ok",
+					lint: "ok",
+					tests: { passed: 2, failed: 0 },
+				},
+			});
+
+			expect(result.verdict).toBe("pass");
+			expect(
+				result.checks.find((check) => check.kind === "structured-proof")
+					?.passed,
+			).toBe(true);
+		},
+		120_000,
+	);
+
+	itIf(pkgManagerAvailable)(
 		"returns verdict=fail with non-empty diagnostics when TS has a type error",
 		async () => {
 			const workdir = mkdtempSync(path.join(tmpdir(), "verify-int-fail-"));
@@ -282,3 +476,90 @@ describeIntegration("AppVerificationService.verifyApp (integration)", () => {
 		120_000,
 	);
 });
+
+describeIntegration(
+	"verifyProject publish step (containment + staged swap)",
+	() => {
+		const service = new AppVerificationService(noopRuntime);
+		const publishRoot = mkdtempSync(path.join(tmpdir(), "app-verify-publish-"));
+
+		function makeApp(): string {
+			const workdir = mkdtempSync(path.join(tmpdir(), "app-verify-app-"));
+			writeFileSync(
+				path.join(workdir, "package.json"),
+				JSON.stringify({
+					name: "publish-fixture",
+					version: "0.0.0",
+					type: "module",
+					scripts: { build: 'node -e "process.exit(0)"' },
+				}),
+			);
+			mkdirSync(path.join(workdir, "dist"), { recursive: true });
+			writeFileSync(
+				path.join(workdir, "dist", "index.html"),
+				"<!doctype html><title>fixture</title>",
+			);
+			return workdir;
+		}
+
+		afterAll(() => {
+			rmSync(publishRoot, { recursive: true, force: true });
+		});
+
+		itIf(pkgManagerAvailable)(
+			"refuses an appName that resolves outside the publish root",
+			async () => {
+				const prev = process.env.ELIZA_APP_PUBLISH_DIR;
+				process.env.ELIZA_APP_PUBLISH_DIR = publishRoot;
+				const outsideName = `${path.basename(publishRoot)}-outside`;
+				try {
+					const result = await service.verifyProject({
+						workdir: makeApp(),
+						appName: `../${outsideName}`,
+						projectKind: "app",
+						checks: [{ kind: "build" }],
+						requireStructuredProof: false,
+					});
+					expect(result.verdict).toBe("fail");
+					const publish = result.checks.find((c) => c.kind === "publish");
+					expect(publish?.passed).toBe(false);
+					expect(publish?.output).toContain("outside the publish root");
+					expect(existsSync(path.join(publishRoot, "..", outsideName))).toBe(
+						false,
+					);
+				} finally {
+					process.env.ELIZA_APP_PUBLISH_DIR = prev;
+				}
+			},
+			120_000,
+		);
+
+		itIf(pkgManagerAvailable)(
+			"staged swap removes obsolete files from the previous live build",
+			async () => {
+				const prev = process.env.ELIZA_APP_PUBLISH_DIR;
+				process.env.ELIZA_APP_PUBLISH_DIR = publishRoot;
+				try {
+					const live = path.join(publishRoot, "swap-app");
+					mkdirSync(live, { recursive: true });
+					writeFileSync(path.join(live, "obsolete.js"), "stale");
+					const result = await service.verifyProject({
+						workdir: makeApp(),
+						appName: "swap-app",
+						projectKind: "app",
+						checks: [{ kind: "build" }],
+						requireStructuredProof: false,
+					});
+					expect(result.verdict).toBe("pass");
+					const publish = result.checks.find((c) => c.kind === "publish");
+					expect(publish?.passed).toBe(true);
+					expect(existsSync(path.join(live, "index.html"))).toBe(true);
+					expect(existsSync(path.join(live, "obsolete.js"))).toBe(false);
+				} finally {
+					process.env.ELIZA_APP_PUBLISH_DIR = prev;
+				}
+			},
+			120_000,
+		);
+	},
+);

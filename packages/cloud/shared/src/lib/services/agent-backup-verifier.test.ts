@@ -24,7 +24,11 @@ process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
-import { KmsError, StewardKmsAdapter } from "@elizaos/security/kms";
+import { KmsError, StewardKmsAdapter } from "@elizaos/core/security/kms";
+import {
+  MAX_RESTORABLE_AGENT_BACKUP_BYTES,
+  SnapshotPayloadTooLargeError,
+} from "@elizaos/shared/agent-backup-limits";
 import { pushSchema } from "drizzle-kit/api";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../db/client";
 import { resetKmsClientForTests } from "../../db/crypto/kms-client";
@@ -1184,5 +1188,42 @@ describe("r2-offloaded backups (real S3 client against a local object-store stub
     for (const key of unrelatedKeys) {
       expect(getCounts.get(key)).toBeUndefined();
     }
+  });
+  test("a chain over the restorable budget is refused with the typed error", async () => {
+    const sandboxId = await seedSandbox();
+    // The chain sum reads `size_bytes` when present, so the budget is breached
+    // by two declared sizes rather than by materialising 128 MiB of payload.
+    const half = Math.ceil(MAX_RESTORABLE_AGENT_BACKUP_BYTES / 2) + 1;
+    const parent = await agentSandboxesRepository.createBackup({
+      sandbox_record_id: sandboxId,
+      snapshot_type: "auto",
+      state_data: sampleState("chain-parent"),
+      size_bytes: half,
+      backup_kind: "full",
+      content_hash: computeStateHash(sampleState("chain-parent")),
+    });
+    const child = await agentSandboxesRepository.createBackup({
+      sandbox_record_id: sandboxId,
+      snapshot_type: "auto",
+      state_data: sampleState("chain-child"),
+      size_bytes: half,
+      backup_kind: "incremental",
+      parent_backup_id: parent.id,
+      content_hash: computeStateHash(sampleState("chain-child")),
+    });
+
+    // Typed, not a plain Error: the restore sites branch on this class to fail
+    // the provision closed instead of degrading to an empty boot, and a plain
+    // Error would take the untyped rethrow path with no consent guidance.
+    await expect(agentSandboxesRepository.getReconstructedBackupState(child.id)).rejects.toThrow(
+      SnapshotPayloadTooLargeError,
+    );
+
+    // The chain must survive the refusal — it is intact, only too large.
+    const rows = await dbWrite
+      .select({ id: agentSandboxBackups.id })
+      .from(agentSandboxBackups)
+      .where(eq(agentSandboxBackups.sandbox_record_id, sandboxId));
+    expect(rows).toHaveLength(2);
   });
 });

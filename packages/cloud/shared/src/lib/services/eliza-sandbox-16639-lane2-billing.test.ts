@@ -1,11 +1,7 @@
 /**
- * Coverage lane 2 for the changed-file gate (#16639): the shared-runtime
- * billing suite. Lane 1 cannot compose it — its fetch/WebSocketPair stubbing
- * bleeds into the main suite's shared-runtime bridge cases when the two share
- * one process. The coverage gate runs every changed test file in its own
- * process (coverage-gate.yml), so this lane executes the suite exactly as its
- * standalone run does while contributing its ElizaSandboxService line hits to
- * the union-merged report.
+ * Runs the shared-runtime billing suite independently because its fetch and
+ * WebSocketPair stubs bleed into the main suite's bridge cases when both share
+ * one Bun process. The separate entry keeps those fixture boundaries intact.
  */
 import { describe, expect, test } from "bun:test";
 import "./eliza-sandbox-shared-billing.test.ts";

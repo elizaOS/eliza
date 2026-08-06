@@ -1,3 +1,4 @@
+/** Verifies background config persistence through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Background-config persistence (`persistence`): load/save round-trip and
@@ -15,7 +16,7 @@ import {
   DEFAULT_BACKGROUND_CONFIG,
 } from "./ui-preferences";
 
-// The boot default is the Canopy jungle wallpaper, returned for
+// The boot default is the Ember Night sunset wallpaper, returned for
 // empty/absent/unusable-record input.
 const DEFAULT = DEFAULT_BACKGROUND_CONFIG;
 // A present-but-malformed config still collapses to the plain shader field (a
@@ -153,8 +154,8 @@ describe("background config persistence", () => {
   });
 });
 
-describe("boot-default migration (black shader → Canopy, one-shot)", () => {
-  it("rewrites a persisted old-default black shader to the Canopy default once", () => {
+describe("boot-default migration (black shader → boot default, one-shot)", () => {
+  it("rewrites a persisted old-default black shader to the boot default once", () => {
     // The previous boot default was eagerly persisted on first boot, so an
     // install that never chose a background stores exactly this shape.
     localStorage.setItem(
@@ -185,6 +186,60 @@ describe("boot-default migration (black shader → Canopy, one-shot)", () => {
   it("a fresh install is stamped migrated on first load (later black picks stick)", () => {
     expect(loadBackgroundConfig()).toEqual(DEFAULT);
     saveBackgroundConfig({ mode: "shader", color: DEFAULT_BACKGROUND_COLOR });
+    expect(loadBackgroundConfig()).toEqual({
+      mode: "shader",
+      color: DEFAULT_BACKGROUND_COLOR,
+    });
+  });
+});
+
+describe("fresh-default flip to Ember Night preserves every stored preference", () => {
+  // Per the #17143 review: a stored Canopy (or any wallpaper) record carries
+  // no provenance distinguishing "old default" from "deliberate user pick",
+  // so the default flip must NOT migrate stored values — fresh installs only.
+  it("a fresh install (nothing stored) boots to the sunset default", () => {
+    expect(loadBackgroundConfig()).toEqual({
+      mode: "image",
+      color: "#000000",
+      imageUrl: "/bg-sunset.webp",
+    });
+  });
+
+  it("a stored Canopy wallpaper is preserved verbatim across repeated loads", () => {
+    const canopy = {
+      mode: "image",
+      color: "#000000",
+      imageUrl: "/wallpapers/canopy.webp",
+    } as const;
+    localStorage.setItem("eliza:ui-background", JSON.stringify(canopy));
+    // First load must not rewrite it…
+    expect(loadBackgroundConfig()).toEqual(canopy);
+    // …and neither may any subsequent ordinary load (no one-shot rewrite,
+    // no deferred persistence of a different value underneath it).
+    expect(loadBackgroundConfig()).toEqual(canopy);
+    expect(
+      JSON.parse(localStorage.getItem("eliza:ui-background") ?? "null"),
+    ).toEqual(canopy);
+  });
+
+  it("a stored non-default wallpaper pick (Reef) is preserved untouched", () => {
+    const reef = {
+      mode: "image",
+      color: "#000000",
+      imageUrl: "/wallpapers/reef.webp",
+    } as const;
+    localStorage.setItem("eliza:ui-background", JSON.stringify(reef));
+    expect(loadBackgroundConfig()).toEqual(reef);
+  });
+
+  it("a stored deliberate black shader (post-v2 stamp) is preserved", () => {
+    // An install that already ran the v2 migration and then deliberately
+    // picked black keeps black — the default flip adds no new migration.
+    localStorage.setItem("eliza:ui-background-default-v2", "1");
+    localStorage.setItem(
+      "eliza:ui-background",
+      JSON.stringify({ mode: "shader", color: DEFAULT_BACKGROUND_COLOR }),
+    );
     expect(loadBackgroundConfig()).toEqual({
       mode: "shader",
       color: DEFAULT_BACKGROUND_COLOR,

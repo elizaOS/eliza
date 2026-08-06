@@ -4,6 +4,8 @@
  * and integration glue are tested directly in smithers-task suites, while
  * production defaults remain enabled through shouldUseSmithersTaskRunner.
  */
+import { tmpdir } from "node:os";
+
 if (process.env.ELIZA_ORCHESTRATOR_SMITHERS === undefined) {
   process.env.ELIZA_ORCHESTRATOR_SMITHERS = "0";
 }
@@ -17,4 +19,17 @@ if (process.env.ELIZA_ORCHESTRATOR_SMITHERS === undefined) {
 // REAL temp git workspaces.
 if (process.env.ELIZA_ORCHESTRATOR_RESIDUALS_GATE === undefined) {
   process.env.ELIZA_ORCHESTRATOR_RESIDUALS_GATE = "0";
+}
+
+// The residuals gate and change-set capture probe a session's workdir with real
+// git (`git rev-parse --is-inside-work-tree`, `git ls-files --others`). Tests
+// build throwaway workdirs under the OS temp dir; on a host where an ANCESTOR of
+// the temp dir is itself a git work tree (a stray `/.git`, which exists on some
+// CI/VPS images), git discovery walks up past the fixture into that repo and its
+// dirt leaks in — a non-git fixture reads as "inside a work tree", and pre-seeded
+// files get scooped into change sets. Cap discovery at the temp root so fixtures
+// are hermetic regardless of the host's ambient git layout. Fixtures that create
+// their own repo under the temp dir still find it before hitting the ceiling.
+if (process.env.GIT_CEILING_DIRECTORIES === undefined) {
+  process.env.GIT_CEILING_DIRECTORIES = tmpdir();
 }

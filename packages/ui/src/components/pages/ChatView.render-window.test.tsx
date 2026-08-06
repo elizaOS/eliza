@@ -1,3 +1,4 @@
+/** Verifies ChatView transcript render window (#15281) through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Render-window coverage for ChatView (#15281): a long thread must mount at most

@@ -6,11 +6,11 @@
  * human and no microphone:
  *
  *   tap mic (hands-free) -> run /transcribe (transcription mode) -> the REAL
- *   local-ASR recorder opens the (fake) device, WAV-encodes the injected audio,
- *   and POSTs it to /api/asr/local-inference -> a transcript session accumulates
+ *   WAV-ASR recorder opens the (fake) device, WAV-encodes the injected audio,
+ *   and POSTs it to the configured ASR route -> a transcript session accumulates
  *   -> use the transcription stop control to finalize -> the shell POSTs the captured audio
- *   (audioBase64) to /api/transcripts and drops a transcript chip into the
- *   composer -> send -> the message bubble shows a transcript ATTACHMENT tile ->
+ *   (audioBase64) to /api/transcripts and drops the recording into the composer
+ *   -> send -> the message bubble shows a transcript ATTACHMENT tile ->
  *   tap it to open the editable viewer.
  *
  * The ASR / transcript / media / knowledge BACKENDS are mocked (not provisioned in
@@ -24,7 +24,13 @@
  *
  *   bun run --cwd packages/app test:e2e test/ui-smoke/transcript-realaudio.spec.ts
  */
-import { expect, type Locator, type Page, test } from "@playwright/test";
+import {
+  expect,
+  type Locator,
+  type Page,
+  type Route,
+  test,
+} from "@playwright/test";
 import {
   installDefaultAppRoutes,
   openAppPath,
@@ -166,6 +172,8 @@ interface TranscriptProbes {
   createBodies: TranscriptCreateProof[];
   updateCount: number;
   deleteCount: number;
+  shareGrantCount: number;
+  shareRevokeCount: number;
 }
 
 function freshProbes(): TranscriptProbes {
@@ -175,6 +183,8 @@ function freshProbes(): TranscriptProbes {
     createBodies: [],
     updateCount: 0,
     deleteCount: 0,
+    shareGrantCount: 0,
+    shareRevokeCount: 0,
   };
 }
 
@@ -316,7 +326,7 @@ async function installTranscriptBackendMocks(
     });
   });
 
-  await page.route("**/api/asr/local-inference", async (route) => {
+  const fulfillAsr = async (route: Route) => {
     if (route.request().method() !== "POST") return route.fallback();
     const body = route.request().postDataBuffer();
     const bytes = body?.byteLength ?? 0;
@@ -339,7 +349,9 @@ async function installTranscriptBackendMocks(
         capturedBytes: bytes,
       }),
     });
-  });
+  };
+  await page.route("**/api/asr/local-inference", fulfillAsr);
+  await page.route("**/api/asr/cloud", fulfillAsr);
 
   // The transcript store. POST persists; GET list/detail; PUT edit; DELETE.
   // installDefaultAppRoutes registers a GET-only **/api/transcripts** empty-list
@@ -428,6 +440,39 @@ async function installTranscriptBackendMocks(
     }
     await route.fallback();
   });
+  await page.route(
+    `**/api/transcripts/${TRANSCRIPT_ID}/share`,
+    async (route) => {
+      if (route.request().method() !== "POST") return route.fallback();
+      const request = route.request().postDataJSON() as {
+        entityId: string;
+        mode: "redacted" | "full";
+      };
+      probes.shareGrantCount += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          transcriptId: TRANSCRIPT_ID,
+          entityId: request.entityId,
+          mode: request.mode,
+        }),
+      });
+    },
+  );
+  await page.route(
+    `**/api/transcripts/${TRANSCRIPT_ID}/share/*`,
+    async (route) => {
+      if (route.request().method() !== "DELETE") return route.fallback();
+      probes.shareRevokeCount += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true }),
+      });
+    },
+  );
 
   // The served audio (viewer + Transcripts player <audio src>).
   const wav = tinyWav();
@@ -524,13 +569,13 @@ async function installTranscriptBackendMocks(
   });
 }
 
-/** Count finished POSTs to the ASR endpoint (proof the capture chain ran). */
+/** Count finished POSTs to a configured WAV-ASR endpoint. */
 function trackAsrPosts(page: Page): { count: () => number } {
   let posted = 0;
   page.on("requestfinished", (req) => {
     if (
       req.method() === "POST" &&
-      req.url().includes("/api/asr/local-inference") &&
+      /\/api\/asr\/(?:cloud|local-inference)(?:\?|$)/.test(req.url()) &&
       !req.url().includes("/status")
     ) {
       posted += 1;
@@ -562,11 +607,6 @@ async function finalizeTranscriptionViaSlash(page: Page): Promise<void> {
   await expect(page.getByTestId("chat-transcribing-badge")).toHaveCount(0, {
     timeout: 15_000,
   });
-  await expect(page.getByTestId("chat-composer-mic")).toHaveAttribute(
-    "aria-label",
-    "end conversation",
-    { timeout: 15_000 },
-  );
 }
 
 async function dispatchTranscriptionAgentAction(
@@ -594,11 +634,6 @@ async function finalizeTranscriptionViaAgentAction(page: Page): Promise<void> {
   await expect(page.getByTestId("chat-transcribing-badge")).toHaveCount(0, {
     timeout: 15_000,
   });
-  await expect(page.getByTestId("chat-composer-mic")).toHaveAttribute(
-    "aria-label",
-    "end conversation",
-    { timeout: 15_000 },
-  );
 }
 
 /**
@@ -718,7 +753,7 @@ async function openTranscriptViewer(page: Page): Promise<Locator> {
 /**
  * Drive the REAL transcript-capture chain from the chat overlay: tap mic ->
  * /transcribe -> real audio capture -> stop transcription to POST + finalize ->
- * the transcript chip lands in the composer -> send -> the transcript
+ * the recording lands in the composer -> send -> the transcript
  * ATTACHMENT tile renders in the thread. Returns once the tile is visible.
  */
 async function captureTranscriptToAttachment(
@@ -751,7 +786,7 @@ async function captureTranscriptToAttachment(
     )
     .not.toBeNull();
 
-  await expect(page.getByText(/^Transcript .*\.md$/).first()).toBeVisible({
+  await expect(page.getByText(/^Recording .*\.wav$/).first()).toBeVisible({
     timeout: 15_000,
   });
   // Type a caption so the user turn has text (the overlay drops empty-content
@@ -858,7 +893,7 @@ async function captureTranscriptRecordViaControlPath(
     )
     .not.toBeNull();
 
-  await expect(page.getByText(/^Transcript .*\.md$/).first()).toBeVisible({
+  await expect(page.getByText(/^Recording .*\.wav$/).first()).toBeVisible({
     timeout: 15_000,
   });
 
@@ -907,7 +942,7 @@ test("REAL audio: /transcribe records the injected WAV, POSTs it to ASR + /api/t
 
   // (REAL AUDIO + ATTACHMENT) Stop to FINALIZE. The shell POSTs the segments +
   // the REAL captured audio (audioBase64) to /api/transcripts and drops a
-  // `Transcript ….md` chip into the composer.
+  // `Recording ….wav` attachment into the composer.
   await finalizeTranscriptionViaSlash(page);
   await expect
     .poll(() => asr.count(), {
@@ -934,14 +969,21 @@ test("REAL audio: /transcribe records the injected WAV, POSTs it to ASR + /api/t
   );
   expect(realCreate?.segmentCount ?? 0).toBeGreaterThan(0);
 
-  // (LINKAGE c) Transcript OFF leaves the mic ON. After finalize,
-  // transcriptionMode is false and the hands-free parent loop resumes.
-  await expect(mic).toHaveAttribute("aria-label", "end conversation", {
-    timeout: 15_000,
-  });
+  // (LINKAGE c) Transcript OFF leaves hands-free enabled, but the completed
+  // transcript's text + attachment intentionally morph the trailing control to
+  // Send until that pending turn is submitted. After send, stopVoiceAndSettle
+  // below proves the parent hands-free loop resumed by finding and stopping it.
+  await expect(page.getByTestId("chat-composer-action")).toHaveAttribute(
+    "aria-label",
+    "send",
+    {
+      timeout: 15_000,
+    },
+  );
 
-  // The finished transcript becomes a composer attachment chip (document kind).
-  await expect(page.getByText(/^Transcript .*\.md$/).first()).toBeVisible({
+  // The finished transcript's audio becomes a pending composer attachment; the
+  // sent message is normalized to the transcript document tile by the server.
+  await expect(page.getByText(/^Recording .*\.wav$/).first()).toBeVisible({
     timeout: 15_000,
   });
 
@@ -987,17 +1029,16 @@ test("VIEWER + LIVE MEETING + KNOWLEDGE: every transcript surface action works",
   const probes = freshProbes();
   await installTranscriptBackendMocks(page, probes);
 
-  // Stub the clipboard + share/download seams so copy/share/save assert cleanly
-  // without a real OS dialog.
+  // Stub the clipboard + download seams so copy/save assert cleanly without a
+  // real OS dialog.
   await page.addInitScript(() => {
     const w = window as unknown as {
       __transcriptProbe: {
         copied: string | null;
-        shared: number;
         downloads: number;
       };
     };
-    w.__transcriptProbe = { copied: null, shared: 0, downloads: 0 };
+    w.__transcriptProbe = { copied: null, downloads: 0 };
     try {
       Object.defineProperty(navigator, "clipboard", {
         configurable: true,
@@ -1011,14 +1052,6 @@ test("VIEWER + LIVE MEETING + KNOWLEDGE: every transcript surface action works",
     } catch {
       /* clipboard already defined — leave it */
     }
-    (navigator as unknown as { share: (d: unknown) => Promise<void> }).share = (
-      _d: unknown,
-    ) => {
-      w.__transcriptProbe.shared += 1;
-      return Promise.resolve();
-    };
-    (navigator as unknown as { canShare: (d: unknown) => boolean }).canShare =
-      () => true;
     // Count programmatic downloads (anchor.click on a generated href) without
     // navigating to blob:/media URLs in the test.
     HTMLAnchorElement.prototype.click = function patchedClick(
@@ -1035,7 +1068,6 @@ test("VIEWER + LIVE MEETING + KNOWLEDGE: every transcript surface action works",
           window as unknown as {
             __transcriptProbe: {
               copied: string | null;
-              shared: number;
               downloads: number;
             };
           }
@@ -1120,24 +1152,27 @@ test("VIEWER + LIVE MEETING + KNOWLEDGE: every transcript surface action works",
     .poll(async () => (await probe()).downloads)
     .toBeGreaterThan(dlBeforeText);
 
-  // Share opens the permission sheet. The UI prepares an explicit agent-action
-  // request, defaulting to redacted access instead of sharing raw transcript
-  // text through the browser share sheet.
-  const shareBefore = (await probe()).shared;
+  // Share opens the permission sheet and defaults to redacted access. Exercise
+  // both mutations so this browser test proves the current transcript ACL API,
+  // not an OS share-dialog seam.
   await page.getByTestId("transcript-share").click();
-  await expect(page.getByTestId("transcript-share-panel")).toBeVisible({
+  await expect(page.getByTestId("transcript-share-sheet")).toBeVisible({
     timeout: 5_000,
   });
   await expect(
     page.getByTestId("transcript-share-mode-redacted"),
   ).toBeVisible();
   await page.getByTestId("transcript-share-target").fill("viewer-entity");
-  await page.getByTestId("transcript-share-prepare").click();
-  await expect
-    .poll(async () => (await probe()).shared)
-    .toBeGreaterThan(shareBefore);
-  await expect(page.getByTestId("transcript-share-notice")).toContainText(
-    /agent still has to confirm|Request copied/i,
+  await page.getByTestId("transcript-grant-share").click();
+  await expect.poll(() => probes.shareGrantCount).toBe(1);
+  await expect(page.getByTestId("transcript-share-success")).toContainText(
+    /redacted transcript access granted/i,
+    { timeout: 5_000 },
+  );
+  await page.getByTestId("transcript-revoke-share").click();
+  await expect.poll(() => probes.shareRevokeCount).toBe(1);
+  await expect(page.getByTestId("transcript-share-success")).toContainText(
+    /access revoked/i,
     { timeout: 5_000 },
   );
 

@@ -1,3 +1,4 @@
+/** Verifies useVoiceChat app-suspend capture teardown (#voice-V1) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 // #voice-V1 (composer leg): on the installed iOS PWA, backgrounding suspends

@@ -4,8 +4,63 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.Base64
+import org.json.JSONObject
 
 class TalkModeAndroidBridgeContractTest {
+    @Test
+    fun `local TTS request uses the port-free agent IPC contract`() {
+        val frame = JSONObject(
+            TalkModeAndroidBridgeContract.localAgentTtsFrame(
+                requestId = "tts-1",
+                token = "secret-token",
+                body = JSONObject().put("text", "hello")
+            )
+        )
+        assertEquals("http_request", frame.getString("method"))
+        val payload = frame.getJSONObject("payload")
+        assertEquals("POST", payload.getString("method"))
+        assertEquals("/api/tts/local-inference", payload.getString("path"))
+        assertEquals(
+            "Bearer secret-token",
+            payload.getJSONObject("headers").getString("Authorization")
+        )
+        assertEquals("hello", payload.getJSONObject("body").getString("text"))
+    }
+
+    @Test
+    fun `local TTS response decodes exact WAV bytes and rejects failures`() {
+        val wav = byteArrayOf(82, 73, 70, 70)
+        val success = JSONObject().apply {
+            put("ok", true)
+            put("result", JSONObject().apply {
+                put("status", 200)
+                put("bodyEncoding", "base64")
+                put("bodyBase64", Base64.getEncoder().encodeToString(wav))
+            })
+        }
+        assertTrue(
+            TalkModeAndroidBridgeContract.decodeLocalAgentWavResponse(
+                success.toString(),
+                Base64.getDecoder()::decode
+            ).contentEquals(wav)
+        )
+
+        val failure = JSONObject().put("ok", true).put(
+            "result",
+            JSONObject().put("status", 503).put("bodyEncoding", "base64")
+        )
+        try {
+            TalkModeAndroidBridgeContract.decodeLocalAgentWavResponse(
+                failure.toString(),
+                Base64.getDecoder()::decode
+            )
+            throw AssertionError("expected a provider failure")
+        } catch (error: IllegalStateException) {
+            assertTrue(error.message?.contains("503") == true)
+        }
+    }
+
     @Test
     fun `audio frame capture start payload preserves lifecycle fields`() {
         val payload = TalkModeAndroidBridgeContract.audioFramesStartedPayload(

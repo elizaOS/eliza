@@ -14,11 +14,7 @@ import {
 	PRIVACY_DENIED_TEXT,
 	revalidateOwnerExclusiveDisclosure,
 } from "../security/trusted-delivery-audience";
-import {
-	emitStreamingHook,
-	getStreamingContext,
-	runWithSuppressedModelStream,
-} from "../streaming-context";
+import { emitStreamingHook, getStreamingContext } from "../streaming-context";
 import {
 	getTrajectoryContext,
 	runWithTrajectoryContext,
@@ -71,6 +67,14 @@ export interface ExecutePlannedToolCallContext {
 export type ExecutePlannedToolCallOptions = HandlerOptions & {
 	actions?: readonly Action[];
 	onStreamChunk?: StreamChunkCallback;
+	abortSignal?: AbortSignal;
+	/**
+	 * Observes the normalized handler result immediately after settlement and
+	 * before post-execution bookkeeping can fail. Sensitive and owner-exclusive
+	 * payloads are projected before observation. The observer is isolated from
+	 * action execution and is never forwarded into HandlerOptions.
+	 */
+	onSettledResult?: (result: ActionResult) => void;
 };
 
 function isContentRecord(value: unknown): value is Record<string, unknown> {
@@ -162,6 +166,14 @@ export function projectActionResultForClipboard(
 			? result.data.actionName
 			: undefined;
 	const safeActionName = actionName ?? resultActionName;
+	const safeControlData = {
+		...(safeActionName ? { actionName: safeActionName } : {}),
+		...(result.data?.outcomeUnknown === true ? { outcomeUnknown: true } : {}),
+		...(result.data?.retryable === false ? { retryable: false } : {}),
+		...(result.data?.reconciliationRequired === true
+			? { reconciliationRequired: true }
+			: {}),
+	};
 	return {
 		success: result.success,
 		...(result.text !== undefined ? { text: result.text } : {}),
@@ -182,7 +194,9 @@ export function projectActionResultForClipboard(
 					userFacingEffectReceiptIds: result.userFacingEffectReceiptIds,
 				}
 			: {}),
-		...(safeActionName ? { data: { actionName: safeActionName } } : {}),
+		...(Object.keys(safeControlData).length > 0
+			? { data: safeControlData }
+			: {}),
 		...(result.turnComplete !== undefined
 			? { turnComplete: result.turnComplete }
 			: {}),
@@ -190,6 +204,72 @@ export function projectActionResultForClipboard(
 			? { continueChain: result.continueChain }
 			: {}),
 	};
+}
+
+function projectSettledResultForObserver(
+	action: Action,
+	result: ActionResult,
+): ActionResult {
+	const projected = projectActionResultForClipboard(
+		action,
+		result,
+		action.name,
+	);
+	if (action.disclosureGate?.require !== "owner_exclusive") return projected;
+	const controlData = {
+		actionName: action.name,
+		...(result.data?.outcomeUnknown === true ? { outcomeUnknown: true } : {}),
+		...(result.data?.retryable === false ? { retryable: false } : {}),
+		...(result.data?.reconciliationRequired === true
+			? { reconciliationRequired: true }
+			: {}),
+	};
+
+	return {
+		success: projected.success,
+		...(projected.effectReceipts !== undefined
+			? { effectReceipts: projected.effectReceipts }
+			: {}),
+		data: controlData,
+		...(projected.turnComplete !== undefined
+			? { turnComplete: projected.turnComplete }
+			: {}),
+		...(projected.continueChain !== undefined
+			? { continueChain: projected.continueChain }
+			: {}),
+	};
+}
+
+function publishSettledResult(
+	runtime: IAgentRuntime,
+	action: Action,
+	result: ActionResult,
+	observer: ((result: ActionResult) => void) | undefined,
+): void {
+	if (!observer) return;
+	try {
+		observer(projectSettledResultForObserver(action, result));
+	} catch (error) {
+		// error-policy:J7 completion observers provide durability bookkeeping;
+		// they must remain observable without changing the settled action result.
+		try {
+			runtime.reportError("ActionSettlementObserver", error, {
+				actionName: action.name,
+			});
+		} catch (reportingError) {
+			// error-policy:J7 diagnostics failure is logged locally because the
+			// already-settled action result must remain authoritative to callers.
+			runtime.logger.error(
+				{
+					src: "execute-planned-tool-call",
+					action: action.name,
+					error: stringifyError(error),
+					reportingError: stringifyError(reportingError),
+				},
+				"Action settlement observer and error reporting both failed",
+			);
+		}
+	}
 }
 
 function readMetadataString(message: Memory, key: string): string | undefined {
@@ -260,6 +340,7 @@ export async function executePlannedToolCall(
 	toolCall: PlannerToolCall | PlannedToolCall,
 	options: ExecutePlannedToolCallOptions = {},
 ): Promise<ActionResult> {
+	options.abortSignal?.throwIfAborted();
 	const action = (options.actions ?? runtime.actions).find(
 		(candidate) => candidate.name === toolCall.name,
 	);
@@ -295,24 +376,32 @@ export async function executePlannedToolCall(
 		action,
 		flattenUndeclaredParametersEnvelope(action, normalizeToolArgs(toolCall)),
 	);
-	const validation = validateToolArgs(
+	const argsForValidation = normalizeParamAliases(
 		action,
-		normalizeParamAliases(
+		dropEmptyOptionalArgs(
 			action,
-			dropEmptyOptionalArgs(
-				action,
-				dropUndeclaredPlannerWrapperArgs(action, normalizedArgs),
-			),
+			dropUndeclaredPlannerWrapperArgs(action, normalizedArgs),
 		),
 	);
+	const validation = validateToolArgs(action, argsForValidation);
 	if (!validation.valid) {
+		// The planner correlates a corrected retry with this failed operation by
+		// removing only arguments the schema rejected. Keeping this structural
+		// metadata at the validation boundary avoids parsing error prose and keeps
+		// unrelated calls to the same action distinct.
+		const invalidParameterNames = validation.invalidParameterNames ?? [];
 		return emitToolResult(
 			toolCall,
 			failureResult(
 				action.name,
 				validation.errors.join("; ") ||
 					`Invalid arguments for action ${action.name}`,
-				{ parameterErrors: validation.errors },
+				{
+					parameterErrors: validation.errors,
+					...(invalidParameterNames.length > 0
+						? { invalidParameterNames }
+						: {}),
+				},
 			),
 		);
 	}
@@ -321,7 +410,11 @@ export async function executePlannedToolCall(
 		action.parameters && action.parameters.length > 0
 			? (validation.args as ActionParameters | undefined)
 			: undefined;
-	const { actions: _scopedActions, ...handlerOptionOverrides } = options;
+	const {
+		actions: _scopedActions,
+		onSettledResult,
+		...handlerOptionOverrides
+	} = options;
 	const handlerOptions: HandlerOptions = {
 		...handlerOptionOverrides,
 		parameters,
@@ -345,6 +438,8 @@ export async function executePlannedToolCall(
 				handlerOptions,
 			);
 		} catch (error) {
+			// error-policy:J1 Tool validation failures are translated into the
+			// planner-visible failed tool result with the original error attached.
 			return emitToolResult(
 				toolCall,
 				failureResult(action.name, stringifyError(error), { error }),
@@ -379,6 +474,7 @@ export async function executePlannedToolCall(
 			),
 		);
 	}
+	options.abortSignal?.throwIfAborted();
 
 	const messageId = executorCtx.message.id as UUID | undefined;
 	const roomId = executorCtx.message.roomId as UUID;
@@ -399,6 +495,12 @@ export async function executePlannedToolCall(
 				content: actionStartContent,
 			})
 			.catch((err) => {
+				// error-policy:J7 Lifecycle events are diagnostics; a broken observer
+				// cannot block tool execution but remains visible to the runtime.
+				runtime.reportError("ExecutePlannedToolCall.emitEvent", err, {
+					action: action.name,
+					eventType: EventType.ACTION_STARTED,
+				});
 				runtime.logger.warn(
 					{
 						src: "execute-planned-tool-call",
@@ -448,6 +550,7 @@ export async function executePlannedToolCall(
 				runtime,
 				executorCtx.message,
 				async () => {
+					options.abortSignal?.throwIfAborted();
 					// Egress (#10469): this is the true execution boundary. Restore real
 					// secrets into the handler args ONLY here — the model, transcripts, logs,
 					// and trajectory upstream kept the placeholders. Fail loud if the model
@@ -477,21 +580,22 @@ export async function executePlannedToolCall(
 						{ actionName: action.name, modelClass: action.modelClass },
 						() =>
 							withActionStep(runtime, action.name, () =>
-								runWithSuppressedModelStream(() =>
-									action.handler(
-										runtime,
-										executorCtx.message,
-										executorCtx.state,
-										handlerOptions,
-										actionCallback,
-										executorCtx.responses,
-									),
+								action.handler(
+									runtime,
+									executorCtx.message,
+									executorCtx.state,
+									handlerOptions,
+									actionCallback,
+									executorCtx.responses,
 								),
 							),
 					);
 				},
 			),
 	});
+	// The handler result is the completion barrier. Publish it before event
+	// emission or disclosure revalidation can strand a committed side effect.
+	publishSettledResult(runtime, action, resultForEvent, onSettledResult);
 	if (ownerExclusive) {
 		const disclosure = await revalidateOwnerExclusiveDisclosure(
 			runtime,
@@ -531,6 +635,12 @@ export async function executePlannedToolCall(
 				},
 			})
 			.catch((err) => {
+				// error-policy:J7 The settled action result is authoritative; report a
+				// failed completion event without rewriting the tool outcome.
+				runtime.reportError("ExecutePlannedToolCall.emitEvent", err, {
+					action: action.name,
+					eventType: EventType.ACTION_COMPLETED,
+				});
 				runtime.logger.warn(
 					{
 						src: "execute-planned-tool-call",
@@ -554,7 +664,6 @@ export async function executePlannedToolCall(
 			});
 		}
 	}
-
 	return emitToolResult(toolCall, resultForEvent, {
 		suppressData: suppressActionResult,
 	});

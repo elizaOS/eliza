@@ -35,6 +35,7 @@ const appCorePlatformsRoot = join(root, "..", "app-core", "platforms");
 
 const BRAND_ORANGE = "#FF5800";
 const LAUNCH_BLACK = "#000000";
+const LAUNCH_FOREGROUND = "#fdfaf7";
 const SPLASH_BLACK = "#000000";
 const SPLASH_BLACK_RGB = [0, 0, 0];
 const ANDROID_SPLASH_TEMPLATE_FILES = [
@@ -176,12 +177,27 @@ describe("brand surfaces", () => {
     expect(html).not.toContain("#08080a");
     expect(html).toMatch(new RegExp(`--launch-bg:\\s*${LAUNCH_BLACK}`));
     expect(html).toMatch(
+      new RegExp(`--launch-foreground:\\s*${LAUNCH_FOREGROUND}`),
+    );
+    expect(html).toMatch(
       new RegExp(
         `html,\\s*body,\\s*#root\\s*\\{[^}]*background-color:\\s*var\\(--launch-bg,\\s*${LAUNCH_BLACK}\\)`,
         "s",
       ),
     );
     expect(html).not.toMatch(/background-color:\s*var\(--bg/);
+    expect(html).toMatch(
+      new RegExp(
+        `html,\\s*body\\s*\\{[^}]*color:\\s*var\\(--launch-foreground,\\s*${LAUNCH_FOREGROUND}\\)`,
+        "s",
+      ),
+    );
+    expect(html).toMatch(
+      new RegExp(
+        `\\.eliza-preboot-shell\\s*\\{[^}]*color:\\s*var\\(--launch-foreground,\\s*${LAUNCH_FOREGROUND}\\)`,
+        "s",
+      ),
+    );
     // The pre-#9565 brand-accent fallback must not regress.
     expect(html).not.toMatch(/var\(--bg,\s*#FF5800\)/);
   });
@@ -231,7 +247,6 @@ describe("brand surfaces", () => {
     const offenders: string[] = [];
     const files = [
       "src/main.tsx",
-      "src/model-tester-entry.tsx",
       "src/deep-link-handler.ts",
       "src/deep-link-routing.ts",
       "src/mobile-lifecycle.ts",

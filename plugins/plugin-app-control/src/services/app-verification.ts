@@ -5,6 +5,7 @@
  */
 
 import { type ExecFileOptions, execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -21,10 +22,12 @@ import {
 	describeScreenshotWithVision,
 	detectPackageManager,
 	ensureVerificationDir,
+	loadAppFromWorkdir,
 	type PackageManager,
 	parseEslintOutput,
 	parseTscOutput,
 	parseVitestOutput,
+	stripAnsi,
 	truncate,
 } from "./verification-helpers.js";
 
@@ -45,10 +48,28 @@ const TIMEOUTS = {
 
 const HEALTHY_STATUSES = new Set(["running", "connected", "active", "ready"]);
 
+function resolveDirectPublishTarget(
+	publishRoot: string,
+	appName: string,
+): {
+	root: string;
+	target: string;
+} {
+	const root = path.resolve(publishRoot);
+	const target = path.resolve(root, appName);
+	if (path.dirname(target) !== root || path.basename(target) !== appName) {
+		throw new Error(
+			"App publish name resolves outside the publish root or is not one direct child",
+		);
+	}
+	return { root, target };
+}
+
 export type VerificationCheckKind =
 	| "typecheck"
 	| "lint"
 	| "test"
+	| "publish"
 	| "build"
 	| "launch"
 	| "browser"
@@ -77,7 +98,7 @@ export type CheckResult = {
 	testSummary?: TestRunSummary;
 };
 
-export type VerificationProfile = "fast" | "full";
+export type VerificationProfile = "fast" | "build" | "full";
 export type ProjectKind = "app" | "plugin";
 export type StructuredProofKind = "APP_CREATE_DONE" | "PLUGIN_CREATE_DONE";
 
@@ -167,6 +188,18 @@ function expandProfile(
 	if (profile === "fast" || profile === undefined) {
 		return [{ kind: "typecheck" }, { kind: "lint" }];
 	}
+	// "build": everything verifiable in-place for a scaffolded directory app.
+	// The launch/browser checks require a runtime launcher for the app; fresh
+	// directory scaffolds have none (the worker host only executes plugin
+	// exports), so including them makes every first build fail-by-design.
+	if (profile === "build") {
+		return [
+			{ kind: "typecheck" },
+			{ kind: "lint" },
+			{ kind: "test" },
+			{ kind: "build" },
+		];
+	}
 	const checks: VerificationCheck[] = [
 		{ kind: "typecheck" },
 		{ kind: "lint" },
@@ -187,6 +220,19 @@ function packageScriptCommand(
 	return { file: "npm", args: ["run", "--silent", script] };
 }
 
+// Non-interactive child env (no TTY prompts, no color). NO_COLOR is the only
+// lever color libs honor by PRESENCE alone — tinyrainbow (vitest) treats the
+// mere presence of FORCE_COLOR or CI as force-ON, so `FORCE_COLOR: "0"`
+// cannot disable color by itself.
+function nonInteractiveEnv(): NodeJS.ProcessEnv {
+	return {
+		...process.env,
+		CI: process.env.CI ?? "1",
+		FORCE_COLOR: "0",
+		NO_COLOR: "1",
+	};
+}
+
 async function runScript(
 	pm: PackageManager,
 	script: string,
@@ -198,8 +244,7 @@ async function runScript(
 		cwd: workdir,
 		timeout: timeoutMs,
 		maxBuffer: EXEC_BUFFER,
-		// Ensure non-interactive child processes (no TTY prompts).
-		env: { ...process.env, CI: process.env.CI ?? "1", FORCE_COLOR: "0" },
+		env: nonInteractiveEnv(),
 		// On Windows, `npm` resolves to `npm.cmd` and `bun` to `bun.exe`.
 		// Without `shell: true`, Node's execFile won't apply PATHEXT and
 		// fails with ENOENT. Enabling the shell is the standard Windows
@@ -243,7 +288,12 @@ async function persistOutput(
 	return outputPath;
 }
 
-function combineOutput(stdout: string, stderr: string): string {
+function combineOutput(rawStdout: string, rawStderr: string): string {
+	// Every parsed check (typecheck/lint/test/build) funnels through here
+	// before persistence and parsing — the one place stripping ANSI protects
+	// all the line-anchored parsers at once.
+	const stdout = stripAnsi(rawStdout);
+	const stderr = stripAnsi(rawStderr);
 	if (!stdout) return stderr;
 	if (!stderr) return stdout;
 	return `${stdout}\n--- stderr ---\n${stderr}`;
@@ -326,7 +376,7 @@ async function runTests(
 		cwd: workdir,
 		timeout: TIMEOUTS.test,
 		maxBuffer: EXEC_BUFFER,
-		env: { ...process.env, CI: process.env.CI ?? "1", FORCE_COLOR: "0" },
+		env: nonInteractiveEnv(),
 	};
 	let stdout = "";
 	let stderr = "";
@@ -785,7 +835,7 @@ function shouldRequireStructuredProof(
 	}
 	if (opts.structuredProof !== undefined) return true;
 	if (projectKind === "plugin") return true;
-	return opts.profile === "full";
+	return opts.profile === "full" || opts.profile === "build";
 }
 
 function proofField(proof: Record<string, unknown>, field: string): unknown {
@@ -1175,6 +1225,18 @@ export class AppVerificationService extends Service {
 							"Launch check requested but AppControlClient was not initialized",
 						);
 					}
+					// Register-before-launch: launch resolves through the runtime's
+					// registry, but a freshly built app used to be registered only by
+					// the PASS-path room bridge — circular with this check, so a
+					// first-build launch check could never pass. Same idempotent
+					// load-from-directory the bridge uses; when registration fails the
+					// launch check itself reports the unresolvable name.
+					const load = await loadAppFromWorkdir(opts.workdir);
+					if (!load.ok) {
+						logger.warn(
+							`[AppVerificationService] pre-launch app registration failed: ${load.error}`,
+						);
+					}
 					result = await runLaunchCheck(dir, client, check.appName, launchCtx);
 					break;
 				}
@@ -1240,9 +1302,105 @@ export class AppVerificationService extends Service {
 			}
 		}
 
-		const verdict: "pass" | "fail" = results.every((r) => r.passed)
+		let verdict: "pass" | "fail" = results.every((r) => r.passed)
 			? "pass"
 			: "fail";
+
+		// Authoritative static publish (opt-in via ELIZA_APP_PUBLISH_DIR): when
+		// every check passed, the verifier itself ships the freshly built dist
+		// to the publish target. The builder's own deploy step is best-effort —
+		// a model can copy before its final rebuild and serve a stale bundle
+		// (live incident: comet-catch published the scaffold placeholder while
+		// the real game sat in dist). Copy-after-pass is deterministic and
+		// idempotent; a failed copy fails the run — "passed" while the live
+		// page is stale would be a false verdict.
+		// Settings-first with env fallback, mirroring resolvePublishTarget on
+		// the prompt side — a settings-only install must get the authoritative
+		// re-publish, not just the deploy prompt (review finding on #17479).
+		const publishSetting = this.runtime.getSetting("APP_PUBLISH_DIR");
+		const publishRoot =
+			(typeof publishSetting === "string" ? publishSetting.trim() : "") ||
+			process.env.ELIZA_APP_PUBLISH_DIR?.trim();
+		// Only a profile that actually rebuilt dist may publish it — a "fast"
+		// pass would ship whatever stale dist was lying around.
+		const builtFresh = results.some((r) => r.kind === "build" && r.passed);
+		if (
+			verdict === "pass" &&
+			projectKind === "app" &&
+			publishRoot &&
+			builtFresh &&
+			opts.appName
+		) {
+			const publishStart = nowMs();
+			const fs = await import("node:fs/promises");
+			const distDir = path.join(opts.workdir, "dist");
+			let staging: string | undefined;
+			let publishLog = `Publishing ${distDir} for ${opts.appName}\n`;
+			let published = false;
+			try {
+				const { root, target } = resolveDirectPublishTarget(
+					publishRoot,
+					opts.appName,
+				);
+				await fs.access(path.join(distDir, "index.html"));
+				await fs.mkdir(root, { recursive: true });
+				staging = await fs.mkdtemp(path.join(root, ".publish-stage-"));
+				await fs.cp(distDir, staging, { recursive: true });
+				await fs.access(path.join(staging, "index.html"));
+
+				// Keep copy work outside the live directory. The two same-filesystem
+				// renames prevent clients from observing a mixed old/new file tree;
+				// the backup also makes the swap recoverable if activation fails.
+				await fs.mkdir(target, { recursive: true });
+				const backup = path.join(root, `.publish-backup-${randomUUID()}`);
+				await fs.rename(target, backup);
+				try {
+					await fs.rename(staging, target);
+					staging = undefined;
+				} catch (error) {
+					// error-policy:J2 restore the previously live tree before adding
+					// publish-swap context to the activation failure.
+					await fs.rename(backup, target);
+					throw new Error("Failed to activate staged app publish", {
+						cause: error,
+					});
+				}
+				try {
+					await fs.rm(backup, { recursive: true, force: true });
+				} catch (error) {
+					// error-policy:J6 the new tree is already live; abandoned backup
+					// cleanup is observable but must not roll back a valid publish.
+					logger.warn(
+						`[AppVerificationService] Failed to remove publish backup ${backup}: ${error instanceof Error ? error.message : String(error)}`,
+					);
+				}
+				published = true;
+				publishLog += `Publish complete: ${target}.\n`;
+			} catch (err) {
+				// error-policy:J1 boundary — a publish failure becomes a failed
+				// check on the result, never a silent pass with a stale page.
+				if (staging) {
+					try {
+						await fs.rm(staging, { recursive: true, force: true });
+					} catch (cleanupError) {
+						// error-policy:J6 staging cleanup is best-effort after the
+						// publish failure has already been made observable below.
+						logger.warn(
+							`[AppVerificationService] Failed to remove publish staging ${staging}: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
+						);
+					}
+				}
+				publishLog += `Publish error: ${err instanceof Error ? err.message : String(err)}\n`;
+				verdict = "fail";
+			}
+			results.push({
+				kind: "publish",
+				passed: published,
+				durationMs: nowMs() - publishStart,
+				output: truncate(publishLog, OUTPUT_INLINE_LIMIT),
+				outputPath: await persistOutput(dir, "publish", publishLog),
+			});
+		}
 
 		const result: VerificationResult = {
 			verdict,

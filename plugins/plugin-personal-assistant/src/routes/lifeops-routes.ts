@@ -30,8 +30,13 @@ import {
 import {
   CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE,
   type CalendarOwnerMutationGateway,
+  CalendarService,
+  CalendarServiceError,
 } from "@elizaos/plugin-calendar";
-import { handleCalendarRoutes } from "@elizaos/plugin-calendar/routes/calendar-routes";
+import {
+  type CalendarRouteService,
+  handleCalendarRoutes,
+} from "@elizaos/plugin-calendar/routes/calendar-routes";
 import {
   LIFEOPS_SCHEDULE_STATE_SCOPES,
   type SyncLifeOpsScheduleObservationsRequest,
@@ -96,6 +101,7 @@ import {
   type LifeOpsGmailSpamReviewStatus,
   type VerifyLifeOpsTelegramConnectorRequest,
 } from "../contracts/index.js";
+import { areLifeOpsActivitySignalsActive } from "../lifeops/activity-signal-lifecycle.js";
 import {
   loadLifeOpsAppState,
   saveLifeOpsAppState,
@@ -140,6 +146,22 @@ export interface LifeOpsRouteContext {
 function requireAuthorizedRouteContext(ctx: LifeOpsRouteContext): boolean {
   if (!ctx.state.runtime) {
     ctx.error(ctx.res, "Agent runtime is not available", 503);
+    return false;
+  }
+  return true;
+}
+
+function requireActivitySignalsAvailable(ctx: LifeOpsRouteContext): boolean {
+  if (!requireAuthorizedRouteContext(ctx)) {
+    return false;
+  }
+  const runtime = ctx.state.runtime;
+  if (!runtime || !areLifeOpsActivitySignalsActive(runtime)) {
+    ctx.error(
+      ctx.res,
+      "LifeOps activity signals are unavailable because the personal-assistant runtime is not active",
+      503,
+    );
     return false;
   }
   return true;
@@ -206,6 +228,9 @@ const LIFEOPS_RATE_LIMITS = {
   calendar_create: { maxRequests: 20, windowMs: 60_000 },
   calendar_update: { maxRequests: 20, windowMs: 60_000 },
   calendar_delete: { maxRequests: 10, windowMs: 60_000 },
+  calendar_source_read: { maxRequests: 120, windowMs: 60_000 },
+  calendar_source_write: { maxRequests: 20, windowMs: 60_000 },
+  calendar_source_sync: { maxRequests: 30, windowMs: 60_000 },
   // OAuth + connector lifecycle: tight cap because these mutate stored
   // credentials or initiate consent flows.
   oauth_init: { maxRequests: 5, windowMs: 60_000 },
@@ -780,6 +805,98 @@ async function runRoute(
 }
 
 /**
+ * Runs an owner-gated calendar route against the singleton calendar service.
+ * Calendar owns its domain service; constructing a LifeOpsService here would
+ * expose only the compatibility subset and silently omit source administration.
+ */
+async function runCalendarRoute(
+  ctx: LifeOpsRouteContext,
+  fn: (service: CalendarRouteService) => Promise<void>,
+): Promise<boolean> {
+  const operation = routeOperation(ctx);
+  const span = createIntegrationTelemetrySpan({
+    boundary: "lifeops",
+    operation,
+  });
+  if (!requireAuthorizedRouteContext(ctx)) {
+    span.failure({ statusCode: 503, errorKind: "runtime_unavailable" });
+    return true;
+  }
+  const runtime = ctx.state.runtime;
+  if (!runtime) {
+    span.failure({ statusCode: 503, errorKind: "runtime_unavailable" });
+    return true;
+  }
+
+  try {
+    let loaded = runtime.getService(CalendarService.serviceType);
+    if (!loaded) {
+      try {
+        loaded = await runtime.getServiceLoadPromise(
+          CalendarService.serviceType,
+        );
+      } catch (error) {
+        // error-policy:J2 context-adding rethrow — the owner route reports the
+        // failed service boot and preserves its cause in a typed 503.
+        runtime.reportError("CalendarRoutes.serviceLoad", error, {
+          operation,
+          serviceType: CalendarService.serviceType,
+        });
+        throw new CalendarServiceError(
+          503,
+          "Calendar service failed to load.",
+          "CALENDAR_SERVICE_LOAD_FAILED",
+          { cause: error },
+        );
+      }
+    }
+    if (!(loaded instanceof CalendarService)) {
+      ctx.error(ctx.res, "Calendar service is not available", 503);
+      span.failure({
+        statusCode: 503,
+        errorKind: "calendar_service_unavailable",
+      });
+      return true;
+    }
+    await fn(loaded);
+    span.success({
+      statusCode: ctx.res.statusCode >= 400 ? ctx.res.statusCode : 200,
+    });
+    return true;
+  } catch (error) {
+    // error-policy:J1 boundary translation — typed calendar/domain failures
+    // become their explicit HTTP status; unexpected faults stay observable.
+    if (
+      error instanceof CalendarServiceError ||
+      error instanceof LifeOpsServiceError
+    ) {
+      logger.warn(
+        {
+          boundary: "calendar",
+          operation,
+          statusCode: error.status,
+        },
+        `[calendar] Route failed: ${error.message}`,
+      );
+      span.failure({
+        statusCode: error.status,
+        error,
+        errorKind: "calendar_service_error",
+      });
+      ctx.error(ctx.res, error.message, error.status);
+      return true;
+    }
+    runtime.reportError("CalendarRoutes.ownerBoundary", error, { operation });
+    logger.error(
+      { boundary: "calendar", operation },
+      `[calendar] Route crashed: ${errorMessage(error)}`,
+    );
+    span.failure({ error, errorKind: "unhandled_error" });
+    throw error;
+  }
+}
+
+/**
  * Variant of {@link runRoute} that injects a {@link FinancesService} (the
  * finance back-end in @elizaos/plugin-finances) instead of LifeOpsService, and
  * maps {@link FinancesServiceError} to the same HTTP shape. Used by the
@@ -1033,13 +1150,8 @@ export async function handleLifeOpsRoutes(
       method,
       pathname,
       url,
-      runRoute: (fn) =>
-        runRoute(
-          ctx,
-          fn as unknown as (service: LifeOpsService) => Promise<void>,
-        ),
-      rateLimit: (key) =>
-        rateLimitRequest(ctx, key as LifeOpsRateLimitOperation),
+      runRoute: (fn) => runCalendarRoute(ctx, fn),
+      rateLimit: (key) => rateLimitRequest(ctx, key),
       json: (data, status) => json(res, data, status),
       readJsonBody: <T extends object>() => readJsonBody<T>(req, res),
       decodePathComponent: (raw, label) =>
@@ -2012,6 +2124,7 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "GET" && pathname === "/api/lifeops/activity-signals") {
+    if (!requireActivitySignalsAvailable(ctx)) return true;
     return runRoute(ctx, async (service) => {
       await ensureRouteSchema(ctx.state.runtime);
       json(res, {
@@ -2031,6 +2144,7 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/lifeops/activity-signals") {
+    if (!requireActivitySignalsAvailable(ctx)) return true;
     if (rateLimitRequest(ctx, "default")) return true;
     const body = await readJsonBody<CaptureLifeOpsActivitySignalRequest>(
       req,

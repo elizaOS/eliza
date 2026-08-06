@@ -41,9 +41,9 @@ const meta = {
         style={{ width: 320 }}
         className="rounded-md border border-border bg-surface p-2"
       >
-        <ul className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1">
           <Story />
-        </ul>
+        </div>
       </div>
     ),
   ],

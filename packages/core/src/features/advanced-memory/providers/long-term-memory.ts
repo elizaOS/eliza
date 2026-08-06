@@ -7,7 +7,6 @@
  * in agreement), and bounds the rendered text length; contributes nothing for
  * the agent's own entity or when no service/memories exist.
  */
-import { logger } from "../../../logger.ts";
 import type {
 	IAgentRuntime,
 	Memory,
@@ -33,6 +32,8 @@ export const longTermMemoryProvider: Provider = {
 	contextGate: { anyOf: ["general"] },
 	cacheStable: false,
 	cacheScope: "turn",
+	timeoutMs: 10_000,
+	timeoutMode: "degrade",
 	roleGate: { minRole: "USER" },
 
 	get: async (
@@ -140,17 +141,18 @@ export const longTermMemoryProvider: Provider = {
 			};
 		} catch (error) {
 			const err = error instanceof Error ? error.message : String(error);
-			logger.error(
-				{ src: "provider:memory", err },
-				"Error in longTermMemoryProvider",
-			);
+			// error-policy:J4 long-term memory becomes explicitly unavailable; a
+			// failed query is not a legitimate zero-memory result.
+			runtime.reportError("LongTermMemoryProvider.get", error, {
+				roomId: message.roomId,
+			});
 			return {
 				data: {
-					memoryCount: 0,
+					available: false,
 					error: err,
 				},
-				values: { longTermMemories: "" },
-				text: "",
+				values: { longTermMemoryAvailable: false },
+				text: "Long-term memory is unavailable.",
 			};
 		}
 	},

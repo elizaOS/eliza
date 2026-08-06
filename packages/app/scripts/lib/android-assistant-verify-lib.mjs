@@ -149,6 +149,32 @@ export function parseAssistantSurfaces(dumpsysPackageOutput) {
 }
 
 /**
+ * Decide whether the manifest-declared assistant surfaces are sufficiently
+ * registered for the runtime lane. Some emulator images omit the VIS session
+ * service from `dumpsys package <pkg>` even though the framework accepts the
+ * `android.voice_interaction` metadata and successfully launches the VIS
+ * session. Treat only that narrow omission as proven by an actual VIS launch;
+ * every resolver-facing surface still has to appear in the package dump.
+ */
+export function assistantSurfacesRegistered({
+  surfaces,
+  visInvoked,
+  voiceinteractionLanded,
+}) {
+  if (surfaces?.allPresent) return true;
+  return (
+    surfaces?.missing?.length === 1 &&
+    surfaces.missing[0] === "voiceInteractionSessionService" &&
+    surfaces.present?.voiceInteractionService === true &&
+    surfaces.present?.recognitionService === true &&
+    surfaces.present?.inputMethodService === true &&
+    surfaces.present?.assistActivity === true &&
+    visInvoked?.detected === true &&
+    voiceinteractionLanded?.landed === true
+  );
+}
+
+/**
  * Parse `cmd role holders android.app.role.ASSISTANT` output for whether our
  * package holds the assistant role. The command prints one holder package per
  * line (empty when no holder). A held role is the precondition for the assist

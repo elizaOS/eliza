@@ -1,11 +1,11 @@
 /** Verifies root test discovery excludes tool checkouts without masking first-party paths. */
 
-import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, test } from "vitest";
+import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -128,7 +128,7 @@ describe("root Vitest boundaries", () => {
     }
 
     const result = spawnSync(
-      process.execPath,
+      "node",
       [
         vitestBin,
         "run",
@@ -139,7 +139,16 @@ describe("root Vitest boundaries", () => {
         "--globals",
         "--no-color",
       ],
-      { encoding: "utf8" },
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          CHOKIDAR_USEPOLLING: "1",
+          NODE_OPTIONS: "--no-addons",
+          WS_NO_BUFFER_UTIL: "1",
+          WS_NO_UTF_8_VALIDATE: "1",
+        },
+      },
     );
     if (result.error) throw result.error;
     expect(result.status, result.stderr).toBe(0);

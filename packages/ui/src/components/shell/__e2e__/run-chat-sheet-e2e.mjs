@@ -18,9 +18,9 @@
  *       short input pull springs back · pill tap → INPUT (no keyboard) ·
  *       grabber tap steps INPUT → HALF → INPUT.
  *       Full matrix: CHAT_SHEET_STATE_MATRIX.md.
- *   - AUTOSCROLL, per input type: tail follows at bottom, a single >80px
- *       streamed growth remains pinned, reading-scrollback is not yanked, and
- *       scrollback remains stable without extra floating controls.
+ *   - AUTOSCROLL, per input type: tail follows at bottom through streamed
+ *       growth and live sheet resizing, reading-scrollback is not yanked by
+ *       either content growth or resizing, and no floating controls appear.
  *   - EVERY control/state via deterministic fixture loads + interactions:
  *       empty · peek/half/full · typing→send · attach image→thumbnail→remove ·
  *       mic press→recording · voice speaking→mute toggle · responding typing
@@ -445,6 +445,66 @@ async function release(p, pointer, up = 0) {
   }
 }
 
+/** Real touch swipe from a chosen point inside a rendered element. Attachment
+ * tiles intentionally reserve their lower-right 44px hit region for Remove, so
+ * their draggable pixels must be exercised from a non-control point instead of
+ * the element center. */
+async function touchSwipeFromFraction(
+  p,
+  selector,
+  dx,
+  dy,
+  { xFraction = 0.18, yFraction = 0.18, steps = 8, stepDelayMs = 4 } = {},
+) {
+  await p.evaluate(
+    () => new Promise((resolve) => requestAnimationFrame(() => resolve())),
+  );
+  const box = await p.locator(selector).boundingBox();
+  assert(Boolean(box), `real-touch: ${selector} has a rendered box`);
+  const startX = box.x + box.width * xFraction;
+  const startY = box.y + box.height * yFraction;
+  const client = await p.context().newCDPSession(p);
+  const touchPoint = (x, y) => ({
+    x,
+    y,
+    id: 1,
+    radiusX: 4,
+    radiusY: 4,
+    force: 1,
+  });
+  let ended = false;
+  try {
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [touchPoint(startX, startY)],
+    });
+    for (let i = 1; i <= steps; i += 1) {
+      await client.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [
+          touchPoint(startX + (dx * i) / steps, startY + (dy * i) / steps),
+        ],
+      });
+      if (stepDelayMs > 0) await p.waitForTimeout(stepDelayMs);
+    }
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+    ended = true;
+  } finally {
+    if (!ended) {
+      await Promise.allSettled([
+        client.send("Input.dispatchTouchEvent", {
+          type: "touchCancel",
+          touchPoints: [],
+        }),
+      ]);
+    }
+    await client.detach();
+  }
+}
+
 async function maximizeByPull(p, pointer = "mouse") {
   await gesture(p, 760, { pointer, slow: true, steps: 24 });
   await p.waitForTimeout(SETTLE);
@@ -471,15 +531,14 @@ async function openToFullDetent(p, pointer, label = "open to FULL") {
 async function restoreFromMaximized(p, pointer = "mouse", keyboardTouch = false) {
   const zone = p.getByTestId("chat-maximize-restore-zone");
   await zone.waitFor();
-  // 120px keeps the released height inside the FULL detent's magnet
-  // (SHEET_DETENT_MAGNET below the inset ceiling), so the restore
-  // deterministically snaps to the inset FULL detent instead of free-resting a
-  // few px under the magnet edge (140px sat right on that boundary).
+  // Pull far enough to exercise the complete restore shape on every viewport;
+  // the component itself hands control to the finger after only a small slop.
+  const restoreDistance = Math.max(120, Math.ceil((await viewportH(p)) * 0.12));
   if (pointer === "touch" && keyboardTouch) {
     await zone.focus();
     await p.keyboard.press("ArrowDown");
   } else {
-    await gesture(p, -120, {
+    await gesture(p, -restoreDistance, {
       pointer,
       slow: true,
       steps: 8,
@@ -614,9 +673,10 @@ async function runDragSuite(p, pointer, tag) {
     `[${pointer}] releasing the committed over-pull stays MAXIMIZED`,
   );
   await restoreFromMaximized(p, pointer);
+  const restoredH = await sheetHeight(p);
   assert(
-    near(await sheetHeight(p), fullH, TOL + 48),
-    `[${pointer}] settles back near FULL after restore`,
+    restoredH > halfH && restoredH < vh * 0.9,
+    `[${pointer}] restore settles in tall window mode below 90% (${Math.round(restoredH)}px)`,
   );
   const restoredState = await chatState(p);
   const restoredStillMaximized =
@@ -692,9 +752,25 @@ async function runDragSuite(p, pointer, tag) {
   await gesture(p, 120, { pointer, slow: true });
   await p.waitForTimeout(SETTLE);
   assert((await variant(p)) === "open", `[${pointer}] re-opened for the click-out check`);
-  await p
-    .getByTestId("chat-sheet-backdrop")
-    .click({ position: { x: 16, y: 16 }, force: true });
+  // The backdrop is deliberately pointer-transparent in production. Dispatch
+  // the synthetic pointer sequence directly so its target remains the backdrop
+  // marker; a forced Playwright click retargets through it to the sheet/root and
+  // incorrectly exercises the inside-tap path.
+  const backdrop = p.getByTestId("chat-sheet-backdrop");
+  await backdrop.dispatchEvent("pointerdown", {
+    pointerId: 91,
+    pointerType: pointer,
+    button: 0,
+    clientX: 16,
+    clientY: 16,
+  });
+  await backdrop.dispatchEvent("pointerup", {
+    pointerId: 91,
+    pointerType: pointer,
+    button: 0,
+    clientX: 16,
+    clientY: 16,
+  });
   await p.waitForTimeout(SETTLE);
   assert((await variant(p)) === "closed", `[${pointer}] clicking outside COLLAPSES the chat`);
   await snap(p, `${tag}-clicked-out-collapsed`);
@@ -995,6 +1071,12 @@ async function runContinuumSuite(p, pointer, tag) {
     (await detent(p)) === "half",
     `[${tag}-continuum] grabber tap from INPUT reveals the thread at HALF`,
   );
+  assert(
+    (await p.evaluate(
+      () => document.activeElement?.getAttribute("data-testid"),
+    )) !== "chat-composer-textarea",
+    `[${tag}-continuum] grabber tap keeps the keyboard down after the handle moves`,
+  );
   await grabberTap();
   assert(
     (await detent(p)) === "collapsed" && (await variant(p)) === "closed",
@@ -1098,7 +1180,6 @@ async function runMidDragCommitSuite(p, tag) {
       .count()) === 1 && (await detent(p)) === "full",
     `[${tag}-held] the long-haul pull to the top ends MAXIMIZED`,
   );
-
   // Put the chat away again for the reversal leg (restore-strip drag down).
   await restoreFromMaximized(p, "mouse");
   await gesture(p, -(vh + 80), { pointer: "mouse", slow: true, steps: 20 });
@@ -1121,8 +1202,8 @@ async function runMidDragCommitSuite(p, tag) {
   };
   const upH1 = await leg(topY);
   assert(
-    near(upH1, grabY2 - topY - 120, 30),
-    `[${tag}-held] reversal leg 1 (up) tracks (${Math.round(upH1)}px)`,
+    upH1 > vh * 0.65,
+    `[${tag}-held] reversal leg 1 (up) grows the panel tall (${Math.round(upH1)}px)`,
   );
   const downH = await leg(grabY2);
   assert(
@@ -1131,8 +1212,8 @@ async function runMidDragCommitSuite(p, tag) {
   );
   const upH2 = await leg(topY);
   assert(
-    near(upH2, grabY2 - topY - 120, 30),
-    `[${tag}-held] reversal leg 3 (up again) tracks identically (${Math.round(upH2)}px)`,
+    near(upH2, upH1, 30),
+    `[${tag}-held] reversal leg 3 (up again) returns to the same height (${Math.round(upH2)}px ≈ ${Math.round(upH1)}px)`,
   );
   await p.mouse.up();
   await p.waitForTimeout(SETTLE);
@@ -1239,6 +1320,83 @@ async function scrollReaderUp(p, pointer) {
   return after;
 }
 
+async function startResizeAnchorProbe(p) {
+  await p.evaluate(() => {
+    const viewport = document.querySelector(
+      '[data-testid="chat-thread-scroll"]',
+    );
+    if (!(viewport instanceof HTMLElement)) {
+      throw new Error("chat transcript viewport is missing");
+    }
+    const samples = [];
+    const sample = () => {
+      const messages = viewport.querySelectorAll("[data-message-id]");
+      const last = messages.item(messages.length - 1);
+      const viewportRect = viewport.getBoundingClientRect();
+      const lastRect = last?.getBoundingClientRect();
+      const sheet = document.querySelector('[data-testid="chat-sheet"]');
+      samples.push({
+        bottomDelta:
+          Math.max(0, viewport.scrollHeight - viewport.clientHeight) -
+          viewport.scrollTop,
+        lastGap: lastRect ? viewportRect.bottom - lastRect.bottom : null,
+        sheetHeight: sheet?.getBoundingClientRect().height ?? 0,
+      });
+    };
+    // This probe registers after the product observer. Sampling in a microtask
+    // observes the state after every observer in the delivery has run, while
+    // still preceding the dependency's deliberately deferred next-frame work.
+    const observer = new ResizeObserver(() => queueMicrotask(sample));
+    observer.observe(viewport);
+    sample();
+    window.__chatResizeAnchorProbe = { observer, samples };
+  });
+}
+
+async function stopResizeAnchorProbe(p) {
+  return p.evaluate(() => {
+    const probe = window.__chatResizeAnchorProbe;
+    probe?.observer.disconnect();
+    delete window.__chatResizeAnchorProbe;
+    return probe?.samples ?? [];
+  });
+}
+
+async function provePinnedResizeStability(p, pointer) {
+  await startResizeAnchorProbe(p);
+  await gesture(p, -120, {
+    pointer,
+    hold: true,
+    slow: true,
+    steps: 24,
+    target: "chat-sheet-grabber",
+  });
+  await p.waitForTimeout(60);
+  const samples = await stopResizeAnchorProbe(p);
+  await release(p, pointer);
+  await p.waitForTimeout(SETTLE);
+
+  const heights = samples.map((sample) => sample.sheetHeight);
+  const bottomDeltas = samples.map((sample) => Math.abs(sample.bottomDelta));
+  const lastGaps = samples
+    .map((sample) => sample.lastGap)
+    .filter((gap) => gap !== null);
+  const heightTravel = Math.max(...heights) - Math.min(...heights);
+  const gapTravel = Math.max(...lastGaps) - Math.min(...lastGaps);
+  assert(
+    samples.length >= 8 && heightTravel >= 80,
+    `[${pointer}] AUTOSCROLL samples a meaningful slow resize (${samples.length} samples, ${heightTravel.toFixed(1)}px)`,
+  );
+  assert(
+    Math.max(...bottomDeltas) <= 1.5,
+    `[${pointer}] AUTOSCROLL stays synchronously bottom-pinned during resize (max delta ${Math.max(...bottomDeltas).toFixed(2)}px)`,
+  );
+  assert(
+    lastGaps.length >= 8 && gapTravel <= 1.5,
+    `[${pointer}] AUTOSCROLL last message has no painted jump during resize (gap travel ${gapTravel.toFixed(2)}px)`,
+  );
+}
+
 async function runAutoScrollSuite(p, pointer, tag) {
   await openSheetToFull(p, pointer);
   const beforeLargeGrowth = await threadScrollState(p);
@@ -1269,7 +1427,30 @@ async function runAutoScrollSuite(p, pointer, tag) {
     `[${pointer}] AUTOSCROLL stays pinned after a new assistant line (delta=${Math.round(afterAppend?.bottomDelta ?? -1)})`,
   );
 
+  await provePinnedResizeStability(p, pointer);
+  await waitForThreadBottom(p);
+
   const readerPosition = await scrollReaderUp(p, pointer);
+  await gesture(p, -80, {
+    pointer,
+    hold: true,
+    slow: true,
+    steps: 16,
+    target: "chat-sheet-grabber",
+  });
+  const resizedReaderPosition = await threadScrollState(p);
+  await release(p, pointer);
+  await p.waitForTimeout(SETTLE);
+  const settledReaderPosition = await threadScrollState(p);
+  assert(
+    !!readerPosition &&
+      !!resizedReaderPosition &&
+      !!settledReaderPosition &&
+      Math.abs(resizedReaderPosition.scrollTop - readerPosition.scrollTop) <=
+        2 &&
+      Math.abs(settledReaderPosition.scrollTop - readerPosition.scrollTop) <= 2,
+    `[${pointer}] AUTOSCROLL resize and settle preserve a reader in history (${Math.round(readerPosition?.scrollTop ?? 0)} → ${Math.round(resizedReaderPosition?.scrollTop ?? 0)} → ${Math.round(settledReaderPosition?.scrollTop ?? 0)})`,
+  );
   await mutateAssistant(
     p,
     "__growLastAssistant",
@@ -1301,7 +1482,12 @@ const sink = { logs: [], errors: [] };
 // Drive a SLOW held grabber drag from the sheet's current open state to `endY`,
 // sampling every step: the cursor Y and the panel's live TOP edge (what the user
 // perceives as the sheet edge under the finger). Returns the per-step rows.
-async function sampleGrabberDrag(page, endY, steps = 34) {
+async function sampleGrabberDrag(
+  page,
+  endY,
+  steps = 34,
+  target = "chat-sheet-grabber",
+) {
   const panelTopY = async () => {
     const box = await page
       .getByTestId("chat-sheet")
@@ -1309,7 +1495,7 @@ async function sampleGrabberDrag(page, endY, steps = 34) {
       .catch(() => null);
     return box ? box.y : null;
   };
-  const b = await page.getByTestId("chat-sheet-grabber").boundingBox();
+  const b = await page.getByTestId(target).boundingBox();
   const cx = b.x + b.width / 2;
   const startY = b.y + b.height / 2;
   const rows = [];
@@ -1320,7 +1506,38 @@ async function sampleGrabberDrag(page, endY, steps = 34) {
     await page.mouse.move(cx, cursorY);
     await page.waitForTimeout(22);
     const top = await panelTopY();
-    rows.push({ cursorY, top, div: top == null ? null : top - cursorY });
+    const maximized =
+      (await page
+        .getByTestId("chat-sheet")
+        .getAttribute("data-maximized")) === "true";
+    const material = await page.evaluate(() => {
+      const rim = document.querySelector('[data-testid="chat-sheet-rim"]');
+      const surface = document.querySelector(
+        '[data-testid="chat-sheet-surface"]',
+      );
+      return {
+        rimMounted: rim != null,
+        rimOpacity: rim
+          ? Number.parseFloat(getComputedStyle(rim).opacity)
+          : null,
+        sheetGrabbers: document.querySelectorAll(
+          '[data-testid="chat-sheet-grabber"]',
+        ).length,
+        restoreHandles: document.querySelectorAll(
+          '[data-testid="chat-maximize-restore-handle"]',
+        ).length,
+        surfaceBorderWidth: surface
+          ? Number.parseFloat(getComputedStyle(surface).borderTopWidth)
+          : null,
+      };
+    });
+    rows.push({
+      cursorY,
+      top,
+      maximized,
+      div: top == null ? null : top - cursorY,
+      ...material,
+    });
   }
   await page.mouse.up();
   await page.waitForTimeout(SETTLE);
@@ -1371,35 +1588,75 @@ function assertFingerTracking(rows, band, label, topFloor = 40) {
 // geometry reads.
 async function runFingerTrackingSuite(page) {
   // (A) OPEN → drag the grabber past the very top (maximize). Below the inset
-  // ceiling the panel top tracks the finger 1:1; the last stretch to the screen
-  // top is the DISCRETE maximize spring, so the 1:1 band is measured on the
-  // sub-ceiling samples (topFloor 90) and the drag runs PAST the top so the
-  // discrete commit fires and the panel reaches the edge.
+  // ceiling the panel top tracks the finger 1:1; the final rounded→full-bleed
+  // interval shares that same live motion coordinate, and the state commit only
+  // chooses its resting endpoint.
   await gesture(page, 160, { pointer: "mouse", slow: false, steps: 1 });
   await page.waitForTimeout(SETTLE);
   const vh = await viewportH(page);
   const up = await sampleGrabberDrag(page, -30);
   const upStats = assertFingerTracking(up, 28, "[finger] UP open→top", 90);
-  // The top must actually be reachable in one drag (the discrete commit springs
-  // the panel edge-to-edge once the over-pull crosses the threshold).
+  // The top must actually be reachable in one drag. Verify the settled endpoint
+  // too so the release cannot rebound after a correct held frame.
   const minTop = Math.min(...up.filter((r) => r.top != null).map((r) => r.top));
+  await page.waitForTimeout(SETTLE);
+  const settledUpTop = await panelTop(page);
   assert(
-    minTop <= 40,
-    `[finger] UP drag reaches the screen top (min panel top ${Math.round(minTop)}px ≤ 40px)`,
+    settledUpTop <= 8,
+    `[finger] UP drag reaches and settles at the screen top (sample min ${Math.round(minTop)}px, settled top ${Math.round(settledUpTop)}px ≤ 8px)`,
   );
 
-  // Reset to a clean inset FULL sheet for the collapse test.
-  await page.keyboard.press("Escape");
-  await page.waitForTimeout(SETTLE);
-  await gesture(page, 160, { pointer: "mouse", slow: false, steps: 1 });
-  await page.waitForTimeout(SETTLE);
-  await gesture(page, 220, { pointer: "mouse", slow: false, steps: 1 });
-  await page.waitForTimeout(SETTLE);
-
-  // (B) FULL → drag the grabber all the way down; the sheet edge follows 1:1
-  // and the chat ends collapsed at the bottom (pill/input).
-  const down = await sampleGrabberDrag(page, vh - 8);
-  const downStats = assertFingerTracking(down, 28, "[finger] DOWN full→pill");
+  // (B) MAXIMIZED → drag the restore strip all the way down. A tiny accidental
+  // wobble is inert; the first deliberate movement exits full-screen and the
+  // window edge follows 1:1 to the bottom.
+  const down = await sampleGrabberDrag(
+    page,
+    vh - 8,
+    34,
+    "chat-maximize-restore-zone",
+  );
+  const firstMovingIndex = down.findIndex(
+    (row) => row.top != null && row.top > 4,
+  );
+  assert(
+    firstMovingIndex >= 0 && firstMovingIndex <= 1,
+    `[finger] DOWN restore hands control to the finger on its first deliberate sample (index ${firstMovingIndex})`,
+  );
+  const firstMovingRow = down.find((row) => row.top != null && row.top > 4);
+  assert(
+    firstMovingRow != null && firstMovingRow.top <= 80,
+    `[finger] DOWN restore begins near the finger with no viewport dead zone (top ${Math.round(firstMovingRow?.top ?? -1)}px)`,
+  );
+  assert(
+    firstMovingRow?.rimOpacity != null && firstMovingRow.rimOpacity < 0.75,
+    `[finger] DOWN restore unwinds fullscreen material continuously on its first frame (rim opacity ${firstMovingRow?.rimOpacity?.toFixed(2) ?? "n/a"} < 0.75)`,
+  );
+  assert(
+    down.every((row) => row.maximized),
+    `[finger] held restore keeps one committed render state until pointer-up`,
+  );
+  assert(
+    down.every(
+      (row) => row.sheetGrabbers === 0 && row.restoreHandles === 0,
+    ),
+    `[finger] held restore does not paint a second handle over the sheet chrome`,
+  );
+  assert(
+    down.every((row) => row.rimMounted),
+    `[finger] restore keeps one persistent outer rim mounted through full-screen and window states`,
+  );
+  assert(
+    down.every(
+      (row) =>
+        row.surfaceBorderWidth != null && row.surfaceBorderWidth === 0,
+    ),
+    `[finger] restore keeps the painted surface borderless so the rim has one owner`,
+  );
+  const downStats = assertFingerTracking(
+    down,
+    28,
+    "[finger] DOWN restore→pill",
+  );
   assert(
     (await variant(page)) === "closed",
     `[finger] DOWN drag collapses the chat to the bottom`,
@@ -1410,25 +1667,20 @@ async function runFingerTrackingSuite(page) {
   // screen top under the finger (no freeze, and it must maximize with the finger
   // still ON screen, not far past it), and reversing DOWN in the same gesture
   // must un-scale 1:1 (no displaced dead zone from a committed-maximize state).
-  // Reset to a clean INSET-full sheet (Escape → input → two flicks half→full):
-  // opening from the pill/half and over-flicking lands NEAR-maximized, which
-  // would make the round trip start inside the overshoot region.
-  if ((await detent(page)) === "pill") {
-    await page.getByTestId("chat-pill").click();
-    await page.waitForTimeout(SETTLE);
-  }
-  await page.keyboard.press("Escape");
-  await page.waitForTimeout(SETTLE);
-  await gesture(page, 160, { pointer: "mouse", slow: false, steps: 1 });
-  await page.waitForTimeout(SETTLE);
+  // Reset to a clean HALF sheet. FULL's old inset detent itself reaches the new
+  // 90% snap band on this viewport, so HALF is the honest window-mode starting
+  // point for the same-gesture maximize/reverse round trip.
+  await gotoFixture(page);
+  await page.waitForSelector('[data-testid="chat-sheet-grabber"]');
+  await page.waitForTimeout(500);
   await gesture(page, 160, { pointer: "mouse", slow: false, steps: 1 });
   await page.waitForTimeout(SETTLE);
   assert(
-    (await detent(page)) === "full" &&
+    (await detent(page)) === "half" &&
       (await page
         .locator('[data-testid="chat-sheet"][data-maximized="true"]')
         .count()) === 0,
-    `[finger] reached INSET-full before the maximize round-trip (detent ${await detent(page)})`,
+    `[finger] reached window-mode HALF before the maximize round-trip (detent ${await detent(page)})`,
   );
   {
     const b = await page.getByTestId("chat-sheet-grabber").boundingBox();
@@ -1437,12 +1689,24 @@ async function runFingerTrackingSuite(page) {
     const topY = -28; // just past the screen top
     const rows = [];
     const readTop = async (cursorY, phase) => {
-      const top = await page
+      const state = await page
         .getByTestId("chat-sheet")
-        .boundingBox()
-        .then((box) => box?.y ?? null)
-        .catch(() => null);
-      rows.push({ phase, cursorY, top });
+        .evaluate((sheet) => ({
+          top: sheet.getBoundingClientRect().top,
+          bottom: sheet.getBoundingClientRect().bottom,
+          surfaceBottom:
+            document
+              .querySelector('[data-testid="chat-sheet-surface"]')
+              ?.getBoundingClientRect().bottom ?? null,
+          maximized: sheet.getAttribute("data-maximized") === "true",
+        }))
+        .catch(() => ({
+          top: null,
+          bottom: null,
+          surfaceBottom: null,
+          maximized: false,
+        }));
+      rows.push({ phase, cursorY, ...state });
     };
     await page.mouse.move(cx, startY);
     await page.mouse.down();
@@ -1476,33 +1740,42 @@ async function runFingerTrackingSuite(page) {
       upTop <= 8,
       `[finger] FULL→top drag reaches the screen top under the finger (min top ${Math.round(upTop)}px ≤ 8px — no freeze)`,
     );
-    // The DOWN phase must track the finger 1:1 (constant offset) — no dead zone
-    // from a committed-maximize state. This round trip only spans the over-pull
-    // region (top ~0→inset-full), so trim just the pinned-at-screen-top boundary
-    // (top ≤ 6, where the grabber gap compresses) and measure the divergence's
-    // spread directly.
-    const downDivs = rows
-      .filter((r) => r.phase === "down" && r.top != null && r.top > 6)
-      .map((r) => r.top - r.cursorY);
-    let downWorst = -1;
-    if (downDivs.length >= 6) {
-      const sorted = [...downDivs].sort((a, c) => a - c);
-      const med = sorted[Math.floor(sorted.length / 2)];
-      downWorst = Math.max(...downDivs.map((d) => Math.abs(d - med)));
-      assert(
-        downWorst <= 34,
-        `[finger] MAXIMIZE reversal DOWN tracks 1:1 (max drift ${Math.round(downWorst)}px from the ${Math.round(med)}px offset ≤ 34px — no committed-maximize dead zone)`,
-      );
-    } else {
-      assert(false, `[finger] MAXIMIZE reversal: too few down samples (${downDivs.length})`);
-    }
+    const heldBottomEdgeDeltas = rows
+      .filter(
+        (r) =>
+          r.maximized && r.bottom != null && r.surfaceBottom != null,
+      )
+      .map((r) => Math.abs(r.bottom - r.surfaceBottom));
+    const maxHeldBottomEdgeDelta = Math.max(...heldBottomEdgeDeltas, 0);
+    assert(
+      heldBottomEdgeDeltas.length > 0 && maxHeldBottomEdgeDelta <= 2,
+      `[finger] held maximize keeps one shared sheet/surface bottom edge (max delta ${Math.round(maxHeldBottomEdgeDelta)}px ≤ 2px)`,
+    );
+    // While the pull remains above the 90% restore line, MAXIMIZED must mean
+    // truly full-height: no wallpaper strip is allowed above the panel. Once
+    // the finger crosses below 90%, the state flips back to the inset window.
+    const downMaximized = rows.filter(
+      (r) => r.phase === "down" && r.maximized && r.top != null,
+    );
+    assert(
+      downMaximized.length > 0 &&
+        Math.min(...downMaximized.map((r) => r.top)) <= 8,
+      `[finger] MAXIMIZED restore reaches the viewport top while held above 90%`,
+    );
+    const firstWindowRow = rows.find(
+      (r) => r.phase === "down" && !r.maximized && r.top != null,
+    );
+    assert(
+      firstWindowRow != null && firstWindowRow.top <= vh * 0.1 + 40,
+      `[finger] restore switches to window mode near the 90% line (first window top ${Math.round(firstWindowRow?.top ?? -1)}px)`,
+    );
     console.log(
-      `  ℹ maximize round-trip: up top ${Math.round(upTop)}px, maximized at cursorY ${maxedAtCursor == null ? "n/a" : Math.round(maxedAtCursor)}, down drift ${Math.round(downWorst)}px`,
+      `  ℹ maximize round-trip: up top ${Math.round(upTop)}px, maximized at cursorY ${maxedAtCursor == null ? "n/a" : Math.round(maxedAtCursor)}, restored near top ${Math.round(firstWindowRow?.top ?? -1)}px`,
     );
   }
 
   console.log(
-    `  ℹ finger tracking: up drift ${Math.round(upStats?.worst ?? -1)}px, down drift ${Math.round(downStats?.worst ?? -1)}px (handle offsets ${Math.round(upStats?.median ?? 0)}/${Math.round(downStats?.median ?? 0)}px)`,
+    `  ℹ finger tracking: up/down drift ${Math.round(upStats?.worst ?? -1)}/${Math.round(downStats?.worst ?? -1)}px (handle offsets ${Math.round(upStats?.median ?? 0)}/${Math.round(downStats?.median ?? 0)}px); restore began moving at top ${Math.round(firstMovingRow?.top ?? -1)}px`,
   );
 }
 
@@ -1625,9 +1898,12 @@ async function runAnimationAppearanceSuite(page) {
   // sampleCurve), so the guard is `< 260` — squarely between that animated peak
   // and the ~415px one-frame snap it exists to catch. `steppedFrames >= 8`
   // already proves the motion is spread across many frames, not a single jump.
+  await gotoFixture(page);
+  await page.waitForSelector('[data-testid="chat-sheet-grabber"]');
+  await page.waitForTimeout(500);
+  await gesture(page, 160, { pointer: "mouse", slow: false, steps: 1 });
+  await page.waitForTimeout(SETTLE);
   const collapse = await sampleCurve(async () => {
-    await page.getByTestId("chat-sheet-grabber").click(); // full → half
-    await page.waitForTimeout(SETTLE);
     await page.getByTestId("chat-sheet-grabber").click(); // half → input (collapse)
   });
   assert(
@@ -2268,43 +2544,57 @@ try {
     await p.close();
   }
 
-  // TRANSCRIBING while an inline reply is in flight (#9880 path).
-  //
-  // #9880 was a LIT, DEAD mic button: mid-transcription the voice control stayed
-  // rendered but its off-path was gated on the reply finishing, so tapping it did
-  // nothing until `responding` cleared. The approved composer polish resolved that
-  // structurally rather than by ungating — active transcription now gives the
-  // activity meter the full lane and exposes exactly ONE control, the Stop. With
-  // no mic button rendered at all there is no lit-dead-control state to reach,
-  // and ChatOverlay.test.tsx ("gives active transcription the full lane plus one
-  // Stop control") pins that contract.
-  //
-  // So this case asserts the structural guarantee — one Stop, no mic — instead of
-  // the old two-control master-off. Asserting the mic here would re-require the
-  // very control the polish removed.
+  // TRANSCRIBING while an inline reply is in flight (#9880 path). Long-form
+  // transcription owns the trailing controls exclusively: one Stop finalizes
+  // the transcript so capture never exposes two competing stop affordances.
   {
     const p = await ctrl();
     attachConsole(p, sink);
+    const logs = [];
+    p.on("console", (m) => logs.push(m.text()));
     await gotoFixture(p, `${url}?transcribing&recording&speaking&phase=listening`);
     await p.waitForSelector('[data-testid="chat-composer-transcription-stop"]');
     await p.waitForTimeout(500);
     assert(
       (await p.getByTestId("chat-composer-mic").count()) === 0,
-      "TRANSCRIBING+REPLY: no mic control is rendered (no lit-dead button to tap)",
+      "TRANSCRIBING+REPLY: the duplicate mic control stays removed",
+    );
+    const transcriptionStop = p.getByTestId(
+      "chat-composer-transcription-stop",
     );
     assert(
-      (await p.getByTestId("chat-composer-transcription-stop").count()) === 1,
-      "TRANSCRIBING+REPLY: exactly one Stop control owns the trailing slot",
+      (await transcriptionStop.count()) === 1,
+      "TRANSCRIBING+REPLY: exactly one transcription Stop is rendered",
+    );
+    assert(
+      (await transcriptionStop.getAttribute("aria-label")) ===
+        "stop transcription",
+      "TRANSCRIBING+REPLY: the exclusive Stop names its finalization behavior",
     );
     // The Stop must be live mid-reply — the #9880 defect was an inert control
     // while `responding` was true, so an enabled Stop is the real regression pin.
     assert(
-      (await p
-        .getByTestId("chat-composer-transcription-stop")
-        .getAttribute("aria-disabled")) !== "true",
+      (await transcriptionStop.getAttribute("aria-disabled")) !== "true",
       "TRANSCRIBING+REPLY: the Stop is enabled even while the reply is in flight",
     );
     await snap(p, "state-transcribing-inline-reply");
+    await transcriptionStop.click();
+    await p.waitForFunction(
+      () =>
+        document.querySelector(
+          '[data-testid="chat-composer-transcription-stop"]',
+        ) === null,
+    );
+    assert(
+      logs.some((text) =>
+        text.includes("[fixture] toggleTranscriptionMode -> false"),
+      ),
+      "TRANSCRIBING+REPLY: the exclusive Stop reaches the transcription controller",
+    );
+    assert(
+      (await p.getByTestId("chat-composer-mic").count()) <= 1,
+      "TRANSCRIBING+REPLY: finalization never revives a duplicate mic control",
+    );
     await p.close();
   }
 
@@ -2312,7 +2602,7 @@ try {
   {
     const p = await ctrl();
     attachConsole(p, sink);
-    await gotoFixture(p, `${url}?phase=responding`);
+    await gotoFixture(p, `${url}?streaming`);
     await p.waitForSelector('[data-testid="chat-sheet-grabber"]');
     await p.waitForTimeout(500);
     await p.getByTestId("chat-sheet-grabber").focus();
@@ -2363,7 +2653,8 @@ try {
     await p.close();
   }
 
-  // attach image → thumbnail + remove button (real file through the hidden input)
+  // Attachments keep their remove controls above the grabber while their tile
+  // and gap pixels remain part of the continuous sheet-drag surface.
   {
     const p = await ctrl();
     attachConsole(p, sink);
@@ -2373,19 +2664,53 @@ try {
     // 1x1 transparent PNG
     const pngB64 =
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
-    await p.setInputFiles('input[type="file"]', {
-      name: "shot.png",
-      mimeType: "image/png",
-      buffer: Buffer.from(pngB64, "base64"),
-    });
+    await p.setInputFiles('input[type="file"]', [
+      {
+        name: "shot.png",
+        mimeType: "image/png",
+        buffer: Buffer.from(pngB64, "base64"),
+      },
+      {
+        name: "shot-two.png",
+        mimeType: "image/png",
+        buffer: Buffer.from(pngB64, "base64"),
+      },
+    ]);
     await p.waitForTimeout(350);
     assert((await p.locator('img[alt="shot.png"]').count()) === 1, "ATTACH: pending image thumbnail rendered");
+    assert((await p.locator('img[alt="shot-two.png"]').count()) === 1, "ATTACH: second thumbnail renders a real inter-tile gap");
     assert(await p.getByTestId("chat-composer-action").isVisible(), "ATTACH: send button shown for image-only turn");
     assert(await p.getByLabel("remove shot.png").isVisible(), "ATTACH: per-image remove button shown");
     await snap(p, "state-image-attached");
     await p.getByLabel("remove shot.png").click();
     await p.waitForTimeout(250);
     assert((await p.locator('img[alt="shot.png"]').count()) === 0, "REMOVE: thumbnail cleared after remove");
+
+    // Re-add the first tile, then start a real touch pull on its image pixels.
+    // The list owns the same pull binding as the grabber, while each remove
+    // button stops pointerdown before it can seed a sheet gesture.
+    await p.setInputFiles('input[type="file"]', {
+      name: "shot.png",
+      mimeType: "image/png",
+      buffer: Buffer.from(pngB64, "base64"),
+    });
+    await p.waitForTimeout(250);
+    await touchSwipeFromFraction(p, 'img[alt="shot.png"]', 0, -160, {
+      steps: 8,
+      stepDelayMs: 4,
+    });
+    await p.waitForTimeout(SETTLE);
+    assert((await detent(p)) === "half", "ATTACH DRAG: pull through tile pixels opens the sheet");
+
+    await p.keyboard.press("Escape");
+    await p.waitForTimeout(SETTLE);
+    assert((await detent(p)) === "collapsed", "ATTACH DRAG: Escape restores input before gap proof");
+    await touchSwipe(p, testIdSelector("chat-pending-attachment-list"), 0, -160, {
+      steps: 8,
+      stepDelayMs: 4,
+    });
+    await p.waitForTimeout(SETTLE);
+    assert((await detent(p)) === "half", "ATTACH DRAG: pull through attachment-list gap opens the sheet");
     await p.close();
   }
 
@@ -2980,8 +3305,11 @@ try {
   // clearance), so the panel must fill the WHOLE viewport. The bug: panelMaxH
   // still subtracted the stale bottomPad, so the maximized panel floated a
   // gesture-inset BELOW the top — a hard-cut glass seam under the status bar and
-  // the safe-area-padded status strip pushed down. Assert: panel reaches y≈0 AND
-  // the header strip starts at the viewport top, not a gesture-inset lower.
+  // the safe-area-padded status strip pushed down. The rounded surface must stay
+  // coincident with the sheet while that inset closes; extending the rounded
+  // surface below the sheet paints a second bottom rim. Assert: one shared
+  // bottom edge throughout, then a gap-free final endpoint; panel reaches y≈0
+  // and the header strip starts at the viewport top.
   {
     const p = await ctrl();
     attachConsole(p, sink);
@@ -2999,12 +3327,55 @@ try {
     await p.waitForTimeout(120);
     await gesture(p, 90, { pointer: "mouse", slow: false, steps: 1 }); // → half
     await p.waitForTimeout(SETTLE);
+    await p.evaluate(() => {
+      globalThis.__maximizeBottomFrames = [];
+      const sample = () => {
+        const sheet = document.querySelector('[data-testid="chat-sheet"]');
+        const surface = document.querySelector(
+          '[data-testid="chat-sheet-surface"]',
+        );
+        if (sheet && surface) {
+          globalThis.__maximizeBottomFrames.push({
+            maximized: sheet.getAttribute("data-maximized") === "true",
+            sheetBottom: sheet.getBoundingClientRect().bottom,
+            surfaceBottom: surface.getBoundingClientRect().bottom,
+            viewportHeight: window.innerHeight,
+          });
+        }
+        if (globalThis.__maximizeBottomFrames.length < 140) {
+          requestAnimationFrame(sample);
+        }
+      };
+      requestAnimationFrame(sample);
+    });
     await maximizeByPull(p); // → full-bleed
     assert(
       (await p
         .locator('[data-testid="chat-sheet"][data-maximized="true"]')
         .count()) === 1,
       "MAX-INSET: maximized full-bleed",
+    );
+    const maximizeFrames = await p.evaluate(
+      () => globalThis.__maximizeBottomFrames,
+    );
+    const committedFrames = maximizeFrames.filter((frame) => frame.maximized);
+    const maxBottomEdgeDelta = Math.max(
+      0,
+      ...committedFrames.map(
+        (frame) => Math.abs(frame.sheetBottom - frame.surfaceBottom),
+      ),
+    );
+    assert(
+      committedFrames.length > 2 && maxBottomEdgeDelta <= 1,
+      `MAX-INSET: sheet and painted glass retain one bottom edge throughout maximize (max delta ${maxBottomEdgeDelta.toFixed(1)}px)`,
+    );
+    const finalFrame = committedFrames.at(-1);
+    const finalFloorGap = finalFrame
+      ? finalFrame.viewportHeight - finalFrame.surfaceBottom
+      : Number.POSITIVE_INFINITY;
+    assert(
+      finalFloorGap <= 1,
+      `MAX-INSET: settled painted glass reaches the viewport floor (gap ${finalFloorGap.toFixed(1)}px)`,
     );
     const box = await p.getByTestId("chat-sheet").boundingBox();
     assert(

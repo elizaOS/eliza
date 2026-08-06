@@ -5,16 +5,19 @@
  * exposes imperative controls used by the surrounding onboarding flow.
  */
 import { animated, useSpring } from "@react-spring/three";
-import { Environment, useGLTF } from "@react-three/drei";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, useLoader, useThree } from "@react-three/fiber";
 import {
   forwardRef,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
 import * as THREE from "three";
+import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import {
   BACK_BTN_CY,
   BACK_BTN_H,
@@ -36,9 +39,15 @@ import { useT } from "@/providers/I18nProvider";
 
 export interface ModelBHandle {
   spin: (direction?: 1 | -1) => void;
-  restartMessages: () => void;
+  restartMessages: (platform?: string, resetDelayMs?: number) => void;
   sendMessage: (text: string) => void;
   slideDown: () => void;
+}
+
+export interface ChatRenderState {
+  phase: "animating" | "terminal";
+  renderedMessages: number;
+  totalMessages: number;
 }
 
 interface ModelBProps {
@@ -47,6 +56,8 @@ interface ModelBProps {
   onWaitingChange?: (waiting: boolean) => void;
   onBackClick?: () => void;
   onVideoClick?: () => void;
+  onReady?: () => void;
+  onChatRenderStateChange?: (state: ChatRenderState) => void;
   onSwitcherDone?: () => void;
   onSwitcherOpen?: () => void;
   loginTitle?: string;
@@ -54,27 +65,6 @@ interface ModelBProps {
   platform?: string;
   introDelayMs?: number;
 }
-
-let triggerSpin: ((direction: 1 | -1) => void) | null = null;
-let triggerRestartMessages: (() => void) | null = null;
-let triggerSendMessage: ((text: string) => void) | null = null;
-let triggerSlideDown: (() => void) | null = null;
-let currentTryActive = false;
-let stopMessageAnimation: (() => void) | null = null;
-let currentOnWaitingChange: ((waiting: boolean) => void) | null = null;
-let currentOnBackClick: (() => void) | null = null;
-let currentOnVideoClick: (() => void) | null = null;
-let currentOnSwitcherDone: (() => void) | null = null;
-let currentOnSwitcherOpen: (() => void) | null = null;
-let switcherOpenFiredEarly = false;
-let switcherDoneFiredEarly = false;
-let currentSwitcherOpen = false;
-let currentLoginTitle: string | undefined;
-let currentLoginSubtitle: string | undefined;
-let switcherPhase: "idle" | "opening" | "open" | "closing" = "idle";
-let switcherProgress = 0;
-let switcherShiftProgress = 0;
-let switcherFinalProgress = 0;
 
 const DEFAULT_BOT_RESPONSES = [
   "sure thing! i'll take care of that right away",
@@ -88,13 +78,178 @@ const DEFAULT_BOT_RESPONSES = [
   "all done! organized everything so it's easier to find next time",
   "consider it handled",
 ];
-let botResponses = DEFAULT_BOT_RESPONSES;
-let botResponseIndex = 0;
-let backBtnScreenRect: { x: number; y: number; w: number; h: number } | null =
-  null;
-let vidBtnScreenPos: { x: number; y: number } | null = null;
-let cameraZoomDone = false;
-let introDelay = 3000;
+
+type SwitcherPhase = "idle" | "opening" | "open" | "closing";
+
+interface ModelRuntime {
+  triggerSpin: ((direction: 1 | -1) => void) | null;
+  triggerRestartMessages:
+    | ((platform?: string, resetDelayMs?: number) => void)
+    | null;
+  triggerSendMessage: ((text: string) => void) | null;
+  triggerSlideDown: (() => void) | null;
+  invalidate: (() => void) | null;
+  tryActive: boolean;
+  settleMessageAnimation: (() => void) | null;
+  onWaitingChange: ((waiting: boolean) => void) | null;
+  onBackClick: (() => void) | null;
+  onVideoClick: (() => void) | null;
+  onReady: (() => void) | null;
+  onChatRenderStateChange: ((state: ChatRenderState) => void) | null;
+  onSwitcherDone: (() => void) | null;
+  onSwitcherOpen: (() => void) | null;
+  switcherOpenFiredEarly: boolean;
+  switcherDoneFiredEarly: boolean;
+  switcherOpen: boolean;
+  loginTitle: string | undefined;
+  loginSubtitle: string | undefined;
+  switcherPhase: SwitcherPhase;
+  switcherProgress: number;
+  switcherShiftProgress: number;
+  switcherFinalProgress: number;
+  chatDirty: boolean;
+  botResponses: string[];
+  botResponseIndex: number;
+  backButtonRect: { x: number; y: number; w: number; h: number } | null;
+  videoButtonPosition: { x: number; y: number } | null;
+  backButtonElement: HTMLButtonElement | null;
+  videoButtonElement: HTMLButtonElement | null;
+  platform: string | undefined;
+  cameraZoomDone: boolean;
+  introDelay: number;
+}
+
+function createModelRuntime(): ModelRuntime {
+  return {
+    triggerSpin: null,
+    triggerRestartMessages: null,
+    triggerSendMessage: null,
+    triggerSlideDown: null,
+    invalidate: null,
+    tryActive: false,
+    settleMessageAnimation: null,
+    onWaitingChange: null,
+    onBackClick: null,
+    onVideoClick: null,
+    onReady: null,
+    onChatRenderStateChange: null,
+    onSwitcherDone: null,
+    onSwitcherOpen: null,
+    switcherOpenFiredEarly: false,
+    switcherDoneFiredEarly: false,
+    switcherOpen: false,
+    loginTitle: undefined,
+    loginSubtitle: undefined,
+    switcherPhase: "idle",
+    switcherProgress: 0,
+    switcherShiftProgress: 0,
+    switcherFinalProgress: 0,
+    chatDirty: true,
+    botResponses: DEFAULT_BOT_RESPONSES,
+    botResponseIndex: 0,
+    backButtonRect: null,
+    videoButtonPosition: null,
+    backButtonElement: null,
+    videoButtonElement: null,
+    platform: undefined,
+    cameraZoomDone: false,
+    introDelay: 3000,
+  };
+}
+
+const OVERLAY_SIZE = 44;
+
+function syncButtonOverlays(runtime: ModelRuntime) {
+  const backElement = runtime.backButtonElement;
+  const videoElement = runtime.videoButtonElement;
+  const show = runtime.cameraZoomDone;
+  const isTelegram = (runtime.platform ?? "imessage") === "telegram";
+
+  if (backElement) {
+    const rect = runtime.backButtonRect;
+    if (rect && show) {
+      backElement.style.display = "block";
+      backElement.style.transform = isTelegram
+        ? `translate(${rect.x - 12}px, ${rect.y + 12}px)`
+        : `translate(${rect.x}px, ${rect.y}px)`;
+      backElement.style.width = `${rect.w}px`;
+      backElement.style.height = `${rect.h}px`;
+    } else {
+      backElement.style.display = "none";
+    }
+  }
+
+  if (!videoElement) return;
+  const position = runtime.videoButtonPosition;
+  if (position && show && runtime.switcherPhase === "idle" && !isTelegram) {
+    videoElement.style.display = "block";
+    videoElement.style.transform = `translate(${position.x - OVERLAY_SIZE / 2}px, ${position.y - OVERLAY_SIZE / 2}px)`;
+  } else {
+    videoElement.style.display = "none";
+  }
+}
+
+function configurePhoneLoader(loader: GLTFLoader) {
+  loader.setMeshoptDecoder(MeshoptDecoder);
+}
+
+/**
+ * Captures the three reflection cards once and assigns the resulting cubemap
+ * to the phone scene. Keeping this small environment local avoids shipping the
+ * HDR, EXR, gain-map, and Draco loaders required by general-purpose helpers.
+ */
+function PhoneEnvironment() {
+  const gl = useThree((state) => state.gl);
+  const scene = useThree((state) => state.scene);
+  const invalidate = useThree((state) => state.invalidate);
+
+  useLayoutEffect(() => {
+    const virtualScene = new THREE.Scene();
+    const renderTarget = new THREE.WebGLCubeRenderTarget(64);
+    renderTarget.texture.type = THREE.HalfFloatType;
+    const camera = new THREE.CubeCamera(0.1, 1000, renderTarget);
+    virtualScene.add(camera);
+
+    const cards = [
+      { intensity: 2, position: [0, 5, -6], scale: [10, 5, 1] },
+      { intensity: 1.2, position: [-6, 1, 2], scale: [4, 8, 1] },
+      { intensity: 0.8, position: [6, -2, 1], scale: [3, 5, 1] },
+    ] as const;
+    const geometry = new THREE.PlaneGeometry(1, 1);
+    const materials: THREE.MeshBasicMaterial[] = [];
+
+    for (const card of cards) {
+      const material = new THREE.MeshBasicMaterial({
+        color: new THREE.Color("white").multiplyScalar(card.intensity),
+        side: THREE.DoubleSide,
+        toneMapped: false,
+      });
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.set(card.position[0], card.position[1], card.position[2]);
+      mesh.scale.set(card.scale[0], card.scale[1], card.scale[2]);
+      mesh.lookAt(0, 0, 0);
+      materials.push(material);
+      virtualScene.add(mesh);
+    }
+
+    const previousEnvironment = scene.environment;
+    const autoClear = gl.autoClear;
+    gl.autoClear = true;
+    camera.update(gl, virtualScene);
+    gl.autoClear = autoClear;
+    scene.environment = renderTarget.texture;
+    invalidate();
+
+    return () => {
+      scene.environment = previousEnvironment;
+      geometry.dispose();
+      for (const material of materials) material.dispose();
+      renderTarget.dispose();
+    };
+  }, [gl, invalidate, scene]);
+
+  return null;
+}
 
 /** Find the 3D local-space position on a mesh for a given UV coordinate. */
 function uvToMeshLocal(
@@ -156,8 +311,13 @@ function projectToScreen(
   };
 }
 
-function Model() {
-  const { scene } = useGLTF("/models/iphone.glb");
+function Model({ runtime }: { runtime: ModelRuntime }) {
+  const { scene: sourceScene } = useLoader(
+    GLTFLoader,
+    "/models/iphone-meshopt.glb",
+    configurePhoneLoader,
+  );
+  const scene = useMemo(() => sourceScene.clone(true), [sourceScene]);
   const cumulative = useRef(0);
   const [target, setTarget] = useState(0);
   const [dipping, setDipping] = useState(false);
@@ -172,6 +332,9 @@ function Model() {
   const scrollYRef = useRef(0);
   const msgTimeoutRef = useRef(0);
   const msgAnimFrameRef = useRef(0);
+  const replayResetTimeoutRef = useRef(0);
+  const terminalRenderFrameRef = useRef(0);
+  const terminalReadyFrameRef = useRef(0);
   const extraMessagesRef = useRef<ExtraMessage[]>([]);
   const sendAnimFrameRef = useRef(0);
   const extraScrollRef = useRef(0);
@@ -179,6 +342,8 @@ function Model() {
   const responseTimeoutRef = useRef(0);
   const typingAnimFrameRef = useRef(0);
   const responseAnimFrameRef = useRef(0);
+  const spinTimeoutRef = useRef(0);
+  const invalidate = useThree((state) => state.invalidate);
 
   const { rotation } = useSpring({
     rotation: target,
@@ -197,28 +362,42 @@ function Model() {
     config: { mass: 1, tension: 120, friction: 20 },
   });
 
-  triggerSlideDown = () => {
-    setSlidingDown(true);
-  };
+  useEffect(() => {
+    runtime.invalidate = invalidate;
+    return () => {
+      runtime.invalidate = null;
+    };
+  }, [invalidate, runtime]);
 
-  triggerSpin = (direction: 1 | -1 = 1) => {
-    cumulative.current += direction * Math.PI * 2;
-    setTarget(cumulative.current);
-    setDipping(true);
-    setTimeout(() => setDipping(false), 300);
-  };
+  useEffect(() => {
+    runtime.triggerSlideDown = () => setSlidingDown(true);
+    runtime.triggerSpin = (direction: 1 | -1 = 1) => {
+      cumulative.current += direction * Math.PI * 2;
+      setTarget(cumulative.current);
+      setDipping(true);
+      clearTimeout(spinTimeoutRef.current);
+      spinTimeoutRef.current = window.setTimeout(() => setDipping(false), 300);
+    };
+    return () => {
+      runtime.triggerSlideDown = null;
+      runtime.triggerSpin = null;
+      clearTimeout(spinTimeoutRef.current);
+    };
+  }, [runtime]);
 
   useEffect(() => {
     const avatarImg = new Image();
-    avatarImg.src = "/elizapfp.png";
+    avatarImg.src = "/elizapfp.webp";
     let cancelled = false;
-    const timeout = 0;
     let animFrame = 0;
+    let initialized = false;
 
     const setup = () => {
+      if (cancelled) return;
+      initialized = true;
       const startOffset = -14;
       const chatTexture = new THREE.CanvasTexture(
-        renderChatToCanvas(0, avatarImg, 1, startOffset),
+        renderChatToCanvas(undefined, 0, avatarImg, 1, startOffset),
       );
       chatTexture.flipY = false;
       chatTexture.colorSpace = THREE.SRGBColorSpace;
@@ -281,9 +460,9 @@ function Model() {
           });
         } else if (name.includes("iphone") || name.includes("phone")) {
           child.material = new THREE.MeshPhysicalMaterial({
-            color: 0x222222,
-            metalness: 0.6,
-            roughness: 0.6,
+            color: 0x444444,
+            metalness: 0.35,
+            roughness: 0.45,
             clearcoat: 0,
             clearcoatRoughness: 0.05,
             reflectivity: 1.0,
@@ -292,7 +471,7 @@ function Model() {
       });
 
       // Animate pfp sliding down during camera zoom (3s delay, ~1.7s animation)
-      const offsetStart = performance.now() + introDelay;
+      const offsetStart = performance.now() + runtime.introDelay;
       const offsetDuration = 1100;
 
       const animateOffset = (now: number) => {
@@ -306,8 +485,15 @@ function Model() {
         const eased = t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
         const offset = startOffset * (1 - eased);
 
-        chatTexture.image = renderChatToCanvas(0, avatarImg, 1, offset);
+        chatTexture.image = renderChatToCanvas(
+          chatTexture.image as HTMLCanvasElement,
+          0,
+          avatarImg,
+          1,
+          offset,
+        );
         chatTexture.needsUpdate = true;
+        invalidate();
 
         if (t < 1) {
           animFrame = requestAnimationFrame(animateOffset);
@@ -316,36 +502,128 @@ function Model() {
 
       animFrame = requestAnimationFrame(animateOffset);
 
-      // Animate messages one by one with slide-up animation
       let count = 0;
+      let messageGeneration = 0;
 
-      const startMessages = (delay: number) => {
+      const cancelMessageSchedule = () => {
+        clearTimeout(msgTimeoutRef.current);
+        clearTimeout(replayResetTimeoutRef.current);
+        cancelAnimationFrame(msgAnimFrameRef.current);
+        cancelAnimationFrame(terminalRenderFrameRef.current);
+        cancelAnimationFrame(terminalReadyFrameRef.current);
+      };
+
+      const reportChatState = (
+        phase: ChatRenderState["phase"],
+        renderedMessages: number,
+      ) => {
+        runtime.onChatRenderStateChange?.({
+          phase,
+          renderedMessages,
+          totalMessages: getMessageCount(),
+        });
+      };
+
+      const renderIntroFrame = (
+        renderedMessages: number,
+        lastMessageProgress: number,
+        scrollY = scrollYRef.current,
+      ) => {
+        chatTexture.image = renderChatToCanvas(
+          chatTexture.image as HTMLCanvasElement,
+          renderedMessages,
+          avatarImg,
+          lastMessageProgress,
+          0,
+          scrollY,
+          extraMessagesRef.current,
+          runtime.switcherProgress,
+          runtime.switcherShiftProgress,
+          runtime.switcherFinalProgress,
+          runtime.switcherPhase === "closing",
+          runtime.loginTitle,
+          runtime.loginSubtitle,
+        );
+        chatTexture.needsUpdate = true;
+        invalidate();
+      };
+
+      const commitTerminalIntro = (expectedGeneration: number) => {
+        if (cancelled || expectedGeneration !== messageGeneration) return;
+
+        cancelMessageSchedule();
+        const totalMessages = getMessageCount();
+        count = totalMessages;
+        msgCountRef.current = totalMessages;
+        const preloadScroll = measurePreloadedScrollHeight(totalMessages);
+        const finalScroll = runtime.tryActive
+          ? Math.max(preloadScroll - 27, 0) + extraScrollRef.current
+          : 0;
+        scrollYRef.current = finalScroll;
+        renderIntroFrame(totalMessages, 1, finalScroll);
+
+        // R3F renders after useFrame callbacks. The second browser frame makes
+        // readiness describe pixels that have passed through that render.
+        terminalRenderFrameRef.current = requestAnimationFrame(() => {
+          if (cancelled || expectedGeneration !== messageGeneration) return;
+          invalidate();
+          terminalReadyFrameRef.current = requestAnimationFrame(() => {
+            if (cancelled || expectedGeneration !== messageGeneration) return;
+            reportChatState("terminal", totalMessages);
+          });
+        });
+      };
+
+      const startMessages = (
+        delay: number,
+        expectedGeneration = ++messageGeneration,
+      ) => {
+        if (expectedGeneration !== messageGeneration) return;
         count = 0;
         msgCountRef.current = 0;
+        reportChatState("animating", 0);
+
+        if (runtime.tryActive) {
+          commitTerminalIntro(expectedGeneration);
+          return;
+        }
 
         const animateMessage = () => {
-          count++;
-          msgCountRef.current = count;
-          if (count > getMessageCount() || cancelled || currentTryActive)
+          if (cancelled || expectedGeneration !== messageGeneration) return;
+          if (runtime.tryActive) {
+            commitTerminalIntro(expectedGeneration);
             return;
+          }
 
+          count += 1;
+          msgCountRef.current = count;
           const duration = 300;
           const startTime = performance.now();
 
           const tick = (now: number) => {
-            if (cancelled) return;
+            if (cancelled || expectedGeneration !== messageGeneration) return;
+            if (runtime.tryActive) {
+              commitTerminalIntro(expectedGeneration);
+              return;
+            }
+
             const elapsed = now - startTime;
             const t = Math.min(elapsed / duration, 1);
             const eased = 1 - (1 - t) ** 3;
-
-            chatTexture.image = renderChatToCanvas(count, avatarImg, eased);
-            chatTexture.needsUpdate = true;
+            renderIntroFrame(count, eased, 0);
 
             if (t < 1) {
               msgAnimFrameRef.current = requestAnimationFrame(tick);
-            } else if (count < getMessageCount() && !currentTryActive) {
-              msgTimeoutRef.current = window.setTimeout(animateMessage, 700);
+              return;
             }
+
+            if (count < getMessageCount()) {
+              reportChatState("animating", count);
+              msgTimeoutRef.current = window.setTimeout(animateMessage, 700);
+              return;
+            }
+
+            commitTerminalIntro(expectedGeneration);
           };
 
           msgAnimFrameRef.current = requestAnimationFrame(tick);
@@ -354,30 +632,48 @@ function Model() {
         msgTimeoutRef.current = window.setTimeout(animateMessage, delay);
       };
 
-      stopMessageAnimation = () => {
-        clearTimeout(msgTimeoutRef.current);
-        cancelAnimationFrame(msgAnimFrameRef.current);
+      runtime.settleMessageAnimation = () => {
+        commitTerminalIntro(messageGeneration);
       };
 
-      triggerRestartMessages = () => {
-        clearTimeout(msgTimeoutRef.current);
-        cancelAnimationFrame(msgAnimFrameRef.current);
+      runtime.triggerRestartMessages = (platform, resetDelayMs = 0) => {
+        messageGeneration += 1;
+        const replayGeneration = messageGeneration;
+        cancelMessageSchedule();
         cancelAnimationFrame(sendAnimFrameRef.current);
         clearTimeout(typingTimeoutRef.current);
         clearTimeout(responseTimeoutRef.current);
         cancelAnimationFrame(typingAnimFrameRef.current);
         cancelAnimationFrame(responseAnimFrameRef.current);
-        currentOnWaitingChange?.(false);
-        count = 0;
-        msgCountRef.current = 0;
-        extraMessagesRef.current = [];
-        extraScrollRef.current = 0;
-        chatTexture.image = renderChatToCanvas(0, avatarImg, 1);
-        chatTexture.needsUpdate = true;
-        startMessages(500);
+        runtime.onWaitingChange?.(false);
+        if (platform) {
+          runtime.platform = platform;
+          setChatPlatform(platform);
+        }
+        reportChatState("animating", 0);
+
+        const resetAndStart = () => {
+          if (cancelled || replayGeneration !== messageGeneration) return;
+          count = 0;
+          msgCountRef.current = 0;
+          scrollYRef.current = 0;
+          extraMessagesRef.current = [];
+          extraScrollRef.current = 0;
+          renderIntroFrame(0, 1, 0);
+          startMessages(500, replayGeneration);
+        };
+
+        if (resetDelayMs > 0) {
+          replayResetTimeoutRef.current = window.setTimeout(
+            resetAndStart,
+            resetDelayMs,
+          );
+        } else {
+          resetAndStart();
+        }
       };
 
-      triggerSendMessage = (text: string) => {
+      runtime.triggerSendMessage = (text: string) => {
         const msg: ExtraMessage = { text, progress: 0, from: "user" };
         extraMessagesRef.current = [...extraMessagesRef.current, msg];
         extraScrollRef.current += measureBubbleHeight(text);
@@ -390,6 +686,7 @@ function Model() {
           msg.progress = 1 - (1 - t) ** 3;
 
           chatTexture.image = renderChatToCanvas(
+            chatTexture.image as HTMLCanvasElement,
             msgCountRef.current,
             avatarImg,
             1,
@@ -398,6 +695,7 @@ function Model() {
             extraMessagesRef.current,
           );
           chatTexture.needsUpdate = true;
+          invalidate();
 
           if (t < 1) {
             sendAnimFrameRef.current = requestAnimationFrame(tick);
@@ -407,7 +705,7 @@ function Model() {
         sendAnimFrameRef.current = requestAnimationFrame(tick);
 
         // Set waiting state
-        currentOnWaitingChange?.(true);
+        runtime.onWaitingChange?.(true);
 
         // After 500ms, show typing indicator
         typingTimeoutRef.current = window.setTimeout(() => {
@@ -427,6 +725,7 @@ function Model() {
             const t = Math.min(elapsed / dur, 1);
             typingMsg.progress = 1 - (1 - t) ** 3;
             chatTexture.image = renderChatToCanvas(
+              chatTexture.image as HTMLCanvasElement,
               msgCountRef.current,
               avatarImg,
               1,
@@ -435,6 +734,7 @@ function Model() {
               extraMessagesRef.current,
             );
             chatTexture.needsUpdate = true;
+            invalidate();
             if (t < 1)
               typingAnimFrameRef.current = requestAnimationFrame(animTyping);
           };
@@ -448,8 +748,10 @@ function Model() {
             extraScrollRef.current -= TYPING_BUBBLE_HEIGHT;
 
             const response =
-              botResponses[botResponseIndex % botResponses.length];
-            botResponseIndex++;
+              runtime.botResponses[
+                runtime.botResponseIndex % runtime.botResponses.length
+              ];
+            runtime.botResponseIndex++;
             const responseMsg: ExtraMessage = {
               text: response,
               progress: 0,
@@ -468,6 +770,7 @@ function Model() {
               const t = Math.min(elapsed / dur2, 1);
               responseMsg.progress = 1 - (1 - t) ** 3;
               chatTexture.image = renderChatToCanvas(
+                chatTexture.image as HTMLCanvasElement,
                 msgCountRef.current,
                 avatarImg,
                 1,
@@ -476,11 +779,12 @@ function Model() {
                 extraMessagesRef.current,
               );
               chatTexture.needsUpdate = true;
+              invalidate();
               if (t < 1) {
                 responseAnimFrameRef.current =
                   requestAnimationFrame(animResponse);
               } else {
-                currentOnWaitingChange?.(false);
+                runtime.onWaitingChange?.(false);
               }
             };
             responseAnimFrameRef.current = requestAnimationFrame(animResponse);
@@ -488,7 +792,7 @@ function Model() {
         }, 400);
       };
 
-      startMessages(introDelay + 1600);
+      startMessages(runtime.introDelay + 1600);
     };
 
     if (avatarImg.complete) {
@@ -499,13 +803,36 @@ function Model() {
 
     return () => {
       cancelled = true;
-      clearTimeout(timeout);
       cancelAnimationFrame(animFrame);
+      clearTimeout(spinTimeoutRef.current);
+      clearTimeout(msgTimeoutRef.current);
+      clearTimeout(replayResetTimeoutRef.current);
+      clearTimeout(typingTimeoutRef.current);
+      clearTimeout(responseTimeoutRef.current);
+      cancelAnimationFrame(msgAnimFrameRef.current);
+      cancelAnimationFrame(terminalRenderFrameRef.current);
+      cancelAnimationFrame(terminalReadyFrameRef.current);
+      cancelAnimationFrame(sendAnimFrameRef.current);
+      cancelAnimationFrame(typingAnimFrameRef.current);
+      cancelAnimationFrame(responseAnimFrameRef.current);
+      runtime.triggerRestartMessages = null;
+      runtime.triggerSendMessage = null;
+      runtime.settleMessageAnimation = null;
+      if (initialized) {
+        scene.traverse((child: THREE.Object3D) => {
+          if (!(child instanceof THREE.Mesh)) return;
+          const materials = Array.isArray(child.material)
+            ? child.material
+            : [child.material];
+          for (const material of materials) material.dispose();
+        });
+        chatTextureRef.current?.dispose();
+      }
     };
-  }, [scene]);
+  }, [runtime, scene, invalidate]);
 
   // Animate scroll when tryActive changes + continuous render for typing dots + switcher
-  useFrame(({ camera, size }, delta) => {
+  useFrame(({ camera, size, invalidate: scheduleFrame }, delta) => {
     // Project button 3D positions → screen pixels
     if (screenMeshRef.current) {
       const mesh = screenMeshRef.current;
@@ -513,18 +840,18 @@ function Model() {
         const tl = projectToScreen(backBtnTLRef.current, mesh, camera, size);
         const br = projectToScreen(backBtnBRRef.current, mesh, camera, size);
         if (tl && br) {
-          backBtnScreenRect = {
+          runtime.backButtonRect = {
             x: Math.min(tl.x, br.x),
             y: Math.min(tl.y, br.y),
             w: Math.abs(br.x - tl.x),
             h: Math.abs(br.y - tl.y),
           };
         } else {
-          backBtnScreenRect = null;
+          runtime.backButtonRect = null;
         }
       }
       if (vidBtnLocalRef.current) {
-        vidBtnScreenPos = projectToScreen(
+        runtime.videoButtonPosition = projectToScreen(
           vidBtnLocalRef.current,
           mesh,
           camera,
@@ -537,82 +864,92 @@ function Model() {
     const THRESH = 0.001;
 
     // State transitions
-    if (currentSwitcherOpen && switcherPhase === "idle") {
-      switcherPhase = "opening";
-      switcherProgress = 0;
-      switcherShiftProgress = 0;
-      switcherFinalProgress = 0;
-      switcherOpenFiredEarly = false;
+    if (runtime.switcherOpen && runtime.switcherPhase === "idle") {
+      runtime.switcherPhase = "opening";
+      runtime.switcherProgress = 0;
+      runtime.switcherShiftProgress = 0;
+      runtime.switcherFinalProgress = 0;
+      runtime.switcherOpenFiredEarly = false;
     }
-    if (!currentSwitcherOpen && switcherPhase === "open") {
-      switcherPhase = "closing";
-      switcherProgress = 0;
-      switcherShiftProgress = 0;
-      switcherFinalProgress = 0;
-      switcherDoneFiredEarly = false;
+    if (!runtime.switcherOpen && runtime.switcherPhase === "open") {
+      runtime.switcherPhase = "closing";
+      runtime.switcherProgress = 0;
+      runtime.switcherShiftProgress = 0;
+      runtime.switcherFinalProgress = 0;
+      runtime.switcherDoneFiredEarly = false;
     }
 
     // Same 3-phase forward animation for both opening and closing
-    if (switcherPhase === "opening" || switcherPhase === "closing") {
+    if (
+      runtime.switcherPhase === "opening" ||
+      runtime.switcherPhase === "closing"
+    ) {
       // Phase 1: scale
-      const scaleDiff = 1 - switcherProgress;
+      const scaleDiff = 1 - runtime.switcherProgress;
       if (Math.abs(scaleDiff) > THRESH) {
-        switcherProgress += scaleDiff * lerpSpeed;
+        runtime.switcherProgress += scaleDiff * lerpSpeed;
       } else {
-        switcherProgress = 1;
+        runtime.switcherProgress = 1;
       }
       // Phase 2: shift — starts once scale done
-      if (switcherProgress > 0.99) {
-        const shiftDiff = 1 - switcherShiftProgress;
+      if (runtime.switcherProgress > 0.99) {
+        const shiftDiff = 1 - runtime.switcherShiftProgress;
         if (Math.abs(shiftDiff) > THRESH) {
-          switcherShiftProgress += shiftDiff * lerpSpeed;
+          runtime.switcherShiftProgress += shiftDiff * lerpSpeed;
         } else {
-          switcherShiftProgress = 1;
+          runtime.switcherShiftProgress = 1;
         }
       }
       // Phase 3: final — starts once shift done
-      if (switcherShiftProgress > 0.99) {
-        const finalDiff = 1 - switcherFinalProgress;
+      if (runtime.switcherShiftProgress > 0.99) {
+        const finalDiff = 1 - runtime.switcherFinalProgress;
         if (Math.abs(finalDiff) > THRESH) {
-          switcherFinalProgress += finalDiff * lerpSpeed;
+          runtime.switcherFinalProgress += finalDiff * lerpSpeed;
         } else {
-          switcherFinalProgress = 1;
+          runtime.switcherFinalProgress = 1;
         }
       }
       // Fire callbacks early so UI bars start appearing sooner
-      if (switcherFinalProgress > 0.8) {
-        if (switcherPhase === "opening" && !switcherOpenFiredEarly) {
-          switcherOpenFiredEarly = true;
-          currentOnSwitcherOpen?.();
+      if (runtime.switcherFinalProgress > 0.8) {
+        if (
+          runtime.switcherPhase === "opening" &&
+          !runtime.switcherOpenFiredEarly
+        ) {
+          runtime.switcherOpenFiredEarly = true;
+          runtime.onSwitcherOpen?.();
         }
-        if (switcherPhase === "closing" && !switcherDoneFiredEarly) {
-          switcherDoneFiredEarly = true;
-          currentOnSwitcherDone?.();
+        if (
+          runtime.switcherPhase === "closing" &&
+          !runtime.switcherDoneFiredEarly
+        ) {
+          runtime.switcherDoneFiredEarly = true;
+          runtime.onSwitcherDone?.();
         }
       }
       // Check completion
-      if (switcherFinalProgress > 0.99) {
-        if (switcherPhase === "opening") {
-          switcherPhase = "open";
+      if (runtime.switcherFinalProgress > 0.99) {
+        if (runtime.switcherPhase === "opening") {
+          runtime.switcherPhase = "open";
         } else {
           // closing done — back to idle
-          switcherPhase = "idle";
-          switcherProgress = 0;
-          switcherShiftProgress = 0;
-          switcherFinalProgress = 0;
+          runtime.switcherPhase = "idle";
+          runtime.switcherProgress = 0;
+          runtime.switcherShiftProgress = 0;
+          runtime.switcherFinalProgress = 0;
         }
+        runtime.chatDirty = true;
       }
     }
 
-    const switcherActive = switcherPhase !== "idle";
     const switcherAnimating =
-      switcherPhase === "opening" || switcherPhase === "closing";
-    const switcherReversed = switcherPhase === "closing";
+      runtime.switcherPhase === "opening" ||
+      runtime.switcherPhase === "closing";
+    const switcherReversed = runtime.switcherPhase === "closing";
 
     const hasTyping = extraMessagesRef.current.some((m) => m.typing);
     const preloadScroll = measurePreloadedScrollHeight(msgCountRef.current);
     const initialScroll = preloadScroll > 27 ? preloadScroll - 27 : 0;
-    const goal = currentTryActive ? initialScroll + extraScrollRef.current : 0;
+    const goal = runtime.tryActive ? initialScroll + extraScrollRef.current : 0;
     const current = scrollYRef.current;
     const needsScroll = Math.abs(current - goal) >= 0.1;
 
@@ -627,25 +964,33 @@ function Model() {
       scrollYRef.current !== current ||
       hasTyping ||
       switcherAnimating ||
-      switcherActive
+      runtime.chatDirty
     ) {
       if (chatTextureRef.current && avatarImgRef.current) {
         chatTextureRef.current.image = renderChatToCanvas(
+          chatTextureRef.current.image as HTMLCanvasElement,
           msgCountRef.current,
           avatarImgRef.current,
           1,
           0,
           scrollYRef.current,
           extraMessagesRef.current,
-          switcherProgress,
-          switcherShiftProgress,
-          switcherFinalProgress,
+          runtime.switcherProgress,
+          runtime.switcherShiftProgress,
+          runtime.switcherFinalProgress,
           switcherReversed,
-          currentLoginTitle,
-          currentLoginSubtitle,
+          runtime.loginTitle,
+          runtime.loginSubtitle,
         );
         chatTextureRef.current.needsUpdate = true;
+        runtime.chatDirty = false;
       }
+    }
+
+    syncButtonOverlays(runtime);
+
+    if (needsScroll || hasTyping || switcherAnimating) {
+      scheduleFrame();
     }
   });
 
@@ -660,17 +1005,36 @@ function Model() {
   );
 }
 
-useGLTF.preload("/models/iphone.glb");
+useLoader.preload(
+  GLTFLoader,
+  "/models/iphone-meshopt.glb",
+  configurePhoneLoader,
+);
 
-function FovZoom() {
+function FovZoom({ runtime }: { runtime: ModelRuntime }) {
   const startFov = 2.8;
   const endFov = 90;
   const startY = 19.5;
   const endY = 8;
   const progress = useRef(0);
   const initialized = useRef(false);
-  const elapsed = useRef(0);
-  const delay = introDelay / 1000;
+  const started = useRef(false);
+  const completed = useRef(false);
+  const readinessFrame = useRef(0);
+  const renderedReadinessFrame = useRef(0);
+  const invalidate = useThree((state) => state.invalidate);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      started.current = true;
+      invalidate();
+    }, runtime.introDelay);
+    return () => {
+      window.clearTimeout(timeout);
+      cancelAnimationFrame(readinessFrame.current);
+      cancelAnimationFrame(renderedReadinessFrame.current);
+    };
+  }, [invalidate, runtime]);
 
   useFrame((state, delta) => {
     const cam = state.camera as THREE.PerspectiveCamera;
@@ -680,12 +1044,21 @@ function FovZoom() {
       cam.updateProjectionMatrix();
       initialized.current = true;
     }
-    if (elapsed.current < delay) {
-      elapsed.current += delta;
-      return;
-    }
+    if (!started.current) return;
     if (progress.current >= 1) {
-      if (!cameraZoomDone) cameraZoomDone = true;
+      if (!completed.current) {
+        completed.current = true;
+        runtime.cameraZoomDone = true;
+        state.invalidate();
+        // R3F renders after useFrame callbacks. Readiness is observable only
+        // after the final camera projection has reached the canvas.
+        readinessFrame.current = requestAnimationFrame(() => {
+          state.invalidate();
+          renderedReadinessFrame.current = requestAnimationFrame(() => {
+            runtime.onReady?.();
+          });
+        });
+      }
       return;
     }
     progress.current = Math.min(progress.current + delta * 0.9, 1);
@@ -694,12 +1067,11 @@ function FovZoom() {
     cam.fov = startFov + (endFov - startFov) * t;
     cam.position.y = startY + (endY - startY) * t;
     cam.updateProjectionMatrix();
+    state.invalidate();
   });
 
   return null;
 }
-
-const OVERLAY_SIZE = 44;
 
 const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
   {
@@ -708,6 +1080,8 @@ const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
     onWaitingChange,
     onBackClick,
     onVideoClick,
+    onReady,
+    onChatRenderStateChange,
     onSwitcherDone,
     onSwitcherOpen,
     loginTitle,
@@ -718,138 +1092,128 @@ const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
   ref,
 ) {
   const t = useT();
+  const runtime = useMemo(createModelRuntime, []);
+  runtime.introDelay = introDelayMs ?? 3000;
   const backBtnOverlayRef = useRef<HTMLButtonElement>(null);
   const vidBtnOverlayRef = useRef<HTMLButtonElement>(null);
-  const platformRef = useRef(platform);
 
   useEffect(() => {
-    currentTryActive = tryActive;
+    runtime.tryActive = tryActive;
+    runtime.chatDirty = true;
     if (tryActive) {
-      stopMessageAnimation?.();
+      runtime.settleMessageAnimation?.();
     }
-  }, [tryActive]);
+    runtime.invalidate?.();
+  }, [runtime, tryActive]);
 
   useEffect(() => {
-    currentOnWaitingChange = onWaitingChange ?? null;
-  }, [onWaitingChange]);
+    runtime.onWaitingChange = onWaitingChange ?? null;
+  }, [onWaitingChange, runtime]);
 
   useEffect(() => {
-    currentOnBackClick = onBackClick ?? null;
-  }, [onBackClick]);
+    runtime.onBackClick = onBackClick ?? null;
+  }, [onBackClick, runtime]);
 
   useEffect(() => {
-    currentSwitcherOpen = switcherOpen;
-  }, [switcherOpen]);
+    runtime.switcherOpen = switcherOpen;
+    runtime.chatDirty = true;
+    runtime.invalidate?.();
+  }, [runtime, switcherOpen]);
 
   useEffect(() => {
-    currentLoginTitle = loginTitle;
-  }, [loginTitle]);
+    runtime.loginTitle = loginTitle;
+    runtime.chatDirty = true;
+    runtime.invalidate?.();
+  }, [loginTitle, runtime]);
 
   useEffect(() => {
-    currentLoginSubtitle = loginSubtitle;
-  }, [loginSubtitle]);
+    runtime.loginSubtitle = loginSubtitle;
+    runtime.chatDirty = true;
+    runtime.invalidate?.();
+  }, [loginSubtitle, runtime]);
 
   useEffect(() => {
-    botResponses = DEFAULT_BOT_RESPONSES.map((defaultValue, i) =>
+    runtime.botResponses = DEFAULT_BOT_RESPONSES.map((defaultValue, i) =>
       t(`homepage_eliza.model.botResponse${i}`, { defaultValue }),
     );
-  }, [t]);
+  }, [runtime, t]);
 
   useEffect(() => {
-    platformRef.current = platform;
+    runtime.platform = platform;
+    runtime.chatDirty = true;
     if (platform && platform !== "try") {
       setChatPlatform(platform);
     }
-  }, [platform]);
+    runtime.invalidate?.();
+  }, [platform, runtime]);
 
   useEffect(() => {
-    if (introDelayMs != null) introDelay = introDelayMs;
-  }, [introDelayMs]);
+    runtime.onVideoClick = onVideoClick ?? null;
+  }, [onVideoClick, runtime]);
 
   useEffect(() => {
-    currentOnVideoClick = onVideoClick ?? null;
-  }, [onVideoClick]);
+    runtime.onReady = onReady ?? null;
+  }, [onReady, runtime]);
 
   useEffect(() => {
-    currentOnSwitcherOpen = onSwitcherOpen ?? null;
-  }, [onSwitcherOpen]);
+    runtime.onChatRenderStateChange = onChatRenderStateChange ?? null;
+  }, [onChatRenderStateChange, runtime]);
 
   useEffect(() => {
-    currentOnSwitcherDone = onSwitcherDone ?? null;
-  }, [onSwitcherDone]);
+    runtime.onSwitcherOpen = onSwitcherOpen ?? null;
+  }, [onSwitcherOpen, runtime]);
 
-  // Sync overlay div positions every frame from projected 3D coords
   useEffect(() => {
-    let raf: number;
-    const update = () => {
-      const backEl = backBtnOverlayRef.current;
-      const vidEl = vidBtnOverlayRef.current;
-      const show = cameraZoomDone;
+    runtime.onSwitcherDone = onSwitcherDone ?? null;
+  }, [onSwitcherDone, runtime]);
 
-      if (backEl) {
-        if (backBtnScreenRect && show) {
-          const plat = platformRef.current ?? "imessage";
-          const isTG = plat === "telegram";
-          backEl.style.display = "block";
-          backEl.style.transform = isTG
-            ? `translate(${backBtnScreenRect.x - 12}px, ${backBtnScreenRect.y + 12}px)`
-            : `translate(${backBtnScreenRect.x}px, ${backBtnScreenRect.y}px)`;
-          backEl.style.width = `${backBtnScreenRect.w}px`;
-          backEl.style.height = `${backBtnScreenRect.h}px`;
-          backEl.style.backgroundColor = "";
-        } else {
-          backEl.style.display = "none";
-        }
-      }
-      if (vidEl) {
-        const isTG = (platformRef.current ?? "imessage") === "telegram";
-        if (vidBtnScreenPos && show && switcherPhase === "idle" && !isTG) {
-          vidEl.style.display = "block";
-          vidEl.style.transform = `translate(${vidBtnScreenPos.x - OVERLAY_SIZE / 2}px, ${vidBtnScreenPos.y - OVERLAY_SIZE / 2}px)`;
-        } else {
-          vidEl.style.display = "none";
-        }
-      }
-
-      raf = requestAnimationFrame(update);
+  useEffect(() => {
+    runtime.backButtonElement = backBtnOverlayRef.current;
+    runtime.videoButtonElement = vidBtnOverlayRef.current;
+    return () => {
+      runtime.backButtonElement = null;
+      runtime.videoButtonElement = null;
     };
-    raf = requestAnimationFrame(update);
-    return () => cancelAnimationFrame(raf);
-  }, []);
+  }, [runtime]);
 
   useImperativeHandle(ref, () => ({
     spin(direction: 1 | -1 = 1) {
-      triggerSpin?.(direction);
+      runtime.triggerSpin?.(direction);
     },
-    restartMessages() {
-      triggerRestartMessages?.();
+    restartMessages(platform?: string, resetDelayMs?: number) {
+      runtime.triggerRestartMessages?.(platform, resetDelayMs);
     },
     sendMessage(text: string) {
-      triggerSendMessage?.(text);
+      runtime.triggerSendMessage?.(text);
     },
     slideDown() {
-      triggerSlideDown?.();
+      runtime.triggerSlideDown?.();
     },
   }));
 
   return (
-    <div className="fixed inset-0">
+    <div className="fixed inset-0" data-phone-scene>
       <Canvas
         camera={{ position: [0, 8, 0.6], fov: 45 }}
-        dpr={[1, 2]}
-        gl={{ alpha: true, toneMapping: THREE.NoToneMapping }}
+        dpr={[1, 1.5]}
+        frameloop="demand"
+        gl={{
+          alpha: true,
+          powerPreference: "high-performance",
+          toneMapping: THREE.NoToneMapping,
+        }}
       >
         <ambientLight intensity={0.5} />
-        <Model />
-        <Environment preset="city" />
-        <FovZoom />
+        <Model runtime={runtime} />
+        <PhoneEnvironment />
+        <FovZoom runtime={runtime} />
       </Canvas>
-      {/* Back button overlay — pill shaped, size set dynamically via rAF */}
+      {/* The invisible hit target follows its projected position in the phone canvas. */}
       <button
         type="button"
         ref={backBtnOverlayRef}
         onClick={() => {
-          currentOnBackClick?.();
+          runtime.onBackClick?.();
         }}
         aria-label={t("homepage_eliza.model.backAria", {
           defaultValue: "Back",
@@ -867,12 +1231,12 @@ const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
           zIndex: 25,
         }}
       />
-      {/* Video button overlay */}
+      {/* The 3D screen needs a real DOM button to remain keyboard-accessible. */}
       <button
         type="button"
         ref={vidBtnOverlayRef}
         onClick={() => {
-          currentOnVideoClick?.();
+          runtime.onVideoClick?.();
         }}
         aria-label={t("homepage_eliza.model.videoAria", {
           defaultValue: "Open video call",

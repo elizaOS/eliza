@@ -14,6 +14,7 @@ async function runEnsureAgentSandboxSchema(): Promise<void> {
       ADD COLUMN IF NOT EXISTS "pool_ready_at" timestamptz,
       ADD COLUMN IF NOT EXISTS "claimed_at" timestamptz,
       ADD COLUMN IF NOT EXISTS "environment_revision" integer NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS "lifecycle_revision" bigint NOT NULL DEFAULT 0,
       ADD COLUMN IF NOT EXISTS "deletion_attempt_id" uuid,
       ADD COLUMN IF NOT EXISTS "deletion_started_at" timestamptz,
       ADD COLUMN IF NOT EXISTS "warm_claim_credential_state" text,
@@ -35,6 +36,29 @@ async function runEnsureAgentSandboxSchema(): Promise<void> {
       ADD COLUMN IF NOT EXISTS "replacement_cleanup_created_at" timestamptz,
       ADD COLUMN IF NOT EXISTS "previous_image_digest" text,
       ADD COLUMN IF NOT EXISTS "previous_docker_image" text
+  `);
+
+  await dbWrite.execute(sql`
+    CREATE OR REPLACE FUNCTION advance_agent_sandbox_lifecycle_revision()
+    RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+    BEGIN
+      NEW.lifecycle_revision := OLD.lifecycle_revision + 1;
+      RETURN NEW;
+    END;
+    $$
+  `);
+
+  await dbWrite.execute(sql`
+    DO $$ BEGIN
+      CREATE TRIGGER agent_sandboxes_lifecycle_revision_trigger
+      BEFORE UPDATE ON "agent_sandboxes"
+      FOR EACH ROW
+      EXECUTE FUNCTION advance_agent_sandbox_lifecycle_revision();
+    EXCEPTION
+      WHEN duplicate_object THEN null;
+    END $$
   `);
 
   await dbWrite.execute(sql`
@@ -138,6 +162,17 @@ async function runEnsureAgentSandboxSchema(): Promise<void> {
       ON "agent_sandboxes" ("updated_at")
       WHERE "warm_claim_credential_state" = 'failed'
         AND "warm_claim_cleanup_completed_at" IS NULL
+  `);
+
+  await dbWrite.execute(sql`
+    CREATE INDEX IF NOT EXISTS "agent_sandboxes_container_name_idx"
+      ON "agent_sandboxes" ("container_name")
+  `);
+
+  await dbWrite.execute(sql`
+    CREATE INDEX IF NOT EXISTS "agent_sandboxes_replacement_cleanup_container_name_idx"
+      ON "agent_sandboxes" ("replacement_cleanup_container_name")
+      WHERE "replacement_cleanup_container_name" IS NOT NULL
   `);
 
   await dbWrite.execute(sql`

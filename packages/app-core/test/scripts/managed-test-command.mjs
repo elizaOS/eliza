@@ -1,4 +1,9 @@
-/** Supports app-core build, packaging, or development orchestration for managed test command mjs. */
+/**
+ * Serialized test-command runner: acquires a per-suite lockfile with
+ * stale-owner detection, spawns the command with heartbeat logging, maps
+ * termination signals to conventional exit codes, and builds the shared test
+ * env (including a saved cloud API key when present).
+ */
 import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";

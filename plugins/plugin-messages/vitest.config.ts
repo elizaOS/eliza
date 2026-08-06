@@ -1,22 +1,26 @@
 /**
  * Vitest config for the plugin. Aliases React and the `@elizaos/*` workspace
- * subpaths (capacitor-messages/-system, ui, shared, plugin-health signal setup)
- * to their source, so tests exercise the real native-bridge and view sources
- * without built dist bundles.
+ * subpaths over the shared workspace source aliases, so tests exercise the real
+ * native-bridge and view sources without built sibling dist bundles.
  */
 
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+import baseConfig from "../../packages/scripts/vitest/default.config";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../..");
 const require = createRequire(import.meta.url);
+const baseAliases = Array.isArray(baseConfig.resolve?.alias)
+  ? baseConfig.resolve.alias
+  : [];
 
 export default defineConfig({
   root: here,
   resolve: {
+    ...baseConfig.resolve,
     alias: [
       {
         find: /^react$/,
@@ -38,25 +42,11 @@ export default defineConfig({
         // @elizaos/ui's DynamicViewLoader statically imports this plugin-health
         // subpath; the keyless lane has no built plugin-health dist, so anchor
         // the exact subpath to source. Matches plugin-contacts/hyperliquid-app/
-        // phone/wallet-ui/facewear.
+        // phone and wallet-ui.
         find: /^@elizaos\/plugin-health\/screen-time\/mobile-signal-setup$/,
         replacement: path.join(
           repoRoot,
           "plugins/plugin-health/src/screen-time/mobile-signal-setup.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/capacitor-messages$/,
-        replacement: path.join(
-          repoRoot,
-          "plugins/plugin-native-messages/src/index.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/capacitor-system$/,
-        replacement: path.join(
-          repoRoot,
-          "plugins/plugin-native-system/src/index.ts",
         ),
       },
       {
@@ -81,6 +71,7 @@ export default defineConfig({
         find: /^@elizaos\/shared\/(.+)$/,
         replacement: path.join(repoRoot, "packages/shared/src/$1"),
       },
+      ...baseAliases,
     ],
   },
   test: {

@@ -1289,6 +1289,34 @@
       "when": 1785297600000,
       "tag": "0184_job_execution_leases",
       "breakpoints": true
+    },
+    {
+      "idx": 184,
+      "version": "7",
+      "when": 1785384000000,
+      "tag": "0185_job_execution_interruptions",
+      "breakpoints": true
+    },
+    {
+      "idx": 185,
+      "version": "7",
+      "when": 1785528000000,
+      "tag": "0186_agent_sandbox_physical_name_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 186,
+      "version": "7",
+      "when": 1785614400000,
+      "tag": "0187_agent_sandbox_lifecycle_revision",
+      "breakpoints": true
+    },
+    {
+      "idx": 187,
+      "version": "7",
+      "when": 1785960000000,
+      "tag": "0188_sso_bridge_store",
+      "breakpoints": true
     }
   ]
 }

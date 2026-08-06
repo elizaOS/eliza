@@ -1,5 +1,5 @@
 /** Exercises launch orchestrator behavior with deterministic app-core test fixtures. */
-import type { JsonValue } from "@elizaos/plugin-remote-manifest";
+import type { JsonValue } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { createDatabaseSnapshot } from "../database";
 import { DynamicViewRegistry } from "../dynamic-views/registry";
@@ -129,14 +129,6 @@ function createOrchestrator(options?: {
             effectiveTarget: "/tmp/pglite",
           }),
     readDiagnosticLogTail: () => "tail",
-    listRemoteStatuses: () => [
-      {
-        id: "eliza.runtime",
-        state: "running",
-        error: null,
-        required: true,
-      },
-    ],
     createBugReportBundle,
     dynamicViewRegistry: options?.withViews ? registry : undefined,
     dynamicViewSessions: options?.withViews ? sessions : undefined,

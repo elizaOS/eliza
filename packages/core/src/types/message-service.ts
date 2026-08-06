@@ -21,7 +21,6 @@ import type { State } from "./state";
  */
 export interface MessageProcessingOptions {
 	maxRetries?: number;
-	timeoutDuration?: number;
 	useMultiStep?: boolean;
 	maxMultiStepIterations?: number;
 	shouldRespondModel?: ShouldRespondModelType;
@@ -35,6 +34,11 @@ export interface MessageProcessingOptions {
 	continueAfterActions?: boolean;
 	/** Signal to abort message processing */
 	abortSignal?: AbortSignal;
+	/**
+	 * Receives each action result as soon as its handler boundary settles. Hosts
+	 * use this to retain committed-effect knowledge if later turn work aborts.
+	 */
+	onSettledActionResult?: (result: ActionResult) => void;
 	/**
 	 * When true, do not discard responses when a newer message is being processed (same as BASIC_CAPABILITIES_KEEP_RESP).
 	 * @default resolved from runtime.getSetting("BASIC_CAPABILITIES_KEEP_RESP") if not set
