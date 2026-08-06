@@ -18,8 +18,13 @@ import {
 	Eliza1EotClassifier,
 	type Eliza1EotScorerOptions,
 } from "../eot-classifier";
+import {
+	GEMMA4_EOT_TOKEN_CONTRACT,
+	LEGACY_GEMMA_EOT_TOKEN_CONTRACT,
+} from "../eot-token-contract";
 
 const END_OF_TURN_ID = 199;
+const START_OF_TURN_ID = 198;
 
 /**
  * Minimal fake llama model the scorer can drive. The `score()` parameter
@@ -79,8 +84,10 @@ function buildFakeModel(opts: {
 	const model: LlamaModelLike = {
 		tokenize(text: string, specialTokens?: boolean) {
 			tokenizeCalls.push(text);
-			if (text === "<end_of_turn>")
+			if (text === "<turn|>")
 				return specialTokens ? [END_OF_TURN_ID] : [101, 102];
+			if (text === "<|turn>")
+				return specialTokens ? [START_OF_TURN_ID] : [103, 104];
 			return Array.from(text).map((c) => c.charCodeAt(0));
 		},
 		async createContext(args) {
@@ -99,33 +106,37 @@ function buildFakeModel(opts: {
 }
 
 describe("formatEotPrompt", () => {
-	it("renders a single-user Gemma turn with the end_of_turn stripped", () => {
-		const prompt = formatEotPrompt("hello world");
-		expect(prompt).toBe("<start_of_turn>user\nhello world");
-		expect(prompt).not.toContain("<end_of_turn>");
+	it("renders a single-user Gemma 4 turn with its closing token omitted", () => {
+		const prompt = formatEotPrompt("hello world", GEMMA4_EOT_TOKEN_CONTRACT);
+		expect(prompt).toBe("<|turn>user\nhello world");
+		expect(prompt).not.toContain("<turn|>");
 	});
 
 	it("trims whitespace so leading/trailing space does not affect scoring", () => {
-		expect(formatEotPrompt("  hi  ")).toBe("<start_of_turn>user\nhi");
+		expect(formatEotPrompt("  hi  ", LEGACY_GEMMA_EOT_TOKEN_CONTRACT)).toBe(
+			"<start_of_turn>user\nhi",
+		);
 	});
 });
 
 describe("Eliza1EotScorer", () => {
-	it("returns P(<end_of_turn>) reported by the model on the last token", async () => {
+	it("returns the Gemma 4 turn-terminator probability reported on the last token", async () => {
 		const fake = buildFakeModel({ endOfTurnProbability: () => 0.83 });
 		const scorer = new Eliza1EotScorer({ model: fake.model });
 		const result = await scorer.score("hello world.");
 		expect(result.probability).toBeCloseTo(0.83, 5);
 		expect(result.promptTokens).toBeGreaterThan(0);
-		// `<end_of_turn>` resolution happens once during initialization.
-		expect(fake.tokenizeCalls[0]).toBe("<end_of_turn>");
+		// The paired Gemma 4 markers are resolved once during initialization.
+		expect(fake.tokenizeCalls.slice(0, 2)).toEqual(["<turn|>", "<|turn>"]);
 	});
 
 	it("falls back to 0.5 when the probabilities map is missing", async () => {
 		const fake = {
 			model: {
 				tokenize(text: string) {
-					return text === "<end_of_turn>" ? [END_OF_TURN_ID] : [1, 2, 3];
+					if (text === "<turn|>") return [END_OF_TURN_ID];
+					if (text === "<|turn>") return [START_OF_TURN_ID];
+					return [1, 2, 3];
 				},
 				async createContext() {
 					return {
@@ -184,12 +195,12 @@ describe("Eliza1EotScorer", () => {
 		expect(fake.controlledEvaluateCalls[0]).toHaveLength(5);
 	});
 
-	it("throws a descriptive error when the tokenizer does not resolve end_of_turn to a single id", async () => {
+	it("throws a descriptive error when no paired turn-token contract resolves", async () => {
 		const fake: LlamaModelLike = {
 			tokenize(text: string) {
-				// Simulate a non-Gemma model where <end_of_turn> tokenizes to plain
-				// text (multiple ids).
-				if (text === "<end_of_turn>") return [10, 11, 12];
+				// Simulate a non-Gemma model where both supported marker pairs
+				// tokenize as ordinary text.
+				if (text.includes("turn")) return [10, 11, 12];
 				return [1, 2, 3];
 			},
 			async createContext() {
@@ -197,7 +208,7 @@ describe("Eliza1EotScorer", () => {
 			},
 		};
 		const scorer = new Eliza1EotScorer({ model: fake });
-		await expect(scorer.score("x")).rejects.toThrow(/<end_of_turn>/);
+		await expect(scorer.score("x")).rejects.toThrow(/paired turn-token/);
 	});
 
 	it("disposes the context on dispose()", async () => {
@@ -217,7 +228,8 @@ describe("Eliza1EotScorer", () => {
 		let maxInflight = 0;
 		const fake: LlamaModelLike = {
 			tokenize(text: string) {
-				if (text === "<end_of_turn>") return [END_OF_TURN_ID];
+				if (text === "<turn|>") return [END_OF_TURN_ID];
+				if (text === "<|turn>") return [START_OF_TURN_ID];
 				return [1, 2, 3];
 			},
 			async createContext() {

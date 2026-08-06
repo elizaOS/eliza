@@ -1,14 +1,14 @@
 /**
  * Eliza-1 EOT scorer — reuses the already-loaded text model to compute
- * P(`<end_of_turn>` next | conversation_so_far) without shipping a separate
- * detector ONNX.
+ * P(the loaded model's turn terminator next | conversation_so_far) without
+ * shipping a separate detector ONNX.
  *
  * The runtime keeps a `LlamaModel` resident for chat generation. Voice
  * EOT scoring is a single forward pass over the formatted Gemma chat
- * prompt with the trailing `<end_of_turn>` removed. `capacitor-llama`'s
+ * prompt with its trailing turn terminator omitted. `capacitor-llama`'s
  * `LlamaContextSequence.controlledEvaluate()` returns the next-token
  * probability distribution, so we simply read the entry for the
- * `<end_of_turn>` token id — no sampling loop, no KV-cache growth on the
+ * resolved terminator token id — no sampling loop, no KV-cache growth on the
  * chat session.
  *
  * A dedicated `LlamaContext` is held just for this scorer so we do not
@@ -23,6 +23,13 @@
  */
 
 import path from "node:path";
+import {
+	formatEotPrompt,
+	type ResolvedEotTokenContract,
+	resolveEotTokenContract,
+} from "./eot-token-contract";
+
+export { formatEotPrompt } from "./eot-token-contract";
 
 // `capacitor-llama` 3.18.1 surface we depend on. We avoid importing the
 // type directly so the binding stays an optional peer dep — callers pass
@@ -70,9 +77,6 @@ export interface ControlledEvaluateOutputLike {
 	};
 }
 
-const END_OF_TURN_TOKEN = "<end_of_turn>";
-const START_OF_TURN_USER_PREFIX = "<start_of_turn>user\n";
-
 export interface Eliza1EotScorerOptions {
 	/** The already-loaded text model (eliza-1 drafter). */
 	model: LlamaModelLike;
@@ -89,7 +93,7 @@ export interface Eliza1EotScorerOptions {
 }
 
 export interface Eliza1EotScoreResult {
-	/** Probability of `<end_of_turn>` as the next token, ∈ [0, 1]. */
+	/** Probability of the loaded model's turn terminator as the next token, ∈ [0, 1]. */
 	probability: number;
 	/** Wall-clock model latency for this scoring call. */
 	latencyMs: number;
@@ -112,7 +116,7 @@ export class Eliza1EotScorer {
 
 	private context: LlamaContextLike | null = null;
 	private sequence: LlamaContextSequenceLike | null = null;
-	private endOfTurnTokenId: number | null = null;
+	private tokenContract: ResolvedEotTokenContract | null = null;
 	private initPromise: Promise<void> | null = null;
 	/** Serializes concurrent calls — controlledEvaluate is not thread-safe per-sequence. */
 	private inflight: Promise<unknown> = Promise.resolve();
@@ -133,15 +137,15 @@ export class Eliza1EotScorer {
 	async score(partialTranscript: string): Promise<Eliza1EotScoreResult> {
 		await this.ensureReady();
 		const sequence = this.sequence;
-		const endOfTurnId = this.endOfTurnTokenId;
-		if (!sequence || endOfTurnId === null) {
+		const tokenContract = this.tokenContract;
+		if (!sequence || tokenContract === null) {
 			throw new Error("[voice] Eliza1EotScorer not initialized.");
 		}
 
-		const tokens = this.tokenizePrompt(partialTranscript);
+		const tokens = this.tokenizePrompt(partialTranscript, tokenContract);
 		const start = performance.now();
 		const next = this.inflight.then(() =>
-			this.runOnce(sequence, tokens, endOfTurnId),
+			this.runOnce(sequence, tokens, tokenContract.closingTokenId),
 		);
 		// error-policy:J5 unhandled-rejection suppression — the real failure is
 		// observed by `await next` on the following line (and rethrown to the
@@ -161,25 +165,21 @@ export class Eliza1EotScorer {
 		const ctx = this.context;
 		this.context = null;
 		this.sequence = null;
-		this.endOfTurnTokenId = null;
+		this.tokenContract = null;
 		this.initPromise = null;
 		if (ctx) await ctx.dispose();
 	}
 
 	private async ensureReady(): Promise<void> {
-		if (this.context && this.sequence && this.endOfTurnTokenId !== null) return;
+		if (this.context && this.sequence && this.tokenContract !== null) return;
 		if (!this.initPromise) this.initPromise = this.initialize();
 		await this.initPromise;
 	}
 
 	private async initialize(): Promise<void> {
-		const endOfTurnIds = this.model.tokenize(END_OF_TURN_TOKEN, true);
-		if (endOfTurnIds.length !== 1 || !Number.isInteger(endOfTurnIds[0])) {
-			throw new Error(
-				`[voice] Eliza1EotScorer: model tokenizer did not resolve <end_of_turn> to a single special token (got ${JSON.stringify(endOfTurnIds)}). The base model must be Gemma-template compatible.`,
-			);
-		}
-		this.endOfTurnTokenId = endOfTurnIds[0];
+		this.tokenContract = resolveEotTokenContract((text) =>
+			this.model.tokenize(text, true),
+		);
 
 		const contextOptions: Parameters<LlamaModelLike["createContext"]>[0] = {
 			contextSize: this.contextSize,
@@ -201,8 +201,11 @@ export class Eliza1EotScorer {
 		this.sequence = this.context.getSequence();
 	}
 
-	private tokenizePrompt(transcript: string): number[] {
-		const formatted = formatEotPrompt(transcript);
+	private tokenizePrompt(
+		transcript: string,
+		contract: ResolvedEotTokenContract,
+	): number[] {
+		const formatted = formatEotPrompt(transcript, contract);
 		const ids = this.model.tokenize(formatted, true);
 		if (ids.length <= this.maxHistoryTokens) return [...ids];
 		return [...ids.slice(ids.length - this.maxHistoryTokens)];
@@ -228,20 +231,4 @@ export class Eliza1EotScorer {
 		if (typeof p !== "number" || !Number.isFinite(p)) return 0.5;
 		return Math.max(0, Math.min(1, p));
 	}
-}
-
-/**
- * Format the partial transcript using the Gemma chat template, with the
- * trailing `<end_of_turn>` removed so the next predicted token *is* the
- * EOT signal we want to measure.
- *
- * Matches the formatting LiveKit's turn-detector uses (single user turn,
- * no system prompt, no generation prefix). When upstream history is
- * available we can stack turns here, but the LiveKit recipe truncates
- * to the last 128 tokens regardless, so a single user turn captures the
- * relevant context for tier-1 EOT.
- */
-export function formatEotPrompt(transcript: string): string {
-	const cleaned = transcript.trim();
-	return `${START_OF_TURN_USER_PREFIX}${cleaned}`;
 }
