@@ -180,7 +180,16 @@ export async function transcribeVoiceWorkbenchStream(args: {
 export interface RealVoiceWorkbenchRuntime {
 	services: VoiceWorkbenchServices;
 	synthesizer: CorpusTtsSynthesizer;
+	/** Exact native/model artifacts used by the run for evidence hashing. */
+	artifacts: RealVoiceWorkbenchArtifacts;
 	dispose(): Promise<void>;
+}
+
+export interface RealVoiceWorkbenchArtifacts {
+	bundle: string;
+	fusedLib: string;
+	speakerGguf: string;
+	diarizGguf: string;
 }
 
 interface RealVoiceWorkbenchOptions {
@@ -434,6 +443,7 @@ async function elevenLabsPcm(args: {
 class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 	readonly synthesizer: CorpusTtsSynthesizer;
 	readonly services: VoiceWorkbenchServices;
+	readonly artifacts: RealVoiceWorkbenchArtifacts;
 
 	private readonly ffi: ElizaInferenceFfi;
 	private readonly ctx: ReturnType<ElizaInferenceFfi["create"]>;
@@ -458,6 +468,7 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 		apiKey: string | null;
 		ownerThreshold: number;
 		voiceMap: Record<string, string>;
+		artifacts: RealVoiceWorkbenchArtifacts;
 	}) {
 		this.ffi = args.ffi;
 		this.ctx = args.ctx;
@@ -467,6 +478,7 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 		this.apiKey = args.apiKey;
 		this.ownerThreshold = args.ownerThreshold;
 		this.voiceMap = args.voiceMap;
+		this.artifacts = args.artifacts;
 		this.synthesizer = {
 			synthesize: (input) => this.synthesizeCorpusTurn(input),
 		};
@@ -532,6 +544,12 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 				apiKey: options.elevenLabsApiKey,
 				ownerThreshold: options.ownerAcceptThreshold ?? DEFAULT_OWNER_THRESHOLD,
 				voiceMap: options.voiceMap ?? {},
+				artifacts: {
+					bundle: options.bundle,
+					fusedLib: options.fusedLib,
+					speakerGguf: options.speakerGguf,
+					diarizGguf: options.diarizGguf,
+				},
 			});
 		} catch (err) {
 			ffi.destroy(ctx);
