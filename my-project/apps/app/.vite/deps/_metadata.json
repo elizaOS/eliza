@@ -1,0 +1,72 @@
+{
+  "hash": "42e7e4f1",
+  "configHash": "bcaf76cb",
+  "lockfileHash": "094fbd20",
+  "browserHash": "ea29a862",
+  "optimized": {
+    "react-dom": {
+      "src": "../../../../node_modules/react-dom/index.js",
+      "file": "react-dom.js",
+      "fileHash": "5d75f2d4",
+      "needsInterop": true
+    },
+    "react": {
+      "src": "../../../../node_modules/react/index.js",
+      "file": "react.js",
+      "fileHash": "16df4b49",
+      "needsInterop": true
+    },
+    "react/jsx-dev-runtime": {
+      "src": "../../../../node_modules/react/jsx-dev-runtime.js",
+      "file": "react_jsx-dev-runtime.js",
+      "fileHash": "08f56280",
+      "needsInterop": true
+    },
+    "three": {
+      "src": "../../../../node_modules/three/build/three.module.js",
+      "file": "three.js",
+      "fileHash": "65d279ac",
+      "needsInterop": false
+    },
+    "three/examples/jsm/controls/OrbitControls.js": {
+      "src": "../../../../node_modules/three/examples/jsm/controls/OrbitControls.js",
+      "file": "three_examples_jsm_controls_OrbitControls__js.js",
+      "fileHash": "32f9e32a",
+      "needsInterop": false
+    },
+    "three/examples/jsm/libs/meshopt_decoder.module.js": {
+      "src": "../../../../node_modules/three/examples/jsm/libs/meshopt_decoder.module.js",
+      "file": "three_examples_jsm_libs_meshopt___decoder__module__js.js",
+      "fileHash": "5e7316c7",
+      "needsInterop": false
+    },
+    "three/examples/jsm/loaders/DRACOLoader.js": {
+      "src": "../../../../node_modules/three/examples/jsm/loaders/DRACOLoader.js",
+      "file": "three_examples_jsm_loaders_DRACOLoader__js.js",
+      "fileHash": "09db106c",
+      "needsInterop": false
+    },
+    "three/examples/jsm/loaders/FBXLoader.js": {
+      "src": "../../../../node_modules/three/examples/jsm/loaders/FBXLoader.js",
+      "file": "three_examples_jsm_loaders_FBXLoader__js.js",
+      "fileHash": "8de806e7",
+      "needsInterop": false
+    },
+    "three/examples/jsm/loaders/GLTFLoader.js": {
+      "src": "../../../../node_modules/three/examples/jsm/loaders/GLTFLoader.js",
+      "file": "three_examples_jsm_loaders_GLTFLoader__js.js",
+      "fileHash": "80e796d0",
+      "needsInterop": false
+    }
+  },
+  "chunks": {
+    "rolldown-runtime-BvCyGRYZ": {
+      "file": "rolldown-runtime-BvCyGRYZ.js",
+      "isDynamicEntry": false
+    },
+    "three.module-DGMucbGR": {
+      "file": "three.module-DGMucbGR.js",
+      "isDynamicEntry": false
+    }
+  }
+}
