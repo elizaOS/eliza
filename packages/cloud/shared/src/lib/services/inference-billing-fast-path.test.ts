@@ -232,7 +232,7 @@ describe("isOptimisticEligible", () => {
 describe("isPendingInferenceCharge shape guard", () => {
   test("accepts a full record, rejects partial / wrong version", () => {
     const ok = {
-      v: 1,
+      v: 2,
       requestId: "r",
       organizationId: "o",
       userId: "u",
@@ -244,7 +244,10 @@ describe("isPendingInferenceCharge shape guard", () => {
       enqueuedAt: 1,
     };
     expect(isPendingInferenceCharge(ok)).toBe(true);
-    expect(isPendingInferenceCharge({ ...ok, v: 2 })).toBe(false);
+    // Stale pre-IAC-v2 records must be rejected, not migrated (#17805 bumped
+    // INFERENCE_AUTH_CONTEXT_VERSION 1 -> 2; the sweep drops unversioned strays).
+    expect(isPendingInferenceCharge({ ...ok, v: 1 })).toBe(false);
+    expect(isPendingInferenceCharge({ ...ok, v: 3 })).toBe(false);
     expect(isPendingInferenceCharge({ ...ok, estimatedCostUsd: Number.NaN })).toBe(false);
     expect(isPendingInferenceCharge(null)).toBe(false);
     expect(isPendingInferenceCharge({ requestId: "r" })).toBe(false);
