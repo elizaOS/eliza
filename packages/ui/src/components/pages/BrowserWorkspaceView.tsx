@@ -81,9 +81,10 @@ const BROWSER_WORKSPACE_APP_PARTITION = "persist:eliza-browser-app";
 // server-default sentinel). Cosmetic on mobile — the native surface's storage
 // isolation is governed by its explicit NativeSurfacePolicy, not this string.
 const BROWSER_WORKSPACE_DEFAULT_PARTITION = "persist:eliza-browser";
-// Default URL when the user opens a fresh tab via "+". The docs site
-// respects prefers-color-scheme so the OS theme drives light/dark.
-const BROWSER_WORKSPACE_DEFAULT_HOME_URL = "https://docs.elizaos.ai/";
+// Default URL when the user opens a fresh tab via "+". Plain web hosts must use
+// a page that explicitly permits iframe embedding; native shells render the
+// same URL in their isolated WebView instead.
+const BROWSER_WORKSPACE_DEFAULT_HOME_URL = "https://www.google.com/webhp?igu=1";
 // The Browser view's isolation level, read from its builtin surface manifest
 // rather than hardcoded, so the declared `native-webview` level is what
 // actually drives which embedding each tab renders into (#14181/#13452). This
