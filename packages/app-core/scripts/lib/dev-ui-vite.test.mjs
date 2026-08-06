@@ -1,8 +1,9 @@
 /** Verifies the development Vite subprocess uses the direct TypeScript config loader. */
 
+import assert from "node:assert/strict";
 import path from "node:path";
+import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { expect, test } from "vitest";
 import { resolveViteCommand } from "./dev-ui-vite.mjs";
 
 const appDir = path.resolve(
@@ -17,8 +18,8 @@ test("resolveViteCommand skips Vite's redundant config bundling", () => {
     port: 2138,
   });
 
-  expect(resolved.command).toBe("/test/node");
-  expect(resolved.args.slice(-4)).toEqual([
+  assert.equal(resolved.command, "/test/node");
+  assert.deepEqual(resolved.args.slice(-4), [
     "--configLoader",
     "native",
     "--port",
