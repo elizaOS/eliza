@@ -22,6 +22,7 @@ import {
 
 const mocks = vi.hoisted(() => ({
   hasOwnerAccess: vi.fn(),
+  renderGroundedActionReply: vi.fn(),
   queue: {
     list: vi.fn(),
     byId: vi.fn(),
@@ -39,6 +40,11 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@elizaos/agent", async () => ({
   ...(await import("./stubs/agent.ts")),
   hasOwnerAccess: mocks.hasOwnerAccess,
+}));
+
+vi.mock("@elizaos/agent/actions/grounded-action-reply", async () => ({
+  ...(await import("./stubs/agent.ts")),
+  renderGroundedActionReply: mocks.renderGroundedActionReply,
 }));
 
 vi.mock("../src/lifeops/approval-queue.js", () => ({
@@ -83,6 +89,9 @@ describe("LifeOps native options.parameters migration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.hasOwnerAccess.mockResolvedValue(true);
+    mocks.renderGroundedActionReply.mockImplementation(
+      async ({ fallback }: { fallback: string }) => fallback,
+    );
   });
 
   it("resolveActionArgs trusts complete planner parameters without extractor calls", async () => {
@@ -241,6 +250,56 @@ describe("LifeOps native options.parameters migration", () => {
     expect(enumVerbs).toContain("propose_times");
     expect(enumVerbs).toContain("check_availability");
     expect(enumVerbs).toContain("update_preferences");
+  });
+
+  it("CALENDAR preserves the Personal Assistant grounded-reply boundary", async () => {
+    const runtime = makeRuntime();
+    runtime.useModel = vi.fn(
+      async () => '{"subaction":"delete_event","title":"standup"}',
+    ) as IAgentRuntime["useModel"];
+    const calendarService = {
+      getCalendarFeed: vi.fn(async () => ({
+        calendarId: "all",
+        events: [],
+        source: "cache",
+        state: "complete",
+        sources: [],
+        timeMin: "2026-07-01T00:00:00.000Z",
+        timeMax: "2026-07-31T00:00:00.000Z",
+        syncedAt: null,
+      })),
+    };
+    runtime.getService = vi.fn((name: string) =>
+      name === "calendar" ? calendarService : null,
+    ) as IAgentRuntime["getService"];
+    mocks.renderGroundedActionReply.mockResolvedValue(
+      "I couldn't find that standup on your calendar.",
+    );
+
+    const result = await calendarAction.handler(
+      runtime,
+      makeMessage("delete the standup"),
+      {},
+      {
+        parameters: {
+          subaction: "delete_event",
+          query: "standup",
+        },
+      },
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      text: "I couldn't find that standup on your calendar.",
+    });
+    expect(mocks.renderGroundedActionReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        domain: "calendar",
+        preferCharacterVoice: true,
+        scenario: "delete_event_not_found",
+        fallback: expect.stringContaining("couldn't find"),
+      }),
+    );
   });
 
   it("CALENDAR create_event fails closed inside stored protected sleep without explicit override", async () => {
