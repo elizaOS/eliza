@@ -47,6 +47,7 @@ import {
   useChatTurnStatus,
   useConversationMessages,
 } from "../../state";
+import { dispatchConversationResync } from "../../state/AppContext.hooks";
 import { useAppSelectorShallow } from "../../state/app-store";
 import type { AppContextValue } from "../../state/internal";
 import {
@@ -82,6 +83,7 @@ import {
   type VoiceContinuousStatus,
 } from "../../voice/voice-chat-types";
 import { isCloudVoiceRunnable } from "../../voice/voice-provider-defaults";
+import type { ServerControlFrame } from "../../voice/voice-session-protocol";
 import { buildVoiceTurnSignal } from "../../voice/voice-turn-signal";
 import { matchWakeName } from "../../voice/wake-name-match";
 import { useHomeModelStatus } from "../local-inference/useHomeModelStatus";
@@ -459,6 +461,28 @@ export function useShellController(): ShellController {
   conversationsRef.current = conversations;
   activeConversationIdRef.current = activeConversationId;
 
+  const handleRealtimeVoiceServerEvent = React.useCallback(
+    (event: ServerControlFrame) => {
+      // The voice gateway submits through the canonical conversation stream,
+      // outside this renderer's useChatSend instance. Reconcile at first model
+      // text so the committed user turn appears promptly, then at terminal usage
+      // so the persisted assistant reply replaces the in-flight state. Never
+      // synthesize local bubbles: the normal conversation loader remains the
+      // sole reader and deduper for saved history.
+      if (event.t !== "llm_first_text" && event.t !== "usage") return;
+      const conversationId = activeConversationIdRef.current?.trim() || null;
+      if (!conversationId) return;
+      dispatchConversationResync({
+        conversationId,
+        reason:
+          event.t === "llm_first_text"
+            ? "voice-turn-progress"
+            : "voice-turn-complete",
+      });
+    },
+    [],
+  );
+
   // The persistent shell is the mounted /chat surface, so it owns the one
   // realtime session. ChatView may still consume the same hook on legacy
   // embedding surfaces, but the visible shell Talk control must never hand a
@@ -471,6 +495,7 @@ export function useShellController(): ShellController {
     conversationId: activeConversationId,
     flagEnabled: realtimeVoiceEnabled,
     getConsentNonce,
+    clientOptions: { onServerEvent: handleRealtimeVoiceServerEvent },
   });
   const realtimeVoiceRef = React.useRef(realtimeVoice);
   realtimeVoiceRef.current = realtimeVoice;
@@ -2326,9 +2351,14 @@ export function useShellController(): ShellController {
     setTranscriptSessionSink,
     setComposerHasDraft,
     transcript:
-      realtimeVoice.transcriptPartial ||
-      realtimeVoice.transcriptFinal ||
-      transcript,
+      realtimeVoice.active || realtimeVoice.connecting
+        ? realtimeVoice.status === "listening" ||
+          realtimeVoice.status === "transcribing"
+          ? realtimeVoice.transcriptPartial
+          : realtimeVoice.status === "thinking"
+            ? realtimeVoice.transcriptFinal
+            : ""
+        : transcript,
     speaking: voiceOutput.speaking || realtimeVoice.agentSpeaking,
     speak: voiceOutput.speak,
     stopSpeaking: voiceOutput.stopSpeaking,

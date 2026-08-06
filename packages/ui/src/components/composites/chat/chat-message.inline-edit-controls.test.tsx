@@ -43,7 +43,9 @@ function openEditor(onEdit = vi.fn().mockResolvedValue(true)) {
     />,
   );
 
-  fireEvent.mouseEnter(screen.getByTestId("thread-line"));
+  fireEvent.pointerMove(screen.getByTestId("thread-line"), {
+    pointerType: "mouse",
+  });
   fireEvent.click(screen.getByRole("button", { name: "Edit" }));
   return onEdit;
 }

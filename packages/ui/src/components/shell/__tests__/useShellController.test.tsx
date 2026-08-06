@@ -20,12 +20,14 @@ import {
   vi,
 } from "vitest";
 import type { RealtimeVoiceStartOutcome } from "../../../hooks/useRealtimeVoiceSession";
+import { RESYNC_EVENT } from "../../../state/AppContext.hooks";
 import { emitViewEvent } from "../../../views/view-event-bus";
 import {
   createVoiceCapture,
   type VoiceCaptureFactoryOptions,
 } from "../../../voice/voice-capture-factory";
 import type { VoiceContinuousStatus } from "../../../voice/voice-chat-types";
+import type { ServerControlFrame } from "../../../voice/voice-session-protocol";
 import { resolveAdjacentConversationId } from "../conversation-nav";
 import { useShellController } from "../useShellController";
 
@@ -113,6 +115,9 @@ const realtimeVoiceMock = vi.hoisted(() => {
     options: null as {
       agentId?: string | null;
       conversationId?: string | null;
+      clientOptions?: {
+        onServerEvent?: (event: ServerControlFrame) => void;
+      };
     } | null,
     startOutcome: { kind: "live" } as RealtimeVoiceStartOutcome,
     startedConversationIds: [] as Array<string | null | undefined>,
@@ -172,6 +177,9 @@ vi.mock("../../../hooks/useRealtimeVoiceSession", () => ({
   useRealtimeVoiceSession: (options: {
     agentId?: string | null;
     conversationId?: string | null;
+    clientOptions?: {
+      onServerEvent?: (event: ServerControlFrame) => void;
+    };
   }) => {
     realtimeVoiceMock.options = options;
     return realtimeVoiceMock.state;
@@ -2153,10 +2161,10 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
     });
   });
 
-  it("projects realtime phase, transcript, playback, and unlock state", () => {
+  it("projects realtime phase, playback, and unlock state", () => {
     realtimeVoiceMock.state.active = true;
     realtimeVoiceMock.state.status = "speaking";
-    realtimeVoiceMock.state.transcriptPartial = "hello from Ink";
+    realtimeVoiceMock.state.transcriptPartial = "stale partial";
     realtimeVoiceMock.state.agentSpeaking = true;
     realtimeVoiceMock.state.needsUnlock = true;
 
@@ -2167,9 +2175,66 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
       active: true,
       status: "speaking",
     });
-    expect(result.current.transcript).toBe("hello from Ink");
+    expect(result.current.transcript).toBe("");
     expect(result.current.speaking).toBe(true);
     expect(result.current.needsAudioUnlock).toBe(true);
     expect(result.current.turnStatus).toEqual({ kind: "speaking" });
+  });
+
+  it("clears a committed voice transcript when the session returns to listening", () => {
+    realtimeVoiceMock.state.active = true;
+    realtimeVoiceMock.state.status = "listening";
+    realtimeVoiceMock.state.transcriptPartial = "";
+    realtimeVoiceMock.state.transcriptFinal = "Um, they're okay.";
+
+    const { result } = renderHook(() => useShellController());
+
+    expect(result.current.transcript).toBe("");
+  });
+
+  it("reconciles gateway-written voice turns through the canonical conversation loader", () => {
+    const resyncEvents: CustomEvent[] = [];
+    const onResync = (event: Event) => {
+      resyncEvents.push(event as CustomEvent);
+    };
+    window.addEventListener(RESYNC_EVENT, onResync);
+    try {
+      renderHook(() => useShellController());
+      const onServerEvent =
+        realtimeVoiceMock.options?.clientOptions?.onServerEvent;
+      expect(onServerEvent).toBeTypeOf("function");
+
+      act(() => {
+        onServerEvent?.({
+          t: "stt_final",
+          text: "open notes",
+          traceId: "trace-voice-turn",
+        });
+      });
+      expect(resyncEvents).toHaveLength(0);
+
+      act(() => {
+        onServerEvent?.({ t: "llm_first_text", traceId: "trace-voice-turn" });
+      });
+      expect(resyncEvents[0]?.detail).toEqual({
+        conversationId,
+        reason: "voice-turn-progress",
+      });
+
+      act(() => {
+        onServerEvent?.({
+          t: "usage",
+          sttMs: 300,
+          ttsChars: 12,
+          traceId: "trace-voice-turn",
+        });
+      });
+      expect(resyncEvents[1]?.detail).toEqual({
+        conversationId,
+        reason: "voice-turn-complete",
+      });
+    } finally {
+      window.removeEventListener(RESYNC_EVENT, onResync);
+    }
   });
 });

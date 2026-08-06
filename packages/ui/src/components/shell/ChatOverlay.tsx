@@ -101,7 +101,6 @@ import { voiceCaptureDebug } from "../../utils/voice-capture-debug";
 import { findChoiceRegions } from "../chat/message-choice-parser";
 import { MessageSearchPanel } from "../chat/message-search/MessageSearchPanel";
 import { AgentProvisioningWidget } from "../chat/widgets/agent-provisioning";
-import { ChatVoiceStatusBar } from "../composites/chat/ChatVoiceStatusBar";
 import {
   buildReplyTargetFromMessage,
   ChatMessage,
@@ -497,7 +496,7 @@ function SoftButton({
   active?: boolean;
   /** Accessible toggle state when it is intentionally broader than the accent state. */
   pressed?: boolean;
-  /** Breathe the accent glyph while a live capture is hot. */
+  /** Breathe the glyph while a batch capture has no richer activity surface. */
   pulse?: boolean;
   testId?: string;
 }): React.JSX.Element {
@@ -519,8 +518,7 @@ function SoftButton({
       className={cn(
         // Icon-only control: transparent, borderless, no capsule — just the
         // glyph. Hover and active express through icon color alone — neutral
-        // resting → neutral hover, accent for active — never a background/
-        // border, never blue.
+        // resting → white active — never a background/border or status color.
         //
         // The icon size keeps the visible desktop box quiet at 40px and lets the
         // shared Button primitive raise the real element to 44px on coarse
@@ -528,10 +526,10 @@ function SoftButton({
         // when compact screens draw the two trailing controls closer together.
         "relative grid shrink-0 place-items-center bg-transparent p-0 transition-colors hover:bg-transparent [&_svg]:size-5",
         active
-          ? "text-accent hover:text-accent"
+          ? "text-white hover:text-white"
           : "text-muted-strong hover:text-txt",
-        // Pulse the accent glyph while capture is hot; reduced-motion falls back
-        // to the static accent without adding background or border chrome.
+        // Batch capture has no inline waveform, so its glyph breathes; realtime
+        // voice keeps this control static because the composer owns the motion.
         pulse && "animate-pulse motion-reduce:animate-none",
         // Blocked controls (e.g. voice/transcript during sign-in-first
         // onboarding) read as inert: dimmed AND non-interactive to the pointer
@@ -717,6 +715,207 @@ function ComposerMicActivity({
           style={{ height, transform: "scaleY(0.32)" }}
         />
       ))}
+    </div>
+  );
+}
+
+type RealtimeVoiceStatus = NonNullable<
+  ShellController["realtimeVoice"]
+>["status"];
+
+const REALTIME_COMPOSER_LABEL: Record<RealtimeVoiceStatus, string> = {
+  idle: "Voice is live",
+  listening: "Listening…",
+  transcribing: "Hearing you…",
+  thinking: "Thinking…",
+  speaking: "Speaking…",
+  interrupting: "Stopping…",
+};
+
+type RealtimeVoiceVisualPhase =
+  | RealtimeVoiceStatus
+  | "connecting"
+  | "paused"
+  | "error";
+
+const REALTIME_VOICE_BAR_HEIGHTS = [8, 13, 18, 13, 8] as const;
+
+const REALTIME_VOICE_BAR_MOTION: Record<
+  RealtimeVoiceVisualPhase,
+  { scaleY: number[]; opacity: number[]; duration: number }
+> = {
+  idle: { scaleY: [0.28], opacity: [0.42], duration: 0 },
+  connecting: {
+    scaleY: [0.26, 0.48, 0.26],
+    opacity: [0.35, 0.88, 0.35],
+    duration: 1.05,
+  },
+  listening: {
+    scaleY: [0.32, 0.9, 0.48, 1, 0.32],
+    opacity: [0.58, 1, 0.72, 0.94, 0.58],
+    duration: 0.92,
+  },
+  transcribing: {
+    scaleY: [0.38, 0.7, 0.38],
+    opacity: [0.52, 0.92, 0.52],
+    duration: 0.72,
+  },
+  thinking: {
+    scaleY: [0.24, 0.52, 0.24],
+    opacity: [0.38, 0.92, 0.38],
+    duration: 1.18,
+  },
+  speaking: {
+    scaleY: [0.42, 1, 0.52, 0.84, 0.42],
+    opacity: [0.68, 1, 0.8, 0.96, 0.68],
+    duration: 0.64,
+  },
+  interrupting: {
+    scaleY: [0.58, 0.22],
+    opacity: [0.82, 0.36],
+    duration: 0.2,
+  },
+  paused: { scaleY: [0.24], opacity: [0.36], duration: 0 },
+  error: { scaleY: [0.34], opacity: [1], duration: 0 },
+};
+
+/** A single neutral motion language replaces color-coded voice status dots. */
+function ComposerRealtimeVoiceWaveform({
+  phase,
+  reduceMotion,
+}: {
+  phase: RealtimeVoiceVisualPhase;
+  reduceMotion: boolean;
+}): React.JSX.Element {
+  const movement = REALTIME_VOICE_BAR_MOTION[phase];
+  const animated = !reduceMotion && movement.scaleY.length > 1;
+
+  return (
+    <span
+      aria-hidden="true"
+      data-phase={phase}
+      data-testid="chat-composer-realtime-waveform"
+      className={cn(
+        "flex h-5 w-6 shrink-0 items-center justify-center gap-[2px]",
+        phase === "error" ? "text-danger" : "text-white/85",
+      )}
+    >
+      {REALTIME_VOICE_BAR_HEIGHTS.map((height, index) => (
+        <motion.span
+          // Fixed geometry keeps phase changes compositor-only and prevents the
+          // composer from shifting during sub-second Cerebras turns.
+          key={height === 18 ? "center" : `${height}-${index}`}
+          className="block w-0.5 origin-center rounded-full bg-current"
+          initial={false}
+          animate={{
+            scaleY: animated ? movement.scaleY : movement.scaleY.at(-1),
+            opacity: animated ? movement.opacity : movement.opacity.at(-1),
+          }}
+          transition={
+            animated
+              ? {
+                  duration: movement.duration,
+                  ease: "easeInOut",
+                  repeat: Number.POSITIVE_INFINITY,
+                  delay: index * 0.055,
+                }
+              : { duration: 0.16, ease: OVERLAY_EASE }
+          }
+          style={{ height }}
+        />
+      ))}
+    </span>
+  );
+}
+
+/** Realtime voice occupies the composer's normal text lane, never a second card. */
+function ComposerRealtimeVoiceActivity({
+  connecting,
+  error,
+  needsAudioUnlock,
+  onUnlockAudio,
+  paused,
+  reduceMotion,
+  status,
+  transcript,
+}: {
+  connecting: boolean;
+  error: string | null;
+  needsAudioUnlock: boolean;
+  onUnlockAudio: () => void;
+  paused: boolean;
+  reduceMotion: boolean;
+  status: RealtimeVoiceStatus;
+  transcript: string;
+}): React.JSX.Element {
+  const phaseLabel = error
+    ? error
+    : paused
+      ? "Voice paused"
+      : connecting
+        ? "Connecting…"
+        : REALTIME_COMPOSER_LABEL[status];
+  const liveTranscript =
+    !error &&
+    !paused &&
+    !connecting &&
+    (status === "listening" || status === "transcribing")
+      ? transcript.trim()
+      : "";
+  const visualPhase: RealtimeVoiceVisualPhase = error
+    ? "error"
+    : paused
+      ? "paused"
+      : connecting
+        ? "connecting"
+        : status;
+  const shimmerPhase =
+    !error &&
+    !paused &&
+    !liveTranscript &&
+    (connecting ||
+      status === "transcribing" ||
+      status === "thinking" ||
+      status === "speaking");
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-label={
+        liveTranscript ? `${phaseLabel}: ${liveTranscript}` : phaseLabel
+      }
+      data-status={status}
+      data-testid="chat-composer-realtime-voice"
+      className="flex min-h-10 min-w-0 flex-1 items-center gap-2 px-1.5"
+    >
+      <ComposerRealtimeVoiceWaveform
+        phase={visualPhase}
+        reduceMotion={reduceMotion}
+      />
+      <span
+        data-testid="chat-composer-realtime-copy"
+        className={cn(
+          "min-w-0 flex-1 truncate text-sm",
+          error ? "text-danger" : liveTranscript ? "text-txt" : "text-white/75",
+          shimmerPhase &&
+            "shimmer shimmer-duration-1200 motion-reduce:shimmer-none",
+        )}
+        title={liveTranscript || phaseLabel}
+      >
+        {liveTranscript || phaseLabel}
+      </span>
+      {needsAudioUnlock ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onUnlockAudio}
+          data-testid="chat-composer-voice-audio-unlock"
+          className="h-7 shrink-0 rounded-full border border-warn/40 bg-warn/10 px-2 text-xs font-medium text-warn hover:bg-warn/20"
+        >
+          Enable sound
+        </Button>
+      ) : null}
     </div>
   );
 }
@@ -1032,7 +1231,7 @@ export function ChatOverlay({
     speaking,
   } = controller;
   const realtimeVoice = controller.realtimeVoice;
-  const realtimeVoiceStatusVisible = Boolean(
+  const realtimeVoiceComposerVisible = Boolean(
     realtimeVoice?.enabled &&
       (handsFree ||
         realtimeVoice.active ||
@@ -1749,18 +1948,10 @@ export function ChatOverlay({
     renderableMessages,
     renderWindow.windowSize,
   ]);
-  const latestSettledAssistantId = React.useMemo(() => {
-    for (let index = visibleMessages.length - 1; index >= 0; index -= 1) {
-      const message = visibleMessages[index];
-      if (message?.role === "assistant" && message.content.trim()) {
-        return message.id;
-      }
-    }
-    return null;
-  }, [visibleMessages]);
-  const speakingSourceMessageId = speaking
-    ? (playingMessageId ?? latestSettledAssistantId)
-    : null;
+  // Automatic realtime speech belongs to the composer-wide voice state. Only
+  // user-selected playback belongs to a message row; binding automatic TTS to
+  // the newest row would reveal Reply/Copy/Play as each response starts.
+  const speakingSourceMessageId = speaking ? playingMessageId : null;
   const lastId = visibleMessages.at(-1)?.id ?? null;
   const lastContent = visibleMessages.at(-1)?.content ?? "";
   // The thread body is mounted while the sheet is open OR during an upward
@@ -3660,6 +3851,24 @@ export function ChatOverlay({
     [hasRevealableThread, sheetOpen],
   );
   const expand = React.useCallback(() => expandCore(true), [expandCore]);
+
+  // Talk is part of this conversation, so starting it reveals this same thread
+  // at the reading detent without focusing the textarea or opening a keyboard.
+  // The sheet remains open after Talk ends, leaving the just-persisted voice
+  // turns visible and reviewable like typed turns.
+  const voiceConversationActive = Boolean(
+    realtimeVoice?.enabled &&
+      (handsFree || realtimeVoice.active || realtimeVoice.connecting),
+  );
+  const voiceConversationWasActiveRef = React.useRef(false);
+  React.useEffect(() => {
+    const wasActive = voiceConversationWasActiveRef.current;
+    voiceConversationWasActiveRef.current = voiceConversationActive;
+    if (!voiceConversationActive || wasActive || pinnedOpen) return;
+    preFocusCollapsedRef.current = false;
+    setFreeH(null);
+    goToDetent("half");
+  }, [goToDetent, pinnedOpen, voiceConversationActive]);
   // Typing re-asserts the open but must NOT re-snapshot the pre-focus state:
   // the sheet is open by then, so re-snapshotting on every keystroke read
   // "open-before-focus" and a keyboard dismiss no longer returned a
@@ -5237,35 +5446,11 @@ export function ChatOverlay({
         />
       ) : null}
 
-      {/* Realtime voice reports provider phase and interim words in the shared
-          status component; the composer stays stable underneath it. */}
-
-      {realtimeVoice && realtimeVoiceStatusVisible ? (
-        <div className="pointer-events-none relative mb-2 flex w-full justify-center px-3">
-          <ChatVoiceStatusBar
-            status={realtimeVoice.status}
-            interimTranscript={transcript}
-            needsAudioUnlock={needsAudioUnlock}
-            onUnlockAudio={unlockAudio}
-            realtimeActive={realtimeVoice.active}
-            realtimeConnecting={realtimeVoice.connecting}
-            realtimePaused={realtimeVoice.paused}
-            realtimeErrorMessage={realtimeVoice.error}
-            visible
-            className={cn(
-              "pointer-events-auto max-w-full rounded-full bg-card/55 px-3 py-1.5",
-              WALLPAPER_FLOAT_SHADOW,
-            )}
-            data-testid="chat-overlay-voice-status"
-          />
-        </div>
-      ) : null}
-
       {/* Audio-unlock prompt. When autoplay policy blocks the first spoken
           reply, the ambient overlay would otherwise go silent with no recourse
           (the in-view status bar has its own unlock; this is the floating-shell
           equivalent). Warm accent = call-to-action; no blue. */}
-      {needsAudioUnlock && !realtimeVoiceStatusVisible ? (
+      {needsAudioUnlock && !realtimeVoiceComposerVisible ? (
         <div
           role="status"
           aria-live="polite"
@@ -6171,6 +6356,17 @@ export function ChatOverlay({
                   reduceMotion={reduce}
                   transcript={transcript}
                 />
+              ) : realtimeVoiceComposerVisible && realtimeVoice ? (
+                <ComposerRealtimeVoiceActivity
+                  connecting={realtimeVoice.connecting}
+                  error={realtimeVoice.error}
+                  needsAudioUnlock={needsAudioUnlock}
+                  onUnlockAudio={unlockAudio}
+                  paused={realtimeVoice.paused}
+                  reduceMotion={reduce}
+                  status={realtimeVoice.status}
+                  transcript={transcript}
+                />
               ) : (
                 <Textarea
                   ref={inputRef}
@@ -6332,7 +6528,8 @@ export function ChatOverlay({
                     />
                   ) : (
                     <SoftButton
-                      icon={AudioLines}
+                      glyph={handsFree ? STOP_GLYPH : undefined}
+                      icon={handsFree ? undefined : AudioLines}
                       label={
                         realtimeVoice?.connecting
                           ? "cancel voice connection"
@@ -6345,7 +6542,10 @@ export function ChatOverlay({
                       disabled={firstRunOpen}
                       active={handsFree}
                       pressed={recording || handsFree}
-                      pulse={recording || handsFree}
+                      pulse={
+                        recording ||
+                        (handsFree && !realtimeVoiceComposerVisible)
+                      }
                       onClick={handleMicClick}
                       testId="chat-composer-mic"
                     />
