@@ -4,8 +4,10 @@
  * Returns a discriminated union that lets the shell decide whether to render
  * the login gate or the main dashboard.
  *
- * Fail-closed: network errors are treated as server-unavailable so the app
- * never leaks the dashboard, but also does not imply bad credentials.
+ * The initial probe fails closed: network errors become server-unavailable so
+ * the app never paints a protected shell before auth is known. Background and
+ * visibility revalidation keep the last resolved state until the new result
+ * arrives; briefly publishing `loading` there would tear down the live shell.
  *
  * Call `refetch()` after login / logout to force a fresh check.
  *
@@ -84,11 +86,10 @@ function publishAuthStatus(state: AuthStatusState): void {
 async function fetchAuthStatus(): Promise<void> {
   if (authStatusFetch) return authStatusFetch;
 
-  publishAuthStatus(
-    authStatusSnapshot.phase === "loading"
-      ? authStatusSnapshot
-      : { phase: "loading" },
-  );
+  // The shared snapshot already starts in `loading`, so the cold probe remains
+  // fail-closed. Once resolved, revalidation is stale-while-revalidate: the
+  // backend still enforces auth while the UI retains its mounted shell until an
+  // authoritative authenticated/unauthenticated/unavailable result arrives.
 
   authStatusFetch = (async () => {
     for (let attempt = 0; ; attempt += 1) {
