@@ -149,7 +149,7 @@ const GUI_INTERACTION_OWNERS: Readonly<
       proves:
         "Creates, edits, and preserves a note through the real Notes surface and filesystem-backed service.",
       signals: [
-        "creates, edits, and preserves a note across remounts",
+        "projects note mutations across read-only view remounts",
         "Demo briefing ready",
       ],
     },
@@ -170,7 +170,8 @@ const GUI_INTERACTION_OWNERS: Readonly<
       signals: [
         "wallet inventory interactions",
         "Hide USDC",
-        "Open RPC settings",
+        "Wallet RPC settings action",
+        'name: "RPC settings", exact: true',
       ],
     },
   ],

@@ -71,9 +71,9 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
 			// save/search/recall makes models refuse "delete that document" as
 			// unsupported instead of classifying into this context (#16942).
 			description:
-				"Read, write, edit, delete, search, and list stored documents. Use whenever the user asks to save findings, notes, summaries, files, or any persisted text artifact, to search and recall prior documents and uploaded files, or to remove a stored document.",
+				"Read, write, edit, delete, search, and list stored long-form documents and uploads. Use whenever the user asks to save findings, summaries, files, or another persisted document, to search and recall prior documents and uploaded files, or to remove a stored document. Sticky Notes app records are view-backed device/app control and do not use this context.",
 			descriptionCompressed:
-				"Stored documents/notes/uploads: save, search, recall, delete",
+				"Long-form documents/uploads: save, search, recall, delete; sticky Notes use general + VIEWS",
 			sensitivity: "personal",
 			cacheScope: "agent",
 			subcontexts: ["knowledge", "research"],
@@ -166,7 +166,9 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
 			id: "calendar",
 			label: "Calendar",
 			description:
-				"Availability, events, meetings, appointments, invites, travel time, scheduling constraints, reschedules, and calendar-derived reminders.",
+				"Availability, events, meetings, appointments, invites, travel time, scheduling constraints, reschedules, and calendar-derived reminders. A timed request such as 'add demo tomorrow at 9am' is a calendar event unless the user explicitly asks for a task or reminder.",
+			descriptionCompressed:
+				"Read/write calendar events and schedules; timed add-X requests are events unless explicitly tasks/reminders",
 			sensitivity: "private",
 			cacheScope: "turn",
 			roleGate: { minRole: "ADMIN" },

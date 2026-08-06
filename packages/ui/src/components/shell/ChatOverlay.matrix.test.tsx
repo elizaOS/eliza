@@ -255,6 +255,29 @@ describe("free-rest release bands + detent magnetism (matrix: FREE / slow drag r
     expect(variant()).toBe("closed");
   });
 
+  it("keeps a short canceled preview mounted until its return spring reaches INPUT", async () => {
+    render(<ChatOverlay controller={makeController()} />);
+    const g = grabber();
+    fireEvent.pointerDown(g, { clientY: 760, pointerId: 46 });
+    fireEvent.pointerMove(g, { clientY: 710, pointerId: 46 });
+    await frame();
+    await waitFor(() =>
+      expect(screen.queryByTestId("chat-thread")).toBeTruthy(),
+    );
+
+    fireEvent.pointerCancel(g, { clientY: 710, pointerId: 46 });
+
+    // Pointer termination must not remove the moving body. The return spring
+    // remains visible, then the collapsed-state listener unmounts it at rest.
+    expect(thread()).toBeTruthy();
+    await waitFor(
+      () => expect(screen.queryByTestId("chat-thread")).toBeNull(),
+      {
+        timeout: 4000,
+      },
+    );
+  });
+
   it("snaps to FULL when released within 64px of the top", async () => {
     render(<ChatOverlay controller={makeController()} />);
     // 640 travel lands in the full magnet band (≥ 632) without crossing the
@@ -434,7 +457,7 @@ describe("no lingering state across consecutive gestures", () => {
   });
 });
 
-describe("maximize commit hysteresis (MAXIMIZE_COMMIT_T / MAXIMIZE_RELEASE_T)", () => {
+describe("maximize commit hysteresis", () => {
   it("pointer jitter at the commit threshold cannot flap the maximize on/off", async () => {
     const impacts: string[] = [];
     (globalThis as { Capacitor?: unknown }).Capacitor = {
@@ -458,8 +481,8 @@ describe("maximize commit hysteresis (MAXIMIZE_COMMIT_T / MAXIMIZE_RELEASE_T)", 
     // the flap detection below is timing-proof.
     await waitFor(() => expect(maximized()).toBe("true"));
     const commitHaptics = impacts.length;
-    // ±6px jitter around the committed point: hysteresis (commit 0.3 / release
-    // 0.15 of the over-pull gap) must hold the state steady.
+    // ±6px jitter around the committed point must stay inside the release band
+    // and hold the state steady.
     for (const y of [34, 22, 32, 24, 30, 26]) {
       fireEvent.pointerMove(g, { clientY: y, pointerId: 46 });
       await frame();

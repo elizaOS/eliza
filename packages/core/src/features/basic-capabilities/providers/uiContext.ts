@@ -21,6 +21,14 @@ function asString(value: unknown): string | null {
 	return trimmed.length > 0 ? trimmed : null;
 }
 
+function asStringList(value: unknown): string[] {
+	if (!Array.isArray(value)) return [];
+	return value.flatMap((entry) => {
+		const parsed = asString(entry);
+		return parsed ? [parsed] : [];
+	});
+}
+
 export const uiContextProvider: Provider = {
 	name: "UI_CONTEXT",
 	description:
@@ -36,6 +44,8 @@ export const uiContextProvider: Provider = {
 		const metadata = asRecord(message.content.metadata);
 		const uiView = asString(metadata?.uiView);
 		const uiTab = asString(metadata?.uiTab);
+		const uiViewPath = asString(metadata?.uiViewPath);
+		const uiViewCapabilities = asStringList(metadata?.uiViewCapabilities);
 		const routing = parseContextRoutingMetadata(
 			metadata?.[CONTEXT_ROUTING_METADATA_KEY] ??
 				state.values[CONTEXT_ROUTING_STATE_KEY],
@@ -50,8 +60,12 @@ export const uiContextProvider: Provider = {
 			"# UI Context",
 			`view: ${uiView ?? "chat"}`,
 			uiTab ? `tab: ${uiTab}` : null,
+			uiViewPath ? `path: ${uiViewPath}` : null,
+			uiViewCapabilities.length > 0
+				? `view_capabilities: ${uiViewCapabilities.join(", ")}`
+				: null,
 			`active_contexts: ${activeContexts.join(", ") || "general"}`,
-			"Use actions and providers that match this UI context first.",
+			"Use actions and providers that match this UI context first. If the user refers to this focused view or asks to create, update, delete, or inspect something in it, select the VIEWS action instead of replying as though the operation already happened.",
 		].filter((line): line is string => line !== null);
 
 		return {
@@ -59,11 +73,15 @@ export const uiContextProvider: Provider = {
 			values: {
 				uiView: uiView ?? "chat",
 				uiTab: uiTab ?? "",
+				uiViewPath: uiViewPath ?? "",
+				uiViewCapabilities: uiViewCapabilities.join(", "),
 				uiContexts: activeContexts.join(", "),
 			},
 			data: {
 				uiView,
 				uiTab,
+				uiViewPath,
+				uiViewCapabilities,
 				activeContexts,
 			},
 		};

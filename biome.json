@@ -44,7 +44,8 @@
       "!plugins/plugin-personal-assistant/docs/audit",
       "!packages/elizaos/templates",
       "!packages/app-core/test/contracts/lib/openzeppelin-contracts",
-      "!packages/app-core/src/styles"
+      "!packages/app-core/src/styles",
+      "!packages/homepage/waitlist"
     ]
   },
   "linter": {

@@ -11,6 +11,7 @@ import {
 	createViewsClient,
 	type ViewSummary,
 } from "../actions/views-client.js";
+import { userRequestMessageText } from "../params.js";
 
 type CapabilityFamily = "create" | "delete" | "update";
 
@@ -58,10 +59,7 @@ const CONTENT_MARKER_TOKENS = new Set([
 	"TEXT",
 	"TITLE",
 ]);
-
-function textOf(value: unknown): string {
-	return typeof value === "string" ? value : "";
-}
+const CONTENT_TAIL_MARKER_TOKENS = new Set(["ABOUT", "FOR", "TO"]);
 
 function tokenize(text: string): string[] {
 	return text.toUpperCase().match(/[A-Z0-9]+/g) ?? [];
@@ -72,6 +70,15 @@ function hasAny(
 	accepted: ReadonlySet<string>,
 ): boolean {
 	return tokens.some((token) => accepted.has(token));
+}
+
+function hasReferentialContentTail(tokens: readonly string[]): boolean {
+	return tokens.some(
+		(token, index) =>
+			CONTENT_TAIL_MARKER_TOKENS.has(token) &&
+			index < tokens.length - 1 &&
+			hasAny(tokens.slice(0, index), REFERENCE_TOKENS),
+	);
 }
 
 function requestFamily(tokens: readonly string[]): CapabilityFamily | null {
@@ -114,14 +121,19 @@ function shouldConsiderViewFollowup(
 	context: ResponseHandlerEvaluatorContext,
 ): CapabilityFamily | null {
 	if (context.messageHandler.processMessage === "STOP") return null;
-	if (context.messageHandler.plan.requiresTool === true) return null;
 	if (!hasRegisteredViewsAction(context)) return null;
 
-	const tokens = tokenize(textOf(context.message.content?.text));
+	// Security-unwrapped user words — the envelope's warning contains follow-up
+	// verbs ("change", "delete", …) the token families would false-match.
+	const tokens = tokenize(userRequestMessageText(context.message));
 	const family = requestFamily(tokens);
 	if (!family) return null;
 	if (!hasAny(tokens, REFERENCE_TOKENS)) return null;
-	if (family !== "delete" && !hasAny(tokens, CONTENT_MARKER_TOKENS)) {
+	if (
+		family !== "delete" &&
+		!hasAny(tokens, CONTENT_MARKER_TOKENS) &&
+		!hasReferentialContentTail(tokens)
+	) {
 		return null;
 	}
 	return family;
@@ -157,7 +169,11 @@ export const viewFollowupRoutingEvaluator: ResponseHandlerEvaluator = {
 	name: "app-control.view-followup-routing",
 	description:
 		"Routes context-dependent mutation follow-ups for the active UI view through the VIEWS action.",
-	priority: 20,
+	// Focused-view referential intent is stronger than a broad Stage-1 action
+	// guess. Phrases such as "create a new one to eat lunch" otherwise resemble
+	// generic tasks, so replace the candidate surface only after the active view
+	// proves it owns the requested capability.
+	priority: 10,
 	shouldRun: (context) => shouldConsiderViewFollowup(context) !== null,
 	evaluate: async (context) => {
 		const family = shouldConsiderViewFollowup(context);
@@ -169,12 +185,21 @@ export const viewFollowupRoutingEvaluator: ResponseHandlerEvaluator = {
 		return {
 			requiresTool: true,
 			clearReply: true,
-			reply: "On it.",
 			addContexts: [GENERAL_CONTEXT],
+			clearCandidateActions: true,
 			addCandidateActions: [VIEWS_ACTION_NAME],
+			clearParentActionHints: true,
 			addParentActionHints: [VIEWS_ACTION_NAME],
+			deterministicToolCall: {
+				name: VIEWS_ACTION_NAME,
+				params: {
+					action: "interact",
+					view: activeView.id,
+					...(activeView.viewType ? { viewType: activeView.viewType } : {}),
+				},
+			},
 			debug: [
-				`active view ${activeView.id} supports ${family}; routing follow-up through VIEWS`,
+				`active view ${activeView.id} supports ${family}; forcing sole deterministic VIEWS owner`,
 			],
 		};
 	},

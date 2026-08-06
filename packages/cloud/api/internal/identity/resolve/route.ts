@@ -5,6 +5,7 @@ import { z } from "zod";
 import { dbRead } from "@/db/helpers";
 import {
   type IdentityProvider,
+  providerForPlatform,
   usersRepository,
 } from "@/db/repositories/users";
 import { agentSandboxes } from "@/db/schemas/agent-sandboxes";
@@ -33,24 +34,6 @@ const resolveIdentitySchema = z
   });
 
 const app = new Hono<AppEnv>();
-
-function providerForPlatform(
-  platform: string | undefined,
-): IdentityProvider | undefined {
-  switch (platform) {
-    case "telegram":
-      return "telegram";
-    case "discord":
-      return "discord";
-    case "whatsapp":
-      return "whatsapp";
-    case "twilio":
-    case "blooio":
-      return "phone";
-    default:
-      return undefined;
-  }
-}
 
 app.post("/", async (c) => {
   try {

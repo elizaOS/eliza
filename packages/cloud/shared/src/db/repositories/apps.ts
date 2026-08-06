@@ -2,6 +2,7 @@
 import { and, count, countDistinct, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { cache } from "../../lib/cache/client";
 import { CacheKeys } from "../../lib/cache/keys";
+import { evictInferenceAppMemoryCache } from "../../lib/services/inference-app-memory-cache";
 import { sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
 import {
@@ -32,6 +33,7 @@ async function invalidateAppCacheEntries(
   apiKeyId?: string | null,
   slug?: string | null,
 ): Promise<void> {
+  evictInferenceAppMemoryCache(appId);
   const keys: Promise<void>[] = [
     cache.del(CacheKeys.app.byId(appId)),
     cache.del(CacheKeys.app.costMarkup(appId)),

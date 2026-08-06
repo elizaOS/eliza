@@ -299,6 +299,17 @@ describe("Stage-1 prompt tiering", () => {
 			makeMessage({ channelType: String(ChannelType.DM) }),
 		);
 		expect(systemContent).toContain(DIRECT_MESSAGE_MARKER);
+		expect(systemContent).toContain('candidateActionNames=["VIEWS"]');
+		expect(systemContent).toContain(
+			"Never claim the view opened before VIEWS succeeds.",
+		);
+		expect(systemContent).toContain(
+			"Sticky Notes and native device controls are also device/app control",
+		);
+		expect(systemContent).toContain('candidateActionNames=["CALENDAR"]');
+		expect(systemContent).toContain(
+			"UI navigation and view-backed Notes/device operations -> VIEWS; calendar events -> CALENDAR.",
+		);
 		expect(systemContent).not.toContain(GROUP_TRIAGE_MARKER);
 		expect(systemContent).not.toContain(FULL_TEMPLATE_MARKER);
 	});

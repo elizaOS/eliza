@@ -1,36 +1,39 @@
 /**
- * Realtime local transcript surface for the omi pendant.
+ * Canonical ambient transcript surface for the omi pendant.
  *
- * It owns a Phase 1 browser-local optimistic cache: connect BLE, show pending,
- * resolved, and failed ASR segments, persist them across refresh, and pause
- * ambient capture without disconnecting the pendant or stopping battery updates.
+ * It presents the server-authoritative pendant session established by the
+ * canonical session controller while keeping BLE capture default-off until the
+ * user connects the pendant from this route.
  */
 
+import type { PendantSessionSnapshot } from "@elizaos/shared/contracts";
 import {
   ArrowDown,
   BatteryLow,
   BatteryMedium,
   Bluetooth,
   BluetoothConnected,
+  CircleDot,
   Loader2,
-  Mic,
   Pause,
   Play,
+  Radio,
+  Square,
   Timer,
-  Trash2,
 } from "lucide-react";
 import * as React from "react";
 import { useThreadAutoScroll } from "../../hooks/useThreadAutoScroll";
 import { cn } from "../../lib/utils";
+import { CanonicalPendantSessionController } from "../../pendant/canonical-session-controller";
 import {
   isPendantLiveStatus,
   pendantStatusLabel,
 } from "../../pendant/pendant-status";
-import {
-  createLocalOptimisticPendantTranscriptSessionAdapter,
-  type PendantTranscriptSegment,
-  pendantTranscriptSessionReducer,
+import type {
+  PendantTranscriptSegment,
+  PendantTranscriptSessionState,
 } from "../../pendant/pendant-transcript-session";
+import { createPendantSessionSyncClient } from "../../pendant/session-sync-client";
 import { usePendant } from "../../pendant/usePendant";
 import { Button } from "../ui/button";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
@@ -108,35 +111,125 @@ function BatteryDisplay({
   );
 }
 
+function PendantRecordingIndicator({
+  live,
+  paused,
+  status,
+  processingLocation,
+}: {
+  live: boolean;
+  paused: boolean;
+  status: string;
+  processingLocation: string | null;
+}): React.ReactElement {
+  const listening = live && !paused;
+  const label = paused
+    ? "Paused"
+    : status === "reconnecting"
+      ? "Reconnecting"
+      : listening
+        ? "Listening"
+        : "Off";
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className={cn(
+        "inline-flex items-center gap-2 rounded-sm border px-3 py-2 text-sm font-medium",
+        listening
+          ? "border-accent bg-accent-subtle text-txt-strong"
+          : paused
+            ? "border-border bg-card text-muted-strong"
+            : "border-border bg-card text-muted",
+      )}
+      data-testid="pendant-recording-indicator"
+      data-listening={listening ? "true" : "false"}
+    >
+      {listening ? (
+        <Square
+          className="size-3.5 fill-accent text-accent animate-pulse motion-reduce:animate-none"
+          aria-hidden
+        />
+      ) : paused ? (
+        <Radio className="size-3.5 text-muted-strong" aria-hidden />
+      ) : (
+        <CircleDot className="size-3.5 text-muted" aria-hidden />
+      )}
+      <span>{label}</span>
+      {live && processingLocation ? (
+        <span className="border-l border-border pl-2 text-2xs uppercase tracking-wide text-muted">
+          {processingLocation}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 export function PendantTranscriptView(): React.ReactElement {
-  const sessionAdapter = React.useMemo(
-    () => createLocalOptimisticPendantTranscriptSessionAdapter(),
+  const [session, setSession] = React.useState<PendantTranscriptSessionState>({
+    segments: [],
+    updatedAt: null,
+    clearedThrough: null,
+  });
+  const [syncError, setSyncError] = React.useState<string | null>(null);
+  const [showTimings, setShowTimings] = React.useState(false);
+  const [processingLocation, setProcessingLocation] = React.useState<
+    PendantSessionSnapshot["session"]["processingLocation"] | null
+  >(null);
+  const controllerRef = React.useRef<CanonicalPendantSessionController | null>(
+    null,
+  );
+  const acceptSnapshot = React.useCallback(
+    (snapshot: PendantSessionSnapshot) => {
+      const segments = snapshot.segments.map((segment) => ({
+        id: segment.id,
+        status:
+          segment.status === "asr-error" ? ("failed" as const) : segment.status,
+        text: segment.text,
+        startedAt: Date.parse(segment.startedAt),
+        endedAt: Date.parse(segment.endedAt ?? segment.updatedAt),
+        durationMs: Math.max(
+          0,
+          Date.parse(segment.endedAt ?? segment.updatedAt) -
+            Date.parse(segment.startedAt),
+        ),
+        words: segment.words.map((word) => ({
+          text: word.word,
+          startMs: word.startMs,
+          endMs: word.endMs,
+        })),
+        warning: segment.error,
+      }));
+      setSession({
+        segments,
+        updatedAt:
+          segments.at(-1)?.endedAt ?? Date.parse(snapshot.session.startedAt),
+        clearedThrough: null,
+      });
+      setProcessingLocation(snapshot.session.processingLocation);
+      setSyncError(null);
+    },
     [],
   );
-  const initialCache = React.useMemo(() => {
-    try {
-      return { session: sessionAdapter.load(), error: null as string | null };
-    } catch (error) {
-      // error-policy:J4 A blocked or corrupt cache renders an explicit unavailable state.
-      return {
-        session: {
-          segments: [],
-          updatedAt: null,
-          clearedThrough: null,
-        },
-        error:
-          error instanceof Error
-            ? error.message
-            : "Pendant transcript cache is unavailable.",
-      };
-    }
-  }, [sessionAdapter]);
-  const [session, dispatchSession] = React.useReducer(
-    pendantTranscriptSessionReducer,
-    initialCache.session,
-  );
-  const [cacheError, setCacheError] = React.useState(initialCache.error);
-  const [showTimings, setShowTimings] = React.useState(false);
+  const controllerHolder = React.useId();
+  const controller = React.useMemo(() => {
+    const client = createPendantSessionSyncClient({
+      onSnapshot: (snapshot) => {
+        if (controllerRef.current?.acceptsSnapshot(snapshot)) {
+          acceptSnapshot(snapshot);
+        }
+      },
+      onError: (error) => setSyncError(error.message),
+    });
+    const nextController = new CanonicalPendantSessionController({
+      client,
+      holder: controllerHolder,
+      onSnapshot: acceptSnapshot,
+      onError: (error) => setSyncError(error.message),
+    });
+    controllerRef.current = nextController;
+    return nextController;
+  }, [acceptSnapshot, controllerHolder]);
   const { scrollRef, atBottom, jumpToLatest } =
     useThreadAutoScroll<HTMLDivElement>({
       growthKey: `${session.segments.length}:${
@@ -145,24 +238,73 @@ export function PendantTranscriptView(): React.ReactElement {
     });
 
   const { state, supported, connect, disconnect, pause, resume } = usePendant({
-    onSegment: React.useCallback((detail) => {
-      dispatchSession({ type: "segment", detail });
-    }, []),
+    dispatchResolvedTranscript: false,
+    onSegment: React.useCallback(
+      (detail) => controller.handleSegment(detail),
+      [controller],
+    ),
   });
 
   React.useEffect(() => {
-    if (cacheError) return;
+    void controller.followLatest().catch((error) => {
+      setSyncError(error instanceof Error ? error.message : String(error));
+    });
+    return () => {
+      // error-policy:J5 stop reports the same failure through the controller onError boundary.
+      void controller.stop().catch(() => undefined);
+    };
+  }, [controller]);
+
+  const connectCanonical = React.useCallback(async () => {
+    setSyncError(null);
+    const connected = await connect();
+    if (!connected) return;
     try {
-      sessionAdapter.save(session);
+      await controller.start();
     } catch (error) {
-      // error-policy:J4 Persistence failures stay visible instead of reading as saved.
-      setCacheError(
-        error instanceof Error
-          ? error.message
-          : "Pendant transcript cache could not be saved.",
-      );
+      const stop = controller.stop();
+      await disconnect();
+      // error-policy:J5 controller onError already records the teardown failure.
+      await stop.catch(() => undefined);
+      setSyncError(error instanceof Error ? error.message : String(error));
     }
-  }, [cacheError, session, sessionAdapter]);
+  }, [connect, controller, disconnect]);
+  const pauseCanonical = React.useCallback(async () => {
+    pause();
+    try {
+      await controller.pause();
+    } catch (error) {
+      try {
+        await controller.resume();
+        resume();
+      } catch (recoveryError) {
+        setSyncError(
+          recoveryError instanceof Error
+            ? recoveryError.message
+            : String(recoveryError),
+        );
+        return;
+      }
+      setSyncError(error instanceof Error ? error.message : String(error));
+    }
+  }, [controller, pause, resume]);
+  const resumeCanonical = React.useCallback(async () => {
+    try {
+      await controller.resume();
+      resume();
+    } catch (error) {
+      setSyncError(error instanceof Error ? error.message : String(error));
+    }
+  }, [controller, resume]);
+  const disconnectCanonical = React.useCallback(async () => {
+    const stop = controller.stop();
+    await disconnect();
+    try {
+      await stop;
+    } catch (error) {
+      setSyncError(error instanceof Error ? error.message : String(error));
+    }
+  }, [controller, disconnect]);
 
   const live = isPendantLiveStatus(state.status);
   const frozen = !live && session.segments.length > 0;
@@ -200,82 +342,64 @@ export function PendantTranscriptView(): React.ReactElement {
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <span
-                className={cn(
-                  "inline-flex items-center gap-1.5 rounded-sm border border-border px-2.5 py-1.5 text-xs",
-                  live && !state.paused && "border-accent text-accent",
-                  state.paused && "text-muted",
-                )}
-                data-testid="pendant-recording-indicator"
-              >
-                {live ? (
-                  <Mic
-                    className={cn(
-                      "size-4",
-                      !state.paused &&
-                        "animate-pulse motion-reduce:animate-none",
-                    )}
-                    aria-hidden
-                  />
-                ) : (
-                  <Bluetooth className="size-4" aria-hidden />
-                )}
-                {state.paused
-                  ? "Paused"
-                  : state.status === "reconnecting"
-                    ? "Reconnecting"
-                    : live
-                      ? "Recording"
-                      : "Idle"}
-              </span>
+              <PendantRecordingIndicator
+                live={live}
+                paused={state.paused}
+                status={state.status}
+                processingLocation={processingLocation}
+              />
               <BatteryDisplay percent={state.batteryPercent} />
             </div>
           </div>
-          <div className="mt-4 flex flex-wrap items-center gap-2">
+          <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
             {!supported ? (
               <span className="text-sm text-muted">
                 Bluetooth pendant is not available in this environment.
               </span>
             ) : live ? (
-              <>
-                <Button
-                  variant="surface"
-                  size="sm"
-                  onClick={disconnect}
-                  data-testid="pendant-transcript-disconnect"
-                >
-                  <BluetoothConnected className="size-4" aria-hidden />
-                  Disconnect
-                </Button>
+              <div className="grid gap-2 sm:grid-cols-2">
                 {state.paused ? (
                   <Button
                     variant="surfaceAccent"
-                    size="sm"
-                    onClick={resume}
+                    size="lg"
+                    onClick={resumeCanonical}
                     data-testid="pendant-transcript-resume"
+                    className="w-full"
                   >
                     <Play className="size-4" aria-hidden />
-                    Resume
+                    Resume Listening
                   </Button>
                 ) : (
                   <Button
                     variant="surface"
-                    size="sm"
-                    onClick={pause}
+                    size="lg"
+                    onClick={pauseCanonical}
                     data-testid="pendant-transcript-pause"
+                    className="w-full"
                   >
                     <Pause className="size-4" aria-hidden />
-                    Pause
+                    Pause Listening
                   </Button>
                 )}
-              </>
+                <Button
+                  variant="surface"
+                  size="lg"
+                  onClick={disconnectCanonical}
+                  data-testid="pendant-transcript-disconnect"
+                  className="w-full"
+                >
+                  <BluetoothConnected className="size-4" aria-hidden />
+                  Disconnect
+                </Button>
+              </div>
             ) : (
               <Button
                 variant="surfaceAccent"
-                size="sm"
-                onClick={connect}
+                size="lg"
+                onClick={connectCanonical}
                 disabled={busy}
                 data-testid="pendant-transcript-connect"
+                className="w-full sm:w-auto"
               >
                 {busy ? (
                   <Loader2 className="size-4 animate-spin" aria-hidden />
@@ -285,30 +409,16 @@ export function PendantTranscriptView(): React.ReactElement {
                 {busy ? pendantStatusLabel(state.status) : "Connect"}
               </Button>
             )}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                const at = Date.now();
-                try {
-                  sessionAdapter.clear(at);
-                  dispatchSession({ type: "clear", at });
-                  setCacheError(null);
-                } catch (error) {
-                  // error-policy:J4 Clear failures preserve the visible cache/error state.
-                  setCacheError(
-                    error instanceof Error
-                      ? error.message
-                      : "Pendant transcript cache could not be cleared.",
-                  );
-                }
-              }}
-              disabled={session.segments.length === 0 && !cacheError}
-              data-testid="pendant-transcript-clear"
-            >
-              <Trash2 className="size-4" aria-hidden />
-              Clear local view/cache
-            </Button>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+              <span>
+                {resolvedCount} resolved · {pendingCount} pending
+              </span>
+              <span>
+                Canonical private session · synced across owner devices
+              </span>
+            </div>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
             {hasTimings ? (
               <Button
                 variant="ghost"
@@ -320,12 +430,6 @@ export function PendantTranscriptView(): React.ReactElement {
                 {showTimings ? "Hide timings" : "Show timings"}
               </Button>
             ) : null}
-            <span className="text-xs text-muted">
-              {resolvedCount} resolved · {pendingCount} pending
-            </span>
-            <span className="text-xs text-muted">
-              Local offline cache · this device only
-            </span>
           </div>
           {frozen ? (
             <div
@@ -344,13 +448,13 @@ export function PendantTranscriptView(): React.ReactElement {
               {errorMessage}
             </div>
           ) : null}
-          {cacheError ? (
+          {syncError ? (
             <div
               role="alert"
               className="mt-3 border-l-2 border-danger bg-danger/10 px-3 py-2 text-sm text-danger"
-              data-testid="pendant-transcript-cache-error"
+              data-testid="pendant-transcript-sync-error"
             >
-              {cacheError}
+              {syncError}
             </div>
           ) : null}
         </header>
@@ -362,14 +466,14 @@ export function PendantTranscriptView(): React.ReactElement {
             aria-live="polite"
             data-testid="pendant-transcript-feed"
           >
-            {cacheError && session.segments.length === 0 ? (
+            {syncError && session.segments.length === 0 ? (
               <div className="flex h-full items-center justify-center px-6 text-center">
                 <div className="max-w-md">
                   <p className="text-sm font-medium text-danger">
-                    Transcript cache unavailable
+                    Canonical transcript unavailable
                   </p>
                   <p className="mt-2 text-sm leading-6 text-muted">
-                    Reset the local cache to retry storage access.
+                    Reconnect to the private agent session to retry sync.
                   </p>
                 </div>
               </div>

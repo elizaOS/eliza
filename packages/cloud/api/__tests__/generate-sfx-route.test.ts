@@ -202,7 +202,9 @@ describe("generate-sfx — happy path", () => {
       audio: { url: string; file_size: number; content_type: string };
     };
     expect(payload.success).toBe(true);
-    expect(payload.id).toBe("gen-sfx-1");
+    expect(payload.id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
     expect(payload.audio.url).toContain(`generations/sfx/${ORG}/${USER}/`);
     expect(payload.audio.file_size).toBe(MP3_BYTES.byteLength);
 
@@ -215,6 +217,7 @@ describe("generate-sfx — happy path", () => {
     // The generation row records the sfx type + storage URL.
     expect(generationsCreate).toHaveBeenCalledTimes(1);
     expect(generationsCreate.mock.calls[0][0]).toMatchObject({
+      id: payload.id,
       type: "sfx",
       model: MODEL,
       provider: "elevenlabs",
@@ -304,7 +307,7 @@ describe("generate-sfx — settlement", () => {
       { BLOB: blob.binding },
     );
 
-    expect(res.status).toBeGreaterThanOrEqual(500);
+    expect(res.status).toBe(200);
     expect(ledger.reconcileCalls).toBe(1);
     expect(ledger.lastActual).toBeCloseTo(COST, 10);
     expect(ledger.balance).toBeCloseTo(ledger.startBalance - COST, 10);

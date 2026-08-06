@@ -25,6 +25,8 @@ import {
   ElizaError,
   MESSAGE_SOURCE_SUB_AGENT,
   stringToUuid,
+  unwrapUserMessageText,
+  userReferenceLogView,
 } from "@elizaos/core";
 import type { IssueInfo, PullRequestInfo } from "git-workspace-service";
 import {
@@ -84,7 +86,6 @@ import {
   labelFor,
   listSessionsWithin,
   logger,
-  messageText,
   newestSession,
   paramsRecord,
   parseApproval,
@@ -209,6 +210,18 @@ function readOp(params: Record<string, unknown>): TaskOp | null {
 }
 
 // ── action: create (CREATE_AGENT_TASK) ──────────────────────────────────────
+
+/**
+ * The user's actual words for every fallback that reads the inbound message as
+ * request/task text. `hardenIncomingUserMessage` wraps external messages'
+ * content.text IN PLACE in the security envelope, so a raw read stores and
+ * echoes the armor instead of the request (live leak tj-2dc95f75456876,
+ * task e7312d73's originalRequest persisted the whole envelope).
+ */
+function requestText(message: Memory): string {
+  if (typeof message.content === "string") return message.content;
+  return unwrapUserMessageText(message);
+}
 
 function taskParts(
   params: Record<string, unknown>,
@@ -766,7 +779,7 @@ async function runCreateLegacy(
     );
   }
 
-  const text = messageText(message);
+  const text = requestText(message);
   // Genuine user request for workdir-route matching — see runSpawnAgent and
   // resolveOriginatingRequestText. Keeps routing planner-independent.
   const routingRequest = await resolveOriginatingRequestText(
@@ -810,7 +823,12 @@ async function runCreateLegacy(
   const maxSmithersTurns = readPositiveInteger(
     params.maxTurns ?? content.maxTurns,
   );
-  const baseLabel = pickString(params, content, "label");
+  // A planner-supplied label is free text; clamp like the labelFrom fallback
+  // so listings, room names, and progress lines stay bounded.
+  const baseLabelParam = pickString(params, content, "label");
+  const baseLabel = baseLabelParam
+    ? userReferenceLogView(baseLabelParam)
+    : undefined;
   const extraMetadata = additionalSessionMetadata(params, content);
   const keepAliveAfterComplete = hasVerifiedRetryLifecycle(
     params,
@@ -843,11 +861,22 @@ async function runCreateLegacy(
   // owner recorded in every Smithers run link, so a host restart can discover
   // the task/session pair and resume the same graph without reconstructing the
   // action call from transient planner state.
-  const taskTitle =
-    pickString(params, content, "title") ??
-    pickString(params, content, "goal") ??
-    (tasks[0] ? labelFrom(tasks[0], 0) : "Coding task");
-  const taskGoal = pickString(params, content, "goal") ?? taskTitle;
+  // Planner-supplied title/goal is unbounded free text (it can be a whole
+  // blob); clamp at the persist/display seam — the stored task title and the
+  // [TASK:] widget block both render it. labelFrom's fallback is already
+  // 80-clamped, so only the params-derived branch needs bounding.
+  const plannerTitle =
+    pickString(params, content, "title") ?? pickString(params, content, "goal");
+  const taskTitle = plannerTitle
+    ? userReferenceLogView(plannerTitle)
+    : tasks[0]
+      ? labelFrom(tasks[0], 0)
+      : "Coding task";
+  // Goal is an instruction channel (goal-prompt first instruction, acceptance
+  // criteria, resume prompts), not display — it must never inherit the title's
+  // display clamp, or a long planner title silently truncates the instructions.
+  const taskGoal =
+    pickString(params, content, "goal") ?? plannerTitle ?? taskTitle;
   const taskPriority = (pickString(params, content, "priority") ?? "normal") as
     | "low"
     | "normal"
@@ -897,7 +926,7 @@ async function runCreateLegacy(
         goal: taskGoal,
         kind: "coding",
         priority: taskPriority,
-        originalRequest: messageText(message),
+        originalRequest: requestText(message),
         ...(explicitProjectId ? { projectId: explicitProjectId } : {}),
         ...(boundWorkdir ? { workdir: boundWorkdir } : {}),
         ...((originRoomId ?? taskRoomId)
@@ -1235,7 +1264,7 @@ async function runCreate(
 
   let plan: Awaited<ReturnType<LanePlannerService["plan"]>>;
   try {
-    const text = messageText(message);
+    const text = requestText(message);
     const tasks = taskParts(params, content, text);
     const waveId = randomUUID();
     const explicitWorkdir = pickString(params, content, "workdir");
@@ -1632,7 +1661,7 @@ async function runSpawnAgent(
   }
 
   try {
-    const text = messageText(message);
+    const text = requestText(message);
     const task = pickString(params, content, "task") ?? text;
     // Route matching must see the genuine user request, not the planner's
     // (possibly terse) rephrasing or an empty content.text. Without this, a
@@ -1724,7 +1753,12 @@ async function runSpawnAgent(
     // no interim reply. No regex over the task text (the model judges intent).
     const deferUserReply =
       pickBoolean(params, content, "deferUserReply") === true;
-    const label = pickString(params, content, "label") ?? task.slice(0, 80);
+    // A planner-supplied label is free text; clamp like the derived fallback
+    // so listings, room names, and progress lines stay bounded.
+    const labelParam = pickString(params, content, "label");
+    const label = labelParam
+      ? userReferenceLogView(labelParam)
+      : task.slice(0, 80);
     const originConnectorMessageId = connectorMessageIdFromMemory(
       message,
       content,
@@ -2602,7 +2636,7 @@ async function runHistory(
     });
   }
 
-  const text = typeof content.text === "string" ? content.text : "";
+  const text = requestText(message);
   const metric = inferMetric(
     text,
     textValue(params.metric) ?? textValue(content.metric),
@@ -2819,7 +2853,10 @@ async function runControl(
     );
   }
 
-  const text = typeof content.text === "string" ? content.text : "";
+  // Unwrapped: the continue/resume branch below forwards this text to the
+  // coding session as the follow-up instruction — it must be the user's words,
+  // not the security envelope.
+  const text = requestText(message);
   const topLevelAction = textValue(params.action) ?? textValue(content.action);
   const normalizedTopLevelAction = topLevelAction
     ?.toLowerCase()
@@ -3678,7 +3715,10 @@ async function runManageIssues(
     },
   );
 
-  const text = ((content.text as string) ?? "").slice(0, ISSUE_BODY_MAX_CHARS);
+  // Unwrapped: bulk-issue extraction and action/repo inference read this as
+  // the user's request; a raw envelope read would mint GitHub issues out of
+  // security-notice lines (and the slice could truncate the real payload).
+  const text = requestText(message).slice(0, ISSUE_BODY_MAX_CHARS);
 
   const topLevelAction = textValue(params.action) ?? textValue(content.action);
   const normalizedTopLevelAction = topLevelAction
@@ -4355,6 +4395,7 @@ async function dispatchTasksOperation(
 export const tasksAction: Action & {
   suppressPostActionContinuation: true;
   suppressEarlyReply: true;
+  asyncHandoff: true;
 } = {
   name: "TASKS",
   contexts: ["code", "automation", "agent_internal", "connectors"],
@@ -4481,11 +4522,12 @@ export const tasksAction: Action & {
     "Planner surface for orchestrator workspace operations and coding task delegation to dedicated ACP coding sub-agents (elizaos / pi-agent / opencode / claude / codex). " +
     "Available operations (pick via `action`): create or spawn_agent (delegate new coding work), send (forward a message to an existing coding sub-agent), list_agents / history (read state), " +
     "control (pause | resume | continue | archive | reopen a task), share (surface task output), provision_workspace / submit_workspace (workspace setup and PR submission), manage_issues (GitHub issue operations), cancel / stop_agent (end a coding sub-agent run when the user asks to). " +
-    "Choose this when the user asks to delegate coding work, use a coding adapter by name, or run multi-step development work — it is the canonical path for coding sub-agents and is preferred over inline FILE / BASH for delegated work.",
+    "Choose this when the user asks to delegate coding work, use a coding adapter by name, or run multi-step development work — it is the canonical path for coding sub-agents and is preferred over inline FILE / BASH for delegated work. " +
+    "NOT for building a web app/page/site/interactive HTML the user wants hosted with a live link — that is APP action=create, which builds, verifies, AND publishes; a task workspace has no hosting path, so files built here never get a URL.",
   descriptionCompressed:
     "ACP coding sub-agent elizaos|pi-agent|opencode|claude|codex: spawn|send|control|list|history",
   routingHint:
-    'delegate coding/software/dev work to a coding sub-agent, or drive a coding adapter by name (elizaos|pi-agent|opencode|claude|codex) -> TASKS; GitHub issue operations ("any new issues?", list/create/comment/close/reopen an issue) -> TASKS_MANAGE_ISSUES — this IS the github-issues tool; do NOT use for personal reminders, check-ins, follow-ups, alarms or recurring routines ("remind me...", "every day...") -> use the exposed reminder/scheduling tool instead (TRIGGER_CREATE, SCHEDULED_TASKS, or OWNER_REMINDERS — whichever is exposed this turn); not for one-off inline file edits or shell commands -> FILE / BASH',
+    'delegate coding/software/dev work to a coding sub-agent, or drive a coding adapter by name (elizaos|pi-agent|opencode|claude|codex) -> TASKS; GitHub issue operations ("any new issues?", list/create/comment/close/reopen an issue) -> TASKS_MANAGE_ISSUES — this IS the github-issues tool; do NOT use for personal reminders, check-ins, follow-ups, alarms or recurring routines ("remind me...", "every day...") -> use the exposed reminder/scheduling tool instead (TRIGGER_CREATE, SCHEDULED_TASKS, or OWNER_REMINDERS — whichever is exposed this turn); do NOT use for building a web app/page/site/interactive HTML the user wants hosted at a live link ("make me a website", "teach me with an interactive page", "host it and give me the link") -> APP action=create, which builds AND publishes — a coding task workspace has no hosting path; not for one-off inline file edits or shell commands -> FILE / BASH',
   suppressPostActionContinuation: true,
   // When the planner picks any TASKS_* subaction (spawn_agent, send, etc.),
   // suppress the response-handler's draft reply: the action's own callback
@@ -4493,6 +4535,11 @@ export const tasksAction: Action & {
   // answer comes back asynchronously via the router. Shipping the draft
   // alongside the ack duplicates the bot's voice and confuses the user.
   suppressEarlyReply: true,
+  // Sub-agent work continues after the turn returns and the real result
+  // arrives later via the router — the structural signal that a pre-planner
+  // early ack is warranted on latency-sensitive channels (voice). Promoted
+  // TASKS_* subactions inherit this flag.
+  asyncHandoff: true,
   parameters: [
     {
       name: "action",
@@ -4941,7 +4988,7 @@ export const tasksAction: Action & {
     // to the planner is decided structurally — by the action's declared coding
     // contexts, retrieval scoring against the action description/similes, and
     // the Stage-1 context router — not by keyword-matching the request text here.
-    const text = messageText(message);
+    const text = requestText(message);
     if (looksLikePersonalLifeOpsTask(text)) return false;
     return true;
   },

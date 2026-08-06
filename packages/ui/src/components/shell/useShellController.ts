@@ -74,6 +74,7 @@ import {
   VOICE_CONTINUOUS_MODES,
   type VoiceContinuousMode,
 } from "../../voice/voice-chat-types";
+import { isCloudVoiceRunnable } from "../../voice/voice-provider-defaults";
 import { buildVoiceTurnSignal } from "../../voice/voice-turn-signal";
 import { matchWakeName } from "../../voice/wake-name-match";
 import { useHomeModelStatus } from "../local-inference/useHomeModelStatus";
@@ -150,6 +151,7 @@ export interface ShellController {
       channelType?: "DM" | "VOICE_DM";
       images?: ImageAttachment[];
       metadata?: Record<string, unknown>;
+      clientMessageId?: string;
     },
   ) => void;
   /** Show the agent the screen: sends a vision-intent turn so the agent runs its
@@ -358,6 +360,7 @@ const selectShellController = (s: AppContextValue) => ({
   agentStatus: s.agentStatus,
   characterData: s.characterData,
   uiLanguage: s.uiLanguage,
+  elizaCloudConnected: s.elizaCloudConnected,
   elizaCloudVoiceProxyAvailable: s.elizaCloudVoiceProxyAvailable,
   handleNewConversation: s.handleNewConversation,
   handleSelectConversation: s.handleSelectConversation,
@@ -378,6 +381,7 @@ export function useShellController(): ShellController {
     agentStatus,
     characterData,
     uiLanguage,
+    elizaCloudConnected,
     elizaCloudVoiceProxyAvailable,
     handleNewConversation,
     handleSelectConversation,
@@ -794,6 +798,7 @@ export function useShellController(): ShellController {
         channelType?: "DM" | "VOICE_DM";
         images?: ImageAttachment[];
         metadata?: Record<string, unknown>;
+        clientMessageId?: string;
       },
     ) => {
       const trimmed = text.trim();
@@ -1362,7 +1367,10 @@ export function useShellController(): ShellController {
     agentVoiceMuted: chatAgentVoiceMuted,
     toggleAgentVoiceMute,
     uiLanguage,
-    cloudConnected: elizaCloudVoiceProxyAvailable,
+    cloudConnected: isCloudVoiceRunnable({
+      connected: elizaCloudConnected,
+      proxyAvailable: elizaCloudVoiceProxyAvailable,
+    }),
   });
   // Wire the forward ref so the conversation-switch / clear handlers (defined
   // above `voiceOutput`) can stop in-flight assistant speech at gesture time.
@@ -1721,8 +1729,18 @@ export function useShellController(): ShellController {
       if (!text) return;
       send(text, {
         channelType: "VOICE_DM",
+        ...(detail.segmentId
+          ? { clientMessageId: `pendant:${detail.segmentId}` }
+          : {}),
         metadata: {
           voiceSource: "pendant",
+          ...(detail.ownerId ? { pendantOwnerId: detail.ownerId } : {}),
+          ...(detail.agentId ? { pendantAgentId: detail.agentId } : {}),
+          ...(detail.sessionId ? { pendantSessionId: detail.sessionId } : {}),
+          ...(detail.segmentId ? { pendantSegmentId: detail.segmentId } : {}),
+          ...(detail.segmentRevision !== undefined
+            ? { pendantSegmentRevision: detail.segmentRevision }
+            : {}),
           voiceTurnSignal: buildVoiceTurnSignal(text, {
             recentAgentReply: latestAgentReplyRef.current.text,
             replyAgeMs: latestAgentReplyRef.current.at

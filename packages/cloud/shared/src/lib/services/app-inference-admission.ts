@@ -28,7 +28,11 @@ import {
   markInferenceAdmissionLeaseDispatched,
   settleInferenceAdmissionLease,
 } from "./inference-admission-gate";
-import { invalidateOrgBalanceHint, writeOrgBalanceHint } from "./inference-auth-cache";
+import {
+  type InferenceAdmissionSnapshot,
+  invalidateOrgBalanceHint,
+  writeOrgBalanceHint,
+} from "./inference-auth-cache";
 import { clearOrgAdmissionRefused, markOrgAdmissionRefused } from "./inference-billing-deferred";
 import {
   getGateBalanceHint,
@@ -54,6 +58,8 @@ export interface AppInferenceAdmissionParams {
   billingSource: string;
   affiliateCode?: string | null;
   executionCtx: AppInferenceAdmissionExecutionContext;
+  /** Combined auth-cache projection; skips the separate balance KV read. */
+  admissionSnapshot?: InferenceAdmissionSnapshot;
 }
 
 export interface AppInferenceAdmission {
@@ -172,10 +178,12 @@ export async function admitAppInferenceCacheOnly(
 
   const reservedBaseCostUsd = Math.max(params.estimatedBaseCostUsd, MIN_RESERVATION);
   const estimatedTotalCostUsd = chargeForBaseCost(params.app, reservedBaseCostUsd);
-  const balanceHint = await getGateBalanceHint(params.organizationId, {
-    cacheOnly: true,
-    executionCtx: params.executionCtx,
-  });
+  const balanceHint = params.admissionSnapshot
+    ? params.admissionSnapshot.balance
+    : await getGateBalanceHint(params.organizationId, {
+        cacheOnly: true,
+        executionCtx: params.executionCtx,
+      });
   if (balanceHint.balanceUsd < estimatedTotalCostUsd) {
     throw new InsufficientCreditsError(
       estimatedTotalCostUsd,

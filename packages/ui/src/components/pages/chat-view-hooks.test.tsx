@@ -236,6 +236,30 @@ describe("useChatVoiceController voice playback unlock", () => {
     });
   });
 
+  it("does not advertise a selected but unauthenticated Cloud voice route", () => {
+    renderHook(() =>
+      useChatVoiceController({
+        ...baseOptions,
+        elizaCloudConnected: false,
+        elizaCloudVoiceProxyAvailable: true,
+      }),
+    );
+
+    expect(useVoiceChatMock.mock.calls.at(-1)?.[0].cloudConnected).toBe(false);
+  });
+
+  it("advertises Cloud voice only when the selected route is authenticated", () => {
+    renderHook(() =>
+      useChatVoiceController({
+        ...baseOptions,
+        elizaCloudConnected: true,
+        elizaCloudVoiceProxyAvailable: true,
+      }),
+    );
+
+    expect(useVoiceChatMock.mock.calls.at(-1)?.[0].cloudConnected).toBe(true);
+  });
+
   it("retries realtime on the next mic tap after an ACTIONABLE error (the advertised retry works)", async () => {
     realtimeHarness.state.available = true;
     realtimeHarness.state.error = {

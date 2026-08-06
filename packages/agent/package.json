@@ -382,11 +382,15 @@
   },
   "peerDependencies": {
     "@elizaos/plugin-e2b-sandbox": "*",
+    "@elizaos/plugin-calendar": "workspace:*",
     "@elizaos/plugin-inbox": "workspace:*",
     "@elizaos/plugin-x402": "*"
   },
   "peerDependenciesMeta": {
     "@elizaos/plugin-e2b-sandbox": {
+      "optional": true
+    },
+    "@elizaos/plugin-calendar": {
       "optional": true
     },
     "@elizaos/plugin-inbox": {

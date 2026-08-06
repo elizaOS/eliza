@@ -1335,11 +1335,14 @@ export function resolveServiceRoutingInConfig(
   config: Record<string, unknown> | null | undefined,
 ): ServiceRoutingConfig | null {
   const root = asConfigRecord(config);
+  const hasCanonicalRouting = Boolean(
+    root && Object.hasOwn(root, "serviceRouting"),
+  );
   const explicit = normalizeServiceRoutingConfig(root?.serviceRouting) ?? {};
   const next: ServiceRoutingConfig = { ...explicit };
   const deploymentTarget = resolveDeploymentTargetInConfig(config);
 
-  if (!next.llmText) {
+  if (!next.llmText && !hasCanonicalRouting) {
     if (
       deploymentTarget.runtime === "remote" &&
       deploymentTarget.remoteApiBase

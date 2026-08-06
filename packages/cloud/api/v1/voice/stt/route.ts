@@ -5,7 +5,7 @@
  */
 import { Hono } from "hono";
 
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 /**
  * Voice STT API (v1)
@@ -33,12 +33,15 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 import { fileTypeFromBuffer } from "file-type";
 import { parseBuffer } from "music-metadata";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import {
-  type BillingContext,
-  billFlatUsage,
-  reserveFlatUsageCredits,
-} from "@/lib/services/ai-billing";
+  admitFlatGenerativeOperation,
+  asGenerativeCacheApiError,
+  getGenerativeExecutionContext,
+  getGenerativePricingCacheOptions,
+  requireGenerativeRouteCaller,
+} from "@/api-app/lib/generative-route-auth";
+import { ApiError } from "@/lib/api/cloud-worker-errors";
+import { type BillingContext, billFlatUsage } from "@/lib/services/ai-billing";
 import { calculateSTTCostFromCatalog } from "@/lib/services/ai-pricing";
 import {
   type CreditReservation,
@@ -349,8 +352,11 @@ async function readRequestWithMultipartLimit(
  * @param request - Form data with audio file and optional languageCode.
  * @returns Transcript and processing duration.
  */
-async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
+async function __hono_POST(c: AppContext) {
   let reservation: CreditReservation | undefined;
+  let settleUnknown: (() => Promise<unknown>) | undefined;
+  let request = c.req.raw;
+  const env = c.env;
 
   try {
     let multipartBodyLimit: number;
@@ -379,7 +385,11 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     }
     request = sizeCheckedRequest;
 
-    const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
+    const { user, apiKeyId, admissionSnapshot } =
+      await requireGenerativeRouteCaller(c, {
+        compatibility: "raw",
+        rateLimitEndpoint: "strict",
+      });
     const affiliateCode = request.headers.get("X-Affiliate-Code");
     const billingRequestId = `voice-stt:${crypto.randomUUID()}`;
 
@@ -490,9 +500,17 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     const reserveOr402 = async (
       billingContext: BillingContext,
       sttCost: Awaited<ReturnType<typeof calculateSTTCostFromCatalog>>,
-    ): Promise<Response | CreditReservation> => {
+    ): Promise<
+      Response | Awaited<ReturnType<typeof admitFlatGenerativeOperation>>
+    > => {
       try {
-        return await reserveFlatUsageCredits(billingContext, sttCost);
+        return await admitFlatGenerativeOperation({
+          c,
+          context: billingContext,
+          apiKeyId,
+          cost: sttCost,
+          admissionSnapshot,
+        });
       } catch (error) {
         if (error instanceof InsufficientCreditsError) {
           return Response.json(
@@ -526,11 +544,14 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       const sttCost = await calculateSTTCostFromCatalog({
         model: STT_PRICING_PROXY_MODEL,
         durationSeconds: estimate.durationSeconds,
+        ...(getGenerativePricingCacheOptions(c).cacheOnly
+          ? { cache: getGenerativePricingCacheOptions(c) }
+          : {}),
       });
       const deepgramBillingContext: BillingContext = {
         organizationId: user.organization_id,
         userId: user.id,
-        apiKeyId: apiKey?.id ?? null,
+        apiKeyId,
         model: DEEPGRAM_PRERECORDED_MODEL,
         provider: "deepgram",
         billingSource: "elevenlabs",
@@ -547,7 +568,8 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
         sttCost,
       );
       if (deepgramReservation instanceof Response) return deepgramReservation;
-      reservation = deepgramReservation;
+      reservation = deepgramReservation.reservation;
+      settleUnknown = deepgramReservation.settleUnknown;
 
       const refundDeepgramReservation = async () => {
         if (!reservation) return;
@@ -565,6 +587,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
 
       let deepgramResponse: Response;
       try {
+        await deepgramReservation.markProviderDispatched?.();
         deepgramResponse = await fetch(deepgramUrl, {
           method: "POST",
           headers: {
@@ -623,11 +646,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       }
 
       const deepgramDuration = Date.now() - deepgramStart;
-      const billing = await billFlatUsage(
-        deepgramBillingContext,
-        sttCost,
-        reservation,
-      );
+      const billingReservation = reservation;
       reservation = undefined;
 
       logger.info("[Voice STT API] Deepgram completed", {
@@ -640,12 +659,19 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
         transcriptLength: transcription.transcript.length,
         wordCount: transcription.words?.length,
       });
-      (async () => {
+      let billingApplied = false;
+      const billingTask = (async () => {
         try {
+          const billing = await billFlatUsage(
+            deepgramBillingContext,
+            sttCost,
+            billingReservation,
+          );
+          billingApplied = true;
           await usageService.create({
             organization_id: user.organization_id,
             user_id: user.id,
-            api_key_id: apiKey?.id ?? null,
+            api_key_id: apiKeyId,
             type: "stt",
             model: DEEPGRAM_PRERECORDED_MODEL,
             provider: "deepgram",
@@ -671,11 +697,17 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
             },
           });
         } catch (error) {
+          if (!billingApplied) await settleUnknown?.();
+          // error-policy:J7 billing persistence is detached from transcript
+          // latency; conservative settlement remains observable on failure.
           logger.error("[Voice STT API] Failed to create usage record", {
             errorType: error instanceof Error ? error.name : "unknown",
           });
         }
       })();
+      const executionCtx = getGenerativeExecutionContext(c);
+      if (executionCtx) executionCtx.waitUntil(billingTask);
+      else void billingTask;
 
       return Response.json({
         transcript: transcription.transcript,
@@ -714,7 +746,16 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
         { method: "POST", body: form },
       );
       if (!whisperResponse.ok) {
-        await whisperResponse.body?.cancel().catch(() => undefined);
+        await whisperResponse.body?.cancel().catch((cancelError) => {
+          // error-policy:J6 response-body drain is best-effort after upstream failure.
+          logger.warn(
+            "[Voice STT API] Failed to cancel Whisper response body",
+            {
+              errorType:
+                cancelError instanceof Error ? cancelError.name : "unknown",
+            },
+          );
+        });
         logger.error("[Voice STT API] Whisper request failed", {
           status: whisperResponse.status,
         });
@@ -788,11 +829,14 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     const sttCost = await calculateSTTCostFromCatalog({
       model: STT_PRICING_PROXY_MODEL,
       durationSeconds,
+      ...(getGenerativePricingCacheOptions(c).cacheOnly
+        ? { cache: getGenerativePricingCacheOptions(c) }
+        : {}),
     });
     const elevenLabsBillingContext: BillingContext = {
       organizationId: user.organization_id,
       userId: user.id,
-      apiKeyId: apiKey?.id ?? null,
+      apiKeyId,
       model: "elevenlabs/scribe_v1",
       provider: "elevenlabs",
       billingSource: "elevenlabs",
@@ -802,10 +846,16 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     };
 
     try {
-      reservation = await reserveFlatUsageCredits(
-        elevenLabsBillingContext,
-        sttCost,
-      );
+      const admission = await admitFlatGenerativeOperation({
+        c,
+        context: elevenLabsBillingContext,
+        apiKeyId,
+        cost: sttCost,
+        admissionSnapshot,
+      });
+      reservation = admission.reservation;
+      settleUnknown = admission.settleUnknown;
+      await admission.markProviderDispatched?.();
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {
         return Response.json(
@@ -831,23 +881,27 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     });
     const duration = Date.now() - startTime;
 
-    const billing = await billFlatUsage(
-      elevenLabsBillingContext,
-      sttCost,
-      reservation,
-    );
+    const billingReservation = reservation;
+    reservation = undefined;
 
     logger.info("[Voice STT API] Completed", {
       durationMs: duration,
       transcriptLength: transcript.length,
     });
 
-    (async () => {
+    let billingApplied = false;
+    const billingTask = (async () => {
       try {
+        const billing = await billFlatUsage(
+          elevenLabsBillingContext,
+          sttCost,
+          billingReservation,
+        );
+        billingApplied = true;
         await usageService.create({
           organization_id: user.organization_id,
           user_id: user.id,
-          api_key_id: apiKey?.id ?? null,
+          api_key_id: apiKeyId,
           type: "stt",
           model: "elevenlabs-stt",
           provider: "elevenlabs",
@@ -872,17 +926,25 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
           },
         });
       } catch (error) {
+        if (!billingApplied) await settleUnknown?.();
+        // error-policy:J7 billing persistence is detached from transcript
+        // latency; conservative settlement remains observable on failure.
         logger.error("[Voice STT API] Failed to create usage record", {
           errorType: error instanceof Error ? error.name : "unknown",
         });
       }
     })();
+    const executionCtx = getGenerativeExecutionContext(c);
+    if (executionCtx) executionCtx.waitUntil(billingTask);
+    else void billingTask;
 
     return Response.json({
       transcript,
       duration_ms: duration,
     });
   } catch (error) {
+    // error-policy:J1 translate provider, billing, and validation failures at
+    // the authenticated HTTP boundary without leaking provider response data.
     // Redaction boundary: provider SDK errors can embed request/response
     // bodies (transcripts, tokens) in their message — log only the error type.
     logger.error("[Voice STT API] Request failed", {
@@ -890,8 +952,21 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     });
 
     if (reservation) {
-      await reservation.reconcile(0);
-      logger.info("[Voice STT API] Refunded credits after error");
+      const release = reservation.reconcile(0);
+      const executionCtx = getGenerativeExecutionContext(c);
+      if (executionCtx) executionCtx.waitUntil(release);
+      else await release;
+      logger.info("[Voice STT API] Released credits after error");
+    }
+
+    const apiError =
+      error instanceof ApiError ? error : asGenerativeCacheApiError(error);
+    if (apiError) {
+      const serialized =
+        "toJSON" in apiError && typeof apiError.toJSON === "function"
+          ? apiError.toJSON()
+          : { error: apiError.message };
+      return Response.json(serialized, { status: apiError.status ?? 500 });
     }
 
     if (error instanceof Error) {
@@ -961,5 +1036,5 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
 }
 
 const __hono_app = new Hono<AppEnv>();
-__hono_app.post("/", async (c) => __hono_POST(c.req.raw, c.env));
+__hono_app.post("/", __hono_POST);
 export default __hono_app;

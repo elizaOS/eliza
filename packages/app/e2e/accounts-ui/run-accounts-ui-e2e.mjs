@@ -187,6 +187,8 @@ const child = spawn(
       HOME: process.env.HOME,
       ELIZA_HOME: elizaHome,
       ELIZA_STATE_DIR: elizaHome,
+      ELIZA_VAULT_DISABLE_KEYCHAIN: process.env.ELIZA_VAULT_DISABLE_KEYCHAIN,
+      ELIZA_VAULT_PASSPHRASE: process.env.ELIZA_VAULT_PASSPHRASE,
       ACCOUNTS_E2E_PORT: process.env.ACCOUNTS_E2E_PORT || "34110",
       ACCOUNTS_E2E_FIXTURE_DIR: fixtureDir,
     },

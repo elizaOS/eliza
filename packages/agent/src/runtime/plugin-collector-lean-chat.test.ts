@@ -156,6 +156,7 @@ describe("collectPluginNames lean-chat plugin set (#8434)", () => {
     const names = collectPluginNames(emptyConfig);
     expect(names.has("@elizaos/plugin-coding-tools")).toBe(true);
     expect(names.has("@elizaos/plugin-browser")).toBe(true);
-    expect(names.has("@elizaos/plugin-notes")).toBe(false);
+    expect(names.has("@elizaos/plugin-notes")).toBe(true);
+    expect(names.has("@elizaos/plugin-calendar")).toBe(true);
   });
 });

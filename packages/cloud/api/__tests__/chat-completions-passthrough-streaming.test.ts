@@ -186,7 +186,13 @@ beforeEach(() => {
   process.env.CEREBRAS_API_KEY = "test-cerebras-key";
 });
 
-test("the route invokes its dedicated native limiter before provider work", async () => {
+test("the route ignores the retired native limiter and still fails closed before provider work", async () => {
+  // #17805 removed the per-route native Cloudflare gate from the generative
+  // hot path: rate policy now rides the IAC v2 admission snapshot through the
+  // org-level limiter. Even a PRESENT and DENYING binding must never be
+  // consulted, and the pre-provider guarantee now belongs to the auth /
+  // admission boundary — an unauthorized request must produce a failure
+  // without a single provider dispatch.
   const keys: string[] = [];
   const response = await chatCompletionsRouter.fetch(
     new Request("https://api.example.test/", {
@@ -205,9 +211,9 @@ test("the route invokes its dedicated native limiter before provider work", asyn
     } as never,
   );
 
-  expect(response.status).toBe(429);
-  expect(keys).toEqual(["public"]);
-  expect(response.headers.get("X-RateLimit-Policy")).toBe("cloudflare-native");
+  expect(keys).toEqual([]);
+  expect(response.headers.get("X-RateLimit-Policy")).toBeNull();
+  expect(response.status).toBeGreaterThanOrEqual(400);
   expect(generateText).not.toHaveBeenCalled();
   expect(streamText).not.toHaveBeenCalled();
   expect(fetchMock).not.toHaveBeenCalled();

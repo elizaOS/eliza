@@ -1,24 +1,24 @@
-// Handles v1 cloud API v1 generate music route traffic with route-local auth expectations.
+/** Handles authenticated music generation, billing, and generation history persistence. */
 import { Hono } from "hono";
 import { z } from "zod";
-import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
-  RateLimitPresets,
-  rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
+  admitFlatGenerativeOperation,
+  asGenerativeCacheApiError,
+  getGenerativeExecutionContext,
+  getGenerativePricingCacheOptions,
+  requireGenerativeRouteCaller,
+} from "@/api-app/lib/generative-route-auth";
+import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
 import { getAudioProvider } from "@/lib/providers/audio/registry";
 import type { GeneratedAudio } from "@/lib/providers/audio/types";
+import { type BillingContext, billFlatUsage } from "@/lib/services/ai-billing";
 import { calculateMusicGenerationCostFromCatalog } from "@/lib/services/ai-pricing";
 import {
   getSupportedMusicModelDefinition,
   SUPPORTED_MUSIC_MODEL_IDS,
 } from "@/lib/services/ai-pricing-definitions";
 import { contentSafetyService } from "@/lib/services/content-safety";
-import {
-  creditsService,
-  InsufficientCreditsError,
-} from "@/lib/services/credits";
+import { InsufficientCreditsError } from "@/lib/services/credits";
 import { generationsService } from "@/lib/services/generations";
 import { putPublicObject } from "@/lib/storage/r2-public-object";
 import { logger } from "@/lib/utils/logger";
@@ -59,8 +59,6 @@ const musicRequestSchema = z.object({
 });
 
 const app = new Hono<AppEnv>();
-
-app.use("*", rateLimit(RateLimitPresets.STRICT));
 
 function envString(env: Bindings, key: string): string | undefined {
   const value = env[key];
@@ -134,15 +132,17 @@ async function storeGeneratedAudio(
 }
 
 app.post("/", async (c) => {
-  let reservation: Awaited<ReturnType<typeof creditsService.reserve>> | null =
-    null;
+  let admission:
+    | Awaited<ReturnType<typeof admitFlatGenerativeOperation>>
+    | undefined;
   // Once the charge is SETTLED, a later (non-critical, post-settle) failure must
   // NOT hit the catch's reconcile(0) — which is non-idempotent and would refund
   // the already-correct charge, giving free music. Mirrors generate-image.
   let chargeSettled = false;
 
   try {
-    const user = await requireUserOrApiKeyWithOrg(c);
+    const { user, apiKeyId, admissionSnapshot } =
+      await requireGenerativeRouteCaller(c, { rateLimitEndpoint: "strict" });
     const request = musicRequestSchema.parse(await c.req.json());
     const definition = getSupportedMusicModelDefinition(request.model);
     if (!definition) {
@@ -194,46 +194,60 @@ app.post("/", async (c) => {
       );
     }
 
-    await contentSafetyService.assertSafeForPublicUse({
-      surface: "media_generation_prompt",
-      organizationId: user.organization_id,
-      userId: user.id,
-      text: [
-        `Music prompt: ${request.prompt}`,
-        request.lyrics ? `Lyrics: ${request.lyrics}` : undefined,
-        request.referenceUrl
-          ? `Reference URL: ${request.referenceUrl}`
-          : undefined,
-      ],
-      metadata: { type: "music", model: request.model, provider },
-    });
-
     const durationSeconds =
       definition.durationControl === "supported"
         ? (request.durationSeconds ??
           definition.defaultParameters.durationSeconds)
         : undefined;
-    const cost = await calculateMusicGenerationCostFromCatalog({
+    const [, cost] = await Promise.all([
+      contentSafetyService.assertSafeForPublicUse({
+        surface: "media_generation_prompt",
+        organizationId: user.organization_id,
+        userId: user.id,
+        text: [
+          `Music prompt: ${request.prompt}`,
+          request.lyrics ? `Lyrics: ${request.lyrics}` : undefined,
+          request.referenceUrl
+            ? `Reference URL: ${request.referenceUrl}`
+            : undefined,
+        ],
+        metadata: { type: "music", model: request.model, provider },
+      }),
+      calculateMusicGenerationCostFromCatalog({
+        model: request.model,
+        provider: definition.provider,
+        billingSource: definition.billingSource,
+        durationSeconds,
+        dimensions: {
+          ...(definition.durationControl === "supported" && durationSeconds
+            ? { durationSeconds }
+            : {}),
+          ...(request.instrumental !== undefined
+            ? { instrumental: request.instrumental }
+            : {}),
+        },
+        cache: getGenerativePricingCacheOptions(c),
+      }),
+    ]);
+    const billingContext: BillingContext = {
+      organizationId: user.organization_id,
+      userId: user.id,
+      apiKeyId,
       model: request.model,
       provider: definition.provider,
       billingSource: definition.billingSource,
-      durationSeconds,
-      dimensions: {
-        ...(definition.durationControl === "supported" && durationSeconds
-          ? { durationSeconds }
-          : {}),
-        ...(request.instrumental !== undefined
-          ? { instrumental: request.instrumental }
-          : {}),
-      },
-    });
+      requestId: `generate-music:${crypto.randomUUID()}`,
+      affiliateCode: c.req.header("X-Affiliate-Code"),
+      description: `Music generation: ${request.model}`,
+    };
 
     try {
-      reservation = await creditsService.reserve({
-        organizationId: user.organization_id,
-        userId: user.id,
-        amount: cost.totalCost,
-        description: `Music generation: ${request.model}`,
+      admission = await admitFlatGenerativeOperation({
+        c,
+        context: billingContext,
+        apiKeyId,
+        cost,
+        admissionSnapshot,
       });
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {
@@ -249,6 +263,7 @@ app.post("/", async (c) => {
       throw error;
     }
 
+    await admission.markProviderDispatched?.();
     const generated = await getAudioProvider(definition.billingSource).generate(
       {
         kind: "music",
@@ -292,62 +307,78 @@ app.post("/", async (c) => {
       },
     );
 
-    await reservation.reconcile(cost.totalCost);
-    chargeSettled = true;
-
     const requestId = generated.requestId;
     const status = generated.source === "hosted" ? generated.status : undefined;
-
-    const generation = await generationsService.create({
-      organization_id: user.organization_id,
-      user_id: user.id,
-      type: "music",
-      model: request.model,
-      provider: definition.provider,
-      prompt: request.prompt,
-      result: {
-        requestId,
-        status,
-        billingSource: definition.billingSource,
-        raw: generated.raw,
-      },
-      status: "completed",
-      storage_url: music.url,
-      thumbnail_url: null,
-      file_size: music.file_size ? BigInt(music.file_size) : undefined,
-      mime_type: music.content_type ?? "audio/mpeg",
-      parameters: {
-        ...(request.durationSeconds !== undefined
-          ? { requestedDurationSeconds: request.durationSeconds }
-          : {}),
-        ...(durationSeconds ? { durationSeconds } : {}),
-        durationControl: definition.durationControl,
-        hasLyrics: Boolean(request.lyrics),
-        lyricsOptimizer: request.lyricsOptimizer,
-        instrumental: request.instrumental,
-        referenceUrl: request.referenceUrl,
-        outputFormat: request.outputFormat,
-      },
-      dimensions: {
-        ...(durationSeconds ? { duration: durationSeconds } : {}),
-      },
-      cost: String(cost.totalCost),
-      credits: String(cost.totalCost),
-      job_id: requestId,
-      completed_at: new Date(),
+    const generationId = crypto.randomUUID();
+    let billingApplied = false;
+    const persistenceTask = (async () => {
+      await billFlatUsage(billingContext, cost, admission?.reservation);
+      billingApplied = true;
+      chargeSettled = true;
+      await generationsService.create({
+        id: generationId,
+        organization_id: user.organization_id,
+        user_id: user.id,
+        type: "music",
+        model: request.model,
+        provider: definition.provider,
+        prompt: request.prompt,
+        result: {
+          requestId,
+          status,
+          billingSource: definition.billingSource,
+          raw: generated.raw,
+        },
+        status: "completed",
+        storage_url: music.url,
+        thumbnail_url: null,
+        file_size: music.file_size ? BigInt(music.file_size) : undefined,
+        mime_type: music.content_type ?? "audio/mpeg",
+        parameters: {
+          ...(request.durationSeconds !== undefined
+            ? { requestedDurationSeconds: request.durationSeconds }
+            : {}),
+          ...(durationSeconds ? { durationSeconds } : {}),
+          durationControl: definition.durationControl,
+          hasLyrics: Boolean(request.lyrics),
+          lyricsOptimizer: request.lyricsOptimizer,
+          instrumental: request.instrumental,
+          referenceUrl: request.referenceUrl,
+          outputFormat: request.outputFormat,
+        },
+        dimensions: {
+          ...(durationSeconds ? { duration: durationSeconds } : {}),
+        },
+        cost: String(cost.totalCost),
+        credits: String(cost.totalCost),
+        job_id: requestId,
+        completed_at: new Date(),
+      });
+    })().catch(async (error) => {
+      if (!billingApplied) await admission?.settleUnknown();
+      // error-policy:J7 billing and generation records persist after the audio
+      // response; conservative settlement remains observable on failure.
+      logger.error("[GenerateMusic] Background persistence failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
     });
+    const executionCtx = getGenerativeExecutionContext(c);
+    if (executionCtx) executionCtx.waitUntil(persistenceTask);
+    else void persistenceTask;
 
     return c.json({
       success: true,
-      id: generation.id,
+      id: generationId,
       requestId,
       status: status ?? "completed",
       music,
       cost,
     });
   } catch (error) {
-    if (reservation && !chargeSettled) {
-      await reservation.reconcile(0).catch((reconcileError) => {
+    if (admission && !chargeSettled) {
+      const release = admission.settle(0);
+      const executionCtx = getGenerativeExecutionContext(c);
+      const observed = release.catch((reconcileError) => {
         logger.error("[GenerateMusic] Failed to refund reservation", {
           error:
             reconcileError instanceof Error
@@ -355,8 +386,10 @@ app.post("/", async (c) => {
               : String(reconcileError),
         });
       });
+      if (executionCtx) executionCtx.waitUntil(observed);
+      else await observed;
     }
-    return failureResponse(c, error);
+    return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
   }
 });
 

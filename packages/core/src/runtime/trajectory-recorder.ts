@@ -1316,6 +1316,21 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 		if (status === "errored" && !trajectory.metrics.finalDecision) {
 			trajectory.metrics.finalDecision = "error";
 		}
+		// Non-evaluated terminal paths (Stage-1 direct reply, deterministic
+		// fallback, structured failure reply) finish a turn without any
+		// evaluation stage, so nothing above ever set finalDecision. Stamp the
+		// clean terminal here — an absent finalDecision on a finished
+		// trajectory reads as "died mid-turn" and made delivered turns look
+		// like drops. The value must be a member of the canonical validator's
+		// closed vocabulary (packages/scripts/lib/trajectory-validate.ts) —
+		// every recorded trajectory round-trips through it, and an invented
+		// sentinel is rejected as an invalid finalDecision. "FINISH" is the
+		// accepted shape for a cleanly finished run; whether an evaluator
+		// produced it remains distinguishable from the trajectory itself (an
+		// evaluator-decided FINISH always has an evaluation stage).
+		if (status === "finished" && !trajectory.metrics.finalDecision) {
+			trajectory.metrics.finalDecision = "FINISH";
+		}
 
 		try {
 			await this.queueFlushTrajectory(trajectory);

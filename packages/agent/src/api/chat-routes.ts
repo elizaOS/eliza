@@ -423,11 +423,15 @@ function readPositiveIntegerSetting(
 }
 
 function isAndroidLocalDirectChatRuntime(runtime: AgentRuntime): boolean {
-  const optOut = readRuntimeStringSetting(
+  const optIn = readRuntimeStringSetting(
     runtime,
     "ELIZA_MOBILE_LOCAL_DIRECT_REPLY",
   );
-  if (/^(0|false|no|off)$/i.test(optOut ?? "")) {
+  // A native device bridge says where capabilities execute, not which model
+  // owns conversation. Bypassing the full Eliza planner is therefore explicit
+  // opt-in; merely connecting an Android/iOS bridge must keep chat on the host
+  // runtime and its configured model providers.
+  if (!/^(1|true|yes|on)$/i.test(optIn ?? "")) {
     return false;
   }
   const platform =
@@ -2412,6 +2416,16 @@ export async function persistExactConversationMemory(
   runtime: AgentRuntime,
   memory: ReturnType<typeof createMessageMemory>,
 ): Promise<ReturnType<typeof createMessageMemory>> {
+  return (await persistExactConversationMemoryResult(runtime, memory)).memory;
+}
+
+export async function persistExactConversationMemoryResult(
+  runtime: AgentRuntime,
+  memory: ReturnType<typeof createMessageMemory>,
+): Promise<{
+  created: boolean;
+  memory: ReturnType<typeof createMessageMemory>;
+}> {
   if (!memory.id) {
     throw new ElizaError(
       "Exact conversation memory is missing its durable id",
@@ -2456,14 +2470,14 @@ export async function persistExactConversationMemory(
   };
 
   const existing = await loadExisting();
-  if (existing) return assertExact(existing);
+  if (existing) return { created: false, memory: assertExact(existing) };
 
   try {
     await runtime.createMemory(memory, "messages");
-    return memory;
+    return { created: true, memory };
   } catch (cause) {
     const raced = await loadExisting();
-    if (raced) return assertExact(raced);
+    if (raced) return { created: false, memory: assertExact(raced) };
     throw new ElizaError("Failed to store exact conversation memory", {
       code: "CONVERSATION_MEMORY_WRITE_FAILED",
       cause,
@@ -3765,11 +3779,17 @@ async function generateChatResponseWithTiming(
         ? (noResponseFallback ??
           (normalizedResponseText || responseText || "(no response)"))
         : normalizedResponseText;
-    const transcriptVisibility = resolveFinalTranscriptVisibility(
-      finalText,
-      result?.actionResults,
-      resultContentCandidates,
-    );
+    // A visible action callback and its internal terminal receipt can carry the
+    // same canonical text. The receipt stays out of the transcript, but it must
+    // not retroactively hide the callback that already owns the turn's response.
+    const transcriptVisibility =
+      visibleCallbackDeliveries > 0
+        ? undefined
+        : resolveFinalTranscriptVisibility(
+            finalText,
+            result?.actionResults,
+            resultContentCandidates,
+          );
 
     if (opts?.onChunk && !opts.onSnapshot) {
       const authoritativeText =

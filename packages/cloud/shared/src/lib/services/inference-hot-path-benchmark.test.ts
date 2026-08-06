@@ -25,6 +25,35 @@ import { afterAll, afterEach, beforeEach, describe, expect, mock, spyOn, test } 
 let authChainCalls = 0;
 let moderationCalls = 0;
 let usageCalls = 0;
+let admissionLoadCalls = 0;
+let appScopeCalls = 0;
+
+// IAC v2 (#17805) co-locates the admission snapshot + app-key scope with the
+// cached identity: both authoritative loads may run ONLY while warming a cold
+// miss, never on the warm path. Counted here so a regression that moves either
+// read back onto the hot path fails this benchmark.
+const ADMISSION = {
+  balance: { balanceUsd: 100, balanceAt: 1, balanceRevision: "1" },
+  rateLimits: {
+    completionsRpm: 60,
+    embeddingsRpm: 100,
+    standardRpm: 30,
+    strictRpm: 5,
+  },
+};
+
+mock.module("./inference-admission-snapshot", () => ({
+  loadInferenceAdmissionSnapshot: async () => {
+    admissionLoadCalls++;
+    return ADMISSION;
+  },
+}));
+mock.module("./inference-app-key-scope", () => ({
+  loadInferenceAppKeyScope: async () => {
+    appScopeCalls++;
+    return null;
+  },
+}));
 
 mock.module("./inference-api-key-auth", () => ({
   requireInferenceApiKeyWithOrg: async () => {
@@ -77,6 +106,8 @@ beforeEach(async () => {
   authChainCalls = 0;
   moderationCalls = 0;
   usageCalls = 0;
+  admissionLoadCalls = 0;
+  appScopeCalls = 0;
   await invalidateInferenceAuthContextByKeyHash(hashApiKey(KEY));
 });
 
@@ -100,6 +131,8 @@ describe("inference hot-path benchmark", () => {
     expect(cold.kind).toBe("authorized");
     expect(authChainCalls).toBe(1); // one auth chain
     expect(moderationCalls).toBe(1); // one moderation read
+    expect(admissionLoadCalls).toBe(1); // one admission projection load (IAC v2)
+    expect(appScopeCalls).toBe(1); // one app-key scope load (IAC v2)
   });
 
   test("WARM hit = exactly 1 cache read, 0 writes, 0 auth, 0 moderation", async () => {
@@ -110,6 +143,8 @@ describe("inference hot-path benchmark", () => {
     const delSpy = spyOn(cache, "del");
     authChainCalls = 0;
     moderationCalls = 0;
+    admissionLoadCalls = 0;
+    appScopeCalls = 0;
 
     const warm = await resolveInferenceAuthContext(req());
 
@@ -121,6 +156,8 @@ describe("inference hot-path benchmark", () => {
     expect(delSpy).toHaveBeenCalledTimes(0);
     expect(authChainCalls).toBe(0); // zero auth DB work
     expect(moderationCalls).toBe(0); // zero moderation DB work
+    expect(admissionLoadCalls).toBe(0); // admission rides in the single cache read (IAC v2)
+    expect(appScopeCalls).toBe(0); // app scope rides in the single cache read (IAC v2)
     expect(usageCalls).toBe(1); // usage tracking is fire-and-forget, not a hot read
 
     getSpy.mockRestore();
@@ -134,6 +171,8 @@ describe("inference hot-path benchmark", () => {
     const getSpy = spyOn(cache, "getWithOutcome");
     authChainCalls = 0;
     moderationCalls = 0;
+    admissionLoadCalls = 0;
+    appScopeCalls = 0;
 
     const N = 25;
     for (let i = 0; i < N; i++) await resolveInferenceAuthContext(req());
@@ -141,6 +180,8 @@ describe("inference hot-path benchmark", () => {
     expect(getSpy).toHaveBeenCalledTimes(N); // exactly one read per request
     expect(authChainCalls).toBe(0);
     expect(moderationCalls).toBe(0);
+    expect(admissionLoadCalls).toBe(0);
+    expect(appScopeCalls).toBe(0);
 
     getSpy.mockRestore();
   });

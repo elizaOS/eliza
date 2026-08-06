@@ -9,7 +9,10 @@
 import type http from "node:http";
 import { Readable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { setActiveViewContext } from "../runtime/view-action-affinity.ts";
+import {
+  getActiveViewContext,
+  setActiveViewContext,
+} from "../runtime/view-action-affinity.ts";
 import {
   registerBuiltinViews,
   registerPluginViews,
@@ -17,6 +20,7 @@ import {
 } from "./views-registry.ts";
 import {
   clearCurrentViewState,
+  getCurrentViewState,
   handleViewsRoutes,
   type ViewsRouteContext,
 } from "./views-routes.ts";
@@ -241,6 +245,55 @@ describe("POST /api/views/interact-result resolves a pending interact", () => {
         result: { text: "mounted owner handled it" },
       }),
     );
+  });
+
+  it("restores a mounted foreground view after backend state restarts", async () => {
+    const { ctx, json } = makeCtx("POST", "/api/views/frontend-only/elements", {
+      clientId: "restored-shell",
+      viewPath: "/frontend-only?restored=1",
+      viewType: "gui",
+      elements: [{ id: "card-1", role: "card", label: "Current card" }],
+    });
+
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+
+    expect(json).toHaveBeenCalledWith(ctx.res, {
+      ok: true,
+      viewId: "frontend-only",
+      accepted: true,
+      count: 1,
+    });
+    expect(getCurrentViewState()).toMatchObject({
+      viewId: "frontend-only",
+      viewPath: "/frontend-only",
+      viewLabel: "Frontend Only",
+      viewType: "gui",
+    });
+    expect(getCurrentViewState()?.switchedAt).toBeUndefined();
+    expect(getActiveViewContext()).toMatchObject({
+      viewId: "frontend-only",
+      clientId: "restored-shell",
+      elements: [{ id: "card-1", label: "Current card" }],
+    });
+  });
+
+  it("does not restore a background view whose route is not visible", async () => {
+    const { ctx, json } = makeCtx("POST", "/api/views/frontend-only/elements", {
+      viewPath: "/chat",
+      viewType: "gui",
+      elements: [{ id: "card-1", role: "card", label: "Hidden card" }],
+    });
+
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+
+    expect(json).toHaveBeenCalledWith(ctx.res, {
+      ok: true,
+      viewId: "frontend-only",
+      accepted: false,
+      count: 1,
+    });
+    expect(getCurrentViewState()).toBeNull();
+    expect(getActiveViewContext()).toBeNull();
   });
 
   it("acks gracefully for an unknown requestId without throwing", async () => {
