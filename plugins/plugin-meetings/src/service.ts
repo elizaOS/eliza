@@ -271,6 +271,21 @@ export class MeetingService extends Service {
       sessionId,
       language: request.language,
       retainAudio,
+      ...(request.ghostAttendance?.attendees?.length
+        ? {
+            calendarSpeakerEvidence: request.ghostAttendance.attendees.map(
+              (attendee, index) => ({
+                source: "calendar_attendee" as const,
+                name: attendee.name,
+                confidence: 0.82,
+                evidenceId:
+                  request.calendarEventId ??
+                  request.ghostAttendance?.calendarId ??
+                  `meeting-calendar-attendee:${sessionId}:${index}`,
+              }),
+            ),
+          }
+        : {}),
       ...(billing ? { billing } : {}),
       onSpendCapReached: (error: MeetingBillingError) => {
         const live = this.sessions.get(sessionId);

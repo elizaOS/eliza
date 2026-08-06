@@ -25,9 +25,12 @@ function makeService(
   billingSessions: FakeMeetingBillingSession[] = [],
 ) {
   const fake = makeFakeRuntime();
-  const { deps, pipelines } = scriptedDeps(adapters, billingSessions);
+  const { deps, pipelines, pipelineOptions } = scriptedDeps(
+    adapters,
+    billingSessions,
+  );
   const service = new MeetingService(fake.runtime, deps);
-  return { fake, service, pipelines, adapters };
+  return { fake, service, pipelines, pipelineOptions, adapters };
 }
 
 describe("MeetingService.requestJoin — validation", () => {
@@ -425,6 +428,39 @@ describe("MeetingService — session state machine", () => {
 });
 
 describe("MeetingService — roster, transcripts, listing", () => {
+  it("passes calendar attendees into the speaker-name policy input", async () => {
+    const { service, pipelineOptions } = makeService();
+    await service.requestJoin({
+      platform: "google_meet",
+      meetingUrl: MEET_URL,
+      calendarEventId: "event-123",
+      ghostAttendance: {
+        ownerUserId: "owner-1",
+        ownerDisplayName: "Shaw",
+        careAbouts: [],
+        attendees: [
+          { name: "Alice Chen", email: "alice@example.com" },
+          { name: "Bob Jones", email: "bob@example.com" },
+        ],
+      },
+    });
+
+    expect(pipelineOptions[0]?.calendarSpeakerEvidence).toEqual([
+      {
+        source: "calendar_attendee",
+        name: "Alice Chen",
+        confidence: 0.82,
+        evidenceId: "event-123",
+      },
+      {
+        source: "calendar_attendee",
+        name: "Bob Jones",
+        confidence: 0.82,
+        evidenceId: "event-123",
+      },
+    ]);
+  });
+
   it("wires participants to entities and tracks join/leave", async () => {
     const adapter = new ScriptedAdapter("google_meet");
     const { fake, service, pipelines } = makeService([adapter]);

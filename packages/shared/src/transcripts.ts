@@ -13,6 +13,8 @@
  * stored record and the `<audio>.currentTime`-based player highlight.
  */
 
+import type { SpeakerNameAttribution } from "./speaker-name-inference.js";
+
 /** A single transcribed word with playback-synced timing (ms from audio start). */
 export interface TranscriptWord {
   text: string;
@@ -33,6 +35,12 @@ export interface TranscriptSegment {
   speakerLabel?: string;
   /** Resolved elizaOS entity id when the voice was recognized (evidence-linked). */
   speakerEntityId?: string;
+  /**
+   * Inspectable name decision for this span. Confirmed decisions may drive
+   * `speakerLabel`; review/withheld decisions retain candidates and provenance
+   * while the label stays anonymous.
+   */
+  speakerNameAttribution?: SpeakerNameAttribution;
   startMs: number;
   endMs: number;
   /** Segment text (the join of `words`, or raw ASR text when words are absent). */

@@ -23,6 +23,7 @@ import type {
   MeetingParticipant,
   MeetingPlatform,
   MeetingSessionStatus,
+  SpeakerNameEvidence,
   TranscriptSegment,
 } from "@elizaos/shared";
 
@@ -164,6 +165,8 @@ export interface MeetingPipelineOptions {
   language?: string;
   /** Retain raw session audio for the transcript record's audio player. */
   retainAudio: boolean;
+  /** Calendar candidates available before platform roster/self-introduction. */
+  calendarSpeakerEvidence?: readonly SpeakerNameEvidence[];
   billing?: MeetingBillingSession;
   onSpendCapReached?: (error: Error & { code: "insufficient_credits" }) => void;
 }
