@@ -37,25 +37,20 @@ async function revision(): Promise<number> {
 beforeAll(async () => {
   try {
     ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("./client"));
-    // Only the columns this trigger reasons about: the fenced ones, the billing
-    // ones it must ignore, and the counter itself.
-    await dbWrite.execute(`
-      CREATE TABLE agent_sandboxes (
-        id uuid PRIMARY KEY,
-        organization_id uuid NOT NULL,
-        status text NOT NULL,
-        environment_revision integer NOT NULL DEFAULT 0,
-        warm_claim_credential_state text,
-        lifecycle_revision bigint NOT NULL DEFAULT 0,
-        billing_status text,
-        hourly_rate numeric,
-        last_billed_at timestamp,
-        total_billed numeric,
-        scheduled_shutdown_at timestamp,
-        shutdown_warning_sent_at timestamp,
-        updated_at timestamp NOT NULL DEFAULT now()
-      );
-    `);
+    // The WHEN clause is `to_jsonb(OLD) - ARRAY[...]`, so it ranges over
+    // whatever columns the table actually has. A hand-rolled subset would be the
+    // one shape where the trigger under test sees a different row than
+    // production does, and `jsonb - text[]` ignores absent keys silently.
+    const { PROVISIONING_JOB_TEST_TABLES } = await import(
+      "../lib/services/__tests__/tier-upgrade-pglite-schema"
+    );
+    for (const ddl of PROVISIONING_JOB_TEST_TABLES) {
+      // The table only — the migration under test installs the function and the
+      // trigger, and the shared block still carries the 0187 pair.
+      if (ddl.includes('CREATE TABLE IF NOT EXISTS "agent_sandboxes"')) {
+        await dbWrite.execute(ddl);
+      }
+    }
     for (const statement of migrationSql.split("--> statement-breakpoint")) {
       if (statement.trim()) await dbWrite.execute(statement);
     }
@@ -73,8 +68,9 @@ describe("agent_sandboxes lifecycle-revision trigger", () => {
   beforeAll(async () => {
     if (!databaseReady) return;
     await dbWrite.execute(`
-      INSERT INTO agent_sandboxes (id, organization_id, status, billing_status)
-      VALUES ('${SANDBOX_ID}', '00000000-0000-4000-8000-000000000001', 'provisioning', 'active')
+      INSERT INTO agent_sandboxes (id, organization_id, user_id, status, billing_status)
+      VALUES ('${SANDBOX_ID}', '00000000-0000-4000-8000-000000000001',
+              '00000000-0000-4000-8000-000000000002', 'provisioning', 'active')
       ON CONFLICT (id) DO NOTHING;
     `);
   }, TIMEOUT);
@@ -209,23 +205,56 @@ describe("lifecycle-revision exclusion list drift guard", () => {
     expect(excluded.has("lifecycle_revision")).toBe(false);
   });
 
-  test("no column a lifecycle fence compares on is excluded", async () => {
-    const sandboxService = readFileSync(
-      fileURLToPath(new URL("../lib/services/eliza-sandbox.ts", import.meta.url)),
-      "utf8",
+  // Every fence, from both files and both spellings: raw SQL predicates and the
+  // Drizzle builder. Scanning one file or one form fails open — which is the
+  // failure mode this guard exists to prevent.
+  function scanFences(): Set<string> {
+    const columns = new Set(
+      Array.from(
+        readFileSync(
+          fileURLToPath(new URL("./schemas/agent-sandboxes.ts", import.meta.url)),
+          "utf8",
+        ).matchAll(/^\s{4}([a-z_]+):/gm),
+        (match) => match[1],
+      ),
     );
 
-    // Columns compared in the same predicate as `lifecycle_revision` are, by
-    // definition, what the fences read.
     const fenced = new Set<string>();
-    for (const block of sandboxService.split("lifecycle_revision")) {
-      for (const [, column] of block.slice(-1200).matchAll(/AND\s+([a-z_]+)\s+(?:=|IS)/g)) {
-        fenced.add(column);
+    for (const source of [
+      "../lib/services/eliza-sandbox.ts",
+      "./repositories/agent-sandboxes.ts",
+    ]) {
+      const text = readFileSync(fileURLToPath(new URL(source, import.meta.url)), "utf8");
+      // Look both ways: the revision is not always last in its predicate, and
+      // assuming it is made an earlier version of this window silently wrong.
+      for (const at of text.matchAll(/lifecycle_revision|lifecycleRevision/g)) {
+        const index = at.index ?? 0;
+        const window = text.slice(Math.max(0, index - 1500), index + 1500);
+        for (const [, column] of window.matchAll(/AND\s+([a-z_]+)\s+(?:=|IS)/g)) {
+          if (columns.has(column)) fenced.add(column);
+        }
+        for (const [, column] of window.matchAll(/eq\(\s*agentSandboxes\.([a-z_]+)/g)) {
+          if (columns.has(column)) fenced.add(column);
+        }
       }
     }
     fenced.delete("lifecycle_revision");
+    return fenced;
+  }
 
-    expect(fenced.size).toBeGreaterThan(5);
-    expect([...fenced].filter((column) => excluded.has(column))).toEqual([]);
+  test("no column a lifecycle fence compares on is excluded", () => {
+    expect([...scanFences()].filter((column) => excluded.has(column))).toEqual([]);
+  });
+
+  test("the scan reaches both fence files and both fence spellings", () => {
+    // Structural pins rather than a count floor: a count only fails once the
+    // number happens to drop below it, so it can lose a whole source silently.
+    // Each of these dies with exactly one gap: `execution_tier` is fenced only
+    // in the repository file, `id` only through the Drizzle builder, and
+    // `warm_claim_attested_at` only ahead of its predicate's revision clause.
+    const fenced = scanFences();
+    expect(fenced.has("execution_tier")).toBe(true);
+    expect(fenced.has("id")).toBe(true);
+    expect(fenced.has("warm_claim_attested_at")).toBe(true);
   });
 });
