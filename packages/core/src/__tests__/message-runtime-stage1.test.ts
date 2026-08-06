@@ -5404,7 +5404,13 @@ describe("sub-agent completion relay vs the direct-candidate injection backstop"
 		expect(calls[1]?.[0]).toBe(ModelType.ACTION_PLANNER);
 	});
 
-	it("renders prompt automations as user-facing output instructions", async () => {
+	it("tells a fired prompt-automation that its reply is the automation's output, not an acknowledgement", async () => {
+		// Live incident 2026-08-05 01:00: a "take vitamins" reminder fired and
+		// the turn replied "noted." — the model read the trigger's own
+		// "Do this now:" framing as a status message about itself and
+		// acknowledged it, so the user received an acknowledgement instead of
+		// the reminder. The policy is gated on the connector-set source, never
+		// on message text.
 		const runtime = makeRuntime([
 			stage1Response({
 				thought: "Automation fired.",
@@ -5435,7 +5441,7 @@ describe("sub-agent completion relay vs the direct-candidate injection backstop"
 		expect(stage1Content).toContain("Never reply with an acknowledgement");
 	});
 
-	it("does not render the automation policy for ordinary user turns", async () => {
+	it("keeps the prompt byte-identical for an ordinary user turn (no automation policy)", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
 				thought: "Ordinary turn.",
@@ -5449,7 +5455,6 @@ describe("sub-agent completion relay vs the direct-candidate injection backstop"
 			state: makeState(),
 			responseId: "00000000-0000-0000-0000-0000000000ab" as UUID,
 		});
-
 		const stage1Call = useModelCalls(runtime)[0]?.[1] as
 			| { messages?: Array<{ content?: string | null }> }
 			| undefined;

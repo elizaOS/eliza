@@ -41,11 +41,11 @@ import { useCreditsBalance } from "../instances/lib/data/credits";
 import { formatUsd } from "../lib/format-usd";
 import { hasHydratableStewardToken } from "../lib/steward-session";
 import { useSessionAuth } from "../lib/use-session-auth";
+import { signOutFromSsoBridgedHost } from "../sso-bridge/sso-bridge";
 import {
   CONSOLE_OVERVIEW_NAV_ITEM,
   CONSOLE_SURFACES,
 } from "./console-surfaces";
-import { clearStaleStewardSession } from "./StewardProviderShared";
 
 /**
  * The console nav is one flat list so sidebar section labels never compete
@@ -161,7 +161,17 @@ function ConsoleUserMenu({
           <DropdownMenuItem
             className="text-red-400"
             onSelect={() => {
-              clearStaleStewardSession();
+              // BOTH roles of the bridge pair sign out through the same
+              // helper: it marks this origin logged out (suppresses
+              // auto-bridge), POSTs /api/auth/logout while the cookies still
+              // exist — which ends the server-side sessions AND stamps the
+              // cross-host logout marker that blocks the paired origin from
+              // bridging or cookie-re-planting its surviving session — then
+              // scrubs locally. A dashboard sign-out that skipped the server
+              // call left no marker, so the app host silently undid it. On
+              // hosts outside the deployed map the helper degrades to the
+              // local scrub on its own.
+              void signOutFromSsoBridgedHost();
               navigate("/login", { replace: true });
             }}
           >

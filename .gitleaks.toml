@@ -265,3 +265,18 @@ commits = [
   "84076db8c101861e1010781abc569ff571639791",
   "c118ecb29ce8b66518e57092e0426cdf52bd5045",
 ]
+
+# The vast run-certification test drives its offer/create/destroy flow with an
+# obviously fake fixture credential ("vast-key-hunter3"). The generic-api-key
+# rule keys on the apiKey field name regardless of value. Match the exact
+# fixture string in the one test file so any real-looking value still fails.
+[[allowlists]]
+description = "vast run-certification test fixture credential"
+condition = "AND"
+paths = [
+  '''(^|/)scripts/vast/run-certification\.test\.mjs$''',
+]
+regexTarget = "line"
+regexes = [
+  '''apiKey:\s*"vast-key-hunter3"''',
+]

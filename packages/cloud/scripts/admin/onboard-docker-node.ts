@@ -17,8 +17,10 @@
  *      `denied`). Reuses `ensureRegistryAccess`.
  *   4. clean zombie/stale agent containers (exited/created orphans matching the
  *      agent naming scheme — never an active sandbox),
- *   5. upsert the node into `docker_nodes` (update if it already exists),
- *   6. print a clear summary of what changed vs. was already in place.
+ *   5. ensure the local-embedding sidecar is running (same contract the
+ *      cloud-init bootstrap installs; see `embedding-sidecar.ts`),
+ *   6. upsert the node into `docker_nodes` (update if it already exists),
+ *   7. print a clear summary of what changed vs. was already in place.
  *
  * No secrets are hard-coded: the registry token (if any) comes from the
  * control-plane env via `containersEnv`; the DB target from `DATABASE_URL`.
@@ -50,6 +52,7 @@ async function loadDeps() {
     { ensureRegistryAccess },
     dockerUtils,
     { DockerSSHClient },
+    { buildEnsureEmbeddingSidecarCmd },
   ] = await Promise.all([
     import("@elizaos/cloud-shared/db/repositories/docker-nodes"),
     import(
@@ -57,6 +60,7 @@ async function loadDeps() {
     ),
     import("@elizaos/cloud-shared/lib/services/docker-sandbox-utils"),
     import("@elizaos/cloud-shared/lib/services/docker-ssh"),
+    import("@elizaos/cloud-shared/lib/services/containers/embedding-sidecar"),
   ]);
   return {
     dockerNodesRepository,
@@ -65,6 +69,7 @@ async function loadDeps() {
     buildEnsureNetworkCmd: dockerUtils.buildEnsureNetworkCmd,
     shellQuote: dockerUtils.shellQuote,
     DockerSSHClient,
+    buildEnsureEmbeddingSidecarCmd,
   };
 }
 
@@ -264,6 +269,7 @@ async function main(): Promise<void> {
     buildEnsureNetworkCmd,
     shellQuote,
     DockerSSHClient,
+    buildEnsureEmbeddingSidecarCmd,
   } = await loadDeps();
   const summary: string[] = [];
   const existing = await dockerNodesRepository.findByNodeId(args.nodeId);
@@ -330,7 +336,24 @@ async function main(): Promise<void> {
       summary.push("no zombie containers");
     }
 
-    // 5. Pull the agent image now so the first deploy on this node is warm.
+    // 5. Ensure the local-embedding sidecar is running. Non-fatal on failure —
+    // the node still registers and the control plane's health loop both
+    // surfaces the missing sidecar (docker_nodes metadata) and self-heals it,
+    // so a transient pull failure here cannot silently strand the node on the
+    // cloud embedding path forever.
+    await ssh
+      .exec(buildEnsureEmbeddingSidecarCmd(), 10 * 60 * 1000)
+      .then(() => summary.push("embedding sidecar ensured"))
+      .catch((err) => {
+        console.warn(
+          `[onboard] embedding sidecar install failed (health loop will surface + self-heal): ${err instanceof Error ? err.message : String(err)}`,
+        );
+        summary.push(
+          "embedding sidecar install FAILED (health loop will self-heal)",
+        );
+      });
+
+    // 6. Pull the agent image now so the first deploy on this node is warm.
     console.log(
       `[onboard] pre-pulling ${image} (first run can take a few minutes)`,
     );
@@ -344,7 +367,7 @@ async function main(): Promise<void> {
         summary.push("agent image pre-pull FAILED (non-fatal)");
       });
 
-    // 6. Register / upsert into docker_nodes — same shape as bootstrap-callback.
+    // 7. Register / upsert into docker_nodes — same shape as bootstrap-callback.
     if (existing) {
       await dockerNodesRepository.update(existing.id, {
         hostname: args.host,

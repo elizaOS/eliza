@@ -26,6 +26,7 @@ import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import { isBlockedBySsoBridgeLogout } from "@/lib/services/sso-bridge-codes";
 import { describeSyncError, syncUserFromSteward } from "@/lib/steward-sync";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -225,6 +226,45 @@ app.post("/", async (c) => {
           }),
         );
       return c.json(errorBody("Invalid token", "invalid_token"), 401);
+    }
+
+    // Cross-host logout barrier — BRIDGE-ISSUED tokens only. After an explicit
+    // logout, the app origin's surviving bridge-minted token must not re-plant
+    // the domain-wide cookies via its background session sync (that would
+    // silently undo the logout the user just performed). A stamped token
+    // issued at-or-before the user's last explicit logout is refused with a
+    // DISTINCT code the client honors as a real revocation (it clears its
+    // stored session instead of retrying). Ordinary tokens never reach the
+    // marker store: this path must keep minting through an infrastructure
+    // outage (see the Redis-outage suite), and a token that never crossed the
+    // bridge has the same security posture it had before the bridge existed.
+    if (claims.bridged) {
+      let blockedByLogout: boolean;
+      try {
+        blockedByLogout = await isBlockedBySsoBridgeLogout(
+          claims.userId,
+          claims.issuedAt,
+        );
+      } catch (error) {
+        // error-policy:J1 marker-store outage fails CLOSED for bridge-issued
+        // tokens, translated to the same 503 the bridge legs return — no
+        // cookies get planted while the logout barrier is unreadable.
+        logStewardAuth("sso-marker-unavailable", null);
+        logger.error("[steward-auth] SSO logout-marker store unavailable", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return c.json(
+          errorBody("SSO bridge unavailable", "sso_unavailable"),
+          503,
+        );
+      }
+      if (blockedByLogout) {
+        logStewardAuth("session-ended", null);
+        return c.json(
+          errorBody("Session was signed out", "session_ended"),
+          401,
+        );
+      }
     }
 
     let cloudUser: Awaited<ReturnType<typeof syncUserFromSteward>>;

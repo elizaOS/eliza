@@ -24,7 +24,8 @@ export function isApexControlPlaneHost(): boolean {
   // Dev-only apex emulation: localhost is never a control-plane host, so the
   // console's apex behavior (root → /dashboard, unauth → /login, agent app
   // never boots) is otherwise untestable in `vite dev`. Vite inlines the env
-  // read on literal access; production builds ship without the flag.
+  // read on literal access, and production-mode packages/app builds refuse to
+  // bake the flag (packages/app/scripts/forced-host-mode-guard.mjs).
   if (import.meta.env?.VITE_FORCE_APEX_CONSOLE === "true") return true;
   return APEX_UI_CONTROL_PLANE_HOSTS.has(
     window.location.hostname.toLowerCase(),

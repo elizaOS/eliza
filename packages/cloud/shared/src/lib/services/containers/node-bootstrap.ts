@@ -7,9 +7,12 @@
  *   2. Creates the shared bridge network (`containers-isolated` by default).
  *   3. Adds the control plane's deploy SSH key to /root/.ssh/authorized_keys.
  *   4. Pre-creates the per-node volume root /data/containers/.
- *   5. Optionally pre-pulls a list of images so the first deployment on
+ *   5. Installs the local-embedding sidecar (see `embedding-sidecar.ts`):
+ *      `--restart always` supervises it, and the health loop probes/repairs
+ *      it, so it is never a hand-installed one-off again.
+ *   6. Optionally pre-pulls a list of images so the first deployment on
  *      this node has warm cache (huge UX win for multi-GiB agent images).
- *   6. Pings a self-registration endpoint on the control plane so the
+ *   7. Pings a self-registration endpoint on the control plane so the
  *      node lands in the docker_nodes table without operator action.
  *
  * The script is yaml-shaped (cloud-init User-Data MIME), so it must keep
@@ -20,6 +23,7 @@
 import { containersEnv } from "../../config/containers-env";
 import { CLOUD_METADATA_IP } from "../app-firewall-utils";
 import { validateDockerPlatform } from "../docker-sandbox-utils";
+import { buildEnsureEmbeddingSidecarCmd } from "./embedding-sidecar";
 import { getImageRegistryHost } from "./hetzner-client/registry";
 
 export interface NodeBootstrapInput {
@@ -172,6 +176,7 @@ runcmd:
   - systemctl enable --now eliza-container-egress-guard.service
   - docker network inspect '${sanitizeShellSingleQuoted(network)}' >/dev/null 2>&1 || docker network create --driver bridge '${sanitizeShellSingleQuoted(network)}'
 ${registryAccessCommands}
+  - ${buildEnsureEmbeddingSidecarCmd()} || echo '[bootstrap] embedding sidecar install failed; the node health loop will surface and self-heal it'
 ${prePullCommands}${registerSection}
 `;
 }

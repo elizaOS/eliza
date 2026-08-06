@@ -9,6 +9,7 @@ import { deleteCookie, getCookie } from "hono/cookie";
 import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
 import { invalidateSessionCaches } from "@/lib/auth";
 import { cookieDomainForHost } from "@/lib/auth/cookie-domain";
+import { verifyStewardTokenCached } from "@/lib/auth/steward-client";
 import {
   canMutateLegacyStewardCookies,
   LEGACY_STEWARD_COOKIES,
@@ -19,6 +20,7 @@ import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import { markSsoBridgeLogout } from "@/lib/services/sso-bridge-codes";
 import { userSessionsService } from "@/lib/services/user-sessions";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -54,6 +56,44 @@ app.post("/", async (c) => {
     deleteCookie(c, LEGACY_STEWARD_COOKIES.authed, stewardOpts);
   }
   deleteCookie(c, "eliza-anon-session", { path: "/" });
+
+  // Stamp the cross-host SSO logout marker FIRST and in its own guarded block:
+  // the sso-bridge legs and the cookie-planting session-sync endpoint refuse
+  // tokens issued before this moment, so an explicit logout cannot be silently
+  // undone by the paired host bridging or re-syncing the other origin's
+  // still-unexpired session back in. The marker lives in Postgres (same store
+  // the bridge reads), so a store outage that loses this stamp also disables
+  // the bridge itself — but a TRANSIENT stamp failure would leave a bridgeable
+  // window once the store recovers, hence one retry and an error-level log
+  // (never a silent downgrade to debug) when the stamp is unconfirmed.
+  if (stewardToken) {
+    try {
+      const claims = await verifyStewardTokenCached(c.env, stewardToken);
+      if (claims) {
+        try {
+          await markSsoBridgeLogout(claims.userId);
+        } catch {
+          // error-policy:J6 single bounded retry of best-effort teardown; the
+          // definitive failure is handled (loudly) by the outer catch.
+          await markSsoBridgeLogout(claims.userId);
+        }
+        logger.debug("[Logout] Stamped SSO bridge logout marker");
+      }
+    } catch (error) {
+      // error-policy:J6 best-effort teardown — cookies are already cleared, so
+      // THIS origin is logged out; but the cross-host logout barrier did not
+      // land, which is a security-relevant condition worth an alert, not a
+      // debug line. The bridge's own store reads fail closed while the store
+      // is down, narrowing the exposure to a post-recovery window bounded by
+      // the access-token TTL.
+      logger.error(
+        "[Logout] FAILED to stamp SSO bridge logout marker — cross-host logout barrier not persisted",
+        {
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
+    }
+  }
 
   try {
     // Non-production may still read legacy access cookies elsewhere during the

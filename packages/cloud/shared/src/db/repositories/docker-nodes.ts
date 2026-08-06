@@ -199,6 +199,28 @@ export class DockerNodesRepository {
   }
 
   /**
+   * Persist the health loop's local-embedding-sidecar verdict into the node's
+   * metadata (`metadata.embeddingSidecar = { status, checkedAt }`). A jsonb
+   * merge so concurrent writers of other metadata keys (environment stamp,
+   * onboard provenance) are never clobbered by the health cycle.
+   */
+  async setEmbeddingSidecarHealth(
+    nodeId: string,
+    status: "running" | "unresponsive" | "missing",
+  ): Promise<void> {
+    const patch = JSON.stringify({
+      embeddingSidecar: { status, checkedAt: new Date().toISOString() },
+    });
+    await dbWrite
+      .update(dockerNodes)
+      .set({
+        metadata: sql`${dockerNodes.metadata} || ${patch}::jsonb`,
+        updated_at: new Date(),
+      })
+      .where(eq(dockerNodes.node_id, nodeId));
+  }
+
+  /**
    * Set allocated_count to an exact value (used during sync).
    */
   async setAllocatedCount(nodeId: string, count: number): Promise<void> {
