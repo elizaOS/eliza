@@ -24,7 +24,7 @@ import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
  * POST /api/v1/voice/session — mint a scoped voice-session token (contract §7.1).
  *
  * Auth: the EXISTING Eliza bearer/API-key session. The mint response NEVER
- * contains a provider key (Deepgram/Cartesia) — the token only authorizes ONE
+ * contains a provider key (Cartesia) — the token only authorizes one
  * WS connection scoped to a single org+agent+conversation, and the server holds
  * the provider keys.
  *

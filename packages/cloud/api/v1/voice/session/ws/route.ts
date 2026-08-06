@@ -41,7 +41,7 @@ import type { AppEnv, Bindings } from "@/types/cloud-worker-env";
 import { createInternalElizaConversationFetchFactory } from "../lib/internal-eliza-conversation-fetch";
 import {
   createWorkerCartesiaFactory,
-  createWorkerDeepgramFluxFactory,
+  createWorkerCartesiaInkFactory,
   createWorkerFishAudioFactory,
   isWorkerOutboundWsAvailable,
 } from "../lib/provider-socket-factory";
@@ -101,7 +101,6 @@ app.get("/", (c) => {
     );
   }
 
-  const deepgramApiKey = env.DEEPGRAM_API_KEY;
   const cartesiaApiKey = env.CARTESIA_API_KEY;
   const cartesiaVoiceId = env.VOICE_REALTIME_CARTESIA_VOICE_ID;
   const fishAudioRequested = isFishRealtimeTtsRequested(env);
@@ -130,7 +129,6 @@ app.get("/", (c) => {
   // user identity comes from the verified voice-token claims, never the client.
   const elizaAuthorization = env.VOICE_REALTIME_ELIZA_AUTHORIZATION;
   if (
-    !deepgramApiKey ||
     !cartesiaApiKey ||
     !cartesiaVoiceId ||
     (fishAudioEnabled &&
@@ -250,9 +248,8 @@ app.get("/", (c) => {
         agentId: claims.agentId,
         conversationId: claims.conversationId,
         tokenExpSeconds,
-        deepgramApiKey,
-        deepgramWebSocketFactory: createWorkerDeepgramFluxFactory(),
         cartesiaApiKey,
+        cartesiaInkWebSocketFactory: createWorkerCartesiaInkFactory(),
         cartesiaVoiceId,
         cartesiaWebSocketFactory: createWorkerCartesiaFactory(),
         fishAudioEnabled,

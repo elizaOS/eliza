@@ -1369,6 +1369,9 @@ function elizaCoreBrowserEntryFallbackPlugin(): Plugin {
 // The dev script sets the branded API port env; default to 31337 for standalone vite dev.
 const apiPort = resolveDesktopApiPort(process.env);
 const uiPort = resolveDesktopUiPort(process.env);
+const localVoiceGatewayPort = resolveOptionalLocalVoiceGatewayPort(
+  process.env.ELIZA_LOCAL_VOICE_GATEWAY_PORT,
+);
 const viteDevServerRuntime = resolveViteDevServerRuntime(
   process.env,
   uiPort,
@@ -1377,6 +1380,19 @@ const viteDevServerRuntime = resolveViteDevServerRuntime(
 const enableAppSourceMaps = process.env[BRANDED_ENV.appSourcemap] === "1";
 /** Set by eliza/packages/app-core/scripts/dev-platform.mjs for `vite build --watch` (Electrobun desktop). */
 const desktopFastDist = process.env[BRANDED_ENV.desktopFastDist] === "1";
+
+function resolveOptionalLocalVoiceGatewayPort(
+  raw: string | undefined,
+): number | null {
+  if (typeof raw !== "string" || raw.trim() === "") return null;
+  const port = Number(raw.trim());
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+    throw new Error(
+      "ELIZA_LOCAL_VOICE_GATEWAY_PORT must be an integer TCP port",
+    );
+  }
+  return port;
+}
 
 export function appDevWsBasePlugin(): Plugin {
   const brandedWsBaseKey = `__${APP_ENV_PREFIX}_WS_BASE__`;
@@ -3186,6 +3202,30 @@ export const INVALID_TRACER_PROVIDER = {};
       credentials: true,
     },
     proxy: {
+      ...(localVoiceGatewayPort
+        ? {
+            "/api/v1/voice/session": {
+              target: `http://127.0.0.1:${localVoiceGatewayPort}`,
+              changeOrigin: true,
+              xfwd: true,
+              ws: true,
+              configure: (proxy) => {
+                proxy.on("error", (_err, _req, res) => {
+                  if ("headersSent" in res && !res.headersSent) {
+                    res.writeHead(502, {
+                      "Content-Type": "application/json",
+                    });
+                    res.end(
+                      JSON.stringify({
+                        error: "Local voice gateway unavailable",
+                      }),
+                    );
+                  }
+                });
+              },
+            },
+          }
+        : {}),
       "/api": {
         target: `http://127.0.0.1:${apiPort}`,
         changeOrigin: true,

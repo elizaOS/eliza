@@ -2,8 +2,8 @@
  * HARNESS-ONLY node/bun boot of the REAL Phase-1 voice-session server.
  *
  * This exists so the DoD live-provider evidence run can drive the ACTUAL
- * production voice code (`feat/voice-session-ws-phase1`) — not the harness's
- * §7 reference server — against LIVE Deepgram + Cartesia keys, from a laptop /
+ * production voice code — not a reference reimplementation — against live
+ * Cartesia Ink + Sonic, from a laptop /
  * VPS that has neither Cloudflare Workers nor a funded staging org.
  *
  * WHAT IS REAL (runs UNMODIFIED, is the thing under test):
@@ -14,12 +14,12 @@
  *     REAL token verify (`verifyVoiceSessionToken`, sig/aud/exp/nbf/claims),
  *     REAL single-use `claimVoiceSessionToken`, capacity admit, pipelined
  *     pre-verify audio buffering, malformed/oversized framing.
- *   - the session: REAL `VoiceSession` orchestrator — uplink reframer, Flux STT
+ *   - the session: REAL `VoiceSession` orchestrator — uplink reframer, Ink STT
  *     leg, phrase aggregator, Eliza SSE LLM leg, Cartesia TTS leg, §7.5
  *     interruption/barge-in, SEC-15 fail-closed metering + back-pressure, SEC-6
  *     revoke poll + token-expiry self-sever.
- *   - the merged provider adapters (`createDeepgramFluxRealtimeSession`,
- *     `CartesiaSonicTtsAdapter`) driving LIVE providers.
+ *   - the provider adapters (`createCartesiaInkRealtimeSession`,
+ *     `CartesiaSonicTtsAdapter`) driving live providers.
  *   - the flag: `VOICE_REALTIME_WS_ENABLED=true` is the real consumer working.
  *
  * WHAT IS SHIMMED (transport-only, documented honestly):
@@ -28,11 +28,10 @@
  *      `attachVoiceWsHandler` consumes. No voice logic is reimplemented here.
  *   2. Outbound provider WS factory: the production route uses the Workers
  *      `fetch(url).webSocket` header-preserving upgrade
- *      (`createWorkerDeepgramFluxFactory` / `createWorkerCartesiaFactory`).
- *      On node/bun that path does not exist, so we inject `ws`-package factories
- *      that ALSO preserve the provider auth headers AND strip the `channels=`
- *      param exactly as the Workers factory's `stripChannelsParam` does. The
- *      adapters, session, metering, reframer all run unmodified — only the two
+ *      (`createWorkerCartesiaInkFactory` / `createWorkerCartesiaFactory`).
+ *      On Node/Bun that path does not exist, so we inject `ws`-package factories
+ *      that preserve the provider auth headers. The adapters, session,
+ *      metering, and reframer run unmodified — only the two
  *      lines that construct the transport socket differ.
  *   3. Redis: `MOCK_REDIS=1` in-memory store (real consent/claim/revoke/dir code
  *      runs against it, same interface as production Upstash/Socket Redis).
@@ -51,7 +50,7 @@
  *      SSE is the only swap left (decision §12).
  */
 
-import type { IncomingMessage } from "node:http";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import {
@@ -108,10 +107,10 @@ import type {
   CartesiaWebSocketLike,
 } from "@/lib/services/cartesia-sonic-tts";
 import type {
-  DeepgramFluxTransportRequest,
-  DeepgramFluxWebSocket,
-  DeepgramFluxWebSocketFactory,
-} from "../../stt/providers/deepgram-flux";
+  CartesiaInkTransportRequest,
+  CartesiaInkWebSocket,
+  CartesiaInkWebSocketFactory,
+} from "../../stt/providers/cartesia-ink";
 
 // -------------------------------------------------------------------------
 // SHIM 2: node `ws`-package outbound provider factories (header-preserving,
@@ -120,7 +119,7 @@ import type {
 // the real production code.
 // -------------------------------------------------------------------------
 
-type WsLike = DeepgramFluxWebSocket & CartesiaWebSocketLike;
+type WsLike = CartesiaInkWebSocket & CartesiaWebSocketLike;
 
 function wrapNodeWsAsDom(socket: NodeWebSocket): WsLike {
   const listenerMap = new WeakMap<
@@ -133,7 +132,7 @@ function wrapNodeWsAsDom(socket: NodeWebSocket): WsLike {
         return { type: "open" };
       case "message": {
         const raw = args[0];
-        // Deepgram Flux + Cartesia both send JSON TEXT frames; the adapters
+        // Cartesia Ink + Sonic both send JSON text frames; the adapters
         // require typeof event.data === "string".
         let data: unknown = raw;
         if (typeof raw !== "string") {
@@ -201,16 +200,6 @@ function wrapNodeWsAsDom(socket: NodeWebSocket): WsLike {
   return wrapped as unknown as WsLike;
 }
 
-function stripChannelsParam(rawUrl: string): string {
-  try {
-    const url = new URL(rawUrl);
-    url.searchParams.delete("channels");
-    return url.toString();
-  } catch {
-    return rawUrl;
-  }
-}
-
 export interface RealServerHooks {
   log: (
     level: "info" | "warn" | "error",
@@ -219,30 +208,30 @@ export interface RealServerHooks {
   ) => void;
 }
 
-function makeNodeDeepgramFactory(
+function makeNodeCartesiaInkFactory(
   hooks: RealServerHooks,
-  faultInjection?: "deepgram-auth-fail",
-): DeepgramFluxWebSocketFactory {
-  return (request: DeepgramFluxTransportRequest): DeepgramFluxWebSocket => {
-    const url = stripChannelsParam(request.url);
-    // error-auth scenario: corrupt the provider Authorization so the live
-    // Deepgram upgrade fails at auth (a surfaced provider error, not a mock).
+  faultInjection?: "cartesia-stt-auth-fail",
+): CartesiaInkWebSocketFactory {
+  return (request: CartesiaInkTransportRequest): CartesiaInkWebSocket => {
+    const url = request.url;
+    // The auth-failure scenario corrupts the real provider request instead of
+    // mocking an error event, so the adapter observes a live boundary failure.
     let headers = request.headers;
-    if (faultInjection === "deepgram-auth-fail") {
+    if (faultInjection === "cartesia-stt-auth-fail") {
       headers = {
         ...headers,
-        Authorization: "Token deliberately-invalid-key-for-error-path",
+        "X-API-Key": "deliberately-invalid-key-for-error-path",
       };
       hooks.log(
         "warn",
-        "fault-injection: corrupting Deepgram auth for error-path scenario",
+        "fault-injection: corrupting Cartesia STT auth for error-path scenario",
       );
     }
-    hooks.log("info", "deepgram outbound WS (channels stripped)", {
+    hooks.log("info", "cartesia Ink outbound WS", {
       host: safeHost(url),
     });
     const socket = new NodeWs(url, { headers }) as unknown as NodeWebSocket;
-    return wrapNodeWsAsDom(socket) as DeepgramFluxWebSocket;
+    return wrapNodeWsAsDom(socket) as CartesiaInkWebSocket;
   };
 }
 
@@ -335,7 +324,6 @@ export interface RealMintResult {
 }
 
 export interface RealServerConfig {
-  deepgramApiKey: string;
   cartesiaApiKey: string;
   cartesiaVoiceId: string;
   elizaEndpoint: string;
@@ -345,10 +333,15 @@ export interface RealServerConfig {
   agentId: string;
   conversationId: string;
   hooks: RealServerHooks;
-  faultInjection?: "deepgram-auth-fail";
+  /** Optional LLM transport adapter, used by the local-runtime evidence lane. */
+  fetchImpl?: typeof fetch;
+  /** Loopback listen port. Omit to let the OS choose an ephemeral test port. */
+  listenPort?: number;
+  faultInjection?: "cartesia-stt-auth-fail";
 }
 
 export interface RunningRealServer {
+  httpUrl: string;
   wsUrl: string;
   /**
    * Exercise the REAL consent -> mint precondition chain: issue a one-time
@@ -393,11 +386,86 @@ export async function startRealVoiceServer(
   const maxSessions = resolveMaxSessions(env);
   const elizaModel = resolveElizaModel(env);
 
-  const httpServer: Server = createServer((_req, res) => {
-    res.writeHead(426, { "Content-Type": "text/plain" });
-    res.end("expected a websocket upgrade");
+  let directHttpUrl = "";
+  let directWsUrl = "";
+  const httpServer: Server = createServer((req, res) => {
+    void handleHttpRequest(req, res).catch((error) => {
+      // error-policy:J1 The loopback HTTP boundary translates a failed request
+      // into a structured response; provider/session failures remain fatal to
+      // their own voice session and are not hidden here.
+      hooks.log("error", "local voice HTTP request failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      if (!res.headersSent) {
+        writeJson(res, error instanceof LocalVoiceRequestError ? 400 : 500, {
+          code:
+            error instanceof LocalVoiceRequestError
+              ? "invalid_voice_request"
+              : "local_voice_gateway_error",
+        });
+      } else if (!res.writableEnded) {
+        res.end();
+      }
+    });
   });
   const wss = new WebSocketServer({ noServer: true });
+
+  async function handleHttpRequest(
+    req: IncomingMessage,
+    res: ServerResponse,
+  ): Promise<void> {
+    const url = new URL(req.url ?? "/", directHttpUrl || "http://127.0.0.1");
+    if (
+      req.method === "GET" &&
+      url.pathname === "/api/v1/voice/session/health"
+    ) {
+      writeJson(res, 200, { ready: true });
+      return;
+    }
+    if (
+      req.method === "POST" &&
+      url.pathname === "/api/v1/voice/session/consent"
+    ) {
+      const issued = await issueConsentNonce(config.userId);
+      if (!issued) {
+        writeJson(res, 503, { code: "consent_store_unavailable" });
+        return;
+      }
+      writeJson(res, 200, {
+        consentNonce: issued.nonce,
+        expiresAt: issued.expiresAt,
+      });
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/api/v1/voice/session") {
+      const body = await readJsonBody(req);
+      // The force-armed browser sends a recognizable sentinel. Identity never
+      // comes from that debug affordance: this loopback server binds the real
+      // local agent in its config and scopes only the active conversation here.
+      const conversationId = readRequiredUuid(body, "conversationId");
+      const consentNonce = readRequiredString(body, "consentNonce");
+      if (body.transport !== "websocket") {
+        writeJson(res, 400, { code: "invalid_transport" });
+        return;
+      }
+      const minted = await mintWithConsent(conversationId, consentNonce);
+      if (!minted) {
+        writeJson(res, 403, { code: "invalid_consent_nonce" });
+        return;
+      }
+      writeJson(res, 200, {
+        ...minted,
+        wsUrl: resolvePublicWsUrl(req, minted.sessionId, directWsUrl),
+        uplink: { codecs: ["pcm16"] },
+        downlink: { codecs: ["pcm16"] },
+        iceServers: null,
+      });
+      return;
+    }
+
+    res.writeHead(426, { "Content-Type": "text/plain" });
+    res.end("expected a websocket upgrade");
+  }
 
   httpServer.on("upgrade", (req: IncomingMessage, socket, head) => {
     const url = new URL(req.url ?? "/", "http://localhost");
@@ -436,8 +504,7 @@ export async function startRealVoiceServer(
           agentId: claims.agentId,
           conversationId: claims.conversationId,
           tokenExpSeconds,
-          deepgramApiKey: config.deepgramApiKey,
-          deepgramWebSocketFactory: makeNodeDeepgramFactory(
+          cartesiaInkWebSocketFactory: makeNodeCartesiaInkFactory(
             hooks,
             config.faultInjection,
           ),
@@ -447,6 +514,7 @@ export async function startRealVoiceServer(
           elizaEndpoint: config.elizaEndpoint,
           elizaAuthorization: config.elizaAuthorization,
           elizaModel,
+          fetchImpl: config.fetchImpl,
           usageStore,
           usageLimits,
           // Production parity (#16663): NO teardown revoke — production
@@ -461,28 +529,28 @@ export async function startRealVoiceServer(
   }
 
   await new Promise<void>((resolve) =>
-    httpServer.listen(0, "127.0.0.1", resolve),
+    httpServer.listen(config.listenPort ?? 0, "127.0.0.1", resolve),
   );
   const port = (httpServer.address() as AddressInfo).port;
+  const httpUrl = `http://127.0.0.1:${port}`;
   const wsUrl = `ws://127.0.0.1:${port}/api/v1/voice/session/ws?sessionId=`;
+  directHttpUrl = httpUrl;
+  directWsUrl = wsUrl;
   hooks.log("info", "real voice server listening", { port });
 
-  async function mint(): Promise<RealMintResult> {
-    // SEC-21: issue a one-time consent nonce (REAL store), then consume it as a
-    // mint precondition (REAL getdel). A missing/replayed nonce refuses the mint.
-    const issued = await issueConsentNonce(config.userId);
-    if (!issued) throw new Error("consent store not configured (issue failed)");
-    const consented = await consumeConsentNonce(config.userId, issued.nonce);
-    if (!consented)
-      throw new Error("consent nonce consume failed (SEC-21 precondition)");
-
+  async function mintWithConsent(
+    conversationId: string,
+    consentNonce: string,
+  ): Promise<RealMintResult | null> {
+    const consented = await consumeConsentNonce(config.userId, consentNonce);
+    if (!consented) return null;
     const sessionId = crypto.randomUUID();
     const minted = await mintVoiceSessionToken({
       sessionId,
       organizationId: config.organizationId,
       userId: config.userId,
       agentId: config.agentId,
-      conversationId: config.conversationId,
+      conversationId,
     });
     await recordVoiceSessionJti({
       organizationId: config.organizationId,
@@ -493,6 +561,17 @@ export async function startRealVoiceServer(
     });
     hooks.log("info", "minted real voice-session token", { sessionId });
     return { sessionId, token: minted.token, expiresAt: minted.expiresAt };
+  }
+
+  async function mint(): Promise<RealMintResult> {
+    // SEC-21: issue a one-time consent nonce (REAL store), then consume it as a
+    // mint precondition (REAL getdel). A missing/replayed nonce refuses the mint.
+    const issued = await issueConsentNonce(config.userId);
+    if (!issued) throw new Error("consent store not configured (issue failed)");
+    const minted = await mintWithConsent(config.conversationId, issued.nonce);
+    if (!minted)
+      throw new Error("consent nonce consume failed (SEC-21 precondition)");
+    return minted;
   }
 
   async function stop(): Promise<void> {
@@ -522,7 +601,114 @@ export async function startRealVoiceServer(
     __resetVoiceSessionRegistryForTests();
   }
 
-  return { wsUrl, mint, stop };
+  return { httpUrl, wsUrl, mint, stop };
+}
+
+const MAX_LOCAL_HTTP_BODY_BYTES = 16 * 1024;
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+class LocalVoiceRequestError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "LocalVoiceRequestError";
+  }
+}
+
+async function readJsonBody(
+  req: IncomingMessage,
+): Promise<Record<string, unknown>> {
+  const chunks: Buffer[] = [];
+  let bytes = 0;
+  for await (const chunk of req) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    bytes += buffer.byteLength;
+    if (bytes > MAX_LOCAL_HTTP_BODY_BYTES) {
+      throw new LocalVoiceRequestError(
+        "local voice request body exceeds 16 KiB",
+      );
+    }
+    chunks.push(buffer);
+  }
+  try {
+    const parsed = JSON.parse(
+      Buffer.concat(chunks).toString("utf8"),
+    ) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new LocalVoiceRequestError("request body must be a JSON object");
+    }
+    return parsed as Record<string, unknown>;
+  } catch (error) {
+    // error-policy:J3 The loopback client body is still untrusted input; a
+    // parse failure is an explicit invalid request, never a fabricated body.
+    if (error instanceof LocalVoiceRequestError) throw error;
+    throw new LocalVoiceRequestError(
+      "local voice request body is invalid JSON",
+      {
+        cause: error,
+      },
+    );
+  }
+}
+
+function readRequiredString(
+  body: Record<string, unknown>,
+  key: string,
+): string {
+  const value = body[key];
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new LocalVoiceRequestError(`${key} is required`);
+  }
+  return value.trim();
+}
+
+function readRequiredUuid(body: Record<string, unknown>, key: string): string {
+  const value = readRequiredString(body, key);
+  if (!UUID_PATTERN.test(value)) {
+    throw new LocalVoiceRequestError(`${key} must be a UUID`);
+  }
+  return value;
+}
+
+function resolvePublicWsUrl(
+  req: IncomingMessage,
+  sessionId: string,
+  directWsUrl: string,
+): string {
+  const forwardedHost = firstHeaderValue(req.headers["x-forwarded-host"]);
+  const forwardedProto = firstHeaderValue(req.headers["x-forwarded-proto"]);
+  if (forwardedHost) {
+    const wsScheme = forwardedProto === "https" ? "wss:" : "ws:";
+    try {
+      const publicUrl = new URL(`${wsScheme}//${forwardedHost}`);
+      publicUrl.pathname = "/api/v1/voice/session/ws";
+      publicUrl.searchParams.set("sessionId", sessionId);
+      return publicUrl.toString();
+    } catch {
+      // error-policy:J4 A malformed proxy host degrades to the bound loopback
+      // URL; it never changes token scope or exposes a provider credential.
+    }
+  }
+  return `${directWsUrl}${encodeURIComponent(sessionId)}`;
+}
+
+function firstHeaderValue(value: string | string[] | undefined): string | null {
+  const candidate = Array.isArray(value) ? value[0] : value;
+  return typeof candidate === "string" && candidate.trim()
+    ? candidate.split(",", 1)[0]!.trim()
+    : null;
+}
+
+function writeJson(
+  res: ServerResponse,
+  status: number,
+  body: Record<string, unknown>,
+): void {
+  res.writeHead(status, {
+    "Content-Type": "application/json",
+    "Cache-Control": "no-store",
+  });
+  res.end(JSON.stringify(body));
 }
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | undefined> {
