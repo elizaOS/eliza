@@ -164,6 +164,8 @@ export type MatrixRunner = (context: {
   repoRoot: string;
   tier: Tier;
   io: CertifyIo;
+  /** Extra argv forwarded to the matrix command (e.g. `--only=test`). */
+  args?: readonly string[];
 }) => Promise<MatrixRunResult>;
 
 /** How one orchestration step resolved, recorded in the run summary. */
@@ -207,6 +209,8 @@ export interface CertifyOptions {
   gpuQueueTimeoutMs?: number;
   /** Test matrix runner; default spawns `packages/scripts/run-all-tests.mjs`. */
   runMatrix?: MatrixRunner;
+  /** Extra argv forwarded to the matrix runner (`--matrix-arg` on the CLI). */
+  matrixArgs?: readonly string[];
   /** Env for vision-QA backend resolution + provenance; default `process.env`. */
   env?: NodeJS.ProcessEnv;
   now?: () => Date;
@@ -242,17 +246,19 @@ const CERTIFY_QUESTION: VisionQuestion = {
  * a red matrix produces a red certification. The full output is captured as the
  * lane log so a reviewer can read what failed.
  */
-export const spawnRunAllTests: MatrixRunner = ({ repoRoot, io }) => {
+export const spawnRunAllTests: MatrixRunner = ({ repoRoot, io, args = [] }) => {
   const script = path.join(
     repoRoot,
     "packages",
     "scripts",
     "run-all-tests.mjs",
   );
-  const command = `node ${path.relative(repoRoot, script)}`;
+  const command = [`node ${path.relative(repoRoot, script)}`, ...args].join(
+    " ",
+  );
   io.out(`  matrix: ${command}`);
   return new Promise<MatrixRunResult>((resolve, reject) => {
-    const child = spawn("node", [script], {
+    const child = spawn("node", [script, ...args], {
       cwd: repoRoot,
       env: process.env,
     });
@@ -579,7 +585,12 @@ export async function orchestrateCertify(
       io.out("  matrix: skipped (--skip-matrix)");
     } else {
       const runMatrix = options.runMatrix ?? spawnRunAllTests;
-      const matrix = await runMatrix({ repoRoot: options.repoRoot, tier, io });
+      const matrix = await runMatrix({
+        repoRoot: options.repoRoot,
+        tier,
+        io,
+        args: options.matrixArgs ?? [],
+      });
       for (const lane of matrix.lanes) await addLaneResult(bundle, lane);
       const failedLanes = matrix.lanes.filter((lane) => lane.failed > 0);
       steps.push({

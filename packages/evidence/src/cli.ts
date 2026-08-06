@@ -33,6 +33,7 @@ const USAGE = `Usage:
   bundle:verify -- <bundle-dir>
   certify       -- --tier <cpu|gpu|full> --reviewer-id <id> --reviewer-kind <agent|human>
                    [--reviewer-model <m>] [--reviewer-verdicts <file>] [--skip-matrix]
+                   [--matrix-arg <argv>]...
                    [--bundle <existing-dir>] [--requirements <file>] [--base-ref <ref>]
                    [--expires-hours <n>] [--key-file <pem>] [--cert-out <path>]
                    [--out <dir>] [--repo-root <dir>]
@@ -207,6 +208,7 @@ interface CertifyArgs {
   requirementsPath?: string;
   existingBundleDir?: string;
   skipMatrix: boolean;
+  matrixArgs: string[];
   baseRef?: string;
   expiresHours?: number;
   keyFile?: string;
@@ -220,6 +222,7 @@ interface CertifyArgs {
 function parseCertifyArgs(argv: string[]): CertifyArgs {
   const value = new Map<string, string>();
   const flags = new Set<string>();
+  const matrixArgs: string[] = [];
   const valueFlags = new Set([
     "--tier",
     "--reviewer-id",
@@ -241,6 +244,17 @@ function parseCertifyArgs(argv: string[]): CertifyArgs {
     const arg = argv[index];
     if (arg === "--skip-matrix") {
       flags.add(arg);
+      continue;
+    }
+    if (arg === "--matrix-arg") {
+      const next = argv[index + 1];
+      if (next === undefined) {
+        throw new EvidenceError(`${arg} requires a value`, {
+          code: "CLI_USAGE",
+        });
+      }
+      matrixArgs.push(next);
+      index += 1;
       continue;
     }
     if (valueFlags.has(arg)) {
@@ -326,6 +340,7 @@ function parseCertifyArgs(argv: string[]): CertifyArgs {
     requirementsPath: value.get("--requirements"),
     existingBundleDir: value.get("--bundle"),
     skipMatrix: flags.has("--skip-matrix"),
+    matrixArgs,
     baseRef: value.get("--base-ref"),
     expiresHours,
     keyFile: value.get("--key-file"),
@@ -375,6 +390,7 @@ async function runCertify(argv: string[], io: CliIo): Promise<number> {
         }
       : {}),
     skipMatrix: args.skipMatrix,
+    matrixArgs: args.matrixArgs,
     ...(reviewerVerdicts !== undefined ? { reviewerVerdicts } : {}),
     ...(requirements !== undefined ? { requirements } : {}),
     ...(args.existingBundleDir !== undefined

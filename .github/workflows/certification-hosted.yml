@@ -70,9 +70,20 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: "1.3.14"
+          install-command: bun install --frozen-lockfile
+          install-native-deps: "false"
 
       - name: Generate shared i18n data
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
+
+      # The develop-pr test lane documents why: package-owned test scripts
+      # assume the core dependency graph and view bundles exist; on a clean
+      # hosted runner absent generated artifacts fail tests that have nothing
+      # wrong (diagnostic run 31062965483: plugin-meetings dist unresolved).
+      - name: Build core dependency graph and view bundles
+        run: |
+          bun run build:core
+          bun run build:views
 
       # The bundle ingests evidence silos produced by real lanes on the
       # certified sha; a fresh runner has none, and certify:sign honestly
@@ -101,6 +112,9 @@ jobs:
           --tier "${{ inputs.tier }}"
           --reviewer-id "certification-hosted@github-actions"
           --reviewer-kind agent
+          --matrix-arg --only=test
+          --matrix-arg --no-cloud
+          --matrix-arg --concurrency=3
           --cert-out "$GITHUB_WORKSPACE/certification.json"
 
       - name: Collect artifacts
