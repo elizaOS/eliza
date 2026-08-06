@@ -650,6 +650,7 @@ describe("AgentGatewayRouterService discord DM onboarding (#17341)", () => {
     findByDiscordIdWithOrganization.mockResolvedValue(null);
     runOnboardingChat.mockResolvedValue({
       reply: "Welcome! Here is your login link.",
+      cta: { label: "Connect", url: "https://app.elizacloud.ai/get-started/?onboardingSession=t1" },
       session: { userId: undefined, organizationId: undefined },
       provisioning: { agentId: null },
     });
@@ -658,6 +659,10 @@ describe("AgentGatewayRouterService discord DM onboarding (#17341)", () => {
 
     expect(result.handled).toBe(true);
     expect(result.replyText).toBe("Welcome! Here is your login link.");
+    expect(result.replyCta).toEqual({
+      label: "Connect",
+      url: "https://app.elizacloud.ai/get-started/?onboardingSession=t1",
+    });
     expect(runOnboardingChat).toHaveBeenCalledWith(
       expect.objectContaining({
         platform: "discord",
@@ -687,6 +692,7 @@ describe("AgentGatewayRouterService discord DM onboarding (#17341)", () => {
 
     expect(result.handled).toBe(true);
     expect(result.replyText).toBe("Let's finish setting up your agent.");
+    expect(result.replyCta).toBeNull();
     expect(runOnboardingChat).toHaveBeenCalledWith(
       expect.objectContaining({
         platform: "discord",
