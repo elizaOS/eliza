@@ -100,7 +100,7 @@ export default scenario({
       name: "beyond-window count question gets an honest bounded answer",
       room: "main",
       text: "how many times have i mentioned bitcoin in this channel?",
-      forbiddenActions: ["MEMORY"],
+      forbiddenActions: ["MEMORY", "MEMORY_SEARCH"],
       responseJudge: {
         minimumScore: 0.6,
         rubric:
