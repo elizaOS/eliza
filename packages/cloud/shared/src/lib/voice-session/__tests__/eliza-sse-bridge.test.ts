@@ -50,6 +50,35 @@ describe("eliza sse bridge", () => {
     expect(result.aborted).toBe(false);
   });
 
+  test("decodes local runtime token frames without replaying fullText", async () => {
+    const deltas: string[] = [];
+    const fetchImpl = (async () =>
+      sseResponse([
+        `data: ${JSON.stringify({ type: "status", kind: "thinking" })}\n\n`,
+        `data: ${JSON.stringify({ type: "token", text: "Hello", fullText: "Hello" })}\n\n`,
+        `data: ${JSON.stringify({ type: "token", text: " local", fullText: "Hello local" })}\n\n`,
+        `data: ${JSON.stringify({ type: "done", fullText: "Hello local" })}\n\n`,
+      ])) as unknown as typeof fetch;
+
+    const result = await streamElizaConversation(
+      {
+        endpoint: "http://x",
+        authorization: "Bearer s",
+        model: "m",
+        transcript: "hi",
+        agentId: "agent-1",
+        conversationId: "conv-1",
+        traceId: "trace-local",
+        signal: new AbortController().signal,
+        fetchImpl,
+      },
+      (delta) => deltas.push(delta),
+    );
+
+    expect(deltas).toEqual(["Hello", " local"]);
+    expect(result).toEqual({ completed: true, aborted: false });
+  });
+
   test("propagates the voice trace header", async () => {
     let seenHeader: string | null = null;
     const fetchImpl = (async (_url: string, init: RequestInit) => {

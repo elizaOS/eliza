@@ -101,13 +101,15 @@ if (process.env.ELIZA_PROCESS_ISOLATED_TEST === "1") {
   let lastSessionOptions: {
     isRevoked?: (jti: string) => Promise<boolean>;
     onTeardownRevoke?: unknown;
+    fetchImpl?: typeof fetch;
   } | null = null;
   mock.module("../lib/session", () => ({
     VoiceSession: class {
       constructor(options: {
         isRevoked?: (jti: string) => Promise<boolean>;
         onTeardownRevoke?: unknown;
-        deepgramWebSocketFactory(request: {
+        fetchImpl?: typeof fetch;
+        cartesiaInkWebSocketFactory(request: {
           url: string;
           headers: Record<string, string>;
         }): { addEventListener(type: string, listener: () => void): void };
@@ -117,11 +119,11 @@ if (process.env.ELIZA_PROCESS_ISOLATED_TEST === "1") {
         ): { addEventListener(type: string, listener: () => void): void };
       }) {
         lastSessionOptions = options;
-        const dg = options.deepgramWebSocketFactory({
-          url: "ws://127.0.0.1:1/provider?channels=1",
-          headers: { Authorization: "Token test" },
+        const ink = options.cartesiaInkWebSocketFactory({
+          url: "ws://127.0.0.1:1/provider",
+          headers: { "X-API-Key": "test" },
         });
-        dg.addEventListener("error", () => undefined);
+        ink.addEventListener("error", () => undefined);
         const cartesia = options.cartesiaWebSocketFactory(
           "ws://127.0.0.1:1/provider",
           {
@@ -148,7 +150,6 @@ if (process.env.ELIZA_PROCESS_ISOLATED_TEST === "1") {
       await harness.installHarnessSigningKey();
       const logs: string[] = [];
       const server = await harness.startRealVoiceServer({
-        deepgramApiKey: "dg",
         cartesiaApiKey: "cartesia",
         cartesiaVoiceId: "voice",
         elizaEndpoint: "http://127.0.0.1/eliza",
@@ -157,15 +158,61 @@ if (process.env.ELIZA_PROCESS_ISOLATED_TEST === "1") {
         userId: "user",
         agentId: "agent",
         conversationId: "conversation",
+        fetchImpl: fetch,
         hooks: { log: (_level, message) => logs.push(message) },
       });
 
-      const httpUrl = server.wsUrl
-        .replace("ws://", "http://")
-        .split("/api/")[0];
-      const response = await fetch(httpUrl);
+      const response = await fetch(server.httpUrl);
       expect(response.status).toBe(426);
       expect(await response.text()).toBe("expected a websocket upgrade");
+
+      const health = await fetch(
+        `${server.httpUrl}/api/v1/voice/session/health`,
+      );
+      expect(health.status).toBe(200);
+      expect((await health.json()) as unknown).toEqual({ ready: true });
+
+      const consent = await fetch(
+        `${server.httpUrl}/api/v1/voice/session/consent`,
+        { method: "POST" },
+      );
+      expect(consent.status).toBe(200);
+      const consentBody = (await consent.json()) as { consentNonce: string };
+      expect(consentBody.consentNonce).toBe("consent");
+
+      const browserMint = await fetch(
+        `${server.httpUrl}/api/v1/voice/session`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Forwarded-Host": "localhost:2138",
+            "X-Forwarded-Proto": "http",
+          },
+          body: JSON.stringify({
+            agentId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+            conversationId: "11111111-1111-4111-8111-111111111111",
+            consentNonce: consentBody.consentNonce,
+            transport: "websocket",
+          }),
+        },
+      );
+      expect(browserMint.status).toBe(200);
+      const browserMintBody = (await browserMint.json()) as {
+        sessionId: string;
+        wsUrl: string;
+      };
+      expect(browserMintBody).toMatchObject({
+        token: "signed-token",
+        uplink: { codecs: ["pcm16"] },
+        downlink: { codecs: ["pcm16"] },
+      });
+      const publicWsUrl = new URL(browserMintBody.wsUrl);
+      expect(publicWsUrl.origin).toBe("ws://localhost:2138");
+      expect(publicWsUrl.pathname).toBe("/api/v1/voice/session/ws");
+      expect(publicWsUrl.searchParams.get("sessionId")).toBe(
+        browserMintBody.sessionId,
+      );
 
       await new Promise<void>((resolve, reject) => {
         const url = new URL(`${server.wsUrl}session`);
@@ -186,6 +233,7 @@ if (process.env.ELIZA_PROCESS_ISOLATED_TEST === "1") {
       // certify production behavior, and its revocation poll is wired through
       // the real jwt module.
       expect(lastSessionOptions).not.toBeNull();
+      expect(lastSessionOptions?.fetchImpl).toBe(fetch);
       expect(
         lastSessionOptions && "onTeardownRevoke" in lastSessionOptions
           ? lastSessionOptions.onTeardownRevoke

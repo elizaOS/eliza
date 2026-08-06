@@ -8,8 +8,8 @@
  *     `X-Eliza-Voice-Trace-Id` header (reusing #15931's trace contract);
  *   - propagate an `AbortSignal` so an interruption cancels the in-flight fetch,
  *     which cancels the upstream provider stream (the route's tee/abort seam);
- *   - decode the OpenAI-shaped SSE `delta.content` tokens into a plain string
- *     stream for the phrase aggregator.
+ *   - decode canonical `chunk`, local runtime `type=token`, and OpenAI-shaped
+ *     `delta.content` frames into a plain string stream for phrase aggregation.
  *
  * It holds no provider key; the canonical route owns auth, billing, and
  * persistence. `fetchImpl` is injectable so the
@@ -351,6 +351,14 @@ function extractDeltaContent(payload: string): string | null {
   // Canonical agent message streams emit event:chunk with a top-level chunk.
   const canonicalChunk = (parsed as { chunk?: unknown }).chunk;
   if (typeof canonicalChunk === "string" && canonicalChunk.length > 0) return canonicalChunk;
+  const localToken = parsed as { type?: unknown; text?: unknown };
+  if (
+    localToken.type === "token" &&
+    typeof localToken.text === "string" &&
+    localToken.text.length > 0
+  ) {
+    return localToken.text;
+  }
   const choices = (parsed as { choices?: unknown }).choices;
   if (!Array.isArray(choices) || choices.length === 0) return null;
   const first = choices[0] as { delta?: { content?: unknown }; text?: unknown };

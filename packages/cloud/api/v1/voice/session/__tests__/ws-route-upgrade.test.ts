@@ -131,7 +131,6 @@ const wsRoute = (await import("../ws/route")).default;
 
 const baseEnv = {
   VOICE_REALTIME_WS_ENABLED: "true",
-  DEEPGRAM_API_KEY: "dg",
   CARTESIA_API_KEY: "cartesia",
   VOICE_REALTIME_CARTESIA_VOICE_ID: "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4",
   VOICE_REALTIME_ELIZA_ENDPOINT: "https://eliza.test/sse",

@@ -3,13 +3,13 @@
  *
  * The 120s JWT is only a bootstrap; once the WS is open the session lives on an
  * in-memory binding. Revoking/ending/deleting a session MUST sever the live
- * Deepgram Flux + Cartesia sockets in bounded time (<=500ms), from EITHER the
+ * Cartesia Ink + Sonic sockets in bounded time (<=500ms), from EITHER the
  * same worker (the disconnecting client) OR a different authenticated session
  * of the same owner (a second device / the dashboard).
  *
  * This registry provides the same-worker path directly: a revoke on the worker
  * that holds the socket invokes the registered `sever` synchronously, so
- * uplink to Deepgram stops in well under 500ms. The cross-worker path is closed
+ * uplink to Cartesia Ink stops in well under 500ms. The cross-worker path is closed
  * by the JWT revocation store (see `jwt.ts`): the live session polls the
  * revocation denylist and severs itself when its own `jti` appears, bounding
  * cross-worker propagation to the poll interval. Both routes end at the same

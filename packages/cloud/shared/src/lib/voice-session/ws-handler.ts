@@ -53,7 +53,7 @@ export interface VoiceSessionLike {
   sever(reason: "client_disconnect" | "error"): void;
   /**
    * Optional advisory: the client signalled it has finished sending audio for
-   * the current utterance (`end_audio`). Phase-1 turn detection is Flux
+   * the current utterance (`end_audio`). Phase-1 turn detection is Ink
    * semantic EOT, so a session may treat this as a no-op; declared optional so
    * the frame is accepted without forcing every implementation to react.
    */
@@ -236,7 +236,7 @@ export function attachVoiceWsHandler(socket: ServerWebSocketLike, deps: VoiceWsH
         session.bargeIn();
         return;
       case "end_audio":
-        // Uplink-complete advisory. Phase-1 finalization is Flux semantic EOT,
+        // Uplink-complete advisory. Phase-1 finalization is Ink semantic EOT,
         // so this is a graceful no-op unless the session opts to react. It must
         // NOT surface a client-facing error (a well-behaved bounded-clip client
         // sends this after its audio).
@@ -253,7 +253,7 @@ export function attachVoiceWsHandler(socket: ServerWebSocketLike, deps: VoiceWsH
     if (state === "closed") return;
     state = "closed";
     // Self-revoke on disconnect: sever provider sockets so a dropped client
-    // never leaves audio flowing to Deepgram.
+    // never leaves audio flowing to Cartesia Ink.
     session?.sever("client_disconnect");
   });
 

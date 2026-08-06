@@ -45,9 +45,31 @@ Both must be on AND a dedicated cloud agent UUID must resolve for the realtime
 path to arm.
 
 - Debug: `VITE_VOICE_REALTIME_FORCE` = `1|true|yes|on` (default OFF). A
-  local-verification debug affordance only — it force-arms the realtime path
-  when normal resolution would not, so a developer can exercise the client
-  wiring without a fully configured cloud. Never set it in a deployed build.
+local-verification debug affordance only — it force-arms the realtime path
+when normal resolution would not, so a developer can exercise the client
+wiring without a fully configured cloud. Never set it in a deployed build.
+
+## Local runtime + Cartesia provider loop
+
+The dev app can exercise the same server-side voice session while keeping chat
+on a local elizaOS runtime. Start the runtime on `31337`, then run:
+
+```bash
+CARTESIA_API_KEY=… \
+ELIZA_LOCAL_VOICE_GATEWAY_PORT=31338 \
+bun run --cwd packages/cloud/api voice:local-gateway
+
+VITE_VOICE_REALTIME_WS=1 \
+VITE_VOICE_REALTIME_FORCE=1 \
+ELIZA_LOCAL_VOICE_GATEWAY_PORT=31338 \
+bun run --cwd packages/app dev
+```
+
+Vite sends only `/api/v1/voice/session` HTTP and WebSocket traffic to the
+loopback gateway; all other `/api` traffic remains on `31337`. The provider
+loop is Cartesia Ink 2 STT → local runtime/model route → Cartesia Sonic 3.5 TTS.
+The Cartesia key remains in the gateway process and is never exposed to Vite or
+the browser.
 
 ## Flag retirement
 
@@ -65,7 +87,7 @@ graduates from staging to the default voice path:
 ## Manual test — desktop Chrome
 
 1. Build the PWA with the flag on and pointed at a cloud API that has the server
-   flag + provider keys (Deepgram / Cerebras / Cartesia) configured:
+   flag + Cartesia and Cerebras/Eliza bridge credentials configured:
    ```
    VITE_VOICE_REALTIME_WS=1 bun run --filter @elizaos/ui dev   # or the app build
    ```
@@ -124,5 +146,5 @@ graduates from staging to the default voice path:
   deploy that overwrites the stale value. The workflow contract fails an
   enabled production deploy when any of those values are absent.
 - Browser-level proof (screen recording + audio, both-side logs, real
-  Deepgram/Cerebras/Cartesia round-trip) is the INTEGRATION-run's job on a real
+  Cartesia Ink/Cerebras/Cartesia Sonic round-trip) is the INTEGRATION-run's job on a real
   device against the deployed server — this branch does NOT claim device-tested.
