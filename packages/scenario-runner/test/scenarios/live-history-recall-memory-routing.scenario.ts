@@ -14,6 +14,7 @@
 import type { Memory, UUID } from "@elizaos/core";
 import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { prepareOwnerMemoryRuntime } from "./_helpers/history-recall-runtime";
 
 type ActionParameterLike = {
   name?: string;
@@ -52,8 +53,9 @@ function hasExecutableMemorySearch(runtime: RuntimeLike): boolean {
 async function seedStoredHistory(
   ctx: ScenarioContext,
 ): Promise<string | undefined> {
-  const runtime = ctx.runtime as RuntimeLike | undefined;
-  if (!runtime) return "scenario runtime was not available";
+  const prepared = await prepareOwnerMemoryRuntime(ctx);
+  if (typeof prepared === "string") return prepared;
+  const runtime = prepared as RuntimeLike;
   if (!ctx.primaryRoomId || !ctx.primaryUserId) {
     return "executor did not expose primaryRoomId/primaryUserId to seeds";
   }
