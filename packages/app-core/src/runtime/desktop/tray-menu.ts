@@ -54,6 +54,12 @@ export const DESKTOP_VIEW_WINDOWS: readonly DesktopViewWindow[] = [
     path: "/chat",
   },
   {
+    id: "browser",
+    label: "Browser",
+    labelKey: "desktop.views.browser",
+    path: "/browser",
+  },
+  {
     id: "character",
     label: "Character",
     labelKey: "desktop.views.character",
