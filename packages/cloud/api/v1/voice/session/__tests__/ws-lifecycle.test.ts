@@ -549,6 +549,59 @@ describe("voice-session WS lifecycle", () => {
     expect(client.controlTypes()).toContain("usage");
   });
 
+  test("coalesces provider-rate interim revisions while preserving the exact final transcript", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeCanonicalChunkFetch(["Done."]),
+    });
+
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    for (let index = 0; index < 100; index += 1) {
+      ink.emitTurn("turn.update", `long transcript revision ${index}`);
+    }
+
+    const immediatePartials = client.controlFrames.filter(
+      (frame) => frame.t === "stt_partial",
+    );
+    expect(immediatePartials).toEqual([
+      expect.objectContaining({ text: "long transcript revision 0" }),
+    ]);
+
+    await flush();
+    await flush();
+    const coalescedPartials = client.controlFrames.filter(
+      (frame) => frame.t === "stt_partial",
+    );
+    expect(coalescedPartials).toHaveLength(2);
+    expect(coalescedPartials.at(-1)).toEqual(
+      expect.objectContaining({ text: "long transcript revision 99" }),
+    );
+
+    ink.emitTurn("turn.update", "long transcript revision 99");
+    await flush();
+    expect(
+      client.controlFrames.filter((frame) => frame.t === "stt_partial"),
+    ).toHaveLength(2);
+
+    ink.emitTurn("turn.end", "the exact final transcript");
+    await flush();
+    await flush();
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({
+        t: "stt_final",
+        text: "the exact final transcript",
+      }),
+    );
+
+    ink.emitTurn("turn.update", "stale provider revision after final");
+    await flush();
+    expect(
+      client.controlFrames.filter((frame) => frame.t === "stt_partial"),
+    ).toHaveLength(2);
+  });
+
   test("duplicate final events for one semantic turn dispatch and persist exactly once", async () => {
     const requests: Array<{ body: unknown }> = [];
     const client = new FakeClientSocket();
