@@ -21,7 +21,10 @@
     "verify:bridge": "node scripts/run-clawd-code.mjs --help"
   },
   "dependencies": {
-    "@solana-clawd/clawd-code": "workspace:*"
+    "@solana-clawd/clawd-code": "^1.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "keywords": [
     "clawd",

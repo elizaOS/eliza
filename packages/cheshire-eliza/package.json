@@ -20,15 +20,24 @@
       "default": "./src/body-generator/index.ts"
     }
   },
+  "files": [
+    "src",
+    "docs",
+    "README.md",
+    "package.json"
+  ],
   "scripts": {
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "peerDependencies": {
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": ">=1.0.0 || >=2.0.0-0"
   },
-  "keywords": ["cheshire", "solizard", "elizaos", "character", "forge"],
+  "keywords": ["cheshire", "solizard", "elizaos", "character", "forge", "clawd"],
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Solizardking/eliza.git",

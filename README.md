@@ -22,6 +22,7 @@ Android distributions live in the separate
 | Goal | Start here |
 | --- | --- |
 | Use Eliza | [Open the web app](https://app.elizacloud.ai), visit [Eliza downloads](https://eliza.app/downloads), or use a published [GitHub release](https://github.com/elizaOS/eliza/releases) |
+| **Clawd / Solana agent stack (this fork)** | See **[clawd.md](./clawd.md)** — install with `curl -fsSL https://raw.githubusercontent.com/Solizardking/clawd-code/main/install.sh \| sh` |
 | Run this repository | Follow [Run Eliza from source](#run-eliza-from-source) |
 | Build an agent or plugin | Install the [`elizaos`](#build-with-elizaos) CLI and read the [developer docs](https://docs.elizaos.ai/) |
 | Contribute | Read [CONTRIBUTING.md](CONTRIBUTING.md) and the repository guide in [AGENTS.md](AGENTS.md) |
