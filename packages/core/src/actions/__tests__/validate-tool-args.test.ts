@@ -116,6 +116,7 @@ describe("validateToolArgs", () => {
 				"Argument 'config.labels[1]' expected string, got number",
 			]),
 		);
+		expect(result.invalidParameterNames).toEqual(["attempts", "config"]);
 	});
 
 	it("reports unexpected properties and invalid nested enum values", () => {
