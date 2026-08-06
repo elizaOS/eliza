@@ -14,9 +14,14 @@
 #   TWILIO_SMS_COST_PER_SEGMENT_USD    Override default SMS cost accounting.
 #   KEDA_COOLDOWN_SECONDS              Graceful-shutdown delay before exit.
 
+# The build context is the REPOSITORY ROOT, not this directory: the service
+# depends on the @elizaos/cloud-services-common workspace package, which cannot
+# resolve from a context holding only this package. On Railway that means the
+# service's root directory stays unset and the Dockerfile path is repo-relative;
+# for a manual `railway up`, run it from the repository root.
 [build]
 builder = "DOCKERFILE"
-dockerfilePath = "Dockerfile"
+dockerfilePath = "packages/cloud/services/gateway-webhook/Dockerfile"
 
 [deploy]
 healthcheckPath = "/health"
