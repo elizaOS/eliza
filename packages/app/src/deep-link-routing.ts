@@ -9,8 +9,8 @@
  * event bus. `buildAssistantLaunchHashRoute()` handles chat-launch entries
  * (ask / chat / voice / smart-reply / LifeOps briefs and tasks, plus Android
  * feature-open aliases), folding them into a single `#chat?…` hash route that
- * carries the trusted `assistant-entry` source and a stable launch id the
- * always-mounted ChatOverlay claims. Both return `null` for
+ * carries the native source, a stable launch id, and an issuance timestamp for
+ * the always-mounted structural intent authority. Both return `null` for
  * unrecognized paths, so an unknown deep link is non-routable rather than
  * silently opening chat.
  */
@@ -47,9 +47,9 @@ export interface DeepLinkNavigationIntent {
  * app-window, so `getWindowNavigationPath()` reads `location.pathname` (never
  * the hash) — the target tab never opened. Returning a navigation intent lets
  * the caller dispatch the same `eliza:navigate:view` event the rest of the app
- * uses, which opens the surface on every platform. (Chat-launch deep links stay
- * on the hash: the always-mounted ChatOverlay claims the launch
- * payload from the hash directly.)
+ * uses, which opens the surface on every platform. Chat-launch deep links stay
+ * on the hash so the always-mounted structural intent authority can validate,
+ * deduplicate, consent-gate, and route them through the shared controller.
  */
 export function resolveDeepLinkNavigationIntent(
   path: string,
