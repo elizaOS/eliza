@@ -84,6 +84,11 @@ const MIME_BY_EXT: Record<string, string> = {
 /** Strict content-addressed name: 64-hex sha256 + short alphanumeric extension. */
 const MEDIA_FILE_NAME = /^[a-f0-9]{64}\.[a-z0-9]{1,8}$/;
 
+/** Validate the only filename shape accepted by the content-addressed store. */
+export function isValidStoredMediaFileName(fileName: string): boolean {
+  return MEDIA_FILE_NAME.test(fileName);
+}
+
 const MEDIA_URL_PREFIX = "/api/media/";
 
 /**
@@ -544,6 +549,24 @@ export function gcUnreferencedMedia(referenced: Set<string>): {
 function mimeForFile(fileName: string): string {
   const ext = fileName.split(".").pop()?.toLowerCase() ?? "bin";
   return MIME_BY_EXT[ext] ?? "application/octet-stream";
+}
+
+/** Mime type a stored `<sha256>.<ext>` name serves as (derived, no index). */
+export function mimeForStoredMediaFile(fileName: string): string {
+  if (!isValidStoredMediaFileName(fileName)) {
+    throw new ElizaError("invalid stored media filename", {
+      code: "MEDIA_STORE_FILENAME_INVALID",
+      context: { fileName },
+    });
+  }
+  return mimeForFile(fileName);
+}
+
+/** True when a validated content-addressed name exists in the one media store. */
+export function storedMediaFileExists(fileName: string): boolean {
+  if (!isValidStoredMediaFileName(fileName)) return false;
+  const filePath = path.join(mediaDir(), fileName);
+  return fs.existsSync(filePath);
 }
 
 export interface MediaFileInfo {

@@ -33,4 +33,8 @@ describe("createElizaPlugin service registrations", () => {
   it("keeps OwnerBindingService registered ahead of connector pairing commands", () => {
     expect(servicesBlock()).toContain("OwnerBindingService");
   });
+
+  it("registers verified audio redaction for transcript privacy actions", () => {
+    expect(servicesBlock()).toContain("AudioRedactionService");
+  });
 });

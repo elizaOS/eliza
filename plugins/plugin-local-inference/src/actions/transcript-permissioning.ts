@@ -10,6 +10,8 @@ import {
 	type Action,
 	type ActionResult,
 	type ArtifactShareGrantMode,
+	detectPii,
+	ElizaError,
 	type HandlerCallback,
 	hasRoleAccess,
 	type IAgentRuntime,
@@ -18,12 +20,15 @@ import {
 	type ProviderDataRecord,
 	type UUID,
 } from "@elizaos/core";
+import type { PiiTextSpan } from "@elizaos/shared/audio-redaction";
+import type { Transcript } from "@elizaos/shared/transcripts";
 import {
 	TranscriptStore,
 	type TranscriptStoreRuntime,
 } from "../services/voice/transcript-store.js";
 
 type RoleName = "USER" | "ADMIN";
+const AUDIO_REDACTION_SERVICE_TYPE = "audio-redaction";
 const UUID_PATTERN =
 	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -35,6 +40,15 @@ interface TranscriptPermissioningInput {
 	transcriptId: UUID;
 	entityId?: UUID;
 	mode?: ArtifactShareGrantMode;
+}
+
+interface AudioRedactionServiceLike {
+	redactAndVerify(input: {
+		originalAudioUrl: string;
+		durationMs: number;
+		words: Transcript["segments"][number]["words"];
+		piiSpans: readonly PiiTextSpan[];
+	}): Promise<{ url: string }>;
 }
 
 function paramsFromOptions(options: unknown): Record<string, unknown> {
@@ -78,6 +92,44 @@ function parseInput(
 
 function transcriptStore(runtime: IAgentRuntime): TranscriptStore {
 	return new TranscriptStore(runtime as TranscriptStoreRuntime);
+}
+
+function transcriptPiiSpans(transcript: Transcript): PiiTextSpan[] {
+	const unique = new Map<string, PiiTextSpan>();
+	for (const segment of transcript.segments) {
+		for (const match of detectPii(segment.text)) {
+			const key = `${match.kind}\u0000${match.value.toLocaleLowerCase()}`;
+			unique.set(key, { text: match.value, label: match.kind });
+		}
+	}
+	return [...unique.values()];
+}
+
+async function verifiedRedactedAudioUrl(
+	runtime: IAgentRuntime,
+	transcript: Transcript,
+): Promise<string | undefined> {
+	if (!transcript.audioUrl) return undefined;
+	const piiSpans = transcriptPiiSpans(transcript);
+	// A redacted grant must never reuse the original capability URL. With no
+	// detector verdict there is nothing safe to transform, so audio is withheld.
+	if (piiSpans.length === 0) return undefined;
+	const service = runtime.getService(
+		AUDIO_REDACTION_SERVICE_TYPE,
+	) as AudioRedactionServiceLike | null;
+	if (!service) {
+		throw new ElizaError(
+			"verified audio redaction service is unavailable; refusing to create an audio-bearing redacted variant",
+			{ code: "AUDIO_REDACTION_VERIFY_UNAVAILABLE" },
+		);
+	}
+	const result = await service.redactAndVerify({
+		originalAudioUrl: transcript.audioUrl,
+		durationMs: transcript.durationMs,
+		words: transcript.segments.flatMap((segment) => segment.words),
+		piiSpans,
+	});
+	return result.url;
 }
 
 function isRedactedVariantRow(row: Memory | null | undefined): boolean {
@@ -209,7 +261,7 @@ export const redactTranscriptAction: Action = {
 		"ANONYMIZE_TRANSCRIPT",
 	],
 	description:
-		"Create or refresh the redacted variant for a stored meeting transcript. The original transcript and audio remain unchanged, and the variant withholds audio.",
+		"Create or refresh the redacted variant for a stored meeting transcript. The original stays unchanged; any variant audio is published only after fail-closed PII redaction verification.",
 	routingHint:
 		"user asks to redact/anonymize a meeting transcript -> REDACT_TRANSCRIPT; do not edit the original transcript text",
 	roleGate: { minRole: "USER" },
@@ -268,15 +320,26 @@ export const redactTranscriptAction: Action = {
 				await callback?.({ text: denied.text, actions: ["REDACT_TRANSCRIPT"] });
 				return denied;
 			}
+			const original = await store.get(input.transcriptId, accessContext);
+			if (!original) {
+				throw new ElizaError("full transcript disappeared during redaction", {
+					code: "TRANSCRIPT_NOT_ACCESSIBLE",
+				});
+			}
+			const redactedAudioUrl = await verifiedRedactedAudioUrl(
+				runtime,
+				original,
+			);
 			await store.createRedactedVariant({
 				originalId: input.transcriptId,
 				redactedBy: message.entityId as UUID,
+				...(redactedAudioUrl ? { redactedAudioUrl } : {}),
 			});
 			const result = ok("Redacted transcript variant is ready.", {
 				actionName: "REDACT_TRANSCRIPT",
 				transcriptId: input.transcriptId,
 				redacted: true,
-				hasAudio: false,
+				hasAudio: redactedAudioUrl !== undefined,
 			});
 			await callback?.({ text: result.text, actions: ["REDACT_TRANSCRIPT"] });
 			return result;
@@ -385,9 +448,20 @@ export const shareTranscriptAction: Action = {
 				return denied;
 			}
 			if (input.mode === "redacted") {
+				const original = await store.get(input.transcriptId, accessContext);
+				if (!original) {
+					throw new ElizaError("full transcript disappeared during sharing", {
+						code: "TRANSCRIPT_NOT_ACCESSIBLE",
+					});
+				}
+				const redactedAudioUrl = await verifiedRedactedAudioUrl(
+					runtime,
+					original,
+				);
 				await store.createRedactedVariant({
 					originalId: input.transcriptId,
 					redactedBy: message.entityId as UUID,
+					...(redactedAudioUrl ? { redactedAudioUrl } : {}),
 				});
 			}
 			await store.share({

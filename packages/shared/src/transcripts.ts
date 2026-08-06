@@ -109,8 +109,9 @@ export interface Transcript {
   /**
    * Present (true) only on a served DTO whose content is the PII-scrubbed
    * variant of the artifact, selected for a redacted-grant viewer (#14781).
-   * A redacted serve always withholds `audioUrl` (audio is never redacted in
-   * v1). Never stored — stored records link variants via
+   * A redacted serve may include only the verified redacted variant's
+   * `audioUrl`; it never inherits the original capability URL. Never stored —
+   * stored records link variants via
    * `metadata.redactionOf` / row `metadata.redactedVariantId` instead.
    */
   redacted?: true;

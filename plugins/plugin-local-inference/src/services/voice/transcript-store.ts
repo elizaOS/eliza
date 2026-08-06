@@ -79,6 +79,8 @@ export interface CreateRedactedTranscriptVariantInput {
 	seed?: string;
 	/** Epoch ms override for deterministic tests. */
 	nowMs?: number;
+	/** Verified redacted media URL; absent means the variant withholds audio. */
+	redactedAudioUrl?: string;
 }
 
 export interface ShareTranscriptGrantInput {
@@ -103,6 +105,8 @@ function rowToTranscript(row: Memory): Transcript | null {
 		const parsed: unknown = JSON.parse(raw);
 		return parsed && typeof parsed === "object" ? (parsed as Transcript) : null;
 	} catch {
+		// error-policy:J3 corrupt or legacy transcript JSON is an invalid row,
+		// never a fabricated empty transcript.
 		return null;
 	}
 }
@@ -157,7 +161,7 @@ function redactedVariantId(row: Memory): UUID | null {
 /**
  * Project a redacted variant's content onto the ORIGINAL artifact's identity
  * for a redacted-grant viewer: one artifact keeps one id for every viewer,
- * with per-viewer content. Audio is always withheld (never redacted in v1),
+ * with per-viewer content. Any audio URL comes only from the variant record,
  * and every content field (title, segments, knowledge mirror id, metadata)
  * comes from the variant so nothing of the original can leak through.
  */
@@ -165,13 +169,8 @@ function serveRedactedVariant(
 	variant: Transcript,
 	original: Pick<Transcript, "id" | "createdAt" | "endedAt" | "source">,
 ): Transcript {
-	const {
-		audioUrl: _audioUrl,
-		audioContentType: _audioContentType,
-		...variantFields
-	} = variant;
 	return {
-		...variantFields,
+		...variant,
 		id: original.id,
 		createdAt: original.createdAt,
 		...(original.endedAt !== undefined ? { endedAt: original.endedAt } : {}),
@@ -195,7 +194,10 @@ function redactedText(text: string): string {
 	return out;
 }
 
-function redactTranscript(original: Transcript): Transcript {
+function redactTranscript(
+	original: Transcript,
+	redactedAudioUrl?: string,
+): Transcript {
 	const segments = original.segments.map((segment) => ({
 		id: segment.id,
 		...(segment.speakerLabel ? { speakerLabel: segment.speakerLabel } : {}),
@@ -217,6 +219,14 @@ function redactTranscript(original: Transcript): Transcript {
 		...(original.endedAt !== undefined ? { endedAt: original.endedAt } : {}),
 		...(original.editedAt !== undefined ? { editedAt: original.editedAt } : {}),
 		durationMs: original.durationMs,
+		...(redactedAudioUrl
+			? {
+					audioUrl: redactedAudioUrl,
+					...(original.audioContentType
+						? { audioContentType: original.audioContentType }
+						: {}),
+				}
+			: {}),
 		segments,
 		source: original.source,
 		scope: original.scope,
@@ -290,7 +300,7 @@ export class TranscriptStore {
 	/**
 	 * List recent transcripts (newest first) as compact summaries, selected per
 	 * viewer (#14781): full rows for privileged viewers, the redacted variant's
-	 * preview (flagged, audio withheld) for redacted-grant viewers, nothing for
+	 * preview (flagged, with only variant audio) for redacted-grant viewers, nothing for
 	 * viewers with no disclosure. Variant rows themselves never list.
 	 */
 	async list(
@@ -322,9 +332,10 @@ export class TranscriptStore {
 				// A redacted grant with no readable variant discloses NOTHING —
 				// omitting the row is the fail-closed branch, never the original.
 				if (variant) {
+					const served = serveRedactedVariant(variant, t);
 					summaries.push({
-						...summarizeTranscript(serveRedactedVariant(variant, t)),
-						hasAudio: false,
+						...summarizeTranscript(served),
+						hasAudio: Boolean(served.audioUrl),
 						redacted: true,
 					});
 				}
@@ -336,7 +347,7 @@ export class TranscriptStore {
 	/**
 	 * Load one transcript by id, selected per viewer (#14781): the stored record
 	 * for full disclosure, the redacted variant served under the ORIGINAL id
-	 * (flagged, audio withheld) for redacted-grant viewers, and `null` — which
+	 * (flagged, with only variant audio) for redacted-grant viewers, and `null` — which
 	 * the route answers as 404, keeping denied ids non-enumerable — otherwise.
 	 * Addressing a variant row directly discloses only to viewers whose
 	 * disclosure on the linked original resolves `full`.
@@ -391,8 +402,9 @@ export class TranscriptStore {
 
 	/**
 	 * Create or refresh the deterministic redacted variant linked to an original.
-	 * The original transcript and retained audio URL are never modified; only the
-	 * original row's metadata gains/updates `redactedVariantId`.
+	 * The original transcript and retained audio URL are never modified. A
+	 * verified redacted audio URL may be stored on the variant; otherwise audio
+	 * is withheld. Only the original row's metadata gains `redactedVariantId`.
 	 */
 	async createRedactedVariant(
 		input: CreateRedactedTranscriptVariantInput,
@@ -413,7 +425,7 @@ export class TranscriptStore {
 			) as UUID);
 		const nowMs = input.nowMs ?? Date.now();
 		const variant = {
-			...redactTranscript(original),
+			...redactTranscript(original, input.redactedAudioUrl),
 			id: variantId,
 			createdAt: nowMs,
 			metadata: {

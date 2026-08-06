@@ -13,9 +13,11 @@
  *
  * The effect proof reads the store back the way the API route does — through
  * the ONE role-aware disclosure predicate (#14781): the colleague (USER, with
- * the redacted grant) gets the variant served under the original id with audio
- * withheld and PII scrubbed, while an ADMIN viewer gets the untouched original
- * with audio and raw PII intact. Handler success without those two disclosures
+ * the redacted grant) gets the variant served under the original id with PII
+ * scrubbed, while an ADMIN viewer gets the untouched original with raw PII.
+ * This text-permissioning fixture intentionally has no retained audio; verified
+ * audio publication is covered by the agent audio-redaction integration suite.
+ * Handler success without those two disclosures
  * differing is not proof, so the check fails on either leak or missing redaction.
  */
 import {
@@ -57,8 +59,6 @@ function buildTranscript(ownerHint: string): Transcript {
     createdAt: 1_700_000_000_000,
     endedAt: 1_700_000_600_000,
     durationMs: 600_000,
-    audioUrl: "/api/media/deadbeef.wav",
-    audioContentType: "audio/wav",
     segments: [
       {
         id: "seg-1",
@@ -91,7 +91,7 @@ export default scenario({
   domain: "local-inference",
   tags: ["local-inference", "voice", "security", "permissioning", "memory"],
   description:
-    "Exercises SHARE_TRANSCRIPT end to end: an admin asks the agent to share a PII-bearing meeting transcript with a non-privileged colleague; the colleague gets the redacted variant (audio withheld, PII scrubbed) while an admin viewer keeps the full original. Keyless deterministic proxy.",
+    "Exercises SHARE_TRANSCRIPT end to end: an admin asks the agent to share a PII-bearing meeting transcript with a non-privileged colleague; the colleague gets the redacted text variant while an admin viewer keeps the full original. Keyless deterministic proxy; verified audio has a separate real-byte integration suite.",
 
   requires: { plugins: ["@elizaos/plugin-local-inference"] },
   isolation: "per-scenario",
@@ -222,7 +222,7 @@ export default scenario({
     {
       // Effect proof: read the store the way the disclosure route does. A
       // non-privileged colleague with the redacted grant must get the variant
-      // (audio withheld, PII scrubbed), and an admin viewer must still get the
+      // (PII scrubbed), and an admin viewer must still get the
       // untouched original — handler success is not enough on its own.
       type: "custom",
       name: "redacted-to-colleague-full-to-admin",
@@ -242,9 +242,8 @@ export default scenario({
         if (colleagueView.redacted !== true) {
           return "colleague view was not flagged redacted";
         }
-        if (colleagueView.audioUrl !== undefined) {
-          return "redacted colleague view leaked audioUrl (audio is never redacted in v1 and must be withheld)";
-        }
+        if (colleagueView.audioUrl !== undefined)
+          return "audio-less fixture unexpectedly produced a colleague audioUrl";
         const colleagueText = colleagueView.segments
           .map((s) => s.text)
           .join(" ");
@@ -269,9 +268,8 @@ export default scenario({
         if (adminView.redacted) {
           return "admin viewer got a redacted view (admins retain full disclosure)";
         }
-        if (adminView.audioUrl !== "/api/media/deadbeef.wav") {
-          return "admin viewer lost the original audioUrl (the original must be untouched)";
-        }
+        if (adminView.audioUrl !== undefined)
+          return "audio-less fixture unexpectedly produced an admin audioUrl";
         const adminText = adminView.segments.map((s) => s.text).join(" ");
         if (
           !adminText.includes(ALICE_EMAIL) ||

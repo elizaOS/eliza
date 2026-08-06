@@ -278,7 +278,7 @@ describe("TranscriptStore", () => {
 			expect(list[0].redacted).toBeUndefined();
 		});
 
-		it("USER with a redacted grant gets the variant under the ORIGINAL id, flagged, audio withheld", async () => {
+		it("USER with a redacted grant gets an audio-less variant under the ORIGINAL id", async () => {
 			const rt = fakeRuntime();
 			const { store } = await seed(rt);
 			const viewer = { requesterEntityId: VIEWER, role: "USER" as const };
@@ -444,6 +444,46 @@ describe("TranscriptStore", () => {
 			>;
 			expect(variantMeta.redactionOf).toBe(ORIGINAL_ID);
 			expect(variantMeta.redactedBy).toBe(VIEWER);
+		});
+
+		it("serves only the verified variant audio to a redacted-grant viewer", async () => {
+			const rt = fakeRuntime();
+			const store = new TranscriptStore(rt);
+			const originalAudioUrl = `/api/media/${"a".repeat(64)}.wav`;
+			const redactedAudioUrl = `/api/media/${"b".repeat(64)}.wav`;
+			await store.create({
+				roomId: ROOM,
+				entityId: ENTITY,
+				transcript: makeTranscript({
+					id: ORIGINAL_ID,
+					audioUrl: originalAudioUrl,
+					audioContentType: "audio/wav",
+				}),
+			});
+			await store.createRedactedVariant({
+				originalId: ORIGINAL_ID as UUID,
+				redactedAudioUrl,
+				seed: "verified-audio",
+				nowMs: 3000,
+			});
+			await store.share({
+				transcriptId: ORIGINAL_ID as UUID,
+				entityId: VIEWER,
+				mode: "redacted",
+			});
+
+			const viewer = await store.get(ORIGINAL_ID as UUID, {
+				requesterEntityId: VIEWER,
+				role: "USER",
+			});
+			expect(viewer?.audioUrl).toBe(redactedAudioUrl);
+			expect(JSON.stringify(viewer)).not.toContain(originalAudioUrl);
+			const owner = await store.get(ORIGINAL_ID as UUID, {
+				requesterEntityId: ENTITY,
+				role: "USER",
+				isOwner: true,
+			});
+			expect(owner?.audioUrl).toBe(originalAudioUrl);
 		});
 
 		it("keeps seeded redacted variant ids scoped to the original transcript", async () => {
