@@ -833,6 +833,23 @@ const VIEW_NOUNS: Record<string, readonly string[]> = {
     "máy ảnh",
     "may anh",
   ],
+  browser: [
+    "browser",
+    "web browser",
+    "internet browser",
+    "navegador",
+    "navegador web",
+    "navigateur",
+    "navigateur web",
+    "internetbrowser",
+    "浏览器",
+    "瀏覽器",
+    "ブラウザ",
+    "웹 브라우저",
+    "브라우저",
+    "trình duyệt",
+    "trinh duyet",
+  ],
 };
 
 // Priority order: more-specific / multiword views before generic ones so
@@ -859,6 +876,7 @@ const VIEW_PRIORITY = [
   "character",
   "plugins-page",
   "cloud-apps",
+  "browser",
   "camera",
   "help",
   "chat",
