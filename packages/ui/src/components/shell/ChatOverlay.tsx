@@ -69,7 +69,6 @@ import {
   LAYOUT_SHIFT_INTENT_TRANSIENT,
 } from "../../hooks/useLayoutShiftMonitor";
 import { useLoadOlderOnScroll } from "../../hooks/useLoadOlderOnScroll";
-import { usePushToTalk } from "../../hooks/usePushToTalk";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
 import { tabFromPath } from "../../navigation";
@@ -102,6 +101,7 @@ import { voiceCaptureDebug } from "../../utils/voice-capture-debug";
 import { findChoiceRegions } from "../chat/message-choice-parser";
 import { MessageSearchPanel } from "../chat/message-search/MessageSearchPanel";
 import { AgentProvisioningWidget } from "../chat/widgets/agent-provisioning";
+import { ChatVoiceStatusBar } from "../composites/chat/ChatVoiceStatusBar";
 import {
   buildReplyTargetFromMessage,
   ChatMessage,
@@ -1014,8 +1014,6 @@ export function ChatOverlay({
     recording,
     analyser,
     transcript,
-    startRecording,
-    stopRecording,
     handsFree,
     toggleHandsFree,
     transcriptionMode,
@@ -1033,6 +1031,15 @@ export function ChatOverlay({
     stopSpeaking,
     speaking,
   } = controller;
+  const realtimeVoice = controller.realtimeVoice;
+  const realtimeVoiceStatusVisible = Boolean(
+    realtimeVoice?.enabled &&
+      (handsFree ||
+        realtimeVoice.active ||
+        realtimeVoice.connecting ||
+        realtimeVoice.status !== "idle" ||
+        realtimeVoice.error),
+  );
   // True once the server has reported no LLM/model provider is configured (a
   // `no_provider` assistant turn). Defaulted for minimal mock controllers.
   const noProviderConfigured = controller.noProviderConfigured ?? false;
@@ -1562,8 +1569,6 @@ export function ChatOverlay({
     dragPreviewVisibleRef.current = visible;
     setDragPreviewVisible(visible);
   }, []);
-  // Push-to-talk is a label-only mirror of the shared hold hook's holding phase.
-  const [pttHolding, setPttHolding] = React.useState(false);
   const [imageError, setImageError] = React.useState<string | null>(null);
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
   const preserveFocusOnAgentNavigationRef = React.useRef<string | null>(null);
@@ -2368,29 +2373,6 @@ export function ChatOverlay({
     [setPendingImages],
   );
 
-  // ── Push-to-talk ────────────────────────────────────────────────────────────
-  // Press-and-hold on the mic dictates into the composer draft (no send); a
-  // quick tap falls through to handleMicClick → toggleHandsFree. The hold/tap/
-  // slide-off/click-suppression machine is the shared usePushToTalk hook — the
-  // overlay only supplies its can-begin guard and the dictation start/stop.
-  const { handlers: micHoldHandlers, shouldSuppressClick } = usePushToTalk({
-    // Arm only when idle with no draft and no capture already live (a tap while
-    // hands-free toggles it off — handleMicClick). Voice input is gated while a
-    // reply is in flight; type + send to queue another turn instead.
-    canBegin: () =>
-      !hasDraft && !recording && !transcriptionMode && !responding,
-    onHoldStart: () => {
-      setPttHolding(true);
-      startRecording("dictate");
-    },
-    onHoldEnd: () => {
-      // Dictation always inserts into the draft; there is no submit-on-release,
-      // so a clean release and a slide-off both just stop the capture.
-      stopRecording();
-      setPttHolding(false);
-    },
-  });
-
   const handleMicClick = React.useCallback(() => {
     // Trace the home-overlay mic tap BEFORE any branching so the on-screen HUD
     // captures the tap even when this handler early-returns short of capture.
@@ -2400,11 +2382,6 @@ export function ChatOverlay({
       responding,
       handsFree,
     });
-    // Swallow exactly the one click that follows a held PTT release.
-    if (shouldSuppressClick()) {
-      voiceCaptureDebug("mic:noop", { reason: "suppress-click" });
-      return;
-    }
     // While transcribing, the mic is the master voice control: a tap turns the
     // mic OFF, which also ends transcription (mic = parent — turning off the mic
     // turns off transcript). This is distinct from the transcript button, which
@@ -2435,7 +2412,6 @@ export function ChatOverlay({
     toggleHandsFree,
     transcriptionMode,
     stopTranscriptionAndMic,
-    shouldSuppressClick,
   ]);
 
   const hasThread = visibleMessages.length > 0;
@@ -5261,16 +5237,35 @@ export function ChatOverlay({
         />
       ) : null}
 
-      {/* No live interim transcript is shown above the composer while
-          listening — the spoken words land as the sent message when the turn
-          completes. The mic being hot is confirmed by the pulsing speech glow
-          on the input bar / grabber / collapsed pill instead of text. */}
+      {/* Realtime voice reports provider phase and interim words in the shared
+          status component; the composer stays stable underneath it. */}
+
+      {realtimeVoice && realtimeVoiceStatusVisible ? (
+        <div className="pointer-events-none relative mb-2 flex w-full justify-center px-3">
+          <ChatVoiceStatusBar
+            status={realtimeVoice.status}
+            interimTranscript={transcript}
+            needsAudioUnlock={needsAudioUnlock}
+            onUnlockAudio={unlockAudio}
+            realtimeActive={realtimeVoice.active}
+            realtimeConnecting={realtimeVoice.connecting}
+            realtimePaused={realtimeVoice.paused}
+            realtimeErrorMessage={realtimeVoice.error}
+            visible
+            className={cn(
+              "pointer-events-auto max-w-full rounded-full bg-card/55 px-3 py-1.5",
+              WALLPAPER_FLOAT_SHADOW,
+            )}
+            data-testid="chat-overlay-voice-status"
+          />
+        </div>
+      ) : null}
 
       {/* Audio-unlock prompt. When autoplay policy blocks the first spoken
           reply, the ambient overlay would otherwise go silent with no recourse
           (the in-view status bar has its own unlock; this is the floating-shell
           equivalent). Warm accent = call-to-action; no blue. */}
-      {needsAudioUnlock ? (
+      {needsAudioUnlock && !realtimeVoiceStatusVisible ? (
         <div
           role="status"
           aria-live="polite"
@@ -6156,6 +6151,16 @@ export function ChatOverlay({
                       />
                       Upload file
                     </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="cursor-pointer gap-2.5 data-[highlighted]:bg-bg-hover"
+                      onSelect={() => void toggleTranscriptionMode()}
+                    >
+                      <Mic
+                        className="h-4 w-4 shrink-0 text-muted"
+                        aria-hidden
+                      />
+                      Record long-form transcript…
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               ) : null}
@@ -6266,50 +6271,11 @@ export function ChatOverlay({
               {/* Trailing controls. */}
               <div
                 data-testid="chat-composer-trailing-controls"
-                className="grid shrink-0 grid-cols-2 items-center gap-0"
+                className="grid shrink-0 grid-cols-1 items-center"
               >
-                {/* Two fixed slots keep the composer geometry stable while the
-                    controls dissolve between rest, send, and stop states. */}
-                <ComposerControlSlot
-                  slot="left"
-                  reduceMotion={reduce}
-                  controlKey={
-                    transcriptionComposerActive ||
-                    draftOwnsTrailingControl ||
-                    generationOwnsTrailingControl
-                      ? null
-                      : "voice"
-                  }
-                >
-                  {!transcriptionComposerActive &&
-                  !draftOwnsTrailingControl &&
-                  !generationOwnsTrailingControl ? (
-                    // Tap starts hands-free conversation; hold inserts
-                    // push-to-talk dictation into the editable draft.
-                    <SoftButton
-                      icon={AudioLines}
-                      label={
-                        pttHolding
-                          ? "release to insert"
-                          : handsFree
-                            ? "end conversation"
-                            : recording
-                              ? "stop listening"
-                              : "talk"
-                      }
-                      disabled={firstRunOpen}
-                      active={handsFree || pttHolding}
-                      pressed={recording || handsFree}
-                      pulse={recording || handsFree}
-                      onClick={handleMicClick}
-                      onPointerDown={micHoldHandlers.onPointerDown}
-                      onPointerUp={micHoldHandlers.onPointerUp}
-                      onPointerCancel={micHoldHandlers.onPointerCancel}
-                      onPointerLeave={micHoldHandlers.onPointerLeave}
-                      testId="chat-composer-mic"
-                    />
-                  ) : null}
-                </ComposerControlSlot>
+                {/* One stable rightmost slot owns every primary action. Talk no
+                    longer shares the row with an ambiguous second mic, and a
+                    held pointer has exactly the same Cartesia action as a tap. */}
                 <ComposerControlSlot
                   slot="right"
                   reduceMotion={reduce}
@@ -6320,7 +6286,7 @@ export function ChatOverlay({
                         ? "send"
                         : generationOwnsTrailingControl
                           ? "generation-stop"
-                          : "transcribe"
+                          : "voice"
                   }
                 >
                   {transcriptionComposerActive ? (
@@ -6366,12 +6332,22 @@ export function ChatOverlay({
                     />
                   ) : (
                     <SoftButton
-                      icon={Mic}
-                      label="start transcription"
+                      icon={AudioLines}
+                      label={
+                        realtimeVoice?.connecting
+                          ? "cancel voice connection"
+                          : handsFree
+                            ? "end conversation"
+                            : recording
+                              ? "stop listening"
+                              : "talk"
+                      }
                       disabled={firstRunOpen}
-                      onPointerDown={(event) => event.preventDefault()}
-                      onClick={toggleTranscriptionMode}
-                      testId="chat-composer-transcribe"
+                      active={handsFree}
+                      pressed={recording || handsFree}
+                      pulse={recording || handsFree}
+                      onClick={handleMicClick}
+                      testId="chat-composer-mic"
                     />
                   )}
                 </ComposerControlSlot>
