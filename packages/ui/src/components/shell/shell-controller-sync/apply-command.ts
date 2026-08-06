@@ -68,6 +68,12 @@ export function applyShellControllerCommand(
           ? controller.conversationNav.goPrev()
           : controller.conversationNav.goNext(),
       );
+    case "routeOsIntent":
+      return Promise.reject(
+        new Error(
+          "OS intents must be evaluated by the owner routing authority",
+        ),
+      );
     default: {
       const _exhaustive: never = command;
       return Promise.reject(

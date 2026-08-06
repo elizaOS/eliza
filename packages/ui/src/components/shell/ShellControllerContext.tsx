@@ -15,7 +15,16 @@
  */
 import * as React from "react";
 
+import { useIsAuthenticated } from "../../hooks/useAuthStatus";
+import { IntentDedupeStore } from "../../os-intent/dedupe";
+import {
+  dispatchOsIntentComposerPrefill,
+  loadOsIntentDedupeSnapshot,
+  saveOsIntentDedupeSnapshot,
+} from "../../os-intent/host";
+import { routeIntent } from "../../os-intent/router";
 import { useAppSelectorShallow } from "../../state/app-store";
+import { loadOsIntentAutoStartConsent } from "../../state/persistence";
 import { ShellControllerContext } from "./ShellControllerContext.hooks";
 import { applyShellControllerCommand } from "./shell-controller-sync/apply-command";
 import { buildFollowerController } from "./shell-controller-sync/follower-controller";
@@ -27,6 +36,7 @@ import {
   deriveShellControllerSnapshot,
   snapshotsEqual,
 } from "./shell-controller-sync/snapshot";
+import { useOsIntentRouting } from "./shell-controller-sync/useOsIntentRouting";
 import {
   type ShellControllerSync,
   useShellControllerSync,
@@ -46,6 +56,10 @@ export function OwnerShellControllerProvider({
   children: React.ReactNode;
 }): React.JSX.Element {
   const controller = useShellController();
+  const authenticated = useIsAuthenticated();
+  const { setActionNotice } = useAppSelectorShallow((state) => ({
+    setActionNotice: state.setActionNotice,
+  }));
   const controllerRef = React.useRef(controller);
   controllerRef.current = controller;
   const localDictationSinkRef =
@@ -56,6 +70,13 @@ export function OwnerShellControllerProvider({
     );
   const remoteDictationTargetRef = React.useRef<string | null>(null);
   const remoteTranscriptTargetRef = React.useRef<string | null>(null);
+  const intentDedupeRef = React.useRef<IntentDedupeStore | null>(null);
+  if (intentDedupeRef.current === null) {
+    intentDedupeRef.current = new IntentDedupeStore({
+      seed: loadOsIntentDedupeSnapshot(),
+    });
+  }
+  const pendingIntentIdsRef = React.useRef(new Set<string>());
 
   React.useLayoutEffect(() => {
     controller.setDictationSink((text) => {
@@ -127,10 +148,153 @@ export function OwnerShellControllerProvider({
     [controller],
   );
 
+  const deliverComposerPrefill = React.useCallback(
+    async (targetEndpointId: string, text: string): Promise<void> => {
+      if (
+        targetEndpointId === "local" ||
+        targetEndpointId === sync.endpointId
+      ) {
+        dispatchOsIntentComposerPrefill(text);
+        return;
+      }
+      await sync.deliver(targetEndpointId, {
+        kind: "composer-prefill",
+        text,
+      });
+    },
+    [sync.deliver, sync.endpointId],
+  );
+
+  const routeOsIntent = React.useCallback(
+    async (
+      command: Extract<ShellControllerCommand, { kind: "routeOsIntent" }>,
+      fromEndpointId: string,
+    ): Promise<void> => {
+      const { intent } = command;
+      const pending = pendingIntentIdsRef.current;
+      if (pending.has(intent.intentId)) return;
+      pending.add(intent.intentId);
+      try {
+        const consent = loadOsIntentAutoStartConsent();
+        const hasBrowserCapture =
+          typeof navigator !== "undefined" &&
+          typeof navigator.mediaDevices?.getUserMedia === "function";
+        const hasNativeCapture =
+          typeof globalThis !== "undefined" &&
+          ("Capacitor" in globalThis ||
+            (typeof window !== "undefined" &&
+              "__ELIZA_ELECTROBUN_RPC__" in window));
+        const sandboxed =
+          typeof window !== "undefined" && window.top !== window.self;
+        const now = Date.now();
+        const outcome = routeIntent(
+          intent,
+          {
+            now,
+            auth: authenticated ? "authenticated" : "unauthenticated",
+            device: {
+              locked: false,
+              foreground:
+                typeof document === "undefined" ||
+                document.visibilityState === "visible",
+            },
+            capabilities: {
+              voiceCapture: hasBrowserCapture || hasNativeCapture,
+              sandboxed,
+              microphone: controllerRef.current.micPermission,
+            },
+            consent: {
+              autoStartVoice: consent.voice,
+              autoStartTranscription: consent.transcription,
+            },
+            maxIntentAgeMs: 5 * 60 * 1_000,
+          },
+          intentDedupeRef.current as IntentDedupeStore,
+          { record: false },
+        );
+
+        if (outcome.status === "duplicate") return;
+        if (outcome.status === "stale") {
+          setActionNotice?.(
+            "This shortcut request expired. Try it again.",
+            "error",
+            4_000,
+          );
+          return;
+        }
+        if (outcome.status === "consent-required") {
+          setActionNotice?.(
+            "Microphone auto-start is off. Enable it in Settings → Voice, then try again.",
+            "error",
+            6_000,
+          );
+          return;
+        }
+        if (outcome.status === "degraded") {
+          setActionNotice?.(
+            outcome.reason === "sandboxed"
+              ? "Voice shortcuts aren't available in this embedded view."
+              : "Voice capture isn't supported on this device.",
+            "error",
+            5_000,
+          );
+          return;
+        }
+        if (outcome.status === "blocked") {
+          const message =
+            outcome.reason === "microphone-denied"
+              ? "Microphone access is off. Enable it in system settings, then try again."
+              : outcome.reason === "backgrounded"
+                ? "Bring Eliza to the foreground, then try the shortcut again."
+                : outcome.reason === "locked"
+                  ? "Unlock this device, then try the shortcut again."
+                  : "Sign in again, then retry this shortcut.";
+          setActionNotice?.(message, "error", 5_000);
+          return;
+        }
+
+        if (
+          command.deliveryPolicy === "review-send" &&
+          intent.type === "send"
+        ) {
+          await applyShellControllerCommand(controllerRef.current, {
+            kind: "open",
+          });
+          await deliverComposerPrefill(fromEndpointId, intent.text);
+        } else {
+          for (const routedCommand of outcome.commands) {
+            await applyShellControllerCommand(
+              controllerRef.current,
+              routedCommand,
+            );
+          }
+        }
+        intentDedupeRef.current?.record(intent.intentId, now);
+        const persisted = saveOsIntentDedupeSnapshot(
+          intentDedupeRef.current?.snapshot(now) ?? [],
+        );
+        if (!persisted) {
+          setActionNotice?.(
+            "This shortcut ran, but duplicate protection couldn't be saved for app restart.",
+            "error",
+            6_000,
+          );
+        }
+      } finally {
+        pending.delete(intent.intentId);
+      }
+    },
+    [authenticated, deliverComposerPrefill, setActionNotice],
+  );
+
   // Register the command sink once; the closure reads the live controller via a
   // ref so a follower's command always hits the current engine.
   React.useLayoutEffect(() => {
     sync.setCommandHandler(async (command, fromEndpointId) => {
+      if (command.kind === "routeOsIntent") {
+        await routeOsIntent(command, fromEndpointId);
+        return;
+      }
       const priorDictationTarget = remoteDictationTargetRef.current;
       const priorTranscriptTarget = remoteTranscriptTargetRef.current;
       if (command.kind === "startRecording" && command.intent === "dictate") {
@@ -153,7 +317,7 @@ export function OwnerShellControllerProvider({
       }
     });
     return () => sync.setCommandHandler(null);
-  }, [sync.setCommandHandler]);
+  }, [routeOsIntent, sync.setCommandHandler]);
 
   // Publish on any engine change; the equality guard keeps an unchanged tick
   // (and an unchanged streamed token) off the wire.
@@ -214,6 +378,8 @@ export function FollowerShellControllerProvider({
     sync.setDeliveryHandler((delivery: ShellAuthorityDelivery) => {
       if (delivery.kind === "dictation") {
         dictationSinkRef.current?.(delivery.text);
+      } else if (delivery.kind === "composer-prefill") {
+        dispatchOsIntentComposerPrefill(delivery.text);
       } else {
         transcriptSinkRef.current?.(
           delivery.segments,
@@ -263,6 +429,7 @@ export function ShellControllerProvider({
     setActionNotice: s.setActionNotice,
   }));
   const sync = useShellControllerSync();
+  useOsIntentRouting(sync);
 
   const onCommandError = React.useCallback(
     (_command: ShellControllerCommand, _error: unknown) => {

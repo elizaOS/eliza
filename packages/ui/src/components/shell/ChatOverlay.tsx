@@ -70,7 +70,10 @@ import { useLoadOlderOnScroll } from "../../hooks/useLoadOlderOnScroll";
 import { usePushToTalk } from "../../hooks/usePushToTalk";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
-import { claimAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
+import {
+  OS_INTENT_COMPOSER_PREFILL_EVENT,
+  type OsIntentComposerPrefillDetail,
+} from "../../os-intent/host";
 import { isIOS, isNative, isStandalonePwa } from "../../platform/init";
 import {
   KEYBOARD_INTRUSION_THRESHOLD_PX,
@@ -3609,30 +3612,18 @@ export function ChatOverlay({
     return () => window.removeEventListener(CHAT_OPEN_EVENT, onOpen);
   }, [pinnedOpen, expand]);
 
-  // OS assistant / deep-link entry (Siri, Shortcuts, App Actions, the assistant
-  // entry point) routes into `#chat?text=…&source=…&voice=1`. On desktop the
-  // detached window's ChatView claims it, but the ambient overlay (mobile, web,
-  // default desktop bottom-bar) is the ONLY chat surface there — so it must
-  // claim the launch payload itself. We PREFILL (never auto-send) the composer:
-  // the `text` is attacker-authorable, so the user reviews it and presses send.
-  // `claimAssistantLaunchPayloadFromHash` dedupes by launchId and clears the
-  // hash, so a re-render / second mount never re-consumes the same launch.
+  // The structural OS-intent authority routes untrusted launch text as a local
+  // composer-prefill event (or targeted cross-window delivery), never as an
+  // automatic send. The user reviews it here before submitting.
   React.useEffect(() => {
     if (typeof window === "undefined") return undefined;
-    const consumeFromHash = () => {
+    const consumePrefill = (event: Event) => {
       if (firstRunOpen) return;
-      const hash = window.location.hash;
-      // Read the voice flag off the ORIGINAL hash first — claiming clears the
-      // launch params (text/source/action/launchId) but leaves `voice`, and we
-      // want the intent regardless of ordering.
-      const query = hash.includes("?") ? hash.slice(hash.indexOf("?") + 1) : "";
-      const wantsVoice = new URLSearchParams(query).get("voice") === "1";
-      const payload = claimAssistantLaunchPayloadFromHash(hash, {
-        allowedRoutes: ["chat"],
-      });
-      if (!payload) return;
+      const detail = (event as CustomEvent<OsIntentComposerPrefillDetail>)
+        .detail;
+      if (!detail?.text) return;
       setMode((m) => (m === "pill" ? "input" : m));
-      setDraft(payload.text);
+      setDraft(detail.text);
       // Open the history sheet (no-op when there's no thread yet) and focus the
       // composer so the prefilled text is ready to review + send.
       expand();
@@ -3648,23 +3639,14 @@ export function ChatOverlay({
       } else {
         prefillFocusTimerRef.current = window.setTimeout(focusComposer, 0);
       }
-      // A `voice=1` launch also starts hands-free voice capture (the same intent
-      // a mic tap carries). Only when not already live, so it never toggles an
-      // in-progress session off.
-      if (wantsVoice && !handsFree && !recording) toggleHandsFree();
     };
-    consumeFromHash();
-    window.addEventListener("hashchange", consumeFromHash);
-    return () => window.removeEventListener("hashchange", consumeFromHash);
-  }, [
-    clearPrefillFocusSchedule,
-    expand,
-    firstRunOpen,
-    handsFree,
-    recording,
-    setDraft,
-    toggleHandsFree,
-  ]);
+    window.addEventListener(OS_INTENT_COMPOSER_PREFILL_EVENT, consumePrefill);
+    return () =>
+      window.removeEventListener(
+        OS_INTENT_COMPOSER_PREFILL_EVENT,
+        consumePrefill,
+      );
+  }, [clearPrefillFocusSchedule, expand, firstRunOpen, setDraft]);
 
   // Push-to-talk dictation drops its final transcript into the composer draft
   // (no send): register the sink with the controller while this overlay is

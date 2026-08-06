@@ -24,7 +24,7 @@ describe("assistant launch deep-link routing", () => {
     const hashRoute = buildAssistantLaunchHashRoute(
       "ask",
       new URLSearchParams("text=Remind%20me%20at%205"),
-      { generateLaunchId: () => "launch-ask" },
+      { generateLaunchId: () => "launch-ask", now: () => 42 },
     );
 
     expect(hashRoute?.startsWith("#chat?")).toBe(true);
@@ -34,6 +34,7 @@ describe("assistant launch deep-link routing", () => {
     expect(params(hashRoute ?? "").get("assistant.launchId")).toBe(
       "launch-ask",
     );
+    expect(params(hashRoute ?? "").get("issuedAt")).toBe("42");
   });
 
   it("defaults chat links to the trusted assistant source so text is consumable", () => {

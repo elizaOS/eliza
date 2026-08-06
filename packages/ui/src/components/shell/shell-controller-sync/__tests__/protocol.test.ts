@@ -31,6 +31,39 @@ describe("shell authority protocol decoders", () => {
     expect(
       parseShellControllerCommand({ kind: "startRecording", intent: "root" }),
     ).toBeNull();
+    expect(
+      parseShellControllerCommand({
+        kind: "routeOsIntent",
+        intent: {
+          type: "start-voice",
+          intentId: "launch-1",
+          source: "ios-app-intents",
+          mode: "converse",
+        },
+        deliveryPolicy: "execute",
+      }),
+    ).toEqual({
+      kind: "routeOsIntent",
+      intent: {
+        type: "start-voice",
+        intentId: "launch-1",
+        source: "ios-app-intents",
+        mode: "converse",
+      },
+      deliveryPolicy: "execute",
+    });
+    expect(
+      parseShellControllerCommand({
+        kind: "routeOsIntent",
+        intent: {
+          type: "start-voice",
+          intentId: "launch-1",
+          source: "forged",
+          mode: "converse",
+        },
+        deliveryPolicy: "execute",
+      }),
+    ).toBeNull();
   });
 
   it("requires complete authority identity and generation fields", () => {
@@ -59,6 +92,12 @@ describe("shell authority protocol decoders", () => {
     expect(
       parseShellAuthorityDelivery({ kind: "dictation", text: "hello" }),
     ).toEqual({ kind: "dictation", text: "hello" });
+    expect(
+      parseShellAuthorityDelivery({
+        kind: "composer-prefill",
+        text: "review me",
+      }),
+    ).toEqual({ kind: "composer-prefill", text: "review me" });
     expect(
       parseShellAuthorityDelivery({
         kind: "transcript-session",

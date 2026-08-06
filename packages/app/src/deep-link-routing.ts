@@ -19,6 +19,7 @@ const ASSISTANT_LAUNCH_TEXT_KEYS = ["text", "q", "query", "body"] as const;
 
 export interface AssistantLaunchHashRouteOptions {
   generateLaunchId?: () => string;
+  now?: () => number;
 }
 
 /**
@@ -103,17 +104,22 @@ function defaultLaunchId(): string {
   );
 }
 
-function ensureAssistantLaunchId(
+function ensureAssistantLaunchMetadata(
   params: URLSearchParams,
   generateLaunchId: () => string,
+  now: () => number,
 ): void {
-  if (params.has("assistant.launchId")) return;
   const hasAssistantPayload =
     hasAssistantLaunchText(params) ||
     params.has("action") ||
     params.has("source");
   if (!hasAssistantPayload) return;
-  params.set("assistant.launchId", generateLaunchId());
+  if (!params.has("assistant.launchId")) {
+    params.set("assistant.launchId", generateLaunchId());
+  }
+  if (!params.has("issuedAt")) {
+    params.set("issuedAt", String(now()));
+  }
 }
 
 function hasAssistantLaunchText(params: URLSearchParams): boolean {
@@ -190,6 +196,7 @@ export function buildAssistantLaunchHashRoute(
   options: AssistantLaunchHashRouteOptions = {},
 ): string | null {
   const generateLaunchId = options.generateLaunchId ?? defaultLaunchId;
+  const now = options.now ?? Date.now;
 
   switch (path) {
     case "feature/open":
@@ -207,7 +214,7 @@ export function buildAssistantLaunchHashRoute(
         ASSISTANT_ENTRY_SOURCE,
       );
       params.set("action", params.get("action") ?? "ask");
-      ensureAssistantLaunchId(params, generateLaunchId);
+      ensureAssistantLaunchMetadata(params, generateLaunchId, now);
       return formatHashRoute("chat", params);
     }
     case "smart-reply":
@@ -218,7 +225,7 @@ export function buildAssistantLaunchHashRoute(
         ASSISTANT_ENTRY_SOURCE,
       );
       params.set("action", params.get("action") ?? "smart-reply");
-      ensureAssistantLaunchId(params, generateLaunchId);
+      ensureAssistantLaunchMetadata(params, generateLaunchId, now);
       return formatHashRoute("chat", params);
     }
     case "chat": {
@@ -228,7 +235,7 @@ export function buildAssistantLaunchHashRoute(
         ASSISTANT_ENTRY_SOURCE,
       );
       params.set("action", params.get("action") ?? "chat");
-      ensureAssistantLaunchId(params, generateLaunchId);
+      ensureAssistantLaunchMetadata(params, generateLaunchId, now);
       return formatHashRoute("chat", params);
     }
     case "voice":
@@ -238,7 +245,7 @@ export function buildAssistantLaunchHashRoute(
         "source",
         ASSISTANT_ENTRY_SOURCE,
       );
-      ensureAssistantLaunchId(params, generateLaunchId);
+      ensureAssistantLaunchMetadata(params, generateLaunchId, now);
       params.set("voice", "1");
       return formatHashRoute("chat", params);
     }
@@ -254,7 +261,7 @@ export function buildAssistantLaunchHashRoute(
         ASSISTANT_ENTRY_SOURCE,
       );
       params.set("action", params.get("action") ?? "lifeops.daily-brief");
-      ensureAssistantLaunchId(params, generateLaunchId);
+      ensureAssistantLaunchMetadata(params, generateLaunchId, now);
       return formatHashRoute("chat", params);
     }
     case "lifeops/tasks": {
@@ -264,7 +271,7 @@ export function buildAssistantLaunchHashRoute(
         ASSISTANT_ENTRY_SOURCE,
       );
       params.set("action", params.get("action") ?? "lifeops.tasks");
-      ensureAssistantLaunchId(params, generateLaunchId);
+      ensureAssistantLaunchMetadata(params, generateLaunchId, now);
       return formatHashRoute("chat", params);
     }
     case "lifeops/create":
@@ -277,7 +284,7 @@ export function buildAssistantLaunchHashRoute(
         ASSISTANT_ENTRY_SOURCE,
       );
       params.set("action", params.get("action") ?? "lifeops.create");
-      ensureAssistantLaunchId(params, generateLaunchId);
+      ensureAssistantLaunchMetadata(params, generateLaunchId, now);
       return formatHashRoute("chat", params);
     }
     default:

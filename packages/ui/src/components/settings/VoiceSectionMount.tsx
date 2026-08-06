@@ -12,13 +12,19 @@
  *   settings sections use (see `IdentitySettingsSection` for `messages.tts`).
  */
 
+import {
+  VOICE_SETTINGS_APPLY_EVENT,
+  type VoiceSettingsApplyPayload,
+} from "@elizaos/shared/events";
 import * as React from "react";
 import { client } from "../../api/client";
 import type { DeviceTier } from "../../api/client-local-inference";
 import { createVoiceProfilesClient } from "../../api/client-voice-profiles";
+import { useViewEvent } from "../../hooks/useViewEvent";
 import {
   loadWakeWordEnabled,
   saveContinuousChatMode,
+  saveOsIntentAutoStartConsent,
   saveVadAutoStop,
   saveWakeWordEnabled,
 } from "../../state/persistence";
@@ -77,6 +83,9 @@ function readStoredVoicePrefs(
     continuous: isContinuousMode(stored.continuous)
       ? stored.continuous
       : DEFAULT_VOICE_SECTION_PREFS.continuous,
+    osIntentAutoStartVoice: stored.osIntentAutoStartVoice === true,
+    osIntentAutoStartTranscription:
+      stored.osIntentAutoStartTranscription === true,
     vadAutoStop: readVadAutoStop(stored.vadAutoStop),
   };
 }
@@ -96,6 +105,27 @@ export function VoiceSectionMount(): React.ReactElement {
   const [tierSummary, setTierSummary] = React.useState<string | undefined>(
     undefined,
   );
+
+  useViewEvent(VOICE_SETTINGS_APPLY_EVENT, (event) => {
+    const payload = event.payload as VoiceSettingsApplyPayload;
+    if (
+      typeof payload.osIntentAutoStartVoice !== "boolean" &&
+      typeof payload.osIntentAutoStartTranscription !== "boolean"
+    ) {
+      return;
+    }
+    setPrefs((current) => ({
+      ...current,
+      osIntentAutoStartVoice:
+        typeof payload.osIntentAutoStartVoice === "boolean"
+          ? payload.osIntentAutoStartVoice
+          : current.osIntentAutoStartVoice,
+      osIntentAutoStartTranscription:
+        typeof payload.osIntentAutoStartTranscription === "boolean"
+          ? payload.osIntentAutoStartTranscription
+          : current.osIntentAutoStartTranscription,
+    }));
+  });
 
   React.useEffect(() => {
     let cancelled = false;
@@ -119,6 +149,10 @@ export function VoiceSectionMount(): React.ReactElement {
       // loadContinuousChatMode — never `messages.voice.continuous` — so the
       // server value must be seeded into it, same as vadAutoStop above.
       saveContinuousChatMode(loaded.continuous);
+      saveOsIntentAutoStartConsent({
+        voice: loaded.osIntentAutoStartVoice,
+        transcription: loaded.osIntentAutoStartTranscription,
+      });
     })();
     return () => {
       cancelled = true;
@@ -161,6 +195,10 @@ export function VoiceSectionMount(): React.ReactElement {
       // synchronously from localStorage (loadContinuousChatMode) and never see
       // the `messages.voice.continuous` config blob.
       saveContinuousChatMode(next.continuous);
+      saveOsIntentAutoStartConsent({
+        voice: next.osIntentAutoStartVoice,
+        transcription: next.osIntentAutoStartTranscription,
+      });
       try {
         const config = await client.getConfig();
         const messages = (config.messages ?? {}) as Record<string, unknown>;

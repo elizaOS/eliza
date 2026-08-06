@@ -243,10 +243,11 @@ export function useShellControllerSync(
 
   const dispatch = React.useCallback(
     async (command: ShellControllerCommand): Promise<void> => {
-      if (!transport) {
+      const current = authorityRef.current;
+      if (!transport || current.role === "owner") {
         const handler = commandHandlerRef.current;
         if (!handler) throw new Error("shell controller is not mounted");
-        await handler(command, "local");
+        await handler(command, current.endpointId ?? "local");
         return;
       }
       const result = await transport.dispatchCommand(commandId(), command);

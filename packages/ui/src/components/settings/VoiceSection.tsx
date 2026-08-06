@@ -110,6 +110,9 @@ function VadSlider({
 
 export interface VoiceSectionPrefs {
   continuous: VoiceContinuousMode;
+  /** Consent for OS shortcuts/deep links to start capture without another tap. */
+  osIntentAutoStartVoice: boolean;
+  osIntentAutoStartTranscription: boolean;
   /**
    * VAD / local-ASR end-of-turn tuning. Optional so older persisted prefs (and
    * the registry mount) stay valid; falls back to {@link DEFAULT_VAD_AUTO_STOP_PREFS}.
@@ -253,6 +256,64 @@ export function VoiceSection({
               </label>
             }
           />
+
+          <SettingsRow
+            icon={Mic}
+            label={t("voicesection.intentAutoStart", {
+              defaultValue: "Shortcut auto-start",
+            })}
+            stacked
+          >
+            <div className="flex flex-col gap-2 text-sm text-muted">
+              <label
+                htmlFor="voice-section-intent-autostart-voice"
+                className="inline-flex min-h-11 cursor-pointer items-center gap-2"
+              >
+                <Input
+                  id="voice-section-intent-autostart-voice"
+                  type="checkbox"
+                  checked={prefs.osIntentAutoStartVoice}
+                  onChange={(event) =>
+                    updatePrefs({
+                      osIntentAutoStartVoice: event.target.checked,
+                    })
+                  }
+                  className="h-5 w-5 rounded-sm border-border p-0 accent-accent"
+                  data-testid="voice-section-intent-autostart-voice"
+                />
+                {t("voicesection.intentAutoStartVoice", {
+                  defaultValue: "Allow voice shortcuts to start the microphone",
+                })}
+              </label>
+              <label
+                htmlFor="voice-section-intent-autostart-transcription"
+                className="inline-flex min-h-11 cursor-pointer items-center gap-2"
+              >
+                <Input
+                  id="voice-section-intent-autostart-transcription"
+                  type="checkbox"
+                  checked={prefs.osIntentAutoStartTranscription}
+                  onChange={(event) =>
+                    updatePrefs({
+                      osIntentAutoStartTranscription: event.target.checked,
+                    })
+                  }
+                  className="h-5 w-5 rounded-sm border-border p-0 accent-accent"
+                  data-testid="voice-section-intent-autostart-transcription"
+                />
+                {t("voicesection.intentAutoStartTranscription", {
+                  defaultValue:
+                    "Allow transcription shortcuts to start the microphone",
+                })}
+              </label>
+              <span>
+                {t("voicesection.intentAutoStartHint", {
+                  defaultValue:
+                    "Off by default. Turn either option off here at any time.",
+                })}
+              </span>
+            </div>
+          </SettingsRow>
         </SettingsGroup>
 
         <SettingsGroup

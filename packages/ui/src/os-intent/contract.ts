@@ -41,15 +41,23 @@ export type OsIntentSchema = typeof OS_INTENT_SCHEMA;
  */
 export type IntentSource =
   | "ios-app-intent"
+  | "ios-app-intents"
   | "ios-app-shortcuts"
   | "ios-widget"
+  | "ios-control"
+  | "ios-live-activity"
   | "siri"
   | "macos-shortcuts"
   | "macos-siri"
   | "android-app-actions"
   | "android-assist"
+  | "android-assistant-session"
   | "android-static-shortcut"
   | "android-quick-settings"
+  | "android-recognition-service"
+  | "android-ime"
+  | "android-widget"
+  | "android-share-sheet"
   | "desktop-deep-link"
   | "desktop-tray"
   | "desktop-hotkey"
@@ -60,15 +68,23 @@ export type IntentSource =
 /** Every recognized source, for the decoder's known-source gate. */
 export const INTENT_SOURCES: readonly IntentSource[] = [
   "ios-app-intent",
+  "ios-app-intents",
   "ios-app-shortcuts",
   "ios-widget",
+  "ios-control",
+  "ios-live-activity",
   "siri",
   "macos-shortcuts",
   "macos-siri",
   "android-app-actions",
   "android-assist",
+  "android-assistant-session",
   "android-static-shortcut",
   "android-quick-settings",
+  "android-recognition-service",
+  "android-ime",
+  "android-widget",
+  "android-share-sheet",
   "desktop-deep-link",
   "desktop-tray",
   "desktop-hotkey",

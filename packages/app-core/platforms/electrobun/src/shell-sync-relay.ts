@@ -148,6 +148,79 @@ const NO_ARG_COMMANDS = new Set([
   "stop",
 ]);
 
+const OS_INTENT_TYPES = new Set([
+  "open-chat",
+  "send",
+  "start-voice",
+  "stop-voice",
+  "start-transcription",
+  "stop-transcription",
+  "continue-conversation",
+]);
+
+const OS_INTENT_SOURCES = new Set([
+  "ios-app-intent",
+  "ios-app-intents",
+  "ios-app-shortcuts",
+  "ios-widget",
+  "ios-control",
+  "ios-live-activity",
+  "siri",
+  "macos-shortcuts",
+  "macos-siri",
+  "android-app-actions",
+  "android-assist",
+  "android-assistant-session",
+  "android-static-shortcut",
+  "android-quick-settings",
+  "android-recognition-service",
+  "android-ime",
+  "android-widget",
+  "android-share-sheet",
+  "desktop-deep-link",
+  "desktop-tray",
+  "desktop-hotkey",
+  "notification",
+  "assistant-entry",
+  "in-app",
+]);
+
+function isOsIntent(value: unknown): boolean {
+  if (
+    !isRecord(value) ||
+    !isNonEmptyString(value.intentId, 1_024) ||
+    typeof value.type !== "string" ||
+    !OS_INTENT_TYPES.has(value.type) ||
+    typeof value.source !== "string" ||
+    !OS_INTENT_SOURCES.has(value.source) ||
+    !(
+      value.issuedAt === undefined ||
+      (typeof value.issuedAt === "number" && Number.isFinite(value.issuedAt))
+    )
+  ) {
+    return false;
+  }
+  if (value.type === "send") {
+    return (
+      typeof value.text === "string" &&
+      value.text.length > 0 &&
+      value.text.length <= MAX_TEXT_LENGTH &&
+      (value.channelType === undefined ||
+        value.channelType === "DM" ||
+        value.channelType === "VOICE_DM") &&
+      (value.images === undefined ||
+        (Array.isArray(value.images) &&
+          value.images.length <= 32 &&
+          value.images.every(isImageAttachment))) &&
+      (value.metadata === undefined || isRecord(value.metadata))
+    );
+  }
+  if (value.type === "start-voice") {
+    return value.mode === "converse" || value.mode === "dictate";
+  }
+  return true;
+}
+
 function isImageAttachment(value: unknown): boolean {
   if (!isRecord(value)) return false;
   const thumbnail = value.thumbnail;
@@ -199,6 +272,12 @@ export function isShellControllerCommand(value: unknown): boolean {
       return typeof value.hasDraft === "boolean";
     case "navConversation":
       return value.direction === "prev" || value.direction === "next";
+    case "routeOsIntent":
+      return (
+        isOsIntent(value.intent) &&
+        (value.deliveryPolicy === "execute" ||
+          value.deliveryPolicy === "review-send")
+      );
     default:
       return false;
   }
@@ -482,7 +561,7 @@ export class ShellControllerAuthority {
 
   private isValidDelivery(value: unknown): boolean {
     if (!isRecord(value) || typeof value.kind !== "string") return false;
-    if (value.kind === "dictation") {
+    if (value.kind === "dictation" || value.kind === "composer-prefill") {
       return (
         typeof value.text === "string" && value.text.length <= MAX_TEXT_LENGTH
       );

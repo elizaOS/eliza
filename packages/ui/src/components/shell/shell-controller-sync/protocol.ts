@@ -14,6 +14,8 @@
 
 import type { TranscriptSegment } from "@elizaos/shared/transcripts";
 import type { ImageAttachment } from "../../../api/client-types-chat";
+import type { OsIntent } from "../../../os-intent/contract";
+import { decodeOsIntent } from "../../../os-intent/decode";
 
 /**
  * Bumped only on a breaking change to the envelope/command/snapshot shapes.
@@ -57,7 +59,12 @@ export type ShellControllerCommand =
   | { kind: "openSettings" }
   | { kind: "navigateHome" }
   | { kind: "stop" }
-  | { kind: "navConversation"; direction: "prev" | "next" };
+  | { kind: "navConversation"; direction: "prev" | "next" }
+  | {
+      kind: "routeOsIntent";
+      intent: OsIntent;
+      deliveryPolicy: "execute" | "review-send";
+    };
 
 export type ShellControllerCommandKind = ShellControllerCommand["kind"];
 
@@ -80,6 +87,7 @@ export interface ShellAuthorityCommandRequest {
 
 export type ShellAuthorityDelivery =
   | { kind: "dictation"; text: string }
+  | { kind: "composer-prefill"; text: string }
   | {
       kind: "transcript-session";
       segments: TranscriptSegment[];
@@ -189,6 +197,18 @@ export function parseShellControllerCommand(
       return value.direction === "prev" || value.direction === "next"
         ? { kind: "navConversation", direction: value.direction }
         : null;
+    case "routeOsIntent": {
+      const decoded = decodeOsIntent(value.intent);
+      return decoded.ok &&
+        (value.deliveryPolicy === "execute" ||
+          value.deliveryPolicy === "review-send")
+        ? {
+            kind: "routeOsIntent",
+            intent: decoded.intent,
+            deliveryPolicy: value.deliveryPolicy,
+          }
+        : null;
+    }
     default:
       return null;
   }
@@ -258,9 +278,9 @@ export function parseShellAuthorityDelivery(
   value: unknown,
 ): ShellAuthorityDelivery | null {
   if (!isRecord(value)) return null;
-  if (value.kind === "dictation") {
+  if (value.kind === "dictation" || value.kind === "composer-prefill") {
     return typeof value.text === "string" && value.text.length <= 1_000_000
-      ? { kind: "dictation", text: value.text }
+      ? { kind: value.kind, text: value.text }
       : null;
   }
   if (value.kind === "transcript-session") {

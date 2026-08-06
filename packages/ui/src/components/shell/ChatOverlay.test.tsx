@@ -79,7 +79,10 @@ import {
   LAYOUT_SHIFT_INTENT_ATTR,
   LAYOUT_SHIFT_INTENT_TRANSIENT,
 } from "../../hooks/useLayoutShiftMonitor";
-import { __resetAssistantLaunchPayloadClaimsForTests } from "../../platform/assistant-launch-payload";
+import {
+  OS_INTENT_COMPOSER_PREFILL_EVENT,
+  type OsIntentComposerPrefillDetail,
+} from "../../os-intent/host";
 import { __setAppValueForTests } from "../../state/app-store";
 import {
   getShellSurface,
@@ -4364,61 +4367,56 @@ describe("ChatOverlay — per-message action row (#10713)", () => {
   });
 });
 
-describe("ChatOverlay — OS assistant / deep-link launch (#9148)", () => {
+describe("ChatOverlay — routed OS-intent composer prefill (#9148, #16441)", () => {
   beforeEach(() => {
-    __resetAssistantLaunchPayloadClaimsForTests();
     window.history.replaceState(null, "", "/");
   });
   afterEach(() => {
     window.history.replaceState(null, "", "/");
   });
 
-  it("prefills the composer from an assistant-launch chat deep link on the hash", () => {
-    // Siri / Shortcuts / App Actions route into #chat?text=…&source=…; the
-    // ambient overlay is the only chat surface on mobile/web/default desktop, so
-    // it must claim the payload and PREFILL (never auto-send) the composer.
-    window.history.replaceState(
-      null,
-      "",
-      "/#chat?text=Remind%20me%20at%205&source=siri&assistant.launchId=launch-9148",
-    );
+  it("prefills the composer from the routing authority's review event", () => {
     render(<ChatOverlay controller={makeController()} />);
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent<OsIntentComposerPrefillDetail>(
+          OS_INTENT_COMPOSER_PREFILL_EVENT,
+          { detail: { text: "Remind me at 5" } },
+        ),
+      );
+    });
     expect(
       (screen.getByLabelText("message") as HTMLTextAreaElement).value,
     ).toBe("Remind me at 5");
   });
 
-  it("consumes a launch only once — a second mount with the same launch id does not re-prefill", () => {
-    const hash =
-      "/#chat?text=Water%20plants&source=macos-shortcuts&assistant.launchId=launch-once";
-    window.history.replaceState(null, "", hash);
-    const first = render(<ChatOverlay controller={makeController()} />);
-    expect(
-      (screen.getByLabelText("message") as HTMLTextAreaElement).value,
-    ).toBe("Water plants");
-    first.unmount();
-
-    // The same launch id arrives again (re-open / re-render); claiming dedupes
-    // by launchId so it is NOT consumed a second time.
-    window.history.replaceState(null, "", hash);
+  it("does not independently parse a launch hash", () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/#chat?text=Water%20plants&source=macos-shortcuts&assistant.launchId=launch-once",
+    );
     render(<ChatOverlay controller={makeController()} />);
     expect(
       (screen.getByLabelText("message") as HTMLTextAreaElement).value,
     ).toBe("");
   });
 
-  it("starts hands-free voice capture on a voice=1 launch (while prefilling text)", () => {
+  it("never starts voice capture from a composer-prefill event", () => {
     const toggleHandsFree = vi.fn();
-    window.history.replaceState(
-      null,
-      "",
-      "/#chat?text=start%20talking&source=assistant-entry&voice=1&assistant.launchId=launch-voice",
-    );
     render(<ChatOverlay controller={makeController({ toggleHandsFree })} />);
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent<OsIntentComposerPrefillDetail>(
+          OS_INTENT_COMPOSER_PREFILL_EVENT,
+          { detail: { text: "start talking" } },
+        ),
+      );
+    });
     expect(
       (screen.getByLabelText("message") as HTMLTextAreaElement).value,
     ).toBe("start talking");
-    expect(toggleHandsFree).toHaveBeenCalledTimes(1);
+    expect(toggleHandsFree).not.toHaveBeenCalled();
   });
 
   it("ignores an untrusted-source hash (no prefill, no voice)", () => {

@@ -15,6 +15,8 @@
  * `unrecognized-launch` so the caller keeps its existing routing rather than
  * having it forced into this vocabulary.
  */
+
+import type { ImageAttachment } from "../api/client-types-chat";
 import {
   ASSISTANT_LAUNCH_TEXT_KEYS,
   type AssistantLaunchPayload,
@@ -58,6 +60,35 @@ function fail(
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isImageAttachment(value: unknown): value is ImageAttachment {
+  if (!isRecord(value)) return false;
+  const thumbnail = value.thumbnail;
+  return (
+    typeof value.data === "string" &&
+    value.data.length <= 32_000_000 &&
+    typeof value.mimeType === "string" &&
+    value.mimeType.length > 0 &&
+    value.mimeType.length <= 256 &&
+    typeof value.name === "string" &&
+    value.name.length > 0 &&
+    value.name.length <= 2_000 &&
+    (value.transcriptId === undefined ||
+      (typeof value.transcriptId === "string" &&
+        value.transcriptId.length > 0)) &&
+    (thumbnail === undefined ||
+      (isRecord(thumbnail) &&
+        typeof thumbnail.data === "string" &&
+        thumbnail.data.length <= 32_000_000 &&
+        typeof thumbnail.mimeType === "string" &&
+        thumbnail.mimeType.length > 0 &&
+        thumbnail.mimeType.length <= 256))
+  );
 }
 
 const INTENT_TYPE_SET: ReadonlySet<string> = new Set(OS_INTENT_TYPES);
@@ -141,6 +172,30 @@ export function decodeOsIntent(raw: unknown): IntentDecodeResult {
           "channelType",
         );
       }
+      if (
+        "images" in record &&
+        record.images !== undefined &&
+        (!Array.isArray(record.images) ||
+          record.images.length > 32 ||
+          !record.images.every(isImageAttachment))
+      ) {
+        return fail(
+          "invalid-field",
+          "`images` must be an array of valid image attachments",
+          "images",
+        );
+      }
+      if (
+        "metadata" in record &&
+        record.metadata !== undefined &&
+        !isRecord(record.metadata)
+      ) {
+        return fail(
+          "invalid-field",
+          "`metadata` must be an object",
+          "metadata",
+        );
+      }
       return {
         ok: true,
         intent: {
@@ -150,6 +205,10 @@ export function decodeOsIntent(raw: unknown): IntentDecodeResult {
           ...(record.channelType === "DM" || record.channelType === "VOICE_DM"
             ? { channelType: record.channelType }
             : {}),
+          ...(Array.isArray(record.images)
+            ? { images: record.images as ImageAttachment[] }
+            : {}),
+          ...(isRecord(record.metadata) ? { metadata: record.metadata } : {}),
         },
       };
     }
@@ -186,11 +245,21 @@ function resolveLaunchIntentType(
   action: string,
   voiceFlag: boolean,
   hasText: boolean,
+  source: IntentSource,
 ): OsIntentType | null {
+  if (action === "stop-transcription" || action === "stop-transcribe") {
+    return "stop-transcription";
+  }
+  if (action === "stop-voice") return "stop-voice";
+  if (source === "ios-live-activity") {
+    if (action === "stop" || action === "save") return "stop-transcription";
+    if (action === "open") return "continue-conversation";
+  }
   if (voiceFlag || action === "voice" || host === "voice") return "start-voice";
   if (
     action === "transcribe" ||
     action === "transcription" ||
+    action === "start-transcription" ||
     host === "transcribe"
   ) {
     return "start-transcription";
@@ -199,6 +268,13 @@ function resolveLaunchIntentType(
     return "continue-conversation";
   }
   if (action === "ask" || action === "smart-reply" || action === "send") {
+    return hasText ? "send" : "open-chat";
+  }
+  if (
+    action === "lifeops.create" ||
+    action === "lifeops.daily-brief" ||
+    action === "lifeops.tasks"
+  ) {
     return hasText ? "send" : "open-chat";
   }
   if (action === "chat" || host === "chat" || host === "assistant") {
@@ -220,8 +296,13 @@ function buildLaunchIntent(
   source: IntentSource,
   intentId: string,
   text: string,
+  issuedAt?: number,
 ): OsIntent {
-  const base = { intentId, source };
+  const base = {
+    intentId,
+    source,
+    ...(issuedAt !== undefined ? { issuedAt } : {}),
+  };
   switch (intentType) {
     case "send":
       return { type: "send", ...base, text };
@@ -269,12 +350,21 @@ export function decodeDeepLinkIntent(url: string): IntentDecodeResult {
   const action = params.get("action")?.trim().toLowerCase() ?? "";
   const voiceFlag = params.get("voice")?.trim() === "1";
   const text = readLaunchText(params);
+  const issuedAtRaw = params.get("issuedAt")?.trim();
+  let issuedAt: number | undefined;
+  if (issuedAtRaw) {
+    issuedAt = Number(issuedAtRaw);
+    if (!Number.isFinite(issuedAt)) {
+      return fail("invalid-field", "`issuedAt` must be finite", "issuedAt");
+    }
+  }
 
   const intentType = resolveLaunchIntentType(
     host,
     action,
     voiceFlag,
     text.length > 0,
+    source,
   );
   if (!intentType) {
     return fail(
@@ -289,7 +379,7 @@ export function decodeDeepLinkIntent(url: string): IntentDecodeResult {
 
   return {
     ok: true,
-    intent: buildLaunchIntent(intentType, source, intentId, text),
+    intent: buildLaunchIntent(intentType, source, intentId, text, issuedAt),
   };
 }
 
@@ -318,6 +408,7 @@ export function fromAssistantLaunchPayload(
     action,
     false,
     text.length > 0,
+    payload.source,
   );
   if (!intentType) {
     return fail(

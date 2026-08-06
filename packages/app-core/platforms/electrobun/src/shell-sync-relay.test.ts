@@ -211,6 +211,37 @@ describe("ShellControllerAuthority data paths", () => {
     await expect(
       target.dispatchCommand({ commandId: "bad", command: { kind: "root" } }),
     ).resolves.toEqual({ ok: false, error: "invalid-command" });
+    await expect(
+      target.dispatchCommand({
+        commandId: "bad-intent",
+        command: {
+          kind: "routeOsIntent",
+          intent: {
+            type: "start-voice",
+            intentId: "launch-1",
+            source: "forged",
+            mode: "converse",
+          },
+          deliveryPolicy: "execute",
+        },
+      }),
+    ).resolves.toEqual({ ok: false, error: "invalid-command" });
+    await expect(
+      target.dispatchCommand({
+        commandId: "bad-intent-attachment",
+        command: {
+          kind: "routeOsIntent",
+          intent: {
+            type: "send",
+            intentId: "launch-2",
+            source: "desktop-deep-link",
+            text: "review this",
+            images: [{ data: 42, mimeType: "image/png", name: "bad.png" }],
+          },
+          deliveryPolicy: "review-send",
+        },
+      }),
+    ).resolves.toEqual({ ok: false, error: "invalid-command" });
     expect(
       owner.deliver({
         generation: ownerState.generation,
@@ -222,6 +253,13 @@ describe("ShellControllerAuthority data paths", () => {
       generation: ownerState.generation,
       delivery: { kind: "dictation", text: "private draft" },
     });
+    expect(
+      owner.deliver({
+        generation: ownerState.generation,
+        targetEndpointId: targetState.endpointId,
+        delivery: { kind: "composer-prefill", text: "review me" },
+      }),
+    ).toEqual({ ok: true });
     expect(otherSend).not.toHaveBeenCalledWith(
       SHELL_AUTHORITY_DELIVERY_MESSAGE,
       expect.anything(),
