@@ -3253,7 +3253,7 @@ function latestUnresolvedFailedNonTerminalToolStep(
 		) {
 			continue;
 		}
-		const operationKey = plannerToolOperationKey(step.toolCall);
+		const operationKey = plannerToolOperationKey(step.toolCall, step.result);
 		if (step.result.success === false || step.result.error != null) {
 			unresolvedByOperation.delete(operationKey);
 			unresolvedByOperation.set(operationKey, step);
@@ -3338,7 +3338,10 @@ function isStructuredInteractionPayload(value: string | undefined): boolean {
 	return /^\s*\[(?:FORM|CHOICE)\]/i.test(value ?? "");
 }
 
-function plannerToolOperationKey(toolCall: PlannerToolCall): string {
+function plannerToolOperationKey(
+	toolCall: PlannerToolCall,
+	result?: PlannerToolResult,
+): string {
 	// A successful sibling mutation must not erase an authoritative failure for
 	// another entity; key order is irrelevant and every OPERATIVE argument
 	// matters. Free-text narration params are excluded: models re-narrate the
@@ -3348,6 +3351,19 @@ function plannerToolOperationKey(toolCall: PlannerToolCall): string {
 	// completion proof) with the generic fallback, failing verifications whose
 	// checks had all passed.
 	const params = { ...(toolCall.params ?? {}) };
+	// Schema validation can reject one optional argument while preserving the
+	// rest of the operation (for example a model supplies roomId="current", then
+	// retries the same search with that field omitted). The validator publishes
+	// the rejected top-level names as structured metadata, so the corrected retry
+	// resolves that failure without weakening correlation for any accepted
+	// identity/payload argument.
+	const parameterErrors = result?.data?.parameterErrors;
+	const invalidParameterNames = result?.data?.invalidParameterNames;
+	if (Array.isArray(parameterErrors) && Array.isArray(invalidParameterNames)) {
+		for (const name of invalidParameterNames) {
+			if (typeof name === "string") delete params[name];
+		}
+	}
 	// SHELL defines description as an execution label; other tools may use the
 	// same field as the payload itself (for example TASKS_CREATE). Keeping this
 	// allow-list tool-specific prevents unrelated mutations from sharing failure
