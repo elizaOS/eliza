@@ -74,6 +74,7 @@ import {
   VOICE_CONTINUOUS_MODES,
   type VoiceContinuousMode,
 } from "../../voice/voice-chat-types";
+import { isCloudVoiceRunnable } from "../../voice/voice-provider-defaults";
 import { buildVoiceTurnSignal } from "../../voice/voice-turn-signal";
 import { matchWakeName } from "../../voice/wake-name-match";
 import { useHomeModelStatus } from "../local-inference/useHomeModelStatus";
@@ -359,6 +360,7 @@ const selectShellController = (s: AppContextValue) => ({
   agentStatus: s.agentStatus,
   characterData: s.characterData,
   uiLanguage: s.uiLanguage,
+  elizaCloudConnected: s.elizaCloudConnected,
   elizaCloudVoiceProxyAvailable: s.elizaCloudVoiceProxyAvailable,
   handleNewConversation: s.handleNewConversation,
   handleSelectConversation: s.handleSelectConversation,
@@ -379,6 +381,7 @@ export function useShellController(): ShellController {
     agentStatus,
     characterData,
     uiLanguage,
+    elizaCloudConnected,
     elizaCloudVoiceProxyAvailable,
     handleNewConversation,
     handleSelectConversation,
@@ -1364,7 +1367,10 @@ export function useShellController(): ShellController {
     agentVoiceMuted: chatAgentVoiceMuted,
     toggleAgentVoiceMute,
     uiLanguage,
-    cloudConnected: elizaCloudVoiceProxyAvailable,
+    cloudConnected: isCloudVoiceRunnable({
+      connected: elizaCloudConnected,
+      proxyAvailable: elizaCloudVoiceProxyAvailable,
+    }),
   });
   // Wire the forward ref so the conversation-switch / clear handlers (defined
   // above `voiceOutput`) can stop in-flight assistant speech at gesture time.

@@ -62,7 +62,6 @@ import {
 import { NOTIFICATION_ROW_SETTLE_MS } from "./notification-shade-content";
 import {
   notificationPullOvershootOffset,
-  notificationPullPresentation,
   PULL_TRAVEL_PX,
 } from "./notification-shade-presentation";
 
@@ -610,28 +609,6 @@ describe("dampenPull", () => {
     expect(notificationPullOvershootOffset(PULL_TRAVEL_PX)).toBe(0);
     expect(notificationPullOvershootOffset(overpull)).toBeCloseTo(9.8, 1);
     expect(notificationPullOvershootOffset(-overpull)).toBeCloseTo(-9.8, 1);
-  });
-
-  it("fades the count before upward overpull reaches its clipping boundary", () => {
-    const atCloseDetent = notificationPullPresentation(
-      -PULL_TRAVEL_PX,
-      true,
-      false,
-    );
-    const midwayThroughBoundaryFade = notificationPullPresentation(
-      -(PULL_TRAVEL_PX + 4),
-      true,
-      false,
-    );
-    const pastBoundaryFade = notificationPullPresentation(
-      -(PULL_TRAVEL_PX + 8),
-      true,
-      false,
-    );
-
-    expect(atCloseDetent.notificationCountVisibility).toBe(1);
-    expect(midwayThroughBoundaryFade.notificationCountVisibility).toBe(0.5);
-    expect(pastBoundaryFade.notificationCountVisibility).toBe(0);
   });
 });
 
@@ -1750,7 +1727,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(screen.queryByText("Files updated")).toBeNull();
   });
 
-  it("fades expanded cards while retaining the resting priority stack", () => {
+  it("closes every card while retaining priority shells for stable geometry", () => {
     seedTriage();
     renderRestedNotifications();
     const list = screen.getByTestId("home-notification-list");
@@ -1818,27 +1795,33 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(settledContentRule).not.toContain(
       "--eliza-notif-group-content-visibility",
     );
-    const settledSurfaceRule = [
-      ...(list.parentElement
-        ?.querySelector("style")
-        ?.textContent?.matchAll(
-          /\.eliza-notif-scroll:is\(\[data-shade-dragging\], \[data-shade-settling\]\)[^{}]*\.eliza-notif-row-surface\s*\{([^}]*)\}/g,
-        ) ?? []),
-    ]
-      .map((match) => match[1])
-      .find((rule) => rule.includes("opacity:"));
-    expect(settledSurfaceRule).toContain("opacity:");
-    expect(settledSurfaceRule).toContain("!important");
-    expect(settledSurfaceRule).toContain("transition:");
+    const settledMaterialRule = list.parentElement
+      ?.querySelector("style")
+      ?.textContent?.match(
+        /\.eliza-notif-scroll\[data-shade-mode="expanded"\]\[data-shade-settling\][^{}]*\.eliza-notif-glass::after\s*\{([^}]*)\}/,
+      )?.[1];
+    expect(settledMaterialRule).toContain("transition: opacity");
     expect(list.parentElement?.querySelector("style")?.textContent).toContain(
-      ".eliza-notif-scroll:is([data-shade-dragging], [data-shade-settling]) [data-notification-group-content] .eliza-notif-row-surface",
+      '.eliza-notif-scroll[data-shade-mode="expanded"]:is([data-shade-dragging], [data-shade-settling]) [data-notification-group-content] .eliza-notif-glass',
     );
     finishShadeCollapse();
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
     expect(screen.getByTestId("notification-row")).toBe(priorityRow);
+    expect(priorityGroupContent?.style.opacity).toBe("0");
+    expect(priorityGroupContent?.style.transition).toBe("none");
+    expect(
+      priorityGroupContent
+        ?.closest("[data-notification-group]")
+        ?.getAttribute("aria-hidden"),
+    ).toBe("true");
+    expect(
+      priorityGroupContent
+        ?.closest("[data-notification-group]")
+        ?.hasAttribute("inert"),
+    ).toBe(true);
   });
 
-  it("keeps card material fully opaque through a reversible upward drag", () => {
+  it("keeps the same card material through a reversible upward drag", () => {
     __ingestNotificationForTests(
       makeNotification({
         priority: "urgent",
@@ -1876,6 +1859,13 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     const agentSurface = screen
       .getByText("Agent summary")
       .closest<HTMLElement>('[data-testid="notification-row-swipe"]');
+    const mailGroup = screen
+      .getByText("Urgent mail")
+      .closest("[data-notification-group]")
+      ?.querySelector<HTMLElement>("[data-notification-group-content]");
+    const filesContent = filesSurface?.querySelector<HTMLElement>(
+      ".eliza-notif-row-content",
+    );
 
     fireEvent.pointerDown(list, {
       pointerType: "mouse",
@@ -1884,6 +1874,10 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
       clientX: 12,
       clientY: 160,
     });
+    expect(list.hasAttribute("data-shade-dragging")).toBe(false);
+    expect(filesSurface?.style.transform).toBe("");
+    expect(filesContent?.style.transform).toBe("");
+    expect(filesContent?.className).not.toContain("active:scale");
     fireEvent.pointerMove(list, {
       pointerType: "mouse",
       pointerId: 83,
@@ -1892,12 +1886,32 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     });
 
     expect(list.hasAttribute("data-shade-dragging")).toBe(true);
+    // Count and clear controls own no layout space, so gesture presentation
+    // must never move an already-visible priority stack to compensate for them.
+    expect(mailGroup?.style.transform).toBe("translate3d(0, 0px, 0)");
     const css = list.parentElement?.querySelector("style")?.textContent ?? "";
     const activeDragRule = css.match(
       /\.eliza-notif-scroll\[data-shade-dragging\]\s*\{([^}]*)\}/,
     )?.[1];
-    expect(activeDragRule).toContain("-webkit-mask-image: none");
-    expect(activeDragRule).toContain("mask-image: none");
+    expect(activeDragRule).not.toContain("mask-image");
+    const releaseSettleRule = css.match(
+      /\.eliza-notif-scroll\[data-shade-release-settling\]\s*\{([^}]*)\}/,
+    )?.[1];
+    expect(releaseSettleRule).not.toContain("mask-image");
+    // A pull may animate compositor properties, but changing which element
+    // paints the fill produces a visible first-frame color/rim discontinuity.
+    const gestureMaterialRules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+      .filter(
+        (match) =>
+          match[1]?.includes("data-shade-dragging") ||
+          match[1]?.includes("data-shade-settling") ||
+          match[1]?.includes("data-notification-shade-cancelling"),
+      )
+      .map((match) => match[2] ?? "")
+      .join("\n");
+    expect(gestureMaterialRules).not.toMatch(
+      /background-(?:color|image)|backdrop-filter|mask-image/,
+    );
 
     let filesOpacity = Number.parseFloat(filesGroup?.style.opacity ?? "1");
     let agentOpacity = Number.parseFloat(agentGroup?.style.opacity ?? "1");
@@ -1918,6 +1932,12 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(filesContentOpacity).toBeGreaterThan(0);
     expect(filesContentOpacity).toBeLessThan(1);
     expect(agentContentOpacity).toBeLessThan(filesContentOpacity);
+    const filesSurfaceOpacity = Number.parseFloat(
+      filesGroup?.style.getPropertyValue(
+        "--eliza-notif-group-surface-visibility",
+      ) ?? "0",
+    );
+    expect(filesSurfaceOpacity).toBeCloseTo(filesContentOpacity, 6);
     expect(screen.queryByTestId("notifications-count")).toBeNull();
     expect(screen.queryByTestId("notifications-collapse-footer")).toBeNull();
 
@@ -1959,6 +1979,11 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(
       filesGroup?.style.getPropertyValue(
         "--eliza-notif-group-content-visibility",
+      ),
+    ).toBe("");
+    expect(
+      filesGroup?.style.getPropertyValue(
+        "--eliza-notif-group-surface-visibility",
       ),
     ).toBe("");
     expect(
@@ -2094,6 +2119,156 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     ).toBe(committedContentOpacity);
     finishShadeCollapse();
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
+  });
+
+  it("clears gesture-owned visibility before a reopened shade starts its next close", () => {
+    __ingestNotificationForTests(
+      makeNotification({
+        priority: "urgent",
+        source: "mail",
+        title: "Urgent mail",
+      }),
+    );
+    __ingestNotificationForTests(
+      makeNotification({
+        priority: "normal",
+        source: "files",
+        title: "Files updated",
+      }),
+    );
+    __ingestNotificationForTests(
+      makeNotification({
+        priority: "low",
+        source: "agent",
+        title: "Agent summary",
+      }),
+    );
+    render(<NotificationsHomeCenter />);
+    const list = screen.getByTestId("home-notification-list");
+    const priorityRow = screen
+      .getByText("Urgent mail")
+      .closest<HTMLElement>('[data-testid="notification-row"]');
+    if (!priorityRow) throw new Error("Expected the urgent notification row");
+    const priorityGroup = priorityRow.closest<HTMLElement>(
+      "[data-notification-group-content]",
+    );
+    const prioritySurface = priorityRow.closest<HTMLElement>(
+      '[data-testid="notification-row-swipe"]',
+    );
+    const initialMaterial = {
+      groupOpacity: priorityGroup?.style.opacity,
+      groupTransform: priorityGroup?.style.transform,
+      surfaceOpacity: prioritySurface?.style.opacity,
+      surfaceTransform: prioritySurface?.style.transform,
+    };
+
+    fireEvent.pointerDown(list, {
+      pointerType: "mouse",
+      isPrimary: true,
+      pointerId: 87,
+      clientX: 12,
+      clientY: 160,
+    });
+    fireEvent.pointerMove(list, {
+      pointerType: "mouse",
+      pointerId: 87,
+      clientX: 12,
+      clientY: 20,
+    });
+    fireEvent.pointerUp(list, {
+      pointerType: "mouse",
+      pointerId: 87,
+      clientX: 12,
+      clientY: 20,
+    });
+    expect(list.hasAttribute("data-shade-settling")).toBe(true);
+    finishShadeCollapse();
+
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+    expect(
+      priorityGroup?.style.getPropertyValue(
+        "--eliza-notif-group-content-visibility",
+      ),
+    ).toBe("");
+    expect(
+      priorityGroup?.style.getPropertyValue(
+        "--eliza-notif-group-surface-visibility",
+      ),
+    ).toBe("");
+    expect(
+      priorityGroup
+        ?.querySelector<HTMLElement>("[data-notification-disposable-row]")
+        ?.style.getPropertyValue("--eliza-notif-row-content-visibility") ?? "",
+    ).toBe("");
+
+    fireEvent.pointerDown(list, {
+      pointerType: "mouse",
+      isPrimary: true,
+      pointerId: 88,
+      clientX: 12,
+      clientY: 20,
+    });
+    fireEvent.pointerMove(list, {
+      pointerType: "mouse",
+      pointerId: 88,
+      clientX: 12,
+      clientY: 160,
+    });
+    fireEvent.pointerUp(list, {
+      pointerType: "mouse",
+      pointerId: 88,
+      clientX: 12,
+      clientY: 160,
+    });
+    act(() => vi.advanceTimersByTime(500));
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(
+      priorityGroup?.style.getPropertyValue(
+        "--eliza-notif-group-content-visibility",
+      ),
+    ).toBe("");
+    expect({
+      groupOpacity: priorityGroup?.style.opacity,
+      groupTransform: priorityGroup?.style.transform,
+      surfaceOpacity: prioritySurface?.style.opacity,
+      surfaceTransform: prioritySurface?.style.transform,
+    }).toEqual(initialMaterial);
+
+    fireEvent.pointerDown(list, {
+      pointerType: "mouse",
+      isPrimary: true,
+      pointerId: 89,
+      clientX: 12,
+      clientY: 160,
+    });
+    expect(list.hasAttribute("data-shade-dragging")).toBe(false);
+    expect(
+      priorityGroup?.style.getPropertyValue(
+        "--eliza-notif-group-content-visibility",
+      ),
+    ).toBe("");
+    expect({
+      groupOpacity: priorityGroup?.style.opacity,
+      groupTransform: priorityGroup?.style.transform,
+      surfaceOpacity: prioritySurface?.style.opacity,
+      surfaceTransform: prioritySurface?.style.transform,
+    }).toEqual(initialMaterial);
+
+    fireEvent.pointerMove(list, {
+      pointerType: "mouse",
+      pointerId: 89,
+      clientX: 12,
+      clientY: 116,
+    });
+    expect(list.hasAttribute("data-shade-dragging")).toBe(true);
+    expect(prioritySurface?.style.opacity).toBe("1");
+    expect(
+      Number.parseFloat(
+        priorityGroup?.style.getPropertyValue(
+          "--eliza-notif-group-content-visibility",
+        ) ?? "0",
+      ),
+    ).toBeGreaterThan(0);
   });
 
   it("fades fanned contents without dimming their card material", () => {
@@ -2523,7 +2698,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     const previewGroups = Array.from(
       list.querySelectorAll<HTMLElement>("[data-notification-pull-reveal]"),
     );
-    expect(previewGroups).toHaveLength(2);
+    expect(previewGroups).toHaveLength(3);
     expect(screen.queryByTestId("notifications-collapse")).toBeNull();
     fireEvent.pointerUp(list, {
       pointerType: "mouse",
@@ -2567,7 +2742,15 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(center.hasAttribute("data-notification-shade-cancelling")).toBe(
       false,
     );
-    expect(previewGroups.every((group) => !group.isConnected)).toBe(true);
+    const retainedGroups = previewGroups.filter((group) => group.isConnected);
+    expect(retainedGroups).toHaveLength(1);
+    expect(retainedGroups[0]?.getAttribute("aria-hidden")).toBe("true");
+    expect(retainedGroups[0]?.hasAttribute("inert")).toBe(true);
+    expect(
+      retainedGroups[0]?.querySelector<HTMLElement>(
+        "[data-notification-group-content]",
+      )?.style.opacity,
+    ).toBe("0");
     expect(screen.queryByTestId("notifications-collapse")).toBeNull();
     expect(screen.queryAllByTestId("notification-row")).toHaveLength(1);
   });

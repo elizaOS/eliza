@@ -20,16 +20,41 @@ export function handleRenderedMutationFailure(cause: unknown): void {
 
 export const VIEW_ROOT_STYLE: CSSProperties = {
   boxSizing: "border-box",
-  width: "calc(100% - var(--eliza-chat-side-clearance, 0px))",
-  height: "calc(100% - var(--eliza-chat-clearance, 5.25rem))",
+  position: "relative",
+  width: "100%",
+  height: "100%",
+  minHeight: 0,
+  overflowX: "hidden",
+  overflowY: "hidden",
+  color: "var(--txt, #f5f5f5)",
+  fontFamily: "inherit",
+};
+
+export const VIEW_SCROLL_STYLE: CSSProperties = {
+  boxSizing: "border-box",
+  position: "absolute",
+  insetBlockStart: 0,
+  insetBlockEnd: 0,
+  insetInlineStart: 0,
+  insetInlineEnd: 0,
+  minWidth: 0,
   minHeight: 0,
   overflowX: "hidden",
   overflowY: "auto",
   overscrollBehavior: "contain",
   padding: "clamp(8px, 2.4vw, 24px)",
   paddingTop: "calc(clamp(8px, 2.4vw, 24px) + var(--safe-area-top, 0px))",
-  scrollPaddingBottom: "clamp(8px, 2.4vw, 24px)",
-  scrollPaddingInlineEnd: "clamp(8px, 2.4vw, 24px)",
+  // The scroll surface reaches the routed viewport edge so translucent chat
+  // chrome reveals real view content. Padding keeps the final item reachable
+  // above the composer and landscape side rail without clipping the surface.
+  paddingBottom:
+    "calc(clamp(8px, 2.4vw, 24px) + var(--eliza-chat-clearance, 5.25rem))",
+  paddingInlineEnd:
+    "calc(clamp(8px, 2.4vw, 24px) + var(--eliza-chat-side-clearance, 0px))",
+  scrollPaddingBottom:
+    "calc(clamp(8px, 2.4vw, 24px) + var(--eliza-chat-clearance, 5.25rem))",
+  scrollPaddingInlineEnd:
+    "calc(clamp(8px, 2.4vw, 24px) + var(--eliza-chat-side-clearance, 0px))",
   color: "var(--txt, #f5f5f5)",
   fontFamily: "inherit",
 };
@@ -391,7 +416,7 @@ export function ViewState({
   empty: boolean;
   emptyTitle: string;
   emptyBody: string;
-  onRetry: () => void;
+  onRetry?: () => void;
 }) {
   if (loading) {
     return (
@@ -421,14 +446,16 @@ export function ViewState({
         >
           {error}
         </p>
-        <AgentAction
-          agentId="notes-retry"
-          agentLabel="Retry Notes"
-          agentGroup="notes-status"
-          onClick={onRetry}
-        >
-          Retry
-        </AgentAction>
+        {onRetry ? (
+          <AgentAction
+            agentId="notes-retry"
+            agentLabel="Retry Notes"
+            agentGroup="notes-status"
+            onClick={onRetry}
+          >
+            Retry
+          </AgentAction>
+        ) : null}
       </div>
     );
   }

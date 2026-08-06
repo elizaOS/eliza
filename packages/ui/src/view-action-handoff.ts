@@ -194,6 +194,7 @@ export async function dispatchViewActionHandoff(
     ...(current.viewPath ? { viewPath: current.viewPath } : {}),
     viewLabel: current.viewLabel,
     viewType: current.viewType,
+    source: "agent",
     ...(current.action ? { action: current.action } : {}),
     ...(current.views ? { views: current.views } : {}),
     ...(current.layout ? { layout: current.layout } : {}),
@@ -231,6 +232,7 @@ export function dispatchViewActionHandoffDirect(
   if (!handoff) return false;
   dispatch({
     viewId: handoff.viewId,
+    source: "agent",
     ...(handoff.subview ? { subview: handoff.subview } : {}),
   });
   return true;

@@ -1860,13 +1860,12 @@ function createV5ReplyStrategyResult(args: {
 	effectReceiptIds?: readonly string[];
 	/**
 	 * Provenance for the humanness voice gate (#14873): `true` when `text` is
-	 * the model's own composed reply (Stage-1 `replyText`, the Stage-1 ack), so
-	 * gated transports (`sendMessageToTarget`) deliver it untouched instead of
-	 * spending a blocking TEXT_SMALL re-voice on text that is already genuine
-	 * model voice. Leave unset for anything with template or tool provenance —
-	 * hardcoded deferrals, captured action output, planner `finalMessage`
-	 * (which can relay tool text or canned fallbacks) — so the gate still
-	 * rephrases those before they reach a user.
+	 * already final user-facing copy — either the model's own composed reply or
+	 * a byte-exact canonical `verifiedUserFacing` action result. Gated transports
+	 * (`sendMessageToTarget`) then preserve it instead of spending a blocking
+	 * TEXT_SMALL re-voice that could alter exact names, punctuation, or values.
+	 * Leave unset for templates, ordinary tool output, and mixed-provenance
+	 * planner text so the gate can still rewrite canned strings.
 	 */
 	agentVoiced?: boolean;
 }): StrategyResult {
@@ -3028,21 +3027,72 @@ async function createV5MessageContextObject(args: {
 		includeOwnReplies: !args.includeTools,
 	});
 
+	// Contexts are routing taxonomy, not proof that a handler exists. Promise
+	// beyond-window recall only when this role can execute the registered MEMORY
+	// action and its declared discriminator explicitly includes search; custom
+	// runtimes that register only the context must keep the honest bounded-window
+	// response instead of escalating to a tool the planner cannot expose.
+	const hasMemoryRecallSurface =
+		(args.availableContexts ?? []).some((context) => context.id === "memory") &&
+		(args.runtime.actions ?? []).some((action) => {
+			if (normalizeActionIdentifier(action.name) !== "MEMORY") {
+				return false;
+			}
+			const searchDiscriminator = action.parameters?.some((parameter) => {
+				const name = normalizeActionIdentifier(parameter.name);
+				if (name !== "ACTION" && name !== "OP") {
+					return false;
+				}
+				// schema is required by ActionParameter, but an untyped third-party
+				// plugin can register a malformed parameter; a capability probe must
+				// not throw on it.
+				return [
+					...(parameter.schema?.enum ?? []),
+					...(parameter.schema?.enumValues ?? []),
+				].some((value) => normalizeActionIdentifier(value) === "SEARCH");
+			});
+			return (
+				searchDiscriminator === true &&
+				canActionRun(action, {
+					message: args.message,
+					activeContexts: ["memory"],
+					userRoles: args.userRoles,
+				})
+			);
+		});
 	events.push({
 		id: "current-turn-boundary",
 		type: "instruction",
 		source: "message-service",
 		stable: false,
-		content:
-			'current_turn_boundary: The prior_message blocks above are context only. If a reply_reference block follows, it is the platform message that the final message:user is replying to; use it only to resolve references such as this/that/it. Execute and answer only the final message:user below. Do not merge separate prior requests into the current task unless the final message explicitly references them. Exception for visible-context recall: when the final message asks a recall question about what was said in this conversation (who mentioned X, did anyone bring up Y, what did I say about Z, what was the last message, did you yourself say W), you may scan the prior_message blocks above and answer from what is literally visible there. This recall exception covers only what was literally SAID in the visible chat. It does NOT cover the user\'s tracked work: a recap, status, or what-did-I-get-done ask about their todos, tasks, reminders, habits, goals, notes, or day ("recap my day", "what\'s left today", "did I finish everything", "how did I do this week") is a live tasks lookup, not chat recall — route it to the tasks tools and answer from what they return; never report an empty or missing day from the visible window alone.' +
-			// Only the chat-recall context renders the agent's own prior turns;
-			// the tool-planner context deliberately omits them (stale-answer
-			// hazard), so this grounding sentence would be false there.
-			(args.includeTools
-				? ""
-				: " Your own prior replies are the prior_message:agent blocks: when asked what YOU said, told, or promised earlier, answer only from those blocks — never assert you said something that does not appear in them, and never deny saying something that does.") +
-			' Before saying you cannot find something, read the final message:user itself: if the asker states a fact and asks about it in the same message ("my favorite color is teal, what is my favorite color?"), answer from the current message directly. Only when the asked-about token appears neither in the current message nor in any visible prior_message block, say so plainly ("I don\'t see X in the recent messages I can see") rather than claiming you searched beyond the visible window or fabricating an action — the prior_message blocks are the only window you have, and there is no separate chat-history search tool. This "no chat-history search" limit is about CHAT recall ONLY. It does NOT apply to what a task, build, deploy, or sub-agent YOU ran actually did: that run status IS verifiable with the task/sub-agent tools. So when the final message asks "what happened with [the build/app/task]" or disputes whether something you ran actually worked, treat it as a live verification request (set requiresTool) and CHECK the current task/sub-agent status with a tool before reporting, disclaiming, or conceding — never say you cannot verify a run you can look up.',
+		content: args.includeTools
+			? "current_turn_boundary: Plan and execute only the final message:user. Prior messages and reply_reference are context for resolving references, never pending commands. Stage 1 already decided this turn needs tools; use current tool results for live data and side effects, and never claim work that no tool result proves."
+			: 'current_turn_boundary: The prior_message blocks above are context only. If a reply_reference block follows, it is the platform message that the final message:user is replying to; use it only to resolve references such as this/that/it. Execute and answer only the final message:user below. Do not merge separate prior requests into the current task unless the final message explicitly references them. Exception for visible-context recall: when the final message asks a recall question about what was said in this conversation (who mentioned X, did anyone bring up Y, what did I say about Z, what was the last message, did you yourself say W), you may scan the prior_message blocks above and answer from what is literally visible there. This recall exception covers only what was literally SAID in the visible chat. It does NOT cover the user\'s tracked work: a recap, status, or what-did-I-get-done ask about their todos, tasks, reminders, habits, goals, notes, or day ("recap my day", "what\'s left today", "did I finish everything", "how did I do this week") is a live tasks lookup, not chat recall — route it to the tasks tools and answer from what they return; never report an empty or missing day from the visible window alone.' +
+				// Only the chat-recall context renders the agent's own prior turns;
+				// the tool-planner context deliberately omits them (stale-answer
+				// hazard), so this grounding sentence would be false there.
+				(args.includeTools
+					? ""
+					: " Your own prior replies are the prior_message:agent blocks: when asked what YOU said, told, or promised earlier, answer only from those blocks — never assert you said something that does not appear in them, and never deny saying something that does.") +
+				' Before saying you cannot find something, read the final message:user itself: if the asker states a fact and asks about it in the same message ("my favorite color is teal, what is my favorite color?"), answer from the current message directly.' +
+				(hasMemoryRecallSurface
+					? ' The prior_message blocks are only the most recent window of a longer stored conversation — older messages may exist that are not shown here, and the memory context can search them. When the asked-about token appears neither in the current message nor in any visible prior_message block, or the question asks about the conversation beyond the visible window ("how many times have I mentioned X", "have I ever told you about Y"), that is a live lookup over the stored record: route it to the memory context (set requiresTool) so the stored history is actually searched this turn. Never answer a beyond-window recall or count question from the visible window alone, never present the visible window as the whole conversation, and never claim you searched anything a tool did not return this turn. Run status is equally checkable: when the final message asks "what happened with [the build/app/task]" or disputes whether something you ran actually worked, treat it as a live verification request (set requiresTool) and CHECK the current task/sub-agent status with a tool before reporting, disclaiming, or conceding — never say you cannot verify a run you can look up.'
+					: ' The prior_message blocks are the only conversation window you have, and there is no separate chat-history search tool. Only when the asked-about token appears neither in the current message nor in any visible prior_message block, say so plainly ("I don\'t see X in the recent messages I can see") rather than claiming you searched beyond the visible window or fabricating an action. If the user asks for a whole-conversation count or another exhaustive history claim ("how many times have I mentioned X", "have I ever told you Y"), never present visible matches as the full-history answer: either decline to give a total, or explicitly label any observation as limited to the recent messages you can see and say older history cannot be verified. This "no chat-history search" limit is about CHAT recall ONLY. It does NOT apply to what a task, build, deploy, or sub-agent YOU ran actually did: that run status IS verifiable with the task/sub-agent tools. So when the final message asks "what happened with [the build/app/task]" or disputes whether something you ran actually worked, treat it as a live verification request (set requiresTool) and CHECK the current task/sub-agent status with a tool before reporting, disclaiming, or conceding — never say you cannot verify a run you can look up.'),
 	});
+
+	// Prompt automations execute without a visible human message; their reply is
+	// the delivered result. Make that boundary explicit so the model performs
+	// the instruction instead of acknowledging framing the recipient never sees.
+	if (args.message.content.source === MESSAGE_SOURCE_TRIGGER_PROMPT) {
+		events.push({
+			id: "trigger-automation-policy",
+			type: "instruction",
+			source: "message-service",
+			stable: false,
+			content:
+				'trigger_automation_policy: The final message:user below is a scheduled automation of yours firing, not a person talking to you. Its "Do this now:" clause is the instruction you must carry out on this turn, and whatever you reply is delivered to the user as the automation\'s output. Produce that output: if the instruction is to remind, the reply IS the reminder addressed to the user; if it is to check or report something, run the needed tools and reply with the result. Never reply with an acknowledgement of the instruction itself ("noted.", "got it", "will do") — the user never sees the instruction, so an acknowledgement reaches them as a bare non-sequitur.',
+		});
+	}
 
 	// Ambient-turn policy (live incident tj-f637475edcb7bd): on an unaddressed
 	// group turn the planner ran, produced no tool activity, and still shipped
@@ -3775,20 +3825,24 @@ available_contexts:
 {{availableContexts}}
 
 direct/private rules:
-- Ordinary chat, static knowledge, creative writing, rewriting, translation, brainstorming, and short explanations: use contexts=["simple"] and put the final answer in replyText.
-- For simple requests, replyText is the natural user-facing answer; avoid single-token fragments or placeholders unless the user asked for terse.
-- Use non-simple context/action names only for tools, live facts, private state, files, web, shell, side effects, scheduling, memory, settings, secrets, wallet/finance, media, or device/app control.
+- Chat, static knowledge, writing, rewriting, translation, brainstorming, and explanations: contexts=["simple"]; answer in replyText.
+- Simple replyText must be natural and complete, not a placeholder, unless terse was requested.
+- Non-simple contexts/actions are only for tools, live/private state, files/web/shell, side effects, scheduling/memory/settings/secrets/finance/media/device control.
+- UI navigation is device/app control: open/show/switch/go-home requests use contexts=["general"], candidateActionNames=["VIEWS"], and a brief pending ack. Never claim the view opened before VIEWS succeeds.
+- Slash-command questions are conversation: contexts=["general"]; say /commands shows the list; never select VIEWS or ask clarification for "show commands".
+- Sticky Notes and native device controls are also device/app control: note and flashlight reads or mutations use contexts=["general"], candidateActionNames=["VIEWS"]. Do not route sticky Notes to documents or invent action names such as CREATE_NOTE.
+- Calendar-event reads or mutations use contexts=["calendar"], candidateActionNames=["CALENDAR"]. A timed "add X tomorrow at 9am" request is a calendar event unless the user explicitly asks for a task or reminder.
 - Goals/todos/reminders/habits/routines are non-simple; goals -> tasks + OWNER_GOALS, never work threads.
 - Only use "simple" when you can answer directly from your static knowledge or the visible prior_message / reply_reference context. If a specific name/thing is unclear, choose general or memory.
 - Never claim searched/scanned/recalled unless tool returned it; includes "I scanned the chat" or "Spawning a sub-agent".
-- Never deny a capability (memory, tasks, scheduling, reminders) when a matching context is in available_contexts — route to it; deny only when nothing matches.
+- Never deny a capability when current_turn_boundary says a role-visible executable action can attempt it. available_contexts supplies routing domains but does not by itself prove a handler exists.
 - A tool that errored on an earlier turn may work now; on a repeated ask, retry it fresh and report this turn's result, not the old failure.
 - Crisis/legal/medical/self-harm/police/CPS: contexts=["simple"], replyText deferral only; no actions or conceal/evasion/testimony/contraband advice. Refer to lawyer/emergency services/poison control/doctor/therapist/crisis/DV hotline.
 - For tool/planning paths, replyText is only a brief ack ("On it."). Never refuse because tools may run after this stage.
-- If schema omits shouldRespond, do not invent it.
-- contexts must be ids from available_contexts. If a needed tool context is unclear, use ["general"].
+- Never invent omitted shouldRespond.
+- contexts use available_contexts ids; unclear tool context => ["general"].
 
-Return exactly one JSON object for {{handleResponseToolName}}. No prose, markdown, or thinking.
+Return one {{handleResponseToolName}} JSON object; no prose, markdown, or thinking.
 `;
 
 /**
@@ -6005,6 +6059,39 @@ function listAvailableContextsForRole(
 	return registry.listAvailable(role);
 }
 
+/**
+ * Whether the routed action owns the response-handler's pre-planner reply.
+ * A deterministic call is already selected, while relevance candidates are
+ * only safe to trust when they all resolve to the same canonical action.
+ */
+function actionOwnsResponseHandlerEarlyReply(
+	runtime: Pick<IAgentRuntime, "actions">,
+	messageHandler: MessageHandlerResult,
+): boolean {
+	const actionLookup = buildRuntimeActionLookup(runtime);
+	const deterministicToolCall = messageHandler.plan.deterministicToolCall;
+	if (deterministicToolCall) {
+		return (
+			resolveRuntimeAction(actionLookup, deterministicToolCall.name)
+				?.suppressEarlyReply === true
+		);
+	}
+
+	const candidateNames = messageHandler.plan.candidateActions ?? [];
+	if (candidateNames.length === 0) return false;
+
+	const resolvedCandidates = new Map<string, Action>();
+	for (const name of candidateNames) {
+		if (typeof name !== "string" || !name.trim()) return false;
+		const action = resolveRuntimeAction(actionLookup, name);
+		if (!action) return false;
+		resolvedCandidates.set(normalizeActionIdentifier(action.name), action);
+	}
+
+	if (resolvedCandidates.size !== 1) return false;
+	return resolvedCandidates.values().next().value?.suppressEarlyReply === true;
+}
+
 interface ExecuteV5PlannedToolCallParams {
 	runtime: IAgentRuntime;
 	toolCall: PlannerToolCall;
@@ -6354,14 +6441,24 @@ function collectPlannerTools(
 	if (!hasAnyAction) return [];
 	const actions = narrowedActions ?? collectActionsFromContext(context);
 	const tierAParents = readTierAParentsFromContext(context);
+	const actionTools = buildPlannerToolsFromTieredActions(actions, {
+		tierAParents,
+		actionLookup: new Map(
+			actions.map((action) => [action.name, action] as const),
+		),
+		tierAChildrenByParent: readTierAChildrenByParentFromContext(context),
+	});
+	const terminalNames = new Set(
+		CORE_PLANNER_TERMINALS.map((tool) => normalizeActionIdentifier(tool.name)),
+	);
+	// REPLY/IGNORE may also be registered runtime actions. The planner-loop owns
+	// these protocol terminals, so keep its canonical definitions exactly once;
+	// duplicate native tool names waste schema tokens and are ambiguous to model
+	// providers that preserve both entries.
 	return [
-		...buildPlannerToolsFromTieredActions(actions, {
-			tierAParents,
-			actionLookup: new Map(
-				actions.map((action) => [action.name, action] as const),
-			),
-			tierAChildrenByParent: readTierAChildrenByParentFromContext(context),
-		}),
+		...actionTools.filter(
+			(tool) => !terminalNames.has(normalizeActionIdentifier(tool.name)),
+		),
 		...CORE_PLANNER_TERMINALS,
 	];
 }
@@ -6565,13 +6662,13 @@ function collectPreviousActionResults(
 /**
  * Pre-LLM action shortcut gate (#8791).
  *
- * Matches the user's text against the runtime's `ShortcutRegistry` BEFORE any
- * model call. Explicit slash/`!` commands are always eligible (this is what
- * makes slash commands deterministic per #8790); natural-language shortcuts use
- * narrow/confidence-floored patterns. On a confident `action`-target match the
- * matched action runs and its reply is returned as a `direct_reply` — emitting
- * ZERO `RESPONSE_HANDLER` tokens. Navigate/client targets are resolved on the
- * client (the slash menu already runs them locally) so the gate ignores them.
+ * Matches explicit slash/`!` protocol invocations against the runtime's
+ * `ShortcutRegistry` before any model call. Ordinary language is deliberately
+ * ineligible here: it must reach the planner even when a plugin registered a
+ * natural-language shortcut. On an explicit `action`-target match the action
+ * runs and its reply is returned as a `direct_reply` — emitting zero
+ * `RESPONSE_HANDLER` tokens. Navigate/client targets are resolved on the client
+ * (the slash menu already runs them locally) so the gate ignores them.
  *
  * Returns `null` on no match / mis-fire so the turn proceeds unchanged
  * (byte-identical to today). Set `ELIZA_SHORTCUTS_DISABLED=1` to bypass entirely.
@@ -6595,7 +6692,7 @@ export async function runShortcutGate(args: {
 	const authorized = isAdminRank(args.senderRole);
 	const match = registry.match(text, {
 		actions: args.runtime.actions.map((action) => action.name),
-		allowNatural: true,
+		allowNatural: false,
 		isAuthorized: authorized,
 		isElevated: hasAtLeastRole(args.senderRole, "OWNER"),
 	});
@@ -6763,6 +6860,43 @@ async function emitInteractionEvent(
 	}
 }
 
+const INTERMEDIATE_CALLBACK_METADATA_KEYS = new Set([
+	"actions",
+	"agentVoiced",
+	"channelType",
+	"effectReceiptIds",
+	"inReplyTo",
+	"mentionContext",
+	"merge",
+	"providers",
+	"reactedMessageText",
+	"responseId",
+	"responseMessageId",
+	"source",
+	"target",
+	"thought",
+	"transcriptVisibility",
+]);
+
+function hasIntermediateCallbackPayload(content: Content): boolean {
+	return Object.entries(content).some(([key, value]) => {
+		if (key === "text" || INTERMEDIATE_CALLBACK_METADATA_KEYS.has(key)) {
+			return false;
+		}
+		if (value === undefined || value === null) return false;
+		if (typeof value === "string") return value.trim().length > 0;
+		if (Array.isArray(value)) return value.length > 0;
+		if (typeof value === "object") return Object.keys(value).length > 0;
+		return true;
+	});
+}
+
+function withoutIntermediateVisibleText(content: Content): Content | null {
+	const filtered = { ...content };
+	delete filtered.text;
+	return hasIntermediateCallbackPayload(filtered) ? filtered : null;
+}
+
 export async function runV5MessageRuntimeStage1(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
@@ -6854,6 +6988,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		const messageHandlerStartedAt = Date.now();
 		const directMessageChannel =
 			args.message.content?.channelType === ChannelType.DM ||
+			args.message.content?.channelType === ChannelType.VOICE_DM ||
 			args.message.content?.channelType === ChannelType.API ||
 			args.message.content?.channelType === ChannelType.SELF;
 		// Ambient turn = a positively-identified unaddressed text-group turn
@@ -7060,6 +7195,10 @@ export async function runV5MessageRuntimeStage1(args: {
 			// remains buffered until routing and effect validation complete. Cloud
 			// adapters ignore the flag and return the result whole.
 			streamStructured: true,
+			// This is the only Stage 1 field intended for the user. Local voice
+			// consumes the validated replyText field; planner/evaluator calls leave
+			// this unset and therefore cannot leak their structured output to TTS.
+			voiceOutput: "user-visible" as const,
 			responseSkeleton: responseGrammar.responseSkeleton,
 			grammar: responseGrammar.grammar,
 			spanSamplerPlan: stage1SpanSamplerPlan,
@@ -7434,10 +7573,16 @@ export async function runV5MessageRuntimeStage1(args: {
 			messageHandler.plan.reply.trim().length > 0
 				? messageHandler.plan.reply
 				: undefined;
+		const prePatchStageOneReplyEffectStatus =
+			messageHandler.plan.replyEffectStatus;
+		const prePatchStageOneReplyIsUngroundedAppliedClaim =
+			prePatchStageOneReplyEffectStatus === "applied";
 		const responseHandlerEvaluation = fieldRunResult?.preempt
 			? {
 					activeEvaluators: [],
 					appliedPatches: [],
+					candidateActionsAddedByEvaluators: [],
+					candidateActionsClearedByEvaluators: false,
 					errors: [],
 				}
 			: await timeInferenceSpan("evaluators:response-handler", () =>
@@ -7585,22 +7730,39 @@ export async function runV5MessageRuntimeStage1(args: {
 
 		const selectedContexts =
 			route.type === "planning_needed" ? route.contexts : [];
-		// Merge direct-request candidate inference BEFORE the early-ack gate so
-		// the async-handoff check below sees the turn's full candidate set.
+		// Merge direct-request candidate inference before the early-ack gate so
+		// the async-handoff check below sees the turn's full candidate set. An
+		// evaluator that cleared Stage-1 candidates has already established an
+		// authoritative route from richer runtime state, so the generic text
+		// heuristic must not undo that decision.
 		const directPlannerCandidateActions =
 			inferDirectCurrentRequestCandidateActions(
 				args.runtime.actions ?? [],
 				getUserMessageText(args.message) ?? "",
 			);
-		if (directPlannerCandidateActions.length > 0) {
+		if (
+			directPlannerCandidateActions.length > 0 &&
+			!responseHandlerEvaluation.candidateActionsClearedByEvaluators
+		) {
 			messageHandler.plan.candidateActions = uniqueActionNames([
 				...getMessageHandlerCandidateActions(messageHandler),
 				...directPlannerCandidateActions,
 			]);
 		}
 		const routedResponseHandlerReply = getMessageHandlerReply(messageHandler);
-		let earlyReplyText =
-			routedResponseHandlerReply || parsedResponseHandlerReply;
+		let earlyReplyText = actionOwnsResponseHandlerEarlyReply(
+			args.runtime,
+			messageHandler,
+		)
+			? ""
+			: routedResponseHandlerReply || parsedResponseHandlerReply;
+		// `replyEffectStatus: applied` is the model's prediction, not an effect
+		// receipt. Keep it buffered until the planner either produces a verified
+		// action result or returns the terminal failure; otherwise the client sees a
+		// fabricated success flash immediately before the real outcome replaces it.
+		if (prePatchStageOneReplyIsUngroundedAppliedClaim) {
+			earlyReplyText = "";
+		}
 		const onResponseHandlerEarlyReply = args.onResponseHandlerEarlyReply;
 		if (earlyReplyText.length > 0 && onResponseHandlerEarlyReply) {
 			const earlyReplyEgressDecision = evaluatePlannedReplyEgress({
@@ -7948,6 +8110,14 @@ export async function runV5MessageRuntimeStage1(args: {
 		const recordingCallback: HandlerCallback | undefined = args.callback
 			? async (content, ...rest) => args.callback?.(content, ...rest) ?? []
 			: undefined;
+		const intermediateCallback: HandlerCallback | undefined = recordingCallback
+			? async (content, ...rest) => {
+					const nonTextContent = withoutIntermediateVisibleText(content);
+					return nonTextContent
+						? recordingCallback(nonTextContent, ...rest)
+						: [];
+				}
+			: undefined;
 
 		const invokePlannerLoop = (
 			loopContext: typeof plannerContextAfterEarlyReply,
@@ -7968,6 +8138,12 @@ export async function runV5MessageRuntimeStage1(args: {
 							typeof messageHandler.plan.reply === "string"
 								? messageHandler.plan.reply
 								: undefined;
+						if (
+							prePatchStageOneReplyIsUngroundedAppliedClaim &&
+							postPatch === prePatchStageOneReply
+						) {
+							return undefined;
+						}
 						// A promotion patch that replaced a substantive stage-0 answer
 						// with a bare progress ack must not also disarm the loop's
 						// answer rescue — feed the preserved pre-patch answer instead.
@@ -7975,6 +8151,7 @@ export async function runV5MessageRuntimeStage1(args: {
 							prePatchStageOneReply &&
 							postPatch &&
 							postPatch !== prePatchStageOneReply &&
+							!prePatchStageOneReplyIsUngroundedAppliedClaim &&
 							PROGRESS_ONLY_ANSWER_REJECT.test(postPatch.trim())
 						) {
 							return prePatchStageOneReply;
@@ -8016,8 +8193,15 @@ export async function runV5MessageRuntimeStage1(args: {
 											ctx.trajectory,
 											exposedPlannerActions,
 										),
+										// A pending batch has not earned transcript prose, but its
+										// media and interactive payloads still belong to the user.
 										...(recordingCallback
-											? { callback: recordingCallback }
+											? {
+													callback:
+														ctx.plannerCompleted === false
+															? intermediateCallback
+															: recordingCallback,
+												}
 											: {}),
 									}),
 									plannerRuntime,
@@ -8054,7 +8238,9 @@ export async function runV5MessageRuntimeStage1(args: {
 		try {
 			plannerResult = await invokePlannerLoop(plannerContextAfterEarlyReply);
 		} catch (error) {
-			const preservedAnswer = prePatchStageOneReply?.trim();
+			const preservedAnswer = prePatchStageOneReplyIsUngroundedAppliedClaim
+				? undefined
+				: prePatchStageOneReply?.trim();
 			if (
 				!preservedAnswer ||
 				PROGRESS_ONLY_ANSWER_REJECT.test(preservedAnswer)
@@ -8199,10 +8385,15 @@ export async function runV5MessageRuntimeStage1(args: {
 			(ambientTurn && plannerResult.endedWithDeliberateSilence === true);
 		const ranNonSilentAction =
 			actionResults.length > 0 && !suppressesPlannerReply;
-		const stageOneAck =
+		const rawStageOneAck =
 			typeof messageHandler.plan.reply === "string"
 				? messageHandler.plan.reply.trim()
 				: "";
+		const stageOneAck =
+			prePatchStageOneReplyIsUngroundedAppliedClaim &&
+			rawStageOneAck === prePatchStageOneReply?.trim()
+				? ""
+				: rawStageOneAck;
 		// Answerless-final fallback: when the planner loop finished with NO final
 		// text, a preserved substantive stage-0 answer is strictly better than
 		// silence or filler — deliver it. This applies whether or not an early
@@ -8212,6 +8403,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			!plannedText &&
 			!suppressesPlannerReply &&
 			prePatchStageOneReply &&
+			!prePatchStageOneReplyIsUngroundedAppliedClaim &&
 			!PROGRESS_ONLY_ANSWER_REJECT.test(prePatchStageOneReply.trim()) &&
 			(!earlyReplySent ||
 				normalizeVisibleTextForDuplicateCheck(prePatchStageOneReply) !==
@@ -8347,19 +8539,22 @@ export async function runV5MessageRuntimeStage1(args: {
 			!plannedTextRepeatsActionReply &&
 			!plannedTextIsRedundantFailureFallback &&
 			!plannedTextRepeatsVerifiedActionDelivery;
-		// Voice-gate provenance (#14873): only the Stage-1 ack has unambiguous
-		// model provenance here (`messageHandler.plan.reply` is the Stage-1
-		// model's own field). The planner's `finalMessage` is deliberately NOT
-		// marked: it is a mixed-provenance field (evaluator messageToUser, a
-		// verified tool's userFacingText, a deterministic tool-result relay, or a
-		// hardcoded fallback all flow through it), and exempting it wholesale
-		// would let canned tool strings skip the humanness gate — the exact text
-		// the gate exists to rephrase. The hardcoded "on it, working on that
-		// now." ack stays unmarked for the same reason.
+		// Voice-gate provenance (#14873): the Stage-1 ack has unambiguous model
+		// provenance. A byte-exact canonical action result also needs preservation:
+		// `verifiedUserFacing` promises do-not-paraphrase semantics, so routing that
+		// text through a second model would violate its contract and can corrupt
+		// punctuation or exact values. Mixed evaluator/tool prose and hardcoded
+		// fallbacks remain unmarked so canned strings still receive the voice pass.
 		const effectiveReplyIsModelVoice =
 			!plannedText &&
 			stageOneAck.length > 0 &&
 			effectiveReplyText === stageOneAck;
+		const effectiveReplyIsCanonicalActionText = actionResults.some(
+			(result) =>
+				result.verifiedUserFacing === true &&
+				typeof result.userFacingText === "string" &&
+				effectiveDeliveredReplyText === result.userFacingText.trim(),
+		);
 		const transcriptVisibility = resolveActionResultTranscriptVisibility(
 			plannedTextRaw || effectiveReplyText,
 			actionResults,
@@ -8378,7 +8573,9 @@ export async function runV5MessageRuntimeStage1(args: {
 								plannerResult.evaluator?.thought ??
 								plannerResult.trajectory.steps.at(-1)?.thought ??
 								messageHandler.thought,
-							agentVoiced: effectiveReplyIsModelVoice,
+							agentVoiced:
+								effectiveReplyIsModelVoice ||
+								effectiveReplyIsCanonicalActionText,
 							...(effectiveReplyReceiptIds.length > 0
 								? { effectReceiptIds: effectiveReplyReceiptIds }
 								: {}),
@@ -9917,6 +10114,9 @@ function shouldRewriteActionCallback(
 	actionName?: string,
 ): response is Content & { text: string } {
 	if (!response || typeof response.text !== "string") return false;
+	// The settlement boundary marks only a byte-exact canonical action reply.
+	// Re-voicing it would violate verifiedUserFacing's do-not-paraphrase contract.
+	if (response.agentVoiced === true) return false;
 	if (getEffectDeliveryBinding(response)) {
 		return false;
 	}
@@ -11386,12 +11586,9 @@ export class DefaultMessageService implements IMessageService {
 			setTranslatedUserText,
 		});
 
-		// #8791: pre-LLM action shortcut gate runs FIRST — before the planner or
-		// model call. An explicit slash/`!` command (always-on) or a
-		// confident natural-language shortcut resolves to a deterministic action
-		// reply with zero inference. Placed here (ahead of the pre-LLM
-		// conditional v5 stage) so a slash command can
-		// never be pre-empted by another handler.
+		// #8791: the explicit-protocol shortcut gate runs first so slash/`!`
+		// commands cannot be pre-empted by another handler. Ordinary language is
+		// never eligible here and always reaches the planner.
 		if (!strategyResult) {
 			// Reuse the role resolved once per turn in handleMessage (stamped on the
 			// trajectory context) — resolving again here costs a room+world lookup.
@@ -11716,21 +11913,9 @@ export class DefaultMessageService implements IMessageService {
 			// generating a response, the default behavior is to drop the older
 			// response so the bot only replies to the freshest input.
 			//
-			// Exceptions — keep the response when:
-			// 1. The planner picked an explicit REPLY/RESPOND action. That's a
-			//    deliberate conversational signal (often a direct @-mention) and
-			//    dropping it leaves the user looking at silence on a tagged
-			//    message, which the character contract treats as a bug.
-			// 2. The turn deterministically addressed the agent (DM, platform
-			//    mention/reply, autonomous, delivered early ack) even without an
-			//    explicit REPLY action. Action-mode turns finish without REPLY in
-			//    their actions list, so on a slow backend any addressed turn that
-			//    overlapped the next inbound message was silently dropped — and
-			//    connectors treat the resulting non-delivery as a deliberate
-			//    IGNORE, making the silence terminal and unobservable.
-			// Either way the newer message still gets its own turn through the
-			// normal pipeline, so each inbound message is answered at most once —
-			// keeping the older response never double-replies to either message.
+			// Keep only a deliverable response carrying the explicit REPLY/RESPOND
+			// marker. Action results opt into the user channel through userFacingText,
+			// and that path constructs the same explicit reply marker.
 			const currentResponseId = agentResponses.get(message.roomId);
 			if (currentResponseId !== responseId && !opts.keepExistingResponses) {
 				const keepReason = resolveSupersededResponseKeepReason(responseContent);

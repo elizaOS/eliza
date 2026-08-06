@@ -128,22 +128,26 @@ const HOME_SCREEN_CSS = `
 `;
 
 /**
- * The entrance rise plays once on first mount so subsequent renders never move
- * interactive targets away from the user's pointer. Pure CSS `forwards` does
- * not prevent animation replay when the class is re-evaluated, so the class is
- * removed after it runs (issue 9304).
+ * The entrance rise belongs to app launch, not to route entry. Remembering it
+ * outside the component prevents a view round-trip from replaying layout
+ * motion when HomeScreen mounts again (issue 9304).
  */
+let homeEntrancePlayed = false;
+
+export function __resetHomeEntranceForTests(): void {
+  homeEntrancePlayed = false;
+}
+
 function useEnterOnceClass(): string {
-  // `played` is set in a layout effect after the first commit so the very first
-  // render still carries `home-enter` (the animation runs), and every render
-  // after that omits it.
-  const [played, setPlayed] = useState(false);
-  const ranRef = useRef(false);
+  const shouldPlayRef = useRef(!homeEntrancePlayed);
+  const [played, setPlayed] = useState(!shouldPlayRef.current);
+  useLayoutEffect(() => {
+    if (shouldPlayRef.current) homeEntrancePlayed = true;
+  }, []);
   useEffect(() => {
-    if (ranRef.current) return;
-    ranRef.current = true;
-    // Defer one frame so the entrance animation is committed before we strip the
-    // class; stripping immediately could cancel it mid-flight on slow paints.
+    if (!shouldPlayRef.current) return;
+    // Keep the class through the complete transition; stripping it earlier can
+    // cancel the rise midway through a slow first paint.
     const id = window.setTimeout(() => setPlayed(true), 700);
     return () => window.clearTimeout(id);
   }, []);

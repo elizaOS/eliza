@@ -218,7 +218,6 @@ export const personalityAction: Action = {
 		"BE_LESS_RESPONSIVE",
 		"BE_MORE_AGREEABLE",
 		"SHUT_UP",
-		"STOP_TALKING",
 		"BE_VERBOSE",
 		"BE_WARMER",
 		"BE_COLDER",

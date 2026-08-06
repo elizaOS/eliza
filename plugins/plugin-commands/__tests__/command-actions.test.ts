@@ -11,9 +11,9 @@ import {
 	dispatchCommandMessage,
 	explicitCommandShortcuts,
 	getCommandSettings,
-	naturalShortcuts,
 	resolveCommand,
 } from "../src/actions";
+import { commandRegistryProvider } from "../src/index";
 import {
 	getEnabledCommandsForRuntime,
 	initForRuntime,
@@ -274,16 +274,30 @@ describe("command actions — slash-only validate (#8790)", () => {
 	});
 });
 
+describe("command registry provider", () => {
+	it("keeps conversational command discovery model-owned and out of VIEWS", async () => {
+		initForRuntime("agent-1");
+		const runtime = makeRuntime();
+		const result = await commandRegistryProvider.get(
+			runtime,
+			msg("show me the commands"),
+			{} as never,
+		);
+
+		expect(result.text).toContain("`/commands` displays the list");
+		expect(result.text).toContain("do not ask a clarifying question");
+		expect(result.text).toContain("route that request to VIEWS");
+		expect(result.values?.isCommand).toBe(false);
+	});
+});
+
 describe("command shortcuts ↔ actions linkage (#8790 × #8791)", () => {
 	it("every shortcut targets a registered command action", () => {
 		const actionNames = new Set(commandActions.map((a) => a.name));
 		expect(commandShortcuts.length).toBeGreaterThan(0);
-		// commandShortcuts = explicit slash shortcuts + narrow natural ones.
-		expect(commandShortcuts).toEqual([
-			...explicitCommandShortcuts,
-			...naturalShortcuts,
-		]);
+		expect(commandShortcuts).toEqual(explicitCommandShortcuts);
 		for (const shortcut of commandShortcuts) {
+			expect(shortcut.kind).toBe("explicit");
 			expect(shortcut.target.kind).toBe("action");
 			if (shortcut.target.kind === "action") {
 				expect(actionNames.has(shortcut.target.name)).toBe(true);
@@ -299,14 +313,6 @@ describe("command shortcuts ↔ actions linkage (#8790 × #8791)", () => {
 			for (const alias of shortcut.aliases ?? []) {
 				expect(alias.startsWith("/")).toBe(true);
 			}
-		}
-	});
-
-	it("natural shortcuts carry no slash aliases (anchored patterns)", () => {
-		for (const shortcut of naturalShortcuts) {
-			expect(shortcut.kind).toBe("natural");
-			expect(shortcut.aliases ?? []).toHaveLength(0);
-			expect(shortcut.patterns && shortcut.patterns.length > 0).toBe(true);
 		}
 	});
 

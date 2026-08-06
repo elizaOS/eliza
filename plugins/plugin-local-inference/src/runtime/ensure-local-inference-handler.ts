@@ -130,6 +130,7 @@ type RuntimeWithModelRegistration = AgentRuntime & {
 		handler: LocalModelHandler,
 		provider: string,
 		priority?: number,
+		metadata?: { local?: boolean; streamable?: boolean },
 	) => void;
 };
 
@@ -1643,6 +1644,7 @@ export async function ensureLocalInferenceHandler(
 				makeHandler(slot),
 				provider,
 				LOCAL_INFERENCE_PRIORITY,
+				{ local: true, streamable: true },
 			);
 		} catch (err) {
 			logger.warn(

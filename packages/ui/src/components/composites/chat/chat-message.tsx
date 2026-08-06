@@ -16,7 +16,7 @@
  * Presentation only — actions are delegated to callbacks.
  */
 import { Check, LoaderCircle, RotateCcw, Sparkles, X } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
+import { motion } from "motion/react";
 import type * as React from "react";
 import {
   type FocusEvent,
@@ -133,7 +133,11 @@ export interface ChatMessageProps {
   userMessagesOnRight?: boolean;
 }
 
-const HOVER_MEDIA_QUERY = "(hover: hover) and (pointer: fine)";
+// Narrow layouts use the touch interaction even when a responsive desktop
+// preview supplies a fine pointer; the affordance follows the surface the user
+// is reviewing, while wider desktop layouts retain hover discovery.
+const HOVER_MEDIA_QUERY =
+  "(min-width: 768px) and (hover: hover) and (pointer: fine)";
 // Tap-to-reveal move slop (the shared TOUCH_TAP_MOVE_SLOP): finger travel past
 // this between touchstart and touchend means the gesture was a transcript
 // scroll, not a tap, so it must not toggle the action rail.
@@ -491,9 +495,6 @@ export const ChatMessage = memo(function ChatMessage({
 }: ChatMessageProps) {
   const glass = appearance === "glass";
   const [copied, flashCopied] = useCopiedFlash(glass ? 1100 : 2000);
-  // The press-and-hold "Copied" chip (glass) — separate from the action-row
-  // copy state so a hold-flash never lights the row button and vice versa.
-  const [holdCopied, flashHoldCopied] = useCopiedFlash(1100);
   const [showActions, setShowActions] = useState(false);
   const supportsHover = useSupportsHover();
   const [isEditing, setIsEditing] = useState(false);
@@ -584,18 +585,18 @@ export const ChatMessage = memo(function ChatMessage({
   }, [message.text, onCopy, flashCopied]);
 
   const handleReply = useCallback(() => {
-    onReply?.(message);
     // Focus the stable message surface before hiding the touch/glass actions;
     // otherwise the browser can retain focus inside controls being unmounted.
+    // Consumers run afterward so a composer focus request remains authoritative.
     if (glass || !supportsHover) {
       focusMessageSurface();
       setShowActions(false);
     }
+    onReply?.(message);
   }, [message, onReply, glass, supportsHover, focusMessageSurface]);
 
-  // Press-and-hold to copy an assistant answer (glass) — the only extraction
-  // affordance on touch. A still hold past COPY_HOLD_MS copies + flashes
-  // "Copied"; real finger travel cancels (shared usePointerPressAndHold).
+  // Press-and-hold shares the action row's existing confirmation state so copy
+  // feedback never creates a second floating surface over nearby messages.
   const canHoldCopy =
     glass && isAssistant && !!onLongPressCopy && trimmedText.length > 0;
   const holdBinding = usePointerPressAndHold<HTMLDivElement>({
@@ -604,7 +605,7 @@ export const ChatMessage = memo(function ChatMessage({
     canBegin: (e) => !isNestedInteractiveTarget(e.currentTarget, e.target),
     onHold: () => {
       onLongPressCopy?.(message.text);
-      flashHoldCopied();
+      flashCopied();
     },
   });
   const holdHandlers = canHoldCopy ? holdBinding : null;
@@ -899,13 +900,9 @@ export const ChatMessage = memo(function ChatMessage({
 
   // ── Glass chrome (the continuous overlay's floating row) ──────────────────
   if (glass) {
-    const initial = enterOnMount
-      ? reduceMotion
-        ? { opacity: 0 }
-        : { opacity: 0, y: 14 }
-      : false;
+    const initial = enterOnMount ? { opacity: 0 } : false;
     const transition = {
-      duration: reduceMotion ? 0.15 : 0.52,
+      duration: reduceMotion ? 0.05 : 0.09,
       ease: GLASS_EASE,
     };
     // A failure the user can't recover from without wiring a provider renders a
@@ -921,7 +918,7 @@ export const ChatMessage = memo(function ChatMessage({
           data-role={message.role}
           data-failure="no_provider"
           initial={initial}
-          animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
+          animate={{ opacity: 1 }}
           transition={transition}
           className="mb-2.5 flex w-full justify-start"
         >
@@ -985,12 +982,6 @@ export const ChatMessage = memo(function ChatMessage({
     const handleBubbleClick = (e: MouseEvent<HTMLDivElement>) => {
       if (!bubbleInteractive) return;
       if (isNestedInteractiveTarget(e.currentTarget, e.target)) return;
-      // Hover already reveals the rail before a fine-pointer click lands. Keep
-      // it open instead of letting that same click immediately toggle it closed.
-      if (supportsHover) {
-        setShowActions(true);
-        return;
-      }
       toggleRevealed();
     };
     const handleBubbleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -1061,21 +1052,6 @@ export const ChatMessage = memo(function ChatMessage({
               children ??
               message.text}
           </div>
-          <AnimatePresence>
-            {holdCopied ? (
-              <motion.span
-                key="copied"
-                data-testid="thread-line-copied"
-                initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: reduceMotion ? 0 : 0.18 }}
-                className="pointer-events-none absolute -top-2 right-2 rounded-full bg-white/90 px-2 py-0.5 text-[11px] font-medium text-black"
-              >
-                Copied
-              </motion.span>
-            ) : null}
-          </AnimatePresence>
         </>
       );
 
@@ -1107,10 +1083,10 @@ export const ChatMessage = memo(function ChatMessage({
         align={isUser ? "end" : "start"}
         data-testid="thread-line"
         data-role={message.role}
-        // New turns rise+fade in. Transform/opacity only; reduced motion
-        // collapses it to a quick fade with no positional movement.
+        // A very short opacity-only entrance keeps fast-model turns immediate
+        // without fighting the scroller's bottom anchor.
         initial={initial}
-        animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
+        animate={{ opacity: 1 }}
         transition={transition}
         className="mb-0"
         onMouseEnter={
@@ -1135,11 +1111,14 @@ export const ChatMessage = memo(function ChatMessage({
         <MessageRowContent
           className={cn(
             "relative flex flex-col",
-            // Reserve the action lane before reveal so hover, focus, and touch
-            // never reflow nearby messages. The extra four pixels keep the rail
-            // visibly outside outlined bubbles without letting it protrude past
-            // the row and get clipped by the transcript viewport.
-            hasActionLane && "pb-6 pointer-coarse:pb-12",
+            // Fine pointers keep a stable hover lane so moving onto its controls
+            // never reflows the transcript. Touch has no hover transition to
+            // protect, so it stays compact until a tap opens the action cluster;
+            // the shared glass easing makes that space open and close with it.
+            hasActionLane &&
+              "transition-[padding-bottom] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:duration-100",
+            hasActionLane &&
+              (supportsHover ? "pb-6" : accessoryVisible ? "pb-9" : "pb-0"),
             isFirstRun
               ? "max-w-[22rem] items-start"
               : isUser

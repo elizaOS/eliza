@@ -423,11 +423,15 @@ function readPositiveIntegerSetting(
 }
 
 function isAndroidLocalDirectChatRuntime(runtime: AgentRuntime): boolean {
-  const optOut = readRuntimeStringSetting(
+  const optIn = readRuntimeStringSetting(
     runtime,
     "ELIZA_MOBILE_LOCAL_DIRECT_REPLY",
   );
-  if (/^(0|false|no|off)$/i.test(optOut ?? "")) {
+  // A native device bridge says where capabilities execute, not which model
+  // owns conversation. Bypassing the full Eliza planner is therefore explicit
+  // opt-in; merely connecting an Android/iOS bridge must keep chat on the host
+  // runtime and its configured model providers.
+  if (!/^(1|true|yes|on)$/i.test(optIn ?? "")) {
     return false;
   }
   const platform =
@@ -3775,11 +3779,17 @@ async function generateChatResponseWithTiming(
         ? (noResponseFallback ??
           (normalizedResponseText || responseText || "(no response)"))
         : normalizedResponseText;
-    const transcriptVisibility = resolveFinalTranscriptVisibility(
-      finalText,
-      result?.actionResults,
-      resultContentCandidates,
-    );
+    // A visible action callback and its internal terminal receipt can carry the
+    // same canonical text. The receipt stays out of the transcript, but it must
+    // not retroactively hide the callback that already owns the turn's response.
+    const transcriptVisibility =
+      visibleCallbackDeliveries > 0
+        ? undefined
+        : resolveFinalTranscriptVisibility(
+            finalText,
+            result?.actionResults,
+            resultContentCandidates,
+          );
 
     if (opts?.onChunk && !opts.onSnapshot) {
       const authoritativeText =

@@ -3134,12 +3134,14 @@ export async function handleConversationRoutes(
           onSnapshot: (text) => {
             if (!text) return;
             if (
-              !streamedText ||
               disconnectTracker.isAborted() ||
               disconnectTracker.checkConnectionClosed()
             ) {
               return;
             }
+            // Action callbacks may be the first visible source for a turn. An
+            // authoritative snapshot therefore has to be able to establish the
+            // stream, not merely revise text emitted by a model-token source.
             // Structured field extractors can briefly normalize whitespace or
             // closing punctuation while the same visible field is still
             // streaming. Do not shrink the user-visible token stream for
