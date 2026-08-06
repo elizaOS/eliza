@@ -158,15 +158,21 @@ describe("ChatMessage tap-to-reveal vs transcript scroll", () => {
     // click. Focus alone must not pre-toggle the rail or that click hides it.
     act(() => bubble.focus());
     expect(rail.getAttribute("aria-hidden")).toBe("true");
+    expect(rail.className).toContain("invisible");
+    expect(rail.className).toContain("opacity-0");
     expect(content?.className).toContain("pb-0");
     expect(content?.className).not.toContain("pb-9");
     fireEvent.click(bubble);
     expect(rail.getAttribute("aria-hidden")).toBe("false");
+    expect(rail.className).toContain("visible");
+    expect(rail.className).not.toContain("invisible");
     expect(content?.className).toContain("pb-9");
     expect(content?.className).not.toContain("pb-0");
 
     fireEvent.click(bubble);
     expect(rail.getAttribute("aria-hidden")).toBe("true");
+    expect(rail.className).toContain("invisible");
+    expect(rail.className).toContain("opacity-0");
     expect(content?.className).toContain("pb-0");
     expect(content?.className).not.toContain("pb-9");
   });

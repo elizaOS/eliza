@@ -28,6 +28,7 @@ const runtimeModeMock = vi.hoisted(() => ({
 
 const clientMock = vi.hoisted(() => ({
   getBaseUrl: vi.fn(() => "http://127.0.0.1:31337"),
+  getModelsConfig: vi.fn(),
   getLocalInferenceHub: vi.fn(),
 }));
 
@@ -102,6 +103,7 @@ function setRuntimeMode(mode: "loading" | "local" | "cloud" | "remote") {
 
 beforeEach(() => {
   clientMock.getBaseUrl.mockReturnValue("http://127.0.0.1:31337");
+  clientMock.getModelsConfig.mockResolvedValue({});
   clientMock.getLocalInferenceHub.mockResolvedValue(emptyHub);
   eventSourceMock.openEventSource.mockClear();
   authMock.authenticated = true;
@@ -139,6 +141,40 @@ describe("useHomeModelStatus", () => {
       "/api/local-inference/downloads/stream",
       { withCredentials: false },
     );
+  });
+
+  it("does not gate a local runtime whose active text route is Cerebras", async () => {
+    clientMock.getModelsConfig.mockResolvedValue({
+      activeChat: {
+        provider: "cerebras",
+        family: "OPENAI",
+        endpoint: "https://api.cerebras.ai/v1",
+      },
+    });
+
+    const { result } = renderHook(() => useHomeModelStatus());
+
+    await waitFor(() => {
+      expect(result.current.kind).toBe("not-required");
+    });
+    expect(clientMock.getModelsConfig).toHaveBeenCalledTimes(1);
+    expect(clientMock.getLocalInferenceHub).not.toHaveBeenCalled();
+    expect(eventSourceMock.openEventSource).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a routing probe failure instead of inventing local readiness", async () => {
+    clientMock.getModelsConfig.mockRejectedValue(new Error("offline"));
+
+    const { result } = renderHook(() => useHomeModelStatus());
+
+    await waitFor(() => {
+      expect(result.current.kind).toBe("error");
+    });
+    expect(result.current.errors).toEqual([
+      "Could not verify the active text model provider.",
+    ]);
+    expect(clientMock.getLocalInferenceHub).not.toHaveBeenCalled();
+    expect(eventSourceMock.openEventSource).not.toHaveBeenCalled();
   });
 
   it("does not poll local inference when the active base is a dedicated cloud agent", async () => {

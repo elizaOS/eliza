@@ -34,7 +34,7 @@ export interface ContinuousVoiceSessionState {
   realtimeConnecting: boolean;
   /** True when realtime is eligible to try; not proof that mint succeeded. */
   realtimeEligible: boolean;
-  /** Unified status for `ChatVoiceStatusBar` (realtime wins when active). */
+  /** Unified composer status (realtime wins when active). */
   status: VoiceContinuousStatus;
   /** Visible in-flight transcript: partial while speaking, committed final while thinking. */
   interimTranscript: string;
