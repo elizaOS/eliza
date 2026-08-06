@@ -1,20 +1,11 @@
 /**
  * Outbound provider WebSocket factories for the realtime voice path.
  *
- * These build the sockets the merged Deepgram Flux (#15950) and Cartesia
- * (#15949) adapters drive. Two live-provider gotchas from the evidence-harness
- * lane are handled here at the transport boundary:
- *
- *   1. Deepgram Flux REJECTS the `channels=` query param (`INVALID_QUERY_
- *      PARAMETER`, 1002 close BEFORE any audio). Flux is mono, inferred from
- *      `encoding=linear16`. We strip `channels` from the listen URL the adapter
- *      built. (The `Connected` handshake frame the adapter maps to a benign
- *      malformed_event is handled in `session.ts`, not here.)
- *   2. Bun's native `WebSocket` DROPS custom request headers, so provider auth
- *      never arrives. On Cloudflare Workers the outbound upgrade goes through
- *      `fetch(url, { headers, method:'GET' })` reading `response.webSocket`,
- *      which PRESERVES headers. We use that path and adapt the platform socket
- *      to the adapter's minimal socket shape.
+ * These build the sockets the Cartesia Ink STT, Cartesia Sonic TTS, and optional
+ * Fish Audio adapters drive. Bun's native `WebSocket` drops custom request
+ * headers, so provider auth never arrives. Cloudflare Workers preserves those
+ * headers through `fetch(url, { headers, method: "GET" }).webSocket`; this
+ * module adapts that platform socket to each provider's minimal contract.
  *
  * On a non-Workers runtime without a header-preserving native WebSocket, the
  * caller must inject a factory backed by the `ws` package (see the route). We do
@@ -31,9 +22,9 @@ import type {
   FishAudioWebSocketLike,
 } from "@/lib/services/fish-audio-tts";
 import type {
-  DeepgramFluxWebSocket,
-  DeepgramFluxWebSocketFactory,
-} from "../../stt/providers/deepgram-flux";
+  CartesiaInkWebSocket,
+  CartesiaInkWebSocketFactory,
+} from "../../stt/providers/cartesia-ink";
 
 interface WorkerUpgradeSocket {
   accept?(): void;
@@ -41,19 +32,6 @@ interface WorkerUpgradeSocket {
   close(code?: number, reason?: string): void;
   addEventListener(type: string, listener: (event: unknown) => void): void;
   removeEventListener(type: string, listener: (event: unknown) => void): void;
-}
-
-function stripChannelsParam(rawUrl: string): string {
-  try {
-    const url = new URL(rawUrl);
-    // Live Flux rejects `channels`; it is mono via encoding=linear16.
-    url.searchParams.delete("channels");
-    return url.toString();
-  } catch {
-    // error-policy:J3 unparseable adapter URL passes through unchanged — the
-    // downstream connect fails loudly on a bad URL; nothing is fabricated.
-    return rawUrl;
-  }
 }
 
 /**
@@ -66,16 +44,14 @@ export function isWorkerOutboundWsAvailable(): boolean {
 }
 
 /**
- * Deepgram Flux factory using the Workers header-preserving outbound upgrade.
- * Strips the `channels` param the adapter added.
+ * Cartesia Ink factory using the Workers header-preserving outbound upgrade.
  */
-export function createWorkerDeepgramFluxFactory(): DeepgramFluxWebSocketFactory {
+export function createWorkerCartesiaInkFactory(): CartesiaInkWebSocketFactory {
   return (request) => {
-    const url = stripChannelsParam(request.url);
     return openWorkerSocket(
-      url,
+      request.url,
       request.headers,
-    ) as unknown as DeepgramFluxWebSocket;
+    ) as unknown as CartesiaInkWebSocket;
   };
 }
 
