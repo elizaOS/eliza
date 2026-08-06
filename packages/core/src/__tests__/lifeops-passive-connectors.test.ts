@@ -140,12 +140,27 @@ describe("lifeOpsPassiveConnectorsEnabled", () => {
 	});
 
 	describe("null / undefined runtime", () => {
-		it("handles null runtime gracefully", () => {
-			expect(lifeOpsPassiveConnectorsEnabled(null)).toBe(false);
+		it("returns true for null runtime — pre-runtime conservative default (shouldStartTelegramStandaloneBot path)", () => {
+			// null is the explicit pre-runtime signal: plugin list is not available,
+			// so passive mode stays on to avoid starting connectors for LifeOps
+			// deployments before the runtime exists.
+			expect(lifeOpsPassiveConnectorsEnabled(null)).toBe(true);
 		});
 
-		it("handles undefined runtime gracefully", () => {
+		it("null runtime is overridden by explicit env false (operator opt-out)", () => {
+			expect(
+				lifeOpsPassiveConnectorsEnabled(null, {
+					ELIZA_LIFEOPS_PASSIVE_CONNECTORS: "false",
+				}),
+			).toBe(false);
+		});
+
+		it("returns false for undefined runtime — no runtime provided, no plugin detected", () => {
 			expect(lifeOpsPassiveConnectorsEnabled(undefined)).toBe(false);
+		});
+
+		it("returns false when called with no arguments", () => {
+			expect(lifeOpsPassiveConnectorsEnabled()).toBe(false);
 		});
 	});
 });

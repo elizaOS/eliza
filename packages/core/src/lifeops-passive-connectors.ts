@@ -1,3 +1,18 @@
+/**
+ * Passive-connector gate for LifeOps deployments.
+ *
+ * When `plugin-personal-assistant` is loaded the runtime operates in passive
+ * mode: connectors ingest inbound messages into memory but do not auto-reply
+ * (the LifeOps pipeline drives responses instead). Standalone agents that do
+ * not load that plugin default to active-reply mode.
+ *
+ * Explicit env vars (`ELIZA_LIFEOPS_PASSIVE_CONNECTORS` / `LIFEOPS_PASSIVE_CONNECTORS`)
+ * and runtime settings always take precedence over plugin-presence detection.
+ * Passing `null` as the runtime is the pre-runtime signal (plugin list not yet
+ * available); it conservatively enables passive mode so the standalone Telegram
+ * polling bot does not start for LifeOps deployments before the runtime exists.
+ */
+
 type SettingsReader = {
 	getSetting?: (key: string) => unknown;
 	plugins?: Array<{ name: string }>;
@@ -71,8 +86,16 @@ export function lifeOpsPassiveConnectorsEnabled(
 		// Explicit setting always wins.
 		return !isExplicitFalse(value);
 	}
-	// No explicit setting — enable passive mode only when the LifeOps plugin is
-	// actually loaded. Standalone agent harnesses (no plugin-personal-assistant)
-	// default to active-reply mode so they work without any env var.
+	// null is the explicit pre-runtime signal from callers like
+	// shouldStartTelegramStandaloneBot() that run before any runtime exists.
+	// Plugin-presence detection is meaningless here, so keep the conservative
+	// passive-on default to avoid accidentally starting connectors for LifeOps
+	// deployments before the plugin list is known.
+	if (runtime === null) {
+		return true;
+	}
+	// No explicit setting and a real (or absent) runtime — enable passive mode
+	// only when the LifeOps plugin is actually loaded. Standalone agent harnesses
+	// (no plugin-personal-assistant) default to active-reply mode.
 	return isLifeOpsPluginLoaded(runtime);
 }
