@@ -11,7 +11,6 @@ import {
   Film,
   Loader2,
   Mic,
-  MicOff,
   Music,
   Paperclip,
   Search,
@@ -150,7 +149,7 @@ import {
   resolveChatPanelHalfDetentHeight,
   resolveChatPanelLayout,
 } from "./chat-panel-layout";
-import { LIQUID_GLASS_EDGE_SHADOW, LIQUID_GLASS_SHEEN } from "./liquid-glass";
+import { LIQUID_GLASS_SHEEN, liquidGlassEdgeShadow } from "./liquid-glass";
 import { withPressLatch } from "./press-latch";
 import { SlashCommandMenu, useSlashMenu } from "./SlashCommandMenu";
 import {
@@ -322,18 +321,18 @@ const CHAT_CLEARANCE_REST_GAP_PX = 8;
 // the software keyboard. The layout solver consumes the same number it paints,
 // so a native keyboard event cannot leave panel height using stale rest padding.
 const KEYBOARD_COMPOSER_GAP_PX = 12;
-// Restore-from-maximized grab zone (#13531): while full-bleed, a downward pull
-// that STARTS within this fraction of the panel height from the top drops
-// full-bleed and tracks the finger. 0.9 = "top 90%" — nearly the whole panel is
-// grabbable (only the bottom composer strip is excluded), and it sits UNDER the
-// top bar whose empty space is pointer-transparent so pulls there reach it too.
 // The pull-down-to-restore grab zone is scoped to the TOP BAR only (safe-area +
 // this many px), NOT the whole panel. A full-height strip stole the transcript's
 // scroll (every touch-drag/wheel over the messages read as a restore pull) and
 // made an accidental tap twitch the sheet out of full-screen. Confining it to
 // the top leaves the transcript freely scrollable and makes "exit full-screen"
 // an explicit drag from the top edge.
-const MAXIMIZE_RESTORE_ZONE_PX = 72;
+const MAXIMIZE_RESTORE_ZONE_PX = 96;
+// A tap or tiny pointer wobble remains inert, but a deliberate downward pull
+// must take ownership almost immediately. The previous viewport-relative
+// threshold consumed roughly 90–130px before moving anything, which made a
+// maximized sheet feel stuck and encouraged repeated, harder swipes.
+const RESTORE_UNMAX_SLOP_PX = 8;
 // The panel's top clearance + max height (which decide how the full-bleed header
 // clears the notch) live in the pure, unit-tested `resolveChatPanelLayout` — see
 // chat-panel-layout.ts.
@@ -1308,19 +1307,11 @@ export function ChatOverlay({
   // binding. Keeping the strip mounted while true also preserves the pointer
   // capture across the un-maximize (the "can't collapse" bug). See the binding.
   const [restoreDragging, setRestoreDragging] = React.useState(false);
-  // Whether the in-flight restore drag has turned downward and dropped
-  // full-bleed. A ref (not the `maximized` state) because the release handler
-  // runs in the SAME event as the drop and would otherwise read the stale,
-  // pre-re-render `maximized` and snap back instead of resting where released.
-  const restoreDidUnmaximizeRef = React.useRef(false);
-  // Highest (most-upward) offset the current restore drag has reached. The
-  // ceiling-consumption rebase in onDragOffset absorbs any upward drift while
-  // the panel sits at the full-bleed ceiling, so a raw `offset < 0` test fires
-  // late: the sheet already follows the finger DOWN off the ceiling (its
-  // fullBleedT un-morphs) for the first N px while `offset` is still positive,
-  // and a release in that window would snap back to full-bleed. Un-maximize the
-  // instant the finger nets downward from this peak instead.
-  const restorePeakOffsetRef = React.useRef(0);
+  // Whether the in-flight restore drag cleared its accidental-wobble slop and
+  // gave the shared continuum to the finger. Keep the committed maximize state
+  // stable for the whole hold; release converts the live geometry to the honest
+  // inset detent. This ref lets that release observe engagement synchronously.
+  const restoreDidEngageRef = React.useRef(false);
   // Reactive composer-focus flag. Only the short-landscape compact resting
   // affordance reads it (#14173): focusing the field lifts the compact treatment
   // so the composer widens to full BEFORE the first keystroke, and blurring an
@@ -1529,13 +1520,13 @@ export function ChatOverlay({
   // un-maximize on frame 1 —
   // the two branches racing was the "restore drag snaps back to FULL on
   // release" bug (the strip's slop branch never saw `maximized` true, so
-  // restoreDragging/restoreDidUnmaximizeRef were never set and the release
+  // restoreDragging/restoreDidEngageRef were never set and the release
   // discarded the whole downward travel).
   const restoreGestureRef = React.useRef(false);
   // TRUE once the current gesture's mid-drag PILL commit fired. The release
   // handlers run in the SAME event as the last integrator frame, so they can
   // see the pre-commit `pilled/sheetOpen` closures (React flushes the commit's
-  // setState after the event) — same race `restoreDidUnmaximizeRef` guards for
+  // setState after the event) — same race `restoreDidEngageRef` guards for
   // the restore drag. Reset at every gesture seed.
   const pillCommittedMidDragRef = React.useRef(false);
   // The last integrated gesture offset (px, up-positive, 0 at pointerdown);
@@ -2150,7 +2141,9 @@ export function ChatOverlay({
               ) : undefined
             }
             appearance="glass"
-            enterOnMount={m.id.startsWith("temp-")}
+            // Fast actions can navigate in the same paint that appends their
+            // optimistic turn. Overlay rows must therefore be visible on their
+            // first frame so the handoff never exposes only the prior transcript.
             agentName={agentName}
             message={shellToChatMessageData(m)}
             reduceMotion={reduce}
@@ -2995,6 +2988,16 @@ export function ChatOverlay({
     fullBleedT,
     (t: number) => PANEL_RADIUS_PX * (1 - t),
   );
+  // Paint follows the same continuous shape coordinate as geometry. React's
+  // boolean `fullBleed` chooses the eventual resting state, but it must never
+  // tear down the rim, bevel, or fill in the middle of a held gesture.
+  const surfaceBackgroundColor = useTransform(fullBleedT, (t: number) => {
+    const percent = (clamp01(t) * 100).toFixed(3);
+    return `color-mix(in srgb, var(--bg) ${percent}%, ${GLASS_SHEET_FILL})`;
+  });
+  const surfaceEdgeShadow = useTransform(fullBleedT, (t: number) =>
+    liquidGlassEdgeShadow(1 - t),
+  );
   // Keep transformed transcript children one physical border-width inside the
   // inset glass. The rim is translucent, so clipping at its outer edge lets
   // compositor-promoted text show through the antialiased top curve even when
@@ -3011,13 +3014,6 @@ export function ChatOverlay({
   // spring (instead of a discrete swap at commit) keeps the top edge from
   // popping a safe-area-height on notch devices. 0px at rest (t=0).
   const glassTopExtension = useMotionTemplate`calc(${fullBleedT} * -1 * env(safe-area-inset-top, 0px))`;
-  // The overlay's bottom safe-area padding eases to zero during maximize. The
-  // panel is anchored above that padding, so without a matching glass extension
-  // the wallpaper shows through as a temporary floor strip until the shape
-  // spring reaches 1. Extend only the painted surface through the remaining
-  // inset while full-screen is committed; composer/content geometry continues
-  // to follow its normal safe-area morph.
-  const glassBottomExtension = useMotionTemplate`calc(-1 * ${bottomInsetFactor} * (var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.5rem))`;
   // At full-bleed the composer floats as its OWN glass capsule — the exact
   // chrome of the resting input bar (frosted fill, hairline border, capsule
   // radius) — instead of dissolving into the edge-to-edge panel. All of it
@@ -3036,6 +3032,9 @@ export function ChatOverlay({
   const composerCapsuleWidth = useMotionTemplate`calc(100% - ${fullBleedT} * 24px)`;
   const composerCapsuleBorder = useMotionTemplate`color-mix(in srgb, var(--border-strong) calc(${fullBleedT} * 100%), transparent)`;
   const composerCapsuleBg = useMotionTemplate`color-mix(in srgb, var(--card) calc(${fullBleedT} * 86%), transparent)`;
+  const composerCapsuleShadow = useTransform(fullBleedT, (t: number) =>
+    liquidGlassEdgeShadow(t),
+  );
   // --- Liquid-glass pill → input morph (driven by openProgress) ---------------
   // The panel is ONE persistent element; the pill capsule and the full
   // input crossfade by opacity (compositor-cheap) while the whole panel scales
@@ -3049,6 +3048,10 @@ export function ChatOverlay({
   // Glass surface + its content crossfade IN as the input forms (one wrapper, so
   // sheen/glow/thread/composer resolve together with the glass).
   const glassOpacity = useTransform(openProgress, [0, 1], [0, 1]);
+  const rimOpacity = useTransform(
+    [glassOpacity, fullBleedT] as MotionValue<number>[],
+    ([open, bleed]: number[]) => open * (1 - bleed),
+  );
   // The pill capsule fades OUT over the first half of the open so it has cleared
   // before the input controls resolve (no double-image mid-morph).
   const pillOpacity = useTransform(openProgress, [0, 0.55], [1, 0], {
@@ -4467,16 +4470,12 @@ export function ChatOverlay({
       // the capsule and crossfades out under the finger — in BOTH directions);
       // above 0 it is the thread height.
       openProgress.set(cont < 0 ? clamp01(1 + cont / PILL_OPEN_DISTANCE) : 1);
-      const fullscreenCrossCont = fullscreenCrossContRef.current;
-      const snappedAboveThreshold =
-        fullscreenCrossCont != null &&
-        cont >=
-          fullscreenCrossCont -
-            (maximized ? FULLSCREEN_RELEASE_HYSTERESIS_PX : 0);
-      if (!snappedAboveThreshold) {
-        // A same-gesture reversal below the snap line takes height authority
-        // back from the full-screen spring on its first pixel.
-        if (fullscreenCrossContRef.current != null) stopThreadAnimation();
+      const restorePinnedInsideSlop =
+        restoreGestureRef.current && !restoreDidEngageRef.current;
+      if (!restorePinnedInsideSlop) {
+        // The live grabber owns height for the whole held gesture, including
+        // the last 10% into full-screen and a same-gesture reversal. A restore
+        // gesture is the sole exception for its tiny accidental-wobble slop.
         threadHeight.set(Math.max(0, cont));
       }
       // Mount the panel body on ANY pull that opens height, even with no
@@ -4543,7 +4542,18 @@ export function ChatOverlay({
           }
         }
       }
-      const overpullT = Math.max(rawOverpullT, measuredOverpullT);
+      // Restore is the exact inverse of the pinned maximize segment. Its
+      // continuum is intentionally de-slacked to the rendered thread height,
+      // so deriving shape from `cont - insetPanelMaxH` collapses the whole
+      // radius/width/rim morph on the first downward frame. Instead, unwind the
+      // same real top-margin distance directly from the restore pointer travel.
+      // Height and shape therefore leave fullscreen together, one pixel for one
+      // pixel, without swapping visual owners under the held finger.
+      const restoreOverpullT = restoreGestureRef.current
+        ? clamp01(1 - Math.max(0, -offset) / maxOverPull)
+        : null;
+      const overpullT =
+        restoreOverpullT ?? Math.max(rawOverpullT, measuredOverpullT);
       // The snap line is a TOP-edge contract: once the window reaches the top
       // 10% of the viewport, it fills the rest. Include the small safe-area gap
       // below the bottom-anchored panel in this reach measurement; comparing the
@@ -4571,15 +4581,15 @@ export function ChatOverlay({
       // the panel is already pinned at the ceiling) — the panel edge keeps
       // tracking the finger instead of freezing until `cont` clears the ceiling.
       overpullCapT.set(overpullT);
-      // DISCRETE full-bleed SHAPE. The finger NEVER sets `fullBleedT` directly —
-      // the "awkward lerp" of border/radius/width easing with every pixel. Instead
-      // the over-pull flips a state at the threshold and the shape SPRINGS to it
-      // once (border, radius, side inset, width, composer capsule). Only the SHAPE
-      // is stateful: below 90% the panel HEIGHT tracks the finger 1:1; at the
-      // line the height and shape spring to the viewport. Pulling back below the
-      // release band springs the window shape home; normal pointer jitter stays
-      // committed.
-      // Reduced-motion cuts instantly.
+      // Height and shape share the same held-gesture owner. Letting the 90%
+      // state flip start an independent spring made the outer fieldset reach
+      // viewport height before its painted/content box, exposing a large floor
+      // strip until pointer-up. A restore remains pinned inside its top band;
+      // once it exits that band the finger owns the reverse morph too.
+      if (!restorePinnedInsideSlop) fullBleedT.set(overpullT);
+      // The state boundary mounts the full-screen restore affordance and chooses
+      // the resting endpoint. It does not take animation authority from a held
+      // pointer; release settles the live values to the committed endpoint.
       // A real keyboard blocks maximize (the edge-to-edge panel would spill above
       // the keyboard-shrunk visual viewport); a pull-to-full with the keyboard up
       // settles at the inset FULL detent instead.
@@ -4587,6 +4597,7 @@ export function ChatOverlay({
         crossedFullscreenLine &&
         !maximizedRef.current &&
         fullscreenCrossContRef.current == null &&
+        !restoreGestureRef.current &&
         !keyboardBlocksMaximize
       ) {
         fullscreenCrossContRef.current = cont;
@@ -4599,19 +4610,19 @@ export function ChatOverlay({
         maximizedRef.current = true;
         maximizeReversedRef.current = false;
         focusThreadRef.current = true;
-        if (reduce) threadHeight.set(fullPanelMaxH);
-        else animateThreadHeight(fullPanelMaxH);
-        if (reduce) fullBleedT.set(1);
-        else animateFullBleedTo(1);
         detentHaptic();
       } else if (
         !crossedFullscreenLine &&
+        // React may not have committed `maximized` before a coalesced pointer
+        // stream reverses. The synchronous crossing ref is the authoritative
+        // proof that this gesture entered full-screen and must now relinquish
+        // its peak instead of re-maximizing on release.
         maximizedRef.current &&
         // A RESTORE drag owns its own visible-height crossing in onRestoreDrag;
         // this branch is only for a same-gesture reversal on the grabber. Letting
         // it also fire here
         // un-maximized on the restore's very first frame — before the strip's
-        // slop branch could set restoreDragging/restoreDidUnmaximizeRef — so
+        // slop branch could set restoreDragging/restoreDidEngageRef — so
         // the release discarded the drag and snapped back to FULL.
         !restoreGestureRef.current
       ) {
@@ -4627,8 +4638,6 @@ export function ChatOverlay({
         modeRef.current = dragStartModeRef.current;
         freeHRef.current = dragStartFreeHRef.current;
         fullscreenCrossContRef.current = null;
-        if (reduce) fullBleedT.set(0);
-        else animateFullBleedTo(0);
         // Void the peak so the release decision does not re-maximize from an
         // abandoned high-water mark.
         maxPullRawRef.current = 0;
@@ -4672,7 +4681,6 @@ export function ChatOverlay({
       maxOverPull,
       viewportH,
       fullscreenSnapH,
-      maximized,
       expanded,
       freeH,
       threadHeight,
@@ -4684,8 +4692,6 @@ export function ChatOverlay({
       stopThreadAnimation,
       stopOpenProgressAnimation,
       stopFullBleedAnimation,
-      animateFullBleedTo,
-      animateThreadHeight,
       setDragPreviewMounted,
       getPanelElement,
       keyboardBlocksMaximize,
@@ -4931,10 +4937,10 @@ export function ChatOverlay({
     [pullBinding],
   );
 
-  // Top-20% pull-down-to-restore (#13531). While maximized (full-bleed) there is
-  // no SheetGrabber; this binding drives an invisible grab strip over the top
-  // 20% of the panel. A downward pull drops full-bleed on the first downward
-  // frame and LIVE-TRACKS the finger — the panel insets and shrinks 1:1 under the
+  // Top-bar pull-down-to-restore (#13531). While maximized (full-bleed) there is
+  // no SheetGrabber; this binding drives the generous invisible top grab zone.
+  // A deliberate downward pull drops full-bleed after a few pixels and then
+  // LIVE-TRACKS the finger — the panel insets and shrinks 1:1 under the
   // pointer, resting where released (free rest, with detent magnetism at
   // half/full and a full collapse near the bottom). Keyboard (Enter/Space/
   // ArrowDown) does the discrete restore. Onboarding pins the sheet, so the zone
@@ -4953,65 +4959,33 @@ export function ChatOverlay({
   const onRestoreDrag = React.useCallback(
     (offset: number) => {
       if (pinnedOpen) return;
-      // Fresh gesture (onDragOffset flips draggingRef on its first frame). Seed
-      // the peak at 0 — the maximized sheet sits at the ceiling, which is
-      // gesture-start offset 0 — NOT the first sampled offset (a fast/coalesced
-      // first move can already be far down, and seeding the peak there would
-      // make `offset < peak` impossible so a plain pull-down never un-maximized).
+      // Fresh gesture (onDragOffset flips draggingRef on its first frame).
       if (!draggingRef.current) {
-        restoreDidUnmaximizeRef.current = false;
-        restorePeakOffsetRef.current = 0;
-        // Keep the maximized height spring in charge until this restore drag
-        // has moved a full 10% of the viewport downward. The sentinel is
-        // cleared at the crossing below, where the finger takes height back.
-        fullscreenCrossContRef.current = Number.NEGATIVE_INFINITY;
+        restoreDidEngageRef.current = false;
+        fullscreenCrossContRef.current = null;
       }
       // Claim the gesture BEFORE delegating so the integrator's own over-pull
       // hysteresis stands down — this strip owns the un-maximize (see
       // restoreGestureRef).
       restoreGestureRef.current = true;
-      if (offset > restorePeakOffsetRef.current) {
-        restorePeakOffsetRef.current = offset;
-      }
-      onDragOffset(offset);
-      // Full-screen remains truly full-height while the pointer is in the top
-      // 10% band. Once the downward travel carries the sheet below 90%, hand
-      // height back to the finger and spring the width/radius/insets to window
-      // mode. No wallpaper can appear above a still-maximized panel.
-      const downwardTravel = restorePeakOffsetRef.current - offset;
-      const restoreThresholdTravel = Math.max(
-        1,
-        fullPanelMaxH - fullscreenSnapH,
-      );
-      if (maximized && downwardTravel > restoreThresholdTravel) {
+      const downwardTravel = Math.max(0, -offset);
+      if (
+        !restoreDidEngageRef.current &&
+        downwardTravel > RESTORE_UNMAX_SLOP_PX
+      ) {
         fullscreenCrossContRef.current = null;
-        stopThreadAnimation();
-        threadHeight.set(Math.max(0, dragContRef.current));
-        setMaximized(false);
+        // Flip the synchronous owners before the shared integrator runs this
+        // frame. It can therefore apply the coalesced first move immediately,
+        // with no viewport-sized dead zone. The committed maximize bit stays
+        // stable until release, so no second handle or alternate render tree can
+        // enter while this pointer owns the restore strip.
+        restoreDidEngageRef.current = true;
         setRestoreDragging(true);
-        restoreDidUnmaximizeRef.current = true;
-        // The integrator's hysteresis is gated off for restore gestures, so
-        // drive the shape morph home here — the state effect is drag-gated and
-        // would otherwise leave the edges full-bleed while the panel shrinks.
-        if (reduce) fullBleedT.set(0);
-        else animateFullBleedTo(0);
-        // And void the pull peak so the release can't re-maximize from the
-        // ceiling high-water mark the drag just left.
         maxPullRawRef.current = 0;
       }
+      onDragOffset(offset);
     },
-    [
-      pinnedOpen,
-      maximized,
-      onDragOffset,
-      fullPanelMaxH,
-      fullscreenSnapH,
-      stopThreadAnimation,
-      threadHeight,
-      reduce,
-      fullBleedT,
-      animateFullBleedTo,
-    ],
+    [pinnedOpen, onDragOffset],
   );
   // Release from a restore drag: if it never un-maximized (an upward/stationary
   // gesture) keep it pinned full-bleed; otherwise settle at the released height —
@@ -5022,7 +4996,7 @@ export function ChatOverlay({
     restoreGestureRef.current = false;
     setDragPreviewMounted(false);
     setRestoreDragging(false);
-    if (pinnedOpen || !restoreDidUnmaximizeRef.current) return settleDrag();
+    if (pinnedOpen || !restoreDidEngageRef.current) return settleDrag();
     // A restore that un-maximized always lands on the inset shape; drive the
     // morph home (0) so a release mid-return finishes un-morphing the edges.
     animateFullBleedTo(0);
@@ -5169,6 +5143,12 @@ export function ChatOverlay({
       !firstRunOpen,
   });
   const nativeInsetSheet = nativeSheetTier === "native";
+  // Keep the CSS material identity stable through fullscreen and its restore.
+  // Toggling backdrop-filter on at the first downward frame forces a new
+  // compositor surface exactly when the finger needs the frame budget. The
+  // fullscreen fill is opaque, so the already-present filter is visually inert
+  // there; retaining it makes restore the same warm compositor path as maximize.
+  const cssSheetBackdropActive = !nativeInsetSheet;
   // Why-not-native, as a slug (glass/native-backdrop.ts) — the observable
   // half of the tier system's J4 degrades, rendered into the AX probe below.
   const nativeGlassDiag = useNativeGlassDiag();
@@ -5338,17 +5318,14 @@ export function ChatOverlay({
       >
         {!firstRunOpen &&
         ((!fullBleed && !restoreDragging) ||
-          draggingRef.current ||
           grabberPressRef.current != null) ? (
           // Suppressed while full-bleed (the restore strip owns the top) and
-          // while a restore drag is in flight (so the strip keeps the pointer
-          // capture through the un-maximize) — EXCEPT while a grabber drag is
-          // live OR merely pressed: a MID-DRAG commit (pill or maximize) must not
-          // unmount or disable the element holding the pointer capture, or the
-          // gesture dies at the exact moment it commits. `grabberPressRef` widens
-          // that window back to the pointerdown, before the integrator's first
-          // frame flips `draggingRef`. Onboarding hides the grabber entirely: it
-          // is pinned, undismissable, and sign-in-first.
+          // while a restore drag is in flight (the restore strip keeps that
+          // pointer capture). A normal grabber remains mounted through its own
+          // mid-drag pill/maximize commit because `grabberPressRef` retains the
+          // accepted pointer id until its terminal event. Using the global drag
+          // flag here mounted BOTH handles during restore. Onboarding hides the
+          // grabber entirely: it is pinned, undismissable, and sign-in-first.
           <SheetGrabber
             open={sheetOpen}
             onOpen={openFromGrabber}
@@ -5391,16 +5368,15 @@ export function ChatOverlay({
             // full-bleed ceiling in lock-step with the shape morph (see
             // panelCapH) so an over-pull grows 1:1 under the finger.
             maxHeight: panelCapH,
-            // A max-height alone does not make an intrinsically sized flexbox
-            // consume that height. During a held maximize the transcript flex
-            // basis can shrink around the composer chrome, leaving the sheet
-            // flagged MAXIMIZED while its top still sits ~50px below the
-            // viewport. Full-screen frames therefore own an explicit animated
-            // height. Window/restore frames must explicitly return to `auto`:
-            // passing `undefined` leaves Framer Motion's last pixel height
-            // inline, stranding a restored sheet at the inset-full ceiling while
-            // its thread height continues shrinking underneath it.
-            height: fullBleed ? panelCapH : "auto",
+            // Resting full-screen needs an explicit height because an intrinsic
+            // flexbox can shrink around the composer. During a drag and its
+            // release spring, however, the thread/content box is the geometry
+            // owner: forcing the outer fieldset to viewport height one frame
+            // earlier exposes an unpainted floor below the still-moving content.
+            // Returning to `auto` for that whole motion keeps surface, transcript,
+            // and composer bottom-anchored as one object; the settled full-screen
+            // endpoint switches to the same explicit cap only after they match.
+            height: fullBleed && !isDragging ? panelCapH : "auto",
             // Full-bleed must be exactly scale 1 — a sub-1 morph scale with a
             // bottom transform-origin would drop the top edge below the status
             // bar (the "gap at the top when maximized" bug). While open (incl. a
@@ -5431,21 +5407,7 @@ export function ChatOverlay({
             aria-hidden="true"
             data-testid="chat-sheet-surface"
             data-glass-tier={nativeSheetTier}
-            className={cn(
-              "pointer-events-none absolute inset-0 z-0",
-              // SOLID warm-dark panel. The chat floats over the live ember field,
-              // so a transparent/border-only surface let the home widgets bleed
-              // straight through the open thread (the #1 "too transparent"
-              // complaint). The panel is now an opaque warm near-black with a
-              // warm hairline edge that seats it above the field, so nothing
-              // behind it ever shows through. NOTE: the opaque fill is enforced
-              // by the inline backgroundColor below (inline wins over this
-              // class); this class supplies the edge. Flat system: depth =
-              // border, not a drop shadow (all shadow tokens are none).
-              fullBleed
-                ? "border-0 bg-card"
-                : "border border-border-strong bg-card",
-            )}
+            className="pointer-events-none absolute inset-0 z-0 bg-card"
             style={{
               opacity: glassOpacity,
               // Corner radius eases with the full-screen shape spring: the inset
@@ -5469,23 +5431,19 @@ export function ChatOverlay({
               backgroundColor:
                 firstRunOpen || nativeInsetSheet
                   ? "transparent"
-                  : fullBleed
-                    ? "var(--bg)"
-                    : GLASS_SHEET_FILL,
-              backdropFilter:
-                fullBleed || nativeInsetSheet
-                  ? undefined
-                  : GLASS_SHEET_BACKDROP_FILTER,
-              WebkitBackdropFilter:
-                fullBleed || nativeInsetSheet
-                  ? undefined
-                  : GLASS_SHEET_BACKDROP_FILTER,
+                  : surfaceBackgroundColor,
+              backdropFilter: cssSheetBackdropActive
+                ? GLASS_SHEET_BACKDROP_FILTER
+                : undefined,
+              WebkitBackdropFilter: cssSheetBackdropActive
+                ? GLASS_SHEET_BACKDROP_FILTER
+                : undefined,
               // Liquid-glass bevel: a bright top-left rim over a soft
               // bottom-right shade so the frosted edge catches light like a real
               // glass slab. Only on the inset sheet — full-bleed has no edge to
               // catch light. Depth here is the glass rim, not a drop shadow (the
               // flat system keeps all shadow tokens none).
-              boxShadow: fullBleed ? undefined : LIQUID_GLASS_EDGE_SHADOW,
+              boxShadow: surfaceEdgeShadow,
               // Specular sheen: a soft radial highlight near the top-left (as if
               // lit from above) over the faint neutral top-edge fade — the glass
               // catches light instead of just fading. Neutral white only, NOT the
@@ -5504,10 +5462,6 @@ export function ChatOverlay({
               // the extension eases in with the morph instead of popping at
               // commit. Harmless when the inset is 0.
               top: glassTopExtension,
-              // Cover the bottom safe-area floor throughout the maximize
-              // spring. At rest this is omitted so the inset window continues
-              // to float above the gesture/home-indicator clearance.
-              bottom: fullBleed ? glassBottomExtension : undefined,
             }}
           />
           {/* AX-tree mirror of data-detent: the native gesture e2e suites
@@ -6124,7 +6078,7 @@ export function ChatOverlay({
                 borderRadius: PANEL_RADIUS_PX,
                 borderColor: composerCapsuleBorder,
                 backgroundColor: composerCapsuleBg,
-                boxShadow: fullBleed ? LIQUID_GLASS_EDGE_SHADOW : undefined,
+                boxShadow: composerCapsuleShadow,
                 width: composerCapsuleWidth,
                 ...(keyboardLiftActive
                   ? {}
@@ -6320,34 +6274,16 @@ export function ChatOverlay({
                   slot="left"
                   reduceMotion={reduce}
                   controlKey={
-                    transcriptionMode
-                      ? "voice-master-stop"
-                      : transcriptionComposerActive ||
-                          draftOwnsTrailingControl ||
-                          generationOwnsTrailingControl
-                        ? null
-                        : "voice"
+                    transcriptionComposerActive ||
+                    draftOwnsTrailingControl ||
+                    generationOwnsTrailingControl
+                      ? null
+                      : "voice"
                   }
                 >
-                  {transcriptionMode ? (
-                    // Transcript capture and the underlying mic are independent:
-                    // this control preserves the one-tap privacy stop while the
-                    // adjacent transcript control can leave listening enabled.
-                    // MicOff distinguishes that privacy boundary from the live
-                    // waveform without adding a second pulsing activity signal.
-                    <SoftButton
-                      icon={MicOff}
-                      label="stop transcription and mic"
-                      disabled={firstRunOpen || transcriptionFinishing}
-                      active
-                      pressed
-                      onPointerDown={(event) => event.preventDefault()}
-                      onClick={handleMicClick}
-                      testId="chat-composer-mic"
-                    />
-                  ) : !transcriptionComposerActive &&
-                    !draftOwnsTrailingControl &&
-                    !generationOwnsTrailingControl ? (
+                  {!transcriptionComposerActive &&
+                  !draftOwnsTrailingControl &&
+                  !generationOwnsTrailingControl ? (
                     // Tap starts hands-free conversation; hold inserts
                     // push-to-talk dictation into the editable draft.
                     <SoftButton
@@ -6442,13 +6378,13 @@ export function ChatOverlay({
               </div>
             </motion.div>
           </motion.div>
-          {!firstRunOpen && !fullBleed ? (
+          {!firstRunOpen ? (
             <motion.div
               data-testid="chat-sheet-rim"
               aria-hidden="true"
               className="pointer-events-none absolute inset-0 z-40 border border-border-strong"
               style={{
-                opacity: glassOpacity,
+                opacity: rimOpacity,
                 borderRadius: morphRadius,
               }}
             />

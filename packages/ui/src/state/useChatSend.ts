@@ -290,6 +290,8 @@ export interface ChatSendTextOptions {
   conversationId?: string | null;
   images?: ImageAttachment[];
   metadata?: Record<string, unknown>;
+  /** Optional caller-supplied idempotency key for this logical turn. */
+  clientMessageId?: string;
 }
 
 interface ChatSendTextInternalOptions extends ChatSendTextOptions {
@@ -2155,7 +2157,9 @@ export function useChatSend(deps: UseChatSendDeps) {
 
       const identityOverride = options?.[CHAT_SEND_IDENTITY_OVERRIDE];
       const clientMessageId =
-        identityOverride?.clientMessageId ?? generateChatClientMessageId();
+        identityOverride?.clientMessageId ??
+        options?.clientMessageId ??
+        generateChatClientMessageId();
       const optimisticTurn =
         identityOverride?.optimisticTurn ??
         createOptimisticTurn(clientMessageId);
