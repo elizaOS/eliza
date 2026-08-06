@@ -27,6 +27,7 @@ import {
   summarizeStability,
 } from "../../../testing/layout-stability.ts";
 import {
+  touchDragHold,
   touchLongPress,
   touchSwipe,
   touchTap,
