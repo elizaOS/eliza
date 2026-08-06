@@ -308,10 +308,8 @@ const BUILTIN_SECTION_DEFINITIONS: readonly BuiltinSectionDefinition[] = [
     tone: "accent",
     hue: "accent",
     labelKey: "settings.sections.voice.label",
-    // Hidden for MVP — voice runs on the bundled Kokoro TTS with no user
-    // selection; a summary row lives in Models & Providers. Kept registered so
-    // the `/settings voice` deep-link still resolves.
-    developerOnly: true,
+    // User-visible because shortcut microphone auto-start consent must be
+    // discoverable and reversible without a developer-mode deep link.
     Component: VoiceSectionMount,
   },
   {
