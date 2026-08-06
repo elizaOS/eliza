@@ -47,6 +47,78 @@ describe("applyTranscriptEvent", () => {
     ]);
   });
 
+  it("keeps same-valued ids from different row kinds independent", () => {
+    const view = reduce([
+      { type: "stt.final", seq: 1, turnId: "shared", text: "question" },
+      {
+        type: "agent.text",
+        seq: 2,
+        messageId: "shared",
+        text: "answer",
+        final: true,
+      },
+      {
+        type: "tool.state",
+        seq: 3,
+        callId: "shared",
+        name: "search",
+        phase: "succeeded",
+      },
+    ]);
+    expect(view.items.map(({ kind, id }) => ({ kind, id }))).toEqual([
+      { kind: "user", id: "shared" },
+      { kind: "agent", id: "shared" },
+      { kind: "tool", id: "shared" },
+    ]);
+  });
+
+  it("does not regress completed agent or tool rows to in-flight", () => {
+    const view = reduce([
+      {
+        type: "agent.text",
+        seq: 1,
+        messageId: "m",
+        text: "complete",
+        final: true,
+      },
+      {
+        type: "agent.text",
+        seq: 2,
+        messageId: "m",
+        text: "late stream",
+        final: false,
+      },
+      {
+        type: "tool.state",
+        seq: 3,
+        callId: "c",
+        name: "search",
+        phase: "succeeded",
+      },
+      {
+        type: "tool.state",
+        seq: 4,
+        callId: "c",
+        name: "search",
+        phase: "started",
+      },
+    ]);
+    expect(view.items).toEqual([
+      {
+        kind: "agent",
+        id: "m",
+        status: "final",
+        text: "complete",
+      },
+      {
+        kind: "tool",
+        id: "c",
+        status: "succeeded",
+        name: "search",
+      },
+    ]);
+  });
+
   it("clears the speaking indicator only when `ended` names the active utterance", () => {
     const view = reduce([
       { type: "tts.audio", seq: 1, utteranceId: "u1", phase: "started" },
