@@ -2203,6 +2203,11 @@ export class AcpService extends Service {
       try {
         await this.stopNativeClient(sessionId);
         await this.store.updateStatus(sessionId, "stopped");
+        // `closeSession()` is an awaited teardown boundary. Revoke before the
+        // terminal event so callers cannot observe a closed session whose
+        // leased model credential is still live; the event-side revoke then
+        // becomes an idempotent no-op.
+        await this.revokeModelLease(sessionId, "closeSession:native");
         this.emitSessionEvent(sessionId, "stopped", {
           sessionId,
           response: this.lastOutput(sessionId),
@@ -2254,6 +2259,8 @@ export class AcpService extends Service {
       );
     }
     await this.store.updateStatus(sessionId, "stopped");
+    // Keep CLI close parity with the native awaited teardown contract.
+    await this.revokeModelLease(sessionId, "closeSession:cli");
     this.emitSessionEvent(sessionId, "stopped", {
       sessionId,
       response: this.lastOutput(sessionId),

@@ -24,7 +24,7 @@ import type {
 import type { ContextRegistry } from "../types/contexts";
 import type { Memory } from "../types/memory";
 import { ModelType } from "../types/model";
-import type { UUID } from "../types/primitives";
+import { ChannelType, type UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
 
@@ -137,6 +137,7 @@ function makeRuntime(opts: {
 			: {}),
 		emitEvent: vi.fn(async () => undefined),
 		runActionsByMode: vi.fn(async () => undefined),
+		getSetting: vi.fn(() => undefined),
 		useModel: vi.fn(
 			async (modelType: unknown, params: unknown, provider: unknown) => {
 				calls.push({ modelType, params, provider });
@@ -725,6 +726,127 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			}),
 			"[ShouldRespondRiskGate] suppressing Stage 1 response before side effects or planner tools",
 		);
+	});
+
+	it("suppresses the ack fallback when an ambient turn ran a tool and then deliberately IGNOREd", async () => {
+		// The ambient-turn policy invites the planner to attempt work before
+		// choosing silence, so a tool-then-IGNORE ambient turn must end silent:
+		// the ack fallback ("On it." / "on it, working on that now.") is exactly
+		// the process-narration filler the policy suppresses, and the action
+		// results alone make the turn observable.
+		let webSearchCalls = 0;
+		const webSearch = makeMockAction({
+			name: "WEB_SEARCH",
+			parameters: [
+				{
+					name: "q",
+					description: "Search query",
+					required: true,
+					schema: { type: "string" },
+				},
+			],
+			handler: async () => {
+				webSearchCalls++;
+				return {
+					success: true,
+					text: "no results worth sharing",
+					data: { actionName: "WEB_SEARCH", results: [] },
+				};
+			},
+		});
+
+		const runtime = makeRuntime({
+			actions: [webSearch],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["web"],
+						thought: "Ambient chatter; check whether the web has anything.",
+						candidateActionNames: ["WEB_SEARCH"],
+						replyText: "On it.",
+					}),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						toolCalls: [
+							{ id: "call-1", name: "WEB_SEARCH", args: { q: "eliza" } },
+						],
+					},
+				},
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: JSON.stringify({
+						success: true,
+						decision: "CONTINUE",
+						thought: "Nothing concrete came back.",
+					}),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						toolCalls: [{ id: "ignore-1", name: "IGNORE", args: {} }],
+					},
+				},
+			],
+		});
+
+		const message = makeMessage("what was that tool everyone mentioned?");
+		message.content.channelType = ChannelType.GROUP;
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message,
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		expect(webSearchCalls).toBe(1);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent).toBeNull();
+			expect(result.result.mode).toBe("none");
+			expect(result.result.actionResults).toHaveLength(1);
+		}
+	});
+
+	it("records STOP-shaped ambient deliberate silence as a terminal STOP, not IGNORE", async () => {
+		const runtime = makeRuntime({
+			actions: [],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["web"],
+						thought: "Ambient chatter; nothing for me here.",
+						replyText: "",
+					}),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						toolCalls: [{ id: "stop-1", name: "STOP", args: {} }],
+					},
+				},
+			],
+		});
+
+		const message = makeMessage("anyway, moving on");
+		message.content.channelType = ChannelType.GROUP;
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message,
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		expect(result.kind).toBe("terminal");
+		if (result.kind === "terminal") {
+			expect(result.action).toBe("STOP");
+		}
 	});
 
 	it("falls back to a single tool's user-facing text when the evaluator omits messageToUser", async () => {

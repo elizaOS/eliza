@@ -27,6 +27,7 @@ import { useResolvedTtsDefault } from "../../hooks/useResolvedTtsDefault";
 import { useAppSelector } from "../../state";
 import {
   hasConfiguredApiKey,
+  isCloudVoiceRunnable,
   normalizeForWake,
   PREMADE_VOICES,
   sanitizeApiKey,
@@ -1095,7 +1096,10 @@ export function VoiceConfigView() {
   const { defaults: providerDefaults } = useDefaultProviderPresets();
   const advancedEnabled = useAdvancedSettingsEnabled();
 
-  const cloudVoiceAvailable = elizaCloudVoiceProxyAvailable;
+  const cloudVoiceAvailable = isCloudVoiceRunnable({
+    connected: elizaCloudConnected,
+    proxyAvailable: elizaCloudVoiceProxyAvailable,
+  });
   const hasElevenLabsApiKey = hasConfiguredApiKey(
     voiceConfig.elevenlabs?.apiKey,
   );

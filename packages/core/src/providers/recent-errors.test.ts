@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 import type { ReportedError } from "../errors";
 import type { IAgentRuntime, Memory, State } from "../types";
-import { recentErrorsProvider } from "./recent-errors";
+import { QUIET_ERROR_CODES, recentErrorsProvider } from "./recent-errors";
 
 function runtimeWith(entries: ReportedError[]): IAgentRuntime {
 	return { getRecentReportedErrors: () => entries } as unknown as IAgentRuntime;
@@ -148,5 +148,35 @@ describe("RECENT_ERRORS provider", () => {
 		expect(surfaced).toHaveLength(1);
 		expect(surfaced[0].code).toBe("WALLET_RPC_DOWN");
 		expect(result.text).not.toContain("TASK_TICK_FAILED");
+	});
+
+	it("frames the block as internal diagnostics that never absorb user questions", async () => {
+		// A live "available_apps provider timeout" rendered without this framing
+		// got answered as if it were the user's question (tj-f8249b30e986d6).
+		const entries: ReportedError[] = [
+			{
+				scope: "provider:available_apps",
+				code: "PROVIDER_TIMEOUT",
+				message: "available_apps provider timeout",
+				at: Date.now() - 100,
+			},
+		];
+		const result = await recentErrorsProvider.get(
+			runtimeWith(entries),
+			message,
+			state,
+		);
+		expect(result.text).toContain("internal diagnostics");
+		expect(result.text).toContain(
+			"Never assume a user's message refers to them unless the user explicitly asks about errors.",
+		);
+		// The self-healing / escalation instruction is unchanged.
+		expect(result.text).toContain("tell the owner");
+	});
+
+	it("exports the quiet-code set with the scheduler plumbing codes", () => {
+		expect(QUIET_ERROR_CODES.has("TASK_TICK_FAILED")).toBe(true);
+		expect(QUIET_ERROR_CODES.has("TASK_WORKER_MISSING")).toBe(true);
+		expect(QUIET_ERROR_CODES.has("WALLET_RPC_DOWN")).toBe(false);
 	});
 });

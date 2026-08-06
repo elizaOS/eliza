@@ -3234,6 +3234,216 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 	});
 
+	it("renders the ambient-turn policy in the planner prompt on an unaddressed group turn and records planner IGNORE as a terminal decision", async () => {
+		// Live incident tj-f637475edcb7bd: an unaddressed group message ("what
+		// was it for?" — humans talking to each other) reached the planner,
+		// which produced no tool activity and shipped the filler completion "I
+		// handled the available step." as the terminal REPLY. The ambient-turn
+		// policy is conditional on the structural classifier only (channel type
+		// + addressing + source metadata, never message text) and instructs the
+		// planner to end an empty ambient turn with IGNORE. A planner IGNORE on
+		// such a turn must then surface as a terminal decision (mirroring how a
+		// Stage-1 IGNORE records) rather than an unrecorded mode-"none" result.
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "Ambient chatter, but check whether tools have anything.",
+				contexts: ["general"],
+				replyText: "",
+			}),
+			{
+				text: "",
+				toolCalls: [{ id: "ignore-1", name: "IGNORE", arguments: {} }],
+			},
+		]);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "what was it for?",
+				channelType: ChannelType.GROUP,
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000008" as UUID,
+		});
+
+		const calls = useModelCalls(runtime);
+		const stage1Params = calls[0]?.[1] as {
+			messages?: Array<{ content?: string | null }>;
+		};
+		const plannerParams = calls[1]?.[1] as {
+			messages?: Array<{ content?: string | null }>;
+		};
+		const stage1Content = (stage1Params.messages ?? [])
+			.map((entry) => entry.content ?? "")
+			.join("\n");
+		const plannerContent = (plannerParams.messages ?? [])
+			.map((entry) => entry.content ?? "")
+			.join("\n");
+		expect(plannerContent).toContain("ambient_turn_policy:");
+		expect(plannerContent).toContain("end the turn by calling the IGNORE tool");
+		expect(plannerContent).toContain(
+			"Never send a status update, a progress note, or a description of your own process",
+		);
+		// The policy is planner-scoped: Stage 1 already has the group-triage
+		// tier for ambient turns and its prompt stays byte-identical.
+		expect(stage1Content).not.toContain("ambient_turn_policy");
+		// Deliberate planner silence records as a terminal IGNORE — the same
+		// observable outcome a Stage-1 IGNORE gets — not a silent drop.
+		expect(result.kind).toBe("terminal");
+		if (result.kind === "terminal") {
+			expect(result.action).toBe("IGNORE");
+		}
+	});
+
+	it("keeps the planner prompt byte-identical on an addressed group turn (no ambient policy, no terminal conversion)", async () => {
+		// Addressed branch pin (same pattern as the memory-surface branch
+		// tests): a platform mention makes the turn addressed, so the
+		// ambient-turn policy must not render and a planner IGNORE keeps
+		// today's planned-reply "none" outcome instead of the ambient terminal
+		// conversion.
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "Addressed follow-up; see if the planner has anything.",
+				contexts: ["general"],
+				replyText: "",
+			}),
+			{
+				text: "",
+				toolCalls: [{ id: "ignore-1", name: "IGNORE", arguments: {} }],
+			},
+		]);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "what was it for?",
+				channelType: ChannelType.GROUP,
+				mentionContext: { isMention: true, isReply: false, isThread: false },
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000009" as UUID,
+		});
+
+		const calls = useModelCalls(runtime);
+		const plannerParams = calls[1]?.[1] as {
+			messages?: Array<{ content?: string | null }>;
+		};
+		const plannerContent = (plannerParams.messages ?? [])
+			.map((entry) => entry.content ?? "")
+			.join("\n");
+		expect(plannerContent).not.toContain("ambient_turn_policy");
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent).toBeNull();
+			expect(result.result.mode).toBe("none");
+		}
+	});
+
+	it("keeps RECENT_ERRORS out of the planner recompose AND its cached rendering on an ambient turn", async () => {
+		// The Stage-1 exclusion alone is not enough: the planner recompose
+		// re-adds every alwaysInResponseState provider, and composeState merges
+		// the whole turn cache into the state it returns — so a RECENT_ERRORS
+		// block cached by ANY earlier compose would still render into the
+		// planner prompt of an ambient turn routed to planning. Both halves are
+		// pinned here: the include list handed to composeState (composition
+		// pass) and the rendered planner prompt (cached rendering), with
+		// composeState deliberately returning state that already carries the
+		// diagnostics block.
+		const diagnosticsBlock = [
+			"## Recent runtime errors (internal diagnostics)",
+			"",
+			"- [available_apps] PROVIDER_TIMEOUT: available_apps provider timeout",
+		].join("\n");
+		const cachedStateWithRecentErrors = (): State => ({
+			values: { availableContexts: "general, calendar" },
+			data: {
+				providers: {
+					RECENT_ERRORS: { text: diagnosticsBlock },
+				},
+			},
+			text: "Recent conversation summary",
+		});
+		const makeEchoProneRuntime = () => {
+			const runtime = makeRuntime([
+				stage1Response({
+					thought: "Ambient chatter; see whether tools have anything.",
+					contexts: ["general"],
+					replyText: "",
+				}),
+				{
+					text: "",
+					toolCalls: [{ id: "ignore-1", name: "IGNORE", arguments: {} }],
+				},
+			]);
+			runtime.providers = [
+				{
+					name: "RECENT_ERRORS",
+					alwaysInResponseState: true,
+					get: async () => ({ text: diagnosticsBlock }),
+				},
+			] as never;
+			runtime.composeState = vi.fn(async () => cachedStateWithRecentErrors());
+			return runtime;
+		};
+
+		const ambientRuntime = makeEchoProneRuntime();
+		await runV5MessageRuntimeStage1({
+			runtime: ambientRuntime,
+			message: makeMessage({
+				text: "what was it for?",
+				channelType: ChannelType.GROUP,
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-00000000000a" as UUID,
+		});
+		const ambientComposeCalls = (
+			ambientRuntime.composeState as { mock: { calls: unknown[][] } }
+		).mock.calls;
+		// Composition pass: the planner include list must not request the
+		// provider the Stage-1 exclusion already withheld.
+		for (const call of ambientComposeCalls) {
+			expect(call[1] as string[]).not.toContain("RECENT_ERRORS");
+		}
+		// Cached rendering: the state composeState returned CONTAINS the block,
+		// and the planner prompt still must not.
+		const ambientPlanner = useModelCalls(ambientRuntime)[1]?.[1] as {
+			messages?: Array<{ content?: string | null }>;
+		};
+		const ambientPlannerContent = (ambientPlanner.messages ?? [])
+			.map((entry) => entry.content ?? "")
+			.join("\n");
+		expect(ambientPlannerContent).not.toContain("Recent runtime errors");
+		expect(ambientPlannerContent).not.toContain("PROVIDER_TIMEOUT");
+
+		// Addressed twin (platform mention): identical runtime and cached state,
+		// and the diagnostics block renders — proving the ambient classifier,
+		// not some blanket render skip, owns the exclusion.
+		const addressedRuntime = makeEchoProneRuntime();
+		await runV5MessageRuntimeStage1({
+			runtime: addressedRuntime,
+			message: makeMessage({
+				text: "what was it for?",
+				channelType: ChannelType.GROUP,
+				mentionContext: { isMention: true, isReply: false, isThread: false },
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-00000000000b" as UUID,
+		});
+		const addressedComposeCalls = (
+			addressedRuntime.composeState as { mock: { calls: unknown[][] } }
+		).mock.calls;
+		expect(
+			addressedComposeCalls.some((call) =>
+				(call[1] as string[]).includes("RECENT_ERRORS"),
+			),
+		).toBe(true);
+		const addressedPlanner = useModelCalls(addressedRuntime)[1]?.[1] as {
+			messages?: Array<{ content?: string | null }>;
+		};
+		const addressedPlannerContent = (addressedPlanner.messages ?? [])
+			.map((entry) => entry.content ?? "")
+			.join("\n");
+		expect(addressedPlannerContent).toContain("Recent runtime errors");
+	});
+
 	it("current_turn_boundary answers facts stated in the current message itself", async () => {
 		// Live regression: on 2026-05-28 the bot was asked "i told you my
 		// favorite color is teal, whats my favorite color?" and replied "I
@@ -5074,5 +5284,67 @@ describe("sub-agent completion relay vs the direct-candidate injection backstop"
 		expect(result.messageHandler.plan.requiresTool).toBe(true);
 		const calls = useModelCalls(runtime);
 		expect(calls[1]?.[0]).toBe(ModelType.ACTION_PLANNER);
+	});
+
+	it("tells a fired prompt-automation that its reply is the automation's output, not an acknowledgement", async () => {
+		// Live incident 2026-08-05 01:00: a "take vitamins" reminder fired and
+		// the turn replied "noted." — the model read the trigger's own
+		// "Do this now:" framing as a status message about itself and
+		// acknowledged it, so the user received an acknowledgement instead of
+		// the reminder. The policy is gated on the connector-set source, never
+		// on message text.
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "Automation fired.",
+				contexts: ["general"],
+				replyText: "time to take your vitamins.",
+			}),
+		]);
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: 'Scheduled trigger "take vitamins" fired. Do this now: remind me to take my vitamins',
+				source: "trigger-prompt",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-0000000000aa" as UUID,
+		});
+
+		const firstCall = useModelCalls(runtime)[0];
+		const params = firstCall?.[1] as {
+			messages?: Array<{ content?: string | null }>;
+		};
+		const stage1Content = (params?.messages ?? [])
+			.map((entry) => entry.content ?? "")
+			.join("\n");
+		expect(stage1Content).toContain("trigger_automation_policy:");
+		expect(stage1Content).toContain(
+			"whatever you reply is delivered to the user",
+		);
+		expect(stage1Content).toContain("Never reply with an acknowledgement");
+	});
+
+	it("keeps the prompt byte-identical for an ordinary user turn (no automation policy)", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "Ordinary turn.",
+				contexts: ["general"],
+				replyText: "sure.",
+			}),
+		]);
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "remind me to take my vitamins" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-0000000000ab" as UUID,
+		});
+		const firstCall = useModelCalls(runtime)[0];
+		const params = firstCall?.[1] as {
+			messages?: Array<{ content?: string | null }>;
+		};
+		const stage1Content = (params?.messages ?? [])
+			.map((entry) => entry.content ?? "")
+			.join("\n");
+		expect(stage1Content).not.toContain("trigger_automation_policy");
 	});
 });

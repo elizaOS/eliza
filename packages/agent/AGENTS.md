@@ -106,6 +106,11 @@ bun run --cwd packages/agent test:remote-capabilities
 bun run --cwd packages/agent test:sandbox-live
 ```
 
+The package test runner keeps one file per isolated Vitest process and runs up
+to four processes concurrently by default. Set `AGENT_TEST_CONCURRENCY` to a
+positive integer to tune process parallelism, `AGENT_TEST_BATCH_SIZE` to group
+files deliberately, or `AGENT_TEST_VERBOSE=1` to print every passing child log.
+
 `build:docker-dist`, `build:ios-jsc`, `clean`, `pack:dry-run`, `test:remote-capabilities:{docker,cloud-live,provider-live,source-build}` also exist in `package.json`.
 
 ## Config / env vars

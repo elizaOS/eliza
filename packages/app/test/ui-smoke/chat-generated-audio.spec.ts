@@ -187,11 +187,14 @@ test("chat: a generated audio attachment renders an inline player with the serve
   // actually on-screen — the slim peek sits under the composer otherwise.
   const openSheet = async (): Promise<void> => {
     const grabber = page.getByTestId("chat-sheet-grabber");
-    if ((await grabber.count()) > 0) {
-      await grabber.focus();
-      await page.keyboard.press("ArrowUp");
-      await page.waitForTimeout(400);
-    }
+    await expect(grabber).toBeVisible({ timeout: 15_000 });
+    await grabber.focus();
+    await page.keyboard.press("ArrowUp");
+    await expect(page.getByTestId("chat-overlay")).toHaveAttribute(
+      "data-open",
+      "true",
+      { timeout: 15_000 },
+    );
   };
   await openSheet();
 

@@ -44,6 +44,12 @@ const publicPathPrefixes = [
   "/api/auth/steward-session",
   "/api/auth/steward-nonce-exchange",
   "/api/auth/steward-refresh",
+  // Cross-host SSO bridge: /mint self-authenticates (Bearer verified in the
+  // handler — the global gate's cookie acceptance must NOT vouch for it, see
+  // the route's plant-a-cookie rationale), /exchange is authenticated by the
+  // single-use code itself (the caller has no credentials yet — that is the
+  // point). Both legs are rate-limited and strictly origin-gated in the route.
+  "/api/auth/sso-bridge",
   // Logout must be reachable without a valid session: the client clears the
   // Steward cookies before (or independently of) this call, and an expired
   // session still needs to tear down server state + clear cookies. The handler

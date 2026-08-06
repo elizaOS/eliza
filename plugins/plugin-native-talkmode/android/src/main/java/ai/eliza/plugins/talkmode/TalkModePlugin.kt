@@ -60,7 +60,6 @@ class TalkModePlugin : Plugin() {
         private const val TAG = "TalkMode"
         private const val DEFAULT_MODEL_ID = "eleven_flash_v2_5"
         private const val DEFAULT_OUTPUT_FORMAT = "pcm_24000"
-        private const val LOCAL_INFERENCE_TTS_URL = "http://127.0.0.1:31337/api/tts/local-inference"
         // Abstract-namespace UDS of ElizaBionicInferenceServer (the bionic app
         // process that has libelizainference loaded). Kept in sync with
         // BIONIC_INFERENCE_SOCKET_NAME in ElizaAgentService.
@@ -113,6 +112,7 @@ class TalkModePlugin : Plugin() {
     private var speakStartTimeMs: Long = 0
     private var lastInterruptedAtSeconds: Double? = null
     @Volatile private var activePcmConnection: HttpURLConnection? = null
+    @Volatile private var activeLocalAgentSocket: LocalSocket? = null
 
     // Voice audio session (communication-mode routing + focus, mirrors the iOS
     // .playAndRecord/.voiceChat/.defaultToSpeaker session). Held for the whole
@@ -1240,24 +1240,17 @@ class TalkModePlugin : Plugin() {
     ) = withContext(Dispatchers.IO) {
         pcmStopRequested.set(false)
         // Prefer the in-process fused Kokoro voice via the bionic inference host.
-        // Only if that host is unreachable (e.g. desktop/Electrobun, or a build
-        // without it) do we fall through to the HTTP agent endpoint.
+        // Only if that host is unreachable do we fall through to the embedded
+        // agent's abstract UDS request bridge. Android production binds no TCP
+        // listener, so local voice must never dial loopback port 31337.
         if (streamAndPlayBionicKokoroTts(text, directive)) {
             return@withContext
         }
-        val conn = openLocalInferenceTtsConnection()
-        activePcmConnection = conn
+        val wavBytes = requestLocalAgentTtsWav(
+            buildLocalInferenceTtsPayload(text, directive)
+        )
         try {
-            val payload = buildLocalInferenceTtsPayload(text, directive)
-            conn.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
-
-            val code = conn.responseCode
-            if (code >= 400) {
-                val errBody = conn.errorStream?.readBytes()?.toString(Charsets.UTF_8) ?: ""
-                throw IllegalStateException("Local inference TTS error: $code $errBody")
-            }
-
-            BufferedInputStream(conn.inputStream).use { input ->
+            BufferedInputStream(ByteArrayInputStream(wavBytes)).use { input ->
                 val format = readWavPcmFormat(input)
                 val track = createPcmAudioTrack(format)
                 pcmTrack = track
@@ -1286,10 +1279,6 @@ class TalkModePlugin : Plugin() {
             }
         } finally {
             cleanupPcmTrack()
-            if (activePcmConnection === conn) {
-                activePcmConnection = null
-            }
-            conn.disconnect()
         }
     }
 
@@ -1380,22 +1369,40 @@ class TalkModePlugin : Plugin() {
         }
     }
 
-    private fun openLocalInferenceTtsConnection(): HttpURLConnection {
+    private fun requestLocalAgentTtsWav(payload: String): ByteArray {
         val tokenFile = File(context.filesDir, "auth/local-agent-token")
         val token = tokenFile.takeIf { it.isFile }?.readText()?.trim().orEmpty()
         if (token.isEmpty()) {
             throw IllegalStateException("Local agent auth token is missing")
         }
-
-        val conn = URL(LOCAL_INFERENCE_TTS_URL).openConnection() as HttpURLConnection
-        conn.requestMethod = "POST"
-        conn.connectTimeout = 30_000
-        conn.readTimeout = 180_000
-        conn.setRequestProperty("Authorization", "Bearer $token")
-        conn.setRequestProperty("Content-Type", "application/json")
-        conn.setRequestProperty("Accept", "audio/wav")
-        conn.doOutput = true
-        return conn
+        val socket = LocalSocket()
+        try {
+            socket.connect(
+                LocalSocketAddress(
+                    TalkModeAndroidBridgeContract.LOCAL_AGENT_SOCKET_NAME,
+                    LocalSocketAddress.Namespace.ABSTRACT
+                )
+            )
+            activeLocalAgentSocket = socket
+            socket.soTimeout = 180_000
+            val frame = TalkModeAndroidBridgeContract.localAgentTtsFrame(
+                requestId = "talkmode-tts-${UUID.randomUUID()}",
+                token = token,
+                body = JSONObject(payload)
+            )
+            socket.outputStream.write((frame + "\n").toByteArray(Charsets.UTF_8))
+            socket.outputStream.flush()
+            val line = socket.inputStream.bufferedReader(Charsets.UTF_8).readLine()
+                ?: throw IllegalStateException("Local agent TTS closed with no response")
+            return TalkModeAndroidBridgeContract.decodeLocalAgentWavResponse(line) {
+                Base64.decode(it, Base64.NO_WRAP)
+            }
+        } finally {
+            if (activeLocalAgentSocket === socket) {
+                activeLocalAgentSocket = null
+            }
+            try { socket.close() } catch (_: Exception) {}
+        }
     }
 
     private fun buildLocalInferenceTtsPayload(text: String, directive: JSObject?): String {
@@ -1906,6 +1913,9 @@ class TalkModePlugin : Plugin() {
 
     private fun stopSpeakingInternal() {
         pcmStopRequested.set(true)
+        val localAgentSocket = activeLocalAgentSocket
+        activeLocalAgentSocket = null
+        try { localAgentSocket?.close() } catch (_: Exception) {}
         val conn = activePcmConnection
         activePcmConnection = null
         conn?.disconnect()

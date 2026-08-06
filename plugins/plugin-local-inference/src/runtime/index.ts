@@ -30,7 +30,10 @@ export {
 	selectEmbeddingPresetFromHardware,
 	selectEmbeddingTierFromHardware,
 } from "./embedding-presets.js";
-export { shouldWarmupLocalEmbeddingModel } from "./embedding-warmup-policy.js";
+export {
+	shouldUseLocalEmbeddingModel,
+	shouldWarmupLocalEmbeddingModel,
+} from "./embedding-warmup-policy.js";
 export { ensureLocalInferenceHandler } from "./ensure-local-inference-handler.js";
 export {
 	shouldEnableMobileLocalInference,
