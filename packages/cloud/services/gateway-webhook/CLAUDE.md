@@ -91,7 +91,7 @@ Other:
   billing tuning.
 - Per-project secrets are read via `getProjectEnv(project, KEY)`: labeled k8s
   Secrets first, else `<PROJECT_UPPER>_<KEY>` env vars (e.g. `eliza-app` →
-  `ELIZA_APP_TELEGRAM_BOT_TOKEN`). Keys include `DEFAULT_AGENT_ID`,
+  `ELIZA_APP_TELEGRAM_BOT_TOKEN`). Keys include
   `TELEGRAM_BOT_TOKEN`/`_WEBHOOK_SECRET`, `BLOOIO_*`, `TWILIO_*`, `WHATSAPP_*`.
 
 ## Conventions / gotchas

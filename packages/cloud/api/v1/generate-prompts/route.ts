@@ -18,7 +18,7 @@ const app = new Hono<AppEnv>();
 
 app.post("/", async (c) => {
   try {
-    await requireGenerativeRouteCaller(c);
+    await requireGenerativeRouteCaller(c, { rateLimitEndpoint: "strict" });
 
     const body = ((await c.req.json().catch(() => ({}))) ?? {}) as {
       seed?: string | number;

@@ -3935,9 +3935,10 @@ describe("runV5MessageRuntimeStage1", () => {
 			onSettledActionResult,
 		});
 
-		expect(earlyReply).toHaveBeenCalledWith(
-			expect.objectContaining({ text: "On it." }),
-		);
+		// The ungrounded completion claim is DROPPED at early egress — never
+		// substituted with a manufactured "On it." — so no early reply ships and
+		// the receipt-grounded confirmation below is the turn's only delivery.
+		expect(earlyReply).not.toHaveBeenCalled();
 		expect(result.kind).toBe("planned_reply");
 		expect(onSettledActionResult).toHaveBeenCalledTimes(1);
 		expect(onSettledActionResult).toHaveBeenCalledWith(
@@ -5284,5 +5285,67 @@ describe("sub-agent completion relay vs the direct-candidate injection backstop"
 		expect(result.messageHandler.plan.requiresTool).toBe(true);
 		const calls = useModelCalls(runtime);
 		expect(calls[1]?.[0]).toBe(ModelType.ACTION_PLANNER);
+	});
+
+	it("tells a fired prompt-automation that its reply is the automation's output, not an acknowledgement", async () => {
+		// Live incident 2026-08-05 01:00: a "take vitamins" reminder fired and
+		// the turn replied "noted." — the model read the trigger's own
+		// "Do this now:" framing as a status message about itself and
+		// acknowledged it, so the user received an acknowledgement instead of
+		// the reminder. The policy is gated on the connector-set source, never
+		// on message text.
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "Automation fired.",
+				contexts: ["general"],
+				replyText: "time to take your vitamins.",
+			}),
+		]);
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: 'Scheduled trigger "take vitamins" fired. Do this now: remind me to take my vitamins',
+				source: "trigger-prompt",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-0000000000aa" as UUID,
+		});
+
+		const firstCall = useModelCalls(runtime)[0];
+		const params = firstCall?.[1] as {
+			messages?: Array<{ content?: string | null }>;
+		};
+		const stage1Content = (params?.messages ?? [])
+			.map((entry) => entry.content ?? "")
+			.join("\n");
+		expect(stage1Content).toContain("trigger_automation_policy:");
+		expect(stage1Content).toContain(
+			"whatever you reply is delivered to the user",
+		);
+		expect(stage1Content).toContain("Never reply with an acknowledgement");
+	});
+
+	it("keeps the prompt byte-identical for an ordinary user turn (no automation policy)", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "Ordinary turn.",
+				contexts: ["general"],
+				replyText: "sure.",
+			}),
+		]);
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "remind me to take my vitamins" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-0000000000ab" as UUID,
+		});
+		const firstCall = useModelCalls(runtime)[0];
+		const params = firstCall?.[1] as {
+			messages?: Array<{ content?: string | null }>;
+		};
+		const stage1Content = (params?.messages ?? [])
+			.map((entry) => entry.content ?? "")
+			.join("\n");
+		expect(stage1Content).not.toContain("trigger_automation_policy");
 	});
 });

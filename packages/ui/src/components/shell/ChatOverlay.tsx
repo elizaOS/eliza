@@ -4574,6 +4574,7 @@ export function ChatOverlay({
   ]);
 
   const pullBinding: PullGestureBinding = usePullGesture({
+    preventTouchCompatibilityEvents: true,
     onStart: resetPullPeak,
     onDrag: onDragOffset,
     onDragReset: settleDrag,

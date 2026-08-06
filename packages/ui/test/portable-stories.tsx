@@ -82,12 +82,20 @@ export function smokeStoryModules(
      * browser story gate's `needs-runtime` path and the live `audit:app`.
      */
     skip?: string[];
+    /**
+     * `"<Module>/<Story>"` keys whose render deliberately exercises a React
+     * error boundary. React reports caught errors through `onCaughtError`; the
+     * harness consumes that expected diagnostic while leaving the global
+     * fail-on-console guard intact for every other story.
+     */
+    expectCaughtError?: string[];
   } = {},
 ): void {
   const wrap =
     options.wrap ??
     ((node: ReactNode) => <TooltipProvider>{node}</TooltipProvider>);
   const skip = new Set(options.skip ?? []);
+  const expectCaughtError = new Set(options.expectCaughtError ?? []);
 
   beforeAll(() => {
     installJsdomUiPolyfills();
@@ -129,7 +137,8 @@ export function smokeStoryModules(
     if (!stories.length) continue;
     describe(`${label}: ${name}`, () => {
       for (const [storyName, Story] of stories) {
-        const testFn = skip.has(`${name}/${storyName}`) ? it.skip : it;
+        const storyKey = `${name}/${storyName}`;
+        const testFn = skip.has(storyKey) ? it.skip : it;
         testFn(`${storyName} renders without throwing`, async () => {
           // The coverage here IS the absence of a throw: composing the story
           // (above) and mounting it must not error. There is intentionally no
@@ -139,7 +148,20 @@ export function smokeStoryModules(
           // ShortcutsOverlay/Open, …). Blank-render detection that needs that
           // runtime lives in the browser story gate (its needs-runtime path) and
           // the live audit:app — not this fast offline smoke.
-          const { container } = render(wrap(<Story />) as ReactElement);
+          const caughtErrors: unknown[] = [];
+          const { container } = render(
+            wrap(<Story />) as ReactElement,
+            expectCaughtError.has(storyKey)
+              ? {
+                  onCaughtError: (error) => {
+                    caughtErrors.push(error);
+                  },
+                }
+              : undefined,
+          );
+          if (expectCaughtError.has(storyKey)) {
+            expect(caughtErrors).not.toHaveLength(0);
+          }
           // If the story defines an interaction (`play`), run it — so authoring a
           // play function automatically gets it exercised in this lane, with no
           // per-component test to wire up.

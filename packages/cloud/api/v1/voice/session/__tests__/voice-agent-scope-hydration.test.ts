@@ -57,6 +57,10 @@ mock.module("@/db/repositories/characters", () => ({
 mock.module("@/db/client", () => ({
   runWithDbCacheAsync: async (fn: () => Promise<void>) => await fn(),
 }));
+const warmInferenceAdmissionSnapshot = mock(async () => undefined);
+mock.module("@/lib/services/inference-admission-snapshot", () => ({
+  warmInferenceAdmissionSnapshot,
+}));
 
 const { cache } = await import("@/lib/cache/client");
 const { CacheKeys } = await import("@/lib/cache/keys");
@@ -85,6 +89,7 @@ afterEach(async () => {
   });
   findByIdAndOrg.mockClear();
   findByIdInOrganization.mockClear();
+  warmInferenceAdmissionSnapshot.mockClear();
   findByIdInOrganization.mockImplementation(async () => linkedCharacter);
 });
 
@@ -104,6 +109,9 @@ test("one cold hydration warms BOTH the scope gate and the linked character", as
     expect(await cache.get(CHARACTER_KEY)).toMatchObject({ id: CHARACTER_ID });
     expect(findByIdInOrganization).toHaveBeenCalledWith(
       CHARACTER_ID,
+      ORGANIZATION_ID,
+    );
+    expect(warmInferenceAdmissionSnapshot).toHaveBeenCalledWith(
       ORGANIZATION_ID,
     );
   });

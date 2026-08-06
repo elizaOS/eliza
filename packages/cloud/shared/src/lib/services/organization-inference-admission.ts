@@ -40,6 +40,7 @@ import {
   InferenceAffiliateCacheWarmingError as AffiliateCacheWarmingError,
   getCachedInferenceAffiliateAttribution,
 } from "./inference-affiliate-cache";
+import type { InferenceAdmissionSnapshot } from "./inference-auth-cache";
 import { isDeferredAdmissionEnabled, isOrgAdmissionRefused } from "./inference-billing-deferred";
 import {
   createOptimisticDebitSettler,
@@ -97,6 +98,8 @@ export interface OrganizationInferenceAdmissionParams {
   flatCost?: FlatBillingCost;
   affiliateCode?: string | null;
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
+  /** Combined auth-cache projection; skips the separate balance KV read. */
+  admissionSnapshot?: InferenceAdmissionSnapshot;
 }
 
 /** Retryable signal preserving route compatibility while identifying pricing hydration. */
@@ -279,10 +282,12 @@ export async function admitOrganizationInference(
               executionCtx: params.executionCtx,
             },
           ),
-      getGateBalanceHint(params.context.organizationId, {
-        executionCtx: params.executionCtx,
-        cacheOnly: canDefer,
-      }),
+      params.admissionSnapshot
+        ? Promise.resolve(params.admissionSnapshot.balance)
+        : getGateBalanceHint(params.context.organizationId, {
+            executionCtx: params.executionCtx,
+            cacheOnly: canDefer,
+          }),
       affiliateMarked && params.executionCtx
         ? getCachedInferenceAffiliateAttribution({
             affiliateCode: params.affiliateCode,

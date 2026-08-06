@@ -132,25 +132,48 @@ async function processMessage(
     return;
   }
 
-  // A linked user whose agent is still provisioning has no runtime target. The
-  // shared onboarding worker owns provisioning status, so route there rather
-  // than falling back to the project default agent (which would answer from a
-  // stranger's runtime) or dropping the message on a missing-server lookup.
-  if (!explicitAgentId && !identity.agentId) {
-    logger.info("Identity linked without an agent; routing to onboarding", {
+  // A per-agent webhook URL names the agent to serve, so among senders who
+  // reach this point it keeps precedence over whatever they happen to own —
+  // diverting a sender with a cloud account but no sandbox onto personal
+  // onboarding would run that flow on somebody else's bot. (A sender with no
+  // account at all is already onboarded by the branch above, per-agent URL or
+  // not; that predates this routing and is unchanged here.)
+  //
+  // On the shared webhook the decision is "is there an agent that can actually
+  // serve this message", which needs both the sandbox row AND its registry key:
+  // the row appears the moment provisioning starts, the key only once a
+  // container has booted. Branching on the row alone would answer the first
+  // message and then go silent again for every message until boot — for good,
+  // if provisioning ends in error. Never branch on `sandbox.status`: a stopped
+  // agent is still a resolved agent, and re-onboarding one would provision a
+  // duplicate (the single guard against that is the early return on an
+  // existing sandbox in ensureElizaAppProvisioning).
+  //
+  // `unreachable` is deliberately NOT onboarding: that is an established agent
+  // whose pod stopped heartbeating, and the onboarding state machine would tell
+  // its owner "you're live" while the message goes nowhere, then copy the
+  // transcript into the agent's memory a second time.
+  const agentId = explicitAgentId ?? identity.agentId;
+  const server = agentId
+    ? await resolveAgentServer(redis, agentId)
+    : ({ kind: "unregistered" } as const);
+
+  if (!agentId || server.kind !== "ready") {
+    if (explicitAgentId || server.kind === "unreachable") {
+      logger.error("No server found for agent", {
+        project,
+        agentId,
+        reason: server.kind,
+      });
+      return;
+    }
+    logger.info("Sender has no running agent; routing message to onboarding", {
       project,
       platform: adapter.platform,
-      userId: identity.userId,
+      senderId: event.senderId,
+      agentId,
     });
     await sendOnboardingReply(adapter, config, event, deps);
-    return;
-  }
-
-  const agentId = explicitAgentId || identity.agentId || config.agentId;
-
-  const server = await resolveAgentServer(redis, agentId);
-  if (!server) {
-    logger.error("No server found for agent", { project, agentId });
     return;
   }
 
@@ -230,6 +253,12 @@ async function sendOnboardingReply(
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          // The onboarding route and its session coordinator both keep a replay
+          // ledger on this header. Without it the only protection against a
+          // platform redelivering a message is the 5-minute dedup key, and a
+          // later retry would append the message to the transcript twice and
+          // re-enter provisioning.
+          "Idempotency-Key": event.messageId,
           ...getAuthHeader(),
         },
         body: JSON.stringify({

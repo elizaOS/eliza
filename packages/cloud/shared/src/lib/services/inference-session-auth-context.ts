@@ -21,6 +21,7 @@ import { cache } from "../cache/client";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import { adminService } from "./admin";
+import { loadInferenceAdmissionSnapshot } from "./inference-admission-snapshot";
 import {
   INFERENCE_AUTH_CONTEXT_VERSION,
   type InferenceSessionAuthContext,
@@ -143,7 +144,14 @@ async function hydrateAndCache(
   },
   persistDecision: boolean,
 ): Promise<InferenceSessionAuthDecision> {
-  const decision = await hydrateAuthoritativeDecision(params);
+  const authoritative = await hydrateAuthoritativeDecision(params);
+  const decision =
+    persistDecision && "apiKeyId" in authoritative
+      ? {
+          ...authoritative,
+          admission: await loadInferenceAdmissionSnapshot(authoritative.orgId),
+        }
+      : authoritative;
   if (persistDecision) await writeInferenceSessionAuthDecision(decision);
   return decision;
 }

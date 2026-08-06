@@ -22,9 +22,17 @@ const PULL_REQUEST_HOSTED_SELECTOR =
 const JANITOR_ROBOT_SELECTOR =
   EXPRESSION_OPEN +
   ' vars.HETZNER_FLEET_ONLINE != \'true\' && \'["ubuntu-latest"]\' || vars.ACTIONS_JANITOR_ROBOT_LANE_DISABLED == \'true\' && \'["ubuntu-latest"]\' || vars.ACTIONS_JANITOR_ROBOT_RUNNER_JSON || \'["self-hosted","Linux","X64","hetzner-robot"]\' }}';
+// certification-hosted.yml only: a workflow_dispatch-only surface where the
+// operator may explicitly request the robot pool. The input NEVER overrides
+// the fleet gate — `robot` degrades to hosted whenever HETZNER_FLEET_ONLINE
+// is not exactly 'true', so an offline fleet can strand nothing (#17813).
+const CERTIFICATION_DISPATCH_SELECTOR =
+  EXPRESSION_OPEN +
+  " fromJSON(inputs.runner != 'robot' && '[\"ubuntu-24.04\"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '[\"ubuntu-24.04\"]' || '[\"self-hosted\",\"hetzner-robot\"]') }}";
 const DIRECT_RUNNER_SELECTORS = new Set([
   CANONICAL_SELECTOR,
   PULL_REQUEST_HOSTED_SELECTOR,
+  CERTIFICATION_DISPATCH_SELECTOR,
 ]);
 const JANITOR_WORKFLOW = "actions-zombie-janitor.yml";
 const MATRIX_RUNNER_PATH =
