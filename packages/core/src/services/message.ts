@@ -7731,13 +7731,18 @@ export async function runV5MessageRuntimeStage1(args: {
 		const selectedContexts =
 			route.type === "planning_needed" ? route.contexts : [];
 		// Merge direct-request candidate inference BEFORE the early-ack gate so
-		// the async-handoff check below sees the turn's full candidate set.
+		// the async-handoff check below sees the turn's full candidate set. A
+		// richer evaluator may explicitly clear those hints to establish an
+		// authoritative focused-view route, which the heuristic must not undo.
 		const directPlannerCandidateActions =
 			inferDirectCurrentRequestCandidateActions(
 				args.runtime.actions ?? [],
 				getUserMessageText(args.message) ?? "",
 			);
-		if (directPlannerCandidateActions.length > 0) {
+		if (
+			directPlannerCandidateActions.length > 0 &&
+			!responseHandlerEvaluation.candidateActionsClearedByEvaluators
+		) {
 			messageHandler.plan.candidateActions = uniqueActionNames([
 				...getMessageHandlerCandidateActions(messageHandler),
 				...directPlannerCandidateActions,
@@ -7825,24 +7830,6 @@ export async function runV5MessageRuntimeStage1(args: {
 			attachAvailableContexts(recomposedPlannerState, args.runtime),
 			selectedContextRoutingState,
 		);
-		const directPlannerCandidateActions =
-			inferDirectCurrentRequestCandidateActions(
-				args.runtime.actions ?? [],
-				getUserMessageText(args.message) ?? "",
-			);
-		// An evaluator that clears Stage-1 candidates has established an
-		// authoritative route after inspecting richer runtime state. Re-running
-		// the generic text heuristic here would silently undo that decision (for
-		// example, a focused Notes follow-up otherwise becomes TASKS).
-		if (
-			directPlannerCandidateActions.length > 0 &&
-			!responseHandlerEvaluation.candidateActionsClearedByEvaluators
-		) {
-			messageHandler.plan.candidateActions = uniqueActionNames([
-				...getMessageHandlerCandidateActions(messageHandler),
-				...directPlannerCandidateActions,
-			]);
-		}
 		// Full-surface mode (a focused coding sub-agent): skip the relevance/role
 		// narrowing entirely and hand the planner EVERY action whose execution gates
 		// pass. The narrowing is built for big chat catalogs (retrieve the relevant
