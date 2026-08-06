@@ -21,8 +21,6 @@
  * Parallels `ensure-text-to-speech-handler.ts` — same shape, same guards.
  */
 
-import { existsSync, linkSync, mkdirSync, symlinkSync } from "node:fs";
-import path from "node:path";
 import {
 	type AgentRuntime,
 	applyBackgroundInferenceBudget,
@@ -77,6 +75,7 @@ import {
 	selectEmbeddingPresetFromHardware,
 } from "./embedding-presets";
 import { isLocalEmbeddingDisabledByEnv } from "./embedding-warmup-policy";
+import { resolveFusedEmbeddingBundleRoot } from "./fused-embedding-bundle";
 
 type GenerateTextHandler = (
 	runtime: IAgentRuntime,
@@ -675,58 +674,6 @@ function resolveDesktopEmbeddingConfig(
 }
 
 /**
- * Resolve (or stage) the bundle root the fused `eliza_inference_embed` should
- * anchor at for the dedicated embedding model. The fused C side embeds over the
- * single GGUF under `<root>/text/`, so we must point it at an isolated bundle
- * that contains ONLY the embedding model — never the chat bundle's text model
- * (whose decoder-as-embedder output has a different dimension). Resolution:
- *   1. `ELIZA_EMBED_BUNDLE_ROOT` — explicit override.
- *   2. The model already lives under a `text/` dir (`<root>/text/<model>.gguf`).
- *   3. `<modelsDir>/text/<model>` exists → anchor at `<modelsDir>`.
- *   4. Otherwise STAGE the dedicated embedding GGUF as the sole entry under
- *      `<modelsDir>/.eliza-embed-bundle/text/` (hardlink, symlink fallback) so
- *      the fused lib loads gte-small (384-dim bi-encoder, SQL dim384) — the
- *      same model the retired libllama path used, now through the fused lib.
- * Returns null only when the embedding GGUF is not present (boot warmup may
- * still be downloading) — the handler then raises LocalInferenceUnavailable and
- * the runtime falls through to the next embedding provider.
- */
-function resolveFusedEmbedBundleRoot(
-	cfg: DesktopEmbeddingConfig,
-): string | null {
-	const override = process.env.ELIZA_EMBED_BUNDLE_ROOT?.trim();
-	if (override && existsSync(path.join(override, "text"))) return override;
-	const modelPath = path.resolve(cfg.modelsDir, cfg.model);
-	const parent = path.dirname(modelPath);
-	if (path.basename(parent) === "text" && existsSync(modelPath)) {
-		return path.dirname(parent);
-	}
-	if (existsSync(path.join(cfg.modelsDir, "text", cfg.model))) {
-		return cfg.modelsDir;
-	}
-	if (!existsSync(modelPath)) return null;
-	const root = path.join(cfg.modelsDir, ".eliza-embed-bundle");
-	const textDir = path.join(root, "text");
-	const staged = path.join(textDir, path.basename(cfg.model));
-	try {
-		mkdirSync(textDir, { recursive: true });
-		if (!existsSync(staged)) {
-			try {
-				linkSync(modelPath, staged);
-			} catch {
-				symlinkSync(modelPath, staged);
-			}
-		}
-		return root;
-	} catch (err) {
-		logger.warn(
-			`[local-inference] could not stage the fused embed bundle for "${cfg.model}": ${String(err)}`,
-		);
-		return null;
-	}
-}
-
-/**
  * Lazily-resolved fused embedding handle. When the fused `libelizainference`
  * (ABI v9) is present, reports `embedSupported()`, and a `<root>/text/` bundle
  * root resolves for the embedding model, the desktop TEXT_EMBEDDING handler
@@ -799,7 +746,20 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
 			const { resolveFusedLibraryPath } = await import(
 				"../services/desktop-fused-ffi-backend-runtime"
 			);
-			const bundleRoot = resolveFusedEmbedBundleRoot(cfg);
+			let bundleRoot: string | null;
+			try {
+				bundleRoot = resolveFusedEmbeddingBundleRoot({
+					...cfg,
+					override: process.env.ELIZA_EMBED_BUNDLE_ROOT?.trim(),
+				});
+			} catch (error) {
+				// error-policy:J4 a failed local artifact stage is an explicit
+				// unavailable provider state; the runtime can select another provider.
+				logger.warn(
+					`[local-inference] could not stage the fused embed bundle for "${cfg.model}": ${String(error)}`,
+				);
+				return null;
+			}
 			if (!bundleRoot) {
 				logger.warn(
 					`[local-inference] fused embed unavailable: no bundle root for "${cfg.model}" under "${cfg.modelsDir}"`,
@@ -867,7 +827,8 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
  * Desktop TEXT_EMBEDDING handler over the FUSED `libelizainference`
  * (`eliza_inference_embed`, ABI v9). The dedicated embedding GGUF (gte-small,
  * 384-dim — an exact match for plugin-sql's dim384 column) is staged as the
- * sole entry of an isolated fused embed bundle (see `resolveFusedEmbedBundleRoot`)
+ * sole entry of an isolated fused embed bundle (see
+ * `resolveFusedEmbeddingBundleRoot`)
  * so the fused lib loads it directly. libllama is retired: there is no
  * capacitor/libllama fallback. When the fused embed cannot resolve (no bun:ffi,
  * no fused lib, or the embedding GGUF is still downloading) this throws so the
