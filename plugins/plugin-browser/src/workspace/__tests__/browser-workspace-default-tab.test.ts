@@ -41,6 +41,12 @@ describe("browser workspace default search tab (web mode)", () => {
     expect(tabs[0]?.url).toBe(BROWSER_WORKSPACE_DEFAULT_SEARCH_URL);
     // Default search endpoint is a real https HTML page.
     expect(new URL(tabs[0]?.url ?? "").protocol).toBe("https:");
+    // The plain-web host has no native child surface, so its canonical start
+    // page must opt into an iframe-compatible response rather than render the
+    // browser's opaque "refused to connect" document.
+    expect(
+      new URL(BROWSER_WORKSPACE_DEFAULT_SEARCH_URL).searchParams.get("igu"),
+    ).toBe("1");
   });
 
   it("is idempotent — a second call never spawns a duplicate tab", async () => {
@@ -116,7 +122,7 @@ describe("browser workspace default search tab (web mode)", () => {
     };
     const seededTab = {
       id: "tab-default",
-      title: "DuckDuckGo",
+      title: "Google",
       url: BROWSER_WORKSPACE_DEFAULT_SEARCH_URL,
       visible: true,
       kind: "search",
