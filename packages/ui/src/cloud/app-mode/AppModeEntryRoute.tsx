@@ -11,10 +11,13 @@
  * failures degrade to the Instances console); several → a minimal chooser;
  * dedicated-but-stopped → Instances; shared-tier-only orgs fall through to the
  * same-origin chat app unchanged; no agents at all → the `/join`
- * deploy-first-agent flow. Unauthenticated visitors take the normal login flow
- * and return here. None of this mounts on apex control-plane hosts — the
- * shell's apex branch runs first — so the apex console never issues app-mode
- * network calls.
+ * deploy-first-agent flow. Unauthenticated visitors first get one shot at the
+ * cross-host SSO bridge (`../sso-bridge/sso-bridge` — only when the
+ * domain-wide session marker says the dashboard pair holds a live session and
+ * the user did not explicitly sign out here), then the normal login flow, and
+ * return here. None of this mounts on apex control-plane hosts — the shell's
+ * apex branch runs first — so the apex console never issues app-mode network
+ * calls.
  */
 
 import { type ReactNode, useEffect, useRef, useState } from "react";
@@ -22,6 +25,11 @@ import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "../../components/ui/button";
 import { useAgents } from "../instances/lib/data/eliza-agents";
 import { useSessionAuth } from "../lib/use-session-auth";
+import {
+  clearSsoLoggedOut,
+  redirectToSsoBridge,
+  shouldAutoBridgeToSso,
+} from "../sso-bridge/sso-bridge";
 import {
   APP_MODE_INSTANCES_PATH,
   type AppModeAgent,
@@ -59,6 +67,35 @@ export function AppModeEntryRoute({
   const redirectStartedRef = useRef(false);
   const [redirectError, setRedirectError] = useState<string | null>(null);
 
+  // Unauthenticated visits may ride the cross-host SSO bridge instead of the
+  // local login: when the domain-wide session marker says the dashboard pair
+  // holds a live session (and the user did not explicitly sign out here), the
+  // effect performs the full-page bounce to the dashboard mint leg. The
+  // decision runs in an effect — never during render — because it reads
+  // cookies/storage/clock, and it is single-shot per mount.
+  const ssoDecisionRef = useRef(false);
+  const [ssoBridging, setSsoBridging] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!ready) return;
+    if (authenticated) {
+      // Any live sign-in on this origin re-arms auto-bridging for the future
+      // (the logged-out marker's job ends at the next real login).
+      clearSsoLoggedOut();
+      return;
+    }
+    if (ssoDecisionRef.current) return;
+    ssoDecisionRef.current = true;
+    if (!shouldAutoBridgeToSso()) {
+      setSsoBridging(false);
+      return;
+    }
+    // Async because the handshake hashes the PKCE verifier before leaving;
+    // `ssoBridging` stays null (holding the notice) until it resolves.
+    void redirectToSsoBridge(`${location.pathname}${location.search}`).then(
+      (started) => setSsoBridging(started),
+    );
+  }, [ready, authenticated, location]);
+
   const route =
     authenticated && agentsQuery.data !== undefined
       ? decideAppModeRoute(agentsQuery.data)
@@ -88,6 +125,12 @@ export function AppModeEntryRoute({
   }
 
   if (!authenticated) {
+    if (ssoBridging !== false) {
+      // Decision pending (first paint before the effect) or the full-page
+      // bounce to the dashboard mint leg is in flight — hold a notice, never
+      // flash the login page under a navigation that is already leaving.
+      return <EntryNotice label="Signing you in" />;
+    }
     // The existing login flow; returnTo brings the user back to this entry,
     // which re-runs with a session.
     const returnTo = encodeURIComponent(
