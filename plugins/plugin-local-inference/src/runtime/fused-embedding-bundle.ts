@@ -32,9 +32,11 @@ function stageCurrentModel(source: string, staged: string): void {
 	if (referencesCurrentModel(source, staged)) return;
 
 	if (process.platform === "win32") {
-		// Windows file symlinks require privileges on many supported hosts. A
-		// refreshed source inode is detected above, so replacing the hardlink here
-		// retains the same follow-the-current-artifact invariant.
+		// Windows file symlinks require privileges on many supported hosts. The
+		// resolver refreshes this hardlink when a new process observes a replaced
+		// source inode; a process that already opened its fused handle remains pinned
+		// until restart. Removing first also means this path is briefly absent while
+		// the startup-only repair runs.
 		rmSync(staged, { force: true });
 		linkSync(source, staged);
 		return;
