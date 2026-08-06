@@ -126,4 +126,45 @@ describe("GitHub action supply-chain references", () => {
       "ELIZA_VAULT_PASSPHRASE: dev-smoke-headless-vault-only",
     );
   });
+
+  test("provisions homepage Chromium without requiring self-hosted sudo", () => {
+    const source = readFileSync(
+      join(githubRoot, "workflows", "quality.yml"),
+      "utf8",
+    );
+    const workflow = Bun.YAML.parse(source) as {
+      jobs?: Record<
+        string,
+        { "runs-on"?: string; "timeout-minutes"?: number }
+      >;
+    };
+    const job = workflow.jobs?.["homepage-build"];
+    const formatGate = workflow.jobs?.["format-check"];
+    const staticGate = workflow.jobs?.["develop-static-gate"];
+
+    expect(job?.["runs-on"]).toBe("ubuntu-24.04");
+    expect(job?.["timeout-minutes"]).toBeGreaterThanOrEqual(45);
+    expect(formatGate?.["runs-on"]).toBe("ubuntu-24.04");
+    expect(staticGate?.["runs-on"]).toBe("ubuntu-24.04");
+    expect(staticGate?.["timeout-minutes"]).toBeGreaterThanOrEqual(15);
+    expect(source).toContain(
+      "PLAYWRIGHT_INSTALL_CWD=packages/homepage .github/scripts/install-playwright-browsers.sh chromium",
+    );
+    expect(source).not.toContain("playwright install --with-deps chromium");
+  });
+
+  test("keeps the Docker smoke on a runner with a Docker daemon", () => {
+    const source = readFileSync(
+      join(githubRoot, "workflows", "docker-ci-smoke.yml"),
+      "utf8",
+    );
+    const workflow = Bun.YAML.parse(source) as {
+      jobs?: Record<string, { "runs-on"?: string }>;
+    };
+    const classifier = workflow.jobs?.changes;
+    const job = workflow.jobs?.["docker-ci-smoke"];
+
+    expect(classifier?.["runs-on"]).toBe("ubuntu-24.04");
+    expect(job?.["runs-on"]).toBe("ubuntu-24.04");
+  });
 });
