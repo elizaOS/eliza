@@ -529,10 +529,10 @@ describe("ComputerUseService file and terminal execution (real host I/O)", () =>
   }, 15_000);
 
   // executeCommand maps each command string onto an action and dispatches it.
-  // Malformed desktop/window commands fail fast at validation (no display or
-  // input driver touched); the maps and per-verb approval-command lookups run
-  // for every string, so the routing switch and its helper switches are covered
-  // without actuating the host. Each dispatch returns a structured result.
+  // Desktop commands are malformed so they fail before touching the host. The
+  // window route stubs the platform-facing service method: `arrange_windows`
+  // is valid without parameters and would otherwise rearrange the developer's
+  // real desktop while a routing test is running.
   it("routes every desktop command string through executeCommand", async () => {
     const commands = [
       "click",
@@ -564,20 +564,32 @@ describe("ComputerUseService file and terminal execution (real host I/O)", () =>
   }, 20_000);
 
   it("routes every window command string through executeCommand", async () => {
-    const commands = [
-      "list_windows",
-      "switch_to_window",
-      "arrange_windows",
-      "move_window",
-      "minimize_window",
-      "maximize_window",
-      "restore_window",
-      "close_window",
-    ];
-    for (const command of commands) {
-      const result = await service.executeCommand(command, {});
-      expect(typeof result.success).toBe("boolean");
+    const commands = {
+      list_windows: "list",
+      switch_to_window: "switch",
+      arrange_windows: "arrange",
+      move_window: "move",
+      minimize_window: "minimize",
+      maximize_window: "maximize",
+      restore_window: "restore",
+      close_window: "close",
+    } as const;
+    const routedActions: string[] = [];
+    const executeWindowAction = service.executeWindowAction;
+    service.executeWindowAction = async (params) => {
+      routedActions.push(params.action);
+      return { success: false, error: "routing probe" };
+    };
+    try {
+      for (const command of Object.keys(commands)) {
+        const result = await service.executeCommand(command, {});
+        expect(typeof result.success).toBe("boolean");
+      }
+    } finally {
+      service.executeWindowAction = executeWindowAction;
     }
+
+    expect(routedActions).toEqual(Object.values(commands));
   }, 20_000);
 
   it("routes every file command string through executeCommand", async () => {
@@ -636,7 +648,6 @@ describe("ComputerUseService file and terminal execution (real host I/O)", () =>
       "get_current_window_id",
       "get_window_size",
       "get_window_position",
-      "arrange",
     ] as const) {
       const result = await service.executeWindowAction({ action });
       expect(typeof result.success).toBe("boolean");
