@@ -10,7 +10,6 @@ import {
   FileText,
   Film,
   Loader2,
-  Mic,
   Music,
   Paperclip,
   Search,
@@ -29,6 +28,7 @@ import {
   useTransform,
 } from "motion/react";
 import * as React from "react";
+import { type OrbState, ThinkingOrb } from "thinking-orbs";
 
 import { client } from "../../api/client";
 import type {
@@ -427,7 +427,8 @@ export {
 } from "./chat-overlay-motion";
 
 // Glyphs (viewBox 0 0 36 36), rendered in currentColor inside a soft chip. Send
-// + mic now use lucide icons (SendHorizontal / Mic); the rest stay hand-drawn.
+// + voice/send use lucide icons (AudioLines / SendHorizontal); the rest stay
+// hand-drawn.
 // The plus fills nearly the whole 36-unit box (arms 3→33) so, rendered at the
 // full button size, it carries the same optical weight as the lucide mic/send
 // marks — a tighter path would read as a small, over-padded glyph beside them.
@@ -738,48 +739,22 @@ type RealtimeVoiceVisualPhase =
   | "paused"
   | "error";
 
-const REALTIME_VOICE_BAR_HEIGHTS = [8, 13, 18, 13, 8] as const;
-
-const REALTIME_VOICE_BAR_MOTION: Record<
+const REALTIME_VOICE_ORB: Record<
   RealtimeVoiceVisualPhase,
-  { scaleY: number[]; opacity: number[]; duration: number }
+  { state: OrbState; speed: number; paused?: boolean }
 > = {
-  idle: { scaleY: [0.28], opacity: [0.42], duration: 0 },
-  connecting: {
-    scaleY: [0.26, 0.48, 0.26],
-    opacity: [0.35, 0.88, 0.35],
-    duration: 1.05,
-  },
-  listening: {
-    scaleY: [0.32, 0.9, 0.48, 1, 0.32],
-    opacity: [0.58, 1, 0.72, 0.94, 0.58],
-    duration: 0.92,
-  },
-  transcribing: {
-    scaleY: [0.38, 0.7, 0.38],
-    opacity: [0.52, 0.92, 0.52],
-    duration: 0.72,
-  },
-  thinking: {
-    scaleY: [0.24, 0.52, 0.24],
-    opacity: [0.38, 0.92, 0.38],
-    duration: 1.18,
-  },
-  speaking: {
-    scaleY: [0.42, 1, 0.52, 0.84, 0.42],
-    opacity: [0.68, 1, 0.8, 0.96, 0.68],
-    duration: 0.64,
-  },
-  interrupting: {
-    scaleY: [0.58, 0.22],
-    opacity: [0.82, 0.36],
-    duration: 0.2,
-  },
-  paused: { scaleY: [0.24], opacity: [0.36], duration: 0 },
-  error: { scaleY: [0.34], opacity: [1], duration: 0 },
+  idle: { state: "breathing", speed: 0.72 },
+  connecting: { state: "connecting", speed: 1 },
+  listening: { state: "listening", speed: 1 },
+  transcribing: { state: "listening", speed: 0.82 },
+  thinking: { state: "working", speed: 0.92 },
+  speaking: { state: "composing", speed: 1.08 },
+  interrupting: { state: "shaping", speed: 1.18 },
+  paused: { state: "breathing", speed: 0, paused: true },
+  error: { state: "breathing", speed: 0, paused: true },
 };
 
-/** A single neutral motion language replaces color-coded voice status dots. */
+/** A fixed-size orb gives every realtime phase distinct motion without moving the composer. */
 function ComposerRealtimeVoiceWaveform({
   phase,
   reduceMotion,
@@ -787,43 +762,29 @@ function ComposerRealtimeVoiceWaveform({
   phase: RealtimeVoiceVisualPhase;
   reduceMotion: boolean;
 }): React.JSX.Element {
-  const movement = REALTIME_VOICE_BAR_MOTION[phase];
-  const animated = !reduceMotion && movement.scaleY.length > 1;
+  const visual = REALTIME_VOICE_ORB[phase];
+  const paused = reduceMotion || visual.paused === true;
 
   return (
     <span
       aria-hidden="true"
       data-phase={phase}
+      data-orb-state={visual.state}
       data-testid="chat-composer-realtime-waveform"
       className={cn(
-        "flex h-5 w-6 shrink-0 items-center justify-center gap-[2px]",
-        phase === "error" ? "text-danger" : "text-white/85",
+        "flex h-5 w-6 shrink-0 items-center justify-center",
+        phase === "error" ? "opacity-60" : "opacity-90",
       )}
     >
-      {REALTIME_VOICE_BAR_HEIGHTS.map((height, index) => (
-        <motion.span
-          // Fixed geometry keeps phase changes compositor-only and prevents the
-          // composer from shifting during sub-second Cerebras turns.
-          key={height === 18 ? "center" : `${height}-${index}`}
-          className="block w-0.5 origin-center rounded-full bg-current"
-          initial={false}
-          animate={{
-            scaleY: animated ? movement.scaleY : movement.scaleY.at(-1),
-            opacity: animated ? movement.opacity : movement.opacity.at(-1),
-          }}
-          transition={
-            animated
-              ? {
-                  duration: movement.duration,
-                  ease: "easeInOut",
-                  repeat: Number.POSITIVE_INFINITY,
-                  delay: index * 0.055,
-                }
-              : { duration: 0.16, ease: OVERLAY_EASE }
-          }
-          style={{ height }}
-        />
-      ))}
+      <ThinkingOrb
+        aria-hidden="true"
+        data-testid="chat-composer-thinking-orb"
+        state={visual.state}
+        size={20}
+        speed={paused ? 0 : visual.speed}
+        paused={paused}
+        theme="dark"
+      />
     </span>
   );
 }
@@ -877,6 +838,16 @@ function ComposerRealtimeVoiceActivity({
       status === "transcribing" ||
       status === "thinking" ||
       status === "speaking");
+  const visibleCopy = liveTranscript || phaseLabel;
+  const copyRef = React.useRef<HTMLSpanElement>(null);
+
+  // Live partials grow from the end, so keep the newest words in view without
+  // letting a long utterance resize the composer or cover its controls.
+  React.useLayoutEffect(() => {
+    const copy = copyRef.current;
+    if (!copy) return;
+    copy.scrollTop = liveTranscript ? copy.scrollHeight : 0;
+  }, [liveTranscript]);
 
   return (
     <div
@@ -893,18 +864,25 @@ function ComposerRealtimeVoiceActivity({
         phase={visualPhase}
         reduceMotion={reduceMotion}
       />
-      <span
-        data-testid="chat-composer-realtime-copy"
-        className={cn(
-          "min-w-0 flex-1 truncate text-sm",
-          error ? "text-danger" : liveTranscript ? "text-txt" : "text-white/75",
-          shimmerPhase &&
-            "shimmer shimmer-duration-1200 motion-reduce:shimmer-none",
-        )}
-        title={liveTranscript || phaseLabel}
-      >
-        {liveTranscript || phaseLabel}
-      </span>
+      <div className="flex h-10 min-w-0 flex-1 items-center overflow-hidden">
+        <span
+          ref={copyRef}
+          data-testid="chat-composer-realtime-copy"
+          className={cn(
+            "block max-h-10 w-full min-w-0 overflow-hidden whitespace-pre-wrap text-start text-sm leading-5 [overflow-wrap:anywhere]",
+            error
+              ? "text-danger"
+              : liveTranscript
+                ? "text-txt"
+                : "text-white/75",
+            shimmerPhase &&
+              "shimmer shimmer-duration-1200 motion-reduce:shimmer-none",
+          )}
+          title={visibleCopy}
+        >
+          {visibleCopy}
+        </span>
+      </div>
       {needsAudioUnlock ? (
         <Button
           variant="ghost"
@@ -1233,11 +1211,11 @@ export function ChatOverlay({
   const realtimeVoice = controller.realtimeVoice;
   const realtimeVoiceComposerVisible = Boolean(
     realtimeVoice?.enabled &&
+      !realtimeVoice.error &&
       (handsFree ||
         realtimeVoice.active ||
         realtimeVoice.connecting ||
-        realtimeVoice.status !== "idle" ||
-        realtimeVoice.error),
+        realtimeVoice.status !== "idle"),
   );
   // True once the server has reported no LLM/model provider is configured (a
   // `no_provider` assistant turn). Defaulted for minimal mock controllers.
@@ -5450,7 +5428,9 @@ export function ChatOverlay({
           reply, the ambient overlay would otherwise go silent with no recourse
           (the in-view status bar has its own unlock; this is the floating-shell
           equivalent). Warm accent = call-to-action; no blue. */}
-      {needsAudioUnlock && !realtimeVoiceComposerVisible ? (
+      {needsAudioUnlock &&
+      !realtimeVoiceComposerVisible &&
+      !realtimeVoice?.error ? (
         <div
           role="status"
           aria-live="polite"
@@ -6336,16 +6316,6 @@ export function ChatOverlay({
                       />
                       Upload file
                     </DropdownMenuItem>
-                    <DropdownMenuItem
-                      className="cursor-pointer gap-2.5 data-[highlighted]:bg-bg-hover"
-                      onSelect={() => void toggleTranscriptionMode()}
-                    >
-                      <Mic
-                        className="h-4 w-4 shrink-0 text-muted"
-                        aria-hidden
-                      />
-                      Record long-form transcript…
-                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               ) : null}
@@ -6531,21 +6501,20 @@ export function ChatOverlay({
                       glyph={handsFree ? STOP_GLYPH : undefined}
                       icon={handsFree ? undefined : AudioLines}
                       label={
-                        realtimeVoice?.connecting
-                          ? "cancel voice connection"
-                          : handsFree
-                            ? "end conversation"
-                            : recording
-                              ? "stop listening"
-                              : "talk"
+                        realtimeVoice?.error
+                          ? `retry talk — ${realtimeVoice.error}`
+                          : realtimeVoice?.connecting
+                            ? "cancel voice connection"
+                            : handsFree
+                              ? "end conversation"
+                              : recording
+                                ? "stop listening"
+                                : "talk"
                       }
                       disabled={firstRunOpen}
                       active={handsFree}
                       pressed={recording || handsFree}
-                      pulse={
-                        recording ||
-                        (handsFree && !realtimeVoiceComposerVisible)
-                      }
+                      pulse={recording && !handsFree}
                       onClick={handleMicClick}
                       testId="chat-composer-mic"
                     />

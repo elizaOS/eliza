@@ -84,6 +84,19 @@ const SETTLED_NOT_REQUIRED: LocalModelDownloads = {
   loading: false,
 };
 
+const ROUTING_STATUS_ERROR: LocalModelDownloads = {
+  status: {
+    kind: "error",
+    blocksSend: false,
+    percent: null,
+    etaMs: null,
+    modelName: null,
+    errors: ["Could not verify the active text model provider."],
+  },
+  rows: [],
+  loading: false,
+};
+
 function appendTokenParam(url: string): string {
   const token = getElizaApiToken()?.trim();
   if (!token) return url;
@@ -151,6 +164,24 @@ export function useLocalModelDownloads(): LocalModelDownloads {
     let cancelled = false;
 
     const refresh = async () => {
+      let modelConfig: Awaited<ReturnType<typeof client.getModelsConfig>>;
+      try {
+        modelConfig = await client.getModelsConfig();
+      } catch {
+        // error-policy:J4 A failed routing probe is distinct from both a local
+        // download and a healthy external route; expose that unavailable state.
+        if (!cancelled) setState(ROUTING_STATUS_ERROR);
+        return;
+      }
+      if (cancelled) return;
+      // Runtime placement and inference placement are independent. A local
+      // runtime backed by Cerebras (or another external chat route) must not
+      // advertise the dormant on-device text slot during every page refresh.
+      if (modelConfig.activeChat) {
+        setState(SETTLED_NOT_REQUIRED);
+        return;
+      }
+
       try {
         const hub = await withTimeout(
           client.getLocalInferenceHub(),
@@ -286,17 +317,26 @@ export function ModelDownloadWidget({
 
   if (status.kind === "error" && !retrying) {
     const detail = status.errors.find((message) => message.trim().length > 0);
+    const routingUnavailable = failedModelId === null;
     return (
       <div className={spanClassName}>
         <ModelProgressCard
           icon={<TriangleAlert />}
-          value={`${modelName} download failed`}
+          value={
+            routingUnavailable
+              ? "Model route unavailable"
+              : `${modelName} download failed`
+          }
           meta={detail ? truncateDetail(detail) : undefined}
-          badge="Retry"
+          badge={routingUnavailable ? undefined : "Retry"}
           tone="danger"
           percent={null}
-          ariaLabel={`${modelName} download failed${detail ? `: ${detail}` : ""}. Tap to retry the download.`}
-          onActivate={() => void retry()}
+          ariaLabel={
+            routingUnavailable
+              ? `Model route unavailable${detail ? `: ${detail}` : ""}. Tap to review model settings.`
+              : `${modelName} download failed${detail ? `: ${detail}` : ""}. Tap to retry the download.`
+          }
+          onActivate={routingUnavailable ? openSettings : () => void retry()}
         />
       </div>
     );

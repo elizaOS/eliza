@@ -89,6 +89,8 @@ const MAX_OUTSTANDING_METER_WINDOWS = 2;
  * context preserves prosody across the resulting chunks.
  */
 const VOICE_TTS_FIRST_CLAUSE_CHARS = 24;
+/** Human-readable interim captions do not benefit from provider-rate redraws. */
+const STT_PARTIAL_EMIT_INTERVAL_MS = 40;
 
 // Cartesia's server buffers streamed transcript for up to 3000ms by default
 // before starting synthesis, which measured ~2.7s of the speaking_start gap on
@@ -185,6 +187,10 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private currentTraceId: string | null = null;
   private currentVoiceTurnId: string | null = null;
   private activeSttTurn = false;
+  private pendingSttPartial: { text: string; traceId: string } | null = null;
+  private lastSttPartialText = "";
+  private lastSttPartialSentAtMs = Number.NEGATIVE_INFINITY;
+  private sttPartialTimer: ReturnType<typeof setTimeout> | null = null;
   private llmAbort: AbortController | null = null;
   private phrase: PhraseAggregator | null = null;
   private turnSttMs = 0;
@@ -447,21 +453,19 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         if (this.state === "speaking" || this.state === "thinking") {
           this.interrupt("acoustic");
         }
+        this.resetSttPartialDelivery();
         this.activeSttTurn = true;
         this.state = "transcribing";
         break;
       }
       case "transcript-update": {
-        if (event.transcript) {
-          this.send({
-            t: "stt_partial",
-            text: event.transcript,
-            traceId: this.currentTraceId ?? this.mintTraceId("turn"),
-          });
+        if (this.activeSttTurn && event.transcript) {
+          this.queueSttPartial(event.transcript);
         }
         break;
       }
       case "eager-end-of-turn": {
+        this.flushSttPartial();
         this.send({
           t: "stt_eager_eot",
           traceId: this.currentTraceId ?? this.mintTraceId("turn"),
@@ -471,6 +475,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       case "end-of-turn": {
         if (!this.activeSttTurn) return;
         this.activeSttTurn = false;
+        this.resetSttPartialDelivery();
         // A missing transcript commits as "" on purpose: commitTurn's empty-
         // final path still reports+resets the turn's metered usage and clears
         // the turn id, which skipping the commit would leak into the next turn.
@@ -484,6 +489,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       case "error": {
         // Provider/protocol failures are explicit and terminate the current
         // turn; malformed input must not be reinterpreted as speech.
+        this.resetSttPartialDelivery();
         this.send({ t: "error", code: event.code, retryable: false });
         break;
       }
@@ -494,6 +500,62 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         break;
       }
     }
+  }
+
+  /**
+   * Ink can revise an interim transcript faster than a display can paint. Keep
+   * the first revision immediate, retain only the newest pending revision, and
+   * flush at a stable caption cadence. The final frame remains authoritative
+   * and bypasses this path entirely.
+   */
+  private queueSttPartial(text: string): void {
+    if (
+      text === this.pendingSttPartial?.text ||
+      (this.pendingSttPartial === null && text === this.lastSttPartialText)
+    ) {
+      return;
+    }
+
+    this.pendingSttPartial = {
+      text,
+      traceId: this.currentTraceId ?? this.mintTraceId("turn"),
+    };
+    const elapsedMs = this.now() - this.lastSttPartialSentAtMs;
+    if (elapsedMs >= STT_PARTIAL_EMIT_INTERVAL_MS) {
+      this.flushSttPartial();
+      return;
+    }
+
+    if (this.sttPartialTimer !== null) return;
+    this.sttPartialTimer = setTimeout(() => {
+      this.sttPartialTimer = null;
+      this.flushSttPartial();
+    }, STT_PARTIAL_EMIT_INTERVAL_MS - elapsedMs);
+  }
+
+  private flushSttPartial(): void {
+    if (this.sttPartialTimer !== null) {
+      clearTimeout(this.sttPartialTimer);
+      this.sttPartialTimer = null;
+    }
+    const partial = this.pendingSttPartial;
+    this.pendingSttPartial = null;
+    if (!partial || this.closed || partial.text === this.lastSttPartialText) {
+      return;
+    }
+    this.lastSttPartialText = partial.text;
+    this.lastSttPartialSentAtMs = this.now();
+    this.send({ t: "stt_partial", ...partial });
+  }
+
+  private resetSttPartialDelivery(): void {
+    if (this.sttPartialTimer !== null) {
+      clearTimeout(this.sttPartialTimer);
+      this.sttPartialTimer = null;
+    }
+    this.pendingSttPartial = null;
+    this.lastSttPartialText = "";
+    this.lastSttPartialSentAtMs = Number.NEGATIVE_INFINITY;
   }
 
   /** Authoritative user turn: mint the turn trace, run the LLM+TTS legs. */
@@ -861,6 +923,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 
     // Invalidate any live turn so racing callbacks are dropped.
     this.currentVoiceTurnId = null;
+    this.resetSttPartialDelivery();
 
     if (this.ttsStream) {
       try {

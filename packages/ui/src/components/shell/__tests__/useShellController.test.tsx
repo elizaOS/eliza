@@ -2164,6 +2164,44 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
     });
   });
 
+  it("waits for startup hydration instead of creating an orphan conversation", async () => {
+    appMock.value.startupCoordinator.phase = "hydrating";
+    appMock.value.activeConversationId = null;
+    appMock.value.conversations = [{ id: conversationId }];
+    appMock.value.conversationMessages = [
+      {
+        id: "restored-user-turn",
+        role: "user",
+        text: "existing history",
+        timestamp: 1,
+      },
+    ];
+    const { result, rerender } = renderHook(() => useShellController());
+
+    act(() => result.current.toggleHandsFree());
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(appMock.value.handleNewConversation).not.toHaveBeenCalled();
+    expect(realtimeVoiceMock.start).not.toHaveBeenCalled();
+    expect(appMock.value.setActionNotice).not.toHaveBeenCalled();
+
+    // The startup coordinator is the sole owner of initial conversation
+    // hydration. Once it publishes the restored id, the queued Talk gesture
+    // continues against that exact thread without creating a second server row.
+    appMock.value.activeConversationId = conversationId;
+    rerender();
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(appMock.value.handleNewConversation).not.toHaveBeenCalled();
+    expect(realtimeVoiceMock.start).toHaveBeenCalledTimes(1);
+    expect(realtimeVoiceMock.startedConversationIds).toEqual([conversationId]);
+    expect(createVoiceCaptureMock).not.toHaveBeenCalled();
+  });
+
   it("projects realtime phase, playback, and unlock state", () => {
     realtimeVoiceMock.state.active = true;
     realtimeVoiceMock.state.status = "speaking";
