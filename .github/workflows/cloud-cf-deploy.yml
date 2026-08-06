@@ -548,9 +548,9 @@ jobs:
           # FAL_KEY ?? FAL_API_KEY, and prod carries it as FAL_API_KEY (#13406).
           FAL_API_KEY: ${{ secrets.FAL_API_KEY }}
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
-          # Deepgram is used by both realtime voice and the explicitly selected
-          # prerecorded STT path. Publishing the key alone does not change the
-          # batch provider; VOICE_BATCH_STT_PROVIDER is the routing toggle.
+          # Deepgram is retained only for the explicitly selected prerecorded
+          # STT path. Realtime voice uses Cartesia Ink; publishing this key alone
+          # does not change the batch provider.
           DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}
           # Cartesia cloud TTS default route. Both are routing toggles:
           # CARTESIA_API_KEY presence makes default/unpinned TTS use Cartesia;
@@ -647,7 +647,7 @@ jobs:
           if [ "$DEPLOY_ENVIRONMENT" = "production" ] && \
              is_truthy "$PRODUCTION_REALTIME_WS_ENABLED"; then
             missing_voice_secrets=()
-            for name in DEEPGRAM_API_KEY CARTESIA_API_KEY VOICE_REALTIME_ELIZA_AUTHORIZATION PRODUCTION_REALTIME_CARTESIA_VOICE_ID PRODUCTION_REALTIME_ELIZA_ENDPOINT; do
+            for name in CARTESIA_API_KEY VOICE_REALTIME_ELIZA_AUTHORIZATION PRODUCTION_REALTIME_CARTESIA_VOICE_ID PRODUCTION_REALTIME_ELIZA_ENDPOINT; do
               if ! has_nonblank_value "${!name:-}"; then
                 missing_voice_secrets+=("$name")
               fi
@@ -665,7 +665,7 @@ jobs:
           if [ "$DEPLOY_ENVIRONMENT" = "staging" ] && \
              is_truthy "$VOICE_REALTIME_WS_ENABLED"; then
             missing_voice_secrets=()
-            for name in DEEPGRAM_API_KEY CARTESIA_API_KEY VOICE_REALTIME_ELIZA_AUTHORIZATION; do
+            for name in CARTESIA_API_KEY VOICE_REALTIME_ELIZA_AUTHORIZATION; do
               if ! has_nonblank_value "${!name:-}"; then
                 missing_voice_secrets+=("$name")
               fi
@@ -720,9 +720,15 @@ jobs:
             local name="$1"
             local value="${!name:-}"
             case "$name" in
-              DEEPGRAM_API_KEY|CARTESIA_API_KEY|VOICE_REALTIME_ELIZA_AUTHORIZATION)
+              CARTESIA_API_KEY|VOICE_REALTIME_ELIZA_AUTHORIZATION)
                 if ! is_truthy "$VOICE_REALTIME_WS_ENABLED"; then
                   echo "::notice::$name is gated by VOICE_REALTIME_WS_ENABLED; skipping"
+                  return 0
+                fi
+                ;;
+              DEEPGRAM_API_KEY)
+                if [ "${VOICE_BATCH_STT_PROVIDER,,}" != "deepgram" ]; then
+                  echo "::notice::$name is gated by VOICE_BATCH_STT_PROVIDER=deepgram; skipping"
                   return 0
                 fi
                 ;;
