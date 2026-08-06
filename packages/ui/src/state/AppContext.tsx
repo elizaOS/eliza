@@ -48,7 +48,7 @@ import {
   tryHandleTutorialText,
 } from "../tutorial/tutorial-action-channel";
 import { copyTextToClipboard } from "../utils";
-import { RESYNC_EVENT, type ResyncEventDetail } from "./AppContext.hooks";
+import { dispatchConversationResync } from "./AppContext.hooks";
 import {
   getActiveProfile,
   loadAgentProfileRegistry,
@@ -1277,13 +1277,10 @@ function AppProviderInner({
         type: "active-conversation",
         conversationId: convId,
       });
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(
-          new CustomEvent<ResyncEventDetail>(RESYNC_EVENT, {
-            detail: { conversationId: convId },
-          }),
-        );
-      }
+      dispatchConversationResync({
+        conversationId: convId,
+        reason: "connection-recovered",
+      });
     });
   }, []);
 

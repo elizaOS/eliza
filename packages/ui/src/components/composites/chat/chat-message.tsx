@@ -707,6 +707,17 @@ export const ChatMessage = memo(function ChatMessage({
     [],
   );
 
+  const handleActionsPointerMove = useCallback(
+    (event: React.PointerEvent<HTMLElement>) => {
+      if (event.pointerType === "touch") return;
+      // Row insertion and transcript anchoring can place a new message beneath
+      // a stationary cursor. Pointer movement is the durable signal that the
+      // user intends to inspect this row; geometry-driven enter events are not.
+      setShowActions(true);
+    },
+    [],
+  );
+
   const handleActionsFocus = useCallback((event: FocusEvent<HTMLElement>) => {
     const target = event.target;
     if (target instanceof HTMLElement && target.matches(":focus-visible")) {
@@ -935,6 +946,11 @@ export const ChatMessage = memo(function ChatMessage({
     const hasActionLane = hasActions || Boolean(actionAccessory);
     const accessoryVisible =
       actionsVisible || isEditing || Boolean(actionAccessory);
+    const hiddenActionLane = {
+      opacity: 0,
+      y: reduceMotion ? 0 : 4,
+      scale: reduceMotion ? 1 : 0.98,
+    };
     const timestampAccessory =
       typeof message.timestamp === "number" &&
       Number.isFinite(message.timestamp) ? (
@@ -1089,8 +1105,8 @@ export const ChatMessage = memo(function ChatMessage({
         animate={{ opacity: 1 }}
         transition={transition}
         className="mb-0"
-        onMouseEnter={
-          supportsHover && hasActions ? () => setShowActions(true) : undefined
+        onPointerMove={
+          supportsHover && hasActions ? handleActionsPointerMove : undefined
         }
         onMouseLeave={
           supportsHover && hasActions ? handleActionsMouseLeave : undefined
@@ -1176,15 +1192,11 @@ export const ChatMessage = memo(function ChatMessage({
               data-testid="thread-line-actions"
               aria-hidden={!accessoryVisible}
               inert={!accessoryVisible}
-              initial={false}
+              initial={accessoryVisible ? false : hiddenActionLane}
               animate={
                 accessoryVisible
                   ? { opacity: 1, y: 0, scale: 1 }
-                  : {
-                      opacity: 0,
-                      y: reduceMotion ? 0 : 4,
-                      scale: reduceMotion ? 1 : 0.98,
-                    }
+                  : hiddenActionLane
               }
               transition={{
                 duration: reduceMotion ? 0.1 : 0.2,
@@ -1193,6 +1205,12 @@ export const ChatMessage = memo(function ChatMessage({
               className={cn(
                 "absolute bottom-0 z-10 min-w-0",
                 isUser ? "right-0 origin-top-right" : "left-0 origin-top-left",
+                // Accessibility state and paint state change in the same React
+                // commit. A newly inserted row must never depend on Motion's
+                // post-mount style application to keep its controls concealed.
+                accessoryVisible
+                  ? "visible pointer-events-auto"
+                  : "invisible pointer-events-none opacity-0",
               )}
             >
               <MessageRowFooter className="flex items-center p-0 text-white/70">
@@ -1267,7 +1285,7 @@ export const ChatMessage = memo(function ChatMessage({
       data-testid="chat-message"
       data-role={message.role}
       tabIndex={isFirstRun ? undefined : 0}
-      onMouseEnter={supportsHover ? () => setShowActions(true) : undefined}
+      onPointerMove={supportsHover ? handleActionsPointerMove : undefined}
       onMouseLeave={supportsHover ? handleActionsMouseLeave : undefined}
       onFocusCapture={!isFirstRun ? handleActionsFocus : undefined}
       onBlurCapture={

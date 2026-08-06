@@ -1,7 +1,7 @@
 /**
  * React lifecycle binding for the realtime voice-session client: it arms the
  * WebSocket voice path as an ADDITIVE enhancement of the existing batch mic —
- * same button, same `VoiceContinuousStatus` bar, no second UI surface.
+ * same button, same `VoiceContinuousStatus` vocabulary, no second mic.
  *
  * Eligibility requires the VITE realtime flag and stable chat ids. Startup
  * failures before the realtime mic becomes live return a typed outcome so the
@@ -145,7 +145,7 @@ export interface UseRealtimeVoiceSessionState {
    * socket connect, server ready, mic bring-up). Bounded by the ready timer.
    */
   connecting: boolean;
-  /** Unified status for the existing `ChatVoiceStatusBar`. */
+  /** Unified status for the mounted composer or an embedded status bar. */
   status: VoiceContinuousStatus;
   /** Live partial transcript (server `stt_partial`). "" when none. */
   transcriptPartial: string;

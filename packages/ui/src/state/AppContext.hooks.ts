@@ -5,12 +5,25 @@
  */
 
 /**
- * DOM event dispatched after a WebSocket reconnect so conversation views can
- * refetch their recent messages and repair state that drifted during the gap.
- * `detail.conversationId` is the active conversation at reconnect time (or null).
+ * Requests a canonical conversation-tail reload after another transport writes
+ * messages outside the mounted chat sender. WebSocket recovery and realtime
+ * voice both use this boundary so the UI reconciles server truth instead of
+ * inventing a second optimistic transcript.
  */
 export const RESYNC_EVENT = "elizaos:needs-resync";
 
 export interface ResyncEventDetail {
   conversationId: string | null;
+  reason?:
+    | "connection-recovered"
+    | "voice-turn-progress"
+    | "voice-turn-complete";
+}
+
+/** Notify the mounted app that canonical conversation history changed elsewhere. */
+export function dispatchConversationResync(detail: ResyncEventDetail): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent<ResyncEventDetail>(RESYNC_EVENT, { detail }),
+  );
 }

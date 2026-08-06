@@ -1,10 +1,9 @@
 /**
- * Live consumer for the WebSocket-reconnect resync signal.
+ * Live consumer for canonical conversation-resync signals.
  *
- * `AppContext` dispatches {@link RESYNC_EVENT} on `client.onReconnect` after a
- * dropped socket comes back; this hook is its listener and performs the
- * reconcile. Without it, messages the agent emitted while the socket was down
- * stay hidden until a manual refresh.
+ * A reconnect or another transport such as realtime voice can persist messages
+ * without going through the mounted chat sender. This hook reloads that active
+ * tail so every surface converges on server truth without duplicate local rows.
  */
 
 import { type MutableRefObject, useEffect } from "react";
@@ -22,7 +21,7 @@ export interface UseResyncReconcileDeps {
 
 /**
  * On {@link RESYNC_EVENT}, reload the affected conversation from the server so
- * messages missed during a WebSocket gap appear without a manual refresh.
+ * messages written outside the mounted sender appear without a manual refresh.
  *
  * Only the conversation the user is currently viewing is force-reloaded here; a
  * background conversation is reconciled the next time it is opened (its normal
