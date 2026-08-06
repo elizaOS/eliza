@@ -12,6 +12,13 @@ export interface RoutedReplyCta {
 }
 
 const MAX_BUTTON_LABEL_LENGTH = 80; // Discord's button label limit
+/**
+ * Discord rejects button URLs over 512 characters at the API, and the send
+ * failure would be swallowed by the reply catch, leaving the user with no
+ * message at all. A too-long URL therefore drops the button (plain-text reply)
+ * instead of risking the whole send.
+ */
+const MAX_BUTTON_URL_LENGTH = 512;
 
 interface LinkButtonComponent {
   type: 2;
@@ -46,6 +53,7 @@ export function buildReplyComponents(
     return null;
   }
   if (parsed.protocol !== "https:") return null;
+  if (url.length > MAX_BUTTON_URL_LENGTH) return null;
   return [
     {
       type: 1,

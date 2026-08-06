@@ -241,6 +241,43 @@ describe("runOnboardingChat", () => {
     expect(result.reply).toContain("$5");
   });
 
+  test("discord handoff falls back to the inline-URL copy when the login URL cannot be a button (http scheme)", async () => {
+    cloudEnv = { ELIZA_ONBOARDING_APP_URL: "http://localhost:3000" };
+    const result = await runOnboardingChat({
+      message: "call me Sam",
+      platform: "discord",
+      platformUserId: "discord-user-http",
+      sessionId: "platform:discord:discord-user-http",
+      trustedPlatformIdentity: true,
+    });
+
+    expect(result.requiresLogin).toBe(true);
+    // No CTA: an http URL cannot ride a Discord link button. The copy must
+    // not say "tap below" at an affordance that will not render - the URL
+    // stays inline exactly like the no-button platforms.
+    expect(result.cta).toBeNull();
+    expect(result.reply).not.toContain("tap below");
+    expect(result.reply).toContain(result.loginUrl);
+  });
+
+  test("discord handoff falls back to the inline-URL copy when the login URL exceeds Discord's 512-char button bound", async () => {
+    cloudEnv = {
+      ELIZA_ONBOARDING_APP_URL: `https://example.com/${"a".repeat(520)}`,
+    };
+    const result = await runOnboardingChat({
+      message: "call me Sam",
+      platform: "discord",
+      platformUserId: "discord-user-long",
+      sessionId: "platform:discord:discord-user-long",
+      trustedPlatformIdentity: true,
+    });
+
+    expect(result.requiresLogin).toBe(true);
+    expect(result.cta).toBeNull();
+    expect(result.reply).not.toContain("tap below");
+    expect(result.reply).toContain(result.loginUrl);
+  });
+
   test("phone login handoff keeps the inline URL and no CTA (no buttons on SMS)", async () => {
     const result = await runOnboardingChat({
       message: "call me Sam",

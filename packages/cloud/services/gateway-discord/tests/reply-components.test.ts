@@ -66,4 +66,17 @@ describe("buildReplyComponents", () => {
     });
     expect(components?.[0]?.components[0]?.label).toHaveLength(80);
   });
+
+  test("URLs over Discord's 512-character button limit drop the button (API would reject the send)", () => {
+    const overlong = `https://example.com/${"a".repeat(512)}`;
+    expect(
+      buildReplyComponents({ label: "Connect", url: overlong }),
+    ).toBeNull();
+    // At exactly the bound the button survives.
+    const atBound = `https://example.com/${"a".repeat(512 - "https://example.com/".length)}`;
+    expect(atBound).toHaveLength(512);
+    expect(
+      buildReplyComponents({ label: "Connect", url: atBound }),
+    ).not.toBeNull();
+  });
 });
