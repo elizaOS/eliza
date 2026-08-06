@@ -4395,6 +4395,7 @@ async function dispatchTasksOperation(
 export const tasksAction: Action & {
   suppressPostActionContinuation: true;
   suppressEarlyReply: true;
+  asyncHandoff: true;
 } = {
   name: "TASKS",
   contexts: ["code", "automation", "agent_internal", "connectors"],
@@ -4534,6 +4535,11 @@ export const tasksAction: Action & {
   // answer comes back asynchronously via the router. Shipping the draft
   // alongside the ack duplicates the bot's voice and confuses the user.
   suppressEarlyReply: true,
+  // Sub-agent work continues after the turn returns and the real result
+  // arrives later via the router — the structural signal that a pre-planner
+  // early ack is warranted on latency-sensitive channels (voice). Promoted
+  // TASKS_* subactions inherit this flag.
+  asyncHandoff: true,
   parameters: [
     {
       name: "action",
