@@ -720,6 +720,47 @@ describe("AgentGatewayRouterService discord DM onboarding (#17341)", () => {
     expect(runOnboardingChat).not.toHaveBeenCalled();
   });
 
+  test("fail-open: a resolver throw on a first-contact DM still greets instead of dropping", async () => {
+    // Canon step 1 (ONBOARDING-CANON-2026-08-06): parity with routePhoneMessage.
+    // Before the fix, a throw here propagated and the DM died in silence.
+    findByDiscordIdWithOrganization.mockRejectedValue(new Error("db connection reset"));
+    runOnboardingChat.mockResolvedValue({
+      reply: "Welcome! Here is your login link.",
+      cta: { label: "Connect", url: "https://app.elizacloud.ai/get-started/?onboardingSession=t2" },
+      session: { userId: undefined, organizationId: undefined },
+      provisioning: { agentId: null },
+    });
+
+    const result = await newRouter().routeDiscordMessage(discordArgs());
+
+    expect(result.handled).toBe(true);
+    expect(result.reason).toBe("bridge_failed");
+    expect(result.replyText).toBe("Welcome! Here is your login link.");
+    expect(result.replyCta).toEqual({
+      label: "Connect",
+      url: "https://app.elizacloud.ai/get-started/?onboardingSession=t2",
+    });
+    expect(runOnboardingChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        platform: "discord",
+        platformUserId: "discord-user-1",
+        sessionId: "platform:discord:discord-user-1",
+        trustedPlatformIdentity: true,
+        idempotencyKey: "discord:msg-1",
+      }),
+    );
+  });
+
+  test("fail-open: a resolver throw in a GUILD channel never onboards (no credential in public)", async () => {
+    findByManagedDiscordGuildId.mockRejectedValue(new Error("db connection reset"));
+
+    const result = await newRouter().routeDiscordMessage(discordArgs({ guildId: "guild-9" }));
+
+    expect(result.handled).toBe(false);
+    expect(result.reason).toBe("bridge_failed");
+    expect(runOnboardingChat).not.toHaveBeenCalled();
+  });
+
   test("a stopped-agent owner keeps today's silence (parity with the phone path)", async () => {
     findByDiscordIdWithOrganization.mockResolvedValue({
       id: "user-1",

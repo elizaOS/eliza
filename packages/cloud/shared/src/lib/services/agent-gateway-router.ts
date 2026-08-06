@@ -645,10 +645,54 @@ export class AgentGatewayRouterService {
     content: string;
     sender: AgentGatewaySender;
   }): Promise<AgentGatewayRouteResult> {
-    const resolved = await this.resolveDiscordTarget({
-      guildId: args.guildId ?? null,
-      senderDiscordUserId: args.sender.id,
-    });
+    let resolved: Awaited<ReturnType<AgentGatewayRouterService["resolveDiscordTarget"]>>;
+    try {
+      resolved = await this.resolveDiscordTarget({
+        guildId: args.guildId ?? null,
+        senderDiscordUserId: args.sender.id,
+      });
+    } catch (error) {
+      // Fail-open first contact (parity with routePhoneMessage): a resolver
+      // outage must never leave a new DM sender in silence. The onboarding
+      // worker is self-contained (its own session store), so it can still
+      // greet while the resolver bug gets root-caused from this log line.
+      logger.error("[AgentGatewayRouter] Failed to resolve Discord target", {
+        guildId: args.guildId ?? null,
+        channelId: args.channelId,
+        messageId: args.messageId,
+        senderDiscordUserId: args.sender.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+
+      if (args.guildId?.trim()) {
+        // Guild traffic never onboards: the login credential must not land in
+        // a public channel, resolver outage or not.
+        return {
+          handled: false,
+          reason: "bridge_failed",
+        };
+      }
+
+      const onboarding = await this.runOnboardingChat({
+        message: args.content,
+        platform: "discord",
+        platformUserId: args.sender.id,
+        platformDisplayName: args.sender.displayName ?? args.sender.username,
+        sessionId: `platform:discord:${args.sender.id}`,
+        trustedPlatformIdentity: true,
+        idempotencyKey: `discord:${args.messageId}`,
+      });
+
+      return {
+        handled: true,
+        replyText: onboarding.reply,
+        replyCta: onboarding.cta ?? null,
+        reason: "bridge_failed",
+        userId: onboarding.session.userId,
+        organizationId: onboarding.session.organizationId,
+        agentId: onboarding.provisioning.agentId ?? undefined,
+      };
+    }
 
     if (!resolved.target) {
       // Unknown-owner resolution also occurs for guild traffic. Keeping the
