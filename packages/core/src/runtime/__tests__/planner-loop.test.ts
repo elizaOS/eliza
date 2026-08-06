@@ -3872,6 +3872,28 @@ describe("routing hints — promoted-family fallback", () => {
 			1,
 		);
 	});
+
+	it("renders identical hints once across separately named actions", () => {
+		const routingHint = "UI navigation and layout -> VIEWS";
+		const actions = ["VIEWS", "CLOSE_VIEW", "CLOSE_ALL_VIEWS"].map((name) => ({
+			name,
+			description: name,
+			routingHint,
+			validate: async () => true,
+			handler: async () => ({ success: true }),
+		}));
+		const ctx = {
+			events: actions.map((action, index) => ({
+				id: `tool-${index}`,
+				type: "tool" as const,
+				tool: { name: action.name, description: action.description, action },
+			})),
+		} as unknown as Parameters<typeof __renderRoutingHintsBlockForTests>[0];
+
+		const block = __renderRoutingHintsBlockForTests(ctx);
+
+		expect((block ?? "").split(routingHint).length - 1).toBe(1);
+	});
 });
 
 describe("verified widget payloads stay pure in the combine path", () => {
