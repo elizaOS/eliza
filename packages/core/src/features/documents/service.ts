@@ -52,6 +52,7 @@ import { addDocumentFromFilePath, loadDocumentsFromPath } from "./docs-loader";
 import {
 	createDocumentMemory,
 	extractTextFromDocument,
+	hasDocumentEmbeddingModel,
 	preparePreChunkedFragmentMemories,
 	processFragmentsSynchronously,
 } from "./document-processor.ts";
@@ -2139,6 +2140,23 @@ export class DocumentService extends Service {
 		options: { continueOnError: boolean },
 	): Promise<void> {
 		if (fragments.length === 0) {
+			return;
+		}
+		if (!hasDocumentEmbeddingModel(this.runtime)) {
+			for (const fragment of fragments) {
+				try {
+					await this.runtime.createMemory(fragment, DOCUMENT_FRAGMENTS_TABLE);
+				} catch (error) {
+					if (!options.continueOnError) throw error;
+					// error-policy:J4 Keyword-only fragment persistence reports each
+					// omitted fragment while allowing explicitly partial ingestion.
+					this.runtime.reportError(
+						"DocumentService.persistKeywordFragment",
+						error,
+						{ fragmentId: fragment.id },
+					);
+				}
+			}
 			return;
 		}
 

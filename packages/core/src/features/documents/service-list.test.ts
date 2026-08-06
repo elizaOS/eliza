@@ -9,6 +9,7 @@ import {
 	type Character,
 	type Memory,
 	MemoryType,
+	ModelType,
 	type Room,
 	type UUID,
 	type World,
@@ -100,6 +101,53 @@ function userMessage(): Memory {
 }
 
 describe("DocumentService list semantics", () => {
+	it("adds and updates keyword-searchable documents without an embedding model", async () => {
+		const { runtime, service } = await makeHarness();
+		expect(runtime.getModel(ModelType.TEXT_EMBEDDING)).toBeUndefined();
+
+		const added = await service.addDocument({
+			agentId: AGENT_ID,
+			worldId: WORLD_ID,
+			roomId: ROOM_A,
+			entityId: AGENT_ID,
+			clientDocumentId: "" as UUID,
+			contentType: "text/plain",
+			originalFilename: "keyword-only.txt",
+			content: "Original keyword-only draft body",
+			scope: "agent-private",
+			scopedToEntityId: AGENT_ID,
+			addedBy: AGENT_ID,
+			addedByRole: "RUNTIME",
+			addedFrom: "runtime-internal",
+		});
+		expect(added.fragmentCount).toBe(1);
+
+		await expect(
+			service.updateDocument({
+				documentId: added.storedDocumentMemoryId,
+				content: "Revised keyword-only standing draft",
+			}),
+		).resolves.toEqual({
+			documentId: added.storedDocumentMemoryId,
+			fragmentCount: 1,
+		});
+
+		const stored = await service.getDocumentById(added.storedDocumentMemoryId);
+		expect(stored?.content.text).toBe("Revised keyword-only standing draft");
+		const fragments = await runtime.getMemories({
+			tableName: "document_fragments",
+			agentId: AGENT_ID,
+			roomId: ROOM_A,
+			count: 10,
+		});
+		expect(fragments).toHaveLength(1);
+		expect(fragments[0]).toMatchObject({
+			content: { text: "Revised keyword-only standing draft" },
+			metadata: { documentId: added.storedDocumentMemoryId },
+		});
+		expect(fragments[0]?.embedding).toBeUndefined();
+	});
+
 	it("filters and paginates through one bounded adapter query", async () => {
 		const { runtime, service } = await makeHarness();
 		const documents = Array.from({ length: 75 }, (_, index) =>

@@ -1,13 +1,14 @@
 /**
  * Core ingestion pipeline for the documents capability: turns raw document text
- * into stored, embedded FRAGMENT memories. `processFragmentsSynchronously`
+ * into stored FRAGMENT memories. `processFragmentsSynchronously`
  * splits text into overlapping token-sized chunks, optionally contextualizes
  * each chunk through an LLM (the contextual-retrieval step, gated by
- * CTX_DOCUMENTS_ENABLED), generates embeddings (batched or one-at-a-time via the
- * runtime's TEXT_EMBEDDING model), and persists each generic fragment with
- * `runtime.createMemory`. Producer-owned pre-chunked fragments instead retain
- * verbatim metadata and are fully validated and embedded before their caller's
- * atomic batch write. A token/request rate limiter derived from
+ * CTX_DOCUMENTS_ENABLED), generates embeddings when a model is registered, and
+ * persists each generic fragment with `runtime.createMemory`. Without an
+ * embedding model it persists unembedded fragments for the service's supported
+ * BM25 keyword path. Producer-owned pre-chunked fragments retain verbatim
+ * metadata and are fully validated before their caller's atomic batch write.
+ * A token/request rate limiter derived from
  * {@link getProviderRateLimits} throttles generic ingestion, and 429s are
  * retried. Also exposes text extraction and parent-memory construction.
  */
@@ -95,6 +96,66 @@ function shouldUseCustomLLM(): boolean {
 
 const useCustomLLM = shouldUseCustomLLM();
 
+/** Whether vector enrichment is available for newly ingested documents. */
+export function hasDocumentEmbeddingModel(runtime: IAgentRuntime): boolean {
+	return Boolean(
+		runtime.getModel(ModelType.TEXT_EMBEDDING) ||
+			runtime.getModel(ModelType.TEXT_EMBEDDING_BATCH),
+	);
+}
+
+async function persistKeywordOnlyFragments(args: {
+	runtime: IAgentRuntime;
+	documentId: UUID;
+	chunks: string[];
+	agentId: UUID;
+	roomId?: UUID;
+	entityId?: UUID;
+	worldId?: UUID;
+	documentTitle?: string;
+	documentMetadata?: Record<string, unknown>;
+}): Promise<number> {
+	let savedCount = 0;
+	for (let position = 0; position < args.chunks.length; position++) {
+		const text = args.runtime.redactSecrets(args.chunks[position] ?? "");
+		const source =
+			typeof args.documentMetadata?.source === "string"
+				? args.documentMetadata.source
+				: "upload";
+		const metadata: DocumentFragmentMemoryMetadata = {
+			...(args.documentMetadata ?? {}),
+			type: MemoryType.FRAGMENT,
+			documentId: args.documentId,
+			position,
+			timestamp: Date.now(),
+			source,
+			documentTitle: args.documentTitle,
+		};
+		const memory: Memory = {
+			id: uuidv4() as UUID,
+			agentId: args.agentId,
+			roomId: args.roomId ?? args.agentId,
+			entityId: args.entityId ?? args.agentId,
+			worldId: args.worldId ?? args.agentId,
+			content: { text },
+			metadata,
+		};
+		try {
+			await args.runtime.createMemory(memory, "document_fragments");
+			savedCount++;
+		} catch (error) {
+			// error-policy:J4 Keyword-only ingestion returns the exact persisted
+			// count and reports every omitted fragment instead of inventing success.
+			args.runtime.reportError(
+				"DocumentProcessor.persistKeywordFragment",
+				error,
+				{ documentId: args.documentId, position },
+			);
+		}
+	}
+	return savedCount;
+}
+
 export async function processFragmentsSynchronously({
 	runtime,
 	documentId,
@@ -131,6 +192,23 @@ export async function processFragmentsSynchronously({
 	}
 
 	logger.info(`Split into ${chunks.length} chunks`);
+
+	if (!hasDocumentEmbeddingModel(runtime)) {
+		logger.debug(
+			`No document embedding model registered; persisting ${chunks.length} keyword-searchable fragment(s)`,
+		);
+		return persistKeywordOnlyFragments({
+			runtime,
+			documentId,
+			chunks,
+			agentId,
+			roomId,
+			entityId,
+			worldId,
+			documentTitle,
+			documentMetadata,
+		});
+	}
 
 	const providerLimits = await getProviderRateLimits(runtime);
 	const CONCURRENCY_LIMIT = providerLimits.maxConcurrentRequests || 30;
@@ -384,15 +462,17 @@ export async function preparePreChunkedFragmentMemories({
 			metadata: fragmentMemoryMetadata,
 			unique: false,
 		};
-		await runtime.addEmbeddingToMemory(memory);
-		if (!memory.embedding || memory.embedding.length === 0) {
-			throw new ElizaError(
-				"Pre-chunked document fragment embedding is unavailable",
-				{
-					code: "DOCUMENT_FRAGMENT_EMBED_FAILED",
-					context: { documentId, position },
-				},
-			);
+		if (hasDocumentEmbeddingModel(runtime)) {
+			await runtime.addEmbeddingToMemory(memory);
+			if (!memory.embedding || memory.embedding.length === 0) {
+				throw new ElizaError(
+					"Pre-chunked document fragment embedding is unavailable",
+					{
+						code: "DOCUMENT_FRAGMENT_EMBED_FAILED",
+						context: { documentId, position },
+					},
+				);
+			}
 		}
 		prepared.push(memory);
 		previousEndMs = endMs;

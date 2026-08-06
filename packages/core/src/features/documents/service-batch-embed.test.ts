@@ -143,8 +143,9 @@ describe("DocumentService — batched fragment embedding (TEXT_EMBEDDING_BATCH)"
 			getMemoryById: async () => null,
 			updateMemory: async () => true,
 			createMemory: captureCreateMemory(captured),
-			// No batch model registered.
-			getModel: () => undefined,
+			// A single-text model is registered, but no batch model.
+			getModel: (type: string) =>
+				type === ModelType.TEXT_EMBEDDING ? async () => [] : undefined,
 			useModel: (type: string) => {
 				if (type === ModelType.TEXT_EMBEDDING_BATCH) {
 					batchCalls++;
