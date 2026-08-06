@@ -120,7 +120,7 @@ export default scenario({
   finalChecks: [
     {
       type: "actionCalled",
-      actionName: "MEMORY",
+      actionName: "MEMORY_SEARCH",
       status: "success",
       minCount: 1,
     },

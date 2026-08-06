@@ -28,6 +28,9 @@ type MemoryOp = (typeof MEMORY_OPS)[number];
 const MEMORY_TYPES = ["messages", "memories", "facts", "documents"] as const;
 type MemoryType = (typeof MEMORY_TYPES)[number];
 
+const UUID_SCHEMA_PATTERN =
+  "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$";
+
 interface MemoryParams {
   action?: MemoryOp;
   op?: MemoryOp;
@@ -607,15 +610,17 @@ export const memoryAction: Action = {
     },
     {
       name: "entityId",
-      description: "search: filter to memories owned by this entity id.",
+      description:
+        "search: optional entity UUID from a previous result. Omit it when no exact UUID is known.",
       required: false,
-      schema: { type: "string" as const },
+      schema: { type: "string" as const, pattern: UUID_SCHEMA_PATTERN },
     },
     {
       name: "roomId",
-      description: "search: filter to memories from this room id.",
+      description:
+        'search: optional room UUID from a previous result. Omit it to search all stored rooms; never pass a source label such as "chat".',
       required: false,
-      schema: { type: "string" as const },
+      schema: { type: "string" as const, pattern: UUID_SCHEMA_PATTERN },
     },
     {
       name: "query",
@@ -635,7 +640,7 @@ export const memoryAction: Action = {
       description:
         "update/delete: id of the memory to mutate. delete: optional when query is provided.",
       required: false,
-      schema: { type: "string" as const },
+      schema: { type: "string" as const, pattern: UUID_SCHEMA_PATTERN },
     },
     {
       name: "confirm",
