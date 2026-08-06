@@ -27,7 +27,7 @@ const GATEWAY = "https://gateway.internal.test";
 const ENV = {
   ELIZA_APP_WEBHOOK_GATEWAY_URL: GATEWAY,
   ELIZA_APP_WHATSAPP_APP_SECRET: "whatsapp-app-secret",
-  ENVIRONMENT: "production",
+  NODE_ENV: "production",
 };
 
 let upstreamUrl: string | null = null;
@@ -54,12 +54,19 @@ async function call(
   env: Record<string, unknown> = ENV,
 ): Promise<Response> {
   const app = new Hono();
-  app.all("/api/eliza-app/webhook/whatsapp", (c) =>
-    forwardToWebhookGateway(
-      c as unknown as Parameters<typeof forwardToWebhookGateway>[0],
-      "whatsapp",
-    ),
-  );
+  // The real route is a wildcard (`app.all("/*")` in whatsapp/route.ts), so the
+  // per-agent suffix has to be reachable here too.
+  for (const route of [
+    "/api/eliza-app/webhook/whatsapp",
+    "/api/eliza-app/webhook/whatsapp/*",
+  ]) {
+    app.all(route, (c) =>
+      forwardToWebhookGateway(
+        c as unknown as Parameters<typeof forwardToWebhookGateway>[0],
+        "whatsapp",
+      ),
+    );
+  }
   return await app.request(
     `https://api.elizacloud.ai${path}`,
     { method: "GET", ...init },
@@ -86,6 +93,30 @@ describe("WhatsApp callback-URL verification handshake", () => {
     );
   });
 
+  test("exempts the per-agent callback URL too, and forwards the agent id", async () => {
+    // `/webhook/whatsapp/<agentId>` is a real callback URL — per-agent
+    // registrations are the reason the exemption cannot be restricted to the
+    // bare path. This pins that widening rather than leaving it implicit: the
+    // route is a wildcard, so the exemption reaches the suffix whether or not
+    // anyone remembers it does.
+    const response = await call(
+      `/api/eliza-app/webhook/whatsapp/agent-42${VERIFY_QUERY}`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("CHALLENGE_ECHO");
+    expect(upstreamUrl).toBe(
+      `${GATEWAY}/webhook/eliza-app/whatsapp/agent-42${VERIFY_QUERY}`,
+    );
+  });
+
+  test("still requires a signature on a per-agent GET that is not the handshake", async () => {
+    const response = await call("/api/eliza-app/webhook/whatsapp/agent-42");
+
+    expect(response.status).toBe(401);
+    expect(upstreamCalls).toBe(0);
+  });
+
   test("still requires a signature on a WhatsApp POST", async () => {
     const response = await call("/api/eliza-app/webhook/whatsapp", {
       method: "POST",
@@ -107,6 +138,7 @@ describe("WhatsApp callback-URL verification handshake", () => {
       "?hub.mode=unsubscribe&hub.challenge=X",
       "?hub.mode=subscribe",
       "?hub.challenge=X",
+      "?hub.mode=subscribe&hub.challenge=X",
     ]) {
       const response = await call(`/api/eliza-app/webhook/whatsapp${query}`);
       expect(response.status).toBe(401);

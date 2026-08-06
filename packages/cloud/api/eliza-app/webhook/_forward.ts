@@ -317,6 +317,7 @@ function isWhatsAppVerificationHandshake(
     platform === "whatsapp" &&
     c.req.method === "GET" &&
     c.req.query("hub.mode") === "subscribe" &&
+    Boolean(c.req.query("hub.verify_token")) &&
     Boolean(c.req.query("hub.challenge"))
   );
 }
