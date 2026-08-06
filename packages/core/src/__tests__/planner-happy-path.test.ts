@@ -379,6 +379,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		const plannerParams = calls[1]?.params as
 			| {
 					messages?: Array<{ role?: string; content?: string }>;
+					tools?: Array<{ name?: string }>;
 					promptSegments?: unknown[];
 					responseSchema?: unknown;
 					providerOptions?: {
@@ -417,6 +418,14 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			content: expect.stringContaining(expectedIdentity),
 		});
 		expect(plannerParams?.messages?.length).toBeGreaterThan(1);
+		const plannerToolNames =
+			plannerParams?.tools?.map((tool) => tool.name).filter(Boolean) ?? [];
+		expect(new Set(plannerToolNames).size).toBe(plannerToolNames.length);
+		for (const terminal of ["REPLY", "IGNORE", "STOP"]) {
+			expect(plannerToolNames.filter((name) => name === terminal)).toHaveLength(
+				1,
+			);
+		}
 		expect(evaluatorParams?.messages?.length).toBeGreaterThan(1);
 		expect(plannerParams?.promptSegments?.length).toBeGreaterThan(1);
 		expect(evaluatorParams?.promptSegments?.length).toBeGreaterThan(1);

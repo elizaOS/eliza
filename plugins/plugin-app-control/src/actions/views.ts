@@ -3398,9 +3398,42 @@ export function createViewsAliasAction(
 ): Action {
 	const action = createViewsAction(deps);
 	const closeAll = name === "CLOSE_ALL_VIEWS";
+	const targetParameters: Action["parameters"] = closeAll
+		? []
+		: [
+				{
+					name: "view",
+					description: "View name, label, or id to close.",
+					required: false,
+					schema: { type: "string" },
+				},
+				{
+					name: "id",
+					description: "Alias for view.",
+					required: false,
+					schema: { type: "string" },
+				},
+				{
+					name: "name",
+					description: "Alias for view.",
+					required: false,
+					schema: { type: "string" },
+				},
+				{
+					name: "target",
+					description: "Alias for view.",
+					required: false,
+					schema: { type: "string" },
+				},
+			];
 	return {
 		...action,
 		name,
+		parameters: targetParameters,
+		allowAdditionalParameters: false,
+		tags: closeAll
+			? ["close", "hide", "dismiss", "tabs", "windows"]
+			: ["close", "hide", "dismiss", "panel", "tab"],
 		similes: closeAll
 			? ["CLOSE_ALL_VIEW_TABS", "HIDE_ALL_VIEWS", "DISMISS_ALL_VIEWS"]
 			: ["HIDE_VIEW", "DISMISS_VIEW", "CLOSE_PANEL", "CLOSE_APP_VIEW"],
@@ -3410,6 +3443,9 @@ export function createViewsAliasAction(
 		descriptionCompressed: closeAll
 			? "close all open UI views/tabs; never deletes plugins"
 			: "close one UI view/tab by view/id/name/target; never deletes plugins",
+		routingHint: closeAll
+			? "Close, hide, or dismiss every open UI view/tab -> CLOSE_ALL_VIEWS. Never use this to open a view or delete a plugin."
+			: "Close, hide, or dismiss one open UI view/tab -> CLOSE_VIEW. Never use this to open a view or delete a plugin.",
 		handler: async (runtime, message, state, options, callback) => {
 			const actionOptions = {
 				...normalizeActionOptions(options),

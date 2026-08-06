@@ -384,6 +384,8 @@ describe("view management actions", () => {
 
 	it("advertises UI view switching in its planner routing hint", () => {
 		const action = createViewsAction();
+		const closeOne = createViewsAliasAction("CLOSE_VIEW");
+		const closeAll = createViewsAliasAction("CLOSE_ALL_VIEWS");
 		expect(action.routingHint).toContain("UI view/window/panel/app navigation");
 		expect(action.routingHint).toContain("Close/hide means VIEWS action=close");
 		expect(action.routingHint).toContain(
@@ -392,6 +394,18 @@ describe("view management actions", () => {
 		expect(action.routingHint).toContain(
 			"reading or changing calendar events uses the CALENDAR action",
 		);
+		expect(closeOne.routingHint).toContain("one open UI view/tab");
+		expect(closeAll.routingHint).toContain("every open UI view/tab");
+		expect(closeOne.routingHint).not.toContain("show or switch");
+		expect(closeAll.routingHint).not.toContain("show or switch");
+		expect(closeAll.parameters).toEqual([]);
+		expect(
+			Array.isArray(closeOne.parameters)
+				? closeOne.parameters.map((parameter) => parameter.name)
+				: [],
+		).toEqual(["view", "id", "name", "target"]);
+		expect(closeOne.tags).not.toContain("notes");
+		expect(closeAll.tags).not.toContain("notes");
 	});
 
 	it("does not reinterpret an undeclared explicit capability on the current view", async () => {
