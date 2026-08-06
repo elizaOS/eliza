@@ -29,6 +29,12 @@ on:
         default: "full"
         type: choice
         options: [cpu, gpu, full]
+      runner:
+        description: "Runner pool: hosted (ubuntu-24.04) or the self-hosted hetzner-robot fleet"
+        required: false
+        default: "hosted"
+        type: choice
+        options: [hosted, robot]
 
 concurrency:
   group: certification-hosted
@@ -39,8 +45,13 @@ permissions:
 
 jobs:
   hosted-certification:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 150
+    # The full matrix at --concurrency=3 exceeds 150 minutes on a 4-vCPU
+    # hosted runner (run 31067341248 was killed by the cap mid-matrix). The
+    # hetzner-robot pool — installed for exactly this weight class (the
+    # certification-image builds) — finishes it in a fraction of the time;
+    # hosted stays the default so a missing fleet never strands a dispatch.
+    runs-on: ${{ inputs.runner == 'robot' && fromJSON('["self-hosted","hetzner-robot"]') || 'ubuntu-24.04' }}
+    timeout-minutes: 300
     steps:
       - name: Preflight secrets
         env:
