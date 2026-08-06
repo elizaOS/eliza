@@ -1,12 +1,8 @@
-/** Verifies VoiceProfileSection through the package's configured test harness. */
-// @vitest-environment jsdom
-
 /**
- * Covers VoiceProfileSection: OWNER pinned at top with the Crown badge, the
- * empty state, inline rename + relationship-label edits, delete of a non-owner
- * row, and refusal to delete OWNER. jsdom render against a real
- * `VoiceProfilesClient` backed by a fake in-memory fetch.
+ * Verifies the voice-profile settings lifecycle through a jsdom render backed
+ * by the real client contract and deterministic in-memory mutations.
  */
+// @vitest-environment jsdom
 
 import {
   cleanup,
@@ -15,6 +11,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
@@ -58,6 +55,7 @@ function fakeProfile(over: Partial<VoiceProfile> = {}): VoiceProfile {
     source: "auto-clustered",
     retentionDays: null,
     samplePreviewUri: null,
+    samples: [],
     ...over,
   };
 }
@@ -180,6 +178,7 @@ describe("VoiceProfileSection", () => {
   });
 
   it("changes the relationship label via the select", async () => {
+    const user = userEvent.setup();
     const patch = vi.fn(async () => {});
     const client = makeClient({ patch });
     render(
@@ -192,12 +191,152 @@ describe("VoiceProfileSection", () => {
     const trigger = screen.getByTestId("voice-profile-relationship-select-g1");
     // Radix opens the listbox on keyboard activation, which is deterministic in
     // jsdom (pointer-driven open relies on pointer capture jsdom can't model).
-    trigger.focus();
-    fireEvent.keyDown(trigger, { key: "Enter" });
+    await user.click(trigger);
     const option = await screen.findByRole("option", { name: "wife" });
-    fireEvent.click(option);
+    await user.click(option);
     await waitFor(() => {
       expect(patch).toHaveBeenCalledWith("g1", { relationshipLabel: "wife" });
     });
+  });
+
+  it("binds and unbinds a profile through the lifecycle editor", async () => {
+    const user = userEvent.setup();
+    const unbound = fakeProfile({ id: "g1", entityId: null });
+    const bound = fakeProfile({ id: "g1", entityId: "entity-alex" });
+    const bind = vi.fn(async () => bound);
+    const unbind = vi.fn(async () => unbound);
+    const client = makeClient({ bind, unbind });
+    render(
+      <VoiceProfileSection
+        profilesClient={client}
+        initialProfiles={[unbound]}
+      />,
+    );
+
+    await user.click(screen.getByTestId("voice-profile-manage-g1"));
+    await user.type(
+      screen.getByTestId("voice-profile-bind-entity-g1"),
+      "entity-alex",
+    );
+    await user.type(screen.getByTestId("voice-profile-bind-label-g1"), "Alex");
+    await user.click(screen.getByTestId("voice-profile-bind-g1"));
+
+    await waitFor(() => {
+      expect(bind).toHaveBeenCalledWith("g1", {
+        entityId: "entity-alex",
+        label: "Alex",
+      });
+    });
+    await waitFor(() => {
+      expect(screen.getByText("Bound to entity-alex")).toBeTruthy();
+    });
+
+    await user.click(screen.getByTestId("voice-profile-unbind-g1"));
+    await waitFor(() => expect(unbind).toHaveBeenCalledWith("g1"));
+    await waitFor(() => {
+      expect(screen.getByTestId("voice-profile-bind-entity-g1")).toBeTruthy();
+    });
+  });
+
+  it("splits only a proper subset of retained samples", async () => {
+    const user = userEvent.setup();
+    const profile = fakeProfile({
+      id: "g1",
+      entityId: null,
+      samples: [
+        { id: "s1", durationMs: 1000, recordedAt: "2026-08-01T00:00:00Z" },
+        { id: "s2", durationMs: 2000, recordedAt: "2026-08-02T00:00:00Z" },
+      ],
+    });
+    const splitProfile = fakeProfile({ id: "g2", entityId: null });
+    const split = vi.fn(async () => ({
+      original: { ...profile, samples: profile.samples.slice(1) },
+      split: splitProfile,
+    }));
+    const client = makeClient({ split });
+    render(
+      <VoiceProfileSection
+        profilesClient={client}
+        initialProfiles={[profile]}
+      />,
+    );
+
+    await user.click(screen.getByTestId("voice-profile-manage-g1"));
+    const splitButton = screen.getByTestId(
+      "voice-profile-split-g1",
+    ) as HTMLButtonElement;
+    expect(splitButton.disabled).toBe(true);
+    await user.click(screen.getByTestId("voice-profile-split-g1-s1"));
+    expect(splitButton.disabled).toBe(false);
+    await user.click(screen.getByTestId("voice-profile-split-g1-s2"));
+    expect(splitButton.disabled).toBe(true);
+    expect(
+      screen.getByText("Leave at least one sample in the original profile."),
+    ).toBeTruthy();
+    await user.click(screen.getByTestId("voice-profile-split-g1-s2"));
+    await user.click(splitButton);
+
+    await waitFor(() => {
+      expect(split).toHaveBeenCalledWith("g1", { utteranceIds: ["s1"] });
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("voice-profile-row-g2")).toBeTruthy();
+    });
+  });
+
+  it("merges a non-owner profile into the chosen destination", async () => {
+    const user = userEvent.setup();
+    const source = fakeProfile({ id: "source", entityId: null });
+    const target = fakeProfile({
+      id: "target",
+      entityId: null,
+      displayName: "Target profile",
+    });
+    const merged = { ...target, embeddingCount: 6 };
+    const merge = vi.fn(async () => merged);
+    const client = makeClient({ merge });
+    render(
+      <VoiceProfileSection
+        profilesClient={client}
+        initialProfiles={[source, target]}
+      />,
+    );
+
+    await user.click(screen.getByTestId("voice-profile-manage-source"));
+    const trigger = screen.getByTestId("voice-profile-merge-target-source");
+    await user.click(trigger);
+    await user.click(
+      await screen.findByRole("option", { name: "Target profile" }),
+    );
+    await user.click(screen.getByTestId("voice-profile-merge-source"));
+
+    await waitFor(() => {
+      expect(merge).toHaveBeenCalledWith("source", { intoId: "target" });
+    });
+    expect(screen.queryByTestId("voice-profile-row-source")).toBeNull();
+    expect(screen.getByTestId("voice-profile-row-target")).toBeTruthy();
+  });
+
+  it("never exposes owner merge-away or unbind controls", () => {
+    const client = makeClient();
+    render(
+      <VoiceProfileSection
+        profilesClient={client}
+        initialProfiles={[
+          fakeProfile({
+            id: "owner-1",
+            isOwner: true,
+            cohort: "owner",
+            entityId: "owner-entity",
+          }),
+          fakeProfile({ id: "guest-1" }),
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("voice-profile-manage-owner-1"));
+    expect(screen.queryByTestId("voice-profile-merge-owner-1")).toBeNull();
+    expect(screen.queryByTestId("voice-profile-unbind-owner-1")).toBeNull();
+    expect(screen.getByText("Bound to owner-entity")).toBeTruthy();
   });
 });

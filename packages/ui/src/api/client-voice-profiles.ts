@@ -11,6 +11,13 @@
 export type VoiceProfileCohort = "owner" | "family" | "guest" | "unknown";
 export type VoiceProfileSource = "first-run" | "auto-clustered" | "manual";
 
+export interface VoiceProfileSample {
+  /** Stable sample id accepted by the split endpoint. */
+  id: string;
+  durationMs: number;
+  recordedAt: string;
+}
+
 /**
  * Stable internal shape consumed by `VoiceProfileSection` and the first-run
  * voice steps. Mirrors R10 §5.1 — keep wide-compatible fields here, narrow
@@ -39,6 +46,8 @@ export interface VoiceProfile {
   retentionDays?: number | null;
   /** Optional preview audio uri (server-signed; UI fetches via client.fetch). */
   samplePreviewUri?: string | null;
+  /** Retained enrollment samples available for an explicit split operation. */
+  samples: VoiceProfileSample[];
 }
 
 /** Capture step description supplied by I2 during first-run (R10 §3.2 step 5). */
@@ -110,7 +119,12 @@ export class VoiceProfilesUnavailableError extends Error {
     readonly endpoint: string,
     readonly cause?: unknown,
   ) {
-    super(`Voice profiles endpoint unavailable: ${endpoint}`);
+    const detail = cause instanceof Error ? cause.message.trim() : "";
+    super(
+      detail
+        ? `Voice profile request failed: ${detail}`
+        : `Voice profiles endpoint unavailable: ${endpoint}`,
+    );
     this.name = "VoiceProfilesUnavailableError";
   }
 }
@@ -234,12 +248,19 @@ export class VoiceProfilesClient {
   }
 
   /** Merge `id` into `intoId`. */
-  async merge(id: string, into: VoiceProfileMergeRequest): Promise<void> {
+  async merge(
+    id: string,
+    into: VoiceProfileMergeRequest,
+  ): Promise<VoiceProfile> {
     try {
-      await this.client.fetch(
+      const raw = await this.client.fetch<unknown>(
         `/api/voice/profiles/${encodeURIComponent(id)}/merge`,
         { method: "POST", body: JSON.stringify(into) },
       );
+      const profile = normaliseProfile(raw);
+      if (!profile)
+        throw new Error("Voice profile merge returned an invalid profile.");
+      return profile;
     } catch (err) {
       throw new VoiceProfilesUnavailableError(
         `/api/voice/profiles/${id}/merge`,
@@ -249,15 +270,69 @@ export class VoiceProfilesClient {
   }
 
   /** Split an auto-clustered profile by utterance ids. */
-  async split(id: string, payload: VoiceProfileSplitRequest): Promise<void> {
+  async split(
+    id: string,
+    payload: VoiceProfileSplitRequest,
+  ): Promise<{ original: VoiceProfile; split: VoiceProfile }> {
     try {
-      await this.client.fetch(
+      const raw = await this.client.fetch<unknown>(
         `/api/voice/profiles/${encodeURIComponent(id)}/split`,
         { method: "POST", body: JSON.stringify(payload) },
       );
+      if (!raw || typeof raw !== "object") {
+        throw new Error("Voice profile split returned an invalid response.");
+      }
+      const response = raw as Record<string, unknown>;
+      const original = normaliseProfile(response.original);
+      const split = normaliseProfile(response.split);
+      if (!original || !split) {
+        throw new Error("Voice profile split returned invalid profiles.");
+      }
+      return { original, split };
     } catch (err) {
       throw new VoiceProfilesUnavailableError(
         `/api/voice/profiles/${id}/split`,
+        err,
+      );
+    }
+  }
+
+  /** Bind a recognized profile to an existing entity. */
+  async bind(
+    id: string,
+    payload: { entityId: string; label?: string },
+  ): Promise<VoiceProfile> {
+    try {
+      const raw = await this.client.fetch<unknown>(
+        `/api/voice/profiles/${encodeURIComponent(id)}/bind`,
+        { method: "POST", body: JSON.stringify(payload) },
+      );
+      const profile = normaliseProfile(raw);
+      if (!profile)
+        throw new Error("Voice profile bind returned an invalid profile.");
+      return profile;
+    } catch (err) {
+      throw new VoiceProfilesUnavailableError(
+        `/api/voice/profiles/${id}/bind`,
+        err,
+      );
+    }
+  }
+
+  /** Remove a non-owner profile's entity binding. */
+  async unbind(id: string): Promise<VoiceProfile> {
+    try {
+      const raw = await this.client.fetch<unknown>(
+        `/api/voice/profiles/${encodeURIComponent(id)}/unbind`,
+        { method: "POST" },
+      );
+      const profile = normaliseProfile(raw);
+      if (!profile)
+        throw new Error("Voice profile unbind returned an invalid profile.");
+      return profile;
+    } catch (err) {
+      throw new VoiceProfilesUnavailableError(
+        `/api/voice/profiles/${id}/unbind`,
         err,
       );
     }
@@ -405,7 +480,30 @@ function normaliseProfile(raw: unknown): VoiceProfile | null {
     retentionDays: typeof r.retentionDays === "number" ? r.retentionDays : null,
     samplePreviewUri:
       typeof r.samplePreviewUri === "string" ? r.samplePreviewUri : null,
+    samples: Array.isArray(r.samples)
+      ? r.samples.map(normaliseSample).filter(isSample)
+      : [],
   };
+}
+
+function normaliseSample(raw: unknown): VoiceProfileSample | null {
+  if (!raw || typeof raw !== "object") return null;
+  const sample = raw as Record<string, unknown>;
+  if (typeof sample.id !== "string" || sample.id.length === 0) return null;
+  return {
+    id: sample.id,
+    durationMs:
+      typeof sample.durationMs === "number" && sample.durationMs >= 0
+        ? sample.durationMs
+        : 0,
+    recordedAt: typeof sample.recordedAt === "string" ? sample.recordedAt : "",
+  };
+}
+
+function isSample(
+  value: VoiceProfileSample | null,
+): value is VoiceProfileSample {
+  return value !== null;
 }
 
 function isCohort(value: unknown): value is VoiceProfileCohort {

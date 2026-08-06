@@ -892,6 +892,11 @@ export class VoiceProfileStore {
 				"[VoiceProfileStore.splitProfile] no matching sampleIds to split out",
 			);
 		}
+		if (moved.length >= refs.length) {
+			throw new Error(
+				"[VoiceProfileStore.splitProfile] a split must leave at least one audio sample in the original profile",
+			);
+		}
 		const now = iso();
 		const movedDuration = moved.reduce((s, r) => s + (r.durationMs || 0), 0);
 		const splitId = `vp_split_${sha256(
