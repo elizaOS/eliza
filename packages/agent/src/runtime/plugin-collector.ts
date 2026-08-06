@@ -24,7 +24,7 @@ import shortIdPluginMap from "@elizaos/registry/first-party/short-id-plugin-map.
   type: "json",
 };
 import {
-  getFirstRunProviderSignalEnvKeys,
+  getFirstRunProviderOption,
   hasExplicitCanonicalRuntimeConfig,
   isAndroidMobile,
   isMobilePlatform,
@@ -195,12 +195,30 @@ function providerPluginNameFromBackend(backend: string): string {
   }
   const providerId = normalizeFirstRunProviderId(backend);
   if (providerId && providerId !== "elizacloud") {
-    for (const envKey of getFirstRunProviderSignalEnvKeys(providerId)) {
-      const pluginName = PROVIDER_PLUGIN_MAP[envKey];
-      if (pluginName) return resolvePluginPackageAlias(pluginName);
+    const provider = getFirstRunProviderOption(providerId);
+    if (provider) {
+      return resolvePluginPackageAlias(provider.pluginName);
     }
   }
   return explicitPluginName;
+}
+
+function isDirectlyRoutableProviderPlugin(
+  backend: string,
+  pluginName: string,
+): boolean {
+  if (
+    DIRECT_MODEL_PROVIDER_PLUGINS.has(pluginName) ||
+    LOCAL_MODEL_PROVIDER_PLUGINS.has(pluginName)
+  ) {
+    return true;
+  }
+  const provider = getFirstRunProviderOption(backend);
+  return (
+    provider !== null &&
+    provider.id !== "elizacloud" &&
+    resolvePluginPackageAlias(provider.pluginName) === pluginName
+  );
 }
 
 function isTruthyCloudEnvValue(raw: string | undefined): boolean {
@@ -648,8 +666,7 @@ export function collectPluginNames(
         Object.values(serviceRouting ?? {}).flatMap((route) => {
           if (route?.transport !== "direct" || !route.backend) return [];
           const pluginName = providerPluginNameFromBackend(route.backend);
-          return DIRECT_MODEL_PROVIDER_PLUGINS.has(pluginName) ||
-            LOCAL_MODEL_PROVIDER_PLUGINS.has(pluginName)
+          return isDirectlyRoutableProviderPlugin(route.backend, pluginName)
             ? [pluginName]
             : [];
         }),
