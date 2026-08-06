@@ -103,8 +103,11 @@ export function createWorkspaceProvider(options?: {
     description:
       "Workspace init files (AGENTS.md, TOOLS.md, IDENTITY.md, etc.) and task-agent context",
     position: 10,
-    contexts: ["general"],
-    contextGate: { anyOf: ["general"] },
+    // Workspace instructions govern code and autonomous workspace work. Keeping
+    // them out of ordinary `general` tool turns prevents an unrelated repo guide
+    // from dominating small app/device actions such as opening a view.
+    contexts: ["code", "files", "terminal", "automation"],
+    contextGate: { anyOf: ["code", "files", "terminal", "automation"] },
     cacheStable: false,
     cacheScope: "turn",
     // #12087 Item 14: was USER but the body enforced ADMIN (hasAdminAccess).
