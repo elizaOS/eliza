@@ -314,6 +314,7 @@ describe("DiscordVoiceMeetingSession", () => {
 		expect(start?.roomId).toBe(roomId);
 		expect(start?.worldId).toBe(worldId);
 		expect(start?.nativeMeetingId).toBe("111222333");
+		expect(start?.consentState).toBe("not_required");
 		expect(start?.meetingUrl).toBe(
 			"https://discord.com/channels/999888777/111222333",
 		);
