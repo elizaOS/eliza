@@ -493,13 +493,12 @@ export async function openBrowserWorkspaceTab(
 }
 
 /**
- * Canonical startup search page. The default tab must render real HTML from a
- * real search site (never `about:blank`) — DuckDuckGo's html endpoint is chosen
- * because it is iframe-/embed-tolerant and does not trip the bot-walls that
- * block Google/Bing inside an embedded webview (#13596).
+ * Canonical startup search page. The `igu=1` mode is Google's explicit
+ * iframe-compatible surface, so the plain-web fallback can render it while
+ * native shells continue to load it in their isolated WebViews (#13596).
  */
 export const BROWSER_WORKSPACE_DEFAULT_SEARCH_URL =
-  "https://duckduckgo.com/html/";
+  "https://www.google.com/webhp?igu=1";
 
 /**
  * Resolve the startup search URL, honoring the `ELIZA_BROWSER_DEFAULT_SEARCH_URL`
