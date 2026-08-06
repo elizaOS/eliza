@@ -15,7 +15,7 @@ public request, the proxy should:
    with `Cache-Control: no-store`.
 3. Use `upstreamHeaders` from the result when building the upstream request;
    both `x-api-key` and `Authorization` caller credentials are stripped.
-4. Lease an upstream account through `/internal/account-pool/v1/lease`.
+4. Lease an upstream account through `/api/internal/account-pool/v1/lease`.
 5. For non-streaming Anthropic responses, parse the response JSON and pass
    `extractAnthropicUsageFromJson(json)` plus the returned `admission` to
    `recordAccountPoolConsumerUsage`.
@@ -35,11 +35,11 @@ current behavior.
 Consumer key management is admin-only under the existing loopback bearer-gated
 broker API:
 
-- `GET /internal/account-pool/v1/consumer-keys`
-- `POST /internal/account-pool/v1/consumer-keys`
-- `PATCH /internal/account-pool/v1/consumer-keys/:id`
-- `POST /internal/account-pool/v1/consumer-keys/:id/rotate`
-- `GET /internal/account-pool/v1/usage?consumerId=&startMs=&endMs=`
+- `GET /api/internal/account-pool/v1/consumer-keys`
+- `POST /api/internal/account-pool/v1/consumer-keys`
+- `PATCH /api/internal/account-pool/v1/consumer-keys/:id`
+- `POST /api/internal/account-pool/v1/consumer-keys/:id/rotate`
+- `GET /api/internal/account-pool/v1/usage?consumerId=&startMs=&endMs=`
 
 Plaintext consumer keys are returned only by create and rotate. The state store
 persists a SHA-256 digest plus public metadata.
