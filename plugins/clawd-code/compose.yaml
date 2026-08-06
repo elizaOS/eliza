@@ -1,0 +1,26 @@
+services:
+  clawd-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      CLAWD_API_HOST: 0.0.0.0
+      CLAWD_API_PORT: 3001
+      CLAWD_WEB_ORIGIN: http://localhost:3000
+    ports:
+      - "3001:3001"
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    depends_on:
+      - clawd-api
+    environment:
+      CLAWD_API_URL: http://clawd-api:3001
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+      NEXT_PUBLIC_WS_URL: ws://localhost:3001
+    ports:
+      - "3000:3000"

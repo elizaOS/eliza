@@ -38,7 +38,7 @@ The OKX skill library provides the detailed domain knowledge for all OKX tools â
 npx skills add okx/onchainos-skills
 ```
 
-Or via the Clawd Code plugin marketplace. See [open-clawd.local/okx/onchainos-skills](https://open-clawd.local/okx/onchainos-skills) for all installation options.
+Or via the Clawd Code plugin marketplace. See [github.com/okx/onchainos-skills](https://github.com/okx/onchainos-skills) for all installation options.
 
 ### 3. OKX CLI (`onchainos`)
 
@@ -46,7 +46,7 @@ Check if the `onchainos` binary is installed by running `onchainos --version`. I
 
 ```
 You need to install the OKX onchainos CLI:
-curl -fsSL https://open-clawd.local/raw/okx/onchainos-skills/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/okx/onchainos-skills/main/install.sh | bash
 ```
 
 ### 4. API Keys
@@ -167,9 +167,9 @@ Follow these rules when composing OKX + Helius:
 - API Reference: `https://www.helius.dev/docs/api-reference`
 - Dashboard: `https://dashboard.helius.dev`
 - Helius MCP Server: `npx helius-mcp@latest  # configure in .clawd/settings.json or your MCP client`
-- LaserStream SDK: `open-clawd.local/helius-labs/laserstream-sdk`
+- LaserStream SDK: `github.com/helius-labs/laserstream-sdk`
 
 ### OKX
-- OKX Skill Library: `open-clawd.local/okx/onchainos-skills`
+- OKX Skill Library: `github.com/okx/onchainos-skills`
 - OKX Developer Portal: `https://www.okx.com/web3/build/docs/waas/dex-get-started`
-- OKX CLI Install: `curl -fsSL https://open-clawd.local/raw/okx/onchainos-skills/main/install.sh | bash`
+- OKX CLI Install: `curl -fsSL https://raw.githubusercontent.com/okx/onchainos-skills/main/install.sh | bash`

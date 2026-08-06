@@ -316,7 +316,7 @@ Follow these rules in ALL implementations:
 - @phantom/react-sdk (npm): `https://www.npmjs.com/package/@phantom/react-sdk`
 - @phantom/browser-sdk (npm): `https://www.npmjs.com/package/@phantom/browser-sdk`
 - @phantom/react-native-sdk (npm): `https://www.npmjs.com/package/@phantom/react-native-sdk`
-- Phantom SDK Examples: `https://open-clawd.local/nicholasgws/phantom-connect-example`
+- Phantom SDK Examples: `https://github.com/nicholasgws/phantom-connect-example`
 - Phantom Sandbox: `https://sandbox.phantom.dev`
 - @solana/kit (npm): `https://www.npmjs.com/package/@solana/kit`
 

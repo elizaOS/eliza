@@ -10,13 +10,24 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/cli.ts",
+    "api:dev": "tsx src/server.ts",
+    "api": "node dist/server.js",
+    "web:dev": "npm --prefix web run dev",
+    "box:dev": "node scripts/dev-box.mjs",
+    "box:build": "npm run build && npm --prefix web run build",
     "start": "node dist/cli.js",
-    "test": "echo \"No tests yet\" && exit 0"
+    "test": "node --import tsx --test src/**/*.test.ts"
   },
   "files": [
     "dist",
+    "spinners",
+    "clawd-plugin",
+    "docs",
     "install.sh",
     "README.md",
+    "CLAWD.md",
+    "Skill.md",
+    "agent.md",
     "LICENSE",
     ".env.example",
     "clawd.json"
@@ -34,14 +45,13 @@
     "phoenix",
     "vulcan"
   ],
-  "homepage": "https://github.com/Solizardking/solana-clawd/tree/main/clawd-code#readme",
+  "homepage": "https://github.com/Solizardking/clawd-code#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Solizardking/solana-clawd.git",
-    "directory": "clawd-code"
+    "url": "git+https://github.com/Solizardking/clawd-code.git"
   },
   "bugs": {
-    "url": "https://github.com/Solizardking/solana-clawd/issues"
+    "url": "https://github.com/Solizardking/clawd-code/issues"
   },
   "author": "Solizardking",
   "license": "MIT",

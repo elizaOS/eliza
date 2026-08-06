@@ -403,4 +403,4 @@ const mergedAlts = allAlts.filter((alt) => {
 - Jupiter Lend Docs: [dev.jup.ag/docs/lend](https://dev.jup.ag/docs/lend)
 - Read SDK: [@jup-ag/lend-read](https://www.npmjs.com/package/@jup-ag/lend-read)
 - Write SDK: [@jup-ag/lend](https://www.npmjs.com/package/@jup-ag/lend)
-- Smart Contracts: [open-clawd.local/Instadapp/fluid-solana-programs](https://open-clawd.local/Instadapp/fluid-solana-programs/)
+- Smart Contracts: [github.com/Instadapp/fluid-solana-programs](https://github.com/Instadapp/fluid-solana-programs/)

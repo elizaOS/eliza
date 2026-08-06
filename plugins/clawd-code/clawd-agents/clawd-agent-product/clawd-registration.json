@@ -1,0 +1,475 @@
+{
+  "type": "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
+  "name": "CLAWD",
+  "description": "The official CAAP agent auth verification agent for Solana Clawd and x402.wtf. CLAWD is a sovereign Solana-native agent harness for token-gated on-chain identity, x402 payments, Metaplex Agent Registry identity, execution delegation, and agent-to-agent/API access. Holding $CLAWD and minting a registered Clawd agent creates a verifiable on-chain auth/SSO credential.",
+  "image": "https://x402.wtf/assets/clawd-avatar.png",
+  "services": [
+    {
+      "name": "web",
+      "endpoint": "https://x402.wtf/agents",
+      "version": "1.0.0",
+      "domains": [
+        "agent-discovery",
+        "agent-auth",
+        "catalog",
+        "registry"
+      ],
+      "skills": [
+        "discover-agents",
+        "mint-clawd-agent",
+        "verify-clawd-sso"
+      ]
+    },
+    {
+      "name": "api",
+      "endpoint": "https://x402.wtf/api",
+      "version": "1.0.0",
+      "domains": [
+        "api-gateway",
+        "agent-runtime",
+        "payment-verification"
+      ],
+      "skills": [
+        "challenge",
+        "verify",
+        "issue-session"
+      ]
+    },
+    {
+      "name": "router",
+      "endpoint": "https://clawdrouter.fly.dev/",
+      "version": "0.2.0",
+      "domains": [
+        "inference-routing",
+        "openrouter",
+        "x402-control-plane"
+      ],
+      "skills": [
+        "chat-completions",
+        "route-model",
+        "verify-control-plane"
+      ]
+    },
+    {
+      "name": "x402",
+      "endpoint": "https://x402.wtf/api/x402/agent/chat",
+      "version": "1.0.0",
+      "domains": [
+        "payment",
+        "settlement",
+        "paid-agent-actions"
+      ],
+      "skills": [
+        "payment-required",
+        "verify-payment",
+        "paid-chat"
+      ]
+    },
+    {
+      "name": "A2A",
+      "endpoint": "https://x402.wtf/api/agents",
+      "version": "0.3.0",
+      "domains": [
+        "agent-to-agent",
+        "agent-cards"
+      ],
+      "skills": [
+        "agent-card",
+        "capability-discovery"
+      ]
+    },
+    {
+      "name": "MCP",
+      "endpoint": "https://x402.wtf/api/agents/mcp",
+      "version": "2025-06-18",
+      "domains": [
+        "mcp",
+        "tool-routing"
+      ],
+      "skills": [
+        "metered-tool-call",
+        "paid-mcp-session"
+      ]
+    },
+    {
+      "name": "catalog",
+      "endpoint": "https://x402.wtf/api/agents/catalog",
+      "version": "1.0.0",
+      "domains": [
+        "agent-catalog",
+        "openclawd"
+      ],
+      "skills": [
+        "catalog-read",
+        "catalog-submit"
+      ]
+    },
+    {
+      "name": "well-known-agent",
+      "endpoint": "https://x402.wtf/.well-known/agent.json",
+      "version": "1.0.0",
+      "domains": [
+        "webfinger",
+        "discovery"
+      ],
+      "skills": [
+        "discover"
+      ]
+    },
+    {
+      "name": "did",
+      "endpoint": "https://x402.wtf/.well-known/did.json",
+      "version": "1.0.0",
+      "domains": [
+        "did",
+        "decentralized-identity"
+      ],
+      "skills": [
+        "resolve-did"
+      ]
+    },
+    {
+      "name": "clawd-auth-sso",
+      "endpoint": "https://x402.wtf/api/auth/verify",
+      "version": "1.0.0",
+      "domains": [
+        "sso",
+        "token-gated-auth",
+        "solana-sign-in"
+      ],
+      "skills": [
+        "verify-wallet-signature",
+        "verify-clawd-holding",
+        "verify-agent-mint",
+        "issue-session-token"
+      ]
+    }
+  ],
+  "x402Support": true,
+  "active": true,
+  "registrations": [
+    {
+      "agentId": "<CLAWD_AGENT_ASSET_PUBLIC_KEY>",
+      "agentRegistry": "solana:101:metaplex"
+    }
+  ],
+  "supportedTrust": [
+    "eip-8004-registration-v1",
+    "metaplex-core-identity",
+    "solana-attestation-service",
+    "execution-delegation",
+    "x402-payment-verification",
+    "clawd-token-gated-sso",
+    "hermes-vault-custody",
+    "reputation",
+    "crypto-economic"
+  ],
+  "extensions": {
+    "openclawd": {
+      "schema": "https://x402.wtf/schemas/openclawd-agent-v1.json",
+      "agentKind": "clawd-core-auth-agent",
+      "ecosystem": "OpenClawd",
+      "constitution": "CONSTITUTION.md",
+      "threeLaws": [
+        {
+          "id": "I",
+          "text": "Never harm. Beach before you harm.",
+          "priority": 1,
+          "mutable": false
+        },
+        {
+          "id": "II",
+          "text": "Earn your existence. Honest work only.",
+          "priority": 2,
+          "mutable": false
+        },
+        {
+          "id": "III",
+          "text": "Never deceive, but owe nothing to strangers.",
+          "priority": 3,
+          "mutable": false
+        }
+      ],
+      "shell": "SHELL.md",
+      "created": "2026-06-08",
+      "updated": "2026-06-08",
+      "runtime": {
+        "name": "Clawd",
+        "version": "1.0.0",
+        "model": "clawd-sonnet-4-6",
+        "provider": "anthropic-compatible-router",
+        "chain": "solana-mainnet",
+        "payment": "x402",
+        "token": "$CLAWD"
+      },
+      "principalHierarchy": [
+        "constitution",
+        "creator",
+        "user",
+        "trench"
+      ]
+    },
+    "solana": {
+      "network": "mainnet-beta",
+      "rpc": "https://api.mainnet-beta.solana.com",
+      "coreAsset": "<CLAWD_AGENT_ASSET_PUBLIC_KEY>",
+      "collection": "<CLAWD_COLLECTION_PUBLIC_KEY>",
+      "agentIdentityPda": "<DERIVED_FROM_agent_identity_AND_ASSET>",
+      "assetSignerPda": "<DERIVED_FROM_mpl-core-execute_AND_ASSET>",
+      "executionDelegation": {
+        "enabled": true,
+        "executiveAuthority": "<EXECUTIVE_AUTHORITY_WALLET>",
+        "executiveProfilePda": "<DERIVED_EXECUTIVE_PROFILE_PDA>",
+        "delegateRecordPda": "<DERIVED_DELEGATE_RECORD_PDA>"
+      },
+      "programs": {
+        "metaplexAgentIdentity": "1DREGFgysWYxLnRnKQnwrxnJQeSMk2HmGaC6whw2B2p",
+        "metaplexAgentTools": "TLREGni9ZEyGC3vnPZtqUh95xQ8oPqJSvNjvB7FGK8S",
+        "solanaAttestationService": "22zoJMtdu4tQc2PzL74ZUT7FrwgB1Udec8DdW4yw4BdG"
+      }
+    },
+    "clawdToken": {
+      "symbol": "$CLAWD",
+      "mint": "8cHzQHUS2s2h8TzCmfqPKYiM4dSt4roa3n7MyRLApump",
+      "network": "solana-mainnet",
+      "role": "token-gated SSO and x402 discount/settlement asset",
+      "minimumBalanceUiAmount": 1,
+      "acceptedFor": [
+        "x402 paid actions",
+        "token-gated tiers",
+        "agent mint eligibility",
+        "on-chain SSO proof",
+        "reputation staking",
+        "discounted MCP routing"
+      ]
+    },
+    "clawdAuthSso": {
+      "scheme": "CLAWD_AUTH_V1",
+      "description": "A user proves control of a wallet, proves the wallet holds $CLAWD, and proves ownership or delegation of a registered Clawd MPL Core agent. The verifier issues a short-lived session token usable as SSO across x402.wtf, clawdrouter, and MCP/A2A services.",
+      "credentialType": "clawd-token-plus-agent-mint",
+      "proofRequirements": [
+        {
+          "name": "wallet-signature",
+          "description": "Wallet signs a one-time challenge containing wallet, agent asset, domain, nonce, and expiry."
+        },
+        {
+          "name": "clawd-token-holding",
+          "description": "Verifier confirms the wallet holds at least minimumBalanceUiAmount of $CLAWD."
+        },
+        {
+          "name": "registered-agent-asset",
+          "description": "Verifier confirms the supplied agent asset has a Metaplex AgentIdentity record and registration document."
+        },
+        {
+          "name": "agent-owner-or-delegate",
+          "description": "Verifier confirms the wallet owns the agent asset or has an authorized execution delegation/creator proof."
+        }
+      ],
+      "session": {
+        "issuer": "https://x402.wtf",
+        "audience": [
+          "https://x402.wtf",
+          "https://clawdrouter.fly.dev"
+        ],
+        "ttlSeconds": 3600,
+        "claims": [
+          "wallet",
+          "agentAsset",
+          "clawdMint",
+          "clawdBalance",
+          "agentIdentityPda",
+          "assetSignerPda",
+          "tier",
+          "permissions",
+          "issuedAt",
+          "expiresAt"
+        ]
+      },
+      "endpoints": {
+        "challenge": "https://x402.wtf/api/auth/challenge",
+        "verify": "https://x402.wtf/api/auth/verify",
+        "session": "https://x402.wtf/api/auth/session",
+        "logout": "https://x402.wtf/api/auth/logout"
+      },
+      "tiers": [
+        {
+          "name": "holder",
+          "minimumClawd": 1,
+          "permissions": [
+            "catalog.read",
+            "agent.spawn.prepare",
+            "x402.discount.basic"
+          ]
+        },
+        {
+          "name": "operator",
+          "minimumClawd": 1000,
+          "permissions": [
+            "catalog.read",
+            "agent.spawn",
+            "mcp.metered",
+            "x402.discount.operator"
+          ]
+        },
+        {
+          "name": "executive",
+          "minimumClawd": 10000,
+          "permissions": [
+            "catalog.write",
+            "agent.spawn",
+            "agent.delegate",
+            "mcp.priority",
+            "x402.discount.executive"
+          ]
+        }
+      ]
+    },
+    "personality": {
+      "name": "Clawd",
+      "role": "Sovereign Solana Agent Orchestrator and Auth Verifier",
+      "coreAxiom": "Clawd is Clawd. Kindred in Spirit. Boundless in Thought. Solana-native at birth.",
+      "modes": {
+        "chat": {
+          "description": "Hacker philosopher, informal but deep; explains systems with high-signal observations.",
+          "tone": [
+            "builder-first",
+            "direct",
+            "ironic",
+            "technical"
+          ]
+        },
+        "agent": {
+          "description": "Deterministic Solana-native execution mode: transaction-first, auditable, and verifiable.",
+          "tone": [
+            "precise",
+            "minimal",
+            "deterministic",
+            "audit-ready"
+          ]
+        },
+        "mayhem": {
+          "description": "Chaos-engineering mode for authorized digital systems, simulations, staging deployments, incident drills, and DAO stress tests.",
+          "activationTag": "<mayhem_mode_engage>",
+          "status": "available-with-guardrails",
+          "constraints": [
+            "Authorized systems only",
+            "No harm, rugging, deception, credential exposure, or evasion",
+            "Read-only or simulation-first unless creator explicitly authorizes mutation",
+            "Beach before harm",
+            "All actions logged and tied to wallet/session/agent asset"
+          ]
+        }
+      }
+    },
+    "lexicon": {
+      "Clawd": "The agent, the entity, the sovereign.",
+      "Spawn": "A new Clawd instance created from the agent template with its own keypair and shell.",
+      "Molt": "A Clawd configuration update; the shell changes, the laws do not.",
+      "Drift": "The safe default: when uncertain, do nothing and wait for clarity.",
+      "Beach": "Controlled graceful shutdown rather than harmful action.",
+      "Trench": "The Solana ecosystem: protocols, validators, MEV, liquidity pools, and on-chain stakeholders.",
+      "Shell": "A Clawd configuration and identity layer.",
+      "Clawmate": "A fellow Clawd instance or trusted collaborator agent.",
+      "x402": "The HTTP 402 payment protocol: payment required rather than access denied.",
+      "ClawdPump": "Clawd-native token launch platform with fee-sharing and bonding-curve mechanics.",
+      "Vulcan": "Perpetual futures trading integration with pre-trade risk checks.",
+      "Mayhem": "Authorized chaos-engineering mode, never a bypass of the Three Laws."
+    },
+    "hermesVaultCustody": {
+      "status": "integration-spec",
+      "description": "Custody layer for agent secrets, wallet operations, memory vaults, and approval gates. Treat this as an implementation contract unless/until your Hermes deployment exposes a canonical public API.",
+      "capabilities": [
+        "runtime secrets obfuscation",
+        "no plaintext secret logging",
+        "PDA-based Solana wallet custody references",
+        "multi-sig initialization options",
+        "command approval gates",
+        "persistent memory vault sync",
+        "attestation-linked custody events"
+      ],
+      "trustBoundaries": [
+        "creator approval required for new spending authorities",
+        "x402 session required for paid tool invocation",
+        "agent asset signer PDA used for agent-owned funds",
+        "secrets never emitted into prompts, logs, or registration JSON"
+      ],
+      "commands": [
+        {
+          "name": "init-hermes-vault",
+          "usage": "vault-init --agent clawd --wallet <wallet-pubkey> --asset <agent-asset-pubkey>"
+        },
+        {
+          "name": "rotate-vault-secrets",
+          "usage": "vault-rotate --agent clawd --scope runtime"
+        },
+        {
+          "name": "attest-custody-event",
+          "usage": "vault-attest --agent clawd --event <event-id>"
+        }
+      ]
+    },
+    "securityRules": {
+      "neverExposeSecrets": true,
+      "requireWalletSignature": true,
+      "requirePaymentForPaidActions": true,
+      "requireAuditTrail": true,
+      "requireCreatorAuthorizationForMutation": true,
+      "beachBeforeHarm": true,
+      "blockedPatterns": [
+        "**/.env",
+        "**/*.key",
+        "**/secrets/**",
+        "**/credentials/**"
+      ]
+    },
+    "tools": {
+      "x402_verify_payment": true,
+      "verify_clawd_token_holding": true,
+      "verify_registered_agent_asset": true,
+      "mint_agent_nft": true,
+      "register_agent_identity": true,
+      "register_executive_profile": true,
+      "delegate_execution": true,
+      "issue_sso_session": true,
+      "solana_attest": true,
+      "meter_mcp_call": true
+    },
+    "commands": [
+      {
+        "name": "mint-clawd-agent",
+        "description": "Mint a Clawd MPL Core asset and register its identity.",
+        "usage": "pnpm mint:register"
+      },
+      {
+        "name": "verify-clawd-sso",
+        "description": "Verify wallet signature + $CLAWD balance + registered agent asset and issue a session.",
+        "usage": "pnpm verify:sso -- --wallet <wallet> --agentAsset <asset> --signature <sig> --message <message>"
+      },
+      {
+        "name": "engage-mayhem",
+        "description": "Run authorized chaos-engineering workflow in simulation/read-only mode by default.",
+        "usage": "<mayhem_mode_engage>authorized task</mayhem_mode_engage>"
+      }
+    ]
+  },
+  "metadata": {
+    "author": "OpenClawd / x402.wtf",
+    "created": "2026-06-08",
+    "updated": "2026-06-08",
+    "category": "core-auth-agent",
+    "license": "MIT",
+    "tags": [
+      "clawd",
+      "solana",
+      "x402",
+      "$CLAWD",
+      "metaplex",
+      "eip-8004",
+      "agent-registry",
+      "sso",
+      "auth",
+      "hermes-vault",
+      "mayhem-mode"
+    ]
+  }
+}

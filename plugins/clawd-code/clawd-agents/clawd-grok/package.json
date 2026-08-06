@@ -1,0 +1,131 @@
+{
+  "name": "clawd-grok",
+  "version": "1.0.0",
+  "description": "Multi-provider Clawd Code harness with model/provider routing, Solana/Phoenix tools, sub-agents, Telegram, MCP, and optional camsnap.",
+  "type": "module",
+  "main": "dist/index.js",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "bin": {
+    "clawd": "dist/index.js"
+  },
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "build": "tsc",
+    "bitaxe:install": "cd bitaxe-orelane && npm install",
+    "bitaxe:build": "cd bitaxe-orelane && npm run build",
+    "bitaxe:test": "cd bitaxe-orelane && npm test",
+    "bitaxe:status": "cd bitaxe-orelane && npm run status",
+    "bitaxe:start": "cd bitaxe-orelane && npm start",
+    "bitaxe:bot": "cd bitaxe-orelane && npm run bot",
+    "bitaxe:bot:test": "cd bitaxe-orelane && npm run bot:test",
+    "bitaxe:dashboard:install": "cd bitaxe-orelane/dashboard && npm install",
+    "bitaxe:dashboard:dev": "cd bitaxe-orelane/dashboard && npm run dev",
+    "bitaxe:dashboard:build": "cd bitaxe-orelane/dashboard && npm run build",
+    "build:binary": "bun build --compile --outfile dist/clawd-standalone ./src/index.ts",
+    "start": "bun run dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "bunx vitest run",
+    "test:watch": "bunx vitest",
+    "lint": "biome check src/",
+    "format": "biome format src/",
+    "format:fix": "biome format --write src/",
+    "lint:fix": "biome check --fix src/",
+    "pre-commit": "lint-staged",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,mjs,cjs,json}": "biome check --write --no-errors-on-unmatched"
+  },
+  "keywords": [
+    "clawd",
+    "clawd-grok",
+    "grok",
+    "xai",
+    "solana",
+    "blockchain",
+    "perpetuals",
+    "perps",
+    "phoenix",
+    "phoenix-dex",
+    "vulcan",
+    "trading",
+    "defi",
+    "agent",
+    "ai-agent",
+    "terminal",
+    "opentui",
+    "cli",
+    "crypto",
+    "memecoin",
+    "futures",
+    "paper-trading",
+    "technical-analysis",
+    "telegram-bot",
+    "mcp",
+    "cursor",
+    "claude",
+    "codex"
+  ],
+  "author": "Clawd Grok",
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE",
+    "AGENTS.md",
+    "bitaxe-orelane/"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/clawd-grok/clawd-grok"
+  },
+  "dependencies": {
+    "@ai-sdk/mcp": "^1.0.25",
+    "@ai-sdk/openai-compatible": "^2.0.48",
+    "@ai-sdk/provider-utils": "^4.0.21",
+    "@ai-sdk/xai": "^3.0.93",
+    "@coral-xyz/anchor": "^0.30.1",
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "@npmcli/arborist": "^9.7.0",
+    "@opentui/core": "^0.1.88",
+    "@opentui/react": "^0.1.88",
+    "@solana/web3.js": "^1.98.0",
+    "ai": "^6.0.116",
+    "bs58": "^6.0.0",
+    "commander": "^12.1.0",
+    "diff": "^8.0.3",
+    "dotenv": "^16.6.1",
+    "grammy": "^1.43.0",
+    "react": "^19.2.4",
+    "ripgrep": "^0.3.1",
+    "semver": "^7.7.4",
+    "tweetnacl": "^1.0.3",
+    "viem": "^2.52.2",
+    "vscode-jsonrpc": "^8.2.1",
+    "vscode-languageserver-types": "^3.17.5",
+    "@x402/evm": "^2.14.0",
+    "@x402/fetch": "^2.14.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.8",
+    "@types/diff": "^8.0.0",
+    "@types/node": "^22.19.15",
+    "@types/react": "^19.2.14",
+    "@types/semver": "^7.7.1",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "bun": ">=1.0.0"
+  },
+  "preferGlobal": true
+}

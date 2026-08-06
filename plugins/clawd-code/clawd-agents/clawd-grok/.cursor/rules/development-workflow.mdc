@@ -1,0 +1,62 @@
+# Development Workflow
+
+## Prerequisites
+
+- Bun 1.0+ (required)
+
+## Common Commands
+
+```bash
+# Install dependencies
+bun install
+
+# Development (runs from source with Bun)
+bun run dev
+
+# Build (compile TypeScript to dist/)
+bun run build
+
+# Type checking (no emit)
+bun run typecheck
+
+# Linting
+bun run lint
+
+# Format (check / write)
+bun run format
+bun run format:fix
+
+# Run the built CLI
+bun run start
+```
+
+## Environment Variables
+
+| Variable | Required | Description |
+|----|----|----|
+| `GROK_API_KEY` | Yes | API key for xAI Grok |
+| `GROK_BASE_URL` | No | Custom API endpoint (default: `https://api.x.ai/v1`) |
+| `GROK_MODEL` | No | Model override (default: `grok-4.3`) |
+| `GROK_MAX_TOKENS` | No | Max tokens per response (default: 16384) |
+| `SOLANA_RPC_URL` | Yes | Solana RPC endpoint (mainnet-beta) |
+| `PHOENIX_API_URL` | No | Phoenix perps API (default: `https://perp-api.phoenix.trade`) |
+
+Copy `.env.example` to `.env` and fill in your values.
+
+## Git hooks
+
+After `bun install`, **Husky** installs a **pre-commit** hook that runs **`lint-staged`**: Biome **format + lint** (`check --write`) on staged `*.{ts,tsx,js,mjs,cjs,json}` files. Fixes are written to disk and re-staged automatically when possible.
+
+## Before Submitting Changes
+
+1. Run `bun run typecheck` — CI enforces this on every PR.
+2. Run `bun run lint` — fix any Biome issues (or let pre-commit apply safe fixes).
+3. Ensure no secrets or `.env` files are committed.
+4. Follow the PR template in `.github/pull_request_template.md`.
+
+## Project Structure Conventions
+
+- Source code lives in `src/`, compiled output in `dist/` (gitignored).
+- The CLI entry point is `src/index.ts` which uses Commander.js for argument parsing.
+- UI is built with OpenTUI React (`@opentui/react`).
+- Only tool is bash — all file operations happen through shell commands.

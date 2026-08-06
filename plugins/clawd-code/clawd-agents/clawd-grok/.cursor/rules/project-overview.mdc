@@ -1,0 +1,82 @@
+# Clawd Grok — Project Overview
+
+**Clawd Grok** (`clawd-grok`) is the world's first Grok-powered Solana perpetual futures CLI agent. Terminal-native, keyboard-driven, and built for traders who live in the command line. Combines **xAI Grok reasoning** with **Phoenix DEX perps** via Vulcan execution.
+
+## Tech Stack
+
+- **Language**: TypeScript (ES2022, ESNext modules)
+- **Runtime**: Bun (primary)
+- **AI Brain**: xAI Grok (grok-4.3, grok-4.20, grok-3-mini) via OpenAI-compatible Chat Completions API
+- **UI Framework**: React with [OpenTUI](https://github.com/anomalyco/opentui) for terminal rendering
+- **Build**: `tsc` (TypeScript compiler)
+- **Package Manager**: Bun
+- **API Client**: OpenAI SDK (for OpenAI-compatible xAI API)
+- **Tools**: Bash-only (all file operations via shell commands)
+- **Search**: X Search API + Web Search via xAI Responses API
+- **Blockchain**: Solana (Phoenix DEX perpetuals, Vulcan execution)
+- **Storage**: SQLite (sessions, transcripts, tool results, usage tracking)
+
+## Architecture
+
+```
+src/
+├── index.ts          # CLI entry point (Commander.js + OpenTUI)
+├── agent/
+│   └── agent.ts      # Grok AI agent orchestrator — async generator loop
+├── grok/
+│   ├── client.ts     # xAI Grok API client (Chat Completions + Responses API)
+│   ├── models.ts     # Grok model definitions and metadata
+│   └── tools.ts      # Tool schemas (bash, search_web, search_x)
+├── tools/
+│   ├── bash.ts       # Bash command execution
+│   ├── file.ts       # File operations
+│   └── grep.ts       # Content search
+├── storage/
+│   └── db.ts         # SQLite session + transcript + tool results storage
+├── wallet/
+│   ├── manager.ts    # Solana keypair management
+│   └── types.ts      # Wallet-related types
+├── payments/
+│   └── service.ts    # x402 payment integration
+├── mcp/
+│   └── runtime.ts    # MCP server runtime
+├── telegram/
+│   └── bridge.ts     # Telegram remote control bridge
+├── ui/
+│   └── app.tsx       # OpenTUI React terminal UI
+├── utils/
+│   ├── settings.ts   # User and project settings
+│   ├── instructions.ts # AGENTS.md custom instructions
+│   └── skills.ts     # Agent skill management
+└── types/
+    └── index.ts      # Shared TypeScript types
+```
+
+## Key Patterns
+
+- **Grok Agent loop**: `Agent.processMessage()` is an async generator that yields `StreamChunk` objects — Grok responds, tools execute, results feed back until no more tool calls remain.
+- **Bash-only tools**: The agent uses bash for everything (file editing, searching, git, builds, etc.).
+- **X Search & Web Search**: Integrated via the xAI Responses API for real-time information.
+- **Settings hierarchy**: Environment variables → User-level (`~/.clawd/user-settings.json`) → Project-level (`.grok/settings.json`).
+- **Custom instructions**: `~/.clawd/AGENTS.md`, then `AGENTS.override.md` / `AGENTS.md` per directory from git root through the workspace cwd (Codex-style merge).
+- **ESM only**: The project uses `"type": "module"` — all imports use `.js` extensions for compiled output.
+- **Phoenix DEX**: Perpetual futures trading via Vulcan execution engine.
+- **Execution modes**: Paper → Dry-Run → Confirm-Each → Auto-Execute (progressive trust ladder).
+
+## Clawd Grok Models
+
+- `grok-4.3` — recommended flagship reasoning
+- `grok-4.20-non-reasoning` — recommended non-reasoning
+- `grok-4.20-multi-agent-0309` — multi-agent, 2M context
+- `grok-4.20-0309-reasoning` — reasoning, 2M context
+- `grok-3-mini` — compact model with reasoning effort controls
+
+## CI/CD
+
+- **typecheck.yml**: Runs `tsc --noEmit` on push/PR to `main`/`develop`.
+- **security.yml**: Runs `npm audit` and TruffleHog secret scanning.
+
+## Brand
+
+```
+🦞 Clawd Grok — Grok the markets. Claw the profits.

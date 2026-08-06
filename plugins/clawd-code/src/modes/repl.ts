@@ -2,17 +2,37 @@
  * Clawd Code — REPL MODE
  * Interactive multi-turn conversation with persistent history.
  * Type a prompt and get a streamed response. Switch modes inline.
- * Commands: .exit .mode <mode> .model <id> .provider <name> .clear .help
+ * Default provider: Z.AI GLM-5.2. Streams via SSE like Anthropic & OpenRouter.
+ * Commands: .exit .mode <mode> .model <id> .provider <name> .thinking .effort .clear .help
  */
 
 import * as readline from 'node:readline';
 import { createAnthropicClient, DEFAULT_CLAUDE_MODEL, isClaudeModel } from '../anthropic.js';
 import { createDeepSeekClient } from '../deepseek.js';
 import { loadClawdEnv } from '../env.js';
-import { createOpenRouterClient } from '../openrouter.js';
+import {
+  DEFAULT_MODEL,
+  isResponsesOnlyModel,
+  normalizeModelId,
+  resolveModelForMode,
+} from '../grok-models.js';
+import {
+  createOpenRouterClient,
+  isOpenRouterAutoModel,
+  OPENROUTER_AUTO_MODEL,
+  selectOpenRouterModel,
+} from '../openrouter.js';
 import { createXaiClient } from '../xai.js';
+import {
+  createZaiClient,
+  normalizeZaiReasoningEffort,
+  normalizeZaiThinking,
+  ZAI_DEFAULT_MODEL,
+  type ZaiReasoningEffort,
+  type ZaiThinkingType,
+} from '../zai.js';
 
-type ReplProvider = 'xai' | 'anthropic' | 'deepseek' | 'openrouter';
+type ReplProvider = 'zai' | 'xai' | 'anthropic' | 'deepseek' | 'openrouter';
 type SessionMode = 'code' | 'research' | 'trade' | 'general';
 
 interface Message {
@@ -25,6 +45,10 @@ interface ReplConfig {
   model?: string;
   stream?: boolean;
   xaiApiKey?: string;
+  zaiApiKey?: string;
+  zaiBaseUrl?: string;
+  zaiThinking?: ZaiThinkingType;
+  zaiReasoningEffort?: ZaiReasoningEffort;
   anthropicApiKey?: string;
   deepSeekApiKey?: string;
   deepSeekBaseUrl?: string;
@@ -45,7 +69,10 @@ export class ReplMode {
 
   constructor(private config: ReplConfig) {
     this.provider = this.resolveProvider();
-    this.model = config.model ?? this.defaultModel();
+    const requested = config.model ?? DEFAULT_MODEL;
+    this.model = this.provider === 'openrouter' && isOpenRouterAutoModel(requested)
+      ? OPENROUTER_AUTO_MODEL
+      : resolveModelForMode(requested, 'repl');
   }
 
   async run(): Promise<void> {
@@ -110,19 +137,45 @@ export class ReplMode {
 
       case '.model':
         if (arg) {
-          this.model = arg;
-          this.provider = isClaudeModel(arg) ? 'anthropic' : this.provider;
+          const normalized = normalizeModelId(arg);
+          this.model = this.provider === 'openrouter' && isOpenRouterAutoModel(normalized)
+            ? OPENROUTER_AUTO_MODEL
+            : resolveModelForMode(normalized, this.mode);
+          if (isResponsesOnlyModel(normalized) && this.mode !== 'research' && this.model !== normalized) {
+            console.log(`[REPL] ${normalized} is responses-only — using ${this.model} for ${this.mode} mode.`);
+          }
+          if (isClaudeModel(normalized)) this.provider = 'anthropic';
+          if (normalized.startsWith('glm-')) this.provider = 'zai';
+          if (normalized.startsWith('nvidia/')) this.provider = 'openrouter';
           console.log(`[REPL] Model → ${this.model} (provider: ${this.provider})`);
         }
         break;
 
       case '.provider':
-        if (['xai', 'anthropic', 'openrouter', 'deepseek'].includes(arg)) {
+        if (['zai', 'xai', 'anthropic', 'openrouter', 'deepseek'].includes(arg)) {
           this.provider = arg as ReplProvider;
           this.model = this.defaultModel();
           console.log(`[REPL] Provider → ${this.provider} | Model → ${this.model}`);
         } else {
-          console.log('[REPL] Providers: xai | anthropic | openrouter | deepseek');
+          console.log('[REPL] Providers: zai (default) | xai | anthropic | openrouter | deepseek');
+        }
+        break;
+
+      case '.thinking':
+        if (!arg) {
+          console.log(`[REPL] Z.AI thinking: ${this.config.zaiThinking ?? 'enabled'}`);
+        } else {
+          this.config.zaiThinking = normalizeZaiThinking(arg);
+          console.log(`[REPL] Z.AI thinking → ${this.config.zaiThinking}`);
+        }
+        break;
+
+      case '.effort':
+        if (!arg) {
+          console.log(`[REPL] Z.AI reasoning_effort: ${this.config.zaiReasoningEffort ?? 'max'}`);
+        } else {
+          this.config.zaiReasoningEffort = normalizeZaiReasoningEffort(arg);
+          console.log(`[REPL] Z.AI reasoning_effort → ${this.config.zaiReasoningEffort}`);
         }
         break;
 
@@ -186,15 +239,55 @@ export class ReplMode {
       const env = loadClawdEnv();
       const client = createOpenRouterClient(env);
       if (!client) throw new Error('OPENROUTER_API_KEY not set');
+      const lastUserPrompt = [...this.history].reverse().find((m) => m.role === 'user')?.content ?? '';
+      const selection = selectOpenRouterModel({
+        prompt: lastUserPrompt,
+        mode: this.mode,
+        requestedModel: this.model,
+        env,
+      });
+      process.stdout.write(
+        `\x1b[2m[OpenRouter ${selection.explicit ? 'model' : 'route'}: ${selection.model}` +
+          `${selection.explicit ? '' : ` (${selection.route}: ${selection.reason})`}]\x1b[0m\n`,
+      );
 
       for await (const chunk of client.stream({
-        model: this.model,
+        model: selection.model,
         messages: [{ role: 'system', content: system }, ...this.history],
+        reasoning: selection.reasoning,
         max_tokens: 4096,
       })) {
         if (chunk.content) {
           process.stdout.write(chunk.content);
           chunks.push(chunk.content);
+        }
+      }
+      return chunks.join('');
+    }
+
+    if (this.provider === 'zai') {
+      const client = createZaiClient(this.config.zaiApiKey, this.config.zaiBaseUrl);
+      if (!client) throw new Error('ZAI_API_KEY not set');
+
+      const useModel = this.model.startsWith('glm-') ? this.model : ZAI_DEFAULT_MODEL;
+      process.stdout.write(
+        `\x1b[2m[Z.AI ${useModel} | thinking: ${this.config.zaiThinking ?? 'enabled'} | effort: ${this.config.zaiReasoningEffort ?? 'max'}]\x1b[0m\n`,
+      );
+
+      for await (const chunk of client.streamChat({
+        model: useModel,
+        messages: [{ role: 'system', content: system }, ...this.history],
+        maxTokens: 4096,
+        temperature: 0.7,
+        thinking: this.config.zaiThinking ?? 'enabled',
+        reasoningEffort: this.config.zaiReasoningEffort ?? 'max',
+      })) {
+        if (chunk.reasoning && process.env.ZAI_SHOW_THINKING === 'true') {
+          process.stdout.write(`\x1b[2m${chunk.reasoning}\x1b[0m`);
+        }
+        if (chunk.text) {
+          process.stdout.write(chunk.text);
+          chunks.push(chunk.text);
         }
       }
       return chunks.join('');
@@ -215,40 +308,53 @@ export class ReplMode {
       return response.content;
     }
 
-    // xAI
+    // xAI — stream via SSE
     const client = createXaiClient(this.config.xaiApiKey);
     if (!client) throw new Error('XAI_API_KEY not set');
 
-    const model = this.model === 'grok-4.20-multi-agent' ? 'grok-4.3' : this.model;
-    const response = await client.chat({
-      model,
+    for await (const chunk of client.streamChat({
+      model: this.model,
       messages: [{ role: 'system', content: system }, ...this.history],
       maxTokens: 4096,
       temperature: 0.7,
-    });
-    process.stdout.write(response.content);
-    return response.content;
+    })) {
+      if (chunk.text) {
+        process.stdout.write(chunk.text);
+        chunks.push(chunk.text);
+      }
+    }
+    return chunks.join('');
   }
 
   private resolveProvider(): ReplProvider {
-    const p = this.config.provider ?? 'xai';
+    const p = this.config.provider ?? 'zai';
+    const model = (this.config.model ?? '').trim().toLowerCase();
+    if (p === 'zai' || model.startsWith('glm-')) return 'zai';
     if (p === 'anthropic' || isClaudeModel(this.config.model ?? '')) return 'anthropic';
     if (p === 'deepseek') return 'deepseek';
-    if (p === 'openrouter') return 'openrouter';
+    if (
+      p === 'openrouter' ||
+      model.startsWith('nvidia/') ||
+      model === 'or-auto' ||
+      model === 'nemo-auto' ||
+      model === 'openrouter-auto' ||
+      model === 'openrouter/nemo-auto'
+    ) return 'openrouter';
     return 'xai';
   }
 
   private defaultModel(): string {
     switch (this.provider) {
+      case 'zai': return ZAI_DEFAULT_MODEL;
       case 'anthropic': return DEFAULT_CLAUDE_MODEL;
       case 'deepseek':  return 'deepseek-v4-pro';
-      case 'openrouter': return 'nex-agi/nex-n2-pro:free';
-      default:           return 'grok-4.3';
+      case 'openrouter': return OPENROUTER_AUTO_MODEL;
+      default:           return DEFAULT_MODEL;
     }
   }
 
   private promptString(): string {
-    return `\n[${this.mode}:${this.provider}] > `;
+    return `\n[${this.mode}:${this.provider}:${this.model}] > `;
   }
 
   private printWelcome(): void {
@@ -271,8 +377,10 @@ export class ReplMode {
   .exit / .quit          End the session
   .clear                 Clear conversation history
   .mode <mode>           Switch mode: code | research | trade | general
-  .model <id>            Switch model (e.g. claude-sonnet-4-6, grok-4.3)
-  .provider <name>       Switch provider: xai | anthropic | openrouter | deepseek
+  .model <id>            Switch model (e.g. glm-5.2, grok-4.3, claude-sonnet-4-6, auto)
+  .provider <name>       Switch provider: zai (default) | xai | anthropic | openrouter | deepseek
+  .thinking [on|off]     Show or set Z.AI thinking mode
+  .effort [level]        Show or set Z.AI reasoning_effort
   .history               Show conversation history
   .help                  Show this help
 `);

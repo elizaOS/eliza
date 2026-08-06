@@ -1,9 +1,7 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
-import { generateKeyPairSync } from 'crypto';
-
-const WALLET_DIR = join(homedir(), '.clawd-code', 'wallets');
+import { createPrivateKey, generateKeyPairSync, sign as cryptoSign } from 'crypto';
 
 export type WalletRecord = {
   name: string;
@@ -11,14 +9,25 @@ export type WalletRecord = {
   path: string;
 };
 
-function ensureWalletDir(): void {
-  mkdirSync(WALLET_DIR, { recursive: true, mode: 0o700 });
-  chmodSync(WALLET_DIR, 0o700);
+/**
+ * Resolved lazily (not cached at module load) so tests can override via
+ * CLAWD_WALLET_DIR, and so a HOME change mid-process (rare, but real in
+ * multi-tenant hosts) is always honored.
+ */
+function getWalletDir(): string {
+  return process.env.CLAWD_WALLET_DIR || join(homedir(), '.clawd-code', 'wallets');
+}
+
+function ensureWalletDir(): string {
+  const dir = getWalletDir();
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
+  return dir;
 }
 
 function walletPath(name: string): string {
   const safeName = name.replace(/[^a-zA-Z0-9._-]/g, '-');
-  return join(WALLET_DIR, `${safeName}.json`);
+  return join(getWalletDir(), `${safeName}.json`);
 }
 
 function base64UrlToBytes(value: string): Uint8Array {
@@ -26,7 +35,11 @@ function base64UrlToBytes(value: string): Uint8Array {
   return Uint8Array.from(Buffer.from(padded.replace(/-/g, '+').replace(/_/g, '/'), 'base64'));
 }
 
-function base58Encode(bytes: Uint8Array): string {
+function bytesToBase64Url(bytes: Uint8Array): string {
+  return Buffer.from(bytes).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+export function base58Encode(bytes: Uint8Array): string {
   const alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
   const digits = [0];
 
@@ -49,6 +62,44 @@ function base58Encode(bytes: Uint8Array): string {
   }
 
   return digits.reverse().map((digit) => alphabet[digit]).join('');
+}
+
+export function loadWalletKeypair(name = 'default'): WalletRecord & { secretKey: number[] } {
+  const path = walletPath(name);
+  if (!existsSync(path)) {
+    throw new Error(`Wallet not found: ${path}`);
+  }
+
+  const secret = Uint8Array.from(JSON.parse(readFileSync(path, 'utf-8')));
+  const keypair = keypairFromSecret(secret);
+  return {
+    name,
+    publicKey: keypair.publicKey,
+    secretKey: keypair.secretKey,
+    path,
+  };
+}
+
+export function signWalletMessage(name: string, message: string): { wallet: string; message: string; signature: string } {
+  const keypair = loadWalletKeypair(name);
+  const secret = Uint8Array.from(keypair.secretKey);
+  const seed = secret.slice(0, 32);
+  const publicKey = secret.slice(32);
+  const privateKey = createPrivateKey({
+    format: 'jwk',
+    key: {
+      kty: 'OKP',
+      crv: 'Ed25519',
+      d: bytesToBase64Url(seed),
+      x: bytesToBase64Url(publicKey),
+    },
+  });
+  const signature = cryptoSign(null, Buffer.from(message), privateKey);
+  return {
+    wallet: keypair.publicKey,
+    message,
+    signature: base58Encode(signature),
+  };
 }
 
 function keypairFromSecret(secret: Uint8Array): { publicKey: string; secretKey: number[] } {
@@ -97,12 +148,12 @@ export function createWallet(name = 'default'): WalletRecord {
 }
 
 export function listWallets(): WalletRecord[] {
-  ensureWalletDir();
+  const dir = ensureWalletDir();
 
-  return readdirSync(WALLET_DIR)
+  return readdirSync(dir)
     .filter((file) => file.endsWith('.json'))
     .map((file) => {
-      const path = join(WALLET_DIR, file);
+      const path = join(dir, file);
       const secret = Uint8Array.from(JSON.parse(readFileSync(path, 'utf-8')));
       const keypair = keypairFromSecret(secret);
 

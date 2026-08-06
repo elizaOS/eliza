@@ -217,7 +217,7 @@ The CLI auto-detects the calling environment and sets HTTP headers for observabi
 | Header | Values | Purpose |
 |--------|--------|---------|
 | `X-Dflow-Caller` | `human`, `agent`, `unknown` | Identifies caller type |
-| `X-Dflow-Agent` | `cursor`, `clawd-code`, `clawd`, `open-clawd-ci`, `ci`, custom | Detected agent tool |
+| `X-Dflow-Agent` | `cursor`, `clawd-code`, `clawd`, `github-actions`, `ci`, custom | Detected agent tool |
 | `X-Dflow-Model` | e.g. `clawd-code`, `gpt-4o` | Registered via `dflow agent --model` |
 
 Override detection with environment variable: `DFLOW_AGENT=my-bot dflow trade 500000 USDC SOL`
@@ -237,6 +237,6 @@ Override detection with environment variable: `DFLOW_AGENT=my-bot dflow trade 50
 
 - Agent CLI Docs: `https://pond.dflow.net/build/agent-cli`
 - DFlow API Key: `https://pond.dflow.net/build/api-key`
-- DFlow Cookbook: `open-clawd.local/DFlowProtocol/cookbook`
+- DFlow Cookbook: `github.com/DFlowProtocol/cookbook`
 - DFlow Skill File: `pond.dflow.net/skill.md`
 - DFlow MCP Server: `pond.dflow.net/mcp`

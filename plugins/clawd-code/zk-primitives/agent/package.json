@@ -1,0 +1,70 @@
+{
+  "name": "@clawd/zk-agent",
+  "version": "0.1.0",
+  "description": "Clawd ZK Agent — an agent-shaped wrapper around @clawd/zk-client that turns the nullifier / Groth16 / Light Protocol primitives into intent-routable operations a Clawd agent can call directly.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "clawd-zk-agent": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./agent": {
+      "import": "./dist/agent.js",
+      "types": "./dist/agent.d.ts"
+    },
+    "./intents": {
+      "import": "./dist/intents.js",
+      "types": "./dist/intents.d.ts"
+    },
+    "./cli": {
+      "import": "./dist/cli.js",
+      "types": "./dist/cli.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "SKILL.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit",
+    "clean": "rm -rf dist .turbo",
+    "start": "node ./dist/cli.js",
+    "inspect": "node ./dist/cli.js inspect"
+  },
+  "keywords": [
+    "solana",
+    "zk",
+    "light-protocol",
+    "clawd",
+    "agent",
+    "nullifier",
+    "groth16",
+    "attestation",
+    "clawd-zk-agent"
+  ],
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@clawd/zk-client": "workspace:*",
+    "@solana/kit": "^2.1.0",
+    "@solana/web3.js": "^1.95.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

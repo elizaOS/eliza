@@ -28,3 +28,6 @@
 	path = upstreams/electrobun
 	url = https://github.com/elizaOS/electrobun.git
 	branch = develop
+[submodule "plugins/clawd-code"]
+	path = plugins/clawd-code
+	url = https://github.com/Solizardking/clawd-code.git

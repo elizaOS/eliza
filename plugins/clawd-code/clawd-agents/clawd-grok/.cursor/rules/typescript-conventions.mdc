@@ -1,0 +1,54 @@
+---
+description: TypeScript coding conventions and style guidelines
+globs: "**/*.ts,**/*.tsx"
+alwaysApply: false
+---
+
+# TypeScript Conventions
+
+## Module System
+
+- This is an ESM project (`"type": "module"` in package.json).
+- Always use ES module `import`/`export` syntax — never `require()`.
+- When importing local modules, include the `.js` extension (TypeScript compiles `.ts` → `.js`):
+  ```typescript
+  import { GrokAgent } from "./agent/grok-agent.js";
+  ```
+
+## TypeScript Configuration
+
+- Target: ES2022, Module: ESNext, JSX: react
+- `strict: false` and `noImplicitAny: false` — the codebase does not enforce strict mode.
+- `moduleResolution: "Bundler"` is used.
+- Source files live in `src/`, compiled output goes to `dist/`.
+
+## Type Practices
+
+- Prefer explicit interfaces for public API boundaries (e.g. `ChatEntry`, `ToolResult`, `GrokToolCall`).
+- Use `type` imports when importing only types:
+  ```typescript
+  import type { ChatCompletionMessageParam } from "openai/resources/chat";
+  ```
+- `any` is acceptable where strict typing would add friction, but prefer narrower types when practical.
+- Shared types belong in `src/types/index.ts`.
+
+## Naming Conventions
+
+- **Files**: kebab-case (`grok-agent.ts`, `chat-interface.tsx`, `settings-manager.ts`).
+- **Classes**: PascalCase (`GrokAgent`, `TextEditorTool`, `BashTool`).
+- **Interfaces/Types**: PascalCase (`ChatEntry`, `ToolResult`, `StreamingChunk`).
+- **Functions/variables**: camelCase (`processUserMessage`, `loadApiKey`).
+- **Constants**: camelCase or UPPER_SNAKE_CASE for true constants (`GROK_TOOLS`).
+
+## Error Handling
+
+- Catch errors as `error: any` and access `.message` for display.
+- Tool execution methods return `ToolResult` objects (`{ success, output?, error? }`) rather than throwing.
+- Use `process.exit(1)` for fatal CLI errors.
+
+## ESLint Rules
+
+- `@typescript-eslint/no-unused-vars`: error
+- `@typescript-eslint/no-explicit-any`: warn
+
+Run `bun run lint` to check and `bun run typecheck` to verify types.

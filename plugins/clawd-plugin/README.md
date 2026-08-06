@@ -14,7 +14,7 @@ Build on Solana with Clawd Code — one install gives you live blockchain tools,
 ### Local testing
 
 ```bash
-clawd --plugin-dir ./clawd-code/clawd-plugin
+clawd --plugin-dir ./plugins/clawd-code/clawd-plugin
 ```
 
 ## What's Included
@@ -74,6 +74,6 @@ MIT. See [LICENSE](./LICENSE).
 
 ## Links
 
-- [Clawd Code on GitHub](https://github.com/Solizardking/solana-clawd/tree/main/clawd-code)
+- [Clawd Code on GitHub](https://github.com/Solizardking/clawd-code)
 - [x402 Protocol](https://x402.wtf)
 - [Helius Documentation](https://www.helius.dev/docs)

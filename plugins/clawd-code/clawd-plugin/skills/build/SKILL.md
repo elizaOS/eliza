@@ -1,6 +1,6 @@
 ---
 name: build
-description: Build Solana applications with Helius infrastructure. Covers transaction sending (Sender), asset/NFT queries (DAS API), real-time streaming (WebSockets, Laserstream), event pipelines (webhooks), priority fees, wallet analysis, and agent onboarding.
+description: Build Solana applications with Helius infrastructure. Covers transaction sending (Sender), asset/NFT queries (DAS API), real-time streaming (WebSockets, Laserstream), event pipelines (webhooks), priority fees, wallet analysis, agent onboarding, and handoffs to Clawd agent/x402/pump.fun workflows.
 metadata:
   version: "1.1.1"
 ---
@@ -45,6 +45,10 @@ Identify what the user is building, then read the relevant reference files befor
 | monitor wallet (notifications) | `references/webhooks.md` |
 | monitor wallet (live UI) | `references/websockets.md` |
 | monitor wallet (past activity) | `references/wallet-api.md` |
+| paid agent endpoints / x402 gateway | `../clawd-agents/references/x402.md` + `../agent-arena/SKILL.md` |
+| CLAWD agent product / SSO / registration | `../clawd-agents/references/agent-product.md` + `../agent-arena/SKILL.md` |
+| Go Solana agent or SDK wrapper | `../clawd-agents/references/clawd-go.md` |
+| pump.fun or PumpSwap bot | `../clawd-agents/references/pumpfun-bot.md` + `references/sender.md` + `references/priority-fees.md` |
 | Solana internals | SIMDs, Solana docs, Helius blog (MCP: `getSIMD`, `searchSolanaDocs`, `fetchHeliusBlog`) |
 
 ### Transaction Sending & Swaps

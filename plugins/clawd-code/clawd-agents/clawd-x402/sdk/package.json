@@ -1,0 +1,28 @@
+{
+  "name": "@solanaclawd/x402-client",
+  "version": "0.1.0",
+  "description": "Client SDK for paying x402/MPP/AP2-gated agents through the ClawdRouter gateway",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.95.0",
+    "@solana/spl-token": "^0.4.8",
+    "bs58": "^6.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  },
+  "files": ["dist", "README.md"]
+}

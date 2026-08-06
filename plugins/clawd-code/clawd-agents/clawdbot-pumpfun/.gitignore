@@ -1,0 +1,35 @@
+pumpfun-ideal-mev-bot.git
+.env
+target
+blacklist.txt
+yellowstone-grpc
+pumpfun
+pumpfun-sdk
+substreams-solana-idl-examples
+pumpswap-sdk
+pump-swap-sdk
+src_restore
+# Rust build artifacts
+/target
+**/*.rs.bk
+selling-shred-sample
+source
+Cargo.lock
+solana-rpc-client-2.1.14
+# IDE files
+.idea/
+.vscode/
+*.iml
+backend
+# Environment files
+.env
+.env.*
+
+# Transaction records
+/record/
+/record/pumpfun/
+/record/pumpswap/
+/record/raydium/
+
+# Logs
+*.log 

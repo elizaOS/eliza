@@ -1,0 +1,52 @@
+# Gitignore for ClawdOS
+################################################################
+
+# general
+.DS_Store
+.idea
+.vscode
+.history
+.temp
+.env.local
+venv
+temp
+tmp
+.env
+# dependencies
+node_modules
+*.log
+package-lock.json
+
+# ci
+.coverage
+.eslintcache
+.stylelintcache
+
+# production
+dist
+es
+logs
+test-output
+
+# umi
+.umi
+.umi-production
+.umi-test
+.dumi/tmp*
+
+# husky
+.husky/prepare-commit-msg
+
+# misc
+# add other ignore file below
+.env
+# extracted archives
+clawd-ai-agents 2/
+
+# macOS
+.DS_Store
+__MACOSX
+
+
+
+.vercel

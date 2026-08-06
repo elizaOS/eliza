@@ -1,0 +1,53 @@
+# Canonical Light Protocol V2 tree pubkeys (Solana mainnet, 2026-06-15).
+#
+# These are the well-known, protocol-maintained Merkle trees. We pin
+# them in the client SDK so a developer can wire up the SDK without
+# having to query the indexer first.
+#
+# Verify these match the live deployment via:
+#   curl -s $HELIUS_RPC_URL -H "Content-Type: application/json" \
+#     -d '{"jsonrpc":"2.0","id":1,"method":"getAccountInfo","params":["bmt1LryLZUMmF7ZtqESaw7wifBXLfXHQYoE4GAmrahU"]}'
+#
+# Last verified: 2026-06-15 against Helius mainnet.
+
+# Program IDs
+programs:
+  light_system: "SySTEM1eSU2p4BGQfQpimFEWWSC1XDFeun3Nqzz3rT7"
+  light_token: "cTokenmWW8bLPjZEBAUgYy3zKxQZW6VKi7bqNFEVv3m"
+  account_compression: "compr6CUsB5m2jS4Y3831ztGSTnDpnKJTKS95d64XVq"
+
+# V2 (default, batched) state trees + output queues + CPI context
+state_trees_v2:
+  - index: 1
+    tree: "bmt1LryLZUMmF7ZtqESaw7wifBXLfXHQYoE4GAmrahU"
+    output_queue: "oq1na8gojfdUhsfCpyjNt6h4JaDWtHf1yQj4koBWfto"
+    cpi_context: "cpi15BoVPKgEPw5o8wc2T816GE7b378nMXnhH3Xbq4y"
+  - index: 2
+    tree: "bmt2UxoBxB9xWev4BkLvkGdapsz6sZGkzViPNph7VFi"
+    output_queue: "oq2UkeMsJLfXt2QHzim242SUi3nvjJs8Pn7Eac9H9vg"
+    cpi_context: "cpi2yGapXUR3As5SjnHBAVvmApNiLsbeZpF3euWnW6B"
+  - index: 3
+    tree: "bmt3ccLd4bqSVZVeCJnH1F6C8jNygAhaDfxDwePyyGb"
+    output_queue: "oq3AxjekBWgo64gpauB6QtuZNesuv19xrhaC1ZM1THQ"
+    cpi_context: "cpi3mbwMpSX8FAGMZVP85AwxqCaQMfEk9Em1v8QK9Rf"
+  - index: 4
+    tree: "bmt4d3p1a4YQgk9PeZv5s4DBUmbF5NxqYpk9HGjQsd8"
+    output_queue: "oq4ypwvVGzCUMoiKKHWh4S1SgZJ9vCvKpcz6RT6A8dq"
+    cpi_context: "cpi4yyPDc4bCgHAnsenunGA8Y77j3XEDyjgfyCKgcoc"
+  - index: 5
+    tree: "bmt5yU97jC88YXTuSukYHa8Z5Bi2ZDUtmzfkDTA2mG2"
+    output_queue: "oq5oh5ZR3yGomuQgFduNDzjtGvVWfDRGLuDVjv9a96P"
+    cpi_context: "cpi5ZTjdgYpZ1Xr7B1cMLLUE81oTtJbNNAyKary2nV6"
+
+# V2 address tree (single, ~1 trillion leaves)
+address_tree_v2: "amt2kaJA14v3urZbZvnc5v2np8jqvc4Z8zDep5wbtzx"
+
+# V1 (deprecated, for ZK) address tree
+address_tree_v1: "PLACEHOLDER_V1_ADDRESS_TREE"
+
+# SPL ↔ compressed-token interface PDA
+interface_pda: "GXtd2izAiMJPwMEjfgTRH3d7k9mjn4Jq3JrWFv9gySYy"
+
+# Lookup table for smaller transactions
+lookup_table_mainnet: "9NYFyEqPkyXUhkerbGHXUXkvb4qpzeEdHuGpgbgpH1NJ"
+lookup_table_devnet: "qAJZMgnQJ8G6vA3WRcjD9Jan1wtKkaCFWLWskxJrR5V"

@@ -4,7 +4,7 @@
 
 DFlow is a DEX aggregator on Solana that sources liquidity across venues. This reference covers spot crypto token swaps using two trade types: **imperative** (recommended starting point) and **declarative**.
 
-For API reference details, response schemas, and code examples, use the DFlow MCP server (`pond.dflow.net/mcp`) or the DFlow Cookbook (`open-clawd.local/DFlowProtocol/cookbook`).
+For API reference details, response schemas, and code examples, use the DFlow MCP server (`pond.dflow.net/mcp`) or the DFlow Cookbook (`github.com/DFlowProtocol/cookbook`).
 
 ## Endpoints
 
@@ -204,5 +204,5 @@ If building a CLI, use a local keypair to sign and submit transactions. Do not e
 
 * DFlow Docs: `pond.dflow.net/introduction`
 * DFlow MCP Server: `pond.dflow.net/mcp`
-* DFlow Cookbook: `open-clawd.local/DFlowProtocol/cookbook`
+* DFlow Cookbook: `github.com/DFlowProtocol/cookbook`
 * API Key: `pond.dflow.net/build/api-key`

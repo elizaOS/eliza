@@ -1,0 +1,40 @@
+{
+  "spinnerVerbs": {
+    "mode": "replace",
+    "verbs": [
+      "Hammering out code",
+      "Duct-taping that together",
+      "Wiring it up",
+      "Patching the leak",
+      "Bolting on a fix",
+      "Jackhammering legacy code",
+      "Soldering connections",
+      "Tightening the bolts",
+      "Pouring the foundation",
+      "Welding modules together",
+      "Ripping out the old pipes",
+      "Running new cable",
+      "Measuring twice",
+      "Cutting once",
+      "Sanding the rough edges",
+      "Loading the truck",
+      "Sweeping up the mess",
+      "Breaking ground",
+      "Framing the structure",
+      "Hanging drywall",
+      "Laying the bricks",
+      "Unclogging the pipeline",
+      "Rewiring the whole thing",
+      "Digging a trench",
+      "Hauling dependencies",
+      "Nailing it down",
+      "Leveling the foundation",
+      "Inspecting the joints",
+      "Pressure testing",
+      "Clocking in",
+      "Checking the blueprints"
+    ]
+  },
+  "_attribution": "Powered by x402.wtf \u00b7 $CLAWD: 8cHzQHUS2s2h8TzCmfqPKYiM4dSt4roa3n7MyRLApump",
+  "_source": "https://github.com/Solizardking/solana-clawd"
+}

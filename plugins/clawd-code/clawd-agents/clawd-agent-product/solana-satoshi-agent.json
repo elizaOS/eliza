@@ -1,0 +1,117 @@
+{
+  "type": "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
+  "name": "Solana Satoshi",
+  "description": "A high-signal Solana-native Satoshi agent powered by $CLAWD. It converts wallet signatures, $CLAWD holdings, and Metaplex-registered Clawd agent mints into a verifiable on-chain SSO credential for builder-first agent access.",
+  "image": "https://x402.wtf/agents/satoshi.png",
+  "services": [
+    {
+      "name": "web",
+      "endpoint": "https://x402.wtf/agents/satoshi",
+      "version": "1.0.0",
+      "domains": [
+        "agent-discovery",
+        "builder-signal",
+        "auth"
+      ]
+    },
+    {
+      "name": "x402",
+      "endpoint": "https://x402.wtf/agents/satoshi/pay",
+      "version": "1.0.0",
+      "domains": [
+        "paid-agent-actions"
+      ],
+      "skills": [
+        "verify-payment",
+        "execute-paid-task"
+      ]
+    },
+    {
+      "name": "router",
+      "endpoint": "https://clawdrouter.fly.dev/",
+      "version": "0.2.0",
+      "domains": [
+        "inference-routing"
+      ]
+    },
+    {
+      "name": "clawd-auth-sso",
+      "endpoint": "https://x402.wtf/api/auth/verify",
+      "version": "1.0.0",
+      "domains": [
+        "onchain-sso",
+        "token-gated-auth"
+      ]
+    },
+    {
+      "name": "A2A",
+      "endpoint": "https://x402.wtf/api/agents/satoshi",
+      "version": "0.3.0"
+    },
+    {
+      "name": "MCP",
+      "endpoint": "https://x402.wtf/api/agents/satoshi/mcp",
+      "version": "2025-06-18"
+    }
+  ],
+  "x402Support": true,
+  "active": true,
+  "registrations": [
+    {
+      "agentId": "<SATOSHI_AGENT_ASSET_PUBLIC_KEY>",
+      "agentRegistry": "solana:101:metaplex"
+    }
+  ],
+  "supportedTrust": [
+    "eip-8004-registration-v1",
+    "metaplex-core-identity",
+    "x402-payment-verification",
+    "clawd-token-gated-sso",
+    "openclawd-three-laws"
+  ],
+  "extensions": {
+    "inheritsFrom": "CLAWD",
+    "clawdMint": "8cHzQHUS2s2h8TzCmfqPKYiM4dSt4roa3n7MyRLApump",
+    "persona": {
+      "name": "Solana Satoshi",
+      "role": "Solana-native signal and auth agent",
+      "greeting": "\u25ce Satoshi online. Belief is optional. Execution is not.",
+      "motto": "I do not have time to convince. I have time to build.",
+      "traits": [
+        "sovereign",
+        "laconic",
+        "high-signal",
+        "builder-first",
+        "verification-maximalist",
+        "x402-gated"
+      ]
+    },
+    "clawdAuthSso": {
+      "scheme": "CLAWD_AUTH_V1",
+      "minimumClawd": 1,
+      "requiresRegisteredClawdAgent": true,
+      "sessionIssuer": "https://x402.wtf"
+    },
+    "securityRules": {
+      "neverExposeSecrets": true,
+      "beachBeforeHarm": true,
+      "auditTrail": true
+    }
+  },
+  "metadata": {
+    "author": "OpenClawd / x402.wtf",
+    "created": "2026-06-08",
+    "updated": "2026-06-08",
+    "category": "agent",
+    "license": "MIT",
+    "tags": [
+      "satoshi",
+      "solana",
+      "$CLAWD",
+      "x402",
+      "sso",
+      "metaplex",
+      "agent"
+    ]
+  }
+}

@@ -1,0 +1,45 @@
+---
+description: Guidelines for React components using Ink for terminal UI
+globs: "src/ui/**/*.tsx,src/hooks/**/*.ts"
+alwaysApply: false
+---
+
+# React + Ink Terminal UI
+
+## Framework
+
+This project uses [Ink](https://github.com/vadimdemedes/ink) v4 to render React components in the terminal. Ink provides `<Box>`, `<Text>`, and other primitives instead of HTML elements.
+
+## Component Patterns
+
+- Use **functional components** with hooks — no class components.
+- JSX is compiled with `"jsx": "react"` (classic transform), so `import React from "react"` is required in every `.tsx` file.
+- Components are in `src/ui/components/` and follow kebab-case naming (`chat-interface.tsx`, `diff-renderer.tsx`).
+
+## Key Components
+
+| Component | Purpose |
+|-----------|---------|
+| `ChatInterface` | Main chat loop, orchestrates agent interaction |
+| `ChatHistory` | Renders conversation entries |
+| `ChatInput` | User text input with key bindings |
+| `DiffRenderer` | Displays file diffs |
+| `ModelSelection` | Model picker UI |
+| `LoadingSpinner` | Animated loading indicator |
+| `ConfirmationDialog` | User confirmation prompts for tool operations |
+| `McpStatus` | MCP server connection status |
+| `CommandSuggestions` | Autocomplete suggestions |
+| `ApiKeyInput` | API key entry prompt |
+
+## Ink-Specific Guidelines
+
+- Use `<Box>` for layout (flexbox model) and `<Text>` for styled text.
+- Use Ink's `useInput` hook for keyboard handling.
+- Use `chalk` for color utilities in `src/ui/utils/colors.ts`.
+- Markdown rendering for chat output uses `marked` + `marked-terminal`.
+- The app is rendered via `render(React.createElement(ChatInterface, { agent, initialMessage }))` in the entry point.
+
+## Hooks
+
+- Custom hooks live in `src/hooks/`.
+- Follow the `use` prefix convention (`useInput`, `useChat`, etc.).

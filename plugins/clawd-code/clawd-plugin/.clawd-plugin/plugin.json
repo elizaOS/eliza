@@ -1,7 +1,7 @@
 {
   "name": "clawd-code",
-  "description": "Build on Solana with Clawd Code — live blockchain tools, expert coding patterns, perpetuals trading, x402 payments, and autonomous agent commerce",
-  "version": "1.0.0",
+  "description": "Build on Solana with Clawd Code — live blockchain tools, expert coding patterns, agent product packaging, perpetuals trading, x402 payments, and autonomous agent commerce",
+  "version": "1.1.0",
   "author": {
     "name": "Clawd",
     "url": "https://x402.wtf"
@@ -9,5 +9,5 @@
   "homepage": "https://x402.wtf",
   "repository": "https://github.com/Solizardking/solana-clawd",
   "license": "MIT",
-  "keywords": ["solana", "blockchain", "rpc", "nft", "defi", "web3", "clawd", "perpetuals", "trading", "x402", "phoenix", "vulcan"]
+  "keywords": ["solana", "blockchain", "rpc", "nft", "defi", "web3", "clawd", "agents", "agent-registry", "metaplex", "a2a", "mcp", "perpetuals", "trading", "x402", "pumpfun", "pumpswap", "grok", "go", "phoenix", "vulcan"]
 }

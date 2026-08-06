@@ -1,0 +1,39 @@
+[package]
+name = "clawd-zk"
+version = "0.1.0"
+description = "ZK primitive for Solana Clawd AI model attestations: nullifiers, Groth16 proofs, compressed state via Light Protocol"
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/Solizardking/solana-clawd"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "clawd_zk"
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+default = []
+anchor-debug = []
+custom-heap = []
+custom-panic = []
+
+[dependencies]
+anchor-lang = { version = "0.31.0", features = ["init-if-needed"] }
+anchor-spl = "0.31.0"
+light-sdk = { version = "0.17.1", features = ["anchor", "v2"] }
+light-hasher = "5.0.0"
+light-verifier = "0.5.0"
+light-bloom-filter = "0.4.0"
+borsh = { version = "0.10", features = ["derive", "de_strict"] }
+bytemuck = { version = "1.18", features = ["derive", "min_const_generics"] }
+solana-program = "2.2"
+
+[dev-dependencies]
+light-program-test = "0.16.0"
+solana-program-test = "2.2"
+solana-sdk = "2.2"
+anchor-client = { version = "0.31.0", features = ["mock", "idl-build"] }
+tokio = { version = "1", features = ["full"] }

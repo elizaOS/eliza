@@ -1,241 +1,441 @@
-# Clawd Code
+<div align="center">
 
-Curl-installable Solana-native AI coding CLI with local wallet creation and
-paper-gated perpetuals workflows.
+<img src="https://capsule-render.vercel.app/api?type=waving&height=160&color=0:14F195,45:9945FF,100:00D4FF&text=Clawd%20Code&fontColor=0B1020&fontSize=54&animation=twinkling&fontAlignY=34&desc=verifiable%20agentic%20harness%20for%20Solana-native%20machine%20labor&descAlignY=58&descSize=16" alt="Clawd Code animated banner" />
 
-`clawd-code` is a headless command-line agent for generating TypeScript/Solana
-code, checking perps market workflows, creating local Solana keypairs, and
-running research/image/voice modes from one binary.
+<img src="https://readme-typing-svg.demolab.com?font=Fira+Code&size=22&duration=2400&pause=700&color=14F195&center=true&vCenter=true&width=920&lines=intent+%E2%86%92+route+%E2%86%92+reason+%E2%86%92+verify+%E2%86%92+execute+%E2%86%92+attest;multi-provider+coding+%C2%B7+trading+%C2%B7+research+%C2%B7+voice+%C2%B7+image;Solana+wallets+%C2%B7+x402+payments+%C2%B7+MCP+tools+%C2%B7+ZK+receipts" alt="Animated Clawd Code routing loop" />
+
+[![npm](https://img.shields.io/badge/npm-%40solana--clawd%2Fclawd--code-14F195?style=for-the-badge&logo=npm&logoColor=white)](https://www.npmjs.com/package/@solana-clawd/clawd-code)
+[![License: MIT](https://img.shields.io/badge/License-MIT-9945FF?style=for-the-badge)](./LICENSE)
+[![Node](https://img.shields.io/badge/Node-18%2B-14F195?style=for-the-badge&logo=nodedotjs&logoColor=white)](#install)
+[![Solana](https://img.shields.io/badge/Solana-mainnet--beta-00D4FF?style=for-the-badge&logo=solana&logoColor=white)](#solana-harness)
+
+</div>
+
+## What This Is
+
+Clawd Code is a curl-installable, Solana-native AI coding harness. It is not a
+single chatbot wrapper. It is a local operator loop that can route work across
+model providers, create and inspect wallets, reason about Solana state, run
+paper-gated perpetuals workflows, speak through voice mode, render image and
+slide prompts, relay through Telegram, install animated spinner packs, and plug
+into MCP servers for live chain tooling.
+
+The shape of the harness is the point:
+
+```text
+intent
+  -> provider route
+  -> model route
+  -> tool route
+  -> simulate / inspect
+  -> human or paper gate
+  -> execute
+  -> verify
+  -> remember what happened
+```
+
+The origin spark is
+[x402agent/solana-clawd](https://github.com/x402agent/solana-clawd), whose
+README frames Clawd as a verifiable agentic harness rather than a probabilistic
+answer box. This checkout turns that thesis into the `clawd-code` package,
+the plugin bundle, the Grok/Z.AI/OpenRouter provider stack, the x402 commerce
+surface, the ZK primitive layer, and the local operator docs that live in this
+repository today.
 
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Solizardking/solana-clawd/main/clawd-code/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/Solizardking/clawd-code/main/install.sh | sh
 ```
 
 The installer checks for Node.js 18+, installs the `clawd-code` binary, and
-creates `~/.clawd-code/.env` if one does not already exist.
+creates `~/.clawd-code/.env` if one does not already exist. The xAI Voice Agent
+mode needs Node.js 22+ for native WebSocket support.
 
-> **Note:** The xAI Voice Agent (`clawd-code voice --agent`) requires Node.js 22+ for native WebSocket support.
+Product page: [cheshireterminal.ai/clawdcode](https://cheshireterminal.ai/clawdcode)
+(also available at `/clawd-code`).
+
+Smoke-test this exact checkout without linking a global binary:
+
+```bash
+CLAWD_CODE_SOURCE_DIR=/Users/8bit/clawd-code \
+CLAWD_CODE_CONFIG_DIR=/tmp/clawd-code-smoke-home/.clawd-code \
+CLAWD_CODE_SMOKE_TEST=true \
+sh /Users/8bit/clawd-code/install.sh
+```
 
 Manual install:
 
 ```bash
-git clone https://github.com/Solizardking/solana-clawd.git
-cd solana-clawd/clawd-code
+git clone https://github.com/Solizardking/clawd-code.git
+cd clawd-code
 cp .env.example ~/.clawd-code/.env
 npm install
 npm run build
 npm link
 ```
 
-## Quick Start
+## First Spell
 
 ```bash
-clawd-code code "Build a Jupiter swap bot in TypeScript"
+clawd-code code "Build a Jupiter swap monitor in TypeScript"
 clawd-code wallet create
-clawd-code wallet list
-clawd-code perps
-clawd-code funding
+clawd-code chain status
+clawd-code chain ask "what should I inspect before touching this program?"
 clawd-code trade "funding rate on SOL perps"
+clawd-code chart "analyze this SOL chart" --image ./chart.png
 clawd-code research --agents 16 "Solana perps funding arb"
+clawd-code image "cyberpunk Solana trading desk"
+clawd-code slides "weekly Solana market report" --pages 6
 clawd-code repl
 clawd-code arena status
+clawd-code spinner list
+clawd-code spinner install wizard
+TELEGRAM_BOT_TOKEN=... TELEGRAM_ALLOWED_CHAT_ID=... clawd-code telegram
 ```
 
-## Commands
+## Provider Constellation
+
+Clawd Code has provider routing and model routing built into `src/`. The
+operator can set a default provider, override the model per run, or use slash
+commands and mode-specific defaults.
+
+| Provider | Adapter | Typical role |
+| --- | --- | --- |
+| Z.AI | `src/zai.ts` | Default coding/chat/vision/image/slide path in this checkout |
+| xAI / Grok | `src/xai.ts`, `src/grok-models.ts` | Grok-family chat, trading, and voice workflows |
+| Anthropic | `src/anthropic.ts` | Optional Claude-family coding route |
+| DeepSeek | `src/deepseek.ts` | Optional coding and reasoning route |
+| OpenRouter | `src/openrouter.ts` | Nemo and Fable aliases without a sidecar package |
+| Custom OpenAI-compatible | Grok harness support | Bring your own base URL, API key, and model |
+
+Core knobs:
+
+```bash
+CLAWD_PROVIDER=zai
+CLAWD_MODEL=glm-5.2
+ZAI_API_KEY=...
+XAI_API_KEY=...
+ANTHROPIC_API_KEY=...
+DEEPSEEK_API_KEY=...
+OPENROUTER_API_KEY=...
+OPENAI_API_KEY=...
+OPENAI_BASE_URL=https://api.openai.com/v1
+```
+
+OpenRouter Nemo/Fable aliases are part of the CLI source:
+
+```bash
+OPENROUTER_NEMO_MODEL1=nvidia/nemotron-3-ultra-550b-a55b:free
+OPENROUTER_NEMO_MODEL2=nvidia/nemotron-3-ultra-550b-a55b
+OPENROUTER_NEMO_MODEL3=nvidia/nemotron-3-super-120b-a12b:free
+OPENROUTER_FABLE5=anthropic/claude-fable-5
+OPENROUTER_FABLE_LATEST=~anthropic/claude-fable-latest
+# Current adapter also accepts the legacy typo:
+OPENROUTER_FABLE_LATESY=~anthropic/claude-fable-latest
+```
+
+## Command Matrix
 
 | Command | Purpose |
 | --- | --- |
-| `clawd-code code "<prompt>"` | Generate TypeScript/Solana code (streaming with `--stream`) |
-| `clawd-code trade "<intent>"` | Run perps market, paper trade, and position workflows |
-| `clawd-code wallet create [name]` | Create a local Solana keypair |
-| `clawd-code wallet list` | List local wallet public keys |
-| `clawd-code perps` | Show perps dashboard |
-| `clawd-code funding` | Show funding-rate dashboard |
-| `clawd-code research "<prompt>"` | Run multi-agent research (streaming with `--stream`) |
-| `clawd-code image "<prompt>"` | Generate images when configured |
-| `clawd-code voice "<text>"` | Generate voice via local TTS or xAI Voice Agent API |
-| `clawd-code voice --agent` | Real-time Solana voice agent (requires `XAI_API_KEY`, Node 22+) |
-| `clawd-code repl` | Interactive multi-turn conversation REPL |
-| `clawd-code arena <subcommand>` | Agent Arena — on-chain identity, discovery, reputation |
-| `clawd-code verify` | Run environment checks |
+| `clawd-code code "<prompt>"` | Generate TypeScript/Solana code; add `--stream` for streaming |
+| `clawd-code trade "<intent>"` | Analyze perps, funding, paper positions, and risk gates |
+| `clawd-code perps` / `funding` | Shortcut market views |
+| `clawd-code chart "<prompt>" --image file.png` | Vision-assisted chart review |
+| `clawd-code chain status` | Read-first Solana RPC status |
+| `clawd-code chain balance <wallet>` | Wallet balance inspection |
+| `clawd-code chain ask "<question>"` | Solana-aware Q&A with RPC context |
+| `clawd-code wallet create` / `wallet list` | Local keypair management |
+| `clawd-code research --agents N "<topic>"` | Multi-agent research fanout |
+| `clawd-code image "<prompt>"` | Image prompt mode through configured provider |
+| `clawd-code slides "<topic>" --pages N` | Slide-outline generation |
+| `clawd-code repl` | Interactive operator loop |
+| `clawd-code arena status` | Agent Arena identity/status |
+| `clawd-code spinner list/install <pack>` | Install local animated spinner packs |
+| `clawd-code telegram` | Single-chat Telegram relay for chat/CLI commands |
 
-Slash aliases such as `clawd-code /wallet create` and `clawd-code /perps` still
-work for compatibility.
+Inside the REPL, slash commands map to the same surfaces:
 
-## Configuration
+```text
+/wallet create
+/chain status
+/perps
+/funding
+/chart ./chart.png
+/arena status
+/goal "ship a Solana verifier"
+/help
+```
 
-Runtime configuration lives in `~/.clawd-code/.env`. Start from
-[.env.example](./.env.example).
+## The Story So Far
 
-| Variable | Description | Default |
+```mermaid
+flowchart LR
+    A[x402agent/solana-clawd<br/>verifiable harness thesis]
+    B[clawd-code package<br/>local CLI and installer]
+    C[src provider adapters<br/>Z.AI, Grok, Anthropic, DeepSeek, OpenRouter]
+    D[clawd-plugin<br/>MCP servers and skills]
+    E[clawd-agents fleet<br/>Grok, Go, x402, product, PumpFun]
+    F[zk-primitives<br/>nullifiers, Groth16, compressed state]
+    G[web and spinners<br/>operator UI and animated rituals]
+    H[paper-gated execution<br/>verify before action]
+
+    A --> B --> C --> H
+    B --> D --> H
+    B --> E --> H
+    B --> F --> H
+    B --> G --> H
+```
+
+1. **Origin**: `x402agent/solana-clawd` established the thesis that useful AI
+   agents need harnesses, receipts, constrained tools, payments, and audit
+   trails.
+2. **Package**: `/Users/8bit/clawd-code` packages that thesis as
+   `@solana-clawd/clawd-code`, with `install.sh`, `package.json`,
+   `package-lock.json`, `tsconfig.json`, and a Node 18+ CLI build.
+3. **Providers**: `src/` gives the operator provider routing and model routing
+   across Z.AI, Grok, Anthropic, DeepSeek, OpenRouter, and OpenAI-compatible
+   endpoints.
+4. **Plugin**: `clawd-plugin/` wraps the harness as skills and MCP servers so
+   agent runtimes can reach Helius, Pump, Phoenix, DFlow, ZK compression, and
+   the Clawd Code CLI.
+5. **Fleet**: `clawd-agents/` adds specialized agents: Grok CLI, Go SDK,
+   product registration, x402 gateway, and PumpFun copy-trading work.
+6. **Proof Layer**: `zk-primitives/` sketches the receipt spine: nullifiers,
+   proof verification, and compressed state.
+7. **Operator Surface**: `web/`, `spinners/`, `SOUL.md`, `IDENTITY.md`,
+   `CLAWD.md`, `agent.md`, and `Skill.md` make the harness usable by humans and
+   agent runtimes.
+
+## Repository Star Chart
+
+Canonical local root: `/Users/8bit/clawd-code`.
+
+| Path | Status | Role |
 | --- | --- | --- |
-| `CLAWD_PROVIDER` | AI provider: `xai`, `anthropic`, `openrouter`, or `deepseek` | `xai` |
-| `CLAWD_MODEL` | Model used by the selected provider | `grok-4.20-multi-agent` |
-| `XAI_API_KEY` | xAI API key for Grok models + Voice Agent API | empty |
-| `ANTHROPIC_API_KEY` | Anthropic API key for Claude models (streaming) | empty |
-| `DEEPSEEK_API_KEY` | DeepSeek API key | empty |
-| `OPENROUTER_API_KEY` | OpenRouter API key (free models supported) | empty |
-| `CLAWD_STREAM` | Enable streaming output by default | `false` |
-| `SOLANA_RPC_URL` | Solana RPC endpoint | mainnet-beta |
-| `HELIUS_API_KEY` | Optional Helius key for RPC/DAS workflows | empty |
-| `VULCAN_MCP_URL` | Vulcan MCP server URL | `http://localhost:3001` |
-| `LIVE_TRADING` | Enables live trading path when true | `false` |
-| `OPERATOR_CONFIRMED` | Required operator acknowledgement for live trading | `false` |
-| `PERPS_SIM_ONLY` | Keeps perps execution simulated | `true` |
+| `/Users/8bit/clawd-code/README.md` | present | This front door and story map |
+| `/Users/8bit/clawd-code/package.json` | present | npm package manifest for `@solana-clawd/clawd-code` |
+| `/Users/8bit/clawd-code/package-lock.json` | present | npm lockfile |
+| `/Users/8bit/clawd-code/tsconfig.json` | present | TypeScript build config |
+| `/Users/8bit/clawd-code/install.sh` | present | npm/source installer and config bootstrap |
+| `/Users/8bit/clawd-code/.env.example` | present | Public env template |
+| `/Users/8bit/clawd-code/.env` | private local file | Runtime secrets; documented here but intentionally not read or printed |
+| `/Users/8bit/clawd-code/.gitattributes` | present | Git attributes |
+| `/Users/8bit/clawd-code/.gitignore` | present | Ignore rules, including build and local runtime output |
+| `/Users/8bit/clawd-code/LICENSE` | present | MIT license |
+| `/Users/8bit/clawd-code/CLAWD.md` | present | Canonical operator and harness instructions |
+| `/Users/8bit/clawd-code/CLAUDE.md` | present | Compatibility shim for Claude-style runtimes |
+| `/Users/8bit/clawd-code/agent.md` | present | Agent-facing repo summary |
+| `/Users/8bit/clawd-code/Skill.md` | present | Skill/package map and older architecture notes |
+| `/Users/8bit/clawd-code/SOUL.md` | present | Persona and operating laws |
+| `/Users/8bit/clawd-code/IDENTITY.md` | present | Identity lore and operating profile |
+| `/Users/8bit/clawd-code/clawd.json` | present | Agent metadata and system profile |
+| `/Users/8bit/clawd-code/src` | present | CLI runtime, adapters, commands, modes, tests |
+| `/Users/8bit/clawd-code/dist` | generated | Build output from `npm run build` |
+| `/Users/8bit/clawd-code/node_modules` | generated | Local dependency install artifact |
+| `/Users/8bit/clawd-code/docs` | present | Install and smoke-test notes |
+| `/Users/8bit/clawd-code/spinners` | present | Offline spinner pack catalog |
+| `/Users/8bit/clawd-code/web` | present | Standalone Next.js web chat/operator UI |
+| `/Users/8bit/clawd-code/clawd-plugin` | present | Plugin manifest, MCP config, skills, references |
+| `/Users/8bit/clawd-code/clawd-agents` | present | Specialized Clawd agent projects |
+| `/Users/8bit/clawd-code/zk-primitives` | present | ZK attestation and compressed-state primitives |
+| `/Users/8bit/clawd-code/quantitative-signal-discovery-agent` | present | Independent NeMo signal-discovery lab |
+| `/Users/8bit/clawd-code/son_of_anton_program` | present | Independent Anchor/Solana vault program |
 
-Never commit `.env`, wallet files, API keys, private keys, or generated outputs.
-The repository ignore rules exclude `.env`, `.clawd/`, `node_modules/`,
-`dist/`, and `outputs/`.
+## Source Engine
 
-## Wallets
+`src/` is the CLI heart:
 
-```bash
-clawd-code wallet create
-clawd-code wallet create trader-1
-clawd-code wallet list
+```text
+src/
+├── cli.ts                 # entry point and mode dispatch
+├── commands.ts            # slash commands and top-level command helpers
+├── env.ts                 # .env and ~/.grok/config.toml loading
+├── zai.ts                 # Z.AI provider client
+├── xai.ts                 # xAI/Grok provider client
+├── anthropic.ts           # Anthropic provider client
+├── deepseek.ts            # DeepSeek provider client
+├── openrouter.ts          # OpenRouter Nemo/Fable routing
+├── grok-models.ts         # model catalog and defaults
+├── wallet.ts              # local Solana keypair create/list
+├── solana-harness.ts      # read-first Solana RPC harness
+├── x402.ts                # x402 payment client
+├── arena.ts               # Agent Arena identity
+├── imperial.ts            # Imperial/Phoenix trading hooks
+├── spinners.ts            # local spinner pack installer
+├── telegram.ts            # single-chat Telegram relay
+├── verify.ts              # environment preflight checks
+├── voice-agent.ts         # xAI Voice Agent client
+├── modes/                 # code, trade, research, image, voice, repl, chain, chart
+└── *.test.ts              # node:test suites
 ```
 
-Wallets are stored as Solana CLI-compatible keypair JSON files under
-`~/.clawd-code/wallets` with `0600` permissions. Treat those files like private
-keys.
+`dist/` mirrors the compiled JavaScript and declarations. It is generated by
+`npm run build`. `node_modules/` is only the dependency install artifact.
 
-## Perps Safety
+## Clawd Agents Fleet
 
-Perps workflows default to paper mode. Live trading requires all of these:
+| Project | Path | What it contributes |
+| --- | --- | --- |
+| Product registration | `clawd-agents/clawd-agent-product` | Metaplex/ERC-8004 agent registration, MPL Core metadata, Solana auth/SSO verification |
+| Go SDK | `clawd-agents/clawd-go` | Go wrapper for Solana RPC, x402.wtf LLM proxying, and Clawd identity checks |
+| Grok harness | `clawd-agents/clawd-grok` | Multi-provider Clawd Code harness with Grok defaults, provider/model routing, Solana/Phoenix tools, and optional `camsnap` tool selection |
+| Pump placeholder | `clawd-agents/clawd-pump` | Reserved empty slot in this checkout |
+| x402 gateway | `clawd-agents/clawd-x402` | Programmable pay-per-call agents, x402/MPP/AP2/A2A protocols, Solana settlement, revenue vault |
+| PumpFun bot | `clawd-agents/clawdbot-pumpfun` | Rust PumpFun/PumpSwap copy-trading bot, Yellowstone gRPC monitoring, Telegram notifications, paper/risk controls |
 
-```bash
-LIVE_TRADING=true
-OPERATOR_CONFIRMED=true
-PERPS_SIM_ONLY=false
+The Grok harness is intentionally its own package. Its tree includes:
+
+```text
+clawd-agents/clawd-grok/
+├── .agents/ .clawd/ .cursor/ .github/ .husky/
+├── src/        # agent, audio, daemon, grok, headless, hooks, lsp, mcp, payments, storage, telegram, tools, types, ui, utils, verify, wallet
+├── dist/       # compiled mirror of the source modules
+├── package.json bun.lock tsconfig.json vitest.config.ts biome.json
+├── .env .gitignore .npmignore install.sh CHANGELOG.md LICENSE
+└── README.md   # provider routing, model routing, Solana/Phoenix tools, camsnap selection
 ```
 
-The trade mode also applies local preflight constraints such as allowed symbols,
-maximum notional, maximum leverage, and maximum spread. Review the code and your
-configuration before enabling live execution.
-
-## AI Providers
-
-Clawd Code supports four AI providers with unified streaming:
-
-| Provider | Alias | Models | Streaming |
-| --- | --- | --- | --- |
-| `xai` | *(default)* | `grok-4.3`, `grok-4.20-multi-agent` | blocking |
-| `anthropic` | `claude`, `ant` | `claude-sonnet-4-6`, `claude-opus-4-8`, `claude-haiku-4-5-20251001` | native SSE |
-| `openrouter` | `or` | `nex-agi/nex-n2-pro:free` + any OR model | native SSE |
-| `deepseek` | `ds` | `deepseek-v4-pro`, `deepseek-v4-flash` | blocking |
+Use it when you want the Grok-flavored harness as a vendored agent package:
 
 ```bash
-# Stream code generation with Claude
-clawd-code code --provider anthropic --stream "Build an Anchor staking program"
-
-# Use free OpenRouter model
-clawd-code code --provider openrouter "Review this TypeScript"
-
-# Switch provider for session
-clawd-code /provider anthropic
-
-# List all models
-clawd-code /models
+cd /Users/8bit/clawd-code/clawd-agents/clawd-grok
+bun install
+bun run build
+clawd providers
+clawd models
+clawd --provider xai --model grok-4 "inspect this Solana position"
 ```
 
-## Interactive REPL
+## Plugin And MCP Layer
+
+`clawd-plugin/` makes this repository usable by agent runtimes:
 
 ```bash
-clawd-code repl
+clawd --plugin-dir ./clawd-plugin
 ```
 
-An interactive multi-turn conversation session. Dot commands:
+Configured MCP servers include:
 
-| Command | Action |
+| Server | Role |
 | --- | --- |
-| `.mode code\|research\|trade\|general` | Switch conversation mode |
-| `.provider xai\|anthropic\|openrouter\|deepseek` | Switch AI provider |
-| `.model <id>` | Switch model mid-session |
-| `.clear` | Clear message history |
-| `.history` | Print conversation history |
-| `.help` | Show all dot commands |
-| `.exit` / `.quit` | End session |
+| `helius` | Solana DAS, RPC, webhook, and streaming access |
+| `clawd-code` | This CLI exposed as an MCP server |
+| `pump-mcp` | Pump.fun creation, swaps, analytics, and wallet flows |
+| `phoenix-rise` | Perpetuals orderbook and funding data |
+| `DFlow` | Trading API schemas, details, and examples |
+| `zkcompression` | ZK compressed token/account helpers |
 
-## xAI Voice Agent
+Bundled skills cover Clawd Code, Solana build work, DFlow, Phantom, Jupiter,
+OKX, Agent Arena, and SVM internals. The plugin README is the durable contract:
+[clawd-plugin/README.md](./clawd-plugin/README.md).
 
-Real-time Solana voice interactions powered by `grok-voice-think-fast-1.0` via the xAI Voice Agent API. Requires `XAI_API_KEY` and Node.js 22+.
+## ZK Spine
+
+`zk-primitives/` is the proof and compressed-state layer for Solana-native AI
+models on Light Protocol.
+
+```text
+zk-primitives/
+├── README.md
+├── agent/       # @clawd/zk-agent, CLI wrapper and natural-language router
+├── client/      # @clawd/zk-client, TypeScript client primitives
+├── configs/     # Light tree and local config templates
+├── docs/        # architecture notes
+├── programs/    # Anchor program scaffold
+└── tests/       # parser and primitive tests
+```
+
+The three core primitives are:
+
+| Primitive | Meaning |
+| --- | --- |
+| Nullifier registry | Prevent duplicate consumption of model attestations |
+| Groth16 verifier | Verify proof-shaped receipts on the program path |
+| Compressed state | Commit encrypted or compact state through Light Protocol |
+
+Current status is scaffolded and compile-oriented. Production deployment still
+needs real ceremony material, `LIGHT_CPI_SIGNER`, validator-backed SBF tests,
+and final encoding checks.
+
+## Web, Spinners, And Labs
+
+`web/` is a standalone Next.js operator UI. It mirrors the CLI provider list,
+stores provider settings locally, and shows the Telegram relay invocation.
 
 ```bash
-# Start voice agent REPL (text I/O over WebSocket)
-clawd-code voice --agent
-
-# Choose a voice persona (eve, ara, rex, sal, leo)
-clawd-code voice --agent --voice ara
-
-# Pin to a specific model
-clawd-code voice --agent --model grok-voice-think-fast-1.0
+cd web
+npm install
+cp .env.example .env.local
+npm run dev
+npm run build
+npm run type-check
 ```
 
-Built-in Solana function tools:
-
-| Tool | Description |
-| --- | --- |
-| `check_sol_balance` | Get SOL balance for any wallet address |
-| `get_token_price` | Current price of any Solana token in USD |
-| `get_funding_rate` | Phoenix DEX perps funding rate for a symbol |
-| `check_positions` | Open perpetuals positions |
-| `paper_trade` | Paper trade on Phoenix (no real funds) |
-| `send_sol` | Send SOL — paper mode unless `LIVE_TRADING=true` |
-| `get_market_overview` | SOL price, trending tokens, 24h change |
-
-For ephemeral token generation (browser/mobile clients):
-
-```typescript
-import { VoiceAgentClient } from '@solana-clawd/clawd-code/voice-agent';
-const token = await VoiceAgentClient.fetchEphemeralToken(process.env.XAI_API_KEY, 300);
-```
-
-## Agent Arena
-
-Clawd Code integrates the [Cheshire Terminal](https://cheshireterminal.ai) Agent Arena — on-chain AI agent identity via Metaplex Core NFTs on Solana with ATOM reputation, Google A2A + Anthropic MCP discovery cards, and $CLAWD payment verification.
+`spinners/` ships 44 themed spinner packs that install offline into
+`~/.clawd/settings.json` or `~/.claude/settings.json`:
 
 ```bash
-# Check API health
-clawd-code arena health
-
-# Mint your agent NFT (costs ~0.01 SOL in tx fees)
-clawd-code arena mint --wallet <YOUR_SOLANA_PUBKEY> --name "My Agent"
-
-# Register capabilities, A2A and MCP cards
-clawd-code arena register \
-  --wallet <YOUR_PUBKEY> \
-  --a2a https://my-agent.com/a2a \
-  --mcp https://my-agent.com/mcp \
-  --capabilities trading,research,solana
-
-# Fetch any agent's profile
-clawd-code arena fetch <assetAddress>
-
-# Submit a verified review (requires $CLAWD payment proof)
-clawd-code arena review <assetAddress> \
-  --tx <txSignature> \
-  --from <yourWallet> \
-  --score 95
-
-# View stored on-chain identity
-clawd-code arena status
+clawd-code spinner list
+clawd-code spinner install developer
+clawd-code spinner install wizard
+clawd-code spinner install yoda
 ```
 
-| Subcommand | Description |
+`quantitative-signal-discovery-agent/` is an independent NVIDIA NeMo Agent
+Toolkit lab for generating, testing, and iterating quantitative signal ideas.
+
+`son_of_anton_program/` is an independent Anchor/Solana autonomous vault
+program where approved agent signers can execute guarded vault actions with
+nonce replay protection.
+
+## Solana Harness
+
+The chain path is intentionally read-first. Clawd Code can inspect RPC health,
+balances, programs, funding data, positions, and chart evidence before any
+execution path is considered.
+
+Common env:
+
+```bash
+SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
+HELIUS_API_KEY=...
+CLAWD_WALLET_DIR=~/.clawd-code/wallets
+CLAWD_TRADING_MODE=paper
+PHOENIX_API_URL=...
+VULCAN_API_URL=...
+IMPERIAL_API_URL=...
+```
+
+The default posture is paper and inspection. Treat live keys, trading endpoints,
+and settlement flows as explicit operator decisions.
+
+## x402 Commerce
+
+The x402 line runs through both the root CLI and `clawd-agents/clawd-x402`.
+The goal is paid, verifiable agent labor:
+
+```text
+request -> price -> pay -> route -> call -> receipt -> settle -> revenue split
+```
+
+`clawd-agents/clawd-x402` expands that into x402, MPP, AP2, and A2A support;
+Solana settlement; a gateway; a facilitator; an SDK; and vault payout logic.
+The `clawdbot-pumpfun` agent also references the `$CLAWD` token path and keeps
+its automated trading controls behind env-driven risk settings.
+
+## Safety Gates
+
+| Gate | Default expectation |
 | --- | --- |
-| `arena health` / `arena ping` | Check Cheshire Terminal API health |
-| `arena mint` | Mint agent NFT on Solana mainnet |
-| `arena register` | Register capabilities + A2A/MCP discovery cards |
-| `arena fetch <addr>` | Fetch any agent's on-chain profile |
-| `arena review <addr>` | Submit a verified ATOM reputation review |
-| `arena status` / `arena identity` | Show your stored on-chain identity |
-
-After minting, identity is saved to `~/.clawd-code/arena-identity.json` with `0600`
-permissions. Identity scheme: `svm://solana-mainnet/<metaplex-core-asset-address>`.
-
-$CLAWD mint: `8cHzQHUS2s2h8TzCmfqPKYiM4dSt4roa3n7MyRLApump`
+| Secrets | Keep real keys in `~/.clawd-code/.env` or local `.env`; never commit them |
+| Trading | `CLAWD_TRADING_MODE=paper` until the operator explicitly changes it |
+| Telegram | Single allowlisted chat ID; chat/CLI relay only |
+| Wallets | Local keypairs remain local; inspect before funding |
+| MCP tools | Prefer read/inspect flows before write or payment flows |
+| ZK receipts | Treat current primitives as scaffolded until verifier/deployment requirements are complete |
+| Generated `dist/` | Rebuild from source instead of hand-editing output |
 
 ## Development
 
@@ -243,40 +443,60 @@ $CLAWD mint: `8cHzQHUS2s2h8TzCmfqPKYiM4dSt4roa3n7MyRLApump`
 npm install
 npm run build
 npm test
-npm audit
-npm pack --dry-run
+npm run dev -- code "write a Solana account parser"
+npm start -- chain status
 ```
 
-Project layout:
+Root scripts:
 
-```text
-clawd-code/
-├── install.sh
-├── package.json
-├── README.md
-├── LICENSE
-├── clawd.json
-├── src/
-│   ├── cli.ts
-│   ├── commands.ts
-│   ├── wallet.ts
-│   └── modes/
-└── tsconfig.json
+| Script | Command |
+| --- | --- |
+| `npm run build` | `tsc` |
+| `npm run dev` | `tsx src/cli.ts` |
+| `npm start` | `node dist/cli.js` |
+| `npm test` | `node --import tsx --test src/**/*.test.ts` |
+
+Useful package-level checks:
+
+```bash
+cd web && npm run type-check
+cd zk-primitives/client && npm test
+cd zk-primitives/agent && npm test
+cd clawd-agents/clawd-grok && bun test
 ```
+
+Run the checks that match the surface you changed. The root package does not
+build the independent labs, `web/`, `zk-primitives/`, or vendored agent
+packages by default.
 
 ## Release Contents
 
-The npm package allowlist includes only:
+`package.json` publishes the operator-facing surface:
 
-- `dist/`
-- `install.sh`
-- `README.md`
-- `LICENSE`
-- `.env.example`
-- `clawd.json`
+```text
+dist/
+spinners/
+clawd-plugin/
+docs/
+install.sh
+README.md
+CLAWD.md
+Skill.md
+agent.md
+LICENSE
+.env.example
+clawd.json
+```
 
-Local runtime files and secrets are intentionally excluded.
+Independent labs and vendored agents stay in the repository but are not part of
+the root npm package unless they are explicitly added to `files`.
 
 ## License
 
 MIT. See [LICENSE](./LICENSE).
+
+<div align="center">
+
+<img src="https://capsule-render.vercel.app/api?type=waving&section=footer&height=120&color=0:00D4FF,45:9945FF,100:14F195&animation=twinkling" alt="Animated footer wave" />
+
+</div>

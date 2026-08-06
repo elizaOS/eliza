@@ -1,48 +1,126 @@
 # Dependencies
 node_modules/
-.pnpm-store/
+frontend/node_modules/
 
-# Build output
-dist/
-*.tsbuildinfo
-
-# Local Clawd runtime state
-.clawd/
-
-# Environment files — NEVER commit secrets
-.env
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+backend/venv/
+*.egg-info/
 .env.local
-.env.*.local
-*.env
+# Environment variables
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+
+# Secrets / keys (catches any stray key files)
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+*.jks
+*.asc
+*.gpg
+client_secret_*.json
+google-oauth-client*.json
+service-account*.json
+gcp-credentials*.json
+google-credentials*.json
+firebase-adminsdk*.json
+credentials.json
+aws-credentials
+wallet.json
+*-wallet.json
+keypair.json
+*-keypair.json
+*_keypair.json
+keypair*.json
+id.json
+id_ed25519
+id_rsa
+id_rsa.*
+id_ed25519.*
+id_ecdsa
+id_ecdsa.*
+*.ppk
+*_api_key.txt
+*_secret.txt
+*-secret.json
+*.secret.json
+auth-token*.json
+access-token*.json
+bearer-token*.json
+refresh-token*.json
+*-apikey.json
+*-api-key.json
+*-private-key.json
+*-privatekey.json
+*.b58
+*.b64.key
+
+# Agent runtime state
+agent-wallet.json
+.vulcan/
+vulcan-runs/
+paper-state.json
+paper-balance.json
+.paper/
+.agent-sessions/
+*.session.json
+agent-memory*.json
+session-state*.json
+.clawdbot/
+sessions/
+
+# Build outputs
+frontend/dist/
+frontend/build/
+backend/static/
+
+# Solana
+.anchor/
+test-ledger/
+target/
+solana-ai-inference/target/
+*.so
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+backend/database/*.db
 
 # Logs
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-pnpm-debug.log*
+backend.log
+solana.log
 
-# OS
-.DS_Store
-Thumbs.db
-
-# Editor
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+.DS_Store
 
-# Outputs
-outputs/
-*.output
-.cache/
-tmp/
+# Trigger.dev
+.trigger/
+trigger.config.ts.bak
+node_modules
+# OS
+.DS_Store
+Thumbs.db
+.vercel
 
-# Python
-__pycache__/
-*.pyc
-.venv/
-
-# Test
-coverage/
-.nyc_output/
+# Build output
+dist/
+web/.next/

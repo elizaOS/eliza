@@ -3,17 +3,23 @@
  * Autonomous commerce via HTTP 402 payments
  */
 
-import { spawn } from 'child_process';
 import { readFileSync } from 'fs';
-import { join } from 'path';
 import { homedir } from 'os';
+import { join } from 'path';
+
+export interface X402RequestOptions {
+  method?: string;
+  headers?: Record<string, string>;
+  body?: unknown;
+  amount?: number; // USDC to pay
+  destination?: string; // Solana wallet address
+}
 
 export class X402Client {
   private gatewayUrl: string;
   private paymentSecret: string;
 
-  constructor() {
-    const configPath = join(homedir(), '.clawd-code', '.env');
+  constructor(configPath: string = join(homedir(), '.clawd-code', '.env')) {
     let gatewayUrl = 'https://x402.wtf';
     let paymentSecret = '';
 
@@ -24,22 +30,18 @@ export class X402Client {
         if (key === 'X402_GATEWAY_URL') gatewayUrl = rest.join('=').trim();
         if (key === 'X402_PAYMENT_SECRET') paymentSecret = rest.join('=').trim();
       }
-    } catch {}
+    } catch {
+      // No config file — use defaults.
+    }
 
     this.gatewayUrl = gatewayUrl;
     this.paymentSecret = paymentSecret;
   }
 
   /**
-   * Make a payment-gated request to any x402-enabled endpoint
+   * Build the request URL and headers for an x402-gated call (pure, testable).
    */
-  async request<T>(endpoint: string, options: {
-    method?: string;
-    headers?: Record<string, string>;
-    body?: any;
-    amount?: number;      // USDC to pay
-    destination?: string;  // Solana wallet address
-  }): Promise<T> {
+  buildRequest(endpoint: string, options: X402RequestOptions = {}): { url: string; init: RequestInit } {
     const { method = 'GET', headers = {}, body, amount = 0, destination } = options;
 
     const requestHeaders: Record<string, string> = {
@@ -55,39 +57,36 @@ export class X402Client {
       requestHeaders['Authorization'] = `Bearer ${this.paymentSecret}`;
     }
 
-    return new Promise((resolve, reject) => {
-      const url = endpoint.startsWith('http') ? endpoint : `${this.gatewayUrl}${endpoint}`;
-      const data = body ? JSON.stringify(body) : '';
+    const url = endpoint.startsWith('http') ? endpoint : `${this.gatewayUrl}${endpoint}`;
 
-      // Use curl for HTTP requests with x402 headers
-      const curlArgs = ['-s', '-X', method, url];
+    return {
+      url,
+      init: {
+        method,
+        headers: requestHeaders,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      },
+    };
+  }
 
-      for (const [key, value] of Object.entries(requestHeaders)) {
-        curlArgs.push('-H', `${key}: ${value}`);
-      }
+  /**
+   * Make a payment-gated request to any x402-enabled endpoint
+   */
+  async request<T>(endpoint: string, options: X402RequestOptions = {}): Promise<T> {
+    const { url, init } = this.buildRequest(endpoint, options);
 
-      if (data) {
-        curlArgs.push('-d', data);
-      }
+    const response = await fetch(url, init);
+    const text = await response.text();
 
-      const proc = spawn('curl', curlArgs, { stdio: ['pipe', 'pipe', 'pipe'] });
-      
-      let output = '';
-      proc.stdout.on('data', (chunk) => { output += chunk.toString(); });
-      proc.stderr.on('data', (chunk) => { /* suppress stderr */ });
+    if (!response.ok) {
+      throw new Error(`x402 request failed: ${endpoint} (${response.status}) ${text.slice(0, 200)}`);
+    }
 
-      proc.on('close', (code) => {
-        if (code === 0) {
-          try {
-            resolve(JSON.parse(output));
-          } catch {
-            resolve(output as any);
-          }
-        } else {
-          reject(new Error(`x402 request failed: ${endpoint}`));
-        }
-      });
-    });
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      return text as unknown as T;
+    }
   }
 
   /**
@@ -107,10 +106,7 @@ export class X402Client {
    */
   async checkBalance(walletAddress: string, requiredAmount: number): Promise<boolean> {
     try {
-      const response = await this.request<{ balance: number }>(
-        `/api/balance/${walletAddress}`,
-        {}
-      );
+      const response = await this.request<{ balance: number }>(`/api/balance/${walletAddress}`, {});
       return response.balance >= requiredAmount;
     } catch {
       return false;

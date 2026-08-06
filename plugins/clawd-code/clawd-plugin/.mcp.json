@@ -10,7 +10,12 @@
     },
     "clawd-code": {
       "command": "npx",
-      "args": ["@solana-clawd/clawd-code@latest"]
+      "args": ["@solana-clawd/clawd-code@latest"],
+      "env": {
+        "CLAWD_PROVIDER": "zai",
+        "CLAWD_MODEL": "glm-5.2",
+        "ZAI_API_KEY": "${ZAI_API_KEY}"
+      }
     },
     "pump-mcp": {
       "command": "node",

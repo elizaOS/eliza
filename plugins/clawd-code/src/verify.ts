@@ -1,11 +1,15 @@
 /**
  * Clawd Code — Environment Verification & Preflight
  * (Adapted from clawd-grok/src/verify/environment.ts)
+ *
+ * Checks the default Z.AI key and optional provider keys.
  */
 
 import { existsSync, readFileSync } from 'fs';
-import { join } from 'path';
 import { homedir } from 'os';
+import { join } from 'path';
+import { getImperialConfig, getImperialLiveReadiness, getTradingGateState, imperialUnderwriterLabel } from './imperial.js';
+import { createXaiClient } from './xai.js';
 
 export interface VerifyResult {
   name: string;
@@ -14,20 +18,27 @@ export interface VerifyResult {
   remedy?: string;
 }
 
+function displayUrl(url: string): string {
+  return url.replace(/([?&](?:api-key|apikey|key|token)=)[^&]+/gi, '$1***');
+}
+
 export class EnvironmentVerifier {
   private results: VerifyResult[] = [];
 
   /**
-   * Run all preflight checks
+   * Run all preflight checks.
    */
-  verifyAll(): VerifyResult[] {
+  async verifyAll(): Promise<VerifyResult[]> {
     this.results = [];
     this.checkNodeVersion();
-    this.checkXaiKey();
+    this.checkZaiKey();
+    this.checkXaiKeyOptional();
+    await this.checkXaiReachable();
     this.checkHeliusRpc();
     this.checkPhoenixUrl();
     this.checkVulcanCli();
     this.checkSafetyGates();
+    this.checkImperialConfig();
     this.checkConfigFile();
     this.checkWorkspace();
     return this.results;
@@ -44,14 +55,66 @@ export class EnvironmentVerifier {
     });
   }
 
-  private checkXaiKey(): void {
+  private checkZaiKey(): void {
+    const key = process.env.ZAI_API_KEY;
+    this.results.push({
+      name: 'Z.AI API key',
+      ok: !!key,
+      message: key ? 'ZAI_API_KEY set' : 'ZAI_API_KEY not set',
+      remedy: !key ? 'Get a key from https://z.ai and set ZAI_API_KEY in ~/.clawd-code/.env' : undefined,
+    });
+  }
+
+  private checkXaiKeyOptional(): void {
     const key = process.env.XAI_API_KEY;
     this.results.push({
-      name: 'xAI Grok API key',
-      ok: !!key,
-      message: key ? 'XAI_API_KEY set' : 'XAI_API_KEY not set',
-      remedy: !key ? 'Get key from https://console.x.ai and set in ~/.clawd-code/.env' : undefined,
+      name: 'xAI Grok API key (optional)',
+      ok: true,
+      message: key ? 'XAI_API_KEY set' : 'XAI_API_KEY not set (optional)',
     });
+  }
+
+  /**
+   * Live ping of https://api.x.ai/v1/models using XAI_API_KEY. Skipped if the
+   * key is missing or the runtime can't reach the network. Reports the first
+   * few model ids so the operator can confirm the account is on the right
+   * tier (grok-4.x availability, etc.).
+   */
+  private async checkXaiReachable(): Promise<void> {
+    const client = createXaiClient(process.env.XAI_API_KEY);
+    if (!client) {
+      this.results.push({
+        name: 'xAI /v1/models reachability',
+        ok: true,
+        message: '(skipped — no XAI_API_KEY)',
+      });
+      return;
+    }
+    try {
+      const ping = await client.ping();
+      if (ping.ok) {
+        const sample = (ping.models ?? []).slice(0, 4).join(', ');
+        this.results.push({
+          name: 'xAI /v1/models reachability',
+          ok: true,
+          message: `online — ${ping.models?.length ?? 0} models (e.g. ${sample})`,
+        });
+      } else {
+        this.results.push({
+          name: 'xAI /v1/models reachability',
+          ok: false,
+          message: `offline — ${ping.error ?? 'unknown error'}`,
+          remedy: 'Check network or rotate XAI_API_KEY',
+        });
+      }
+    } catch (error) {
+      this.results.push({
+        name: 'xAI /v1/models reachability',
+        ok: false,
+        message: `error — ${error instanceof Error ? error.message : String(error)}`,
+        remedy: 'Check network or rotate XAI_API_KEY',
+      });
+    }
   }
 
   private checkHeliusRpc(): void {
@@ -59,7 +122,7 @@ export class EnvironmentVerifier {
     this.results.push({
       name: 'Helius RPC endpoint',
       ok: !!rpc && rpc.includes('helius'),
-      message: rpc ? `Using ${rpc.slice(0, 60)}...` : 'No RPC configured',
+      message: rpc ? `Using ${displayUrl(rpc).slice(0, 60)}...` : 'No RPC configured',
       remedy: !rpc ? 'Set HELIUS_RPC_URL in ~/.clawd-code/.env (get key from helius.dev)' : undefined,
     });
   }
@@ -93,31 +156,70 @@ export class EnvironmentVerifier {
   }
 
   private checkSafetyGates(): void {
-    const live = process.env.LIVE_TRADING === 'true';
-    const confirmed = process.env.OPERATOR_CONFIRMED === 'true';
-    const sim = process.env.PERPS_SIM_ONLY === 'true';
-    
-    if (live && !confirmed) {
+    const gates = getTradingGateState(process.env);
+
+    if (gates.liveTrading && !gates.operatorConfirmed) {
       this.results.push({
         name: 'Safety gates',
         ok: false,
         message: 'LIVE_TRADING=true but OPERATOR_CONFIRMED=false',
         remedy: 'Set OPERATOR_CONFIRMED=true after reviewing safety docs',
       });
-    } else if (live && !sim) {
+    } else if (gates.liveTrading && gates.perpsSimOnly) {
       this.results.push({
         name: 'Safety gates',
         ok: false,
-        message: 'LIVE_TRADING=true but PERPS_SIM_ONLY=false',
+        message: 'LIVE_TRADING=true but PERPS_SIM_ONLY is not false',
         remedy: 'Confirm PERPS_SIM_ONLY=false to enable real execution',
       });
     } else {
       this.results.push({
         name: 'Safety gates',
         ok: true,
-        message: live ? 'LIVE mode (all gates armed)' : 'PAPER mode (default)',
+        message: gates.liveTrading ? 'LIVE mode (all gates armed)' : 'PAPER mode (default)',
       });
     }
+  }
+
+  private checkImperialConfig(): void {
+    const config = getImperialConfig(process.env);
+    const gates = getTradingGateState(process.env);
+
+    if (!config.enabled && !config.live) {
+      this.results.push({
+        name: 'Imperial router',
+        ok: true,
+        message: 'disabled (optional)',
+      });
+      return;
+    }
+
+    if (config.profileIndex < 0 || config.profileIndex > 5) {
+      this.results.push({
+        name: 'Imperial router',
+        ok: false,
+        message: 'IMPERIAL_PROFILE_INDEX outside 0..5',
+        remedy: 'Set IMPERIAL_PROFILE_INDEX to one of 0,1,2,3,4,5',
+      });
+      return;
+    }
+
+    const readiness = getImperialLiveReadiness(config, gates);
+    if (config.live && !readiness.ok) {
+      this.results.push({
+        name: 'Imperial router',
+        ok: false,
+        message: `live requested; ${readiness.reasons[0]}`,
+        remedy: 'Set all live gates plus IMPERIAL_WALLET, IMPERIAL_JWT, and IMPERIAL_PROFILE_INDEX',
+      });
+      return;
+    }
+
+    this.results.push({
+      name: 'Imperial router',
+      ok: true,
+      message: `${config.live ? 'live ready' : 'read/paper'} via ${imperialUnderwriterLabel(config.defaultUnderwriter)} profile ${config.profileIndex}`,
+    });
   }
 
   private checkConfigFile(): void {
@@ -147,11 +249,11 @@ export class EnvironmentVerifier {
   printReport(results?: VerifyResult[]): { ok: boolean; failed: VerifyResult[] } {
     const items = results || this.results;
     const failed = items.filter(r => !r.ok);
-    
+
     console.log('\n╔════════════════════════════════════════════════════════════╗');
     console.log('║  CLAWD CODE — ENVIRONMENT VERIFICATION                       ║');
     console.log('╠════════════════════════════════════════════════════════════╣');
-    
+
     for (const r of items) {
       const icon = r.ok ? '✓' : '✗';
       const status = r.ok ? 'OK' : 'FAIL';
@@ -161,7 +263,7 @@ export class EnvironmentVerifier {
         console.log(`║      → ${r.remedy.substring(0, 46).padEnd(46)}║`);
       }
     }
-    
+
     console.log('╠════════════════════════════════════════════════════════════╣');
     if (failed.length === 0) {
       console.log('║  ✓ ALL CHECKS PASSED — Ready to run                          ║');
@@ -169,7 +271,7 @@ export class EnvironmentVerifier {
       console.log(`║  ✗ ${failed.length} CHECK(S) FAILED — Fix above to enable features    ║`);
     }
     console.log('╚════════════════════════════════════════════════════════════╝\n');
-    
+
     return { ok: failed.length === 0, failed };
   }
 

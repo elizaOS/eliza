@@ -1,35 +1,97 @@
 /**
  * Clawd Code — IMAGE MODE
- * Generate images via DALL-E or Gemini
+ * Generate images via Z.AI GLM-Image, DALL-E, or Gemini fallback.
  */
 
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import { DEFAULT_IMAGE_MODEL } from '../grok-models.js';
+import { createZaiClient, ZAI_IMAGE_MODEL } from '../zai.js';
 
 export class ImageMode {
   constructor(private config: any) {}
 
   async run(args: string[]): Promise<void> {
-    const prompt = args.filter(a => !a.startsWith('--')).join(' ');
-    
+    const { prompt, size, model } = this.parseArgs(args);
+
     console.log('\n[IMAGE MODE] Initiating image generation...\n');
-    
-    // Parse image flags
-    let size = '1024x1024';
-    let model = 'dall-e-3';
-    
-    for (let i = 0; i < args.length; i++) {
-      if (args[i] === '--size' && args[i + 1]) size = args[i + 1];
-      if (args[i] === '--model' && args[i + 1]) model = args[i + 1];
+    if (!prompt) {
+      console.log('[IMAGE MODE] Usage: clawd-code image "prompt" [--size 1024x1024] [--model glm-image]');
+      return;
     }
     
     console.log(`[IMAGE MODE] Prompt: ${prompt}`);
     console.log(`[IMAGE MODE] Size: ${size} | Model: ${model}`);
     
-    // Try DALL-E first, fallback to Gemini
-    if (this.config.openAiKey && model.startsWith('dall')) {
+    if (this.isZaiImageModel(model)) {
+      await this.generateWithZai(prompt, size, model);
+    } else if (this.config.openAiKey && model.startsWith('dall')) {
       await this.generateWithDalle(prompt, size);
     } else {
+      await this.generateWithGemini(prompt, size);
+    }
+  }
+
+  private parseArgs(args: string[]): { prompt: string; size: string; model: string } {
+    let size = '1024x1024';
+    let model = this.config.zaiImageModel || DEFAULT_IMAGE_MODEL;
+    const promptParts: string[] = [];
+
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i];
+      if (arg === '--size' && args[i + 1]) {
+        size = args[++i];
+        continue;
+      }
+      if (arg === '--model' && args[i + 1]) {
+        model = args[++i];
+        continue;
+      }
+      if (!arg.startsWith('--')) promptParts.push(arg);
+    }
+
+    return { prompt: promptParts.join(' ').trim(), size, model };
+  }
+
+  private isZaiImageModel(model: string): boolean {
+    return model === ZAI_IMAGE_MODEL || model.startsWith('glm-image') || model.startsWith('cogview');
+  }
+
+  private async generateWithZai(prompt: string, size: string, model: string): Promise<void> {
+    const client = createZaiClient(this.config.zaiApiKey, this.config.zaiBaseUrl);
+    if (!client) {
+      console.log('\n[IMAGE MODE] ZAI_API_KEY not set; using Gemini placeholder fallback.');
+      await this.generateWithGemini(prompt, size);
+      return;
+    }
+
+    console.log('\n[IMAGE MODE] Generating via Z.AI image API...');
+    try {
+      const result = await client.generateImage({ model, prompt, size });
+      const outputDir = join(process.cwd(), 'outputs');
+      mkdirSync(outputDir, { recursive: true });
+
+      if (result.b64Json) {
+        const imagePath = join(outputDir, `clawd-code-image-${Date.now()}.png`);
+        writeFileSync(imagePath, Buffer.from(result.b64Json, 'base64'));
+        console.log('\n[IMAGE MODE] Image generated:');
+        console.log(imagePath);
+        return;
+      }
+
+      if (result.url) {
+        const metaPath = join(outputDir, `clawd-code-image-${Date.now()}.json`);
+        writeFileSync(metaPath, JSON.stringify({ model: result.model ?? model, prompt, size, url: result.url }, null, 2));
+        console.log('\n[IMAGE MODE] Image generated:');
+        console.log(result.url);
+        console.log(`[IMAGE MODE] Metadata saved to: ${metaPath}`);
+        return;
+      }
+
+      throw new Error('Z.AI image response did not include url or b64_json');
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.log(`[IMAGE MODE] Z.AI image generation failed: ${msg}`);
       await this.generateWithGemini(prompt, size);
     }
   }
@@ -46,8 +108,8 @@ client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
 
 response = client.images.generate(
     model="dall-e-3",
-    prompt="${prompt}",
-    size="${size}",
+    prompt=${JSON.stringify(prompt)},
+    size=${JSON.stringify(size)},
     quality="standard",
     n=1
 )

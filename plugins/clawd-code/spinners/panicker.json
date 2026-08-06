@@ -1,0 +1,39 @@
+{
+  "spinnerVerbs": {
+    "mode": "replace",
+    "verbs": [
+      "Panicking internally",
+      "Panicking externally too",
+      "Sweating profusely",
+      "Hyperventilating at the stack trace",
+      "Stress-eating semicolons",
+      "Googling \"how to undo everything\"",
+      "Regretting every life choice",
+      "Praying to the demo gods",
+      "Frantically checking git blame",
+      "Accidentally pushing to main",
+      "Refreshing the dashboard in terror",
+      "Running around in circles",
+      "Mashing Ctrl+Z desperately",
+      "Questioning my career choices",
+      "Considering becoming a farmer",
+      "Nervously watching the deploy",
+      "Hiding under the desk",
+      "Spiraling into chaos",
+      "Sending an apology email preemptively",
+      "Checking if anyone noticed",
+      "Watching all the tests fail",
+      "Losing track of what's broken",
+      "Breaking into a cold sweat",
+      "Staring at the error in disbelief",
+      "Hoping nobody checks the logs",
+      "Deleting and retyping the same line",
+      "Blaming the intern (there is no intern)",
+      "Realizing the deadline is today",
+      "Forgetting how to type",
+      "Discovering the bug is in production"
+    ]
+  },
+  "_attribution": "Powered by x402.wtf \u00b7 $CLAWD: 8cHzQHUS2s2h8TzCmfqPKYiM4dSt4roa3n7MyRLApump",
+  "_source": "https://github.com/Solizardking/solana-clawd"
+}

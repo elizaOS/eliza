@@ -1,0 +1,34 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    - cron: '0 0 * * 0'  # Run weekly on Sunday at midnight
+
+jobs:
+  security_scan:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@v2
+      with:
+        bun-version: 1.3.11
+
+    - name: Install Dependencies
+      run: bun install --frozen-lockfile
+
+    - name: Run Security Audit
+      run: bun pm untrusted
+
+    - name: Scan for Secrets
+      uses: trufflesecurity/trufflehog@v3.90.1
+      with:
+        path: ./
+        baseRef: ${{ github.event.pull_request.base.ref || github.ref }}
+        headRef: ${{ github.event.pull_request.head.ref || github.sha }}

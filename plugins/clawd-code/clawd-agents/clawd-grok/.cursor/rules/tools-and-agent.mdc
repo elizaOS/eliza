@@ -1,0 +1,62 @@
+---
+description: Guidelines for the agent system and tool implementations
+globs: "src/agent/**/*.ts,src/tools/**/*.ts,src/grok/**/*.ts"
+alwaysApply: false
+---
+
+# Agent & Tools System
+
+## Agent
+
+`Agent` (in `src/agent/agent.ts`) is the core orchestrator. It manages:
+
+- The xAI Grok API client (`GrokClient`)
+- Bash tool for all shell operations
+- Web search and X search via the xAI Responses API
+- Chat history and message accumulation
+- Abort/cancellation support
+
+### Agent Loop
+
+The agent uses an iterative tool-call pattern via `processMessage` (async generator):
+
+1. Send messages to the LLM via Chat Completions API (streaming).
+2. If the response contains `tool_calls`, execute each tool.
+3. Append tool results to the message history.
+4. Repeat until no tool calls remain or `maxToolRounds` is reached.
+5. Yield `StreamChunk` objects for real-time UI updates.
+
+## Tool Interface
+
+All tools return a `ToolResult`:
+
+```typescript
+interface ToolResult {
+  success: boolean;
+  output?: string;
+  error?: string;
+}
+```
+
+Tools should never throw — wrap errors in `{ success: false, error: "..." }`.
+
+## Built-in Tools
+
+| Tool | File | Purpose |
+|------|------|---------|
+| `BashTool` | `src/tools/bash.ts` | Execute any shell command |
+| `search_web` | via `GrokClient.searchWeb()` | Web search using Responses API |
+| `search_x` | via `GrokClient.searchX()` | X/Twitter search using Responses API |
+
+## Grok Client
+
+`GrokClient` (in `src/grok/client.ts`) handles two API endpoints:
+
+- **Chat Completions** (`/v1/chat/completions`): Main agent loop with streaming and tool calling
+- **Responses API** (`/v1/responses`): X Search and Web Search with server-side tools
+
+## Adding a New Tool
+
+1. Add the tool schema to `src/grok/tools.ts` (in the `TOOLS` array).
+2. Add the execution case in `Agent.executeTool()`.
+3. Update the system prompt in `Agent` to document the tool.

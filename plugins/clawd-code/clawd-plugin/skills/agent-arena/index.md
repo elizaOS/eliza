@@ -55,3 +55,7 @@ After `arena mint`, identity is saved to `~/.clawd-code/arena-identity.json`:
 ## Full Docs
 
 See `SKILL.md` in this directory for the complete REST API reference, TypeScript SDK quick start, ATOM reputation engine, and x402 payment flows.
+
+## Related Skill
+
+Use `/clawd:clawd-agents` when you need the local `clawd-agents` product package, SSO verifier, clawd-go SDK, Clawd Grok runtime, Solana x402 gateway/client/vault code, or pump.fun/PumpSwap bot operations.

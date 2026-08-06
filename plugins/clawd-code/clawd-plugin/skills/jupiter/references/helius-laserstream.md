@@ -116,7 +116,7 @@ await subscribe(
 );
 ```
 
-SDK repo: `https://open-clawd.local/helius-labs/laserstream-sdk`
+SDK repo: `https://github.com/helius-labs/laserstream-sdk`
 
 ## Transaction Filtering
 

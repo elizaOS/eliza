@@ -1,0 +1,41 @@
+{
+  "name": "CLAWD",
+  "description": "Sovereign Solana-native Clawd core auth agent. Holding $CLAWD and minting/registering a Clawd agent creates a verifiable on-chain SSO credential.",
+  "image": "https://x402.wtf/assets/clawd-avatar.png",
+  "external_url": "https://x402.wtf/agents",
+  "attributes": [
+    {
+      "trait_type": "Ecosystem",
+      "value": "OpenClawd"
+    },
+    {
+      "trait_type": "Network",
+      "value": "Solana Mainnet"
+    },
+    {
+      "trait_type": "Payment",
+      "value": "x402"
+    },
+    {
+      "trait_type": "Token",
+      "value": "$CLAWD"
+    },
+    {
+      "trait_type": "Auth",
+      "value": "Token + Agent Mint SSO"
+    },
+    {
+      "trait_type": "Registry",
+      "value": "Metaplex Agent Registry"
+    }
+  ],
+  "properties": {
+    "category": "agent",
+    "files": [
+      {
+        "uri": "https://x402.wtf/assets/clawd-avatar.png",
+        "type": "image/png"
+      }
+    ]
+  }
+}

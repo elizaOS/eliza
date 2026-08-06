@@ -1,0 +1,14 @@
+{
+  "version": "1.0.0",
+  "organization": "Solizardking",
+  "date": "June 2026",
+  "abstract": "Install themed spinner verb packs for Clawd agents. Choose from 45+ themed packs including pirate, wizard, space, corporate, and many more. Fetches packs directly from the solana-clawd repository and installs them into your Clawd settings.",
+  "references": [
+    "https://github.com/Solizardking/solana-clawd",
+    "https://x402.wtf/skills/install-spinner"
+  ],
+  "token": {
+    "symbol": "$CLAWD",
+    "mint": "8cHzQHUS2s2h8TzCmfqPKYiM4dSt4roa3n7MyRLApump"
+  }
+}

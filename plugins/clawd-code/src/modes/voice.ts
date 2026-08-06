@@ -16,6 +16,7 @@
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { DEFAULT_VOICE_MODEL } from '../grok-models.js';
 import { VoiceAgentClient } from '../voice-agent.js';
 
 interface VoiceConfig {
@@ -24,6 +25,9 @@ interface VoiceConfig {
   liveTrading?: boolean;
   model?: string;
 }
+
+/** Default voice model for xAI realtime voice agent. */
+const DEFAULT_VOICE = DEFAULT_VOICE_MODEL;
 
 export class VoiceMode {
   constructor(private config: VoiceConfig) {}
@@ -64,7 +68,7 @@ export class VoiceMode {
     console.log('║  🦞 CLAWD VOICE AGENT                                ║');
     console.log('║  xAI Voice Agent API — Solana-native real-time voice ║');
     console.log('╚══════════════════════════════════════════════════════╝\n');
-    console.log(`Model : ${model ?? 'grok-voice-think-fast-1.0'}`);
+    console.log(`Model : ${model ?? DEFAULT_VOICE}`);
     console.log(`Voice : ${voice}`);
     console.log(`Mode  : ${this.config.liveTrading ? 'LIVE (confirm before trades)' : 'PAPER (no real funds)'}`);
     console.log('\nTools : check_sol_balance, get_token_price, get_funding_rate,');

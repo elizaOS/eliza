@@ -1,0 +1,66 @@
+{
+  "name": "@clawd/zk-client",
+  "version": "0.1.0",
+  "description": "TypeScript client SDK for the Clawd ZK primitive on Solana (nullifiers, Groth16 proofs, Light Protocol compressed state).",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./nullifier": {
+      "import": "./dist/nullifier.js",
+      "types": "./dist/nullifier.d.ts"
+    },
+    "./proof": {
+      "import": "./dist/proof.js",
+      "types": "./dist/proof.d.ts"
+    },
+    "./state": {
+      "import": "./dist/state.js",
+      "types": "./dist/state.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit",
+    "clean": "rm -rf dist .turbo"
+  },
+  "keywords": [
+    "solana",
+    "zk",
+    "light-protocol",
+    "clawd",
+    "nullifier",
+    "groth16",
+    "agent",
+    "depin"
+  ],
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@coral-xyz/anchor": "^0.31.0",
+    "@lightprotocol/stateless.js": "^0.23.3",
+    "@solana/kit": "^2.1.0",
+    "@solana/web3.js": "^1.95.0",
+    "bn.js": "^5.2.1"
+  },
+  "devDependencies": {
+    "@types/bn.js": "^5.1.5",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
