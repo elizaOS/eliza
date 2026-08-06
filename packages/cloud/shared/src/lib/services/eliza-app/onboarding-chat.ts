@@ -112,6 +112,12 @@ const DEFAULT_ONBOARDING_APP_URL = "https://app.elizacloud.ai";
 const ELIZA_APP_INITIAL_CREDIT_USD = "$5";
 /** Label for platforms that render the login link as a UI affordance. */
 const ONBOARDING_CTA_LABEL = "Connect";
+/**
+ * Discord rejects button URLs longer than 512 characters. Enforced here so a
+ * too-long login URL falls back to inline-URL copy instead of producing a CTA
+ * the transport would refuse (which would drop the whole reply).
+ */
+const MAX_CTA_URL_LENGTH = 512;
 
 function sessionCacheKey(sessionId: string): string {
   return `eliza-app:onboarding:${sessionId}`;
@@ -461,19 +467,43 @@ function rendersLoginAsButton(platform: OnboardingPlatform | undefined): boolean
   return platform === "discord";
 }
 
+/**
+ * Builds the login CTA, or null when the login URL cannot ride a link button
+ * (non-https scheme - possible via ELIZA_ONBOARDING_APP_URL and friends, which
+ * are read from env without scheme validation - or over Discord's 512-char
+ * button URL cap). The caller chooses the reply copy from whether this
+ * returned a CTA, so "text says tap below" and "button actually renders" are
+ * the same decision and cannot disagree.
+ */
+function buildLoginCta(loginUrl: string): OnboardingChatCta | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(loginUrl);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== "https:") return null;
+  if (loginUrl.length > MAX_CTA_URL_LENGTH) return null;
+  return { label: ONBOARDING_CTA_LABEL, url: loginUrl };
+}
+
 function fallbackReply(args: {
   session: OnboardingSession;
   provisioning: ElizaAppProvisioningStatus;
   requiresLogin: boolean;
   loginUrl: string;
   handoffComplete: boolean;
+  cta: OnboardingChatCta | null;
 }): string {
   const name = hasPreferredName(args.session) ? args.session.name : undefined;
   if (!name) {
     return `hey, I'm Eliza. I can get you set up with your own agent. it chats right here, remembers everything you talk about, and your first ${ELIZA_APP_INITIAL_CREDIT_USD} is on me. what should I call you?`;
   }
   if (args.requiresLogin) {
-    if (rendersLoginAsButton(args.session.platform)) {
+    // "tap below" copy only when a CTA will actually render; otherwise the
+    // URL stays inline (SMS/iMessage, or a button-capable platform whose
+    // login URL could not become a valid button - see buildLoginCta).
+    if (args.cta) {
       return `nice to meet you, ${name}. tap below to connect your account and I'll spin up your agent. your first ${ELIZA_APP_INITIAL_CREDIT_USD} is on me.`;
     }
     return `nice to meet you, ${name}. connect your account here and I'll spin up your agent, first ${ELIZA_APP_INITIAL_CREDIT_USD} on me: ${args.loginUrl}`;
@@ -513,6 +543,7 @@ function generateOnboardingReply(args: {
   requiresLogin: boolean;
   loginUrl: string;
   handoffComplete: boolean;
+  cta: OnboardingChatCta | null;
 }): string {
   // This is a finite product state machine, not an open-ended generation task.
   // Deterministic copy prevents model latency, cost amplification, invented
@@ -755,23 +786,26 @@ export async function runOnboardingChatWithStore(
     )}`,
   );
   const panelUrl = controlPanelUrl(session.agentId);
+  // The CTA is derived FIRST and the copy chosen from whether it exists, so
+  // "tap below" text without a button is unrepresentable: the button CTA is
+  // present exactly when the reply is the login handoff on a button-capable
+  // platform AND the login URL is button-eligible (https, within Discord's
+  // URL bound). The text omits the URL only when the CTA carries it.
+  const cta =
+    requiresLogin && hasPreferredName(session) && rendersLoginAsButton(session.platform)
+      ? buildLoginCta(loginUrl)
+      : null;
   const reply = generateOnboardingReply({
     session,
     provisioning,
     requiresLogin,
     loginUrl,
     handoffComplete,
+    cta,
   });
 
   session = appendMessage(session, "assistant", reply);
   await store.save(session);
-
-  // The button CTA exists exactly when the reply is the login handoff on a
-  // button-capable platform: the text omits the URL, so the CTA must carry it.
-  const cta =
-    requiresLogin && hasPreferredName(session) && rendersLoginAsButton(session.platform)
-      ? { label: ONBOARDING_CTA_LABEL, url: loginUrl }
-      : null;
 
   return {
     session,
