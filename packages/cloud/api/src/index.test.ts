@@ -328,7 +328,7 @@ describe("cloud-api worker entrypoint", () => {
     expect(stagingRoutes).toContain("app-staging.elizacloud.ai/*");
   });
 
-  test("binds inference routes to native limits in every Worker environment", async () => {
+  test("binds the global native limiter in every Worker environment and keeps inference routes gate-free", async () => {
     type RateLimitBinding = {
       name?: string;
       simple?: { limit?: number; period?: number };
@@ -350,24 +350,38 @@ describe("cloud-api worker entrypoint", () => {
       expect(bindings).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            name: "CHAT_ROUTE_RATE_LIMITER",
-            simple: { limit: 200, period: 60 },
-          }),
-          expect.objectContaining({
-            name: "DASHBOARD_CHAT_ROUTE_RATE_LIMITER",
-            simple: { limit: 60, period: 60 },
+            name: "GLOBAL_RATE_LIMITER",
+            simple: { limit: 600, period: 60 },
           }),
         ]),
       );
     }
 
-    const [chat, messages, embeddings] = await Promise.all([
+    // #17805 retired the per-route native gates from the generative hot path:
+    // rate policy rides the IAC v2 admission snapshot through the org-level
+    // limiter. The inference route sources must stay free of per-route native
+    // bindings, while both Worker app builders keep the global gate.
+    const [
+      chat,
+      completions,
+      messages,
+      embeddings,
+      bootstrapApp,
+      inferenceApp,
+    ] = await Promise.all([
       Bun.file(new URL("../v1/chat/route.ts", import.meta.url)).text(),
+      Bun.file(
+        new URL("../v1/chat/completions/route.ts", import.meta.url),
+      ).text(),
       Bun.file(new URL("../v1/messages/route.ts", import.meta.url)).text(),
       Bun.file(new URL("../v1/embeddings/route.ts", import.meta.url)).text(),
+      Bun.file(new URL("./bootstrap-app.ts", import.meta.url)).text(),
+      Bun.file(new URL("./inference-app.ts", import.meta.url)).text(),
     ]);
-    expect(chat).toContain('bindingName: "DASHBOARD_CHAT_ROUTE_RATE_LIMITER"');
-    expect(messages).toContain('bindingName: "CHAT_ROUTE_RATE_LIMITER"');
-    expect(embeddings).toContain('bindingName: "CHAT_ROUTE_RATE_LIMITER"');
+    for (const source of [chat, completions, messages, embeddings]) {
+      expect(source).not.toContain("bindingName:");
+    }
+    expect(bootstrapApp).toContain('bindingName: "GLOBAL_RATE_LIMITER"');
+    expect(inferenceApp).toContain('bindingName: "GLOBAL_RATE_LIMITER"');
   });
 });
