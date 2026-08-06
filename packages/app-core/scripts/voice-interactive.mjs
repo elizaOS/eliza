@@ -90,6 +90,102 @@ function shouldPrewarmAfterTurn(args) {
   return args.say == null && args.wav == null;
 }
 
+function decodeWavForPush(wavBytes, decodeMonoPcm16Wav) {
+  const decoded = decodeMonoPcm16Wav(new Uint8Array(wavBytes));
+  if (!(decoded.pcm instanceof Float32Array)) {
+    throw new TypeError("[voice] WAV decoder must return Float32Array PCM");
+  }
+  return decoded;
+}
+
+async function feedPcmAtCaptureCadence(
+  source,
+  pcm,
+  trailingSilenceSamples,
+  wait = (durationMs) =>
+    new Promise((resolve) => setTimeout(resolve, durationMs)),
+) {
+  const frameDurationMs = (source.frameSamples / source.sampleRate) * 1000;
+  const feed = async (samples) => {
+    for (
+      let offset = 0;
+      offset < samples.length;
+      offset += source.frameSamples
+    ) {
+      source.push(samples.slice(offset, offset + source.frameSamples));
+      await wait(frameDurationMs);
+    }
+  };
+
+  await feed(pcm);
+  await feed(new Float32Array(trailingSilenceSamples));
+}
+
+function createOneShotTurnCompletion(timeoutMs = 90_000) {
+  let timer;
+  let resolveTurn;
+  let rejectTurn;
+  const promise = new Promise((resolve, reject) => {
+    resolveTurn = resolve;
+    rejectTurn = reject;
+    timer = setTimeout(() => {
+      reject(
+        new Error(
+          `[voice] No completed turn was observed within ${timeoutMs} ms.`,
+        ),
+      );
+    }, timeoutMs);
+  });
+
+  const settle = (callback) => (value) => {
+    if (timer === undefined) return;
+    clearTimeout(timer);
+    timer = undefined;
+    callback(value);
+  };
+
+  return {
+    promise,
+    complete: settle(resolveTurn),
+    fail: settle(rejectTurn),
+  };
+}
+
+function bindOneShotTerminalEvents(events, turnCompletion) {
+  return {
+    ...events,
+    onTurnComplete: async (outcome) => {
+      try {
+        await events.onTurnComplete?.(outcome);
+        turnCompletion.complete();
+      } catch (error) {
+        turnCompletion.fail(error);
+        throw error;
+      }
+    },
+    onTurnSuppressed: (transcript, signal) => {
+      events.onTurnSuppressed?.(transcript, signal);
+      turnCompletion.fail(
+        new Error(
+          `[voice] The completed transcript was suppressed by end-of-turn classification: ${JSON.stringify(
+            {
+              transcript,
+              endOfTurnProbability: signal.endOfTurnProbability,
+              nextSpeaker: signal.nextSpeaker,
+              agentShouldSpeak: signal.agentShouldSpeak,
+              source: signal.source,
+            },
+          )}`,
+        ),
+      );
+    },
+    onError: (error) => {
+      events.onError?.(error);
+      turnCompletion.fail(error);
+    },
+  };
+}
+
 const USAGE = `Usage: bun run --cwd packages/app-core voice:interactive [-- <options>]
 
   --list-active        print which optimizations are active, then exit
@@ -1535,6 +1631,12 @@ async function main() {
         });
       }
     },
+    onTurnSuppressed: (transcript, signal) =>
+      tag(
+        "turn",
+        "yellow",
+        `suppressed transcript=${JSON.stringify(transcript)} p=${signal.endOfTurnProbability.toFixed(3)} next=${signal.nextSpeaker} shouldSpeak=${String(signal.agentShouldSpeak)} source=${signal.source}`,
+      ),
     onError: (err) => tag("error", "red", err?.message ?? String(err)),
   };
 
@@ -1596,9 +1698,11 @@ async function main() {
         "@elizaos/plugin-local-inference/services/voice/engine-bridge"
       );
       const wavBytes = await fs.readFile(wavPath);
-      const decoded = decodeMonoPcm16Wav(new Uint8Array(wavBytes));
+      const decoded = decodeWavForPush(wavBytes, decodeMonoPcm16Wav);
       const push = new PushMicSource({ sampleRate: decoded.sampleRate });
       micSource = push;
+      const turnCompletion = createOneShotTurnCompletion();
+      const oneShotEvents = bindOneShotTerminalEvents(events, turnCompletion);
       // The engine constructs the fused Silero VAD (via the libelizainference
       // VAD ABI) from its own bridge ffi/ctx when no `vad` is supplied.
       controller = await engine.startVoiceSession({
@@ -1613,22 +1717,13 @@ async function main() {
           }
         },
         speculatePauseMs: 300,
-        events,
+        events: oneShotEvents,
       });
-      // Feed the WAV PCM (the PushMicSource re-frames it). Convert int16→float.
-      const view = new DataView(
-        decoded.pcm.buffer,
-        decoded.pcm.byteOffset,
-        decoded.pcm.byteLength,
-      );
-      const n = Math.floor(decoded.pcm.byteLength / 2);
-      const f = new Float32Array(n);
-      for (let i = 0; i < n; i++) f[i] = view.getInt16(i * 2, true) / 0x8000;
-      push.push(f);
-      // Trailing silence so the VAD fires speech-end.
-      push.push(new Float32Array(decoded.sampleRate)); // 1 s
-      // Wait for the turn to complete.
-      await new Promise((r) => setTimeout(r, 4000));
+      // The WAV codec already returns normalized Float32 PCM. Replaying it at
+      // capture cadence keeps the asynchronous VAD from falling behind a
+      // file-sized synchronous push.
+      await feedPcmAtCaptureCadence(push, decoded.pcm, decoded.sampleRate);
+      await turnCompletion.promise;
       await bridge?.settle?.();
     } catch (err) {
       log(
@@ -1672,15 +1767,9 @@ async function main() {
       speculatePauseMs: 300,
       events,
     });
-    // The first-audio filler is played by the turn controller on speech-start;
-    // wire VAD events to the live UI too. The transcriber's partials are
-    // surfaced via the controller; print them by subscribing to the VAD.
-    if (typeof vad.onVadEvent === "function") {
-      vad.onVadEvent((e) => {
-        if (e.type === "speech-start") tag("heard", "dim", "(speech-start)");
-        else if (e.type === "speech-end") tag("heard", "dim", "(speech-end)");
-      });
-    }
+    // The engine owns the fused VAD and its subscription through the turn
+    // controller. This harness observes finalized transcript and latency
+    // events instead of reaching into that private lifecycle.
   } catch (err) {
     log(
       c(
@@ -1780,7 +1869,11 @@ async function main() {
 // Guarded so importing this module (instead of running it) doesn't kick off
 // the interactive `main()`.
 export {
+  bindOneShotTerminalEvents,
+  createOneShotTurnCompletion,
+  decodeWavForPush,
   ensureBundleRegistered,
+  feedPcmAtCaptureCadence,
   inspectActiveOptimizations,
   PLATFORM_MATRIX,
   printPlatformReport,
