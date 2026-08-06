@@ -104,17 +104,21 @@ jobs:
           --cert-out "$GITHUB_WORKSPACE/certification.json"
 
       - name: Collect artifacts
+        if: always()
         run: |
           set -euo pipefail
-          test -f certification.json
-          bundle_dir=$(ls -dt evidence/runs/*/ | head -1)
-          test -f "${bundle_dir}certification.json"
           mkdir -p "$RUNNER_TEMP/cert-out/evidence"
-          cp certification.json "$RUNNER_TEMP/cert-out/certification.json"
-          cp -R "$bundle_dir" "$RUNNER_TEMP/cert-out/evidence/bundle"
-          echo "bundle: $bundle_dir"
+          [ -f certification.json ] && cp certification.json "$RUNNER_TEMP/cert-out/certification.json"
+          bundle_dir=$(ls -dt evidence/runs/*/ 2>/dev/null | head -1 || true)
+          if [ -n "$bundle_dir" ]; then
+            cp -R "$bundle_dir" "$RUNNER_TEMP/cert-out/evidence/bundle"
+            echo "bundle: $bundle_dir"
+          else
+            echo "no bundle dir produced" > "$RUNNER_TEMP/cert-out/NO_BUNDLE.txt"
+          fi
 
-      - name: Upload signed certification + bundle
+      - name: Upload certification + bundle (also on RED — the lane logs are the diagnosis)
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: certification-${{ inputs.sha != '' && inputs.sha || github.sha }}
