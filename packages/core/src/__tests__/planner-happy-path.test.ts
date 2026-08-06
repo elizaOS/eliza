@@ -418,6 +418,30 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			content: expect.stringContaining(expectedIdentity),
 		});
 		expect(plannerParams?.messages?.length).toBeGreaterThan(1);
+		const plannerUserContent = plannerParams?.messages?.[1]?.content ?? "";
+		expect(plannerUserContent).toContain(
+			"Stage 1 already decided this turn needs tools",
+		);
+		expect(plannerUserContent).not.toContain(
+			"how many times have I mentioned X",
+		);
+		const plannerSegments = plannerParams?.promptSegments as
+			| Array<{ stable?: boolean }>
+			| undefined;
+		const firstDynamicSegment = plannerSegments?.findIndex(
+			(segment) => segment.stable !== true,
+		);
+		if (
+			plannerSegments &&
+			firstDynamicSegment !== undefined &&
+			firstDynamicSegment >= 0
+		) {
+			expect(
+				plannerSegments
+					.slice(firstDynamicSegment)
+					.some((segment) => segment.stable === true),
+			).toBe(false);
+		}
 		const plannerToolNames =
 			plannerParams?.tools?.map((tool) => tool.name).filter(Boolean) ?? [];
 		expect(new Set(plannerToolNames).size).toBe(plannerToolNames.length);
