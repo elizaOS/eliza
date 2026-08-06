@@ -96,4 +96,34 @@ describe("GitHub action supply-chain references", () => {
       ".github/scripts/install-playwright-browsers.sh chromium webkit",
     );
   });
+
+  test("keeps the chat WebKit lane on a provisionable hosted runner", () => {
+    const source = readFileSync(
+      join(githubRoot, "workflows", "chat-shell-gestures.yml"),
+      "utf8",
+    );
+
+    expect(source).toMatch(/^\s{4}runs-on:\s*ubuntu-24\.04$/m);
+    expect(source).not.toContain("hetzner-robot");
+    expect(source).toContain(
+      ".github/scripts/install-playwright-browsers.sh chromium webkit",
+    );
+  });
+
+  test("installs dev-smoke Chromium without requiring self-hosted sudo", () => {
+    const source = readFileSync(
+      join(githubRoot, "workflows", "dev-smoke.yml"),
+      "utf8",
+    );
+
+    expect(
+      source.match(
+        /\.github\/scripts\/install-playwright-browsers\.sh chromium/g,
+      ),
+    ).toHaveLength(2);
+    expect(source).not.toContain("playwright install --with-deps chromium");
+    expect(source).toContain(
+      "ELIZA_VAULT_PASSPHRASE: dev-smoke-headless-vault-only",
+    );
+  });
 });
