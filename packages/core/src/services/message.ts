@@ -3458,6 +3458,35 @@ export function evaluatePlannedReplyEgress(args: {
 	return { verdict: "allow" };
 }
 
+/**
+ * True when any of the turn's candidate actions resolves to a registered
+ * action flagged `asyncHandoff` — work whose execution continues after the
+ * turn returns (sub-agent spawn class). This is the structural gate for the
+ * Stage-1 pre-planner early ack: an ack ahead of the final reply is only
+ * warranted when the routed work is an async handoff; synchronous retrieval
+ * turns deliver a single reply (the answer) on every channel. Candidates are
+ * matched against canonical names AND similes because Stage 1 routinely
+ * hints an action by one of its similes.
+ */
+export function candidateActionsIncludeAsyncHandoff(
+	actions: readonly Action[] | undefined,
+	candidateActionNames: readonly string[],
+): boolean {
+	if (!actions || actions.length === 0 || candidateActionNames.length === 0) {
+		return false;
+	}
+	const candidates = new Set(
+		candidateActionNames.map((name) => normalizeActionIdentifier(name)),
+	);
+	return actions.some(
+		(action) =>
+			action.asyncHandoff === true &&
+			[action.name, ...(action.similes ?? [])].some((identifier) =>
+				candidates.has(normalizeActionIdentifier(identifier)),
+			),
+	);
+}
+
 export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
 	[
 		{
@@ -3611,8 +3640,8 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 				// Same escalation valve as messageHandlerFromFieldResult: this
 				// evaluator re-runs the text inference on the SIMPLE path, so
 				// without the valve it re-promotes the exact answered turn the
-				// structured path just declined to force-plan (and clobbers the
-				// finished replyText with an "On it." ack that never delivers).
+				// structured path just declined to force-plan (and clears the
+				// finished replyText for a planner turn that may never deliver it).
 				return !shouldSuppressInferredCandidateEscalation({
 					inference,
 					...messageHandlerStageOneReplyContexts(messageHandler),
@@ -3637,7 +3666,10 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 					requiresTool: true,
 					addContexts: ["general"],
 					addCandidateActions: candidateActions,
-					reply: "On it.",
+					// Escalation is a routing decision, not a delivery: never
+					// synthesize user-visible ack text here. The early-reply path and
+					// the final-path fallbacks own what (if anything) the user sees.
+					clearReply: true,
 					debug: [
 						`current request matched registered action metadata: ${candidateActions.join(", ")}`,
 					],
@@ -3690,7 +3722,9 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 					...(candidateActions.length > 0
 						? { addCandidateActions: candidateActions }
 						: {}),
-					reply: "On it.",
+					// Escalation is a routing decision, not a delivery: drop the
+					// fabricated claim instead of synthesizing an ack in its place.
+					clearReply: true,
 					debug: [
 						`simple reply claimed a completed side effect with no tool run; rerouting to the planner (candidates: ${candidateActions.join(", ") || "none"})`,
 					],
@@ -6738,9 +6772,16 @@ export async function runV5MessageRuntimeStage1(args: {
 	deliveredVisibleTexts?: Set<string>;
 	plannerLoopConfig?: PlannerLoopParams["config"];
 	onSettledActionResult?: (result: ActionResult) => void;
+	/**
+	 * Optional pre-planner early-reply delivery seam. A consumer that decides
+	 * NOT to deliver the event (e.g. the voice fast path's async-handoff gate)
+	 * must return `false` so the producer's `earlyReplySent` bookkeeping —
+	 * dedupe, preserved-answer rescue, planner-state refresh — reflects what
+	 * the user actually saw. Any other return value counts as delivered.
+	 */
 	onResponseHandlerEarlyReply?: (
 		event: ResponseHandlerEarlyReplyEvent,
-	) => Promise<void> | void;
+	) => Promise<boolean> | Promise<void> | boolean | undefined;
 }): Promise<V5MessageRuntimeStage1Result> {
 	const senderRole =
 		getTrajectoryContext()?.userRole ??
@@ -7544,6 +7585,19 @@ export async function runV5MessageRuntimeStage1(args: {
 
 		const selectedContexts =
 			route.type === "planning_needed" ? route.contexts : [];
+		// Merge direct-request candidate inference BEFORE the early-ack gate so
+		// the async-handoff check below sees the turn's full candidate set.
+		const directPlannerCandidateActions =
+			inferDirectCurrentRequestCandidateActions(
+				args.runtime.actions ?? [],
+				getUserMessageText(args.message) ?? "",
+			);
+		if (directPlannerCandidateActions.length > 0) {
+			messageHandler.plan.candidateActions = uniqueActionNames([
+				...getMessageHandlerCandidateActions(messageHandler),
+				...directPlannerCandidateActions,
+			]);
+		}
 		const routedResponseHandlerReply = getMessageHandlerReply(messageHandler);
 		let earlyReplyText =
 			routedResponseHandlerReply || parsedResponseHandlerReply;
@@ -7556,21 +7610,30 @@ export async function runV5MessageRuntimeStage1(args: {
 			});
 			if (earlyReplyEgressDecision.verdict === "reject") {
 				// Planning is still in progress, so an ungrounded completion claim
-				// becomes an honest acknowledgement. Keep this exact delivered text
-				// in the later dedupe bookkeeping so a subsequently proven final
-				// confirmation is not mistaken for an already-sent reply.
-				earlyReplyText = "On it.";
+				// cannot ship. Drop the early reply entirely — the delivery floor
+				// must not manufacture a substitute ack; the planner's final reply
+				// (or the final-path ack fallback) owns this turn's delivery.
+				earlyReplyText = "";
 			}
 		}
-		const earlyReplySent =
+		const earlyReplyEligible =
 			messageHandler.processMessage === "RESPOND" &&
 			earlyReplyText.length > 0 &&
 			typeof onResponseHandlerEarlyReply === "function";
-		if (earlyReplySent && typeof onResponseHandlerEarlyReply === "function") {
-			await onResponseHandlerEarlyReply({
+		let earlyReplySent = false;
+		if (
+			earlyReplyEligible &&
+			typeof onResponseHandlerEarlyReply === "function"
+		) {
+			// The consumer owns the final delivery decision (the voice fast path
+			// gates on async-handoff candidates); an explicit `false` means it
+			// dropped the event, so downstream dedupe/rescue bookkeeping must
+			// treat the turn as having no delivered early reply.
+			const delivered = await onResponseHandlerEarlyReply({
 				text: restorePiiInUserReplyText(earlyReplyText),
 				messageHandler,
 			});
+			earlyReplySent = delivered !== false;
 		}
 		const plannerProviderNames = selectV5PlannerStateProviderNames({
 			runtime: args.runtime,
@@ -7606,17 +7669,6 @@ export async function runV5MessageRuntimeStage1(args: {
 			attachAvailableContexts(recomposedPlannerState, args.runtime),
 			selectedContextRoutingState,
 		);
-		const directPlannerCandidateActions =
-			inferDirectCurrentRequestCandidateActions(
-				args.runtime.actions ?? [],
-				getUserMessageText(args.message) ?? "",
-			);
-		if (directPlannerCandidateActions.length > 0) {
-			messageHandler.plan.candidateActions = uniqueActionNames([
-				...getMessageHandlerCandidateActions(messageHandler),
-				...directPlannerCandidateActions,
-			]);
-		}
 		// Full-surface mode (a focused coding sub-agent): skip the relevance/role
 		// narrowing entirely and hand the planner EVERY action whose execution gates
 		// pass. The narrowing is built for big chat catalogs (retrieve the relevant
@@ -8152,23 +8204,32 @@ export async function runV5MessageRuntimeStage1(args: {
 				? messageHandler.plan.reply.trim()
 				: "";
 		// Answerless-final fallback: when the planner loop finished with NO final
-		// text and the only thing the user saw was a progress ack ("On it."), a
-		// preserved substantive stage-0 answer is strictly better than silence —
-		// deliver it. The earlyReply/action dedup guards below still apply.
+		// text, a preserved substantive stage-0 answer is strictly better than
+		// silence or filler — deliver it. This applies whether or not an early
+		// ack shipped; when one did, the dedup guard keeps the early text from
+		// delivering twice. The action dedup guards below still apply.
 		const preservedAnswerFallback =
 			!plannedText &&
-			earlyReplySent &&
 			!suppressesPlannerReply &&
 			prePatchStageOneReply &&
 			!PROGRESS_ONLY_ANSWER_REJECT.test(prePatchStageOneReply.trim()) &&
-			normalizeVisibleTextForDuplicateCheck(prePatchStageOneReply) !==
-				normalizeVisibleTextForDuplicateCheck(earlyReplyText)
+			(!earlyReplySent ||
+				normalizeVisibleTextForDuplicateCheck(prePatchStageOneReply) !==
+					normalizeVisibleTextForDuplicateCheck(earlyReplyText))
 				? prePatchStageOneReply
 				: "";
+		// The ack fallback is a delivery floor for turns that DID real tool work
+		// (async handoffs and action turns whose result text got lost) — callers
+		// must not render a blank for work that genuinely happened. A turn that
+		// ran NO action must not "fix" its silence into a work-is-underway ack:
+		// no work follows this turn, so the ack would be a lie. Prefer the
+		// preserved stage-0 answer over any ack in every case.
 		const ackFallback =
 			!plannedText && !earlyReplySent && !suppressesPlannerReply
-				? stageOneAck ||
-					(ranNonSilentAction ? "on it, working on that now." : "")
+				? preservedAnswerFallback ||
+					(ranNonSilentAction
+						? stageOneAck || "on it, working on that now."
+						: "")
 				: preservedAnswerFallback;
 		let effectiveReplyText = plannedText || ackFallback;
 		const finalReplyEgressDecision = evaluatePlannedReplyEgress({
@@ -11206,18 +11267,37 @@ export class DefaultMessageService implements IMessageService {
 			}
 		}
 		const deliverResponseHandlerEarlyReply = voiceResponseHandlerFastPath
-			? async (event: ResponseHandlerEarlyReplyEvent): Promise<void> => {
+			? async (event: ResponseHandlerEarlyReplyEvent): Promise<boolean> => {
+					// Structural early-ack gate: a pre-planner ack is only warranted
+					// when the routed work is an async handoff — a candidate action
+					// whose execution continues after the turn returns (sub-agent
+					// spawn class), where the real result arrives long after the turn.
+					// Synchronous turns (retrieval, in-turn tool work) deliver one
+					// reply — the final answer — so voice matches text channels
+					// bubble-for-bubble. Returning false tells the Stage-1 producer
+					// nothing was delivered.
+					if (
+						!candidateActionsIncludeAsyncHandoff(
+							runtime.actions,
+							event.messageHandler.plan.candidateActions ?? [],
+						)
+					) {
+						return false;
+					}
 					const proposedText = event.text.trim();
 					const earlyReplyEgressDecision = evaluatePlannedReplyEgress({
 						reply: proposedText,
 						actionResults: [],
 						actions: runtime.actions,
 					});
-					const text =
-						earlyReplyEgressDecision.verdict === "allow"
-							? proposedText
-							: "On it.";
-					if (!text || !message.id) return;
+					if (earlyReplyEgressDecision.verdict !== "allow") {
+						// An ungrounded completion claim cannot ship, and this delivery
+						// floor must not manufacture a substitute ack — drop the early
+						// reply; the planner's final delivery owns the turn.
+						return false;
+					}
+					const text = proposedText;
+					if (!text || !message.id) return false;
 					const currentResponseId = latestResponseIds
 						.get(runtime.agentId)
 						?.get(message.roomId);
@@ -11232,10 +11312,10 @@ export class DefaultMessageService implements IMessageService {
 							},
 							"Response-handler early voice reply discarded - newer message being processed",
 						);
-						return;
+						return false;
 					}
 					if (getStreamingContext()?.abortSignal?.aborted) {
-						return;
+						return false;
 					}
 					const earlyResponseId = asUUID(v4());
 					let earlyContent: Content = {
@@ -11245,10 +11325,9 @@ export class DefaultMessageService implements IMessageService {
 						responseId: earlyResponseId,
 						inReplyTo: createUniqueUuid(runtime, message.id),
 						// #14873: the early reply IS the Stage-1 model's replyText —
-						// genuine agent voice — so gated transports must not re-voice it.
-						...(earlyReplyEgressDecision.verdict === "allow"
-							? { agentVoiced: true }
-							: {}),
+						// genuine agent voice (egress-rejected text never reaches this
+						// point) — so gated transports must not re-voice it.
+						agentVoiced: true,
 					};
 					await runtime.applyPipelineHooks(
 						"outgoing_before_deliver",
@@ -11287,6 +11366,7 @@ export class DefaultMessageService implements IMessageService {
 					if (callback) {
 						await callback(earlyContent);
 					}
+					return true;
 				}
 			: undefined;
 
