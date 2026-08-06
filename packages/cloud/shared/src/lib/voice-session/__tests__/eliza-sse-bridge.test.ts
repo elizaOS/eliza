@@ -143,6 +143,80 @@ describe("eliza sse bridge", () => {
     expect(seenHeaders?.get("X-Eliza-User-Id")).toBe("user-456");
   });
 
+  test("returns only a successful model-selected VIEWS handoff from terminal metadata", async () => {
+    const fetchImpl = (async () =>
+      sseResponse([
+        `event: chunk\ndata: ${JSON.stringify({ chunk: "Opened Notes." })}\n\n`,
+        `event: done\ndata: ${JSON.stringify({
+          actionResults: [
+            {
+              actionName: "VIEWS",
+              success: true,
+              values: { mode: "show", viewId: "notes", subview: "recent" },
+            },
+          ],
+        })}\n\n`,
+      ])) as unknown as typeof fetch;
+
+    const result = await streamElizaConversation(
+      {
+        endpoint: "http://x",
+        authorization: "Bearer s",
+        model: "m",
+        transcript: "open notes",
+        agentId: "agent-1",
+        conversationId: "conv-1",
+        traceId: "trace-navigation",
+        signal: new AbortController().signal,
+        fetchImpl,
+      },
+      () => {},
+    );
+
+    expect(result).toEqual({
+      completed: true,
+      aborted: false,
+      viewHandoff: { viewId: "notes", subview: "recent" },
+    });
+  });
+
+  test("does not promote failed or malformed terminal action results", async () => {
+    const fetchImpl = (async () =>
+      sseResponse([
+        `event: done\ndata: ${JSON.stringify({
+          actionResults: [
+            {
+              actionName: "VIEWS",
+              success: false,
+              values: { mode: "show", viewId: "notes" },
+            },
+            {
+              actionName: "DELETE_EVERYTHING",
+              success: true,
+              values: { mode: "show", viewId: "settings" },
+            },
+          ],
+        })}\n\n`,
+      ])) as unknown as typeof fetch;
+
+    const result = await streamElizaConversation(
+      {
+        endpoint: "http://x",
+        authorization: "Bearer s",
+        model: "m",
+        transcript: "open notes",
+        agentId: "agent-1",
+        conversationId: "conv-1",
+        traceId: "trace-no-navigation",
+        signal: new AbortController().signal,
+        fetchImpl,
+      },
+      () => {},
+    );
+
+    expect(result).toEqual({ completed: true, aborted: false });
+  });
+
   test("surfaces canonical agent stream errors instead of completing an empty turn", async () => {
     const fetchImpl = (async () =>
       sseResponse([

@@ -332,7 +332,10 @@ function makeSseFetch(
   }) as unknown as typeof fetch;
 }
 
-function makeCanonicalChunkFetch(deltas: string[]): typeof fetch {
+function makeCanonicalChunkFetch(
+  deltas: string[],
+  donePayload: Record<string, unknown> = {},
+): typeof fetch {
   return (async () => {
     const encoder = new TextEncoder();
     const body = new ReadableStream<Uint8Array>({
@@ -344,7 +347,11 @@ function makeCanonicalChunkFetch(deltas: string[]): typeof fetch {
             ),
           );
         }
-        controller.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
+        controller.enqueue(
+          encoder.encode(
+            `event: done\ndata: ${JSON.stringify(donePayload)}\n\n`,
+          ),
+        );
         controller.close();
       },
     });
@@ -603,6 +610,44 @@ describe("voice-session WS lifecycle", () => {
     expect(client.audioFrames.length).toBeGreaterThan(0);
     expect(client.controlTypes()).toContain("speaking_end");
     expect(client.controlTypes()).toContain("usage");
+  });
+
+  test("forwards a successful terminal VIEWS handoff without exposing arbitrary actions", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeCanonicalChunkFetch(["Opened Notes."], {
+        actionResults: [
+          {
+            actionName: "VIEWS",
+            success: true,
+            values: { mode: "show", viewId: "notes" },
+          },
+          {
+            actionName: "UNRELATED_ACTION",
+            success: true,
+            values: { secret: "not-forwarded" },
+          },
+        ],
+      }),
+    });
+
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "open notes");
+    await flush();
+    await flush();
+
+    expect(
+      client.controlFrames.filter((frame) => frame.t === "navigate_view"),
+    ).toEqual([
+      {
+        t: "navigate_view",
+        viewId: "notes",
+        traceId: expect.any(String),
+      },
+    ]);
+    expect(JSON.stringify(client.controlFrames)).not.toContain("not-forwarded");
   });
 
   test("prewarms Eliza tenancy context when the live session starts", async () => {

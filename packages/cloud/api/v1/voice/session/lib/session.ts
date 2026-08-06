@@ -656,6 +656,17 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         return;
       }
 
+      if (result.viewHandoff) {
+        this.send({
+          t: "navigate_view",
+          viewId: result.viewHandoff.viewId,
+          ...(result.viewHandoff.subview
+            ? { subview: result.viewHandoff.subview }
+            : {}),
+          traceId,
+        });
+      }
+
       const tail = phrase.flush();
       if (tail) {
         // A trailing phrase remains. Flush any held phrase (continue:true), then
