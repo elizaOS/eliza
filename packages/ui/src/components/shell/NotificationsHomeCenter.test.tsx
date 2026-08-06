@@ -55,6 +55,7 @@ import {
   notificationGroupKey,
   notificationGroupLabel,
   notificationPullRevealProgress,
+  notificationScrollFadeEdges,
   orderDashboardNotifications,
   PULL_COMMIT_PX,
   STACK_FOLD_SETTLE_MS,
@@ -67,6 +68,39 @@ import {
 
 let seq = 0;
 let restoreMatchMediaForTest: (() => void) | null = null;
+
+describe("notificationScrollFadeEdges", () => {
+  it("reports only edges with hidden content across the full scroll range", () => {
+    expect(
+      notificationScrollFadeEdges({
+        scrollTop: 0,
+        scrollHeight: 100,
+        clientHeight: 100,
+      }),
+    ).toEqual({ overflow: false, top: false, bottom: false });
+    expect(
+      notificationScrollFadeEdges({
+        scrollTop: 0,
+        scrollHeight: 300,
+        clientHeight: 100,
+      }),
+    ).toEqual({ overflow: true, top: false, bottom: true });
+    expect(
+      notificationScrollFadeEdges({
+        scrollTop: 80,
+        scrollHeight: 300,
+        clientHeight: 100,
+      }),
+    ).toEqual({ overflow: true, top: true, bottom: true });
+    expect(
+      notificationScrollFadeEdges({
+        scrollTop: 199.5,
+        scrollHeight: 300,
+        clientHeight: 100,
+      }),
+    ).toEqual({ overflow: true, top: true, bottom: false });
+  });
+});
 
 function staticMediaQuery(media: string, matches: boolean): MediaQueryList {
   return {
@@ -655,6 +689,42 @@ describe("NotificationsHomeCenter", () => {
 
     expect(screen.queryByTestId("notifications-unavailable")).toBeNull();
     expect(screen.queryByTestId("notifications-empty")).not.toBeNull();
+  });
+
+  it("applies directional fades only where notification content is hidden", () => {
+    __ingestNotificationForTests(makeNotification());
+    render(<NotificationsHomeCenter />);
+    const list = screen.getByTestId("home-notification-list");
+    Object.defineProperties(list, {
+      clientHeight: { configurable: true, value: 100 },
+      scrollHeight: { configurable: true, value: 300 },
+    });
+
+    list.scrollTop = 0;
+    fireEvent.scroll(list);
+    expect(list.hasAttribute("data-scroll-overflow")).toBe(true);
+    expect(list.hasAttribute("data-scroll-fade-top")).toBe(false);
+    expect(list.hasAttribute("data-scroll-fade-bottom")).toBe(true);
+    expect(list.className).not.toContain("scroll-fade");
+
+    list.scrollTop = 80;
+    fireEvent.scroll(list);
+    expect(list.hasAttribute("data-scroll-fade-top")).toBe(true);
+    expect(list.hasAttribute("data-scroll-fade-bottom")).toBe(true);
+
+    list.scrollTop = 200;
+    fireEvent.scroll(list);
+    expect(list.hasAttribute("data-scroll-fade-top")).toBe(true);
+    expect(list.hasAttribute("data-scroll-fade-bottom")).toBe(false);
+
+    Object.defineProperty(list, "scrollHeight", {
+      configurable: true,
+      value: 100,
+    });
+    fireEvent.scroll(list);
+    expect(list.hasAttribute("data-scroll-overflow")).toBe(false);
+    expect(list.hasAttribute("data-scroll-fade-top")).toBe(false);
+    expect(list.hasAttribute("data-scroll-fade-bottom")).toBe(false);
   });
 
   it("reveals a subtle empty status through the normal pull gesture", () => {
