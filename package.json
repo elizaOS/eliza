@@ -76,7 +76,7 @@
     "dev:views": "node packages/scripts/dev-views.mjs",
     "format": "bun run check:biome-version && node packages/scripts/run-turbo.mjs run format",
     "format:check": "bun run check:biome-version && node packages/scripts/run-turbo.mjs run format:check",
-    "clean": "node packages/scripts/run-turbo.mjs run clean --concurrency=100% && node packages/scripts/rm-path-recursive.mjs dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo bun.lock bun.lockb .eliza .elizadb",
+    "clean": "node packages/scripts/run-turbo.mjs run clean --concurrency=100% && node packages/scripts/rm-path-recursive.mjs dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo bun.lock bun.lockb .eliza .elizadb .elizaos",
     "reset": "bun run clean && bun install && bun run build",
     "cache:prune": "node packages/scripts/prune-turbo-cache.mjs",
     "test:dev-startup": "node packages/app-core/scripts/dev-startup-smoke.mjs",

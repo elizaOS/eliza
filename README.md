@@ -142,12 +142,27 @@ against a real runtime and, when configured, live models.
 
 ## Repository map
 
+The full top-level inventory—every root path with purpose, category
+(maintained source, tooling/CI, local runtime state, agent/local content,
+generated/cache, third-party/vendor), and dual-root ownership rules—lives in
+the repository guide: **[AGENTS.md](AGENTS.md#repository-map)** (identical
+`CLAUDE.md`). Start there before treating a directory as product source.
+
 ```text
 packages/        runtime, hosts, UI, CLI, docs, cloud, native code, and tooling
 plugins/         first-party model, connector, domain, app, and device plugins
-scripts/         repository-wide checks, test orchestration, and release tools
+packages/scripts monorepo automation (canonical clean, turbo, audits, test lanes)
+scripts/         root-stable CI and agent gates (not a second packages/scripts)
 patches/         dependency patches applied during installation
+upstreams/       third-party checkouts and patches only
+.github/         Actions, templates, CODEOWNERS
 ```
+
+Local runtime state (`.eliza`, `.elizadb`, `.elizaos`, `.logs`, `.smithers`,
+`.turbo`, `node_modules`) and machine-local agent trees (`skills/`,
+`knowledge/`) are gitignored non-source. Agent persona roots (`dna/`, `hedge/`,
+`hedge-dna/`) and the nested scaffold `my-project/` are agent/local content, not
+published workspaces.
 
 Every maintained package or plugin should explain its public surface, scripts,
 configuration, and local constraints in its own `README.md` and paired

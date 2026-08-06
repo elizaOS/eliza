@@ -144,6 +144,13 @@ with `ELIZA_DEV_SERVER_REGISTRY`. See
 
 ## Repository map
 
+Top-level paths are categorized so tools and agents do not treat local state,
+machine-local agent content, or vendor trees as first-party product source.
+Categories: **maintained source**, **tooling/CI**, **local runtime state**,
+**agent/local content**, **generated/cache**, **third-party/vendor**.
+
+### First-party workspaces (maintained source)
+
 ```text
 packages/
   core/             @elizaos/core: AgentRuntime, contracts, message loop, memory, models
@@ -157,7 +164,7 @@ packages/
   shared/           cross-package utilities, contracts, and brand assets
   logger/           structured logging package
   vault/            secrets and configuration storage adapters
-  skills/           bundled runtime skills and loading utilities
+  skills/           @elizaos/skills: bundled runtime skills and loading utilities (canonical)
   registry/         first-party and community plugin registry data and validation
   scenario-runner/  real-runtime scenario execution and report generation
   test/             repository-wide scenarios and test corpus
@@ -167,6 +174,7 @@ packages/
   training/         Eliza-1 training, evaluation, conversion, and release tooling
   cloud/            API, shared libraries, routing, SDK, infrastructure, tests, services
   native/           native runtimes, third-party dependencies, and C/C++ plugins
+  scripts/          monorepo automation: turbo wrappers, audits, test lanes, clean helpers
 
 plugins/
   plugin-<provider>/ model and inference providers
@@ -174,9 +182,106 @@ plugins/
   plugin-native-*/   platform and device bridges
   plugin-*/          domain capabilities, app views, storage, tools, and orchestration
 
-scripts/            repository-wide checks, CI helpers, evidence, security, and release tools
-patches/            dependency patches applied during installation
+patches/            dependency patches applied during installation (maintained source)
+.well-known/        public discovery files such as security.txt (maintained source)
 ```
+
+### Tooling and CI
+
+```text
+.github/            GitHub Actions, issue/PR templates, CODEOWNERS, and CI scripts
+scripts/            root-stable CI and agent gates (attribution, PR evidence, AI workflow audit)
+package.json        workspace root: scripts, workspaces globs, pinned Bun/Node
+plugins.json        first-party plugin inventory metadata
+bun.lock            lockfile for the Bun workspace install
+bunfig.toml         Bun test/runtime config (default)
+bunfig.live.toml    Bun config for live-model test lanes
+turbo.json          Turbo task graph and remote cache contract
+tsconfig.json       root TypeScript project references
+tsconfig.base.json  shared compiler options for packages
+tsconfig.build.template.json  template for package build tsconfigs
+biome.json          Biome formatter/linter config
+.biomeignore        Biome exclusion patterns
+knip.json           unused-export / dead-code analysis config
+lerna.json          residual lerna metadata (orchestration is Turbo)
+vitest.config.ts    root Vitest config entry
+.nvmrc              pinned Node version pin for nvm users
+.madgerc            dependency-graph (madge) config
+.gitattributes      line-ending and export-ignore rules
+.gitignore          ignore contract for state, cache, secrets, and local content
+.gitleaks.toml      secret-scan rules
+.gitleaksignore     secret-scan allowlist
+.gitmodules         declared git submodules (llama.cpp, electrobun, …)
+.dockerignore       Docker build context exclusions
+.env.test.example   example env for test lanes (safe to track)
+.env.clawd          example Clawd boot env for local monorepo skills (safe template)
+LICENSE             MIT license text
+README.md           human product/entry overview; points at this map
+CONTRIBUTING.md     contribution, evidence, and PR workflow
+WINDOWS.md          Windows-specific setup notes
+AGENTS.md           this guide (authoritative; pair with CLAUDE.md)
+CLAUDE.md           byte-identical copy of AGENTS.md
+```
+
+### Local runtime state (gitignored, non-source)
+
+These directories hold process, agent, and install state. They are not product
+source. `bun run clean` removes install/build caches and the primary Eliza state
+dirs (`.eliza`, `.elizadb`, plus `dist`, `.turbo`, `node_modules`, lockfile
+rebuild inputs). Do not commit secrets from `.env`.
+
+```text
+.eliza/             local Eliza agent/app state directory
+.elizadb/           local database files for agent/app persistence
+.elizaos/           cwd project runtime config and project-local skills
+.logs/              local process and integration log output
+.smithers/          local agent/tool execution scratch state
+.turbo/             Turbo task cache
+node_modules/       workspace install tree (do not document package contents)
+.env                local secrets and credentials (never commit values)
+```
+
+### Agent / local content (not first-party product packages)
+
+These roots may exist in a developer worktree for agent personas, research, or
+nested scaffolds. They are not npm workspaces and must not be treated as
+canonical product source. Machine-local trees (`skills/`, `knowledge/`) are
+gitignored so absolute symlinks and nested clones do not ship.
+
+```text
+skills/             machine-local agent skill installs (optional; not @elizaos/skills)
+knowledge/          machine-local research corpus / nested clone (optional)
+dna/                agent identity and soul markdown for local personas
+hedge/              hedge persona JSON bundle (local OpenClawd personas)
+hedge-dna/          hedge DNA character and soul-continuity materials
+my-project/         nested elizaOS scaffold example for local source-mode app work
+```
+
+### Third-party / vendor
+
+```text
+upstreams/          third-party checkouts and patch series (e.g. electrobun submodule)
+                    First-party product code stays in packages/ and plugins/.
+```
+
+### Ownership and interop (dual roots)
+
+- **skills:** Canonical shipped skills and the loader live in
+  `packages/skills/` (`@elizaos/skills`, including `packages/skills/skills/`).
+  Root `skills/` is only a machine-local agent skill workspace. Prefer
+  `ELIZAOS_BUNDLED_SKILLS_DIR` or the package resolver over inventing a second
+  bundle root.
+- **scripts:** Canonical monorepo automation lives in `packages/scripts/`
+  (invoked as `node packages/scripts/...` from root `package.json` and most CI).
+  Root `scripts/` is reserved for root-stable gates that GitHub workflows and
+  agents address as `scripts/...` (for example agent attribution and PR
+  evidence). Do not duplicate a tool into both trees.
+- **packages vs plugins:** `packages/` holds libraries, hosts, UI, CLI, cloud,
+  docs, and monorepo tooling packages. `plugins/` holds first-party `plugin-*`
+  Plugin packages. Plugins are not nested under `packages/`.
+- **upstreams vs first-party:** `upstreams/` holds vendor sources and patches
+  only. Integrate vendor behavior into first-party packages/plugins; do not
+  treat an upstream tree as the public `@elizaos/*` surface.
 
 Some directories are organizational roots rather than npm workspaces. Use the
 nearest manifest and local guide instead of inferring ownership from directory

@@ -752,11 +752,19 @@ ts_errors.log
 # Local runtime state and generated databases
 .eliza/
 .elizaos/
+.elizadb/
+.logs/
+.smithers/
 *.sqlite
 *.sqlite3
 *.db
 *.db-wal
 *.db-shm
+
+# Machine-local agent content (absolute skill symlinks, nested research clones).
+# Canonical shipped skills: packages/skills/. See AGENTS.md repository map.
+/skills/
+/knowledge/
 
 .prr/
 modelcontextprotocol/
