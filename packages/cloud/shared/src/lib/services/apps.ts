@@ -4,13 +4,13 @@
 
 import crypto from "crypto";
 import { type App, type AppUser, appsRepository, type NewApp } from "../../db/repositories/apps";
+import { inferenceAppMemoryCache } from "./inference-app-memory-cache";
 
 // Re-export the app row types so consumers (and tests) can import them from the
 // service module rather than reaching into the repository directly.
 export type { App, AppUser, NewApp } from "../../db/repositories/apps";
 
 import { cache } from "../cache/client";
-import { InMemoryLRUCache } from "../cache/in-memory-lru-cache";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { isAllowedOrigin } from "../security/origin-validation";
 import { logger } from "../utils/logger";
@@ -20,7 +20,6 @@ import { managedDomainsService } from "./managed-domains";
 const DEFAULT_MAX_APPS_PER_ORG = 25;
 const appByIdHydrations = new Map<string, Promise<void>>();
 const appByIdHydrationGeneration = new Map<string, number>();
-const inferenceAppMemoryCache = new InMemoryLRUCache<App>(100, 30_000);
 
 export interface AppCacheExecutionContext {
   waitUntil(promise: Promise<unknown>): void;
