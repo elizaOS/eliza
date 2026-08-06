@@ -80,6 +80,7 @@ type GatewayTargetDecision =
       skipped:
         | "gateway_target_mismatch"
         | "gateway_target_unverified"
+        | "gateway_self_message"
         | "outbound_message"
         | "unsupported_event";
       targetIdentity?: string;
@@ -449,15 +450,15 @@ async function gatewayTargetDecision(
     payload.data.handle?.address?.trim() ??
     payload.data.chats?.[0]?.chatIdentifier?.trim();
   if (payload.data.isFromMe) {
-    if (
-      loopbackNormalizationEnabled &&
-      peerAddress &&
-      normalizeMessagingAddress(peerAddress) ===
-        normalizeMessagingAddress(gatewayPhoneNumber)
-    ) {
-      return { accepted: true };
-    }
     return { accepted: false, skipped: "outbound_message" };
+  }
+
+  if (
+    peerAddress &&
+    normalizeMessagingAddress(peerAddress) ===
+      normalizeMessagingAddress(gatewayPhoneNumber)
+  ) {
+    return { accepted: false, skipped: "gateway_self_message" };
   }
 
   const targetIdentity = await readMessageTargetIdentity(payload);
@@ -1409,6 +1410,17 @@ async function sendBlueBubblesReply(
   text: string,
   method: BlueBubblesSendMethod = blueBubblesSendMethod,
 ): Promise<void> {
+  const recipient = recipientFromChatGuid(chatGuid);
+  if (
+    recipient &&
+    normalizeMessagingAddress(recipient) ===
+      normalizeMessagingAddress(gatewayPhoneNumber)
+  ) {
+    throw new Error(
+      "Refusing to send a BlueBubbles reply to the gateway itself",
+    );
+  }
+
   if (method === "shortcuts") {
     await sendShortcutsReply(chatGuid, text);
     return;

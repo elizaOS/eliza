@@ -259,6 +259,39 @@ describe("registered BlueBubbles local bridge E2E", () => {
     expect(cloudRequests).toHaveLength(0);
     expect(blueBubblesSends).toHaveLength(0);
 
+    const gatewaySelfMessageResponse = await fetch(
+      `${relayUrl}/webhooks/bluebubbles`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          type: "new-message",
+          data: {
+            guid: "gateway-self-message",
+            text: "message sent from the gateway to itself",
+            isFromMe: false,
+            handle: { address: "+14155550123", service: "iMessage" },
+            chats: [
+              {
+                guid: "iMessage;-;+14155550123",
+                chatIdentifier: "+14155550123",
+                lastAddressedHandle: "+14155550123",
+              },
+            ],
+          },
+        }),
+      },
+    );
+    expect(gatewaySelfMessageResponse.status).toBe(200);
+    await expect(gatewaySelfMessageResponse.json()).resolves.toMatchObject({
+      success: true,
+      skipped: "gateway_self_message",
+      replied: false,
+      replyQueued: false,
+    });
+    expect(cloudRequests).toHaveLength(0);
+    expect(blueBubblesSends).toHaveLength(0);
+
     const response = await fetch(`${relayUrl}/webhooks/bluebubbles`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -368,6 +401,24 @@ describe("registered BlueBubbles local bridge E2E", () => {
       message: "direct validation",
       method: "apple-script",
     });
+
+    const selfValidationResponse = await fetch(
+      `${relayUrl}/outbound/validate`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          recipient: "+14155550123",
+          message: "must never send",
+          method: "apple-script",
+        }),
+      },
+    );
+    expect(selfValidationResponse.status).toBe(500);
+    await expect(selfValidationResponse.json()).resolves.toMatchObject({
+      error: "Refusing to send a BlueBubbles reply to the gateway itself",
+    });
+    expect(blueBubblesSends).toHaveLength(2);
 
     const retryPayload = {
       type: "new-message",
@@ -481,32 +532,17 @@ describe("registered BlueBubbles local bridge E2E", () => {
     expect(crossNumberInbound.status).toBe(200);
     await expect(crossNumberInbound.json()).resolves.toMatchObject({
       success: true,
-      handled: true,
-      replied: true,
+      skipped: "outbound_message",
+      replied: false,
       replyQueued: false,
     });
-    expect(cloudRequests.at(-1)?.body).toMatchObject({
-      data: {
-        guid: "cross-number-inbound",
-        isFromMe: false,
-        handle: { address: "+14155550998" },
-        chats: [
-          {
-            guid: "iMessage;-;+14155550998",
-            chatIdentifier: "+14155550998",
-          },
-        ],
-        metadata: {
-          loopbackNormalized: true,
-          originalIsFromMe: true,
-          originalRecipient: "+14155550123",
-        },
-      },
-    });
-    expect(blueBubblesSends.at(-1)).toMatchObject({
-      chatGuid: "iMessage;-;+14155550998",
-      message: "verified agent response",
-    });
+    expect(
+      cloudRequests.filter(
+        (entry) =>
+          (entry.body.data as Record<string, unknown> | undefined)?.guid ===
+          "cross-number-inbound",
+      ),
+    ).toHaveLength(0);
 
     const crossNumberEvents = await fetch(
       `${relayUrl}/inbound-events?marker=same%20Apple%20Account`,
@@ -516,11 +552,11 @@ describe("registered BlueBubbles local bridge E2E", () => {
       events: [
         {
           messageId: "cross-number-inbound",
-          sender: "+14155550998",
-          isFromMe: false,
-          loopbackNormalized: true,
-          handled: true,
-          replied: true,
+          sender: "+14155550123",
+          isFromMe: true,
+          loopbackNormalized: false,
+          skipped: "outbound_message",
+          replied: false,
           replyQueued: false,
         },
       ],
