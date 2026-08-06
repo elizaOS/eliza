@@ -38,6 +38,13 @@ function makeTranscript(overrides: Partial<Transcript> = {}): Transcript {
 		scope: "owner-private",
 		status: "ready",
 		speakerCount: 1,
+		metadata: {
+			consent: { state: "granted" },
+			participants: [
+				{ id: "alice", displayName: "Alice", entityId: VIEWER },
+				{ id: "carol", displayName: "Carol", entityId: STRANGER },
+			],
+		},
 		segments: [
 			{
 				id: "s1",
@@ -365,6 +372,105 @@ describe("transcript permission actions", () => {
 		expect(result).toMatchObject({
 			success: false,
 			error: "SHARE_TRANSCRIPT_FAILED",
+		});
+		const metadata = runtime.rows.get(TRANSCRIPT_ID)?.metadata as
+			| Record<string, unknown>
+			| undefined;
+		expect(metadata?.share).toBeUndefined();
+		expect(metadata?.redactedVariantId).toBeUndefined();
+		expect(runtime.rows.size).toBe(1);
+	});
+
+	it("lets an admin redact for the persisted room roster while privileged viewers retain full access", async () => {
+		const runtime = fakeRuntime();
+		const store = await seed(runtime);
+
+		const result = await shareTranscriptAction.handler(
+			runtime,
+			message(ADMIN),
+			undefined,
+			{
+				parameters: {
+					transcriptId: TRANSCRIPT_ID,
+					redactForAll: true,
+					mode: "redacted",
+				},
+			},
+		);
+
+		expect(result).toMatchObject({
+			success: true,
+			data: {
+				actionName: "SHARE_TRANSCRIPT",
+				transcriptId: TRANSCRIPT_ID,
+				roomId: ROOM,
+				entityCount: 2,
+				redactForAll: true,
+				mode: "redacted",
+			},
+		});
+		for (const entityId of [VIEWER, STRANGER]) {
+			const participantView = await store.get(TRANSCRIPT_ID, {
+				requesterEntityId: entityId,
+				role: "USER",
+			});
+			expect(participantView?.redacted).toBe(true);
+			expect(participantView?.segments[0]?.text).not.toContain(
+				"bob@example.com",
+			);
+		}
+		const adminView = await store.get(TRANSCRIPT_ID, {
+			requesterEntityId: ADMIN,
+			role: "ADMIN",
+		});
+		expect(adminView?.redacted).toBeUndefined();
+		expect(adminView?.segments[0]?.text).toContain("bob@example.com");
+		expect(runtime.rows.get(TRANSCRIPT_ID)?.metadata).toMatchObject({
+			share: {
+				roomSnapshot: {
+					roomId: ROOM,
+					entityIds: [VIEWER, STRANGER],
+				},
+				grants: [
+					expect.objectContaining({ entityId: VIEWER, mode: "redacted" }),
+					expect.objectContaining({ entityId: STRANGER, mode: "redacted" }),
+				],
+			},
+		});
+	});
+
+	it("fails closed before variant or grant writes when consent is not affirmative", async () => {
+		const runtime = fakeRuntime();
+		const store = new TranscriptStore(runtime);
+		await store.create({
+			roomId: ROOM,
+			entityId: OWNER,
+			transcript: makeTranscript({
+				metadata: {
+					consent: { state: "revoked" },
+					participants: [
+						{ id: "alice", displayName: "Alice", entityId: VIEWER },
+					],
+				},
+			}),
+		});
+
+		const result = await shareTranscriptAction.handler(
+			runtime,
+			message(ADMIN),
+			undefined,
+			{
+				parameters: {
+					transcriptId: TRANSCRIPT_ID,
+					entityId: VIEWER,
+					mode: "redacted",
+				},
+			},
+		);
+
+		expect(result).toMatchObject({
+			success: false,
+			error: "SHARE_TRANSCRIPT_CONSENT_REQUIRED",
 		});
 		const metadata = runtime.rows.get(TRANSCRIPT_ID)?.metadata as
 			| Record<string, unknown>

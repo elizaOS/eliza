@@ -45,6 +45,7 @@ import type {
 } from "@elizaos/shared";
 import {
   type Transcript,
+  type TranscriptConsentState,
   type TranscriptSegment,
   transcriptDurationMs,
   transcriptKnowledgeFragments,
@@ -100,6 +101,8 @@ export interface StartMeetingTranscriptInput {
   platform: MeetingPlatform;
   meetingUrl: string;
   nativeMeetingId: string;
+  /** Capture-time consent decision; callers must never omit or infer it later. */
+  consentState: TranscriptConsentState;
 }
 
 export interface FinalizeMeetingTranscriptInput {
@@ -225,6 +228,7 @@ export class MeetingTranscriptWriter {
         sessionId: input.sessionId,
         participants: [],
         capture: { mode: "bot" },
+        consent: { state: input.consentState },
         policy: { state: "allowed" },
         permission: { state: "not_required" },
         retention: {

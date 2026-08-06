@@ -122,6 +122,7 @@ describe("buildTranscriptFromRequest", () => {
 		expect(t.createdAt).toBe(1000);
 		expect(t.endedAt).toBe(9000);
 		expect(t.title).toContain("Recording");
+		expect(t.metadata).toEqual({ consent: { state: "unknown" } });
 	});
 
 	it("preserves a validated canonical meeting artifact in metadata", () => {
@@ -137,6 +138,7 @@ describe("buildTranscriptFromRequest", () => {
 		);
 
 		expect(t.metadata).toEqual({
+			consent: { state: "granted" },
 			source: "test",
 			meetingArtifact,
 		});
@@ -583,6 +585,13 @@ describe("transcripts routes", () => {
 					roomId: ROOM,
 					entityId: ENTITY,
 					scope: "owner-private",
+					metadata: {
+						consent: { state: "granted" },
+						participants: [
+							{ id: "other", displayName: "Bob", entityId: OTHER_ENTITY },
+							{ id: "third", displayName: "Carol", entityId: THIRD_ENTITY },
+						],
+					},
 					segments: [
 						{
 							id: "s1",
@@ -656,6 +665,40 @@ describe("transcripts routes", () => {
 			(fullViewerGet.body as { transcript: { redacted?: true } }).transcript
 				.redacted,
 		).toBeUndefined();
+		const fullViewerReshare = await share(
+			ctx({
+				runtime: runtime as never,
+				params: { id: transcriptId },
+				accessContext: access(THIRD_ENTITY),
+				body: { entityId: OTHER_ENTITY, mode: "redacted" },
+			}),
+		);
+		expect(fullViewerReshare.status).toBe(403);
+		const fullViewerEdit = await update(
+			ctx({
+				runtime: runtime as never,
+				params: { id: transcriptId },
+				accessContext: access(THIRD_ENTITY),
+				body: { title: "unauthorized edit" },
+			}),
+		);
+		expect(fullViewerEdit.status).toBe(403);
+		const fullViewerRevoke = await revoke(
+			ctx({
+				runtime: runtime as never,
+				params: { id: transcriptId, entityId: OTHER_ENTITY },
+				accessContext: access(THIRD_ENTITY),
+			}),
+		);
+		expect(fullViewerRevoke.status).toBe(403);
+		const fullViewerDelete = await del(
+			ctx({
+				runtime: runtime as never,
+				params: { id: transcriptId },
+				accessContext: access(THIRD_ENTITY),
+			}),
+		);
+		expect(fullViewerDelete.status).toBe(403);
 
 		const viewerGet = await get(
 			ctx({
@@ -726,5 +769,101 @@ describe("transcripts routes", () => {
 			}),
 		);
 		expect(hidden.status).toBe(404);
+	});
+
+	it("snapshots the room roster for admin redact-for-all sharing", async () => {
+		const { rows, runtime } = fakeRuntime();
+		const post = handlerFor("POST", "/api/transcripts");
+		const share = handlerFor("POST", "/api/transcripts/:id/share");
+		const get = handlerFor("GET", "/api/transcripts/:id");
+		const created = await post(
+			ctx({
+				runtime: runtime as never,
+				body: {
+					roomId: ROOM,
+					entityId: ENTITY,
+					segments,
+					metadata: {
+						consent: { state: "granted" },
+						participants: [
+							{ id: "other", displayName: "Alice", entityId: OTHER_ENTITY },
+							{ id: "third", displayName: "Bob", entityId: THIRD_ENTITY },
+						],
+					},
+				},
+			}),
+		);
+		const transcriptId = (created.body as { transcript: { id: string } })
+			.transcript.id;
+
+		const shared = await share(
+			ctx({
+				runtime: runtime as never,
+				params: { id: transcriptId },
+				accessContext: adminAccess(ENTITY),
+				body: { redactForAll: true, mode: "redacted" },
+			}),
+		);
+		expect(shared).toMatchObject({
+			status: 200,
+			body: {
+				roomId: ROOM,
+				entityCount: 2,
+				redactForAll: true,
+				mode: "redacted",
+			},
+		});
+		expect(rows.get(transcriptId)?.metadata).toMatchObject({
+			share: {
+				roomSnapshot: {
+					roomId: ROOM,
+					entityIds: [OTHER_ENTITY, THIRD_ENTITY],
+				},
+			},
+		});
+		for (const entityId of [OTHER_ENTITY, THIRD_ENTITY]) {
+			const response = await get(
+				ctx({
+					runtime: runtime as never,
+					params: { id: transcriptId },
+					accessContext: access(entityId),
+				}),
+			);
+			expect(response.status).toBe(200);
+			expect(
+				(response.body as { transcript: { redacted?: true } }).transcript
+					.redacted,
+			).toBe(true);
+		}
+	});
+
+	it("rejects sharing an unknown-consent transcript before writing a variant or grant", async () => {
+		const { rows, runtime } = fakeRuntime();
+		const post = handlerFor("POST", "/api/transcripts");
+		const share = handlerFor("POST", "/api/transcripts/:id/share");
+		const created = await post(
+			ctx({ runtime: runtime as never, body: { roomId: ROOM, segments } }),
+		);
+		const transcriptId = (created.body as { transcript: { id: string } })
+			.transcript.id;
+
+		const response = await share(
+			ctx({
+				runtime: runtime as never,
+				params: { id: transcriptId },
+				accessContext: adminAccess(ENTITY),
+				body: { entityId: OTHER_ENTITY, mode: "redacted" },
+			}),
+		);
+		expect(response).toMatchObject({
+			status: 409,
+			body: { code: "TRANSCRIPT_CONSENT_NOT_SHAREABLE" },
+		});
+		const metadata = rows.get(transcriptId)?.metadata as
+			| Record<string, unknown>
+			| undefined;
+		expect(metadata?.share).toBeUndefined();
+		expect(metadata?.redactedVariantId).toBeUndefined();
+		expect(rows.size).toBe(1);
 	});
 });

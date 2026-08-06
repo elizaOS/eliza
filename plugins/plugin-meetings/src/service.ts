@@ -376,6 +376,7 @@ export class MeetingService extends Service {
         platform: parsed.platform,
         meetingUrl: parsed.meetingUrl,
         nativeMeetingId: parsed.nativeMeetingId,
+        consentState: "not_required",
       });
     } catch (err) {
       try {
@@ -535,6 +536,10 @@ export class MeetingService extends Service {
       nativeMeetingId:
         imported.artifact.meeting.nativeMeetingId ??
         imported.artifact.meeting.id,
+      consentState:
+        imported.artifact.meeting.consent.state === "redacted"
+          ? "unknown"
+          : imported.artifact.meeting.consent.state,
     });
     const segments = meetingArtifactToTranscriptSegments(imported.artifact);
     const retainedAudio = imported.artifact.media.find((media) =>

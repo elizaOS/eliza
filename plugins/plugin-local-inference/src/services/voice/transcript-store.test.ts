@@ -19,6 +19,7 @@ function makeTranscript(over: Partial<Transcript> = {}): Transcript {
 		scope: "owner-private",
 		status: "ready",
 		speakerCount: 1,
+		metadata: { consent: { state: "not_required" } },
 		segments: [
 			{
 				id: "s1",
@@ -377,7 +378,14 @@ describe("TranscriptStore", () => {
 				audioUrl: "/api/media/original.wav",
 				audioContentType: "audio/wav",
 				knowledgeDocumentId: "knowledge-original",
-				metadata: { platform: "meet", sensitiveJoinUrl: "https://join" },
+				metadata: {
+					platform: "meet",
+					sensitiveJoinUrl: "https://join",
+					consent: { state: "granted" },
+					participants: [
+						{ id: "alice", displayName: "Alice", entityId: VIEWER },
+					],
+				},
 				segments: [
 					{
 						id: "s1",
@@ -385,7 +393,7 @@ describe("TranscriptStore", () => {
 						speakerEntityId: VIEWER,
 						startMs: 0,
 						endMs: 2000,
-						text: "Email bob@example.com and use SSN 123-45-6789.",
+						text: "Alice should email bob@example.com and use SSN 123-45-6789.",
 						words: [
 							{
 								text: "bob@example.com",
@@ -416,6 +424,7 @@ describe("TranscriptStore", () => {
 			});
 
 			expect(second.id).toBe(first.id);
+			expect(second.segments).toEqual(first.segments);
 			expect(first.audioUrl).toBeUndefined();
 			expect(first.audioContentType).toBeUndefined();
 			expect(first.knowledgeDocumentId).toBeUndefined();
@@ -430,6 +439,8 @@ describe("TranscriptStore", () => {
 			expect(first.segments[0]?.text).toContain("[SSN]");
 			expect(first.segments[0]?.text).not.toContain("bob@example.com");
 			expect(first.segments[0]?.text).not.toContain("123-45-6789");
+			expect(first.segments[0]?.text).not.toContain("Alice");
+			expect(first.segments[0]?.speakerLabel).not.toBe("Alice");
 			expect(first.segments[0]?.speakerEntityId).toBeUndefined();
 			expect(first.segments[0]?.words[0]?.text).toBe("[EMAIL]");
 
@@ -557,6 +568,76 @@ describe("TranscriptStore", () => {
 					},
 				],
 			});
+		});
+
+		it("captures a room snapshot and grants only its resolved roster", async () => {
+			const rt = fakeRuntime();
+			const store = new TranscriptStore(rt);
+			await store.create({
+				roomId: ROOM,
+				entityId: ENTITY,
+				transcript: makeTranscript({ id: ORIGINAL_ID }),
+			});
+
+			await store.shareRoomSnapshot({
+				transcriptId: ORIGINAL_ID as UUID,
+				roomId: ROOM,
+				entityIds: [VIEWER, STRANGER, VIEWER],
+				mode: "redacted",
+				grantedBy: ENTITY,
+				grantedAtMs: 6000,
+			});
+
+			const row = rt.rows.get(ORIGINAL_ID) as Memory;
+			expect((row.metadata as Record<string, unknown>).share).toEqual({
+				grants: [
+					{
+						entityId: VIEWER,
+						mode: "redacted",
+						grantedBy: ENTITY,
+						grantedAtMs: 6000,
+					},
+					{
+						entityId: STRANGER,
+						mode: "redacted",
+						grantedBy: ENTITY,
+						grantedAtMs: 6000,
+					},
+				],
+				roomSnapshot: {
+					roomId: ROOM,
+					entityIds: [VIEWER, STRANGER],
+					atMs: 6000,
+				},
+			});
+		});
+
+		it("rejects share writes for missing, denied, or revoked consent", async () => {
+			for (const state of [undefined, "denied", "revoked"] as const) {
+				const rt = fakeRuntime();
+				const store = new TranscriptStore(rt);
+				await store.create({
+					roomId: ROOM,
+					entityId: ENTITY,
+					transcript: makeTranscript({
+						id: ORIGINAL_ID,
+						metadata: state ? { consent: { state } } : {},
+					}),
+				});
+				await expect(
+					store.share({
+						transcriptId: ORIGINAL_ID as UUID,
+						entityId: VIEWER,
+						mode: "full",
+					}),
+				).rejects.toMatchObject({
+					code: "TRANSCRIPT_CONSENT_NOT_SHAREABLE",
+				});
+				const metadata = rt.rows.get(ORIGINAL_ID)?.metadata as
+					| Record<string, unknown>
+					| undefined;
+				expect(metadata?.share).toBeUndefined();
+			}
 		});
 
 		it("refuses to attach grants to a redacted variant row", async () => {

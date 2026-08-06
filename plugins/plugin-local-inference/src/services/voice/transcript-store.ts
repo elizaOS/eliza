@@ -14,24 +14,33 @@
 import {
 	type AccessContext,
 	type ArtifactDisclosure,
+	type ArtifactRoomSnapshot,
 	type ArtifactShareGrant,
 	type ArtifactShareGrantMode,
+	CompositeEntityRecognizer,
 	detectPii,
+	ElizaError,
+	GazetteerEntityRecognizer,
 	type JsonObject,
 	type Memory,
 	type MemoryMetadata,
-	parseArtifactShareGrants,
+	type PiiEntityRecognizer,
+	PseudonymSession,
+	parseArtifactShareMetadata,
+	RegexEntityRecognizer,
 	resolveArtifactDisclosure,
 	stringToUuid,
 	type UUID,
 } from "@elizaos/core";
 import type {
 	Transcript,
+	TranscriptConsentState,
 	TranscriptSummary,
 } from "@elizaos/shared/transcripts";
 import {
 	normalizeTranscriptScope,
 	summarizeTranscript,
+	transcriptCapturePrivacyState,
 	transcriptPreview,
 } from "@elizaos/shared/transcripts";
 
@@ -81,6 +90,8 @@ export interface CreateRedactedTranscriptVariantInput {
 	nowMs?: number;
 	/** Verified redacted media URL; absent means the variant withholds audio. */
 	redactedAudioUrl?: string;
+	/** Optional runtime/model recognizer composed with deterministic local guards. */
+	recognizer?: PiiEntityRecognizer;
 }
 
 export interface ShareTranscriptGrantInput {
@@ -94,6 +105,15 @@ export interface ShareTranscriptGrantInput {
 export interface RevokeTranscriptGrantInput {
 	transcriptId: UUID;
 	entityId: UUID;
+}
+
+export interface ShareTranscriptRoomSnapshotInput {
+	transcriptId: UUID;
+	roomId: UUID;
+	entityIds: readonly UUID[];
+	mode: ArtifactShareGrantMode;
+	grantedBy?: UUID;
+	grantedAtMs?: number;
 }
 
 /** Pull the stored {@link Transcript} back out of a memory row (parses the
@@ -132,10 +152,32 @@ export function transcriptRowDisclosure(
 		{
 			scope: normalizeTranscriptScope(transcript.scope),
 			scopedEntityId,
-			grants: parseArtifactShareGrants(metadata),
+			grants: parseArtifactShareMetadata(metadata).grants,
 		},
 		accessContext,
 		agentId,
+	);
+}
+
+/** Consent state accepted by every transcript-sharing write path. */
+export function transcriptConsentAllowsSharing(
+	transcript: Transcript,
+): boolean {
+	const state = transcriptCapturePrivacyState(transcript).consentState;
+	return state === "granted" || state === "not_required";
+}
+
+/** Fail closed when capture did not persist an affirmative sharing state. */
+function assertTranscriptConsentAllowsSharing(transcript: Transcript): void {
+	if (transcriptConsentAllowsSharing(transcript)) return;
+	const state: TranscriptConsentState =
+		transcriptCapturePrivacyState(transcript).consentState ?? "unknown";
+	throw new ElizaError(
+		`transcript consent state ${state} does not permit sharing`,
+		{
+			code: "TRANSCRIPT_CONSENT_NOT_SHAREABLE",
+			context: { transcriptId: transcript.id, consentState: state },
+		},
 	);
 }
 
@@ -194,19 +236,75 @@ function redactedText(text: string): string {
 	return out;
 }
 
-function redactTranscript(
+function transcriptRosterEntries(
+	transcript: Transcript,
+): Array<{ kind: string; value: string }> {
+	const participants = transcript.metadata?.participants;
+	if (!Array.isArray(participants)) return [];
+	const names = new Set<string>();
+	for (const participant of participants) {
+		if (!participant || typeof participant !== "object") continue;
+		const displayName = (participant as { displayName?: unknown }).displayName;
+		if (typeof displayName !== "string" || !displayName.trim()) continue;
+		names.add(displayName.trim());
+	}
+	return [...names].map((value) => ({ kind: "person", value }));
+}
+
+/**
+ * Compose the transcript redactor's deterministic structured-PII and roster
+ * recognizers with the optional local model recognizer supplied by the runtime.
+ */
+export function transcriptPiiRecognizer(
+	transcript: Transcript,
+	supplemental?: PiiEntityRecognizer,
+): PiiEntityRecognizer {
+	const recognizers: PiiEntityRecognizer[] = [new RegexEntityRecognizer()];
+	const roster = transcriptRosterEntries(transcript);
+	if (roster.length > 0) {
+		recognizers.push(
+			new GazetteerEntityRecognizer(roster, { name: "transcript-roster" }),
+		);
+	}
+	if (supplemental) recognizers.push(supplemental);
+	return new CompositeEntityRecognizer(recognizers);
+}
+
+function transcriptTextCorpus(transcript: Transcript): string {
+	return [
+		transcript.title,
+		...transcript.segments.flatMap((segment) => [
+			segment.speakerLabel ?? "",
+			segment.text,
+			...segment.words.map((word) => word.text),
+		]),
+	].join("\n");
+}
+
+async function redactTranscript(
 	original: Transcript,
 	redactedAudioUrl?: string,
-): Transcript {
+	seed?: string,
+	supplementalRecognizer?: PiiEntityRecognizer,
+): Promise<Transcript> {
+	const pseudonyms = new PseudonymSession({
+		salt: `transcript-redaction:${original.id}:${seed ?? ""}`,
+		recognizer: transcriptPiiRecognizer(original, supplementalRecognizer),
+	});
+	await pseudonyms.learn(transcriptTextCorpus(original));
+	const safeText = (text: string): string =>
+		redactedText(pseudonyms.substituteText(text));
 	const segments = original.segments.map((segment) => ({
 		id: segment.id,
-		...(segment.speakerLabel ? { speakerLabel: segment.speakerLabel } : {}),
+		...(segment.speakerLabel
+			? { speakerLabel: safeText(segment.speakerLabel) }
+			: {}),
 		startMs: segment.startMs,
 		endMs: segment.endMs,
-		text: redactedText(segment.text),
+		text: safeText(segment.text),
 		words: segment.words.map((word) => ({
 			...word,
-			text: redactedText(word.text),
+			text: safeText(word.text),
 		})),
 		...(segment.confidence !== undefined
 			? { confidence: segment.confidence }
@@ -214,7 +312,7 @@ function redactTranscript(
 	}));
 	return {
 		id: original.id,
-		title: `${original.title} (redacted)`,
+		title: `${safeText(original.title)} (redacted)`,
 		createdAt: original.createdAt,
 		...(original.endedAt !== undefined ? { endedAt: original.endedAt } : {}),
 		...(original.editedAt !== undefined ? { editedAt: original.editedAt } : {}),
@@ -246,6 +344,7 @@ function mergedGrant(
 
 function shareGrantsMetadata(
 	grants: readonly ArtifactShareGrant[],
+	roomSnapshot?: ArtifactRoomSnapshot,
 ): JsonObject {
 	return {
 		grants: grants.map((grant) => ({
@@ -256,6 +355,15 @@ function shareGrantsMetadata(
 				? { grantedAtMs: grant.grantedAtMs }
 				: {}),
 		})),
+		...(roomSnapshot
+			? {
+					roomSnapshot: {
+						roomId: roomSnapshot.roomId,
+						entityIds: [...roomSnapshot.entityIds],
+						atMs: roomSnapshot.atMs,
+					},
+				}
+			: {}),
 	};
 }
 
@@ -425,7 +533,12 @@ export class TranscriptStore {
 			) as UUID);
 		const nowMs = input.nowMs ?? Date.now();
 		const variant = {
-			...redactTranscript(original, input.redactedAudioUrl),
+			...(await redactTranscript(
+				original,
+				input.redactedAudioUrl,
+				input.seed,
+				input.recognizer,
+			)),
 			id: variantId,
 			createdAt: nowMs,
 			metadata: {
@@ -489,8 +602,13 @@ export class TranscriptStore {
 				"share grants must be attached to the original transcript",
 			);
 		}
+		const transcript = rowToTranscript(row);
+		if (!transcript) {
+			throw new Error(`transcript ${input.transcriptId} is corrupt`);
+		}
+		assertTranscriptConsentAllowsSharing(transcript);
 		const metadata = row.metadata as Record<string, unknown> | undefined;
-		const grants = parseArtifactShareGrants(metadata);
+		const share = parseArtifactShareMetadata(metadata);
 		const nextGrant: ArtifactShareGrant = {
 			entityId: input.entityId,
 			mode: input.mode,
@@ -505,7 +623,79 @@ export class TranscriptStore {
 				...(metadata ?? {}),
 				type: "custom",
 				source: TRANSCRIPT_METADATA_TYPE,
-				share: shareGrantsMetadata(mergedGrant(grants, nextGrant)),
+				share: shareGrantsMetadata(
+					mergedGrant(share.grants, nextGrant),
+					share.roomSnapshot,
+				),
+			} as MemoryMetadata,
+		});
+		if (!ok) {
+			throw new Error(`transcript ${input.transcriptId} not found`);
+		}
+	}
+
+	/**
+	 * Snapshot the persisted room roster and materialize one grant per member.
+	 * Later roster changes cannot widen access because disclosure reads only the
+	 * captured entity ids and grants written here.
+	 */
+	async shareRoomSnapshot(
+		input: ShareTranscriptRoomSnapshotInput,
+	): Promise<void> {
+		const row = await this.runtime.getMemoryById(input.transcriptId);
+		if (!row) {
+			throw new Error(`transcript ${input.transcriptId} not found`);
+		}
+		if (redactionOriginalId(row)) {
+			throw new Error(
+				"share grants must be attached to the original transcript",
+			);
+		}
+		if (row.roomId !== input.roomId) {
+			throw new ElizaError("room snapshot does not match transcript room", {
+				code: "TRANSCRIPT_ROOM_MISMATCH",
+				context: {
+					transcriptId: input.transcriptId,
+					transcriptRoomId: row.roomId,
+					requestedRoomId: input.roomId,
+				},
+			});
+		}
+		const transcript = rowToTranscript(row);
+		if (!transcript) {
+			throw new Error(`transcript ${input.transcriptId} is corrupt`);
+		}
+		assertTranscriptConsentAllowsSharing(transcript);
+		const entityIds = [...new Set(input.entityIds)];
+		if (entityIds.length === 0) {
+			throw new ElizaError("room snapshot has no resolved entities", {
+				code: "TRANSCRIPT_ROOM_SNAPSHOT_EMPTY",
+				context: { transcriptId: input.transcriptId, roomId: input.roomId },
+			});
+		}
+		const grantedAtMs = input.grantedAtMs ?? Date.now();
+		const metadata = row.metadata as Record<string, unknown> | undefined;
+		let grants = parseArtifactShareMetadata(metadata).grants;
+		for (const entityId of entityIds) {
+			grants = mergedGrant(grants, {
+				entityId,
+				mode: input.mode,
+				...(input.grantedBy ? { grantedBy: input.grantedBy } : {}),
+				grantedAtMs,
+			});
+		}
+		const roomSnapshot: ArtifactRoomSnapshot = {
+			roomId: input.roomId,
+			entityIds,
+			atMs: grantedAtMs,
+		};
+		const ok = await this.runtime.updateMemory({
+			id: input.transcriptId,
+			metadata: {
+				...(metadata ?? {}),
+				type: "custom",
+				source: TRANSCRIPT_METADATA_TYPE,
+				share: shareGrantsMetadata(grants, roomSnapshot),
 			} as MemoryMetadata,
 		});
 		if (!ok) {
@@ -525,7 +715,7 @@ export class TranscriptStore {
 			);
 		}
 		const metadata = row.metadata as Record<string, unknown> | undefined;
-		const grants = parseArtifactShareGrants(metadata);
+		const share = parseArtifactShareMetadata(metadata);
 		const ok = await this.runtime.updateMemory({
 			id: input.transcriptId,
 			metadata: {
@@ -533,7 +723,8 @@ export class TranscriptStore {
 				type: "custom",
 				source: TRANSCRIPT_METADATA_TYPE,
 				share: shareGrantsMetadata(
-					grants.filter((grant) => grant.entityId !== input.entityId),
+					share.grants.filter((grant) => grant.entityId !== input.entityId),
+					share.roomSnapshot,
 				),
 			} as MemoryMetadata,
 		});
