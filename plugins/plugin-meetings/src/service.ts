@@ -104,6 +104,7 @@ export type MeetingJoinErrorCode =
   | "invalid_url"
   | "unsupported_platform"
   | "unsupported_host"
+  | "policy_blocked"
   | "already_joined"
   | "invalid_duration_cap"
   | "insufficient_credits";
@@ -241,6 +242,8 @@ export class MeetingService extends Service {
           "this host cannot run the meeting browser bot (no Chromium available)",
       );
     }
+
+    this.assertCapturePolicyAllowsJoin();
 
     const duplicate = [...this.sessions.values()].find(
       (s) =>
@@ -923,6 +926,43 @@ export class MeetingService extends Service {
   private settingString(key: string): string | null {
     const value = this.runtime.getSetting(key);
     return typeof value === "string" && value.trim() ? value.trim() : null;
+  }
+
+  /**
+   * Enforce the organization capture policy before billing, pipeline creation,
+   * transcript persistence, or adapter launch. Local/self-hosted runtimes keep
+   * their current opt-in meeting behavior. Cloud/organization-managed runtimes
+   * must carry an explicit `allow`; absence or an unrecognized value fails
+   * closed so a policy lookup/configuration failure cannot start media capture.
+   */
+  private assertCapturePolicyAllowsJoin(): void {
+    const configured = this.settingString(
+      "ELIZA_MEETINGS_CAPTURE_POLICY",
+    )?.toLowerCase();
+    const cloudEnabled = this.settingString(
+      "ELIZAOS_CLOUD_ENABLED",
+    )?.toLowerCase();
+    const organizationManaged =
+      Boolean(
+        this.settingString("ELIZAOS_CLOUD_ORG_ID") ??
+          this.settingString("ELIZA_CLOUD_ORGANIZATION_ID"),
+      ) ||
+      cloudEnabled === "true" ||
+      cloudEnabled === "1";
+
+    if (configured === "allow") return;
+    if (configured === "deny") {
+      throw new MeetingJoinError(
+        "policy_blocked",
+        "meeting capture is blocked by organization policy",
+      );
+    }
+    if (configured !== undefined || organizationManaged) {
+      throw new MeetingJoinError(
+        "policy_blocked",
+        "meeting capture policy is unavailable; capture was not started",
+      );
+    }
   }
 
   private resolveMaxDurationMs(requested: number | undefined): number {

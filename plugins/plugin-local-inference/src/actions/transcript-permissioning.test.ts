@@ -13,6 +13,7 @@ import {
 	type TranscriptStoreRuntime,
 } from "../services/voice/transcript-store";
 import {
+	manageTranscriptPrivacyAction,
 	redactTranscriptAction,
 	shareTranscriptAction,
 } from "./transcript-permissioning";
@@ -149,12 +150,48 @@ async function seed(runtime: TranscriptStoreRuntime): Promise<TranscriptStore> {
 }
 
 describe("transcript permission actions", () => {
-	it("registers redaction and share actions on the local-inference plugin", () => {
+	it("registers redaction, share, and retention actions on the local-inference plugin", () => {
 		expect(localInferencePlugin.actions?.map((action) => action.name)).toEqual(
-			expect.arrayContaining(["REDACT_TRANSCRIPT", "SHARE_TRANSCRIPT"]),
+			expect.arrayContaining([
+				"REDACT_TRANSCRIPT",
+				"SHARE_TRANSCRIPT",
+				"MANAGE_TRANSCRIPT_PRIVACY",
+			]),
 		);
 		expect(redactTranscriptAction.roleGate).toEqual({ minRole: "USER" });
 		expect(shareTranscriptAction.roleGate).toEqual({ minRole: "USER" });
+		expect(manageTranscriptPrivacyAction.roleGate).toEqual({ minRole: "USER" });
+	});
+
+	it("updates one artifact visibility through the semantic action", async () => {
+		const runtime = fakeRuntime();
+		await seed(runtime);
+		const result = await manageTranscriptPrivacyAction.handler(
+			runtime,
+			message(OWNER),
+			undefined,
+			{
+				parameters: {
+					transcriptId: TRANSCRIPT_ID,
+					artifact: "notes",
+					state: "disabled",
+				},
+			},
+		);
+		expect(result).toMatchObject({
+			success: true,
+			data: {
+				actionName: "MANAGE_TRANSCRIPT_PRIVACY",
+				transcriptId: TRANSCRIPT_ID,
+				artifact: "notes",
+				state: "disabled",
+			},
+		});
+		expect(
+			(await new TranscriptStore(runtime).get(TRANSCRIPT_ID))?.metadata,
+		).toMatchObject({
+			sharing: { notes: "disabled" },
+		});
 	});
 
 	it("creates a redacted variant before granting redacted transcript access", async () => {

@@ -306,7 +306,7 @@ describe("TranscriptStore", () => {
 			expect(list[0].preview).not.toContain("123-45-6789");
 		});
 
-		it("USER with a full grant sees the original in full", async () => {
+		it("USER with a full grant sees transcript text but not owner-private artifacts", async () => {
 			const rt = fakeRuntime();
 			const { store, original } = await seed(rt);
 			const originalRow = rt.rows.get(ORIGINAL_ID) as Memory;
@@ -318,7 +318,68 @@ describe("TranscriptStore", () => {
 				} as Memory["metadata"],
 			});
 			const viewer = { requesterEntityId: VIEWER, role: "USER" as const };
-			expect(await store.get(ORIGINAL_ID as UUID, viewer)).toEqual(original);
+			const granted = await store.get(ORIGINAL_ID as UUID, viewer);
+			expect(granted?.segments).toEqual(original.segments);
+			expect(granted?.audioUrl).toBeUndefined();
+			expect((await store.list(ROOM, 100, viewer))[0]?.hasAudio).toBe(false);
+		});
+
+		it("projects source audio, notes, and generated artifacts independently", async () => {
+			const rt = fakeRuntime();
+			const { store } = await seed(rt);
+			const originalRow = rt.rows.get(ORIGINAL_ID) as Memory;
+			rt.rows.set(ORIGINAL_ID, {
+				...originalRow,
+				metadata: {
+					...(originalRow.metadata as Record<string, unknown>),
+					share: { grants: [{ entityId: VIEWER, mode: "full" }] },
+				} as Memory["metadata"],
+			});
+			await store.updateArtifactSharing({
+				transcriptId: ORIGINAL_ID as UUID,
+				sharing: {
+					transcript: "shared",
+					notes: "owner_private",
+					sourceAudio: "shared",
+					artifacts: "disabled",
+				},
+			});
+			const owner = await store.get(ORIGINAL_ID as UUID);
+			await store.update({
+				...(owner as Transcript),
+				metadata: {
+					...owner?.metadata,
+					notes: { text: "private notes" },
+					meetingArtifact: { secret: "generated artifact" },
+					retention: {
+						state: "delete_pending",
+						sourceAudioDeleted: false,
+						sourceAudioFileName: `${"a".repeat(64)}.wav`,
+					},
+				},
+			});
+
+			const viewer = await store.get(ORIGINAL_ID as UUID, {
+				requesterEntityId: VIEWER,
+				role: "USER",
+			});
+			expect(viewer?.audioUrl).toBe("/api/media/x.wav");
+			expect(viewer?.metadata).not.toHaveProperty("notes");
+			expect(viewer?.metadata).not.toHaveProperty("meetingArtifact");
+			expect(viewer?.metadata?.retention).not.toHaveProperty(
+				"sourceAudioFileName",
+			);
+			expect(
+				(
+					await store.list(ROOM, 100, {
+						requesterEntityId: VIEWER,
+						role: "USER",
+					})
+				)[0]?.hasAudio,
+			).toBe(true);
+			expect((await store.get(ORIGINAL_ID as UUID))?.metadata).toHaveProperty(
+				"notes",
+			);
 		});
 
 		it("ungranted USER and GUEST see nothing: omitted from list, null on get", async () => {
@@ -568,6 +629,40 @@ describe("TranscriptStore", () => {
 					},
 				],
 			});
+		});
+
+		it("persists delete-pending and finalized source-audio retention states", async () => {
+			const rt = fakeRuntime();
+			const store = new TranscriptStore(rt);
+			await store.create({
+				roomId: ROOM,
+				entityId: ENTITY,
+				transcript: makeTranscript({ id: ORIGINAL_ID }),
+			});
+
+			const pending = await store.markSourceAudioDeletePending({
+				transcriptId: ORIGINAL_ID as UUID,
+				fileName: `${"a".repeat(64)}.wav`,
+			});
+			expect(pending.audioUrl).toBeUndefined();
+			expect(pending.metadata).toMatchObject({
+				sharing: { sourceAudio: "disabled" },
+				retention: {
+					state: "delete_pending",
+					sourceAudioDeleted: false,
+					sourceAudioFileName: `${"a".repeat(64)}.wav`,
+				},
+			});
+
+			const finalized = await store.markSourceAudioDeleted(ORIGINAL_ID as UUID);
+			expect(finalized.metadata).toMatchObject({
+				retention: {
+					state: "audio_deleted_transcript_retained",
+					sourceAudioDeleted: true,
+				},
+			});
+			expect(JSON.stringify(finalized)).not.toContain("sourceAudioFileName");
+			expect(finalized.segments).toEqual(makeTranscript().segments);
 		});
 
 		it("captures a room snapshot and grants only its resolved roster", async () => {

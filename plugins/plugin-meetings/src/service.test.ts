@@ -62,6 +62,65 @@ describe("MeetingService.requestJoin — validation", () => {
     ).rejects.toBeInstanceOf(MeetingJoinError);
   });
 
+  it("fails closed on organization-managed runtimes before media setup", async () => {
+    const adapter = new ScriptedAdapter("google_meet");
+    const { fake, service, pipelines } = makeService([adapter]);
+    fake.settings.ELIZAOS_CLOUD_ORG_ID = "org-policy-managed";
+
+    await expect(
+      service.requestJoin({ platform: "google_meet", meetingUrl: MEET_URL }),
+    ).rejects.toMatchObject({ code: "policy_blocked" });
+    expect(pipelines).toHaveLength(0);
+    expect(adapter.session).toBeNull();
+    expect(fake.memories.size).toBe(0);
+  });
+
+  it("honors explicit allow and deny capture policy decisions", async () => {
+    const deniedAdapter = new ScriptedAdapter("google_meet");
+    const {
+      fake: deniedFake,
+      service: deniedService,
+      pipelines: deniedPipelines,
+    } = makeService([deniedAdapter]);
+    deniedFake.settings.ELIZA_MEETINGS_CAPTURE_POLICY = "deny";
+    await expect(
+      deniedService.requestJoin({
+        platform: "google_meet",
+        meetingUrl: MEET_URL,
+      }),
+    ).rejects.toMatchObject({ code: "policy_blocked" });
+    expect(deniedPipelines).toHaveLength(0);
+    expect(deniedAdapter.session).toBeNull();
+
+    const allowedAdapter = new ScriptedAdapter("google_meet");
+    const { fake: allowedFake, service: allowedService } = makeService([
+      allowedAdapter,
+    ]);
+    allowedFake.settings.ELIZAOS_CLOUD_ORG_ID = "org-policy-managed";
+    allowedFake.settings.ELIZA_MEETINGS_CAPTURE_POLICY = "allow";
+    const session = await allowedService.requestJoin({
+      platform: "google_meet",
+      meetingUrl: MEET_URL,
+    });
+    expect(session.status).toBe("requested");
+    await allowedAdapter.started;
+    expect(allowedAdapter.session).not.toBeNull();
+  });
+
+  it("does not treat an explicitly disabled cloud runtime as organization-managed", async () => {
+    const adapter = new ScriptedAdapter("google_meet");
+    const { fake, service } = makeService([adapter]);
+    fake.settings.ELIZAOS_CLOUD_ENABLED = "false";
+
+    const session = await service.requestJoin({
+      platform: "google_meet",
+      meetingUrl: MEET_URL,
+    });
+    expect(session.status).toBe("requested");
+    await adapter.started;
+    expect(adapter.session).not.toBeNull();
+  });
+
   it("enforces single-bot-per-meeting across URL spellings", async () => {
     const { service } = makeService();
     await service.requestJoin({

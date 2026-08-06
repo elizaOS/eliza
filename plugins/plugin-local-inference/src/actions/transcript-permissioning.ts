@@ -24,7 +24,14 @@ import {
 	type UUID,
 } from "@elizaos/core";
 import type { PiiTextSpan } from "@elizaos/shared/audio-redaction";
-import type { Transcript } from "@elizaos/shared/transcripts";
+import type {
+	Transcript,
+	TranscriptCaptureSharingState,
+	TranscriptSharingState,
+} from "@elizaos/shared/transcripts";
+import { transcriptCapturePrivacyState } from "@elizaos/shared/transcripts";
+import { TranscriptPrivacyService } from "../services/voice/transcript-privacy.js";
+import type { TranscriptServiceRuntime } from "../services/voice/transcript-service.js";
 import {
 	TranscriptStore,
 	type TranscriptStoreRuntime,
@@ -629,6 +636,155 @@ export const shareTranscriptAction: Action = {
 				error instanceof Error ? error.message : String(error);
 			const result = fail("SHARE_TRANSCRIPT_FAILED", messageText);
 			await callback?.({ text: result.text, actions: ["SHARE_TRANSCRIPT"] });
+			return result;
+		}
+	},
+	examples: [],
+};
+
+const MANAGEABLE_ARTIFACTS = [
+	"transcript",
+	"notes",
+	"sourceAudio",
+	"artifacts",
+] as const;
+const MANAGEABLE_SHARING_STATES = [
+	"owner_private",
+	"restricted",
+	"shared",
+	"disabled",
+] as const;
+
+/** Semantic twin for the Transcripts view's artifact privacy controls. */
+export const manageTranscriptPrivacyAction: Action = {
+	name: "MANAGE_TRANSCRIPT_PRIVACY",
+	similes: [
+		"SET_TRANSCRIPT_ARTIFACT_VISIBILITY",
+		"DELETE_TRANSCRIPT_SOURCE_AUDIO",
+		"MANAGE_MEETING_RETENTION",
+	],
+	description:
+		"Change one retained meeting artifact's visibility, or permanently delete source audio while preserving the transcript.",
+	routingHint:
+		"user asks to make transcript/notes/source audio/generated artifacts private, restricted, shared, disabled, or asks to delete retained meeting audio",
+	roleGate: { minRole: "USER" },
+	parameters: [
+		{
+			name: "transcriptId",
+			description: "Stored original transcript id.",
+			required: true,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "artifact",
+			description: "Artifact whose visibility changes.",
+			required: false,
+			schema: { type: "string" as const, enum: [...MANAGEABLE_ARTIFACTS] },
+		},
+		{
+			name: "state",
+			description: "New artifact visibility.",
+			required: false,
+			schema: {
+				type: "string" as const,
+				enum: [...MANAGEABLE_SHARING_STATES],
+			},
+		},
+		{
+			name: "deleteSourceAudio",
+			description:
+				"Permanently delete retained source audio while keeping transcript text.",
+			required: false,
+			schema: { type: "boolean" as const, default: false },
+		},
+	],
+	validate: async () => true,
+	handler: async (
+		runtime: IAgentRuntime,
+		message: Memory,
+		_state?: unknown,
+		options?: unknown,
+		callback?: HandlerCallback,
+	): Promise<ActionResult> => {
+		const params = paramsFromOptions(options);
+		const transcriptId = parseUuid(params.transcriptId);
+		const artifact = MANAGEABLE_ARTIFACTS.find(
+			(value) => value === params.artifact,
+		);
+		const state = MANAGEABLE_SHARING_STATES.find(
+			(value) => value === params.state,
+		) as TranscriptSharingState | undefined;
+		const deleteSourceAudio = params.deleteSourceAudio === true;
+		if (
+			!transcriptId ||
+			(deleteSourceAudio
+				? artifact !== undefined || state !== undefined
+				: !artifact || !state)
+		) {
+			const result = fail(
+				"MANAGE_TRANSCRIPT_PRIVACY_INVALID",
+				"Provide transcriptId and either artifact+state, or deleteSourceAudio=true.",
+			);
+			await callback?.({
+				text: result.text,
+				actions: ["MANAGE_TRANSCRIPT_PRIVACY"],
+			});
+			return result;
+		}
+		if (!(await canManageTranscript(runtime, message, transcriptId))) {
+			const result = fail(
+				"MANAGE_TRANSCRIPT_PRIVACY_DENIED",
+				"You do not have permission to manage that transcript.",
+			);
+			await callback?.({
+				text: result.text,
+				actions: ["MANAGE_TRANSCRIPT_PRIVACY"],
+			});
+			return result;
+		}
+
+		try {
+			const privacy = new TranscriptPrivacyService(
+				runtime as TranscriptServiceRuntime,
+			);
+			const transcript = deleteSourceAudio
+				? await privacy.deleteSourceAudio(transcriptId)
+				: await privacy.updateArtifactSharing(transcriptId, {
+						[artifact as keyof TranscriptCaptureSharingState]: state,
+					});
+			const result = ok(
+				deleteSourceAudio
+					? "Deleted the source audio and retained the transcript."
+					: `Updated ${artifact} visibility to ${state}.`,
+				{
+					actionName: "MANAGE_TRANSCRIPT_PRIVACY",
+					transcriptId,
+					...(deleteSourceAudio
+						? { sourceAudioDeleted: true }
+						: { artifact, state }),
+					...(transcriptCapturePrivacyState(transcript).retentionState
+						? {
+								retentionState:
+									transcriptCapturePrivacyState(transcript).retentionState,
+							}
+						: {}),
+				},
+			);
+			await callback?.({
+				text: result.text,
+				actions: ["MANAGE_TRANSCRIPT_PRIVACY"],
+			});
+			return result;
+		} catch (error) {
+			// error-policy:J1 action boundary returns a structured failure to the planner loop.
+			const result = fail(
+				"MANAGE_TRANSCRIPT_PRIVACY_FAILED",
+				error instanceof Error ? error.message : String(error),
+			);
+			await callback?.({
+				text: result.text,
+				actions: ["MANAGE_TRANSCRIPT_PRIVACY"],
+			});
 			return result;
 		}
 	},

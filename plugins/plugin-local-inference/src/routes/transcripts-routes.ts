@@ -21,7 +21,9 @@ import type {
 import { isAdminRank, PII_ENTITY_RECOGNIZER_SERVICE } from "@elizaos/core";
 import {
 	type MeetingArtifact,
+	TRANSCRIPT_SHARING_STATES,
 	type Transcript,
+	type TranscriptCaptureSharingState,
 	type TranscriptScope,
 	type TranscriptSegment,
 	type TranscriptSource,
@@ -29,6 +31,7 @@ import {
 	transcriptSpeakerCount,
 	validateMeetingArtifact,
 } from "@elizaos/shared";
+import { TranscriptPrivacyService } from "../services/voice/transcript-privacy.js";
 import {
 	TranscriptService,
 	type TranscriptServiceRuntime,
@@ -212,6 +215,17 @@ export interface ShareTranscriptRequest {
 	mode?: ArtifactShareGrantMode;
 	redactForAll?: boolean;
 }
+
+export interface UpdateTranscriptPrivacyRequest {
+	sharing: Partial<TranscriptCaptureSharingState>;
+}
+
+const ARTIFACT_SHARING_KEYS = [
+	"transcript",
+	"notes",
+	"sourceAudio",
+	"artifacts",
+] as const;
 
 const UUID_PATTERN =
 	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -510,12 +524,136 @@ const revokeShareRoute: Route = {
 	},
 };
 
+const updatePrivacyRoute: Route = {
+	type: "PATCH",
+	path: "/api/transcripts/:id/privacy",
+	rawPath: true,
+	routeHandler: async (ctx): Promise<RouteHandlerResult> => {
+		const body = (ctx.body ?? {}) as UpdateTranscriptPrivacyRequest;
+		if (!body.sharing || typeof body.sharing !== "object") {
+			return { status: 400, body: { error: "sharing is required" } };
+		}
+		const entries = Object.entries(body.sharing);
+		if (entries.length === 0) {
+			return {
+				status: 400,
+				body: { error: "at least one sharing state is required" },
+			};
+		}
+		for (const [key, value] of entries) {
+			if (
+				!ARTIFACT_SHARING_KEYS.includes(
+					key as (typeof ARTIFACT_SHARING_KEYS)[number],
+				) ||
+				!TRANSCRIPT_SHARING_STATES.includes(value as never) ||
+				value === "unknown" ||
+				value === "public"
+			) {
+				return {
+					status: 400,
+					body: { error: `unsupported sharing state for ${key}` },
+				};
+			}
+		}
+
+		const transcript = await service(ctx).get(
+			ctx.params.id as UUID,
+			ctx.accessContext,
+		);
+		if (!transcript) return { status: 404, body: { error: "not found" } };
+		if (transcript.redacted) {
+			return {
+				status: 403,
+				body: { error: "redacted transcript views cannot manage privacy" },
+			};
+		}
+		const row = await (ctx.runtime as TranscriptServiceRuntime).getMemoryById(
+			ctx.params.id as UUID,
+		);
+		if (!row) return { status: 404, body: { error: "not found" } };
+		if (!requesterCanManageRow(ctx, row)) {
+			return { status: 403, body: { error: "manage access required" } };
+		}
+
+		try {
+			const updated = await new TranscriptPrivacyService(
+				ctx.runtime as TranscriptServiceRuntime,
+			).updateArtifactSharing(ctx.params.id as UUID, body.sharing);
+			return { status: 200, body: { transcript: updated } };
+		} catch (error) {
+			// error-policy:J1 translate an expected grant conflict at the HTTP boundary.
+			if (
+				error instanceof Error &&
+				"code" in error &&
+				error.code === "TRANSCRIPT_GRANT_REQUIRED"
+			) {
+				return {
+					status: 409,
+					body: { error: error.message, code: error.code },
+				};
+			}
+			throw error;
+		}
+	},
+};
+
+const deleteSourceAudioRoute: Route = {
+	type: "DELETE",
+	path: "/api/transcripts/:id/source-audio",
+	rawPath: true,
+	routeHandler: async (ctx): Promise<RouteHandlerResult> => {
+		const transcript = await service(ctx).get(
+			ctx.params.id as UUID,
+			ctx.accessContext,
+		);
+		if (!transcript) return { status: 404, body: { error: "not found" } };
+		if (transcript.redacted) {
+			return {
+				status: 403,
+				body: { error: "redacted transcript views cannot delete source audio" },
+			};
+		}
+		const row = await (ctx.runtime as TranscriptServiceRuntime).getMemoryById(
+			ctx.params.id as UUID,
+		);
+		if (!row) return { status: 404, body: { error: "not found" } };
+		if (!requesterCanManageRow(ctx, row)) {
+			return { status: 403, body: { error: "manage access required" } };
+		}
+		try {
+			const updated = await new TranscriptPrivacyService(
+				ctx.runtime as TranscriptServiceRuntime,
+			).deleteSourceAudio(ctx.params.id as UUID);
+			return { status: 200, body: { deleted: true, transcript: updated } };
+		} catch (error) {
+			// error-policy:J1 translate expected storage states at the HTTP boundary.
+			if (error instanceof Error && "code" in error) {
+				if (error.code === "TRANSCRIPT_FILE_STORAGE_UNAVAILABLE") {
+					return {
+						status: 503,
+						body: { error: error.message, code: error.code },
+					};
+				}
+				if (error.code === "TRANSCRIPT_SOURCE_AUDIO_NOT_STORED") {
+					return {
+						status: 409,
+						body: { error: error.message, code: error.code },
+					};
+				}
+			}
+			throw error;
+		}
+	},
+};
+
 export const transcriptsRoutes: Route[] = [
 	listRoute,
 	createRoute,
 	getRoute,
 	shareRoute,
 	revokeShareRoute,
+	updatePrivacyRoute,
+	deleteSourceAudioRoute,
 	updateRoute,
 	deleteRoute,
 ];

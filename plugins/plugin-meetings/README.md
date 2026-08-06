@@ -103,6 +103,7 @@ Signal/WhatsApp pairing events use. No changes in `packages/agent` were needed.
 | Variable | Required | Purpose |
 |---|---|---|
 | `ELIZA_MEETINGS_BOT_NAME` | No | Bot display name (default `"<character name> Notetaker"`) |
+| `ELIZA_MEETINGS_CAPTURE_POLICY` | Required for organization-managed runtimes | `allow` or `deny`. Missing/invalid policy fails closed when an Eliza Cloud organization is configured; local/self-hosted runtimes remain allowed when unset. Evaluated before billing, transcript creation, pipeline setup, or browser launch. |
 | `ELIZA_MEETINGS_CHROMIUM_PATH` | No | Chromium executable override the platform bots launch |
 | `ELIZA_MEETINGS_HEADLESS` | No | Force headless (`true`) / headed (`false`). When unset, auto-detected from the available display (macOS/Windows always headed; Linux headed only when `DISPLAY`/`WAYLAND_DISPLAY` is set) |
 | `ELIZA_ZOOM_ACCESS_TOKEN` | No | Server-side Zoom OAuth token for private cloud-import requests that do not provide a short-lived token in the body |

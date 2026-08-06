@@ -16,6 +16,7 @@ export {
 	identifySpeakerAction,
 } from "./actions/identify-speaker.js";
 export {
+	manageTranscriptPrivacyAction,
 	redactTranscriptAction,
 	shareTranscriptAction,
 } from "./actions/transcript-permissioning.js";
