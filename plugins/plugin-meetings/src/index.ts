@@ -10,6 +10,7 @@
  *   - JOIN_MEETING / LEAVE_MEETING / GET_MEETING_TRANSCRIPT actions
  *   - ACTIVE_MEETINGS provider
  *   - /api/meetings* rawPath routes
+ *   - authenticated Zoom cloud import into shared MeetingArtifact + Transcripts
  *
  * Enable: turn the "meetings" feature on in config (see auto-enable.ts) — no
  * bespoke on/off env flag; only auto-enables on a non-mobile host.
@@ -19,6 +20,7 @@
  *   - ELIZA_MEETINGS_CHROMIUM_PATH Chromium executable override for the bots
  *   - ELIZA_MEETINGS_HEADLESS      force headless (true) / headed (false); else
  *                                  auto-detected from the available display
+ *   - ELIZA_ZOOM_ACCESS_TOKEN      optional server-side Zoom import OAuth token
  *
  * Host support (mobile vs desktop/server) is a typed probe —
  * {@link resolveMeetingRuntimeSupport}; see docs/DEPLOYMENT.md for the matrix.
@@ -35,6 +37,7 @@ import { createMeetingTranscriptionPipeline } from "./pipeline/index.js";
 import { GoogleMeetAdapter } from "./platforms/googlemeet/adapter.js";
 import { MsTeamsAdapter } from "./platforms/msteams/adapter.js";
 import { ZoomAdapter } from "./platforms/zoom/adapter.js";
+import { importZoomCloudMeeting } from "./platforms/zoom/cloud-import.js";
 import { activeMeetingsProvider } from "./providers/active-meetings.js";
 import { meetingsRoutes } from "./routes/meetings-routes.js";
 import { MeetingService } from "./service.js";
@@ -52,12 +55,16 @@ export {
   resolveHeadlessMode,
   resolveMeetingRuntimeSupport,
 } from "./platform-support.js";
+export * from "./platforms/zoom/cloud-import.js";
+export * from "./platforms/zoom/shared-artifact.js";
 export { meetingsRoutes } from "./routes/meetings-routes.js";
 export {
   MeetingJoinError,
   type MeetingPipelineInstance,
   MeetingService,
   type MeetingServiceDependencies,
+  type ZoomMeetingImportRequest,
+  type ZoomMeetingImportResult,
 } from "./service.js";
 export {
   MeetingTranscriptWriter,
@@ -75,6 +82,7 @@ MeetingService.dependencyFactory = (_runtime: IAgentRuntime) => ({
     ["zoom", new ZoomAdapter()],
   ]),
   createPipeline: createMeetingTranscriptionPipeline,
+  importZoomCloudMeeting,
 });
 
 export const meetingsPlugin: Plugin = {

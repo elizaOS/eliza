@@ -108,6 +108,10 @@ export interface FinalizeMeetingTranscriptInput {
   participants: MeetingParticipant[];
   /** Retained session audio (mono PCM16 WAV) — persisted to the media store. */
   audioWav?: Buffer | null;
+  /** Already-rehosted source audio, used by authenticated platform imports. */
+  retainedAudio?: { url: string; contentType: string };
+  /** Import/capture provenance stored with the transcript record. */
+  metadata?: Record<string, unknown>;
 }
 
 /** Serialize a transcript into the exact memory row the Transcripts view reads. */
@@ -154,13 +158,28 @@ export function readTranscriptRow(row: Memory): Transcript | null {
  * agent already serves at `/api/media/<sha256>.wav` (same mechanism as
  * plugin-local-inference's transcript-audio-store). Idempotent.
  */
-export function persistMeetingAudioWav(wav: Buffer): string {
-  const hash = createHash("sha256").update(wav).digest("hex");
+export function persistMeetingMedia(
+  bytes: Buffer,
+  extension: string,
+): { id: string; url: string; checksum: string } {
+  const normalizedExtension = extension.toLowerCase().replace(/^\./, "");
+  if (!/^[a-z0-9]{1,10}$/.test(normalizedExtension)) {
+    throw new Error("[MeetingService] media extension is invalid");
+  }
+  const hash = createHash("sha256").update(bytes).digest("hex");
   const dir = join(resolveStateDir(), "media");
   mkdirSync(dir, { recursive: true });
-  const file = join(dir, `${hash}.wav`);
-  if (!existsSync(file)) writeFileSync(file, wav);
-  return `/api/media/${hash}.wav`;
+  const file = join(dir, `${hash}.${normalizedExtension}`);
+  if (!existsSync(file)) writeFileSync(file, bytes);
+  return {
+    id: hash,
+    url: `/api/media/${hash}.${normalizedExtension}`,
+    checksum: hash,
+  };
+}
+
+export function persistMeetingAudioWav(wav: Buffer): string {
+  return persistMeetingMedia(wav, "wav").url;
 }
 
 /**
@@ -324,11 +343,19 @@ export class MeetingTranscriptWriter {
     }
 
     const endedAt = this.now();
+    if (input.audioWav && input.retainedAudio) {
+      throw new Error(
+        "[MeetingService] finalize accepts captured or imported audio, not both",
+      );
+    }
     let audioUrl: string | undefined;
     let audioContentType: string | undefined;
     if (input.audioWav && input.audioWav.length > 0) {
       audioUrl = persistMeetingAudioWav(input.audioWav);
       audioContentType = "audio/wav";
+    } else if (input.retainedAudio) {
+      audioUrl = input.retainedAudio.url;
+      audioContentType = input.retainedAudio.contentType;
     }
 
     const final: Transcript = {
@@ -342,6 +369,7 @@ export class MeetingTranscriptWriter {
       audioContentType,
       metadata: {
         ...this.transcript.metadata,
+        ...input.metadata,
         endReason: input.endReason,
         participants: input.participants,
         retention: {

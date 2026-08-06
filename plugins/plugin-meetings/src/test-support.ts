@@ -547,6 +547,7 @@ export function scriptedDeps(
       options: MeetingPipelineOptions,
     ) => MeetingPipelineInstance;
     createBillingSession?: MeetingServiceDependencies["createBillingSession"];
+    importZoomCloudMeeting?: MeetingServiceDependencies["importZoomCloudMeeting"];
   };
   pipelines: ScriptedPipeline[];
   pipelineOptions: MeetingPipelineOptions[];
