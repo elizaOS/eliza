@@ -934,14 +934,17 @@ async function runCreateLegacy(
           : {}),
         ...(taskRoomId ? { taskRoomId } : {}),
         acceptanceCriteria,
-        ...(objectValue(extraMetadata.lane)
-          ? {
-              metadata: {
-                waveId: extraMetadata.waveId,
-                lane: extraMetadata.lane,
-              },
-            }
-          : {}),
+        metadata: {
+          // Persist the originating connector source on the durable record so
+          // proactive surfaces (TaskSupervisorService digest) can reach the
+          // origin room through a registered send handler.
+          ...(typeof content.source === "string" && content.source
+            ? { source: content.source }
+            : {}),
+          ...(objectValue(extraMetadata.lane)
+            ? { waveId: extraMetadata.waveId, lane: extraMetadata.lane }
+            : {}),
+        },
       });
       threadId = detail?.id ?? null;
       if (useSmithers && !threadId) {
@@ -1046,6 +1049,14 @@ async function runCreateLegacy(
           userId: message.entityId,
           label,
           source: content.source,
+          // Session-metadata copy of the task (NOT the spawn-option
+          // `initialTask`, which would double-deliver the prompt — this path
+          // delivers via sendPrompt). The router's recovery valves
+          // (retryIncompleteBuild / respawnStateLost) read `meta.initialTask`
+          // to reconstruct the work; without this stamp both silently return
+          // false on every TASKS:create session and a failed verification
+          // posts a failure instead of re-dispatching.
+          initialTask: taskWithRouteHints,
           workdirRouteId: route?.id,
           workdirRoute: route,
           keepAliveAfterComplete,
