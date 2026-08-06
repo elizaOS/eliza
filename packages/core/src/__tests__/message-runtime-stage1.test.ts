@@ -26,6 +26,7 @@ import {
 	runV5MessageRuntimeStage1,
 } from "../services/message";
 import { runWithTrajectoryContext } from "../trajectory-context";
+import type { Action } from "../types/components";
 import type { Memory } from "../types/memory";
 import { ModelType } from "../types/model";
 import { ChannelType, type UUID } from "../types/primitives";
@@ -228,6 +229,27 @@ function makeRuntime(
 		],
 		responseHandlerEvaluators: evaluators ?? [],
 	} as IAgentRuntime;
+}
+
+function makeMemorySearchAction(minRole: "USER" | "OWNER" = "USER"): Action {
+	return {
+		name: "MEMORY",
+		description: "Search stored conversation records.",
+		contexts: ["memory"],
+		roleGate: { minRole },
+		parameters: [
+			{
+				name: "action",
+				description: "Memory operation.",
+				schema: { type: "string", enum: ["search"] },
+			},
+		],
+		validate: async () => true,
+		handler: async () => ({
+			success: true,
+			text: "Found stored conversation records.",
+		}),
+	};
 }
 
 function makePiiSession(): PseudonymSession {
@@ -1436,13 +1458,14 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(systemContent.length).toBeLessThan(3_800);
 	});
 
-	it("direct-channel prompt grounds capability denials in available_contexts and requires fresh tool retries", async () => {
+	it("direct-channel prompt grounds capability denials in executable actions and requires fresh tool retries", async () => {
 		// Mirror of the #11215 wording-regression test on the shared
 		// messageHandlerTemplate: Stage 1 for DM/API/SELF renders the compact
 		// DIRECT_MESSAGE_HANDLER_TEMPLATE instead, so the dashboard chat and
 		// 1:1 DMs — the primary surface where users hit "I don't have memory
 		// between sessions" / "I can't schedule" — need their own copies of
-		// the capability-denial and tool-retry rules.
+		// the capability-denial and tool-retry rules. Context labels only route;
+		// the role-visible action surface is the execution ground truth.
 		const runtime = makeRuntime([
 			stage1Response({
 				contexts: ["simple"],
@@ -1464,7 +1487,10 @@ describe("runV5MessageRuntimeStage1", () => {
 		const systemContent = params.messages?.[0]?.content ?? "";
 		expect(systemContent).toContain("task: Plan this direct message.");
 		expect(systemContent).toContain(
-			"Never deny a capability (memory, tasks, scheduling, reminders) when a matching context is in available_contexts — route to it; deny only when nothing matches.",
+			"Never deny a capability when current_turn_boundary says a role-visible executable action can attempt it.",
+		);
+		expect(systemContent).toContain(
+			"available_contexts supplies routing domains but does not by itself prove a handler exists.",
 		);
 		expect(systemContent).toContain(
 			"A tool that errored on an earlier turn may work now; on a repeated ask, retry it fresh and report this turn's result, not the old failure.",
@@ -3298,6 +3324,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			},
 		]);
 		(runtime as { contexts?: ContextRegistry }).contexts = registry;
+		runtime.actions = [makeMemorySearchAction()];
 
 		const result = await runV5MessageRuntimeStage1({
 			runtime,
