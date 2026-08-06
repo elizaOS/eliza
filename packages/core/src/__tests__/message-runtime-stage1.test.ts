@@ -3935,9 +3935,10 @@ describe("runV5MessageRuntimeStage1", () => {
 			onSettledActionResult,
 		});
 
-		expect(earlyReply).toHaveBeenCalledWith(
-			expect.objectContaining({ text: "On it." }),
-		);
+		// The ungrounded completion claim is DROPPED at early egress — never
+		// substituted with a manufactured "On it." — so no early reply ships and
+		// the receipt-grounded confirmation below is the turn's only delivery.
+		expect(earlyReply).not.toHaveBeenCalled();
 		expect(result.kind).toBe("planned_reply");
 		expect(onSettledActionResult).toHaveBeenCalledTimes(1);
 		expect(onSettledActionResult).toHaveBeenCalledWith(

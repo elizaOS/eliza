@@ -330,7 +330,10 @@ describe(CLAIM_EVALUATOR_NAME, () => {
 		)) as ResponseHandlerPatch;
 		expect(patch.requiresTool).toBe(true);
 		expect(patch.addCandidateActions).toBeUndefined();
-		expect(patch.reply).toBe("On it.");
+		// The escalation is a routing decision: the fabricated claim is cleared,
+		// never replaced with synthesized ack text.
+		expect(patch.clearReply).toBe(true);
+		expect(patch.reply).toBeUndefined();
 	});
 
 	it("reroutes to the planner with backstop-rule candidates and an honest ack", async () => {
@@ -350,9 +353,10 @@ describe(CLAIM_EVALUATOR_NAME, () => {
 			"SCHEDULED_TASKS",
 			"SCHEDULED_TASKS_CREATE",
 		]);
-		// The fabricated confirmation must never ship — replaced by a plain ack
-		// the planner path then supersedes with a tool-grounded reply.
-		expect(patch.reply).toBe("On it.");
+		// The fabricated confirmation must never ship — cleared outright; the
+		// planner path owns whatever the user eventually sees.
+		expect(patch.clearReply).toBe(true);
+		expect(patch.reply).toBeUndefined();
 	});
 });
 
