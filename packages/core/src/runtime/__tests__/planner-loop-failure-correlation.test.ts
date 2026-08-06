@@ -183,6 +183,62 @@ describe("planner-loop failed-operation correlation", () => {
 		expect(runtime.useModel).toHaveBeenCalledTimes(3);
 	});
 
+	it("clears a schema rejection when the retry removes only the rejected argument", async () => {
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce(
+					plannerToolCall("search-invalid-room", "MEMORY_SEARCH", {
+						action: "search",
+						query: "bitcoin",
+						type: "messages",
+						roomId: "current",
+					}),
+				)
+				.mockResolvedValueOnce(
+					plannerToolCall("search-corrected", "MEMORY_SEARCH", {
+						action: "search",
+						query: "bitcoin",
+						type: "messages",
+					}),
+				),
+		};
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall: vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: false,
+					error: "roomId did not match the UUID schema",
+					data: {
+						parameterErrors: ["roomId did not match the UUID schema"],
+						invalidParameterNames: ["roomId"],
+					},
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					text: "Found four matching messages.",
+				}),
+			evaluate: vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: false,
+					decision: "CONTINUE",
+					thought: "Retry without the rejected room filter.",
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					decision: "FINISH",
+					thought: "The corrected search completed.",
+					messageToUser: "You mentioned bitcoin three times.",
+				}),
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe("You mentioned bitcoin three times.");
+	});
+
 	it("clears a failure when the retry differs only in free-text description narration (live incident: builders re-narrate retried commands, and the stale failure authority replaced their terminal completion proof)", async () => {
 		const runtime = {
 			useModel: vi
