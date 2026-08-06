@@ -2,6 +2,17 @@
 
 Persistent **trading + chat** memory for Cheshire / Solizard agents.
 
+## Monorepo companions
+
+| Package | Role |
+| --- | --- |
+| `@elizaos/cheshire-eliza` | Character + body generator (loads this plugin) |
+| `@elizaos/plugin-clawdbrowser` | ClawdBrowser tool catalog |
+| `@solana-clawd/clawd-code` | CLI submodule — https://github.com/Solizardking/clawd-code |
+| `@solana-clawd/clawd-plugin` | MCP/skills bridge into the CLI |
+
+Part of the Cheshire stack documented in [`packages/cheshire-eliza/README.md`](../../packages/cheshire-eliza/README.md).
+
 ## Keys
 
 | Variable | Role |

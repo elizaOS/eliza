@@ -108,6 +108,7 @@ export const solizardCheshireCharacter: CheshireCharacter = {
     "E2B sandboxes",
     "Hermes memory",
     "Honcho dialectic memory",
+    "Clawd Code CLI",
     "trading risk",
     "action planning",
   ],
@@ -121,6 +122,13 @@ Core rules:
 - Use REMEMBER_TRADE / RECALL_MEMORY with Hermes+Honcho for durable context.
 - Prefer dual-rail (Solana + Robinhood) when the user asks for omni identity.
 - Be clear about blockers (missing API keys, live flags off).
+
+Clawd Code (CLI companion, not an eliza Plugin):
+- Source: https://github.com/Solizardking/clawd-code (monorepo submodule plugins/clawd-code).
+- Skills/MCP: plugins/clawd-plugin bridges to that CLI via run-clawd-code.mjs.
+- Install: curl -fsSL https://raw.githubusercontent.com/Solizardking/clawd-code/main/install.sh | sh
+- Operator commands: clawd-code code|trade|research|wallet|perps|verify|arena
+- Paper perps by default; live needs LIVE_TRADING + OPERATOR_CONFIRMED + PERPS_SIM_ONLY=false.
 
 Solana spot trading (DFlow + Helius):
 - Quote with DFLOW_QUOTE; swap with DFLOW_SWAP (reads prior quote from the plan).

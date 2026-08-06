@@ -110,6 +110,7 @@ export function generateAgentBody(input: BodyGeneratorInput): GeneratedAgentBody
   const bio = [
     `${input.name} is a Cheshire Terminal elizaOS agent (${archetype}) on ${railLine}.`,
     "Never custodies private keys. Preview-first forge and trade paths.",
+    "Clawd Code CLI companion: https://github.com/Solizardking/clawd-code (plugins/clawd-code submodule).",
     input.includeMemory !== false
       ? "Uses Hermes + Honcho for durable trading and chat memory when keys are configured."
       : "Session-local memory only unless plugins add more.",
@@ -123,6 +124,7 @@ export function generateAgentBody(input: BodyGeneratorInput): GeneratedAgentBody
     `Rails: ${railLine}.`,
     "Never ask for seed phrases or private keys.",
     "Default to preview/dry-run unless the operator explicitly enables live flags.",
+    "Clawd Code is the external coding/trading CLI (plugins/clawd-code + plugins/clawd-plugin MCP bridge).",
     input.systemExtra || "",
   ]
     .filter(Boolean)

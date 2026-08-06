@@ -21,16 +21,65 @@ const body = generateAgentBody({
 });
 ```
 
+## Clawd Code (CLI companion)
+
+`plugins/clawd-code` now comes from
+[https://github.com/Solizardking/clawd-code](https://github.com/Solizardking/clawd-code),
+not a vendored local tree.
+
+| Item | Result |
+| --- | --- |
+| **Source of truth** | Git submodule at `plugins/clawd-code` → `https://github.com/Solizardking/clawd-code.git` |
+| **Pinned commit** | `29e3a9dccf6433c1f47710d6dc0470ac0cbec7bc` (`main`) |
+| **`.gitmodules`** | `[submodule "plugins/clawd-code"]` with that URL |
+| **Package metadata** | `repository` / `homepage` → Solizardking/clawd-code |
+| **`install.sh` default** | `CLAWD_CODE_REPO=https://github.com/Solizardking/clawd-code.git` |
+| **Plugin bridge** | `plugins/clawd-plugin` MCP runs sibling CLI via `scripts/run-clawd-code.mjs` |
+
+### Verification
+
+- Workspace resolve: `@solana-clawd/clawd-code@workspace:plugins/clawd-code`
+- Bridge tests: `bun run --cwd plugins/clawd-plugin test`
+- Package tests: `bun run --cwd packages/cheshire-eliza test`
+- Install smoke: clone + build of Solizardking/clawd-code produces `dist/cli.js`
+
+### Install (canonical CLI)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Solizardking/clawd-code/main/install.sh | sh
+```
+
+```ts
+import {
+  CLAWD_CODE_GITHUB,
+  CLAWD_MONOREPO_PATHS,
+  clawdStackSummary,
+} from "@elizaos/cheshire-eliza";
+```
+
 ## Plugins (sibling packages)
 
 | Package | Role |
 | --- | --- |
+| `@solana-clawd/clawd-code` | Solana-native AI coding CLI (submodule) |
+| `@solana-clawd/clawd-plugin` | Clawd skills + MCP bridge to the CLI |
 | `@elizaos/plugin-robinhood` | RH ERC-8004 forge |
 | `@elizaos/plugin-solana-forging` | Metaplex mint forge |
 | `@elizaos/plugin-e2b-computer` | E2B sandbox computer |
 | `@elizaos/plugin-cheshire-memory` | Hermes + Honcho memory |
-| `@elizaos/plugin-clawdbrowser` | **Official** ClawdBrowser `tools.md` catalog (search / describe / list) |
-| `@elizaos/plugin-dflow-trade` | **Official** Solana spot trade via DFlow + Helius (DeepSeek-ready) |
+| `@elizaos/plugin-clawdbrowser` | **Official** ClawdBrowser `tools.md` catalog |
+| `@elizaos/plugin-dflow-trade` | **Official** Solana spot via DFlow + Helius |
+
+### Communication map
+
+```text
+cheshire-eliza character
+  → plugin-cheshire-memory (REMEMBER_TRADE / RECALL_MEMORY)
+  → plugin-clawdbrowser (SEARCH/DESCRIBE/LIST tools)
+  → plugin-dflow-trade (quote/swap)
+  → clawd-plugin (skills + MCP)
+       → clawd-code CLI (code / trade / research / arena)
+```
 
 ### ClawdBrowser tools
 

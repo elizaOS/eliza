@@ -62,6 +62,25 @@ Required in `~/.clawd-code/.env`:
 6. **Signal confidence must be explicit** — label confidence scores for every trading signal
 7. **Never invent signatures, prices, or addresses** — say "not available" when data isn't in hand
 
+## Monorepo bridge
+
+In this eliza checkout, prefer the sibling submodule — not a second vendored tree:
+
+| Path | Role |
+| --- | --- |
+| `plugins/clawd-code` | Git submodule of https://github.com/Solizardking/clawd-code |
+| `plugins/clawd-plugin` | This package — skills + MCP → sibling CLI |
+| `packages/cheshire-eliza` | Solizard character + body generator |
+| `plugins/plugin-cheshire-memory` | Hermes + Honcho memory |
+| `plugins/plugin-clawdbrowser` | ClawdBrowser tools catalog |
+
+```bash
+# Resolve + invoke monorepo CLI
+bun run --cwd plugins/clawd-plugin clawd-code -- verify
+# or after global install:
+curl -fsSL https://raw.githubusercontent.com/Solizardking/clawd-code/main/install.sh | sh
+```
+
 ## Reference Files
 
 - `references/` — Deep reference docs for Clawd Code CLI usage, wallet operations, perps workflows, and integration patterns

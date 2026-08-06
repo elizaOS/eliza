@@ -4,6 +4,17 @@ Official elizaOS plugin that gives agents the **ClawdBrowser SOL GPT tool catalo
 
 Agents can **search**, **describe**, and **list** the 171 non-custodial Solana tools (Phoenix, Imperial, wallets, swaps, browser, Solana Tracker, …) without holding private keys.
 
+## Monorepo companions
+
+| Package | Role |
+| --- | --- |
+| `@elizaos/cheshire-eliza` | Character + body generator (loads this plugin) |
+| `@elizaos/plugin-cheshire-memory` | Hermes + Honcho durable memory |
+| `@solana-clawd/clawd-code` | Coding/trading CLI — https://github.com/Solizardking/clawd-code (`plugins/clawd-code` submodule) |
+| `@solana-clawd/clawd-plugin` | Skills + MCP bridge to that CLI |
+
+See [`packages/cheshire-eliza/README.md`](../../packages/cheshire-eliza/README.md) for the full communication map.
+
 ## Install (monorepo)
 
 ```bash

@@ -1,23 +1,21 @@
 {
   "mcpServers": {
-    "helius": {
-      "command": "node",
-      "args": ["../../core-ai/helius-mcp/dist/index.js"],
-      "env": {
-        "HELIUS_API_KEY": "${HELIUS_API_KEY}",
-        "SOLANA_RPC_URL": "${SOLANA_RPC_URL}"
-      }
-    },
     "clawd-code": {
-      "command": "npx",
-      "args": ["@solana-clawd/clawd-code@latest"]
-    },
-    "pump-mcp": {
       "command": "node",
-      "args": ["../../mcp-server/dist/index.js"],
+      "args": ["./scripts/run-clawd-code.mjs"],
       "env": {
+        "CLAWD_PROVIDER": "${CLAWD_PROVIDER}",
+        "CLAWD_MODEL": "${CLAWD_MODEL}",
+        "ZAI_API_KEY": "${ZAI_API_KEY}",
+        "XAI_API_KEY": "${XAI_API_KEY}",
+        "ANTHROPIC_API_KEY": "${ANTHROPIC_API_KEY}",
+        "OPENROUTER_API_KEY": "${OPENROUTER_API_KEY}",
+        "DEEPSEEK_API_KEY": "${DEEPSEEK_API_KEY}",
+        "HELIUS_API_KEY": "${HELIUS_API_KEY}",
         "SOLANA_RPC_URL": "${SOLANA_RPC_URL}",
-        "HELIUS_API_KEY": "${HELIUS_API_KEY}"
+        "LIVE_TRADING": "${LIVE_TRADING}",
+        "OPERATOR_CONFIRMED": "${OPERATOR_CONFIRMED}",
+        "PERPS_SIM_ONLY": "${PERPS_SIM_ONLY}"
       }
     },
     "phoenix-rise": {

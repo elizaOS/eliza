@@ -19,6 +19,8 @@ Agents catalog (separate repo):
 
 Under `plugins/`:
 
+- `clawd-code` — **git submodule** of https://github.com/Solizardking/clawd-code (not a vendored tree)
+- `@solana-clawd/clawd-plugin` — skills + MCP bridge (`scripts/run-clawd-code.mjs` → sibling CLI)
 - `@elizaos/plugin-robinhood` — ERC-8004 register intent
 - `@elizaos/plugin-solana-forging` — Metaplex mint intent
 - `@elizaos/plugin-e2b-computer` — E2B sandbox computer
@@ -28,8 +30,9 @@ Under `plugins/`:
 
 Under `packages/cheshire-eliza/`:
 
-- Solizard / Cheshire character
+- Solizard / Cheshire character (system prompt references Clawd Code submodule)
 - Agent body + character generator
+- `clawd-bridge` path/package constants for monorepo communication
 - This PR map
 
 ## Suggested git flow
