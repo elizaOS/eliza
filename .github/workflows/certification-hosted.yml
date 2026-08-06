@@ -30,7 +30,10 @@ on:
         type: choice
         options: [cpu, gpu, full]
       runner:
-        description: "Runner pool: hosted (ubuntu-24.04) or the self-hosted hetzner-robot fleet"
+        # Wording deliberately avoids the fleet label strings: the routing
+        # contract's collector flags any YAML scalar containing them, and this
+        # description is prose, not a route.
+        description: "Runner pool: hosted (ubuntu-24.04) or the self-hosted robot fleet"
         required: false
         default: "hosted"
         type: choice
@@ -47,10 +50,14 @@ jobs:
   hosted-certification:
     # The full matrix at --concurrency=3 exceeds 150 minutes on a 4-vCPU
     # hosted runner (run 31067341248 was killed by the cap mid-matrix). The
-    # hetzner-robot pool — installed for exactly this weight class (the
-    # certification-image builds) — finishes it in a fraction of the time;
-    # hosted stays the default so a missing fleet never strands a dispatch.
-    runs-on: ${{ inputs.runner == 'robot' && fromJSON('["self-hosted","hetzner-robot"]') || 'ubuntu-24.04' }}
+    # robot pool — installed for exactly this weight class (the
+    # certification-image builds) — finishes it in a fraction of the time.
+    # Routing composes the dispatch input WITH the HETZNER_FLEET_ONLINE gate
+    # (#17813): hosted is the default, and an explicit robot dispatch degrades
+    # to hosted when the fleet is offline instead of queuing against zero
+    # registered runners. This exact selector is allowlisted in
+    # packages/scripts/hetzner-fleet-routing-contract.mjs.
+    runs-on: ${{ fromJSON(inputs.runner != 'robot' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 300
     steps:
       - name: Preflight secrets
