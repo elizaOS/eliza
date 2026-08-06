@@ -30,7 +30,11 @@ import type {
 	GeneratedVoiceCorpus,
 } from "./corpus-generator";
 import { createKokoroTtsBackend } from "./engine-bridge";
-import { type ElizaInferenceFfi, loadElizaInferenceFfi } from "./ffi-bindings";
+import {
+	type ElizaInferenceContextHandle,
+	type ElizaInferenceFfi,
+	loadElizaInferenceFfi,
+} from "./ffi-bindings";
 import type { KokoroTtsBackend } from "./kokoro/kokoro-backend";
 import { resolveKokoroEngineConfig } from "./kokoro/kokoro-engine-discovery";
 import {
@@ -46,7 +50,11 @@ import {
 	StabilizedStreamingTranscriber,
 	StreamingAsrFeeder,
 } from "./streaming-asr/streaming-pipeline-adapter";
-import { FfiStreamingTranscriber, resampleLinear } from "./transcriber";
+import {
+	createStreamingTranscriber,
+	ffiSupportsStreamingAsr,
+	resampleLinear,
+} from "./transcriber";
 import type { VoiceScenario } from "./voice-scenario";
 import type {
 	VoiceDiarizationObservation,
@@ -115,6 +123,58 @@ interface SpeakerMatch {
 interface MeasuredSynthesis {
 	pcm: Float32Array;
 	firstAudioMs: number;
+}
+
+/**
+ * Drive the same fused streaming-to-batch ASR selection used by the product
+ * voice bridge. The microtask yield models live frame arrival: without it the
+ * synthetic corpus can enqueue every batch-interim decode before any partial
+ * has a chance to run, incorrectly reporting zero streaming coverage.
+ */
+export async function transcribeVoiceWorkbenchStream(args: {
+	ffi: ElizaInferenceFfi;
+	ctx: ElizaInferenceContextHandle;
+	pcm: Float32Array;
+}): Promise<{ transcript: string; partials: string[] }> {
+	const rawTranscriber = createStreamingTranscriber({
+		ffi: args.ffi,
+		getContext: () => args.ctx,
+		asrBundlePresent: true,
+		prefer: "auto",
+	});
+	const transcriber = ffiSupportsStreamingAsr(args.ffi)
+		? new StabilizedStreamingTranscriber(rawTranscriber)
+		: rawTranscriber;
+	const partials: string[] = [];
+	const feeder = new StreamingAsrFeeder({
+		transcriber,
+		events: {
+			onPartial: (update) => partials.push(update.partial),
+		},
+	});
+	try {
+		const startedAtMs = performance.now();
+		for (
+			let offset = 0;
+			offset < args.pcm.length;
+			offset += STREAMING_ASR_FRAME_SAMPLES
+		) {
+			feeder.feedFrame({
+				pcm: args.pcm.subarray(
+					offset,
+					Math.min(args.pcm.length, offset + STREAMING_ASR_FRAME_SAMPLES),
+				),
+				sampleRate: SAMPLE_RATE,
+				timestampMs: startedAtMs + (offset / SAMPLE_RATE) * 1000,
+			});
+			await Promise.resolve();
+		}
+		const final = await feeder.finalize();
+		return { transcript: final.partial.trim(), partials };
+	} finally {
+		feeder.dispose();
+		transcriber.dispose();
+	}
 }
 
 export interface RealVoiceWorkbenchRuntime {
@@ -559,11 +619,11 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 				? matchedEntityId === ownerCandidate.ownerEntityId
 				: speakerMatch?.profile.isOwner === true;
 
-		const streamingResult =
-			args.groundTruth.classes.includes("streaming-partials") &&
-			this.ffi.asrStreamSupported()
-				? await this.transcribeStreaming(audio16)
-				: null;
+		const streamingResult = args.groundTruth.classes.includes(
+			"streaming-partials",
+		)
+			? await this.transcribeStreaming(audio16)
+			: null;
 		const transcript = streamingResult
 			? streamingResult.transcript
 			: await this.transcribe(audio16);
@@ -795,41 +855,11 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 	private async transcribeStreaming(
 		pcm: Float32Array,
 	): Promise<{ transcript: string; partials: string[] }> {
-		const transcriber = new StabilizedStreamingTranscriber(
-			new FfiStreamingTranscriber({
-				ffi: this.ffi,
-				getContext: () => this.ctx,
-			}),
-		);
-		const partials: string[] = [];
-		const feeder = new StreamingAsrFeeder({
-			transcriber,
-			events: {
-				onPartial: (update) => partials.push(update.partial),
-			},
+		return transcribeVoiceWorkbenchStream({
+			ffi: this.ffi,
+			ctx: this.ctx,
+			pcm,
 		});
-		try {
-			const startedAtMs = performance.now();
-			for (
-				let offset = 0;
-				offset < pcm.length;
-				offset += STREAMING_ASR_FRAME_SAMPLES
-			) {
-				feeder.feedFrame({
-					pcm: pcm.subarray(
-						offset,
-						Math.min(pcm.length, offset + STREAMING_ASR_FRAME_SAMPLES),
-					),
-					sampleRate: SAMPLE_RATE,
-					timestampMs: startedAtMs + (offset / SAMPLE_RATE) * 1000,
-				});
-			}
-			const final = await feeder.finalize();
-			return { transcript: final.partial.trim(), partials };
-		} finally {
-			feeder.dispose();
-			transcriber.dispose();
-		}
 	}
 
 	async dispose(): Promise<void> {
