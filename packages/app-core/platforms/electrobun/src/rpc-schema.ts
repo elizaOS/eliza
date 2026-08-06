@@ -36,6 +36,17 @@ import type {
   LaunchSnapshot,
 } from "./launch/types";
 import type {
+  ShellAuthorityCommandPush,
+  ShellAuthorityCommandResult,
+  ShellAuthorityCompleteCommandParams,
+  ShellAuthorityConnectParams,
+  ShellAuthorityDeliverParams,
+  ShellAuthorityDeliveryPush,
+  ShellAuthorityDispatchCommandParams,
+  ShellAuthorityPublishSnapshotParams,
+  ShellAuthorityState,
+} from "./shell-sync-relay";
+import type {
   TraceEvent,
   TraceRecordEventParams,
   TraceSearchParams,
@@ -2164,12 +2175,29 @@ export type ElizaDesktopRPCSchema = {
         response: StewardRpcStatus;
       };
 
-      // Shell chat/voice controller cross-window relay (#16442). A renderer
-      // publishes an opaque shell-sync envelope; the main process rebroadcasts
-      // it to every OTHER window as a `shellControllerSync` push. The renderer
-      // coordinator (@elizaos/ui) owns all semantics — this is a dumb pipe.
-      shellControllerRelay: {
-        params: { envelope: unknown };
+      // Main-process authority for the one cross-window chat/voice controller.
+      shellControllerConnect: {
+        params: ShellAuthorityConnectParams;
+        response: ShellAuthorityState;
+      };
+      shellControllerHeartbeat: {
+        params: ShellAuthorityConnectParams;
+        response: ShellAuthorityState;
+      };
+      shellControllerPublishSnapshot: {
+        params: ShellAuthorityPublishSnapshotParams;
+        response: { ok: boolean };
+      };
+      shellControllerDispatchCommand: {
+        params: ShellAuthorityDispatchCommandParams;
+        response: ShellAuthorityCommandResult;
+      };
+      shellControllerCompleteCommand: {
+        params: ShellAuthorityCompleteCommandParams;
+        response: { ok: boolean };
+      };
+      shellControllerDeliver: {
+        params: ShellAuthorityDeliverParams;
         response: { ok: boolean };
       };
     };
@@ -2205,9 +2233,11 @@ export type ElizaDesktopRPCSchema = {
     messages: {
       // Push events FROM bun TO webview
 
-      // Shell chat/voice controller cross-window relay (#16442): an opaque
-      // shell-sync envelope rebroadcast from another window's publish.
-      shellControllerSync: { envelope: unknown };
+      // Main-authoritative shell controller state, command, delivery, and ping.
+      shellControllerAuthorityState: ShellAuthorityState;
+      shellControllerAuthorityCommand: ShellAuthorityCommandPush;
+      shellControllerAuthorityDelivery: ShellAuthorityDeliveryPush;
+      shellControllerAuthorityPing: { generation: number; now: number };
 
       // Gateway
       gatewayDiscovery: {

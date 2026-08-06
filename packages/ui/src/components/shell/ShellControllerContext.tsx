@@ -3,7 +3,7 @@
  * surface, and conversation-nav consumer — and, on the multi-window desktop,
  * guarantees a SINGLE engine across windows (#16442).
  *
- * A window is elected owner or follower by `useShellControllerSync`. The OWNER
+ * The native authority assigns each window an owner or follower role. The OWNER
  * mounts the real `useShellController` engine (the sole microphone/audio owner),
  * publishes its state, and applies followers' commands. A FOLLOWER never mounts
  * the engine: it renders the owner's published snapshot and forwards typed
@@ -16,9 +16,13 @@
 import * as React from "react";
 
 import { useAppSelectorShallow } from "../../state/app-store";
+import { ShellControllerContext } from "./ShellControllerContext.hooks";
 import { applyShellControllerCommand } from "./shell-controller-sync/apply-command";
 import { buildFollowerController } from "./shell-controller-sync/follower-controller";
-import type { ShellControllerCommand } from "./shell-controller-sync/protocol";
+import type {
+  ShellAuthorityDelivery,
+  ShellControllerCommand,
+} from "./shell-controller-sync/protocol";
 import {
   deriveShellControllerSnapshot,
   snapshotsEqual,
@@ -27,8 +31,7 @@ import {
   type ShellControllerSync,
   useShellControllerSync,
 } from "./shell-controller-sync/useShellControllerSync";
-import { ShellControllerContext } from "./ShellControllerContext.hooks";
-import { useShellController } from "./useShellController";
+import { type ShellController, useShellController } from "./useShellController";
 
 /**
  * Owner path: run the real engine, publish its snapshot to followers (coalescing
@@ -45,15 +48,112 @@ export function OwnerShellControllerProvider({
   const controller = useShellController();
   const controllerRef = React.useRef(controller);
   controllerRef.current = controller;
+  const localDictationSinkRef =
+    React.useRef<Parameters<ShellController["setDictationSink"]>[0]>(null);
+  const localTranscriptSinkRef =
+    React.useRef<Parameters<ShellController["setTranscriptSessionSink"]>[0]>(
+      null,
+    );
+  const remoteDictationTargetRef = React.useRef<string | null>(null);
+  const remoteTranscriptTargetRef = React.useRef<string | null>(null);
+
+  React.useLayoutEffect(() => {
+    controller.setDictationSink((text) => {
+      const target = remoteDictationTargetRef.current;
+      if (!target) {
+        localDictationSinkRef.current?.(text);
+        return;
+      }
+      remoteDictationTargetRef.current = null;
+      void sync
+        .deliver(target, { kind: "dictation", text })
+        .catch((error: unknown) =>
+          sync.reportError("shell dictation delivery failed", error),
+        );
+    });
+    controller.setTranscriptSessionSink((segments, startedAtMs, audioWav) => {
+      const target = remoteTranscriptTargetRef.current;
+      if (!target) {
+        localTranscriptSinkRef.current?.(segments, startedAtMs, audioWav);
+        return;
+      }
+      remoteTranscriptTargetRef.current = null;
+      void sync
+        .deliver(target, {
+          kind: "transcript-session",
+          segments,
+          startedAtMs,
+          audioWav,
+        })
+        .catch((error: unknown) =>
+          sync.reportError("shell transcript delivery failed", error),
+        );
+    });
+    return () => {
+      controller.setDictationSink(null);
+      controller.setTranscriptSessionSink(null);
+    };
+  }, [
+    controller.setDictationSink,
+    controller.setTranscriptSessionSink,
+    sync.deliver,
+    sync.reportError,
+  ]);
+
+  const ownerController = React.useMemo<ShellController>(
+    () => ({
+      ...controller,
+      startRecording: (intent) => {
+        remoteDictationTargetRef.current = null;
+        if (intent === "transcription")
+          remoteTranscriptTargetRef.current = null;
+        controller.startRecording(intent);
+      },
+      toggleTranscriptionMode: () => {
+        remoteTranscriptTargetRef.current = null;
+        return controller.toggleTranscriptionMode();
+      },
+      stopTranscriptionAndMic: () => {
+        remoteTranscriptTargetRef.current = null;
+        return controller.stopTranscriptionAndMic();
+      },
+      setDictationSink: (sink) => {
+        localDictationSinkRef.current = sink;
+      },
+      setTranscriptSessionSink: (sink) => {
+        localTranscriptSinkRef.current = sink;
+      },
+    }),
+    [controller],
+  );
 
   // Register the command sink once; the closure reads the live controller via a
   // ref so a follower's command always hits the current engine.
   React.useLayoutEffect(() => {
-    sync.setCommandHandler((command: ShellControllerCommand) =>
-      applyShellControllerCommand(controllerRef.current, command),
-    );
+    sync.setCommandHandler(async (command, fromEndpointId) => {
+      const priorDictationTarget = remoteDictationTargetRef.current;
+      const priorTranscriptTarget = remoteTranscriptTargetRef.current;
+      if (command.kind === "startRecording" && command.intent === "dictate") {
+        remoteDictationTargetRef.current = fromEndpointId;
+      }
+      if (
+        (command.kind === "startRecording" &&
+          command.intent === "transcription") ||
+        command.kind === "toggleTranscriptionMode" ||
+        command.kind === "stopTranscriptionAndMic"
+      ) {
+        remoteTranscriptTargetRef.current = fromEndpointId;
+      }
+      try {
+        await applyShellControllerCommand(controllerRef.current, command);
+      } catch (error) {
+        remoteDictationTargetRef.current = priorDictationTarget;
+        remoteTranscriptTargetRef.current = priorTranscriptTarget;
+        throw error;
+      }
+    });
     return () => sync.setCommandHandler(null);
-  }, [sync]);
+  }, [sync.setCommandHandler]);
 
   // Publish on any engine change; the equality guard keeps an unchanged tick
   // (and an unchanged streamed token) off the wire.
@@ -73,7 +173,7 @@ export function OwnerShellControllerProvider({
   });
 
   return (
-    <ShellControllerContext.Provider value={controller}>
+    <ShellControllerContext.Provider value={ownerController}>
       {children}
     </ShellControllerContext.Provider>
   );
@@ -94,14 +194,53 @@ export function FollowerShellControllerProvider({
   onCommandError: (command: ShellControllerCommand, error: unknown) => void;
   children: React.ReactNode;
 }): React.JSX.Element {
+  const dictationSinkRef =
+    React.useRef<Parameters<ShellController["setDictationSink"]>[0]>(null);
+  const transcriptSinkRef =
+    React.useRef<Parameters<ShellController["setTranscriptSessionSink"]>[0]>(
+      null,
+    );
+  const setDictationSink = React.useCallback<
+    ShellController["setDictationSink"]
+  >((sink) => {
+    dictationSinkRef.current = sink;
+  }, []);
+  const setTranscriptSessionSink = React.useCallback<
+    ShellController["setTranscriptSessionSink"]
+  >((sink) => {
+    transcriptSinkRef.current = sink;
+  }, []);
+  React.useLayoutEffect(() => {
+    sync.setDeliveryHandler((delivery: ShellAuthorityDelivery) => {
+      if (delivery.kind === "dictation") {
+        dictationSinkRef.current?.(delivery.text);
+      } else {
+        transcriptSinkRef.current?.(
+          delivery.segments,
+          delivery.startedAtMs,
+          delivery.audioWav,
+        );
+      }
+    });
+    return () => sync.setDeliveryHandler(null);
+  }, [sync.setDeliveryHandler]);
+
   const controller = React.useMemo(() => {
     if (!sync.snapshot) return null;
     return buildFollowerController({
       snapshot: sync.snapshot,
       dispatch: sync.dispatch,
       onCommandError,
+      setDictationSink,
+      setTranscriptSessionSink,
     });
-  }, [sync.snapshot, sync.dispatch, onCommandError]);
+  }, [
+    sync.snapshot,
+    sync.dispatch,
+    onCommandError,
+    setDictationSink,
+    setTranscriptSessionSink,
+  ]);
 
   return (
     <ShellControllerContext.Provider value={controller}>
@@ -144,7 +283,10 @@ export function ShellControllerProvider({
     );
   }
   return (
-    <FollowerShellControllerProvider sync={sync} onCommandError={onCommandError}>
+    <FollowerShellControllerProvider
+      sync={sync}
+      onCommandError={onCommandError}
+    >
       {children}
     </FollowerShellControllerProvider>
   );

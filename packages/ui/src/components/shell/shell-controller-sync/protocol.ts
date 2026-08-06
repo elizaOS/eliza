@@ -3,39 +3,24 @@
  * detached webviews. Each desktop window is an isolated renderer; left alone,
  * every window that mounts the app would instantiate its own `useShellController`
  * and open its own microphone, giving duplicated sessions and fighting audio
- * owners (#16442). This module defines the messages those windows exchange over
- * a relay so exactly one window owns the engine and the rest render its state
- * and forward typed commands.
+ * owners (#16442). This module defines the messages exchanged with the native
+ * main-process authority so exactly one window owns the engine and the rest
+ * render its state and forward typed commands.
  *
- * Nothing here is React- or Electrobun-specific: the coordinator state machine
- * (`coordinator.ts`) and the transports (`transport.ts`, `electrobun-transport.ts`)
- * build on these types. Every envelope carries `protocolVersion` so a window
- * running an incompatible build degrades visibly instead of mis-rendering a
- * snapshot it cannot interpret, and every command carries a stable `commandId`
- * so the owner can apply it exactly once even if the relay redelivers it.
+ * Nothing here is React-specific. Every connection carries `protocolVersion`
+ * so an incompatible renderer degrades visibly, and every command carries a
+ * stable `commandId` so the authority can retain its terminal outcome.
  */
+
+import type { TranscriptSegment } from "@elizaos/shared/transcripts";
 import type { ImageAttachment } from "../../../api/client-types-chat";
-import type { ShellControllerSnapshot } from "./snapshot";
 
 /**
  * Bumped only on a breaking change to the envelope/command/snapshot shapes.
- * Receivers reject any envelope whose version differs (see
- * `isProtocolCompatible`) rather than trusting a field that may have moved.
+ * The native authority rejects a renderer whose version differs rather than
+ * trusting a field that may have moved.
  */
-export const SHELL_SYNC_PROTOCOL_VERSION = "1";
-
-/**
- * Relative preference for owning the engine, lower wins. The main dashboard
- * window is the natural home for capture + audio; the always-on bottom bar is
- * next; ephemeral popovers/detached surfaces should never win over a real
- * window that is already present. Ties break on the stable window id.
- */
-export const SHELL_OWNER_PRIORITY = {
-  main: 0,
-  "chat-overlay": 1,
-  surface: 2,
-  "tray-popover": 3,
-} as const;
+export const SHELL_SYNC_PROTOCOL_VERSION = "2";
 
 export type ShellWindowRole = "owner" | "follower";
 
@@ -54,7 +39,10 @@ export type ShellControllerCommand =
     }
   | { kind: "captureVision" }
   | { kind: "toggleRecording" }
-  | { kind: "startRecording"; intent?: "converse" | "dictate" | "transcription" }
+  | {
+      kind: "startRecording";
+      intent?: "converse" | "dictate" | "transcription";
+    }
   | { kind: "stopRecording" }
   | { kind: "toggleHandsFree" }
   | { kind: "toggleTranscriptionMode" }
@@ -73,178 +61,230 @@ export type ShellControllerCommand =
 
 export type ShellControllerCommandKind = ShellControllerCommand["kind"];
 
-/** Owner heartbeat + join/leave presence, feeding the liveness table that
- *  drives owner election. Both owner and followers announce. */
-export interface ShellPresenceEnvelope {
-  type: "presence";
-  protocolVersion: string;
-  event: "announce" | "bye";
-  windowId: string;
-  /** One of {@link SHELL_OWNER_PRIORITY}; lower is preferred as owner. */
-  priority: number;
+export interface ShellAuthorityState {
+  endpointId: string;
+  ownerEndpointId: string | null;
+  generation: number;
+  role: ShellWindowRole;
+  status: "connected" | "connecting" | "disconnected" | "version-mismatch";
+  snapshotSeq: number;
+  snapshot: unknown | null;
 }
 
-/** Owner → followers. `seq` is monotonic within an `epoch`; a new owner starts a
- *  new (higher) epoch so followers can drop snapshots from a superseded owner. */
-export interface ShellSnapshotEnvelope {
-  type: "snapshot";
-  protocolVersion: string;
-  ownerWindowId: string;
-  epoch: number;
-  seq: number;
-  snapshot: ShellControllerSnapshot;
-  /** When set, a targeted re-publish to one late joiner rather than a broadcast;
-   *  other windows ignore it so a rejoin does not reset everyone's seq. */
-  targetWindowId?: string;
-}
-
-/** Follower → owner. `commandId` is the idempotency + correlation key. */
-export interface ShellCommandEnvelope {
-  type: "command";
-  protocolVersion: string;
+export interface ShellAuthorityCommandRequest {
+  generation: number;
   commandId: string;
-  fromWindowId: string;
+  fromEndpointId: string;
   command: ShellControllerCommand;
 }
 
-/** Owner → the follower that sent `commandId`. `ok:false` carries the reason so
- *  the follower can surface a real failure instead of a silent no-op. */
-export interface ShellCommandAckEnvelope {
-  type: "ack";
-  protocolVersion: string;
-  commandId: string;
-  toWindowId: string;
-  ok: boolean;
-  error?: string;
+export type ShellAuthorityDelivery =
+  | { kind: "dictation"; text: string }
+  | {
+      kind: "transcript-session";
+      segments: TranscriptSegment[];
+      startedAtMs: number;
+      audioWav: Uint8Array | null;
+    };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export type ShellSyncEnvelope =
-  | ShellPresenceEnvelope
-  | ShellSnapshotEnvelope
-  | ShellCommandEnvelope
-  | ShellCommandAckEnvelope;
-
-/** True when a received envelope was produced by a compatible build. An
- *  incompatible peer is not trusted: the coordinator surfaces a version-mismatch
- *  degrade rather than rendering a snapshot whose fields it cannot rely on. */
-export function isProtocolCompatible(protocolVersion: string): boolean {
-  return protocolVersion === SHELL_SYNC_PROTOCOL_VERSION;
+function isImageAttachment(value: unknown): value is ImageAttachment {
+  if (!isRecord(value)) return false;
+  const thumbnail = value.thumbnail;
+  return (
+    typeof value.data === "string" &&
+    value.data.length <= 32_000_000 &&
+    typeof value.mimeType === "string" &&
+    value.mimeType.length > 0 &&
+    value.mimeType.length <= 256 &&
+    typeof value.name === "string" &&
+    value.name.length > 0 &&
+    value.name.length <= 2_000 &&
+    (value.transcriptId === undefined ||
+      (typeof value.transcriptId === "string" &&
+        value.transcriptId.length > 0)) &&
+    (thumbnail === undefined ||
+      (isRecord(thumbnail) &&
+        typeof thumbnail.data === "string" &&
+        thumbnail.data.length <= 32_000_000 &&
+        typeof thumbnail.mimeType === "string" &&
+        thumbnail.mimeType.length > 0 &&
+        thumbnail.mimeType.length <= 256))
+  );
 }
 
-const ENVELOPE_TYPES: ReadonlySet<string> = new Set([
-  "presence",
-  "snapshot",
-  "command",
-  "ack",
+const NO_ARG_COMMANDS: ReadonlySet<ShellControllerCommandKind> = new Set([
+  "open",
+  "close",
+  "captureVision",
+  "toggleRecording",
+  "stopRecording",
+  "toggleHandsFree",
+  "toggleTranscriptionMode",
+  "stopTranscriptionAndMic",
+  "recheckMicPermission",
+  "stopSpeaking",
+  "toggleAgentVoiceMute",
+  "unlockAudio",
+  "clearConversation",
+  "openSettings",
+  "navigateHome",
+  "stop",
 ]);
 
-/**
- * Validate an envelope arriving over the IPC boundary. The relay hands us
- * `unknown`; a malformed payload is rejected (returns null) rather than fed into
- * the state machine as a partly-typed object. The check is structural and
- * shallow — enough to route by `type` and to know the sender's protocol version;
- * the coordinator does the version gating and the payload is only trusted once
- * its version matches this build.
- */
-export function parseShellSyncEnvelope(value: unknown): ShellSyncEnvelope | null {
-  if (typeof value !== "object" || value === null) return null;
-  const record = value as Record<string, unknown>;
-  const type = record.type;
-  const protocolVersion = record.protocolVersion;
-  if (typeof type !== "string" || !ENVELOPE_TYPES.has(type)) return null;
-  if (typeof protocolVersion !== "string") return null;
-  switch (type) {
-    case "presence":
-      return typeof record.windowId === "string" &&
-        typeof record.priority === "number" &&
-        (record.event === "announce" || record.event === "bye")
-        ? (value as ShellSyncEnvelope)
+/** Deep decoder for commands received from the native authority. */
+export function parseShellControllerCommand(
+  value: unknown,
+): ShellControllerCommand | null {
+  if (!isRecord(value) || typeof value.kind !== "string") return null;
+  if (NO_ARG_COMMANDS.has(value.kind as ShellControllerCommandKind)) {
+    return { kind: value.kind } as ShellControllerCommand;
+  }
+  switch (value.kind) {
+    case "send":
+      if (
+        typeof value.text !== "string" ||
+        value.text.length > 1_000_000 ||
+        !(
+          value.channelType === undefined ||
+          value.channelType === "DM" ||
+          value.channelType === "VOICE_DM"
+        ) ||
+        !(
+          value.images === undefined ||
+          (Array.isArray(value.images) &&
+            value.images.length <= 32 &&
+            value.images.every(isImageAttachment))
+        ) ||
+        !(value.metadata === undefined || isRecord(value.metadata))
+      ) {
+        return null;
+      }
+      return {
+        kind: "send",
+        text: value.text,
+        ...(value.channelType ? { channelType: value.channelType } : {}),
+        ...(value.images ? { images: value.images } : {}),
+        ...(value.metadata ? { metadata: value.metadata } : {}),
+      };
+    case "startRecording":
+      return value.intent === undefined ||
+        value.intent === "converse" ||
+        value.intent === "dictate" ||
+        value.intent === "transcription"
+        ? (value as unknown as ShellControllerCommand)
         : null;
-    case "snapshot":
-      return typeof record.ownerWindowId === "string" &&
-        typeof record.epoch === "number" &&
-        typeof record.seq === "number" &&
-        typeof record.snapshot === "object" &&
-        record.snapshot !== null
-        ? (value as ShellSyncEnvelope)
+    case "speak":
+      return typeof value.text === "string" && value.text.length <= 1_000_000
+        ? { kind: "speak", text: value.text }
         : null;
-    case "command":
-      return typeof record.commandId === "string" &&
-        typeof record.fromWindowId === "string" &&
-        typeof record.command === "object" &&
-        record.command !== null
-        ? (value as ShellSyncEnvelope)
+    case "setComposerHasDraft":
+      return typeof value.hasDraft === "boolean"
+        ? { kind: "setComposerHasDraft", hasDraft: value.hasDraft }
         : null;
-    case "ack":
-      return typeof record.commandId === "string" &&
-        typeof record.toWindowId === "string" &&
-        typeof record.ok === "boolean"
-        ? (value as ShellSyncEnvelope)
+    case "navConversation":
+      return value.direction === "prev" || value.direction === "next"
+        ? { kind: "navConversation", direction: value.direction }
         : null;
     default:
       return null;
   }
 }
 
-/** A live peer in the presence table. */
-export interface ShellPeer {
-  windowId: string;
-  priority: number;
-  /** The peer's protocol version. An incompatible peer STILL competes for
-   *  ownership (so the compatible window does not spawn a second engine across
-   *  the version boundary); a follower of an incompatible owner degrades to a
-   *  visible version-mismatch state instead of rendering. */
-  protocolVersion: string;
-  /** `now()` value of the most recent announce; used to prune the dead. */
-  lastSeenMs: number;
-}
-
-/**
- * Elect the owner deterministically from the live peer set: the lowest
- * `(priority, windowId)` wins. Pure and total — the same inputs always yield the
- * same owner on every window, so no two windows disagree about who owns the
- * engine. Returns `null` only for an empty set (a window always includes itself
- * before calling this).
- */
-export function electOwnerWindowId(
-  peers: ReadonlyArray<ShellPeer>,
-): string | null {
-  let best: ShellPeer | null = null;
-  for (const peer of peers) {
-    if (
-      best === null ||
-      peer.priority < best.priority ||
-      (peer.priority === best.priority && peer.windowId < best.windowId)
-    ) {
-      best = peer;
-    }
+export function parseShellAuthorityState(
+  value: unknown,
+): ShellAuthorityState | null {
+  if (!isRecord(value)) return null;
+  if (
+    typeof value.endpointId !== "string" ||
+    !(
+      value.ownerEndpointId === null ||
+      typeof value.ownerEndpointId === "string"
+    ) ||
+    !Number.isSafeInteger(value.generation) ||
+    (value.generation as number) < 0 ||
+    (value.role !== "owner" && value.role !== "follower") ||
+    !(
+      value.status === "connected" ||
+      value.status === "connecting" ||
+      value.status === "disconnected" ||
+      value.status === "version-mismatch"
+    ) ||
+    !Number.isSafeInteger(value.snapshotSeq) ||
+    (value.snapshotSeq as number) < 0 ||
+    !("snapshot" in value)
+  ) {
+    return null;
   }
-  return best?.windowId ?? null;
+  return {
+    endpointId: value.endpointId,
+    ownerEndpointId: value.ownerEndpointId,
+    generation: value.generation as number,
+    role: value.role,
+    status: value.status,
+    snapshotSeq: value.snapshotSeq as number,
+    snapshot: value.snapshot,
+  };
 }
 
-/** Prune peers whose last announce is older than `ttlMs` — the mechanism that
- *  detects a crashed/closed owner (its heartbeats stop) and triggers
- *  re-election. Pure: returns the surviving subset. */
-export function pruneStalePeers(
-  peers: ReadonlyArray<ShellPeer>,
-  nowMs: number,
-  ttlMs: number,
-): ShellPeer[] {
-  return peers.filter((peer) => nowMs - peer.lastSeenMs <= ttlMs);
+export function parseShellAuthorityCommandRequest(
+  value: unknown,
+): ShellAuthorityCommandRequest | null {
+  if (!isRecord(value)) return null;
+  const command = parseShellControllerCommand(value.command);
+  if (
+    !Number.isSafeInteger(value.generation) ||
+    (value.generation as number) < 0 ||
+    typeof value.commandId !== "string" ||
+    !value.commandId ||
+    typeof value.fromEndpointId !== "string" ||
+    !value.fromEndpointId ||
+    !command
+  ) {
+    return null;
+  }
+  return {
+    generation: value.generation as number,
+    commandId: value.commandId,
+    fromEndpointId: value.fromEndpointId,
+    command,
+  };
 }
 
-/**
- * Whether a snapshot at `(epoch, seq)` is newer than the last one applied at
- * `(appliedEpoch, appliedSeq)`. A relay may reorder or redeliver; a follower
- * applies a snapshot only when it strictly advances, so stale/duplicate
- * snapshots are dropped and a superseded owner (lower epoch) can never clobber
- * live state.
- */
-export function isSnapshotNewer(
-  incoming: { epoch: number; seq: number },
-  applied: { epoch: number; seq: number } | null,
-): boolean {
-  if (applied === null) return true;
-  if (incoming.epoch !== applied.epoch) return incoming.epoch > applied.epoch;
-  return incoming.seq > applied.seq;
+export function parseShellAuthorityDelivery(
+  value: unknown,
+): ShellAuthorityDelivery | null {
+  if (!isRecord(value)) return null;
+  if (value.kind === "dictation") {
+    return typeof value.text === "string" && value.text.length <= 1_000_000
+      ? { kind: "dictation", text: value.text }
+      : null;
+  }
+  if (value.kind === "transcript-session") {
+    if (
+      !Array.isArray(value.segments) ||
+      value.segments.length > 10_000 ||
+      !value.segments.every(
+        (segment) =>
+          isRecord(segment) &&
+          typeof segment.id === "string" &&
+          typeof segment.text === "string" &&
+          typeof segment.startMs === "number" &&
+          Number.isFinite(segment.startMs) &&
+          typeof segment.endMs === "number" &&
+          Number.isFinite(segment.endMs) &&
+          Array.isArray(segment.words),
+      ) ||
+      typeof value.startedAtMs !== "number" ||
+      !Number.isFinite(value.startedAtMs) ||
+      !(value.audioWav === null || value.audioWav instanceof Uint8Array)
+    ) {
+      return null;
+    }
+    return value as unknown as ShellAuthorityDelivery;
+  }
+  return null;
 }

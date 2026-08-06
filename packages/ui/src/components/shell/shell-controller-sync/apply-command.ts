@@ -14,79 +14,65 @@ import type { ShellControllerCommand } from "./protocol";
 export function applyShellControllerCommand(
   controller: ShellController,
   command: ShellControllerCommand,
-): void {
+): Promise<void> {
   switch (command.kind) {
     case "open":
-      controller.open();
-      return;
+      return Promise.resolve(controller.open());
     case "close":
-      controller.close();
-      return;
+      return Promise.resolve(controller.close());
     case "send":
-      controller.send(command.text, {
-        ...(command.channelType ? { channelType: command.channelType } : {}),
-        ...(command.images ? { images: command.images } : {}),
-        ...(command.metadata ? { metadata: command.metadata } : {}),
-      });
-      return;
+      return Promise.resolve(
+        controller.send(command.text, {
+          ...(command.channelType ? { channelType: command.channelType } : {}),
+          ...(command.images ? { images: command.images } : {}),
+          ...(command.metadata ? { metadata: command.metadata } : {}),
+        }),
+      );
     case "captureVision":
-      controller.captureVision();
-      return;
+      return Promise.resolve(controller.captureVision());
     case "toggleRecording":
-      controller.toggleRecording();
-      return;
+      return Promise.resolve(controller.toggleRecording());
     case "startRecording":
-      controller.startRecording(command.intent);
-      return;
+      return Promise.resolve(controller.startRecording(command.intent));
     case "stopRecording":
-      controller.stopRecording();
-      return;
+      return Promise.resolve(controller.stopRecording());
     case "toggleHandsFree":
-      controller.toggleHandsFree();
-      return;
+      return Promise.resolve(controller.toggleHandsFree());
     case "toggleTranscriptionMode":
-      void controller.toggleTranscriptionMode();
-      return;
+      return Promise.resolve(controller.toggleTranscriptionMode());
     case "stopTranscriptionAndMic":
-      void controller.stopTranscriptionAndMic();
-      return;
+      return Promise.resolve(controller.stopTranscriptionAndMic());
     case "recheckMicPermission":
-      void controller.recheckMicPermission();
-      return;
+      return Promise.resolve(controller.recheckMicPermission()).then(() => {});
     case "speak":
-      controller.speak(command.text);
-      return;
+      return Promise.resolve(controller.speak(command.text));
     case "stopSpeaking":
-      controller.stopSpeaking();
-      return;
+      return Promise.resolve(controller.stopSpeaking());
     case "toggleAgentVoiceMute":
-      controller.toggleAgentVoiceMute();
-      return;
+      return Promise.resolve(controller.toggleAgentVoiceMute());
     case "unlockAudio":
-      controller.unlockAudio();
-      return;
+      return Promise.resolve(controller.unlockAudio());
     case "setComposerHasDraft":
-      controller.setComposerHasDraft(command.hasDraft);
-      return;
+      return Promise.resolve(controller.setComposerHasDraft(command.hasDraft));
     case "clearConversation":
-      controller.clearConversation();
-      return;
+      return Promise.resolve(controller.clearConversation());
     case "openSettings":
-      controller.openSettings();
-      return;
+      return Promise.resolve(controller.openSettings());
     case "navigateHome":
-      controller.navigateHome?.();
-      return;
+      return Promise.resolve(controller.navigateHome?.());
     case "stop":
-      controller.stop();
-      return;
+      return Promise.resolve(controller.stop());
     case "navConversation":
-      if (command.direction === "prev") controller.conversationNav.goPrev();
-      else controller.conversationNav.goNext();
-      return;
+      return Promise.resolve(
+        command.direction === "prev"
+          ? controller.conversationNav.goPrev()
+          : controller.conversationNav.goNext(),
+      );
     default: {
       const _exhaustive: never = command;
-      return _exhaustive;
+      return Promise.reject(
+        new Error(`unhandled shell command: ${_exhaustive}`),
+      );
     }
   }
 }

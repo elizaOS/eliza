@@ -8,7 +8,7 @@
  */
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type * as React from "react";
+import * as React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   FollowerShellControllerProvider,
@@ -43,14 +43,32 @@ function Consumer(): React.JSX.Element {
   );
 }
 
+function DictationConsumer({
+  onText,
+}: {
+  onText: (text: string) => void;
+}): React.JSX.Element {
+  const controller = useShellControllerContext();
+  React.useEffect(() => {
+    controller?.setDictationSink(onText);
+    return () => controller?.setDictationSink(null);
+  }, [controller, onText]);
+  return <div>dictation-consumer</div>;
+}
+
 function makeSync(over: Partial<ShellControllerSync>): ShellControllerSync {
   return {
     role: "follower",
     status: "connected",
     snapshot: null,
+    endpointId: null,
+    generation: 0,
     dispatch: vi.fn(async () => {}),
     publishSnapshot: vi.fn(),
+    deliver: vi.fn(async () => {}),
     setCommandHandler: vi.fn(),
+    setDeliveryHandler: vi.fn(),
+    reportError: vi.fn(),
     ...over,
   };
 }
@@ -87,13 +105,37 @@ describe("FollowerShellControllerProvider", () => {
     );
     expect(screen.getByTestId("state").textContent).toBe("no-controller");
   });
+
+  it("delivers dictation into the initiating follower's local sink", () => {
+    const setDeliveryHandler = vi.fn();
+    const onText = vi.fn();
+    const sync = makeSync({
+      snapshot: baseSnapshot(),
+      setDeliveryHandler,
+    });
+    render(
+      <FollowerShellControllerProvider sync={sync} onCommandError={() => {}}>
+        <DictationConsumer onText={onText} />
+      </FollowerShellControllerProvider>,
+    );
+    const deliver = setDeliveryHandler.mock.calls[0]?.[0] as (delivery: {
+      kind: "dictation";
+      text: string;
+    }) => void;
+    deliver({ kind: "dictation", text: "private draft" });
+    expect(onText).toHaveBeenCalledWith("private draft");
+  });
 });
 
 describe("OwnerShellControllerProvider", () => {
   it("publishes the engine snapshot and routes commands to the real controller", () => {
     const setCommandHandler = vi.fn();
     const publishSnapshot = vi.fn();
-    const sync = makeSync({ role: "owner", setCommandHandler, publishSnapshot });
+    const sync = makeSync({
+      role: "owner",
+      setCommandHandler,
+      publishSnapshot,
+    });
     render(
       <OwnerShellControllerProvider sync={sync}>
         <div>owner-child</div>
@@ -105,10 +147,39 @@ describe("OwnerShellControllerProvider", () => {
 
     // The registered command handler applies commands to the live engine.
     expect(setCommandHandler).toHaveBeenCalledWith(expect.any(Function));
-    const handler = setCommandHandler.mock.calls[0]?.[0] as (c: {
-      kind: string;
-    }) => void;
-    handler({ kind: "stop" });
+    const handler = setCommandHandler.mock.calls[0]?.[0] as (
+      c: { kind: "stop" },
+      fromEndpointId: string,
+    ) => Promise<void>;
+    void handler({ kind: "stop" }, "follower-1");
     expect(fakeController.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes completed dictation only to the follower that started it", async () => {
+    const setCommandHandler = vi.fn();
+    const deliver = vi.fn(async () => {});
+    const sync = makeSync({ role: "owner", setCommandHandler, deliver });
+    render(
+      <OwnerShellControllerProvider sync={sync}>
+        <div>owner-child</div>
+      </OwnerShellControllerProvider>,
+    );
+    const commandHandler = setCommandHandler.mock.calls[0]?.[0] as (
+      command: { kind: "startRecording"; intent: "dictate" },
+      fromEndpointId: string,
+    ) => Promise<void>;
+    await commandHandler(
+      { kind: "startRecording", intent: "dictate" },
+      "follower-7",
+    );
+    const nativeSink = vi.mocked(fakeController.setDictationSink).mock
+      .calls[0]?.[0];
+    nativeSink?.("captured words");
+    await vi.waitFor(() =>
+      expect(deliver).toHaveBeenCalledWith("follower-7", {
+        kind: "dictation",
+        text: "captured words",
+      }),
+    );
   });
 });

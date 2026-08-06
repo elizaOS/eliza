@@ -5,21 +5,31 @@ import { buildFollowerController } from "../follower-controller";
 import type { ShellControllerCommand } from "../protocol";
 import { baseSnapshot } from "./fixtures";
 
-function build(
-  over = {},
-): {
+function build(over = {}): {
   controller: ReturnType<typeof buildFollowerController>;
   dispatch: ReturnType<typeof vi.fn>;
+  setDictationSink: ReturnType<typeof vi.fn>;
+  setTranscriptSessionSink: ReturnType<typeof vi.fn>;
   errors: { command: ShellControllerCommand; error: unknown }[];
 } {
   const dispatch = vi.fn(async () => {});
+  const setDictationSink = vi.fn();
+  const setTranscriptSessionSink = vi.fn();
   const errors: { command: ShellControllerCommand; error: unknown }[] = [];
   const controller = buildFollowerController({
     snapshot: baseSnapshot(over),
     dispatch,
     onCommandError: (command, error) => errors.push({ command, error }),
+    setDictationSink,
+    setTranscriptSessionSink,
   });
-  return { controller, dispatch, errors };
+  return {
+    controller,
+    dispatch,
+    setDictationSink,
+    setTranscriptSessionSink,
+    errors,
+  };
 }
 
 describe("buildFollowerController reads", () => {
@@ -53,16 +63,27 @@ describe("buildFollowerController commands", () => {
     controller.startRecording("dictate");
     controller.toggleHandsFree();
     controller.conversationNav.goNext();
-    expect(dispatch).toHaveBeenCalledWith({ kind: "startRecording", intent: "dictate" });
+    expect(dispatch).toHaveBeenCalledWith({
+      kind: "startRecording",
+      intent: "dictate",
+    });
     expect(dispatch).toHaveBeenCalledWith({ kind: "toggleHandsFree" });
-    expect(dispatch).toHaveBeenCalledWith({ kind: "navConversation", direction: "next" });
+    expect(dispatch).toHaveBeenCalledWith({
+      kind: "navConversation",
+      direction: "next",
+    });
   });
 
-  it("keeps engine-local sinks inert (owner runs the recorder)", () => {
-    const { controller, dispatch } = build();
-    controller.setDictationSink(() => {});
-    controller.setTranscriptSessionSink(() => {});
+  it("registers sinks in the initiating follower window", () => {
+    const { controller, dispatch, setDictationSink, setTranscriptSessionSink } =
+      build();
+    const dictation = () => {};
+    const transcript = () => {};
+    controller.setDictationSink(dictation);
+    controller.setTranscriptSessionSink(transcript);
     expect(dispatch).not.toHaveBeenCalled();
+    expect(setDictationSink).toHaveBeenCalledWith(dictation);
+    expect(setTranscriptSessionSink).toHaveBeenCalledWith(transcript);
   });
 
   it("recheckMicPermission forwards and resolves the known permission", async () => {
@@ -80,6 +101,8 @@ describe("buildFollowerController commands", () => {
       snapshot: baseSnapshot(),
       dispatch,
       onCommandError: (_command, error) => errors.push(error),
+      setDictationSink: vi.fn(),
+      setTranscriptSessionSink: vi.fn(),
     });
     controller.stop();
     await vi.waitFor(() => expect(errors).toHaveLength(1));

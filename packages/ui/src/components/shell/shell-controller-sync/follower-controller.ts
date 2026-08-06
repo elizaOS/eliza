@@ -7,8 +7,8 @@
  *
  * Follower-local invariants encoded here:
  *  - `analyser` is null — a follower owns no mic, so it shows no live waveform.
- *  - `setDictationSink` / `setTranscriptSessionSink` are no-ops — dictation and
- *    transcript capture land in the OWNER window, which runs the recorder.
+ *  - dictation and transcript sinks are renderer-local; the owner targets the
+ *    completed capture back to the follower that initiated it.
  *  - `recheckMicPermission` forwards the recheck and resolves with the currently
  *    known permission; the refreshed value arrives in the next snapshot.
  * A dispatch that fails (owner gone / timed out / version-mismatch) is routed to
@@ -24,12 +24,20 @@ export interface FollowerControllerDeps {
   snapshot: ShellControllerSnapshot;
   dispatch: (command: ShellControllerCommand) => Promise<void>;
   onCommandError: (command: ShellControllerCommand, error: unknown) => void;
+  setDictationSink: ShellController["setDictationSink"];
+  setTranscriptSessionSink: ShellController["setTranscriptSessionSink"];
 }
 
 export function buildFollowerController(
   deps: FollowerControllerDeps,
 ): ShellController {
-  const { snapshot, dispatch, onCommandError } = deps;
+  const {
+    snapshot,
+    dispatch,
+    onCommandError,
+    setDictationSink,
+    setTranscriptSessionSink,
+  } = deps;
   const fire = (command: ShellControllerCommand): void => {
     void dispatch(command).catch((error: unknown) =>
       onCommandError(command, error),
@@ -70,7 +78,8 @@ export function buildFollowerController(
     captureVision: () => fire({ kind: "captureVision" }),
     visionCapturing: snapshot.visionCapturing,
     toggleRecording: () => fire({ kind: "toggleRecording" }),
-    startRecording: (intent) => fire({ kind: "startRecording", ...(intent ? { intent } : {}) }),
+    startRecording: (intent) =>
+      fire({ kind: "startRecording", ...(intent ? { intent } : {}) }),
     stopRecording: () => fire({ kind: "stopRecording" }),
     handsFree: snapshot.handsFree,
     toggleHandsFree: () => fire({ kind: "toggleHandsFree" }),
@@ -82,8 +91,8 @@ export function buildFollowerController(
     transcriptionMode: snapshot.transcriptionMode,
     toggleTranscriptionMode: () => fire({ kind: "toggleTranscriptionMode" }),
     stopTranscriptionAndMic: () => fire({ kind: "stopTranscriptionAndMic" }),
-    setDictationSink: () => {},
-    setTranscriptSessionSink: () => {},
+    setDictationSink,
+    setTranscriptSessionSink,
     setComposerHasDraft: (hasDraft) =>
       fire({ kind: "setComposerHasDraft", hasDraft }),
     transcript: snapshot.transcript,

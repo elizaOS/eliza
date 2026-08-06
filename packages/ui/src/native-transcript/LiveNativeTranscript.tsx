@@ -112,7 +112,7 @@ export function LiveNativeTranscriptView({
       data-transcript-source={snapshot.source}
       onToggle={handleToggle}
     >
-      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-sm px-1 text-xs text-muted outline-none transition-colors duration-200 hover:text-txt focus-visible:ring-2 focus-visible:ring-accent/60 motion-reduce:transition-none [&::-webkit-details-marker]:hidden">
+      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-sm px-1 text-xs text-muted outline-none transition-colors duration-200 hover:text-txt motion-reduce:transition-none [&::-webkit-details-marker]:hidden">
         <span className="shrink-0 font-medium text-txt">Live captions</span>
         <span
           className="min-w-0 flex-1 truncate"

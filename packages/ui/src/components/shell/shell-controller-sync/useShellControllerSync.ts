@@ -1,86 +1,70 @@
 /**
- * React host for the shell-controller coordinator (#16442): owns one
- * `ShellControllerCoordinator` for this window's lifetime, drives its clock, and
- * exposes the elected role, the follower link status, the latest shared
- * snapshot, and the command/publish handles the owner + follower providers use.
- *
- * When no cross-window transport exists (web, mobile, single-window dev) the
- * window is a lone owner with no bus traffic, so behaviour is identical to
- * before this change everywhere except the multi-window desktop. On the desktop,
- * a joining window waits `DISCOVERY_GRACE_MS` before it may claim ownership so it
- * hears an existing owner first and never flashes a second engine.
+ * React client for the main-process shell-controller authority. Desktop
+ * renderers consume authoritative generations and snapshots; only the current
+ * owner mounts the real chat/voice engine. Web and mobile have no authority
+ * transport and remain a lone owner with no cross-window traffic.
  */
 import * as React from "react";
 import {
-  resolveWindowShellRoute,
-  type WindowShellRoute,
-} from "../../../platform/window-shell";
+  createElectrobunShellAuthorityTransport,
+  type ShellAuthorityTransport,
+} from "./electrobun-transport";
 import {
-  ShellControllerCoordinator,
-  type ShellFollowerStatus,
-} from "./coordinator";
-import { createElectrobunShellSyncTransport } from "./electrobun-transport";
-import {
-  SHELL_OWNER_PRIORITY,
+  SHELL_SYNC_PROTOCOL_VERSION,
+  type ShellAuthorityDelivery,
+  type ShellAuthorityState,
   type ShellControllerCommand,
   type ShellWindowRole,
 } from "./protocol";
-import type { ShellControllerSnapshot } from "./snapshot";
-import type { ShellSyncTransport } from "./transport";
+import {
+  parseShellControllerSnapshot,
+  type ShellControllerSnapshot,
+} from "./snapshot";
 
-const DISCOVERY_GRACE_MS = 300;
-const TICK_INTERVAL_MS = 2000;
+export type ShellFollowerStatus =
+  | "connected"
+  | "connecting"
+  | "disconnected"
+  | "version-mismatch";
+
+type CommandHandler = (
+  command: ShellControllerCommand,
+  fromEndpointId: string,
+) => Promise<void>;
 
 export interface ShellControllerSync {
   role: ShellWindowRole;
   status: ShellFollowerStatus;
   snapshot: ShellControllerSnapshot | null;
+  endpointId: string | null;
+  generation: number;
   dispatch: (command: ShellControllerCommand) => Promise<void>;
   publishSnapshot: (snapshot: ShellControllerSnapshot) => void;
-  setCommandHandler: (
-    handler: ((command: ShellControllerCommand) => void) | null,
+  deliver: (
+    targetEndpointId: string,
+    delivery: ShellAuthorityDelivery,
+  ) => Promise<void>;
+  setCommandHandler: (handler: CommandHandler | null) => void;
+  setDeliveryHandler: (
+    handler: ((delivery: ShellAuthorityDelivery) => void) | null,
   ) => void;
+  reportError: (message: string, error: unknown) => void;
 }
 
 export interface UseShellControllerSyncOptions {
-  /** Injected in tests. `undefined` resolves the real Electrobun transport;
-   *  `null` forces the lone-owner path. */
-  transport?: ShellSyncTransport | null;
-  windowId?: string;
-  priority?: number;
+  /** Injected in tests. `undefined` resolves Electrobun; `null` is lone-owner. */
+  transport?: ShellAuthorityTransport | null;
   onError?: (message: string, error: unknown) => void;
 }
 
-/** Priority of this window as an owner candidate, from its shell route. */
-export function resolveShellSyncPriority(route: WindowShellRoute): number {
-  switch (route.mode) {
-    case "main":
-      return SHELL_OWNER_PRIORITY.main;
-    case "chat-overlay":
-      return SHELL_OWNER_PRIORITY["chat-overlay"];
-    case "tray-popover":
-      return SHELL_OWNER_PRIORITY["tray-popover"];
-    default:
-      return SHELL_OWNER_PRIORITY.surface;
-  }
-}
-
-function generateWindowId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+function commandId(): string {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
     return crypto.randomUUID();
   }
-  return `w-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-}
-
-const NULL_TRANSPORT: ShellSyncTransport = {
-  send: () => {},
-  subscribe: () => () => {},
-};
-
-interface CoordinatorHandle {
-  coord: ShellControllerCoordinator;
-  isLone: boolean;
-  claimImmediately: boolean;
+  return `shell-command-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
 export function useShellControllerSync(
@@ -88,106 +72,249 @@ export function useShellControllerSync(
 ): ShellControllerSync {
   const onErrorRef = React.useRef(options.onError);
   onErrorRef.current = options.onError;
-
-  const commandHandlerRef = React.useRef<
-    ((command: ShellControllerCommand) => void) | null
+  const commandHandlerRef = React.useRef<CommandHandler | null>(null);
+  const deliveryHandlerRef = React.useRef<
+    ((delivery: ShellAuthorityDelivery) => void) | null
   >(null);
-  // Coordinator callbacks read the state setters through refs so the coordinator
-  // (built in a lazy ref before the useState calls) never references a binding
-  // before its declaration.
-  const setRoleRef = React.useRef<(r: ShellWindowRole) => void>(() => {});
-  const setStatusRef = React.useRef<(s: ShellFollowerStatus) => void>(() => {});
-  const setSnapshotRef = React.useRef<
-    (s: ShellControllerSnapshot | null) => void
-  >(() => {});
-
-  // One coordinator + transport for this window's whole lifetime (lazy-init ref,
-  // so options are read exactly once and the instance is never recreated).
-  const handleRef = React.useRef<CoordinatorHandle | null>(null);
-  if (handleRef.current === null) {
-    const transport =
-      "transport" in options
-        ? (options.transport ?? NULL_TRANSPORT)
-        : (createElectrobunShellSyncTransport((error) =>
-            onErrorRef.current?.("shell-sync transport error", error),
-          ) ?? NULL_TRANSPORT);
-    const isLone = transport === NULL_TRANSPORT;
-    const priority =
-      options.priority ?? resolveShellSyncPriority(resolveWindowShellRoute());
-    // A lone window (no peers) and the `main` window (nothing outranks priority
-    // 0) both own immediately — no discovery wait — so the common case never
-    // flashes a connecting state or remounts the app subtree. Secondary desktop
-    // windows discover an existing owner first.
-    const claimImmediately = isLone || priority === SHELL_OWNER_PRIORITY.main;
-    handleRef.current = {
-      isLone,
-      claimImmediately,
-      coord: new ShellControllerCoordinator({
-        windowId: options.windowId ?? generateWindowId(),
-        priority,
-        transport,
-        now: () => Date.now(),
-        claimOwnershipImmediately: claimImmediately,
-        onRoleChange: (nextRole) => setRoleRef.current(nextRole),
-        onStatusChange: (nextStatus) => setStatusRef.current(nextStatus),
-        onSnapshot: (nextSnapshot) => setSnapshotRef.current(nextSnapshot),
-        onCommand: (command) => {
-          const handler = commandHandlerRef.current;
-          if (!handler) {
-            throw new Error(
-              "shell-sync: no command handler registered (owner not mounted)",
-            );
-          }
-          handler(command);
-        },
-        onError: (message, error) => onErrorRef.current?.(message, error),
-      }),
-    };
-  }
-  const handle = handleRef.current;
-
-  // Initialise role from the claim policy so a lone/main window renders as owner
-  // on the very first paint (no follower→owner remount).
-  const [role, setRole] = React.useState<ShellWindowRole>(
-    handle.claimImmediately ? "owner" : "follower",
+  const transportRef = React.useRef<ShellAuthorityTransport | null | undefined>(
+    undefined,
   );
-  const [status, setStatus] = React.useState<ShellFollowerStatus>("connecting");
+  if (transportRef.current === undefined) {
+    transportRef.current =
+      "transport" in options
+        ? (options.transport ?? null)
+        : createElectrobunShellAuthorityTransport((error) =>
+            onErrorRef.current?.("shell authority transport error", error),
+          );
+  }
+  const transport = transportRef.current;
+  const lone = transport === null;
+  const authorityRef = React.useRef<{
+    endpointId: string | null;
+    ownerEndpointId: string | null;
+    generation: number;
+    snapshotSeq: number;
+    role: ShellWindowRole;
+  }>({
+    endpointId: null,
+    ownerEndpointId: null,
+    generation: 0,
+    snapshotSeq: 0,
+    role: lone ? "owner" : "follower",
+  });
+  const [role, setRole] = React.useState<ShellWindowRole>(
+    lone ? "owner" : "follower",
+  );
+  const [status, setStatus] = React.useState<ShellFollowerStatus>(
+    lone ? "connected" : "connecting",
+  );
   const [snapshot, setSnapshot] =
     React.useState<ShellControllerSnapshot | null>(null);
-  setRoleRef.current = setRole;
-  setStatusRef.current = setStatus;
-  setSnapshotRef.current = setSnapshot;
+
+  const applyState = React.useCallback((next: ShellAuthorityState): void => {
+    const current = authorityRef.current;
+    if (current.endpointId && next.endpointId !== current.endpointId) {
+      onErrorRef.current?.(
+        "shell authority endpoint identity changed",
+        new Error(
+          `expected ${current.endpointId}, received ${next.endpointId}`,
+        ),
+      );
+      return;
+    }
+    if (
+      next.generation < current.generation ||
+      (next.generation === current.generation &&
+        next.snapshotSeq < current.snapshotSeq)
+    ) {
+      return;
+    }
+
+    let parsedSnapshot: ShellControllerSnapshot | null = null;
+    if (next.role === "follower" && next.snapshot !== null) {
+      parsedSnapshot = parseShellControllerSnapshot(next.snapshot);
+      if (!parsedSnapshot) {
+        onErrorRef.current?.(
+          "shell authority supplied an invalid snapshot",
+          new Error("snapshot rejected"),
+        );
+        setStatus("disconnected");
+        setSnapshot(null);
+        return;
+      }
+    }
+    authorityRef.current = {
+      endpointId: next.endpointId,
+      ownerEndpointId: next.ownerEndpointId,
+      generation: next.generation,
+      snapshotSeq: next.snapshotSeq,
+      role: next.role,
+    };
+    setRole(next.role);
+    setStatus(next.status);
+    setSnapshot(parsedSnapshot);
+  }, []);
 
   React.useEffect(() => {
-    const { coord, isLone } = handle;
-    coord.start();
-    let graceTimer: ReturnType<typeof setTimeout> | undefined;
-    let interval: ReturnType<typeof setInterval> | undefined;
-    if (!isLone) {
-      graceTimer = setTimeout(() => coord.completeDiscovery(), DISCOVERY_GRACE_MS);
-      interval = setInterval(() => coord.tick(), TICK_INTERVAL_MS);
-    }
+    if (!transport) return;
+    let active = true;
+    const unsubscribe = transport.subscribe({
+      onState: (next) => {
+        if (active) applyState(next);
+      },
+      onCommand: (request) => {
+        const current = authorityRef.current;
+        if (
+          !active ||
+          current.role !== "owner" ||
+          request.generation !== current.generation
+        ) {
+          return;
+        }
+        const handler = commandHandlerRef.current;
+        const completion = handler
+          ? handler(request.command, request.fromEndpointId)
+          : Promise.reject(new Error("owner controller is not mounted"));
+        void completion
+          .then(() =>
+            transport.completeCommand(
+              request.generation,
+              request.commandId,
+              request.fromEndpointId,
+              { ok: true },
+            ),
+          )
+          .catch((error: unknown) =>
+            transport.completeCommand(
+              request.generation,
+              request.commandId,
+              request.fromEndpointId,
+              {
+                ok: false,
+                error: error instanceof Error ? error.message : String(error),
+              },
+            ),
+          )
+          .then((result) => {
+            if (!result.ok)
+              throw new Error("authority rejected command completion");
+          })
+          .catch((error: unknown) =>
+            onErrorRef.current?.("shell command completion failed", error),
+          );
+      },
+      onDelivery: (generation, delivery) => {
+        const current = authorityRef.current;
+        if (
+          active &&
+          current.role === "follower" &&
+          generation === current.generation
+        ) {
+          deliveryHandlerRef.current?.(delivery);
+        }
+      },
+      onPing: () => {
+        void transport
+          .heartbeat(SHELL_SYNC_PROTOCOL_VERSION)
+          .then((next) => {
+            if (active) applyState(next);
+          })
+          .catch((error: unknown) =>
+            onErrorRef.current?.("shell authority heartbeat failed", error),
+          );
+      },
+    });
+    void transport
+      .connect(SHELL_SYNC_PROTOCOL_VERSION)
+      .then((next) => {
+        if (active) applyState(next);
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setStatus("disconnected");
+          onErrorRef.current?.("shell authority connection failed", error);
+        }
+      });
     return () => {
-      if (graceTimer !== undefined) clearTimeout(graceTimer);
-      if (interval !== undefined) clearInterval(interval);
-      coord.stop();
+      active = false;
+      unsubscribe();
     };
-  }, [handle]);
+  }, [applyState, transport]);
 
   const dispatch = React.useCallback(
-    (command: ShellControllerCommand) => handle.coord.dispatchCommand(command),
-    [handle],
+    async (command: ShellControllerCommand): Promise<void> => {
+      if (!transport) {
+        const handler = commandHandlerRef.current;
+        if (!handler) throw new Error("shell controller is not mounted");
+        await handler(command, "local");
+        return;
+      }
+      const result = await transport.dispatchCommand(commandId(), command);
+      if (!result.ok) throw new Error(result.error ?? "owner command failed");
+    },
+    [transport],
   );
   const publishSnapshot = React.useCallback(
-    (next: ShellControllerSnapshot) => handle.coord.publishSnapshot(next),
-    [handle],
+    (next: ShellControllerSnapshot): void => {
+      if (!transport) return;
+      const { generation, role: currentRole } = authorityRef.current;
+      if (currentRole !== "owner") return;
+      void transport
+        .publishSnapshot(generation, next)
+        .then((result) => {
+          if (!result.ok) throw new Error("authority rejected owner snapshot");
+        })
+        .catch((error: unknown) =>
+          onErrorRef.current?.("shell snapshot publish failed", error),
+        );
+    },
+    [transport],
+  );
+  const deliver = React.useCallback(
+    async (
+      targetEndpointId: string,
+      delivery: ShellAuthorityDelivery,
+    ): Promise<void> => {
+      if (!transport)
+        throw new Error("targeted delivery requires desktop authority");
+      const { generation, role: currentRole } = authorityRef.current;
+      if (currentRole !== "owner") throw new Error("only owner can deliver");
+      const result = await transport.deliver(
+        generation,
+        targetEndpointId,
+        delivery,
+      );
+      if (!result.ok) throw new Error("authority rejected targeted delivery");
+    },
+    [transport],
   );
   const setCommandHandler = React.useCallback(
-    (handler: ((command: ShellControllerCommand) => void) | null) => {
+    (handler: CommandHandler | null) => {
       commandHandlerRef.current = handler;
     },
     [],
   );
+  const setDeliveryHandler = React.useCallback(
+    (handler: ((delivery: ShellAuthorityDelivery) => void) | null) => {
+      deliveryHandlerRef.current = handler;
+    },
+    [],
+  );
+  const reportError = React.useCallback((message: string, error: unknown) => {
+    onErrorRef.current?.(message, error);
+  }, []);
 
-  return { role, status, snapshot, dispatch, publishSnapshot, setCommandHandler };
+  return {
+    role,
+    status,
+    snapshot,
+    endpointId: authorityRef.current.endpointId,
+    generation: authorityRef.current.generation,
+    dispatch,
+    publishSnapshot,
+    deliver,
+    setCommandHandler,
+    setDeliveryHandler,
+    reportError,
+  };
 }

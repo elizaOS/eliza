@@ -51,6 +51,78 @@ export interface ShellControllerSnapshot {
   conversationNav: ShellConversationNavSnapshot;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Strictly decode a snapshot received from the native authority. */
+export function parseShellControllerSnapshot(
+  value: unknown,
+): ShellControllerSnapshot | null {
+  if (!isRecord(value)) return null;
+  const phase = value.phase;
+  const waveformMode = value.waveformMode;
+  const micPermission = value.micPermission;
+  const nav = value.conversationNav;
+  const model = value.modelStatus;
+  const messages = value.messages;
+  if (
+    !(
+      phase === "booting" ||
+      phase === "idle" ||
+      phase === "summoned" ||
+      phase === "listening" ||
+      phase === "responding"
+    ) ||
+    typeof value.responding !== "boolean" ||
+    (value.turnStatus !== null && !isRecord(value.turnStatus)) ||
+    !Array.isArray(messages) ||
+    messages.length > 10_000 ||
+    !messages.every(
+      (message) =>
+        isRecord(message) &&
+        typeof message.id === "string" &&
+        message.id.length > 0 &&
+        (message.role === "user" || message.role === "assistant") &&
+        typeof message.content === "string" &&
+        typeof message.createdAt === "number" &&
+        Number.isFinite(message.createdAt),
+    ) ||
+    typeof value.canSend !== "boolean" ||
+    !isRecord(model) ||
+    typeof model.kind !== "string" ||
+    typeof model.blocksSend !== "boolean" ||
+    typeof value.recording !== "boolean" ||
+    !(
+      waveformMode === "idle" ||
+      waveformMode === "listening" ||
+      waveformMode === "responding"
+    ) ||
+    typeof value.isOpen !== "boolean" ||
+    typeof value.visionCapturing !== "boolean" ||
+    typeof value.transcript !== "string" ||
+    typeof value.speaking !== "boolean" ||
+    typeof value.agentVoiceMuted !== "boolean" ||
+    typeof value.needsAudioUnlock !== "boolean" ||
+    typeof value.handsFree !== "boolean" ||
+    !(
+      micPermission === "granted" ||
+      micPermission === "denied" ||
+      micPermission === "prompt" ||
+      micPermission === "unknown"
+    ) ||
+    typeof value.transcriptionMode !== "boolean" ||
+    !isRecord(nav) ||
+    typeof nav.hasPrev !== "boolean" ||
+    typeof nav.hasNext !== "boolean" ||
+    !(nav.activeId === null || typeof nav.activeId === "string") ||
+    !Number.isInteger(nav.index)
+  ) {
+    return null;
+  }
+  return value as unknown as ShellControllerSnapshot;
+}
+
 /** Project the live controller into its wire snapshot. Pure. */
 export function deriveShellControllerSnapshot(
   controller: ShellController,
@@ -102,10 +174,7 @@ function navEqual(
 // on the identity discipline of the model-status hook: it changes only on real
 // readiness transitions, but the wire-relayed snapshot is deserialised into a
 // fresh object on followers, and a re-publish must not hinge on that.
-function modelStatusEqual(
-  a: HomeModelStatus,
-  b: HomeModelStatus,
-): boolean {
+function modelStatusEqual(a: HomeModelStatus, b: HomeModelStatus): boolean {
   return (
     a.kind === b.kind &&
     a.blocksSend === b.blocksSend &&

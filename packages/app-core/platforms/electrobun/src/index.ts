@@ -123,10 +123,10 @@ import {
   readResolvedPreloadScript,
   resolveRendererAssetDir,
 } from "./runtime-layout";
-import { registerShellSyncEndpoint } from "./shell-sync-relay";
 import { mergeRuntimePermissionStates } from "./runtime-permissions";
 import { startScreenCaptureBridgeServer } from "./screen-capture-bridge-server";
 import { startScreenshotDevServer } from "./screenshot-dev-server";
+import { registerShellSyncEndpoint } from "./shell-sync-relay";
 import { recordStartupPhase, resolveStartupBundlePath } from "./startup-trace";
 import {
   type BoundsStore,
@@ -1287,6 +1287,7 @@ function attachMainWindow(
   win: BrowserWindow,
   rpc: ElizaDesktopRpc,
   sendToWebview: SendToWebview,
+  releaseShellSync: () => void,
 ): BrowserWindow {
   wireMainWindowAfterCreate(win, rpc, sendToWebview);
   currentWindow = win;
@@ -1401,6 +1402,7 @@ function attachMainWindow(
       currentWindow = null;
       currentSendToWebview = null;
     }
+    releaseShellSync();
     clearCurrentMainWindow(win);
     getDesktopManager().clearMainWindow(win);
 
@@ -1442,11 +1444,12 @@ async function restoreWindow(): Promise<void> {
     return;
   }
   backgroundWindowPromise = (async () => {
-    const { rpc, sendToWebview } = createDesktopRpc("main");
+    const { rpc, sendToWebview, releaseShellSync } = createDesktopRpc("main");
     const win = attachMainWindow(
       await createMainWindow(rpc),
       rpc,
       sendToWebview,
+      releaseShellSync,
     );
     injectApiBase(win);
     logger.info("[Main] Restored window from dock click");
@@ -1731,18 +1734,17 @@ function createDesktopRpc(label: string): {
     >[0]["handlers"]
   >["requests"];
 
-  // Register this window as a shell-controller relay endpoint (#16442). Every
-  // window flows through this one factory, so registering here wires the relay
-  // uniformly for the main, surface, and tray-popover windows. The
-  // `shellControllerRelay` request handler (in buildBunRpcHandlers) fans a
-  // publish out to every registered endpoint.
-  const shellSyncEndpoint = registerShellSyncEndpoint(sendToWebview);
+  // Register this window with the main-process shell-controller authority
+  // (#16442). Every renderer flows through this factory, so ownership,
+  // generations, commands, and targeted capture results share one boundary.
+  const shellSyncEndpoint = registerShellSyncEndpoint(label, sendToWebview);
 
   rpc = BrowserView.defineRPC<ElizaDesktopRPCSchema>({
     maxRequestTime: MAX_RPC_REQUEST_TIME_MS,
     handlers: {
       requests: buildBunRpcHandlers({
         sendToWebview,
+        shellControllerEndpoint: shellSyncEndpoint,
       }) as BunRpcRequestsHandlers,
     },
   });
@@ -2662,12 +2664,16 @@ async function main(): Promise<void> {
   recordStartupPhase("creating_window", {
     pid: process.pid,
   });
-  const { rpc: mainRpc, sendToWebview: mainSendToWebview } =
-    createDesktopRpc("main");
+  const {
+    rpc: mainRpc,
+    sendToWebview: mainSendToWebview,
+    releaseShellSync: releaseMainShellSync,
+  } = createDesktopRpc("main");
   const mainWin: BrowserWindow | null = attachMainWindow(
     await createMainWindow(mainRpc),
     mainRpc,
     mainSendToWebview,
+    releaseMainShellSync,
   );
   recordStartupPhase("window_ready", {
     pid: process.pid,
@@ -2799,7 +2805,7 @@ async function main(): Promise<void> {
         const base = await resolveRendererUrlForCurrentRuntime();
         const popoverUrl = new URL(base);
         popoverUrl.searchParams.set("shellMode", "tray-popover");
-        const { rpc } = createDesktopRpc("tray-popover");
+        const { rpc, releaseShellSync } = createDesktopRpc("tray-popover");
         const buildInfo = await BuildConfig.get();
         const mainWindowPartition = resolveMainWindowPartition(process.env, {
           platform: process.platform,
@@ -2815,6 +2821,7 @@ async function main(): Promise<void> {
           onWindowFocused: (window) => {
             lastFocusedWindow = window;
           },
+          onWindowClosed: releaseShellSync,
         });
         logger.info("[Main] Tray popover enabled");
       } catch (err) {

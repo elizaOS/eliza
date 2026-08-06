@@ -21,13 +21,19 @@ describe("applyShellControllerCommand", () => {
       metadata: { a: 1 },
     });
 
-    applyShellControllerCommand(c, { kind: "startRecording", intent: "dictate" });
+    applyShellControllerCommand(c, {
+      kind: "startRecording",
+      intent: "dictate",
+    });
     expect(c.startRecording).toHaveBeenCalledWith("dictate");
 
     applyShellControllerCommand(c, { kind: "speak", text: "read this" });
     expect(c.speak).toHaveBeenCalledWith("read this");
 
-    applyShellControllerCommand(c, { kind: "setComposerHasDraft", hasDraft: true });
+    applyShellControllerCommand(c, {
+      kind: "setComposerHasDraft",
+      hasDraft: true,
+    });
     expect(c.setComposerHasDraft).toHaveBeenCalledWith(true);
 
     applyShellControllerCommand(c, { kind: "recheckMicPermission" });
@@ -36,8 +42,14 @@ describe("applyShellControllerCommand", () => {
 
   it("routes nav prev/next to conversationNav", () => {
     const c = makeFakeShellController();
-    applyShellControllerCommand(c, { kind: "navConversation", direction: "prev" });
-    applyShellControllerCommand(c, { kind: "navConversation", direction: "next" });
+    applyShellControllerCommand(c, {
+      kind: "navConversation",
+      direction: "prev",
+    });
+    applyShellControllerCommand(c, {
+      kind: "navConversation",
+      direction: "next",
+    });
     expect(c.conversationNav.goPrev).toHaveBeenCalledTimes(1);
     expect(c.conversationNav.goNext).toHaveBeenCalledTimes(1);
   });
@@ -70,10 +82,12 @@ describe("applyShellControllerCommand", () => {
   it("tolerates a missing optional navigateHome", () => {
     const c = makeFakeShellController();
     (c as { navigateHome?: () => void }).navigateHome = undefined;
-    expect(() => applyShellControllerCommand(c, { kind: "navigateHome" })).not.toThrow();
+    expect(() =>
+      applyShellControllerCommand(c, { kind: "navigateHome" }),
+    ).not.toThrow();
   });
 
-  it("propagates an engine throw so the owner can fail the ack", () => {
+  it("propagates an engine throw so the owner can fail the outcome", () => {
     const c = makeFakeShellController();
     c.send = vi.fn(() => {
       throw new Error("send blew up");
@@ -81,5 +95,15 @@ describe("applyShellControllerCommand", () => {
     expect(() =>
       applyShellControllerCommand(c, { kind: "send", text: "x" }),
     ).toThrow("send blew up");
+  });
+
+  it("awaits and propagates an asynchronous voice operation failure", async () => {
+    const c = makeFakeShellController();
+    c.toggleTranscriptionMode = vi.fn(async () => {
+      throw new Error("mic unavailable");
+    });
+    await expect(
+      applyShellControllerCommand(c, { kind: "toggleTranscriptionMode" }),
+    ).rejects.toThrow("mic unavailable");
   });
 });

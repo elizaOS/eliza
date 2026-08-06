@@ -146,6 +146,7 @@ interface TrayPopoverConfig {
   injectApiBase?: (window: BrowserWindow) => void;
   wireRpc?: (window: BrowserWindow) => void;
   onWindowFocused?: (window: BrowserWindow) => void;
+  onWindowClosed?: () => void;
 }
 
 interface ShowItemInFolderOptions {
@@ -2286,6 +2287,7 @@ X-GNOME-Autostart-enabled=true
     });
 
     win.on("close", () => {
+      config.onWindowClosed?.();
       this.trayPopoverWindow = null;
       this.trayPopoverVisible = false;
       this.trayPopoverLastAnchorBounds = null;

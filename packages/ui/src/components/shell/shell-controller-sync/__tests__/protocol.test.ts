@@ -1,151 +1,80 @@
-/**
- * Pure protocol helpers: owner election, peer pruning, snapshot ordering,
- * version gating, and the IPC-boundary envelope validator. All deterministic —
- * no transport, no clock.
- */
+/** Strict native-authority wire decoders reject malformed commands, state, and
+ * targeted voice deliveries before they reach controller state. */
 import { describe, expect, it } from "vitest";
 import {
-  electOwnerWindowId,
-  isProtocolCompatible,
-  isSnapshotNewer,
-  parseShellSyncEnvelope,
-  pruneStalePeers,
-  SHELL_SYNC_PROTOCOL_VERSION,
-  type ShellPeer,
+  parseShellAuthorityCommandRequest,
+  parseShellAuthorityDelivery,
+  parseShellAuthorityState,
+  parseShellControllerCommand,
 } from "../protocol";
 
-function peer(over: Partial<ShellPeer>): ShellPeer {
-  return {
-    windowId: "w",
-    priority: 0,
-    protocolVersion: SHELL_SYNC_PROTOCOL_VERSION,
-    lastSeenMs: 0,
-    ...over,
-  };
-}
-
-describe("electOwnerWindowId", () => {
-  it("returns null for an empty set", () => {
-    expect(electOwnerWindowId([])).toBeNull();
-  });
-  it("prefers lower priority", () => {
+describe("shell authority protocol decoders", () => {
+  it("accepts every structured command form and rejects forged input", () => {
+    expect(parseShellControllerCommand({ kind: "stop" })).toEqual({
+      kind: "stop",
+    });
     expect(
-      electOwnerWindowId([
-        peer({ windowId: "b", priority: 3 }),
-        peer({ windowId: "a", priority: 0 }),
-      ]),
-    ).toBe("a");
-  });
-  it("breaks ties on window id", () => {
-    expect(
-      electOwnerWindowId([
-        peer({ windowId: "z", priority: 1 }),
-        peer({ windowId: "a", priority: 1 }),
-      ]),
-    ).toBe("a");
-  });
-});
-
-describe("pruneStalePeers", () => {
-  it("keeps peers within the ttl and drops older ones", () => {
-    const kept = pruneStalePeers(
-      [peer({ windowId: "fresh", lastSeenMs: 900 }), peer({ windowId: "old", lastSeenMs: 100 })],
-      1000,
-      200,
-    );
-    expect(kept.map((p) => p.windowId)).toEqual(["fresh"]);
-  });
-});
-
-describe("isSnapshotNewer", () => {
-  it("treats the first snapshot as newer", () => {
-    expect(isSnapshotNewer({ epoch: 1, seq: 1 }, null)).toBe(true);
-  });
-  it("advances on higher seq within an epoch", () => {
-    expect(isSnapshotNewer({ epoch: 1, seq: 2 }, { epoch: 1, seq: 1 })).toBe(true);
-    expect(isSnapshotNewer({ epoch: 1, seq: 1 }, { epoch: 1, seq: 1 })).toBe(false);
-    expect(isSnapshotNewer({ epoch: 1, seq: 1 }, { epoch: 1, seq: 2 })).toBe(false);
-  });
-  it("a higher epoch always wins; a lower epoch never does", () => {
-    expect(isSnapshotNewer({ epoch: 2, seq: 1 }, { epoch: 1, seq: 99 })).toBe(true);
-    expect(isSnapshotNewer({ epoch: 1, seq: 99 }, { epoch: 2, seq: 1 })).toBe(false);
-  });
-});
-
-describe("isProtocolCompatible", () => {
-  it("matches only the current version", () => {
-    expect(isProtocolCompatible(SHELL_SYNC_PROTOCOL_VERSION)).toBe(true);
-    expect(isProtocolCompatible("999")).toBe(false);
-  });
-});
-
-describe("parseShellSyncEnvelope", () => {
-  it("rejects non-objects and unknown types", () => {
-    expect(parseShellSyncEnvelope(null)).toBeNull();
-    expect(parseShellSyncEnvelope("x")).toBeNull();
-    expect(parseShellSyncEnvelope({ type: "nope", protocolVersion: "1" })).toBeNull();
-    expect(parseShellSyncEnvelope({ type: "presence" })).toBeNull();
-  });
-  it("accepts a well-formed presence", () => {
-    expect(
-      parseShellSyncEnvelope({
-        type: "presence",
-        protocolVersion: "1",
-        event: "announce",
-        windowId: "w",
-        priority: 0,
+      parseShellControllerCommand({
+        kind: "send",
+        text: "hello",
+        channelType: "VOICE_DM",
       }),
-    ).not.toBeNull();
-  });
-  it("rejects a presence with a bad event / missing fields", () => {
+    ).toEqual({ kind: "send", text: "hello", channelType: "VOICE_DM" });
+    expect(parseShellControllerCommand({ kind: "send", text: 4 })).toBeNull();
     expect(
-      parseShellSyncEnvelope({
-        type: "presence",
-        protocolVersion: "1",
-        event: "nope",
-        windowId: "w",
-        priority: 0,
+      parseShellControllerCommand({
+        kind: "send",
+        text: "hello",
+        images: [{ data: 4, mimeType: "image/png", name: "bad" }],
       }),
     ).toBeNull();
+    expect(
+      parseShellControllerCommand({ kind: "startRecording", intent: "root" }),
+    ).toBeNull();
   });
-  it("accepts a well-formed snapshot / command / ack", () => {
+
+  it("requires complete authority identity and generation fields", () => {
+    const state = {
+      endpointId: "shell-2",
+      ownerEndpointId: "shell-1",
+      generation: 2,
+      role: "follower",
+      status: "connected",
+      snapshotSeq: 8,
+      snapshot: null,
+    };
+    expect(parseShellAuthorityState(state)).toEqual(state);
+    expect(parseShellAuthorityState({ ...state, generation: -1 })).toBeNull();
     expect(
-      parseShellSyncEnvelope({
-        type: "snapshot",
-        protocolVersion: "1",
-        ownerWindowId: "o",
-        epoch: 1,
-        seq: 1,
-        snapshot: {},
-      }),
-    ).not.toBeNull();
-    expect(
-      parseShellSyncEnvelope({
-        type: "command",
-        protocolVersion: "1",
-        commandId: "c",
-        fromWindowId: "f",
-        command: { kind: "open" },
-      }),
-    ).not.toBeNull();
-    expect(
-      parseShellSyncEnvelope({
-        type: "ack",
-        protocolVersion: "1",
-        commandId: "c",
-        toWindowId: "t",
-        ok: true,
+      parseShellAuthorityCommandRequest({
+        generation: 2,
+        commandId: "command-1",
+        fromEndpointId: "shell-2",
+        command: { kind: "stop" },
       }),
     ).not.toBeNull();
   });
-  it("rejects a snapshot missing its payload", () => {
+
+  it("validates targeted dictation and transcript-session payloads", () => {
     expect(
-      parseShellSyncEnvelope({
-        type: "snapshot",
-        protocolVersion: "1",
-        ownerWindowId: "o",
-        epoch: 1,
-        seq: 1,
+      parseShellAuthorityDelivery({ kind: "dictation", text: "hello" }),
+    ).toEqual({ kind: "dictation", text: "hello" });
+    expect(
+      parseShellAuthorityDelivery({
+        kind: "transcript-session",
+        segments: [
+          { id: "s1", text: "hello", startMs: 0, endMs: 100, words: [] },
+        ],
+        startedAtMs: 1,
+        audioWav: null,
+      }),
+    ).not.toBeNull();
+    expect(
+      parseShellAuthorityDelivery({
+        kind: "transcript-session",
+        segments: [{ id: "s1" }],
+        startedAtMs: 1,
+        audioWav: null,
       }),
     ).toBeNull();
   });

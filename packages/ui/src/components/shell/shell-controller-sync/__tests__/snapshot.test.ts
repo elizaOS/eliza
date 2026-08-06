@@ -1,10 +1,7 @@
 /** Snapshot projection + coalescing equality. */
 import { describe, expect, it } from "vitest";
 import type { ShellMessage } from "../../shell-state";
-import {
-  deriveShellControllerSnapshot,
-  snapshotsEqual,
-} from "../snapshot";
+import { deriveShellControllerSnapshot, snapshotsEqual } from "../snapshot";
 import { baseSnapshot, makeFakeShellController } from "./fixtures";
 
 describe("deriveShellControllerSnapshot", () => {
@@ -37,7 +34,10 @@ describe("snapshotsEqual", () => {
       { id: "1", role: "user", content: "a", createdAt: 1 },
     ];
     expect(
-      snapshotsEqual(baseSnapshot({ messages: msgs }), baseSnapshot({ messages: msgs })),
+      snapshotsEqual(
+        baseSnapshot({ messages: msgs }),
+        baseSnapshot({ messages: msgs }),
+      ),
     ).toBe(true);
     expect(
       snapshotsEqual(
