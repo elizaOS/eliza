@@ -119,6 +119,24 @@ describe("registered BlueBubbles local bridge E2E", () => {
             data: { id: 1, ...body },
           });
         }
+        if (
+          request.method === "GET" &&
+          url.pathname.startsWith("/api/v1/message/") &&
+          url.searchParams.get("with") === "chats"
+        ) {
+          const messageGuid = decodeURIComponent(
+            url.pathname.slice("/api/v1/message/".length),
+          );
+          if (["inbound-1", "inbound-retry"].includes(messageGuid)) {
+            return Response.json({
+              status: 200,
+              data: {
+                guid: messageGuid,
+                chats: [{ lastAddressedHandle: "+14155550123" }],
+              },
+            });
+          }
+        }
         if (url.pathname === "/api/v1/message/text") {
           blueBubblesSends.push(
             (await request.json()) as Record<string, unknown>,
@@ -175,6 +193,71 @@ describe("registered BlueBubbles local bridge E2E", () => {
     childProcesses.push(child);
     const relayUrl = `http://127.0.0.1:${relayPort}`;
     await waitForRelay(`${relayUrl}/not-found`);
+
+    const personalIdentityResponse = await fetch(
+      `${relayUrl}/webhooks/bluebubbles`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          type: "new-message",
+          data: {
+            guid: "personal-inbound",
+            text: "private personal message",
+            isFromMe: false,
+            handle: { address: "+14155550001", service: "iMessage" },
+            chats: [
+              {
+                guid: "iMessage;-;+14155550001",
+                chatIdentifier: "+14155550001",
+                lastAddressedHandle: "+14155550002",
+              },
+            ],
+          },
+        }),
+      },
+    );
+    expect(personalIdentityResponse.status).toBe(200);
+    await expect(personalIdentityResponse.json()).resolves.toMatchObject({
+      success: true,
+      skipped: "gateway_target_mismatch",
+      replied: false,
+      replyQueued: false,
+    });
+    expect(cloudRequests).toHaveLength(0);
+    expect(blueBubblesSends).toHaveLength(0);
+
+    const unverifiedIdentityResponse = await fetch(
+      `${relayUrl}/webhooks/bluebubbles`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          type: "new-message",
+          data: {
+            guid: "unverified-inbound",
+            text: "message with no receiving identity",
+            isFromMe: false,
+            handle: { address: "+14155550003", service: "iMessage" },
+            chats: [
+              {
+                guid: "iMessage;-;+14155550003",
+                chatIdentifier: "+14155550003",
+              },
+            ],
+          },
+        }),
+      },
+    );
+    expect(unverifiedIdentityResponse.status).toBe(200);
+    await expect(unverifiedIdentityResponse.json()).resolves.toMatchObject({
+      success: true,
+      skipped: "gateway_target_unverified",
+      replied: false,
+      replyQueued: false,
+    });
+    expect(cloudRequests).toHaveLength(0);
+    expect(blueBubblesSends).toHaveLength(0);
 
     const response = await fetch(`${relayUrl}/webhooks/bluebubbles`, {
       method: "POST",
@@ -259,7 +342,7 @@ describe("registered BlueBubbles local bridge E2E", () => {
     expect(blueBubblesWebhookCreates).toEqual([
       {
         url: `http://127.0.0.1:${relayPort}/webhooks/bluebubbles`,
-        events: ["new-message", "updated-message"],
+        events: ["new-message"],
       },
     ]);
 

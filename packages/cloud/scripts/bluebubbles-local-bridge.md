@@ -92,6 +92,20 @@ state can otherwise spawn long-running send attempts:
 curl -X POST 'http://127.0.0.1:8795/pending-replies/retry?limit=1'
 ```
 
+## Gateway identity isolation
+
+The relay forwards only `new-message` events that BlueBubbles can prove were
+addressed to `BLUEBUBBLES_GATEWAY_PHONE_NUMBER`. BlueBubbles notification
+payloads do not always include the receiving identity, so the relay retrieves
+the full message and checks the chat's `lastAddressedHandle` before contacting
+Eliza Cloud. A missing or different receiving identity is ignored fail-closed.
+
+This check is mandatory when the Mac's Messages account has personal phone
+numbers or email addresses in addition to the gateway number. It prevents
+unrelated personal conversations on the same account from reaching an agent or
+receiving an automated reply. For stronger operational isolation, dedicate the
+Mac user and Apple Account to the gateway number.
+
 ## Outbound Requirements
 
 Inbound routing is considered healthy when BlueBubbles has the webhook

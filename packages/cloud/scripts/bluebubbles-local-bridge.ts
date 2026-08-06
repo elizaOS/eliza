@@ -56,6 +56,7 @@ type BlueBubblesHandle = {
 type BlueBubblesChat = {
   guid?: string | null;
   chatIdentifier?: string | null;
+  lastAddressedHandle?: string | null;
 };
 
 type BlueBubblesMessage = {
@@ -71,6 +72,18 @@ type BlueBubblesPayload = {
   type: string;
   data: BlueBubblesMessage;
 };
+
+type GatewayTargetDecision =
+  | { accepted: true }
+  | {
+      accepted: false;
+      skipped:
+        | "gateway_target_mismatch"
+        | "gateway_target_unverified"
+        | "outbound_message"
+        | "unsupported_event";
+      targetIdentity?: string;
+    };
 
 type CloudReply = {
   success?: boolean;
@@ -377,6 +390,91 @@ function normalizeMessagingAddress(value: string): string {
   if (digits.length === 10) return `+1${digits}`;
   if (digits.length > 0) return `+${digits}`;
   return trimmed.toLowerCase();
+}
+
+async function readMessageTargetIdentity(
+  payload: BlueBubblesPayload,
+): Promise<string | null> {
+  const embeddedIdentity = payload.data.chats
+    ?.map((chat) => chat.lastAddressedHandle?.trim())
+    .find(Boolean);
+  if (embeddedIdentity) return embeddedIdentity;
+  if (!payload.data.guid || !blueBubblesPassword) return null;
+
+  const url = new URL(
+    `/api/v1/message/${encodeURIComponent(payload.data.guid)}`,
+    blueBubblesServerUrl,
+  );
+  url.searchParams.set("password", blueBubblesPassword);
+  url.searchParams.set("with", "chats");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5_000);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) {
+      throw new Error(`BlueBubbles message lookup failed (${response.status})`);
+    }
+    const body = (await response.json()) as {
+      data?: BlueBubblesMessage | null;
+    };
+    return (
+      body.data?.chats
+        ?.map((chat) => chat.lastAddressedHandle?.trim())
+        .find(Boolean) ?? null
+    );
+  } catch (error) {
+    // error-policy:J4 The identity gate fails closed when BlueBubbles cannot
+    // prove which local number received a personal-account message.
+    console.warn(
+      "[bluebubbles-local-bridge] unable to verify message target identity",
+      {
+        messageGuid: payload.data.guid,
+        error: commandErrorMessage(error),
+      },
+    );
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function gatewayTargetDecision(
+  payload: BlueBubblesPayload,
+): Promise<GatewayTargetDecision> {
+  if (payload.type !== "new-message") {
+    return { accepted: false, skipped: "unsupported_event" };
+  }
+
+  const peerAddress =
+    payload.data.handle?.address?.trim() ??
+    payload.data.chats?.[0]?.chatIdentifier?.trim();
+  if (payload.data.isFromMe) {
+    if (
+      loopbackNormalizationEnabled &&
+      peerAddress &&
+      normalizeMessagingAddress(peerAddress) ===
+        normalizeMessagingAddress(gatewayPhoneNumber)
+    ) {
+      return { accepted: true };
+    }
+    return { accepted: false, skipped: "outbound_message" };
+  }
+
+  const targetIdentity = await readMessageTargetIdentity(payload);
+  if (!targetIdentity) {
+    return { accepted: false, skipped: "gateway_target_unverified" };
+  }
+  if (
+    normalizeMessagingAddress(targetIdentity) !==
+    normalizeMessagingAddress(gatewayPhoneNumber)
+  ) {
+    return {
+      accepted: false,
+      skipped: "gateway_target_mismatch",
+      targetIdentity,
+    };
+  }
+  return { accepted: true };
 }
 
 function readMessageSourceIdentity(messageGuid: string): string | null {
@@ -710,7 +808,31 @@ async function ensureBlueBubblesWebhook(): Promise<
   const existing = listBody.data?.find(
     (webhook) => webhook.url === expectedBlueBubblesWebhookUrl,
   );
-  if (existing) return "already-configured";
+  const requiredEvents = ["new-message"];
+  if (
+    existing &&
+    existing.events.length === requiredEvents.length &&
+    existing.events.every((event) => requiredEvents.includes(event))
+  ) {
+    return "already-configured";
+  }
+
+  if (existing) {
+    const deleteUrl = new URL(
+      `/api/v1/webhook/${existing.id}`,
+      blueBubblesServerUrl,
+    );
+    deleteUrl.searchParams.set("password", blueBubblesPassword);
+    const deleteResponse = await fetch(deleteUrl, {
+      method: "DELETE",
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!deleteResponse.ok) {
+      throw new Error(
+        `BlueBubbles webhook replacement failed (${deleteResponse.status})`,
+      );
+    }
+  }
 
   const createUrl = new URL("/api/v1/webhook", blueBubblesServerUrl);
   createUrl.searchParams.set("password", blueBubblesPassword);
@@ -719,7 +841,7 @@ async function ensureBlueBubblesWebhook(): Promise<
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       url: expectedBlueBubblesWebhookUrl,
-      events: ["new-message", "updated-message"],
+      events: requiredEvents,
     }),
     signal: AbortSignal.timeout(8_000),
   });
@@ -1485,6 +1607,37 @@ function stampGatewayIdentity(payload: BlueBubblesPayload): BlueBubblesPayload {
   };
 }
 
+function recordInboundDelivery(
+  payload: BlueBubblesPayload,
+  result: {
+    handled?: boolean;
+    skipped?: string;
+    reason?: string;
+    agentId?: string;
+    organizationId?: string;
+    userId?: string;
+    replied: boolean;
+    replyQueued: boolean;
+    sendError?: string;
+  },
+): void {
+  const sender =
+    payload.data.handle?.address?.trim() ??
+    payload.data.chats?.[0]?.chatIdentifier?.trim();
+  const text = payload.data.text?.trim() ?? "";
+  recentInboundDeliveries.unshift({
+    receivedAt: new Date().toISOString(),
+    eventType: payload.type,
+    messageId: payload.data.guid ?? undefined,
+    sender: sender || undefined,
+    textPreview: text.length > 240 ? `${text.slice(0, 237)}...` : text,
+    isFromMe: payload.data.isFromMe === true,
+    loopbackNormalized: payload.data.metadata?.loopbackNormalized === true,
+    ...result,
+  });
+  recentInboundDeliveries.splice(MAX_RECENT_INBOUND_DELIVERIES);
+}
+
 async function handleWebhook(
   req: IncomingMessage,
   res: ServerResponse,
@@ -1504,16 +1657,39 @@ async function handleWebhook(
   }
 
   const rawBody = await readBody(req);
-  const payload = normalizeGatewayLoopbackPayload(
-    JSON.parse(rawBody) as BlueBubblesPayload,
-  );
+  const rawPayload = JSON.parse(rawBody) as BlueBubblesPayload;
 
-  const messageId = payload.data?.guid;
+  const messageId = rawPayload.data?.guid;
   if (messageId && processedMessageIds.has(messageId)) {
     json(res, 200, { success: true, skipped: "duplicate" });
     return;
   }
   if (messageId) processedMessageIds.add(messageId);
+
+  const targetDecision = await gatewayTargetDecision(rawPayload);
+  if (!targetDecision.accepted) {
+    const result = {
+      success: true,
+      skipped: targetDecision.skipped,
+      replied: false,
+      replyQueued: false,
+    };
+    recordInboundDelivery(rawPayload, result);
+    if (targetDecision.skipped === "gateway_target_mismatch") {
+      console.warn(
+        "[bluebubbles-local-bridge] ignored message for a different local identity",
+        {
+          messageGuid: messageId,
+          targetIdentity: targetDecision.targetIdentity,
+          gatewayPhoneNumber,
+        },
+      );
+    }
+    json(res, 200, result);
+    return;
+  }
+
+  const payload = normalizeGatewayLoopbackPayload(rawPayload);
 
   let reply: CloudReply;
   try {
@@ -1567,18 +1743,7 @@ async function handleWebhook(
     queuedReplyId,
     sendError,
   };
-  const sender =
-    payload.data.handle?.address?.trim() ??
-    payload.data.chats?.[0]?.chatIdentifier?.trim();
-  const text = payload.data.text?.trim() ?? "";
-  recentInboundDeliveries.unshift({
-    receivedAt: new Date().toISOString(),
-    eventType: payload.type,
-    messageId: messageId ?? undefined,
-    sender: sender || undefined,
-    textPreview: text.length > 240 ? `${text.slice(0, 237)}...` : text,
-    isFromMe: payload.data.isFromMe === true,
-    loopbackNormalized: payload.data.metadata?.loopbackNormalized === true,
+  recordInboundDelivery(payload, {
     handled: reply.handled,
     skipped: reply.skipped,
     reason: reply.reason,
@@ -1589,7 +1754,6 @@ async function handleWebhook(
     replyQueued: result.replyQueued,
     sendError,
   });
-  recentInboundDeliveries.splice(MAX_RECENT_INBOUND_DELIVERIES);
   json(res, 200, result);
 }
 
