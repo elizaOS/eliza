@@ -262,6 +262,19 @@ describe("MEMORY op:search identity-cluster expansion", () => {
 });
 
 describe("MEMORY uuid validation", () => {
+  it("publishes UUID-only schemas for every model-supplied database id", () => {
+    for (const name of ["entityId", "roomId", "memoryId"]) {
+      const parameter = memoryAction.parameters?.find(
+        (candidate) => candidate.name === name,
+      );
+      expect(parameter?.schema.pattern).toBeDefined();
+      const pattern = new RegExp(parameter?.schema.pattern ?? "");
+      expect(pattern.test(ROOM_ID)).toBe(true);
+      expect(pattern.test("chat")).toBe(false);
+      expect(pattern.test("general")).toBe(false);
+    }
+  });
+
   it('handles roomId "general" without running the query or leaking SQL', async () => {
     // The mock getMemories throws a drizzle-style error (raw SQL included)
     // for any non-uuid id, so a passing test proves the query never ran.
