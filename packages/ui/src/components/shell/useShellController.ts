@@ -415,6 +415,7 @@ const selectShellController = (s: AppContextValue) => ({
   handleSelectConversation: s.handleSelectConversation,
   activeConversationId: s.activeConversationId,
   conversations: s.conversations,
+  startupCoordinatorPhase: s.startupCoordinator.phase,
   setTab: s.setTab,
   handleChatStop: s.handleChatStop,
   setActionNotice: s.setActionNotice,
@@ -436,6 +437,7 @@ export function useShellController(): ShellController {
     handleSelectConversation,
     activeConversationId,
     conversations,
+    startupCoordinatorPhase,
     setTab,
     handleChatStop,
     setActionNotice,
@@ -525,6 +527,24 @@ export function useShellController(): ShellController {
     }>(),
   );
 
+  const beginConversationCreationForVoice = React.useCallback(() => {
+    if (conversationCreationTaskRef.current) return;
+    const creationTask = handleNewConversation();
+    conversationCreationTaskRef.current = creationTask;
+    const finishCreation = () => {
+      if (conversationCreationTaskRef.current === creationTask) {
+        conversationCreationTaskRef.current = null;
+      }
+      setConversationCreationEpoch((current) => current + 1);
+    };
+    void creationTask.then(
+      finishCreation,
+      // error-policy:J4 The identity waiter converts creation failure into the
+      // shell's visible retryable Cartesia error rather than rejecting unseen.
+      finishCreation,
+    );
+  }, [handleNewConversation]);
+
   const ensureActiveConversationForVoice = React.useCallback(() => {
     const existingId = activeConversationIdRef.current?.trim();
     if (existingId) return Promise.resolve(existingId);
@@ -536,24 +556,16 @@ export function useShellController(): ShellController {
         resolve,
       });
     });
-    if (!conversationCreationTaskRef.current) {
-      const creationTask = handleNewConversation();
-      conversationCreationTaskRef.current = creationTask;
-      const finishCreation = () => {
-        if (conversationCreationTaskRef.current === creationTask) {
-          conversationCreationTaskRef.current = null;
-        }
-        setConversationCreationEpoch((current) => current + 1);
-      };
-      void creationTask.then(
-        finishCreation,
-        // error-policy:J4 The identity waiter converts creation failure into the
-        // shell's visible retryable Cartesia error rather than rejecting unseen.
-        finishCreation,
-      );
+    // The shell paints while startup is still restoring chat history. Starting
+    // a second create during that authoritative hydration races its epoch guard:
+    // the server row is created, but activation is correctly discarded as stale.
+    // Let hydration publish its conversation first; only a settled ready shell
+    // with no identity owns the fallback create.
+    if (startupCoordinatorPhase === "ready") {
+      beginConversationCreationForVoice();
     }
     return identityPromise;
-  }, [handleNewConversation]);
+  }, [beginConversationCreationForVoice, startupCoordinatorPhase]);
 
   // Conversation creation publishes the new id before its greeting request
   // finishes. Resolve voice waiters from this committed render so the realtime
@@ -566,7 +578,19 @@ export function useShellController(): ShellController {
         waiter.resolve(committedId);
       }
     }
-  }, [activeConversationId, conversationCreationEpoch]);
+    if (
+      !committedId &&
+      startupCoordinatorPhase === "ready" &&
+      conversationIdentityWaitersRef.current.size > 0
+    ) {
+      beginConversationCreationForVoice();
+    }
+  }, [
+    activeConversationId,
+    beginConversationCreationForVoice,
+    conversationCreationEpoch,
+    startupCoordinatorPhase,
+  ]);
 
   React.useEffect(
     () => () => {

@@ -464,6 +464,7 @@
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.4.0",
     "tailwindcss": "^4.3.1",
+    "thinking-orbs": "0.2.0",
     "three": "^0.184.0",
     "vaul": "^1.1.2",
     "viem": "^2.48.8",
