@@ -47,7 +47,6 @@ import { computePrefixHashes, stableJsonStringify } from "./context-hash";
 import { appendContextEvent } from "./context-object";
 import {
 	buildStageChatMessages,
-	cachePrefixSegments,
 	normalizePromptSegments,
 	renderContextObject,
 } from "./context-renderer";
@@ -1279,6 +1278,7 @@ function renderPlannerModelInput(params: {
 }): {
 	messages: ChatMessage[];
 	promptSegments: PromptSegment[];
+	cacheKeySegments: PromptSegment[];
 } {
 	const renderedContext = renderContextObject(params.context);
 	const template = params.template ?? plannerTemplate;
@@ -1307,10 +1307,28 @@ function renderPlannerModelInput(params: {
 	// belong in the cached prefix. Marking the segment `stable: true` lets the
 	// Anthropic provider stamp `cache_control` on this block and lets the
 	// cache-key prefix extend through these instructions.
+	// `buildStageChatMessages` physically groups every stable context segment
+	// plus the planner instructions into the system message before it emits any
+	// dynamic user context. Keep the annotated segment order identical to that
+	// wire order. Otherwise `cachePrefixSegments` stops at the first dynamic
+	// provider and hashes only a small fraction of the system prefix even though
+	// the provider receives a much longer byte-stable system message.
+	const stableContextSegments = contextSegments.filter(
+		(segment) => segment.stable,
+	);
+	const dynamicContextSegments = contextSegments.filter(
+		(segment) => !segment.stable,
+	);
 	const promptSegments = normalizePromptSegments([
-		...contextSegments,
+		...stableContextSegments,
 		{ content: `planner_stage:\n${instructions}`, stable: true },
+		...dynamicContextSegments,
 	]);
+	// Planner and evaluator share the same rendered context but have different
+	// stage instructions. Cerebras uses the cache key as a routing hint, so key
+	// the pair by their shared byte-stable context prefix while retaining each
+	// stage's complete annotated wire shape in `promptSegments`.
+	const cacheKeySegments = normalizePromptSegments(stableContextSegments);
 	// Native tool-call messages: assistant (with toolCalls) + tool (result) per
 	// completed step. This grows append-only across planner iterations so the
 	// base prefix remains byte-identical and Cerebras's prompt cache can hit.
@@ -1325,7 +1343,7 @@ function renderPlannerModelInput(params: {
 		dynamicBlocks: [],
 		stepMessages,
 	});
-	return { messages, promptSegments };
+	return { messages, promptSegments, cacheKeySegments };
 }
 
 function compactionReserveForBudget(
@@ -1852,9 +1870,7 @@ async function callPlanner(params: {
 		}
 	}
 	const prefixHashes = computePrefixHashes(renderedInput.promptSegments);
-	const cachePrefixHashes = computePrefixHashes(
-		cachePrefixSegments(renderedInput.promptSegments),
-	);
+	const cachePrefixHashes = computePrefixHashes(renderedInput.cacheKeySegments);
 	const prefixHash =
 		cachePrefixHashes[cachePrefixHashes.length - 1]?.hash ??
 		"no-context-segments";
