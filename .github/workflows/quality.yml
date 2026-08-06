@@ -53,8 +53,10 @@ permissions:
 jobs:
   homepage-build:
     name: Homepage Build (PR smoke)
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 30
+    # The visual suite needs a provisionable browser image and predictable
+    # software-GPU timing; the general fleet supplies neither consistently.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -116,8 +118,7 @@ jobs:
 
       - name: Install homepage browser
         if: steps.homepage-scope.outputs.run == 'true'
-        working-directory: packages/homepage
-        run: ./node_modules/.bin/playwright install --with-deps chromium
+        run: PLAYWRIGHT_INSTALL_CWD=packages/homepage .github/scripts/install-playwright-browsers.sh chromium
 
       - name: Validate homepage snapshot inventory
         if: steps.homepage-scope.outputs.run == 'true'
@@ -212,7 +213,9 @@ jobs:
 
   format-check:
     name: Format
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    # This short required gate should not spend its entire budget bootstrapping
+    # or recovering an unhealthy general-fleet runner.
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -260,8 +263,10 @@ jobs:
   # mirroring the lean install used by `format-check`.
   develop-static-gate:
     name: Develop Gate (secret scan + UI determinism)
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 8
+    # Keep the required security/determinism checks independent of fleet
+    # bootstrap stalls and runner-internal setup failures.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
