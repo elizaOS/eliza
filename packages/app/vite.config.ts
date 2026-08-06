@@ -963,17 +963,36 @@ const USE_CORE_SOURCE_BROWSER_ENTRY =
   process.env.ELIZA_DESKTOP_VITE_FAST_DIST === "1" ||
   process.env.ELIZA_DESKTOP_VITE_BUILD_WATCH === "1";
 
+/**
+ * Returns the cleartext origins available to local and native app shells.
+ * iOS store builds prohibit them; other shells support owner-selected remote
+ * agents, whose REST calls use native transport while WebSockets use CSP.
+ */
+export function resolveAppShellLocalCspSources(isIosStoreBuild: boolean): {
+  localHttpSources: string;
+  localConnectSources: string;
+} {
+  if (isIosStoreBuild) {
+    return { localHttpSources: "", localConnectSources: "" };
+  }
+
+  const loopbackHttpSources = " http://localhost:* http://127.0.0.1:*";
+  return {
+    localHttpSources: loopbackHttpSources,
+    // Remote-agent URLs are explicitly chosen by the owner and authenticated.
+    // Capacitor's native HTTP bridge handles their REST traffic, while browser
+    // WebSockets still pass through this CSP and must accept the same LAN host.
+    localConnectSources: `${loopbackHttpSources} ws: ws://localhost:* wss://localhost:* ws://127.0.0.1:* wss://127.0.0.1:*`,
+  };
+}
+
 function appShellMetadataPlugin(): Plugin {
   const isIosStoreBuild =
     CAPACITOR_BUILD_TARGET === "ios" &&
     (process.env.ELIZA_BUILD_VARIANT === "store" ||
       process.env.ELIZA_RELEASE_AUTHORITY === "apple-app-store");
-  const localHttpSources = isIosStoreBuild
-    ? ""
-    : " http://localhost:* http://127.0.0.1:*";
-  const localConnectSources = isIosStoreBuild
-    ? ""
-    : " http://localhost:* ws://localhost:* wss://localhost:* http://127.0.0.1:* ws://127.0.0.1:* wss://127.0.0.1:*";
+  const { localHttpSources, localConnectSources } =
+    resolveAppShellLocalCspSources(isIosStoreBuild);
   const manifest = `${JSON.stringify(
     {
       name: APP_SHELL_METADATA.appName,
