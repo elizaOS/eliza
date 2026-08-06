@@ -10,9 +10,7 @@ function buildSharedWebhookConfig(
   platform: Platform,
   project: string,
 ): WebhookConfig {
-  const base: WebhookConfig = {
-    agentId: getProjectEnv(project, "DEFAULT_AGENT_ID"),
-  };
+  const base: WebhookConfig = {};
 
   switch (platform) {
     case "telegram":

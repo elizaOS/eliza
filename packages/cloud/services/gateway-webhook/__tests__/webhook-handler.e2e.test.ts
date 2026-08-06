@@ -72,7 +72,6 @@ function createAdapter(event: ChatEvent): PlatformAdapter & {
     typingCount: 0,
     verifyWebhook: mock(
       async (_request: Request, _rawBody: string, config: WebhookConfig) => {
-        expect(config.agentId).toBe("public-onboarding-agent");
         expect(config.accountSid).toBe("AC_test");
         expect(config.authToken).toBe("twilio-secret");
         expect(config.phoneNumber).toBe("+15550000000");
@@ -94,7 +93,6 @@ function createAdapter(event: ChatEvent): PlatformAdapter & {
 
 const originalFetch = globalThis.fetch;
 const envKeys = [
-  "ELIZA_APP_DEFAULT_AGENT_ID",
   "ELIZA_APP_TWILIO_ACCOUNT_SID",
   "ELIZA_APP_TWILIO_AUTH_TOKEN",
   "ELIZA_APP_TWILIO_PHONE_NUMBER",
@@ -102,7 +100,6 @@ const envKeys = [
 const originalEnv = new Map(envKeys.map((key) => [key, process.env[key]]));
 
 function configureEnv(): void {
-  process.env.ELIZA_APP_DEFAULT_AGENT_ID = "public-onboarding-agent";
   process.env.ELIZA_APP_TWILIO_ACCOUNT_SID = "AC_test";
   process.env.ELIZA_APP_TWILIO_AUTH_TOKEN = "twilio-secret";
   process.env.ELIZA_APP_TWILIO_PHONE_NUMBER = "+15550000000";
@@ -478,5 +475,287 @@ describe("gateway webhook handler e2e routing", () => {
     expect(redis.store.get("identity:twilio:+15551234567")).toBe(
       JSON.stringify({ notFound: true }),
     );
+  });
+
+  test("routes to onboarding when the owned agent has no registered server", async () => {
+    // A sandbox row exists from the moment provisioning starts, but
+    // `agent:<id>:server` only appears once a container has booted. Between the
+    // two, routing on the row alone logs and returns — silence for the whole
+    // boot window, and for good if provisioning ends in error.
+    configureEnv();
+    const redis = new MemoryRedis();
+    const event = createTwilioEvent({
+      messageId: "SM_pending_1",
+      text: "Any progress?",
+    });
+    const adapter = createAdapter(event);
+
+    globalThis.fetch = mock(async (input, init) => {
+      const request = new Request(input, init);
+      if (
+        request.url ===
+        "https://api.elizacloud.ai/api/internal/identity/resolve"
+      ) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            userId: "user-9",
+            organizationId: "org-9",
+            agentId: "sandbox-pending",
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (
+        request.url ===
+        "https://api.elizacloud.ai/api/eliza-app/onboarding/chat"
+      ) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            data: { reply: "Still starting up, Ada." },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      throw new Error(`Unexpected fetch: ${request.url}`);
+    }) as typeof fetch;
+
+    await handleWebhook(
+      requestFor(event),
+      adapter,
+      {
+        redis,
+        cloudBaseUrl: "https://api.elizacloud.ai",
+        getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+      },
+      "eliza-app",
+    );
+
+    await waitFor(() => adapter.replies.length === 1, "onboarding reply");
+    expect(adapter.replies).toEqual(["Still starting up, Ada."]);
+  });
+
+  test("stays silent rather than onboarding when an established agent's pod is down", async () => {
+    // `agent:<id>:server` lives 30 days; `server:<name>:url` is heartbeat-backed
+    // and expires after 120s. Routing key present + URL gone means an agent that
+    // HAS booted whose pod is now down or scaled to zero. Onboarding that owner
+    // would answer "you're live" while the message goes nowhere, and copy the
+    // transcript into their agent's memory again.
+    configureEnv();
+    const redis = new MemoryRedis();
+    redis.store.set("agent:agent-7:server", "server-7");
+    const event = createTwilioEvent({
+      messageId: "SM_down_1",
+      text: "Are you there?",
+    });
+    const adapter = createAdapter(event);
+    let onboardingCalls = 0;
+
+    globalThis.fetch = mock(async (input, init) => {
+      const request = new Request(input, init);
+      if (
+        request.url ===
+        "https://api.elizacloud.ai/api/internal/identity/resolve"
+      ) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            userId: "user-7",
+            organizationId: "org-7",
+            agentId: "agent-7",
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (
+        request.url ===
+        "https://api.elizacloud.ai/api/eliza-app/onboarding/chat"
+      ) {
+        onboardingCalls += 1;
+        return new Response(JSON.stringify({ success: true, data: {} }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      throw new Error(`Unexpected fetch: ${request.url}`);
+    }) as typeof fetch;
+
+    await handleWebhook(
+      requestFor(event),
+      adapter,
+      {
+        redis,
+        cloudBaseUrl: "https://api.elizacloud.ai",
+        getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+      },
+      "eliza-app",
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(onboardingCalls).toBe(0);
+    expect(adapter.replies).toEqual([]);
+  });
+
+  test("keeps per-agent webhook precedence for a sender that owns no agent", async () => {
+    // `/webhook/:project/:platform/:agentId` names the agent to serve. A sender
+    // who happens to have a cloud account without a sandbox must still reach
+    // that agent — diverting them would run personal onboarding on someone
+    // else's bot.
+    configureEnv();
+    const redis = new MemoryRedis();
+    redis.store.set("agent:bound-agent:server", "server-1");
+    redis.store.set("server:server-1:url", "http://agent-server.local");
+    const event = createTwilioEvent({
+      messageId: "SM_bound_1",
+      text: "Hello bound agent",
+    });
+    const adapter = createAdapter(event);
+    let forwardedBody: Record<string, unknown> | null = null;
+    let onboardingCalls = 0;
+
+    globalThis.fetch = mock(async (input, init) => {
+      const request = new Request(input, init);
+      if (
+        request.url.startsWith(
+          "https://api.elizacloud.ai/api/internal/webhook/config",
+        )
+      ) {
+        return new Response(
+          JSON.stringify({
+            accountSid: "AC_test",
+            authToken: "twilio-secret",
+            phoneNumber: "+15550000000",
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (
+        request.url ===
+        "https://api.elizacloud.ai/api/internal/identity/resolve"
+      ) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            userId: "user-9",
+            organizationId: "org-9",
+            agentId: null,
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (
+        request.url ===
+        "https://api.elizacloud.ai/api/eliza-app/onboarding/chat"
+      ) {
+        onboardingCalls += 1;
+        return new Response(JSON.stringify({ success: true, data: {} }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (
+        request.url === "http://agent-server.local/agents/bound-agent/message"
+      ) {
+        forwardedBody = (await request.json()) as Record<string, unknown>;
+        return new Response(JSON.stringify({ response: "bound agent reply" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      throw new Error(`Unexpected fetch: ${request.url}`);
+    }) as typeof fetch;
+
+    await handleWebhook(
+      requestFor(event),
+      adapter,
+      {
+        redis,
+        cloudBaseUrl: "https://api.elizacloud.ai",
+        getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+      },
+      "eliza-app",
+      "bound-agent",
+    );
+
+    await waitFor(() => adapter.replies.length === 1, "bound agent reply");
+    expect(adapter.replies).toEqual(["bound agent reply"]);
+    expect(onboardingCalls).toBe(0);
+    expect(forwardedBody).toMatchObject({
+      userId: "user-9",
+      text: "Hello bound agent",
+    });
+  });
+
+  test("never onboards on a per-agent webhook whose bound agent has no server", async () => {
+    // The URL agent is down. Falling through to onboarding here would run one
+    // sender's personal Eliza Cloud signup on a third party's bot.
+    configureEnv();
+    const redis = new MemoryRedis();
+    const event = createTwilioEvent({
+      messageId: "SM_bound_down_1",
+      text: "Hello bound agent",
+    });
+    const adapter = createAdapter(event);
+    let onboardingCalls = 0;
+
+    globalThis.fetch = mock(async (input, init) => {
+      const request = new Request(input, init);
+      if (
+        request.url.startsWith(
+          "https://api.elizacloud.ai/api/internal/webhook/config",
+        )
+      ) {
+        return new Response(
+          JSON.stringify({
+            accountSid: "AC_test",
+            authToken: "twilio-secret",
+            phoneNumber: "+15550000000",
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (
+        request.url ===
+        "https://api.elizacloud.ai/api/internal/identity/resolve"
+      ) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            userId: "user-9",
+            organizationId: "org-9",
+            agentId: null,
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (
+        request.url ===
+        "https://api.elizacloud.ai/api/eliza-app/onboarding/chat"
+      ) {
+        onboardingCalls += 1;
+        return new Response(JSON.stringify({ success: true, data: {} }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      throw new Error(`Unexpected fetch: ${request.url}`);
+    }) as typeof fetch;
+
+    await handleWebhook(
+      requestFor(event),
+      adapter,
+      {
+        redis,
+        cloudBaseUrl: "https://api.elizacloud.ai",
+        getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+      },
+      "eliza-app",
+      "unbooted-agent",
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(onboardingCalls).toBe(0);
+    expect(adapter.replies).toEqual([]);
   });
 });

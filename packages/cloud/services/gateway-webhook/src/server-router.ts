@@ -79,7 +79,7 @@ export async function resolveIdentity(
       | {
           userId?: string;
           organizationId?: string;
-          agentId?: string;
+          agentId?: string | null;
           data?: {
             user?: { id?: string; organizationId?: string };
             agent?: { id?: string | null };
@@ -115,6 +115,9 @@ export async function resolveIdentity(
         "Identity resolve response missing userId or organizationId",
       );
     }
+    // The flat branch above passes the wire value through untouched, and the
+    // wire value for "no sandbox" is `null`. Normalise once, here, so no caller
+    // has to.
     const identity: ResolvedIdentity = {
       userId,
       organizationId,
@@ -131,17 +134,32 @@ export async function resolveIdentity(
   }
 }
 
+/**
+ * Why an agent could not be routed to, which is not one condition but two.
+ *
+ * `agent:<id>:server` is written by a booted container and lives 30 days, while
+ * `server:<name>:url` is refreshed by the pod's heartbeat and expires after two
+ * minutes. So a missing routing key means the agent has never come up, and a
+ * present routing key with no URL means an established agent whose pod is down
+ * or scaled to zero. Callers that treat "no route" as "not provisioned yet" —
+ * and answer with onboarding — must only do so for `unregistered`.
+ */
+export type AgentServerLookup =
+  | ({ kind: "ready" } & ServerRoute)
+  | { kind: "unregistered" }
+  | { kind: "unreachable"; serverName: string };
+
 export async function resolveAgentServer(
   redis: RoutingRedis,
   agentId: string,
-): Promise<ServerRoute | null> {
+): Promise<AgentServerLookup> {
   const serverName = await redis.get<string>(`agent:${agentId}:server`);
-  if (!serverName) return null;
+  if (!serverName) return { kind: "unregistered" };
 
   const serverUrl = await redis.get<string>(`server:${serverName}:url`);
-  if (!serverUrl) return null;
+  if (!serverUrl) return { kind: "unreachable", serverName };
 
-  return { serverName, serverUrl };
+  return { kind: "ready", serverName, serverUrl };
 }
 
 export async function refreshKedaActivity(
