@@ -491,6 +491,7 @@ describe("race-superseded turns keep addressed responses", () => {
 		const actionHandler = vi.fn(async () => ({
 			success: true,
 			text: firstReply,
+			userFacingText: firstReply,
 			continueChain: false,
 			data: { actionName },
 		}));
@@ -587,16 +588,10 @@ describe("resolveSupersededResponseKeepReason policy", () => {
 		);
 	});
 
-	it("discards a non-reply shape when the turn was not addressed", () => {
+	it("discards non-reply shapes — every deliverable constructor sets REPLY", () => {
 		expect(
 			resolveSupersededResponseKeepReason({ actions: ["TASKS"] }),
 		).toBeNull();
-	});
-
-	it("keeps a non-reply action result when transport context addressed the turn", () => {
-		expect(
-			resolveSupersededResponseKeepReason({ actions: ["TASKS"] }, true),
-		).toBe("deterministically addressed action-mode turn");
 	});
 
 	it("discards when there is no response content to keep", () => {
