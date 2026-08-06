@@ -20,6 +20,7 @@ import {
   applyPolledTranscript,
   type LiveTranscriptState,
 } from "./meeting-live";
+import { SpeakerNameAttributionBadge } from "./SpeakerNameAttributionBadge";
 
 const POLL_INTERVAL_MS = 5_000;
 /** A ws event within this window means the socket is live — skip polling. */
@@ -44,9 +45,12 @@ function SegmentBlock({
 }): React.JSX.Element {
   return (
     <div data-testid={testId} className={cn(muted && "text-muted")}>
-      {segment.speakerLabel ? (
-        <div className="mb-0.5 text-xs font-medium text-muted">
-          {segment.speakerLabel}
+      {segment.speakerLabel || segment.speakerNameAttribution ? (
+        <div className="mb-0.5 flex flex-wrap items-center gap-1.5 text-xs font-medium text-muted">
+          {segment.speakerLabel ? <span>{segment.speakerLabel}</span> : null}
+          <SpeakerNameAttributionBadge
+            attribution={segment.speakerNameAttribution}
+          />
         </div>
       ) : null}
       <p className="leading-relaxed">{segment.text}</p>
