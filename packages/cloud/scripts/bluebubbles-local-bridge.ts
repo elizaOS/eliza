@@ -90,6 +90,7 @@ type InboundDeliveryRecord = {
   sender?: string;
   textPreview: string;
   isFromMe: boolean;
+  loopbackNormalized: boolean;
   handled?: boolean;
   skipped?: string;
   reason?: string;
@@ -253,6 +254,11 @@ const pendingReplyRetryLimit = Number.parseInt(
 const pendingRepliesPath =
   process.env.BLUEBUBBLES_PENDING_REPLIES_PATH ??
   join(process.cwd(), ".eliza-local/bluebubbles-pending-replies.json");
+const messagesDbPath =
+  process.env.BLUEBUBBLES_MESSAGES_DB_PATH ??
+  join(process.env.HOME ?? "", "Library/Messages/chat.db");
+const loopbackNormalizationEnabled =
+  process.env.BLUEBUBBLES_LOOPBACK_NORMALIZATION_ENABLED === "true";
 const expectedBlueBubblesWebhookUrl = `http://127.0.0.1:${port}/webhooks/bluebubbles`;
 const processedMessageIds = new Set<string>();
 const recentInboundDeliveries: InboundDeliveryRecord[] = [];
@@ -359,6 +365,103 @@ function readBlueBubblesConfigSnapshot(): BlueBubblesConfigSnapshot {
   } finally {
     db.close();
   }
+}
+
+function normalizeMessagingAddress(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.includes("@")) return trimmed.toLowerCase();
+
+  const digits = trimmed.replace(/\D/g, "");
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length > 0) return `+${digits}`;
+  return trimmed.toLowerCase();
+}
+
+function readMessageSourceIdentity(messageGuid: string): string | null {
+  try {
+    const db = new Database(messagesDbPath, { readonly: true });
+    try {
+      const row = db
+        .query<{ destination_caller_id: string | null }, [string]>(
+          "select destination_caller_id from message where guid = ? limit 1",
+        )
+        .get(messageGuid);
+      return row?.destination_caller_id?.trim() || null;
+    } finally {
+      db.close();
+    }
+  } catch (error) {
+    // error-policy:J4 Cross-number normalization is optional; ordinary inbound
+    // messages and the outbound loop guard remain safe when Messages DB access
+    // is unavailable under macOS privacy controls.
+    console.warn(
+      "[bluebubbles-local-bridge] unable to inspect Messages source identity",
+      {
+        messageGuid,
+        error: commandErrorMessage(error),
+      },
+    );
+    return null;
+  }
+}
+
+function normalizeGatewayLoopbackPayload(
+  payload: BlueBubblesPayload,
+): BlueBubblesPayload {
+  if (
+    !loopbackNormalizationEnabled ||
+    !payload.data.isFromMe ||
+    !payload.data.guid
+  ) {
+    return payload;
+  }
+
+  const recipient =
+    payload.data.handle?.address?.trim() ??
+    payload.data.chats?.[0]?.chatIdentifier?.trim();
+  if (
+    !recipient ||
+    normalizeMessagingAddress(recipient) !==
+      normalizeMessagingAddress(gatewayPhoneNumber)
+  ) {
+    return payload;
+  }
+
+  const sourceIdentity = readMessageSourceIdentity(payload.data.guid);
+  if (
+    !sourceIdentity ||
+    normalizeMessagingAddress(sourceIdentity) ===
+      normalizeMessagingAddress(gatewayPhoneNumber)
+  ) {
+    return payload;
+  }
+
+  const service = messageServiceFor(payload);
+  const firstChat = payload.data.chats?.[0];
+  return {
+    ...payload,
+    data: {
+      ...payload.data,
+      isFromMe: false,
+      handle: {
+        ...(payload.data.handle ?? {}),
+        address: sourceIdentity,
+      },
+      chats: [
+        {
+          ...(firstChat ?? {}),
+          guid: `${service};-;${sourceIdentity}`,
+          chatIdentifier: sourceIdentity,
+        },
+      ],
+      metadata: {
+        ...(payload.data.metadata ?? {}),
+        loopbackNormalized: true,
+        originalIsFromMe: true,
+        originalRecipient: recipient,
+      },
+    },
+  };
 }
 
 async function readSipStatus(): Promise<string> {
@@ -911,6 +1014,7 @@ async function gatewayDiagnostics(): Promise<Record<string, unknown>> {
       outboundValidationPath,
       gatewayPhoneNumber,
       gatewayPhoneLabel,
+      loopbackNormalizationEnabled,
       pendingRepliesPath,
       pendingReplyCount: pendingReplies.length,
       pendingReplyRetry: {
@@ -1348,7 +1452,9 @@ async function handleWebhook(
   }
 
   const rawBody = await readBody(req);
-  const payload = JSON.parse(rawBody) as BlueBubblesPayload;
+  const payload = normalizeGatewayLoopbackPayload(
+    JSON.parse(rawBody) as BlueBubblesPayload,
+  );
 
   const messageId = payload.data?.guid;
   if (messageId && processedMessageIds.has(messageId)) {
@@ -1420,6 +1526,7 @@ async function handleWebhook(
     sender: sender || undefined,
     textPreview: text.length > 240 ? `${text.slice(0, 237)}...` : text,
     isFromMe: payload.data.isFromMe === true,
+    loopbackNormalized: payload.data.metadata?.loopbackNormalized === true,
     handled: reply.handled,
     skipped: reply.skipped,
     reason: reply.reason,

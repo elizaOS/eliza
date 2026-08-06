@@ -3,16 +3,23 @@
  * deterministic Cloud/BlueBubbles substitutes; no Apple account is required.
  */
 
+import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:net";
-import { resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 
 const childProcesses: Bun.Subprocess[] = [];
 const servers: ReturnType<typeof Bun.serve>[] = [];
+const temporaryDirectories: string[] = [];
 
 afterEach(async () => {
   for (const child of childProcesses.splice(0)) child.kill();
   for (const server of servers.splice(0)) await server.stop(true);
+  for (const directory of temporaryDirectories.splice(0)) {
+    await rm(directory, { force: true, recursive: true });
+  }
 });
 
 async function unusedPort(): Promise<number> {
@@ -124,6 +131,19 @@ describe("registered BlueBubbles local bridge E2E", () => {
     servers.push(blueBubbles);
 
     const relayPort = await unusedPort();
+    const temporaryDirectory = await mkdtemp(
+      join(tmpdir(), "eliza-bluebubbles-loopback-"),
+    );
+    temporaryDirectories.push(temporaryDirectory);
+    const messagesDbPath = join(temporaryDirectory, "chat.db");
+    const messagesDb = new Database(messagesDbPath);
+    messagesDb.exec(
+      "create table message (guid text primary key, destination_caller_id text)",
+    );
+    messagesDb
+      .query("insert into message (guid, destination_caller_id) values (?, ?)")
+      .run("cross-number-inbound", "+14155550998");
+    messagesDb.close();
     const bridgeId = "bb-11111111-1111-4111-8111-111111111111";
     const token = `bbg_${"a".repeat(64)}`;
     const child = Bun.spawn(
@@ -142,6 +162,8 @@ describe("registered BlueBubbles local bridge E2E", () => {
           BLUEBUBBLES_GATEWAY_TOKEN: token,
           BLUEBUBBLES_BRIDGE_ID: bridgeId,
           BLUEBUBBLES_GATEWAY_PHONE_NUMBER: "+14155550123",
+          BLUEBUBBLES_MESSAGES_DB_PATH: messagesDbPath,
+          BLUEBUBBLES_LOOPBACK_NORMALIZATION_ENABLED: "true",
           ELIZA_CLOUD_BLUEBUBBLES_URL: `http://127.0.0.1:${cloud.port}/api/webhooks/bluebubbles/${bridgeId}`,
           BLUEBUBBLES_AUTO_START: "false",
           BLUEBUBBLES_SEND_METHOD: "apple-script",
@@ -163,6 +185,7 @@ describe("registered BlueBubbles local bridge E2E", () => {
           guid: "inbound-1",
           text: "hello registered agent",
           isFromMe: false,
+          loopbackNormalized: false,
           handle: { address: "+14155550999", service: "iMessage" },
           chats: [
             {
@@ -322,8 +345,76 @@ describe("registered BlueBubbles local bridge E2E", () => {
           eventType: "new-message",
           messageId: "outbound-self-test",
           isFromMe: true,
+          loopbackNormalized: false,
           skipped: "outbound_message",
           replied: false,
+          replyQueued: false,
+        },
+      ],
+    });
+
+    const crossNumberInbound = await fetch(`${relayUrl}/webhooks/bluebubbles`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "new-message",
+        data: {
+          guid: "cross-number-inbound",
+          text: "same Apple Account inbound",
+          isFromMe: true,
+          handle: { address: "+14155550123", service: "iMessage" },
+          chats: [
+            {
+              guid: "any;-;+14155550123",
+              chatIdentifier: "+14155550123",
+            },
+          ],
+        },
+      }),
+    });
+    expect(crossNumberInbound.status).toBe(200);
+    await expect(crossNumberInbound.json()).resolves.toMatchObject({
+      success: true,
+      handled: true,
+      replied: true,
+      replyQueued: false,
+    });
+    expect(cloudRequests.at(-1)?.body).toMatchObject({
+      data: {
+        guid: "cross-number-inbound",
+        isFromMe: false,
+        handle: { address: "+14155550998" },
+        chats: [
+          {
+            guid: "iMessage;-;+14155550998",
+            chatIdentifier: "+14155550998",
+          },
+        ],
+        metadata: {
+          loopbackNormalized: true,
+          originalIsFromMe: true,
+          originalRecipient: "+14155550123",
+        },
+      },
+    });
+    expect(blueBubblesSends.at(-1)).toMatchObject({
+      chatGuid: "iMessage;-;+14155550998",
+      message: "verified agent response",
+    });
+
+    const crossNumberEvents = await fetch(
+      `${relayUrl}/inbound-events?marker=same%20Apple%20Account`,
+    );
+    await expect(crossNumberEvents.json()).resolves.toMatchObject({
+      count: 1,
+      events: [
+        {
+          messageId: "cross-number-inbound",
+          sender: "+14155550998",
+          isFromMe: false,
+          loopbackNormalized: true,
+          handled: true,
+          replied: true,
           replyQueued: false,
         },
       ],
