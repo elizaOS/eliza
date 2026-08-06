@@ -23,6 +23,11 @@ jobs:
   test:
     runs-on: \${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
 `;
+const MANUAL_FLEET_WORKFLOW = `name: Test
+jobs:
+  test:
+    runs-on: \${{ fromJSON(inputs.runner == 'robot' && vars.HETZNER_FLEET_ONLINE == 'true' && '["self-hosted","hetzner-robot"]' || '["ubuntu-24.04"]') }}
+`;
 const SAFE_MATRIX_WORKFLOW = `name: Test
 jobs:
   test:
@@ -88,6 +93,34 @@ describe("Hetzner fleet routing contract", () => {
         files: 1,
         selectors: 1,
       });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("accepts a manual fleet choice only behind the repository opt-in", () => {
+    const root = buildRepo(MANUAL_FLEET_WORKFLOW);
+    try {
+      expect(validateHetznerFleetRouting(root)).toEqual({
+        files: 1,
+        selectors: 1,
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects a manual fleet choice without the repository opt-in", () => {
+    const root = buildRepo(
+      MANUAL_FLEET_WORKFLOW.replace(
+        " && vars.HETZNER_FLEET_ONLINE == 'true'",
+        "",
+      ),
+    );
+    try {
+      expect(() => validateHetznerFleetRouting(root)).toThrow(
+        /must require explicit HETZNER_FLEET_ONLINE opt-in/,
+      );
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
