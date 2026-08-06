@@ -90,6 +90,33 @@ describe("Matrix connector secret/settings boundary", () => {
 });
 
 describe("agent entry character passthrough", () => {
+  it("keeps runtime capability hints idempotent across config rebuilds", () => {
+    const workflowHint =
+      "You can create, activate, deactivate, and delete workflows via natural language using the workflow actions.";
+    const taskHint =
+      "You have a persistent task manager and can create scheduled or one-off tasks when the user asks; do not claim you lack tasks, memory, persistence, or scheduling when those actions are available.";
+    const character = buildCharacterFromConfig({
+      agents: {
+        list: [
+          {
+            name: "Tester",
+            system: [
+              "You are Tester.",
+              workflowHint,
+              taskHint,
+              workflowHint,
+              taskHint,
+            ].join("\n"),
+          },
+        ],
+      },
+    } as ElizaConfig);
+
+    expect(character.system?.split(workflowHint)).toHaveLength(2);
+    expect(character.system?.split(taskHint)).toHaveLength(2);
+    expect(character.system).toContain("You are Tester.");
+  });
+
   it("uses an injected sandbox identity when the prior default was not first", () => {
     const config = {
       agents: {
