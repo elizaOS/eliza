@@ -55,6 +55,21 @@ describe("TranscriptPlayer", () => {
     expect(audio.currentTime).toBeCloseTo(0.5, 3);
   });
 
+  it("seeks once to an anchored document-search offset", () => {
+    render(
+      <TranscriptPlayer
+        transcript={transcript}
+        audioUrl="/a.wav"
+        initialSeekMs={1250}
+      />,
+    );
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+    expect(audio.currentTime).toBeCloseTo(1.25, 3);
+    expect(
+      (screen.getByTestId("transcript-scrub") as HTMLInputElement).value,
+    ).toBe("1250");
+  });
+
   it("is read-only (no transport) when there is no audio", () => {
     render(<TranscriptPlayer transcript={transcript} />);
     expect(screen.queryByTestId("transcript-play")).toBeNull();

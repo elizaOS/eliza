@@ -111,6 +111,15 @@ describe("TranscriptService", () => {
 		expect(opts.scope).toBe("owner-private");
 		expect(opts.clientDocumentId).toBe(t.id);
 		expect((opts.metadata as { transcriptId: string }).transcriptId).toBe(t.id);
+		expect(opts.fragments).toEqual([
+			expect.objectContaining({
+				metadata: expect.objectContaining({
+					segmentIds: ["s1"],
+					startMs: 0,
+					endMs: 2000,
+				}),
+			}),
+		]);
 
 		// The stored record carries the knowledge link.
 		expect(saved.knowledgeDocumentId).toBe(
@@ -173,7 +182,13 @@ describe("TranscriptService", () => {
 			patch: {
 				title: "Edited title",
 				segments: [
-					{ ...t.segments[0], text: "corrected words here", words: [] },
+					{
+						...t.segments[0],
+						startMs: 250,
+						endMs: 2_400,
+						text: "corrected words here",
+						words: [],
+					},
 				],
 			},
 		});
@@ -184,6 +199,15 @@ describe("TranscriptService", () => {
 		// Re-mirrored: the stale doc was removed and a fresh one created + linked.
 		expect(rt.rows.has(firstDocId)).toBe(false);
 		expect(rt.addDocument).toHaveBeenCalledTimes(1);
+		expect(rt.addDocument.mock.calls[0][0].fragments).toEqual([
+			expect.objectContaining({
+				metadata: expect.objectContaining({
+					segmentIds: ["s1"],
+					startMs: 250,
+					endMs: 2_400,
+				}),
+			}),
+		]);
 		expect(updated?.knowledgeDocumentId).toBe(
 			"dddddddd-0000-0000-0000-000000000002",
 		);

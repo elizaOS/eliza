@@ -4,11 +4,12 @@
  * splits text into overlapping token-sized chunks, optionally contextualizes
  * each chunk through an LLM (the contextual-retrieval step, gated by
  * CTX_DOCUMENTS_ENABLED), generates embeddings (batched or one-at-a-time via the
- * runtime's TEXT_EMBEDDING model), and persists each fragment with
- * `runtime.createMemory`. A token/request rate limiter derived from
- * {@link getProviderRateLimits} throttles the calls, and 429s are retried. Also
- * exposes `extractTextFromDocument` (PDF and text extraction) and
- * `createDocumentMemory` (the parent DOCUMENT memory record).
+ * runtime's TEXT_EMBEDDING model), and persists each generic fragment with
+ * `runtime.createMemory`. Producer-owned pre-chunked fragments instead retain
+ * verbatim metadata and are fully validated and embedded before their caller's
+ * atomic batch write. A token/request rate limiter derived from
+ * {@link getProviderRateLimits} throttles generic ingestion, and 429s are
+ * retried. Also exposes text extraction and parent-memory construction.
  */
 import type { Buffer } from "node:buffer";
 import { v4 as uuidv4 } from "uuid";
@@ -37,6 +38,7 @@ import { generateText } from "./llm.ts";
 import type {
 	DocumentFragmentMemoryMetadata,
 	DocumentMemoryMetadata,
+	PreChunkedFragmentInput,
 } from "./types.ts";
 import {
 	convertPdfToTextFromBuffer,
@@ -265,6 +267,138 @@ async function splitDocumentIntoChunks(
 	const tokenChunkOverlap = DEFAULT_CHUNK_OVERLAP_TOKENS;
 
 	return splitChunks(documentText, tokenChunkSize, tokenChunkOverlap);
+}
+
+/**
+ * Validate and embed producer-owned fragments before any document row is
+ * written. Contextual retrieval is intentionally bypassed: changing fragment
+ * text would invalidate its segment/time anchors.
+ */
+export async function preparePreChunkedFragmentMemories({
+	runtime,
+	documentId,
+	fragments,
+	agentId,
+	roomId,
+	entityId,
+	worldId,
+	documentTitle,
+	documentMetadata,
+}: {
+	runtime: IAgentRuntime;
+	documentId: UUID;
+	fragments: PreChunkedFragmentInput[];
+	agentId: UUID;
+	roomId: UUID;
+	entityId: UUID;
+	worldId: UUID;
+	documentTitle?: string;
+	documentMetadata?: Record<string, unknown>;
+}): Promise<Memory[]> {
+	if (fragments.length === 0) {
+		throw new ElizaError("Pre-chunked document fragments must be non-empty", {
+			code: "DOCUMENT_FRAGMENTS_EMPTY",
+			context: { documentId },
+		});
+	}
+
+	let previousEndMs = 0;
+	const seenSegmentIds = new Set<string>();
+	const prepared: Memory[] = [];
+	for (let position = 0; position < fragments.length; position++) {
+		const fragment = fragments[position];
+		const metadata = fragment.metadata ?? {};
+		const startMs = metadata.startMs;
+		const endMs = metadata.endMs;
+		const segmentIds = metadata.segmentIds;
+		if (!fragment.text.trim()) {
+			throw new ElizaError("Pre-chunked document fragment has empty text", {
+				code: "DOCUMENT_FRAGMENT_EMPTY_TEXT",
+				context: { documentId, position },
+			});
+		}
+		if (
+			typeof startMs !== "number" ||
+			!Number.isFinite(startMs) ||
+			typeof endMs !== "number" ||
+			!Number.isFinite(endMs) ||
+			startMs < 0 ||
+			endMs < startMs ||
+			startMs < previousEndMs
+		) {
+			throw new ElizaError(
+				"Pre-chunked document fragment has invalid anchors",
+				{
+					code: "DOCUMENT_FRAGMENT_INVALID_ANCHOR",
+					context: { documentId, position, startMs, endMs, previousEndMs },
+				},
+			);
+		}
+		if (
+			!Array.isArray(segmentIds) ||
+			segmentIds.length === 0 ||
+			segmentIds.some((id) => typeof id !== "string" || !id)
+		) {
+			throw new ElizaError(
+				"Pre-chunked document fragment has invalid segment ids",
+				{
+					code: "DOCUMENT_FRAGMENT_INVALID_SEGMENT_IDS",
+					context: { documentId, position },
+				},
+			);
+		}
+		for (const segmentId of segmentIds as string[]) {
+			if (seenSegmentIds.has(segmentId)) {
+				throw new ElizaError(
+					"Pre-chunked document fragment repeats a segment id",
+					{
+						code: "DOCUMENT_FRAGMENT_DUPLICATE_SEGMENT_ID",
+						context: { documentId, position, segmentId },
+					},
+				);
+			}
+			seenSegmentIds.add(segmentId);
+		}
+
+		const fragmentSource =
+			typeof documentMetadata?.source === "string"
+				? documentMetadata.source
+				: "upload";
+		const fragmentMemoryMetadata: DocumentFragmentMemoryMetadata = {
+			...(documentMetadata ?? {}),
+			...metadata,
+			type: MemoryType.FRAGMENT,
+			documentId,
+			position,
+			timestamp: Date.now(),
+			source: fragmentSource,
+			documentTitle,
+		};
+		const memory: Memory = {
+			id: uuidv4() as UUID,
+			agentId,
+			roomId,
+			entityId,
+			worldId,
+			content: { text: runtime.redactSecrets(fragment.text) },
+			metadata: fragmentMemoryMetadata,
+			unique: false,
+		};
+		await runtime.addEmbeddingToMemory(memory);
+		if (!memory.embedding || memory.embedding.length === 0) {
+			throw new ElizaError(
+				"Pre-chunked document fragment embedding is unavailable",
+				{
+					code: "DOCUMENT_FRAGMENT_EMBED_FAILED",
+					context: { documentId, position },
+				},
+			);
+		}
+		prepared.push(memory);
+		previousEndMs = endMs;
+	}
+
+	return prepared;
 }
 
 async function processAndSaveFragments({

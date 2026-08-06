@@ -60,9 +60,11 @@ function formatDocumentTimestamp(value?: number): string | null {
 
 export function DocumentViewer({
   documentId,
+  initialSeekMs,
   onUpdated,
 }: {
   documentId: string | null;
+  initialSeekMs?: number;
   onUpdated?: () => void;
 }) {
   const t = useAppSelector((s) => s.t);
@@ -279,6 +281,7 @@ export function DocumentViewer({
           <TranscriptPlayer
             transcript={transcript}
             audioUrl={mediaUrl || undefined}
+            initialSeekMs={initialSeekMs}
           />
         </PagePanel>
       ) : mediaUrl ? (

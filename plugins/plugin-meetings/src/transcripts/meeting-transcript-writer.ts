@@ -47,6 +47,7 @@ import {
   type Transcript,
   type TranscriptSegment,
   transcriptDurationMs,
+  transcriptKnowledgeFragments,
   transcriptPlainText,
   transcriptPreview,
   transcriptSpeakerCount,
@@ -86,6 +87,7 @@ interface DocumentsLike {
     scope?: string;
     addedFrom?: string;
     metadata?: Record<string, unknown>;
+    fragments?: Array<{ text: string; metadata?: Record<string, unknown> }>;
   }): Promise<{ storedDocumentMemoryId: UUID }>;
 }
 
@@ -433,6 +435,7 @@ export class MeetingTranscriptWriter {
               }
             : {}),
         },
+        fragments: transcriptKnowledgeFragments(transcript.segments),
       });
       return res.storedDocumentMemoryId;
     } catch (err) {

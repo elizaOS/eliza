@@ -829,6 +829,12 @@ export async function handleDocumentsRoutes(
           ),
           documentProvenance: meta ? getDocumentProvenance(meta) : undefined,
           position: meta?.position,
+          transcriptId:
+            typeof meta?.transcriptId === "string"
+              ? meta.transcriptId
+              : undefined,
+          startMs: typeof meta?.startMs === "number" ? meta.startMs : undefined,
+          endMs: typeof meta?.endMs === "number" ? meta.endMs : undefined,
         };
       });
 

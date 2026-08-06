@@ -52,6 +52,7 @@ import { addDocumentFromFilePath, loadDocumentsFromPath } from "./docs-loader";
 import {
 	createDocumentMemory,
 	extractTextFromDocument,
+	preparePreChunkedFragmentMemories,
 	processFragmentsSynchronously,
 } from "./document-processor.ts";
 import { embedRecallQuery } from "./recall-embed.ts";
@@ -946,6 +947,7 @@ export class DocumentService extends Service {
 		addedByRole,
 		addedFrom,
 		metadata,
+		fragments,
 	}: AddDocumentOptions): Promise<{
 		clientDocumentId: string;
 		storedDocumentMemoryId: UUID;
@@ -1116,21 +1118,53 @@ export class DocumentService extends Service {
 				entityId: targetEntityId,
 			};
 
-			await this.runtime.createMemory(memoryWithScope, DOCUMENTS_TABLE);
-
-			const fragmentCount = await processFragmentsSynchronously({
-				runtime: this.runtime,
-				documentId: clientDocumentId,
-				fullDocumentText: extractedText,
-				agentId,
-				contentType,
-				roomId: roomId || agentId,
-				entityId: targetEntityId,
-				worldId: worldId || agentId,
-				documentTitle: originalFilename,
-				documentMetadata:
-					(documentMemory.metadata as Record<string, unknown>) ?? undefined,
-			});
+			let fragmentCount: number;
+			if (fragments !== undefined) {
+				memoryWithScope.content = {
+					...memoryWithScope.content,
+					text: this.runtime.redactSecrets(extractedText),
+				};
+				const fragmentMemories = await preparePreChunkedFragmentMemories({
+					runtime: this.runtime,
+					documentId: clientDocumentId,
+					fragments,
+					agentId,
+					roomId: roomId || agentId,
+					entityId: targetEntityId,
+					worldId: worldId || agentId,
+					documentTitle: originalFilename,
+					documentMetadata:
+						(documentMemory.metadata as Record<string, unknown>) ?? undefined,
+				});
+				await this.runtime.createMemories([
+					{
+						memory: memoryWithScope,
+						tableName: DOCUMENTS_TABLE,
+						unique: false,
+					},
+					...fragmentMemories.map((memory) => ({
+						memory,
+						tableName: DOCUMENT_FRAGMENTS_TABLE,
+						unique: false,
+					})),
+				]);
+				fragmentCount = fragmentMemories.length;
+			} else {
+				await this.runtime.createMemory(memoryWithScope, DOCUMENTS_TABLE);
+				fragmentCount = await processFragmentsSynchronously({
+					runtime: this.runtime,
+					documentId: clientDocumentId,
+					fullDocumentText: extractedText,
+					agentId,
+					contentType,
+					roomId: roomId || agentId,
+					entityId: targetEntityId,
+					worldId: worldId || agentId,
+					documentTitle: originalFilename,
+					documentMetadata:
+						(documentMemory.metadata as Record<string, unknown>) ?? undefined,
+				});
+			}
 
 			logger.debug(
 				`"${originalFilename}" stored with ${fragmentCount} fragments`,

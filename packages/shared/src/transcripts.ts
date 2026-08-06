@@ -274,6 +274,97 @@ export function transcriptPlainText(
     .join("\n");
 }
 
+/** A verbatim, segment-aligned document fragment with audio seek anchors. */
+export interface TranscriptKnowledgeFragment {
+  text: string;
+  metadata: {
+    segmentIds: string[];
+    startMs: number;
+    endMs: number;
+    speakerLabels?: string[];
+  };
+}
+
+/** Match the documents pipeline's approximate 500-token chunk target. */
+export const TRANSCRIPT_FRAGMENT_MAX_CHARS = 2000;
+
+/**
+ * Greedily group transcript segments without ever splitting one. The joined
+ * fragment texts reproduce {@link transcriptPlainText} exactly, while each
+ * group retains the precise audio range and source segment ids needed for
+ * search-to-playback and text-to-audio projections.
+ */
+export function transcriptKnowledgeFragments(
+  segments: ReadonlyArray<TranscriptSegment>,
+  maxChars = TRANSCRIPT_FRAGMENT_MAX_CHARS,
+): TranscriptKnowledgeFragment[] {
+  if (!Number.isFinite(maxChars) || maxChars <= 0) {
+    throw new Error(
+      `transcriptKnowledgeFragments: maxChars must be a positive finite number, got ${String(maxChars)}`,
+    );
+  }
+
+  const fragments: TranscriptKnowledgeFragment[] = [];
+  let group: TranscriptSegment[] = [];
+  let lines: string[] = [];
+  let charCount = 0;
+
+  const flush = (): void => {
+    if (group.length === 0) return;
+    const speakerLabels = [
+      ...new Set(
+        group
+          .map((segment) => segment.speakerLabel)
+          .filter((label): label is string => Boolean(label)),
+      ),
+    ];
+    fragments.push({
+      text: lines.join("\n"),
+      metadata: {
+        segmentIds: group.map((segment) => segment.id),
+        startMs: Math.min(...group.map((segment) => segment.startMs)),
+        endMs: Math.max(...group.map((segment) => segment.endMs)),
+        ...(speakerLabels.length > 0 ? { speakerLabels } : {}),
+      },
+    });
+    group = [];
+    lines = [];
+    charCount = 0;
+  };
+
+  for (const segment of segments) {
+    const text = segment.text.trim();
+    if (!text) continue;
+    if (!segment.id) {
+      throw new Error(
+        "transcriptKnowledgeFragments: a non-empty segment is missing a stable id",
+      );
+    }
+    if (
+      !Number.isFinite(segment.startMs) ||
+      !Number.isFinite(segment.endMs) ||
+      segment.startMs < 0 ||
+      segment.endMs < segment.startMs
+    ) {
+      throw new Error(
+        `transcriptKnowledgeFragments: segment ${segment.id} has invalid timing`,
+      );
+    }
+
+    const line = segment.speakerLabel
+      ? `${segment.speakerLabel}: ${text}`
+      : text;
+    const addedChars = line.length + (lines.length > 0 ? 1 : 0);
+    if (group.length > 0 && charCount + addedChars > maxChars) flush();
+    group.push(segment);
+    lines.push(line);
+    charCount += line.length + (lines.length > 1 ? 1 : 0);
+  }
+  flush();
+
+  return fragments;
+}
+
 /** A one-line preview of the transcript text, capped to `max` chars. */
 export function transcriptPreview(
   segments: ReadonlyArray<TranscriptSegment>,

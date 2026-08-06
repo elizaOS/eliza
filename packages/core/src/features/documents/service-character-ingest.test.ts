@@ -32,6 +32,7 @@ describe("DocumentService character document ingestion boot races", () => {
 
 		const runtime = createMockRuntime({
 			getSetting: () => undefined,
+			redactSecrets: (text: string) => text,
 			getModel: (type: string) =>
 				type === ModelType.TEXT_EMBEDDING && embeddingRegistered
 					? async () => embeddingFor("registered")
@@ -84,6 +85,7 @@ describe("DocumentService character document ingestion boot races", () => {
 
 		const runtime = createMockRuntime({
 			getSetting: () => undefined,
+			redactSecrets: (text: string) => text,
 			getModel: (type: string) =>
 				type === ModelType.TEXT_EMBEDDING
 					? async () => embeddingFor("registered")
@@ -138,5 +140,104 @@ describe("DocumentService character document ingestion boot races", () => {
 		expect(
 			created.some((entry) => entry.table === DOCUMENT_FRAGMENTS_TABLE),
 		).toBe(true);
+	});
+
+	test("persists a pre-chunked parent and all anchored fragments in one batch", async () => {
+		const batches: Array<
+			Array<{ memory: Memory; tableName: string; unique?: boolean }>
+		> = [];
+		const runtime = createMockRuntime({
+			getSetting: () => undefined,
+			redactSecrets: (text: string) => text,
+			getMemoryById: async () => null,
+			addEmbeddingToMemory: async (memory: Memory) => {
+				memory.embedding = embeddingFor(memory.content.text ?? "");
+				return memory;
+			},
+			createMemory: vi.fn(async () => {
+				throw new Error("single-row persistence must not run");
+			}),
+			createMemories: async (entries) => {
+				batches.push(entries);
+				return entries.map((entry) => entry.memory.id as UUID);
+			},
+		});
+		const service = new DocumentService(runtime);
+
+		const result = await service.addDocument({
+			agentId: MOCK_AGENT_ID,
+			worldId: MOCK_AGENT_ID,
+			roomId: MOCK_AGENT_ID,
+			entityId: MOCK_AGENT_ID,
+			clientDocumentId: MOCK_AGENT_ID,
+			contentType: "text/plain",
+			originalFilename: "meeting.txt",
+			content: "Alice: first\nBob: second",
+			fragments: [
+				{
+					text: "Alice: first",
+					metadata: { segmentIds: ["s1"], startMs: 0, endMs: 900 },
+				},
+				{
+					text: "Bob: second",
+					metadata: { segmentIds: ["s2"], startMs: 1000, endMs: 1800 },
+				},
+			],
+		});
+
+		expect(result.fragmentCount).toBe(2);
+		expect(batches).toHaveLength(1);
+		expect(batches[0].map((entry) => entry.tableName)).toEqual([
+			DOCUMENTS_TABLE,
+			DOCUMENT_FRAGMENTS_TABLE,
+			DOCUMENT_FRAGMENTS_TABLE,
+		]);
+		expect(batches[0][1].memory.metadata).toMatchObject({
+			segmentIds: ["s1"],
+			startMs: 0,
+			endMs: 900,
+			position: 0,
+		});
+	});
+
+	test("does not write the parent when any pre-chunked embedding fails", async () => {
+		const createMemories = vi.fn();
+		let embeddings = 0;
+		const runtime = createMockRuntime({
+			getSetting: () => undefined,
+			redactSecrets: (text: string) => text,
+			getMemoryById: async () => null,
+			addEmbeddingToMemory: async (memory: Memory) => {
+				embeddings++;
+				if (embeddings === 1) memory.embedding = embeddingFor("first");
+				return memory;
+			},
+			createMemories,
+		});
+		const service = new DocumentService(runtime);
+
+		await expect(
+			service.addDocument({
+				agentId: MOCK_AGENT_ID,
+				worldId: MOCK_AGENT_ID,
+				roomId: MOCK_AGENT_ID,
+				entityId: MOCK_AGENT_ID,
+				clientDocumentId: MOCK_AGENT_ID,
+				contentType: "text/plain",
+				originalFilename: "meeting.txt",
+				content: "first\nsecond",
+				fragments: [
+					{
+						text: "first",
+						metadata: { segmentIds: ["s1"], startMs: 0, endMs: 500 },
+					},
+					{
+						text: "second",
+						metadata: { segmentIds: ["s2"], startMs: 600, endMs: 1000 },
+					},
+				],
+			}),
+		).rejects.toThrow(/Failed to process document/);
+		expect(createMemories).not.toHaveBeenCalled();
 	});
 });

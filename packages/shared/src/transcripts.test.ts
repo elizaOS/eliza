@@ -15,6 +15,7 @@ import {
   type TranscriptWord,
   transcriptCapturePrivacyState,
   transcriptDurationMs,
+  transcriptKnowledgeFragments,
   transcriptPlainText,
   transcriptPreview,
   transcriptSpeakerCount,
@@ -79,6 +80,41 @@ describe("transcriptPlainText", () => {
     expect(transcriptPlainText([{ ...segs[0], text: "   ", words: [] }])).toBe(
       "",
     );
+  });
+});
+
+describe("transcriptKnowledgeFragments", () => {
+  it("packs only at segment boundaries and reproduces the mirrored text", () => {
+    const fragments = transcriptKnowledgeFragments(segs, 22);
+    expect(fragments).toEqual([
+      {
+        text: "Alice: hello there",
+        metadata: {
+          segmentIds: ["s1"],
+          startMs: 0,
+          endMs: 1000,
+          speakerLabels: ["Alice"],
+        },
+      },
+      {
+        text: "Bob: hi\nAlice: bye",
+        metadata: {
+          segmentIds: ["s2", "s3"],
+          startMs: 1200,
+          endMs: 2600,
+          speakerLabels: ["Bob", "Alice"],
+        },
+      },
+    ]);
+    expect(fragments.map((fragment) => fragment.text).join("\n")).toBe(
+      transcriptPlainText(segs),
+    );
+  });
+
+  it("rejects invalid timing instead of publishing false anchors", () => {
+    expect(() =>
+      transcriptKnowledgeFragments([{ ...segs[0], endMs: -1 }]),
+    ).toThrow(/invalid timing/);
   });
 });
 

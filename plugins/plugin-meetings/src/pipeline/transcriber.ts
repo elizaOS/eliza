@@ -6,21 +6,15 @@
  * them). The default backend routes through
  * `runtime.useModel(ModelType.TRANSCRIPTION)`.
  *
- * ── Why there is no in-process word-timing backend ─────────────────────────
- * The only first-party words-returning ASR path is
- * plugin-local-inference's `transcribeWavWithWords` (fused libelizainference
- * `transcribePcmTimed`). It is reachable only by (a) importing that plugin's
- * source — forbidden, plugins never import each other — or (b) the
- * `/api/asr/local-inference` HTTP route, which app-core mounts explicitly
- * (it is not on `runtime.routes`, not a registered elizaOS service, and the
- * locked `ModelType.TRANSCRIPTION ⇒ string` contract carries text only). No
- * clean in-process seam exists, so this module ships RuntimeModelAsrBackend
- * alone; segments then carry `words: []` (the transcript player falls back
- * to segment-level highlighting) rather than fabricated timings.
+ * plugin-local-inference exposes fused word timings through the additive
+ * `timedAsr` runtime service. This backend prefers that structural seam when
+ * available and otherwise falls back to the locked string-only
+ * `ModelType.TRANSCRIPTION` contract, without importing another plugin.
  */
 
 import type { Buffer } from "node:buffer";
 import { type IAgentRuntime, logger, ModelType } from "@elizaos/core";
+import { validateAsrWordTimings } from "@elizaos/shared/transcripts";
 
 export interface AsrTranscribeOptions {
   /** BCP-47 language hint; auto-detect when absent. */
@@ -128,8 +122,16 @@ export class RuntimeModelAsrBackend implements AsrBackend {
       opts.purpose === "interim"
         ? localTranscriptionProvider(this.runtime)
         : undefined;
+    const timedAsr = this.runtime.getService("timedAsr") as {
+      isAvailable(): boolean;
+      transcribeWav(
+        wav: Buffer,
+        signal?: AbortSignal,
+      ): Promise<AsrTranscribeResult>;
+    } | null;
+    const useTimedAsr = timedAsr?.isAvailable() === true;
 
-    if (opts.purpose === "interim" && !provider) {
+    if (opts.purpose === "interim" && !provider && !useTimedAsr) {
       logger.debug(
         "[MeetingPipeline] Skipping interim LocalAgreement ASR window; local inference TRANSCRIPTION provider is unavailable",
       );
@@ -140,6 +142,18 @@ export class RuntimeModelAsrBackend implements AsrBackend {
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       opts.signal?.throwIfAborted();
       try {
+        if (useTimedAsr && timedAsr) {
+          const timed = await timedAsr.transcribeWav(wav, opts.signal);
+          const text = timed.text.trim();
+          const words = timed.words ?? [];
+          const validation = validateAsrWordTimings(words);
+          if (!validation.ok) {
+            throw new Error(
+              `[MeetingPipeline] timed ASR returned invalid word spans: ${validation.violations[0]?.reason ?? "unknown violation"}`,
+            );
+          }
+          return isNonSpeech(text) ? { text: "" } : { ...timed, text, words };
+        }
         const raw = await this.runtime.useModel(
           ModelType.TRANSCRIPTION,
           params,

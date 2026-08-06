@@ -1303,6 +1303,25 @@ function registerDeviceBridgeLoader(runtime: AgentRuntime): void {
 }
 
 /**
+ * Expose fused v12 word timings as an additive runtime service. Consumers such
+ * as plugin-meetings can discover this structural seam without importing this
+ * plugin or widening the string-only TRANSCRIPTION model contract.
+ */
+function registerTimedAsrService(runtime: AgentRuntime): void {
+	const withRegistration = runtime as AgentRuntime & {
+		registerService?: (name: string, impl: unknown) => unknown;
+	};
+	if (typeof withRegistration.registerService !== "function") return;
+	withRegistration.registerService("timedAsr", {
+		isAvailable: () => localInferenceEngine.voice() !== null,
+		transcribeWav: async (wav: Uint8Array, signal?: AbortSignal) => {
+			const audio = decodeMonoPcm16Wav(wav);
+			return localInferenceEngine.transcribePcmTimed(audio, signal);
+		},
+	});
+}
+
+/**
  * AOSP / generic-FFI path: load the fused `libelizainference.so` into the bun
  * process via `bun:ffi` (the AOSP plugin's loader; libllama is retired). The
  * loader stays inactive at runtime when neither `ELIZA_LOCAL_LLAMA === "1"`
@@ -1538,6 +1557,7 @@ export async function ensureLocalInferenceHandler(
 	// event — capturing our own handlers below plus anything else that
 	// registers during the rest of boot. Idempotent per-runtime.
 	handlerRegistry.installOn(runtime);
+	registerTimedAsrService(runtime);
 
 	// Loader precedence:
 	//   1. AOSP native FFI loader when running inside the AOSP agent process

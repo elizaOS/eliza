@@ -158,6 +158,16 @@ describe("MeetingTranscriptWriter — record shape golden", () => {
       textBacked: true,
       transcriptId: writer.transcriptId,
     });
+    expect(fake.documents[0].fragments).toEqual([
+      expect.objectContaining({
+        text: "Jill: hello there\nBob: hi jill",
+        metadata: expect.objectContaining({
+          segmentIds: ["s1", "s2"],
+          startMs: 0,
+          endMs: 3_000,
+        }),
+      }),
+    ]);
     expect(readBack?.knowledgeDocumentId).toBeTypeOf("string");
   });
 

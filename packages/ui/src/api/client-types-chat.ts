@@ -559,6 +559,9 @@ export interface DocumentSearchResult {
   documentTitle?: string;
   documentProvenance?: DocumentProvenance;
   position?: number;
+  transcriptId?: string;
+  startMs?: number;
+  endMs?: number;
 }
 
 export interface DocumentSearchResponse {
