@@ -13,7 +13,7 @@
 // keeps the run isolated and the trailing delete cleans up the created secret.
 
 import { expect, type Page, test } from "@playwright/test";
-import { openAppPath, seedAppStorage } from "./helpers";
+import { openAppPath, openSettingsSection, seedAppStorage } from "./helpers";
 
 const LIVE_STACK = process.env.ELIZA_UI_SMOKE_LIVE_STACK === "1";
 
@@ -34,9 +34,8 @@ function countSecretWrites(page: Page): () => number {
 
 async function openVaultModal(page: Page): Promise<void> {
   await openAppPath(page, "/settings");
-  await page.locator("body").click({ position: { x: 4, y: 4 } });
-  // Global chord opens the secrets-manager modal (useSecretsManagerShortcut).
-  await page.keyboard.press("Control+Alt+Shift+V");
+  await openSettingsSection(page, /^Vault$/);
+  await page.locator('[data-agent-id="secrets-manage"]').click();
   await expect(page.getByTestId("vault-tab-overview")).toBeVisible({
     timeout: 20_000,
   });
@@ -82,7 +81,7 @@ test.describe("vault modal deep secret round-trip", () => {
     }
 
     // Add the secret through the real form.
-    await page.getByTestId("vault-add-secret").click();
+    await page.locator('[data-agent-id="vault-add-secret"]').click();
     const form = page.getByTestId("vault-add-secret-form");
     await expect(form).toBeVisible({ timeout: 10_000 });
     await form
