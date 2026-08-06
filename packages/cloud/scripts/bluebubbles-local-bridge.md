@@ -145,4 +145,5 @@ curl -X POST http://127.0.0.1:8795/outbound/validate \
 `method` is optional and defaults to `BLUEBUBBLES_SEND_METHOD`. Set it to
 `apple-script`, `private-api`, or `shortcuts` to test a specific egress path
 after repairing Messages automation, the BlueBubbles private API helper, or the
-Shortcut.
+Shortcut. A bare phone-number `recipient` validates the iMessage path; pass an
+explicit `SMS;-;<number>` `chatGuid` when validating SMS fallback.

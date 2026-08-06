@@ -263,6 +263,29 @@ describe("registered BlueBubbles local bridge E2E", () => {
       },
     ]);
 
+    const validationResponse = await fetch(`${relayUrl}/outbound/validate`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        recipient: "+14155550777",
+        message: "direct validation",
+        method: "apple-script",
+      }),
+    });
+    expect(validationResponse.status).toBe(200);
+    await expect(validationResponse.json()).resolves.toMatchObject({
+      ok: true,
+      validation: {
+        recipient: "+14155550777",
+        method: "apple-script",
+      },
+    });
+    expect(blueBubblesSends.at(-1)).toMatchObject({
+      chatGuid: "iMessage;-;+14155550777",
+      message: "direct validation",
+      method: "apple-script",
+    });
+
     const retryPayload = {
       type: "new-message",
       data: {

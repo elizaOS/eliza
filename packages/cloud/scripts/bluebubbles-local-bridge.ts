@@ -259,6 +259,8 @@ const messagesDbPath =
   join(process.env.HOME ?? "", "Library/Messages/chat.db");
 const loopbackNormalizationEnabled =
   process.env.BLUEBUBBLES_LOOPBACK_NORMALIZATION_ENABLED === "true";
+const configuredLoopbackSourceIdentity =
+  process.env.BLUEBUBBLES_LOOPBACK_SOURCE_IDENTITY?.trim() || null;
 const expectedBlueBubblesWebhookUrl = `http://127.0.0.1:${port}/webhooks/bluebubbles`;
 const processedMessageIds = new Set<string>();
 const recentInboundDeliveries: InboundDeliveryRecord[] = [];
@@ -427,7 +429,9 @@ function normalizeGatewayLoopbackPayload(
     return payload;
   }
 
-  const sourceIdentity = readMessageSourceIdentity(payload.data.guid);
+  const sourceIdentity =
+    readMessageSourceIdentity(payload.data.guid) ??
+    configuredLoopbackSourceIdentity;
   if (
     !sourceIdentity ||
     normalizeMessagingAddress(sourceIdentity) ===
@@ -1015,6 +1019,9 @@ async function gatewayDiagnostics(): Promise<Record<string, unknown>> {
       gatewayPhoneNumber,
       gatewayPhoneLabel,
       loopbackNormalizationEnabled,
+      loopbackSourceIdentityConfigured: Boolean(
+        configuredLoopbackSourceIdentity,
+      ),
       pendingRepliesPath,
       pendingReplyCount: pendingReplies.length,
       pendingReplyRetry: {
@@ -1292,39 +1299,84 @@ async function sendBlueBubblesReply(
   url.searchParams.set("password", blueBubblesPassword);
 
   const controller = new AbortController();
-  const timeout = setTimeout(
-    () => controller.abort(),
+  const startedAt = Date.now();
+  let deliveryWaitActive = true;
+  const fetchOutcome = fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      chatGuid,
+      message: text,
+      method,
+      tempGuid: `eliza-cloud-${crypto.randomUUID()}`,
+    }),
+    signal: controller.signal,
+  })
+    .then((response) => ({ kind: "response" as const, response }))
+    .catch((error: unknown) => ({ kind: "error" as const, error }));
+  const deliveryOutcome = waitForOutboundDelivery(
+    chatGuid,
+    text,
+    startedAt,
     blueBubblesSendTimeoutMs,
-  );
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        chatGuid,
-        message: text,
-        method,
-        tempGuid: `eliza-cloud-${crypto.randomUUID()}`,
-      }),
-      signal: controller.signal,
-    });
-  } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
+    () => deliveryWaitActive,
+  ).then((delivered) => ({ kind: "delivery" as const, delivered }));
+  const outcome = await Promise.race([fetchOutcome, deliveryOutcome]);
+  deliveryWaitActive = false;
+
+  if (outcome.kind === "delivery") {
+    controller.abort();
+    await fetchOutcome;
+    if (outcome.delivered) return;
+    throw new Error(
+      `BlueBubbles send timed out after ${blueBubblesSendTimeoutMs}ms using ${method}`,
+    );
+  }
+
+  if (outcome.kind === "error") {
+    if (outcome.error instanceof Error && outcome.error.name === "AbortError") {
       throw new Error(
         `BlueBubbles send timed out after ${blueBubblesSendTimeoutMs}ms using ${method}`,
       );
     }
-    throw error;
-  } finally {
-    clearTimeout(timeout);
+    throw outcome.error;
   }
 
-  if (!response.ok) {
+  if (!outcome.response.ok) {
     throw new Error(
-      `BlueBubbles send failed (${response.status}): ${await response.text()}`,
+      `BlueBubbles send failed (${outcome.response.status}): ${await outcome.response.text()}`,
     );
   }
+}
+
+async function waitForOutboundDelivery(
+  chatGuid: string,
+  text: string,
+  startedAt: number,
+  timeoutMs: number,
+  isActive: () => boolean,
+): Promise<boolean> {
+  const recipient = recipientFromChatGuid(chatGuid);
+  if (!recipient) return false;
+
+  const expectedPreview = text.length > 240 ? `${text.slice(0, 237)}...` : text;
+  const deadline = startedAt + timeoutMs;
+  while (isActive() && Date.now() < deadline) {
+    const delivered = recentInboundDeliveries.some(
+      (event) =>
+        event.isFromMe &&
+        Date.parse(event.receivedAt) >= startedAt &&
+        event.textPreview === expectedPreview &&
+        Boolean(
+          event.sender &&
+            normalizeMessagingAddress(event.sender) ===
+              normalizeMessagingAddress(recipient),
+        ),
+    );
+    if (delivered) return true;
+    await sleep(100);
+  }
+  return false;
 }
 
 async function sendShortcutsReply(
@@ -1577,8 +1629,7 @@ function chatGuidForOutboundValidation(input: ValidateOutboundRequest): string {
     throw new Error("recipient or chatGuid is required");
   }
 
-  const service = recipient.includes("@") ? "iMessage" : "SMS";
-  return `${service};-;${recipient}`;
+  return `iMessage;-;${recipient}`;
 }
 
 async function validateOutboundSend(
