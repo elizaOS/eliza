@@ -99,6 +99,7 @@
     "verify": "bun run check:agents-claude && bun run check:biome-version && bun run fix-deps:check && bun run ensure-plugin-test-conventions:check && bun run audit:alias-read-guard && NODE_OPTIONS='--max-old-space-size=8192' node packages/scripts/run-turbo.mjs run typecheck lint:check --concurrency=8 && bun run audit:build-model && bun run audit:turbo-build-deps && bun run audit:tee-secret-leak && bun run audit:hetzner-fleet-routing && bun run audit:scripts && bun run audit:scripts:inventory && bun run audit:view-bundle-inventory && bun run audit:focused-tests",
     "check": "bun run verify",
     "check:agents-claude": "node scripts/assert-agents-claude-identical.mjs",
+    "check:repo-map": "node scripts/assert-repo-map-paths.mjs",
     "check:biome-version": "node packages/scripts/check-biome-version-consistency.mjs",
     "check:comment-only": "node scripts/assert-comment-only-diff.mjs",
     "check:pr-evidence": "node scripts/check-pr-evidence.mjs",
