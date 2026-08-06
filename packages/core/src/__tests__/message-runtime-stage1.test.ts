@@ -3248,6 +3248,9 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(sourceText).toContain(
 			"there is no separate chat-history search tool",
 		);
+		expect(sourceText).toContain(
+			"never present visible matches as the full-history answer",
+		);
 		// Live regression (2026-06-30, ruby-trivia build): when asked "what
 		// happened with the build" / "did it actually work", the bot parroted the
 		// "no chat-history search tool" disclaimer and claimed it could not verify
@@ -3390,6 +3393,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			.join("\n");
 		expect(fullPrompt).toContain(
 			"there is no separate chat-history search tool",
+		);
+		expect(fullPrompt).toContain(
+			"explicitly label any observation as limited to the recent messages you can see",
 		);
 		expect(fullPrompt).not.toContain(
 			"only the most recent window of a longer stored conversation",
