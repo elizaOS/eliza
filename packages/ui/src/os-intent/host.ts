@@ -4,6 +4,7 @@
  * event that keeps untrusted launch text reviewable instead of auto-sending it.
  */
 
+import { shellLocalStorage } from "../surface-realm-channel";
 import { decodeDeepLinkIntent, type IntentDecodeResult } from "./decode";
 import type { AppliedIntentRecord } from "./dedupe";
 
@@ -45,7 +46,7 @@ export function saveOsIntentDedupeSnapshot(
 ): boolean {
   if (typeof localStorage === "undefined") return false;
   try {
-    localStorage.setItem(DEDUPE_STORAGE_KEY, JSON.stringify(records));
+    shellLocalStorage.setItem(DEDUPE_STORAGE_KEY, JSON.stringify(records));
     return true;
   } catch {
     // error-policy:J4 storage-unavailable degrade: the current owner retains
