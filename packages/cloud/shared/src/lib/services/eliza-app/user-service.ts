@@ -802,11 +802,10 @@ class ElizaAppUserService {
     }
 
     try {
-      await usersRepository.update(userId, {
-        phone_number: normalizedPhone,
-        phone_verified: true,
-        updated_at: new Date(),
-      });
+      const linked = await usersRepository.linkVerifiedPhone(userId, normalizedPhone);
+      if (!linked) {
+        throw new Error(`User ${userId} was not found while linking a phone`);
+      }
     } catch (error) {
       // Handle race condition: another request linked this phone first
       if (isUniqueConstraintError(error)) {

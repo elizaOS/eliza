@@ -50,7 +50,13 @@ function ConnectorAccountManagementPanel({
   );
 }
 
-export function ConnectorSetupPanel({ pluginId }: { pluginId: string }) {
+export function ConnectorSetupPanel({
+  pluginId,
+  modeId,
+}: {
+  pluginId: string;
+  modeId?: string;
+}) {
   const normalized = normalizePluginId(pluginId);
   const accountManagementPanel =
     parseConnectorAccountManagementPanelPluginId(pluginId);
@@ -96,7 +102,7 @@ export function ConnectorSetupPanel({ pluginId }: { pluginId: string }) {
     case "discord-local":
       return <DiscordLocalConnectorPanel />;
     case "bluebubbles":
-      return <BlueBubblesStatusPanel />;
+      return <BlueBubblesStatusPanel modeId={modeId} />;
     case "imessage":
       return <IMessageStatusPanel />;
     default:

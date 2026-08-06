@@ -140,7 +140,10 @@ function ConnectorBody({ plugin }: { plugin: PluginInfo }) {
   const setupPluginId = connectorMode.setupPluginId;
   const setupPanel =
     setupPluginId && hasConnectorSetupPanel(setupPluginId) ? (
-      <ConnectorSetupPanel pluginId={setupPluginId} />
+      <ConnectorSetupPanel
+        pluginId={setupPluginId}
+        modeId={connectorMode.selectedMode}
+      />
     ) : null;
   const selectedMode = connectorMode.modes.find(
     (mode) => mode.id === connectorMode.selectedMode,

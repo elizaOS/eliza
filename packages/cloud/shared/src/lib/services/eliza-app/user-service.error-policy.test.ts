@@ -1,11 +1,12 @@
-// Pins the fail-closed error policy of ElizaAppUserService.findOrCreateByDiscordId:
-// a real failure while linking a phone (tenant-identity write) must propagate, while a
-// cosmetic profile-refresh failure degrades to success. Deterministic repository fixtures.
+// Pins fail-closed Eliza App identity writes: phone linking updates the routing
+// projection atomically, while cosmetic Discord refresh failures may degrade.
+// Deterministic repository fixtures.
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const findByDiscordIdWithOrganization = mock();
 const findByPhoneNumberWithOrganization = mock();
 const update = mock();
+const linkVerifiedPhone = mock();
 
 mock.module("../../../db/repositories/users", () => ({
   usersRepository: {
@@ -16,6 +17,7 @@ mock.module("../../../db/repositories/users", () => ({
     findByWhatsAppIdWithOrganization: mock(),
     findWithOrganization: mock(),
     update,
+    linkVerifiedPhone,
     create: mock(),
   },
 }));
@@ -62,6 +64,7 @@ describe("ElizaAppUserService.findOrCreateByDiscordId error policy", () => {
     findByDiscordIdWithOrganization.mockReset();
     findByPhoneNumberWithOrganization.mockReset();
     update.mockReset();
+    linkVerifiedPhone.mockReset();
     // Phone is unowned by default so the phone-link branch is reachable.
     findByPhoneNumberWithOrganization.mockResolvedValue(undefined);
   });
@@ -115,5 +118,24 @@ describe("ElizaAppUserService.findOrCreateByDiscordId error policy", () => {
     expect(result.isNew).toBe(false);
     expect(result.user.id).toBe("user-2");
     expect(update).toHaveBeenCalledTimes(1);
+  });
+
+  test("links a phone through the atomic routing-identity repository contract", async () => {
+    linkVerifiedPhone.mockResolvedValue({ id: "user-3" });
+
+    await expect(elizaAppUserService.linkPhoneToUser("user-3", "+15551234567")).resolves.toEqual({
+      success: true,
+    });
+
+    expect(linkVerifiedPhone).toHaveBeenCalledWith("user-3", "+15551234567");
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  test("fails when phone linking cannot find an identity owner", async () => {
+    linkVerifiedPhone.mockResolvedValue(undefined);
+
+    await expect(
+      elizaAppUserService.linkPhoneToUser("missing-user", "+15551234567"),
+    ).rejects.toThrow("missing-user");
   });
 });

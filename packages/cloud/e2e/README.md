@@ -59,6 +59,7 @@ secondary identities (attacker / other-user / end-user).
 | `tests/siwe-login.spec.ts`    | real nonce → sign → verify mints a usable key; forged sig 401s; re-login is idempotent; fixture identity is real-login-minted |
 | `tests/dashboard.spec.ts`     | seeded user reaches dashboard with test-auth session, localStorage writable   |
 | `tests/provision.spec.ts`     | create agent → cron tick → sandbox `running`, control-plane sees the sandbox  |
+| `tests/bluebubbles-gateway.spec.ts` | real local registration/auth/DB/router plus the relay subprocess onboards an unknown sender, completes an authenticated phone link, routes the next text to that user's agent, sends its reply through BlueBubbles, reports connected status, and rejects the revoked credential |
 | `tests/deprovision.spec.ts`   | DELETE agent → async `agent_delete` job → polls to `deleted` / 404            |
 | `tests/stuck-cleanup.spec.ts` | aged `provisioning` row with no job → cleanup cron → sandbox `error`          |
 | `tests/domain-purchase-harness.spec.ts` | harness-logic verification for the money-gated domain-purchase lane against the registrar dev stub: full chain, price ceiling, ledger, 402/409/502-refund/idempotency negatives |

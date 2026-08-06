@@ -347,6 +347,42 @@ export class UsersRepository {
   }
 
   /**
+   * Links a verified phone on both the canonical user and the identity lookup
+   * projection in one transaction. Phone gateways resolve through the
+   * projection, so committing only the canonical row would fabricate a
+   * successful link that inbound routing cannot observe.
+   */
+  async linkVerifiedPhone(id: string, phoneNumber: string): Promise<User | undefined> {
+    return dbWrite.transaction(async (tx) => {
+      const now = new Date();
+      const [updated] = await tx
+        .update(users)
+        .set({
+          phone_number: phoneNumber,
+          phone_verified: true,
+          updated_at: now,
+        })
+        .where(eq(users.id, id))
+        .returning();
+      if (!updated) return undefined;
+
+      const [identity] = await tx
+        .update(userIdentities)
+        .set({
+          phone_number: phoneNumber,
+          phone_verified: true,
+          updated_at: now,
+        })
+        .where(eq(userIdentities.user_id, id))
+        .returning({ id: userIdentities.id });
+      if (!identity) {
+        throw new Error(`User ${id} has no identity projection for phone linking`);
+      }
+      return updated;
+    });
+  }
+
+  /**
    * Links a Steward user ID to an existing user.
    */
   async linkStewardId(userId: string, stewardUserId: string): Promise<User | undefined> {

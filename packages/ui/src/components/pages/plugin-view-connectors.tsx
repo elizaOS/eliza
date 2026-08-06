@@ -446,11 +446,11 @@ function ConnectorPluginCard({
     plugin.id,
     connectorMode.selectedMode,
   );
-  // A hosted managed-agent gateway (e.g. managed Discord) — treated as
-  // cloud-backed for the connector Ready state and rendered with the managed
-  // agent picker below.
+  // Hosted connector setup, including managed-agent selection and user-owned
+  // phone registration, is cloud-backed for the connector Ready state.
   const isManagedAgentGatewayMode =
-    selectedModeCloudGatewaySetup === "managed-agent-picker";
+    selectedModeCloudGatewaySetup === "managed-agent-picker" ||
+    selectedModeCloudGatewaySetup === "phone-registration";
   // A local-credential mode whose inbound webhook Eliza Cloud can host (e.g.
   // Telegram cloud gateway) — shown as an informational gateway notice.
   const isWebhookGatewayMode =
@@ -952,7 +952,10 @@ function ConnectorPluginCard({
   );
   const setupPanelPluginId = connectorMode.setupPluginId ?? plugin.id;
   const connectorSetupPanel = setupPanelPluginId ? (
-    <ConnectorSetupPanel pluginId={setupPanelPluginId} />
+    <ConnectorSetupPanel
+      pluginId={setupPanelPluginId}
+      modeId={connectorMode.selectedMode}
+    />
   ) : null;
   const supportsConnectorSetupPanel =
     Boolean(setupPanelPluginId) && hasConnectorSetupPanel(setupPanelPluginId);

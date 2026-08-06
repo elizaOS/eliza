@@ -34,12 +34,16 @@ const registerPhoneGatewayDevice = mock(async () => ({
   id: "dev-1",
   registered: true,
 }));
+const authenticateBlueBubblesGateway = mock(async () => null);
+const touchBlueBubblesGateway = mock(async () => undefined);
 
 mock.module("@/lib/services/agent-gateway-router", () => ({
   agentGatewayRouterService: { routePhoneMessage },
 }));
 mock.module("@/lib/services/phone-gateway-devices", () => ({
+  authenticateBlueBubblesGateway,
   registerPhoneGatewayDevice,
+  touchBlueBubblesGateway,
 }));
 mock.module("@/lib/utils/logger", () => ({
   logger: {
@@ -107,7 +111,9 @@ afterAll(async () => {
 describe("BlueBubbles webhook — replay dedupe (L5)", () => {
   beforeEach(async () => {
     routePhoneMessage.mockClear();
+    authenticateBlueBubblesGateway.mockClear();
     registerPhoneGatewayDevice.mockClear();
+    touchBlueBubblesGateway.mockClear();
     const { dbWrite } = await import("@/db/client");
     await dbWrite.execute("DELETE FROM webhook_events;");
   });
@@ -132,6 +138,27 @@ describe("BlueBubbles webhook — replay dedupe (L5)", () => {
     await delivery("guid-abc-1");
     const other = await delivery("guid-xyz-2");
     expect(other.status).toBe(200);
+    expect(routePhoneMessage).toHaveBeenCalledTimes(2);
+  });
+
+  test("a routing failure rolls back dedupe so the same guid can retry", async () => {
+    routePhoneMessage.mockRejectedValueOnce(
+      new Error("temporary routing failure"),
+    );
+
+    const failed = await delivery("guid-retry-1");
+    expect(failed.status).toBe(503);
+    await expect(failed.json()).resolves.toMatchObject({
+      success: false,
+      reason: "bridge_failed",
+    });
+
+    const retried = await delivery("guid-retry-1");
+    expect(retried.status).toBe(200);
+    await expect(retried.json()).resolves.toMatchObject({
+      success: true,
+      replyText: "hi back",
+    });
     expect(routePhoneMessage).toHaveBeenCalledTimes(2);
   });
 });

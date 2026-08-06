@@ -8,8 +8,12 @@
  *
  *   http://127.0.0.1:8795/webhooks/bluebubbles
  *
- * Required env:
- *   BLUEBUBBLES_GATEWAY_SECRET  shared with the Cloud Worker secret
+ * Required env (registered bridge):
+ *   BLUEBUBBLES_BRIDGE_ID       returned by the authenticated Cloud registration API
+ *   BLUEBUBBLES_GATEWAY_TOKEN   returned once by the registration API
+ *
+ * Legacy shared bridge env:
+ *   BLUEBUBBLES_GATEWAY_SECRET  shared compatibility secret
  *
  * Optional env:
  *   BLUEBUBBLES_SERVER_URL      default http://127.0.0.1:1234
@@ -73,10 +77,25 @@ type CloudReply = {
   handled?: boolean;
   replyText?: string | null;
   reason?: string;
+  agentId?: string;
+  organizationId?: string;
+  userId?: string;
 };
 
-const FIRST_CONTACT_REPLY =
-  "Hey, I'm Eliza. I set up private Eliza Cloud agents that can text, remember context, and work for you. Eliza Cloud is usage-based: your agent runs in a private cloud container and spends credits only as it works. New users get $5 free credit to try it. What should I call you?";
+type InboundDeliveryRecord = {
+  receivedAt: string;
+  messageId?: string;
+  sender?: string;
+  textPreview: string;
+  handled?: boolean;
+  reason?: string;
+  agentId?: string;
+  organizationId?: string;
+  userId?: string;
+  replied: boolean;
+  replyQueued: boolean;
+  sendError?: string;
+};
 
 type PendingReply = {
   id: string;
@@ -94,6 +113,12 @@ type BlueBubblesWebhook = {
   url: string;
   events: string;
   created: string;
+};
+
+type BlueBubblesApiWebhook = {
+  id: number;
+  url: string;
+  events: string[];
 };
 
 type BlueBubblesConfigSnapshot = {
@@ -171,10 +196,17 @@ const port = Number.parseInt(process.env.BLUEBUBBLES_BRIDGE_PORT ?? "8795", 10);
 const blueBubblesServerUrl = (
   process.env.BLUEBUBBLES_SERVER_URL ?? "http://127.0.0.1:1234"
 ).replace(/\/$/, "");
+const gatewayToken = process.env.BLUEBUBBLES_GATEWAY_TOKEN?.trim() ?? "";
+const bridgeId =
+  process.env.BLUEBUBBLES_BRIDGE_ID?.trim() ??
+  (gatewayToken ? "" : "bluebubbles");
 const cloudWebhookUrl =
   process.env.ELIZA_CLOUD_BLUEBUBBLES_URL ??
-  "https://api.elizacloud.ai/api/webhooks/blooio/local?bridge=bluebubbles";
+  (gatewayToken && bridgeId
+    ? `https://api.elizacloud.ai/api/webhooks/bluebubbles/${encodeURIComponent(bridgeId)}`
+    : "https://api.elizacloud.ai/api/webhooks/blooio/local?bridge=bluebubbles");
 const gatewaySecret = process.env.BLUEBUBBLES_GATEWAY_SECRET ?? "";
+const hasCloudGatewayCredential = Boolean(gatewayToken || gatewaySecret);
 const gatewayPhoneNumber = (
   process.env.BLUEBUBBLES_GATEWAY_PHONE_NUMBER ?? "+14159611510"
 ).trim();
@@ -219,6 +251,8 @@ const pendingRepliesPath =
   join(process.cwd(), ".eliza-local/bluebubbles-pending-replies.json");
 const expectedBlueBubblesWebhookUrl = `http://127.0.0.1:${port}/webhooks/bluebubbles`;
 const processedMessageIds = new Set<string>();
+const recentInboundDeliveries: InboundDeliveryRecord[] = [];
+const MAX_RECENT_INBOUND_DELIVERIES = 100;
 const execFileAsync = promisify(execFile);
 let retryInProgress = false;
 let lastPendingRetry: {
@@ -391,7 +425,7 @@ async function readAppleEventsDiagnostics(): Promise<AppleEventsProbe[]> {
     ),
     runAppleEventsProbe(
       "Messages",
-      'tell application "Messages" to get name of accounts',
+      'tell application "Messages" to count services',
     ),
   ]);
 }
@@ -533,6 +567,58 @@ async function readBlueBubblesServerInfo(): Promise<
     error:
       firstError instanceof Error ? firstError.message : String(firstError),
   };
+}
+
+async function ensureBlueBubblesWebhook(): Promise<
+  "created" | "already-configured"
+> {
+  if (!blueBubblesPassword) {
+    throw new Error("BlueBubbles password is not configured");
+  }
+
+  const serverInfo = await readBlueBubblesServerInfo();
+  if ("error" in serverInfo) {
+    throw new Error(serverInfo.error);
+  }
+
+  const listUrl = new URL("/api/v1/webhook", blueBubblesServerUrl);
+  listUrl.searchParams.set("password", blueBubblesPassword);
+  const listResponse = await fetch(listUrl, {
+    signal: AbortSignal.timeout(8_000),
+  });
+  const listBody = (await listResponse.json()) as {
+    data?: BlueBubblesApiWebhook[];
+    message?: string;
+  };
+  if (!listResponse.ok) {
+    throw new Error(
+      `BlueBubbles webhook list failed (${listResponse.status}): ${listBody.message ?? "unknown error"}`,
+    );
+  }
+
+  const existing = listBody.data?.find(
+    (webhook) => webhook.url === expectedBlueBubblesWebhookUrl,
+  );
+  if (existing) return "already-configured";
+
+  const createUrl = new URL("/api/v1/webhook", blueBubblesServerUrl);
+  createUrl.searchParams.set("password", blueBubblesPassword);
+  const createResponse = await fetch(createUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      url: expectedBlueBubblesWebhookUrl,
+      events: ["new-message", "updated-message"],
+    }),
+    signal: AbortSignal.timeout(8_000),
+  });
+  const createBody = (await createResponse.json()) as { message?: string };
+  if (!createResponse.ok) {
+    throw new Error(
+      `BlueBubbles webhook registration failed (${createResponse.status}): ${createBody.message ?? "unknown error"}`,
+    );
+  }
+  return "created";
 }
 
 function blueBubblesAutoStartSnapshot(): Record<string, unknown> {
@@ -911,10 +997,17 @@ async function gatewayDoctor(): Promise<{
     },
     {
       name: "cloud-secret",
-      status: gatewaySecret ? "pass" : "blocked",
-      detail: gatewaySecret
-        ? "configured"
-        : "BLUEBUBBLES_GATEWAY_SECRET missing",
+      status:
+        hasCloudGatewayCredential && (!gatewayToken || Boolean(bridgeId))
+          ? "pass"
+          : "blocked",
+      detail: gatewayToken
+        ? bridgeId
+          ? "per-device token configured"
+          : "BLUEBUBBLES_BRIDGE_ID missing"
+        : gatewaySecret
+          ? "legacy shared secret configured"
+          : "BLUEBUBBLES_GATEWAY_TOKEN or BLUEBUBBLES_GATEWAY_SECRET missing",
     },
     {
       name: "bluebubbles-server",
@@ -1074,26 +1167,6 @@ function normalizeChatGuid(
   return `${messageServiceFor(payload)};-;${chatGuid.slice("any;-;".length)}`;
 }
 
-function hasPreferredNameSignal(text: string): boolean {
-  return /\b(?:my name is|i am|i'm|call me)\s+[a-z][a-z .'-]{1,40}\b/i.test(
-    text,
-  );
-}
-
-function replyTextForCloudReply(
-  reply: CloudReply,
-  payload: BlueBubblesPayload,
-): string | null {
-  if (
-    reply.reason === "unknown_owner" &&
-    !hasPreferredNameSignal(payload.data.text?.trim() ?? "")
-  ) {
-    return FIRST_CONTACT_REPLY;
-  }
-
-  return reply.replyText?.trim() || null;
-}
-
 async function sendBlueBubblesReply(
   chatGuid: string,
   text: string,
@@ -1212,13 +1285,19 @@ async function forwardToCloud(
   payload: BlueBubblesPayload,
 ): Promise<CloudReply> {
   const forwardedPayload = stampGatewayIdentity(payload);
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    "x-eliza-bridge": bridgeId || "bluebubbles",
+  };
+  if (gatewayToken) {
+    headers.authorization = `Bearer ${gatewayToken}`;
+    headers["x-bluebubbles-gateway-token"] = gatewayToken;
+  } else {
+    headers["x-eliza-gateway-secret"] = gatewaySecret;
+  }
   const response = await fetch(cloudWebhookUrl, {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-eliza-bridge": "bluebubbles",
-      "x-eliza-gateway-secret": gatewaySecret,
-    },
+    headers,
     body: JSON.stringify(forwardedPayload),
   });
 
@@ -1250,8 +1329,13 @@ async function handleWebhook(
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
-  if (!gatewaySecret) {
-    json(res, 500, { error: "BLUEBUBBLES_GATEWAY_SECRET is required" });
+  if (!hasCloudGatewayCredential || (gatewayToken && !bridgeId)) {
+    json(res, 500, {
+      error:
+        gatewayToken && !bridgeId
+          ? "BLUEBUBBLES_BRIDGE_ID is required with BLUEBUBBLES_GATEWAY_TOKEN"
+          : "BLUEBUBBLES_GATEWAY_TOKEN or BLUEBUBBLES_GATEWAY_SECRET is required",
+    });
     return;
   }
   if (blueBubblesSendMethod !== "shortcuts" && !blueBubblesPassword) {
@@ -1269,8 +1353,17 @@ async function handleWebhook(
   }
   if (messageId) processedMessageIds.add(messageId);
 
-  const reply = await forwardToCloud(payload);
-  const replyText = replyTextForCloudReply(reply, payload);
+  let reply: CloudReply;
+  try {
+    reply = await forwardToCloud(payload);
+  } catch (error) {
+    // A provider retry must be allowed to re-forward a message whose Cloud
+    // request failed. Keeping the local marker here would turn the retry into
+    // a false-success duplicate and permanently lose the agent response.
+    if (messageId) processedMessageIds.delete(messageId);
+    throw error;
+  }
+  const replyText = reply.replyText?.trim() || null;
   const chatGuid = chatGuidFor(payload);
   let sendError: string | undefined;
   let queuedReplyId: string | undefined;
@@ -1299,15 +1392,65 @@ async function handleWebhook(
     }
   }
 
-  json(res, 200, {
+  const result = {
     success: true,
     handled: reply.handled,
     reason: reply.reason,
+    agentId: reply.agentId,
+    organizationId: reply.organizationId,
+    userId: reply.userId,
     replied: Boolean(replyText && chatGuid && !sendError),
     replyQueued: Boolean(queuedReplyId),
     queuedReplyId,
     sendError,
+  };
+  const sender =
+    payload.data.handle?.address?.trim() ??
+    payload.data.chats?.[0]?.chatIdentifier?.trim();
+  const text = payload.data.text?.trim() ?? "";
+  recentInboundDeliveries.unshift({
+    receivedAt: new Date().toISOString(),
+    messageId: messageId ?? undefined,
+    sender: sender || undefined,
+    textPreview: text.length > 240 ? `${text.slice(0, 237)}...` : text,
+    handled: reply.handled,
+    reason: reply.reason,
+    agentId: reply.agentId,
+    organizationId: reply.organizationId,
+    userId: reply.userId,
+    replied: result.replied,
+    replyQueued: result.replyQueued,
+    sendError,
   });
+  recentInboundDeliveries.splice(MAX_RECENT_INBOUND_DELIVERIES);
+  json(res, 200, result);
+}
+
+function filteredInboundDeliveries(url: URL): InboundDeliveryRecord[] {
+  const marker = url.searchParams.get("marker")?.trim().toLowerCase();
+  const sender = url.searchParams.get("sender")?.trim().toLowerCase();
+  const sinceRaw = url.searchParams.get("since")?.trim();
+  const since = sinceRaw ? Date.parse(sinceRaw) : Number.NaN;
+  const requestedLimit = Number.parseInt(
+    url.searchParams.get("limit") ?? "20",
+    10,
+  );
+  const limit = Number.isFinite(requestedLimit)
+    ? Math.min(Math.max(requestedLimit, 1), MAX_RECENT_INBOUND_DELIVERIES)
+    : 20;
+
+  return recentInboundDeliveries
+    .filter((event) => {
+      if (marker && !event.textPreview.toLowerCase().includes(marker)) {
+        return false;
+      }
+      if (sender && event.sender?.toLowerCase() !== sender) return false;
+      if (Number.isFinite(since) && Date.parse(event.receivedAt) < since) {
+        return false;
+      }
+      return true;
+    })
+    .slice(0, limit);
 }
 
 function chatGuidForOutboundValidation(input: ValidateOutboundRequest): string {
@@ -1384,7 +1527,11 @@ async function handleRequest(
       status: "ok",
       blueBubblesServerUrl,
       cloudWebhookUrl,
-      hasGatewaySecret: Boolean(gatewaySecret),
+      hasGatewayCredential: hasCloudGatewayCredential,
+      gatewayAuthMode: gatewayToken
+        ? "registered-device"
+        : "legacy-shared-secret",
+      bridgeId: bridgeId || null,
       hasBlueBubblesPassword: Boolean(blueBubblesPassword),
       sendMethod: blueBubblesSendMethod,
       sendTimeoutMs: blueBubblesSendTimeoutMs,
@@ -1436,6 +1583,12 @@ async function handleRequest(
             : reply.text,
       })),
     });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/inbound-events") {
+    const events = filteredInboundDeliveries(url);
+    json(res, 200, { count: events.length, events });
     return;
   }
 
@@ -1505,5 +1658,18 @@ server.listen(port, "127.0.0.1", () => {
     `[bluebubbles-local-bridge] listening on http://127.0.0.1:${port}`,
   );
   console.log(`[bluebubbles-local-bridge] forwarding to ${cloudWebhookUrl}`);
+  ensureBlueBubblesWebhook()
+    .then((status) => {
+      console.log(
+        `[bluebubbles-local-bridge] inbound webhook ${status}: ${expectedBlueBubblesWebhookUrl}`,
+      );
+    })
+    .catch((error) => {
+      // error-policy:J7 Startup diagnostics must not kill the relay HTTP loop.
+      console.warn(
+        "[bluebubbles-local-bridge] inbound webhook registration unavailable",
+        error,
+      );
+    });
   startPendingReplyRetryLoop();
 });

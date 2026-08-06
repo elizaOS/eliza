@@ -1,5 +1,5 @@
 /**
- * Animated eliza.app landing experience and phone-verification entry flow.
+ * Animated eliza.app landing experience and messaging entry flow.
  *
  * The platform switcher drives iMessage, Telegram, Discord, and inline trial
  * surfaces inside the 3D phone. Its intro, spring transitions, ambient shader,
@@ -19,7 +19,6 @@ import {
   useTrail,
 } from "@react-spring/web";
 import { useDrag } from "@use-gesture/react";
-import { getCountries, getCountryCallingCode } from "libphonenumber-js";
 import type {
   ButtonHTMLAttributes,
   ComponentType,
@@ -51,7 +50,7 @@ const ShaderBackground = lazy(
 );
 const VideoCall = lazy(() => import("@/components/VideoCall"));
 
-import { buildElizaSmsHref } from "@/lib/contact";
+import { buildElizaSmsHref, ELIZA_PHONE_FORMATTED } from "@/lib/contact";
 import type { SpringAnimatedStyle } from "@/lib/spring-types";
 
 type AnimatedHtmlProps<T extends HTMLElement> = Omit<
@@ -82,51 +81,10 @@ const AnimatedSvg = animated.svg as ComponentType<
 >;
 const AnimatedG = animated.g as ComponentType<AnimatedSvgProps<SVGGElement>>;
 
-const COUNTRY_CODES = getCountries();
-const COUNTRY_DISPLAY_NAMES =
-  typeof Intl !== "undefined"
-    ? new Intl.DisplayNames(["en"], { type: "region" })
-    : null;
-
-function getCountryName(code: string): string {
-  try {
-    return COUNTRY_DISPLAY_NAMES?.of(code) ?? code;
-  } catch {
-    return code;
-  }
-}
-
-function getCountryFlag(countryCode: string): string {
-  const codePoints = countryCode
-    .toUpperCase()
-    .split("")
-    .map((char) => 127397 + char.charCodeAt(0));
-  return String.fromCodePoint(...codePoints);
-}
-
-const COUNTRIES = COUNTRY_CODES.map((code) => {
-  return {
-    code,
-    flag: getCountryFlag(code),
-    name: getCountryName(code),
-    dial: `+${getCountryCallingCode(code)}`,
-    placeholder: "000 000 0000",
-  };
-}).sort((a, b) => a.name.localeCompare(b.name));
-
 type Platform = "imessage" | "telegram" | "discord" | "try";
 
 const INTRO_DELAY = 1000;
 const PLATFORMS: Platform[] = ["imessage", "telegram", "discord", "try"];
-
-const VERIFY_CODE_INPUT_KEYS = [
-  "verify-0",
-  "verify-1",
-  "verify-2",
-  "verify-3",
-  "verify-4",
-  "verify-5",
-];
 
 function AnimatedLetters({
   text,
@@ -469,11 +427,6 @@ export default function Leaderboard() {
     };
   }, []);
 
-  const [selectedCountry, setSelectedCountry] = useState("US");
-  const country =
-    COUNTRIES.find((c) => c.code === selectedCountry) ?? COUNTRIES[0];
-  const [phoneDigits, setPhoneDigits] = useState("");
-
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
@@ -482,19 +435,6 @@ export default function Leaderboard() {
     el.style.height = `${Math.min(el.scrollHeight, 320)}px`;
   }, [tryInput]);
 
-  const formatPhone = useCallback((digits: string, pattern: string) => {
-    let result = "";
-    let d = 0;
-    for (let i = 0; i < pattern.length && d < digits.length; i++) {
-      if (pattern[i] === "0") {
-        result += digits[d++];
-      } else {
-        result += pattern[i];
-      }
-    }
-    return result;
-  }, []);
-
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [switcherSettled, setSwitcherSettled] = useState(true);
   const switcherOpenRef = useRef(false);
@@ -502,12 +442,6 @@ export default function Leaderboard() {
     switcherOpenRef.current = switcherOpen;
   }, [switcherOpen]);
   const [loginSettled, setLoginSettled] = useState(false);
-  const [loginStep, setLoginStep] = useState<"phone" | "verify">("phone");
-  const [submittedPhone, setSubmittedPhone] = useState("");
-  const [verifyCode, setVerifyCode] = useState(["", "", "", "", "", ""]);
-  const verifyInputsRef = useRef<(HTMLInputElement | null)[]>([]);
-  const [resendCountdown, setResendCountdown] = useState(60);
-  const resendIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const handleVideoClick = useCallback(() => setShowVideo((v) => !v), []);
   const handleLoginClick = useCallback(() => {
@@ -517,34 +451,7 @@ export default function Leaderboard() {
   }, []);
   const handleSwitcherDone = () => {
     setSwitcherSettled(true);
-    if (!switcherOpenRef.current) {
-      setLoginStep("phone");
-      setPhoneDigits("");
-      setVerifyCode(["", "", "", "", "", ""]);
-      if (resendIntervalRef.current) clearInterval(resendIntervalRef.current);
-    }
   };
-
-  const startResendCountdown = useCallback(() => {
-    setResendCountdown(60);
-    if (resendIntervalRef.current) clearInterval(resendIntervalRef.current);
-    resendIntervalRef.current = setInterval(() => {
-      setResendCountdown((prev) => {
-        if (prev <= 1) {
-          if (resendIntervalRef.current)
-            clearInterval(resendIntervalRef.current);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (resendIntervalRef.current) clearInterval(resendIntervalRef.current);
-    };
-  }, []);
 
   const tabBarHideSpring = useSpring({
     opacity: switcherOpen ? 0 : 1,
@@ -613,40 +520,17 @@ export default function Leaderboard() {
 
   const handleSwitcherOpen = useCallback(() => setLoginSettled(true), []);
 
-  const loginTitle =
-    loginStep === "verify"
-      ? t("homepage_eliza.leaderboard.loginTitleVerify", {
-          defaultValue: "Enter your verification code",
-        })
-      : t("homepage_eliza.leaderboard.loginTitlePhone", {
-          defaultValue: "What’s your phone number?",
-        });
-  const loginSubtitle =
-    loginStep === "verify"
-      ? t("homepage_eliza.leaderboard.loginSubtitleVerify", {
-          defaultValue: "Sent SMS to {{phone}}",
-          phone: submittedPhone,
-        })
-      : undefined;
+  const loginTitle = t("homepage_eliza.leaderboard.getStarted", {
+    defaultValue: "Get Started",
+  });
+  const loginSubtitle = ELIZA_PHONE_FORMATTED;
 
-  const phoneBarVisible = switcherOpen && loginSettled && loginStep === "phone";
-  const verifyBarVisible =
-    switcherOpen && loginSettled && loginStep === "verify";
-
-  const loginBarVisible = phoneBarVisible;
+  const loginBarVisible = switcherOpen && loginSettled;
   const loginBarSpring = useSpring({
     opacity: loginBarVisible ? 1 : 0,
     y: loginBarVisible ? 0 : 40,
     scale: loginBarVisible ? 1 : 1,
     config: loginBarVisible
-      ? { mass: 1, tension: 160, friction: 12 }
-      : { mass: 1, tension: 600, friction: 34 },
-  });
-
-  const verifyBarSpring = useSpring({
-    opacity: verifyBarVisible ? 1 : 0,
-    y: verifyBarVisible ? 0 : 40,
-    config: verifyBarVisible
       ? { mass: 1, tension: 160, friction: 12 }
       : { mass: 1, tension: 600, friction: 34 },
   });
@@ -1217,182 +1101,14 @@ export default function Leaderboard() {
           transformOrigin: "bottom center",
         }}
       >
-        <div className="flex items-center gap-4 bg-white border border-black rounded-xs px-4 py-4">
-          <div className="relative flex items-center gap-1.5 text-neutral-600 cursor-pointer">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2.5}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="size-4"
-            >
-              <title>
-                {t("homepage_eliza.leaderboard.iconTitleSelectCountry", {
-                  defaultValue: "Select country",
-                })}
-              </title>
-              <path d="M6 9l6 6 6-6" />
-            </svg>
-            <span className="text-3xl leading-none">{country.flag}</span>
-            <select
-              value={selectedCountry}
-              onChange={(e) => {
-                setSelectedCountry(e.target.value);
-                setPhoneDigits("");
-              }}
-              className="absolute inset-0 opacity-0 cursor-pointer"
-            >
-              {COUNTRIES.map((c) => (
-                <option key={c.code} value={c.code}>
-                  {c.flag} {c.name} ({c.dial})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <input
-            type="tel"
-            value={formatPhone(phoneDigits, country.placeholder)}
-            onChange={(e) => {
-              const raw = e.target.value.replace(/\D/g, "");
-              const maxDigits = country.placeholder.replace(/\D/g, "").length;
-              setPhoneDigits(raw.slice(0, maxDigits));
-            }}
-            placeholder={country.placeholder}
-            className="flex-1 bg-transparent text-black text-lg outline-none font-light"
-          />
-        </div>
-        <button
-          type="button"
-          disabled={
-            phoneDigits.length !== country.placeholder.replace(/\D/g, "").length
-          }
-          onClick={() => {
-            if (
-              phoneDigits.length ===
-              country.placeholder.replace(/\D/g, "").length
-            ) {
-              setSubmittedPhone(
-                `${country.dial} ${formatPhone(phoneDigits, country.placeholder)}`,
-              );
-              setLoginStep("verify");
-              setPhoneDigits("");
-              setVerifyCode(["", "", "", "", "", ""]);
-              startResendCountdown();
-              setTimeout(() => verifyInputsRef.current[0]?.focus(), 100);
-            }
-          }}
-          className={`w-full rounded-xs py-4 text-[17px] font-semibold transition-colors ${
-            phoneDigits.length === country.placeholder.replace(/\D/g, "").length
-              ? "bg-black text-white hover:bg-white hover:text-black cursor-pointer"
-              : "bg-white/60 text-black/40 cursor-not-allowed"
-          }`}
+        <a
+          href={buildElizaSmsHref("Hi Eliza")}
+          className="w-full rounded-xs border border-black bg-black py-4 text-center text-[17px] font-semibold text-white transition-colors hover:bg-white hover:text-black"
         >
-          {t("homepage_eliza.leaderboard.continueWithPhone", {
-            defaultValue: "Continue with phone",
+          {t("homepage_eliza.leaderboard.getStarted", {
+            defaultValue: "Get Started",
           })}
-        </button>
-      </AnimatedDiv>
-      <AnimatedDiv
-        className="fixed left-1/2 -translate-x-1/2 z-20 w-full gap-4 px-8 flex flex-col"
-        style={{
-          bottom: loginBottom - 36,
-          maxWidth: loginMaxW,
-          opacity: verifyBarSpring.opacity,
-          pointerEvents: verifyBarVisible ? "auto" : "none",
-          transform: verifyBarSpring.y.to(
-            (y) => `perspective(600px) rotateX(5deg) translateY(${y}px)`,
-          ),
-          transformOrigin: "bottom center",
-        }}
-      >
-        <div className="flex items-center gap-2">
-          {VERIFY_CODE_INPUT_KEYS.map((key, i) => {
-            const digit = verifyCode[i] ?? "";
-            return (
-              <input
-                key={key}
-                ref={(el) => {
-                  verifyInputsRef.current[i] = el;
-                }}
-                type="text"
-                inputMode="numeric"
-                maxLength={1}
-                value={digit}
-                onChange={(e) => {
-                  const val = e.target.value.replace(/\D/g, "");
-                  if (!val && !digit) return;
-                  const newCode = [...verifyCode];
-                  newCode[i] = val.slice(-1);
-                  setVerifyCode(newCode);
-                  if (val && i < 5) {
-                    verifyInputsRef.current[i + 1]?.focus();
-                  }
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Backspace" && !digit && i > 0) {
-                    const newCode = [...verifyCode];
-                    newCode[i - 1] = "";
-                    setVerifyCode(newCode);
-                    verifyInputsRef.current[i - 1]?.focus();
-                  }
-                }}
-                onPaste={(e) => {
-                  e.preventDefault();
-                  const pasted = e.clipboardData
-                    .getData("text")
-                    .replace(/\D/g, "")
-                    .slice(0, 6);
-                  if (!pasted) return;
-                  const newCode = [...verifyCode];
-                  for (let j = 0; j < pasted.length && i + j < 6; j++) {
-                    newCode[i + j] = pasted[j];
-                  }
-                  setVerifyCode(newCode);
-                  const focusIdx = Math.min(i + pasted.length, 5);
-                  verifyInputsRef.current[focusIdx]?.focus();
-                }}
-                className="flex-1 min-w-0 aspect-square bg-white border border-black rounded-xs text-center text-3xl font-semibold text-black outline-none focus:ring-2 focus:ring-[var(--brand-orange)]"
-              />
-            );
-          })}
-        </div>
-        <button
-          type="button"
-          disabled={verifyCode.some((d) => !d)}
-          className={`w-full rounded-xs py-4 text-[17px] font-semibold transition-colors ${
-            verifyCode.every((d) => d)
-              ? "bg-black text-white hover:bg-white hover:text-black cursor-pointer"
-              : "bg-white/60 text-black/40 cursor-not-allowed"
-          }`}
-        >
-          {t("homepage_eliza.leaderboard.verify", { defaultValue: "Verify" })}
-        </button>
-        <p className="text-center text-sm text-neutral-500">
-          {resendCountdown > 0 ? (
-            t("homepage_eliza.leaderboard.resendCountdown", {
-              defaultValue: "Didn’t receive a code? Resend in {{s}}s",
-              s: resendCountdown,
-            })
-          ) : (
-            <>
-              {t("homepage_eliza.leaderboard.resendPrefix", {
-                defaultValue: "Didn’t receive a code?",
-              })}{" "}
-              <button
-                type="button"
-                onClick={startResendCountdown}
-                className="text-neutral-900 font-medium underline cursor-pointer"
-              >
-                {t("homepage_eliza.leaderboard.resend", {
-                  defaultValue: "Resend",
-                })}
-              </button>
-            </>
-          )}
-        </p>
+        </a>
       </AnimatedDiv>
       {showVideo && (
         <Suspense fallback={null}>

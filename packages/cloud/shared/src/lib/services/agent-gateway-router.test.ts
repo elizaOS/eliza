@@ -1,4 +1,4 @@
-// Exercises agent gateway router behavior with deterministic cloud-shared lib fixtures.
+/** Exercises connector-to-agent routing contracts with deterministic Cloud fixtures. */
 import { afterAll, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
@@ -443,6 +443,41 @@ describe("AgentGatewayRouterService phone routing", () => {
     );
   });
 
+  test("re-resolves an unknown sender immediately after authenticated phone linking", async () => {
+    findByPhoneNumberWithOrganization.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      id: "newly-linked-user",
+      organization_id: "newly-linked-org",
+    });
+    queueSelectResult([], []);
+    runOnboardingChat.mockResolvedValue({
+      reply: "connect here",
+      session: {},
+      provisioning: {},
+    });
+    listOwnerSessions.mockResolvedValue([
+      {
+        runtimeAgentId: "newly-linked-agent",
+        organizationId: "newly-linked-org",
+      },
+    ]);
+    routeToSession.mockResolvedValue({ result: { text: "linked agent reply" } });
+    const router = newRouter();
+
+    const onboarding = await router.routePhoneMessage(routeArgs());
+    const linked = await router.routePhoneMessage(
+      routeArgs({ body: "I'm signed in", providerMessageId: "msg-2" }),
+    );
+
+    expect(onboarding).toMatchObject({ reason: "unknown_owner", replyText: "connect here" });
+    expect(linked).toMatchObject({
+      handled: true,
+      replyText: "linked agent reply",
+      agentId: "newly-linked-agent",
+      userId: "newly-linked-user",
+    });
+    expect(findByPhoneNumberWithOrganization).toHaveBeenCalledTimes(2);
+  });
+
   test("starts onboarding instead of throwing when phone target resolution fails", async () => {
     findByPhoneNumberWithOrganization.mockRejectedValue(new Error("lookup failed"));
     runOnboardingChat.mockResolvedValue({
@@ -625,6 +660,54 @@ describe("AgentGatewayRouterService phone routing", () => {
       userId: "owner-user",
     });
     expect(runOnboardingChat).not.toHaveBeenCalled();
+  });
+
+  test("routes a registered BlueBubbles bridge to its bound agent", async () => {
+    findRunningSandbox.mockResolvedValue({
+      id: "registered-agent",
+      organization_id: "registered-org",
+      user_id: "registered-user",
+      status: "running",
+      agent_config: {},
+    });
+    bridge.mockResolvedValue({ result: { text: "registered agent reply" } });
+
+    const result = await newRouter().routeRegisteredBlueBubblesMessage({
+      organizationId: "registered-org",
+      userId: "registered-user",
+      agentId: "registered-agent",
+      from: "+1 (555) 555-0100",
+      to: "+1 (415) 555-0123",
+      body: "hello from Messages",
+      providerMessageId: "bb-message-1",
+      metadata: { bluebubblesChatGuid: "iMessage;-;+15555550100" },
+    });
+
+    expect(findRunningSandbox).toHaveBeenCalledWith("registered-agent", "registered-org");
+    expect(bridge).toHaveBeenCalledWith(
+      "registered-agent",
+      "registered-org",
+      expect.objectContaining({
+        method: "message.send",
+        params: expect.objectContaining({
+          text: "hello from Messages",
+          source: "bluebubbles",
+          channelType: "DM",
+          metadata: expect.objectContaining({
+            provider: "bluebubbles",
+            providerMessageId: "bb-message-1",
+          }),
+        }),
+      }),
+    );
+    expect(result).toMatchObject({
+      handled: true,
+      replyText: "registered agent reply",
+      agentId: "registered-agent",
+      organizationId: "registered-org",
+      userId: "registered-user",
+    });
+    expect(findByPhoneNumberWithOrganization).not.toHaveBeenCalled();
   });
 });
 

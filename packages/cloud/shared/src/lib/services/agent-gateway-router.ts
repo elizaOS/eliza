@@ -1,4 +1,4 @@
-// Coordinates cloud service agent gateway router behavior behind route handlers.
+/** Routes connector messages to their owning Cloud agent and returns transport-ready replies. */
 import { createHash, randomUUID } from "crypto";
 import { and, desc, eq } from "drizzle-orm";
 import { dbWrite } from "../../db/client";
@@ -335,7 +335,12 @@ export class AgentGatewayRouterService {
       lookupId,
     })
       .then((value) => {
-        this.phoneTargetCache.set(cacheKey, { value, cachedAt: Date.now() });
+        // A sender can complete the sign-in continuation between two texts.
+        // Negative caching would keep routing that newly linked phone through
+        // onboarding until the TTL expires, so only cache resolved identities.
+        if (value.reason !== "unknown_owner") {
+          this.phoneTargetCache.set(cacheKey, { value, cachedAt: Date.now() });
+        }
         return value;
       })
       .finally(() => {
@@ -963,6 +968,99 @@ export class AgentGatewayRouterService {
       userId: resolved.userId,
       organizationId: routed.organizationId ?? resolved.organizationId,
     };
+  }
+
+  /**
+   * Routes a message arriving through a registered, user-owned BlueBubbles
+   * bridge to the exact agent selected during authenticated registration.
+   */
+  async routeRegisteredBlueBubblesMessage(args: {
+    organizationId: string;
+    userId: string;
+    agentId: string;
+    from: string;
+    to: string;
+    body: string;
+    providerMessageId?: string;
+    mediaUrls?: string[];
+    metadata?: Record<string, unknown>;
+  }): Promise<AgentGatewayRouteResult> {
+    const resolved = await this.resolvePhoneContactAgentTarget({
+      agentId: args.agentId,
+      organizationId: args.organizationId,
+      userId: args.userId,
+    });
+    if (!resolved.target) {
+      return {
+        handled: false,
+        reason: resolved.reason,
+        agentId: args.agentId,
+        userId: args.userId,
+        organizationId: args.organizationId,
+      };
+    }
+
+    const normalizedFrom = normalizePhoneNumber(args.from);
+    const normalizedTo = normalizePhoneNumber(args.to);
+    const attachments = buildMediaAttachments(args.mediaUrls);
+    const rpcRequest: BridgeRequest = {
+      jsonrpc: "2.0",
+      id: randomUUID(),
+      method: "message.send",
+      params: {
+        text: args.body,
+        roomId: buildDirectConversationRoomId(
+          args.agentId,
+          "bluebubbles",
+          normalizedFrom,
+          normalizedTo,
+        ),
+        channelType: "DM",
+        source: "bluebubbles",
+        sender: {
+          id: normalizedFrom,
+          username: normalizedFrom,
+          metadata: {
+            bluebubbles: {
+              sender: normalizedFrom,
+              recipient: normalizedTo,
+            },
+          },
+        },
+        ...(attachments ? { attachments } : {}),
+        metadata: {
+          provider: "bluebubbles",
+          from: normalizedFrom,
+          to: normalizedTo,
+          ...(args.providerMessageId ? { providerMessageId: args.providerMessageId } : {}),
+          ...(args.metadata ?? {}),
+        },
+      },
+    };
+
+    try {
+      const routed = await this.routeToTarget(resolved.target, rpcRequest);
+      return {
+        ...routed,
+        agentId: routed.agentId ?? args.agentId,
+        userId: args.userId,
+        organizationId: routed.organizationId ?? args.organizationId,
+      };
+    } catch (error) {
+      logger.error("[AgentGatewayRouter] Registered BlueBubbles route failed", {
+        gatewayAgentId: args.agentId,
+        organizationId: args.organizationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return {
+        handled: false,
+        reason: "bridge_failed",
+        agentId: args.agentId,
+        userId: args.userId,
+        organizationId: args.organizationId,
+        roomId: extractRoomId(rpcRequest),
+      };
+    }
   }
 
   async routeTelegramMessage(args: {

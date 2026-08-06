@@ -84,9 +84,11 @@ complete until these gaps are closed:
   reply to the gateway.
 - Linked identities without an active `agentId` must route to
   onboarding/provisioning status rather than throwing in the gateway resolver.
-- The Mac-hosted iMessage path still needs a cloud `bluebubbles` relay
-  contract: Headscale node tag, relay registration record, signed inbound
-  events, outbound relay delivery, and degraded-health state.
+- The Mac-hosted iMessage path now has an authenticated registration record,
+  per-device hash-stored credential, deterministic agent binding, synchronous
+  reply relay, and degraded/offline health state. Headscale node attestation is
+  still a future hardening option if Cloud ever initiates connections to Macs;
+  the current relay is outbound-only HTTPS and exposes no Mac port to Cloud.
 - Transcript handoff needs an idempotency key and platform/session metadata so
   retries do not duplicate memory records and audits can identify the source
   channel.
@@ -197,31 +199,32 @@ Reference implementation surfaces:
   `packages/cloud/services/headscale/README.md`
   and `packages/cloud/services/tunnel-proxy/README.md`.
 
-Proposed topology:
+Implemented topology:
 
 ```text
 User iPhone number / Apple ID
   -> user-owned Mac running BlueBubbles
   -> Eliza BlueBubbles relay on the Mac
-  -> Headscale tailnet
-  -> cloud messaging gateway
+  -> outbound HTTPS relay request
+  -> cloud messaging gateway and the sender's linked Eliza agent
+  -> reply in the same HTTPS response
+  -> local relay sends through BlueBubbles/Messages
 ```
 
 Requirements:
 
-- The Mac is user-owned and joins Headscale with a dedicated gateway tag, for
-  example `tag:imessage-gateway`, not `tag:agent`.
-- ACLs allow only the cloud gateway/proxy service to reach the relay, and only
-  for the registered organization.
-- BlueBubbles credentials remain on the Mac. The cloud stores only a connection
-  record, public key, tailnet node identity, webhook signing key hash, and
-  platform identity mapping.
-- Inbound messages are signed by the Mac relay before reaching cloud. The
-  gateway verifies the relay signature and the registered Headscale node
-  identity before accepting the event.
-- Outbound replies are delivered through a private tailnet call to the Mac
-  relay, or through a relay long-poll/WebSocket if inbound connectivity to the
-  Mac is unavailable. The cloud must not require a public BlueBubbles port.
+- The Mac is user-owned and makes outbound HTTPS requests; Cloud never opens a
+  connection to the Mac or requires a public BlueBubbles port.
+- BlueBubbles credentials remain on the Mac. Cloud stores the registering
+  owner, routing mode, bridge ID, phone metadata, and only the SHA-256 digest
+  of the per-device bearer credential. Sender-owned gateways do not pin an
+  agent ID.
+- The authenticated registration API returns the relay credential once. Each
+  inbound request is authenticated against the registered bridge before its
+  payload is routed, and message GUID dedupe prevents delivery replay.
+- Cloud returns the resolved sender's agent reply in the inbound HTTP response. The
+  local relay sends it through BlueBubbles/Messages and queues it on a bounded
+  failure path; queued delivery is reported as degraded, not success.
 - The spare iPhone is the carrier/SMS/iMessage phone-number anchor. The Mac
   BlueBubbles server provides the software bridge. The cloud must display this
   path as advanced self-hosted messaging, not as a managed SMS carrier product.
@@ -403,8 +406,10 @@ continue onboarding.
   `packages/cloud/api/internal/_auth`.
 - Agent-server forwarding uses `AGENT_SERVER_SHARED_SECRET` through
   `X-Server-Token`.
-- BlueBubbles relay: require both tailnet node authorization and request
-  signatures. Do not trust Headscale membership alone as message authenticity.
+- BlueBubbles relay: require the per-device bearer credential over TLS and
+  authenticate the bridge record before reading routing metadata. If a future
+  Headscale/cloud-initiated transport is added, also require node authorization
+  and request signatures; tailnet membership alone is not authenticity.
 
 ### Secret Handling
 
@@ -438,14 +443,17 @@ continue onboarding.
   Mac, and iPhone setup.
 - The cloud service must not impersonate a carrier or centralize Apple account
   credentials.
-- Organization ACLs in Headscale must prevent cross-customer relay access.
+- The current outbound-only HTTPS relay is scoped by its organization/agent
+  registration. Any future Headscale transport must add organization ACLs that
+  prevent cross-customer relay access.
 
 ### Abuse Controls
 
 - Rate-limit onboarding messages per platform identity and per source IP.
 - Rate-limit link challenge creation and confirmation attempts.
 - Dedupe inbound webhook message IDs as the webhook gateway already does.
-- Add replay windows to BlueBubbles relay signatures.
+- Preserve durable message-GUID replay dedupe; add timestamped request
+  signatures if the transport expands beyond the current TLS bearer contract.
 - Require manual escalation for identity conflicts instead of auto-merging.
 
 ## API Contracts
@@ -521,12 +529,15 @@ as an agent-server routing target.
 
 1. Document the shared platform contract and identity-link states.
 2. Add identity-link start/confirm routes and tests.
-3. Add negative-cache invalidation to gateway identity resolution.
+3. Done: do not negative-cache unknown phone identities, so authenticated
+   linking takes effect on the next message.
 4. Route Discord Eliza App bot unlinked DMs through onboarding, preserving the
    existing gateway-manager service.
-5. Add Mac-hosted BlueBubbles relay registration and Headscale ACL tag.
-6. Add a `bluebubbles` cloud gateway adapter or relay service distinct from
-   `blooio`.
+5. Done: add Mac-hosted BlueBubbles relay registration with per-device
+   credentials, sender-owned routing, and legacy fixed-agent compatibility.
+6. Done: expose `bluebubbles` as a distinct public relay contract while
+   retaining the existing `blooio` database enum as an internal compatibility
+   detail.
 7. Add transcript idempotency and platform metadata.
 8. Expand gateway scenarios for unlinked onboarding, link confirmation,
    provisioning, handoff, and post-handoff same-thread routing.
@@ -555,9 +566,9 @@ as an agent-server routing target.
 
 - Whether platform links should remain columns on `users` or move to a
   first-class linked identities table for multi-account-per-platform support.
-- Whether the Mac-hosted BlueBubbles relay should be reached by cloud over
-  Headscale or should maintain an outbound WebSocket/long-poll connection for
-  replies.
+- Whether unsolicited outbound messages (not replies to an inbound turn) need
+  a future Headscale or outbound WebSocket/long-poll transport. Inbound-turn
+  replies use the current synchronous HTTPS response and require neither.
 - Whether WhatsApp first contact can create a full non-anonymous account, or
   should always create a pending account until app-session confirmation.
 - Whether the same onboarding session should support multiple platform

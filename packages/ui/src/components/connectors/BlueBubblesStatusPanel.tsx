@@ -12,6 +12,7 @@ import { useFetchData } from "../../hooks";
 import { useAppSelector } from "../../state";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
+import { BlueBubblesCloudGatewayPanel } from "./BlueBubblesCloudGatewayPanel";
 
 type BlueBubblesStatus = Awaited<
   ReturnType<typeof client.getBlueBubblesStatus>
@@ -38,7 +39,7 @@ function resolveWebhookTarget(status: BlueBubblesStatus | null): string | null {
   return status.webhookPath;
 }
 
-export function BlueBubblesStatusPanel() {
+function BlueBubblesLocalStatusPanel() {
   const t = useAppSelector((s) => s.t);
   const fetchState = useFetchData<BlueBubblesStatus>(
     (_signal) => client.getBlueBubblesStatus(),
@@ -112,4 +113,11 @@ export function BlueBubblesStatusPanel() {
       </div>
     </PagePanel.Notice>
   );
+}
+
+export function BlueBubblesStatusPanel({ modeId }: { modeId?: string }) {
+  if (modeId === "cloud" || modeId === "cloud-bluebubbles") {
+    return <BlueBubblesCloudGatewayPanel />;
+  }
+  return <BlueBubblesLocalStatusPanel />;
 }

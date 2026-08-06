@@ -233,4 +233,8 @@ test("landing page renders its animated shell and primary entrypoint", async ({
     timeout: 20_000,
   });
   await waitForLandingIntro(page);
+  await expect(page.getByRole("button", { name: "Verify" })).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: "Get Started", exact: true }),
+  ).toHaveAttribute("href", "sms:+14159611510?&body=Hi%20Eliza");
 });

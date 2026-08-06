@@ -27,6 +27,7 @@ import {
  */
 export type ConnectorCloudGatewaySetup =
   | "managed-agent-picker"
+  | "phone-registration"
   | "webhook-notice";
 
 /**
@@ -59,6 +60,8 @@ export interface ConnectorModeDeclaration {
    * - `"managed-agent-picker"`: this mode is backed by a hosted Eliza Cloud
    *   gateway the user provisions/picks an agent for (e.g. managed Discord).
    *   Treated as cloud-backed for the connector's Ready state.
+   * - `"phone-registration"`: this mode registers a user-owned phone relay;
+   *   each verified sender routes to that sender's own Cloud agent.
    * - `"webhook-notice"`: this mode still needs local credentials but Eliza
    *   Cloud can host its inbound webhook, so the page shows a gateway hint
    *   (e.g. Telegram cloud gateway) without picking a hosted agent.
@@ -393,6 +396,17 @@ registerConnectorModes("whatsapp", [
 
 registerConnectorModes("imessage", [
   {
+    id: "cloud-bluebubbles",
+    label: "iPhone Cloud Gateway",
+    description:
+      "Register a Mac-hosted BlueBubbles relay for your real iPhone number; each sender reaches their own Eliza Cloud agent.",
+    managementMode: "cloud-managed",
+    setupPluginId: "bluebubbles",
+    cloudOnly: true,
+    cloudGatewaySetup: "phone-registration",
+    defaultPriority: 0,
+  },
+  {
     id: "direct",
     label: "Direct (chat.db)",
     labelKey: "connectormode.imessage.direct.label",
@@ -401,6 +415,7 @@ registerConnectorModes("imessage", [
     descriptionKey: "connectormode.imessage.direct.description",
     managementMode: "local-setup",
     setupPluginId: "imessage",
+    defaultPriority: 1,
   },
   {
     id: "bluebubbles",
@@ -422,5 +437,28 @@ registerConnectorModes("imessage", [
     managementMode: "cloud-managed",
     setupPluginId: "blooio",
     cloudOnly: true,
+  },
+]);
+
+registerConnectorModes("bluebubbles", [
+  {
+    id: "cloud",
+    label: "iPhone Cloud Gateway",
+    description:
+      "Register this Mac/iPhone bridge with Eliza Cloud so each sender reaches their own agent.",
+    managementMode: "cloud-managed",
+    setupPluginId: "bluebubbles",
+    cloudOnly: true,
+    cloudGatewaySetup: "phone-registration",
+    defaultPriority: 0,
+  },
+  {
+    id: "local",
+    label: "Local Agent",
+    description:
+      "Connect this app directly to a BlueBubbles server on your local network.",
+    managementMode: "local-config",
+    setupPluginId: "bluebubbles",
+    defaultPriority: 1,
   },
 ]);
