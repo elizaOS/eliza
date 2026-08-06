@@ -74,6 +74,7 @@ describe("canonical generative cache-only hot path", () => {
     ).text();
     expect(source.match(/resolveInferenceAuthContext\(/g)).toHaveLength(1);
     expect(source).toContain("cacheOnly: Boolean(executionCtx)");
+    expect(source).toContain("cacheOnly: Boolean(resolution.ctx.admission)");
     expect(source).toContain("inferenceRateLimitConfig(");
   });
 });

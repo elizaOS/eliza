@@ -209,7 +209,11 @@ export async function requireGenerativeRouteCaller(
         resolution.ctx.orgId,
         options.rateLimitEndpoint,
         {
-          cacheOnly: true,
+          // The combined decision carries the rate policy only when the hot
+          // cache is enabled. Development and integration Workers still have
+          // an execution context, but their authoritative origin decision has
+          // no snapshot and must retain the compatibility limiter path.
+          cacheOnly: Boolean(resolution.ctx.admission),
           executionCtx,
           config: inferenceRateLimitConfig(
             resolution.ctx.admission,
