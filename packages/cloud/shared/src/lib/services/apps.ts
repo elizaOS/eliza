@@ -4,7 +4,11 @@
 
 import crypto from "crypto";
 import { type App, type AppUser, appsRepository, type NewApp } from "../../db/repositories/apps";
-import { inferenceAppMemoryCache } from "./inference-app-memory-cache";
+import {
+  evictInferenceAppMemoryCache,
+  getInferenceAppCacheGeneration,
+  inferenceAppMemoryCache,
+} from "./inference-app-memory-cache";
 
 // Re-export the app row types so consumers (and tests) can import them from the
 // service module rather than reaching into the repository directly.
@@ -19,7 +23,6 @@ import { managedDomainsService } from "./managed-domains";
 
 const DEFAULT_MAX_APPS_PER_ORG = 25;
 const appByIdHydrations = new Map<string, Promise<void>>();
-const appByIdHydrationGeneration = new Map<string, number>();
 
 export interface AppCacheExecutionContext {
   waitUntil(promise: Promise<unknown>): void;
@@ -162,9 +165,9 @@ export class AppsService {
 
   private async loadAndCacheAppById(id: string): Promise<App | undefined> {
     const cacheKey = CacheKeys.app.byId(id);
-    const generation = appByIdHydrationGeneration.get(id) ?? 0;
+    const generation = getInferenceAppCacheGeneration(id);
     const app = await appsRepository.findById(id);
-    if ((appByIdHydrationGeneration.get(id) ?? 0) !== generation) {
+    if (getInferenceAppCacheGeneration(id) !== generation) {
       return app;
     }
     if (app) {
@@ -338,8 +341,7 @@ export class AppsService {
    * would leave stale data; we look up the existing row's slug to evict it too.
    */
   async invalidateCache(appId: string, apiKeyId?: string, slug?: string): Promise<void> {
-    inferenceAppMemoryCache.delete(appId);
-    appByIdHydrationGeneration.set(appId, (appByIdHydrationGeneration.get(appId) ?? 0) + 1);
+    evictInferenceAppMemoryCache(appId);
     const promises: Promise<void>[] = [
       cache.del(CacheKeys.app.byId(appId)),
       cache.del(CacheKeys.app.costMarkup(appId)),
