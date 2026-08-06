@@ -10,8 +10,9 @@
  *   - every visible row opens its section as a subview (hub unmounts, header
  *     retitles) and the header back returns to the hub,
  *   - a `#appearance` hash deep-link opens that section directly,
- *   - desktop (1280×900) + mobile (390×844) screenshots of the hub and every
- *     section, plus a recorded video walkthrough (walkthrough.webm).
+ *   - desktop (1280×900) screenshots of every section plus mobile (390×844)
+ *     captures of the hub, Appearance, and Voice consent controls,
+ *   - a recorded video walkthrough (walkthrough.webm).
  *
  * Exits non-zero on any failed assertion. Run:
  *   bun run --cwd packages/ui test:settings-e2e
@@ -52,12 +53,13 @@ const stubElizaCore = {
     b.onLoad({ filter: /.*/, namespace: "eliza-core-stub" }, () => ({
       contents: `
         const noop = new Proxy(() => noop, { get: () => noop });
+        const isElizaSettingsDebugEnabled = () => false;
         const isViewVisible = (view, kinds) => {
           if (view && view.developerOnly) return Boolean(kinds && kinds.developer);
           if (view && view.viewKind === "developer") return Boolean(kinds && kinds.developer);
           return true;
         };
-        module.exports = new Proxy({ isViewVisible }, {
+        module.exports = new Proxy({ isElizaSettingsDebugEnabled, isViewVisible }, {
           get: (t, p) => (p in t ? t[p] : noop),
         });
       `,
@@ -98,6 +100,10 @@ const stubBarrels = {
       path: join(here, "settings-fixture-state-stub.ts"),
     }));
     b.onResolve({ filter: /^(\.\.\/)+api$/ }, () => ({
+      path: "settings-api-stub",
+      namespace: "settings-api-stub",
+    }));
+    b.onResolve({ filter: /^(\.\.\/)+api\/client$/ }, () => ({
       path: "settings-api-stub",
       namespace: "settings-api-stub",
     }));
@@ -166,6 +172,7 @@ async function snap(page, name) {
 const VISIBLE_SECTIONS = [
   "identity",
   "ai-model",
+  "voice",
   "connectors",
   "appearance",
   "advanced",
@@ -173,7 +180,6 @@ const VISIBLE_SECTIONS = [
   "cloud-overview",
 ];
 const HIDDEN_SECTIONS = [
-  "voice",
   "capabilities",
   "apps",
   "background",
@@ -241,6 +247,25 @@ for (const id of VISIBLE_SECTIONS) {
       1,
     `rail remains mounted while "${id}" is open`,
   );
+  if (id === "voice") {
+    await p.waitForSelector(
+      '[data-testid="voice-section-intent-autostart-voice"]',
+    );
+    await p.waitForSelector(
+      '[data-testid="voice-section-intent-autostart-transcription"]',
+    );
+    assert(
+      (await p
+        .locator('[data-testid="voice-section-intent-autostart-voice"]')
+        .count()) === 1 &&
+        (await p
+          .locator(
+            '[data-testid="voice-section-intent-autostart-transcription"]',
+          )
+          .count()) === 1,
+      "Voice renders both shortcut microphone consent controls",
+    );
+  }
   await p.waitForTimeout(450);
   await snap(p, `${String(shotIndex).padStart(2, "0")}-section-${id}`);
   shotIndex += 1;
@@ -283,6 +308,7 @@ shotIndex += 1;
 
 // ── 5. Mobile viewport ───────────────────────────────────────────────────────
 const mobile = await context.newPage();
+mobile.on("pageerror", (e) => pageErrors.push(String(e)));
 await mobile.setViewportSize({ width: 390, height: 844 });
 await mobile.goto(url, { waitUntil: "domcontentloaded" });
 await mobile.waitForSelector('[data-testid="settings-hub-list"]');
@@ -291,6 +317,34 @@ shotIndex += 1;
 await mobile.locator('[data-testid="settings-hub-row-appearance"]').click();
 await mobile.waitForTimeout(450);
 await snap(mobile, `${String(shotIndex).padStart(2, "0")}-appearance-mobile`);
+shotIndex += 1;
+await mobile.getByRole("button", { name: "Back to Settings" }).click();
+await mobile.waitForSelector('[data-testid="settings-hub-list"]');
+await mobile.locator('[data-testid="settings-hub-row-voice"]').click();
+await mobile.waitForSelector("#voice");
+const voiceShortcutConsent = mobile.locator(
+  '[data-testid="voice-section-intent-autostart-voice"]',
+);
+const transcriptionShortcutConsent = mobile.locator(
+  '[data-testid="voice-section-intent-autostart-transcription"]',
+);
+assert(
+  !(await voiceShortcutConsent.isChecked()) &&
+    !(await transcriptionShortcutConsent.isChecked()),
+  "mobile Voice settings default both shortcut microphone permissions off",
+);
+await voiceShortcutConsent.check();
+assert(
+  await voiceShortcutConsent.isChecked(),
+  "mobile Voice settings can grant voice-shortcut microphone permission",
+);
+await voiceShortcutConsent.uncheck();
+assert(
+  !(await voiceShortcutConsent.isChecked()),
+  "mobile Voice settings can revoke voice-shortcut microphone permission",
+);
+await mobile.waitForTimeout(450);
+await snap(mobile, `${String(shotIndex).padStart(2, "0")}-voice-mobile`);
 await mobile.close();
 
 await p.close();
