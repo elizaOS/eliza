@@ -123,6 +123,23 @@ describe("HomeScreen", () => {
     expect(screen.queryByRole("button", { name: "Calendar" })).toBeNull();
   });
 
+  it("lets notifications use the real short-screen remainder instead of a viewport percentage", () => {
+    __setHydratedForTests(true);
+    render(<HomeScreen onOpenTile={vi.fn()} />);
+    const home = screen.getByTestId("home-screen");
+    const css = home.querySelector("style")?.textContent ?? "";
+    const region = home.querySelector<HTMLElement>(
+      "[data-home-notification-region]",
+    );
+
+    expect(css).toContain("max-height: min(20rem, 100%)");
+    expect(css).not.toContain("max-height: 40%");
+    expect(region?.className).toContain("min-h-0");
+    expect(screen.getByTestId("home-apps-scroll").className).toContain(
+      "overflow-y-auto",
+    );
+  });
+
   it("has no Edit button or Pinned label (clean, action-driven dashboard)", () => {
     render(<HomeScreen onOpenTile={vi.fn()} />);
     expect(screen.queryByTestId("home-edit-toggle")).toBeNull();

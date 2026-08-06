@@ -79,7 +79,11 @@ const HOME_SCREEN_CSS = `
    space on the same velocity-aware duration as the notification cards. */
 [data-home-notification-region] {
   flex-grow: 0;
-  max-height: 40%;
+  /* Content owns only the block size it needs, up to a readable desktop cap.
+     On short phones flex-shrink uses the actual remainder below the editorial
+     header; an arbitrary percentage otherwise strands usable space while
+     clipping the next notification. */
+  max-height: min(20rem, 100%);
   transition:
     flex-grow var(--eliza-home-notification-settle-duration, 460ms) cubic-bezier(0.25,0.1,0.25,1),
     max-height var(--eliza-home-notification-settle-duration, 460ms) cubic-bezier(0.25,0.1,0.25,1);
@@ -332,9 +336,10 @@ export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
           <DefaultHomeWidgets />
         </div>
 
-        {/* Rested notifications are content-sized and capped so apps retain
-            the usable remainder. Expansion gives the shade the full remainder
-            and pushes the mounted app region out of interaction. */}
+        {/* Rested notifications are content-sized and flex-shrink into the
+            actual remainder below the header. The desktop cap leaves useful
+            room for ranked widgets on taller screens; explicit expansion still
+            gives the shade the full remainder and displaces that region. */}
         <div
           data-home-notification-region=""
           className={cn(

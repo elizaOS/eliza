@@ -153,6 +153,44 @@ export {
 
 /** The stack fan has enough travel to read clearly without feeling delayed. */
 export const STACK_FAN_SETTLE_MS = 300;
+const SCROLL_EDGE_EPSILON_PX = 1;
+
+export interface NotificationScrollFadeEdges {
+  overflow: boolean;
+  top: boolean;
+  bottom: boolean;
+}
+
+/**
+ * Returns the hidden-content edges for a notification scrollport. A one-pixel
+ * tolerance absorbs fractional layout and WebView scroll rounding without
+ * leaving a mask stuck at either endpoint.
+ */
+export function notificationScrollFadeEdges({
+  scrollTop,
+  scrollHeight,
+  clientHeight,
+}: {
+  scrollTop: number;
+  scrollHeight: number;
+  clientHeight: number;
+}): NotificationScrollFadeEdges {
+  const maxScrollTop = Math.max(0, scrollHeight - clientHeight);
+  const overflow = maxScrollTop > SCROLL_EDGE_EPSILON_PX;
+  return {
+    overflow,
+    top: overflow && scrollTop > SCROLL_EDGE_EPSILON_PX,
+    bottom: overflow && scrollTop < maxScrollTop - SCROLL_EDGE_EPSILON_PX,
+  };
+}
+
+function syncNotificationScrollFade(scrollport: HTMLUListElement): void {
+  const edges = notificationScrollFadeEdges(scrollport);
+  scrollport.toggleAttribute("data-scroll-overflow", edges.overflow);
+  scrollport.toggleAttribute("data-scroll-fade-top", edges.top);
+  scrollport.toggleAttribute("data-scroll-fade-bottom", edges.bottom);
+}
+
 const STACK_FAN_LAYOUT_TRANSITION = {
   duration: STACK_FAN_SETTLE_MS / 1_000,
   ease: [0.25, 0.1, 0.25, 1],
@@ -182,9 +220,10 @@ interface PendingStackFold {
  *  - `.eliza-notif-glass` is the liquid-glass card recipe every notification
  *    (and stack peek) carries: frosted translucent fill, the shared specular
  *    sheen + inset edge stack from ./liquid-glass, hover as a neutral lighten.
- *  - The shadcn `scroll-fade` utility derives top/bottom edge masks from the
- *    scroll timeline, so rows dissolve at clipped edges without a JS scroll
- *    listener mutating data attributes.
+ *  - The scrollport exposes only the edge masks that represent hidden content:
+ *    no mask without overflow, bottom-only at the top, both in the middle, and
+ *    top-only at the end. Geometry observation keeps that contract reliable in
+ *    Android WebViews that do not support CSS scroll timelines.
  *  - Where `animation-timeline: view()` is supported, each row also scales and
  *    fades slightly while crossing the scrollport edges — the depth cue of a
  *    platform notification shade. Progressive enhancement only; the fallback
@@ -424,6 +463,25 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
 .eliza-notif-scroll {
   isolation: isolate;
   scrollbar-width: none;
+}
+/* Edge fades describe content beyond the viewport, not generic decoration.
+   Explicit selectors keep the correct direction in WebViews without scroll
+   timelines and remove masking entirely when every row fits. */
+.eliza-notif-scroll[data-scroll-fade-top][data-scroll-fade-bottom] {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 1.25rem, #000 calc(100% - 1.5rem), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 1.25rem, #000 calc(100% - 1.5rem), transparent 100%);
+}
+.eliza-notif-scroll[data-scroll-fade-top]:not([data-scroll-fade-bottom]) {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 1.25rem, #000 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 1.25rem, #000 100%);
+}
+.eliza-notif-scroll[data-scroll-fade-bottom]:not([data-scroll-fade-top]) {
+  -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 1.5rem), transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 1.5rem), transparent 100%);
+}
+.eliza-notif-scroll:not([data-scroll-overflow]) {
+  -webkit-mask-image: none;
+  mask-image: none;
 }
 /* Pull previews insert rows above the resting count. Disable scroll anchoring
    while that projection is mounted so Chromium cannot turn the insertion into
@@ -1024,6 +1082,54 @@ export function NotificationsHomeCenter({
   // shared visibility-gated ticker. The minute roll re-renders those text nodes
   // only - not this list, not the rows, not the glass surface.
   const scrollRef = useRef<HTMLUListElement | null>(null);
+  const handleListScroll = useCallback(
+    (event: React.UIEvent<HTMLUListElement>) => {
+      syncNotificationScrollFade(event.currentTarget);
+    },
+    [],
+  );
+  useLayoutEffect(() => {
+    const scrollport = scrollRef.current;
+    if (!scrollport) return;
+
+    let syncFrame: number | null = null;
+    const sync = () => syncNotificationScrollFade(scrollport);
+    const scheduleSync = () => {
+      if (syncFrame !== null) window.cancelAnimationFrame(syncFrame);
+      syncFrame = window.requestAnimationFrame(() => {
+        syncFrame = null;
+        sync();
+      });
+    };
+    const resizeObserver =
+      typeof ResizeObserver === "function"
+        ? new ResizeObserver(scheduleSync)
+        : null;
+    const observeContent = () => {
+      resizeObserver?.observe(scrollport);
+      for (const child of Array.from(scrollport.children)) {
+        resizeObserver?.observe(child);
+      }
+    };
+    const mutationObserver =
+      typeof MutationObserver === "function"
+        ? new MutationObserver(() => {
+            observeContent();
+            scheduleSync();
+          })
+        : null;
+
+    sync();
+    observeContent();
+    mutationObserver?.observe(scrollport, { childList: true, subtree: true });
+    window.addEventListener("resize", scheduleSync);
+    return () => {
+      resizeObserver?.disconnect();
+      mutationObserver?.disconnect();
+      window.removeEventListener("resize", scheduleSync);
+      if (syncFrame !== null) window.cancelAnimationFrame(syncFrame);
+    };
+  }, []);
   const pullVisibleGroupsRef = useRef<HTMLElement[] | undefined>(undefined);
   const pointerPull = useRef<{
     id: number;
@@ -2614,6 +2720,7 @@ export function NotificationsHomeCenter({
         onPointerUp={onListPointerEnd}
         onPointerCancel={onListPointerCancel}
         onClickCapture={onListClickCapture}
+        onScroll={handleListScroll}
         onWheel={onListWheel}
         data-testid="home-notification-list"
         data-shade-mode={shadeExpanded ? "expanded" : "rested"}
@@ -2628,8 +2735,6 @@ export function NotificationsHomeCenter({
           // selection sweep across the cards (platform-shade idiom).
           "eliza-notif-scroll relative flex min-h-0 touch-pan-y select-none flex-col gap-2 overflow-y-auto overflow-x-hidden overscroll-y-contain px-1.5 pt-1",
           "flex-1 pb-10",
-          hasNotifications &&
-            "scroll-fade scroll-fade-t-[1.25rem] scroll-fade-b-[1.5rem]",
           shadeClosing && "pointer-events-none",
         )}
       >
