@@ -20,7 +20,6 @@ import { settingsAction } from "./actions/settings.js";
 import {
 	closeAllViewsAction,
 	closeViewAction,
-	openViewAction,
 	viewsAction,
 } from "./actions/views.js";
 import { createViewsClient } from "./actions/views-client.js";
@@ -90,10 +89,8 @@ export type { ViewsMode } from "./actions/views.js";
 export {
 	closeAllViewsAction,
 	closeViewAction,
-	createOpenViewAction,
 	createViewsAction,
 	createViewsAliasAction,
-	openViewAction,
 	viewsAction,
 } from "./actions/views.js";
 export type { ViewSummary } from "./actions/views-client.js";
@@ -146,10 +143,9 @@ export { appAction, availableAppsProvider, createAppAction };
 export const appControlPlugin: Plugin = {
 	name: "@elizaos/plugin-app-control",
 	description:
-		"Launch, close, list, relaunch, load, and create Eliza apps from agent chat. Backed by the Eliza dashboard /api/apps/* HTTP surface. Opens UI surfaces through OPEN_VIEW and manages their capabilities and layouts through VIEWS.",
+		"Launch, close, list, relaunch, load, and create Eliza apps from agent chat. Backed by the Eliza dashboard /api/apps/* HTTP surface. Also manages UI views via the VIEWS action.",
 	actions: [
 		appAction,
-		openViewAction,
 		viewsAction,
 		closeViewAction,
 		closeAllViewsAction,
@@ -159,10 +155,9 @@ export const appControlPlugin: Plugin = {
 		settingsAction,
 	],
 	// Model-owned view-switch cascade:
-	//  1. PLAN   — the response handler/planner selects OPEN_VIEW from the narrow
-	//     navigation contract, including explicit multilingual requests.
-	//  2. ACTION — openViewAction resolves the selected target and navigates
-	//     through the same verified shell boundary used by VIEWS.
+	//  1. PLAN   — the response handler/planner selects VIEWS from the registered
+	//     action contract, including explicit multilingual navigation requests.
+	//  2. ACTION — viewsAction resolves the selected target and navigates.
 	//  3. POST   — viewContextEvaluator (small model) catches contextual intent
 	//     the user never spelled out ("fix the login bug" -> task-coordinator).
 	//     Its gate defers whenever resolveIntentView already matches a direct
