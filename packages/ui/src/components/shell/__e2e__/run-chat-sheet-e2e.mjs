@@ -2544,11 +2544,9 @@ try {
     await p.close();
   }
 
-  // TRANSCRIBING while an inline reply is in flight (#9880 path).
-  //
-  // Transcription-only finalization and the master privacy stop are independent:
-  // the latter must remain live while a reply is in flight so one tap can stop
-  // both transcription and capture.
+  // TRANSCRIBING while an inline reply is in flight (#9880 path). Long-form
+  // transcription owns the trailing controls exclusively: one Stop finalizes
+  // the transcript so capture never exposes two competing stop affordances.
   {
     const p = await ctrl();
     attachConsole(p, sink);
@@ -2557,44 +2555,45 @@ try {
     await gotoFixture(p, `${url}?transcribing&recording&speaking&phase=listening`);
     await p.waitForSelector('[data-testid="chat-composer-transcription-stop"]');
     await p.waitForTimeout(500);
-    const masterMic = p.getByTestId("chat-composer-mic");
     assert(
-      (await masterMic.count()) === 1,
-      "TRANSCRIBING+REPLY: exactly one master mic stop is rendered",
+      (await p.getByTestId("chat-composer-mic").count()) === 0,
+      "TRANSCRIBING+REPLY: the duplicate mic control stays removed",
+    );
+    const transcriptionStop = p.getByTestId(
+      "chat-composer-transcription-stop",
     );
     assert(
-      (await masterMic.getAttribute("aria-label")) === "stop transcription and mic",
-      "TRANSCRIBING+REPLY: the mic names its master privacy-stop behavior",
+      (await transcriptionStop.count()) === 1,
+      "TRANSCRIBING+REPLY: exactly one transcription Stop is rendered",
     );
     assert(
-      (await masterMic.getAttribute("aria-disabled")) !== "true",
-      "TRANSCRIBING+REPLY: the master mic stop is enabled during the reply",
-    );
-    assert(
-      (await p.getByTestId("chat-composer-transcription-stop").count()) === 1,
-      "TRANSCRIBING+REPLY: the independent transcription-only Stop is rendered",
+      (await transcriptionStop.getAttribute("aria-label")) ===
+        "stop transcription",
+      "TRANSCRIBING+REPLY: the exclusive Stop names its finalization behavior",
     );
     // The Stop must be live mid-reply — the #9880 defect was an inert control
     // while `responding` was true, so an enabled Stop is the real regression pin.
     assert(
-      (await p
-        .getByTestId("chat-composer-transcription-stop")
-        .getAttribute("aria-disabled")) !== "true",
+      (await transcriptionStop.getAttribute("aria-disabled")) !== "true",
       "TRANSCRIBING+REPLY: the Stop is enabled even while the reply is in flight",
     );
     await snap(p, "state-transcribing-inline-reply");
-    await masterMic.click();
+    await transcriptionStop.click();
     await p.waitForFunction(
       () =>
-        document.querySelector('[data-testid="chat-composer-mic"]') === null,
+        document.querySelector(
+          '[data-testid="chat-composer-transcription-stop"]',
+        ) === null,
     );
     assert(
-      logs.some((text) => text.includes("[fixture] stopTranscriptionAndMic")),
-      "TRANSCRIBING+REPLY: the master mic stop reaches the controller",
+      logs.some((text) =>
+        text.includes("[fixture] toggleTranscriptionMode -> false"),
+      ),
+      "TRANSCRIBING+REPLY: the exclusive Stop reaches the transcription controller",
     );
     assert(
-      (await p.getByTestId("chat-composer-stop").count()) === 1,
-      "TRANSCRIBING+REPLY: generation Stop owns the trailing slot after capture stops",
+      (await p.getByTestId("chat-composer-mic").count()) <= 1,
+      "TRANSCRIBING+REPLY: finalization never revives a duplicate mic control",
     );
     await p.close();
   }
