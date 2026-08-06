@@ -504,6 +504,26 @@ function shouldUseRestOnlyForInsecureWebSocket(
   return rendererProtocol === "https:" || rendererProtocol === "capacitor:";
 }
 
+/**
+ * True only inside a Capacitor NATIVE app (iOS/Android WebView), where the
+ * page origin is a synthetic bundle host with no server behind it. A plain
+ * browser (including one loading a Capacitor-built web bundle over HTTP) has
+ * no `Capacitor.isNativePlatform()` → false, so same-origin deployments keep
+ * their realtime WebSocket.
+ */
+function isCapacitorNativeRuntime(): boolean {
+  try {
+    const cap = (globalThis as Record<string, unknown>).Capacitor as
+      | { isNativePlatform?: () => boolean }
+      | undefined;
+    return Boolean(cap?.isNativePlatform?.());
+  } catch {
+    // error-policy:J4 an unanswerable platform probe reads as "not native",
+    // preserving the browser's WebSocket path.
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Network status — listens for the bridged Capacitor `networkStatusChange`
 // event so the WS reconnect scheduler can park itself during airplane mode
@@ -1432,9 +1452,21 @@ export class ElizaClient {
 
     // On Capacitor native (iosScheme/androidScheme = "https"), the origin host
     // is a synthetic bundle host (e.g. "localhost" with no server behind it).
-    // Skip WS if we have no explicit baseUrl and the host doesn't look like a
-    // real backend (no port, not an IP, not a known API domain).
-    if (!this.baseUrl && typeof host === "string") {
+    // Skip WS there when we have no explicit baseUrl and the host doesn't look
+    // like a real backend (no port, not an IP, not a known API domain).
+    //
+    // The skip is gated on the Capacitor native runtime: a plain BROWSER served
+    // same-origin from a portless HTTPS host (nginx terminating TLS in front of
+    // the agent — the standard self-hosted deployment shape) is a real backend
+    // whose /ws must connect. Ungated, this guard silently disabled the
+    // realtime WebSocket (proactive-message, conversation-updated, agent
+    // events) for every such deployment while REST kept working, so live
+    // server-pushed messages never rendered until a manual reload.
+    if (
+      !this.baseUrl &&
+      isCapacitorNativeRuntime() &&
+      typeof host === "string"
+    ) {
       const hasPort = host.includes(":");
       const isLoopback =
         host.startsWith("127.") || host.startsWith("localhost:");

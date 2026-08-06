@@ -81,6 +81,29 @@ function stubWindowProtocol(protocol: string): void {
   );
 }
 
+// Stub the page origin (protocol + host) the same-origin WS derivation reads
+// when the client has no explicit base — the self-hosted "nginx in front of
+// the agent on a portless HTTPS domain" shape.
+function stubWindowOrigin(protocol: string, host: string): void {
+  const jsdomWindow = window;
+  const location = new Proxy(jsdomWindow.location, {
+    get(target, property) {
+      if (property === "protocol") return protocol;
+      if (property === "host") return host;
+      return Reflect.get(target, property, target);
+    },
+  });
+  vi.stubGlobal(
+    "window",
+    new Proxy(jsdomWindow, {
+      get(target, property) {
+        if (property === "location") return location;
+        return Reflect.get(target, property, target);
+      },
+    }),
+  );
+}
+
 describe("ElizaClient websocket connection policy", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -130,6 +153,36 @@ describe("ElizaClient websocket connection policy", () => {
     expect(createdUrls).toHaveLength(1);
     expect(createdUrls[0]).toContain("wss://agent.example.test/ws?");
     expect(createdUrls[0]).toContain("token=agent-token");
+  });
+
+  it("opens a same-origin websocket from a portless HTTPS host in a plain browser", () => {
+    // Regression (sol-dev 2026-08-05): the Capacitor synthetic-host guard was
+    // unconditional, so a browser served same-origin from `https://host/` (no
+    // port — nginx terminating TLS in front of the agent) silently never
+    // opened /ws. REST kept working, so server-pushed WS events
+    // (proactive-message: voice-turn mirrors, proactive sends) never rendered
+    // live in the open thread.
+    const createdUrls = stubWebSocket();
+    stubWindowOrigin("https:", "sol-dev.example.test");
+
+    const client = new ElizaClient("", "agent-token");
+    client.connectWs();
+
+    expect(createdUrls).toHaveLength(1);
+    expect(createdUrls[0]).toContain("wss://sol-dev.example.test/ws?");
+    expect(createdUrls[0]).toContain("token=agent-token");
+  });
+
+  it("still skips the synthetic-host websocket on Capacitor native", () => {
+    const createdUrls = stubWebSocket();
+    stubWindowOrigin("https:", "myapp.app");
+    vi.stubGlobal("Capacitor", { isNativePlatform: () => true });
+
+    const client = new ElizaClient("", "agent-token");
+    client.connectWs();
+
+    // Native WebView bundle host has no server behind it — no socket attempt.
+    expect(createdUrls).toEqual([]);
   });
 
   it("does not open mixed-content ws from an https origin", () => {
