@@ -12,7 +12,11 @@ import { calculateCreditMarkup } from "@elizaos/cloud-shared/billing";
 import { streamText } from "ai";
 import { Hono } from "hono";
 import { z } from "zod";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import {
+  getGenerativeExecutionContext,
+  requireGenerativeRouteCaller,
+} from "@/api-app/lib/generative-route-auth";
+import { ApiError } from "@/lib/api/cloud-worker-errors";
 import { CORS_ALLOW_HEADERS, CORS_ALLOW_METHODS } from "@/lib/cors-constants";
 import {
   RateLimitPresets,
@@ -29,14 +33,15 @@ import {
   parseThinkingBudgetFromCharacterSettings,
   resolveAnthropicThinkingBudgetTokens,
 } from "@/lib/providers/anthropic-thinking";
-import { getLanguageModel } from "@/lib/providers/language-model";
+import {
+  getLanguageModel,
+  resolveAiProviderSource,
+} from "@/lib/providers/language-model";
 import { agentMonetizationService } from "@/lib/services/agent-monetization";
 import { charactersService } from "@/lib/services/characters/characters";
-import type { CreditReservation } from "@/lib/services/credits";
-import {
-  creditsService,
-  InsufficientCreditsError,
-} from "@/lib/services/credits";
+import { InsufficientCreditsError } from "@/lib/services/credits";
+import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
+import { admitOrganizationInference } from "@/lib/services/organization-inference-admission";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
@@ -139,33 +144,24 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
   });
 });
 
-app.post("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
+app.post("/", async (c) => {
   const id = c.req.param("id");
   if (!id) return c.json({ error: "Missing id" }, 400);
 
-  const character = await charactersService.getById(id);
-  if (!character) {
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    // error-policy:J1 the JSON-RPC boundary translates malformed JSON.
     return c.json(
       {
         jsonrpc: "2.0",
-        error: { code: -32001, message: "Agent not found" },
+        error: { code: -32700, message: "Parse error" },
         id: null,
       },
-      404,
+      400,
     );
   }
-  if (!character.is_public || !character.mcp_enabled) {
-    return c.json(
-      {
-        jsonrpc: "2.0",
-        error: { code: -32001, message: "MCP not accessible" },
-        id: null,
-      },
-      403,
-    );
-  }
-
-  const body = await c.req.json();
   const validation = MCPRequestSchema.safeParse(body);
   if (!validation.success) {
     return c.json(
@@ -180,19 +176,94 @@ app.post("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
 
   const { method, params, id: rpcId } = validation.data;
 
-  let user: Awaited<ReturnType<typeof requireUserOrApiKeyWithOrg>>;
+  const executionCtx = getGenerativeExecutionContext(c);
+  const characterResolution = executionCtx
+    ? await charactersService.getByIdCacheOnly(id, { executionCtx })
+    : {
+        kind: "ready" as const,
+        character: (await charactersService.getById(id)) ?? null,
+      };
+  if (characterResolution.kind !== "ready") {
+    return c.json(
+      {
+        jsonrpc: "2.0",
+        error: {
+          code: -32004,
+          message: "Agent cache is warming; retry shortly",
+        },
+        id: rpcId,
+      },
+      503,
+    );
+  }
+  const character = characterResolution.character;
+  if (!character) {
+    return c.json(
+      {
+        jsonrpc: "2.0",
+        error: { code: -32001, message: "Agent not found" },
+        id: rpcId,
+      },
+      404,
+    );
+  }
+  if (!character.is_public || !character.mcp_enabled) {
+    return c.json(
+      {
+        jsonrpc: "2.0",
+        error: { code: -32001, message: "MCP not accessible" },
+        id: rpcId,
+      },
+      403,
+    );
+  }
+
+  let caller: Awaited<ReturnType<typeof requireGenerativeRouteCaller>>;
   try {
-    user = await requireUserOrApiKeyWithOrg(c);
-  } catch {
-    // error-policy:J1 the public JSON-RPC boundary translates authentication
-    // failures without exposing session or API-key internals.
+    caller = await requireGenerativeRouteCaller(c, {
+      compatibility: "hono",
+      rateLimitEndpoint: "standard",
+    });
+  } catch (error) {
+    // error-policy:J1 the public JSON-RPC boundary preserves retryable
+    // admission failures while translating credential failures without
+    // exposing session or API-key internals.
+    if (error instanceof ApiError && error.status === 429) {
+      return c.json(
+        {
+          jsonrpc: "2.0",
+          error: { code: -32005, message: "Rate limit exceeded" },
+          id: rpcId,
+        },
+        429,
+      );
+    }
+    if (error instanceof ApiError && error.status === 503) {
+      return c.json(
+        {
+          jsonrpc: "2.0",
+          error: {
+            code: -32004,
+            message: "Authorization cache unavailable; retry shortly",
+          },
+          id: rpcId,
+        },
+        503,
+      );
+    }
+    if (
+      !(error instanceof ApiError) ||
+      (error.status !== 401 && error.status !== 403)
+    ) {
+      throw error;
+    }
     return c.json(
       {
         jsonrpc: "2.0",
         error: { code: -32002, message: "Authentication required" },
         id: rpcId,
       },
-      401,
+      error.status,
     );
   }
 
@@ -236,7 +307,13 @@ app.post("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
       });
 
     case "tools/call":
-      return handleToolCall(c, character, params ?? {}, rpcId, user);
+      return handleToolCall(c, character, params ?? {}, rpcId, {
+        id: caller.user.id,
+        organization_id: caller.user.organization_id,
+        apiKeyId: caller.apiKeyId,
+        admissionSnapshot: caller.admissionSnapshot,
+        executionCtx,
+      });
 
     case "ping":
       return c.json({ jsonrpc: "2.0", result: {}, id: rpcId });
@@ -268,7 +345,13 @@ export async function handleToolCall(
   },
   params: Record<string, unknown>,
   rpcId: string | number,
-  authUser: { id: string; organization_id: string },
+  authUser: {
+    id: string;
+    organization_id: string;
+    apiKeyId?: string | null;
+    admissionSnapshot?: InferenceAdmissionSnapshot;
+    executionCtx?: { waitUntil(promise: Promise<unknown>): void };
+  },
 ): Promise<Response> {
   const parsedParams = ToolCallParamsSchema.safeParse(params);
   if (!parsedParams.success) {
@@ -356,13 +439,30 @@ export async function handleToolCall(
       markupPercent: character.monetization_enabled ? markupPct : 0,
     });
 
-    let reservation: CreditReservation;
+    const requestId = `agent-mcp:${character.id}:${crypto.randomUUID()}`;
+    let admission: Awaited<ReturnType<typeof admitOrganizationInference>>;
     try {
-      reservation = await creditsService.reserve({
-        organizationId: authUser.organization_id,
-        amount: estimatedTotalCost,
-        userId: authUser.id,
-        description: `Agent MCP: ${character.name} (${model})`,
+      admission = await admitOrganizationInference({
+        context: {
+          organizationId: authUser.organization_id,
+          userId: authUser.id,
+          apiKeyId: authUser.apiKeyId ?? null,
+          model,
+          provider,
+          billingSource: resolveAiProviderSource(model) ?? "gateway",
+          requestId,
+          description: `Agent MCP: ${character.name} (${model})`,
+        },
+        apiKeyId: authUser.apiKeyId ?? null,
+        estimatedInputTokens: 0,
+        estimatedOutputTokens: 0,
+        flatCost: {
+          baseTotalCost: estimatedBaseCost,
+          platformMarkup: estimatedTotalCost - estimatedBaseCost,
+          totalCost: estimatedTotalCost,
+        },
+        executionCtx: authUser.executionCtx,
+        admissionSnapshot: authUser.admissionSnapshot,
       });
     } catch (error) {
       // error-policy:J1 the route boundary translates the expected credit
@@ -381,6 +481,7 @@ export async function handleToolCall(
     }
 
     try {
+      await admission.markProviderDispatched?.();
       logger.info("[Agent MCP] Invoking configured provider", {
         agentId: character.id,
         model,
@@ -425,34 +526,19 @@ export async function handleToolCall(
           markupPercent: character.monetization_enabled ? markupPct : 0,
         });
 
-      const reconciliation = await reservation.reconcile(actualTotal);
-      if (reconciliation?.adjustmentType === "uncollected_overage") {
-        logger.error("[Agent MCP] Final usage overage was not collected", {
-          agentId: character.id,
-          ownerId: character.user_id,
-          consumerOrgId: authUser.organization_id,
-          reserved: reconciliation.reservedAmount,
-          actual: reconciliation.actualCost,
-        });
-        return c.json({
-          jsonrpc: "2.0",
-          error: {
-            code: -32003,
-            message: "Insufficient credits for final usage cost",
-          },
-          id: rpcId,
-        });
-      }
-
-      let creatorEarningsWarning:
-        | { code: "CREATOR_EARNINGS_UNAVAILABLE"; message: string }
-        | undefined;
-      if (character.monetization_enabled && actualCreatorMarkup > 0) {
-        // Settlement is non-idempotent: a secondary accounting failure cannot
-        // reach the outer refund boundary after reconcile(actualTotal), because
-        // reconcile(0) would issue a second adjustment. The warning below keeps
-        // that degraded outcome visible without corrupting consumer billing.
-        try {
+      const settlementTask = (async () => {
+        const reconciliation = await admission.settle(actualTotal);
+        if (reconciliation?.adjustmentType === "uncollected_overage") {
+          logger.error("[Agent MCP] Final usage overage was not collected", {
+            agentId: character.id,
+            ownerId: character.user_id,
+            consumerOrgId: authUser.organization_id,
+            reserved: reconciliation.reservedAmount,
+            actual: reconciliation.actualCost,
+          });
+          return;
+        }
+        if (character.monetization_enabled && actualCreatorMarkup > 0) {
           await agentMonetizationService.recordCreatorEarnings({
             agentId: character.id,
             agentName: character.name,
@@ -471,27 +557,21 @@ export async function handleToolCall(
               earnings: actualCreatorMarkup,
             },
           );
-        } catch (earningsError) {
-          // error-policy:J4 inference is already purchased and settled, so the
-          // response degrades explicitly with a machine-readable warning while
-          // the structured error log raises the accounting failure to operators.
-          logger.error(
-            "[Agent MCP] Failed to record creator earnings (settlement already applied — not rolling back)",
-            {
-              agentId: character.id,
-              ownerId: character.user_id,
-              error:
-                earningsError instanceof Error
-                  ? earningsError.message
-                  : String(earningsError),
-            },
-          );
-          creatorEarningsWarning = {
-            code: "CREATOR_EARNINGS_UNAVAILABLE",
-            message: "Creator earnings could not be recorded",
-          };
         }
-      }
+      })().catch((settlementError) => {
+        // error-policy:J7 the response is already complete; durable admission
+        // recovery retains the lease while operators receive the accounting error.
+        logger.error("[Agent MCP] Deferred settlement failed", {
+          agentId: character.id,
+          error:
+            settlementError instanceof Error
+              ? settlementError.message
+              : String(settlementError),
+        });
+      });
+      if (authUser.executionCtx)
+        authUser.executionCtx.waitUntil(settlementTask);
+      else await settlementTask;
 
       return c.json({
         jsonrpc: "2.0",
@@ -508,9 +588,6 @@ export async function handleToolCall(
               inputTokens: usage.inputTokens,
               outputTokens: usage.outputTokens,
             },
-            ...(creatorEarningsWarning
-              ? { warnings: [creatorEarningsWarning] }
-              : {}),
           },
         },
         id: rpcId,
@@ -518,7 +595,9 @@ export async function handleToolCall(
     } catch (error) {
       // error-policy:J1 the JSON-RPC boundary refunds a failed generation and
       // returns a structured failure instead of partial model output.
-      await reservation.reconcile(0);
+      const release = admission.settle(0);
+      if (authUser.executionCtx) authUser.executionCtx.waitUntil(release);
+      else await release;
       logger.error("[Agent MCP] Error generating response", {
         error: error instanceof Error ? error.message : "Unknown error",
         agentId: character.id,

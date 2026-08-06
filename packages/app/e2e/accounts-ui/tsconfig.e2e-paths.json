@@ -8,7 +8,9 @@
     "@elizaos/core/src pins force every transitive workspace dep core's source",
     "reaches to be pinned too (e.g. cloud-routing, imported by core/src/cloud-routing.ts",
     "since #14459): otherwise it resolves to the package's `dist/index.js`, which does",
-    "not exist on the CI --ignore-scripts install, and the API server crashes at boot."
+    "not exist on the CI --ignore-scripts install, and the API server crashes at boot.",
+    "Core subpath exports need their own mapping because the exact root path does not",
+    "cover imports such as @elizaos/core/atomic-json."
   ],
   "compilerOptions": {
     "baseUrl": "../../../..",
@@ -17,6 +19,7 @@
         "packages/app-core/src/services/account-pool.ts"
       ],
       "@elizaos/core": ["packages/core/src/index.ts"],
+      "@elizaos/core/atomic-json": ["packages/core/src/utils/atomic-json.ts"],
       "@elizaos/cloud-routing": ["packages/cloud/routing/src/index.ts"],
       "@elizaos/cloud-routing/*": ["packages/cloud/routing/src/*"],
       "@elizaos/shared": ["packages/shared/src/index.ts"],

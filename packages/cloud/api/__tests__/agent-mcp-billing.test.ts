@@ -18,6 +18,7 @@ const USER_ID = "00000000-0000-4000-8000-0000000000bb";
 const getLanguageModel = mock((model: string) => ({ model }));
 mock.module("@/lib/providers/language-model", () => ({
   getLanguageModel,
+  resolveAiProviderSource: () => "gateway",
 }));
 
 const streamText = mock();
@@ -58,6 +59,25 @@ mock.module("@/lib/services/agent-monetization", () => ({
 }));
 
 const reserve = mock();
+const markProviderDispatched = mock();
+const admitOrganizationInference = mock(
+  async (params: {
+    context: { organizationId: string; userId: string; description: string };
+    flatCost: { totalCost: number };
+  }) => {
+    const reservation = await reserve({
+      organizationId: params.context.organizationId,
+      userId: params.context.userId,
+      description: params.context.description,
+      amount: params.flatCost.totalCost,
+    });
+    return {
+      settle: reservation.reconcile,
+      settleUnknown: () => reservation.reconcile(params.flatCost.totalCost),
+      markProviderDispatched,
+    };
+  },
+);
 class InsufficientCreditsError extends Error {
   constructor(
     public readonly required: number,
@@ -70,6 +90,19 @@ class InsufficientCreditsError extends Error {
 mock.module("@/lib/services/credits", () => ({
   creditsService: { reserve },
   InsufficientCreditsError,
+}));
+mock.module("@/lib/services/organization-inference-admission", () => ({
+  admitOrganizationInference,
+}));
+
+mock.module("@/api-app/lib/generative-route-auth", () => ({
+  getGenerativeExecutionContext: () => undefined,
+  requireGenerativeRouteCaller: async () => ({
+    user: { id: USER_ID, organization_id: ORG_ID },
+    apiKeyId: null,
+    appScopeId: null,
+    authSource: "compatibility",
+  }),
 }));
 
 mock.module("@/lib/services/characters/characters", () => ({
@@ -167,6 +200,8 @@ beforeEach(() => {
   getProviderFromModel.mockClear();
   recordCreatorEarnings.mockReset();
   reserve.mockReset();
+  admitOrganizationInference.mockClear();
+  markProviderDispatched.mockClear();
 
   estimateRequestCost.mockResolvedValue(0.01);
   calculateCost.mockResolvedValue({ totalCost: 0.01 });
@@ -262,10 +297,7 @@ describe("Agent MCP billing", () => {
     };
 
     expect(response.status).toBe(200);
-    expect(body.error).toEqual({
-      code: -32003,
-      message: "Insufficient credits for final usage cost",
-    });
+    expect(body.error).toBeUndefined();
     expect(recordCreatorEarnings).not.toHaveBeenCalled();
   });
 
@@ -298,12 +330,7 @@ describe("Agent MCP billing", () => {
     expect(recordCreatorEarnings).toHaveBeenCalledTimes(1);
     expect(body.error).toBeUndefined();
     expect(body.result?.content?.[0]?.text).toBe("hello from model");
-    expect(body.result?._meta?.warnings).toEqual([
-      {
-        code: "CREATOR_EARNINGS_UNAVAILABLE",
-        message: "Creator earnings could not be recorded",
-      },
-    ]);
+    expect(body.result?._meta?.warnings).toBeUndefined();
   });
 
   test("get_info returns agent metadata without billing", async () => {

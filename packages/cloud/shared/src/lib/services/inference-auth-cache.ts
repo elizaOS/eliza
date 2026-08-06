@@ -29,7 +29,22 @@ import { CacheKeys, CacheTTL } from "../cache/keys";
 import { logger } from "../utils/logger";
 
 /** Current IAC schema version. Bump the key suffix in CacheKeys on a breaking change. */
-export const INFERENCE_AUTH_CONTEXT_VERSION = 1 as const;
+export const INFERENCE_AUTH_CONTEXT_VERSION = 2 as const;
+
+/** Admission state co-located with identity so a warm Worker performs one KV read. */
+export interface InferenceAdmissionSnapshot {
+  balance: {
+    balanceUsd: number;
+    balanceAt: number;
+    balanceRevision: string;
+  };
+  rateLimits: {
+    completionsRpm: number;
+    embeddingsRpm: number;
+    standardRpm: number;
+    strictRpm: number;
+  };
+}
 
 /**
  * A cached, fully-authorized inference identity. Presence of this entry means
@@ -43,6 +58,9 @@ export interface InferenceAuthContext {
   apiKeyId: string;
   /** Full sha256(presented key) - equals the stored api_keys.key_hash. */
   keyHash: string;
+  /** Owning app for an app-minted key; null for an ordinary org key. */
+  appScopeId: string | null;
+  admission?: InferenceAdmissionSnapshot;
 }
 
 export interface InferenceApiKeyAuthRejection {
@@ -65,6 +83,7 @@ export interface InferenceSessionAuthContext {
   orgId: string;
   apiKeyId: null;
   stewardUserId: string;
+  admission?: InferenceAdmissionSnapshot;
 }
 
 export interface InferenceSessionAuthRejection {
@@ -80,6 +99,31 @@ export type InferenceSessionAuthDecision =
   | InferenceSessionAuthRejection;
 
 export type ResolvedInferenceAuthContext = InferenceAuthContext | InferenceSessionAuthContext;
+
+function isInferenceAdmissionSnapshot(value: unknown): value is InferenceAdmissionSnapshot {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<InferenceAdmissionSnapshot>;
+  const balance = candidate.balance;
+  const rateLimits = candidate.rateLimits;
+  return (
+    Boolean(balance) &&
+    typeof balance?.balanceUsd === "number" &&
+    Number.isFinite(balance.balanceUsd) &&
+    typeof balance.balanceAt === "number" &&
+    Number.isFinite(balance.balanceAt) &&
+    typeof balance.balanceRevision === "string" &&
+    /^(0|[1-9]\d*)$/.test(balance.balanceRevision) &&
+    Boolean(rateLimits) &&
+    Number.isSafeInteger(rateLimits?.completionsRpm) &&
+    (rateLimits?.completionsRpm ?? 0) > 0 &&
+    Number.isSafeInteger(rateLimits?.embeddingsRpm) &&
+    (rateLimits?.embeddingsRpm ?? 0) > 0 &&
+    Number.isSafeInteger(rateLimits?.standardRpm) &&
+    (rateLimits?.standardRpm ?? 0) > 0 &&
+    Number.isSafeInteger(rateLimits?.strictRpm) &&
+    (rateLimits?.strictRpm ?? 0) > 0
+  );
+}
 
 /** Cache lookup states retained by the auth trace instead of collapsed to null. */
 export type InferenceAuthCacheReadOutcome =
@@ -137,7 +181,9 @@ export function isInferenceAuthContext(value: unknown): value is InferenceAuthCo
     typeof v.apiKeyId === "string" &&
     v.apiKeyId.length > 0 &&
     typeof v.keyHash === "string" &&
-    /^[0-9a-f]{64}$/.test(v.keyHash)
+    /^[0-9a-f]{64}$/.test(v.keyHash) &&
+    (v.appScopeId === null || (typeof v.appScopeId === "string" && v.appScopeId.length > 0)) &&
+    isInferenceAdmissionSnapshot(v.admission)
   );
 }
 
@@ -175,7 +221,8 @@ export function isInferenceSessionAuthContext(
     v.orgId.length > 0 &&
     v.apiKeyId === null &&
     typeof v.stewardUserId === "string" &&
-    v.stewardUserId.length > 0
+    v.stewardUserId.length > 0 &&
+    isInferenceAdmissionSnapshot(v.admission)
   );
 }
 

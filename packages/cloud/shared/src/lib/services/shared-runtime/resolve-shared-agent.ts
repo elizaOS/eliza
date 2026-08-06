@@ -18,6 +18,7 @@ import {
   sessionScopeHashPrefix,
 } from "../../auth/workers-hono-auth";
 import { cache } from "../../cache/client";
+import { InMemoryLRUCache } from "../../cache/in-memory-lru-cache";
 import { CacheKeys, CacheTTL } from "../../cache/keys";
 import { logger } from "../../utils/logger";
 import { type CachedAgentSandbox, rehydrateCachedAgentDates } from "./cached-agent-dates";
@@ -120,6 +121,17 @@ interface CachedSharedAgentScope {
 
 interface AuthoritativeResolutionRequired {
   requiresAuthoritativeResolution: true;
+}
+
+// The distributed scope decision already has a bounded 30-second TTL. Keeping
+// it for half that window in the current isolate removes its remote read while
+// retaining the per-request, mutation-invalidated credential/user cache check.
+// A warm inference turn therefore makes one remote cache call: validity.
+const sharedAgentScopeMemoryCache = new InMemoryLRUCache<CachedSharedAgentScope>(1_000, 15_000);
+
+/** Clears isolate-local scope state for deterministic cache contract tests. */
+export function resetSharedAgentScopeMemoryCacheForTests(): void {
+  sharedAgentScopeMemoryCache.clear();
 }
 
 type SharedAgentScopeCacheEntry = CachedSharedAgentScope | AuthoritativeResolutionRequired;
@@ -332,6 +344,7 @@ export async function resolveSharedAgent(
     // row self-heals via the authoritative gate.
     if (now - firstWrittenAtMs >= CacheTTL.sharedAgentScope.resolveMaxAgeMs) return;
     const refreshed: CachedSharedAgentScope = { ...cached, firstWrittenAtMs };
+    sharedAgentScopeMemoryCache.set(scopeCacheKey, refreshed);
     const refresh = cache
       .set(scopeCacheKey, refreshed, CacheTTL.sharedAgentScope.resolve)
       .catch((error) => {
@@ -346,25 +359,30 @@ export async function resolveSharedAgent(
   let cachedEntry: CachedSharedAgentScope | null = null;
   let authoritativeRetryRequired = false;
   if (scopeCacheKey) {
-    try {
-      const entry = await cache.get<SharedAgentScopeCacheEntry>(scopeCacheKey);
-      if (entry && requiresAuthoritativeResolution(entry)) {
-        authoritativeRetryRequired = true;
-      } else {
-        cachedEntry = entry;
-      }
-    } catch (error) {
-      // error-policy:J4 a cache outage is an explicit retryable failure on the
-      // Worker path; only non-Worker compatibility may use the DB fallback.
-      logger.warn("[resolveSharedAgent] scope cache read failed", {
-        agentId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      if (options.cacheOnly) {
-        return {
-          error: "Agent authorization cache is unavailable. Retry shortly.",
-          status: 503,
-        };
+    cachedEntry = sharedAgentScopeMemoryCache.get(scopeCacheKey);
+    if (!cachedEntry) {
+      try {
+        const entry = await cache.get<SharedAgentScopeCacheEntry>(scopeCacheKey);
+        if (entry && requiresAuthoritativeResolution(entry)) {
+          authoritativeRetryRequired = true;
+          sharedAgentScopeMemoryCache.delete(scopeCacheKey);
+        } else {
+          cachedEntry = entry;
+          if (cachedEntry) sharedAgentScopeMemoryCache.set(scopeCacheKey, cachedEntry);
+        }
+      } catch (error) {
+        // error-policy:J4 a cache outage is an explicit retryable failure on the
+        // Worker path; only non-Worker compatibility may use the DB fallback.
+        logger.warn("[resolveSharedAgent] scope cache read failed", {
+          agentId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        if (options.cacheOnly) {
+          return {
+            error: "Agent authorization cache is unavailable. Retry shortly.",
+            status: 503,
+          };
+        }
       }
     }
     if (cachedEntry) {
@@ -373,6 +391,7 @@ export async function resolveSharedAgent(
         slidingRefreshValidatedHit(cachedEntry);
         return resolved;
       }
+      sharedAgentScopeMemoryCache.delete(scopeCacheKey);
     }
   }
 
@@ -407,10 +426,15 @@ export async function resolveSharedAgent(
     if (agent.execution_tier !== "shared" && !isDedicatedBootstrapWindow(agent)) {
       throw new ApiError(404, "resource_not_found", "Not a shared-runtime agent");
     }
-    if (agent.character_id) {
-      const { charactersService } = await import("../characters/characters");
-      await charactersService.getById(agent.character_id);
-    }
+    const admissionWarm = import("../inference-admission-snapshot").then(
+      ({ warmInferenceAdmissionSnapshot }) => warmInferenceAdmissionSnapshot(user.organization_id),
+    );
+    const characterWarm = agent.character_id
+      ? import("../characters/characters").then(({ charactersService }) =>
+          charactersService.getById(agent.character_id!),
+        )
+      : Promise.resolve(null);
+    await Promise.all([admissionWarm, characterWarm]);
     const base =
       isSessionScope && typeof user.steward_id === "string"
         ? {
@@ -439,7 +463,10 @@ export async function resolveSharedAgent(
           cache
             .del(scopeCacheKey)
             .then(hydrateScopeEntry)
-            .then((entry) => cache.set(scopeCacheKey, entry, CacheTTL.sharedAgentScope.resolve))
+            .then((entry) => {
+              sharedAgentScopeMemoryCache.set(scopeCacheKey, entry);
+              return cache.set(scopeCacheKey, entry, CacheTTL.sharedAgentScope.resolve);
+            })
         : cache.getOrSet<CachedSharedAgentScope>(
             scopeCacheKey,
             CacheTTL.sharedAgentScope.resolve,
@@ -447,7 +474,9 @@ export async function resolveSharedAgent(
             { singleflight: true },
           )
     )
-      .then(() => undefined)
+      .then((entry) => {
+        if (entry) sharedAgentScopeMemoryCache.set(scopeCacheKey, entry);
+      })
       .catch(async (error) => {
         // error-policy:J7 cache hydration is deliberately off the inference
         // path. A neutral marker makes the next request run the authoritative
@@ -457,6 +486,7 @@ export async function resolveSharedAgent(
           agentId,
           error: error instanceof Error ? error.message : String(error),
         });
+        sharedAgentScopeMemoryCache.delete(scopeCacheKey);
         await cache.set(
           scopeCacheKey,
           { requiresAuthoritativeResolution: true } satisfies AuthoritativeResolutionRequired,
@@ -478,6 +508,7 @@ export async function resolveSharedAgent(
         hydrateScopeEntry,
         { singleflight: true },
       );
+      sharedAgentScopeMemoryCache.set(scopeCacheKey, hydrated);
       const resolved = await revalidateResolvedScope(hydrated);
       // No sliding refresh here: this branch either JUST populated the entry
       // (fresh full TTL) or picked up a scope another cold caller populated
@@ -519,6 +550,7 @@ export async function resolveSharedAgent(
     // JWT maps to the same user without a user/org DB read (#SHADOW-ACCOUNT-DEBUG).
     // Only write it when we actually have it (session path + a steward-linked
     // user); its absence just means the hit safely falls back to the slow gate.
+    sharedAgentScopeMemoryCache.set(scopeCacheKey, entry);
     const write = cache
       .set(scopeCacheKey, entry, CacheTTL.sharedAgentScope.resolve)
       .catch((error) => {
