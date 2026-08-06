@@ -170,6 +170,11 @@ export async function touchTap(page: Page, selector: string): Promise<void> {
       type: "touchStart",
       touchPoints: [point(cx, cy)],
     });
+    // Give the renderer one produced frame to observe pointerdown and establish
+    // implicit capture before releasing. Back-to-back CDP commands can complete
+    // compositor-side on a busy runner before the page's handlers see the press,
+    // which is faster than a physical tap and silently drops the interaction.
+    await settleMainThread(page);
     await client.send("Input.dispatchTouchEvent", {
       type: "touchEnd",
       touchPoints: [],
