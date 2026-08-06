@@ -71,14 +71,37 @@ jobs:
         with:
           bun-version: "1.3.14"
 
-      - name: Run certification chain (bundle:create → rollup → sign)
+      - name: Generate shared i18n data
+        run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
+
+      # The bundle ingests evidence silos produced by real lanes on the
+      # certified sha; a fresh runner has none, and certify:sign honestly
+      # refuses an empty verdicts document (proven by hosted run
+      # 31056825214). Run the same deterministic scenario lane the
+      # develop-exhaustive matrix runs — real runtime, deterministic model,
+      # keyless — which writes the reports/scenarios silo.
+      - name: Produce evidence — deterministic scenario lane
+        env:
+          TZ: UTC
+        run: bun run --cwd packages/scenario-runner test:pr:e2e
+
+      # The orchestrated command is the complete chain — matrix → ingest →
+      # analyze → vision-qa → rollup → reviewer merge → sign → self-verify.
+      # The matrix is NOT skippable here: rollup scores lanes only from
+      # lanes/<lane>/result.json, which only the matrix step records (run
+      # 31059202533: --skip-matrix + no visual subjects → zero verdicts →
+      # honest refusal). Certification therefore means: the repo test matrix
+      # passes on the certified sha, recorded and signed.
+      - name: Run certification (orchestrated certify)
         env:
           ELIZA_CERT_SIGNING_KEY: ${{ secrets.ELIZA_CERT_SIGNING_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: >-
-          node scripts/vast/local-certify.mjs
+          bun run --cwd packages/evidence certify --
           --tier "${{ inputs.tier }}"
           --reviewer-id "certification-hosted@github-actions"
+          --reviewer-kind agent
+          --cert-out "$GITHUB_WORKSPACE/certification.json"
 
       - name: Collect artifacts
         run: |
