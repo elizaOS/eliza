@@ -38,6 +38,7 @@ const touchedEnv = [
   "ELIZA_PERSIST_CONFIG_PATH",
   "ELIZA_PORT",
   "ELIZA_STATE_DIR",
+  "ELIZA_WORKSPACE_ROOT",
 ] as const;
 
 function snapshotEnvironment(): void {
@@ -180,6 +181,10 @@ async function seedInstalledApp(root: string): Promise<void> {
   process.env.ELIZA_PERSIST_CONFIG_PATH = configPath;
   process.env.ELIZA_API_BIND_HOST = "127.0.0.1";
   process.env.ELIZA_API_TOKEN = "ratchet-live-route-token";
+  process.env.ELIZA_WORKSPACE_ROOT = path.resolve(
+    import.meta.dirname,
+    "../../../..",
+  );
   delete process.env.ELIZA_API_AUTH_TOKEN;
 }
 
