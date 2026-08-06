@@ -99,7 +99,7 @@ const IN_PAGE_RUNNER = async () => {
     const cloudAgentBase = await import(
       `/@fs${moduleBase}/packages/ui/src/utils/cloud-agent-base.ts`
     );
-    const bootConfig = await import(
+    const _bootConfig = await import(
       `/@fs${moduleBase}/packages/ui/src/config/boot-config-store.ts`
     );
     const realm = await import(
@@ -125,8 +125,9 @@ const IN_PAGE_RUNNER = async () => {
         "return function()",
       )
       .replace("function applyCloudPairSessionToken()", "return function()");
-    // biome-ignore lint/security/noGlobalEval: evidence harness executes the
-    // repo's own main.tsx source in a disposable browser page (no secrets).
+    // Evidence harness executes the repo's own main.tsx source in a disposable
+    // browser page (no secrets). The Function constructor is required to
+    // construct the boot adopter from the extracted source text at runtime.
     const makeBootAdopter = new Function(
       "client",
       "getBootConfig",
@@ -158,7 +159,7 @@ const IN_PAGE_RUNNER = async () => {
       upsertAndActivateAgentProfile: (p: Record<string, unknown>) => void,
       shellLocalStorage: Storage,
       legacyKey: string,
-    ) => void;
+    ) => () => void;
 
     const client = { setToken: (t: string) => adopted.push(t) };
 
