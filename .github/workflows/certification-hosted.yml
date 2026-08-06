@@ -85,13 +85,13 @@ jobs:
           TZ: UTC
         run: bun run --cwd packages/scenario-runner test:pr:e2e
 
-      # The orchestrated command is the complete chain — ingest → ANALYZE →
-      # vision-qa → rollup → reviewer merge → sign → self-verify. The manual
-      # bundle:create→rollup→sign chain skips the analyze step, so rollup sees
-      # zero subjects and sign honestly refuses (runs 31056825214, 31057802513
-      # — the latter with 226 ingested scenario artifacts). --skip-matrix is
-      # the supported mode when lane evidence comes from ingested silos, which
-      # the scenario lane above provides on the certified sha.
+      # The orchestrated command is the complete chain — matrix → ingest →
+      # analyze → vision-qa → rollup → reviewer merge → sign → self-verify.
+      # The matrix is NOT skippable here: rollup scores lanes only from
+      # lanes/<lane>/result.json, which only the matrix step records (run
+      # 31059202533: --skip-matrix + no visual subjects → zero verdicts →
+      # honest refusal). Certification therefore means: the repo test matrix
+      # passes on the certified sha, recorded and signed.
       - name: Run certification (orchestrated certify)
         env:
           ELIZA_CERT_SIGNING_KEY: ${{ secrets.ELIZA_CERT_SIGNING_KEY }}
@@ -101,7 +101,6 @@ jobs:
           --tier "${{ inputs.tier }}"
           --reviewer-id "certification-hosted@github-actions"
           --reviewer-kind agent
-          --skip-matrix
           --cert-out "$GITHUB_WORKSPACE/certification.json"
 
       - name: Collect artifacts
