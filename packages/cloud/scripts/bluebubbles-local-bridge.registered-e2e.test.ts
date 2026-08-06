@@ -66,6 +66,12 @@ describe("registered BlueBubbles local bridge E2E", () => {
           body,
         });
         const data = body.data as Record<string, unknown> | undefined;
+        if (data?.isFromMe === true) {
+          return Response.json({
+            success: true,
+            skipped: "outbound_message",
+          });
+        }
         if (data?.guid === "inbound-retry" && retryGuidFailuresRemaining > 0) {
           retryGuidFailuresRemaining -= 1;
           return Response.json(
@@ -207,8 +213,10 @@ describe("registered BlueBubbles local bridge E2E", () => {
       events: [
         {
           messageId: "inbound-1",
+          eventType: "new-message",
           sender: "+14155550999",
           textPreview: "hello registered agent",
+          isFromMe: false,
           handled: true,
           agentId: "agent-registered",
           organizationId: "org-registered",
@@ -275,6 +283,50 @@ describe("registered BlueBubbles local bridge E2E", () => {
     expect(blueBubblesSends.at(-1)).toMatchObject({
       chatGuid: "iMessage;-;+14155550888",
       message: "verified agent response",
+    });
+
+    const outboundEvent = await fetch(`${relayUrl}/webhooks/bluebubbles`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "new-message",
+        data: {
+          guid: "outbound-self-test",
+          text: "self-sent diagnostic",
+          isFromMe: true,
+          handle: { address: "+14155550123", service: "iMessage" },
+          chats: [
+            {
+              guid: "iMessage;-;+14155550123",
+              chatIdentifier: "+14155550123",
+            },
+          ],
+        },
+      }),
+    });
+    expect(outboundEvent.status).toBe(200);
+    await expect(outboundEvent.json()).resolves.toMatchObject({
+      success: true,
+      skipped: "outbound_message",
+      replied: false,
+      replyQueued: false,
+    });
+
+    const outboundEvents = await fetch(
+      `${relayUrl}/inbound-events?marker=self-sent%20diagnostic`,
+    );
+    await expect(outboundEvents.json()).resolves.toMatchObject({
+      count: 1,
+      events: [
+        {
+          eventType: "new-message",
+          messageId: "outbound-self-test",
+          isFromMe: true,
+          skipped: "outbound_message",
+          replied: false,
+          replyQueued: false,
+        },
+      ],
     });
   }, 15_000);
 });

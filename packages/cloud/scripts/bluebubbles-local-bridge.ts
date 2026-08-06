@@ -75,6 +75,7 @@ type BlueBubblesPayload = {
 type CloudReply = {
   success?: boolean;
   handled?: boolean;
+  skipped?: string;
   replyText?: string | null;
   reason?: string;
   agentId?: string;
@@ -84,10 +85,13 @@ type CloudReply = {
 
 type InboundDeliveryRecord = {
   receivedAt: string;
+  eventType: string;
   messageId?: string;
   sender?: string;
   textPreview: string;
+  isFromMe: boolean;
   handled?: boolean;
+  skipped?: string;
   reason?: string;
   agentId?: string;
   organizationId?: string;
@@ -1395,6 +1399,7 @@ async function handleWebhook(
   const result = {
     success: true,
     handled: reply.handled,
+    skipped: reply.skipped,
     reason: reply.reason,
     agentId: reply.agentId,
     organizationId: reply.organizationId,
@@ -1410,10 +1415,13 @@ async function handleWebhook(
   const text = payload.data.text?.trim() ?? "";
   recentInboundDeliveries.unshift({
     receivedAt: new Date().toISOString(),
+    eventType: payload.type,
     messageId: messageId ?? undefined,
     sender: sender || undefined,
     textPreview: text.length > 240 ? `${text.slice(0, 237)}...` : text,
+    isFromMe: payload.data.isFromMe === true,
     handled: reply.handled,
+    skipped: reply.skipped,
     reason: reply.reason,
     agentId: reply.agentId,
     organizationId: reply.organizationId,
