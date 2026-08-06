@@ -14,10 +14,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // vocabulary ever drift apart.
 import { validateTrajectory } from "../../../../scripts/lib/trajectory-validate";
 import { TRACE_ENV } from "../trace-correlation";
-// The real canonical parser, imported by path on purpose: the round-trip test
-// must fail if the recorder's terminal shape and the validator's accepted
-// vocabulary ever drift apart.
-import { validateTrajectory } from "../../../../scripts/lib/trajectory-validate";
 import {
 	applyTrajectoryFieldCap,
 	captureSkillInvocationIO,
