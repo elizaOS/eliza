@@ -22,6 +22,7 @@ import {
 import { reconcileDiscordConnectionReady } from "./connection-lifecycle";
 import { logger } from "./logger";
 import { createMockRedis, createNativeRedis } from "./redis-adapter";
+import { buildReplyComponents } from "./reply-components";
 import {
   forwardToServer,
   refreshKedaActivity,
@@ -2012,6 +2013,7 @@ export class GatewayManager {
       const routed = (await response.json()) as {
         handled?: boolean;
         replyText?: string | null;
+        replyCta?: { label?: string; url?: string } | null;
         reason?: string;
         agentId?: string;
       };
@@ -2033,8 +2035,12 @@ export class GatewayManager {
       const replyText = routed.replyText.trim();
       const truncated =
         replyText.length > 2000 ? replyText.slice(0, 2000) : replyText;
+      // Link CTAs (for example the onboarding signup handoff) render as a
+      // style-5 Link button instead of a raw URL in the message body.
+      const components = buildReplyComponents(routed.replyCta);
       await message.reply({
         content: truncated,
+        ...(components ? { components } : {}),
         allowedMentions: { repliedUser: false },
       });
     } catch (error) {

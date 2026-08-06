@@ -32,9 +32,19 @@ export interface AgentGatewaySender {
   avatar?: string | null;
 }
 
+export interface AgentGatewayRouteReplyCta {
+  label: string;
+  url: string;
+}
+
 export interface AgentGatewayRouteResult {
   handled: boolean;
   replyText?: string | null;
+  /**
+   * Optional login handoff for transports that can render a link button
+   * (Discord). When set, replyText intentionally omits the raw login URL.
+   */
+  replyCta?: AgentGatewayRouteReplyCta | null;
   reason?: AgentGatewayRouteReason;
   agentId?: string;
   organizationId?: string;
@@ -660,6 +670,7 @@ export class AgentGatewayRouterService {
         return {
           handled: true,
           replyText: onboarding.reply,
+          replyCta: onboarding.cta ?? null,
           reason: resolved.reason,
           userId: onboarding.session.userId,
           organizationId: onboarding.session.organizationId,
@@ -692,6 +703,7 @@ export class AgentGatewayRouterService {
         return {
           handled: true,
           replyText: onboarding.reply,
+          replyCta: onboarding.cta ?? null,
           reason: resolved.reason,
           userId: resolved.userId,
           organizationId: resolved.organizationId,
