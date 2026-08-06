@@ -25,6 +25,7 @@ import http from "node:http";
 import {
   type AgentRuntime,
   ChannelType,
+  ModelType,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
