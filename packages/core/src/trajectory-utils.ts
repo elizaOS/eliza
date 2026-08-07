@@ -1516,31 +1516,38 @@ async function withChildTrajectoryStep<T>(
 		return await runWithTrajectoryContext(childContext, () => fn(hasChildStep));
 	} finally {
 		if (trajectoryId || hasChildStep) {
-			void trackPostDeliveryTask(
-				runtime,
-				`trajectory-child:${options.purpose}:${childStepId}`,
-				async () => {
-					try {
-						if (
-							trajectoryId &&
-							typeof trajectoryLogger.flushWriteQueue === "function"
-						) {
-							await trajectoryLogger.flushWriteQueue(trajectoryId);
-						}
-					} catch (error) {
-						// error-policy:J7 child finalization is detached telemetry; keep
-						// the failure observable without entering conversational errors.
-						runtime.reportError("TrajectoryChildStep.finalize", error, {
-							trajectoryId,
-							parentStepId: normalizedParentStepId,
-							...(hasChildStep ? { childStepId } : {}),
-							purpose: options.purpose,
-							diagnosticOnly: true,
-						});
+			const finalizeChild = async (): Promise<void> => {
+				try {
+					if (
+						trajectoryId &&
+						typeof trajectoryLogger.flushWriteQueue === "function"
+					) {
+						await trajectoryLogger.flushWriteQueue(trajectoryId);
 					}
-				},
-				{ kind: "diagnostic" },
-			);
+				} catch (error) {
+					// error-policy:J7 child telemetry remains diagnostic, but evaluator
+					// finalization must complete before the parent run terminal is emitted.
+					runtime.reportError("TrajectoryChildStep.finalize", error, {
+						trajectoryId,
+						parentStepId: normalizedParentStepId,
+						...(hasChildStep ? { childStepId } : {}),
+						purpose: options.purpose,
+						diagnosticOnly: true,
+					});
+				}
+			};
+			if (options.purpose === "evaluation") {
+				// Evaluators already run after user delivery; awaiting their child flush
+				// preserves parent-before-terminal ordering without adding reply latency.
+				await finalizeChild();
+			} else {
+				void trackPostDeliveryTask(
+					runtime,
+					`trajectory-child:${options.purpose}:${childStepId}`,
+					finalizeChild,
+					{ kind: "diagnostic" },
+				);
+			}
 		}
 	}
 }

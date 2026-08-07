@@ -5,13 +5,16 @@
 
 import crypto from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
+import { createUniqueUuid } from "../../entities";
 import type { IAgentRuntime, Memory } from "../../types";
 import { trajectoriesPlugin } from "./index";
 import { TrajectoriesService } from "./TrajectoriesService";
 
 type Handler = (payload: Record<string, unknown>) => Promise<void>;
 
-function handler(event: "MESSAGE_RECEIVED" | "RUN_ENDED"): Handler {
+function handler(
+	event: "MESSAGE_RECEIVED" | "MESSAGE_SENT" | "RUN_ENDED",
+): Handler {
 	const registered = (trajectoriesPlugin.events as Record<string, Handler[]>)[
 		event
 	]?.[0];
@@ -123,6 +126,103 @@ describe("trajectoriesPlugin lifecycle ownership", () => {
 		release?.();
 		await Promise.all([first, second]);
 		expect(logger.endTrajectory).toHaveBeenCalledTimes(1);
+	});
+
+	it("keeps a live run open at delivery and terminalizes it exactly once at RUN_ENDED", async () => {
+		const { runtime, logger } = makeHarness();
+		const input = message(runtime);
+		await handler("MESSAGE_RECEIVED")({ runtime, message: input });
+		const reply = {
+			...message(runtime),
+			content: {
+				text: "delivered",
+				inReplyTo: createUniqueUuid(runtime, input.id as string),
+			},
+		};
+
+		await handler("MESSAGE_SENT")({
+			runtime,
+			message: reply,
+			trajectoryTerminalOwner: "run",
+		});
+		expect(logger.endTrajectory).not.toHaveBeenCalled();
+
+		await handler("RUN_ENDED")({
+			runtime,
+			messageId: input.id,
+			status: "completed",
+		});
+		await handler("RUN_ENDED")({
+			runtime,
+			messageId: input.id,
+			status: "completed",
+		});
+		expect(logger.endTrajectory).toHaveBeenCalledTimes(1);
+		expect(logger.endTrajectory).toHaveBeenCalledWith(
+			expect.stringContaining(runtime.agentId),
+			"completed",
+		);
+	});
+
+	it("retains MESSAGE_SENT as the terminal fallback without a run owner", async () => {
+		const { runtime, logger } = makeHarness();
+		const input = message(runtime);
+		await handler("MESSAGE_RECEIVED")({ runtime, message: input });
+		const reply = {
+			...message(runtime),
+			content: {
+				text: "delivered",
+				inReplyTo: createUniqueUuid(runtime, input.id as string),
+			},
+		};
+
+		await handler("MESSAGE_SENT")({ runtime, message: reply });
+
+		expect(logger.endTrajectory).toHaveBeenCalledOnce();
+		expect(logger.endTrajectory).toHaveBeenCalledWith(
+			expect.stringContaining(runtime.agentId),
+			"completed",
+		);
+	});
+
+	it("keeps concurrent rooms independent until each run reaches its own terminal", async () => {
+		const { runtime, logger } = makeHarness();
+		const first = message(runtime);
+		const second = message(runtime);
+		await handler("MESSAGE_RECEIVED")({ runtime, message: first });
+		await handler("MESSAGE_RECEIVED")({ runtime, message: second });
+
+		for (const input of [first, second]) {
+			await handler("MESSAGE_SENT")({
+				runtime,
+				message: {
+					...message(runtime),
+					roomId: input.roomId,
+					content: {
+						text: "delivered",
+						inReplyTo: createUniqueUuid(runtime, input.id as string),
+					},
+				},
+				trajectoryTerminalOwner: "run",
+			});
+		}
+		expect(logger.endTrajectory).not.toHaveBeenCalled();
+
+		await handler("RUN_ENDED")({
+			runtime,
+			messageId: first.id,
+			status: "completed",
+		});
+		expect(logger.endTrajectory).toHaveBeenCalledTimes(1);
+		const firstTrajectoryId = logger.endTrajectory.mock.calls[0]?.[0];
+
+		await handler("RUN_ENDED")({
+			runtime,
+			messageId: second.id,
+			status: "completed",
+		});
+		expect(logger.endTrajectory).toHaveBeenCalledTimes(2);
+		expect(logger.endTrajectory.mock.calls[1]?.[0]).not.toBe(firstTrajectoryId);
 	});
 
 	it("retries one terminal failure without releasing durable ownership", async () => {

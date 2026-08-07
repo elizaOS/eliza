@@ -214,6 +214,7 @@ import {
 	getTrajectoryContext,
 	runWithTrajectoryContext,
 } from "../trajectory-context";
+import { withEvaluatorStep } from "../trajectory-utils";
 import type { CharacterSettings } from "../types/agent";
 import type {
 	Action,
@@ -12451,26 +12452,43 @@ export class DefaultMessageService implements IMessageService {
 			state,
 			responseContent,
 		);
-		// Post-turn work is never part of connector completion. Connectors await
-		// handleMessage for generation/delivery bookkeeping, so awaiting an
-		// evaluator here makes every connector wait even though the reply has
-		// already been sent. Preserve evaluator-before-ALWAYS_AFTER ordering inside
-		// one detached task while keeping both failures observable at the boundary.
+		// Post-turn work is never part of connector completion. It owns one real
+		// evaluator child step, and the run terminal follows in the same detached
+		// task so the parent cannot close while that child's telemetry is still
+		// being written. The finally is the sole normal-run terminal boundary: a
+		// failed evaluator or ALWAYS_AFTER action must still release the trajectory.
 		detachPostDeliverySideEffect(
 			runtime,
 			"post_turn",
 			async () => {
-				if (semanticSignal) {
-					await runPostTurnEvaluators(runtime, message, state, {
-						didRespond: didRespondGate,
-						responses: responseMessages,
-						semanticSignal,
+				try {
+					await withEvaluatorStep(runtime, "post_turn", async () => {
+						if (semanticSignal) {
+							await runPostTurnEvaluators(runtime, message, state, {
+								didRespond: didRespondGate,
+								responses: responseMessages,
+								semanticSignal,
+							});
+						}
+						await runtime.runActionsByMode("ALWAYS_AFTER", message, state, {
+							didRespond: didRespondGate,
+							responses: responseMessages,
+						});
 					});
+				} finally {
+					await runtime.emitEvent(EventType.RUN_ENDED, {
+						runtime,
+						source: "messageHandler",
+						runId,
+						messageId: message.id,
+						roomId: message.roomId,
+						entityId: message.entityId,
+						startTime,
+						status: "completed",
+						endTime: Date.now(),
+						duration: Date.now() - startTime,
+					} as RunEventPayload);
 				}
-				await runtime.runActionsByMode("ALWAYS_AFTER", message, state, {
-					didRespond: didRespondGate,
-					responses: responseMessages,
-				});
 			},
 			"room-state",
 			message.roomId,
@@ -12547,28 +12565,6 @@ export class DefaultMessageService implements IMessageService {
 			roomName,
 		};
 
-		// Delivery is already committed; lifecycle observers run after the
-		// caller receives the result and remain drainable during shutdown.
-		detachPostDeliverySideEffect(
-			runtime,
-			"RUN_ENDED",
-			() =>
-				runtime.emitEvent(EventType.RUN_ENDED, {
-					runtime,
-					source: "messageHandler",
-					runId,
-					messageId: message.id,
-					roomId: message.roomId,
-					entityId: message.entityId,
-					startTime,
-					status: "completed",
-					endTime: Date.now(),
-					duration: Date.now() - startTime,
-				} as RunEventPayload),
-			"room-state",
-			message.roomId,
-			opts.roomHandlerLease,
-		);
 		return {
 			didRespond,
 			responseContent,
@@ -13430,6 +13426,7 @@ export class DefaultMessageService implements IMessageService {
 			runtime,
 			message,
 			source,
+			trajectoryTerminalOwner: "run",
 		});
 	}
 

@@ -113,7 +113,7 @@ type TrajectoryEventHandler = (
 ) => Promise<void>;
 
 function trajectoryEventHandler(
-  event: "MESSAGE_RECEIVED" | "RUN_ENDED",
+  event: "MESSAGE_RECEIVED" | "MESSAGE_SENT" | "RUN_ENDED",
 ): TrajectoryEventHandler {
   const handlers = (
     trajectoriesPlugin.events as Record<string, TrajectoryEventHandler[]>
@@ -823,6 +823,336 @@ describe("trajectory capture -> DB -> viewer", () => {
     expect(
       detail?.steps?.find((step) => step.stepId === parentStepId)?.childSteps,
     ).toEqual([evaluatorStep?.stepId]);
+  });
+
+  it.each(["simple", "action"] as const)(
+    "keeps %s-run post-turn telemetry inside one evaluator child before the terminal write",
+    async (variant) => {
+      const logger = runtime.getService(
+        "trajectories",
+      ) as unknown as LifecycleTrajLogger;
+      const reportError = vi.spyOn(runtime, "reportError");
+      const reportCallStart = reportError.mock.calls.length;
+      const endSpy = vi.spyOn(logger, "endTrajectory");
+      const message = {
+        id: crypto.randomUUID(),
+        agentId: runtime.agentId,
+        entityId: runtime.agentId,
+        roomId: crypto.randomUUID(),
+        createdAt: Date.now(),
+        content: { text: `${variant} post-turn ordering`, source: "chat" },
+      } as Memory;
+      await trajectoryEventHandler("MESSAGE_RECEIVED")({ runtime, message });
+      const metadata = asRecord(message.metadata);
+      const trajectoryId = metadata?.trajectoryId;
+      const parentStepId = metadata?.trajectoryStepId;
+      expect(typeof trajectoryId).toBe("string");
+      expect(typeof parentStepId).toBe("string");
+      if (
+        typeof trajectoryId !== "string" ||
+        typeof parentStepId !== "string"
+      ) {
+        return;
+      }
+
+      await flushTrajectoryWrites(runtime, trajectoryId);
+      const initialDetail = await logger.getTrajectoryDetail(trajectoryId);
+      const initialParentKind = initialDetail?.steps?.find(
+        (step) => step.stepId === parentStepId,
+      )?.kind;
+
+      if (variant === "action") {
+        const actionResult = await runWithTrajectoryContext(
+          {
+            trajectoryId,
+            trajectoryStepId: parentStepId,
+            purpose: "planner",
+          },
+          () =>
+            executePlannedToolCall(
+              runtime,
+              { message, activeContexts: ["general"] },
+              { name: "VIEWS", params: { view: "calendar" } },
+            ),
+        );
+        expect(actionResult).toMatchObject({
+          success: true,
+          data: { actionName: "VIEWS", view: "calendar" },
+        });
+      }
+
+      await trajectoryEventHandler("MESSAGE_SENT")({
+        runtime,
+        message,
+        trajectoryTerminalOwner: "run",
+      });
+      expect((await loadTrajectoryById(runtime, trajectoryId))?.status).toBe(
+        "active",
+      );
+
+      let releaseEvaluation!: () => void;
+      let markEvaluationStarted!: () => void;
+      const evaluationGate = new Promise<void>((resolve) => {
+        releaseEvaluation = resolve;
+      });
+      const evaluationStarted = new Promise<void>((resolve) => {
+        markEvaluationStarted = resolve;
+      });
+      const evaluationWork = runWithTrajectoryContext(
+        { trajectoryId, trajectoryStepId: parentStepId },
+        () =>
+          withEvaluatorStep(runtime, "post_turn", async () => {
+            markEvaluationStarted();
+            await evaluationGate;
+            const evaluatorStepId = logger.getCurrentStepId?.(trajectoryId);
+            expect(evaluatorStepId).not.toBe(parentStepId);
+            expect(typeof evaluatorStepId).toBe("string");
+            const capturedStepId = evaluatorStepId ?? "missing-evaluator-step";
+            logger.logProviderAccess({
+              stepId: capturedStepId,
+              providerName: "post-turn-context",
+              purpose: "evaluation",
+              data: { variant },
+            });
+            logger.logLlmCall({
+              ...llmCall(
+                capturedStepId,
+                "openai",
+                `post-turn-${variant}`,
+                "evaluation complete",
+              ),
+              purpose: "evaluation",
+              actionType: "evaluator.post_turn",
+            });
+          }),
+      );
+      await evaluationStarted;
+      expect((await loadTrajectoryById(runtime, trajectoryId))?.status).toBe(
+        "active",
+      );
+
+      releaseEvaluation();
+      await evaluationWork;
+      await trajectoryEventHandler("RUN_ENDED")({
+        runtime,
+        messageId: message.id,
+        status: "completed",
+      });
+      await flushTrajectoryWrites(runtime, trajectoryId);
+      await logger.flushWriteQueue?.(trajectoryId);
+
+      const detail = await logger.getTrajectoryDetail(trajectoryId);
+      const evaluatorSteps = (detail?.steps ?? []).filter(
+        (step) => step.evaluatorName === "post_turn",
+      );
+      expect(evaluatorSteps).toHaveLength(1);
+      expect(evaluatorSteps[0]).toMatchObject({
+        parentStepId,
+        kind: "evaluator",
+        providerAccesses: [
+          expect.objectContaining({ providerName: "post-turn-context" }),
+        ],
+        llmCalls: [
+          expect.objectContaining({
+            model: `post-turn-${variant}`,
+            purpose: "evaluation",
+          }),
+        ],
+      });
+      expect(
+        detail?.steps?.find((step) => step.stepId === parentStepId)?.kind,
+      ).toBe(initialParentKind);
+      expect(
+        detail?.steps?.filter((step) => step.action?.actionName === "VIEWS"),
+      ).toHaveLength(variant === "action" ? 1 : 0);
+      expect(
+        endSpy.mock.calls.filter(([id]) => id === trajectoryId),
+      ).toHaveLength(1);
+      expect((await loadTrajectoryById(runtime, trajectoryId))?.status).toBe(
+        "completed",
+      );
+      const evaluatorStepId = evaluatorSteps[0]?.stepId;
+      const orphanRows = await executeRawSql(
+        runtime,
+        `SELECT id FROM trajectories WHERE id = '${String(
+          evaluatorStepId,
+        ).replaceAll("'", "''")}'`,
+      );
+      expect(extractRows(orphanRows)).toEqual([]);
+      expect(
+        reportError.mock.calls
+          .slice(reportCallStart)
+          .filter(([scope]) => scope === "TrajectoryStorage.lateCapture"),
+      ).toEqual([]);
+      expect(__getTrajectoryBridgeStateCountsForTests(runtime)).toEqual({
+        stepMappings: 0,
+        activeOwners: 0,
+      });
+      endSpy.mockRestore();
+      reportError.mockRestore();
+    },
+  );
+
+  it("keeps concurrent-room evaluator children independently active until each run ends", async () => {
+    const logger = runtime.getService(
+      "trajectories",
+    ) as unknown as LifecycleTrajLogger;
+    const reportError = vi.spyOn(runtime, "reportError");
+    const reportCallStart = reportError.mock.calls.length;
+    const endSpy = vi.spyOn(logger, "endTrajectory");
+    const turns = await Promise.all(
+      ["first", "second"].map(async (label) => {
+        const message = {
+          id: crypto.randomUUID(),
+          agentId: runtime.agentId,
+          entityId: runtime.agentId,
+          roomId: crypto.randomUUID(),
+          createdAt: Date.now(),
+          content: { text: `${label} concurrent room`, source: "chat" },
+        } as Memory;
+        await trajectoryEventHandler("MESSAGE_RECEIVED")({ runtime, message });
+        const metadata = asRecord(message.metadata);
+        const trajectoryId = metadata?.trajectoryId;
+        const parentStepId = metadata?.trajectoryStepId;
+        expect(typeof trajectoryId).toBe("string");
+        expect(typeof parentStepId).toBe("string");
+        if (
+          typeof trajectoryId !== "string" ||
+          typeof parentStepId !== "string"
+        ) {
+          throw new Error(`Missing ${label} trajectory metadata`);
+        }
+        await trajectoryEventHandler("MESSAGE_SENT")({
+          runtime,
+          message,
+          trajectoryTerminalOwner: "run",
+        });
+        let release!: () => void;
+        let markStarted!: () => void;
+        const gate = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        const started = new Promise<void>((resolve) => {
+          markStarted = resolve;
+        });
+        const work = runWithTrajectoryContext(
+          { trajectoryId, trajectoryStepId: parentStepId },
+          () =>
+            withEvaluatorStep(runtime, "post_turn", async () => {
+              markStarted();
+              await gate;
+              const evaluatorStepId = logger.getCurrentStepId?.(trajectoryId);
+              if (!evaluatorStepId) {
+                throw new Error(`Missing ${label} evaluator step`);
+              }
+              logger.logProviderAccess({
+                stepId: evaluatorStepId,
+                providerName: `post-turn-${label}`,
+                purpose: "evaluation",
+                data: { roomId: message.roomId },
+              });
+              logger.logLlmCall({
+                ...llmCall(
+                  evaluatorStepId,
+                  "openai",
+                  `concurrent-${label}`,
+                  `${label} evaluation`,
+                ),
+                purpose: "evaluation",
+              });
+            }),
+        );
+        return {
+          label,
+          message,
+          trajectoryId,
+          release,
+          started,
+          work,
+        };
+      }),
+    );
+    await Promise.all(turns.map((turn) => turn.started));
+    expect(
+      await Promise.all(
+        turns.map(
+          async (turn) =>
+            (await loadTrajectoryById(runtime, turn.trajectoryId))?.status,
+        ),
+      ),
+    ).toEqual(["active", "active"]);
+
+    turns[0].release();
+    await turns[0].work;
+    await trajectoryEventHandler("RUN_ENDED")({
+      runtime,
+      messageId: turns[0].message.id,
+      status: "completed",
+    });
+    expect(
+      (await loadTrajectoryById(runtime, turns[0].trajectoryId))?.status,
+    ).toBe("completed");
+    expect(
+      (await loadTrajectoryById(runtime, turns[1].trajectoryId))?.status,
+    ).toBe("active");
+
+    turns[1].release();
+    await turns[1].work;
+    await trajectoryEventHandler("RUN_ENDED")({
+      runtime,
+      messageId: turns[1].message.id,
+      status: "completed",
+    });
+    await flushTrajectoryWrites(runtime);
+    for (const turn of turns) {
+      await logger.flushWriteQueue?.(turn.trajectoryId);
+      const detail = await logger.getTrajectoryDetail(turn.trajectoryId);
+      const evaluatorSteps = (detail?.steps ?? []).filter(
+        (step) => step.evaluatorName === "post_turn",
+      );
+      expect(evaluatorSteps).toHaveLength(1);
+      expect(evaluatorSteps[0]).toMatchObject({
+        parentStepId: expect.any(String),
+        providerAccesses: expect.arrayContaining([
+          expect.objectContaining({ providerName: `post-turn-${turn.label}` }),
+        ]),
+        llmCalls: expect.arrayContaining([
+          expect.objectContaining({ model: `concurrent-${turn.label}` }),
+        ]),
+      });
+      expect(
+        endSpy.mock.calls.filter(([id]) => id === turn.trajectoryId),
+      ).toHaveLength(1);
+      expect(
+        (await loadTrajectoryById(runtime, turn.trajectoryId))?.status,
+      ).toBe("completed");
+      const evaluatorStepId = evaluatorSteps[0]?.stepId;
+      const orphanRows = await executeRawSql(
+        runtime,
+        `SELECT id FROM trajectories WHERE id = '${String(
+          evaluatorStepId,
+        ).replaceAll("'", "''")}'`,
+      );
+      expect(extractRows(orphanRows)).toEqual([]);
+    }
+    const activeRows = await executeRawSql(
+      runtime,
+      `SELECT id FROM trajectories WHERE id IN (${turns
+        .map((turn) => `'${turn.trajectoryId.replaceAll("'", "''")}'`)
+        .join(", ")}) AND status = 'active'`,
+    );
+    expect(extractRows(activeRows)).toEqual([]);
+    expect(
+      reportError.mock.calls
+        .slice(reportCallStart)
+        .filter(([scope]) => scope === "TrajectoryStorage.lateCapture"),
+    ).toEqual([]);
+    expect(__getTrajectoryBridgeStateCountsForTests(runtime)).toEqual({
+      stepMappings: 0,
+      activeOwners: 0,
+    });
+    endSpy.mockRestore();
+    reportError.mockRestore();
   });
 
   it("keeps dedicated steps authoritative for long captures, scripts, skills, evaluators, and exports", async () => {
