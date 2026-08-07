@@ -22,7 +22,6 @@
 import { spawn } from "node:child_process";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { mkdtempSync } from "node:fs";
-import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -32,6 +31,7 @@ import { chromium } from "playwright";
 import postcss from "postcss";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { createSiweMessage } from "viem/siwe";
+import { startCloudApiTestServer } from "./cloud-api-test-server.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const uiSrc = resolve(here, "../../..");
@@ -39,26 +39,6 @@ const repoRoot = resolve(uiSrc, "../../..");
 const outDir = join(here, "output-frontend-hosting");
 await rm(outDir, { recursive: true, force: true });
 await mkdir(outDir, { recursive: true });
-
-async function pickFreeLoopbackPort() {
-  return new Promise((resolvePort, rejectPort) => {
-    const reservation = createServer();
-    reservation.unref();
-    reservation.once("error", rejectPort);
-    reservation.listen(0, "127.0.0.1", () => {
-      const address = reservation.address();
-      if (address === null || typeof address === "string") {
-        reservation.close();
-        rejectPort(new Error("free-port reservation returned no TCP address"));
-        return;
-      }
-      reservation.close(() => resolvePort(address.port));
-    });
-  });
-}
-
-const API_PORT = await pickFreeLoopbackPort();
-const API_BASE = `http://127.0.0.1:${API_PORT}`;
 
 let failures = 0;
 function assert(cond, msg) {
@@ -84,7 +64,6 @@ const stackEnv = {
   BUN_OPTIONS: bunOptions,
   MOCK_REDIS: "1",
   DATABASE_URL: `pglite://${pgdata}`,
-  API_DEV_PORT: String(API_PORT),
   CRON_SECRET: "local-cron-secret",
   ELIZA_KMS_BACKEND: "local",
   ELIZA_LOCAL_ROOT_KEY: Buffer.alloc(32, 7).toString("base64"),
@@ -101,11 +80,8 @@ await new Promise((res, rej) => {
 });
 
 console.log("== boot cloud-api ==");
-const apiServer = spawn(
-  "bun",
-  ["run", "packages/cloud/scripts/admin/dev/cloud-api-hono-dev.ts"],
-  { cwd: repoRoot, env: stackEnv, stdio: ["ignore", "ignore", "inherit"] },
-);
+const { child: apiServer, baseUrl: API_BASE } =
+  await startCloudApiTestServer({ repoRoot, env: stackEnv });
 process.on("exit", () => {
   try {
     apiServer.kill("SIGTERM");
