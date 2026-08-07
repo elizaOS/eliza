@@ -29,7 +29,10 @@ import {
 	enforceVerbosity,
 } from "../features/advanced-capabilities/personality";
 import { getPersonalityStore } from "../features/advanced-capabilities/personality/services/personality-store.ts";
-import { embedRecallQuery } from "../features/documents/recall-embed";
+import {
+	aliasRecallQuery,
+	embedRecallQuery,
+} from "../features/documents/recall-embed";
 import { runShouldRespondInjectionGate } from "../features/trust/should-respond-risk-gate";
 import {
 	emitInferenceTiming,
@@ -11401,15 +11404,39 @@ export class DefaultMessageService implements IMessageService {
 		const postIncomingHookText =
 			typeof message.content?.text === "string" ? message.content.text : "";
 
-		if (message.id && postIncomingHookText !== preIncomingHookText) {
-			await runtime.updateMemory({
-				id: message.id,
-				content: message.content,
-			});
-			await runtime.queueEmbeddingGeneration(
-				{ ...message, id: message.id },
-				"normal",
-			);
+		if (postIncomingHookText !== preIncomingHookText) {
+			// An incoming hook rewrote the turn's text — the core security hook
+			// replaces `content.text` with the external-content envelope for every
+			// untrusted-source message (incoming-message-security.ts), and the
+			// storage scrub can rewrite trusted text too. Compose-time recall
+			// callers (relevant-conversations, document recall, experience recall)
+			// present the REWRITTEN text, whose normalized cache key misses the
+			// raw-text vector the prefetch above is already fetching — a guaranteed
+			// second, serial TEXT_EMBEDDING round-trip on every rewritten turn.
+			// Declare the rewritten text equivalent to the raw prompt for this
+			// turn's recall so those callers join the prefetch round-trip instead;
+			// the raw user text is also the semantically correct recall query (the
+			// user's words, not the security armor around them).
+			if (
+				preIncomingHookText.trim() !== "" &&
+				postIncomingHookText.trim() !== ""
+			) {
+				aliasRecallQuery(runtime, {
+					...(typeof message.id === "string" ? { messageId: message.id } : {}),
+					sourceText: preIncomingHookText,
+					aliasText: postIncomingHookText,
+				});
+			}
+			if (message.id) {
+				await runtime.updateMemory({
+					id: message.id,
+					content: message.content,
+				});
+				await runtime.queueEmbeddingGeneration(
+					{ ...message, id: message.id },
+					"normal",
+				);
+			}
 		}
 
 		// Compose initial state (after incoming hooks so providers/actions text matches this turn)
