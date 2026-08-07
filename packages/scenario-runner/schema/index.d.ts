@@ -541,6 +541,14 @@ export type ScenarioRequirements = {
    * Services omitted here are optional even when a required plugin declares them.
    */
   services?: readonly string[];
+  /**
+   * Named credential slots (e.g. `1password:eliza-e2e-autofill`) the live lane
+   * must provision before this scenario is eligible; corpora-specific runners
+   * interpret the slot names.
+   */
+  credentials?: readonly string[];
+  /** Host platform the scenario needs (e.g. `macos`); other platforms defer it. */
+  os?: string;
 };
 
 export type ScenarioDefinition = {

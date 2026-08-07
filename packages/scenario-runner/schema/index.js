@@ -293,18 +293,27 @@ function validateScenarioRequirements(value) {
     Array.isArray(requires)
   ) {
     throw new Error(
-      `scenario "${value?.id ?? "<unknown>"}" has invalid requires; expected { plugins?: string[], services?: string[] }`,
+      `scenario "${value?.id ?? "<unknown>"}" has invalid requires; expected { plugins?: string[], services?: string[], credentials?: string[], os?: string }`,
     );
   }
+  const knownKeys = ["plugins", "services", "credentials", "os"];
   const unknownKeys = Object.keys(requires).filter(
-    (key) => key !== "plugins" && key !== "services",
+    (key) => !knownKeys.includes(key),
   );
   if (unknownKeys.length > 0) {
     throw new Error(
       `scenario "${value?.id ?? "<unknown>"}" has unknown requires field(s): ${unknownKeys.join(", ")}`,
     );
   }
-  for (const key of ["plugins", "services"]) {
+  if (
+    requires.os !== undefined &&
+    (typeof requires.os !== "string" || requires.os.trim().length === 0)
+  ) {
+    throw new Error(
+      `scenario "${value?.id ?? "<unknown>"}" has invalid requires.os; expected a non-empty string`,
+    );
+  }
+  for (const key of ["plugins", "services", "credentials"]) {
     const requirements = requires[key];
     if (requirements === undefined) {
       continue;
