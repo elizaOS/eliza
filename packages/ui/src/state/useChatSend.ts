@@ -565,6 +565,9 @@ export function useChatSend(deps: UseChatSendDeps) {
     conversationId: string | null;
     messageId: string;
     pendingText: string | null;
+    /** Whether the parked text is action-callback (provisional) text — the
+     *  latest frame wins, mirroring `pendingText` (double-speak fix). */
+    pendingTextProvisional: boolean;
     pendingStatus: ChatTurnStatus | null | typeof NO_PENDING_STATUS;
     pendingToolEvents: ChatToolCallEvent[];
     flushScheduled: boolean;
@@ -575,6 +578,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     conversationId: null,
     messageId: "",
     pendingText: null,
+    pendingTextProvisional: false,
     pendingStatus: NO_PENDING_STATUS,
     pendingToolEvents: [],
     flushScheduled: false,
@@ -751,11 +755,14 @@ export function useChatSend(deps: UseChatSendDeps) {
     let committed = false;
     if (buffer.pendingText !== null) {
       const fullText = buffer.pendingText;
+      const provisional = buffer.pendingTextProvisional;
       buffer.pendingText = null;
+      buffer.pendingTextProvisional = false;
       applyStreamingTextModification(setConversationMessages, {
         messageId: buffer.messageId,
         mode: "replace",
         fullText,
+        provisional,
       });
       committed = true;
     }
@@ -819,6 +826,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       buffer.conversationId = conversationId;
       buffer.messageId = messageId;
       buffer.pendingText = null;
+      buffer.pendingTextProvisional = false;
       buffer.pendingStatus = NO_PENDING_STATUS;
       buffer.pendingToolEvents = [];
       buffer.flushScheduled = false;
@@ -854,9 +862,15 @@ export function useChatSend(deps: UseChatSendDeps) {
   // Park the latest cumulative text for `messageId`. Synchronous callbacks from
   // one decoded SSE batch overwrite the parked value and commit together.
   const scheduleStreamingText = useCallback(
-    (conversationId: string, messageId: string, fullText: string) => {
+    (
+      conversationId: string,
+      messageId: string,
+      fullText: string,
+      provisional = false,
+    ) => {
       startStreamingTurn(conversationId, messageId);
       streamingFlushRef.current.pendingText = fullText;
+      streamingFlushRef.current.pendingTextProvisional = provisional;
       ensureStreamingFlush();
     },
     [startStreamingTurn, ensureStreamingFlush],
@@ -902,6 +916,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         buffer.flushTimer = null;
       }
       buffer.pendingText = null;
+      buffer.pendingTextProvisional = false;
       buffer.conversationId = null;
       buffer.pendingStatus = NO_PENDING_STATUS;
       buffer.pendingToolEvents = [];
@@ -1573,7 +1588,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         const data = await client.sendConversationMessageStream(
           convId,
           text,
-          (token, accumulatedText) => {
+          (token, accumulatedText, provisional) => {
             const nextText =
               typeof accumulatedText === "string"
                 ? accumulatedText
@@ -1585,7 +1600,15 @@ export function useChatSend(deps: UseChatSendDeps) {
             }
             // Coalesce tokens delivered in one transport burst into a microtask;
             // the parked text is flushed synchronously before terminal changes.
-            scheduleStreamingText(convId, assistantMsgId, nextText);
+            // Provisional (action-callback) text is stamped on the message so
+            // voice output holds it until the final reply confirms or replaces
+            // it (double-speak fix).
+            scheduleStreamingText(
+              convId,
+              assistantMsgId,
+              nextText,
+              provisional === true,
+            );
           },
           channelType,
           controller.signal,
@@ -1846,7 +1869,7 @@ export function useChatSend(deps: UseChatSendDeps) {
             const retryData = await client.sendConversationMessageStream(
               conversation.id,
               text,
-              (token, accumulatedText) => {
+              (token, accumulatedText, provisional) => {
                 const nextText =
                   typeof accumulatedText === "string"
                     ? accumulatedText
@@ -1860,6 +1883,7 @@ export function useChatSend(deps: UseChatSendDeps) {
                   conversation.id,
                   replayAssistantId,
                   nextText,
+                  provisional === true,
                 );
               },
               channelType,
@@ -2400,7 +2424,7 @@ export function useChatSend(deps: UseChatSendDeps) {
           const data = await client.sendConversationMessageStream(
             convId,
             trimmed,
-            (token, accumulatedText) => {
+            (token, accumulatedText, provisional) => {
               const nextText =
                 typeof accumulatedText === "string"
                   ? accumulatedText
@@ -2412,7 +2436,12 @@ export function useChatSend(deps: UseChatSendDeps) {
               }
               // Coalesce tokens delivered in one transport burst into a microtask;
               // flush synchronously before terminal changes.
-              scheduleStreamingText(convId, assistantMsgId, nextText);
+              scheduleStreamingText(
+                convId,
+                assistantMsgId,
+                nextText,
+                provisional === true,
+              );
             },
             "DM",
             controller.signal,

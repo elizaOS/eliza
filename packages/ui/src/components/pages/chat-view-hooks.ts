@@ -632,6 +632,12 @@ export function useChatVoiceController(options: {
     }
     const latestAssistant = findLatestAssistantMessage(conversationMessages);
     if (!latestAssistant) return;
+    // Single utterance per turn: provisional text is an in-flight action
+    // callback the turn's final reply may replace — speech cannot be
+    // retracted, so speaking it plus the reply is the voice "double-speak"
+    // defect. Hold until a non-provisional frame or terminal reconciliation
+    // delivers the turn's final message (see useShellVoiceOutput).
+    if (latestAssistant.provisional) return;
     const suppressed = suppressedAssistantSpeechRef.current;
     if (
       suppressed &&
