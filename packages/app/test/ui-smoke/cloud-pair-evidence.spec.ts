@@ -213,11 +213,23 @@ const IN_PAGE_RUNNER = async () => {
       adopted: [...adopted],
     });
 
-    // Phase 3 — disconnect/delete: clear through the REAL production clear.
+    // Phase 3 — agent delete/disconnect: clear through the REAL production
+    // scoped clear. Agent A's key goes; agent B's key AND the legacy global
+    // key (unknown owner on a pre-migration install) must survive.
     tokenState.clearCloudPairApiToken(agentA);
     phases.push({
       phase: "3-after-clear",
       detail: "clearCloudPairApiToken(agentA) executed",
+      storage: snap(),
+      adopted: [...adopted],
+    });
+
+    // Phase 4 — global disconnect/sign-out: the no-agentId clear purges every
+    // scoped key plus the legacy global key from BOTH storages.
+    tokenState.clearCloudPairApiToken();
+    phases.push({
+      phase: "4-after-global-clear",
+      detail: "clearCloudPairApiToken() (global) executed",
       storage: snap(),
       adopted: [...adopted],
     });
@@ -305,9 +317,9 @@ test.describe("cloud-pair credential lifecycle — real browser evidence", () =>
       result.errors,
       `harness errors: ${result.errors.join("; ")}`,
     ).toEqual([]);
-    expect(result.phases.length).toBe(3);
+    expect(result.phases.length).toBe(4);
 
-    const [phase1, phase2, phase3] = result.phases;
+    const [phase1, phase2, phase3, phase4] = result.phases;
 
     // Save evidence artifacts.
     await mkdir(OUT_DIR, { recursive: true });
@@ -341,14 +353,20 @@ test.describe("cloud-pair credential lifecycle — real browser evidence", () =>
     ) as { accessToken?: string } | null;
     expect(activeServer?.accessToken).toBe(TOKEN_A);
 
-    // Phase 3 assertions — clear purges agent A from BOTH storages + legacy.
+    // Phase 3 assertions — scoped clear purges agent A from BOTH storages
+    // while the legacy global key (unknown owner) and agent B survive.
     expect(phase3.storage.localStorage[AGENT_A_KEY]).toBeUndefined();
     expect(phase3.storage.sessionStorage[AGENT_A_KEY]).toBeUndefined();
-    expect(phase3.storage.localStorage[LEGACY_KEY]).toBeUndefined();
-    expect(phase3.storage.sessionStorage[LEGACY_KEY]).toBeUndefined();
+    expect(phase3.storage.localStorage[LEGACY_KEY]).toBe(LEGACY_TOKEN);
     // Cross-agent key untouched by agent A's clear.
     expect(phase3.storage.localStorage[AGENT_B_KEY]).toBe(TOKEN_B);
     expect(phase3.storage.sessionStorage[AGENT_B_KEY]).toBe(TOKEN_B);
+
+    // Phase 4 assertions — global clear purges every scoped key + legacy key.
+    expect(phase4.storage.localStorage[AGENT_B_KEY]).toBeUndefined();
+    expect(phase4.storage.sessionStorage[AGENT_B_KEY]).toBeUndefined();
+    expect(phase4.storage.localStorage[LEGACY_KEY]).toBeUndefined();
+    expect(phase4.storage.sessionStorage[LEGACY_KEY]).toBeUndefined();
 
     // Manifest.
     await writeFile(
@@ -368,16 +386,158 @@ test.describe("cloud-pair credential lifecycle — real browser evidence", () =>
         "| 1. pair (persist A+B + legacy + active server) | storage-dump-1-pair.json | 1-pair.png |",
         "| 2. relaunch (REAL boot adopter) | storage-dump-2-relaunch-adoption.json | 2-relaunch-adoption.png |",
         "| 3. after REAL clearCloudPairApiToken(agentA) | storage-dump-3-after-clear.json | 3-after-clear.png |",
+        "| 4. after REAL global clearCloudPairApiToken() | storage-dump-4-after-global-clear.json | 4-after-global-clear.png |",
         "",
         "Assertions (all green in this run):",
         "- Phase 1: per-agent key A in localStorage AND sessionStorage; legacy key present",
         "- Phase 2: boot adopter adopts ONLY agent A's token; agent B token never adopted;",
         "  legacy token not adopted without ownership proof; active-server mirrors token A",
-        "- Phase 3: clearCloudPairApiToken purges agent A key from BOTH storages + legacy key;",
-        "  agent B key untouched",
+        "- Phase 3: scoped clear purges agent A key from BOTH storages; agent B key AND the",
+        "  legacy global key (unknown owner) untouched",
+        "- Phase 4: global clear purges every scoped key plus the legacy key from BOTH storages",
       ].join("\n"),
     );
 
     console.log(`Evidence written to ${OUT_DIR}`);
+  });
+
+  test("session-only pairing fallback renders a distinct non-success state", async ({
+    page,
+    baseURL,
+  }) => {
+    // When the pairing exchange succeeds but no owning agent can be resolved
+    // (non-dedicated origin, no dedicated boot apiBase — exactly this bare
+    // localhost shell), the REAL CloudPairRelay must install the bearer for
+    // the live session only and render the visibly distinct session-only
+    // state instead of silently redirecting as a success.
+    expect(baseURL, "baseURL required").toBeTruthy();
+    await page.addInitScript(
+      (root) => {
+        (
+          window as unknown as { __elizaModuleBasePath?: string }
+        ).__elizaModuleBasePath = root;
+        (window as unknown as Record<string, unknown>).process = {
+          env: {},
+          browser: true,
+          cwd: () => "/",
+          platform: "linux",
+        };
+      },
+      resolve(HERE, "..", "..", "..", ".."),
+    );
+    await page.route("**/*", async (route) => {
+      const url = route.request().url();
+      if (url.endsWith("/") || url.endsWith("/index.html")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "text/html",
+          body: [
+            "<!doctype html><html><body><div id='root'></div>",
+            "<script type='module'>",
+            "import { injectIntoGlobalHook } from '/@react-refresh';",
+            "injectIntoGlobalHook(window);",
+            "window.$RefreshReg$ = () => {};",
+            "window.$RefreshSig$ = () => (type) => type;",
+            "window.__vite_plugin_react_preamble_installed__ = true;",
+            "</script>",
+            "</body></html>",
+          ].join(""),
+        });
+        return;
+      }
+      await route.fallback();
+    });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+
+    await page.evaluate(async () => {
+      const moduleBase = (
+        window as unknown as { __elizaModuleBasePath?: string }
+      ).__elizaModuleBasePath;
+      if (!moduleBase) throw new Error("module base path missing");
+      const relay = await import(
+        `/@fs${moduleBase}/packages/ui/src/components/auth/CloudPairRelay.tsx`
+      );
+      // Pull in the real app stylesheet so the captured surface is the styled
+      // production render, not an unstyled DOM skeleton.
+      await import(`/@fs${moduleBase}/packages/ui/src/styles.ts`);
+      // Bare specifiers resolve through Vite's id-resolution endpoint; a raw
+      // /@fs directory path cannot serve a package entry.
+      const reactModule = await import("/@id/react");
+      const reactDomModule = await import("/@id/react-dom/client");
+      // CJS interop: the pre-bundled dep may hang its API off `default`.
+      const react = reactModule.createElement
+        ? reactModule
+        : reactModule.default;
+      const reactDom = reactDomModule.createRoot
+        ? reactDomModule
+        : reactDomModule.default;
+      const rootEl = document.getElementById("root");
+      if (!rootEl) throw new Error("root missing");
+      const globals = globalThis as Record<string, unknown>;
+      globals.__evidencePaired = false;
+      const root = reactDom.createRoot(rootEl);
+      root.render(
+        react.createElement(relay.CloudPairRelay, {
+          token: "pair-token",
+          // Delayed resolve keeps the unchanged pairing resting state visible
+          // long enough to capture it as the before-state.
+          exchangeFn: () =>
+            new Promise((resolvePair) =>
+              setTimeout(() => resolvePair("agent-key"), 1500),
+            ),
+          onPaired: () => {
+            globals.__evidencePaired = true;
+          },
+        }),
+      );
+    });
+
+    await mkdir(OUT_DIR, { recursive: true });
+
+    // Before: the pairing resting state (unchanged by this PR).
+    await expect(page.getByText("Signing in to your agent")).toBeVisible();
+    await page.screenshot({
+      path: join(OUT_DIR, "0-pairing-before.png"),
+      fullPage: true,
+    });
+
+    // After: the distinct session-only state.
+    await expect(
+      page.getByText("Signed in for this session only"),
+    ).toBeVisible();
+    await page.screenshot({
+      path: join(OUT_DIR, "5-session-only-fallback.png"),
+      fullPage: true,
+    });
+
+    const state = await page.evaluate(() => {
+      const globals = globalThis as Record<string, unknown>;
+      const bootConfig = globals.__ELIZA_APP_BOOT_CONFIG__ as
+        | { apiToken?: string }
+        | undefined;
+      return {
+        pairedBeforeContinue: globals.__evidencePaired === true,
+        sessionBearerInstalled: bootConfig?.apiToken === "agent-key",
+        localStorageLength: window.localStorage.length,
+        sessionStorageLength: window.sessionStorage.length,
+      };
+    });
+
+    // Bearer live in-memory, nothing persisted, no silent auto-redirect.
+    expect(state.pairedBeforeContinue).toBe(false);
+    expect(state.sessionBearerInstalled).toBe(true);
+    expect(state.localStorageLength).toBe(0);
+    expect(state.sessionStorageLength).toBe(0);
+
+    // The explicit continue hands off to onPaired.
+    await page.getByRole("button", { name: "Continue to your agent" }).click();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (globalThis as Record<string, unknown>).__evidencePaired === true,
+        ),
+      )
+      .toBe(true);
   });
 });
