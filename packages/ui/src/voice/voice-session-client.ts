@@ -11,6 +11,16 @@
  *      per §7.2. Reconnect = RE-MINT (a revoked/expired token can't reconnect).
  *   4. clean `bye` + close.
  *
+ * Transport recovery: any unexpected close, fatal server frame, or failed
+ * re-mint consumes one attempt from a bounded reconnect budget with growing
+ * backoff between attempts, so a network switch that outlives a single mint
+ * still recovers. A session continuously live past `reconnectBudgetResetMs`
+ * refills the budget on its next loss — long sessions tolerate well-separated
+ * drops forever, while a connect-die loop stays bounded. The server hard-severs
+ * at the bootstrap token's exp (<=120s), so the client proactively ROTATES the
+ * session (clean bye + re-mint) shortly before expiry, but only at an idle
+ * `listening` boundary — never mid-turn — making the periodic sever invisible.
+ *
  * The client wires:
  *   - voice-session-mic-capture (getUserMedia → AudioWorklet/ScriptProcessor →
  *     Int16 PCM uplink frames)
@@ -181,11 +191,46 @@ export interface VoiceSessionClientOptions {
   now?: () => number;
 
   /**
-   * Max reconnect (re-mint) attempts on an unexpected close before giving up.
-   * Default 2. A revoked/expired token cannot reconnect — reconnect ALWAYS
-   * re-mints a fresh token, never reuses the old one.
+   * Max reconnect (re-mint) attempts per outage before giving up. Default 5.
+   * A revoked/expired token cannot reconnect — reconnect ALWAYS re-mints a
+   * fresh token, never reuses the old one. The budget refills after the
+   * session has been continuously live for `reconnectBudgetResetMs`.
    */
   maxReconnects?: number;
+  /**
+   * Reconnect budget while the lifecycle has NEVER reached server `ready`.
+   * Defaults to `maxReconnects`. A caller that owns a same-gesture fallback
+   * (the hook hands a pre-live failure to the batch mic) sets 0 so a pre-live
+   * transport fault surfaces immediately instead of retrying past the gesture.
+   */
+  preLiveMaxReconnects?: number;
+  /**
+   * Backoff base between reconnect attempts within one outage: attempt k
+   * (k >= 2) waits base * 2^(k-2); the first attempt is immediate so a
+   * server-side session rotation reconnects with no audible gap. Default 1000.
+   */
+  reconnectBackoffMs?: number;
+  /**
+   * A session continuously live (server `ready` observed) for at least this
+   * long refills the reconnect budget on its next transport loss. Default
+   * 30_000. A session that dies within seconds of connecting never refills,
+   * so a persistent connect-die fault stays bounded.
+   */
+  reconnectBudgetResetMs?: number;
+  /**
+   * Lead time before the minted token's expiry at which an idle (`listening`)
+   * session proactively rotates (clean bye + re-mint) instead of waiting for
+   * the server's hard sever at exp. 0 disables proactive rotation. Default
+   * 10_000.
+   */
+  rotationLeadMs?: number;
+  /** Re-check cadence while a due rotation waits for an idle boundary. Default 1000. */
+  rotationRecheckMs?: number;
+  /**
+   * Epoch clock used only for expiry math against the mint's `expiresAt`;
+   * `now` remains the monotonic trace/health clock. Default Date.now.
+   */
+  epochNow?: () => number;
   /** Bounded attempts for transient failures before the first socket opens. */
   preLiveMaxAttempts?: number;
   /** Backoff base for pre-live retries. Attempt n waits base * n. */
@@ -217,6 +262,28 @@ function nowDefault(): number {
   return typeof performance !== "undefined" ? performance.now() : Date.now();
 }
 
+/**
+ * Server error codes for which re-minting is pointless or would defeat the
+ * server's intent: a fresh session would hit the same quota gate, and a
+ * cross-device revoke means "stop", not "reconnect".
+ */
+const NON_RECOVERABLE_SERVER_ERROR_CODES: ReadonlySet<string> = new Set([
+  "quota_exhausted",
+  "revoked",
+]);
+
+/** Parse the mint `expiresAt` (epoch ms number, epoch seconds, or ISO string). */
+function parseExpiresAtMs(value: number | string | undefined): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value > 1e12 ? value : value * 1000;
+  }
+  if (typeof value === "string") {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
 export function createVoiceSessionClient(
   options: VoiceSessionClientOptions,
 ): VoiceSessionClient {
@@ -233,7 +300,16 @@ export function createVoiceSessionClient(
     ((url: string) => openNativeVoiceWebSocket(url));
   const preferredUplink = options.uplinkCodec ?? DEFAULT_UPLINK_CODEC;
   const preferredDownlink = options.downlinkCodec ?? DEFAULT_DOWNLINK_CODEC;
-  const maxReconnects = options.maxReconnects ?? 2;
+  const maxReconnects = options.maxReconnects ?? 5;
+  const preLiveMaxReconnects = options.preLiveMaxReconnects ?? maxReconnects;
+  const reconnectBackoffMs = Math.max(0, options.reconnectBackoffMs ?? 1000);
+  const reconnectBudgetResetMs = Math.max(
+    0,
+    options.reconnectBudgetResetMs ?? 30_000,
+  );
+  const rotationLeadMs = Math.max(0, options.rotationLeadMs ?? 10_000);
+  const rotationRecheckMs = Math.max(1, options.rotationRecheckMs ?? 1000);
+  const epochNow = options.epochNow ?? Date.now;
   const preLiveMaxAttempts = Math.max(1, options.preLiveMaxAttempts ?? 3);
   const preLiveRetryDelayMs = Math.max(0, options.preLiveRetryDelayMs ?? 500);
 
@@ -243,6 +319,16 @@ export function createVoiceSessionClient(
   let mic: VoiceMicCapture | null = null;
   let playback: VoiceSessionPlayback | null = null;
   let reconnectsUsed = 0;
+  // Monotonic timestamp of the most recent server `ready`; null while not live
+  // or once a loss has consumed it for the budget-refill decision.
+  let lastLiveAtMs: number | null = null;
+  // Whether THIS lifecycle (since start()) ever reached server `ready` —
+  // selects the pre-live vs live reconnect budget.
+  let everLiveThisLifecycle = false;
+  let rotationTimer: ReturnType<typeof setTimeout> | null = null;
+  // Epoch expiry of the CURRENT minted token; rotation never fires past it
+  // (the server has already severed — the reactive recovery path owns it).
+  let rotationDeadlineMs: number | null = null;
   let disposed = false;
   let lifecycleGeneration = 0;
   let lifecycleAbort: AbortController | null = null;
@@ -298,6 +384,24 @@ export function createVoiceSessionClient(
       setTimeout(resolve, preLiveRetryDelayMs * attempt),
     );
     assertLifecycleCurrent(generation);
+  };
+
+  const waitForReconnectBackoff = async (
+    attempt: number,
+    generation: number,
+  ) => {
+    const delayMs = reconnectBackoffMs * 2 ** (attempt - 2);
+    if (delayMs <= 0) return;
+    mark(`reconnect_backoff(${attempt})`, state.traceId);
+    await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+    assertLifecycleCurrent(generation);
+  };
+
+  const clearRotationTimer = (): void => {
+    if (rotationTimer !== null) {
+      clearTimeout(rotationTimer);
+      rotationTimer = null;
+    }
   };
 
   async function mintOnce(
@@ -461,6 +565,10 @@ export function createVoiceSessionClient(
     switch (event.t) {
       case "ready":
         mark("ready", event.traceId);
+        // The server accepted the session: record the health timestamp the
+        // budget-refill decision reads on the next transport loss.
+        lastLiveAtMs = now();
+        everLiveThisLifecycle = true;
         // Client-owned: begin capture, then listening.
         void startCapture(generation, socket);
         break;
@@ -495,6 +603,14 @@ export function createVoiceSessionClient(
         break;
       case "error":
         if (!event.retryable) {
+          if (NON_RECOVERABLE_SERVER_ERROR_CODES.has(event.code)) {
+            // Re-minting cannot help (quota) or would defeat the server's
+            // intent (revoke). Surface the terminal cause and stop cleanly.
+            mark(`not_reached(server_terminal:${event.code})`, state.traceId);
+            emitError(new Error(`voice session ended: ${event.code}`));
+            void stop();
+            break;
+          }
           // Fatal server error: tear down and (unless intentional) re-mint.
           mark("not_reached(server_fatal_error)", state.traceId);
           requestRecovery("server_error", generation, socket);
@@ -642,12 +758,64 @@ export function createVoiceSessionClient(
       // here beyond a trace mark.
       mark("ws_error", state.traceId);
     });
+
+    scheduleRotation(minted, generation);
+  }
+
+  /**
+   * Arm the proactive pre-expiry rotation for the freshly-opened connection.
+   * The server hard-severs at the bootstrap token's exp; rotating first — at an
+   * idle boundary — keeps that sever from ever cutting audible speech.
+   */
+  function scheduleRotation(
+    minted: VoiceSessionMintResponse,
+    generation: number,
+  ): void {
+    clearRotationTimer();
+    rotationDeadlineMs = null;
+    if (rotationLeadMs <= 0) return;
+    const expiresAtMs = parseExpiresAtMs(minted.expiresAt);
+    if (expiresAtMs === null) return;
+    rotationDeadlineMs = expiresAtMs;
+    const delayMs = Math.max(0, expiresAtMs - epochNow() - rotationLeadMs);
+    rotationTimer = setTimeout(() => {
+      rotationTimer = null;
+      attemptRotation(generation);
+    }, delayMs);
+  }
+
+  function attemptRotation(generation: number): void {
+    if (!isLifecycleCurrent(generation) || intentionalClose) return;
+    // A reactive recovery already owns the transport; it re-mints anyway.
+    if (recoveryPromise) return;
+    if (rotationDeadlineMs !== null && epochNow() >= rotationDeadlineMs) {
+      // Token already expired — the server sever + reactive path own recovery.
+      return;
+    }
+    const socket = ws;
+    if (!socket || connPhase !== "open") return;
+    if (state.phase !== "listening") {
+      // Mid-turn: never cut audible speech or an in-flight transcription.
+      // Re-check until the turn completes or the deadline passes.
+      mark("token_rotation_deferred", state.traceId);
+      rotationTimer = setTimeout(() => {
+        rotationTimer = null;
+        attemptRotation(generation);
+      }, rotationRecheckMs);
+      return;
+    }
+    mark("token_rotation", state.traceId);
+    requestRecovery("token_rotation", generation, socket, {
+      budgeted: false,
+      cleanBye: true,
+    });
   }
 
   function requestRecovery(
     reason: string,
     generation: number,
     socket: VoiceWebSocketLike,
+    recoveryOptions?: { budgeted?: boolean; cleanBye?: boolean },
   ): void {
     if (!isLifecycleCurrent(generation) || intentionalClose || ws !== socket) {
       return;
@@ -658,14 +826,30 @@ export function createVoiceSessionClient(
     // consume a second reconnect attempt.
     ws = null;
     connPhase = "closed";
+    clearRotationTimer();
+    if (recoveryOptions?.cleanBye) {
+      try {
+        socket.send(encodeClientControl({ t: "bye" }));
+      } catch (ignoredError) {
+        // error-policy:J6 the bye frame is a courtesy on a socket being rotated away.
+        void ignoredError;
+      }
+    }
     try {
-      socket.close(1012, "re-mint");
+      socket.close(
+        recoveryOptions?.cleanBye ? 1000 : 1012,
+        recoveryOptions?.cleanBye ? "token rotation" : "re-mint",
+      );
     } catch (ignoredError) {
       // error-policy:J6 best-effort close of the dead socket; recovery proceeds regardless.
       void ignoredError;
     }
     if (recoveryPromise) return;
-    const pending = handleTransportLoss(reason, generation);
+    const pending = handleTransportLoss(
+      reason,
+      generation,
+      recoveryOptions?.budgeted ?? true,
+    );
     recoveryPromise = pending;
     void pending.finally(() => {
       if (recoveryPromise === pending) recoveryPromise = null;
@@ -675,31 +859,86 @@ export function createVoiceSessionClient(
   async function handleTransportLoss(
     reason: string,
     generation: number,
+    budgetedInitial: boolean,
   ): Promise<void> {
     if (!isLifecycleCurrent(generation) || intentionalClose) return;
+    clearRotationTimer();
     // Stop capture (a dead socket must not keep the mic hot) but KEEP playback
     // context so an autoplay unlock survives the reconnect.
     await teardownMic();
     if (!isLifecycleCurrent(generation) || intentionalClose) return;
-    if (reconnectsUsed >= maxReconnects) {
-      mark(`not_reached(reconnect_exhausted:${reason})`, state.traceId);
-      emitError(new Error(`voice session lost: ${reason}`));
-      await stop();
-      return;
+
+    // Budget refill: a session that stayed healthy long enough since its last
+    // recovery earns a fresh budget, so a long conversation tolerates
+    // well-separated drops (and 120s server rotations) indefinitely, while a
+    // session that dies within seconds of `ready` still exhausts and surfaces.
+    if (
+      budgetedInitial &&
+      lastLiveAtMs !== null &&
+      now() - lastLiveAtMs >= reconnectBudgetResetMs
+    ) {
+      reconnectsUsed = 0;
     }
-    reconnectsUsed += 1;
-    mark(`reconnect_remint(${reason})`, state.traceId);
-    try {
-      // Reconnect ALWAYS re-mints; the old token is revoked/expired and cannot
-      // reconnect (contract §7.1).
-      const minted = await mint(generation);
-      assertLifecycleCurrent(generation);
-      setState({ ...state, phase: "connecting", lastError: null });
-      await openConnection(minted, generation);
-    } catch (err) {
-      if (!isLifecycleCurrent(generation)) return;
-      emitError(err instanceof Error ? err : new Error(String(err)));
-      await stop();
+    lastLiveAtMs = null;
+
+    const reconnectCap = everLiveThisLifecycle
+      ? maxReconnects
+      : preLiveMaxReconnects;
+    let budgeted = budgetedInitial;
+    let currentReason = reason;
+    let attempt = 0;
+    while (true) {
+      if (budgeted && reconnectsUsed >= reconnectCap) {
+        mark(
+          `not_reached(reconnect_exhausted:${currentReason})`,
+          state.traceId,
+        );
+        emitError(new Error(`voice session lost: ${currentReason}`));
+        await stop();
+        return;
+      }
+      if (budgeted) reconnectsUsed += 1;
+      attempt += 1;
+      mark(`reconnect_remint(${currentReason})`, state.traceId);
+      try {
+        // Show the truthful transport phase for the whole attempt (backoff
+        // included) — the mic is down, so `listening` would be a lie — and
+        // give the caller's connect watchdog a fresh per-attempt arm.
+        setState({ ...state, phase: "connecting", lastError: null });
+        if (attempt > 1) await waitForReconnectBackoff(attempt, generation);
+        // Reconnect ALWAYS re-mints; the old token is revoked/expired and
+        // cannot reconnect (contract §7.1).
+        const minted = await mint(generation);
+        assertLifecycleCurrent(generation);
+        await openConnection(minted, generation);
+        return;
+      } catch (err) {
+        if (!isLifecycleCurrent(generation)) return;
+        if (err instanceof VoiceSessionLifecycleCancelledError) return;
+        const transient =
+          (err instanceof VoiceSessionMintError && err.isTransient) ||
+          err instanceof VoiceSessionConsentError;
+        if (transient) {
+          // A re-mint that failed on a transient fault consumes the NEXT
+          // budgeted attempt (with backoff) instead of killing a recoverable
+          // session — a network switch outlives a single mint by seconds.
+          budgeted = true;
+          currentReason = "remint_failed";
+          if (reconnectsUsed < reconnectCap) continue;
+          mark(
+            `not_reached(reconnect_exhausted:${currentReason})`,
+            state.traceId,
+          );
+        }
+        // Give-up on the recovery path is always transport-shaped: the session
+        // was live, so the caller's mic control must stay armed for retry
+        // rather than latching realtime off on a mint/consent error subtype.
+        emitError(
+          new Error(`voice session lost: ${currentReason}`, { cause: err }),
+        );
+        await stop();
+        return;
+      }
     }
   }
 
@@ -721,6 +960,9 @@ export function createVoiceSessionClient(
     const stoppedGeneration = ++lifecycleGeneration;
     lifecycleAbort?.abort();
     lifecycleAbort = null;
+    clearRotationTimer();
+    rotationDeadlineMs = null;
+    lastLiveAtMs = null;
     // Detach playback before the first await. If a caller reuses this client
     // after the transport reaches `closed`, this stop owns only the old sink
     // and cannot close/null a replacement created by the new lifecycle.
@@ -781,6 +1023,8 @@ export function createVoiceSessionClient(
       disposed = false;
       intentionalClose = false;
       reconnectsUsed = 0;
+      lastLiveAtMs = null;
+      everLiveThisLifecycle = false;
       microphoneMuted = false;
       setState({ ...INITIAL_VOICE_SESSION_STATE, phase: "connecting" });
       // Create playback up front so an early user-gesture unlock is possible and

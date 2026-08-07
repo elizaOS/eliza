@@ -507,8 +507,16 @@ export function useRealtimeVoiceSession(
     };
 
     const client = createClientRef.current({
+      // The client's own LIVE reconnect budget (with backoff, healthy refill,
+      // and pre-expiry rotation) is the structural answer to transient
+      // transport loss — a wifi switch or the server's 120s token sever must
+      // recover, not end the session. This hook must never zero out
+      // `maxReconnects`. Pre-live is different: a failure before the first
+      // server `ready` hands the SAME mic gesture to the batch path, so the
+      // pre-live budget is 0 — retrying past the gesture would strand the
+      // start outcome.
       ...clientOptionsRef.current,
-      maxReconnects: clientOptionsRef.current?.maxReconnects ?? 0,
+      preLiveMaxReconnects: clientOptionsRef.current?.preLiveMaxReconnects ?? 0,
       agentId: aId,
       conversationId: cId,
       // The client invokes this immediately before every mint/re-mint. Keeping

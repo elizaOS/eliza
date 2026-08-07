@@ -2114,6 +2114,54 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
     }
   });
 
+  it("parks Talk visibly OFF when a LIVE session dies past the client's recovery budget", async () => {
+    const { result, rerender } = renderHook(() => useShellController());
+
+    await act(async () => {
+      result.current.toggleHandsFree();
+      await Promise.resolve();
+    });
+    expect(realtimeVoiceMock.start).toHaveBeenCalledTimes(1);
+    expect(result.current.handsFree).toBe(true);
+
+    // The session reaches live…
+    await act(async () => {
+      realtimeVoiceMock.state.active = true;
+      realtimeVoiceMock.state.status = "listening";
+      rerender();
+    });
+
+    // …then dies past the client's reconnect budget (a network outage longer
+    // than the recovery window): the hook reports inactive + a transport error.
+    await act(async () => {
+      realtimeVoiceMock.state.active = false;
+      realtimeVoiceMock.state.connecting = false;
+      realtimeVoiceMock.state.status = "idle";
+      realtimeVoiceMock.state.error = {
+        kind: "transport",
+        message: "Voice connection dropped. Tap the mic to try again.",
+        actionable: true,
+      };
+      rerender();
+    });
+
+    // Talk is parked visibly off with the actionable error surfaced…
+    expect(result.current.handsFree).toBe(false);
+    expect(appMock.value.setActionNotice).toHaveBeenCalledWith(
+      "Voice connection dropped. Tap the mic to try again.",
+      "error",
+      6000,
+    );
+    // …and the advertised retry tap STARTS a fresh session instead of
+    // toggling the dead one off.
+    await act(async () => {
+      realtimeVoiceMock.state.error = null;
+      result.current.toggleHandsFree();
+      await Promise.resolve();
+    });
+    expect(realtimeVoiceMock.start).toHaveBeenCalledTimes(2);
+  });
+
   it("surfaces a retryable Cartesia error instead of falling back to batch", async () => {
     realtimeVoiceMock.startOutcome = {
       kind: "fallback-to-batch",
