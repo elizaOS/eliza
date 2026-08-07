@@ -3349,9 +3349,16 @@ function composeNarration(
     requestedType !== session.agentType
       ? ` Requested agent type was ${requestedType}; actual agent type was ${session.agentType}.`
       : "";
+  // The header is the planner's operating instruction for this turn, and the
+  // planner echoes what it is told into its user-facing reply. An earlier
+  // revision said "state the actual workdir (<abs path>)" to stop the planner
+  // claiming files landed at a user-requested location — and the planner
+  // obediently recited the absolute internal workspace path into chat. The
+  // directive now bans internal paths/ids outright while keeping the
+  // anti-substitution intent: files by bare name, never a claimed location.
   const header =
     event === "task_complete"
-      ? `[sub-agent: ${label} (${session.agentType}) — task_complete — this delegated task is DONE; the result is below, relay it to the user as the answer, state the actual workdir (${session.workdir}), do NOT substitute or repeat a requested path unless it matches the actual workdir, and do NOT start another sub-agent for it.${agentTypeNote}]`
+      ? `[sub-agent: ${label} (${session.agentType}) — task_complete — this delegated task is DONE; the result is below, relay it to the user as the answer and do NOT start another sub-agent for it. Summarize like a human: never repeat absolute filesystem paths or internal ids (session/task uuids, workspace dirs) in the reply — refer to files by bare name. The files live in the agent's own internal workspace, NOT in any folder the user asked for, so never claim a user-requested path.${agentTypeNote}]`
       : `[sub-agent: ${label} (${session.agentType}) — ${event}]`;
   if (event === QUESTION_FOR_TASK_CREATOR) {
     const message =
@@ -3405,9 +3412,10 @@ function composeNarration(
     // "verified" body line would pollute the completion body that downstream
     // consumers (notification preview, verified-URL fallback, the completion
     // evaluator's reply) read from, regressing existing narration tests. The
-    // authoritative workdir + requested-vs-actual-agent note lives in the
-    // planner-only header (stripped by every `[sub-agent:`-prefix reader), so
-    // it never leaks into the user-facing body.
+    // requested-vs-actual-agent note lives in the planner-only header
+    // (stripped by every `[sub-agent:`-prefix reader), so it never leaks into
+    // the user-facing body; the actual workdir stays out of both header and
+    // body — it is internal infrastructure available in session metadata.
     const missing = artifactVerification?.missingFiles ?? [];
     const unverifiedLine =
       artifactVerification &&
@@ -3424,8 +3432,8 @@ function composeNarration(
     ].filter((line) => typeof line === "string" && line.trim().length > 0);
     return `${header}\n${lines.join("\n")}`;
   }
-  // Genuinely no captured output — keep the explicit note. The workdir lives
-  // in the planner-only header, not the body.
+  // Genuinely no captured output — keep the explicit note. The workdir stays
+  // out of the narration entirely (internal path; session metadata carries it).
   if (response === undefined) {
     return `${header}\nsub-agent reports task complete (no captured output).`;
   }
