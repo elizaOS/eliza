@@ -13,7 +13,11 @@ import type {
   IAgentRuntime,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { requestRestart, resolveServerOnlyPort } from "@elizaos/shared";
+import {
+  createSelfApiRequestHeaders,
+  requestRestart,
+  resolveServerOnlyPort,
+} from "@elizaos/shared";
 import {
   isPluginManagerLike,
   type PluginManagerLike,
@@ -356,7 +360,10 @@ async function doConfigure(params: PluginParams): Promise<ActionResult> {
     `${base}/api/plugins/${encodeURIComponent(pluginId)}`,
     {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...createSelfApiRequestHeaders(),
+      },
       body: JSON.stringify({ config }),
       signal: AbortSignal.timeout(60_000),
     },
@@ -381,7 +388,10 @@ async function doConfigure(params: PluginParams): Promise<ActionResult> {
       `${base}/api/plugins/${encodeURIComponent(pluginId)}/test`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...createSelfApiRequestHeaders(),
+        },
         signal: AbortSignal.timeout(30_000),
       },
     );
@@ -425,6 +435,7 @@ async function doReadConfig(params: PluginParams): Promise<ActionResult> {
 
   const base = getApiBase();
   const resp = await fetch(`${base}/api/plugins`, {
+    headers: createSelfApiRequestHeaders(),
     signal: AbortSignal.timeout(15_000),
   });
   if (!resp.ok) {
@@ -521,7 +532,10 @@ async function doToggle(params: PluginParams): Promise<ActionResult> {
     `${base}/api/plugins/${encodeURIComponent(pluginId)}`,
     {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...createSelfApiRequestHeaders(),
+      },
       body: JSON.stringify({ enabled }),
       signal: AbortSignal.timeout(60_000),
     },
@@ -557,6 +571,7 @@ async function doToggle(params: PluginParams): Promise<ActionResult> {
 
 async function fetchPluginsList(base: string): Promise<PluginListEntry[]> {
   const resp = await fetch(`${base}/api/plugins`, {
+    headers: createSelfApiRequestHeaders(),
     signal: AbortSignal.timeout(15_000),
   });
   if (!resp.ok) {
@@ -663,7 +678,10 @@ async function doDisconnect(params: PluginParams): Promise<ActionResult> {
   if (dedicatedPath) {
     const resp = await fetch(`${base}${dedicatedPath}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...createSelfApiRequestHeaders(),
+      },
       signal: AbortSignal.timeout(30_000),
     });
     const data = (await resp.json().catch(() => ({}))) as DisconnectResponse;
@@ -694,7 +712,10 @@ async function doDisconnect(params: PluginParams): Promise<ActionResult> {
     `${base}/api/plugins/${encodeURIComponent(connectorId)}`,
     {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...createSelfApiRequestHeaders(),
+      },
       body: JSON.stringify({ enabled: false }),
       signal: AbortSignal.timeout(60_000),
     },

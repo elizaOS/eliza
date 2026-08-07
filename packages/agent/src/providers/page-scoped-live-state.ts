@@ -24,6 +24,7 @@ import type {
   WalletNftsResponse,
   WalletTradingProfileResponse,
 } from "@elizaos/shared";
+import { createSelfApiRequestHeaders } from "@elizaos/shared";
 import type { ConversationScope } from "../api/server-types.ts";
 
 async function renderCharacterLiveState(
@@ -71,6 +72,7 @@ async function fetchLocalJson<T>(
   for (const url of getLocalApiUrls(path)) {
     try {
       const response = await fetch(url, {
+        headers: createSelfApiRequestHeaders(),
         signal: AbortSignal.timeout(timeoutMs),
       });
       if (response.ok) return (await response.json()) as T;

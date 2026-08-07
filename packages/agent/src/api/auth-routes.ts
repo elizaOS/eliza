@@ -27,6 +27,8 @@ import {
 } from "./server-helpers-auth.ts";
 
 function getConfiguredApiToken(): string | undefined {
+  // Inbound credential only — see the note on the exported helper in
+  // server-helpers-auth.ts for why the legacy plugin key is not accepted here.
   return resolveApiToken(process.env) ?? undefined;
 }
 

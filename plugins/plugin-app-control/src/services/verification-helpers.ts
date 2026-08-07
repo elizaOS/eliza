@@ -16,7 +16,10 @@ import {
 	resolveServerOnlyPort,
 	resolveStateDir,
 } from "@elizaos/core";
-import { resolveApiToken, resolveDesktopApiPort } from "@elizaos/shared";
+import {
+	createSelfApiRequestHeaders,
+	resolveDesktopApiPort,
+} from "@elizaos/shared";
 import { createViewsRequestHeaders } from "../actions/views-request-auth.js";
 
 export type Diagnostic = {
@@ -284,12 +287,6 @@ function resolveLoopbackApiBase(): string {
 	return `http://127.0.0.1:${resolveDesktopApiPort()}`;
 }
 
-function resolveDevApiToken(): string | undefined {
-	return (
-		resolveApiToken() ?? (process.env.ELIZA_API_AUTH_TOKEN?.trim() || undefined)
-	);
-}
-
 /**
  * Capture a desktop screenshot via the dev `/api/dev/cursor-screenshot`
  * endpoint. Returns `null` when the endpoint is missing or unreachable —
@@ -299,12 +296,13 @@ function resolveDevApiToken(): string | undefined {
 export async function captureScreenshotViaDevApi(
 	token?: string,
 ): Promise<Buffer | null> {
-	const bearer = token ?? resolveDevApiToken();
 	const url = `${resolveLoopbackApiBase()}/api/dev/cursor-screenshot`;
 	let response: Response;
 	try {
 		response = await fetch(url, {
-			headers: bearer ? { Authorization: `Bearer ${bearer}` } : undefined,
+			headers: createSelfApiRequestHeaders(
+				token ? { ELIZA_API_TOKEN: token } : process.env,
+			),
 			signal: AbortSignal.timeout(10_000),
 		});
 	} catch {
