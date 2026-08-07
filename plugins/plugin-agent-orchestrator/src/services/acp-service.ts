@@ -138,6 +138,7 @@ import {
   getSharedWorkspaceRegistry,
   resolveDiskBudgetConfig,
   type WorkspaceRegistry,
+  workspaceDiskBudgetError,
 } from "./workspace-registry.js";
 
 export {
@@ -821,6 +822,12 @@ export class AcpService extends Service {
   // need the exact latest prompt turn so a retry cannot re-consume an older
   // completion proof from the same long-lived ACP session.
   private readonly turnOutputBuffers = new Map<string, string[]>();
+  // Compact per-session trail of the most recent session events. The output
+  // buffer only holds assistant text and *terminal* tool output, so a session
+  // that dies mid-tool-call (the common hang) leaves it empty — the trail is
+  // what still tells the state-lost forensics WHAT the agent was doing when it
+  // died. Recorded at the emitSessionEvent choke point (both transports).
+  private readonly eventTrails = new Map<string, SessionEventTrailEntry[]>();
   // Sessions whose raw stdout has been teed to disk at least once. Drives the
   // `task_complete` stdoutLogPath reference: only sessions that actually wrote a
   // file get the path attached, so the task document never points at a
@@ -1253,11 +1260,9 @@ export class AcpService extends Service {
       });
     }
     if (!decision.allowed) {
-      throw new Error(
-        `workspace disk budget exceeded (${decision.reason}): ` +
-          `used=${decision.usedBytes} free=${decision.freeBytes} ` +
-          `cap=${config.capBytes} minFree=${config.minFreeBytes} root=${targetRoot}`,
-      );
+      // Human message; byte-level fields ride the error context and the
+      // registry's refusal warn log, never chat-bound prose.
+      throw workspaceDiskBudgetError(decision, config, targetRoot);
     }
   }
 
@@ -1462,6 +1467,54 @@ export class AcpService extends Service {
     await this.cleanOrphanedScratchWorkdirs();
   }
 
+  /**
+   * Capture WHY a mid-flight sub-agent vanished before its output buffer is
+   * reclaimed. A session that "lost state" left no exit code in the store, so
+   * the tail of its ACP output stream is the only breadcrumb for diagnosing the
+   * crash — emit it at warn with the session identity and idle time. Called at
+   * both state-lost sites (the background health-check and the send-prompt
+   * fast-fail); without it a dead sub-agent leaves no forensic trail because the
+   * session self-heals and its buffer is deleted.
+   */
+  private logSubAgentStateLost(
+    session: Pick<
+      SessionInfo,
+      "id" | "acpxSessionId" | "agentType" | "workdir" | "pid" | "status"
+    > & { lastActivityAt?: Date | string },
+    phase: string,
+  ): void {
+    const buffered = this.outputBuffers.get(session.id) ?? [];
+    const tail = buffered.slice(-40).join("");
+    const lastActivityMs = session.lastActivityAt
+      ? new Date(session.lastActivityAt).getTime()
+      : Number.NaN;
+    this.log(
+      "warn",
+      "sub-agent state lost; diagnostics captured before reclaim",
+      {
+        phase,
+        sessionId: session.id,
+        acpxSessionId: session.acpxSessionId,
+        agentType: session.agentType,
+        workdir: session.workdir,
+        pid: session.pid,
+        status: session.status,
+        idleMs: Number.isFinite(lastActivityMs)
+          ? Date.now() - lastActivityMs
+          : undefined,
+        outputLines: buffered.length,
+        tailOutput: tail ? tail.slice(-2000) : "(no buffered output)",
+        // The buffer only holds assistant text + terminal tool output, so a
+        // mid-tool death leaves it empty; the event trail still shows what the
+        // agent was doing. Render compactly so one warn line reads as a timeline.
+        recentEvents: (this.eventTrails.get(session.id) ?? []).map(
+          (entry) =>
+            `${entry.at} ${entry.event}${entry.hint ? ` — ${entry.hint}` : ""}`,
+        ),
+      },
+    );
+  }
+
   private async runHealthCheck(): Promise<void> {
     if (!this.started) return;
     let sessions: SessionInfo[];
@@ -1505,6 +1558,7 @@ export class AcpService extends Service {
       if (sessionTransportMode(s, this.transportMode) === "native") continue;
       const { exists } = await this.acpxSessionStateStat(s.acpxSessionId);
       if (!exists) {
+        this.logSubAgentStateLost(s, "health-check");
         // Descriptive status, NOT an imperative. The old text literally said
         // "spawn a fresh sub-agent to continue", which the planner obeyed
         // verbatim every cycle — the load-bearing line of the respawn loop.
@@ -1560,6 +1614,7 @@ export class AcpService extends Service {
     for (const id of swept) {
       this.outputBuffers.delete(id);
       this.turnOutputBuffers.delete(id);
+      this.eventTrails.delete(id);
       this.changedPathsBySession.delete(id);
       this.orchestratorOwnedArtifactsBySession.delete(id);
       this.nativeClients.delete(id);
@@ -2021,6 +2076,7 @@ export class AcpService extends Service {
     ) {
       const exists = await this.hasAcpxSessionState(session.acpxSessionId);
       if (!exists) {
+        this.logSubAgentStateLost(session, "send-prompt");
         const message =
           "Sub-agent state was lost (process exited without persisting). No automatic action taken.";
         await this.store.updateStatus(sessionId, "errored", message);
@@ -2288,6 +2344,7 @@ export class AcpService extends Service {
     await this.store.delete(sessionId);
     this.outputBuffers.delete(sessionId);
     this.turnOutputBuffers.delete(sessionId);
+    this.eventTrails.delete(sessionId);
     this.changedPathsBySession.delete(sessionId);
     this.orchestratorOwnedArtifactsBySession.delete(sessionId);
     this.persistedStdoutSessions.delete(sessionId);
@@ -3853,6 +3910,7 @@ export class AcpService extends Service {
     event: SessionEventName,
     data: unknown,
   ): void {
+    this.recordEventTrail(sessionId, event, data);
     for (const callback of [...this.sessionCallbacks]) {
       try {
         callback(sessionId, event, data);
@@ -4509,6 +4567,23 @@ export class AcpService extends Service {
     }
   }
 
+  private recordEventTrail(
+    sessionId: string,
+    event: SessionEventName,
+    data: unknown,
+  ): void {
+    const trail = this.eventTrails.get(sessionId) ?? [];
+    trail.push({
+      at: new Date().toISOString(),
+      event,
+      hint: eventTrailHint(data),
+    });
+    if (trail.length > EVENT_TRAIL_MAX_ENTRIES) {
+      trail.splice(0, trail.length - EVENT_TRAIL_MAX_ENTRIES);
+    }
+    this.eventTrails.set(sessionId, trail);
+  }
+
   // Tool-call arg keys that carry a target file path / signal a write.
   private static readonly EDIT_PATH_KEYS = [
     "filePath",
@@ -4744,6 +4819,41 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object"
     ? (value as Record<string, unknown>)
     : undefined;
+}
+
+interface SessionEventTrailEntry {
+  at: string;
+  event: string;
+  hint?: string;
+}
+
+const EVENT_TRAIL_MAX_ENTRIES = 15;
+const EVENT_TRAIL_HINT_MAX_CHARS = 120;
+
+/**
+ * Distills a session-event payload into a one-line forensic hint for the
+ * event trail. Purely structural key probes on the shapes emitSessionEvent
+ * callers actually pass (tool events carry a toolCall with title/name/kind,
+ * text events carry `text`, errors carry `message`/`failureKind`) — an
+ * unrecognized payload yields no hint rather than a guessed one.
+ */
+function eventTrailHint(data: unknown): string | undefined {
+  const record = asRecord(data);
+  if (!record) return undefined;
+  const toolCall = asRecord(record.toolCall);
+  const candidates = [
+    toolCall?.title,
+    toolCall?.name,
+    toolCall?.kind,
+    record.text,
+    record.message,
+    record.failureKind,
+  ];
+  const hint = candidates.find(
+    (candidate): candidate is string =>
+      typeof candidate === "string" && candidate.trim().length > 0,
+  );
+  return hint?.trim().slice(0, EVENT_TRAIL_HINT_MAX_CHARS);
 }
 
 export interface NormalizedUsage {

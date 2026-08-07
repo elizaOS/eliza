@@ -18,11 +18,16 @@ import {
   Service,
   SsrfBlockedError,
 } from "@elizaos/core";
+import type { GoogleCalendarEvent } from "@elizaos/plugin-google-workspace";
+// Runtime error classes come from the dependency-light calendar subpath so
+// importing CalendarService never evaluates the Google Workspace root barrel
+// (whose client factory eagerly imports the optional `googleapis` SDK — absent
+// from lean production images, which aborted plugin import before the local
+// calendar view could register). Types stay on the root barrel (erased).
 import {
-  type GoogleCalendarEvent,
   GoogleCalendarMutationError,
   GoogleCalendarSyncTokenExpiredError,
-} from "@elizaos/plugin-google-workspace";
+} from "@elizaos/plugin-google-workspace/calendar";
 import type {
   DispatchResult,
   ScheduledTaskDispatchRecord,

@@ -1,8 +1,12 @@
 package ai.eliza.plugins.system
 
+import android.Manifest
 import android.app.role.RoleManager
 import android.content.Context
 import android.content.Intent
+import android.hardware.camera2.CameraAccessException
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraManager
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
@@ -15,8 +19,13 @@ import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.ActivityCallback
 import com.getcapacitor.annotation.CapacitorPlugin
+import com.getcapacitor.annotation.Permission
+import com.getcapacitor.annotation.PermissionCallback
 
-@CapacitorPlugin(name = "ElizaSystem")
+@CapacitorPlugin(
+    name = "ElizaSystem",
+    permissions = [Permission(alias = "camera", strings = [Manifest.permission.CAMERA])]
+)
 class SystemPlugin : Plugin() {
     // Device reads are delegated to a pure, Context-backed reader so they can be
     // exercised by an instrumented androidTest without a Capacitor Bridge / WebView
@@ -188,6 +197,66 @@ class SystemPlugin : Plugin() {
             call.resolve(volumeToJs(reader.readVolume(streamName, stream, audio)))
         } catch (error: RuntimeException) {
             call.reject("Failed to set $streamName volume", error)
+        }
+    }
+
+    @PluginMethod
+    fun setFlashlight(call: PluginCall) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            call.reject("Flashlight control requires Android 6 or newer")
+            return
+        }
+        if (getPermissionState("camera") != com.getcapacitor.PermissionState.GRANTED) {
+            requestPermissionForAlias("camera", call, "handleFlashlightPermissionResult")
+            return
+        }
+        setFlashlightInternal(call)
+    }
+
+    @PermissionCallback
+    private fun handleFlashlightPermissionResult(call: PluginCall) {
+        if (getPermissionState("camera") != com.getcapacitor.PermissionState.GRANTED) {
+            call.reject("Camera permission is required to control the flashlight")
+            return
+        }
+        setFlashlightInternal(call)
+    }
+
+    private fun setFlashlightInternal(call: PluginCall) {
+        val enabled = call.getBoolean("enabled")
+        if (enabled == null) {
+            call.reject("enabled must be a boolean")
+            return
+        }
+
+        try {
+            val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+            val flashlightCameraId = cameraManager.cameraIdList
+                .map { cameraId -> cameraId to cameraManager.getCameraCharacteristics(cameraId) }
+                .filter { (_, characteristics) ->
+                    characteristics.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
+                }
+                .sortedBy { (_, characteristics) ->
+                    if (characteristics.get(CameraCharacteristics.LENS_FACING) ==
+                        CameraCharacteristics.LENS_FACING_BACK
+                    ) 0 else 1
+                }
+                .firstOrNull()
+                ?.first
+            if (flashlightCameraId == null) {
+                call.reject("This device does not have an available flashlight")
+                return
+            }
+
+            cameraManager.setTorchMode(flashlightCameraId, enabled)
+            call.resolve(JSObject().apply {
+                put("available", true)
+                put("enabled", enabled)
+            })
+        } catch (error: CameraAccessException) {
+            call.reject("Flashlight is temporarily unavailable", error)
+        } catch (error: SecurityException) {
+            call.reject("Camera permission is required to control the flashlight", error)
         }
     }
 

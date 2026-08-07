@@ -968,7 +968,10 @@ const USE_CORE_SOURCE_BROWSER_ENTRY =
  * iOS store builds prohibit them; other shells support owner-selected remote
  * agents, whose REST calls use native transport while WebSockets use CSP.
  */
-export function resolveAppShellLocalCspSources(isIosStoreBuild: boolean): {
+export function resolveAppShellLocalCspSources(
+  capacitorBuildTarget: string,
+  isIosStoreBuild: boolean,
+): {
   localHttpSources: string;
   localConnectSources: string;
 } {
@@ -977,6 +980,17 @@ export function resolveAppShellLocalCspSources(isIosStoreBuild: boolean): {
   }
 
   const loopbackHttpSources = " http://localhost:* http://127.0.0.1:*";
+  if (capacitorBuildTarget === "android") {
+    // Paired Android shells discover the host at runtime, so its private-LAN
+    // address cannot be enumerated at build time. API-base validation still
+    // limits accepted cleartext hosts to loopback/private addresses, while the
+    // CSP must permit the resulting REST/EventSource and WebSocket transports.
+    return {
+      localHttpSources: loopbackHttpSources,
+      localConnectSources: " http: ws:",
+    };
+  }
+
   return {
     localHttpSources: loopbackHttpSources,
     // Remote-agent URLs are explicitly chosen by the owner and authenticated.
@@ -992,7 +1006,7 @@ function appShellMetadataPlugin(): Plugin {
     (process.env.ELIZA_BUILD_VARIANT === "store" ||
       process.env.ELIZA_RELEASE_AUTHORITY === "apple-app-store");
   const { localHttpSources, localConnectSources } =
-    resolveAppShellLocalCspSources(isIosStoreBuild);
+    resolveAppShellLocalCspSources(CAPACITOR_BUILD_TARGET, isIosStoreBuild);
   const manifest = `${JSON.stringify(
     {
       name: APP_SHELL_METADATA.appName,
