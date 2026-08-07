@@ -87,7 +87,7 @@ describe("buildReplyComponents", () => {
 });
 
 describe("managed reply options", () => {
-  test("primary and fallback payloads share one enforced inbound-message nonce", () => {
+  test("the failure notice takes a nonce distinct from the primary reply", () => {
     const primary = buildManagedReplyOptions("123456789012345678", "hello", {
       label: "Connect",
       url: "https://example.com/connect",
@@ -100,9 +100,17 @@ describe("managed reply options", () => {
     expect(primary.components).toHaveLength(1);
     expect(fallback).toEqual({
       content: MANAGED_REPLY_UNAVAILABLE_TEXT,
-      nonce: "123456789012345678",
+      nonce: "123456789012345678-f",
       enforceNonce: true,
       allowedMentions: { repliedUser: false },
     });
+
+    // Regression: sharing the primary nonce makes the two messages
+    // interchangeable to Discord's deduplicator, so a posted failure notice
+    // suppresses the real reply on a gateway resume replay and strands the
+    // user on the failure text permanently.
+    expect(fallback.nonce).not.toBe(primary.nonce);
+    // Discord caps the nonce at 25 characters; a snowflake is 19.
+    expect(String(fallback.nonce).length).toBeLessThanOrEqual(25);
   });
 });
