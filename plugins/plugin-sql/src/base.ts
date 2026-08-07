@@ -3416,19 +3416,29 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       const activeColumn = embeddingTable[this.embeddingDimension];
       const count = params.count ?? 10;
 
-      // Eligibility lives INSIDE the ordered scan: every scope predicate
-      // (type, agent, room, world, entity, uniqueness, threshold) is part of
-      // the WHERE of the same query that orders by the raw distance operator.
-      // The contract is "top K among eligible memories" — a two-stage form
-      // that takes a global top-K first and filters afterwards silently drops
-      // eligible matches whenever closer out-of-scope vectors outnumber the
-      // candidate pool (multi-agent and room-scoped recall starve first).
-      // Ordering by `asc(cosineDistance(...))` — not by the derived
-      // similarity — is the shape the HNSW index (ensureEmbeddingVectorIndex)
-      // can serve; `hnsw.iterative_scan = strict_order` keeps a filtered
-      // index scan refilling until the LIMIT is satisfied, and when the
-      // planner prefers a non-index plan for a selective scope the result is
-      // identical, just unaccelerated.
+      // SCOPE eligibility lives INSIDE the ordered scan: every scope predicate
+      // (type, agent, room, world, entity, uniqueness) is part of the WHERE of
+      // the same query that orders by the raw distance operator. The contract
+      // is "top K among eligible memories" — a two-stage form that takes a
+      // global top-K first and filters afterwards silently drops eligible
+      // matches whenever closer out-of-scope vectors outnumber the candidate
+      // pool (multi-agent and room-scoped recall starve first). Ordering by
+      // `asc(cosineDistance(...))` — not by the derived similarity — is the
+      // shape the HNSW index (ensureEmbeddingVectorIndex) can serve;
+      // `hnsw.iterative_scan = strict_order` keeps a scope-filtered index scan
+      // refilling until the LIMIT is satisfied, and when the planner prefers a
+      // non-index plan for a selective scope the result is identical, just
+      // unaccelerated.
+      //
+      // The THRESHOLD is deliberately NOT in the WHERE. Unlike the scope
+      // predicates it is monotone in the ORDER BY key (similarity >= T is
+      // distance <= 1 - T), so every row passing it is a prefix of the
+      // distance-ordered scope-eligible sequence and filtering the top K
+      // after the LIMIT returns the identical result set. Inside the WHERE it
+      // is a starvation predicate instead: on a no-close-match query (most
+      // turns) nothing passes, and the strict_order iterative scan chews
+      // through the index up to hnsw.max_scan_tuples computing distances for
+      // rows it will discard — measured as the dominant composeState cost.
       const distance = cosineDistance(activeColumn, cleanVector);
       const similarity = sql<number>`1 - (${distance})`;
       const conditions = [
@@ -3449,11 +3459,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       if (params.entityId) {
         conditions.push(eq(memoryTable.entityId, params.entityId));
       }
-      if (params.match_threshold) {
-        conditions.push(gte(similarity, params.match_threshold));
-      }
 
-      const results = await this.db
+      const candidates = await this.db
         .select({
           memory: memoryTable,
           similarity,
@@ -3464,6 +3471,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .where(and(...conditions))
         .orderBy(asc(distance))
         .limit(count);
+
+      // Same truthiness contract as the removed WHERE predicate: an absent or
+      // zero threshold applies no similarity floor.
+      const matchThreshold = params.match_threshold;
+      const results = matchThreshold
+        ? candidates.filter((row) => row.similarity >= matchThreshold)
+        : candidates;
 
       return results.map((row) => ({
         id: row.memory.id as UUID,
