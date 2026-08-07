@@ -192,7 +192,10 @@ export function authorizedShots(
   return manifest;
 }
 
-async function runPackagedOcr(paths: string[]): Promise<OcrRecord[]> {
+async function runPackagedOcr(
+  paths: string[],
+  alwaysTryFallback = false,
+): Promise<OcrRecord[]> {
   const engine = await resolveOcrEngine();
   if (!engine.available) {
     throw new Error(
@@ -201,7 +204,7 @@ async function runPackagedOcr(paths: string[]): Promise<OcrRecord[]> {
   }
   const out: OcrRecord[] = [];
   for (const path of paths) {
-    const result = await ocrImage(path);
+    const result = await ocrImage(path, { alwaysTryFallback });
     if (!result.available) {
       throw new Error(`OCR failed for ${path}: ${result.reason}`);
     }
@@ -351,7 +354,7 @@ export async function runOcrTriage(argv: string[]): Promise<TriageResult> {
   );
 
   const entries: TriageEntry[] = [];
-  for (const rec of ocr) {
+  for (let rec of ocr) {
     if (rec.pixelBlank === undefined || !rec.pixelBlankReasons) {
       throw new Error(`OCR record ${rec.path} has no pixel diagnostics`);
     }
@@ -365,11 +368,36 @@ export async function runOcrTriage(argv: string[]): Promise<TriageResult> {
     const policyInput = resolvePolicyEvaluationInput(slug, policy, rep);
     const exemptFromBlank =
       rep.viewType === "tui" || BLANK_EXEMPT_SLUGS.has(slug);
-    const finding = evaluateOcrContent({
+    let finding = evaluateOcrContent({
       ocr: rec,
       ...policyInput,
       exemptFromBlank,
     });
+    const alreadyTriedSparseFallback = rec.attempts?.some(
+      (attempt) => attempt.mode === "sparse-high-contrast",
+    );
+    if (
+      !args.ocr &&
+      finding.missingRequired.length > 0 &&
+      !alreadyTriedSparseFallback
+    ) {
+      // A confident transcript can still omit small labels. Retry only the
+      // screenshot whose declared content failed, rather than doubling OCR work
+      // for the entire audit or accepting a false pixel regression.
+      const retried = await runPackagedOcr([rec.path], true);
+      const retryRecord = retried[0];
+      if (!retryRecord) {
+        throw new Error(
+          `OCR semantic retry produced no record for ${rec.path}`,
+        );
+      }
+      rec = retryRecord;
+      finding = evaluateOcrContent({
+        ocr: rec,
+        ...policyInput,
+        exemptFromBlank,
+      });
+    }
     const domVerdict = rep.verdict ?? null;
     const domPassed = domVerdict === "good" || domVerdict === "needs-eyeball";
     entries.push({

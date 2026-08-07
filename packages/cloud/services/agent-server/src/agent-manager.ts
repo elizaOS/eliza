@@ -1,4 +1,4 @@
-// Runs the hosted agent-server agent manager boundary for cloud runtime containers.
+/** Runs the hosted agent-server manager boundary for cloud runtime containers. */
 import {
   AgentRuntime,
   ChannelType,
@@ -41,17 +41,24 @@ type AgentEntry = RunningAgentEntry | StoppedAgentEntry;
  * provide platform context (e.g. direct API calls, older gateway versions).
  */
 export interface MessageMetadata {
-  /** Originating platform (e.g. "telegram", "whatsapp", "twilio", "blooio"). */
+  /** Originating platform (e.g. "discord", "telegram", "whatsapp", "twilio", "blooio"). */
   platformName?: string;
   /** Display name of the sender as reported by the platform adapter. */
   senderName?: string;
   /** Platform-specific chat/conversation ID for reply routing. */
   chatId?: string;
+  /** Connector account or bot identity that received this message. */
+  accountId?: string;
+  /** Stable platform-native message/update id used for canonical memory dedupe. */
+  platformRecordId?: string;
+  /** Platform-native chat type when available. */
+  chatType?: string;
 }
 
 // Must stay in sync with Platform type in gateway-webhook/src/adapters/types.ts
 // and SUPPORTED_PLATFORMS in app/api/internal/webhook/config/route.ts
 const KNOWN_PLATFORMS: ReadonlySet<string> = new Set([
+  "discord",
   "telegram",
   "whatsapp",
   "twilio",
@@ -73,6 +80,16 @@ export function resolveSource(metadata?: MessageMetadata): string {
 
 const MAX_USER_NAME_LENGTH = 255;
 const MAX_CHAT_ID_LENGTH = 128;
+const MAX_ACCOUNT_ID_LENGTH = 128;
+const MAX_PLATFORM_RECORD_ID_LENGTH = 256;
+const MAX_CHAT_TYPE_LENGTH = 32;
+
+function bounded(value: string | undefined, max: number): string | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  return trimmed.length > max ? trimmed.slice(0, max) : trimmed;
+}
 
 /** Returns the display name for the connection, falling back to the raw userId. Caps length to prevent oversized values from reaching the database. */
 export function resolveUserName(
@@ -106,10 +123,48 @@ export function buildConnectionMetadata(
   }
 
   const result: Record<string, string> = { platformName: validPlatform };
-  if (metadata?.chatId) {
-    result.chatId = metadata.chatId.slice(0, MAX_CHAT_ID_LENGTH);
-  }
+  const chatId = bounded(metadata?.chatId, MAX_CHAT_ID_LENGTH);
+  if (chatId) result.chatId = chatId;
   return result;
+}
+
+export function buildCanonicalMessageMetadata(args: {
+  source: string;
+  userId: string;
+  entityId: string;
+  metadata?: MessageMetadata;
+}): Record<string, unknown> {
+  const { source, userId, entityId, metadata } = args;
+  const accountId = bounded(metadata?.accountId, MAX_ACCOUNT_ID_LENGTH);
+  const platformRecordId = bounded(
+    metadata?.platformRecordId,
+    MAX_PLATFORM_RECORD_ID_LENGTH,
+  );
+  const chatType = bounded(metadata?.chatType, MAX_CHAT_TYPE_LENGTH);
+  const senderName = bounded(metadata?.senderName, MAX_USER_NAME_LENGTH);
+
+  return {
+    type: "message",
+    timestamp: Date.now(),
+    scope: "private",
+    provider: source,
+    ...(accountId ? { accountId } : {}),
+    ...(platformRecordId
+      ? { platformMessageId: platformRecordId, sourceId: platformRecordId }
+      : {}),
+    ...(chatType ? { chatType } : {}),
+    ...(senderName
+      ? { sender: { id: userId, name: senderName }, entityName: senderName }
+      : { sender: { id: userId } }),
+    [source]: {
+      id: userId,
+      userId,
+      entityId,
+      ...(senderName ? { name: senderName } : {}),
+      ...(accountId ? { accountId } : {}),
+      ...(platformRecordId ? { messageId: platformRecordId } : {}),
+    },
+  };
 }
 
 const REDIS_STATE_TTL_SECONDS = Math.max(
@@ -386,11 +441,25 @@ export class AgentManager {
     try {
       const rt = this.getRuntime(agentId);
       const uid = stringToUuid(userId);
-      const roomId = stringToUuid(`${agentId}:${userId}`);
-      const worldId = stringToUuid(`server:${process.env.SERVER_NAME}`);
       const source = resolveSource(metadata);
+      const connectorChatId = bounded(metadata?.chatId, MAX_CHAT_ID_LENGTH);
+      const connectorAccountId = bounded(
+        metadata?.accountId,
+        MAX_ACCOUNT_ID_LENGTH,
+      );
+      const sourceRoomKey =
+        source !== "agent-server" && connectorChatId
+          ? `${agentId}:${source}:${connectorAccountId ?? "default"}:${connectorChatId}`
+          : `${agentId}:${userId}`;
+      const roomId = stringToUuid(sourceRoomKey);
+      const worldId = stringToUuid(`server:${process.env.SERVER_NAME}`);
       const userName = resolveUserName(userId, metadata);
       const connMeta = buildConnectionMetadata(metadata);
+      const chatType = metadata?.chatType?.toLowerCase();
+      const channelType =
+        chatType && chatType !== "private" && chatType !== "dm"
+          ? ChannelType.GROUP
+          : ChannelType.DM;
 
       if (metadata) {
         // senderName and chatId excluded (PII — phone numbers, display names)
@@ -408,8 +477,11 @@ export class AgentManager {
         worldId,
         userName,
         source,
-        channelId: `${agentId}-${userId}`,
-        type: ChannelType.DM,
+        channelId:
+          source !== "agent-server" && connectorChatId
+            ? connectorChatId
+            : `${agentId}-${userId}`,
+        type: channelType,
         ...(connMeta && { metadata: connMeta }),
       } as Parameters<typeof rt.ensureConnection>[0] & {
         metadata?: Record<string, string>;
@@ -421,9 +493,15 @@ export class AgentManager {
         content: {
           text,
           source,
-          channelType: ChannelType.DM,
+          channelType,
         },
       });
+      mem.metadata = buildCanonicalMessageMetadata({
+        source,
+        userId,
+        entityId: uid,
+        metadata,
+      }) as typeof mem.metadata;
 
       // A running runtime always wires a DefaultMessageService (runtime ctor).
       // A null messageService here means the message pipeline never initialized

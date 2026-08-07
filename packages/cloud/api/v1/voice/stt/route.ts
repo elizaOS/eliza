@@ -385,9 +385,11 @@ async function __hono_POST(c: AppContext) {
     }
     request = sizeCheckedRequest;
 
-    const { user, apiKeyId } = await requireGenerativeRouteCaller(c, {
-      compatibility: "raw",
-    });
+    const { user, apiKeyId, admissionSnapshot } =
+      await requireGenerativeRouteCaller(c, {
+        compatibility: "raw",
+        rateLimitEndpoint: "strict",
+      });
     const affiliateCode = request.headers.get("X-Affiliate-Code");
     const billingRequestId = `voice-stt:${crypto.randomUUID()}`;
 
@@ -507,6 +509,7 @@ async function __hono_POST(c: AppContext) {
           context: billingContext,
           apiKeyId,
           cost: sttCost,
+          admissionSnapshot,
         });
       } catch (error) {
         if (error instanceof InsufficientCreditsError) {
@@ -848,6 +851,7 @@ async function __hono_POST(c: AppContext) {
         context: elevenLabsBillingContext,
         apiKeyId,
         cost: sttCost,
+        admissionSnapshot,
       });
       reservation = admission.reservation;
       settleUnknown = admission.settleUnknown;

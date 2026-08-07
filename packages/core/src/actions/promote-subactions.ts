@@ -407,6 +407,7 @@ export function promoteSubactionsToActions(
 			suppressPostActionContinuation: parent.suppressPostActionContinuation,
 			suppressActionResultClipboard: parent.suppressActionResultClipboard,
 			suppressEarlyReply: parent.suppressEarlyReply,
+			asyncHandoff: parent.asyncHandoff,
 			tags: parent.tags,
 			priority: parent.priority,
 			connectorAccountPolicy: parent.connectorAccountPolicy,

@@ -1588,6 +1588,7 @@ export class EngineVoiceBridge {
 	async synthesizeTextToWav(
 		text: string,
 		signal?: AbortSignal,
+		voiceId?: string,
 	): Promise<Uint8Array> {
 		this.assertVoiceOn("synthesize speech");
 		if (!this.hasRealTtsBackend()) {
@@ -1596,7 +1597,7 @@ export class EngineVoiceBridge {
 				"[voice] Direct speech synthesis requires a fused OmniVoice backend. The deterministic test backend is only allowed in scheduler/unit tests.",
 			);
 		}
-		const chunk = await this.scheduler.synthesizeText(text, signal);
+		const chunk = await this.scheduler.synthesizeText(text, signal, voiceId);
 		return encodeMonoPcm16Wav(chunk.pcm, chunk.sampleRate);
 	}
 

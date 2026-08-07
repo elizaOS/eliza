@@ -151,10 +151,6 @@ export interface AppBootConfig {
   appBlockerSettingsCard?: ComponentType<AppBlockerSettingsCardProps>;
   /** Website blocker settings card provided by the host app. */
   websiteBlockerSettingsCard?: ComponentType<WebsiteBlockerSettingsCardProps>;
-  /** Shortcut behavior switches. Natural-language shortcuts are off by default. */
-  shortcutFlags?: {
-    naturalLanguage?: boolean;
-  };
   /**
    * Prefer the instant shared cloud tier during first-run, then hand off to a
    * dedicated agent in the background. Default ON (the #15518 decision and the

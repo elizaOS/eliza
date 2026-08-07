@@ -556,6 +556,53 @@ describe("ApprovalService", () => {
     });
   });
 
+  it("preserves the built-in calendar provider version for conditional writes", async () => {
+    const runtime = createApprovalTableRuntime("agent-eliza-calendar-approval");
+    const queue = (await ApprovalService.start(runtime)).getQueue();
+
+    const confirmed = await queue.enqueueConfirmed(
+      {
+        requestedBy: "OWNER_CALENDAR_EDITOR",
+        subjectUserId: "owner-123",
+        action: "modify_event",
+        payload: {
+          action: "modify_event",
+          side: "owner",
+          grantId: "eliza-calendar",
+          calendarId: "primary",
+          eventId: "built-in-event-1",
+          expectedProvider: "eliza",
+          expectedProviderVersion: '"eliza-1"',
+          expectedEventUpdatedAt: "2027-10-01T00:00:00.000Z",
+          expectedEventStartAtMs: Date.parse("2027-10-15T16:00:00.000Z"),
+          patch: {
+            title: "Pickup moved",
+            startsAtMs: Date.parse("2027-10-15T17:00:00.000Z"),
+            endsAtMs: Date.parse("2027-10-15T18:00:00.000Z"),
+            attendees: [],
+            location: null,
+            description: null,
+          },
+        },
+        channel: "internal",
+        reason: "Authenticated owner editor gesture",
+        idempotencyKey: "calendar-editor-eliza-1",
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      },
+      {
+        resolvedBy: "owner-123",
+        resolutionReason: "Authenticated owner editor gesture",
+      },
+    );
+
+    expect(confirmed.payload).toMatchObject({
+      action: "modify_event",
+      grantId: "eliza-calendar",
+      expectedProvider: "eliza",
+      expectedProviderVersion: '"eliza-1"',
+    });
+  });
+
   it("approving an approval auto-reads its notification by groupKey (§C.5)", async () => {
     const notifier = createNotifierSpy();
     const runtime = createApprovalTableRuntime("agent-autoread", notifier);

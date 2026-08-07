@@ -482,6 +482,9 @@ export function useFirstRunConductor(): void {
   // per send even when two land in the same millisecond, so `seedTurn`'s id
   // dedup never silently swallows an acknowledged message.
   const textTurnSeqRef = React.useRef(0);
+  // Re-offered choice turns have the same collision risk: a user can reject
+  // two unavailable options before the wall clock advances.
+  const choiceTurnSeqRef = React.useRef(0);
 
   // ── Transcript seam ──────────────────────────────────────────────────────
   const seedTurn = React.useCallback(
@@ -510,8 +513,8 @@ export function useFirstRunConductor(): void {
         if (!prev.some((m) => m.id === baseId)) {
           return [...prev, makeTurn(baseId, text)];
         }
-        const retryId = `${baseId}:retry:${Date.now()}`;
-        if (prev.some((m) => m.id === retryId)) return prev;
+        choiceTurnSeqRef.current += 1;
+        const retryId = `${baseId}:retry:${Date.now()}:${choiceTurnSeqRef.current}`;
         return [...prev, makeTurn(retryId, text)];
       });
     },

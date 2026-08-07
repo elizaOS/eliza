@@ -120,6 +120,7 @@ export interface TrajectoryLlmCallRecord {
 	completionTokens?: number;
 	cacheReadInputTokens?: number;
 	cacheCreationInputTokens?: number;
+	reasoningTokens?: number;
 	modelSlot?: string;
 	runId?: string;
 	roomId?: string;
@@ -273,7 +274,11 @@ export interface TrajectoryDetailRecord {
 	scenarioId?: string;
 	batchId?: string;
 	steps?: TrajectoryStepRecord[];
-	metrics?: { finalStatus?: string };
+	metrics?: {
+		finalStatus?: string;
+		/** Step count at last persist; required by Core validators (#17730). */
+		episodeLength?: number;
+	};
 	/** Plain JSON-like bag; values are not validated as {@link JsonValue} at the boundary. */
 	metadata?: Record<string, unknown>;
 	stepsJson?: string;
@@ -332,6 +337,7 @@ export interface ElizaNativeModelResponseRecord {
 		totalTokens?: number;
 		cacheReadInputTokens?: number;
 		cacheCreationInputTokens?: number;
+		reasoningTokens?: number;
 	};
 	providerMetadata?: unknown;
 }

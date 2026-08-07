@@ -98,6 +98,18 @@ describe("writeWorkspaceIdentity", () => {
     expect(SUB_AGENT_IDENTITY_MD).toMatch(/SOUL\.md/);
   });
 
+  it("bans absolute paths and internal ids from the final message", () => {
+    // The final message is relayed into user chat; internal workspace paths
+    // (task-<uuid> dirs) and session/task ids must stay in logs/trajectories.
+    expect(SUB_AGENT_IDENTITY_MD).toMatch(
+      /NEVER include absolute filesystem paths/,
+    );
+    expect(SUB_AGENT_IDENTITY_MD).toMatch(/workspace\/session ids/);
+    expect(SUB_AGENT_IDENTITY_MD).toMatch(
+      /bare name or workspace-relative path/,
+    );
+  });
+
   it("does NOT clobber a real project's existing AGENTS.md", async () => {
     const original = "# my real project\n";
     writeFileSync(join(dir, "AGENTS.md"), original, "utf8");

@@ -320,6 +320,7 @@ const VIEW_NOUNS: Record<string, readonly string[]> = {
   ],
   calendar: [
     "calendar",
+    "calender",
     "agenda",
     "schedule",
     "calendario",
@@ -761,18 +762,33 @@ const VIEW_NOUNS: Record<string, readonly string[]> = {
     "cloud app",
     "cloud applications",
     "eliza cloud apps",
+    "apps studio",
+    "app studio",
+    "application studio",
     "published apps",
     "deployed apps",
     "app deployments",
     "aplicaciones en la nube",
+    "estudio de aplicaciones",
+    "aplicações na nuvem",
+    "aplicacoes na nuvem",
     "aplicativos na nuvem",
+    "estúdio de aplicativos",
+    "estudio de aplicativos",
     "applications cloud",
+    "studio d'applications",
     "cloud-apps",
+    "anwendungsstudio",
     "cloud-anwendungen",
     "云应用",
     "云端应用",
+    "雲端應用",
+    "应用工作室",
+    "應用工作室",
     "クラウドアプリ",
+    "アプリスタジオ",
     "클라우드 앱",
+    "앱 스튜디오",
     "ứng dụng đám mây",
     "ung dung dam may",
   ],
@@ -817,6 +833,23 @@ const VIEW_NOUNS: Record<string, readonly string[]> = {
     "máy ảnh",
     "may anh",
   ],
+  browser: [
+    "browser",
+    "web browser",
+    "internet browser",
+    "navegador",
+    "navegador web",
+    "navigateur",
+    "navigateur web",
+    "internetbrowser",
+    "浏览器",
+    "瀏覽器",
+    "ブラウザ",
+    "웹 브라우저",
+    "브라우저",
+    "trình duyệt",
+    "trinh duyet",
+  ],
 };
 
 // Priority order: more-specific / multiword views before generic ones so
@@ -843,6 +876,7 @@ const VIEW_PRIORITY = [
   "character",
   "plugins-page",
   "cloud-apps",
+  "browser",
   "camera",
   "help",
   "chat",
@@ -994,6 +1028,11 @@ const COMPILED: CompiledView[] = VIEW_PRIORITY.filter((v) => VIEW_NOUNS[v]).map(
   },
 );
 
+// Bare "go back" is the conversational counterpart of the shell's Home affordance.
+// Browser/OS history remains a client-owned gesture, so this exact whole-message
+// form can safely return to the canonical chat surface without guessing history.
+const BARE_HOME_NAVIGATION = /^[\s\p{P}]*go\s+back[\s\p{P}]*$/iu;
+
 function stripDiacritics(s: string): string {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "");
 }
@@ -1008,6 +1047,7 @@ export function matchViewCommand(text: string | undefined): string | null {
   if (!raw || raw.length > 160) return null; // commands are short
   const lower = raw.toLowerCase();
   if (looksLikeCompanionActionRequest(lower)) return null;
+  if (BARE_HOME_NAVIGATION.test(lower)) return "chat";
   const variants = [lower, stripDiacritics(lower)];
   for (const { viewId, re } of COMPILED) {
     for (const v of variants) {

@@ -187,7 +187,8 @@ function providerValue(value: unknown): LifeOpsCalendarProvider | null {
   return normalized === "google" ||
     normalized === "microsoft" ||
     normalized === "apple_calendar" ||
-    normalized === "ics"
+    normalized === "ics" ||
+    normalized === "eliza"
     ? normalized
     : null;
 }
@@ -611,8 +612,15 @@ async function connectionIntent(args: {
   if (!provider) {
     throw new CalendarServiceError(
       400,
-      "Calendar source connection requires provider=google, microsoft, apple_calendar, or ics.",
+      "Calendar source connection requires provider=google, microsoft, apple_calendar, or ics. The built-in Eliza calendar needs no connection.",
       "CALENDAR_SOURCE_PROVIDER_REQUIRED",
+    );
+  }
+  if (provider === "eliza") {
+    throw new CalendarServiceError(
+      400,
+      "The built-in Eliza calendar is already available. Use list, select, or deselect instead of connecting it.",
+      "ELIZA_CALENDAR_CONNECTION_NOT_REQUIRED",
     );
   }
   if (provider === "apple_calendar") {
@@ -917,7 +925,6 @@ export function createCalendarSourcesAction(
     ],
     contexts: ["general", "calendar", "connectors"],
     roleGate: { minRole: "OWNER" },
-    subActions: [...SOURCE_OPERATIONS],
     routingHint:
       "calendar source connection, reconnection, health, or including/excluding a calendar from the feed (a durable write, not just a report) -> CALENDAR_SOURCES; calendar event reads/writes -> CALENDAR",
     suppressPostActionContinuation: true,
@@ -1086,11 +1093,11 @@ export function createCalendarSourcesAction(
       {
         name: "provider",
         description:
-          "Exact provider for selection or connection: google, microsoft, apple_calendar, or ics.",
+          "Exact provider for selection: eliza, google, microsoft, apple_calendar, or ics. Connection operations apply only to external providers.",
         required: false,
         schema: {
           type: "string",
-          enum: ["google", "microsoft", "apple_calendar", "ics"],
+          enum: ["eliza", "google", "microsoft", "apple_calendar", "ics"],
         },
       },
       {

@@ -1,10 +1,12 @@
-// Handles webhook gateway types behavior for authenticated connector fan-in.
+/** Defines normalized webhook events, configuration, and platform adapters. */
 export type Platform = "telegram" | "blooio" | "twilio" | "whatsapp";
 
 export interface ChatEvent {
   platform: Platform;
   messageId: string;
+  platformRecordId?: string;
   chatId: string;
+  chatType?: string;
   senderId: string;
   senderName?: string;
   text: string;
@@ -15,6 +17,12 @@ export interface ChatEvent {
 
 export interface PlatformAdapter {
   platform: Platform;
+  getDedupeScope?(
+    config: WebhookConfig,
+    event: ChatEvent,
+    project: string,
+    agentId?: string,
+  ): string;
   verifyWebhook(
     request: Request,
     rawBody: string,
@@ -30,7 +38,6 @@ export interface PlatformAdapter {
 }
 
 export interface WebhookConfig {
-  agentId: string;
   // Telegram
   botToken?: string;
   webhookSecret?: string;

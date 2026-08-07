@@ -31,6 +31,8 @@ import { logger } from "@/lib/utils/logger";
 import { describeUnhandledError } from "@/lib/utils/unhandled-error-detail";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import jwksRoute from "../.well-known/jwks.json/route";
+import oidcJwksRoute from "../.well-known/oidc/jwks.json/route";
+import oidcDiscoveryRoute from "../.well-known/openid-configuration/route";
 import { handleBlueBubblesWebhook } from "../webhooks/bluebubbles/route";
 import { mountRoutes } from "./_router.generated";
 import { appsDeployTriggerDecision } from "./lib/apps-deploy-gate";
@@ -303,6 +305,15 @@ export function createApp(): Hono<AppEnv> {
     );
   });
   app.route("/.well-known/jwks.json", jwksRoute);
+
+  // OIDC discovery and its dedicated JWKS must live at the ROOT of the issuer
+  // origin: relying parties derive the discovery URL from the issuer string and
+  // will not look under /api. Registered here (before authMiddleware, which
+  // returns early for any non-/api/ path) so they are public by construction.
+  // Both handlers refuse any host but the configured issuer's. The codegen tree
+  // also mounts /api/ twins of these two files; those are never advertised.
+  app.route("/.well-known/openid-configuration", oidcDiscoveryRoute);
+  app.route("/.well-known/oidc/jwks.json", oidcJwksRoute);
 
   // Rate-limit config guard (#9853 P1.1) — never let production silently serve
   // with rate limiting OFF. The limiters fall open whenever REDIS_RATE_LIMITING

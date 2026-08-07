@@ -151,6 +151,10 @@ describe("executePlannedToolCall", () => {
 		expect(String(result.error)).toContain(
 			"Argument 'title' expected string, got number",
 		);
+		expect(result.data).toMatchObject({
+			parameterErrors: ["Argument 'title' expected string, got number"],
+			invalidParameterNames: ["title"],
+		});
 		expect(handler).not.toHaveBeenCalled();
 	});
 
@@ -561,6 +565,35 @@ describe("executePlannedToolCall", () => {
 		expect(callback).toHaveBeenCalledWith(
 			{ text: "created Ship it" },
 			"CREATE_TASK",
+		);
+	});
+
+	it("preserves byte-exact canonical callback text through later voice gates", async () => {
+		const canonicalText =
+			"“Send demo video” is scheduled for Tuesday, August 4, 2026 at 9:00 AM.";
+		const callback: HandlerCallback = vi.fn(async () => []);
+		const action = makeAction({
+			name: "READ_CALENDAR",
+			handler: async (_runtime, _message, _state, _options, actionCallback) => {
+				await actionCallback?.({ text: canonicalText });
+				return {
+					success: true,
+					text: canonicalText,
+					userFacingText: canonicalText,
+					verifiedUserFacing: true,
+				};
+			},
+		});
+
+		await executePlannedToolCall(
+			makeRuntime([action]),
+			{ message: makeMessage(), callback },
+			{ name: "READ_CALENDAR", params: {} },
+		);
+
+		expect(callback).toHaveBeenCalledWith(
+			{ text: canonicalText, agentVoiced: true },
+			"READ_CALENDAR",
 		);
 	});
 

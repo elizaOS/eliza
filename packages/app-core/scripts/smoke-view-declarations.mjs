@@ -55,6 +55,7 @@ export const smokeViewDeclarations = [
   ["phone", "Phone", "plugin-phone", "/phone", "PhoneView"],
   ["wallet", "Wallet", "plugin-wallet", "/wallet", "InventoryView"],
   ["views-manager", "Views", "plugin-app-control", "/views", "ViewManagerView"],
+  ["notes", "Notes", "plugin-notes", "/notes", "NotesView"],
   [
     "task-coordinator",
     "Task Coordinator",

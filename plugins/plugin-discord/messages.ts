@@ -86,6 +86,7 @@ import {
 } from "./staleness";
 import {
 	createStatusReactionController,
+	type StatusReactionController,
 	type StatusReactionScope,
 	shouldShowStatusReaction,
 } from "./status-reactions";
@@ -1264,9 +1265,28 @@ export class MessageManager {
 	/**
 	 * Handles incoming Discord messages and processes them accordingly.
 	 *
+	 * Thin wrapper: registers the returned promise with the connector's
+	 * shutdown-drain registry (shutdown-drain.ts) before delegating to the
+	 * real handler, so `DiscordService#stop` can await outstanding turns
+	 * within a bounded window instead of destroying the client mid-turn. The
+	 * registration is fire-and-forget from this call's perspective — it does
+	 * not change what this method returns or throws.
+	 *
 	 * @param {DiscordMessage} message - The Discord message to be handled
 	 */
-	async handleMessage(message: DiscordMessage) {
+	async handleMessage(message: DiscordMessage): Promise<void> {
+		const turn = this.runMessageTurn(message);
+		this.discordService.trackInFlightTurn?.(message.id, turn);
+		return turn;
+	}
+
+	/**
+	 * Real Discord message handler; see `handleMessage` for the shutdown-drain
+	 * registration this is wrapped with.
+	 *
+	 * @param {DiscordMessage} message - The Discord message to be handled
+	 */
+	private async runMessageTurn(message: DiscordMessage) {
 		// this filtering is already done in setupEventListeners
 		/*
     if (
@@ -1458,6 +1478,14 @@ export class MessageManager {
 			messageServerId = message.channel.id;
 		}
 		const worldId = createUniqueUuid(this.runtime, messageServerId ?? roomId);
+
+		// Declared outside the try so the outer catch can drive the controller to
+		// a terminal state. Scoped inside, a throw escaping the inner handlers
+		// left the reaction stuck on its last in-progress emoji forever — visible
+		// to users on every failed turn, and it also pinned the turn in the
+		// shutdown-drain registry, since that retires an entry only once the
+		// reaction settles (#17749 review, @lalalune).
+		let statusReactions: StatusReactionController | null = null;
 
 		try {
 			let { processedContent, attachments } =
@@ -2003,9 +2031,15 @@ export class MessageManager {
 				message,
 				clientUserId,
 			);
-			const statusReactions = useReactions
+			statusReactions = useReactions
 				? createStatusReactionController(message)
 				: null;
+			if (statusReactions) {
+				// Let the shutdown-drain registry reach this controller if the
+				// connector stops while this turn is still in flight, so the
+				// reaction gets reconciled instead of orphaned on the message.
+				this.discordService.trackStatusReaction?.(message.id, statusReactions);
+			}
 			const draftStream = this.draftStreamingEnabled
 				? createDraftStreamController({
 						log: (entry) =>
@@ -2982,6 +3016,12 @@ export class MessageManager {
 				turnReplied = true;
 			}
 		} catch (error) {
+			// Terminal, always: this is the only path a throw can take out of the
+			// turn body, so without it the controller never resolves whenFinished
+			// — leaving the user looking at a "thinking" emoji on a turn that died,
+			// and leaving the drain registry holding the entry for the process
+			// lifetime. Idempotent when an inner handler already settled it.
+			statusReactions?.setError();
 			if (!inboundMemoryCommitted) {
 				inboundMemoryCommitted =
 					await this.releaseMessageProcessingIfInboundNotPersisted(

@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
 import type { CandidateActionBackstopRule } from "../runtime/candidate-action-backstop";
+import { ContextRegistry } from "../runtime/context-registry";
 import { registerDirectActionRoutingRule } from "../runtime/direct-action-routing";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
@@ -25,6 +26,7 @@ import {
 	runV5MessageRuntimeStage1,
 } from "../services/message";
 import { runWithTrajectoryContext } from "../trajectory-context";
+import type { Action } from "../types/components";
 import type { Memory } from "../types/memory";
 import { ModelType } from "../types/model";
 import { ChannelType, type UUID } from "../types/primitives";
@@ -227,6 +229,27 @@ function makeRuntime(
 		],
 		responseHandlerEvaluators: evaluators ?? [],
 	} as IAgentRuntime;
+}
+
+function makeMemorySearchAction(minRole: "USER" | "OWNER" = "USER"): Action {
+	return {
+		name: "MEMORY",
+		description: "Search stored conversation records.",
+		contexts: ["memory"],
+		roleGate: { minRole },
+		parameters: [
+			{
+				name: "action",
+				description: "Memory operation.",
+				schema: { type: "string", enum: ["search"] },
+			},
+		],
+		validate: async () => true,
+		handler: async () => ({
+			success: true,
+			text: "Found stored conversation records.",
+		}),
+	};
 }
 
 function makePiiSession(): PseudonymSession {
@@ -1435,13 +1458,14 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(systemContent.length).toBeLessThan(3_800);
 	});
 
-	it("direct-channel prompt grounds capability denials in available_contexts and requires fresh tool retries", async () => {
+	it("direct-channel prompt grounds capability denials in executable actions and requires fresh tool retries", async () => {
 		// Mirror of the #11215 wording-regression test on the shared
 		// messageHandlerTemplate: Stage 1 for DM/API/SELF renders the compact
 		// DIRECT_MESSAGE_HANDLER_TEMPLATE instead, so the dashboard chat and
 		// 1:1 DMs — the primary surface where users hit "I don't have memory
 		// between sessions" / "I can't schedule" — need their own copies of
-		// the capability-denial and tool-retry rules.
+		// the capability-denial and tool-retry rules. Context labels only route;
+		// the role-visible action surface is the execution ground truth.
 		const runtime = makeRuntime([
 			stage1Response({
 				contexts: ["simple"],
@@ -1463,7 +1487,10 @@ describe("runV5MessageRuntimeStage1", () => {
 		const systemContent = params.messages?.[0]?.content ?? "";
 		expect(systemContent).toContain("task: Plan this direct message.");
 		expect(systemContent).toContain(
-			"Never deny a capability (memory, tasks, scheduling, reminders) when a matching context is in available_contexts — route to it; deny only when nothing matches.",
+			"Never deny a capability when current_turn_boundary says a role-visible executable action can attempt it.",
+		);
+		expect(systemContent).toContain(
+			"available_contexts supplies routing domains but does not by itself prove a handler exists.",
 		);
 		expect(systemContent).toContain(
 			"A tool that errored on an earlier turn may work now; on a repeated ask, retry it fresh and report this turn's result, not the old failure.",
@@ -3221,6 +3248,9 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(sourceText).toContain(
 			"there is no separate chat-history search tool",
 		);
+		expect(sourceText).toContain(
+			"never present visible matches as the full-history answer",
+		);
 		// Live regression (2026-06-30, ruby-trivia build): when asked "what
 		// happened with the build" / "did it actually work", the bot parroted the
 		// "no chat-history search tool" disclaimer and claimed it could not verify
@@ -3232,6 +3262,152 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(sourceText).toContain(
 			"that run status IS verifiable with the task/sub-agent tools",
 		);
+		// Live regression (2026-08-01, tj-69d82bb89ebb69): the "no separate
+		// chat-history search tool" sentence was unconditional, but on runtimes
+		// with a registered `memory` context it is FALSE — the memory actions DO
+		// search the stored message record. Stage 1 obeyed the denial verbatim
+		// and answered "how many times have i mentioned bitcoin?" from the
+		// bounded visible window instead of escalating. The denial is now
+		// conditional on the turn's role-filtered availableContexts containing a
+		// `memory` context — a structural capability check, never a match on the
+		// user's message text. Both branches must stay pinned: the no-memory
+		// branch keeps the honest denial (the 2026-05-25 fabricated-search
+		// guard), the memory branch declares the window bounded and routes
+		// beyond-window recall/count to the memory context.
+		expect(sourceText).toContain("hasMemoryRecallSurface");
+		expect(sourceText).toContain(
+			"only the most recent window of a longer stored conversation",
+		);
+		expect(sourceText).toContain(
+			"route it to the memory context (set requiresTool)",
+		);
+		expect(sourceText).toContain(
+			"Never answer a beyond-window recall or count question from the visible window alone",
+		);
+	});
+
+	it("renders the bounded-window disclosure and routes beyond-window recall to the planner when a memory context is available", async () => {
+		// Rendered-prompt + route-decision pin for the tj-69d82bb89ebb69 fix.
+		// With a role-visible `memory` context registered, the Stage 1 user
+		// message must declare the visible dialogue a bounded window of a longer
+		// stored conversation and must NOT claim "there is no separate
+		// chat-history search tool" — that claim is false on this surface and
+		// the model obeys it verbatim. The memory vote then promotes to the
+		// planner (the tool path) instead of shipping a window-bounded denial as
+		// a direct reply.
+		const registry = new ContextRegistry([
+			{
+				id: "general",
+				label: "General",
+				description: "Normal conversation.",
+			},
+			{
+				id: "memory",
+				label: "Memory",
+				description: "Stored memories and conversation history.",
+				roleGate: { minRole: "USER" },
+			},
+		]);
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "History count needs the stored record.",
+				contexts: ["memory"],
+				replyText: "Let me check the stored history.",
+				extra: { requiresTool: true },
+			}),
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "reply-1",
+						name: "REPLY",
+						arguments: { text: "You mentioned bitcoin 4 times." },
+					},
+				],
+			},
+		]);
+		(runtime as { contexts?: ContextRegistry }).contexts = registry;
+		runtime.actions = [makeMemorySearchAction()];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "how many times have i mentioned bitcoin in this channel?",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000006" as UUID,
+		});
+
+		const params = useModelCalls(runtime)[0]?.[1] as {
+			messages?: Array<{ content?: string | null }>;
+		};
+		const fullPrompt = (params.messages ?? [])
+			.map((message) => message.content ?? "")
+			.join("\n");
+		expect(fullPrompt).toContain(
+			"only the most recent window of a longer stored conversation",
+		);
+		expect(fullPrompt).toContain(
+			"route it to the memory context (set requiresTool)",
+		);
+		// No contradictory capability text anywhere in the rendered prompt —
+		// system message included. The denial sentence and its "no chat-history
+		// search" qualifier must both be absent when the search surface exists.
+		expect(fullPrompt).not.toContain(
+			"there is no separate chat-history search tool",
+		);
+		expect(fullPrompt).not.toContain("no chat-history search");
+		// Route decision: the memory vote reaches the planner (tool path).
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"You mentioned bitcoin 4 times.",
+			);
+		}
+	});
+
+	it("keeps the honest no-search denial when no memory context is registered", async () => {
+		// The no-memory branch preserves today's sentence byte-identically so
+		// minimal runtimes keep the 2026-05-25 fabricated-search guard
+		// (tj-b1ee98c2593f97): an honest denial beats inventing a search the
+		// runtime cannot perform.
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "I don't see bitcoin in the recent messages I can see.",
+			}),
+		]);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "how many times have i mentioned bitcoin in this channel?",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000007" as UUID,
+		});
+		const params = useModelCalls(runtime)[0]?.[1] as {
+			messages?: Array<{ content?: string | null }>;
+		};
+		const fullPrompt = (params.messages ?? [])
+			.map((message) => message.content ?? "")
+			.join("\n");
+		expect(fullPrompt).toContain(
+			"there is no separate chat-history search tool",
+		);
+		expect(fullPrompt).toContain(
+			"explicitly label any observation as limited to the recent messages you can see",
+		);
+		expect(fullPrompt).not.toContain(
+			"only the most recent window of a longer stored conversation",
+		);
+		expect(fullPrompt).not.toContain(
+			"route it to the memory context (set requiresTool)",
+		);
+		expect(fullPrompt).not.toContain("search it with MEMORY op:search");
+		// Route decision: honest denial ships directly — no planner escalation,
+		// so exactly one model call (Stage 1 only) is made.
+		expect(result.kind).toBe("direct_reply");
+		expect(useModelCalls(runtime).length).toBe(1);
 	});
 
 	it("renders the ambient-turn policy in the planner prompt on an unaddressed group turn and records planner IGNORE as a terminal decision", async () => {
@@ -3442,6 +3618,96 @@ describe("runV5MessageRuntimeStage1", () => {
 			.map((entry) => entry.content ?? "")
 			.join("\n");
 		expect(addressedPlannerContent).toContain("Recent runtime errors");
+	});
+
+	it("does not advertise chat-history search when the memory context has no executable action", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "I don't see bitcoin in the recent messages I can see.",
+			}),
+		]);
+		(runtime as { contexts?: ContextRegistry }).contexts = new ContextRegistry([
+			{ id: "simple", label: "Simple", description: "Direct reply." },
+			{
+				id: "memory",
+				label: "Memory",
+				description: "Stored memories.",
+				roleGate: { minRole: "USER" },
+			},
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "how many times have i mentioned bitcoin in this channel?",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000008" as UUID,
+		});
+
+		const firstCallParams = useModelCalls(runtime)[0]?.[1] as
+			| {
+					messages?: Array<{ content?: string | null }>;
+			  }
+			| undefined;
+		const prompt = firstCallParams?.messages
+			?.map((message) => message.content ?? "")
+			.join("\n");
+		expect(prompt).toContain("there is no separate chat-history search tool");
+		expect(prompt).not.toContain("route it to the memory context");
+		expect(prompt).not.toContain("search it with MEMORY op:search");
+		expect(prompt).not.toContain(
+			"available_contexts lists a memory or recall context",
+		);
+		// Route decision: a context without an executable action must not cost a
+		// planner escalation — the denial ships directly off one Stage 1 call.
+		expect(result.kind).toBe("direct_reply");
+		expect(useModelCalls(runtime).length).toBe(1);
+	});
+
+	it("does not advertise chat-history search when the registered action is role-hidden", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "I don't see bitcoin in the recent messages I can see.",
+			}),
+		]);
+		(runtime as { contexts?: ContextRegistry }).contexts = new ContextRegistry([
+			{ id: "simple", label: "Simple", description: "Direct reply." },
+			{
+				id: "memory",
+				label: "Memory",
+				description: "Stored memories.",
+				roleGate: { minRole: "USER" },
+			},
+		]);
+		runtime.actions = [makeMemorySearchAction("OWNER")];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "how many times have i mentioned bitcoin in this channel?",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000009" as UUID,
+		});
+
+		const firstCallParams = useModelCalls(runtime)[0]?.[1] as
+			| {
+					messages?: Array<{ content?: string | null }>;
+			  }
+			| undefined;
+		const prompt = firstCallParams?.messages
+			?.map((message) => message.content ?? "")
+			.join("\n");
+		expect(prompt).toContain("there is no separate chat-history search tool");
+		expect(prompt).not.toContain("route it to the memory context");
+		expect(prompt).not.toContain("search it with MEMORY op:search");
+		// Route decision: a role-hidden action is not an executable surface for
+		// this caller — no planner escalation, one Stage 1 call only.
+		expect(result.kind).toBe("direct_reply");
+		expect(useModelCalls(runtime).length).toBe(1);
 	});
 
 	it("current_turn_boundary answers facts stated in the current message itself", async () => {
@@ -3861,6 +4127,39 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("keeps an applied effect claim buffered until the planner has a receipt", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "The note still needs to be created.",
+				contexts: ["simple"],
+				replyText: "Created note “brush my teeth”.",
+				extra: { requiresTool: true, replyEffectStatus: "applied" },
+			}),
+			JSON.stringify({
+				thought: "The requested capability was unavailable.",
+				toolCalls: [],
+				messageToUser: "I couldn't create that note.",
+			}),
+		]);
+		const earlyReply = vi.fn(async () => undefined);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "Create a note to brush my teeth." }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			onResponseHandlerEarlyReply: earlyReply,
+		});
+
+		expect(earlyReply).not.toHaveBeenCalled();
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"I couldn't create that note.",
+			);
+		}
+	});
+
 	it("does not let a rejected early completion claim hide the later receipt-grounded confirmation", async () => {
 		const canonicalText = "Done — the pickup reminder is scheduled.";
 		const observedAt = "2026-07-27T18:00:00.000Z";
@@ -3935,9 +4234,10 @@ describe("runV5MessageRuntimeStage1", () => {
 			onSettledActionResult,
 		});
 
-		expect(earlyReply).toHaveBeenCalledWith(
-			expect.objectContaining({ text: "On it." }),
-		);
+		// The ungrounded completion claim is DROPPED at early egress — never
+		// substituted with a manufactured "On it." — so no early reply ships and
+		// the receipt-grounded confirmation below is the turn's only delivery.
+		expect(earlyReply).not.toHaveBeenCalled();
 		expect(result.kind).toBe("planned_reply");
 		expect(onSettledActionResult).toHaveBeenCalledTimes(1);
 		expect(onSettledActionResult).toHaveBeenCalledWith(
@@ -4564,6 +4864,91 @@ describe("runV5MessageRuntimeStage1", () => {
 				"Checked through the planner.",
 			);
 		}
+	});
+
+	it("does not re-add generic inferred actions after an evaluator clears the candidate route", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "The generic router guessed shell.",
+				contexts: ["general"],
+				candidateActionNames: ["SHELL"],
+				extra: { requiresTool: true },
+			}),
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "call-exclusive",
+						name: "CHECK_RUNTIME",
+						arguments: {},
+					},
+				],
+			},
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "The exclusive route completed.",
+				messageToUser: "Checked through the exclusive route.",
+			}),
+		]);
+		const checkHandler = vi.fn(async () => ({
+			success: true,
+			text: "checked",
+		}));
+		runtime.actions = [
+			{
+				name: "CHECK_RUNTIME",
+				description: "Check the runtime through the authoritative route.",
+				contexts: ["general"],
+				validate: vi.fn(async () => true),
+				handler: checkHandler,
+			},
+			{
+				name: "SHELL",
+				description: "Run a local shell command.",
+				similes: ["RUN_SHELL", "EXECUTE_COMMAND"],
+				contexts: ["general"],
+				validate: vi.fn(async () => true),
+				handler: vi.fn(),
+			},
+		] as IAgentRuntime["actions"];
+		runtime.responseHandlerEvaluators = [
+			{
+				name: "test.exclusive_route",
+				priority: 5,
+				shouldRun: () => true,
+				evaluate: () => ({
+					requiresTool: true,
+					clearCandidateActions: true,
+					addCandidateActions: ["CHECK_RUNTIME"],
+					clearParentActionHints: true,
+					addParentActionHints: ["CHECK_RUNTIME"],
+					clearReply: true,
+				}),
+			} satisfies ResponseHandlerEvaluator,
+		];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "run ls" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		const plannerParams = useModelCalls(runtime)[1]?.[1] as {
+			tools?: Array<{ name?: string }>;
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		const toolNames = plannerParams.tools?.map((tool) => tool.name) ?? [];
+		expect(toolNames).toContain("CHECK_RUNTIME");
+		expect(toolNames).not.toContain("SHELL");
+		expect(
+			plannerParams.messages
+				?.map((entry) => String(entry.content ?? ""))
+				.join("\n"),
+		).toContain('"candidateActions":["CHECK_RUNTIME"]');
+		expect(checkHandler).toHaveBeenCalledTimes(1);
 	});
 
 	it("dispatches response-handler field preemption before planner routing", async () => {
@@ -5310,11 +5695,10 @@ describe("sub-agent completion relay vs the direct-candidate injection backstop"
 			responseId: "00000000-0000-0000-0000-0000000000aa" as UUID,
 		});
 
-		const firstCall = useModelCalls(runtime)[0];
-		const params = firstCall?.[1] as {
-			messages?: Array<{ content?: string | null }>;
-		};
-		const stage1Content = (params?.messages ?? [])
+		const stage1Call = useModelCalls(runtime)[0]?.[1] as
+			| { messages?: Array<{ content?: string | null }> }
+			| undefined;
+		const stage1Content = (stage1Call?.messages ?? [])
 			.map((entry) => entry.content ?? "")
 			.join("\n");
 		expect(stage1Content).toContain("trigger_automation_policy:");
@@ -5338,11 +5722,10 @@ describe("sub-agent completion relay vs the direct-candidate injection backstop"
 			state: makeState(),
 			responseId: "00000000-0000-0000-0000-0000000000ab" as UUID,
 		});
-		const firstCall = useModelCalls(runtime)[0];
-		const params = firstCall?.[1] as {
-			messages?: Array<{ content?: string | null }>;
-		};
-		const stage1Content = (params?.messages ?? [])
+		const stage1Call = useModelCalls(runtime)[0]?.[1] as
+			| { messages?: Array<{ content?: string | null }> }
+			| undefined;
+		const stage1Content = (stage1Call?.messages ?? [])
 			.map((entry) => entry.content ?? "")
 			.join("\n");
 		expect(stage1Content).not.toContain("trigger_automation_policy");

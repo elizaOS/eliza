@@ -189,6 +189,7 @@ describe("calendar conversational mutation approval gateway", () => {
         travelBuffer: null,
       });
 
+    await schedule("eliza-calendar");
     await schedule("apple-calendar");
     await schedule("connector-account:microsoft:account-a");
 
@@ -225,11 +226,48 @@ describe("calendar conversational mutation approval gateway", () => {
       },
     });
 
+    const elizaTarget = {
+      ...event("organizer"),
+      id: "agent-1:eliza:owner:grant:eliza-calendar:calendar:primary:event-a",
+      externalId: "event-a",
+      provider: "eliza" as const,
+      grantId: "eliza-calendar",
+      metadata: { etag: '"eliza-1"', version: 1 },
+    };
+    await gateway.modify({
+      runtime: runtime(),
+      message: message(),
+      targetEvent: elizaTarget,
+      request: {
+        side: "owner",
+        grantId: "eliza-calendar",
+        calendarId: "primary",
+        eventId: elizaTarget.externalId,
+        title: "Built-in event moved",
+        notifyAttendees: false,
+      },
+    });
+    await gateway.cancel({
+      runtime: runtime(),
+      message: message(),
+      targetEvent: elizaTarget,
+      request: {
+        side: "owner",
+        grantId: "eliza-calendar",
+        calendarId: "primary",
+        eventId: elizaTarget.externalId,
+        notifyAttendees: false,
+      },
+    });
+
     expect(enqueue.mock.calls.map(([input]) => input.channel)).toEqual([
+      "internal",
       "apple_calendar",
       "microsoft_calendar",
       "microsoft_calendar",
       "microsoft_calendar",
+      "internal",
+      "internal",
     ]);
   });
 

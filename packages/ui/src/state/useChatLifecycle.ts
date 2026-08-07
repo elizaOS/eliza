@@ -13,6 +13,7 @@ import type {
   Conversation,
   ConversationMessage,
   FirstRunOptions,
+  ImageAttachment,
 } from "../api";
 import { type AgentStatus, client, type StreamEventEnvelope } from "../api";
 import { isIosInProcessLocalAgentBase } from "../api/ios-local-agent-transport";
@@ -164,8 +165,13 @@ export interface UseChatLifecycleDeps {
   requestGreetingWhenRunning: (convId: string | null) => Promise<void>;
 
   // Reset conversation state
-  interruptActiveChatPipeline: () => string;
+  interruptActiveChatPipelineWithDraft: () => {
+    text: string;
+    images: ImageAttachment[];
+  };
   resetConversationDraftState: () => void;
+  setChatInput: (v: string) => void;
+  setChatPendingImages: (v: ImageAttachment[]) => void;
   setActiveConversationId: (v: string | null) => void;
   setConversationMessages: (
     v:
@@ -245,8 +251,10 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
     loadPlugins,
     hydrateInitialConversationState,
     requestGreetingWhenRunning,
-    interruptActiveChatPipeline,
+    interruptActiveChatPipelineWithDraft,
     resetConversationDraftState,
+    setChatInput,
+    setChatPendingImages,
     setActiveConversationId,
     setConversationMessages,
     setConversations,
@@ -293,9 +301,20 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
   const readinessPollSignatureRef = useRef<string | null>(null);
 
   const handleStartDraftConversation = useCallback(async () => {
-    interruptActiveChatPipeline();
+    const restoredQueuedDraft = interruptActiveChatPipelineWithDraft();
     resetConversationDraftState();
-  }, [interruptActiveChatPipeline, resetConversationDraftState]);
+    if (restoredQueuedDraft.text) {
+      setChatInput(restoredQueuedDraft.text);
+    }
+    if (restoredQueuedDraft.images.length > 0) {
+      setChatPendingImages(restoredQueuedDraft.images);
+    }
+  }, [
+    interruptActiveChatPipelineWithDraft,
+    resetConversationDraftState,
+    setChatInput,
+    setChatPendingImages,
+  ]);
 
   const handleStart = useCallback(async () => {
     if (!beginLifecycleAction("start")) return;

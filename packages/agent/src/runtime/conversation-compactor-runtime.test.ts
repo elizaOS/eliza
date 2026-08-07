@@ -95,6 +95,9 @@ function fakeNaiveCallModel(label = "summary"): CompactorModelCall {
   };
 }
 
+const ANNOTATED_CONVERSATION_HEADER =
+  "# Conversation Messages (most recent 6; older history is not shown here)";
+
 const ROOM_ID = "11111111-1111-4111-8111-111111111111";
 const USER_ID = "22222222-2222-4222-8222-222222222222";
 const AGENT_ID = "33333333-3333-4333-8333-333333333333";
@@ -278,6 +281,20 @@ describe("serializeTranscriptToPrompt", () => {
     expect(reserialized.includes("what now?")).toBe(true);
   });
 
+  it("re-emits an annotated conversation header verbatim on a parse/serialize round-trip", () => {
+    // The recent-messages provider annotates the header with the
+    // bounded-window disclosure; rebuilding from the bare constant would
+    // strip it silently, so the serializer must carry the matched line.
+    const prompt = buildSamplePrompt(3).replace(
+      "# Conversation Messages",
+      ANNOTATED_CONVERSATION_HEADER,
+    );
+    const transcript = parsePromptToTranscript(prompt);
+    const reserialized = serializeTranscriptToPrompt(prompt, transcript);
+    expect(reserialized).toContain(ANNOTATED_CONVERSATION_HEADER);
+    expect(reserialized).not.toMatch(/^# Conversation Messages$/m);
+  });
+
   it("returns the original prompt unchanged when the conversation header is missing", () => {
     const prompt = "header-less prompt";
     const transcript = parsePromptToTranscript(prompt);
@@ -368,6 +385,40 @@ describe("applyConversationCompaction", () => {
       result.targetTokens,
     );
     expect(result.artifact?.replacementMessageCount).toBe(1);
+  });
+
+  it("keeps the bounded-window header annotation across successive compaction passes", async () => {
+    // Compaction runs on long conversations — exactly where the visible
+    // window is smallest relative to the stored record — so the disclosure
+    // must survive the pass that fires there (tj-69d82bb89ebb69).
+    const prompt = buildSamplePrompt(20).replace(
+      "# Conversation Messages",
+      ANNOTATED_CONVERSATION_HEADER,
+    );
+    const first = await applyConversationCompaction({
+      prompt,
+      strategy: "naive-summary",
+      currentTokens: Math.ceil(prompt.length / 4),
+      targetTokens: 180,
+      callModel: fakeNaiveCallModel("brief"),
+      preserveTailMessages: 2,
+    });
+    expect(first.didCompact).toBe(true);
+    expect(first.prompt).toContain(ANNOTATED_CONVERSATION_HEADER);
+    expect(first.prompt).not.toMatch(/^# Conversation Messages$/m);
+
+    const grown = appendConversationBeforeReceived(first.prompt, 14);
+    const second = await applyConversationCompaction({
+      prompt: grown,
+      strategy: "naive-summary",
+      currentTokens: Math.ceil(grown.length / 4),
+      targetTokens: 220,
+      callModel: fakeNaiveCallModel("briefer"),
+      preserveTailMessages: 2,
+    });
+    expect(second.didCompact).toBe(true);
+    expect(second.prompt).toContain(ANNOTATED_CONVERSATION_HEADER);
+    expect(second.prompt).not.toMatch(/^# Conversation Messages$/m);
   });
 
   it("keeps the original prompt when the compactor would expand it", async () => {
@@ -707,6 +758,52 @@ describe("message-history compaction hook", () => {
     expect(provider.text).not.toContain("old secret parcel code");
     expect(provider.data.recentMessages.length).toBeLessThan(memories.length);
     expect(result.state.text).toContain("summary preserved parcel code");
+  });
+
+  it("keeps the bounded-window header disclosure when rewriting RECENT_MESSAGES state", async () => {
+    // The provider emits the annotated header; the state-rewrite path must
+    // re-emit it (with the post-compaction visible count) instead of the bare
+    // constant, or the disclosure vanishes on every compacted turn.
+    const memories = Array.from({ length: 18 }, (_, i) =>
+      makeMemory(
+        i,
+        `history turn ${i} ${"x".repeat(200)}`,
+        i % 2 === 0 ? USER_ID : AGENT_ID,
+      ),
+    );
+    const state = makeRecentState(
+      memories,
+      "# Conversation Messages (most recent 18; older history is not shown here)\nhistory turn 0",
+    );
+    const runtime = {
+      agentId: AGENT_ID,
+      character: { name: "Eliza" },
+      logger: { info: () => {}, warn: () => {} },
+      getRoom: async () => null,
+      updateRoom: async () => {},
+    };
+
+    const result = await applyMessageHistoryCompactionToState({
+      runtime: runtime as never,
+      message: memories.at(-1) as Memory,
+      state: state as never,
+      callModel: async () => "summary of older turns",
+    });
+
+    const provider = (result.state.data.providers as Record<string, unknown>)
+      .RECENT_MESSAGES as { text: string; data: { recentMessages: Memory[] } };
+    expect(result.telemetry?.didCompact).toBe(true);
+    const headerMatch = provider.text.match(
+      /^# Conversation Messages \(most recent (\d+); older history is not shown here\)$/m,
+    );
+    expect(headerMatch).not.toBeNull();
+    expect(provider.text).not.toMatch(/^# Conversation Messages$/m);
+    // The count is the post-compaction visible history (current turn excluded).
+    const currentId = (memories.at(-1) as Memory).id;
+    const visible = provider.data.recentMessages.filter(
+      (memory) => memory.id !== currentId,
+    ).length;
+    expect(Number(headerMatch?.[1])).toBe(visible);
   });
 
   it("exposes message-count and token telemetry on successful compaction", async () => {

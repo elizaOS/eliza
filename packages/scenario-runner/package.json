@@ -86,6 +86,7 @@
     "@elizaos/plugin-app-control": "workspace:*",
     "@elizaos/plugin-blocker": "workspace:*",
     "@elizaos/plugin-capacitor-bridge": "workspace:*",
+    "@elizaos/plugin-cli-inference": "workspace:*",
     "@elizaos/plugin-coding-tools": "workspace:*",
     "@elizaos/plugin-commands": "workspace:*",
     "@elizaos/plugin-native-filesystem": "workspace:*",

@@ -32,6 +32,7 @@ vi.mock("@elizaos/core", async () => {
   const { lifeOpsPassiveConnectorsEnabled } = await import(
     "../../../packages/core/src/lifeops-passive-connectors"
   );
+  const { ElizaError } = await import("../../../packages/core/src/errors");
 
   const logger = {
     debug: vi.fn(),
@@ -126,7 +127,9 @@ vi.mock("@elizaos/core", async () => {
     BaseMessageAdapter,
     ChannelType,
     CommandRegistryService,
+    ElizaError,
     EventType,
+    getConfiguredOwnerEntityIds: () => [],
     getDefaultTriageService,
     ModelType,
     Role,
