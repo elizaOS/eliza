@@ -178,13 +178,53 @@ describe("action tiering", () => {
 		// narrowed to VIEWS).
 		const surface = tierActionResults({
 			catalog,
-			results: [resultFor(music, 1), resultFor(email, 0.5)],
+			results: [resultFor(music, 1, 0), resultFor(email, 0.5, 1)],
 			narrowToCandidateActions: ["SEND_EMAIL"],
 		});
 
 		expect(surface.exposedActionNames).toEqual(
 			expect.arrayContaining(["MUSIC", "EMAIL", "SEND_EMAIL"]),
 		);
+	});
+
+	it("does not let tied perfect keyword matches flood a routed candidate", () => {
+		const catalog = buildActionCatalog([
+			...actions,
+			{
+				name: "VIEWS",
+				description: "Open and arrange app views, including Notes.",
+			},
+			{
+				name: "HOUSEHOLD_OPERATIONS",
+				description: "Process household notes and responsibility records.",
+			},
+			{
+				name: "SCHOOL_SOURCES",
+				description: "Extract notes from school sources.",
+			},
+		]);
+		const views = catalog.parentByName.get("VIEWS");
+		const household = catalog.parentByName.get("HOUSEHOLD_OPERATIONS");
+		const school = catalog.parentByName.get("SCHOOL_SOURCES");
+		if (!views || !household || !school) {
+			throw new Error("missing routed-candidate fixtures");
+		}
+
+		const surface = tierActionResults({
+			catalog,
+			results: [
+				resultFor(views, 1, 0),
+				resultFor(household, 1, 1),
+				resultFor(school, 1, 2),
+			],
+			narrowToCandidateActions: ["VIEWS"],
+		});
+
+		expect(surface.tierAParents.map((parent) => parent.name)).toEqual([
+			"VIEWS",
+		]);
+		expect(surface.exposedActionNames).not.toContain("HOUSEHOLD_OPERATIONS");
+		expect(surface.exposedActionNames).not.toContain("SCHOOL_SOURCES");
 	});
 
 	it("still demotes a merely-good non-candidate match below the override score", () => {
@@ -540,13 +580,14 @@ function resultFor(
 		normalizedName: string;
 	},
 	score: number,
+	rank = 1,
 ): ActionRetrievalResult {
 	return {
 		parent: parent as ActionRetrievalResult["parent"],
 		name: parent.name,
 		normalizedName: parent.normalizedName,
 		score,
-		rank: 1,
+		rank,
 		rrfScore: score,
 		stageScores: {},
 		matchedBy: [],
