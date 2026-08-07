@@ -114,6 +114,59 @@ describe("view-action-affinity", () => {
     expect(getActiveViewContext()).toBeNull();
   });
 
+  it("preserves element snapshot on same-viewId re-publish without elements (#17918)", () => {
+    const elements = [
+      {
+        id: "ledger-title",
+        role: "textbox",
+        label: "Ledger title",
+        value: "Untitled",
+        focused: true,
+      },
+      { id: "save-ledger", role: "button", label: "Save ledger" },
+    ] as const;
+    setActiveViewContext({
+      viewId: "scenario-active-ledger",
+      viewLabel: "Scenario Active Ledger",
+      viewType: "gui",
+      viewPath: "/scenario/active-ledger",
+      elements,
+      clientId: "shell-1",
+    });
+    // Navigate route re-publishes the same view with no elements field.
+    setActiveViewContext({
+      viewId: "scenario-active-ledger",
+      viewLabel: "Scenario Active Ledger",
+      viewType: "gui",
+      viewPath: "/scenario/active-ledger",
+      switchedAt: new Date().toISOString(),
+      source: "user",
+    });
+    const ctx = getActiveViewContext();
+    expect(ctx?.viewId).toBe("scenario-active-ledger");
+    expect(ctx?.elements).toEqual(elements);
+    expect(ctx?.clientId).toBe("shell-1");
+    // Explicit elements on same viewId still replace the snapshot.
+    setActiveViewContext({
+      viewId: "scenario-active-ledger",
+      viewLabel: "Scenario Active Ledger",
+      viewType: "gui",
+      viewPath: "/scenario/active-ledger",
+      elements: [{ id: "only", role: "button", label: "Only" }],
+    });
+    expect(getActiveViewContext()?.elements).toEqual([
+      { id: "only", role: "button", label: "Only" },
+    ]);
+    // Different viewId drops the prior snapshot.
+    setActiveViewContext({
+      viewId: "wallet",
+      viewLabel: "Wallet",
+      viewType: "gui",
+      viewPath: "/wallet",
+    });
+    expect(getActiveViewContext()?.elements).toBeUndefined();
+  });
+
   it("resolves scoped action names from the map", () => {
     expect(viewScopedActionNames("training")).toEqual(new Set(["RUNTIME"]));
     expect(viewScopedActionNames("orchestrator")).toEqual(new Set(["TASKS"]));
@@ -558,10 +611,30 @@ describe("applyActiveViewAwareness", () => {
     expect(applyActiveViewAwareness(PROMPT, null)).toBe(PROMPT);
   });
 
-  it("is idempotent", () => {
+  it("is idempotent (fresh block replaces any prior block)", () => {
     const once = applyActiveViewAwareness(PROMPT, AWARE_VIEW);
     const twice = applyActiveViewAwareness(once, AWARE_VIEW);
-    expect(twice).toBe(once);
+    // Strip+reinject is content-stable for the same view snapshot.
+    expect(twice.replace(/\n+/g, "\n")).toBe(once.replace(/\n+/g, "\n"));
+    expect(twice.match(/# Active View/g)?.length).toBe(1);
+  });
+
+  it("replaces a truncated Active View header with a full element snapshot (#17918)", () => {
+    const withElements = {
+      ...AWARE_VIEW,
+      elements: [
+        { id: "save-ledger", role: "button", label: "Save ledger" },
+      ],
+    };
+    const truncated =
+      "intro text\n\n# Active View\nThe user is looking at a view with no elements section.\n\n# Available Actions\n- REPLY: respond\n";
+    const out = applyActiveViewAwareness(truncated, withElements);
+    expect(out).toContain("# Active View");
+    expect(out).toContain("Addressable elements currently in this view");
+    expect(out).toContain("save-ledger [button]");
+    // Only one Active View header remains.
+    expect(out.match(/# Active View/g)?.length).toBe(1);
+    expect(out).toContain("# Available Actions");
   });
 
   it("prepends when there is no actions header", () => {

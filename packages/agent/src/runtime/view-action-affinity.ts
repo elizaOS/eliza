@@ -43,8 +43,10 @@ export interface ActiveViewContext {
   viewPath: string | null;
   /**
    * Live snapshot of the view's addressable elements, when the shell has
-   * reported one. Absent until a report arrives (and re-cleared on navigation),
-   * so the awareness block degrades gracefully to "use list-elements".
+   * reported one. Absent until a report arrives. Cleared when navigating to a
+   * *different* viewId; re-navigate / re-publish of the same viewId preserves
+   * the prior snapshot unless the caller supplies a new `elements` array
+   * (#17918 / setActiveViewContext merge).
    */
   elements?: readonly ActiveViewElement[];
   /**
@@ -78,7 +80,29 @@ function isActiveViewSwitchFresh(view: ActiveViewContext): boolean {
 
 let activeView: ActiveViewContext | null = null;
 
+/**
+ * Publish the shell's current view for planner awareness.
+ *
+ * When the caller re-publishes the *same* `viewId` without an `elements`
+ * (or `clientId`) field — the navigate route does this on every re-navigate —
+ * keep the prior element snapshot so multi-turn planner prompts do not lose
+ * the addressable-element block after the first interact (#17918). Navigating
+ * to a different viewId still replaces the context wholesale (elements drop
+ * until the shell reports a new snapshot).
+ */
 export function setActiveViewContext(view: ActiveViewContext | null): void {
+  if (view === null) {
+    activeView = null;
+    return;
+  }
+  if (activeView && activeView.viewId === view.viewId) {
+    activeView = {
+      ...view,
+      elements: view.elements ?? activeView.elements,
+      clientId: view.clientId ?? activeView.clientId,
+    };
+    return;
+  }
   activeView = view;
 }
 
@@ -325,21 +349,58 @@ export function renderActiveViewContextBlock(view: ActiveViewContext): string {
 }
 
 /**
- * Inject the active-view awareness block into a planner prompt. Idempotent
- * (skips if the block is already present) and leaves the prompt unchanged when
- * no view is active. Placed just before the "# Available Actions" header so
- * view context sits next to the tool catalogue; falls back to prepending when
- * that header is absent.
+ * Remove a previously injected Active View block (header through the line
+ * before the next top-level `# ` section or end). Used so re-injection can
+ * replace a stale/truncated block that still has the header but lost the
+ * addressable-element list after multi-turn compaction (#17918).
+ */
+export function stripActiveViewAwarenessBlock(prompt: string): string {
+  const header = "# Active View";
+  const start = prompt.indexOf(header);
+  if (start === -1) return prompt;
+  // Walk forward line-by-line until the next markdown section header or EOS.
+  let end = start + header.length;
+  while (end < prompt.length) {
+    const nextNl = prompt.indexOf("\n", end);
+    if (nextNl === -1) {
+      end = prompt.length;
+      break;
+    }
+    const lineStart = nextNl + 1;
+    if (prompt.startsWith("# ", lineStart) && !prompt.startsWith("# Active View", lineStart)) {
+      end = nextNl;
+      break;
+    }
+    end = lineStart;
+    // consume rest of this line on next iteration via indexOf from end
+    const lineEnd = prompt.indexOf("\n", lineStart);
+    end = lineEnd === -1 ? prompt.length : lineEnd;
+  }
+  // Drop a single leading newline before the block when present.
+  let from = start;
+  if (from > 0 && prompt[from - 1] === "\n") from -= 1;
+  return `${prompt.slice(0, from)}${prompt.slice(end)}`;
+}
+
+/**
+ * Inject the active-view awareness block into a planner prompt. Always
+ * re-injects a fresh block from the current view snapshot (stripping any
+ * prior block first) so multi-turn compaction cannot leave a header without
+ * the element list (#17918). Placed just before the "# Available Actions"
+ * header when present; otherwise prepended.
  */
 export function applyActiveViewAwareness(
   prompt: string,
   view: ActiveViewContext | null | undefined,
 ): string {
   if (!view) return prompt;
-  if (prompt.includes("# Active View")) return prompt;
+  const cleaned = stripActiveViewAwarenessBlock(prompt);
   const block = renderActiveViewContextBlock(view);
   const header = "\n# Available Actions";
-  const idx = prompt.indexOf(header);
-  if (idx === -1) return `${block}\n\n${prompt}`;
-  return `${prompt.slice(0, idx)}\n\n${block}\n${prompt.slice(idx + 1)}`;
+  const idx = cleaned.indexOf(header);
+  if (idx === -1) {
+    const body = cleaned.trimStart();
+    return body.length === 0 ? block : `${block}\n\n${body}`;
+  }
+  return `${cleaned.slice(0, idx)}\n\n${block}\n${cleaned.slice(idx + 1)}`;
 }

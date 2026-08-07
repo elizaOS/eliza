@@ -31,6 +31,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { stage1ResponseHandlerFixture } from "@elizaos/core/testing";
 import type { DeterministicModelCall } from "@elizaos/core/testing";
 import {
+  finalMessageUserText,
   matchesScenarioInput,
   type RuntimeWithScenarioModelFixtures,
 } from "@elizaos/core/testing";
@@ -209,6 +210,19 @@ function expectViewsInteract(
   return undefined;
 }
 
+function promptHasActiveViewElements(value: string): boolean {
+  return [
+    "# Active View",
+    VIEW_LABEL,
+    VIEW_ID,
+    "Addressable elements currently in this view",
+    "ledger-title [textbox]",
+    "save-ledger [button]",
+    "agent-fill {id,value}",
+    "agent-click {id}",
+  ].every((needle) => value.includes(needle));
+}
+
 function plannerFixture({
   capability,
   elementId,
@@ -226,16 +240,19 @@ function plannerFixture({
     name: `active-view-planner-${capability}-${elementId}`,
     match: (call: DeterministicModelCall) => {
       if (call.modelType !== ModelType.ACTION_PLANNER) return false;
-      if (!matchesScenarioInput(input)(call.latestUserText)) return false;
       if (!call.toolNames.includes("VIEWS")) return false;
-      // Do not require the full Active View element block in the planner
-      // prompt. Multi-turn planner prompts can omit or relocate that block
-      // after the first interact; a hard match then fails closed in the
-      // deterministic provider, the turn synthesizes Stage-1 progressive
-      // replyText ("Saving…"), and develop cert fails (#17918). The seed
-      // still installs the element snapshot; this fixture only needs the
-      // turn input + VIEWS surface so the hardcoded interact tool-call fires.
-      return true;
+      // On the messages-path planner, Active View is prepended into the last
+      // user message content, so latestUserText is no longer an exact match
+      // for the bare scenario input. Accept exact or suffix match.
+      const userText = finalMessageUserText(call.latestUserText);
+      if (userText !== input && !userText.endsWith(input)) return false;
+      // Certifies the agent-addressable surface reaches the planner on every
+      // turn (fill + click). Depends on product fixes in #17918: preserve
+      // elements on same-viewId re-publish, inject into the *last* user
+      // message, re-inject after budget compaction.
+      return promptHasActiveViewElements(
+        `${call.params.prompt ?? ""}\n${call.latestUserText}`,
+      );
     },
     response: {
       text: "",
