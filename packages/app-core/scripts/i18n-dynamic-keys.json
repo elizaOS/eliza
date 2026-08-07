@@ -1,5 +1,5 @@
 {
-  "_comment": "Keys/prefixes referenced via dynamic t(expr) or t(`prefix.${x}`) calls. The i18n linter (packages/scripts/check-i18n.mjs) treats these as 'used' when reporting orphaned locale keys. Add a literal key to 'keys' or a string prefix to 'prefixes' for each runtime-resolved translation.",
+  "_comment": "Keys/prefixes referenced via dynamic t(expr) or t(`prefix.${x}`) calls. The i18n linter (packages/app-core/scripts/check-i18n.mjs) treats these as 'used' when reporting orphaned locale keys. Add a literal key to 'keys' or a string prefix to 'prefixes' for each runtime-resolved translation.",
   "keys": [],
   "prefixes": [
     "accounts.",
@@ -120,14 +120,5 @@
     "workflowGraph.",
     "workspace."
   ],
-  "uncatalogued": [
-    {
-      "key": "settings.cloudOverview.localModeLabel",
-      "reason": "call site passes a runtime-conditional defaultValue (cloud connected vs local); cataloging would freeze one branch — needs a per-branch key split in CloudOverviewSection.tsx (#17605)"
-    },
-    {
-      "key": "settings.cloudOverview.localModeDescription",
-      "reason": "same conditional-defaultValue site as localModeLabel (#17605)"
-    }
-  ]
+  "uncatalogued": []
 }

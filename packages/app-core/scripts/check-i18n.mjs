@@ -12,7 +12,7 @@
  * the source catalog silently drifted 705 keys behind source (#17605).
  *
  * Dynamic call sites (t(variable), t(`prefix.${x}`)) are declared in
- * packages/scripts/i18n-dynamic-keys.json (`keys` / `prefixes`). The same file
+ * packages/app-core/scripts/i18n-dynamic-keys.json (`keys` / `prefixes`). The same file
  * carries `uncatalogued`: keys whose call sites pass a RUNTIME-CONDITIONAL
  * defaultValue — cataloging those would override the ternary and change
  * rendered English, so they are deliberately absent from every catalog until
@@ -193,8 +193,14 @@ function loadLocales(localeDir) {
 }
 
 function loadAllowlist(allowlistPath) {
+  // Fail closed. An absent allowlist silently disabled the dynamic-key and
+  // uncatalogued rules — the checker still exited 0 and read as "i18n is
+  // clean" while two of its rules were not running at all. A missing file is
+  // a broken invocation, not an empty allowlist.
   if (!fs.existsSync(allowlistPath)) {
-    return { keys: [], prefixes: [], uncatalogued: [] };
+    throw new Error(
+      `[i18n] allowlist not found at ${allowlistPath} — the dynamic-key and uncatalogued rules cannot run. Pass --allowlist <path> or restore the file; an absent allowlist is never treated as an empty one.`,
+    );
   }
   const raw = JSON.parse(fs.readFileSync(allowlistPath, "utf8"));
   return {
@@ -228,7 +234,7 @@ export function runI18nCheck(options = {}) {
   ];
   const allowlistPath =
     options.allowlistPath ??
-    path.join(repoRoot, "packages/scripts/i18n-dynamic-keys.json");
+    path.join(repoRoot, "packages/app-core/scripts/i18n-dynamic-keys.json");
   const sourceLocale = options.sourceLocale ?? "en";
   const strictTranslations = options.strictTranslations ?? false;
   const relpath = (p) => path.relative(repoRoot, p);
@@ -417,9 +423,21 @@ if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
 ) {
-  const result = runI18nCheck({
-    strictTranslations: process.argv.includes("--strict-translations"),
-  });
+  const allowlistArg = process.argv.indexOf("--allowlist");
+  let result;
+  try {
+    result = runI18nCheck({
+      strictTranslations: process.argv.includes("--strict-translations"),
+      ...(allowlistArg !== -1 && process.argv[allowlistArg + 1]
+        ? { allowlistPath: path.resolve(process.argv[allowlistArg + 1]) }
+        : {}),
+    });
+  } catch (error) {
+    // error-policy:J1 boundary translation — a misconfigured invocation is an
+    // operator-facing message and exit 1, not a stack trace in the CI log.
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
   for (const w of result.warnings) console.warn(w);
   for (const e of result.errors) console.error(e);
   if (result.ok) {

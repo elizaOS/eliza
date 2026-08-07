@@ -48,10 +48,15 @@ function buildFixture({
     writeFileSync(join(localeDir, `${lang}.json`), JSON.stringify(data));
   }
   writeFileSync(join(srcDir, "app.tsx"), source);
+  // Always write one. The checker now fails closed on a MISSING allowlist,
+  // because an absent file silently disabled the dynamic-key and uncatalogued
+  // rules while still exiting 0. "No allowlist" and "an empty allowlist" are
+  // different states, and a fixture that wants the second has to say so.
   const allowlistPath = join(root, "allowlist.json");
-  if (allowlist !== undefined) {
-    writeFileSync(allowlistPath, JSON.stringify(allowlist));
-  }
+  writeFileSync(
+    allowlistPath,
+    JSON.stringify(allowlist ?? { keys: [], prefixes: [], uncatalogued: [] }),
+  );
   return {
     root,
     options: {
@@ -230,4 +235,25 @@ describe("check-i18n contract", () => {
       true,
     );
   }, 60_000);
+
+  test("fails closed when the allowlist file is missing", () => {
+    // The default path pointed at packages/scripts/i18n-dynamic-keys.json,
+    // which does not exist — the file lives under packages/app-core/scripts.
+    // loadAllowlist answered that with an empty allowlist, so the dynamic-key
+    // and uncatalogued rules silently did not run and the checker still exited
+    // 0. A missing allowlist is a broken invocation, not an empty allowlist.
+    const fixture = buildFixture({});
+    rmSync(String(fixture.options.allowlistPath), { force: true });
+    expect(() => run(fixture)).toThrow(/allowlist not found/);
+  });
+
+  test("an explicitly empty allowlist is honoured, not treated as missing", () => {
+    // The other half of the same contract: declaring "no dynamic keys" must
+    // stay a legitimate configuration, or fail-closed would just be noise.
+    const result = run(
+      buildFixture({ allowlist: { keys: [], prefixes: [], uncatalogued: [] } }),
+    );
+    expect(result.ok).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
 });
