@@ -85,6 +85,10 @@ const NA_WITH_REASON_RE =
 const CLAIM_WINDOW_MS = CLAIM_RECENCY_DAYS * 24 * 60 * 60 * 1000;
 const CLOCK_SKEW_MS = 5 * 60 * 1000;
 const FULL_COMMIT_RE = /^[a-f0-9]{40}$/i;
+const GH_READ_MAX_ATTEMPTS = 3;
+const GH_READ_RETRY_BASE_DELAY_MS = 250;
+const RETRYABLE_GH_READ_FAILURE_RE =
+  /(?:TLS handshake timeout|i\/o timeout|context deadline exceeded|client\.timeout exceeded|connection (?:reset|refused|closed)|unexpected EOF|temporary failure in name resolution|no such host|network is unreachable|HTTP (?:408|5\d\d)\b)/i;
 const DOMAIN_ARTIFACT_HOSTS = new Set([
   "arbiscan.io",
   "basescan.org",
@@ -316,7 +320,15 @@ export function parsePaginatedJson(output, endpoint = "GitHub endpoint") {
   return records;
 }
 
-export function readGhPages(endpoint, spawn = spawnSync) {
+function waitSynchronously(durationMs) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, durationMs);
+}
+
+export function readGhPages(
+  endpoint,
+  spawn = spawnSync,
+  wait = waitSynchronously,
+) {
   if (typeof endpoint !== "string" || endpoint.length === 0) {
     throw new TypeError("GitHub endpoint must be a non-empty string");
   }
@@ -332,24 +344,36 @@ export function readGhPages(endpoint, spawn = spawnSync) {
     ".[]",
     endpoint,
   ];
-  const result = spawn("gh", args, {
-    encoding: "utf8",
-    maxBuffer: 64 * 1024 * 1024,
-    windowsHide: true,
-  });
-  if (result.error) {
-    throw new Error(`gh api could not start for ${endpoint}`, {
-      cause: result.error,
+  let attempt = 1;
+  while (true) {
+    const result = spawn("gh", args, {
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+      windowsHide: true,
     });
+    if (result.error) {
+      throw new Error(`gh api could not start for ${endpoint}`, {
+        cause: result.error,
+      });
+    }
+    if (result.status === 0) {
+      return parsePaginatedJson(result.stdout, endpoint);
+    }
+
+    const stderr =
+      typeof result.stderr === "string" ? result.stderr.trim() : "";
+    const retryable = RETRYABLE_GH_READ_FAILURE_RE.test(stderr);
+    if (!retryable || attempt === GH_READ_MAX_ATTEMPTS) {
+      const attempts = retryable ? ` after ${attempt} attempts` : "";
+      const detail = stderr.length > 0 ? `: ${stderr}` : "";
+      throw new Error(`gh api failed for ${endpoint}${attempts}${detail}`);
+    }
+
+    // Each retry reruns the complete paginated GET, so output from an aborted
+    // attempt can never be mistaken for a complete inventory.
+    wait(GH_READ_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1));
+    attempt += 1;
   }
-  if (result.status !== 0) {
-    const detail =
-      typeof result.stderr === "string" && result.stderr.trim().length > 0
-        ? `: ${result.stderr.trim()}`
-        : "";
-    throw new Error(`gh api failed for ${endpoint}${detail}`);
-  }
-  return parsePaginatedJson(result.stdout, endpoint);
 }
 
 export function parseModelDisclosure(text) {
