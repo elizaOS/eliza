@@ -185,6 +185,7 @@ export async function generateTextEmbedding(
 			`Unsupported embedding provider: ${config.EMBEDDING_PROVIDER}`,
 		);
 	} catch (error) {
+		// error-policy:J2 Log provider context and preserve the embedding failure.
 		logger.error({ error }, `${config.EMBEDDING_PROVIDER} embedding error`);
 		throw error;
 	}
@@ -257,10 +258,15 @@ export async function generateTextEmbeddingsBatch(
 						index: item.globalIndex,
 					};
 				} catch (error) {
+					// error-policy:J1 Batch items return explicit failed rows so
+					// callers can distinguish partial embedding availability.
 					logger.error(
 						{ error },
 						`Embedding error for item ${item.globalIndex}`,
 					);
+					runtime.reportError("DocumentsLlm.batchEmbeddingItem", error, {
+						index: item.globalIndex,
+					});
 					slot[item.batchPos] = {
 						embedding: null,
 						success: false,
@@ -431,6 +437,7 @@ export async function generateText(
 			},
 		);
 	} catch (error) {
+		// error-policy:J2 Log provider/model context and preserve the generation failure.
 		logger.error({ error }, `${provider} ${modelName} error`);
 		throw error;
 	}
@@ -475,11 +482,18 @@ async function generateAnthropicText(
 					}),
 			});
 		} catch (error) {
-			const errorObj = error as { status?: number; message?: string } | null;
+			// error-policy:J4 Anthropic rate limits receive bounded exponential
+			// retry; exhaustion preserves the provider failure.
+			const status =
+				typeof error === "object" && error !== null
+					? Reflect.get(error, "status")
+					: undefined;
+			const errorMessage =
+				error instanceof Error ? error.message : String(error);
 			const isRateLimit =
-				errorObj?.status === 429 ||
-				errorObj?.message?.includes("rate limit") ||
-				errorObj?.message?.includes("429");
+				status === 429 ||
+				errorMessage.includes("rate limit") ||
+				errorMessage.includes("429");
 
 			if (isRateLimit && attempt < maxRetries - 1) {
 				const delay = 2 ** (attempt + 1) * 1000;

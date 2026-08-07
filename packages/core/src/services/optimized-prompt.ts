@@ -1,9 +1,8 @@
 /**
  * OptimizedPromptService — runtime cache of native-optimizer artifacts.
  *
- * Native MIPRO/GEPA/bootstrap-fewshot optimizers (under
- * `plugins/plugin-training/src/optimizers/`) write a JSON artifact per task into
- * `<stateDir>/optimized-prompts/<task>/`. The runtime consults this service
+ * Offline MIPRO/GEPA/bootstrap-fewshot optimizers write a JSON artifact per task
+ * into `<stateDir>/optimized-prompts/<task>/`. The runtime consults this service
  * before constructing the system prompt for one of the core decision
  * tasks and substitutes the optimized prompt (plus any few-shot
  * demonstrations) when an artifact is available.
@@ -22,19 +21,16 @@
  *     next `vN.json`, repoints the `current` / `previous` / `previous2`
  *     symlinks, prunes to the last 5 versions, and refreshes the cache.
  *   - `rollback(task)` — flip `current` and `previous` symlinks, then
- *     refresh the cache. Used by `eliza training rollback-prompt <task>`.
+ *     refresh the cache.
  *   - `getMetadata(task)` — quick view of optimizer + score for diagnostics.
- *   - `refresh()` — re-scan the disk store. Called automatically by `start()`,
- *     also exposed for the `Settings → Auto-Training` panel.
+ *   - `refresh()` — re-scan the disk store. Called automatically by `start()`.
  *
  * Loading rule: for each task, the `current` symlink wins. When `current`
  * is missing (e.g. a corrupted store) we fall back to scanning the directory
  * and selecting the most recent `generatedAt`.
  *
- * The on-disk format intentionally mirrors `OptimizedPromptArtifact` from
- * `plugins/plugin-training/src/optimizers/types.ts`. We re-declare the type here
- * (instead of importing) because `@elizaos/core` is upstream of
- * `@elizaos/plugin-training` and adding the dependency would invert the layering.
+ * Core owns the on-disk artifact format so offline producers and every runtime
+ * consumer share one stable contract without a plugin dependency.
  */
 
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
@@ -49,6 +45,7 @@ import {
 	writeFile,
 } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { ElizaError } from "../errors.js";
 import { logger } from "../logger.js";
 import type { IAgentRuntime } from "../types/runtime.js";
 import { Service } from "../types/service.js";
@@ -88,6 +85,12 @@ export type OptimizedPromptTask =
 	| "screentime_recap"
 	| "creative_draft";
 
+function nodeErrorCode(error: unknown): string | undefined {
+	if (typeof error !== "object" || error === null) return undefined;
+	const code = Reflect.get(error, "code");
+	return typeof code === "string" ? code : undefined;
+}
+
 export const OPTIMIZED_PROMPT_TASKS: readonly OptimizedPromptTask[] = [
 	"should_respond",
 	// The context-routing dataset is trained separately from should_respond;
@@ -116,7 +119,7 @@ export const OPTIMIZED_PROMPT_TASKS: readonly OptimizedPromptTask[] = [
 
 /**
  * The LifeOps subset of {@link OPTIMIZED_PROMPT_TASKS}. Exposed so LifeOps
- * plugins and the training optimizer can iterate the per-capability tasks
+ * plugins and offline optimizers can iterate the per-capability tasks
  * without re-declaring the list — keeps `@elizaos/core` the single source of
  * truth for the LifeOps optimization taxonomy.
  */
@@ -142,8 +145,8 @@ export type OptimizerName =
 	| "dspy-mipro";
 
 /**
- * Mirror of `OptimizationExample` from `plugins/plugin-training/src/optimizers/types.ts`.
- * Kept narrow on purpose — the runtime only renders these into the prompt.
+ * A narrow few-shot record because the runtime only renders these fields into
+ * the prompt.
  */
 export interface OptimizedPromptFewShotExample {
 	id?: string;
@@ -180,9 +183,8 @@ export interface OptimizedPromptContextConfig {
 
 /**
  * Snapshot of the noise-gate promotion decision that accepted this artifact,
- * mirrored from `PromotionDecision` in
- * `plugins/plugin-training/src/core/promotion-gate.ts` plus the two provenance
- * fields the write site adds (`incumbentSource` / `gateSource`). Persisted for
+ * including the two write-site provenance fields (`incumbentSource` /
+ * `gateSource`). Persisted for
  * diagnostics — every field is optional because older artifacts predate it.
  */
 export interface PromotionDecisionSummary {
@@ -274,42 +276,34 @@ async function runExclusive<T>(
 // Every artifact written via setPrompt() gets a sibling `.mac` file containing
 // HMAC-SHA256(payload_bytes, key). On load, the MAC is recomputed and a
 // mismatch triggers AUDIT_ACTIONS.optimized_prompt.integrity_failed (emitted
-// via the runtime's structured logger; the audit dispatcher in
-// @elizaos/security picks up the entry through the logger sink).
+// via the runtime's structured logger for downstream audit ingestion).
 //
-// Key source: in this single-user-desktop context the HMAC key is derived
-// from `ELIZA_OPTIMIZED_PROMPT_HMAC_KEY` (a 32-byte hex/base64 secret set at
-// install time). The contract mirrors `KmsClient.hmac(orgKey(orgId,
-// "optimized-prompt-integrity"), bytes)` from `@elizaos/security`; once core
-// can depend on security in the build graph this is swapped for the real KMS
-// adapter without changing the on-disk format.
+// The host hydrates `ELIZA_OPTIMIZED_PROMPT_HMAC_KEY` from its vault/KMS before
+// runtime start. Core validates that boundary strictly and never substitutes a
+// public or process-local key that would make forged artifacts appear valid.
 // -----------------------------------------------------------------------------
 
 const OPTIMIZED_PROMPT_MAC_SUFFIX = ".mac";
-const OPTIMIZED_PROMPT_HMAC_DEFAULT_KEY_TAG =
-	"elizaos.optimized-prompt.integrity.v1";
-
 function resolveHmacKey(): Buffer {
-	const fromEnv = process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY;
-	if (fromEnv?.trim()) {
-		// Accept hex (64 chars) or base64; fall back to raw utf-8 bytes.
-		const trimmed = fromEnv.trim();
-		if (/^[0-9a-fA-F]{64}$/.test(trimmed)) {
-			return Buffer.from(trimmed, "hex");
-		}
-		try {
-			const buf = Buffer.from(trimmed, "base64");
-			if (buf.length >= 16) return buf;
-		} catch {
-			// fall through
-		}
-		return Buffer.from(trimmed, "utf-8");
+	const encoded = process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY?.trim();
+	if (!encoded) {
+		throw new ElizaError("Optimized-prompt integrity key is unavailable", {
+			code: "OPTIMIZED_PROMPT_INTEGRITY_KEY_UNAVAILABLE",
+			severity: "fatal",
+		});
 	}
-	// Deterministic fallback: HMAC key tag itself. This is NOT secret-grade
-	// but it does protect against accidental tampering by an unrelated
-	// process and it lets local-dev installs run without explicit setup.
-	// Production deployments must set ELIZA_OPTIMIZED_PROMPT_HMAC_KEY.
-	return Buffer.from(OPTIMIZED_PROMPT_HMAC_DEFAULT_KEY_TAG, "utf-8");
+	if (/^[0-9a-fA-F]{64}$/.test(encoded)) return Buffer.from(encoded, "hex");
+	if (/^[A-Za-z0-9+/]+={0,2}$/.test(encoded) && encoded.length % 4 === 0) {
+		const key = Buffer.from(encoded, "base64");
+		if (key.length === 32) return key;
+	}
+	throw new ElizaError(
+		"ELIZA_OPTIMIZED_PROMPT_HMAC_KEY must encode exactly 32 bytes as hex or base64",
+		{
+			code: "OPTIMIZED_PROMPT_INTEGRITY_KEY_INVALID",
+			severity: "fatal",
+		},
+	);
 }
 
 function computeArtifactMac(payload: Buffer | string): string {
@@ -337,10 +331,8 @@ function macPathFor(artifactPath: string): string {
 /**
  * Audit-event tag emitted when an optimized-prompt artifact's HMAC fails
  * verification. Mirrors the contract surface
- * `AUDIT_ACTIONS.optimized_prompt.integrity_failed` from
- * `@elizaos/security`; the dispatcher is loaded by the runtime, which
- * means logging this tag from core is sufficient for the audit pipeline
- * to pick it up.
+ * `AUDIT_ACTIONS.optimized_prompt.integrity_failed` consumed by audit log
+ * ingestion.
  */
 export const OPTIMIZED_PROMPT_INTEGRITY_FAILED_AUDIT_ACTION =
 	"optimized_prompt.integrity_failed";
@@ -711,9 +703,8 @@ export class OptimizedPromptService extends Service {
 	 * directory to the last `OPTIMIZED_PROMPT_RETAIN_VERSIONS` artifacts, and
 	 * refreshes the cache for the task.
 	 *
-	 * The same taxonomy is registered by both core basicServices and
-	 * plugin-training register-runtime, and trigger/CLI train also call this —
-	 * so two setPrompt calls for one task can overlap in-process. The version
+	 * More than one artifact producer can call this for the same task, so
+	 * setPrompt calls can overlap in-process. The version
 	 * claim is made cross-process-safe with O_EXCL; the symlink-repoint and
 	 * prune steps mutate shared `current`/`previous` links and the retention
 	 * window, so the whole write is serialized per task dir via an in-process
@@ -743,8 +734,7 @@ export class OptimizedPromptService extends Service {
 		const macHex = computeArtifactMac(payload);
 
 		// Atomically claim the next `vN.json` slot. Two concurrent setPrompt
-		// calls for the same task (e.g. basicServices + plugin-training, or a
-		// CLI/trigger train) read the same version list and would otherwise
+		// calls for the same task read the same version list and would otherwise
 		// both target the same vN — clobbering one artifact and/or leaving a
 		// vN.json without a matching .mac. Claiming a hidden lock filename with
 		// O_EXCL ('wx') serializes the race without exposing a final-looking
@@ -779,6 +769,8 @@ export class OptimizedPromptService extends Service {
 			// still reference.
 			await pruneOldVersions(dir, allVersions);
 		} catch (err) {
+			// error-policy:J2 Remove incomplete artifact parts before preserving
+			// the atomic publication failure.
 			await Promise.all([
 				removeFileBestEffort(tempPath),
 				removeFileBestEffort(macTemp),
@@ -878,7 +870,16 @@ export class OptimizedPromptService extends Service {
 				const entry = await this.loadTaskEntry(task);
 				if (entry) next[task] = entry;
 			} catch (err) {
-				const code = (err as NodeJS.ErrnoException).code;
+				if (
+					err instanceof ElizaError &&
+					(err.code === "OPTIMIZED_PROMPT_INTEGRITY_KEY_UNAVAILABLE" ||
+						err.code === "OPTIMIZED_PROMPT_INTEGRITY_KEY_INVALID")
+				) {
+					throw err;
+				}
+				// error-policy:J4 Each optional optimized task independently
+				// degrades to its baseline while the failure is reported.
+				const code = nodeErrorCode(err);
 				logger.warn(
 					{
 						src: "service:optimized_prompt",
@@ -888,6 +889,10 @@ export class OptimizedPromptService extends Service {
 					},
 					"[OptimizedPromptService] Skipping task: artifact store unreadable — falling back to baseline",
 				);
+				this.runtime.reportError("OptimizedPromptService.refreshTask", err, {
+					task,
+					code,
+				});
 			}
 		}
 		this.cache = next;
@@ -988,8 +993,8 @@ function listClaimedVersionNumbers(dir: string): number[] {
 /**
  * Maximum O_EXCL retries when claiming a version slot. Each attempt is one
  * concurrent setPrompt losing the race; the number of contenders for a single
- * task dir is tiny (basicServices + plugin-training + at most one CLI/trigger
- * train), so this is comfortably above any real-world contention. Exhausting
+ * task directory is expected to be tiny, so this is comfortably above normal
+ * contention. Exhausting
  * it means the directory is genuinely wedged — surface that as an error rather
  * than spinning forever.
  */
@@ -1013,7 +1018,9 @@ async function claimNextVersionPath(
 			await writeFile(claimPath, "", { flag: "wx" });
 			return { nextVersion: candidate, finalPath, claimPath };
 		} catch (err) {
-			if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+			// error-policy:J4 EEXIST is the explicit concurrent-claim signal;
+			// all other filesystem failures propagate.
+			if (nodeErrorCode(err) !== "EEXIST") throw err;
 			// Lost the claim race: re-read the directory and target the next
 			// free version above whatever the winner(s) just wrote.
 			const highest = listClaimedVersionNumbers(dir).at(-1) ?? 0;
@@ -1096,7 +1103,11 @@ async function removeIfExists(path: string): Promise<void> {
 	try {
 		await unlink(path);
 	} catch (err) {
-		if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
+		if (nodeErrorCode(err) === "ENOENT") {
+			// error-policy:J6 removing an already-absent artifact is idempotent
+			// best-effort teardown.
+			return;
+		}
 		throw err;
 	}
 }
@@ -1104,8 +1115,13 @@ async function removeIfExists(path: string): Promise<void> {
 async function removeFileBestEffort(path: string): Promise<void> {
 	try {
 		await rm(path, { force: true });
-	} catch {
-		// Cleanup must not mask the original write failure.
+	} catch (error) {
+		// error-policy:J6 temporary-file cleanup must not mask the original write
+		// failure, but the teardown failure remains visible in diagnostics.
+		logger.warn(
+			{ src: "service:optimized_prompt", path, error },
+			"Failed to remove temporary optimized-prompt artifact",
+		);
 	}
 }
 
@@ -1126,10 +1142,14 @@ async function readLinkOrNull(path: string): Promise<string | null> {
 	try {
 		return await readlink(path);
 	} catch (err) {
-		const code = (err as NodeJS.ErrnoException).code;
+		const code = nodeErrorCode(err);
 		// ENOENT: path missing. EINVAL: path is a regular file (not a symlink).
 		// Both mean "no symlink target" — callers handle that as null.
-		if (code === "ENOENT" || code === "EINVAL") return null;
+		if (code === "ENOENT" || code === "EINVAL") {
+			// error-policy:J4 a missing path or regular file explicitly has no
+			// symlink target; other filesystem failures propagate.
+			return null;
+		}
 		throw err;
 	}
 }
@@ -1147,7 +1167,11 @@ async function loadArtifactFromPath(
 	try {
 		raw = await readFile(path, "utf-8");
 	} catch (err) {
-		if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+		if (nodeErrorCode(err) === "ENOENT") {
+			// error-policy:J4 an absent optional optimized-prompt artifact is an
+			// explicit not-found state during version discovery.
+			return null;
+		}
 		throw err;
 	}
 	// SOC2 CC6.8: verify HMAC sidecar before parsing. A `.mac` next to the
@@ -1159,7 +1183,9 @@ async function loadArtifactFromPath(
 	try {
 		macHex = (await readFile(macPath, "utf-8")).trim();
 	} catch (err) {
-		if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+		if (nodeErrorCode(err) !== "ENOENT") throw err;
+		// error-policy:J4 the missing sidecar is rendered below as an explicit
+		// integrity rejection, never accepted as an unsigned artifact.
 	}
 	if (macHex === null) {
 		logger.warn(
@@ -1193,6 +1219,8 @@ async function loadArtifactFromPath(
 	try {
 		parsedJson = JSON.parse(raw);
 	} catch {
+		// error-policy:J3 optimized-prompt artifacts are persisted input;
+		// malformed JSON is explicitly rejected and logged.
 		logger.warn(
 			{ src: "service:optimized_prompt", task, path },
 			"Optimized prompt artifact is not valid JSON — skipping",

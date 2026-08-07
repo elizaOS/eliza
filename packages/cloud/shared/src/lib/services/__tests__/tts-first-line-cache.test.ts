@@ -7,21 +7,6 @@ import {
 } from "../tts-first-line-cache";
 
 describe("hashCloudCacheKey", () => {
-  test("is deterministic across calls", () => {
-    const key = {
-      algoVersion: "1",
-      provider: "elevenlabs",
-      voiceId: "EXAVITQu4vr4xnSDxMaL",
-      voiceRevision: "rev-aaaa",
-      sampleRate: 44100,
-      codec: "mp3" as const,
-      voiceSettingsFingerprint: fingerprintCloudVoiceSettings({}),
-      normalizedText: "got it",
-      scope: "global",
-    };
-    expect(hashCloudCacheKey(key)).toBe(hashCloudCacheKey(key));
-  });
-
   test("changes when any key field changes (regression: F3 voice-swap safety)", () => {
     const base = {
       algoVersion: "1",

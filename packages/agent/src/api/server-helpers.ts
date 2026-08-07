@@ -404,8 +404,12 @@ export function findOwnPackageRoot(startDir: string): string {
         if (KNOWN_NAMES.has(pkgName)) return dir;
         // Also match if plugins.json exists at this level (resilient to renames)
         if (fs.existsSync(path.join(dir, "plugins.json"))) return dir;
-      } catch {
-        /* keep searching */
+      } catch (error) {
+        // error-policy:J3 a malformed candidate is invalid package metadata;
+        // continue searching ancestors for the actual package root.
+        logger.debug(
+          `[server-helpers] Ignoring invalid package metadata at ${pkgPath}: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     }
     const parent = path.dirname(dir);

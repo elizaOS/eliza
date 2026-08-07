@@ -13,6 +13,7 @@ import {
   ELIZA_RUNTIME_ENV_KEYS,
   firstWinningEnvString,
   formatDevSettingsTable,
+  isElizaSettingsDebugEnabled,
   resolveApiSecurityConfig,
   resolveApiToken,
 } from "@elizaos/shared";
@@ -23,6 +24,22 @@ function summarizeList(label: string, items: string[], maxLen: number): string {
   const joined = items.join(", ");
   if (joined.length <= maxLen) return `${label}: ${joined}`;
   return `${label}: ${joined.slice(0, maxLen - 1)}…`;
+}
+
+/** Whether the full effective-settings table was explicitly requested. */
+export function shouldShowApiDevSettingsBanner(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  const logLevel = (env.ELIZA_DEV_LOG_LEVEL ?? env.LOG_LEVEL ?? "")
+    .trim()
+    .toLowerCase();
+  return (
+    env.ELIZA_DEV_SHOW_SETTINGS === "1" ||
+    env.ELIZA_DEV_VERBOSE_LOGS === "1" ||
+    logLevel === "debug" ||
+    logLevel === "trace" ||
+    isElizaSettingsDebugEnabled({ env })
+  );
 }
 
 /**

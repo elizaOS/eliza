@@ -282,7 +282,7 @@ export function SettingsView({
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const handleHashChange = () => {
+    const handleLocationChange = () => {
       const nextSection = readSettingsHashSection();
       if (
         nextSection &&
@@ -294,8 +294,12 @@ export function SettingsView({
         setActiveSection(null);
       }
     };
-    window.addEventListener("hashchange", handleHashChange);
-    return () => window.removeEventListener("hashchange", handleHashChange);
+    window.addEventListener("hashchange", handleLocationChange);
+    window.addEventListener("popstate", handleLocationChange);
+    return () => {
+      window.removeEventListener("hashchange", handleLocationChange);
+      window.removeEventListener("popstate", handleLocationChange);
+    };
   }, [visibleSectionIds]);
 
   // Explicit navigation (hash / initialSection / agent anchor) resolves

@@ -8,18 +8,22 @@ An admitted Cloudflare Worker token/model request must not query or mutate
 Postgres, connect to Railway Redis, or wait for an accounting write before
 dispatching the provider request. This contract covers `/v1/chat`,
 `/v1/chat/completions`, `/v1/messages`, `/v1/responses`, `/v1/embeddings`,
-shared-agent model turns, and the internal Eliza model turn used by a voice
-session.
-
-Direct TTS, STT, and voice-clone requests are outside this contract. They are
-metered media or stateful job endpoints with their own reservation and job-state
-requirements; they are not token/model LLM dispatches.
+shared-agent model turns, the internal Eliza model turn used by a voice session,
+direct TTS/STT, and image, video, music, and SFX generation. Voice cloning and
+other stateful mutation/job endpoints retain their own reservation semantics.
+The app-scoped chat/image routes and public-agent A2A/MCP chat methods delegate
+to the same cache-only admission paths rather than maintaining database-backed
+inference implementations.
 
 The synchronous Worker path is:
 
-1. Cloudflare-native ingress rate limit.
-2. Cloudflare KV cache reads for authorization, model pricing, organization
-   balance revision, affiliate attribution, and app policy as applicable.
+1. One combined Cloudflare KV decision containing credential validity,
+   identity, organization, moderation, balance revision, endpoint-rate policy,
+   and app-key scope.
+2. Process-local model/pricing and route-scope snapshots. A cold app or agent
+   scope may perform one additional Cloudflare KV read and hydrate Postgres
+   under `waitUntil`; it never falls through to Postgres on the request promise.
+   Affiliate and pooled-credential features retain conditional cache decisions.
 3. A per-organization Durable Object call that serializes the exact endpoint
    rate decision.
 4. A call to the same object that durably leases the estimated charge.
@@ -27,8 +31,9 @@ The synchronous Worker path is:
    the provider invocation.
 6. Provider dispatch.
 
-A warm billed request therefore makes three serial Durable Object calls before
-the provider. Keeping rate, money, and dispatch-intent transitions explicit
+A steady-state base request therefore has one remote shared-cache read and
+three serial Durable Object calls before the provider. Keeping rate, money,
+and dispatch-intent transitions explicit
 makes the crash states independently testable. The repository benchmark measures
 those calls in-process; it is a regression tripwire, not evidence of deployed
 cross-isolate or regional network latency.
@@ -39,12 +44,13 @@ and payout delivery run under `executionCtx.waitUntil`. A Durable Object alarm
 recovers an expired dispatched monetary lease if response-side settlement
 disappears.
 
-This contract applies to the listed token/model routes in the inference Worker.
-Non-Worker tools and excluded media/job endpoints retain their synchronous
-accounting contracts, but a covered Worker route must never fall back to that
-path. Missing or unavailable cache state produces a retryable 503 and starts
-asynchronous hydration; insufficient cached balance produces 402; a rate denial
-produces 429.
+This contract applies to the listed generative routes in the inference Worker.
+Non-Worker tools and stateful job endpoints retain synchronous compatibility,
+but a covered Worker route must never fall back to that path. Missing or
+unavailable cache state produces a retryable 503 and starts asynchronous
+hydration; insufficient cached balance produces 402; a rate denial produces
+429. Content-safety checks and object storage remain synchronous where the
+returned artifact depends on them.
 
 ## Why Railway Redis is not on this path
 
@@ -54,10 +60,10 @@ connection, adding connection setup, latency, egress, and another availability
 dependency to every model request.
 
 The covered token/model routes therefore bypass the legacy Railway Redis
-deployment guard. Their ingress limits use Cloudflare Rate Limiting bindings,
-and exact organization limits use the same per-organization Durable Object that
-owns monetary leases. General API and excluded media/job routes can continue
-using Railway Redis without making it a prerequisite for an LLM request.
+deployment guard and its route-level counter middleware. Exact organization
+limits use the same per-organization Durable Object that owns monetary leases.
+General API and excluded job routes can continue using Railway Redis without
+making it a prerequisite for an LLM request.
 
 Moving the entire inference control plane into Railway would change this
 tradeoff. In that topology, Redis with atomic scripts could own exact counters
@@ -68,12 +74,13 @@ selected production architecture.
 
 | State | Synchronous owner | Durable/source-of-truth owner | Consistency |
 | --- | --- | --- | --- |
-| API-key and Steward-session authorization | Postgres/Steward | Postgres/Steward | Authoritative while `INFERENCE_AUTH_CACHE_ENABLED` is false |
-| Moderation decision | Cloudflare KV auth context | Postgres | Invalidated on lifecycle changes; bounded staleness |
+| API-key and Steward-session authorization | One combined Cloudflare KV decision | Postgres/Steward | 60s physical bound; active entries refresh after 30s under `waitUntil` |
+| Moderation, balance, endpoint-rate policy, and app-key scope | Same combined decision | Postgres | Revisioned/bounded snapshot; refreshed off-response |
 | Model pricing | Cloudflare KV | Pricing tables | Revisioned cache; cold requests warm and retry |
 | Affiliate attribution | Cloudflare KV | Postgres | Immutable snapshot per admitted request |
 | App policy | Cloudflare KV | Postgres | Immutable snapshot per admitted request |
-| Organization balance hint | Cloudflare KV | Postgres | Revisioned, lower-only admission hint |
+| App and agent inference scope | 30s process LRU, then Cloudflare KV | Postgres | Mutation invalidation plus bounded TTL |
+| Shared-runtime balance + rate policy | 5s process LRU, then one combined Cloudflare KV projection | Postgres | 30s bounded snapshot; authoritative hydration under `waitUntil` |
 | Organization endpoint rate | Durable Object | Durable Object | Strongly ordered per organization |
 | In-flight estimated spend | Durable Object | Durable Object | Strongly ordered per organization |
 | Anonymous identity and quota | Durable Object | Postgres projection | Strongly ordered counters; async revisioned mirror |
@@ -88,18 +95,21 @@ remain transactional in Postgres and publish monotonic cache revisions.
 
 ## Authorization and cold-cache behavior
 
-Authorization remains authoritative by default. `INFERENCE_AUTH_CACHE_ENABLED`
-is a separate, fail-closed rollout control and stays false in every checked-in
-environment until revocation has a strongly consistent boundary. A successful
-KV deletion is not proof that every point of presence has stopped serving an
-older positive value.
+`INFERENCE_AUTH_CACHE_ENABLED` is enabled in staging and production. Warm API
+keys and Steward sessions perform one combined remote decision read containing
+identity, organization, moderation, balance, rate policy, and API-key app scope.
+The physical TTL is 60 seconds;
+an active entry older than 30 seconds is served immediately while an
+authoritative refresh runs under `waitUntil`. This bounds a lost or
+eventually-consistent invalidation to the same one-minute horizon already used
+by moderation decisions without joining Postgres or Steward to dispatch.
 
-The gated implementation accepts positive cache entries only for fully
-authorized credentials. API-key entries are keyed by the full credential hash.
-Steward-session entries currently use the verified subject, so the gate must
-also remain disabled until they use an immutable session identity. Wallet
-signatures remain outside the cache-only Worker path because their timestamped
-proof cannot safely be replayed as an asynchronous hydration.
+The implementation accepts positive cache entries only for fully authorized
+credentials. API-key entries are keyed by the full credential hash. Steward
+JWTs use an in-isolate verification memo after the combined decision read, so
+the distributed JWT memo does not add a second cache lookup. Wallet signatures
+remain outside the cache-only Worker path because their timestamped proof
+cannot safely be replayed as asynchronous hydration.
 
 On a Worker cache miss:
 
@@ -113,9 +123,10 @@ When the gate is enabled, cache errors never fabricate authorization and never
 join a Postgres fallback to the request promise. Invalidation is only a cache
 hygiene mechanism; it is not the authorization revocation boundary.
 
-Pricing, affiliate attribution, app policy, balance, and uninitialized Durable
-Objects follow the same fail-closed warming pattern. The first request may warm
-state; it does not purchase lower latency by bypassing a correctness check.
+Pricing, affiliate attribution, app/agent policy, and uninitialized Durable
+Objects follow the same fail-closed warming pattern. Route-scope caches add no
+remote read on a warm isolate. The first request may warm state; it does not
+purchase lower latency by bypassing a correctness check.
 
 ### Flag scope: the IAC vs. the shared-agent scope cache
 
@@ -138,6 +149,15 @@ a per-request credential gate before the cached scope is served:
   an active user in the cached org's active organization. Ban, deactivate,
   and org-detach evict that entry, so a session hit deauthorizes on the next
   turn after the mutation; a miss fails closed into re-hydration.
+
+The resolved scope also has a 15-second isolate-local LRU. On a warm isolate,
+that removes the distributed scope read while preserving the per-request
+credential/user check as the only remote cache operation. Inside the
+conversation Durable Object, balance and endpoint-rate policy are consumed
+from one combined `iac:org-admission:*` projection; linked-character and policy
+snapshots are isolate-local after their first validated read. Scope hydration
+prewarms both projections so the next turn does not cascade through multiple
+cache-warming retries.
 
 Residual exposure bound: an authorization-relevant mutation that evicts no
 cache entry (none is currently known for the session path; for the API-key
@@ -196,6 +216,11 @@ This avoids switching accounting identities between normal settlement and
 recovery, which could otherwise double charge a request after an ambiguous
 acknowledgement.
 
+Video jobs that remain live after the provider polling window return their 202
+acknowledgement without waiting for a database reservation or generation-row
+write. The existing reservation promotion and pending reconciliation record run
+under `waitUntil`; a failed persistence retains the admitted hold for the sweep.
+
 ## Anonymous chat
 
 Anonymous chat uses a separate Durable Object keyed by a hash of the opaque
@@ -226,37 +251,37 @@ These rules prefer an explicit retry over hidden latency or free inference.
 
 ## Deployment configuration
 
-Staging and production require:
+Staging and production inference require:
 
 - `CACHE_KV`;
-- `GLOBAL_RATE_LIMITER`, `CHAT_ROUTE_RATE_LIMITER`, and
-  `DASHBOARD_CHAT_ROUTE_RATE_LIMITER`;
 - `INFERENCE_ADMISSION_GATES`;
 - `ANONYMOUS_CHAT_GATES`;
 - `INFERENCE_OPTIMISTIC_BILLING="true"`;
 - `INFERENCE_DEFERRED_ADMISSION="true"`; and
 - `INFERENCE_HOT_PATH_CACHES="true"`.
 
-`INFERENCE_AUTH_CACHE_ENABLED` remains `"false"` in staging and production.
-Enabling it requires the strong revocation and immutable-session contract
-described above plus deployed rollback evidence.
+`INFERENCE_AUTH_CACHE_ENABLED="true"` and
+`THIN_INFERENCE_ENTRY_ENABLED="true"` are enabled in staging and production.
+The thin entry lazily evaluates only the matched generative route module rather
+than the monolithic API router. Either flag remains an independent rollback
+control.
 
 `INFERENCE_BILLING_LEDGER` still selects the compatibility ledger for
 non-Worker callers and sweep migration support. It does not add a ledger write
 before provider dispatch on the Worker path.
 
 `REDIS_RATE_LIMITING` continues to govern general API routes. The covered
-token/model routes use Cloudflare-native bindings and do not require
-`REDIS_URL`.
+generative routes do not invoke its middleware and do not require `REDIS_URL`.
 
 ## Verification
 
 The production contract is protected at three layers:
 
-1. Route tripwire tests install database seams that throw if chat,
-   completions, messages, responses, embeddings, shared-agent, or the
-   voice-session internal Eliza turn touches them before provider dispatch.
-   These tripwires are what enforce the zero pre-provider Postgres, Redis,
+1. Route tripwire tests and source contracts fail if chat,
+   completions, messages, responses, embeddings, shared-agent, voice, or media
+   generation touches them before provider dispatch.
+   App chat/image delegation and A2A/MCP cache-only scope are included. These
+   tripwires enforce the zero pre-provider Postgres, Redis,
    ledger, reservation, and payout guarantee.
 2. Admission tests assert the only warm pre-dispatch write is the Durable
    Object lease, including organization, affiliate, app, anonymous, cold-cache,

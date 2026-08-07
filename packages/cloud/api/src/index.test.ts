@@ -1,10 +1,9 @@
-// Exercises cloud API src index.test behavior with deterministic Worker route fixtures.
+/** Verifies Cloud Worker routing and thin-inference dispatch with deterministic fixtures. */
 import { describe, expect, test } from "bun:test";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import cloudApiWorker, {
   getFrontendAliasApiProxyTarget,
   getFrontendAliasProxyTarget,
-  getFrontendAliasSyntheticResponse,
   getHostedFrontendServeRewrite,
   isCanonicalInferencePath,
   isThinInferenceEnabled,
@@ -41,13 +40,20 @@ describe("thin inference entry dispatch", () => {
     ).toBe(true);
   });
 
-  test("matches only the exact canonical chat completions route", () => {
+  test("matches canonical generative routes without accepting suffixes", () => {
     expect(isCanonicalInferencePath("/api/v1/chat/completions")).toBe(true);
     expect(isCanonicalInferencePath("/api/v1/chat/completions/")).toBe(false);
     expect(isCanonicalInferencePath("/api/v1/chat/completions/admin")).toBe(
       false,
     );
-    expect(isCanonicalInferencePath("/api/v1/embeddings")).toBe(false);
+    expect(isCanonicalInferencePath("/api/v1/embeddings")).toBe(true);
+    expect(isCanonicalInferencePath("/api/v1/messages")).toBe(true);
+    expect(isCanonicalInferencePath("/api/v1/voice/stt")).toBe(true);
+    expect(isCanonicalInferencePath("/api/v1/voice/tts")).toBe(true);
+    expect(isCanonicalInferencePath("/api/v1/generate-image")).toBe(true);
+    expect(isCanonicalInferencePath("/api/v1/apps/app-1/chat")).toBe(true);
+    expect(isCanonicalInferencePath("/api/agents/agent-1/a2a")).toBe(true);
+    expect(isCanonicalInferencePath("/api/v1/models")).toBe(false);
   });
 
   test("dispatches canonical chat requests through the thin app when enabled", async () => {
@@ -322,7 +328,7 @@ describe("cloud-api worker entrypoint", () => {
     expect(stagingRoutes).toContain("app-staging.elizacloud.ai/*");
   });
 
-  test("binds inference routes to native limits in every Worker environment", async () => {
+  test("binds the global native limiter in every Worker environment and keeps inference routes gate-free", async () => {
     type RateLimitBinding = {
       name?: string;
       simple?: { limit?: number; period?: number };
@@ -344,156 +350,38 @@ describe("cloud-api worker entrypoint", () => {
       expect(bindings).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            name: "CHAT_ROUTE_RATE_LIMITER",
-            simple: { limit: 200, period: 60 },
-          }),
-          expect.objectContaining({
-            name: "DASHBOARD_CHAT_ROUTE_RATE_LIMITER",
-            simple: { limit: 60, period: 60 },
+            name: "GLOBAL_RATE_LIMITER",
+            simple: { limit: 600, period: 60 },
           }),
         ]),
       );
     }
 
-    const [chat, messages, embeddings] = await Promise.all([
+    // #17805 retired the per-route native gates from the generative hot path:
+    // rate policy rides the IAC v2 admission snapshot through the org-level
+    // limiter. The inference route sources must stay free of per-route native
+    // bindings, while both Worker app builders keep the global gate.
+    const [
+      chat,
+      completions,
+      messages,
+      embeddings,
+      bootstrapApp,
+      inferenceApp,
+    ] = await Promise.all([
       Bun.file(new URL("../v1/chat/route.ts", import.meta.url)).text(),
+      Bun.file(
+        new URL("../v1/chat/completions/route.ts", import.meta.url),
+      ).text(),
       Bun.file(new URL("../v1/messages/route.ts", import.meta.url)).text(),
       Bun.file(new URL("../v1/embeddings/route.ts", import.meta.url)).text(),
+      Bun.file(new URL("./bootstrap-app.ts", import.meta.url)).text(),
+      Bun.file(new URL("./inference-app.ts", import.meta.url)).text(),
     ]);
-    expect(chat).toContain('bindingName: "DASHBOARD_CHAT_ROUTE_RATE_LIMITER"');
-    expect(messages).toContain('bindingName: "CHAT_ROUTE_RATE_LIMITER"');
-    expect(embeddings).toContain('bindingName: "CHAT_ROUTE_RATE_LIMITER"');
-  });
-
-  test("feed.elizacloud.ai is inert when FEED_ORIGIN_HOST is unset", () => {
-    // No env / empty host => falls through to the cloud-api app (no regression).
-    expect(
-      getFrontendAliasProxyTarget(new URL("https://feed.elizacloud.ai/feed")),
-    ).toBeNull();
-    expect(
-      getFrontendAliasProxyTarget(new URL("https://feed.elizacloud.ai/feed"), {
-        FEED_ORIGIN_HOST: "",
-      }),
-    ).toBeNull();
-  });
-
-  test("proxies feed.elizacloud.ai pages to the Railway origin when configured", () => {
-    const target = getFrontendAliasProxyTarget(
-      new URL("https://feed.elizacloud.ai/markets?marketKind=prediction"),
-      { FEED_ORIGIN_HOST: "feed-web-production.up.railway.app" },
-    );
-
-    expect(target?.toString()).toBe(
-      "https://feed-web-production.up.railway.app/markets?marketKind=prediction",
-    );
-  });
-
-  test("accepts a full feed origin URL and preserves an explicit port", () => {
-    const target = getFrontendAliasProxyTarget(
-      new URL("https://feed.elizacloud.ai/markets"),
-      { FEED_ORIGIN_HOST: "https://feed-web-production.up.railway.app:8443" },
-    );
-
-    expect(target?.toString()).toBe(
-      "https://feed-web-production.up.railway.app:8443/markets",
-    );
-  });
-
-  test("rejects pathful feed origin configuration instead of proxying broadly", () => {
-    const target = getFrontendAliasProxyTarget(
-      new URL("https://feed.elizacloud.ai/markets"),
-      {
-        FEED_ORIGIN_HOST:
-          "https://feed-web-production.up.railway.app/feed-prefix",
-      },
-    );
-
-    expect(target).toBeNull();
-  });
-
-  test("proxies feed /api/* to the SAME Railway origin (single origin, no app/api split)", () => {
-    const target = getFrontendAliasProxyTarget(
-      new URL("https://feed.elizacloud.ai/api/health"),
-      { FEED_ORIGIN_HOST: "feed-web-production.up.railway.app" },
-    );
-
-    expect(target?.toString()).toBe(
-      "https://feed-web-production.up.railway.app/api/health",
-    );
-  });
-
-  test("sanitizes spoofable forwarded IP headers before proxying feed", async () => {
-    const originalFetch = globalThis.fetch;
-    const proxiedRequests: Request[] = [];
-    globalThis.fetch = (async (input, init) => {
-      const request =
-        input instanceof Request ? input : new Request(input, init);
-      proxiedRequests.push(request);
-      return new Response("ok");
-    }) as typeof fetch;
-
-    try {
-      const response = await cloudApiWorker.fetch(
-        new Request("https://feed.elizacloud.ai/api/health", {
-          headers: {
-            "cf-connecting-ip": "203.0.113.10",
-            forwarded: "for=198.51.100.1",
-            host: "feed.elizacloud.ai",
-            "x-forwarded-for": "198.51.100.2",
-            "x-real-ip": "198.51.100.3",
-          },
-        }),
-        { FEED_ORIGIN_HOST: "feed-web-production.up.railway.app" } as never,
-        {} as ExecutionContext,
-      );
-
-      expect(response.status).toBe(200);
-      expect(proxiedRequests).toHaveLength(1);
-      const proxied = proxiedRequests[0];
-      expect(proxied.url).toBe(
-        "https://feed-web-production.up.railway.app/api/health",
-      );
-      expect(proxied.headers.get("forwarded")).toBeNull();
-      expect(proxied.headers.get("host")).toBeNull();
-      expect(proxied.headers.get("x-forwarded-for")).toBe("203.0.113.10");
-      expect(proxied.headers.get("x-real-ip")).toBe("203.0.113.10");
-      expect(proxied.headers.get("x-forwarded-host")).toBe(
-        "feed.elizacloud.ai",
-      );
-      expect(proxied.headers.get("x-forwarded-proto")).toBe("https");
-    } finally {
-      globalThis.fetch = originalFetch;
+    for (const source of [chat, completions, messages, embeddings]) {
+      expect(source).not.toContain("bindingName:");
     }
-  });
-
-  test("serves empty Feed observability scripts instead of proxying Vercel-only 404s", async () => {
-    const response = getFrontendAliasSyntheticResponse(
-      new URL("https://feed.elizacloud.ai/_vercel/insights/script.js"),
-    );
-
-    expect(response?.status).toBe(200);
-    expect(response?.headers.get("content-type")).toContain(
-      "application/javascript",
-    );
-    expect(await response?.text()).toBe("");
-  });
-
-  test("redirects missing Feed preset PFP assets to the bundled fallback image", () => {
-    const response = getFrontendAliasSyntheticResponse(
-      new URL("https://feed.elizacloud.ai/assets/user-pfps/pfp-041.png"),
-    );
-
-    expect(response?.status).toBe(302);
-    expect(response?.headers.get("location")).toBe(
-      "https://feed.elizacloud.ai/blankmonkey.png",
-    );
-  });
-
-  test("does not synthesize responses for non-Feed aliases", () => {
-    expect(
-      getFrontendAliasSyntheticResponse(
-        new URL("https://staging.elizacloud.ai/_vercel/insights/script.js"),
-      ),
-    ).toBeNull();
+    expect(bootstrapApp).toContain('bindingName: "GLOBAL_RATE_LIMITER"');
+    expect(inferenceApp).toContain('bindingName: "GLOBAL_RATE_LIMITER"');
   });
 });

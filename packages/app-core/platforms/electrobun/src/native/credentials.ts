@@ -620,16 +620,6 @@ const ENV_PROVIDER_MAP: Array<{
     providerId: "elizacloud",
     authMode: "cloud",
   },
-  {
-    envVar: "AI_GATEWAY_API_KEY",
-    providerId: "vercel-ai-gateway",
-    authMode: "api-key",
-  },
-  {
-    envVar: "AIGATEWAY_API_KEY",
-    providerId: "vercel-ai-gateway",
-    authMode: "api-key",
-  },
 ];
 
 function scanEnvCredentials(): DetectedProvider[] {

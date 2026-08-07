@@ -1,7 +1,5 @@
 /**
- * MIME type detection and media utilities for Eliza.
- *
- * Provides robust MIME type detection from file buffers, headers, and extensions.
+ * Detects media MIME types and extensions from magic bytes, headers, and paths.
  */
 
 // Lazy-loaded file-type module for MIME sniffing
@@ -15,11 +13,7 @@ let fileTypeModule: FileTypeModule | null | undefined;
 
 async function getFileTypeFromBuffer(): Promise<FileTypeFromBuffer | null> {
 	if (fileTypeModule === undefined) {
-		try {
-			fileTypeModule = await import("file-type");
-		} catch {
-			fileTypeModule = null;
-		}
+		fileTypeModule = await import("file-type");
 	}
 	return fileTypeModule?.fileTypeFromBuffer ?? null;
 }
@@ -100,14 +94,10 @@ async function sniffMime(
 	buffer?: Buffer | Uint8Array,
 ): Promise<string | undefined> {
 	if (!buffer) return undefined;
-	try {
-		const fileTypeFromBuffer = await getFileTypeFromBuffer();
-		if (!fileTypeFromBuffer) return undefined;
-		const type = await fileTypeFromBuffer(buffer);
-		return type?.mime ?? undefined;
-	} catch {
-		return undefined;
-	}
+	const fileTypeFromBuffer = await getFileTypeFromBuffer();
+	if (!fileTypeFromBuffer) return undefined;
+	const type = await fileTypeFromBuffer(buffer);
+	return type?.mime ?? undefined;
 }
 
 /**
@@ -121,6 +111,8 @@ export function getFileExtension(filePath?: string | null): string | undefined {
 			candidate = new URL(filePath).pathname;
 		}
 	} catch {
+		// error-policy:J3 URL paths are untrusted input; malformed URLs are
+		// treated as plain paths without partial decoding.
 		// fall back to plain path parsing
 	}
 	// Only the last path segment can carry an extension; splitting the whole

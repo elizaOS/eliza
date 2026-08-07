@@ -19,10 +19,6 @@ import {
   enforceOrgRateLimit,
   OrgRateLimitCacheNotReadyError,
 } from "@/lib/middleware/rate-limit";
-import {
-  RateLimitPresets,
-  rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { resolveModel } from "@/lib/models";
 import { estimateTokens } from "@/lib/pricing";
 import {
@@ -62,6 +58,8 @@ import {
   InsufficientCreditsError,
 } from "@/lib/services/credits";
 import { generationsService } from "@/lib/services/generations";
+import { inferenceRateLimitConfig } from "@/lib/services/inference-admission-snapshot";
+import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
 import { resolveInferenceAuthContext } from "@/lib/services/inference-auth-context";
 import { InferenceBalanceCacheWarmingError } from "@/lib/services/inference-billing-fast-path";
 import { isKnownUnacceptedProviderError } from "@/lib/services/inference-provider-outcome";
@@ -160,12 +158,6 @@ function retryableWarmingResponse(c: AppContext, area: string): Response {
 }
 
 const app = new Hono<AppEnv>();
-app.use(
-  "*",
-  rateLimit(RateLimitPresets.STANDARD, {
-    bindingName: "DASHBOARD_CHAT_ROUTE_RATE_LIMITER",
-  }),
-);
 
 app.post("/", async (c) => {
   let executionCtx: ExecutionContextLike | undefined;
@@ -209,6 +201,7 @@ app.post("/", async (c) => {
     > | null = null;
     let anonymousCredential: AnonymousChatGateCredential | null = null;
     let moderationAlreadyChecked = false;
+    let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
 
     if (executionCtx) {
       const authResolution = await resolveInferenceAuthContext(c.req.raw, {
@@ -247,6 +240,7 @@ app.post("/", async (c) => {
           ? { id: authResolution.ctx.apiKeyId }
           : undefined;
         moderationAlreadyChecked = true;
+        admissionSnapshot = authResolution.ctx.admission;
       } else {
         const anonymousResolution = await resolveAnonymousChatContext(
           c.req.raw,
@@ -321,6 +315,7 @@ app.post("/", async (c) => {
           {
             cacheOnly: Boolean(executionCtx),
             executionCtx,
+            config: inferenceRateLimitConfig(admissionSnapshot, "completions"),
           },
         );
       } catch (error) {
@@ -583,6 +578,7 @@ app.post("/", async (c) => {
           apiKeyId: apiKey?.id,
           affiliateCode,
           executionCtx,
+          admissionSnapshot,
         });
         settleReservation = admission.settle;
         settleUnknownReservation = admission.settleUnknown;

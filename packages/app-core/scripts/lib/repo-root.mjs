@@ -1,4 +1,8 @@
-/** Supports app-core build, packaging, or development orchestration for repo root mjs. */
+/**
+ * Resolves the repo root from a script's import.meta.url across the two
+ * supported layouts: the flat elizaOS monorepo and a consumer repo that vendors
+ * it as an eliza/ subrepo (where the outer root wins).
+ */
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

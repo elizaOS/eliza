@@ -7,13 +7,13 @@ import { ChatThreadLayout } from "./chat-thread-layout";
 
 const sampleMessages = (
   <div className="flex flex-col gap-3">
-    <div className="self-start max-w-[70%] rounded-2xl bg-muted px-4 py-2 text-sm">
+    <div className="self-start max-w-[70%] rounded-2xl bg-bg-muted px-4 py-2 text-sm">
       Hey, I pulled up the schedule — you are free after 3pm today.
     </div>
     <div className="self-end max-w-[70%] rounded-2xl bg-accent px-4 py-2 text-sm text-accent-foreground">
       Perfect, book the 3:30 slot then.
     </div>
-    <div className="self-start max-w-[70%] rounded-2xl bg-muted px-4 py-2 text-sm">
+    <div className="self-start max-w-[70%] rounded-2xl bg-bg-muted px-4 py-2 text-sm">
       Done. Calendar invite sent and the room is reserved.
     </div>
   </div>

@@ -1,3 +1,4 @@
+/** Verifies listOrAutoProvisionCloudAgent — no serial status probe before the agents list through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

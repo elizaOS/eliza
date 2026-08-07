@@ -1,8 +1,8 @@
 {
   "schema": "gpt55_harvest_manifest",
   "schemaVersion": 1,
-  "generatedAt": "2026-07-02T22:59:34.130Z",
-  "repoRoot": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline",
+  "generatedAt": "2026-08-02T16:23:27.984Z",
+  "repoRoot": "/Users/shawwalters/eliza-workspace/milady/eliza",
   "goal": "Run every elizaOS scenario+benchmark+e2e through gpt-5.5 (Codex subscription), harvest correct eliza_native_v1 trajectories, GEPA-repair failures, fine-tune on Nebius.",
   "provider": {
     "mechanism": "ELIZA_CHAT_VIA_CLI CLI-subscription backend (packages/core/src/testing/live-provider.ts selectCliProvider)",
@@ -59,31 +59,11 @@
       "providerSeam": "ELIZA_CHAT_VIA_CLI=codex → provider 'cli', model gpt-5.5, plugin @elizaos/plugin-cli-inference, reads ~/.codex/auth.json",
       "items": [
         {
-          "id": "packages__test__scenarios",
-          "dir": "packages/test/scenarios",
-          "scenarioFiles": 713,
-          "baseScenarios": 707,
-          "expandedScenarios": 7777,
-          "discover": {
-            "cmd": "bun",
-            "args": [
-              "--conditions",
-              "eliza-source",
-              "--tsconfig-override",
-              "<TSCONFIG>",
-              "packages/scenario-runner/src/cli.ts",
-              "list",
-              "packages/test/scenarios"
-            ],
-            "parse": "json-lines-scenario-ids"
-          }
-        },
-        {
           "id": "packages__scenario-runner__test__scenarios",
           "dir": "packages/scenario-runner/test/scenarios",
-          "scenarioFiles": 42,
-          "baseScenarios": 42,
-          "expandedScenarios": 420,
+          "scenarioFiles": 56,
+          "baseScenarios": 56,
+          "expandedScenarios": 616,
           "discover": {
             "cmd": "bun",
             "args": [
@@ -99,11 +79,11 @@
           }
         },
         {
-          "id": "plugins__plugin-personal-assistant__test__scenarios",
-          "dir": "plugins/plugin-personal-assistant/test/scenarios",
-          "scenarioFiles": 197,
-          "baseScenarios": 197,
-          "expandedScenarios": 2167,
+          "id": "packages__test__scenarios",
+          "dir": "packages/test/scenarios",
+          "scenarioFiles": 311,
+          "baseScenarios": 311,
+          "expandedScenarios": 3421,
           "discover": {
             "cmd": "bun",
             "args": [
@@ -113,7 +93,27 @@
               "<TSCONFIG>",
               "packages/scenario-runner/src/cli.ts",
               "list",
-              "plugins/plugin-personal-assistant/test/scenarios"
+              "packages/test/scenarios"
+            ],
+            "parse": "json-lines-scenario-ids"
+          }
+        },
+        {
+          "id": "plugins__plugin-agent-orchestrator__test__scenarios",
+          "dir": "plugins/plugin-agent-orchestrator/test/scenarios",
+          "scenarioFiles": 17,
+          "baseScenarios": 17,
+          "expandedScenarios": 187,
+          "discover": {
+            "cmd": "bun",
+            "args": [
+              "--conditions",
+              "eliza-source",
+              "--tsconfig-override",
+              "<TSCONFIG>",
+              "packages/scenario-runner/src/cli.ts",
+              "list",
+              "plugins/plugin-agent-orchestrator/test/scenarios"
             ],
             "parse": "json-lines-scenario-ids"
           }
@@ -121,9 +121,9 @@
         {
           "id": "plugins__plugin-app-control__test__scenarios",
           "dir": "plugins/plugin-app-control/test/scenarios",
-          "scenarioFiles": 15,
-          "baseScenarios": 15,
-          "expandedScenarios": 165,
+          "scenarioFiles": 23,
+          "baseScenarios": 23,
+          "expandedScenarios": 253,
           "discover": {
             "cmd": "bun",
             "args": [
@@ -139,31 +139,11 @@
           }
         },
         {
-          "id": "plugins__plugin-health__test__scenarios",
-          "dir": "plugins/plugin-health/test/scenarios",
-          "scenarioFiles": 8,
-          "baseScenarios": 8,
-          "expandedScenarios": 88,
-          "discover": {
-            "cmd": "bun",
-            "args": [
-              "--conditions",
-              "eliza-source",
-              "--tsconfig-override",
-              "<TSCONFIG>",
-              "packages/scenario-runner/src/cli.ts",
-              "list",
-              "plugins/plugin-health/test/scenarios"
-            ],
-            "parse": "json-lines-scenario-ids"
-          }
-        },
-        {
           "id": "plugins__plugin-cloud-apps__test__scenarios",
           "dir": "plugins/plugin-cloud-apps/test/scenarios",
-          "scenarioFiles": 1,
-          "baseScenarios": 1,
-          "expandedScenarios": 11,
+          "scenarioFiles": 2,
+          "baseScenarios": 2,
+          "expandedScenarios": 22,
           "discover": {
             "cmd": "bun",
             "args": [
@@ -179,11 +159,11 @@
           }
         },
         {
-          "id": "plugins__plugin-agent-orchestrator__test__scenarios",
-          "dir": "plugins/plugin-agent-orchestrator/test/scenarios",
-          "scenarioFiles": 8,
-          "baseScenarios": 8,
-          "expandedScenarios": 88,
+          "id": "plugins__plugin-commands__test__scenarios",
+          "dir": "plugins/plugin-commands/test/scenarios",
+          "scenarioFiles": 1,
+          "baseScenarios": 1,
+          "expandedScenarios": 11,
           "discover": {
             "cmd": "bun",
             "args": [
@@ -193,7 +173,227 @@
               "<TSCONFIG>",
               "packages/scenario-runner/src/cli.ts",
               "list",
-              "plugins/plugin-agent-orchestrator/test/scenarios"
+              "plugins/plugin-commands/test/scenarios"
+            ],
+            "parse": "json-lines-scenario-ids"
+          }
+        },
+        {
+          "id": "plugins__plugin-computeruse__test__scenarios",
+          "dir": "plugins/plugin-computeruse/test/scenarios",
+          "scenarioFiles": 1,
+          "baseScenarios": 1,
+          "expandedScenarios": 11,
+          "discover": {
+            "cmd": "bun",
+            "args": [
+              "--conditions",
+              "eliza-source",
+              "--tsconfig-override",
+              "<TSCONFIG>",
+              "packages/scenario-runner/src/cli.ts",
+              "list",
+              "plugins/plugin-computeruse/test/scenarios"
+            ],
+            "parse": "json-lines-scenario-ids"
+          }
+        },
+        {
+          "id": "plugins__plugin-elizacloud__test__scenarios",
+          "dir": "plugins/plugin-elizacloud/test/scenarios",
+          "scenarioFiles": 1,
+          "baseScenarios": 1,
+          "expandedScenarios": 11,
+          "discover": {
+            "cmd": "bun",
+            "args": [
+              "--conditions",
+              "eliza-source",
+              "--tsconfig-override",
+              "<TSCONFIG>",
+              "packages/scenario-runner/src/cli.ts",
+              "list",
+              "plugins/plugin-elizacloud/test/scenarios"
+            ],
+            "parse": "json-lines-scenario-ids"
+          }
+        },
+        {
+          "id": "plugins__plugin-finances__test__scenarios",
+          "dir": "plugins/plugin-finances/test/scenarios",
+          "scenarioFiles": 1,
+          "baseScenarios": 1,
+          "expandedScenarios": 11,
+          "discover": {
+            "cmd": "bun",
+            "args": [
+              "--conditions",
+              "eliza-source",
+              "--tsconfig-override",
+              "<TSCONFIG>",
+              "packages/scenario-runner/src/cli.ts",
+              "list",
+              "plugins/plugin-finances/test/scenarios"
+            ],
+            "parse": "json-lines-scenario-ids"
+          }
+        },
+        {
+          "id": "plugins__plugin-form__test__scenarios",
+          "dir": "plugins/plugin-form/test/scenarios",
+          "scenarioFiles": 1,
+          "baseScenarios": 1,
+          "expandedScenarios": 11,
+          "discover": {
+            "cmd": "bun",
+            "args": [
+              "--conditions",
+              "eliza-source",
+              "--tsconfig-override",
+              "<TSCONFIG>",
+              "packages/scenario-runner/src/cli.ts",
+              "list",
+              "plugins/plugin-form/test/scenarios"
+            ],
+            "parse": "json-lines-scenario-ids"
+          }
+        },
+        {
+          "id": "plugins__plugin-health__test__scenarios",
+          "dir": "plugins/plugin-health/test/scenarios",
+          "scenarioFiles": 9,
+          "baseScenarios": 9,
+          "expandedScenarios": 99,
+          "discover": {
+            "cmd": "bun",
+            "args": [
+              "--conditions",
+              "eliza-source",
+              "--tsconfig-override",
+              "<TSCONFIG>",
+              "packages/scenario-runner/src/cli.ts",
+              "list",
+              "plugins/plugin-health/test/scenarios"
+            ],
+            "parse": "json-lines-scenario-ids"
+          }
+        },
+        {
+          "id": "plugins__plugin-inbox__test__scenarios",
+          "dir": "plugins/plugin-inbox/test/scenarios",
+          "scenarioFiles": 1,
+          "baseScenarios": 1,
+          "expandedScenarios": 11,
+          "discover": {
+            "cmd": "bun",
+            "args": [
+              "--conditions",
+              "eliza-source",
+              "--tsconfig-override",
+              "<TSCONFIG>",
+              "packages/scenario-runner/src/cli.ts",
+              "list",
+              "plugins/plugin-inbox/test/scenarios"
+            ],
+            "parse": "json-lines-scenario-ids"
+          }
+        },
+        {
+          "id": "plugins__plugin-local-inference__test__scenarios",
+          "dir": "plugins/plugin-local-inference/test/scenarios",
+          "scenarioFiles": 2,
+          "baseScenarios": 2,
+          "expandedScenarios": 22,
+          "discover": {
+            "cmd": "bun",
+            "args": [
+              "--conditions",
+              "eliza-source",
+              "--tsconfig-override",
+              "<TSCONFIG>",
+              "packages/scenario-runner/src/cli.ts",
+              "list",
+              "plugins/plugin-local-inference/test/scenarios"
+            ],
+            "parse": "json-lines-scenario-ids"
+          }
+        },
+        {
+          "id": "plugins__plugin-meetings__test__scenarios",
+          "dir": "plugins/plugin-meetings/test/scenarios",
+          "scenarioFiles": 6,
+          "baseScenarios": 6,
+          "expandedScenarios": 66,
+          "discover": {
+            "cmd": "bun",
+            "args": [
+              "--conditions",
+              "eliza-source",
+              "--tsconfig-override",
+              "<TSCONFIG>",
+              "packages/scenario-runner/src/cli.ts",
+              "list",
+              "plugins/plugin-meetings/test/scenarios"
+            ],
+            "parse": "json-lines-scenario-ids"
+          }
+        },
+        {
+          "id": "plugins__plugin-personal-assistant__test__scenarios",
+          "dir": "plugins/plugin-personal-assistant/test/scenarios",
+          "scenarioFiles": 765,
+          "baseScenarios": 765,
+          "expandedScenarios": 8415,
+          "discover": {
+            "cmd": "bun",
+            "args": [
+              "--conditions",
+              "eliza-source",
+              "--tsconfig-override",
+              "<TSCONFIG>",
+              "packages/scenario-runner/src/cli.ts",
+              "list",
+              "plugins/plugin-personal-assistant/test/scenarios"
+            ],
+            "parse": "json-lines-scenario-ids"
+          }
+        },
+        {
+          "id": "plugins__plugin-relationships__test__scenarios",
+          "dir": "plugins/plugin-relationships/test/scenarios",
+          "scenarioFiles": 1,
+          "baseScenarios": 1,
+          "expandedScenarios": 11,
+          "discover": {
+            "cmd": "bun",
+            "args": [
+              "--conditions",
+              "eliza-source",
+              "--tsconfig-override",
+              "<TSCONFIG>",
+              "packages/scenario-runner/src/cli.ts",
+              "list",
+              "plugins/plugin-relationships/test/scenarios"
+            ],
+            "parse": "json-lines-scenario-ids"
+          }
+        },
+        {
+          "id": "plugins__plugin-telegram__test__scenarios",
+          "dir": "plugins/plugin-telegram/test/scenarios",
+          "scenarioFiles": 3,
+          "baseScenarios": 3,
+          "expandedScenarios": 33,
+          "discover": {
+            "cmd": "bun",
+            "args": [
+              "--conditions",
+              "eliza-source",
+              "--tsconfig-override",
+              "<TSCONFIG>",
+              "packages/scenario-runner/src/cli.ts",
+              "list",
+              "plugins/plugin-telegram/test/scenarios"
             ],
             "parse": "json-lines-scenario-ids"
           }
@@ -202,277 +402,9 @@
     },
     "benchmark": {
       "kind": "benchmark",
-      "emitsTrajectory": "wiring-needed",
-      "trajectoryFormat": "eliza_native_v1 (after wiring)",
-      "source": "packages/benchmarks/registry/commands.py",
-      "listCommand": "python3 -m benchmarks.orchestrator list-benchmarks (cwd=packages)",
-      "runInvocationTemplate": "python3 -m benchmarks.orchestrator run --benchmarks <ID> --provider cli --model gpt-5.5 (cwd=packages)",
-      "resultLands": "packages/benchmarks/benchmark_results/** (per-benchmark JSON; locate_result() in registry/commands.py). GITIGNORED.",
-      "trajectoryWiring": "The ~25 eliza-adapter-routed benchmarks boot a real AgentRuntime (serves /api/benchmark/message). Set ELIZA_SAVE_TRAJECTORIES=1 + ELIZA_TRAJECTORY_DIR=<dir> on the adapter runtime, then run packages/scenario-runner native-export over <dir> to convert RecordedTrajectory JSON → eliza_native_v1. Non-eliza-adapter benchmarks (standard/*, python-only) do NOT boot the runtime and cannot emit native trajectories.",
-      "providerSeam": "orchestrator --provider cli maps to ELIZA_CHAT_VIA_CLI=codex for eliza-adapter benchmarks; verify per-adapter provider plumbing before Stage 2.",
-      "adapterCount": 53,
-      "adapters": [
-        {
-          "id": "abliteration-robustness",
-          "dir": "abliteration-robustness",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
-        },
-        {
-          "id": "action-calling",
-          "dir": "action-calling",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
-        },
-        {
-          "id": "adhdbench",
-          "dir": "adhdbench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/adhdbench"
-        },
-        {
-          "id": "agentbench",
-          "dir": "agentbench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/agentbench"
-        },
-        {
-          "id": "app-eval",
-          "dir": "app-eval",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/app-eval"
-        },
-        {
-          "id": "bfcl",
-          "dir": "bfcl",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
-        },
-        {
-          "id": "clawbench",
-          "dir": "clawbench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/clawbench"
-        },
-        {
-          "id": "configbench",
-          "dir": "configbench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/configbench"
-        },
-        {
-          "id": "context_bench",
-          "dir": "context-bench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
-        },
-        {
-          "id": "eliza_1",
-          "dir": "eliza-1",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/eliza-1"
-        },
-        {
-          "id": "eliza_replay",
-          "dir": "eliza-adapter",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/eliza-adapter"
-        },
-        {
-          "id": "experience",
-          "dir": "experience",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/experience"
-        },
-        {
-          "id": "framework",
-          "dir": "framework",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
-        },
-        {
-          "id": "gauntlet",
-          "dir": "gauntlet",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/gauntlet"
-        },
-        {
-          "id": "gsm8k",
-          "dir": "standard",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
-        },
-        {
-          "id": "hermes_swe_env",
-          "dir": "hermes-adapter",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/hermes-adapter"
-        },
-        {
-          "id": "hermes_tblite",
-          "dir": "hermes-adapter",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/hermes-adapter"
-        },
-        {
-          "id": "hermes_terminalbench_2",
-          "dir": "hermes-adapter",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/hermes-adapter"
-        },
-        {
-          "id": "hermes_yc_bench",
-          "dir": "hermes-adapter",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/hermes-adapter"
-        },
-        {
-          "id": "humaneval",
-          "dir": "standard",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
-        },
-        {
-          "id": "hyperliquid_bench",
-          "dir": "HyperliquidBench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
-        },
-        {
-          "id": "interrupt_bench",
-          "dir": "interrupt-bench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/interrupt-bench"
-        },
-        {
-          "id": "lifeops_bench",
-          "dir": "lifeops-bench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/lifeops-bench"
-        },
-        {
-          "id": "mind2web",
-          "dir": "mind2web",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
-        },
-        {
-          "id": "mint",
-          "dir": "mint",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
-        },
-        {
-          "id": "mmau",
-          "dir": "mmau-audio",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/mmau-audio"
-        },
-        {
-          "id": "mmlu",
-          "dir": "standard",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
-        },
-        {
-          "id": "mt_bench",
-          "dir": "standard",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
-        },
-        {
-          "id": "openclaw_bench",
-          "dir": "openclaw-benchmark",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/openclaw-benchmark"
-        },
-        {
-          "id": "orchestrator_lifecycle",
-          "dir": "orchestrator_lifecycle",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
-        },
-        {
-          "id": "osworld",
-          "dir": "OSWorld",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/OSWorld"
-        },
-        {
-          "id": "personality_bench",
-          "dir": "personality-bench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/personality-bench"
-        },
-        {
-          "id": "realm",
-          "dir": "realm",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
-        },
-        {
-          "id": "recall_bench",
-          "dir": "recall-bench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/recall-bench"
-        },
-        {
-          "id": "rlm_bench",
-          "dir": "rlm-bench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/rlm-bench"
-        },
-        {
-          "id": "scambench",
-          "dir": "scambench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
-        },
-        {
-          "id": "solana",
-          "dir": "solana",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
-        },
-        {
-          "id": "swe_bench",
-          "dir": "swe_bench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
-        },
-        {
-          "id": "swe_bench_orchestrated",
-          "dir": "swe_bench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
-        },
-        {
-          "id": "tau_bench",
-          "dir": "tau-bench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/tau-bench"
-        },
-        {
-          "id": "terminal_bench",
-          "dir": "terminal-bench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/terminal-bench"
-        },
-        {
-          "id": "three_agent_dialogue",
-          "dir": "three-agent-dialogue",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/three-agent-dialogue"
-        },
-        {
-          "id": "trajectory_replay",
-          "dir": "standard",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
-        },
-        {
-          "id": "trust",
-          "dir": "trust",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/trust"
-        },
-        {
-          "id": "vending_bench",
-          "dir": "vending-bench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/vending-bench"
-        },
-        {
-          "id": "vision_language",
-          "dir": "vision-language",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/vision-language"
-        },
-        {
-          "id": "visualwebbench",
-          "dir": "visualwebbench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
-        },
-        {
-          "id": "voiceagentbench",
-          "dir": "voiceagentbench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/voiceagentbench"
-        },
-        {
-          "id": "voicebench",
-          "dir": "voicebench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/voicebench"
-        },
-        {
-          "id": "voicebench_quality",
-          "dir": "voicebench-quality",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/voicebench-quality"
-        },
-        {
-          "id": "webshop",
-          "dir": "webshop",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/webshop"
-        },
-        {
-          "id": "woobench",
-          "dir": "woobench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
-        }
-      ]
+      "movedTo": "https://github.com/elizaOS/benchmarks",
+      "adapterCount": 0,
+      "adapters": []
     },
     "e2e": {
       "kind": "e2e",
@@ -481,13 +413,15 @@
       "runInvocationTemplate": "ELIZA_SAVE_TRAJECTORIES=1 ELIZA_TRAJECTORY_DIR=<dir> bun --conditions eliza-source vitest run <testFile>",
       "trajectoryWiring": "These vitest lanes drive a real AgentRuntime via createScenarioRuntime/real-runtime helpers. The runtime's JsonFileTrajectoryRecorder writes RecordedTrajectory JSON when ELIZA_SAVE_TRAJECTORIES=1 + ELIZA_TRAJECTORY_DIR are set. Convert with scenario-runner native-export. Verdict = vitest pass/fail per file (coarser than per-scenario).",
       "providerSeam": "Same ELIZA_CHAT_VIA_CLI=codex seam; the live-provider helper (packages/app-core/test/helpers/live-provider.ts) already recognizes CLI backends.",
-      "liveLaneCount": 51,
+      "liveLaneCount": 52,
       "lanes": [
+        "packages/app-core/test/app/chat-streaming-telemetry.real.e2e.test.ts",
         "packages/app-core/test/app/memory-relationships.real.e2e.test.ts",
         "packages/app-core/test/app/qa-checklist.real.e2e.test.ts",
         "packages/app-core/test/app/streaming-visible-text.live.e2e.test.ts",
         "packages/app-core/test/live-agent/action-invocation.live.e2e.test.ts",
         "packages/app-core/test/live-agent/agent-runtime.live.e2e.test.ts",
+        "packages/app-core/test/live-agent/auth-pairing-remote-connect.real.e2e.test.ts",
         "packages/app-core/test/live-agent/cloud-auth.live.e2e.test.ts",
         "packages/app-core/test/live-agent/cloud-login-persist.real.e2e.test.ts",
         "packages/app-core/test/live-agent/cloud-providers.live.e2e.test.ts",
@@ -508,6 +442,7 @@
         "packages/app-core/test/live-agent/plugin-lifecycle.live.e2e.test.ts",
         "packages/app-core/test/live-agent/real-runtime-helpers.live.e2e.test.ts",
         "packages/app-core/test/live-agent/runtime-debug.live.e2e.test.ts",
+        "packages/app-core/test/live-agent/settings-shell-toggle.live.e2e.test.ts",
         "packages/app-core/test/live-agent/telegram-connector.live.e2e.test.ts",
         "packages/app-core/test/live-agent/views-interact-ws-roundtrip.real.e2e.test.ts",
         "packages/app-core/test/live-agent/views-routes.real.e2e.test.ts",
@@ -528,11 +463,9 @@
         "plugins/plugin-personal-assistant/test/selfcontrol-chat.live.e2e.test.ts",
         "plugins/plugin-personal-assistant/test/selfcontrol-desktop.live.e2e.test.ts",
         "plugins/plugin-personal-assistant/test/selfcontrol-dev.live.e2e.test.ts",
-        "plugins/plugin-shopify/test/shopify-api.real.e2e.test.ts",
         "plugins/plugin-sql/src/__tests__/integration/pglite-e2e.real.e2e.test.ts",
         "plugins/plugin-task-coordinator/test/coding-agent-codex-artifact.live.e2e.test.ts",
         "plugins/plugin-task-coordinator/test/orchestrator-workbench.live.e2e.test.ts",
-        "plugins/plugin-training/test/training-api.live.e2e.test.ts",
         "plugins/plugin-vision/test/vision.real.e2e.test.ts"
       ],
       "scriptedRealServices": [

@@ -98,6 +98,7 @@ export class BatchQueue<T> {
 	private readonly priorityQueue: PriorityQueue<T>;
 	private readonly batchProcessor: BatchProcessor<T>;
 	private taskDrain: TaskDrain | null = null;
+	private runtime?: IAgentRuntime;
 	private isDraining = false;
 	private disposed = false;
 	private readonly batchSize: number;
@@ -150,7 +151,13 @@ export class BatchQueue<T> {
 			if (this.options.processBatch) {
 				try {
 					outcomes = await this.options.processBatch(batch);
-				} catch {
+				} catch (error) {
+					// error-policy:J4 A batch-wide provider failure degrades to
+					// the per-item retry path and remains observable.
+					this.runtime?.reportError("BatchQueue.processBatch", error, {
+						queue: this.options.name,
+						batchSize: batch.length,
+					});
 					outcomes = await this.batchProcessor.processBatch(batch);
 				}
 			} else {
@@ -158,7 +165,11 @@ export class BatchQueue<T> {
 			}
 			try {
 				this.options.onDrainBatchOutcomes?.(outcomes);
-			} catch {
+			} catch (error) {
+				// error-policy:J7 Outcome hooks observe an already completed batch.
+				this.runtime?.reportError("BatchQueue.outcomeHook", error, {
+					queue: this.options.name,
+				});
 				// Keep hook failures from failing a completed batch
 			}
 			const durationMs = Date.now() - started;
@@ -168,7 +179,11 @@ export class BatchQueue<T> {
 					remaining: this.priorityQueue.size,
 					durationMs,
 				});
-			} catch {
+			} catch (error) {
+				// error-policy:J7 Completion hooks observe an already completed batch.
+				this.runtime?.reportError("BatchQueue.completionHook", error, {
+					queue: this.options.name,
+				});
 				// Keep hook failures from failing a completed batch
 			}
 		} finally {
@@ -186,6 +201,7 @@ export class BatchQueue<T> {
 		if (this.taskDrain) {
 			return;
 		}
+		this.runtime = runtime;
 		const skip = this.options.skipRegisterWorker ?? false;
 		this.taskDrain = new TaskDrain(
 			{
@@ -239,8 +255,12 @@ export class BatchQueue<T> {
 					for (const item of high) {
 						try {
 							await this.options.process(item);
-						} catch {
-							/* best effort on shutdown */
+						} catch (error) {
+							// error-policy:J6 High-priority shutdown flush is
+							// best-effort after normal draining has stopped.
+							runtime.reportError("BatchQueue.shutdownFlush", error, {
+								queue: this.options.name,
+							});
 						}
 					}
 				}

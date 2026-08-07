@@ -1,3 +1,4 @@
+/** Verifies useJobPoller — sleep-wake / backgrounding lifecycle (#9943) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 import { act, renderHook } from "@testing-library/react";

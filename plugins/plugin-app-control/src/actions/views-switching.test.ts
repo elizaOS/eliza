@@ -41,6 +41,7 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 	return {
 		...coreMock,
 		getUserMessageText: actual.getUserMessageText,
+		unwrapUserMessageText: actual.unwrapUserMessageText,
 	};
 });
 
@@ -189,7 +190,7 @@ const REGISTRY: ViewSummary[] = [
 		label: "Wallet",
 		description: "Non-custodial wallet inventory and token balances",
 		path: "/wallet",
-		pluginName: "@elizaos/plugin-wallet-ui",
+		pluginName: "@elizaos/plugin-wallet:ui",
 		available: true,
 		viewType: "gui",
 		tags: ["finance", "crypto", "wallet"],
@@ -207,6 +208,31 @@ const REGISTRY: ViewSummary[] = [
 		tags: ["calendar", "schedule", "events"],
 		visibleInManager: true,
 	},
+];
+
+const SIMPLE_CALENDAR_VIEW: ViewSummary = {
+	id: "simple-calendar",
+	label: "Calendar",
+	description:
+		"A durable Cloud calendar for agent-driven events and view switching.",
+	path: "/simple-calendar",
+	pluginName: "@elizaos/plugin-simple-views",
+	available: true,
+	viewType: "gui",
+	tags: [
+		"calendar",
+		"calender",
+		"simple calendar",
+		"events",
+		"schedule",
+		"view switching",
+	],
+	visibleInManager: true,
+};
+
+const REGISTRY_WITH_SIMPLE_CALENDAR: ViewSummary[] = [
+	...REGISTRY,
+	SIMPLE_CALENDAR_VIEW,
 ];
 
 function clientFor(views: ViewSummary[]): ViewsClient {
@@ -407,6 +433,73 @@ describe("view switching — VIEWS action resolver", () => {
 		});
 	});
 
+	describe("semantic Calendar preference", () => {
+		it.each([
+			{ phrase: "open calendar", kind: "explicit English command" },
+			{ phrase: "what's on my calendar", kind: "passive English intent" },
+			{ phrase: "muéstrame mi calendario", kind: "multilingual command" },
+		])(
+			"opens Simple Calendar for a $kind when both Calendar views are registered",
+			async ({ phrase }) => {
+				const { navigated } = installNavigateCapture();
+				const { result } = await runShow(REGISTRY_WITH_SIMPLE_CALENDAR, phrase);
+
+				expect(result).toMatchObject({
+					success: true,
+					text: "Opened Calendar.",
+					values: {
+						viewId: "simple-calendar",
+						label: "Calendar",
+					},
+				});
+				expect(navigated).toEqual(["simple-calendar"]);
+			},
+		);
+
+		it("falls back to the connected Calendar when Simple Calendar is absent", async () => {
+			const { navigated } = installNavigateCapture();
+			const { result } = await runShow(REGISTRY, "open calendar");
+
+			expect(result).toMatchObject({
+				success: true,
+				values: { viewId: "calendar", label: "Calendar" },
+			});
+			expect(navigated).toEqual(["calendar"]);
+		});
+
+		it("falls back to the connected Calendar when Simple Calendar is unavailable", async () => {
+			const { navigated } = installNavigateCapture();
+			const unavailableRegistry = [
+				...REGISTRY,
+				{ ...SIMPLE_CALENDAR_VIEW, available: false },
+			];
+			const { result } = await runShow(
+				unavailableRegistry,
+				"muéstrame mi calendario",
+			);
+
+			expect(result).toMatchObject({
+				success: true,
+				values: { viewId: "calendar", label: "Calendar" },
+			});
+			expect(navigated).toEqual(["calendar"]);
+		});
+
+		it("keeps the connected Calendar addressable by exact id", async () => {
+			const { navigated } = installNavigateCapture();
+			const { result } = await runShow(REGISTRY_WITH_SIMPLE_CALENDAR, "do it", {
+				action: "show",
+				view: "calendar",
+			});
+
+			expect(result).toMatchObject({
+				success: true,
+				values: { viewId: "calendar", label: "Calendar" },
+			});
+			expect(navigated).toEqual(["calendar"]);
+		});
+	});
+
 	describe("PASSIVE intent routing — intent-only phrases (planner supplies view id)", () => {
 		// In production the LLM planner selects VIEWS action=show with a view id
 		// for intent-only utterances. We assert the resolver honors that id end to
@@ -527,7 +620,7 @@ describe("view switching — VIEWS action resolver", () => {
 					label: "Notes",
 					description: "Simple notes",
 					path: "/notes",
-					pluginName: "@elizaos/plugin-shopify",
+					pluginName: "@elizaos/plugin-notes",
 					available: true,
 					viewType: "gui",
 					tags: ["notes"],
@@ -998,7 +1091,7 @@ describe("view switching — VIEWS action resolver", () => {
 						roomId: "room-1",
 						viewId: "wallet",
 						viewLabel: "Wallet",
-						pluginName: "plugin-wallet-ui",
+						pluginName: "plugin-wallet:ui",
 					},
 				},
 			];

@@ -59,7 +59,7 @@ function healthDotClass(health: string): string {
       return "bg-yellow-500";
     default:
       // needs-reauth / invalid / unknown
-      return "bg-[#EB4335]";
+      return "bg-danger";
   }
 }
 
@@ -153,7 +153,7 @@ export function CredentialsList({
                   </span>
                 </div>
                 {credential.healthDetail?.lastError && (
-                  <p className="text-xs font-mono text-[#EB4335] break-all">
+                  <p className="text-xs font-mono text-danger break-all">
                     {credential.healthDetail.lastError}
                   </p>
                 )}
@@ -223,7 +223,7 @@ export function CredentialsList({
                         })}
                         className="p-2 hover:bg-surface transition-colors border border-border"
                       >
-                        <Trash2 className="h-4 w-4 text-[#EB4335]" />
+                        <Trash2 className="h-4 w-4 text-danger" />
                       </Button>
                     </AlertDialogTrigger>
                     <AlertDialogContent className="bg-popover border border-brand-surface">
@@ -249,7 +249,7 @@ export function CredentialsList({
                         </AlertDialogCancel>
                         <AlertDialogAction
                           onClick={() => onRemove(credential.id)}
-                          className="bg-[#EB4335] hover:bg-[#EB4335]/90 text-white"
+                          className="bg-danger hover:bg-danger/90 text-danger-fg"
                         >
                           {t("cloud.credentialsList.remove", {
                             defaultValue: "Remove",

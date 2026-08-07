@@ -199,7 +199,6 @@ describe("generate-music — MiniMax duration contract", () => {
       prompt: "city pop verification",
       durationSeconds: 10,
     });
-
     expect(res.status).toBe(400);
     expect(calculateMusicGenerationCostFromCatalog).not.toHaveBeenCalled();
     expect(reserve).not.toHaveBeenCalled();

@@ -367,6 +367,71 @@ function createViewShortcutMessageService(): NonNullable<
   } satisfies NonNullable<AgentRuntime["messageService"]>;
 }
 
+function createVisibleCallbackWithInternalReceiptMessageService(): NonNullable<
+  AgentRuntime["messageService"]
+> {
+  const text = "Opened Notes.";
+  return {
+    async handleMessage(_runtime, _message, callback) {
+      await callback?.({ text }, "VIEWS");
+      return {
+        didRespond: true,
+        responseContent: { text, transcriptVisibility: "internal" as const },
+        responseMessages: [],
+        mode: "actions" as const,
+        actionResults: [
+          {
+            success: true,
+            text,
+            transcriptVisibility: "internal" as const,
+            data: { actionName: "VIEWS" },
+          },
+        ],
+      };
+    },
+    shouldRespond: () => ({
+      shouldRespond: true,
+      skipEvaluation: true,
+      reason: "visible-callback-internal-receipt-stream-contract-test",
+    }),
+    deleteMessage: async () => undefined,
+    clearChannel: async () => undefined,
+  } satisfies NonNullable<AgentRuntime["messageService"]>;
+}
+
+function createFailedCallbackWithoutSyntheticFallbackMessageService(): NonNullable<
+  AgentRuntime["messageService"]
+> {
+  const text =
+    "I couldn't find a view called \"home\". You can try listing the available views to see what's there.";
+  return {
+    async handleMessage(_runtime, _message, callback) {
+      await callback?.({ text }, "VIEWS");
+      return {
+        didRespond: true,
+        responseContent: null,
+        responseMessages: [],
+        mode: "none" as const,
+        actionResults: [
+          {
+            success: false,
+            text,
+            userFacingText: text,
+            data: { actionName: "VIEWS" },
+          },
+        ],
+      };
+    },
+    shouldRespond: () => ({
+      shouldRespond: true,
+      skipEvaluation: true,
+      reason: "failed-callback-without-synthetic-fallback-stream-contract-test",
+    }),
+    deleteMessage: async () => undefined,
+    clearChannel: async () => undefined,
+  } satisfies NonNullable<AgentRuntime["messageService"]>;
+}
+
 function createPersistedCallbackMessageService(
   messageId: UUID,
 ): NonNullable<AgentRuntime["messageService"]> {
@@ -1023,6 +1088,97 @@ describe("conversation stream SSE contract (#10712)", () => {
         },
       ],
     });
+  });
+
+  it("streams one visible callback when the matching action receipt is internal", async () => {
+    requestStreamProtocol = "delta-v2";
+    const { ctx, record, state } = createCtx(
+      createVisibleCallbackWithInternalReceiptMessageService(),
+    );
+    const runtime = state.runtime;
+    if (!runtime) throw new Error("runtime fixture missing");
+    runtime.updateMemory = vi.fn(async () => true);
+    vi.mocked(runtime.getMemoriesByIds).mockImplementation(async (ids) =>
+      ids.map((id) => ({
+        id,
+        entityId: AGENT_ID,
+        agentId: AGENT_ID,
+        roomId: ROOM_ID,
+        content: { text: "Opened Notes." },
+        createdAt: Date.now(),
+      })),
+    );
+
+    await handleConversationRoutes(ctx);
+
+    const payloads = parseSsePayloads(record.writes);
+    expect(payloads.filter((payload) => payload.type === "token")).toEqual([
+      {
+        type: "token",
+        fullText: "Opened Notes.",
+      },
+    ]);
+    const done = payloads.find((payload) => payload.type === "done");
+    expect(done).toMatchObject({
+      type: "done",
+      fullText: "Opened Notes.",
+      historyRefreshRequired: true,
+      actionResults: [
+        {
+          actionName: "VIEWS",
+          success: true,
+          text: "Opened Notes.",
+        },
+      ],
+    });
+    expect(done).not.toHaveProperty("transcriptVisibility");
+  });
+
+  it("keeps a failed action callback authoritative through done and persistence", async () => {
+    requestStreamProtocol = "delta-v2";
+    const expectedFailure =
+      "I couldn't find a view called \"home\". You can try listing the available views to see what's there.";
+    const { ctx, record } = createCtx(
+      createFailedCallbackWithoutSyntheticFallbackMessageService(),
+    );
+    vi.mocked(persistAssistantConversationMemory).mockClear();
+
+    await handleConversationRoutes(ctx);
+
+    const payloads = parseSsePayloads(record.writes);
+    expect(payloads.filter((payload) => payload.type === "token")).toEqual([
+      {
+        type: "token",
+        fullText: expectedFailure,
+      },
+    ]);
+    expect(payloads.some((payload) => payload.type === "error")).toBe(false);
+    expect(JSON.stringify(payloads)).not.toContain("sorry, i hit a snag");
+    expect(JSON.stringify(payloads)).not.toContain(
+      "I tried to complete that, but the available runtime step failed before it produced a usable result.",
+    );
+
+    const done = payloads.find((payload) => payload.type === "done");
+    expect(done).toMatchObject({
+      type: "done",
+      fullText: expectedFailure,
+      actionResults: [
+        {
+          actionName: "VIEWS",
+          success: false,
+          text: expectedFailure,
+        },
+      ],
+    });
+    expect(persistAssistantConversationMemory).toHaveBeenCalledTimes(1);
+    expect(persistAssistantConversationMemory).toHaveBeenCalledWith(
+      expect.anything(),
+      ROOM_ID,
+      expect.objectContaining({ text: expectedFailure }),
+      ChannelType.DM,
+      expect.any(Number),
+      expect.any(String),
+    );
   });
 
   it("uses this turn's exact persisted response id instead of a room-latest guess", async () => {

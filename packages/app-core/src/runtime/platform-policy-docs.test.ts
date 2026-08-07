@@ -24,7 +24,6 @@ describe("platform policy docs", () => {
       "packages/app-core/scripts/run-mobile-build.mjs",
     );
 
-    expect(sandboxDoc).toContain("@elizaos/plugin-shell");
     expect(sandboxDoc).toContain("@elizaos/plugin-coding-tools");
     expect(sandboxDoc).toContain("agent-orchestrator");
 

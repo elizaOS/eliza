@@ -45,6 +45,19 @@ await buildPlugin({
         ["index.js.map", "index.mjs.map"],
       ],
     },
+    // Renderer UI surface
+    // the `/ui` barrel and the boot-time `register` side-effect entry. Browser
+    // target so React/JSX sources bundle for the shell; the standalone view
+    // bundle (dist/views/bundle.js) is built separately by vite.config.views.ts.
+    {
+      label: "Browser UI",
+      entry: ["src/ui.ts", "src/register.ts"],
+      outSubdir: "",
+      target: "browser",
+      format: "esm",
+      sourcemap: "external",
+      naming: { entry: "[dir]/[name].[ext]" },
+    },
   ],
   dtsProject: "tsconfig.build.json",
   dtsEmitDeclarationOnly: true,

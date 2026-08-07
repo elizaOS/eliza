@@ -30,7 +30,6 @@ const localPackages = [
   // "Cannot find package '@elizaos/core'". Listed first so they link before
   // any per-package side effects (e.g. the app-core argon2/jose linking).
   "eliza/packages/core",
-  "eliza/packages/contracts",
   "eliza/packages/cloud/routing",
   // @elizaos/app-core's registry/index.ts eagerly re-exports
   // `@elizaos/registry/first-party` (#9190 moved the curated app/plugin/connector
@@ -38,22 +37,14 @@ const localPackages = [
   // boot crashes with "Cannot find package '@elizaos/registry' imported from
   // .../app-core/dist/registry/index.js". Foundational, so listed up here.
   "eliza/packages/registry",
-  // Compatibility package for remote workers that still import
-  // @elizaos/plugin-worker-runtime. Keep it linked so those historical imports
-  // resolve inside local Docker app packages.
-  "eliza/packages/plugin-worker-runtime",
   "eliza/plugins/plugin-documents",
   "eliza/plugins/plugin-personal-assistant",
   "eliza/plugins/plugin-task-coordinator",
-  "eliza/plugins/plugin-training",
-  "eliza/plugins/plugin-edge-tts",
   "eliza/plugins/plugin-agent-orchestrator",
   "eliza/plugins/plugin-app-control",
   "eliza/plugins/plugin-commands",
-  "eliza/packages/plugin-remote-manifest",
   "eliza/packages/auth",
   "eliza/packages/logger",
-  "eliza/packages/security",
   "eliza/packages/app-core",
   "eliza/packages/cloud/sdk",
   "eliza/packages/shared",
@@ -74,8 +65,7 @@ const localPackages = [
   "eliza/plugins/plugin-pdf",
   "eliza/plugins/plugin-registry",
   "eliza/plugins/plugin-signal",
-  "eliza/plugins/plugin-simple-views",
-  "eliza/plugins/plugin-streaming",
+  "eliza/plugins/plugin-notes",
   "eliza/plugins/plugin-native-activity-tracker",
   "eliza/plugins/plugin-sql",
   "eliza/plugins/plugin-telegram",
@@ -83,7 +73,6 @@ const localPackages = [
   "eliza/plugins/plugin-wallet",
   "eliza/plugins/plugin-whatsapp",
   "eliza/plugins/plugin-workflow",
-  "eliza/plugins/plugin-x402",
 ];
 
 function resolveSourceExportPath(packageDir, exportPath) {

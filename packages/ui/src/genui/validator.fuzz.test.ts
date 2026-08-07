@@ -1,3 +1,4 @@
+/** Verifies validateElizaGenUiSpec - fuzz through the package's configured test harness. */
 // Fuzz / hardening pass for the generated-UI spec validator. This is the
 // boundary that accepts agent-authored (untrusted) UI specs, so the invariant
 // under arbitrary input is: validateElizaGenUiSpec NEVER throws and always

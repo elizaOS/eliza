@@ -26,6 +26,7 @@ function mockRuntime(
 	fetchImpl?: (input: unknown) => Promise<unknown>,
 ): IAgentRuntime {
 	return {
+		reportError: vi.fn(),
 		logger: {
 			debug: vi.fn(),
 			warn: vi.fn(),

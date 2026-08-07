@@ -1,3 +1,4 @@
+/** Verifies shell assistant end-to-end flow through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // End-to-end open→send→close flow across the shell trio (HomePill +

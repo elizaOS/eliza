@@ -53,6 +53,7 @@ describe("BUILTIN_VIEWS categorization", () => {
   it("sorts every built-in view into the curated system/developer/preview IA", () => {
     const byId = new Map(BUILTIN_VIEWS.map((v) => [v.id, resolveViewKind(v)]));
     expect(byId.get("chat")).toBe("system");
+    expect(byId.get("browser")).toBe("system");
     expect(byId.get("settings")).toBe("system");
     expect(byId.get("character")).toBe("system");
     expect(byId.get("documents")).toBe("system");
@@ -73,6 +74,15 @@ describe("BUILTIN_VIEWS categorization", () => {
         resolveViewKind(v),
       );
     }
+  });
+
+  it("keeps the Browser route agent-routable without expanding the manager roster", () => {
+    const browser = BUILTIN_VIEWS.find((view) => view.id === "browser");
+    expect(browser).toMatchObject({
+      path: "/browser",
+      relatedActions: ["BROWSER"],
+      visibleInManager: false,
+    });
   });
 
   it("tags every built-in view explicitly — no view relies on the implicit default", () => {

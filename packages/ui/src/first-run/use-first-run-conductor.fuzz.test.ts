@@ -1,3 +1,4 @@
+/** Verifies first-run conductor fuzz storms through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

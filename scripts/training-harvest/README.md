@@ -33,14 +33,11 @@ never hard-coded. Precedence: `--provider-env <s1.json>` → `$HARVEST_PROVIDER_
   Emits `eliza_native_v1` **natively** via `--export-native`. Verdict per
   scenario id (`report.scenarios[].status`, mirrored to `native row.scenarioStatus`).
   978 base scenario ids across 7 dirs (~10,716 with persona expansion).
-- **benchmark** — `packages/benchmarks` orchestrator, 53 adapters. Emits
-  per-benchmark result JSON today. Native trajectories require wiring: the ~25
-  `eliza-adapter`-routed benchmarks boot a real runtime; set
-  `ELIZA_SAVE_TRAJECTORIES=1 ELIZA_TRAJECTORY_DIR=<dir>` then convert `<dir>`
-  with scenario-runner `native-export`. Python-only/`standard/*` benchmarks
-  don't boot the runtime and can't emit native trajectories.
+- **benchmark** — moved to the standalone
+  [elizaOS/benchmarks](https://github.com/elizaOS/benchmarks) repo; harvest
+  benchmark trajectories from there.
 - **e2e** — 51 `*.live.e2e.test.ts` / `*.real.e2e.test.ts` vitest lanes that
-  drive a real runtime. Same trajectory wiring as benchmarks; verdict is coarse
+  drive a real runtime. Trajectory wiring: `ELIZA_SAVE_TRAJECTORIES=1 ELIZA_TRAJECTORY_DIR=<dir>` then scenario-runner `native-export`; verdict is coarse
   (vitest pass/fail per file).
 
 Only the **scenario** family emits `eliza_native_v1` today, so the driver

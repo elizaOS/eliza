@@ -406,9 +406,14 @@ export const settingsProvider: Provider = {
 				text: output,
 			};
 		} catch (error) {
+			// error-policy:J4 settings become explicitly unavailable and the read
+			// failure remains observable to the agent.
+			runtime.reportError("SettingsProvider.get", error, {
+				roomId: message.roomId,
+			});
 			return {
 				data: {
-					settings: [],
+					available: false,
 					error: error instanceof Error ? error.message : String(error),
 				},
 				values: {

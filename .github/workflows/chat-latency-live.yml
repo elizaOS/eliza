@@ -53,7 +53,7 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p reports
-          node packages/scripts/cloud/chat-latency.mjs \
+          node packages/cloud/scripts/chat-latency.mjs \
             --target paired \
             --direct-base-url https://api.cerebras.ai \
             --gateway-base-url "$ELIZA_CLOUD_CHAT_LATENCY_BASE_URL" \
@@ -71,7 +71,7 @@ jobs:
         run: |
           node --input-type=module - "$REPORT_PATH" >> "$GITHUB_STEP_SUMMARY" <<'NODE'
           import { readFileSync } from "node:fs";
-          import { summarizeLatencyRecords } from "./packages/scripts/cloud/chat-latency.mjs";
+          import { summarizeLatencyRecords } from "./packages/cloud/scripts/chat-latency.mjs";
 
           const records = readFileSync(process.argv[2], "utf8")
             .split(/\r?\n/)

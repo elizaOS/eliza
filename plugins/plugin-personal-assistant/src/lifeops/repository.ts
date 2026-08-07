@@ -14,7 +14,7 @@ import {
   knowledgeGraphSchema,
   type RelationshipStore,
   resolveKnowledgeGraphService,
-} from "@elizaos/agent";
+} from "@elizaos/agent/services/knowledge-graph";
 import type { IAgentRuntime } from "@elizaos/core";
 import { ElizaError, logger } from "@elizaos/core";
 import type {
@@ -2481,6 +2481,15 @@ export class LifeOpsRepository {
     if (typeof adapter.isReady === "function" && !(await adapter.isReady())) {
       return;
     }
+    // Production's `eliza` plugin owns both the knowledge-graph and pendant
+    // session tables. Re-registering only knowledgeGraphSchema under that same
+    // owner name replaces the migration service's full schema snapshot and
+    // makes every later route bootstrap look like a destructive table drop.
+    // Reuse the runtime's authoritative schema when present; isolated test
+    // harnesses without the host plugin still fall back to the graph subset.
+    const runtimeElizaSchema = runtime.plugins.find(
+      (plugin) => plugin.name === "eliza",
+    )?.schema;
     await adapter.runPluginMigrations(
       [
         {
@@ -2539,7 +2548,7 @@ export class LifeOpsRepository {
         // bootstrapSchema still get the app_lifeops graph tables.
         {
           name: "eliza",
-          schema: knowledgeGraphSchema,
+          schema: runtimeElizaSchema ?? knowledgeGraphSchema,
         },
       ],
       {

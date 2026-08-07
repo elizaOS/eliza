@@ -58,6 +58,8 @@ export function parseJsonObject(raw: string): Record<string, unknown> | null {
 	try {
 		parsed = JSON.parse(jsonText);
 	} catch {
+		// error-policy:J3 trajectory evaluator output is untrusted model input;
+		// malformed JSON is an explicit invalid result.
 		return null;
 	}
 	if (!parsed || typeof parsed !== "object") return null;

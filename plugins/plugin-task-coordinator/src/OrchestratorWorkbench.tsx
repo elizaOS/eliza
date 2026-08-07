@@ -1,5 +1,20 @@
-// Direct subpath: the app renderer resolves the bare `@elizaos/ui` root to the
-// browser barrel, which doesn't reliably re-export this newer component.
+import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { client } from "@elizaos/ui/api";
+import type {
+  ChangeSetData,
+  CodingAgentAddAgentInput,
+  CodingAgentOrchestratorStatus,
+  CodingAgentRerunFromEventInput,
+  CodingAgentRestartWithEditedPlanInput,
+  CodingAgentRetryTurnInput,
+  CodingAgentTaskArtifactRecord,
+  CodingAgentTaskEventRecord,
+  CodingAgentTaskMessageRecord,
+  CodingAgentTaskSessionRecord,
+  CodingAgentTaskThread,
+  CodingAgentTaskThreadDetail,
+  CodingAgentTaskUsageSummary,
+} from "@elizaos/ui/api/client-types-cloud";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -10,25 +25,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-  Button,
-  type ChangeSetData,
-  type CodingAgentAddAgentInput,
-  type CodingAgentOrchestratorStatus,
-  type CodingAgentRerunFromEventInput,
-  type CodingAgentRestartWithEditedPlanInput,
-  type CodingAgentRetryTurnInput,
-  type CodingAgentTaskArtifactRecord,
-  type CodingAgentTaskEventRecord,
-  type CodingAgentTaskMessageRecord,
-  type CodingAgentTaskSessionRecord,
-  type CodingAgentTaskThread,
-  type CodingAgentTaskThreadDetail,
-  type CodingAgentTaskUsageSummary,
-  client,
   DiffReviewPanel,
-  useAppSelectorShallow,
-} from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
+} from "@elizaos/ui/components";
+import { Button } from "@elizaos/ui/components/ui/button";
 import { Input } from "@elizaos/ui/components/ui/input";
 import {
   Select,
@@ -38,6 +37,7 @@ import {
   SelectValue,
 } from "@elizaos/ui/components/ui/select";
 import { Textarea } from "@elizaos/ui/components/ui/textarea";
+import { useAppSelectorShallow } from "@elizaos/ui/state";
 import {
   Archive,
   ArrowDownToLine,

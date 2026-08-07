@@ -1,4 +1,8 @@
-/** Supports app-core build, packaging, or development orchestration for websocket pending queue ts. */
+/**
+ * Bounded pending-message queue for WebSocket proxying: buffers messages under
+ * count/byte limits while the upstream socket is not yet open. Used by the
+ * Playwright live-stack proxy.
+ */
 export type WebSocketSendData =
   | string
   | Buffer

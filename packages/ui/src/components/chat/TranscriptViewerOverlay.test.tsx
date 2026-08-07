@@ -1,3 +1,4 @@
+/** Verifies segmentsFromEditedText through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // The maximized, editable transcript viewer: it loads the stored record, lets

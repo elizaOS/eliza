@@ -14,6 +14,7 @@
  * which constructs a fresh manager backed by the OS-keychain vault.
  */
 
+import { randomBytes } from "node:crypto";
 import { createManager, type SecretsManager, type Vault } from "@elizaos/vault";
 import type { OperationErrorCode } from "./types.ts";
 
@@ -60,6 +61,30 @@ export function parseVaultRef(value: string): string | null {
 
 /** Narrow surface of `Vault` used by the boot resolver and test fakes. */
 export type VaultLike = Pick<Vault, "get" | "has">;
+
+const OPTIMIZED_PROMPT_HMAC_VAULT_KEY = "system.optimized-prompt.hmac-key";
+
+/**
+ * Return the persistent integrity key used to authenticate optimized prompts.
+ * The vault is authoritative; a key is generated once and encrypted at rest.
+ */
+export async function resolveOptimizedPromptIntegrityKey(
+  vault: Pick<Vault, "get" | "has" | "setIfAbsent">,
+): Promise<string> {
+  if (await vault.has(OPTIMIZED_PROMPT_HMAC_VAULT_KEY)) {
+    return vault.get(OPTIMIZED_PROMPT_HMAC_VAULT_KEY);
+  }
+  const key = randomBytes(32).toString("base64");
+  const inserted = await vault.setIfAbsent(
+    OPTIMIZED_PROMPT_HMAC_VAULT_KEY,
+    key,
+    {
+      sensitive: true,
+      caller: "runtime-boot",
+    },
+  );
+  return inserted ? key : vault.get(OPTIMIZED_PROMPT_HMAC_VAULT_KEY);
+}
 
 /**
  * Walk an env-shaped record and replace `vault://<key>` sentinels with the

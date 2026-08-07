@@ -393,7 +393,7 @@ export function StreamingPermissionsSettingsView({
                 </div>
                 {!isGranted ? (
                   <Button
-                    variant="default"
+                    variant="surfaceAccent"
                     size="sm"
                     className="h-auto text-xs-tight py-1 px-2.5"
                     disabled={isRequesting}

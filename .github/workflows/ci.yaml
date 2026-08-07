@@ -43,8 +43,8 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
-          bun-version: "1.3.14" # pinned: floating canary writes lockfileVersion 2 and breaks --frozen-lockfile (#11184/#9454); packageManager bun@1.4.0-canary.1 is unresolvable (GH+npm 404)
-          install-command: bun install
+          bun-version: "1.3.14" # pinned: floating canary writes lockfileVersion 2 and breaks --frozen-lockfile (#11184/#9454)
+          install-command: bun install --frozen-lockfile
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -84,15 +84,6 @@ jobs:
           NODE_OPTIONS: "--max-old-space-size=2048"
         run: bun run test:plugins
 
-      - name: Run interop (TypeScript) tests
-        timeout-minutes: 10
-        run: |
-          if [ -d packages/interop ]; then
-            cd packages/interop && bun run test
-          else
-            echo "packages/interop is not present; skipping interop tests"
-          fi
-
   # Lint and format job
   lint-and-format:
     # Skip duplicate runs: run on push to main, or on pull_request events only
@@ -110,8 +101,8 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
-          bun-version: "1.3.14" # pinned: floating canary writes lockfileVersion 2 and breaks --frozen-lockfile (#11184/#9454); packageManager bun@1.4.0-canary.1 is unresolvable (GH+npm 404)
-          install-command: bun install
+          bun-version: "1.3.14" # pinned: floating canary writes lockfileVersion 2 and breaks --frozen-lockfile (#11184/#9454)
+          install-command: bun install --frozen-lockfile
           install-native-deps: "false"
           install-protoc: "false"
           setup-python: "false"
@@ -167,8 +158,8 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
-          bun-version: "1.3.14" # pinned: floating canary writes lockfileVersion 2 and breaks --frozen-lockfile (#11184/#9454); packageManager bun@1.4.0-canary.1 is unresolvable (GH+npm 404)
-          install-command: bun install
+          bun-version: "1.3.14" # pinned: floating canary writes lockfileVersion 2 and breaks --frozen-lockfile (#11184/#9454)
+          install-command: bun install --frozen-lockfile
           install-native-deps: "false"
           install-protoc: "false"
           setup-python: "false"
@@ -197,8 +188,8 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
-          bun-version: "1.3.14" # pinned: floating canary writes lockfileVersion 2 and breaks --frozen-lockfile (#11184/#9454); packageManager bun@1.4.0-canary.1 is unresolvable (GH+npm 404)
-          install-command: bun install
+          bun-version: "1.3.14" # pinned: floating canary writes lockfileVersion 2 and breaks --frozen-lockfile (#11184/#9454)
+          install-command: bun install --frozen-lockfile
           install-native-deps: "false"
           install-protoc: "false"
           setup-python: "false"

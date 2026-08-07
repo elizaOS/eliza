@@ -10,7 +10,7 @@
  * lease routes the sub-agent's inference through the parent (revoked when the
  * session ends), credential-proxy and model-gateway env is injected while
  * denied environment keys are stripped, and Codex runs get sandbox/approval
- * configuration with a Landlock-availability fallback. A single process-wide
+ * configuration with a Landlock-availability fallback (fail-closed when no operator override). A single process-wide
  * SIGTERM/SIGINT handler fans out to every live instance so multi-tenant hosts,
  * test runners, and hot-reload cycles don't leak per-instance listeners.
  */
@@ -38,20 +38,20 @@ import {
   ElizaError,
   type IAgentRuntime,
   Service,
+  TRACE_ENV,
 } from "@elizaos/core";
 import { isAndroidMobile } from "@elizaos/shared";
 import { NativeAcpClient } from "./acp-native-transport.js";
-import {
-  formatAcpCommand,
-  provisionWorkspaceElizaCodeAcp,
-} from "./acp-provisioning.js";
 import { augmentTaskWithDeployGuidance } from "./app-deploy-guidance.js";
 import {
+  CODEX_NO_LANDLOCK_SANDBOX_MODE_ENV,
   type CodexSandboxMode,
   detectLandlockAvailability,
   isCodexLandlockPanic,
+  noLandlockFallbackRequiredMessage,
   normalizeCodexApprovalPolicy,
   normalizeCodexSandboxMode,
+  resolveNoLandlockSandboxMode,
 } from "./codex-sandbox.js";
 import {
   accountMetaFromSessionMetadata,
@@ -138,6 +138,7 @@ import {
   getSharedWorkspaceRegistry,
   resolveDiskBudgetConfig,
   type WorkspaceRegistry,
+  workspaceDiskBudgetError,
 } from "./workspace-registry.js";
 
 export {
@@ -299,7 +300,8 @@ export function resolveCodexAcpInitialAgentMode(
   }
   return mode;
 }
-const CODEX_NO_LANDLOCK_SANDBOX_MODE: CodexSandboxMode = "danger-full-access";
+// No silent host-wide default: when Landlock is unavailable the operator must
+// set ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE explicitly (fail-closed).
 const CODEX_NO_LANDLOCK_APPROVAL_POLICY = "never";
 /**
  * Effort levels the Claude Code CLI honors via CLAUDE_CODE_EFFORT_LEVEL (its
@@ -356,25 +358,6 @@ export function normalizeClaudeAcpModelId(
     .replace(/(?:\s*\[[0-9]+[a-zA-Z]+\])+$/u, "")
     .trim();
   return normalized || undefined;
-}
-
-/**
- * Provision the workspace-native ACP executable on first use, crash-safely.
- * Development and self-hosted checkouts deliberately do not require a global
- * npm install: the package is built into its normal dist directory and launched
- * with the same Bun executable that performed the build.
- *
- * Delegates to the advisory-lock and atomic-publish protocol in
- * `acp-provisioning.ts` (#16169). The thin adapter preserves the string command
- * contract while the formatter quotes paths only when the downstream parser
- * needs it.
- */
-export function ensureWorkspaceElizaCodeAcp(
-  startDir: string = process.cwd(),
-): string | undefined {
-  const result = provisionWorkspaceElizaCodeAcp(startDir);
-  if (!result) return undefined;
-  return formatAcpCommand(result);
 }
 
 async function runGitForAcp(
@@ -434,8 +417,7 @@ const ACP_METADATA_GIT_WRAPPER_DIR = "gitWrapperDir";
 const ACP_METADATA_SPAWN_MODEL = "spawnModel";
 const MAX_CAPTURED_TOOL_OUTPUT_CHARS = 12_000;
 const TOOL_OUTPUT_END_MARKER = "[/tool output]";
-const SESSION_GIT_WRAPPER = `#!/usr/bin/env node
-const { spawn, spawnSync } = require("node:child_process");
+const SESSION_GIT_WRAPPER_BODY = `const { spawn, spawnSync } = require("node:child_process");
 const { randomUUID } = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -689,6 +671,24 @@ const result = run(args);
 if (result.signal) process.kill(process.pid, result.signal);
 process.exit(result.status ?? 1);
 `;
+
+function sessionGitWrapper(): string {
+  const interpreter = process.versions.bun
+    ? findExecutableOnPath("node")
+    : process.execPath;
+  if (!interpreter) {
+    throw new Error("Cannot create the ACP git wrapper without a Node runtime");
+  }
+  if (/\s/.test(interpreter)) {
+    throw new Error(
+      `Cannot create the ACP git wrapper with a whitespace-containing runtime path: ${interpreter}`,
+    );
+  }
+  // The wrapper nests synchronous git processes, which deadlocks if a Bun test
+  // process synchronously invokes another Bun process. A direct Node shebang
+  // also avoids an extra /usr/bin/env process at the command boundary.
+  return `#!${interpreter}\n${SESSION_GIT_WRAPPER_BODY}`;
+}
 const ACP_HEALTH_CHECK_INTERVAL_MS = 60_000;
 // Terminal (stopped/errored) sessions are kept this long for any post-completion
 // reference, then reclaimed by the health-check sweep so the durable session
@@ -1104,7 +1104,7 @@ export class AcpService extends Service {
     await mkdir(wrapperDir, { recursive: true });
     await copyFile(repoIndex, baseFile);
     await copyFile(repoIndex, indexFile);
-    await writeFile(wrapperFile, SESSION_GIT_WRAPPER, "utf8");
+    await writeFile(wrapperFile, sessionGitWrapper(), "utf8");
     await chmod(wrapperFile, 0o755);
     return {
       env: {
@@ -1254,11 +1254,9 @@ export class AcpService extends Service {
       });
     }
     if (!decision.allowed) {
-      throw new Error(
-        `workspace disk budget exceeded (${decision.reason}): ` +
-          `used=${decision.usedBytes} free=${decision.freeBytes} ` +
-          `cap=${config.capBytes} minFree=${config.minFreeBytes} root=${targetRoot}`,
-      );
+      // Human message; byte-level fields ride the error context and the
+      // registry's refusal warn log, never chat-bound prose.
+      throw workspaceDiskBudgetError(decision, config, targetRoot);
     }
   }
 
@@ -2208,6 +2206,11 @@ export class AcpService extends Service {
       try {
         await this.stopNativeClient(sessionId);
         await this.store.updateStatus(sessionId, "stopped");
+        // `closeSession()` is an awaited teardown boundary. Revoke before the
+        // terminal event so callers cannot observe a closed session whose
+        // leased model credential is still live; the event-side revoke then
+        // becomes an idempotent no-op.
+        await this.revokeModelLease(sessionId, "closeSession:native");
         this.emitSessionEvent(sessionId, "stopped", {
           sessionId,
           response: this.lastOutput(sessionId),
@@ -2259,6 +2262,8 @@ export class AcpService extends Service {
       );
     }
     await this.store.updateStatus(sessionId, "stopped");
+    // Keep CLI close parity with the native awaited teardown contract.
+    await this.revokeModelLease(sessionId, "closeSession:cli");
     this.emitSessionEvent(sessionId, "stopped", {
       sessionId,
       response: this.lastOutput(sessionId),
@@ -2629,15 +2634,32 @@ export class AcpService extends Service {
   }
 
   private codexNoLandlockSandboxMode(): CodexSandboxMode {
-    const raw = this.setting("ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE");
-    const mode = normalizeCodexSandboxMode(raw);
+    const raw = this.setting(CODEX_NO_LANDLOCK_SANDBOX_MODE_ENV);
+    const mode = resolveNoLandlockSandboxMode(raw);
     if (raw?.trim() && !mode) {
       this.log("warn", "Ignoring invalid Codex ACP no-Landlock sandbox mode", {
         value: raw,
         supported: ["read-only", "workspace-write", "danger-full-access"],
       });
     }
-    return mode ?? CODEX_NO_LANDLOCK_SANDBOX_MODE;
+    // Fail closed: when no operator-owned override is configured, do not
+    // silently widen a workspace-scoped task to host-wide filesystem access.
+    // Operators in container/VM-sandboxed deployments must explicitly set
+    // ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE (e.g. "danger-full-access")
+    // to permit this escalation. `mode` is already null for empty/invalid raw.
+    if (!mode) {
+      throw new ElizaError(
+        `Landlock unavailable and no operator-configured ${CODEX_NO_LANDLOCK_SANDBOX_MODE_ENV} fallback`,
+        {
+          code: "CODEX_NO_LANDLOCK_NO_FALLBACK",
+          context: {
+            required: noLandlockFallbackRequiredMessage(),
+          },
+          severity: "fatal",
+        },
+      );
+    }
+    return mode;
   }
 
   private validateManagedCodexAcpModeConfiguration(): void {
@@ -2767,6 +2789,8 @@ export class AcpService extends Service {
       const updated = await this.store.get(id);
       return toSpawnResult(updated ?? { ...session, status: "ready" });
     } catch (err) {
+      // error-policy:J2 persist and emit the failed session boundary, then
+      // preserve typed failures or wrap unknown failures with session context.
       // error-policy:J6 best-effort teardown of the failed client; the spawn
       // failure `err` is rethrown/handled below.
       await client?.close().catch(() => undefined);
@@ -2780,7 +2804,12 @@ export class AcpService extends Service {
         message,
         ...this.authFailureFields(message, session.agentType),
       });
-      throw new Error(message);
+      if (err instanceof ElizaError) throw err;
+      throw new ElizaError(message, {
+        code: "ACP_NATIVE_SESSION_SPAWN_FAILED",
+        cause: err,
+        context: { sessionId: id, agentType: session.agentType },
+      });
     }
   }
 
@@ -2888,8 +2917,24 @@ export class AcpService extends Service {
       ) {
         throw new Error(message);
       }
-      const fallbackSandboxMode = this.codexNoLandlockSandboxMode();
-      const fallbackMode = this.managedCodexAcpInitialAgentMode(true);
+      let fallbackSandboxMode: CodexSandboxMode;
+      let fallbackMode: CodexAcpInitialAgentMode | undefined;
+      try {
+        fallbackSandboxMode = this.codexNoLandlockSandboxMode();
+        fallbackMode = this.managedCodexAcpInitialAgentMode(true);
+      } catch (fallbackErr) {
+        // error-policy:J2 context-adding rethrow: attach failed AND no operator
+        // fallback is configured. Preserve both — the Landlock symptom in
+        // `message` and the env-var remedy from fallbackErr.
+        throw new ElizaError(message, {
+          code: "CODEX_NO_LANDLOCK_NO_FALLBACK",
+          cause: fallbackErr,
+          context: {
+            required: noLandlockFallbackRequiredMessage(),
+          },
+          severity: "fatal",
+        });
+      }
       this.log(
         "warn",
         "Codex ACP Landlock unavailable; retrying with sandbox fallback",
@@ -3169,16 +3214,13 @@ export class AcpService extends Service {
         this.setting("ELIZA_CLAUDE_ACP_COMMAND") ??
         "npx -y @agentclientprotocol/claude-agent-acp@0.34.0"
       );
-    // The elizaos native agent is the eliza-code ACP server
-    // (packages/examples/code, bin `eliza-code-acp`). The elizaos CLI has no
-    // ACP mode, so the bare-name fallback below would spawn the wrong binary —
-    // resolve to the eliza-code bin unless an explicit command is configured.
+    // The elizaOS CLI has no ACP mode; the separately installed eliza-code ACP
+    // server is the native adapter for this agent type.
     if (normalizedAgentType === "elizaos")
       return (
         this.setting("ELIZA_ELIZAOS_ACP_COMMAND") ??
         findExecutableOnPath("eliza-code-acp") ??
-        ensureWorkspaceElizaCodeAcp() ??
-        "npx -y --package @elizaos/example-code@2.0.0-beta.1 eliza-code-acp"
+        "eliza-code-acp"
       );
     return String(normalizedAgentType);
   }
@@ -4109,7 +4151,7 @@ export class AcpService extends Service {
       if (normalizedConfigured) env.ANTHROPIC_MODEL = normalizedConfigured;
     }
     if (childSessionId?.trim()) {
-      env.PARALLAX_SESSION_ID = childSessionId.trim();
+      env[TRACE_ENV.SESSION_ID] = childSessionId.trim();
     }
     if (
       agentType === "codex" &&

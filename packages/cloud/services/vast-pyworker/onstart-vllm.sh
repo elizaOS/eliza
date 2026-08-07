@@ -6,11 +6,9 @@
 # on the OpenAI-compatible endpoint at $PORT. Container image is expected
 # to bundle vLLM (default: `vllm/vllm-openai:v0.20.1`).
 #
-# This file is the runtime counterpart of the per-size manifests in
-# `training/cloud/vast-pyworker/eliza-1-{2b,9b,27b}.json`. It replicates
-# the `vllm_args` shape from those manifests + scripts/inference/serve_vllm.py
-# without importing serve_vllm.py (which lives in the training repo and
-# isn't packaged in the cloud submodule).
+# This file is the runtime counterpart of the per-size manifests in this
+# package's `manifests/` directory. It replicates their `vllm_args` shape
+# without importing the training-time serving harness.
 #
 # Required template env vars:
 #   MODEL_REPO              — HuggingFace repo id for a vLLM-compatible
@@ -22,7 +20,7 @@
 #                             manifest and the script extracts MODEL_REPO + flags
 #                             from the manifest.
 #
-# Optional (defaults match training/cloud/vast-pyworker/eliza-1-27b.json):
+# Optional (defaults match manifests/eliza-1-27b.json):
 #   ELIZA_VAST_MANIFEST    — path to a per-size manifest JSON. When set, the
 #                             manifest fills any unset env var below. Caller
 #                             env always wins. Default: eliza-1-2b.json
@@ -101,8 +99,7 @@ _resolve_manifest() {
     "$(dirname "${BASH_SOURCE[0]}")/manifests" \
     "$(dirname "${BASH_SOURCE[0]}")" \
     "/workspace/manifests" \
-    "/workspace" \
-    "$(dirname "${BASH_SOURCE[0]}")/../../../training/cloud/vast-pyworker"; do
+    "/workspace"; do
     if [ -f "$d/$m" ]; then echo "$d/$m"; return 0; fi
   done
   return 1
@@ -189,7 +186,7 @@ QJL_ADDITIONAL_CONFIG_JSON="${QJL_ADDITIONAL_CONFIG_JSON:-{\"qjl\":true}}"
 VLLM_ENABLE_PREFIX_CACHING="${VLLM_ENABLE_PREFIX_CACHING:-1}"
 EXTRA_VLLM_ARGS="${EXTRA_VLLM_ARGS:-}"
 VLLM_LOG="${VLLM_LOG:-/var/log/vllm.log}"
-PYWORKER_REPO="${PYWORKER_REPO:-https://github.com/elizaOS/cloud.git}"
+PYWORKER_REPO="${PYWORKER_REPO:-https://github.com/elizaOS/eliza.git}"
 PYWORKER_REF="${PYWORKER_REF:-develop}"
 PYWORKER_DIR="${PYWORKER_DIR:-/workspace/pyworker}"
 HF_HOME="${HF_HOME:-/workspace/hf-cache}"
@@ -248,9 +245,13 @@ if [ -d "$PYWORKER_DIR/.git" ]; then
   git -C "$PYWORKER_DIR" checkout FETCH_HEAD
 else
   git clone --depth=1 --branch "$PYWORKER_REF" "$PYWORKER_REPO" "$PYWORKER_DIR" \
-    || git clone --depth=1 "$PYWORKER_REPO" "$PYWORKER_DIR"
+    || {
+      git clone --filter=blob:none --no-checkout "$PYWORKER_REPO" "$PYWORKER_DIR"
+      git -C "$PYWORKER_DIR" fetch --depth=1 origin "$PYWORKER_REF"
+      git -C "$PYWORKER_DIR" checkout --detach FETCH_HEAD
+    }
 fi
-cd "$PYWORKER_DIR/services/vast-pyworker"
+cd "$PYWORKER_DIR/packages/cloud/services/vast-pyworker"
 pip install --no-cache-dir -r requirements.txt
 
 # 2. Optional HF login (gated repos like base eliza-1 need this).
@@ -258,7 +259,7 @@ if [ -n "${HUGGING_FACE_HUB_TOKEN:-}" ]; then
   python3 -c "from huggingface_hub import login; login(token='${HUGGING_FACE_HUB_TOKEN}', add_to_git_credential=False)"
 fi
 
-# 3. Build the vllm serve argv. Mirror training/cloud/vast-pyworker/*.json
+# 3. Build the vllm serve argv. Mirror manifests/*.json
 # — same flag set, same defaults — without importing serve_vllm.py.
 VLLM_ARGS=(
   serve "$MODEL_REPO"

@@ -1,3 +1,4 @@
+/** Verifies useChatState prependConversationMessages through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // `useChatState` prepend coverage for the chat transcript's upward infinite

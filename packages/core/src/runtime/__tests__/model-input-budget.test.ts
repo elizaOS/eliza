@@ -269,14 +269,14 @@ describe("buildModelInputBudget", () => {
 			expect(budget.reserveTokens).toBe(100_000); // 500k * 0.20
 		});
 
-		it("malformed env JSON degrades to the default window without throwing", () => {
+		it("rejects malformed context-window override JSON", () => {
 			vi.stubEnv("MODEL_CONTEXT_WINDOWS_JSON", "{oops");
-			const budget = buildModelInputBudget({
-				messages: [userMessageOfChars(100)],
-				modelName: "claude-unknown-test-9",
-			});
-			expect(budget.contextWindowTokens).toBe(DEFAULT_CONTEXT_WINDOW_TOKENS);
-			expect(budget.resolvedModelKey).toBeNull();
+			expect(() =>
+				buildModelInputBudget({
+					messages: [userMessageOfChars(100)],
+					modelName: "claude-unknown-test-9",
+				}),
+			).toThrow("MODEL_CONTEXT_WINDOWS_JSON is not valid JSON");
 		});
 	});
 

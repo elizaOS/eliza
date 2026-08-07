@@ -130,6 +130,8 @@ export function validateModelConfig(runtime?: IAgentRuntime): ModelConfig {
 		validateConfigRequirements(config, assumePluginOpenAI);
 		return config;
 	} catch (error) {
+		// error-policy:J2 Translate schema diagnostics into configuration context;
+		// non-schema failures retain their original identity.
 		if (error instanceof z.ZodError) {
 			const issues = error.issues
 				.map((issue) => `${issue.path.join(".")}: ${issue.message}`)

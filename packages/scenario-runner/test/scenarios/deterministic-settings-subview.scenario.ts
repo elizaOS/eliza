@@ -1,6 +1,6 @@
 /**
  * Keyless coverage that the VIEWS action deep-links into a Settings subview. Runs
- * on the pr-deterministic lane under the LLM proxy.
+ * on the pr-deterministic lane under the model provider.
  */
 import type { ScenarioTurnExecution } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";

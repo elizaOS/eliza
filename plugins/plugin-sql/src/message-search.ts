@@ -29,6 +29,7 @@
  */
 import { logger } from "@elizaos/core";
 import { sql } from "drizzle-orm";
+import type { DatabaseBackend } from "./migration-service";
 import type { DrizzleDatabase } from "./types";
 
 export const FTS_CONFIG = "english";
@@ -75,7 +76,8 @@ const FOLD_FROM_LITERAL = (ACCENT_FROM + STRIP_CHARS).replace(/'/g, "''");
  * emit `similarity()` / gin_trgm_ops-accelerated `LIKE`.
  */
 export async function applyMessageSearchObjects(
-  db: DrizzleDatabase
+  db: DrizzleDatabase,
+  databaseBackend: DatabaseBackend = "unknown"
 ): Promise<{ trigramAvailable: boolean }> {
   await db.execute(sql`
     CREATE OR REPLACE FUNCTION eliza_search_fold(t text)
@@ -147,13 +149,19 @@ export async function applyMessageSearchObjects(
   } catch (error) {
     // error-policy:J4 pg_trgm is an optional accelerator — degrade to FTS +
     // unindexed LIKE (correct, just slower for partial-word/substring recall).
-    logger.warn(
-      {
-        src: "plugin:sql",
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "[MessageSearch] pg_trgm unavailable; trigram acceleration disabled (FTS still active)"
-    );
+    const context = {
+      src: "plugin:sql",
+      error: error instanceof Error ? error.message : String(error),
+    };
+    const message =
+      "[MessageSearch] pg_trgm unavailable; trigram acceleration disabled (FTS still active)";
+    if (databaseBackend === "pglite") {
+      // PGlite does not bundle pg_trgm. FTS remains fully active, so this is a
+      // known backend capability rather than an operator-actionable warning.
+      logger.debug(context, message);
+    } else {
+      logger.warn(context, message);
+    }
   }
 
   logger.info(

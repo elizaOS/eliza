@@ -27,6 +27,19 @@ describe("secret validation custom strategy", () => {
 		);
 	});
 
+	it("fails closed for an unknown validation strategy", async () => {
+		const result = await validateSecret(
+			"CUSTOM_SECRET",
+			"value",
+			"not-registered",
+		);
+
+		expect(result).toMatchObject({
+			isValid: false,
+			error: "Unknown validation strategy: not-registered",
+		});
+	});
+
 	it("uses a key-specific custom validator", async () => {
 		registerValidator("CUSTOM_SECRET", async (key, value) => ({
 			isValid: key === "CUSTOM_SECRET" && value === "allowed",

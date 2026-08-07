@@ -1,3 +1,4 @@
+/** Verifies widgetVisibilityKey + isWidgetVisible through the package's configured test harness. */
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
 import {

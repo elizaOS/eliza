@@ -1,11 +1,6 @@
 /**
- * Media fetching utilities with SSRF protection.
- *
- * Provides secure remote media fetching with:
- * - SSRF protection via DNS pinning
- * - Content-Disposition parsing
- * - Size limits
- * - MIME type detection
+ * Fetches remote media through DNS-pinned SSRF protection, enforces byte
+ * limits, and derives safe filenames and MIME metadata.
  */
 
 import {
@@ -27,8 +22,8 @@ export type MediaFetchErrorCode = "max_bytes" | "http_error" | "fetch_failed";
 export class MediaFetchError extends Error {
 	readonly code: MediaFetchErrorCode;
 
-	constructor(code: MediaFetchErrorCode, message: string) {
-		super(message);
+	constructor(code: MediaFetchErrorCode, message: string, cause?: unknown) {
+		super(message, cause === undefined ? undefined : { cause });
 		this.code = code;
 		this.name = "MediaFetchError";
 	}
@@ -84,6 +79,8 @@ function parseContentDispositionFileName(
 		try {
 			return getBasename(decodeURIComponent(encoded));
 		} catch {
+			// error-policy:J3 Malformed RFC 5987 encoding is untrusted header
+			// input; retain only its basename as the sanitized invalid fallback.
 			return getBasename(encoded);
 		}
 	}
@@ -112,6 +109,8 @@ async function readErrorBodySnippet(
 		}
 		return `${collapsed.slice(0, maxChars)}…`;
 	} catch {
+		// error-policy:J7 The HTTP status remains authoritative when its optional
+		// diagnostic body snippet cannot be read.
 		return undefined;
 	}
 }
@@ -132,9 +131,11 @@ async function fetchGuardedMedia(options: FetchMediaOptions): Promise<{
 			pinnedFetchImpl: options.pinnedFetchImpl,
 		});
 	} catch (err) {
+		// error-policy:J2 Add media URL context while preserving the guarded-fetch cause.
 		throw new MediaFetchError(
 			"fetch_failed",
 			`Failed to fetch media from ${options.url}: ${String(err)}`,
+			err,
 		);
 	}
 }
@@ -190,6 +191,8 @@ function fileNameFromUrl(url: string): string | undefined {
 		const base = getBasename(parsed.pathname);
 		return base || undefined;
 	} catch {
+		// error-policy:J3 Redirect-derived URL text is untrusted; absence of a
+		// filename is an explicit invalid result.
 		return undefined;
 	}
 }
@@ -297,6 +300,8 @@ async function readResponseWithLimit(
 					try {
 						await reader.cancel();
 					} catch {
+						// error-policy:J6 Cancellation is best-effort after the
+						// byte-limit failure has already been established.
 						// ignore cancel errors
 					}
 					throw new MediaFetchError(
@@ -311,6 +316,7 @@ async function readResponseWithLimit(
 		try {
 			reader.releaseLock();
 		} catch {
+			// error-policy:J6 Stream lock release is best-effort teardown.
 			// ignore release errors
 		}
 	}

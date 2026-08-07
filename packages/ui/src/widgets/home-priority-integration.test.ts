@@ -1,3 +1,4 @@
+/** Verifies home priority - real declarations + ranker scenario (#9143) through the package's configured test harness. */
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import {

@@ -2,7 +2,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { JsonValue } from "@elizaos/plugin-remote-manifest";
+import type { JsonValue } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { DynamicViewError } from "./errors";
 import { DynamicViewRegistry } from "./registry";
@@ -36,15 +36,6 @@ class FakeCanvas {
   }
 }
 
-class FakeWorkerStatusProvider {
-  constructor(private readonly states: Record<string, string>) {}
-
-  getWorkerStatus(id: string): { state: string } | null {
-    const state = this.states[id];
-    return state ? { state } : null;
-  }
-}
-
 function manifest(entrypoint: string): DynamicViewManifest {
   return {
     id: "agent.run.trace",
@@ -52,9 +43,6 @@ function manifest(entrypoint: string): DynamicViewManifest {
     source: "agent",
     entrypoint,
     placement: "floating",
-    requiredRemotes: ["eliza.runtime"],
-    eventSubscriptions: [{ remoteId: "eliza.runtime" }],
-    invokeTargets: ["eliza.runtime"],
   };
 }
 
@@ -82,9 +70,6 @@ describe("DynamicViewSessionManager", () => {
       const sessions = new DynamicViewSessionManager({
         registry,
         canvas,
-        workerStatusProvider: new FakeWorkerStatusProvider({
-          "eliza.runtime": "running",
-        }),
         now: () => new Date("2026-05-17T12:00:00.000Z"),
         sessionIdFactory: () => "session-1",
         entrypointBaseDir: dir,
@@ -106,26 +91,6 @@ describe("DynamicViewSessionManager", () => {
       });
     }));
 
-  it("rejects missing required Remotes", () =>
-    withTempView(async (dir) => {
-      const registry = new DynamicViewRegistry();
-      registry.register(manifest("trace.html"));
-      const sessions = new DynamicViewSessionManager({
-        registry,
-        canvas: new FakeCanvas(),
-        workerStatusProvider: new FakeWorkerStatusProvider({
-          "eliza.runtime": "stopped",
-        }),
-        entrypointBaseDir: dir,
-      });
-
-      await expect(
-        sessions.open({ viewId: "agent.run.trace" }),
-      ).rejects.toMatchObject({
-        code: "DYNAMIC_VIEW_REQUIRED_REMOTE_UNAVAILABLE",
-      });
-    }));
-
   it("pushes events and closes sessions", () =>
     withTempView(async (dir) => {
       const registry = new DynamicViewRegistry();
@@ -134,9 +99,6 @@ describe("DynamicViewSessionManager", () => {
       const sessions = new DynamicViewSessionManager({
         registry,
         canvas,
-        workerStatusProvider: new FakeWorkerStatusProvider({
-          "eliza.runtime": "running",
-        }),
         entrypointBaseDir: dir,
         sessionIdFactory: () => "session-2",
       });
@@ -175,7 +137,7 @@ describe("DynamicViewSessionManager", () => {
     "ftp://localhost/view.html",
   ])("rejects non-local entrypoints: %s", async (entrypoint) => {
     const registry = new DynamicViewRegistry();
-    registry.register({ ...manifest(entrypoint), requiredRemotes: [] });
+    registry.register({ ...manifest(entrypoint) });
     const sessions = new DynamicViewSessionManager({
       registry,
       canvas: new FakeCanvas(),
@@ -193,7 +155,7 @@ describe("DynamicViewSessionManager", () => {
     "http://127.0.0.1:4173/view.html",
   ])("allows local http entrypoints: %s", async (entrypoint) => {
     const registry = new DynamicViewRegistry();
-    registry.register({ ...manifest(entrypoint), requiredRemotes: [] });
+    registry.register({ ...manifest(entrypoint) });
     const canvas = new FakeCanvas();
     const sessions = new DynamicViewSessionManager({
       registry,
@@ -210,7 +172,7 @@ describe("DynamicViewSessionManager", () => {
   it("rejects missing file entrypoints before creating a canvas window", async () =>
     withTempView(async (dir) => {
       const registry = new DynamicViewRegistry();
-      registry.register({ ...manifest("missing.html"), requiredRemotes: [] });
+      registry.register({ ...manifest("missing.html") });
       const canvas = new FakeCanvas();
       const sessions = new DynamicViewSessionManager({
         registry,
@@ -235,9 +197,6 @@ describe("DynamicViewSessionManager", () => {
         const sessions = new DynamicViewSessionManager({
           registry,
           canvas: new FakeCanvas(),
-          workerStatusProvider: new FakeWorkerStatusProvider({
-            "eliza.runtime": "running",
-          }),
           entrypointBaseDir: dir,
         });
 
@@ -257,9 +216,6 @@ describe("DynamicViewSessionManager", () => {
       const sessions = new DynamicViewSessionManager({
         registry,
         canvas,
-        workerStatusProvider: new FakeWorkerStatusProvider({
-          "eliza.runtime": "running",
-        }),
         entrypointBaseDir: dir,
         sessionIdFactory: () => "close-twice",
       });
@@ -281,9 +237,6 @@ describe("DynamicViewSessionManager", () => {
       const sessions = new DynamicViewSessionManager({
         registry,
         canvas: new FakeCanvas(),
-        workerStatusProvider: new FakeWorkerStatusProvider({
-          "eliza.runtime": "running",
-        }),
         entrypointBaseDir: dir,
         sessionIdFactory: () => "push-closed",
       });
@@ -303,7 +256,7 @@ describe("DynamicViewSessionManager", () => {
   it("records an error session when canvas window creation fails", () =>
     withTempView(async (dir) => {
       const registry = new DynamicViewRegistry();
-      registry.register({ ...manifest("trace.html"), requiredRemotes: [] });
+      registry.register({ ...manifest("trace.html") });
       const canvas = new FakeCanvas();
       canvas.failCreate = true;
       const sessions = new DynamicViewSessionManager({
@@ -328,7 +281,7 @@ describe("DynamicViewSessionManager", () => {
   it("prunes closed history before open sessions when maxSessionHistory is exceeded", () =>
     withTempView(async (dir) => {
       const registry = new DynamicViewRegistry();
-      registry.register({ ...manifest("trace.html"), requiredRemotes: [] });
+      registry.register({ ...manifest("trace.html") });
       const canvas = new FakeCanvas();
       const ids = ["one", "two", "three"];
       const sessions = new DynamicViewSessionManager({

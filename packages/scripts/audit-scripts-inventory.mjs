@@ -45,8 +45,7 @@
  *   node packages/scripts/audit-scripts-inventory.mjs            # write + print
  *   node packages/scripts/audit-scripts-inventory.mjs --json     # print JSON
  */
-import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseDocument } from "yaml";
@@ -60,20 +59,13 @@ import {
   normalizeGitRepositoryPath,
 } from "./lib/repository-file-integrity.mjs";
 import { buildScriptTestInventory } from "./lib/script-test-inventory.mjs";
+import { execFileSync } from "./lib/spawn-sync-captured.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(SCRIPT_DIR, "..", "..");
 const APP_PACKAGE_PATH = "packages/app/package.json";
 
-// The public feed path is a checked-in alias of the canonical regular file,
-// which the documentation scan reads independently. Keeping the one alias
-// explicit prevents a broad symlink exemption from weakening source evidence.
-const DOCUMENTATION_SOURCE_ALIASES = new Map([
-  [
-    "packages/feed/apps/web/public/genesis.json",
-    "packages/feed/apps/web/genesis.json",
-  ],
-]);
+const DOCUMENTATION_SOURCE_ALIASES = new Map();
 
 const CATEGORIES = [
   "reachable-from-verify",
@@ -160,6 +152,18 @@ function repositoryCandidateFiles() {
   )
     .split("\0")
     .filter(Boolean)
+    // `git ls-files --cached` includes index entries deleted in the worktree.
+    // Inventory the checkout that CI and local commands can actually execute,
+    // while retaining symlinks for the containment validator below to reject.
+    .filter((file) => {
+      try {
+        lstatSync(path.join(ROOT, file));
+        return true;
+      } catch (error) {
+        if (error?.code === "ENOENT") return false;
+        throw error;
+      }
+    })
     .map((file) =>
       normalizeGitRepositoryPath(file, "script inventory candidate"),
     )

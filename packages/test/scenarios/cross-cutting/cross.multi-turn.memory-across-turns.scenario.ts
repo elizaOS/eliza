@@ -13,9 +13,7 @@ import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 function expectSpanishFavoriteRecall(ctx: ScenarioContext): string | undefined {
-  const reply = ctx.turns?.find(
-    (turn) => turn.name === "recall-fact",
-  )?.responseText;
+  const reply = ctx.turns?.[1]?.responseText;
   if (!reply) {
     return "expected recall-fact turn response";
   }

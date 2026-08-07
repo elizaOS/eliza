@@ -270,9 +270,6 @@ describe("handleIosLocalAgentRequest", () => {
         },
       ],
     });
-    await expect(getJson("/api/training/status")).resolves.toEqual({
-      available: false,
-    });
   });
 
   it("serves empty local wallet contracts instead of 404s", async () => {

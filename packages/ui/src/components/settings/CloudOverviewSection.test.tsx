@@ -1,3 +1,4 @@
+/** Verifies CloudOverviewSection through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Covers the Cloud overview's login launch and account escape hatch. Desktop

@@ -4,7 +4,7 @@ Lean end-to-end scenario runner for elizaOS agents. Loads `.scenario.ts` files, 
 
 ## Purpose / role
 
-This package is the canonical integration-test harness for elizaOS plugins and agent behaviour. It boots a real `AgentRuntime` (PGLite-backed, no SQL mocks), routes turns through the runtime's action pipeline, and checks assertions at the per-turn and per-scenario level. It is consumed by `packages/test/scenarios/` and plugin-level test suites (e.g. `plugins/plugin-app-control/test/scenarios/`). The schema types it depends on live in `@elizaos/scenario-runner/schema` (exported from the `schema/` directory).
+This package is the canonical integration-test runtime for elizaOS plugins and agent behaviour. It boots a real `AgentRuntime` (PGLite-backed, no SQL mocks), routes turns through the runtime's action pipeline, and checks assertions at the per-turn and per-scenario level. It is consumed by `packages/test/scenarios/` and plugin-level test suites (e.g. `plugins/plugin-app-control/test/scenarios/`). The schema types it depends on live in `@elizaos/scenario-runner/schema` (exported from the `schema/` directory).
 
 ## Layout
 
@@ -94,7 +94,7 @@ Exit codes: `0` = all passed (or skipped with `SKIP_REASON` set), `1` = at least
 A scenario declares its CI lane via the optional `lane` field
 (`@elizaos/scenario-runner/schema`):
 
-- `pr-deterministic` — runs on every PR under the deterministic LLM proxy with
+- `pr-deterministic` — runs on every PR under the deterministic model provider with
   zero credentials. Claim this lane **only** if the scenario passes keyless: no
   live external service, no secret, every LLM call either backed by a registered
   proxy fixture or satisfied by the proxy's default reply.
@@ -121,8 +121,7 @@ bun run --cwd packages/scenario-runner clean
 
 | Env var | Effect |
 |---|---|
-| `SCENARIO_USE_LLM_PROXY` / `ELIZA_SCENARIO_USE_LLM_PROXY` | `1` = use deterministic LLM proxy instead of a live provider |
-| `SCENARIO_LLM_PROXY_STRICT` / `ELIZA_SCENARIO_LLM_PROXY_STRICT` | `1` = strict mode: every LLM call must match a registered fixture, else it throws |
+| `SCENARIO_USE_DETERMINISTIC_MODEL` / `ELIZA_SCENARIO_USE_DETERMINISTIC_MODEL` | `1` = use the fixture-driven core model provider instead of a live provider |
 | `SCENARIO_INCLUDE_PENDING` | `1` = include scenarios with `status: "pending"` |
 | `SKIP_REASON` | Set to a non-empty string to allow skipped scenarios without failing exit 2 |
 | `LIFEOPS_LIVE_JUDGE_MIN_SCORE` | Float, default `0.8`; minimum LLM judge score to pass |
@@ -196,53 +195,19 @@ and update the owning pack catalog.
 ## Conventions / gotchas
 
 - **Single shared runtime per CLI invocation.** PGLite cannot be torn down and recreated (segfaults). For true per-scenario isolation, invoke `eliza-scenarios run` once per scenario from a shell loop.
-- **Deterministic mode.** `SCENARIO_USE_LLM_PROXY=1` swaps the live provider for the deterministic LLM proxy plugin (`packages/test/mocks/helpers/llm-proxy-plugin.ts`). With `SCENARIO_LLM_PROXY_STRICT=1`, any LLM call that has no registered fixture throws instead of falling back. Fixtures are registered programmatically per scenario via `registerStrictActionRouteFixtures` from `test/scenarios/_helpers/strict-llm-action-fixtures.ts` — not loaded from a fixtures directory. (`test/fixtures/` holds only the MCP stdio fixture.)
+- **Deterministic mode.** `SCENARIO_USE_DETERMINISTIC_MODEL=1` registers `createDeterministicModelPlugin` from `@elizaos/core/testing`. Every model call must match exactly one registered fixture or an explicit scenario resolver. Action routes use `registerStrictActionRouteFixtures` from `@elizaos/core/testing`; there is no heuristic fallback.
 - **Silent skips fail loudly.** If a scenario skips without `SKIP_REASON` set, the CLI exits 2.
 - **UPDATE_ENTITY is removed** from the runtime's action list during scenario runs. It's too broad and steals action selection from domain-specific actions under test.
-- **Embedding fallback.** By default a zero-vector 1024-dim embedding fallback is registered instead of `@elizaos/plugin-local-inference` (avoids gated HuggingFace downloads). Set `ELIZA_BENCH_SKIP_EMBEDDING=0` to use the real plugin.
+- **Embeddings in simulated runs.** No embedding model is registered by default, so the runtime explicitly disables semantic retrieval without fabricating vectors or downloading a model. Set `ELIZA_BENCH_SKIP_EMBEDDING=0` to use `@elizaos/plugin-local-inference`.
 - **LLM judge.** Uses Cerebras `gpt-oss-120b` when `isCerebrasEvalEnabled()` returns true; falls back to the runtime's `TEXT_LARGE` model. No heuristic fallbacks — the judge call genuinely fails if neither is available.
 - **Template tokens in turn text.** `{{now}}`, `{{now+1h}}`, `{{now-2d}}`, `{{definitionId:<title>}}`, `{{occurrenceId:<title>}}` are resolved at execution time.
 - **Clock seeding.** `seed` steps of type `advanceClock` shift `ctx.now`; all subsequent template tokens are relative to the shifted clock.
 - **Schema vs dist exports.** `ScenarioDefinition` and schema types come from `@elizaos/scenario-runner/schema` (the `schema/` directory, not `dist/`). Do not import them from `@elizaos/scenario-runner` directly.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
-## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+## Verification
 
-> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
-> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
-> works **without reading the code**, from the artifacts you attach. This applies to **every**
-> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
-
-- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
-  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
-  providers/context, the raw model output, every tool/action call, and the result. Then **open
-  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
-  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
-- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
-  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
-  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
-  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
-  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
-  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
-  them is part of your change.
-- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
-  the entire feature or view, start to finish (`bun run test:e2e:record`).
-- **Manually review every artifact the change touches** — never just the green check: client
-  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
-  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
-- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
-  blocker by the **hard path**: build the real architecture, stand up the real
-  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
-  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
-  highest-effort, production-ready version. Keep going until every possibility is exhausted.
-
-Artifacts → attached inline in the PR (MP4 video, JPG screenshots, logs in `<details>`); attach each evidence type **or**
-explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
-behavior, **re-capture** evidence; stale proof is worse than none.
-
-**Capture & manually review for this package — eval / trajectory harness:**
-- A live-model scenario run producing the JSON report + run viewer + native jsonl, with the trajectory **opened and reviewed**.
-- The harness's own e2e tests against a real `AgentRuntime` — not a mocked runtime; assert **outcomes**, not routing (see #9970).
-- Determinism/seed handling and the failure/partial-run reporting paths.
-- The shape of the corpus/records emitted, inspected by hand.
-<!-- END: evidence-and-e2e-mandate -->
+Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+the package's relevant build, typecheck, lint, and test commands, then exercise
+the real integration boundary changed by the work. Inspect the produced domain
+artifacts and failure behavior; do not substitute mocked success for the system
+under test.

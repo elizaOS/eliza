@@ -1,3 +1,4 @@
+/** Verifies shared→dedicated handoff firing on shared-agent completion through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

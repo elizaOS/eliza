@@ -50,6 +50,35 @@ describe("eliza sse bridge", () => {
     expect(result.aborted).toBe(false);
   });
 
+  test("decodes local runtime token frames without replaying fullText", async () => {
+    const deltas: string[] = [];
+    const fetchImpl = (async () =>
+      sseResponse([
+        `data: ${JSON.stringify({ type: "status", kind: "thinking" })}\n\n`,
+        `data: ${JSON.stringify({ type: "token", text: "Hello", fullText: "Hello" })}\n\n`,
+        `data: ${JSON.stringify({ type: "token", text: " local", fullText: "Hello local" })}\n\n`,
+        `data: ${JSON.stringify({ type: "done", fullText: "Hello local" })}\n\n`,
+      ])) as unknown as typeof fetch;
+
+    const result = await streamElizaConversation(
+      {
+        endpoint: "http://x",
+        authorization: "Bearer s",
+        model: "m",
+        transcript: "hi",
+        agentId: "agent-1",
+        conversationId: "conv-1",
+        traceId: "trace-local",
+        signal: new AbortController().signal,
+        fetchImpl,
+      },
+      (delta) => deltas.push(delta),
+    );
+
+    expect(deltas).toEqual(["Hello", " local"]);
+    expect(result).toEqual({ completed: true, aborted: false });
+  });
+
   test("propagates the voice trace header", async () => {
     let seenHeader: string | null = null;
     const fetchImpl = (async (_url: string, init: RequestInit) => {
@@ -114,6 +143,80 @@ describe("eliza sse bridge", () => {
     expect(seenHeaders?.get("X-Eliza-User-Id")).toBe("user-456");
   });
 
+  test("returns only a successful model-selected VIEWS handoff from terminal metadata", async () => {
+    const fetchImpl = (async () =>
+      sseResponse([
+        `event: chunk\ndata: ${JSON.stringify({ chunk: "Opened Notes." })}\n\n`,
+        `event: done\ndata: ${JSON.stringify({
+          actionResults: [
+            {
+              actionName: "VIEWS",
+              success: true,
+              values: { mode: "show", viewId: "notes", subview: "recent" },
+            },
+          ],
+        })}\n\n`,
+      ])) as unknown as typeof fetch;
+
+    const result = await streamElizaConversation(
+      {
+        endpoint: "http://x",
+        authorization: "Bearer s",
+        model: "m",
+        transcript: "open notes",
+        agentId: "agent-1",
+        conversationId: "conv-1",
+        traceId: "trace-navigation",
+        signal: new AbortController().signal,
+        fetchImpl,
+      },
+      () => {},
+    );
+
+    expect(result).toEqual({
+      completed: true,
+      aborted: false,
+      viewHandoff: { viewId: "notes", subview: "recent" },
+    });
+  });
+
+  test("does not promote failed or malformed terminal action results", async () => {
+    const fetchImpl = (async () =>
+      sseResponse([
+        `event: done\ndata: ${JSON.stringify({
+          actionResults: [
+            {
+              actionName: "VIEWS",
+              success: false,
+              values: { mode: "show", viewId: "notes" },
+            },
+            {
+              actionName: "DELETE_EVERYTHING",
+              success: true,
+              values: { mode: "show", viewId: "settings" },
+            },
+          ],
+        })}\n\n`,
+      ])) as unknown as typeof fetch;
+
+    const result = await streamElizaConversation(
+      {
+        endpoint: "http://x",
+        authorization: "Bearer s",
+        model: "m",
+        transcript: "open notes",
+        agentId: "agent-1",
+        conversationId: "conv-1",
+        traceId: "trace-no-navigation",
+        signal: new AbortController().signal,
+        fetchImpl,
+      },
+      () => {},
+    );
+
+    expect(result).toEqual({ completed: true, aborted: false });
+  });
+
   test("surfaces canonical agent stream errors instead of completing an empty turn", async () => {
     const fetchImpl = (async () =>
       sseResponse([
@@ -140,21 +243,21 @@ describe("eliza sse bridge", () => {
     });
   });
 
-  test("reports aborted when the signal fires mid-stream", async () => {
+  test("aborting a never-ending internal response cancels its body reader", async () => {
     const controller = new AbortController();
+    let responseCancelReason: unknown;
     const fetchImpl = (async () => {
       const encoder = new TextEncoder();
       const body = new ReadableStream<Uint8Array>({
-        async start(c) {
+        start(c) {
           c.enqueue(
             encoder.encode(
               `data: ${JSON.stringify({ choices: [{ delta: { content: "partial" } }] })}\n\n`,
             ),
           );
-          // Abort before the stream naturally ends.
-          controller.abort();
-          await new Promise((r) => setTimeout(r, 5));
-          c.close();
+        },
+        cancel(reason) {
+          responseCancelReason = reason;
         },
       });
       return new Response(body, { status: 200 });
@@ -172,9 +275,10 @@ describe("eliza sse bridge", () => {
         signal: controller.signal,
         fetchImpl,
       },
-      () => {},
+      () => controller.abort("barge-in"),
     );
     expect(result.aborted).toBe(true);
+    expect(responseCancelReason).toBe("barge-in");
   });
 
   test("throws an upstream error on a non-2xx response", async () => {

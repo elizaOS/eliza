@@ -31,8 +31,8 @@ permissions:
 
 env:
   CI: "true"
-  NODE_VERSION: "24"
-  BUN_VERSION: "canary"
+  NODE_VERSION: "24.15.0"
+  BUN_VERSION: "1.3.14"
   ELIZA_LIVE_TEST: "1"
   # Provider keys (the suite picks the first resolvable via selectLiveProvider();
   # absent secrets => the suite self-skips, never fails).
@@ -47,7 +47,7 @@ env:
 jobs:
   app-real-e2e:
     name: Browser-driven real app e2e (nightly)
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 60
     # NOTE: `continue-on-error` intentionally lives on the e2e run step below, NOT
     # here at the job level. Job-level soft-fail resolves the whole run to

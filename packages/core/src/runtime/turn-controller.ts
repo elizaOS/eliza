@@ -82,6 +82,8 @@ export class TurnControllerRegistry {
 			});
 			return result;
 		} catch (error) {
+			// error-policy:J1 The per-room turn boundary emits its terminal
+			// failure state and preserves the operation error.
 			if (controller.signal.aborted) {
 				this.emit({
 					type: "aborted-cleanup",
@@ -170,6 +172,7 @@ export class TurnControllerRegistry {
 			try {
 				listener(event);
 			} catch {
+				// error-policy:J7 Turn-controller listeners are telemetry observers.
 				// Listener errors are swallowed; telemetry should not affect runtime.
 			}
 		}

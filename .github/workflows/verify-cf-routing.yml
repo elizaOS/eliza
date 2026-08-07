@@ -61,7 +61,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          node-version: "24"
+          node-version: "24.15.0"
 
       - name: Verify cross-environment routing
         env:
@@ -75,7 +75,7 @@ jobs:
           if [ "$REQUIRE_BEACON" = "true" ]; then
             args+=(--require-beacon)
           fi
-          node packages/scripts/cloud/verify-environment-routing-cli.mjs "${args[@]}"
+          node packages/cloud/scripts/verify-environment-routing-cli.mjs "${args[@]}"
 
       - name: Notify Discord (Failure)
         if: failure()

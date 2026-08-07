@@ -50,6 +50,8 @@ async function tick(): Promise<void> {
 			agentIds,
 		});
 	} catch (cause) {
+		// error-policy:J1 The shared query boundary reports a typed failure to
+		// every affected runtime and re-arms them.
 		const error = new ElizaError("Shared task queue query failed", {
 			code: "TASK_SCHEDULER_QUERY_FAILED",
 			context: { agentIds: snapshot },
@@ -102,6 +104,8 @@ async function tick(): Promise<void> {
 		try {
 			await entry.taskService.runTick(tasks);
 		} catch (error) {
+			// error-policy:J7 Each runtime tick is isolated and its failure is
+			// reported without suppressing other agents.
 			entry.runtime.reportError("TaskScheduler.runTick", error, {
 				agentId: agentIdKey,
 			});
@@ -120,6 +124,8 @@ export function startTaskScheduler(adapterInstance: IDatabaseAdapter): void {
 	adapter = adapterInstance;
 	if (timer) return;
 	timer = setInterval(() => {
+		// error-policy:J1 The process timer is the outer scheduler boundary; per-agent
+		// failures are reported inside tick, while adapter-level failure is logged here.
 		tick().catch((err) => logger.error({ err }, "[TaskScheduler] tick failed"));
 	}, TICK_INTERVAL_MS) as ReturnType<typeof setInterval>;
 }

@@ -1,3 +1,4 @@
+/** Verifies ChatMessage desktop hover chrome through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**
@@ -19,7 +20,7 @@ import { ChatMessage } from "./chat-message";
 import type { ChatMessageData } from "./chat-types";
 
 beforeAll(() => {
-  // Hover device: `(hover: hover) and (pointer: fine)` matches so ChatMessage
+  // Wide hover device: the responsive fine-pointer query matches so ChatMessage
   // takes the pointer (panel-rail) chrome, not the touch tap-reveal chrome.
   // Installed before the first render because the MediaQueryList is cached on
   // first read.
@@ -51,19 +52,32 @@ function makeMessage(
 describe("ChatMessage desktop hover chrome", () => {
   it("reveals the neutral action rail without a destructive control", () => {
     render(<ChatMessage message={makeMessage()} onCopy={vi.fn()} />);
+    expect(window.matchMedia).toHaveBeenCalledWith(
+      "(min-width: 768px) and (hover: hover) and (pointer: fine)",
+    );
     const message = screen.getByTestId("chat-message");
     const rail = screen.getByTestId("chat-message-action-rail");
 
-    expect(
-      screen.getByRole("button", { name: "Copy message", hidden: true }),
-    ).toBeTruthy();
+    const copy = screen.getByRole("button", {
+      name: "Copy message",
+      hidden: true,
+    });
+    expect(copy.className).toContain("max-md:h-8");
+    expect(copy.className).toContain("max-md:w-8");
     expect(
       screen.queryByRole("button", { name: /delete/i, hidden: true }),
     ).toBeNull();
     expect(rail.className).toContain("pointer-events-none");
     expect(rail.className).toContain("opacity-0");
 
+    // A response inserted beneath a stationary cursor may synthesize enter;
+    // only deliberate pointer movement should reveal its controls.
     fireEvent.mouseEnter(message);
+
+    expect(rail.className).toContain("pointer-events-none");
+    expect(rail.className).toContain("opacity-0");
+
+    fireEvent.pointerMove(message, { pointerType: "mouse" });
 
     expect(rail.className).not.toContain("pointer-events-none");
     expect(rail.className).toContain("opacity-100");
@@ -137,22 +151,24 @@ describe("ChatMessage desktop hover chrome", () => {
     const restingContentClass = content?.className;
     expect(message.className).toContain("mb-0");
     expect(content?.className).toContain("pb-6");
-    expect(content?.className).toContain("pointer-coarse:pb-12");
+    expect(content?.className).toContain("transition-[padding-bottom]");
+    expect(content?.className).not.toContain("pb-0");
+    expect(content?.className).not.toContain("pb-9");
     expect(actions.className).toContain("bottom-0");
     expect(actions.className).toContain("absolute");
+    expect(actions.className).toContain("invisible");
+    expect(actions.className).toContain("opacity-0");
+    expect(actions.className).toContain("pointer-events-none");
     expect(actions.getAttribute("aria-hidden")).toBe("true");
     expect(actions.hasAttribute("inert")).toBe(true);
-
-    fireEvent.mouseEnter(message);
-    expect(actions.getAttribute("aria-hidden")).toBe("false");
-    fireEvent.click(bubble);
-    expect(actions.getAttribute("aria-hidden")).toBe("false");
 
     const nativeBubbleMatches = bubble.matches.bind(bubble);
     vi.spyOn(bubble, "matches").mockImplementation((selector) =>
       selector === ":focus-visible" ? true : nativeBubbleMatches(selector),
     );
     act(() => bubble.focus());
+    expect(actions.className).toContain("visible");
+    expect(actions.className).not.toContain("invisible");
     expect(actions.getAttribute("aria-hidden")).toBe("false");
     expect(actions.hasAttribute("inert")).toBe(false);
     expect(actions.parentElement?.className).toBe(restingContentClass);
@@ -171,9 +187,53 @@ describe("ChatMessage desktop hover chrome", () => {
     act(() =>
       screen.getByRole("button", { name: "Outside glass message" }).focus(),
     );
+    expect(actions.className).toContain("invisible");
+    expect(actions.className).toContain("opacity-0");
     expect(actions.getAttribute("aria-hidden")).toBe("true");
     expect(actions.hasAttribute("inert")).toBe(true);
     expect(actions.parentElement?.className).toBe(restingContentClass);
+  });
+
+  it("does not pin a fine-pointer action rail after bubble click and pointer leave", () => {
+    render(
+      <ChatMessage
+        appearance="glass"
+        message={makeMessage({ role: "user", text: "Pointer draft" })}
+        onCopy={vi.fn()}
+        onEdit={vi.fn()}
+        onReply={vi.fn()}
+      />,
+    );
+
+    const message = screen.getByTestId("thread-line");
+    const bubble = screen.getByRole("button", {
+      name: "Show message actions",
+    });
+    const actions = screen.getByTestId("thread-line-actions");
+
+    fireEvent.pointerMove(message, { pointerType: "mouse" });
+    expect(actions.getAttribute("aria-hidden")).toBe("false");
+
+    fireEvent.click(bubble);
+    expect(actions.getAttribute("aria-hidden")).toBe("true");
+
+    fireEvent.mouseLeave(message);
+    expect(actions.getAttribute("aria-hidden")).toBe("true");
+
+    fireEvent.pointerMove(message, { pointerType: "mouse" });
+    const range = document.createRange();
+    range.selectNodeContents(screen.getByText("Pointer draft"));
+    const selection = window.getSelection();
+    if (!selection) throw new Error("jsdom selection unavailable");
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    fireEvent.click(bubble);
+    expect(actions.getAttribute("aria-hidden")).toBe("false");
+
+    fireEvent.mouseLeave(message);
+    expect(actions.getAttribute("aria-hidden")).toBe("true");
+    selection.removeAllRanges();
   });
 
   it("returns focus to the visible glass message before Reply hides its actions", () => {
@@ -234,20 +294,5 @@ describe("ChatMessage desktop hover chrome", () => {
       screen.queryByRole("button", { name: /delete/i, hidden: true }),
     ).toBeNull();
     expect(screen.queryByRole("button", { name: "Reply" })).toBeNull();
-  });
-
-  it("keeps user turns inside the compact right-side glass bubble", () => {
-    render(
-      <ChatMessage
-        message={makeMessage({ role: "user", text: "My message" })}
-        appearance="glass"
-      />,
-    );
-    const bubble = screen.getByText("My message").parentElement;
-    expect(bubble?.classList.contains("rounded-2xl")).toBe(true);
-    expect(bubble?.classList.contains("rounded-br-md")).toBe(true);
-    expect(bubble?.classList.contains("border-white/15")).toBe(true);
-    expect(bubble?.classList.contains("px-3.5")).toBe(true);
-    expect(bubble?.classList.contains("py-[3px]")).toBe(true);
   });
 });

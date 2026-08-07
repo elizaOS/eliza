@@ -1,5 +1,8 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for set package version mjs. */
+/**
+ * Stamps $RELEASE_VERSION into the cwd's package.json; the single
+ * version-setting step of release workflows.
+ */
 import { readFileSync, writeFileSync } from "node:fs";
 
 const version = process.env.RELEASE_VERSION;

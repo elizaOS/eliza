@@ -4,10 +4,14 @@
  * "hash memory" scan (mirroring the /api/memory/remember writer, so recall works
  * even when no embedding model is registered) with semantic search over the
  * shared per-turn recall-query embed; on embed failure it fails open to the
- * lexical hits alone. Current-room messages are filtered out to avoid echo, and
- * hash-memory hits win on id overlap. Gated to USER.
+ * lexical hits alone. The two sources are independent and run concurrently, and
+ * result-room tags resolve through one batched room read — this provider sits
+ * on the composeState critical path of every reply, so it must not serialize
+ * independent round-trips. Current-room messages are filtered out to avoid
+ * echo, and hash-memory hits win on id overlap. Gated to USER.
  */
 import type {
+  AccessContext,
   IAgentRuntime,
   Memory,
   Provider,
@@ -16,7 +20,12 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { embedRecallQuery, stringToUuid } from "@elizaos/core";
+import {
+  buildAccessContext,
+  embedRecallQuery,
+  filterByAccessContext,
+  stringToUuid,
+} from "@elizaos/core";
 import { getValidationKeywordTerms } from "@elizaos/shared";
 import {
   extractConversationMetadataFromRoom,
@@ -57,6 +66,7 @@ function memoryCreatedAt(memory: Memory): number {
 async function loadHashMemories(
   runtime: IAgentRuntime,
   query: string,
+  accessContext: AccessContext,
 ): Promise<Memory[]> {
   const agentName = runtime.character.name?.trim() || "Eliza";
   const roomId = stringToUuid(`${agentName}-hash-memory-room`) as UUID;
@@ -65,6 +75,7 @@ async function loadHashMemories(
     tableName: "messages",
     limit: HASH_MEMORY_SCAN_LIMIT,
     includeEmbedding: false,
+    accessContext,
   });
 
   // Only hash memories are candidates; rank them together so BM25's IDF is
@@ -129,30 +140,58 @@ export const relevantConversationsProvider: Provider = {
         return { text: "", values: {}, data: {} };
       }
 
-      // Lexical hash-memory recall mirrors the /api/memory/remember writer and
-      // works even when no TEXT_EMBEDDING model is registered.
-      const hashMemories = await loadHashMemories(runtime, text);
+      let accessContext: AccessContext;
+      try {
+        accessContext = await buildAccessContext(runtime, message);
+      } catch (error) {
+        runtime.logger.warn(
+          {
+            error: error instanceof Error ? error.message : String(error),
+            entityId: message.entityId,
+            roomId: message.roomId,
+          },
+          "[RelevantConversationsProvider] Access context resolution failed; using least-privileged requester scope",
+        );
+        accessContext = { requesterEntityId: message.entityId };
+      }
 
-      // Embed the current message for semantic search. Routes through the one
-      // shared per-turn recall-query embed so this provider, document recall, and
-      // experience recall reuse a single embed round-trip per turn. `null` means
-      // the embed timed out/failed (or no embedding model) — fail open and rely
-      // on lexical hash memories alone.
-      const embedding = await embedRecallQuery(runtime, text);
-      const results: Memory[] =
-        embedding && embedding.length > 0
-          ? await runtime.searchMemories({
-              embedding,
-              tableName: "messages",
-              match_threshold: MATCH_THRESHOLD,
-              limit: MAX_RELEVANT_RESULTS + 5, // fetch extra to filter current room
-            })
-          : [];
+      // The two recall sources are independent, so they run concurrently
+      // instead of serially: the lexical hash-memory scan (which mirrors the
+      // /api/memory/remember writer and works even when no TEXT_EMBEDDING
+      // model is registered) overlaps the embed await + semantic search
+      // instead of adding to the compose critical path. A failure in either
+      // branch rejects into the outer catch — the same wholesale degrade the
+      // serial form had.
+      //
+      // Semantic branch: routes through the one shared per-turn recall-query
+      // embed so this provider, document recall, and experience recall reuse
+      // a single embed round-trip per turn. `null` means the embed timed
+      // out/failed (or no embedding model) — fail open and rely on lexical
+      // hash memories alone.
+      const [hashMemories, results] = await Promise.all([
+        loadHashMemories(runtime, text, accessContext),
+        (async (): Promise<Memory[]> => {
+          const embedding = await embedRecallQuery(runtime, text);
+          if (!embedding || embedding.length === 0) return [];
+          return runtime.searchMemories({
+            embedding,
+            tableName: "messages",
+            match_threshold: MATCH_THRESHOLD,
+            limit: MAX_RELEVANT_RESULTS + 5, // fetch extra to filter current room
+            accessContext,
+          });
+        })(),
+      ]);
 
       // Filter out messages from the current conversation to avoid echo, dedupe
       // by id (hash memories prepended so they win on overlap), then cap.
       const currentRoomId = message.roomId;
-      const filtered = [...hashMemories, ...results]
+      const readable = filterByAccessContext(
+        [...hashMemories, ...results],
+        accessContext,
+        runtime.agentId,
+      );
+      const filtered = readable
         .filter((m) => m.content.text && m.roomId !== currentRoomId)
         .filter(
           (memory, index, all) =>
@@ -165,20 +204,26 @@ export const relevantConversationsProvider: Provider = {
         return { text: "", values: {}, data: {} };
       }
 
-      // Resolve room details
+      // Resolve room details for source tags in ONE batched read. The
+      // per-result getRoom loop this replaces paid one adapter round-trip per
+      // distinct room every turn (the runtime's room memo TTL is shorter than
+      // a turn gap), serially on the compose critical path.
       const roomCache = new Map<string, Room | null>();
+      const roomIds: UUID[] = [];
       for (const mem of filtered) {
-        const rid = mem.roomId;
-        if (rid && !roomCache.has(rid)) {
-          try {
-            roomCache.set(rid, await runtime.getRoom(rid));
-          } catch {
-            // error-policy:J4 one room's source tag degrades to untagged; the
-            // outer catch reports a wholesale recall failure, this per-room miss
-            // is cosmetic and must not abort the whole provider.
-            roomCache.set(rid, null);
-          }
+        if (mem.roomId && !roomCache.has(mem.roomId)) {
+          roomCache.set(mem.roomId, null);
+          roomIds.push(mem.roomId);
         }
+      }
+      try {
+        for (const room of await runtime.getRoomsByIds(roomIds)) {
+          if (room.id) roomCache.set(room.id, room);
+        }
+      } catch {
+        // error-policy:J4 room source tags degrade to untagged; the outer
+        // catch reports a wholesale recall failure, this lookup miss is
+        // cosmetic and must not abort the whole provider.
       }
 
       const lines: string[] = ["Relevant past conversations:"];

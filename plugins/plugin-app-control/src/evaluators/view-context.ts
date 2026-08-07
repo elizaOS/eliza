@@ -13,7 +13,7 @@ import {
 	isStandaloneNotesSurfaceRequest,
 	resolveIntentView,
 } from "../actions/views-show.js";
-import { markViewSwitch } from "../runtime/view-switch-signal.js";
+import { userRequestMessageText } from "../params.js";
 
 const VIEWS_ACTION_NAME = "VIEWS";
 const NONE = "none";
@@ -92,8 +92,8 @@ const navigateToContextualView: EvaluatorProcessor<ViewContextOutput> = {
 				? output.viewId.trim().toLowerCase()
 				: "";
 		if (!viewId || viewId === NONE) return undefined;
-		const messageText =
-			typeof message?.content?.text === "string" ? message.content.text : "";
+		// Security-unwrapped user words — never raw (possibly enveloped) text.
+		const messageText = userRequestMessageText(message);
 		if (
 			viewId === "documents" &&
 			isStandaloneNotesSurfaceRequest(messageText)
@@ -123,11 +123,6 @@ const navigateToContextualView: EvaluatorProcessor<ViewContextOutput> = {
 			viewType: target.viewType,
 		});
 		if (!ok) return undefined;
-		// This evaluator runs *after* the reply, so it cannot acknowledge the
-		// switch in the just-sent message. Record the switch (and the server
-		// stamps it on navigate): the `current_view` provider then acknowledges it
-		// on the immediate next turn rather than the user being moved silently.
-		markViewSwitch(message?.roomId);
 		logger.info(
 			`[plugin-app-control] contextual view nav → ${viewId}${output.reason ? ` (${output.reason})` : ""}`,
 		);
@@ -174,8 +169,9 @@ export const viewContextEvaluator: Evaluator<ViewContextOutput> = {
 			(action) => action.name?.toUpperCase() === VIEWS_ACTION_NAME,
 		);
 		if (!hasViews) return false;
-		const text =
-			typeof message.content?.text === "string" ? message.content.text : "";
+		// Security-unwrapped user words — the envelope's warning would satisfy
+		// the length gate and feed activity hints the user never expressed.
+		const text = userRequestMessageText(message);
 		if (text.trim().length < 8) return false;
 		if (isStandaloneNotesSurfaceRequest(text)) return false;
 		// Direct nav commands belong to the VIEWS action — only infer contextually
@@ -185,8 +181,8 @@ export const viewContextEvaluator: Evaluator<ViewContextOutput> = {
 		return ACTIVITY_HINT_RE.test(text);
 	},
 	prompt({ runtime, message }) {
-		const text =
-			typeof message.content?.text === "string" ? message.content.text : "";
+		// The model classifies the user's words, not the envelope armor.
+		const text = userRequestMessageText(message);
 		// The instruction half is the GEPA-optimizable `view_context` prompt; the
 		// per-turn user message is appended after it.
 		const instruction = resolveOptimizedPromptForRuntime(

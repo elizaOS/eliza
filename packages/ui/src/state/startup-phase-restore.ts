@@ -71,8 +71,11 @@ import {
 import { isTrustedRestoreApiBaseUrl } from "./runtime-url-trust";
 import type { StartupEvent } from "./startup-coordinator";
 import { buildStaticFirstRunOptions } from "./startup-first-run-options";
+import { runStartupProbeWithTimeout } from "./startup-probe";
+import { STARTUP_TIMING_POLICY } from "./startup-timing-policy";
 
-const DESKTOP_RESTORE_RPC_TIMEOUT_MS = 5_000;
+const DESKTOP_RESTORE_RPC_TIMEOUT_MS =
+  STARTUP_TIMING_POLICY.desktopRestoreRpcTimeoutMs;
 
 /**
  * A stored Steward JWT with at least this many seconds of life left restores
@@ -88,9 +91,11 @@ const STEWARD_RESTORE_REFRESH_AHEAD_SECS = 120;
  * fall back to the stored/provision token (the useCloudState lifecycle refresh
  * and the api-client 401 self-heal remain the backstops).
  */
-const STEWARD_RESTORE_REFRESH_TIMEOUT_MS = 4_000;
+const STEWARD_RESTORE_REFRESH_TIMEOUT_MS =
+  STARTUP_TIMING_POLICY.stewardRestoreRefreshTimeoutMs;
 /** Bound the non-blocking legacy runtime-tier repair lookup. */
-const CLOUD_AGENT_TIER_PROBE_TIMEOUT_MS = 12_000;
+const CLOUD_AGENT_TIER_PROBE_TIMEOUT_MS =
+  STARTUP_TIMING_POLICY.cloudAgentTierProbeTimeoutMs;
 /** Steward refresh endpoint path (same-origin on web; `api.` host on native). */
 const STEWARD_REFRESH_PATH = "/api/auth/steward-refresh";
 /** Default direct Cloud site base used to derive the native refresh endpoint. */
@@ -388,21 +393,20 @@ async function resolveRestoredStewardToken(): Promise<string | null> {
     // the /login page) instead of forcing a redundant re-sign-in; on success
     // the top-level LoginView gate and the first-run conductor both skip.
     if (typeof window !== "undefined" && hasStewardAuthedCookie()) {
-      let cookieTimeout: ReturnType<typeof setTimeout> | undefined;
-      const recovered = await Promise.race([
-        // error-policy:J4 a failed cookie refresh falls through to
-        // unauthenticated restore (sign-in wall), never fabricates a session.
-        refreshCloudStewardSession({
-          endpoint: resolveRestoreStewardRefreshEndpoint(),
-        }).catch(() => null),
-        new Promise<null>((resolve) => {
-          cookieTimeout = setTimeout(
-            () => resolve(null),
-            STEWARD_RESTORE_REFRESH_TIMEOUT_MS,
-          );
-        }),
-      ]);
-      if (cookieTimeout) clearTimeout(cookieTimeout);
+      const refreshProbe = await runStartupProbeWithTimeout(
+        () =>
+          refreshCloudStewardSession({
+            endpoint: resolveRestoreStewardRefreshEndpoint(),
+          }),
+        STEWARD_RESTORE_REFRESH_TIMEOUT_MS,
+      );
+      const recovered = refreshProbe.kind === "ok" ? refreshProbe.value : null;
+      if (refreshProbe.kind !== "ok") {
+        logger.warn(
+          { error: refreshProbe.error, kind: refreshProbe.kind },
+          "[startup-phase-restore] Steward cookie refresh did not complete",
+        );
+      }
       if (recovered?.token) {
         writeStoredStewardToken(recovered.token);
         try {
@@ -421,21 +425,20 @@ async function resolveRestoredStewardToken(): Promise<string | null> {
   // Comfortably valid → restore instantly.
   if (secs >= STEWARD_RESTORE_REFRESH_AHEAD_SECS) return stored;
 
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-  const refreshed = await Promise.race([
-    // error-policy:J4 refresh failure is handled explicitly below: an expired
-    // token is dropped (restore unauthenticated), a still-valid one is kept
-    refreshCloudStewardSession({
-      endpoint: resolveRestoreStewardRefreshEndpoint(),
-    }).catch(() => null),
-    new Promise<null>((resolve) => {
-      timeout = setTimeout(
-        () => resolve(null),
-        STEWARD_RESTORE_REFRESH_TIMEOUT_MS,
-      );
-    }),
-  ]);
-  if (timeout) clearTimeout(timeout);
+  const refreshProbe = await runStartupProbeWithTimeout(
+    () =>
+      refreshCloudStewardSession({
+        endpoint: resolveRestoreStewardRefreshEndpoint(),
+      }),
+    STEWARD_RESTORE_REFRESH_TIMEOUT_MS,
+  );
+  const refreshed = refreshProbe.kind === "ok" ? refreshProbe.value : null;
+  if (refreshProbe.kind !== "ok") {
+    logger.warn(
+      { error: refreshProbe.error, kind: refreshProbe.kind },
+      "[startup-phase-restore] stored Steward token refresh did not complete",
+    );
+  }
 
   if (refreshed?.token) {
     writeStoredStewardToken(refreshed.token);

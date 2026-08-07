@@ -344,3 +344,66 @@ describe("registerClientChatSendHandler — cross-conversation safety", () => {
     expect(broadcastWs).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("registerClientChatSendHandler — connector discovery failure is observable", () => {
+  it("surfaces a missing connector-discovery API instead of falling back to the dashboard", async () => {
+    const { runtime, created } = makeRuntime();
+    delete (runtime as { getMessageConnectors?: unknown }).getMessageConnectors;
+    const { state, broadcastWs } = makeState([conv("c1", "room-1")]);
+    registerClientChatSendHandler(runtime as unknown as IAgentRuntime, state);
+
+    const result = runtime.sendMessageToTarget(
+      { source: "my_custom_source", roomId: "room-1" as UUID },
+      { text: "relayed result" },
+    );
+    await expect(result).rejects.toMatchObject({
+      name: "ElizaError",
+      message: expect.stringMatching(/connector discovery unavailable/),
+      code: "CONNECTOR_DISCOVERY_UNAVAILABLE",
+      context: { source: "my_custom_source" },
+      severity: "fatal",
+    });
+
+    expect(created).toHaveLength(0);
+    expect(broadcastWs).not.toHaveBeenCalled();
+  });
+
+  it("propagates a throwing connector-discovery API instead of rerouting to the dashboard", async () => {
+    const { runtime, created } = makeRuntime();
+    (runtime as { getMessageConnectors?: unknown }).getMessageConnectors =
+      () => {
+        throw new Error("registry exploded");
+      };
+    const { state, broadcastWs } = makeState([conv("c1", "room-1")]);
+    registerClientChatSendHandler(runtime as unknown as IAgentRuntime, state);
+
+    await expect(
+      runtime.sendMessageToTarget(
+        { source: "my_custom_source", roomId: "room-1" as UUID },
+        { text: "relayed result" },
+      ),
+    ).rejects.toThrow(/registry exploded/);
+
+    expect(created).toHaveLength(0);
+    expect(broadcastWs).not.toHaveBeenCalled();
+  });
+
+  it("still delivers explicit dashboard relay sources when discovery is broken", async () => {
+    // The relay seam (registerInternalSendHandler) is independent of connector
+    // discovery: client_chat must remain addressable even when the registry is
+    // broken, per the first acceptance criterion.
+    const { runtime, created } = makeRuntime();
+    delete (runtime as { getMessageConnectors?: unknown }).getMessageConnectors;
+    const { state, broadcastWs } = makeState([conv("c1", "room-1")]);
+    registerClientChatSendHandler(runtime as unknown as IAgentRuntime, state);
+
+    await runtime.sendMessageToTarget(
+      { source: "client_chat", roomId: "room-1" as UUID },
+      { text: "relayed result" },
+    );
+
+    expect(created).toHaveLength(1);
+    expect(created[0]?.roomId).toBe("room-1");
+    expect(broadcastWs).toHaveBeenCalledTimes(1);
+  });
+});

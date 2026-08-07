@@ -14,7 +14,7 @@
 // deletes the rule and the seeded key so the live vault is left clean.
 
 import { expect, type Page, test } from "@playwright/test";
-import { openAppPath, seedAppStorage } from "./helpers";
+import { openAppPath, openSettingsSection, seedAppStorage } from "./helpers";
 
 const LIVE_STACK = process.env.ELIZA_UI_SMOKE_LIVE_STACK === "1";
 
@@ -39,8 +39,8 @@ function countRoutingWrites(page: Page): () => number {
 
 async function openVaultModal(page: Page): Promise<void> {
   await openAppPath(page, "/settings");
-  await page.locator("body").click({ position: { x: 4, y: 4 } });
-  await page.keyboard.press("Control+Alt+Shift+V");
+  await openSettingsSection(page, /^Vault$/);
+  await page.locator('[data-agent-id="secrets-manage"]').click();
   await expect(page.getByTestId("vault-tab-overview")).toBeVisible({
     timeout: 20_000,
   });
@@ -99,7 +99,7 @@ test.describe("vault routing deep round-trip", () => {
 
     // Seed a key, then enable profiles + add a non-default profile so the rule
     // form has a profile to bind to.
-    await page.getByTestId("vault-add-secret").click();
+    await page.locator('[data-agent-id="vault-add-secret"]').click();
     const addForm = page.getByTestId("vault-add-secret-form");
     await expect(addForm).toBeVisible({ timeout: 10_000 });
     await addForm
@@ -141,7 +141,7 @@ test.describe("vault routing deep round-trip", () => {
 
     // Routing tab → add a rule scoped to an agent, bound to the `work` profile.
     await gotoRoutingTab(page);
-    await page.getByRole("button", { name: /Add rule/i }).click();
+    await page.locator('[data-agent-id="routing-add-rule-toggle"]').click();
     const ruleForm = page.getByTestId("routing-add-rule-form");
     await expect(ruleForm).toBeVisible({ timeout: 10_000 });
 
@@ -175,7 +175,7 @@ test.describe("vault routing deep round-trip", () => {
       await page.getByRole("option").last().click();
     }
 
-    await ruleForm.getByRole("button", { name: /Save rule/i }).click();
+    await ruleForm.locator('[data-agent-id="routing-rule-save"]').click();
 
     // Real PUT /api/secrets/routing → 200, and the saved config comes back so the
     // rules table renders the new row.

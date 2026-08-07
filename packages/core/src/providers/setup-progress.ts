@@ -270,13 +270,18 @@ export const setupProgressProvider: Provider = {
 				text: progressText,
 			};
 		} catch (error) {
+			// error-policy:J4 setup progress becomes an explicit unavailable state;
+			// a failed load is not an empty or completed setup.
+			runtime.reportError("SetupProgressProvider.get", error, {
+				roomId: message.roomId,
+			});
 			return {
 				data: {
-					setup: null,
+					available: false,
 					error: error instanceof Error ? error.message : String(error),
 				},
-				values: { setupProgress: "" },
-				text: "",
+				values: { setupProgressAvailable: false },
+				text: "Setup progress is unavailable.",
 			};
 		}
 	},
@@ -372,13 +377,18 @@ export const setupMissingProvider: Provider = {
 				text,
 			};
 		} catch (error) {
+			// error-policy:J4 missing setup requirements become explicitly
+			// unavailable; a failed load is not an empty requirement list.
+			runtime.reportError("SetupMissingProvider.get", error, {
+				roomId: message.roomId,
+			});
 			return {
 				data: {
-					missing: [],
+					available: false,
 					error: error instanceof Error ? error.message : String(error),
 				},
-				values: { setupMissing: "" },
-				text: "",
+				values: { setupMissingAvailable: false },
+				text: "Setup requirements are unavailable.",
 			};
 		}
 	},

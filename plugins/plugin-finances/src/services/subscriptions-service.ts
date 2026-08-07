@@ -8,7 +8,7 @@
  * internals:
  *
  *   - **Gmail** ({@link SubscriptionsGmailGateway}) — date-windowed owner Gmail
- *     search via `@elizaos/plugin-google`, for subscription-evidence discovery.
+ *     search via `@elizaos/plugin-google-workspace`, for subscription-evidence discovery.
  *   - **Browser bridge** ({@link SubscriptionsBrowserGateway}) — companion list
  *     + session create/poll via the `lifeops_browser_plugin` runtime service
  *     contract owned by `@elizaos/plugin-browser`, for `user_browser`

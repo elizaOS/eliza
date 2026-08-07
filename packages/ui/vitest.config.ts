@@ -11,10 +11,6 @@ const monorepoRoot = resolve(packageRoot, "../..");
 const uiSrc = resolve(packageRoot, "src");
 const sharedSrc = resolve(monorepoRoot, "packages/shared/src");
 const coreSrc = resolve(monorepoRoot, "packages/core/src");
-const importConversationsSrc = resolve(
-  monorepoRoot,
-  "packages/import-conversations/src",
-);
 const cloudRoutingSrc = resolve(monorepoRoot, "packages/cloud/routing/src");
 const cloudSharedSrc = resolve(monorepoRoot, "packages/cloud/shared/src");
 const loggerSrc = resolve(monorepoRoot, "packages/logger/src");
@@ -118,14 +114,6 @@ export default defineConfig({
         replacement: resolve(coreSrc, "$1"),
       },
       {
-        find: /^@elizaos\/import-conversations\/browser$/,
-        replacement: resolve(importConversationsSrc, "browser.ts"),
-      },
-      {
-        find: /^@elizaos\/import-conversations$/,
-        replacement: resolve(importConversationsSrc, "index.ts"),
-      },
-      {
         find: /^@elizaos\/app-core(?:\/browser|\/ui-compat)?$/,
         replacement: hostExternalStub,
       },
@@ -135,12 +123,6 @@ export default defineConfig({
       },
       {
         find: /^@elizaos\/plugin-browser$/,
-        replacement: hostExternalStub,
-      },
-      {
-        // Dynamically loaded by DynamicViewLoader as a host-external plugin;
-        // alias it so the ui test build doesn't require its built dist.
-        find: /^@elizaos\/plugin-training$/,
         replacement: hostExternalStub,
       },
       {
@@ -191,7 +173,7 @@ export default defineConfig({
         find: /^@capacitor\/app$/,
         replacement: resolve(packageRoot, "test/stubs/capacitor-app.ts"),
       },
-      // `@elizaos/capacitor-llama` and `@elizaos/plugin-wallet-ui` are workspace packages
+      // `@elizaos/capacitor-llama` and `@elizaos/plugin-wallet/ui` are workspace packages
       // built to dist/ only; UI tests `vi.mock` them, so alias to stubs so the
       // import resolves in CI where their dist/ isn't built.
       {
@@ -213,10 +195,10 @@ export default defineConfig({
         replacement: resolve(packageRoot, "test/stubs/elizaos-app-wallet.ts"),
       },
       {
-        find: /^@elizaos\/plugin-wallet-ui$/,
+        find: /^@elizaos\/plugin-wallet\/ui$/,
         replacement: resolve(
           monorepoRoot,
-          "plugins/plugin-wallet-ui/src/index.ts",
+          "plugins/plugin-wallet/src/ui/index.ts",
         ),
       },
       {
@@ -248,16 +230,12 @@ export default defineConfig({
     // (they spy on `console` directly), so bypassing it is lossless here.
     disableConsoleIntercept: true,
     pool: "forks",
-    poolOptions: {
-      forks: {
-        // The heaviest jsdom suites (App.screen-background-fuzz walks the FULL
-        // builtin-tab universe under a mounted <App /> several times) peak past
-        // Node's ~4 GB default old-space and OOM-kill the fork worker, which
-        // vitest then reports as "Worker exited unexpectedly" with the file's
-        // results lost. Raise only the ceiling — small suites stay small.
-        execArgv: ["--max-old-space-size=8192"],
-      },
-    },
+    // The heaviest jsdom suites (App.screen-background-fuzz walks the FULL
+    // builtin-tab universe under a mounted <App /> several times) peak past
+    // Node's ~4 GB default old-space and OOM-kill the fork worker, which
+    // vitest then reports as "Worker exited unexpectedly" with the file's
+    // results lost. Raise only the ceiling — small suites stay small.
+    execArgv: ["--max-old-space-size=8192"],
     server: {
       deps: {
         // Inline packages that use React through Vite's transform pipeline so

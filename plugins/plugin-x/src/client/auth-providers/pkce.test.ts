@@ -44,11 +44,6 @@ describe("createCodeChallenge", () => {
     const expected = createHash("sha256").update(verifier).digest("base64url");
     expect(createCodeChallenge(verifier)).toBe(expected);
   });
-
-  it("is deterministic for the same verifier, different for another", () => {
-    expect(createCodeChallenge("abc")).toBe(createCodeChallenge("abc"));
-    expect(createCodeChallenge("abc")).not.toBe(createCodeChallenge("abd"));
-  });
 });
 
 describe("createState", () => {

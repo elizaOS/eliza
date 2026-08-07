@@ -491,6 +491,7 @@ export function createVoiceSessionClient(
         }
         break;
       case "usage":
+      case "navigate_view":
       case "stt_partial":
       case "stt_eager_eot":
         break;

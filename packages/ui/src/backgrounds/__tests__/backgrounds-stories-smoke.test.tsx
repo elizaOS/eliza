@@ -1,3 +1,4 @@
+/** Verifies backgrounds stories smoke through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /** Smoke-renders every backgrounds Storybook story under jsdom to catch a story that throws on mount. */

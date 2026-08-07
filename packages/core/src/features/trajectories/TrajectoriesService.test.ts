@@ -54,7 +54,7 @@ function makeTrajectoryRow(trajectoryId: string, stepId: string) {
 			},
 		]),
 		reward_components_json: JSON.stringify({ environmentReward: 0 }),
-		metrics_json: JSON.stringify({}),
+		metrics_json: JSON.stringify({ episodeLength: 1, finalStatus: "active" }),
 		metadata_json: JSON.stringify({}),
 		total_reward: 0,
 	};
@@ -70,7 +70,7 @@ function makeEmptyTrajectoryRow(trajectoryId: string) {
 		duration_ms: null,
 		steps_json: JSON.stringify([]),
 		reward_components_json: JSON.stringify({ environmentReward: 0 }),
-		metrics_json: JSON.stringify({}),
+		metrics_json: JSON.stringify({ episodeLength: 0, finalStatus: "active" }),
 		metadata_json: JSON.stringify({}),
 		total_reward: 0,
 	};
@@ -323,6 +323,58 @@ describe("TrajectoriesService", () => {
 			roomId: "room-1",
 			entityId: "entity-1",
 			metadata: { roomId: "room-1", entityId: "entity-1", source: "discord" },
+		});
+	});
+
+	it("surfaces unavailable query storage instead of returning a healthy empty list", async () => {
+		const service = new TrajectoriesService(createRuntimeWithoutSql());
+
+		await expect(service.listTrajectories()).rejects.toMatchObject({
+			code: "TRAJECTORY_STORAGE_UNAVAILABLE",
+		});
+	});
+
+	it("rejects malformed persisted list rows instead of fabricating required fields", async () => {
+		const service = new TrajectoriesService({
+			adapter: { db: { execute: async () => ({ rows: [] }) } },
+			getService: () => null,
+			getServicesByType: () => [],
+		} as unknown as IAgentRuntime);
+		const serviceInternals = service as unknown as {
+			ensureStorageReady: () => Promise<void>;
+			executeRawSql: (
+				sqlText: string,
+			) => Promise<{ rows: Array<Record<string, unknown>>; columns: string[] }>;
+		};
+		serviceInternals.ensureStorageReady = async () => {};
+		serviceInternals.executeRawSql = async (sqlText: string) =>
+			sqlText.includes("count(*)")
+				? { rows: [{ total: 1 }], columns: ["total"] }
+				: {
+						rows: [
+							{
+								id: "00000000-0000-4000-8000-000000000030",
+								agent_id: "00000000-0000-4000-8000-000000000001",
+								source: "chat",
+								status: "completed",
+								start_time: 1000,
+								step_count: 1,
+								llm_call_count: null,
+								total_prompt_tokens: 10,
+								total_completion_tokens: 20,
+								total_cache_read_input_tokens: 0,
+								total_cache_creation_input_tokens: 0,
+								total_reward: 0,
+								metadata_json: "{}",
+								created_at: "1970-01-01T00:00:01.000Z",
+							},
+						],
+						columns: [],
+					};
+
+		await expect(service.listTrajectories()).rejects.toMatchObject({
+			code: "TRAJECTORY_ROW_INVALID",
+			context: { field: "llm_call_count" },
 		});
 	});
 });

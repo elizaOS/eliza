@@ -1,6 +1,12 @@
-# elizaos
+# `elizaos`
 
-The `elizaos` CLI: scaffolds elizaOS projects and plugins from packaged templates, upgrades generated projects against newer templates, and submits plugins to the registry. Published to npm as `elizaos`; the `elizaos` bin maps to `dist/cli.js`. Run via `npx elizaos`. Repo-wide rules live in the root [AGENTS.md](../../AGENTS.md).
+The package-first elizaOS CLI. It scaffolds and upgrades projects/plugins,
+submits plugin metadata, deploys Eliza Cloud apps, connects capability-router
+endpoints, and migrates supported file-based agent workspaces. It is published
+as `elizaos`; the `elizaos` bin maps to `dist/cli.js`.
+
+Repository-wide engineering and evidence requirements are inherited from the
+root [`CLAUDE.md`](../../CLAUDE.md).
 
 ## Role
 
@@ -20,9 +26,11 @@ src/
     version.ts         `version` — print CLI version from package.json
     plugins.ts         `registerPluginsCommand` + `submitPluginToRegistry` — generate registry metadata and open an explicit registry PR via git/gh
     deploy.ts          `deploy` / `runDeploy` — Eliza Cloud app deploy trigger + status polling (`--dry-run` prints plan only)
+    migrate-agent.ts   `migrate-agent` — import supported OCPlatform file agents into an Eliza archive
     capability-router.ts  `capabilityRouterConnect` — POST agent API /api/capability-router/connect
     DEPLOY_DESIGN.md   Design notes and follow-up boundaries for the deploy pipeline
     capability-router.test.ts
+  migrate/             archive writer, OCPlatform reader, character mapping, memory tiering, schemas, tests
   scaffold.ts          Core engine: template-value builders, ${...} token replacement, renderTemplateTree,
                        managed-file diff (updateManagedFiles), git submodule init/update/hydrate
   manifest.ts          loadManifest / getTemplateById / getTemplates / TEMPLATE_ICONS (reads templates-manifest.json)
@@ -41,7 +49,10 @@ templates-manifest.json  Generated index of templates (loaded at runtime by mani
 
 `src/index.ts` re-exports: `create`, `info`, `upgrade`, `version`, `registerPluginsCommand`, `submitPluginToRegistry`, `loadManifest`, and types `TemplateDefinition` / `TemplatesManifest`. `src/cli.ts` additionally uses `deploy` and `capabilityRouterConnect` from `commands/index.ts`.
 
-Commands registered on the Commander program: `version`, `info`, `create`, `upgrade`, `deploy`, `plugins submit`, `capability-router connect`. With no subcommand, an interactive `@clack/prompts` menu (`defaultAction`) offers create / upgrade / info / submit-plugin.
+Commands registered on the Commander program: `version`, `info`, `create`,
+`upgrade`, `deploy`, `migrate-agent`, `plugins submit`, and
+`capability-router connect`. With no subcommand, an interactive
+`@clack/prompts` menu offers create, upgrade, info, and plugin submission.
 
 ## Templates
 
@@ -54,7 +65,7 @@ Token replacement (`scaffold.ts`): plugin templates substitute `${PLUGINNAME}`, 
 ```bash
 bun run --cwd packages/elizaos build          # build.ts: prep templates + manifest, tsc, shebang
 bun run --cwd packages/elizaos dev            # build.ts --watch
-bun run --cwd packages/elizaos typecheck      # tsgo --noEmit
+bun run --cwd packages/elizaos typecheck      # tsc --noEmit
 bun run --cwd packages/elizaos test           # vitest run --passWithNoTests
 bun run --cwd packages/elizaos test:packaged  # scripts/packaged-smoke.mjs (packs + installs + create/upgrade)
 bun run --cwd packages/elizaos lint           # biome check --write (also lints templates/plugin + project/apps/app)
@@ -81,47 +92,19 @@ Generated projects record state in `.elizaos/template.json` (`ProjectTemplateMet
 - `cli.ts` ends with top-level `await program.parseAsync()`; the bin shebang is `#!/usr/bin/env node` (re-applied by `ensureCliShebang` in `build.ts`).
 - Commands that interact with the user use `@clack/prompts` and call `process.exit(...)` directly on cancel/error; `deploy`/`capabilityRouterConnect` split a pure `run*` function (returns exit code) from the thin `process.exit` wrapper for testability.
 - `plugins submit --dry-run` prints the generated `entries/third-party/<pkg>.json` metadata. Opening a PR requires an explicit `--registry owner/repo`; no public default registry repository is configured. `@elizaos/*` names are rejected (reserved for first-party).
-- `deploy` is experimental: real runs queue `POST /api/v1/apps/:id/deploy`, optionally attach `--domain`, and poll `GET /api/v1/apps/:id/deploy/status` until `READY` or `ERROR`; `--dry-run` prints the planned sequence without network calls.
+- `deploy` queues `POST /api/v1/apps/:id/deploy`, optionally attaches
+  `--domain`, and polls `GET /api/v1/apps/:id/deploy/status` until `READY` or
+  `ERROR`; `--dry-run` prints the plan without network calls.
+- The `AGENTS.md` files below `src/migrate/__tests__/fixtures/` are input data.
+  Do not copy a `CLAUDE.md` beside them or rewrite them as package guidance;
+  preserve their fixture semantics unless the migration contract changes.
 - This package is intentionally runtime-free — do NOT add `@elizaos/core` or other runtime deps. Keep it to the three production dependencies.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
-## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+## Package completion evidence
 
-> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
-> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
-> works **without reading the code**, from the artifacts you attach. This applies to **every**
-> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
-
-- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
-  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
-  providers/context, the raw model output, every tool/action call, and the result. Then **open
-  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
-  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
-- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
-  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
-  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
-  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
-  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
-  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
-  them is part of your change.
-- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
-  the entire feature or view, start to finish (`bun run test:e2e:record`).
-- **Manually review every artifact the change touches** — never just the green check: client
-  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
-  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
-- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
-  blocker by the **hard path**: build the real architecture, stand up the real
-  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
-  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
-  highest-effort, production-ready version. Keep going until every possibility is exhausted.
-
-Artifacts → attached inline in the PR (MP4 video, JPG screenshots, logs in `<details>`); attach each evidence type **or**
-explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
-behavior, **re-capture** evidence; stale proof is worse than none.
-
-**Capture & manually review for this package — CLI / tooling:**
-- The real command/flow invocation transcript (args in, stdout/stderr, exit code) and the artifacts it generated (files, scaffolds, manifests, screenshots/recordings).
-- Failure paths: bad args, missing deps, partial state, permission/network errors.
-- A recording/log of the actual run end to end — not a unit test of one helper.
-- Any model interaction captured as a live trajectory and reviewed.
-<!-- END: evidence-and-e2e-mandate -->
+Follow the repository-wide definition of done in the root guide. For CLI
+changes, additionally run the built and packed CLI—not only source helpers—and
+capture arguments, stdout/stderr, exit status, and generated files. Exercise
+invalid arguments, missing dependencies, partial/conflicting state, and
+permission/network failures relevant to the command. Template changes require
+the packaged create/upgrade smoke and inspection of the generated workspace.

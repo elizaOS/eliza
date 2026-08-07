@@ -1,3 +1,4 @@
+/** Verifies useShellController — interleaved send/voice/new-chat fuzz (#10700) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 // Fuzz coverage for #10700: send-text, voice capture, and new-chat all mutate

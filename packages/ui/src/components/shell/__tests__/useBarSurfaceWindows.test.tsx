@@ -1,3 +1,4 @@
+/** Verifies useBarSurfaceWindows through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Phase 3 of #9953: the chromeless bottom bar summons views / the launcher as

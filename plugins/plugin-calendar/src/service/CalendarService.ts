@@ -18,11 +18,16 @@ import {
   Service,
   SsrfBlockedError,
 } from "@elizaos/core";
+import type { GoogleCalendarEvent } from "@elizaos/plugin-google-workspace";
+// Runtime error classes come from the dependency-light calendar subpath so
+// importing CalendarService never evaluates the Google Workspace root barrel
+// (whose client factory eagerly imports the optional `googleapis` SDK — absent
+// from lean production images, which aborted plugin import before the local
+// calendar view could register). Types stay on the root barrel (erased).
 import {
-  type GoogleCalendarEvent,
   GoogleCalendarMutationError,
   GoogleCalendarSyncTokenExpiredError,
-} from "@elizaos/plugin-google";
+} from "@elizaos/plugin-google-workspace/calendar";
 import type {
   DispatchResult,
   ScheduledTaskDispatchRecord,
@@ -197,6 +202,7 @@ type GoogleCalendarSyncBatch = {
 
 const CALENDAR_FEED_FRESHNESS_MS = 60_000;
 const DEFAULT_ICS_SYNC_LEASE_MS = 30_000;
+const CALENDAR_SOURCE_UNSUPPORTED = "CALENDAR_SOURCE_UNSUPPORTED";
 
 type CalendarSecretsService = {
   getGlobal(key: string): Promise<string | null>;
@@ -410,6 +416,7 @@ function failAppleCalendarResult(
     fail(
       409,
       `Apple Calendar is not available on ${result.platform}; connect Google Calendar or use a native Apple platform.`,
+      CALENDAR_SOURCE_UNSUPPORTED,
     );
   }
   if (
@@ -2581,7 +2588,7 @@ export class CalendarService extends Service {
                 appleCalendars.reason === "permission"
                   ? "CALENDAR_PERMISSION_REQUIRED"
                   : appleCalendars.reason === "not_supported"
-                    ? "CALENDAR_SOURCE_UNSUPPORTED"
+                    ? CALENDAR_SOURCE_UNSUPPORTED
                     : "CALENDAR_SOURCE_ERROR",
               message:
                 appleCalendars.reason === "not_supported"
@@ -4277,9 +4284,11 @@ export class CalendarService extends Service {
           // error-policy:J4 A stale/error source is returned explicitly so one
           // failed account cannot masquerade as either a complete or empty feed.
           const sourceError = calendarSourceError(error);
-          this.runtime.reportError("calendar:feed-source", error, {
-            source: calendarSourceKey(calendar),
-          });
+          if (sourceError.code !== CALENDAR_SOURCE_UNSUPPORTED) {
+            this.runtime.reportError("calendar:feed-source", error, {
+              source: calendarSourceKey(calendar),
+            });
+          }
           feed =
             (await this.readCachedCalendarFeed({
               calendar,
@@ -4696,7 +4705,7 @@ export class CalendarService extends Service {
     });
     await this.recordCalendarEventAudit(
       event.id,
-      "calendar event created through plugin-google",
+      "calendar event created through plugin-google-workspace",
       { calendarId, title: request.title },
       { externalId: event.externalId },
     );
@@ -4958,7 +4967,7 @@ export class CalendarService extends Service {
     });
     await this.recordCalendarEventAudit(
       event.id,
-      "calendar event updated through plugin-google",
+      "calendar event updated through plugin-google-workspace",
       { eventId: request.eventId },
       { externalId: event.externalId },
       "calendar_event_updated",
@@ -5305,7 +5314,7 @@ export class CalendarService extends Service {
     });
     await this.recordCalendarEventAudit(
       event.id,
-      "calendar recurring series split through plugin-google",
+      "calendar recurring series split through plugin-google-workspace",
       {
         eventId: args.request.eventId,
         recurrenceScope: "this_and_following",
@@ -5427,7 +5436,7 @@ export class CalendarService extends Service {
     });
     await this.recordCalendarEventAudit(
       context.masterEventId,
-      "calendar recurring series truncated through plugin-google",
+      "calendar recurring series truncated through plugin-google-workspace",
       {
         eventId: args.request.eventId,
         recurrenceScope: "this_and_following",
@@ -5615,7 +5624,7 @@ export class CalendarService extends Service {
     });
     await this.recordCalendarEventAudit(
       targetEventId,
-      "calendar event deleted through plugin-google",
+      "calendar event deleted through plugin-google-workspace",
       { eventId: targetEventId, recurrenceScope: recurrenceScope ?? null },
       { deleted: true },
       "calendar_event_deleted",
@@ -5737,7 +5746,7 @@ export class CalendarService extends Service {
     await this.repo.upsertCalendarEvent(event, grant.side);
     await this.recordCalendarEventAudit(
       event.id,
-      "calendar invitation response updated through plugin-google",
+      "calendar invitation response updated through plugin-google-workspace",
       {
         eventId: request.eventId,
         recurrenceScope: request.recurrenceScope ?? null,

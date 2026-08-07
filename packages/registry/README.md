@@ -62,18 +62,17 @@ requirement to run a plugin. To get listed:
    your `package.json` (name, repository, kind, description, tags).
 
 3. **Add the file** under `entries/third-party/`, named after the package
-   (`/` → `__`, `@` dropped). For `elizaos-plugin-echo`:
+   (`/` → `__`, `@` dropped). For `example-plugin`:
 
    ```json
    {
-     "package": "elizaos-plugin-echo",
-     "repository": "github:elizaOS/eliza",
+     "package": "example-plugin",
+     "repository": "github:example/example-plugin",
      "kind": "plugin",
-     "description": "Reference third-party elizaOS plugin: an ECHO action that repeats a message back.",
-     "homepage": "https://github.com/elizaOS/eliza/tree/main/packages/examples/plugin-echo",
-     "version": "2.0.0-beta.0",
-     "directory": "packages/examples/plugin-echo",
-     "tags": ["example", "utility", "reference"]
+     "description": "Example community plugin.",
+     "homepage": "https://github.com/example/example-plugin",
+     "version": "1.0.0",
+     "tags": ["utility"]
    }
    ```
 
@@ -90,10 +89,3 @@ requirement to run a plugin. To get listed:
 5. **Open a pull request** with the new entry file and the regenerated
    `generated-registry.json`. Community entries are reviewed for security,
    functionality, and documentation quality before merge.
-
-## Worked example
-
-[`packages/examples/plugin-echo`](../examples/plugin-echo) is a real, buildable
-third-party plugin (a single `ECHO` action) listed via
-[`entries/third-party/elizaos-plugin-echo.json`](entries/third-party/elizaos-plugin-echo.json).
-Use it as the reference example for your own listing.

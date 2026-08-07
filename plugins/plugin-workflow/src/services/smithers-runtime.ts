@@ -253,6 +253,10 @@ export function buildSmithersWorkerEnv(): NodeJS.ProcessEnv {
     const value = process.env[key];
     if (value !== undefined) env[key] = value;
   }
+  // Smithers exchanges small control records, so its optional msgpackr native
+  // accelerator is unnecessary here. Keeping the worker pure JS also avoids a
+  // platform loader dependency in this isolated execution boundary.
+  env.MSGPACKR_NATIVE_ACCELERATION_DISABLED = 'true';
   return env;
 }
 

@@ -120,6 +120,7 @@ export function VoiceAudioPlayer({
       </audio>
 
       <Button
+        aria-label={playerState.isPlaying ? "Pause audio" : "Play audio"}
         variant="outline"
         size="icon"
         onClick={togglePlay}
@@ -137,6 +138,7 @@ export function VoiceAudioPlayer({
           {formatTime(playerState.currentTime)}
         </span>
         <Slider
+          aria-label="Playback position"
           value={[playerState.currentTime]}
           max={playerState.duration || 100}
           step={0.1}
@@ -150,6 +152,7 @@ export function VoiceAudioPlayer({
 
       <div className="flex items-center gap-2">
         <Button
+          aria-label={playerState.isMuted ? "Unmute audio" : "Mute audio"}
           variant="ghost"
           size="icon"
           onClick={toggleMute}
@@ -162,6 +165,7 @@ export function VoiceAudioPlayer({
           )}
         </Button>
         <Slider
+          aria-label="Volume"
           value={[playerState.isMuted ? 0 : playerState.volume]}
           max={1}
           step={0.01}

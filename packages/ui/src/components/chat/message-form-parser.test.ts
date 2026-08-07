@@ -1,3 +1,4 @@
+/** Verifies parseFormBody through the package's configured test harness. */
 // Unit tests for the `[FORM]` marker parser: JSON form-body parsing (mixed
 // field types, MAX_FORM_FIELDS cap, malformed input) and region detection.
 // Pure functions over string fixtures — no model, no render.

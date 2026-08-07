@@ -33,6 +33,7 @@ import {
   writeIosDefaultsString,
 } from "./lib/ios-sim-defaults-hygiene.mjs";
 import { evaluateLocalInferenceReadiness } from "./lib/local-inference-readiness.mjs";
+import { resolveSmokeCommand } from "./lib/smoke-command-proxy.mjs";
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -233,7 +234,8 @@ if (process.argv.includes("--help")) {
 }
 
 function run(command, args, options = {}) {
-  const result = spawnSync(command, args, {
+  const invocation = resolveSmokeCommand(command, args);
+  const result = spawnSync(invocation.command, invocation.args, {
     cwd: options.cwd ?? repoRoot,
     stdio: "inherit",
   });
@@ -281,7 +283,8 @@ function adbPath() {
 
 function tryExec(command, args, options = {}) {
   try {
-    return execFileSync(command, args, {
+    const invocation = resolveSmokeCommand(command, args);
+    return execFileSync(invocation.command, invocation.args, {
       cwd: repoRoot,
       env: process.env,
       encoding: "utf8",

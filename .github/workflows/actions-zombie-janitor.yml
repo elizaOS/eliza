@@ -63,12 +63,14 @@ name: Actions Zombie Janitor
 # Step timestamps (new) keep long multi-step jobs alive while their steps
 # progress; a dead runner freezes job AND step timestamps, so zombies still
 # trip the check. IDLE_MINUTES must stay above the longest legitimately-silent
-# single-step stretch; 90 min clears every current suite. The two 12h KVM/AOSP
-# suites run single steps silent for longer than any sane threshold, so they
-# are exempt by name (their zombies fall to their own job timeout).
+# single-step stretch; 90 min clears every current suite except Live Scenarios,
+# whose real-model and connector calls can remain silent longer. That workflow
+# is exempt by name, and its zombies fall to its own job timeout.
 #
 # Tuning (repo variables, no code change needed):
 #   ACTIONS_JANITOR_DISABLED=true          — kill switch (both lanes)
+#   HETZNER_FLEET_ONLINE=true              — explicit opt-in for the robot lane;
+#     absent, empty, false, and noncanonical values re-home it to ubuntu-latest
 #   ACTIONS_JANITOR_ROBOT_LANE_DISABLED    — =true remaps the robot lane onto
 #     ubuntu-latest (a harmless idempotent duplicate; `matrix` is not a legal
 #     context in a job-level `if`, so the lane is disabled by re-homing it)
@@ -113,13 +115,13 @@ jobs:
           - lane: github-hosted
             runner: '["ubuntu-latest"]'
           - lane: robot-fleet
-            runner: ${{ vars.ACTIONS_JANITOR_ROBOT_LANE_DISABLED == 'true' && '["ubuntu-latest"]' || vars.ACTIONS_JANITOR_ROBOT_RUNNER_JSON || '["self-hosted","Linux","X64","hetzner-robot"]' }}
+            runner: ${{ vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-latest"]' || vars.ACTIONS_JANITOR_ROBOT_LANE_DISABLED == 'true' && '["ubuntu-latest"]' || vars.ACTIONS_JANITOR_ROBOT_RUNNER_JSON || '["self-hosted","Linux","X64","hetzner-robot"]' }}
     runs-on: ${{ fromJSON(matrix.runner) }}
     if: github.repository == 'elizaOS/eliza' && vars.ACTIONS_JANITOR_DISABLED != 'true'
     timeout-minutes: 10
     steps:
       - name: Cancel zombie in_progress + wedged queued + pending deploy + stale waiting runs
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
         env:
           MAX_AGE_MINUTES: ${{ vars.ACTIONS_JANITOR_MAX_AGE_MINUTES || '' }}
           LEGACY_MAX_AGE_HOURS: ${{ vars.ACTIONS_JANITOR_MAX_AGE_HOURS || '' }}
@@ -132,7 +134,7 @@ jobs:
           # scenario step can legitimately run past the 120-minute max-age and
           # sit longer than the 90-minute idle threshold without emitting a step
           # transition, which is indistinguishable from a zombie to this janitor.
-          EXEMPT_WORKFLOWS: ${{ vars.ACTIONS_JANITOR_EXEMPT_WORKFLOWS || 'ElizaOS Cuttlefish,ElizaOS OpenAgent E1 (RISC-V AI SoC),Live Scenarios' }}
+          EXEMPT_WORKFLOWS: ${{ vars.ACTIONS_JANITOR_EXEMPT_WORKFLOWS || 'Live Scenarios' }}
           DRY_RUN: ${{ inputs.dry_run == true && 'true' || 'false' }}
           LANE: ${{ matrix.lane }}
         with:

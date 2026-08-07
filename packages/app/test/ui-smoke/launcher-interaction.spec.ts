@@ -110,7 +110,9 @@ test.describe("launcher catalog interactions", () => {
 
     for (const viewport of [
       { name: "desktop", size: { width: 1440, height: 1000 } },
-      { name: "mobile", size: { width: 390, height: 844 } },
+      // Use a compact phone height so the touch-scroll contract remains
+      // exercised even when the curated catalog happens to fit at 390x844.
+      { name: "mobile", size: { width: 390, height: 700 } },
     ] as const) {
       test(`single grid, real-touch scrolling, and Browser tile launch on ${viewport.name}`, async ({
         page,
@@ -156,15 +158,17 @@ test.describe("launcher catalog interactions", () => {
 
         let scrollTopAfterTouch = 0;
         if (viewport.name === "mobile") {
-          // The launcher is embedded on Home, whose bounded apps region owns
-          // vertical overflow; the inner grid deliberately stays natural-height.
-          const scrollHost = page.getByTestId("home-apps-scroll");
+          // The launcher occupies the adjacent shell page rather than Home's
+          // offscreen app region. Exercising its own scroll viewport catches a
+          // false proof where the hidden Home scroller moves while the visible
+          // final tile remains trapped beneath the fixed composer.
+          const scrollHost = grid;
           await expect
             .poll(() => scrollHost.evaluate((element) => element.scrollHeight))
             .toBeGreaterThan(
               await scrollHost.evaluate((element) => element.clientHeight),
             );
-          await touchScrollLauncher(page, "home-apps-scroll", "down");
+          await touchScrollLauncher(page, "launcher-page-window", "down");
           await expect
             .poll(() => scrollHost.evaluate((element) => element.scrollTop), {
               message:
@@ -174,12 +178,32 @@ test.describe("launcher catalog interactions", () => {
           scrollTopAfterTouch = await scrollHost.evaluate(
             (element) => element.scrollTop,
           );
+          const finalTile = grid
+            .locator('[data-testid^="launcher-tile-"]')
+            .last();
+          const composer = page.getByTestId("chat-composer-row");
+          await expect
+            .poll(
+              async () => {
+                const [tileBox, composerBox] = await Promise.all([
+                  finalTile.boundingBox(),
+                  composer.boundingBox(),
+                ]);
+                if (!tileBox || !composerBox) return Number.POSITIVE_INFINITY;
+                return tileBox.y + tileBox.height - composerBox.y;
+              },
+              {
+                message:
+                  "the final launcher tile scrolls fully clear of the fixed composer",
+              },
+            )
+            .toBeLessThanOrEqual(0);
           await screenshot(
             page,
             testInfo,
             `${viewport.name}-launcher-after-touch-scroll`,
           );
-          await touchScrollLauncher(page, "home-apps-scroll", "up");
+          await touchScrollLauncher(page, "launcher-page-window", "up");
           await expect
             .poll(() => scrollHost.evaluate((element) => element.scrollTop))
             .toBeLessThan(scrollTopAfterTouch);

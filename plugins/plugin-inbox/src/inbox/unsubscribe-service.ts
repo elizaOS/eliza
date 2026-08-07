@@ -8,7 +8,7 @@
  *
  * Dependencies are resolved through seams so this plugin carries no
  * `@elizaos/plugin-personal-assistant` dependency:
- *   - Gmail access via {@link createInboxGmailGateway} (the `@elizaos/plugin-google`
+ *   - Gmail access via {@link createInboxGmailGateway} (the `@elizaos/plugin-google-workspace`
  *     runtime service).
  *   - Persistence via {@link InboxUnsubscribeRepository} (raw SQL over the
  *     `app_inbox.life_email_unsubscribes` table PA registers).
@@ -174,7 +174,7 @@ function headersOf(
 }
 
 export interface InboxUnsubscribeServiceDeps {
-  /** Override the Gmail gateway (tests inject a mock; default resolves plugin-google). */
+  /** Override the Gmail gateway (tests inject a mock; default resolves plugin-google-workspace). */
   gmail?: InboxGmailGateway;
   /** Override the persistence repository (tests inject a fake or PGlite-backed one). */
   repository?: InboxUnsubscribeRepository;

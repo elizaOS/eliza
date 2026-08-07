@@ -5,9 +5,9 @@ Google's bundletool repository:
 
 <https://github.com/google/bundletool/blob/8c3b87044bd114707bbcec70bcb407494f494a9c/src/test/resources/com/android/tools/build/bundletool/testdata/bundle/install-time-permanent-modules.aab>
 
-It is covered by that repository's Apache-2.0 license. The repository carries
+It is covered by that repository's Apache-2.0 license. The OS repository carries
 the complete license text at
-[`packages/os/linux/LICENSES/Apache-2.0.txt`](../../../../os/linux/LICENSES/Apache-2.0.txt).
+[`packages/os/linux/LICENSES/Apache-2.0.txt`](https://github.com/elizaOS/os/blob/develop/packages/os/linux/LICENSES/Apache-2.0.txt).
 The copied fixture is kept byte-identical to upstream:
 
 - Upstream commit: `8c3b87044bd114707bbcec70bcb407494f494a9c`

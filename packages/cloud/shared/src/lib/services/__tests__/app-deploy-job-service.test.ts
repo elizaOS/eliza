@@ -22,7 +22,7 @@ describe("readAppDeployJobData", () => {
           options: {
             repoUrl: "https://github.com/elizaOS/eliza.git",
             ref: "develop",
-            dockerfile: "packages/examples/cloud/edad/Dockerfile",
+            dockerfile: "apps/example/Dockerfile",
             env: { ELIZA_APP_ID: "app-1" },
           },
         },
@@ -32,7 +32,7 @@ describe("readAppDeployJobData", () => {
       options: {
         repoUrl: "https://github.com/elizaOS/eliza.git",
         ref: "develop",
-        dockerfile: "packages/examples/cloud/edad/Dockerfile",
+        dockerfile: "apps/example/Dockerfile",
         env: { ELIZA_APP_ID: "app-1" },
       },
     });

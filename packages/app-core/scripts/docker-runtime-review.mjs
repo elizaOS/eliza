@@ -1,4 +1,8 @@
-/** Supports app-core build, packaging, or development orchestration for docker runtime review mjs. */
+/**
+ * Probes local Docker runtime health (binary discovery across common install
+ * paths, `docker version` / `context ls` / `desktop status`) and writes a
+ * JSON/markdown report under .tmp/qa for Docker-based QA lanes.
+ */
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";

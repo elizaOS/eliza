@@ -10,14 +10,15 @@
  * @see https://agentskills.io
  */
 
-import type { Action, IAgentRuntime, Plugin, Provider } from "@elizaos/core";
+import type { Action, Plugin, Provider } from "@elizaos/core";
 import { promoteSubactionsToActions } from "@elizaos/core";
 
 // Actions
 import { skillAction } from "./actions/skill";
 import { useSkillAction } from "./actions/use-skill";
-// Binance direct-skill dispatch (registered as a chat pre-handler)
-import { binanceSkillPreHandler } from "./binance/pre-handler";
+import {
+	AgentSkillsPluginLifecycleService,
+} from "./init";
 // Providers
 import { enabledSkillsProvider } from "./providers/enabled-skills";
 import {
@@ -28,13 +29,11 @@ import {
 // Services
 import { AgentSkillsService } from "./services/skills";
 
-// Background task
-import { startSyncTask } from "./tasks/sync-catalog";
-
 type PluginServiceClass = NonNullable<Plugin["services"]>[number];
 
 const ALL_SERVICES: PluginServiceClass[] = [
 	AgentSkillsService as PluginServiceClass,
+	AgentSkillsPluginLifecycleService as PluginServiceClass,
 ];
 
 const ALL_ACTIONS: Action[] = [
@@ -49,11 +48,6 @@ const ALL_PROVIDERS: Provider[] = [
 	skillInstructionsProvider, // High-res - active skill instructions
 	catalogAwarenessProvider, // Dynamic - catalog awareness
 ];
-
-// Module-scoped handle to the background-task cleanup, set in `init` and
-// invoked from `dispose` on plugin unload / runtime shutdown so the interval
-// timer does not leak across reloads.
-let cleanupSyncTask: (() => void) | null = null;
 
 /**
  * Agent Skills Plugin
@@ -89,14 +83,11 @@ export const agentSkillsPlugin: Plugin = {
 	name: "@elizaos/plugin-agent-skills",
 	description:
 		"Agent Skills - modular capabilities with progressive disclosure",
+	dependencies: ["@elizaos/plugin-commands"],
 
 	services: ALL_SERVICES,
 	actions: ALL_ACTIONS,
 	providers: ALL_PROVIDERS,
-
-	// Direct dispatch for the Binance DeFi skill family: natural-language and
-	// explicit triggers resolve the turn before the first response model call.
-	chatPreHandlers: [binanceSkillPreHandler],
 
 	// Self-declared auto-enable: activate when features.agentSkills is enabled.
 	autoEnable: {
@@ -113,41 +104,6 @@ export const agentSkillsPlugin: Plugin = {
 	},
 
 	routes: [],
-
-	// Initialize background task when plugin loads.
-	// Note: the initial catalog sync happens eagerly inside
-	// AgentSkillsService.initialize(). This background task only
-	// handles periodic hourly refreshes.
-	init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
-		// If a previous runtime left a timer behind (e.g. reload in dev), clear
-		// it before installing a fresh one so we never stack intervals.
-		if (cleanupSyncTask) {
-			cleanupSyncTask();
-			cleanupSyncTask = null;
-		}
-		cleanupSyncTask = startSyncTask(runtime);
-
-		// Log a startup summary so the operator can verify skills loaded
-		const service = runtime.getService<AgentSkillsService>(
-			"AGENT_SKILLS_SERVICE",
-		);
-		if (service) {
-			const stats = service.getCatalogStats();
-			runtime.logger.info(
-				`AgentSkills: Ready — ${stats.loaded} skills loaded, ` +
-					`${stats.total} in catalog (storage: ${stats.storageType})`,
-			);
-		}
-	},
-
-	// Clear the periodic sync-catalog timer when the runtime disposes this
-	// plugin. Without this, the setInterval handle leaks across reloads.
-	dispose: (_runtime: IAgentRuntime) => {
-		if (cleanupSyncTask) {
-			cleanupSyncTask();
-			cleanupSyncTask = null;
-		}
-	},
 };
 
 export default agentSkillsPlugin;

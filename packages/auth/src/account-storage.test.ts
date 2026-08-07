@@ -42,7 +42,7 @@ afterEach(() => {
 });
 
 describe("credential deletion test-state guard", () => {
-  it("refuses an inherited non-temporary ELIZA_HOME before unlinking", () => {
+  it("refuses an inherited non-temporary ELIZA_HOME before unlinking", async () => {
     process.env.ELIZA_HOME = path.join(
       path.sep,
       "var",
@@ -74,7 +74,7 @@ describe("credential deletion test-state guard", () => {
     expect(unlink).not.toHaveBeenCalled();
   });
 
-  it("refuses a non-temporary ELIZA_STATE_DIR when ELIZA_HOME is unset", () => {
+  it("refuses a non-temporary ELIZA_STATE_DIR when ELIZA_HOME is unset", async () => {
     delete process.env.ELIZA_HOME;
     process.env.ELIZA_STATE_DIR = path.join(
       path.sep,
@@ -93,7 +93,7 @@ describe("credential deletion test-state guard", () => {
     expect(unlink).not.toHaveBeenCalled();
   });
 
-  it("allows deletion when ELIZA_HOME points under the OS temp directory", () => {
+  it("allows deletion when ELIZA_HOME points under the OS temp directory", async () => {
     const home = mkdtempSync(path.join(tmpdir(), "eliza-account-storage-"));
     process.env.ELIZA_HOME = home;
     delete process.env.ELIZA_STATE_DIR;
@@ -125,7 +125,7 @@ describe("credential deletion test-state guard", () => {
     }
   });
 
-  it("allows deletion when ELIZA_STATE_DIR resolves under the OS temp directory", () => {
+  it("allows deletion when ELIZA_STATE_DIR resolves under the OS temp directory", async () => {
     const stateDir = mkdtempSync(path.join(tmpdir(), "eliza-state-storage-"));
     delete process.env.ELIZA_HOME;
     process.env.ELIZA_STATE_DIR = stateDir;
@@ -140,7 +140,7 @@ describe("credential deletion test-state guard", () => {
     }
   });
 
-  it("refuses a temporary path that resolves through a symlink outside the OS temp directory", () => {
+  it("refuses a temporary path that resolves through a symlink outside the OS temp directory", async () => {
     const container = mkdtempSync(path.join(tmpdir(), "eliza-symlink-guard-"));
     const linkedHome = path.join(container, "linked-home");
     const filesystemRoot = path.parse(process.cwd()).root;
@@ -166,7 +166,7 @@ describe("credential deletion test-state guard", () => {
     }
   });
 
-  it("allows an explicit test override for non-temporary state", () => {
+  it("allows an explicit test override for non-temporary state", async () => {
     process.env.ELIZA_HOME = path.join(
       path.sep,
       "var",

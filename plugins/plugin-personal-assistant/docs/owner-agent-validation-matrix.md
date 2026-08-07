@@ -7,8 +7,7 @@
 > account/device/scope/env prerequisites and the repeatable run instructions so
 > the matrix can be re-exercised on demand.
 
-The static/code-level split is already validated (see the issue body and
-`docs/lifeops-cleanup-review.md`). The remaining work is **live** validation
+The static/code-level split is already validated in the issue body. The remaining work is **live** validation
 with real accounts, devices, and OAuth/provider state. This doc + the
 credential-gated harness (`test/owner-agent-permission-matrix.integration.test.ts`)
 cover the parts that can be exercised repeatably; the native-device items

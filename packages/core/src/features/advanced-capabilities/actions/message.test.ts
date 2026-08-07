@@ -478,6 +478,12 @@ describe("MESSAGE op=send delivery evidence", () => {
 		const runtime = createMockRuntime({
 			agentId: "00000000-0000-0000-0000-000000000001",
 			logger: { debug() {}, info() {}, warn() {}, error() {} },
+			getEntityById: async () => null,
+			useModel: async () => {
+				throw new Error(
+					"explicit UUID targets must not invoke model resolution",
+				);
+			},
 			getMessageConnectors: () => [
 				{
 					source: "discord",
@@ -487,6 +493,7 @@ describe("MESSAGE op=send delivery evidence", () => {
 					contexts: [],
 				},
 			],
+			getRoom: async () => null,
 			sendMessageToTarget: async () => outcome,
 			ensureWorldExists: async () => undefined,
 			ensureRoomExists: async () => undefined,

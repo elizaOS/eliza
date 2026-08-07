@@ -357,8 +357,10 @@ export function CommandPalette() {
         >
           {filteredCommands.length === 0 ? (
             <div
-              role="status"
-              aria-live="polite"
+              role="option"
+              aria-disabled="true"
+              aria-selected="false"
+              tabIndex={-1}
               className="py-5 text-center text-sm"
               style={{ color: "var(--muted)" }}
             >

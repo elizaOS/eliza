@@ -138,9 +138,12 @@ async function processInternalEvent(
   const { redis } = deps;
 
   const server = await resolveAgentServer(redis, event.agentId);
-  if (!server) {
+  if (server.kind !== "ready") {
     // warn, not error: expected during rolling updates or for unregistered agents
-    logger.warn("No server found for agent", { agentId: event.agentId });
+    logger.warn("No server found for agent", {
+      agentId: event.agentId,
+      reason: server.kind,
+    });
     return;
   }
 

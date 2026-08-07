@@ -28,8 +28,11 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
 const CAN_USE_ISOLATED_PGLITE =
   AMBIENT_DATABASE_URL === "" || AMBIENT_DATABASE_URL.startsWith("pglite");
+const PREVIOUS_CACHE_ENABLED = process.env.CACHE_ENABLED;
+const PREVIOUS_MOCK_REDIS = process.env.MOCK_REDIS;
 process.env.DATABASE_URL ||= "pglite://memory";
 process.env.NODE_ENV ||= "test";
+process.env.CACHE_ENABLED = "true";
 process.env.MOCK_REDIS = "1";
 
 import { pushSchema } from "drizzle-kit/api";
@@ -58,6 +61,8 @@ const FRESH_UUID = "00000000-0000-4000-8000-00000000ffff";
 
 let appsService: typeof import("../../../lib/services/apps").appsService;
 let appAnalyticsService: typeof import("../../../lib/services/app-analytics").appAnalyticsService;
+let cache: typeof import("../../../lib/cache/client").cache;
+let CacheKeys: typeof import("../../../lib/cache/keys").CacheKeys;
 let pgliteReady = true;
 
 // Monotonic counter keeps seeded slugs/identities unique across tests without
@@ -104,6 +109,8 @@ beforeAll(async () => {
   try {
     ({ appsService } = await import("../../../lib/services/apps"));
     ({ appAnalyticsService } = await import("../../../lib/services/app-analytics"));
+    ({ cache } = await import("../../../lib/cache/client"));
+    ({ CacheKeys } = await import("../../../lib/cache/keys"));
 
     // Generate DDL from the real schema objects and apply it to the same
     // PGlite connection the repository queries through (`dbWrite`). Enums must
@@ -135,7 +142,15 @@ beforeAll(async () => {
 }, PGLITE_TIMEOUT);
 
 afterAll(async () => {
-  await closeDatabaseConnectionsForTests();
+  try {
+    await closeDatabaseConnectionsForTests();
+  } finally {
+    if (PREVIOUS_CACHE_ENABLED === undefined) delete process.env.CACHE_ENABLED;
+    else process.env.CACHE_ENABLED = PREVIOUS_CACHE_ENABLED;
+
+    if (PREVIOUS_MOCK_REDIS === undefined) delete process.env.MOCK_REDIS;
+    else process.env.MOCK_REDIS = PREVIOUS_MOCK_REDIS;
+  }
 });
 
 /** Insert an app row directly through the repository with sane defaults. */
@@ -263,6 +278,60 @@ describe("AppsRepository.update", () => {
     // evicted rather than returning the stale cached "Cache Warm".
     const after = await appsService.getById(created.id);
     expect(after?.name).toBe("Cache Evicted");
+  });
+
+  test("update prevents an older in-flight hydration from republishing stale state", async () => {
+    expect(pgliteReady).toBe(true);
+    const { organizationId, userId } = await seedOrgAndUser();
+    const created = await createApp({
+      name: "Before Concurrent Update",
+      organization_id: organizationId,
+      created_by_user_id: userId,
+    });
+    await appsService.invalidateCache(
+      created.id,
+      created.api_key_id ?? undefined,
+      created.slug ?? undefined,
+    );
+
+    const originalFindById = appsRepository.findById.bind(appsRepository);
+    let signalReadStarted: (() => void) | undefined;
+    const readStarted = new Promise<void>((resolve) => {
+      signalReadStarted = resolve;
+    });
+    let releaseRead: (() => void) | undefined;
+    const readRelease = new Promise<void>((resolve) => {
+      releaseRead = resolve;
+    });
+
+    appsRepository.findById = async (id: string): Promise<App | undefined> => {
+      const captured = await originalFindById(id);
+      signalReadStarted?.();
+      await readRelease;
+      return captured;
+    };
+
+    const background: Promise<unknown>[] = [];
+    try {
+      expect(
+        await appsService.getByIdCacheOnly(created.id, {
+          executionCtx: { waitUntil: (promise) => background.push(promise) },
+        }),
+      ).toEqual({ kind: "warming", cacheRead: "miss" });
+      expect(background).toHaveLength(1);
+      await readStarted;
+
+      await appsRepository.update(created.id, { name: "After Concurrent Update" });
+      releaseRead?.();
+      await background[0];
+
+      expect(await cache.get<App>(CacheKeys.app.byId(created.id))).toBeNull();
+    } finally {
+      releaseRead?.();
+      appsRepository.findById = originalFindById;
+    }
+
+    expect((await appsService.getById(created.id))?.name).toBe("After Concurrent Update");
   });
 });
 

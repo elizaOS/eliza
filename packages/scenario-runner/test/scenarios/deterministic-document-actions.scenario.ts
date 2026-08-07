@@ -285,14 +285,23 @@ export default scenario({
       room: "guest",
       options: { parameters: guestDeleteParams },
       responseIncludesAny: [
-        "Only the owner can edit or delete global and owner-private documents.",
+        "Only the owner can edit or delete global and owner-private documents",
       ],
-      assertTurn: (execution) =>
-        expectDocumentTurn(execution, {
+      assertTurn: (execution) => {
+        const structural = expectDocumentTurn(execution, {
           success: false,
           subaction: "delete",
           values: { error: "forbidden" },
-        }),
+        });
+        if (structural) return structural;
+        const action = findDocumentCall(execution);
+        const values = isRecord(action?.result?.values)
+          ? action.result.values
+          : {};
+        return values.documentId === seededDocumentId
+          ? undefined
+          : `expected values.documentId=${seededDocumentId}, saw ${JSON.stringify(values.documentId)}`;
+      },
     },
     {
       kind: "action",
@@ -346,7 +355,7 @@ export default scenario({
       actionName: "DOCUMENT",
       room: "main",
       options: { parameters: { action: "delete" } },
-      responseIncludesAny: ["I need a valid document id to delete."],
+      responseIncludesAny: ["No valid document id found in the request"],
       assertTurn: (execution) =>
         expectDocumentTurn(execution, {
           success: false,

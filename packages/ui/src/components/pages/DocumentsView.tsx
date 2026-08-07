@@ -244,7 +244,7 @@ const KnowledgeListItem = memo(function KnowledgeListItem({
           <div className="mt-1 truncate text-xs text-muted">
             {getDocumentSummary(doc, t)}
           </div>
-          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-2xs text-muted/70">
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-2xs text-muted">
             <span className="inline-flex items-center gap-1">
               <ScopeIcon className="h-3 w-3" aria-hidden />
               {scopeLabel}
@@ -1031,7 +1031,7 @@ export function DocumentsView({
               <Icon className="h-3.5 w-3.5" aria-hidden />
               {knowledgeFacetLabel(value, t)}
               <span
-                className="text-muted/70"
+                className="text-muted"
                 title={
                   facetCountsAreApproximate
                     ? t("knowledgehub.approxCountHint", {

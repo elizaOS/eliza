@@ -27,7 +27,6 @@ import type {
   TokenizeTextParams,
 } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
-import { initializeOpenAI } from "./init";
 import {
   handleActionPlanner,
   handleImageDescription,
@@ -45,8 +44,15 @@ import {
   handleTokenizerEncode,
   handleTranscription,
 } from "./models";
-import type { ImageGenerationResult, OpenAIPluginConfig, TextStreamResult } from "./types";
-import { getAuthHeader, getBaseURL, getSetting, isCerebrasMode } from "./utils/config";
+import type { ImageGenerationResult, TextStreamResult } from "./types";
+import {
+  getApiKey,
+  getAuthHeader,
+  getBaseURL,
+  getSetting,
+  isBrowser,
+  isCerebrasMode,
+} from "./utils/config";
 
 function getProcessEnv(): ProcessEnvLike {
   if (typeof process === "undefined") {
@@ -56,6 +62,7 @@ function getProcessEnv(): ProcessEnvLike {
 }
 
 const env = getProcessEnv();
+(globalThis as Record<string, unknown>).AI_SDK_LOG_WARNINGS ??= false;
 const TEXT_NANO_MODEL_TYPE = ModelType.TEXT_NANO as string;
 const TEXT_MEDIUM_MODEL_TYPE = ModelType.TEXT_MEDIUM as string;
 const TEXT_MEGA_MODEL_TYPE = ModelType.TEXT_MEGA as string;
@@ -137,6 +144,13 @@ function registerMediaModels(runtime: IAgentRuntime): void {
   }
 }
 
+function warnWhenApiKeyIsMissing(runtime: IAgentRuntime): void {
+  if (isBrowser() || getApiKey(runtime)) return;
+  logger.warn(
+    "[OpenAI] No API key is configured for the selected OpenAI-compatible endpoint; model calls will fail until credentials are provided"
+  );
+}
+
 export const openaiPlugin: Plugin = {
   name: "openai",
   description: "OpenAI API integration for text, image, audio, and embedding models",
@@ -181,8 +195,8 @@ export const openaiPlugin: Plugin = {
     OPENAI_RESEARCH_TIMEOUT: env.OPENAI_RESEARCH_TIMEOUT ?? null,
   },
 
-  async init(config: Record<string, string>, runtime: IAgentRuntime): Promise<void> {
-    initializeOpenAI(config as OpenAIPluginConfig | undefined, runtime);
+  async init(_config: Record<string, string>, runtime: IAgentRuntime): Promise<void> {
+    warnWhenApiKeyIsMissing(runtime);
     registerMediaModels(runtime);
   },
 

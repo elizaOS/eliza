@@ -67,7 +67,7 @@ The navigation is organized into primary tabs and an Advanced group:
 | **Social** | connectors | `/connectors` |
 | **Apps** | apps | `/apps` |
 | **Settings** | settings | `/settings` |
-| **Advanced** | plugins, skills, actions, triggers, fine-tuning, trajectories, runtime, database, logs, security | Various |
+| **Advanced** | plugins, skills, actions, triggers, trajectories, runtime, database, logs, security | Various |
 
 Legacy paths are redirected automatically: `/game` maps to Apps, `/agent` to Character, `/inventory` to Wallets, `/features` to Plugins, `/admin` to Advanced, and `/config` to Settings.
 
@@ -202,7 +202,6 @@ The Advanced section contains specialized sub-tabs, each accessible via a second
 | **Skills** | `/skills` | Custom agent skills configuration. |
 | **Actions** | `/actions` | Custom agent actions -- create and edit custom action definitions. |
 | **Triggers** | `/triggers` | Scheduled and event-based automation management. |
-| **Fine-Tuning** | `/apps/fine-tuning` | Dataset and model training workflows. |
 | **Trajectories** | `/trajectories` | LLM call history viewer and analysis. Includes a detail view for individual trajectories. |
 | **Runtime** | `/runtime` | Deep runtime object introspection and load order inspection. |
 | **Databases** | `/database` | Browse database tables, media files, and vector stores. |

@@ -1,3 +1,4 @@
+/** Verifies routeFirstRunDeepLink through the package's configured test harness. */
 // @vitest-environment jsdom
 // @vitest-environment-options {"url":"http://localhost/"}
 

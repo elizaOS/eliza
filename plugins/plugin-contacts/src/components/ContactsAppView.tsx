@@ -17,10 +17,11 @@ import {
   Contacts,
   type CreateContactOptions,
 } from "@elizaos/capacitor-contacts";
-import type { OverlayAppContext } from "@elizaos/ui";
-import { Button, Input } from "@elizaos/ui";
+import type { OverlayAppContext } from "@elizaos/shared";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { PermissionRecoveryCallout } from "@elizaos/ui/components";
+import { Button } from "@elizaos/ui/components/ui/button";
+import { Input } from "@elizaos/ui/components/ui/input";
 import { isNative } from "@elizaos/ui/platform";
 import {
   ArrowLeft,

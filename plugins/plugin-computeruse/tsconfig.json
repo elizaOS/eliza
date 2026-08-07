@@ -22,7 +22,7 @@
     "noUnusedParameters": false,
     "types": ["node", "bun-types"]
   },
-  "include": ["src", "../../packages/agent/src/external-modules.d.ts"],
+  "include": ["src"],
   "exclude": [
     "dist",
     "node_modules",

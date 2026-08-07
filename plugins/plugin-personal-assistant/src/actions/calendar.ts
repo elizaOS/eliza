@@ -4,10 +4,6 @@
  * Routes to the existing handlers for live calendar reads/writes, availability
  * checks, meeting-preference updates, and the bulk-reschedule preview.
  *
- *   - `calendly_*` verbs are a Calendly contribution registered through
- *     `ConnectorRegistry`. The standalone `calendlyAction` in
- *     `./lib/calendly-handler.ts` is a top-level Action — Calendly is a
- *     provider, not a CALENDAR subaction.
  *   - Multi-turn scheduling negotiation is delegated through
  *     PERSONAL_ASSISTANT action=scheduling (long-running stateful actor).
  *
@@ -16,6 +12,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { renderGroundedActionReply } from "@elizaos/agent";
 import type {
   Action,
   ActionExample,
@@ -537,6 +534,12 @@ const calendarActionDeps: CalendarActionDeps = {
       ...(args.purpose ? { purpose: args.purpose } : {}),
     }),
   recentConversationTexts: (args) => recentConversationTexts(args),
+  renderGroundedReply: (args) =>
+    renderGroundedActionReply({
+      ...args,
+      domain: "calendar",
+      preferCharacterVoice: true,
+    }),
   mutationGateway: createCalendarMutationApprovalGateway(),
   travelBuffer: {
     resolveTravelIntent: (args) => resolveCreateEventTravelIntent(args),
@@ -1476,7 +1479,7 @@ export const calendarAction: Action & {
     "Live calendar: event CRUD, availability, meeting prefs. Subactions: " +
     "feed, next_event, search_events, create_event, update_event, delete_event, trip_window, bulk_reschedule, " +
     "check_availability, propose_times, update_preferences. " +
-    "Use CALENDLY for calendly.com URLs. Use PERSONAL_ASSISTANT action=scheduling for multi-turn proposal/response.",
+    "Use PERSONAL_ASSISTANT action=scheduling for multi-turn proposal/response.",
   descriptionCompressed:
     "calendar feed|next|search|create|update|delete|trip_window|reschedule|availability|propose",
   // "general" included so messageHandler can route direct owner calendar

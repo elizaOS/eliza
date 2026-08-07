@@ -14,7 +14,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { logger, type Plugin } from "@elizaos/core";
+import { ElizaError, logger, type Plugin } from "@elizaos/core";
 import { formatError, isMobilePlatform } from "@elizaos/shared";
 import {
   applyAppManifestDefaults,
@@ -81,8 +81,7 @@ const RUNTIME_APP_PLUGIN_SUBPATHS = new Set([
   "@elizaos/plugin-inbox",
   "@elizaos/plugin-personal-assistant",
   "@elizaos/plugin-phone",
-  "@elizaos/plugin-polymarket",
-  "@elizaos/plugin-simple-views",
+  "@elizaos/plugin-notes",
   "@elizaos/plugin-wifi",
 ]);
 
@@ -94,8 +93,10 @@ const RUNTIME_APP_PLUGIN_SUBPATHS = new Set([
 function isBenignOptionalPluginFailure(msg: string): boolean {
   return (
     msg.includes("Cannot find module") ||
+    msg.includes("Cannot find package") ||
     msg.includes("MODULE_NOT_FOUND") ||
     msg.includes("ResolveMessage") ||
+    (msg.includes("ENOENT") && msg.includes("plugin-")) ||
     msg === "browser server binary not found"
   );
 }
@@ -171,6 +172,8 @@ async function pathEntryExists(targetPath: string): Promise<boolean> {
     await fs.lstat(targetPath);
     return true;
   } catch (error) {
+    // error-policy:J3 filesystem and manifest probes translate only
+    // expected absence, races, or malformed candidates; other failures rethrow.
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return false;
     }
@@ -186,6 +189,8 @@ async function readPluginPackageManifest(
       await fs.readFile(path.join(packageRoot, "package.json"), "utf8"),
     ) as PluginPackageManifest;
   } catch (error) {
+    // error-policy:J3 filesystem and manifest probes translate only
+    // expected absence, races, or malformed candidates; other failures rethrow.
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return null;
     }
@@ -648,6 +653,8 @@ async function hasNonSymlinkWorkspaceNodeModulesPackage(
         return true;
       }
     } catch (error) {
+      // error-policy:J3 filesystem and manifest probes translate only
+      // expected absence, races, or malformed candidates; other failures rethrow.
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
         throw error;
       }
@@ -673,6 +680,8 @@ async function resolveWorkspaceNodeModulesPackageRoot(
       const stat = await fs.lstat(candidate);
       if (stat.isDirectory() || stat.isSymbolicLink()) return candidate;
     } catch (error) {
+      // error-policy:J3 filesystem and manifest probes translate only
+      // expected absence, races, or malformed candidates; other failures rethrow.
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
         throw error;
       }
@@ -710,10 +719,13 @@ function wrapPluginWithErrorBoundary(
       try {
         return await originalInit(...args);
       } catch (err) {
-        logger.error(
-          `[eliza] Plugin "${pluginName}" crashed during init: ${formatError(err)}`,
-        );
-        throw err;
+        // error-policy:J2 retain the plugin identity at the initialization
+        // boundary so the boot failure remains actionable.
+        throw new ElizaError(`Plugin ${pluginName} failed to initialize`, {
+          code: "PLUGIN_INITIALIZATION_FAILED",
+          cause: err,
+          context: { pluginName },
+        });
       }
     };
   }
@@ -726,11 +738,13 @@ function wrapPluginWithErrorBoundary(
         try {
           return await provider.get(...args);
         } catch (err) {
-          const msg = formatError(err);
-          logger.error(
-            `[eliza] Provider "${provider.name}" (plugin: ${pluginName}) crashed: ${msg}`,
-          );
-          throw err;
+          // error-policy:J2 provider failures retain both provider and plugin
+          // identity for the action/model boundary that ultimately reports it.
+          throw new ElizaError(`Provider ${provider.name} failed`, {
+            code: "PLUGIN_PROVIDER_FAILED",
+            cause: err,
+            context: { pluginName, providerName: provider.name },
+          });
         }
       },
     }));
@@ -782,6 +796,8 @@ export async function importPluginModuleFromPath(
   try {
     if ((await fs.stat(nmCandidate)).isDirectory()) pkgRoot = nmCandidate;
   } catch (err) {
+    // error-policy:J3 filesystem and manifest probes translate only
+    // expected absence, races, or malformed candidates; other failures rethrow.
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
       throw err;
     }
@@ -846,6 +862,8 @@ async function findNearestNodeModulesDir(
         return candidate;
       }
     } catch (error) {
+      // error-policy:J3 filesystem and manifest probes translate only
+      // expected absence, races, or malformed candidates; other failures rethrow.
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
         throw error;
       }
@@ -895,6 +913,8 @@ async function findAncestorNodeModulesDirs(
         dirs.push(candidate);
       }
     } catch (error) {
+      // error-policy:J3 filesystem and manifest probes translate only
+      // expected absence, races, or malformed candidates; other failures rethrow.
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
         throw error;
       }
@@ -989,6 +1009,8 @@ async function linkMissingPackagesFromNodeModules(params: {
         try {
           await fs.symlink(linkTarget, scopedTargetPath, "dir");
         } catch (error) {
+          // error-policy:J3 filesystem and manifest probes translate only
+          // expected absence, races, or malformed candidates; other failures rethrow.
           if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
             throw error;
           }
@@ -1013,6 +1035,8 @@ async function linkMissingPackagesFromNodeModules(params: {
     try {
       await fs.symlink(linkTarget, targetPath, "dir");
     } catch (error) {
+      // error-policy:J3 filesystem and manifest probes translate only
+      // expected absence, races, or malformed candidates; other failures rethrow.
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
         throw error;
       }
@@ -1026,6 +1050,8 @@ async function resolveSymlinkTargetIfPresent(
   try {
     return await fs.realpath(sourcePath);
   } catch (error) {
+    // error-policy:J3 filesystem and manifest probes translate only
+    // expected absence, races, or malformed candidates; other failures rethrow.
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return null;
     }
@@ -1156,7 +1182,10 @@ export async function pruneStalePluginInstances(
   let entries: Dirent[];
   try {
     entries = await fs.readdir(stagingBaseDir, { withFileTypes: true });
-  } catch {
+  } catch (error) {
+    // error-policy:J6 pruning is best-effort cleanup; an absent or concurrently
+    // removed staging directory has no effect on the active plugin.
+    logger.debug(`[eliza] Plugin staging prune skipped: ${formatError(error)}`);
     return;
   }
   const now = Date.now();
@@ -1173,8 +1202,11 @@ export async function pruneStalePluginInstances(
         continue;
       }
       candidates.push({ path: fullPath, mtimeMs: stat.mtimeMs });
-    } catch {
-      // dir vanished concurrently — fine, skip it
+    } catch (error) {
+      // error-policy:J6 a candidate may vanish while the cleanup scan runs.
+      logger.debug(
+        `[eliza] Plugin staging candidate vanished: ${formatError(error)}`,
+      );
     }
   }
   if (candidates.length <= keepCount) return;
@@ -1186,6 +1218,8 @@ export async function pruneStalePluginInstances(
       await fs.rm(victim.path, { recursive: true, force: true });
       deleted += 1;
     } catch (error) {
+      // error-policy:J6 stale generation cleanup is independent of the active
+      // staged plugin and every other victim is still attempted.
       logger.warn(
         `[eliza] Failed to prune stale plugin instance ${victim.path}: ${formatError(error)}`,
       );
@@ -1358,6 +1392,8 @@ async function populateStagedImportRoot(
       });
     }
   } catch (error) {
+    // error-policy:J3 filesystem and manifest probes translate only
+    // expected absence, races, or malformed candidates; other failures rethrow.
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
       throw error;
     }
@@ -1381,6 +1417,8 @@ async function populateStagedImportRoot(
         });
       }
     } catch (error) {
+      // error-policy:J3 filesystem and manifest probes translate only
+      // expected absence, races, or malformed candidates; other failures rethrow.
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
         throw error;
       }
@@ -1439,6 +1477,8 @@ async function isWorkspacePluginPackageRoot(pkgRoot: string): Promise<boolean> {
   try {
     realPkgRoot = await fs.realpath(pkgRoot);
   } catch (error) {
+    // error-policy:J3 filesystem and manifest probes translate only
+    // expected absence, races, or malformed candidates; other failures rethrow.
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
     throw error;
   }
@@ -1451,6 +1491,8 @@ async function isWorkspacePluginPackageRoot(pkgRoot: string): Promise<boolean> {
     try {
       realWorkspaceRoot = await fs.realpath(workspaceRoot);
     } catch (error) {
+      // error-policy:J3 filesystem and manifest probes translate only
+      // expected absence, races, or malformed candidates; other failures rethrow.
       if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
       throw error;
     }
@@ -1521,6 +1563,8 @@ async function nodeModulesGenerationSignature(
   try {
     dirents = await fs.readdir(nodeModulesDir, { withFileTypes: true });
   } catch (error) {
+    // error-policy:J3 filesystem and manifest probes translate only
+    // expected absence, races, or malformed candidates; other failures rethrow.
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return "absent";
     throw error;
   }
@@ -1669,6 +1713,8 @@ export async function stageColdPluginImportRoot(
     try {
       await fs.rename(tmpDir, cacheDir);
     } catch (error) {
+      // error-policy:J3 filesystem and manifest probes translate only
+      // expected absence, races, or malformed candidates; other failures rethrow.
       // Designed publish protocol, not a swallow: a losing rename race
       // (another process published the same digest first) or an EXDEV mount
       // quirk is expected; adopt the winner or fall back to our own complete
@@ -1788,6 +1834,8 @@ async function addDirectorySignature(
     const stat = await fs.stat(dir);
     parts.push(`${dir}:${stat.mtimeMs}`);
   } catch (err) {
+    // error-policy:J3 filesystem and manifest probes translate only
+    // expected absence, races, or malformed candidates; other failures rethrow.
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
       parts.push(`${dir}:absent`);
       return;
@@ -1804,6 +1852,8 @@ async function listNodeModulesScopeDirs(root: string): Promise<string[]> {
       withFileTypes: true,
     })) as import("node:fs").Dirent[];
   } catch (err) {
+    // error-policy:J3 filesystem and manifest probes translate only
+    // expected absence, races, or malformed candidates; other failures rethrow.
     if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
     throw err;
   }
@@ -1861,6 +1911,8 @@ async function discoverPluginCandidatesUncached(): Promise<
         withFileTypes: true,
       })) as import("node:fs").Dirent[];
     } catch (err) {
+      // error-policy:J3 filesystem and manifest probes translate only
+      // expected absence, races, or malformed candidates; other failures rethrow.
       if ((err as NodeJS.ErrnoException).code === "ENOENT") continue;
       throw err;
     }
@@ -1874,6 +1926,8 @@ async function discoverPluginCandidatesUncached(): Promise<
             withFileTypes: true,
           })) as import("node:fs").Dirent[];
         } catch (err) {
+          // error-policy:J3 filesystem and manifest probes translate only
+          // expected absence, races, or malformed candidates; other failures rethrow.
           if ((err as NodeJS.ErrnoException).code === "ENOENT") continue;
           throw err;
         }
@@ -1904,6 +1958,8 @@ async function discoverPluginCandidatesUncached(): Promise<
         withFileTypes: true,
       })) as import("node:fs").Dirent[];
     } catch (err) {
+      // error-policy:J3 filesystem and manifest probes translate only
+      // expected absence, races, or malformed candidates; other failures rethrow.
       if ((err as NodeJS.ErrnoException).code === "ENOENT") continue;
       throw err;
     }
@@ -1922,6 +1978,8 @@ async function discoverPluginCandidatesUncached(): Promise<
           const parsed = JSON.parse(raw) as { name?: string };
           if (parsed.name) await tryAdd(tsRoot, parsed.name);
         } catch {
+          // error-policy:J3 filesystem and manifest probes translate only
+          // expected absence, races, or malformed candidates; other failures rethrow.
           // ignore unreadable / malformed
         }
         continue;
@@ -1934,6 +1992,8 @@ async function discoverPluginCandidatesUncached(): Promise<
           const parsed = JSON.parse(raw) as { name?: string };
           if (parsed.name) await tryAdd(flatRoot, parsed.name);
         } catch {
+          // error-policy:J3 filesystem and manifest probes translate only
+          // expected absence, races, or malformed candidates; other failures rethrow.
           // ignore
         }
       }
@@ -1970,6 +2030,15 @@ export type PluginResolutionPhase = "all" | "blocking" | "deferred";
  */
 const blockingPhaseClaimedProviderNames = new Set<string>();
 
+/**
+ * Successful and failed resolutions retained from the blocking pass until the
+ * matching deferred pass diagnoses provider availability. A deferred pass only
+ * returns plugins that were not claimed by blocking, so diagnosing from its
+ * local result alone falsely reports that no provider loaded.
+ */
+const blockingPhaseLoadedPluginNames = new Set<string>();
+let blockingPhaseFailedPlugins: readonly FailedPluginDetail[] = [];
+
 export async function resolvePlugins(
   config: ElizaConfig,
   opts?: {
@@ -1982,6 +2051,11 @@ export async function resolvePlugins(
   const failedPlugins: Array<{ name: string; error: string }> = [];
   const repairedInstallRecords = new Set<string>();
   const phase = opts?.phase ?? "all";
+
+  if (phase === "blocking") {
+    blockingPhaseLoadedPluginNames.clear();
+    blockingPhaseFailedPlugins = [];
+  }
 
   // NOTE: Auto-enable runs before dependency validation intentionally.
   // It returns a new config object (structuredClone under the hood) with
@@ -2041,15 +2115,16 @@ export async function resolvePlugins(
       pluginVerdictCache = { key: verdictKey, verdicts };
     }
     applyPluginManifestVerdicts(config, verdicts, changes);
-  } catch (err) {
-    logger.warn(
-      `[eliza] Plugin manifest auto-enable failed: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
+  } catch (error) {
+    // error-policy:J2 plugin-plan configuration is a required boot input; do
+    // not continue with a silently incomplete auto-enable result.
+    throw new ElizaError("Plugin manifest evaluation failed", {
+      code: "PLUGIN_MANIFEST_EVALUATION_FAILED",
+      cause: error,
+    });
   }
   if (changes.length > 0) {
-    logger.info(`[eliza] Plugin auto-enable: ${changes.join("; ")}`);
+    logger.debug(`[eliza] Plugin auto-enable: ${changes.join("; ")}`);
   }
 
   // Provenance for "why is this package in the load set?" — surfaced when an
@@ -2213,7 +2288,7 @@ export async function resolvePlugins(
     );
   }
 
-  logger.info(`[eliza] Resolving ${pluginsToLoad.size} plugins...`);
+  logger.debug(`[eliza] Resolving ${pluginsToLoad.size} plugins...`);
   const loadStartTime = Date.now();
 
   // Built once so we don't rebuild on every optional plugin failure.
@@ -2222,6 +2297,11 @@ export async function resolvePlugins(
     ...Object.values(CHANNEL_PLUGIN_MAP),
     ...OPTIONAL_CORE_PLUGINS,
   ]);
+  for (const [pluginName, reason] of loadReasons) {
+    if (reason.startsWith('plugins.entries["')) {
+      optionalPluginNames.add(pluginName);
+    }
+  }
 
   // Load a single plugin - returns result or null on skip/failure
   async function loadSinglePlugin(pluginName: string): Promise<{
@@ -2296,6 +2376,8 @@ export async function resolvePlugins(
           try {
             mod = await importOfficialPluginFromNodeModules();
           } catch (error) {
+            // error-policy:J4 the workspace copy is the explicit development
+            // fallback when the repository node_modules build is unavailable.
             logger.warn(
               `[eliza] Repo node_modules plugin import failed for ${pluginName}; falling back to workspace override: ${formatError(error)}`,
             );
@@ -2330,6 +2412,8 @@ export async function resolvePlugins(
               repairedInstallRecords.add(pluginName);
             }
           } catch (npmErr) {
+            // error-policy:J4 a recorded installation is the explicit fallback
+            // when the bundled package cannot resolve.
             logger.warn(
               `[eliza] Node_modules resolution failed for ${pluginName} (${formatError(npmErr)}). Trying installed path at ${redactUserSegments(installRecord.installPath)}.`,
             );
@@ -2348,6 +2432,8 @@ export async function resolvePlugins(
               exportSubpath,
             );
           } catch (installErr) {
+            // error-policy:J4 user-installed package failure explicitly falls
+            // back to the configured node_modules/static source.
             logger.warn(
               `[eliza] Installed plugin ${pluginName} failed at ${redactUserSegments(installRecord.installPath)} (${formatError(installErr)}). Falling back to node_modules resolution.`,
             );
@@ -2419,6 +2505,8 @@ export async function resolvePlugins(
         return null;
       }
     } catch (err) {
+      // error-policy:J4 plugin resolution records the unavailable plugin in
+      // failedPlugins; required core-plugin validation fails boot afterward.
       const msg = formatError(err);
 
       failedPlugins.push({ name: pluginName, error: msg });
@@ -2457,7 +2545,7 @@ export async function resolvePlugins(
   // anyway — the work is CPU-bound on one thread. Blocking/all phases gate boot
   // and keep the parallel path. Mirrors the deferred static-plugin scheduling.
   const yieldBetweenLoads = phase === "deferred" && !serializePluginLoads;
-  logger.info(
+  logger.debug(
     `[eliza] Loading ${pluginsToLoad.size} plugins${serializePluginLoads ? " sequentially" : yieldBetweenLoads ? " (deferred, yielding)" : ""}...`,
   );
   const pluginResults =
@@ -2492,7 +2580,7 @@ export async function resolvePlugins(
   }
 
   const loadDuration = Date.now() - loadStartTime;
-  logger.info(`[eliza] Plugin loading took ${loadDuration}ms`);
+  logger.debug(`[eliza] Plugin loading took ${loadDuration}ms`);
 
   // Summary logging — do not treat “optional + not installed” as top-level failures.
   const optionalFailed = failedPlugins.filter((f) =>
@@ -2514,7 +2602,7 @@ export async function resolvePlugins(
     completeMsg += `, ${detailFailures.length} failed`;
   }
   if (benignOptionalFailed.length > 0) {
-    completeMsg += ` (${benignOptionalFailed.length} optional unavailable)`;
+    completeMsg += ` (${benignOptionalFailed.length} optional not installed)`;
   }
   logger.info(completeMsg);
 
@@ -2528,17 +2616,36 @@ export async function resolvePlugins(
       const reason = loadReasons.get(f.name);
       return reason ? `${f.name} (added by: ${reason})` : f.name;
     });
-    logger.info(
+    logger.debug(
       `[eliza] Optional plugins not installed: ${withReasons.join(", ")}`,
     );
   }
 
-  setLastFailedPlugins(failedPlugins);
+  setLastFailedPlugins(detailFailures);
 
   // Diagnose version-skew issues when AI providers failed to load (#10)
   const loadedNames = plugins.map((p) => p.name);
+  if (phase === "blocking") {
+    for (const name of loadedNames) {
+      blockingPhaseLoadedPluginNames.add(name);
+    }
+    blockingPhaseFailedPlugins = failedPlugins.map((failure) => ({
+      ...failure,
+    }));
+  }
   if (phase !== "blocking") {
-    const diagnostic = diagnoseNoAIProvider(loadedNames, failedPlugins);
+    const diagnosticLoadedNames =
+      phase === "deferred"
+        ? [...blockingPhaseLoadedPluginNames, ...loadedNames]
+        : loadedNames;
+    const diagnosticFailedPlugins =
+      phase === "deferred"
+        ? [...blockingPhaseFailedPlugins, ...failedPlugins]
+        : failedPlugins;
+    const diagnostic = diagnoseNoAIProvider(
+      diagnosticLoadedNames,
+      diagnosticFailedPlugins,
+    );
     if (diagnostic) {
       if (opts?.quiet) {
         // In headless/GUI mode before first-run setup, this is expected — the user
@@ -2558,10 +2665,13 @@ export async function resolvePlugins(
       logger.info(
         `[eliza] Repaired ${repairedInstallRecords.size} plugin install record(s): ${Array.from(repairedInstallRecords).join(", ")}`,
       );
-    } catch (err) {
-      logger.warn(
-        `[eliza] Failed to persist plugin install repairs: ${formatError(err)}`,
-      );
+    } catch (error) {
+      // error-policy:J2 repaired ownership data must persist or the next boot
+      // will repeat a known-broken import path.
+      throw new ElizaError("Could not persist repaired plugin installs", {
+        code: "PLUGIN_INSTALL_REPAIR_PERSIST_FAILED",
+        cause: error,
+      });
     }
   }
 

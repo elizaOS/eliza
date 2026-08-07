@@ -144,7 +144,7 @@ vi.mock(
 	}),
 );
 
-vi.mock("@elizaos/plugin-aosp-local-inference", () => ({
+vi.mock("@elizaos/plugin-native-inference", () => ({
 	activateAospLocalInferenceModel:
 		getRouteTestMocks().aospMock.activateAospLocalInferenceModel,
 	buildAospLoadModelArgs: getRouteTestMocks().aospMock.buildAospLoadModelArgs,

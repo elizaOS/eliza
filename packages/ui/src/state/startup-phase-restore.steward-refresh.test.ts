@@ -1,3 +1,4 @@
+/** Verifies applyRestoredConnection — cloud Steward token refresh at restore through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // #10231 launch-blocker #4 — a returning cloud user whose stored Steward JWT

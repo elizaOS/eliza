@@ -1,3 +1,4 @@
+/** Verifies glass tokens through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Contract tests for the unified glass system: recipe integrity (every variant
@@ -22,12 +23,7 @@ import {
   setNativeWallpaperSource,
 } from "./native-backdrop";
 import { resetGlassBridgeForTests } from "./native-bridge";
-import {
-  GLASS_RECIPES,
-  GLASS_SHEET_BACKDROP_FILTER,
-  GLASS_SHEET_FILL,
-  type GlassVariant,
-} from "./tokens";
+import { GLASS_RECIPES, type GlassVariant } from "./tokens";
 
 type CapGlobal = { Capacitor?: unknown };
 
@@ -115,23 +111,6 @@ describe("glass tokens", () => {
   it("keeps the sheet saturate-free (saturate reads brown over the warm theme)", () => {
     expect(GLASS_RECIPES.sheet.backdropFilter).not.toMatch(/saturate/);
     expect(GLASS_RECIPES.sheet.refraction).toBeNull();
-  });
-
-  it("exposes the chat-sheet material as tokens the overlay consumes", () => {
-    // ChatOverlay renders its frosted panel from these exact tokens
-    // (not a hand-rolled inline recipe), so the chat sheet is a genuine
-    // liquid-glass SYSTEM surface. If either drifts, the overlay drifts with it.
-    expect(GLASS_SHEET_FILL).toBe(
-      "color-mix(in srgb, var(--card) 62%, transparent)",
-    );
-    // Neutral blur only — no saturate (brown over the warm field), no refraction.
-    expect(GLASS_SHEET_BACKDROP_FILTER).toBe("blur(30px)");
-    expect(GLASS_SHEET_BACKDROP_FILTER).not.toMatch(/saturate|brightness/);
-    // The recipe is wired to the same constants, so token and surface agree.
-    expect(GLASS_RECIPES.sheet.background).toBe(GLASS_SHEET_FILL);
-    expect(GLASS_RECIPES.sheet.backdropFilter).toBe(
-      GLASS_SHEET_BACKDROP_FILTER,
-    );
   });
 
   it("gives refraction only to small surfaces (card, menu)", () => {

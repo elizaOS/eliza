@@ -1,3 +1,4 @@
+/** Verifies NativeAppsStudio — native Applications mount through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

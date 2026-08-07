@@ -648,7 +648,7 @@ app.post("/api/v1/cron/deployment-monitor", deploymentMonitorResponse);
 function agentHotPoolResponse(c: Context) {
   return handleInternal(c, async () => {
     // Node health checks moved to the provisioning-worker daemon — see
-    // `packages/scripts/cloud/admin/daemons/provisioning-worker.ts:processNodeHealthCheckCycle`.
+    // `packages/cloud/scripts/admin/daemons/provisioning-worker.ts:processNodeHealthCheckCycle`.
     // The orchestrator host runs them now because it's the one with a valid
     // CONTAINERS_SSH_KEY against the cores; leaving the call here too would
     // race with the daemon and flip status every 5 min depending on which

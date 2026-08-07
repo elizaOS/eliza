@@ -53,6 +53,8 @@ export async function withCleanup<T>(
 		const result = await fn();
 		return result;
 	} catch (error) {
+		// error-policy:J2 Run bounded cleanup on abort, then preserve the
+		// original operation failure.
 		if (signal.aborted) {
 			await runCleanup(cleanup, timeoutMs);
 			// Re-throw the original abort so callers can detect it; cleanup ran.
@@ -74,6 +76,7 @@ async function runCleanup(
 	try {
 		await cleanup(controller.signal);
 	} catch {
+		// error-policy:J6 Cleanup is best-effort on an already-aborted path.
 		// Swallow — cleanup is best-effort. We're already in an abort path.
 	} finally {
 		clearTimeout(timer);

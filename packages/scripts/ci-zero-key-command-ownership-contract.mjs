@@ -28,8 +28,8 @@ const OWNED_WORKFLOWS = [
   { file: ".github/workflows/test.yml", owner: "test-orchestrator" },
   { file: ".github/workflows/scenario-pr.yml", owner: "scenario-pr-zero-key" },
   {
-    file: ".github/workflows/keyless-harness-e2e.yml",
-    owner: "keyless-harness",
+    file: ".github/workflows/keyless-model-provider-e2e.yml",
+    owner: "model-provider-runtime",
     includeAllJobs: true,
   },
   {
@@ -40,7 +40,7 @@ const OWNED_WORKFLOWS = [
 ];
 
 const ZERO_KEY_MARKER =
-  /Zero-Key|zero-key|keyless|secret-free|no secret|SCENARIO_USE_LLM_PROXY|ELIZA_LIVE_TEST:\s*["']?0/i;
+  /Zero-Key|zero-key|keyless|secret-free|no secret|SCENARIO_USE_DETERMINISTIC_MODEL|ELIZA_LIVE_TEST:\s*["']?0/i;
 
 const COMMAND_PREFIX = /^(bun|bunx|node|npm|pnpm|bash|cargo|python3?)\b/;
 const IGNORED_LINE =

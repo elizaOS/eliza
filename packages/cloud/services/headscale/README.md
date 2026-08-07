@@ -34,7 +34,7 @@ URLs do not become permanent reusable aliases.
 ## Deploy
 
 Headscale is armed on the Hetzner control-plane VM by
-`arm-headscale-control-plane.yml` / `packages/scripts/cloud/admin/arm-headscale-control-plane.mjs`,
+`arm-headscale-control-plane.yml` / `packages/cloud/scripts/admin/arm-headscale-control-plane.mjs`,
 which writes this directory's `acl.hujson` to the host, converges
 `/etc/headscale/config.yaml`, ensures the `agent` and `tunnel` users, and
 upserts the Worker-facing env. Full checklist + required GitHub Environment

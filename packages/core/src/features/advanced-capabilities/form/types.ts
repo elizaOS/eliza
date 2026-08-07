@@ -1,36 +1,6 @@
 /**
- * @module types
- * @description Core type definitions for the Form Plugin
- *
- * ## The Core Insight
- *
- * Forms are **guardrails for agent-guided user journeys**.
- *
- * Without structure, agents wander. They forget what they're collecting,
- * miss required information, and can't reliably guide users to outcomes.
- * These types define the rails that keep agents on track.
- *
- * - **FormDefinition** = The journey map (what stops are required)
- * - **FormControl** = A stop on the journey (what info to collect)
- * - **FormSession** = Progress through the journey (where we are)
- * - **FormSubmission** = Journey complete (the outcome)
- *
- * ## Design Principles
- *
- * 1. **Agent-Native**: Designed for conversational, asynchronous interactions.
- *    No form UI - the agent extracts data and guides the conversation.
- *
- * 2. **Forward-Compatible**: Many fields are optional with sensible defaults.
- *    The `meta` field on most interfaces allows arbitrary extension.
- *
- * 3. **Scoped Sessions**: Sessions are keyed by (entityId + roomId) because
- *    a user might be on different journeys in different rooms.
- *
- * 4. **Effort-Aware**: Form data is retained based on user effort invested.
- *    Someone who spent 2 hours deserves longer retention than 2 minutes.
- *
- * 5. **TypeScript-First**: Types use discriminated unions, generics, and
- *    template literals for excellent IDE support and type safety.
+ * Contracts for conversational forms that guide agents through structured data collection.
+ * Sessions are scoped by entity and room, while extensible metadata preserves vendor-specific details.
  */
 
 import type { IAgentRuntime, JsonValue, UUID } from "../../../types/index.ts";

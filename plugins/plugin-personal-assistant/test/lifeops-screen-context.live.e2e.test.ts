@@ -17,7 +17,7 @@ import {
   stopBrowserCapture,
 } from "@elizaos/plugin-browser";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { describeIf } from "../../../packages/test/helpers/conditional-tests.ts";
+import { describeIf } from "../../../packages/app-core/test/helpers/conditional-tests.ts";
 import { LifeOpsScreenContextSampler } from "../src/lifeops/screen-context.js";
 
 const LIVE_TESTS_ENABLED = process.env.ELIZA_LIVE_TEST === "1";

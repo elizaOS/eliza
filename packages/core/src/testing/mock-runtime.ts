@@ -1,5 +1,5 @@
 /**
- * @fileoverview Typed mock runtime for **unit** tests.
+ * Typed partial runtime for isolated unit tests.
  *
  * This is the unit-test counterpart to {@link ./integration-runtime}. Integration
  * tests use a real {@link AgentRuntime} backed by real infrastructure (the
@@ -52,19 +52,13 @@ const MOCK_CHARACTER: Character = {
 /**
  * Build a typed mock {@link IAgentRuntime} for a unit test. Only the structural
  * required properties (`agentId`, `character`, the registry arrays/maps) are
- * defaulted; methods are intentionally left unset so the factory is a
- * behavior-preserving drop-in for the minimal cast-mocks it replaces. Pass the
- * methods (and any other fields) a test needs via `overrides` — now type-checked
- * against `IAgentRuntime`, unlike the `as unknown as` casts.
+ * defaulted, along with the diagnostic sink required by service code. Pass
+ * behavior-bearing methods a test needs via `overrides` so they remain explicit
+ * and type-checked against `IAgentRuntime`.
  */
 export function createMockRuntime(
 	overrides: Partial<IAgentRuntime> = {},
 ): IAgentRuntime {
-	// Only structural, required properties are defaulted. Methods are deliberately
-	// NOT pre-stubbed: the cast-mocks this replaces were minimal by design, and a
-	// method a test never set must stay `undefined` so migrating to this factory
-	// is behavior-preserving. Tests pass the methods they need via `overrides`
-	// (now type-checked), exactly as the hand-rolled cast-mocks did.
 	const base: Partial<IAgentRuntime> = {
 		agentId: MOCK_AGENT_ID,
 		character: MOCK_CHARACTER,
@@ -75,6 +69,7 @@ export function createMockRuntime(
 		routes: [],
 		services: new Map(),
 		stateCache: new Map(),
+		reportError: () => undefined,
 		...overrides,
 	};
 

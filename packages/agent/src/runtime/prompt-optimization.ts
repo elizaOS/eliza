@@ -89,6 +89,22 @@ const ELIZA_CAPTURE_PROMPTS =
 
 let promptCaptureSeq = 0;
 
+async function writePromptCapture(
+  runtime: AgentRuntime,
+  capturePath: string,
+  content: string,
+): Promise<boolean> {
+  try {
+    await mkdir(path.dirname(capturePath), { recursive: true });
+    await writeFile(capturePath, content);
+    return true;
+  } catch (error) {
+    // error-policy:J7 optional prompt diagnostics must not block model calls.
+    runtime.reportError("PromptOptimization.capture", error, { capturePath });
+    return false;
+  }
+}
+
 // Track which runtimes have been wrapped to prevent double-installation.
 const installedRuntimes = new WeakSet<AgentRuntime>();
 const usageCaptureInstalledRuntimes = new WeakSet<AgentRuntime>();
@@ -1413,14 +1429,17 @@ export function installPromptOptimizations(
       const seq = String(++promptCaptureSeq).padStart(4, "0");
       const filename = `${seq}-${modelType}.txt`;
       const capturePath = path.join(captureDir, filename);
-      await mkdir(captureDir, { recursive: true }).catch(() => {});
-      await writeFile(
-        capturePath,
-        `--- model: ${modelType} | key: ${promptKey ?? "messages"} | chars: ${originalPrompt.length} ---\n\n${originalPrompt}`,
-      ).catch(() => {});
-      promptOptimizationTelemetry.transformations.push(
-        `capture:original:${capturePath}`,
-      );
+      if (
+        await writePromptCapture(
+          runtime,
+          capturePath,
+          `--- model: ${modelType} | key: ${promptKey ?? "messages"} | chars: ${originalPrompt.length} ---\n\n${originalPrompt}`,
+        )
+      ) {
+        promptOptimizationTelemetry.transformations.push(
+          `capture:original:${capturePath}`,
+        );
+      }
     }
 
     let rewrittenArgs = args;
@@ -1645,13 +1664,17 @@ export function installPromptOptimizations(
       const seq = String(promptCaptureSeq).padStart(4, "0");
       const filename = `${seq}-${modelType}-rewritten.txt`;
       const capturePath = path.join(captureDir, filename);
-      await writeFile(
-        capturePath,
-        `--- model: ${modelType} | key: ${promptKey ?? "messages"} | chars: ${finalPromptForTelemetry.length} | rewritten ---\n\n${finalPromptForTelemetry}`,
-      ).catch(() => {});
-      promptOptimizationTelemetry.transformations.push(
-        `capture:rewritten:${capturePath}`,
-      );
+      if (
+        await writePromptCapture(
+          runtime,
+          capturePath,
+          `--- model: ${modelType} | key: ${promptKey ?? "messages"} | chars: ${finalPromptForTelemetry.length} | rewritten ---\n\n${finalPromptForTelemetry}`,
+        )
+      ) {
+        promptOptimizationTelemetry.transformations.push(
+          `capture:rewritten:${capturePath}`,
+        );
+      }
     }
 
     const shouldSetMaxOutputTokens =

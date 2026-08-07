@@ -25,6 +25,8 @@ export class KeyedMutex {
     const run = previous.then(() => fn());
     // Register a non-rejecting tail so the next acquirer waits for this
     // run to settle regardless of outcome, without unhandled rejections.
+    // error-policy:J5 the acquiring caller observes `run`; this tail only keeps
+    // later waiters ordered after a rejected operation.
     const tail = run.catch(() => {});
     this.inflight.set(key, tail);
     try {

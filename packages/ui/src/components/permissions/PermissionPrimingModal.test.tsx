@@ -1,3 +1,4 @@
+/** Verifies PermissionPrimingModal through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // PermissionPrimingModal rendering: the active card's rationale + Enable/Not now,

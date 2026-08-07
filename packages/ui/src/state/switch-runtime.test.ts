@@ -1,3 +1,4 @@
+/** Verifies switchRuntimeNonDestructive through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Non-destructive runtime switching (`switch-runtime`): repointing the client

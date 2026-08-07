@@ -1,3 +1,4 @@
+/** Verifies useShellController through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // The shell controller hook end to end in jsdom: conversation load watchdog,
@@ -7,7 +8,10 @@
 // store, and voice-output hook are mocked; localStorage is backed by an
 // in-memory Storage so hands-free persistence is real.
 
-import { VOICE_SETTINGS_APPLY_EVENT } from "@elizaos/shared/events";
+import {
+  NAVIGATE_VIEW_EVENT,
+  VOICE_SETTINGS_APPLY_EVENT,
+} from "@elizaos/shared/events";
 import { act, cleanup, renderHook } from "@testing-library/react";
 import {
   afterEach,
@@ -18,11 +22,15 @@ import {
   type Mock,
   vi,
 } from "vitest";
+import type { RealtimeVoiceStartOutcome } from "../../../hooks/useRealtimeVoiceSession";
+import { RESYNC_EVENT } from "../../../state/AppContext.hooks";
 import { emitViewEvent } from "../../../views/view-event-bus";
 import {
   createVoiceCapture,
   type VoiceCaptureFactoryOptions,
 } from "../../../voice/voice-capture-factory";
+import type { VoiceContinuousStatus } from "../../../voice/voice-chat-types";
+import type { ServerControlFrame } from "../../../voice/voice-session-protocol";
 import { resolveAdjacentConversationId } from "../conversation-nav";
 import { useShellController } from "../useShellController";
 
@@ -97,10 +105,88 @@ const appMock = vi.hoisted(() => ({
     handleChatStop: vi.fn(),
     setActionNotice: vi.fn(),
     uiLanguage: "en",
+    elizaCloudConnected: false,
     elizaCloudVoiceProxyAvailable: false,
   },
   // Live server-reported turn status (#8813), read via useChatTurnStatus().
   serverTurnStatus: null as { kind: string } | null,
+}));
+
+const realtimeVoiceMock = vi.hoisted(() => {
+  const holder = {
+    enabled: false,
+    options: null as {
+      agentId?: string | null;
+      conversationId?: string | null;
+      clientOptions?: {
+        onServerEvent?: (event: ServerControlFrame) => void;
+      };
+    } | null,
+    startOutcome: { kind: "live" } as RealtimeVoiceStartOutcome,
+    startedConversationIds: [] as Array<string | null | undefined>,
+    start: vi.fn(
+      async (): Promise<RealtimeVoiceStartOutcome> => ({ kind: "live" }),
+    ),
+    stop: vi.fn(async () => {}),
+    unlock: vi.fn(async () => {}),
+    bargeIn: vi.fn(),
+  };
+  holder.start.mockImplementation(async () => {
+    holder.startedConversationIds.push(holder.options?.conversationId);
+    return holder.startOutcome;
+  });
+  return Object.assign(holder, {
+    state: {
+      available: true,
+      active: false,
+      connecting: false,
+      status: "idle" as VoiceContinuousStatus,
+      transcriptPartial: "",
+      transcriptFinal: "",
+      agentSpeaking: false,
+      needsUnlock: false,
+      paused: false,
+      error: null as {
+        kind:
+          | "permission"
+          | "no-device"
+          | "mint"
+          | "consent"
+          | "transport"
+          | "unknown";
+        message: string;
+        actionable: boolean;
+      } | null,
+      fallbackReason: null,
+      reportFallback: vi.fn(),
+      speaker: null,
+      start: holder.start,
+      stop: holder.stop,
+      bargeIn: holder.bargeIn,
+      unlock: holder.unlock,
+    },
+  });
+});
+
+vi.mock("../../../hooks/useRealtimeVoiceMint", () => ({
+  useRealtimeVoiceMint: () => ({
+    agentId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+    getConsentNonce: vi.fn(async () => "consent-nonce"),
+  }),
+}));
+
+vi.mock("../../../hooks/useRealtimeVoiceSession", () => ({
+  isRealtimeVoiceFlagEnabled: () => realtimeVoiceMock.enabled,
+  useRealtimeVoiceSession: (options: {
+    agentId?: string | null;
+    conversationId?: string | null;
+    clientOptions?: {
+      onServerEvent?: (event: ServerControlFrame) => void;
+    };
+  }) => {
+    realtimeVoiceMock.options = options;
+    return realtimeVoiceMock.state;
+  },
 }));
 
 const composerMock = vi.hoisted(() => ({
@@ -182,10 +268,15 @@ const voiceOutputMock = vi.hoisted(() => ({
   // each render — lastTurnVoice is internal (not on the public controller
   // return), so this real consumer boundary is where the flag is observable.
   lastTurnVoiceSeen: undefined as boolean | undefined,
+  cloudConnectedSeen: undefined as boolean | undefined,
 }));
 vi.mock("../useShellVoiceOutput", () => ({
-  useShellVoiceOutput: (opts?: { lastTurnVoice?: boolean }) => {
+  useShellVoiceOutput: (opts?: {
+    lastTurnVoice?: boolean;
+    cloudConnected?: boolean;
+  }) => {
     voiceOutputMock.lastTurnVoiceSeen = opts?.lastTurnVoice;
+    voiceOutputMock.cloudConnectedSeen = opts?.cloudConnected;
     return voiceOutputMock;
   },
 }));
@@ -220,15 +311,54 @@ afterEach(() => {
   appMock.value.handleSelectConversation = vi.fn(() => Promise.resolve());
   appMock.value.activeConversationId = null;
   appMock.value.conversations = [];
+  appMock.value.elizaCloudConnected = false;
+  appMock.value.elizaCloudVoiceProxyAvailable = false;
   voiceOutputMock.stopSpeaking.mockClear();
   voiceOutputMock.lastTurnVoiceSeen = undefined;
+  voiceOutputMock.cloudConnectedSeen = undefined;
   wakeListenMock.lastEnabled = undefined;
+  realtimeVoiceMock.enabled = false;
+  realtimeVoiceMock.options = null;
+  realtimeVoiceMock.startOutcome = { kind: "live" };
+  realtimeVoiceMock.startedConversationIds.length = 0;
+  realtimeVoiceMock.start.mockClear();
+  realtimeVoiceMock.stop.mockClear();
+  realtimeVoiceMock.unlock.mockClear();
+  realtimeVoiceMock.bargeIn.mockClear();
+  realtimeVoiceMock.state.active = false;
+  realtimeVoiceMock.state.connecting = false;
+  realtimeVoiceMock.state.status = "idle";
+  realtimeVoiceMock.state.transcriptPartial = "";
+  realtimeVoiceMock.state.transcriptFinal = "";
+  realtimeVoiceMock.state.agentSpeaking = false;
+  realtimeVoiceMock.state.needsUnlock = false;
+  realtimeVoiceMock.state.paused = false;
+  realtimeVoiceMock.state.error = null;
   try {
     window.localStorage.clear();
   } catch {}
 });
 
 describe("useShellController", () => {
+  it("passes only authenticated selected Cloud voice capability to output", () => {
+    const { rerender } = renderHook(() => useShellController());
+
+    expect(voiceOutputMock.cloudConnectedSeen).toBe(false);
+
+    appMock.value.elizaCloudVoiceProxyAvailable = true;
+    rerender();
+    expect(voiceOutputMock.cloudConnectedSeen).toBe(false);
+
+    appMock.value.elizaCloudVoiceProxyAvailable = false;
+    appMock.value.elizaCloudConnected = true;
+    rerender();
+    expect(voiceOutputMock.cloudConnectedSeen).toBe(false);
+
+    appMock.value.elizaCloudVoiceProxyAvailable = true;
+    rerender();
+    expect(voiceOutputMock.cloudConnectedSeen).toBe(true);
+  });
+
   it("opens the shared chat state even while startup is still booting", () => {
     appMock.value.agentStatus = { ...WARMING_STATUS };
 
@@ -1934,5 +2064,249 @@ describe("useShellController — no provider configured", () => {
     expect(result.current.noProviderConfigured).toBe(true);
     expect(appMock.value.setTab).toHaveBeenCalledWith("settings");
     expect(appMock.value.setTab).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("useShellController — mounted Cartesia Talk ownership", () => {
+  const conversationId = "11111111-1111-4111-8111-111111111111";
+
+  beforeEach(() => {
+    realtimeVoiceMock.enabled = true;
+    realtimeVoiceMock.startOutcome = { kind: "live" };
+    realtimeVoiceMock.startedConversationIds.length = 0;
+    realtimeVoiceMock.start.mockClear();
+    realtimeVoiceMock.stop.mockClear();
+    createVoiceCaptureMock.mockClear();
+    appMock.value.activeConversationId = conversationId;
+    try {
+      window.localStorage.clear();
+    } catch {}
+  });
+
+  it("routes primary Talk to realtime and keeps batch capture inert through re-listen", async () => {
+    vi.useFakeTimers();
+    try {
+      const { result } = renderHook(() => useShellController());
+
+      await act(async () => {
+        result.current.toggleHandsFree();
+        await Promise.resolve();
+      });
+
+      expect(realtimeVoiceMock.start).toHaveBeenCalledTimes(1);
+      expect(realtimeVoiceMock.startedConversationIds).toEqual([
+        conversationId,
+      ]);
+      expect(createVoiceCaptureMock).not.toHaveBeenCalled();
+      expect(result.current.handsFree).toBe(true);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+      expect(createVoiceCaptureMock).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("surfaces a retryable Cartesia error instead of falling back to batch", async () => {
+    realtimeVoiceMock.startOutcome = {
+      kind: "fallback-to-batch",
+      reason: "mint",
+    };
+    const { result } = renderHook(() => useShellController());
+
+    await act(async () => {
+      result.current.toggleHandsFree();
+      await Promise.resolve();
+    });
+
+    expect(createVoiceCaptureMock).not.toHaveBeenCalled();
+    expect(result.current.handsFree).toBe(false);
+    expect(result.current.realtimeVoice?.error).toContain("Cartesia voice");
+    expect(appMock.value.setActionNotice).toHaveBeenCalledWith(
+      expect.stringContaining("Tap Talk to retry"),
+      "error",
+      6000,
+    );
+  });
+
+  it("uses the newly committed conversation UUID before a slow greeting finishes", async () => {
+    appMock.value.activeConversationId = null;
+    let finishGreeting: (() => void) | null = null;
+    appMock.value.handleNewConversation = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishGreeting = resolve;
+        }),
+    );
+    const { result, rerender } = renderHook(() => useShellController());
+
+    act(() => result.current.toggleHandsFree());
+    expect(realtimeVoiceMock.start).not.toHaveBeenCalled();
+
+    // AppContext publishes the new conversation before greeting generation
+    // resolves. This render is the exact identity boundary the realtime hook
+    // consumes; no timer or polling is involved.
+    appMock.value.activeConversationId = conversationId;
+    rerender();
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(realtimeVoiceMock.start).toHaveBeenCalledTimes(1);
+    expect(realtimeVoiceMock.startedConversationIds).toEqual([conversationId]);
+    expect(createVoiceCaptureMock).not.toHaveBeenCalled();
+
+    await act(async () => {
+      finishGreeting?.();
+      await Promise.resolve();
+    });
+  });
+
+  it("waits for startup hydration instead of creating an orphan conversation", async () => {
+    appMock.value.startupCoordinator.phase = "hydrating";
+    appMock.value.activeConversationId = null;
+    appMock.value.conversations = [{ id: conversationId }];
+    appMock.value.conversationMessages = [
+      {
+        id: "restored-user-turn",
+        role: "user",
+        text: "existing history",
+        timestamp: 1,
+      },
+    ];
+    const { result, rerender } = renderHook(() => useShellController());
+
+    act(() => result.current.toggleHandsFree());
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(appMock.value.handleNewConversation).not.toHaveBeenCalled();
+    expect(realtimeVoiceMock.start).not.toHaveBeenCalled();
+    expect(appMock.value.setActionNotice).not.toHaveBeenCalled();
+
+    // The startup coordinator is the sole owner of initial conversation
+    // hydration. Once it publishes the restored id, the queued Talk gesture
+    // continues against that exact thread without creating a second server row.
+    appMock.value.activeConversationId = conversationId;
+    rerender();
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(appMock.value.handleNewConversation).not.toHaveBeenCalled();
+    expect(realtimeVoiceMock.start).toHaveBeenCalledTimes(1);
+    expect(realtimeVoiceMock.startedConversationIds).toEqual([conversationId]);
+    expect(createVoiceCaptureMock).not.toHaveBeenCalled();
+  });
+
+  it("projects realtime phase, playback, and unlock state", () => {
+    realtimeVoiceMock.state.active = true;
+    realtimeVoiceMock.state.status = "speaking";
+    realtimeVoiceMock.state.transcriptPartial = "stale partial";
+    realtimeVoiceMock.state.agentSpeaking = true;
+    realtimeVoiceMock.state.needsUnlock = true;
+
+    const { result } = renderHook(() => useShellController());
+
+    expect(result.current.realtimeVoice).toMatchObject({
+      enabled: true,
+      active: true,
+      status: "speaking",
+    });
+    expect(result.current.transcript).toBe("");
+    expect(result.current.speaking).toBe(true);
+    expect(result.current.needsAudioUnlock).toBe(true);
+    expect(result.current.turnStatus).toEqual({ kind: "speaking" });
+  });
+
+  it("clears a committed voice transcript when the session returns to listening", () => {
+    realtimeVoiceMock.state.active = true;
+    realtimeVoiceMock.state.status = "listening";
+    realtimeVoiceMock.state.transcriptPartial = "";
+    realtimeVoiceMock.state.transcriptFinal = "Um, they're okay.";
+
+    const { result } = renderHook(() => useShellController());
+
+    expect(result.current.transcript).toBe("");
+  });
+
+  it("reconciles gateway-written voice turns through the canonical conversation loader", () => {
+    const resyncEvents: CustomEvent[] = [];
+    const onResync = (event: Event) => {
+      resyncEvents.push(event as CustomEvent);
+    };
+    window.addEventListener(RESYNC_EVENT, onResync);
+    try {
+      renderHook(() => useShellController());
+      const onServerEvent =
+        realtimeVoiceMock.options?.clientOptions?.onServerEvent;
+      expect(onServerEvent).toBeTypeOf("function");
+
+      act(() => {
+        onServerEvent?.({
+          t: "stt_final",
+          text: "open notes",
+          traceId: "trace-voice-turn",
+        });
+      });
+      expect(resyncEvents).toHaveLength(0);
+
+      act(() => {
+        onServerEvent?.({ t: "llm_first_text", traceId: "trace-voice-turn" });
+      });
+      expect(resyncEvents[0]?.detail).toEqual({
+        conversationId,
+        reason: "voice-turn-progress",
+      });
+
+      act(() => {
+        onServerEvent?.({
+          t: "usage",
+          sttMs: 300,
+          ttsChars: 12,
+          traceId: "trace-voice-turn",
+        });
+      });
+      expect(resyncEvents[1]?.detail).toEqual({
+        conversationId,
+        reason: "voice-turn-complete",
+      });
+    } finally {
+      window.removeEventListener(RESYNC_EVENT, onResync);
+    }
+  });
+
+  it("dispatches a validated realtime voice view handoff through the shell navigation event", () => {
+    const navigationEvents: CustomEvent[] = [];
+    const onNavigate = (event: Event) => {
+      navigationEvents.push(event as CustomEvent);
+    };
+    window.addEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
+    try {
+      renderHook(() => useShellController());
+      const onServerEvent =
+        realtimeVoiceMock.options?.clientOptions?.onServerEvent;
+
+      act(() => {
+        onServerEvent?.({
+          t: "navigate_view",
+          viewId: "notes",
+          subview: "recent",
+          traceId: "trace-voice-navigation",
+        });
+      });
+
+      expect(navigationEvents).toHaveLength(1);
+      expect(navigationEvents[0]?.detail).toEqual({
+        viewId: "notes",
+        source: "agent",
+        subview: "recent",
+      });
+    } finally {
+      window.removeEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
+    }
   });
 });

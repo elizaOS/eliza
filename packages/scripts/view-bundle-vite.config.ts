@@ -1,6 +1,6 @@
-// Drives repo automation view bundle vite.config with explicit CLI and CI behavior.
+/** Builds the shared single-module Vite configuration for plugin views. */
 import path from "node:path";
-import { defineConfig, type UserConfig } from "vite";
+import type { UserConfig } from "vite";
 
 type ViewBundleOptions = {
   packageName: string;
@@ -51,7 +51,7 @@ export function createViewBundleConfig(options: ViewBundleOptions): UserConfig {
     ...(options.additionalExternals ?? []),
   ]);
 
-  return defineConfig({
+  return {
     resolve: options.aliases ? { alias: options.aliases } : undefined,
     build: {
       emptyOutDir: false,
@@ -101,5 +101,5 @@ export function createViewBundleConfig(options: ViewBundleOptions): UserConfig {
         options.componentExport ?? "default",
       ),
     },
-  });
+  };
 }

@@ -20,7 +20,12 @@ import {
 	type AppControlClient,
 	createAppControlClient,
 } from "../client/api.js";
-import { readStringOption } from "../params.js";
+import {
+	describeTargetReference,
+	readOptionalRefOption,
+	readStringOption,
+	userRequestMessageText,
+} from "../params.js";
 import type { InstalledAppInfo } from "../types.js";
 import {
 	findAsyncCodingDelegationActionName,
@@ -272,6 +277,12 @@ async function extractNames(
 }
 
 interface DispatchInput {
+	/**
+	 * Verification profile for the dispatched build. Fresh directory scaffolds
+	 * use "build" (launch/browser checks need a runtime launcher these apps do
+	 * not have); edits to an installed, launchable app keep "full".
+	 */
+	verifyProfile: "build" | "full";
 	runtime: IAgentRuntime;
 	prompt: string;
 	label: string;
@@ -392,6 +403,7 @@ async function dispatchCodingAgent({
 	appName,
 	originRoomId,
 	callback,
+	verifyProfile,
 }: DispatchInput): Promise<DispatchResult> {
 	const createTaskName = findAsyncCodingDelegationActionName(runtime.actions);
 	const createTask = runtime.actions.find((a) => a.name === createTaskName);
@@ -420,7 +432,7 @@ async function dispatchCodingAgent({
 			validator: {
 				service: "app-verification",
 				method: "verifyApp",
-				params: { workdir, appName, profile: "full" },
+				params: { workdir, appName, profile: verifyProfile },
 			},
 			maxRetries: 2,
 			onVerificationFail: "retry",
@@ -490,13 +502,38 @@ async function dispatchCodingAgent({
 	return { dispatched: true, agents };
 }
 
+/**
+ * Optional static-publish target for finished builds. When both are configured
+ * (settings or env), the builder is instructed to copy the production build to
+ * `<dir>/<appName>/` and report the resulting `<urlBase>/<appName>/` link in
+ * its completion line — this is what turns "verification passed" into a URL
+ * the user can open. Unset on installs with no static host: the prompt then
+ * omits the deploy step entirely.
+ */
+function resolvePublishTarget(
+	runtime: IAgentRuntime,
+): { dir: string; urlBase: string } | null {
+	const dirSetting = runtime.getSetting("APP_PUBLISH_DIR");
+	const urlSetting = runtime.getSetting("APP_PUBLISH_URL_BASE");
+	const dir =
+		(typeof dirSetting === "string" ? dirSetting.trim() : "") ||
+		process.env.ELIZA_APP_PUBLISH_DIR?.trim();
+	const urlBase =
+		(typeof urlSetting === "string" ? urlSetting.trim() : "") ||
+		process.env.ELIZA_APP_PUBLISH_URL_BASE?.trim();
+	if (!dir || !urlBase) return null;
+	return { dir, urlBase: urlBase.replace(/\/+$/, "") };
+}
+
 function buildCreatePrompt(
 	intent: string,
 	appName: string,
 	displayName: string,
 	workdir: string,
+	publish: { dir: string; urlBase: string } | null,
 ): string {
-	return [
+	const liveUrl = publish ? `${publish.urlBase}/${appName}/` : null;
+	const lines = [
 		"task: build_eliza_app",
 		`appName: ${appName}`,
 		`displayName: ${displayName}`,
@@ -509,10 +546,24 @@ function buildCreatePrompt(
 		"  bun run typecheck",
 		"  bun run lint",
 		"  bun run test",
+	];
+	if (publish && liveUrl) {
+		lines.push(
+			"deployRule: after the commands pass, run `bun run build -- --base ./` (the relative base is REQUIRED — an absolute /assets/ base white-screens under the publish path) and copy the production build output (the built index.html and assets, NOT sources)",
+			`  to ${publish.dir}/${appName}/ so it is served at ${liveUrl} — then verify that URL returns HTTP 200 AND that its referenced .js asset URL returns HTTP 200 before completing`,
+		);
+	}
+	lines.push(
 		"completionRule: after all commands pass, emit exactly one completion line in this canonical schema",
-		`APP_CREATE_DONE {"appName":"${appName}","files":["src/App.tsx"],"tests":{"passed":1,"failed":0},"lint":"ok","typecheck":"ok"}`,
+		`APP_CREATE_DONE {"appName":"${appName}","files":["src/App.tsx"],"tests":{"passed":1,"failed":0},"lint":"ok","typecheck":"ok"${liveUrl ? `,"liveUrl":"${liveUrl}"` : ""}}`,
 		"completionFields: files are relative to sourceDir; do not emit legacy name, testsPassed, or lintClean fields",
-	].join("\n");
+	);
+	if (liveUrl) {
+		lines.push(
+			`userReport: AFTER the APP_CREATE_DONE line (which is machine-required and must always be emitted), add exactly one casual line for the user, like: your app's live: ${liveUrl} — that user line must have no technical wording (never say "verification", "commands", "deployed", "assets", "workdir").`,
+		);
+	}
+	return lines.join("\n");
 }
 
 function buildEditPrompt(
@@ -726,10 +777,12 @@ async function createNewApp({
 	// the create dispatch.
 	await snapshotAppWorkdir(runtime, workdir, name, true, originRoomId);
 
-	const prompt = buildCreatePrompt(intent, name, displayName, workdir);
+	const publish = resolvePublishTarget(runtime);
+	const prompt = buildCreatePrompt(intent, name, displayName, workdir, publish);
 	const dispatch = await dispatchCodingAgent({
 		runtime,
 		prompt,
+		verifyProfile: "build",
 		label: `create-app:${name}`,
 		workdir,
 		appName: name,
@@ -754,7 +807,7 @@ async function createNewApp({
 	// identifiers in a user-visible message read as a malfunction. The
 	// verified+turnComplete contract makes the callback the turn's single
 	// delivery (the gated evaluator skip), same as LIST_CLOUD_APPS.
-	const text = `Building ${displayName} now — I'll post the link once it's live (usually takes a few minutes).`;
+	const text = `Building ${displayName} now — I'll post the link once it's live.`;
 	const dispatchDetail = `Started app create task for ${displayName} at ${workdir}. Task session ${task.sessionId} is ${task.status}; verification runs when it emits APP_CREATE_DONE.`;
 	await callback?.({ text });
 	logger.info(
@@ -821,9 +874,18 @@ async function editExistingApp({
 	await snapshotAppWorkdir(runtime, workdir, app.name, false, originRoomId);
 
 	const prompt = buildEditPrompt(intent, app, workdir);
+	// A workdir scaffolded by the create flow (SCAFFOLD.md marker) has no
+	// runtime launcher, so "full" verification (launch/browser) fails by
+	// design — the same loop the create path escaped. Installed launchable
+	// apps keep the full profile.
+	const scaffolded = await fs
+		.stat(path.join(workdir, "SCAFFOLD.md"))
+		.then(() => true)
+		.catch(() => false);
 	const dispatch = await dispatchCodingAgent({
 		runtime,
 		prompt,
+		verifyProfile: scaffolded ? "build" : "full",
 		label: `edit-app:${app.name}`,
 		workdir,
 		appName: app.name,
@@ -843,7 +905,7 @@ async function editExistingApp({
 
 	const task = dispatch.agents[0];
 	// Same single-human-sentence contract as the create path above.
-	const text = `Updating ${app.displayName} now — I'll post the link once the changes are live (usually takes a few minutes).`;
+	const text = `Updating ${app.displayName} now — I'll post the link once the changes are live.`;
 	const dispatchDetail = `Started app edit task for ${app.displayName} at ${workdir}. Task session ${task.sessionId} is ${task.status}; verification runs when it emits APP_CREATE_DONE.`;
 	await callback?.({ text });
 	logger.info(
@@ -897,9 +959,9 @@ export async function runCreate({
 }: AppCreateInput): Promise<ActionResult> {
 	const roomId =
 		typeof message.roomId === "string" ? message.roomId : runtime.agentId;
-	const userText = (message.content.text ?? "").trim();
+	const userText = userRequestMessageText(message).trim();
 	const explicitChoice = readStringOption(options, "choice");
-	const explicitEditTarget = readStringOption(options, "editTarget");
+	const explicitEditTarget = readOptionalRefOption(options, "editTarget");
 	const explicitIntent = readStringOption(options, "intent");
 
 	const appClient = client ?? createAppControlClient();
@@ -1003,7 +1065,7 @@ export async function runCreate({
 				a.pluginName === explicitEditTarget,
 		);
 		if (!target) {
-			const text = `Cannot find an installed app named "${explicitEditTarget}".`;
+			const text = `Cannot find an installed app matching ${describeTargetReference(explicitEditTarget, "that app")}.`;
 			await callback?.({ text });
 			return { success: false, text };
 		}

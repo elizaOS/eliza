@@ -1,13 +1,6 @@
 /**
- * Security utilities for handling untrusted external content.
- *
- * Provides functions to safely wrap and process content from
- * external sources (emails, webhooks, web tools, etc.) before passing to LLM agents.
- *
- * SECURITY: External content should NEVER be directly interpolated into
- * system prompts or treated as trusted instructions.
- *
- * @module security/external-content
+ * Wraps untrusted external content before model ingestion.
+ * Email, webhook, and web-tool payloads must never become trusted prompt instructions.
  */
 
 import {
@@ -234,6 +227,167 @@ export function wrapExternalContent(
 		sanitized,
 		EXTERNAL_CONTENT_END,
 	].join("\n");
+}
+
+/**
+ * Whether text carries the exact wrap markers or warning header this module
+ * emits. Byte-exact predicate kept for callers that need to recognize a
+ * verbatim envelope; delivery gating uses the variant-tolerant
+ * {@link containsExternalEnvelopeMaterial} instead.
+ */
+export function containsExternalEnvelopeMarkers(text: string): boolean {
+	return (
+		text.includes(EXTERNAL_CONTENT_START) ||
+		text.includes(EXTERNAL_CONTENT_END) ||
+		text.includes("SECURITY NOTICE: The following content is from an EXTERNAL")
+	);
+}
+
+// Lowercased marker token with word separators collapsed to "_", so
+// "EXTERNAL_UNTRUSTED_CONTENT", "external untrusted content", and
+// "External-Untrusted-Content" all reduce to the same needle.
+const ENVELOPE_MARKER_NEEDLE = "external_untrusted_content";
+// Lowercased first sentence of EXTERNAL_CONTENT_WARNING (parenthetical
+// dropped: an echo often truncates the tail but keeps the head).
+const ENVELOPE_WARNING_NEEDLE =
+	"security notice: the following content is from an external, untrusted source";
+// How far past a "<<<" run the marker words may sit and still count as marker
+// material. The real markers fit in 40 chars; the slack absorbs echo noise
+// ("<<< the EXTERNAL untrusted CONTENT block …") without scanning whole
+// paragraphs.
+const MARKER_PROXIMITY_WINDOW = 64;
+
+// Invisible code points that survive NFKC unchanged: zero-width
+// space/non-joiner/joiner (U+200B–U+200D), word joiner (U+2060), zero-width
+// no-break space / BOM (U+FEFF), soft hyphen (U+00AD). Any of them laced
+// between marker letters splits the needles below without changing what a
+// reader (or the model being injected) sees, so they are stripped before
+// matching.
+const INVISIBLE_CODE_POINTS = /[\u200B-\u200D\u2060\uFEFF\u00AD]/g;
+
+// Cyrillic and Greek letters that render as the Latin letters of the
+// marker/warning vocabulary. Deliberately a small explicit map rather than a
+// full UTS #39 confusables table: only letters that can spoof the envelope
+// needles matter here, and folding runs BEFORE lowercasing because the two
+// cases of one homoglyph can spoof different Latin letters (Υ→Y but υ→u).
+const CONFUSABLE_TO_LATIN: Record<string, string> = {
+	// Cyrillic uppercase: АВЕЅІЈКМНОРСТУХ
+	А: "A",
+	В: "B",
+	Е: "E",
+	Ѕ: "S",
+	І: "I",
+	Ј: "J",
+	К: "K",
+	М: "M",
+	Н: "H",
+	О: "O",
+	Р: "P",
+	С: "C",
+	Т: "T",
+	У: "Y",
+	Х: "X",
+	// Cyrillic lowercase counterparts
+	а: "a",
+	в: "b",
+	е: "e",
+	ѕ: "s",
+	і: "i",
+	ј: "j",
+	к: "k",
+	м: "m",
+	н: "h",
+	о: "o",
+	р: "p",
+	с: "c",
+	т: "t",
+	у: "y",
+	х: "x",
+	// Greek uppercase: ΑΒΕΖΗΙΚΜΝΟΡΤΥΧ
+	Α: "A",
+	Β: "B",
+	Ε: "E",
+	Ζ: "Z",
+	Η: "H",
+	Ι: "I",
+	Κ: "K",
+	Μ: "M",
+	Ν: "N",
+	Ο: "O",
+	Ρ: "P",
+	Τ: "T",
+	Υ: "Y",
+	Χ: "X",
+	// Greek lowercase counterparts (visual lowercase lookalikes)
+	α: "a",
+	β: "b",
+	ε: "e",
+	ζ: "z",
+	η: "n",
+	ι: "i",
+	κ: "k",
+	μ: "m",
+	ν: "v",
+	ο: "o",
+	ρ: "p",
+	τ: "t",
+	υ: "u",
+	χ: "x",
+};
+
+// Single-character keys only, so a character class is safe to build directly.
+const CONFUSABLE_PATTERN = new RegExp(
+	`[${Object.keys(CONFUSABLE_TO_LATIN).join("")}]`,
+	"g",
+);
+
+/**
+ * Collapse text to the skeleton the envelope checks match against: NFKC
+ * (folds fullwidth/compatibility forms), invisible code points stripped,
+ * Cyrillic/Greek homoglyphs folded to Latin, then lowercased. Exists because
+ * NFKC alone was demonstrably bypassable — a ZWSP-laced marker and a
+ * Cyrillic-Е marker both walked past the previous normalize+lowercase
+ * pipeline while reading identically to the real armor.
+ */
+function buildEnvelopeDetectionSkeleton(text: string): string {
+	return text
+		.normalize("NFKC")
+		.replace(INVISIBLE_CODE_POINTS, "")
+		.replace(CONFUSABLE_PATTERN, (char) => CONFUSABLE_TO_LATIN[char] ?? char)
+		.toLowerCase();
+}
+
+/**
+ * Variant-tolerant detector for security-envelope material in text. Unlike
+ * {@link containsExternalEnvelopeMarkers} (byte-exact), this catches the echo
+ * shapes a model actually produces when it regurgitates the envelope: case
+ * changes, fullwidth/compatibility Unicode (folded via NFKC), zero-width
+ * lacing and Cyrillic/Greek homoglyph substitution (folded via the detection
+ * skeleton), quoted or partial marker fragments ("he said \"<<<EXTERNAL…\""),
+ * separator-mangled marker names, and the warning's first sentence on its
+ * own. Used by the fail-closed outbound guard and by `unwrapUserMessageText`
+ * — both must treat "looks like the envelope" as disqualifying, so this
+ * predicate prefers false positives over misses.
+ */
+export function containsExternalEnvelopeMaterial(text: string): boolean {
+	if (!text) return false;
+	const skeleton = buildEnvelopeDetectionSkeleton(text);
+	const wordFolded = skeleton.replace(/[\s_-]+/g, "_");
+	if (wordFolded.includes(ENVELOPE_MARKER_NEEDLE)) return true;
+	if (skeleton.replace(/\s+/g, " ").includes(ENVELOPE_WARNING_NEEDLE)) {
+		return true;
+	}
+	// "<<<" near "external" catches truncated echoes ('he said
+	// "<<<EXTERNAL…"') that carry neither the full marker name nor the warning
+	// sentence. "<<<" is vanishingly rare in agent prose, so requiring only the
+	// one word keeps the fail-closed bias without blocking ordinary text.
+	let cursor = skeleton.indexOf("<<<");
+	while (cursor >= 0) {
+		const window = skeleton.slice(cursor, cursor + MARKER_PROXIMITY_WINDOW);
+		if (window.includes("external")) return true;
+		cursor = skeleton.indexOf("<<<", cursor + 3);
+	}
+	return false;
 }
 
 /**

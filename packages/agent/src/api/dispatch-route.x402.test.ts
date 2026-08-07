@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import type { LegacyRouteHandler, Route } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { selectX402Handler, vetX402Module } from "./dispatch-route.ts";
+import type { X402PluginModule } from "./x402-contract.ts";
 
 // The real null stub the mobile bundle aliases @elizaos/plugin-x402 to. Loading
 // the actual artifact (not a hand-rolled fake) keeps this test honest: if the
@@ -81,7 +82,7 @@ describe("dispatch-route x402 guard (item 10)", () => {
           wrapCalls++;
           return wrapped;
         },
-      } as unknown as typeof import("@elizaos/plugin-x402");
+      } as unknown as X402PluginModule;
       const result = selectX402Handler(mod, x402Route(), legacyHandler);
       expect(result).toBe(wrapped);
       expect(wrapCalls).toBe(1);
@@ -93,7 +94,7 @@ describe("dispatch-route x402 guard (item 10)", () => {
         createPaymentAwareHandler: () => {
           throw new Error("should not wrap an already-wrapped route");
         },
-      } as unknown as typeof import("@elizaos/plugin-x402");
+      } as unknown as X402PluginModule;
       expect(selectX402Handler(mod, x402Route(), legacyHandler)).toBe(
         legacyHandler,
       );

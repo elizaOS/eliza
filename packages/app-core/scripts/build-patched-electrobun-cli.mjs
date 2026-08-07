@@ -1,5 +1,10 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for build patched electrobun cli mjs. */
+/**
+ * Builds a patched Electrobun CLI from the elizaOS/electrobun fork and installs
+ * it over the npm package's binary: patches the CLI source (rcedit resolution,
+ * embedded-templates stub), compiles it with Bun per target, and records the
+ * result for CI env consumers.
+ */
 
 import { spawnSync } from "node:child_process";
 import {

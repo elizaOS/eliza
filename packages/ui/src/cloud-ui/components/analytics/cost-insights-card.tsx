@@ -38,7 +38,7 @@ export function CostInsightsCard({
           <h3 className="text-base font-semibold text-white">Cost outlook</h3>
           <Badge
             variant="outline"
-            className="border-border bg-muted text-xs font-medium text-txt-strong"
+            className="border-border bg-bg-muted text-xs font-medium text-txt-strong"
           >
             {costTrending.burnChangePercent > 0 ? "+" : ""}
             {costTrending.burnChangePercent.toFixed(1)}%

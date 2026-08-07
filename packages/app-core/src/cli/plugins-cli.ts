@@ -56,7 +56,11 @@ function realpathForBoundary(inputPath: string): string {
   const absolute = nodePath.resolve(inputPath);
   try {
     return fs.realpathSync.native(absolute);
-  } catch {
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== "ENOENT" && code !== "ENOTDIR") throw error;
+    // error-policy:J4 paths being registered need not exist at every ancestor;
+    // resolve the existing prefix so symlinks cannot bypass the boundary.
     const parent = nodePath.dirname(absolute);
     if (parent === absolute) return absolute;
     return nodePath.join(
@@ -326,6 +330,8 @@ export function registerPluginsCli(program: Command): void {
         );
         console.log();
       } catch (err) {
+        // error-policy:J1 each Commander action is a process boundary that
+        // renders one failure and sets a non-zero exit status for automation.
         console.error(chalk.red(formatError(err)));
         process.exitCode = 1;
       }
@@ -370,6 +376,8 @@ export function registerPluginsCli(program: Command): void {
           console.log();
         }
       } catch (err) {
+        // error-policy:J1 each Commander action is a process boundary that
+        // renders one failure and sets a non-zero exit status for automation.
         console.error(chalk.red(formatError(err)));
         process.exitCode = 1;
       }
@@ -442,6 +450,8 @@ export function registerPluginsCli(program: Command): void {
           `\n  Install: ${chalk.cyan(`eliza plugins install ${info.name}`)}\n`,
         );
       } catch (err) {
+        // error-policy:J1 each Commander action is a process boundary that
+        // renders one failure and sets a non-zero exit status for automation.
         console.error(chalk.red(formatError(err)));
         process.exitCode = 1;
       }
@@ -497,6 +507,8 @@ export function registerPluginsCli(program: Command): void {
         }
         console.log();
       } catch (err) {
+        // error-policy:J1 each Commander action is a process boundary that
+        // renders one failure and sets a non-zero exit status for automation.
         console.error(chalk.red(formatError(err)));
         process.exitCode = 1;
       }
@@ -528,6 +540,8 @@ export function registerPluginsCli(program: Command): void {
         }
         console.log();
       } catch (err) {
+        // error-policy:J1 each Commander action is a process boundary that
+        // renders one failure and sets a non-zero exit status for automation.
         console.error(chalk.red(formatError(err)));
         process.exitCode = 1;
       }
@@ -556,6 +570,8 @@ export function registerPluginsCli(program: Command): void {
           console.log();
         }
       } catch (err) {
+        // error-policy:J1 each Commander action is a process boundary that
+        // renders one failure and sets a non-zero exit status for automation.
         console.error(chalk.red(formatError(err)));
         process.exitCode = 1;
       }
@@ -575,6 +591,8 @@ export function registerPluginsCli(program: Command): void {
           `${chalk.green("Done!")} ${registry.size} plugins loaded.\n`,
         );
       } catch (err) {
+        // error-policy:J1 each Commander action is a process boundary that
+        // renders one failure and sets a non-zero exit status for automation.
         console.error(chalk.red(formatError(err)));
         process.exitCode = 1;
       }
@@ -611,6 +629,8 @@ export function registerPluginsCli(program: Command): void {
         try {
           config = loadElizaConfig();
         } catch (err) {
+          // error-policy:J4 validation can still inspect the default plugin
+          // store, and the missing/invalid config is rendered explicitly.
           console.log(
             chalk.dim(
               `  (Could not read eliza.json: ${formatError(err)} — scanning default directory only)\n`,
@@ -679,6 +699,8 @@ export function registerPluginsCli(program: Command): void {
           try {
             entryPoint = await resolvePackageEntry(candidate.installPath);
           } catch (err) {
+            // error-policy:J3 each candidate produces an explicit failed
+            // validation result without being mistaken for a valid plugin.
             fail(`Entry point failed: ${formatError(err)}`);
             continue;
           }
@@ -690,6 +712,7 @@ export function registerPluginsCli(program: Command): void {
           try {
             await fsPromises.access(entryPoint);
           } catch {
+            // error-policy:J3 a missing entry is an explicit invalid candidate.
             fail(`File not found: ${entryPoint}`);
             continue;
           }
@@ -701,6 +724,8 @@ export function registerPluginsCli(program: Command): void {
               unknown
             >;
           } catch (err) {
+            // error-policy:J3 a module that cannot load is an explicit invalid
+            // candidate; validation continues to report the complete set.
             fail(`Import failed: ${formatError(err)}`);
             continue;
           }
@@ -727,6 +752,8 @@ export function registerPluginsCli(program: Command): void {
           `  ${chalk.bold("Summary:")} ${parts.join(", ")} out of ${candidates.length}\n`,
         );
       } catch (err) {
+        // error-policy:J1 each Commander action is a process boundary that
+        // renders one failure and sets a non-zero exit status for automation.
         console.error(chalk.red(formatError(err)));
         process.exitCode = 1;
       }
@@ -759,12 +786,7 @@ export function registerPluginsCli(program: Command): void {
           return;
         }
 
-        let config: ReturnType<typeof loadElizaConfig>;
-        try {
-          config = loadElizaConfig();
-        } catch {
-          config = {} as ReturnType<typeof loadElizaConfig>;
-        }
+        const config = loadElizaConfig();
 
         if (!config.plugins) config.plugins = {};
         if (!config.plugins.load) config.plugins.load = {};
@@ -788,6 +810,8 @@ export function registerPluginsCli(program: Command): void {
           chalk.dim("Restart your agent to load plugins from this path.\n"),
         );
       } catch (err) {
+        // error-policy:J1 each Commander action is a process boundary that
+        // renders one failure and sets a non-zero exit status for automation.
         console.error(chalk.red(formatError(err)));
         process.exitCode = 1;
       }
@@ -808,12 +832,7 @@ export function registerPluginsCli(program: Command): void {
           "../runtime/eliza"
         );
 
-        let config: ReturnType<typeof loadElizaConfig> | null = null;
-        try {
-          config = loadElizaConfig();
-        } catch {
-          // No config
-        }
+        const config = loadElizaConfig();
 
         const customDir = nodePath.join(
           resolveStateDir(),
@@ -847,6 +866,8 @@ export function registerPluginsCli(program: Command): void {
         }
         console.log();
       } catch (err) {
+        // error-policy:J1 each Commander action is a process boundary that
+        // renders one failure and sets a non-zero exit status for automation.
         console.error(chalk.red(formatError(err)));
         process.exitCode = 1;
       }
@@ -868,6 +889,8 @@ export function registerPluginsCli(program: Command): void {
         try {
           catalog = JSON.parse(nodeFs.readFileSync(pluginsPath, "utf8"));
         } catch (err) {
+          // error-policy:J1 the command translates an unreadable catalog into
+          // a visible failure and non-zero process status.
           console.log(
             `\n${chalk.red("Error:")} Could not read plugins.json: ${formatError(err)}\n`,
           );
@@ -1007,12 +1030,7 @@ export function registerPluginsCli(program: Command): void {
           "@elizaos/agent"
         );
 
-        let config: ReturnType<typeof loadElizaConfig>;
-        try {
-          config = loadElizaConfig();
-        } catch {
-          config = {} as ReturnType<typeof loadElizaConfig>;
-        }
+        const config = loadElizaConfig();
 
         // Initialize plugin config structure
         const configAny = config as Record<string, unknown>;
@@ -1054,6 +1072,8 @@ export function registerPluginsCli(program: Command): void {
         );
         console.log(chalk.dim("Restart your agent to apply changes.\n"));
       } catch (err) {
+        // error-policy:J1 each Commander action is a process boundary that
+        // renders one failure and sets a non-zero exit status for automation.
         console.error(chalk.red(formatError(err)));
         process.exitCode = 1;
       }
@@ -1188,21 +1208,21 @@ export function registerPluginsCli(program: Command): void {
           `\nOpening ${chalk.cyan(targetDir)} with ${editorCmd}...\n`,
         );
 
-        try {
-          const result = spawnSync(editorCmd, [...editorArgs, targetDir], {
-            stdio: "inherit",
-            // Editors are usually `.cmd`/`.bat` shims on Windows (e.g. `code`),
-            // which Node cannot spawn without a shell (ENOENT) — the editor would
-            // silently never open. Route through the shell on win32 so EDITOR
-            // actually launches. EDITOR is local, user-controlled config.
-            shell: process.platform === "win32",
-          });
-          if (result.error) throw result.error;
-        } catch {
-          // Some editors (like code) return immediately and that's fine.
-          // If the command actually fails, the user will see it.
+        const result = spawnSync(editorCmd, [...editorArgs, targetDir], {
+          stdio: "inherit",
+          // Windows editors are commonly command shims, so the user-controlled
+          // EDITOR value needs shell resolution on that platform.
+          shell: process.platform === "win32",
+        });
+        if (result.error) throw result.error;
+        if (result.status !== 0) {
+          throw new Error(
+            `Editor exited with status ${String(result.status)}: ${editorCmd}`,
+          );
         }
       } catch (err) {
+        // error-policy:J1 each Commander action is a process boundary that
+        // renders one failure and sets a non-zero exit status for automation.
         console.error(chalk.red(formatError(err)));
         process.exitCode = 1;
       }

@@ -20,7 +20,6 @@ import {
 import { computePrefixHashes } from "./context-hash";
 import {
 	buildStageChatMessages,
-	cachePrefixSegments,
 	normalizePromptSegments,
 	renderContextObject,
 } from "./context-renderer";
@@ -97,9 +96,7 @@ export async function runEvaluator(
 		trajectory: params.trajectory,
 	});
 	const prefixHashes = computePrefixHashes(renderedInput.promptSegments);
-	const cachePrefixHashes = computePrefixHashes(
-		cachePrefixSegments(renderedInput.promptSegments),
-	);
+	const cachePrefixHashes = computePrefixHashes(renderedInput.cacheKeySegments);
 	const prefixHash =
 		cachePrefixHashes[cachePrefixHashes.length - 1]?.hash ??
 		"no-context-segments";
@@ -173,6 +170,7 @@ export async function runEvaluator(
 	await applyEvaluatorEffects(output, params.effects);
 
 	await recordEvaluationStage({
+		runtime: params.runtime,
 		recorder: params.recorder,
 		trajectoryId: params.trajectoryId,
 		parentStageId: params.parentStageId,
@@ -194,6 +192,7 @@ export async function runEvaluator(
 }
 
 async function recordEvaluationStage(args: {
+	runtime?: EvaluatorRuntime;
 	recorder?: TrajectoryRecorder;
 	trajectoryId?: string;
 	parentStageId?: string;
@@ -231,7 +230,7 @@ async function recordEvaluationStage(args: {
 			model: {
 				modelType: args.modelType,
 				modelName,
-				provider: args.provider ?? "default",
+				provider: extractEvaluatorProviderName(args.raw) ?? args.provider,
 				messages: args.messages,
 				tools: [],
 				toolCalls: [],
@@ -257,10 +256,15 @@ async function recordEvaluationStage(args: {
 		};
 		await args.recorder.recordStage(args.trajectoryId, stage);
 	} catch (err) {
+		// error-policy:J7 Evaluation recording is diagnostic and cannot alter
+		// the evaluator decision it observes.
 		args.logger?.warn?.(
 			{ err: (err as Error).message, trajectoryId: args.trajectoryId },
 			"[TrajectoryRecorder] failed to record evaluation stage",
 		);
+		args.runtime?.reportError?.("Evaluator.recordStage", err, {
+			trajectoryId: args.trajectoryId,
+		});
 	}
 }
 
@@ -278,6 +282,24 @@ function extractEvaluatorModelName(
 	return undefined;
 }
 
+function extractEvaluatorProviderName(
+	raw: string | { providerMetadata?: unknown },
+): string | undefined {
+	if (typeof raw === "string") return undefined;
+	const meta = raw.providerMetadata;
+	if (!meta || typeof meta !== "object" || Array.isArray(meta)) {
+		return undefined;
+	}
+	const record = meta as Record<string, unknown>;
+	for (const key of ["provider", "providerName"]) {
+		const value = record[key];
+		if (typeof value === "string" && value.trim().length > 0) {
+			return value.trim();
+		}
+	}
+	return undefined;
+}
+
 function extractEvaluatorUsage(
 	raw: string | { text?: string; object?: unknown; usage?: unknown },
 ): RecordedUsage | undefined {
@@ -286,16 +308,16 @@ function extractEvaluatorUsage(
 		| Record<string, unknown>
 		| undefined;
 	if (!usage) return undefined;
-	const promptTokens = (usage.promptTokens as number | undefined) ?? 0;
-	const completionTokens = (usage.completionTokens as number | undefined) ?? 0;
-	const totalTokens =
-		(usage.totalTokens as number | undefined) ??
-		promptTokens + completionTokens;
-	const out: RecordedUsage = {
-		promptTokens,
-		completionTokens,
-		totalTokens,
-	};
+	const out: RecordedUsage = {};
+	for (const key of [
+		"promptTokens",
+		"completionTokens",
+		"totalTokens",
+	] as const) {
+		if (typeof usage[key] === "number" && Number.isFinite(usage[key])) {
+			out[key] = usage[key];
+		}
+	}
 	if (typeof usage.cacheReadInputTokens === "number") {
 		out.cacheReadInputTokens = usage.cacheReadInputTokens;
 	} else if (typeof usage.cachedPromptTokens === "number") {
@@ -304,7 +326,7 @@ function extractEvaluatorUsage(
 	if (typeof usage.cacheCreationInputTokens === "number") {
 		out.cacheCreationInputTokens = usage.cacheCreationInputTokens;
 	}
-	return out;
+	return Object.keys(out).length > 0 ? out : undefined;
 }
 
 function renderEvaluatorModelInput(params: {
@@ -314,6 +336,7 @@ function renderEvaluatorModelInput(params: {
 }): {
 	messages: ChatMessage[];
 	promptSegments: PromptSegment[];
+	cacheKeySegments: PromptSegment[];
 } {
 	const renderedContext = renderContextObject(params.context);
 	const template = params.template ?? evaluatorTemplate;
@@ -324,10 +347,18 @@ function renderEvaluatorModelInput(params: {
 	// Mirrors planner-loop: the evaluator stage instructions are template-derived
 	// (`evaluatorTemplate`) and structurally identical across calls. Marking
 	// the segment `stable: true` makes them cacheable on Anthropic's wire path.
+	const stableContextSegments = renderedContext.promptSegments.filter(
+		(segment) => segment.stable,
+	);
+	const dynamicContextSegments = renderedContext.promptSegments.filter(
+		(segment) => !segment.stable,
+	);
 	const promptSegments = normalizePromptSegments([
-		...renderedContext.promptSegments,
+		...stableContextSegments,
 		{ content: `evaluator_stage:\n${instructions}`, stable: true },
+		...dynamicContextSegments,
 	]);
+	const cacheKeySegments = normalizePromptSegments(stableContextSegments);
 	// Use proper assistant/tool message pairs so the evaluator sees the same
 	// native tool-calling format as the planner. The trajectory JSON is NOT
 	// included in dynamicBlocks — it is conveyed through stepMessages.
@@ -338,7 +369,7 @@ function renderEvaluatorModelInput(params: {
 		dynamicBlocks: [],
 		stepMessages,
 	});
-	return { messages, promptSegments };
+	return { messages, promptSegments, cacheKeySegments };
 }
 
 export function parseEvaluatorOutput(
@@ -706,6 +737,8 @@ function stripTrailingEvaluatorEnvelope(text: string): string {
 	try {
 		parsed = JSON.parse(candidate);
 	} catch {
+		// error-policy:J3 A trailing candidate is untrusted model output; a
+		// malformed candidate is not an evaluator envelope.
 		return text;
 	}
 	if (!isEvaluatorEnvelopeObject(parsed)) return text;
@@ -1048,6 +1081,8 @@ function parseEvaluatorText(text: string): ParsedEvaluatorObject {
 		}
 		return { object: parsed };
 	} catch {
+		// error-policy:J3 Evaluator output is untrusted model data; repair only
+		// the explicitly supported envelope-then-prose shape below.
 		// Envelope-then-prose repair: a leading fenced evaluator verdict with the
 		// answer following it is a valid response — the envelope is the verdict
 		// and the prose is the user-facing message. The prose must pass the same

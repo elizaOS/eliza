@@ -1,3 +1,4 @@
+/** Verifies useLoadOlderOnScroll × reducer cap (#13532 scroll-yank) through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Regression for the #13532 scroll-yank: on a long thread (>500 turns) a

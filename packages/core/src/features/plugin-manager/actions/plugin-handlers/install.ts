@@ -1,10 +1,6 @@
 /**
- * @module features/plugin-manager/actions/plugin-handlers/install
- *
- * `install` sub-mode of the PLUGIN action. Installs a plugin from
- * the registry by canonical name. The underlying service handles the
- * npm/git source selection internally — `source: "git"` simply forces a
- * clone via the `PLUGIN_MANAGER_LOCAL_CLONE` env override on this call.
+ * Installs a registry plugin by canonical name.
+ * The service owns source selection; `source: "git"` scopes the local-clone override to this call.
  */
 
 import { logger } from "../../../../logger.ts";

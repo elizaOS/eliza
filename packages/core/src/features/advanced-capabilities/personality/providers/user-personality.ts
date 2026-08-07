@@ -133,6 +133,11 @@ export const userPersonalityProvider: Provider = {
 				);
 			}
 		} catch (error) {
+			// error-policy:J4 Legacy preferences are optional compatibility context;
+			// current profile blocks remain explicit and authoritative.
+			runtime.reportError("UserPersonalityProvider.legacyPreferences", error, {
+				entityId: message.entityId,
+			});
 			logger.warn(
 				{ error: error instanceof Error ? error.message : String(error) },
 				"Failed to load legacy user personality preferences",

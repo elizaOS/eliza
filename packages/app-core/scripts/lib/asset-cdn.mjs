@@ -1,4 +1,8 @@
-/** Supports app-core build, packaging, or development orchestration for asset cdn mjs. */
+/**
+ * Resolves release tags, asset repositories, and CDN base URLs (jsDelivr,
+ * raw.githubusercontent.com) for published elizaOS release assets; shared by
+ * the CDN validation and homepage release-data scripts.
+ */
 import process from "node:process";
 
 export const ELIZA_GITHUB_REPOSITORY = "elizaos/eliza";

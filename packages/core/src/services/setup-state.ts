@@ -352,6 +352,7 @@ export class SetupStateMachine {
 			// Handler returned failure
 			return result;
 		} catch (err) {
+			// error-policy:J1 the state-machine boundary converts handler failures into SetupResult
 			const error: SetupStepError = {
 				code: "HANDLER_ERROR",
 				message: err instanceof Error ? err.message : String(err),

@@ -1,7 +1,7 @@
 /**
  * AOSP vision-describe backend contract (WS2).
  *
- * The bun:ffi llama.cpp binding in `@elizaos/plugin-aosp-local-inference`
+ * The bun:ffi llama.cpp binding in `@elizaos/plugin-native-inference`
  * already exposes the embedding helpers (`llama_set_embeddings`,
  * `llama_get_embeddings_seq`) and the model/context lifecycle. mtmd
  * (multi-modal definition) is part of upstream llama.cpp from b8198+
@@ -10,10 +10,10 @@
  *
  * This file is the JS contract for the FFI binding the AOSP plugin
  * will add when the native side ships. It lives in
- * `plugin-local-inference` (not in `plugin-aosp-local-inference`) so
+ * `plugin-local-inference` (not in `plugin-native-inference`) so
  * cross-plugin consumers can compile against the same interface
  * regardless of platform. When the AOSP shim ships the native
- * symbols, the implementation in `plugin-aosp-local-inference/src/
+ * symbols, the implementation in `plugin-native-inference/src/
  * aosp-llama-vision.ts` (to be added) will satisfy this contract.
  *
  * Required native symbols (libeliza-llama-shim):

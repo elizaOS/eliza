@@ -1,12 +1,9 @@
+/**
+ * Guards malformed model-emitted UiSpec values in jsdom and Testing Library.
+ * Invalid elements remain contained within the widget instead of reaching the
+ * app-root error screen when conversation history rehydrates them.
+ */
 // @vitest-environment jsdom
-//
-// Regression guard: a malformed model-emitted UiSpec (element missing
-// `props`/`children`, or an array prop that isn't an array) must NOT throw out
-// of MessageUiSpecBlock and reach the app-root error screen — which would brick
-// the app, since the offending message re-hydrates from conversation history.
-// Asserts that ElementRenderer defaults missing props/children and the
-// UiRenderer's ErrorBoundary contains any residual render throw to the single
-// widget with a "View JSON" fallback. jsdom + Testing Library.
 
 import { cleanup, render, screen } from "@testing-library/react";
 import * as React from "react";
@@ -60,6 +57,9 @@ describe("MessageUiSpecBlock — a malformed model spec never bricks the app", (
         a: { type: "Table", props: { rows: "nope", columns: "nope" } },
       },
     });
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
     let container: HTMLElement | undefined;
     expect(() => {
       container = withApp(
@@ -73,5 +73,7 @@ describe("MessageUiSpecBlock — a malformed model spec never bricks the app", (
     // contained fallback is shown, and the raw JSON stays reachable.
     expect(screen.getByText("Couldn't render this widget.")).toBeTruthy();
     expect(container?.textContent ?? "").toContain("View JSON");
+    expect(consoleError).toHaveBeenCalled();
+    consoleError.mockRestore();
   });
 });

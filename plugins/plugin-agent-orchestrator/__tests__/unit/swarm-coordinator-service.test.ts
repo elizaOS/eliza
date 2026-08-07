@@ -686,10 +686,10 @@ describe("SwarmCoordinatorService", () => {
           sessionId: "sess-validated",
           label: "build-site",
           status: "completed",
-          // The verdict exists ONLY on the custom-validator record (the raw
-          // task_complete was withheld until validation) — it must lead, with
-          // the agent's own deliverable preserved after it.
-          completionSummary: "App verification passed.\n\ndeployed",
+          // A PASS verdict is plumbing — the agent's own deliverable is the
+          // user's proof and posts alone. (Fail verdicts keep the explicit
+          // verdict text; the verdict still exists on the validator record.)
+          completionSummary: "deployed",
           roomId: "origin-room-7",
           replyToExternalMessageId: "discord-msg-7",
         },
@@ -1029,7 +1029,9 @@ describe("SwarmCoordinatorService", () => {
 
     expect(fired).toHaveBeenCalledTimes(1);
     const summary = fired.mock.calls[0][0].tasks[0].completionSummary;
-    expect(summary.startsWith("App verification passed.")).toBe(true);
+    // Pass verdicts no longer prefix the deliverable; the head of the
+    // deliverable itself must survive the cap.
+    expect(summary).not.toContain("App verification passed.");
     expect(summary).toContain("Built the demo app end to end.");
     expect(summary).not.toContain("[output elided");
     expect(summary.length).toBeLessThanOrEqual(2000);

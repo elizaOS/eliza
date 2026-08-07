@@ -31,7 +31,7 @@ import {
 //     testid mounts, so the chat-route number folds in a build-dependent chunk
 //     set and varies run-to-run / build-to-build.
 // The authoritative compressed-payload gate is the brotli bundle KPI
-// (packages/benchmarks/loadperf/bundle-kpi.mjs: eager first-paint ~1.43 MB
+// (loadperf bundle-kpi in https://github.com/elizaOS/benchmarks: eager first-paint ~1.43 MB
 // brotli, total ~6.93 MB brotli — both PASS). The ceiling below is a coarse
 // raw-transfer regression guard with limited headroom for the prefetch-warmed
 // chunk set, so it still catches a genuinely runaway/duplicated graph while

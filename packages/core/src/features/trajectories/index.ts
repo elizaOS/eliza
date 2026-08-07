@@ -198,8 +198,13 @@ async function buildTrajectoryMetadata(
 				}
 			}
 		}
-	} catch {
+	} catch (error) {
+		// error-policy:J7 Room metadata is optional trajectory enrichment; the
+		// lookup failure is reported without dropping the trajectory.
 		// Room metadata is enrichment; the trajectory itself should still be written.
+		runtime.reportError("TrajectoriesPlugin.roomMetadata", error, {
+			roomId: message.roomId,
+		});
 	}
 
 	return metadata;
@@ -285,10 +290,6 @@ export const trajectoriesPlugin: Plugin = {
 						meta.trajectoryId = normalizedTrajectoryId;
 						const runtimeStepId = logger.startStep(normalizedTrajectoryId, {
 							timestamp: Date.now(),
-							agentBalance: 0,
-							agentPoints: 0,
-							agentPnL: 0,
-							openPositions: 0,
 						});
 
 						const normalizedStepId =
@@ -322,6 +323,8 @@ export const trajectoriesPlugin: Plugin = {
 						);
 					}
 				} catch (err) {
+					// error-policy:J7 Trajectory logging is diagnostic and cannot
+					// abort the message event it observes.
 					runtime.logger.warn(
 						{
 							err,
@@ -330,6 +333,9 @@ export const trajectoriesPlugin: Plugin = {
 						},
 						"Failed to start trajectory logging",
 					);
+					runtime.reportError("TrajectoriesPlugin.start", err, {
+						roomId: message.roomId,
+					});
 				}
 			},
 		],
@@ -357,6 +363,8 @@ export const trajectoriesPlugin: Plugin = {
 				try {
 					await endPendingTrajectory(runtime, trajectoryStepId, "completed");
 				} catch (err) {
+					// error-policy:J7 Trajectory logging is diagnostic and cannot
+					// abort the sent-message event it observes.
 					runtime.logger.warn(
 						{
 							err,
@@ -365,6 +373,9 @@ export const trajectoriesPlugin: Plugin = {
 						},
 						"Failed to end trajectory logging",
 					);
+					runtime.reportError("TrajectoriesPlugin.endMessage", err, {
+						trajectoryStepId,
+					});
 				}
 			},
 		],
@@ -384,6 +395,8 @@ export const trajectoriesPlugin: Plugin = {
 						getFinalStatusForRun(payload),
 					);
 				} catch (err) {
+					// error-policy:J7 Trajectory logging is diagnostic and cannot
+					// abort the run-completion event it observes.
 					runtime.logger.warn(
 						{
 							err,
@@ -393,6 +406,10 @@ export const trajectoriesPlugin: Plugin = {
 						},
 						"Failed to end trajectory logging on run completion",
 					);
+					runtime.reportError("TrajectoriesPlugin.endRun", err, {
+						messageId,
+						trajectoryStepId,
+					});
 				}
 			},
 		],
@@ -408,6 +425,8 @@ export const trajectoriesPlugin: Plugin = {
 				try {
 					await endPendingTrajectory(runtime, trajectoryStepId, "timeout");
 				} catch (err) {
+					// error-policy:J7 Trajectory logging is diagnostic and cannot
+					// abort the run-timeout event it observes.
 					runtime.logger.warn(
 						{
 							err,
@@ -417,6 +436,10 @@ export const trajectoriesPlugin: Plugin = {
 						},
 						"Failed to end trajectory logging on run timeout",
 					);
+					runtime.reportError("TrajectoriesPlugin.timeout", err, {
+						messageId,
+						trajectoryStepId,
+					});
 				}
 			},
 		],

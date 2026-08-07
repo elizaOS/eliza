@@ -1,3 +1,4 @@
+/** Verifies useConnectionStatus — three-state probe (#12784/#13419) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 import { act, renderHook, waitFor } from "@testing-library/react";

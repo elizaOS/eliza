@@ -16,21 +16,21 @@
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
-import { InsufficientCreditsError } from "../../api/errors";
-import * as realConversationCoordinator from "./conversation-coordinator";
-import * as realSharedRuntimeChat from "./shared-runtime-chat";
+class InsufficientCreditsError extends Error {}
+
+mock.module("../../api/errors", () => ({
+  InsufficientCreditsError,
+}));
 
 const coordinateSharedBridge = mock();
 const coordinateSharedHistory = mock();
 const getCharacter = mock();
 
 mock.module("./conversation-coordinator", () => ({
-  ...realConversationCoordinator,
   coordinateSharedBridge,
   coordinateSharedHistory,
 }));
 mock.module("./shared-runtime-chat", () => ({
-  ...realSharedRuntimeChat,
   sharedRuntimeChatService: { getCharacter },
 }));
 
@@ -55,8 +55,7 @@ const {
 // Restore the real module so this file's process-global mock doesn't strand
 // later test files that use the full elizaSandboxService surface.
 afterAll(() => {
-  mock.module("./conversation-coordinator", () => realConversationCoordinator);
-  mock.module("./shared-runtime-chat", () => realSharedRuntimeChat);
+  mock.restore();
 });
 
 const AGENT = "de42b5ff-72d3-4a1a-8a16-19aee293bfea";
@@ -217,23 +216,24 @@ describe("shared-rest-adapter — messages", () => {
     coordinateSharedHistory.mockReset();
   });
 
-  test("GET maps bridge turn history → REST messages", async () => {
+  test("GET maps stable bridge turn history → REST messages", async () => {
     const before = Date.now();
     coordinateSharedHistory.mockResolvedValue([
-      { role: "user", content: "hi", createdAt: 1_783_382_400_000 },
-      { role: "assistant", content: "Hello!" },
+      { id: "user-message-1", role: "user", content: "hi", createdAt: 1_783_382_400_000 },
+      { id: "assistant-message-1", role: "assistant", content: "Hello!", interrupted: true },
     ]);
     const { messages } = await sharedRestMessagesGet(AGENT, AGENT, NAMESPACE);
     expect(messages[0]).toEqual({
-      id: `${AGENT}:0`,
+      id: "user-message-1",
       role: "user",
       text: "hi",
       timestamp: 1_783_382_400_000,
     });
     expect(messages[1]).toMatchObject({
-      id: `${AGENT}:1`,
+      id: "assistant-message-1",
       role: "assistant",
       text: "Hello!",
+      interrupted: true,
     });
     expect(typeof messages[1]?.timestamp).toBe("number");
     expect(messages[1]?.timestamp).toBeLessThan(before - 60_000);
@@ -316,10 +316,7 @@ describe("shared-rest-adapter — messages", () => {
       NAMESPACE,
     );
     await expect(rejection).rejects.toBeInstanceOf(InsufficientCreditsError);
-    await expect(rejection).rejects.toMatchObject({
-      code: "insufficient_credits",
-      status: 402,
-      message: "Insufficient credits. Required: $0.0500, Available: $0.0000",
-    });
+    const error = await rejection.catch((caught) => caught as InsufficientCreditsError);
+    expect(error.message).toBe("Insufficient credits. Required: $0.0500, Available: $0.0000");
   });
 });

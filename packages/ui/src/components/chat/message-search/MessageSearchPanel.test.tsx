@@ -1,3 +1,4 @@
+/** Verifies MessageSearchPanel through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Render test for MessageSearchPanel: min-query gating, debounced search with

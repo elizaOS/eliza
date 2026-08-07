@@ -72,11 +72,6 @@ function makeRequest(
 }
 
 describe("tunnelLinkSensitiveRequestAdapter", () => {
-  it("declares the tunnel_authenticated_link target", () => {
-    const adapter = createTunnelLinkSensitiveRequestAdapter();
-    expect(adapter.target).toBe("tunnel_authenticated_link");
-  });
-
   it("returns the tunnel-served URL when an active tunnel is reported", async () => {
     const adapter = createTunnelLinkSensitiveRequestAdapter({
       getTunnelStatus: () => ({

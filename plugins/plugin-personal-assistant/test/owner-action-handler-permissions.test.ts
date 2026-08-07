@@ -23,16 +23,6 @@ vi.mock("@elizaos/agent", () => ({
   hasOwnerAccess: mocks.hasLifeOpsAccess,
 }));
 
-vi.mock("@elizaos/plugin-calendly", () => ({
-  CalendlyAdapter: class CalendlyAdapter {},
-  CalendlyError: class CalendlyError extends Error {},
-  createCalendlySingleUseLink: vi.fn(),
-  getCalendlyAvailability: vi.fn(),
-  listCalendlyEventTypes: vi.fn(),
-  listCalendlyScheduledEvents: vi.fn(),
-  readCalendlyCredentialsFromEnv: vi.fn(() => null),
-}));
-
 vi.mock("@elizaos/plugin-phone/twilio", () => ({
   readTwilioCredentialsFromEnv: vi.fn(() => null),
   sendTwilioVoiceCall: vi.fn(),

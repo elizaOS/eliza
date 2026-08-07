@@ -1,3 +1,4 @@
+/** Verifies filesToImageAttachments — client-side re-encode to the server cap through the package's configured test harness. */
 // @vitest-environment jsdom
 import { MAX_CHAT_IMAGE_BASE64_BYTES } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

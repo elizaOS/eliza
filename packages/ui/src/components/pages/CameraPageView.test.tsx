@@ -1,3 +1,4 @@
+/** Verifies CameraPageView through the package's configured test harness. */
 // @vitest-environment jsdom
 
 // Renders the real CameraPageView against a mocked @elizaos/capacitor-camera to

@@ -24,7 +24,11 @@ const coreMock = vi.hoisted(() => ({
 
 vi.mock("@elizaos/core", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@elizaos/core")>();
-	return { ...coreMock, getUserMessageText: actual.getUserMessageText };
+	return {
+		...coreMock,
+		getUserMessageText: actual.getUserMessageText,
+		unwrapUserMessageText: actual.unwrapUserMessageText,
+	};
 });
 
 const REGISTRY: ViewSummary[] = [
@@ -44,7 +48,7 @@ const REGISTRY: ViewSummary[] = [
 		label: "Wallet",
 		description: "Non-custodial wallet inventory",
 		path: "/wallet",
-		pluginName: "@elizaos/plugin-wallet-ui",
+		pluginName: "@elizaos/plugin-wallet:ui",
 		available: true,
 		viewType: "gui",
 		tags: ["finance", "crypto", "wallet"],

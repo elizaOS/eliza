@@ -1,3 +1,4 @@
+/** Verifies AppAnalytics sessions tab (#11349) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

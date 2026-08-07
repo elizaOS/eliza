@@ -110,6 +110,62 @@ function reviewerDoc(
   return { schema: 1, reviewer: REVIEWER, verdicts };
 }
 
+describe("orchestrateCertify — matrix args forwarding", () => {
+  it("forwards options.matrixArgs to the matrix runner", async () => {
+    const repoRoot = tmpGitRepo();
+    let seenArgs: readonly string[] | undefined;
+    const runMatrix: MatrixRunner = async ({ args }) => {
+      seenArgs = args;
+      return {
+        command: "fake-matrix",
+        lanes: [
+          { lane: "matrix", passed: 1, failed: 0, skipped: 0, log: "ok\n" },
+        ],
+      };
+    };
+    const result = await orchestrateCertify({
+      tier: "cpu",
+      repoRoot,
+      outDir: tmpDir("evidence-orch-out-"),
+      signingKey: KEYPAIR.privateKeyPem,
+      reviewer: REVIEWER,
+      runMatrix,
+      matrixArgs: ["--only=test", "--no-cloud"],
+      env: {},
+      now: NOW,
+    });
+
+    expect(result.overallVerdict).toBe("green");
+    expect(seenArgs).toEqual(["--only=test", "--no-cloud"]);
+  });
+
+  it("defaults the runner's args to an empty list", async () => {
+    const repoRoot = tmpGitRepo();
+    let seenArgs: readonly string[] | undefined;
+    const runMatrix: MatrixRunner = async ({ args }) => {
+      seenArgs = args;
+      return {
+        command: "fake-matrix",
+        lanes: [
+          { lane: "matrix", passed: 1, failed: 0, skipped: 0, log: "ok\n" },
+        ],
+      };
+    };
+    await orchestrateCertify({
+      tier: "cpu",
+      repoRoot,
+      outDir: tmpDir("evidence-orch-out-"),
+      signingKey: KEYPAIR.privateKeyPem,
+      reviewer: REVIEWER,
+      runMatrix,
+      env: {},
+      now: NOW,
+    });
+
+    expect(seenArgs).toEqual([]);
+  });
+});
+
 describe("orchestrateCertify — fresh bundle green path", () => {
   it("captures a passing matrix lane, signs, and self-verifies green", async () => {
     const repoRoot = tmpGitRepo();

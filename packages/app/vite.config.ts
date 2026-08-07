@@ -17,6 +17,7 @@ import { visualizer } from "rollup-plugin-visualizer";
 import {
   createLogger,
   defineConfig,
+  loadEnv,
   type Plugin,
   transformWithOxc,
 } from "vite";
@@ -44,6 +45,7 @@ import {
   shouldSkipBuildStamp,
 } from "./scripts/build-stamp.mjs";
 import { CAPACITOR_PLUGIN_NAMES } from "./scripts/capacitor-plugin-names.mjs";
+import { forbiddenForcedHostModeFlags } from "./scripts/forced-host-mode-guard.mjs";
 import { normalizeEnvPrefix } from "./src/env-prefix.js";
 import { appSideEffectModulesPlugin } from "./vite/app-side-effect-modules.ts";
 import { calendarOptimizeDeps } from "./vite/calendar-optimize-deps.ts";
@@ -154,8 +156,7 @@ function buildLucideUsedBarrelSource(): string {
       if (
         entry.name === "node_modules" ||
         entry.name === "dist" ||
-        entry.name === ".git" ||
-        entry.name === "benchmarks"
+        entry.name === ".git"
       ) {
         continue;
       }
@@ -204,11 +205,6 @@ const pluginBrowserBridgeSrcRoot = path.join(
   "plugins/plugin-browser/src",
 );
 const uiPkgRoot = path.join(elizaRoot, "packages/ui");
-const cloudUiPkgRoot = path.join(elizaRoot, "packages/cloud-ui");
-const importConversationsPkgRoot = path.join(
-  elizaRoot,
-  "packages/import-conversations",
-);
 const capacitorCoreEntry = path.join(
   path.dirname(_require.resolve("@capacitor/core/package.json")),
   "dist/index.js",
@@ -241,6 +237,10 @@ const bufferBase64JsEntry = resolveBunStorePackageEntry(
 const bufferIeee754Entry = resolveBunStorePackageEntry("ieee754", "index.js");
 const BUFFER_ESM_SHIM_ID = "virtual:eliza-buffer-esm-shim";
 const BUFFER_ESM_SHIM_RESOLVED = `\0${BUFFER_ESM_SHIM_ID}`;
+const SOLANA_WALLET_CSS_RESOLVED = path.resolve(
+  here,
+  "src/shims/solana-wallet-adapter-react-ui.css",
+);
 
 function resolveBunStorePackageEntry(
   packageName: string,
@@ -330,6 +330,7 @@ export default bufferModule;
     },
   };
 }
+
 // Other Capacitor packages imported by eliza/packages/app-core sources.
 // Resolved here (packages/app scope) so Rollup can find them when bundling
 // files from within the eliza submodule tree where bun may not hoist them.
@@ -401,10 +402,6 @@ const json5EsmEntry = path.join(
 const markedEntry = path.join(
   elizaRoot,
   "plugins/plugin-task-coordinator/node_modules/marked/lib/marked.esm.js",
-);
-const streamdownEntry = path.join(
-  uiPkgRoot,
-  "node_modules/streamdown/dist/index.js",
 );
 const rechartsEntry = path.join(
   uiPkgRoot,
@@ -664,6 +661,13 @@ function stringifyBuildLogMessage(message: unknown): string {
 function isKnownToleratedBuildWarning(message: unknown): boolean {
   const text = stringifyBuildLogMessage(message);
   if (
+    text.includes("Sourcemap for") &&
+    text.includes("@stwd+") &&
+    text.includes("points to missing source files")
+  ) {
+    return true;
+  }
+  if (
     text.includes("IMPORT_IS_UNDEFINED") &&
     text.includes("Import `tslFn`") &&
     text.includes("three.webgpu")
@@ -698,12 +702,6 @@ function isKnownToleratedBuildWarning(message: unknown): boolean {
     text.includes("../app-core/src/browser.ts") ||
     text.includes("native-stub:node:fs/promises") ||
     text.includes("../ui/src/components/pages/") ||
-    text.includes(
-      "../../plugins/plugin-facewear/src/protocol/smartglasses.ts",
-    ) ||
-    text.includes(
-      "../../plugins/app-model-tester/src/ModelTesterAppView.tsx",
-    ) ||
     text.includes(
       "../../plugins/plugin-browser/src/actions/browser-autofill-login.ts",
     )
@@ -965,17 +963,50 @@ const USE_CORE_SOURCE_BROWSER_ENTRY =
   process.env.ELIZA_DESKTOP_VITE_FAST_DIST === "1" ||
   process.env.ELIZA_DESKTOP_VITE_BUILD_WATCH === "1";
 
+/**
+ * Returns the cleartext origins available to local and native app shells.
+ * iOS store builds prohibit them; other shells support owner-selected remote
+ * agents, whose REST calls use native transport while WebSockets use CSP.
+ */
+export function resolveAppShellLocalCspSources(
+  capacitorBuildTarget: string,
+  isIosStoreBuild: boolean,
+): {
+  localHttpSources: string;
+  localConnectSources: string;
+} {
+  if (isIosStoreBuild) {
+    return { localHttpSources: "", localConnectSources: "" };
+  }
+
+  const loopbackHttpSources = " http://localhost:* http://127.0.0.1:*";
+  if (capacitorBuildTarget === "android") {
+    // Paired Android shells discover the host at runtime, so its private-LAN
+    // address cannot be enumerated at build time. API-base validation still
+    // limits accepted cleartext hosts to loopback/private addresses, while the
+    // CSP must permit the resulting REST/EventSource and WebSocket transports.
+    return {
+      localHttpSources: loopbackHttpSources,
+      localConnectSources: " http: ws:",
+    };
+  }
+
+  return {
+    localHttpSources: loopbackHttpSources,
+    // Remote-agent URLs are explicitly chosen by the owner and authenticated.
+    // Capacitor's native HTTP bridge handles their REST traffic, while browser
+    // WebSockets still pass through this CSP and must accept the same LAN host.
+    localConnectSources: `${loopbackHttpSources} ws: ws://localhost:* wss://localhost:* ws://127.0.0.1:* wss://127.0.0.1:*`,
+  };
+}
+
 function appShellMetadataPlugin(): Plugin {
   const isIosStoreBuild =
     CAPACITOR_BUILD_TARGET === "ios" &&
     (process.env.ELIZA_BUILD_VARIANT === "store" ||
       process.env.ELIZA_RELEASE_AUTHORITY === "apple-app-store");
-  const localHttpSources = isIosStoreBuild
-    ? ""
-    : " http://localhost:* http://127.0.0.1:*";
-  const localConnectSources = isIosStoreBuild
-    ? ""
-    : " http://localhost:* ws://localhost:* wss://localhost:* http://127.0.0.1:* ws://127.0.0.1:* wss://127.0.0.1:*";
+  const { localHttpSources, localConnectSources } =
+    resolveAppShellLocalCspSources(CAPACITOR_BUILD_TARGET, isIosStoreBuild);
   const manifest = `${JSON.stringify(
     {
       name: APP_SHELL_METADATA.appName,
@@ -1062,6 +1093,39 @@ function productionBuildStampGuardPlugin(): Plugin {
     generateBundle(_options, bundle) {
       if (!shouldRemoveStamp()) return;
       removeEmittedBuildStamp(bundle);
+    },
+  };
+}
+
+/**
+ * Fails any production-mode build in which a forced host-mode escape hatch
+ * (VITE_FORCE_APP_MODE / VITE_FORCE_APEX_CONSOLE) is set. The flags override
+ * the app-mode and apex hostname checks for EVERY host, so a Pages deploy that
+ * carries one silently turns the elizacloud.ai apex into the forced surface —
+ * this guard makes that misconfiguration fail loudly at build time instead.
+ * The production/staging Pages builds (cloud-cf-deploy.yml) run plain
+ * `vite build` (mode "production"), so both are covered; `vite dev` and
+ * development-mode bundles keep the escape hatch.
+ */
+function forcedHostModeFlagGuardPlugin(): Plugin {
+  return {
+    name: "eliza-forced-host-mode-flag-guard",
+    configResolved(config) {
+      if (config.command !== "build" || config.mode !== "production") return;
+      // loadEnv covers `.env*` files as well as process.env.
+      const offending = forbiddenForcedHostModeFlags(
+        loadEnv(config.mode, config.envDir, "VITE_FORCE_"),
+      );
+      if (offending.length > 0) {
+        throw new Error(
+          `${offending.join(", ")} must not be set in a production-mode build: ` +
+            "the forced host-mode flags override the app-mode/apex hostname " +
+            "checks for every host, so a deployed bundle with one baked in " +
+            "hijacks the elizacloud.ai apex. Remove the flag from the deploy " +
+            "config (cloud-cf-deploy.yml / wrangler.toml); to test a built " +
+            "bundle with the flag locally, build with --mode development.",
+        );
+      }
     },
   };
 }
@@ -1338,6 +1402,9 @@ function elizaCoreBrowserEntryFallbackPlugin(): Plugin {
 // The dev script sets the branded API port env; default to 31337 for standalone vite dev.
 const apiPort = resolveDesktopApiPort(process.env);
 const uiPort = resolveDesktopUiPort(process.env);
+const localVoiceGatewayPort = resolveOptionalLocalVoiceGatewayPort(
+  process.env.ELIZA_LOCAL_VOICE_GATEWAY_PORT,
+);
 const viteDevServerRuntime = resolveViteDevServerRuntime(
   process.env,
   uiPort,
@@ -1346,6 +1413,19 @@ const viteDevServerRuntime = resolveViteDevServerRuntime(
 const enableAppSourceMaps = process.env[BRANDED_ENV.appSourcemap] === "1";
 /** Set by eliza/packages/app-core/scripts/dev-platform.mjs for `vite build --watch` (Electrobun desktop). */
 const desktopFastDist = process.env[BRANDED_ENV.desktopFastDist] === "1";
+
+function resolveOptionalLocalVoiceGatewayPort(
+  raw: string | undefined,
+): number | null {
+  if (typeof raw !== "string" || raw.trim() === "") return null;
+  const port = Number(raw.trim());
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+    throw new Error(
+      "ELIZA_LOCAL_VOICE_GATEWAY_PORT must be an integer TCP port",
+    );
+  }
+  return port;
+}
 
 export function appDevWsBasePlugin(): Plugin {
   const brandedWsBaseKey = `__${APP_ENV_PREFIX}_WS_BASE__`;
@@ -1461,19 +1541,15 @@ function resolveManualChunk(id: string): string | undefined {
     return "view-icons";
   }
 
-  // Self-contained leaf libraries needed EAGERLY by @elizaos/core's browser
-  // SOURCE graph (`utils/crypto-compat.ts` → @noble; runtime/services → uuid),
-  // which mobile builds bundle via USE_CORE_SOURCE_BROWSER_ENTRY, and that the
-  // pinned wallet stack also uses. Without an explicit assignment the
+  // Self-contained leaf libraries needed EAGERLY by the app/core graph and
+  // also by the pinned wallet stack. Without an explicit assignment the
   // manual-chunk fold captures them into `vendor-crypto`, anchoring the whole
-  // wallet chunk into the mobile entry's static import closure. They import
-  // nothing outside themselves, so the vendor-crypto → vendor-boot-leaves edge
-  // cannot form the cross-chunk init cycle the crypto pin guards against. On
-  // web (core resolves to its prebuilt dist bundle, which inlines these) the
-  // chunk is only reachable from vendor-crypto and stays lazy.
+  // wallet chunk into the entry's static import closure. They import nothing
+  // outside themselves, so the vendor-crypto → vendor-boot-leaves edge cannot
+  // form the cross-chunk init cycle the crypto pin guards against.
   if (
     normalizedId.includes("/node_modules/@noble/") ||
-    /\/node_modules\/uuid\//.test(normalizedId)
+    /\/node_modules\/(uuid|zod)\//.test(normalizedId)
   ) {
     return "vendor-boot-leaves";
   }
@@ -1754,8 +1830,6 @@ function isIgnoredWorkspaceGeneratedOutput(normalizedFile: string): boolean {
     normalizedFile.includes("/.wrangler/") ||
     normalizedFile.includes("/packages/agent/data/") ||
     normalizedFile.includes("/packages/agent/.elizadb/") ||
-    normalizedFile.includes("/packages/examples/") ||
-    normalizedFile.includes("/packages/feed/") ||
     normalizedFile.includes("/output/generated-cad/") ||
     normalizedFile.includes("/src/i18n/generated/") ||
     normalizedFile.endsWith(".d.ts") ||
@@ -1776,7 +1850,7 @@ function watchWorkspacePackagesPlugin(): Plugin {
       // Watch ONLY workspace package.json manifests — an alias/dependency change
       // there needs a full Vite restart. We deliberately do NOT add the entire
       // packages/ + plugins/ trees: that re-globbed ~45k files (including ~1GB of
-      // benchmarks/os), bypassed server.watch.ignored, risked exhausting
+      // os/), bypassed server.watch.ignored, risked exhausting
       // fs.inotify watches, and — via the old blanket full-reload below — turned
       // every workspace source edit into a full page reload instead of HMR.
       // Imported workspace *source* is already watched through Vite's module
@@ -1980,6 +2054,35 @@ function makeEsToolkitCompatEsmPlugin(
   };
 }
 
+// Rolldown invokes optimizer resolve hooks once per import edge. Resolving the
+// same five polyfill packages inside that hook turned a cold Vite start into
+// tens of thousands of synchronous package.json lookups (~55-60 seconds on a
+// warm filesystem). Resolve each installed polyfill once while loading config;
+// the hot hook is then a constant-time map lookup.
+const optimizerNodePolyfills: Readonly<Record<string, string>> = (() => {
+  const resolved: Record<string, string> = {};
+  for (const [nodeId, pkg, entry] of [
+    ["node:events", "events", "events.js"],
+    ["events", "events", "events.js"],
+    ["node:buffer", "buffer", "index.js"],
+    ["buffer", "buffer", "index.js"],
+    ["node:util", "util", "util.js"],
+    ["util", "util", "util.js"],
+    ["node:process", "process", "browser.js"],
+    ["process", "process", "browser.js"],
+    ["node:stream", "stream-browserify", "index.js"],
+    ["stream", "stream-browserify", "index.js"],
+  ] as const) {
+    try {
+      const pkgDir = path.dirname(_require.resolve(`${pkg}/package.json`));
+      resolved[nodeId] = path.join(pkgDir, entry);
+    } catch {
+      // Missing optional polyfills fall through to a generated node stub.
+    }
+  }
+  return resolved;
+})();
+
 export default defineConfig({
   root: here,
   customLogger: viteLogger,
@@ -2045,6 +2148,7 @@ export default defineConfig({
     ),
   },
   plugins: [
+    forcedHostModeFlagGuardPlugin(),
     productionBuildStampGuardPlugin(),
     bufferEsmShimPlugin(),
     // Manifest-driven renderer side-effect plugin registration (#9178): resolves
@@ -2304,14 +2408,10 @@ export const INVALID_TRACER_PROVIDER = {};
       // Bare Node built-in polyfills for browser — pathe provides ESM path,
       // events is pre-bundled via optimizeDeps.
       { find: /^path$/, replacement: patheEntry },
-      // Map `buffer`/`node:buffer` to the real feross buffer (the stub plugin
-      // now bypasses them) so the crypto graph gets a callable Buffer.
-      ...(bufferEntry
-        ? [
-            { find: /^buffer$/, replacement: BUFFER_ESM_SHIM_ID },
-            { find: /^node:buffer$/, replacement: BUFFER_ESM_SHIM_ID },
-          ]
-        : []),
+      {
+        find: /^@solana\/wallet-adapter-react-ui\/styles\.css$/,
+        replacement: SOLANA_WALLET_CSS_RESOLVED,
+      },
       {
         find: /^fast-redact$/,
         replacement: path.resolve(here, "src/shims/fast-redact.ts"),
@@ -2408,9 +2508,6 @@ export const INVALID_TRACER_PROVIDER = {};
       ...(dateFnsJalaliEntry
         ? [{ find: /^date-fns-jalali$/, replacement: dateFnsJalaliEntry }]
         : []),
-      ...(fs.existsSync(streamdownEntry)
-        ? [{ find: /^streamdown$/, replacement: streamdownEntry }]
-        : []),
       ...(fs.existsSync(rechartsEntry)
         ? [{ find: /^recharts$/, replacement: rechartsEntry }]
         : []),
@@ -2486,30 +2583,14 @@ export const INVALID_TRACER_PROVIDER = {};
           "@elizaos/plugin-trajectory-logger",
           "plugins/plugin-trajectory-logger/src/register.ts",
         ],
-        ["@elizaos/plugin-shopify", "plugins/plugin-shopify/src/register.ts"],
+        ["@elizaos/plugin-wallet/ui", "plugins/plugin-wallet/src/ui/index.ts"],
         [
-          "@elizaos/plugin-hyperliquid",
-          "plugins/plugin-hyperliquid/src/register.ts",
-        ],
-        [
-          "@elizaos/plugin-polymarket",
-          "plugins/plugin-polymarket/src/register.ts",
-        ],
-        [
-          "@elizaos/plugin-wallet-ui",
-          "plugins/plugin-wallet-ui/src/register.ts",
+          "@elizaos/plugin-wallet/register",
+          "plugins/plugin-wallet/src/register.ts",
         ],
         [
           "@elizaos/plugin-contacts/register",
           "plugins/plugin-contacts/src/register.ts",
-        ],
-        [
-          "@elizaos/plugin-native-settings/register",
-          "plugins/plugin-native-settings/src/register.ts",
-        ],
-        [
-          "@elizaos/plugin-messages/register",
-          "plugins/plugin-messages/src/register.ts",
         ],
         [
           "@elizaos/plugin-phone/register",
@@ -2522,10 +2603,6 @@ export const INVALID_TRACER_PROVIDER = {};
         [
           "@elizaos/plugin-wifi/register",
           "plugins/plugin-wifi/src/register.ts",
-        ],
-        [
-          "@elizaos/plugin-facewear/register",
-          "plugins/plugin-facewear/src/register.ts",
         ],
         // The browser-safe native-backend registration seam. The bare
         // `@elizaos/plugin-blocker` specifier is aliased (via the dynamic
@@ -2579,15 +2656,6 @@ export const INVALID_TRACER_PROVIDER = {};
         find: /^@elizaos\/logger$/,
         replacement: path.resolve(elizaRoot, "packages/logger/src/index.ts"),
       },
-      // Memory import UI uses the browser facade only; keep it on source so
-      // renderer audits do not require building the Node parser package dist.
-      {
-        find: /^@elizaos\/import-conversations\/browser$/,
-        replacement: path.resolve(
-          elizaRoot,
-          "packages/import-conversations/src/browser.ts",
-        ),
-      },
       // When the cloud surface is excluded (ELIZA_DISABLE_WEB_SHELL=1), redirect
       // the two lazy cloud entry points to passthrough stubs — placed BEFORE the
       // broad @elizaos/ui/* alias below (first match wins) so Rollup never
@@ -2608,21 +2676,6 @@ export const INVALID_TRACER_PROVIDER = {};
             },
           ]
         : []),
-      // @elizaos/cloud-ui — the Eliza Cloud product UI, split out of @elizaos/ui
-      // as a real package (arch #12092 item 23). Resolved to source like every
-      // other linked workspace package. This is a REAL dependency, not a
-      // passthrough stub: cloud-free builds never import it (the app only
-      // imports it inside the `__ELIZA_WEB_SHELL__`-guarded lazy block, which is
-      // statically unreachable when the shell is excluded), so its surface
-      // tree-shakes out with no stub alias.
-      {
-        find: /^@elizaos\/cloud-ui$/,
-        replacement: path.join(cloudUiPkgRoot, "src/index.ts"),
-      },
-      {
-        find: /^@elizaos\/cloud-ui\/(.+)$/,
-        replacement: path.join(cloudUiPkgRoot, "src/$1"),
-      },
       // Force local @elizaos/ui source paths when the app bundles linked
       // @elizaos/app-core sources directly.
       {
@@ -2637,17 +2690,6 @@ export const INVALID_TRACER_PROVIDER = {};
         find: /^@elizaos\/ui\/(.+)$/,
         replacement: path.join(uiPkgRoot, "src/$1"),
       },
-      // @elizaos/import-conversations is consumed by @elizaos/ui source during
-      // renderer builds. Resolve it to source so audit/app builds do not depend
-      // on a prebuilt local workspace dist.
-      {
-        find: /^@elizaos\/import-conversations$/,
-        replacement: path.join(importConversationsPkgRoot, "src/index.ts"),
-      },
-      {
-        find: /^@elizaos\/import-conversations\/browser$/,
-        replacement: path.join(importConversationsPkgRoot, "src/browser.ts"),
-      },
       {
         find: /^@elizaos\/shared\/brand$/,
         replacement: path.resolve(
@@ -2660,7 +2702,7 @@ export const INVALID_TRACER_PROVIDER = {};
       // domain views live in plugin-todos/inbox/goals/health/calendar/etc.
       // src/ui.ts is the browser-safe facade — it imports the side-effectful
       // HTTP client and re-exports the surviving settings-card components,
-      // without dragging discord/health/phone/calendly/native deps into the
+      // without dragging discord/health/phone/native deps into the
       // browser bundle (those are pulled in by src/index.ts / src/plugin.ts).
       {
         find: /^@elizaos\/plugin-personal-assistant$/,
@@ -2669,24 +2711,9 @@ export const INVALID_TRACER_PROVIDER = {};
           "plugins/plugin-personal-assistant/src/ui.ts",
         ),
       },
-      // Calendly is a server-side connector pulled through legacy
-      // personal-assistant service paths. The app renderer does not execute it.
       {
-        find: /^@elizaos\/plugin-calendly$/,
+        find: /^@elizaos\/plugin-google-workspace$/,
         replacement: path.join(appCoreSrcRoot, "platform/empty-node-module.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-google$/,
-        replacement: path.join(appCoreSrcRoot, "platform/empty-node-module.ts"),
-      },
-      // The training package root exports runtime routes and native backends.
-      // The renderer only needs the fine-tuning UI facade.
-      {
-        find: /^@elizaos\/plugin-training$/,
-        replacement: path.resolve(
-          elizaRoot,
-          "plugins/plugin-training/src/ui/index.ts",
-        ),
       },
       // plugin-health is a backend-only plugin (no `elizaos.app`), so it gets no
       // auto-generated browser alias. Its `ui/` directory ships browser-safe
@@ -2821,25 +2848,6 @@ export const INVALID_TRACER_PROVIDER = {};
             find: /^@elizaos\/ui\/(.+)$/,
             replacement: path.join(uiSource, "$1"),
           },
-          // @elizaos/import-conversations resolves from source for the same
-          // reason: the renderer (MemoryViewerView) imports its `/browser`
-          // subpath, whose export map points at dist/ — absent in renderer
-          // builds that don't pre-build the package, failing with "Rollup
-          // failed to resolve import '@elizaos/import-conversations/browser'".
-          {
-            find: /^@elizaos\/import-conversations$/,
-            replacement: path.resolve(
-              elizaRoot,
-              "packages/import-conversations/src/index.ts",
-            ),
-          },
-          {
-            find: /^@elizaos\/import-conversations\/(.+)$/,
-            replacement: path.resolve(
-              elizaRoot,
-              "packages/import-conversations/src/$1.ts",
-            ),
-          },
           {
             find: /^@elizaos\/app-core\/first-run\/first-run-config$/,
             replacement: path.join(
@@ -2879,14 +2887,7 @@ export const INVALID_TRACER_PROVIDER = {};
             ),
           },
           {
-            find: /^@elizaos\/plugin-calendly$/,
-            replacement: path.join(
-              appCoreSrcRoot,
-              "platform/empty-node-module.ts",
-            ),
-          },
-          {
-            find: /^@elizaos\/plugin-google$/,
+            find: /^@elizaos\/plugin-google-workspace$/,
             replacement: path.join(
               appCoreSrcRoot,
               "platform/empty-node-module.ts",
@@ -2906,6 +2907,11 @@ export const INVALID_TRACER_PROVIDER = {};
   },
   optimizeDeps: {
     noDiscovery: process.env.ELIZA_APP_VITE_NO_DISCOVERY !== "0",
+    // This graph is explicitly enumerated below and discovery is disabled, so
+    // waiting for a crawl cannot reveal another dependency. Publish completed
+    // optimizer chunks as they settle so the browser can request them in
+    // parallel instead of holding the whole first-load batch.
+    holdUntilCrawlEnd: false,
     include: [
       "react",
       "react-dom",
@@ -2914,7 +2920,7 @@ export const INVALID_TRACER_PROVIDER = {};
       "react-router/dom",
       "react-router-dom",
       // Three.js core + all subpath imports must be pre-bundled together so
-      // esbuild shares a single module identity.
+      // the optimizer shares a single module identity.
       "three",
       "three/examples/jsm/controls/OrbitControls.js",
       "three/examples/jsm/libs/meshopt_decoder.module.js",
@@ -2927,7 +2933,6 @@ export const INVALID_TRACER_PROVIDER = {};
       // lucide-react alone is ~250 per-icon requests once the build-only
       // per-icon rewrite is disabled in dev; the rest are multi-file ESM libs.
       "lucide-react",
-      "streamdown",
       "recharts",
       "nprogress",
       "cookie",
@@ -2955,12 +2960,6 @@ export const INVALID_TRACER_PROVIDER = {};
       }),
       // Resolvable via the resolve.alias above (transitive through @elizaos/core).
       "@opentelemetry/api",
-      // Pre-bundle feross `buffer` so the dev server serves it as ESM with a
-      // named `Buffer` export. With `noDiscovery` on, the raw Bun-store CommonJS
-      // file behind the resolve.alias is not transformed unless it is listed
-      // here; esbuild's pre-bundle interop exposes `exports.Buffer = Buffer` as
-      // a named ESM export for workspace imports from `node:buffer`. See #9452.
-      ...(bufferEntry ? ["buffer", "node:buffer"] : []),
     ],
     // Remap node: builtins to npm polyfills during dep optimization so
     // Rolldown doesn't externalize them as browser-incompatible node:* imports.
@@ -2989,29 +2988,7 @@ export const INVALID_TRACER_PROVIDER = {};
         {
           name: "node-builtins-polyfill",
           resolveId(source) {
-            const polyfills: Record<string, string> = {};
-            for (const [nodeId, pkg, entry] of [
-              ["node:events", "events", "events.js"],
-              ["events", "events", "events.js"],
-              ["node:buffer", "buffer", "index.js"],
-              ["buffer", "buffer", "index.js"],
-              ["node:util", "util", "util.js"],
-              ["util", "util", "util.js"],
-              ["node:process", "process", "browser.js"],
-              ["process", "process", "browser.js"],
-              ["node:stream", "stream-browserify", "index.js"],
-              ["stream", "stream-browserify", "index.js"],
-            ] as const) {
-              try {
-                const pkgDir = path.dirname(
-                  _require.resolve(`${pkg}/package.json`),
-                );
-                polyfills[nodeId] = path.join(pkgDir, entry);
-              } catch {
-                // polyfill not installed
-              }
-            }
-            const polyfill = polyfills[source];
+            const polyfill = optimizerNodePolyfills[source];
             if (polyfill) return polyfill;
             if (source.startsWith("node:")) return `\0node-stub:${source}`;
             return null;
@@ -3258,6 +3235,30 @@ export const INVALID_TRACER_PROVIDER = {};
       credentials: true,
     },
     proxy: {
+      ...(localVoiceGatewayPort
+        ? {
+            "/api/v1/voice/session": {
+              target: `http://127.0.0.1:${localVoiceGatewayPort}`,
+              changeOrigin: true,
+              xfwd: true,
+              ws: true,
+              configure: (proxy) => {
+                proxy.on("error", (_err, _req, res) => {
+                  if ("headersSent" in res && !res.headersSent) {
+                    res.writeHead(502, {
+                      "Content-Type": "application/json",
+                    });
+                    res.end(
+                      JSON.stringify({
+                        error: "Local voice gateway unavailable",
+                      }),
+                    );
+                  }
+                });
+              },
+            },
+          }
+        : {}),
       "/api": {
         target: `http://127.0.0.1:${apiPort}`,
         changeOrigin: true,
@@ -3313,8 +3314,6 @@ export const INVALID_TRACER_PROVIDER = {};
       // Benchmark packages are large offline fixture trees; the desktop renderer
       // does not import them, and watching them can exhaust the kernel watcher
       // limit before the desktop renderer is interactive.
-      // OS image trees contain distro fixture files/symlinks that can fail
-      // fs.watch on Linux/Bun and are also not renderer inputs.
       ignored: [
         "**/electrobun/build/**",
         "**/electrobun/artifacts/**",
@@ -3323,8 +3322,6 @@ export const INVALID_TRACER_PROVIDER = {};
         "**/packages/**/.wrangler/**",
         "**/packages/agent/.elizadb/**",
         "**/packages/agent/data/**",
-        "**/packages/examples/**",
-        "**/packages/feed/**",
         "**/packages/**/dist/**",
         "**/packages/**/*.log",
         "**/packages/**/*.md",
@@ -3334,8 +3331,6 @@ export const INVALID_TRACER_PROVIDER = {};
         "**/*.tsbuildinfo",
         "**/packages/**/output/generated-cad/**",
         "**/packages/**/src/i18n/generated/**",
-        "**/packages/benchmarks/**",
-        "**/packages/os/**",
         "**/packages/training/data/raw/**",
         "**/plugin-local-inference/native/audio-fixtures/**",
         "**/plugin-local-inference/src/services/__tests__/**",

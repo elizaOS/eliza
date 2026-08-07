@@ -1,3 +1,4 @@
+/** Verifies <SlashCommandMenu> closed-state three-state degrade (#12784) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

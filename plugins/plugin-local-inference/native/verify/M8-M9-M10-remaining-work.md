@@ -20,7 +20,7 @@
 
 ## ✅ Done this session (collision-free, already committed)
 
-- **M8 straggler** `packages/benchmarks/lifeops-bench/eliza_lifeops_bench/model_tiers.py`
+- **M8 straggler** `lifeops-bench model_tiers.py` (now in https://github.com/elizaOS/benchmarks)
   — `small` → `eliza-1-2b`, `mid` → `eliza-1-4b` (was `qwen3.5-0.8b` / `qwen3.5-2b`
   + `eliza-1-0_8b.bundle`).
 - **M7/M6 evidence** — `reports/M7-cpu-sweep-2026-06-22.md`,
@@ -75,7 +75,7 @@ All in the dirty `src/services/*` + `runtime-class.ts` set. Grouped:
   `HF_TOKEN` injection** in `resolveHubAuthHeaders()`.
 - Remove any local HF-token Settings UI (no local token on desktop/mobile).
 - Integration test: `downloader.start(eliza-1-*)` completes with `HF_TOKEN` unset.
-- (#8809) memory LRU / dynamic-fit / bench — the `packages/benchmarks/memperf/`
+- (#8809) memory LRU / dynamic-fit / bench — the memperf (https://github.com/elizaOS/benchmarks)
   harness is clean and ready to produce real co-residency / peak-RSS gates.
 
 ## M6 — Gemma-aware RAM defaults (TS, dirty set)

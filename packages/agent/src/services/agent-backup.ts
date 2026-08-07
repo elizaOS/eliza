@@ -6,7 +6,7 @@
  * remaining state-dir files — into a manifest whose every component carries a
  * sha256, then restores each component verifying those hashes and refusing
  * tampered bytes. Also writes, lists, and prunes KMS-encrypted local backup
- * envelope files (`*.agent-backup.json`, AES-256-GCM via `@elizaos/security/kms`)
+ * envelope files (`*.agent-backup.json`, AES-256-GCM via `@elizaos/core/security/kms`)
  * under the state dir, keeping only the most recent few. Restore is destructive
  * and returns `requiresRestart`.
  */
@@ -15,7 +15,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
 import { ElizaError, logger } from "@elizaos/core";
-import { createKmsClient, systemKey } from "@elizaos/security/kms";
+import { createKmsClient, systemKey } from "@elizaos/core/security/kms";
 import { MAX_RESTORABLE_AGENT_BACKUP_BYTES } from "@elizaos/shared/agent-backup-limits";
 import type { ElizaConfig } from "../config/config.ts";
 import { resolveConfigPath, resolveStateDir } from "../config/paths.ts";

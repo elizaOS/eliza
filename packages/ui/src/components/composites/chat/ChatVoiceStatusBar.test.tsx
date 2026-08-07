@@ -1,3 +1,4 @@
+/** Verifies ChatVoiceStatusBar through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Renders ChatVoiceStatusBar in jsdom (real component, no live voice pipeline)

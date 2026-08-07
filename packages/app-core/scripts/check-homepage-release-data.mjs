@@ -1,5 +1,10 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for check homepage release data mjs. */
+/**
+ * CI guard for the generated homepage release payload: parses
+ * packages/homepage/src/generated/release-data.ts and fails when required
+ * download-artifact ids (macOS/Windows/Linux/Android) are missing or the
+ * payload is malformed.
+ */
 
 import { readFile } from "node:fs/promises";
 import path from "node:path";

@@ -17,6 +17,9 @@
   },
   "include": ["src/**/*.ts"],
   "exclude": [
+    "src/ui/**",
+    "src/ui.ts",
+    "src/register.ts",
     "**/__tests__/**",
     "**/*.test.ts",
     "**/*.test.tsx",

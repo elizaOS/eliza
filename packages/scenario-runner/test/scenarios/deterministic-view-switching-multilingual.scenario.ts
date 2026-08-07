@@ -1,6 +1,6 @@
 /**
  * Keyless coverage that view switching resolves across the navigable views in
- * every supported language. Runs on the pr-deterministic lane under the LLM proxy.
+ * every supported language. Runs on the pr-deterministic lane under the model provider.
  */
 import type {
   CapturedAction,
