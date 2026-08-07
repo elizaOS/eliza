@@ -165,24 +165,31 @@ export function isNodePlacementQuarantined(nodeId: string, nowMs = Date.now()): 
 // ---------------------------------------------------------------------------
 
 /**
- * Refuse placement above this /proc/pressure/io `full avg10` percentage. A
- * healthy node sits near 0–5; the #17880 outage node measured 72–78 while
- * `docker create` could not finish inside its 60s timeout. 40 refuses nodes
- * already stalling on IO for most of each second while tolerating the bursts a
- * large image extract causes on a working node.
+ * Refuse placement above this /proc/pressure/io `full avg60` percentage.
+ *
+ * Both ends are measured on the same production node (88.99.66.168):
+ * while healthy and completing provisions in ~36s it reports avg60 33.6–36.4,
+ * and during the #17880 outage — every `docker create` timing out at 60s — it
+ * reported avg60 78.50. 60 leaves ~24 points of margin below the healthy
+ * ceiling and ~18 above the outage floor.
+ *
+ * avg60, not avg10: on that same healthy node avg10 swings 30.5–40.9, so a
+ * gate anywhere near the working range refuses a working node on a transient
+ * spike (an image extract is enough) and manufactures the "no nodes available"
+ * outage this is meant to prevent. avg60 spans 2.8 points over the same window.
  */
-const PLACEMENT_MAX_IO_PRESSURE_FULL_AVG10 = 40;
+const PLACEMENT_MAX_IO_PRESSURE_FULL_AVG60 = 60;
 
 /** Separates docker-info output from the PSI section in the readiness probe. */
 const READINESS_PROBE_PSI_MARKER = "---IO-PRESSURE---";
 
 /**
- * Parse `full avg10=` out of /proc/pressure/io content. Returns null when the
+ * Parse `full avg60=` out of /proc/pressure/io content. Returns null when the
  * signal is absent (pre-4.20 kernel, CONFIG_PSI off, unreadable) — absence
  * must not block placement; the circuit breaker still protects that node.
  */
-export function parseIoPressureFullAvg10(section: string): number | null {
-  const match = section.match(/^full\s+avg10=(\d+(?:\.\d+)?)/m);
+export function parseIoPressureFullAvg60(section: string): number | null {
+  const match = section.match(/^full\s+avg10=[\d.]+\s+avg60=(\d+(?:\.\d+)?)/m);
   if (!match) return null;
   const value = Number.parseFloat(match[1]!);
   return Number.isFinite(value) ? value : null;
@@ -716,15 +723,15 @@ export class DockerNodeManager {
           });
           return false;
         }
-        const ioPressure = parseIoPressureFullAvg10(psiSection);
-        if (ioPressure !== null && ioPressure >= PLACEMENT_MAX_IO_PRESSURE_FULL_AVG10) {
+        const ioPressure = parseIoPressureFullAvg60(psiSection);
+        if (ioPressure !== null && ioPressure >= PLACEMENT_MAX_IO_PRESSURE_FULL_AVG60) {
           // No DB status write: IO overload is transient and node-status flips
           // are reserved for dead/unreachable daemons (see the canonical-node
           // protection below).
           logger.warn("[docker-node-manager] Node refused for placement: IO-starved", {
             nodeId: node.node_id,
-            ioPressureFullAvg10: ioPressure,
-            max: PLACEMENT_MAX_IO_PRESSURE_FULL_AVG10,
+            ioPressureFullAvg60: ioPressure,
+            max: PLACEMENT_MAX_IO_PRESSURE_FULL_AVG60,
           });
           return false;
         }

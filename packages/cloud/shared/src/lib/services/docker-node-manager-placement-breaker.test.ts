@@ -64,7 +64,7 @@ import {
   DockerNodeManager,
   isNodePlacementQuarantined,
   notePlacementCommandFailure,
-  parseIoPressureFullAvg10,
+  parseIoPressureFullAvg60,
 } from "./docker-node-manager";
 
 function node(nodeId: string): DockerNode {
@@ -90,10 +90,22 @@ const TIMEOUT_ERROR = new Error(
   "[docker-sandbox] Failed to create container on node-a: [docker-ssh] Command timed out after 60000ms on 88.99.66.168: docker [redacted]",
 );
 
-/** Verbatim /proc/pressure/io captured on the #17880 outage node. */
+/** Verbatim /proc/pressure/io from node 88.99.66.168 during the #17880 outage. */
 const OUTAGE_PSI = [
   "some avg10=75.21 avg60=82.04 avg300=82.69 total=493046940717",
   "full avg10=72.89 avg60=78.50 avg300=78.61 total=450805502651",
+].join("\n");
+
+/**
+ * The SAME node once CI drained and it was completing provisions in ~36s.
+ * Verbatim samples 3 and 5 of the calibration run: both carry an avg10 ABOVE
+ * 40 while avg60 stays ~35 — the reason the gate reads avg60. Pinning these
+ * exact readings keeps a future threshold tweak from re-introducing the
+ * false refusal of a working node.
+ */
+const HEALTHY_BUSY_PSI = [
+  "some avg10=41.02 avg60=36.19 avg300=36.44 total=499893023295",
+  "full avg10=40.87 avg60=36.37 avg300=35.81 total=457451749125",
 ].join("\n");
 
 const HEALTHY_PSI = [
@@ -118,19 +130,22 @@ beforeEach(() => {
   sshMock.exec.mockReset();
 });
 
-describe("parseIoPressureFullAvg10", () => {
-  test("reads full avg10 from real /proc/pressure/io content", () => {
-    expect(parseIoPressureFullAvg10(OUTAGE_PSI)).toBe(72.89);
-    expect(parseIoPressureFullAvg10(HEALTHY_PSI)).toBe(0);
+describe("parseIoPressureFullAvg60", () => {
+  test("reads the full line's avg60, not avg10, from real content", () => {
+    expect(parseIoPressureFullAvg60(OUTAGE_PSI)).toBe(78.5);
+    expect(parseIoPressureFullAvg60(HEALTHY_BUSY_PSI)).toBe(36.37);
+    expect(parseIoPressureFullAvg60(HEALTHY_PSI)).toBe(0.24);
   });
 
   test("returns null when the signal is absent or malformed — never a fake zero", () => {
-    expect(parseIoPressureFullAvg10("")).toBeNull();
-    expect(parseIoPressureFullAvg10("cat: /proc/pressure/io: No such file")).toBeNull();
+    expect(parseIoPressureFullAvg60("")).toBeNull();
+    expect(parseIoPressureFullAvg60("cat: /proc/pressure/io: No such file")).toBeNull();
     // A "some" line alone must not satisfy the "full" gate.
     expect(
-      parseIoPressureFullAvg10("some avg10=75.21 avg60=82.04 avg300=82.69 total=1"),
+      parseIoPressureFullAvg60("some avg10=75.21 avg60=82.04 avg300=82.69 total=1"),
     ).toBeNull();
+    // A "full" line truncated before avg60 has no usable value.
+    expect(parseIoPressureFullAvg60("full avg10=72.89")).toBeNull();
   });
 });
 
@@ -226,6 +241,18 @@ describe("ensureNodeReady IO-pressure gate", () => {
 
     expect(ready).toBe(true);
     expect(repoCalls.updateStatus).toEqual([{ nodeId: "node-ok", status: "healthy" }]);
+  });
+
+  test("accepts a busy-but-working node whose avg10 spikes past 40", async () => {
+    // The regression this guards: gating on avg10 refused THIS node — measured
+    // healthy, provisioning in ~36s — in 2 of 8 consecutive samples.
+    const manager = DockerNodeManager.getInstance();
+    sshMock.exec.mockResolvedValue(probeOutput(HEALTHY_BUSY_PSI));
+
+    const ready = await manager.ensureNodeReady(node("node-busy"));
+
+    expect(ready).toBe(true);
+    expect(repoCalls.updateStatus).toEqual([{ nodeId: "node-busy", status: "healthy" }]);
   });
 
   test("a missing PSI signal never blocks placement", async () => {
