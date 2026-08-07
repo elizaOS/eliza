@@ -65,6 +65,7 @@ import {
   extractAssistantReplyText,
   isLinkedAccountProviderId,
   normalizeCharacterLanguage,
+  readAliasedEnv,
   resolveStreamingUpdate,
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
@@ -1460,7 +1461,8 @@ const NO_PROVIDER_CHAT_MESSAGE =
 const DEFAULT_CHAT_GENERATION_TIMEOUT_MS = 180_000;
 /** Remote Ollama (Pi → VPS) runs multiple model calls per turn; allow more headroom. */
 const REMOTE_CHAT_GENERATION_TIMEOUT_MS = 600_000;
-const CHAT_GENERATION_TIMEOUT_PATTERN = /chat generation timed out after \d+ms/i;
+const CHAT_GENERATION_TIMEOUT_PATTERN =
+  /chat generation timed out after \d+ms/i;
 const NON_EXECUTABLE_FALLBACK_ACTIONS = new Set(["REPLY", "NONE", "IGNORE"]);
 type SyntheticChatFailureKind =
   | ChatFailureKind
@@ -2035,27 +2037,48 @@ function createChatGenerationTimeoutError(timeoutMs: number): Error {
   return new Error(`Chat generation timed out after ${timeoutMs}ms`);
 }
 
-async function withTimeout<T>(
-  promise: Promise<T>,
+/**
+ * Run a generation under a wall-clock deadline, cancelling it on expiry.
+ *
+ * Racing a bare promise against a timer would leave the model call running
+ * after the caller has already been told it failed — it would keep holding a
+ * provider slot and keep emitting `onChunk` into a turn nobody is reading. So
+ * the deadline drives a real `AbortSignal`, chained to any caller-supplied
+ * signal, and `run` receives the options with that signal substituted in.
+ */
+export async function runWithGenerationTimeout<T>(
   timeoutMs: number,
   createError: () => Error,
-  onTimeout?: () => void,
+  opts: ChatGenerateOptions | undefined,
+  run: (opts: ChatGenerateOptions | undefined) => Promise<T>,
 ): Promise<T> {
-  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  const controller = new AbortController();
+  const callerSignal = opts?.abortSignal;
+  const abortFromCaller = () => controller.abort(callerSignal?.reason);
+
+  if (callerSignal?.aborted) {
+    abortFromCaller();
+  } else {
+    callerSignal?.addEventListener("abort", abortFromCaller, { once: true });
+  }
+
+  let timedOut = false;
+  const timeoutHandle = setTimeout(() => {
+    timedOut = true;
+    controller.abort(createError());
+  }, timeoutMs);
+
   try {
-    return await Promise.race([
-      promise,
-      new Promise<T>((_resolve, reject) => {
-        timeoutHandle = setTimeout(() => {
-          onTimeout?.();
-          reject(createError());
-        }, timeoutMs);
-      }),
-    ]);
+    return await run({ ...(opts ?? {}), abortSignal: controller.signal });
+  } catch (err) {
+    // error-policy:J2 the abort surfaces as whatever the generation threw on
+    // cancellation; re-key it to the typed deadline error so `classifyChatFailure`
+    // reports `generation_timeout` rather than a generic provider issue.
+    if (timedOut) throw createError();
+    throw err;
   } finally {
-    if (timeoutHandle) {
-      clearTimeout(timeoutHandle);
-    }
+    clearTimeout(timeoutHandle);
+    callerSignal?.removeEventListener("abort", abortFromCaller);
   }
 }
 
@@ -4049,10 +4072,12 @@ export async function generateChatResponse(
   const timeoutMs = resolveChatGenerationTimeoutMs();
   const existingTimer = getInferenceTimer();
   if (existingTimer) {
-    const result = await withTimeout(
-      generateChatResponseWithTiming(runtime, message, agentName, opts),
+    const result = await runWithGenerationTimeout(
       timeoutMs,
       () => createChatGenerationTimeoutError(timeoutMs),
+      opts,
+      (timedOpts) =>
+        generateChatResponseWithTiming(runtime, message, agentName, timedOpts),
     );
     markInference(INFERENCE_MARKS.responseFinalized);
     return result;
@@ -4065,10 +4090,17 @@ export async function generateChatResponse(
   });
   return runWithInferenceTiming(timer, async () => {
     try {
-      const result = await withTimeout(
-        generateChatResponseWithTiming(runtime, message, agentName, opts),
+      const result = await runWithGenerationTimeout(
         timeoutMs,
         () => createChatGenerationTimeoutError(timeoutMs),
+        opts,
+        (timedOpts) =>
+          generateChatResponseWithTiming(
+            runtime,
+            message,
+            agentName,
+            timedOpts,
+          ),
       );
       markInference(INFERENCE_MARKS.responseFinalized);
       return result;
