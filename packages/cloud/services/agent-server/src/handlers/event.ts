@@ -43,6 +43,32 @@ const JsonObjectSchema: z.ZodType<JsonObject> = z.record(
 );
 export type AgentEventType = "cron" | "notification" | "system";
 
+const CANONICAL_NOTIFICATION_SOURCES = [
+  "email",
+  "gmail",
+  "calendar",
+  "google_calendar",
+] as const;
+
+const CanonicalNotificationProvenanceSchema = z
+  .object({
+    source: z.enum(CANONICAL_NOTIFICATION_SOURCES),
+    accountId: z.string().min(1).max(128),
+    platformRecordId: z.string().min(1).max(256),
+    chat: z
+      .object({
+        id: z.string().min(1).max(128),
+        type: z.enum(["dm", "private", "direct", "group", "channel"]),
+      })
+      .strict(),
+    senderName: z.string().min(1).max(255).optional(),
+  })
+  .strict();
+
+type CanonicalNotificationProvenance = z.infer<
+  typeof CanonicalNotificationProvenanceSchema
+>;
+
 /**
  * Zod schema for the event request body.
  *
@@ -52,15 +78,37 @@ export type AgentEventType = "cron" | "notification" | "system";
  * userId regex allows alphanumeric, underscore, @, period, and hyphen to
  * support email-format userIds while preventing path traversal.
  */
-export const EventBodySchema = z.object({
-  userId: z
-    .string()
-    .min(1)
-    .max(256)
-    .regex(/^[a-zA-Z0-9_@.-]+$/),
-  type: z.enum(["cron", "notification", "system"] as const),
-  payload: JsonObjectSchema,
-});
+export const EventBodySchema = z
+  .object({
+    userId: z
+      .string()
+      .min(1)
+      .max(256)
+      .regex(/^[a-zA-Z0-9_@.-]+$/),
+    type: z.enum(["cron", "notification", "system"] as const),
+    payload: JsonObjectSchema,
+  })
+  .superRefine((event, ctx) => {
+    const envelope = event.payload.canonicalProvenance;
+    if (envelope === undefined) return;
+    if (event.type !== "notification") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["payload", "canonicalProvenance"],
+        message: "canonicalProvenance is only accepted on notification events",
+      });
+      return;
+    }
+    const parsed = CanonicalNotificationProvenanceSchema.safeParse(envelope);
+    if (!parsed.success) {
+      for (const issue of parsed.error.issues) {
+        ctx.addIssue({
+          ...issue,
+          path: ["payload", "canonicalProvenance", ...issue.path],
+        });
+      }
+    }
+  });
 
 /**
  * Dispatch result returned by each per-type handler, merged into the
@@ -152,18 +200,29 @@ async function handleNotificationEvent(
 
   logger.debug("Dispatching notification event", { agentId, userId });
 
+  const provenance = readCanonicalNotificationProvenance(payload);
   const entityId = stringToUuid(userId);
-  const roomId = stringToUuid(`${agentId}:${userId}`);
+  const source = provenance?.source ?? "notification";
+  const roomKey = provenance
+    ? `${agentId}:${provenance.source}:${provenance.accountId}:${provenance.chat.id}`
+    : `${agentId}:${userId}`;
+  const roomId = stringToUuid(roomKey);
   const worldId = stringToUuid(`server:${process.env.SERVER_NAME}`);
+  const channelType =
+    provenance && isGroupNotificationChatType(provenance.chat.type)
+      ? ChannelType.GROUP
+      : ChannelType.DM;
 
   await runtime.ensureConnection({
     entityId,
     roomId,
     worldId,
     userName: userId,
-    source: "notification",
-    channelId: `${agentId}-${userId}`,
-    type: ChannelType.DM,
+    source,
+    channelId: provenance
+      ? `${provenance.source}:${provenance.accountId}:${provenance.chat.id}`
+      : `${agentId}-${userId}`,
+    type: channelType,
   } as Parameters<typeof runtime.ensureConnection>[0]);
 
   const mem = createMessageMemory({
@@ -171,10 +230,17 @@ async function handleNotificationEvent(
     roomId,
     content: {
       text,
-      source: "notification",
-      channelType: ChannelType.DM,
+      source,
+      channelType,
     },
   });
+  if (provenance) {
+    mem.metadata = buildNotificationCanonicalMetadata({
+      provenance,
+      userId,
+      entityId,
+    }) as typeof mem.metadata;
+  }
 
   if (!runtime.messageService) {
     throw new Error("Message service unavailable");
@@ -187,6 +253,54 @@ async function handleNotificationEvent(
   });
 
   return response ? { response } : {};
+}
+
+function readCanonicalNotificationProvenance(
+  payload: JsonObject,
+): CanonicalNotificationProvenance | null {
+  const value = payload.canonicalProvenance;
+  if (value === undefined) return null;
+  return CanonicalNotificationProvenanceSchema.parse(value);
+}
+
+function isGroupNotificationChatType(
+  type: CanonicalNotificationProvenance["chat"]["type"],
+): boolean {
+  return type === "group" || type === "channel";
+}
+
+function buildNotificationCanonicalMetadata(args: {
+  provenance: CanonicalNotificationProvenance;
+  userId: string;
+  entityId: string;
+}): Record<string, unknown> {
+  const { provenance, userId, entityId } = args;
+  const sender = provenance.senderName
+    ? { id: userId, name: provenance.senderName }
+    : { id: userId };
+  return {
+    type: "message",
+    timestamp: Date.now(),
+    scope: "private",
+    provider: provenance.source,
+    accountId: provenance.accountId,
+    platformMessageId: provenance.platformRecordId,
+    sourceId: provenance.platformRecordId,
+    chatType: provenance.chat.type,
+    sender,
+    ...(provenance.senderName
+      ? { entityName: provenance.senderName }
+      : undefined),
+    [provenance.source]: {
+      id: userId,
+      userId,
+      entityId,
+      ...(provenance.senderName ? { name: provenance.senderName } : {}),
+      accountId: provenance.accountId,
+      messageId: provenance.platformRecordId,
+      chatId: provenance.chat.id,
+    },
+  };
 }
 
 /**

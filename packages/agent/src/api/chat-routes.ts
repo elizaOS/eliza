@@ -34,6 +34,7 @@ import {
   isRateLimitError,
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Memory,
+  type MessageMetadata,
   ModelType,
   markInference,
   nextInferenceTurnId,
@@ -2499,6 +2500,37 @@ export function writeSseJson(
 // Persistence helpers
 // ---------------------------------------------------------------------------
 
+function stampAppConversationProvenance(
+  runtime: AgentRuntime,
+  memory: ReturnType<typeof createMessageMemory>,
+): ReturnType<typeof createMessageMemory> {
+  if (!memory.id) {
+    throw new ElizaError("Conversation memory is missing its durable id", {
+      code: "CONVERSATION_MEMORY_ID_MISSING",
+      context: { roomId: memory.roomId },
+    });
+  }
+  const existingMetadata = memory.metadata as MessageMetadata;
+  const metadataRecord = existingMetadata as Record<string, unknown>;
+  const readMetadataString = (key: string): string | undefined => {
+    const value = metadataRecord[key];
+    return typeof value === "string" && value.trim() ? value : undefined;
+  };
+  const provider = readMetadataString("provider") ?? MESSAGE_SOURCE_CLIENT_CHAT;
+  const accountId = readMetadataString("accountId") ?? runtime.agentId;
+  const platformMessageId =
+    readMetadataString("platformMessageId") ?? memory.id;
+  memory.metadata = {
+    ...existingMetadata,
+    type: "message",
+    provider,
+    accountId,
+    platformMessageId,
+    sourceId: readMetadataString("sourceId") ?? platformMessageId,
+  } satisfies MessageMetadata;
+  return memory;
+}
+
 function isDuplicateMemoryError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   const msg = err.message.toLowerCase();
@@ -2513,13 +2545,15 @@ export async function persistConversationMemory(
   runtime: AgentRuntime,
   memory: ReturnType<typeof createMessageMemory>,
 ): Promise<ReturnType<typeof createMessageMemory>> {
+  memory.id ??= crypto.randomUUID() as UUID;
+  const stampedMemory = stampAppConversationProvenance(runtime, memory);
   try {
-    await runtime.createMemory(memory, "messages");
+    await runtime.createMemory(stampedMemory, "messages");
   } catch (err) {
-    if (isDuplicateMemoryError(err)) return memory;
+    if (isDuplicateMemoryError(err)) return stampedMemory;
     throw err;
   }
-  return memory;
+  return stampedMemory;
 }
 
 export async function persistExactConversationMemory(
@@ -2545,10 +2579,11 @@ export async function persistExactConversationMemoryResult(
       },
     );
   }
+  const stampedMemory = stampAppConversationProvenance(runtime, memory);
 
   const loadExisting = async (): Promise<Memory | null> => {
     const [existing] = await runtime.getMemoriesByIds(
-      [memory.id as UUID],
+      [stampedMemory.id as UUID],
       "messages",
     );
     return existing ?? null;
@@ -2557,11 +2592,11 @@ export async function persistExactConversationMemoryResult(
     existing: Memory,
   ): ReturnType<typeof createMessageMemory> => {
     if (
-      existing.id === memory.id &&
-      existing.roomId === memory.roomId &&
-      existing.agentId === memory.agentId &&
-      existing.entityId === memory.entityId &&
-      isDeepStrictEqual(existing.content, memory.content)
+      existing.id === stampedMemory.id &&
+      existing.roomId === stampedMemory.roomId &&
+      existing.agentId === stampedMemory.agentId &&
+      existing.entityId === stampedMemory.entityId &&
+      isDeepStrictEqual(existing.content, stampedMemory.content)
     ) {
       return existing as ReturnType<typeof createMessageMemory>;
     }
@@ -2570,10 +2605,10 @@ export async function persistExactConversationMemoryResult(
       {
         code: "CONVERSATION_MEMORY_ID_CONFLICT",
         context: {
-          memoryId: memory.id,
-          roomId: memory.roomId,
-          agentId: memory.agentId,
-          entityId: memory.entityId,
+          memoryId: stampedMemory.id,
+          roomId: stampedMemory.roomId,
+          agentId: stampedMemory.agentId,
+          entityId: stampedMemory.entityId,
         },
       },
     );
@@ -2583,15 +2618,18 @@ export async function persistExactConversationMemoryResult(
   if (existing) return { created: false, memory: assertExact(existing) };
 
   try {
-    await runtime.createMemory(memory, "messages");
-    return { created: true, memory };
+    await runtime.createMemory(stampedMemory, "messages");
+    return { created: true, memory: stampedMemory };
   } catch (cause) {
     const raced = await loadExisting();
     if (raced) return { created: false, memory: assertExact(raced) };
     throw new ElizaError("Failed to store exact conversation memory", {
       code: "CONVERSATION_MEMORY_WRITE_FAILED",
       cause,
-      context: { memoryId: memory.id, roomId: memory.roomId },
+      context: {
+        memoryId: stampedMemory.id,
+        roomId: stampedMemory.roomId,
+      },
     });
   }
 }

@@ -11,7 +11,6 @@
  * in features/messaging/triage.
  */
 
-import { buildAccessContext } from "../../../access-context.ts";
 import { searchCanonicalConversationMemories } from "../../../access-control/provenance-envelope.ts";
 import { getConnectorAccountManager } from "../../../connectors/account-manager.ts";
 import { findEntityByName } from "../../../entities.ts";
@@ -3012,34 +3011,12 @@ async function handleSearch(
 			);
 		}
 
-		let requester: Awaited<ReturnType<typeof buildAccessContext>>;
-		try {
-			requester = await buildAccessContext(runtime, message);
-		} catch (error) {
-			// error-policy:J4 Access lookup fails closed to requester-only scope.
-			// Role/world lookup failure degrades to requester-only access, which
-			// denies elevated scopes instead of widening recall.
-			logger.warn(
-				`[MESSAGE/search] access context resolution failed: ${error instanceof Error ? error.message : String(error)}`,
-			);
-			runtime.reportError("MESSAGE.searchAccessContext", error, {
-				entityId: message.entityId,
-			});
-			requester = {
-				requesterEntityId: message.entityId,
-				source:
-					typeof message.content.source === "string"
-						? message.content.source
-						: undefined,
-			};
-		}
 		const recall = await searchCanonicalConversationMemories({
 			runtime,
 			embedding,
 			query,
 			agentId: runtime.agentId,
-			requester,
-			destinationRoomId: message.roomId,
+			deliveryMessage: message,
 			count: limit + 10,
 			matchThreshold: SEARCH_MATCH_THRESHOLD,
 			...(entityId ? { entityId: entityId as UUID } : {}),
