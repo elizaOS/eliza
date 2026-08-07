@@ -3,6 +3,8 @@
  * a turn (retries, multi-step, streaming, continue-after-actions) and the result
  * shapes the message service returns. Consumed by the runtime message handler.
  */
+
+import type { RoomHandlerLease } from "../runtime/room-handler-queue";
 import type {
 	ActionResult,
 	AgentContext,
@@ -34,6 +36,11 @@ export interface MessageProcessingOptions {
 	continueAfterActions?: boolean;
 	/** Signal to abort message processing */
 	abortSignal?: AbortSignal;
+	/**
+	 * Exact room ownership held by a host whose persistence boundary outlives
+	 * this service invocation. Required when async-local context is unavailable.
+	 */
+	roomHandlerLease?: RoomHandlerLease;
 	/**
 	 * Receives each action result as soon as its handler boundary settles. Hosts
 	 * use this to retain committed-effect knowledge if later turn work aborts.

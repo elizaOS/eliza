@@ -27,6 +27,7 @@ import {
   ChannelType,
   type Content,
   createMessageMemory,
+  createUniqueUuid,
   ElizaError,
   logger,
   MESSAGE_SOURCE_AGENT_GREETING,
@@ -901,12 +902,26 @@ async function resolvePersistedAssistantTurn(
       typeof generatedTurn.content.text === "string"
         ? generatedTurn.content.text
         : "";
-    if (generatedText !== text) {
+    const persistedContent = buildPersistedAssistantContent(
+      text,
+      result,
+      userMessageId,
+    );
+    if (
+      generatedText !== text ||
+      (userMessageId !== undefined &&
+        generatedTurn.content.inReplyTo !== userMessageId)
+    ) {
       try {
-        await runtime.updateMemory({
-          ...generatedTurn,
-          content: buildPersistedAssistantContent(text, result, userMessageId),
-        });
+        await runtime.roomHandlerQueue.runInLease(
+          roomId,
+          roomHandlerLease,
+          () =>
+            runtime.updateMemory({
+              ...generatedTurn,
+              content: persistedContent,
+            }),
+        );
       } catch (cause) {
         throw new AssistantReplyPersistenceError(
           "Failed to reconcile the persisted assistant reply",
@@ -1212,9 +1227,10 @@ export function buildPersistedAssistantContent(
   delete persistedResponseMessageContent.transcriptVisibility;
   delete persistedResponseContent.transcriptVisibility;
   const inReplyTo =
+    userMessageId ??
     persistedResponseContent.inReplyTo ??
     persistedResponseMessageContent.inReplyTo ??
-    userMessageId;
+    undefined;
 
   return responseContent || responseMessageContent
     ? {
@@ -1255,6 +1271,23 @@ type DurableConversationChatRecovery =
 
 const INCOMPLETE_CHAT_RECOVERY_TEXT =
   "The previous attempt ended before its final response was saved. It was not run again; send a new message if you want to retry.";
+const MAX_DURABLE_CHAT_OUTCOME_BYTES = 256 * 1024;
+const DURABLE_CHAT_OUTCOME_KEYS = new Set([
+  "text",
+  "agentName",
+  "messageId",
+  "userMessageId",
+  "assistantEphemeral",
+  "historyRefreshRequired",
+  "transcriptVisibility",
+  "thought",
+  "usage",
+  "actionResults",
+  "failureKind",
+  "accountConnect",
+  "localInference",
+  "noResponseReason",
+]);
 
 function isChannelType(value: unknown): value is ChannelType {
   return (
@@ -1317,6 +1350,12 @@ function isDurableChatActionResult(value: unknown): boolean {
 function parseDurableConversationChatOutcome(
   serialized: string,
 ): ChatMessageIdOutcome | null {
+  if (
+    serialized.length === 0 ||
+    Buffer.byteLength(serialized, "utf8") > MAX_DURABLE_CHAT_OUTCOME_BYTES
+  ) {
+    return null;
+  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(serialized);
@@ -1328,6 +1367,9 @@ function parseDurableConversationChatOutcome(
     return null;
   }
   const outcome = parsed as Record<string, unknown>;
+  if (Object.keys(outcome).some((key) => !DURABLE_CHAT_OUTCOME_KEYS.has(key))) {
+    return null;
+  }
   if (
     typeof outcome.text !== "string" ||
     typeof outcome.agentName !== "string"
@@ -1364,7 +1406,56 @@ function parseDurableConversationChatOutcome(
   ) {
     return null;
   }
-  return parsed as ChatMessageIdOutcome;
+  const accountConnect =
+    outcome.accountConnect === undefined
+      ? undefined
+      : normalizeAccountConnectRequest(outcome.accountConnect);
+  return {
+    text: outcome.text,
+    agentName: outcome.agentName,
+    ...(typeof outcome.messageId === "string"
+      ? { messageId: outcome.messageId as UUID }
+      : {}),
+    ...(typeof outcome.userMessageId === "string"
+      ? { userMessageId: outcome.userMessageId as UUID }
+      : {}),
+    ...(typeof outcome.assistantEphemeral === "boolean"
+      ? { assistantEphemeral: outcome.assistantEphemeral }
+      : {}),
+    ...(typeof outcome.historyRefreshRequired === "boolean"
+      ? { historyRefreshRequired: outcome.historyRefreshRequired }
+      : {}),
+    ...(outcome.transcriptVisibility === "internal"
+      ? { transcriptVisibility: "internal" as const }
+      : {}),
+    ...(typeof outcome.thought === "string"
+      ? { thought: outcome.thought }
+      : {}),
+    ...(outcome.usage !== undefined
+      ? { usage: outcome.usage as NonNullable<ChatMessageIdOutcome["usage"]> }
+      : {}),
+    ...(outcome.actionResults !== undefined
+      ? {
+          actionResults: outcome.actionResults as NonNullable<
+            ChatMessageIdOutcome["actionResults"]
+          >,
+        }
+      : {}),
+    ...(typeof outcome.failureKind === "string"
+      ? { failureKind: outcome.failureKind as ChatFailureKind }
+      : {}),
+    ...(accountConnect ? { accountConnect } : {}),
+    ...(outcome.localInference !== undefined
+      ? {
+          localInference: outcome.localInference as NonNullable<
+            ChatMessageIdOutcome["localInference"]
+          >,
+        }
+      : {}),
+    ...(outcome.noResponseReason === "ignored"
+      ? { noResponseReason: "ignored" as const }
+      : {}),
+  };
 }
 
 function readDurableConversationChatMarker(
@@ -1521,7 +1612,7 @@ async function recoverDurableConversationChatOutcome(
       ),
     };
   }
-  if (marker.outcomeJson) {
+  if (marker.outcomeJson !== undefined) {
     const outcome = parseDurableConversationChatOutcome(marker.outcomeJson);
     if (!outcome) {
       return {
@@ -1543,13 +1634,15 @@ async function recoverDurableConversationChatOutcome(
     orderBy: "createdAt",
     orderDirection: "asc",
   });
+  const transformedUserMessageId = createUniqueUuid(runtime, userMessageId);
   const assistant = memories
     .filter(
       (memory): memory is Memory & { id: UUID } =>
         typeof memory.id === "string" &&
         memory.entityId === runtime.agentId &&
         memory.agentId === runtime.agentId &&
-        memory.content.inReplyTo === userMessageId,
+        (memory.content.inReplyTo === userMessageId ||
+          memory.content.inReplyTo === transformedUserMessageId),
     )
     .at(-1);
   if (!assistant) {
@@ -1607,6 +1700,21 @@ async function recoverDurableConversationChatOutcome(
       roomHandlerLease,
     );
     return { kind: "settled", outcome };
+  }
+  if (assistant.content.inReplyTo !== userMessageId) {
+    await runtime.roomHandlerQueue.runInLease(roomId, roomHandlerLease, () =>
+      runtime.updateMemory({
+        ...assistant,
+        content: {
+          ...assistant.content,
+          inReplyTo: userMessageId,
+        },
+      }),
+    );
+    assistant.content = {
+      ...assistant.content,
+      inReplyTo: userMessageId,
+    };
   }
   const outcome = buildRecoveredConversationChatOutcome(
     assistant,
@@ -1797,9 +1905,9 @@ function writeConversationDoneSse(
 ): void {
   const { text, ...terminalMetadata } = outcome;
   writeSseJson(res, {
+    ...terminalMetadata,
     type: "done",
     fullText: text,
-    ...terminalMetadata,
   });
 }
 
@@ -2185,28 +2293,9 @@ type ConversationRouteMessageRecord = {
   accountConnect?: AccountConnectRequest;
 };
 
-// Serializes concurrent greeting ensures per conversation. The body is a
-// read-check-then-write (getMemories scan → persistConversationMemory) with no
-// room-level uniqueness on (room, source): each persist mints a fresh UUID so
-// isDuplicateMemoryError never fires. Two overlapping callers — the
-// bootstrapGreeting create racing a superseding hydration's POST /greeting, the
-// new-chat fallback racing the empty-thread auto-greet, or two sessions
-// hydrating the same fresh conversation — both read an empty room and both
-// persist an identical deterministic greeting, minting the duplicate
-// "Hey, I'm <agent>" row (which also leaks into model context via getMemories).
-// Coalescing on one in-flight promise per conversation makes the second caller
-// observe the first's committed row instead of re-racing it. Sequential
-// create-then-fetch is unaffected: the entry is deleted before any later call.
-const greetingEnsureInFlight = new Map<
-  string,
-  Promise<{
-    text: string;
-    agentName: string;
-    generated: boolean;
-    persisted: boolean;
-  }>
->();
-
+// Greeting lookup and persistence share the room's history-writer boundary.
+// This keeps concurrent hydration/create callers behind the same committed row
+// without publishing a separate single-flight promise that can invert ownership.
 async function ensureConversationGreetingStored(
   state: ConversationRouteState,
   conv: ConversationMeta,
@@ -2218,20 +2307,26 @@ async function ensureConversationGreetingStored(
   generated: boolean;
   persisted: boolean;
 }> {
-  const inFlight = greetingEnsureInFlight.get(conv.id);
-  if (inFlight) return inFlight;
-  const run = ensureConversationGreetingStoredUnlocked(
-    state,
-    conv,
-    lang,
-    roomHandlerLease,
-  );
-  greetingEnsureInFlight.set(conv.id, run);
-  try {
-    return await run;
-  } finally {
-    greetingEnsureInFlight.delete(conv.id);
+  const runtime = state.runtime;
+  if (!runtime) {
+    return ensureConversationGreetingStoredUnlocked(state, conv, lang);
   }
+  if (roomHandlerLease) {
+    return runtime.roomHandlerQueue.runInLease(
+      conv.roomId,
+      roomHandlerLease,
+      () =>
+        ensureConversationGreetingStoredUnlocked(
+          state,
+          conv,
+          lang,
+          roomHandlerLease,
+        ),
+    );
+  }
+  return runtime.roomHandlerQueue.withLease(conv.roomId, (lease) =>
+    ensureConversationGreetingStoredUnlocked(state, conv, lang, lease),
+  );
 }
 
 async function ensureConversationGreetingStoredUnlocked(
