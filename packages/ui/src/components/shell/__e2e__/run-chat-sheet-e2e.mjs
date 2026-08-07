@@ -142,7 +142,7 @@ const threadScrollState = (p) =>
       bottomDelta: maxScrollTop - el.scrollTop,
     };
   });
-async function waitForSheetHeightNear(p, expected, tolerance, timeout = 1500) {
+async function waitForSheetHeightNear(p, expected, tolerance, timeout = 5000) {
   await p
     .waitForFunction(
       ({ expected, tolerance }) => {
@@ -510,14 +510,27 @@ async function maximizeByPull(p, pointer = "mouse") {
   await p.waitForTimeout(SETTLE);
 }
 
-async function openToFullDetent(p, pointer, label = "open to FULL") {
+async function openToFullDetent(
+  p,
+  pointer,
+  expectedHeight,
+  label = "open to FULL",
+) {
   await gesture(p, 160, { pointer, slow: false, steps: 1 });
   await p.waitForTimeout(SETTLE);
   if ((await detent(p)) !== "full") {
     await gesture(p, 220, { pointer, slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
   }
-  assert((await detent(p)) === "full", `[${pointer}] ${label}`);
+  // The state commits before the spring reaches its rendered target. Video
+  // capture can starve animation frames on CI, so geometry—not elapsed wall
+  // time—is the boundary that makes the following drag independent.
+  await waitForSheetHeightNear(p, expectedHeight, 36);
+  const renderedHeight = Math.round(await sheetHeight(p));
+  assert(
+    (await detent(p)) === "full" && near(renderedHeight, expectedHeight, 36),
+    `[${pointer}] ${label} (height ${renderedHeight}px ≈ ${expectedHeight}px)`,
+  );
 }
 
 // `keyboardTouch`: after a big BEYOND-full over-pull the full-bleed panel on the
@@ -712,7 +725,12 @@ async function runDragSuite(p, pointer, tag) {
   // free-rest assertion so it only tests the open-sheet grabber.
   await p.keyboard.press("Escape");
   await p.waitForTimeout(SETTLE);
-  await openToFullDetent(p, pointer, "free-rest reset reaches FULL");
+  await openToFullDetent(
+    p,
+    pointer,
+    fullH,
+    "free-rest reset reaches FULL",
+  );
   const startFree = Math.round(await sheetHeight(p));
   await gesture(p, -240, { pointer, slow: true, steps: 24 });
   await p.waitForTimeout(SETTLE);
