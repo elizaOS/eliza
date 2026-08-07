@@ -41,25 +41,23 @@ export const currentViewProvider: Provider = {
 		try {
 			// Security-unwrapped user words — never raw (possibly enveloped) text.
 			const text = userRequestMessageText(message);
-			// The early shortcut will force VIEWS for this exact phrase. Until that
-			// action completes, the renderer still reports the previous view, so the
-			// requested target must be the authoritative state for this turn.
+			// An explicit target is authoritative before the planner applies it. Do
+			// not wait on the renderer here: its current value cannot change that
+			// decision and may sit behind a native bridge or remote shell boundary.
 			const intentTargetId = resolveIntentView(text);
-
-			const current = await createViewsClient().getCurrentView();
-
-			if (intentTargetId && intentTargetId !== current?.viewId) {
+			if (intentTargetId) {
 				const label = humanizeViewId(intentTargetId);
 				return {
-					text: `Requested view target: ${label} (id: ${intentTargetId}). The renderer${current ? ` is still on ${current.viewLabel} (id: ${current.viewId}) until navigation completes` : " has no active view yet"}. The requested target is authoritative for this turn.`,
+					text: `Requested view target: ${label} (id: ${intentTargetId}). Navigation has not completed yet. The requested target is authoritative for this turn.`,
 					values: {
-						currentViewId: current?.viewId,
 						switchingToViewId: intentTargetId,
 						viewSwitchPending: true,
 					},
-					data: { currentView: current, switchingTo: intentTargetId },
+					data: { switchingTo: intentTargetId },
 				};
 			}
+
+			const current = await createViewsClient().getCurrentView();
 
 			if (!current) return EMPTY;
 
