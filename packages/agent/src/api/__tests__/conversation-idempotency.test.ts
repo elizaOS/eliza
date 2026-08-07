@@ -35,6 +35,7 @@ import type {
 import {
   executePlannedToolCall,
   logger,
+  RoomHandlerQueue,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -206,6 +207,7 @@ function createHarness(): TestHarness {
     getRoom: vi.fn(async () => null),
     getParticipantsForRoom: vi.fn(async () => [USER_ID, AGENT_ID]),
     reportError: vi.fn(),
+    roomHandlerQueue: new RoomHandlerQueue(),
     adapter: {} as never,
   } satisfies Partial<AgentRuntime> & Record<string, unknown>;
 
@@ -466,10 +468,16 @@ describe("conversation-route chat idempotency wiring", () => {
       text: "turn b",
       clientMessageId: "interleaved-b",
     });
-    await vi.waitFor(() => expect(handleMessage).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() =>
+      expect(
+        (state.runtime as AgentRuntime).roomHandlerQueue.pendingFor(ROOM_ID),
+      ).toBe(2),
+    );
+    expect(handleMessage).toHaveBeenCalledTimes(1);
 
     releaseA?.();
     const first = await turnA;
+    await vi.waitFor(() => expect(handleMessage).toHaveBeenCalledTimes(2));
     releaseB?.();
     const second = await turnB;
     const firstDone = parseDataFrames(first.record).find(
@@ -1064,14 +1072,21 @@ describe("conversation-route chat idempotency wiring", () => {
       clientMessageId: "interleaved-failed-a",
     });
     await vi.waitFor(() => expect(handleMessage).toHaveBeenCalledTimes(1));
-    const successfulTurn = await runRoute("POST", STREAM_PATH, state, {
+    const successfulTurn = runRoute("POST", STREAM_PATH, state, {
       text: "turn b succeeds",
       clientMessageId: "interleaved-success-b",
     });
+    await vi.waitFor(() =>
+      expect(
+        (state.runtime as AgentRuntime).roomHandlerQueue.pendingFor(ROOM_ID),
+      ).toBe(2),
+    );
+    expect(handleMessage).toHaveBeenCalledTimes(1);
     releaseFailedTurn?.();
     const failedResult = await failedTurn;
+    const successfulResult = await successfulTurn;
 
-    const successfulDone = parseDataFrames(successfulTurn.record).find(
+    const successfulDone = parseDataFrames(successfulResult.record).find(
       (frame) => frame.type === "done",
     );
     const failedDone = parseDataFrames(failedResult.record).find(

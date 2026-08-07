@@ -33,6 +33,7 @@ import {
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Memory,
   type RolesWorldMetadata,
+  type RoomHandlerLease,
   recordOwnerGrant,
   recordRoleGrant,
   shouldSkipResponseMemoryPersistence,
@@ -2965,142 +2966,652 @@ export async function handleConversationRoutes(
       runtime,
     );
     const userId = caller.entityId;
-    const turnStartedAt = Date.now();
-
-    let userMessages: Awaited<ReturnType<typeof buildUserMessages>>;
+    let runtimeTurnLease: RoomHandlerLease;
     try {
-      const pendantProvenance = await verifyCanonicalPendantProvenance(
-        runtime,
-        caller,
-        prompt,
-        chatMetadata,
-      );
-      userMessages = await buildUserMessages({
-        images,
-        prompt,
-        userId,
-        agentId: runtime.agentId,
-        roomId: conv.roomId,
-        channelType,
-        messageSource: pendantProvenance ? "pendant" : source,
-        metadata: chatMetadata,
-      });
-      if (pendantProvenance) {
-        stampCanonicalPendantMemory(userMessages, pendantProvenance);
-      }
-    } catch (err) {
-      return failStream(
-        `Failed to prepare user message: ${getErrorMessage(err)}`,
-      );
-    }
-    bindClientUserMemoryId(conv.roomId, clientMessageId ?? null, userMessages);
-    const { userMessage, messageToStore } = userMessages;
-
-    const connectionDescriptor = captureConversationConnection(
-      state,
-      runtime,
-      conv,
-      caller,
-    );
-    try {
-      await scheduleConversationConnectionEnsure(connectionDescriptor, () =>
-        establishConversationConnection(connectionDescriptor),
-      );
-      assertConversationConnectionRuntime(state.runtime, connectionDescriptor);
-      await attestAuthenticatedApiDeliveryAudience(
-        runtime,
-        userMessage,
-        trustedApiPrincipal,
+      runtimeTurnLease = await runtime.roomHandlerQueue.acquire(
+        conv.roomId,
+        disconnectTracker.signal,
       );
     } catch (err) {
       releaseChatMessageId(conv.roomId, clientMessageId ?? null);
-      return failStream(
-        `Failed to initialize conversation room: ${getErrorMessage(err)}`,
-      );
-    }
-    try {
-      assertConversationConnectionRuntime(state.runtime, connectionDescriptor);
-      await persistClientUserMemory(
-        runtime,
-        messageToStore,
-        clientMessageId ?? null,
-      );
-      assertConversationConnectionRuntime(state.runtime, connectionDescriptor);
-    } catch (err) {
-      if (isConversationConnectionError(err)) {
-        releaseChatMessageId(conv.roomId, clientMessageId ?? null);
-        return failStream(
-          `Failed to refresh conversation room: ${getErrorMessage(err)}`,
-        );
+      if (disconnectTracker.isAborted()) {
+        clearInterval(heartbeatInterval);
+        finishStreamResponse();
+        return true;
       }
       return failStream(
-        `Failed to store user message: ${getErrorMessage(err)}`,
+        `Failed to serialize conversation turn: ${getErrorMessage(err)}`,
       );
     }
 
-    const routedUserMessage = withViewInteractionClient(userMessage, req);
+    try {
+      let userMessages: Awaited<ReturnType<typeof buildUserMessages>>;
+      try {
+        const pendantProvenance = await verifyCanonicalPendantProvenance(
+          runtime,
+          caller,
+          prompt,
+          chatMetadata,
+        );
+        userMessages = await buildUserMessages({
+          images,
+          prompt,
+          userId,
+          agentId: runtime.agentId,
+          roomId: conv.roomId,
+          channelType,
+          messageSource: pendantProvenance ? "pendant" : source,
+          metadata: chatMetadata,
+        });
+        if (pendantProvenance) {
+          stampCanonicalPendantMemory(userMessages, pendantProvenance);
+        }
+      } catch (err) {
+        const handled = failStream(
+          `Failed to prepare user message: ${getErrorMessage(err)}`,
+        );
+        return handled;
+      }
+      bindClientUserMemoryId(
+        conv.roomId,
+        clientMessageId ?? null,
+        userMessages,
+      );
+      const { userMessage, messageToStore } = userMessages;
 
-    const walletModeGuidance = resolveWalletModeGuidanceReply(state, prompt);
-    if (walletModeGuidance) {
-      const endActiveChatTurn = beginActiveChatTurn(state);
+      const connectionDescriptor = captureConversationConnection(
+        state,
+        runtime,
+        conv,
+        caller,
+      );
+      try {
+        await scheduleConversationConnectionEnsure(connectionDescriptor, () =>
+          establishConversationConnection(connectionDescriptor),
+        );
+        assertConversationConnectionRuntime(
+          state.runtime,
+          connectionDescriptor,
+        );
+        await attestAuthenticatedApiDeliveryAudience(
+          runtime,
+          userMessage,
+          trustedApiPrincipal,
+        );
+      } catch (err) {
+        releaseChatMessageId(conv.roomId, clientMessageId ?? null);
+        const handled = failStream(
+          `Failed to initialize conversation room: ${getErrorMessage(err)}`,
+        );
+        return handled;
+      }
+
+      const routedUserMessage = withViewInteractionClient(userMessage, req);
+      const walletModeGuidance = resolveWalletModeGuidanceReply(state, prompt);
+      const turnStartedAt = Date.now();
       try {
         assertConversationConnectionRuntime(
           state.runtime,
           connectionDescriptor,
         );
-        if (!disconnectTracker.isAborted()) {
-          tokenWriter.writeSnapshot(res, walletModeGuidance);
-          try {
-            assertConversationConnectionRuntime(
-              state.runtime,
-              connectionDescriptor,
-            );
-            const routeOwnedId = crypto.randomUUID() as UUID;
-            const persisted = await persistAssistantConversationMemory(
-              runtime,
-              conv.roomId,
-              walletModeGuidance,
-              channelType,
-              turnStartedAt,
-              routeOwnedId,
-            );
-            assertConversationConnectionRuntime(
-              state.runtime,
-              connectionDescriptor,
-            );
-            conv.updatedAt = new Date().toISOString();
-            const outcome: ChatMessageIdOutcome = {
-              text: walletModeGuidance,
-              agentName: state.agentName,
-              ...(persisted?.id ? { messageId: persisted.id } : {}),
-              userMessageId: messageToStore.id,
-            };
-            setChatMessageIdOutcome(
-              conv.roomId,
-              clientMessageId ?? null,
-              outcome,
-            );
-            writeConversationDoneSse(res, outcome);
-          } catch (persistErr) {
+        await persistClientUserMemory(
+          runtime,
+          messageToStore,
+          clientMessageId ?? null,
+        );
+        assertConversationConnectionRuntime(
+          state.runtime,
+          connectionDescriptor,
+        );
+      } catch (err) {
+        const connectionFailed = isConversationConnectionError(err);
+        if (connectionFailed) {
+          releaseChatMessageId(conv.roomId, clientMessageId ?? null);
+        }
+        const handled = failStream(
+          `${connectionFailed ? "Failed to refresh conversation room" : "Failed to store user message"}: ${getErrorMessage(err)}`,
+        );
+        return handled;
+      }
+
+      if (walletModeGuidance) {
+        const endActiveChatTurn = beginActiveChatTurn(state);
+        try {
+          assertConversationConnectionRuntime(
+            state.runtime,
+            connectionDescriptor,
+          );
+          if (!disconnectTracker.isAborted()) {
+            tokenWriter.writeSnapshot(res, walletModeGuidance);
+            try {
+              assertConversationConnectionRuntime(
+                state.runtime,
+                connectionDescriptor,
+              );
+              const routeOwnedId = crypto.randomUUID() as UUID;
+              const persisted = await persistAssistantConversationMemory(
+                runtime,
+                conv.roomId,
+                walletModeGuidance,
+                channelType,
+                turnStartedAt,
+                routeOwnedId,
+              );
+              assertConversationConnectionRuntime(
+                state.runtime,
+                connectionDescriptor,
+              );
+              conv.updatedAt = new Date().toISOString();
+              const outcome: ChatMessageIdOutcome = {
+                text: walletModeGuidance,
+                agentName: state.agentName,
+                ...(persisted?.id ? { messageId: persisted.id } : {}),
+                userMessageId: messageToStore.id,
+              };
+              setChatMessageIdOutcome(
+                conv.roomId,
+                clientMessageId ?? null,
+                outcome,
+              );
+              writeConversationDoneSse(res, outcome);
+            } catch (persistErr) {
+              releaseChatMessageId(conv.roomId, clientMessageId ?? null);
+              writeSse(res, {
+                type: "error",
+                message: getErrorMessage(persistErr),
+              });
+              return true;
+            }
+          }
+        } catch (err) {
+          if (isConversationConnectionError(err)) {
             releaseChatMessageId(conv.roomId, clientMessageId ?? null);
+          }
+          if (!disconnectTracker.isAborted()) {
             writeSse(res, {
               type: "error",
-              message: getErrorMessage(persistErr),
+              message: isConversationConnectionError(err)
+                ? `Failed to refresh conversation room: ${getErrorMessage(err)}`
+                : getErrorMessage(err),
             });
-            return true;
+          }
+        } finally {
+          if (
+            clientMessageId &&
+            !getChatMessageIdOutcome(conv.roomId, clientMessageId)
+          ) {
+            releaseChatMessageId(conv.roomId, clientMessageId);
+          }
+          clearInterval(heartbeatInterval);
+          finishStreamResponse();
+          endActiveChatTurn();
+        }
+        return true;
+      }
+
+      // ── Local runtime path (streaming) ───────────────────────
+
+      const endActiveChatTurn = beginActiveChatTurn(state);
+
+      let streamedText = "";
+      // The route already wrote a `thinking` status when the SSE channel opened;
+      // collapse the identical opening status generateChatResponse re-emits so
+      // the wire carries each phase transition once. Distinct consecutive phases
+      // (thinking → running_action → thinking) still pass through.
+      let lastStatusSignature = "thinking::";
+      let generationResult: ChatGenerationResult | null = null;
+      try {
+        const result = await generateChatResponse(
+          runtime,
+          routedUserMessage,
+          state.agentName,
+          {
+            abortSignal: disconnectTracker.signal,
+            onStatus: (status) => {
+              if (
+                disconnectTracker.isAborted() ||
+                disconnectTracker.checkConnectionClosed()
+              ) {
+                return;
+              }
+              // Array.join renders absent optional fields as empty segments, so
+              // the dedup key is stable without nullish-coalescing each field.
+              const signature = [
+                status.kind,
+                status.actionName,
+                status.toolName,
+              ].join(":");
+              if (signature === lastStatusSignature) {
+                return;
+              }
+              lastStatusSignature = signature;
+              writeChatStatusSse(res, status);
+            },
+            onToolEvent: (event) => {
+              if (
+                disconnectTracker.isAborted() ||
+                disconnectTracker.checkConnectionClosed()
+              ) {
+                return;
+              }
+              writeChatToolSse(res, event);
+            },
+            onChunk: (chunk) => {
+              if (!chunk) return;
+              if (
+                disconnectTracker.isAborted() ||
+                disconnectTracker.checkConnectionClosed()
+              ) {
+                return;
+              }
+              streamedText += chunk;
+              tokenWriter.writeChunk(res, chunk, streamedText);
+            },
+            onSnapshot: (text) => {
+              if (!text) return;
+              if (
+                disconnectTracker.isAborted() ||
+                disconnectTracker.checkConnectionClosed()
+              ) {
+                return;
+              }
+              // Action callbacks may be the first visible source for a turn. An
+              // authoritative snapshot therefore has to be able to establish the
+              // stream, not merely revise text emitted by a model-token source.
+              // Structured field extractors can briefly normalize whitespace or
+              // closing punctuation while the same visible field is still
+              // streaming. Do not shrink the user-visible token stream for
+              // prefix-equivalent snapshots; later longer snapshots/deltas still
+              // advance normally.
+              if (
+                text.length < streamedText.length &&
+                streamedText.startsWith(text)
+              ) {
+                return;
+              }
+              streamedText = text;
+              tokenWriter.writeSnapshot(res, streamedText);
+            },
+            resolveNoResponseText: () =>
+              resolveNoResponseFallback(state.logBuffer, runtime),
+            preferredLanguage,
+          },
+        );
+        generationResult = result;
+        assertConversationConnectionRuntime(
+          state.runtime,
+          connectionDescriptor,
+        );
+
+        conv.updatedAt = new Date().toISOString();
+        if (result.noResponseReason !== "ignored") {
+          const resolvedText = normalizeChatResponseText(
+            result.text,
+            state.logBuffer,
+            runtime,
+          );
+          if (
+            !disconnectTracker.isAborted() &&
+            !streamedText &&
+            resolvedText &&
+            result.transcriptVisibility !== "internal"
+          ) {
+            for (const chunk of chunkVisibleTextForSse(resolvedText)) {
+              if (disconnectTracker.isAborted()) break;
+              streamedText += chunk;
+              tokenWriter.writeChunk(res, chunk, streamedText);
+            }
+          }
+          const visibleResolvedText =
+            result.transcriptVisibility === "internal" ? "" : resolvedText;
+          assertConversationConnectionRuntime(
+            state.runtime,
+            connectionDescriptor,
+          );
+          // Durable completion belongs to the turn, not to the transport. A
+          // disconnected client can retry the same key and receive this exact
+          // committed outcome without executing or billing another model turn.
+          const persistedAssistant = await resolvePersistedAssistantTurn(
+            runtime,
+            conv.roomId,
+            turnStartedAt,
+            result,
+            resolvedText,
+            channelType,
+          );
+          assertConversationConnectionRuntime(
+            state.runtime,
+            connectionDescriptor,
+          );
+          const persistedAssistantId =
+            persistedAssistant.kind === "durable"
+              ? persistedAssistant.id
+              : undefined;
+          if (result.actionCallbackHistory?.length && persistedAssistantId) {
+            await persistRecentAssistantActionCallbackHistory(
+              runtime,
+              conv.roomId,
+              result.actionCallbackHistory,
+              turnStartedAt,
+              persistedAssistantId,
+            );
+          }
+          assertConversationConnectionRuntime(
+            state.runtime,
+            connectionDescriptor,
+          );
+          const outcome = buildGenerationMessageIdOutcome(
+            result,
+            visibleResolvedText,
+            persistedAssistantId,
+            {
+              userMessageId: messageToStore.id,
+              ...(persistedAssistant.kind === "ephemeral"
+                ? { assistantEphemeral: true }
+                : {}),
+              ...(result.usedActionCallbacks
+                ? { historyRefreshRequired: true }
+                : {}),
+            },
+          );
+          setChatMessageIdOutcome(
+            conv.roomId,
+            clientMessageId ?? null,
+            outcome,
+          );
+          assertConversationConnectionRuntime(
+            state.runtime,
+            connectionDescriptor,
+          );
+          if (!disconnectTracker.isAborted()) {
+            writeConversationDoneSse(res, outcome);
+          }
+        } else {
+          assertConversationConnectionRuntime(
+            state.runtime,
+            connectionDescriptor,
+          );
+          const outcome = buildGenerationMessageIdOutcome(
+            result,
+            "",
+            undefined,
+            {
+              userMessageId: messageToStore.id,
+              assistantEphemeral: true,
+            },
+          );
+          setChatMessageIdOutcome(
+            conv.roomId,
+            clientMessageId ?? null,
+            outcome,
+          );
+          if (!disconnectTracker.isAborted()) {
+            writeConversationDoneSse(res, outcome);
           }
         }
       } catch (err) {
-        if (isConversationConnectionError(err)) {
-          releaseChatMessageId(conv.roomId, clientMessageId ?? null);
+        let terminalError = err;
+        try {
+          assertConversationConnectionRuntime(
+            state.runtime,
+            connectionDescriptor,
+          );
+        } catch (runtimeError) {
+          terminalError = runtimeError;
         }
-        if (!disconnectTracker.isAborted()) {
-          writeSse(res, {
-            type: "error",
-            message: isConversationConnectionError(err)
-              ? `Failed to refresh conversation room: ${getErrorMessage(err)}`
-              : getErrorMessage(err),
-          });
+
+        if (isConversationConnectionError(terminalError)) {
+          logger.warn(
+            {
+              err: getErrorMessage(terminalError),
+              conversationId: conv.id,
+              roomId: conv.roomId,
+            },
+            "[ConversationStream] connection prerequisite failed",
+          );
+          releaseChatMessageId(conv.roomId, clientMessageId ?? null);
+          if (!disconnectTracker.isAborted()) {
+            writeSse(res, {
+              type: "error",
+              message: `Failed to refresh conversation room: ${getErrorMessage(terminalError)}`,
+            });
+          }
+        } else if (isTurnAbortError(terminalError)) {
+          logger.info(
+            { conversationId: conv.id, roomId: conv.roomId },
+            "[ConversationStream] generation aborted",
+          );
+          if (!getChatMessageIdOutcome(conv.roomId, clientMessageId ?? null)) {
+            releaseChatMessageId(conv.roomId, clientMessageId ?? null);
+          }
+        } else if (
+          isCallbackHistoryPersistenceError(terminalError) ||
+          terminalError instanceof AssistantReplyPersistenceError
+        ) {
+          releaseChatMessageId(conv.roomId, clientMessageId ?? null);
+          if (!disconnectTracker.isAborted()) {
+            writeSse(res, {
+              type: "error",
+              message: getErrorMessage(
+                terminalError instanceof AssistantReplyPersistenceError
+                  ? (terminalError.cause ?? terminalError)
+                  : terminalError,
+              ),
+            });
+          }
+        } else if (!disconnectTracker.isAborted()) {
+          // If text was already streamed to the client (e.g. the initial
+          // response succeeded but planner follow-up failed), use the
+          // streamed text as the final reply instead of replacing it with a
+          // generic fallback.
+          if (streamedText) {
+            logger.warn(
+              {
+                err: getErrorMessage(terminalError),
+                streamedTextLength: streamedText.length,
+              },
+              "Post-generation error after text was already streamed — using streamed text",
+            );
+            try {
+              assertConversationConnectionRuntime(
+                state.runtime,
+                connectionDescriptor,
+              );
+              const routeOwnedId = crypto.randomUUID() as UUID;
+              const persisted = await persistAssistantConversationMemory(
+                runtime,
+                conv.roomId,
+                streamedText,
+                channelType,
+                turnStartedAt,
+                routeOwnedId,
+              );
+              assertConversationConnectionRuntime(
+                state.runtime,
+                connectionDescriptor,
+              );
+              conv.updatedAt = new Date().toISOString();
+              const outcome: ChatMessageIdOutcome = {
+                text: streamedText,
+                agentName: state.agentName,
+                ...(persisted?.id ? { messageId: persisted.id } : {}),
+                userMessageId: messageToStore.id,
+              };
+              setChatMessageIdOutcome(
+                conv.roomId,
+                clientMessageId ?? null,
+                outcome,
+              );
+              writeConversationDoneSse(res, outcome);
+            } catch (persistErr) {
+              releaseChatMessageId(conv.roomId, clientMessageId ?? null);
+              writeSse(res, {
+                type: "error",
+                message: getErrorMessage(persistErr),
+              });
+            }
+          } else {
+            logger.warn(
+              {
+                err: getErrorMessage(terminalError),
+                stack:
+                  terminalError instanceof Error
+                    ? terminalError.stack
+                    : undefined,
+              },
+              "Chat generation failed with no streamed text",
+            );
+            try {
+              assertConversationConnectionRuntime(
+                state.runtime,
+                connectionDescriptor,
+              );
+              const generationResolvedText = generationResult
+                ? normalizeChatResponseText(
+                    generationResult.text,
+                    state.logBuffer,
+                    runtime,
+                  )
+                : "";
+              const exactPersistedResponse =
+                generationResult &&
+                generationResult.transcriptVisibility !== "internal" &&
+                generationResolvedText
+                  ? findPersistedGeneratedAssistantTurn(
+                      runtime,
+                      conv.roomId,
+                      generationResult,
+                    )
+                  : null;
+              assertConversationConnectionRuntime(
+                state.runtime,
+                connectionDescriptor,
+              );
+              const exactPersistedId = exactPersistedResponse?.id;
+              if (
+                generationResult &&
+                exactPersistedResponse &&
+                exactPersistedId
+              ) {
+                if (
+                  exactPersistedResponse.content.text !== generationResolvedText
+                ) {
+                  await runtime.updateMemory({
+                    ...exactPersistedResponse,
+                    content: buildPersistedAssistantContent(
+                      generationResolvedText,
+                      generationResult,
+                    ),
+                  });
+                }
+                logger.warn(
+                  {
+                    err: getErrorMessage(terminalError),
+                    conversationId: conv.id,
+                    roomId: conv.roomId,
+                    messageId: exactPersistedId,
+                  },
+                  "Chat generation failed after its exact assistant reply was already durable",
+                );
+                if (generationResult.actionCallbackHistory?.length) {
+                  await persistRecentAssistantActionCallbackHistory(
+                    runtime,
+                    conv.roomId,
+                    generationResult.actionCallbackHistory,
+                    turnStartedAt,
+                    exactPersistedId,
+                  );
+                }
+                assertConversationConnectionRuntime(
+                  state.runtime,
+                  connectionDescriptor,
+                );
+                const outcome = buildGenerationMessageIdOutcome(
+                  generationResult,
+                  generationResolvedText,
+                  exactPersistedId,
+                  {
+                    userMessageId: messageToStore.id,
+                    ...(generationResult.usedActionCallbacks
+                      ? { historyRefreshRequired: true }
+                      : {}),
+                  },
+                );
+                setChatMessageIdOutcome(
+                  conv.roomId,
+                  clientMessageId ?? null,
+                  outcome,
+                );
+                assertConversationConnectionRuntime(
+                  state.runtime,
+                  connectionDescriptor,
+                );
+                writeConversationDoneSse(res, outcome);
+                return true;
+              }
+            } catch (salvageErr) {
+              // error-policy:J1 route boundary — this code already runs inside
+              // the generation catch, so exact-row salvage failures require
+              // their own observable SSE terminal instead of escaping silently.
+              releaseChatMessageId(conv.roomId, clientMessageId ?? null);
+              writeSse(res, {
+                type: "error",
+                message: getErrorMessage(salvageErr),
+              });
+              return true;
+            }
+            const providerIssueReply = getChatFailureReply(
+              terminalError,
+              state.logBuffer,
+            );
+            const failureKind = classifyChatFailure(
+              terminalError,
+              state.logBuffer,
+            );
+            try {
+              assertConversationConnectionRuntime(
+                state.runtime,
+                connectionDescriptor,
+              );
+              const routeOwnedId = crypto.randomUUID() as UUID;
+              const persisted = await persistAssistantConversationMemory(
+                runtime,
+                conv.roomId,
+                providerIssueReply,
+                channelType,
+                undefined,
+                routeOwnedId,
+              );
+              assertConversationConnectionRuntime(
+                state.runtime,
+                connectionDescriptor,
+              );
+              conv.updatedAt = new Date().toISOString();
+              const outcome: ChatMessageIdOutcome = {
+                text: providerIssueReply,
+                agentName: state.agentName,
+                ...(persisted?.id ? { messageId: persisted.id } : {}),
+                userMessageId: messageToStore.id,
+                failureKind,
+              };
+              setChatMessageIdOutcome(
+                conv.roomId,
+                clientMessageId ?? null,
+                outcome,
+              );
+              writeConversationDoneSse(res, outcome);
+            } catch (persistErr) {
+              releaseChatMessageId(conv.roomId, clientMessageId ?? null);
+              writeSse(res, {
+                type: "error",
+                message: getErrorMessage(persistErr),
+              });
+            }
+          }
+        } else {
+          if (!getChatMessageIdOutcome(conv.roomId, clientMessageId ?? null)) {
+            releaseChatMessageId(conv.roomId, clientMessageId ?? null);
+          }
         }
       } finally {
         if (
@@ -3573,17 +4084,8 @@ export async function handleConversationRoutes(
         }
       }
     } finally {
-      if (
-        clientMessageId &&
-        !getChatMessageIdOutcome(conv.roomId, clientMessageId)
-      ) {
-        releaseChatMessageId(conv.roomId, clientMessageId);
-      }
-      clearInterval(heartbeatInterval);
-      finishStreamResponse();
-      endActiveChatTurn();
+      await runtimeTurnLease.release();
     }
-    return true;
   }
 
   // ── POST /api/conversations/:id/messages ────────────────────────────
@@ -3652,123 +4154,329 @@ export async function handleConversationRoutes(
       runtime,
     );
     const userId = caller.entityId;
-    const turnStartedAt = Date.now();
-
-    let connectionDescriptor: ConversationConnectionDescriptor;
+    let runtimeTurnLease: RoomHandlerLease;
     try {
-      connectionDescriptor = await ensureConversationRoom(
-        state,
-        runtime,
-        conv,
-        caller,
-      );
+      runtimeTurnLease = await runtime.roomHandlerQueue.acquire(conv.roomId);
     } catch (err) {
       releaseChatMessageId(conv.roomId, clientMessageId ?? null);
       error(
         res,
-        `Failed to initialize conversation room: ${getErrorMessage(err)}`,
+        `Failed to serialize conversation turn: ${getErrorMessage(err)}`,
         500,
       );
       return true;
     }
 
-    let userMessages: Awaited<ReturnType<typeof buildUserMessages>>;
     try {
-      const pendantProvenance = await verifyCanonicalPendantProvenance(
-        runtime,
-        caller,
-        prompt,
-        restMetadata,
-      );
-      userMessages = await buildUserMessages({
-        images,
-        prompt,
-        userId,
-        agentId: runtime.agentId,
-        roomId: conv.roomId,
-        channelType,
-        messageSource: pendantProvenance ? "pendant" : source,
-        metadata: restMetadata,
-      });
-      if (pendantProvenance) {
-        stampCanonicalPendantMemory(userMessages, pendantProvenance);
+      let connectionDescriptor: ConversationConnectionDescriptor;
+      try {
+        connectionDescriptor = await ensureConversationRoom(
+          state,
+          runtime,
+          conv,
+          caller,
+        );
+      } catch (err) {
+        releaseChatMessageId(conv.roomId, clientMessageId ?? null);
+        error(
+          res,
+          `Failed to initialize conversation room: ${getErrorMessage(err)}`,
+          500,
+        );
+        return true;
       }
-    } catch (err) {
-      releaseChatMessageId(conv.roomId, clientMessageId ?? null);
-      error(
-        res,
-        `Failed to prepare user message: ${getErrorMessage(err)}`,
-        500,
-      );
-      return true;
-    }
-    bindClientUserMemoryId(conv.roomId, clientMessageId ?? null, userMessages);
-    const { userMessage, messageToStore } = userMessages;
-    try {
-      await attestAuthenticatedApiDeliveryAudience(
-        runtime,
-        userMessage,
-        trustedApiPrincipal,
-      );
-    } catch (err) {
-      releaseChatMessageId(conv.roomId, clientMessageId ?? null);
-      error(
-        res,
-        `Failed to attest conversation audience: ${getErrorMessage(err)}`,
-        500,
-      );
-      return true;
-    }
 
-    try {
-      assertConversationConnectionRuntime(state.runtime, connectionDescriptor);
-      await persistClientUserMemory(
-        runtime,
-        messageToStore,
+      let userMessages: Awaited<ReturnType<typeof buildUserMessages>>;
+      try {
+        const pendantProvenance = await verifyCanonicalPendantProvenance(
+          runtime,
+          caller,
+          prompt,
+          restMetadata,
+        );
+        userMessages = await buildUserMessages({
+          images,
+          prompt,
+          userId,
+          agentId: runtime.agentId,
+          roomId: conv.roomId,
+          channelType,
+          messageSource: pendantProvenance ? "pendant" : source,
+          metadata: restMetadata,
+        });
+        if (pendantProvenance) {
+          stampCanonicalPendantMemory(userMessages, pendantProvenance);
+        }
+      } catch (err) {
+        releaseChatMessageId(conv.roomId, clientMessageId ?? null);
+        error(
+          res,
+          `Failed to prepare user message: ${getErrorMessage(err)}`,
+          500,
+        );
+        return true;
+      }
+      bindClientUserMemoryId(
+        conv.roomId,
         clientMessageId ?? null,
+        userMessages,
       );
-      assertConversationConnectionRuntime(state.runtime, connectionDescriptor);
-    } catch (err) {
-      releaseChatMessageId(conv.roomId, clientMessageId ?? null);
-      error(res, `Failed to store user message: ${getErrorMessage(err)}`, 500);
-      return true;
-    }
+      const { userMessage, messageToStore } = userMessages;
+      try {
+        await attestAuthenticatedApiDeliveryAudience(
+          runtime,
+          userMessage,
+          trustedApiPrincipal,
+        );
+      } catch (err) {
+        releaseChatMessageId(conv.roomId, clientMessageId ?? null);
+        error(
+          res,
+          `Failed to attest conversation audience: ${getErrorMessage(err)}`,
+          500,
+        );
+        return true;
+      }
 
-    const routedUserMessage = withViewInteractionClient(userMessage, req);
+      const routedUserMessage = withViewInteractionClient(userMessage, req);
+      const walletModeGuidance = resolveWalletModeGuidanceReply(state, prompt);
+      const turnStartedAt = Date.now();
 
-    const walletModeGuidance = resolveWalletModeGuidanceReply(state, prompt);
-    if (walletModeGuidance) {
-      const endActiveChatTurn = beginActiveChatTurn(state);
       try {
         assertConversationConnectionRuntime(
           state.runtime,
           connectionDescriptor,
         );
-        const routeOwnedId = crypto.randomUUID() as UUID;
-        const persisted = await persistAssistantConversationMemory(
+        await persistClientUserMemory(
           runtime,
-          conv.roomId,
-          walletModeGuidance,
-          channelType,
-          turnStartedAt,
-          routeOwnedId,
+          messageToStore,
+          clientMessageId ?? null,
         );
         assertConversationConnectionRuntime(
           state.runtime,
           connectionDescriptor,
         );
-        conv.updatedAt = new Date().toISOString();
-        const outcome: ChatMessageIdOutcome = {
-          text: walletModeGuidance,
-          agentName: state.agentName,
-          ...(persisted?.id ? { messageId: persisted.id } : {}),
-          userMessageId: messageToStore.id,
-        };
-        setChatMessageIdOutcome(conv.roomId, clientMessageId ?? null, outcome);
-        json(res, buildConversationJsonOutcome(outcome));
-      } catch (persistErr) {
+      } catch (err) {
         releaseChatMessageId(conv.roomId, clientMessageId ?? null);
-        error(res, getErrorMessage(persistErr), 500);
+        error(
+          res,
+          `Failed to store user message: ${getErrorMessage(err)}`,
+          500,
+        );
+        return true;
+      }
+
+      if (walletModeGuidance) {
+        const endActiveChatTurn = beginActiveChatTurn(state);
+        try {
+          assertConversationConnectionRuntime(
+            state.runtime,
+            connectionDescriptor,
+          );
+          const routeOwnedId = crypto.randomUUID() as UUID;
+          const persisted = await persistAssistantConversationMemory(
+            runtime,
+            conv.roomId,
+            walletModeGuidance,
+            channelType,
+            turnStartedAt,
+            routeOwnedId,
+          );
+          assertConversationConnectionRuntime(
+            state.runtime,
+            connectionDescriptor,
+          );
+          conv.updatedAt = new Date().toISOString();
+          const outcome: ChatMessageIdOutcome = {
+            text: walletModeGuidance,
+            agentName: state.agentName,
+            ...(persisted?.id ? { messageId: persisted.id } : {}),
+            userMessageId: messageToStore.id,
+          };
+          setChatMessageIdOutcome(
+            conv.roomId,
+            clientMessageId ?? null,
+            outcome,
+          );
+          json(res, buildConversationJsonOutcome(outcome));
+        } catch (persistErr) {
+          releaseChatMessageId(conv.roomId, clientMessageId ?? null);
+          error(res, getErrorMessage(persistErr), 500);
+        } finally {
+          if (
+            clientMessageId &&
+            !getChatMessageIdOutcome(conv.roomId, clientMessageId)
+          ) {
+            releaseChatMessageId(conv.roomId, clientMessageId);
+          }
+          endActiveChatTurn();
+        }
+        return true;
+      }
+
+      const endActiveChatTurn = beginActiveChatTurn(state);
+      try {
+        const result = await generateChatResponse(
+          runtime,
+          routedUserMessage,
+          state.agentName,
+          {
+            resolveNoResponseText: () =>
+              resolveNoResponseFallback(state.logBuffer, runtime),
+            preferredLanguage,
+          },
+        );
+        assertConversationConnectionRuntime(
+          state.runtime,
+          connectionDescriptor,
+        );
+
+        conv.updatedAt = new Date().toISOString();
+        if (result.noResponseReason !== "ignored") {
+          const resolvedText = normalizeChatResponseText(
+            result.text,
+            state.logBuffer,
+            runtime,
+          );
+          const persistedAssistant = await resolvePersistedAssistantTurn(
+            runtime,
+            conv.roomId,
+            turnStartedAt,
+            result,
+            resolvedText,
+            channelType,
+          );
+          assertConversationConnectionRuntime(
+            state.runtime,
+            connectionDescriptor,
+          );
+          const persistedAssistantId =
+            persistedAssistant.kind === "durable"
+              ? persistedAssistant.id
+              : undefined;
+          if (result.actionCallbackHistory?.length && persistedAssistantId) {
+            await persistRecentAssistantActionCallbackHistory(
+              runtime,
+              conv.roomId,
+              result.actionCallbackHistory,
+              turnStartedAt,
+              persistedAssistantId,
+            );
+          }
+          assertConversationConnectionRuntime(
+            state.runtime,
+            connectionDescriptor,
+          );
+          const visibleResolvedText =
+            result.transcriptVisibility === "internal" ? "" : resolvedText;
+          const outcome = buildGenerationMessageIdOutcome(
+            result,
+            visibleResolvedText,
+            persistedAssistantId,
+            {
+              userMessageId: messageToStore.id,
+              ...(persistedAssistant.kind === "ephemeral"
+                ? { assistantEphemeral: true }
+                : {}),
+              ...(result.usedActionCallbacks
+                ? { historyRefreshRequired: true }
+                : {}),
+            },
+          );
+          setChatMessageIdOutcome(
+            conv.roomId,
+            clientMessageId ?? null,
+            outcome,
+          );
+          json(res, buildConversationJsonOutcome(outcome));
+        } else {
+          assertConversationConnectionRuntime(
+            state.runtime,
+            connectionDescriptor,
+          );
+          const outcome = buildGenerationMessageIdOutcome(
+            result,
+            "",
+            undefined,
+            {
+              userMessageId: messageToStore.id,
+              assistantEphemeral: true,
+            },
+          );
+          setChatMessageIdOutcome(
+            conv.roomId,
+            clientMessageId ?? null,
+            outcome,
+          );
+          json(res, buildConversationJsonOutcome(outcome));
+        }
+      } catch (err) {
+        if (
+          isCallbackHistoryPersistenceError(err) ||
+          err instanceof AssistantReplyPersistenceError
+        ) {
+          releaseChatMessageId(conv.roomId, clientMessageId ?? null);
+          error(
+            res,
+            getErrorMessage(
+              err instanceof AssistantReplyPersistenceError
+                ? (err.cause ?? err)
+                : err,
+            ),
+            500,
+          );
+          return true;
+        }
+        logger.warn(
+          `[conversations] POST /messages failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        if (isConversationConnectionError(err)) {
+          releaseChatMessageId(conv.roomId, clientMessageId ?? null);
+          error(
+            res,
+            `Failed to refresh conversation room: ${getErrorMessage(err)}`,
+            500,
+          );
+          return true;
+        }
+        const providerIssueReply = getChatFailureReply(err, state.logBuffer);
+        const failureKind = classifyChatFailure(err, state.logBuffer);
+        try {
+          assertConversationConnectionRuntime(
+            state.runtime,
+            connectionDescriptor,
+          );
+          const routeOwnedId = crypto.randomUUID() as UUID;
+          const persisted = await persistAssistantConversationMemory(
+            runtime,
+            conv.roomId,
+            providerIssueReply,
+            channelType,
+            undefined,
+            routeOwnedId,
+          );
+          assertConversationConnectionRuntime(
+            state.runtime,
+            connectionDescriptor,
+          );
+          conv.updatedAt = new Date().toISOString();
+          const outcome: ChatMessageIdOutcome = {
+            text: providerIssueReply,
+            agentName: state.agentName,
+            ...(persisted?.id ? { messageId: persisted.id } : {}),
+            userMessageId: messageToStore.id,
+            failureKind,
+          };
+          setChatMessageIdOutcome(
+            conv.roomId,
+            clientMessageId ?? null,
+            outcome,
+          );
+          json(res, buildConversationJsonOutcome(outcome));
+        } catch (persistErr) {
+          releaseChatMessageId(conv.roomId, clientMessageId ?? null);
+          error(res, getErrorMessage(persistErr), 500);
+        }
       } finally {
         if (
           clientMessageId &&
@@ -3779,161 +4487,9 @@ export async function handleConversationRoutes(
         endActiveChatTurn();
       }
       return true;
-    }
-
-    const endActiveChatTurn = beginActiveChatTurn(state);
-    try {
-      const result = await generateChatResponse(
-        runtime,
-        routedUserMessage,
-        state.agentName,
-        {
-          resolveNoResponseText: () =>
-            resolveNoResponseFallback(state.logBuffer, runtime),
-          preferredLanguage,
-        },
-      );
-      assertConversationConnectionRuntime(state.runtime, connectionDescriptor);
-
-      conv.updatedAt = new Date().toISOString();
-      if (result.noResponseReason !== "ignored") {
-        const resolvedText = normalizeChatResponseText(
-          result.text,
-          state.logBuffer,
-          runtime,
-        );
-        const persistedAssistant = await resolvePersistedAssistantTurn(
-          runtime,
-          conv.roomId,
-          turnStartedAt,
-          result,
-          resolvedText,
-          channelType,
-        );
-        assertConversationConnectionRuntime(
-          state.runtime,
-          connectionDescriptor,
-        );
-        const persistedAssistantId =
-          persistedAssistant.kind === "durable"
-            ? persistedAssistant.id
-            : undefined;
-        if (result.actionCallbackHistory?.length && persistedAssistantId) {
-          await persistRecentAssistantActionCallbackHistory(
-            runtime,
-            conv.roomId,
-            result.actionCallbackHistory,
-            turnStartedAt,
-            persistedAssistantId,
-          );
-        }
-        assertConversationConnectionRuntime(
-          state.runtime,
-          connectionDescriptor,
-        );
-        const visibleResolvedText =
-          result.transcriptVisibility === "internal" ? "" : resolvedText;
-        const outcome = buildGenerationMessageIdOutcome(
-          result,
-          visibleResolvedText,
-          persistedAssistantId,
-          {
-            userMessageId: messageToStore.id,
-            ...(persistedAssistant.kind === "ephemeral"
-              ? { assistantEphemeral: true }
-              : {}),
-            ...(result.usedActionCallbacks
-              ? { historyRefreshRequired: true }
-              : {}),
-          },
-        );
-        setChatMessageIdOutcome(conv.roomId, clientMessageId ?? null, outcome);
-        json(res, buildConversationJsonOutcome(outcome));
-      } else {
-        assertConversationConnectionRuntime(
-          state.runtime,
-          connectionDescriptor,
-        );
-        const outcome = buildGenerationMessageIdOutcome(result, "", undefined, {
-          userMessageId: messageToStore.id,
-          assistantEphemeral: true,
-        });
-        setChatMessageIdOutcome(conv.roomId, clientMessageId ?? null, outcome);
-        json(res, buildConversationJsonOutcome(outcome));
-      }
-    } catch (err) {
-      if (
-        isCallbackHistoryPersistenceError(err) ||
-        err instanceof AssistantReplyPersistenceError
-      ) {
-        releaseChatMessageId(conv.roomId, clientMessageId ?? null);
-        error(
-          res,
-          getErrorMessage(
-            err instanceof AssistantReplyPersistenceError
-              ? (err.cause ?? err)
-              : err,
-          ),
-          500,
-        );
-        return true;
-      }
-      logger.warn(
-        `[conversations] POST /messages failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      if (isConversationConnectionError(err)) {
-        releaseChatMessageId(conv.roomId, clientMessageId ?? null);
-        error(
-          res,
-          `Failed to refresh conversation room: ${getErrorMessage(err)}`,
-          500,
-        );
-        return true;
-      }
-      const providerIssueReply = getChatFailureReply(err, state.logBuffer);
-      const failureKind = classifyChatFailure(err, state.logBuffer);
-      try {
-        assertConversationConnectionRuntime(
-          state.runtime,
-          connectionDescriptor,
-        );
-        const routeOwnedId = crypto.randomUUID() as UUID;
-        const persisted = await persistAssistantConversationMemory(
-          runtime,
-          conv.roomId,
-          providerIssueReply,
-          channelType,
-          undefined,
-          routeOwnedId,
-        );
-        assertConversationConnectionRuntime(
-          state.runtime,
-          connectionDescriptor,
-        );
-        conv.updatedAt = new Date().toISOString();
-        const outcome: ChatMessageIdOutcome = {
-          text: providerIssueReply,
-          agentName: state.agentName,
-          ...(persisted?.id ? { messageId: persisted.id } : {}),
-          userMessageId: messageToStore.id,
-          failureKind,
-        };
-        setChatMessageIdOutcome(conv.roomId, clientMessageId ?? null, outcome);
-        json(res, buildConversationJsonOutcome(outcome));
-      } catch (persistErr) {
-        releaseChatMessageId(conv.roomId, clientMessageId ?? null);
-        error(res, getErrorMessage(persistErr), 500);
-      }
     } finally {
-      if (
-        clientMessageId &&
-        !getChatMessageIdOutcome(conv.roomId, clientMessageId)
-      ) {
-        releaseChatMessageId(conv.roomId, clientMessageId);
-      }
-      endActiveChatTurn();
+      await runtimeTurnLease.release();
     }
-    return true;
   }
 
   // ── POST /api/conversations/:id/greeting ───────────────────────────

@@ -1,11 +1,16 @@
 /**
  * Unit coverage for `RoomHandlerQueue`: per-room serialization, cross-room
- * concurrency, queue-depth accounting (`pendingFor`), drain (`quiesce` /
- * `quiesceAll`), empty-queue garbage collection, and lifecycle events. Exercises
- * the real queue with real timers; no model or runtime.
+ * concurrency, cancellable leases, queue-depth accounting (`pendingFor`),
+ * drain (`quiesce` / `quiesceAll`), empty-queue garbage collection, and
+ * lifecycle events. Exercises the real queue with real timers; no model or
+ * runtime.
  */
 import { describe, expect, it } from "vitest";
-import { RoomHandlerQueue, type RoomQueueEvent } from "../room-handler-queue";
+import {
+	RoomHandlerQueue,
+	RoomHandlerQueueAbortedError,
+	type RoomQueueEvent,
+} from "../room-handler-queue";
 
 const ROOM_A = "00000000-0000-0000-0000-00000000000a";
 const ROOM_B = "00000000-0000-0000-0000-00000000000b";
@@ -78,6 +83,56 @@ describe("RoomHandlerQueue", () => {
 			await expect(first).rejects.toThrow("first-fail");
 			await expect(second).resolves.toBe("second-ok");
 			expect(trace).toEqual(["first-running", "second-running"]);
+		});
+	});
+
+	describe("explicit room leases", () => {
+		it("holds one room until release while unrelated rooms remain available", async () => {
+			const queue = new RoomHandlerQueue();
+			const first = await queue.acquire(ROOM_A);
+			let secondGranted = false;
+			const second = queue.acquire(ROOM_A).then((lease) => {
+				secondGranted = true;
+				return lease;
+			});
+
+			const otherRoom = await queue.acquire(ROOM_B);
+			await otherRoom.release();
+			await Promise.resolve();
+			expect(secondGranted).toBe(false);
+
+			await first.release();
+			const secondLease = await second;
+			expect(secondGranted).toBe(true);
+			await secondLease.release();
+		});
+
+		it("removes a cancelled waiter without releasing an already granted lease", async () => {
+			const queue = new RoomHandlerQueue();
+			const activeController = new AbortController();
+			const first = await queue.acquire(ROOM_A, activeController.signal);
+			const waitingController = new AbortController();
+			const cancelled = queue.acquire(ROOM_A, waitingController.signal);
+			let thirdGranted = false;
+			const third = queue.acquire(ROOM_A).then((lease) => {
+				thirdGranted = true;
+				return lease;
+			});
+
+			activeController.abort(new Error("transport ended after acquisition"));
+			waitingController.abort(new Error("transport ended while queued"));
+			await expect(cancelled).rejects.toBeInstanceOf(
+				RoomHandlerQueueAbortedError,
+			);
+			await Promise.resolve();
+			expect(thirdGranted).toBe(false);
+			expect(queue.pendingFor(ROOM_A)).toBe(2);
+
+			await first.release();
+			const thirdLease = await third;
+			expect(thirdGranted).toBe(true);
+			await thirdLease.release();
+			expect(queue.pendingFor(ROOM_A)).toBe(0);
 		});
 	});
 
