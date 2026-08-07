@@ -1,17 +1,8 @@
-// Egress health for the managed Eliza App message path.
-//
-// The gateway message POST to /api/internal/discord/eliza-app/messages is
-// idempotent upstream (the onboarding worker keys turns on
-// `discord:<messageId>` and the session coordinator orders them), so replaying
-// the POST after a transient failure returns the identical reply instead of
-// forking the session or double-provisioning. That makes bounded retry the
-// correct response to the proven dropped-turn class: the staging E2E on
-// 2026-08-05 showed the real bot silently dropping a user turn on a single
-// 401 from the fail-closed internal-JWT denylist during a Redis flake.
-//
-// This module deliberately owns no transport state: callers pass a `doPost`
-// closure (rebuilt per attempt so refreshed auth headers apply) and an
-// optional `refreshAuth` hook invoked before retrying a 401.
+/**
+ * Provides bounded, idempotent retries for managed Discord message egress.
+ * The upstream onboarding worker orders turns by Discord message ID, while
+ * callers supply fresh POST and authentication closures for every attempt.
+ */
 
 export interface RoutedManagedReply {
   handled?: boolean;
@@ -19,6 +10,22 @@ export interface RoutedManagedReply {
   replyCta?: { label?: string; url?: string } | null;
   reason?: string;
   agentId?: string;
+}
+
+function isRoutedManagedReply(value: unknown): value is RoutedManagedReply {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const reply = value as Record<string, unknown>;
+  return (
+    (reply.handled === undefined || typeof reply.handled === "boolean") &&
+    (reply.replyText === undefined ||
+      reply.replyText === null ||
+      typeof reply.replyText === "string") &&
+    (reply.replyCta === undefined ||
+      reply.replyCta === null ||
+      (typeof reply.replyCta === "object" && !Array.isArray(reply.replyCta))) &&
+    (reply.reason === undefined || typeof reply.reason === "string") &&
+    (reply.agentId === undefined || typeof reply.agentId === "string")
+  );
 }
 
 export type ManagedRouteOutcome =
@@ -83,6 +90,8 @@ export async function postManagedAgentMessageWithRetry(options: {
     try {
       response = await options.doPost();
     } catch (error) {
+      // error-policy:J4 Transient transport failures become an observable,
+      // bounded retry outcome instead of consuming the user's turn silently.
       // Network error / timeout / missing token: transient by classification.
       lastStatus = undefined;
       lastError = error instanceof Error ? error.message : String(error);
@@ -91,12 +100,45 @@ export async function postManagedAgentMessageWithRetry(options: {
 
     if (response) {
       if (response.ok) {
-        const routed = (await response.json()) as RoutedManagedReply;
-        return { ok: true, routed, attempts: attempt };
+        try {
+          const routed: unknown = await response.json();
+          if (!isRoutedManagedReply(routed)) {
+            throw new TypeError(
+              "managed route returned an invalid reply object",
+            );
+          }
+          return { ok: true, routed, attempts: attempt };
+        } catch (error) {
+          // error-policy:J4 A malformed success response is not delivered as a
+          // healthy reply; expose it and retry the idempotent upstream turn.
+          lastStatus = undefined;
+          const parseError =
+            error instanceof Error ? error.message : String(error);
+          lastError = `invalid managed route response: ${parseError}`;
+          options.onAttemptFailure?.({ attempt, error: lastError });
+          response = null;
+        }
       }
 
-      lastStatus = response.status;
-      lastError = (await response.text().catch(() => "")).slice(0, 200);
+      if (response) {
+        lastStatus = response.status;
+      }
+    }
+
+    if (response) {
+      try {
+        const responseBody = (await response.text()).trim();
+        lastError =
+          responseBody.slice(0, 200) ||
+          response.statusText.trim() ||
+          `HTTP ${response.status}`;
+      } catch (error) {
+        // error-policy:J4 The HTTP status remains authoritative when its
+        // optional diagnostic body cannot be read; expose that read failure.
+        const readError =
+          error instanceof Error ? error.message : String(error);
+        lastError = `HTTP ${response.status}: unable to read error body (${readError})`;
+      }
       options.onAttemptFailure?.({
         attempt,
         status: lastStatus,
@@ -119,7 +161,16 @@ export async function postManagedAgentMessageWithRetry(options: {
     if (lastStatus === 401 && options.refreshAuth) {
       try {
         await options.refreshAuth();
-      } catch {
+      } catch (error) {
+        // error-policy:J4 A failed refresh is reported through the attempt
+        // observer while the bounded same-token retry remains available.
+        const refreshError =
+          error instanceof Error ? error.message : String(error);
+        options.onAttemptFailure?.({
+          attempt,
+          status: lastStatus,
+          error: `auth refresh failed: ${refreshError}`,
+        });
         // A failed refresh is not fatal to the retry loop: the denylist
         // flake heals with the SAME token, and the next attempt reports
         // its own failure if auth is truly broken.
@@ -167,6 +218,8 @@ export async function sendReplyWithRetry(
       await send();
       return { sent: true, attempts: attempt };
     } catch (error) {
+      // error-policy:J4 Discord delivery failures become a bounded, explicit
+      // send result so callers can log the unavailable reply path.
       lastError = error instanceof Error ? error.message : String(error);
       options.onAttemptFailure?.({ attempt, error: lastError });
 

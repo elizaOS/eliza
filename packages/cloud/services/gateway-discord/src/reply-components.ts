@@ -1,4 +1,4 @@
-// Builds Discord message components for routed replies (link-button CTAs).
+/** Builds validated Discord link-button components for routed reply CTAs. */
 
 /**
  * Link handoff returned by the cloud routing API. The URL is the same login
@@ -50,6 +50,8 @@ export function buildReplyComponents(
   try {
     parsed = new URL(url);
   } catch {
+    // error-policy:J3 Routed CTA data is untrusted; malformed URLs produce an
+    // explicit no-component result and leave the safe plain-text reply intact.
     return null;
   }
   if (parsed.protocol !== "https:") return null;

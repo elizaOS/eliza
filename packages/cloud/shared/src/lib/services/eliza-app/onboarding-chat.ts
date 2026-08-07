@@ -515,6 +515,8 @@ function buildLoginCta(loginUrl: string): OnboardingChatCta | null {
   try {
     parsed = new URL(loginUrl);
   } catch {
+    // error-policy:J3 Environment-derived login URLs are untrusted; malformed
+    // values disable the button and preserve the inline-link reply variant.
     return null;
   }
   if (parsed.protocol !== "https:") return null;

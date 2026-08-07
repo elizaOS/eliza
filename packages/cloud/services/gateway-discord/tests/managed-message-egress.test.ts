@@ -1,6 +1,7 @@
-// Reproduces the proven dropped-turn-on-401 class (staging E2E 2026-08-05:
-// "real bot DROPS a turn on 401, no retry in gateway message POST") and
-// proves the retry model retains the turn.
+/**
+ * Exercises managed Discord egress retries with deterministic transport
+ * failures, including the dropped-turn-on-401 regression.
+ */
 import { describe, expect, test } from "bun:test";
 import {
   isRetryableRouteStatus,
@@ -67,6 +68,7 @@ describe("postManagedAgentMessageWithRetry", () => {
 
   test("a refreshAuth throw does not abort the retry loop (denylist flake heals with the same token)", async () => {
     let calls = 0;
+    const failures: string[] = [];
     const outcome = await postManagedAgentMessageWithRetry({
       doPost: async () => {
         calls += 1;
@@ -76,11 +78,16 @@ describe("postManagedAgentMessageWithRetry", () => {
       refreshAuth: async () => {
         throw new Error("refresh endpoint down");
       },
+      onAttemptFailure: ({ error }) => failures.push(error),
       sleep: noSleep,
     });
 
     expect(outcome.ok).toBe(true);
     expect(calls).toBe(2);
+    expect(failures).toEqual([
+      "flake",
+      "auth refresh failed: refresh endpoint down",
+    ]);
   });
 
   test("network errors (thrown fetch) retry instead of dropping", async () => {
@@ -105,6 +112,25 @@ describe("postManagedAgentMessageWithRetry", () => {
     ]);
   });
 
+  test("a malformed 2xx reply retries instead of returning fabricated success", async () => {
+    let calls = 0;
+    const failures: string[] = [];
+    const outcome = await postManagedAgentMessageWithRetry({
+      doPost: async () => {
+        calls += 1;
+        if (calls === 1) return new Response("not-json", { status: 200 });
+        return jsonResponse({ handled: true, replyText: "recovered" });
+      },
+      onAttemptFailure: ({ error }) => failures.push(error),
+      sleep: noSleep,
+    });
+
+    expect(outcome.ok).toBe(true);
+    if (outcome.ok) expect(outcome.attempts).toBe(2);
+    expect(failures).toHaveLength(1);
+    expect(failures[0]).toContain("invalid managed route response");
+  });
+
   test("5xx retries; exhausted attempts report a loud final failure (never a silent early return)", async () => {
     let calls = 0;
     const outcome = await postManagedAgentMessageWithRetry({
@@ -122,6 +148,29 @@ describe("postManagedAgentMessageWithRetry", () => {
       expect(outcome.attempts).toBe(3);
       expect(outcome.status).toBe(503);
       expect(outcome.error).toContain("upstream sad");
+    }
+  });
+
+  test("a failed error-body read preserves the HTTP status and exposes the diagnostic failure", async () => {
+    const outcome = await postManagedAgentMessageWithRetry({
+      doPost: async () =>
+        ({
+          ok: false,
+          status: 503,
+          statusText: "Service Unavailable",
+          text: async () => {
+            throw new Error("body stream locked");
+          },
+        }) as Response,
+      maxAttempts: 1,
+      sleep: noSleep,
+    });
+
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) {
+      expect(outcome.status).toBe(503);
+      expect(outcome.error).toContain("unable to read error body");
+      expect(outcome.error).toContain("body stream locked");
     }
   });
 

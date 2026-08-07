@@ -652,6 +652,8 @@ export class AgentGatewayRouterService {
         senderDiscordUserId: args.sender.id,
       });
     } catch (error) {
+      // error-policy:J4 A private first-contact resolver outage degrades to the
+      // visibly distinct onboarding path; guild traffic remains fail-closed.
       // Fail-open first contact (parity with routePhoneMessage): a resolver
       // outage must never leave a new DM sender in silence. The onboarding
       // worker is self-contained (its own session store), so it can still

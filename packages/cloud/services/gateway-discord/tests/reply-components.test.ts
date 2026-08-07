@@ -1,4 +1,4 @@
-// Verifies routed reply CTAs become well-formed Discord link-button components.
+/** Verifies routed reply CTAs become well-formed Discord link-button components. */
 import { describe, expect, test } from "bun:test";
 import { buildReplyComponents } from "../src/reply-components";
 
