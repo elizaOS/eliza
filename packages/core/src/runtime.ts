@@ -7056,7 +7056,12 @@ export class AgentRuntime implements IAgentRuntime {
 				// Pass-through stream: the caller will consume textStream after
 				// useModel returns. Defer the generic trajectory record until then,
 				// so the provider's deferred recordLlmCall has time to mark the
-				// flag (#17532).
+				// flag (#17532). The wrapper accumulates chunks as they pass
+				// through so the trajectory entry can be recorded from the
+				// delivered text without awaiting streamResult.text, which may
+				// never settle or may reject on the abort path. A backstop on the
+				// provider's text promise guarantees at least one entry even when
+				// the consumer never iterates or awaits .text (#17532 review).
 				if (
 					shouldStream &&
 					!handlerDeliveredStream &&
@@ -7072,10 +7077,11 @@ export class AgentRuntime implements IAgentRuntime {
 						elapsedTime,
 					};
 					let didRecord = false;
+					const accumulatedChunks: string[] = [];
 					const recordOnce = async () => {
 						if (didRecord) return;
 						didRecord = true;
-						const finalText = await streamResult.text;
+						const finalText = accumulatedChunks.join("");
 						await this.recordUseModelTrajectory({
 							...trajArgs,
 							result: finalText,
@@ -7083,6 +7089,21 @@ export class AgentRuntime implements IAgentRuntime {
 							providerRecorded: recordingState.recorded,
 						});
 					};
+					// Guaranteed terminal record: if the consumer never iterates
+					// the textStream and never awaits .text, the provider's text
+					// promise still resolves (or rejects) eventually. Attach a
+					// backstop so at least one trajectory entry fires regardless
+					// of how the consumer treats the stream result (#17532 review,
+					// Finding 2).
+					streamResult.text.then(
+						(resolvedText) => {
+							if (accumulatedChunks.length === 0 && resolvedText) {
+								accumulatedChunks.push(resolvedText);
+							}
+							void recordOnce();
+						},
+						() => void recordOnce(),
+					);
 					resultRef.current = {
 						...streamResult,
 						textStream: (async function* () {
@@ -7098,6 +7119,7 @@ export class AgentRuntime implements IAgentRuntime {
 										() => innerIter.next(),
 									);
 									if (done) break;
+									accumulatedChunks.push(value);
 									yield value;
 								}
 							} finally {
@@ -7106,16 +7128,29 @@ export class AgentRuntime implements IAgentRuntime {
 								// the scope. Safe to call even if already exhausted.
 								await runInModelCallRecordingScope(recordingState, async () => {
 									await innerIter.return?.();
-									await recordOnce();
 								});
+								// Record from accumulated chunks, NOT streamResult.text.
+								// The abort path's text promise may never settle or may
+								// reject; using accumulated chunks avoids hanging the
+								// generator's return() (#17532 review, Finding 3).
+								try {
+									await recordOnce();
+								} catch {
+									// error-policy:J7 Trajectory logging must never break core model flow.
+								}
 							}
 						})(),
-						// Lazy: only record if the caller awaits text, not eagerly
-						// when the provider's SDK promise settles (#17532).
+						// Lazy: record from accumulated chunks when the caller
+						// awaits text, not eagerly when the provider's SDK promise
+						// settles (#17532). The consumer explicitly awaited
+						// streamResult.text, so resolving it is safe — a rejection
+						// surfaces at the caller's own await site.
 						get text() {
 							return Promise.resolve(
 								runInModelCallRecordingScope(recordingState, async () => {
 									const t = await streamResult.text;
+									accumulatedChunks.length = 0;
+									accumulatedChunks.push(t);
 									await recordOnce();
 									return t;
 								}),
@@ -7419,8 +7454,10 @@ export class AgentRuntime implements IAgentRuntime {
 				providerOptions: paramsRecord.providerOptions,
 				response: `[model call failed] ${sanitizedMessage}`,
 				finishReason: "error",
-				temperature: typeof tempRaw === "number" ? tempRaw : 0,
-				maxTokens: typeof maxTokensRaw === "number" ? maxTokensRaw : 0,
+				...(typeof tempRaw === "number" ? { temperature: tempRaw } : {}),
+				...(typeof maxTokensRaw === "number"
+					? { maxTokens: maxTokensRaw }
+					: {}),
 				purpose: trajCtx.purpose ?? "action",
 				actionType: "runtime.useModel",
 				latencyMs: Math.max(0, Math.round(args.elapsedTime)),
@@ -7433,8 +7470,7 @@ export class AgentRuntime implements IAgentRuntime {
 				providerAttributions: trajCtx.providerAttributions,
 			});
 		} catch (trajectoryError) {
-			// Trajectory logging must never break core model flow. Surface the
-			// telemetry failure without masking the original model error.
+			// error-policy:J7 Trajectory logging must never break core model flow.
 			this.reportError("TrajectoryFailedAttemptRecord", trajectoryError, {
 				modelKey: args.resolvedModelKey,
 				provider: args.provider,

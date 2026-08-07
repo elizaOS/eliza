@@ -305,3 +305,48 @@ describe("runWithModelCallRecordingScope — concurrency", () => {
 		});
 	});
 });
+
+describe("runWithModelCallRecordingScope — multi-record per useModel (#17532 review)", () => {
+	it("multiple markProviderRecordedCall calls in one scope suppress the generic fallback after the first", async () => {
+		// Models a provider handler that makes several wire calls within a
+		// single useModel scope — e.g. a retried completion or a multi-step
+		// inference that records each sub-call via logActiveTrajectoryLlmCall.
+		// Each successful logLlmCall fires markProviderRecordedCall(). The
+		// generic fallback (recordUseModelTrajectory) checks
+		// recordingState.recorded and skips when true. The contract: once any
+		// provider record lands, the flag is set permanently for that scope —
+		// subsequent marks are idempotent and the fallback is suppressed.
+		const { recordingState } = await runWithModelCallRecordingScope(
+			async () => {
+				// First wire call — provider records via logActiveTrajectoryLlmCall
+				markProviderRecordedCall();
+				expect(isProviderRecordedCall()).toBe(true);
+
+				// Second wire call — provider records again (idempotent mark)
+				markProviderRecordedCall();
+				expect(isProviderRecordedCall()).toBe(true);
+
+				// Third wire call — provider records again (idempotent mark)
+				markProviderRecordedCall();
+				expect(isProviderRecordedCall()).toBe(true);
+
+				return "multi-call result";
+			},
+		);
+
+		// After the scope exits, recordingState.recorded is still true.
+		// recordUseModelTrajectory would see providerRecorded=true and skip,
+		// producing no generic fallback entry — no double-counting.
+		expect(recordingState.recorded).toBe(true);
+	});
+
+	it("markProviderRecordedCall called zero times leaves the flag false (generic fallback fires)", async () => {
+		// A provider handler that records nothing leaves the flag false, so
+		// the generic fallback (recordUseModelTrajectory) produces exactly one
+		// trajectory entry for the call.
+		const { recordingState } = await runWithModelCallRecordingScope(
+			async () => "no provider record",
+		);
+		expect(recordingState.recorded).toBe(false);
+	});
+});
