@@ -179,7 +179,7 @@ const firstRunOptions = {
       id: "ollama",
       name: "Ollama",
       envKey: null,
-      pluginName: "@elizaos/plugin-ollama",
+      pluginName: "@elizaos/plugin-zerollama",
       keyPrefix: null,
       description: "Use local Ollama",
     },

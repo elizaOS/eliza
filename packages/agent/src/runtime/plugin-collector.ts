@@ -267,6 +267,7 @@ export const MODEL_PROVIDER_PLUGIN_NAMES: ReadonlySet<string> = new Set(
 
 const LOCAL_MODEL_PROVIDER_PLUGINS = new Set<string>([
   "@elizaos/plugin-local-inference",
+  "@elizaos/plugin-zerollama",
 ]);
 
 const REMOTE_MODEL_PROVIDER_PLUGINS = new Set(
