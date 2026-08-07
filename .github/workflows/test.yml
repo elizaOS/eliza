@@ -164,6 +164,9 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
+      - name: Install contract dependencies
+        run: bun install --frozen-lockfile --ignore-scripts
+
       - name: Test-runner vacuous-green guard
         run: bun test packages/scripts/__tests__/run-all-tests-vacuous-green-guard.test.ts
 
