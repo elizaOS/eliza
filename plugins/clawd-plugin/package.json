@@ -1,0 +1,47 @@
+{
+  "name": "@solana-clawd/clawd-plugin",
+  "version": "1.1.0",
+  "type": "module",
+  "description": "Clawd agent plugin (skills + MCP) wired to monorepo sibling @solana-clawd/clawd-code and Cheshire elizaOS plugins",
+  "main": "scripts/resolve-clawd-code.mjs",
+  "bin": {
+    "clawd-plugin-run-code": "scripts/run-clawd-code.mjs"
+  },
+  "files": [
+    ".clawd-plugin",
+    ".mcp.json",
+    "scripts",
+    "skills",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test scripts/resolve-clawd-code.test.mjs",
+    "clawd-code": "node scripts/run-clawd-code.mjs",
+    "verify:bridge": "node scripts/run-clawd-code.mjs --help"
+  },
+  "dependencies": {
+    "@solana-clawd/clawd-code": "^1.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "clawd",
+    "clawd-code",
+    "solana",
+    "mcp",
+    "cheshire",
+    "elizaos"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Solizardking/eliza.git",
+    "directory": "plugins/clawd-plugin"
+  },
+  "homepage": "https://github.com/Solizardking/clawd-code#readme",
+  "bugs": {
+    "url": "https://github.com/Solizardking/clawd-code/issues"
+  }
+}

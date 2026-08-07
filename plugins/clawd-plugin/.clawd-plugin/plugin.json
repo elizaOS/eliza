@@ -1,13 +1,36 @@
 {
   "name": "clawd-code",
-  "description": "Build on Solana with Clawd Code — live blockchain tools, expert coding patterns, perpetuals trading, x402 payments, and autonomous agent commerce",
-  "version": "1.0.0",
+  "description": "Build on Solana with Clawd Code — monorepo bridge to plugins/clawd-code (Solizardking/clawd-code) plus skills, MCP, and Cheshire elizaOS companions",
+  "version": "1.1.0",
   "author": {
     "name": "Clawd",
     "url": "https://x402.wtf"
   },
-  "homepage": "https://x402.wtf",
-  "repository": "https://github.com/Solizardking/solana-clawd",
+  "homepage": "https://github.com/Solizardking/clawd-code#readme",
+  "repository": "https://github.com/Solizardking/clawd-code",
   "license": "MIT",
-  "keywords": ["solana", "blockchain", "rpc", "nft", "defi", "web3", "clawd", "perpetuals", "trading", "x402", "phoenix", "vulcan"]
+  "keywords": [
+    "solana",
+    "blockchain",
+    "clawd",
+    "clawd-code",
+    "mcp",
+    "cheshire",
+    "elizaos",
+    "perpetuals",
+    "trading",
+    "x402",
+    "phoenix",
+    "vulcan"
+  ],
+  "elizaMonorepo": {
+    "clawdCodeSubmodule": "plugins/clawd-code",
+    "clawdCodeGithub": "https://github.com/Solizardking/clawd-code",
+    "companions": [
+      "@elizaos/cheshire-eliza",
+      "@elizaos/plugin-cheshire-memory",
+      "@elizaos/plugin-clawdbrowser",
+      "@elizaos/plugin-dflow-trade"
+    ]
+  }
 }

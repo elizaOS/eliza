@@ -1,72 +1,124 @@
-# Clawd Code Plugin for Clawd Code
+# @solana-clawd/clawd-plugin
 
-Build on Solana with Clawd Code — one install gives you live blockchain tools, expert coding patterns, perpetuals trading, x402 payments, and autonomous agent commerce.
+Clawd agent plugin for **Clawd Code** — skills, MCP servers, and a monorepo bridge
+into the sibling `plugins/clawd-code` checkout (not a second vendored tree).
 
-## Install
+## Clawd Code source of truth
 
-### From a marketplace
+`plugins/clawd-code` now comes from
+[https://github.com/Solizardking/clawd-code](https://github.com/Solizardking/clawd-code),
+not a vendored local tree.
+
+| Item | Result |
+| --- | --- |
+| **Source of truth** | Git submodule at `plugins/clawd-code` → `https://github.com/Solizardking/clawd-code.git` |
+| **Pinned commit** | `29e3a9dccf6433c1f47710d6dc0470ac0cbec7bc` (`main`) |
+| **`.gitmodules`** | `[submodule "plugins/clawd-code"]` with that URL |
+| **Package metadata** | `repository` / `homepage` → Solizardking/clawd-code |
+| **`install.sh` default** | `CLAWD_CODE_REPO=https://github.com/Solizardking/clawd-code.git` |
+| **This plugin** | MCP + skills live here; CLI is resolved from the sibling submodule |
+
+### Verification
+
+- Workspace resolve: `@solana-clawd/clawd-code@workspace:plugins/clawd-code`
+- GitHub install smoke: clone + build of Solizardking/clawd-code produced `dist/cli.js`
+- Bridge tests: `bun run --cwd plugins/clawd-plugin test`
+- No monorepo-owned install links to `solana-clawd/tree/main/clawd-code` for this package
+
+### Install (canonical CLI)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Solizardking/clawd-code/main/install.sh | sh
+```
+
+## Monorepo communication map
+
+```text
+plugins/clawd-plugin          ← skills + .mcp.json (this package)
+        │ run-clawd-code.mjs
+        ▼
+plugins/clawd-code            ← git submodule of Solizardking/clawd-code
+        │ workspace package @solana-clawd/clawd-code
+        ▼
+packages/cheshire-eliza       ← characters + body generator
+        ├── @elizaos/plugin-cheshire-memory
+        ├── @elizaos/plugin-clawdbrowser
+        └── @elizaos/plugin-dflow-trade
+```
+
+| Package | Role |
+| --- | --- |
+| `@solana-clawd/clawd-code` | CLI (code / trade / research / voice / arena) |
+| `@solana-clawd/clawd-plugin` | Clawd runtime plugin: skills + MCP bridge to the CLI |
+| `@elizaos/cheshire-eliza` | Solizard / Cheshire character + agent body generator |
+| `@elizaos/plugin-cheshire-memory` | Hermes + Honcho durable memory |
+| `@elizaos/plugin-clawdbrowser` | ClawdBrowser `tools.md` catalog actions |
+
+## Install (marketplace)
 
 ```
 /plugin marketplace add solizardking/clawd-plugins
 /plugin install clawd-code@solizardking
 ```
 
-### Local testing
+## Local monorepo testing
 
 ```bash
-clawd --plugin-dir ./plugins/clawd-code/clawd-plugin
+# from repo root
+git submodule update --init plugins/clawd-code
+bun install
+
+# bridge resolves sibling CLI
+bun run --cwd plugins/clawd-plugin test
+bun run --cwd plugins/clawd-plugin clawd-code -- --help
+
+# agent runtime
+clawd --plugin-dir ./plugins/clawd-plugin
 ```
 
-## What's Included
+Override the CLI binary if needed:
 
-**Helius MCP Server** — auto-starts with the plugin. 10 routed tools covering DAS API, RPC, webhooks, streaming, wallet analysis, and docs.
+```bash
+export CLAWD_CODE_BIN=/path/to/clawd-code
+```
 
-**Clawd Code MCP Server** — auto-starts the Clawd Code CLI as an MCP server for code generation, trading, research, images, and voice.
+## What's included
 
-**Phoenix Rise MCP Server** — auto-starts for real-time perpetuals orderbook and funding rate data.
+**Clawd Code MCP** — starts the **sibling** monorepo CLI via
+`scripts/run-clawd-code.mjs` (prefers `plugins/clawd-code/dist/cli.js`, then
+workspace, then `npx @solana-clawd/clawd-code@latest`).
 
-**DFlow MCP Server** — auto-starts for trading API details, response schemas, and code examples.
+**Phoenix Rise / DFlow / zkcompression** — HTTP MCP endpoints for market and
+compression tooling.
 
 ### Skills
 
-| Skill | Invoke | What It Does |
-|---|---|---|
-| **Clawd Code** | `/clawd:code` | Makes your agent an expert at using the Clawd Code CLI — 5 modes (code, trade, research, image, voice), wallet ops, perps workflows |
-| **Build** | `/clawd:build` | Makes your agent an expert Solana developer — Helius APIs, routing logic, SDK patterns |
-| **DFlow** | `/clawd:dflow` | Makes your agent an expert at building Solana trading apps — DFlow swaps, prediction markets, KYC |
-| **Phantom** | `/clawd:phantom` | Makes your agent an expert at building frontend dApps — Phantom Connect SDK, token gating, NFT minting |
-| **Jupiter** | `/clawd:jupiter` | Makes your agent an expert at building DeFi apps — Jupiter swaps, lending, limit orders, DCA |
-| **OKX** | `/clawd:okx` | Compose OKX DEX aggregation and market intelligence with Helius infrastructure |
-| **SVM** | `/clawd:svm` | Solana protocol expert — architecture, consensus, execution engine |
+| Skill | Invoke | What it does |
+| --- | --- | --- |
+| **Clawd Code** | `/clawd:code` | Expert use of the Clawd Code CLI |
+| **Build** | `/clawd:build` | Solana + Helius development patterns |
+| **DFlow** | `/clawd:dflow` | Spot + prediction markets |
+| **Phantom** | `/clawd:phantom` | Wallet / frontend Connect |
+| **Jupiter** | `/clawd:jupiter` | DeFi swaps and lending |
+| **OKX** | `/clawd:okx` | OKX + Helius composition |
+| **SVM** | `/clawd:svm` | Solana protocol internals |
+| **Agent Arena** | `/clawd:arena` | On-chain identity + reputation |
 
-### Reference Files
+## API keys
 
-Deep documentation bundled with each skill covering DAS API, Sender, Priority Fees, Webhooks, WebSockets, LaserStream, Wallet API, Enhanced Transactions, Onboarding, Clawd Code CLI usage, perps workflows, wallet operations, DFlow spot trading/prediction markets, Phantom SDKs, Jupiter APIs, and SVM architecture.
-
-## API Key Setup
-
-Set in `~/.clawd-code/.env`:
+Set in `~/.clawd-code/.env` (shared with the CLI):
 
 ```bash
-XAI_API_KEY=your-xai-key
-HELIUS_API_KEY=your-helius-key
-SOLANA_RPC_URL=https://mainnet.helius-rpc.com/?api-key=your-helius-key
+CLAWD_PROVIDER=zai
+CLAWD_MODEL=glm-5.2
+ZAI_API_KEY=
+XAI_API_KEY=
+HELIUS_API_KEY=
+SOLANA_RPC_URL=https://mainnet.helius-rpc.com/?api-key=
+LIVE_TRADING=false
+OPERATOR_CONFIRMED=false
+PERPS_SIM_ONLY=true
 ```
-
-## Usage
-
-Once installed, just ask questions in plain English:
-
-- "Build a Jupiter swap bot in TypeScript"
-- "What's the funding rate on SOL perps?"
-- "Research the latest AI agent frameworks"
-- "Generate an image of a cyberpunk Solana trading desk"
-- "What NFTs does this wallet own?"
-- "Create wallet and show me my balance"
-- "Set up webhooks to monitor my wallet"
-- "Parse this transaction: 5abc..."
-
-Your agent picks the right tools and reads the right reference files automatically.
 
 ## License
 
@@ -75,5 +127,5 @@ MIT. See [LICENSE](./LICENSE).
 ## Links
 
 - [Clawd Code on GitHub](https://github.com/Solizardking/clawd-code)
+- [Cheshire eliza package](../../packages/cheshire-eliza/README.md)
 - [x402 Protocol](https://x402.wtf)
-- [Helius Documentation](https://www.helius.dev/docs)
