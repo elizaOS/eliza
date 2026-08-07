@@ -228,7 +228,9 @@ function runTurboOnce() {
       process.stderr.write(chunk);
     });
 
-    child.on("exit", (code, signal) => {
+    // `exit` may precede stdio closure; use `close` so the final Turbo failure
+    // line is forwarded and scanned before deciding whether to retry.
+    child.on("close", (code, signal) => {
       if (signal) {
         process.kill(process.pid, signal);
         return;
