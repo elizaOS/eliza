@@ -10,7 +10,14 @@
 // declared lifecycle (retained → background-warm, ephemeral → destroy).
 
 import { act, renderHook } from "@testing-library/react";
+import { createElement, type ReactNode, StrictMode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
+import { APP_PAUSE_EVENT, APP_RESUME_EVENT } from "../events";
+import {
+  CapacitorNativeSurfaceShell,
+  type ElizaSurfaceManagerPlugin,
+  type ElizaSurfaceManagerState,
+} from "./capacitor-native-surface-shell";
 import type {
   NativeSurfaceCreateRequest,
   NativeSurfacePolicy,
@@ -31,37 +38,57 @@ class RecordingShell implements NativeSurfaceShell {
   readonly bounds = new Map<string, SurfaceBounds>();
   readonly occlusions = new Map<string, readonly SurfaceOcclusionRect[]>();
   readonly navigations: Array<{ id: string; url: string }> = [];
+  readonly reloaded: string[] = [];
   private readonly live = new Set<string>();
+  presentedId: string | null = null;
 
-  createSurface(req: NativeSurfaceCreateRequest): void {
+  createSurface(req: NativeSurfaceCreateRequest): Promise<void> {
+    const previous = this.created.get(req.id);
+    if (this.live.has(req.id)) {
+      if (previous?.url !== req.url && req.url) {
+        this.commands.push(`navigate:${req.id}`);
+        this.navigations.push({ id: req.id, url: req.url });
+      }
+      this.created.set(req.id, req);
+      return Promise.resolve();
+    }
     this.commands.push(`create:${req.id}`);
     this.created.set(req.id, req);
     this.live.add(req.id);
+    return Promise.resolve();
   }
-  setBounds(id: string, bounds: SurfaceBounds): void {
+  setBounds(id: string, bounds: SurfaceBounds): Promise<void> {
     this.commands.push(`bounds:${id}`);
     this.bounds.set(id, bounds);
+    return Promise.resolve();
   }
-  setOcclusionRects(id: string, rects: readonly SurfaceOcclusionRect[]): void {
+  setOcclusionRects(
+    id: string,
+    rects: readonly SurfaceOcclusionRect[],
+  ): Promise<void> {
     this.commands.push(`occlusions:${id}`);
     this.occlusions.set(id, rects);
+    return Promise.resolve();
   }
-  navigate(id: string, url: string): void {
+  navigate(id: string, url: string): Promise<void> {
     this.commands.push(`navigate:${id}`);
     this.navigations.push({ id, url });
+    return Promise.resolve();
   }
-  foregroundSurface(id: string): void {
-    this.commands.push(`fg:${id}`);
+  reload(id: string): Promise<void> {
+    this.commands.push(`reload:${id}`);
+    this.reloaded.push(id);
+    return Promise.resolve();
   }
-  backgroundSurface(id: string): void {
-    this.commands.push(`bg:${id}`);
+  presentSurface(id: string | null): Promise<void> {
+    this.commands.push(`present:${id ?? "host"}`);
+    this.presentedId = id;
+    return Promise.resolve();
   }
-  destroySurface(id: string): void {
+  destroySurface(id: string): Promise<void> {
     this.commands.push(`destroy:${id}`);
     this.live.delete(id);
-  }
-  foregroundHost(): void {
-    this.commands.push("fg:host");
+    return Promise.resolve();
   }
   hasSurface(id: string): boolean {
     return this.live.has(id);
@@ -71,13 +98,137 @@ class RecordingShell implements NativeSurfaceShell {
 class DropFirstBoundsShell extends RecordingShell {
   attempts = 0;
 
-  override setBounds(id: string, bounds: SurfaceBounds): void {
+  override setBounds(id: string, bounds: SurfaceBounds): Promise<void> {
     this.attempts += 1;
     if (this.attempts === 1) {
       this.commands.push(`bounds-rejected:${id}`);
+      return Promise.reject(new Error("bounds rejected"));
+    }
+    return super.setBounds(id, bounds);
+  }
+}
+
+class InMemoryNativeManager implements ElizaSurfaceManagerPlugin {
+  [key: string]: unknown;
+  readonly states = new Map<
+    string,
+    ElizaSurfaceManagerState & { id: string }
+  >();
+  creates = 0;
+  destroys = 0;
+
+  async createSurface(options: {
+    owner: string;
+    session: string;
+    id: string;
+    url?: string;
+    process: "isolated" | "shared";
+    storage: "isolated" | "shared";
+  }): Promise<void> {
+    const current = this.states.get(options.id);
+    if (current) {
+      if (
+        current.owner !== options.owner ||
+        current.session !== options.session
+      ) {
+        throw new Error("stale native identity");
+      }
+      current.currentUrl = options.url ?? null;
       return;
     }
-    super.setBounds(id, bounds);
+    this.creates += 1;
+    this.states.set(options.id, {
+      id: options.id,
+      exists: true,
+      foregrounded: false,
+      currentUrl: options.url ?? null,
+      process: options.process,
+      storage: options.storage,
+      owner: options.owner,
+      session: options.session,
+    });
+  }
+
+  async setBounds(): Promise<void> {}
+  async setOcclusionRects(): Promise<void> {}
+  async reloadSurface(): Promise<void> {}
+
+  async navigate(options: {
+    owner: string;
+    session: string;
+    id: string;
+    url: string;
+  }): Promise<void> {
+    const state = this.states.get(options.id);
+    if (!state) throw new Error("surface absent");
+    state.currentUrl = options.url;
+  }
+
+  async presentSurface(options: {
+    owner: string;
+    session: string;
+    id: string | null;
+  }): Promise<void> {
+    for (const state of this.states.values()) {
+      if (state.owner === options.owner && state.session === options.session) {
+        state.foregrounded = state.id === options.id;
+      }
+    }
+  }
+
+  async destroySurface(options: {
+    owner: string;
+    session: string;
+    id: string;
+  }): Promise<void> {
+    this.destroys += 1;
+    this.states.delete(options.id);
+  }
+
+  async getSurfaceState(options: {
+    owner: string;
+    session: string;
+    id: string;
+  }): Promise<ElizaSurfaceManagerState> {
+    return (
+      this.states.get(options.id) ?? {
+        exists: false,
+        foregrounded: false,
+        currentUrl: null,
+        process: null,
+        storage: null,
+        owner: null,
+        session: null,
+      }
+    );
+  }
+
+  async listSurfaceStates(options: {
+    owner: string;
+    session: string;
+  }): Promise<unknown> {
+    return {
+      surfaces: [...this.states.values()].filter(
+        (state) =>
+          state.owner === options.owner && state.session === options.session,
+      ),
+    };
+  }
+
+  async reconcileOwner(options: {
+    owner: string;
+    session: string;
+    desiredIds: readonly string[];
+  }): Promise<void> {
+    const desired = new Set(options.desiredIds);
+    for (const [id, state] of this.states) {
+      if (
+        state.owner === options.owner &&
+        (state.session !== options.session || !desired.has(id))
+      ) {
+        this.states.delete(id);
+      }
+    }
   }
 }
 
@@ -111,6 +262,7 @@ function elementAt(rect: Partial<DOMRect>): HTMLElement {
 }
 
 afterEach(() => {
+  document.dispatchEvent(new Event(APP_RESUME_EVENT));
   document.body.replaceChildren();
 });
 
@@ -129,7 +281,7 @@ describe("useMobileNativeTabSurfaces", () => {
     renderHook(() => useMobileNativeTabSurfaces({ ...base, shell }));
 
     expect(shell.commands).toContain("create:browser-tab:a");
-    expect(shell.commands).toContain("fg:browser-tab:a");
+    expect(shell.commands).toContain("present:browser-tab:a");
     // The explicit policy — never an implicit default — is what the shell got.
     expect(shell.created.get("browser-tab:a")?.policy).toEqual(ISOLATED);
     expect(shell.created.get("browser-tab:a")?.url).toBe("https://a.example");
@@ -189,12 +341,59 @@ describe("useMobileNativeTabSurfaces", () => {
     });
   });
 
+  it("preserves valid zero computed longhands instead of replacing them with shorthand", () => {
+    const host = elementAt({ left: 8, top: 72, width: 368, height: 640 });
+    host.style.overflow = "hidden";
+    host.style.borderRadius = "48px";
+    host.style.borderTopLeftRadius = "24px";
+    host.style.borderTopRightRadius = "0px";
+    host.style.borderBottomRightRadius = "12px";
+    host.style.borderBottomLeftRadius = "0px";
+    const surface = elementAt({ left: 8, top: 72, width: 368, height: 640 });
+    host.append(surface);
+    document.body.append(host);
+
+    expect(collectSurfaceOuterClip(surface).cornerRadii).toEqual({
+      topLeft: 24,
+      topRight: 0,
+      bottomRight: 12,
+      bottomLeft: 0,
+    });
+  });
+
   it("does nothing while inactive (not on the native-mobile-webview path)", () => {
     const shell = new RecordingShell();
     renderHook(() =>
       useMobileNativeTabSurfaces({ ...base, active: false, shell }),
     );
     expect(shell.commands).toEqual([]);
+  });
+
+  it("keeps one valid native generation through a StrictMode teardown-to-setup cycle", async () => {
+    const manager = new InMemoryNativeManager();
+    const shell = new CapacitorNativeSurfaceShell(() => manager, {
+      owner: "browser-hook-test",
+      session: "strict-realm",
+    });
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(StrictMode, null, children);
+    const { result } = renderHook(
+      () => useMobileNativeTabSurfaces({ ...base, shell }),
+      { wrapper },
+    );
+
+    await act(async () => {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    });
+    expect(result.current.error).toBeNull();
+    expect(manager.states.get("browser-tab:a")).toMatchObject({
+      exists: true,
+      foregrounded: true,
+      currentUrl: "https://a.example",
+      owner: "browser-hook-test",
+      session: "strict-realm",
+    });
+    expect(manager.states.size).toBe(1);
   });
 
   it("measures the placeholder rect on register and re-measures on a layout shift", () => {
@@ -242,7 +441,10 @@ describe("useMobileNativeTabSurfaces", () => {
   it("updates a computed host radius in place without recreating or navigating the WebView", async () => {
     const host = elementAt({ left: 8, top: 72, width: 368, height: 640 });
     host.style.overflow = "hidden";
-    host.style.borderRadius = "24px";
+    host.style.borderTopLeftRadius = "24px";
+    host.style.borderTopRightRadius = "24px";
+    host.style.borderBottomRightRadius = "24px";
+    host.style.borderBottomLeftRadius = "24px";
     const surface = elementAt({ left: 8, top: 72, width: 368, height: 640 });
     host.append(surface);
     document.body.append(host);
@@ -257,7 +459,10 @@ describe("useMobileNativeTabSurfaces", () => {
 
     shell.commands.length = 0;
     await act(async () => {
-      host.style.borderRadius = "32px";
+      host.style.borderTopLeftRadius = "32px";
+      host.style.borderTopRightRadius = "32px";
+      host.style.borderBottomRightRadius = "32px";
+      host.style.borderBottomLeftRadius = "32px";
       await new Promise<void>((resolve) =>
         window.requestAnimationFrame(() => resolve()),
       );
@@ -273,7 +478,7 @@ describe("useMobileNativeTabSurfaces", () => {
     ).toBe(false);
   });
 
-  it("retries identical geometry after a fire-and-forget native rejection", async () => {
+  it("renders a terminal transport error and retries identical geometry only on explicit Retry", async () => {
     const shell = new DropFirstBoundsShell();
     const surface = elementAt({ left: 12, top: 34, width: 300, height: 500 });
     const { result } = renderHook(() =>
@@ -284,13 +489,16 @@ describe("useMobileNativeTabSurfaces", () => {
     expect(shell.bounds.has("browser-tab:a")).toBe(false);
 
     await act(async () => {
-      window.dispatchEvent(new Event("resize"));
-      await new Promise<void>((resolve) =>
-        window.requestAnimationFrame(() => resolve()),
-      );
+      await Promise.resolve();
     });
+    expect(result.current.error?.message).toContain("bounds rejected");
+    expect(shell.presentedId).toBeNull();
+    expect(shell.attempts).toBe(1);
 
-    expect(shell.attempts).toBeGreaterThanOrEqual(2);
+    act(() => result.current.retry());
+    await act(async () => Promise.resolve());
+
+    expect(shell.attempts).toBe(2);
     expect(shell.bounds.get("browser-tab:a")).toMatchObject({
       x: 12,
       y: 34,
@@ -303,7 +511,64 @@ describe("useMobileNativeTabSurfaces", () => {
     expect(shell.navigations).toEqual([]);
   });
 
-  it("foregrounds the selected surface and backgrounds the rest on tab switch", () => {
+  it("uses the app-resume edge as one bounded retry for failed desired state", async () => {
+    const shell = new DropFirstBoundsShell();
+    const surface = elementAt({ left: 8, top: 16, width: 280, height: 460 });
+    const { result } = renderHook(() =>
+      useMobileNativeTabSurfaces({ ...base, shell }),
+    );
+    act(() => result.current.registerSurfaceElement("a", surface));
+    await act(async () => Promise.resolve());
+
+    expect(result.current.error?.message).toContain("bounds rejected");
+    expect(shell.attempts).toBe(1);
+
+    act(() => document.dispatchEvent(new Event(APP_RESUME_EVENT)));
+    await act(async () => Promise.resolve());
+
+    expect(shell.attempts).toBe(2);
+    expect(result.current.error).toBeNull();
+    expect(shell.bounds.get("browser-tab:a")).toMatchObject({
+      x: 8,
+      y: 16,
+      width: 280,
+      height: 460,
+    });
+  });
+
+  it("prevents an older overlapping hook from destroying a newer owner of the same tab", async () => {
+    const shell = new RecordingShell();
+    const older = renderHook(() =>
+      useMobileNativeTabSurfaces({ ...base, shell }),
+    );
+    const newer = renderHook(() =>
+      useMobileNativeTabSurfaces({ ...base, shell }),
+    );
+    await act(async () => Promise.resolve());
+    shell.commands.length = 0;
+
+    older.unmount();
+    await act(async () => Promise.resolve());
+
+    expect(shell.commands).not.toContain("destroy:browser-tab:a");
+    expect(shell.commands).not.toContain("present:host");
+    expect(shell.hasSurface("browser-tab:a")).toBe(true);
+
+    act(() =>
+      newer.result.current.navigateSurface("a", "https://still-live.example"),
+    );
+    expect(shell.navigations).toContainEqual({
+      id: "browser-tab:a",
+      url: "https://still-live.example",
+    });
+
+    newer.unmount();
+    await act(async () => Promise.resolve());
+    expect(shell.commands).toContain("destroy:browser-tab:a");
+    expect(shell.commands).toContain("present:host");
+  });
+
+  it("atomically presents the selected surface on tab switch", () => {
     const shell = new RecordingShell();
     const { rerender } = renderHook(
       (props: typeof base) => useMobileNativeTabSurfaces({ ...props, shell }),
@@ -316,8 +581,8 @@ describe("useMobileNativeTabSurfaces", () => {
     const tail = shell.commands.slice(
       shell.commands.indexOf("create:browser-tab:b"),
     );
-    expect(tail).toContain("fg:browser-tab:b");
-    expect(tail).toContain("bg:browser-tab:a");
+    expect(tail).toContain("present:browser-tab:b");
+    expect(shell.presentedId).toBe("browser-tab:b");
   });
 
   it("backgrounds every surface while an overlay is open, restoring on close", () => {
@@ -330,14 +595,65 @@ describe("useMobileNativeTabSurfaces", () => {
 
     shell.commands.length = 0;
     rerender({ ...twoTabs, overlayOpen: true });
-    expect(shell.commands).toContain("bg:browser-tab:a");
-    expect(shell.commands).toContain("bg:browser-tab:b");
-    expect(shell.commands).not.toContain("fg:browser-tab:b");
+    expect(shell.commands.length).toBeGreaterThan(0);
+    expect(shell.commands.every((command) => command === "present:host")).toBe(
+      true,
+    );
+    expect(shell.presentedId).toBeNull();
 
     shell.commands.length = 0;
     rerender({ ...twoTabs, overlayOpen: false });
-    expect(shell.commands).toContain("fg:browser-tab:b");
-    expect(shell.commands).toContain("bg:browser-tab:a");
+    expect(shell.commands).toContain("present:browser-tab:b");
+    expect(shell.presentedId).toBe("browser-tab:b");
+  });
+
+  it("latches host presentation across rerenders while paused and restores only on resume", async () => {
+    const shell = new RecordingShell();
+    const twoTabs = { ...base, tabs: [tab("a"), tab("b")], selectedTabId: "b" };
+    const { rerender } = renderHook(
+      (props: typeof base) => useMobileNativeTabSurfaces({ ...props, shell }),
+      { initialProps: twoTabs },
+    );
+    shell.commands.length = 0;
+
+    act(() => document.dispatchEvent(new Event(APP_PAUSE_EVENT)));
+    await act(async () => Promise.resolve());
+    expect(shell.presentedId).toBeNull();
+
+    shell.commands.length = 0;
+    rerender({ ...twoTabs, selectedTabId: "a", overlayOpen: true });
+    rerender({ ...twoTabs, selectedTabId: "a", overlayOpen: false });
+    expect(shell.commands).not.toContain("present:browser-tab:a");
+    expect(shell.presentedId).toBeNull();
+
+    act(() => document.dispatchEvent(new Event(APP_RESUME_EVENT)));
+    await act(async () => Promise.resolve());
+    expect(shell.presentedId).toBe("browser-tab:a");
+  });
+
+  it("retains pause across an unmounted Browser and clears it only on the process resume edge", async () => {
+    const firstShell = new RecordingShell();
+    const first = renderHook(() =>
+      useMobileNativeTabSurfaces({ ...base, shell: firstShell }),
+    );
+    first.unmount();
+    act(() => document.dispatchEvent(new Event(APP_PAUSE_EVENT)));
+
+    const pausedShell = new RecordingShell();
+    const paused = renderHook(() =>
+      useMobileNativeTabSurfaces({ ...base, shell: pausedShell }),
+    );
+    await act(async () => Promise.resolve());
+    expect(pausedShell.presentedId).toBeNull();
+    paused.unmount();
+
+    act(() => document.dispatchEvent(new Event(APP_RESUME_EVENT)));
+    const resumedShell = new RecordingShell();
+    renderHook(() =>
+      useMobileNativeTabSurfaces({ ...base, shell: resumedShell }),
+    );
+    await act(async () => Promise.resolve());
+    expect(resumedShell.presentedId).toBe("browser-tab:a");
   });
 
   it("keeps the native page foregrounded and updates its rounded chat hole while the sheet opens", async () => {
@@ -369,7 +685,7 @@ describe("useMobileNativeTabSurfaces", () => {
       { x: 12, y: 700, width: 360, height: 60, cornerRadius: 32 },
     ]);
     expect(shell.commands.indexOf("occlusions:browser-tab:a")).toBeLessThan(
-      shell.commands.indexOf("fg:browser-tab:a"),
+      shell.commands.indexOf("present:browser-tab:a"),
     );
 
     shell.commands.length = 0;
@@ -410,7 +726,7 @@ describe("useMobileNativeTabSurfaces", () => {
     expect(shell.occlusions.get("browser-tab:a")).toEqual([
       { x: 12, y: 700, width: 360, height: 60, cornerRadius: 32 },
     ]);
-    expect(shell.commands).not.toContain("bg:browser-tab:a");
+    expect(shell.commands).not.toContain("present:host");
   });
 
   it("navigates the tab's surface without recreating it", () => {
@@ -425,6 +741,15 @@ describe("useMobileNativeTabSurfaces", () => {
     expect(
       shell.commands.filter((c) => c === "create:browser-tab:a"),
     ).toHaveLength(1);
+  });
+
+  it("reloads through the native reconciler instead of the iframe branch", () => {
+    const shell = new RecordingShell();
+    const { result } = renderHook(() =>
+      useMobileNativeTabSurfaces({ ...base, shell }),
+    );
+    act(() => result.current.reloadSurface("a"));
+    expect(shell.reloaded).toEqual(["browser-tab:a"]);
   });
 
   it("navigates a surface declaratively when a tab's url changes, without recreating it", () => {
@@ -473,7 +798,7 @@ describe("useMobileNativeTabSurfaces", () => {
     expect(shell.commands).toContain("destroy:browser-tab:b");
   });
 
-  it("keeps surfaces warm (background) on unmount when lifecycle is retained — red→green on the manifest", () => {
+  it("keeps retained surfaces warm while atomically returning presentation to the host", () => {
     const shell = new RecordingShell();
     const { unmount } = renderHook(() =>
       useMobileNativeTabSurfaces({
@@ -485,8 +810,7 @@ describe("useMobileNativeTabSurfaces", () => {
     );
     shell.commands.length = 0;
     unmount();
-    expect(shell.commands).toContain("bg:browser-tab:a");
-    expect(shell.commands).toContain("bg:browser-tab:b");
+    expect(shell.commands).toContain("present:host");
     expect(shell.commands).not.toContain("destroy:browser-tab:a");
     expect(shell.commands).not.toContain("destroy:browser-tab:b");
   });

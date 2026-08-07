@@ -35,6 +35,7 @@ import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
+import java.security.MessageDigest
 
 @CapacitorPlugin(name = "ElizaSurfaceManager")
 class ElizaSurfaceManagerPlugin : Plugin() {
@@ -62,7 +63,11 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         val webView: WebView,
         val process: String,
         val storage: String,
+        val owner: String,
+        val session: String,
+        val profileName: String?,
         var foregrounded: Boolean,
+        var disposed: Boolean = false,
         var x: Double = 0.0,
         var y: Double = 0.0,
         var outerClip: HostOuterClip? = null,
@@ -72,6 +77,67 @@ class ElizaSurfaceManagerPlugin : Plugin() {
     private val surfaces = HashMap<String, Surface>()
 
     private fun density(): Float = activity.resources.displayMetrics.density
+
+    private fun requireIdentity(call: PluginCall, operation: String): Pair<String, String>? {
+        val owner = call.getString("owner")
+        val session = call.getString("session")
+        if (owner.isNullOrBlank() || session.isNullOrBlank()) {
+            call.reject("$operation requires owner and session")
+            return null
+        }
+        return Pair(owner, session)
+    }
+
+    private fun ownedSurface(
+        call: PluginCall,
+        id: String,
+        owner: String,
+        session: String,
+        operation: String,
+    ): Surface? {
+        val surface = surfaces[id]
+        if (surface == null) {
+            call.reject("no surface $id")
+            return null
+        }
+        if (surface.disposed) {
+            call.reject("$operation cannot use surface $id while native teardown is incomplete")
+            return null
+        }
+        if (surface.owner != owner || surface.session != session) {
+            call.reject("$operation cannot mutate surface $id owned by another renderer session")
+            return null
+        }
+        return surface
+    }
+
+    private fun digest(value: String): String = MessageDigest
+        .getInstance("SHA-256")
+        .digest(value.toByteArray(Charsets.UTF_8))
+        .joinToString("") { byte -> "%02x".format(byte) }
+
+    private fun profileOwnerPrefix(owner: String): String =
+        "eliza-browser-${digest(owner).take(16)}-"
+
+    private fun profileName(owner: String, session: String, id: String): String =
+        "${profileOwnerPrefix(owner)}${digest("$session\u0000$id").take(32)}"
+
+    private fun disposeSurface(surface: Surface) {
+        if (!surface.disposed) {
+            surface.container.visibility = View.GONE
+            surface.foregrounded = false
+            surface.webView.stopLoading()
+            (surface.container.parent as? ViewGroup)?.removeView(surface.container)
+            surface.container.removeView(surface.webView)
+            surface.webView.destroy()
+            surface.disposed = true
+        }
+        surface.profileName?.let { name ->
+            check(ProfileStore.getInstance().deleteProfile(name)) {
+                "isolated Browser profile $name is still in use"
+            }
+        }
+    }
 
     @PluginMethod
     fun createSurface(call: PluginCall) {
@@ -89,10 +155,25 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             call.reject("createSurface requires an explicit storage policy (isolated|shared)")
             return
         }
+        val identity = requireIdentity(call, "createSurface") ?: return
+        val (owner, session) = identity
         val url = call.getString("url")
 
         activity.runOnUiThread {
-            if (surfaces.containsKey(id)) {
+            val existing = surfaces[id]
+            if (existing != null) {
+                if (existing.disposed) {
+                    call.reject("surface $id is awaiting native teardown")
+                    return@runOnUiThread
+                }
+                if (
+                    existing.owner != owner || existing.session != session ||
+                    existing.process != process || existing.storage != storage
+                ) {
+                    call.reject("surface $id already exists with different owner/session/policy")
+                    return@runOnUiThread
+                }
+                if (url != null && existing.webView.url != url) existing.webView.loadUrl(url)
                 call.resolve()
                 return@runOnUiThread
             }
@@ -116,13 +197,15 @@ class ElizaSurfaceManagerPlugin : Plugin() {
 
             // Storage isolation via multi-profile. Fail-fast: no silent degrade
             // to the shared default profile on an unsupported system WebView.
+            var profileName: String? = null
             if (storage == "isolated") {
                 if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
                     webView.destroy()
                     call.reject("isolated storage requires WebView multi-profile support; system WebView is too old")
                     return@runOnUiThread
                 }
-                val profile = ProfileStore.getInstance().getOrCreateProfile("eliza-surface-$id")
+                profileName = profileName(owner, session, id)
+                val profile = ProfileStore.getInstance().getOrCreateProfile(profileName)
                 WebViewCompat.setProfile(webView, profile.name)
             }
             // shared storage ⇒ the default profile (host-scoped store).
@@ -144,11 +227,25 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             ) {
                 host.removeView(container)
                 webView.destroy()
-                call.reject("isolated process requires an out-of-process WebView renderer, which is unavailable on this device")
+                try {
+                    profileName?.let { name -> ProfileStore.getInstance().deleteProfile(name) }
+                    call.reject("isolated process requires an out-of-process WebView renderer, which is unavailable on this device")
+                } catch (error: RuntimeException) {
+                    call.reject("isolated renderer creation failed and its profile could not be released", error)
+                }
                 return@runOnUiThread
             }
 
-            surfaces[id] = Surface(container, webView, process, storage, false)
+            surfaces[id] = Surface(
+                container,
+                webView,
+                process,
+                storage,
+                owner,
+                session,
+                profileName,
+                false,
+            )
             call.resolve()
         }
     }
@@ -159,6 +256,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             call.reject("setBounds requires an id")
             return
         }
+        val identity = requireIdentity(call, "setBounds") ?: return
+        val (owner, session) = identity
         val x = call.getDouble("x")
         val y = call.getDouble("y")
         val width = call.getDouble("width")
@@ -187,10 +286,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             return
         }
         activity.runOnUiThread {
-            val surface = surfaces[id] ?: run {
-                call.reject("no surface $id")
-                return@runOnUiThread
-            }
+            val surface = ownedSurface(call, id, owner, session, "setBounds")
+                ?: return@runOnUiThread
             val d = density()
             val lp = FrameLayout.LayoutParams((width * d).toInt(), (height * d).toInt())
             lp.leftMargin = (x * d).toInt()
@@ -220,6 +317,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             call.reject("setOcclusionRects requires a rects array")
             return
         }
+        val identity = requireIdentity(call, "setOcclusionRects") ?: return
+        val (owner, session) = identity
         val rects = ArrayList<HostOcclusionRect>(rawRects.length())
         for (index in 0 until rawRects.length()) {
             val raw = rawRects.optJSONObject(index) ?: run {
@@ -247,10 +346,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             rects.add(HostOcclusionRect(x, y, width, height, cornerRadius))
         }
         activity.runOnUiThread {
-            val surface = surfaces[id] ?: run {
-                call.reject("no surface $id")
-                return@runOnUiThread
-            }
+            val surface = ownedSurface(call, id, owner, session, "setOcclusionRects")
+                ?: return@runOnUiThread
             surface.occlusions = rects
             applyOcclusions(surface, density())
             call.resolve()
@@ -265,47 +362,53 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             call.reject("navigate requires an id and a url")
             return
         }
+        val identity = requireIdentity(call, "navigate") ?: return
+        val (owner, session) = identity
         activity.runOnUiThread {
-            val surface = surfaces[id] ?: run {
-                call.reject("no surface $id")
-                return@runOnUiThread
-            }
+            val surface = ownedSurface(call, id, owner, session, "navigate")
+                ?: return@runOnUiThread
             surface.webView.loadUrl(url)
             call.resolve()
         }
     }
 
     @PluginMethod
-    fun foregroundSurface(call: PluginCall) {
+    fun reloadSurface(call: PluginCall) {
         val id = call.getString("id") ?: run {
-            call.reject("foregroundSurface requires an id")
+            call.reject("reloadSurface requires an id")
             return
         }
+        val identity = requireIdentity(call, "reloadSurface") ?: return
+        val (owner, session) = identity
         activity.runOnUiThread {
-            val surface = surfaces[id] ?: run {
-                call.reject("no surface $id")
-                return@runOnUiThread
-            }
-            surface.container.bringToFront()
-            surface.container.visibility = View.VISIBLE
-            surface.foregrounded = true
+            val surface = ownedSurface(call, id, owner, session, "reloadSurface")
+                ?: return@runOnUiThread
+            surface.webView.reload()
             call.resolve()
         }
     }
 
     @PluginMethod
-    fun backgroundSurface(call: PluginCall) {
-        val id = call.getString("id") ?: run {
-            call.reject("backgroundSurface requires an id")
-            return
-        }
+    fun presentSurface(call: PluginCall) {
+        val identity = requireIdentity(call, "presentSurface") ?: return
+        val (owner, session) = identity
+        val id = call.getString("id")
         activity.runOnUiThread {
-            val surface = surfaces[id] ?: run {
-                call.reject("no surface $id")
-                return@runOnUiThread
+            val selected = id?.let {
+                ownedSurface(call, it, owner, session, "presentSurface")
+                    ?: return@runOnUiThread
             }
-            surface.container.visibility = View.GONE
-            surface.foregrounded = false
+            for (surface in surfaces.values) {
+                if (surface.owner == owner && surface.session == session) {
+                    surface.container.visibility = View.GONE
+                    surface.foregrounded = false
+                }
+            }
+            selected?.let { surface ->
+                surface.container.bringToFront()
+                surface.container.visibility = View.VISIBLE
+                surface.foregrounded = true
+            }
             call.resolve()
         }
     }
@@ -316,24 +419,25 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             call.reject("destroySurface requires an id")
             return
         }
+        val identity = requireIdentity(call, "destroySurface") ?: return
+        val (owner, session) = identity
         activity.runOnUiThread {
-            surfaces.remove(id)?.let { surface ->
-                surface.webView.stopLoading()
-                (surface.container.parent as? ViewGroup)?.removeView(surface.container)
-                surface.webView.destroy()
+            val surface = surfaces[id]
+            if (surface == null) {
+                call.resolve()
+                return@runOnUiThread
             }
-            call.resolve()
-        }
-    }
-
-    @PluginMethod
-    fun foregroundHost(call: PluginCall) {
-        activity.runOnUiThread {
-            for (surface in surfaces.values) {
-                surface.container.visibility = View.GONE
-                surface.foregrounded = false
+            if (surface.owner != owner || surface.session != session) {
+                call.reject("destroySurface cannot mutate surface $id owned by another renderer session")
+                return@runOnUiThread
             }
-            call.resolve()
+            try {
+                disposeSurface(surface)
+                surfaces.remove(id)
+                call.resolve()
+            } catch (error: RuntimeException) {
+                call.reject("destroySurface could not release surface $id", error)
+            }
         }
     }
 
@@ -343,24 +447,107 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             call.reject("getSurfaceState requires an id")
             return
         }
+        val identity = requireIdentity(call, "getSurfaceState") ?: return
+        val (owner, session) = identity
         activity.runOnUiThread {
             val result = JSObject()
             val surface = surfaces[id]
-            if (surface == null) {
+            if (surface == null || surface.owner != owner || surface.session != session) {
                 result.put("exists", false)
                 result.put("foregrounded", false)
                 result.put("currentUrl", JSObject.NULL)
                 result.put("process", JSObject.NULL)
                 result.put("storage", JSObject.NULL)
+                result.put("owner", JSObject.NULL)
+                result.put("session", JSObject.NULL)
             } else {
                 result.put("exists", true)
                 result.put("foregrounded", surface.foregrounded)
                 result.put("currentUrl", surface.webView.url ?: JSObject.NULL)
                 result.put("process", surface.process)
                 result.put("storage", surface.storage)
+                result.put("owner", surface.owner)
+                result.put("session", surface.session)
             }
             call.resolve(result)
         }
+    }
+
+    @PluginMethod
+    fun listSurfaceStates(call: PluginCall) {
+        val identity = requireIdentity(call, "listSurfaceStates") ?: return
+        val (owner, session) = identity
+        activity.runOnUiThread {
+            val surfacesResult = com.getcapacitor.JSArray()
+            for ((id, surface) in surfaces) {
+                if (surface.owner != owner || surface.session != session) continue
+                surfacesResult.put(surfaceState(id, surface))
+            }
+            val result = JSObject()
+            result.put("surfaces", surfacesResult)
+            call.resolve(result)
+        }
+    }
+
+    @PluginMethod
+    fun reconcileOwner(call: PluginCall) {
+        val identity = requireIdentity(call, "reconcileOwner") ?: return
+        val (owner, session) = identity
+        val desiredArray = call.getArray("desiredIds") ?: run {
+            call.reject("reconcileOwner requires desiredIds")
+            return
+        }
+        val desiredIds = HashSet<String>()
+        for (index in 0 until desiredArray.length()) {
+            val id = desiredArray.optString(index, "")
+            if (id.isBlank()) {
+                call.reject("reconcileOwner desiredIds must contain strings")
+                return
+            }
+            desiredIds.add(id)
+        }
+        activity.runOnUiThread {
+            try {
+                val staleIds = surfaces.entries
+                    .filter { entry ->
+                        val surface = entry.value
+                        surface.owner == owner &&
+                            (surface.session != session || !desiredIds.contains(entry.key))
+                    }
+                    .map { it.key }
+                for (id in staleIds) {
+                    val surface = surfaces.getValue(id)
+                    disposeSurface(surface)
+                    surfaces.remove(id)
+                }
+                if (WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
+                    val keepProfiles = desiredIds.mapTo(HashSet()) { id ->
+                        profileName(owner, session, id)
+                    }
+                    val store = ProfileStore.getInstance()
+                    val prefix = profileOwnerPrefix(owner)
+                    for (name in store.allProfileNames) {
+                        if (name.startsWith(prefix) && !keepProfiles.contains(name)) {
+                            store.deleteProfile(name)
+                        }
+                    }
+                }
+                call.resolve()
+            } catch (error: RuntimeException) {
+                call.reject("reconcileOwner could not release stale Browser surfaces", error)
+            }
+        }
+    }
+
+    private fun surfaceState(id: String, surface: Surface): JSObject = JSObject().apply {
+        put("id", id)
+        put("exists", true)
+        put("foregrounded", surface.foregrounded)
+        put("currentUrl", surface.webView.url ?: JSObject.NULL)
+        put("process", surface.process)
+        put("storage", surface.storage)
+        put("owner", surface.owner)
+        put("session", surface.session)
     }
 
     private fun HostOuterClip.hasValidGeometry(): Boolean =
