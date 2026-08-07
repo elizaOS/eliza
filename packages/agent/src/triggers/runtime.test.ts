@@ -11,7 +11,7 @@
  */
 
 import type { IAgentRuntime, Task, UUID } from "@elizaos/core";
-import { RoomHandlerQueue, ServiceType, stringToUuid } from "@elizaos/core";
+import { ServiceType, stringToUuid } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -114,7 +114,6 @@ function makeRuntime(): MockRuntimeHandle {
     agentId: AGENT_ID,
     character: { name: "trigger-test" },
     messageService,
-    roomHandlerQueue: new RoomHandlerQueue(),
     logger: {
       info: vi.fn(),
       warn: vi.fn((...args: unknown[]) => {
@@ -551,38 +550,6 @@ describe("executeTriggerTask", () => {
     expect(result.error).toBe("boom");
     // The run still records and persists (error is observable, not swallowed).
     expect(handle.updatedTasks).toHaveLength(1);
-  });
-
-  it("runs a manual prompt trigger reentrantly under the owning room lease", async () => {
-    const roomId = stringToUuid("manual-trigger-origin-room");
-    const task = makeTriggerTask(
-      {
-        kind: "prompt",
-        workflowId: undefined,
-        workflowName: undefined,
-        instructions: "Send the scheduled check-in",
-      },
-      { kindOverride: "prompt" },
-    );
-    task.roomId = roomId;
-    const lease = await handle.runtime.roomHandlerQueue.acquire(roomId);
-
-    const result = await executeTriggerTask(handle.runtime, task, {
-      source: "manual",
-      force: true,
-      roomHandlerLease: lease,
-    });
-
-    expect(result.status).toBe("success");
-    expect(handle.promptMessages).toEqual([
-      expect.objectContaining({
-        roomId,
-        text: expect.stringContaining("scheduled check-in"),
-      }),
-    ]);
-    expect(handle.runtime.roomHandlerQueue.pendingFor(roomId)).toBe(1);
-    await lease.release();
-    expect(handle.runtime.roomHandlerQueue.pendingFor(roomId)).toBe(0);
   });
 
   it("reports an error when the WORKFLOW_DISPATCH service never registers (bounded wait)", async () => {

@@ -21,6 +21,7 @@ import { getAgentHostBridge } from "../runtime/host-bridge.ts";
 import type { AutonomousConfigLike } from "../types/config-like.ts";
 import { detectRuntimeModel } from "./agent-model.ts";
 import { clearPersistedFirstRunConfig } from "./provider-switch-config.ts";
+import { quiesceRuntimeBeforeReplacement } from "./runtime-replacement-ownership.ts";
 
 type AgentStateStatus =
   | "not_started"
@@ -139,6 +140,7 @@ export async function handleAgentAdminRoutes(
       const previousRuntime = state.runtime;
       const newRuntime = await onRestart();
       if (newRuntime) {
+        await quiesceRuntimeBeforeReplacement(previousRuntime, newRuntime);
         state.runtime = newRuntime;
         state.chatConnectionReady = null;
         state.chatConnectionPromise = null;

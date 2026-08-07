@@ -4,6 +4,8 @@
  * failure-observable through `runtime.reportError`; normal shutdown drains them
  * before services and the database disappear, while fast shutdown stays fast.
  */
+import { ElizaError } from "../errors.ts";
+import type { RoomHandlerLease } from "../runtime/room-handler-queue.ts";
 import type { IAgentRuntime } from "../types/runtime.ts";
 
 type TrackableRuntime = Pick<IAgentRuntime, "agentId" | "reportError"> &
@@ -11,10 +13,17 @@ type TrackableRuntime = Pick<IAgentRuntime, "agentId" | "reportError"> &
 
 export type PostDeliveryTaskKind = "room-state" | "diagnostic";
 
-export interface PostDeliveryTaskOptions {
-	/** Diagnostic work never mutates state consumed by the next room turn. */
-	kind: PostDeliveryTaskKind;
-}
+export type PostDeliveryTaskOptions =
+	| {
+			/** Diagnostic work never mutates state consumed by the next room turn. */
+			kind: "diagnostic";
+	  }
+	| {
+			/** Room-state work blocks the next turn until it settles. */
+			kind: "room-state";
+			roomId?: string;
+			roomHandlerLease?: RoomHandlerLease;
+	  };
 
 const pendingByRuntime = new WeakMap<object, Set<Promise<void>>>();
 const pendingByRuntimeRoom = new WeakMap<
@@ -39,10 +48,49 @@ export function trackPostDeliveryTask(
 	options: PostDeliveryTaskOptions = { kind: "room-state" },
 ): Promise<void> {
 	const pending = pendingSet(runtime);
+	const explicitRoomId =
+		options.kind === "room-state" ? options.roomId : undefined;
+	const explicitLease =
+		options.kind === "room-state" ? options.roomHandlerLease : undefined;
+	if ((explicitRoomId === undefined) !== (explicitLease === undefined)) {
+		throw new ElizaError(
+			"Room-state post-delivery ownership requires both room and lease",
+			{
+				code: "POST_DELIVERY_ROOM_OWNERSHIP_INVALID",
+				context: { label, explicitRoomId },
+			},
+		);
+	}
+	if (
+		explicitRoomId &&
+		explicitLease &&
+		!runtime.roomHandlerQueue?.ownsLease(explicitRoomId, explicitLease)
+	) {
+		throw new ElizaError(
+			"Room-state post-delivery ownership capability is not live",
+			{
+				code: "POST_DELIVERY_ROOM_LEASE_MISMATCH",
+				context: { label, roomId: explicitRoomId },
+			},
+		);
+	}
 	const roomId =
 		options.kind === "room-state"
-			? runtime.roomHandlerQueue?.currentOwnership()?.roomId
+			? (explicitRoomId ?? runtime.roomHandlerQueue?.currentOwnership()?.roomId)
 			: undefined;
+	if (
+		options.kind === "room-state" &&
+		!roomId &&
+		runtime.roomHandlerQueue?.requiresExplicitOwnership()
+	) {
+		throw new ElizaError(
+			"Room-state post-delivery work requires explicit ownership in this runtime",
+			{
+				code: "POST_DELIVERY_ROOM_OWNERSHIP_REQUIRED",
+				context: { label },
+			},
+		);
+	}
 	let roomPending: Set<Promise<void>> | undefined;
 	if (roomId) {
 		let rooms = pendingByRuntimeRoom.get(runtime as object);

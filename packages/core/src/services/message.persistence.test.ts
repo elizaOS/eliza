@@ -3,9 +3,14 @@
  * affect stored memories without changing the in-flight turn payload.
  */
 import { describe, expect, it, vi } from "vitest";
+import { RoomHandlerQueue } from "../runtime/room-handler-queue";
 import { TurnControllerRegistry } from "../runtime/turn-controller";
 import type { IAgentRuntime, Memory, UUID } from "../types";
 import { DefaultMessageService } from "./message";
+import {
+	drainRoomPostDeliveryTasks,
+	pendingRoomPostDeliveryTaskCount,
+} from "./post-delivery-task-tracker";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000a1" as UUID;
 const USER_ID = "00000000-0000-0000-0000-0000000000b1" as UUID;
@@ -105,5 +110,58 @@ describe("DefaultMessageService message persistence", () => {
 			}),
 			"normal",
 		);
+	});
+
+	it("keeps the room owner until ALWAYS_DURING state work settles", async () => {
+		const service = new DefaultMessageService();
+		const { runtime } = makeRuntime();
+		const queue = new RoomHandlerQueue({ asyncContext: "explicit" });
+		(
+			runtime as unknown as { roomHandlerQueue: RoomHandlerQueue }
+		).roomHandlerQueue = queue;
+		let releaseAction!: () => void;
+		const actionGate = new Promise<void>((resolve) => {
+			releaseAction = resolve;
+		});
+		let actionStarted = false;
+		(runtime.runActionsByMode as ReturnType<typeof vi.fn>).mockImplementation(
+			async (mode: string) => {
+				if (mode !== "ALWAYS_DURING") return;
+				actionStarted = true;
+				await actionGate;
+			},
+		);
+		const message = {
+			entityId: USER_ID,
+			agentId: AGENT_ID,
+			roomId: ROOM_ID,
+			content: { text: "remember this state", source: "client_chat" },
+		} as Memory;
+		const lease = await queue.acquire(ROOM_ID);
+
+		await queue.runInLease(ROOM_ID, lease, () =>
+			service.handleMessage(runtime, message, undefined, {
+				roomHandlerLease: lease,
+			}),
+		);
+		await Promise.resolve();
+		expect(actionStarted).toBe(true);
+		expect(pendingRoomPostDeliveryTaskCount(runtime, ROOM_ID)).toBeGreaterThan(
+			0,
+		);
+		let nextTurnGranted = false;
+		const nextTurn = queue.acquire(ROOM_ID).then((nextLease) => {
+			nextTurnGranted = true;
+			return nextLease;
+		});
+		await Promise.resolve();
+		expect(nextTurnGranted).toBe(false);
+
+		releaseAction();
+		await drainRoomPostDeliveryTasks(runtime, ROOM_ID);
+		await lease.release();
+		const nextLease = await nextTurn;
+		expect(nextTurnGranted).toBe(true);
+		await nextLease.release();
 	});
 });
