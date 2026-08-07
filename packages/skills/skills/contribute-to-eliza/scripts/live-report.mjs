@@ -87,6 +87,8 @@ const CLOCK_SKEW_MS = 5 * 60 * 1000;
 const FULL_COMMIT_RE = /^[a-f0-9]{40}$/i;
 const GH_READ_MAX_ATTEMPTS = 3;
 const GH_READ_RETRY_BASE_DELAY_MS = 250;
+// Rate limits are intentionally excluded: HTTP 403/429 require honoring the
+// server's retry window, while this short transport backoff would amplify them.
 const RETRYABLE_GH_READ_FAILURE_RE =
   /(?:TLS handshake timeout|i\/o timeout|context deadline exceeded|client\.timeout exceeded|connection (?:reset|refused|closed)|unexpected EOF|temporary failure in name resolution|no such host|network is unreachable|HTTP (?:408|5\d\d)\b)/i;
 const DOMAIN_ARTIFACT_HOSTS = new Set([
