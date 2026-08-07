@@ -58,6 +58,13 @@ const publicPathPrefixes = [
   // every logout 401 once cookies were gone, so the server-side teardown never
   // ran and stale refresh cookies could silently re-mint a session.
   "/api/auth/logout",
+  // OpenID Connect provider. Every leg self-authenticates with a credential
+  // this gate cannot vouch for: /authorize resolves the Steward COOKIE only
+  // (never a Bearer, and never JIT-provisioning), /token authenticates the
+  // relying party's client secret, and /userinfo verifies a bearer access
+  // token against the OIDC key ring. Gating them here would 401 /token and
+  // /userinfo, whose callers hold no Cloud session at all.
+  "/api/oidc",
   "/api/set-anonymous-session",
   "/api/anonymous-session",
   "/api/auth/create-anonymous-session",

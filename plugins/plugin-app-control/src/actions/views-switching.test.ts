@@ -12,6 +12,7 @@
  * registry and a captured navigate fetch.
  */
 
+import { REALTIME_VOICE_CLIENT_TRANSPORT } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CURATED_MULTILINGUAL } from "./view-matrix.fixtures.js";
 import { createViewsAction } from "./views.js";
@@ -45,12 +46,15 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 	};
 });
 
-function message(text: string, roomId = "room-1") {
+function message(text: string, roomId = "room-1", clientTransport?: string) {
 	return {
 		entityId: "user-1",
 		roomId,
 		agentId: "agent-1",
-		content: { text },
+		content: {
+			text,
+			...(clientTransport ? { metadata: { clientTransport } } : {}),
+		},
 	};
 }
 
@@ -371,6 +375,36 @@ describe("view switching — VIEWS action resolver", () => {
 			);
 		});
 
+		it("routes realtime voice navigation back through the originating client", async () => {
+			installNavigateCapture();
+			const action = createViewsAction({
+				client: clientFor(REGISTRY),
+				hasOwnerAccess: vi.fn(async () => true),
+			});
+
+			await action.handler(
+				{ agentId: "agent-1" } as never,
+				message(
+					"open calendar",
+					"room-1",
+					REALTIME_VOICE_CLIENT_TRANSPORT,
+				) as never,
+				undefined,
+				{ action: "show", view: "calendar" },
+				vi.fn(),
+			);
+
+			const lastCall = vi.mocked(globalThis.fetch).mock.calls.at(-1);
+			expect(lastCall).toBeDefined();
+			if (!lastCall) {
+				throw new Error("expected the view navigation request");
+			}
+			const [, init] = lastCall;
+			expect(JSON.parse(String(init?.body))).toMatchObject({
+				delivery: "originating-client",
+			});
+		});
+
 		it("resolves an explicit view option without verb parsing", async () => {
 			const { navigated } = installNavigateCapture();
 			const { result } = await runShow(REGISTRY, "do it", {
@@ -398,6 +432,7 @@ describe("view switching — VIEWS action resolver", () => {
 				values: {
 					mode: "show",
 					viewId: "calendar",
+					viewPath: "/calendar",
 					viewType: "gui",
 					label: "Calendar",
 				},

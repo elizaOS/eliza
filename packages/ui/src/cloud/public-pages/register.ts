@@ -47,6 +47,7 @@ const EmailCallbackPage = lazy(
 const AppAuthAuthorizePage = lazy(
   () => import("./pages/app-auth/app-authorize-page"),
 );
+const OidcContinuePage = lazy(() => import("./pages/oidc/oidc-continue-page"));
 const SsoBridgePage = lazy(() => import("../sso-bridge/SsoBridgeRoute"));
 const TermsOfServicePage = lazy(
   () => import("./pages/legal/terms-of-service-page"),
@@ -175,6 +176,15 @@ export function registerPublicPages(): void {
   registerCloudRoute({
     path: "app-auth/authorize",
     element: AppAuthAuthorizePage,
+    ...PUBLIC_ROUTE_ACCESS,
+    group: "auth",
+  });
+  // Bounce target for the OpenID Provider's signed-out path. The provider's
+  // /authorize parks the request and sends the browser to /login?returnTo=this;
+  // this page resumes it on the API origin (see lib/oidc-continue.ts).
+  registerCloudRoute({
+    path: "oidc/continue",
+    element: OidcContinuePage,
     ...PUBLIC_ROUTE_ACCESS,
     group: "auth",
   });

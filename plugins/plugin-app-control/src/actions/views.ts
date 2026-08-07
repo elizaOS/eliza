@@ -137,6 +137,14 @@ const DESKTOP_ONLY_VIEW_MODES = new Set<ViewsMode>([
 // app-control must not import orchestrator internals, so this constant is kept
 // local and points at the orchestrator's owning constant.
 const SUB_AGENT_RELAY_SOURCE = "sub_agent";
+const SAFE_VIEW_CLIENT_ID = /^[A-Za-z0-9._-]{1,128}$/;
+
+function readViewInteractionClientId(message: Memory): string | undefined {
+	const clientId = readContentMetadata(message).viewClientId;
+	return typeof clientId === "string" && SAFE_VIEW_CLIENT_ID.test(clientId)
+		? clientId
+		: undefined;
+}
 
 function lowerSource(source: unknown): string {
 	return typeof source === "string" ? source.toLowerCase() : "";
@@ -2168,6 +2176,7 @@ const VIEWS_ROUTING_HINT = [
 	"Use VIEWS for navigation, close/hide, the view manager, split/tile/window/pin layouts, and capabilities that the selected view actually declares.",
 	"Opening the Calendar surface uses VIEWS action=show; reading or changing calendar events uses the CALENDAR action because the first-party Calendar view is read-only.",
 	"Sticky Notes operations use the registered Notes capabilities. Do not route them to documents or Knowledge.",
+	"Phone flashlight requests use action=interact view=device-control capability=set-flashlight with params={enabled:true|false}; never claim success before the capability returns success.",
 	"For declared domain capabilities, use action=interact with an explicit view and capability. Semantic record capabilities are required; agent-fill and agent-click are only for an explicitly requested form-control interaction. Pass parameters in params rather than dotted keys.",
 	"Close/hide means VIEWS action=close, never delete/remove.",
 	"Listing, launching, or restarting installed applications uses APP; only opening the apps/views page uses VIEWS.",
@@ -2213,6 +2222,9 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			"ARRANGE_VIEWS",
 			"USE_VIEW_CAPABILITY",
 			"CALL_VIEW_CAPABILITY",
+			"SET_FLASHLIGHT",
+			"TURN_ON_FLASHLIGHT",
+			"TURN_OFF_FLASHLIGHT",
 			"CREATE_NOTE",
 			"CREATE_STICKY_NOTE",
 			"SHOW_NOTES",
@@ -2325,11 +2337,15 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			"coding",
 			"app-builder",
 			"task-coordinator",
+			"device",
+			"hardware",
+			"flashlight",
+			"torch",
 		],
 		description:
-			"Manage and navigate UI views. List available views, report the current view, open or close a view, search views, show the view manager, arrange layouts, and invoke capabilities that a view declares, including Notes. Calendar event reads and writes belong to the CALENDAR action; VIEWS only opens the Calendar surface.",
+			"Manage and navigate UI views. List available views, report the current view, open or close a view, search views, show the view manager, arrange layouts, and invoke capabilities that a view declares, including Notes and native device controls. Calendar event reads and writes belong to the CALENDAR action; VIEWS only opens the Calendar surface.",
 		descriptionCompressed:
-			"navigate/close/arrange UI views; invoke declared Notes capabilities; Calendar records use CALENDAR",
+			"navigate/close/arrange UI views; invoke declared Notes/device capabilities; Calendar records use CALENDAR",
 		routingHint: VIEWS_ROUTING_HINT,
 		allowAdditionalParameters: true,
 		toolSchemaStrict: false,
@@ -2455,7 +2471,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			{
 				name: "capability",
 				description:
-					"Declared capability to invoke on the view (interact mode), e.g. 'create-note', 'get-notes', 'click-button', 'get-state', 'refresh', or 'focus-element'. Use semantic capabilities for domain record mutations; agent-fill/agent-click are only for deliberate form-control interaction, not record creation, updates, or deletion.",
+					"Declared capability to invoke on the view (interact mode), e.g. 'create-note', 'get-notes', 'set-flashlight', 'click-button', 'get-state', 'refresh', or 'focus-element'. Use semantic capabilities for domain record mutations and native device controls; agent-fill/agent-click are only for deliberate form-control interaction, not record creation, updates, or deletion.",
 				required: false,
 				schema: { type: "string" },
 			},
@@ -3004,6 +3020,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							params,
 							timeoutMs,
 							resolvedViewType,
+							readViewInteractionClientId(message),
 						);
 						const resultText = interaction.text;
 						const receipt = interaction.success
@@ -3636,6 +3653,7 @@ async function interactWithView(
 	params: Record<string, unknown> | undefined,
 	timeoutMs: number,
 	viewType?: ViewType,
+	clientId?: string,
 ): Promise<{ success: boolean; text: string; result?: unknown }> {
 	const { resolveServerOnlyPort } = await import("@elizaos/core");
 	const port = resolveServerOnlyPort(process.env);
@@ -3647,7 +3665,10 @@ async function interactWithView(
 			`${base}/api/views/${encodeURIComponent(viewId)}/interact${viewType ? `?viewType=${viewType}` : ""}`,
 			{
 				method: "POST",
-				headers: createViewsRequestHeaders(),
+				headers: {
+					...createViewsRequestHeaders(),
+					...(clientId ? { "X-ElizaOS-Client-Id": clientId } : {}),
+				},
 				body: JSON.stringify({ capability, params, timeoutMs, viewType }),
 				signal: AbortSignal.timeout(timeoutMs + 1_000),
 			},

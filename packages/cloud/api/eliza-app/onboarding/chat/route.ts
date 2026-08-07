@@ -6,10 +6,12 @@
  * provisioning and handoff memory copy.
  */
 
+import { isElizaError } from "@elizaos/core";
 import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { providerForPlatform, usersRepository } from "@/db/repositories/users";
 import {
+  ForbiddenError,
   failureResponse,
   ValidationError,
 } from "@/lib/api/cloud-worker-errors";
@@ -57,7 +59,11 @@ async function resolveCaller(
   c: Context<AppEnv>,
   platformIdentity: { platform?: string; platformUserId?: string },
 ): Promise<{
-  authenticatedUser: { userId: string; organizationId: string } | null;
+  authenticatedUser: {
+    userId: string;
+    organizationId: string;
+    telegramId?: string;
+  } | null;
   trustedPlatformIdentity: boolean;
 }> {
   const authHeader = c.req.header("Authorization");
@@ -71,6 +77,7 @@ async function resolveCaller(
       authenticatedUser: {
         userId: session.userId,
         organizationId: session.organizationId,
+        telegramId: session.telegramId,
       },
       trustedPlatformIdentity: false,
     };
@@ -168,6 +175,22 @@ app.post("/", async (c) => {
       },
     });
   } catch (error) {
+    if (
+      isElizaError(error) &&
+      error.code === "ONBOARDING_PLATFORM_IDENTITY_MISMATCH"
+    ) {
+      // error-policy:J1 translate the service's fail-closed identity mismatch
+      // into a stable user-facing authorization response.
+      logger.warn("[eliza-app onboarding/chat] Platform identity mismatch", {
+        context: error.context,
+      });
+      return failureResponse(
+        c,
+        ForbiddenError(
+          "Authenticate with the same messaging account that started this onboarding session",
+        ),
+      );
+    }
     logger.error("[eliza-app onboarding/chat] Error", { error });
     return failureResponse(c, error);
   }

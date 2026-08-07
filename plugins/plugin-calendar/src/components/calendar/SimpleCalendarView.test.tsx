@@ -6,7 +6,7 @@
  */
 
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { UseCalendarWeekResult } from "../../hooks/useCalendarWeek.js";
 
@@ -20,6 +20,7 @@ vi.mock("../../hooks/useCalendarWeek.js", () => ({
 }));
 
 vi.mock("@elizaos/ui/events", () => ({
+  NETWORK_STATUS_CHANGE_EVENT: "eliza:network-status-change",
   VIEW_EVENTS: { VIEW_REFRESH: "view:refresh" },
   useViewEvent: (eventType: string, callback: () => void) => {
     fixtures.viewEvents.set(eventType, callback);
@@ -86,6 +87,7 @@ function calendarState(
     windowStart,
     windowEnd,
     refresh: vi.fn().mockResolvedValue(undefined),
+    goToDate: vi.fn(),
     goToToday: vi.fn(),
     goPrevious: vi.fn(),
     goNext: vi.fn(),
@@ -101,7 +103,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("SimpleCalendarView", () => {
-  it("renders today's canonical events without direct controls", () => {
+  it("renders canonical events with month navigation and selectable days", () => {
     const events = [event("Demo", 10), event("Team sync", 15)];
     fixtures.calendar.mockReturnValue(
       calendarState({ events, status: "ready" }),
@@ -112,15 +114,49 @@ describe("SimpleCalendarView", () => {
     expect(
       screen.getByRole("main", { name: "Calendar. 2 events" }),
     ).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "August 2026" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", {
+        name: "Choose month and year. Current month is August 2026",
+      }),
+    ).toBeTruthy();
     expect(screen.getByText("Demo")).toBeTruthy();
     expect(screen.getByText("Team sync")).toBeTruthy();
     expect(
       screen.getByLabelText("2 events on Tuesday, August 4, 2026"),
     ).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Previous month/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Next month/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Today" })).toBeTruthy();
+    const augustSixth = screen.getByRole("button", {
+      name: "Thursday, August 6, 2026",
+    });
+    fireEvent.click(augustSixth);
+    expect(augustSixth.getAttribute("aria-pressed")).toBe("true");
     expect(
-      view.container.querySelector("button, input, textarea, form"),
-    ).toBeNull();
+      screen.getByRole("region", { name: "Events for 2026-08-06" }),
+    ).toBeTruthy();
+    expect(view.container.querySelector("form")).toBeNull();
+  });
+
+  it("changes month/year without walking every intermediate month", () => {
+    const goToDate = vi.fn();
+    fixtures.calendar.mockReturnValue(calendarState({ goToDate }));
+    render(<SimpleCalendarView />);
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Choose month and year. Current month is August 2026",
+      }),
+    );
+    fireEvent.change(screen.getByLabelText("Calendar year"), {
+      target: { value: "2027" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Mar" }));
+
+    expect(goToDate).toHaveBeenCalledTimes(1);
+    expect(goToDate.mock.calls[0]?.[0]).toEqual(
+      new Date(2027, 2, 1, 12, 0, 0, 0),
+    );
   });
 
   it("extends content beneath chat while keeping its tail reachable", () => {
@@ -141,6 +177,7 @@ describe("SimpleCalendarView", () => {
     expect(scroll.style.gridTemplateColumns).toBe(
       "repeat(auto-fit, minmax(280px, 1fr))",
     );
+    expect(scroll.style.alignContent).toBe("start");
   });
 
   it("refreshes the canonical feed after a completed chat action", () => {

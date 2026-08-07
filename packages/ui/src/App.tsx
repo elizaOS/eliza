@@ -246,6 +246,7 @@ import {
   type ViewRegistryEntry,
 } from "./hooks/useAvailableViews";
 import { useDesktopTabs } from "./hooks/useDesktopTabs";
+import { isDynamicViewLoadingAllowed } from "./platform/platform-guards";
 import { useEnabledViewKinds } from "./state/useViewKinds";
 import { WidgetHost } from "./widgets";
 
@@ -978,19 +979,15 @@ function findRemoteViewForRoute(
 
 function renderRemoteView(view: ViewRegistryEntry, nav?: ReactNode): ReactNode {
   if (!view.bundleUrl && !view.frameUrl) return null;
-  // Remote plugin bundles render only their own content (a SpatialSurface), not
-  // the app-shell chrome — so the shell owns the standard top bar for them. Every
-  // `normal`-policy view gets the shared ViewHeader (title + back-to-launcher),
-  // matching #13586 ("the shell enforces the shared ViewHeader on every normal
-  // view"); `fullscreen`/`modal`/`immersive` opt out. A section nav (Wallet /
-  // Character strip) already supplies the header, so it suppresses this one.
+  // Plugin views own their canvas and stay flush with the shell. Repeating a
+  // route title above every plugin wasted the narrowest part of mobile screens
+  // and duplicated view-owned headings; navigation remains available from the
+  // persistent chat-actions menu and the browser/OS back affordance.
   const manifest = resolveSurfaceManifest(view);
-  const showHeader = !nav && manifest.header === "normal";
   const ownsViewport =
     manifest.header === "fullscreen" || manifest.header === "immersive";
   return (
     <TabContentView nav={nav} reserveChatClearance={!ownsViewport}>
-      {showHeader ? <ViewHeader title={view.label} /> : null}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <DynamicViewLoader
           bundleUrl={view.bundleUrl}
@@ -1398,6 +1395,27 @@ function renderViewRouterContent({
       walletNav,
     });
   }
+  const appShellPageForRoute = findAppShellPageForRoute(navigationPath);
+  const visibleAppShellPage =
+    appShellPageForRoute && isViewVisible(appShellPageForRoute, enabledKinds)
+      ? appShellPageForRoute
+      : undefined;
+  const renderAppShellPage = (registration: AppShellPageRegistration) => (
+    <TabContentView
+      nav={walletNav}
+      reserveChatClearance={!surfaceOwnsViewport(registration)}
+    >
+      <RegisteredAppShellPage registration={registration} />
+    </TabContentView>
+  );
+
+  // Restricted native renderers cannot execute an agent-served bundle. Prefer
+  // an exact signed registration at the final renderer boundary even if a
+  // stale/web-shaped registry snapshot still carries bundleUrl for the same
+  // id/path. Web and desktop deliberately retain remote-bundle precedence.
+  if (visibleAppShellPage && !isDynamicViewLoadingAllowed()) {
+    return renderAppShellPage(visibleAppShellPage);
+  }
   const remoteView = findRemoteViewForRoute(
     availableViews,
     navigationPath,
@@ -1407,19 +1425,8 @@ function renderViewRouterContent({
   if (remoteView?.bundleUrl || remoteView?.frameUrl) {
     return renderRemoteView(remoteView, walletNav);
   }
-  const appShellPageForRoute = findAppShellPageForRoute(navigationPath);
-  if (
-    appShellPageForRoute &&
-    isViewVisible(appShellPageForRoute, enabledKinds)
-  ) {
-    return (
-      <TabContentView
-        nav={walletNav}
-        reserveChatClearance={!surfaceOwnsViewport(appShellPageForRoute)}
-      >
-        <RegisteredAppShellPage registration={appShellPageForRoute} />
-      </TabContentView>
-    );
+  if (visibleAppShellPage) {
+    return renderAppShellPage(visibleAppShellPage);
   }
 
   if (visibleDynamicPage(dynamicPage, enabledKinds)) {

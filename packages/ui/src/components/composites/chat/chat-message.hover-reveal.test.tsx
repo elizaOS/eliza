@@ -70,7 +70,14 @@ describe("ChatMessage desktop hover chrome", () => {
     expect(rail.className).toContain("pointer-events-none");
     expect(rail.className).toContain("opacity-0");
 
+    // A response inserted beneath a stationary cursor may synthesize enter;
+    // only deliberate pointer movement should reveal its controls.
     fireEvent.mouseEnter(message);
+
+    expect(rail.className).toContain("pointer-events-none");
+    expect(rail.className).toContain("opacity-0");
+
+    fireEvent.pointerMove(message, { pointerType: "mouse" });
 
     expect(rail.className).not.toContain("pointer-events-none");
     expect(rail.className).toContain("opacity-100");
@@ -149,6 +156,9 @@ describe("ChatMessage desktop hover chrome", () => {
     expect(content?.className).not.toContain("pb-9");
     expect(actions.className).toContain("bottom-0");
     expect(actions.className).toContain("absolute");
+    expect(actions.className).toContain("invisible");
+    expect(actions.className).toContain("opacity-0");
+    expect(actions.className).toContain("pointer-events-none");
     expect(actions.getAttribute("aria-hidden")).toBe("true");
     expect(actions.hasAttribute("inert")).toBe(true);
 
@@ -157,6 +167,8 @@ describe("ChatMessage desktop hover chrome", () => {
       selector === ":focus-visible" ? true : nativeBubbleMatches(selector),
     );
     act(() => bubble.focus());
+    expect(actions.className).toContain("visible");
+    expect(actions.className).not.toContain("invisible");
     expect(actions.getAttribute("aria-hidden")).toBe("false");
     expect(actions.hasAttribute("inert")).toBe(false);
     expect(actions.parentElement?.className).toBe(restingContentClass);
@@ -175,6 +187,8 @@ describe("ChatMessage desktop hover chrome", () => {
     act(() =>
       screen.getByRole("button", { name: "Outside glass message" }).focus(),
     );
+    expect(actions.className).toContain("invisible");
+    expect(actions.className).toContain("opacity-0");
     expect(actions.getAttribute("aria-hidden")).toBe("true");
     expect(actions.hasAttribute("inert")).toBe(true);
     expect(actions.parentElement?.className).toBe(restingContentClass);
@@ -197,7 +211,7 @@ describe("ChatMessage desktop hover chrome", () => {
     });
     const actions = screen.getByTestId("thread-line-actions");
 
-    fireEvent.mouseEnter(message);
+    fireEvent.pointerMove(message, { pointerType: "mouse" });
     expect(actions.getAttribute("aria-hidden")).toBe("false");
 
     fireEvent.click(bubble);
@@ -206,7 +220,7 @@ describe("ChatMessage desktop hover chrome", () => {
     fireEvent.mouseLeave(message);
     expect(actions.getAttribute("aria-hidden")).toBe("true");
 
-    fireEvent.mouseEnter(message);
+    fireEvent.pointerMove(message, { pointerType: "mouse" });
     const range = document.createRange();
     range.selectNodeContents(screen.getByText("Pointer draft"));
     const selection = window.getSelection();

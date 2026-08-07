@@ -162,6 +162,50 @@ describe("primeAuthStatusProbe + activation reuse", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
   });
 
+  it("keeps the resolved shell state mounted while a visibility revalidation is in flight", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, AUTH_ME_BODY));
+
+    const { result } = renderHook(() =>
+      useAuthStatus({ pollIntervalMs: 60_000 }),
+    );
+    await waitFor(() =>
+      expect(result.current.state.phase).toBe("authenticated"),
+    );
+
+    let resolveRevalidation: (response: Response) => void = () => {};
+    fetchMock.mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveRevalidation = resolve;
+        }),
+    );
+    const observedPhases: string[] = [];
+    const unsubscribe = subscribeAuthStatus((state) => {
+      observedPhases.push(state.phase);
+    });
+
+    try {
+      await act(async () => {
+        document.dispatchEvent(new Event("visibilitychange"));
+        await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+      });
+
+      expect(result.current.state.phase).toBe("authenticated");
+      expect(observedPhases).not.toContain("loading");
+
+      await act(async () => {
+        resolveRevalidation(
+          jsonResponse(401, { reason: "remote_auth_required" }),
+        );
+      });
+      await waitFor(() =>
+        expect(result.current.state.phase).toBe("unauthenticated"),
+      );
+    } finally {
+      unsubscribe();
+    }
+  });
+
   it("without a prime, activation fetches exactly like before", async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, AUTH_ME_BODY));
 

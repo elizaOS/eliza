@@ -63,57 +63,17 @@ import { recordInferenceSpan } from "../../inference-timing";
 import { getStreamingContext } from "../../streaming-context";
 import type { IAgentRuntime } from "../../types";
 import { ModelType } from "../../types";
-
-const LOCAL_INFERENCE_UNAVAILABLE_CODE = "LOCAL_INFERENCE_UNAVAILABLE";
-const EXPECTED_UNAVAILABLE_REASONS = new Set([
-	"backend_unavailable",
-	"capability_unavailable",
-]);
-
-interface ModelProviderFailureDetails {
-	code?: string;
-	modelType?: string;
-	provider?: string;
-	reason?: string;
-}
-
-/** Read the stable cross-package error fields exposed by model providers. */
-function modelProviderFailureDetails(
-	error: unknown,
-): ModelProviderFailureDetails {
-	if (typeof error !== "object" || error === null) return {};
-	const candidate = error as Record<string, unknown>;
-	return {
-		code: typeof candidate.code === "string" ? candidate.code : undefined,
-		modelType:
-			typeof candidate.modelType === "string" ? candidate.modelType : undefined,
-		provider:
-			typeof candidate.provider === "string" ? candidate.provider : undefined,
-		reason: typeof candidate.reason === "string" ? candidate.reason : undefined,
-	};
-}
-
-/**
- * The local provider already diagnoses these states at registration/probe time.
- * Re-reporting one for every recall query would turn a stable missing capability
- * into RECENT_ERRORS and repeat-failure owner escalation.
- */
-function isExpectedEmbeddingCapabilityUnavailable(error: unknown): boolean {
-	const details = modelProviderFailureDetails(error);
-	return (
-		details.code === LOCAL_INFERENCE_UNAVAILABLE_CODE &&
-		details.modelType === ModelType.TEXT_EMBEDDING &&
-		details.reason !== undefined &&
-		EXPECTED_UNAVAILABLE_REASONS.has(details.reason)
-	);
-}
+import {
+	isExpectedLocalEmbeddingUnavailability,
+	modelProviderFailureDetails,
+} from "../../utils/expected-local-embedding-unavailability";
 
 function reportUnexpectedEmbeddingFailure(
 	runtime: IAgentRuntime,
 	error: unknown,
 	phase: "synchronous" | "asynchronous",
 ): void {
-	if (isExpectedEmbeddingCapabilityUnavailable(error)) return;
+	if (isExpectedLocalEmbeddingUnavailability(error)) return;
 	const details = modelProviderFailureDetails(error);
 	runtime.reportError(
 		"DocumentRecall.embedding",
