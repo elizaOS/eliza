@@ -43,7 +43,7 @@ set -Eeuo pipefail
 #                        failure (missing jq/budget) never fails a smoke that
 #                        otherwise passed.
 
-BUN_VERSION="${BUN_VERSION:-1.3.10}"
+BUN_VERSION="${BUN_VERSION:-1.3.14}"
 SMOKE_PORT="${SMOKE_PORT:-32138}"
 CONTAINER_PORT="${CONTAINER_PORT:-42138}"
 SMOKE_TIMEOUT_SEC="${SMOKE_TIMEOUT_SEC:-420}"
