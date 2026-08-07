@@ -26,6 +26,12 @@ describe("BrowserSurfaceWeb", () => {
       web.setBounds({ id: "a", x: 0, y: 0, width: 1, height: 1 }),
     ).rejects.toThrow(/native-only/i);
     await expect(
+      web.setOcclusionRects({
+        id: "a",
+        rects: [{ x: 0, y: 0, width: 1, height: 1, cornerRadius: 0 }],
+      }),
+    ).rejects.toThrow(/native-only/i);
+    await expect(
       web.navigate({ id: "a", url: "https://example.com" }),
     ).rejects.toThrow(/native-only/i);
     await expect(web.foregroundSurface({ id: "a" })).rejects.toThrow(

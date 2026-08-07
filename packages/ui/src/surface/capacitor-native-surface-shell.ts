@@ -27,6 +27,7 @@ import type {
   NativeSurfaceCreateRequest,
   NativeSurfaceShell,
   SurfaceBounds,
+  SurfaceOcclusionRect,
 } from "./native-surface-shell";
 
 /**
@@ -52,6 +53,10 @@ interface ElizaSurfaceManagerPlugin {
     y: number;
     width: number;
     height: number;
+  }): Promise<void>;
+  setOcclusionRects(options: {
+    id: string;
+    rects: readonly SurfaceOcclusionRect[];
   }): Promise<void>;
   navigate(options: { id: string; url: string }): Promise<void>;
   foregroundSurface(options: { id: string }): Promise<void>;
@@ -96,6 +101,12 @@ export class CapacitorNativeSurfaceShell implements NativeSurfaceShell {
     plugin()
       .setBounds({ id, ...bounds })
       .catch((error) => report(`setBounds(${id})`, error));
+  }
+
+  setOcclusionRects(id: string, rects: readonly SurfaceOcclusionRect[]): void {
+    plugin()
+      .setOcclusionRects({ id, rects })
+      .catch((error) => report(`setOcclusionRects(${id})`, error));
   }
 
   navigate(id: string, url: string): void {
