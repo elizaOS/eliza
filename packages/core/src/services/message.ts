@@ -29,7 +29,10 @@ import {
 	enforceVerbosity,
 } from "../features/advanced-capabilities/personality";
 import { getPersonalityStore } from "../features/advanced-capabilities/personality/services/personality-store.ts";
-import { embedRecallQuery } from "../features/documents/recall-embed";
+import {
+	aliasRecallQuery,
+	embedRecallQuery,
+} from "../features/documents/recall-embed";
 import { runShouldRespondInjectionGate } from "../features/trust/should-respond-risk-gate";
 import {
 	emitInferenceTiming,
@@ -11115,7 +11118,7 @@ export class DefaultMessageService implements IMessageService {
 				{ src: "service:message", agentId: runtime.agentId },
 				"Skipping message from self",
 			);
-			await this.emitRunEnded(runtime, runId, message, startTime, "self");
+			this.emitRunEnded(runtime, runId, message, startTime, "self");
 			return {
 				didRespond: false,
 				responseContent: null,
@@ -11190,7 +11193,7 @@ export class DefaultMessageService implements IMessageService {
 
 		if (defLllmOff && agentUserState === null) {
 			runtime.logger.debug({ src: "service:message" }, "LLM is off by default");
-			await this.emitRunEnded(runtime, runId, message, startTime, "off");
+			this.emitRunEnded(runtime, runId, message, startTime, "off");
 			return {
 				didRespond: false,
 				responseContent: null,
@@ -11233,7 +11236,7 @@ export class DefaultMessageService implements IMessageService {
 				},
 				"Ignoring muted room",
 			);
-			await this.emitRunEnded(runtime, runId, message, startTime, "muted");
+			this.emitRunEnded(runtime, runId, message, startTime, "muted");
 			return {
 				didRespond: false,
 				responseContent: null,
@@ -11268,7 +11271,7 @@ export class DefaultMessageService implements IMessageService {
 					},
 					"Reply suppressed by personality reply_gate",
 				);
-				await this.emitRunEnded(
+				this.emitRunEnded(
 					runtime,
 					runId,
 					message,
@@ -11309,13 +11312,7 @@ export class DefaultMessageService implements IMessageService {
 				},
 				"Unaddressed bot/webhook message ignored by small-model triage (skipped Stage 1)",
 			);
-			await this.emitRunEnded(
-				runtime,
-				runId,
-				message,
-				startTime,
-				"bot_noise_triage",
-			);
+			this.emitRunEnded(runtime, runId, message, startTime, "bot_noise_triage");
 			return {
 				didRespond: false,
 				responseContent: null,
@@ -11401,15 +11398,39 @@ export class DefaultMessageService implements IMessageService {
 		const postIncomingHookText =
 			typeof message.content?.text === "string" ? message.content.text : "";
 
-		if (message.id && postIncomingHookText !== preIncomingHookText) {
-			await runtime.updateMemory({
-				id: message.id,
-				content: message.content,
-			});
-			await runtime.queueEmbeddingGeneration(
-				{ ...message, id: message.id },
-				"normal",
-			);
+		if (postIncomingHookText !== preIncomingHookText) {
+			// An incoming hook rewrote the turn's text — the core security hook
+			// replaces `content.text` with the external-content envelope for every
+			// untrusted-source message (incoming-message-security.ts), and the
+			// storage scrub can rewrite trusted text too. Compose-time recall
+			// callers (relevant-conversations, document recall, experience recall)
+			// present the REWRITTEN text, whose normalized cache key misses the
+			// raw-text vector the prefetch above is already fetching — a guaranteed
+			// second, serial TEXT_EMBEDDING round-trip on every rewritten turn.
+			// Declare the rewritten text equivalent to the raw prompt for this
+			// turn's recall so those callers join the prefetch round-trip instead;
+			// the raw user text is also the semantically correct recall query (the
+			// user's words, not the security armor around them).
+			if (
+				preIncomingHookText.trim() !== "" &&
+				postIncomingHookText.trim() !== ""
+			) {
+				aliasRecallQuery(runtime, {
+					...(typeof message.id === "string" ? { messageId: message.id } : {}),
+					sourceText: preIncomingHookText,
+					aliasText: postIncomingHookText,
+				});
+			}
+			if (message.id) {
+				await runtime.updateMemory({
+					id: message.id,
+					content: message.content,
+				});
+				await runtime.queueEmbeddingGeneration(
+					{ ...message, id: message.id },
+					"normal",
+				);
+			}
 		}
 
 		// Compose initial state (after incoming hooks so providers/actions text matches this turn)
@@ -11940,13 +11961,7 @@ export class DefaultMessageService implements IMessageService {
 					// Mirror the ignore-path sibling below: a superseded turn ends
 					// its run as "replaced" so the discard is an observable terminal
 					// outcome instead of an unrecorded nothing.
-					await this.emitRunEnded(
-						runtime,
-						runId,
-						message,
-						startTime,
-						"replaced",
-					);
+					this.emitRunEnded(runtime, runId, message, startTime, "replaced");
 					return {
 						didRespond: false,
 						responseContent: null,
@@ -12196,7 +12211,7 @@ export class DefaultMessageService implements IMessageService {
 					},
 					"Ignore response discarded - newer message being processed",
 				);
-				await this.emitRunEnded(runtime, runId, message, startTime, "replaced");
+				this.emitRunEnded(runtime, runId, message, startTime, "replaced");
 				return {
 					didRespond: false,
 					responseContent: null,
@@ -12211,13 +12226,7 @@ export class DefaultMessageService implements IMessageService {
 					{ src: "service:message", agentId: runtime.agentId },
 					"Message ID is missing, cannot create ignore response",
 				);
-				await this.emitRunEnded(
-					runtime,
-					runId,
-					message,
-					startTime,
-					"noMessageId",
-				);
+				this.emitRunEnded(runtime, runId, message, startTime, "noMessageId");
 				return {
 					didRespond: false,
 					responseContent: null,
@@ -13221,27 +13230,32 @@ export class DefaultMessageService implements IMessageService {
 	}
 
 	/**
-	 * Helper to emit run ended events
+	 * Emit RUN_ENDED after the handler return path is free. Lifecycle observers
+	 * and persistence attached to RUN_ENDED must not delay early-exit replies
+	 * (self/mute/off/replaced/…); failures stay observable through the
+	 * post-delivery tracker (residual #17072).
 	 */
-	private async emitRunEnded(
+	private emitRunEnded(
 		runtime: IAgentRuntime,
 		runId: UUID,
 		message: Memory,
 		startTime: number,
-		status: string,
-	): Promise<void> {
-		await runtime.emitEvent(EventType.RUN_ENDED, {
-			runtime,
-			source: "messageHandler",
-			runId,
-			messageId: message.id,
-			roomId: message.roomId,
-			entityId: message.entityId,
-			startTime,
-			status: status as "completed" | "timeout",
-			endTime: Date.now(),
-			duration: Date.now() - startTime,
-		} as RunEventPayload);
+		status: RunEventPayload["status"],
+	): void {
+		detachPostDeliverySideEffect(runtime, "RUN_ENDED", () =>
+			runtime.emitEvent(EventType.RUN_ENDED, {
+				runtime,
+				source: "messageHandler",
+				runId,
+				messageId: message.id,
+				roomId: message.roomId,
+				entityId: message.entityId,
+				startTime,
+				status,
+				endTime: Date.now(),
+				duration: Date.now() - startTime,
+			} as RunEventPayload),
+		);
 	}
 
 	private async emitMessageSent(

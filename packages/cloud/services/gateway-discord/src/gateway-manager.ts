@@ -19,6 +19,7 @@ import {
   type Role,
   type User,
 } from "discord.js";
+import { reconcileDiscordConnectionReady } from "./connection-lifecycle";
 import { logger } from "./logger";
 import { createMockRedis, createNativeRedis } from "./redis-adapter";
 import {
@@ -851,6 +852,45 @@ export class GatewayManager {
 
     this.connections.set(assignment.connectionId, conn);
 
+    const markConnectionReady = async (
+      source: "client-ready" | "shard-ready" | "shard-resume",
+      shardId?: number,
+    ): Promise<void> => {
+      const transition = reconcileDiscordConnectionReady(
+        conn,
+        client.guilds.cache.size,
+      );
+
+      // ClientReady supplies the canonical bot user identity after initial
+      // login. Shard recovery events only need to persist a real transition;
+      // duplicate ready/resume notifications must not create status-write
+      // storms while a connection is already healthy.
+      if (!transition.changed && source !== "client-ready") {
+        logger.debug("Bot connection already ready", {
+          connectionId: assignment.connectionId,
+          source,
+          shardId,
+        });
+        return;
+      }
+
+      logger.info("Bot connected", {
+        connectionId: assignment.connectionId,
+        guildCount: conn.guildCount,
+        username: client.user?.username,
+        botUserId: client.user?.id,
+        source,
+        shardId,
+        previousStatus: transition.previousStatus,
+      });
+      await this.updateConnectionStatus(
+        assignment.connectionId,
+        "connected",
+        undefined,
+        client.user?.id,
+      );
+    };
+
     // Create wrapped handlers with error boundaries
     const createHandler = <T extends unknown[]>(
       eventName: string,
@@ -873,23 +913,25 @@ export class GatewayManager {
     client.on(
       Events.ClientReady,
       createHandler(Events.ClientReady, async () => {
-        conn.status = "connected";
-        conn.connectedAt = new Date();
-        conn.guildCount = client.guilds.cache.size;
-        logger.info("Bot connected", {
-          connectionId: assignment.connectionId,
-          guildCount: conn.guildCount,
-          username: client.user?.username,
-          botUserId: client.user?.id,
-        });
-        // Pass bot user ID for mention detection (different from application_id)
-        await this.updateConnectionStatus(
-          assignment.connectionId,
-          "connected",
-          undefined,
-          client.user?.id,
-        );
+        await markConnectionReady("client-ready");
       }),
+    );
+
+    client.on(
+      Events.ShardReady,
+      createHandler(Events.ShardReady, async (shardId: number) => {
+        await markConnectionReady("shard-ready", shardId);
+      }),
+    );
+
+    client.on(
+      Events.ShardResume,
+      createHandler(
+        Events.ShardResume,
+        async (shardId: number, _replayedEvents: number) => {
+          await markConnectionReady("shard-resume", shardId);
+        },
+      ),
     );
 
     client.on(

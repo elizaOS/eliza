@@ -137,28 +137,91 @@ function collectBrokenBundledTypePackages() {
   return [...packageNames].sort();
 }
 
-function findCachedTypePackageDir(packageName) {
-  return findCachedPackageDir(GLOBAL_TYPES_CACHE_DIR, packageName);
+const LOCKFILE_PIN_CACHE = new Map();
+
+/**
+ * Reads the resolved version each root-level package pins in a bun.lock.
+ * bun.lock is JSONC (trailing commas), so scan resolution entries of the
+ * form `"<name>": ["<name>@<version>", ...]` textually instead of JSON.parse.
+ * Nested resolutions are keyed `"<parent>/<name>"` and fail the back-reference,
+ * so only the root resolution for each package matches.
+ */
+export function readLockfilePinnedVersions(lockfilePath) {
+  const pins = new Map();
+  if (!existsSync(lockfilePath)) {
+    return pins;
+  }
+  const lockText = readFileSync(lockfilePath, "utf8");
+  const entryPattern = /"((?:@[^/"]+\/)?[^/"]+)": \["\1@([^"]+)"/g;
+  for (const match of lockText.matchAll(entryPattern)) {
+    if (!pins.has(match[1])) {
+      pins.set(match[1], match[2]);
+    }
+  }
+  return pins;
 }
 
-function findCachedPackageDir(cacheDir, packageName) {
+function lockfilePinsFor(nodeModulesDir) {
+  const lockfilePath = path.join(path.dirname(nodeModulesDir), "bun.lock");
+  if (!LOCKFILE_PIN_CACHE.has(lockfilePath)) {
+    LOCKFILE_PIN_CACHE.set(
+      lockfilePath,
+      readLockfilePinnedVersions(lockfilePath),
+    );
+  }
+  return LOCKFILE_PIN_CACHE.get(lockfilePath);
+}
+
+function findCachedTypePackageDir(packageName, pinnedVersion) {
+  return findCachedPackageDir(
+    GLOBAL_TYPES_CACHE_DIR,
+    packageName,
+    pinnedVersion,
+  );
+}
+
+export function findCachedPackageDir(cacheDir, packageName, pinnedVersion) {
   if (!existsSync(cacheDir)) {
     return null;
   }
 
   const prefix = `${packageName}@`;
-  const matches = readdirSync(cacheDir)
-    .filter((entry) => entry.startsWith(prefix))
-    .sort((a, b) =>
-      b.localeCompare(a, undefined, {
-        numeric: true,
-        sensitivity: "base",
-      }),
-    );
+  const matches = readdirSync(cacheDir).filter((entry) =>
+    entry.startsWith(prefix),
+  );
 
   if (matches.length === 0) {
     return null;
   }
+
+  // The machine-global cache accumulates every version any checkout on the
+  // host ever resolved, so "newest cached" can be newer than what this
+  // checkout's lockfile pins. Materializing that newer copy over the
+  // installed pin is how typechecking drifts from `bun install
+  // --frozen-lockfile` (a cached @types/node@26.x once broke every
+  // packages/core build on runners whose lockfile pinned 25.x). Prefer the
+  // pinned version; if it is not cached, keep the installed copy rather than
+  // stomp it with a mismatched one.
+  if (pinnedVersion) {
+    const pinnedEntry = `${prefix}${pinnedVersion}`;
+    const pinned = matches.find(
+      (entry) => entry === pinnedEntry || entry.startsWith(`${pinnedEntry}@`),
+    );
+    if (pinned) {
+      return path.join(cacheDir, pinned);
+    }
+    console.warn(
+      `[ensure-type-package-aliases] ${packageName}@${pinnedVersion} is pinned by bun.lock but not in the bun cache; keeping the installed copy`,
+    );
+    return null;
+  }
+
+  matches.sort((a, b) =>
+    b.localeCompare(a, undefined, {
+      numeric: true,
+      sensitivity: "base",
+    }),
+  );
 
   return path.join(cacheDir, matches[0]);
 }
@@ -233,7 +296,11 @@ function removeExistingTypeEntry(targetPath) {
 }
 
 function materializeTypePackage(targetTypesDir, packageName) {
-  const sourceDir = findCachedTypePackageDir(packageName);
+  const pins = lockfilePinsFor(path.dirname(targetTypesDir));
+  const sourceDir = findCachedTypePackageDir(
+    packageName,
+    pins.get(`@types/${packageName}`),
+  );
   if (!sourceDir) {
     return false;
   }
@@ -250,7 +317,11 @@ function materializeTypePackage(targetTypesDir, packageName) {
 }
 
 function materializePackage(targetNodeModulesDir, packageName) {
-  const sourceDir = findCachedPackageDir(GLOBAL_PACKAGE_CACHE_DIR, packageName);
+  const sourceDir = findCachedPackageDir(
+    GLOBAL_PACKAGE_CACHE_DIR,
+    packageName,
+    lockfilePinsFor(targetNodeModulesDir).get(packageName),
+  );
   if (!sourceDir || !existsSync(targetNodeModulesDir)) {
     return false;
   }

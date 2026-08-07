@@ -63,57 +63,17 @@ import { recordInferenceSpan } from "../../inference-timing";
 import { getStreamingContext } from "../../streaming-context";
 import type { IAgentRuntime } from "../../types";
 import { ModelType } from "../../types";
-
-const LOCAL_INFERENCE_UNAVAILABLE_CODE = "LOCAL_INFERENCE_UNAVAILABLE";
-const EXPECTED_UNAVAILABLE_REASONS = new Set([
-	"backend_unavailable",
-	"capability_unavailable",
-]);
-
-interface ModelProviderFailureDetails {
-	code?: string;
-	modelType?: string;
-	provider?: string;
-	reason?: string;
-}
-
-/** Read the stable cross-package error fields exposed by model providers. */
-function modelProviderFailureDetails(
-	error: unknown,
-): ModelProviderFailureDetails {
-	if (typeof error !== "object" || error === null) return {};
-	const candidate = error as Record<string, unknown>;
-	return {
-		code: typeof candidate.code === "string" ? candidate.code : undefined,
-		modelType:
-			typeof candidate.modelType === "string" ? candidate.modelType : undefined,
-		provider:
-			typeof candidate.provider === "string" ? candidate.provider : undefined,
-		reason: typeof candidate.reason === "string" ? candidate.reason : undefined,
-	};
-}
-
-/**
- * The local provider already diagnoses these states at registration/probe time.
- * Re-reporting one for every recall query would turn a stable missing capability
- * into RECENT_ERRORS and repeat-failure owner escalation.
- */
-function isExpectedEmbeddingCapabilityUnavailable(error: unknown): boolean {
-	const details = modelProviderFailureDetails(error);
-	return (
-		details.code === LOCAL_INFERENCE_UNAVAILABLE_CODE &&
-		details.modelType === ModelType.TEXT_EMBEDDING &&
-		details.reason !== undefined &&
-		EXPECTED_UNAVAILABLE_REASONS.has(details.reason)
-	);
-}
+import {
+	isExpectedLocalEmbeddingUnavailability,
+	modelProviderFailureDetails,
+} from "../../utils/expected-local-embedding-unavailability";
 
 function reportUnexpectedEmbeddingFailure(
 	runtime: IAgentRuntime,
 	error: unknown,
 	phase: "synchronous" | "asynchronous",
 ): void {
-	if (isExpectedEmbeddingCapabilityUnavailable(error)) return;
+	if (isExpectedLocalEmbeddingUnavailability(error)) return;
 	const details = modelProviderFailureDetails(error);
 	runtime.reportError(
 		"DocumentRecall.embedding",
@@ -328,12 +288,14 @@ export async function embedRecallQuery(
  * recall caller presenting `aliasText` resolves to `sourceText`'s vector from
  * the per-turn cache instead of issuing its own embed round-trip.
  *
- * The one producer is document augmentation: after it rewrites the turn's
- * message text into the contextual-documents envelope, the in-run recall
- * callers (TTFT prefetch, relevant-conversations, FACTS) all present the
- * envelope text. Without the alias each turn with a document match pays a
- * second serial embed for a query that is strictly WORSE (the injected
- * document snippets drown the user's request); with it, one embed of the clean
+ * The producers are the turn-text rewriters: document augmentation (the
+ * contextual-documents envelope on the API chat path) and the message
+ * service's incoming-hook seam (the external-content security envelope every
+ * untrusted-source message gets). After a rewrite, the in-run recall callers
+ * (relevant-conversations, document recall, experience recall) all present
+ * the envelope text. Without the alias each rewritten turn pays a second
+ * serial embed for a query that is strictly WORSE (injected snippets or
+ * security armor drown the user's request); with it, one embed of the clean
  * prompt serves the whole turn.
  *
  * The alias joins an in-flight source embed rather than waiting for it, so it

@@ -38,8 +38,9 @@ interface TrajectoryDetailLike {
   steps?: Array<{
     llmCalls?: CapturedLlmCall[];
     providerAccesses?: Array<{ providerName?: string }>;
+    action?: unknown;
   }>;
-  metrics?: { finalStatus?: string };
+  metrics?: { episodeLength?: number; finalStatus?: string };
 }
 interface TrajLogger {
   startTrajectory: (
@@ -250,12 +251,16 @@ describe("trajectory capture -> DB -> viewer", () => {
 
     const detail = await logger.getTrajectoryDetail(trajectoryId);
     expect(detail?.metrics?.finalStatus).toBe("completed");
+    expect(detail?.metrics?.episodeLength).toBeGreaterThanOrEqual(1);
     const calls = (detail?.steps ?? []).flatMap((s) => s.llmCalls ?? []);
     const providers = new Set(
       calls.map((c) => c.provider).filter((p): p is string => Boolean(p)),
     );
     expect(providers.has("local-inference"), "local call persisted").toBe(true);
     expect(providers.has("openai"), "cloud call persisted").toBe(true);
+    expect((detail?.steps ?? []).every((step) => step.action == null)).toBe(
+      true,
+    );
 
     const listRoute = await readRoute("/api/trajectories");
     expect(listRoute.status).toBe(200);

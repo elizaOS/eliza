@@ -306,6 +306,62 @@ jobs:
           ELIZA_VALIDATE_CDN: "1"
         run: bun run release:check
 
+  build-browser-companions:
+    name: Build Agent Browser Bridge companions
+    if: ${{ inputs.platform == '' || inputs.platform == 'all' }}
+    needs: [prepare, validate-release]
+    runs-on: macos-15
+    timeout-minutes: 60
+    outputs:
+      packaged: ${{ steps.package-browser-bridge.outputs.packaged }}
+    defaults:
+      run:
+        shell: bash -euo pipefail {0}
+    env:
+      ELIZA_RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24.15.0"
+
+      - name: Setup Bun workspace
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          install-native-deps: "false"
+          run-postinstall: "true"
+          init-submodules: "false"
+
+      - name: Package Agent Browser Bridge release bundles
+        id: package-browser-bridge
+        run: |
+          if bun run browser-bridge:package:release; then
+            echo "packaged=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Agent Browser Bridge packaging failed; desktop release will continue without browser companion bundles."
+            echo "packaged=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload Agent Browser Bridge release artifacts
+        if: steps.package-browser-bridge.outputs.packaged == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: browser-bridge-store-bundles
+          path: |
+            packages/browser-extension/dist/artifacts/browser-bridge-chrome-v*.zip
+            packages/browser-extension/dist/artifacts/browser-bridge-safari-v*.zip
+            packages/browser-extension/dist/artifacts/browser-bridge-safari-project-v*.zip
+            packages/browser-extension/dist/artifacts/browser-bridge-release-manifest-v*.json
+          if-no-files-found: error
+          retention-days: 30
+
   build:
     name: Build ${{ matrix.platform.name }}
     if: ${{ always() && needs.prepare.result == 'success' && (needs.validate-release.result == 'success' || needs.validate-release.result == 'skipped') }}
@@ -1692,6 +1748,38 @@ jobs:
             update-channel/ \
             releases@releases.elizaos.ai:/var/www/releases/
           rm -f /tmp/release_key
+
+  publish-browser-companions:
+    name: Publish Agent Browser Bridge companions
+    if: ${{ (github.event_name != 'workflow_call' || inputs.publish_release) && needs.build-browser-companions.outputs.packaged == 'true' && needs.release.result == 'success' }}
+    needs: [prepare, build-browser-companions, release]
+    runs-on: ${{ vars.RUNNER_UBUNTU || 'ubuntu-24.04' }}
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download Agent Browser Bridge artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          path: browser-bridge-release
+          pattern: browser-bridge-*
+          merge-multiple: false
+
+      - name: List Agent Browser Bridge artifacts
+        run: find browser-bridge-release -type f | sort 2>/dev/null || echo "No Agent Browser Bridge artifacts"
+
+      - name: Attach Agent Browser Bridge assets to GitHub release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          find browser-bridge-release -type f \
+            \( \
+              -name "browser-bridge-chrome-v*.zip" -o \
+              -name "browser-bridge-safari-v*.zip" -o \
+              -name "browser-bridge-release-manifest-v*.json" \
+            \) \
+            -print0 | xargs -0 -r gh release upload "${{ needs.prepare.outputs.tag }}" --repo "$GH_REPO" --clobber
 
   ota-publish:
     name: Publish OTA Channel Manifest

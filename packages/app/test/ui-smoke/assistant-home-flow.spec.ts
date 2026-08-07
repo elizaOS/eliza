@@ -957,7 +957,7 @@ test.describe("assistant home app flow", () => {
     });
   });
 
-  test("push-to-talk dictates the held transcript into the composer on release (no auto-send)", async ({
+  test("a held press on Talk performs the same conversation action as a tap (no dictation arm)", async ({
     page,
   }) => {
     await seedAssistantFlowStorage(page);
@@ -968,49 +968,45 @@ test.describe("assistant home app flow", () => {
 
     const mic = assistantMicButton(page);
     await expect(mic).toBeEnabled({ timeout: 15_000 });
+    // The composer's Talk control no longer arms push-to-talk dictation: a held
+    // pointer has exactly the same action as a tap (the Cartesia Talk rework
+    // removed the hold machine from the overlay). Hold well past the former
+    // 200ms arm threshold and verify no dictation state ever appears.
     await mic.dispatchEvent("pointerdown", {
       button: 0,
       pointerId: 1,
       pointerType: "mouse",
     });
-    // Holding past the push-to-talk threshold (200ms) begins capture. The held
-    // voice control is labelled "release to insert" (ChatOverlay) —
-    // push-to-talk dictates into the composer draft and does NOT auto-send, so
-    // the label is "insert", not "send".
-    const releaseButton = page.getByRole("button", {
-      name: /release to insert/i,
+    await page.waitForTimeout(700);
+    await expect(
+      page.getByRole("button", { name: /release to insert/i }),
+    ).toHaveCount(0);
+    await mic.dispatchEvent("pointerup", {
+      button: 0,
+      pointerId: 1,
+      pointerType: "mouse",
     });
-    await expect(releaseButton).toBeVisible({ timeout: 5_000 });
-    const releaseHandle = await releaseButton.elementHandle();
-    if (!releaseHandle) {
-      throw new Error("push-to-talk release button has no element handle");
-    }
+    await mic.click();
 
+    // The release-click starts the same hands-free conversation a tap starts:
+    // the scripted final transcript is auto-submitted as a turn, not inserted
+    // into the composer draft.
     const accepted = await page.evaluate(() => {
       const simulate = (
         window as unknown as {
           __homeVoiceSimulate?: (text: string, isFinal: boolean) => boolean;
         }
       ).__homeVoiceSimulate;
-      return simulate?.("push to talk works", true) ?? false;
+      return simulate?.("held talk works", true) ?? false;
     });
     expect(accepted, "home voice shim must receive the held turn").toBe(true);
 
-    // Releasing the held mic ends capture. Push-to-talk now DICTATES: the final
-    // transcript lands in the composer draft (it is NOT auto-submitted), so the
-    // user edits and sends it themselves — no turn is streamed, no spoken reply.
-    await releaseHandle.dispatchEvent("pointerup", {
-      button: 0,
-      pointerId: 1,
-      pointerType: "mouse",
-    });
-    const composer = page.locator('[data-testid="chat-composer-textarea"]');
     await expect
-      .poll(async () => (await composer.inputValue()).trim(), {
-        timeout: 10_000,
-      })
-      .toContain("push to talk works");
-    // Dictation must not submit a turn.
-    expect(assistantApi.streamRequests).toEqual([]);
+      .poll(() => assistantApi.streamRequests, { timeout: 10_000 })
+      .toEqual(["held talk works"]);
+    const composer = page.locator('[data-testid="chat-composer-textarea"]');
+    if ((await composer.count()) > 0) {
+      expect((await composer.inputValue()).trim()).toBe("");
+    }
   });
 });

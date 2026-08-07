@@ -18,7 +18,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * POST /api/v1/voice/session/:id/revoke (contract §7.1, SEC-6).
  *
  * Revoke-to-silence: adds the session's `jti` to the short-TTL revocation store
- * AND severs the live Flux+Cartesia sockets. On the worker that holds the live
+ * AND severs the live Ink+Sonic sockets. On the worker that holds the live
  * session, the sever is synchronous and instant (well under the 500ms bound).
  * On a different worker, the revoked `jti` blocks any reconnect and the live
  * session's own revocation poll severs it within the poll window; the client

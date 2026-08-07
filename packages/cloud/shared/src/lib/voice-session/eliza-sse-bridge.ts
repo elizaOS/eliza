@@ -8,8 +8,8 @@
  *     `X-Eliza-Voice-Trace-Id` header (reusing #15931's trace contract);
  *   - propagate an `AbortSignal` so an interruption cancels the in-flight fetch,
  *     which cancels the upstream provider stream (the route's tee/abort seam);
- *   - decode the OpenAI-shaped SSE `delta.content` tokens into a plain string
- *     stream for the phrase aggregator.
+ *   - decode canonical `chunk`, local runtime `type=token`, and OpenAI-shaped
+ *     `delta.content` frames into a plain string stream for phrase aggregation.
  *
  * It holds no provider key; the canonical route owns auth, billing, and
  * persistence. `fetchImpl` is injectable so the
@@ -55,6 +55,13 @@ export interface ElizaSseBridgeResult {
   completed: boolean;
   /** True if the stream was aborted (interruption / disconnect). */
   aborted: boolean;
+  /** Successful model-selected VIEWS handoff carried by the terminal frame. */
+  viewHandoff?: ElizaVoiceViewHandoff;
+}
+
+export interface ElizaVoiceViewHandoff {
+  viewId: string;
+  subview?: string;
 }
 
 export class ElizaSseBridgeError extends Error {
@@ -196,7 +203,12 @@ export async function streamElizaConversation(
         const payload = line.slice(5).trim();
         if (payload === "") continue;
         if (payload === "[DONE]" || eventType === "done") {
-          return { completed: true, aborted: false };
+          const viewHandoff = payload === "[DONE]" ? null : extractViewHandoff(payload);
+          return {
+            completed: true,
+            aborted: false,
+            ...(viewHandoff ? { viewHandoff } : {}),
+          };
         }
         if (eventType === "error") {
           throw new ElizaSseBridgeError(
@@ -351,6 +363,14 @@ function extractDeltaContent(payload: string): string | null {
   // Canonical agent message streams emit event:chunk with a top-level chunk.
   const canonicalChunk = (parsed as { chunk?: unknown }).chunk;
   if (typeof canonicalChunk === "string" && canonicalChunk.length > 0) return canonicalChunk;
+  const localToken = parsed as { type?: unknown; text?: unknown };
+  if (
+    localToken.type === "token" &&
+    typeof localToken.text === "string" &&
+    localToken.text.length > 0
+  ) {
+    return localToken.text;
+  }
   const choices = (parsed as { choices?: unknown }).choices;
   if (!Array.isArray(choices) || choices.length === 0) return null;
   const first = choices[0] as { delta?: { content?: unknown }; text?: unknown };
@@ -359,6 +379,47 @@ function extractDeltaContent(payload: string): string | null {
   // Some providers stream `text` on legacy completions; accept it too.
   if (typeof first?.text === "string" && first.text.length > 0) return first.text;
   return null;
+}
+
+function extractViewHandoff(payload: string): ElizaVoiceViewHandoff | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(payload);
+  } catch (ignoredError) {
+    void ignoredError;
+    // error-policy:J3 terminal SSE metadata is untrusted input; malformed JSON
+    // produces an explicit absent handoff and never a fabricated navigation.
+    return null;
+  }
+  if (!isRecord(parsed) || !Array.isArray(parsed.actionResults)) return null;
+
+  for (let index = parsed.actionResults.length - 1; index >= 0; index--) {
+    const candidate = parsed.actionResults[index];
+    if (!isRecord(candidate) || candidate.success !== true) continue;
+    if (
+      typeof candidate.actionName !== "string" ||
+      candidate.actionName.toUpperCase() !== "VIEWS" ||
+      !isRecord(candidate.values)
+    ) {
+      continue;
+    }
+    const mode = readBoundedString(candidate.values.mode)?.toLowerCase();
+    const viewId = readBoundedString(candidate.values.viewId);
+    if ((mode !== "show" && mode !== "open") || !viewId) continue;
+    const subview = readBoundedString(candidate.values.subview);
+    return { viewId, ...(subview ? { subview } : {}) };
+  }
+  return null;
+}
+
+function readBoundedString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized.length > 0 && normalized.length <= 256 ? normalized : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isAbortError(error: unknown): boolean {

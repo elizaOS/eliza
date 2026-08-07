@@ -17,6 +17,7 @@ import {
 	PROGRESS_ONLY_ANSWER_REJECT,
 	PROGRESS_ONLY_REPLY_OPENERS_PATTERN,
 	parsePlannerOutput,
+	partitionRedundantSucceededCalls,
 	runPlannerLoop,
 	TURN_SCOPE_ARG,
 	TURN_SCOPE_FINAL,
@@ -1587,6 +1588,156 @@ describe("v5 planner loop skeleton", () => {
 		expect(executeToolCall).toHaveBeenCalledTimes(1);
 		expect(result.status).toBe("finished");
 		expect(result.finalMessage).toContain("42");
+	});
+
+	it("does not re-execute an identical call that failed with retryable:false and forces a terminal synthesis", async () => {
+		// Live regression: PAGE_DELEGATE returned "CREATE_HABIT is not available
+		// on the owner page" and the planner re-issued the SAME page+action call
+		// on every iteration — a deterministic dead end (registration cannot
+		// change mid-turn). The structural `data.retryable === false` marker must
+		// settle the identity exactly like a success does.
+		const sameCall = {
+			id: "delegate-1",
+			name: "PAGE_DELEGATE",
+			arguments: { page: "owner", action: "CREATE_HABIT" },
+		};
+		const runtime = {
+			useModel: vi
+				.fn()
+				// iter 1 (fresh) → executes and fails non-retryably; iters 2-3
+				// repeat it → skipped dead rounds; then forced synthesis.
+				.mockResolvedValueOnce({ text: "", toolCalls: [sameCall] })
+				.mockResolvedValueOnce({ text: "", toolCalls: [sameCall] })
+				.mockResolvedValueOnce({ text: "", toolCalls: [sameCall] })
+				.mockResolvedValueOnce(
+					'{"thought":"That capability is unavailable.","messageToUser":"I cannot create habits here.","toolCalls":[]}',
+				),
+			logger: { debug: vi.fn(), warn: vi.fn() },
+		};
+		const executeToolCall = vi.fn(async () => ({
+			success: false,
+			text: "CREATE_HABIT is not available on the owner page.",
+			data: {
+				actionName: "PAGE_DELEGATE",
+				code: "PAGE_CHILD_UNAVAILABLE",
+				retryable: false,
+			},
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "CONTINUE" as const,
+			thought: "Keep going.",
+		}));
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			tools: [{ name: "PAGE_DELEGATE", description: "Delegate to a page." }],
+			config: { maxRepeatedToolCalls: 1 },
+			executeToolCall,
+			evaluate,
+		});
+
+		// The dead call ran exactly once; identical repeats were skipped, and the
+		// loop ended in synthesis instead of burning iterations to the token cap.
+		expect(executeToolCall).toHaveBeenCalledTimes(1);
+		expect(result.status).toBe("finished");
+		const instructions = (result.trajectory.context.events ?? [])
+			.filter((event) => event.type === "instruction")
+			.map((event) => event.content)
+			.join(" ");
+		expect(instructions).toContain("non-retryable");
+	});
+
+	it("re-executes an identical failed call when the failure is not marked non-retryable", async () => {
+		// Contrast case: an ordinary failure (no structural retryable:false) may
+		// be transient, so an identical retry is still allowed to run.
+		const sameCall = {
+			id: "fetch-1",
+			name: "WEB_FETCH",
+			arguments: { url: "https://api.example.test/price" },
+		};
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce({ text: "", toolCalls: [sameCall] })
+				.mockResolvedValueOnce({ text: "", toolCalls: [sameCall] }),
+			logger: { debug: vi.fn(), warn: vi.fn() },
+		};
+		const executeToolCall = vi
+			.fn()
+			.mockResolvedValueOnce({ success: false, text: "upstream timeout" })
+			.mockResolvedValueOnce({ success: true, text: "price=42" });
+		const evaluate = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "CONTINUE" as const,
+				thought: "Retry once.",
+			})
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "FINISH" as const,
+				thought: "Done.",
+				messageToUser: "The price is 42.",
+			});
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			tools: [{ name: "WEB_FETCH", description: "Fetch a URL." }],
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(executeToolCall).toHaveBeenCalledTimes(2);
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe("The price is 42.");
+	});
+
+	it("keeps settled call identities across mid-turn compaction into archivedSteps", () => {
+		// partitionRedundantSucceededCalls must scan archived (compacted) steps
+		// too: input-budget compaction moves steps out of `trajectory.steps`, and
+		// a call settled before compaction must not become executable again.
+		const archivedSuccess = {
+			name: "WEB_FETCH",
+			params: { url: "https://api.example.test/price" },
+		};
+		const archivedDeadEnd = {
+			name: "PAGE_DELEGATE",
+			params: { page: "owner", action: "CREATE_HABIT" },
+		};
+		const trajectory = {
+			context: { id: "ctx" },
+			steps: [],
+			archivedSteps: [
+				{
+					iteration: 1,
+					toolCall: archivedSuccess,
+					result: { success: true, text: "price=42" },
+				},
+				{
+					iteration: 2,
+					toolCall: archivedDeadEnd,
+					result: {
+						success: false,
+						text: "CREATE_HABIT is not available on the owner page.",
+						data: { retryable: false },
+					},
+				},
+			],
+			plannedQueue: [],
+			evaluatorOutputs: [],
+		};
+
+		const freshCall = { name: "WEB_FETCH", params: { url: "https://other" } };
+		const partitioned = partitionRedundantSucceededCalls(
+			[archivedSuccess, archivedDeadEnd, freshCall],
+			trajectory,
+		);
+		expect(partitioned.redundant).toEqual([archivedSuccess]);
+		expect(partitioned.nonRetryable).toEqual([archivedDeadEnd]);
+		expect(partitioned.fresh).toEqual([freshCall]);
 	});
 
 	it("does not capture native text fallback as a required-tool refusal", async () => {
