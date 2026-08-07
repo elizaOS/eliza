@@ -509,7 +509,9 @@ function ensureTrajectoryLoggerTracking(
       if (!updated) return;
 
       trajectory.updatedAt = new Date().toISOString();
-      await saveTrajectory(runtime, trajectory);
+      await saveTrajectory(runtime, trajectory, {
+        changedStepIds: [step.stepId],
+      });
     };
   }
 

@@ -133,10 +133,18 @@ describe("ERROR_REPORTED escalation handler", () => {
       10,
     );
 
-    await handler({
-      ...payload("DB_INSERT_FAILED"),
-      context: { model: "TEXT_SMALL", diagnosticOnly: true },
-    });
+    for (const scope of [
+      "TrajectoryChildStep.start",
+      "TrajectoryActionStep.normalize",
+      "TrajectoryActionStep.complete",
+      "Trajectory.linkChild",
+    ]) {
+      await handler({
+        ...payload("TRAJECTORY_DIAGNOSTIC_FAILURE"),
+        scope,
+        context: { diagnosticOnly: true },
+      });
+    }
     expect(spy).not.toHaveBeenCalled();
   });
 

@@ -8,8 +8,8 @@
  * opens a trajectory + first step on `MESSAGE_RECEIVED` (enriching metadata from
  * room state / web-conversation context) and closes it on `MESSAGE_SENT`,
  * `RUN_ENDED`, or `RUN_TIMEOUT`. Because event ordering is not guaranteed, the
- * module-level maps (`pendingTrajectoryStepBy*`) correlate a message/reply id to
- * its open step so whichever terminal event fires first can end it exactly once;
+ * per-runtime maps correlate a message/reply id to its open step so whichever
+ * terminal event fires first can atomically claim and end it exactly once;
  * `cleanupPendingTrajectory` tears down every index entry to avoid leaks.
  * Trajectory capture is best-effort — every failure is logged and swallowed so
  * it never blocks the message loop, and the whole subsystem no-ops when
@@ -17,6 +17,7 @@
  */
 import crypto from "node:crypto";
 import { createUniqueUuid } from "../../entities";
+import { ElizaError } from "../../errors";
 import { resolveTraceCorrelationFromEnv } from "../../runtime/trace-correlation";
 import type { TrajectoryFinalStatus } from "../../trajectory-utils";
 import type {
@@ -29,26 +30,69 @@ import type {
 import { asRecordOrUndefined } from "../../utils/type-guards.ts";
 import { TrajectoriesService } from "./TrajectoriesService";
 
-const pendingTrajectoryStepByReplyId = new Map<string, string>();
-const pendingTrajectoryStepByMessageId = new Map<string, string>();
-const pendingTrajectoryMessageIdByStepId = new Map<string, string>();
-const pendingTrajectoryEndTargetByStepId = new Map<string, string>();
+type PendingTrajectoryState = {
+	stepByReplyId: Map<string, string>;
+	stepByMessageId: Map<string, string>;
+	messageIdByStepId: Map<string, string>;
+	endTargetByStepId: Map<string, string>;
+};
+
+const pendingTrajectoriesByRuntime = new WeakMap<
+	object,
+	PendingTrajectoryState
+>();
+
+function getPendingTrajectoryState(
+	runtime: IAgentRuntime,
+): PendingTrajectoryState {
+	const key = runtime as object;
+	let state = pendingTrajectoriesByRuntime.get(key);
+	if (!state) {
+		state = {
+			stepByReplyId: new Map(),
+			stepByMessageId: new Map(),
+			messageIdByStepId: new Map(),
+			endTargetByStepId: new Map(),
+		};
+		pendingTrajectoriesByRuntime.set(key, state);
+	}
+	return state;
+}
 
 function cleanupPendingTrajectory(
 	runtime: IAgentRuntime,
 	trajectoryStepId: string,
 ): void {
-	const sourceMessageId =
-		pendingTrajectoryMessageIdByStepId.get(trajectoryStepId);
+	const state = pendingTrajectoriesByRuntime.get(runtime as object);
+	if (!state) return;
+	const sourceMessageId = state.messageIdByStepId.get(trajectoryStepId);
 	if (sourceMessageId) {
-		pendingTrajectoryStepByMessageId.delete(sourceMessageId);
-		pendingTrajectoryStepByReplyId.delete(
-			createUniqueUuid(runtime, sourceMessageId),
-		);
-		pendingTrajectoryMessageIdByStepId.delete(trajectoryStepId);
+		state.stepByMessageId.delete(sourceMessageId);
+		state.stepByReplyId.delete(createUniqueUuid(runtime, sourceMessageId));
+		state.messageIdByStepId.delete(trajectoryStepId);
 	}
 
-	pendingTrajectoryEndTargetByStepId.delete(trajectoryStepId);
+	state.endTargetByStepId.delete(trajectoryStepId);
+	if (
+		state.stepByReplyId.size === 0 &&
+		state.stepByMessageId.size === 0 &&
+		state.messageIdByStepId.size === 0 &&
+		state.endTargetByStepId.size === 0
+	) {
+		pendingTrajectoriesByRuntime.delete(runtime as object);
+	}
+}
+
+function claimPendingTrajectory(
+	runtime: IAgentRuntime,
+	trajectoryStepId: string,
+): string | null {
+	const state = pendingTrajectoriesByRuntime.get(runtime as object);
+	if (!state) return null;
+	const endTarget = state.endTargetByStepId.get(trajectoryStepId);
+	if (!endTarget) return null;
+	cleanupPendingTrajectory(runtime, trajectoryStepId);
+	return endTarget;
 }
 
 async function endPendingTrajectory(
@@ -56,20 +100,60 @@ async function endPendingTrajectory(
 	trajectoryStepId: string,
 	status: TrajectoryFinalStatus,
 ): Promise<void> {
+	const endTarget = claimPendingTrajectory(runtime, trajectoryStepId);
+	if (!endTarget) return;
 	const logger = TrajectoriesService.resolveFromRuntime(runtime);
-	if (!logger) {
-		cleanupPendingTrajectory(runtime, trajectoryStepId);
-		return;
-	}
+	if (!logger) return;
 
-	try {
-		const endTarget =
-			pendingTrajectoryEndTargetByStepId.get(trajectoryStepId) ??
-			trajectoryStepId;
-		await logger.endTrajectory(endTarget, status);
-	} finally {
-		cleanupPendingTrajectory(runtime, trajectoryStepId);
+	let firstFailure: unknown;
+	for (let attempt = 1; attempt <= 2; attempt += 1) {
+		try {
+			await logger.endTrajectory(endTarget, status);
+			return;
+		} catch (error) {
+			if (attempt === 1) {
+				firstFailure = error;
+				// error-policy:J7 terminal ownership stays claimed while one bounded
+				// durability retry repairs transient storage failures.
+				runtime.reportError("TrajectoriesPlugin.endRetry", error, {
+					trajectoryStepId,
+					endTarget,
+					status,
+					attempt,
+					diagnosticOnly: true,
+				});
+				continue;
+			}
+			logger.releaseTrajectoryOwnership(endTarget);
+			throw new ElizaError("Trajectory terminalization retry failed", {
+				code: "TRAJECTORY_TERMINALIZATION_FAILED",
+				cause: new AggregateError([firstFailure, error]),
+				context: { trajectoryStepId, endTarget, status, attempts: 2 },
+			});
+		}
 	}
+}
+
+async function terminalizeFailedTrajectoryStart(
+	runtime: IAgentRuntime,
+	logger: TrajectoriesService,
+	trajectoryId: string,
+): Promise<void> {
+	for (let attempt = 1; attempt <= 2; attempt += 1) {
+		try {
+			await logger.endTrajectory(trajectoryId, "error");
+			return;
+		} catch (error) {
+			// error-policy:J7 A partially-started diagnostic row must not remain
+			// active; one bounded retry handles a transient child/index failure.
+			runtime.reportError("TrajectoriesPlugin.startCleanup", error, {
+				trajectoryId,
+				attempt,
+				diagnosticOnly: true,
+			});
+		}
+	}
+	logger.releaseTrajectoryOwnership(trajectoryId);
 }
 
 function getFinalStatusForRun(payload: RunEventPayload): TrajectoryFinalStatus {
@@ -201,9 +285,9 @@ async function buildTrajectoryMetadata(
 	} catch (error) {
 		// error-policy:J7 Room metadata is optional trajectory enrichment; the
 		// lookup failure is reported without dropping the trajectory.
-		// Room metadata is enrichment; the trajectory itself should still be written.
 		runtime.reportError("TrajectoriesPlugin.roomMetadata", error, {
 			roomId: message.roomId,
+			diagnosticOnly: true,
 		});
 	}
 
@@ -233,6 +317,17 @@ export const trajectoriesPlugin: Plugin = {
 			async (payload: MessagePayload) => {
 				const { runtime, message, source } = payload;
 				if (!message || !runtime) return;
+				if (typeof message.id !== "string" || message.id.length === 0) {
+					runtime.reportError(
+						"TrajectoriesPlugin.start",
+						new ElizaError("Trajectory capture requires a message id", {
+							code: "TRAJECTORY_MESSAGE_ID_REQUIRED",
+							context: { roomId: message.roomId },
+						}),
+						{ roomId: message.roomId, diagnosticOnly: true },
+					);
+					return;
+				}
 
 				// Ensure metadata is initialized
 				if (!message.metadata) {
@@ -262,6 +357,7 @@ export const trajectoriesPlugin: Plugin = {
 
 				// Start trajectory
 				let trajectoryStepId: string = crypto.randomUUID();
+				let startedTrajectoryId: string | undefined;
 				meta.trajectoryStepId = trajectoryStepId;
 
 				try {
@@ -287,6 +383,7 @@ export const trajectoriesPlugin: Plugin = {
 							: null;
 
 					if (normalizedTrajectoryId) {
+						startedTrajectoryId = normalizedTrajectoryId;
 						meta.trajectoryId = normalizedTrajectoryId;
 						const runtimeStepId = logger.startStep(normalizedTrajectoryId, {
 							timestamp: Date.now(),
@@ -300,7 +397,7 @@ export const trajectoriesPlugin: Plugin = {
 
 						trajectoryStepId = normalizedStepId;
 						meta.trajectoryStepId = trajectoryStepId;
-						pendingTrajectoryEndTargetByStepId.set(
+						getPendingTrajectoryState(runtime).endTargetByStepId.set(
 							trajectoryStepId,
 							normalizedTrajectoryId,
 						);
@@ -313,18 +410,24 @@ export const trajectoriesPlugin: Plugin = {
 						// only correlation handle for the terminal events below.
 					}
 
-					if (message.id) {
-						const replyId = createUniqueUuid(runtime, message.id);
-						pendingTrajectoryStepByReplyId.set(replyId, trajectoryStepId);
-						pendingTrajectoryStepByMessageId.set(message.id, trajectoryStepId);
-						pendingTrajectoryMessageIdByStepId.set(
-							trajectoryStepId,
-							message.id,
-						);
-					}
+					const state = getPendingTrajectoryState(runtime);
+					const replyId = createUniqueUuid(runtime, message.id);
+					state.stepByReplyId.set(replyId, trajectoryStepId);
+					state.stepByMessageId.set(message.id, trajectoryStepId);
+					state.messageIdByStepId.set(trajectoryStepId, message.id);
 				} catch (err) {
 					// error-policy:J7 Trajectory logging is diagnostic and cannot
 					// abort the message event it observes.
+					if (startedTrajectoryId) {
+						await terminalizeFailedTrajectoryStart(
+							runtime,
+							logger,
+							startedTrajectoryId,
+						);
+					}
+					cleanupPendingTrajectory(runtime, trajectoryStepId);
+					delete meta.trajectoryId;
+					delete meta.trajectoryStepId;
 					runtime.logger.warn(
 						{
 							err,
@@ -335,6 +438,7 @@ export const trajectoriesPlugin: Plugin = {
 					);
 					runtime.reportError("TrajectoriesPlugin.start", err, {
 						roomId: message.roomId,
+						diagnosticOnly: true,
 					});
 				}
 			},
@@ -356,7 +460,9 @@ export const trajectoriesPlugin: Plugin = {
 
 				let trajectoryStepId = meta?.trajectoryStepId as string | undefined;
 				if (!trajectoryStepId && inReplyTo) {
-					trajectoryStepId = pendingTrajectoryStepByReplyId.get(inReplyTo);
+					trajectoryStepId = pendingTrajectoriesByRuntime
+						.get(runtime as object)
+						?.stepByReplyId.get(inReplyTo);
 				}
 				if (!trajectoryStepId) return;
 
@@ -375,6 +481,7 @@ export const trajectoriesPlugin: Plugin = {
 					);
 					runtime.reportError("TrajectoriesPlugin.endMessage", err, {
 						trajectoryStepId,
+						diagnosticOnly: true,
 					});
 				}
 			},
@@ -384,8 +491,9 @@ export const trajectoriesPlugin: Plugin = {
 				const { runtime, messageId } = payload;
 				if (!runtime || !messageId) return;
 
-				const trajectoryStepId =
-					pendingTrajectoryStepByMessageId.get(messageId);
+				const trajectoryStepId = pendingTrajectoriesByRuntime
+					.get(runtime as object)
+					?.stepByMessageId.get(messageId);
 				if (!trajectoryStepId) return;
 
 				try {
@@ -409,6 +517,7 @@ export const trajectoriesPlugin: Plugin = {
 					runtime.reportError("TrajectoriesPlugin.endRun", err, {
 						messageId,
 						trajectoryStepId,
+						diagnosticOnly: true,
 					});
 				}
 			},
@@ -418,8 +527,9 @@ export const trajectoriesPlugin: Plugin = {
 				const { runtime, messageId } = payload;
 				if (!runtime || !messageId) return;
 
-				const trajectoryStepId =
-					pendingTrajectoryStepByMessageId.get(messageId);
+				const trajectoryStepId = pendingTrajectoriesByRuntime
+					.get(runtime as object)
+					?.stepByMessageId.get(messageId);
 				if (!trajectoryStepId) return;
 
 				try {
@@ -439,12 +549,28 @@ export const trajectoriesPlugin: Plugin = {
 					runtime.reportError("TrajectoriesPlugin.timeout", err, {
 						messageId,
 						trajectoryStepId,
+						diagnosticOnly: true,
 					});
 				}
 			},
 		],
 	},
 	async dispose(runtime: IAgentRuntime) {
+		const pending = pendingTrajectoriesByRuntime.get(runtime as object);
+		const stepIds = pending ? [...pending.endTargetByStepId.keys()] : [];
+		for (const stepId of stepIds) {
+			try {
+				await endPendingTrajectory(runtime, stepId, "terminated");
+			} catch (error) {
+				// error-policy:J7 disposal drains every remaining owner and reports a
+				// failed terminal diagnostic without preventing service shutdown.
+				runtime.reportError("TrajectoriesPlugin.dispose", error, {
+					trajectoryStepId: stepId,
+					diagnosticOnly: true,
+				});
+			}
+		}
+		pendingTrajectoriesByRuntime.delete(runtime as object);
 		const svc = runtime.getService<TrajectoriesService>(
 			TrajectoriesService.serviceType,
 		);

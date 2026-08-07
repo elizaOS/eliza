@@ -5,6 +5,7 @@
  * shapes, and re-exporting the shared TRAJECTORY_STEP_SCRIPT_MAX_CHARS cap.
  */
 import {
+  type TrajectoryActionAttemptRecord as CoreTrajectoryActionAttemptRecord,
   type TrajectoryCacheStatsRecord as CoreTrajectoryCacheStatsRecord,
   type TrajectoryDetailRecord as CoreTrajectoryDetailRecord,
   type TrajectoryExportFormat as CoreTrajectoryExportFormat,
@@ -38,6 +39,7 @@ export type TrajectoryStepId = CoreTrajectoryStepId;
 export type TrajectoryStepKind = CoreTrajectoryStepKind;
 export type TrajectoryUsageTotals = CoreTrajectoryUsageTotalsRecord;
 export type TrajectoryCacheStats = CoreTrajectoryCacheStatsRecord;
+export type TrajectoryActionAttempt = CoreTrajectoryActionAttemptRecord;
 export type TrajectoryFlattenedLlmCall = CoreTrajectoryFlattenedLlmCallRecord;
 
 export type TrajectoryListItem = CoreTrajectorySummaryRecord;

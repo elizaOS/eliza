@@ -29,7 +29,12 @@ export const ELIZA_NATIVE_MODEL_BOUNDARIES = [
 export type ElizaNativeModelBoundary =
 	(typeof ELIZA_NATIVE_MODEL_BOUNDARIES)[number];
 
-export type TrajectoryStatus = "active" | "completed" | "error" | "timeout";
+export type TrajectoryStatus =
+	| "active"
+	| "completed"
+	| "error"
+	| "timeout"
+	| "terminated";
 
 export interface TrajectoryListOptions {
 	limit?: number;
@@ -161,6 +166,21 @@ export type TrajectoryStepKind = "llm" | "action" | "evaluator";
 
 export type TrajectoryStepId = string;
 
+/** One normalized action settlement persisted on its owning trajectory step. */
+export interface TrajectoryActionAttemptRecord {
+	attemptId: string;
+	timestamp: number;
+	actionType: string;
+	actionName: string;
+	parameters: Record<string, JsonValue>;
+	success: boolean;
+	result?: Record<string, JsonValue>;
+	error?: string;
+	reasoning?: string;
+	llmCallId?: string;
+	immediateReward?: number;
+}
+
 /**
  * Structured truncation marker shape persisted alongside per-skill
  * invocation records. Mirrors the action-step marker emitted by
@@ -215,9 +235,11 @@ export interface TrajectorySkillInvocationRecord {
 
 export interface TrajectoryStepRecord {
 	stepId?: TrajectoryStepId;
+	parentStepId?: TrajectoryStepId;
 	timestamp: number;
 	llmCalls?: TrajectoryLlmCallRecord[];
 	providerAccesses?: TrajectoryProviderAccessRecord[];
+	action?: TrajectoryActionAttemptRecord;
 	kind?: TrajectoryStepKind;
 	childSteps?: TrajectoryStepId[];
 	script?: string;
@@ -274,7 +296,7 @@ export interface TrajectoryDetailRecord {
 	scenarioId?: string;
 	batchId?: string;
 	steps?: TrajectoryStepRecord[];
-	metrics?: {
+	metrics?: Record<string, JsonValue | undefined> & {
 		finalStatus?: string;
 		/** Step count at last persist; required by Core validators (#17730). */
 		episodeLength?: number;
@@ -309,6 +331,11 @@ export interface TrajectoryFlattenedLlmCallRecord
 	cacheReadInputTokens: number;
 	cacheCreationInputTokens: number;
 	tokenUsageEstimated: boolean;
+	trajectoryMetrics?: Record<string, JsonValue | undefined>;
+	stepData?: Omit<
+		TrajectoryStepRecord,
+		"stepId" | "timestamp" | "llmCalls" | "providerAccesses"
+	>;
 }
 
 export interface ElizaNativeModelRequestRecord {

@@ -1,15 +1,7 @@
 /**
- * Trajectory steps table tests.
- *
- * Verifies that the dedicated `trajectory_steps` table can:
- *   - Store steps and read them back in ordinal order.
- *   - Paginate large step sets (1000 steps).
- *   - Migrate existing JSONB `steps_json` rows into row format.
- *   - Round-trip scripts longer than the legacy 4096-char cap.
- *
- * Uses an in-process mock SQL engine sufficient to handle the queries
- * the trajectory persistence layer emits. We do not boot PGLite — these
- * are unit tests for the schema and read/write code paths.
+ * Exercises dedicated trajectory-step CQRS, migration, pagination, strict
+ * failure contracts, and complete script retention against a deterministic SQL
+ * engine; real transaction and constraint behavior is covered by PGlite tests.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
@@ -19,6 +11,7 @@ import {
   trajectoryRowToListItem,
 } from "./trajectory-export";
 import {
+  createBaseTrajectory,
   ensureTrajectoriesTable,
   loadTrajectoryById,
   type PersistedTrajectory,
@@ -31,7 +24,12 @@ import {
   loadAllStepsForTrajectory,
   MAX_GET_STEPS_LIMIT,
 } from "./trajectory-steps-reader";
-import { replaceStepsForTrajectory } from "./trajectory-steps-writer";
+import {
+  clearAllSteps,
+  deleteStepsForTrajectories,
+  replaceStepsForTrajectory,
+  upsertStep,
+} from "./trajectory-steps-writer";
 
 interface MockTable {
   rows: Map<string, Record<string, unknown>>;
@@ -316,6 +314,56 @@ function createMockSqlEngine(): MockSqlEngine {
     }
 
     // SELECT
+    if (
+      /FROM\s+trajectories\s+t\s+LEFT\s+JOIN\s+trajectory_steps\s+s/i.test(
+        trimmed,
+      )
+    ) {
+      const trajectoriesTable = tables.get("trajectories");
+      const stepsTable = tables.get("trajectory_steps");
+      const ownedTrajectoryIds = new Set(
+        Array.from(stepsTable?.rows.values() ?? []).map((row) =>
+          String(row.trajectory_id),
+        ),
+      );
+      return {
+        rows: Array.from(trajectoriesTable?.rows.values() ?? [])
+          .filter((row) => !ownedTrajectoryIds.has(String(row.id)))
+          .filter(
+            (row) =>
+              typeof row.steps_json === "string" && row.steps_json !== "[]",
+          )
+          .map((row) => ({ id: row.id, steps_json: row.steps_json })),
+      };
+    }
+
+    if (
+      /FROM\s+trajectory_steps\s+s\s+JOIN\s+trajectories\s+t/i.test(trimmed)
+    ) {
+      const stepsTable = tables.get("trajectory_steps");
+      const trajectoriesTable = tables.get("trajectories");
+      const trajectoryIdMatch = trimmed.match(
+        /s\.trajectory_id\s*=\s*'([^']+)'/i,
+      );
+      const agentIdMatch = trimmed.match(/t\.agent_id\s*=\s*'([^']+)'/i);
+      const selectedTrajectoryId = trajectoryIdMatch?.[1];
+      const selectedAgentId = agentIdMatch?.[1];
+      const parent = selectedTrajectoryId
+        ? trajectoriesTable?.rows.get(selectedTrajectoryId)
+        : undefined;
+      let rows =
+        parent && String(parent.agent_id) === selectedAgentId
+          ? Array.from(stepsTable?.rows.values() ?? []).filter(
+              (row) => row.trajectory_id === selectedTrajectoryId,
+            )
+          : [];
+      rows = applyOrderLimitOffset(rows, trimmed);
+      if (/count\(\*\)/i.test(trimmed)) {
+        return { rows: [{ total: rows.length }] };
+      }
+      return { rows };
+    }
+
     const selectMatch = trimmed.match(
       /^SELECT\s+([\s\S]+?)\s+FROM\s+(\w+)(?:\s+(?:t\s+)?LEFT\s+JOIN\s+(\w+)\s+s\s+ON\s+([\s\S]+?))?(?:\s+WHERE\s+([\s\S]+?))?(?:\s+GROUP\s+BY\s+([\s\S]+?))?(?:\s+ORDER\s+BY\s+[\s\S]+?)?(?:\s+LIMIT\s+\d+)?(?:\s+OFFSET\s+\d+)?\s*$/i,
     );
@@ -356,24 +404,38 @@ function createMockSqlEngine(): MockSqlEngine {
 }
 
 function createMockRuntime(engine: MockSqlEngine): IAgentRuntime {
-  const adapter = {
-    db: {
-      execute: async (chunks: { queryChunks: object[] }) => {
-        const raw = chunks as unknown as {
-          queryChunks?: unknown[];
-          sql?: string;
-        };
-        // Our test mock receives `sql.raw(text)` which returns an object with
-        // a `queryChunks` field that is the raw text wrapped. We extract it
-        // by re-reading the original text from the engine call helper.
-        const sqlText = (raw as { __sql?: string }).__sql ?? "";
-        return engine.execute(sqlText);
-      },
+  type MockDb = {
+    execute: (chunks: { queryChunks: object[] }) => Promise<unknown>;
+    transaction: <T>(work: (tx: MockDb) => Promise<T>) => Promise<T>;
+  };
+  const db: MockDb = {
+    execute: async (chunks: { queryChunks: object[] }) => {
+      const raw = chunks as unknown as {
+        queryChunks?: unknown[];
+        sql?: string;
+      };
+      // Our test mock receives `sql.raw(text)` which returns an object with
+      // a `queryChunks` field that is the raw text wrapped. We extract it
+      // by re-reading the original text from the engine call helper.
+      const sqlText = (raw as { __sql?: string }).__sql ?? "";
+      return engine.execute(sqlText);
     },
+    transaction: async <T>(work: (tx: MockDb) => Promise<T>): Promise<T> =>
+      work(db),
+  };
+  const adapter = {
+    db,
   };
   return {
     agentId: "test-agent",
     adapter,
+    reportError: vi.fn(),
+    logger: {
+      warn: () => {},
+      info: () => {},
+      error: () => {},
+      debug: () => {},
+    },
   } as unknown as IAgentRuntime;
 }
 
@@ -399,15 +461,75 @@ describe("trajectory_steps dedicated table", () => {
     runtime = createMockRuntime(engine);
   });
 
-  it("normalizes completed legacy trajectory rows before list and detail export", () => {
+  async function persistParent(id = trajectoryId): Promise<void> {
+    await saveTrajectory(
+      runtime,
+      createBaseTrajectory(id, 1_700_000_000_000, runtime.agentId, "test"),
+    );
+  }
+
+  it("throws typed storage errors for public reads and writes without a database", async () => {
+    const noDatabase = { agentId: "no-db" } as unknown as IAgentRuntime;
+    const step = {
+      stepId: "missing-db-step",
+      stepNumber: 0,
+      timestamp: 1,
+      llmCalls: [],
+      providerAccesses: [],
+    };
+    await expect(getSteps(noDatabase, "trajectory")).rejects.toMatchObject({
+      code: "TRAJECTORY_DATABASE_UNAVAILABLE",
+    });
+    await expect(
+      upsertStep(noDatabase, "trajectory", step),
+    ).rejects.toMatchObject({ code: "TRAJECTORY_DATABASE_UNAVAILABLE" });
+    await expect(
+      replaceStepsForTrajectory(noDatabase, "trajectory", [step]),
+    ).rejects.toMatchObject({ code: "TRAJECTORY_DATABASE_UNAVAILABLE" });
+    await expect(
+      deleteStepsForTrajectories(noDatabase, ["trajectory"]),
+    ).rejects.toMatchObject({ code: "TRAJECTORY_DATABASE_UNAVAILABLE" });
+    await expect(clearAllSteps(noDatabase)).rejects.toMatchObject({
+      code: "TRAJECTORY_DATABASE_UNAVAILABLE",
+    });
+  });
+
+  it("rejects malformed SQL result containers instead of reporting empty reads or deletes", async () => {
+    type MalformedDb = {
+      execute: () => Promise<Record<string, never>>;
+      transaction: <T>(work: (tx: MalformedDb) => Promise<T>) => Promise<T>;
+    };
+    const db: MalformedDb = {
+      execute: async () => ({}),
+      transaction: async <T>(
+        work: (tx: MalformedDb) => Promise<T>,
+      ): Promise<T> => work(db),
+    };
+    const malformedRuntime = {
+      agentId: "malformed-db-agent",
+      adapter: { db },
+    } as unknown as IAgentRuntime;
+
+    await expect(
+      getSteps(malformedRuntime, "trajectory"),
+    ).rejects.toMatchObject({ code: "TRAJECTORY_ROW_INVALID" });
+    await expect(
+      deleteStepsForTrajectories(malformedRuntime, ["trajectory"]),
+    ).rejects.toMatchObject({ code: "TRAJECTORY_ROW_INVALID" });
+    await expect(clearAllSteps(malformedRuntime)).rejects.toMatchObject({
+      code: "TRAJECTORY_ROW_INVALID",
+    });
+  });
+
+  it("preserves valid completed legacy rows before list and detail export", () => {
     const row = {
       id: "legacy-trajectory",
       agent_id: "agent-1",
       source: "runtime",
       status: "completed",
       start_time: 1_700_000_000_000,
-      end_time: 0,
-      duration_ms: null,
+      end_time: 1_700_000_004_000,
+      duration_ms: 4_000,
       step_count: 0,
       llm_call_count: 0,
       provider_access_count: 0,
@@ -415,9 +537,10 @@ describe("trajectory_steps dedicated table", () => {
       total_completion_tokens: 0,
       total_cache_read_input_tokens: 0,
       total_cache_creation_input_tokens: 0,
-      total_reward: 0,
+      total_reward: 0.75,
       steps_json: "[]",
       metadata: "{}",
+      reward_components_json: "{}",
       created_at: "2023-11-14T22:13:20.000Z",
       updated_at: "2023-11-14T22:13:24.000Z",
     };
@@ -428,12 +551,49 @@ describe("trajectory_steps dedicated table", () => {
 
     expect(parsed.endTime).toBe(1_700_000_004_000);
     expect(parsed.updatedAt).toBe("2023-11-14T22:13:24.000Z");
+    expect(parsed.rewardComponents).toEqual({ environmentReward: 0.75 });
     expect(listItem?.endTime).toBe(1_700_000_004_000);
     expect(listItem?.durationMs).toBe(4_000);
     expect(listItem?.updatedAt).toBe("2023-11-14T22:13:24.000Z");
     expect(detail.endTime).toBe(1_700_000_004_000);
     expect(detail.durationMs).toBe(4_000);
   });
+
+  it.each([
+    ["metrics_json", "malformed", "TRAJECTORY_METRICS_INVALID"],
+    ["metrics_json", "[]", "TRAJECTORY_METRICS_INVALID"],
+    [
+      "reward_components_json",
+      "malformed",
+      "TRAJECTORY_REWARD_COMPONENTS_INVALID",
+    ],
+    ["reward_components_json", "[]", "TRAJECTORY_REWARD_COMPONENTS_INVALID"],
+  ] as const)(
+    "rejects invalid canonical %s payload %s",
+    (field, value, expectedCode) => {
+      const row = {
+        id: "invalid-canonical-trajectory",
+        agent_id: "agent-1",
+        source: "runtime",
+        status: "active",
+        start_time: 1_700_000_000_000,
+        end_time: null,
+        duration_ms: null,
+        steps_json: "[]",
+        metadata_json: "{}",
+        metrics_json: "{}",
+        reward_components_json: "{}",
+        total_reward: 0,
+        created_at: "2023-11-14T22:13:20.000Z",
+        updated_at: "2023-11-14T22:13:20.000Z",
+        [field]: value,
+      };
+
+      expect(() => parsePersistedTrajectoryRow(row, row.id)).toThrow(
+        expect.objectContaining({ code: expectedCode }),
+      );
+    },
+  );
 
   it("creates the trajectory_steps table with no script length cap", async () => {
     const ok = await ensureTrajectoriesTable(runtime);
@@ -490,6 +650,7 @@ describe("trajectory_steps dedicated table", () => {
     const ok = await ensureTrajectoriesTable(runtime);
 
     expect(ok).toBe(true);
+    expect(runtime.reportError).not.toHaveBeenCalled();
     const stepsTable = engine.tables.get("trajectory_steps");
     expect(stepsTable?.rows.size).toBe(1);
     const migrated = [...(stepsTable?.rows.values() ?? [])][0];
@@ -502,6 +663,7 @@ describe("trajectory_steps dedicated table", () => {
 
   it("inserts 1000 steps and paginates them", async () => {
     await ensureTrajectoriesTable(runtime);
+    await persistParent();
     const steps = Array.from({ length: 1000 }, (_v, i) => ({
       stepId: `step-${i.toString().padStart(4, "0")}`,
       stepNumber: i,
@@ -542,6 +704,7 @@ describe("trajectory_steps dedicated table", () => {
 
   it("uses sane default limit when not specified", async () => {
     await ensureTrajectoriesTable(runtime);
+    await persistParent();
     const steps = Array.from({ length: 5 }, (_v, i) => ({
       stepId: `step-${i}`,
       stepNumber: i,
@@ -557,6 +720,7 @@ describe("trajectory_steps dedicated table", () => {
 
   it("loads all steps with loadAllStepsForTrajectory", async () => {
     await ensureTrajectoriesTable(runtime);
+    await persistParent();
     const steps = Array.from({ length: 1000 }, (_v, i) => ({
       stepId: `step-${i.toString().padStart(4, "0")}`,
       stepNumber: i,
@@ -578,6 +742,7 @@ describe("trajectory_steps dedicated table", () => {
 
     const trajectory: PersistedTrajectory = {
       id: trajectoryId,
+      agentId: "test-agent",
       source: "test",
       status: "completed",
       startTime: 1_700_000_000_000,
@@ -594,6 +759,8 @@ describe("trajectory_steps dedicated table", () => {
         },
       ],
       metadata: {},
+      metrics: {},
+      rewardComponents: { environmentReward: 0 },
       totalReward: 0,
       createdAt: new Date(1_700_000_000_000).toISOString(),
       updatedAt: new Date(1_700_000_001_000).toISOString(),
