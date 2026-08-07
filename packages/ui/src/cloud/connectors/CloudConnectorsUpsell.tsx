@@ -20,7 +20,7 @@ import {
 } from "../../components/settings/settings-layout";
 import { Button } from "../../components/ui/button";
 import { useAppSelectorShallow } from "../../state";
-import { preOpenCloudLoginWindow } from "../../state/cloud-login-launch";
+import { claimCloudLoginWindow } from "../../state/cloud-login-launch";
 import { CloudConnectorsSection } from "./CloudConnectorsSection";
 
 const CLOUD_CONNECTOR_FEATURES = [
@@ -51,19 +51,21 @@ function CloudConnectorsUpsell(): React.JSX.Element {
   const {
     elizaCloudConnected,
     elizaCloudLoginBusy,
-    handleCloudLogin,
+    handleInteractiveCloudLogin,
     setActionNotice,
     t,
   } = useAppSelectorShallow((s) => ({
     elizaCloudConnected: s.elizaCloudConnected,
     elizaCloudLoginBusy: s.elizaCloudLoginBusy,
-    handleCloudLogin: s.handleCloudLogin,
+    handleInteractiveCloudLogin: s.handleInteractiveCloudLogin,
     setActionNotice: s.setActionNotice,
     t: s.t,
   }));
 
   const handleConnect = useCallback(() => {
-    void handleCloudLogin(preOpenCloudLoginWindow()).catch((error) => {
+    // Pre-open the popup synchronously inside the click's user activation.
+    claimCloudLoginWindow();
+    void handleInteractiveCloudLogin().catch((error) => {
       setActionNotice(
         error instanceof Error
           ? error.message
@@ -74,7 +76,7 @@ function CloudConnectorsUpsell(): React.JSX.Element {
         5000,
       );
     });
-  }, [handleCloudLogin, setActionNotice, t]);
+  }, [handleInteractiveCloudLogin, setActionNotice, t]);
 
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
     id: "cloud-connectors-connect-cloud",
