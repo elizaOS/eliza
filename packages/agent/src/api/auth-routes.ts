@@ -205,12 +205,19 @@ export async function handleAuthRoutes(
 
     // Accept the raw API token itself as a valid "pairing code" — lets operators
     // share the token as a static secret without needing loopback access to read
-    // a generated code. The timing-safe comparison prevents brute-force.
+    // a generated code.
+    //
+    // This path deliberately bypasses the pairing code's expiry window: the
+    // token does not rotate, so a holder can pair at any time. It is still
+    // gated by `pairingEnabled()`, the cloud-container check, and the
+    // per-IP `rateLimitPairing` above, which is what bounds guessing —
+    // `timingSafeEqual` only removes the timing side-channel, it does nothing
+    // against brute force. The token must therefore carry real entropy; a
+    // human-chosen `ELIZA_API_TOKEN` weakens pairing to that token's strength.
     const tokenA = Buffer.from(token, "utf8");
     const tokenB = Buffer.from(provided, "utf8");
     const tokenMatch =
-      tokenA.length === tokenB.length &&
-      crypto.timingSafeEqual(tokenA, tokenB);
+      tokenA.length === tokenB.length && crypto.timingSafeEqual(tokenA, tokenB);
 
     if (tokenMatch) {
       const response: PostAuthPairResponse = { token };
