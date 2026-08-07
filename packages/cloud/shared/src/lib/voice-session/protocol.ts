@@ -86,6 +86,7 @@ export type ServerControlFrame =
   | {
       t: "navigate_view";
       viewId: string;
+      viewPath?: string;
       subview?: string;
       traceId: string;
     }

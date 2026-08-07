@@ -11,6 +11,7 @@ import type {
 	ViewType,
 } from "@elizaos/core";
 import { logger, resolveServerOnlyPort } from "@elizaos/core";
+import { REALTIME_VOICE_CLIENT_TRANSPORT } from "@elizaos/shared";
 import { SHARED_NAV_TARGETS } from "@elizaos/shared/views/shared-nav-targets";
 import { resolveSettingsSectionToken } from "@elizaos/ui/components/settings/settings-section-tokens";
 import {
@@ -53,6 +54,17 @@ const FILLER_WORDS = new Set([
 
 const DOCUMENT_SURFACE_WORDS =
 	/\b(?:documents?|docs?|files?|knowledge|uploads?|retrieval|papers?)\b/i;
+
+function isRealtimeVoiceTurn(message: Memory): boolean {
+	const metadata = message.content.metadata;
+	return (
+		typeof metadata === "object" &&
+		metadata !== null &&
+		!Array.isArray(metadata) &&
+		(metadata as Record<string, unknown>).clientTransport ===
+			REALTIME_VOICE_CLIENT_TRANSPORT
+	);
+}
 const NOTES_SURFACE_WORD = /\bnotes?\b/i;
 
 // Match a show-verb on WORD BOUNDARIES at the earliest position in the text.
@@ -388,6 +400,7 @@ async function navigateToView(
 	requestedViewType?: ViewType,
 	subview?: string,
 	navigationLabel = view.label,
+	delivery?: "originating-client",
 ): Promise<NavigateResult> {
 	// Emit navigate event via POST /api/views/:id/navigate (shell listens).
 	// A 501/404 means this shell doesn't implement the navigate route — opening
@@ -409,6 +422,7 @@ async function navigateToView(
 					path: view.path,
 					viewType: requestedViewType,
 					...(resolvedSubview ? { subview: resolvedSubview } : {}),
+					...(delivery ? { delivery } : {}),
 				}),
 				signal: AbortSignal.timeout(5_000),
 			},
@@ -554,6 +568,7 @@ export async function runViewsShow({
 		viewType,
 		subview ?? undefined,
 		navigationLabel,
+		isRealtimeVoiceTurn(message) ? "originating-client" : undefined,
 	);
 
 	logger.info(
@@ -577,6 +592,7 @@ export async function runViewsShow({
 		values: {
 			mode: "show",
 			viewId: view.id,
+			...(view.path ? { viewPath: view.path } : {}),
 			viewType: view.viewType ?? viewType ?? "gui",
 			label: navigationLabel,
 			...(result.subview ? { subview: result.subview } : {}),

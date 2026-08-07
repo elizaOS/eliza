@@ -5,6 +5,8 @@
  * removes cloud-only credentials.
  */
 
+import { REALTIME_VOICE_CLIENT_TRANSPORT } from "@elizaos/shared";
+
 const CLOUD_CONVERSATION_STREAM_PATH =
   /^\/api\/v1\/eliza\/agents\/[^/]+\/api\/conversations\/([^/]+)\/messages\/stream$/;
 
@@ -96,6 +98,7 @@ function resolveRequestUrl(input: RequestInfo | URL): URL {
 
 function parseRequestBody(body: BodyInit | null | undefined): {
   text: string;
+  metadata: { clientTransport: typeof REALTIME_VOICE_CLIENT_TRANSPORT };
 } {
   if (typeof body !== "string") {
     throw new LocalRuntimeConversationFetchError(
@@ -103,13 +106,30 @@ function parseRequestBody(body: BodyInit | null | undefined): {
     );
   }
   try {
-    const parsed = JSON.parse(body) as { text?: unknown };
+    const parsed = JSON.parse(body) as {
+      text?: unknown;
+      metadata?: unknown;
+    };
     if (typeof parsed.text !== "string" || parsed.text.trim() === "") {
       throw new LocalRuntimeConversationFetchError(
         "local voice conversation text is required",
       );
     }
-    return { text: parsed.text };
+    const metadata =
+      typeof parsed.metadata === "object" &&
+      parsed.metadata !== null &&
+      !Array.isArray(parsed.metadata)
+        ? (parsed.metadata as Record<string, unknown>)
+        : null;
+    if (metadata?.clientTransport !== REALTIME_VOICE_CLIENT_TRANSPORT) {
+      throw new LocalRuntimeConversationFetchError(
+        "local voice conversation transport metadata is required",
+      );
+    }
+    return {
+      text: parsed.text,
+      metadata: { clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT },
+    };
   } catch (error) {
     // error-policy:J3 The generated upstream body crosses a transport boundary;
     // malformed input fails explicitly instead of becoming an empty chat turn.

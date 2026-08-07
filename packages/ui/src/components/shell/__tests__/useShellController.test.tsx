@@ -2303,6 +2303,7 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
         onServerEvent?.({
           t: "navigate_view",
           viewId: "notes",
+          viewPath: "/notes",
           subview: "recent",
           traceId: "trace-voice-navigation",
         });
@@ -2311,6 +2312,7 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
       expect(navigationEvents).toHaveLength(1);
       expect(navigationEvents[0]?.detail).toEqual({
         viewId: "notes",
+        viewPath: "/notes",
         source: "agent",
         subview: "recent",
       });

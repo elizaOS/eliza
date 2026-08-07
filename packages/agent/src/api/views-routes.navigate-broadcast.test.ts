@@ -146,6 +146,24 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
     );
   });
 
+  it("records originating-client navigation without broadcasting to unrelated shells", async () => {
+    const { ctx, json, broadcastWs } = makeNavigateCtx("notes", {
+      delivery: "originating-client",
+    });
+
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+
+    expect(broadcastWs).not.toHaveBeenCalled();
+    expect(getCurrentViewState()).toMatchObject({
+      viewId: "notes",
+      source: "agent",
+    });
+    expect(json).toHaveBeenCalledWith(
+      ctx.res,
+      expect.objectContaining({ ok: true, viewId: "notes" }),
+    );
+  });
+
   it("includes action and alwaysOnTop in the frame only when present in the body", async () => {
     const { ctx, broadcastWs } = makeNavigateCtx("settings", {
       action: "pin-tab",

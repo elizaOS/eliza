@@ -473,6 +473,7 @@ export function useShellController(): ShellController {
       if (event.t === "navigate_view") {
         dispatchNavigateViewEvent({
           viewId: event.viewId,
+          ...(event.viewPath ? { viewPath: event.viewPath } : {}),
           source: "agent",
           ...(event.subview ? { subview: event.subview } : {}),
         });
