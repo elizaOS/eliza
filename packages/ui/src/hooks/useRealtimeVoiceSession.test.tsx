@@ -415,45 +415,85 @@ describe("useRealtimeVoiceSession", () => {
     });
   });
 
-  it("fallback: a pre-ready WebSocket failure resolves to same-gesture batch fallback", async () => {
-    const { options, ws } = makeOptions();
+  it("exhausts two pre-ready re-mints before surfacing a terminal transport failure", async () => {
+    const { options, ws, mint, getConsentNonce } = makeOptions();
     const { result } = renderHook(() => useRealtimeVoiceSession(options));
 
     const startPromise = beginStart(result);
     await flushAsync();
-    const sock = ws.last();
-    await act(async () => {
-      sock.emitOpen();
-      sock.emitClose(1006, "pre-ready");
-      await flushAsync();
-    });
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const sock = ws.last();
+      await act(async () => {
+        sock.emitOpen();
+        sock.emitClose(1006, `pre-ready-${attempt + 1}`);
+        await flushAsync();
+      });
+      if (attempt < 2) {
+        await waitFor(() => expect(ws.sockets).toHaveLength(attempt + 2));
+        expect(result.current.error).toBeNull();
+      }
+    }
 
     await waitFor(() => expect(result.current.error?.kind).toBe("transport"));
     expect(result.current.active).toBe(false);
-    await expect(startPromise).resolves.toEqual({
-      kind: "fallback-to-batch",
-      reason: "transport",
+    expect(mint.calls).toHaveLength(3);
+    expect(getConsentNonce).toHaveBeenCalledTimes(3);
+    let outcome: Awaited<typeof startPromise> | undefined;
+    await act(async () => {
+      outcome = await startPromise;
+      await flushAsync();
     });
+    expect(outcome).toEqual({
+      kind: "error",
+      error: {
+        kind: "transport",
+        message: "Voice connection dropped. Tap the mic to try again.",
+        actionable: true,
+      },
+    });
+    expect(result.current.fallbackReason).toBeNull();
   });
 
-  it("does not return a batch fallback after the realtime mic has become live", async () => {
-    const { options, ws } = makeOptions();
+  it("re-mints twice after live disconnects, then surfaces one retryable terminal error", async () => {
+    const { options, ws, mint, getConsentNonce } = makeOptions();
     const { result } = renderHook(() => useRealtimeVoiceSession(options));
 
     const startPromise = beginStart(result);
     await flushAsync();
-    const sock = await driveReady(ws, "sess-1", "T1");
+    let sock = await driveReady(ws, "sess-1", "T1");
     await waitFor(() => expect(result.current.active).toBe(true));
     await expect(startPromise).resolves.toEqual({ kind: "live" });
 
+    for (let reconnect = 1; reconnect <= 2; reconnect += 1) {
+      await act(async () => {
+        sock.emitClose(1006, `post-ready-${reconnect}`);
+        await flushAsync();
+      });
+      await waitFor(() => expect(ws.sockets).toHaveLength(reconnect + 1));
+      expect(result.current.error).toBeNull();
+      await waitFor(() => {
+        expect(result.current.active).toBe(false);
+        expect(result.current.connecting).toBe(true);
+      });
+      sock = await driveReady(ws, `sess-${reconnect + 1}`, `T${reconnect + 1}`);
+      await waitFor(() => expect(result.current.active).toBe(true));
+      expect(result.current.status).toBe("listening");
+    }
+
     await act(async () => {
-      sock.emitClose(1006, "post-ready");
+      sock.emitClose(1006, "post-ready-exhausted");
       await flushAsync();
     });
 
     await waitFor(() => expect(result.current.error?.kind).toBe("transport"));
+    await act(async () => {
+      await flushAsync();
+    });
     expect(result.current.active).toBe(false);
     expect(result.current.available).toBe(true);
+    expect(result.current.error?.actionable).toBe(true);
+    expect(mint.calls).toHaveLength(3);
+    expect(getConsentNonce).toHaveBeenCalledTimes(3);
   });
 
   it("does not arm when the VITE flag is off (batch path owns the mic)", async () => {

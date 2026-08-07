@@ -269,10 +269,9 @@ function normalizeVoiceIdentityId(value: unknown): string {
 
 function fallbackReasonForError(
   error: RealtimeVoiceError,
-): "consent" | "mint" | "transport" | "unknown" | null {
+): "consent" | "mint" | "unknown" | null {
   if (error.kind === "consent") return "consent";
   if (error.kind === "mint") return "mint";
-  if (error.kind === "transport") return "transport";
   if (error.kind === "unknown") return "unknown";
   return null;
 }
@@ -508,9 +507,11 @@ export function useRealtimeVoiceSession(
 
     const client = createClientRef.current({
       ...clientOptionsRef.current,
-      maxReconnects: clientOptionsRef.current?.maxReconnects ?? 0,
       agentId: aId,
       conversationId: cId,
+      // Leaving maxReconnects absent preserves the client's bounded production
+      // default (two fresh re-mints). Tests and specialized callers may still
+      // set an explicit budget through clientOptions.
       // The client invokes this immediately before every mint/re-mint. Keeping
       // the source behind a ref gives reconnects the latest callback and, more
       // importantly, prevents replay of the one-use nonce from the first mint.
@@ -529,6 +530,7 @@ export function useRealtimeVoiceSession(
           setActive(true);
           resolveStartOutcome(gen, { kind: "live" });
         } else if (state.phase === "connecting" || state.phase === "ready") {
+          setActive(false);
           setConnecting(true);
           armReadyTimer();
         } else {

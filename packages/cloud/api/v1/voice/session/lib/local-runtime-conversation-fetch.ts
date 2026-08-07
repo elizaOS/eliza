@@ -6,6 +6,7 @@
  */
 
 import { REALTIME_VOICE_CLIENT_TRANSPORT } from "@elizaos/shared";
+import { VOICE_STREAM_PROTOCOL } from "@/lib/voice-session/eliza-sse-bridge";
 
 const CLOUD_CONVERSATION_STREAM_PATH =
   /^\/api\/v1\/eliza\/agents\/[^/]+\/api\/conversations\/([^/]+)\/messages\/stream$/;
@@ -99,6 +100,7 @@ function resolveRequestUrl(input: RequestInfo | URL): URL {
 function parseRequestBody(body: BodyInit | null | undefined): {
   text: string;
   metadata: { clientTransport: typeof REALTIME_VOICE_CLIENT_TRANSPORT };
+  streamProtocol: typeof VOICE_STREAM_PROTOCOL;
 } {
   if (typeof body !== "string") {
     throw new LocalRuntimeConversationFetchError(
@@ -109,6 +111,7 @@ function parseRequestBody(body: BodyInit | null | undefined): {
     const parsed = JSON.parse(body) as {
       text?: unknown;
       metadata?: unknown;
+      streamProtocol?: unknown;
     };
     if (typeof parsed.text !== "string" || parsed.text.trim() === "") {
       throw new LocalRuntimeConversationFetchError(
@@ -126,9 +129,15 @@ function parseRequestBody(body: BodyInit | null | undefined): {
         "local voice conversation transport metadata is required",
       );
     }
+    if (parsed.streamProtocol !== VOICE_STREAM_PROTOCOL) {
+      throw new LocalRuntimeConversationFetchError(
+        "local voice conversation delta stream protocol is required",
+      );
+    }
     return {
       text: parsed.text,
       metadata: { clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT },
+      streamProtocol: parsed.streamProtocol,
     };
   } catch (error) {
     // error-policy:J3 The generated upstream body crosses a transport boundary;

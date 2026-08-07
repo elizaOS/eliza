@@ -677,10 +677,6 @@ export function createVoiceSessionClient(
     generation: number,
   ): Promise<void> {
     if (!isLifecycleCurrent(generation) || intentionalClose) return;
-    // Stop capture (a dead socket must not keep the mic hot) but KEEP playback
-    // context so an autoplay unlock survives the reconnect.
-    await teardownMic();
-    if (!isLifecycleCurrent(generation) || intentionalClose) return;
     if (reconnectsUsed >= maxReconnects) {
       mark(`not_reached(reconnect_exhausted:${reason})`, state.traceId);
       emitError(new Error(`voice session lost: ${reason}`));
@@ -689,12 +685,19 @@ export function createVoiceSessionClient(
     }
     reconnectsUsed += 1;
     mark(`reconnect_remint(${reason})`, state.traceId);
+    // The peer socket no longer owns a live mic path. Surface recovery before
+    // asynchronous teardown/mint work so the shell never continues to claim
+    // it is listening or speaking while no uplink exists.
+    setState({ ...state, phase: "connecting", lastError: null });
+    // Stop capture (a dead socket must not keep the mic hot) but KEEP playback
+    // context so an autoplay unlock survives the reconnect.
+    await teardownMic();
+    if (!isLifecycleCurrent(generation) || intentionalClose) return;
     try {
       // Reconnect ALWAYS re-mints; the old token is revoked/expired and cannot
       // reconnect (contract §7.1).
       const minted = await mint(generation);
       assertLifecycleCurrent(generation);
-      setState({ ...state, phase: "connecting", lastError: null });
       await openConnection(minted, generation);
     } catch (err) {
       if (!isLifecycleCurrent(generation)) return;
