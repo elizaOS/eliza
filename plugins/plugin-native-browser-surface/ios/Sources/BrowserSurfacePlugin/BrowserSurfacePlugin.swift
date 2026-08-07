@@ -329,13 +329,11 @@ private final class OccludingSurfaceView: UIView {
                 parent.addSubview(container)
                 parent = container
             }
-            if let contentView {
-                parent.addSubview(contentView)
-            }
         }
 
-        for (container, path) in zip(maskContainers, paths) {
-            container.setOcclusionPath(path)
+        let expectedContentParent: UIView = maskContainers.last ?? self
+        if let contentView, contentView.superview !== expectedContentParent {
+            expectedContentParent.addSubview(contentView)
         }
         layoutMaskHierarchy()
     }

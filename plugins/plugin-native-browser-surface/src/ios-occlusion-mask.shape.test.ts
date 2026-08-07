@@ -27,10 +27,22 @@ describe("iOS Browser occlusion mask contract", () => {
       "for container in maskContainers { parent.addSubview(container) parent = container }",
     );
     expect(swiftSource).toContain(
-      "for (container, path) in zip(maskContainers, paths) { container.setOcclusionPath(path) }",
+      "for (container, path) in zip(maskContainers, localOcclusionPaths()) { container.setOcclusionPath(path) }",
     );
     expect(swiftSource).not.toContain(
       "for occlusionPath in localOcclusionPaths() { path.append(occlusionPath) }",
+    );
+  });
+
+  it("keeps the page attached with zero holes and across hierarchy changes", () => {
+    expect(swiftSource).toContain(
+      "let expectedContentParent: UIView = maskContainers.last ?? self",
+    );
+    expect(swiftSource).toContain(
+      "if let contentView, contentView.superview !== expectedContentParent { expectedContentParent.addSubview(contentView) }",
+    );
+    expect(swiftSource).not.toContain(
+      "for (container, path) in zip(maskContainers, paths) { container.setOcclusionPath(path) } layoutMaskHierarchy()",
     );
   });
 
