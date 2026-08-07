@@ -304,7 +304,14 @@ function isFrontendAliasBackendPath(url: URL): boolean {
     url.pathname === "/api" ||
     url.pathname.startsWith("/api/") ||
     url.pathname === "/steward" ||
-    url.pathname.startsWith("/steward/")
+    url.pathname.startsWith("/steward/") ||
+    // OIDC requires discovery and its key set at the issuer origin's root, so
+    // those two documents must reach this Worker rather than the hosted
+    // frontend. Match them exactly: a `/.well-known/` prefix would also move
+    // every other well-known path on the alias hosts off the SPA, including
+    // publishing the internal-service JWKS where it is not published today.
+    url.pathname === "/.well-known/openid-configuration" ||
+    url.pathname === "/.well-known/oidc/jwks.json"
   );
 }
 
