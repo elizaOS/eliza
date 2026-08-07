@@ -1,29 +1,8 @@
 /**
- * RoomHandlerQueue — one handler at a time per room.
- *
- * Without this, two messages arriving for the same room within ~10ms each
- * spawn their own handler invocation, leading to:
- *   - Concurrent Stage-1 calls for the same conversation
- *   - Racing thread mutations
- *   - Reply ordering that contradicts the user's perception
- *
- * This is the deterministic replacement for time-based debouncing. Per the
- * Wave 0 contract, we explicitly do NOT debounce; instead we serialize.
- *
- * Behavior:
- *   - First message arrives → handler starts immediately.
- *   - Second message arrives while first handler runs → queued behind it.
- *   - When the first handler finishes, the next queued message starts.
- *   - Queue per `roomId`. Different rooms run in parallel.
- *
- * The queue does NOT coalesce messages. If three messages queue, the handler
- * runs three times. Coalescing (handling "i need to" + "send" + "an email"
- * as one intent) is a planner-level decision — the planner has all queued
- * messages in its conversation history and can decide to merge them, ask
- * for more info, or process independently.
- *
- * Crash safety: this queue is in-memory. A crash drops the queue. Connectors
- * are expected to re-deliver unacknowledged messages on reconnect.
+ * Serializes handler work per room while allowing unrelated rooms to proceed.
+ * Every item runs independently in arrival order; intent coalescing remains a
+ * planner concern. Waiting transports may cancel before acquisition, while an
+ * acquired lease remains owned until its complete durable outcome settles.
  */
 
 interface QueuedItem<T> {
@@ -31,6 +10,28 @@ interface QueuedItem<T> {
 	resolve: (value: T) => void;
 	reject: (error: unknown) => void;
 	enqueuedAt: number;
+	onAbort?: () => void;
+	signal?: AbortSignal;
+}
+
+export class RoomHandlerQueueAbortedError extends Error {
+	readonly roomId: string;
+
+	constructor(roomId: string, options?: ErrorOptions) {
+		super(`Room handler was cancelled while waiting for ${roomId}`, options);
+		this.name = "RoomHandlerQueueAbortedError";
+		this.roomId = roomId;
+	}
+}
+
+export interface RoomHandlerLease {
+	/** Release the room after the caller's complete durable outcome is settled. */
+	release(): Promise<void>;
+}
+
+interface RunWithOptions {
+	/** Cancellation applies only while the work is queued, never after it starts. */
+	signal?: AbortSignal;
 }
 
 class RoomQueue {
@@ -46,14 +47,38 @@ class RoomQueue {
 		return this.queue.length + (this.active ? 1 : 0);
 	}
 
-	enqueue<T>(fn: () => Promise<T>): Promise<T> {
+	enqueue<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+		if (signal?.aborted) {
+			return Promise.reject(
+				new RoomHandlerQueueAbortedError(this.roomId, {
+					cause: signal.reason,
+				}),
+			);
+		}
 		return new Promise<T>((resolve, reject) => {
-			this.queue.push({
+			const item: QueuedItem<unknown> = {
 				fn: fn as () => Promise<unknown>,
 				resolve: resolve as (value: unknown) => void,
 				reject,
 				enqueuedAt: Date.now(),
-			});
+				signal,
+			};
+			if (signal) {
+				const onAbort = () => {
+					const index = this.queue.indexOf(item);
+					if (index < 0) return;
+					this.queue.splice(index, 1);
+					signal.removeEventListener("abort", onAbort);
+					item.reject(
+						new RoomHandlerQueueAbortedError(this.roomId, {
+							cause: signal.reason,
+						}),
+					);
+				};
+				item.onAbort = onAbort;
+				signal.addEventListener("abort", onAbort, { once: true });
+			}
+			this.queue.push(item);
 			this.drain();
 		});
 	}
@@ -69,6 +94,9 @@ class RoomQueue {
 		if (this.active) return;
 		const next = this.queue.shift();
 		if (!next) return;
+		if (next.signal && next.onAbort) {
+			next.signal.removeEventListener("abort", next.onAbort);
+		}
 		this.active = next;
 		Promise.resolve()
 			.then(() => next.fn())
@@ -96,22 +124,30 @@ export class RoomHandlerQueue {
 	 * prior handler for `roomId` is still running, `fn` waits in line until
 	 * the prior handler resolves (or rejects — failures don't block the queue).
 	 */
-	async runWith<T>(roomId: string, fn: () => Promise<T>): Promise<T> {
+	async runWith<T>(
+		roomId: string,
+		fn: () => Promise<T>,
+		options?: RunWithOptions,
+	): Promise<T> {
 		const queue = this.getQueue(roomId);
 		const queuePosition = queue.pendingCount;
 		this.emit({ type: "enqueued", roomId, queueDepth: queuePosition + 1 });
 		try {
-			const result = await queue.enqueue(fn);
+			const result = await queue.enqueue(fn, options?.signal);
 			this.emit({ type: "completed", roomId });
 			return result;
 		} catch (error) {
 			// error-policy:J1 The per-room queue boundary emits its terminal
 			// failure state and preserves the handler error.
-			this.emit({
-				type: "errored",
-				roomId,
-				error: error instanceof Error ? error.message : String(error),
-			});
+			if (error instanceof RoomHandlerQueueAbortedError) {
+				this.emit({ type: "cancelled", roomId });
+			} else {
+				this.emit({
+					type: "errored",
+					roomId,
+					error: error instanceof Error ? error.message : String(error),
+				});
+			}
 			throw error;
 		} finally {
 			// Garbage-collect empty queues to keep the map bounded.
@@ -120,6 +156,51 @@ export class RoomHandlerQueue {
 				this.rooms.delete(roomId);
 			}
 		}
+	}
+
+	/**
+	 * Acquire exclusive ownership of a room until the returned lease releases.
+	 * A waiting transport may cancel without disturbing active work; after the
+	 * lease is granted, its owner alone decides when the durable turn is done.
+	 */
+	async acquire(
+		roomId: string,
+		signal?: AbortSignal,
+	): Promise<RoomHandlerLease> {
+		let markAcquired: (() => void) | undefined;
+		let rejectAcquired: ((error: unknown) => void) | undefined;
+		const acquired = new Promise<void>((resolve, reject) => {
+			markAcquired = resolve;
+			rejectAcquired = reject;
+		});
+		let releaseHold: (() => void) | undefined;
+		const hold = new Promise<void>((resolve) => {
+			releaseHold = resolve;
+		});
+
+		const heldTurn = this.runWith(
+			roomId,
+			async () => {
+				markAcquired?.();
+				await hold;
+			},
+			{ signal },
+		);
+		// error-policy:J5 The acquisition promise awaited below observes and
+		// forwards rejection from a waiter cancelled before its lease is granted.
+		void heldTurn.catch((error) => rejectAcquired?.(error));
+		await acquired;
+
+		let released: Promise<void> | null = null;
+		return {
+			release: () => {
+				if (!released) {
+					releaseHold?.();
+					released = heldTurn;
+				}
+				return released;
+			},
+		};
 	}
 
 	pendingFor(roomId: string): number {
@@ -167,4 +248,5 @@ export class RoomHandlerQueue {
 export type RoomQueueEvent =
 	| { type: "enqueued"; roomId: string; queueDepth: number }
 	| { type: "completed"; roomId: string }
+	| { type: "cancelled"; roomId: string }
 	| { type: "errored"; roomId: string; error: string };
