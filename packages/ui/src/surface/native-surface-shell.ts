@@ -103,23 +103,49 @@ export function deriveSurfacePlacement(
 }
 
 /**
- * Screen-space rectangle for a layered native surface, in CSS pixels relative to
- * the host webview's viewport. The native side converts to device pixels by the
- * display density; keeping the interface in CSS px means the JS layer measures
- * with `getBoundingClientRect` and never has to know the device scale factor.
+ * Screen-space rectangle in CSS pixels relative to the host webview's viewport.
+ * The native side converts to device pixels by the display density; keeping the
+ * shared geometry in CSS px means the JS layer measures with
+ * `getBoundingClientRect` and never knows the device scale factor.
  */
-export interface SurfaceBounds {
+export interface SurfaceRect {
   readonly x: number;
   readonly y: number;
   readonly width: number;
   readonly height: number;
 }
 
+/** Per-corner radii for a host-computed rounded rectangle, in CSS pixels. */
+export interface SurfaceCornerRadii {
+  readonly topLeft: number;
+  readonly topRight: number;
+  readonly bottomRight: number;
+  readonly bottomLeft: number;
+}
+
+/**
+ * The rounded host clip enclosing a native page. This is measured from the
+ * actual clipping ancestor rather than copied from a design token, so theme and
+ * responsive radius changes remain native/React pixel-identical.
+ */
+export interface SurfaceOuterClip extends SurfaceRect {
+  readonly cornerRadii: SurfaceCornerRadii;
+}
+
+/**
+ * Screen-space placement for a layered native surface. `outerClip` is atomic
+ * with the page rectangle so native paint and hit testing never observe a new
+ * host radius with stale bounds (or the reverse).
+ */
+export interface SurfaceBounds extends SurfaceRect {
+  readonly outerClip: SurfaceOuterClip;
+}
+
 /**
  * Rounded host-space region where the native layer yields both paint and input
  * to host-rendered chrome. Coordinates share {@link SurfaceBounds}' CSS pixels.
  */
-export interface SurfaceOcclusionRect extends SurfaceBounds {
+export interface SurfaceOcclusionRect extends SurfaceRect {
   readonly cornerRadius: number;
 }
 
@@ -135,10 +161,10 @@ export interface NativeSurfaceCreateRequest {
 
 /**
  * The native shell that owns the layered surface stack. The renderer issues these
- * commands; the native side (or a test double) realises them as real
- * `WKWebView` / `WebView` layers. All methods are side-effecting and synchronous
- * from the caller's perspective — ordering is the caller's contract, not the
- * shell's.
+ * commands synchronously; the production shell serializes each surface's async
+ * bridge calls behind an acknowledged create, while a test double realises the
+ * same order directly. A caller may therefore send initial geometry immediately
+ * after create without racing the native layer into existence.
  */
 export interface NativeSurfaceShell {
   /**
@@ -147,8 +173,9 @@ export interface NativeSurfaceShell {
    */
   createSurface(req: NativeSurfaceCreateRequest): void;
   /**
-   * Position a surface over the host webview. Called on layout/resize/scroll so
-   * the native layer tracks the placeholder rect the React tree reserves for it.
+   * Position and outer-clip a surface over the host webview. Called on
+   * layout/resize/style changes so the native layer tracks both the placeholder
+   * and its actual rounded React host without recreating the web surface.
    */
   setBounds(id: string, bounds: SurfaceBounds): void;
   /**
@@ -166,6 +193,6 @@ export interface NativeSurfaceShell {
   destroySurface(id: string): void;
   /** Foreground the host web surface (used when returning to an in-process view). */
   foregroundHost(): void;
-  /** Whether a surface with this id currently exists in the shell. */
+  /** Whether native creation for this id has been acknowledged and remains live. */
   hasSurface(id: string): boolean;
 }

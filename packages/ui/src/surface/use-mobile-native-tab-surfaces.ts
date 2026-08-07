@@ -31,7 +31,10 @@ import { CapacitorNativeSurfaceShell } from "./capacitor-native-surface-shell";
 import type {
   NativeSurfacePolicy,
   NativeSurfaceShell,
+  SurfaceBounds,
+  SurfaceCornerRadii,
   SurfaceOcclusionRect,
+  SurfaceOuterClip,
 } from "./native-surface-shell";
 
 /** The minimal per-tab shape the hook needs: identity plus the page to load. */
@@ -108,6 +111,94 @@ function parseCornerRadius(value: string): number {
   return Number.isFinite(radius) && radius > 0 ? roundedCssPixel(radius) : 0;
 }
 
+const ZERO_CORNER_RADII: SurfaceCornerRadii = {
+  topLeft: 0,
+  topRight: 0,
+  bottomRight: 0,
+  bottomLeft: 0,
+};
+
+function rectHasArea(rect: DOMRect): boolean {
+  return (
+    Number.isFinite(rect.left) &&
+    Number.isFinite(rect.top) &&
+    Number.isFinite(rect.width) &&
+    Number.isFinite(rect.height) &&
+    rect.width > 0 &&
+    rect.height > 0
+  );
+}
+
+function roundedRect(rect: DOMRect): Omit<SurfaceBounds, "outerClip"> {
+  return {
+    x: roundedCssPixel(rect.left),
+    y: roundedCssPixel(rect.top),
+    width: roundedCssPixel(rect.width),
+    height: roundedCssPixel(rect.height),
+  };
+}
+
+function readCornerRadii(style: CSSStyleDeclaration): SurfaceCornerRadii {
+  const shorthand = parseCornerRadius(style.borderRadius);
+  return {
+    topLeft: parseCornerRadius(style.borderTopLeftRadius) || shorthand,
+    topRight: parseCornerRadius(style.borderTopRightRadius) || shorthand,
+    bottomRight: parseCornerRadius(style.borderBottomRightRadius) || shorthand,
+    bottomLeft: parseCornerRadius(style.borderBottomLeftRadius) || shorthand,
+  };
+}
+
+function hasRoundedCorner(radii: SurfaceCornerRadii): boolean {
+  return Object.values(radii).some((radius) => radius > 0);
+}
+
+function clipsDescendants(style: CSSStyleDeclaration): boolean {
+  return [style.overflow, style.overflowX, style.overflowY].some(
+    (value) => value === "hidden" || value === "clip",
+  );
+}
+
+function findRoundedClipHost(element: HTMLElement): HTMLElement | null {
+  const view = element.ownerDocument.defaultView;
+  if (!view) return null;
+  for (
+    let candidate: HTMLElement | null = element;
+    candidate;
+    candidate = candidate.parentElement
+  ) {
+    const style = view.getComputedStyle(candidate);
+    if (clipsDescendants(style) && hasRoundedCorner(readCornerRadii(style))) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+/**
+ * Resolves the real rounded React clip enclosing a native page. The search is
+ * structural: it follows the DOM to the nearest rounded overflow clip and reads
+ * computed pixels, so the native contract never duplicates a Tailwind token or
+ * assumes the host and page placeholder share an element.
+ */
+export function collectSurfaceOuterClip(
+  element: HTMLElement,
+): SurfaceOuterClip {
+  const surfaceRect = element.getBoundingClientRect();
+  const host = findRoundedClipHost(element);
+  if (!host) {
+    return { ...roundedRect(surfaceRect), cornerRadii: ZERO_CORNER_RADII };
+  }
+  const hostRect = host.getBoundingClientRect();
+  if (!rectHasArea(hostRect)) {
+    return { ...roundedRect(surfaceRect), cornerRadii: ZERO_CORNER_RADII };
+  }
+  const style = element.ownerDocument.defaultView?.getComputedStyle(host);
+  return {
+    ...roundedRect(hostRect),
+    cornerRadii: style ? readCornerRadii(style) : ZERO_CORNER_RADII,
+  };
+}
+
 /**
  * Reads the visible rounded geometry for native-layer occlusion. Kept pure over
  * the supplied document so the exact DOM→native contract is regression-tested.
@@ -131,14 +222,7 @@ export function collectSurfaceOcclusionRects(
       continue;
     }
     const rect = element.getBoundingClientRect();
-    if (
-      !Number.isFinite(rect.left) ||
-      !Number.isFinite(rect.top) ||
-      !Number.isFinite(rect.width) ||
-      !Number.isFinite(rect.height) ||
-      rect.width <= 0 ||
-      rect.height <= 0
-    ) {
+    if (!rectHasArea(rect)) {
       continue;
     }
     rects.push({
@@ -173,15 +257,6 @@ export function collectSurfaceOcclusionRects(
     }, []);
 }
 
-function occlusionKey(rects: readonly SurfaceOcclusionRect[]): string {
-  return rects
-    .map(
-      ({ x, y, width, height, cornerRadius }) =>
-        `${x},${y},${width},${height},${cornerRadius}`,
-    )
-    .join(";");
-}
-
 export function useMobileNativeTabSurfaces(
   args: UseMobileNativeTabSurfacesArgs,
 ): MobileNativeTabSurfaces {
@@ -202,10 +277,10 @@ export function useMobileNativeTabSurfaces(
   const activeShell = shell ?? defaultShell;
 
   const elements = useRef(new Map<string, HTMLElement>());
-  // The tab ids that currently own a live native surface. Tracked here, not read
-  // off `elements`, because a closed tab's placeholder `<div>` unregisters
-  // (child cleanup runs before this hook's own) before the surface is torn down.
-  const liveTabIds = useRef(new Set<string>());
+  // The tab ids this hook has handed to the shell. Native acceptance is tracked
+  // by the shell itself; this desired-set may include a create still in flight so
+  // initial bounds/holes can queue behind that acknowledged create.
+  const managedTabIds = useRef(new Set<string>());
   // Last URL loaded into each surface, so a change to a tab's `url` (address-bar
   // navigation upstream) drives a `navigate` instead of a spurious re-create.
   const surfaceUrls = useRef(new Map<string, string>());
@@ -213,19 +288,18 @@ export function useMobileNativeTabSurfaces(
   // and would otherwise close over a stale value.
   const lifecycleRef = useRef(lifecycle);
   lifecycleRef.current = lifecycle;
-  const lastOcclusionKey = useRef<string | null>(null);
-
   const measure = useCallback(
     (tabId: string): void => {
       const element = elements.current.get(tabId);
-      if (!element) return;
+      const id = surfaceIdOf(tabId);
+      if (!element || !managedTabIds.current.has(tabId)) return;
       const rect = element.getBoundingClientRect();
-      activeShell.setBounds(surfaceIdOf(tabId), {
-        x: rect.left,
-        y: rect.top,
-        width: rect.width,
-        height: rect.height,
-      });
+      if (!rectHasArea(rect)) return;
+      const bounds: SurfaceBounds = {
+        ...roundedRect(rect),
+        outerClip: collectSurfaceOuterClip(element),
+      };
+      activeShell.setBounds(id, bounds);
     },
     [activeShell],
   );
@@ -260,10 +334,7 @@ export function useMobileNativeTabSurfaces(
 
   const syncOcclusions = useCallback((): void => {
     const rects = readOcclusions();
-    const key = occlusionKey(rects);
-    if (lastOcclusionKey.current === key) return;
-    lastOcclusionKey.current = key;
-    for (const tabId of liveTabIds.current) {
+    for (const tabId of managedTabIds.current) {
       activeShell.setOcclusionRects(surfaceIdOf(tabId), rects);
     }
   }, [activeShell, readOcclusions]);
@@ -276,9 +347,9 @@ export function useMobileNativeTabSurfaces(
     const wanted = new Set(tabs.map((tab) => tab.id));
     for (const tab of tabs) {
       const id = surfaceIdOf(tab.id);
-      if (!liveTabIds.current.has(tab.id)) {
+      if (!managedTabIds.current.has(tab.id)) {
         activeShell.createSurface({ id, url: tab.url, policy });
-        liveTabIds.current.add(tab.id);
+        managedTabIds.current.add(tab.id);
         surfaceUrls.current.set(tab.id, tab.url);
         measure(tab.id);
         activeShell.setOcclusionRects(id, readOcclusions());
@@ -287,20 +358,20 @@ export function useMobileNativeTabSurfaces(
         surfaceUrls.current.set(tab.id, tab.url);
       }
     }
-    for (const tabId of [...liveTabIds.current]) {
+    for (const tabId of [...managedTabIds.current]) {
       if (!wanted.has(tabId)) {
         activeShell.destroySurface(surfaceIdOf(tabId));
-        liveTabIds.current.delete(tabId);
+        managedTabIds.current.delete(tabId);
         surfaceUrls.current.delete(tabId);
         elements.current.delete(tabId);
       }
     }
   }, [active, tabs, policy, activeShell, measure, readOcclusions]);
 
-  // Keep native holes aligned with React chrome. ResizeObserver catches layout
-  // changes; MutationObserver catches portals and Motion style writes. During a
-  // chat spring/drag, its canonical transient-layout marker keeps one rAF loop
-  // alive so transform-only frames cannot slip between discrete DOM mutations.
+  // Keep React-chrome holes aligned. ResizeObserver catches layout changes;
+  // MutationObserver catches portals and Motion style writes. During a chat
+  // spring/drag, its canonical transient-layout marker keeps one rAF loop alive
+  // so transform-only frames cannot slip between discrete DOM mutations.
   useEffect(() => {
     if (
       !active ||
@@ -381,6 +452,97 @@ export function useMobileNativeTabSurfaces(
     };
   }, [active, occlusionSelector, syncOcclusions]);
 
+  // Page placement and the rounded host clip have a separate observer from the
+  // chat-hole animation loop. The shell sequences these writes behind creation
+  // and deduplicates only after native acceptance; keeping measurement free of
+  // pre-ack caches means a rejected write remains retryable.
+  useEffect(() => {
+    if (
+      !active ||
+      typeof document === "undefined" ||
+      typeof window === "undefined"
+    ) {
+      return;
+    }
+    let frame: number | null = null;
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(() => schedule());
+    const attributeObserver =
+      typeof MutationObserver === "undefined"
+        ? null
+        : new MutationObserver(() => {
+            refreshObservedGeometry();
+            schedule();
+          });
+
+    const measureAll = (): void => {
+      frame = null;
+      for (const tabId of elements.current.keys()) measure(tabId);
+    };
+    const schedule = (): void => {
+      if (frame !== null) return;
+      frame = window.requestAnimationFrame(measureAll);
+    };
+    const refreshObservedGeometry = (): void => {
+      resizeObserver?.disconnect();
+      attributeObserver?.disconnect();
+      const resizeTargets = new Set<HTMLElement>();
+      const attributeTargets = new Set<HTMLElement>();
+      for (const element of elements.current.values()) {
+        resizeTargets.add(element);
+        const clipHost = findRoundedClipHost(element);
+        if (clipHost) resizeTargets.add(clipHost);
+        for (
+          let ancestor: HTMLElement | null = element;
+          ancestor;
+          ancestor = ancestor.parentElement
+        ) {
+          attributeTargets.add(ancestor);
+        }
+      }
+      for (const target of resizeTargets) resizeObserver?.observe(target);
+      for (const target of attributeTargets) {
+        attributeObserver?.observe(target, {
+          attributes: true,
+          attributeFilter: ["class", "style", "hidden"],
+        });
+      }
+    };
+    const treeObserver =
+      typeof MutationObserver === "undefined"
+        ? null
+        : new MutationObserver(() => {
+            refreshObservedGeometry();
+            schedule();
+          });
+
+    refreshObservedGeometry();
+    schedule();
+    treeObserver?.observe(document.documentElement, {
+      subtree: true,
+      childList: true,
+    });
+    window.addEventListener("resize", schedule);
+    window.addEventListener("orientationchange", schedule);
+    window.addEventListener("scroll", schedule, true);
+    const viewport = window.visualViewport;
+    viewport?.addEventListener("resize", schedule);
+    viewport?.addEventListener("scroll", schedule);
+    return () => {
+      treeObserver?.disconnect();
+      attributeObserver?.disconnect();
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", schedule);
+      window.removeEventListener("orientationchange", schedule);
+      window.removeEventListener("scroll", schedule, true);
+      viewport?.removeEventListener("resize", schedule);
+      viewport?.removeEventListener("scroll", schedule);
+      if (frame !== null) window.cancelAnimationFrame(frame);
+    };
+  }, [active, measure]);
+
   // Foreground the selected surface and background the rest — unless an overlay
   // is open, in which case every surface is backgrounded (see header).
   useEffect(() => {
@@ -396,33 +558,12 @@ export function useMobileNativeTabSurfaces(
     }
   }, [active, tabs, selectedTabId, overlayOpen, activeShell, measure]);
 
-  // Track the placeholder rects across every layout shift so the native layer
-  // never drifts off its slot: window resize, device rotation, and the
-  // visual-viewport changes the on-screen keyboard drives.
-  useEffect(() => {
-    if (!active || typeof window === "undefined") return;
-    const measureAll = () => {
-      for (const [tabId] of elements.current) measure(tabId);
-    };
-    window.addEventListener("resize", measureAll);
-    window.addEventListener("orientationchange", measureAll);
-    const viewport = window.visualViewport;
-    viewport?.addEventListener("resize", measureAll);
-    viewport?.addEventListener("scroll", measureAll);
-    return () => {
-      window.removeEventListener("resize", measureAll);
-      window.removeEventListener("orientationchange", measureAll);
-      viewport?.removeEventListener("resize", measureAll);
-      viewport?.removeEventListener("scroll", measureAll);
-    };
-  }, [active, measure]);
-
   // On unmount, apply the manifest lifecycle: `retained` keeps surfaces warm in
   // the background; `ephemeral` (the Browser default) tears them down.
   useEffect(() => {
-    const live = liveTabIds.current;
+    const managed = managedTabIds.current;
     return () => {
-      for (const tabId of live) {
+      for (const tabId of managed) {
         const id = surfaceIdOf(tabId);
         if (lifecycleRef.current === "retained") {
           activeShell.backgroundSurface(id);
@@ -430,7 +571,7 @@ export function useMobileNativeTabSurfaces(
           activeShell.destroySurface(id);
         }
       }
-      live.clear();
+      managed.clear();
     };
     // Cleanup must run only on unmount; it reads the shell + lifecycle via refs.
   }, [activeShell]);

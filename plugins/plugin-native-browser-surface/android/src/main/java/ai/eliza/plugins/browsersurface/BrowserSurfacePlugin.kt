@@ -1,7 +1,8 @@
 /**
  * Native Android half of `ElizaSurfaceManager` (#15245): layers one [WebView]
  * per Browser tab above the Capacitor host webview, each with the platform
- * out-of-process renderer and its OWN storage partition. Rounded occlusion holes
+ * out-of-process renderer and its OWN storage partition. A computed outer clip
+ * follows the rounded React host while independent rounded occlusion holes
  * expose host-rendered chrome without resizing or hiding the live page.
  *
  * Isolation maps onto two androidx.webkit primitives. Renderer: the WebView
@@ -37,6 +38,17 @@ import com.getcapacitor.annotation.CapacitorPlugin
 
 @CapacitorPlugin(name = "ElizaSurfaceManager")
 class ElizaSurfaceManagerPlugin : Plugin() {
+    private data class HostOuterClip(
+        val x: Double,
+        val y: Double,
+        val width: Double,
+        val height: Double,
+        val topLeftRadius: Double,
+        val topRightRadius: Double,
+        val bottomRightRadius: Double,
+        val bottomLeftRadius: Double,
+    )
+
     private data class HostOcclusionRect(
         val x: Double,
         val y: Double,
@@ -53,6 +65,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         var foregrounded: Boolean,
         var x: Double = 0.0,
         var y: Double = 0.0,
+        var outerClip: HostOuterClip? = null,
         var occlusions: List<HostOcclusionRect> = emptyList(),
     )
 
@@ -146,10 +159,33 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             call.reject("setBounds requires an id")
             return
         }
-        val x = call.getDouble("x") ?: 0.0
-        val y = call.getDouble("y") ?: 0.0
-        val width = call.getDouble("width") ?: 0.0
-        val height = call.getDouble("height") ?: 0.0
+        val x = call.getDouble("x")
+        val y = call.getDouble("y")
+        val width = call.getDouble("width")
+        val height = call.getDouble("height")
+        val rawOuterClip = call.getObject("outerClip")
+        val rawCornerRadii = rawOuterClip?.optJSONObject("cornerRadii")
+        if (x == null || y == null || width == null || height == null || rawOuterClip == null || rawCornerRadii == null) {
+            call.reject("setBounds requires page bounds and an outerClip with cornerRadii")
+            return
+        }
+        val outerClip = HostOuterClip(
+            x = rawOuterClip.optDouble("x", Double.NaN),
+            y = rawOuterClip.optDouble("y", Double.NaN),
+            width = rawOuterClip.optDouble("width", Double.NaN),
+            height = rawOuterClip.optDouble("height", Double.NaN),
+            topLeftRadius = rawCornerRadii.optDouble("topLeft", Double.NaN),
+            topRightRadius = rawCornerRadii.optDouble("topRight", Double.NaN),
+            bottomRightRadius = rawCornerRadii.optDouble("bottomRight", Double.NaN),
+            bottomLeftRadius = rawCornerRadii.optDouble("bottomLeft", Double.NaN),
+        )
+        if (
+            !x.isFinite() || !y.isFinite() || !width.isFinite() || !height.isFinite() ||
+            width < 0.0 || height < 0.0 || !outerClip.hasValidGeometry()
+        ) {
+            call.reject("setBounds has invalid page or outer clip geometry")
+            return
+        }
         activity.runOnUiThread {
             val surface = surfaces[id] ?: run {
                 call.reject("no surface $id")
@@ -161,8 +197,15 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             lp.topMargin = (y * d).toInt()
             surface.x = x
             surface.y = y
-            surface.container.layoutParams = lp
-            applyOcclusions(surface, d)
+            surface.outerClip = outerClip
+            val current = surface.container.layoutParams as? FrameLayout.LayoutParams
+            if (
+                current == null || current.width != lp.width || current.height != lp.height ||
+                current.leftMargin != lp.leftMargin || current.topMargin != lp.topMargin
+            ) {
+                surface.container.layoutParams = lp
+            }
+            applyGeometry(surface, d)
             call.resolve()
         }
     }
@@ -320,6 +363,31 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         }
     }
 
+    private fun HostOuterClip.hasValidGeometry(): Boolean =
+        x.isFinite() && y.isFinite() && width.isFinite() && height.isFinite() &&
+            topLeftRadius.isFinite() && topRightRadius.isFinite() &&
+            bottomRightRadius.isFinite() && bottomLeftRadius.isFinite() &&
+            width >= 0.0 && height >= 0.0 && topLeftRadius >= 0.0 &&
+            topRightRadius >= 0.0 && bottomRightRadius >= 0.0 && bottomLeftRadius >= 0.0
+
+    private fun applyGeometry(surface: Surface, density: Float) {
+        surface.container.setOuterClip(
+            surface.outerClip?.let { clip ->
+                RoundedOuterClip(
+                    left = ((clip.x - surface.x) * density).toFloat(),
+                    top = ((clip.y - surface.y) * density).toFloat(),
+                    right = ((clip.x - surface.x + clip.width) * density).toFloat(),
+                    bottom = ((clip.y - surface.y + clip.height) * density).toFloat(),
+                    topLeftRadius = (clip.topLeftRadius * density).toFloat(),
+                    topRightRadius = (clip.topRightRadius * density).toFloat(),
+                    bottomRightRadius = (clip.bottomRightRadius * density).toFloat(),
+                    bottomLeftRadius = (clip.bottomLeftRadius * density).toFloat(),
+                )
+            },
+        )
+        applyOcclusions(surface, density)
+    }
+
     private fun applyOcclusions(surface: Surface, density: Float) {
         surface.container.setOcclusions(
             surface.occlusions.map { rect ->
@@ -332,6 +400,74 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 )
             },
         )
+    }
+}
+
+internal data class RoundedOuterClip(
+    val left: Float,
+    val top: Float,
+    val right: Float,
+    val bottom: Float,
+    val topLeftRadius: Float,
+    val topRightRadius: Float,
+    val bottomRightRadius: Float,
+    val bottomLeftRadius: Float,
+) {
+    private val normalizedRadii: FloatArray = run {
+        val raw = floatArrayOf(
+            topLeftRadius.coerceAtLeast(0f),
+            topRightRadius.coerceAtLeast(0f),
+            bottomRightRadius.coerceAtLeast(0f),
+            bottomLeftRadius.coerceAtLeast(0f),
+        )
+        val width = (right - left).coerceAtLeast(0f)
+        val height = (bottom - top).coerceAtLeast(0f)
+        fun edgeScale(length: Float, first: Float, second: Float): Float {
+            val total = first + second
+            return if (total > 0f) length / total else 1f
+        }
+        val scale = minOf(
+            1f,
+            edgeScale(width, raw[0], raw[1]),
+            edgeScale(width, raw[3], raw[2]),
+            edgeScale(height, raw[0], raw[3]),
+            edgeScale(height, raw[1], raw[2]),
+        )
+        FloatArray(raw.size) { index -> raw[index] * scale }
+    }
+
+    fun pathRadii(): FloatArray = floatArrayOf(
+        normalizedRadii[0],
+        normalizedRadii[0],
+        normalizedRadii[1],
+        normalizedRadii[1],
+        normalizedRadii[2],
+        normalizedRadii[2],
+        normalizedRadii[3],
+        normalizedRadii[3],
+    )
+
+    fun contains(x: Float, y: Float): Boolean {
+        if (x < left || x > right || y < top || y > bottom) return false
+        val topLeft = normalizedRadii[0]
+        val topRight = normalizedRadii[1]
+        val bottomRight = normalizedRadii[2]
+        val bottomLeft = normalizedRadii[3]
+        val (radius, centerX, centerY) = when {
+            x < left + topLeft && y < top + topLeft ->
+                Triple(topLeft, left + topLeft, top + topLeft)
+            x > right - topRight && y < top + topRight ->
+                Triple(topRight, right - topRight, top + topRight)
+            x > right - bottomRight && y > bottom - bottomRight ->
+                Triple(bottomRight, right - bottomRight, bottom - bottomRight)
+            x < left + bottomLeft && y > bottom - bottomLeft ->
+                Triple(bottomLeft, left + bottomLeft, bottom - bottomLeft)
+            else -> return true
+        }
+        if (radius <= 0f) return true
+        val dx = x - centerX
+        val dy = y - centerY
+        return dx * dx + dy * dy <= radius * radius
     }
 }
 
@@ -364,25 +500,43 @@ internal data class RoundedOcclusionRect(
 }
 
 /**
- * Clips a native page around host-rendered chrome while keeping the page itself
- * full-size and live. Returning false for an occluded ACTION_DOWN lets the
- * parent continue hit-testing the Capacitor host WebView underneath.
+ * Clips the native page to its rounded React host, then removes host-rendered
+ * chrome while keeping the page full-size and live. Returning false outside
+ * that outer clip or inside an occlusion lets the parent continue hit-testing
+ * the Capacitor host WebView underneath.
  */
 internal class OccludingSurfaceLayout(context: Context) : FrameLayout(context) {
+    private var outerClip: RoundedOuterClip? = null
     private var occlusions: List<RoundedOcclusionRect> = emptyList()
     private val clipPath = Path()
 
+    fun setOuterClip(clip: RoundedOuterClip?) {
+        if (outerClip == clip) return
+        outerClip = clip
+        invalidate()
+    }
+
     fun setOcclusions(rects: List<RoundedOcclusionRect>) {
+        if (occlusions == rects) return
         occlusions = rects
         invalidate()
     }
 
     override fun dispatchDraw(canvas: Canvas) {
-        if (occlusions.isEmpty()) {
+        if (outerClip == null && occlusions.isEmpty()) {
             super.dispatchDraw(canvas)
             return
         }
         val saveCount = canvas.save()
+        outerClip?.let { clip ->
+            clipPath.reset()
+            clipPath.addRoundRect(
+                RectF(clip.left, clip.top, clip.right, clip.bottom),
+                clip.pathRadii(),
+                Path.Direction.CW,
+            )
+            canvas.clipPath(clipPath)
+        }
         for (rect in occlusions) {
             clipPath.reset()
             clipPath.addRoundRect(
@@ -405,7 +559,8 @@ internal class OccludingSurfaceLayout(context: Context) : FrameLayout(context) {
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         if (
             event.actionMasked == MotionEvent.ACTION_DOWN &&
-            occlusions.any { it.contains(event.x, event.y) }
+            (outerClip?.contains(event.x, event.y) == false ||
+                occlusions.any { it.contains(event.x, event.y) })
         ) {
             return false
         }

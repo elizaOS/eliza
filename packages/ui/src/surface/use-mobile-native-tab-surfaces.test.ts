@@ -20,6 +20,7 @@ import type {
 } from "./native-surface-shell";
 import {
   collectSurfaceOcclusionRects,
+  collectSurfaceOuterClip,
   type MobileNativeSurfaceTab,
   useMobileNativeTabSurfaces,
 } from "./use-mobile-native-tab-surfaces";
@@ -64,6 +65,19 @@ class RecordingShell implements NativeSurfaceShell {
   }
   hasSurface(id: string): boolean {
     return this.live.has(id);
+  }
+}
+
+class DropFirstBoundsShell extends RecordingShell {
+  attempts = 0;
+
+  override setBounds(id: string, bounds: SurfaceBounds): void {
+    this.attempts += 1;
+    if (this.attempts === 1) {
+      this.commands.push(`bounds-rejected:${id}`);
+      return;
+    }
+    super.setBounds(id, bounds);
   }
 }
 
@@ -150,6 +164,31 @@ describe("useMobileNativeTabSurfaces", () => {
     ]);
   });
 
+  it("reads the nearest real rounded overflow host without duplicating its CSS radius", () => {
+    const host = elementAt({ left: 8, top: 72, width: 368, height: 640 });
+    host.style.overflow = "hidden";
+    host.style.borderTopLeftRadius = "24px";
+    host.style.borderTopRightRadius = "20px";
+    host.style.borderBottomRightRadius = "16px";
+    host.style.borderBottomLeftRadius = "12px";
+    const surface = elementAt({ left: 10, top: 74, width: 364, height: 636 });
+    host.append(surface);
+    document.body.append(host);
+
+    expect(collectSurfaceOuterClip(surface)).toEqual({
+      x: 8,
+      y: 72,
+      width: 368,
+      height: 640,
+      cornerRadii: {
+        topLeft: 24,
+        topRight: 20,
+        bottomRight: 16,
+        bottomLeft: 12,
+      },
+    });
+  });
+
   it("does nothing while inactive (not on the native-mobile-webview path)", () => {
     const shell = new RecordingShell();
     renderHook(() =>
@@ -175,15 +214,93 @@ describe("useMobileNativeTabSurfaces", () => {
       y: 34,
       width: 300,
       height: 500,
+      outerClip: {
+        x: 12,
+        y: 34,
+        width: 300,
+        height: 500,
+        cornerRadii: {
+          topLeft: 0,
+          topRight: 0,
+          bottomRight: 0,
+          bottomLeft: 0,
+        },
+      },
     });
 
     act(() => {
+      const element = elementAt({ left: 13, top: 35, width: 301, height: 501 });
+      result.current.registerSurfaceElement("a", element);
       window.dispatchEvent(new Event("resize"));
     });
     // Still tracking after the layout shift (a fresh setBounds command fired).
     expect(
       shell.commands.filter((c) => c === "bounds:browser-tab:a").length,
     ).toBeGreaterThanOrEqual(2);
+  });
+
+  it("updates a computed host radius in place without recreating or navigating the WebView", async () => {
+    const host = elementAt({ left: 8, top: 72, width: 368, height: 640 });
+    host.style.overflow = "hidden";
+    host.style.borderRadius = "24px";
+    const surface = elementAt({ left: 8, top: 72, width: 368, height: 640 });
+    host.append(surface);
+    document.body.append(host);
+    const shell = new RecordingShell();
+    const { result } = renderHook(() =>
+      useMobileNativeTabSurfaces({ ...base, shell }),
+    );
+    act(() => result.current.registerSurfaceElement("a", surface));
+    expect(
+      shell.bounds.get("browser-tab:a")?.outerClip.cornerRadii.topLeft,
+    ).toBe(24);
+
+    shell.commands.length = 0;
+    await act(async () => {
+      host.style.borderRadius = "32px";
+      await new Promise<void>((resolve) =>
+        window.requestAnimationFrame(() => resolve()),
+      );
+    });
+
+    expect(
+      shell.bounds.get("browser-tab:a")?.outerClip.cornerRadii.topLeft,
+    ).toBe(32);
+    expect(shell.commands).toContain("bounds:browser-tab:a");
+    expect(shell.commands).not.toContain("create:browser-tab:a");
+    expect(
+      shell.commands.some((command) => command.startsWith("navigate:")),
+    ).toBe(false);
+  });
+
+  it("retries identical geometry after a fire-and-forget native rejection", async () => {
+    const shell = new DropFirstBoundsShell();
+    const surface = elementAt({ left: 12, top: 34, width: 300, height: 500 });
+    const { result } = renderHook(() =>
+      useMobileNativeTabSurfaces({ ...base, shell }),
+    );
+    act(() => result.current.registerSurfaceElement("a", surface));
+    expect(shell.commands).toContain("bounds-rejected:browser-tab:a");
+    expect(shell.bounds.has("browser-tab:a")).toBe(false);
+
+    await act(async () => {
+      window.dispatchEvent(new Event("resize"));
+      await new Promise<void>((resolve) =>
+        window.requestAnimationFrame(() => resolve()),
+      );
+    });
+
+    expect(shell.attempts).toBeGreaterThanOrEqual(2);
+    expect(shell.bounds.get("browser-tab:a")).toMatchObject({
+      x: 12,
+      y: 34,
+      width: 300,
+      height: 500,
+    });
+    expect(
+      shell.commands.filter((command) => command === "create:browser-tab:a"),
+    ).toHaveLength(1);
+    expect(shell.navigations).toEqual([]);
   });
 
   it("foregrounds the selected surface and backgrounds the rest on tab switch", () => {

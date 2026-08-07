@@ -23,7 +23,25 @@ describe("BrowserSurfaceWeb", () => {
 
   it("rejects every surface method as unavailable", async () => {
     await expect(
-      web.setBounds({ id: "a", x: 0, y: 0, width: 1, height: 1 }),
+      web.setBounds({
+        id: "a",
+        x: 0,
+        y: 0,
+        width: 1,
+        height: 1,
+        outerClip: {
+          x: 0,
+          y: 0,
+          width: 1,
+          height: 1,
+          cornerRadii: {
+            topLeft: 0,
+            topRight: 0,
+            bottomRight: 0,
+            bottomLeft: 0,
+          },
+        },
+      }),
     ).rejects.toThrow(/native-only/i);
     await expect(
       web.setOcclusionRects({
