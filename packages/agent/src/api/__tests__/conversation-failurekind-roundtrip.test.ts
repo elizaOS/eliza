@@ -15,7 +15,13 @@
  */
 
 import http from "node:http";
-import { ChannelType, logger, stringToUuid, type UUID } from "@elizaos/core";
+import {
+  ChannelType,
+  logger,
+  RoomHandlerQueue,
+  stringToUuid,
+  type UUID,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Configurable result returned by the mocked generateChatResponse so each test
@@ -197,6 +203,7 @@ function createState(
     getWorld: vi.fn(async (worldId: UUID) => worlds.get(worldId) ?? null),
     getRoom: vi.fn(async () => null),
     getParticipantsForRoom: vi.fn(async () => [USER_ID, AGENT_ID]),
+    roomHandlerQueue: new RoomHandlerQueue(),
     adapter: {},
   };
   return {

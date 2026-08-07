@@ -31,6 +31,7 @@ import {
   logger,
   type Memory,
   ModelType,
+  RoomHandlerQueue,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -41,6 +42,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 // route handler.
 let requestStreamProtocol: "delta-v2" | undefined;
 let requestClientMessageId: string | undefined;
+const DEFAULT_REQUEST_PROMPT = "stream the deterministic thought";
+const FIRST_VOICE_TRANSCRIPT =
+  "Can you change your personality to be a little bit more hip and cool?";
+const SECOND_VOICE_TRANSCRIPT = "Like a zoomer.";
+const requestPromptQueue: string[] = [];
+let userMessagePreparationHook:
+  | ((prompt: string, roomId: UUID) => Promise<void> | void)
+  | undefined;
 
 vi.mock("../chat-routes.ts", async () => {
   const actual =
@@ -50,7 +59,7 @@ vi.mock("../chat-routes.ts", async () => {
   return {
     ...actual,
     readChatRequestPayload: vi.fn(async () => ({
-      prompt: "stream the deterministic thought",
+      prompt: requestPromptQueue.shift() ?? DEFAULT_REQUEST_PROMPT,
       channelType: ChannelType.DM,
       images: undefined,
       preferredLanguage: undefined,
@@ -93,22 +102,35 @@ vi.mock("../server-helpers.ts", async () => {
   );
   return {
     ...actual,
-    buildUserMessages: vi.fn(({ prompt, userId, agentId, roomId }) => ({
-      userMessage: {
-        id: stringToUuid("stream-contract-user-msg"),
-        entityId: userId,
-        agentId,
-        roomId,
-        content: { text: prompt, source: "api", channelType: ChannelType.DM },
-      },
-      messageToStore: {
-        id: stringToUuid("stream-contract-user-msg-store"),
-        entityId: userId,
-        agentId,
-        roomId,
-        content: { text: prompt, source: "api", channelType: ChannelType.DM },
-      },
-    })),
+    buildUserMessages: vi.fn(async ({ prompt, userId, agentId, roomId }) => {
+      await userMessagePreparationHook?.(prompt, roomId);
+      return {
+        userMessage: {
+          id: stringToUuid("stream-contract-user-msg"),
+          entityId: userId,
+          agentId,
+          roomId,
+          content: {
+            text: prompt,
+            source: "api",
+            channelType: ChannelType.DM,
+          },
+          metadata: {},
+        },
+        messageToStore: {
+          id: stringToUuid("stream-contract-user-msg-store"),
+          entityId: userId,
+          agentId,
+          roomId,
+          content: {
+            text: prompt,
+            source: "api",
+            channelType: ChannelType.DM,
+          },
+          metadata: {},
+        },
+      };
+    }),
     resolveWalletModeGuidanceReply: () => null,
     resolveAppUserName: () => "tester",
   };
@@ -131,6 +153,7 @@ import {
 const AGENT_ID = stringToUuid("stream-contract-agent") as UUID;
 const USER_ID = stringToUuid("stream-contract-user") as UUID;
 const ROOM_ID = stringToUuid("stream-contract-room") as UUID;
+const OTHER_ROOM_ID = stringToUuid("stream-contract-other-room") as UUID;
 const TOKENS = ["Ordered ", "token ", "frame ", "stream."];
 const FINAL_TEXT = TOKENS.join("");
 const THOUGHT =
@@ -703,6 +726,7 @@ function createState(
       });
     }),
     reportError: vi.fn(),
+    roomHandlerQueue: new RoomHandlerQueue(),
     adapter: {},
   } as unknown as AgentRuntime;
 
@@ -810,11 +834,68 @@ function createGatedMessageService(
   };
 }
 
+function createSerialVoiceTurnMessageService({
+  events,
+  firstStarted,
+  firstGate,
+  firstAssistantIsDurable,
+}: {
+  events: string[];
+  firstStarted: ReturnType<typeof createDeferred>;
+  firstGate: ReturnType<typeof createDeferred>;
+  firstAssistantIsDurable: () => boolean;
+}): NonNullable<AgentRuntime["messageService"]> {
+  let active = 0;
+  return {
+    async handleMessage(_runtime, message) {
+      const text = String(message.content?.text ?? "");
+      active += 1;
+      events.push(`handle-start:${text}:${active}`);
+      try {
+        if (text === FIRST_VOICE_TRANSCRIPT) {
+          firstStarted.resolve();
+          await firstGate.promise;
+          return {
+            didRespond: true,
+            responseContent: {
+              text: "got it. i'll keep the vibe hip and cool.",
+            },
+            responseMessages: [],
+          };
+        }
+        if (text === SECOND_VOICE_TRANSCRIPT) {
+          events.push(
+            `second-context:${firstAssistantIsDurable() ? "ordered" : "stale"}`,
+          );
+          return {
+            didRespond: true,
+            responseContent: { text: "got it. i'll keep it current." },
+            responseMessages: [],
+          };
+        }
+        throw new Error(`Unexpected voice transcript: ${text}`);
+      } finally {
+        events.push(`handle-end:${text}:${active}`);
+        active -= 1;
+      }
+    },
+    shouldRespond: () => ({
+      shouldRespond: true,
+      skipEvaluation: true,
+      reason: "voice-turn-serialization-regression",
+    }),
+    deleteMessage: async () => undefined,
+    clearChannel: async () => undefined,
+  };
+}
+
 describe("conversation stream SSE contract (#10712)", () => {
   afterEach(() => {
     vi.clearAllMocks();
     requestStreamProtocol = undefined;
     requestClientMessageId = undefined;
+    requestPromptQueue.length = 0;
+    userMessagePreparationHook = undefined;
   });
 
   it("emits thinking→streaming status, ordered cumulative token frames, then a terminal done frame with thought", async () => {
@@ -942,6 +1023,288 @@ describe("conversation stream SSE contract (#10712)", () => {
     expect(persistConversationMemory).toHaveBeenCalledTimes(1);
     expect(fixture.useModel).toHaveBeenCalledTimes(1);
     expect(fixture.record.ended).toBe(true);
+  });
+
+  it("serializes voice finals received 1.552s apart before preparation, persistence, and runtime execution", async () => {
+    const firstTranscript = FIRST_VOICE_TRANSCRIPT;
+    const secondTranscript = SECOND_VOICE_TRANSCRIPT;
+    requestPromptQueue.push(firstTranscript, secondTranscript);
+
+    const events: string[] = [];
+    const firstPreparationStarted = createDeferred();
+    const firstPreparationGate = createDeferred();
+    userMessagePreparationHook = async (prompt) => {
+      events.push(`prepare-start:${prompt}`);
+      if (prompt === firstTranscript) {
+        firstPreparationStarted.resolve();
+        await firstPreparationGate.promise;
+      }
+      events.push(`prepare-end:${prompt}`);
+    };
+    const firstStarted = createDeferred();
+    const firstGate = createDeferred();
+    let firstAssistantDurable = false;
+    const service = createSerialVoiceTurnMessageService({
+      events,
+      firstStarted,
+      firstGate,
+      firstAssistantIsDurable: () => firstAssistantDurable,
+    });
+    const first = createCtx(service);
+    const runtime = first.state.runtime;
+    if (!runtime) throw new Error("runtime fixture missing");
+
+    const persistUser = vi.mocked(persistConversationMemory);
+    const persistAssistant = vi.mocked(persistAssistantConversationMemory);
+    const originalPersistUser = persistUser.getMockImplementation();
+    const originalPersistAssistant = persistAssistant.getMockImplementation();
+    if (!originalPersistUser || !originalPersistAssistant) {
+      throw new Error("persistence fixture lost implementation");
+    }
+    persistUser.mockImplementation(async (...args) => {
+      const memory = args[1];
+      events.push(`persist-user:${String(memory.content.text ?? "")}`);
+      return originalPersistUser(...args);
+    });
+    persistAssistant.mockImplementation(async (...args) => {
+      const content = args[2];
+      const text =
+        typeof content === "string" ? content : String(content.text ?? "");
+      events.push(`persist-assistant:${text}`);
+      if (text === "got it. i'll keep the vibe hip and cool.") {
+        firstAssistantDurable = true;
+      }
+      return originalPersistAssistant(...args);
+    });
+
+    let now = 1_786_103_975_770;
+    const dateNow = vi.spyOn(Date, "now").mockImplementation(() => now);
+    try {
+      const firstTurn = handleConversationRoutes(first.ctx);
+      await firstPreparationStarted.promise;
+
+      now += 1_552;
+      const second = createFollowupCtx(first.ctx, first.state);
+      const secondTurn = handleConversationRoutes(second.ctx);
+      await vi.waitFor(() => {
+        expect(runtime.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(2);
+      });
+
+      expect(events).toEqual([`prepare-start:${firstTranscript}`]);
+      expect(runtime.ensureConnection).not.toHaveBeenCalled();
+      expect(persistUser).not.toHaveBeenCalled();
+      expect(
+        events.filter((event) => event.startsWith("handle-start:")),
+      ).toEqual([]);
+      expect(
+        parseSsePayloads(second.record.writes).some(
+          (payload) => payload.type === "done" || payload.type === "error",
+        ),
+      ).toBe(false);
+
+      firstPreparationGate.resolve();
+      await firstStarted.promise;
+      expect(runtime.ensureConnection).toHaveBeenCalledTimes(1);
+      expect(persistUser).toHaveBeenCalledTimes(1);
+      expect(
+        events.filter((event) => event.startsWith("handle-start:")),
+      ).toEqual([`handle-start:${firstTranscript}:1`]);
+      expect(events).not.toContain(`prepare-start:${secondTranscript}`);
+      expect(
+        parseSsePayloads(second.record.writes).some(
+          (payload) => payload.type === "done" || payload.type === "error",
+        ),
+      ).toBe(false);
+
+      firstGate.resolve();
+      await Promise.all([firstTurn, secondTurn]);
+
+      expect(events).toEqual([
+        `prepare-start:${firstTranscript}`,
+        `prepare-end:${firstTranscript}`,
+        `persist-user:${firstTranscript}`,
+        `handle-start:${firstTranscript}:1`,
+        `handle-end:${firstTranscript}:1`,
+        "persist-assistant:got it. i'll keep the vibe hip and cool.",
+        `prepare-start:${secondTranscript}`,
+        `prepare-end:${secondTranscript}`,
+        `persist-user:${secondTranscript}`,
+        `handle-start:${secondTranscript}:1`,
+        "second-context:ordered",
+        `handle-end:${secondTranscript}:1`,
+        "persist-assistant:got it. i'll keep it current.",
+      ]);
+
+      const firstPayloads = parseSsePayloads(first.record.writes);
+      const secondPayloads = parseSsePayloads(second.record.writes);
+      expect(
+        firstPayloads.filter((payload) => payload.type === "done"),
+      ).toEqual([
+        expect.objectContaining({
+          fullText: "got it. i'll keep the vibe hip and cool.",
+        }),
+      ]);
+      expect(
+        secondPayloads.filter((payload) => payload.type === "done"),
+      ).toEqual([
+        expect.objectContaining({ fullText: "got it. i'll keep it current." }),
+      ]);
+      expect(
+        [...firstPayloads, ...secondPayloads].filter(
+          (payload) => payload.type === "error",
+        ),
+      ).toEqual([]);
+      expect(
+        [...firstPayloads, ...secondPayloads]
+          .map((payload) => String(payload.fullText ?? ""))
+          .join(" "),
+      ).not.toMatch(/create a note|character view/i);
+      expect(persistAssistant).toHaveBeenCalledTimes(2);
+    } finally {
+      dateNow.mockRestore();
+      persistUser.mockImplementation(originalPersistUser);
+      persistAssistant.mockImplementation(originalPersistAssistant);
+    }
+  });
+
+  it("allows another room to prepare and finish while the first room is blocked in preparation", async () => {
+    const blockedPrompt = "room a blocks during preparation";
+    const otherRoomPrompt = "room b proceeds independently";
+    requestPromptQueue.push(blockedPrompt, otherRoomPrompt);
+
+    const preparationStarted = createDeferred();
+    const preparationGate = createDeferred();
+    const events: string[] = [];
+    userMessagePreparationHook = async (prompt) => {
+      events.push(`prepare-start:${prompt}`);
+      if (prompt === blockedPrompt) {
+        preparationStarted.resolve();
+        await preparationGate.promise;
+      }
+      events.push(`prepare-end:${prompt}`);
+    };
+    const service = {
+      async handleMessage(_runtime, message) {
+        const text = String(message.content?.text ?? "");
+        events.push(`handle:${text}`);
+        return {
+          didRespond: true,
+          responseContent: { text: `completed ${text}` },
+          responseMessages: [],
+        };
+      },
+      shouldRespond: () => ({
+        shouldRespond: true,
+        skipEvaluation: true,
+        reason: "cross-room-serialization-regression",
+      }),
+      deleteMessage: async () => undefined,
+      clearChannel: async () => undefined,
+    } satisfies NonNullable<AgentRuntime["messageService"]>;
+    const first = createCtx(service);
+    const primaryConversation = first.state.conversations.get("conv-1");
+    if (!primaryConversation) throw new Error("primary fixture missing");
+    first.state.conversations.set("conv-2", {
+      ...primaryConversation,
+      id: "conv-2",
+      roomId: OTHER_ROOM_ID,
+    });
+
+    const firstTurn = handleConversationRoutes(first.ctx);
+    await preparationStarted.promise;
+    const second = createFollowupCtx(first.ctx, first.state);
+    second.ctx.pathname = "/api/conversations/conv-2/messages/stream";
+    const secondTurn = handleConversationRoutes(second.ctx);
+    await secondTurn;
+
+    expect(events).toEqual([
+      `prepare-start:${blockedPrompt}`,
+      `prepare-start:${otherRoomPrompt}`,
+      `prepare-end:${otherRoomPrompt}`,
+      `handle:${otherRoomPrompt}`,
+    ]);
+    expect(
+      parseSsePayloads(second.record.writes).filter(
+        (payload) => payload.type === "done",
+      ),
+    ).toEqual([
+      expect.objectContaining({ fullText: `completed ${otherRoomPrompt}` }),
+    ]);
+    expect(first.record.ended).toBe(false);
+
+    preparationGate.resolve();
+    await firstTurn;
+    expect(events).toEqual([
+      `prepare-start:${blockedPrompt}`,
+      `prepare-start:${otherRoomPrompt}`,
+      `prepare-end:${otherRoomPrompt}`,
+      `handle:${otherRoomPrompt}`,
+      `prepare-end:${blockedPrompt}`,
+      `handle:${blockedPrompt}`,
+    ]);
+  });
+
+  it("releases the room when a terminal stream write throws so the next turn can finish", async () => {
+    requestPromptQueue.push(
+      "turn whose terminal write throws",
+      "turn after terminal write failure",
+    );
+    const first = createCtx();
+    const runtime = first.state.runtime;
+    if (!runtime) throw new Error("runtime fixture missing");
+    first.ctx.res.end = vi.fn(() => {
+      throw new Error("terminal stream write exploded");
+    }) as never;
+
+    await expect(handleConversationRoutes(first.ctx)).rejects.toThrow(
+      "terminal stream write exploded",
+    );
+    expect(runtime.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(0);
+
+    const second = createFollowupCtx(first.ctx, first.state);
+    await handleConversationRoutes(second.ctx);
+    expect(runtime.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(0);
+    const secondPayloads = parseSsePayloads(second.record.writes);
+    expect(secondPayloads.filter((payload) => payload.type === "done")).toEqual(
+      [expect.objectContaining({ fullText: expect.any(String) })],
+    );
+    expect(
+      secondPayloads.filter((payload) => payload.type === "error"),
+    ).toEqual([]);
+    expect(second.record.ended).toBe(true);
+  });
+
+  it("removes a disconnected voice final while it waits behind the active room turn", async () => {
+    requestPromptQueue.push("first voice turn", "disconnected follow-up");
+    const firstStarted = createDeferred();
+    const firstGate = createDeferred();
+    const first = createCtx(createGatedMessageService(firstStarted, firstGate));
+    const runtime = first.state.runtime;
+    if (!runtime) throw new Error("runtime fixture missing");
+
+    const firstTurn = handleConversationRoutes(first.ctx);
+    await firstStarted.promise;
+    const second = createFollowupCtx(first.ctx, first.state);
+    const secondTurn = handleConversationRoutes(second.ctx);
+    await vi.waitFor(() => {
+      expect(runtime.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(2);
+    });
+
+    second.ctx.req.emit("aborted");
+    await secondTurn;
+    expect(runtime.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(1);
+    expect(persistConversationMemory).toHaveBeenCalledTimes(1);
+    expect(parseSsePayloads(second.record.writes)).not.toContainEqual(
+      expect.objectContaining({ type: "done" }),
+    );
+    expect(parseSsePayloads(second.record.writes)).not.toContainEqual(
+      expect.objectContaining({ type: "error" }),
+    );
+    expect(second.record.ended).toBe(true);
+
+    firstGate.resolve();
+    await firstTurn;
+    expect(runtime.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(0);
   });
 
   it("releases an undelivered connection failure for retry with the same id", async () => {
