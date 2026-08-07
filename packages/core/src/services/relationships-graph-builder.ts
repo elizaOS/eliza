@@ -229,6 +229,13 @@ export type RelationshipsGraphService = {
 		entityB: UUID,
 		evidence: RelationshipsMergeProposalEvidence,
 	) => Promise<UUID>;
+	/**
+	 * Kick a background graph-model build so the first user turn after boot
+	 * can hit the stale-while-revalidate cache instead of awaiting a cold
+	 * CPU-bound rebuild that pins the event loop past the 3s rolodex budget
+	 * (#17932). Safe to call multiple times; builds are single-flighted.
+	 */
+	prewarmGraphModel: () => void;
 };
 
 type RelationshipsContactLike = {
@@ -2324,6 +2331,15 @@ export function createNativeRelationshipsGraphService(
 		modelBuildPromise = null;
 	}
 
+	/**
+	 * Fire-and-forget first-build of the graph model. Does not await; errors
+	 * are already observed by the shared getCachedModel catch handler.
+	 */
+	function prewarmGraphModel(): void {
+		if (modelCache || modelBuildPromise) return;
+		void getCachedModel();
+	}
+
 	function applyOwnerName(
 		summaries: RelationshipsPersonSummary[],
 		ownerName: string | null,
@@ -2335,6 +2351,7 @@ export function createNativeRelationshipsGraphService(
 	}
 
 	return {
+		prewarmGraphModel,
 		async getGraphSnapshot(query = {}): Promise<RelationshipsGraphSnapshot> {
 			const [model, ownerName] = await Promise.all([
 				getCachedModel(),
