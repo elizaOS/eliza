@@ -1324,6 +1324,13 @@
       "when": 1786046400000,
       "tag": "0189_agent_sandbox_lifecycle_revision_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 189,
+      "version": "7",
+      "when": 1786132800000,
+      "tag": "0190_shared_rows_release_stale_placement",
+      "breakpoints": true
     }
   ]
 }
