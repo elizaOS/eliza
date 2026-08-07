@@ -40,6 +40,10 @@ const home = mkdtempSync(path.join(tmpdir(), "ma-compose-e2e-"));
 process.env.ELIZA_HOME = home;
 process.env.ELIZA_STATE_DIR = home;
 process.env.ELIZA_ACP_STATE_DIR = path.join(home, "acp");
+// The production-shaped pool intentionally reads through a runtime storage
+// policy. Mark this disposable harness as a test so that policy shares the
+// isolated store's in-memory encryption key instead of consulting the host vault.
+process.env.BUN_ENV = "test";
 // Keep synthetic credentials independent of both developer keychains and CI
 // host services. This value protects only the disposable state directory.
 process.env.ELIZA_VAULT_DISABLE_KEYCHAIN = "1";
