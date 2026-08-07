@@ -65,55 +65,9 @@ function sanitizeSpeechPunctuation(input: string): string {
 	return text;
 }
 
-/**
- * Lexical tweaks for TTS engines that mis-phonemize common English.
- *
- * Kokoro/espeak-ng renders "I am" as /jæm/ ("yam"), so contract it — but English
- * blocks contraction wherever the copula is STRANDED, i.e. its complement has
- * moved left out of the clause. Two things have to hold:
- *
- *   before: the match is not preceded by a wh-word or a fronted deictic, which
- *           is what strands it — "who I am today", "Here I am at last",
- *           "Wherever I am is home" are all ungrammatical when contracted.
- *   after:  a predicate complement actually follows — not punctuation (which
- *           strands it at a clause end: "Yes, I am.") and not a coordinator
- *           ("who I am and ...").
- *
- * A following-token test alone is not sufficient: it accepts "Here I am at
- * last" because a word follows. Both directions are required.
- *
- * The match is case-insensitive because "I AM" and "i am" mis-phonemize exactly
- * the same way; the replacement re-applies the observed casing.
- *
- * `@elizaos/shared` carries its own copy of this rule (core cannot import
- * shared — the dependency runs the other way). The two are kept in step by
- * their respective suites, which assert the same contraction cases; nothing
- * mechanically binds them, so they are not assumed identical elsewhere.
- */
-const STRANDING_ANTECEDENT =
-	"who|whom|whose|what|whatever|whoever|which|where|wherever|when|whenever|why|how|however|here|there";
-
-const CONTRACTIBLE_I_AM = new RegExp(
-	`(?<!\\b(?:${STRANDING_ANTECEDENT})\\s)\\b(I)(\\s+)(am)\\b(?=\\s+(?!and\\b|or\\b|but\\b|nor\\b|yet\\b)[^\\s.,;:!?])`,
-	"gi",
-);
-
-function fixSpeechPronunciations(input: string): string {
-	return input.replace(
-		CONTRACTIBLE_I_AM,
-		(_match, i: string, _sp, am: string) => {
-			if (i === "I" && am === "AM") return "I'M";
-			if (i === "i") return "i'm";
-			return "I'm";
-		},
-	);
-}
-
 export function sanitizeSpeechText(input: string): string {
 	const normalized = input.normalize("NFKC");
 	const stripped = stripThinkingAndMarkup(normalized);
 	const withoutDirections = stripNonSpeechDirections(stripped);
-	return collapseWhitespace(
-		fixSpeechPronunciations(sanitizeSpeechPunctuation(withoutDirections)),
-	);
+	return collapseWhitespace(sanitizeSpeechPunctuation(withoutDirections));
 }
