@@ -130,6 +130,7 @@ const realtimeVoiceMock = vi.hoisted(() => {
     stop: vi.fn(async () => {}),
     unlock: vi.fn(async () => {}),
     bargeIn: vi.fn(),
+    toggleMicrophoneMute: vi.fn(),
   };
   holder.start.mockImplementation(async () => {
     holder.startedConversationIds.push(holder.options?.conversationId);
@@ -146,6 +147,7 @@ const realtimeVoiceMock = vi.hoisted(() => {
       agentSpeaking: false,
       needsUnlock: false,
       paused: false,
+      microphoneMuted: false,
       error: null as {
         kind:
           | "permission"
@@ -163,6 +165,7 @@ const realtimeVoiceMock = vi.hoisted(() => {
       start: holder.start,
       stop: holder.stop,
       bargeIn: holder.bargeIn,
+      toggleMicrophoneMute: holder.toggleMicrophoneMute,
       unlock: holder.unlock,
     },
   });
@@ -325,6 +328,7 @@ afterEach(() => {
   realtimeVoiceMock.stop.mockClear();
   realtimeVoiceMock.unlock.mockClear();
   realtimeVoiceMock.bargeIn.mockClear();
+  realtimeVoiceMock.toggleMicrophoneMute.mockClear();
   realtimeVoiceMock.state.active = false;
   realtimeVoiceMock.state.connecting = false;
   realtimeVoiceMock.state.status = "idle";
@@ -333,6 +337,7 @@ afterEach(() => {
   realtimeVoiceMock.state.agentSpeaking = false;
   realtimeVoiceMock.state.needsUnlock = false;
   realtimeVoiceMock.state.paused = false;
+  realtimeVoiceMock.state.microphoneMuted = false;
   realtimeVoiceMock.state.error = null;
   try {
     window.localStorage.clear();
@@ -2208,14 +2213,18 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
     realtimeVoiceMock.state.transcriptPartial = "stale partial";
     realtimeVoiceMock.state.agentSpeaking = true;
     realtimeVoiceMock.state.needsUnlock = true;
+    realtimeVoiceMock.state.microphoneMuted = true;
 
     const { result } = renderHook(() => useShellController());
 
     expect(result.current.realtimeVoice).toMatchObject({
       enabled: true,
       active: true,
+      microphoneMuted: true,
       status: "speaking",
     });
+    result.current.realtimeVoice?.toggleMicrophoneMute();
+    expect(realtimeVoiceMock.toggleMicrophoneMute).toHaveBeenCalledTimes(1);
     expect(result.current.transcript).toBe("");
     expect(result.current.speaking).toBe(true);
     expect(result.current.needsAudioUnlock).toBe(true);
@@ -2294,6 +2303,7 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
         onServerEvent?.({
           t: "navigate_view",
           viewId: "notes",
+          viewPath: "/notes",
           subview: "recent",
           traceId: "trace-voice-navigation",
         });
@@ -2302,6 +2312,7 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
       expect(navigationEvents).toHaveLength(1);
       expect(navigationEvents[0]?.detail).toEqual({
         viewId: "notes",
+        viewPath: "/notes",
         source: "agent",
         subview: "recent",
       });

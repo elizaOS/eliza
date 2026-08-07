@@ -242,6 +242,7 @@
         "@elizaos/plugin-agent-orchestrator": "workspace:*",
         "@elizaos/plugin-blocker": "workspace:*",
         "@elizaos/plugin-browser": "workspace:*",
+        "@elizaos/plugin-calendar": "workspace:*",
         "@elizaos/plugin-contacts": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
         "@elizaos/plugin-messages": "workspace:*",
@@ -855,6 +856,7 @@
         "@react-three/fiber": "^9.5.0",
         "@tanstack/react-query": "^5.90.20",
         "@use-gesture/react": "^10.3.1",
+        "bs58": "^6.0.0",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
         "libphonenumber-js": "^1.12.35",
@@ -864,6 +866,7 @@
         "react-router-dom": "^7.10.0",
         "tailwind-merge": "^3.4.0",
         "three": "^0.184.0",
+        "viem": "2.49.3",
       },
       "devDependencies": {
         "@biomejs/biome": "2.5.6",

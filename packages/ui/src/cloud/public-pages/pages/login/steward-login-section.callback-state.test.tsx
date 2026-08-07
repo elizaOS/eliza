@@ -28,6 +28,7 @@ vi.mock("../../lib/steward-session", () => ({
   consumeStewardCodeFromQuery: () => "callback-code",
   consumeStewardTokensFromHash: () => null,
   exchangeStewardCodeViaApi: () => callbackState.exchange(),
+  recoverStewardSessionViaCookie: () => Promise.resolve(null),
   refreshStewardSessionViaCookie: () => Promise.resolve({ ok: true as const }),
   syncStewardSessionCookie: () => Promise.resolve(),
 }));

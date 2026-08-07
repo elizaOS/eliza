@@ -95,6 +95,7 @@ bun run --cwd packages/agent start            # bun run src/bin.ts (defaults to 
 bun run --cwd packages/agent dev              # bun --hot src/bin.ts
 bun run --cwd packages/agent typecheck        # tsc --noEmit -p tsconfig.json
 bun run --cwd packages/agent test             # deterministic Vitest batches
+bun run --cwd packages/agent test:integration # *.integration.test.ts suites (excluded from the default lane)
 bun run --cwd packages/agent lint             # biome check --write across src/
 bun run --cwd packages/agent lint:check       # biome check read-only
 bun run --cwd packages/agent format           # biome format --write

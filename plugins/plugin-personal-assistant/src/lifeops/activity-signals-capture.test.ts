@@ -687,6 +687,19 @@ describe("startLifeOpsActivitySignalCapture", () => {
     consoleError.mockRestore();
   });
 
+  it("treats a 403 status-probe response as the expected signed-out state", async () => {
+    h.isApiError.mockImplementation(
+      (error) => typeof error === "object" && error !== null && "kind" in error,
+    );
+    h.getStatus.mockRejectedValue({ kind: "http", status: 403 });
+
+    stop = startLifeOpsActivitySignalCapture(true);
+    await settle();
+
+    expect(h.captureLifeOpsActivitySignal).not.toHaveBeenCalled();
+    expect(h.dispatchStatus).not.toHaveBeenCalled();
+  });
+
   it("swallows a 401 on the capture endpoint as the signed-out state (session expired mid-capture)", async () => {
     h.isApiError.mockImplementation(
       (error) => typeof error === "object" && error !== null && "kind" in error,
@@ -703,6 +716,11 @@ describe("startLifeOpsActivitySignalCapture", () => {
     expect(h.dispatchStatus).not.toHaveBeenCalledWith(
       expect.objectContaining({ status: "capture_error" }),
     );
+
+    h.captureLifeOpsActivitySignal.mockClear();
+    window.dispatchEvent(new Event("blur"));
+    await settle();
+    expect(h.captureLifeOpsActivitySignal).not.toHaveBeenCalled();
   });
 
   it("treats a structural agent-gone status probe (stale binding to a deleted agent) as an expected stand-down", async () => {

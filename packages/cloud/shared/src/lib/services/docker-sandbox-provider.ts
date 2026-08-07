@@ -8,6 +8,7 @@
  * Reference: eliza-cloud/backend/services/container-orchestrator.ts
  */
 
+import { ElizaError } from "@elizaos/core";
 import { buildDefaultElizaCloudServiceRouting } from "@elizaos/shared/contracts/service-routing";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
@@ -33,7 +34,11 @@ import {
   isContainerAbsentMessage,
   isNodeUnreachableMessage,
 } from "./docker-error-classifier";
-import { dockerNodeManager } from "./docker-node-manager";
+import {
+  clearPlacementCommandFailures,
+  dockerNodeManager,
+  notePlacementCommandFailure,
+} from "./docker-node-manager";
 import { getUsedDockerHostPorts } from "./docker-port-allocation";
 import {
   allocatePort,
@@ -163,7 +168,9 @@ const REPLACEMENT_VPN_CLOCK_SKEW_ALLOWANCE_MS = 30_000;
 
 class ReplacementPlacementPersistenceError extends Error {
   constructor(cause: unknown) {
-    super("[docker-sandbox] Failed to persist replacement placement", { cause });
+    super("[docker-sandbox] Failed to persist replacement placement", {
+      cause,
+    });
     this.name = "ReplacementPlacementPersistenceError";
   }
 }
@@ -1070,6 +1077,22 @@ export class DockerSandboxProvider implements SandboxProvider {
         await dockerNodesRepository.incrementAllocated(nodeId);
       }
     } else {
+      const registeredNodes = await dockerNodesRepository.findAll();
+      if (registeredNodes.length > 0) {
+        throw new ElizaError(
+          "[docker-sandbox] Registered Docker nodes exist but none are available for placement; refusing CONTAINERS_DOCKER_NODES seed fallback",
+          {
+            code: "DOCKER_PLACEMENT_UNAVAILABLE",
+            context: {
+              registeredNodeCount: registeredNodes.length,
+              excludedNodeId: config.excludeNodeId ?? null,
+              requiredPlatform: imagePlatform ?? null,
+            },
+            severity: "ephemeral",
+          },
+        );
+      }
+
       // Fallback: seed-only path for initial setup before nodes are registered via Admin API.
       // Uses random selection (no least-loaded placement or capacity checks).
       // Operators should register nodes via POST /admin/docker-nodes for production use.
@@ -1610,6 +1633,9 @@ export class DockerSandboxProvider implements SandboxProvider {
         );
       }
     } catch (err) {
+      // Recorded before any rethrow branching below so every failure shape on
+      // this node feeds the placement breaker (only timeouts count inside).
+      notePlacementCommandFailure(nodeId, err);
       // Best-effort Steward deregistration — the agent was registered but the
       // container failed to start, so the Steward record is deleted here.
       try {
@@ -1688,6 +1714,9 @@ export class DockerSandboxProvider implements SandboxProvider {
       hostKeyFingerprint,
     };
     this.containers.set(containerName, meta);
+    // The container exists on the node — clear its breaker history so a
+    // recovered node is not one stale timeout away from re-quarantine.
+    clearPlacementCommandFailures(nodeId);
 
     // 8. Wait for Headscale VPN registration if enabled
     if (headscaleEnabled) {

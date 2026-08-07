@@ -722,6 +722,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         this.send({
           t: "navigate_view",
           viewId: result.viewHandoff.viewId,
+          ...(result.viewHandoff.viewPath
+            ? { viewPath: result.viewHandoff.viewPath }
+            : {}),
           ...(result.viewHandoff.subview
             ? { subview: result.viewHandoff.subview }
             : {}),

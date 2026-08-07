@@ -470,6 +470,7 @@ function buildNativeResponse(
 	const cacheCreationInputTokens = toOptionalFiniteNumber(
 		call.cacheCreationInputTokens,
 	);
+	const reasoningTokens = toOptionalFiniteNumber(call.reasoningTokens);
 	const usage: NonNullable<ElizaNativeModelResponseRecord["usage"]> = {};
 	if (promptTokens !== undefined) usage.promptTokens = promptTokens;
 	if (completionTokens !== undefined) usage.completionTokens = completionTokens;
@@ -481,6 +482,9 @@ function buildNativeResponse(
 	}
 	if (cacheCreationInputTokens !== undefined) {
 		usage.cacheCreationInputTokens = cacheCreationInputTokens;
+	}
+	if (reasoningTokens !== undefined) {
+		usage.reasoningTokens = reasoningTokens;
 	}
 
 	const response: ElizaNativeModelResponseRecord = {

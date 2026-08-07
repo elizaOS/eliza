@@ -4,6 +4,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { REALTIME_VOICE_CLIENT_TRANSPORT } from "@elizaos/shared";
 import {
   createLocalRuntimeConversationFetch,
   LocalRuntimeConversationFetchError,
@@ -40,7 +41,12 @@ describe("local runtime conversation fetch", () => {
           "X-Eliza-User-Id": "user-a",
           "X-Eliza-Voice-Trace-Id": "trace-a",
         },
-        body: JSON.stringify({ text: "hello locally" }),
+        body: JSON.stringify({
+          text: "hello locally",
+          metadata: {
+            clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
+          },
+        }),
       },
     );
 
@@ -52,6 +58,9 @@ describe("local runtime conversation fetch", () => {
     expect(calls[0]?.init?.signal).toBe(signal);
     expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({
       text: "hello locally",
+      metadata: {
+        clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
+      },
     });
     const headers = new Headers(calls[0]?.init?.headers);
     expect(headers.has("Authorization")).toBe(false);
@@ -73,7 +82,12 @@ describe("local runtime conversation fetch", () => {
     await expect(
       bridge("https://cloud.example/not-a-conversation", {
         method: "POST",
-        body: JSON.stringify({ text: "hello" }),
+        body: JSON.stringify({
+          text: "hello",
+          metadata: {
+            clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
+          },
+        }),
       }),
     ).rejects.toThrow(LocalRuntimeConversationFetchError);
   });
@@ -89,7 +103,21 @@ describe("local runtime conversation fetch", () => {
       bridge(url, { method: "POST", body: "{nope" }),
     ).rejects.toThrow(LocalRuntimeConversationFetchError);
     await expect(
-      bridge(url, { method: "POST", body: JSON.stringify({ text: "" }) }),
+      bridge(url, {
+        method: "POST",
+        body: JSON.stringify({
+          text: "",
+          metadata: {
+            clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
+          },
+        }),
+      }),
+    ).rejects.toThrow(LocalRuntimeConversationFetchError);
+    await expect(
+      bridge(url, {
+        method: "POST",
+        body: JSON.stringify({ text: "hello" }),
+      }),
     ).rejects.toThrow(LocalRuntimeConversationFetchError);
   });
 });

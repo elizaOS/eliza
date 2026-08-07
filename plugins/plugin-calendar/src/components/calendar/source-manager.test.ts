@@ -148,4 +148,33 @@ describe("calendar source manager model", () => {
     );
     expect(calendarSourceIdentityKey(excluded)).toContain("grant-one");
   });
+
+  it("presents the built-in calendar as local instead of a connector account", () => {
+    const builtIn = calendar({
+      provider: "eliza",
+      grantId: "eliza-calendar",
+      connectorAccountId: "eliza-calendar",
+      accountEmail: null,
+      calendarId: "primary",
+      summary: "My calendar",
+    });
+    const model = toCalendarSourceManagerModel(
+      [builtIn],
+      [health(builtIn, { syncedAt: null })],
+    );
+
+    expect(model.rows).toEqual([
+      expect.objectContaining({
+        providerLabel: "Eliza Calendar",
+        accountLabel: "Built in",
+        calendarLabel: "My calendar",
+        statusLabel: "Current",
+        freshnessLabel: "stored locally",
+        included: true,
+        toggleAvailable: true,
+        reconnectConnectorId: null,
+        reconnectUnavailable: false,
+      }),
+    ]);
+  });
 });

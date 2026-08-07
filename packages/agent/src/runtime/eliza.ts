@@ -87,6 +87,10 @@ import {
   buildRuntimeSettingsProjection,
   type RuntimeSettingsProjectionOptions,
 } from "./runtime-settings.ts";
+import {
+  applySandboxCharacterFromEnv,
+  resolveSandboxRouteAgentId,
+} from "./sandbox-character.ts";
 
 export { deduplicatePluginActions } from "./plugin-action-dedupe.ts";
 export {
@@ -3963,6 +3967,11 @@ export async function startEliza(
     }
   }
 
+  // 1a. Local / sandbox character override — must run before first-run setup
+  //     so character.json (or ELIZA_AGENT_CHARACTER_JSON) sets the agent name
+  //     and skips the interactive name/style wizard.
+  applySandboxCharacterFromEnv(config);
+
   // 1b. First-run setup — ask for agent name if not configured.
   //     In headless mode (GUI) the first-run setup is handled by the web UI,
   //     so we skip the interactive CLI prompt and let the runtime start
@@ -4308,18 +4317,8 @@ export async function startEliza(
     return startInCloudMode(config, thinClientCloudAgentId, opts);
   }
 
-  // 3. Build elizaOS Character from Eliza config
-  // Cloud sandbox (Path A): if the provisioner injected the assigned
-  // character via ELIZA_AGENT_CHARACTER_JSON, merge it onto the config so the
-  // container boots AS that character (e.g. "Nyx") instead of the bundled
-  // default preset. Skipped when the env var is absent.
-  let sandboxRouteAgentId: string | null = null;
-  {
-    const { applySandboxCharacterFromEnv, resolveSandboxRouteAgentId } =
-      await import("./sandbox-character.ts");
-    applySandboxCharacterFromEnv(config);
-    sandboxRouteAgentId = resolveSandboxRouteAgentId();
-  }
+  // 3. Build elizaOS Character from Eliza config (override applied at 1a).
+  const sandboxRouteAgentId: string | null = resolveSandboxRouteAgentId();
 
   // 3b. Canonical file boot (sovereign identity): when configured via
   // ELIZA_CANONICAL_BOOT_ROOT / ELIZA_CANONICAL_BOOT_MANIFEST, read the
@@ -4335,7 +4334,6 @@ export async function startEliza(
     );
     applyCanonicalFileBootToConfig(config);
   }
-
   const character = buildCharacterFromConfig(config);
 
   // Pin the runtime agent id to the platform character_id so the gateways can
@@ -4878,6 +4876,29 @@ export async function startEliza(
     await runRuntimeStartupMaintenance(runtime, opts?.abortSignal);
     opts?.abortSignal?.throwIfAborted();
     bootTimer.lap("svc:startup-maintenance");
+    // Pre-ready boot hook: register TEXT/EMBED/TRANSCRIPTION/TTS handlers.
+    // app-core drains this via drainBootHookContributors(); the headless
+    // agent-server path must invoke the same hook or voice/ASR routes report
+    // ready:false despite an installed bundle (arch-audit #12089 item 18).
+    try {
+      const { registerLocalInferenceBoot } = await import(
+        "@elizaos/plugin-local-inference/runtime"
+      );
+      await registerLocalInferenceBoot(runtime);
+      bootTimer.lap("svc:local-inference-boot");
+    } catch (err) {
+      // error-policy:J4 user-facing degrade — the hook is optional: the plugin
+      // is not installed on every target, and a host without it must still
+      // boot. Voice/ASR readiness then reports `ready:false` through its own
+      // route, which is the visibly distinct unavailable state; report it so
+      // the failure is agent-visible rather than only a log line.
+      logger.warn(
+        `[eliza] Local inference pre-ready boot hook failed: ${formatError(err)}`,
+      );
+      runtime.reportError("local-inference-boot-hook", err, {
+        phase: "pre-ready",
+      });
+    }
     // runtime.initialize() survives a total TEXT_EMBEDDING dimension-probe
     // failure (EmbeddingDimensionProbeError is caught in core, which flips the
     // runtime into embedding-disabled mode instead of writing vectors the SQL
@@ -5449,13 +5470,50 @@ export async function startEliza(
       ...deferredPluginsForRuntime,
     ]);
 
-    const registerDeferredPlugin = async (plugin: Plugin): Promise<void> => {
+    const timeoutMs = (() => {
+      const raw =
+        process.env.ELIZA_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS?.trim();
+      if (!raw) return 30_000;
+      const parsed = Number.parseInt(raw, 10);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : 30_000;
+    })();
+    const providerRegistrationTimeoutMs = Math.max(timeoutMs, 60_000);
+
+    const registerDeferredPlugin = async (
+      plugin: (typeof deferredPluginsForRuntime)[number],
+      registrationTimeoutMs: number,
+    ): Promise<void> => {
       const startedAt = Date.now();
       try {
         abortSignal.throwIfAborted();
-        logger.debug(`[eliza] deferred: Registering plugin: ${plugin.name}...`);
-        await runtime.registerPlugin(plugin);
-        logger.debug(
+        logger.info(`[eliza] deferred: Registering plugin: ${plugin.name}...`);
+        // The deadline only bounds how long boot WAITS — `registerPlugin` has
+        // no cancellation channel, so the registration keeps running and may
+        // still land later. The timer is cleared (and unref'd) so a slow
+        // plugin cannot hold the event loop open past process exit, and a
+        // late rejection stays observed by the race rather than surfacing as
+        // an unhandled rejection.
+        let registrationTimer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await Promise.race([
+            runtime.registerPlugin(plugin),
+            new Promise<never>((_resolve, reject) => {
+              registrationTimer = setTimeout(
+                () =>
+                  reject(
+                    new Error(
+                      `Timed out after ${registrationTimeoutMs / 1000}s`,
+                    ),
+                  ),
+                registrationTimeoutMs,
+              );
+              registrationTimer.unref?.();
+            }),
+          ]);
+        } finally {
+          if (registrationTimer) clearTimeout(registrationTimer);
+        }
+        logger.info(
           `[eliza] deferred: ✓ ${plugin.name} registered (${Date.now() - startedAt}ms)`,
         );
       } catch (err) {
@@ -5477,26 +5535,41 @@ export async function startEliza(
     // Deferred registrations run behind an already-listening server. Launching
     // every registerPlugin at once floods the event loop with CPU-bound init
     // work and starves the bound HTTP server of I/O turns for the whole wave
-    // (loadperf F3). A small worker pool with a setImmediate yield between
-    // registrations lets /api/* interleave while preserving runtime ownership
-    // and completion semantics. Mirrors the yield-between-imports loop in the
-    // deferred static import phase.
+    // (loadperf F3). The preferred provider plugin runs first (with an extended
+    // timeout), then remaining plugins run through a small worker pool with a
+    // setImmediate yield between registrations so /api/* can interleave.
+    // Mirrors the yield-between-imports loop in the deferred static import phase.
+    const preferredPlugin = preferredProviderPluginName
+      ? deferredPluginsForRuntime.find(
+          (plugin) => plugin.name === preferredProviderPluginName,
+        )
+      : undefined;
+    const remainingPlugins = preferredPlugin
+      ? deferredPluginsForRuntime.filter(
+          (plugin) => plugin.name !== preferredPlugin.name,
+        )
+      : deferredPluginsForRuntime;
+
+    if (preferredPlugin) {
+      await registerDeferredPlugin(
+        preferredPlugin,
+        providerRegistrationTimeoutMs,
+      );
+    }
+
     const registrationConcurrency = 4;
     let nextPluginIndex = 0;
     await Promise.all(
       Array.from(
         {
-          length: Math.min(
-            registrationConcurrency,
-            deferredPluginsForRuntime.length,
-          ),
+          length: Math.min(registrationConcurrency, remainingPlugins.length),
         },
         async () => {
-          while (nextPluginIndex < deferredPluginsForRuntime.length) {
+          while (nextPluginIndex < remainingPlugins.length) {
             abortSignal.throwIfAborted();
-            const plugin = deferredPluginsForRuntime[nextPluginIndex];
+            const plugin = remainingPlugins[nextPluginIndex];
             nextPluginIndex += 1;
-            await registerDeferredPlugin(plugin);
+            await registerDeferredPlugin(plugin, timeoutMs);
             await new Promise<void>((resolve) => {
               setImmediate(resolve);
             });

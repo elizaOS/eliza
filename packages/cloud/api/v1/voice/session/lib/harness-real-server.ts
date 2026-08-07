@@ -111,6 +111,11 @@ import type {
   CartesiaInkWebSocket,
   CartesiaInkWebSocketFactory,
 } from "../../stt/providers/cartesia-ink";
+import { synthesizeCartesiaWav } from "../../tts/cartesia-synthesis";
+
+const LOCAL_TTS_SAMPLE_RATE = 24_000;
+const MAX_LOCAL_TTS_PCM_BYTES = 16 * 1024 * 1024;
+const MAX_LOCAL_TTS_TEXT_LENGTH = 4_000;
 
 // -------------------------------------------------------------------------
 // SHIM 2: node `ws`-package outbound provider factories (header-preserving,
@@ -420,6 +425,36 @@ export async function startRealVoiceServer(
       url.pathname === "/api/v1/voice/session/health"
     ) {
       writeJson(res, 200, { ready: true });
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/api/v1/voice/tts") {
+      const body = await readJsonBody(req);
+      const text = readRequiredString(body, "text");
+      if (text.length > MAX_LOCAL_TTS_TEXT_LENGTH) {
+        throw new LocalVoiceRequestError(
+          `text exceeds ${MAX_LOCAL_TTS_TEXT_LENGTH} characters`,
+        );
+      }
+      const synthesis = await synthesizeCartesiaWav({
+        apiKey: config.cartesiaApiKey,
+        voiceId: config.cartesiaVoiceId,
+        text,
+        sampleRate: LOCAL_TTS_SAMPLE_RATE,
+        maxPcmBytes: MAX_LOCAL_TTS_PCM_BYTES,
+        webSocketFactory: makeNodeCartesiaFactory(hooks),
+      });
+      hooks.log("info", "Cartesia message playback synthesized", {
+        bytes: synthesis.wav.byteLength,
+        firstAudioMs: synthesis.firstAudioMs,
+        totalMs: synthesis.totalMs,
+      });
+      res.writeHead(200, {
+        "Content-Type": "audio/wav",
+        "Content-Length": String(synthesis.wav.byteLength),
+        "Cache-Control": "no-store",
+        "X-Eliza-TTS-Provider": "cartesia-sonic-3.5",
+      });
+      res.end(Buffer.from(synthesis.wav));
       return;
     }
     if (
