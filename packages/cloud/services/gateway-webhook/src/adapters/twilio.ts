@@ -33,6 +33,7 @@ const TwilioWebhookEventSchema = z
     From: z.string().min(1),
     To: z.string().min(1),
     Body: z.string().optional(),
+    ProfileName: z.string().optional(),
     NumMedia: z.string().optional(),
     MediaUrl0: z.string().optional(),
     MediaUrl1: z.string().optional(),
@@ -43,6 +44,23 @@ const TwilioWebhookEventSchema = z
 type TwilioEvent = z.infer<typeof TwilioWebhookEventSchema>;
 
 const ALLOWED_MEDIA_DOMAINS = ["api.twilio.com", "media.twiliocdn.com"];
+const WHATSAPP_ADDRESS_PREFIX = "whatsapp:";
+
+function normalizeSenderIdentity(address: string): string {
+  return address.toLowerCase().startsWith(WHATSAPP_ADDRESS_PREFIX)
+    ? address.slice(WHATSAPP_ADDRESS_PREFIX.length)
+    : address;
+}
+
+function replyAddress(senderId: string, fromAddress: string): string {
+  if (
+    fromAddress.toLowerCase().startsWith(WHATSAPP_ADDRESS_PREFIX) &&
+    !senderId.toLowerCase().startsWith(WHATSAPP_ADDRESS_PREFIX)
+  ) {
+    return `${WHATSAPP_ADDRESS_PREFIX}${senderId}`;
+  }
+  return senderId;
+}
 
 function isValidMediaUrl(url: string): boolean {
   try {
@@ -186,7 +204,8 @@ export const twilioAdapter: PlatformAdapter = {
       platform: "twilio",
       messageId: event.MessageSid,
       chatId: event.From,
-      senderId: event.From,
+      senderId: normalizeSenderIdentity(event.From),
+      senderName: event.ProfileName,
       text:
         mediaUrls.length > 0 && !text
           ? `[media: ${mediaUrls.join(", ")}]`
@@ -211,7 +230,7 @@ export const twilioAdapter: PlatformAdapter = {
     ).toString("base64");
 
     const body = new URLSearchParams({
-      To: event.senderId,
+      To: replyAddress(event.senderId, config.phoneNumber),
       From: config.phoneNumber,
       Body: text,
     });
