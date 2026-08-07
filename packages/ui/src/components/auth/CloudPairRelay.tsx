@@ -4,7 +4,10 @@
  */
 import { useEffect, useState } from "react";
 import { getBootConfig, setBootConfig } from "../../config/boot-config";
-import { dedicatedCloudAgentIdFromBase } from "../../utils/cloud-agent-base";
+import {
+  dedicatedCloudAgentIdFromBase,
+  isDedicatedCloudAgentBase,
+} from "../../utils/cloud-agent-base";
 import { setElizaApiToken } from "../../utils/eliza-globals";
 
 export const CLOUD_PAIR_SESSION_STORAGE_KEY = "eliza:cloud-pair:api-token";
@@ -468,16 +471,31 @@ export function CloudPairRelay({
     exchangeFn(token, { signal: controller.signal })
       .then((apiToken) => {
         if (!active) return;
-        // The pairing flow runs on the dedicated agent origin (or the native
-        // in-process exchange that pins the agent id), so the owning agent is
-        // resolvable from the current origin. Binding the persisted token to
-        // that agent id prevents a later boot of a different agent from
-        // adopting it (#17579).
-        const owner =
-          dedicatedCloudAgentIdFromBase(
-            typeof window === "undefined" ? null : window.location.origin,
-          ) ?? "";
-        persistFn(apiToken, owner);
+        // Resolve the owning agent the same way the boot adopter (main.tsx)
+        // does: the app can be served from a non-dedicated origin while
+        // targeting a dedicated agent via the boot apiBase. Mirror that
+        // resolution so the persisted key is bound to the true owner and the
+        // writer never hard-fails on a resolvable target (#17579).
+        const origin =
+          typeof window === "undefined" ? null : window.location.origin;
+        const apiBase = isDedicatedCloudAgentBase(origin)
+          ? origin
+          : getBootConfig().apiBase?.trim();
+        const owner = isDedicatedCloudAgentBase(apiBase)
+          ? dedicatedCloudAgentIdFromBase(apiBase)
+          : null;
+        if (owner) {
+          persistFn(apiToken, owner);
+        } else {
+          // A pairing target that cannot be resolved to a dedicated cloud
+          // agent is not one we may stamp or mirror the credential onto.
+          // Best-effort degrade WITHOUT consuming-throwing: the one-time
+          // token is already spent, so fail soft and let onPaired proceed.
+          console.warn(
+            "Cloud pair exchange succeeded but no owning agent could be " +
+              "resolved from origin or boot base; credential not persisted.",
+          );
+        }
         onPaired();
       })
       .catch((error) => {

@@ -200,10 +200,11 @@ describe("clearStalePairCredentialsForAgent", () => {
     });
   });
 
-  it("leaves the durable key and active-server token alone when the active server is a DIFFERENT agent", () => {
-    // The durable key holds whatever bearer boot adoption stamped for the
-    // ACTIVE agent; when that is not the proven-stale agent, the key belongs
-    // to an unproven credential and must survive.
+  it("purges the deleted agent's per-agent key even when the active server is a DIFFERENT agent", () => {
+    // The durable key is per-agent, so the deleted agent's scoped key is
+    // always purged regardless of which agent is the active server (a key
+    // that provably belongs to the target is never left re-adoptable). The
+    // active-server bearer is left alone because it belongs to another agent.
     const agentAKey = cloudPairTokenKeyForAgent("agent-a");
     localStorage.setItem(agentAKey, "other-agents-bearer");
     seedActiveServer("agent-b");
@@ -211,7 +212,7 @@ describe("clearStalePairCredentialsForAgent", () => {
 
     clearStalePairCredentialsForAgent("agent-a");
 
-    expect(localStorage.getItem(agentAKey)).toBe("other-agents-bearer");
+    expect(localStorage.getItem(agentAKey)).toBeNull();
     const active = JSON.parse(
       localStorage.getItem(ACTIVE_SERVER_KEY) ?? "{}",
     ) as { accessToken?: string };

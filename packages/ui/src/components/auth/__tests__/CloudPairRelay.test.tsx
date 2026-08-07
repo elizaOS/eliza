@@ -299,11 +299,53 @@ describe("CloudPairRelay", () => {
     expect(screen.queryByText("Password")).toBeNull();
 
     await waitFor(() => expect(onPaired).toHaveBeenCalledOnce());
-    // The relay resolves the owning agent from the origin and passes it to
-    // the persist channel; the jsdom origin is not a dedicated agent base, so
-    // the owner resolves to an empty string here and the injected persistFn
-    // receives it as-is.
-    expect(persistFn).toHaveBeenCalledWith("agent-key", "");
+    // A dedicated origin (the jsdom default origin is NOT a dedicated agent
+    // base and no boot apiBase overrides it) cannot resolve an owning agent, so
+    // the relay must NOT persist an unscoped/empty-owner credential — it no-ops
+    // and defers to onPaired rather than hard-throwing after the one-time token
+    // was already consumed.
+    expect(persistFn).not.toHaveBeenCalled();
+  });
+
+  it("resolves the owning agent from the boot apiBase when served from a non-dedicated origin, and persists for real (default persistFn)", async () => {
+    // The writer must mirror the boot adopter's resolution (main.tsx): an app
+    // served from a non-dedicated origin that targets a dedicated agent via the
+    // boot apiBase still persists the token under the per-agent key (#17579).
+    const onPaired = vi.fn();
+    setBootConfig({
+      ...DEFAULT_BOOT_CONFIG,
+      apiBase: "https://agent-123.elizacloud.ai",
+    });
+
+    expect(
+      window.localStorage.getItem(cloudPairTokenKeyForAgent("agent-123")),
+    ).toBeNull();
+    expect(
+      window.sessionStorage.getItem(cloudPairTokenKeyForAgent("agent-123")),
+    ).toBeNull();
+
+    // Render with the DEFAULT persistFn so this exercises the real storage path
+    // (localStorage + sessionStorage), not a mock.
+    render(
+      <CloudPairRelay
+        token="pair-token"
+        exchangeFn={vi.fn(async () => "agent-key")}
+        onPaired={onPaired}
+      />,
+    );
+
+    await waitFor(() => expect(onPaired).toHaveBeenCalledOnce());
+
+    const scoped = cloudPairTokenKeyForAgent("agent-123");
+    expect(window.localStorage.getItem(scoped)).toBe("agent-key");
+    expect(window.sessionStorage.getItem(scoped)).toBe("agent-key");
+    // Legacy global key is superseded and removed once the scoped write lands.
+    expect(
+      window.localStorage.getItem(CLOUD_PAIR_LOCAL_STORAGE_KEY),
+    ).toBeNull();
+    expect(
+      window.sessionStorage.getItem(CLOUD_PAIR_SESSION_STORAGE_KEY),
+    ).toBeNull();
   });
 
   it("shows a clean Cloud-pair error instead of the local password form", async () => {

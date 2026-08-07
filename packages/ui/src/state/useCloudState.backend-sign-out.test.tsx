@@ -99,8 +99,11 @@ describe("useCloudState — backend-backed (unlocked) Cloud account sign-out", (
     expect(clearStaleStewardSession).not.toHaveBeenCalled();
     // Disconnect clears every at-rest credential, including the durable
     // cloud-pair API token (localStorage + sessionStorage) so a rotated or
-    // revoked pair key is not re-adopted at the next boot.
+    // revoked pair key is not re-adopted at the next boot. It is called with
+    // NO agent id — explicit disconnect is global intent and must clear EVERY
+    // paired agent's durable key, not just the currently-active one.
     expect(clearCloudPairApiTokenMock).toHaveBeenCalledTimes(1);
+    expect(clearCloudPairApiTokenMock).toHaveBeenCalledWith();
     expect(result.current.elizaCloudConnected).toBe(false);
     expect(result.current.elizaCloudEnabled).toBe(false);
     expect(result.current.elizaCloudUserId).toBeNull();

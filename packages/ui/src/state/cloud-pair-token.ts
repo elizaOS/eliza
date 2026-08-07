@@ -37,17 +37,36 @@ import {
 
 /**
  * Mirrors the write channel's `tryPersistBrowserStorage` shape: report whether
- * the removal took, swallowing only storage-access failures.
+ * the removal took, swallowing only storage-access failures. A failed purge is
+ * logged so a dodgy storage channel cannot silently look like success
+ * (error-policy:J6 best-effort removal).
  */
-function tryRemoveFromStorage(remove: () => void): boolean {
+function tryRemoveFromStorage(remove: () => void, key?: string): boolean {
   try {
     remove();
     return true;
   } catch (_storageError) {
-    // error-policy:J3 hardened settings can disable storage; a store we cannot
-    // touch also cannot be re-adopted from, so the purge goal still holds.
+    // error-policy:J6 hardened settings can disable storage; a store we
+    // cannot touch also cannot be re-adopted from, so the purge goal still
+    // holds. Still log the failure so "disconnect succeeded" is not a lie.
+    console.error(
+      `Failed to remove cloud-pair token key${key ? ` (${key})` : ""} from storage.`,
+    );
     return false;
   }
+}
+
+/** Remove one key from both storage backends, each deletion isolated so a
+ * failing store cannot abort clearing the rest. */
+function removePairKeyFromBothStorages(key: string): void {
+  tryRemoveFromStorage(() => {
+    shellLocalStorage.removeItem(key);
+  }, key);
+  tryRemoveFromStorage(() => {
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem(key);
+    }
+  }, key);
 }
 
 /**
@@ -67,38 +86,47 @@ const CLOUD_PAIR_SCOPED_PREFIX = "eliza:cloud-pair:api-token:";
  * Used when an explicit disconnect happens but we can't resolve a specific agentId.
  */
 function clearAllScopedCloudPairKeys(): void {
-  tryRemoveFromStorage(() => {
-    const keysToRemove: string[] = [];
-    // shellLocalStorage only has setItem/removeItem/clear, enumerate via raw localStorage
+  // shellLocalStorage only has setItem/removeItem/clear; enumerate via raw
+  // localStorage (keys known), then remove each through the isolated helper so
+  // one failing remove cannot abort clearing the rest.
+  let scoped: string[] = [];
+  try {
     for (let i = 0; i < window.localStorage.length; i++) {
       const key = window.localStorage.key(i);
-      if (key?.startsWith(CLOUD_PAIR_SCOPED_PREFIX)) {
-        keysToRemove.push(key);
-      }
+      if (key?.startsWith(CLOUD_PAIR_SCOPED_PREFIX)) scoped.push(key);
     }
-    for (const k of keysToRemove) shellLocalStorage.removeItem(k);
-    // Legacy single-key format
-    shellLocalStorage.removeItem(CLOUD_PAIR_LOCAL_STORAGE_KEY);
-  });
+  } catch (_storageError) {
+    scoped = [];
+  }
+  for (const k of scoped) removePairKeyFromBothStorages(k);
+  // Legacy single-key format
+  removePairKeyFromBothStorages(CLOUD_PAIR_LOCAL_STORAGE_KEY);
 }
 
 /**
  * Remove all scoped cloud-pair token keys from sessionStorage.
  */
 function clearAllScopedCloudPairKeysSession(): void {
-  tryRemoveFromStorage(() => {
-    if (typeof window !== "undefined") {
-      const keysToRemove: string[] = [];
-      for (let i = 0; i < window.sessionStorage.length; i++) {
-        const key = window.sessionStorage.key(i);
-        if (key?.startsWith(CLOUD_PAIR_SCOPED_PREFIX)) {
-          keysToRemove.push(key);
-        }
-      }
-      for (const k of keysToRemove) window.sessionStorage.removeItem(k);
-      window.sessionStorage.removeItem(CLOUD_PAIR_SESSION_STORAGE_KEY);
+  if (typeof window === "undefined") return;
+  let keysToRemove: string[] = [];
+  try {
+    for (let i = 0; i < window.sessionStorage.length; i++) {
+      const key = window.sessionStorage.key(i);
+      if (key?.startsWith(CLOUD_PAIR_SCOPED_PREFIX)) keysToRemove.push(key);
     }
-  });
+  } catch (_storageError) {
+    keysToRemove = [];
+  }
+  // sessionStorage is addressed raw (no shellSessionStorage wrapper); the
+  // isolated deletion below mirrors the write channel.
+  for (const key of keysToRemove) {
+    tryRemoveFromStorage(() => {
+      window.sessionStorage.removeItem(key);
+    }, key);
+  }
+  tryRemoveFromStorage(() => {
+    window.sessionStorage.removeItem(CLOUD_PAIR_SESSION_STORAGE_KEY);
+  }, CLOUD_PAIR_SESSION_STORAGE_KEY);
 }
 
 export function clearCloudPairApiToken(agentId?: string): void {
@@ -108,16 +136,8 @@ export function clearCloudPairApiToken(agentId?: string): void {
 
   if (scopedKey) {
     // Clear specific agent's scoped key + legacy global key
-    tryRemoveFromStorage(() => {
-      shellLocalStorage.removeItem(scopedKey);
-      shellLocalStorage.removeItem(CLOUD_PAIR_LOCAL_STORAGE_KEY);
-    });
-    tryRemoveFromStorage(() => {
-      if (typeof window !== "undefined") {
-        window.sessionStorage.removeItem(scopedKey);
-        window.sessionStorage.removeItem(CLOUD_PAIR_SESSION_STORAGE_KEY);
-      }
-    });
+    removePairKeyFromBothStorages(scopedKey);
+    removePairKeyFromBothStorages(CLOUD_PAIR_LOCAL_STORAGE_KEY);
   } else {
     // No agentId resolved — explicit disconnect with global intent.
     // Clear ALL scoped keys + legacy key from both storages.
@@ -158,10 +178,16 @@ export function clearStalePairCredentialsForAgent(agentId: string): void {
   if (!target) return;
 
   const activeServer = loadPersistedActiveServer();
+  // The durable key is per-agent, so purge THIS agent's scoped key + the
+  // legacy global key regardless of which agent is the active server. The
+  // oldest guard ("only when activeServer resolves to target") was correct
+  // when the key was GLOBAL — it must never skip the per-agent key of the
+  // deleted agent (#17579).
+  clearCloudPairApiToken(target);
+  // The persisted active-server bearer is ONLY scrubbed when it actually
+  // belongs to the deleted agent; an active server for a different agent
+  // keeps its still-valid credential.
   if (activeServer && resolveDedicatedAgentId(activeServer) === target) {
-    // Clears the per-agent key for THIS agent plus the legacy global key; a
-    // different agent's per-agent key is never touched.
-    clearCloudPairApiToken(target);
     scrubPersistedActiveServerToken();
   }
 
