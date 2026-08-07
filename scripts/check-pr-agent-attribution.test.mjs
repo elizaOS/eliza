@@ -650,6 +650,7 @@ Attribution status: self-reported
     const ecosystemRefs = {
       npm: "dependabot/npm_and_yarn/*",
       "github-actions": "dependabot/github_actions/*",
+      uv: "dependabot/uv/*",
     };
     assert.deepEqual(
       [...new Set(configuredEcosystems)].sort(),

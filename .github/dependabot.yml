@@ -22,3 +22,22 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+
+  # Python training security updates. Version updates stay disabled, while
+  # Dependabot retains a dedicated security group for the tracked uv lockfile.
+  - package-ecosystem: "uv"
+    directory: "/packages/training"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    groups:
+      security-updates:
+        applies-to: "security-updates"
+        patterns:
+          - "*"
+    ignore:
+      # vllm 0.20.x pins torch 2.11, which requires setuptools<82. Dependabot
+      # cannot resolve the patched 83.x line until that upstream constraint is
+      # relaxed; keep later majors eligible so the exception expires narrowly.
+      - dependency-name: "setuptools"
+        versions: [">= 83.0.0, < 84.0.0"]
