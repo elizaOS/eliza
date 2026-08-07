@@ -79,9 +79,9 @@ export interface ShellVoiceOutputOptions {
 }
 
 /**
- * Voice OUTPUT for the ambient `/chat` overlay — speaks assistant replies aloud
- * so the overlay is bidirectional. Input (mic → ASR) stays in
- * {@link useShellController} via the capture factory; this hook only drives TTS.
+ * Voice OUTPUT for the ambient `/chat` overlay. Realtime sessions own their
+ * streamed reply audio; this hook provides manual playback for every surface
+ * and automatic reply playback for the non-realtime voice path.
  *
  * It reuses the single TTS engine ({@link useVoiceChat}) output-only: it never
  * calls `startListening`, so it never opens the microphone (the overlay's own
@@ -145,6 +145,10 @@ export function useShellVoiceOutput(
   // Speak the latest assistant message as it streams and completes. Never speaks
   // a reply to a typed message, nor a pre-existing message on first mount.
   React.useEffect(() => {
+    // Cartesia realtime already streams Sonic audio for this reply. Keeping the
+    // message watcher active would synthesize the same answer a second time;
+    // the `speak` callback above remains available for explicit Play audio.
+    if (realtimeVoiceEnabled) return;
     if (agentVoiceMuted) return;
     if (voiceBootstrapTick === 0) return; // voice config not loaded yet
     const latest = findLatestAssistantText(conversationMessages);
@@ -205,6 +209,7 @@ export function useShellVoiceOutput(
     });
   }, [
     agentVoiceMuted,
+    realtimeVoiceEnabled,
     voiceBootstrapTick,
     conversationMessages,
     chatSending,
