@@ -46,6 +46,7 @@ const integrationEnv = {
 
 const isolatedServerFiles = new Set([
   "packages/cloud/api/test/e2e/agent-token-flow.test.ts",
+  "packages/cloud/api/test/e2e/group-j-documents.test.ts",
 ]);
 const isolatedDbFiles = new Set([]);
 
