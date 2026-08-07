@@ -4,7 +4,7 @@
  * deterministic model handlers and an in-memory trajectory service; no network.
  */
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";
 import { SECRET_SWAP_ENABLED_SETTING } from "../../security/secret-swap";
@@ -256,20 +256,25 @@ describe("AgentRuntime.useModel trajectory accounting", () => {
 				runtime.useModel(ModelType.TEXT_SMALL, { prompt: "fallback" }),
 			),
 		).resolves.toBe("fallback-result");
-		// Two entries: the billed-but-failed attempt is recorded with
-		// finishReason "error" (#17532 fix 3), then the successful fallback is
-		// recorded once by the generic recorder.
-		expect(trajectory.calls).toHaveLength(2);
-		expect(trajectory.calls[0]).toMatchObject({
-			actionType: "runtime.useModel",
-			provider: "failing-provider",
-			finishReason: "error",
-		});
-		expect(trajectory.calls[1]).toMatchObject({
-			actionType: "runtime.useModel",
-			provider: "fallback-provider",
-			response: "fallback-result",
-		});
+		// The billed-but-failed attempt stays visible as a sanitized failure
+		// entry (#17532 Fix 3); the successful fallback records exactly once.
+		// The failure record is fire-and-forget, so poll instead of asserting
+		// the length synchronously.
+		await vi.waitFor(() => expect(trajectory.calls).toHaveLength(2));
+		expect(trajectory.calls).toContainEqual(
+			expect.objectContaining({
+				actionType: "runtime.useModel",
+				provider: "failing-provider",
+				finishReason: "error",
+			}),
+		);
+		expect(trajectory.calls).toContainEqual(
+			expect.objectContaining({
+				actionType: "runtime.useModel",
+				provider: "fallback-provider",
+				response: "fallback-result",
+			}),
+		);
 	});
 
 	it("isolates mixed concurrent calls under one parent trajectory", async () => {

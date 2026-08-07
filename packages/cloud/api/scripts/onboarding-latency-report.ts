@@ -14,8 +14,44 @@ class BenchmarkStorage {
     return value === undefined ? undefined : (structuredClone(value) as T);
   }
 
-  async put(key: string, value: unknown): Promise<void> {
-    this.values.set(key, structuredClone(value));
+  async put(
+    key: string | Record<string, unknown>,
+    value?: unknown,
+  ): Promise<void> {
+    if (typeof key === "string") {
+      this.values.set(key, structuredClone(value));
+      return;
+    }
+    for (const [entryKey, entryValue] of Object.entries(key)) {
+      this.values.set(entryKey, structuredClone(entryValue));
+    }
+  }
+
+  async delete(key: string | string[]): Promise<boolean> {
+    const keys = typeof key === "string" ? [key] : key;
+    return keys.map((entry) => this.values.delete(entry)).some(Boolean);
+  }
+
+  async list<T>({ prefix }: { prefix: string }): Promise<Map<string, T>> {
+    return new Map(
+      [...this.values.entries()]
+        .filter(([key]) => key.startsWith(prefix))
+        .map(([key, value]) => [key, structuredClone(value) as T]),
+    );
+  }
+
+  async getAlarm(): Promise<number | null> {
+    return null;
+  }
+
+  async setAlarm(_timestamp: number): Promise<void> {}
+
+  async deleteAlarm(): Promise<void> {}
+
+  async transaction<T>(
+    operation: (transaction: BenchmarkStorage) => Promise<T>,
+  ): Promise<T> {
+    return operation(this);
   }
 }
 
