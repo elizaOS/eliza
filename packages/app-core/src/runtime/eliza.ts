@@ -24,6 +24,7 @@ import {
   collectPluginNames as upstreamCollectPluginNames,
   startEliza as upstreamStartEliza,
 } from "@elizaos/agent";
+import { ensureBundledFusedLibDir } from "./bundled-fused-lib.js";
 import { installAgentHostBridge } from "./install-agent-host-bridge.js";
 
 export { CHANNEL_PLUGIN_MAP } from "./channel-plugin-map.js";
@@ -52,13 +53,15 @@ import {
 import { startServerOnlyHost } from "./startup/server-only-host.js";
 
 export {
-  __loadAppRoutePluginFromSpecifierForTest,
   drainBootHookContributors,
+  resolveBootHookContributors,
+} from "@elizaos/agent/runtime/boot-hooks";
+export {
+  __loadAppRoutePluginFromSpecifierForTest,
   drainRuntimeHookContributors,
   getDeferAppRoutesEnabled,
   getSkippedAppRoutePluginIds,
   normalizeAppRoutePluginId,
-  resolveBootHookContributors,
 } from "./startup/app-contributors.js";
 export {
   createRuntimeBootResources,
@@ -112,6 +115,10 @@ export async function bootElizaRuntime(
   // still wins.
   ensureDefaultEmbeddingDimension();
 
+  // The agent host drains registry-declared pre-ready hooks during initialize.
+  // Expose the app-bundled native library before entering that shared path.
+  ensureBundledFusedLibDir();
+
   const runtime = await upstreamBootElizaRuntime(opts);
   // Voice warmup fires inside repairRuntimeAfterBoot (the shared ready-point).
   if (!runtime) return runtime;
@@ -153,6 +160,7 @@ async function upstreamStartElizaWithPgliteCompat(
   // sole caller of `upstreamStartEliza`, so the bridge is always installed
   // before agent code that reads it runs. See install-agent-host-bridge.ts.
   installAgentHostBridge();
+  ensureBundledFusedLibDir();
   try {
     return await upstreamStartEliza(options);
   } catch (err) {

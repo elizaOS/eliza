@@ -31,6 +31,25 @@ function extractRunDeferredBootBody(source: string): string {
   throw new Error("Could not find the end of runDeferredBoot");
 }
 
+function extractDeferredRegistrationBody(source: string): string {
+  const marker = "const registerDeferredRuntimePlugins = async (";
+  const start = source.indexOf(marker);
+  expect(start, "deferred registration closure must exist").toBeGreaterThan(-1);
+
+  const bodyStart = source.indexOf("{", start);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const character = source[index];
+    if (character === "{") depth += 1;
+    if (character === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(bodyStart, index + 1);
+    }
+  }
+
+  throw new Error("Could not find the end of registerDeferredRuntimePlugins");
+}
+
 describe("deferred plugin boot ordering", () => {
   it("registers core services before feature plugins", () => {
     const body = extractRunDeferredBootBody(elizaSource);
@@ -49,5 +68,28 @@ describe("deferred plugin boot ordering", () => {
       "feature registration phase must run",
     ).toBeGreaterThan(-1);
     expect(coreWaveIndex).toBeLessThan(featureWaveIndex);
+  });
+
+  it("keeps timed registrations observed until their definitive result", () => {
+    const body = extractDeferredRegistrationBody(elizaSource);
+
+    expect(body).toContain("await runtime.registerPlugin(plugin)");
+    expect(body).toContain("registrationWatchdog = setTimeout");
+    expect(body).not.toContain("Promise.race([");
+    expect(body).not.toContain("Math.max(timeoutMs, 60_000)");
+  });
+
+  it("starts the preferred provider in the shared worker queue", () => {
+    const body = extractDeferredRegistrationBody(elizaSource);
+    const queueIndex = body.indexOf(
+      "const registrationQueue = preferredPlugin",
+    );
+    const workersIndex = body.indexOf("await Promise.all(");
+
+    expect(queueIndex).toBeGreaterThan(-1);
+    expect(workersIndex).toBeGreaterThan(queueIndex);
+    expect(body).not.toContain(
+      "await registerDeferredPlugin(\n        preferredPlugin",
+    );
   });
 });
