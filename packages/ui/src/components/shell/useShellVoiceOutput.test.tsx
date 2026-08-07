@@ -9,6 +9,7 @@ import type { ConversationMessage } from "../../api/client-types-chat";
 // reference them. `cfg` lets individual tests vary speaking / bootstrap state.
 const hoisted = vi.hoisted(() => ({
   queueAssistantSpeech: vi.fn(),
+  speak: vi.fn(),
   stopSpeaking: vi.fn(),
   voiceChatOptions: null as Record<string, unknown> | null,
   cfg: {
@@ -38,7 +39,7 @@ vi.mock("../../hooks/useVoiceChat", () => ({
       toggleListening: () => {},
       startListening: async () => {},
       stopListening: async () => {},
-      speak: () => {},
+      speak: hoisted.speak,
       voiceUnlockedGeneration: 0,
       assistantTtsQuality: "standard",
     };
@@ -101,6 +102,7 @@ function render(initial: ShellVoiceOutputOptions) {
 
 beforeEach(() => {
   hoisted.queueAssistantSpeech.mockClear();
+  hoisted.speak.mockClear();
   hoisted.stopSpeaking.mockClear();
   hoisted.cfg.isSpeaking = false;
   hoisted.cfg.voiceBootstrapTick = 1;
@@ -111,13 +113,30 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("useShellVoiceOutput", () => {
-  it("routes shell playback through the realtime Cartesia gateway", () => {
-    render({ ...BASE, realtimeVoiceEnabled: true });
+  it("routes manual shell playback through the realtime Cartesia gateway", () => {
+    const { result } = render({ ...BASE, realtimeVoiceEnabled: true });
 
     expect(hoisted.voiceChatOptions).toMatchObject({
       voiceConfig: { provider: "eliza-cloud" },
       ttsRouteOverride: "/api/v1/voice/tts",
     });
+
+    act(() => result.current.speak("Replay this reply."));
+    expect(hoisted.speak).toHaveBeenCalledWith("Replay this reply.");
+  });
+
+  it("leaves automatic realtime reply audio to the Cartesia session", () => {
+    render({
+      ...BASE,
+      realtimeVoiceEnabled: true,
+      lastTurnVoice: true,
+      conversationMessages: [
+        userMsg("u1", "what's the weather"),
+        assistantMsg("a1", "It is sunny."),
+      ],
+    });
+
+    expect(hoisted.queueAssistantSpeech).not.toHaveBeenCalled();
   });
 
   it("speaks the assistant reply after a voice turn", () => {

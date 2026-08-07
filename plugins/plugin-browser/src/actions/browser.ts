@@ -312,6 +312,22 @@ function normalizeLegacyTabAction(
   }
 }
 
+function formatBrowserDestination(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return url;
+    }
+    const host = parsed.host.replace(/^www\./i, "");
+    const path = parsed.pathname === "/" ? "" : parsed.pathname;
+    return `${host}${path}${parsed.search}${parsed.hash}`;
+  } catch {
+    // error-policy:J3 Browser services may surface non-URL targets; preserve
+    // their explicit value instead of fabricating a normalized destination.
+    return url;
+  }
+}
+
 function formatBrowserSessionResult(
   command: BrowserWorkspaceCommand,
   result: Awaited<ReturnType<typeof executeBrowserWorkspaceCommand>>,
@@ -330,6 +346,9 @@ function formatBrowserSessionResult(
   }
 
   if (result.tab) {
+    if (command.subaction === "open" || command.subaction === "navigate") {
+      return `Opened ${formatBrowserDestination(result.tab.url)}.`;
+    }
     return `${command.subaction} completed in ${result.mode} mode.\n${result.tab.title}\n${result.tab.url}`;
   }
 
@@ -744,8 +763,11 @@ export const browserAction: Action = {
         true,
       );
 
+      const text = formatBrowserSessionResult(command, result);
       return {
-        text: formatBrowserSessionResult(command, result),
+        text,
+        userFacingText: text,
+        verifiedUserFacing: true,
         success: true,
         values: {
           success: true,

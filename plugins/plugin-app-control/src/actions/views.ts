@@ -1201,6 +1201,27 @@ function readCapabilityParams(
 	if (nested !== undefined && !isCapabilityParamsRecord(nested)) {
 		return { ok: false, error: 'parameter "params" must be an object' };
 	}
+	const normalizedNested = isCapabilityParamsRecord(nested)
+		? { ...nested }
+		: undefined;
+	if (capabilityParamKeys.has("content") && normalizedNested) {
+		const legacyBody = normalizedNested.body;
+		if (normalizedNested.content === undefined) {
+			if (typeof legacyBody === "string") {
+				normalizedNested.content = legacyBody;
+			} else if (
+				isCapabilityParamsRecord(legacyBody) &&
+				typeof legacyBody.content === "string"
+			) {
+				normalizedNested.content = legacyBody.content;
+			}
+		}
+		// A one-field capability owns its own deterministic storage label. Old
+		// planners may still emit a title/body pair, but forwarding either key
+		// would violate the declared contract and reintroduce model-authored labels.
+		if (!capabilityParamKeys.has("body")) delete normalizedNested.body;
+		if (!capabilityParamKeys.has("title")) delete normalizedNested.title;
+	}
 
 	for (const [key, value] of Object.entries(options ?? {})) {
 		if (key === "params") continue;
@@ -1214,14 +1235,29 @@ function readCapabilityParams(
 			params[key] = value;
 			continue;
 		}
+		if (
+			key === "body" &&
+			capabilityParamKeys.has("content") &&
+			params.content === undefined
+		) {
+			if (typeof value === "string") {
+				params.content = value;
+			} else if (
+				isCapabilityParamsRecord(value) &&
+				typeof value.content === "string"
+			) {
+				params.content = value.content;
+			}
+			continue;
+		}
 		if (!capability && !CAPABILITY_PARAM_RESERVED_KEYS.has(key)) {
 			params[key] = value;
 		}
 	}
 
-	if (isCapabilityParamsRecord(nested)) {
+	if (normalizedNested) {
 		if (capability) {
-			const unknownKey = Object.keys(nested).find(
+			const unknownKey = Object.keys(normalizedNested).find(
 				(key) => !capabilityParamKeys.has(key),
 			);
 			if (unknownKey) {
@@ -1231,7 +1267,7 @@ function readCapabilityParams(
 				};
 			}
 		}
-		Object.assign(params, nested);
+		Object.assign(params, normalizedNested);
 	}
 
 	const intent = readStringOption(options, "intent");
@@ -1333,6 +1369,13 @@ function deriveParamsFromIntent(
 	if (capabilityParamKeys.has("body") && existing.body === undefined && body) {
 		derived.body = body;
 	}
+	if (
+		capabilityParamKeys.has("content") &&
+		existing.content === undefined &&
+		body
+	) {
+		derived.content = body;
+	}
 	const notes = extractIntentTextAfter(trimmed, ["notes", "note"]);
 	if (
 		capabilityParamKeys.has("notes") &&
@@ -1413,6 +1456,9 @@ function deriveParamsFromMessageText(
 		if (capabilityParamKeys.has("body") && !existing.body && body) {
 			derived.body = body;
 		}
+		if (capabilityParamKeys.has("content") && !existing.content && body) {
+			derived.content = body;
+		}
 		const title = extractIntentTitle(trimmed);
 		if (capabilityParamKeys.has("title") && !existing.title && title) {
 			derived.title = title;
@@ -1466,14 +1512,26 @@ function deriveParamsFromMessageText(
 }
 
 function extractDeleteTargetText(text: string): string | null {
-	const match =
-		/\b(?:delete|remove|drop|destroy)\s+(?:the\s+)?(.+?)(?:\s+(?:note|notes|event|events|record|records|item|items))?\s*$/i.exec(
+	const quoted =
+		/\b(?:delete|remove|drop|destroy)\s+(?:the\s+)?(?:(?:sticky\s+note|calendar\s+event|note|notes|event|events|record|records|item|items)\s+)?["“'‘]([^"”'’]{1,240})["”'’]/i.exec(
 			text,
-		);
+		)?.[1];
+	if (quoted?.trim()) return quoted.trim();
+
+	const match = /\b(?:delete|remove|drop|destroy)\s+(?:the\s+)?(.+?)\s*$/i.exec(
+		text,
+	);
 	const target = match?.[1]?.trim();
 	if (!target) return null;
 	const cleaned = target
-		.replace(/\b(?:sticky|calendar)\b/gi, " ")
+		.replace(
+			/^(?:(?:sticky|calendar)\s+)?(?:note|notes|event|events|record|records|item|items)\b\s*/i,
+			"",
+		)
+		.replace(
+			/\s+\b(?:note|notes|event|events|record|records|item|items)\b\s*$/i,
+			"",
+		)
 		.replace(/\s+/g, " ")
 		.trim();
 	return cleaned.length > 0 ? cleaned : null;
@@ -2175,7 +2233,7 @@ const VIEWS_ROUTING_HINT = [
 	"View switching is a common proactive response in app chat: use action=show when the user asks to open, show, switch to, or pull up a matching surface, including a bare surface name in any language.",
 	"Use VIEWS for navigation, close/hide, the view manager, split/tile/window/pin layouts, and capabilities that the selected view actually declares.",
 	"Opening the Calendar surface uses VIEWS action=show; reading or changing calendar events uses the CALENDAR action because the first-party Calendar view is read-only.",
-	"Sticky Notes operations use the registered Notes capabilities. Do not route them to documents or Knowledge.",
+	"Sticky Notes operations use the registered Notes capabilities. Create and update pass the complete user-authored note in the single content field; never invent a separate title or body. Do not route Notes to documents or Knowledge.",
 	"Phone flashlight requests use action=interact view=device-control capability=set-flashlight with params={enabled:true|false}; never claim success before the capability returns success.",
 	"For declared domain capabilities, use action=interact with an explicit view and capability. Semantic record capabilities are required; agent-fill and agent-click are only for an explicitly requested form-control interaction. Pass parameters in params rather than dotted keys.",
 	"Close/hide means VIEWS action=close, never delete/remove.",
@@ -2478,14 +2536,14 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			{
 				name: "params",
 				description:
-					"Object parameters for the capability (interact mode), e.g. { title: 'launch checklist', body: 'test auth' } or a rename { oldTitle: 'launch checklist', title: 'demo checklist' }. Do not use dotted parameter names like 'params.title'.",
+					"Object parameters for the capability (interact mode), e.g. Notes create uses { content: 'launch checklist' }. Use only parameters declared by that capability and never dotted names like 'params.content'.",
 				required: false,
 				schema: { type: "object", additionalProperties: true },
 			},
 			{
 				name: "title",
 				description:
-					"Top-level passthrough for registered view capabilities that accept a title, such as create-note.",
+					"Top-level passthrough only for registered view capabilities that explicitly accept a title. Notes create/update use content instead.",
 				required: false,
 				schema: { type: "string" },
 			},
@@ -2506,7 +2564,14 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			{
 				name: "body",
 				description:
-					"Top-level passthrough for registered view capabilities that accept body/content text, such as create-note.",
+					"Compatibility alias for text capabilities. Prefer the capability's declared field; Notes create/update use content.",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "content",
+				description:
+					"Complete user-authored content for a registered one-field capability, including Notes create/update. Preserve the user's wording and do not add a separate title.",
 				required: false,
 				schema: { type: "string" },
 			},
@@ -2978,6 +3043,55 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							}
 						}
 						if (!resolvedCapability && !standardCapability) {
+							if (
+								resolvedView?.id === "browser" &&
+								["browse", "navigate", "open"].includes(
+									normalizeCapabilityKey(capability),
+								)
+							) {
+								if (!(await ownerCheck(runtime, message))) {
+									const reply =
+										"Browser control is only available to the workspace owner.";
+									await callback?.({ text: reply });
+									return { success: false, text: reply };
+								}
+								const browserAction = runtime.actions.find(
+									(action) => action.name === "BROWSER",
+								);
+								if (!browserAction?.handler) {
+									const reply =
+										"Browser control is unavailable in this runtime.";
+									await callback?.({ text: reply });
+									return { success: false, text: reply };
+								}
+								const nestedParams =
+									actionOptions?.params &&
+									typeof actionOptions.params === "object" &&
+									!Array.isArray(actionOptions.params)
+										? actionOptions.params
+										: {};
+								const browserParameters = {
+									...nestedParams,
+									action: "navigate",
+								};
+								if (!(await browserAction.validate(runtime, message, _state))) {
+									const reply = "Browser control rejected this request.";
+									await callback?.({ text: reply });
+									return { success: false, text: reply };
+								}
+								return (
+									(await browserAction.handler(
+										runtime,
+										message,
+										_state,
+										{ ...options, parameters: browserParameters },
+										callback,
+									)) ?? {
+										success: true,
+										text: "Browser navigation completed.",
+									}
+								);
+							}
 							const reply = `Cannot invoke capability "${capability}" on view "${viewId}": the view catalog does not declare that capability.`;
 							await callback?.({ text: reply });
 							return { success: false, text: reply };
