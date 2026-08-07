@@ -117,21 +117,26 @@ describe("Notes capability-to-UI journey", () => {
     await interactWithService(
       "create-note",
       {
-        title: "Demo briefing",
-        body: "Keep the note wall durable",
+        content: "Demo briefing\nKeep the note wall durable",
         color: "green",
       },
       activeService(),
     );
     await interactWithService(
       "update-note",
-      { query: "Demo briefing", newTitle: "Demo briefing ready" },
+      {
+        query: "Demo briefing",
+        content: "Demo briefing ready\nKeep the note wall durable",
+      },
       activeService(),
     );
 
     const populatedNotes = render(<NotesView />);
-    expect(await screen.findByText("Demo briefing ready")).toBeTruthy();
-    expect(screen.getByText("Keep the note wall durable")).toBeTruthy();
+    expect(
+      await screen.findByText(
+        "Demo briefing ready\nKeep the note wall durable",
+      ),
+    ).toBeTruthy();
     expect(
       screen
         .getByLabelText("Note Demo briefing ready")
@@ -142,7 +147,11 @@ describe("Notes capability-to-UI journey", () => {
     ).toBeNull();
     populatedNotes.unmount();
     render(<NotesView />);
-    expect(await screen.findByText("Demo briefing ready")).toBeTruthy();
+    expect(
+      await screen.findByText(
+        "Demo briefing ready\nKeep the note wall durable",
+      ),
+    ).toBeTruthy();
 
     await waitFor(() => {
       expect(activeService().snapshot()).toMatchObject({
