@@ -288,7 +288,7 @@ describe("composeState provider execution", () => {
 		expect(calls).toBe(1);
 	});
 
-	it("counts signal-less callers so a waiter's abort cannot kill their shared work (#17604 review)", async () => {
+	it("counts signal-less callers so a waiter's abort cannot kill their shared work", async () => {
 		const runtime = new AgentRuntime({
 			character: { name: "provider-signalless-owner" } as Character,
 		});
@@ -490,7 +490,7 @@ describe("composeState provider execution", () => {
 		expect(calls).toBe(1);
 	});
 
-	it("does not hand a fresh caller a departed owner's abort reason while eviction lags settlement (#17604)", async () => {
+	it("does not hand a fresh caller a departed owner's abort reason while eviction lags settlement", async () => {
 		const runtime = new AgentRuntime({
 			character: { name: "provider-evict-race" } as Character,
 		});
@@ -542,5 +542,56 @@ describe("composeState provider execution", () => {
 		const freshState = await fresh;
 		expect(freshState.text).toBe("racy-2");
 		expect(calls).toBe(2);
+	});
+
+	it("aborts in-flight provider work when the runtime stops", async () => {
+		// Stopping the runtime clears providerExecutionsInFlight. The execution's
+		// AbortController is reachable only through that map, so dropping the
+		// entries without firing it strands the provider call: nothing that
+		// outlives teardown holds a handle able to cancel it.
+		const runtime = new AgentRuntime({
+			character: { name: "provider-stop-abort" } as Character,
+		});
+		const started = deferred();
+		let receivedSignal: AbortSignal | undefined;
+
+		runtime.registerProvider({
+			name: "HANGING",
+			get: async (
+				_runtime,
+				_message,
+				_state,
+				context?: ProviderExecutionContext,
+			) => {
+				receivedSignal = context?.signal;
+				started.resolve();
+				return new Promise((_, reject) => {
+					const signal = context?.signal;
+					if (!signal) {
+						reject(new Error("missing provider signal"));
+						return;
+					}
+					signal.addEventListener("abort", () => reject(signal.reason), {
+						once: true,
+					});
+				});
+			},
+		});
+
+		const compose = runtime
+			.composeState(
+				makeMessage("dddddddd-dddd-dddd-dddd-dddddddddddd"),
+				["HANGING"],
+				true,
+			)
+			.catch((cause: unknown) => cause);
+		await started.promise;
+		expect(receivedSignal?.aborted).toBe(false);
+
+		await runtime.stop();
+
+		expect(receivedSignal?.aborted).toBe(true);
+		// The compose settles rather than hanging past teardown.
+		await compose;
 	});
 });

@@ -380,10 +380,10 @@ interface InFlightProviderExecution {
 	promise: Promise<ProviderResult>;
 	// The execution owns its abort authority: callers race the shared promise
 	// against their OWN turn signal and this controller fires only when the
-	// last interested caller has aborted (#17602). Wiring the work directly to
-	// the first caller's signal let a later coalesced waiter's "stop" be
-	// swallowed entirely, and pushed the first caller's abort reason into
-	// turns that never requested it.
+	// last interested caller has aborted. Wiring the work directly to the
+	// first caller's signal would swallow a later coalesced waiter's "stop"
+	// entirely, and push the first caller's abort reason into turns that never
+	// requested it.
 	controller: AbortController;
 	// Every consumer of this execution MUST attach through awaitProviderExecution
 	// rather than awaiting `promise` directly: an uncounted caller would not
@@ -405,22 +405,19 @@ interface InFlightProviderExecution {
 // EVERY attached caller counts toward `waiters`, including callers with no
 // signal (composeState outside any turn or streaming context — signalFor and
 // getStreamingContext are both legitimately undefined there). The abort
-// condition reads `waiters` as "is anyone still interested"; exempting
-// signal-less callers let a cancelling waiter abort work an uncounted caller
-// was still awaiting — the mirror image of the original defect (caught in
-// review on #17604 by executing this function standalone).
+// condition reads `waiters` as "is anyone still interested", so exempting
+// signal-less callers would let a cancelling waiter abort work an uncounted
+// caller is still awaiting.
 //
-// `evict` removes the in-flight map entry for this execution. It runs
+// `evict` removes the in-flight map entry for this execution. It must run
 // SYNCHRONOUSLY, immediately before `controller.abort()`, rather than being
 // left to the `promise.then(cleanup, cleanup)` at the call site: that cleanup
 // only fires once the shared promise finishes unwinding through
 // withProviderDeadline/withProviderStep, a microtask or more after the
-// synchronous abort. A composeState call landing in that window would still
-// `get()` the dying execution and inherit an abort reason it never asked
-// for — the same defect this file fixes, relocated from "always" to "inside
-// a race window" (#17604 review). Calling `evict` here makes the entry
-// unreachable at the moment it stops being viable instead of when its
-// promise settles.
+// synchronous abort. A composeState call landing in that window would
+// otherwise `get()` the dying execution and inherit an abort reason it never
+// asked for. Evicting here makes the entry unreachable at the moment it stops
+// being viable instead of when its promise settles.
 function awaitProviderExecution(
 	execution: InFlightProviderExecution,
 	signal: AbortSignal | undefined,
@@ -2631,6 +2628,13 @@ export class AgentRuntime implements IAgentRuntime {
 		this.eventHandlers.clear();
 		this.events = {};
 		this.stateCache.clear();
+		// Abort before dropping the map. Each execution owns the only handle to
+		// its provider work — no caller retains the controller — so clearing
+		// alone would strand in-flight provider calls past teardown with nothing
+		// left able to cancel them.
+		for (const execution of this.providerExecutionsInFlight.values()) {
+			execution.controller.abort(new Error("Runtime stopped"));
+		}
 		this.providerExecutionsInFlight.clear();
 		this.roomReadMemo.invalidate();
 		this.roomMessagesMemo.invalidate();
