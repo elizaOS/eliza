@@ -9803,6 +9803,30 @@ export async function enforceTrustedDeliveryAudienceOnResult(
 }
 
 /**
+ * Builds provider-neutral TTS input from character settings.
+ *
+ * Only `voiceId` is a provider voice identifier. The historical `model`
+ * field contains Piper voice tags and `url` contains an endpoint, so forwarding
+ * either as `voice` breaks OpenAI and cloud provider selection. Omitting
+ * `voice` lets the active provider apply its own valid default.
+ */
+function buildTextToSpeechParams(
+	runtime: Pick<IAgentRuntime, "character">,
+	text: string,
+	signal?: AbortSignal,
+): TextToSpeechParams {
+	const voiceSettings = runtime.character.settings?.voice as
+		| { voiceId?: string }
+		| undefined;
+	const voiceId = voiceSettings?.voiceId?.trim();
+	return {
+		text,
+		...(voiceId ? { voice: voiceId } : {}),
+		...(signal ? { signal } : {}),
+	};
+}
+
+/**
  * First-sentence cloud-TTS delivery for streaming turns: synthesize the
  * sentence and hand the audio to the callback as a data-URI attachment. The
  * local-inference voice loop uses VoiceScheduler/PhraseChunker instead
@@ -9833,30 +9857,8 @@ export async function deliverFirstSentenceVoice(
 		return;
 	}
 	try {
-		const voiceSettings = runtime.character.settings?.voice as
-			| {
-					model?: string;
-					url?: string;
-					voiceId?: string;
-			  }
-			| undefined;
-
-		// `settings.voice.model` is a historical Piper *voice* tag, not a provider
-		// model id — pass as `voice` only. Kept identical to the second TTS site
-		// below: the two paths synthesize the same character and must not resolve
-		// different voices depending on which one runs.
-		const voiceHint =
-			voiceSettings?.voiceId ||
-			voiceSettings?.url ||
-			voiceSettings?.model ||
-			"af_nicole";
-
 		let audioBuffer: Buffer | null = null;
-		const params: TextToSpeechParams = {
-			text: first,
-			voice: voiceHint,
-			...(abortSignal ? { signal: abortSignal } : {}),
-		};
+		const params = buildTextToSpeechParams(runtime, first, abortSignal);
 		const result = runtime.getModel(ModelType.TEXT_TO_SPEECH)
 			? await runtime.useModel(ModelType.TEXT_TO_SPEECH, params)
 			: undefined;
@@ -10978,27 +10980,12 @@ export class DefaultMessageService implements IMessageService {
 							// (Async immediately)
 							(async () => {
 								try {
-									const voiceSettings = runtime.character.settings?.voice as
-										| {
-												model?: string;
-												url?: string;
-												voiceId?: string;
-										  }
-										| undefined;
-									// `settings.voice.model` is a historical Piper *voice*
-									// tag, not a provider model id — pass as `voice` only.
-									const voiceHint =
-										voiceSettings?.voiceId ||
-										voiceSettings?.url ||
-										voiceSettings?.model ||
-										"af_nicole";
-
 									let audioBuffer: Buffer | null = null;
-									const params: TextToSpeechParams = {
-										text: rest,
-										voice: voiceHint,
-										...(opts.abortSignal ? { signal: opts.abortSignal } : {}),
-									};
+									const params = buildTextToSpeechParams(
+										runtime,
+										rest,
+										opts.abortSignal,
+									);
 									const result = runtime.getModel(ModelType.TEXT_TO_SPEECH)
 										? await runtime.useModel(ModelType.TEXT_TO_SPEECH, params)
 										: undefined;
