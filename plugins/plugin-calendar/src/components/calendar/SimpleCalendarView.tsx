@@ -740,9 +740,9 @@ export function SimpleCalendarView() {
               >
                 {formatSelectedDate(selectedDate)}
               </h2>
-              <p style={{ ...SECONDARY_STYLE, marginTop: 3, fontSize: 11 }}>
+              <p style={{ ...SECONDARY_STYLE, marginTop: 3, fontSize: 12 }}>
                 {!loaded
-                  ? "\u00a0"
+                  ? "Loading calendar\u2026"
                   : selectedEvents.length === 0
                     ? "No plans yet"
                     : `${selectedEvents.length} ${selectedEvents.length === 1 ? "event" : "events"}`}
