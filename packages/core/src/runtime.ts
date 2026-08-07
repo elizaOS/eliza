@@ -1261,6 +1261,14 @@ export class AgentRuntime implements IAgentRuntime {
 	public getAllPluginOwnership!: () => PluginOwnership[];
 	events: RuntimeEventStorage = {};
 	stateCache = new Map<string, State>();
+	// Owner-private providers are revalidated on every compose and therefore
+	// prevent the mixed State from entering stateCache. Public provider results
+	// are still safe to reuse within the same Memory object's turn; WeakMap
+	// lifetime keeps that reuse request-local without retaining messages.
+	private readonly publicProviderStateByMessage = new WeakMap<
+		Memory,
+		{ text: unknown; state: State }
+	>();
 	private providerExecutionsInFlight = new Map<
 		string,
 		InFlightProviderExecution
@@ -4798,10 +4806,16 @@ export class AgentRuntime implements IAgentRuntime {
 			text: "",
 		} as State;
 		const audienceCacheKey = trustedDeliveryAudienceCacheKey(message);
+		const publicProviderCache = this.publicProviderStateByMessage.get(message);
+		const cachedPublicState =
+			publicProviderCache !== undefined &&
+			publicProviderCache.text === message.content.text
+				? publicProviderCache.state
+				: undefined;
 		const cachedCandidate =
 			skipCache || !message.id
 				? emptyObj
-				: this.stateCache.get(message.id) || emptyObj;
+				: (this.stateCache.get(message.id) ?? cachedPublicState ?? emptyObj);
 		const cachedState =
 			cachedCandidate === emptyObj ||
 			cachedCandidate.data.__trustedDeliveryAudienceCacheKey ===
@@ -5464,6 +5478,7 @@ export class AgentRuntime implements IAgentRuntime {
 			text: providersText,
 		} as State;
 		if (message.id && !containsSensitiveProvider) {
+			this.publicProviderStateByMessage.delete(message);
 			this.stateCache.set(message.id, newState);
 			// Evict oldest entries beyond the cap. The just-set entry and recent
 			// in-flight turns are kept; only stale messages drop out.
@@ -5474,6 +5489,43 @@ export class AgentRuntime implements IAgentRuntime {
 				}
 				this.stateCache.delete(oldest);
 			}
+		} else if (message.id) {
+			const publicProviders = providersToGet.filter(
+				(provider) => provider.disclosureGate?.require !== "owner_exclusive",
+			);
+			const publicProviderResults = Object.fromEntries(
+				publicProviders.flatMap((provider) => {
+					const result = currentProviderResults[provider.name];
+					return result ? [[provider.name, result]] : [];
+				}),
+			) as Record<string, CachedProviderResult>;
+			const publicValues: Record<string, StateValue> = {
+				__conversationSeed: conversationSeed,
+			};
+			const publicTexts: string[] = [];
+			for (const provider of publicProviders) {
+				const result = publicProviderResults[provider.name];
+				if (result?.values && typeof result.values === "object") {
+					Object.assign(publicValues, result.values);
+				}
+				if (typeof result?.text === "string" && result.text.trim() !== "") {
+					publicTexts.push(result.text);
+				}
+			}
+			const publicText = this.redactSecrets(publicTexts.join("\n"));
+			this.publicProviderStateByMessage.set(message, {
+				text: message.content.text,
+				state: {
+					values: { ...publicValues, providers: publicText },
+					data: {
+						__conversationSeed: conversationSeed,
+						__trustedDeliveryAudienceCacheKey: audienceCacheKey,
+						providerOrder: publicProviders.map((provider) => provider.name),
+						providers: publicProviderResults,
+					},
+					text: publicText,
+				},
+			});
 		}
 		return newState;
 	}
