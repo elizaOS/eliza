@@ -8,7 +8,7 @@
  *
  * Routes are mounted under /api/skills/curated/* to avoid collision with the
  * pre-existing /api/skills/* routes in skills-routes.ts (which manage the
- * separate marketplace/workspace-skills surface).
+ * separate agent skills surface).
  */
 
 import {

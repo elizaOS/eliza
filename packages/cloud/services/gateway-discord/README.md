@@ -2067,11 +2067,9 @@ The AWS infrastructure required to run the gateway is managed via **Terraform** 
 - IAM roles for EKS and GitHub Actions OIDC
 - Kubernetes namespace and secrets
 
-**Automated via GitHub Actions** (`.github/workflows/gateway-discord.yml`):
-- Push to `develop` branch → Terraform apply + app deploy to development
-- Push to `main` branch → Terraform apply + app deploy to production
-- Workflow auto-detects terraform vs app changes and runs appropriate jobs
-- If both change, terraform runs first, then deploy waits for completion
+Infrastructure and service changes are operator-run. Terraform operations use
+the manual consolidated `.github/workflows/infra.yml`; Railway deployment uses
+the package deploy script documented above.
 
 ```bash
 # Manual deployment (if needed)

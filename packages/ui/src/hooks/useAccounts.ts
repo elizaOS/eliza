@@ -42,7 +42,15 @@ export interface UseAccountsResult {
    */
   error: string | null;
   saving: Set<string>;
-  refresh: () => Promise<void>;
+  /**
+   * Reconcile the inventory with the server. A just-created account may be
+   * supplied so the successful mutation response renders immediately while
+   * the authoritative list request runs in the background.
+   */
+  refresh: (created?: {
+    providerId: LinkedAccountProviderId;
+    account: LinkedAccountConfig;
+  }) => Promise<void>;
   createApiKey: (
     providerId: LinkedAccountProviderId,
     body: { label: string; apiKey: string },
@@ -95,9 +103,10 @@ function replaceAccount(
         : { ...next, hasCredential: true };
       return {
         ...p,
-        accounts: p.accounts
-          .map((a) => (a.id === next.id ? merged : a))
-          .sort((a, b) => a.priority - b.priority),
+        accounts: (existing
+          ? p.accounts.map((a) => (a.id === next.id ? merged : a))
+          : [...p.accounts, merged]
+        ).sort((a, b) => a.priority - b.priority),
       };
     }),
   };
@@ -136,32 +145,44 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
     [setActionNotice],
   );
 
-  const refresh = useCallback(async () => {
-    const requestId = ++listRequestIdRef.current;
-    const stateVersion = stateVersionRef.current;
-    try {
-      const next = await client.listAccounts();
-      if (
-        !mountedRef.current ||
-        listRequestIdRef.current !== requestId ||
-        stateVersionRef.current !== stateVersion
-      )
-        return;
-      setData(next);
-      setError(null);
-    } catch (err) {
-      if (
-        !mountedRef.current ||
-        listRequestIdRef.current !== requestId ||
-        stateVersionRef.current !== stateVersion
-      )
-        return;
-      setError(describeError("Failed to load accounts", err));
-      notify("Failed to load accounts", err);
-    } finally {
-      if (mountedRef.current) setLoading(false);
-    }
-  }, [notify]);
+  const refresh = useCallback<UseAccountsResult["refresh"]>(
+    async (created) => {
+      if (created) {
+        // The add dialog owns its network mutation, so adopt that successful
+        // response here before fetching the full inventory. Incrementing the
+        // version also prevents an older poll from erasing the new account.
+        stateVersionRef.current += 1;
+        setData((previous) =>
+          replaceAccount(previous, created.providerId, created.account),
+        );
+      }
+      const requestId = ++listRequestIdRef.current;
+      const stateVersion = stateVersionRef.current;
+      try {
+        const next = await client.listAccounts();
+        if (
+          !mountedRef.current ||
+          listRequestIdRef.current !== requestId ||
+          stateVersionRef.current !== stateVersion
+        )
+          return;
+        setData(next);
+        setError(null);
+      } catch (err) {
+        if (
+          !mountedRef.current ||
+          listRequestIdRef.current !== requestId ||
+          stateVersionRef.current !== stateVersion
+        )
+          return;
+        setError(describeError("Failed to load accounts", err));
+        notify("Failed to load accounts", err);
+      } finally {
+        if (mountedRef.current) setLoading(false);
+      }
+    },
+    [notify],
+  );
 
   const markSaving = useCallback((id: string, on: boolean) => {
     setSaving((prev) => {

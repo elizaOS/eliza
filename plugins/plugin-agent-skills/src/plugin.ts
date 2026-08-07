@@ -3,9 +3,7 @@
  *
  * Provides seamless access to Agent Skills with:
  * - Progressive disclosure (metadata → instructions → resources)
- * - ClawHub registry integration for skill discovery
  * - Otto compatibility for dependency management
- * - Background catalog sync
  *
  * @see https://agentskills.io
  */
@@ -18,13 +16,10 @@ import { skillAction } from "./actions/skill";
 import { useSkillAction } from "./actions/use-skill";
 // Binance direct-skill dispatch (registered as a chat pre-handler)
 import { binanceSkillPreHandler } from "./binance/pre-handler";
-import {
-	AgentSkillsPluginLifecycleService,
-} from "./init";
+import { AgentSkillsPluginLifecycleService } from "./init";
 // Providers
 import { enabledSkillsProvider } from "./providers/enabled-skills";
 import {
-	catalogAwarenessProvider,
 	skillInstructionsProvider,
 	skillsSummaryProvider,
 } from "./providers/skills";
@@ -48,7 +43,6 @@ const ALL_PROVIDERS: Provider[] = [
 	enabledSkillsProvider, // Canonical enabled-skills list for USE_SKILL planning
 	skillsSummaryProvider, // Medium-res (default) - installed skills summary
 	skillInstructionsProvider, // High-res - active skill instructions
-	catalogAwarenessProvider, // Dynamic - catalog awareness
 ];
 
 /**
@@ -59,7 +53,7 @@ const ALL_PROVIDERS: Provider[] = [
  * **Service (AgentSkillsService)**
  * - Discovers and loads skills from filesystem
  * - Validates skills against Agent Skills spec
- * - Manages registry integration (ClawHub)
+ * - Installs skills directly from GitHub
  * - Supports Otto metadata extensions
  *
  * **Progressive Disclosure**
@@ -70,16 +64,14 @@ const ALL_PROVIDERS: Provider[] = [
  * **Providers**
  * - Summary: Installed skills with descriptions
  * - Instructions: Full body for contextually matched skills
- * - Catalog: Available skills when asking about capabilities
  *
  * **Actions**
  * - USE_SKILL: Canonical entry point for invoking an enabled skill
- * - SKILL: Search/details/sync/toggle/install/uninstall skill catalog ops
+ * - SKILL: Toggle/uninstall installed skills
  *
  * ## Configuration:
  * - SKILLS_DIR: Skill directory (default: ./skills)
  * - SKILLS_AUTO_LOAD: Load on startup (default: true)
- * - SKILLS_REGISTRY: Registry URL (default: https://clawhub.ai)
  */
 export const agentSkillsPlugin: Plugin = {
 	name: "@elizaos/plugin-agent-skills",

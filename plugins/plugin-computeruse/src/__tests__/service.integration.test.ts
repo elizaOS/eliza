@@ -528,11 +528,8 @@ describe("ComputerUseService file and terminal execution (real host I/O)", () =>
     expect(result.success).toBe(true);
   }, 15_000);
 
-  // executeCommand maps each command string onto an action and dispatches it.
-  // Malformed desktop/window commands fail fast at validation (no display or
-  // input driver touched); the maps and per-verb approval-command lookups run
-  // for every string, so the routing switch and its helper switches are covered
-  // without actuating the host. Each dispatch returns a structured result.
+  // executeCommand maps each desktop command string onto an action and dispatches it.
+  // Malformed commands fail fast at validation without touching the input driver.
   it("routes every desktop command string through executeCommand", async () => {
     const commands = [
       "click",
@@ -556,23 +553,6 @@ describe("ComputerUseService file and terminal execution (real host I/O)", () =>
       "launch",
       "kill_app",
       "set_value",
-    ];
-    for (const command of commands) {
-      const result = await service.executeCommand(command, {});
-      expect(typeof result.success).toBe("boolean");
-    }
-  }, 20_000);
-
-  it("routes every window command string through executeCommand", async () => {
-    const commands = [
-      "list_windows",
-      "switch_to_window",
-      "arrange_windows",
-      "move_window",
-      "minimize_window",
-      "maximize_window",
-      "restore_window",
-      "close_window",
     ];
     for (const command of commands) {
       const result = await service.executeCommand(command, {});
@@ -627,28 +607,6 @@ describe("ComputerUseService file and terminal execution (real host I/O)", () =>
         text: "echo hi",
       });
       expect(typeof result.success).toBe("boolean");
-    }
-  }, 20_000);
-
-  it("exercises window read and getter actions", async () => {
-    for (const action of [
-      "list",
-      "get_current_window_id",
-      "get_window_size",
-      "get_window_position",
-      "arrange",
-    ] as const) {
-      const result = await service.executeWindowAction({ action });
-      expect(typeof result.success).toBe("boolean");
-    }
-
-    for (const action of [
-      "move",
-      "set_bounds",
-      "get_application_windows",
-    ] as const) {
-      const result = await service.executeWindowAction({ action });
-      expect(result.success).toBe(false);
     }
   }, 20_000);
 

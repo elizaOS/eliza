@@ -11,7 +11,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import sharp from "sharp";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resolveAuditAppOutput } from "../../scripts/lib/audit-output.mjs";
@@ -594,6 +594,7 @@ describe("audit runner cleanup", () => {
           ELIZA_UI_SMOKE_SKIP_BUILD: "1",
           ELIZA_UI_SMOKE_SKIP_CORE_BUILD: "1",
           ELIZA_UI_SMOKE_SKIP_VIEW_BUILD: "1",
+          ELIZA_UI_SMOKE_VIEW_LOCK_NAMESPACE: basename(dir),
         },
       },
     );

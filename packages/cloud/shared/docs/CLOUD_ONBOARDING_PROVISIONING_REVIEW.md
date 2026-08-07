@@ -185,7 +185,7 @@ stays gated and true real-infra confidence is unreachable.
 Action to unblock: redeploy/repair the staging Cloud API datastore env (verify
 `DATABASE_URL`/replica + Upstash REST vars on the staging worker), confirm
 `GET /api/v1/eliza/agents` with a valid key returns 200, then re-run
-`hetzner-e2e` (`gh workflow run hetzner-e2e.yml --ref develop`).
+the operator-run Hetzner E2E scripts.
 
 ### Update (2026-06-01) — staging datastore FIXED; only an expired CI key remains
 
@@ -216,7 +216,7 @@ Confirmed in this environment (no cloud credentials needed):
 **Cannot be confirmed here (requires secrets / live infra):** real Hetzner
 server create/teardown, real R2 backup offload, and the production Cloudflare
 Worker deploy. These are exercised by the gated nightly
-`.github/workflows/hetzner-e2e.yml` against live Hetzner. Running the real-infra
+the Hetzner E2E scripts against live Hetzner. Running the real-infra
 path is the remaining step for 100% production confidence and needs
 `HCLOUD_TOKEN` + Neon/R2/Cloudflare credentials.
 

@@ -234,12 +234,9 @@ export {
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
 } from "./contracts/service-routing.js";
 export {
-  PostMarketplaceInstallRequestSchema,
-  PostMarketplaceUninstallRequestSchema,
   PostSkillAcknowledgeRequestSchema,
-  PostSkillCatalogInstallRequestSchema,
-  PostSkillCatalogUninstallRequestSchema,
   PostSkillCreateRequestSchema,
+  PostSkillInstallRequestSchema,
   PutSkillSourceRequestSchema,
 } from "./contracts/skills-routes.js";
 // themes/ runtime (presets + apply engine) moved to @elizaos/ui/themes in

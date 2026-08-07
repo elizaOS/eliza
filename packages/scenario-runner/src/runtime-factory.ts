@@ -628,7 +628,6 @@ export async function createScenarioRuntime(
     process.env.ELIZA_DISABLE_PROACTIVE_AGENT;
   const prevElizaDisableLifeOpsScheduler =
     process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER;
-  const prevSkillsSyncCatalogOnStart = process.env.SKILLS_SYNC_CATALOG_ON_START;
   const prevSkillsDir = process.env.SKILLS_DIR;
   const scenarioSkillsRoot =
     executionProfile === "simulated" && !prevSkillsDir?.trim()
@@ -643,10 +642,6 @@ export async function createScenarioRuntime(
   }
   if (scenarioSkillsRoot) {
     process.env.SKILLS_DIR = scenarioSkillsRoot;
-  }
-  if (executionProfile === "simulated") {
-    process.env.SKILLS_SYNC_CATALOG_ON_START =
-      prevSkillsSyncCatalogOnStart ?? "false";
   }
   if (!process.env.LOCAL_EMBEDDING_DIMENSIONS?.trim()) {
     process.env.LOCAL_EMBEDDING_DIMENSIONS = "384";
@@ -678,8 +673,6 @@ export async function createScenarioRuntime(
   const scenarioRuntimeSettings =
     executionProfile === "simulated"
       ? {
-          SKILLS_SYNC_CATALOG_ON_START:
-            process.env.SKILLS_SYNC_CATALOG_ON_START ?? "false",
           ...(process.env.SKILLS_DIR
             ? { SKILLS_DIR: process.env.SKILLS_DIR }
             : {}),
@@ -692,12 +685,9 @@ export async function createScenarioRuntime(
     plugins: [],
     logLevel: "warn",
     enableAutonomy: false,
-    // The agent-skills service reads SKILLS_DIR / SKILLS_SYNC_CATALOG_ON_START
-    // via runtime.getSetting(), which does NOT consult process.env. Mirror the
-    // scenario env into runtime settings so skills storage lands in the
-    // throwaway temp dir and the boot-time catalog sync stays off — otherwise
-    // every scenario hits the real registry at boot (network dependency) and
-    // pollutes ./skills in the repo.
+    // The agent-skills service reads SKILLS_DIR via runtime.getSetting(), which
+    // does not consult process.env. Mirror the scenario env into runtime
+    // settings so skills storage lands in the throwaway temp directory.
     // These settings exist only to keep the legacy simulated harness
     // deterministic. Provider-qualified runs inherit the production defaults.
     settings: scenarioRuntimeSettings,
@@ -992,11 +982,6 @@ export async function createScenarioRuntime(
         prevElizaDisableLifeOpsScheduler;
     } else {
       delete process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER;
-    }
-    if (prevSkillsSyncCatalogOnStart !== undefined) {
-      process.env.SKILLS_SYNC_CATALOG_ON_START = prevSkillsSyncCatalogOnStart;
-    } else {
-      delete process.env.SKILLS_SYNC_CATALOG_ON_START;
     }
     if (prevSkillsDir !== undefined) {
       process.env.SKILLS_DIR = prevSkillsDir;

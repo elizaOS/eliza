@@ -9,8 +9,13 @@ import { type App, type AppUser, appsRepository, type NewApp } from "../../db/re
 // service module rather than reaching into the repository directly.
 export type { App, AppUser, NewApp } from "../../db/repositories/apps";
 
+import {
+  getAppHydrationGeneration,
+  getInferenceApp,
+  invalidateInferenceApp,
+  setInferenceApp,
+} from "../cache/app-inference-cache-state";
 import { cache } from "../cache/client";
-import { InMemoryLRUCache } from "../cache/in-memory-lru-cache";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { isAllowedOrigin } from "../security/origin-validation";
 import { logger } from "../utils/logger";
@@ -19,8 +24,6 @@ import { managedDomainsService } from "./managed-domains";
 
 const DEFAULT_MAX_APPS_PER_ORG = 25;
 const appByIdHydrations = new Map<string, Promise<void>>();
-const appByIdHydrationGeneration = new Map<string, number>();
-const inferenceAppMemoryCache = new InMemoryLRUCache<App>(100, 30_000);
 
 export interface AppCacheExecutionContext {
   waitUntil(promise: Promise<unknown>): void;
@@ -143,7 +146,7 @@ export class AppsService {
    * Negative cache: missing apps are remembered briefly to absorb invalid IDs.
    */
   async getById(id: string): Promise<App | undefined> {
-    const inMemory = inferenceAppMemoryCache.get(id);
+    const inMemory = getInferenceApp(id);
     if (inMemory) return structuredClone(inMemory);
     const cacheKey = CacheKeys.app.byId(id);
 
@@ -153,7 +156,7 @@ export class AppsService {
         return undefined;
       }
       if (isCachedApp(cached, id)) {
-        inferenceAppMemoryCache.set(id, cached);
+        setInferenceApp(id, cached);
         return cached;
       }
     }
@@ -163,14 +166,14 @@ export class AppsService {
 
   private async loadAndCacheAppById(id: string): Promise<App | undefined> {
     const cacheKey = CacheKeys.app.byId(id);
-    const generation = appByIdHydrationGeneration.get(id) ?? 0;
+    const generation = getAppHydrationGeneration(id);
     const app = await appsRepository.findById(id);
-    if ((appByIdHydrationGeneration.get(id) ?? 0) !== generation) {
+    if (getAppHydrationGeneration(id) !== generation) {
       return app;
     }
     if (app) {
       await cache.set(cacheKey, app, CacheTTL.app.byId);
-      inferenceAppMemoryCache.set(id, app);
+      setInferenceApp(id, app);
     } else {
       await cache.set(cacheKey, { __none: true }, CacheTTL.app.none);
     }
@@ -207,7 +210,7 @@ export class AppsService {
     id: string,
     options: { executionCtx?: AppCacheExecutionContext } = {},
   ): Promise<InferenceAppCacheResolution> {
-    const inMemory = inferenceAppMemoryCache.get(id);
+    const inMemory = getInferenceApp(id);
     if (inMemory) {
       return { kind: "ready", app: structuredClone(inMemory) };
     }
@@ -215,7 +218,7 @@ export class AppsService {
     if (outcome.kind === "hit") {
       if (isNoneMarker(outcome.value)) return { kind: "ready", app: null };
       if (isCachedApp(outcome.value, id)) {
-        inferenceAppMemoryCache.set(id, outcome.value);
+        setInferenceApp(id, outcome.value);
         return { kind: "ready", app: outcome.value };
       }
     }
@@ -339,8 +342,7 @@ export class AppsService {
    * would leave stale data; we look up the existing row's slug to evict it too.
    */
   async invalidateCache(appId: string, apiKeyId?: string, slug?: string): Promise<void> {
-    inferenceAppMemoryCache.delete(appId);
-    appByIdHydrationGeneration.set(appId, (appByIdHydrationGeneration.get(appId) ?? 0) + 1);
+    invalidateInferenceApp(appId);
     const promises: Promise<void>[] = [
       cache.del(CacheKeys.app.byId(appId)),
       cache.del(CacheKeys.app.costMarkup(appId)),

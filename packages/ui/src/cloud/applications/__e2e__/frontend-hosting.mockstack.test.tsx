@@ -341,10 +341,15 @@ describe("frontend hosting tab against the real mock cloud stack (#10690)", () =
     await user.click(deleteV2);
     await user.click(await screen.findByTestId("hosting-delete-confirm"));
 
-    await waitFor(
-      () => expect(screen.queryByTestId("hosting-deployment-2")).toBeNull(),
-      { timeout: 30_000 },
-    );
+    // The delete starts a full list reload, whose loading spinner temporarily
+    // removes every deployment row. Wait for the retained row to return before
+    // treating the refresh as complete; checking only that v2 disappeared can
+    // pass while the request is still in flight and leak state updates past the
+    // test's act boundary.
+    await screen.findByTestId("hosting-deployment-1", undefined, {
+      timeout: 30_000,
+    });
+    expect(screen.queryByTestId("hosting-deployment-2")).toBeNull();
     const state = await serverDeployments();
     expect(state.deployments.map((d) => d.version)).toEqual([1]);
   });

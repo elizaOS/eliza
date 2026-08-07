@@ -31,7 +31,10 @@ const iphoneModelPath = resolve(
   __dirname,
   "../public/models/iphone-meshopt.glb",
 );
-const elizaAvatarPath = resolve(__dirname, "../public/elizapfp.webp");
+const elizaAvatarPath = resolve(
+  __dirname,
+  "../public/brand/logos/logo_white_orangebg.svg",
+);
 const profileImagePath = resolve(
   __dirname,
   "../public/eliza-app-profile-image.webp",
@@ -40,7 +43,7 @@ const headersPath = resolve(__dirname, "../public/_headers");
 const viteConfigPath = resolve(__dirname, "../vite.config.ts");
 const tsconfigPath = resolve(__dirname, "../tsconfig.app.json");
 
-test("landing ships compressed iPhone and WebP profile assets", () => {
+test("landing ships its compressed phone and canonical profile assets", () => {
   const model = readFileSync(iphoneModelPath);
   assert.equal(model.subarray(0, 4).toString("ascii"), "glTF");
   assert.ok(
@@ -48,14 +51,14 @@ test("landing ships compressed iPhone and WebP profile assets", () => {
     "phone model must stay under its 550 KB transfer budget",
   );
 
-  for (const assetPath of [elizaAvatarPath, profileImagePath]) {
-    const asset = readFileSync(assetPath);
-    assert.equal(asset.subarray(0, 4).toString("ascii"), "RIFF");
-    assert.equal(asset.subarray(8, 12).toString("ascii"), "WEBP");
-  }
+  const avatar = readFileSync(elizaAvatarPath, "utf8");
+  assert.match(avatar, /fill="#FF5800"/);
+  const profileImage = readFileSync(profileImagePath);
+  assert.equal(profileImage.subarray(0, 4).toString("ascii"), "RIFF");
+  assert.equal(profileImage.subarray(8, 12).toString("ascii"), "WEBP");
   assert.ok(
-    statSync(elizaAvatarPath).size < 8_000,
-    "phone avatar must stay under its 8 KB transfer budget",
+    statSync(elizaAvatarPath).size < 25_000,
+    "canonical phone avatar must stay under its 25 KB transfer budget",
   );
   assert.ok(
     statSync(profileImagePath).size < 25_000,

@@ -1,0 +1,390 @@
+# This workflow is the sole pull-request and branch-health validation entry
+# point. It keeps one stable required status while path classification limits
+# expensive tests to the surfaces changed by a pull request.
+name: CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+  push:
+    branches: [develop, main]
+  merge_group:
+  workflow_call:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
+
+permissions:
+  contents: read
+
+env:
+  CI: "true"
+  BUN_VERSION: "1.3.14"
+  NODE_VERSION: "24.15.0"
+  NODE_NO_WARNINGS: "1"
+  NODE_OPTIONS: "--max-old-space-size=8192"
+
+jobs:
+  changes:
+    name: Classify changes
+    runs-on: ubuntu-24.04
+    outputs:
+      server: ${{ steps.filter.outputs.server }}
+      client: ${{ steps.filter.outputs.client }}
+      plugins: ${{ steps.filter.outputs.plugins }}
+      desktop: ${{ steps.filter.outputs.desktop }}
+      zero_key: ${{ steps.filter.outputs.zero_key }}
+      cloud: ${{ steps.filter.outputs.cloud }}
+      android_aab: ${{ steps.filter.outputs.android_aab }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Classify affected test surfaces
+        id: filter
+        shell: bash
+        env:
+          PR_LABELS: ${{ github.event_name == 'pull_request' && join(github.event.pull_request.labels.*.name, ',') || '' }}
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || '' }}
+        run: |
+          set -euo pipefail
+          node packages/scripts/ci-path-gate.mjs \
+            --config test \
+            --event "${GITHUB_EVENT_NAME}" \
+            --base "$BASE_SHA" \
+            --head "$HEAD_SHA" \
+            --labels "$PR_LABELS" \
+            --output "$GITHUB_OUTPUT" \
+            --summary "$GITHUB_STEP_SUMMARY"
+
+  quality:
+    name: Quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          install-native-deps: "false"
+          install-protoc: "false"
+          setup-python: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Repository verification
+        run: bun run verify
+
+      - name: Formatting
+        run: bun run format:check
+
+      - name: Build core contract
+        run: bun run build:core
+
+  tests:
+    name: Tests
+    needs: changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: false
+
+      - uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Script contract tests
+        env:
+          E2E_COVERAGE_GATE_ENFORCE: "1"
+        run: bun run test:scripts
+
+      - name: Server tests
+        if: needs.changes.outputs.server == 'true'
+        run: bun run test:server
+
+      - name: Client tests
+        if: needs.changes.outputs.client == 'true'
+        run: bun run test:client
+
+      - name: Plugin tests
+        if: needs.changes.outputs.plugins == 'true'
+        run: bun run test:plugins
+
+      - name: No affected unit-test lane
+        if: needs.changes.outputs.server != 'true' && needs.changes.outputs.client != 'true' && needs.changes.outputs.plugins != 'true'
+        run: echo "No server, client, or plugin test lane is affected."
+
+  smoke:
+    name: Smoke
+    needs: changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: false
+
+      - uses: ./.github/actions/setup-bun-workspace
+        if: needs.changes.outputs.desktop == 'true' || needs.changes.outputs.zero_key == 'true' || needs.changes.outputs.cloud == 'true'
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          install-native-deps: "false"
+          install-protoc: "false"
+          setup-python: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Desktop startup smoke
+        if: needs.changes.outputs.desktop == 'true'
+        run: bun run test:dev-startup
+
+      - name: Deterministic end-to-end smoke
+        if: needs.changes.outputs.zero_key == 'true'
+        run: bun run test:e2e
+
+      - name: Cloud tests
+        if: needs.changes.outputs.cloud == 'true'
+        run: bun run test:cloud
+
+      - name: No affected smoke lane
+        if: needs.changes.outputs.desktop != 'true' && needs.changes.outputs.zero_key != 'true' && needs.changes.outputs.cloud != 'true'
+        run: echo "No desktop, deterministic E2E, or cloud smoke lane is affected."
+
+  android_aab:
+    name: Android release AAB
+    needs: changes
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+    steps:
+      - name: Validate Android selection
+        id: selection
+        shell: bash
+        env:
+          CLASSIFIER_RESULT: ${{ needs.changes.result }}
+          ANDROID_SELECTED: ${{ needs.changes.outputs.android_aab }}
+        run: |
+          set -euo pipefail
+          if [ "$CLASSIFIER_RESULT" != "success" ]; then
+            echo "::error::CI path classification concluded $CLASSIFIER_RESULT"
+            exit 1
+          fi
+          case "$ANDROID_SELECTED" in
+            true|false) echo "selected=$ANDROID_SELECTED" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::Android selector must be exactly true or false, got '$ANDROID_SELECTED'"; exit 1 ;;
+          esac
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        if: steps.selection.outputs.selected == 'true'
+        with:
+          submodules: false
+          persist-credentials: false
+
+      - name: Setup Java 21
+        if: steps.selection.outputs.selected == 'true'
+        uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Setup Android SDK
+        if: steps.selection.outputs.selected == 'true'
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699
+        with:
+          packages: "platform-tools platforms;android-36 build-tools;36.0.0"
+
+      - uses: ./.github/actions/setup-bun-workspace
+        if: steps.selection.outputs.selected == 'true'
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          install-native-deps: "false"
+          install-protoc: "true"
+          run-postinstall: "true"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Build mobile package dependencies
+        if: steps.selection.outputs.selected == 'true'
+        run: |
+          bun run build:core
+          bun run --cwd packages/ui build
+          bun run --cwd packages/vault build
+          bun run --cwd packages/agent build:mobile
+
+      - name: Verify mobile bundle initialization is synchronous
+        if: steps.selection.outputs.selected == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle="packages/agent/dist-mobile/agent-bundle.js"
+          test -s "$bundle"
+          if grep -qE 'var init_eliza\b[^=]*= __esm\(async ' "$bundle"; then
+            echo "::error::init_eliza re-emitted as async __esm"
+            exit 1
+          fi
+
+      - name: Build and audit canonical Android Cloud release AAB
+        if: steps.selection.outputs.selected == 'true'
+        shell: bash
+        env:
+          NODE_OPTIONS: "--max-old-space-size=8192"
+        run: |
+          set -euo pipefail
+          bun run --cwd packages/app build:android:cloud 2>&1 \
+            | tee "$RUNNER_TEMP/android-cloud-release-aab-audit.log"
+
+      - name: Verify release AAB audit evidence
+        id: release-aab-evidence
+        if: ${{ always() && steps.selection.outputs.selected == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          AAB_PATH="packages/app-core/platforms/android/app/build/outputs/bundle/release/app-release.aab"
+          AUDIT_LOG="$RUNNER_TEMP/android-cloud-release-aab-audit.log"
+          ATTESTATION="$RUNNER_TEMP/android-cloud-release-attestation.json"
+          SHA256="$RUNNER_TEMP/android-cloud-release-aab.sha256"
+          test -s "$AAB_PATH"
+          test -s "$AUDIT_LOG"
+          node - "$AUDIT_LOG" "$ATTESTATION" "$AAB_PATH" <<'NODE'
+          const crypto = require("node:crypto");
+          const fs = require("node:fs");
+          const [logPath, outputPath, aabPath] = process.argv.slice(2);
+          const prefix = "[mobile-build] android-cloud AAB attestation ";
+          const line = fs
+            .readFileSync(logPath, "utf8")
+            .split(/\r?\n/)
+            .filter((candidate) => candidate.startsWith(prefix))
+            .at(-1);
+          if (!line) throw new Error("release AAB attestation was not emitted");
+          const attestation = JSON.parse(line.slice(prefix.length));
+          if (attestation.bundletool?.version !== "1.18.3") {
+            throw new Error("release AAB attestation has the wrong bundletool version");
+          }
+          const bytes = fs.readFileSync(aabPath);
+          const digest = crypto.createHash("sha256").update(bytes).digest("hex");
+          if (
+            attestation.artifact?.sha256 !== digest ||
+            attestation.artifact?.sizeBytes !== bytes.byteLength
+          ) {
+            throw new Error("release AAB attestation does not match the artifact");
+          }
+          fs.writeFileSync(outputPath, `${JSON.stringify(attestation, null, 2)}\n`);
+          NODE
+          sha256sum "$AAB_PATH" | tee "$SHA256"
+          test -s "$ATTESTATION"
+          test -s "$SHA256"
+
+      - name: Upload verified release AAB evidence
+        if: ${{ always() && steps.release-aab-evidence.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: android-cloud-release-aab-audit
+          path: |
+            packages/app-core/platforms/android/app/build/outputs/bundle/release/app-release.aab
+            ${{ runner.temp }}/android-cloud-release-aab-audit.log
+            ${{ runner.temp }}/android-cloud-release-aab.sha256
+            ${{ runner.temp }}/android-cloud-release-attestation.json
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Upload Android failure diagnostics
+        if: ${{ always() && steps.selection.outputs.selected == 'true' && steps.release-aab-evidence.outcome != 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: android-cloud-release-aab-failure-diagnostics
+          path: ${{ runner.temp }}/android-cloud-release-aab-audit.log
+          retention-days: 3
+          if-no-files-found: warn
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Install gitleaks
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=8.30.1
+          archive="$RUNNER_TEMP/gitleaks.tar.gz"
+          curl --fail --location --silent --show-error \
+            --output "$archive" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_linux_x64.tar.gz"
+          tar -xzf "$archive" -C "$RUNNER_TEMP" gitleaks
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+      - name: Scan changed commits
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          if [ -n "$BASE_SHA" ] && [ "$BASE_SHA" != "0000000000000000000000000000000000000000" ]; then
+            range="${BASE_SHA}..${HEAD_SHA}"
+          else
+            range="-1 ${HEAD_SHA}"
+          fi
+          gitleaks detect \
+            --config .gitleaks.toml \
+            --source . \
+            --redact \
+            --no-banner \
+            --log-opts "$range"
+
+  required:
+    name: Required
+    if: always()
+    needs: [changes, quality, tests, smoke, android_aab, secrets]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require every CI job to succeed
+        env:
+          RESULTS: >-
+            changes=${{ needs.changes.result }}
+            quality=${{ needs.quality.result }}
+            tests=${{ needs.tests.result }}
+            smoke=${{ needs.smoke.result }}
+            android-aab=${{ needs.android_aab.result }}
+            secrets=${{ needs.secrets.result }}
+        run: |
+          set -euo pipefail
+          for pair in $RESULTS; do
+            result="${pair#*=}"
+            if [ "$result" != "success" ]; then
+              echo "::error::$pair"
+              exit 1
+            fi
+          done

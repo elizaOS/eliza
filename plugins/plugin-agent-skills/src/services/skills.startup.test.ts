@@ -1,6 +1,6 @@
 /**
- * Verifies startup loads local Agent Skills without an implicit registry call,
- * while preserving the explicit catalog-sync opt-in.
+ * Verifies Agent Skills startup is strictly local and never performs network
+ * discovery, even when unrelated settings are present.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
@@ -22,40 +22,21 @@ function createRuntime(
 	} as unknown as IAgentRuntime;
 }
 
-afterEach(() => {
-	vi.unstubAllGlobals();
-});
+describe("Agent Skills local startup policy", () => {
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
 
-describe("Agent Skills startup catalog policy", () => {
-	it("does not contact the remote registry by default", async () => {
+	it("does not contact the network", async () => {
 		const fetchMock = vi.fn();
 		vi.stubGlobal("fetch", fetchMock);
 
-		await AgentSkillsService.start(createRuntime(), {
+		const service = await AgentSkillsService.start(createRuntime(), {
 			autoLoad: false,
 			storage: new MemorySkillStore(),
 		});
 
 		expect(fetchMock).not.toHaveBeenCalled();
-	});
-
-	it("syncs during startup only when explicitly enabled", async () => {
-		const fetchMock = vi.fn(async () =>
-			new Response(JSON.stringify({ items: [] }), {
-				headers: { "content-type": "application/json" },
-				status: 200,
-			}),
-		);
-		vi.stubGlobal("fetch", fetchMock);
-
-		await AgentSkillsService.start(
-			createRuntime({ SKILLS_SYNC_CATALOG_ON_START: true }),
-			{
-				autoLoad: false,
-				storage: new MemorySkillStore(),
-			},
-		);
-
-		expect(fetchMock).toHaveBeenCalledOnce();
+		await service.stop();
 	});
 });

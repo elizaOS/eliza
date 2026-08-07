@@ -10,10 +10,9 @@
  * per-task logs, targeted re-runs, and cancellation. Discovery costs ~0.2s
  * per spawn — noise against real suite runtimes.
  *
- * Result classification: run-all-tests prints `[eliza-test] PASS/SKIP/FAIL
- * <label>` lines. A self-skipping task exits 3 (the vacuous-green floor with
- * --min-tasks=1), so classification parses the log tail first and only falls
- * back to the exit code — exit 0 alone is not proof a test ran.
+ * Result classification combines the runner's PASS/SKIP/FAIL line with its
+ * semantic required-work exit. A PASS line followed by exit 3 is still a
+ * failure because an unsupported wrapper produced no testcase evidence.
  */
 
 import { spawn } from "node:child_process";
@@ -140,14 +139,14 @@ export class RunManager extends EventEmitter {
     });
   }
 
-  buildCommand(entry, lane) {
+  buildCommand(entry, _lane) {
     if (entry.label === CLOUD_LABEL) {
       return { cmd: "bun", args: ["run", "test:cloud"] };
     }
     const args = [
       "packages/scripts/run-all-tests.mjs",
       `--filter=^${escapeRegex(entry.label)}$`,
-      "--min-tasks=1",
+      "--require-work",
       "--no-cloud",
     ];
     // Non-`test` scripts (test:e2e, test:live, …) need --all so the extra
@@ -327,14 +326,15 @@ export function classifyResult({ label, code, signal, tail, cancelled }) {
   const labelPattern = escapeRegex(label);
   if (new RegExp(`\\[eliza-test\\] FAIL ${labelPattern}`).test(tail))
     return "failed";
+  if (
+    (code === 0 || code === 3) &&
+    new RegExp(`\\[eliza-test\\] SKIP ${labelPattern}`).test(tail)
+  )
+    return "skipped";
+  if (code !== 0) return "failed";
   if (new RegExp(`\\[eliza-test\\] PASS ${labelPattern}`).test(tail))
     return "passed";
-  if (new RegExp(`\\[eliza-test\\] SKIP ${labelPattern}`).test(tail))
-    return "skipped";
-  // Exit 3 is run-all-tests' vacuous-green floor: the only task collected
-  // self-skipped. Anything else nonzero without a status line is a failure.
-  if (code === 3) return "skipped";
-  return code === 0 ? "passed" : "failed";
+  return "failed";
 }
 
 export function countStatuses(tasks) {

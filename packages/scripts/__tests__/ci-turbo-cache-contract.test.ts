@@ -19,10 +19,6 @@ const { runContract } = await import(
 );
 
 const REAL_REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
-const CI_BUN_VERSION = JSON.parse(
-  readFileSync(join(REAL_REPO_ROOT, ".github", "ci-bun-version.json"), "utf8"),
-).version;
-
 const WORKSPACE_SETUP_YAML = `name: "Setup Bun Workspace"
 runs:
   using: "composite"
@@ -232,83 +228,6 @@ describe("ci-turbo-cache-contract", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
-
-  test("the fork lint lane keeps required gates with a bounded cold allowance", () => {
-    const workflow = readFileSync(
-      join(REAL_REPO_ROOT, ".github", "workflows", "quality-fork.yml"),
-      "utf8",
-    );
-    const lintJob = workflow.match(
-      /^ {2}lint:\s*$([\s\S]*?)(?=^ {2}typecheck:\s*$)/m,
-    )?.[0];
-    expect(lintJob).toBeDefined();
-    expect(lintJob).toMatch(/timeout-minutes:\s*15/);
-    for (const command of [
-      "audit:focused-tests",
-      "audit:type-duplication:self-test",
-      "bun run lint:check",
-      "bun run format:check",
-    ]) {
-      expect(lintJob).toContain(command);
-    }
-    expect(lintJob).not.toMatch(/continue-on-error/);
-    expect(workflow).toContain(`BUN_VERSION: "${CI_BUN_VERSION}"`);
-    expect(workflow).toMatch(
-      /name:\s*Setup Bun[\s\S]*?HOME:\s*\$\{\{\s*runner\.temp\s*\}\}\/bun-home-\$\{\{\s*github\.run_id\s*\}\}-\$\{\{\s*github\.run_attempt\s*\}\}-\$\{\{\s*github\.job\s*\}\}-\$\{\{\s*strategy\.job-index\s*\|\|\s*0\s*\}\}\s*[\r\n]+[\s\S]*?USERPROFILE:/,
-    );
-  });
-
-  test("the fork typecheck keeps full coverage with a bounded cold-cache allowance", () => {
-    const workflow = readFileSync(
-      join(REAL_REPO_ROOT, ".github", "workflows", "quality-fork.yml"),
-      "utf8",
-    );
-    const typecheckJob = workflow.match(
-      /^ {2}typecheck:\s*$([\s\S]*?)(?=^ {2}build:\s*$)/m,
-    )?.[0];
-    expect(typecheckJob).toBeDefined();
-    expect(typecheckJob).toMatch(/timeout-minutes:\s*25/);
-    expect(typecheckJob).toMatch(
-      /run:\s*NODE_OPTIONS='--max-old-space-size=8192' node packages\/scripts\/run-turbo\.mjs run typecheck --concurrency=4/,
-    );
-    expect(typecheckJob).not.toMatch(/continue-on-error|\|\| true/);
-  });
-
-  test("the long cold lanes avoid stale Bun fallback restores", () => {
-    const workflow = readFileSync(
-      join(REAL_REPO_ROOT, ".github", "workflows", "quality-fork.yml"),
-      "utf8",
-    );
-    const typecheckJob = workflow.match(
-      /^ {2}typecheck:\s*$([\s\S]*?)(?=^ {2}build:\s*$)/m,
-    )?.[0];
-    const buildJob = workflow.match(
-      /^ {2}build:\s*$([\s\S]*?)(?=^ {2}elizaos-cli-global-smoke:\s*$)/m,
-    )?.[0];
-    expect(typecheckJob).toMatch(/cache-bun-install:\s*["']false["']/);
-    expect(buildJob).toMatch(/cache-bun-install:\s*["']false["']/);
-    // 45m ceiling is deliberate: quality-fork.yml documents the measured cold
-    // build+homepage worst case that the old 32m ceiling kept cancelling.
-    expect(buildJob).toMatch(/timeout-minutes:\s*45/);
-    expect(buildJob).toMatch(/run:\s*bun run build/);
-    expect(buildJob).toMatch(/run:\s*bun run test:e2e --workers=1/);
-    expect(buildJob).not.toMatch(/continue-on-error|\|\| true/);
-
-    const setup = readFileSync(
-      join(
-        REAL_REPO_ROOT,
-        ".github",
-        "actions",
-        "setup-bun-workspace",
-        "action.yml",
-      ),
-      "utf8",
-    );
-    expect(setup).toMatch(/cache-bun-install:[\s\S]*default:\s*["']true["']/);
-    expect(setup).toMatch(
-      /name:\s*Cache Bun install[\s\S]*if:\s*\$\{\{\s*inputs\.cache-bun-install == ["']true["']\s*\}\}/,
-    );
   });
 
   test("the real repo satisfies the canonical cache contract", () => {

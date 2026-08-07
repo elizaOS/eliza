@@ -17,17 +17,10 @@ Two specs cover the loop:
 > gate) - from a dedicated **infinite-credit showcase account**. Full runbook:
 > [`docs/showcase-apps-coverage.md`](./showcase-apps-coverage.md).
 
-The mock-stack loop runs per-PR via
-[`.github/workflows/cloud-e2e.yml`](../../../../.github/workflows/cloud-e2e.yml)
-(which globs every `packages/cloud/e2e/tests/*.spec.ts` and path-filters on
-`packages/cloud-*/**` + `packages/test/**`) — this is the **active coverage**. A
-nightly [`.github/workflows/monetized-loop-nightly.yml`](../../../../.github/workflows/monetized-loop-nightly.yml)
-is wired as the **real-Hetzner parity scaffold**: it sets `MONETIZED_LOOP_REAL=1`,
-under which `monetized-full-loop.spec.ts` skips the whole suite (a describe-level
-skip, so the mock stack is never booted). Wiring the live-infra driver — one that
-drives `MONETIZED_LOOP_BASE_URL` with a real Eliza Cloud key instead of the mock
-`stack` fixture — is a tracked #8935 follow-up; until then the nightly is an
-honest scaffold (green-but-skipped), never mock assertions masquerading as real.
+The mock-stack loop runs through the repository cloud test command, called by
+the consolidated CI workflow when Cloud paths change. Real-infrastructure
+parity remains an explicit operator activity; no scheduled workflow reports a
+green result for a skipped live driver.
 
 ## Step-by-step coverage
 

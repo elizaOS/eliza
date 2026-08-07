@@ -15,7 +15,7 @@ This catalog is generated from `packages/prompts/specs/**` by `bun run --cwd pac
 - **Plugin overlay actions:** 11
 - **Canonical providers:** 23
 - **Core providers:** 23
-- **Registered runtime actions:** 165
+- **Registered runtime actions:** 166
 
 ## Actions
 
@@ -434,6 +434,7 @@ list. Regenerate this document after changing the registered action surface.
 - `LOGS` — `packages/agent/src/actions/logs.ts`
 - `MANAGE_BROWSER_BRIDGE` — `plugins/plugin-browser/src/actions/manage-browser-bridge.ts`
 - `MANAGE_PLUGINS` — `packages/core/src/features/plugin-manager/actions/plugin.ts`
+- `MANAGE_TRANSCRIPT_PRIVACY` — `plugins/plugin-local-inference/src/actions/transcript-permissioning.ts`
 - `MARK_FOLLOWUP_DONE` — `plugins/plugin-personal-assistant/src/followup/actions/markFollowupDone.ts`
 - `MCP` — `plugins/plugin-mcp/src/actions/mcp.ts`
 - `MEMORY` — `packages/agent/src/actions/memories.ts`

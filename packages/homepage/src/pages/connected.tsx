@@ -25,21 +25,16 @@ import {
   useCountryOptions,
 } from "@/components/login/phone-number-input";
 import {
+  buildElizaDiscordHref,
   buildElizaSmsHref,
+  buildElizaTelegramHref,
+  buildElizaWhatsAppHref,
   ELIZA_PHONE_FORMATTED,
   ELIZA_PHONE_NUMBER,
-  getWhatsAppNumber,
+  getTelegramBotUsername,
 } from "@/lib/contact";
 import { useAuth } from "@/lib/context/auth-context";
 import { type Translator, useT } from "@/providers/I18nProvider";
-
-function getTelegramBotUsername(): string {
-  return import.meta.env.VITE_TELEGRAM_BOT_USERNAME || "ElizaCloudBot";
-}
-
-function getDiscordBotApplicationId(): string {
-  return (import.meta.env.VITE_DISCORD_CLIENT_ID || "").trim();
-}
 
 function CrossPlatformNote({
   telegramId,
@@ -169,16 +164,13 @@ export default function ConnectedPage() {
   };
 
   const handleCopyTelegram = async () => {
-    await navigator.clipboard.writeText(
-      `https://t.me/${getTelegramBotUsername()}`,
-    );
+    await navigator.clipboard.writeText(buildElizaTelegramHref());
     setCopiedTelegram(true);
     setTimeout(() => setCopiedTelegram(false), 2000);
   };
 
   const handleCopyWhatsApp = async () => {
-    const waNumber = getWhatsAppNumber().replace(/\D/g, "");
-    await navigator.clipboard.writeText(`https://wa.me/${waNumber}`);
+    await navigator.clipboard.writeText(buildElizaWhatsAppHref());
     setCopiedWhatsApp(true);
     setTimeout(() => setCopiedWhatsApp(false), 2000);
   };
@@ -189,17 +181,15 @@ export default function ConnectedPage() {
   };
 
   const handleOpenTelegram = () => {
-    window.open(`https://t.me/${getTelegramBotUsername()}`, "_blank");
+    window.open(buildElizaTelegramHref(), "_blank");
   };
 
   const handleOpenDiscord = () => {
-    const appId = getDiscordBotApplicationId();
-    window.open(`https://discord.com/users/${appId}`, "_blank");
+    window.open(buildElizaDiscordHref(), "_blank");
   };
 
   const handleOpenWhatsApp = () => {
-    const waNumber = getWhatsAppNumber().replace(/\D/g, "");
-    window.open(`https://wa.me/${waNumber}`, "_blank");
+    window.open(buildElizaWhatsAppHref(), "_blank");
   };
 
   const handleOpenMessages = () => {

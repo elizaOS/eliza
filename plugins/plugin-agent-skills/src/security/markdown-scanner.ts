@@ -1,6 +1,6 @@
 /**
  * Markdown scanner — checks SKILL.md for instruction-based attacks.
- * Targets the Feb 2026 ClawHub attack patterns: malicious URLs in markdown,
+ * Targets common malicious-skill patterns: untrusted URLs in markdown,
  * pipe-to-shell, prompt injection, credential exfiltration instructions.
  */
 
@@ -19,8 +19,6 @@ const DEFAULT_SAFE_DOMAINS: ReadonlyArray<string> = [
 	"github.com",
 	"raw.githubusercontent.com",
 	"gist.githubusercontent.com",
-	"clawhub.ai",
-	"clawhub.com",
 	"agentskills.io",
 	"npmjs.com",
 	"npmjs.org",

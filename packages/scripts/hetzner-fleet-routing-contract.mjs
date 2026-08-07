@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
- * Verifies that GitHub Actions uses the Hetzner fleet only when the repository
- * variable is explicitly `true`. Fork pull requests do not receive repository
- * variables, so an empty value must fail safely to GitHub-hosted runners.
+ * Enforces physical workload separation between GitHub Actions and production
+ * agent-placement nodes. Checked-in workflows must use hosted runners and may
+ * not carry an override that can silently route work back to the old Hetzner
+ * runner farm (#17881).
  */
 
 import { readdirSync, readFileSync } from "node:fs";
@@ -10,67 +11,54 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { isMap, isScalar, isSeq, parseDocument } from "yaml";
 
-const HOSTED_LABELS = ["ubuntu-24.04"];
-const FLEET_LABELS = ["self-hosted", "hetzner-robot"];
-const EXPRESSION_OPEN = "$" + "{{";
-const CANONICAL_SELECTOR =
-  EXPRESSION_OPEN +
-  " fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '[\"ubuntu-24.04\"]' || '[\"self-hosted\",\"hetzner-robot\"]') }}";
-const PULL_REQUEST_HOSTED_SELECTOR =
-  EXPRESSION_OPEN +
-  " fromJSON(github.event_name == 'pull_request' && '[\"ubuntu-24.04\"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '[\"ubuntu-24.04\"]' || '[\"self-hosted\",\"hetzner-robot\"]') }}";
-const JANITOR_ROBOT_SELECTOR =
-  EXPRESSION_OPEN +
-  ' vars.HETZNER_FLEET_ONLINE != \'true\' && \'["ubuntu-latest"]\' || vars.ACTIONS_JANITOR_ROBOT_LANE_DISABLED == \'true\' && \'["ubuntu-latest"]\' || vars.ACTIONS_JANITOR_ROBOT_RUNNER_JSON || \'["self-hosted","Linux","X64","hetzner-robot"]\' }}';
-const DIRECT_RUNNER_SELECTORS = new Set([
-  CANONICAL_SELECTOR,
-  PULL_REQUEST_HOSTED_SELECTOR,
-]);
-const JANITOR_WORKFLOW = "actions-zombie-janitor.yml";
-const MATRIX_RUNNER_PATH =
-  /^jobs\.[^.]+\.strategy\.matrix\.include\.\d+\.runner$/;
-const JANITOR_ROUTE_PATH =
-  /^jobs\.reap\.strategy\.matrix\.include\.\d+\.runner$/;
+const FORBIDDEN_ROUTE_TOKENS = [
+  "self-hosted",
+  "hetzner-robot",
+  "HETZNER_FLEET_ONLINE",
+  "CLOUD_CF_MIGRATE_RUNNER_JSON",
+  "CLOUD_CF_DEPLOY_RUNNER_JSON",
+  "ACTIONS_JANITOR_ROBOT_RUNNER_JSON",
+  "vars.",
+  "inputs.",
+  "fromJSON(",
+];
 
 function lineAt(source, offset) {
   return source.slice(0, offset).split("\n").length;
 }
 
-function collectFleetRoutes(node, source, pathParts = [], routes = []) {
+function collectWorkflowScalars(node, source, pathParts = [], scalars = []) {
   if (isScalar(node)) {
-    if (
-      typeof node.value === "string" &&
-      (node.value.includes("HETZNER_FLEET_ONLINE") ||
-        node.value.includes("hetzner-robot"))
-    ) {
-      routes.push({
+    if (typeof node.value === "string") {
+      scalars.push({
         line: lineAt(source, node.range?.[0] ?? 0),
         path: pathParts.join("."),
         value: node.value.replace(/\s+/g, " ").trim(),
       });
     }
-    return routes;
+    return scalars;
   }
 
   if (isMap(node)) {
     for (const pair of node.items) {
       const key = isScalar(pair.key) ? String(pair.key.value) : "<key>";
-      collectFleetRoutes(pair.value, source, [...pathParts, key], routes);
+      collectWorkflowScalars(pair.value, source, [...pathParts, key], scalars);
     }
-    return routes;
+    return scalars;
   }
 
   if (isSeq(node)) {
     node.items.forEach((item, index) => {
-      collectFleetRoutes(item, source, [...pathParts, String(index)], routes);
+      collectWorkflowScalars(
+        item,
+        source,
+        [...pathParts, String(index)],
+        scalars,
+      );
     });
   }
 
-  return routes;
-}
-
-export function selectHetznerRunnerLabels(variableValue) {
-  return variableValue === "true" ? FLEET_LABELS : HOSTED_LABELS;
+  return scalars;
 }
 
 export function validateHetznerFleetRouting(repoRoot) {
@@ -78,12 +66,10 @@ export function validateHetznerFleetRouting(repoRoot) {
   const failures = [];
   let selectors = 0;
   let files = 0;
-  let janitorRouteFound = false;
-  let hasJanitorWorkflow = false;
 
   for (const name of readdirSync(workflowsDir).sort()) {
     if (!name.endsWith(".yml") && !name.endsWith(".yaml")) continue;
-    if (name === JANITOR_WORKFLOW) hasJanitorWorkflow = true;
+    files += 1;
     const source = readFileSync(path.join(workflowsDir, name), "utf8");
     const document = parseDocument(source, { uniqueKeys: true });
     if (document.errors.length > 0) {
@@ -92,41 +78,35 @@ export function validateHetznerFleetRouting(repoRoot) {
       );
     }
 
-    const routes = collectFleetRoutes(document.contents, source);
-    if (routes.length === 0) continue;
-    files += 1;
-    selectors += routes.length;
+    const scalars = collectWorkflowScalars(document.contents, source);
+    const isRunnerRouteScalar = (entry) =>
+      /^jobs\.[^.]+\.runs-on(?:\.|$)/.test(entry.path) ||
+      /^jobs\.[^.]+\.strategy\.matrix\./.test(entry.path);
+    selectors += scalars.filter((entry) =>
+      /^jobs\.[^.]+\.runs-on(?:\.|$)/.test(entry.path),
+    ).length;
 
-    for (const route of routes) {
-      const directRoute =
-        /^jobs\.[^.]+\.runs-on$/.test(route.path) &&
-        DIRECT_RUNNER_SELECTORS.has(route.value);
-      const indirectRoute =
-        MATRIX_RUNNER_PATH.test(route.path) &&
-        route.value === JANITOR_ROBOT_SELECTOR;
-      const janitorRoute =
-        name === JANITOR_WORKFLOW &&
-        JANITOR_ROUTE_PATH.test(route.path) &&
-        indirectRoute;
-      if (janitorRoute) janitorRouteFound = true;
-      if (directRoute || indirectRoute) continue;
-      failures.push(`${name}:${route.line} (${route.path}): ${route.value}`);
+    for (const scalar of scalars) {
+      if (!isRunnerRouteScalar(scalar)) continue;
+      const token = FORBIDDEN_ROUTE_TOKENS.find((candidate) =>
+        scalar.value.includes(candidate),
+      );
+      if (!token) continue;
+      failures.push(
+        `${name}:${scalar.line} (${scalar.path}): contains ${token}`,
+      );
     }
   }
 
-  if (hasJanitorWorkflow && !janitorRouteFound) {
-    failures.push(
-      `${JANITOR_WORKFLOW}: jobs.reap robot-fleet matrix route must retain its explicit fleet opt-in and hosted fallback`,
-    );
-  }
-
   if (selectors === 0) {
-    throw new Error("No HETZNER_FLEET_ONLINE runner selectors were found.");
+    throw new Error(
+      "No GitHub Actions jobs with runs-on selectors were found.",
+    );
   }
   if (failures.length > 0) {
     throw new Error(
       [
-        "Hetzner runner routing must require explicit HETZNER_FLEET_ONLINE opt-in; missing, empty, false, and noncanonical values must use a hosted runner:",
+        "GitHub Actions must remain separated from production placement nodes; self-hosted fleet routes and runner override variables are forbidden:",
         ...failures,
       ].join("\n"),
     );
@@ -139,6 +119,6 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const repoRoot = path.resolve(import.meta.dirname, "../..");
   const result = validateHetznerFleetRouting(repoRoot);
   console.log(
-    `[hetzner-fleet-routing] verified ${result.selectors} selectors across ${result.files} workflows`,
+    `[hetzner-fleet-routing] verified ${result.selectors} hosted job selectors across ${result.files} workflows`,
   );
 }

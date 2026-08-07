@@ -19,6 +19,10 @@ import {
   enforceOrgRateLimit,
   OrgRateLimitCacheNotReadyError,
 } from "@/lib/middleware/rate-limit";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { resolveModel } from "@/lib/models";
 import { estimateTokens } from "@/lib/pricing";
 import {
@@ -158,6 +162,12 @@ function retryableWarmingResponse(c: AppContext, area: string): Response {
 }
 
 const app = new Hono<AppEnv>();
+app.use(
+  "*",
+  rateLimit(RateLimitPresets.STANDARD, {
+    bindingName: "DASHBOARD_CHAT_ROUTE_RATE_LIMITER",
+  }),
+);
 
 app.post("/", async (c) => {
   let executionCtx: ExecutionContextLike | undefined;

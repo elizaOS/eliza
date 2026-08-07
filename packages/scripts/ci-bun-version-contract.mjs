@@ -43,18 +43,15 @@ const VERSION_FILE = ".github/ci-bun-version.json";
 const WORKFLOW_DIR = ".github/workflows";
 const SETUP_ACTION = ".github/actions/setup-bun-workspace/action.yml";
 
-// Required, scheduled, and deploy-critical install lanes that must stay on the
-// concrete pin. The required `ci-ok` aggregate (test.yml), main gate (ci.yaml),
-// and canonical cloud deploy are the load-bearing paths.
+// Required, scheduled, release, and deploy-critical install lanes that must
+// stay on the concrete pin.
 const GATE_WORKFLOWS = [
-  "ci.yaml",
-  "test.yml",
+  "ci.yml",
+  "nightly.yml",
   "cloud-cf-deploy.yml",
-  "app-aesthetic-audit.yml",
-  "develop-exhaustive.yml",
-  "ci-full-matrix-proof.yml",
-  "windows-ci.yml",
-  "windows-desktop-preload-smoke.yml",
+  "live-smoke.yml",
+  "release.yaml",
+  "weekly-maintenance.yml",
 ];
 
 // A concrete pin: a plain semver, optionally with a prerelease/build suffix.

@@ -442,6 +442,7 @@ function ExperienceGraphNode({
       ref={ref}
       variant="ghost"
       aria-label={`Select experience: ${nodeLabel}`}
+      aria-pressed={selected}
       data-testid={`experience-graph-node-${experience.id}`}
       className="absolute h-auto -translate-x-1/2 -translate-y-1/2 rounded-full p-0 outline-none transition duration-200 hover:scale-125"
       style={{
@@ -572,6 +573,7 @@ const ExperienceQueueRow = memo(function ExperienceQueueRow({
     <Button
       ref={ref}
       variant="ghost"
+      aria-pressed={isSelected}
       data-testid={`experience-row-${experience.id}`}
       className={`h-auto w-full min-w-0 flex-col items-start justify-start gap-2 rounded-none px-4 py-4 text-left font-normal transition-colors hover:bg-bg-muted/20 ${isSelected ? "bg-bg-muted/25" : ""}`}
       onClick={() => onSelect(experience.id)}
@@ -892,6 +894,7 @@ export function CharacterExperienceWorkspace({
               key={option.value}
               variant="ghost"
               size="sm"
+              aria-pressed={reviewFilter === option.value}
               onClick={() => setReviewFilter(option.value)}
               className={`h-8 rounded-full px-3 text-xs font-medium transition-colors ${
                 reviewFilter === option.value

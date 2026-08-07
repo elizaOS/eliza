@@ -21,10 +21,17 @@ const cleanupHelperScript = path.join(
   "rm-path-recursive.mjs",
 );
 const playwrightArgs = process.argv.slice(2);
+const uiSmokeViewLockNamespace =
+  process.env.ELIZA_UI_SMOKE_VIEW_LOCK_NAMESPACE?.trim().replace(
+    /[^A-Za-z0-9_-]/g,
+    "-",
+  );
 const uiSmokeViewLockDir = path.join(
   repoRoot,
   ".turbo",
-  "ui-smoke-view-bundles.lock",
+  uiSmokeViewLockNamespace
+    ? `ui-smoke-view-bundles-${uiSmokeViewLockNamespace}.lock`
+    : "ui-smoke-view-bundles.lock",
 );
 const uiSmokeTempPrefixes = ["eliza-ui-smoke-stub-", "eliza-ui-smoke-live-"];
 

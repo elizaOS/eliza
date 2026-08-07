@@ -1,12 +1,11 @@
 /**
  * Contract test for the in-repo Railway voice service definitions (#14374) and
- * the scheduled lane that keeps them alive. It guards two things that were pure
+ * the manual live lane that exercises them. It guards two things that were pure
  * tribal knowledge before: (1) the free-cloud Kokoro TTS + Whisper STT services
  * exist as reproducible Dockerfile + railway.toml pairs under
  * packages/cloud/services/voice-*, and (2) the once-orphaned live contract test
  * (voice-kokoro-whisper-live.test.ts, previously referenced by zero workflows)
- * is wired into voice-live-e2e.yml with correct env gating, so a dead or drifted
- * Railway service surfaces as a red run rather than a silent user report.
+ * is wired into the consolidated live-smoke workflow with correct env gating.
  *
  * Deterministic: parses committed files only (Bun.TOML / Bun.YAML), no network,
  * no Railway. Actually deploying is an owner action — the READMEs carry the
@@ -25,8 +24,7 @@ function exists(rel: string): boolean {
 
 const LIVE_TEST_PATH =
   "packages/cloud/api/__tests__/voice-kokoro-whisper-live.test.ts";
-const WORKFLOW_PATH = ".github/workflows/voice-live-e2e.yml";
-const CONTRACT_JOB = "voice-railway-contract";
+const WORKFLOW_PATH = ".github/workflows/live-smoke.yml";
 
 const SERVICES = [
   {
@@ -154,56 +152,56 @@ describe("Railway voice service definitions (#14374)", () => {
   });
 });
 
+interface WorkflowStep {
+  env?: Record<string, string>;
+  if?: string;
+  name?: string;
+  run?: string;
+}
 interface WorkflowJob {
   "runs-on"?: unknown;
-  if?: string;
-  env?: Record<string, string>;
-  steps?: Array<{ name?: string; run?: string }>;
+  steps?: WorkflowStep[];
 }
 interface Workflow {
   on?: { workflow_dispatch?: { inputs?: Record<string, unknown> } };
   jobs?: Record<string, WorkflowJob>;
 }
 
-describe("scheduled live contract lane (voice-live-e2e.yml)", () => {
+describe("manual live contract lane (live-smoke.yml)", () => {
   const workflow = Bun.YAML.parse(read(WORKFLOW_PATH)) as Workflow;
+  const smoke = workflow.jobs?.smoke;
+  const contractStep = (smoke?.steps ?? []).find(
+    (step) => step.name === "Railway voice contract",
+  );
 
   test("the once-orphaned live test is now referenced by this workflow", () => {
     expect(exists(LIVE_TEST_PATH)).toBe(true);
     expect(read(WORKFLOW_PATH)).toContain(LIVE_TEST_PATH);
   });
 
-  test(`defines the ${CONTRACT_JOB} job that runs the live test`, () => {
-    const job = workflow.jobs?.[CONTRACT_JOB];
-    expect(job).toBeDefined();
-    const runsTest = (job?.steps ?? []).some((s) =>
-      s.run?.includes(LIVE_TEST_PATH),
-    );
-    expect(runsTest).toBe(true);
+  test("runs the live test from the consolidated smoke job", () => {
+    expect(smoke).toBeDefined();
+    expect(contractStep?.run).toContain(LIVE_TEST_PATH);
+    expect(contractStep?.if).toContain("inputs.suite == 'voice'");
   });
 
   test("gates the live test with ELIZA_VOICE_LIVE_RAILWAY=1", () => {
     // Without the flag the test self-skips (test.skip), which would make the lane
     // vacuously green — the whole point is to hit the real services.
-    expect(workflow.jobs?.[CONTRACT_JOB]?.env?.ELIZA_VOICE_LIVE_RAILWAY).toBe(
-      "1",
-    );
+    expect(contractStep?.env?.ELIZA_VOICE_LIVE_RAILWAY).toBe("1");
   });
 
   test("wires the service URLs from repo variables", () => {
-    const env = workflow.jobs?.[CONTRACT_JOB]?.env ?? {};
+    const env = contractStep?.env ?? {};
     for (const svc of SERVICES) {
       const wired = Object.values(env).some((v) => v.includes(svc.urlVar));
       expect(wired).toBe(true);
     }
   });
 
-  test("runs on schedule and is dispatchable", () => {
-    // The lane must not require GPU/self-hosted staging — it hits public HTTPS,
-    // so a GitHub-hosted runner is correct and keeps it cheap + always-available.
-    expect(workflow.jobs?.[CONTRACT_JOB]?.["runs-on"]).toBe("ubuntu-24.04");
-    expect(
-      workflow.on?.workflow_dispatch?.inputs?.run_railway_contract,
-    ).toBeDefined();
+  test("is manual-only on a GitHub-hosted runner", () => {
+    expect(smoke?.["runs-on"]).toBe("ubuntu-24.04");
+    expect(workflow.on?.workflow_dispatch?.inputs?.suite).toBeDefined();
+    expect(read(WORKFLOW_PATH)).not.toMatch(/^\s*schedule:/m);
   });
 });

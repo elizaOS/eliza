@@ -1544,6 +1544,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       }
 
       await ssh.exec(`docker start ${shellQuote(containerName)}`, DOCKER_CMD_TIMEOUT_MS);
+      dockerNodeManager.recordNodeProvisionSuccess(nodeId);
       logger.info(
         `[docker-sandbox] Container created on ${nodeId}: ${containerId} (${containerName})`,
       );
@@ -1603,6 +1604,10 @@ export class DockerSandboxProvider implements SandboxProvider {
         );
       }
     } catch (err) {
+      // Open the placement circuit before cleanup attempts: cleanup can itself
+      // block on the same I/O-stalled daemon, while subsequent provisions must
+      // stop selecting this node immediately.
+      dockerNodeManager.recordNodeDockerCommandFailure(nodeId, err);
       // Best-effort Steward deregistration — the agent was registered but the
       // container failed to start, so the Steward record is deleted here.
       try {
@@ -2131,10 +2136,14 @@ export class DockerSandboxProvider implements SandboxProvider {
       node.ssh_user ?? DEFAULT_SSH_USERNAME,
     );
     const format = `{{.Id}}|{{index .Config.Labels "${REPLACEMENT_ATTEMPT_LABEL}"}}`;
+    // When Docker returned the create id before a later phase failed, inspect
+    // that immutable object directly. A same-name replacement can never make
+    // the old id look present or authorize deleting the newer occupant.
+    const inspectTarget = locator.containerId ?? locator.containerName;
     let output: string;
     try {
       output = await ssh.exec(
-        `docker inspect --format ${shellQuote(format)} ${shellQuote(locator.containerName)}`,
+        `docker inspect --format ${shellQuote(format)} ${shellQuote(inspectTarget)}`,
         DOCKER_CMD_TIMEOUT_MS,
       );
     } catch (error) {
@@ -2170,6 +2179,25 @@ export class DockerSandboxProvider implements SandboxProvider {
       );
     }
     if (attemptId !== locator.replacementAttemptId) {
+      // A timeout before Docker returned an id leaves only the deterministic
+      // name + attempt label as identity. If that name is now occupied by a
+      // DIFFERENT attempt, Docker's name uniqueness proves the unknown target
+      // is no longer at that name. Retain the occupant and converge the stale
+      // cleanup fence; the node-wide orphan reconciler remains responsible for
+      // any independently renamed debris. With an immutable id, a label
+      // mismatch is corruption and stays fail-closed.
+      if (!locator.containerId) {
+        logger.warn(
+          "[docker-sandbox] Replacement cleanup name is occupied by a different attempt; retaining occupant and treating the id-less target as absent",
+          {
+            nodeId: locator.nodeId,
+            containerName: locator.containerName,
+            expectedAttemptId: locator.replacementAttemptId,
+            observedAttemptId: attemptId || null,
+          },
+        );
+        return null;
+      }
       throw new Error(
         `[docker-sandbox] Replacement attempt label mismatch for ${locator.containerName}`,
       );

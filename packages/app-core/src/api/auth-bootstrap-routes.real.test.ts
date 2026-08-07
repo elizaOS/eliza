@@ -1,9 +1,7 @@
 /**
  * Real-HTTP smoke test for the cloud-provisioned bootstrap exchange.
  *
- * This is the CI gate referenced by the `Auth tests (P0 gate)` job in
- * `.github/workflows/agent-review.yml` and the `smoke-auth` job in
- * `.github/workflows/agent-release.yml`, per
+ * This is the real HTTP contract used by package and release verification, per
  * `docs/security/remote-auth-hardening-plan.md` §12.
  *
  * It verifies the P0 contract end-to-end without booting the full

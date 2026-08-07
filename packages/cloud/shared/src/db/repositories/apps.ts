@@ -1,5 +1,6 @@
 // Persists apps records for cloud services through the shared DB boundary.
 import { and, count, countDistinct, desc, eq, gte, lte, sql } from "drizzle-orm";
+import { invalidateInferenceApp } from "../../lib/cache/app-inference-cache-state";
 import { cache } from "../../lib/cache/client";
 import { CacheKeys } from "../../lib/cache/keys";
 import { sqlRows } from "../execute-helpers";
@@ -32,6 +33,7 @@ async function invalidateAppCacheEntries(
   apiKeyId?: string | null,
   slug?: string | null,
 ): Promise<void> {
+  invalidateInferenceApp(appId);
   const keys: Promise<void>[] = [
     cache.del(CacheKeys.app.byId(appId)),
     cache.del(CacheKeys.app.costMarkup(appId)),

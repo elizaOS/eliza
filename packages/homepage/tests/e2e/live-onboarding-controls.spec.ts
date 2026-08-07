@@ -29,11 +29,11 @@ test("get-started public method controls work without API mocks", async ({
     .getByRole("button", { name: "I also want to use Telegram" })
     .click();
   await expect(
-    page.getByRole("heading", { name: "Connect with Telegram" }),
+    page.getByRole("heading", { name: "Message Eliza on Telegram" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: /Connect Telegram/i }),
-  ).toBeVisible();
+    page.getByRole("link", { name: /Open Telegram/i }),
+  ).toHaveAttribute("href", "https://t.me/Elizav2_Bot");
 
   await page.getByRole("button", { name: "Back" }).click();
   await expect(
@@ -52,12 +52,12 @@ test("get-started public method controls work without API mocks", async ({
     .getByRole("button", { name: "I also want to use Telegram" })
     .click();
   await expect(
-    page.getByRole("heading", { name: "Connect with Telegram" }),
+    page.getByRole("heading", { name: "Message Eliza on Telegram" }),
   ).toBeVisible();
 
   await page.getByRole("button", { name: "Back" }).click();
   await page.getByRole("button", { name: /^Telegram$/ }).click();
   await expect(
-    page.getByRole("heading", { name: "Connect with Telegram" }),
+    page.getByRole("heading", { name: "Message Eliza on Telegram" }),
   ).toBeVisible();
 });

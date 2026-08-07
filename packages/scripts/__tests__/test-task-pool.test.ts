@@ -265,17 +265,9 @@ describe("taskBelongsToShard", () => {
   });
 });
 
-describe("CI plugin sharding contract", () => {
+describe("plugin test command contract", () => {
   const rootPackageJson = JSON.parse(
     readFileSync(new URL("../../../package.json", import.meta.url), "utf8"),
-  );
-  const testWorkflow = readFileSync(
-    new URL("../../../.github/workflows/test.yml", import.meta.url),
-    "utf8",
-  );
-  const qualityWorkflow = readFileSync(
-    new URL("../../../.github/workflows/quality.yml", import.meta.url),
-    "utf8",
   );
 
   test("root test:plugins uses the shard-aware cross-package runner", () => {
@@ -288,30 +280,6 @@ describe("CI plugin sharding contract", () => {
     expect(script).toContain("--concurrency=3");
   });
 
-  test("Tests workflow shards plugin tests and keeps a stable aggregate check", () => {
-    expect(testWorkflow).toMatch(
-      /plugin-tests:\s+name:\s+Plugin Tests \(\$\{\{ matrix\.shard \}\}\/4\)[\s\S]*?strategy:[\s\S]*?fail-fast:\s+false[\s\S]*?matrix:[\s\S]*?shard:\s+\[1,\s*2,\s*3,\s*4\]/,
-    );
-    expect(testWorkflow).toMatch(/TEST_SHARD:\s+\$\{\{ matrix\.shard \}\}\/4/);
-    expect(testWorkflow).toMatch(
-      /plugin-tests-status:\s+name:\s+Plugin Tests[\s\S]*?needs:[\s\S]*?-\s+plugin-tests/,
-    );
-    expect(testWorkflow).toMatch(
-      /ci-ok:[\s\S]*?needs:[\s\S]*?-\s+plugin-tests-status/,
-    );
-  });
-
-  test("Quality workflow gates develop PRs with static scans and lint", () => {
-    expect(qualityWorkflow).toMatch(
-      /develop-static-gate:[\s\S]*?Prompt secret scan[\s\S]*?check:secrets[\s\S]*?UI determinism self-test[\s\S]*?audit:ui-determinism:self-test[\s\S]*?UI determinism gate[\s\S]*?audit:ui-determinism/,
-    );
-    expect(qualityWorkflow).toMatch(
-      /develop-lint-gate:[\s\S]*?install-command: bun install[\s\S]*?Run lint[\s\S]*?bun run lint:check/,
-    );
-    expect(qualityWorkflow).not.toMatch(
-      /develop-static-gate:[\s\S]*?Run lint[\s\S]*?bun run lint:check[\s\S]*?develop-lint-gate:/,
-    );
-  });
 });
 
 describe("run-all-tests plan mode", () => {

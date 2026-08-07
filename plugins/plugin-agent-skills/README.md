@@ -3,7 +3,7 @@
 Implements the [Agent Skills specification](https://agentskills.io) with support for:
 - Spec-compliant SKILL.md parsing and validation
 - Progressive disclosure (metadata → instructions → resources)
-- ClawHub registry integration for skill discovery
+- Direct GitHub installation with security scanning
 - Otto metadata compatibility for dependency management
 - **Dual storage modes**: Memory (browser/virtual FS) and Filesystem (Node.js/native)
 
@@ -31,8 +31,6 @@ const agent = createAgent({
 |---------|-------------|---------|
 | `SKILLS_DIR` | Directory to load/install skills | `./skills` |
 | `SKILLS_AUTO_LOAD` | Load installed skills on startup | `true` |
-| `SKILLS_REGISTRY` | Skill registry URL | `https://clawhub.ai` |
-| `SKILLS_SYNC_CATALOG_ON_START` | Opt in to a remote catalog sync during startup | `false` |
 | `BUNDLED_SKILLS_DIRS` | Comma-separated paths of read-only bundled skill dirs | — |
 | `OTTO_BUNDLED_SKILLS_DIR` | Legacy: single Otto bundled skills directory | — |
 
@@ -189,7 +187,7 @@ Instructions here...
 Canonical entry point for invoking an enabled skill. Dispatches to the skill's bundled script or returns its SKILL.md guidance based on `mode`. Similes: `INVOKE_SKILL`, `RUN_SKILL`, `EXECUTE_SKILL`, `CALL_SKILL`, `USE_AGENT_SKILL`, `RUN_AGENT_SKILL`, `USE_CAPABILITY`, `RUN_CAPABILITY`.
 
 ### SKILL
-Catalog management parent action. Use `action=search`, `action=details`, `action=sync`, `action=toggle`, `action=install`, or `action=uninstall`.
+Local management parent action. Use `action=toggle` or `action=uninstall`.
 
 ## Providers
 
@@ -198,9 +196,6 @@ Lists installed skills with descriptions. Default provider.
 
 ### agent_skill_instructions (High Resolution)
 Provides full instructions for contextually matched skills.
-
-### agent_skills_catalog (Dynamic)
-Shows available skill categories when user asks about capabilities.
 
 ## Otto Compatibility
 
@@ -241,8 +236,8 @@ const instructions = service.getSkillInstructions('my-skill');
 // Read a reference file
 const content = await service.readReference('my-skill', 'api-docs.md');
 
-// Install a skill from registry
-await service.install('pdf-processing');
+// Install a skill directly from GitHub
+await service.installFromGitHub('https://github.com/example/pdf-processing');
 
 // Check storage mode
 if (service.isMemoryMode()) {

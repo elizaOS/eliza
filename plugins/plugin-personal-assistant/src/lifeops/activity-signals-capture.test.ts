@@ -646,6 +646,19 @@ describe("startLifeOpsActivitySignalCapture", () => {
     expect(h.dispatchStatus).not.toHaveBeenCalled();
   });
 
+  it("treats an auth-rejected status probe as an expected signed-out state", async () => {
+    h.isApiError.mockImplementation(
+      (error) => typeof error === "object" && error !== null && "kind" in error,
+    );
+    h.getStatus.mockRejectedValue({ kind: "http", status: 401 });
+
+    stop = startLifeOpsActivitySignalCapture(true);
+    await settle();
+
+    expect(h.captureLifeOpsActivitySignal).not.toHaveBeenCalled();
+    expect(h.dispatchStatus).not.toHaveBeenCalled();
+  });
+
   it("backs off a capability-specific 503 and resumes after a bounded probe", async () => {
     vi.useFakeTimers();
     h.isApiError.mockImplementation(
@@ -724,6 +737,30 @@ describe("startLifeOpsActivitySignalCapture", () => {
     expect(h.dispatchStatus).not.toHaveBeenCalledWith(
       expect.objectContaining({ status: "capture_error" }),
     );
+  });
+
+  it("stops optional activity posts after the session is rejected", async () => {
+    h.isApiError.mockImplementation(
+      (error) => typeof error === "object" && error !== null && "kind" in error,
+    );
+    h.captureLifeOpsActivitySignal.mockRejectedValue({
+      kind: "http",
+      status: 401,
+      path: "/api/lifeops/activity-signals",
+    });
+
+    stop = startLifeOpsActivitySignalCapture(true);
+    await settle();
+
+    expect(h.captureLifeOpsActivitySignal).toHaveBeenCalled();
+    expect(h.dispatchStatus).not.toHaveBeenCalledWith(
+      expect.objectContaining({ status: "capture_error" }),
+    );
+
+    h.captureLifeOpsActivitySignal.mockClear();
+    window.dispatchEvent(new Event("blur"));
+    await settle();
+    expect(h.captureLifeOpsActivitySignal).not.toHaveBeenCalled();
   });
 
   it("removes every listener and interval on stop", async () => {

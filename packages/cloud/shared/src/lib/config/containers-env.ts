@@ -635,6 +635,45 @@ export const containersEnv = {
     return Number.isFinite(parsed) && parsed >= 0 ? Math.min(64, Math.floor(parsed)) : 1;
   },
 
+  /**
+   * Consecutive Docker command timeouts on one node before placement opens a
+   * per-node circuit breaker. The provisioning worker is the sole placement
+   * owner, so this bounds repeated pressure without adding a database write to
+   * every Docker command. Default 2; clamped to [1, 10].
+   */
+  nodeDockerTimeoutFailureThreshold(): number {
+    const env = getCloudAwareEnv();
+    const raw = pick(env.CONTAINERS_NODE_DOCKER_TIMEOUT_FAILURE_THRESHOLD);
+    const parsed = raw ? Number(raw) : Number.NaN;
+    return Number.isFinite(parsed) ? Math.min(10, Math.max(1, Math.floor(parsed))) : 2;
+  },
+
+  /**
+   * Placement cooldown after a node trips its timeout or I/O-pressure circuit.
+   * Default 5 minutes; clamped to [30s, 1h].
+   */
+  nodeCircuitBreakerCooldownMs(): number {
+    const env = getCloudAwareEnv();
+    const raw = pick(env.CONTAINERS_NODE_CIRCUIT_BREAKER_COOLDOWN_MS);
+    const parsed = raw ? Number(raw) : Number.NaN;
+    return Number.isFinite(parsed)
+      ? Math.min(60 * 60_000, Math.max(30_000, Math.floor(parsed)))
+      : 5 * 60_000;
+  },
+
+  /**
+   * Linux PSI `full avg60` percentage at which a reachable node is too
+   * I/O-stalled for new placement. The outage in #17880 sustained ~78%; the
+   * default 50 leaves substantial headroom while ignoring ordinary bursts.
+   * Clamped to [1, 100]. Set 100 to effectively disable pressure rejection.
+   */
+  nodeIoPressureFullAvg60Threshold(): number {
+    const env = getCloudAwareEnv();
+    const raw = pick(env.CONTAINERS_NODE_IO_PRESSURE_FULL_AVG60_THRESHOLD);
+    const parsed = raw ? Number(raw) : Number.NaN;
+    return Number.isFinite(parsed) ? Math.min(100, Math.max(1, parsed)) : 50;
+  },
+
   // ── Warm pool ───────────────────────────────────────────────────────────
 
   /**

@@ -164,6 +164,10 @@ const ORPHAN_SCRIPT_FILE_ALLOWLIST = new Map([
     "operator triage helper for current GitHub check runs; requires gh credentials and is run by hand",
   ],
   [
+    "ensure-native-plugins-linked.mjs",
+    "workspace repair helper called by .github/actions/setup-bun-workspace/action.yml after frozen CI installs",
+  ],
+  [
     "run-turbo.self-test.mjs",
     "self-test fixture runner for run-turbo lockfile compatibility checks; invoked manually when changing that wrapper",
   ],

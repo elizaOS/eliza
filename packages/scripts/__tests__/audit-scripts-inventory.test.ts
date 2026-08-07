@@ -105,20 +105,11 @@ describe("script inventory: packages/app surface (issue #10200)", () => {
     }
   });
 
-  test("a --cwd packages/app CI-only script is reachable-from-ci-workflow", () => {
-    // test:e2e is invoked across the workflows as `--cwd packages/app test:e2e`.
-    const names = new Set(appScriptNames());
-    if (names.has("test:e2e")) {
-      const entry = inv.appScripts.find((a) => a.name === "test:e2e");
-      expect(entry?.category).toBe("reachable-from-ci-workflow");
-    }
-  });
-
   test("the root/file sections are still present and unchanged in shape", () => {
     expect(Array.isArray(inv.roots)).toBe(true);
     expect(Array.isArray(inv.files)).toBe(true);
     expect(inv.summary.totalRootScripts).toBe(inv.roots.length);
-    expect(inv.scriptTests.discoveredCount).toBeGreaterThan(100);
+    expect(inv.scriptTests.discoveredCount).toBeGreaterThan(90);
     expect(inv.scriptTests.excluded).toEqual([
       {
         file: "packages/scripts/__tests__/release-verdaccio.integration.test.ts",

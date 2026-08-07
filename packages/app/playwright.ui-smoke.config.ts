@@ -67,18 +67,31 @@ const VOICE_MIC_SPEC = /(voice-realaudio|transcript-realaudio)\.spec\.ts/;
 const WEBKIT_POINTER_FOCUS_SPEC =
   /(chat-overlay-controls-interactions|conversation-management|slash-commands|plugin-views-visual)\.spec\.ts/;
 const webkitLaneEnabled = process.env.PLAYWRIGHT_WEBKIT === "1";
+const projectRequested = (projectName: string): boolean =>
+  process.argv.some((value, index) => {
+    if (value === `--project=${projectName}`) return true;
+    return value === "--project" && process.argv[index + 1] === projectName;
+  });
 // The all-views aesthetic audit (#8796) walks ~50 views × 2 viewports; it is a
 // dedicated tool run via `audit:app`, not part of the default e2e smoke.
 const AUDIT_APP_SPEC = /all-views-aesthetic-audit\.spec\.ts/;
+const auditAppEnabled = projectRequested("audit-app");
+// Screenshot inventory for the offline vision-review tool. It records readiness
+// failures in JSON instead of asserting them, so it is an audit artifact
+// producer rather than part of the default E2E correctness gate.
+const AI_QA_CAPTURE_SPEC = /ai-qa-capture\.spec\.ts/;
+const aiQaCaptureEnabled = process.env.ELIZA_AI_QA_CAPTURE === "1";
 // The cloud-surface aesthetic audit (#10725/#11342) walks every registered
 // cloud route (packages/ui/src/cloud/register-all.ts) at desktop + mobile; a
 // dedicated tool run via `audit:cloud`, not part of the default e2e smoke.
 const AUDIT_CLOUD_SPEC = /cloud-surfaces-aesthetic-audit\.spec\.ts/;
+const auditCloudEnabled = projectRequested("audit-cloud");
 // Focused light/dark contrast proof for the Applications dropdown/select
 // popovers (#14232): renders the two touched surfaces in BOTH themes with the
 // SelectContent popover open. Run via `--project=audit-app-dropdown`; kept out
 // of the default e2e lane like the other dedicated aesthetic-audit tools.
 const AUDIT_APP_DROPDOWN_SPEC = /applications-dropdown-contrast\.spec\.ts/;
+const auditAppDropdownEnabled = projectRequested("audit-app-dropdown");
 // The WebKit lane (#10104/#10722): the assertion-grade dashboard specs, the
 // core shell smoke, and the input-modality spec on a real Desktop Safari
 // engine. WebKit-only behavior differences are real (for example,
@@ -155,6 +168,7 @@ export default defineConfig({
       // cloud-surface audit only via `audit:cloud`.
       testIgnore: [
         VOICE_MIC_SPEC,
+        AI_QA_CAPTURE_SPEC,
         AUDIT_APP_SPEC,
         AUDIT_CLOUD_SPEC,
         AUDIT_APP_DROPDOWN_SPEC,
@@ -251,41 +265,65 @@ export default defineConfig({
         serviceWorkers: "block",
       },
     },
-    {
-      // All-views aesthetic audit (#8796) — run with `audit:app`
-      // (`--project=audit-app`). Walks every view at desktop + mobile internally.
-      name: "audit-app",
-      testMatch: AUDIT_APP_SPEC,
-      use: {
-        ...devices["Desktop Chrome"],
-        ...withChromiumLaunchOptions(),
-      },
-    },
-    {
-      // Cloud-surface aesthetic audit (#10725/#11342) — run with `audit:cloud`
-      // (`--project=audit-cloud`). Walks every registered cloud route at
-      // desktop + mobile internally. Requires a renderer built with
-      // VITE_PLAYWRIGHT_TEST_AUTH=true; the runner invalidates dist for this
-      // project so a cached non-auth build cannot skip the local auth shell.
-      name: "audit-cloud",
-      testMatch: AUDIT_CLOUD_SPEC,
-      use: {
-        ...devices["Desktop Chrome"],
-        ...withChromiumLaunchOptions(),
-      },
-    },
-    {
-      // Applications dropdown/select light+dark contrast proof (#14232), run
-      // via `--project=audit-app-dropdown`. Like audit-cloud it needs the
-      // renderer built with VITE_PLAYWRIGHT_TEST_AUTH=true so the Steward auth
-      // shell serves the app-detail route.
-      name: "audit-app-dropdown",
-      testMatch: AUDIT_APP_DROPDOWN_SPEC,
-      use: {
-        ...devices["Desktop Chrome"],
-        ...withChromiumLaunchOptions(),
-      },
-    },
+    ...(aiQaCaptureEnabled
+      ? [
+          {
+            name: "audit-ai-qa",
+            testMatch: AI_QA_CAPTURE_SPEC,
+            use: {
+              ...devices["Desktop Chrome"],
+              ...withChromiumLaunchOptions(),
+            },
+          },
+        ]
+      : []),
+    ...(auditAppEnabled
+      ? [
+          {
+            // All-views aesthetic audit (#8796) — run with `audit:app`
+            // (`--project=audit-app`). Walks every view at desktop + mobile internally.
+            name: "audit-app",
+            testMatch: AUDIT_APP_SPEC,
+            use: {
+              ...devices["Desktop Chrome"],
+              ...withChromiumLaunchOptions(),
+            },
+          },
+        ]
+      : []),
+    ...(auditCloudEnabled
+      ? [
+          {
+            // Cloud-surface aesthetic audit (#10725/#11342) — run with `audit:cloud`
+            // (`--project=audit-cloud`). Walks every registered cloud route at
+            // desktop + mobile internally. Requires a renderer built with
+            // VITE_PLAYWRIGHT_TEST_AUTH=true; the runner invalidates dist for this
+            // project so a cached non-auth build cannot skip the local auth shell.
+            name: "audit-cloud",
+            testMatch: AUDIT_CLOUD_SPEC,
+            use: {
+              ...devices["Desktop Chrome"],
+              ...withChromiumLaunchOptions(),
+            },
+          },
+        ]
+      : []),
+    ...(auditAppDropdownEnabled
+      ? [
+          {
+            // Applications dropdown/select light+dark contrast proof (#14232), run
+            // via `--project=audit-app-dropdown`. Like audit-cloud it needs the
+            // renderer built with VITE_PLAYWRIGHT_TEST_AUTH=true so the Steward auth
+            // shell serves the app-detail route.
+            name: "audit-app-dropdown",
+            testMatch: AUDIT_APP_DROPDOWN_SPEC,
+            use: {
+              ...devices["Desktop Chrome"],
+              ...withChromiumLaunchOptions(),
+            },
+          },
+        ]
+      : []),
   ],
   webServer: {
     command: `${JSON.stringify(nodeExecutable)} ${JSON.stringify(path.join(repoRoot, "packages", "app-core", "scripts", "run-node-tsx.mjs"))} --exit-with-parent ${JSON.stringify(uiSmokeLiveStack)}`,

@@ -1,6 +1,6 @@
 /**
  * Keeps the repository's workflow and composite-action graph immutable,
- * uniquely named, referenced, and free of duplicate UI fixture ownership.
+ * uniquely named, and referenced.
  */
 
 import { readdirSync, readFileSync } from "node:fs";
@@ -65,16 +65,4 @@ describe("GitHub action supply-chain references", () => {
     expect(orphaned).toEqual([]);
   });
 
-  test("assigns each UI fixture suite to one parallel workflow", () => {
-    const suites = (name: string) =>
-      new Set(
-        [...readFileSync(join(githubRoot, "workflows", name), "utf8").matchAll(
-          /^\s*run:\s+(?:[A-Z_][A-Z0-9_]*=\S+\s+)*bun run --cwd packages\/ui (test:[^\s#]+)/gmu,
-        )].map((match) => match[1]),
-      );
-    const core = suites("ui-e2e-gate.yml");
-    const extended = suites("ui-fixture-e2e.yml");
-
-    expect([...core].filter((suite) => extended.has(suite))).toEqual([]);
-  });
 });

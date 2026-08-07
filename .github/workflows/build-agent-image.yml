@@ -1,9 +1,8 @@
 name: Build Agent Image
 
 # Single source of truth for the cloud-agent container image used by the
-# cloud sandbox provisioner. Three trigger surfaces:
+# cloud sandbox provisioner. Two trigger surfaces:
 #   - push to develop/main → :develop / :stable + :latest, plus :sha-<short>
-#   - GitHub release created → release tag (e.g. v2.0.0-alpha.176)
 #   - workflow_dispatch → manual canonical reruns or digest-preserving demo promotion
 # The previous release-only workflow (image.yaml) duplicated this entire
 # pre-build sequence; it's been deleted in favor of this consolidated build.
@@ -23,8 +22,6 @@ on:
       - "packages/cloud/sdk/**"
       - ".github/workflows/build-agent-image.yml"
       - ".dockerignore"
-  release:
-    types: [created]
   workflow_dispatch:
     inputs:
       publication_target:
@@ -44,10 +41,10 @@ env:
 
 # Default to least privilege. Override per-job where needed.
 # New develop images supersede older in-flight develop builds. Stable main,
-# release, and manual publications always finish because they publish durable
-# tags or operator-selected targets.
+# Manual publications always finish because they publish operator-selected
+# targets.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.release.id || github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'push' && github.ref == 'refs/heads/develop' }}
 
 permissions:
@@ -55,7 +52,7 @@ permissions:
 
 jobs:
   build-and-push:
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
       contents: read
@@ -256,15 +253,13 @@ jobs:
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
           # develop push  → :develop + :sha-<short>
           # main push     → :stable + :latest + :sha-<short>
-          # release       → the git tag verbatim (e.g. v2.0.0-alpha.176)
-          # Keeping :latest on main avoids breaking the four code sites that
+# Keeping :latest on main avoids breaking the four code sites that
           # still hardcode it (containers-env fallback, sandbox-provider
           # fallback, two test fixtures) until they migrate to :stable.
           tags: |
             type=raw,value=develop,enable=${{ github.ref == 'refs/heads/develop' }}
             type=raw,value=stable,enable=${{ github.ref == 'refs/heads/main' }}
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-            type=ref,event=tag
             type=sha,prefix=sha-,format=short
 
       # Build the image into the local Docker daemon first (load, do NOT push).

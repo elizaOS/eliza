@@ -205,16 +205,17 @@ export async function requireGenerativeRouteCaller(
           import("@/lib/middleware/rate-limit"),
           import("@/lib/services/inference-admission-snapshot"),
         ]);
+      const rateLimitConfig = inferenceRateLimitConfig(
+        resolution.ctx.admission,
+        options.rateLimitEndpoint,
+      );
       const limited = await enforceOrgRateLimit(
         resolution.ctx.orgId,
         options.rateLimitEndpoint,
         {
-          cacheOnly: true,
+          cacheOnly: rateLimitConfig !== undefined,
           executionCtx,
-          config: inferenceRateLimitConfig(
-            resolution.ctx.admission,
-            options.rateLimitEndpoint,
-          ),
+          config: rateLimitConfig,
         },
       );
       if (limited) {

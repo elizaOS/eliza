@@ -60,6 +60,9 @@ function listRepositoryFiles(repoRoot) {
   return output
     .split("\0")
     .filter(Boolean)
+    .filter((relativePath) =>
+      VIEW_CONFIG_BASENAME.test(path.posix.basename(relativePath)),
+    )
     .map(normalizeRelativePath)
     .sort(compareText);
 }

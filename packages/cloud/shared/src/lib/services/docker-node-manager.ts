@@ -67,8 +67,47 @@ const NODE_HEALTH_FAILURE_THRESHOLD = (() => {
 /** Per-node consecutive failed health checks. In-memory (see threshold docs). */
 const nodeHealthFailureState = new Map<string, number>();
 
+interface NodePlacementCircuitState {
+  consecutiveDockerTimeouts: number;
+  openUntilMs: number;
+  reason: string | null;
+}
+
+/**
+ * Per-node placement circuits. The provisioning worker is a single long-lived
+ * placement owner; process restart deliberately produces a clean slate and an
+ * immediate fresh readiness probe.
+ */
+const nodePlacementCircuitState = new Map<string, NodePlacementCircuitState>();
+
+const IO_PRESSURE_PROBE_TIMEOUT_MS = 5_000;
+
 export function __resetNodeHealthFailureStateForTests(): void {
   nodeHealthFailureState.clear();
+}
+
+export function __resetNodePlacementCircuitStateForTests(): void {
+  nodePlacementCircuitState.clear();
+}
+
+export function __getNodePlacementCircuitStateForTests(
+  nodeId: string,
+): NodePlacementCircuitState | undefined {
+  const state = nodePlacementCircuitState.get(nodeId);
+  return state ? { ...state } : undefined;
+}
+
+/** Parse Linux PSI's `full avg60` value from `/proc/pressure/io`. */
+export function parseIoPressureFullAvg60(output: string): number | null {
+  const fullLine = output
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.startsWith("full "));
+  if (!fullLine) return null;
+  const match = /(?:^|\s)avg60=([0-9]+(?:\.[0-9]+)?)(?:\s|$)/.exec(fullLine);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) && value >= 0 ? value : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -235,6 +274,16 @@ export class DockerNodeManager {
       .sort((a, b) => b.available - a.available);
 
     for (const candidate of candidates) {
+      if (this.isNodePlacementCircuitOpen(candidate.node.node_id)) {
+        const state = nodePlacementCircuitState.get(candidate.node.node_id);
+        logger.warn("[docker-node-manager] Skipping node with open placement circuit", {
+          nodeId: candidate.node.node_id,
+          hostname: candidate.node.hostname,
+          openUntil: state ? new Date(state.openUntilMs).toISOString() : null,
+          reason: state?.reason ?? "unknown",
+        });
+        continue;
+      }
       if (!isNodeMetadataCompatible(candidate.node, options.requiredPlatform)) {
         logger.warn("[docker-node-manager] Skipping node with incompatible architecture", {
           nodeId: candidate.node.node_id,
@@ -454,6 +503,7 @@ export class DockerNodeManager {
    * daemon are no longer valid.
    */
   async ensureNodeReady(node: DockerNode, options: NodeSelectionOptions = {}): Promise<boolean> {
+    if (this.isNodePlacementCircuitOpen(node.node_id)) return false;
     try {
       const ssh = this.sshClientForNode(node);
       await ssh.connect();
@@ -471,6 +521,21 @@ export class DockerNodeManager {
           });
           return false;
         }
+        const ioPressure = await this.probeNodeIoPressure(ssh, node);
+        const ioPressureThreshold = containersEnv.nodeIoPressureFullAvg60Threshold();
+        if (ioPressure !== null && ioPressure >= ioPressureThreshold) {
+          this.openNodePlacementCircuit(
+            node.node_id,
+            `I/O pressure full avg60=${ioPressure.toFixed(2)}% (threshold ${ioPressureThreshold}%)`,
+          );
+          logger.warn("[docker-node-manager] Node rejected by I/O-pressure readiness gate", {
+            nodeId: node.node_id,
+            hostname: node.hostname,
+            ioFullAvg60: ioPressure,
+            threshold: ioPressureThreshold,
+          });
+          return false;
+        }
         await dockerNodesRepository.updateStatus(node.node_id, "healthy");
         return true;
       }
@@ -485,6 +550,7 @@ export class DockerNodeManager {
       return false;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      this.recordNodeDockerCommandFailure(node.node_id, error);
       // See healthCheckNode for rationale: canonical nodes are never marked
       // offline from a transient ssh failure during scheduling.
       if (isAutoscaledNode(node)) {
@@ -501,6 +567,81 @@ export class DockerNodeManager {
       }
       logger.warn(`[docker-node-manager] Node ${node.node_id} is not reachable: ${message}`);
       return false;
+    }
+  }
+
+  /**
+   * Record one provisioning-path Docker/SSH command failure. Only the precise
+   * per-command timeout shape contributes to the circuit; application errors,
+   * registry failures, and remote non-zero exits do not quarantine a node.
+   */
+  recordNodeDockerCommandFailure(nodeId: string, error: unknown): boolean {
+    if (!isPrePullTimeoutError(error)) return false;
+    const current = nodePlacementCircuitState.get(nodeId) ?? {
+      consecutiveDockerTimeouts: 0,
+      openUntilMs: 0,
+      reason: null,
+    };
+    current.consecutiveDockerTimeouts += 1;
+    const threshold = containersEnv.nodeDockerTimeoutFailureThreshold();
+    if (current.consecutiveDockerTimeouts >= threshold) {
+      current.openUntilMs = Date.now() + containersEnv.nodeCircuitBreakerCooldownMs();
+      current.reason = `Docker command timeout (${current.consecutiveDockerTimeouts} consecutive)`;
+      logger.error("[docker-node-manager] Opening node placement circuit after Docker timeouts", {
+        nodeId,
+        consecutiveTimeouts: current.consecutiveDockerTimeouts,
+        threshold,
+        openUntil: new Date(current.openUntilMs).toISOString(),
+      });
+    }
+    nodePlacementCircuitState.set(nodeId, current);
+    return true;
+  }
+
+  /** A completed create+start proves the node recovered and closes its circuit. */
+  recordNodeProvisionSuccess(nodeId: string): void {
+    nodePlacementCircuitState.delete(nodeId);
+  }
+
+  private isNodePlacementCircuitOpen(nodeId: string): boolean {
+    const state = nodePlacementCircuitState.get(nodeId);
+    return Boolean(state && state.openUntilMs > Date.now());
+  }
+
+  private openNodePlacementCircuit(nodeId: string, reason: string): void {
+    const current = nodePlacementCircuitState.get(nodeId) ?? {
+      consecutiveDockerTimeouts: 0,
+      openUntilMs: 0,
+      reason: null,
+    };
+    current.openUntilMs = Date.now() + containersEnv.nodeCircuitBreakerCooldownMs();
+    current.reason = reason;
+    nodePlacementCircuitState.set(nodeId, current);
+  }
+
+  /**
+   * Probe Linux Pressure Stall Information after Docker responds. Kernels
+   * without PSI (or a transient read failure) return null and remain eligible;
+   * Docker reachability still owns the hard readiness verdict.
+   */
+  private async probeNodeIoPressure(
+    ssh: DockerSSHClient,
+    node: DockerNode,
+  ): Promise<number | null> {
+    try {
+      const output = await ssh.exec("cat /proc/pressure/io", IO_PRESSURE_PROBE_TIMEOUT_MS);
+      return parseIoPressureFullAvg60(output);
+    } catch (error) {
+      if (isPrePullTimeoutError(error)) throw error;
+      // error-policy:J4 an unavailable optional kernel metric degrades to the
+      // existing Docker readiness signal and is visibly logged. A timeout is
+      // not optional-metric absence: it rethrows above and rejects readiness.
+      logger.warn("[docker-node-manager] I/O-pressure probe unavailable", {
+        nodeId: node.node_id,
+        hostname: node.hostname,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
     }
   }
 

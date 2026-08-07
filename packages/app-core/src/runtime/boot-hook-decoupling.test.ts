@@ -1,4 +1,5 @@
 /**
+<<<<<<< HEAD
  * Grep-guard for arch-audit #12089 item 18: the boot tail no longer hard-wires
  * plugin-local-inference internals at fixed init points. The pre-ready
  * local-inference boot (mobile-gate warning + platform-appropriate model-handler
@@ -7,6 +8,12 @@
  * channel (`runBootHooks` / `drainBootHookContributors`). This statically scans
  * the runtime host and contributor module to prove the old fixed-point coupling
  * is gone from the executable path. Runs against the real source tree, no mocks.
+=======
+ * Static integration guard for the registry-driven pre-ready hook channel. It
+ * proves the shared agent host owns the single drain point and app-core does
+ * not hardcode a feature plugin into executable startup code. The shared host
+ * retains one explicit fallback for packaged builds with no staged registry.
+>>>>>>> 6f9fa8ef572 (fix(ci): repair post-merge workflow regressions)
  */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -49,11 +56,33 @@ describe("boot-tail local-inference decoupling (arch-audit #12089 item 18)", () 
     expect(body).not.toContain("warnIfMobileGateActiveWithoutPlatform(");
   });
 
+<<<<<<< HEAD
   it("resolves boot-hook contributors from the registry by data, naming no plugin", () => {
     const source = readFileSync(APP_CONTRIBUTORS_TS, "utf8");
     // The contributor resolver scans the registry (apps + plugins) for a
     // declared `bootHook` — data-driven, no hard-wired specifier.
     expect(source).toContain("entry.launch?.bootHook");
     expect(source).toContain("getBootHookContributors");
+=======
+  it("does not drain the same hook again during app-core repair", () => {
+    const source = readFileSync(APP_RUNTIME_HOST_TS, "utf8");
+    const repairBody = functionBody(
+      source,
+      "export async function repairRuntimeAfterBoot(",
+    );
+
+    expect(repairBody).not.toContain("runBootHooks(runtime)");
+    expect(repairBody).not.toContain("registerLocalInferenceBoot");
+  });
+
+  it("resolves registry hooks and retains the packaged local-inference fallback", () => {
+    const source = readFileSync(AGENT_BOOT_HOOKS_TS, "utf8");
+
+    expect(source).toContain("entry.launch?.bootHook");
+    expect(source).toContain("getBootHookContributors");
+    expect(source).toContain("FALLBACK_BOOT_HOOK_DECLARATIONS");
+    expect(source).toContain("@elizaos/plugin-local-inference/runtime");
+    expect(source).toContain("registerLocalInferenceBoot");
+>>>>>>> 6f9fa8ef572 (fix(ci): repair post-merge workflow regressions)
   });
 });

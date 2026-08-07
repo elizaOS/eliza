@@ -306,6 +306,7 @@ interface ProxyOptions extends ForwardOptions {
   // trust header is ALWAYS stripped regardless, so a client can never inject it
   // — even on the Discord path, which never stamps.
   stampGatewaySecret?: boolean;
+  headerOverrides?: Readonly<Record<string, string>>;
 }
 
 async function proxyRequest(
@@ -334,6 +335,9 @@ async function proxyRequest(
     if (gatewaySecret) {
       headers.set(GATEWAY_SECRET_HEADER, gatewaySecret);
     }
+  }
+  for (const [name, value] of Object.entries(options.headerOverrides ?? {})) {
+    headers.set(name, value);
   }
 
   try {
@@ -408,10 +412,37 @@ export async function forwardToWebhookGateway(
   target.pathname = `/webhook/${encodeURIComponent(project)}/${platform}${suffix}`;
   target.search = sourceUrl.search;
 
+  const headerOverrides: Record<string, string> = {};
+  if (platform === "twilio") {
+    const secret = platformSecret(c, platform);
+    const body = validation.body ?? "";
+    if (secret) {
+      // Twilio signs the complete public webhook URL. The BFF changes the path
+      // from /api/eliza-app/webhook/twilio to /webhook/eliza-app/twilio, so the
+      // original signature cannot pass the gateway's second verification. The
+      // edge has already authenticated that signature; re-sign the exact URL
+      // the gateway reconstructs from X-Forwarded-Host/Proto plus its route.
+      const gatewayVerificationUrl = new URL(target);
+      gatewayVerificationUrl.protocol = sourceUrl.protocol;
+      gatewayVerificationUrl.host = sourceUrl.host;
+      const params = new URLSearchParams(body);
+      const sorted = Array.from(params.entries())
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, value]) => `${key}${value}`)
+        .join("");
+      headerOverrides["x-twilio-signature"] = await hmacBase64(
+        secret,
+        `${gatewayVerificationUrl.toString()}${sorted}`,
+        "SHA-1",
+      );
+    }
+  }
+
   return proxyRequest(c, target, "webhook gateway", {
     ...options,
     body: options.body ?? validation.body,
     stampGatewaySecret: true,
+    headerOverrides,
   });
 }
 

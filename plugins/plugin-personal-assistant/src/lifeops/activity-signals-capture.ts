@@ -229,11 +229,16 @@ export function startLifeOpsActivitySignalCapture(enabled = true): () => void {
     error.status === 503 &&
     error.path === "/api/lifeops/activity-signals";
 
+  const isSessionUnavailableError = (error: unknown): boolean =>
+    isApiError(error) &&
+    error.kind === "http" &&
+    (error.status === 401 || error.status === 403);
+
   const isExpectedTransientError = (error: unknown): boolean =>
     isApiError(error) && (error.kind === "network" || error.kind === "timeout");
 
   const reportCaptureError = (error: unknown): void => {
-    if (isRuntimeUnavailableError(error)) {
+    if (isRuntimeUnavailableError(error) || isSessionUnavailableError(error)) {
       standDownActivitySignals();
       return;
     }
@@ -258,7 +263,10 @@ export function startLifeOpsActivitySignalCapture(enabled = true): () => void {
     isApiError(error) &&
     (error.kind === "network" ||
       error.kind === "timeout" ||
-      (error.kind === "http" && error.status === 503));
+      (error.kind === "http" &&
+        (error.status === 401 ||
+          error.status === 403 ||
+          error.status === 503)));
 
   const refreshRuntimeReady = async (): Promise<boolean> => {
     try {
@@ -306,7 +314,10 @@ export function startLifeOpsActivitySignalCapture(enabled = true): () => void {
       return persisted;
     } catch (error) {
       lastSent.delete(dedupeKey);
-      if (isRuntimeUnavailableError(error)) {
+      if (
+        isRuntimeUnavailableError(error) ||
+        isSessionUnavailableError(error)
+      ) {
         standDownActivitySignals();
         return null;
       }

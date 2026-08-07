@@ -351,7 +351,7 @@ export const useSkillAction: Action = {
 		"Invoke an enabled skill by slug. The skill's instructions or script run and the result returns to the conversation.",
 	descriptionCompressed: "Invoke an enabled skill by slug.",
 	routingHint:
-		"invoke an already-enabled agent skill by slug -> USE_SKILL; do NOT use to call an external MCP tool -> MCP (action=call_tool), or to search/install/toggle the skill catalog -> SKILL",
+		"invoke an already-enabled agent skill by slug -> USE_SKILL; do NOT use to call an external MCP tool -> MCP (action=call_tool), or to toggle/uninstall a managed skill -> SKILL",
 	parameters: USE_SKILL_PARAMETERS,
 
 	validate: async (runtime: IAgentRuntime): Promise<boolean> => {
@@ -403,7 +403,7 @@ export const useSkillAction: Action = {
 			const errorText =
 				`Skill \`${rawSlug}\` is not installed. ` +
 				`Installed skills: ${installed.join(", ") || "(none)"}. ` +
-				`Use SKILL op=install to install a skill from the registry.`;
+				`Install it directly from GitHub or add it to a configured skill directory.`;
 			if (callback) await callback({ text: errorText });
 			return { success: false, error: new Error(errorText) };
 		}

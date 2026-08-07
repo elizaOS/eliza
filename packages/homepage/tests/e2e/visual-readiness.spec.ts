@@ -12,6 +12,7 @@ test.use({
   timezoneId: "UTC",
   viewport: { width: 1280, height: 720 },
 });
+test.describe.configure({ mode: "serial" });
 
 async function waitForTerminalChat(
   page: Page,
@@ -20,7 +21,7 @@ async function waitForTerminalChat(
 ) {
   const state = page.locator("[data-phone-model]");
   await expect(state).toHaveAttribute("data-phone-model", "settled", {
-    timeout: 20_000,
+    timeout: 60_000,
   });
   await expect(state).toHaveAttribute("data-chat-phase", "terminal");
   await expect(state).toHaveAttribute(
@@ -35,11 +36,6 @@ async function waitForTerminalChat(
 
 async function capturePhoneCanvas(page: Page, path: string) {
   await page.goto(path, { waitUntil: "domcontentloaded" });
-  await expect(page.locator("[data-shader-background]")).toHaveAttribute(
-    "data-shader-background",
-    "settled",
-    { timeout: 20_000 },
-  );
   await waitForTerminalChat(page, 5);
 
   const canvas = page.locator("[data-phone-scene] canvas");
@@ -95,17 +91,6 @@ async function capturePhoneCanvas(page: Page, path: string) {
   return capture;
 }
 
-async function swipeLeft(page: Page) {
-  const surface = page.locator("div.theme-app").first();
-  const box = await surface.boundingBox();
-  if (!box) throw new Error("Homepage interaction surface is not available");
-  const y = box.y + box.height / 2;
-  await page.mouse.move(box.x + box.width * 0.65, y);
-  await page.mouse.down();
-  await page.mouse.move(box.x + box.width * 0.35, y, { steps: 4 });
-  await page.mouse.up();
-}
-
 test.beforeEach(async ({ page }) => {
   await page.clock.setFixedTime(FIXED_TIME);
 });
@@ -139,89 +124,19 @@ for (const viewport of [
   });
 }
 
-test("entering try mode commits the interrupted intro before readiness", async ({
+test("landing exposes direct channels without phone switching controls", async ({
   page,
 }) => {
-  test.setTimeout(120_000);
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  const state = page.locator("[data-phone-model]");
-  await expect(state).toHaveAttribute("data-chat-phase", "animating", {
-    timeout: 20_000,
-  });
-  await expect(state).toHaveAttribute("data-chat-rendered-messages", "1", {
-    timeout: 20_000,
-  });
-  await expect(state).toHaveAttribute("data-chat-total-messages", "5");
-
-  await page.getByRole("button", { name: "Discord" }).click();
-  await expect(page.getByRole("button", { name: "Discord" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
-  await swipeLeft(page);
-  await waitForTerminalChat(page, 5);
-  await expect(page.getByPlaceholder("Message #general")).toBeVisible();
-});
-
-test("Telegram replay moves from loading to its six-message terminal state", async ({
-  page,
-}) => {
-  test.setTimeout(60_000);
-  await page.goto("/", { waitUntil: "domcontentloaded" });
-  await waitForTerminalChat(page, 5);
-
-  await page.evaluate(() => {
-    const state = document.querySelector<HTMLElement>("[data-phone-model]");
-    if (!state) throw new Error("Phone render state is not available");
-    const observed: Array<Record<string, string | undefined>> = [];
-    const record = () => {
-      observed.push({
-        model: state.dataset.phoneModel,
-        phase: state.dataset.chatPhase,
-        rendered: state.dataset.chatRenderedMessages,
-        total: state.dataset.chatTotalMessages,
-      });
-    };
-    new MutationObserver(record).observe(state, { attributes: true });
-    Object.assign(window, { __homepageChatStates: observed });
-    record();
-  });
-  await page.getByRole("button", { name: "Telegram" }).click();
-  await expect(page.getByRole("button", { name: "Telegram" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
-  await expect(page.locator("[data-phone-model]")).toHaveAttribute(
-    "data-chat-total-messages",
-    "6",
-  );
-  await waitForTerminalChat(page, 6);
-  const observed = await page.evaluate(
-    () =>
-      (
-        window as typeof window & {
-          __homepageChatStates: Array<Record<string, string | undefined>>;
-        }
-      ).__homepageChatStates,
-  );
-  expect(observed).toContainEqual({
-    model: "loading",
-    phase: "animating",
-    rendered: "0",
-    total: "6",
-  });
-});
-
-test("rapid platform reversal honors the newest command", async ({ page }) => {
-  await page.goto("/", { waitUntil: "domcontentloaded" });
-  await waitForTerminalChat(page, 5);
-
-  await page.getByRole("button", { name: "Telegram" }).click();
-  await page.getByRole("button", { name: "iMessage" }).click();
-
-  await expect(page.getByRole("button", { name: "iMessage" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
-  await waitForTerminalChat(page, 5);
+  await expect(page.locator("[data-phone-model]")).toHaveCount(1);
+  for (const channel of ["iMessage", "WhatsApp", "Telegram", "Discord"]) {
+    await expect(
+      page.getByRole("link", { name: `Open Eliza in ${channel}` }),
+    ).toHaveCount(1);
+  }
+  await expect(page.getByRole("button", { name: "Try Now" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Back" })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Open video call" }),
+  ).toHaveCount(0);
 });

@@ -1,6 +1,6 @@
 /**
  * HTTP route handlers for the skill-management surface mounted under
- * /api/skills/*: workspace/marketplace skill CRUD, catalog install/uninstall,
+ * /api/skills/*: workspace skill CRUD, direct GitHub installation,
  * security-scan acknowledgement, and enable/disable persistence. The agent's
  * HTTP server dispatches to these via `handleSkillsRoutes`.
  *
@@ -17,22 +17,12 @@ import type { AgentRuntime } from "@elizaos/core";
 import { logger, readWorkspaceFolderConfig } from "@elizaos/core";
 import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import {
-  PostMarketplaceInstallRequestSchema,
-  PostMarketplaceUninstallRequestSchema,
   PostSkillAcknowledgeRequestSchema,
-  PostSkillCatalogInstallRequestSchema,
-  PostSkillCatalogUninstallRequestSchema,
   PostSkillCreateRequestSchema,
+  PostSkillInstallRequestSchema,
   PutSkillSourceRequestSchema,
-  parseClampedInteger,
   readAliasedEnv,
 } from "@elizaos/shared";
-import {
-  installMarketplaceSkill,
-  listInstalledMarketplaceSkills,
-  searchSkillsMarketplace,
-  uninstallMarketplaceSkill,
-} from "../services/skill-marketplace";
 import { skillScaffoldMarkdown } from "./skill-scaffold";
 
 const WORKSPACE_MARKERS = [
@@ -190,36 +180,6 @@ function validateSkillId(
 }
 
 // ---------------------------------------------------------------------------
-// Binance skill filtering
-// ---------------------------------------------------------------------------
-
-const EXPOSED_BINANCE_SKILL_IDS = new Set([
-  "binance-crypto-market-rank",
-  "binance-meme-rush",
-  "binance-query-address-info",
-  "binance-query-token-audit",
-  "binance-query-token-info",
-  "binance-trading-signal",
-]);
-
-function shouldExposeBinanceSkillId(skillId: string): boolean {
-  const normalized = skillId.trim();
-  if (!normalized.startsWith("binance-")) return true;
-  return EXPOSED_BINANCE_SKILL_IDS.has(normalized);
-}
-
-function shouldExposeBinanceSkillRecord(skill: {
-  id?: unknown;
-  slug?: unknown;
-}): boolean {
-  const slug = typeof skill.slug === "string" ? skill.slug.trim() : "";
-  if (slug) return shouldExposeBinanceSkillId(slug);
-  const id = typeof skill.id === "string" ? skill.id.trim() : "";
-  if (id) return shouldExposeBinanceSkillId(id);
-  return true;
-}
-
-// ---------------------------------------------------------------------------
 // Skill preferences (per-agent, persisted in agent database)
 // ---------------------------------------------------------------------------
 
@@ -300,13 +260,6 @@ async function loadScanReportFromDisk(
 ): Promise<Record<string, unknown> | null> {
   const candidates = [
     path.join(workspaceDir, "skills", skillId, ".scan-results.json"),
-    path.join(
-      workspaceDir,
-      "skills",
-      ".marketplace",
-      skillId,
-      ".scan-results.json",
-    ),
   ];
 
   if (runtime) {
@@ -360,7 +313,6 @@ export async function handleSkillsRoutes(
     res,
     method,
     pathname,
-    url,
     state,
     json,
     error,
@@ -368,185 +320,11 @@ export async function handleSkillsRoutes(
     discoverSkills,
   } = ctx;
 
-  // ── GET /api/skills/catalog ───────────────────────────────────────────
-  // Browse the full skill catalog (paginated).
-  if (method === "GET" && pathname === "/api/skills/catalog") {
-    try {
-      const { getCatalogSkills } = await import(
-        "../services/skill-catalog-client"
-      );
-      const all = (await getCatalogSkills()).filter((skill) =>
-        shouldExposeBinanceSkillRecord(skill),
-      );
-      const page = Math.max(1, Number(url.searchParams.get("page")) || 1);
-      const perPage = Math.min(
-        100,
-        Math.max(1, Number(url.searchParams.get("perPage")) || 50),
-      );
-      const sort = url.searchParams.get("sort") ?? "downloads";
-      const sorted = [...all];
-      if (sort === "downloads")
-        sorted.sort(
-          (a, b) =>
-            b.stats.downloads - a.stats.downloads || b.updatedAt - a.updatedAt,
-        );
-      else if (sort === "stars")
-        sorted.sort(
-          (a, b) => b.stats.stars - a.stats.stars || b.updatedAt - a.updatedAt,
-        );
-      else if (sort === "updated")
-        sorted.sort((a, b) => b.updatedAt - a.updatedAt);
-      else if (sort === "name")
-        sorted.sort((a, b) =>
-          (a.displayName).localeCompare(b.displayName),
-        );
-
-      // Resolve installed status from the AgentSkillsService
-      const installedSlugs = new Set<string>();
-      if (state.runtime) {
-        try {
-          const svc = state.runtime.getService("AGENT_SKILLS_SERVICE") as
-            | {
-                getLoadedSkills?: () => Array<{ slug: string; source: string }>;
-              }
-            | undefined;
-          if (svc && typeof svc.getLoadedSkills === "function") {
-            for (const s of svc.getLoadedSkills()) {
-              if (!shouldExposeBinanceSkillId(s.slug)) continue;
-              installedSlugs.add(s.slug);
-            }
-          }
-        } catch (err) {
-          logger.debug(
-            `[api] Service not available: ${err instanceof Error ? err.message : err}`,
-          );
-        }
-      }
-      // Also check locally discovered skills
-      for (const s of state.skills) {
-        installedSlugs.add(s.id);
-      }
-
-      const start = (page - 1) * perPage;
-      const skills = sorted.slice(start, start + perPage).map((s) => ({
-        ...s,
-        installed: installedSlugs.has(s.slug),
-      }));
-      json(res, {
-        total: all.length,
-        page,
-        perPage,
-        totalPages: Math.ceil(all.length / perPage),
-        installedCount: installedSlugs.size,
-        skills,
-      });
-    } catch (err) {
-      error(
-        res,
-        `Failed to load skill catalog: ${err instanceof Error ? err.message : String(err)}`,
-        500,
-      );
-    }
-    return true;
-  }
-
-  // ── GET /api/skills/catalog/search ─────────────────────────────────────
-  if (method === "GET" && pathname === "/api/skills/catalog/search") {
-    const q = url.searchParams.get("q");
-    if (!q) {
-      error(res, "Missing query parameter ?q=", 400);
-      return true;
-    }
-    try {
-      const { searchCatalogSkills } = await import(
-        "../services/skill-catalog-client"
-      );
-      const limit = Math.min(
-        100,
-        Math.max(1, Number(url.searchParams.get("limit")) || 30),
-      );
-      const results = (await searchCatalogSkills(q, limit)).filter((skill) =>
-        shouldExposeBinanceSkillRecord(skill),
-      );
-      json(res, { query: q, count: results.length, results });
-    } catch (err) {
-      error(
-        res,
-        `Skill catalog search failed: ${err instanceof Error ? err.message : String(err)}`,
-        500,
-      );
-    }
-    return true;
-  }
-
-  // ── GET /api/skills/catalog/:slug ──────────────────────────────────────
-  if (method === "GET" && pathname.startsWith("/api/skills/catalog/")) {
-    const slug = decodeURIComponent(
-      pathname.slice("/api/skills/catalog/".length),
-    );
-    // Exclude "search" which is handled above
-    if (slug && slug !== "search") {
-      if (!shouldExposeBinanceSkillId(slug)) {
-        error(res, `Skill "${slug}" not found in catalog`, 404);
-        return true;
-      }
-      try {
-        const { getCatalogSkill } = await import(
-          "../services/skill-catalog-client"
-        );
-        const skill = await getCatalogSkill(slug);
-        if (!skill) {
-          error(res, `Skill "${slug}" not found in catalog`, 404);
-          return true;
-        }
-        json(res, { skill });
-      } catch (err) {
-        error(
-          res,
-          `Failed to fetch skill: ${err instanceof Error ? err.message : String(err)}`,
-          500,
-        );
-      }
-      return true;
-    }
-  }
-
-  // ── POST /api/skills/catalog/refresh ───────────────────────────────────
-  // First triggers the remote registry sync (via AgentSkillsService), then
-  // re-reads the local catalog file. This ensures the UI gets fresh data
-  // from the remote marketplace (clawhub.ai or configured registryUrl).
-  if (method === "POST" && pathname === "/api/skills/catalog/refresh") {
-    try {
-      // Trigger remote sync if the runtime + skills service are available
-      if (state.runtime) {
-        const svc = state.runtime.getService("AGENT_SKILLS_SERVICE") as
-          | { syncCatalog?: () => Promise<unknown> }
-          | undefined;
-        if (svc?.syncCatalog) {
-          await svc.syncCatalog();
-        }
-      }
-      // Then re-read the now-updated local catalog file
-      const { refreshCatalog } = await import(
-        "../services/skill-catalog-client"
-      );
-      const skills = await refreshCatalog();
-      json(res, { ok: true, count: skills.length });
-    } catch (err) {
-      error(
-        res,
-        `Catalog refresh failed: ${err instanceof Error ? err.message : String(err)}`,
-        500,
-      );
-    }
-    return true;
-  }
-
-  // ── POST /api/skills/catalog/install ───────────────────────────────────
-  if (method === "POST" && pathname === "/api/skills/catalog/install") {
+  // ── POST /api/skills/install ──────────────────────────────────────────
+  if (method === "POST" && pathname === "/api/skills/install") {
     const raw = await readJsonBody<Record<string, unknown>>(req, res);
     if (raw === null) return true;
-    const parsed = PostSkillCatalogInstallRequestSchema.safeParse(raw);
+    const parsed = PostSkillInstallRequestSchema.safeParse(raw);
     if (!parsed.success) {
       error(
         res,
@@ -555,8 +333,6 @@ export async function handleSkillsRoutes(
       );
       return true;
     }
-    const body = parsed.data;
-
     if (!state.runtime) {
       error(res, "Agent runtime not available — start the agent first", 503);
       return true;
@@ -565,15 +341,11 @@ export async function handleSkillsRoutes(
     try {
       const service = state.runtime.getService("AGENT_SKILLS_SERVICE") as
         | {
-            install?: (
-              slug: string,
-              opts?: { version?: string; force?: boolean },
-            ) => Promise<boolean>;
-            isInstalled?: (slug: string) => Promise<boolean>;
+            installFromGitHub?: (githubUrl: string) => Promise<boolean>;
           }
         | undefined;
 
-      if (!service || typeof service.install !== "function") {
+      if (!service || typeof service.installFromGitHub !== "function") {
         error(
           res,
           "AgentSkillsService not available — ensure @elizaos/plugin-agent-skills is loaded",
@@ -582,24 +354,7 @@ export async function handleSkillsRoutes(
         return true;
       }
 
-      const alreadyInstalled =
-        typeof service.isInstalled === "function"
-          ? await service.isInstalled(body.slug)
-          : false;
-
-      if (alreadyInstalled) {
-        json(res, {
-          ok: true,
-          slug: body.slug,
-          message: `Skill "${body.slug}" is already installed`,
-          alreadyInstalled: true,
-        });
-        return true;
-      }
-
-      const success = await service.install(body.slug, {
-        version: body.version,
-      });
+      const success = await service.installFromGitHub(parsed.data.githubUrl);
 
       if (success) {
         // Refresh the skills list so the UI picks up the new skill
@@ -614,87 +369,16 @@ export async function handleSkillsRoutes(
 
         json(res, {
           ok: true,
-          slug: body.slug,
-          message: `Skill "${body.slug}" installed successfully`,
+          message: "Skill installed from GitHub",
         });
       } else {
-        error(res, `Failed to install skill "${body.slug}"`, 500);
+        error(res, "Failed to install skill from GitHub", 500);
       }
     } catch (err) {
+      // error-policy:J1 The HTTP boundary returns an explicit install failure.
       error(
         res,
         `Skill install failed: ${err instanceof Error ? err.message : String(err)}`,
-        500,
-      );
-    }
-    return true;
-  }
-
-  // ── POST /api/skills/catalog/uninstall ─────────────────────────────────
-  if (method === "POST" && pathname === "/api/skills/catalog/uninstall") {
-    const raw = await readJsonBody<Record<string, unknown>>(req, res);
-    if (raw === null) return true;
-    const parsed = PostSkillCatalogUninstallRequestSchema.safeParse(raw);
-    if (!parsed.success) {
-      error(
-        res,
-        parsed.error.issues[0]?.message ?? "Invalid request body",
-        400,
-      );
-      return true;
-    }
-    const body = parsed.data;
-
-    if (!state.runtime) {
-      error(res, "Agent runtime not available — start the agent first", 503);
-      return true;
-    }
-
-    try {
-      const service = state.runtime.getService("AGENT_SKILLS_SERVICE") as
-        | {
-            uninstall?: (slug: string) => Promise<boolean>;
-          }
-        | undefined;
-
-      if (!service || typeof service.uninstall !== "function") {
-        error(
-          res,
-          "AgentSkillsService not available — ensure @elizaos/plugin-agent-skills is loaded",
-          501,
-        );
-        return true;
-      }
-
-      const success = await service.uninstall(body.slug);
-
-      if (success) {
-        // Refresh the skills list
-        const workspaceDir =
-          state.config.agents?.defaults?.workspace ??
-          resolveDefaultAgentWorkspaceDir();
-        state.skills = await discoverSkills(
-          workspaceDir,
-          state.config,
-          state.runtime,
-        );
-
-        json(res, {
-          ok: true,
-          slug: body.slug,
-          message: `Skill "${body.slug}" uninstalled successfully`,
-        });
-      } else {
-        error(
-          res,
-          `Failed to uninstall skill "${body.slug}" — it may be a bundled skill`,
-          400,
-        );
-      }
-    } catch (err) {
-      error(
-        res,
-        `Skill uninstall failed: ${err instanceof Error ? err.message : String(err)}`,
         500,
       );
     }
@@ -917,10 +601,7 @@ export async function handleSkillsRoutes(
       state.config.agents?.defaults?.workspace ??
       resolveDefaultAgentWorkspaceDir();
 
-    const candidates = [
-      path.join(workspaceDir, "skills", skillId),
-      path.join(workspaceDir, "skills", ".marketplace", skillId),
-    ];
+    const candidates = [path.join(workspaceDir, "skills", skillId)];
     let skillPath: string | null = null;
     for (const c of candidates) {
       if (fs.existsSync(path.join(c, "SKILL.md"))) {
@@ -999,10 +680,7 @@ export async function handleSkillsRoutes(
       state.config.agents?.defaults?.workspace ??
       resolveDefaultAgentWorkspaceDir();
 
-    const candidates = [
-      path.join(workspaceDir, "skills", skillId),
-      path.join(workspaceDir, "skills", ".marketplace", skillId),
-    ];
+    const candidates = [path.join(workspaceDir, "skills", skillId)];
     let skillMdPath: string | null = null;
     for (const c of candidates) {
       const md = path.join(c, "SKILL.md");
@@ -1192,10 +870,7 @@ export async function handleSkillsRoutes(
       state.config.agents?.defaults?.workspace ??
       resolveDefaultAgentWorkspaceDir();
 
-    const candidates = [
-      path.join(workspaceDir, "skills", skillId),
-      path.join(workspaceDir, "skills", ".marketplace", skillId),
-    ];
+    const candidates = [path.join(workspaceDir, "skills", skillId)];
     let skillMdPath: string | null = null;
     for (const c of candidates) {
       const md = path.join(c, "SKILL.md");
@@ -1264,11 +939,7 @@ export async function handleSkillsRoutes(
   }
 
   // ── DELETE /api/skills/:id ────────────────────────────────────────────
-  if (
-    method === "DELETE" &&
-    pathname.match(/^\/api\/skills\/[^/]+$/) &&
-    !pathname.includes("/marketplace")
-  ) {
+  if (method === "DELETE" && pathname.match(/^\/api\/skills\/[^/]+$/)) {
     const skillId = validateSkillId(
       decodeURIComponent(pathname.slice("/api/skills/".length)),
       res,
@@ -1280,7 +951,6 @@ export async function handleSkillsRoutes(
       resolveDefaultAgentWorkspaceDir();
 
     const wsDir = path.join(workspaceDir, "skills", skillId);
-    const mpDir = path.join(workspaceDir, "skills", ".marketplace", skillId);
     let deleted = false;
     let source = "";
 
@@ -1288,22 +958,6 @@ export async function handleSkillsRoutes(
       fs.rmSync(wsDir, { recursive: true, force: true });
       deleted = true;
       source = "workspace";
-    } else if (fs.existsSync(path.join(mpDir, "SKILL.md"))) {
-      try {
-        const { uninstallMarketplaceSkill: uninstallMp } = await import(
-          "../services/skill-marketplace"
-        );
-        await uninstallMp(workspaceDir, skillId);
-        deleted = true;
-        source = "marketplace";
-      } catch (err) {
-        error(
-          res,
-          `Failed to uninstall: ${err instanceof Error ? err.message : String(err)}`,
-          500,
-        );
-        return true;
-      }
     } else if (state.runtime) {
       try {
         const svc = state.runtime.getService("AGENT_SKILLS_SERVICE") as
@@ -1311,7 +965,7 @@ export async function handleSkillsRoutes(
           | undefined;
         if (svc?.uninstall) {
           deleted = await svc.uninstall(skillId);
-          source = "catalog";
+          source = "managed";
         }
       } catch (err) {
         logger.debug(
@@ -1343,214 +997,6 @@ export async function handleSkillsRoutes(
       await saveSkillAcknowledgments(state.runtime, acks);
     }
     json(res, { ok: true, skillId, source });
-    return true;
-  }
-
-  // ── GET /api/skills/marketplace/search ─────────────────────────────────
-  if (method === "GET" && pathname === "/api/skills/marketplace/search") {
-    const query = url.searchParams.get("q") ?? "";
-    if (!query.trim()) {
-      error(res, "Query parameter 'q' is required", 400);
-      return true;
-    }
-    try {
-      const limitStr = url.searchParams.get("limit");
-      const limit = limitStr
-        ? parseClampedInteger(limitStr, { min: 1, max: 50, fallback: 20 })
-        : 20;
-      const results = (await searchSkillsMarketplace(query, { limit })).filter(
-        (skill) => shouldExposeBinanceSkillRecord(skill),
-      );
-      json(res, { ok: true, results });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      error(res, msg, 502);
-    }
-    return true;
-  }
-
-  // ── GET /api/skills/marketplace/installed ─────────────────────────────
-  if (method === "GET" && pathname === "/api/skills/marketplace/installed") {
-    try {
-      const workspaceDir =
-        state.config.agents?.defaults?.workspace ??
-        resolveDefaultAgentWorkspaceDir();
-      const installed = await listInstalledMarketplaceSkills(workspaceDir);
-      json(res, { ok: true, skills: installed });
-    } catch (err) {
-      error(
-        res,
-        `Failed to list installed skills: ${err instanceof Error ? err.message : err}`,
-        500,
-      );
-    }
-    return true;
-  }
-
-  // ── POST /api/skills/marketplace/install ──────────────────────────────
-  if (method === "POST" && pathname === "/api/skills/marketplace/install") {
-    const rawMpInstall = await readJsonBody<Record<string, unknown>>(req, res);
-    if (rawMpInstall === null) return true;
-    const parsedMpInstall =
-      PostMarketplaceInstallRequestSchema.safeParse(rawMpInstall);
-    if (!parsedMpInstall.success) {
-      error(
-        res,
-        parsedMpInstall.error.issues[0]?.message ?? "Invalid request body",
-        400,
-      );
-      return true;
-    }
-    const body = parsedMpInstall.data;
-
-    const slug = body.slug ?? "";
-    const githubUrl = body.githubUrl ?? "";
-    const repository = body.repository ?? "";
-
-    try {
-      const workspaceDir =
-        state.config.agents?.defaults?.workspace ??
-        resolveDefaultAgentWorkspaceDir();
-
-      // ClawHub-native install path (slug-based via AgentSkillsService).
-      if (slug && !githubUrl && !repository) {
-        if (!state.runtime) {
-          error(
-            res,
-            "Agent runtime not available — start the agent first",
-            503,
-          );
-          return true;
-        }
-
-        const service = state.runtime.getService("AGENT_SKILLS_SERVICE") as
-          | {
-              install?: (
-                skillSlug: string,
-                opts?: { version?: string; force?: boolean },
-              ) => Promise<boolean>;
-              isInstalled?: (skillSlug: string) => Promise<boolean>;
-            }
-          | undefined;
-
-        if (!service || typeof service.install !== "function") {
-          error(
-            res,
-            "AgentSkillsService not available — ensure @elizaos/plugin-agent-skills is loaded",
-            501,
-          );
-          return true;
-        }
-
-        const alreadyInstalled =
-          typeof service.isInstalled === "function"
-            ? await service.isInstalled(slug)
-            : false;
-
-        if (alreadyInstalled) {
-          json(res, {
-            ok: true,
-            skill: {
-              id: slug,
-              name: body.name ?? slug,
-              source: "clawhub",
-              installedAt: new Date().toISOString(),
-            },
-            alreadyInstalled: true,
-          });
-          return true;
-        }
-
-        const success = await service.install(slug);
-        if (!success) {
-          error(res, `Failed to install skill "${slug}"`, 500);
-          return true;
-        }
-
-        state.skills = await discoverSkills(
-          workspaceDir,
-          state.config,
-          state.runtime,
-        );
-
-        json(res, {
-          ok: true,
-          skill: {
-            id: slug,
-            name: body.name?.trim() || slug,
-            source: "clawhub",
-            installedAt: new Date().toISOString(),
-          },
-        });
-      } else {
-        const result = await installMarketplaceSkill(workspaceDir, {
-          githubUrl: body.githubUrl,
-          repository: body.repository,
-          path: body.path,
-          name: body.name,
-          description: body.description,
-          source: body.source === "manual" ? "manual" : "clawhub",
-        });
-
-        state.skills = await discoverSkills(
-          workspaceDir,
-          state.config,
-          state.runtime,
-        );
-
-        json(res, { ok: true, skill: result });
-      }
-    } catch (err) {
-      error(
-        res,
-        `Install failed: ${err instanceof Error ? err.message : err}`,
-        500,
-      );
-    }
-    return true;
-  }
-
-  // ── POST /api/skills/marketplace/uninstall ────────────────────────────
-  if (method === "POST" && pathname === "/api/skills/marketplace/uninstall") {
-    const rawMpUninstall = await readJsonBody<Record<string, unknown>>(
-      req,
-      res,
-    );
-    if (rawMpUninstall === null) return true;
-    const parsedMpUninstall =
-      PostMarketplaceUninstallRequestSchema.safeParse(rawMpUninstall);
-    if (!parsedMpUninstall.success) {
-      error(
-        res,
-        parsedMpUninstall.error.issues[0]?.message ?? "Invalid request body",
-        400,
-      );
-      return true;
-    }
-
-    const uninstallId = validateSkillId(parsedMpUninstall.data.id, res, error);
-    if (!uninstallId) return true;
-
-    try {
-      const workspaceDir =
-        state.config.agents?.defaults?.workspace ??
-        resolveDefaultAgentWorkspaceDir();
-      const result = await uninstallMarketplaceSkill(workspaceDir, uninstallId);
-
-      state.skills = await discoverSkills(
-        workspaceDir,
-        state.config,
-        state.runtime,
-      );
-
-      json(res, { ok: true, skill: result });
-    } catch (err) {
-      error(
-        res,
-        `Uninstall failed: ${err instanceof Error ? err.message : err}`,
-        500,
-      );
-    }
     return true;
   }
 

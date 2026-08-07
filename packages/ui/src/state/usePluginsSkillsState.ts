@@ -1,8 +1,8 @@
 /**
- * Plugins / Skills / Store / Catalog state, one of the domain hooks AppContext composes.
+ * Plugins, local skills, and plugin-store state composed by AppContext.
  *
- * Manages plugin list and config, skill list and create/delete/review/marketplace
- * flows, the store (registry plugins), and the catalog (marketplace skills).
+ * Manages plugin configuration, local skill lifecycle and direct GitHub
+ * installation, plus the plugin registry store.
  *
  * Accepts `{ setActionNotice }` for cross-domain notifications.
  */
@@ -10,12 +10,10 @@
 import { logger } from "@elizaos/logger";
 import { useCallback, useRef, useState } from "react";
 import {
-  type CatalogSkill,
   client,
   type PluginInfo,
   type RegistryPlugin,
   type SkillInfo,
-  type SkillMarketplaceResult,
   type SkillScanReportSummary,
 } from "../api";
 import { normalizeFirstRunProviderId } from "../providers";
@@ -123,18 +121,9 @@ export function usePluginsSkillsState({
   const [skillReviewId, setSkillReviewId] = useState("");
   const [skillReviewLoading, setSkillReviewLoading] = useState(false);
   const [skillToggleAction, setSkillToggleAction] = useState("");
-  const [skillsMarketplaceQuery, setSkillsMarketplaceQuery] = useState("");
-  const [skillsMarketplaceResults, setSkillsMarketplaceResults] = useState<
-    SkillMarketplaceResult[]
-  >([]);
-  const [skillsMarketplaceError, setSkillsMarketplaceError] = useState("");
-  const [skillsMarketplaceLoading, setSkillsMarketplaceLoading] =
-    useState(false);
-  const [skillsMarketplaceAction, setSkillsMarketplaceAction] = useState("");
-  const [
-    skillsMarketplaceManualGithubUrl,
-    setSkillsMarketplaceManualGithubUrl,
-  ] = useState("");
+  const [skillInstallError, setSkillInstallError] = useState("");
+  const [skillInstallAction, setSkillInstallAction] = useState("");
+  const [skillInstallGithubUrl, setSkillInstallGithubUrl] = useState("");
 
   // --- Store ---
   const [storePlugins, setStorePlugins] = useState<RegistryPlugin[]>([]);
@@ -154,26 +143,6 @@ export function usePluginsSkillsState({
     useState<RegistryPlugin | null>(null);
   const [storeSubTab, setStoreSubTab] = useState<"plugins" | "skills">(
     "plugins",
-  );
-
-  // --- Catalog ---
-  const [catalogSkills, setCatalogSkills] = useState<CatalogSkill[]>([]);
-  const [catalogTotal, setCatalogTotal] = useState(0);
-  const [catalogPage, setCatalogPage] = useState(1);
-  const [catalogTotalPages, setCatalogTotalPages] = useState(1);
-  const [catalogSort, setCatalogSort] = useState<
-    "downloads" | "stars" | "updated" | "name"
-  >("downloads");
-  const [catalogSearch, setCatalogSearch] = useState("");
-  const [catalogLoading, setCatalogLoading] = useState(false);
-  const [catalogError, setCatalogError] = useState<string | null>(null);
-  const [catalogDetailSkill, setCatalogDetailSkill] =
-    useState<CatalogSkill | null>(null);
-  const [catalogInstalling, setCatalogInstalling] = useState<Set<string>>(
-    new Set(),
-  );
-  const [catalogUninstalling, setCatalogUninstalling] = useState<Set<string>>(
-    new Set(),
   );
 
   // ── Plugin callbacks ────────────────────────────────────────────────
@@ -592,186 +561,29 @@ export function usePluginsSkillsState({
     [refreshSkills, setActionNotice],
   );
 
-  const searchSkillsMarketplace = useCallback(async () => {
-    const query = skillsMarketplaceQuery.trim();
-    if (!query) {
-      setSkillsMarketplaceResults([]);
-      setSkillsMarketplaceError("");
-      return;
-    }
-    setSkillsMarketplaceLoading(true);
-    setSkillsMarketplaceError("");
-    try {
-      const { results } = await client.searchSkillsMarketplace(
-        query,
-        false,
-        20,
-      );
-      setSkillsMarketplaceResults(results);
-    } catch (err) {
-      setSkillsMarketplaceResults([]);
-      setSkillsMarketplaceError(
-        err instanceof Error ? err.message : "unknown error",
-      );
-    } finally {
-      setSkillsMarketplaceLoading(false);
-    }
-  }, [skillsMarketplaceQuery]);
-
-  const installSkillFromMarketplace = useCallback(
-    async (item: SkillMarketplaceResult) => {
-      setSkillsMarketplaceAction(`install:${item.id}`);
-      try {
-        await client.installMarketplaceSkill({
-          slug: item.slug ?? item.id,
-          githubUrl: item.githubUrl,
-          repository: item.repository,
-          path: item.path ?? undefined,
-          name: item.name,
-          description: item.description,
-          source: item.source ?? "clawhub",
-          autoRefresh: true,
-        });
-        await refreshSkills();
-        setActionNotice(`Installed skill: ${item.name}`, "success");
-      } catch (err) {
-        setActionNotice(
-          `Skill install failed: ${err instanceof Error ? err.message : "unknown error"}`,
-          "error",
-          4200,
-        );
-      } finally {
-        setSkillsMarketplaceAction("");
-      }
-    },
-    [refreshSkills, setActionNotice],
-  );
-
   const installSkillFromGithubUrl = useCallback(async () => {
-    const githubUrl = skillsMarketplaceManualGithubUrl.trim();
+    const githubUrl = skillInstallGithubUrl.trim();
     if (!githubUrl) return;
-    setSkillsMarketplaceAction("install:manual");
+    setSkillInstallAction("install:github");
     try {
-      let repository: string | undefined;
-      let skillPath: string | undefined;
-      let inferredName: string | undefined;
-      try {
-        const parsed = new URL(githubUrl);
-        if (parsed.hostname === "github.com") {
-          const parts = parsed.pathname.split("/").filter(Boolean);
-          if (parts.length >= 2) repository = `${parts[0]}/${parts[1]}`;
-          if (parts[2] === "tree" && parts.length >= 5) {
-            skillPath = parts.slice(4).join("/");
-            inferredName = parts[parts.length - 1];
-          }
-        }
-      } catch {
-        /* keep raw URL */
-      }
-      await client.installMarketplaceSkill({
-        githubUrl,
-        repository,
-        path: skillPath,
-        name: inferredName,
-        source: "manual",
-        autoRefresh: true,
-      });
-      setSkillsMarketplaceManualGithubUrl("");
+      setSkillInstallError("");
+      await client.installSkillFromGitHub(githubUrl);
+      setSkillInstallGithubUrl("");
       await refreshSkills();
       setActionNotice("Skill installed from GitHub URL.", "success");
     } catch (err) {
+      setSkillInstallError(
+        err instanceof Error ? err.message : "unknown error",
+      );
       setActionNotice(
         `GitHub install failed: ${err instanceof Error ? err.message : "unknown error"}`,
         "error",
         4200,
       );
     } finally {
-      setSkillsMarketplaceAction("");
+      setSkillInstallAction("");
     }
-  }, [skillsMarketplaceManualGithubUrl, refreshSkills, setActionNotice]);
-
-  const uninstallMarketplaceSkill = useCallback(
-    async (skillId: string, name: string) => {
-      setSkillsMarketplaceAction(`uninstall:${skillId}`);
-      try {
-        await client.deleteSkill(skillId);
-        await refreshSkills();
-        setActionNotice(`Uninstalled skill: ${name}`, "success");
-      } catch (err) {
-        setActionNotice(
-          `Skill uninstall failed: ${err instanceof Error ? err.message : "unknown error"}`,
-          "error",
-          4200,
-        );
-      } finally {
-        setSkillsMarketplaceAction("");
-      }
-    },
-    [refreshSkills, setActionNotice],
-  );
-
-  const enableMarketplaceSkill = useCallback(
-    async (skillId: string, name: string) => {
-      setSkillsMarketplaceAction(`enable:${skillId}`);
-      try {
-        await client.enableSkill(skillId);
-        await refreshSkills();
-        setActionNotice(`${name} enabled.`, "success");
-      } catch (err) {
-        setActionNotice(
-          `Failed to enable ${name}: ${err instanceof Error ? err.message : "unknown error"}`,
-          "error",
-          4200,
-        );
-      } finally {
-        setSkillsMarketplaceAction("");
-      }
-    },
-    [refreshSkills, setActionNotice],
-  );
-
-  const disableMarketplaceSkill = useCallback(
-    async (skillId: string, name: string) => {
-      setSkillsMarketplaceAction(`disable:${skillId}`);
-      try {
-        await client.disableSkill(skillId);
-        await refreshSkills();
-        setActionNotice(`${name} disabled.`, "success");
-      } catch (err) {
-        setActionNotice(
-          `Failed to disable ${name}: ${err instanceof Error ? err.message : "unknown error"}`,
-          "error",
-          4200,
-        );
-      } finally {
-        setSkillsMarketplaceAction("");
-      }
-    },
-    [refreshSkills, setActionNotice],
-  );
-
-  const copyMarketplaceSkillSource = useCallback(
-    async (skillId: string, name: string) => {
-      setSkillsMarketplaceAction(`copy:${skillId}`);
-      try {
-        const { content } = await client.getSkillSource(skillId);
-        if (typeof navigator === "undefined" || !navigator.clipboard) {
-          throw new Error("Clipboard API unavailable in this environment");
-        }
-        await navigator.clipboard.writeText(content);
-        setActionNotice(`Copied ${name} SKILL.md to clipboard.`, "success");
-      } catch (err) {
-        setActionNotice(
-          `Failed to copy ${name}: ${err instanceof Error ? err.message : "unknown error"}`,
-          "error",
-          4200,
-        );
-      } finally {
-        setSkillsMarketplaceAction("");
-      }
-    },
-    [setActionNotice],
-  );
+  }, [skillInstallGithubUrl, refreshSkills, setActionNotice]);
 
   // ── Return ──────────────────────────────────────────────────────────
 
@@ -824,18 +636,12 @@ export function usePluginsSkillsState({
     setSkillReviewLoading,
     skillToggleAction,
     setSkillToggleAction,
-    skillsMarketplaceQuery,
-    setSkillsMarketplaceQuery,
-    skillsMarketplaceResults,
-    setSkillsMarketplaceResults,
-    skillsMarketplaceError,
-    setSkillsMarketplaceError,
-    skillsMarketplaceLoading,
-    setSkillsMarketplaceLoading,
-    skillsMarketplaceAction,
-    setSkillsMarketplaceAction,
-    skillsMarketplaceManualGithubUrl,
-    setSkillsMarketplaceManualGithubUrl,
+    skillInstallError,
+    setSkillInstallError,
+    skillInstallAction,
+    setSkillInstallAction,
+    skillInstallGithubUrl,
+    setSkillInstallGithubUrl,
 
     // Skill callbacks
     loadSkills,
@@ -846,13 +652,7 @@ export function usePluginsSkillsState({
     handleDeleteSkill,
     handleReviewSkill,
     handleAcknowledgeSkill,
-    searchSkillsMarketplace,
-    installSkillFromMarketplace,
     installSkillFromGithubUrl,
-    uninstallMarketplaceSkill,
-    enableMarketplaceSkill,
-    disableMarketplaceSkill,
-    copyMarketplaceSkillSource,
 
     // Store state
     storePlugins,
@@ -873,29 +673,5 @@ export function usePluginsSkillsState({
     setStoreDetailPlugin,
     storeSubTab,
     setStoreSubTab,
-
-    // Catalog state
-    catalogSkills,
-    setCatalogSkills,
-    catalogTotal,
-    setCatalogTotal,
-    catalogPage,
-    setCatalogPage,
-    catalogTotalPages,
-    setCatalogTotalPages,
-    catalogSort,
-    setCatalogSort,
-    catalogSearch,
-    setCatalogSearch,
-    catalogLoading,
-    setCatalogLoading,
-    catalogError,
-    setCatalogError,
-    catalogDetailSkill,
-    setCatalogDetailSkill,
-    catalogInstalling,
-    setCatalogInstalling,
-    catalogUninstalling,
-    setCatalogUninstalling,
   };
 }

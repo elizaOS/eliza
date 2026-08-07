@@ -238,6 +238,7 @@ export * from "./runtime/core-plugins.ts";
 export * from "./runtime/eliza.ts";
 export * from "./runtime/eliza-plugin.ts";
 export * from "./runtime/first-run-names.ts";
+export { extractPlugin } from "./runtime/load-plugin-from-vfs.ts";
 export {
   isCloudExecutionMode,
   type LocalExecutionMode,

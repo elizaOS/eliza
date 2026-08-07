@@ -34,6 +34,9 @@ import { AcpService } from "../src/services/acp-service.ts";
 
 const FAR_FUTURE = Date.now() + 10 * 365 * 24 * 60 * 60 * 1000;
 const home = mkdtempSync(path.join(tmpdir(), "ma-compose-e2e-"));
+// The auth store uses an isolated in-memory master key for test processes;
+// this E2E owns only temporary credentials and must also run on headless CI.
+process.env.BUN_ENV = "test";
 process.env.ELIZA_HOME = home;
 process.env.ELIZA_STATE_DIR = home;
 process.env.ELIZA_ACP_STATE_DIR = path.join(home, "acp");

@@ -1,0 +1,163 @@
+# This workflow is the sole Terraform operations entry point. Pull requests
+# validate infrastructure through CI; plans, applies, and state edits require
+# an explicit operator dispatch and the selected GitHub environment.
+name: Infrastructure
+
+on:
+  workflow_dispatch:
+    inputs:
+      component:
+        description: Terraform root to operate
+        required: true
+        type: choice
+        options: [control-plane, apps-shared, apps-data-plane, pages-domains]
+      environment:
+        description: Protected environment
+        required: true
+        default: staging
+        type: choice
+        options: [staging, production]
+      operation:
+        description: Terraform operation
+        required: true
+        default: plan
+        type: choice
+        options: [plan, apply, state-rm]
+      state_address:
+        description: Exact address for state-rm; ignored otherwise
+        required: false
+        type: string
+
+concurrency:
+  group: terraform-${{ inputs.component }}-${{ inputs.environment }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  terraform:
+    name: ${{ inputs.operation }} ${{ inputs.component }} (${{ inputs.environment }})
+    runs-on: ubuntu-24.04
+    environment: ${{ inputs.environment }}
+    timeout-minutes: 45
+    env:
+      TF_IN_AUTOMATION: "true"
+      HCLOUD_TOKEN: ${{ inputs.component == 'control-plane' && secrets.HCLOUD_TOKEN || secrets.HCLOUD_APPS_TOKEN }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_STATE_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STATE_SECRET_ACCESS_KEY }}
+      TF_VAR_environment: ${{ inputs.environment }}
+      TF_VAR_cloudflare_account_id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      TF_VAR_cloudflare_zone_id: ${{ secrets.APPS_CLOUDFLARE_ZONE_ID || vars.APPS_CLOUDFLARE_ZONE_ID }}
+      TF_VAR_ssh_public_keys: ${{ inputs.component == 'apps-shared' && format('["{0}"]', vars.APPS_SHARED_OPERATOR_SSH_KEY) || format('["{0}"]', vars.APPS_OPERATOR_SSH_KEY) }}
+      TF_VAR_operator_ingress_cidrs: ${{ inputs.component == 'apps-shared' && vars.APPS_SHARED_OPERATOR_INGRESS_CIDRS || vars.OPERATOR_INGRESS_CIDRS }}
+      TF_VAR_apps_base_domain: ${{ vars.APPS_BASE_DOMAIN }}
+      TF_VAR_cloud_api_origin: ${{ vars.APPS_CLOUD_API_ORIGIN }}
+      TF_VAR_deploy_branch: ${{ vars.DEPLOY_BRANCH }}
+      TF_VAR_staging_agent_wildcard_origins: ${{ vars.STAGING_AGENT_WILDCARD_ORIGINS_JSON || '[]' }}
+      TF_VAR_staging_agent_certificate_pack_id: ${{ vars.STAGING_AGENT_CERTIFICATE_PACK_ID }}
+      TF_VAR_staging_agent_certificate_hosts: ${{ vars.STAGING_AGENT_CERTIFICATE_HOSTS_JSON || '[]' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e
+        with:
+          terraform_version: "1.10.5"
+
+      - name: Resolve Terraform root
+        id: root
+        shell: bash
+        env:
+          COMPONENT: ${{ inputs.component }}
+          ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+          case "$COMPONENT" in
+            control-plane) directory="packages/cloud/infra/cloud/terraform/hetzner/control-plane" ;;
+            apps-shared) directory="packages/cloud/infra/cloud/terraform/hetzner/apps-shared" ;;
+            apps-data-plane) directory="packages/cloud/infra/cloud/terraform/hetzner/apps-data-plane" ;;
+            pages-domains) directory="packages/cloud/infra/cloud/terraform/cloudflare/pages-domains" ;;
+            *) echo "::error::Unsupported component: $COMPONENT"; exit 1 ;;
+          esac
+          if [ "$COMPONENT" = "apps-shared" ]; then
+            backend="backend.hcl"
+          else
+            backend="backend-${ENVIRONMENT}.hcl"
+          fi
+          echo "directory=$directory" >> "$GITHUB_OUTPUT"
+          echo "backend=$backend" >> "$GITHUB_OUTPUT"
+
+      - name: Validate credentials and state operation
+        shell: bash
+        env:
+          OPERATION: ${{ inputs.operation }}
+          STATE_ADDRESS: ${{ inputs.state_address }}
+        run: |
+          set -euo pipefail
+          [ -n "$AWS_ACCESS_KEY_ID" ] || { echo "::error::R2_STATE_ACCESS_KEY_ID is required"; exit 1; }
+          [ -n "$AWS_SECRET_ACCESS_KEY" ] || { echo "::error::R2_STATE_SECRET_ACCESS_KEY is required"; exit 1; }
+          if [ "${{ inputs.component }}" = "pages-domains" ]; then
+            [ -n "$CLOUDFLARE_API_TOKEN" ] || { echo "::error::CLOUDFLARE_API_TOKEN is required"; exit 1; }
+            [ -n "$TF_VAR_cloudflare_account_id" ] || { echo "::error::CLOUDFLARE_ACCOUNT_ID is required"; exit 1; }
+            [ -n "$TF_VAR_cloudflare_zone_id" ] || { echo "::error::APPS_CLOUDFLARE_ZONE_ID is required"; exit 1; }
+          fi
+          if [ "$OPERATION" = "state-rm" ]; then
+            [ -n "$STATE_ADDRESS" ] || { echo "::error::state_address is required for state-rm"; exit 1; }
+            if [[ ! "$STATE_ADDRESS" =~ ^[A-Za-z0-9_.\[\]\"-]+$ ]]; then
+              echo "::error::state_address contains unsupported characters"
+              exit 1
+            fi
+          fi
+
+      - name: Format and initialize
+        working-directory: ${{ steps.root.outputs.directory }}
+        run: |
+          terraform fmt -check -recursive
+          terraform init -input=false -lockfile=readonly -backend-config="${{ steps.root.outputs.backend }}"
+          terraform validate -no-color
+
+      - name: Plan
+        if: inputs.operation == 'plan' || inputs.operation == 'apply'
+        working-directory: ${{ steps.root.outputs.directory }}
+        run: terraform plan -no-color -input=false -out=selected.tfplan
+
+      - name: Apply reviewed plan
+        if: inputs.operation == 'apply'
+        working-directory: ${{ steps.root.outputs.directory }}
+        run: terraform apply -no-color -input=false selected.tfplan
+
+      - name: Verify Pages domain and certificate state
+        if: inputs.component == 'pages-domains' && inputs.operation == 'apply'
+        working-directory: ${{ steps.root.outputs.directory }}
+        run: |
+          terraform output -json pages_domains > "$RUNNER_TEMP/pages-domains.json"
+          terraform output -json staging_agent_edge > "$RUNNER_TEMP/staging-agent-edge.json"
+          node -e '
+            const fs = require("node:fs");
+            const domains = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            for (const [key, entry] of Object.entries(domains)) {
+              if (entry.status !== "active") throw new Error(`${key} domain is ${entry.status}, expected active`);
+              if (!entry.certificate_authority) throw new Error(`${key} has no issued certificate authority`);
+            }
+            const agentEdge = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+            if (process.env.TF_VAR_environment === "staging") {
+              if (Object.keys(agentEdge.dns_records).length !== 2) throw new Error("staging agent wildcard does not have two DNS records");
+              if (agentEdge.certificate_pack.status !== "active") throw new Error(`staging agent certificate is ${agentEdge.certificate_pack.status}, expected active`);
+            }
+          ' "$RUNNER_TEMP/pages-domains.json" "$RUNNER_TEMP/staging-agent-edge.json"
+
+      - name: Verify staging agent wildcard TLS
+        if: inputs.component == 'pages-domains' && inputs.operation == 'apply' && inputs.environment == 'staging'
+        run: curl --silent --show-error --output /dev/null https://terraform-probe.staging.elizacloud.ai/api/health
+
+      - name: Verify live environment routing
+        if: inputs.component == 'pages-domains' && inputs.operation == 'apply'
+        run: node packages/cloud/scripts/verify-environment-routing-cli.mjs --environment "${{ inputs.environment }}" --require-beacon
+
+      - name: Remove exact state address
+        if: inputs.operation == 'state-rm'
+        working-directory: ${{ steps.root.outputs.directory }}
+        env:
+          STATE_ADDRESS: ${{ inputs.state_address }}
+        run: terraform state rm "$STATE_ADDRESS"

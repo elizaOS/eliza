@@ -45,6 +45,9 @@ const { pushSchema } = await import("@/db/push-schema-for-tests");
 const { apiKeys } = await import("@/db/schemas/api-keys");
 const { creditTransactions } = await import("@/db/schemas/credit-transactions");
 const { organizations } = await import("@/db/schemas/organizations");
+const { userModerationStatus, userModerationStatusEnum } = await import(
+  "@/db/schemas/moderation-violations"
+);
 const { userCharacters } = await import("@/db/schemas/user-characters");
 const { users } = await import("@/db/schemas/users");
 const { apiKeysService } = await import("@/lib/services/api-keys");
@@ -113,6 +116,8 @@ beforeAll(async () => {
       apiKeys,
       userCharacters,
       creditTransactions,
+      userModerationStatus,
+      userModerationStatusEnum,
     } as never,
     dbWrite as never,
   );

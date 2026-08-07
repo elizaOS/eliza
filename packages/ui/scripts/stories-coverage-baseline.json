@@ -93,7 +93,7 @@
     "src/components/pages/relationships/RelationshipsSidebar.tsx",
     "src/components/pages/relationships/RelationshipsWorkspaceView.tsx",
     "src/components/pages/skill-detail-panel.tsx",
-    "src/components/pages/skill-marketplace.tsx",
+    "src/components/pages/skill-installer.tsx",
     "src/components/permissions/PermissionPrimingOverlay.tsx",
     "src/components/settings/BackgroundSettingsControls.tsx",
     "src/components/settings/BackgroundSettingsSection.tsx",

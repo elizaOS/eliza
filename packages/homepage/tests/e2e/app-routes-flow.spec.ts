@@ -155,6 +155,14 @@ test("get-started covers method selection, phone input, country dropdown, and di
   await page.getByRole("button", { name: "Back" }).dispatchEvent("click");
   await page.getByRole("button", { name: /^Telegram$/ }).dispatchEvent("click");
   await expect(
+    page.getByRole("heading", { name: "Message Eliza on Telegram" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /Open Telegram/i }),
+  ).toHaveAttribute("href", "https://t.me/Elizav2_Bot");
+
+  await page.goto("/get-started?method=telegram&link=true");
+  await expect(
     page.getByRole("heading", { name: "Connect with Telegram" }),
   ).toBeVisible();
   await expect(
@@ -223,18 +231,30 @@ test("connected page exercises account menu, copy controls, link-phone form, and
   await expect(page).toHaveURL(/\/get-started\?method=discord&link=true/);
 });
 
-test("landing page renders its animated shell and primary entrypoint", async ({
+test("landing page renders its fixed phone and direct entrypoints", async ({
   page,
 }) => {
   await page.goto("/");
 
-  await expect(page.getByLabel("Eliza")).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByRole("button", { name: "Try Now" })).toBeVisible({
+  await expect(page.getByLabel("Eliza home")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole("link", { name: "Sign In" })).toBeVisible({
     timeout: 20_000,
   });
   await waitForLandingIntro(page);
   await expect(page.getByRole("button", { name: "Verify" })).toHaveCount(0);
   await expect(
-    page.getByRole("link", { name: "Get Started", exact: true }),
-  ).toHaveAttribute("href", "sms:+14159611510?&body=Hi%20Eliza");
+    page.getByRole("link", { name: "Open Eliza in iMessage" }),
+  ).toHaveAttribute(
+    "href",
+    "sms:+14159611510?&body=Hey%20Eliza%2C%20what%20can%20you%20do%3F",
+  );
+  await expect(
+    page.getByRole("link", { name: "Open Eliza in WhatsApp" }),
+  ).toHaveAttribute("href", /https:\/\/wa\.me\/\d+/);
+  await expect(
+    page.getByRole("link", { name: "Open Eliza in Telegram" }),
+  ).toHaveAttribute("href", /https:\/\/t\.me\//);
+  await expect(
+    page.getByRole("link", { name: "Open Eliza in Discord" }),
+  ).toHaveAttribute("href", /https:\/\/discord\.com\/users\//);
 });

@@ -35,12 +35,6 @@ on:
     paths:
       - "packages/homepage/waitlist/**"
       - ".github/workflows/deploy-homepage.yml"
-  workflow_call:
-    inputs:
-      ref:
-        description: "Git ref to deploy the waitlist from (defaults to the calling workflow ref)"
-        required: false
-        type: string
   workflow_dispatch:
     inputs:
       ref:
@@ -53,7 +47,7 @@ permissions:
 
 jobs:
   build-and-deploy:
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - name: Checkout source repo

@@ -19,8 +19,8 @@ Keep this adapter until every deployed cloud-api caller uses the new contract.
 The eleven allowlisted `voice` presets (default `af_heart`) are the Kokoro voice
 ids `packages/cloud/api/v1/voice/tts/route.ts` sends. The exact round-trip is
 asserted by `packages/cloud/api/__tests__/voice-kokoro-whisper-live.test.ts`,
-run in the scheduled **Voice Live E2E → voice-railway-contract** lane
-(`.github/workflows/voice-live-e2e.yml`).
+run from the manual **Live Smoke → voice** suite
+(`.github/workflows/live-smoke.yml`).
 
 ## Deploy (owner action)
 
@@ -37,7 +37,7 @@ Do not restore the upstream launch command, which hard-codes port `8880`.
 
 After deploy, point cloud-api at it by setting `KOKORO_TTS_URL` (Worker env /
 `wrangler secret`) to the service's public URL, and set the same URL as the repo
-variable `ELIZA_VOICE_KOKORO_TTS_URL` so the scheduled contract lane targets the
+variable `ELIZA_VOICE_KOKORO_TTS_URL` so the manual contract lane targets the
 live deploy (see `../voice-whisper-stt/README.md` for the shared lane wiring).
 
 Build a GPU variant on a GPU-backed plan by overriding the pinned image:

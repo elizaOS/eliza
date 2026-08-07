@@ -14,6 +14,7 @@ export * from "./conversation-compactor.types.ts";
 export * from "./eliza.ts";
 export * from "./eliza-plugin.ts";
 export * from "./first-run-names.ts";
+export { extractPlugin } from "./load-plugin-from-vfs.ts";
 export * from "./owner-entity.ts";
 export * from "./plugin-collector.ts";
 export * from "./plugin-lifecycle.ts";

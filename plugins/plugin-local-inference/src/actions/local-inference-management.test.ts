@@ -1,9 +1,15 @@
-/** Verifies chat and voice action parameters persist local-inference preferences. */
+/**
+ * Verifies chat and voice action parameters persist local-inference preferences.
+ * The route mutation module is preloaded during collection so its intentionally
+ * lazy production import cannot outlive a timed-out test and mutate the next
+ * test's process-global state directory.
+ */
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import "../local-inference-routes";
 import { localInferenceManagementAction } from "./local-inference-management";
 
 describe("LOCAL_INFERENCE action twins", () => {

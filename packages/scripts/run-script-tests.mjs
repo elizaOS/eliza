@@ -414,7 +414,7 @@ export function runScriptTests(options = {}) {
   const driverArgs = [
     ISOLATED_TEST_DRIVER,
     `--config=${SCRIPT_TEST_BUN_CONFIG}`,
-    "--concurrency=4",
+    "--concurrency=2",
     "--timeout-ms=120000",
   ];
   if (absoluteJunitPath) {

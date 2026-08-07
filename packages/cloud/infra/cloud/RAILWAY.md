@@ -22,7 +22,7 @@ config wins — fix this file.
 | `eliza-cloud-api` — REST API, auth, billing, **model gateway**, dedicated-agent proxy, batch voice routes, cron | Cloudflare Worker (`eliza-cloud-api-prod` / `eliza-cloud-api-staging`) | `packages/cloud/api/` | [`wrangler.toml`](../../api/wrangler.toml) via `cloud-cf-deploy.yml` `deploy-api` job (schema-gated on `migrate-db`) | Public: `api.elizacloud.ai/*`, `x402.elizacloud.ai/*`, and the `*.elizacloud.ai/*` wildcard (staging Worker: `staging.elizacloud.ai/*`, `app-staging.…`, `api-staging.…`, `*.staging.…`, `blob-staging.…`) |
 | PostgreSQL | **Railway managed Postgres** (one instance per environment) | n/a (managed service) | env-scoped `DATABASE_URL` secret in the `staging`/`production` GitHub Environments; the Worker reaches it through the `HYPERDRIVE` binding (`wrangler.toml` `[[env.*.hyperdrive]]`) | Private |
 | Redis | **Railway managed Redis** (TCP, `REDIS_URL`) | n/a (managed service) | `REDIS_URL` Worker secret; in-Worker SocketRedis speaks RESP2 over `cloudflare:sockets` (`wrangler.toml` cache/queue notes). Upstash REST (`KV_REST_API_*`) is a **legacy fallback only** | Private |
-| Database migrations | GitHub Actions → Railway Postgres | `packages/cloud/shared/src/db/migrations/` | `cloud-cf-deploy.yml` `migrate-db` job (`bun run db:cloud:migrate`); every deploy job `needs: migrate-db`. Standalone/manual path: `cloud-deploy-backend.yml` (`workflow_dispatch` only) | n/a |
+| Database migrations | GitHub Actions → Railway Postgres | `packages/cloud/shared/src/db/migrations/` | `cloud-cf-deploy.yml` `migrate-db` job (`bun run db:cloud:migrate`); every deploy job `needs: migrate-db` | n/a |
 | `gateway-discord` (multi-tenant Discord WS gateway) | Railway (Docker) | `packages/cloud/services/gateway-discord/` | `railway.toml` + `Dockerfile`; Railway auto-deploys on push — `cloud-gateway-discord.yml` runs tests only | Discord-facing; `/internal/*` shared-secret routes |
 | `gateway-webhook` (Telegram / Blooio / Twilio / WhatsApp) | Railway (Docker) | `packages/cloud/services/gateway-webhook/` | `railway.toml` + `Dockerfile`; `cloud-gateway-webhook.yml` runs tests only | Public webhook ingress |
 | `voice-kokoro-tts` (free-cloud TTS) | Railway (Docker) | `packages/cloud/services/voice-kokoro-tts/` | `railway.toml`; its URL is injected at Worker deploy time as `KOKORO_TTS_URL` (GitHub var `ELIZA_VOICE_KOKORO_TTS_URL` in `cloud-cf-deploy.yml`) | **Private origin** behind the Worker's `POST /api/v1/voice/tts` — unauthenticated at the service boundary, so its URL must not be published |
@@ -179,5 +179,5 @@ before `/health` goes green.
 - **Legacy fullstack `railway.toml`** (old Next.js `cloud` app) — file removed;
   nothing references it.
 - **Legacy agent VPS deploy** — still exists behind the `deploy_legacy_vps`
-  `workflow_dispatch` input on `cloud-deploy-backend.yml`, **off by default**;
+  explicit operator action, **off by default**;
   new code should not target it.

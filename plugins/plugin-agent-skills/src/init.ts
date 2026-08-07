@@ -1,34 +1,21 @@
 /**
- * Owns Agent Skills startup dependencies and periodic catalog work per runtime.
- * Plugin initialization waits for both required services before exposing skill
- * commands, while disposal only releases work belonging to that runtime.
+ * Waits for Agent Skills dependencies and registers loaded skill commands once
+ * the runtime's plugin-registration barrier has completed.
  */
 
-import type {
-	CommandRegistryService,
-	IAgentRuntime,
-} from "@elizaos/core";
+import type { CommandRegistryService, IAgentRuntime } from "@elizaos/core";
 import { ElizaError, Service } from "@elizaos/core";
 import { registerLoadedSkillCommands } from "./commands";
 import type { AgentSkillsService } from "./services/skills";
-import { startSyncTask } from "./tasks/sync-catalog";
 
-const syncTaskCleanupByRuntime = new WeakMap<IAgentRuntime, () => void>();
-
-type SkillsLifecycleService = Pick<
-	AgentSkillsService,
-	"getCatalogStats" | "getLoadedSkills"
->;
+type SkillsLifecycleService = Pick<AgentSkillsService, "getLoadedSkills">;
 type CommandsService = Pick<CommandRegistryService, "register">;
 
 function isSkillsLifecycleService(
 	service: Service,
 ): service is Service & SkillsLifecycleService {
 	return (
-		"getLoadedSkills" in service &&
-		typeof service.getLoadedSkills === "function" &&
-		"getCatalogStats" in service &&
-		typeof service.getCatalogStats === "function"
+		"getLoadedSkills" in service && typeof service.getLoadedSkills === "function"
 	);
 }
 
@@ -40,14 +27,22 @@ function isCommandsService(service: Service): service is Service & CommandsServi
 export async function initializeAgentSkillsPlugin(
 	runtime: IAgentRuntime,
 ): Promise<void> {
-	const [service, commands] = await Promise.all([
-		runtime.getServiceLoadPromise("AGENT_SKILLS_SERVICE"),
-		runtime.getServiceLoadPromise("commands"),
-	]);
+	const service = await runtime.getServiceLoadPromise("AGENT_SKILLS_SERVICE");
 	if (!isSkillsLifecycleService(service)) {
 		throw new ElizaError("Agent Skills service has an invalid runtime contract", {
 			code: "AGENT_SKILLS_SERVICE_CONTRACT_INVALID",
 		});
+	}
+
+	let commands: Service;
+	try {
+		commands = await runtime.getServiceLoadPromise("commands");
+	} catch {
+		// error-policy:J4 Slash commands are optional; skills remain fully usable.
+		runtime.logger.debug(
+			"AgentSkills: Commands service unavailable; skipping slash command registration",
+		);
+		return;
 	}
 	if (!isCommandsService(commands)) {
 		throw new ElizaError("Commands service has an invalid runtime contract", {
@@ -55,39 +50,20 @@ export async function initializeAgentSkillsPlugin(
 		});
 	}
 
-	disposeAgentSkillsPlugin(runtime);
-	syncTaskCleanupByRuntime.set(runtime, startSyncTask(runtime));
-
 	const registeredCommands = registerLoadedSkillCommands(
 		runtime,
 		service,
 		commands,
 	);
-	const stats = service.getCatalogStats();
 	runtime.logger.info(
-		`AgentSkills: Ready — ${stats.loaded} skills loaded, ` +
-			`${stats.total} in catalog, ${registeredCommands} slash commands ` +
-			`(storage: ${stats.storageType})`,
+		`AgentSkills: Ready — ${service.getLoadedSkills().length} skills loaded, ${registeredCommands} slash commands`,
 	);
 }
 
-/** Release only the periodic work owned by this runtime. */
-export function disposeAgentSkillsPlugin(runtime: IAgentRuntime): void {
-	const cleanup = syncTaskCleanupByRuntime.get(runtime);
-	if (!cleanup) return;
-	cleanup();
-	syncTaskCleanupByRuntime.delete(runtime);
-}
-
-/**
- * Starts plugin work after core's plugin-registration barrier has made every
- * declared service type visible. A plugin `init` hook cannot wait on services:
- * core registers those classes only after the hook returns.
- */
+/** Starts plugin work after all declared service types are visible. */
 export class AgentSkillsPluginLifecycleService extends Service {
 	static serviceType = "AGENT_SKILLS_PLUGIN_LIFECYCLE";
-	capabilityDescription =
-		"Registers loaded skills as commands and owns periodic catalog refresh";
+	capabilityDescription = "Registers loaded skills as commands";
 
 	static async start(
 		runtime: IAgentRuntime,
@@ -96,7 +72,5 @@ export class AgentSkillsPluginLifecycleService extends Service {
 		return new AgentSkillsPluginLifecycleService(runtime);
 	}
 
-	async stop(): Promise<void> {
-		disposeAgentSkillsPlugin(this.runtime);
-	}
+	async stop(): Promise<void> {}
 }

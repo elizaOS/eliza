@@ -4,7 +4,7 @@
 // fixtures). NOTHING here mocks a cloud endpoint — the requests hit the live
 // stack, which proxies /api/cloud/* to real cloud-api.
 //
-// Requirements (all enforced by the skip guard below; the gated app-live-e2e.yml
+// Requirements (all enforced by the skip guard below; the manual live-smoke.yml
 // lane supplies them):
 //   - ELIZA_UI_SMOKE_CLOUD_LIVE=1  → the live stack leaves first-run UNcompleted
 //     so this spec can drive cloud onboarding through the UI.
@@ -15,7 +15,7 @@
 //
 // It must NEVER run in a keyless PR lane: it spends real cloud credits and needs
 // secrets. It is classified LIVE_ONLY in ui-smoke-coverage.test.ts and is wired
-// only into the nightly/dispatch app-live-e2e.yml workflow.
+// only into the manual live-smoke.yml workflow.
 
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { seedCloudLiveBrowserAuth } from "../cloud-live-browser-auth";

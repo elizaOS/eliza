@@ -9,7 +9,15 @@ import { appendFileSync, readFileSync } from "node:fs";
 const CONFIGS = {
   test: {
     title: "Tests path gate",
-    outputs: ["server", "client", "plugins", "desktop", "zero_key", "cloud"],
+    outputs: [
+      "server",
+      "client",
+      "plugins",
+      "desktop",
+      "zero_key",
+      "cloud",
+      "android_aab",
+    ],
     labels: {
       "ci:full": [
         "server",
@@ -26,10 +34,20 @@ const CONFIGS = {
       "ci:e2e": ["zero_key"],
       "ci:zero-key": ["zero_key"],
       "ci:cloud": ["cloud"],
+      "ci:android": ["android_aab"],
+      "ci:mobile": ["android_aab"],
     },
     rules: [
       {
-        lanes: ["server", "client", "plugins", "desktop", "zero_key", "cloud"],
+        lanes: [
+          "server",
+          "client",
+          "plugins",
+          "desktop",
+          "zero_key",
+          "cloud",
+          "android_aab",
+        ],
         patterns: [
           "package.json",
           "bun.lock",
@@ -40,9 +58,17 @@ const CONFIGS = {
         reason: "workspace toolchain",
       },
       {
-        lanes: ["server", "client", "plugins", "desktop", "zero_key", "cloud"],
+        lanes: [
+          "server",
+          "client",
+          "plugins",
+          "desktop",
+          "zero_key",
+          "cloud",
+          "android_aab",
+        ],
         patterns: [
-          ".github/workflows/test.yml",
+          ".github/workflows/ci.yml",
           ".github/actions/setup-bun-workspace/**",
           "packages/scripts/ci-path-gate.mjs",
         ],
@@ -95,6 +121,34 @@ const CONFIGS = {
         patterns: ["plugins/**"],
         reason: "plugin surface",
       },
+      {
+        lanes: ["android_aab"],
+        patterns: [
+          "packages/agent/**",
+          "packages/app/**",
+          "packages/app-core/scripts/**",
+          "packages/app-core/platforms/android/**",
+          "packages/app-core/src/**",
+          "packages/auth/**",
+          "packages/core/**",
+          "packages/evidence/**",
+          "packages/logger/**",
+          "packages/native/plugins/**",
+          "packages/registry/**",
+          "packages/shared/**",
+          "packages/skills/**",
+          "packages/ui/**",
+          "packages/vault/**",
+          "plugins/plugin-capacitor-bridge/**",
+          "plugins/plugin-commands/**",
+          "plugins/plugin-local-inference/**",
+          "plugins/plugin-native-filesystem/**",
+          "plugins/plugin-sql/**",
+          "plugins/plugin-vision/**",
+          "plugins/plugin-wallet/**",
+        ],
+        reason: "Android release AAB build or bundled runtime input",
+      },
     ],
     // Fail-safe: a PR that changes real code/test surface (packages/** or
     // plugins/**) but matches no rule above must NOT skip every lane and pass
@@ -112,233 +166,6 @@ const CONFIGS = {
       reason:
         "unmapped code path - no lane rule matched; running the server lane as a fail-safe so a code change can never skip every test lane",
     },
-  },
-  "scenario-pr": {
-    title: "Scenario PR E2E path gate",
-    outputs: ["run_scenario_pr"],
-    labels: {
-      "ci:full": ["run_scenario_pr"],
-      "ci:e2e": ["run_scenario_pr"],
-      "ci:scenario": ["run_scenario_pr"],
-      "ci:zero-key": ["run_scenario_pr"],
-    },
-    rules: [
-      {
-        lanes: ["run_scenario_pr"],
-        patterns: [
-          "package.json",
-          "bun.lock",
-          "turbo.json",
-          "tsconfig*.json",
-          "vite.config.*",
-          "vitest.config.*",
-        ],
-        reason: "workspace toolchain",
-      },
-      {
-        lanes: ["run_scenario_pr"],
-        patterns: [
-          ".github/workflows/scenario-pr.yml",
-          ".github/actions/setup-bun-workspace/**",
-          "packages/scripts/ci-path-gate.mjs",
-        ],
-        reason: "scenario workflow or shared CI setup",
-      },
-      {
-        lanes: ["run_scenario_pr"],
-        patterns: [
-          "packages/app/**",
-          "packages/ui/**",
-          "packages/app-core/**",
-          "packages/scenario-runner/**",
-          "packages/core/**",
-          "packages/agent/**",
-          "packages/shared/**",
-          "packages/scripts/**",
-          "packages/cloud/scripts/**",
-          "packages/test/**",
-          "packages/prompts/**",
-        ],
-        reason: "scenario runtime, UI, or support package",
-      },
-      {
-        lanes: ["run_scenario_pr"],
-        patterns: [
-          "plugins/plugin-app-control/**",
-          "plugins/plugin-computeruse/**",
-          "plugins/plugin-github/**",
-        ],
-        reason: "scenario-critical plugin",
-      },
-      {
-        lanes: ["run_scenario_pr"],
-        patterns: [
-          "plugins/plugin-*/src/**",
-          "plugins/plugin-*/package.json",
-          "plugins/plugin-*/vite.config.*",
-          "plugins/plugin-*/vitest.config.*",
-        ],
-        reason: "plugin implementation surface",
-      },
-    ],
-  },
-  docker: {
-    title: "Docker smoke path gate",
-    outputs: ["docker"],
-    labels: {
-      "ci:full": ["docker"],
-      "ci:docker": ["docker"],
-    },
-    rules: [
-      {
-        lanes: ["docker"],
-        patterns: [
-          ".github/workflows/docker-ci-smoke.yml",
-          ".github/actions/setup-bun-workspace/**",
-          "packages/scripts/ci-path-gate.mjs",
-          "package.json",
-          "bun.lock",
-          "bunfig.toml",
-          "turbo.json",
-          "packages/app-core/deploy/**",
-          "packages/app-core/scripts/docker-ci-smoke.sh",
-          "packages/app-core/scripts/docker-healthcheck.mjs",
-        ],
-        reason: "Docker smoke workflow or image contract",
-      },
-      {
-        lanes: ["docker"],
-        patterns: [
-          "packages/app-core/**",
-          "packages/agent/**",
-          "packages/core/**",
-          "packages/shared/**",
-          "packages/prompts/**",
-          "plugins/**",
-        ],
-        reason: "runtime included in production image",
-      },
-    ],
-  },
-  mobile: {
-    title: "Mobile smoke path gate",
-    outputs: ["ios", "android"],
-    labels: {
-      "ci:full": ["ios", "android"],
-      "ci:mobile": ["ios", "android"],
-      "ci:ios": ["ios"],
-      "ci:android": ["android"],
-    },
-    rules: [
-      {
-        lanes: ["ios", "android"],
-        patterns: [
-          ".github/workflows/mobile-build-smoke.yml",
-          ".github/actions/setup-bun-workspace/**",
-          "packages/scripts/ci-path-gate.mjs",
-          "package.json",
-          "bun.lock",
-          "packages/agent/**",
-          "packages/app/**",
-          "packages/app-core/**",
-          "packages/core/**",
-          "packages/native/plugins/**",
-          "packages/shared/**",
-          "plugins/plugin-sql/**",
-        ],
-        reason: "mobile app or runtime dependency",
-      },
-      {
-        lanes: ["ios"],
-        patterns: ["packages/app/ios/**", "packages/app-core/platforms/ios/**"],
-        reason: "iOS native surface",
-      },
-      {
-        lanes: ["android"],
-        patterns: [
-          "packages/app/android/**",
-          "packages/app-core/platforms/android/**",
-        ],
-        reason: "Android native surface",
-      },
-    ],
-  },
-  "dev-smoke": {
-    title: "Dev smoke path gate",
-    outputs: ["dev_smoke"],
-    labels: {
-      "ci:full": ["dev_smoke"],
-      "ci:dev-smoke": ["dev_smoke"],
-      "ci:e2e": ["dev_smoke"],
-    },
-    rules: [
-      {
-        lanes: ["dev_smoke"],
-        patterns: [
-          ".github/workflows/dev-smoke.yml",
-          ".github/actions/setup-bun-workspace/**",
-          "packages/scripts/ci-path-gate.mjs",
-          "package.json",
-          "bun.lock",
-          "packages/app/**",
-          "packages/app-core/**",
-          "packages/core/**",
-          "packages/shared/**",
-          "packages/ui/**",
-        ],
-        reason: "dev server or onboarding chat surface",
-      },
-    ],
-  },
-  "windows-dev": {
-    title: "Windows dev smoke path gate",
-    outputs: ["windows_dev"],
-    labels: {
-      "ci:full": ["windows_dev"],
-      "ci:windows": ["windows_dev"],
-      "ci:desktop": ["windows_dev"],
-    },
-    rules: [
-      {
-        lanes: ["windows_dev"],
-        patterns: [
-          ".github/workflows/windows-dev-smoke.yml",
-          ".github/actions/setup-bun-workspace/**",
-          "packages/scripts/ci-path-gate.mjs",
-          "package.json",
-          "bun.lock",
-          "packages/app-core/scripts/**",
-          "packages/app-core/platforms/electrobun/**",
-          "packages/app/**",
-        ],
-        reason: "Windows dev bootstrap surface",
-      },
-    ],
-  },
-  "desktop-preload": {
-    title: "Windows desktop preload path gate",
-    outputs: ["desktop_preload"],
-    labels: {
-      "ci:full": ["desktop_preload"],
-      "ci:windows": ["desktop_preload"],
-      "ci:desktop": ["desktop_preload"],
-    },
-    rules: [
-      {
-        lanes: ["desktop_preload"],
-        patterns: [
-          ".github/workflows/windows-desktop-preload-smoke.yml",
-          ".github/actions/setup-bun-workspace/**",
-          "packages/scripts/ci-path-gate.mjs",
-          "package.json",
-          "bun.lock",
-          "packages/app-core/scripts/**",
-          "packages/app-core/platforms/electrobun/**",
-          "packages/app/**",
-        ],
-        reason: "desktop preload or Electrobun surface",
-      },
-    ],
   },
 };
 

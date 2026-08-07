@@ -41,6 +41,7 @@ import { agentMonetizationService } from "@/lib/services/agent-monetization";
 import { charactersService } from "@/lib/services/characters/characters";
 import { InsufficientCreditsError } from "@/lib/services/credits";
 import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
+import { isInferenceAuthCacheEnabled } from "@/lib/services/inference-hot-path-caches";
 import { admitOrganizationInference } from "@/lib/services/organization-inference-admission";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
@@ -148,6 +149,49 @@ app.post("/", async (c) => {
   const id = c.req.param("id");
   if (!id) return c.json({ error: "Missing id" }, 400);
 
+  const executionCtx = getGenerativeExecutionContext(c);
+  const characterResolution =
+    executionCtx && isInferenceAuthCacheEnabled(c.env)
+      ? await charactersService.getByIdCacheOnly(id, { executionCtx })
+      : {
+          kind: "ready" as const,
+          character: (await charactersService.getById(id)) ?? null,
+        };
+  if (characterResolution.kind !== "ready") {
+    return c.json(
+      {
+        jsonrpc: "2.0",
+        error: {
+          code: -32004,
+          message: "Agent cache is warming; retry shortly",
+        },
+        id: null,
+      },
+      503,
+    );
+  }
+  const character = characterResolution.character;
+  if (!character) {
+    return c.json(
+      {
+        jsonrpc: "2.0",
+        error: { code: -32001, message: "Agent not found" },
+        id: null,
+      },
+      404,
+    );
+  }
+  if (!character.is_public || !character.mcp_enabled) {
+    return c.json(
+      {
+        jsonrpc: "2.0",
+        error: { code: -32001, message: "MCP not accessible" },
+        id: null,
+      },
+      403,
+    );
+  }
+
   let body: unknown;
   try {
     body = await c.req.json();
@@ -175,48 +219,6 @@ app.post("/", async (c) => {
   }
 
   const { method, params, id: rpcId } = validation.data;
-
-  const executionCtx = getGenerativeExecutionContext(c);
-  const characterResolution = executionCtx
-    ? await charactersService.getByIdCacheOnly(id, { executionCtx })
-    : {
-        kind: "ready" as const,
-        character: (await charactersService.getById(id)) ?? null,
-      };
-  if (characterResolution.kind !== "ready") {
-    return c.json(
-      {
-        jsonrpc: "2.0",
-        error: {
-          code: -32004,
-          message: "Agent cache is warming; retry shortly",
-        },
-        id: rpcId,
-      },
-      503,
-    );
-  }
-  const character = characterResolution.character;
-  if (!character) {
-    return c.json(
-      {
-        jsonrpc: "2.0",
-        error: { code: -32001, message: "Agent not found" },
-        id: rpcId,
-      },
-      404,
-    );
-  }
-  if (!character.is_public || !character.mcp_enabled) {
-    return c.json(
-      {
-        jsonrpc: "2.0",
-        error: { code: -32001, message: "MCP not accessible" },
-        id: rpcId,
-      },
-      403,
-    );
-  }
 
   let caller: Awaited<ReturnType<typeof requireGenerativeRouteCaller>>;
   try {

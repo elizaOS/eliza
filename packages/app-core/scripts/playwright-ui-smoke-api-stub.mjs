@@ -4351,68 +4351,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === "GET" && url.pathname === "/api/skills/catalog") {
-    sendJson(req, res, 200, {
-      total: 0,
-      page: Number(url.searchParams.get("page") ?? 1),
-      perPage: Number(url.searchParams.get("perPage") ?? 50),
-      totalPages: 0,
-      installedCount: 0,
-      skills: [],
-    });
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/skills/catalog/search") {
-    sendJson(req, res, 200, {
-      query: url.searchParams.get("q") ?? "",
-      count: 0,
-      results: [],
-    });
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname.startsWith("/api/skills/catalog/")) {
-    sendJson(req, res, 404, { error: "Skill not found" });
-    return;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/skills/catalog/refresh") {
-    sendJson(req, res, 200, { ok: true, count: 0 });
-    return;
-  }
-
-  if (
-    req.method === "GET" &&
-    url.pathname === "/api/skills/marketplace/search"
-  ) {
-    sendJson(req, res, 200, { results: [] });
-    return;
-  }
-
-  if (
-    req.method === "GET" &&
-    url.pathname === "/api/skills/marketplace/config"
-  ) {
-    sendJson(req, res, 200, { keySet: false });
-    return;
-  }
-
-  if (
-    req.method === "PUT" &&
-    url.pathname === "/api/skills/marketplace/config"
-  ) {
-    sendJson(req, res, 200, { keySet: true });
-    return;
-  }
-
-  if (
-    req.method === "POST" &&
-    (url.pathname === "/api/skills/marketplace/install" ||
-      url.pathname === "/api/skills/marketplace/uninstall" ||
-      url.pathname === "/api/skills/catalog/install" ||
-      url.pathname === "/api/skills/catalog/uninstall")
-  ) {
+  if (req.method === "POST" && url.pathname === "/api/skills/install") {
     sendJson(req, res, 200, { ok: true });
     return;
   }

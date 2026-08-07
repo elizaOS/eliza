@@ -1,15 +1,18 @@
 /**
- * Canvas renderer for the chat transcript shown on the homepage device model.
+ * Canvas renderer for the fixed iMessage transcript on the homepage phone.
  *
- * It measures and paints the iMessage and Telegram mock conversations at a
- * fixed high-resolution scale so the texture stays crisp on the 3D surface.
+ * The renderer intentionally contains no channel switching, login card, video
+ * control, or interactive composer behavior; those actions live in the direct
+ * channel links surrounding the phone.
  */
 import { BRAND_COLORS } from "@elizaos/shared/brand";
 
-type Msg = { from: "bot" | "user"; text: string };
-type ChatPlatform = "imessage" | "telegram";
+interface Message {
+  from: "bot" | "user";
+  text: string;
+}
 
-const imessageMessages: Msg[] = [
+const MESSAGES: Message[] = [
   { from: "bot", text: "good morning! what's on the agenda today?" },
   { from: "user", text: "ugh too much. can you sort out my calendar?" },
   {
@@ -26,1165 +29,494 @@ const imessageMessages: Msg[] = [
   },
 ];
 
-const telegramMessages: Msg[] = [
-  { from: "user", text: "what's the weather like this weekend?" },
-  {
-    from: "bot",
-    text: "saturday sunny 72°, sunday partly cloudy 68°. great for outdoors!",
-  },
-  { from: "user", text: "nice. find me a good brunch spot nearby" },
-  {
-    from: "bot",
-    text: "the corner bistro has a 4.8 rating and is 5 min away. want me to book?",
-  },
-  { from: "user", text: "yes! table for two at noon" },
-  { from: "bot", text: "booked! confirmation sent to your email 🎉" },
-];
-
-function getMessages(): Msg[] {
-  if (currentRenderPlatform === "telegram") return telegramMessages;
-  return imessageMessages;
-}
-
-export function getMessageCount(): number {
-  return getMessages().length;
-}
-
-export function measurePreloadedScrollHeight(count: number): number {
-  const msgs = getMessages();
-  const n = Math.min(count, msgs.length);
-  let total = 0;
-  for (let i = 0; i < n; i++) {
-    total += measureBubbleHeight(msgs[i].text);
-  }
-  // measureBubbleHeight already includes one gap per bubble,
-  // but between N bubbles there are only N-1 gaps, so subtract one.
-  if (n > 1) {
-    total -= s(10) / SCALE;
-  }
-  return total;
-}
-
-export interface ExtraMessage {
-  text: string;
-  progress: number;
-  from: "bot" | "user";
-  typing?: boolean;
-}
-
-export const TYPING_BUBBLE_HEIGHT = 50;
-
-let currentRenderPlatform: ChatPlatform = "imessage";
-export function setChatPlatform(p: string) {
-  currentRenderPlatform = p === "telegram" ? "telegram" : "imessage";
-}
-
-let wallpaperImg: HTMLImageElement | null = null;
-let tgBgImg: HTMLImageElement | null = null;
-if (typeof window !== "undefined") {
-  wallpaperImg = new Image();
-  wallpaperImg.src = "/elizawallpaper.webp";
-  tgBgImg = new Image();
-  tgBgImg.src = "/tbg.webp";
-}
-
 const SCALE = 4;
-const W = 390 * SCALE;
-const H = 844 * SCALE;
+const WIDTH = 390 * SCALE;
+const HEIGHT = 844 * SCALE;
 
-export const BACK_BTN_X = 17 * SCALE;
-export const BACK_BTN_CY = 59 * SCALE + 15 * SCALE;
-export const BACK_BTN_H = 40 * SCALE;
-export const BACK_BTN_W_ESTIMATE = 380;
-export const VID_BTN_CX = W - 37 * SCALE;
-export const VID_BTN_CY = 59 * SCALE + 15 * SCALE;
-export const CANVAS_W = W;
-export const CANVAS_H = H;
-
-function roundRect(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  tl: number,
-  tr: number,
-  br: number,
-  bl: number,
-) {
-  ctx.beginPath();
-  ctx.moveTo(x + tl, y);
-  ctx.lineTo(x + w - tr, y);
-  ctx.quadraticCurveTo(x + w, y, x + w, y + tr);
-  ctx.lineTo(x + w, y + h - br);
-  ctx.quadraticCurveTo(x + w, y + h, x + w - br, y + h);
-  ctx.lineTo(x + bl, y + h);
-  ctx.quadraticCurveTo(x, y + h, x, y + h - bl);
-  ctx.lineTo(x, y + tl);
-  ctx.quadraticCurveTo(x, y, x + tl, y);
-  ctx.closePath();
-}
-
-function pill(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-) {
-  const r = h / 2;
-  roundRect(ctx, x, y, w, h, r, r, r, r);
-}
-
-function iMessageBubble(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  r: number,
-  isUser: boolean,
-  noTail = false,
-  tailShift = 0,
-  flatBR = false,
-  flatBL = false,
-) {
-  roundRect(ctx, x, y, w, h, r, r, flatBR ? 0 : r, flatBL ? 0 : r);
-  ctx.fill();
-
-  if (noTail) return;
-
-  const ts = tailShift;
-  ctx.beginPath();
-  if (isUser) {
-    ctx.moveTo(x + w - s(10) + ts, y + h - s(18));
-    ctx.bezierCurveTo(
-      x + w - s(6) + ts,
-      y + h + s(4),
-      x + w - s(2) + ts,
-      y + h + s(10),
-      x + w + s(4) + ts,
-      y + h + s(10),
-    );
-    ctx.bezierCurveTo(
-      x + w - s(4) + ts,
-      y + h + s(6),
-      x + w - s(10) + ts,
-      y + h,
-      x + w - s(30) + ts,
-      y + h,
-    );
-    ctx.closePath();
-  } else {
-    ctx.moveTo(x + s(10) - ts, y + h - s(18));
-    ctx.bezierCurveTo(
-      x + s(6) - ts,
-      y + h + s(4),
-      x + s(2) - ts,
-      y + h + s(10),
-      x - s(4) - ts,
-      y + h + s(10),
-    );
-    ctx.bezierCurveTo(
-      x + s(4) - ts,
-      y + h + s(6),
-      x + s(10) - ts,
-      y + h,
-      x + s(30) - ts,
-      y + h,
-    );
-    ctx.closePath();
-  }
-  ctx.fill();
-}
-
-function s(v: number) {
-  return v * SCALE;
+function scaled(value: number) {
+  return value * SCALE;
 }
 
 function get2dContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
-  const ctx = canvas.getContext("2d");
-  if (!ctx) {
-    throw new Error("2D canvas context is not available");
-  }
-  return ctx;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("2D canvas context is not available");
+  return context;
 }
 
-export function measureBubbleHeight(text: string): number {
-  const canvas = document.createElement("canvas");
-  const ctx = get2dContext(canvas);
-  const msgFontSize = s(16);
-  ctx.font = `400 ${msgFontSize}px Inter, -apple-system, system-ui, sans-serif`;
-  const maxBubbleW = W * 0.7;
-  const padX = s(14);
-  const padY = s(10);
-
-  const words = text.split(" ");
-  const lines: string[] = [];
-  let line = "";
-  for (const word of words) {
-    const test = line ? `${line} ${word}` : word;
-    if (ctx.measureText(test).width > maxBubbleW - padX * 2) {
-      if (line) lines.push(line);
-      line = word;
-    } else {
-      line = test;
-    }
-  }
-  if (line) lines.push(line);
-
-  const lineH = s(21);
-  const singleBubbleH = (lineH + padY * 2) / SCALE + 10;
-  const extraLinesH = ((lines.length - 1) * lineH) / SCALE;
-  return singleBubbleH + extraLinesH * 0.97;
+function roundRect(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  topLeft: number,
+  topRight: number,
+  bottomRight: number,
+  bottomLeft: number,
+) {
+  context.beginPath();
+  context.moveTo(x + topLeft, y);
+  context.lineTo(x + width - topRight, y);
+  context.quadraticCurveTo(x + width, y, x + width, y + topRight);
+  context.lineTo(x + width, y + height - bottomRight);
+  context.quadraticCurveTo(
+    x + width,
+    y + height,
+    x + width - bottomRight,
+    y + height,
+  );
+  context.lineTo(x + bottomLeft, y + height);
+  context.quadraticCurveTo(x, y + height, x, y + height - bottomLeft);
+  context.lineTo(x, y + topLeft);
+  context.quadraticCurveTo(x, y, x + topLeft, y);
+  context.closePath();
 }
 
-function drawStatusBar(ctx: CanvasRenderingContext2D) {
-  const topInset = s(59);
-  const statusY = topInset - s(36);
+function pill(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+) {
+  const radius = height / 2;
+  roundRect(context, x, y, width, height, radius, radius, radius, radius);
+}
+
+function drawBubble(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  isUser: boolean,
+) {
+  const radius = scaled(18);
+  roundRect(context, x, y, width, height, radius, radius, radius, radius);
+  context.fill();
+
+  context.beginPath();
+  if (isUser) {
+    context.moveTo(x + width - scaled(10), y + height - scaled(18));
+    context.bezierCurveTo(
+      x + width - scaled(6),
+      y + height + scaled(4),
+      x + width - scaled(2),
+      y + height + scaled(10),
+      x + width + scaled(4),
+      y + height + scaled(10),
+    );
+    context.bezierCurveTo(
+      x + width - scaled(4),
+      y + height + scaled(6),
+      x + width - scaled(10),
+      y + height,
+      x + width - scaled(30),
+      y + height,
+    );
+  } else {
+    context.moveTo(x + scaled(10), y + height - scaled(18));
+    context.bezierCurveTo(
+      x + scaled(6),
+      y + height + scaled(4),
+      x + scaled(2),
+      y + height + scaled(10),
+      x - scaled(4),
+      y + height + scaled(10),
+    );
+    context.bezierCurveTo(
+      x + scaled(4),
+      y + height + scaled(6),
+      x + scaled(10),
+      y + height,
+      x + scaled(30),
+      y + height,
+    );
+  }
+  context.closePath();
+  context.fill();
+}
+
+function drawStatusBar(context: CanvasRenderingContext2D) {
+  const statusCenterY = scaled(33);
   const now = new Date();
-  ctx.fillStyle = "#000";
-  ctx.font = `700 ${s(17)}px Inter, -apple-system, system-ui, sans-serif`;
-  ctx.textBaseline = "middle";
-  ctx.textAlign = "left";
-  const statusBarTime = now.toLocaleTimeString([], {
+  const time = now.toLocaleTimeString([], {
     hour: "numeric",
     minute: "2-digit",
     hour12: false,
   });
-  ctx.fillText(statusBarTime, s(43), statusY + s(10));
 
-  const iconsY = statusY + s(10);
-  const iconGap = s(6);
-  const iconCenterY = iconsY;
+  context.fillStyle = BRAND_COLORS.black;
+  context.font = `700 ${scaled(17)}px Inter, -apple-system, system-ui, sans-serif`;
+  context.textBaseline = "middle";
+  context.textAlign = "left";
+  context.fillText(time, scaled(43), statusCenterY);
 
-  // Battery
-  const batW = s(29);
-  const batH = s(13.5);
-  const batCapW = s(2);
-  const batRight = W - s(30);
-  const batX = batRight - batCapW - batW;
-  const batY = iconCenterY - batH / 2;
-  ctx.strokeStyle = "rgba(0,0,0,0.35)";
-  ctx.lineWidth = s(1);
-  roundRect(ctx, batX, batY, batW, batH, s(3), s(3), s(3), s(3));
-  ctx.stroke();
-  const bi = s(2);
-  ctx.fillStyle = "#000";
+  const batteryWidth = scaled(29);
+  const batteryHeight = scaled(13.5);
+  const batteryX = WIDTH - scaled(61);
+  const batteryY = statusCenterY - batteryHeight / 2;
+  context.strokeStyle = "rgba(0,0,0,0.35)";
+  context.lineWidth = scaled(1);
   roundRect(
-    ctx,
-    batX + bi,
-    batY + bi,
-    batW - bi * 2,
-    batH - bi * 2,
-    s(1.5),
-    s(1.5),
-    s(1.5),
-    s(1.5),
+    context,
+    batteryX,
+    batteryY,
+    batteryWidth,
+    batteryHeight,
+    scaled(3),
+    scaled(3),
+    scaled(3),
+    scaled(3),
   );
-  ctx.fill();
-  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  context.stroke();
+  context.fillStyle = BRAND_COLORS.black;
   roundRect(
-    ctx,
-    batX + batW + s(1),
-    iconCenterY - s(2.5),
-    batCapW,
-    s(5),
-    s(0.8),
-    s(0.8),
-    s(0.8),
-    s(0.8),
+    context,
+    batteryX + scaled(2),
+    batteryY + scaled(2),
+    batteryWidth - scaled(4),
+    batteryHeight - scaled(4),
+    scaled(1.5),
+    scaled(1.5),
+    scaled(1.5),
+    scaled(1.5),
   );
-  ctx.fill();
+  context.fill();
+  context.fillStyle = "rgba(0,0,0,0.35)";
+  roundRect(
+    context,
+    batteryX + batteryWidth + scaled(1),
+    statusCenterY - scaled(2.5),
+    scaled(2),
+    scaled(5),
+    scaled(0.8),
+    scaled(0.8),
+    scaled(0.8),
+    scaled(0.8),
+  );
+  context.fill();
 
-  // WiFi
-  const wifiCx = batX - iconGap - s(7);
-  const wifiBaseline = iconCenterY + s(7);
-  ctx.fillStyle = "#000";
-  const wifiLayers = [
-    { outer: s(14), inner: s(10.5) },
-    { outer: s(9.3), inner: s(5.8) },
-    { outer: s(4.6), inner: s(0) },
-  ];
+  const wifiCenterX = batteryX - scaled(19);
+  const wifiBaseline = statusCenterY + scaled(7);
   const wifiAngleStart = -Math.PI * 0.75;
   const wifiAngleEnd = -Math.PI * 0.25;
+  const wifiLayers = [
+    { outer: scaled(14), inner: scaled(10.5) },
+    { outer: scaled(9.3), inner: scaled(5.8) },
+    { outer: scaled(4.6), inner: 0 },
+  ];
+  context.fillStyle = BRAND_COLORS.black;
   for (const layer of wifiLayers) {
-    ctx.beginPath();
+    context.beginPath();
+    context.arc(
+      wifiCenterX,
+      wifiBaseline,
+      layer.outer,
+      wifiAngleStart,
+      wifiAngleEnd,
+    );
     if (layer.inner > 0) {
-      ctx.arc(wifiCx, wifiBaseline, layer.outer, wifiAngleStart, wifiAngleEnd);
-      ctx.arc(
-        wifiCx,
+      context.arc(
+        wifiCenterX,
         wifiBaseline,
         layer.inner,
         wifiAngleEnd,
         wifiAngleStart,
         true,
       );
-      ctx.closePath();
     } else {
-      ctx.arc(wifiCx, wifiBaseline, layer.outer, wifiAngleStart, wifiAngleEnd);
-      ctx.lineTo(wifiCx, wifiBaseline);
-      ctx.closePath();
+      context.lineTo(wifiCenterX, wifiBaseline);
     }
-    ctx.fill();
+    context.closePath();
+    context.fill();
   }
 
-  // Cellular
-  const cellBarW = s(3.5);
-  const cellBarGap = s(1.5);
-  const cellTotalW = 4 * cellBarW + 3 * cellBarGap;
-  const cellRight = wifiCx - s(12) - iconGap;
-  const cellBaseX = cellRight - cellTotalW;
-  const maxCellH = s(13.5);
-  const cellBottom = iconCenterY + maxCellH / 2;
-  ctx.fillStyle = "#000";
-  const cellHeights = [s(4.5), s(7), s(10), s(13.5)];
-  for (let i = 0; i < 4; i++) {
-    const bx = cellBaseX + i * (cellBarW + cellBarGap);
-    const bh = cellHeights[i];
-    roundRect(ctx, bx, cellBottom - bh, cellBarW, bh, s(1), s(1), s(1), s(1));
-    ctx.fill();
+  const cellBarWidth = scaled(3.5);
+  const cellBarGap = scaled(1.5);
+  const cellHeights = [scaled(4.5), scaled(7), scaled(10), scaled(13.5)];
+  const cellRight = wifiCenterX - scaled(18);
+  const cellStartX =
+    cellRight - cellBarWidth * 4 - cellBarGap * (cellHeights.length - 1);
+  const cellBottom = statusCenterY + scaled(6.75);
+  for (let index = 0; index < cellHeights.length; index += 1) {
+    const height = cellHeights[index];
+    roundRect(
+      context,
+      cellStartX + index * (cellBarWidth + cellBarGap),
+      cellBottom - height,
+      cellBarWidth,
+      height,
+      scaled(1),
+      scaled(1),
+      scaled(1),
+      scaled(1),
+    );
+    context.fill();
   }
 
-  ctx.textAlign = "left";
-  ctx.textBaseline = "alphabetic";
+  context.textAlign = "left";
+  context.textBaseline = "alphabetic";
 }
 
-function drawBackButton(ctx: CanvasRenderingContext2D, label: string) {
-  const topInset = s(59);
-  const navY = topInset;
-  const backBtnFont = `700 ${s(16)}px Inter, -apple-system, system-ui, sans-serif`;
-  ctx.font = backBtnFont;
-  const backLabelW = ctx.measureText(label).width;
-  const backH = s(40);
-  const backPadL = s(20);
-  const backChevronW = s(12);
-  const backGap = s(2);
-  const backPadR = s(14);
-  const backW = backPadL + backChevronW + backGap + backLabelW + backPadR;
-  const backX = s(17);
-  const backY = navY + s(15) - backH / 2;
-  const backCy = navY + s(15);
-
-  ctx.save();
-  ctx.shadowColor = "rgba(0,0,0,0.15)";
-  ctx.shadowBlur = s(8);
-  ctx.shadowOffsetY = s(2);
-  ctx.fillStyle = BRAND_COLORS.white;
-  pill(ctx, backX, backY, backW, backH);
-  ctx.fill();
-  ctx.restore();
-
-  // Chevron
-  const chevronCx = backX + backPadL;
-  ctx.strokeStyle = "#3c3c43";
-  ctx.lineWidth = s(2.2);
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-  ctx.beginPath();
-  ctx.moveTo(chevronCx + s(2.5), backCy - s(7));
-  ctx.lineTo(chevronCx - s(4.5), backCy);
-  ctx.lineTo(chevronCx + s(2.5), backCy + s(7));
-  ctx.stroke();
-  ctx.lineCap = "butt";
-  ctx.lineJoin = "miter";
-
-  // Label
-  ctx.fillStyle = "#3c3c43";
-  ctx.font = backBtnFont;
-  ctx.textAlign = "left";
-  ctx.textBaseline = "middle";
-  ctx.fillText(label, chevronCx + backChevronW + backGap, backCy);
-  ctx.textBaseline = "alphabetic";
-}
-
-function renderLoginCard(
-  title = "What's your phone number?",
-  subtitle?: string,
-): HTMLCanvasElement {
-  const canvas = document.createElement("canvas");
-  canvas.width = W;
-  canvas.height = H;
-  const ctx = get2dContext(canvas);
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-
-  const screenR = s(60);
-  ctx.save();
-  roundRect(ctx, 0, 0, W, H, screenR, screenR, screenR, screenR);
-  ctx.clip();
-  ctx.fillStyle = BRAND_COLORS.white;
-  ctx.fillRect(0, 0, W, H);
-
-  drawStatusBar(ctx);
-  drawBackButton(ctx, "Home");
-
-  const textY = s(59) + s(15) + s(20) + s(60);
-  ctx.fillStyle = "#000";
-  ctx.font = `600 ${s(22)}px Inter, -apple-system, system-ui, sans-serif`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "top";
-  ctx.fillText(title, W / 2, textY);
-
-  if (subtitle) {
-    ctx.fillStyle = "#8e8e93";
-    ctx.font = `400 ${s(16)}px Inter, -apple-system, system-ui, sans-serif`;
-    ctx.fillText(subtitle, W / 2, textY + s(42));
+function wrapMessage(
+  context: CanvasRenderingContext2D,
+  text: string,
+  maxTextWidth: number,
+) {
+  const lines: string[] = [];
+  let line = "";
+  for (const word of text.split(" ")) {
+    const candidate = line ? `${line} ${word}` : word;
+    if (context.measureText(candidate).width > maxTextWidth && line) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = candidate;
+    }
   }
-
-  ctx.restore();
-  return canvas;
+  if (line) lines.push(line);
+  return lines;
 }
 
-function renderChatContent(
-  visibleCount: number,
-  avatarImg?: HTMLImageElement,
-  lastMsgProgress = 1,
-  contentYOffset = 0,
-  scrollY = 0,
-  extraMessages: ExtraMessage[] = [],
-): HTMLCanvasElement {
-  return renderChatToCanvas(
-    undefined,
-    visibleCount,
-    avatarImg,
-    lastMsgProgress,
-    contentYOffset,
-    scrollY,
-    extraMessages,
-    0,
+function drawContactHeader(
+  context: CanvasRenderingContext2D,
+  avatarImage?: HTMLImageElement,
+) {
+  const avatarCenterX = WIDTH / 2;
+  const avatarCenterY = scaled(126);
+  const avatarRadius = scaled(27);
+
+  context.save();
+  context.beginPath();
+  context.arc(avatarCenterX, avatarCenterY, avatarRadius, 0, Math.PI * 2);
+  context.clip();
+  context.fillStyle = BRAND_COLORS.orange;
+  context.fillRect(
+    avatarCenterX - avatarRadius,
+    avatarCenterY - avatarRadius,
+    avatarRadius * 2,
+    avatarRadius * 2,
   );
+  if (avatarImage?.complete && avatarImage.naturalWidth > 0) {
+    // The square brand asset sits on the same orange so the circular crop keeps
+    // a clean, intentional margin around the white face.
+    const inset = scaled(6);
+    context.drawImage(
+      avatarImage,
+      avatarCenterX - avatarRadius + inset,
+      avatarCenterY - avatarRadius + inset,
+      avatarRadius * 2 - inset * 2,
+      avatarRadius * 2 - inset * 2,
+    );
+  }
+  context.restore();
+
+  context.fillStyle = BRAND_COLORS.black;
+  context.font = `700 ${scaled(16)}px Inter, -apple-system, system-ui, sans-serif`;
+  context.textAlign = "center";
+  context.textBaseline = "top";
+  context.fillText("Eliza", avatarCenterX, scaled(158));
+  context.textAlign = "left";
+  context.textBaseline = "alphabetic";
+}
+
+function drawComposer(context: CanvasRenderingContext2D) {
+  const inputBarY = HEIGHT - scaled(50);
+  context.strokeStyle = "#e5e5ea";
+  context.lineWidth = scaled(0.5);
+  context.beginPath();
+  context.moveTo(0, HEIGHT - scaled(58));
+  context.lineTo(WIDTH, HEIGHT - scaled(58));
+  context.stroke();
+
+  context.fillStyle = "#007AFF";
+  context.beginPath();
+  context.arc(scaled(26), inputBarY + scaled(18), scaled(15), 0, Math.PI * 2);
+  context.fill();
+  context.strokeStyle = BRAND_COLORS.white;
+  context.lineWidth = scaled(2.5);
+  context.beginPath();
+  context.moveTo(scaled(19), inputBarY + scaled(18));
+  context.lineTo(scaled(33), inputBarY + scaled(18));
+  context.moveTo(scaled(26), inputBarY + scaled(11));
+  context.lineTo(scaled(26), inputBarY + scaled(25));
+  context.stroke();
+
+  const inputX = scaled(52);
+  const inputWidth = WIDTH - scaled(64);
+  const inputHeight = scaled(36);
+  context.strokeStyle = "#c7c7cc";
+  context.lineWidth = scaled(1);
+  pill(context, inputX, inputBarY, inputWidth, inputHeight);
+  context.stroke();
+
+  context.fillStyle = "#c7c7cc";
+  context.font = `400 ${scaled(16)}px Inter, -apple-system, system-ui, sans-serif`;
+  context.textAlign = "left";
+  context.fillText("iMessage", inputX + scaled(16), inputBarY + scaled(23));
+
+  const homeIndicatorWidth = scaled(134);
+  context.fillStyle = BRAND_COLORS.black;
+  roundRect(
+    context,
+    (WIDTH - homeIndicatorWidth) / 2,
+    HEIGHT - scaled(10),
+    homeIndicatorWidth,
+    scaled(5),
+    scaled(2.5),
+    scaled(2.5),
+    scaled(2.5),
+    scaled(2.5),
+  );
+  context.fill();
+}
+
+export function getMessageCount(): number {
+  return MESSAGES.length;
 }
 
 export function renderChatToCanvas(
   targetCanvas: HTMLCanvasElement | undefined,
   visibleCount: number,
-  avatarImg?: HTMLImageElement,
-  lastMsgProgress = 1,
-  contentYOffset = 0,
-  scrollY = 0,
-  extraMessages: ExtraMessage[] = [],
-  switcherProgress = 0,
-  switcherShiftProgress = 0,
-  switcherFinalProgress = 0,
-  switcherReversed = false,
-  loginTitle?: string,
-  loginSubtitle?: string,
+  avatarImage?: HTMLImageElement,
+  lastMessageProgress = 1,
 ): HTMLCanvasElement {
   const canvas = targetCanvas ?? document.createElement("canvas");
-  if (canvas.width !== W) canvas.width = W;
-  if (canvas.height !== H) canvas.height = H;
-  const ctx = get2dContext(canvas);
-  ctx.clearRect(0, 0, W, H);
+  if (canvas.width !== WIDTH) canvas.width = WIDTH;
+  if (canvas.height !== HEIGHT) canvas.height = HEIGHT;
+  const context = get2dContext(canvas);
+  context.clearRect(0, 0, WIDTH, HEIGHT);
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
 
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
+  const screenRadius = scaled(60);
+  context.save();
+  roundRect(
+    context,
+    0,
+    0,
+    WIDTH,
+    HEIGHT,
+    screenRadius,
+    screenRadius,
+    screenRadius,
+    screenRadius,
+  );
+  context.clip();
+  context.fillStyle = BRAND_COLORS.white;
+  context.fillRect(0, 0, WIDTH, HEIGHT);
 
-  if (switcherProgress > 0) {
-    if (wallpaperImg?.complete && wallpaperImg.naturalWidth > 0) {
-      ctx.drawImage(wallpaperImg, 0, 0, W, H);
-    } else {
-      ctx.fillStyle = "#22c55e";
-      ctx.fillRect(0, 0, W, H);
-    }
-
-    const contentScale = 1 - 0.25 * switcherProgress;
-    const shiftX = (60 / 100) * W * switcherShiftProgress;
-    const finalShiftX = (60 / 100) * W * switcherFinalProgress;
-    const cardR = s(60);
-    const scaledW = W * contentScale;
-    const leftCardX = W / 2 - scaledW * 1.05;
-    const leftShiftX =
-      leftCardX - W / 2 + (W / 2 - leftCardX) * switcherShiftProgress;
-    const leftScale = contentScale + (1 - contentScale) * switcherFinalProgress;
-
-    const chatCanvas = renderChatContent(
-      visibleCount,
-      avatarImg,
-      lastMsgProgress,
-      contentYOffset,
-      scrollY,
-      extraMessages,
-    );
-    const loginCanvas = renderLoginCard(loginTitle, loginSubtitle);
-    const leftContent = switcherReversed ? chatCanvas : loginCanvas;
-    const frontContent = switcherReversed ? loginCanvas : chatCanvas;
-
-    ctx.save();
-    ctx.globalAlpha = switcherProgress;
-    ctx.translate(leftShiftX, 0);
-    ctx.translate(W / 2, H / 2);
-    ctx.scale(leftScale, leftScale);
-    ctx.translate(-W / 2, -H / 2);
-    roundRect(ctx, 0, 0, W, H, cardR, cardR, cardR, cardR);
-    ctx.clip();
-    ctx.drawImage(leftContent, 0, 0, W, H);
-    ctx.restore();
-
-    ctx.save();
-    ctx.translate(shiftX + finalShiftX, 0);
-    ctx.translate(W / 2, H / 2);
-    ctx.scale(contentScale, contentScale);
-    ctx.translate(-W / 2, -H / 2);
-    ctx.shadowColor = "rgba(0,0,0,0.07)";
-    ctx.shadowBlur = s(12);
-    ctx.shadowOffsetX = -s(6);
-    ctx.shadowOffsetY = s(2);
-    ctx.fillStyle = BRAND_COLORS.white;
-    roundRect(ctx, 0, 0, W, H, cardR, cardR, cardR, cardR);
-    ctx.fill();
-    ctx.restore();
-
-    // Content
-    ctx.save();
-    ctx.translate(shiftX + finalShiftX, 0);
-    ctx.translate(W / 2, H / 2);
-    ctx.scale(contentScale, contentScale);
-    ctx.translate(-W / 2, -H / 2);
-    roundRect(ctx, 0, 0, W, H, cardR, cardR, cardR, cardR);
-    ctx.clip();
-    ctx.drawImage(frontContent, 0, 0, W, H);
-    ctx.restore();
-
-    return canvas;
-  }
-
-  const screenR = s(60);
-  ctx.save();
-  roundRect(ctx, 0, 0, W, H, screenR, screenR, screenR, screenR);
-  ctx.clip();
-  if (
-    currentRenderPlatform === "telegram" &&
-    tgBgImg &&
-    tgBgImg.complete &&
-    tgBgImg.naturalWidth > 0
-  ) {
-    ctx.drawImage(tgBgImg, 0, 0, W, H);
-  } else {
-    ctx.fillStyle = BRAND_COLORS.white;
-    ctx.fillRect(0, 0, W, H);
-  }
-
-  const topInset = s(59);
   const now = new Date();
   const statusTime = now.toLocaleTimeString([], {
     hour: "numeric",
     minute: "2-digit",
   });
-
-  const navY = topInset;
-  const contactY = navY + s(40);
-  const sepY = contactY + s(90);
-  const scrollOffset = s(scrollY);
-  const headerShift = Math.min(scrollOffset * 0.15, s(40));
-
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(0, 0, W, H);
-  ctx.clip();
+  const separatorY = scaled(189);
 
   if (visibleCount >= 1) {
     const dateProgress =
-      visibleCount === 1 && lastMsgProgress < 1 ? lastMsgProgress : 1;
-    const dateAlpha = dateProgress;
-    const dateSlide = s(10) * (1 - dateProgress);
-    ctx.save();
-    ctx.globalAlpha = dateAlpha;
-    const isTGDate = currentRenderPlatform === "telegram";
-    const dateText = isTGDate ? "Today" : `Today ${statusTime}`;
-    const dateFontSize = s(13);
-    ctx.font = `400 ${dateFontSize}px Inter, -apple-system, system-ui, sans-serif`;
-    const dateY =
-      sepY + s(20) - scrollOffset + dateSlide - (isTGDate ? s(65) : 0);
-    ctx.textAlign = "center";
-    if (isTGDate) {
-      const textW = ctx.measureText(dateText).width;
-      const chipPadX = s(10);
-      const chipPadY = s(5);
-      const chipW = textW + chipPadX * 2;
-      const chipH = dateFontSize + chipPadY * 2;
-      const chipX = W / 2 - chipW / 2;
-      const chipY = dateY - dateFontSize - chipPadY + s(2);
-      const chipR = isTGDate ? chipH / 2 : s(8);
-      ctx.fillStyle = isTGDate ? "rgba(0,0,0,0.2)" : BRAND_COLORS.white;
-      ctx.beginPath();
-      ctx.moveTo(chipX + chipR, chipY);
-      ctx.lineTo(chipX + chipW - chipR, chipY);
-      ctx.quadraticCurveTo(chipX + chipW, chipY, chipX + chipW, chipY + chipR);
-      ctx.lineTo(chipX + chipW, chipY + chipH - chipR);
-      ctx.quadraticCurveTo(
-        chipX + chipW,
-        chipY + chipH,
-        chipX + chipW - chipR,
-        chipY + chipH,
-      );
-      ctx.lineTo(chipX + chipR, chipY + chipH);
-      ctx.quadraticCurveTo(chipX, chipY + chipH, chipX, chipY + chipH - chipR);
-      ctx.lineTo(chipX, chipY + chipR);
-      ctx.quadraticCurveTo(chipX, chipY, chipX + chipR, chipY);
-      ctx.closePath();
-      ctx.fill();
-    }
-    ctx.fillStyle = isTGDate ? BRAND_COLORS.white : "#8e8e93";
-    ctx.fillText(dateText, W / 2, dateY);
-    ctx.textAlign = "left";
-    ctx.restore();
+      visibleCount === 1 && lastMessageProgress < 1 ? lastMessageProgress : 1;
+    context.save();
+    context.globalAlpha = dateProgress;
+    context.fillStyle = "#8e8e93";
+    context.font = `400 ${scaled(13)}px Inter, -apple-system, system-ui, sans-serif`;
+    context.textAlign = "center";
+    context.fillText(
+      `Today ${statusTime}`,
+      WIDTH / 2,
+      separatorY + scaled(20) + scaled(10) * (1 - dateProgress),
+    );
+    context.restore();
   }
 
-  const isTGMsg = currentRenderPlatform === "telegram";
-  let msgY = sepY + s(32) - scrollOffset - (isTGMsg ? s(60) : 0);
-  const msgFontSize = s(16);
-  const msgFont = `400 ${msgFontSize}px Inter, -apple-system, system-ui, sans-serif`;
-  const maxBubbleW = W * 0.7;
-  const padX = s(14);
-  const padY = s(10);
-  const marginX = s(14);
-  const bubbleR = s(18);
+  let messageY = separatorY + scaled(32);
+  const messageFontSize = scaled(16);
+  const messageFont = `400 ${messageFontSize}px Inter, -apple-system, system-ui, sans-serif`;
+  const maxBubbleWidth = WIDTH * 0.7;
+  const horizontalPadding = scaled(14);
+  const verticalPadding = scaled(10);
+  const horizontalMargin = scaled(14);
+  const lineHeight = scaled(21);
+  const count = Math.min(visibleCount, MESSAGES.length);
 
-  const msgs = getMessages();
-  const count = Math.min(visibleCount, msgs.length);
-
-  for (let m = 0; m < count; m++) {
-    const msg = msgs[m];
-    const isUser = msg.from === "user";
-    const isLast = m === count - 1 && lastMsgProgress < 1;
-    ctx.font = msgFont;
-
-    // Word wrap
-    const words = msg.text.split(" ");
-    const lines: string[] = [];
-    let line = "";
-    for (const word of words) {
-      const test = line ? `${line} ${word}` : word;
-      if (ctx.measureText(test).width > maxBubbleW - padX * 2) {
-        if (line) lines.push(line);
-        line = word;
-      } else {
-        line = test;
-      }
-    }
-    if (line) lines.push(line);
-
-    const lineH = s(21);
-    const textBlockH = lines.length * lineH;
-    const bubbleW = Math.min(
-      maxBubbleW,
-      Math.max(...lines.map((l) => ctx.measureText(l).width)) + padX * 2,
+  for (let index = 0; index < count; index += 1) {
+    const message = MESSAGES[index];
+    const isUser = message.from === "user";
+    const isLast = index === count - 1 && lastMessageProgress < 1;
+    context.font = messageFont;
+    const lines = wrapMessage(
+      context,
+      message.text,
+      maxBubbleWidth - horizontalPadding * 2,
     );
-    const bubbleH = textBlockH + padY * 2;
-    const bubbleX = isUser ? W - marginX - bubbleW : marginX;
+    const bubbleWidth = Math.min(
+      maxBubbleWidth,
+      Math.max(...lines.map((line) => context.measureText(line).width)) +
+        horizontalPadding * 2,
+    );
+    const bubbleHeight = lines.length * lineHeight + verticalPadding * 2;
+    const bubbleX = isUser
+      ? WIDTH - horizontalMargin - bubbleWidth
+      : horizontalMargin;
+    const slideOffset = isLast ? scaled(30) * (1 - lastMessageProgress) : 0;
+    const scale = isLast ? 0.7 + 0.3 * lastMessageProgress : 1;
 
-    const slideOffset = isLast ? s(30) * (1 - lastMsgProgress) : 0;
-    const scale = isLast ? 0.7 + 0.3 * lastMsgProgress : 1;
-    const alpha = isLast ? lastMsgProgress : 1;
-
-    ctx.save();
-    ctx.globalAlpha = alpha;
+    context.save();
+    context.globalAlpha = isLast ? lastMessageProgress : 1;
     if (isLast) {
-      const ox = isUser ? bubbleX + bubbleW : bubbleX;
-      const oy = msgY + bubbleH + slideOffset;
-      ctx.translate(ox, oy);
-      ctx.scale(scale, scale);
-      ctx.translate(-ox, -oy);
+      const originX = isUser ? bubbleX + bubbleWidth : bubbleX;
+      const originY = messageY + bubbleHeight + slideOffset;
+      context.translate(originX, originY);
+      context.scale(scale, scale);
+      context.translate(-originX, -originY);
     }
 
-    ctx.save();
-    ctx.shadowColor = "rgba(0,0,0,0.06)";
-    ctx.shadowBlur = s(4);
-    ctx.shadowOffsetY = s(1);
-    const isTG = currentRenderPlatform === "telegram";
-    ctx.fillStyle = isUser
-      ? isTG
-        ? "#e9fec7"
-        : "#007AFF"
-      : isTG
-        ? BRAND_COLORS.white
-        : "#ebebed";
-    iMessageBubble(
-      ctx,
+    context.save();
+    context.shadowColor = "rgba(0,0,0,0.06)";
+    context.shadowBlur = scaled(4);
+    context.shadowOffsetY = scaled(1);
+    context.fillStyle = isUser ? "#007AFF" : "#ebebed";
+    drawBubble(
+      context,
       bubbleX,
-      msgY + slideOffset,
-      bubbleW,
-      bubbleH,
-      bubbleR,
+      messageY + slideOffset,
+      bubbleWidth,
+      bubbleHeight,
       isUser,
-      false,
-      isTG ? s(8) : 0,
-      isTG && isUser,
-      isTG && !isUser,
     );
-    ctx.restore();
+    context.restore();
 
-    ctx.fillStyle = isUser
-      ? isTG
-        ? BRAND_COLORS.black
-        : BRAND_COLORS.white
-      : BRAND_COLORS.black;
-    ctx.font =
-      isUser && !isTG
-        ? `200 ${msgFontSize}px Inter, -apple-system, system-ui, sans-serif`
-        : msgFont;
-    for (let i = 0; i < lines.length; i++) {
-      ctx.fillText(
-        lines[i],
-        bubbleX + padX,
-        msgY + slideOffset + padY + s(13) + i * lineH,
+    context.fillStyle = isUser ? BRAND_COLORS.white : BRAND_COLORS.black;
+    context.font = isUser
+      ? `200 ${messageFontSize}px Inter, -apple-system, system-ui, sans-serif`
+      : messageFont;
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+      context.fillText(
+        lines[lineIndex],
+        bubbleX + horizontalPadding,
+        messageY +
+          slideOffset +
+          verticalPadding +
+          scaled(13) +
+          lineIndex * lineHeight,
       );
     }
-
-    ctx.restore();
-
-    msgY += bubbleH + s(10);
+    context.restore();
+    messageY += bubbleHeight + scaled(10);
   }
 
-  for (let e = 0; e < extraMessages.length; e++) {
-    const extra = extraMessages[e];
-    const isUser = extra.from === "user";
-    const isLast = e === extraMessages.length - 1 && extra.progress < 1;
+  const headerBottom = separatorY + scaled(60);
+  const headerGradient = context.createLinearGradient(0, 0, 0, headerBottom);
+  headerGradient.addColorStop(0, "rgba(255,255,255,0.98)");
+  headerGradient.addColorStop(0.65, "rgba(255,255,255,0.78)");
+  headerGradient.addColorStop(1, "rgba(255,255,255,0)");
+  context.fillStyle = headerGradient;
+  context.fillRect(0, 0, WIDTH, headerBottom);
 
-    if (extra.typing) {
-      const typingW = s(75);
-      const typingH = s(40);
-      const typingX = marginX;
-
-      const slideOffset = isLast ? s(30) * (1 - extra.progress) : 0;
-      const scale = isLast ? 0.7 + 0.3 * extra.progress : 1;
-      const alpha = isLast ? extra.progress : 1;
-
-      ctx.save();
-      ctx.globalAlpha = alpha;
-      if (isLast) {
-        const ox = typingX;
-        const oy = msgY + typingH + slideOffset;
-        ctx.translate(ox, oy);
-        ctx.scale(scale, scale);
-        ctx.translate(-ox, -oy);
-      }
-
-      ctx.save();
-      ctx.shadowColor = "rgba(0,0,0,0.06)";
-      ctx.shadowBlur = s(4);
-      ctx.shadowOffsetY = s(1);
-      const isTGTyping = currentRenderPlatform === "telegram";
-      ctx.fillStyle = isTGTyping ? BRAND_COLORS.white : "#ebebed";
-      iMessageBubble(
-        ctx,
-        typingX,
-        msgY + slideOffset,
-        typingW,
-        typingH,
-        bubbleR,
-        false,
-        undefined,
-        isTGTyping ? s(8) : 0,
-        false,
-        isTGTyping,
-      );
-      ctx.restore();
-
-      // Three pulsing dots
-      const dotR = s(6);
-      const dotGap = s(18);
-      const dotsBaseY = msgY + slideOffset + typingH / 2;
-      const dotsStartX = typingX + typingW / 2 - dotGap;
-      const now = Date.now();
-
-      for (let d = 0; d < 3; d++) {
-        const phase = (now / 1000 + d * 0.33) % 1;
-        const pulse = Math.max(0, Math.sin(phase * Math.PI * 2));
-        const dotAlpha = 0.1 + 0.23 * pulse;
-        ctx.fillStyle =
-          currentRenderPlatform === "telegram"
-            ? `rgba(42,171,238,${dotAlpha + 0.2})`
-            : `rgba(0,0,0,${dotAlpha})`;
-        ctx.beginPath();
-        ctx.arc(dotsStartX + d * dotGap, dotsBaseY, dotR, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      ctx.restore();
-      msgY += typingH + s(10);
-    } else {
-      ctx.font = msgFont;
-
-      const words = extra.text.split(" ");
-      const lines: string[] = [];
-      let line = "";
-      for (const word of words) {
-        const test = line ? `${line} ${word}` : word;
-        if (ctx.measureText(test).width > maxBubbleW - padX * 2) {
-          if (line) lines.push(line);
-          line = word;
-        } else {
-          line = test;
-        }
-      }
-      if (line) lines.push(line);
-
-      const lineH = s(21);
-      const textBlockH = lines.length * lineH;
-      const bubbleW = Math.min(
-        maxBubbleW,
-        Math.max(...lines.map((l) => ctx.measureText(l).width)) + padX * 2,
-      );
-      const bubbleH = textBlockH + padY * 2;
-      const bubbleX = isUser ? W - marginX - bubbleW : marginX;
-
-      const slideOffset = isLast ? s(30) * (1 - extra.progress) : 0;
-      const scale = isLast ? 0.7 + 0.3 * extra.progress : 1;
-      const alpha = isLast ? extra.progress : 1;
-
-      ctx.save();
-      ctx.globalAlpha = alpha;
-      if (isLast) {
-        const ox = isUser ? bubbleX + bubbleW : bubbleX;
-        const oy = msgY + bubbleH + slideOffset;
-        ctx.translate(ox, oy);
-        ctx.scale(scale, scale);
-        ctx.translate(-ox, -oy);
-      }
-
-      ctx.save();
-      ctx.shadowColor = "rgba(0,0,0,0.06)";
-      ctx.shadowBlur = s(4);
-      ctx.shadowOffsetY = s(1);
-      const isTG2 = currentRenderPlatform === "telegram";
-      ctx.fillStyle = isUser
-        ? isTG2
-          ? "#e9fec7"
-          : "#007AFF"
-        : isTG2
-          ? BRAND_COLORS.white
-          : "#ebebed";
-      iMessageBubble(
-        ctx,
-        bubbleX,
-        msgY + slideOffset,
-        bubbleW,
-        bubbleH,
-        bubbleR,
-        isUser,
-        undefined,
-        isTG2 ? s(8) : 0,
-        isTG2 && isUser,
-        isTG2 && !isUser,
-      );
-      ctx.restore();
-
-      ctx.fillStyle = isUser
-        ? isTG2
-          ? BRAND_COLORS.black
-          : BRAND_COLORS.white
-        : BRAND_COLORS.black;
-      ctx.font =
-        isUser && !isTG2
-          ? `200 ${msgFontSize}px Inter, -apple-system, system-ui, sans-serif`
-          : msgFont;
-      for (let i = 0; i < lines.length; i++) {
-        ctx.fillText(
-          lines[i],
-          bubbleX + padX,
-          msgY + slideOffset + padY + s(13) + i * lineH,
-        );
-      }
-
-      ctx.restore();
-      msgY += bubbleH + s(10);
-    }
-  }
-
-  ctx.restore();
-
-  if (currentRenderPlatform === "telegram") {
-    const altHeaderBottom = navY + s(52);
-    ctx.fillStyle = "#f5f5f5";
-    ctx.fillRect(0, 0, W, altHeaderBottom);
-    ctx.strokeStyle = "#d1d1d6";
-    ctx.lineWidth = s(0.5);
-    ctx.beginPath();
-    ctx.moveTo(0, altHeaderBottom);
-    ctx.lineTo(W, altHeaderBottom);
-    ctx.stroke();
-  } else {
-    const headerBottom = sepY - headerShift + s(60);
-    const grad2 = ctx.createLinearGradient(0, 0, 0, headerBottom);
-    grad2.addColorStop(0, "rgba(255,255,255,0.9)");
-    grad2.addColorStop(0.5, "rgba(255,255,255,0.65)");
-    grad2.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.fillStyle = grad2;
-    ctx.fillRect(0, 0, W, headerBottom);
-  }
-
-  drawStatusBar(ctx);
-
-  if (currentRenderPlatform === "telegram") {
-    const chevCy = navY + s(24);
-
-    ctx.strokeStyle = "#007AFF";
-    ctx.lineWidth = s(3);
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.beginPath();
-    ctx.moveTo(s(24), chevCy - s(10));
-    ctx.lineTo(s(14), chevCy);
-    ctx.lineTo(s(24), chevCy + s(10));
-    ctx.stroke();
-    ctx.lineCap = "butt";
-    ctx.lineJoin = "miter";
-
-    ctx.fillStyle = "#007AFF";
-    ctx.font = `400 ${s(17)}px Inter, -apple-system, system-ui, sans-serif`;
-    ctx.textAlign = "left";
-    ctx.textBaseline = "middle";
-    ctx.fillText("Log In", s(36), chevCy + s(2));
-    ctx.textBaseline = "alphabetic";
-
-    ctx.fillStyle = "#000";
-    ctx.font = `700 ${s(17)}px Inter, -apple-system, system-ui, sans-serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "top";
-    ctx.fillText("Eliza", W / 2, chevCy - s(12));
-
-    ctx.fillStyle = "#007AFF";
-    ctx.font = `400 ${s(13)}px Inter, -apple-system, system-ui, sans-serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "top";
-    ctx.fillText("online", W / 2, chevCy + s(8));
-    ctx.textBaseline = "alphabetic";
-    ctx.textAlign = "left";
-
-    const tgAvatarR = s(20);
-    const tgAvatarCx = W - s(36);
-    const tgAvatarCy = chevCy;
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(tgAvatarCx, tgAvatarCy, tgAvatarR, 0, Math.PI * 2);
-    ctx.clip();
-    if (avatarImg) {
-      ctx.drawImage(
-        avatarImg,
-        tgAvatarCx - tgAvatarR,
-        tgAvatarCy - tgAvatarR,
-        tgAvatarR * 2,
-        tgAvatarR * 2,
-      );
-    } else {
-      const avatarGrad = ctx.createLinearGradient(
-        tgAvatarCx - tgAvatarR,
-        tgAvatarCy - tgAvatarR,
-        tgAvatarCx + tgAvatarR,
-        tgAvatarCy + tgAvatarR,
-      );
-      avatarGrad.addColorStop(0, "#A8A8B0");
-      avatarGrad.addColorStop(1, "#C8C8D0");
-      ctx.fillStyle = avatarGrad;
-      ctx.fill();
-    }
-    ctx.restore();
-  } else {
-    const backBtnFont = `700 ${s(16)}px Inter, -apple-system, system-ui, sans-serif`;
-    ctx.font = backBtnFont;
-    const backLabel = "Log In";
-    const backLabelW = ctx.measureText(backLabel).width;
-    const backH = s(40);
-    const backPadL = s(20);
-    const backChevronW = s(12);
-    const backGap = s(2);
-    const backPadR = s(14);
-    const backW = backPadL + backChevronW + backGap + backLabelW + backPadR;
-    const backX = s(17);
-    const backY = navY + s(15) - backH / 2;
-    const backCy = navY + s(15);
-
-    ctx.save();
-    ctx.shadowColor = "rgba(0,0,0,0.15)";
-    ctx.shadowBlur = s(8);
-    ctx.shadowOffsetY = s(2);
-    ctx.fillStyle = BRAND_COLORS.white;
-    pill(ctx, backX, backY, backW, backH);
-    ctx.fill();
-    ctx.restore();
-
-    const chevronCx = backX + backPadL;
-    ctx.strokeStyle = "#3c3c43";
-    ctx.lineWidth = s(2.2);
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.beginPath();
-    ctx.moveTo(chevronCx + s(2.5), backCy - s(7));
-    ctx.lineTo(chevronCx - s(4.5), backCy);
-    ctx.lineTo(chevronCx + s(2.5), backCy + s(7));
-    ctx.stroke();
-    ctx.lineCap = "butt";
-    ctx.lineJoin = "miter";
-
-    ctx.fillStyle = "#3c3c43";
-    ctx.font = backBtnFont;
-    ctx.textAlign = "left";
-    ctx.textBaseline = "middle";
-    ctx.fillText(backLabel, chevronCx + backChevronW + backGap, backCy);
-    ctx.textBaseline = "alphabetic";
-
-    const vidCx = W - s(37);
-    const vidCy = backCy;
-    const vidR = s(20);
-    ctx.save();
-    ctx.shadowColor = "rgba(0,0,0,0.15)";
-    ctx.shadowBlur = s(8);
-    ctx.shadowOffsetY = s(2);
-    ctx.fillStyle = BRAND_COLORS.white;
-    ctx.beginPath();
-    ctx.arc(vidCx, vidCy, vidR, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-    ctx.strokeStyle = "#3c3c43";
-    ctx.lineWidth = s(2);
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    const camW = s(17);
-    const camH = s(13.5);
-    const camX = vidCx - s(11);
-    const camY = vidCy - camH / 2;
-    roundRect(ctx, camX, camY, camW, camH, s(3), s(3), s(3), s(3));
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(camX + camW, vidCy - s(3));
-    ctx.lineTo(camX + camW + s(5.5), vidCy - s(5));
-    ctx.lineTo(camX + camW + s(5.5), vidCy + s(5));
-    ctx.lineTo(camX + camW, vidCy + s(3));
-    ctx.stroke();
-    ctx.lineCap = "butt";
-    ctx.lineJoin = "miter";
-
-    const avatarCx = W / 2;
-    const avatarCy = contactY + s(26) + s(contentYOffset) - headerShift;
-    const avatarR = s(26);
-
-    ctx.font = `800 ${s(16)}px Inter, -apple-system, system-ui, sans-serif`;
-    const nameText = "Eliza";
-    const nameTextW = ctx.measureText(nameText).width;
-    const namePadX = s(16);
-    const namePadY = s(8);
-    const nameH = s(16) + namePadY * 2;
-    const nameW = nameTextW + namePadX * 2;
-    const nameX = avatarCx - nameW / 2;
-    const nameY = contactY + s(48) - headerShift;
-    const shadowProgress =
-      contentYOffset === 0 ? 1 : Math.max(0, 1 - Math.abs(contentYOffset) / 4);
-    const arrowProgress =
-      contentYOffset === 0 ? 1 : Math.max(0, 1 - Math.abs(contentYOffset) / 2);
-    const textShift = s(4) * arrowProgress;
-    const textCenterX = avatarCx - textShift;
-    ctx.save();
-    ctx.shadowColor = `rgba(0,0,0,${0.15 * shadowProgress})`;
-    ctx.shadowBlur = s(8) * shadowProgress;
-    ctx.shadowOffsetY = s(3) * shadowProgress;
-    ctx.fillStyle = BRAND_COLORS.white;
-    pill(ctx, nameX, nameY, nameW, nameH);
-    ctx.fill();
-    ctx.restore();
-    ctx.fillStyle = "#000";
-    ctx.textAlign = "center";
-    ctx.fillText(nameText, textCenterX, nameY + nameH / 2 + s(5.5));
-
-    if (arrowProgress > 0) {
-      const arrowX = textCenterX + nameTextW / 2 + s(8);
-      const arrowY = nameY + nameH / 2;
-      ctx.save();
-      ctx.globalAlpha = arrowProgress;
-      ctx.strokeStyle = "#aeaeb2";
-      ctx.lineWidth = s(2.5);
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-      ctx.beginPath();
-      ctx.moveTo(arrowX - s(1.5), arrowY - s(4));
-      ctx.lineTo(arrowX + s(1.5), arrowY);
-      ctx.lineTo(arrowX - s(1.5), arrowY + s(4));
-      ctx.stroke();
-      ctx.restore();
-    }
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(avatarCx, avatarCy, avatarR, 0, Math.PI * 2);
-    ctx.clip();
-    if (avatarImg) {
-      ctx.drawImage(
-        avatarImg,
-        avatarCx - avatarR,
-        avatarCy - avatarR,
-        avatarR * 2,
-        avatarR * 2,
-      );
-    } else {
-      const avatarGrad = ctx.createLinearGradient(
-        avatarCx - avatarR,
-        avatarCy - avatarR,
-        avatarCx + avatarR,
-        avatarCy + avatarR,
-      );
-      avatarGrad.addColorStop(0, "#A8A8B0");
-      avatarGrad.addColorStop(1, "#C8C8D0");
-      ctx.fillStyle = avatarGrad;
-      ctx.fill();
-    }
-    ctx.restore();
-  }
-
-  ctx.strokeStyle = "#e5e5ea";
-  ctx.lineWidth = s(0.5);
-  ctx.beginPath();
-  ctx.moveTo(0, H - s(58));
-  ctx.lineTo(W, H - s(58));
-  ctx.stroke();
-
-  const inputBarY = H - s(50);
-
-  ctx.fillStyle = "#007AFF";
-  ctx.beginPath();
-  ctx.arc(s(26), inputBarY + s(18), s(15), 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = "#fff";
-  ctx.lineWidth = s(2.5);
-  ctx.lineCap = "round";
-  ctx.beginPath();
-  ctx.moveTo(s(26) - s(7), inputBarY + s(18));
-  ctx.lineTo(s(26) + s(7), inputBarY + s(18));
-  ctx.moveTo(s(26), inputBarY + s(18) - s(7));
-  ctx.lineTo(s(26), inputBarY + s(18) + s(7));
-  ctx.stroke();
-  ctx.lineCap = "butt";
-
-  const inputX = s(52);
-  const inputW = W - s(64);
-  const inputH = s(36);
-  const inputFieldY = inputBarY;
-  ctx.strokeStyle = "#c7c7cc";
-  ctx.lineWidth = s(1);
-  pill(ctx, inputX, inputFieldY, inputW, inputH);
-  ctx.stroke();
-
-  ctx.fillStyle = "#c7c7cc";
-  ctx.font = `400 ${s(16)}px Inter, -apple-system, system-ui, sans-serif`;
-  ctx.textAlign = "left";
-  ctx.fillText("iMessage", inputX + s(16), inputFieldY + s(23));
-
-  ctx.fillStyle = "#000";
-  const indW = s(134);
-  roundRect(
-    ctx,
-    (W - indW) / 2,
-    H - s(10),
-    indW,
-    s(5),
-    s(2.5),
-    s(2.5),
-    s(2.5),
-    s(2.5),
-  );
-  ctx.fill();
-
-  ctx.restore(); // end rounded-corner clip
-
+  drawStatusBar(context);
+  drawContactHeader(context, avatarImage);
+  drawComposer(context);
+  context.restore();
   return canvas;
 }

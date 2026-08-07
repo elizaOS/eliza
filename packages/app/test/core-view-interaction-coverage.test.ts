@@ -13,7 +13,6 @@ import {
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "../../..");
-const SCENARIO_PR_WORKFLOW = ".github/workflows/scenario-pr.yml";
 
 type InteractionOwner = {
   spec: string;
@@ -467,11 +466,6 @@ function readSegment(
   return source.slice(start, end);
 }
 
-function uiSmokeSpecName(spec: string): string | null {
-  const match = spec.match(/^packages\/app\/test\/ui-smoke\/(.+\.spec\.ts)$/);
-  return match?.[1] ?? null;
-}
-
 function uniqueOwners(owners: Iterable<InteractionOwner>): InteractionOwner[] {
   return [
     ...new Map(
@@ -507,18 +501,6 @@ describe("core view interaction coverage", () => {
 
     expect(missingSpecs).toEqual([]);
     expect(missingSignals).toEqual([]);
-  });
-
-  it("keeps Playwright ui-smoke interaction owners wired into scenario PR CI", () => {
-    const workflow = readRepoFile(SCENARIO_PR_WORKFLOW);
-    const unwired = uniqueOwners(
-      Object.values(CORE_VIEW_INTERACTIONS).flatMap(({ owners }) => owners),
-    )
-      .map((owner) => uiSmokeSpecName(owner.spec))
-      .filter((name): name is string => name !== null)
-      .filter((name) => !workflow.includes(`test/ui-smoke/${name}`));
-
-    expect(unwired).toEqual([]);
   });
 
   it("keeps shell view agent hooks under their ShellViewAgentSurface provider", () => {
