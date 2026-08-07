@@ -33,24 +33,39 @@ export interface CreateSurfaceOptions {
   storage: SurfaceStorageSharing;
 }
 
-export interface SetBoundsOptions {
-  id: string;
-  /** Rect in host CSS pixels; the native side scales by the display density. */
+export interface SurfaceRect {
   x: number;
   y: number;
   width: number;
   height: number;
 }
 
+export interface SurfaceCornerRadii {
+  topLeft: number;
+  topRight: number;
+  bottomRight: number;
+  bottomLeft: number;
+}
+
+/** Actual host-space rounded clip enclosing the native page. */
+export interface SurfaceOuterClip extends SurfaceRect {
+  cornerRadii: SurfaceCornerRadii;
+}
+
+export interface SetBoundsOptions extends SurfaceRect {
+  id: string;
+  /**
+   * Computed host clip in CSS pixels. It travels atomically with the page rect
+   * so a responsive radius change never requires recreating the WebView.
+   */
+  outerClip: SurfaceOuterClip;
+}
+
 /**
  * Rounded host-space region where the native page yields to React chrome.
  * Coordinates use the same host CSS-pixel space as {@link SetBoundsOptions}.
  */
-export interface SurfaceOcclusionRect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
+export interface SurfaceOcclusionRect extends SurfaceRect {
   cornerRadius: number;
 }
 
