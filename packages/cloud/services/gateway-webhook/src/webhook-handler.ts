@@ -136,6 +136,7 @@ export async function handleWebhook(
       });
     }
 
+    let egressStarted = false;
     try {
       await processMessage(
         adapter,
@@ -161,6 +162,7 @@ export async function handleWebhook(
               "Telegram egress was already claimed for this update",
             );
           }
+          egressStarted = true;
         },
       );
       await redis.set(dedupKey, TELEGRAM_DELIVERED, {
@@ -180,6 +182,10 @@ export async function handleWebhook(
         );
       }
       throw error;
+    } finally {
+      if (!egressStarted) {
+        await redis.del(processingKey);
+      }
     }
   }
 

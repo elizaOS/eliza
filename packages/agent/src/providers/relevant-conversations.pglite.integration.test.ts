@@ -39,6 +39,7 @@ const GUEST = "33333333-3333-3333-3333-333333333333" as UUID;
 const DISCORD_ROOM = "44444444-4444-4444-4444-444444444444" as UUID;
 const TELEGRAM_ROOM = "55555555-5555-5555-5555-555555555555" as UUID;
 const GROUP_ROOM = "77777777-7777-7777-7777-777777777777" as UUID;
+const APP_ROOM = "99999999-9999-9999-9999-999999999999" as UUID;
 const WORLD = "88888888-8888-8888-8888-888888888888" as UUID;
 const EMPTY_STATE = { values: {}, data: {}, text: "" } as unknown as State;
 
@@ -115,7 +116,10 @@ describe("relevantConversationsProvider on AgentRuntime + PGlite", () => {
   async function ensureRoom(
     roomId: UUID,
     entityId: UUID,
-    type: typeof ChannelType.DM | typeof ChannelType.GROUP,
+    type:
+      | typeof ChannelType.DM
+      | typeof ChannelType.GROUP
+      | typeof ChannelType.API,
     source: string,
   ): Promise<void> {
     if (!testRuntime) throw new Error("runtime not initialized");
@@ -199,6 +203,45 @@ describe("relevantConversationsProvider on AgentRuntime + PGlite", () => {
     expect(discordResult.text).toContain(
       "Telegram says the launch code is soliza-beta.",
     );
+  });
+
+  it("recalls an unstamped app message after the trusted persistence boundary stamps provenance", async () => {
+    if (!testRuntime) throw new Error("runtime not initialized");
+    const { runtime } = testRuntime;
+    await ensureRoom(APP_ROOM, OWNER, ChannelType.API, "client_chat");
+    await ensureRoom(TELEGRAM_ROOM, OWNER, ChannelType.DM, "telegram");
+    const unstamped = createMessageMemory({
+      id: stringToUuid("provider-app-origin") as UUID,
+      entityId: OWNER,
+      agentId: runtime.agentId,
+      roomId: APP_ROOM,
+      content: {
+        text: "The app chat says the launch code is soliza-local.",
+        source: "client_chat",
+        channelType: ChannelType.API,
+      },
+      embedding: vector(1),
+    });
+    expect(unstamped.metadata).not.toHaveProperty("accountId");
+    expect(unstamped.metadata).not.toHaveProperty("platformMessageId");
+
+    const { persistConversationMemory } = await import("../api/chat-routes.ts");
+    const stored = await persistConversationMemory(runtime, unstamped);
+    expect(stored.metadata).toMatchObject({
+      provider: "client_chat",
+      accountId: runtime.agentId,
+      platformMessageId: unstamped.id,
+    });
+
+    const result = await relevantConversationsProvider.get(
+      runtime,
+      await ownerTurn(TELEGRAM_ROOM, "telegram"),
+      EMPTY_STATE,
+    );
+    expect(result.text).toContain(
+      "The app chat says the launch code is soliza-local.",
+    );
+    expect(result.values?.relevantConversationAvailability).toBe("complete");
   });
 
   it("gates private canonical context in a live group-room delivery", async () => {

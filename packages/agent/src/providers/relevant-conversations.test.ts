@@ -31,12 +31,21 @@ const revalidateOwnerExclusiveDisclosure = vi.fn(
   }),
 );
 const markOwnerExclusiveDisclosureUsed = vi.fn();
+const recordOwnerExclusiveSuppression = vi.fn();
 const searchCanonicalConversationMemories = vi.fn(
   async (input: {
     runtime: IAgentRuntime;
     embedding: number[];
     deliveryMessage: Memory;
-  }) => {
+  }): Promise<{
+    items: Array<{
+      memory: Memory;
+      provenance: Record<string, never>;
+      dedupeKey: string;
+    }>;
+    withheld: Array<{ source?: string; code: string; reason: string }>;
+    availability: "complete" | "partial" | "unavailable";
+  }> => {
     const disclosure = await revalidateOwnerExclusiveDisclosure(
       input.runtime,
       input.deliveryMessage,
@@ -68,6 +77,7 @@ vi.mock("@elizaos/core", async (importOriginal) => {
     embedRecallQuery: (runtime: IAgentRuntime, text: string) =>
       embedRecallQuery(runtime, text),
     markOwnerExclusiveDisclosureUsed,
+    recordOwnerExclusiveSuppression,
     revalidateOwnerExclusiveDisclosure,
     searchCanonicalConversationMemories,
   };
@@ -139,6 +149,7 @@ describe("relevantConversationsProvider — shared recall embed fail-open", () =
       basis: "owner_private_destination",
     });
     markOwnerExclusiveDisclosureUsed.mockClear();
+    recordOwnerExclusiveSuppression.mockClear();
     searchCanonicalConversationMemories.mockClear();
   });
 
@@ -208,6 +219,102 @@ describe("relevantConversationsProvider — shared recall embed fail-open", () =
     expect(searchCanonicalConversationMemories).not.toHaveBeenCalled();
     expect(searchMemories).not.toHaveBeenCalled();
     expect(markOwnerExclusiveDisclosureUsed).not.toHaveBeenCalled();
+    expect(recordOwnerExclusiveSuppression).toHaveBeenCalledWith(
+      expect.objectContaining({ roomId: ROOM_ID }),
+      "destination_not_private",
+    );
+  });
+
+  it("renders an unavailable canonical result instead of presenting withheld matches as no history", async () => {
+    embedRecallQuery.mockResolvedValue([0.1, 0.2, 0.3]);
+    searchCanonicalConversationMemories.mockResolvedValueOnce({
+      items: [],
+      withheld: [
+        {
+          source: "client_chat",
+          code: "invalid_provenance",
+          reason: "stored memory is missing a connector account id",
+        },
+      ],
+      availability: "unavailable",
+    });
+    const { runtime } = makeRuntime();
+
+    const result = await relevantConversationsProvider.get(
+      runtime,
+      makeMessage("what did we decide about the launch date"),
+      EMPTY_STATE,
+    );
+
+    expect(result.text).toContain("unavailable");
+    expect(result.text).toContain("withheld by access policy");
+    expect(result.values?.relevantConversationAvailability).toBe("unavailable");
+    expect(result.data?.availability).toBe("unavailable");
+    expect(result.data?.withheld).toEqual([
+      expect.objectContaining({ code: "invalid_provenance" }),
+    ]);
+  });
+
+  it("labels mixed canonical recall as partial and preserves withheld reasons", async () => {
+    embedRecallQuery.mockResolvedValue([0.1, 0.2, 0.3]);
+    const recalled = {
+      id: "00000000-0000-0000-0000-0000000000m4",
+      roomId: OTHER_ROOM,
+      entityId: "00000000-0000-0000-0000-0000000000e1",
+      content: { text: "disclosable launch note" },
+      createdAt: 1,
+    } as unknown as Memory;
+    searchCanonicalConversationMemories.mockResolvedValueOnce({
+      items: [{ memory: recalled, provenance: {}, dedupeKey: "memory-4" }],
+      withheld: [
+        {
+          source: "telegram",
+          code: "scope_denied",
+          reason: "requester is not authorized to read the memory scope",
+        },
+      ],
+      availability: "partial",
+    });
+    const { runtime } = makeRuntime();
+
+    const result = await relevantConversationsProvider.get(
+      runtime,
+      makeMessage("what did we decide about the launch date"),
+      EMPTY_STATE,
+    );
+
+    expect(result.text).toContain("Relevant past conversations (partial;");
+    expect(result.text).toContain("disclosable launch note");
+    expect(result.values?.relevantConversationAvailability).toBe("partial");
+    expect(result.data?.withheld).toEqual([
+      expect.objectContaining({ code: "scope_denied" }),
+    ]);
+  });
+
+  it("fails both recall branches together when access-context resolution fails", async () => {
+    buildAccessContext.mockRejectedValueOnce(
+      new Error("role store unavailable"),
+    );
+    embedRecallQuery.mockResolvedValue([0.1, 0.2, 0.3]);
+    const reportError = vi.fn();
+    const getMemories = vi.fn(async () => []);
+    const { runtime } = makeRuntime({ reportError, getMemories });
+
+    const result = await relevantConversationsProvider.get(
+      runtime,
+      makeMessage("what did we decide about the launch date"),
+      EMPTY_STATE,
+    );
+
+    expect(result).toEqual({ text: "", values: {}, data: {} });
+    expect(getMemories).not.toHaveBeenCalled();
+    expect(embedRecallQuery).not.toHaveBeenCalled();
+    expect(searchCanonicalConversationMemories).not.toHaveBeenCalled();
+    expect(reportError).toHaveBeenCalledWith(
+      "RelevantConversationsProvider",
+      expect.any(Error),
+      expect.objectContaining({ roomId: ROOM_ID }),
+    );
   });
 
   it("surfaces lexical hash memories even when the embed fails open (null)", async () => {

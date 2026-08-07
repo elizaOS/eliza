@@ -167,6 +167,7 @@ export {
 	ownerExclusiveDisclosureWasUsed,
 	ownerExclusiveSuppressionNote,
 	PRIVACY_DENIED_TEXT,
+	recordOwnerExclusiveSuppression,
 	registerRuntimeManagedInternalActor,
 	revalidateOwnerExclusiveDisclosure,
 	type TrustedApiPrincipal,

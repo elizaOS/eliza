@@ -69,7 +69,6 @@ function ownerKeyForBot(bot: Telegraf<Context>): symbol {
   }
   const ownerKey = Symbol("telegram-poller-owner");
   botOwnerKeys.set(bot, ownerKey);
-  botByOwnerKey.set(ownerKey, bot);
   return ownerKey;
 }
 

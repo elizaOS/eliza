@@ -515,7 +515,8 @@ function ownerExclusiveSuppressions(
 	return reasons;
 }
 
-function recordOwnerExclusiveSuppression(
+/** Record that an owner-private surface was withheld from this exact turn. */
+export function recordOwnerExclusiveSuppression(
 	message: Memory,
 	reason: OwnerExclusiveDisclosureDenial,
 ): void {

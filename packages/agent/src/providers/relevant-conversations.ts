@@ -12,6 +12,7 @@
  */
 import type {
   AccessContext,
+  CanonicalRecallResult,
   IAgentRuntime,
   Memory,
   Provider,
@@ -26,6 +27,7 @@ import {
   filterByAccessContext,
   markOwnerExclusiveDisclosureUsed,
   OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
+  recordOwnerExclusiveSuppression,
   revalidateOwnerExclusiveDisclosure,
   searchCanonicalConversationMemories,
   stringToUuid,
@@ -144,30 +146,13 @@ export const relevantConversationsProvider: Provider = {
         return { text: "", values: {}, data: {} };
       }
 
-      let accessContext: AccessContext;
-      try {
-        accessContext = await buildAccessContext(runtime, message);
-      } catch (error) {
-        // error-policy:J4 Access-context failure degrades to the explicit
-        // least-privileged requester scope and is surfaced through diagnostics.
-        runtime.logger.warn(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            entityId: message.entityId,
-            roomId: message.roomId,
-          },
-          "[RelevantConversationsProvider] Access context resolution failed; using least-privileged requester scope",
-        );
-        runtime.reportError(
-          "RelevantConversationsProvider.accessContext",
-          error,
-          {
-            entityId: message.entityId,
-            roomId: message.roomId,
-          },
-        );
-        accessContext = { requesterEntityId: message.entityId };
-      }
+      // Access-context resolution is required for both recall branches. If it
+      // fails, the wholesale outer J4 boundary reports and suppresses the
+      // provider instead of letting lexical and semantic recall disagree.
+      const accessContext: AccessContext = await buildAccessContext(
+        runtime,
+        message,
+      );
 
       // This provider deliberately excludes the current room below, so every
       // result it could render is a cross-room disclosure. Fail closed before
@@ -182,6 +167,9 @@ export const relevantConversationsProvider: Provider = {
         !disclosure.allowed ||
         disclosure.basis !== OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS
       ) {
+        if (!disclosure.allowed) {
+          recordOwnerExclusiveSuppression(message, disclosure.reason);
+        }
         return { text: "", values: {}, data: {} };
       }
 
@@ -189,30 +177,30 @@ export const relevantConversationsProvider: Provider = {
       // the lexical hash-memory scan overlaps the shared recall-query embed
       // and canonical semantic search instead of adding to the reply critical
       // path. Either branch still fails into the same wholesale outer degrade.
-      const [hashMemories, results] = await Promise.all([
+      const [hashMemories, semanticRecall] = await Promise.all([
         loadHashMemories(runtime, text, accessContext),
-        (async (): Promise<Memory[]> => {
+        (async (): Promise<CanonicalRecallResult | null> => {
           const embedding = await embedRecallQuery(runtime, text);
-          if (!embedding || embedding.length === 0) return [];
-          return (
-            await searchCanonicalConversationMemories({
-              runtime,
-              embedding,
-              query: text,
-              agentId: runtime.agentId,
-              deliveryMessage: message,
-              count: MAX_RELEVANT_RESULTS + 5,
-              matchThreshold: MATCH_THRESHOLD,
-            })
-          ).items.map((item) => item.memory);
+          if (!embedding || embedding.length === 0) return null;
+          return searchCanonicalConversationMemories({
+            runtime,
+            embedding,
+            query: text,
+            agentId: runtime.agentId,
+            deliveryMessage: message,
+            count: MAX_RELEVANT_RESULTS + 5,
+            matchThreshold: MATCH_THRESHOLD,
+          });
         })(),
       ]);
+      const semanticMemories =
+        semanticRecall?.items.map((item) => item.memory) ?? [];
 
       // Filter out messages from the current conversation to avoid echo, dedupe
       // by id (hash memories prepended so they win on overlap), then cap.
       const currentRoomId = message.roomId;
       const readable = filterByAccessContext(
-        [...hashMemories, ...results],
+        [...hashMemories, ...semanticMemories],
         accessContext,
         runtime.agentId,
       );
@@ -233,6 +221,24 @@ export const relevantConversationsProvider: Provider = {
         )
       ) {
         markOwnerExclusiveDisclosureUsed(message);
+      }
+
+      if (
+        filtered.length === 0 &&
+        semanticRecall?.availability === "unavailable"
+      ) {
+        return {
+          text: "Relevant past conversations are unavailable because matching messages were withheld by access policy.",
+          values: {
+            relevantConversationCount: 0,
+            relevantConversationAvailability: "unavailable",
+          },
+          data: {
+            messages: [],
+            withheld: semanticRecall.withheld,
+            availability: semanticRecall.availability,
+          },
+        };
       }
 
       if (filtered.length === 0) {
@@ -263,7 +269,16 @@ export const relevantConversationsProvider: Provider = {
         });
       }
 
-      const lines: string[] = ["Relevant past conversations:"];
+      const availability =
+        semanticRecall?.availability === "partial" ||
+        semanticRecall?.availability === "unavailable"
+          ? "partial"
+          : "complete";
+      const lines: string[] = [
+        availability === "partial"
+          ? "Relevant past conversations (partial; some matching messages were withheld by access policy):"
+          : "Relevant past conversations:",
+      ];
       for (const mem of filtered) {
         const room = roomCache.get(mem.roomId) ?? null;
         const tag = roomSourceTag(room);
@@ -280,7 +295,10 @@ export const relevantConversationsProvider: Provider = {
 
       return {
         text: lines.join("\n"),
-        values: { relevantConversationCount: filtered.length },
+        values: {
+          relevantConversationCount: filtered.length,
+          relevantConversationAvailability: availability,
+        },
         data: {
           messages: filtered.map((m) => ({
             id: m.id,
@@ -289,6 +307,8 @@ export const relevantConversationsProvider: Provider = {
             text: m.content.text,
             createdAt: m.createdAt,
           })),
+          withheld: semanticRecall?.withheld ?? [],
+          availability,
         },
       };
     } catch (error) {
