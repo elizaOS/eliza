@@ -189,13 +189,22 @@ export function injectApiBaseIntoHtml(
     //    re-authenticates after a hard reload without re-pairing, for LAN
     //    clients (e.g. iPad Safari) that cannot paste a token by hand.
     //
-    // `eliza:first-run-complete` is set alongside because this token is only
-    // injected into an already-provisioned deployment (cloud container, or an
-    // explicit `ELIZA_FORCE_INJECT_TOKEN` opt-in behind the operator's own auth
-    // gate) — the character and provider are configured already, so the
-    // first-run wizard has nothing left to ask.
+    // Sink 3 is scoped to THIS backend, and that scoping is the security
+    // boundary. The persisted record can point at any host the user has
+    // previously connected to; startup restore sends `accessToken` to that
+    // record's `apiBase`. Merging our token into a `remote`/`cloud` record
+    // would hand this agent's full-capability token to an unrelated LAN or
+    // Tailscale host. So: seed a fresh `local:embedded` record when none
+    // exists, refresh the token when the stored record is already this
+    // device's local backend, and otherwise leave the record untouched.
+    //
+    // `eliza:first-run-complete` is deliberately NOT written here.
+    // `ELIZA_FORCE_INJECT_TOKEN` only attests that the operator accepts HTML
+    // token injection; it does not prove character/provider setup finished, so
+    // suppressing onboarding off the back of it would strand a partially
+    // configured self-hosted deployment.
     parts.push(
-      `(function(){var t=${JSON.stringify(trimmedToken)},k=Symbol.for("elizaos.app.boot-config"),w=window,prev=w.__ELIZAOS_APP_BOOT_CONFIG__||(w[k]&&w[k].current)||{},next=Object.assign({},prev,{apiToken:t});w.__ELIZAOS_APP_BOOT_CONFIG__=next;w[k]={current:next};w.__ELIZA_API_TOKEN__=t;try{localStorage.setItem("eliza:first-run-complete","1");var sk="elizaos:active-server",sp={};try{sp=JSON.parse(localStorage.getItem(sk)||"{}")||{};}catch(e){}localStorage.setItem(sk,JSON.stringify(Object.assign({id:"local:embedded",kind:"local",label:"This device"},sp,{accessToken:t})));}catch(e){}})();`,
+      `(function(){var t=${JSON.stringify(trimmedToken)},k=Symbol.for("elizaos.app.boot-config"),w=window,prev=w.__ELIZAOS_APP_BOOT_CONFIG__||(w[k]&&w[k].current)||{},next=Object.assign({},prev,{apiToken:t});w.__ELIZAOS_APP_BOOT_CONFIG__=next;w[k]={current:next};w.__ELIZA_API_TOKEN__=t;try{var sk="elizaos:active-server",sp=null;try{sp=JSON.parse(localStorage.getItem(sk)||"null");}catch(e){sp=null;}if(!sp||typeof sp!=="object"){localStorage.setItem(sk,JSON.stringify({id:"local:embedded",kind:"local",label:"This device",accessToken:t}));}else if(sp.kind==="local"){localStorage.setItem(sk,JSON.stringify(Object.assign({},sp,{accessToken:t})));}}catch(e){}})();`,
     );
   }
   const injection = Buffer.from(`<script>${parts.join("")}</script>`);
