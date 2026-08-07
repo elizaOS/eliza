@@ -410,7 +410,9 @@ describe("applySubscriptionCredentials", () => {
     // The point of the ordering: the upstream grant was never spent, so the
     // stored one-time refresh token is still usable.
     expect(refreshMock).not.toHaveBeenCalled();
-    expect(loadAccount("openai-codex", "personal", storagePolicy())?.credentials).toMatchObject({
+    expect(
+      loadAccount("openai-codex", "personal", storagePolicy())?.credentials,
+    ).toMatchObject({
       access: "expired-access",
       refresh: "one-time-refresh",
     });
