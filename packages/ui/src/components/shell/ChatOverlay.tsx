@@ -9,8 +9,10 @@ import {
   AudioLines,
   FileText,
   Film,
+  House,
   Loader2,
   Mic,
+  MicOff,
   Music,
   Paperclip,
   Search,
@@ -29,6 +31,7 @@ import {
   useTransform,
 } from "motion/react";
 import * as React from "react";
+import { type OrbState, ThinkingOrb } from "thinking-orbs";
 
 import { client } from "../../api/client";
 import type {
@@ -69,10 +72,8 @@ import {
   LAYOUT_SHIFT_INTENT_TRANSIENT,
 } from "../../hooks/useLayoutShiftMonitor";
 import { useLoadOlderOnScroll } from "../../hooks/useLoadOlderOnScroll";
-import { usePushToTalk } from "../../hooks/usePushToTalk";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
-import { tabFromPath } from "../../navigation";
 import { claimAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
 import { isIOS, isNative, isStandalonePwa } from "../../platform/init";
 import {
@@ -428,7 +429,8 @@ export {
 } from "./chat-overlay-motion";
 
 // Glyphs (viewBox 0 0 36 36), rendered in currentColor inside a soft chip. Send
-// + mic now use lucide icons (SendHorizontal / Mic); the rest stay hand-drawn.
+// + voice/send use lucide icons (AudioLines / SendHorizontal); the rest stay
+// hand-drawn.
 // The plus fills nearly the whole 36-unit box (arms 3→33) so, rendered at the
 // full button size, it carries the same optical weight as the lucide mic/send
 // marks — a tighter path would read as a small, over-padded glyph beside them.
@@ -497,7 +499,7 @@ function SoftButton({
   active?: boolean;
   /** Accessible toggle state when it is intentionally broader than the accent state. */
   pressed?: boolean;
-  /** Breathe the accent glyph while a live capture is hot. */
+  /** Breathe the glyph while a batch capture has no richer activity surface. */
   pulse?: boolean;
   testId?: string;
 }): React.JSX.Element {
@@ -519,8 +521,7 @@ function SoftButton({
       className={cn(
         // Icon-only control: transparent, borderless, no capsule — just the
         // glyph. Hover and active express through icon color alone — neutral
-        // resting → neutral hover, accent for active — never a background/
-        // border, never blue.
+        // resting → white active — never a background/border or status color.
         //
         // The icon size keeps the visible desktop box quiet at 40px and lets the
         // shared Button primitive raise the real element to 44px on coarse
@@ -528,10 +529,10 @@ function SoftButton({
         // when compact screens draw the two trailing controls closer together.
         "relative grid shrink-0 place-items-center bg-transparent p-0 transition-colors hover:bg-transparent [&_svg]:size-5",
         active
-          ? "text-accent hover:text-accent"
+          ? "text-white hover:text-white"
           : "text-muted-strong hover:text-txt",
-        // Pulse the accent glyph while capture is hot; reduced-motion falls back
-        // to the static accent without adding background or border chrome.
+        // Batch capture has no inline waveform, so its glyph breathes; realtime
+        // voice keeps this control static because the composer owns the motion.
         pulse && "animate-pulse motion-reduce:animate-none",
         // Blocked controls (e.g. voice/transcript during sign-in-first
         // onboarding) read as inert: dimmed AND non-interactive to the pointer
@@ -717,6 +718,184 @@ function ComposerMicActivity({
           style={{ height, transform: "scaleY(0.32)" }}
         />
       ))}
+    </div>
+  );
+}
+
+type RealtimeVoiceStatus = NonNullable<
+  ShellController["realtimeVoice"]
+>["status"];
+
+const REALTIME_COMPOSER_LABEL: Record<RealtimeVoiceStatus, string> = {
+  idle: "Voice is live",
+  listening: "Listening…",
+  transcribing: "Hearing you…",
+  thinking: "Thinking…",
+  speaking: "Speaking…",
+  interrupting: "Stopping…",
+};
+
+type RealtimeVoiceVisualPhase =
+  | RealtimeVoiceStatus
+  | "connecting"
+  | "paused"
+  | "error";
+
+const REALTIME_VOICE_ORB: Record<
+  RealtimeVoiceVisualPhase,
+  { state: OrbState; speed: number; paused?: boolean }
+> = {
+  idle: { state: "breathing", speed: 0.72 },
+  connecting: { state: "connecting", speed: 1 },
+  listening: { state: "listening", speed: 1 },
+  transcribing: { state: "listening", speed: 0.82 },
+  thinking: { state: "working", speed: 0.92 },
+  speaking: { state: "composing", speed: 1.08 },
+  interrupting: { state: "shaping", speed: 1.18 },
+  paused: { state: "breathing", speed: 0, paused: true },
+  error: { state: "breathing", speed: 0, paused: true },
+};
+
+/** A fixed-size orb gives every realtime phase distinct motion without moving the composer. */
+function ComposerRealtimeVoiceWaveform({
+  phase,
+  reduceMotion,
+}: {
+  phase: RealtimeVoiceVisualPhase;
+  reduceMotion: boolean;
+}): React.JSX.Element {
+  const visual = REALTIME_VOICE_ORB[phase];
+  const paused = reduceMotion || visual.paused === true;
+
+  return (
+    <span
+      aria-hidden="true"
+      data-phase={phase}
+      data-orb-state={visual.state}
+      data-testid="chat-composer-realtime-waveform"
+      className={cn(
+        "flex h-5 w-6 shrink-0 items-center justify-center",
+        phase === "error" ? "opacity-60" : "opacity-90",
+      )}
+    >
+      <ThinkingOrb
+        aria-hidden="true"
+        data-testid="chat-composer-thinking-orb"
+        state={visual.state}
+        size={20}
+        speed={paused ? 0 : visual.speed}
+        paused={paused}
+        theme="dark"
+      />
+    </span>
+  );
+}
+
+/** Realtime voice occupies the composer's normal text lane, never a second card. */
+function ComposerRealtimeVoiceActivity({
+  connecting,
+  error,
+  needsAudioUnlock,
+  onUnlockAudio,
+  paused,
+  reduceMotion,
+  status,
+  transcript,
+}: {
+  connecting: boolean;
+  error: string | null;
+  needsAudioUnlock: boolean;
+  onUnlockAudio: () => void;
+  paused: boolean;
+  reduceMotion: boolean;
+  status: RealtimeVoiceStatus;
+  transcript: string;
+}): React.JSX.Element {
+  const phaseLabel = error
+    ? error
+    : paused
+      ? "Voice paused"
+      : connecting
+        ? "Connecting…"
+        : REALTIME_COMPOSER_LABEL[status];
+  const liveTranscript =
+    !error &&
+    !paused &&
+    !connecting &&
+    (status === "listening" || status === "transcribing")
+      ? transcript.trim()
+      : "";
+  const visualPhase: RealtimeVoiceVisualPhase = error
+    ? "error"
+    : paused
+      ? "paused"
+      : connecting
+        ? "connecting"
+        : status;
+  const shimmerPhase =
+    !error &&
+    !paused &&
+    !liveTranscript &&
+    (connecting ||
+      status === "transcribing" ||
+      status === "thinking" ||
+      status === "speaking");
+  const visibleCopy = liveTranscript || phaseLabel;
+  const copyRef = React.useRef<HTMLSpanElement>(null);
+
+  // Live partials grow from the end, so keep the newest words in view without
+  // letting a long utterance resize the composer or cover its controls.
+  React.useLayoutEffect(() => {
+    const copy = copyRef.current;
+    if (!copy) return;
+    copy.scrollTop = liveTranscript ? copy.scrollHeight : 0;
+  }, [liveTranscript]);
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-label={
+        liveTranscript ? `${phaseLabel}: ${liveTranscript}` : phaseLabel
+      }
+      data-status={status}
+      data-testid="chat-composer-realtime-voice"
+      className="flex min-h-10 min-w-0 flex-1 items-center gap-2 px-1.5"
+    >
+      <ComposerRealtimeVoiceWaveform
+        phase={visualPhase}
+        reduceMotion={reduceMotion}
+      />
+      <div className="flex h-10 min-w-0 flex-1 items-center overflow-hidden">
+        <span
+          ref={copyRef}
+          data-testid="chat-composer-realtime-copy"
+          className={cn(
+            "block max-h-10 w-full min-w-0 overflow-hidden whitespace-pre-wrap text-start text-sm leading-5 [overflow-wrap:anywhere]",
+            error
+              ? "text-danger"
+              : liveTranscript
+                ? "text-txt"
+                : "text-white/75",
+            shimmerPhase &&
+              "shimmer shimmer-duration-1200 motion-reduce:shimmer-none",
+          )}
+          title={visibleCopy}
+        >
+          {visibleCopy}
+        </span>
+      </div>
+      {needsAudioUnlock ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onUnlockAudio}
+          data-testid="chat-composer-voice-audio-unlock"
+          className="h-7 shrink-0 rounded-full border border-warn/40 bg-warn/10 px-2 text-xs font-medium text-warn hover:bg-warn/20"
+        >
+          Enable sound
+        </Button>
+      ) : null}
     </div>
   );
 }
@@ -1014,8 +1193,6 @@ export function ChatOverlay({
     recording,
     analyser,
     transcript,
-    startRecording,
-    stopRecording,
     handsFree,
     toggleHandsFree,
     transcriptionMode,
@@ -1027,12 +1204,27 @@ export function ChatOverlay({
     needsAudioUnlock,
     unlockAudio,
     openSettings,
+    navigateHome,
     currentTab,
     stop,
     speak,
     stopSpeaking,
     speaking,
   } = controller;
+  const realtimeVoice = controller.realtimeVoice;
+  const realtimeVoiceComposerVisible = Boolean(
+    realtimeVoice?.enabled &&
+      !realtimeVoice.error &&
+      (handsFree ||
+        realtimeVoice.active ||
+        realtimeVoice.connecting ||
+        realtimeVoice.status !== "idle"),
+  );
+  const realtimeVoiceControlsVisible = Boolean(
+    realtimeVoice?.enabled &&
+      handsFree &&
+      (realtimeVoice.active || realtimeVoice.connecting),
+  );
   // True once the server has reported no LLM/model provider is configured (a
   // `no_provider` assistant turn). Defaulted for minimal mock controllers.
   const noProviderConfigured = controller.noProviderConfigured ?? false;
@@ -1207,6 +1399,26 @@ export function ChatOverlay({
     setChatReplyTarget,
   } = useChatComposerOrLocal();
   const activeConversationId = conversationNav.activeId;
+  const sentMessageHistory = React.useMemo(
+    () =>
+      messages.flatMap((message) => {
+        const content = message.content.trim();
+        return message.role === "user" && content ? [content] : [];
+      }),
+    [messages],
+  );
+  const messageHistoryCursorRef = React.useRef<number | null>(null);
+  const messageHistoryDraftRef = React.useRef("");
+  const resetMessageHistory = React.useCallback(() => {
+    messageHistoryCursorRef.current = null;
+    messageHistoryDraftRef.current = "";
+  }, []);
+  const messageHistoryConversationRef = React.useRef(activeConversationId);
+  React.useEffect(() => {
+    if (messageHistoryConversationRef.current === activeConversationId) return;
+    messageHistoryConversationRef.current = activeConversationId;
+    resetMessageHistory();
+  }, [activeConversationId, resetMessageHistory]);
   // Live handle to the draft for callbacks that must read the current text
   // without subscribing (dictation append), same pattern as messagesRef above.
   const draftRef = React.useRef(draft);
@@ -1562,11 +1774,9 @@ export function ChatOverlay({
     dragPreviewVisibleRef.current = visible;
     setDragPreviewVisible(visible);
   }, []);
-  // Push-to-talk is a label-only mirror of the shared hold hook's holding phase.
-  const [pttHolding, setPttHolding] = React.useState(false);
   const [imageError, setImageError] = React.useState<string | null>(null);
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
-  const preserveFocusOnAgentNavigationRef = React.useRef<string | null>(null);
+  const preserveComposerFocusUntilRef = React.useRef(0);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const overlayRef = React.useRef<HTMLDivElement>(null);
   const panelRef = React.useRef<HTMLFieldSetElement>(null);
@@ -1744,18 +1954,10 @@ export function ChatOverlay({
     renderableMessages,
     renderWindow.windowSize,
   ]);
-  const latestSettledAssistantId = React.useMemo(() => {
-    for (let index = visibleMessages.length - 1; index >= 0; index -= 1) {
-      const message = visibleMessages[index];
-      if (message?.role === "assistant" && message.content.trim()) {
-        return message.id;
-      }
-    }
-    return null;
-  }, [visibleMessages]);
-  const speakingSourceMessageId = speaking
-    ? (playingMessageId ?? latestSettledAssistantId)
-    : null;
+  // Automatic realtime speech belongs to the composer-wide voice state. Only
+  // user-selected playback belongs to a message row; binding automatic TTS to
+  // the newest row would reveal Reply/Copy/Play as each response starts.
+  const speakingSourceMessageId = speaking ? playingMessageId : null;
   const lastId = visibleMessages.at(-1)?.id ?? null;
   const lastContent = visibleMessages.at(-1)?.content ?? "";
   // The thread body is mounted while the sheet is open OR during an upward
@@ -2239,6 +2441,7 @@ export function ChatOverlay({
       // synthetic draft entry point that reaches submit, and keep setup choice
       // handling inside the transcript widgets.
       if (firstRunOpen) {
+        resetMessageHistory();
         setDraft("");
         setSlashDismissed(false);
         setPendingImages([]);
@@ -2252,6 +2455,7 @@ export function ChatOverlay({
       // canSend gate because the tour is fully client-side and must work with
       // the agent stopped.
       if (trimmed && images.length === 0 && tryHandleTutorialText(trimmed)) {
+        resetMessageHistory();
         clearChatDraft(activeConversationIdRef.current);
         setDraft("");
         setSlashDismissed(false);
@@ -2262,6 +2466,7 @@ export function ChatOverlay({
       }
       // Post-onboarding: a stopped agent can't take a turn.
       if (!canSend) return;
+      resetMessageHistory();
       // Successful submit: drop the persisted draft for this conversation NOW
       // (not just via the debounced persist of the now-empty draft) so a reload
       // in the debounce window can't restore an already-sent draft.
@@ -2312,7 +2517,15 @@ export function ChatOverlay({
       detentHaptic();
       inputRef.current?.focus();
     },
-    [canSend, firstRunOpen, send, setDraft, setPendingImages, viewChatBinding],
+    [
+      canSend,
+      firstRunOpen,
+      resetMessageHistory,
+      send,
+      setDraft,
+      setPendingImages,
+      viewChatBinding,
+    ],
   );
 
   const finishTranscription = React.useCallback(async () => {
@@ -2368,29 +2581,6 @@ export function ChatOverlay({
     [setPendingImages],
   );
 
-  // ── Push-to-talk ────────────────────────────────────────────────────────────
-  // Press-and-hold on the mic dictates into the composer draft (no send); a
-  // quick tap falls through to handleMicClick → toggleHandsFree. The hold/tap/
-  // slide-off/click-suppression machine is the shared usePushToTalk hook — the
-  // overlay only supplies its can-begin guard and the dictation start/stop.
-  const { handlers: micHoldHandlers, shouldSuppressClick } = usePushToTalk({
-    // Arm only when idle with no draft and no capture already live (a tap while
-    // hands-free toggles it off — handleMicClick). Voice input is gated while a
-    // reply is in flight; type + send to queue another turn instead.
-    canBegin: () =>
-      !hasDraft && !recording && !transcriptionMode && !responding,
-    onHoldStart: () => {
-      setPttHolding(true);
-      startRecording("dictate");
-    },
-    onHoldEnd: () => {
-      // Dictation always inserts into the draft; there is no submit-on-release,
-      // so a clean release and a slide-off both just stop the capture.
-      stopRecording();
-      setPttHolding(false);
-    },
-  });
-
   const handleMicClick = React.useCallback(() => {
     // Trace the home-overlay mic tap BEFORE any branching so the on-screen HUD
     // captures the tap even when this handler early-returns short of capture.
@@ -2400,11 +2590,6 @@ export function ChatOverlay({
       responding,
       handsFree,
     });
-    // Swallow exactly the one click that follows a held PTT release.
-    if (shouldSuppressClick()) {
-      voiceCaptureDebug("mic:noop", { reason: "suppress-click" });
-      return;
-    }
     // While transcribing, the mic is the master voice control: a tap turns the
     // mic OFF, which also ends transcription (mic = parent — turning off the mic
     // turns off transcript). This is distinct from the transcript button, which
@@ -2435,7 +2620,6 @@ export function ChatOverlay({
     toggleHandsFree,
     transcriptionMode,
     stopTranscriptionAndMic,
-    shouldSuppressClick,
   ]);
 
   const hasThread = visibleMessages.length > 0;
@@ -3589,33 +3773,32 @@ export function ChatOverlay({
     if (preFocusCollapsedRef.current) collapse();
   }, [collapse]);
 
-  // A chat-command navigation is different from a direct tile/tab navigation:
-  // the user just pressed Enter and should be able to keep typing. Capture that
-  // one transition before App updates currentTab; the blur effect below consumes
-  // the lease. Direct navigation carries no agent source and keeps the existing
-  // iOS keyboard cleanup.
+  // View navigation changes the canvas underneath this persistent composer; it
+  // is not a chat dismissal. Preserve an actively focused input through the
+  // route commit even when a plugin view maps its view id onto the generic
+  // `views` tab. Explicit close/open-window actions retain their own focus
+  // ownership instead.
   React.useEffect(() => {
     if (typeof window === "undefined") return undefined;
     const preserveFocusedComposer = (event: Event) => {
       const detail = (event as CustomEvent<NavigateViewDetail>).detail;
       const action = detail?.action;
-      const targetTab =
-        action === "close" || action === "close-all" || action === "open-window"
-          ? null
-          : action === "split-view" || action === "tile-views"
-            ? "views"
-            : detail?.viewId && detail.viewPath === `/${detail.viewId}`
-              ? detail.viewId
-              : detail?.viewPath
-                ? (tabFromPath(detail.viewPath) ?? detail.viewId ?? null)
-                : (detail?.viewId ?? null);
-      preserveFocusOnAgentNavigationRef.current =
-        detail?.source === "agent" &&
-        targetTab !== null &&
+      const staysInShell =
+        action !== "close" &&
+        action !== "close-all" &&
+        action !== "open-window";
+      const shouldPreserve =
+        staysInShell &&
         typeof document !== "undefined" &&
-        document.activeElement === inputRef.current
-          ? targetTab
-          : null;
+        document.activeElement === inputRef.current;
+      preserveComposerFocusUntilRef.current = shouldPreserve
+        ? performance.now() + 1000
+        : 0;
+      if (shouldPreserve) {
+        window.requestAnimationFrame(() => {
+          inputRef.current?.focus({ preventScroll: true });
+        });
+      }
     };
     window.addEventListener(NAVIGATE_VIEW_EVENT, preserveFocusedComposer);
     return () =>
@@ -3634,12 +3817,12 @@ export function ChatOverlay({
   // accessory bar, not just the soft keyboard.
   React.useEffect(() => {
     if (currentTab === "chat") {
-      preserveFocusOnAgentNavigationRef.current = null;
+      preserveComposerFocusUntilRef.current = 0;
       return;
     }
     const preserveFocus =
-      preserveFocusOnAgentNavigationRef.current === currentTab;
-    preserveFocusOnAgentNavigationRef.current = null;
+      preserveComposerFocusUntilRef.current >= performance.now();
+    preserveComposerFocusUntilRef.current = 0;
     const input = inputRef.current;
     if (
       typeof document === "undefined" ||
@@ -3684,6 +3867,24 @@ export function ChatOverlay({
     [hasRevealableThread, sheetOpen],
   );
   const expand = React.useCallback(() => expandCore(true), [expandCore]);
+
+  // Talk is part of this conversation, so starting it reveals this same thread
+  // at the reading detent without focusing the textarea or opening a keyboard.
+  // The sheet remains open after Talk ends, leaving the just-persisted voice
+  // turns visible and reviewable like typed turns.
+  const voiceConversationActive = Boolean(
+    realtimeVoice?.enabled &&
+      (handsFree || realtimeVoice.active || realtimeVoice.connecting),
+  );
+  const voiceConversationWasActiveRef = React.useRef(false);
+  React.useEffect(() => {
+    const wasActive = voiceConversationWasActiveRef.current;
+    voiceConversationWasActiveRef.current = voiceConversationActive;
+    if (!voiceConversationActive || wasActive || pinnedOpen) return;
+    preFocusCollapsedRef.current = false;
+    setFreeH(null);
+    goToDetent("half");
+  }, [goToDetent, pinnedOpen, voiceConversationActive]);
   // Typing re-asserts the open but must NOT re-snapshot the pre-focus state:
   // the sheet is open by then, so re-snapshotting on every keystroke read
   // "open-before-focus" and a keyboard dismiss no longer returned a
@@ -4019,11 +4220,69 @@ export function ChatOverlay({
     [slashMenu, runExecution],
   );
 
+  const cycleMessageHistory = React.useCallback(
+    (
+      direction: -1 | 1,
+      event: React.KeyboardEvent<HTMLTextAreaElement>,
+    ): boolean => {
+      if (
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.shiftKey ||
+        event.nativeEvent.isComposing ||
+        event.currentTarget.selectionStart !==
+          event.currentTarget.selectionEnd ||
+        sentMessageHistory.length === 0
+      ) {
+        return false;
+      }
+
+      const cursor = messageHistoryCursorRef.current;
+      if (cursor === null) {
+        if (direction > 0) return false;
+        const firstLineEnd = draft.indexOf("\n");
+        if (
+          firstLineEnd >= 0 &&
+          event.currentTarget.selectionStart > firstLineEnd
+        ) {
+          return false;
+        }
+        messageHistoryDraftRef.current = draft;
+        messageHistoryCursorRef.current = sentMessageHistory.length - 1;
+      } else if (direction < 0) {
+        messageHistoryCursorRef.current = Math.max(0, cursor - 1);
+      } else if (cursor < sentMessageHistory.length - 1) {
+        messageHistoryCursorRef.current = cursor + 1;
+      } else {
+        messageHistoryCursorRef.current = null;
+        setDraft(messageHistoryDraftRef.current);
+        return true;
+      }
+
+      const nextCursor = messageHistoryCursorRef.current;
+      if (nextCursor === null) return false;
+      const next = sentMessageHistory[nextCursor];
+      if (next === undefined) {
+        resetMessageHistory();
+        return false;
+      }
+      setDraft(next);
+      window.requestAnimationFrame(() => {
+        inputRef.current?.setSelectionRange(next.length, next.length);
+      });
+      return true;
+    },
+    [draft, resetMessageHistory, sentMessageHistory, setDraft],
+  );
+
   // The shared composer-core keydown: IME-commit guard (#9148) → slash-menu
-  // interception → Enter sends → Escape collapses the open sheet. The slash
-  // binding adapts the overlay's menu/executor onto the core's key contract.
+  // interception → sent-message history → Enter sends → Escape collapses the
+  // open sheet. The slash binding adapts the overlay's menu/executor onto the
+  // core's key contract.
   const handleComposerKeyDown = useComposerKeydown<HTMLTextAreaElement>({
     onSend: submit,
+    onHistory: cycleMessageHistory,
     slash: {
       open: slashOpen,
       move: (delta) => slashMenu.move(delta),
@@ -5261,16 +5520,13 @@ export function ChatOverlay({
         />
       ) : null}
 
-      {/* No live interim transcript is shown above the composer while
-          listening — the spoken words land as the sent message when the turn
-          completes. The mic being hot is confirmed by the pulsing speech glow
-          on the input bar / grabber / collapsed pill instead of text. */}
-
       {/* Audio-unlock prompt. When autoplay policy blocks the first spoken
           reply, the ambient overlay would otherwise go silent with no recourse
           (the in-view status bar has its own unlock; this is the floating-shell
           equivalent). Warm accent = call-to-action; no blue. */}
-      {needsAudioUnlock ? (
+      {needsAudioUnlock &&
+      !realtimeVoiceComposerVisible &&
+      !realtimeVoice?.error ? (
         <div
           role="status"
           aria-live="polite"
@@ -5597,9 +5853,8 @@ export function ChatOverlay({
             {/* Sheet header — shown at the HALF detent and up (not just FULL).
               One infinite thread (#13531): no maximize/minimize (that's a
               vertical pull now) and no clear/new-chat (the thread never resets).
-              It carries NO buttons — search/upload/camera/transcribe moved to the
-              composer "+" menu and Home lives in the launcher — so the chat stops
-              acting like a second app nav bar. The bar remains only to reserve
+              It carries NO buttons — Home/search/upload live in the composer
+              "+" menu — so the chat stops acting like a second app nav bar. The bar remains only to reserve
               the safe-area top inset at full-bleed and host the transcribe badge. */}
             {threadPresented ? (
               <motion.div
@@ -5638,9 +5893,8 @@ export function ChatOverlay({
                   "mx-auto w-full max-w-3xl",
                 )}
               >
-                {/* The header carries no nav/search buttons — thread Search and
-                    Upload live in the composer "+" menu, while Home lives in
-                    the launcher. This bar exists only to reserve the safe-area
+                {/* The header carries no nav/search buttons — Home, Search, and
+                    Upload live in the composer "+" menu. This bar exists only to reserve the safe-area
                     top inset at full-bleed and host the transcription badge. */}
                 {transcriptionComposerActive ? (
                   <div
@@ -6102,8 +6356,8 @@ export function ChatOverlay({
                   onPick={pickSlashItem}
                 />
               ) : null}
-              {/* The "+" opens surface-local Search and Upload actions for this
-                  in-app conversation, never connector actions on a
+              {/* The "+" opens shell navigation plus surface-local Search and
+                  Upload actions for this in-app conversation, never connector actions on a
                   Discord/Telegram room. Search is agent-driveable; Upload is a
                   pure client affordance. */}
               {!transcriptionComposerActive ? (
@@ -6135,6 +6389,20 @@ export function ChatOverlay({
                     glass
                     className="min-w-[13rem]"
                   >
+                    {currentTab !== "chat" ? (
+                      <DropdownMenuItem
+                        className="cursor-pointer gap-2.5 data-[highlighted]:bg-bg-hover"
+                        onSelect={() => {
+                          navigateHome?.();
+                        }}
+                      >
+                        <House
+                          className="h-4 w-4 shrink-0 text-muted"
+                          aria-hidden
+                        />
+                        Back to Home
+                      </DropdownMenuItem>
+                    ) : null}
                     <DropdownMenuItem
                       className="cursor-pointer gap-2.5 data-[highlighted]:bg-bg-hover"
                       onSelect={() => openSearch()}
@@ -6166,6 +6434,17 @@ export function ChatOverlay({
                   reduceMotion={reduce}
                   transcript={transcript}
                 />
+              ) : realtimeVoiceComposerVisible && realtimeVoice ? (
+                <ComposerRealtimeVoiceActivity
+                  connecting={realtimeVoice.connecting}
+                  error={realtimeVoice.error}
+                  needsAudioUnlock={needsAudioUnlock}
+                  onUnlockAudio={unlockAudio}
+                  paused={realtimeVoice.paused}
+                  reduceMotion={reduce}
+                  status={realtimeVoice.status}
+                  transcript={transcript}
+                />
               ) : (
                 <Textarea
                   ref={inputRef}
@@ -6176,6 +6455,7 @@ export function ChatOverlay({
                   disabled={firstRunOpen}
                   onChange={(e) => {
                     const nextDraft = e.target.value;
+                    resetMessageHistory();
                     if (
                       draft.trim().length > 0 &&
                       nextDraft.trim().length === 0
@@ -6266,50 +6546,38 @@ export function ChatOverlay({
               {/* Trailing controls. */}
               <div
                 data-testid="chat-composer-trailing-controls"
-                className="grid shrink-0 grid-cols-2 items-center gap-0"
+                className={cn(
+                  "grid shrink-0 items-center",
+                  realtimeVoiceControlsVisible ? "grid-cols-2" : "grid-cols-1",
+                )}
               >
-                {/* Two fixed slots keep the composer geometry stable while the
-                    controls dissolve between rest, send, and stop states. */}
-                <ComposerControlSlot
-                  slot="left"
-                  reduceMotion={reduce}
-                  controlKey={
-                    transcriptionComposerActive ||
-                    draftOwnsTrailingControl ||
-                    generationOwnsTrailingControl
-                      ? null
-                      : "voice"
-                  }
-                >
-                  {!transcriptionComposerActive &&
-                  !draftOwnsTrailingControl &&
-                  !generationOwnsTrailingControl ? (
-                    // Tap starts hands-free conversation; hold inserts
-                    // push-to-talk dictation into the editable draft.
+                {realtimeVoiceControlsVisible && realtimeVoice ? (
+                  <ComposerControlSlot
+                    slot="left"
+                    reduceMotion={reduce}
+                    controlKey={
+                      realtimeVoice.microphoneMuted
+                        ? "voice-microphone-muted"
+                        : "voice-microphone-live"
+                    }
+                  >
                     <SoftButton
-                      icon={AudioLines}
+                      icon={realtimeVoice.microphoneMuted ? MicOff : Mic}
                       label={
-                        pttHolding
-                          ? "release to insert"
-                          : handsFree
-                            ? "end conversation"
-                            : recording
-                              ? "stop listening"
-                              : "talk"
+                        realtimeVoice.microphoneMuted
+                          ? "unmute microphone"
+                          : "mute microphone"
                       }
-                      disabled={firstRunOpen}
-                      active={handsFree || pttHolding}
-                      pressed={recording || handsFree}
-                      pulse={recording || handsFree}
-                      onClick={handleMicClick}
-                      onPointerDown={micHoldHandlers.onPointerDown}
-                      onPointerUp={micHoldHandlers.onPointerUp}
-                      onPointerCancel={micHoldHandlers.onPointerCancel}
-                      onPointerLeave={micHoldHandlers.onPointerLeave}
-                      testId="chat-composer-mic"
+                      active={realtimeVoice.microphoneMuted}
+                      pressed={realtimeVoice.microphoneMuted}
+                      onClick={realtimeVoice.toggleMicrophoneMute}
+                      testId="chat-composer-voice-mute"
                     />
-                  ) : null}
-                </ComposerControlSlot>
+                  </ComposerControlSlot>
+                ) : null}
+                {/* One stable rightmost slot owns every primary action. Talk no
+                    longer shares the row with an ambiguous second mic, and a
+                    held pointer has exactly the same Cartesia action as a tap. */}
                 <ComposerControlSlot
                   slot="right"
                   reduceMotion={reduce}
@@ -6320,7 +6588,7 @@ export function ChatOverlay({
                         ? "send"
                         : generationOwnsTrailingControl
                           ? "generation-stop"
-                          : "transcribe"
+                          : "voice"
                   }
                 >
                   {transcriptionComposerActive ? (
@@ -6366,12 +6634,25 @@ export function ChatOverlay({
                     />
                   ) : (
                     <SoftButton
-                      icon={Mic}
-                      label="start transcription"
+                      glyph={handsFree ? STOP_GLYPH : undefined}
+                      icon={handsFree ? undefined : AudioLines}
+                      label={
+                        realtimeVoice?.error
+                          ? `retry talk — ${realtimeVoice.error}`
+                          : realtimeVoice?.connecting
+                            ? "cancel voice connection"
+                            : handsFree
+                              ? "end conversation"
+                              : recording
+                                ? "stop listening"
+                                : "talk"
+                      }
                       disabled={firstRunOpen}
-                      onPointerDown={(event) => event.preventDefault()}
-                      onClick={toggleTranscriptionMode}
-                      testId="chat-composer-transcribe"
+                      active={handsFree}
+                      pressed={recording || handsFree}
+                      pulse={recording && !handsFree}
+                      onClick={handleMicClick}
+                      testId="chat-composer-mic"
                     />
                   )}
                 </ComposerControlSlot>

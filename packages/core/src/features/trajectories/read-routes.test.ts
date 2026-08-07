@@ -238,7 +238,7 @@ describe("tryHandleTrajectoryReadRoutes", () => {
 				agentId: "agent-1",
 				startTime: 500,
 				endTime: 1000,
-				metrics: { finalStatus: "completed" },
+				metrics: { episodeLength: 1, finalStatus: "completed" },
 				metadata: { source: "chat" },
 				steps: [
 					{
@@ -249,9 +249,11 @@ describe("tryHandleTrajectoryReadRoutes", () => {
 								model: "m",
 								response: "hello",
 								stepType: "reasoning",
+								provider: "openai",
 							},
 						],
 						providerAccesses: [],
+						// Agent bridge action-optional step — no action field.
 					},
 				],
 			}),

@@ -32,6 +32,9 @@ src/
   lib/                     @elizaos/cloud-shared/lib — SERVER-ONLY services + use-cases
     services/              ~245 service modules (containers, gateways, billing, ...)
     auth.ts auth-anonymous.ts auth-errors.ts   session/API-key/wallet auth
+    oidc/                  OpenID Connect PROVIDER domain (Eliza Cloud as the OP):
+                           config/keys/clients/codes/claims/username/tokens.
+                           Routes live in cloud-api; nothing here reads a request.
     api/  middleware/  cors/  http/  session/   request-edge helpers
     stripe.ts  pricing.ts  promotion-pricing.ts
     utils/logger.ts        the structured logger used across lib/

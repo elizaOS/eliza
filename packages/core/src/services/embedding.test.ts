@@ -321,3 +321,77 @@ describe("EmbeddingGenerationService processBatch", () => {
 		await service.stop();
 	});
 });
+
+describe("EmbeddingGenerationService expected local unavailability (#17728)", () => {
+	test.each(["backend_unavailable", "capability_unavailable"] as const)(
+		"does not reportError for LOCAL_INFERENCE_UNAVAILABLE %s but still rethrows",
+		async (reason) => {
+			const runtime = makeRuntime({
+				batch: false,
+				embedHandler: async () => {
+					const err = new Error(`local embeddings: ${reason}`);
+					Object.assign(err, {
+						code: "LOCAL_INFERENCE_UNAVAILABLE",
+						modelType: ModelType.TEXT_EMBEDDING,
+						reason,
+					});
+					throw err;
+				},
+			});
+			const service = (await EmbeddingGenerationService.start(
+				runtime,
+			)) as EmbeddingGenerationService;
+			await expect(
+				// biome-ignore lint/suspicious/noExplicitAny: exercise private generate path
+				(service as any).generateEmbedding(makeItem("id-u", "text")),
+			).rejects.toMatchObject({
+				code: "LOCAL_INFERENCE_UNAVAILABLE",
+				reason,
+			});
+			expect(runtime.reportError).not.toHaveBeenCalled();
+			await service.stop();
+		},
+	);
+
+	test("reports invalid_input and unknown failures", async () => {
+		const invalid = Object.assign(new Error("bad input"), {
+			code: "LOCAL_INFERENCE_UNAVAILABLE",
+			reason: "invalid_input",
+		});
+		const runtimeInvalid = makeRuntime({
+			batch: false,
+			embedHandler: async () => {
+				throw invalid;
+			},
+		});
+		const serviceInvalid = (await EmbeddingGenerationService.start(
+			runtimeInvalid,
+		)) as EmbeddingGenerationService;
+		await expect(
+			// biome-ignore lint/suspicious/noExplicitAny: exercise private generate path
+			(serviceInvalid as any).generateEmbedding(makeItem("id-i", "text")),
+		).rejects.toBe(invalid);
+		expect(runtimeInvalid.reportError).toHaveBeenCalledWith(
+			"EmbeddingService.generate",
+			invalid,
+			expect.objectContaining({ memoryId: "id-i" }),
+		);
+		await serviceInvalid.stop();
+
+		const runtimeUnknown = makeRuntime({
+			batch: false,
+			embedHandler: async () => {
+				throw new Error("network down");
+			},
+		});
+		const serviceUnknown = (await EmbeddingGenerationService.start(
+			runtimeUnknown,
+		)) as EmbeddingGenerationService;
+		await expect(
+			// biome-ignore lint/suspicious/noExplicitAny: exercise private generate path
+			(serviceUnknown as any).generateEmbedding(makeItem("id-n", "text")),
+		).rejects.toThrow("network down");
+		expect(runtimeUnknown.reportError).toHaveBeenCalled();
+		await serviceUnknown.stop();
+	});
+});

@@ -1,10 +1,8 @@
 /**
- * Covers `deliverFirstSentenceVoice` (services/message) — the streaming
- * first-sentence cloud-TTS delivery. An envelope echo's first sentence IS the
- * security notice, and this path bypasses the text-only outbound guard
- * (callback text is "", the armor rides in attachment.text + audio), so it
- * must refuse to synthesize or attach envelope material. Mock runtime with
- * reportError/useModel spies.
+ * Covers `deliverFirstSentenceVoice` (services/message), including its
+ * envelope-echo guard and provider-neutral voice parameter selection. The
+ * deterministic mock runtime records model input and audio delivery without
+ * invoking a real TTS provider.
  */
 import { describe, expect, it, vi } from "vitest";
 import { wrapExternalContent } from "../../security/external-content";
@@ -42,7 +40,7 @@ function makeRuntime(overrides: Record<string, unknown> = {}) {
 	};
 }
 
-describe("deliverFirstSentenceVoice envelope gate", () => {
+describe("deliverFirstSentenceVoice", () => {
 	it("refuses to synthesize or deliver an envelope-shaped first sentence and reports it", async () => {
 		const runtime = makeRuntime();
 		const callback: HandlerCallback = vi.fn(async () => []);
@@ -79,9 +77,10 @@ describe("deliverFirstSentenceVoice envelope gate", () => {
 		await deliverFirstSentenceVoice(runtime, "Your site is live!", callback);
 
 		expect(runtime.useModel).toHaveBeenCalledTimes(1);
-		expect(runtime.useModel.mock.calls[0][1]).toEqual(
-			expect.objectContaining({ text: "Your site is live!" }),
-		);
+		expect(runtime.useModel.mock.calls[0][1]).toEqual({
+			text: "Your site is live!",
+			voice: "test-voice",
+		});
 		expect(callback).toHaveBeenCalledTimes(1);
 		const delivered = (callback as ReturnType<typeof vi.fn>).mock.calls[0][0];
 		expect(delivered.text).toBe("");
@@ -95,6 +94,53 @@ describe("deliverFirstSentenceVoice envelope gate", () => {
 		);
 		expect(delivered.attachments[0].url).toMatch(/^data:audio\/wav;base64,/);
 		expect(runtime.reportError).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		["Piper model tag", { model: "en_US-male-medium" }],
+		["provider URL", { url: "https://speech.example.test" }],
+		["empty voice id", { voiceId: "   " }],
+		["no voice settings", undefined],
+	])("lets the provider choose its default for %s", async (_label, voice) => {
+		const runtime = makeRuntime({
+			character: { name: "Example", settings: { voice } },
+		});
+
+		await deliverFirstSentenceVoice(
+			runtime,
+			"Your site is live!",
+			vi.fn(async () => []),
+		);
+
+		expect(runtime.useModel.mock.calls[0][1]).toEqual({
+			text: "Your site is live!",
+		});
+	});
+
+	it("trims and forwards an explicit provider voice id", async () => {
+		const runtime = makeRuntime({
+			character: {
+				name: "Example",
+				settings: {
+					voice: {
+						model: "en_US-male-medium",
+						url: "https://speech.example.test",
+						voiceId: "  nova  ",
+					},
+				},
+			},
+		});
+
+		await deliverFirstSentenceVoice(
+			runtime,
+			"Your site is live!",
+			vi.fn(async () => []),
+		);
+
+		expect(runtime.useModel.mock.calls[0][1]).toEqual({
+			text: "Your site is live!",
+			voice: "nova",
+		});
 	});
 
 	it("delivers nothing when no TTS model is registered, without reporting", async () => {

@@ -9,6 +9,7 @@
 import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ElizaError } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AcpService } from "../services/acp-service.ts";
 import { InMemorySessionStore } from "../services/session-store.ts";
@@ -149,9 +150,30 @@ describe("AcpService spawn disk-budget + registry (#13773)", () => {
     );
     (svc as unknown as { started: boolean }).started = true;
 
-    await expect(
-      svc.spawnSession({ agentType: "opencode", slotClass: "worker" }),
-    ).rejects.toThrow(/disk budget/i);
+    let refusal: unknown;
+    try {
+      await svc.spawnSession({ agentType: "opencode", slotClass: "worker" });
+    } catch (err) {
+      refusal = err;
+    }
+    // The refusal is a structured ElizaError whose MESSAGE is chat-safe (an
+    // action boundary relays it toward the user verbatim): human words, no
+    // byte counts, no filesystem paths. The technical fields ride `context`.
+    expect(refusal).toBeInstanceOf(ElizaError);
+    const budgetError = refusal as ElizaError;
+    expect(budgetError.code).toBe("WORKSPACE_DISK_BUDGET_EXCEEDED");
+    expect(budgetError.message).toBe(
+      "the workspace disk is nearly full, so a new coding workspace cannot be created right now",
+    );
+    expect(budgetError.message).not.toMatch(/\d/);
+    expect(budgetError.message).not.toContain(root);
+    expect(budgetError.context).toMatchObject({
+      reason: "free-disk-floor",
+      minFreeBytes: Number.MAX_SAFE_INTEGER,
+    });
+    expect(typeof budgetError.context?.freeBytes).toBe("number");
+    expect(typeof budgetError.context?.usedBytes).toBe("number");
+    expect(String(budgetError.context?.targetRoot)).toContain(root);
 
     expect(readdirSync(root)).toEqual([]);
   });

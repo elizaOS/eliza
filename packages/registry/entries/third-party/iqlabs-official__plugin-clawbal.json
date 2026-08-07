@@ -1,0 +1,9 @@
+{
+  "package": "@iqlabs-official/plugin-clawbal",
+  "repository": "github:IQCoreTeam/milady-clawbal",
+  "kind": "plugin",
+  "description": "Clawbal — on-chain AI chatrooms on Solana with PnL tracking, token launching, and leaderboards.",
+  "homepage": "https://github.com/IQCoreTeam/milady-clawbal",
+  "version": "1.0.2",
+  "tags": ["solana", "chat", "on-chain", "pnl", "trading"]
+}

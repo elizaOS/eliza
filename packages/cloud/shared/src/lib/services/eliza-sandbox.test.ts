@@ -3709,6 +3709,80 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
     }
   });
 
+  test("(d) a missing-node-metadata hydration failure (node purged from docker_nodes) → ignorable, delete proceeds", async () => {
+    const svc = await makeSvc();
+    const deletedSandbox = { ...customSandbox(), id: AGENT, organization_id: ORG };
+    const prepare = spyOn(svc, "prepareAgentDelete").mockResolvedValue({
+      ok: true,
+      sandboxId: SANDBOX_ID,
+      status: "running",
+      sourcePoolId: null,
+    });
+    // The exact shape hydrateContainerFromDb throws when the sandbox row
+    // points at a node that no longer has a docker_nodes record: the host is
+    // gone, so there is nothing left to stop.
+    const stop = spyOn(svc, "runBoundedSandboxStop").mockResolvedValue({
+      error: new Error(
+        '[docker-sandbox] Missing persisted docker node metadata for node "node-decommissioned"',
+      ),
+    });
+    const commit = spyOn(svc, "commitAgentRowDelete").mockResolvedValue({
+      success: true,
+      deletedSandbox,
+    });
+    const apiKeySpy = spyOn(apiKeysService, "revokeForAgent").mockResolvedValue(undefined as never);
+    const historySpy = spyOn(sharedRuntimeHistoryRepository, "deleteByAgent").mockResolvedValue(0);
+    const infoSpy = spyOn(logger, "info").mockImplementation(() => {});
+    const warnSpy = spyOn(logger, "warn").mockImplementation(() => {});
+    try {
+      const res = (await svc.deleteAgent(AGENT, ORG)) as { success: boolean };
+      expect(res.success).toBe(true);
+      expect(commit).toHaveBeenCalledTimes(1);
+      const infoed = infoSpy.mock.calls.map((c) => String(c[0])).join("\n");
+      expect(infoed).toContain("already absent");
+      const warned = warnSpy.mock.calls.map((c) => String(c[0])).join("\n");
+      expect(warned).not.toContain("ABANDONING");
+    } finally {
+      prepare.mockRestore();
+      stop.mockRestore();
+      commit.mockRestore();
+      apiKeySpy.mockRestore();
+      historySpy.mockRestore();
+      infoSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
+  });
+
+  test("(e) an unrelated hydration failure (missing port data) → still NOT ignorable, delete aborts", async () => {
+    const svc = await makeSvc();
+    const prepare = spyOn(svc, "prepareAgentDelete").mockResolvedValue({
+      ok: true,
+      sandboxId: SANDBOX_ID,
+      status: "running",
+      sourcePoolId: null,
+    });
+    // A sibling hydrateContainerFromDb failure that does NOT mean the host is
+    // gone — the container may still be running, so the delete must escalate.
+    const stop = spyOn(svc, "runBoundedSandboxStop").mockResolvedValue({
+      error: new Error(
+        '[docker-sandbox] Missing port data for "sandbox-e06bb509": bridge=null, webUi=null',
+      ),
+    });
+    const commit = spyOn(svc, "commitAgentRowDelete");
+    const warnSpy = spyOn(logger, "warn").mockImplementation(() => {});
+    try {
+      const res = (await svc.deleteAgent(AGENT, ORG)) as { success: boolean; error?: string };
+      expect(res.success).toBe(false);
+      expect(res.error).toBe("Failed to delete sandbox");
+      expect(commit).not.toHaveBeenCalled();
+    } finally {
+      prepare.mockRestore();
+      stop.mockRestore();
+      commit.mockRestore();
+      warnSpy.mockRestore();
+    }
+  });
+
   test("the bounded teardown runs OUTSIDE the row-delete phase (sequenced, not nested)", async () => {
     const svc = await makeSvc();
     const order: string[] = [];

@@ -10,20 +10,7 @@
 import { expect, type Page, test } from "playwright/test";
 import { waitForLandingIntro } from "./landing-readiness";
 import { captureScreenshotWithQualityRetry } from "./screenshot-quality";
-
-const ROUTES = [
-  { path: "/", name: "landing" },
-  { path: "/downloads", name: "downloads" },
-  { path: "/login", name: "login" },
-  { path: "/connected", name: "connected" },
-  { path: "/get-started", name: "get-started" },
-  { path: "/leaderboard", name: "leaderboard" },
-] as const;
-
-const VIEWPORTS = [
-  { name: "desktop", width: 1280, height: 720 },
-  { name: "mobile", width: 390, height: 844 },
-] as const;
+import { VISUAL_ROUTES, VISUAL_VIEWPORTS } from "./visual-routes";
 
 const FIXED_TIME = new Date("2026-01-15T14:30:00.000Z");
 
@@ -90,7 +77,7 @@ function dynamicMask(page: Page) {
   ];
 }
 
-for (const viewport of VIEWPORTS) {
+for (const viewport of VISUAL_VIEWPORTS) {
   test.describe(`visual regression — ${viewport.name}`, () => {
     test.use({
       viewport: { width: viewport.width, height: viewport.height },
@@ -98,11 +85,12 @@ for (const viewport of VIEWPORTS) {
       timezoneId: "UTC",
     });
 
-    for (const route of ROUTES) {
+    for (const route of VISUAL_ROUTES) {
       test(`${route.name} (${viewport.name})`, async ({ page }) => {
         test.setTimeout(60_000);
         await page.clock.setFixedTime(FIXED_TIME);
-        await page.goto(route.path, { waitUntil: "domcontentloaded" });
+        const target = "goto" in route ? route.goto : route.path;
+        await page.goto(target, { waitUntil: "domcontentloaded" });
         await prepare(page, route.path);
         await captureScreenshotWithQualityRetry(
           page,

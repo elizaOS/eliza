@@ -2,10 +2,13 @@
  * Coverage for relevantConversationsProvider's recall paths: the shared per-turn
  * embed (embedRecallQuery) failing open to `null` (no vector search issued,
  * empty result), resolving to a vector (drives searchMemories), lexical
- * hash-memory recall surfacing even when the embed fails open, and short
- * messages short-circuiting before any embed. Deterministic: @elizaos/core is
- * partially mocked to drive embedRecallQuery, and the runtime's
- * searchMemories / getMemories are in-memory vi fakes.
+ * hash-memory recall surfacing even when the embed fails open, short messages
+ * short-circuiting before any embed, the hash scan overlapping the semantic
+ * branch instead of serializing, and result-room tags resolving through one
+ * batched getRoomsByIds read (degrading to untagged on failure). Deterministic:
+ * @elizaos/core is partially mocked to drive embedRecallQuery, and the
+ * runtime's searchMemories / getMemories / getRoomsByIds are in-memory vi
+ * fakes.
  */
 import type { IAgentRuntime, Memory, Room, State } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/core/testing";
@@ -51,9 +54,12 @@ function makeRuntime(overrides: Partial<IAgentRuntime> = {}): {
   ]);
   const runtime = createMockRuntime({
     getRoom: vi.fn(async () => ({ id: ROOM_ID }) as unknown as Room),
-    // Lexical hash-memory scan runs before the semantic embed; default to no
-    // hash memories so these tests isolate the embed path.
+    // Lexical hash-memory scan runs concurrently with the semantic embed;
+    // default to no hash memories so these tests isolate the embed path.
     getMemories: vi.fn(async () => []),
+    // Recall-result room tags resolve through one batched read; default to no
+    // rooms (tags degrade to "[unknown]").
+    getRoomsByIds: vi.fn(async () => []),
     searchMemories,
     reportError: vi.fn(),
     ...overrides,
@@ -208,6 +214,99 @@ describe("relevantConversationsProvider — shared recall embed fail-open", () =
 
     expect(result.text).toContain("shared launch note");
     expect(result.text).not.toContain("owner pendant canary");
+  });
+
+  it("resolves recall-result room tags with one batched getRoomsByIds read", async () => {
+    embedRecallQuery.mockResolvedValue([0.1, 0.2, 0.3]);
+    const THIRD_ROOM = "00000000-0000-0000-0000-0000000000c3" as Room["id"];
+    const searchMemories = vi.fn(async () => [
+      {
+        id: "00000000-0000-0000-0000-0000000000m1",
+        roomId: OTHER_ROOM,
+        entityId: "00000000-0000-0000-0000-0000000000e1",
+        content: { text: "first relevant message" },
+        createdAt: 3,
+      } as unknown as Memory,
+      {
+        id: "00000000-0000-0000-0000-0000000000m2",
+        roomId: THIRD_ROOM,
+        entityId: "00000000-0000-0000-0000-0000000000e2",
+        content: { text: "second relevant message" },
+        createdAt: 2,
+      } as unknown as Memory,
+      {
+        id: "00000000-0000-0000-0000-0000000000m3",
+        roomId: OTHER_ROOM,
+        entityId: "00000000-0000-0000-0000-0000000000e1",
+        content: { text: "third relevant message" },
+        createdAt: 1,
+      } as unknown as Memory,
+    ]);
+    const getRoomsByIds = vi.fn(async () => [
+      { id: OTHER_ROOM, source: "discord", name: "general" } as unknown as Room,
+      { id: THIRD_ROOM, source: "slack", name: "ops" } as unknown as Room,
+    ]);
+    const { runtime } = makeRuntime({ searchMemories, getRoomsByIds });
+
+    const result = await relevantConversationsProvider.get(
+      runtime,
+      makeMessage("what did we decide about the launch date"),
+      EMPTY_STATE,
+    );
+
+    // One batched read over the distinct result rooms — never one call per row.
+    expect(getRoomsByIds).toHaveBeenCalledTimes(1);
+    expect(getRoomsByIds).toHaveBeenCalledWith([OTHER_ROOM, THIRD_ROOM]);
+    expect(result.text).toContain("[discord] general");
+    expect(result.text).toContain("[slack] ops");
+  });
+
+  it("degrades room tags to [unknown] when the batched room read fails, keeping the recall text", async () => {
+    embedRecallQuery.mockResolvedValue([0.1, 0.2, 0.3]);
+    const getRoomsByIds = vi.fn(async () => {
+      throw new Error("room store unavailable");
+    });
+    const reportError = vi.fn();
+    const { runtime } = makeRuntime({ getRoomsByIds, reportError });
+
+    const result = await relevantConversationsProvider.get(
+      runtime,
+      makeMessage("what did we decide about the launch date"),
+      EMPTY_STATE,
+    );
+
+    // Cosmetic tag degrade, not a recall failure: text survives untagged and
+    // nothing is reported as a broken pipeline.
+    expect(result.text).toContain("Relevant past conversations:");
+    expect(result.text).toContain("[unknown]");
+    expect(result.text).toContain("earlier relevant message");
+    expect(reportError).not.toHaveBeenCalled();
+  });
+
+  it("overlaps the lexical hash scan with the semantic embed+search instead of serializing them", async () => {
+    embedRecallQuery.mockResolvedValue([0.1, 0.2, 0.3]);
+    let releaseHashScan: ((memories: Memory[]) => void) | undefined;
+    const hashScan = new Promise<Memory[]>((resolve) => {
+      releaseHashScan = resolve;
+    });
+    const getMemories = vi.fn(() => hashScan);
+    const { runtime, searchMemories } = makeRuntime({ getMemories });
+
+    const pending = relevantConversationsProvider.get(
+      runtime,
+      makeMessage("what did we decide about the launch date"),
+      EMPTY_STATE,
+    );
+
+    // The semantic branch must reach searchMemories while the hash scan is
+    // still in flight — a serial pipeline would block on getMemories first.
+    await vi.waitFor(() => expect(searchMemories).toHaveBeenCalledTimes(1));
+    expect(getMemories).toHaveBeenCalledTimes(1);
+    releaseHashScan?.([]);
+
+    const result = await pending;
+    expect(result.text).toContain("Relevant past conversations:");
+    expect(result.text).toContain("earlier relevant message");
   });
 
   it("allows the authenticated owner to recall owner-private pendant memory", async () => {

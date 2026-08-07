@@ -168,6 +168,16 @@ function requireCompleteFreshCalendarFeed(
   return feed;
 }
 
+// Mutation lookups must stay unscoped when the planner omits grantId: the
+// aggregated feed already includes the built-in Eliza source alongside every
+// connected provider, so defaulting the lookup to one grant would hide
+// external events (and their busy windows) from update/delete/create flows.
+function mutationGrantId(
+  details: Record<string, unknown> | undefined,
+): string | undefined {
+  return detailString(details, "grantId");
+}
+
 type CreateEventTravelIntent = CalendarTravelIntent;
 
 type CalendarSubaction =
@@ -1893,7 +1903,7 @@ async function loadCreateEventCalendarContext(
       | "cloud_managed"
       | undefined,
     side: detailString(details, "side") as "owner" | "agent" | undefined,
-    grantId: detailString(details, "grantId"),
+    grantId: mutationGrantId(details),
     calendarId: detailString(details, "calendarId"),
     timeZone: requestTimeZone,
     forceSync: true,
@@ -3998,7 +4008,7 @@ const calendarAction: CalendarHandlerAction = {
                 | "owner"
                 | "agent"
                 | undefined,
-              grantId: detailString(details, "grantId"),
+              grantId: mutationGrantId(details),
               forceSync: true,
               ...feedRequest,
             }),
@@ -4102,7 +4112,7 @@ const calendarAction: CalendarHandlerAction = {
                 | "owner"
                 | "agent"
                 | undefined,
-              grantId: detailString(details, "grantId"),
+              grantId: mutationGrantId(details),
               calendarId: resolvedCalendarId,
               eventId: resolvedEventId,
             },
@@ -4304,7 +4314,7 @@ const calendarAction: CalendarHandlerAction = {
                 | "owner"
                 | "agent"
                 | undefined,
-              grantId: detailString(details, "grantId"),
+              grantId: mutationGrantId(details),
               forceSync: true,
               ...feedRequest,
             }),
@@ -4371,7 +4381,7 @@ const calendarAction: CalendarHandlerAction = {
                 | "owner"
                 | "agent"
                 | undefined,
-              grantId: detailString(details, "grantId"),
+              grantId: mutationGrantId(details),
               calendarId: detailString(details, "calendarId"),
               eventId: explicitEventId,
             },
