@@ -422,10 +422,7 @@ export const containersEnv = {
    */
   agentContainerMemoryLimitMb(): number {
     const env = getCloudAwareEnv();
-    const raw = pick(
-      env.CONTAINERS_AGENT_MEMORY_LIMIT_MB,
-      env.ELIZA_AGENT_MEMORY_LIMIT_MB,
-    );
+    const raw = pick(env.CONTAINERS_AGENT_MEMORY_LIMIT_MB, env.ELIZA_AGENT_MEMORY_LIMIT_MB);
     const parsed = raw ? Number(raw) : Number.NaN;
     if (Number.isFinite(parsed) && parsed >= 0) {
       return Math.min(65536, Math.floor(parsed));

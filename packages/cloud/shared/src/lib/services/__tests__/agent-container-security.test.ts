@@ -5,7 +5,10 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { buildAgentContainerSecurityFlags } from "../agent-container-security";
+import {
+  buildAgentContainerMemoryFlags,
+  buildAgentContainerSecurityFlags,
+} from "../agent-container-security";
 
 describe("buildAgentContainerSecurityFlags — hosted-agent escape hardening (#12468)", () => {
   test("always drops all caps, forbids priv-escalation, and bounds pids (default 512)", () => {
@@ -51,8 +54,6 @@ describe("buildAgentContainerSecurityFlags — hosted-agent escape hardening (#1
     );
   });
 });
-
-import { buildAgentContainerMemoryFlags } from "../agent-container-security";
 
 describe("buildAgentContainerMemoryFlags — per-agent OOM containment (staging fleet incident 2026-08-05)", () => {
   test("emits --memory AND a matching --memory-swap (no swap escape) for a positive limit", () => {
