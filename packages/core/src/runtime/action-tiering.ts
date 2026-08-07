@@ -27,10 +27,11 @@ export const TIER0_PROTOCOL_ACTIONS = [
 
 export type Tier0ProtocolAction = (typeof TIER0_PROTOCOL_ACTIONS)[number];
 
-// A retrieval score at/above this is treated as a near-certain match that must
-// stay on the planner surface even when Stage-1's candidate narrow omits it.
-// Set just below a perfect 1.0 so only an overwhelmingly dominant match (not a
-// merely good tier-A hit) overrides Stage-1's routing judgement.
+// A rank-zero retrieval score at/above this is treated as a near-certain match
+// that must stay on the planner surface even when Stage-1's candidate narrow
+// omits it. Score alone is insufficient: keyword stages commonly saturate
+// several parents at 1.0, while rank zero is the retriever's single aggregate
+// judgement after regex, keyword, BM25, and context signals are fused.
 const RETRIEVAL_OVERRIDE_SCORE = 0.97;
 
 // Per-parent cap on children exposed as first-class planner tools. Symmetric
@@ -238,7 +239,9 @@ export function tierActionResults(
 		const demotedFromTierA: TieredParentAction[] = [];
 		for (const parent of tierAParents) {
 			// Keep a parent the candidates named, OR one the retrieval matched so
-			// strongly it is a near-certain fit (score >= RETRIEVAL_OVERRIDE_SCORE).
+			// strongly it is the near-certain rank-zero fit. Only the aggregate winner
+			// may contradict Stage-1; accepting every saturated keyword score turns an
+			// unambiguous route into a broad, expensive planner surface.
 			// Stage-1's candidate list is a model judgement and sometimes OMITS the
 			// obviously-relevant action — observed live: "current bitcoin price" /
 			// "weather in tokyo" retrieved WEB_FETCH at score 1.0, but Stage-1
@@ -256,7 +259,10 @@ export function tierActionResults(
 			// — exactly what the narrow exists to prevent.
 			if (matchesCandidate(parent)) {
 				candidateKept.push(parent);
-			} else if (parent.score >= RETRIEVAL_OVERRIDE_SCORE) {
+			} else if (
+				parent.score >= RETRIEVAL_OVERRIDE_SCORE &&
+				parent.result.rank === 0
+			) {
 				overrideKept.push(parent);
 			} else {
 				demotedFromTierA.push(parent);
