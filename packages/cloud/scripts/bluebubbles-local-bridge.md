@@ -32,6 +32,9 @@ BLUEBUBBLES_BRIDGE_ID=bb-...
 BLUEBUBBLES_GATEWAY_TOKEN=bbg_...
 BLUEBUBBLES_GATEWAY_PHONE_NUMBER=+14155550123
 ELIZA_CLOUD_BLUEBUBBLES_URL=https://api.eliza.app/api/webhooks/bluebubbles/bb-...
+BLUEBUBBLES_SEND_METHOD=private-api
+BLUEBUBBLES_LOOPBACK_NORMALIZATION_ENABLED=false
+BLUEBUBBLES_PENDING_RETRY_ENABLED=false
 ```
 
 `BLUEBUBBLES_GATEWAY_SECRET` remains supported only for the existing shared
@@ -68,6 +71,23 @@ queued reply is not counted as success. Only `--wait-real` proves the inbound
 event originated at BlueBubbles rather than the verifier.
 
 ## Runtime
+
+The dedicated Mac uses the repository-owned lifecycle commands. The installer
+requires macOS, SIP disabled, a current BlueBubbles configuration database, a
+mode-`0600` relay environment owned by the current user, registered-device
+credentials, and the fail-closed private-API settings above. It rejects shell
+expansion in the environment file, keeps secrets out of the generated plist,
+and writes private relay logs under `.eliza-local/`:
+
+```sh
+bun run --cwd packages/app-core sms-gateway:bluebubbles:install
+bun run --cwd packages/app-core sms-gateway:bluebubbles:status -- --json
+bun run --cwd packages/app-core sms-gateway:bluebubbles:doctor -- --json
+bun run --cwd packages/app-core sms-gateway:bluebubbles:uninstall
+```
+
+`uninstall` removes only the generated LaunchAgent. It deliberately preserves
+the mode-`0600` environment and logs for operator-controlled recovery.
 
 LaunchAgent:
 

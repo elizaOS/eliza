@@ -226,12 +226,13 @@ const cloudWebhookUrl =
     : "https://api.eliza.app/api/webhooks/blooio/local?bridge=bluebubbles");
 const gatewaySecret = process.env.BLUEBUBBLES_GATEWAY_SECRET ?? "";
 const hasCloudGatewayCredential = Boolean(gatewayToken || gatewaySecret);
-const gatewayPhoneNumber = (
-  process.env.BLUEBUBBLES_GATEWAY_PHONE_NUMBER ?? "+14159611510"
-).trim();
+const gatewayPhoneNumber =
+  process.env.BLUEBUBBLES_GATEWAY_PHONE_NUMBER?.trim() ?? "";
 const gatewayPhoneLabel = (
   process.env.BLUEBUBBLES_GATEWAY_PHONE_LABEL ??
-  `Eliza Cloud Gateway (${gatewayPhoneNumber})`
+  (gatewayPhoneNumber
+    ? `Eliza Cloud Gateway (${gatewayPhoneNumber})`
+    : "Eliza Cloud Gateway")
 ).trim();
 const blueBubblesSendMethod = readSendMethod();
 const blueBubblesSendTimeoutMs = Number.parseInt(
@@ -1663,6 +1664,12 @@ async function handleWebhook(
     });
     return;
   }
+  if (!gatewayPhoneNumber) {
+    json(res, 500, {
+      error: "BLUEBUBBLES_GATEWAY_PHONE_NUMBER is required",
+    });
+    return;
+  }
   if (blueBubblesSendMethod !== "shortcuts" && !blueBubblesPassword) {
     json(res, 500, { error: "BlueBubbles password is not configured" });
     return;
@@ -1693,7 +1700,7 @@ async function handleWebhook(
         {
           messageGuid: messageId,
           targetIdentity: targetDecision.targetIdentity,
-          gatewayPhoneNumber,
+          expectedGatewayConfigured: true,
         },
       );
     }
