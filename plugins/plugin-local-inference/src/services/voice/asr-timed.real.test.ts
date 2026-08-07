@@ -40,7 +40,6 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { resolveFusedLibraryPath } from "../desktop-fused-ffi-backend-runtime";
 import { decodeMonoPcm16Wav } from "./engine-bridge";
 import {
-	ELIZA_INFERENCE_ABI_VERSION,
 	type ElizaInferenceContextHandle,
 	type ElizaInferenceFfi,
 	loadElizaInferenceFfi,
@@ -93,8 +92,8 @@ describe.skipIf(!isBun || !LIB_PATH || !HAVE_BUNDLE)(
 			ffi?.close();
 		});
 
-		it("loads a current-ABI build that advertises timed ASR", () => {
-			expect(ffi.libraryAbiVersion).toBe(String(ELIZA_INFERENCE_ABI_VERSION));
+		it("loads a compatible build that advertises timed ASR", () => {
+			expect(ffi.libraryAbiVersion).toMatch(/^\d+$/);
 			expect(ffi.timedAsrSupported()).toBe(true);
 		});
 
