@@ -21,6 +21,7 @@ import path from "node:path";
 import process from "node:process";
 import * as readline from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { runBootHooks } from "./boot-hooks.ts";
 import {
   type BootContext,
   type BootPhaseName,
@@ -4876,29 +4877,12 @@ export async function startEliza(
     await runRuntimeStartupMaintenance(runtime, opts?.abortSignal);
     opts?.abortSignal?.throwIfAborted();
     bootTimer.lap("svc:startup-maintenance");
-    // Pre-ready boot hook: register TEXT/EMBED/TRANSCRIPTION/TTS handlers.
-    // app-core drains this via drainBootHookContributors(); the headless
-    // agent-server path must invoke the same hook or voice/ASR routes report
-    // ready:false despite an installed bundle (arch-audit #12089 item 18).
-    try {
-      const { registerLocalInferenceBoot } = await import(
-        "@elizaos/plugin-local-inference/runtime"
-      );
-      await registerLocalInferenceBoot(runtime);
-      bootTimer.lap("svc:local-inference-boot");
-    } catch (err) {
-      // error-policy:J4 user-facing degrade — the hook is optional: the plugin
-      // is not installed on every target, and a host without it must still
-      // boot. Voice/ASR readiness then reports `ready:false` through its own
-      // route, which is the visibly distinct unavailable state; report it so
-      // the failure is agent-visible rather than only a log line.
-      logger.warn(
-        `[eliza] Local inference pre-ready boot hook failed: ${formatError(err)}`,
-      );
-      runtime.reportError("local-inference-boot-hook", err, {
-        phase: "pre-ready",
-      });
-    }
+    // Pre-ready hooks are declared in registry data and drained here so every
+    // host (including headless agent-server) observes the same fixed point.
+    // A declared hook failure rejects boot; readiness must never hide a broken
+    // voice/model handler installation behind a fabricated degraded success.
+    await runBootHooks(runtime);
+    bootTimer.lap("svc:boot-hooks");
     // runtime.initialize() survives a total TEXT_EMBEDDING dimension-probe
     // failure (EmbeddingDimensionProbeError is caught in core, which flips the
     // runtime into embedding-disabled mode instead of writing vectors the SQL
@@ -5477,44 +5461,43 @@ export async function startEliza(
       const parsed = Number.parseInt(raw, 10);
       return Number.isFinite(parsed) && parsed > 0 ? parsed : 30_000;
     })();
-    const providerRegistrationTimeoutMs = Math.max(timeoutMs, 60_000);
-
     const registerDeferredPlugin = async (
       plugin: (typeof deferredPluginsForRuntime)[number],
-      registrationTimeoutMs: number,
     ): Promise<void> => {
       const startedAt = Date.now();
+      let registrationWatchdog: ReturnType<typeof setTimeout> | undefined;
+      let exceededWatchdog = false;
       try {
         abortSignal.throwIfAborted();
         logger.info(`[eliza] deferred: Registering plugin: ${plugin.name}...`);
-        // The deadline only bounds how long boot WAITS — `registerPlugin` has
-        // no cancellation channel, so the registration keeps running and may
-        // still land later. The timer is cleared (and unref'd) so a slow
-        // plugin cannot hold the event loop open past process exit, and a
-        // late rejection stays observed by the race rather than surfacing as
-        // an unhandled rejection.
-        let registrationTimer: ReturnType<typeof setTimeout> | undefined;
-        try {
-          await Promise.race([
-            runtime.registerPlugin(plugin),
-            new Promise<never>((_resolve, reject) => {
-              registrationTimer = setTimeout(
-                () =>
-                  reject(
-                    new Error(
-                      `Timed out after ${registrationTimeoutMs / 1000}s`,
-                    ),
-                  ),
-                registrationTimeoutMs,
-              );
-              registrationTimer.unref?.();
-            }),
-          ]);
-        } finally {
-          if (registrationTimer) clearTimeout(registrationTimer);
-        }
+        // registerPlugin has no cancellation contract. Treat the configured
+        // deadline as an observable watchdog while continuing to await the
+        // real registration, so a "timed out" plugin cannot finish later and
+        // mutate a wave the host has already reported as settled.
+        registrationWatchdog = setTimeout(() => {
+          exceededWatchdog = true;
+          const error = new Error(
+            `Registration exceeded ${timeoutMs / 1000}s watchdog`,
+          );
+          logger.warn(
+            `[eliza] deferred: Plugin ${plugin.name} registration exceeded the ${timeoutMs / 1000}s watchdog; still waiting for a definitive result`,
+          );
+          // error-policy:J7 the watchdog reports a diagnostic without killing
+          // the deferred loop; the same registration promise remains awaited.
+          runtime.reportError(
+            "eliza.deferredPluginRegistrationWatchdog",
+            error,
+            {
+              plugin: plugin.name,
+              phase: "deferred-boot",
+              timeoutMs,
+            },
+          );
+        }, timeoutMs);
+        registrationWatchdog.unref?.();
+        await runtime.registerPlugin(plugin);
         logger.info(
-          `[eliza] deferred: ✓ ${plugin.name} registered (${Date.now() - startedAt}ms)`,
+          `[eliza] deferred: ✓ ${plugin.name} registered (${Date.now() - startedAt}ms${exceededWatchdog ? ", after watchdog" : ""})`,
         );
       } catch (err) {
         if (abortSignal.aborted) throw err;
@@ -5530,46 +5513,44 @@ export async function startEliza(
           plugin: plugin.name,
           phase: "deferred-boot",
         });
+      } finally {
+        if (registrationWatchdog) clearTimeout(registrationWatchdog);
       }
     };
     // Deferred registrations run behind an already-listening server. Launching
     // every registerPlugin at once floods the event loop with CPU-bound init
     // work and starves the bound HTTP server of I/O turns for the whole wave
-    // (loadperf F3). The preferred provider plugin runs first (with an extended
-    // timeout), then remaining plugins run through a small worker pool with a
-    // setImmediate yield between registrations so /api/* can interleave.
+    // (loadperf F3). The preferred provider is placed first in the shared queue,
+    // but it does not block the other workers from starting. A setImmediate
+    // yield between registrations lets /api/* interleave.
     // Mirrors the yield-between-imports loop in the deferred static import phase.
     const preferredPlugin = preferredProviderPluginName
       ? deferredPluginsForRuntime.find(
           (plugin) => plugin.name === preferredProviderPluginName,
         )
       : undefined;
-    const remainingPlugins = preferredPlugin
-      ? deferredPluginsForRuntime.filter(
-          (plugin) => plugin.name !== preferredPlugin.name,
-        )
+    const registrationQueue = preferredPlugin
+      ? [
+          preferredPlugin,
+          ...deferredPluginsForRuntime.filter(
+            (plugin) => plugin.name !== preferredPlugin.name,
+          ),
+        ]
       : deferredPluginsForRuntime;
-
-    if (preferredPlugin) {
-      await registerDeferredPlugin(
-        preferredPlugin,
-        providerRegistrationTimeoutMs,
-      );
-    }
 
     const registrationConcurrency = 4;
     let nextPluginIndex = 0;
     await Promise.all(
       Array.from(
         {
-          length: Math.min(registrationConcurrency, remainingPlugins.length),
+          length: Math.min(registrationConcurrency, registrationQueue.length),
         },
         async () => {
-          while (nextPluginIndex < remainingPlugins.length) {
+          while (nextPluginIndex < registrationQueue.length) {
             abortSignal.throwIfAborted();
-            const plugin = remainingPlugins[nextPluginIndex];
+            const plugin = registrationQueue[nextPluginIndex];
             nextPluginIndex += 1;
-            await registerDeferredPlugin(plugin, timeoutMs);
+            await registerDeferredPlugin(plugin);
             await new Promise<void>((resolve) => {
               setImmediate(resolve);
             });
