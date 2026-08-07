@@ -611,7 +611,10 @@ export const tradeRouterAction: Action = {
       assertWalletFinancialActionAllowed(message, "trade");
     } catch (error) {
       const text = error instanceof Error ? error.message : String(error);
-      await callback?.({ text, content: { error: "PROMPT_INJECTION_BLOCKED" } });
+      await callback?.({
+        text,
+        content: { error: "PROMPT_INJECTION_BLOCKED" },
+      });
       return {
         success: false,
         text,
