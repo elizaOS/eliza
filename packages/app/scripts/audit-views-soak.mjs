@@ -35,6 +35,7 @@ const UI = process.env.UI || "http://127.0.0.1:2138";
 const API = process.env.API || "http://127.0.0.1:31337";
 const ROUNDS = Number(process.env.ROUNDS || 6);
 const NAV_WAIT_MS = Number(process.env.NAV_WAIT_MS || 700);
+const NAV_TIMEOUT_MS = Number(process.env.NAV_TIMEOUT_MS || 10_000);
 const VIDEO = process.env.VIDEO !== "0";
 const SETUP_FIRST_RUN = process.env.SETUP_FIRST_RUN !== "0";
 const OUT =
@@ -620,15 +621,25 @@ async function main() {
     const targetPath = normalizePath(view.path);
     const beforePath = await page.evaluate(() => window.location.pathname);
     await dispatchShellNavigation(view);
-    await page.waitForFunction(
-      (target) => {
-        const path = window.location.pathname;
-        const normalized = path.length > 1 ? path.replace(/\/+$/, "") : path;
-        return normalized === target;
-      },
-      targetPath,
-      { timeout: Math.max(1000, NAV_WAIT_MS * 3) },
-    );
+    try {
+      await page.waitForFunction(
+        (target) => {
+          const path = window.location.pathname;
+          const normalized = path.length > 1 ? path.replace(/\/+$/, "") : path;
+          return normalized === target;
+        },
+        targetPath,
+        { timeout: Math.max(NAV_TIMEOUT_MS, NAV_WAIT_MS * 3) },
+      );
+    } catch (cause) {
+      // error-policy:J2 Preserve Playwright's timeout while identifying the
+      // exact registered view and route that failed the hard navigation gate.
+      const currentPath = await page.evaluate(() => window.location.pathname);
+      throw new Error(
+        `navigation to view "${view.id}" timed out: ${normalizePath(currentPath)} did not reach ${targetPath}`,
+        { cause },
+      );
+    }
     await page.waitForTimeout(NAV_WAIT_MS);
     const afterPath = await page.evaluate(() => window.location.pathname);
     const firstRunBlocking = await isFirstRunBlocking(page);

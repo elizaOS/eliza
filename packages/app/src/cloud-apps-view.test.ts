@@ -1,19 +1,23 @@
 /**
- * Native Cloud Apps destination registration against the real app-shell registry.
+ * Cloud Apps destination registration against the real app-shell registry.
  */
 
 import { listAppShellPages } from "@elizaos/ui/app-shell-registry";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { cloudAppsStudioKind } from "./cloud-apps-view";
 
 vi.mock("@elizaos/ui/platform", () => ({
   getFrontendPlatform: () => "ios",
 }));
 
-beforeAll(async () => {
-  await import("./cloud-apps-view");
-});
+describe("Cloud Apps destination", () => {
+  it("uses the host-aware studio wrapper", () => {
+    expect(cloudAppsStudioKind("web")).toBe("web");
+    expect(cloudAppsStudioKind("ios")).toBe("native");
+    expect(cloudAppsStudioKind("android")).toBe("native");
+    expect(cloudAppsStudioKind("desktop")).toBe("native");
+  });
 
-describe("Cloud Apps native destination", () => {
   it("registers a bundled app-shell page at the path emitted by VIEWS", () => {
     const page = listAppShellPages().find((entry) => entry.id === "cloud-apps");
 
