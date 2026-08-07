@@ -37,6 +37,8 @@ import {
   type JobRecoveryFailure,
   type JobRecoverySweepResult,
   jobsRepository,
+  cutoverResumeWindowAllows,
+  msWindowTimestampMatch,
   type NewJob,
   prepareJobInsertData,
   type RecoveryFailureWritebackBuilder,
@@ -4122,11 +4124,11 @@ export class ProvisioningJobService {
         pendingAudit.startedAt ===
           (snapshot.started_at === null ? "" : jobAuditTimestamp(snapshot.started_at)) &&
         pendingAudit.cutoverAt === jobAuditTimestamp(snapshot.updated_at);
-      const resumedCleanupClaim =
-        Number.isFinite(rowStartedAt) &&
-        Number.isFinite(rowUpdatedAt) &&
-        cutoverAt <= rowStartedAt &&
-        rowStartedAt <= rowUpdatedAt;
+      const resumedCleanupClaim = cutoverResumeWindowAllows({
+        cutoverAtMs: cutoverAt,
+        rowStartedAtMs: rowStartedAt,
+        rowUpdatedAtMs: rowUpdatedAt,
+      });
       return (
         Number.isFinite(auditStartedAt) &&
         Number.isFinite(cutoverAt) &&
@@ -4206,15 +4208,23 @@ export class ProvisioningJobService {
             eq(jobs.max_attempts, snapshot.max_attempts),
             sql`${jobs.execution_generation} IS NOT DISTINCT FROM ${snapshot.execution_generation}`,
             isNull(jobs.execution_quiesced_at),
-            sql`${jobs.started_at} IS NOT DISTINCT FROM ${
-              snapshot.started_at ? new Date(jobAuditTimestamp(snapshot.started_at)) : null
-            }`,
-            sql`${jobs.completed_at} IS NOT DISTINCT FROM ${
-              snapshot.completed_at ? new Date(jobAuditTimestamp(snapshot.completed_at)) : null
-            }`,
-            sql`${jobs.updated_at} IS NOT DISTINCT FROM ${new Date(
-              jobAuditTimestamp(snapshot.updated_at),
-            )}`,
+            // #17919 / #17284 class: ms-window fence so µs-stored NOW() rows match JS reads
+            msWindowTimestampMatch(
+              jobs.started_at,
+              snapshot.started_at
+                ? new Date(jobAuditTimestamp(snapshot.started_at))
+                : null,
+            ),
+            msWindowTimestampMatch(
+              jobs.completed_at,
+              snapshot.completed_at
+                ? new Date(jobAuditTimestamp(snapshot.completed_at))
+                : null,
+            ),
+            msWindowTimestampMatch(
+              jobs.updated_at,
+              new Date(jobAuditTimestamp(snapshot.updated_at)),
+            ),
             sql`${jobs.data_storage} = 'inline'`,
             sql`${jobs.data_key} IS NOT DISTINCT FROM ${snapshot.data_key}`,
             sql`${jobs.data} IS NOT DISTINCT FROM ${JSON.stringify(snapshot.data)}::jsonb`,
@@ -4370,15 +4380,21 @@ export class ProvisioningJobService {
             eq(jobs.max_attempts, job.max_attempts),
             sql`${jobs.execution_generation} IS NOT DISTINCT FROM ${job.execution_generation}`,
             isNull(jobs.execution_quiesced_at),
-            sql`${jobs.started_at} IS NOT DISTINCT FROM ${
-              job.started_at ? new Date(jobAuditTimestamp(job.started_at)) : null
-            }`,
-            sql`${jobs.completed_at} IS NOT DISTINCT FROM ${
-              job.completed_at ? new Date(jobAuditTimestamp(job.completed_at)) : null
-            }`,
-            sql`${jobs.updated_at} IS NOT DISTINCT FROM ${new Date(
-              jobAuditTimestamp(job.updated_at),
-            )}`,
+            // #17919 / #17284 class: ms-window fence so µs-stored NOW() rows match JS reads
+            msWindowTimestampMatch(
+              jobs.started_at,
+              job.started_at ? new Date(jobAuditTimestamp(job.started_at)) : null,
+            ),
+            msWindowTimestampMatch(
+              jobs.completed_at,
+              job.completed_at
+                ? new Date(jobAuditTimestamp(job.completed_at))
+                : null,
+            ),
+            msWindowTimestampMatch(
+              jobs.updated_at,
+              new Date(jobAuditTimestamp(job.updated_at)),
+            ),
             sql`${jobs.data_storage} = 'inline'`,
             sql`${jobs.data_key} IS NOT DISTINCT FROM ${job.data_key}`,
             sql`${jobs.data} IS NOT DISTINCT FROM ${JSON.stringify(job.data)}::jsonb`,

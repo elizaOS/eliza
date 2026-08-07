@@ -26,8 +26,16 @@ import { agentSandboxes } from "../schemas/agent-sandboxes";
 import { jobExecutionLeases } from "../schemas/job-execution-leases";
 import type { Job, NewJob } from "../schemas/jobs";
 import { jobs } from "../schemas/jobs";
+import {
+  cutoverResumeWindowAllows,
+  msWindowTimestampMatch,
+} from "./job-timestamp-fence";
 
 export type { Job, NewJob };
+export {
+  cutoverResumeWindowAllows,
+  msWindowTimestampMatch,
+} from "./job-timestamp-fence";
 
 /**
  * Settles the rows that depend on a job the recovery sweep just flipped to
@@ -187,8 +195,11 @@ function hasRecoverableAdminCanaryCutover(job: Job): boolean {
   const resumedCleanupClaim =
     rowStartedAt !== null &&
     rowUpdatedAt !== null &&
-    cutoverAt <= rowStartedAt &&
-    rowStartedAt <= rowUpdatedAt;
+    cutoverResumeWindowAllows({
+      cutoverAtMs: cutoverAt,
+      rowStartedAtMs: rowStartedAt,
+      rowUpdatedAtMs: rowUpdatedAt,
+    });
   return (
     job.organization_id === data.organizationId &&
     job.user_id === data.userId &&
@@ -251,10 +262,10 @@ function retryPayloadFence(job: Job) {
     AND ${jobs.attempts} = ${job.attempts}
     AND ${jobs.max_attempts} = ${job.max_attempts}
     AND ${jobs.execution_generation} IS NOT DISTINCT FROM ${job.execution_generation}
-    AND ${jobs.execution_quiesced_at} IS NOT DISTINCT FROM ${normalizedTimestamp(job.execution_quiesced_at)}
-    AND ${jobs.started_at} IS NOT DISTINCT FROM ${normalizedTimestamp(job.started_at)}
-    AND ${jobs.completed_at} IS NOT DISTINCT FROM ${normalizedTimestamp(job.completed_at)}
-    AND ${jobs.updated_at} IS NOT DISTINCT FROM ${normalizedTimestamp(job.updated_at)}
+    AND ${msWindowTimestampMatch(jobs.execution_quiesced_at, job.execution_quiesced_at)}
+    AND ${msWindowTimestampMatch(jobs.started_at, job.started_at)}
+    AND ${msWindowTimestampMatch(jobs.completed_at, job.completed_at)}
+    AND ${msWindowTimestampMatch(jobs.updated_at, job.updated_at)}
     AND ${jobs.data_storage} = ${job.data_storage}
     AND ${jobs.data_key} IS NOT DISTINCT FROM ${job.data_key}
     AND ${dataFence}
@@ -1151,7 +1162,10 @@ export class JobsRepository {
             eq(jobs.status, "in_progress"),
             eq(jobs.attempts, params.job.attempts),
             sql`${jobs.execution_generation} IS NOT DISTINCT FROM ${params.job.execution_generation}`,
-            sql`${jobs.execution_quiesced_at} IS NOT DISTINCT FROM ${normalizedTimestamp(params.job.execution_quiesced_at)}`,
+            msWindowTimestampMatch(
+              jobs.execution_quiesced_at,
+              params.job.execution_quiesced_at,
+            ),
             lt(jobs.started_at, params.startedBefore),
             params.recoveryFence,
           ),
@@ -1189,7 +1203,10 @@ export class JobsRepository {
             eq(jobs.status, "in_progress"),
             eq(jobs.attempts, params.job.attempts),
             sql`${jobs.execution_generation} IS NOT DISTINCT FROM ${params.job.execution_generation}`,
-            sql`${jobs.execution_quiesced_at} IS NOT DISTINCT FROM ${normalizedTimestamp(params.job.execution_quiesced_at)}`,
+            msWindowTimestampMatch(
+              jobs.execution_quiesced_at,
+              params.job.execution_quiesced_at,
+            ),
             lt(jobs.started_at, params.startedBefore),
             params.recoveryFence,
             requiresExecutionLease && params.job.execution_generation
