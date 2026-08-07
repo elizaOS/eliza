@@ -1875,6 +1875,81 @@ describe("userinfo", () => {
   });
 });
 
+describe("userinfo — signature enforcement and key-ring separation", () => {
+  /**
+   * The class-separation and key-ring-separation claims both reduce to one
+   * thing: a bearer that verifies is a bearer this provider's private ring
+   * signed. A token wearing the ring's real `kid` but signed by ANY other key
+   * — the internal-service `JWT_SIGNING_*` pair, a relying party's own key, an
+   * attacker's fresh key — must fail signature verification, not be trusted on
+   * the strength of the `kid` header alone. Without that, publishing the `kid`
+   * would be publishing a forgery template.
+   */
+  /**
+   * Mint an access token from a DIFFERENT key ring, then hand it to a
+   * `/userinfo` that runs under the real ring. `kidInForeignRing` controls
+   * whether the forgery even names a key the real ring publishes.
+   */
+  async function foreignSignedAccessToken(
+    userId: string,
+    kidInForeignRing: string,
+  ): Promise<string> {
+    const { runWithCloudBindingsAsync } = await import(
+      "@/lib/runtime/cloud-bindings"
+    );
+    const { mintOidcAccessToken } = await import("@/lib/oidc/tokens");
+    const { _resetOidcKeyCacheForTests } = await import("@/lib/oidc/keys");
+    const foreignEnv = {
+      ...ENV,
+      OIDC_SIGNING_JWKS: JSON.stringify([rsaPrivateJwk(kidInForeignRing)]),
+    };
+    const token = await runWithCloudBindingsAsync(foreignEnv, () =>
+      mintOidcAccessToken({
+        issuer: ISSUER,
+        clientId: FORGEJO_CLIENT_ID,
+        subject: userId,
+        audiences: [],
+        scope: "openid email profile groups",
+        ttlSeconds: 300,
+        claims: { sub: userId },
+        now: new Date(),
+      }),
+    );
+    // Drop the foreign ring from the module cache so the endpoint call below
+    // re-reads the real `OIDC_SIGNING_JWKS`.
+    _resetOidcKeyCacheForTests();
+    return token;
+  }
+
+  test("a token bearing the ring's kid but signed by a FOREIGN key is refused", async () => {
+    // The class-separation and key-ring-separation claims both reduce to one
+    // thing: a bearer that verifies is a bearer this provider's private ring
+    // signed. A token wearing the ring's REAL kid but signed by any other key
+    // — the internal-service JWT_SIGNING_* pair, a relying party's own key, an
+    // attacker's fresh key — must fail signature verification, not be trusted
+    // on the strength of the kid header alone.
+    const { userId } = await seedUser({ stewardUserId: "u-forged-sig" });
+    const forged = await foreignSignedAccessToken(userId, "oidc-test-key");
+
+    const res = await call("/api/oidc/userinfo", {
+      headers: { authorization: `Bearer ${forged}` },
+    });
+    expect(res.status).toBe(401);
+    expect(res.headers.get("www-authenticate")).toContain("invalid_token");
+  });
+
+  test("a token whose kid is not in the ring is refused without an oracle", async () => {
+    const { userId } = await seedUser({ stewardUserId: "u-unknown-kid" });
+    const forged = await foreignSignedAccessToken(userId, "no-such-kid");
+
+    const res = await call("/api/oidc/userinfo", {
+      headers: { authorization: `Bearer ${forged}` },
+    });
+    expect(res.status).toBe(401);
+    expect(res.headers.get("www-authenticate")).toContain("invalid_token");
+  });
+});
+
 describe("username allocation", () => {
   test("the allocated username is frozen — a later nickname change does not move it", async () => {
     const { userId } = await seedUser({
