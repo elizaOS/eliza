@@ -17,8 +17,8 @@
  * is reachable from the host or a sibling tab.
  *
  * Two constraints shape the effects. (1) Native layers z-order ABOVE the host
- * WebView, so while any React overlay is open (`overlayOpen` — the tab switcher,
- * a confirm dialog) every surface is backgrounded, or it would paint over the
+ * WebView, so while any React overlay is open (tab switcher, confirm dialog, or
+ * expanded chat) every surface is backgrounded, or it would paint over the
  * overlay; this is the mobile equivalent of the desktop `<electrobun-webview
  * masks=…>` mechanism. (2) The layer is positioned in host CSS pixels from the
  * placeholder rect, re-measured on every layout shift (resize, orientation,
@@ -26,7 +26,7 @@
  */
 
 import type { SurfaceLifecyclePolicy } from "@elizaos/core";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CapacitorNativeSurfaceShell } from "./capacitor-native-surface-shell";
 import type {
   NativeSurfacePolicy,
@@ -103,6 +103,8 @@ export function useMobileNativeTabSurfaces(
   // otherwise the Capacitor driver, constructed once.
   const defaultShell = useMemo(() => new CapacitorNativeSurfaceShell(), []);
   const activeShell = shell ?? defaultShell;
+  const [chatOverlayOpen, setChatOverlayOpen] = useState(false);
+  const chatOverlayOpenRef = useRef(false);
 
   const elements = useRef(new Map<string, HTMLElement>());
   // The tab ids that currently own a live native surface. Tracked here, not read
@@ -152,6 +154,45 @@ export function useMobileNativeTabSurfaces(
     [active, activeShell],
   );
 
+  // Native child views always paint above the host WebView. When the global chat
+  // sheet grows beyond its resting composer, background the child surface so the
+  // conversation remains the real top layer rather than being visually covered
+  // by third-party page pixels. Attribute observation follows the sheet's
+  // canonical state machine without coupling this hook to its React context.
+  useEffect(() => {
+    if (
+      !active ||
+      typeof document === "undefined" ||
+      typeof MutationObserver === "undefined"
+    ) {
+      if (chatOverlayOpenRef.current) {
+        chatOverlayOpenRef.current = false;
+        setChatOverlayOpen(false);
+      }
+      return;
+    }
+    const readState = () => {
+      const state = document
+        .querySelector<HTMLElement>('[data-testid="chat-sheet"]')
+        ?.getAttribute("data-chat-state");
+      const next = Boolean(
+        state && state !== "CLOSED" && state !== "INPUT",
+      );
+      if (chatOverlayOpenRef.current === next) return;
+      chatOverlayOpenRef.current = next;
+      setChatOverlayOpen(next);
+    };
+    readState();
+    const observer = new MutationObserver(readState);
+    observer.observe(document.documentElement, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ["data-chat-state"],
+    });
+    return () => observer.disconnect();
+  }, [active]);
+
   // Reconcile the live surface set with `tabs`: create surfaces for new tabs
   // (explicit policy, never a default), navigate on an existing tab's URL change,
   // destroy surfaces for closed tabs.
@@ -186,14 +227,22 @@ export function useMobileNativeTabSurfaces(
     if (!active) return;
     for (const tab of tabs) {
       const id = surfaceIdOf(tab.id);
-      if (!overlayOpen && tab.id === selectedTabId) {
+      if (!overlayOpen && !chatOverlayOpen && tab.id === selectedTabId) {
         activeShell.foregroundSurface(id);
         measure(tab.id);
       } else {
         activeShell.backgroundSurface(id);
       }
     }
-  }, [active, tabs, selectedTabId, overlayOpen, activeShell, measure]);
+  }, [
+    active,
+    tabs,
+    selectedTabId,
+    overlayOpen,
+    chatOverlayOpen,
+    activeShell,
+    measure,
+  ]);
 
   // Track the placeholder rects across every layout shift so the native layer
   // never drifts off its slot: window resize, device rotation, and the
