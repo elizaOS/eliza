@@ -37,8 +37,6 @@ process.env.MOCK_REDIS = "1";
 
 import { pushSchema } from "drizzle-kit/api";
 import { eq } from "drizzle-orm";
-import { cache } from "../../../lib/cache/client";
-import { CacheKeys } from "../../../lib/cache/keys";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
 import { apiKeys } from "../../schemas/api-keys";
 import { appConfig } from "../../schemas/app-config";
