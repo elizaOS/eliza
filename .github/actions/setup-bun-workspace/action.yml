@@ -176,6 +176,25 @@ runs:
           || "$python_bin" -m pip install --user setuptools \
           || "$python_bin" -m pip install --break-system-packages setuptools
 
+    # unattended-upgrades runs continuously on the persistent self-hosted
+    # runners, so an apt-get that starts while it holds the dpkg frontend lock
+    # aborts at once with exit 100 and fails a lane whose only fault was timing.
+    # Retry loops around our own apt calls cannot cover `playwright install
+    # --with-deps`, which spawns an apt-get this action passes no flags to. A
+    # config drop-in applies to every apt-get in the job, ours and Playwright's,
+    # so they wait for the lock holder instead of dying on contact.
+    - name: Let apt wait for the dpkg lock
+      if: ${{ runner.os == 'Linux' }}
+      shell: bash
+      run: |
+        if ! command -v sudo >/dev/null 2>&1 || ! sudo -n true 2>/dev/null; then
+          echo "::warning::passwordless sudo unavailable; apt lock contention stays fatal for this job"
+          exit 0
+        fi
+        printf 'DPkg::Lock::Timeout "600";\n' \
+          | sudo tee /etc/apt/apt.conf.d/99-eliza-ci-dpkg-lock-timeout >/dev/null
+        echo "apt will wait up to 600s for the dpkg frontend lock"
+
     - name: Install protoc
       # protoc is required even when install-native-deps=false because Rust
       # plugins (plugin-{discord,groq,openai,sql,whatsapp}) depend on the
@@ -206,7 +225,7 @@ runs:
             echo "Disabling unrelated Microsoft apt source: ${source_file}"
             sudo mv "${source_file}" "${source_file}.disabled"
           done < <(grep -RIl "packages.microsoft.com" /etc/apt/sources.list.d 2>/dev/null || true)
-          APT_ARGS=(-o Acquire::ForceIPv4=true -o Acquire::Retries=5 -o Acquire::http::Timeout=30)
+          APT_ARGS=(-o Acquire::ForceIPv4=true -o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=600)
           for attempt in 1 2 3; do
             if sudo apt-get "${APT_ARGS[@]}" update && \
                sudo apt-get "${APT_ARGS[@]}" install -y --fix-missing protobuf-compiler; then
@@ -278,7 +297,7 @@ runs:
           echo "Disabling unrelated Microsoft apt source: ${source_file}"
           sudo mv "${source_file}" "${source_file}.disabled"
         done < <(grep -RIl "packages.microsoft.com" /etc/apt/sources.list.d 2>/dev/null || true)
-        APT_ARGS=(-o Acquire::ForceIPv4=true -o Acquire::Retries=5 -o Acquire::http::Timeout=30)
+        APT_ARGS=(-o Acquire::ForceIPv4=true -o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=600)
         for attempt in 1 2 3; do
           if sudo apt-get "${APT_ARGS[@]}" update && \
              sudo apt-get "${APT_ARGS[@]}" install -y --fix-missing \
