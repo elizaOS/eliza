@@ -8,6 +8,7 @@
  * Reference: eliza-cloud/backend/services/container-orchestrator.ts
  */
 
+import { ElizaError } from "@elizaos/core";
 import { buildDefaultElizaCloudServiceRouting } from "@elizaos/shared/contracts/service-routing";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
@@ -1076,6 +1077,22 @@ export class DockerSandboxProvider implements SandboxProvider {
         await dockerNodesRepository.incrementAllocated(nodeId);
       }
     } else {
+      const registeredNodes = await dockerNodesRepository.findAll();
+      if (registeredNodes.length > 0) {
+        throw new ElizaError(
+          "[docker-sandbox] Registered Docker nodes exist but none are available for placement; refusing CONTAINERS_DOCKER_NODES seed fallback",
+          {
+            code: "DOCKER_PLACEMENT_UNAVAILABLE",
+            context: {
+              registeredNodeCount: registeredNodes.length,
+              excludedNodeId: config.excludeNodeId ?? null,
+              requiredPlatform: imagePlatform ?? null,
+            },
+            severity: "ephemeral",
+          },
+        );
+      }
+
       // Fallback: seed-only path for initial setup before nodes are registered via Admin API.
       // Uses random selection (no least-loaded placement or capacity checks).
       // Operators should register nodes via POST /admin/docker-nodes for production use.

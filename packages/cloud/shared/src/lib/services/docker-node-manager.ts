@@ -113,10 +113,24 @@ export function __resetPlacementTimeoutStateForTests(): void {
   placementTimeoutState.clear();
 }
 
-/** Matches the docker-ssh timeout signature anywhere in a message/cause chain. */
+/** Matches only the docker-ssh timeout signature in an error or its causes. */
 export function isDockerCommandTimeoutError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.includes("Command timed out after");
+  const visited = new Set<unknown>();
+  let current: unknown = error;
+
+  while (current !== undefined && current !== null && !visited.has(current)) {
+    visited.add(current);
+    const message = current instanceof Error ? current.message : String(current);
+    if (
+      message.includes("[docker-ssh] Command timed out after") &&
+      message.endsWith(": docker [redacted]")
+    ) {
+      return true;
+    }
+    current = current instanceof Error ? current.cause : undefined;
+  }
+
+  return false;
 }
 
 /**

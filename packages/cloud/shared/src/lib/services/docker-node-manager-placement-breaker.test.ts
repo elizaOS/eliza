@@ -167,6 +167,26 @@ describe("placement circuit breaker", () => {
     expect(isNodePlacementQuarantined("node-a", T0 + 5 * MINUTE)).toBe(false);
   });
 
+  test("application output mentioning a generic timeout never opens the breaker", () => {
+    const misleadingError = new Error(
+      "[docker-ssh] Command exited with code 1 on node-a: worker said Command timed out after retry",
+    );
+    for (let attempt = 0; attempt < 5; attempt++) {
+      notePlacementCommandFailure("node-a", misleadingError, T0 + attempt * MINUTE);
+    }
+    expect(isNodePlacementQuarantined("node-a", T0 + 5 * MINUTE)).toBe(false);
+  });
+
+  test("non-Docker SSH command timeouts never open the breaker", () => {
+    const stewardTimeout = new Error(
+      "[docker-ssh] Command timed out after 30000ms on node-a: curl [redacted]",
+    );
+    for (let attempt = 0; attempt < 5; attempt++) {
+      notePlacementCommandFailure("node-a", stewardTimeout, T0 + attempt * MINUTE);
+    }
+    expect(isNodePlacementQuarantined("node-a", T0 + 5 * MINUTE)).toBe(false);
+  });
+
   test("timeouts older than the window do not count toward the threshold", () => {
     notePlacementCommandFailure("node-a", TIMEOUT_ERROR, T0);
     notePlacementCommandFailure("node-a", TIMEOUT_ERROR, T0 + MINUTE);
