@@ -1151,8 +1151,12 @@ function providerRows(trajectory: RecordedTrajectory): ProviderRollupRow[] {
             ? completionTokens
             : 0;
         const inputShare = promptTokens / (promptTokens + completion);
+        const attributionDenominator = Math.max(
+          promptTokens,
+          totalProviderTokens,
+        );
         current.costUsd +=
-          cost * inputShare * (providerEstimate / totalProviderTokens);
+          cost * inputShare * (providerEstimate / attributionDenominator);
       }
       if (
         typeof entry.spanStart === "number" &&

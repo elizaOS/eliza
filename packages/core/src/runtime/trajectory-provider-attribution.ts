@@ -206,8 +206,9 @@ export function buildProviderAttributionsFromState(args: {
 
 /**
  * Defensible input-cost share for provider rollups. Allocates only the
- * prompt/input fraction of `costUsd` when usage is known; returns 0 when the
- * call has no finite cost or no prompt tokens to attribute.
+ * prompt/input fraction of `costUsd`, then only the fraction of the prompt
+ * represented by the provider estimate. Returns 0 when the call has no finite
+ * cost or no prompt tokens to attribute.
  */
 export function estimatedProviderInputCostShareUsd(args: {
 	costUsd: number | undefined;
@@ -220,8 +221,12 @@ export function estimatedProviderInputCostShareUsd(args: {
 	if (typeof cost !== "number" || !Number.isFinite(cost) || cost <= 0) {
 		return 0;
 	}
-	const totalEstimates = args.totalProviderTokenEstimates;
-	const providerEstimate = Math.max(0, args.providerTokenEstimate);
+	const totalEstimates = Number.isFinite(args.totalProviderTokenEstimates)
+		? Math.max(0, args.totalProviderTokenEstimates)
+		: 0;
+	const providerEstimate = Number.isFinite(args.providerTokenEstimate)
+		? Math.max(0, args.providerTokenEstimate)
+		: 0;
 	if (!(totalEstimates > 0) || !(providerEstimate > 0)) {
 		return 0;
 	}
@@ -244,5 +249,6 @@ export function estimatedProviderInputCostShareUsd(args: {
 	}
 	const totalTokens = promptTokens + completionTokens;
 	const inputShare = totalTokens > 0 ? promptTokens / totalTokens : 1;
-	return cost * inputShare * (providerEstimate / totalEstimates);
+	const attributionDenominator = Math.max(promptTokens, totalEstimates);
+	return cost * inputShare * (providerEstimate / attributionDenominator);
 }

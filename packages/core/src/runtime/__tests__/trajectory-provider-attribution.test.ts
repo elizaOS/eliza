@@ -183,7 +183,7 @@ describe("trajectory provider attribution", () => {
 	});
 
 	it("estimatedProviderInputCostShareUsd allocates only the prompt-token share", () => {
-		// $1 call, half prompt tokens, one provider owns all estimate tokens → $0.50.
+		// $1 call, half prompt tokens, provider text covers 10/50 prompt tokens → $0.10.
 		expect(
 			estimatedProviderInputCostShareUsd({
 				costUsd: 1,
@@ -192,7 +192,17 @@ describe("trajectory provider attribution", () => {
 				providerTokenEstimate: 10,
 				totalProviderTokenEstimates: 10,
 			}),
-		).toBeCloseTo(0.5, 8);
+		).toBeCloseTo(0.1, 8);
+		// Over-estimation is capped at the full input share rather than overclaiming it.
+		expect(
+			estimatedProviderInputCostShareUsd({
+				costUsd: 1,
+				promptTokens: 50,
+				completionTokens: 50,
+				providerTokenEstimate: 50,
+				totalProviderTokenEstimates: 100,
+			}),
+		).toBeCloseTo(0.25, 8);
 		// No prompt tokens observed → refuse to allocate (do not dump full cost).
 		expect(
 			estimatedProviderInputCostShareUsd({
