@@ -11,10 +11,10 @@
  * and PA's production dispatcher (`plugin-personal-assistant` runtime-wiring).
  *
  * Model-free fallback (#14874): a runtime without a working model surface
- * receives deterministic composed copy — not a retryable failure — so stock
- * mobile boots keep their scheduled notifications. The fallback extracts the
- * first action-oriented sentence from `promptInstructions` and wraps it in
- * owner-facing voice, never quoting the instruction verbatim.
+ * receives a neutral intensity-keyed canned message — not a retryable
+ * failure — so stock mobile boots keep their scheduled notifications. The
+ * fallback does not consult `promptInstructions` at all; it cannot leak
+ * instruction text.
  *
  * Prompt templates are resolved through `resolveOptimizedPromptForRuntime`
  * with the `scheduled_task_dispatch` and `scheduled_task_title` task slots so
