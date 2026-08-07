@@ -52,11 +52,14 @@ export function walkTests(dir, excluded) {
   return out;
 }
 
-// Batch size bounds per-process memory; the char cap keeps each argv under
-// Windows' ~8 KiB cmd.exe command-line ceiling (the spawn goes through cmd.exe
-// there — `shell: true` below — to resolve bun's `.cmd` shim). Whichever limit
-// a file hits first closes the current batch.
+// Batch size bounds per-process memory. Windows uses a smaller process lifetime
+// because native/PGlite state from a large mixed suite can keep Bun alive after
+// the tests finish; fresh processes make that state reclaimable. The char cap
+// also keeps each argv under Windows' ~8 KiB cmd.exe command-line ceiling (the
+// spawn goes through cmd.exe there — `shell: true` below — to resolve bun's
+// `.cmd` shim). Whichever limit a file hits first closes the current batch.
 export const MAX_FILES_PER_BATCH = 80;
+export const MAX_FILES_PER_BATCH_WIN32 = 16;
 export const MAX_ARGS_CHARS_WIN32 = 6000;
 export const MAX_ARGS_CHARS_POSIX = 100000;
 
@@ -452,11 +455,11 @@ function main() {
 
   const maxArgsChars =
     process.platform === "win32" ? MAX_ARGS_CHARS_WIN32 : MAX_ARGS_CHARS_POSIX;
-  const batches = chunkByBudget(
-    allTestFiles,
-    MAX_FILES_PER_BATCH,
-    maxArgsChars,
-  );
+  const maxFilesPerBatch =
+    process.platform === "win32"
+      ? MAX_FILES_PER_BATCH_WIN32
+      : MAX_FILES_PER_BATCH;
+  const batches = chunkByBudget(allTestFiles, maxFilesPerBatch, maxArgsChars);
 
   const writeOut = (text) => writeSyncAll(1, text);
   const writeErr = (text) => writeSyncAll(2, text);

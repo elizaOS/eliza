@@ -679,10 +679,14 @@ export async function runCli(
 
   const reports: ScenarioReport[] = [];
   let interruptedSignal: NodeJS.Signals | undefined;
+  const runAbortController = new AbortController();
   const onInterrupt = (signal: NodeJS.Signals): void => {
     interruptedSignal = signal;
+    runAbortController.abort(
+      new Error(`Scenario run interrupted by ${signal}`),
+    );
     process.stderr.write(
-      `[eliza-scenarios] received ${signal}; finishing the current scenario, writing checkpoint evidence, then stopping.\n`,
+      `[eliza-scenarios] received ${signal}; cancelling the current scenario, writing checkpoint evidence, then stopping.\n`,
     );
   };
   process.once("SIGINT", onInterrupt);
@@ -729,6 +733,7 @@ export async function runCli(
         providerName,
         minJudgeScore,
         turnTimeoutMs,
+        abortSignal: runAbortController.signal,
         executionProfile,
         runDir: effectiveRunDir,
       });

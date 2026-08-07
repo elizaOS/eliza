@@ -26,10 +26,14 @@
  *     belongs to, e.g. ["server"] / ["client"]. The lane resolver turns the set
  *     of member dirs into the anchored package filter the lane used to hardcode.
  *
- *   buildModel: { doubleCheck?: true, tscTypecheck?: true }
+ *   buildModel: {
+ *     doubleCheck?: { reason: string },
+ *     tscTypecheck?: { reason: string }
+ *   }
  *     Documented exceptions to the "tsgo checks, tsc only emits" model
  *     (audit-build-typecheck.mjs). `doubleCheck` = build keeps a full tsc check;
- *     `tscTypecheck` = typecheck still runs `tsc` (tsgo migration pending).
+ *     `tscTypecheck` = typecheck still runs compatibility `tsc6`. Every
+ *     exception must carry a package-owned, machine-readable reason.
  *
  *   turboNonImportedBuildDeps: true
  *     This package's turbo `#build` override deliberately enumerates build deps a
@@ -109,25 +113,39 @@ export function resolveTestLaneDirs(lane, opts) {
 }
 
 /**
- * The `buildModel` exception sets (audit-build-typecheck.mjs) as
- * `{ doubleCheck: Set, tscTypecheck: Set }` of package names.
+ * The `buildModel` exception maps (audit-build-typecheck.mjs) as package name
+ * to package-owned reason, plus validation errors for malformed declarations.
  */
 export function resolveBuildModelExceptions(opts) {
   const pkgs = packagesWithScriptMeta(opts);
-  const collect = (key) =>
-    new Set(
-      pkgs
-        .filter(
-          (pkg) =>
-            pkg.scripts.buildModel &&
-            typeof pkg.scripts.buildModel === "object" &&
-            pkg.scripts.buildModel[key] === true,
-        )
-        .map((pkg) => pkg.name),
-    );
+  const invalid = [];
+  const collect = (key) => {
+    const exceptions = new Map();
+    for (const pkg of pkgs) {
+      const buildModel = pkg.scripts.buildModel;
+      if (!buildModel || typeof buildModel !== "object") continue;
+      const declaration = buildModel[key];
+      if (declaration === undefined) continue;
+      const reason =
+        declaration &&
+        typeof declaration === "object" &&
+        typeof declaration.reason === "string"
+          ? declaration.reason.trim()
+          : "";
+      if (!reason) {
+        invalid.push(
+          `${pkg.name}: buildModel.${key} must be an object with a non-empty reason`,
+        );
+        continue;
+      }
+      exceptions.set(pkg.name, reason);
+    }
+    return exceptions;
+  };
   return {
     doubleCheck: collect("doubleCheck"),
     tscTypecheck: collect("tscTypecheck"),
+    invalid,
   };
 }
 

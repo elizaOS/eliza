@@ -51,6 +51,11 @@ function makeAgentEventContext(
 }
 
 describe("handleMiscRoutes agent events", () => {
+  it("admits the implemented voice-control stream but not premature live-asr", () => {
+    expect(AGENT_EVENT_ALLOWED_STREAMS.has("voice-control")).toBe(true);
+    expect(AGENT_EVENT_ALLOWED_STREAMS.has("live-asr")).toBe(false);
+  });
+
   it("accepts notification stream events for the live notification rail", async () => {
     const payload = {
       notification: {

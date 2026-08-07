@@ -13,8 +13,33 @@ import fs from "node:fs";
 import path from "node:path";
 import { type CharacterSettings, logger } from "@elizaos/core";
 import type { AgentConfig } from "@elizaos/shared";
-import { resolveElizaPackageRootSync } from "@elizaos/shared";
+import {
+  normalizeFirstRunProviderId,
+  resolveElizaPackageRootSync,
+} from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
+
+/** Injectable local-file seam used by deterministic character-loader tests. */
+export interface CharacterOverrideFileAccess {
+  cwd: string;
+  argv1?: string;
+  existsSync: (filePath: string) => boolean;
+  readTextFileSync: (filePath: string) => string;
+  resolvePackageRoot: (options: {
+    cwd: string;
+    argv1?: string;
+  }) => string | null;
+}
+
+function defaultCharacterOverrideFileAccess(): CharacterOverrideFileAccess {
+  return {
+    cwd: process.cwd(),
+    argv1: process.argv[1],
+    existsSync: fs.existsSync,
+    readTextFileSync: (filePath) => fs.readFileSync(filePath, "utf-8"),
+    resolvePackageRoot: resolveElizaPackageRootSync,
+  };
+}
 
 /** Raw character shape as stored in `agent_sandboxes.agent_config`. */
 interface SandboxCharacterJson {
@@ -83,11 +108,9 @@ export function resolveSandboxRouteAgentId(
 
 function resolveLocalCharacterJsonPath(
   env: NodeJS.ProcessEnv = process.env,
+  fileAccess: CharacterOverrideFileAccess = defaultCharacterOverrideFileAccess(),
 ): string | null {
   if (env.ELIZA_DISABLE_LOCAL_CHARACTER?.trim() === "1") {
-    return null;
-  }
-  if (env.NODE_ENV === "test") {
     return null;
   }
 
@@ -95,36 +118,37 @@ function resolveLocalCharacterJsonPath(
   if (explicit) {
     return path.isAbsolute(explicit)
       ? explicit
-      : path.resolve(process.cwd(), explicit);
+      : path.resolve(fileAccess.cwd, explicit);
   }
 
-  const repoRoot = resolveElizaPackageRootSync({
-    cwd: process.cwd(),
-    argv1: process.argv[1],
+  const repoRoot = fileAccess.resolvePackageRoot({
+    cwd: fileAccess.cwd,
+    argv1: fileAccess.argv1,
   });
   if (!repoRoot) {
     return null;
   }
 
   const candidate = path.join(repoRoot, "character.json");
-  return fs.existsSync(candidate) ? candidate : null;
+  return fileAccess.existsSync(candidate) ? candidate : null;
 }
 
 function readCharacterOverrideJson(
   env: NodeJS.ProcessEnv = process.env,
+  fileAccess: CharacterOverrideFileAccess = defaultCharacterOverrideFileAccess(),
 ): { raw: string; source: string } | null {
   const envRaw = env.ELIZA_AGENT_CHARACTER_JSON?.trim();
   if (envRaw) {
     return { raw: envRaw, source: "ELIZA_AGENT_CHARACTER_JSON" };
   }
 
-  const filePath = resolveLocalCharacterJsonPath(env);
+  const filePath = resolveLocalCharacterJsonPath(env, fileAccess);
   if (!filePath) {
     return null;
   }
 
   try {
-    const raw = fs.readFileSync(filePath, "utf-8").trim();
+    const raw = fileAccess.readTextFileSync(filePath).trim();
     return raw ? { raw, source: filePath } : null;
   } catch (err) {
     logger.warn(
@@ -137,32 +161,40 @@ function readCharacterOverrideJson(
 function mergeKnowledgeSources(
   parsed: SandboxCharacterJson,
 ): AgentConfig["knowledge"] | undefined {
-  const knowledge = asStringArray(parsed.knowledge) ?? [];
+  const knowledge = Array.isArray(parsed.knowledge)
+    ? [...parsed.knowledge]
+    : [];
   const lore = asStringArray(parsed.lore) ?? [];
   const merged = [...knowledge, ...lore];
-  return merged.length > 0 ? merged : parsed.knowledge;
+  return merged.length > 0 ? merged : undefined;
 }
 
 function applyModelProviderRouting(
   config: ElizaConfig,
   modelProvider: string | undefined,
 ): void {
-  const provider = modelProvider?.trim().toLowerCase();
+  const rawProvider = modelProvider?.trim();
+  if (!rawProvider) {
+    return;
+  }
+  const provider = normalizeFirstRunProviderId(rawProvider);
   if (!provider) {
+    logger.warn(
+      `[sandbox-character] Ignoring unsupported modelProvider "${rawProvider}"; retaining configured LLM routing`,
+    );
     return;
   }
 
   const serviceRouting = {
     ...(config.serviceRouting ?? {}),
   } as NonNullable<ElizaConfig["serviceRouting"]>;
-
-  if (!serviceRouting.llmText) {
-    serviceRouting.llmText = {
-      backend: provider,
-      transport: "direct",
-    };
-    config.serviceRouting = serviceRouting;
-  }
+  const primaryModel = serviceRouting.llmText?.primaryModel;
+  serviceRouting.llmText = {
+    backend: provider,
+    transport: "direct",
+    ...(primaryModel ? { primaryModel } : {}),
+  };
+  config.serviceRouting = serviceRouting;
 }
 
 /**
@@ -172,8 +204,9 @@ function applyModelProviderRouting(
 export function applySandboxCharacterFromEnv(
   config: ElizaConfig,
   env: NodeJS.ProcessEnv = process.env,
+  fileAccess: CharacterOverrideFileAccess = defaultCharacterOverrideFileAccess(),
 ): ElizaConfig {
-  const override = readCharacterOverrideJson(env);
+  const override = readCharacterOverrideJson(env, fileAccess);
   if (!override) return config;
 
   let parsed: SandboxCharacterJson;

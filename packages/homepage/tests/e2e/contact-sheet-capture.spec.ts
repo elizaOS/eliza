@@ -128,6 +128,9 @@ for (const viewport of VIEWPORTS) {
             ],
             animations: "disabled",
           },
+          // Human-reviewed contact-sheet artifact, never pixel-diffed; the
+          // quality gate alone is the contract here.
+          { requireStable: false },
         );
 
         await expect(page.locator("body")).toBeVisible();

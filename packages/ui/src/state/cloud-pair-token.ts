@@ -18,6 +18,7 @@
 import {
   CLOUD_PAIR_LOCAL_STORAGE_KEY,
   CLOUD_PAIR_SESSION_STORAGE_KEY,
+  cloudPairTokenKeyForAgent,
 } from "../components/auth/CloudPairRelay";
 import { shellLocalStorage } from "../surface-realm-channel";
 import {
@@ -36,17 +37,100 @@ import {
 
 /**
  * Mirrors the write channel's `tryPersistBrowserStorage` shape: report whether
- * the removal took, swallowing only storage-access failures.
+ * the removal took, swallowing only storage-access failures. A failed purge is
+ * logged so a dodgy storage channel cannot silently look like success
+ * (error-policy:J6 best-effort removal).
  */
-function tryRemoveFromStorage(remove: () => void): boolean {
+function tryRemoveFromStorage(remove: () => void, key?: string): boolean {
   try {
     remove();
     return true;
   } catch (_storageError) {
-    // error-policy:J3 hardened settings can disable storage; a store we cannot
-    // touch also cannot be re-adopted from, so the purge goal still holds.
+    // error-policy:J6 hardened settings can disable storage; a store we
+    // cannot touch also cannot be re-adopted from, so the purge goal still
+    // holds. Still log the failure so "disconnect succeeded" is not a lie.
+    console.error(
+      `Failed to remove cloud-pair token key${key ? ` (${key})` : ""} from storage.`,
+    );
     return false;
   }
+}
+
+/** Remove one key from both storage backends, each deletion isolated so a
+ * failing store cannot abort clearing the rest. */
+function removePairKeyFromBothStorages(key: string): void {
+  tryRemoveFromStorage(() => {
+    shellLocalStorage.removeItem(key);
+  }, key);
+  tryRemoveFromStorage(() => {
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem(key);
+    }
+  }, key);
+}
+
+/** Prefix for all per-agent cloud-pair token keys */
+const CLOUD_PAIR_SCOPED_PREFIX = "eliza:cloud-pair:api-token:";
+
+/**
+ * Remove all scoped cloud-pair token keys from localStorage.
+ * Used when an explicit disconnect happens but we can't resolve a specific agentId.
+ */
+function clearAllScopedCloudPairKeys(): void {
+  // shellLocalStorage only has setItem/removeItem/clear; enumerate via raw
+  // localStorage (keys known), then remove each through the isolated helper so
+  // one failing remove cannot abort clearing the rest.
+  let scoped: string[] = [];
+  try {
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const key = window.localStorage.key(i);
+      if (key?.startsWith(CLOUD_PAIR_SCOPED_PREFIX)) scoped.push(key);
+    }
+  } catch (storageError) {
+    // error-policy:J6 hardened settings can block storage enumeration; a store
+    // we cannot read also cannot be re-adopted from, but warn so a vacated
+    // purge never silently looks like a full one.
+    console.warn(
+      "Could not enumerate localStorage for the cloud-pair purge; scoped pair keys may remain.",
+      storageError,
+    );
+    scoped = [];
+  }
+  for (const k of scoped) removePairKeyFromBothStorages(k);
+  // Legacy single-key format
+  removePairKeyFromBothStorages(CLOUD_PAIR_LOCAL_STORAGE_KEY);
+}
+
+/**
+ * Remove all scoped cloud-pair token keys from sessionStorage.
+ */
+function clearAllScopedCloudPairKeysSession(): void {
+  if (typeof window === "undefined") return;
+  let keysToRemove: string[] = [];
+  try {
+    for (let i = 0; i < window.sessionStorage.length; i++) {
+      const key = window.sessionStorage.key(i);
+      if (key?.startsWith(CLOUD_PAIR_SCOPED_PREFIX)) keysToRemove.push(key);
+    }
+  } catch (storageError) {
+    // error-policy:J6 hardened settings can block storage enumeration; warn so
+    // a vacated purge never silently looks like a full one.
+    console.warn(
+      "Could not enumerate sessionStorage for the cloud-pair purge; scoped pair keys may remain.",
+      storageError,
+    );
+    keysToRemove = [];
+  }
+  // sessionStorage is addressed raw (no shellSessionStorage wrapper); the
+  // isolated deletion below mirrors the write channel.
+  for (const key of keysToRemove) {
+    tryRemoveFromStorage(() => {
+      window.sessionStorage.removeItem(key);
+    }, key);
+  }
+  tryRemoveFromStorage(() => {
+    window.sessionStorage.removeItem(CLOUD_PAIR_SESSION_STORAGE_KEY);
+  }, CLOUD_PAIR_SESSION_STORAGE_KEY);
 }
 
 /**
@@ -56,16 +140,26 @@ function tryRemoveFromStorage(remove: () => void): boolean {
  * boot finds nothing to re-adopt. sessionStorage is addressed raw (mirroring
  * the write channel, which uses raw window storage; there is no
  * shellSessionStorage wrapper).
+ *
+ * With an `agentId`, ONLY that agent's per-agent key is removed. The legacy
+ * global key is deliberately left alone: on a pre-migration install it holds
+ * a credential whose owner is unknown, so deleting agent A must not destroy
+ * what may be agent B's only bearer. Without an `agentId` (global disconnect /
+ * sign-out intent), every scoped key AND the legacy key are purged.
  */
-export function clearCloudPairApiToken(): void {
-  tryRemoveFromStorage(() => {
-    shellLocalStorage.removeItem(CLOUD_PAIR_LOCAL_STORAGE_KEY);
-  });
-  tryRemoveFromStorage(() => {
-    if (typeof window !== "undefined") {
-      window.sessionStorage.removeItem(CLOUD_PAIR_SESSION_STORAGE_KEY);
-    }
-  });
+export function clearCloudPairApiToken(agentId?: string): void {
+  const scopedKey = agentId?.trim()
+    ? cloudPairTokenKeyForAgent(agentId.trim())
+    : null;
+
+  if (scopedKey) {
+    removePairKeyFromBothStorages(scopedKey);
+  } else {
+    // No agentId resolved — explicit disconnect with global intent.
+    // Clear ALL scoped keys + legacy key from both storages.
+    clearAllScopedCloudPairKeys();
+    clearAllScopedCloudPairKeysSession();
+  }
 }
 
 /** A cloud profile belongs to `agentId` via its explicit id or its API base. */
@@ -86,11 +180,12 @@ function profileMatchesDedicatedAgent(
  * origin refuse the adopted bearer (e.g. `/api/auth/me` 401 with
  * `remote_auth_required`) may invoke this, and only for that agent.
  *
- * Scoped on both axes:
- * - The durable pair key + active-server token are cleared ONLY when the
- *   persisted active server resolves to `agentId` — the key holds whatever
- *   bearer boot adoption stamped for the ACTIVE dedicated agent, so a mismatch
- *   means the key belongs to a different (unproven) credential and survives.
+ * Scoped on every axis:
+ * - The durable pair key is per-agent (#17579), so `agentId`'s scoped key is
+ *   ALWAYS cleared — it provably belongs to the target. Other agents' scoped
+ *   keys and the legacy global key (unknown owner) survive.
+ * - The persisted active-server token is scrubbed ONLY when the active server
+ *   resolves to `agentId`; a different agent's still-valid bearer survives.
  * - Agent-profile tokens are scrubbed ONLY for profiles that belong to
  *   `agentId`; unrelated profiles (other agents, local/remote runtimes) keep
  *   their still-valid credentials.
@@ -100,8 +195,13 @@ export function clearStalePairCredentialsForAgent(agentId: string): void {
   if (!target) return;
 
   const activeServer = loadPersistedActiveServer();
+  // The durable key is per-agent, so purge THIS agent's scoped key regardless
+  // of which agent is the active server — it provably belongs to the target.
+  clearCloudPairApiToken(target);
+  // The persisted active-server bearer is ONLY scrubbed when it actually
+  // belongs to the deleted agent; an active server for a different agent
+  // keeps its still-valid credential.
   if (activeServer && resolveDedicatedAgentId(activeServer) === target) {
-    clearCloudPairApiToken();
     scrubPersistedActiveServerToken();
   }
 

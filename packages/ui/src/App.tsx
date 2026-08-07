@@ -109,6 +109,7 @@ import {
   NotificationsDataBoot,
   NotificationsShellBoot,
 } from "./components/shell/notifications-boot";
+import { PairingView } from "./components/shell/PairingView";
 import { ShellControllerProvider } from "./components/shell/ShellControllerContext";
 import { useShellControllerContext } from "./components/shell/ShellControllerContext.hooks";
 import { ShellOverlays } from "./components/shell/ShellOverlays";
@@ -175,6 +176,7 @@ import {
 import {
   authProbeShouldHoldShell,
   firstRunOwnsLoginSurface,
+  shouldShowRemoteAgentPairingGate,
   topLevelAuthGateOwnsSurface,
 } from "./state/top-level-auth-gate";
 import {
@@ -2703,6 +2705,19 @@ function AppContent() {
         return (
           <BugReportProvider value={bugReport}>
             <StartupScreen />
+            <BugReportModal />
+          </BugReportProvider>
+        );
+      }
+      if (
+        shouldShowRemoteAgentPairingGate({
+          reason: authState.reason,
+          access: authState.access,
+        })
+      ) {
+        return (
+          <BugReportProvider value={bugReport}>
+            <PairingView />
             <BugReportModal />
           </BugReportProvider>
         );
