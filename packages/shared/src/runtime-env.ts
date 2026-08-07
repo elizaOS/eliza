@@ -305,13 +305,26 @@ export function resolveUiPort(env: RuntimeEnvRecord = process.env): number {
   return resolveDesktopUiPort(env);
 }
 
+/** Removes an optional leading `Bearer ` so stored and sent forms compare equal. */
+function stripBearerPrefix(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const stripped = value.replace(/^Bearer\s+/i, "").trim();
+  return stripped || undefined;
+}
+
 export function resolveApiSecurityConfig(
   env: RuntimeEnvRecord = process.env,
 ): ResolvedApiSecurityConfig {
   const bindHost = firstNonEmpty(env, API_BIND_KEYS) ?? DEFAULT_API_BIND_HOST;
   return {
     bindHost,
-    token: firstNonEmpty(env, API_TOKEN_KEYS),
+    // Strip an optional leading `Bearer ` here rather than at each consumer.
+    // The UI sends `Authorization: Bearer <token>` and the server compares the
+    // extracted value, so an operator who sets ELIZA_API_TOKEN="Bearer x"
+    // previously happened to work only because BOTH sides carried the prefix.
+    // Normalising at the single source keeps every consumer in agreement by
+    // construction instead of by coincidence.
+    token: stripBearerPrefix(firstNonEmpty(env, API_TOKEN_KEYS)),
     disableAutoApiToken: parseEnabledFlag(env, DISABLE_AUTO_API_TOKEN_KEYS),
     allowedOrigins: parseCsv(env, API_ALLOWED_ORIGINS_KEYS),
     allowedHosts: parseCsv(env, API_ALLOWED_HOSTS_KEYS),
@@ -352,10 +365,7 @@ export function resolveSelfApiCredential(
   const token =
     firstWinningEnvString(env, API_TOKEN_KEYS)?.value ??
     firstWinningEnvString(env, LEGACY_SELF_API_TOKEN_KEYS)?.value;
-  if (!token) return null;
-
-  const credential = token.replace(/^Bearer\s+/i, "").trim();
-  return credential || null;
+  return stripBearerPrefix(token) ?? null;
 }
 
 /**

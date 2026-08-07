@@ -16,7 +16,7 @@ import {
   resolveAllowedOrigins,
   resolveApiBindHost,
   resolveApiSecurityConfig,
-  resolveSelfApiCredential,
+  resolveApiToken,
   setApiToken,
   stripOptionalHostPort,
 } from "@elizaos/shared";
@@ -234,7 +234,16 @@ function tokenMatches(expected: string, provided: string): boolean {
 }
 
 export function getConfiguredApiToken(): string | undefined {
-  return resolveSelfApiCredential(process.env) ?? undefined;
+  // Deliberately NOT resolveSelfApiCredential: this helper backs isAuthorized,
+  // isWebSocketAuthorized, resolveWebSocketUpgradeRejection, pairingEnabled,
+  // ensureApiTokenForBindHost and resolveTerminalRunRejection. Accepting the
+  // plugin-level compat key ELIZA_API_AUTH_TOKEN here would promote it into the
+  // inbound credential for every remote client, flip apiTokenEnabled under a
+  // legacy-only config (403-ing loopback terminal runs), and satisfy
+  // ensureApiTokenForBindHost's early return so the #12228 wildcard-bind
+  // hardening never mints its 32-byte token. resolveSelfApiCredential stays a
+  // caller-side resolver for requests this process makes back to its own API.
+  return resolveApiToken(process.env) ?? undefined;
 }
 
 /**

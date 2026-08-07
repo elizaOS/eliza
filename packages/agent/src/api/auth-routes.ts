@@ -17,7 +17,7 @@ import type {
 import {
   isCloudProvisionedContainer,
   PostAuthPairRequestSchema,
-  resolveSelfApiCredential,
+  resolveApiToken,
 } from "@elizaos/shared";
 import {
   isAuthorized,
@@ -26,7 +26,9 @@ import {
 } from "./server-helpers-auth.ts";
 
 function getConfiguredApiToken(): string | undefined {
-  return resolveSelfApiCredential(process.env) ?? undefined;
+  // Inbound credential only — see the note on the exported helper in
+  // server-helpers-auth.ts for why the legacy plugin key is not accepted here.
+  return resolveApiToken(process.env) ?? undefined;
 }
 
 export interface AuthRouteContext extends RouteRequestContext {
