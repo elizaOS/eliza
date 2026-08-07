@@ -20,7 +20,6 @@ import {
 import { computePrefixHashes } from "./context-hash";
 import {
 	buildStageChatMessages,
-	cachePrefixSegments,
 	normalizePromptSegments,
 	renderContextObject,
 } from "./context-renderer";
@@ -97,9 +96,7 @@ export async function runEvaluator(
 		trajectory: params.trajectory,
 	});
 	const prefixHashes = computePrefixHashes(renderedInput.promptSegments);
-	const cachePrefixHashes = computePrefixHashes(
-		cachePrefixSegments(renderedInput.promptSegments),
-	);
+	const cachePrefixHashes = computePrefixHashes(renderedInput.cacheKeySegments);
 	const prefixHash =
 		cachePrefixHashes[cachePrefixHashes.length - 1]?.hash ??
 		"no-context-segments";
@@ -339,6 +336,7 @@ function renderEvaluatorModelInput(params: {
 }): {
 	messages: ChatMessage[];
 	promptSegments: PromptSegment[];
+	cacheKeySegments: PromptSegment[];
 } {
 	const renderedContext = renderContextObject(params.context);
 	const template = params.template ?? evaluatorTemplate;
@@ -349,10 +347,18 @@ function renderEvaluatorModelInput(params: {
 	// Mirrors planner-loop: the evaluator stage instructions are template-derived
 	// (`evaluatorTemplate`) and structurally identical across calls. Marking
 	// the segment `stable: true` makes them cacheable on Anthropic's wire path.
+	const stableContextSegments = renderedContext.promptSegments.filter(
+		(segment) => segment.stable,
+	);
+	const dynamicContextSegments = renderedContext.promptSegments.filter(
+		(segment) => !segment.stable,
+	);
 	const promptSegments = normalizePromptSegments([
-		...renderedContext.promptSegments,
+		...stableContextSegments,
 		{ content: `evaluator_stage:\n${instructions}`, stable: true },
+		...dynamicContextSegments,
 	]);
+	const cacheKeySegments = normalizePromptSegments(stableContextSegments);
 	// Use proper assistant/tool message pairs so the evaluator sees the same
 	// native tool-calling format as the planner. The trajectory JSON is NOT
 	// included in dynamicBlocks — it is conveyed through stepMessages.
@@ -363,7 +369,7 @@ function renderEvaluatorModelInput(params: {
 		dynamicBlocks: [],
 		stepMessages,
 	});
-	return { messages, promptSegments };
+	return { messages, promptSegments, cacheKeySegments };
 }
 
 export function parseEvaluatorOutput(

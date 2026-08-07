@@ -11,6 +11,7 @@ import { userCharactersRepository } from "@/db/repositories/characters";
 import { cache } from "@/lib/cache/client";
 import { CacheKeys, CacheTTL } from "@/lib/cache/keys";
 import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
+import { warmInferenceAdmissionSnapshot } from "@/lib/services/inference-admission-snapshot";
 import { logger } from "@/lib/utils/logger";
 import type { Bindings } from "@/types/cloud-worker-env";
 import type { InternalElizaConversationFetchClaims } from "./internal-eliza-conversation-fetch";
@@ -37,7 +38,8 @@ export async function hydrateVoiceSharedAgentScope(
           return;
         }
 
-        // The turn needs BOTH cold caches. Hydrating only the scope entry left
+        // The turn needs its scope, linked character, and combined admission
+        // projection warm. Hydrating only the scope entry left
         // the linked-character entry cold, so the very next turn passed the
         // scope gate and then threw SharedRuntimeCacheWarmingError from
         // `characterFor` (cacheOnly) — a SECOND burned turn, and on a session
@@ -63,13 +65,26 @@ export async function hydrateVoiceSharedAgentScope(
         // character prefill failure prevent it from being written.
         // error-policy:J7 a failed character prefill leaves the next turn on
         // its existing retryable warming path rather than failing hydration.
-        await hydrateCharacter().catch((error) => {
-          logger.warn("[voice-scope-hydration] character prefill failed", {
-            agentId: claims.agentId,
-            characterId,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        });
+        await Promise.all([
+          hydrateCharacter().catch((error) => {
+            logger.warn("[voice-scope-hydration] character prefill failed", {
+              agentId: claims.agentId,
+              characterId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }),
+          warmInferenceAdmissionSnapshot(claims.organizationId).catch(
+            (error) => {
+              // error-policy:J7 the shared turn stays fail-closed on its combined
+              // admission cache if this optional prewarm cannot complete.
+              logger.warn("[voice-scope-hydration] admission prefill failed", {
+                agentId: claims.agentId,
+                organizationId: claims.organizationId,
+                error: error instanceof Error ? error.message : String(error),
+              });
+            },
+          ),
+        ]);
 
         await cache.set(
           CacheKeys.sharedAgentScope.voice(

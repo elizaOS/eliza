@@ -124,10 +124,61 @@ test("login routes anonymous and authenticated users to the correct next page", 
     page.getByRole("heading", { name: "Anywhere you want her to be." }),
   ).toBeVisible();
 
+  await page.goto("/login?returnTo=https%3A%2F%2Fexample.com");
+  await expect(page).toHaveURL(/\/get-started$/);
+
   await seedAuthenticatedSession(page);
   await page.goto("/login");
   await expect(page).toHaveURL(/\/connected$/);
   await expect(page.getByRole("heading", { name: "Connected." })).toBeVisible();
+});
+
+test("profile editor preserves sign-in return path and generates a compatible marker", async ({
+  context,
+  page,
+}) => {
+  await page.goto("/profile/edit");
+  await expect(page).toHaveURL(/\/get-started\?returnTo=%2Fprofile%2Fedit$/);
+
+  await seedAuthenticatedSession(page);
+  await page.goto("/get-started?returnTo=%2Fprofile%2Fedit");
+  await expect(page).toHaveURL(/\/profile\/edit$/);
+
+  // A completed deep-link login must not redirect unrelated future auth flows.
+  await page.goto("/login");
+  await expect(page).toHaveURL(/\/connected$/);
+
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto("/profile/edit");
+
+  await expect(
+    page.getByRole("heading", { name: "Link a public wallet." }),
+  ).toBeVisible();
+  await page
+    .getByLabel("Ethereum / EVM address")
+    .fill("0xd2Bb04998A32BBd6A5F666EA306F4745a606495E");
+  await page.getByRole("button", { name: "Generate README marker" }).click();
+  await expect(page.getByRole("alert")).toContainText(
+    "Enter a valid EVM address",
+  );
+
+  await page
+    .getByLabel("Ethereum / EVM address")
+    .fill("0xd2Bb04998A32BBd6A5F666EA306F4745a606495f");
+  await page.getByRole("button", { name: "Generate README marker" }).click();
+
+  const generated = page.getByLabel("Generated wallet linking comment");
+  await expect(generated).toContainText("<!-- WALLET-LINKING-BEGIN");
+  await expect(generated).toContainText('"chain": "ethereum"');
+  await expect(generated).toContainText(
+    '"address": "0xd2Bb04998A32BBd6A5F666EA306F4745a606495f"',
+  );
+  await expect(generated).toContainText("WALLET-LINKING-END -->");
+
+  await page.getByRole("button", { name: "Copy hidden comment" }).click();
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toContain("WALLET-LINKING-BEGIN");
 });
 
 test("get-started covers method selection, phone input, country dropdown, and direct messaging options", async ({

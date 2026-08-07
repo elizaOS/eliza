@@ -14,6 +14,8 @@ const ENV_KEYS = [
 	"ELIZA_DISABLE_LOCAL_EMBEDDINGS",
 	"ELIZA_CLOUD_EMBEDDINGS_DISABLED",
 	"ELIZAOS_CLOUD_USE_EMBEDDINGS",
+	"EMBEDDING_PROVIDER",
+	"EMBEDDING_BASE_URL",
 ] as const;
 
 afterEach(() => {
@@ -59,5 +61,33 @@ describe("shouldWarmupLocalEmbeddingModel", () => {
 		process.env.ELIZA_CLOUD_EMBEDDINGS_DISABLED = "true";
 
 		expect(shouldWarmupLocalEmbeddingModel()).toBe(false);
+	});
+
+	it("cedes ownership to an operator-configured embedding endpoint", () => {
+		process.env.EMBEDDING_BASE_URL = "https://api.openai.com/v1";
+
+		expect(shouldUseLocalEmbeddingModel()).toBe(false);
+		expect(shouldWarmupLocalEmbeddingModel()).toBe(false);
+	});
+
+	it("cedes ownership to an operator-configured non-local provider", () => {
+		process.env.EMBEDDING_PROVIDER = "openai";
+
+		expect(shouldUseLocalEmbeddingModel()).toBe(false);
+		expect(shouldWarmupLocalEmbeddingModel()).toBe(false);
+	});
+
+	it("keeps local ownership when the operator explicitly picks local", () => {
+		process.env.EMBEDDING_PROVIDER = "local";
+		process.env.EMBEDDING_BASE_URL = "http://127.0.0.1:8290/v1";
+
+		expect(shouldUseLocalEmbeddingModel()).toBe(true);
+	});
+
+	it("cedes ownership to a configured endpoint even when cloud embeddings are disabled", () => {
+		process.env.ELIZA_CLOUD_EMBEDDINGS_DISABLED = "1";
+		process.env.EMBEDDING_BASE_URL = "http://127.0.0.1:8290/v1";
+
+		expect(shouldUseLocalEmbeddingModel()).toBe(false);
 	});
 });

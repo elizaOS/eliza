@@ -353,10 +353,15 @@ describe("view management actions", () => {
 		).resolves.toMatchObject({
 			requiresTool: true,
 			clearReply: true,
-			reply: "On it.",
 			addContexts: ["general"],
+			clearCandidateActions: true,
 			addCandidateActions: ["VIEWS"],
+			clearParentActionHints: true,
 			addParentActionHints: ["VIEWS"],
+			deterministicToolCall: {
+				name: "VIEWS",
+				params: { action: "interact", view: "notes", viewType: "gui" },
+			},
 		});
 	});
 
@@ -379,8 +384,152 @@ describe("view management actions", () => {
 
 	it("advertises UI view switching in its planner routing hint", () => {
 		const action = createViewsAction();
+		const closeOne = createViewsAliasAction("CLOSE_VIEW");
+		const closeAll = createViewsAliasAction("CLOSE_ALL_VIEWS");
 		expect(action.routingHint).toContain("UI view/window/panel/app navigation");
 		expect(action.routingHint).toContain("Close/hide means VIEWS action=close");
+		expect(action.routingHint).toContain(
+			"agent-fill and agent-click are only for an explicitly requested form-control interaction",
+		);
+		expect(action.routingHint).toContain(
+			"reading or changing calendar events uses the CALENDAR action",
+		);
+		expect(action.routingHint).toContain(
+			"action=interact view=device-control capability=set-flashlight",
+		);
+		expect(action.similes).toContain("SET_FLASHLIGHT");
+		expect(action.tags).toContain("flashlight");
+		expect(action.description).toContain("native device controls");
+		expect(closeOne.routingHint).toContain("one open UI view/tab");
+		expect(closeAll.routingHint).toContain("every open UI view/tab");
+		expect(closeOne.routingHint).not.toContain("show or switch");
+		expect(closeAll.routingHint).not.toContain("show or switch");
+		expect(closeAll.parameters).toEqual([]);
+		expect(
+			Array.isArray(closeOne.parameters)
+				? closeOne.parameters.map((parameter) => parameter.name)
+				: [],
+		).toEqual(["view", "id", "name", "target"]);
+		expect(closeOne.tags).not.toContain("notes");
+		expect(closeAll.tags).not.toContain("notes");
+	});
+
+	it("does not reinterpret an undeclared explicit capability on the current view", async () => {
+		const { runtime } = createRuntime();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({
+						id: "notes",
+						label: "Notes",
+						path: "/notes",
+						capabilities: [
+							{
+								id: "create-note",
+								description: "Create a sticky note.",
+							},
+						],
+					}),
+					view({ id: "calendar", label: "Calendar", path: "/calendar" }),
+				]),
+				getCurrentView: vi.fn(async () => ({
+					viewId: "notes",
+					viewLabel: "Notes",
+					viewPath: "/notes",
+					viewType: "gui" as const,
+				})),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+
+		const result = await action.handler(
+			runtime as never,
+			message("add demo tomorrow at 9am") as never,
+			undefined,
+			{
+				action: "interact",
+				capability: "create-calendar-event",
+				params: { title: "demo", date: "2026-08-05", time: "09:00" },
+			},
+			vi.fn(),
+		);
+
+		expect(result?.success).toBe(false);
+		expect(result?.text).toContain("Specify view and capability");
+		expect(result?.text).not.toContain("create-note");
+		expect(globalThis.fetch).not.toHaveBeenCalled();
+	});
+
+	it("repairs a date-shaped calendar title emitted by a small planner", async () => {
+		const { runtime } = createRuntime();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({
+						id: "simple-calendar",
+						label: "Calendar",
+						path: "/simple-calendar",
+						capabilities: [
+							{
+								id: "get-calendar-state",
+								description: "Read calendar events by date.",
+								params: {
+									date: { type: "string", description: "YYYY-MM-DD" },
+									title: { type: "string", description: "Exact title" },
+								},
+							},
+						],
+					}),
+				]),
+				getCurrentView: vi.fn(async () => null),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+		vi.mocked(globalThis.fetch).mockResolvedValue({
+			ok: true,
+			status: 200,
+			json: async () => ({
+				requestId: "calendar-read",
+				success: true,
+				result: { success: true, text: "Investor Demo" },
+			}),
+		} as Response);
+
+		const result = await action.handler(
+			runtime as never,
+			{
+				...message("what's on my calendar today?"),
+				content: {
+					text: "what's on my calendar today?",
+					metadata: { viewClientId: "ui-client-123" },
+				},
+			} as never,
+			undefined,
+			{
+				action: "interact",
+				view: "simple-calendar",
+				capability: "get-calendar-state",
+				params: { title: "2026-08-03" },
+			},
+			vi.fn(),
+		);
+
+		expect(result?.success).toBe(true);
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/simple-calendar/interact?viewType=gui",
+			expect.objectContaining({
+				method: "POST",
+				headers: expect.objectContaining({
+					"X-ElizaOS-Client-Id": "ui-client-123",
+				}),
+				body: JSON.stringify({
+					capability: "get-calendar-state",
+					params: { date: "2026-08-03" },
+					timeoutMs: 5_000,
+					viewType: "gui",
+				}),
+			}),
+		);
 	});
 
 	it("stays available when stage 1 routes a view request to a domain context", () => {
@@ -2232,6 +2381,12 @@ describe("view management actions", () => {
 							{
 								id: "get-notes",
 								description: "Return all sticky notes as structured data.",
+								params: {
+									title: {
+										type: "string",
+										description: "Optional exact note title.",
+									},
+								},
 							},
 							{
 								id: "delete-note",
@@ -2273,6 +2428,21 @@ describe("view management actions", () => {
 										type: "string",
 										description: "Optional YYYY-MM-DD date filter.",
 									},
+									title: {
+										type: "string",
+										description: "Optional exact event title.",
+									},
+								},
+							},
+							{
+								id: "get-calendar-event",
+								description:
+									"Read one calendar event by exact title or unique query.",
+								params: {
+									title: {
+										type: "string",
+										description: "Exact event title.",
+									},
 								},
 							},
 							{
@@ -2285,6 +2455,39 @@ describe("view management actions", () => {
 										description: "Date in YYYY-MM-DD format.",
 									},
 									time: { type: "string", description: "Time label." },
+								},
+							},
+							{
+								id: "select-calendar-date",
+								description: "Select one calendar date.",
+								params: {
+									date: {
+										type: "string",
+										description: "Selected YYYY-MM-DD date.",
+										required: true,
+									},
+								},
+							},
+							{
+								id: "update-calendar-event",
+								description: "Update a calendar event by exact title.",
+								params: {
+									oldTitle: {
+										type: "string",
+										description: "Current exact title.",
+									},
+									title: {
+										type: "string",
+										description: "Replacement title.",
+									},
+									time: {
+										type: "string",
+										description: "Replacement time.",
+									},
+									details: {
+										type: "string",
+										description: "Replacement details.",
+									},
 								},
 							},
 						],
@@ -2345,6 +2548,13 @@ describe("view management actions", () => {
 			message("show me my notes") as never,
 			undefined,
 			{ action: "interact", view: "notes", capability: "list-notes" },
+			callback,
+		);
+		const readNamedNoteResult = await action.handler(
+			runtime as never,
+			message('read the note titled "launch checklist"') as never,
+			undefined,
+			{ action: "interact", view: "notes", capability: "get-notes" },
 			callback,
 		);
 		const deleteNoteResult = await action.handler(
@@ -2435,6 +2645,51 @@ describe("view management actions", () => {
 			},
 			callback,
 		);
+		const updateNamedEventResult = await action.handler(
+			runtime as never,
+			message(
+				'<contextual_documents>create calendar examples</contextual_documents><user_request>update the event titled "team sync" and rename it to investor sync</user_request>',
+			) as never,
+			undefined,
+			{
+				action: "interact",
+				view: "calendar",
+				capability: "create-calendar-event",
+				params: {
+					title: "investor sync",
+					time: "14:15",
+					details: "updated agenda",
+				},
+			},
+			callback,
+		);
+		const selectDateResult = await action.handler(
+			runtime as never,
+			message(
+				"<contextual_documents>create calendar examples</contextual_documents><user_request>select 2026-08-09 in the calendar</user_request>",
+			) as never,
+			undefined,
+			{
+				action: "interact",
+				view: "calendar",
+				capability: "get-calendar-state",
+			},
+			callback,
+		);
+		const readNamedEventResult = await action.handler(
+			runtime as never,
+			message(
+				'<contextual_documents>create calendar examples</contextual_documents><user_request>read only the calendar event titled "team sync"</user_request>',
+			) as never,
+			undefined,
+			{
+				action: "interact",
+				view: "calendar",
+				capability: "create-calendar-event",
+				params: { title: "team sync" },
+			},
+			callback,
+		);
 
 		expect(noteResult?.success).toBe(true);
 		expect(noteResult?.values).toMatchObject({
@@ -2460,6 +2715,7 @@ describe("view management actions", () => {
 			viewId: "notes",
 			capability: "get-notes",
 		});
+		expect(readNamedNoteResult?.success).toBe(true);
 		expect(deleteNoteResult?.success).toBe(true);
 		expect(deleteNoteResult?.values).toMatchObject({
 			mode: "interact",
@@ -2514,6 +2770,9 @@ describe("view management actions", () => {
 			viewId: "calendar",
 			capability: "get-calendar-state",
 		});
+		expect(updateNamedEventResult?.success).toBe(true);
+		expect(selectDateResult?.success).toBe(true);
+		expect(readNamedEventResult?.success).toBe(true);
 		expect(globalThis.fetch).toHaveBeenCalledWith(
 			"http://127.0.0.1:3456/api/views/notes/interact?viewType=gui",
 			expect.objectContaining({
@@ -2524,6 +2783,18 @@ describe("view management actions", () => {
 						title: "smoke note",
 						body: "created from routing",
 					},
+					timeoutMs: 5_000,
+					viewType: "gui",
+				}),
+			}),
+		);
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/notes/interact?viewType=gui",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					capability: "get-notes",
+					params: { title: "launch checklist" },
 					timeoutMs: 5_000,
 					viewType: "gui",
 				}),
@@ -2671,6 +2942,120 @@ describe("view management actions", () => {
 				body: JSON.stringify({
 					capability: "get-calendar-state",
 					params: { date: "2026-06-08" },
+					timeoutMs: 5_000,
+					viewType: "gui",
+				}),
+			}),
+		);
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/calendar/interact?viewType=gui",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					capability: "update-calendar-event",
+					params: {
+						title: "investor sync",
+						time: "14:15",
+						details: "updated agenda",
+						oldTitle: "team sync",
+					},
+					timeoutMs: 5_000,
+					viewType: "gui",
+				}),
+			}),
+		);
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/calendar/interact?viewType=gui",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					capability: "select-calendar-date",
+					params: { date: "2026-08-09" },
+					timeoutMs: 5_000,
+					viewType: "gui",
+				}),
+			}),
+		);
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/calendar/interact?viewType=gui",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					capability: "get-calendar-event",
+					params: { title: "team sync" },
+					timeoutMs: 5_000,
+					viewType: "gui",
+				}),
+			}),
+		);
+	});
+
+	it("keeps an explicit agent-fill capability ahead of semantic view aliases", async () => {
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({
+						id: "notes",
+						label: "Notes",
+						path: "/notes",
+						tags: ["notes", "sticky notes"],
+						capabilities: [
+							{
+								id: "create-note",
+								description: "Create a sticky note.",
+								params: {
+									title: { type: "string", description: "Note title." },
+								},
+							},
+						],
+					}),
+				]),
+				getCurrentView: vi.fn(async () => ({
+					viewId: "notes",
+					viewLabel: "Notes",
+					viewType: "gui" as const,
+					viewPath: "/notes",
+				})),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+		vi.mocked(globalThis.fetch).mockResolvedValue({
+			ok: true,
+			status: 200,
+			json: async () => ({
+				success: true,
+				result: { text: "Filled.", success: true },
+			}),
+		} as Response);
+
+		const result = await action.handler(
+			runtime as never,
+			message("create a new note to eat lunch") as never,
+			undefined,
+			{
+				action: "interact",
+				view: "notes",
+				capability: "agent-fill",
+				params: { id: "notes-title", value: "Eat Lunch" },
+			},
+			callback,
+		);
+
+		expect(result?.success).toBe(true);
+		expect(result?.values).toMatchObject({
+			mode: "interact",
+			viewId: "notes",
+			capability: "agent-fill",
+		});
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/notes/interact?viewType=gui",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					capability: "agent-fill",
+					params: { id: "notes-title", value: "Eat Lunch" },
 					timeoutMs: 5_000,
 					viewType: "gui",
 				}),

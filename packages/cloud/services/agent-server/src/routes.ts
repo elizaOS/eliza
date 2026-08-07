@@ -540,15 +540,31 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
       const senderName =
         typeof raw.senderName === "string" ? raw.senderName : undefined;
       const chatId = typeof raw.chatId === "string" ? raw.chatId : undefined;
+      const accountId =
+        typeof raw.accountId === "string" ? raw.accountId : undefined;
+      const platformRecordId =
+        typeof raw.platformRecordId === "string"
+          ? raw.platformRecordId
+          : undefined;
+      const chatType =
+        typeof raw.chatType === "string" ? raw.chatType : undefined;
 
       // Keeps metadata undefined (not {}) when no fields present,
       // so handleMessage's gated debug log doesn't fire on plain requests.
       const metadata =
-        platformName || senderName || chatId
+        platformName ||
+        senderName ||
+        chatId ||
+        accountId ||
+        platformRecordId ||
+        chatType
           ? {
               ...(platformName && { platformName }),
               ...(senderName && { senderName }),
               ...(chatId && { chatId }),
+              ...(accountId && { accountId }),
+              ...(platformRecordId && { platformRecordId }),
+              ...(chatType && { chatType }),
             }
           : undefined;
 

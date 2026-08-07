@@ -98,6 +98,10 @@ import {
   resolveExpectedRendererStamp,
 } from "./lib/mobile-lane-stamp.mjs";
 import {
+  mobileRendererRequiresFreshBuild,
+  resolveMobileRendererFeatureEnv,
+} from "./lib/mobile-renderer-feature-env.mjs";
+import {
   formatMobileWebDistProblems,
   mobileWebDistReuseStatus,
 } from "./lib/mobile-web-build-reuse.mjs";
@@ -1127,7 +1131,11 @@ async function buildWeb(platform) {
   // below, so the loud-fail-on-stale guarantee is preserved: a stale or
   // mismatched dist simply does not match here and falls through to a rebuild.
   // Explicit ELIZA_MOBILE_SKIP_WEB_BUILD=1 keeps its force-reuse semantics below.
-  if (process.env.ELIZA_MOBILE_SKIP_WEB_BUILD !== "1") {
+  const requiresFreshRenderer = mobileRendererRequiresFreshBuild({ platform });
+  if (
+    process.env.ELIZA_MOBILE_SKIP_WEB_BUILD !== "1" &&
+    !requiresFreshRenderer
+  ) {
     const autoStatus = mobileWebDistReuseStatus({
       appDir,
       repoRoot,
@@ -1145,6 +1153,14 @@ async function buildWeb(platform) {
       );
       return;
     }
+  }
+  if (
+    process.env.ELIZA_MOBILE_SKIP_WEB_BUILD !== "1" &&
+    requiresFreshRenderer
+  ) {
+    console.log(
+      `[mobile-build] Rebuilding renderer for '${platform}': debug feature flags require fresh output.`,
+    );
   }
   if (process.env.ELIZA_MOBILE_SKIP_WEB_BUILD === "1") {
     const status = mobileWebDistReuseStatus({
@@ -1242,6 +1258,7 @@ async function buildWeb(platform) {
             process.env.ELIZA_FORCE_LOCAL_UPSTREAMS ?? "1",
         }
       : {}),
+    ...resolveMobileRendererFeatureEnv({ platform, env: process.env }),
   });
   const bun = resolveBunExecutable();
   const packageStylesPatch = path.join(

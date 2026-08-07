@@ -138,6 +138,51 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "@iqlabs-official/plugin-clawbal": {
+      "git": {
+        "repo": "IQCoreTeam/milady-clawbal",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@iqlabs-official/plugin-clawbal",
+        "v0": null,
+        "v1": null,
+        "v2": "1.0.2"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Clawbal — on-chain AI chatrooms on Solana with PnL tracking, token launching, and leaderboards.",
+      "homepage": "https://github.com/IQCoreTeam/milady-clawbal",
+      "topics": [
+        "solana",
+        "chat",
+        "on-chain",
+        "pnl",
+        "trading"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "@lmxcloud/plugin-lmxcloud": {
       "git": {
         "repo": "LMXCloud/plugin-lmxcloud",
@@ -721,6 +766,53 @@
       "kind": "plugin",
       "registryKind": "plugin",
       "directory": "plugin-eliza"
+    },
+    "@zeromodern/eliza-plugin-0mod": {
+      "git": {
+        "repo": "zeromodern/eliza-plugin-0mod",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@zeromodern/eliza-plugin-0mod",
+        "v0": null,
+        "v1": null,
+        "v2": "1.0.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "ElizaOS plugin for 0mod HTTP 402 API Gateway (stealth-dom, airgap-scrub, rag-shrink) using x402 micropayments on Base USDC",
+      "homepage": "https://github.com/zeromodern/eliza-plugin-0mod",
+      "topics": [
+        "x402",
+        "payments",
+        "base",
+        "usdc",
+        "micropayments",
+        "0mod",
+        "stealth-dom"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
     },
     "blackwall-eliza-guardrail": {
       "git": {

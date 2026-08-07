@@ -64,6 +64,27 @@ bun run --cwd packages/cloud/services/gateway-webhook lint        # biome check
 bun run --cwd packages/cloud/services/gateway-webhook docker:build
 ```
 
+## Build & deploy
+
+**The Docker build context is the repository root, not this directory.** The
+service depends on the `@elizaos/cloud-services-common` workspace package, and
+`workspace:*` cannot resolve from a context holding only this package:
+
+```bash
+docker build -f packages/cloud/services/gateway-webhook/Dockerfile .
+railway up            # run from the repository root
+```
+
+The deps stage writes a pruned workspace root containing only this service and
+the package it needs, so the install resolves the workspace link without pulling
+the whole monorepo (32 packages, not several thousand).
+
+This service has **no repo trigger on Railway** — nothing deploys it on push, so
+merging a change to it does not ship it. Until that is wired, a release is a
+manual `railway up` from the repository root, and the running image is whatever
+was last built. `__tests__/dockerfile-workspace-context.test.ts` guards the
+workspace-resolution half of this; nothing yet guards the deploy half.
+
 ## Environment
 
 Required (the process throws on startup if these are missing):
@@ -91,7 +112,7 @@ Other:
   billing tuning.
 - Per-project secrets are read via `getProjectEnv(project, KEY)`: labeled k8s
   Secrets first, else `<PROJECT_UPPER>_<KEY>` env vars (e.g. `eliza-app` →
-  `ELIZA_APP_TELEGRAM_BOT_TOKEN`). Keys include `DEFAULT_AGENT_ID`,
+  `ELIZA_APP_TELEGRAM_BOT_TOKEN`). Keys include
   `TELEGRAM_BOT_TOKEN`/`_WEBHOOK_SECRET`, `BLOOIO_*`, `TWILIO_*`, `WHATSAPP_*`.
 
 ## Conventions / gotchas

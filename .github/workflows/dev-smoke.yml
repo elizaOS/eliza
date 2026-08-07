@@ -54,6 +54,9 @@ env:
   GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
   OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
   ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
+  # Headless Linux has no safe OS keychain. This fixed, CI-only passphrase
+  # unlocks the ephemeral vault so runtime and model-provider boot can finish.
+  ELIZA_VAULT_PASSPHRASE: dev-smoke-headless-vault-only
 
 jobs:
   changes:
@@ -128,7 +131,7 @@ jobs:
           no-vision-deps: "true"
 
       - name: Install Playwright Chromium
-        run: bunx playwright install --with-deps chromium
+        run: .github/scripts/install-playwright-browsers.sh chromium
 
       - name: Generate shared i18n assets
         run: bun run --cwd packages/shared build:i18n
@@ -199,7 +202,7 @@ jobs:
           no-vision-deps: "true"
 
       - name: Install Playwright Chromium
-        run: bunx playwright install --with-deps chromium
+        run: .github/scripts/install-playwright-browsers.sh chromium
 
       - name: Generate shared i18n assets
         run: bun run --cwd packages/shared build:i18n

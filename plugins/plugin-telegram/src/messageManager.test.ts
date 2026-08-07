@@ -421,10 +421,16 @@ describe("MessageManager malformed payload handling", () => {
   it("persists hostile text input after stripping null characters", async () => {
     const ensureConnection = vi.fn(async () => undefined);
     const createMemory = vi.fn(async () => undefined);
+    const cache = new Map<string, unknown>();
     const runtime = {
       agentId: "agent-1",
       ensureConnection,
       createMemory,
+      getCache: vi.fn(async (key: string) => cache.get(key)),
+      setCache: vi.fn(async (key: string, value: unknown) => {
+        cache.set(key, value);
+        return true;
+      }),
       getSetting: vi.fn(() => undefined),
     } as unknown as IAgentRuntime;
     const manager = new MessageManager({ telegram: {} } as never, runtime);
@@ -463,6 +469,133 @@ describe("MessageManager malformed payload handling", () => {
       chatId: "123",
       messageId: "99",
     });
+  });
+
+  it("scopes inbound memory ids by account, chat, and Telegram message id", async () => {
+    const cache = new Map<string, unknown>();
+    const createMemory = vi.fn(async () => undefined);
+    const runtime = {
+      agentId: "agent-1",
+      ensureConnection: vi.fn(async () => undefined),
+      createMemory,
+      getCache: vi.fn(async (key: string) => cache.get(key)),
+      setCache: vi.fn(async (key: string, value: unknown) => {
+        cache.set(key, value);
+        return true;
+      }),
+      getSetting: vi.fn(() => undefined),
+    } as unknown as IAgentRuntime;
+    const manager = new MessageManager(
+      { telegram: {} } as never,
+      runtime,
+      "acct-a",
+    );
+
+    for (const chatId of [111, 222]) {
+      await manager.handleMessage({
+        from: {
+          id: 42,
+          first_name: "Ada",
+          username: "ada",
+          is_bot: false,
+        },
+        chat: { id: chatId, type: "private", first_name: "Ada" },
+        message: {
+          message_id: 99,
+          date: 1_700_000_000,
+          text: `hello from ${chatId}`,
+          chat: { id: chatId, type: "private", first_name: "Ada" },
+        },
+      } as never);
+    }
+
+    expect(createMemory).toHaveBeenCalledTimes(2);
+    const ids = createMemory.mock.calls.map((call) => call[0].id);
+    expect(new Set(ids).size).toBe(2);
+    expect(runtime.setCache).toHaveBeenCalledWith(
+      "telegram:processed:acct-a:111:99",
+      expect.any(Object),
+    );
+    expect(runtime.setCache).toHaveBeenCalledWith(
+      "telegram:processed:acct-a:222:99",
+      expect.any(Object),
+    );
+  });
+
+  it("skips duplicate Telegram messages already marked in durable cache", async () => {
+    const cache = new Map<string, unknown>([
+      ["telegram:processed:acct-a:111:99", { processedAt: Date.now() }],
+    ]);
+    const createMemory = vi.fn(async () => undefined);
+    const runtime = {
+      agentId: "agent-1",
+      ensureConnection: vi.fn(async () => undefined),
+      createMemory,
+      getCache: vi.fn(async (key: string) => cache.get(key)),
+      setCache: vi.fn(async (key: string, value: unknown) => {
+        cache.set(key, value);
+        return true;
+      }),
+      getSetting: vi.fn(() => undefined),
+    } as unknown as IAgentRuntime;
+    const manager = new MessageManager(
+      { telegram: {} } as never,
+      runtime,
+      "acct-a",
+    );
+
+    await manager.handleMessage({
+      from: { id: 42, first_name: "Ada", username: "ada", is_bot: false },
+      chat: { id: 111, type: "private", first_name: "Ada" },
+      message: {
+        message_id: 99,
+        date: 1_700_000_000,
+        text: "duplicate",
+        chat: { id: 111, type: "private", first_name: "Ada" },
+      },
+    } as never);
+
+    expect(createMemory).not.toHaveBeenCalled();
+    expect(runtime.setCache).not.toHaveBeenCalled();
+  });
+
+  it("fails observably when passive inbound persistence fails", async () => {
+    const createMemory = vi.fn(async () => {
+      throw new Error("database unavailable");
+    });
+    const runtime = {
+      agentId: "agent-1",
+      ensureConnection: vi.fn(async () => undefined),
+      createMemory,
+      getCache: vi.fn(async () => undefined),
+      setCache: vi.fn(async () => true),
+      getSetting: vi.fn(() => undefined),
+      reportError: vi.fn(),
+    } as unknown as IAgentRuntime;
+    const manager = new MessageManager({ telegram: {} } as never, runtime);
+
+    await expect(
+      manager.handleMessage({
+        from: { id: 42, first_name: "Ada", username: "ada", is_bot: false },
+        chat: { id: 111, type: "private", first_name: "Ada" },
+        message: {
+          message_id: 99,
+          date: 1_700_000_000,
+          text: "persist me",
+          chat: { id: 111, type: "private", first_name: "Ada" },
+        },
+      } as never),
+    ).rejects.toMatchObject({
+      code: "TELEGRAM_INBOUND_MEMORY_PERSISTENCE_FAILED",
+      cause: expect.objectContaining({ message: "database unavailable" }),
+    });
+    expect(runtime.setCache).not.toHaveBeenCalled();
+    expect(runtime.reportError).toHaveBeenCalledWith(
+      "telegram:inbound-persistence",
+      expect.objectContaining({
+        code: "TELEGRAM_INBOUND_MEMORY_PERSISTENCE_FAILED",
+      }),
+    );
   });
 });
 

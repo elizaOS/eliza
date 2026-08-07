@@ -62,6 +62,7 @@ const realtimeHarness = vi.hoisted(() => {
     agentSpeaking: false,
     needsUnlock: false,
     paused: false,
+    microphoneMuted: false,
     error: null as RealtimeVoiceError | null,
     fallbackReason: null,
     reportFallback: vi.fn(),
@@ -71,6 +72,7 @@ const realtimeHarness = vi.hoisted(() => {
     })),
     stop: vi.fn(async () => {}),
     bargeIn: vi.fn(),
+    toggleMicrophoneMute: vi.fn(),
     unlock: vi.fn(async () => {}),
   };
   return { state };
@@ -234,6 +236,30 @@ describe("useChatVoiceController voice playback unlock", () => {
     expect(voiceState.speak).toHaveBeenCalledWith("hello from Eliza", {
       telemetry: { messageId: "message-1" },
     });
+  });
+
+  it("does not advertise a selected but unauthenticated Cloud voice route", () => {
+    renderHook(() =>
+      useChatVoiceController({
+        ...baseOptions,
+        elizaCloudConnected: false,
+        elizaCloudVoiceProxyAvailable: true,
+      }),
+    );
+
+    expect(useVoiceChatMock.mock.calls.at(-1)?.[0].cloudConnected).toBe(false);
+  });
+
+  it("advertises Cloud voice only when the selected route is authenticated", () => {
+    renderHook(() =>
+      useChatVoiceController({
+        ...baseOptions,
+        elizaCloudConnected: true,
+        elizaCloudVoiceProxyAvailable: true,
+      }),
+    );
+
+    expect(useVoiceChatMock.mock.calls.at(-1)?.[0].cloudConnected).toBe(true);
   });
 
   it("retries realtime on the next mic tap after an ACTIONABLE error (the advertised retry works)", async () => {

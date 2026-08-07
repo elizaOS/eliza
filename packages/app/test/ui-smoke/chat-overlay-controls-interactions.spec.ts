@@ -167,18 +167,20 @@ test("chat overlay: the + menu's Upload file opens an image picker", async ({
   expect(chooser).toBeTruthy();
 });
 
-test("chat overlay: transcript text is selectable and the transcribe toggle is present", async ({
+test("chat overlay: transcript text is selectable and Talk is the single voice control", async ({
   page,
 }) => {
   await openAppPath(page, "/chat");
   const overlay = page.getByTestId("chat-overlay");
   await expect(overlay).toBeVisible({ timeout: 60_000 });
 
-  // The mic dictation toggle is an intentional trailing composer control
-  // (#10699) that sits beside the voice button in the default (no-draft) state.
-  await expect(page.getByTestId("chat-composer-transcribe")).toBeVisible({
+  // The composer exposes exactly one trailing voice control (Talk). The former
+  // standalone transcribe toggle was removed with the realtime Talk rework;
+  // long-form transcription is reachable via the /transcribe slash command.
+  await expect(page.getByTestId("chat-composer-mic")).toBeVisible({
     timeout: 15_000,
   });
+  await expect(page.getByTestId("chat-composer-transcribe")).toHaveCount(0);
 
   const prompt = "show selectable transcript text";
   const composer = page.getByTestId("chat-composer-textarea");

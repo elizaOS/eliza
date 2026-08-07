@@ -44,6 +44,7 @@ import {
 } from "./features/basic-capabilities/index";
 import {
 	INFERENCE_MARKS,
+	type InferenceTimingMeta,
 	markInference,
 	recordInferenceSpan,
 	setInferenceModelProvider,
@@ -95,7 +96,11 @@ import {
 	resolveEffectiveSystemPrompt,
 	textFromChatMessageContent,
 } from "./runtime/system-prompt";
-import { buildProviderAttributionsFromState } from "./runtime/trajectory-provider-attribution";
+import {
+	buildProviderAttributionsFromState,
+	canonicalPromptForModelCall,
+	omitUnvalidatedProviderSpans,
+} from "./runtime/trajectory-provider-attribution";
 import {
 	TurnAbortedError,
 	TurnControllerRegistry,
@@ -146,7 +151,6 @@ import {
 	getStreamingContext,
 	runInsideModelStreamChunkDelivery,
 	runWithStreamingContext,
-	runWithSuppressedModelStream,
 } from "./streaming-context";
 import {
 	getTrajectoryContext,
@@ -154,6 +158,8 @@ import {
 	setTrajectoryPurpose,
 } from "./trajectory-context";
 import {
+	runInModelCallRecordingScope,
+	runWithModelCallRecordingScope,
 	type TrajectoryProviderAccessLogger,
 	type TrajectoryRuntimeLlmCallLogger,
 	withProviderStep,
@@ -379,10 +385,89 @@ interface CachedProviderResult extends ProviderResult {
 
 interface InFlightProviderExecution {
 	promise: Promise<ProviderResult>;
+	// The execution owns its abort authority: callers race the shared promise
+	// against their OWN turn signal and this controller fires only when the
+	// last interested caller has aborted. Wiring the work directly to the
+	// first caller's signal would swallow a later coalesced waiter's "stop"
+	// entirely, and push the first caller's abort reason into turns that never
+	// requested it.
+	controller: AbortController;
+	// Every consumer of this execution MUST attach through awaitProviderExecution
+	// rather than awaiting `promise` directly: an uncounted caller would not
+	// register as a waiter, so the accounting below could abort the shared
+	// work out from under it.
+	waiters: number;
 	startedAt: number;
 	startedAtMonotonic: number;
 	timeoutMs?: number;
 	timeoutMode: "fail" | "degrade";
+}
+
+// Per-waiter cancellation boundary for a (possibly coalesced) provider
+// execution. Each caller observes its own signal: an aborting waiter rejects
+// immediately with ITS reason while the shared work keeps running for the
+// remaining callers, and the shared work is aborted exactly when the caller
+// count drops to zero — so a lone caller's abort still reaches the provider.
+//
+// EVERY attached caller counts toward `waiters`, including callers with no
+// signal (composeState outside any turn or streaming context — signalFor and
+// getStreamingContext are both legitimately undefined there). The abort
+// condition reads `waiters` as "is anyone still interested", so exempting
+// signal-less callers would let a cancelling waiter abort work an uncounted
+// caller is still awaiting.
+//
+// `evict` removes the in-flight map entry for this execution. It must run
+// SYNCHRONOUSLY, immediately before `controller.abort()`, rather than being
+// left to the `promise.then(cleanup, cleanup)` at the call site: that cleanup
+// only fires once the shared promise finishes unwinding through
+// withProviderDeadline/withProviderStep, a microtask or more after the
+// synchronous abort. A composeState call landing in that window would
+// otherwise `get()` the dying execution and inherit an abort reason it never
+// asked for. Evicting here makes the entry unreachable at the moment it stops
+// being viable instead of when its promise settles.
+function awaitProviderExecution(
+	execution: InFlightProviderExecution,
+	signal: AbortSignal | undefined,
+	evict: () => void,
+): Promise<ProviderResult> {
+	execution.waiters += 1;
+	let released = false;
+	const release = () => {
+		if (released) return false;
+		released = true;
+		execution.waiters -= 1;
+		return true;
+	};
+	if (!signal) {
+		return execution.promise.finally(release);
+	}
+	return new Promise<ProviderResult>((resolve, reject) => {
+		const settle = <V>(handler: (value: V) => void) => {
+			return (value: V) => {
+				if (!release()) return;
+				signal.removeEventListener("abort", onAbort);
+				handler(value);
+			};
+		};
+		const onAbort = settle(() => {
+			if (execution.waiters === 0) {
+				evict();
+				execution.controller.abort(signal.reason);
+			}
+			reject(signal.reason ?? new Error("Provider execution aborted"));
+		});
+		// Attach the settle handlers to `execution.promise` BEFORE checking
+		// `signal.aborted`: an already-aborted caller still needs a rejection
+		// handler wired up, or the shared promise's eventual rejection (driven
+		// by the `controller.abort()` below) goes unhandled and crashes the
+		// process under Node's default unhandled-rejection behavior.
+		execution.promise.then(settle(resolve), settle(reject));
+		if (signal.aborted) {
+			onAbort(undefined);
+			return;
+		}
+		signal.addEventListener("abort", onAbort, { once: true });
+	});
 }
 
 export function calculateProviderOverlaps(
@@ -576,6 +661,10 @@ export class EmbeddingDimensionProbeError extends Error {
 const TEXT_GENERATION_MODEL_KEYS: readonly string[] =
 	TEXT_GENERATION_MODEL_TYPES;
 
+const CANONICAL_TEXT_CAPABILITY_SETTING = "ELIZA_CANONICAL_LLM_TEXT_ENABLED";
+const CANONICAL_EMBEDDING_CAPABILITY_SETTING =
+	"ELIZA_CANONICAL_EMBEDDINGS_ENABLED";
+
 type StructuredResponseFormat = "JSON" | "TOON";
 
 type StructuredResponseCandidate = {
@@ -756,6 +845,64 @@ function isTextStreamResult(
 		"usage" in value &&
 		"finishReason" in value
 	);
+}
+
+/**
+ * Read the hidden reasoning-token count from a model response so it can be
+ * surfaced on the successful model span (#16394). Native results (tool-call
+ * shape) carry a `.usage` object; plain-text results do not, and the field is
+ * left undefined there. Returns a finite non-negative number or `undefined`;
+ * missing is preserved as missing rather than coerced to zero so an
+ * unattributed burst stays distinguishable from a confirmed-none call.
+ *
+ * Covers the elizaOS `TokenUsage.reasoningTokens` field plus the two raw
+ * provider shapes the AI SDK exposes (`usage.reasoningTokens` and
+ * `providerMetadata.completion_tokens_details.reasoning_tokens`).
+ */
+export function readReasoningTokensFromResponse(
+	response: unknown,
+): number | undefined {
+	if (typeof response !== "object" || response === null) return undefined;
+	const record = response as Record<string, unknown>;
+	const usageRaw = isPlainObject(record.usage) ? record.usage : undefined;
+	const usage = usageRaw as Record<string, unknown> | undefined;
+	const fromUsage =
+		usage && typeof usage.reasoningTokens === "number"
+			? usage.reasoningTokens
+			: undefined;
+	if (fromUsage !== undefined) {
+		return Number.isFinite(fromUsage) && fromUsage >= 0 ? fromUsage : undefined;
+	}
+	// Fall back to provider metadata when the adapter did not normalize the
+	// field into the usage object (some OpenAI-compatible paths expose it only
+	// under completion_tokens_details).
+	const providerMetadataRaw = isPlainObject(record.providerMetadata)
+		? record.providerMetadata
+		: undefined;
+	const providerMetadata = providerMetadataRaw as
+		| Record<string, unknown>
+		| undefined;
+	const detailsRaw = providerMetadata
+		? isPlainObject(providerMetadata.completion_tokens_details)
+			? providerMetadata.completion_tokens_details
+			: isPlainObject(providerMetadata.completionTokensDetails)
+				? providerMetadata.completionTokensDetails
+				: undefined
+		: undefined;
+	const details = detailsRaw as Record<string, unknown> | undefined;
+	const fromDetails = details
+		? typeof details.reasoning_tokens === "number"
+			? details.reasoning_tokens
+			: typeof details.reasoningTokens === "number"
+				? details.reasoningTokens
+				: undefined
+		: undefined;
+	if (fromDetails !== undefined) {
+		return Number.isFinite(fromDetails) && fromDetails >= 0
+			? fromDetails
+			: undefined;
+	}
+	return undefined;
 }
 
 function getSearchCategoryKey(category: string): string {
@@ -2555,6 +2702,13 @@ export class AgentRuntime implements IAgentRuntime {
 		this.eventHandlers.clear();
 		this.events = {};
 		this.stateCache.clear();
+		// Abort before dropping the map. Each execution owns the only handle to
+		// its provider work — no caller retains the controller — so clearing
+		// alone would strand in-flight provider calls past teardown with nothing
+		// left able to cancel them.
+		for (const execution of this.providerExecutionsInFlight.values()) {
+			execution.controller.abort(new Error("Runtime stopped"));
+		}
 		this.providerExecutionsInFlight.clear();
 		this.roomReadMemo.invalidate();
 		this.roomMessagesMemo.invalidate();
@@ -4083,15 +4237,13 @@ export class AgentRuntime implements IAgentRuntime {
 							runWithActionRoutingContext(
 								{ actionName: action.name, modelClass: action.modelClass },
 								() =>
-									runWithSuppressedModelStream(() =>
-										action.handler(
-											this,
-											message,
-											composedState,
-											{ mode },
-											actionCallback,
-											options?.responses,
-										),
+									action.handler(
+										this,
+										message,
+										composedState,
+										{ mode },
+										actionCallback,
+										options?.responses,
 									),
 							),
 					});
@@ -4730,6 +4882,11 @@ export class AgentRuntime implements IAgentRuntime {
 					const timeoutMode = provider.timeoutMode ?? "fail";
 					const startedAt = Date.now();
 					const startedAtMonotonic = performance.now();
+					// The work is deliberately NOT wired to this caller's signal:
+					// coalesced waiters each race the shared promise against their own
+					// signal in awaitProviderExecution, and the dedicated controller
+					// aborts the provider only when no interested caller remains.
+					const workController = new AbortController();
 					const promise = withProviderDeadline(
 						(signal) =>
 							withProviderStep(providerRuntime, provider.name, () =>
@@ -4739,10 +4896,12 @@ export class AgentRuntime implements IAgentRuntime {
 							),
 						providerBudgetMs,
 						provider.name,
-						providerSignal,
+						workController.signal,
 					);
 					execution = {
 						promise,
+						controller: workController,
+						waiters: 0,
 						startedAt,
 						startedAtMonotonic,
 						timeoutMs: providerBudgetMs,
@@ -4750,18 +4909,38 @@ export class AgentRuntime implements IAgentRuntime {
 					};
 					if (inFlightKey !== null) {
 						this.providerExecutionsInFlight.set(inFlightKey, execution);
-						const cleanup = () => {
-							if (
-								this.providerExecutionsInFlight.get(inFlightKey) === execution
-							) {
-								this.providerExecutionsInFlight.delete(inFlightKey);
-							}
-						};
-						void promise.then(cleanup, cleanup);
 					}
 				}
+				// Hoisted so BOTH the owner path (the `execution` just created
+				// above) and the coalesced path (the `execution` fetched from the
+				// map before this `if`) can evict the SAME map entry the moment it
+				// stops being viable, rather than waiting for `promise` to unwind.
+				// Identity-checked against the specific execution this call
+				// attached to, so a later execution occupying the same key is
+				// never evicted by a stale caller; idempotent so calling it
+				// synchronously from awaitProviderExecution's abort path AND again
+				// from `promise.then(evict, evict)` below is harmless.
+				const attachedExecution = execution;
+				const evict =
+					inFlightKey !== null
+						? () => {
+								if (
+									this.providerExecutionsInFlight.get(inFlightKey) ===
+									attachedExecution
+								) {
+									this.providerExecutionsInFlight.delete(inFlightKey);
+								}
+							}
+						: () => {};
+				if (!providerCoalesced && inFlightKey !== null) {
+					void attachedExecution.promise.then(evict, evict);
+				}
 				try {
-					const result = await execution.promise;
+					const result = await awaitProviderExecution(
+						execution,
+						providerSignal,
+						evict,
+					);
 					const endedAt = Date.now();
 					const duration = performance.now() - execution.startedAtMonotonic;
 					recordInferenceSpan(`provider:${provider.name}`, duration, {
@@ -4951,6 +5130,10 @@ export class AgentRuntime implements IAgentRuntime {
 			},
 			text: providersText,
 		} as State;
+		// Spans against `providersText` are composition-local only. Model-call
+		// writers rebind from `providerAttributionState` against the exact
+		// recorded messages/prompt; do not treat these offsets as model-prompt
+		// indices.
 		const providerAttribution = buildProviderAttributionsFromState({
 			state: attributionState,
 			prompt: providersText,
@@ -4966,6 +5149,7 @@ export class AgentRuntime implements IAgentRuntime {
 			activeTrajectoryContext.providerOrder = providerAttribution.providerOrder;
 			activeTrajectoryContext.providerAttributions =
 				providerAttribution.providerAttributions;
+			activeTrajectoryContext.providerAttributionState = attributionState;
 		}
 		if (trajectoryStepId && trajLogger) {
 			const userText =
@@ -5000,8 +5184,9 @@ export class AgentRuntime implements IAgentRuntime {
 						sha256: attribution?.sha256,
 						tokenCount: attribution?.tokenCount,
 						position: attribution?.position,
-						spanStart: attribution?.spanStart,
-						spanEnd: attribution?.spanEnd,
+						// Spans index providersText, which is not persisted on the
+						// access row — omit them so readers do not slice a different
+						// string with compose-local offsets.
 						purpose: "compose_state",
 						query: { message: userText.slice(0, 2000) },
 						runId: trajCtx?.runId,
@@ -5046,8 +5231,6 @@ export class AgentRuntime implements IAgentRuntime {
 						sha256: attribution?.sha256,
 						tokenCount: attribution?.tokenCount,
 						position: attribution?.position,
-						spanStart: attribution?.spanStart,
-						spanEnd: attribution?.spanEnd,
 						purpose: "compose_state",
 						query: { message: userText.slice(0, 2000) },
 						runId: trajCtx?.runId,
@@ -5529,6 +5712,13 @@ export class AgentRuntime implements IAgentRuntime {
 		metadata?: ModelRegistrationMetadata,
 	): void {
 		const modelKey = String(modelType);
+		if (this.isCanonicalModelCapabilityDisabled(modelKey)) {
+			this.logger.debug(
+				{ src: "agent", agentId: this.agentId, modelType: modelKey, provider },
+				"Ignoring model registration for a capability omitted from canonical service routing",
+			);
+			return;
+		}
 		if (!this.models.has(modelKey)) {
 			this.models.set(modelKey, []);
 		}
@@ -5637,6 +5827,27 @@ export class AgentRuntime implements IAgentRuntime {
 		return hasHandler ? override : undefined;
 	}
 
+	private isCanonicalModelCapabilityDisabled(modelType: string): boolean {
+		const setting = TEXT_GENERATION_MODEL_KEYS.includes(modelType)
+			? this.getSetting(CANONICAL_TEXT_CAPABILITY_SETTING)
+			: modelType === ModelType.TEXT_EMBEDDING
+				? this.getSetting(CANONICAL_EMBEDDING_CAPABILITY_SETTING)
+				: undefined;
+		return (
+			setting === false || String(setting).trim().toLowerCase() === "false"
+		);
+	}
+
+	private assertCanonicalModelCapabilityEnabled(modelType: string): void {
+		if (!this.isCanonicalModelCapabilityDisabled(modelType)) return;
+		const capability = TEXT_GENERATION_MODEL_KEYS.includes(modelType)
+			? "llmText"
+			: "embeddings";
+		throw new NoModelProviderConfiguredError(
+			`Canonical service routing does not configure the ${capability} capability. Add serviceRouting.${capability} before requesting ${modelType}.`,
+		);
+	}
+
 	private resolveModelRegistration(
 		modelType: ModelTypeName | string,
 		provider?: string,
@@ -5649,6 +5860,9 @@ export class AgentRuntime implements IAgentRuntime {
 		provider?: string,
 	): ResolvedModelRegistration[] {
 		const requestedModelKey = String(modelType);
+		if (this.isCanonicalModelCapabilityDisabled(requestedModelKey)) {
+			return [];
+		}
 		const resolvedModels: ResolvedModelRegistration[] = [];
 
 		for (const candidateKey of getModelFallbackChain(requestedModelKey)) {
@@ -5944,11 +6158,20 @@ export class AgentRuntime implements IAgentRuntime {
 		// funnels through here is covered exactly once.
 		const resolvedProvider =
 			provider || this.models.get(modelKey)?.[0]?.provider || "unknown";
-		recordInferenceSpan(`model:${modelType}`, elapsedTime, {
+		// Surface reasoning-token usage on the successful model span so a
+		// reasoning burst is attributable per call (#16394). Native results
+		// (tool-call shape) carry `.usage`; plain-text results do not, in which
+		// case the field is omitted entirely — missing stays missing, never zero.
+		const spanMeta: InferenceTimingMeta = {
 			modelKey,
 			provider: resolvedProvider,
 			outcome: "success",
-		});
+		};
+		const reasoningTokens = readReasoningTokensFromResponse(response);
+		if (reasoningTokens !== undefined) {
+			spanMeta.reasoningTokens = reasoningTokens;
+		}
+		recordInferenceSpan(`model:${modelType}`, elapsedTime, spanMeta);
 		if (modelType !== ModelType.TEXT_EMBEDDING) {
 			setInferenceModelProvider(resolvedProvider);
 		}
@@ -6003,6 +6226,7 @@ export class AgentRuntime implements IAgentRuntime {
 		provider?: string,
 	): Promise<R> {
 		const useModelStartedAt = Date.now();
+		this.assertCanonicalModelCapabilityEnabled(String(modelType));
 		const lookupCaller = RUNTIME_DEBUG_LOG_ENABLED
 			? captureModelLookupCaller()
 			: undefined;
@@ -6195,6 +6419,24 @@ export class AgentRuntime implements IAgentRuntime {
 					attemptMeta,
 				);
 			}
+
+			// Outer-scope mirrors of the try-block locals needed by the catch block's
+			// failed-attempt trajectory record. `let`/`const` inside `try` are not
+			// visible to the matching `catch`, so we capture them here as they are
+			// assigned inside (#17532).
+			let modelParamsRef: unknown = params;
+			let promptContentRef: string | null | undefined;
+			// recordingStateRef tracks whether the provider already logged this call.
+			// The catch block must not add a second failure entry for a call the
+			// provider recorded before throwing (e.g. OpenAI streaming logs in its
+			// generator finalizer then rethrows the stream error) — that would
+			// reintroduce the double-counting this fix removes (#17532).
+			//
+			// Initial value `{ recorded: false }` is only read when the handler
+			// throws BEFORE runWithModelCallRecordingScope assigns the real store
+			// (line ~6578). Once assigned, all later reads reference the scope's
+			// live mutable object, not this placeholder.
+			let recordingStateRef: { recorded: boolean } = { recorded: false };
 
 			try {
 				const binaryModels: string[] = [
@@ -6608,6 +6850,11 @@ export class AgentRuntime implements IAgentRuntime {
 						: null) ||
 					(typeof modelParams === "string" ? modelParams : null);
 
+				// Capture the post-hook params + prompt into the outer scope so the
+				// catch block's failed-attempt trajectory record can see them.
+				modelParamsRef = modelParams;
+				promptContentRef = promptContent;
+
 				if (!binaryModels.includes(resolvedModelKey)) {
 					this.logger.trace(
 						{
@@ -6679,10 +6926,15 @@ export class AgentRuntime implements IAgentRuntime {
 					attemptMeta,
 				);
 				handlerStartedAt = Date.now();
-				const rawResponse = await handler(
-					this,
-					modelParams as Record<string, JsonValue | object>,
-				);
+				const { result: handlerResult, recordingState } =
+					await runWithModelCallRecordingScope(() =>
+						handler(this, modelParams as Record<string, JsonValue | object>),
+					);
+				// Expose the mutable recording state to the catch block so it can
+				// suppress a failure entry when the provider already logged this
+				// call before throwing (#17532).
+				recordingStateRef = recordingState;
+				const rawResponse = handlerResult;
 
 				let safeRawResponse: unknown =
 					secretSwapSession?.substituteInValue(rawResponse) ?? rawResponse;
@@ -6700,9 +6952,38 @@ export class AgentRuntime implements IAgentRuntime {
 					(paramsChunk || ctxChunk) &&
 					isTextStreamResult(rawResponse)
 				) {
-					for await (const chunk of rawResponse.textStream) {
-						if (abortSignal?.aborted) break;
-						await deliverModelStreamChunk(chunk);
+					// Consume the provider stream inside the recording scope, mirroring
+					// the pass-through TextStreamResult wrapper below. Async generators
+					// do not inherit AsyncLocalStorage context from their creation, and
+					// runWithModelCallRecordingScope above has already exited by the
+					// time we iterate, so markProviderRecordedCall (fired from the
+					// provider finalizer via logActiveTrajectoryLlmCall — e.g. the
+					// plugin-openai live-stream finally block) would find no store and
+					// no-op. Re-entering the scope per-.next() (and forwarding .return()
+					// cleanup) ensures the provider mark lands and suppresses the
+					// generic fallback, otherwise this call is double-recorded (#17532).
+					const streamIter = rawResponse.textStream[Symbol.asyncIterator]();
+					try {
+						while (true) {
+							const { done, value } = await runInModelCallRecordingScope(
+								recordingState,
+								() => streamIter.next(),
+							);
+							if (done) break;
+							// Check abort AFTER pulling a chunk (matching the original
+							// for-await pull-then-check order) so the provider generator
+							// body always advances at least once and its finally block
+							// runs on .return() cleanup.
+							if (abortSignal?.aborted) break;
+							await deliverModelStreamChunk(value);
+						}
+					} finally {
+						// Forward cleanup to the provider iterator so its finally block
+						// (markProviderRecordedCall) also runs inside the scope. Safe to
+						// call even if already exhausted.
+						await runInModelCallRecordingScope(recordingState, async () => {
+							await streamIter.return?.();
+						});
 					}
 					await flushGuardedStream();
 					structuredExtractor?.flush();
@@ -6838,6 +7119,7 @@ export class AgentRuntime implements IAgentRuntime {
 							result: resultRef.current,
 							response: modelOutToTrajectoryString(resultRef.current),
 							elapsedTime,
+							providerRecorded: recordingState.recorded,
 						});
 					}
 					recordInferenceSpan(
@@ -6931,7 +7213,14 @@ export class AgentRuntime implements IAgentRuntime {
 					resultRef.current,
 				);
 
-				if (String(modelType) !== ModelType.TEXT_EMBEDDING) {
+				if (
+					String(modelType) !== ModelType.TEXT_EMBEDDING &&
+					!(
+						shouldStream &&
+						!handlerDeliveredStream &&
+						isTextStreamResult(resultRef.current as object)
+					)
+				) {
 					await this.recordUseModelTrajectory({
 						modelType: String(modelType),
 						resolvedModelKey: String(resolvedModelKey),
@@ -6941,7 +7230,114 @@ export class AgentRuntime implements IAgentRuntime {
 						result: resultRef.current,
 						response: modelOutToTrajectoryString(resultRef.current),
 						elapsedTime,
+						providerRecorded: recordingState.recorded,
 					});
+				}
+
+				// Pass-through stream: the caller will consume textStream after
+				// useModel returns. Defer the generic trajectory record until then,
+				// so the provider's deferred recordLlmCall has time to mark the
+				// flag (#17532). The wrapper accumulates chunks as they pass
+				// through so the trajectory entry can be recorded from the
+				// delivered text without awaiting streamResult.text, which may
+				// never settle or may reject on the abort path. A backstop on the
+				// provider's text promise guarantees at least one entry even when
+				// the consumer never iterates or awaits .text (#17532 review).
+				if (
+					shouldStream &&
+					!handlerDeliveredStream &&
+					isTextStreamResult(resultRef.current as object)
+				) {
+					const streamResult = resultRef.current as TextStreamResult;
+					const trajArgs = {
+						modelType: String(modelType),
+						resolvedModelKey: String(resolvedModelKey),
+						provider: resolvedModel.provider,
+						modelParams,
+						promptContent,
+						elapsedTime,
+					};
+					let didRecord = false;
+					const accumulatedChunks: string[] = [];
+					const recordOnce = async () => {
+						if (didRecord) return;
+						didRecord = true;
+						const finalText = accumulatedChunks.join("");
+						await this.recordUseModelTrajectory({
+							...trajArgs,
+							result: finalText,
+							response: finalText,
+							providerRecorded: recordingState.recorded,
+						});
+					};
+					// Guaranteed terminal record: if the consumer never iterates
+					// the textStream and never awaits .text, the provider's text
+					// promise still resolves (or rejects) eventually. Attach a
+					// backstop so at least one trajectory entry fires regardless
+					// of how the consumer treats the stream result (#17532 review,
+					// Finding 2).
+					streamResult.text.then(
+						(resolvedText) => {
+							if (accumulatedChunks.length === 0 && resolvedText) {
+								accumulatedChunks.push(resolvedText);
+							}
+							void recordOnce();
+						},
+						() => void recordOnce(),
+					);
+					resultRef.current = {
+						...streamResult,
+						textStream: (async function* () {
+							// Each .next() call re-enters the recording scope so
+							// the provider generator body (and its finally block
+							// where markProviderRecordedCall fires) runs inside
+							// the ALS context (#17532).
+							const innerIter = streamResult.textStream[Symbol.asyncIterator]();
+							try {
+								while (true) {
+									const { done, value } = await runInModelCallRecordingScope(
+										recordingState,
+										() => innerIter.next(),
+									);
+									if (done) break;
+									accumulatedChunks.push(value);
+									yield value;
+								}
+							} finally {
+								// Forward cleanup to the provider iterator so its
+								// finally block (markProviderRecordedCall) runs inside
+								// the scope. Safe to call even if already exhausted.
+								await runInModelCallRecordingScope(recordingState, async () => {
+									await innerIter.return?.();
+								});
+								// Record from accumulated chunks, NOT streamResult.text.
+								// The abort path's text promise may never settle or may
+								// reject; using accumulated chunks avoids hanging the
+								// generator's return() (#17532 review, Finding 3).
+								try {
+									await recordOnce();
+								} catch {
+									// error-policy:J7 Trajectory logging must never break core model flow.
+								}
+							}
+						})(),
+						// Lazy: record from accumulated chunks when the caller
+						// awaits text, not eagerly when the provider's SDK promise
+						// settles (#17532). The consumer explicitly awaited
+						// streamResult.text, so resolving it is safe — a rejection
+						// surfaces at the caller's own await site.
+						get text() {
+							return Promise.resolve(
+								runInModelCallRecordingScope(recordingState, async () => {
+									const t = await streamResult.text;
+									accumulatedChunks.length = 0;
+									accumulatedChunks.push(t);
+									await recordOnce();
+									return t;
+								}),
+							);
+						},
+					} satisfies TextStreamResult;
 				}
 				recordInferenceSpan(
 					`model-postprocess:${String(modelType)}`,
@@ -6964,6 +7360,30 @@ export class AgentRuntime implements IAgentRuntime {
 						Date.now() - handlerStartedAt,
 						{ ...attemptMeta, outcome: "error" },
 					);
+				}
+				// Record the failed attempt as a trajectory llm-call entry so a
+				// rejected (often billed) provider attempt is not invisible. If
+				// failover succeeds, only the success would otherwise appear; if
+				// every attempt fails, the step would have zero model entries
+				// (#17532). Fire-and-forget: trajectory logging must not block the
+				// failover/rethrow path, and its own failures are reported inside.
+				// Skip when the provider already logged this call before throwing
+				// (e.g. OpenAI streaming logs in its finalizer then rethrows) — a
+				// second failure entry would reintroduce the double-counting this
+				// fix removes (#17532).
+				if (!recordingStateRef.recorded) {
+					void this.recordFailedModelTrajectory({
+						modelType: String(modelType),
+						resolvedModelKey: String(resolvedModelKey),
+						provider: resolvedModel.provider,
+						modelParams: modelParamsRef,
+						promptContent: promptContentRef,
+						error,
+						elapsedTime:
+							handlerStartedAt === null
+								? Date.now() - preprocessingStartedAt
+								: Date.now() - handlerStartedAt,
+					});
 				}
 				lastModelError = error;
 				const nextModel = resolvedModels[resolvedIndex + 1];
@@ -7011,8 +7431,14 @@ export class AgentRuntime implements IAgentRuntime {
 		result?: unknown;
 		response: string;
 		elapsedTime: number;
+		providerRecorded: boolean;
 	}): Promise<void> {
 		if (this.initResolver) return;
+
+		// When the provider-level wire recorder (`recordLlmCall` or
+		// `logActiveTrajectoryLlmCall`) already logged this call, suppress the
+		// generic fallback to avoid double counting (#17532).
+		if (args.providerRecorded) return;
 
 		try {
 			const trajCtx = getTrajectoryContext();
@@ -7043,6 +7469,31 @@ export class AgentRuntime implements IAgentRuntime {
 			const resultRecord = isPlainObject(args.result)
 				? (args.result as Record<string, unknown>)
 				: {};
+			const messages = Array.isArray(paramsRecord.messages)
+				? paramsRecord.messages
+				: undefined;
+			const prompt =
+				typeof paramsRecord.prompt === "string"
+					? paramsRecord.prompt
+					: userPrompt;
+			// Rebind provider spans to the exact string this call persists. Copying
+			// composeState's providersText offsets onto a larger messages prompt
+			// produces false exact-match slices (#14877).
+			const canonicalPrompt = canonicalPromptForModelCall({
+				messages,
+				prompt,
+			});
+			const reboundAttributions = trajCtx.providerAttributionState
+				? buildProviderAttributionsFromState({
+						state: trajCtx.providerAttributionState,
+						prompt: canonicalPrompt,
+					})
+				: undefined;
+			const providerOrder =
+				reboundAttributions?.providerOrder ?? trajCtx.providerOrder;
+			const providerAttributions =
+				reboundAttributions?.providerAttributions ??
+				omitUnvalidatedProviderSpans(trajCtx.providerAttributions);
 			const usageRecord = isPlainObject(resultRecord.usage)
 				? (resultRecord.usage as Record<string, unknown>)
 				: {};
@@ -7056,13 +7507,8 @@ export class AgentRuntime implements IAgentRuntime {
 				provider: args.provider,
 				systemPrompt,
 				userPrompt,
-				prompt:
-					typeof paramsRecord.prompt === "string"
-						? paramsRecord.prompt
-						: userPrompt,
-				messages: Array.isArray(paramsRecord.messages)
-					? paramsRecord.messages
-					: undefined,
+				prompt,
+				messages,
 				tools: paramsRecord.tools,
 				toolChoice: paramsRecord.toolChoice,
 				responseSchema: paramsRecord.responseSchema,
@@ -7089,13 +7535,14 @@ export class AgentRuntime implements IAgentRuntime {
 				cacheCreationInputTokens: asNumber(
 					usageRecord.cacheCreationInputTokens,
 				),
+				reasoningTokens: asNumber(usageRecord.reasoningTokens),
 				modelSlot: args.modelType,
 				runId: trajCtx.runId,
 				roomId: trajCtx.roomId,
 				messageId: trajCtx.messageId,
 				executionTraceId: activeTrace?.id,
-				providerOrder: trajCtx.providerOrder,
-				providerAttributions: trajCtx.providerAttributions,
+				providerOrder,
+				providerAttributions,
 			});
 		} catch (error) {
 			// error-policy:J7 Trajectory logging must never break core model flow.
@@ -7105,6 +7552,110 @@ export class AgentRuntime implements IAgentRuntime {
 			);
 			this.reportError("AgentRuntime.recordUseModelTrajectory", error, {
 				modelType: args.modelType,
+			});
+		}
+	}
+
+	/**
+	 * Emit a failure llm-call entry for a `useModel` attempt that threw before
+	 * producing a usable result. Without this, a rejected provider attempt is
+	 * invisible in the trajectory: if failover succeeds, only the successful
+	 * call appears and the failed (and often billed) attempt is lost; if every
+	 * attempt fails, the step has zero model entries at all (#17532).
+	 *
+	 * Records the real error — sanitized of secrets — as the response payload
+	 * with `finishReason: "error"`, and does NOT fabricate an empty response or
+	 * zero token counts. Trajectory logging never breaks core model flow, so
+	 * failures here are swallowed and surfaced via reportError instead.
+	 */
+	private async recordFailedModelTrajectory(args: {
+		modelType: string;
+		resolvedModelKey: string;
+		provider?: string;
+		modelParams: unknown;
+		promptContent: string | null | undefined;
+		error: unknown;
+		elapsedTime: number;
+	}): Promise<void> {
+		if (this.initResolver) return;
+		// A failed attempt is NOT provider-recorded: the provider never returned
+		// a result, so its wire recorder did not run. We want this entry to land.
+		try {
+			const trajCtx = getTrajectoryContext();
+			const stepId = trajCtx?.trajectoryStepId;
+			if (!stepId) return;
+			const trajLogger = (await this._ensureServiceStarted("trajectories")) as
+				| (Service & TrajectoryRuntimeLlmCallLogger)
+				| null;
+			if (!trajLogger) return;
+
+			const paramsRecord = isPlainObject(args.modelParams)
+				? (args.modelParams as Record<string, unknown>)
+				: {};
+			const tempRaw = isPlainObject(args.modelParams)
+				? (args.modelParams as { temperature?: number }).temperature
+				: undefined;
+			const maxTokensRaw = isPlainObject(args.modelParams)
+				? (args.modelParams as { maxTokens?: number }).maxTokens
+				: undefined;
+			const systemPrompt =
+				resolveEffectiveSystemPrompt({
+					params: args.modelParams,
+					fallback: this.buildRuntimeSystemPrompt(),
+				}) ?? "";
+			const userPrompt =
+				this.getFirstUserPromptFromMessages(paramsRecord.messages) ??
+				args.promptContent ??
+				"";
+			const errorMessage =
+				args.error instanceof Error
+					? args.error.message
+					: typeof args.error === "string"
+						? args.error
+						: "unknown model error";
+			// Mark the response as a sanitized failure, not a success payload, so
+			// downstream readers/agents can distinguish billed-but-failed attempts
+			// from real outputs. Secrets are stripped to keep the trajectory safe.
+			const sanitizedMessage = this.redactSecrets(errorMessage);
+			const activeTrace = this.getActiveTrace(this.getCurrentRunId());
+			trajLogger.logLlmCall({
+				stepId,
+				model: args.resolvedModelKey,
+				modelType: args.modelType,
+				provider: args.provider,
+				systemPrompt,
+				userPrompt,
+				prompt:
+					typeof paramsRecord.prompt === "string"
+						? paramsRecord.prompt
+						: userPrompt,
+				messages: undefined,
+				tools: paramsRecord.tools,
+				toolChoice: paramsRecord.toolChoice,
+				responseSchema: paramsRecord.responseSchema,
+				providerOptions: paramsRecord.providerOptions,
+				response: `[model call failed] ${sanitizedMessage}`,
+				finishReason: "error",
+				...(typeof tempRaw === "number" ? { temperature: tempRaw } : {}),
+				...(typeof maxTokensRaw === "number"
+					? { maxTokens: maxTokensRaw }
+					: {}),
+				purpose: trajCtx.purpose ?? "action",
+				actionType: "runtime.useModel",
+				latencyMs: Math.max(0, Math.round(args.elapsedTime)),
+				modelSlot: args.modelType,
+				runId: trajCtx.runId,
+				roomId: trajCtx.roomId,
+				messageId: trajCtx.messageId,
+				executionTraceId: activeTrace?.id,
+				providerOrder: trajCtx.providerOrder,
+				providerAttributions: trajCtx.providerAttributions,
+			});
+		} catch (trajectoryError) {
+			// error-policy:J7 Trajectory logging must never break core model flow.
+			this.reportError("TrajectoryFailedAttemptRecord", trajectoryError, {
+				modelKey: args.resolvedModelKey,
+				provider: args.provider,
 			});
 		}
 	}
@@ -9576,11 +10127,24 @@ ${section_end}`;
 				"Database adapter not initialized before ensureEmbeddingDimension",
 			);
 		}
+		const canonicalProviderSetting = this.getSetting(
+			"ELIZA_EMBEDDING_PROVIDER",
+		);
+		const embeddingProvider =
+			typeof canonicalProviderSetting === "string" &&
+			canonicalProviderSetting.trim()
+				? canonicalProviderSetting.trim()
+				: undefined;
 		const allRegistrations = this.resolveModelRegistrations(
 			ModelType.TEXT_EMBEDDING,
+			embeddingProvider,
 		);
 		if (allRegistrations.length === 0) {
-			throw new Error("No TEXT_EMBEDDING model registered");
+			throw new Error(
+				embeddingProvider
+					? `Configured TEXT_EMBEDDING provider "${embeddingProvider}" has no registered handler`
+					: "No TEXT_EMBEDDING model registered",
+			);
 		}
 
 		// EMBEDDING_PROVIDER=local is an ownership boundary, not a preference.
@@ -9589,12 +10153,12 @@ ${section_end}`;
 		// to send embedding batches to Eliza Cloud when the GGUF was still staging.
 		// Prefer the router when present because it owns local device selection;
 		// otherwise fail over only among concrete on-device handlers.
-		const configuredProvider = String(
+		const configuredOwnershipProvider = String(
 			this.getSetting("EMBEDDING_PROVIDER") ?? "",
 		)
 			.trim()
 			.toLowerCase();
-		const localOnly = configuredProvider === "local";
+		const localOnly = configuredOwnershipProvider === "local";
 		const localRegistrations = localOnly
 			? allRegistrations.filter((registration) =>
 					LOCAL_EMBEDDING_PROVIDERS.has(registration.provider),

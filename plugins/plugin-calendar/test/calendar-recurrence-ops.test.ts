@@ -169,8 +169,8 @@ function stubService(feedEvents: LifeOpsCalendarEvent[]) {
 type StubService = ReturnType<typeof stubService>;
 
 function fakeRuntime(service: StubService): IAgentRuntime {
-  // No `useModel` on purpose: renderGroundedActionReply then returns the
-  // handler's canonical fallback strings verbatim.
+  // No `useModel` on purpose: the handler returns its canonical grounded
+  // fallback strings verbatim.
   return {
     agentId: "agent-1",
     logger: {

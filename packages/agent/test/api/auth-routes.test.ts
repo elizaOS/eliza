@@ -10,7 +10,14 @@ type CapturedResponse = {
 
 function createAuthRouteHarness(options: {
   headers?: Record<string, string>;
+  method?: string;
   pathname?: string;
+  remoteAddress?: string;
+  pairingEnabled?: boolean;
+  ensurePairingCode?: () => string | null;
+  getPairingExpiresAt?: () => number;
+  body?: unknown;
+  rateLimitPairing?: () => boolean;
 }): {
   captured: CapturedResponse;
   ctx: Parameters<typeof handleAuthRoutes>[0];
@@ -25,19 +32,20 @@ function createAuthRouteHarness(options: {
       ...options.headers,
     },
     socket: {
-      remoteAddress: "127.0.0.1",
+      remoteAddress: options.remoteAddress ?? "127.0.0.1",
     },
   } as http.IncomingMessage;
   const res = {} as http.ServerResponse;
+  const expiresAt = options.getPairingExpiresAt?.() ?? Date.now() + 60_000;
 
   return {
     captured,
     ctx: {
       req,
       res,
-      method: "GET",
+      method: options.method ?? "GET",
       pathname: options.pathname ?? "/api/auth/me",
-      readJsonBody: async () => null,
+      readJsonBody: async () => (options.body ?? null) as never,
       json: (_res, data, status = 200) => {
         captured.status = status;
         captured.body = data;
@@ -46,11 +54,11 @@ function createAuthRouteHarness(options: {
         captured.status = status;
         captured.body = { error: message };
       },
-      pairingEnabled: () => false,
-      ensurePairingCode: () => null,
+      pairingEnabled: options.pairingEnabled ?? (() => false),
+      ensurePairingCode: options.ensurePairingCode ?? (() => null),
       normalizePairingCode: (code) => code,
-      rateLimitPairing: () => true,
-      getPairingExpiresAt: () => Date.now() + 60_000,
+      rateLimitPairing: options.rateLimitPairing ?? (() => true),
+      getPairingExpiresAt: () => expiresAt,
       clearPairing: () => {},
     },
   };
@@ -111,6 +119,114 @@ describe("handleAuthRoutes", () => {
         passwordConfigured: true,
         ownerConfigured: false,
       },
+    });
+  });
+
+  describe("GET /api/auth/pair-code", () => {
+    it("returns the pairing code for trusted loopback callers", async () => {
+      delete process.env.ELIZA_REQUIRE_LOCAL_AUTH;
+      const expiresAt = Date.now() + 600_000;
+      const { ctx, captured } = createAuthRouteHarness({
+        pathname: "/api/auth/pair-code",
+        pairingEnabled: () => true,
+        ensurePairingCode: () => "ABCD-EFGH",
+        getPairingExpiresAt: () => expiresAt,
+      });
+
+      await expect(handleAuthRoutes(ctx)).resolves.toBe(true);
+
+      expect(captured.status).toBe(200);
+      expect(captured.body).toEqual({ code: "ABCD-EFGH", expiresAt });
+    });
+
+    it("rejects non-loopback callers", async () => {
+      delete process.env.ELIZA_REQUIRE_LOCAL_AUTH;
+      const { ctx, captured } = createAuthRouteHarness({
+        pathname: "/api/auth/pair-code",
+        remoteAddress: "192.168.1.50",
+        pairingEnabled: () => true,
+        ensurePairingCode: () => "ABCD-EFGH",
+      });
+
+      await expect(handleAuthRoutes(ctx)).resolves.toBe(true);
+
+      expect(captured.status).toBe(403);
+      expect(captured.body).toEqual({
+        error: "Pair code visible on loopback only",
+      });
+    });
+
+    it("returns 503 when pairing is disabled", async () => {
+      delete process.env.ELIZA_REQUIRE_LOCAL_AUTH;
+      const { ctx, captured } = createAuthRouteHarness({
+        pathname: "/api/auth/pair-code",
+        pairingEnabled: () => false,
+      });
+
+      await expect(handleAuthRoutes(ctx)).resolves.toBe(true);
+
+      expect(captured.status).toBe(503);
+      expect(captured.body).toEqual({ error: "Pairing not enabled" });
+    });
+  });
+
+  // The token-as-code path is a deliberate policy relaxation: unlike a pairing
+  // code it never expires, so the gates that remain (pairing enabled, cloud
+  // check, per-IP rate limit) are the whole of its protection. Pin them.
+  describe("POST /api/auth/pair accepting the raw API token", () => {
+    const TOKEN = "hi3ntr0py-static-connection-token";
+
+    function pairHarness(code: string, extra: Record<string, unknown> = {}) {
+      return createAuthRouteHarness({
+        method: "POST",
+        pathname: "/api/auth/pair",
+        pairingEnabled: () => true,
+        ensurePairingCode: () => "ABCD-EFGH",
+        body: { code },
+        ...extra,
+      });
+    }
+
+    beforeEach(() => {
+      process.env.ELIZA_API_TOKEN = TOKEN;
+      delete process.env.ELIZA_REQUIRE_LOCAL_AUTH;
+    });
+
+    it("exchanges the raw token for itself", async () => {
+      const { ctx, captured } = pairHarness(TOKEN);
+      await expect(handleAuthRoutes(ctx)).resolves.toBe(true);
+      expect(captured.status).toBe(200);
+      expect(captured.body).toEqual({ token: TOKEN });
+    });
+
+    it("tolerates surrounding whitespace on the token", async () => {
+      const { ctx, captured } = pairHarness(`  ${TOKEN}  `);
+      await expect(handleAuthRoutes(ctx)).resolves.toBe(true);
+      expect(captured.body).toEqual({ token: TOKEN });
+    });
+
+    it("rejects a near-miss token instead of falling through to success", async () => {
+      const { ctx, captured } = pairHarness(`${TOKEN}x`);
+      await expect(handleAuthRoutes(ctx)).resolves.toBe(true);
+      expect(captured.status).toBe(403);
+      expect(captured.body).toEqual({ error: "Invalid pairing code" });
+    });
+
+    it("is still rate limited — the token path is not a bypass", async () => {
+      const { ctx, captured } = pairHarness(TOKEN, {
+        rateLimitPairing: () => false,
+      });
+      await expect(handleAuthRoutes(ctx)).resolves.toBe(true);
+      expect(captured.status).toBe(429);
+    });
+
+    it("is refused when pairing is disabled", async () => {
+      const { ctx, captured } = pairHarness(TOKEN, {
+        pairingEnabled: () => false,
+      });
+      await expect(handleAuthRoutes(ctx)).resolves.toBe(true);
+      expect(captured.status).toBe(403);
+      expect(captured.body).toEqual({ error: "Pairing disabled" });
     });
   });
 });

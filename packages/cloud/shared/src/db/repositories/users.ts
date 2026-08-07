@@ -10,6 +10,32 @@ export type { NewUser, User, UserIdentity };
 
 export type IdentityProvider = "steward" | "telegram" | "discord" | "whatsapp" | "phone";
 
+/**
+ * Maps a messaging-platform name as it appears on the wire to the identity
+ * provider column family that stores it. `twilio` and `blooio` are two carriers
+ * of the same phone identity, so both collapse onto `phone`.
+ *
+ * An unrecognised platform yields `undefined`, and callers must decide what
+ * that means for them: passing it to `resolveIdentity` opts into the
+ * shape-sniffing lookup, which is right for a generic resolve endpoint and
+ * wrong for anything that would grant authority from the result.
+ */
+export function providerForPlatform(platform: string | undefined): IdentityProvider | undefined {
+  switch (platform) {
+    case "telegram":
+      return "telegram";
+    case "discord":
+      return "discord";
+    case "whatsapp":
+      return "whatsapp";
+    case "twilio":
+    case "blooio":
+      return "phone";
+    default:
+      return undefined;
+  }
+}
+
 export interface ResolvedIdentity {
   user: User;
   identity?: UserIdentity;

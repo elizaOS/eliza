@@ -31,10 +31,6 @@ import {
   OrgRateLimitCacheNotReadyError,
 } from "@/lib/middleware/rate-limit";
 import {
-  RateLimitPresets,
-  rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
-import {
   bindGatewayHandoffTelemetry,
   type GatewayHandoffTelemetry,
   type GatewayPreforwardTiming,
@@ -86,6 +82,8 @@ import type {
   CreditReconciliationResult,
   CreditReservation,
 } from "@/lib/services/credits";
+import { inferenceRateLimitConfig } from "@/lib/services/inference-admission-snapshot";
+import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
 import { resolveInferenceAuthContext } from "@/lib/services/inference-auth-context";
 import { InferenceBalanceCacheWarmingError } from "@/lib/services/inference-billing-fast-path";
 import {
@@ -546,12 +544,6 @@ function modelNotAvailableMessage(model: string): string {
 }
 
 const app = new Hono<AppEnv>();
-app.use(
-  "*",
-  rateLimit(RateLimitPresets.RELAXED, {
-    bindingName: "CHAT_ROUTE_RATE_LIMITER",
-  }),
-);
 
 app.post("/", async (c) => {
   const startTime = Date.now();
@@ -601,6 +593,7 @@ app.post("/", async (c) => {
   // and return a retryable response; wallet proofs stay on the non-Worker path
   // because their timestamped signatures are not reusable cache identities.
   let moderationAlreadyChecked = false;
+  let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
   try {
     const resolution = await resolveInferenceAuthContext(c.req.raw, {
       executionCtx,
@@ -636,6 +629,7 @@ app.post("/", async (c) => {
         organization_id: resolution.ctx.orgId,
       };
       apiKey = resolution.ctx.apiKeyId ? { id: resolution.ctx.apiKeyId } : null;
+      admissionSnapshot = resolution.ctx.admission;
       // The resolver already verified not-suspended (cache hit = at populate;
       // origin miss = just now), so the synchronous moderation read is skipped.
       moderationAlreadyChecked = true;
@@ -667,6 +661,7 @@ app.post("/", async (c) => {
       {
         cacheOnly: Boolean(executionCtx),
         executionCtx,
+        config: inferenceRateLimitConfig(admissionSnapshot, "completions"),
       },
     );
   } catch (error) {
@@ -887,6 +882,7 @@ app.post("/", async (c) => {
           billingSource,
           affiliateCode,
           executionCtx,
+          admissionSnapshot,
         });
         settleReservation = admission.settle;
         settleUnknownReservation = admission.settleUnknown;
@@ -952,6 +948,7 @@ app.post("/", async (c) => {
         apiKeyId: apiKey?.id,
         affiliateCode,
         executionCtx,
+        admissionSnapshot,
       });
       settleReservation = admission.settle;
       settleUnknownReservation = admission.settleUnknown;

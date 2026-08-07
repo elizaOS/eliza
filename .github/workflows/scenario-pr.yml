@@ -688,6 +688,11 @@ jobs:
         run: bunx playwright install --with-deps chromium
 
       - name: Accounts UI browser e2e — real AccountList + real accounts routes + real AccountPool
+        env:
+          # The fixture writes encrypted credentials to a scratch ELIZA_HOME.
+          # Hosted Linux has no keychain session, so give this isolated test
+          # process a non-production passphrase instead of weakening the vault.
+          ELIZA_VAULT_PASSPHRASE: accounts-ui-e2e-headless-only
         run: bun run --cwd packages/app test:e2e:accounts-ui
 
       - name: Upload accounts-ui evidence artifacts

@@ -63,6 +63,7 @@ describe("buildChatViewMetadata", () => {
         "add-documents",
         "modify-character",
       ],
+      uiTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       __responseContext: {
         caller: "composer",
         primaryContext: "documents",

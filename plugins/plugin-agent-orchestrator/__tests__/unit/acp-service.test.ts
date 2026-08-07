@@ -1006,10 +1006,11 @@ describe("AcpService", () => {
     expect(nativeClientMock.instances).toHaveLength(0);
   });
 
-  it("starts Codex ACP with the no-Landlock fallback when the runtime probe is disabled", async () => {
+  it("starts Codex ACP with the configured no-Landlock fallback when the runtime probe is disabled", async () => {
     const rt = runtime({
       ELIZA_ACP_TRANSPORT: "native",
       ELIZA_CODEX_ACP_LANDLOCK: "0",
+      ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE: "danger-full-access",
     });
     const service = new AcpService(rt);
     await service.start();
@@ -1051,6 +1052,7 @@ describe("AcpService", () => {
       };
       const rt = runtime({
         ELIZA_ACP_TRANSPORT: "native",
+        ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE: "danger-full-access",
       });
       const service = new AcpService(rt);
       await service.start();
@@ -1110,6 +1112,7 @@ describe("AcpService", () => {
       };
       const rt = runtime({
         ELIZA_ACP_TRANSPORT: "native",
+        ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE: "danger-full-access",
       });
       const service = new AcpService(rt);
       await service.start();
@@ -1554,6 +1557,7 @@ describe("AcpService", () => {
       };
       const rt = runtime({
         ELIZA_ACP_TRANSPORT: "native",
+        ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE: "danger-full-access",
       });
       const service = new AcpService(rt, { store });
       await service.start();

@@ -13,6 +13,7 @@ import { Events } from "discord.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DiscordAccountClientState } from "../account-client-pool.ts";
 import { DiscordService } from "../service.ts";
+import { createTurnDrainRegistry } from "../shutdown-drain.ts";
 
 type FakeClient = {
 	once: (event: string, cb: (...args: unknown[]) => void) => FakeClient;
@@ -373,6 +374,7 @@ describe("DiscordService initial-login retry (#15855)", () => {
 				clear: vi.fn(),
 			},
 			audioSinks: new Map(),
+			turnDrainRegistry: createTurnDrainRegistry(),
 			createDiscordJsClient: () => client,
 			setupEventListenersForAccount: vi.fn(),
 			onReadyForAccount: vi.fn().mockResolvedValue(undefined),
