@@ -101,6 +101,22 @@ describe("aesthetic audit semantic OCR policy coverage", () => {
     }
   });
 
+  it("recognizes Contacts by stable empty-state content rather than a removed heading", () => {
+    for (const slug of ["builtin-contacts", "plugin-contacts-gui"]) {
+      const policy = resolveViewOcrPolicy(slug);
+      expect(policy.kind).toBe("expectation");
+      if (policy.kind !== "expectation") {
+        throw new Error(`Expected ${slug} to declare an OCR expectation`);
+      }
+      expect(policy.expectation.requireAll).toBeUndefined();
+      expect(policy.expectation.requireAny).toEqual([
+        "address book",
+        "phone, or email",
+        "search",
+      ]);
+    }
+  });
+
   it("fails closed for an unknown captured slug", () => {
     expect(() => resolveViewOcrPolicy("plugin-newly-registered-gui")).toThrow(
       /No semantic OCR policy declared/,
