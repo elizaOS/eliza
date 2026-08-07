@@ -53,6 +53,7 @@ import {
   readStoredStewardToken,
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
+import { shellLocalStorage } from "../../surface-realm-channel";
 import { appModeNavigation } from "../app-mode/app-mode";
 import { decodeJwtPayload } from "../lib/jwt";
 import {
@@ -311,7 +312,9 @@ export function isSsoLoggedOut(): boolean {
 
 export function markSsoLoggedOut(): void {
   try {
-    localStorage.setItem(SSO_LOGGED_OUT_KEY, "1");
+    // Reserved shell key: raw localStorage writes throw SurfaceRealmDeniedError
+    // while a view scope is foreground (surface-realm-broker guard, #13452).
+    shellLocalStorage.setItem(SSO_LOGGED_OUT_KEY, "1");
   } catch {
     // error-policy:J6 best-effort marker; isSsoLoggedOut fails closed when
     // storage is unavailable.
@@ -320,7 +323,7 @@ export function markSsoLoggedOut(): void {
 
 export function clearSsoLoggedOut(): void {
   try {
-    localStorage.removeItem(SSO_LOGGED_OUT_KEY);
+    shellLocalStorage.removeItem(SSO_LOGGED_OUT_KEY);
   } catch {
     // error-policy:J6 best-effort cleanup; an over-persistent marker only
     // suppresses auto-bridge, never login itself.

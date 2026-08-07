@@ -22,7 +22,6 @@ import {
   registerDirectActionRoutingRule,
   registerLocalizedExamplesProvider,
   registerSendPolicy,
-  type ShortcutDefinition,
 } from "@elizaos/core";
 import {
   getSelfControlPermissionState,
@@ -298,41 +297,6 @@ const localConditionsAction = createLocalConditionsAction({
 const GOOGLE_CONNECTOR_PLUGIN_PACKAGE = "@elizaos/plugin-google-workspace";
 const GOOGLE_CONNECTOR_PLUGIN_NAME = "google";
 const PERMISSIONS_REGISTRY_SERVICE = "eliza_permissions_registry";
-
-export const APPROVAL_REJECT_SHORTCUT_ID = "lifeops:approval:reject";
-
-// The deterministic tier fires only on phrasings that are near-unambiguously a
-// verdict on a queued approval: a "don't send" hold, a reject/decline/deny verb
-// directly governing "approval(s)" / "(that|the|this) request", or the
-// "<verb> that/it/this for now" hold idiom. Looser rejection language
-// ("decline the meeting request", "reject the draft and rewrite it") stays
-// with the planner, which sees queue rows via the pendingApprovals provider
-// (#14665) and can weigh conversation context before picking RESOLVE_REQUEST.
-// A shortcut misfire is terminal for the targeted approval (reject cancels the
-// dispatch), so precision beats recall here.
-const APPROVAL_REJECT_REGEX =
-  /\b(?:reject|decline|deny)\b(?:\s+[\p{L}\p{N}]+){0,3}?\s+approvals?\b|\b(?:reject|decline|deny)\s+(?:(?:that|the|this)\s+)?request\b|\b(?:reject|decline|deny)\s+(?:that|it|this)\s+for\s+now\b/iu;
-const APPROVAL_DONT_SEND_REGEX =
-  /^(?=.*\b(?:don['’]?\s*t|dont|do\s+not)\s+send\b)(?=.*\b(?:that|it|approval|request|pending|message|email|draft)\b).+$/iu;
-
-const lifeOpsShortcuts: ShortcutDefinition[] = [
-  {
-    id: APPROVAL_REJECT_SHORTCUT_ID,
-    kind: "natural",
-    patterns: [
-      { regex: APPROVAL_REJECT_REGEX },
-      { regex: APPROVAL_DONT_SEND_REGEX },
-    ],
-    target: {
-      kind: "action",
-      name: "RESOLVE_REQUEST_REJECT",
-    },
-    requiresAction: "RESOLVE_REQUEST_REJECT",
-    requiresElevated: true,
-    confidence: 0.97,
-    priority: 35,
-  },
-];
 
 function isPermissionsRegistry(value: unknown): value is IPermissionsRegistry {
   return (
@@ -721,7 +685,6 @@ const rawPersonalAssistantPlugin: Plugin = {
   // runner host is registered before PA's init injects deps + seeds.
   dependencies: [GOOGLE_CONNECTOR_PLUGIN_PACKAGE, "@elizaos/plugin-scheduling"],
   schema: lifeOpsSchema,
-  shortcuts: lifeOpsShortcuts,
   actions: [
     // Canonical owner-operation umbrellas. Each umbrella registers itself + its
     // per-action virtuals via

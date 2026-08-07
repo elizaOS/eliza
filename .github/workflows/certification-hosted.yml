@@ -103,6 +103,64 @@ jobs:
           bun run build:core
           bun run build:views
 
+      # SECURITY: the hetzner-robot runners execute on a production box whose
+      # service environment carries real credentials — run 31073689058 showed a
+      # live ELIZA_VAULT_PASSPHRASE visible to every test process, plus
+      # TTY/color vars that changed logger output under test. This workflow is
+      # workflow_dispatch-only, so PR-controlled code never runs here, but the
+      # runner environment itself should be reviewed org-side: any workflow
+      # granted this pool inherits it. The wrapper below keeps repo test
+      # processes from seeing that environment at all.
+      #
+      # The evidence + certify steps run through `env -i` with an explicit
+      # allowlist derived from what a hosted ubuntu-24.04 runner provides:
+      # PATH, a fresh scratch HOME/TMPDIR under $RUNNER_TEMP (isolates
+      # keychain/vault/dotfile state), TZ=UTC + LANG=C.UTF-8 (hosted image
+      # defaults), CI, the GITHUB_*/RUNNER_* context, and the two secrets the
+      # chain needs (ELIZA_CERT_SIGNING_KEY, ANTHROPIC_API_KEY). Everything
+      # else — box credentials, POSTGRES_URL, TERM/FORCE_COLOR, D-Bus/XDG
+      # session state — is dropped. The command also runs inside a private
+      # session bus (dbus-run-session) because hosted runners have a per-user
+      # session bus and packages/vault's keychain-safety heuristic
+      # (isKeychainUnsafe) branches on its reachability; without it the vault
+      # master-key suite honestly reports the headless-host gap.
+      - name: Prepare hermetic runner (robot pool)
+        if: ${{ inputs.runner == 'robot' }}
+        run: |
+          set -euo pipefail
+          wrapper="$RUNNER_TEMP/hermetic-run.sh"
+          cat > "$wrapper" <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          scratch_home="$RUNNER_TEMP/hermetic-home"
+          scratch_tmp="$RUNNER_TEMP/hermetic-tmp"
+          mkdir -p "$scratch_home" "$scratch_tmp"
+          allow=(
+            "PATH=$PATH"
+            "HOME=$scratch_home"
+            "TMPDIR=$scratch_tmp"
+            "TZ=UTC"
+            "LANG=C.UTF-8"
+            "CI=true"
+            "USER=${USER:-ci}"
+          )
+          while IFS= read -r name; do
+            case "$name" in
+              GITHUB_*|RUNNER_*) allow+=("$name=${!name}") ;;
+            esac
+          done < <(compgen -e)
+          for name in ELIZA_CERT_SIGNING_KEY ANTHROPIC_API_KEY; do
+            [ -n "${!name:-}" ] && allow+=("$name=${!name}")
+          done
+          if command -v dbus-run-session >/dev/null 2>&1; then
+            exec env -i "${allow[@]}" dbus-run-session -- "$@"
+          fi
+          echo "hermetic-run: dbus-run-session unavailable; vault keychain-safety suites will see a headless host" >&2
+          exec env -i "${allow[@]}" "$@"
+          EOF
+          chmod +x "$wrapper"
+          echo "HERMETIC_RUN=$wrapper" >> "$GITHUB_ENV"
+
       # The bundle ingests evidence silos produced by real lanes on the
       # certified sha; a fresh runner has none, and certify:sign honestly
       # refuses an empty verdicts document (proven by hosted run
@@ -112,7 +170,7 @@ jobs:
       - name: Produce evidence — deterministic scenario lane
         env:
           TZ: UTC
-        run: bun run --cwd packages/scenario-runner test:pr:e2e
+        run: ${HERMETIC_RUN:-} bun run --cwd packages/scenario-runner test:pr:e2e
 
       # The orchestrated command is the complete chain — matrix → ingest →
       # analyze → vision-qa → rollup → reviewer merge → sign → self-verify.
@@ -126,6 +184,7 @@ jobs:
           ELIZA_CERT_SIGNING_KEY: ${{ secrets.ELIZA_CERT_SIGNING_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: >-
+          ${HERMETIC_RUN:-}
           bun run --cwd packages/evidence certify --
           --tier "${{ inputs.tier }}"
           --reviewer-id "certification-hosted@github-actions"

@@ -149,6 +149,11 @@ the other end, only chat. Make that message the answer itself:
   A script you wrote but never ran is NOT the deliverable — it returns nothing,
   the answer the user asked for is missing, and you force a wasteful re-spawn.
   The value must come from a real execution, not from unexecuted code.
+- NEVER include absolute filesystem paths, workspace/session ids, or other
+  internal identifiers in the final message. Your workspace (and its
+  \`task-<uuid>\` path shape) is internal infrastructure the user cannot see or
+  browse — refer to a file by bare name or workspace-relative path, or omit
+  the path entirely when the deliverable itself is the answer.
 - Do NOT narrate your process. No "I'll load the workspace context first",
   "checking the workspace shape", "rg is not installed so I'll use…", "the file
   already exists, reading it before editing", no step-by-step play-by-play, no

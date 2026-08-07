@@ -4,17 +4,16 @@
  * One instance == one live WS session. It owns the turn state machine and wires
  * the three legs together using the ALREADY-MERGED adapters as the provider
  * layer (never a reimplementation):
- *   - STT: `createDeepgramFluxRealtimeSession` (#15950). Uplink PCM re-framed to
- *     exact 2560-byte Flux chunks; Flux semantic-turn events drive the turn
- *     boundary. `Connected` handshake and any residual `channels=` rejection are
- *     handled per live-provider intel.
+ *   - STT: Cartesia Ink 2. Uplink PCM is re-framed into 100 ms chunks and Ink's
+ *     native turn events drive interruption, partials, and finalization without
+ *     a second VAD or endpointing layer.
  *   - LLM: `streamElizaConversation` (existing SSE / Cerebras pass-through). No
  *     new LLM client.
  *   - TTS: Fish Audio when `ELIZA_TTS_FISH_ENABLED` is true; otherwise
  *     `CartesiaSonicTtsAdapter` (#15949). Phrase-aggregated deltas stream in;
  *     adapters' strict no-post-cancel guarantee makes barge-in correct.
  *
- * Interruption (contract §7.5): acoustic speech-start / Flux turn / explicit
+ * Interruption (contract §7.5): acoustic speech-start / Ink turn / explicit
  * `barge_in` -> under one `voiceTurnId`, cancel the active TTS stream (no
  * post-cancel frames), abort the Eliza SSE fetch, flush the downlink, drop pending phrase
  * aggregation, emit `interrupted`, return to listening. Target <250ms.
@@ -24,7 +23,7 @@
  * injected usage store; over-cap severs with `quota_exhausted`.
  *
  * SEC-6: the session registers a `sever()` with the live-session registry so a
- * revoke — same-worker or cross-device — stops uplink to Deepgram in <=500ms.
+ * revoke — same-worker or cross-device — stops uplink to Cartesia in <=500ms.
  */
 
 import {
@@ -59,11 +58,11 @@ import type {
   VoiceSessionLike,
 } from "@/lib/voice-session/ws-handler";
 import {
-  createDeepgramFluxRealtimeSession,
-  type DeepgramFluxRealtimeEvent,
-  type DeepgramFluxRealtimeSession,
-  type DeepgramFluxWebSocketFactory,
-} from "../../stt/providers/deepgram-flux";
+  type CartesiaInkRealtimeEvent,
+  type CartesiaInkRealtimeSession,
+  type CartesiaInkWebSocketFactory,
+  createCartesiaInkRealtimeSession,
+} from "../../stt/providers/cartesia-ink";
 import { UplinkReframer } from "./uplink-reframer";
 
 const PCM16_BYTES_PER_SECOND = 16_000 * 2; // 16kHz mono linear16.
@@ -90,6 +89,8 @@ const MAX_OUTSTANDING_METER_WINDOWS = 2;
  * context preserves prosody across the resulting chunks.
  */
 const VOICE_TTS_FIRST_CLAUSE_CHARS = 24;
+/** Human-readable interim captions do not benefit from provider-rate redraws. */
+const STT_PARTIAL_EMIT_INTERVAL_MS = 40;
 
 // Cartesia's server buffers streamed transcript for up to 3000ms by default
 // before starting synthesis, which measured ~2.7s of the speaking_start gap on
@@ -110,9 +111,8 @@ export interface VoiceSessionConfig {
   tokenExpSeconds: number;
 
   // Provider wiring (injectable for tests: fake transports, real adapter code).
-  deepgramApiKey: string;
-  deepgramWebSocketFactory: DeepgramFluxWebSocketFactory;
   cartesiaApiKey: string;
+  cartesiaInkWebSocketFactory: CartesiaInkWebSocketFactory;
   cartesiaVoiceId: string;
   cartesiaWebSocketFactory: CartesiaWebSocketFactory;
   fishAudioEnabled?: boolean;
@@ -173,7 +173,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private readonly reframer = new UplinkReframer();
   private readonly usageIdentity: VoiceUsageIdentity;
 
-  private stt: DeepgramFluxRealtimeSession | null = null;
+  private stt: CartesiaInkRealtimeSession | null = null;
   private readonly cartesiaAdapter: CartesiaSonicTtsAdapter;
   private readonly fishAudioAdapter: FishAudioTtsAdapter | null = null;
   private ttsStream: RealtimeTtsStream | null = null;
@@ -187,6 +187,10 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private currentTraceId: string | null = null;
   private currentVoiceTurnId: string | null = null;
   private activeSttTurn = false;
+  private pendingSttPartial: { text: string; traceId: string } | null = null;
+  private lastSttPartialText = "";
+  private lastSttPartialSentAtMs = Number.NEGATIVE_INFINITY;
+  private sttPartialTimer: ReturnType<typeof setTimeout> | null = null;
   private llmAbort: AbortController | null = null;
   private phrase: PhraseAggregator | null = null;
   private turnSttMs = 0;
@@ -240,16 +244,16 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   }
 
   /**
-   * Open the Flux STT socket and register for revoke-to-silence. Emits `ready`.
+   * Open the Ink STT socket and register for revoke-to-silence. Emits `ready`.
    * Idempotent — a second `start()` is a no-op.
    */
   start(): void {
     if (this.started || this.closed) return;
     this.started = true;
 
-    this.stt = createDeepgramFluxRealtimeSession({
-      deepgramApiKey: this.config.deepgramApiKey,
-      webSocketFactory: this.config.deepgramWebSocketFactory,
+    this.stt = createCartesiaInkRealtimeSession({
+      cartesiaApiKey: this.config.cartesiaApiKey,
+      webSocketFactory: this.config.cartesiaInkWebSocketFactory,
       onEvent: (event) => this.onSttEvent(event),
     });
 
@@ -301,7 +305,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   }
 
   /**
-   * Push a client uplink audio chunk (PCM16). Re-frames to Flux chunk size and
+   * Push a client uplink audio chunk (PCM16). Re-frames to Ink chunk size and
    * meters server-derived seconds. Silently drops if the session is torn down.
    */
   pushUplinkAudio(bytes: Uint8Array): void {
@@ -353,7 +357,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       try {
         this.stt.sendAudioChunk(frame);
       } catch {
-        // error-policy:J6 best-effort teardown race — a closed/closing Flux
+        // error-policy:J6 best-effort teardown race — a closed/closing Ink
         // socket after a concurrent sever; stop forwarding.
         return;
       }
@@ -362,7 +366,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 
   /**
    * Run the one-time admission quota check, then release buffered frames. This
-   * is what makes forwarding fail-closed: nothing reaches Deepgram until
+   * is what makes forwarding fail-closed: nothing reaches Cartesia until
    * `checkAndRecord` returns allowed.
    */
   private ensureAdmission(): void {
@@ -395,7 +399,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           try {
             this.stt?.sendAudioChunk(frame);
           } catch {
-            // error-policy:J6 best-effort teardown race — Flux socket closed by
+            // error-policy:J6 best-effort teardown race — Ink socket closed by
             // a concurrent sever while releasing the buffer; stop forwarding.
             break;
           }
@@ -435,30 +439,33 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 
   // --- STT event handling ---------------------------------------------------
 
-  private onSttEvent(event: DeepgramFluxRealtimeEvent): void {
+  private onSttEvent(event: CartesiaInkRealtimeEvent): void {
     if (this.closed) return;
     switch (event.type) {
+      case "connected": {
+        // Provider readiness is transport metadata; the client-facing session
+        // has already emitted its own authenticated `ready` frame.
+        break;
+      }
       case "start-of-turn": {
         // A new user turn started. If the agent is mid-speech, this is a
-        // barge-in (acoustic speech-start via Flux's semantic turn detector).
+        // barge-in (acoustic speech-start via Ink's native turn detector).
         if (this.state === "speaking" || this.state === "thinking") {
           this.interrupt("acoustic");
         }
+        this.resetSttPartialDelivery();
         this.activeSttTurn = true;
         this.state = "transcribing";
         break;
       }
       case "transcript-update": {
-        if (event.transcript) {
-          this.send({
-            t: "stt_partial",
-            text: event.transcript,
-            traceId: this.currentTraceId ?? this.mintTraceId("turn"),
-          });
+        if (this.activeSttTurn && event.transcript) {
+          this.queueSttPartial(event.transcript);
         }
         break;
       }
       case "eager-end-of-turn": {
+        this.flushSttPartial();
         this.send({
           t: "stt_eager_eot",
           traceId: this.currentTraceId ?? this.mintTraceId("turn"),
@@ -468,6 +475,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       case "end-of-turn": {
         if (!this.activeSttTurn) return;
         this.activeSttTurn = false;
+        this.resetSttPartialDelivery();
         // A missing transcript commits as "" on purpose: commitTurn's empty-
         // final path still reports+resets the turn's metered usage and clears
         // the turn id, which skipping the commit would leak into the next turn.
@@ -479,10 +487,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         break;
       }
       case "error": {
-        // A benign `Connected` handshake maps to malformed in the adapter; treat
-        // an initial malformed with no transcript as non-fatal noise, everything
-        // else as a real error surfaced to the client (retryable next session).
-        if (event.code === "malformed_event") return;
+        // Provider/protocol failures are explicit and terminate the current
+        // turn; malformed input must not be reinterpreted as speech.
+        this.resetSttPartialDelivery();
         this.send({ t: "error", code: event.code, retryable: false });
         break;
       }
@@ -493,6 +500,62 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         break;
       }
     }
+  }
+
+  /**
+   * Ink can revise an interim transcript faster than a display can paint. Keep
+   * the first revision immediate, retain only the newest pending revision, and
+   * flush at a stable caption cadence. The final frame remains authoritative
+   * and bypasses this path entirely.
+   */
+  private queueSttPartial(text: string): void {
+    if (
+      text === this.pendingSttPartial?.text ||
+      (this.pendingSttPartial === null && text === this.lastSttPartialText)
+    ) {
+      return;
+    }
+
+    this.pendingSttPartial = {
+      text,
+      traceId: this.currentTraceId ?? this.mintTraceId("turn"),
+    };
+    const elapsedMs = this.now() - this.lastSttPartialSentAtMs;
+    if (elapsedMs >= STT_PARTIAL_EMIT_INTERVAL_MS) {
+      this.flushSttPartial();
+      return;
+    }
+
+    if (this.sttPartialTimer !== null) return;
+    this.sttPartialTimer = setTimeout(() => {
+      this.sttPartialTimer = null;
+      this.flushSttPartial();
+    }, STT_PARTIAL_EMIT_INTERVAL_MS - elapsedMs);
+  }
+
+  private flushSttPartial(): void {
+    if (this.sttPartialTimer !== null) {
+      clearTimeout(this.sttPartialTimer);
+      this.sttPartialTimer = null;
+    }
+    const partial = this.pendingSttPartial;
+    this.pendingSttPartial = null;
+    if (!partial || this.closed || partial.text === this.lastSttPartialText) {
+      return;
+    }
+    this.lastSttPartialText = partial.text;
+    this.lastSttPartialSentAtMs = this.now();
+    this.send({ t: "stt_partial", ...partial });
+  }
+
+  private resetSttPartialDelivery(): void {
+    if (this.sttPartialTimer !== null) {
+      clearTimeout(this.sttPartialTimer);
+      this.sttPartialTimer = null;
+    }
+    this.pendingSttPartial = null;
+    this.lastSttPartialText = "";
+    this.lastSttPartialSentAtMs = Number.NEGATIVE_INFINITY;
   }
 
   /** Authoritative user turn: mint the turn trace, run the LLM+TTS legs. */
@@ -653,6 +716,20 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       if (result.aborted) {
         // Interruption already handled the teardown of this turn's TTS.
         return;
+      }
+
+      if (result.viewHandoff) {
+        this.send({
+          t: "navigate_view",
+          viewId: result.viewHandoff.viewId,
+          ...(result.viewHandoff.viewPath
+            ? { viewPath: result.viewHandoff.viewPath }
+            : {}),
+          ...(result.viewHandoff.subview
+            ? { subview: result.viewHandoff.subview }
+            : {}),
+          traceId,
+        });
       }
 
       const tail = phrase.flush();
@@ -820,7 +897,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     } catch {
       this.meterWindowsInFlight = Math.max(0, this.meterWindowsInFlight - 1);
       // error-policy:J4 fail-closed degrade — if we cannot record the cost, we
-      // do not keep streaming uncapped paid audio to Deepgram; sever.
+      // do not keep streaming uncapped paid audio to Cartesia; sever.
       this.meteredExhausted = true;
       this.send({ t: "error", code: "metering_unavailable", retryable: false });
       this.teardown("error");
@@ -849,6 +926,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 
     // Invalidate any live turn so racing callbacks are dropped.
     this.currentVoiceTurnId = null;
+    this.resetSttPartialDelivery();
 
     if (this.ttsStream) {
       try {
@@ -868,7 +946,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         this.stt.cancel(reason);
       } catch {
         // error-policy:J6 best-effort teardown — cancel on an already-closed
-        // Flux socket must not abort the rest of teardown.
+        // Ink socket must not abort the rest of teardown.
       }
       this.stt = null;
     }

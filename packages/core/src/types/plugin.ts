@@ -1437,9 +1437,10 @@ export interface Plugin {
 	actions?: Action[];
 	providers?: Provider[];
 	/**
-	 * Pre-LLM action shortcuts (#8791): deterministic slash/`!` commands and
-	 * confidence-floored natural-language phrases that resolve to a target before
-	 * the first model call. Registered into the runtime's `ShortcutRegistry`.
+	 * Shortcut definitions (#8791), registered into the runtime's
+	 * `ShortcutRegistry`. The message service executes only explicit slash/`!`
+	 * protocol invocations before inference; natural definitions remain available
+	 * to caller-controlled discovery surfaces but never bypass the planner.
 	 */
 	shortcuts?: ShortcutDefinition[];
 	/**

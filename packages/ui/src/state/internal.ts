@@ -80,6 +80,7 @@ export {
   type LifecycleAction,
   type LoadConversationMessagesResult,
   type NavigationEventsApi,
+  type SetTabOptions,
   type ShellView,
   type SlashCommandInput,
   type StartupErrorReason,

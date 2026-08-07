@@ -31,7 +31,7 @@ export const financesPlugin: Plugin = {
       label: "Finances",
       description:
         "Owner finance dashboard — balance, transactions, recurring charges",
-      icon: "Wallet",
+      icon: "CircleDollarSign",
       path: "/finances",
       modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",

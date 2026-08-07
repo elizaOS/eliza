@@ -12,6 +12,16 @@ const ROUTES = [
   { path: "/login", url: /\/get-started$/ },
   { path: "/get-started", heading: /Anywhere you want her to be/i },
   { path: "/connected", url: /\/get-started$/ },
+  {
+    path: "/profile/edit",
+    url: /\/get-started\?returnTo=%2Fprofile%2Fedit$/,
+  },
+  // "*" is the App.tsx catch-all; exercised via a representative unknown path.
+  {
+    path: "*",
+    goto: "/this-page-does-not-exist",
+    heading: /This page doesn't exist/i,
+  },
 ] as const;
 
 const ALLOWED_CONSOLE_NOISE: RegExp[] = [
@@ -62,7 +72,8 @@ function collect(page: Page): Captured {
 
 async function expectCleanRoute(page: Page, route: (typeof ROUTES)[number]) {
   const captured = collect(page);
-  const response = await page.goto(route.path, {
+  const target = "goto" in route ? route.goto : route.path;
+  const response = await page.goto(target, {
     waitUntil: "domcontentloaded",
   });
   expect(response, `no response for ${route.path}`).not.toBeNull();

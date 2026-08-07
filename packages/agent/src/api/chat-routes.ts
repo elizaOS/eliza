@@ -34,6 +34,7 @@ import {
   isRateLimitError,
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Memory,
+  type MessageMetadata,
   ModelType,
   markInference,
   nextInferenceTurnId,
@@ -65,6 +66,7 @@ import {
   extractAssistantReplyText,
   isLinkedAccountProviderId,
   normalizeCharacterLanguage,
+  readAliasedEnv,
   resolveStreamingUpdate,
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
@@ -423,11 +425,15 @@ function readPositiveIntegerSetting(
 }
 
 function isAndroidLocalDirectChatRuntime(runtime: AgentRuntime): boolean {
-  const optOut = readRuntimeStringSetting(
+  const optIn = readRuntimeStringSetting(
     runtime,
     "ELIZA_MOBILE_LOCAL_DIRECT_REPLY",
   );
-  if (/^(0|false|no|off)$/i.test(optOut ?? "")) {
+  // A native device bridge says where capabilities execute, not which model
+  // owns conversation. Bypassing the full Eliza planner is therefore explicit
+  // opt-in; merely connecting an Android/iOS bridge must keep chat on the host
+  // runtime and its configured model providers.
+  if (!/^(1|true|yes|on)$/i.test(optIn ?? "")) {
     return false;
   }
   const platform =
@@ -1428,6 +1434,9 @@ const INSUFFICIENT_CREDITS_CHAT_REPLY = INSUFFICIENT_CREDITS_REPLY;
 // they retry, instead of the generic "provider issue" which reads as broken.
 const RATE_LIMITED_CHAT_REPLY =
   "I'm being rate-limited right now — give it a few seconds and try again.";
+/** Remote/large models can exceed the local default; distinguish from a broken provider. */
+const GENERATION_TIMEOUT_CHAT_REPLY =
+  "The model is taking too long to respond — it may still be loading. Wait a moment and try again.";
 // Used by paths #1-#3: planner picked IGNORE/NONE/empty REPLY, action ran but
 // emitted no text callback, or normalized text became empty. None of these are
 // provider failures, so the message must not blame the provider.
@@ -1450,6 +1459,11 @@ function isNoProviderError(err: unknown): boolean {
 const NO_PROVIDER_CHAT_MESSAGE =
   "Connect an LLM provider to start chatting. Open Settings → Providers, " +
   "or choose Eliza Cloud during first-run setup.";
+const DEFAULT_CHAT_GENERATION_TIMEOUT_MS = 180_000;
+/** Remote Ollama (Pi → VPS) runs multiple model calls per turn; allow more headroom. */
+const REMOTE_CHAT_GENERATION_TIMEOUT_MS = 600_000;
+const CHAT_GENERATION_TIMEOUT_PATTERN =
+  /chat generation timed out after \d+ms/i;
 const NON_EXECUTABLE_FALLBACK_ACTIONS = new Set(["REPLY", "NONE", "IGNORE"]);
 type SyntheticChatFailureKind =
   | ChatFailureKind
@@ -1483,6 +1497,9 @@ function classifySyntheticChatFailureText(
   }
   if (normalized === RATE_LIMITED_CHAT_REPLY.toLowerCase()) {
     return "rate_limited";
+  }
+  if (normalized === GENERATION_TIMEOUT_CHAT_REPLY.toLowerCase()) {
+    return "generation_timeout";
   }
   if (normalized === NO_PROVIDER_CHAT_MESSAGE.toLowerCase()) {
     return "no_provider";
@@ -1974,6 +1991,98 @@ function getProviderIssueChatReply(): string {
   return PROVIDER_ISSUE_CHAT_REPLY;
 }
 
+export function isChatGenerationTimeoutError(err: unknown): boolean {
+  const msg =
+    err instanceof Error ? err.message : typeof err === "string" ? err : "";
+  return CHAT_GENERATION_TIMEOUT_PATTERN.test(msg);
+}
+
+function isRemoteOllamaEndpointConfigured(): boolean {
+  const raw =
+    readAliasedEnv("OLLAMA_BASE_URL") ?? readAliasedEnv("OLLAMA_API_ENDPOINT");
+  if (!raw?.trim()) return false;
+  try {
+    const normalized = raw.trim().replace(/\/api\/?$/i, "");
+    const host = new URL(normalized).hostname.toLowerCase();
+    return host !== "localhost" && host !== "127.0.0.1" && host !== "::1";
+  } catch {
+    return false;
+  }
+}
+
+function resolveChatGenerationTimeoutMs(explicit?: number): number {
+  if (
+    typeof explicit === "number" &&
+    Number.isFinite(explicit) &&
+    explicit > 0
+  ) {
+    return Math.max(1, Math.floor(explicit));
+  }
+
+  const fromEnv = readAliasedEnv("ELIZA_CHAT_GENERATION_TIMEOUT_MS");
+  if (fromEnv) {
+    const parsed = Number.parseInt(fromEnv, 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return Math.max(1_000, parsed);
+    }
+  }
+
+  if (isRemoteOllamaEndpointConfigured()) {
+    return REMOTE_CHAT_GENERATION_TIMEOUT_MS;
+  }
+
+  return DEFAULT_CHAT_GENERATION_TIMEOUT_MS;
+}
+
+function createChatGenerationTimeoutError(timeoutMs: number): Error {
+  return new Error(`Chat generation timed out after ${timeoutMs}ms`);
+}
+
+/**
+ * Run a generation under a wall-clock deadline, cancelling it on expiry.
+ *
+ * Racing a bare promise against a timer would leave the model call running
+ * after the caller has already been told it failed — it would keep holding a
+ * provider slot and keep emitting `onChunk` into a turn nobody is reading. So
+ * the deadline drives a real `AbortSignal`, chained to any caller-supplied
+ * signal, and `run` receives the options with that signal substituted in.
+ */
+export async function runWithGenerationTimeout<T>(
+  timeoutMs: number,
+  createError: () => Error,
+  opts: ChatGenerateOptions | undefined,
+  run: (opts: ChatGenerateOptions | undefined) => Promise<T>,
+): Promise<T> {
+  const controller = new AbortController();
+  const callerSignal = opts?.abortSignal;
+  const abortFromCaller = () => controller.abort(callerSignal?.reason);
+
+  if (callerSignal?.aborted) {
+    abortFromCaller();
+  } else {
+    callerSignal?.addEventListener("abort", abortFromCaller, { once: true });
+  }
+
+  let timedOut = false;
+  const timeoutHandle = setTimeout(() => {
+    timedOut = true;
+    controller.abort(createError());
+  }, timeoutMs);
+
+  try {
+    return await run({ ...(opts ?? {}), abortSignal: controller.signal });
+  } catch (err) {
+    // error-policy:J2 the abort surfaces as whatever the generation threw on
+    // cancellation; re-key it to the typed deadline error so `classifyChatFailure`
+    // reports `generation_timeout` rather than a generic provider issue.
+    if (timedOut) throw createError();
+    throw err;
+  } finally {
+    clearTimeout(timeoutHandle);
+    callerSignal?.removeEventListener("abort", abortFromCaller);
+  }
+}
+
 export function getChatFailureReply(
   err: unknown,
   logBuffer: LogEntry[],
@@ -1990,6 +2099,9 @@ export function getChatFailureReply(
   // After credits (a 429 *with* billing is "top up"): a bare 429 is transient.
   if (isRateLimitError(err)) {
     return RATE_LIMITED_CHAT_REPLY;
+  }
+  if (isChatGenerationTimeoutError(err)) {
+    return GENERATION_TIMEOUT_CHAT_REPLY;
   }
   return getProviderIssueChatReply();
 }
@@ -2012,6 +2124,9 @@ export function classifyChatFailure(
   }
   if (isRateLimitError(err)) {
     return "rate_limited";
+  }
+  if (isChatGenerationTimeoutError(err)) {
+    return "generation_timeout";
   }
   return "provider_issue";
 }
@@ -2385,6 +2500,37 @@ export function writeSseJson(
 // Persistence helpers
 // ---------------------------------------------------------------------------
 
+function stampAppConversationProvenance(
+  runtime: AgentRuntime,
+  memory: ReturnType<typeof createMessageMemory>,
+): ReturnType<typeof createMessageMemory> {
+  if (!memory.id) {
+    throw new ElizaError("Conversation memory is missing its durable id", {
+      code: "CONVERSATION_MEMORY_ID_MISSING",
+      context: { roomId: memory.roomId },
+    });
+  }
+  const existingMetadata = memory.metadata as MessageMetadata;
+  const metadataRecord = existingMetadata as Record<string, unknown>;
+  const readMetadataString = (key: string): string | undefined => {
+    const value = metadataRecord[key];
+    return typeof value === "string" && value.trim() ? value : undefined;
+  };
+  const provider = readMetadataString("provider") ?? MESSAGE_SOURCE_CLIENT_CHAT;
+  const accountId = readMetadataString("accountId") ?? runtime.agentId;
+  const platformMessageId =
+    readMetadataString("platformMessageId") ?? memory.id;
+  memory.metadata = {
+    ...existingMetadata,
+    type: "message",
+    provider,
+    accountId,
+    platformMessageId,
+    sourceId: readMetadataString("sourceId") ?? platformMessageId,
+  } satisfies MessageMetadata;
+  return memory;
+}
+
 function isDuplicateMemoryError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   const msg = err.message.toLowerCase();
@@ -2399,13 +2545,15 @@ export async function persistConversationMemory(
   runtime: AgentRuntime,
   memory: ReturnType<typeof createMessageMemory>,
 ): Promise<ReturnType<typeof createMessageMemory>> {
+  memory.id ??= crypto.randomUUID() as UUID;
+  const stampedMemory = stampAppConversationProvenance(runtime, memory);
   try {
-    await runtime.createMemory(memory, "messages");
+    await runtime.createMemory(stampedMemory, "messages");
   } catch (err) {
-    if (isDuplicateMemoryError(err)) return memory;
+    if (isDuplicateMemoryError(err)) return stampedMemory;
     throw err;
   }
-  return memory;
+  return stampedMemory;
 }
 
 export async function persistExactConversationMemory(
@@ -2431,10 +2579,11 @@ export async function persistExactConversationMemoryResult(
       },
     );
   }
+  const stampedMemory = stampAppConversationProvenance(runtime, memory);
 
   const loadExisting = async (): Promise<Memory | null> => {
     const [existing] = await runtime.getMemoriesByIds(
-      [memory.id as UUID],
+      [stampedMemory.id as UUID],
       "messages",
     );
     return existing ?? null;
@@ -2443,11 +2592,11 @@ export async function persistExactConversationMemoryResult(
     existing: Memory,
   ): ReturnType<typeof createMessageMemory> => {
     if (
-      existing.id === memory.id &&
-      existing.roomId === memory.roomId &&
-      existing.agentId === memory.agentId &&
-      existing.entityId === memory.entityId &&
-      isDeepStrictEqual(existing.content, memory.content)
+      existing.id === stampedMemory.id &&
+      existing.roomId === stampedMemory.roomId &&
+      existing.agentId === stampedMemory.agentId &&
+      existing.entityId === stampedMemory.entityId &&
+      isDeepStrictEqual(existing.content, stampedMemory.content)
     ) {
       return existing as ReturnType<typeof createMessageMemory>;
     }
@@ -2456,10 +2605,10 @@ export async function persistExactConversationMemoryResult(
       {
         code: "CONVERSATION_MEMORY_ID_CONFLICT",
         context: {
-          memoryId: memory.id,
-          roomId: memory.roomId,
-          agentId: memory.agentId,
-          entityId: memory.entityId,
+          memoryId: stampedMemory.id,
+          roomId: stampedMemory.roomId,
+          agentId: stampedMemory.agentId,
+          entityId: stampedMemory.entityId,
         },
       },
     );
@@ -2469,15 +2618,18 @@ export async function persistExactConversationMemoryResult(
   if (existing) return { created: false, memory: assertExact(existing) };
 
   try {
-    await runtime.createMemory(memory, "messages");
-    return { created: true, memory };
+    await runtime.createMemory(stampedMemory, "messages");
+    return { created: true, memory: stampedMemory };
   } catch (cause) {
     const raced = await loadExisting();
     if (raced) return { created: false, memory: assertExact(raced) };
     throw new ElizaError("Failed to store exact conversation memory", {
       code: "CONVERSATION_MEMORY_WRITE_FAILED",
       cause,
-      context: { memoryId: memory.id, roomId: memory.roomId },
+      context: {
+        memoryId: stampedMemory.id,
+        roomId: stampedMemory.roomId,
+      },
     });
   }
 }
@@ -3775,11 +3927,17 @@ async function generateChatResponseWithTiming(
         ? (noResponseFallback ??
           (normalizedResponseText || responseText || "(no response)"))
         : normalizedResponseText;
-    const transcriptVisibility = resolveFinalTranscriptVisibility(
-      finalText,
-      result?.actionResults,
-      resultContentCandidates,
-    );
+    // A visible action callback and its internal terminal receipt can carry the
+    // same canonical text. The receipt stays out of the transcript, but it must
+    // not retroactively hide the callback that already owns the turn's response.
+    const transcriptVisibility =
+      visibleCallbackDeliveries > 0
+        ? undefined
+        : resolveFinalTranscriptVisibility(
+            finalText,
+            result?.actionResults,
+            resultContentCandidates,
+          );
 
     if (opts?.onChunk && !opts.onSnapshot) {
       const authoritativeText =
@@ -3949,13 +4107,15 @@ export async function generateChatResponse(
   agentName: string,
   opts?: ChatGenerateOptions,
 ): Promise<ChatGenerationResult> {
+  const timeoutMs = resolveChatGenerationTimeoutMs();
   const existingTimer = getInferenceTimer();
   if (existingTimer) {
-    const result = await generateChatResponseWithTiming(
-      runtime,
-      message,
-      agentName,
+    const result = await runWithGenerationTimeout(
+      timeoutMs,
+      () => createChatGenerationTimeoutError(timeoutMs),
       opts,
+      (timedOpts) =>
+        generateChatResponseWithTiming(runtime, message, agentName, timedOpts),
     );
     markInference(INFERENCE_MARKS.responseFinalized);
     return result;
@@ -3968,11 +4128,17 @@ export async function generateChatResponse(
   });
   return runWithInferenceTiming(timer, async () => {
     try {
-      const result = await generateChatResponseWithTiming(
-        runtime,
-        message,
-        agentName,
+      const result = await runWithGenerationTimeout(
+        timeoutMs,
+        () => createChatGenerationTimeoutError(timeoutMs),
         opts,
+        (timedOpts) =>
+          generateChatResponseWithTiming(
+            runtime,
+            message,
+            agentName,
+            timedOpts,
+          ),
       );
       markInference(INFERENCE_MARKS.responseFinalized);
       return result;

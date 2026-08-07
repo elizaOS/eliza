@@ -38,7 +38,6 @@ export interface VoiceRealtimeEnv {
   VOICE_REALTIME_USER_DAILY_MINUTES?: string;
   VOICE_REALTIME_MAX_SESSIONS?: string;
   CARTESIA_API_KEY?: string;
-  DEEPGRAM_API_KEY?: string;
 }
 
 const TRUEY = new Set(["1", "true", "yes", "on"]);

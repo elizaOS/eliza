@@ -493,9 +493,12 @@ export function resetTesseractProbe() {
  * Whole-page segmentation is the cheap first pass. When that pass is weak, a
  * bounded high-contrast upscale plus sparse-text segmentation gets one second
  * chance; this is particularly important for mobile screenshots whose labels
- * are only a dozen source pixels tall. The selected transcript, confidence,
- * every attempted transcript, and independent pixel-blank diagnostics remain
- * in the result so downstream gates never infer "blank" from OCR silence.
+ * are only a dozen source pixels tall. A semantic gate that finds required
+ * content missing may request that same bounded second pass with
+ * `alwaysTryFallback`; confidence alone cannot prove that the first transcript
+ * captured the labels under review. The selected transcript, confidence, every
+ * attempted transcript, and independent pixel-blank diagnostics remain in the
+ * result so downstream gates never infer "blank" from OCR silence.
  */
 export async function ocrImage(pngPath, opts = {}) {
   const engine = await resolveOcrEngine();
@@ -523,7 +526,10 @@ export async function ocrImage(pngPath, opts = {}) {
   const imageAnalysis = imageOutcome.value;
 
   const attempts = [buildOcrAttempt("auto", primaryRecognition)];
-  if (!isReliableOcrAttempt(attempts[0], confidenceFloor)) {
+  if (
+    opts.alwaysTryFallback === true ||
+    !isReliableOcrAttempt(attempts[0], confidenceFloor)
+  ) {
     const fallbackRecognition = await buildHighContrastOcrInput(pngPath)
       .then((fallbackInput) =>
         recognizeWithEngine(

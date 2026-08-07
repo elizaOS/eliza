@@ -33,7 +33,16 @@ import { warnMissingUpstash as warnMissingUpstashImpl } from "./bootstrap-warn-m
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const cloudRoot = resolve(scriptDir, "..", "..");
 const repoRoot = resolve(cloudRoot, "..");
-const rmRecursiveScript = join(cloudRoot, "rm-path-recursive.mjs");
+// The recursive-delete helper is a workspace-level script under
+// packages/scripts; packages/cloud has never carried its own copy, so
+// resolving it against cloudRoot spawned a missing module and turned every
+// cleanup into a hard failure at the end of a successful provisioning run.
+const rmRecursiveScript = resolve(
+  cloudRoot,
+  "..",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 
 const { values } = parseArgs({
   options: {

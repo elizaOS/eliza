@@ -1,17 +1,17 @@
 /**
  * Unit tests for `embedRecallQuery` + `aliasRecallQuery`: the embed returns the
- * vector on success, fails open to `null` on an embed error (never throwing
- * onto the reply path), and caches/dedupes identical normalized recall queries
- * within a turn (including across providers); the alias maps a rewritten
- * (document-augmented) prompt onto the clean prompt's cached or in-flight
- * vector so a rewrite never costs a second per-turn embed. Runs against
- * a real AgentRuntime with deterministic embedding API handlers registered
- * through the production model router.
+ * vector on success, distinguishes provider-owned capability-unavailable states
+ * from unexpected failures before populating RECENT_ERRORS/escalation, and
+ * caches/dedupes identical normalized recall queries within a turn (including
+ * across providers); the alias maps a rewritten (document-augmented) prompt
+ * onto the clean prompt's cached or in-flight vector so a rewrite never costs a
+ * second per-turn embed. Runs against a real AgentRuntime with deterministic
+ * embedding API handlers registered through the production model router.
  */
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";
-import { ModelType } from "../../types";
+import { EventType, ModelType } from "../../types";
 import { aliasRecallQuery, embedRecallQuery } from "./recall-embed.ts";
 
 const MSG_A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
@@ -19,6 +19,21 @@ const MSG_B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
 
 interface RuntimeMockOpts {
 	embed: (params: { text: string; signal?: AbortSignal }) => Promise<number[]>;
+}
+
+type LocalUnavailableReason =
+	| "backend_unavailable"
+	| "capability_unavailable"
+	| "invalid_input"
+	| "invalid_output";
+
+function localEmbeddingUnavailable(reason: LocalUnavailableReason): Error {
+	return Object.assign(new Error(`local embedding ${reason}`), {
+		code: "LOCAL_INFERENCE_UNAVAILABLE",
+		modelType: ModelType.TEXT_EMBEDDING,
+		provider: "eliza-local-inference",
+		reason,
+	});
 }
 
 function makeRuntime(opts: RuntimeMockOpts): {
@@ -78,7 +93,83 @@ describe("embedRecallQuery — resolve / fail-open", () => {
 			},
 		});
 		await expect(embedRecallQuery(runtime, "boom")).resolves.toBeNull();
+		expect(runtime.getRecentReportedErrors()).toMatchObject([
+			{
+				scope: "DocumentRecall.embedding",
+				code: "RECALL_EMBEDDING_FAILED",
+				context: { phase: "asynchronous" },
+			},
+		]);
 	});
+
+	test.each(["backend_unavailable", "capability_unavailable"] as const)(
+		"repeated typed %s states stay keyword-only without entering RECENT_ERRORS or escalation",
+		async (reason) => {
+			const { runtime, calls } = makeRuntime({
+				embed: async () => {
+					throw localEmbeddingUnavailable(reason);
+				},
+			});
+			const reportedCodes: string[] = [];
+			runtime.registerEvent(EventType.ERROR_REPORTED, async (payload) => {
+				reportedCodes.push(payload.code);
+			});
+
+			for (const query of ["first turn", "second turn", "third turn"]) {
+				await expect(embedRecallQuery(runtime, query)).resolves.toBeNull();
+				runtime.startRun();
+			}
+
+			expect(calls.count).toBe(3);
+			// RECENT_ERRORS reads this ring and owner escalation consumes the event;
+			// an expected provider capability state belongs in neither path.
+			expect(runtime.getRecentReportedErrors()).toEqual([]);
+			expect(reportedCodes).toEqual([]);
+		},
+	);
+
+	test.each(["invalid_input", "invalid_output"] as const)(
+		"repeated unexpected provider %s failures retain a stable diagnostic code and escalation events",
+		async (reason) => {
+			const { runtime, calls } = makeRuntime({
+				embed: async () => {
+					throw localEmbeddingUnavailable(reason);
+				},
+			});
+			const reportedCodes: string[] = [];
+			runtime.registerEvent(EventType.ERROR_REPORTED, async (payload) => {
+				reportedCodes.push(payload.code);
+			});
+
+			for (const query of ["first turn", "second turn", "third turn"]) {
+				await expect(embedRecallQuery(runtime, query)).resolves.toBeNull();
+				runtime.startRun();
+			}
+
+			expect(calls.count).toBe(3);
+			const reported = runtime.getRecentReportedErrors();
+			expect(reported).toHaveLength(3);
+			for (const entry of reported) {
+				expect(entry).toMatchObject({
+					code: "RECALL_EMBEDDING_FAILED",
+					context: {
+						phase: "asynchronous",
+						providerErrorCode: "LOCAL_INFERENCE_UNAVAILABLE",
+						modelType: ModelType.TEXT_EMBEDDING,
+						provider: "eliza-local-inference",
+						reason,
+					},
+				});
+			}
+			// Three stable ERROR_REPORTED events remain eligible for the agent's
+			// configured repeat-failure escalation threshold.
+			expect(reportedCodes).toEqual([
+				"RECALL_EMBEDDING_FAILED",
+				"RECALL_EMBEDDING_FAILED",
+				"RECALL_EMBEDDING_FAILED",
+			]);
+		},
+	);
 
 	test("propagates explicit turn cancellation instead of degrading it to a cache miss", async () => {
 		const controller = new AbortController();
@@ -122,6 +213,95 @@ describe("embedRecallQuery — resolve / fail-open", () => {
 			embed: async () => undefined as never,
 		});
 		await expect(embedRecallQuery(runtime, "boom")).resolves.toBeNull();
+	});
+
+	test.each(["backend_unavailable", "capability_unavailable"] as const)(
+		"expected local %s unavailability returns null without reportError",
+		async (reason) => {
+			const { runtime } = makeRuntime({
+				embed: async () => {
+					const err = new Error(`local embeddings: ${reason}`);
+					Object.assign(err, {
+						code: "LOCAL_INFERENCE_UNAVAILABLE",
+						modelType: ModelType.TEXT_EMBEDDING,
+						reason,
+					});
+					throw err;
+				},
+			});
+			const reportError = vi.spyOn(runtime, "reportError");
+			await expect(embedRecallQuery(runtime, "recall me")).resolves.toBeNull();
+			await expect(
+				embedRecallQuery(runtime, "recall me again"),
+			).resolves.toBeNull();
+			expect(reportError).not.toHaveBeenCalled();
+			reportError.mockRestore();
+		},
+	);
+
+	test.each(["invalid_input", "invalid_output"] as const)(
+		"LOCAL_INFERENCE_UNAVAILABLE %s still reports",
+		async (reason) => {
+			const { runtime } = makeRuntime({
+				embed: async () => {
+					const err = new Error(`local embeddings: ${reason}`);
+					Object.assign(err, {
+						code: "LOCAL_INFERENCE_UNAVAILABLE",
+						modelType: ModelType.TEXT_EMBEDDING,
+						reason,
+					});
+					throw err;
+				},
+			});
+			const reportError = vi.spyOn(runtime, "reportError");
+			await expect(embedRecallQuery(runtime, "bad input")).resolves.toBeNull();
+			expect(reportError).toHaveBeenCalledWith(
+				"DocumentRecall.embedding",
+				expect.objectContaining({
+					code: "RECALL_EMBEDDING_FAILED",
+				}),
+				expect.objectContaining({
+					phase: "asynchronous",
+					providerErrorCode: "LOCAL_INFERENCE_UNAVAILABLE",
+					modelType: ModelType.TEXT_EMBEDDING,
+					reason,
+				}),
+			);
+			reportError.mockRestore();
+		},
+	);
+
+	test("lookalike code with expected reason still reports", async () => {
+		const { runtime } = makeRuntime({
+			embed: async () => {
+				const err = new Error("lookalike");
+				Object.assign(err, {
+					code: "OTHER_UNAVAILABLE",
+					reason: "backend_unavailable",
+				});
+				throw err;
+			},
+		});
+		const reportError = vi.spyOn(runtime, "reportError");
+		await expect(embedRecallQuery(runtime, "lookalike")).resolves.toBeNull();
+		expect(reportError).toHaveBeenCalled();
+		reportError.mockRestore();
+	});
+
+	test("unknown embed failures still report", async () => {
+		const { runtime } = makeRuntime({
+			embed: async () => {
+				throw new Error("embeddings endpoint 500");
+			},
+		});
+		const reportError = vi.spyOn(runtime, "reportError");
+		await expect(embedRecallQuery(runtime, "boom")).resolves.toBeNull();
+		expect(reportError).toHaveBeenCalledWith(
+			"DocumentRecall.embedding",
+			expect.any(Error),
+			expect.objectContaining({ phase: "asynchronous" }),
+		);
+		reportError.mockRestore();
 	});
 });
 

@@ -151,6 +151,7 @@ interface RoutableCandidate {
 	provider: string;
 	priority: number;
 	handler: AnyHandler;
+	metadata?: { streamable?: boolean };
 }
 
 function slotToModelType(slot: AgentModelSlot): string | undefined {
@@ -209,6 +210,7 @@ function getRuntimeModelCandidates(
 				provider: string;
 				priority?: number;
 				handler: AnyHandler;
+				metadata?: { streamable?: boolean };
 			} =>
 				entry &&
 				typeof entry === "object" &&
@@ -221,6 +223,7 @@ function getRuntimeModelCandidates(
 			provider: entry.provider,
 			priority: typeof entry.priority === "number" ? entry.priority : 0,
 			handler: entry.handler,
+			metadata: entry.metadata,
 		}))
 		.sort((a, b) => b.priority - a.priority);
 }
@@ -407,7 +410,23 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 			policyEngine.recordPick(pick.provider, modelType);
 			const start = Date.now();
 			try {
-				const result = await pick.handler(runtime, params);
+				// The outer AgentRuntime owns TextStreamResult consumption and SSE
+				// delivery. Only providers that explicitly declare handler-callback
+				// streaming receive onStreamChunk through this direct router hop;
+				// otherwise a hosted provider can both call the callback and yield the
+				// same textStream chunk, duplicating every visible token.
+				const hasOuterStreamOwner =
+					typeof params === "object" &&
+					params !== null &&
+					"onStreamChunk" in params;
+				const providerParams =
+					pick.metadata?.streamable === true || !hasOuterStreamOwner
+						? params
+						: (() => {
+								const { onStreamChunk: _outerStreamOwner, ...rest } = params;
+								return rest;
+							})();
+				const result = await pick.handler(runtime, providerParams);
 				policyEngine.recordLatency(
 					pick.provider,
 					modelType,
@@ -493,6 +512,7 @@ export function installRouterHandler(
 			handler: AnyHandler,
 			provider: string,
 			priority?: number,
+			metadata?: { streamable?: boolean },
 		) => void;
 	};
 	if (typeof rt.registerModel !== "function") return;
@@ -507,6 +527,7 @@ export function installRouterHandler(
 			makeRouterHandler(slot),
 			ROUTER_PROVIDER,
 			ROUTER_PRIORITY,
+			{ streamable: true },
 		);
 	}
 }

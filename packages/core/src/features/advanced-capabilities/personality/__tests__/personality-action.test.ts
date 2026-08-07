@@ -16,6 +16,12 @@ import {
 	makeMessage,
 } from "./test-helpers.ts";
 
+describe("personalityAction — routing ownership", () => {
+	test("does not claim the current-turn STOP_TALKING simile owned by IGNORE", () => {
+		expect(personalityAction.similes).not.toContain("STOP_TALKING");
+	});
+});
+
 // Fixed sender entity for the `run` helper. Pass it as `owner` to makeFakeRuntime
 // when a test needs the sender treated as admin/owner (admin-only ops).
 const TEST_SENDER = "00000000-0000-4000-8000-0000000000ff" as never;

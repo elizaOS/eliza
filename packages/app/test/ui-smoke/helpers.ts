@@ -1827,6 +1827,25 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     });
   });
 
+  // The home composer probes the effective model route before deciding whether
+  // local text-model readiness applies (useHomeModelStatus). The keyless smoke
+  // stack answers 501, which the diagnostics guard treats as a failure. A fresh
+  // zero-key agent has no configured routing, so serve the canonical unrouted
+  // shape (no `activeChat`, empty targets).
+  await page.route("**/api/models/config", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        targets: { small: {}, large: {}, coding: {} },
+      }),
+    });
+  });
+
   // Slash-command catalog (chat composer) + custom-actions list — both are
   // shell-level GETs on the chat/home surface. The booted zero-key smoke stack
   // returns 501 (Not Implemented) for them, which the diagnostics guard treats

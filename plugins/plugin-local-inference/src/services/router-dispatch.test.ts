@@ -1,8 +1,11 @@
 /** Proves the router dispatches via runtime introspection rather than a prototype patch. Deterministic, fake runtime. */
 import {
-	type AgentRuntime,
+	AgentRuntime,
+	type Character,
 	type IAgentRuntime,
+	InMemoryDatabaseAdapter,
 	ModelType,
+	runWithStreamingContext,
 } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -88,5 +91,71 @@ describe("router dispatches via runtime introspection, not a prototype patch", (
 		const { router, runtime } = setup(providerHandler);
 
 		await expect(router(runtime, { prompt: "hi" })).rejects.toBe(boom);
+	});
+
+	it("passes scalar model parameters through without applying stream ownership", async () => {
+		const providerHandler = vi.fn(async (_runtime, params) => params);
+		const { router, runtime } = setup(providerHandler);
+
+		await expect(router(runtime, "embedding input" as never)).resolves.toBe(
+			"embedding input",
+		);
+		expect(providerHandler).toHaveBeenCalledWith(runtime, "embedding input");
+	});
+
+	it("delivers hosted TextStreamResult chunks exactly once through AgentRuntime", async () => {
+		const chunks = ["cloud ", "result"];
+		const providerHandler = vi.fn(
+			async (_runtime: IAgentRuntime, params: Record<string, unknown>) => ({
+				textStream: (async function* () {
+					for (const chunk of chunks) {
+						await (
+							params.onStreamChunk as
+								| ((value: string) => Promise<void> | void)
+								| undefined
+						)?.(chunk);
+						yield chunk;
+					}
+				})(),
+				text: Promise.resolve(chunks.join("")),
+				usage: Promise.resolve(undefined),
+				finishReason: Promise.resolve("stop"),
+			}),
+		);
+		const runtime = new AgentRuntime({
+			character: { name: "RouterStreamAgent", bio: "test" } as Character,
+			adapter: new InMemoryDatabaseAdapter(),
+			logLevel: "fatal",
+		});
+		runtime.registerModel(
+			ModelType.TEXT_LARGE,
+			providerHandler,
+			"test-cloud",
+			0,
+		);
+		installRouterHandler(runtime, {
+			skipSlots: [
+				"TEXT_SMALL",
+				"TEXT_EMBEDDING",
+				"TEXT_TO_SPEECH",
+				"TRANSCRIPTION",
+			],
+		});
+		const received: string[] = [];
+
+		const result = await runWithStreamingContext(
+			{
+				messageId: "router-stream-once",
+				onStreamChunk: (chunk) => received.push(chunk),
+			},
+			() => runtime.useModel(ModelType.TEXT_LARGE, { prompt: "hi" }),
+		);
+
+		expect(result).toBe(chunks.join(""));
+		expect(received).toEqual(chunks);
+		expect(providerHandler).toHaveBeenCalledTimes(1);
+		expect(providerHandler.mock.calls[0]?.[1]).not.toHaveProperty(
+			"onStreamChunk",
+		);
 	});
 });

@@ -159,8 +159,9 @@ describe("NotificationsHomeCenter render count (#14559)", () => {
     }
 
     // At most two renders establish the collapse gesture from the default-open
-    // shade. Every subsequent pointer sample is frame-coalesced DOM
-    // presentation work; memoized rows remain untouched.
+    // shade while its external-store snapshot settles. Subsequent pointer
+    // samples remain frame-coalesced DOM work; memoized rows stay untouched.
+    expect(listRenders).toBeGreaterThanOrEqual(1);
     expect(listRenders).toBeLessThanOrEqual(2);
     expect(rowRenders).toBe(0);
   });

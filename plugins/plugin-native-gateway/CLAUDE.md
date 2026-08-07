@@ -56,8 +56,8 @@ bun run --cwd plugins/plugin-native-gateway clean           # remove build outpu
 bun run --cwd plugins/plugin-native-gateway build           # build package artifacts
 bun run --cwd plugins/plugin-native-gateway build:docs      # generate docs and build artifacts
 bun run --cwd plugins/plugin-native-gateway typecheck       # TypeScript typecheck
-bun run --cwd plugins/plugin-native-gateway lint            # mutating Biome check plus native lint tail
-bun run --cwd plugins/plugin-native-gateway lint:check      # read-only Biome check plus native lint tail
+bun run --cwd plugins/plugin-native-gateway lint            # mutating Biome check plus SwiftLint on macOS
+bun run --cwd plugins/plugin-native-gateway lint:check      # read-only Biome check plus SwiftLint on macOS
 bun run --cwd plugins/plugin-native-gateway format          # write formatting
 bun run --cwd plugins/plugin-native-gateway format:check    # read-only formatting check
 bun run --cwd plugins/plugin-native-gateway test            # run package tests
@@ -65,8 +65,8 @@ bun run --cwd plugins/plugin-native-gateway prepublishOnly  # publish-time build
 bun run --cwd plugins/plugin-native-gateway watch           # watch TypeScript sources
 bun run --cwd plugins/plugin-native-gateway build:unlocked  # bun run clean && tsc && bunx rollup -c rollup.config.mjs
 bun run --cwd plugins/plugin-native-gateway docgen          # docgen --api GatewayPlugin --output-readme README.md --output-json dist/docs.json
-bun run --cwd plugins/plugin-native-gateway fmt             # bunx @biomejs/biome check --write --unsafe . && bash -c 'if command -v swiftlint >/dev/null 2>&1; then bun run swiftlint -- lint --fix; fi'
-bun run --cwd plugins/plugin-native-gateway swiftlint       # node-swiftlint
+bun run --cwd plugins/plugin-native-gateway fmt             # bunx @biomejs/biome check --write --unsafe . && bun run swiftlint -- lint --fix
+bun run --cwd plugins/plugin-native-gateway swiftlint       # node-swiftlint; exits successfully without running on non-macOS
 bun run --cwd plugins/plugin-native-gateway verify          # bun run verify:ios && bun run verify:android && bun run verify:web
 bun run --cwd plugins/plugin-native-gateway verify:android  # cd android && ./gradlew clean build test && cd ..
 bun run --cwd plugins/plugin-native-gateway verify:ios      # cd ios && pod install && xcodebuild -workspace Plugin.xcworkspace -scheme Plugin -destination generic/platform=iOS && cd ..
@@ -134,6 +134,7 @@ mDNS service type: `_eliza-gw._tcp` (local.) on iOS/Android; `_eliza-gw._tcp.` o
 - **iOS minimum deployment target:** iOS 15.0 (Swift 5.9). See `.podspec`.
 - **Android dependency:** OkHttp for WebSocket; coroutines (kotlinx.coroutines) for async ops.
 - **Build output:** `dist/esm/index.js` (ESM), `dist/plugin.cjs.js` (CJS), `dist/plugin.js` (IIFE for unpkg).
+- **SwiftLint is macOS-only.** The `node-swiftlint` package performs the platform guard and exits successfully without running SwiftLint on Linux or Windows, so package scripts can invoke the wrapper directly without Bash.
 - **`docgen` rewrites README.md.** Running `bun run build:docs` or `bun run docgen` regenerates README from JSDoc in `definitions.ts`. Manual edits to README may be overwritten.
 - See root `CLAUDE.md` for repo-wide conventions (logger-only, ESM, architecture rules, naming).
 

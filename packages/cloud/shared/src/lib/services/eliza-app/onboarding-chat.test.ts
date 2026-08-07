@@ -1,4 +1,7 @@
-// Exercises onboarding chat behavior with deterministic cloud-shared lib fixtures.
+/**
+ * Exercises onboarding chat behavior with deterministic cloud-shared fixtures,
+ * including trusted gateway continuations and authenticated identity matching.
+ */
 import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import * as realCloudBindings from "../../runtime/cloud-bindings";
 import type { OnboardingChatMessage, OnboardingSession } from "./onboarding-chat";
@@ -138,10 +141,175 @@ describe("runOnboardingChat", () => {
     );
     expect(result.loginUrl).not.toContain("platform%3A");
     expect(result.loginUrl).not.toContain("14155550123");
-    expect(result.reply).toContain("Connect Eliza Cloud here:");
+    expect(result.reply).toContain("connect your account here");
     expect(result.reply).toContain(result.loginUrl);
     expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
     expect(findOrCreateByPhone).not.toHaveBeenCalled();
+  });
+
+  test("requires Telegram OAuth when continuing a trusted Telegram session", async () => {
+    const result = await runOnboardingChat({
+      message: "My name is Sam",
+      platform: "telegram",
+      platformUserId: "123456789",
+      sessionId: "platform:telegram:123456789",
+      trustedPlatformIdentity: true,
+    });
+
+    const loginUrl = new URL(result.loginUrl);
+    expect(loginUrl.origin).toBe("https://app.elizacloud.ai");
+    expect(loginUrl.searchParams.get("method")).toBe("telegram");
+    expect(loginUrl.searchParams.get("link")).toBe("true");
+    expect(loginUrl.searchParams.get("onboardingSession")).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    );
+    expect(result.loginUrl).not.toContain("123456789");
+  });
+
+  test("rejects an authenticated continuation without the gateway Telegram identity", async () => {
+    const gatewayTurn = await runOnboardingChat({
+      message: "My name is Sam",
+      platform: "telegram",
+      platformUserId: "123456789",
+      sessionId: "platform:telegram:123456789",
+      trustedPlatformIdentity: true,
+    });
+
+    await expect(
+      runOnboardingChat({
+        sessionId: continuationToken(gatewayTurn),
+        platform: "web",
+        authenticatedUser: {
+          userId: "user-1",
+          organizationId: "org-1",
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "ONBOARDING_PLATFORM_IDENTITY_MISMATCH",
+    });
+    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
+  });
+
+  test("continues when the signed session matches the gateway Telegram identity", async () => {
+    const gatewayTurn = await runOnboardingChat({
+      message: "My name is Sam",
+      platform: "telegram",
+      platformUserId: "123456789",
+      sessionId: "platform:telegram:123456789",
+      trustedPlatformIdentity: true,
+    });
+    ensureElizaAppProvisioning.mockResolvedValue({
+      status: "pending",
+      agentId: null,
+      bridgeUrl: null,
+      sandbox: null,
+    });
+
+    const continued = await runOnboardingChat({
+      sessionId: continuationToken(gatewayTurn),
+      platform: "web",
+      authenticatedUser: {
+        userId: "user-1",
+        organizationId: "org-1",
+        telegramId: "123456789",
+      },
+    });
+
+    expect(continued.session.userId).toBe("user-1");
+    expect(continued.session.organizationId).toBe("org-1");
+    expect(ensureElizaAppProvisioning).toHaveBeenCalledWith({
+      userId: "user-1",
+      organizationId: "org-1",
+    });
+  });
+
+  test("discord login handoff carries a CTA and keeps the raw URL out of the text", async () => {
+    const result = await runOnboardingChat({
+      message: "call me Sam",
+      platform: "discord",
+      platformUserId: "discord-user-1",
+      sessionId: "platform:discord:discord-user-1",
+      trustedPlatformIdentity: true,
+    });
+
+    expect(result.requiresLogin).toBe(true);
+    expect(result.cta).toEqual({ label: "Connect", url: result.loginUrl });
+    // The button carries the URL; the message body must not repeat it.
+    expect(result.reply).not.toContain(result.loginUrl);
+    expect(result.reply).not.toContain("https://");
+    expect(result.reply).toContain("Sam");
+    expect(result.reply).toContain("$5");
+  });
+
+  test("discord handoff falls back to the inline-URL copy when the login URL cannot be a button (http scheme)", async () => {
+    cloudEnv = { ELIZA_ONBOARDING_APP_URL: "http://localhost:3000" };
+    const result = await runOnboardingChat({
+      message: "call me Sam",
+      platform: "discord",
+      platformUserId: "discord-user-http",
+      sessionId: "platform:discord:discord-user-http",
+      trustedPlatformIdentity: true,
+    });
+
+    expect(result.requiresLogin).toBe(true);
+    // No CTA: an http URL cannot ride a Discord link button. The copy must
+    // not say "tap below" at an affordance that will not render - the URL
+    // stays inline exactly like the no-button platforms.
+    expect(result.cta).toBeNull();
+    expect(result.reply).not.toContain("tap below");
+    expect(result.reply).toContain(result.loginUrl);
+  });
+
+  test("discord handoff falls back to the inline-URL copy when the login URL exceeds Discord's 512-char button bound", async () => {
+    cloudEnv = {
+      ELIZA_ONBOARDING_APP_URL: `https://example.com/${"a".repeat(520)}`,
+    };
+    const result = await runOnboardingChat({
+      message: "call me Sam",
+      platform: "discord",
+      platformUserId: "discord-user-long",
+      sessionId: "platform:discord:discord-user-long",
+      trustedPlatformIdentity: true,
+    });
+
+    expect(result.requiresLogin).toBe(true);
+    expect(result.cta).toBeNull();
+    expect(result.reply).not.toContain("tap below");
+    expect(result.reply).toContain(result.loginUrl);
+  });
+
+  test("phone login handoff keeps the inline URL and no CTA (no buttons on SMS)", async () => {
+    const result = await runOnboardingChat({
+      message: "call me Sam",
+      platform: "blooio",
+      platformUserId: "+14155550123",
+      sessionId: "platform:blooio:+14155550123",
+      trustedPlatformIdentity: true,
+    });
+
+    expect(result.requiresLogin).toBe(true);
+    expect(result.cta).toBeNull();
+    expect(result.reply).toContain(result.loginUrl);
+  });
+
+  test("discord greeting (no name yet) has no CTA", async () => {
+    getElizaAppProvisioningStatus.mockResolvedValue({
+      status: "none",
+      agentId: null,
+      bridgeUrl: null,
+      sandbox: null,
+    });
+    const result = await runOnboardingChat({
+      message: "hi, what is this?",
+      platform: "discord",
+      platformUserId: "discord-user-2",
+      sessionId: "platform:discord:discord-user-2",
+      trustedPlatformIdentity: true,
+    });
+
+    expect(result.session.name).toBeUndefined();
+    expect(result.cta).toBeNull();
+    expect(result.reply).toMatch(/what should I call you\?/i);
   });
 
   test("stays deterministic and model-free even when a Cerebras key is configured", async () => {
@@ -168,8 +336,8 @@ describe("runOnboardingChat", () => {
     expect(first.reply.replace(first.loginUrl, "<login>")).toBe(
       second.reply.replace(second.loginUrl, "<login>"),
     );
-    expect(first.reply).toContain("$5 free credit");
-    expect(first.reply.endsWith(`Connect Eliza Cloud here: ${first.loginUrl}`)).toBe(true);
+    expect(first.reply).toContain("$5");
+    expect(first.reply.endsWith(`on me: ${first.loginUrl}`)).toBe(true);
     expect(first.reply).not.toMatch(/[^\x09\x0A\x0D\x20-\x7E]/);
   });
 
@@ -235,7 +403,7 @@ describe("runOnboardingChat", () => {
       expect(result.session.agentId).toBe("agent-1");
       expect(result.session.launchUrl).toBe("https://app.elizacloud.ai/dashboard/agents/agent-1");
       expect(result.session.handoffCopiedAt).toBeTruthy();
-      expect(result.reply).toContain("copied this onboarding chat into its memory");
+      expect(result.reply).toContain("already knows everything from this chat");
       expect(launchManagedElizaAgent).toHaveBeenCalledWith({
         agentId: "agent-1",
         organizationId: "org-1",
@@ -553,7 +721,7 @@ describe("runOnboardingChat", () => {
       expect(second.session.name).toBe("Sam");
       expect(second.session.history).toHaveLength(4);
       for (const result of [first, second]) {
-        expect(result.reply).toContain(`Connect Eliza Cloud here: ${result.loginUrl}`);
+        expect(result.reply).toContain(`on me: ${result.loginUrl}`);
       }
     });
 
@@ -721,8 +889,8 @@ describe("runOnboardingChat", () => {
       });
       expect(result.provisioning.status).toBe("error");
       expect(result.handoffComplete).toBe(false);
-      expect(result.reply).toContain("control panel");
-      expect(result.reply).not.toContain("You're live");
+      expect(result.reply).toContain("dashboard");
+      expect(result.reply).not.toContain("agent is live");
       expect(result.reply.toLowerCase()).not.toContain("running");
     });
 
@@ -741,9 +909,9 @@ describe("runOnboardingChat", () => {
         trustedPlatformIdentity: true,
         authenticatedUser: { userId: "user-1", organizationId: "org-1" },
       });
-      expect(result.reply).toContain("provisioning now");
-      expect(result.reply).not.toContain("You're live");
-      expect(result.reply).not.toContain("copied");
+      expect(result.reply).toContain("spinning up now");
+      expect(result.reply).not.toContain("agent is live");
+      expect(result.reply).not.toContain("knows everything");
     });
 
     test("insufficient-credits reply is deterministic and points at billing", async () => {
@@ -764,17 +932,16 @@ describe("runOnboardingChat", () => {
       });
       expect(result.provisioning.status).toBe("insufficient_credits");
       expect(result.handoffComplete).toBe(false);
-      expect(result.reply).toContain("You're out of credits, Sam.");
+      expect(result.reply).toContain("you're out of credits, Sam");
       expect(result.reply).toContain("/dashboard/billing");
-      expect(result.reply).toContain("usage-based:");
-      expect(result.reply).not.toContain("You're live");
-      expect(result.reply).not.toContain("copied");
+      expect(result.reply).not.toContain("agent is live");
+      expect(result.reply).not.toContain("knows everything");
     });
 
     test("login-required fallback reply always ends with the exact login link", async () => {
       const result = await runTrustedPhoneTurn("My name is Sam");
       expect(result.requiresLogin).toBe(true);
-      expect(result.reply.endsWith(`Connect Eliza Cloud here: ${result.loginUrl}`)).toBe(true);
+      expect(result.reply.endsWith(`on me: ${result.loginUrl}`)).toBe(true);
     });
 
     test("a failed transcript handoff is retried on the next turn and copied exactly once", async () => {
@@ -808,8 +975,8 @@ describe("runOnboardingChat", () => {
         });
         expect(first.handoffComplete).toBe(false);
         expect(first.session.handoffCopiedAt).toBeUndefined();
-        expect(first.reply).toContain("finishing the handoff");
-        expect(first.reply).not.toContain("copied this onboarding chat");
+        expect(first.reply).toContain("finishing setup");
+        expect(first.reply).not.toContain("knows everything");
         expect(rememberCalls).toBe(1);
         const browserContinuation = continuationToken(first);
 

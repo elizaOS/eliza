@@ -11,4 +11,10 @@ import { smokeStoryModules } from "../../../../test/portable-stories";
 
 const modules = import.meta.glob("../*.stories.tsx", { eager: true });
 
-smokeStoryModules("primitive", modules, { minModules: 20 });
+smokeStoryModules("primitive", modules, {
+  minModules: 20,
+  expectCaughtError: [
+    "error-boundary/CaughtError",
+    "error-boundary/CustomLabels",
+  ],
+});

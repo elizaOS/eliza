@@ -453,6 +453,118 @@ function firstNumber(...values: unknown[]): number | undefined {
   return undefined;
 }
 
+/**
+ * Bounded retry for the cold-gateway "warming" 503 (first turn after idle).
+ *
+ * A cold Cloudflare Worker answers with 503 and a machine-readable warming
+ * code (`*_cache_warming`, or the generative ApiError retryable envelope)
+ * while it hydrates auth/billing caches under waitUntil — recovery is ~3s.
+ * That 503 is a retry-shortly signal, NOT a dead provider, but the runtime's
+ * useModel failover ladder classifies any thrown 503 as fallback-class and
+ * advances instantly, so one cold gateway spent the whole
+ * RESPONSE_HANDLER→TEXT_NANO→TEXT_SMALL→TEXT_LARGE ladder in ~500ms and the
+ * turn died. Retrying the SAME request here (inside the handler) keeps the
+ * ladder intact for real provider failures. The gate is structural — HTTP
+ * status + typed body code/flag — never message prose, so a genuinely dead
+ * provider (any other 503 body, or any non-503) still throws immediately.
+ * The schedule is bounded and sums past the measured ~3s recovery; a
+ * Retry-After header or `details.retryAfterSeconds` stretches an individual
+ * wait up to a hard cap but never adds attempts.
+ */
+const WARMING_RETRY_DELAYS_MS: readonly number[] = [250, 500, 1000, 1500];
+const WARMING_RETRY_MAX_WAIT_MS = 2_000;
+
+function parseJsonRecord(text: string): Record<string, unknown> | undefined {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    return isRecord(parsed) ? parsed : undefined;
+  } catch {
+    // error-policy:J3 a non-JSON error body is an explicit "not warming"
+    // predicate result; the caller surfaces the original HTTP failure.
+    return undefined;
+  }
+}
+
+/**
+ * True only for the gateway's explicit cache-warming 503 shape:
+ * `{ error: { code: "*_cache_warming" } }` (chat/completions, embeddings) or
+ * the generative ApiError envelope `{ code: "service_unavailable",
+ * details: { retryable: true } }`. Everything else — including provider-5xx
+ * mapped 503s (`api_error`, upstream codes) and `ai_not_configured` — is a
+ * real failure and must keep failing over promptly.
+ */
+export function isWarmingUnavailableResponse(status: number, bodyText: string): boolean {
+  if (status !== 503) return false;
+  const body = parseJsonRecord(bodyText);
+  if (!body) return false;
+  const errorCode = asRecord(body.error).code;
+  if (typeof errorCode === "string" && errorCode.endsWith("_cache_warming")) {
+    return true;
+  }
+  return body.code === "service_unavailable" && asRecord(body.details).retryable === true;
+}
+
+interface WarmingRetryState {
+  attempt: number;
+}
+
+/**
+ * Next backoff wait for a warming 503, or undefined when the response is not
+ * a warming 503 or the bounded budget is spent. Respects `Retry-After`
+ * (seconds) and the envelope's `retryAfterSeconds` when present, clamped to
+ * [scheduled delay, WARMING_RETRY_MAX_WAIT_MS] so the server can stretch a
+ * wait but never shrink the schedule below recovery or grow it unbounded.
+ */
+export function nextWarmingRetryDelayMs(
+  state: WarmingRetryState,
+  response: Response,
+  bodyText: string
+): number | undefined {
+  if (!isWarmingUnavailableResponse(response.status, bodyText)) return undefined;
+  if (state.attempt >= WARMING_RETRY_DELAYS_MS.length) return undefined;
+  const scheduled = WARMING_RETRY_DELAYS_MS[state.attempt];
+  state.attempt += 1;
+  const retryAfterSeconds = firstNumber(
+    response.headers.get("retry-after") ?? undefined,
+    asRecord(parseJsonRecord(bodyText)?.details).retryAfterSeconds
+  );
+  if (retryAfterSeconds === undefined || retryAfterSeconds < 0) return scheduled;
+  return Math.min(
+    Math.max(Math.round(retryAfterSeconds * 1000), scheduled),
+    WARMING_RETRY_MAX_WAIT_MS
+  );
+}
+
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Run a buffered cloud text round-trip under the shared concurrency cap,
+ * retrying in place while the gateway reports the structural warming 503.
+ * The permit is held only across each network attempt — body reads and
+ * backoff sleeps run unguarded. Returns the final response with its body
+ * already read so callers never double-consume it; non-warming failures and
+ * an exhausted budget return immediately for the caller's normal error path.
+ */
+export async function requestNativeWithWarmingRetry(
+  doRequest: () => Promise<Response>,
+  label: string
+): Promise<{ response: Response; bodyText: string }> {
+  const state: WarmingRetryState = { attempt: 0 };
+  for (;;) {
+    const response = await withNativeChatLimit(doRequest, label);
+    const bodyText = await response.text();
+    if (response.status !== 503) return { response, bodyText };
+    const delayMs = nextWarmingRetryDelayMs(state, response, bodyText);
+    if (delayMs === undefined) return { response, bodyText };
+    logger.warn(
+      `[ELIZAOS_CLOUD] cloud gateway is warming (503) on ${label}; retrying in ${delayMs}ms (attempt ${state.attempt}/${WARMING_RETRY_DELAYS_MS.length})`
+    );
+    await sleepMs(delayMs);
+  }
+}
+
 const NATIVE_TOOL_CALL_ERROR_CODE = "ELIZA_CLOUD_TOOL_CALL_INVALID";
 const NATIVE_STREAM_ERROR_CODE = "ELIZA_CLOUD_STREAM_INVALID";
 
@@ -1179,7 +1291,9 @@ async function generateTextWithModel(
   }
   // Same shared cerebras key as the /chat/completions route, so gate this
   // bare-prompt round-trip through the SAME limiter (parsing stays unguarded).
-  const response = await withNativeChatLimit(
+  // A cold gateway's warming 503 is retried in place instead of throwing into
+  // the runtime failover ladder (see requestNativeWithWarmingRetry).
+  const { response, bodyText: responseText } = await requestNativeWithWarmingRetry(
     () =>
       createCloudApiClient(runtime).requestRaw("POST", "/responses", {
         headers: responsesHeaders,
@@ -1188,7 +1302,6 @@ async function generateTextWithModel(
       }),
     "responses"
   );
-  const responseText = await response.text();
   let data: ResponsesApiResponse = {};
   if (responseText) {
     try {
@@ -1285,8 +1398,10 @@ export async function generateNativeChatCompletion(
   // semaphore the /responses route uses, so N simultaneous native cloud text
   // calls don't overrun the one shared cerebras key's concurrent limit (-> 429
   // -> retries -> 30-63s). The permit is held only across the network
-  // round-trip; the text()/JSON parse below runs unguarded.
-  const response = await withNativeChatLimit(
+  // round-trip; the text()/JSON parse below runs unguarded. A cold gateway's
+  // warming 503 is retried in place instead of throwing into the runtime
+  // failover ladder (see requestNativeWithWarmingRetry).
+  const { response, bodyText: responseText } = await requestNativeWithWarmingRetry(
     () =>
       createCloudApiClient(runtime).requestRaw("POST", "/chat/completions", {
         headers,
@@ -1295,7 +1410,6 @@ export async function generateNativeChatCompletion(
       }),
     "chat/completions"
   );
-  const responseText = await response.text();
   let data: ChatCompletionsResponse = {};
   if (responseText) {
     try {
@@ -1703,12 +1817,7 @@ export async function streamNativeChatCompletion(
   const signal = buildStreamAbortSignal(abortSignal, resolveTextTimeoutMs());
 
   const limiter = getNativeChatLimiter();
-  const waitStartedAt = Date.now();
-  await limiter.acquire();
-  recordInferenceSpan("cloud.semaphore-wait", Date.now() - waitStartedAt, {
-    route: "chat/completions:stream",
-  });
-  let permitReleased = false;
+  let permitReleased = true;
   const releasePermit = (): void => {
     if (!permitReleased) {
       permitReleased = true;
@@ -1716,16 +1825,50 @@ export async function streamNativeChatCompletion(
     }
   };
 
+  // Per-attempt permit: acquired before each round-trip, released across
+  // warming-retry sleeps so a cold gateway never starves concurrent calls.
+  // A warming 503's body is consumed for classification, so its terminal
+  // throw happens here; every other non-ok status leaves the body unread for
+  // the error path below.
+  const warmingRetryState: WarmingRetryState = { attempt: 0 };
   let response: Response;
-  try {
-    response = await createCloudApiClient(runtime).requestRaw("POST", "/chat/completions", {
-      headers,
-      json: requestBody,
-      ...(signal ? { signal } : {}),
+  for (;;) {
+    const waitStartedAt = Date.now();
+    await limiter.acquire();
+    permitReleased = false;
+    recordInferenceSpan("cloud.semaphore-wait", Date.now() - waitStartedAt, {
+      route: "chat/completions:stream",
     });
-  } catch (err) {
+    try {
+      response = await createCloudApiClient(runtime).requestRaw("POST", "/chat/completions", {
+        headers,
+        json: requestBody,
+        ...(signal ? { signal } : {}),
+      });
+    } catch (err) {
+      releasePermit();
+      throw err;
+    }
+    if (response.status !== 503) break;
+    const warmingBodyText = await response.text();
     releasePermit();
-    throw err;
+    const delayMs = nextWarmingRetryDelayMs(warmingRetryState, response, warmingBodyText);
+    if (delayMs === undefined || signal?.aborted) {
+      const errorBody = asRecord(parseJsonRecord(warmingBodyText)?.error);
+      const message =
+        firstString(errorBody.message) ?? `elizaOS Cloud error ${response.status}`;
+      const requestError = new Error(message) as Error & {
+        status?: number;
+        error?: unknown;
+      };
+      requestError.status = response.status;
+      if (Object.keys(errorBody).length > 0) requestError.error = errorBody;
+      throw requestError;
+    }
+    logger.warn(
+      `[ELIZAOS_CLOUD] cloud gateway is warming (503) on chat/completions:stream; retrying in ${delayMs}ms (attempt ${warmingRetryState.attempt}/${WARMING_RETRY_DELAYS_MS.length})`
+    );
+    await sleepMs(delayMs);
   }
 
   if (!response.ok) {

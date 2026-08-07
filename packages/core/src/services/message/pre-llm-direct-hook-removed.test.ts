@@ -205,6 +205,9 @@ describe("message service pre-LLM direct hook removed (#14715)", () => {
 			([modelType]) => modelType === ModelType.RESPONSE_HANDLER,
 		);
 		expect(responseHandlerCalls).toHaveLength(1);
+		expect(responseHandlerCalls[0]?.[1]).toEqual(
+			expect.objectContaining({ voiceOutput: "user-visible" }),
+		);
 		expect(result.didRespond).toBe(true);
 		expect(result.mode).toBe("simple");
 		expect(result.responseContent?.text).toBe(MODEL_REPLY);

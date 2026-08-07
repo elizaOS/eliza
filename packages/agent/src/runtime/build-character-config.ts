@@ -256,10 +256,18 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
   capabilityHints.push(
     "You have a persistent task manager and can create scheduled or one-off tasks when the user asks; do not claim you lack tasks, memory, persistence, or scheduling when those actions are available.",
   );
+  // Config can be rebuilt from a previously materialized Character during a
+  // runtime restart. Normalize these runtime-owned lines before appending so
+  // each rebuild is idempotent instead of growing the system prompt forever.
+  const systemWithoutCapabilityHints = systemPrompt
+    .split("\n")
+    .filter((line) => !capabilityHints.includes(line.trim()))
+    .join("\n")
+    .trim();
   const effectiveSystemPrompt =
     capabilityHints.length > 0
-      ? `${systemPrompt}\n\n${capabilityHints.join("\n")}`
-      : systemPrompt;
+      ? `${systemWithoutCapabilityHints}\n\n${capabilityHints.join("\n")}`
+      : systemWithoutCapabilityHints;
   const mergedSettings = {
     ...(agentEntry?.settings ?? {}),
     ...settings,

@@ -27,6 +27,7 @@ import {
 } from "../google-watch/index.js";
 import { CalendarServiceError } from "../internal/errors.js";
 import {
+  type CalendarRouteRateLimitKey,
   type CalendarRouteService,
   handleCalendarRoutes,
 } from "./calendar-routes.js";
@@ -35,16 +36,7 @@ import {
   type CalendarOwnerMutationGateway,
 } from "./mutation-gateway.js";
 
-type CalendarRateLimitKey =
-  | "google_webhook"
-  | "google_api_read"
-  | "google_api_write"
-  | "calendar_create"
-  | "calendar_update"
-  | "calendar_delete"
-  | "calendar_source_read"
-  | "calendar_source_write"
-  | "calendar_source_sync";
+type CalendarRateLimitKey = CalendarRouteRateLimitKey | "google_webhook";
 
 interface RateLimitConfig {
   maxRequests: number;
@@ -581,7 +573,7 @@ export function calendarRouteHandler(): LegacyRouteHandler {
         rateLimitRequest({
           runtime: agentRuntime,
           res: httpRes,
-          key: key as CalendarRateLimitKey,
+          key,
         }),
       json: (data, status) => sendJson(httpRes, data, status),
       readJsonBody: <T extends object>() =>

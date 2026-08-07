@@ -210,6 +210,12 @@ describe("real one-shot daemon entrypoint", () => {
     }));
     const drainNode = mock(async () => {});
     const drainIdle = mock(async () => ({ drained: ["warm-agent"] }));
+    const healthCheck = mock(async () => ({
+      probed: 2,
+      alive: 2,
+      reconciliation: {},
+      removed: [],
+    }));
     const replenish = mock(async () => ({
       created: ["warm-agent-next"],
       failed: [],
@@ -246,6 +252,7 @@ describe("real one-shot daemon entrypoint", () => {
 
     class OneShotWarmPoolManager {
       drainIdle = drainIdle;
+      healthCheck = healthCheck;
       replenish = replenish;
     }
 
@@ -420,6 +427,7 @@ describe("real one-shot daemon entrypoint", () => {
         expect(provisionNode).toHaveBeenCalledTimes(1);
         expect(drainNode).not.toHaveBeenCalled();
         expect(drainIdle).toHaveBeenCalledWith(configuredImage);
+        expect(healthCheck).toHaveBeenCalledTimes(1);
         expect(replenish).toHaveBeenCalledWith(configuredImage);
         expect(reconcileOrphanContainersOnNodes).toHaveBeenCalledTimes(1);
         expect(reconcileOrphanAppContainersOnNodes).toHaveBeenCalledTimes(1);

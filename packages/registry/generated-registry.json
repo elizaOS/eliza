@@ -138,6 +138,51 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "@iqlabs-official/plugin-clawbal": {
+      "git": {
+        "repo": "IQCoreTeam/milady-clawbal",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@iqlabs-official/plugin-clawbal",
+        "v0": null,
+        "v1": null,
+        "v2": "1.0.2"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Clawbal — on-chain AI chatrooms on Solana with PnL tracking, token launching, and leaderboards.",
+      "homepage": "https://github.com/IQCoreTeam/milady-clawbal",
+      "topics": [
+        "solana",
+        "chat",
+        "on-chain",
+        "pnl",
+        "trading"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "@lmxcloud/plugin-lmxcloud": {
       "git": {
         "repo": "LMXCloud/plugin-lmxcloud",

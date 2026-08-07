@@ -25,9 +25,9 @@
  * marked `requiredBootstrap`; everything else is opt-in-by-capability.
  *
  * A drift-guard test (`core-plugins-profile-metadata.test.ts`) asserts the
- * derived lists still match the historical membership and that exactly one
- * plugin is required bootstrap, so a future edit to the table that silently
- * changes a platform load set fails CI instead of shipping.
+ * intended derived membership and that exactly one plugin is required
+ * bootstrap, so a future edit that silently changes a platform load set fails
+ * CI instead of shipping.
  */
 
 /**
@@ -115,6 +115,8 @@ export const CORE_PLUGIN_PROFILE_METADATA: readonly CorePluginProfile[] = [
   { plugin: "@elizaos/plugin-task-coordinator", viewEveryPlatform: true },
   { plugin: "@elizaos/plugin-inbox", viewEveryPlatform: true },
   { plugin: "@elizaos/plugin-app-control", viewEveryPlatform: true },
+  { plugin: "@elizaos/plugin-notes", viewEveryPlatform: true },
+  { plugin: "@elizaos/plugin-calendar", viewEveryPlatform: true },
   // Privileged ElizaOS-Android overlay app plugins (system surfaces).
   { plugin: "@elizaos/plugin-wifi", aospCore: true },
   { plugin: "@elizaos/plugin-contacts", aospCore: true },
