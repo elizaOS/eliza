@@ -306,7 +306,7 @@ export interface RecordedTrajectoryMetrics {
 	totalCompletionTokens: number;
 	totalCacheReadTokens: number;
 	totalCacheCreationTokens: number;
-	totalReasoningTokens: number;
+	totalReasoningTokens?: number;
 	totalCostUsd: number;
 	plannerIterations: number;
 	toolCallsExecuted: number;
@@ -751,7 +751,9 @@ function applyMetricsForStage(
 		metrics.totalCacheReadTokens += stage.model.usage.cacheReadInputTokens ?? 0;
 		metrics.totalCacheCreationTokens +=
 			stage.model.usage.cacheCreationInputTokens ?? 0;
-		metrics.totalReasoningTokens += stage.model.usage.reasoningTokens ?? 0;
+		metrics.totalReasoningTokens =
+			(metrics.totalReasoningTokens ?? 0) +
+			(stage.model.usage.reasoningTokens ?? 0);
 	}
 	if (typeof stage.model?.costUsd === "number") {
 		metrics.totalCostUsd += stage.model.costUsd;
