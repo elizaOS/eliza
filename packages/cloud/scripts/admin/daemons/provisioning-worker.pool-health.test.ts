@@ -1,17 +1,10 @@
 /**
- * Daemon-phase test for the warm-pool HEALTH CHECK wiring.
+ * Verifies the daemon phase that drives ready warm-pool health checks.
  *
- * `WarmPoolManager.healthCheck()` is the only thing in the tree that probes a
- * READY pool entry and collects it when its container is gone, and it had no
- * live caller: the sole historical one was `/api/v1/cron/pool-health-check` on
- * the deprecated container-control-plane. Nothing else can see those rows — the
- * heartbeat sweep filters them out by execution tier, and the unclaimable
- * reconciler excludes rows that ARE ready — so a dead ready entry kept its node
- * slot indefinitely and made its node undrainable.
- *
- * The manager's own probe/destroy behaviour is pinned in the warm-pool suites;
- * what is under test here is that the daemon drives it, in the right order, and
- * stays error-isolated.
+ * Ready pool rows are outside both the shared-tier heartbeat sweep and the
+ * unclaimable-row reconciler. The manager's probe and teardown behavior is
+ * covered separately; this suite pins the daemon call, summary mapping, error
+ * propagation, and ordering before replenishment.
  */
 
 import { afterEach, describe, expect, mock, test } from "bun:test";

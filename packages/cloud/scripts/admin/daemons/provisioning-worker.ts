@@ -1059,26 +1059,14 @@ async function processPoolDrainIdleCycle(): Promise<PoolDrainSummary> {
 }
 
 /**
- * Probe every ready warm-pool entry and destroy the ones whose container is
- * gone. THIS IS THE MISSING CALLER, the same omission as `replenish` below and
- * with a worse consequence: `WarmPoolManager.healthCheck()` was reachable only
- * from `/api/v1/cron/pool-health-check` on the deprecated container-control-
- * plane, so nothing has probed a ready pool entry since that service stopped
- * being deployed.
+ * Probe ready warm-pool entries and destroy entries whose containers are gone.
  *
- * Nothing else can see those entries. The heartbeat sweep skips them —
- * `listRunning()` filters on `execution_tier != 'shared'` and `createPoolEntry`
- * never sets the tier, so every pool row defaults to `shared` while still
- * holding a real `node_id` and `container_name`. `reconcileUnclaimable` cannot
- * reach them either: its candidate query excludes rows that ARE ready. So a
- * ready pool entry whose container died stayed `running` forever, kept its slot,
- * counted against the node's allocation, and — because `findDrainCandidates`
- * treats any allocation as proof of a workload — made its node permanently
- * undrainable. Measured on production 2026-08-06: three autoscaled nodes empty
- * of containers, four such rows each, counted full for ten days.
- *
- * Runs BEFORE replenish so the refill decision sees the depth left after dead
- * entries are collected, and self-gates on `WARM_POOL_ENABLED`.
+ * Ready pool rows use the shared execution tier, so the agent heartbeat sweep
+ * skips them, while the unclaimable reconciler deliberately excludes rows that
+ * already satisfy the runtime-ready predicate. This phase is therefore the
+ * authoritative liveness sweep for ready pool containers. It runs after drain
+ * and before replenish so refill decisions use the surviving pool depth, and
+ * the manager self-gates on `WARM_POOL_ENABLED`.
  */
 export async function processPoolHealthCheckCycle(): Promise<PoolHealthCheckSummary> {
   const pool = await getWarmPoolManager();
