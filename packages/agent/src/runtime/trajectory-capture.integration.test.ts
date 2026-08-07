@@ -18,13 +18,19 @@ import path from "node:path";
 import {
   type Action,
   AgentRuntime,
+  ChannelType,
+  DefaultMessageService,
+  drainPostDeliveryTasks,
   executePlannedToolCall,
+  getTrajectoryContext,
   type Memory,
   ModelType,
   type Plugin,
+  type Provider,
   runWithTrajectoryContext,
   trajectoriesPlugin,
   tryHandleTrajectoryReadRoutes,
+  type UUID,
   withEvaluatorStep,
 } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -113,7 +119,7 @@ type TrajectoryEventHandler = (
 ) => Promise<void>;
 
 function trajectoryEventHandler(
-  event: "MESSAGE_RECEIVED" | "MESSAGE_SENT" | "RUN_ENDED",
+  event: "MESSAGE_RECEIVED" | "RUN_STARTED" | "MESSAGE_SENT" | "RUN_ENDED",
 ): TrajectoryEventHandler {
   const handlers = (
     trajectoriesPlugin.events as Record<string, TrajectoryEventHandler[]>
@@ -180,6 +186,30 @@ function llmCall(
     latencyMs: 12,
     promptTokens: 8,
     completionTokens: 4,
+  };
+}
+
+function directResponseEnvelope(replyText: string) {
+  return {
+    text: "",
+    toolCalls: [
+      {
+        id: "terminal-owner-response",
+        name: "HANDLE_RESPONSE",
+        arguments: {
+          shouldRespond: "RESPOND",
+          thought: "Direct answer.",
+          contexts: ["simple"],
+          intents: [],
+          candidateActionNames: [],
+          replyText,
+          facts: [],
+          relationships: [],
+          addressedTo: [],
+        },
+      },
+    ],
+    finishReason: "tool_calls",
   };
 }
 
@@ -881,10 +911,13 @@ describe("trajectory capture -> DB -> viewer", () => {
         });
       }
 
+      await trajectoryEventHandler("RUN_STARTED")({
+        runtime,
+        messageId: message.id,
+      });
       await trajectoryEventHandler("MESSAGE_SENT")({
         runtime,
         message,
-        trajectoryTerminalOwner: "run",
       });
       expect((await loadTrajectoryById(runtime, trajectoryId))?.status).toBe(
         "active",
@@ -1022,10 +1055,13 @@ describe("trajectory capture -> DB -> viewer", () => {
         ) {
           throw new Error(`Missing ${label} trajectory metadata`);
         }
+        await trajectoryEventHandler("RUN_STARTED")({
+          runtime,
+          messageId: message.id,
+        });
         await trajectoryEventHandler("MESSAGE_SENT")({
           runtime,
           message,
-          trajectoryTerminalOwner: "run",
         });
         let release!: () => void;
         let markStarted!: () => void;
@@ -1153,6 +1189,240 @@ describe("trajectory capture -> DB -> viewer", () => {
     });
     endSpy.mockRestore();
     reportError.mockRestore();
+  });
+
+  it("drains a real message-service post-turn provider and model before the PGlite terminal", async () => {
+    const logger = runtime.getService(
+      "trajectories",
+    ) as unknown as LifecycleTrajLogger;
+    const reportError = vi.spyOn(runtime, "reportError");
+    const reportCallStart = reportError.mock.calls.length;
+    const endSpy = vi.spyOn(logger, "endTrajectory");
+    let releaseModel!: () => void;
+    let markModelStarted!: () => void;
+    const modelGate = new Promise<void>((resolve) => {
+      releaseModel = resolve;
+    });
+    const modelStarted = new Promise<void>((resolve) => {
+      markModelStarted = resolve;
+    });
+    const providerName = `POST_TURN_TERMINAL_${crypto.randomUUID()}`;
+    const actionName = `POST_TURN_TERMINAL_ACTION_${crypto.randomUUID()}`;
+    const provider: Provider = {
+      name: providerName,
+      description: "Test-only post-turn context.",
+      private: true,
+      get: async () => ({
+        text: "post-turn provider context",
+        data: { proof: "provider-captured-before-terminal" },
+      }),
+    };
+    const afterAction: Action = {
+      name: actionName,
+      description: "Run gated post-turn telemetry.",
+      similes: [],
+      examples: [],
+      mode: "ALWAYS_AFTER",
+      validate: async () => true,
+      handler: async (actionRuntime, actionMessage) => {
+        const context = getTrajectoryContext();
+        expect(context?.purpose).toBe("evaluation");
+        await actionRuntime.composeState(
+          actionMessage,
+          [providerName],
+          true,
+          true,
+        );
+        await actionRuntime.useModel(ModelType.TEXT_LARGE, {
+          prompt: "Complete the gated post-turn diagnostic.",
+        });
+        return { success: true, text: "post-turn complete" };
+      },
+    };
+    runtime.registerProvider(provider);
+    runtime.registerAction(afterAction);
+    runtime.registerModel(
+      ModelType.TEXT_EMBEDDING,
+      async () => [0.1, 0.2, 0.3],
+      "terminal-owner-embedding",
+      10_000,
+    );
+    runtime.registerModel(
+      ModelType.RESPONSE_HANDLER,
+      async () => directResponseEnvelope("Delivery completed immediately."),
+      "terminal-owner-response",
+      10_000,
+    );
+    runtime.registerModel(
+      ModelType.TEXT_LARGE,
+      async () => {
+        markModelStarted();
+        await modelGate;
+        return "post-turn model complete";
+      },
+      "terminal-owner-post-turn",
+      10_000,
+    );
+
+    const entityId = crypto.randomUUID() as UUID;
+    const roomId = crypto.randomUUID() as UUID;
+    await runtime.ensureConnection({
+      entityId,
+      roomId,
+      worldId: crypto.randomUUID() as UUID,
+      userName: "Terminal Owner User",
+      name: "Terminal Owner User",
+      source: "client_chat",
+      type: ChannelType.DM,
+      channelId: `client_chat:${roomId}`,
+    });
+    const message = {
+      id: crypto.randomUUID() as UUID,
+      agentId: runtime.agentId,
+      entityId,
+      roomId,
+      createdAt: Date.now(),
+      content: {
+        text: "remember this real message-service terminal proof",
+        source: "client_chat",
+        channelType: "DM",
+      },
+    } as Memory;
+    const deliveries: string[] = [];
+    const service = new DefaultMessageService();
+
+    try {
+      const result = await service.handleMessage(
+        runtime,
+        message,
+        async (content) => {
+          if (content.text) deliveries.push(content.text);
+          return [];
+        },
+      );
+      await modelStarted;
+      expect(result.trajectoryTerminalOwner).toBe("run");
+      expect(deliveries).toContain("Delivery completed immediately.");
+
+      const metadata = asRecord(message.metadata);
+      const trajectoryId = metadata?.trajectoryId;
+      const parentStepId = metadata?.trajectoryStepId;
+      expect(typeof trajectoryId).toBe("string");
+      expect(typeof parentStepId).toBe("string");
+      if (
+        typeof trajectoryId !== "string" ||
+        typeof parentStepId !== "string"
+      ) {
+        throw new Error("Message service did not retain trajectory ownership");
+      }
+      await flushTrajectoryWrites(runtime, trajectoryId);
+      await logger.flushWriteQueue?.(trajectoryId);
+      const activeDetail = await logger.getTrajectoryDetail(trajectoryId);
+      const parentKind = activeDetail?.steps?.find(
+        (step) => step.stepId === parentStepId,
+      )?.kind;
+      expect((await loadTrajectoryById(runtime, trajectoryId))?.status).toBe(
+        "active",
+      );
+      expect(
+        endSpy.mock.calls.filter(([id]) => id === trajectoryId),
+      ).toHaveLength(0);
+
+      releaseModel();
+      await drainPostDeliveryTasks(runtime);
+      await flushTrajectoryWrites(runtime, trajectoryId);
+      await logger.flushWriteQueue?.(trajectoryId);
+
+      const detail = await logger.getTrajectoryDetail(trajectoryId);
+      const evaluatorSteps = (detail?.steps ?? []).filter(
+        (step) => step.evaluatorName === "post_turn",
+      );
+      expect(evaluatorSteps).toHaveLength(1);
+      expect(evaluatorSteps[0]).toMatchObject({
+        parentStepId,
+        kind: "evaluator",
+        llmCalls: expect.arrayContaining([
+          expect.objectContaining({
+            provider: "terminal-owner-post-turn",
+            purpose: "evaluation",
+          }),
+        ]),
+      });
+      expect(
+        detail?.steps?.flatMap((step) => step.providerAccesses ?? []),
+      ).toEqual(
+        expect.arrayContaining([expect.objectContaining({ providerName })]),
+      );
+      expect(
+        detail?.steps?.find((step) => step.stepId === parentStepId)?.kind,
+      ).toBe(parentKind);
+      expect(
+        endSpy.mock.calls.filter(([id]) => id === trajectoryId),
+      ).toHaveLength(1);
+      expect((await loadTrajectoryById(runtime, trajectoryId))?.status).toBe(
+        "completed",
+      );
+
+      const listRoute = await readRoute("/api/trajectories");
+      expect(listRoute.status).toBe(200);
+      expect(asRecord(listRoute.body)?.trajectories).toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: trajectoryId })]),
+      );
+      const detailRoute = await readRoute(`/api/trajectories/${trajectoryId}`);
+      expect(detailRoute.status).toBe(200);
+      expect(asRecord(detailRoute.body)?.llmCalls).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ provider: "terminal-owner-post-turn" }),
+        ]),
+      );
+      expect(asRecord(detailRoute.body)?.providerAccesses).toEqual(
+        expect.arrayContaining([expect.objectContaining({ providerName })]),
+      );
+
+      const evaluatorStepId = evaluatorSteps[0]?.stepId;
+      const orphanRows = await executeRawSql(
+        runtime,
+        `SELECT id FROM trajectories WHERE id = '${String(
+          evaluatorStepId,
+        ).replaceAll("'", "''")}'`,
+      );
+      expect(extractRows(orphanRows)).toEqual([]);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      await drainPostDeliveryTasks(runtime);
+      await flushTrajectoryWrites(runtime, trajectoryId);
+      expect(
+        reportError.mock.calls
+          .slice(reportCallStart)
+          .filter(([scope]) => scope === "TrajectoryStorage.lateCapture"),
+      ).toEqual([]);
+      expect(__getTrajectoryBridgeStateCountsForTests(runtime)).toEqual({
+        stepMappings: 0,
+        activeOwners: 0,
+      });
+    } finally {
+      const providerIndex = runtime.providers.indexOf(provider);
+      if (providerIndex >= 0) runtime.providers.splice(providerIndex, 1);
+      const actionIndex = runtime.actions.indexOf(afterAction);
+      if (actionIndex >= 0) runtime.actions.splice(actionIndex, 1);
+      for (const modelType of [
+        ModelType.TEXT_EMBEDDING,
+        ModelType.RESPONSE_HANDLER,
+        ModelType.TEXT_LARGE,
+      ]) {
+        const modelKey = String(modelType);
+        const registrations = runtime.models.get(modelKey);
+        if (!registrations) continue;
+        const retained = registrations.filter(
+          (registration) =>
+            !registration.provider.startsWith("terminal-owner-"),
+        );
+        if (retained.length === 0) runtime.models.delete(modelKey);
+        else runtime.models.set(modelKey, retained);
+      }
+      endSpy.mockRestore();
+      reportError.mockRestore();
+      releaseModel();
+    }
   });
 
   it("keeps dedicated steps authoritative for long captures, scripts, skills, evaluators, and exports", async () => {

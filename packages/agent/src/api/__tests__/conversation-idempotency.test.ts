@@ -121,6 +121,7 @@ function createMockRes(): {
 interface TestHarness {
   state: ConversationRouteState;
   handleMessage: ReturnType<typeof vi.fn>;
+  emitEvent: ReturnType<typeof vi.fn>;
   createMemory: ReturnType<typeof vi.fn>;
   storedMemories: Memory[];
   deleteManyMemories: ReturnType<typeof vi.fn>;
@@ -176,6 +177,7 @@ function createHarness(
     }
   });
   const deleteRoom = vi.fn(async () => undefined);
+  const emitEvent = vi.fn(async () => undefined);
   const runtime = {
     agentId: AGENT_ID,
     character: {
@@ -186,7 +188,7 @@ function createHarness(
     actions: [],
     plugins: [],
     logger,
-    emitEvent: vi.fn(async () => undefined),
+    emitEvent,
     getService: vi.fn(() => null),
     getServicesByType: vi.fn(() => []),
     drainChatPreHandlers: vi.fn(async () => null),
@@ -255,6 +257,7 @@ function createHarness(
   return {
     state,
     handleMessage,
+    emitEvent,
     createMemory,
     storedMemories,
     deleteManyMemories,
@@ -404,7 +407,7 @@ describe("conversation-route chat idempotency wiring", () => {
   });
 
   it("SSE: first send runs the turn; a retry after delivery returns the persisted first reply", async () => {
-    const { state, handleMessage, createMemory } = createHarness();
+    const { state, handleMessage, emitEvent, createMemory } = createHarness();
     const body = { text: "hello", clientMessageId: "sse-retry-1" };
 
     const first = await runRoute("POST", STREAM_PATH, state, body);
@@ -415,6 +418,15 @@ describe("conversation-route chat idempotency wiring", () => {
       (f) => f.type === "done",
     );
     expect(firstDone?.fullText).toBe("ok");
+    const deliveryOnlyPayloads = emitEvent.mock.calls
+      .filter(([event]) => event === "MESSAGE_SENT")
+      .map(([, payload]) => payload as Record<string, unknown>);
+    expect(deliveryOnlyPayloads).not.toHaveLength(0);
+    expect(
+      deliveryOnlyPayloads.every(
+        (payload) => payload.trajectoryTerminalOwner === undefined,
+      ),
+    ).toBe(true);
 
     // Network-blip auto-retry: same conversation, same clientMessageId.
     const second = await runRoute("POST", STREAM_PATH, state, body);
@@ -976,7 +988,7 @@ describe("conversation-route chat idempotency wiring", () => {
   ])(
     "SSE: a receipt-backed planner action survives a post-commit $failure",
     async ({ failure, abortTransport }) => {
-      const { state, handleMessage, createMemory } = createHarness();
+      const { state, handleMessage, emitEvent, createMemory } = createHarness();
       let releaseAfterCommit: (() => void) | undefined;
       const afterCommitGate = new Promise<void>((resolve) => {
         releaseAfterCommit = resolve;
@@ -1041,8 +1053,10 @@ describe("conversation-route chat idempotency wiring", () => {
           options?: {
             abortSignal?: AbortSignal;
             onSettledActionResult?: (result: unknown) => void;
+            onTrajectoryTerminalOwner?: (owner: "run") => void;
           },
         ) => {
+          options?.onTrajectoryTerminalOwner?.("run");
           await executePlannedToolCall(
             runtime,
             {
@@ -1076,6 +1090,15 @@ describe("conversation-route chat idempotency wiring", () => {
         releaseAfterCommit?.();
       });
       const persistsAfterDisconnect = createMemory.mock.calls.length;
+
+      if (!abortTransport) {
+        const messageSentPayloads = emitEvent.mock.calls
+          .filter(([event]) => event === "MESSAGE_SENT")
+          .map(([, payload]) => payload as Record<string, unknown>);
+        expect(messageSentPayloads).toContainEqual(
+          expect.objectContaining({ trajectoryTerminalOwner: "run" }),
+        );
+      }
 
       const retry = await runRoute("POST", STREAM_PATH, state, body);
       expect(actionHandler).toHaveBeenCalledTimes(1);

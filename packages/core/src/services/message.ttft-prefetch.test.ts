@@ -189,6 +189,87 @@ describe("recall-query embed prefetch (per-turn cache warm)", () => {
 		});
 	});
 
+	it("publishes run-terminal ownership synchronously and on the returned result", async () => {
+		const { runtime } = makeRuntime();
+		const service = new DefaultMessageService();
+		const owners: string[] = [];
+
+		const result = await service.handleMessage(
+			runtime,
+			userMessage("keep this run open through detached model captures"),
+			undefined,
+			{ onTrajectoryTerminalOwner: (owner) => owners.push(owner) },
+		);
+
+		expect(owners).toEqual(["run"]);
+		expect(result.trajectoryTerminalOwner).toBe("run");
+		await drainPostDeliveryTasks(runtime);
+	});
+
+	it("waits for the recall prefetch before RUN_ENDED without delaying delivery", async () => {
+		let releaseEmbed!: (vector: number[]) => void;
+		let markEmbedStarted!: () => void;
+		const embedStarted = new Promise<void>((resolve) => {
+			markEmbedStarted = resolve;
+		});
+		const events: string[] = [];
+		const { runtime } = makeRuntime({
+			embedImpl: () => {
+				markEmbedStarted();
+				return new Promise<number[]>((resolve) => {
+					releaseEmbed = resolve;
+				});
+			},
+			onEvent: (event) => events.push(event),
+		});
+		const service = new DefaultMessageService();
+
+		const result = await service.handleMessage(
+			runtime,
+			userMessage("warm recall without extending delivery latency"),
+		);
+		await embedStarted;
+		expect(result.trajectoryTerminalOwner).toBe("run");
+		expect(events).not.toContain(EventType.RUN_ENDED);
+
+		releaseEmbed(WARM_VECTOR);
+		await drainPostDeliveryTasks(runtime);
+		expect(
+			events.filter((event) => event === EventType.RUN_ENDED),
+		).toHaveLength(1);
+	});
+
+	it("emits one error terminal when a RUN_STARTED listener rejects", async () => {
+		const listenerError = new Error("RUN_STARTED listener rejected");
+		const owners: string[] = [];
+		const terminalPayloads: Array<Record<string, unknown>> = [];
+		const { runtime } = makeRuntime({
+			onEvent: (event, payload) => {
+				if (event === EventType.RUN_STARTED) throw listenerError;
+				if (event === EventType.RUN_ENDED) {
+					terminalPayloads.push(payload as Record<string, unknown>);
+				}
+			},
+		});
+		const service = new DefaultMessageService();
+
+		await expect(
+			service.handleMessage(
+				runtime,
+				userMessage("fail after the run becomes observable"),
+				undefined,
+				{ onTrajectoryTerminalOwner: (owner) => owners.push(owner) },
+			),
+		).rejects.toBe(listenerError);
+		expect(owners).toEqual(["run"]);
+		await drainPostDeliveryTasks(runtime);
+		expect(terminalPayloads).toHaveLength(1);
+		expect(terminalPayloads[0]).toMatchObject({
+			status: "error",
+			error: listenerError,
+		});
+	});
+
 	it("warms the cache entry the compose-time recall providers hit (same seam, normalized key)", async () => {
 		const { runtime, useModel } = makeRuntime();
 		const service = new DefaultMessageService();
@@ -354,6 +435,35 @@ describe("incoming-hook text rewrite shares the prefetch embed (security envelop
 });
 
 describe("post-turn evaluation detachment", () => {
+	it("emits one error terminal when the delivery callback rejects", async () => {
+		const deliveryError = new Error("connector egress rejected");
+		const terminalPayloads: Array<Record<string, unknown>> = [];
+		const { runtime } = makeRuntime({
+			onEvent: (event, payload) => {
+				if (event === EventType.RUN_ENDED) {
+					terminalPayloads.push(payload as Record<string, unknown>);
+				}
+			},
+		});
+		const service = new DefaultMessageService();
+
+		await expect(
+			service.handleMessage(
+				runtime,
+				userMessage("deliver through a failing connector boundary"),
+				async () => {
+					throw deliveryError;
+				},
+			),
+		).rejects.toBe(deliveryError);
+		await drainPostDeliveryTasks(runtime);
+		expect(terminalPayloads).toHaveLength(1);
+		expect(terminalPayloads[0]).toMatchObject({
+			status: "error",
+			error: deliveryError,
+		});
+	});
+
 	it("lets a connector await handleMessage without waiting for post-turn evaluation", async () => {
 		const { runtime } = makeRuntime();
 		let releaseEvaluator: (() => void) | undefined;
@@ -503,7 +613,7 @@ describe("post-turn evaluation detachment", () => {
 		).toHaveLength(1);
 	});
 
-	it("terminalizes in finally when post-turn work fails", async () => {
+	it("terminalizes after failed post-turn work settles", async () => {
 		const postTurnError = new Error("ALWAYS_AFTER failed");
 		const trajectoryLogger = {
 			isEnabled: () => true,
