@@ -3237,7 +3237,7 @@ export const INVALID_TRACER_PROVIDER = {};
     proxy: {
       ...(localVoiceGatewayPort
         ? {
-            "/api/v1/voice/session": {
+            "/api/v1/voice": {
               target: `http://127.0.0.1:${localVoiceGatewayPort}`,
               changeOrigin: true,
               xfwd: true,

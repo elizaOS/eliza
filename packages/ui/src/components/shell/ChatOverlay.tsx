@@ -74,7 +74,6 @@ import {
 import { useLoadOlderOnScroll } from "../../hooks/useLoadOlderOnScroll";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
-import { tabFromPath } from "../../navigation";
 import { claimAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
 import { isIOS, isNative, isStandalonePwa } from "../../platform/init";
 import {
@@ -1400,6 +1399,26 @@ export function ChatOverlay({
     setChatReplyTarget,
   } = useChatComposerOrLocal();
   const activeConversationId = conversationNav.activeId;
+  const sentMessageHistory = React.useMemo(
+    () =>
+      messages.flatMap((message) => {
+        const content = message.content.trim();
+        return message.role === "user" && content ? [content] : [];
+      }),
+    [messages],
+  );
+  const messageHistoryCursorRef = React.useRef<number | null>(null);
+  const messageHistoryDraftRef = React.useRef("");
+  const resetMessageHistory = React.useCallback(() => {
+    messageHistoryCursorRef.current = null;
+    messageHistoryDraftRef.current = "";
+  }, []);
+  const messageHistoryConversationRef = React.useRef(activeConversationId);
+  React.useEffect(() => {
+    if (messageHistoryConversationRef.current === activeConversationId) return;
+    messageHistoryConversationRef.current = activeConversationId;
+    resetMessageHistory();
+  }, [activeConversationId, resetMessageHistory]);
   // Live handle to the draft for callbacks that must read the current text
   // without subscribing (dictation append), same pattern as messagesRef above.
   const draftRef = React.useRef(draft);
@@ -1757,7 +1776,7 @@ export function ChatOverlay({
   }, []);
   const [imageError, setImageError] = React.useState<string | null>(null);
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
-  const preserveFocusOnAgentNavigationRef = React.useRef<string | null>(null);
+  const preserveComposerFocusUntilRef = React.useRef(0);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const overlayRef = React.useRef<HTMLDivElement>(null);
   const panelRef = React.useRef<HTMLFieldSetElement>(null);
@@ -2422,6 +2441,7 @@ export function ChatOverlay({
       // synthetic draft entry point that reaches submit, and keep setup choice
       // handling inside the transcript widgets.
       if (firstRunOpen) {
+        resetMessageHistory();
         setDraft("");
         setSlashDismissed(false);
         setPendingImages([]);
@@ -2435,6 +2455,7 @@ export function ChatOverlay({
       // canSend gate because the tour is fully client-side and must work with
       // the agent stopped.
       if (trimmed && images.length === 0 && tryHandleTutorialText(trimmed)) {
+        resetMessageHistory();
         clearChatDraft(activeConversationIdRef.current);
         setDraft("");
         setSlashDismissed(false);
@@ -2445,6 +2466,7 @@ export function ChatOverlay({
       }
       // Post-onboarding: a stopped agent can't take a turn.
       if (!canSend) return;
+      resetMessageHistory();
       // Successful submit: drop the persisted draft for this conversation NOW
       // (not just via the debounced persist of the now-empty draft) so a reload
       // in the debounce window can't restore an already-sent draft.
@@ -2495,7 +2517,15 @@ export function ChatOverlay({
       detentHaptic();
       inputRef.current?.focus();
     },
-    [canSend, firstRunOpen, send, setDraft, setPendingImages, viewChatBinding],
+    [
+      canSend,
+      firstRunOpen,
+      resetMessageHistory,
+      send,
+      setDraft,
+      setPendingImages,
+      viewChatBinding,
+    ],
   );
 
   const finishTranscription = React.useCallback(async () => {
@@ -3743,33 +3773,32 @@ export function ChatOverlay({
     if (preFocusCollapsedRef.current) collapse();
   }, [collapse]);
 
-  // A chat-command navigation is different from a direct tile/tab navigation:
-  // the user just pressed Enter and should be able to keep typing. Capture that
-  // one transition before App updates currentTab; the blur effect below consumes
-  // the lease. Direct navigation carries no agent source and keeps the existing
-  // iOS keyboard cleanup.
+  // View navigation changes the canvas underneath this persistent composer; it
+  // is not a chat dismissal. Preserve an actively focused input through the
+  // route commit even when a plugin view maps its view id onto the generic
+  // `views` tab. Explicit close/open-window actions retain their own focus
+  // ownership instead.
   React.useEffect(() => {
     if (typeof window === "undefined") return undefined;
     const preserveFocusedComposer = (event: Event) => {
       const detail = (event as CustomEvent<NavigateViewDetail>).detail;
       const action = detail?.action;
-      const targetTab =
-        action === "close" || action === "close-all" || action === "open-window"
-          ? null
-          : action === "split-view" || action === "tile-views"
-            ? "views"
-            : detail?.viewId && detail.viewPath === `/${detail.viewId}`
-              ? detail.viewId
-              : detail?.viewPath
-                ? (tabFromPath(detail.viewPath) ?? detail.viewId ?? null)
-                : (detail?.viewId ?? null);
-      preserveFocusOnAgentNavigationRef.current =
-        detail?.source === "agent" &&
-        targetTab !== null &&
+      const staysInShell =
+        action !== "close" &&
+        action !== "close-all" &&
+        action !== "open-window";
+      const shouldPreserve =
+        staysInShell &&
         typeof document !== "undefined" &&
-        document.activeElement === inputRef.current
-          ? targetTab
-          : null;
+        document.activeElement === inputRef.current;
+      preserveComposerFocusUntilRef.current = shouldPreserve
+        ? performance.now() + 1000
+        : 0;
+      if (shouldPreserve) {
+        window.requestAnimationFrame(() => {
+          inputRef.current?.focus({ preventScroll: true });
+        });
+      }
     };
     window.addEventListener(NAVIGATE_VIEW_EVENT, preserveFocusedComposer);
     return () =>
@@ -3788,12 +3817,12 @@ export function ChatOverlay({
   // accessory bar, not just the soft keyboard.
   React.useEffect(() => {
     if (currentTab === "chat") {
-      preserveFocusOnAgentNavigationRef.current = null;
+      preserveComposerFocusUntilRef.current = 0;
       return;
     }
     const preserveFocus =
-      preserveFocusOnAgentNavigationRef.current === currentTab;
-    preserveFocusOnAgentNavigationRef.current = null;
+      preserveComposerFocusUntilRef.current >= performance.now();
+    preserveComposerFocusUntilRef.current = 0;
     const input = inputRef.current;
     if (
       typeof document === "undefined" ||
@@ -4191,11 +4220,69 @@ export function ChatOverlay({
     [slashMenu, runExecution],
   );
 
+  const cycleMessageHistory = React.useCallback(
+    (
+      direction: -1 | 1,
+      event: React.KeyboardEvent<HTMLTextAreaElement>,
+    ): boolean => {
+      if (
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.shiftKey ||
+        event.nativeEvent.isComposing ||
+        event.currentTarget.selectionStart !==
+          event.currentTarget.selectionEnd ||
+        sentMessageHistory.length === 0
+      ) {
+        return false;
+      }
+
+      const cursor = messageHistoryCursorRef.current;
+      if (cursor === null) {
+        if (direction > 0) return false;
+        const firstLineEnd = draft.indexOf("\n");
+        if (
+          firstLineEnd >= 0 &&
+          event.currentTarget.selectionStart > firstLineEnd
+        ) {
+          return false;
+        }
+        messageHistoryDraftRef.current = draft;
+        messageHistoryCursorRef.current = sentMessageHistory.length - 1;
+      } else if (direction < 0) {
+        messageHistoryCursorRef.current = Math.max(0, cursor - 1);
+      } else if (cursor < sentMessageHistory.length - 1) {
+        messageHistoryCursorRef.current = cursor + 1;
+      } else {
+        messageHistoryCursorRef.current = null;
+        setDraft(messageHistoryDraftRef.current);
+        return true;
+      }
+
+      const nextCursor = messageHistoryCursorRef.current;
+      if (nextCursor === null) return false;
+      const next = sentMessageHistory[nextCursor];
+      if (next === undefined) {
+        resetMessageHistory();
+        return false;
+      }
+      setDraft(next);
+      window.requestAnimationFrame(() => {
+        inputRef.current?.setSelectionRange(next.length, next.length);
+      });
+      return true;
+    },
+    [draft, resetMessageHistory, sentMessageHistory, setDraft],
+  );
+
   // The shared composer-core keydown: IME-commit guard (#9148) → slash-menu
-  // interception → Enter sends → Escape collapses the open sheet. The slash
-  // binding adapts the overlay's menu/executor onto the core's key contract.
+  // interception → sent-message history → Enter sends → Escape collapses the
+  // open sheet. The slash binding adapts the overlay's menu/executor onto the
+  // core's key contract.
   const handleComposerKeyDown = useComposerKeydown<HTMLTextAreaElement>({
     onSend: submit,
+    onHistory: cycleMessageHistory,
     slash: {
       open: slashOpen,
       move: (delta) => slashMenu.move(delta),
@@ -6302,18 +6389,20 @@ export function ChatOverlay({
                     glass
                     className="min-w-[13rem]"
                   >
-                    <DropdownMenuItem
-                      className="cursor-pointer gap-2.5 data-[highlighted]:bg-bg-hover"
-                      onSelect={() => {
-                        navigateHome?.();
-                      }}
-                    >
-                      <House
-                        className="h-4 w-4 shrink-0 text-muted"
-                        aria-hidden
-                      />
-                      Back to Home
-                    </DropdownMenuItem>
+                    {currentTab !== "chat" ? (
+                      <DropdownMenuItem
+                        className="cursor-pointer gap-2.5 data-[highlighted]:bg-bg-hover"
+                        onSelect={() => {
+                          navigateHome?.();
+                        }}
+                      >
+                        <House
+                          className="h-4 w-4 shrink-0 text-muted"
+                          aria-hidden
+                        />
+                        Back to Home
+                      </DropdownMenuItem>
+                    ) : null}
                     <DropdownMenuItem
                       className="cursor-pointer gap-2.5 data-[highlighted]:bg-bg-hover"
                       onSelect={() => openSearch()}
@@ -6366,6 +6455,7 @@ export function ChatOverlay({
                   disabled={firstRunOpen}
                   onChange={(e) => {
                     const nextDraft = e.target.value;
+                    resetMessageHistory();
                     if (
                       draft.trim().length > 0 &&
                       nextDraft.trim().length === 0

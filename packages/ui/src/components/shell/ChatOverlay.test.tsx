@@ -759,7 +759,7 @@ describe("ChatOverlay", () => {
     expect(document.activeElement).not.toBe(composer);
   });
 
-  it("preserves focused typing through one agent-command view navigation", () => {
+  it("preserves focused typing when an agent view id resolves through the views tab", () => {
     const { rerender } = render(
       <ChatOverlay
         controller={makeController({
@@ -773,8 +773,7 @@ describe("ChatOverlay", () => {
       window.dispatchEvent(
         new CustomEvent(NAVIGATE_VIEW_EVENT, {
           detail: {
-            viewId: "notes",
-            viewPath: "/notes",
+            viewId: "calendar",
             source: "agent",
           },
         }),
@@ -784,7 +783,7 @@ describe("ChatOverlay", () => {
     rerender(
       <ChatOverlay
         controller={makeController({
-          currentTab: "notes",
+          currentTab: "views",
         } as Partial<ShellController>)}
       />,
     );
@@ -2348,6 +2347,57 @@ describe("ChatOverlay", () => {
     fireEvent.click(screen.getByText("Back to Home"));
 
     expect(navigateHome).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides the redundant Home action while already on Home", () => {
+    render(<ChatOverlay controller={makeController({ currentTab: "chat" })} />);
+
+    const plus = screen.getByTestId("chat-composer-plus");
+    fireEvent.pointerDown(plus, {
+      button: 0,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+    fireEvent.pointerUp(plus, {
+      button: 0,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+
+    expect(screen.queryByText("Back to Home")).toBeNull();
+    expect(screen.getByText("Search chat…")).toBeTruthy();
+  });
+
+  it("cycles sent messages with desktop arrow keys and restores the draft", () => {
+    render(
+      <ChatOverlay
+        controller={makeController({
+          messages: [
+            { id: "u1", role: "user", content: "first", createdAt: 1 },
+            {
+              id: "a1",
+              role: "assistant",
+              content: "reply",
+              createdAt: 2,
+            },
+            { id: "u2", role: "user", content: "second", createdAt: 3 },
+          ],
+        })}
+      />,
+    );
+    const input = screen.getByTestId(
+      "chat-composer-textarea",
+    ) as HTMLTextAreaElement;
+
+    fireEvent.change(input, { target: { value: "unfinished" } });
+    fireEvent.keyDown(input, { key: "ArrowUp" });
+    expect(input.value).toBe("second");
+    fireEvent.keyDown(input, { key: "ArrowUp" });
+    expect(input.value).toBe("first");
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(input.value).toBe("second");
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(input.value).toBe("unfinished");
   });
 
   it.each(["half", "full"] as const)(
