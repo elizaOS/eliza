@@ -72,6 +72,36 @@ afterAll(async () => {
 });
 
 describe("real OCR blank-vs-unreadable classification", () => {
+  it("runs the sparse pass when a semantic gate rejects an otherwise confident transcript", async () => {
+    const path = join(dir, "semantic-retry.png");
+    const svg = Buffer.from(`
+      <svg width="640" height="240" xmlns="http://www.w3.org/2000/svg">
+        <rect width="640" height="240" fill="#f7f7f7" />
+        <text x="36" y="92" font-family="Arial, sans-serif" font-size="44" fill="#111111">Misty Forest</text>
+        <text x="36" y="174" font-family="Arial, sans-serif" font-size="44" fill="#111111">Desert Dusk</text>
+      </svg>
+    `);
+    await sharp(svg).png().toFile(path);
+
+    const primary = await ocrImage(path, { timeoutMs: 60_000 });
+    if (!primary.available) throw new Error(primary.reason);
+    expect(primary.meanConfidence).toBeGreaterThanOrEqual(0.45);
+    expect(primary.attempts).toHaveLength(1);
+
+    const retried = await ocrImage(path, {
+      timeoutMs: 60_000,
+      alwaysTryFallback: true,
+    });
+    if (!retried.available) throw new Error(retried.reason);
+    expect(retried.attempts).toHaveLength(2);
+    expect(retried.attempts?.map((attempt) => attempt.mode)).toEqual([
+      "auto",
+      "sparse-high-contrast",
+    ]);
+    expect(retried.text).toMatch(/Misty Forest/i);
+    expect(retried.text).toMatch(/Desert Dusk/i);
+  }, 90_000);
+
   it("does not call a populated mobile launcher blank when the first OCR pass is weak", async () => {
     const auditDir = join(dir, "launcher-audit");
     const viewportDir = join(auditDir, "mobile-portrait");
