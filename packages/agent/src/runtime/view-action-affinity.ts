@@ -367,7 +367,10 @@ export function stripActiveViewAwarenessBlock(prompt: string): string {
       break;
     }
     const lineStart = nextNl + 1;
-    if (prompt.startsWith("# ", lineStart) && !prompt.startsWith("# Active View", lineStart)) {
+    if (
+      prompt.startsWith("# ", lineStart) &&
+      !prompt.startsWith("# Active View", lineStart)
+    ) {
       end = nextNl;
       break;
     }

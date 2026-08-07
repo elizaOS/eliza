@@ -1695,15 +1695,12 @@ export function installPromptOptimizations(
     const shouldSetMaxOutputTokens =
       outputReserveTokens !== undefined &&
       toOptionalNumber(promptRecord.maxOutputTokens) !== undefined;
-    const messagesChanged =
-      nextMessages !== null &&
-      renderMessagesForTelemetry(nextMessages) !== originalPrompt;
     const mergedProviderOptions = providerOptionsWithPromptOptimization(
       promptRecord,
       promptOptimizationTelemetry,
     );
     // Always write nextMessages when present so post-budget Active View
-    // re-injection is not dropped when messagesChanged is false (#17918).
+    // re-injection is not dropped (#17918).
     const rewrittenPayload = {
       ...(payload as Record<string, unknown>),
       ...(promptKey ? { [promptKey]: nextPrompt } : {}),

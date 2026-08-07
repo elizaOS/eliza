@@ -622,9 +622,7 @@ describe("applyActiveViewAwareness", () => {
   it("replaces a truncated Active View header with a full element snapshot (#17918)", () => {
     const withElements = {
       ...AWARE_VIEW,
-      elements: [
-        { id: "save-ledger", role: "button", label: "Save ledger" },
-      ],
+      elements: [{ id: "save-ledger", role: "button", label: "Save ledger" }],
     };
     const truncated =
       "intro text\n\n# Active View\nThe user is looking at a view with no elements section.\n\n# Available Actions\n- REPLY: respond\n";
