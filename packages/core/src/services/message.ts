@@ -9841,16 +9841,20 @@ export async function deliverFirstSentenceVoice(
 			  }
 			| undefined;
 
-		const model = voiceSettings?.model || "en_US-male-medium";
-		const voiceId = voiceSettings?.url || voiceSettings?.voiceId || "nova";
+		// `settings.voice.model` is a historical Piper *voice* tag, not a provider
+		// model id — pass as `voice` only. Kept identical to the second TTS site
+		// below: the two paths synthesize the same character and must not resolve
+		// different voices depending on which one runs.
+		const voiceHint =
+			voiceSettings?.voiceId ||
+			voiceSettings?.url ||
+			voiceSettings?.model ||
+			"af_nicole";
 
 		let audioBuffer: Buffer | null = null;
-		const params: TextToSpeechParams & {
-			model?: string;
-		} = {
+		const params: TextToSpeechParams = {
 			text: first,
-			voice: voiceId,
-			model: model,
+			voice: voiceHint,
 			...(abortSignal ? { signal: abortSignal } : {}),
 		};
 		const result = runtime.getModel(ModelType.TEXT_TO_SPEECH)
