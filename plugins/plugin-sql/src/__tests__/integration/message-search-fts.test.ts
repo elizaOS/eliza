@@ -82,8 +82,8 @@ describe("searchMessages FTS + trigram (real DB)", () => {
       );
       trigramAvailable = true;
     } catch {
-      // error-policy:J3 extension probing intentionally treats unsupported
-      // `pg_trgm` as absent in the PGlite harness.
+      // error-policy:J3 probe only — real Postgres without contrib, or a
+      // harness that disabled PGlite WASM extensions, skips trigram cases.
       trigramAvailable = false;
     }
 

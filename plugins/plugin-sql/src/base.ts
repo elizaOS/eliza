@@ -2592,13 +2592,18 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       const allowLexicalFallback = !usesWebsearchSyntax(params.query);
       // `similarity()` only exists when pg_trgm is installed; degrade to 0 so the
       // ORDER BY and DTO carry a real (extension-absent) signal, not a fake rank.
-      const trigramExpr =
-        trigramAvailable && allowLexicalFallback
-          ? sql<number>`GREATEST(similarity(${document}, ${foldedQuery}), word_similarity(${foldedQuery}, ${document}))`
-          : sql<number>`0`;
+      const trigramExpr = trigramAvailable
+        ? sql<number>`GREATEST(similarity(${document}, ${foldedQuery}), word_similarity(${foldedQuery}, ${document}))`
+        : sql<number>`0`;
       const literalMatch = allowLexicalFallback
         ? sql`${document} LIKE eliza_search_like_pattern(${params.query})`
         : sql`FALSE`;
+      // The trigram fallback is a bag-of-terms AND: it has no notion of phrase
+      // adjacency, term exclusion, or union. Every websearch operator would be
+      // silently relaxed by it — `"alpha beta"` would match non-adjacent rows,
+      // `alpha -far` would match rows containing `far`, and `alpha OR zephyr`
+      // would degrade to a conjunction. Any websearch syntax therefore stays
+      // FTS-only, matching the `literalMatch` gate above.
       const trigramMatch =
         trigramAvailable && allowLexicalFallback
           ? sql`NOT EXISTS (
