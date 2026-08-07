@@ -1437,7 +1437,7 @@ export class ProvisioningJobService {
       webhookUrl: params.webhookUrl,
       maxAttempts: 3,
       // SSH stop is fast (~10s graceful + ~5s force kill), DB cascade is
-      // sub-second. 30s matches docker-sandbox-provider.stop() timeout.
+      // sub-second. 30s matches the Docker deletion-stop command timeout.
       estimatedDurationMs: 30_000,
       logName: "agent_delete",
       validateSandbox: expectedIdentity
@@ -1456,8 +1456,8 @@ export class ProvisioningJobService {
           }
         : undefined,
       // Flip status so the UI shows "deleting" and concurrent mutations
-      // bail. Actual row removal happens in executeAgentDelete once SSH
-      // stop() succeeds.
+      // bail. Actual row removal happens in executeAgentDelete once the
+      // provider proves the workload is no longer running.
       beforeInsert: async (tx, sandbox) => {
         if (
           sandbox.claimed_at &&
@@ -4759,7 +4759,7 @@ export class ProvisioningJobService {
     const jobResult: AgentDeleteJobResult = {
       cloudAgentId: data.agentId,
       containerStopped: delResult.containerStopped,
-      rowDeleted: true,
+      rowDeleted: delResult.rowDeleted,
     };
 
     await this.settleClaimedExecution(job, "completed", {

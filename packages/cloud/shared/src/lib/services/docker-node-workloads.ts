@@ -39,18 +39,16 @@ async function countRows(query: Promise<Array<{ count: number }>>): Promise<numb
   return row.count;
 }
 
-/**
- * agent_sandboxes statuses that mean the container should NOT be running. A
- * container backing a row in one of these states is reapable just like one
- * with no row at all: the lifecycle has decided this agent has no live
- * container, so a leftover Docker process is a leak.
- *
- * `deletion_failed` is included deliberately — that state exists precisely
- * because the delete-time container teardown did not succeed, so reaping it
- * here is the recovery path. `deletion_pending` is NOT terminal: an
- * agent_delete job is actively in flight and owns the teardown; reaping under
- * it would race the worker.
- */
+/** Postgres `undefined_column` — the shape a pre-migration read takes. */
+const UNDEFINED_COLUMN = "42703";
+
+function isUndefinedColumn(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { code?: unknown }).code === UNDEFINED_COLUMN
+  );
+}
 
 /**
  * Active compute slots on a Docker node.
@@ -72,17 +70,6 @@ async function countRows(query: Promise<Array<{ count: number }>>): Promise<numb
  * `disconnected` is deliberately NOT excluded: it is non-terminal (the
  * container is up but unreachable) and still occupies the slot.
  */
-/** Postgres `undefined_column` — the shape a pre-migration read takes. */
-const UNDEFINED_COLUMN = "42703";
-
-function isUndefinedColumn(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    (error as { code?: unknown }).code === UNDEFINED_COLUMN
-  );
-}
-
 export async function countAllocatedWorkloadsOnNode(nodeId: string): Promise<number> {
   // Repair-on-failure rather than prophylactic DDL. This is the placement hot
   // path (`getAvailableNode`, the autoscaler, `syncAllocatedCounts`, each once
@@ -103,15 +90,32 @@ export async function countAllocatedWorkloadsOnNode(nodeId: string): Promise<num
   try {
     return await countAllocatedWorkloadsOnNodeWithDatabase(dbRead, nodeId);
   } catch (error) {
-    // error-policy:J2 context-adding rethrow — the retry is the handling; any
-    // other failure, and any failure of the retry itself, propagates with cause.
-    if (!isUndefinedColumn(error)) throw error;
+    // error-policy:J2 context-adding rethrow — only the known pre-migration
+    // shape is repairable; every other database failure keeps its cause and the
+    // node whose placement count could not be established.
+    if (!isUndefinedColumn(error)) {
+      throw new ElizaError("Failed to count allocated workloads on Docker node", {
+        code: "DOCKER_NODE_WORKLOAD_COUNT_FAILED",
+        context: { nodeId },
+        cause: error,
+      });
+    }
     logger.warn(
       "[docker-node-workloads] Workload count hit a missing column; applying agent-sandbox schema ensure and retrying once",
       { nodeId },
     );
-    await ensureAgentSandboxSchema();
-    return countAllocatedWorkloadsOnNodeWithDatabase(dbRead, nodeId);
+    try {
+      await ensureAgentSandboxSchema();
+      return await countAllocatedWorkloadsOnNodeWithDatabase(dbRead, nodeId);
+    } catch (retryError) {
+      // error-policy:J2 context-adding rethrow — a failed repair must distinguish
+      // the recovery path from an ordinary placement query failure.
+      throw new ElizaError("Failed to repair the Docker workload-count schema", {
+        code: "DOCKER_NODE_WORKLOAD_SCHEMA_REPAIR_FAILED",
+        context: { nodeId },
+        cause: retryError,
+      });
+    }
   }
 }
 
@@ -229,17 +233,11 @@ export async function loadSandboxStatusesByIds(
 }
 
 /**
- * The agent-specific deltas injected into the shared reconciler. Agents are
- * `nodeAware`: a sandbox has exactly one canonical node (`node_id`), so a
- * container found on any OTHER node is a stale twin from a re-provision that
- * moved the workload (#15228). Apps deliberately fan one name across rows and
- * are NOT node-aware.
- */
-/**
- * Exported so a test can drive the REAL wiring rather than a copy: the contract
- * that `keyOf` yields an `agent_sandboxes.id` — which `onReaped` then feeds to a
- * CAS keyed on that column — is an assumption spanning two modules, and a copy
- * of the config in a test would assert nothing about the one production uses.
+ * Agent-specific deltas injected into the shared reconciler. Agents are
+ * `nodeAware`: a sandbox has exactly one canonical node, so a container on any
+ * other node is a stale twin from a moved workload (#15228). Tests consume the
+ * exported production wiring because `keyOf` and the release callback share an
+ * `agent_sandboxes.id` contract that a copied fixture would not verify.
  */
 export const AGENT_ORPHAN_RECONCILER_CONFIG: OrphanReconcilerConfig = {
   prefix: AGENT_CONTAINER_NAME_PREFIX,
@@ -251,8 +249,8 @@ export const AGENT_ORPHAN_RECONCILER_CONFIG: OrphanReconcilerConfig = {
   rowlessGraceMs: DEFAULT_ROWLESS_GRACE_MS,
   nodeMoveGraceMs: DEFAULT_NODE_MOVE_GRACE_MS,
   // Reaping is the only step that PROVES an agent container is gone, so it is
-  // where a deletion generation that could not prove absence finally hands its
-  // node slot back (#17185).
+  // where a deletion generation that could not prove the workload stopped
+  // finally hands its node slot back (#17185).
   onReaped: async (agentId, nodeId) => {
     await agentSandboxesRepository.releaseDeletionAllocationOnReap(agentId, nodeId);
   },

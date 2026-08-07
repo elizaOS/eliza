@@ -19,20 +19,6 @@ export const TERMINAL_SANDBOX_STATUSES = [
 export const TERMINAL_SANDBOX_STATUS_SET: ReadonlySet<string> = new Set(TERMINAL_SANDBOX_STATUSES);
 
 /**
- * Whether a row still holds one counted slot in `docker_nodes.allocated_count`.
- *
- * Seeds `agent_sandboxes.deletion_allocation_counted` when a deletion generation
- * starts, so it must be evaluated against the PRE-delete lifecycle state, before
- * the row moves to `deletion_pending`.
- *
- * Derived from `TERMINAL_SANDBOX_STATUSES` rather than listing statuses again,
- * because the two rules must not drift: `syncAllocatedCounts` periodically
- * RECOMPUTES `allocated_count` from that same set, so any status this treated as
- * still-counted while the recount treated it as free would be released twice —
- * once by the recount, once by the deletion CAS — which is the exact double-free
- * #17185 exists to close. A row with no `node_id` was never placed at all.
- */
-/**
  * Whether a row is ALREADY inside a deletion generation, so a new delete request
  * continues it rather than establishing a fresh one.
  *
@@ -62,6 +48,20 @@ export function isDeletionContinuation(row: {
   );
 }
 
+/**
+ * Whether a row still holds one counted slot in `docker_nodes.allocated_count`.
+ *
+ * Seeds `agent_sandboxes.deletion_allocation_counted` when a deletion generation
+ * starts, so it must be evaluated against the PRE-delete lifecycle state, before
+ * the row moves to `deletion_pending`.
+ *
+ * Derived from `TERMINAL_SANDBOX_STATUSES` rather than listing statuses again,
+ * because the two rules must not drift: `syncAllocatedCounts` periodically
+ * RECOMPUTES `allocated_count` from that same set, so any status this treated as
+ * still-counted while the recount treated it as free would be released twice —
+ * once by the recount, once by the deletion CAS — which is the exact double-free
+ * #17185 exists to close. A row with no `node_id` was never placed at all.
+ */
 export function holdsCountedNodeSlot(row: { status: string; node_id: string | null }): boolean {
   if (!row.node_id) return false;
   return !TERMINAL_SANDBOX_STATUS_SET.has(row.status);
@@ -92,8 +92,8 @@ export async function countAllocatedWorkloadsOnNodeWithDatabase(
           eq(agentSandboxes.node_id, nodeId),
           // Recorded allocation ownership outranks status. Once a deletion
           // generation has handed its slot back the row stops consuming
-          // capacity immediately, even though it lingers in `deletion_pending`
-          // until the row delete commits; conversely a `deletion_failed` row
+          // capacity immediately, even though it can linger in a deletion
+          // status until final row cleanup; conversely a `deletion_failed` row
           // that still owns its slot genuinely occupies one, which a
           // status-only rule counted as free (#17185).
           //
