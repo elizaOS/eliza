@@ -213,6 +213,37 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     expect(await service.getCalendarEventById(event.id)).toBeNull();
   });
 
+  it("resolves an unscoped mutation target to the built-in event without hijacking external grants", async () => {
+    const created = await service.createCalendarEventMutation(INTERNAL_URL, {
+      title: "Unscoped lookup",
+      startAt: "2026-08-11T18:00:00.000Z",
+      endAt: "2026-08-11T19:00:00.000Z",
+      timeZone: "America/Los_Angeles",
+      idempotencyKey: "unscoped-lookup",
+    });
+    const event = created.event;
+    if (!event) throw new Error("Built-in calendar create returned no event.");
+
+    // A planner that omits grantId still binds to the built-in event.
+    await expect(
+      service.getConditionalCalendarMutationTarget(INTERNAL_URL, {
+        eventId: event.externalId,
+      }),
+    ).resolves.toMatchObject({
+      id: event.id,
+      provider: "eliza",
+      grantId: ELIZA_CALENDAR_GRANT_ID,
+    });
+
+    // An unknown external id must NOT be claimed by the built-in calendar;
+    // it falls through to external-provider resolution (disconnected here).
+    await expect(
+      service.getConditionalCalendarMutationTarget(INTERNAL_URL, {
+        eventId: "google-event-id-that-is-not-built-in",
+      }),
+    ).rejects.toThrow();
+  });
+
   it("rejects unsupported or invalid built-in mutations without changing the event", async () => {
     const created = await service.createCalendarEventMutation(INTERNAL_URL, {
       title: "Keep this event",

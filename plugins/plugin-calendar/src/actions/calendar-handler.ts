@@ -50,7 +50,6 @@ import {
   parseCalendarJsonRecord,
   toActionData,
 } from "../internal/detail.js";
-import { ELIZA_CALENDAR_GRANT_ID } from "../internal/eliza-calendar.js";
 import { CalendarServiceError } from "../internal/errors.js";
 import {
   formatCalendarEventDateTime,
@@ -169,8 +168,14 @@ function requireCompleteFreshCalendarFeed(
   return feed;
 }
 
-function mutationGrantId(details: Record<string, unknown> | undefined): string {
-  return detailString(details, "grantId") ?? ELIZA_CALENDAR_GRANT_ID;
+// Mutation lookups must stay unscoped when the planner omits grantId: the
+// aggregated feed already includes the built-in Eliza source alongside every
+// connected provider, so defaulting the lookup to one grant would hide
+// external events (and their busy windows) from update/delete/create flows.
+function mutationGrantId(
+  details: Record<string, unknown> | undefined,
+): string | undefined {
+  return detailString(details, "grantId");
 }
 
 type CreateEventTravelIntent = CalendarTravelIntent;

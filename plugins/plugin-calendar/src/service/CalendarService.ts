@@ -6030,6 +6030,30 @@ export class CalendarService extends Service {
       }
       return this.resolveElizaCalendarEvent(request);
     }
+    // An unscoped external-id lookup may still name a built-in event: the
+    // built-in calendar is a first-class source, so consult it before binding
+    // the mutation to an external provider grant. A miss falls through to the
+    // existing provider resolution unchanged.
+    if (!request.grantId) {
+      const builtIn = await this.repo.getCalendarEventByExternalId({
+        agentId: this.agentId(),
+        provider: ELIZA_CALENDAR_PROVIDER,
+        externalEventId: requireNonEmptyString(request.eventId, "eventId"),
+        calendarId: request.calendarId,
+        side: "owner",
+        grantId: ELIZA_CALENDAR_GRANT_ID,
+      });
+      if (builtIn) {
+        if (normalizeRecurrenceScope(request.recurrenceScope)) {
+          fail(
+            400,
+            "Recurring events require a connected calendar provider.",
+            "ELIZA_CALENDAR_RECURRENCE_UNSUPPORTED",
+          );
+        }
+        return builtIn;
+      }
+    }
     if (
       isAppleCalendarGrant(request.grantId) ||
       isMicrosoftCalendarGrantId(request.grantId) ||
