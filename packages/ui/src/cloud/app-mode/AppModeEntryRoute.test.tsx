@@ -1,15 +1,9 @@
-/** Verifies the AppModeEntryRoute gate — auth gating, the agents-driven routing table, and the pairing redirect outcomes (200 / 202 / error) — through the package's configured test harness (jsdom, real render, hand-rolled fetch stub; no Steward provider mounted, sessions come from the persisted localStorage JWT). */
+/** Verifies the AppModeEntryRoute gate — auth gating and the chat-floor routing table (any agents → the same-origin chat app with ZERO pairing traffic; empty org → /join) — through the package's configured test harness (jsdom, real render, hand-rolled fetch stub; no Steward provider mounted, sessions come from the persisted localStorage JWT). */
 // @vitest-environment jsdom
 
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 import { AppModeEntryRoute } from "./AppModeEntryRoute";
@@ -56,8 +50,6 @@ function agent(
 interface StubRoutes {
   /** Response for GET /api/v1/eliza/agents. */
   agents: () => Response;
-  /** Response for POST /api/v1/eliza/agents/:id/pairing-token. */
-  pairing?: (agentId: string) => Response;
 }
 
 const realFetch = globalThis.fetch;
@@ -71,12 +63,6 @@ function stubNetwork(routes: StubRoutes): void {
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     fetchLog.push(`${init?.method ?? "GET"} ${url}`);
-    const pairing = /^\/api\/v1\/eliza\/agents\/([^/]+)\/pairing-token$/.exec(
-      url,
-    );
-    if (pairing && routes.pairing) {
-      return Promise.resolve(routes.pairing(pairing[1]));
-    }
     if (url === "/api/v1/eliza/agents") {
       return Promise.resolve(routes.agents());
     }
@@ -88,8 +74,8 @@ function stubNetwork(routes: StubRoutes): void {
     );
   }) as typeof fetch;
   assignedUrls = [];
-  // Both seams feed one log: automatic entry replaces history, an explicit
-  // chooser pick pushes; the replace-vs-assign split is pinned in app-mode.test.ts.
+  // Any full-page navigation (the old pairing redirect used these seams) is a
+  // chat-floor violation at entry; the suite pins that the log stays empty.
   appModeNavigation.assign = (url: string) => {
     assignedUrls.push(url);
   };
@@ -170,74 +156,41 @@ describe("AppModeEntryRoute — auth gating", () => {
   });
 });
 
-describe("AppModeEntryRoute — routing table", () => {
-  it("exactly one running dedicated agent → full-page pairing redirect into its web UI", async () => {
+describe("AppModeEntryRoute — chat-floor routing table", () => {
+  it("one running dedicated agent → the same-origin chat app; NO pairing token is minted, NO redirect fires", async () => {
+    // The cold-start dead-end pin. `status: "running"` in the control plane
+    // does not mean the container is warm: the previous gate POSTed
+    // /pairing-token here (one-time, 60s TTL) and full-page-redirected into
+    // `<agentId>.…/pair?token=…`; a cold-starting agent cannot consume the
+    // token inside the TTL, so every cold start dead-ended on the agent's
+    // "Sign-in link expired" page. Entry must render the chat app instead and
+    // issue zero pairing traffic.
     signIn();
-    const redirectUrl = "https://agent-1.elizacloud.ai/pair?token=tok";
-    stubNetwork({
-      agents: agentsOk([agent({ id: "agent-1" })]),
-      pairing: () => jsonResponse(200, { data: { redirectUrl } }),
-    });
+    stubNetwork({ agents: agentsOk([agent({ id: "agent-1" })]) });
     renderEntry();
 
-    await waitFor(() => expect(assignedUrls).toEqual([redirectUrl]));
-    expect(fetchLog).toContain(
-      "POST /api/v1/eliza/agents/agent-1/pairing-token",
+    expect(await screen.findByTestId("agent-app")).toBeTruthy();
+    expect(fetchLog.filter((line) => line.includes("pairing-token"))).toEqual(
+      [],
     );
-    expect(screen.queryByTestId("agent-app")).toBeNull();
-  });
-
-  it("pairing 202 (agent must resume) → lands on the Instances view", async () => {
-    signIn();
-    stubNetwork({
-      agents: agentsOk([agent({ id: "agent-1" })]),
-      pairing: () => jsonResponse(202, { data: { status: "starting" } }),
-    });
-    renderEntry();
-
-    expect(await screen.findByTestId("instances-page")).toBeTruthy();
     expect(assignedUrls).toEqual([]);
   });
 
-  it("pairing failure → visible error state with an escape to Instances, never a blank screen", async () => {
+  it("several running dedicated agents → still the chat app (no chooser interstitial at entry)", async () => {
     signIn();
-    stubNetwork({
-      agents: agentsOk([agent({ id: "agent-1" })]),
-      pairing: () => jsonResponse(503, { error: "agent not reachable" }),
-    });
-    renderEntry();
-
-    expect(await screen.findByText("agent not reachable")).toBeTruthy();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Go to your instances" }),
-    );
-    expect(await screen.findByTestId("instances-page")).toBeTruthy();
-  });
-
-  it("several running dedicated agents → chooser (most recently active first), rows pair on demand", async () => {
-    signIn();
-    const redirectUrl = "https://fresh.elizacloud.ai/pair?token=tok";
     stubNetwork({
       agents: agentsOk([
         agent({ id: "stale", lastHeartbeatAt: "2026-08-01T00:00:00.000Z" }),
         agent({ id: "fresh", lastHeartbeatAt: "2026-08-05T00:00:00.000Z" }),
       ]),
-      pairing: (agentId) =>
-        agentId === "fresh"
-          ? jsonResponse(200, { data: { redirectUrl } })
-          : jsonResponse(503, { error: "wrong agent" }),
     });
     renderEntry();
 
-    const rows = await screen.findAllByRole("button", { name: /Open/ });
-    expect(rows.map((row) => row.textContent)).toEqual([
-      "freshOpen",
-      "staleOpen",
-    ]);
-
-    fireEvent.click(rows[0]);
-    await waitFor(() => expect(assignedUrls).toEqual([redirectUrl]));
-    expect(fetchLog).toContain("POST /api/v1/eliza/agents/fresh/pairing-token");
+    expect(await screen.findByTestId("agent-app")).toBeTruthy();
+    expect(assignedUrls).toEqual([]);
+    expect(fetchLog.filter((line) => line.includes("pairing-token"))).toEqual(
+      [],
+    );
   });
 
   it("dedicated agents exist but none running → the same-origin chat app (never the console)", async () => {
@@ -259,6 +212,20 @@ describe("AppModeEntryRoute — routing table", () => {
     renderEntry();
 
     expect(await screen.findByTestId("agent-app")).toBeTruthy();
+    expect(assignedUrls).toEqual([]);
+  });
+
+  it("a provisioning (cold-starting) dedicated agent → the chat app, no doomed pairing hop", async () => {
+    signIn();
+    stubNetwork({
+      agents: agentsOk([agent({ id: "agent-1", status: "provisioning" })]),
+    });
+    renderEntry();
+
+    expect(await screen.findByTestId("agent-app")).toBeTruthy();
+    expect(fetchLog.filter((line) => line.includes("pairing-token"))).toEqual(
+      [],
+    );
     expect(assignedUrls).toEqual([]);
   });
 
@@ -289,5 +256,22 @@ describe("AppModeEntryRoute — routing table", () => {
     renderEntry();
 
     expect(await screen.findByTestId("agent-app")).toBeTruthy();
+  });
+
+  it("never renders the instances console from entry, in any state", async () => {
+    signIn();
+    stubNetwork({
+      agents: agentsOk([
+        agent({ id: "e1", status: "error" }),
+        agent({ id: "r1", status: "running" }),
+        agent({ id: "s1", status: "stopped" }),
+      ]),
+    });
+    renderEntry();
+
+    expect(await screen.findByTestId("agent-app")).toBeTruthy();
+    await waitFor(() =>
+      expect(screen.queryByTestId("instances-page")).toBeNull(),
+    );
   });
 });

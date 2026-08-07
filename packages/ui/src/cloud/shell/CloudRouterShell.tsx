@@ -279,10 +279,11 @@ const APEX_AUTHENTICATED_HOME = "/dashboard";
  *
  * On the Eliza APP hosts (app.elizacloud.ai / app-staging — checked AFTER the
  * apex branch, so apex behavior is untouched) the catch-all renders the
- * app-mode entry gate instead: signed-in visitors are routed into their
- * dedicated agent via the pairing flow (see `../app-mode/AppModeEntryRoute`),
- * and only its `chat-home` decision falls through to the agent app. The gate
- * chunk is lazy so no app-mode code loads on any other host.
+ * app-mode entry gate instead: signed-in visitors land in the same-origin
+ * chat app (the chat floor — see `../app-mode/AppModeEntryRoute`; entry never
+ * pairing-redirects into a per-agent web UI), and an org with no agents at
+ * all is sent to the `/join` deploy-first-agent flow. The gate chunk is lazy
+ * so no app-mode code loads on any other host.
  *
  * Every other host (per-agent subdomains, localhost) is untouched: chat stays
  * home.
