@@ -72,7 +72,7 @@ Applications and workspaces can override defaults by placing a same-slug skill i
 - stable slugs for orchestrator recommendation and invocation
 - short `SKILL.md` bodies with longer references under `references/`
 
-The root `scripts/ensure-skills.mjs` now resolves the shipped skill tree from `@elizaos/skills`, then falls back to `packages/skills/skills`, then legacy `skills/`.
+`packages/app-core/scripts/ensure-skills.mjs` resolves the shipped skill tree from `@elizaos/skills`, then falls back to `packages/skills/skills`, then legacy `skills/`.
 
 ### Parent-agent broker
 
@@ -188,7 +188,7 @@ Minimum local tests:
 - unit test `USE_SKILL` directive parsing and sensitive broker routing if practical
 - typecheck `plugin-agent-orchestrator`
 - test `packages/skills` loader/frontmatter paths
-- run `scripts/ensure-skills.mjs` against a temporary `ELIZA_STATE_DIR`
+- run `packages/app-core/scripts/ensure-skills.mjs` against a temporary `ELIZA_STATE_DIR`
 
 Live validation:
 

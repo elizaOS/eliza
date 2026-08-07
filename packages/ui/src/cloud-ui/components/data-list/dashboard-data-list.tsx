@@ -107,7 +107,7 @@ export function DashboardDataListFilteredCount({
     <p
       data-slot="dashboard-data-list-filtered-count"
       className={cn(
-        "text-[11px] uppercase tracking-widest text-white/40 tabular-nums",
+        "text-[11px] uppercase tracking-widest text-white/60 tabular-nums",
         className,
       )}
     >

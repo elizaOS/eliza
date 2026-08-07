@@ -1,9 +1,13 @@
 [
   {
+    "file": "packages/cloud/scripts/admin/smoke-agent-plugins.ts",
+    "tokens": ["@elizaos/plugin-elizacloud", "@elizaos/plugin-sql"],
+    "reason": "the single shared source of the cloud smoke-agent baseline plugin set (SMOKE_AGENT_PLUGINS), deduped from the two smoke scripts"
+  },
+  {
     "file": "packages/scripts/audit-build-typecheck.mjs",
     "tokens": [
       "plugins/plugin-app-manager",
-      "plugins/plugin-benchmarks",
       "plugins/plugin-build",
       "plugins/plugin-computeruse",
       "plugins/plugin-elizacloud",
@@ -14,11 +18,6 @@
       "plugins/plugin-wallet"
     ],
     "reason": "CUSTOM_PLUGIN_BUILD_ALLOW keys the documented custom-build.ts exceptions by build-file path (some nested build.ts have no own package.json), which cannot be expressed as per-package metadata"
-  },
-  {
-    "file": "packages/scripts/build-private-workspace-packages.mjs",
-    "tokens": ["@elizaos/plugin-remote-manifest"],
-    "reason": "prose header names @elizaos/plugin-remote-manifest as the concrete #8143 repro; membership is resolved from elizaos.scripts.buildOnInstall metadata, not this text"
   },
   {
     "file": "packages/scripts/check-lifeops-persona-catalog-coverage.mjs",
@@ -46,11 +45,6 @@
     "reason": "path-gate rules map changes in these critical plugins to the scenario-pr test lane"
   },
   {
-    "file": "packages/scripts/cloud/admin/smoke-agent-plugins.ts",
-    "tokens": ["@elizaos/plugin-elizacloud", "@elizaos/plugin-sql"],
-    "reason": "the single shared source of the cloud smoke-agent baseline plugin set (SMOKE_AGENT_PLUGINS), deduped from the two smoke scripts"
-  },
-  {
     "file": "packages/scripts/e2e-coverage/inventory.ts",
     "tokens": ["@elizaos/plugin-discord", "plugins/plugin-commands"],
     "reason": "discovers HTTP routes / connector registration from these route-wiring plugins for the e2e surface inventory"
@@ -59,29 +53,22 @@
     "file": "packages/scripts/e2e-coverage/manifest.ts",
     "tokens": [
       "plugins/plugin-agent-orchestrator",
-      "plugins/plugin-birdclaw",
       "plugins/plugin-bluebubbles",
       "plugins/plugin-browser",
       "plugins/plugin-calendar",
       "plugins/plugin-commands",
       "plugins/plugin-computeruse",
-      "plugins/plugin-discord-local",
       "plugins/plugin-documents",
       "plugins/plugin-elizacloud",
-      "plugins/plugin-facewear",
       "plugins/plugin-github",
-      "plugins/plugin-hyperliquid",
       "plugins/plugin-imessage",
       "plugins/plugin-inbox",
       "plugins/plugin-local-inference",
       "plugins/plugin-meetings",
-      "plugins/plugin-music",
-      "plugins/plugin-polymarket",
       "plugins/plugin-scheduling",
       "plugins/plugin-signal",
-      "plugins/plugin-simple-views",
+      "plugins/plugin-notes",
       "plugins/plugin-telegram",
-      "plugins/plugin-training",
       "plugins/plugin-wallet",
       "plugins/plugin-whatsapp",
       "plugins/plugin-workflow"
@@ -99,49 +86,26 @@
     "reason": "hoists @elizaos/plugin-pdf, a re-exported transitive dep bun's isolated install leaves nested, to top-level node_modules"
   },
   {
-    "file": "packages/scripts/generate-dist-paths-config.mjs",
-    "tokens": [
-      "@elizaos/plugin-facewear",
-      "@elizaos/plugin-local-inference",
-      "@elizaos/plugin-music-library",
-      "@elizaos/plugin-music-player",
-      "@elizaos/plugin-xai",
-      "plugins/plugin-facewear",
-      "plugins/plugin-local-inference",
-      "plugins/plugin-music",
-      "plugins/plugin-native-",
-      "plugins/plugin-xai"
-    ],
-    "reason": "explicit tsconfig dist-path aliases for non-standard export names (music-library/-player -> music, xai wildcard) and source-condition subpaths that a normal exports map cannot reflect"
-  },
-  {
     "file": "packages/scripts/launch-qa/run.mjs",
-    "tokens": ["plugins/plugin-personal-assistant", "plugins/plugin-training"],
-    "reason": "release-readiness QA runs focused vitest suites in the personal-assistant and training plugins"
+    "tokens": ["plugins/plugin-personal-assistant"],
+    "reason": "release-readiness QA runs focused vitest suites in the personal-assistant plugin"
   },
   {
     "file": "packages/scripts/lib/real-live-suites.mjs",
     "tokens": [
       "plugins/plugin-agent-orchestrator",
       "plugins/plugin-anthropic",
-      "plugins/plugin-birdclaw",
-      "plugins/plugin-browser",
       "plugins/plugin-calendar",
-      "plugins/plugin-calendly",
+      "plugins/plugin-coding-tools",
       "plugins/plugin-computeruse",
       "plugins/plugin-elizacloud",
       "plugins/plugin-form",
       "plugins/plugin-google-genai",
       "plugins/plugin-health",
-      "plugins/plugin-hyperliquid",
       "plugins/plugin-local-inference",
-      "plugins/plugin-ollama",
       "plugins/plugin-openai",
-      "plugins/plugin-openrouter",
       "plugins/plugin-personal-assistant",
-      "plugins/plugin-polymarket",
       "plugins/plugin-pty",
-      "plugins/plugin-shell",
       "plugins/plugin-sql",
       "plugins/plugin-vision",
       "plugins/plugin-wallet",
@@ -150,38 +114,76 @@
     "reason": "credential/opt-in live-suite manifest must bind each discovered test file to its exact package path so drift checks can prove the guarded source and its execution metadata agree"
   },
   {
-    "file": "packages/scripts/run-cerebras.ts",
-    "tokens": ["plugins/plugin-openai"],
-    "reason": "invokes plugin-openai pointed at Cerebras to test native tool-calling trajectories"
+    "file": "packages/scripts/run-scenario-benchmark.mjs",
+    "tokens": ["plugins/plugin-personal-assistant"],
+    "reason": "scenario benchmark drives the personal-assistant executive-assistant corpus by explicit path"
   },
   {
-    "file": "packages/scripts/run-eliza-cerebras.ts",
-    "tokens": ["plugins/plugin-openai"],
-    "reason": "boots a real runtime with plugin-openai wired to Cerebras to validate the runtime message stage"
-  },
-  {
-    "file": "packages/scripts/stage-b-stt-bench.mjs",
-    "tokens": ["plugins/plugin-local-inference"],
-    "reason": "Stage-B STT benchmark measures plugin-local-inference ASR latency/WER"
-  },
-  {
-    "file": "packages/scripts/voice-matrix.mjs",
+    "file": "packages/scripts/vitest/default.config.ts",
     "tokens": [
-      "plugins/plugin-local-inference",
-      "plugins/plugin-native-swabble",
-      "plugins/plugin-native-talkmode"
+      "@elizaos/plugin-telegram",
+      "plugins/plugin-browser",
+      "plugins/plugin-finances",
+      "plugins/plugin-health",
+      "plugins/plugin-inbox",
+      "plugins/plugin-sql"
     ],
-    "reason": "voice live-matrix cells declare which fused-ASR / native wake-word / transcript plugins each cell exercises"
+    "reason": "shared default vitest config carries per-plugin source aliases and exclude rules that cannot be derived from package metadata"
   },
   {
-    "file": "scripts/cuda-continuity.mjs",
-    "tokens": ["plugins/plugin-local-inference"],
-    "reason": "CUDA continuity proves the plugin-local-inference native llama.cpp gitlink and runtime harness at the exact candidate commit"
+    "file": "packages/scripts/vitest/e2e.config.ts",
+    "tokens": [
+      "plugins/plugin-documents",
+      "plugins/plugin-personal-assistant",
+      "plugins/plugin-task-coordinator",
+      "plugins/plugin-workflow"
+    ],
+    "reason": "e2e-lane vitest config enumerates the plugin suites that ship browser-driven e2e specs"
   },
   {
-    "file": "scripts/check-even-research-audit.mjs",
-    "tokens": ["plugins/plugin-facewear"],
-    "reason": "gates that the facewear plugin's research checkouts, docs, and implemented surface files are present"
+    "file": "packages/scripts/vitest/integration.config.ts",
+    "tokens": [
+      "@elizaos/plugin-personal-assistant",
+      "@elizaos/plugin-signal",
+      "@elizaos/plugin-sql",
+      "@elizaos/plugin-whatsapp",
+      "plugins/plugin-personal-assistant"
+    ],
+    "reason": "integration-lane vitest config aliases connector plugins whose integration suites resolve source-condition subpaths"
+  },
+  {
+    "file": "packages/scripts/vitest/real.config.ts",
+    "tokens": [
+      "@elizaos/plugin-agent-orchestrator",
+      "@elizaos/plugin-agent-skills",
+      "@elizaos/plugin-anthropic",
+      "@elizaos/plugin-commands",
+      "@elizaos/plugin-discord",
+      "@elizaos/plugin-elizacloud",
+      "@elizaos/plugin-form",
+      "@elizaos/plugin-google-genai",
+      "@elizaos/plugin-local-inference",
+      "@elizaos/plugin-openai",
+      "@elizaos/plugin-sql",
+      "@elizaos/plugin-telegram",
+      "@elizaos/plugin-wallet",
+      "plugins/plugin-coding-tools",
+      "plugins/plugin-computeruse",
+      "plugins/plugin-form",
+      "plugins/plugin-personal-assistant",
+      "plugins/plugin-wallet"
+    ],
+    "reason": "shared real-lane vitest config must alias each live-capable plugin package to its source entry so real suites resolve workspace plugins without a build step"
+  },
+  {
+    "file": "packages/scripts/vitest/source-aliases.ts",
+    "tokens": ["@elizaos/plugin-sql", "plugins/plugin-sql"],
+    "reason": "source-condition alias seam needs the concrete plugin-sql mapping because its exports use a nested src package layout no generic rule can derive"
+  },
+  {
+    "file": "packages/scripts/vitest/unit.config.ts",
+    "tokens": ["@elizaos/plugin-anthropic", "@elizaos/plugin-cli"],
+    "reason": "unit-lane vitest config stubs these provider plugins so unit suites stay keyless and offline"
   },
   {
     "file": "scripts/check-markdown-links.mjs",
@@ -189,19 +191,14 @@
       "plugins/plugin-agent-orchestrator",
       "plugins/plugin-computeruse",
       "plugins/plugin-local-inference",
-      "plugins/plugin-wallet",
-      "plugins/plugin-xai"
+      "plugins/plugin-wallet"
     ],
     "reason": "Markdown link hygiene excludes stale/prototype documentation subtrees by concrete path prefix so maintained contributor-facing docs can remain hard-gated"
   },
   {
-    "file": "scripts/check-smartglasses-completion-gate.mjs",
-    "tokens": [
-      "@elizaos/plugin-facewear",
-      "plugins/plugin-facewear",
-      "plugins/plugin-smartglasses"
-    ],
-    "reason": "facewear software-readiness gate; also asserts the removed plugin-smartglasses is gone"
+    "file": "scripts/cuda-continuity.mjs",
+    "tokens": ["plugins/plugin-local-inference"],
+    "reason": "CUDA continuity proves the plugin-local-inference native llama.cpp gitlink and runtime harness at the exact candidate commit"
   },
   {
     "file": "scripts/generate-view-heroes.mjs",
@@ -209,7 +206,6 @@
       "plugins/plugin-app-control",
       "plugins/plugin-blocker",
       "plugins/plugin-calendar",
-      "plugins/plugin-facewear",
       "plugins/plugin-finances",
       "plugins/plugin-goals",
       "plugins/plugin-health",
@@ -217,30 +213,14 @@
       "plugins/plugin-messages",
       "plugins/plugin-native-settings",
       "plugins/plugin-relationships",
-      "plugins/plugin-todos",
-      "plugins/plugin-vector-browser"
+      "plugins/plugin-todos"
     ],
     "reason": "curated fallback-art list for plugins with an elizaos.app surface but no committed hero.svg"
   },
   {
-    "file": "scripts/lifeops-bench/export-action-manifest.ts",
-    "tokens": [
-      "@elizaos/plugin-calendar",
-      "@elizaos/plugin-personal-assistant",
-      "plugins/plugin-bluebubbles",
-      "plugins/plugin-calendar",
-      "plugins/plugin-contacts",
-      "plugins/plugin-imessage",
-      "plugins/plugin-personal-assistant",
-      "plugins/plugin-phone",
-      "plugins/plugin-todos"
-    ],
-    "reason": "source plugins whose actions the LifeOps planner bench collects, tags, and scores; the two @elizaos/* package identities name the synthetic curated Plugin objects (a calendar-sources-only slice, and the platform-gated owner-screentime umbrella) that keep the manifest host-independent, so the exported action's owning package stays truthful"
-  },
-  {
     "file": "scripts/lifeops/collect-11632-live-validation-status.mjs",
     "tokens": [
-      "plugins/plugin-google",
+      "plugins/plugin-google-workspace",
       "plugins/plugin-personal-assistant",
       "plugins/plugin-x"
     ],
@@ -264,7 +244,7 @@
   {
     "file": "scripts/lifeops/run-11632-live-lanes.mjs",
     "tokens": [
-      "plugins/plugin-google",
+      "plugins/plugin-google-workspace",
       "plugins/plugin-personal-assistant",
       "plugins/plugin-x"
     ],
@@ -272,24 +252,7 @@
   },
   {
     "file": "scripts/training-harvest/build-manifest.mjs",
-    "tokens": [
-      "@elizaos/plugin-cli-inference",
-      "plugins/plugin-agent-orchestrator",
-      "plugins/plugin-app-control",
-      "plugins/plugin-cloud-apps",
-      "plugins/plugin-health",
-      "plugins/plugin-personal-assistant"
-    ],
-    "reason": "MEASURED_EXPANSION embeds per-scenario-dir persona/paraphrase multipliers sampled live, and the CLI-inference provider note names its plugin; SCENARIO_DIRS itself is seam-discovered"
-  },
-  {
-    "file": "scripts/training-harvest/stage3-gepa-sweep.mjs",
-    "tokens": ["plugins/plugin-training"],
-    "reason": "GEPA sweep maps task types via plugin-training's trajectory-task-datasets and runs its train command"
-  },
-  {
-    "file": "scripts/verify-smartglasses-software.mjs",
-    "tokens": ["plugins/plugin-facewear"],
-    "reason": "orchestrates the facewear plugin's software-readiness steps (lint/typecheck/test/app-registration)"
+    "tokens": ["@elizaos/plugin-cli-inference"],
+    "reason": "the harvest manifest names the CLI-inference provider plugin that supplies its authenticated live-model execution seam"
   }
 ]

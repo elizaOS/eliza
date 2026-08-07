@@ -1,5 +1,9 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for run with env mjs. */
+/**
+ * Cross-platform `env KEY=VALUE -- cmd` replacement: applies inline env
+ * assignments and spawns the command, suppressing Node warnings for vitest
+ * invocations.
+ */
 import { spawnSync } from "node:child_process";
 
 const args = process.argv.slice(2);

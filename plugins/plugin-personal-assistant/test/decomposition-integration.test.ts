@@ -6,7 +6,6 @@ import { financesPlugin } from "@elizaos/plugin-finances";
 import { goalsPlugin } from "@elizaos/plugin-goals";
 import { healthPlugin } from "@elizaos/plugin-health";
 import { inboxPlugin } from "@elizaos/plugin-inbox";
-import { remoteDesktopPlugin } from "@elizaos/plugin-remote-desktop";
 import { describe, expect, it } from "vitest";
 import { personalAssistantPlugin } from "../src/plugin.ts";
 
@@ -26,7 +25,7 @@ import { personalAssistantPlugin } from "../src/plugin.ts";
  * deterministic.
  */
 
-// The plugins PA integrates. calendar/finances/inbox/remote-desktop/goals/health
+// The plugins PA integrates. calendar/finances/inbox/goals/health
 // are auto-registered by PA.init(); calendar/goals are registered in that
 // topology without their standalone action arrays so their scaffold/standalone
 // parents cannot shadow PA's richer owner-operation umbrellas. Health registers
@@ -37,7 +36,6 @@ const SUBPLUGINS: Plugin[] = [
   calendarPlugin,
   financesPlugin,
   inboxPlugin,
-  remoteDesktopPlugin,
   goalsPlugin,
   healthPlugin,
   blockerPlugin,
@@ -54,7 +52,6 @@ const AUTO_REGISTERED: Plugin[] = [
   withoutActions(calendarPlugin),
   financesPlugin,
   inboxPlugin,
-  remoteDesktopPlugin,
   withoutActions(goalsPlugin),
   healthPlugin,
 ];
@@ -172,7 +169,6 @@ describe("LifeOps decomposition — composed plugin surface", () => {
       "CONNECTOR",
       "ENTITY",
       "WORK_THREAD",
-      "REMOTE_DESKTOP",
     ];
     const present = new Set(
       ALL.flatMap((p) => actionsOf(p).map((a) => a.name)),

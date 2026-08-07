@@ -1,7 +1,7 @@
 // Real interaction coverage for the Settings sections + character editor.
 // all-pages-clicksafe only render-smokes settings; this drives the actual
 // controls (voice wake-word toggle, appearance theme, capability switch, app-
-// permission refresh, backup modal, character bio save) and asserts they
+// permission refresh, backup modal, character bio autosave) and asserts they
 // DO something. Keyless against the stub.
 
 import { expect, type Page, test } from "@playwright/test";
@@ -164,14 +164,12 @@ test("backup settings: Back Up opens its modal", async ({ page }) => {
   await expect(page.getByRole("dialog")).toBeVisible({ timeout: 10_000 });
 });
 
-// Deep character round-trip against the REAL backend. The previous keyless
-// version stubbed PUT /api/character via page.route so Save resolved — a LARP
-// that proved the button fired a request but never that the edit persisted (the
-// stub's GET /api/character returns a static character, so a reload would not
-// reflect the new bio). This rewrite removes the stub entirely and does the real
-// write→reload→read-back: it hits the live app-core runtime, which persists the
-// character to the runtime + DB, so the reloaded editor shows the saved bio.
-// LIVE_ONLY: the keyless stub cannot persist a character edit.
+// Deep character round-trip against the REAL backend. Personality now renders
+// inline and autosaves after a 700 ms debounce; there is no open step or manual
+// Save button. The shared client and app-core route currently use PUT for the
+// partial character edit. This test observes a successful real response and
+// proves write→reload→read-back persistence. LIVE_ONLY: the keyless stub cannot
+// persist a character edit.
 test.describe("character editor deep round-trip", () => {
   test.skip(
     !LIVE_STACK,
@@ -183,10 +181,12 @@ test.describe("character editor deep round-trip", () => {
     page,
   }) => {
     let characterSaves = 0;
-    page.on("request", (req) => {
+    page.on("response", (res) => {
+      const req = res.request();
       if (
         req.method() === "PUT" &&
-        /\/api\/character(?:\?|$)/.test(req.url())
+        /\/api\/character(?:\?|$)/.test(req.url()) &&
+        res.ok()
       ) {
         characterSaves += 1;
       }
@@ -198,23 +198,16 @@ test.describe("character editor deep round-trip", () => {
     await expect(page.getByTestId("character-editor-view")).toBeVisible({
       timeout: 60_000,
     });
-    await page
-      .getByRole("button", { name: /Open Personality/i })
-      .first()
-      .click();
 
     const bio = page
-      .getByRole("textbox", { name: /About Me/i })
+      .locator('[data-agent-id="identity-bio"]')
       .or(page.getByPlaceholder(/Describe who your agent is/i))
       .first();
     await expect(bio).toBeVisible({ timeout: 15_000 });
     await bio.fill(uniqueBio);
 
-    const save = page.getByRole("button", { name: /^Save$/ }).first();
-    await expect(save).toBeEnabled({ timeout: 10_000 });
-    await save.click();
-
-    // Real PUT /api/character — the backend handler runs and persists.
+    // Real debounced PUT /api/character → 2xx — the backend handler runs and
+    // persists before the read-back navigation begins.
     await expect.poll(() => characterSaves).toBeGreaterThan(0);
 
     // Read-back: reload the character editor and confirm the saved bio survives
@@ -223,12 +216,8 @@ test.describe("character editor deep round-trip", () => {
     await expect(page.getByTestId("character-editor-view")).toBeVisible({
       timeout: 60_000,
     });
-    await page
-      .getByRole("button", { name: /Open Personality/i })
-      .first()
-      .click();
     const reloadedBio = page
-      .getByRole("textbox", { name: /About Me/i })
+      .locator('[data-agent-id="identity-bio"]')
       .or(page.getByPlaceholder(/Describe who your agent is/i))
       .first();
     await expect(reloadedBio).toBeVisible({ timeout: 15_000 });

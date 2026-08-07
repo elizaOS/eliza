@@ -2,6 +2,7 @@
 
 import { execFileSync, spawn } from "node:child_process";
 import { arch, platform } from "node:os";
+import { logger } from "@elizaos/core";
 
 export type SandboxEngineType = "docker" | "apple-container" | "auto";
 
@@ -423,8 +424,9 @@ export class DockerEngine implements ISandboxEngine {
         timeout: 15000,
         stdio: "ignore",
       });
-    } catch {
-      /* best effort */
+    } catch (error) {
+      // error-policy:J6 teardown continues so callers can remove remaining resources.
+      logger.debug({ error, id }, "[SandboxEngine] Docker stop failed");
     }
   }
 
@@ -434,8 +436,9 @@ export class DockerEngine implements ISandboxEngine {
         timeout: 10000,
         stdio: "ignore",
       });
-    } catch {
-      /* best effort */
+    } catch (error) {
+      // error-policy:J6 teardown continues so callers can remove remaining resources.
+      logger.debug({ error, id }, "[SandboxEngine] Docker removal failed");
     }
   }
 
@@ -617,8 +620,12 @@ export class AppleContainerEngine implements ISandboxEngine {
         timeout: 15000,
         stdio: "ignore",
       });
-    } catch {
-      /* best effort */
+    } catch (error) {
+      // error-policy:J6 teardown continues so callers can remove remaining resources.
+      logger.debug(
+        { error, id },
+        "[SandboxEngine] Apple container stop failed",
+      );
     }
   }
 
@@ -629,8 +636,12 @@ export class AppleContainerEngine implements ISandboxEngine {
         timeout: 10000,
         stdio: "ignore",
       });
-    } catch {
-      /* best effort */
+    } catch (error) {
+      // error-policy:J6 teardown continues so callers can remove remaining resources.
+      logger.debug(
+        { error, id },
+        "[SandboxEngine] Apple container removal failed",
+      );
     }
   }
 

@@ -1,15 +1,10 @@
 /**
- * Vitest configuration for plugin-health tests, provider SDK shims, and sibling
- * scheduling source aliases.
+ * Runs health tests against real workspace sources with explicit browser-safe UI entries.
  */
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
-import { providerSdkShimPlugin } from "../../packages/test/vitest/provider-sdk-aliases";
+import { buildWorkspaceSourceAliases } from "../../packages/scripts/vitest/source-aliases.ts";
 
-// @elizaos/core, @elizaos/logger, and @ai-sdk/anthropic are shimmed by
-// providerSdkShimPlugin() (enforce:"pre" resolveId), so they are intentionally
-// absent here. Cross-plugin gate coverage must exercise sibling source, not
-// stale dist, hence the source aliases below.
 const sharedSrc = fileURLToPath(
   new URL("../../packages/shared/src", import.meta.url),
 );
@@ -44,10 +39,10 @@ const aliases = [
       new URL("../../packages/ui/src/spatial/index.ts", import.meta.url),
     ),
   },
+  ...buildWorkspaceSourceAliases(),
 ];
 
 export default defineConfig({
-  plugins: [providerSdkShimPlugin()],
   resolve: {
     alias: aliases,
   },

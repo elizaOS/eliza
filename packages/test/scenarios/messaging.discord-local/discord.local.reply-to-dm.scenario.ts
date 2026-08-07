@@ -4,7 +4,7 @@ import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
   judgeRubric,
-} from "../_helpers/action-assertions.ts";
+} from "@elizaos/scenario-runner/scenario-assertions";
 
 export default scenario({
   lane: "live-only",

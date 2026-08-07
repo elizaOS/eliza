@@ -20,7 +20,6 @@ import { X } from "lucide-react";
 import "./components/chat/chat-source-registration";
 import {
   type ComponentType,
-  type LazyExoticComponent,
   lazy,
   type ReactNode,
   Suspense,
@@ -37,6 +36,37 @@ import {
   type NavigateViewDetail,
   navigateBrowserPath,
 } from "./app-navigate-view";
+import {
+  LazyAutomationsFeed,
+  LazyBackgroundView,
+  LazyBrowserWorkspaceView,
+  LazyCameraPageView,
+  LazyCharacterEditor,
+  LazyCharacterExperienceView,
+  LazyCharacterSkillsView,
+  LazyContactsPageView,
+  LazyDatabasePageView,
+  LazyDesktopWorkspaceSection,
+  LazyFilesView,
+  LazyKnowledgeView,
+  LazyLiveMeetingPageView,
+  LazyLogsView,
+  LazyMemoryViewerView,
+  LazyMessagesPageView,
+  LazyMyAppsView,
+  LazyPendantTranscriptView,
+  LazyPhonePageView,
+  LazyPluginsPageView,
+  LazyRelationshipsView,
+  LazyRuntimeView,
+  LazySettingsView,
+  LazySkillsView,
+  LazyStreamView,
+  LazyTasksPageView,
+  LazyTrajectoriesView,
+  LazyViewBoundary,
+  scheduleRouteViewChunkPrefetch,
+} from "./app-route-loaders";
 import { AppBackground } from "./backgrounds/AppBackground";
 import {
   invokeDesktopBridgeRequest,
@@ -142,7 +172,6 @@ import {
   useChatComposer,
   useChatInputRef,
 } from "./state/ChatComposerContext.hooks";
-import { isShellPaintable } from "./state/startup-coordinator";
 import {
   authProbeShouldHoldShell,
   firstRunOwnsLoginSurface,
@@ -170,41 +199,12 @@ import { VoiceWorkbenchShell } from "./voice/voice-selftest/VoiceWorkbenchShell"
 // by `AppWorkspaceChrome`'s safe-area floor). The routed `<main>`
 // (`routedShellMainClass`) deliberately does NOT re-apply that clearance —
 // doing so double-counted it and left an oversized empty band under every view.
-type ExtractComponent<TValue> =
-  TValue extends ComponentType<infer Props> ? ComponentType<Props> : never;
-
 function gatewayHostForDisplay(gatewayUrl: string): string {
   try {
     return new URL(gatewayUrl).host || gatewayUrl;
   } catch {
     return gatewayUrl;
   }
-}
-
-// Single source of truth for the lazy route-view chunk loaders. Each
-// lazyNamedView() call registers its import() thunk here so prefetch (below)
-// warms exactly the chunks that are lazy-split — no hand-synced second list to
-// drift out of sync.
-const routeViewLoaders = new Set<() => Promise<unknown>>();
-
-function lazyNamedView<
-  TModule extends Record<string, unknown>,
-  TKey extends keyof TModule,
->(
-  load: () => Promise<TModule>,
-  exportName: TKey,
-): LazyExoticComponent<ExtractComponent<TModule[TKey]>> {
-  routeViewLoaders.add(load);
-  return lazy(async () => {
-    const module = await load();
-    const component = module[exportName];
-    if (typeof component !== "function") {
-      throw new Error(`Missing component export: ${String(exportName)}`);
-    }
-    return {
-      default: component as ExtractComponent<TModule[TKey]>,
-    };
-  });
 }
 
 import { client } from "./api";
@@ -223,7 +223,7 @@ import {
   resolveBuiltinBackgroundPolicy,
   resolveBuiltinTabId,
 } from "./builtin-tab-registry";
-// DesktopTabBar and FineTuningView stay static: they are already pulled
+// DesktopTabBar stays static: it is already pulled
 // eagerly elsewhere in the app graph (plugin-loader / boot-config), so a
 // lazy() boundary here would only fold back into main. The remaining page
 // views are lazy-split below.
@@ -238,7 +238,6 @@ import {
   WalletSectionNav,
 } from "./components/pages/WalletSectionNav";
 import { ViewHeader } from "./components/shared/ViewHeader";
-import { FineTuningView } from "./components/training/injected";
 import { DynamicViewLoader } from "./components/views/DynamicViewLoader";
 import { registerSandboxProbeView } from "./components/views/sandbox-probe-view";
 import {
@@ -249,207 +248,6 @@ import {
 import { useDesktopTabs } from "./hooks/useDesktopTabs";
 import { useEnabledViewKinds } from "./state/useViewKinds";
 import { WidgetHost } from "./widgets";
-
-const BackgroundView = lazyNamedView(
-  () => import("./components/pages/BackgroundView"),
-  "BackgroundView",
-);
-const CharacterEditor = lazyNamedView(
-  () => import("./components/character/CharacterEditor"),
-  "CharacterEditor",
-);
-const AutomationsFeed = lazyNamedView(
-  () => import("./components/pages/AutomationsFeed"),
-  "AutomationsFeed",
-);
-const BrowserWorkspaceView = lazyNamedView(
-  () => import("./components/pages/BrowserWorkspaceView"),
-  "BrowserWorkspaceView",
-);
-// #13594: `/apps/transcripts` is now the chrome-minimal LIVE-meeting affordance
-// only — recordings were folded into the Knowledge hub. The full recordings
-// browser (TranscriptsPage) is no longer routed.
-const LiveMeetingPageView = lazyNamedView(
-  () => import("./components/transcripts/LiveMeetingPage"),
-  "LiveMeetingPage",
-);
-const CameraPageView = lazyNamedView(
-  () => import("./components/pages/CameraPageView"),
-  "CameraPageView",
-);
-const ContactsPageView = lazyNamedView(
-  () => import("./components/pages/ElizaOsAppsView"),
-  "ContactsPageView",
-);
-const DesktopWorkspaceSection = lazyNamedView(
-  () => import("./components/settings/DesktopWorkspaceSection"),
-  "DesktopWorkspaceSection",
-);
-const MessagesPageView = lazyNamedView(
-  () => import("./components/pages/ElizaOsAppsView"),
-  "MessagesPageView",
-);
-const PhonePageView = lazyNamedView(
-  () => import("./components/pages/ElizaOsAppsView"),
-  "PhonePageView",
-);
-const SettingsView = lazyNamedView(
-  () => import("./components/pages/SettingsView"),
-  "SettingsView",
-);
-const StreamView = lazyNamedView(
-  () => import("./components/pages/StreamView"),
-  "StreamView",
-);
-const PendantTranscriptView = lazyNamedView(
-  () => import("./components/pages/PendantTranscriptView"),
-  "PendantTranscriptView",
-);
-// Route-level page views — lazy-split out of the main chunk. Each renders
-// inside the LazyViewBoundary Suspense below, and none is imported statically
-// elsewhere in the app graph, so the dynamic boundary actually defers load.
-const DatabasePageView = lazyNamedView(
-  () => import("./components/pages/DatabasePageView"),
-  "DatabasePageView",
-);
-const FilesView = lazyNamedView(
-  () => import("./components/pages/FilesView"),
-  "FilesView",
-);
-const LogsView = lazyNamedView(
-  () => import("./components/pages/LogsView"),
-  "LogsView",
-);
-const MemoryViewerView = lazyNamedView(
-  () => import("./components/pages/MemoryViewerView"),
-  "MemoryViewerView",
-);
-const MyAppsView = lazyNamedView(
-  () => import("./components/pages/MyAppsView"),
-  "MyAppsView",
-);
-const PluginsPageView = lazyNamedView(
-  () => import("./components/pages/PluginsPageView"),
-  "PluginsPageView",
-);
-const RelationshipsView = lazyNamedView(
-  () => import("./components/pages/RelationshipsView"),
-  "RelationshipsView",
-);
-const KnowledgeView = lazyNamedView(
-  () => import("./components/pages/KnowledgeView"),
-  "KnowledgeView",
-);
-const CharacterExperienceView = lazyNamedView(
-  () => import("./components/character/CharacterExperienceView"),
-  "CharacterExperienceView",
-);
-const CharacterSkillsView = lazyNamedView(
-  () => import("./components/character/CharacterSkillsView"),
-  "CharacterSkillsView",
-);
-const RuntimeView = lazyNamedView(
-  () => import("./components/pages/RuntimeView"),
-  "RuntimeView",
-);
-const SkillsView = lazyNamedView(
-  () => import("./components/pages/SkillsView"),
-  "SkillsView",
-);
-const TasksPageView = lazyNamedView(
-  () => import("./components/pages/TasksPageView"),
-  "TasksPageView",
-);
-const TrajectoriesView = lazyNamedView(
-  () => import("./components/pages/TrajectoriesView"),
-  "TrajectoriesView",
-);
-
-const ROUTE_PREFETCH_MAX_CHUNKS = 4;
-
-function shouldWarmRouteViewChunks(): boolean {
-  if (typeof window === "undefined" || typeof document === "undefined") {
-    return false;
-  }
-  if (document.visibilityState === "hidden") return false;
-  const navigatorWithHints = navigator as Navigator & {
-    connection?: { effectiveType?: string; saveData?: boolean };
-    deviceMemory?: number;
-  };
-  if (navigatorWithHints.connection?.saveData) return false;
-  if (
-    navigatorWithHints.connection?.effectiveType === "slow-2g" ||
-    navigatorWithHints.connection?.effectiveType === "2g"
-  ) {
-    return false;
-  }
-  if (
-    typeof navigatorWithHints.deviceMemory === "number" &&
-    navigatorWithHints.deviceMemory <= 4
-  ) {
-    return false;
-  }
-  return true;
-}
-
-// Once the shell is interactive, warm a small number of lazy route chunks
-// during idle time on capable devices. Full views still stay lazy by default:
-// this is a bounded best-effort path, not an eager import of the whole shell.
-function scheduleRouteViewChunkPrefetch(): () => void {
-  if (!shouldWarmRouteViewChunks()) return () => {};
-  const loaders = [...routeViewLoaders].slice(0, ROUTE_PREFETCH_MAX_CHUNKS);
-  if (loaders.length === 0) return () => {};
-  let cancelled = false;
-  let scheduledId: number | null = null;
-  const w = window as Window & {
-    requestIdleCallback?: (
-      cb: () => void,
-      options?: { timeout?: number },
-    ) => number;
-    cancelIdleCallback?: (id: number) => void;
-  };
-
-  const scheduleNext = () => {
-    if (cancelled || loaders.length === 0) return;
-    const run = () => {
-      scheduledId = null;
-      if (cancelled) return;
-      const load = loaders.shift();
-      // error-policy:J6 best-effort chunk prefetch; a failed warm-up is harmless
-      // because React.lazy re-loads the chunk on-demand when the route mounts.
-      if (load) void load().catch(() => {});
-      scheduleNext();
-    };
-    scheduledId =
-      w.requestIdleCallback?.(run, { timeout: 2_000 }) ??
-      window.setTimeout(run, 750);
-  };
-
-  scheduleNext();
-  return () => {
-    cancelled = true;
-    if (scheduledId === null) return;
-    if (w.cancelIdleCallback) {
-      w.cancelIdleCallback(scheduledId);
-    } else {
-      window.clearTimeout(scheduledId);
-    }
-  };
-}
-
-function LazyViewBoundary({ children }: { children: ReactNode }) {
-  return (
-    <Suspense
-      fallback={
-        <div className="flex flex-1 min-h-0 min-w-0 items-center justify-center text-sm text-muted">
-          Loading…
-        </div>
-      }
-    >
-      {children}
-    </Suspense>
-  );
-}
 
 /** Check if we're in pop-out mode (StreamView only, no chrome). */
 function useIsPopout(): boolean {
@@ -731,7 +529,7 @@ function useResolvedDynamicPage(tab: string): ResolvedDynamicPage | null {
 /**
  * Render a dynamically-resolved plugin page. Honors:
  *   1. An in-process registration (`registerAppShellPage`) — preferred.
- *   2. A `componentExport` import-spec like `"@elizaos/plugin-wallet-ui#InventoryView"`,
+ *   2. A `componentExport` import-spec like `"@elizaos/plugin-wallet/ui#InventoryView"`,
  *      loaded with dynamic `import()` and rendered via Suspense.
  *
  * Plugins that declare a `componentExport` without a matching registration get
@@ -1396,7 +1194,7 @@ interface StaticTabRenderContext {
  * `builtinRouteBackgroundPolicy`; a tab added to one and forgotten in another
  * was an unobservable drift bug. Now every builtin surface (simple or one that
  * needs runtime context / a custom wrapper) is ONE keyed entry, and alias tabs
- * (`triggers` -> `automations`, `advanced` -> `fine-tuning`) resolve through
+ * (`triggers` -> `automations`) resolve through
  * the shared `builtin-tab-registry` so the router and the background resolver
  * read the same alias table.
  *
@@ -1423,57 +1221,57 @@ function buildStaticTabRenderers(): Record<
   );
   return {
     chat: () => <ViewUnavailableFallback />,
-    browser: () => <BrowserWorkspaceView />,
-    stream: () => <StreamView />,
-    "pendant-transcript": () => <PendantTranscriptView />,
-    tasks: wrap(<TasksPageView />),
-    automations: () => <AutomationsFeed />,
-    plugins: withHeader("plugins", <PluginsPageView />),
-    skills: withHeader("skills", <SkillsView />),
-    trajectories: withHeader("trajectories", <TrajectoriesView />),
-    transcripts: wrap(<LiveMeetingPageView />),
+    browser: () => <LazyBrowserWorkspaceView />,
+    stream: () => <LazyStreamView />,
+    "pendant-transcript": () => <LazyPendantTranscriptView />,
+    tasks: wrap(<LazyTasksPageView />),
+    automations: () => <LazyAutomationsFeed />,
+    plugins: withHeader("plugins", <LazyPluginsPageView />),
+    skills: withHeader("skills", <LazySkillsView />),
+    trajectories: withHeader("trajectories", <LazyTrajectoriesView />),
+    transcripts: wrap(<LazyLiveMeetingPageView />),
     // Relationships is a Character-family section: the shared CharacterSectionNav
     // (passed as `nav`) owns the "Character" header + strip, so the view renders
     // headerless.
     relationships: ({ characterNav }) => (
       <TabContentView nav={characterNav}>
-        <RelationshipsView hideHeader={Boolean(characterNav)} />
+        <LazyRelationshipsView hideHeader={Boolean(characterNav)} />
       </TabContentView>
     ),
-    documents: wrap(<KnowledgeView />),
+    documents: wrap(<LazyKnowledgeView />),
     experience: ({ characterNav }) => (
       <TabContentView nav={characterNav}>
-        <CharacterExperienceView />
+        <LazyCharacterExperienceView />
       </TabContentView>
     ),
     "character-skills": ({ characterNav }) => (
       <TabContentView nav={characterNav}>
-        <CharacterSkillsView />
+        <LazyCharacterSkillsView />
       </TabContentView>
     ),
-    memories: wrap(<MemoryViewerView />),
-    "my-apps": wrap(<MyAppsView />),
+    memories: wrap(<LazyMemoryViewerView />),
+    "my-apps": wrap(<LazyMyAppsView />),
     files: () => (
       <TabContentView>
         <div className="flex h-full min-h-0 w-full flex-col">
           <ViewHeader title={titleForTab("files")} />
           <div className="eliza-chat-scroll min-h-0 flex-1 overflow-y-auto pb-[var(--eliza-chat-clearance,5.25rem)]">
-            <FilesView />
+            <LazyFilesView />
           </div>
         </div>
       </TabContentView>
     ),
-    runtime: withHeader("runtime", <RuntimeView />),
-    database: withHeader("database", <DatabasePageView />),
-    logs: withHeader("logs", <LogsView />),
-    desktop: withHeader("desktop", <DesktopWorkspaceSection />),
+    runtime: withHeader("runtime", <LazyRuntimeView />),
+    database: withHeader("database", <LazyDatabasePageView />),
+    logs: withHeader("logs", <LazyLogsView />),
+    desktop: withHeader("desktop", <LazyDesktopWorkspaceSection />),
     settings: ({
       settingsInitialSection,
       settingsNavigatePayload,
       settingsNavigateSequence,
     }) => (
       <TabContentView surface="transparent">
-        <SettingsView
+        <LazySettingsView
           key="settings-root"
           initialSection={settingsInitialSection ?? undefined}
           navigatePayload={settingsNavigatePayload}
@@ -1484,26 +1282,26 @@ function buildStaticTabRenderers(): Record<
     // Camera is an AOSP-ElizaOS-fork-only surface — gate the route on the same
     // marker as the home tile, so a deep-link off the fork falls back to
     // "unavailable" instead of rendering on web/desktop/iOS/Play-Store Android.
-    camera: () => renderPhoneSurface(isAospShellEnabled(), CameraPageView),
+    camera: () => renderPhoneSurface(isAospShellEnabled(), LazyCameraPageView),
     phone: ({ nativeOsSurfaceEnabled }) =>
-      renderPhoneSurface(nativeOsSurfaceEnabled, PhonePageView),
+      renderPhoneSurface(nativeOsSurfaceEnabled, LazyPhonePageView),
     messages: ({ nativeOsSurfaceEnabled }) =>
-      renderPhoneSurface(nativeOsSurfaceEnabled, MessagesPageView),
+      renderPhoneSurface(nativeOsSurfaceEnabled, LazyMessagesPageView),
     contacts: ({ nativeOsSurfaceEnabled }) =>
-      renderPhoneSurface(nativeOsSurfaceEnabled, ContactsPageView),
+      renderPhoneSurface(nativeOsSurfaceEnabled, LazyContactsPageView),
     views: ({ navigationPath }) => renderAppsSurface(navigationPath),
     apps: ({ navigationPath }) => renderAppsSurface(navigationPath),
     // Rendered directly (no opaque TabContentView chrome) so the live app
     // background shows through behind the controls.
-    background: () => <BackgroundView />,
+    background: () => <LazyBackgroundView />,
     character: ({ characterNav }) => (
       <TabContentView nav={characterNav}>
-        <CharacterEditor />
+        <LazyCharacterEditor />
       </TabContentView>
     ),
     "character-select": ({ characterNav }) => (
       <TabContentView nav={characterNav}>
-        <CharacterEditor />
+        <LazyCharacterEditor />
       </TabContentView>
     ),
     inventory: ({ walletNav }) => (
@@ -1511,7 +1309,6 @@ function buildStaticTabRenderers(): Record<
         <WalletInventoryPage />
       </TabScrollView>
     ),
-    "fine-tuning": wrap(<FineTuningView />),
   };
 }
 
@@ -1534,8 +1331,8 @@ function renderStaticViewRouterTab({
   walletNav?: ReactNode;
   characterNav?: ReactNode;
 }): ReactNode {
-  // Resolve legacy alias ids (e.g. `triggers` -> `automations`, `advanced` ->
-  // `fine-tuning`) onto their canonical builtin id via the shared registry, so
+  // Resolve legacy alias ids (for example, `triggers` -> `automations`) onto
+  // their canonical builtin id via the shared registry, so
   // the router and background resolver honor the same alias table.
   const canonicalTab = resolveBuiltinTabId(tab);
   const render = buildStaticTabRenderers()[canonicalTab];
@@ -1687,7 +1484,8 @@ function ViewRouter({
   const nativeOsSurfaceEnabled = isAospShellEnabled();
   // AppProvider owns late path-to-tab reconciliation through setTabRaw. Doing
   // it here through the public setTab command would rewrite exact plugin paths
-  // to a shared affinity's canonical path (for example /hyperliquid → /wallet).
+  // to a shared affinity's canonical path (for example a wallet sub-page to
+  // the wallet root).
   const dynamicPage = useResolvedDynamicPage(tab);
   const [navigationPath, setNavigationPath] = useState(
     () =>
@@ -2077,7 +1875,10 @@ function HomeScreenMount({
     ),
     [Home, onOpenTile],
   );
-  const launcher = useMemo(() => <LauncherSurface />, []);
+  // The Home↔Apps rail is the demo-facing navigation surface. Keep it scoped
+  // to registered runtime views; the dedicated `/apps` page remains the full
+  // installable catalog and is where discovery belongs.
+  const launcher = useMemo(() => <LauncherSurface catalogMode="demo" />, []);
   // Keep the dashboard warm during first-run, but hide its clock, widgets, and
   // launcher so the onboarding overlay reveals only the shared wallpaper.
   return (
@@ -2157,7 +1958,7 @@ function AppContent() {
   // polling, pairing, error) keep the full-screen StartupScreen.
   // Runtime-dependent effects and overlay apps below stay gated on
   // `isCoordinatorReady` and defer safely.
-  const isShellPaintableNow = isShellPaintable(startupCoordinator.phase);
+  const isShellPaintableNow = startupCoordinator.isShellPaintable;
   // Cloud-container bootstrap: first-run-required is shell-paintable (in-chat
   // onboarding), but a provisioned container without a bootstrap session must
   // still hold the full-screen StartupScreen so its token gate can run — the
@@ -2540,6 +2341,7 @@ function AppContent() {
       openDesktopTab,
       setActiveDesktopTabId,
       setTab,
+      setTabForPath: (routeTab) => setTab(routeTab, { history: "preserve" }),
       setViewLayout,
     });
     // An agent-dispatched navigate to the Settings view that carries a `subview`
@@ -2741,7 +2543,7 @@ function AppContent() {
     return (
       <div className="flex h-[100dvh] w-full max-w-full flex-col overflow-hidden bg-bg font-body text-txt">
         <LazyViewBoundary>
-          <StreamView />
+          <LazyStreamView />
         </LazyViewBoundary>
       </div>
     );

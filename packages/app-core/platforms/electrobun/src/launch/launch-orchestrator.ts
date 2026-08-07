@@ -1,5 +1,5 @@
 /** Implements Electrobun desktop launch orchestrator ts behavior for app-core shell integration. */
-import type { JsonValue } from "@elizaos/plugin-remote-manifest";
+import type { JsonValue } from "@elizaos/core";
 import {
   createUnknownDatabaseSnapshot,
   type DatabaseSnapshot,
@@ -37,13 +37,6 @@ export interface LaunchDiagnosticsSnapshot {
   statusPath: string;
 }
 
-interface RemoteStatus {
-  id: string;
-  state: string;
-  error: string | null;
-  required: boolean;
-}
-
 interface LaunchAgentAdapter {
   getStatus(): EmbeddedAgentStatus;
   start(): Promise<EmbeddedAgentStatus>;
@@ -58,7 +51,6 @@ export interface LaunchOrchestratorOptions {
   readDiagnostics: () => LaunchDiagnosticsSnapshot;
   readDatabaseStatus?: () => DatabaseSnapshot;
   readDiagnosticLogTail: (maxChars?: number) => string;
-  listRemoteStatuses: () => RemoteStatus[];
   createBugReportBundle: (options: {
     reportMarkdown: string;
     reportJson: Record<string, JsonValue>;
@@ -152,22 +144,6 @@ function databaseBlocksLaunch(database: DatabaseSnapshot): boolean {
   );
 }
 
-function remoteSnapshot(statuses: RemoteStatus[]): LaunchSnapshot["remotes"] {
-  const required = statuses.filter((status) => status.required);
-  return {
-    seeded: statuses.length > 0,
-    requiredStarted:
-      required.length === 0 ||
-      required.every((status) => status.state === "running"),
-    errors: statuses
-      .filter((status) => status.error)
-      .map((status) => ({
-        id: status.id,
-        error: status.error ?? "Remote failed.",
-      })),
-  };
-}
-
 function suggestedAction(snapshot: LaunchSnapshot): string | undefined {
   if (
     snapshot.database.status === "migration-failed" ||
@@ -186,9 +162,6 @@ function suggestedAction(snapshot: LaunchSnapshot): string | undefined {
     return "Choose Cloud, Local, or Remote in first-run runtime setup.";
   if (snapshot.phase === "cloud-bootstrap-required")
     return "Complete cloud bootstrap before entering chat.";
-  if (!snapshot.remotes.requiredStarted) {
-    return "Runtime can continue while Remote readiness is inspected.";
-  }
   return undefined;
 }
 
@@ -233,7 +206,6 @@ function snapshotJson(snapshot: LaunchSnapshot): Record<string, JsonValue> {
     database: databaseSnapshotJson(snapshot.database),
     auth: snapshot.auth,
     firstRun: snapshot.firstRun,
-    remotes: snapshot.remotes,
     localModel: snapshot.localModel,
     diagnostics: snapshot.diagnostics,
     recovery: snapshot.recovery,
@@ -253,7 +225,6 @@ export class LaunchOrchestrator {
   private readonly readDiagnostics: () => LaunchDiagnosticsSnapshot;
   private readonly readDatabaseStatus: () => DatabaseSnapshot;
   private readonly readDiagnosticLogTail: (maxChars?: number) => string;
-  private readonly listRemoteStatuses: () => RemoteStatus[];
   private readonly createBugReportBundle: LaunchOrchestratorOptions["createBugReportBundle"];
   private readonly dynamicViewRegistry: DynamicViewRegistry | null;
   private readonly dynamicViewSessions: DynamicViewSessionManager | null;
@@ -269,7 +240,6 @@ export class LaunchOrchestrator {
     this.readDatabaseStatus =
       options.readDatabaseStatus ?? (() => createUnknownDatabaseSnapshot());
     this.readDiagnosticLogTail = options.readDiagnosticLogTail;
-    this.listRemoteStatuses = options.listRemoteStatuses;
     this.createBugReportBundle = options.createBugReportBundle;
     this.dynamicViewRegistry = options.dynamicViewRegistry ?? null;
     this.dynamicViewSessions = options.dynamicViewSessions ?? null;
@@ -307,7 +277,6 @@ export class LaunchOrchestrator {
       }
     }
 
-    const remotes = remoteSnapshot(this.listRemoteStatuses());
     const phase = databaseBlocksLaunch(database)
       ? "error"
       : classifyPhase({
@@ -347,7 +316,6 @@ export class LaunchOrchestrator {
         requiredGate: requiredGate(auth, firstRun),
         error: firstRunError,
       },
-      remotes,
       localModel: {
         backgroundDownloadQueued: false,
         blocking: false,

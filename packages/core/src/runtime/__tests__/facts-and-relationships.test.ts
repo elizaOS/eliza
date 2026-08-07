@@ -103,10 +103,10 @@ function makeRuntime(modelResponse: unknown): FactsRuntime {
 }
 
 describe("parseFactsAndRelationshipsOutput", () => {
-	it("returns empty arrays for empty input", () => {
-		const result = parseFactsAndRelationshipsOutput("");
-		expect(result.facts).toEqual([]);
-		expect(result.relationships).toEqual([]);
+	it("rejects empty input instead of fabricating an empty extraction", () => {
+		expect(() => parseFactsAndRelationshipsOutput("")).toThrow(
+			expect.objectContaining({ code: "FACTS_MODEL_OUTPUT_MISSING" }),
+		);
 	});
 
 	it("parses text-shape JSON output", () => {
@@ -183,20 +183,19 @@ describe("parseFactsAndRelationshipsOutput", () => {
 		expect(viaParams.facts).toEqual(["y"]);
 	});
 
-	it("drops malformed relationship entries", () => {
-		const result = parseFactsAndRelationshipsOutput(
-			JSON.stringify({
-				facts: [],
-				relationships: [
-					{ subject: "user", predicate: "", object: "Alice" },
-					{ subject: "user", predicate: "manages", object: "Bob" },
-				],
-				thought: "",
-			}),
-		);
-		expect(result.relationships).toEqual([
-			{ subject: "user", predicate: "manages", object: "Bob" },
-		]);
+	it("rejects malformed relationship entries instead of silently dropping them", () => {
+		expect(() =>
+			parseFactsAndRelationshipsOutput(
+				JSON.stringify({
+					facts: [],
+					relationships: [
+						{ subject: "user", predicate: "", object: "Alice" },
+						{ subject: "user", predicate: "manages", object: "Bob" },
+					],
+					thought: "",
+				}),
+			),
+		).toThrow(expect.objectContaining({ code: "FACTS_RELATIONSHIP_INVALID" }));
 	});
 });
 
@@ -562,6 +561,54 @@ describe("runFactsAndRelationshipsStage", () => {
 				messageId: makeMessage().id,
 			}),
 		});
+	});
+
+	it("propagates fact persistence failures instead of reporting a successful write", async () => {
+		const runtime = makeRuntime(
+			JSON.stringify({
+				facts: ["the user's birthday is March 5"],
+				relationships: [],
+				thought: "new fact",
+			}),
+		);
+		const failure = new Error("facts store unavailable");
+		runtime.createMemory.mockRejectedValueOnce(failure);
+
+		await expect(
+			runFactsAndRelationshipsStage({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				extract: { facts: ["the user's birthday is March 5"] },
+			}),
+		).rejects.toBe(failure);
+	});
+
+	it("propagates relationship edge failures instead of counting a partial write", async () => {
+		const runtime = makeRuntime(
+			JSON.stringify({
+				facts: [],
+				relationships: [
+					{ subject: "user", predicate: "works_with", object: "Alice" },
+				],
+				thought: "new relationship",
+			}),
+		);
+		const failure = new Error("relationship store unavailable");
+		runtime.createRelationship.mockRejectedValueOnce(failure);
+
+		await expect(
+			runFactsAndRelationshipsStage({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				extract: {
+					relationships: [
+						{ subject: "user", predicate: "works_with", object: "Alice" },
+					],
+				},
+			}),
+		).rejects.toBe(failure);
 	});
 
 	it("filters low-signal and secret-like candidates before calling the model", async () => {

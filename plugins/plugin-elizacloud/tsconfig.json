@@ -22,7 +22,6 @@
     "noUnusedParameters": false,
     "allowImportingTsExtensions": true,
     "paths": {
-      "@elizaos/capacitor-bun-runtime": ["../../plugins/plugin-native-bun-runtime/src/index.ts"],
       "@elizaos/cloud-routing": ["../../packages/cloud/routing/src/index.ts"],
       "@elizaos/cloud-sdk": ["../../packages/cloud/sdk/src/index.ts"],
       "@elizaos/core": ["../../packages/core/src/index.node.ts"],
@@ -32,11 +31,7 @@
       "@elizaos/shared/*": ["../../packages/shared/src/*"],
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
-      "@elizaos/import-conversations": ["../../packages/import-conversations/src/index.ts"],
-      "@elizaos/import-conversations/*": ["../../packages/import-conversations/src/*"],
-      "@elizaos/import-conversations/browser": [
-        "../../packages/import-conversations/src/browser.ts"
-      ]
+      "@elizaos/capacitor-bun-runtime": ["../../plugins/plugin-native-bun-runtime/src/index.ts"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "__tests__/**/*.ts", "build.ts", "vitest.config.ts"],

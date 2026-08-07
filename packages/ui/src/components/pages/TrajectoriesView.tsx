@@ -173,7 +173,7 @@ function formatTrajectorySourceLabel(trajectory: TrajectoryRecord): string {
   return parts.join(" • ");
 }
 
-interface TrajectoriesViewProps {
+export interface TrajectoriesViewProps {
   contentHeader?: ReactNode;
   selectedTrajectoryId?: string | null;
   onSelectTrajectory?: (id: string | null) => void;

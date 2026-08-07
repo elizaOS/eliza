@@ -260,6 +260,7 @@ async function dispatchInternalElizaConversationFetch(
   }
 
   return handleCanonicalScopedAgentStream({
+    abortSignal: request.signal,
     agent,
     agentId: claims.agentId,
     orgId: claims.organizationId,

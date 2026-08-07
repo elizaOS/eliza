@@ -18,7 +18,12 @@ import {
   resolveOwnerEntityId,
 } from "@elizaos/agent";
 import { getHostExecutionCapabilities } from "@elizaos/app-core/services/task-host-capabilities";
-import { type IAgentRuntime, logger, ServiceType } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  inspectSendHandlerResult,
+  logger,
+  ServiceType,
+} from "@elizaos/core";
 import type {
   ActivitySignalBusView,
   GlobalPauseView,
@@ -78,6 +83,10 @@ import {
   readActivityProfile,
   registerActivityProfileGates,
 } from "./activity-gates.js";
+import {
+  readScheduledTaskChatDeliveryBinding,
+  revalidateScheduledTaskChatDeliveryBinding,
+} from "./delivery-binding.js";
 import { registerModelMomentCheckGate } from "./moment-judge.js";
 import { createLifeOpsSubjectStoreView } from "./subject-store.js";
 
@@ -454,11 +463,32 @@ function applyDispatchPolicy(result: DispatchResult): DispatchResult {
 
 export function createProductionScheduledTaskDispatcher(opts: {
   runtime: IAgentRuntime;
+  /** Test seam; production persists through LifeOpsRepository. */
+  persistDispatchAttempt?: (
+    record: ScheduledTaskDispatchRecord,
+    message: string,
+    idempotencyKey: string,
+  ) => Promise<void>;
 }): ScheduledTaskDispatcher {
   return {
     async dispatch(
       record: ScheduledTaskDispatchRecord,
     ): Promise<DispatchResult> {
+      // Connector reminders created from chat carry a durable binding minted
+      // from canonical room state. Re-read that state before any composition or
+      // send so restart cannot turn stale owner-only data into a shared-room
+      // disclosure.
+      const deliveryBindingDecision =
+        await revalidateScheduledTaskChatDeliveryBinding(opts.runtime, record);
+      if (deliveryBindingDecision && !deliveryBindingDecision.ok) {
+        return applyDispatchPolicy({
+          ok: false,
+          reason: "auth_expired",
+          userActionable: true,
+          message: deliveryBindingDecision.reason,
+        });
+      }
+
       if (isLocalAgentBackupDispatch(record)) {
         const backup = await createLocalAgentBackup(
           opts.runtime,
@@ -504,11 +534,14 @@ export function createProductionScheduledTaskDispatcher(opts: {
       // raw-instruction fallback, because delivering instruction-voice text
       // verbatim to the owner was the bug this step exists to fix.
       let message: string;
+      const preparedMessage = record.metadata?.dispatchPreparedMessage;
       try {
-        message = await composeOwnerFacingScheduledTaskText(
-          opts.runtime,
-          record,
-        );
+        message =
+          deliveryBindingDecision?.ok &&
+          typeof preparedMessage === "string" &&
+          preparedMessage.trim().length > 0
+            ? preparedMessage
+            : await composeOwnerFacingScheduledTaskText(opts.runtime, record);
       } catch (error) {
         // error-policy:J1 boundary translation — dispatch outcomes are the
         // runner's typed contract; the failure also reaches RECENT_ERRORS and
@@ -519,6 +552,57 @@ export function createProductionScheduledTaskDispatcher(opts: {
           { taskId: record.taskId, channelKey: record.channelKey },
         );
         return renderFailureDispatchResult(error);
+      }
+
+      if (deliveryBindingDecision?.ok && preparedMessage !== message) {
+        // Persist the exact rendered payload BEFORE provider egress. Recovery
+        // must replay byte-for-byte content because connector-level durable
+        // dedupe includes message text; rerendering after a crash could produce
+        // different prose and defeat exactly-once delivery.
+        const existingDispatchKey = record.metadata?.dispatchIdempotencyKey;
+        const dispatchIdempotencyKey =
+          typeof existingDispatchKey === "string" &&
+          existingDispatchKey.trim().length > 0
+            ? existingDispatchKey.trim()
+            : `${record.taskId}:${record.firedAtIso}`;
+        if (opts.persistDispatchAttempt) {
+          await opts.persistDispatchAttempt(
+            record,
+            message,
+            dispatchIdempotencyKey,
+          );
+        } else {
+          const repository = new LifeOpsRepository(opts.runtime);
+          const current = await repository.getScheduledTask(
+            opts.runtime.agentId,
+            record.taskId,
+          );
+          if (!current) {
+            return applyDispatchPolicy({
+              ok: false,
+              reason: "transport_error",
+              acceptance: "not_accepted",
+              userActionable: false,
+              message:
+                "Scheduled task disappeared before dispatch preparation.",
+            });
+          }
+          const attemptMetadata = {
+            dispatchPreparedMessage: message,
+            dispatchIdempotencyKey,
+            dispatchAttempt: {
+              status: "prepared",
+              preparedAtIso: new Date().toISOString(),
+              firedAtIso: record.firedAtIso,
+            },
+          };
+          current.metadata = {
+            ...(current.metadata ?? {}),
+            ...attemptMetadata,
+          };
+          await repository.upsertScheduledTask(opts.runtime.agentId, current);
+          if (record.metadata) Object.assign(record.metadata, attemptMetadata);
+        }
       }
 
       if (!channel?.send) {
@@ -630,12 +714,28 @@ export function createProductionScheduledTaskDispatcher(opts: {
         });
       }
 
+      const chatDeliveryBinding = readScheduledTaskChatDeliveryBinding(
+        record.metadata,
+      );
       const payload = {
         target,
         message,
         metadata: {
           taskId: record.taskId,
           firedAtIso: record.firedAtIso,
+          ...(chatDeliveryBinding
+            ? {
+                accountId: chatDeliveryBinding.accountId,
+                roomId: chatDeliveryBinding.roomId,
+                audience: {
+                  kind: chatDeliveryBinding.audience.kind,
+                  provenance: chatDeliveryBinding.audience.provenance,
+                  membershipVersion:
+                    chatDeliveryBinding.audience.membershipVersion,
+                  ownerOnly: true,
+                },
+              }
+            : {}),
           ...(record.intensity ? { intensity: record.intensity } : {}),
           ...(record.contextRequest
             ? { contextRequest: record.contextRequest }
@@ -658,7 +758,132 @@ export function createProductionScheduledTaskDispatcher(opts: {
         if (denied) return applyDispatchPolicy(denied);
       }
 
-      const result = await channel.send(payload);
+      // Composition and send-policy evaluation may perform async work after the
+      // first audience check. Close that TOCTOU window by reading canonical room
+      // membership again at the last possible point before connector egress.
+      if (chatDeliveryBinding) {
+        const finalBindingDecision =
+          await revalidateScheduledTaskChatDeliveryBinding(
+            opts.runtime,
+            record,
+          );
+        if (!finalBindingDecision?.ok) {
+          return applyDispatchPolicy({
+            ok: false,
+            reason: "auth_expired",
+            userActionable: true,
+            message: finalBindingDecision?.reason ?? "delivery_binding_missing",
+          });
+        }
+      }
+
+      let result: DispatchResult;
+      const persistedDispatchKey = record.metadata?.dispatchIdempotencyKey;
+      const dispatchIdempotencyKey =
+        typeof persistedDispatchKey === "string" &&
+        persistedDispatchKey.trim().length > 0
+          ? persistedDispatchKey.trim()
+          : `${record.taskId}:${record.firedAtIso}`;
+      if (chatDeliveryBinding) {
+        // Bound chat delivery must use the runtime's account-aware connector
+        // transport, not the legacy LifeOps mixin (which selects an implicit
+        // owner/default account). The connector transport also returns the
+        // provider receipt used by its durable duplicate-suppression path.
+        try {
+          const disposition = inspectSendHandlerResult(
+            await opts.runtime.sendMessageToTarget(
+              {
+                source: chatDeliveryBinding.source,
+                accountId: chatDeliveryBinding.accountId,
+                channelId: chatDeliveryBinding.channelId,
+                roomId: chatDeliveryBinding.roomId as never,
+              },
+              {
+                text: message,
+                agentVoiced: true,
+                metadata: {
+                  taskId: record.taskId,
+                  firedAtIso: record.firedAtIso,
+                  accountId: chatDeliveryBinding.accountId,
+                  scheduledDispatchKey: dispatchIdempotencyKey,
+                },
+              },
+            ),
+          );
+          if (disposition.kind === "delivered") {
+            const providerMessageId = disposition.providerMessageId;
+            result = {
+              ok: true,
+              ...(providerMessageId ? { messageId: providerMessageId } : {}),
+              ...(providerMessageId
+                ? {
+                    receipt: {
+                      provider: chatDeliveryBinding.source,
+                      providerMessageId,
+                      idempotencyKey: dispatchIdempotencyKey,
+                      acceptedAt: new Date(
+                        disposition.receipt?.acceptedAt ?? Date.now(),
+                      ).toISOString(),
+                      metadata: {
+                        replayed: disposition.replayed,
+                        accountId: chatDeliveryBinding.accountId,
+                        persistence:
+                          disposition.receipt?.persistence.status ?? "legacy",
+                      },
+                    },
+                  }
+                : {}),
+            };
+            if (
+              disposition.receipt?.persistence.status === "partial" ||
+              disposition.receipt?.persistence.status === "failed"
+            ) {
+              // Provider acceptance is authoritative: never retry and duplicate
+              // the visible message merely because local evidence degraded.
+              opts.runtime.reportError(
+                "lifeops:scheduled-task:delivery-evidence",
+                new Error(
+                  `Provider accepted scheduled dispatch but local persistence is ${disposition.receipt.persistence.status}`,
+                ),
+                { taskId: record.taskId, providerMessageId },
+              );
+            }
+          } else {
+            result = {
+              ok: false,
+              reason:
+                disposition.kind === "not_delivered"
+                  ? "disconnected"
+                  : "transport_error",
+              acceptance:
+                disposition.kind === "not_delivered"
+                  ? "not_accepted"
+                  : "unknown",
+              userActionable: disposition.kind === "not_delivered",
+              message: disposition.message,
+            };
+          }
+        } catch (error) {
+          opts.runtime.reportError(
+            "lifeops:scheduled-task:bound-chat-send",
+            error,
+            {
+              taskId: record.taskId,
+              source: chatDeliveryBinding.source,
+              accountId: chatDeliveryBinding.accountId,
+            },
+          );
+          result = {
+            ok: false,
+            reason: "transport_error",
+            acceptance: "unknown",
+            userActionable: false,
+            message: error instanceof Error ? error.message : String(error),
+          };
+        }
+      } else {
+        result = await channel.send(payload);
+      }
       if (result.ok) {
         return applyDispatchPolicy({
           ...result,

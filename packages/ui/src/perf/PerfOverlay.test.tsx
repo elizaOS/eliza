@@ -1,3 +1,4 @@
+/** Verifies PerfOverlay gate (#9141) through the package's configured test harness. */
 // @vitest-environment jsdom
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";

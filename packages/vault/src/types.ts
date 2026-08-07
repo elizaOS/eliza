@@ -52,7 +52,13 @@ export interface VaultStats {
 
 export interface AuditRecord {
   readonly ts: number;
-  readonly action: "set" | "setReference" | "get" | "reveal" | "remove";
+  readonly action:
+    | "set"
+    | "setReference"
+    | "get"
+    | "reveal"
+    | "remove"
+    | "quarantine";
   readonly key: string;
   /** Caller-supplied identifier for who's asking. Optional. */
   readonly caller?: string;

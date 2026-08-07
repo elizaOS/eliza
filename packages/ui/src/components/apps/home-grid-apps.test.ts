@@ -57,15 +57,18 @@ describe("getHomeGridApps", () => {
 
   it("overlays a plugin's live ViewDeclaration displayName onto the pinned tile", () => {
     const view: ViewRegistryEntry = {
-      id: "training",
-      label: "Model Studio",
-      path: "/apps/fine-tuning",
+      id: "task-coordinator",
+      label: "Workflow Studio",
+      path: "/apps/tasks",
       available: true,
-      pluginName: "@elizaos/plugin-training",
+      pluginName: "@elizaos/plugin-task-coordinator",
     };
     // DEFAULT_PINNED_APPS (4) precede the single pinned internal-tool tile.
-    const tile = getHomeGridApps(["@elizaos/plugin-training"], [view]).at(-1);
-    expect(tile?.name).toBe("@elizaos/plugin-training");
-    expect(tile?.displayName).toBe("Model Studio");
+    const tile = getHomeGridApps(
+      ["@elizaos/plugin-task-coordinator"],
+      [view],
+    ).at(-1);
+    expect(tile?.name).toBe("@elizaos/plugin-task-coordinator");
+    expect(tile?.displayName).toBe("Workflow Studio");
   });
 });

@@ -1,3 +1,4 @@
+/** Verifies reportShortcutFired (#8792) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

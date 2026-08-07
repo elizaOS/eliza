@@ -119,9 +119,10 @@ test("unavailable auth probe shows startup failure instead of password sign-in",
 
   await expect(
     page.getByRole("heading", {
-      name: /Startup failed:\s*Backend Unreachable/i,
+      name: /Can(?:'|’)t connect/i,
     }),
   ).toBeVisible();
+  await page.getByText("Technical details").click();
   await expect(
     page.getByText(/auth probe could not reach \/api\/auth\/me/i),
   ).toBeVisible();

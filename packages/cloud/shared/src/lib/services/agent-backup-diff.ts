@@ -290,6 +290,37 @@ export function incrementalChainDepth(nodes: BackupChainNode[], targetId: string
   return resolveBackupChain(nodes, targetId).length - 1;
 }
 
+/** A chain node plus its stored PLAINTEXT wire size; `null` when unrecorded. */
+export interface BackupChainSizedNode extends BackupChainNode {
+  sizeBytes: number | null;
+}
+
+/**
+ * Sum the stored PLAINTEXT wire bytes of the chain that reconstructs
+ * `targetId` — precisely the quantity reconstruction budgets (the base full
+ * plus every delta, NOT the reconstructed output).
+ *
+ * Returns `null` when any row in the chain has an unrecorded `size_bytes`: the
+ * total cannot be proven to fit, and a caller deciding whether to extend the
+ * chain must fail closed rather than guess. `size_bytes` is measured before
+ * encryption/base64/offload at every write site, so this stays in the same
+ * plaintext unit as the reconstruction budget — no base64 inflation factor
+ * belongs here.
+ */
+export function resolveBackupChainBytes(
+  nodes: BackupChainSizedNode[],
+  targetId: string,
+): number | null {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  let total = 0;
+  for (const id of resolveBackupChain(nodes, targetId)) {
+    const size = byId.get(id)?.sizeBytes ?? null;
+    if (size === null) return null;
+    total += size;
+  }
+  return total;
+}
+
 /**
  * Choose which backups to delete while keeping the newest `keep` restore points
  * AND every ancestor any retained backup still needs. The kept set is

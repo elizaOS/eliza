@@ -51,7 +51,7 @@ export type {
 };
 
 // Use server-types / types only — do not re-export from api/server or
-// api/trajectory-routes (those modules pull the full API + app-training into Vite).
+// api/trajectory-routes (those modules pull the full API into Vite).
 
 export type ConversationScope = SharedConversationScope;
 export type ConversationAutomationType = SharedConversationAutomationType;
@@ -243,11 +243,6 @@ export interface LaunchSnapshot {
     cloudProvisioned?: boolean;
     requiredGate?: "runtime" | "bootstrap" | "pairing" | null;
     error?: string | null;
-  };
-  remotes: {
-    seeded: boolean;
-    requiredStarted: boolean;
-    errors: Array<{ id: string; error: string }>;
   };
   localModel: {
     backgroundDownloadQueued: boolean;
@@ -528,6 +523,34 @@ export function isRateLimitedError(value: unknown): value is ApiError {
     value instanceof ApiError &&
     (value.status === 429 || value.code === "rate_limit_exceeded")
   );
+}
+
+/**
+ * The Cloud's structural "agent gone" shape: an HTTP 404 carrying the
+ * `agent_not_found` code (code-carrying cloud routes) or the agent router's
+ * code-less body `{ error: "agent not found or not running" }` — what every
+ * request through a bound agent origin gets once that agent has been deleted.
+ * Distinct from transport failure (network down produces no HTTP status), so
+ * callers can treat a stale binding as invalid without masking real outages.
+ * Walks the `cause` chain so wrapped selection/provisioning errors classify.
+ */
+export function isCloudAgentGoneError(error: unknown): boolean {
+  let current: unknown = error;
+  for (let depth = 0; depth < 5 && current instanceof Error; depth += 1) {
+    const { status, code } = current as Error & {
+      status?: unknown;
+      code?: unknown;
+    };
+    if (
+      status === 404 &&
+      (code === "agent_not_found" ||
+        current.message.includes("agent not found or not running"))
+    ) {
+      return true;
+    }
+    current = (current as Error & { cause?: unknown }).cause;
+  }
+  return false;
 }
 
 export interface RuntimeDebugSnapshot {

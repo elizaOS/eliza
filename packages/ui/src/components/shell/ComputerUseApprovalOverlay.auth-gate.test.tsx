@@ -1,3 +1,4 @@
+/** Verifies ComputerUseApprovalOverlay auth gate (#11084) through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // #11084 — the shell mounts ComputerUseApprovalOverlay before the auth probe

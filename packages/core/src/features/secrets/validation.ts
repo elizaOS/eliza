@@ -211,6 +211,8 @@ export const ValidationStrategies: Record<string, CustomValidator> = {
 			new URL(value);
 			return { isValid: true, validatedAt };
 		} catch {
+			// error-policy:J3 secret URLs are untrusted input; constructor failure
+			// becomes a structured invalid result.
 			return {
 				isValid: false,
 				error: "Invalid URL format",
@@ -231,6 +233,8 @@ export const ValidationStrategies: Record<string, CustomValidator> = {
 		try {
 			new URL(value);
 		} catch {
+			// error-policy:J3 secret URLs are untrusted input; constructor failure
+			// becomes a structured invalid result.
 			return {
 				isValid: false,
 				error: "Invalid URL format",
@@ -254,6 +258,8 @@ export const ValidationStrategies: Record<string, CustomValidator> = {
 
 			return { isValid: true, validatedAt };
 		} catch (error) {
+			// error-policy:J3 reachability is itself the validation probe; transport
+			// failure becomes a structured invalid result carrying the cause text.
 			return {
 				isValid: false,
 				error: `URL is not reachable: ${error instanceof Error ? error.message : "Unknown error"}`,
@@ -330,7 +336,8 @@ export async function validateSecret(
 	if (!validator) {
 		logger.warn(`[Validation] Unknown validation strategy: ${strategyName}`);
 		return {
-			isValid: true,
+			isValid: false,
+			error: `Unknown validation strategy: ${strategyName}`,
 			details: `Unknown validation strategy: ${strategyName}`,
 			validatedAt: Date.now(),
 		};
@@ -342,6 +349,8 @@ export async function validateSecret(
 		const errorMessage =
 			error instanceof Error ? error.message : "Validation error";
 		logger.error(`[Validation] Error validating ${key}: ${errorMessage}`);
+		// error-policy:J1 the validation boundary translates a broken validator
+		// into an explicit invalid result instead of allowing the secret.
 		return {
 			isValid: false,
 			error: errorMessage,
@@ -424,6 +433,8 @@ async function verifyOpenAIKey(
 
 		return { isValid: true };
 	} catch (error) {
+		// error-policy:J3 credential verification is an untrusted network probe;
+		// transport failure becomes a structured invalid result.
 		return {
 			isValid: false,
 			error: `Failed to verify: ${error instanceof Error ? error.message : "Unknown error"}`,
@@ -466,9 +477,17 @@ async function verifyAnthropicKey(
 		// 400 with "model" error means key is valid but request is invalid
 		// We don't care about that for validation
 		if (response.status === 400) {
-			const body = (await response.json().catch(() => ({}))) as {
-				error?: { type?: string };
-			};
+			let body: { error?: { type?: string } };
+			try {
+				body = (await response.json()) as { error?: { type?: string } };
+			} catch (error) {
+				// error-policy:J3 verification responses are untrusted network input;
+				// malformed JSON is an explicit failed verification.
+				return {
+					isValid: false,
+					error: `Failed to parse verification response: ${error instanceof Error ? error.message : String(error)}`,
+				};
+			}
 			if (body.error?.type === "invalid_request_error") {
 				return { isValid: true };
 			}
@@ -483,6 +502,8 @@ async function verifyAnthropicKey(
 
 		return { isValid: true };
 	} catch (error) {
+		// error-policy:J3 credential verification is an untrusted network probe;
+		// transport failure becomes a structured invalid result.
 		return {
 			isValid: false,
 			error: `Failed to verify: ${error instanceof Error ? error.message : "Unknown error"}`,

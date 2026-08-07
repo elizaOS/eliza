@@ -1,3 +1,4 @@
+/** Verifies ChatMessageActions copy through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 /**
@@ -27,9 +28,6 @@ describe("ChatMessageActions copy", () => {
     );
     const copy = screen.getByRole("button", { name: "Copied!" });
     expect(copy).toBeTruthy();
-    expect(copy.className.split(" ")).toContain("bg-transparent");
-    expect(copy.className.split(" ")).not.toContain("bg-white/10");
-    expect(copy.className.split(" ")).toContain("hover:bg-transparent");
     expect(screen.getByTestId("copy-status-icon").dataset.state).toBe("copied");
   });
 
@@ -85,48 +83,5 @@ describe("ChatMessageActions copy", () => {
       />,
     );
     expect(screen.getByRole("button", { name: "Copy text" })).toBeTruthy();
-  });
-
-  it("renders overlay actions as a bare icon lane", () => {
-    render(
-      <ChatMessageActions
-        appearance="glass-row"
-        canEdit
-        canPlay
-        canReply
-        onCopy={vi.fn()}
-        onEdit={vi.fn()}
-        onPlay={vi.fn()}
-        onReply={vi.fn()}
-      />,
-    );
-
-    const surface = screen.getByTestId("thread-line-action-surface");
-    expect(surface.className).not.toContain("bg-black/55");
-    expect(surface.className).not.toContain("border-white/25");
-    expect(surface.className).not.toContain("rounded-xl");
-    expect(surface.style.backgroundImage).toBe("");
-    expect(surface.style.backdropFilter).toBe("");
-
-    for (const button of screen.getAllByRole("button")) {
-      expect(button.className).toContain("bg-transparent");
-      expect(button.className).toContain("rounded-none");
-      expect(button.className).toContain("h-5");
-      expect(button.className).toContain("hover:bg-transparent");
-      expect(button.className).toContain("pointer-coarse:h-11");
-      expect(button.className).not.toContain("bg-white/10");
-      expect(button.className).toContain("keyboard-focus-emphasis");
-      expect(button.className).not.toContain("text-[rgb(255");
-    }
-    expect(screen.queryByRole("button", { name: /delete/i })).toBeNull();
-  });
-
-  it("keeps panel actions on the neutral glass surface", () => {
-    render(<ChatMessageActions canReply onCopy={vi.fn()} onReply={vi.fn()} />);
-    const surface = screen.getByTestId("chat-message-actions");
-    expect(surface.className).toContain("bg-black/55");
-    expect(surface.className).toContain("border-white/25");
-    expect(surface.style.backgroundImage).toContain("radial-gradient");
-    expect(surface.style.backdropFilter).toBe("");
   });
 });

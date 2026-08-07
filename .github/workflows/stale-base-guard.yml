@@ -39,7 +39,7 @@ permissions:
 jobs:
   guard:
     name: stale-base guard
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 10
     env:
       BASE_REF: ${{ github.event.pull_request.base.ref }}
@@ -67,7 +67,7 @@ jobs:
         # actions/setup-node@v4 (48b55a0)
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          node-version: "24"
+          node-version: "24.15.0"
 
       - name: Fetch PR head + bounded history (blobless)
         run: |

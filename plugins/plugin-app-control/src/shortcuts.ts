@@ -9,14 +9,14 @@
 import type { ShortcutDefinition } from "@elizaos/core";
 
 const VIEW_TARGET_PATTERN =
-	"settings|notes?|calendar|agenda|schedule|inbox|messages|mailbox|mail|email|e-mail|emails|wallet|app builder|task coordinator|home|home screen|home page|home dashboard|dashboard|main screen|main page|main chat|chat";
+	"settings|notes?|calendar|calender|agenda|schedule|inbox|messages|mailbox|mail|email|e-mail|emails|wallet|app builder|task coordinator|home|home screen|home page|home dashboard|dashboard|main screen|main page|main chat|chat";
 const NAVIGATION_VERB_PATTERN =
 	"open|show|go(?: back)?(?: to)?|back(?: to)?|return(?: to)?|switch to|take me to|pull up|bring up|check|view";
 
 export const VIEW_NAVIGATION_SHORTCUT_ID = "app-control:nl:view-navigation";
 
 const NAVIGATION_REGEX = new RegExp(
-	`^(?:(?:${NAVIGATION_VERB_PATTERN})\\s+(?:me\\s+)?(?:my\\s+|the\\s+)?(?<surface>${VIEW_TARGET_PATTERN})|what(?:s| s| is)\\s+on\\s+my\\s+(?<calendar>calendar|agenda|schedule)|abre\\s+(?<settingsEs>ajustes|configuracion|configuración)|打开(?<settingsZh>设置)|設定を開いて|설정\\s*(?:열어|열어줘))$`,
+	`^(?:go back|(?:${NAVIGATION_VERB_PATTERN})\\s+(?:me\\s+)?(?:my\\s+|the\\s+)?(?<surface>${VIEW_TARGET_PATTERN})|what(?:s| s| is)\\s+on\\s+my\\s+(?<calendar>calendar|agenda|schedule)|abre\\s+(?<settingsEs>ajustes|configuracion|configuración)|打开(?<settingsZh>设置)|設定を開いて|설정\\s*(?:열어|열어줘))$`,
 	"u",
 );
 

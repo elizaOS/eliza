@@ -1,4 +1,8 @@
-/** Supports app-core build, packaging, or development orchestration for run biome check mjs. */
+/**
+ * Runs Biome over the curated app-core roots (package.json, scripts, test,
+ * apps, eliza, ...), walking directories itself to build the file list while
+ * excluding known Biome-crasher files.
+ */
 import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
@@ -8,7 +12,6 @@ const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const APP_CORE_ROOT = path.resolve(SCRIPT_DIR, "..");
 
 const BIOME_CRASHER_PATHS = new Set([
-  "eliza/plugins/plugin-native-screencapture/src/web.ts",
   "eliza/packages/app-core/src/types/elizaos-tui-fallback.d.ts",
   "eliza/packages/app-core/src/types/optional-plugin-modules.d.ts",
   "scripts/type-audit-report.json",

@@ -57,10 +57,9 @@ const DEP_SECTIONS = ["dependencies", "devDependencies", "peerDependencies"];
 // ── Main ────────────────────────────────────────────────────────────────────
 
 // Every workspace member's directory, plus the repo root itself — the root
-// manifest carries workspace-dep references too. Discovery honors the root
-// `workspaces` negations (e.g. `!packages/feed`), so the excluded feed monorepo
-// is no longer scanned; the previous local walker ignored negation and leaked
-// `packages/feed` in via `packages/*`.
+// manifest carries workspace-dep references too. Discovery honors root
+// `workspaces` negations so excluded nested products cannot leak back in through
+// a broader positive glob.
 const workspaceDirs = [
   ROOT,
   ...listWorkspaceDirs({ repoRoot: ROOT }).map((dir) => join(ROOT, dir)),

@@ -1,10 +1,19 @@
 /**
  * Guards that core's contract implementations stay aligned with the
- * `@elizaos/contracts` literals they mirror: service capabilities/transports,
+ * runtime contract literals: service capabilities/transports,
  * deployment runtimes, linked-account and wallet-RPC normalizers, account
  * routing strategies, and resolved cloud-topology keys. Pure deterministic
  * assertions over fixture configs.
  */
+
+import { describe, expect, it } from "vitest";
+import {
+	buildWalletRpcUpdateRequest,
+	normalizeWalletRpcSelections as normalizeSharedWalletRpcSelections,
+	DEFAULT_WALLET_RPC_SELECTIONS as SHARED_DEFAULT_WALLET_RPC_SELECTIONS,
+	WALLET_RPC_PROVIDER_OPTIONS as SHARED_WALLET_RPC_PROVIDER_OPTIONS,
+} from "../../../shared/src/contracts/wallet.js";
+import { resolveElizaCloudTopology } from "./cloud-topology.js";
 import {
 	type BscWalletRpcProvider,
 	SERVICE_CAPABILITIES as CONTRACT_SERVICE_CAPABILITIES,
@@ -20,15 +29,7 @@ import {
 	type ServiceRouteConfig,
 	type SolanaWalletRpcProvider,
 	type WalletRpcCredentialKey,
-} from "@elizaos/contracts";
-import { describe, expect, it } from "vitest";
-import {
-	buildWalletRpcUpdateRequest,
-	normalizeWalletRpcSelections as normalizeSharedWalletRpcSelections,
-	DEFAULT_WALLET_RPC_SELECTIONS as SHARED_DEFAULT_WALLET_RPC_SELECTIONS,
-	WALLET_RPC_PROVIDER_OPTIONS as SHARED_WALLET_RPC_PROVIDER_OPTIONS,
-} from "../../../shared/src/contracts/wallet.js";
-import { resolveElizaCloudTopology } from "./cloud-topology.js";
+} from "./runtime-contracts.js";
 import {
 	normalizeDeploymentTargetConfig,
 	normalizeLinkedAccountRecord,
@@ -104,7 +105,7 @@ function validLinkedAccount(
 }
 
 describe("core contract implementation alignment", () => {
-	it("keeps service capability literals aligned with @elizaos/contracts", () => {
+	it("keeps service capability literals aligned with runtime contracts", () => {
 		expect([...SERVICE_CAPABILITIES]).toEqual([
 			...CONTRACT_SERVICE_CAPABILITIES,
 		]);

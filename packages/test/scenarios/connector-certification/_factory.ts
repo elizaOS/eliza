@@ -1,4 +1,4 @@
-/** Provides factory utilities for the shared package test harness. */
+/** Builds connector-certification scenarios against scenario-runner's real runtime. */
 import type {
   ScenarioFinalCheck,
   ScenarioSeedStep,
@@ -8,7 +8,7 @@ import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
   judgeRubric,
-} from "../_helpers/action-assertions.ts";
+} from "@elizaos/scenario-runner/scenario-assertions";
 
 export const CONNECTOR_CERTIFICATION_AXES = [
   "core",

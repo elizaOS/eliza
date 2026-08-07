@@ -16,7 +16,7 @@ import { join } from "node:path";
 import type { AgentRuntime, UUID } from "@elizaos/core";
 import { ChannelType, stringToUuid } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createRealTestRuntime } from "../../../packages/test/helpers/real-runtime.ts";
+import { createRealTestRuntime } from "../../../packages/app-core/test/helpers/real-runtime.ts";
 import { runCrossChannelSearch } from "../src/lifeops/cross-channel-search.js";
 import { personalAssistantPlugin } from "../src/plugin.js";
 

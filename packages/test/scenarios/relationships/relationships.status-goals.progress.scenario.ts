@@ -3,7 +3,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
-} from "../_helpers/action-assertions.ts";
+} from "@elizaos/scenario-runner/scenario-assertions";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const now = Date.now();
@@ -34,7 +34,6 @@ export default scenario({
   seed: [
     {
       type: "memory",
-      roomId: "main",
       content: {
         kind: "contact",
         name: "Alice Chen",

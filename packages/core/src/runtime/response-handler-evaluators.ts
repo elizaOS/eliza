@@ -67,6 +67,7 @@ export interface ResponseHandlerEvaluationRunResult {
 	activeEvaluators: string[];
 	appliedPatches: ResponseHandlerPatchTrace[];
 	candidateActionsAddedByEvaluators: string[];
+	candidateActionsClearedByEvaluators: boolean;
 	errors: Array<{ evaluatorName: string; error: string }>;
 }
 
@@ -254,6 +255,7 @@ export async function runResponseHandlerEvaluators(args: {
 		activeEvaluators: [],
 		appliedPatches: [],
 		candidateActionsAddedByEvaluators: [],
+		candidateActionsClearedByEvaluators: false,
 		errors: [],
 	};
 	if (candidates.length === 0) {
@@ -279,6 +281,9 @@ export async function runResponseHandlerEvaluators(args: {
 			if (!patch) {
 				continue;
 			}
+			if (patch.clearCandidateActions === true) {
+				result.candidateActionsClearedByEvaluators = true;
+			}
 			const applied = applyResponseHandlerPatch(
 				args.messageHandler,
 				patch,
@@ -294,6 +299,11 @@ export async function runResponseHandlerEvaluators(args: {
 				);
 			}
 		} catch (error) {
+			// error-policy:J7 Evaluators are independent Stage-1 enrichers; collect and
+			// report each failure while allowing the remaining evaluators to run.
+			args.runtime.reportError("ResponseHandlerEvaluator.evaluate", error, {
+				evaluator: evaluator.name,
+			});
 			const message = error instanceof Error ? error.message : String(error);
 			result.errors.push({ evaluatorName: evaluator.name, error: message });
 			args.runtime.logger.warn(

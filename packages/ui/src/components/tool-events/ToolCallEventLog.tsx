@@ -77,7 +77,7 @@ function StateIcon({ state }: { state: ToolCallEventDisplayState }) {
 function PreviewRow({ label, value }: { label: ReactNode; value: ReactNode }) {
   return (
     <div className="min-w-0">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted/70">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
         {label}
       </div>
       <div className="mt-1 truncate font-mono text-xs-tight text-txt">

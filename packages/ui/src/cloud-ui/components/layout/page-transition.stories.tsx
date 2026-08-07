@@ -12,6 +12,7 @@ const SamplePanel = ({ title, body }: { title: string; body: string }) => (
       borderRadius: 12,
       border: "1px solid #e5e7eb",
       background: "#ffffff",
+      color: "#111827",
       maxWidth: 480,
     }}
   >

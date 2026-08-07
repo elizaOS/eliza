@@ -3,6 +3,7 @@ import { ElizaError } from "@elizaos/core";
 import { and, count, countDistinct, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { cache } from "../../lib/cache/client";
 import { CacheKeys } from "../../lib/cache/keys";
+import { invalidateInferenceAppByIdState } from "../../lib/services/inference-app-memory-cache";
 import type { DbTransaction } from "../client";
 import { sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
@@ -80,6 +81,7 @@ async function invalidateAppCacheEntries(
   apiKeyId?: string | null,
   slug?: string | null,
 ): Promise<void> {
+  invalidateInferenceAppByIdState(appId);
   await withAppCacheFences({ appId, apiKeyId, slug }, async () => {
     const keys: Promise<void>[] = [
       cache.del(CacheKeys.app.byId(appId)),
@@ -131,25 +133,6 @@ export class AppsRepository {
     });
   }
 
-  /**
-   * Reads primary app state and publishes it to cache under the same durable
-   * per-app fence used by invalidation. The callback remains inside the
-   * transaction so a separate worker cannot delete and then be overwritten by
-   * this hydration's older read.
-   */
-  async hydrateByIdForCache(
-    id: string,
-    publish: (app: App | undefined) => Promise<void>,
-  ): Promise<App | undefined> {
-    return await withAppCacheFence(id, async (tx) => {
-      /* global-scope: cache hydration keyed by appId, which is the fence key; callers authorize before use. */
-      const [app] = UUID_PATTERN.test(id)
-        ? await tx.select().from(apps).where(eq(apps.id, id)).limit(1)
-        : [];
-      await publish(app);
-      return app;
-    });
-  }
 
   /** Reads and publishes a slug lookup under the same durable slug fence used by invalidation. */
   async hydrateBySlugForCache(

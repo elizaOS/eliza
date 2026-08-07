@@ -85,7 +85,7 @@ export async function handleSubscriptionRoutes(
   if (method === "GET" && pathname === "/api/subscription/status") {
     try {
       const { getSubscriptionStatus } = await loadSubscriptionAuth();
-      const baseRows = getSubscriptionStatus();
+      const baseRows = await getSubscriptionStatus();
       // Join each per-account row with its rich LinkedAccountConfig
       // entry from `eliza.json` (priority, enabled, health, usage).
       // CLI / setup-token / Claude Code rows have synthetic accountIds
@@ -165,10 +165,10 @@ export async function handleSubscriptionRoutes(
         : await exchangeAnthropicAuthorizationCode(body.code);
       const profile = await fetchAnthropicOAuthProfile(credentials.access);
       const accountId = profile.accountId ?? crypto.randomUUID();
-      saveCredentials("anthropic-subscription", credentials, accountId);
-      const stored = loadAccount("anthropic-subscription", accountId);
+      await saveCredentials("anthropic-subscription", credentials, accountId);
+      const stored = await loadAccount("anthropic-subscription", accountId);
       if (stored && profile.email) {
-        saveAccount({
+        await saveAccount({
           ...stored,
           label: profile.email,
           email: profile.email,
@@ -379,7 +379,7 @@ export async function handleSubscriptionRoutes(
         error(res, "OpenAI exchange failed", 500);
         return true;
       }
-      saveCredentials("openai-codex", credentials);
+      await saveCredentials("openai-codex", credentials);
       await applySubscriptionCredentials(state.config);
       flow.close();
       delete state._codexFlow;
@@ -404,7 +404,7 @@ export async function handleSubscriptionRoutes(
     if (isSubscriptionProvider(provider)) {
       try {
         const { deleteProviderCredentials } = await loadSubscriptionAuth();
-        deleteProviderCredentials(provider);
+        await deleteProviderCredentials(provider);
 
         if (provider === "anthropic-subscription" && state.config.env) {
           delete (state.config.env as Record<string, unknown>)

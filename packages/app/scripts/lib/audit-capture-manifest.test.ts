@@ -44,6 +44,27 @@ describe("parseAuditReport", () => {
     expect(() =>
       parseAuditReport([{ slug: "../old", viewport: "mobile" }]),
     ).toThrow("Invalid audit slug");
+    expect(() =>
+      parseAuditReport([
+        {
+          slug: "plugin-cloud-gui",
+          viewport: "mobile",
+          bundleProvenance: 42,
+        },
+      ]),
+    ).toThrow("Invalid audit bundle provenance");
+  });
+
+  it("retains remote-bundle provenance for exemption validation", () => {
+    expect(
+      parseAuditReport([
+        {
+          slug: "plugin-cloud-gui",
+          viewport: "mobile",
+          bundleProvenance: "real-dist",
+        },
+      ])[0]?.bundleProvenance,
+    ).toBe("real-dist");
   });
 });
 

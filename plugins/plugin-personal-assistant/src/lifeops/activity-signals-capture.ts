@@ -25,10 +25,14 @@
  *   is surfaced as a `permission_unavailable` status event, then re-checked on
  *   each app resume so a grant made in Settings activates without a restart.
  *
- * Expected unavailability (runtime not yet running, transient network/timeout,
- * endpoint 503) quietly stands the capture down until the ready-poll recovers.
- * Anything else is an unexpected failure and is surfaced observably: a
- * `capture_error` status event plus a prefixed console.error.
+ * Expected unavailability (no authenticated session yet — every capture
+ * endpoint 401s on signed-out pages, runtime not yet running, transient
+ * network/timeout, endpoint 503, a stale binding whose deleted agent answers
+ * with the structural agent-gone 404) quietly stands the capture down.
+ * Capability-specific 503s use a bounded retry interval because the global
+ * runtime status cannot prove that this optional plugin route is active.
+ * Anything else is surfaced observably: a `capture_error` status event plus a
+ * prefixed console.error.
  */
 import { Capacitor } from "@capacitor/core";
 import {
@@ -48,7 +52,11 @@ import "../api/client-lifeops.js";
 // the full component tree into this headless register chunk, which both
 // bloats the renderer bundle and breaks under node module resolution in test
 // lanes. (isApiError also only carries its type-guard on the /api subpath.)
-import { client as apiClient, isApiError } from "@elizaos/ui/api";
+import {
+  client as apiClient,
+  isApiError,
+  isCloudAgentGoneError,
+} from "@elizaos/ui/api";
 import { isElectrobunRuntime } from "@elizaos/ui/bridge";
 import { loadDesktopWorkspaceSnapshot } from "@elizaos/ui/browser";
 import { APP_PAUSE_EVENT, APP_RESUME_EVENT } from "@elizaos/ui/events";
@@ -71,6 +79,7 @@ const LOG_PREFIX = "[LifeOpsActivitySignals]";
 
 const APP_SIGNAL_DEDUP_WINDOW_MS = 5_000;
 const RUNTIME_READY_POLL_MS = 5_000;
+const ACTIVITY_SIGNALS_CAPABILITY_RETRY_MS = 60_000;
 const PAGE_HEARTBEAT_MS = 60_000;
 const DESKTOP_POWER_POLL_MS = 60_000;
 // Health sleep data drives wake detection; five-minute polling keeps morning
@@ -212,7 +221,14 @@ export function startLifeOpsActivitySignalCapture(enabled = true): () => void {
   const platform = resolveActivityPlatform();
   const lastSent = new Map<string, SignalFingerprint>();
   let runtimeReady = false;
+  let activitySignalsRetryAtMs = 0;
   let mounted = true;
+
+  const standDownActivitySignals = (): void => {
+    runtimeReady = false;
+    activitySignalsRetryAtMs =
+      Date.now() + ACTIVITY_SIGNALS_CAPABILITY_RETRY_MS;
+  };
 
   const isRuntimeUnavailableError = (error: unknown): boolean =>
     isApiError(error) &&
@@ -223,12 +239,24 @@ export function startLifeOpsActivitySignalCapture(enabled = true): () => void {
   const isExpectedTransientError = (error: unknown): boolean =>
     isApiError(error) && (error.kind === "network" || error.kind === "timeout");
 
+  // A 401 is the designed signed-out state, not a capture defect: every
+  // capture endpoint sits behind session auth, so anonymous pages (pre
+  // sign-in, post sign-out) reject each probe and signal. The ready poll
+  // keeps checking quietly and the capture engages on the first poll after a
+  // session exists — no console noise in between.
+  const isUnauthenticatedError = (error: unknown): boolean =>
+    isApiError(error) && error.kind === "http" && error.status === 401;
+
   const reportCaptureError = (error: unknown): void => {
     if (isRuntimeUnavailableError(error)) {
-      runtimeReady = false;
+      standDownActivitySignals();
       return;
     }
-    if (isExpectedTransientError(error)) {
+    if (
+      isExpectedTransientError(error) ||
+      isUnauthenticatedError(error) ||
+      isCloudAgentGoneError(error)
+    ) {
       return;
     }
     // Unexpected failure: surface it observably — status event for in-app
@@ -241,20 +269,25 @@ export function startLifeOpsActivitySignalCapture(enabled = true): () => void {
     });
   };
 
-  // Runtime not up yet (boot, restart) is the designed stand-down state; only
-  // transport loss and the 503 "runtime starting" shape count as that state.
-  // Anything else coming out of the status probe (persistent 500s included) is
-  // a real defect and must surface, not read as "not ready" forever (#16504).
+  // Runtime not up yet (boot, restart), signed-out (401), and a stale binding
+  // to a deleted agent (structural agent-gone 404) are the designed
+  // stand-down states; only those plus transport loss and the 503 "runtime
+  // starting" shape count. Anything else coming out of the status probe
+  // (persistent 500s included) is a real defect and must surface, not read as
+  // "not ready" forever (#16504).
   const isExpectedProbeFailure = (error: unknown): boolean =>
-    isApiError(error) &&
-    (error.kind === "network" ||
-      error.kind === "timeout" ||
-      (error.kind === "http" && error.status === 503));
+    isUnauthenticatedError(error) ||
+    isCloudAgentGoneError(error) ||
+    (isApiError(error) &&
+      (error.kind === "network" ||
+        error.kind === "timeout" ||
+        (error.kind === "http" && error.status === 503)));
 
   const refreshRuntimeReady = async (): Promise<boolean> => {
     try {
       const status = await client.getStatus();
-      const ready = status.state === "running";
+      const ready =
+        status.state === "running" && Date.now() >= activitySignalsRetryAtMs;
       runtimeReady = ready;
       return ready;
     } catch (error) {
@@ -297,7 +330,7 @@ export function startLifeOpsActivitySignalCapture(enabled = true): () => void {
     } catch (error) {
       lastSent.delete(dedupeKey);
       if (isRuntimeUnavailableError(error)) {
-        runtimeReady = false;
+        standDownActivitySignals();
         return null;
       }
       throw error;

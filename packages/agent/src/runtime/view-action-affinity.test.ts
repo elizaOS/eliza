@@ -63,33 +63,11 @@ beforeEach(async () => {
       },
       { id: "orchestrator", label: "Orchestrator", relatedActions: ["TASKS"] },
       { id: "training", label: "Training", relatedActions: ["RUNTIME"] },
-      {
-        id: "polymarket",
-        label: "Polymarket",
-        relatedActions: ["POLYMARKET_STATUS"],
-      },
-      {
-        id: "hyperliquid",
-        label: "Hyperliquid",
-        relatedActions: ["PERPETUAL_MARKET"],
-      },
-      {
-        id: "facewear",
-        label: "Facewear",
-        relatedActions: [
-          "FACEWEAR_CONNECT",
-          "FACEWEAR_DEBUG",
-          "SMARTGLASSES_CONTROL",
-          "SMARTGLASSES_STATUS",
-          "SMARTGLASSES_DISPLAY_TEXT",
-          "SMARTGLASSES_MICROPHONE",
-        ],
-      },
       { id: "steward", label: "Steward", relatedActions: ["WALLET"] },
       {
         id: "calendar",
         label: "Calendar",
-        relatedActions: ["CALENDAR", "CONFLICT_DETECT"],
+        relatedActions: ["CALENDAR"],
       },
       {
         id: "health",
@@ -107,17 +85,11 @@ beforeEach(async () => {
           "OWNER_ROUTINES",
         ],
       },
-      { id: "inbox", label: "Inbox", relatedActions: ["INBOX"] },
       { id: "finances", label: "Finances", relatedActions: ["OWNER_FINANCES"] },
       {
         id: "lifeops",
         label: "LifeOps",
         relatedActions: ["PERSONAL_ASSISTANT"],
-      },
-      {
-        id: "documents",
-        label: "Documents",
-        relatedActions: ["OWNER_DOCUMENTS"],
       },
     ],
   });
@@ -151,28 +123,17 @@ describe("view-action-affinity", () => {
   });
 
   it("covers the major plugin views (expanded map)", () => {
-    // Wallet, trading, and wearable surfaces boost their plugin actions.
+    // Wallet and trading surfaces boost their plugin actions.
     expect(viewScopedActionNames("wallet").has("EVM_SWAP")).toBe(true);
     expect(viewScopedActionNames("wallet").has("SOLANA_TRANSFER")).toBe(true);
-    expect(viewScopedActionNames("polymarket").has("POLYMARKET_STATUS")).toBe(
-      true,
-    );
-    expect(viewScopedActionNames("hyperliquid").has("PERPETUAL_MARKET")).toBe(
-      true,
-    );
-    expect(viewScopedActionNames("facewear").has("SMARTGLASSES_CONTROL")).toBe(
-      true,
-    );
     expect(viewScopedActionNames("steward").has("WALLET")).toBe(true);
   });
 
   it("emphasizes each LifeOps/utility view's own domain actions", () => {
     expect(viewScopedActionNames("calendar").has("CALENDAR")).toBe(true);
-    expect(viewScopedActionNames("calendar").has("CONFLICT_DETECT")).toBe(true);
     expect(viewScopedActionNames("health").has("OWNER_HEALTH")).toBe(true);
     expect(viewScopedActionNames("todos").has("OWNER_TODOS")).toBe(true);
     expect(viewScopedActionNames("goals").has("OWNER_GOALS")).toBe(true);
-    expect(viewScopedActionNames("inbox").has("INBOX")).toBe(true);
     expect(viewScopedActionNames("finances").has("OWNER_FINANCES")).toBe(true);
     expect(viewScopedActionNames("lifeops").has("PERSONAL_ASSISTANT")).toBe(
       true,
@@ -239,13 +200,27 @@ describe("view-action-affinity", () => {
     expect(warnings).toHaveLength(0);
   });
 
-  // ── #8798: view-coverage completeness ─────────────────────────────────────
+  it("keeps missing optional alternatives at debug when a view remains actionable", () => {
+    const allMapped = new Set<string>();
+    for (const actions of Object.values(viewActionAffinityMap())) {
+      for (const action of actions) allMapped.add(action);
+    }
+    allMapped.delete("OWNER_SCREENTIME");
+    const warnings: string[] = [];
+    const debugs: string[] = [];
 
-  it("documents view has a domain-action affinity entry", () => {
-    // The documents view (a CONTEXT_VIEWS surface) maps the OWNER_DOCUMENTS
-    // domain action (#8798).
-    expect(viewActionAffinityMap().documents).toContain("OWNER_DOCUMENTS");
+    validateViewActionMap([...allMapped], {
+      warn: (message) => warnings.push(message),
+      debug: (message) => debugs.push(message),
+    });
+
+    expect(warnings).toHaveLength(0);
+    expect(debugs.some((message) => message.includes("OWNER_SCREENTIME"))).toBe(
+      true,
+    );
   });
+
+  // ── #8798: view-coverage completeness ─────────────────────────────────────
 
   it("built-in plugins-page/settings keep RUNTIME affinity via their declarations (#13589 stub migration)", () => {
     // The 2-entry HOST_VIEW_ACTION_AFFINITY stub ({plugins-page,settings}→RUNTIME)

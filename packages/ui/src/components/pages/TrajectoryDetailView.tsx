@@ -543,7 +543,7 @@ export function TrajectoryDetailView({
         <PagePanel variant="section" className="p-5">
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             <PagePanel.SummaryCard compact className="px-4 py-3">
-              <div className="text-xs-tight text-muted/70">
+              <div className="text-xs-tight text-muted">
                 {t("trajectorydetailview.DecisionType")}
               </div>
               <div className="mt-2 text-sm font-semibold text-txt">
@@ -551,7 +551,7 @@ export function TrajectoryDetailView({
               </div>
             </PagePanel.SummaryCard>
             <PagePanel.SummaryCard compact className="px-4 py-3">
-              <div className="text-xs-tight text-muted/70">
+              <div className="text-xs-tight text-muted">
                 {t("trajectorydetailview.Task")}
               </div>
               <div className="mt-2 text-sm font-semibold text-txt">
@@ -559,7 +559,7 @@ export function TrajectoryDetailView({
               </div>
             </PagePanel.SummaryCard>
             <PagePanel.SummaryCard compact className="px-4 py-3">
-              <div className="text-xs-tight text-muted/70">
+              <div className="text-xs-tight text-muted">
                 {t("trajectorydetailview.Session1")}
               </div>
               <div className="mt-2 break-all font-mono text-xs-tight text-txt">
@@ -679,7 +679,7 @@ export function TrajectoryDetailView({
                 </div>
                 {access.query ? (
                   <div className="mt-4">
-                    <div className="text-xs-tight font-semibold text-muted/70">
+                    <div className="text-xs-tight font-semibold text-muted">
                       {t("trajectorydetailview.Query", {
                         defaultValue: "Query",
                       })}
@@ -690,7 +690,7 @@ export function TrajectoryDetailView({
                   </div>
                 ) : null}
                 <div className="mt-4">
-                  <div className="text-xs-tight font-semibold text-muted/70">
+                  <div className="text-xs-tight font-semibold text-muted">
                     {t("trajectorydetailview.Data", {
                       defaultValue: "Data",
                     })}

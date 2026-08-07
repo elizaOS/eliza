@@ -2,6 +2,7 @@ package ai.elizaos.app;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assume.assumeTrue;
 
@@ -151,12 +152,10 @@ public class ElizaOsInstrumentedTest {
         assumeSystemEliza();
         PackageManager packageManager = context().getPackageManager();
         for (String packageName : FORBIDDEN_PACKAGES) {
-            try {
-                packageManager.getPackageInfo(packageName, 0);
-                throw new AssertionError(packageName + " is still installed");
-            } catch (PackageManager.NameNotFoundException expected) {
-                assertTrue(true);
-            }
+            assertThrows(
+                    packageName + " is still installed",
+                    PackageManager.NameNotFoundException.class,
+                    () -> packageManager.getPackageInfo(packageName, 0));
         }
     }
 }

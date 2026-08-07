@@ -1,6 +1,6 @@
 // Full encrypt → persist-shape → restore roundtrip for agent backup state
 // under the org DEK, exercising the REAL production path: agent-backups →
-// field-crypto → kms-client → @elizaos/security LocalKmsAdapter (the backend
+// field-crypto → kms-client → core LocalKmsAdapter (the backend
 // prod and staging run). The durability properties asserted here are exactly
 // the ones the #15310 staging incident violated:
 //

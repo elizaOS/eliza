@@ -43,7 +43,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
 
 env:
-  BUN_VERSION: "canary"
+  BUN_VERSION: "1.3.14"
   NODE_VERSION: "24.15.0"
 
 # Default to least privilege. Override per-job where needed.
@@ -53,10 +53,10 @@ permissions:
 jobs:
   homepage-build:
     name: Homepage Build (PR smoke)
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 15
-    permissions:
-      contents: write
+    # The visual suite needs a provisionable browser image and predictable
+    # software-GPU timing; the general fleet supplies neither consistently.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -76,7 +76,7 @@ jobs:
           ELIZA_SKIP_ARTIFACT_SYNC: "1"
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -118,53 +118,36 @@ jobs:
 
       - name: Install homepage browser
         if: steps.homepage-scope.outputs.run == 'true'
-        working-directory: packages/homepage
-        run: ./node_modules/.bin/playwright install --with-deps chromium
+        run: PLAYWRIGHT_INSTALL_CWD=packages/homepage .github/scripts/install-playwright-browsers.sh chromium
 
-      - name: Generate missing snapshot baselines
+      - name: Validate homepage snapshot inventory
         if: steps.homepage-scope.outputs.run == 'true'
-        id: gen-baselines
         working-directory: packages/homepage
-        run: |
-          SNAP_DIR="tests/e2e/visual.spec.ts-snapshots"
-          # 5 routes × 2 viewports × 1 browser project = 10 expected snapshots
-          EXPECTED=10
-          ACTUAL=$(ls "$SNAP_DIR"/*.png 2>/dev/null | wc -l || echo 0)
-          if [ "$ACTUAL" -lt "$EXPECTED" ]; then
-            echo "Found $ACTUAL of $EXPECTED snapshot baselines — regenerating all."
-            rm -f "$SNAP_DIR"/*.png 2>/dev/null || true
-            bun run test:e2e -- --update-snapshots || true
-            echo "generated=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "generated=false" >> "$GITHUB_OUTPUT"
-          fi
+        # Derive the expected inventory from the route and viewport matrix used
+        # by the visual suite so adding a route cannot leave this gate behind.
+        run: bun run check:snapshot-inventory
+
+      - name: Test homepage
+        if: steps.homepage-scope.outputs.run == 'true'
+        working-directory: packages/homepage
+        run: bun run test:e2e -- --reporter=list,html
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Commit new snapshot baselines
-        if: steps.homepage-scope.outputs.run == 'true' && steps.gen-baselines.outputs.generated == 'true'
-        continue-on-error: true
-        run: |
-          SNAP_DIR="packages/homepage/tests/e2e/visual.spec.ts-snapshots"
-          if [ -n "$(git status --porcelain $SNAP_DIR)" ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add $SNAP_DIR
-            git commit -m "chore: generate visual regression snapshot baselines [skip ci]"
-            git push origin HEAD:${{ github.ref_name }} || (git pull --rebase origin ${{ github.ref_name }} && git push origin HEAD:${{ github.ref_name }})
-            echo "Pushed new snapshot baselines."
-          fi
-
-      - name: Test homepage downloads
-        if: steps.homepage-scope.outputs.run == 'true' && steps.gen-baselines.outputs.generated == 'false'
-        working-directory: packages/homepage
-        run: bun run test:e2e
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload homepage Playwright report
+        if: always() && steps.homepage-scope.outputs.run == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: homepage-playwright-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            packages/homepage/playwright-report/
+            packages/homepage/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
 
   comment-only-diff:
     name: Comment-only diff guard
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 5
     if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'comment-cleanup')
     steps:
@@ -182,7 +165,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           setup-python: "false"
           install-protoc: "false"
@@ -196,7 +179,9 @@ jobs:
 
   format-check:
     name: Format
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    # This short required gate should not spend its entire budget bootstrapping
+    # or recovering an unhealthy general-fleet runner.
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -212,7 +197,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           # Biome only needs JS dependencies; skipping Python/protoc keeps this
           # 5-minute format gate away from apt mirrors and Rust build tooling.
@@ -233,13 +218,6 @@ jobs:
       - name: Run type-duplication finder self-test
         run: bun run audit:type-duplication:self-test
 
-      # Behavioral: renders the units and settles every claim through the REAL
-      # prune tool (effective flags, unknown-flag rejection, an actual
-      # stale-vs-fresh reclaim in a temp tree). A string-compare version of this
-      # let a flag the tool never accepted ship as "configured" (#15398).
-      - name: Run runner-workspace cleanup smoke
-        run: ./packages/deploy/runner-workspace-cleanup/smoke-test.sh
-
       - name: Run biome format check
         run: bun run format:check
 
@@ -251,8 +229,10 @@ jobs:
   # mirroring the lean install used by `format-check`.
   develop-static-gate:
     name: Develop Gate (secret scan + UI determinism)
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 8
+    # Keep the required security/determinism checks independent of fleet
+    # bootstrap stalls and runner-internal setup failures.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -291,7 +271,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           # Both gates are static AST/text scans over source — no Python/protoc,
           # Rust, or postinstall artifacts needed (same lean install as the
@@ -322,7 +302,7 @@ jobs:
   # build-enabled workspace setup rather than the lean no-postinstall path.
   develop-lint-gate:
     name: Develop Gate (lint)
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -342,7 +322,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install
+          install-command: bun install --frozen-lockfile
           install-native-deps: "false"
           install-protoc: "false"
           setup-python: "false"

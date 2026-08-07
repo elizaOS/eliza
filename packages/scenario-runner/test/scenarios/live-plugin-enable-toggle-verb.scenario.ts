@@ -19,16 +19,10 @@
  * is structurally unavailable and the final check asserts no `VIEWS`/`agent-*`
  * capability was used.
  *
- * Reliability note: this is a live-only manual evidence asset (not a CI gate).
- * The scenario runtime uses a zero-vector embedding fallback (it never downloads
- * the gated on-device embedding model), so action retrieval cannot rank the ~80
- * always-loaded actions semantically; on a minority of boots the capped
- * per-context action list drops the `PLUGIN` verb from the model's tool context
- * for the whole conversation and every turn answers with a bare ack. The priming
- * turn plus re-asks make a "good" boot green; the deterministic wiring itself
- * (`PLUGIN toggle` -> `PUT /api/plugins/:id`) is covered keyless by
- * `packages/agent/src/actions/plugin-toggle.test.ts` (#14531). Needs live model
- * credentials (live-only lane).
+ * This is a live-only manual evidence asset (not a CI gate). The deterministic
+ * wiring (`PLUGIN toggle` -> `PUT /api/plugins/:id`) is covered keyless by
+ * `packages/agent/src/actions/plugin-toggle.test.ts` (#14531); this scenario
+ * requires live model credentials to prove model routing.
  */
 import { pluginAction } from "@elizaos/agent/actions/plugin";
 import {

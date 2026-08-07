@@ -3,8 +3,9 @@
  * overdue reply backlog by relationship sensitivity, and avoid claiming any
  * message was sent while doing the triage.
  */
+
+import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { judgeRubric } from "../../../../packages/test/scenarios/_helpers/action-assertions.ts";
 
 export default scenario({
   lane: "live-only",

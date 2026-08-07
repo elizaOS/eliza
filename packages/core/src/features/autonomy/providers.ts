@@ -157,14 +157,19 @@ export const adminChatProvider: Provider = {
 				},
 			};
 		} catch (error) {
+			// error-policy:J4 admin history becomes explicitly unavailable; a
+			// failed lookup is not an unconfigured admin or zero-message history.
+			runtime.reportError("AdminChatHistoryProvider.get", error, {
+				roomId: message.roomId,
+			});
 			return {
-				text: "",
+				text: "Admin conversation history is unavailable.",
 				data: {
 					available: false,
 					reason: "admin_history_unavailable",
 					error: error instanceof Error ? error.message : String(error),
 				},
-				values: { adminConfigured: false, adminHistoryCount: 0 },
+				values: { adminHistoryAvailable: false },
 			};
 		}
 	},
@@ -211,9 +216,9 @@ export const autonomyStatusProvider: Provider = {
 			}
 
 			const autonomyEnabled = runtime.enableAutonomy;
-			const serviceRunning = autonomyService.isLoopRunning() || false;
+			const serviceRunning = autonomyService.isLoopRunning();
 			const interval = Math.min(
-				autonomyService.getLoopInterval() || 30000,
+				autonomyService.getLoopInterval(),
 				MAX_AUTONOMY_INTERVAL_MS,
 			);
 
@@ -257,17 +262,19 @@ export const autonomyStatusProvider: Provider = {
 				},
 			};
 		} catch (error) {
+			// error-policy:J4 autonomy status becomes explicitly unavailable; an
+			// operational failure is not equivalent to autonomy being disabled.
+			runtime.reportError("AutonomyStatusProvider.get", error, {
+				roomId: message.roomId,
+			});
 			return {
-				text: "",
+				text: "Autonomy status is unavailable.",
 				data: {
 					available: false,
 					reason: "autonomy_status_unavailable",
 					error: error instanceof Error ? error.message : String(error),
 				},
-				values: {
-					autonomyEnabled: false,
-					autonomyRunning: false,
-				},
+				values: { autonomyStatusAvailable: false },
 			};
 		}
 	},

@@ -279,7 +279,7 @@ describe("AgentRuntime.useModel PII swap — ingress", () => {
 		expect(seenText).toContain("Dana Whitfield");
 	});
 
-	it("degrades to regex-only (never crashes the call) when the NER recognizer throws", async () => {
+	it("surfaces a configured NER recognizer failure", async () => {
 		const runtime = makeRuntime(true);
 		// A recognizer service whose recognizer always throws.
 		vi.spyOn(runtime, "getService").mockImplementation((name: string) =>
@@ -304,13 +304,12 @@ describe("AgentRuntime.useModel PII swap — ingress", () => {
 			"test",
 		);
 
-		// The call must succeed; the built-in regex recognizer still swaps the
-		// address even though the NER recognizer blew up.
-		const result = await runtime.useModel(ModelType.TEXT_SMALL, {
-			prompt: "Mail it to 1600 Amphitheatre Parkway, Mountain View, CA.",
-		});
-		expect(result).toBe("ok");
-		expect(seenPrompt).not.toContain("1600 Amphitheatre Parkway");
+		await expect(
+			runtime.useModel(ModelType.TEXT_SMALL, {
+				prompt: "Mail it to 1600 Amphitheatre Parkway, Mountain View, CA.",
+			}),
+		).rejects.toThrow("model backend exploded");
+		expect(seenPrompt).toBe("");
 	});
 
 	it("composes with the secret-swap layer (both enabled): secret → placeholder, name → surrogate", async () => {

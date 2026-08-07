@@ -7,8 +7,11 @@
  * report retains synthetic prompts and outputs so reviewers can verify that
  * each live response was distinct rather than served by a fabricated fallback.
  */
+import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { writeFile } from "node:fs/promises";
+import { extname } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   buildInferenceTimingDevPayload,
   ChannelType,
@@ -19,9 +22,11 @@ import {
   type InferenceHistogramSummary,
   InferenceTurnTimer,
   inferenceTimingRegistry,
+  isSensitiveKeyName,
   type Memory,
   type ModelEventPayload,
   ModelType,
+  redactSensitiveText,
   runWithInferenceTiming,
   type UUID,
 } from "@elizaos/core";
@@ -31,6 +36,48 @@ import { generateChatResponse } from "../src/api/chat-routes.ts";
 const DEFAULT_MODEL = "gemma-4-31b";
 const DEFAULT_SAMPLES = 30;
 const DEFAULT_WARMUPS = 3;
+const IMPORTABLE_SOURCE_EXTENSIONS: readonly string[] = [
+  ".ts",
+  ".tsx",
+  ".mts",
+  ".cts",
+  ".js",
+  ".jsx",
+  ".mjs",
+  ".cjs",
+];
+
+// These roots are the workspace inputs in the live command's Bun
+// `eliza-source` graph. plugin-sql is added explicitly because its package name
+// is assembled dynamically by the real PGLite test-runtime factory.
+const CEREBRAS_LIVE_SOURCE_PATHS = [
+  "packages/agent/scripts/cerebras-chat-flow-latency.ts",
+  "packages/agent/src",
+  "packages/cloud/routing/src",
+  "packages/core/src",
+  "packages/logger/src",
+  "packages/prompts/src",
+  "packages/registry/src",
+  "packages/shared/src",
+  "packages/vault/src",
+  "plugins/plugin-aosp-local-inference/src",
+  "plugins/plugin-capacitor-bridge/src",
+  "plugins/plugin-local-inference/src",
+  "plugins/plugin-openai",
+  "plugins/plugin-sql/src",
+] as const;
+const IGNORED_SOURCE_ARTIFACT_SEGMENTS = new Set([
+  ".turbo",
+  "build",
+  "coverage",
+  "dist",
+  "node_modules",
+  "out",
+]);
+const GENERATED_SOURCE_OUTPUT_PATHS = [
+  "packages/core/src/i18n/generated",
+  "packages/shared/src/i18n/generated",
+] as const;
 
 export interface Distribution {
   count: number;
@@ -56,6 +103,173 @@ export interface ModelUsageEvidence {
     cacheReadInputTokens?: number;
     cacheCreationInputTokens?: number;
     cachedInputTokens?: number;
+  };
+}
+
+export interface PromptCacheTelemetry {
+  promptTokens: Distribution;
+  cachedPromptTokens: Distribution;
+  uncachedPromptTokens: Distribution;
+  cacheRatePercent: Distribution;
+}
+
+export interface ModelInputContext {
+  phase: "warmup" | "sample" | "cancellation";
+  index?: number;
+  proof: string;
+}
+
+export interface ModelInputEvidence {
+  context: ModelInputContext | null;
+  modelType: string;
+  prompt?: string;
+  messages?: unknown;
+  promptSegments?: unknown;
+  tools?: unknown;
+  responseSchema?: unknown;
+  providerOptions?: unknown;
+  maxTokens?: number;
+  stream?: boolean;
+}
+
+function isTokenMetricKey(key: string): boolean {
+  const normalized = key.toLowerCase();
+  return (
+    normalized.endsWith("tokens") ||
+    normalized.endsWith("tokencount") ||
+    normalized === "maxtokens"
+  );
+}
+
+function redactEvidenceValue(value: unknown, seen: WeakSet<object>): unknown {
+  if (typeof value === "string") return redactSensitiveText(value);
+  if (typeof value === "bigint") return value.toString();
+  if (value === null || typeof value !== "object") return value;
+  if (seen.has(value)) return "[Circular]";
+  seen.add(value);
+  if (Array.isArray(value)) {
+    const redacted = value.map((entry) => redactEvidenceValue(entry, seen));
+    seen.delete(value);
+    return redacted;
+  }
+  const redacted: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    redacted[key] =
+      isSensitiveKeyName(key) && !isTokenMetricKey(key)
+        ? "[REDACTED]"
+        : redactEvidenceValue(entry, seen);
+  }
+  seen.delete(value);
+  return redacted;
+}
+
+function jsonEvidence(value: unknown): unknown {
+  return JSON.parse(
+    JSON.stringify(redactEvidenceValue(value, new WeakSet<object>())),
+  );
+}
+
+function nulDelimitedPaths(output: string): string[] {
+  const paths = output.split("\0");
+  if (paths.at(-1) === "") paths.pop();
+  return paths;
+}
+
+function isAttestedIgnoredSource(path: string): boolean {
+  if (/\.d\.[cm]?ts$/u.test(path)) return false;
+  if (!IMPORTABLE_SOURCE_EXTENSIONS.includes(extname(path))) {
+    return false;
+  }
+  if (
+    path
+      .split("/")
+      .some((segment) => IGNORED_SOURCE_ARTIFACT_SEGMENTS.has(segment))
+  ) {
+    return false;
+  }
+  return !GENERATED_SOURCE_OUTPUT_PATHS.some(
+    (generatedPath) =>
+      path === generatedPath || path.startsWith(`${generatedPath}/`),
+  );
+}
+
+export function sourceRevisionEvidence(
+  repoRoot = fileURLToPath(new URL("../../..", import.meta.url)),
+  attestedSourcePaths: readonly string[] = CEREBRAS_LIVE_SOURCE_PATHS,
+): { head: string; treeClean: true } {
+  const head = execFileSync("git", ["-C", repoRoot, "rev-parse", "HEAD"], {
+    encoding: "utf8",
+  }).trim();
+  const dirty = execFileSync(
+    "git",
+    [
+      "-C",
+      repoRoot,
+      "status",
+      "--porcelain=v1",
+      "-z",
+      "--untracked-files=all",
+      "--ignore-submodules=none",
+    ],
+    { encoding: "utf8" },
+  );
+  const ignoredSourceOverrides = nulDelimitedPaths(
+    execFileSync(
+      "git",
+      [
+        "-C",
+        repoRoot,
+        "ls-files",
+        "-z",
+        "--others",
+        "--ignored",
+        "--exclude-standard",
+        "--",
+        ...attestedSourcePaths,
+      ],
+      { encoding: "utf8" },
+    ),
+  ).filter(isAttestedIgnoredSource);
+  if (dirty.length > 0 || ignoredSourceOverrides.length > 0) {
+    throw new Error(
+      "Live Cerebras evidence must run from a clean committed source tree",
+    );
+  }
+  return { head, treeClean: true };
+}
+
+export function captureModelInput(
+  modelType: unknown,
+  params: unknown,
+  context: ModelInputContext | null,
+): ModelInputEvidence {
+  const input =
+    params && typeof params === "object"
+      ? (params as Record<string, unknown>)
+      : {};
+  return {
+    context: context ? { ...context } : null,
+    modelType: String(modelType),
+    ...(typeof input.prompt === "string"
+      ? { prompt: redactSensitiveText(input.prompt) }
+      : {}),
+    ...(input.messages !== undefined
+      ? { messages: jsonEvidence(input.messages) }
+      : {}),
+    ...(input.promptSegments !== undefined
+      ? { promptSegments: jsonEvidence(input.promptSegments) }
+      : {}),
+    ...(input.tools !== undefined ? { tools: jsonEvidence(input.tools) } : {}),
+    ...(input.responseSchema !== undefined
+      ? { responseSchema: jsonEvidence(input.responseSchema) }
+      : {}),
+    ...(input.providerOptions !== undefined
+      ? { providerOptions: jsonEvidence(input.providerOptions) }
+      : {}),
+    ...(typeof input.maxTokens === "number"
+      ? { maxTokens: input.maxTokens }
+      : {}),
+    ...(typeof input.stream === "boolean" ? { stream: input.stream } : {}),
   };
 }
 
@@ -152,6 +366,54 @@ export function distribution(samples: readonly number[]): Distribution {
   };
 }
 
+export function promptCacheTelemetry(
+  turns: readonly {
+    modelUsage: {
+      tokens: {
+        prompt: number;
+        cachedInputTokens?: number;
+        cacheReadInputTokens?: number;
+      };
+    };
+  }[],
+): PromptCacheTelemetry {
+  const promptTokens: number[] = [];
+  const cachedPromptTokens: number[] = [];
+  const uncachedPromptTokens: number[] = [];
+  const cacheRatePercent: number[] = [];
+  for (const turn of turns) {
+    const prompt = turn.modelUsage.tokens.prompt;
+    const cached =
+      turn.modelUsage.tokens.cachedInputTokens ??
+      turn.modelUsage.tokens.cacheReadInputTokens;
+    if (!Number.isFinite(prompt) || prompt <= 0) {
+      throw new Error(
+        "Cerebras cache telemetry requires positive prompt tokens",
+      );
+    }
+    if (cached === undefined || !Number.isFinite(cached) || cached < 0) {
+      throw new Error(
+        "Cerebras cache telemetry requires provider-reported cached prompt tokens",
+      );
+    }
+    if (cached > prompt) {
+      throw new Error(
+        `Cerebras reported more cached tokens than prompt tokens: ${cached} > ${prompt}`,
+      );
+    }
+    promptTokens.push(prompt);
+    cachedPromptTokens.push(cached);
+    uncachedPromptTokens.push(prompt - cached);
+    cacheRatePercent.push((cached / prompt) * 100);
+  }
+  return {
+    promptTokens: distribution(promptTokens),
+    cachedPromptTokens: distribution(cachedPromptTokens),
+    uncachedPromptTokens: distribution(uncachedPromptTokens),
+    cacheRatePercent: distribution(cacheRatePercent),
+  };
+}
+
 export function verifyProofResponse(response: string, proof: string): void {
   const normalized = response.toUpperCase().replace(/[^A-Z0-9-]/g, "");
   if (!normalized.includes(proof.toUpperCase())) {
@@ -241,6 +503,17 @@ async function main(): Promise<void> {
     runtime.registerEvent(EventType.MODEL_USED, async (payload) => {
       modelUsageEvents.push(payload);
     });
+    const modelInputs: ModelInputEvidence[] = [];
+    let activeModelInputContext: ModelInputContext | null = null;
+    const measuredUseModel = runtime.useModel.bind(runtime);
+    runtime.useModel = (async (modelType, params) => {
+      if (modelType === ModelType.RESPONSE_HANDLER) {
+        modelInputs.push(
+          captureModelInput(modelType, params, activeModelInputContext),
+        );
+      }
+      return await measuredUseModel(modelType, params);
+    }) as typeof runtime.useModel;
     const worldId = randomUUID() as UUID;
     const roomId = randomUUID() as UUID;
     const entityId = randomUUID() as UUID;
@@ -278,16 +551,26 @@ async function main(): Promise<void> {
       const streamed: string[] = [];
       const usageEventOffset = modelUsageEvents.length;
       const startedAt = performance.now();
-      const result = await generateChatResponse(
-        runtime,
-        message as Memory,
-        runtime.character.name,
-        {
-          onChunk: (chunk) => {
-            streamed.push(chunk);
+      activeModelInputContext = {
+        phase: warmup ? "warmup" : "sample",
+        index,
+        proof,
+      };
+      let result: Awaited<ReturnType<typeof generateChatResponse>>;
+      try {
+        result = await generateChatResponse(
+          runtime,
+          message as Memory,
+          runtime.character.name,
+          {
+            onChunk: (chunk) => {
+              streamed.push(chunk);
+            },
           },
-        },
-      );
+        );
+      } finally {
+        activeModelInputContext = null;
+      }
       const wallMs = performance.now() - startedAt;
       const turnUsageEvents = modelUsageEvents.slice(usageEventOffset);
       const modelUsagePayload = turnUsageEvents[0];
@@ -446,6 +729,10 @@ async function main(): Promise<void> {
 
     const cancellationStartedAt = performance.now();
     let cancellationError: unknown;
+    activeModelInputContext = {
+      phase: "cancellation",
+      proof: cancellationProof,
+    };
     try {
       await generateChatResponse(
         runtime,
@@ -457,6 +744,7 @@ async function main(): Promise<void> {
     } catch (error) {
       cancellationError = error;
     } finally {
+      activeModelInputContext = null;
       runtime.useModel = originalUseModel;
       if (cancellationTimer) clearTimeout(cancellationTimer);
     }
@@ -566,6 +854,7 @@ async function main(): Promise<void> {
 
     const report = {
       generatedAt: new Date().toISOString(),
+      sourceRevision: sourceRevisionEvidence(),
       runtime: "AgentRuntime + plugin-sql/PGLite + plugin-openai",
       endpoint: process.env.CEREBRAS_BASE_URL,
       model,
@@ -584,6 +873,7 @@ async function main(): Promise<void> {
       totalToQuiescenceMs: distribution(
         turns.map((turn) => turn.totalToQuiescenceMs),
       ),
+      promptCache: promptCacheTelemetry(turns),
       stageHistograms: stageHistograms(chatTelemetry.flows),
       derivedHistograms: chatTelemetry.derivedHistograms satisfies Record<
         string,
@@ -591,6 +881,7 @@ async function main(): Promise<void> {
       >,
       spanHistograms: chatTelemetry.spanHistograms,
       providerTelemetry: chatTelemetry.providers,
+      modelInputs,
       cancellationProbe,
       allProviderSweep: {
         execution:

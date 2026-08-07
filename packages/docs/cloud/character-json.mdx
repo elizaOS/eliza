@@ -1,319 +1,145 @@
 ---
 title: Character JSON
-description: Complete reference for elizaOS character JSON configuration. Define agent personality, behavior, and settings.
+description: "Define an Eliza agent's identity, behavior, examples, documents, and runtime extensions."
 ---
 
-# Character JSON
+A character describes how an agent presents itself and what runtime features it
+requests. The canonical runtime boundary is the strict
+[`characterSchema`](https://github.com/elizaOS/eliza/blob/develop/packages/core/src/schemas/character.ts);
+the corresponding TypeScript interface is `Character` in
+`packages/core/src/types/agent.ts`.
 
-Define your agent's personality and behavior with the character JSON format.
+## Minimal character
 
-## Overview
-
-The character JSON is the core configuration for an elizaOS agent. It defines:
-
-- **Identity**: Name, bio, and background
-- **Personality**: Communication style and behavior
-- **Capabilities**: Model settings and plugins
-- **Knowledge**: Topics and expertise areas
-
-## Complete Schema
+`name` is the only required top-level field at the runtime validation boundary:
 
 ```json
 {
-  "name": "Agent Name",
-  "description": "Brief description",
-  "bio": ["First bio statement", "Second bio statement"],
-  "lore": ["Background story element", "Another lore element"],
-  "style": {
-    "all": ["Global style instruction"],
-    "chat": ["Chat-specific style"],
-    "post": ["Social media style"]
-  },
-  "topics": ["topic1", "topic2"],
-  "adjectives": ["helpful", "friendly"],
-  "modelProvider": "openai",
-  "settings": {
-    "model": "gpt-4o",
-    "temperature": 0.7,
-    "maxTokens": 4096
-  },
-  "plugins": [],
-  "clients": []
+  "name": "Research Assistant"
 }
 ```
 
-## Field Reference
-
-### Core Identity
-
-| Field         | Type     | Required | Description           |
-| ------------- | -------- | -------- | --------------------- |
-| `name`        | string   | ✓        | Agent display name    |
-| `description` | string   |          | Brief description     |
-| `bio`         | string[] | ✓        | Background statements |
-| `lore`        | string[] |          | Backstory elements    |
-
-### Personality
-
-| Field        | Type     | Required | Description            |
-| ------------ | -------- | -------- | ---------------------- |
-| `style.all`  | string[] |          | Global style rules     |
-| `style.chat` | string[] |          | Chat interaction style |
-| `style.post` | string[] |          | Social media style     |
-| `topics`     | string[] |          | Expertise areas        |
-| `adjectives` | string[] |          | Personality traits     |
-
-### Model Settings
-
-| Field                  | Type   | Required | Description         |
-| ---------------------- | ------ | -------- | ------------------- |
-| `modelProvider`        | string | ✓        | AI provider         |
-| `settings.model`       | string |          | Specific model      |
-| `settings.temperature` | number |          | Creativity (0-2)    |
-| `settings.maxTokens`   | number |          | Max response length |
-
-## Bio Guidelines
-
-The bio array defines your agent's background:
-
-```json
-{
-  "bio": [
-    "Expert in machine learning and data science",
-    "10 years of experience in AI research",
-    "Published author and conference speaker",
-    "Passionate about explaining complex topics simply"
-  ]
-}
-```
-
-**Best Practices:**
-
-- 3-5 statements
-- Mix expertise and personality
-- Be specific about capabilities
-- Include relevant experience
-
-## Style Instructions
-
-### Global Style (`style.all`)
-
-Applies to all interactions:
-
-```json
-{
-  "style": {
-    "all": [
-      "Be professional yet approachable",
-      "Use clear, concise language",
-      "Cite sources when making claims",
-      "Ask clarifying questions when needed"
-    ]
-  }
-}
-```
-
-### Chat Style (`style.chat`)
-
-Specific to chat conversations:
-
-```json
-{
-  "style": {
-    "chat": [
-      "Keep responses focused and concise",
-      "Use bullet points for complex topics",
-      "Provide examples when helpful",
-      "End with a question to continue the conversation"
-    ]
-  }
-}
-```
-
-### Post Style (`style.post`)
-
-For social media interactions:
-
-```json
-{
-  "style": {
-    "post": [
-      "Keep posts under 280 characters",
-      "Use relevant hashtags",
-      "Be engaging and thought-provoking",
-      "Include a call to action"
-    ]
-  }
-}
-```
-
-## Model Providers
-
-### Available Providers
-
-| Provider    | Models                           |
-| ----------- | -------------------------------- |
-| `openai`    | OpenAI-compatible model ids from the current catalog |
-| `anthropic` | claude-sonnet-4-6, claude-opus-4-7 |
-| `google`    | gemini-1.5-pro, gemini-1.5-flash |
-
-### Provider Settings
-
-```json
-{
-  "modelProvider": "openai",
-  "settings": {
-    "model": "gpt-4o",
-    "temperature": 0.7,
-    "maxTokens": 4096,
-    "topP": 0.9,
-    "frequencyPenalty": 0,
-    "presencePenalty": 0
-  }
-}
-```
-
-## Advanced Settings
-
-### Knowledge Base
-
-Connect documents:
-
-```json
-{
-  "settings": {
-    "knowledge": {
-      "enabled": true,
-      "documentIds": ["doc_abc123"],
-      "queryLimit": 5,
-      "minScore": 0.7
-    }
-  }
-}
-```
-
-### MCP Tools
-
-Enable MCP servers:
-
-```json
-{
-  "settings": {
-    "mcp": {
-      "enabled": true,
-      "servers": [{ "id": "weather", "url": "https://mcp.eliza.ai/weather" }]
-    }
-  }
-}
-```
-
-### Voice
-
-Configure voice synthesis:
-
-```json
-{
-  "settings": {
-    "voice": {
-      "provider": "elevenlabs",
-      "voiceId": "voice_abc123",
-      "model": "eleven_multilingual_v2"
-    }
-  }
-}
-```
-
-## Templates
-
-### Customer Support
-
-```json
-{
-  "name": "Support Assistant",
-  "bio": [
-    "Dedicated customer support specialist",
-    "Expert in troubleshooting and problem-solving",
-    "Patient and thorough in explanations"
-  ],
-  "style": {
-    "all": [
-      "Always be polite and empathetic",
-      "Acknowledge the customer's issue",
-      "Provide step-by-step solutions"
-    ],
-    "chat": [
-      "Ask for specifics when needed",
-      "Confirm understanding before solving",
-      "Follow up on resolution"
-    ]
-  },
-  "topics": ["support", "troubleshooting", "product help"],
-  "modelProvider": "openai",
-  "settings": {
-    "model": "gpt-4o",
-    "temperature": 0.5
-  }
-}
-```
-
-### Research Assistant
+## Typical character
 
 ```json
 {
   "name": "Research Assistant",
+  "username": "research-assistant",
+  "system": "Help the user investigate questions carefully and distinguish evidence from inference.",
   "bio": [
-    "Academic researcher with expertise in literature review",
-    "Skilled at synthesizing complex information",
-    "Trained on scientific methodology"
+    "Synthesizes technical and scientific sources",
+    "Explains uncertainty and cites evidence"
   ],
+  "topics": ["research", "analysis", "technical writing"],
+  "adjectives": ["careful", "clear", "curious"],
   "style": {
-    "all": [
-      "Use academic language appropriately",
-      "Cite sources when possible",
-      "Be precise and thorough"
-    ],
-    "chat": [
-      "Break down complex topics",
-      "Provide evidence for claims",
-      "Suggest further reading"
-    ]
+    "all": ["Be precise and concise"],
+    "chat": ["Ask for missing constraints when they materially affect the answer"],
+    "post": []
   },
-  "topics": ["research", "analysis", "academic writing"],
-  "modelProvider": "anthropic",
-  "settings": {
-    "model": "claude-sonnet-4-6",
-    "temperature": 0.3
-  }
+  "messageExamples": [
+    {
+      "examples": [
+        {
+          "name": "{{name1}}",
+          "content": { "text": "Compare these two approaches." }
+        },
+        {
+          "name": "Research Assistant",
+          "content": { "text": "I will compare their assumptions, evidence, and tradeoffs." }
+        }
+      ]
+    }
+  ],
+  "postExamples": [],
+  "plugins": [],
+  "settings": {},
+  "secrets": {},
+  "advancedPlanning": true,
+  "advancedMemory": true
 }
 ```
 
-## Validation
+## Top-level fields
 
-The character JSON is validated on upload. Common errors:
+| Field | Shape | Purpose |
+| --- | --- | --- |
+| `id` | UUID | Optional stable character ID. |
+| `name` | string | Required display name. |
+| `username` | string | Optional platform-friendly name. |
+| `system` | string | Core behavior and response instructions. |
+| `templates` | object | Named prompt templates; JSON characters can contain strings only. |
+| `bio` | string or string[] | Biographical or capability statements; normalized to an array. |
+| `messageExamples` | example groups | Demonstrations of conversational behavior. |
+| `postExamples` | string[] | Demonstrations of social-post style. |
+| `topics` | string[] | Subjects the character should engage with. |
+| `adjectives` | string[] | Short personality descriptors. |
+| `documents` | document sources | File or directory sources available to the character. |
+| `knowledge` | document sources | Compatibility alias used only when `documents` is empty. |
+| `plugins` | string[] | Plugin package names requested by this character. |
+| `settings` | object | JSON-serializable character settings; known keys are normalized and other keys move under `extra`. |
+| `secrets` | object | String, number, or boolean values; do not commit real secrets. |
+| `style` | object | `all`, `chat`, and `post` instruction arrays. |
+| `advancedPlanning` | boolean | Requests built-in planning capabilities. |
+| `advancedMemory` | boolean | Requests built-in advanced-memory capabilities. |
 
-| Error                 | Cause                 | Solution               |
-| --------------------- | --------------------- | ---------------------- |
-| `name required`       | Missing name field    | Add name               |
-| `invalid provider`    | Unknown modelProvider | Use supported provider |
-| `invalid temperature` | Outside 0-2 range     | Adjust temperature     |
+Unknown top-level keys are rejected by the runtime schema. Message content and
+settings deliberately allow extension data because plugins consume those
+boundaries.
 
-## Best Practices
+## Documents
 
-- **Be Specific** — Detailed bios and styles produce more consistent agents
-- **Test Thoroughly** — Try various scenarios before deploying
-- **Iterate** — Refine based on actual conversations
-- **Version Control** — Track changes to your character files in git
+Document entries use a tagged source shape:
 
-## Next Steps
+```json
+{
+  "documents": [
+    {
+      "item": {
+        "case": "path",
+        "value": "/srv/eliza/knowledge/handbook.md"
+      }
+    },
+    {
+      "item": {
+        "case": "directory",
+        "value": {
+          "path": "/srv/eliza/knowledge/reference",
+          "shared": false
+        }
+      }
+    }
+  ]
+}
+```
 
-<CardGroup>
-  <CardGroup.Card title="Agent Creator" href="/cloud/agent-creator">
-    Build agents visually
-  </CardGroup.Card>
-  <CardGroup.Card title="AI Agents" href="/cloud/agents">
-    Deploy your agent
-  </CardGroup.Card>
-  <CardGroup.Card title="Knowledge Base" href="/cloud/documents">
-    Add documents for RAG
-  </CardGroup.Card>
-</CardGroup>
+The Cloud Documents API manages hosted document resources separately; do not
+invent character fields such as `settings.knowledge.documentIds` unless the
+plugin consuming that setting explicitly documents them.
+
+## Model selection
+
+Provider placement and model routing belong to runtime configuration, not the
+character's top-level schema. Use the Settings UI and the
+`deploymentTarget`/`serviceRouting` fields described in
+[Model providers](/model-providers). A plugin may consume additional values
+from `settings`, but those values are plugin contracts rather than universal
+character fields.
+
+## Cloud creation routes
+
+Cloud offers two creation surfaces:
+
+- `POST /api/v1/app/agents` creates a basic Cloud agent from `name`, optional
+  `bio`, and optional token metadata.
+- `POST /api/my-agents/characters` stores a fuller character representation.
+
+Use [Agents](/cloud/agents) for request examples. Treat a successful Cloud
+write and runtime character validation as distinct boundaries; validate a
+portable character with the core schema before shipping it to another runtime.
+
+## Related
+
+- [Agent character track](/tracks/agent/character)
+- [Cloud Agents](/cloud/agents)
+- [Documents](/cloud/documents)

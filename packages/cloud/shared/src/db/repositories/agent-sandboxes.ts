@@ -6,6 +6,10 @@
 import { randomUUID } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import {
+  MAX_RESTORABLE_AGENT_BACKUP_BYTES,
+  SnapshotPayloadTooLargeError,
+} from "@elizaos/shared/agent-backup-limits";
+import {
   and,
   asc,
   desc,
@@ -118,7 +122,11 @@ const EMPTY_BACKUP_STATE: AgentSandboxBackup["state_data"] = {
   workspaceFiles: {},
 };
 const MAX_RECONSTRUCTED_BACKUP_CHAIN_DEPTH = 100;
-const MAX_RECONSTRUCTED_BACKUP_CHAIN_BYTES = 128 * 1024 * 1024;
+/**
+ * A reconstructed chain has to fit the same v1 restorable ceiling as any other
+ * backup wire payload — it is what gets handed to restore (#17172).
+ */
+const MAX_RECONSTRUCTED_BACKUP_CHAIN_BYTES = MAX_RESTORABLE_AGENT_BACKUP_BYTES;
 
 /**
  * Correlates a sandbox row with the queue operations that legitimately own its
@@ -430,6 +438,7 @@ export class AgentSandboxesRepository {
       user_id: string;
       agent_name: string | null;
       bridge_url: string | null;
+      lifecycle_revision: number;
       updated_at: Date;
       status: AgentSandboxStatus;
     }>
@@ -441,6 +450,7 @@ export class AgentSandboxesRepository {
         user_id: agentSandboxes.user_id,
         agent_name: agentSandboxes.agent_name,
         bridge_url: agentSandboxes.bridge_url,
+        lifecycle_revision: agentSandboxes.lifecycle_revision,
         updated_at: agentSandboxes.updated_at,
         status: agentSandboxes.status,
       })
@@ -1050,7 +1060,7 @@ export class AgentSandboxesRepository {
       sandboxId: string | null;
       nodeId: string | null;
       containerName: string | null;
-      updatedAt: Date;
+      lifecycleRevision: number;
     },
   ): Promise<AgentSandbox | undefined> {
     await ensureAgentSandboxSchema();
@@ -1111,14 +1121,11 @@ export class AgentSandboxesRepository {
         sql`${agentSandboxes.sandbox_id} IS NOT DISTINCT FROM ${expectedRunningGeneration.sandboxId}`,
         sql`${agentSandboxes.node_id} IS NOT DISTINCT FROM ${expectedRunningGeneration.nodeId}`,
         sql`${agentSandboxes.container_name} IS NOT DISTINCT FROM ${expectedRunningGeneration.containerName}`,
-        // ms-window fence: the stored value may carry microseconds (raw
-        // `updated_at = NOW()` writers) while the expected value came through
-        // a typed read, which truncates to milliseconds — JS Date parsing
-        // truncates sub-ms lexically (never rounds), so ms==ms is exact. A
-        // plain eq() silently missed for every µs-stored row, so the observed
-        // running generation was never persisted after such a write (#17249
-        // fence class; same remedy as the sleep and managed-launch CASes).
-        sql`date_trunc('milliseconds', ${agentSandboxes.updated_at}) = ${expectedRunningGeneration.updatedAt}`,
+        // The database-owned lifecycle_revision subsumes the earlier
+        // ms-windowed updated_at fence (#17284): the trigger advances it on
+        // every write, including raw SQL writers, so no timestamp-precision
+        // or same-millisecond ABA window exists (#17249 fence class).
+        eq(agentSandboxes.lifecycle_revision, expectedRunningGeneration.lifecycleRevision),
       );
     }
     const [r] = await dbWrite
@@ -1579,7 +1586,7 @@ export class AgentSandboxesRepository {
     agentName: string;
     agentConfig?: Record<string, unknown>;
     characterId?: string | null;
-    expectedUpdatedAt?: Date | string | null;
+    expectedLifecycleRevision?: number;
   }): Promise<WarmClaimedAgentSandbox | null> {
     await ensureAgentSandboxSchema();
     return dbWrite.transaction(async (tx) => {
@@ -1690,12 +1697,11 @@ export class AgentSandboxesRepository {
         return null;
       }
 
-      if (params.expectedUpdatedAt) {
-        const expectedMs = new Date(params.expectedUpdatedAt).getTime();
-        const currentMs = userRow.updated_at?.getTime() ?? Number.NaN;
-        if (Number.isFinite(expectedMs) && Number.isFinite(currentMs) && expectedMs !== currentMs) {
-          return null;
-        }
+      if (
+        params.expectedLifecycleRevision !== undefined &&
+        userRow.lifecycle_revision !== params.expectedLifecycleRevision
+      ) {
+        return null;
       }
 
       const claimedAt = new Date();
@@ -1749,6 +1755,9 @@ export class AgentSandboxesRepository {
           and(
             eq(agentSandboxes.id, params.userAgentId),
             eq(agentSandboxes.organization_id, params.organizationId),
+            ...(params.expectedLifecycleRevision === undefined
+              ? []
+              : [eq(agentSandboxes.lifecycle_revision, params.expectedLifecycleRevision)]),
             sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
             sql`${agentSandboxes.status} NOT IN ('deletion_pending', 'deletion_failed')`,
           ),
@@ -2127,9 +2136,10 @@ export class AgentSandboxesRepository {
       chainBytes +=
         cursor.size_bytes ?? Buffer.byteLength(JSON.stringify(cursor.state_data), "utf8");
       if (chainBytes > MAX_RECONSTRUCTED_BACKUP_CHAIN_BYTES) {
-        throw new Error(
-          `Backup chain for ${backupId} exceeds ${MAX_RECONSTRUCTED_BACKUP_CHAIN_BYTES} bytes`,
-        );
+        // Typed so the restore sites can tell "too large to apply" from "gone":
+        // the chain is intact and decryptable, so this must fail the provision
+        // closed rather than degrade to an empty boot, and it must never prune.
+        throw new SnapshotPayloadTooLargeError(chainBytes, MAX_RECONSTRUCTED_BACKUP_CHAIN_BYTES);
       }
       chain.push(await hydrateAgentSandboxBackup(cursor));
       if (cursor.backup_kind === "full") break;

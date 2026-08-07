@@ -1,3 +1,4 @@
+/** Verifies MessageContent → TaskWidget integration through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Integration test: an assistant message containing `[TASK:<id>]<title>[/TASK]`

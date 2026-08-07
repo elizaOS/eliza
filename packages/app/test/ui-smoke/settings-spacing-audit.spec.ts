@@ -80,8 +80,8 @@ async function settleTheme(page: Page): Promise<void> {
       try {
         localStorage.setItem("eliza:theme-mode", "light");
         localStorage.setItem("eliza-theme", "light");
-        // Seed developer mode so dev-only sections (remote-plugins) render and
-        // get measured/captured like everything else.
+        // Seed developer mode so dev-only sections render and get
+        // measured/captured like everything else.
         localStorage.setItem("eliza:developerMode", "1");
       } catch {}
       // Inject the simulated safe-area inset as soon as the document exists, so

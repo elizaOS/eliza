@@ -23,11 +23,10 @@ The runtime needs:
 - **Containers** — package as a Docker image. Use a remote Postgres for persistence.
 - **Serverless** — works if cold-start latency is acceptable. Use a remote Postgres; pin a singleton runtime in the warm scope.
 - **Eliza Cloud** — register the app for `appId`, hosted auth, domains, and container deploys. See [Cloud](/tracks/cloud/overview).
-- **Edge** — `@elizaos/core` supports Cloudflare Workers via the `index.node.ts` vs. `index.ts` split. See [`packages/examples/cloudflare/`](https://github.com/elizaOS/eliza/tree/develop/packages/examples/cloudflare).
+- **Edge** — `@elizaos/core` provides separate browser-safe and Node entry points. Confirm that every selected plugin supports your edge runtime before deploying.
 
 ## See also
 
 - [Deployment](/deployment)
-- [Bare-metal deployment](/deployment-bare-metal)
 - [Build and release](/build-and-release)
 - [Cloud track](/tracks/cloud/overview)

@@ -401,12 +401,12 @@ type ScenarioRouteRequest = http.IncomingMessage &
 
 type ScenarioRouteResponse = http.ServerResponse & RouteResponse;
 
-type RuntimeWithScenarioLlmFixtures = AgentRuntime & {
-  scenarioLlmFixtures?: {
+type RuntimeWithScenarioModelFixtures = AgentRuntime & {
+  scenarioModelFixtures?: {
     clear?: () => void;
     resetConsumption?: () => void;
   };
-  assertScenarioLlmFixturesConsumed?: () => void;
+  assertScenarioModelFixturesConsumed?: () => void;
 };
 
 type SeedRunResult = {
@@ -426,9 +426,9 @@ function stringifyForJudge(value: unknown, maxLength = 1_200): string {
   }
 }
 
-function resetScenarioLlmFixtures(runtime: AgentRuntime): void {
-  const registry = (runtime as RuntimeWithScenarioLlmFixtures)
-    .scenarioLlmFixtures;
+function resetScenarioModelFixtures(runtime: AgentRuntime): void {
+  const registry = (runtime as RuntimeWithScenarioModelFixtures)
+    .scenarioModelFixtures;
   if (typeof registry?.clear === "function") {
     registry.clear();
     return;
@@ -465,11 +465,11 @@ async function resetSharedSchedulingState(
   await resetLifeOpsScenarioState(runtime);
 }
 
-function assertScenarioLlmFixturesConsumed(
+function assertScenarioModelFixturesConsumed(
   runtime: AgentRuntime,
 ): string | undefined {
-  const assertConsumed = (runtime as RuntimeWithScenarioLlmFixtures)
-    .assertScenarioLlmFixturesConsumed;
+  const assertConsumed = (runtime as RuntimeWithScenarioModelFixtures)
+    .assertScenarioModelFixturesConsumed;
   if (typeof assertConsumed !== "function") {
     return undefined;
   }
@@ -2367,7 +2367,7 @@ export async function runScenario(
   let apiServer: ScenarioApiServer | null = null;
 
   try {
-    resetScenarioLlmFixtures(runtime);
+    resetScenarioModelFixtures(runtime);
     await resetSharedSchedulingState(runtime);
 
     runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", primaryRoom.userId, false);
@@ -2669,11 +2669,11 @@ export async function runScenario(
       }
     }
 
-    const fixtureFailure = assertScenarioLlmFixturesConsumed(runtime);
+    const fixtureFailure = assertScenarioModelFixturesConsumed(runtime);
     if (fixtureFailure) {
       report.status = "failed";
       report.failedAssertions.push({
-        label: "llmFixtures",
+        label: "modelFixtures",
         detail: fixtureFailure,
       });
     }

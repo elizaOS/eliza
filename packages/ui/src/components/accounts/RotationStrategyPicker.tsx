@@ -101,6 +101,9 @@ export function RotationStrategyPicker({
         disabled={disabled}
       >
         <SelectTrigger
+          aria-label={t("accounts.strategy.label", {
+            defaultValue: "Strategy",
+          })}
           id={`rotation-strategy-${providerId}`}
           className="h-8 w-[160px] gap-1 truncate whitespace-nowrap rounded-sm border border-border bg-card text-xs [&>span]:truncate"
         >
@@ -119,7 +122,7 @@ export function RotationStrategyPicker({
             collisionPadding={16}
             style={{
               width: "min(18rem, calc(100vw - 2rem))",
-              backgroundColor: "var(--card, #151518)",
+              backgroundColor: "var(--card)",
               borderColor: "var(--border, rgba(255, 255, 255, 0.18))",
             }}
             className="relative z-[12000] overflow-hidden rounded-sm border text-txt shadow-md"

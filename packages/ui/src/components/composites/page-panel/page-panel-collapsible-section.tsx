@@ -107,7 +107,11 @@ export const PagePanelCollapsibleSection = React.forwardRef<
       ref={ref as React.Ref<HTMLDivElement>}
       as={as as never}
       variant={variant}
-      aria-expanded={isExpanded}
+      aria-expanded={
+        (expandOnCollapsedSurfaceClick && !isExpanded) || role === "button"
+          ? isExpanded
+          : undefined
+      }
       data-content-align-offset={4}
       className={cn(
         expandOnCollapsedSurfaceClick &&

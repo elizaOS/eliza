@@ -122,6 +122,7 @@ export const Errored: Story = {
 
 /** Empty sessions array — renders nothing (component returns null). */
 export const Empty: Story = {
+  tags: ["story-gate-expect-blank"],
   args: {
     sessions: [],
   },

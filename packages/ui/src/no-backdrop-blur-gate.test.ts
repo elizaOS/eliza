@@ -64,7 +64,6 @@ function collectSourceFiles(dir: string, out: string[] = []): string[] {
 const ALLOWED_BLUR = new Set<string>([
   "packages/ui/src/components/shell/liquid-glass.tsx",
   "packages/ui/src/components/shell/liquid-glass.stories.tsx",
-  "packages/ui/src/components/shell/home-glass.ts",
   "packages/ui/src/components/shell/wallpaper-idiom.ts",
   "packages/ui/src/components/shell/ChatOverlay.tsx",
   "packages/ui/src/components/shell/NotificationsHomeCenter.tsx",

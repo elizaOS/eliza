@@ -23,15 +23,29 @@ export async function startComputerUseRuntime(
       settings,
     }),
     adapter: new InMemoryDatabaseAdapter(),
+    disableBasicCapabilities: true,
     enableAutonomy: false,
+    enableDocuments: false,
+    enableRelationships: false,
+    enableTrajectories: false,
     logLevel: "fatal",
   });
   await runtime.initialize();
-  await runtime.registerPlugin({
-    name: "computeruse-service-test",
-    description: "ComputerUseService runtime test harness",
-    services: [ComputerUseService],
-  });
+  const previousDriver = process.env.ELIZA_COMPUTERUSE_DRIVER;
+  process.env.ELIZA_COMPUTERUSE_DRIVER = "legacy";
+  try {
+    await runtime.registerPlugin({
+      name: "computeruse-service-test",
+      description: "ComputerUseService runtime test harness",
+      services: [ComputerUseService],
+    });
+  } finally {
+    if (previousDriver === undefined) {
+      delete process.env.ELIZA_COMPUTERUSE_DRIVER;
+    } else {
+      process.env.ELIZA_COMPUTERUSE_DRIVER = previousDriver;
+    }
+  }
   const service = await runtime.getServiceLoadPromise(
     ComputerUseService.serviceType,
   );

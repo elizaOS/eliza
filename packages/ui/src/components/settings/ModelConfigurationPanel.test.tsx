@@ -1,3 +1,4 @@
+/** Verifies catalog load states through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

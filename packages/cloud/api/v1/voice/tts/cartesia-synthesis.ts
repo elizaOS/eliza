@@ -18,11 +18,11 @@ import {
   type CartesiaWebSocketFactory,
   type CartesiaWebSocketLike,
 } from "../../../../shared/src/lib/services/cartesia-sonic-tts";
+import { pcm16ChunksToWav } from "../../../../shared/src/lib/services/pcm16-wav";
 
 const CARTESIA_BYTES_URL = "https://api.cartesia.ai/tts/bytes";
 const CARTESIA_REST_API_VERSION = "2025-04-16";
 const CARTESIA_MODEL_ID = "sonic-3.5";
-const WAV_HEADER_BYTES = 44;
 
 export type CartesiaRestErrorClassification =
   | "rate_limit"
@@ -91,34 +91,6 @@ export async function synthesizeCartesiaBytes(args: {
     provider: "cartesia",
     modelId: CARTESIA_MODEL_ID,
   };
-}
-
-function pcm16ToWav(pcm: Uint8Array, sampleRate: number): Uint8Array {
-  if (pcm.byteLength === 0 || pcm.byteLength % 2 !== 0) {
-    throw new Error("Cartesia PCM16 response must contain complete samples");
-  }
-  const output = new Uint8Array(WAV_HEADER_BYTES + pcm.byteLength);
-  const view = new DataView(output.buffer);
-  const writeAscii = (offset: number, value: string) => {
-    for (let index = 0; index < value.length; index += 1) {
-      view.setUint8(offset + index, value.charCodeAt(index));
-    }
-  };
-  writeAscii(0, "RIFF");
-  view.setUint32(4, 36 + pcm.byteLength, true);
-  writeAscii(8, "WAVE");
-  writeAscii(12, "fmt ");
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true);
-  view.setUint16(32, 2, true);
-  view.setUint16(34, 16, true);
-  writeAscii(36, "data");
-  view.setUint32(40, pcm.byteLength, true);
-  output.set(pcm, WAV_HEADER_BYTES);
-  return output;
 }
 
 function classifyCartesiaRestFailure(
@@ -246,7 +218,7 @@ export function makeWorkersCartesiaWebSocketFactory(): CartesiaWebSocketFactory 
 }
 
 export interface CartesiaWavResult {
-  readonly wav: Uint8Array;
+  readonly wav: Uint8Array<ArrayBuffer>;
   readonly pcmBytes: number;
   readonly firstAudioMs: number;
   readonly totalMs: number;
@@ -368,14 +340,8 @@ export async function synthesizeCartesiaWav(args: {
     throw new Error("Cartesia returned no audio");
   }
 
-  const pcm = new Uint8Array(pcmBytes);
-  let offset = 0;
-  for (const frame of frames) {
-    pcm.set(frame, offset);
-    offset += frame.byteLength;
-  }
   return {
-    wav: pcm16ToWav(pcm, args.sampleRate),
+    wav: pcm16ChunksToWav(frames, pcmBytes, args.sampleRate),
     pcmBytes,
     firstAudioMs,
     totalMs: Date.now() - started,

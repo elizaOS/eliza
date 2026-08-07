@@ -33,7 +33,7 @@ jobs:
       - name: Setup Node.js for path gate
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          node-version: "24"
+          node-version: "24.15.0"
 
       - name: Determine affected desktop preload surface
         id: filter
@@ -85,7 +85,6 @@ jobs:
             /bunfig.toml
             /tsconfig.json
             /.github/actions/setup-bun-workspace/**
-            /.github/actions/turbo-cache-github/**
             packages/
             patches/
             scripts/
@@ -95,13 +94,13 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          node-version: "24"
+          node-version: "24.15.0"
 
       - name: Setup Bun workspace
         uses: ./.github/actions/setup-bun-workspace
         with:
-          bun-version: "1.3.14" # pinned: floating canary writes lockfileVersion 2 and breaks --frozen-lockfile (#11184/#9454); packageManager bun@1.4.0-canary.1 is unresolvable (GH+npm 404)
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          bun-version: "1.3.14" # pinned: floating canary writes lockfileVersion 2 and breaks --frozen-lockfile (#11184/#9454)
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           run-postinstall: "false"
           init-submodules: "false"
@@ -110,7 +109,7 @@ jobs:
 
       - name: Run lightweight desktop bootstrap patches
         run: |
-          bun install --cwd packages/app-core/platforms/electrobun --ignore-scripts
+          bun install --cwd packages/app-core/platforms/electrobun --frozen-lockfile --ignore-scripts
           node packages/app-core/scripts/patch-workspace-plugins.mjs
           node packages/app-core/scripts/patch-deps.mjs
           node packages/app-core/scripts/ensure-type-package-aliases.mjs

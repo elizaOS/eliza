@@ -22,16 +22,9 @@ export { registerDetailExtension, registerOverlayApp } from "@elizaos/shared";
 export type {
   AppRunSummary,
   AppSessionJsonValue,
-  FeedActivityItem,
-  FeedAgentGoal,
-  FeedAgentStatus,
-  FeedChatMessage,
-  FeedPredictionMarket,
-  FeedTeamAgent,
-  FeedWallet,
-  SurfaceTone,
-} from "@elizaos/ui";
+} from "@elizaos/shared/contracts/apps";
 export { client } from "@elizaos/ui/api";
+export type { SurfaceTone } from "@elizaos/ui/components/apps/extensions/surface";
 export {
   SurfaceBadge,
   SurfaceCard,

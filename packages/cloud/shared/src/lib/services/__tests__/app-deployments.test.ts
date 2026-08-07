@@ -58,7 +58,7 @@ describe("AppDeploymentsService", () => {
       userId: USER_ID,
       repoUrl: "https://github.com/elizaOS/eliza.git",
       ref: "develop",
-      dockerfile: "packages/examples/cloud/clone-ur-crush/Dockerfile",
+      dockerfile: "apps/example/Dockerfile",
     });
 
     expect(record.status).toBe("BUILDING");
@@ -71,7 +71,7 @@ describe("AppDeploymentsService", () => {
       options: {
         repoUrl: "https://github.com/elizaOS/eliza.git",
         ref: "develop",
-        dockerfile: "packages/examples/cloud/clone-ur-crush/Dockerfile",
+        dockerfile: "apps/example/Dockerfile",
       },
     });
     expect(updates[0]).toMatchObject({
@@ -80,7 +80,7 @@ describe("AppDeploymentsService", () => {
         databaseMode: "none",
         repoUrl: "https://github.com/elizaOS/eliza.git",
         ref: "develop",
-        dockerfile: "packages/examples/cloud/clone-ur-crush/Dockerfile",
+        dockerfile: "apps/example/Dockerfile",
       },
     });
     expect(appStore.current?.metadata.repoUrl).toBe("https://github.com/elizaOS/eliza.git");

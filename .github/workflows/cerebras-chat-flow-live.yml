@@ -81,7 +81,7 @@ jobs:
         run: bun run --cwd packages/core build
 
       - name: Validate benchmark helpers
-        run: bunx vitest run packages/agent/scripts/cerebras-chat-flow-latency.test.ts --coverage.enabled=false
+        run: bunx vitest run packages/agent/test/cerebras-chat-flow-latency.test.ts --coverage.enabled=false
 
       - name: Measure every provider in parallel and max-cached
         id: provider_latency_live

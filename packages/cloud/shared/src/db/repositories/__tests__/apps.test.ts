@@ -28,8 +28,11 @@ import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
 const CAN_USE_ISOLATED_PGLITE =
   AMBIENT_DATABASE_URL === "" || AMBIENT_DATABASE_URL.startsWith("pglite");
+const PREVIOUS_CACHE_ENABLED = process.env.CACHE_ENABLED;
+const PREVIOUS_MOCK_REDIS = process.env.MOCK_REDIS;
 process.env.DATABASE_URL ||= "pglite://memory";
 process.env.NODE_ENV ||= "test";
+process.env.CACHE_ENABLED = "true";
 process.env.MOCK_REDIS = "1";
 
 import { pushSchema } from "drizzle-kit/api";
@@ -60,6 +63,8 @@ const FRESH_UUID = "00000000-0000-4000-8000-00000000ffff";
 
 let appsService: typeof import("../../../lib/services/apps").appsService;
 let appAnalyticsService: typeof import("../../../lib/services/app-analytics").appAnalyticsService;
+let cache: typeof import("../../../lib/cache/client").cache;
+let CacheKeys: typeof import("../../../lib/cache/keys").CacheKeys;
 let pgliteReady = true;
 
 // Monotonic counter keeps seeded slugs/identities unique across tests without
@@ -106,6 +111,8 @@ beforeAll(async () => {
   try {
     ({ appsService } = await import("../../../lib/services/apps"));
     ({ appAnalyticsService } = await import("../../../lib/services/app-analytics"));
+    ({ cache } = await import("../../../lib/cache/client"));
+    ({ CacheKeys } = await import("../../../lib/cache/keys"));
 
     // Generate DDL from the real schema objects and apply it to the same
     // PGlite connection the repository queries through (`dbWrite`). Enums must
@@ -137,7 +144,15 @@ beforeAll(async () => {
 }, PGLITE_TIMEOUT);
 
 afterAll(async () => {
-  await closeDatabaseConnectionsForTests();
+  try {
+    await closeDatabaseConnectionsForTests();
+  } finally {
+    if (PREVIOUS_CACHE_ENABLED === undefined) delete process.env.CACHE_ENABLED;
+    else process.env.CACHE_ENABLED = PREVIOUS_CACHE_ENABLED;
+
+    if (PREVIOUS_MOCK_REDIS === undefined) delete process.env.MOCK_REDIS;
+    else process.env.MOCK_REDIS = PREVIOUS_MOCK_REDIS;
+  }
 });
 
 /** Insert an app row directly through the repository with sane defaults. */
@@ -267,145 +282,58 @@ describe("AppsRepository.update", () => {
     expect(after?.name).toBe("Cache Evicted");
   });
 
-  test("serializes a concurrent stale hydration before durable deletion", async () => {
+  test("update prevents an older in-flight hydration from republishing stale state", async () => {
     expect(pgliteReady).toBe(true);
     const { organizationId, userId } = await seedOrgAndUser();
     const created = await createApp({
-      name: "Stale Hydration",
+      name: "Before Concurrent Update",
       organization_id: organizationId,
       created_by_user_id: userId,
     });
-    const key = CacheKeys.app.byId(created.id);
-    await cache.del(key);
+    await appsService.invalidateCache(
+      created.id,
+      created.api_key_id ?? undefined,
+      created.slug ?? undefined,
+    );
 
-    let hydrationReachedCache: (() => void) | undefined;
-    const hydrationAtCache = new Promise<void>((resolve) => {
-      hydrationReachedCache = resolve;
+    const originalFindById = appsRepository.findById.bind(appsRepository);
+    let signalReadStarted: (() => void) | undefined;
+    const readStarted = new Promise<void>((resolve) => {
+      signalReadStarted = resolve;
     });
-    let releaseHydration: (() => void) | undefined;
-    const hydrationRelease = new Promise<void>((resolve) => {
-      releaseHydration = resolve;
-    });
-    const originalSet = cache.set.bind(cache);
-    const originalDelete = cache.delConfirmed.bind(cache);
-    let deleteCalls = 0;
-    let pauseHydration = true;
-    const setSpy = spyOn(cache, "set").mockImplementation(async (cacheKey, value, ttl) => {
-      if (cacheKey === key && pauseHydration) {
-        pauseHydration = false;
-        hydrationReachedCache?.();
-        await hydrationRelease;
-      }
-      await originalSet(cacheKey, value, ttl);
-    });
-    const deleteSpy = spyOn(cache, "delConfirmed").mockImplementation(async (...args) => {
-      deleteCalls++;
-      return await originalDelete(...args);
+    let releaseRead: (() => void) | undefined;
+    const readRelease = new Promise<void>((resolve) => {
+      releaseRead = resolve;
     });
 
-    try {
-      const hydration = appsService.getById(created.id);
-      await hydrationAtCache;
-
-      const invalidation = appsService.invalidateCacheStrict(created.id);
-      await new Promise((resolve) => setTimeout(resolve, 20));
-      expect(deleteCalls).toBe(0);
-
-      releaseHydration?.();
-      expect((await hydration)?.id).toBe(created.id);
-      await invalidation;
-      expect(deleteCalls).toBe(2);
-      expect(await cache.get(key)).toBeNull();
-    } finally {
-      releaseHydration?.();
-      setSpy.mockRestore();
-      deleteSpy.mockRestore();
-    }
-  });
-
-  test("serializes slug and API-key hydration before durable multi-key deletion", async () => {
-    expect(pgliteReady).toBe(true);
-    const { organizationId, userId } = await seedOrgAndUser();
-    const apiKeyId = crypto.randomUUID();
-    const created = await createApp({
-      name: "Derived Cache Fence",
-      organization_id: organizationId,
-      created_by_user_id: userId,
-      api_key_id: apiKeyId,
-    });
-
-    const paths = [
-      {
-        key: CacheKeys.app.bySlug(created.slug),
-        hydrate: () => appsService.getBySlug(created.slug),
-      },
-      {
-        key: CacheKeys.app.byApiKeyId(apiKeyId),
-        hydrate: () => appsService.getByApiKeyId(apiKeyId),
-      },
-    ];
-
-    for (const path of paths) {
-      await cache.del(path.key);
-      let hydrationReachedCache: (() => void) | undefined;
-      const hydrationAtCache = new Promise<void>((resolve) => {
-        hydrationReachedCache = resolve;
-      });
-      let releaseHydration: (() => void) | undefined;
-      const hydrationRelease = new Promise<void>((resolve) => {
-        releaseHydration = resolve;
-      });
-      const originalSet = cache.set.bind(cache);
-      const originalDelete = cache.delConfirmed.bind(cache);
-      let deleteCalls = 0;
-      const setSpy = spyOn(cache, "set").mockImplementation(async (cacheKey, value, ttl) => {
-        if (cacheKey === path.key) {
-          hydrationReachedCache?.();
-          await hydrationRelease;
-        }
-        await originalSet(cacheKey, value, ttl);
-      });
-      const deleteSpy = spyOn(cache, "delConfirmed").mockImplementation(async (...args) => {
-        deleteCalls++;
-        return await originalDelete(...args);
-      });
-
-      try {
-        const hydration = path.hydrate();
-        await hydrationAtCache;
-        const invalidation = appsService.invalidateCacheStrict(created.id, apiKeyId, created.slug);
-        await new Promise((resolve) => setTimeout(resolve, 20));
-        expect(deleteCalls).toBe(0);
-
-        releaseHydration?.();
-        expect((await hydration)?.id).toBe(created.id);
-        await invalidation;
-        expect(deleteCalls).toBe(4);
-        expect(await cache.get(path.key)).toBeNull();
-      } finally {
-        releaseHydration?.();
-        setSpy.mockRestore();
-        deleteSpy.mockRestore();
-      }
-    }
-  });
-
-  test("strict invalidation rejects a configured but unavailable cache backend", async () => {
-    expect(pgliteReady).toBe(true);
-    const internal = cache as unknown as {
-      getRedisClient: () => Promise<unknown>;
-      isBackendConfigured: () => boolean;
+    appsRepository.findById = async (id: string): Promise<App | undefined> => {
+      const captured = await originalFindById(id);
+      signalReadStarted?.();
+      await readRelease;
+      return captured;
     };
-    const clientSpy = spyOn(internal, "getRedisClient").mockResolvedValue(null);
-    const configuredSpy = spyOn(internal, "isBackendConfigured").mockReturnValue(true);
+
+    const background: Promise<unknown>[] = [];
     try {
-      await expect(appsService.invalidateCacheStrict(FRESH_UUID)).rejects.toThrow(
-        "did not confirm app cache deletion",
-      );
+      expect(
+        await appsService.getByIdCacheOnly(created.id, {
+          executionCtx: { waitUntil: (promise) => background.push(promise) },
+        }),
+      ).toEqual({ kind: "warming", cacheRead: "miss" });
+      expect(background).toHaveLength(1);
+      await readStarted;
+
+      await appsRepository.update(created.id, { name: "After Concurrent Update" });
+      releaseRead?.();
+      await background[0];
+
+      expect(await cache.get<App>(CacheKeys.app.byId(created.id))).toBeNull();
     } finally {
-      clientSpy.mockRestore();
-      configuredSpy.mockRestore();
+      releaseRead?.();
+      appsRepository.findById = originalFindById;
     }
+
+    expect((await appsService.getById(created.id))?.name).toBe("After Concurrent Update");
   });
 });
 

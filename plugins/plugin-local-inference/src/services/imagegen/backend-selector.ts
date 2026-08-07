@@ -26,7 +26,7 @@
  *   - **Windows + NVIDIA**: `tensorrt` → `sd-cpp` (CUDA) → `sd-cpp` (CPU).
  *   - **Windows + AMD/Intel**: `sd-cpp --vulkan` → `sd-cpp` (CPU).
  *   - **Android (AOSP)**: `aosp` (libeliza-llama-shim with Vulkan/OpenCL,
- *     handled by `plugin-aosp-local-inference`). No second backend on
+ *     handled by `plugin-native-inference`). No second backend on
  *     mobile — falling back to CPU sd-cpp on a phone is too slow to be
  *     useful and would just block the UI.
  *
@@ -82,7 +82,7 @@ export interface ImageGenRuntimeProfile {
 	 */
 	isIos?: boolean;
 	/**
-	 * True when running inside the Android Capacitor / `plugin-aosp-local-inference`
+	 * True when running inside the Android Capacitor / `plugin-native-inference`
 	 * shell. Node reports `"linux"` on AOSP, so we need an explicit signal.
 	 */
 	isAndroid?: boolean;

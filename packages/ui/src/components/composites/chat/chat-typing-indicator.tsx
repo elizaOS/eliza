@@ -135,6 +135,10 @@ export function turnStatusLabel(status: ChatTurnStatus): string {
 // labels faster than the eye can read. The text content the user sees is
 // debounced; the dots animate continuously throughout.
 const STATUS_MIN_DWELL_MS = 320;
+// A fast model can traverse several planner phases before a human can read one.
+// Promote a replacement only if it survives this stability window; short-lived
+// phases disappear with the pending turn instead of flashing in sequence.
+const STATUS_PHASE_SETTLE_MS = 160;
 
 /** Debounce a fast-changing status to a min on-screen dwell so a rapid
  *  thinking→action→streaming sequence doesn't strobe the label. The dots animate
@@ -159,11 +163,14 @@ function useDebouncedTurnStatus(
       return;
     }
     if (timerRef.current !== null) window.clearTimeout(timerRef.current);
-    timerRef.current = window.setTimeout(() => {
-      lastChangeRef.current = Date.now();
-      setShown(status);
-      timerRef.current = null;
-    }, STATUS_MIN_DWELL_MS - elapsed);
+    timerRef.current = window.setTimeout(
+      () => {
+        lastChangeRef.current = Date.now();
+        setShown(status);
+        timerRef.current = null;
+      },
+      Math.max(STATUS_MIN_DWELL_MS - elapsed, STATUS_PHASE_SETTLE_MS),
+    );
     return () => {
       if (timerRef.current !== null) {
         window.clearTimeout(timerRef.current);
@@ -243,15 +250,16 @@ export function TurnStatus({
     // second animated glyph or bubble.
     return (
       <Marker
-        className="w-fit text-white/80"
+        className="min-h-[1.4375rem] w-fit text-white/80"
         data-testid="turn-status-indicator"
         data-status-kind={shown?.kind ?? "none"}
         role="status"
         aria-live="polite"
       >
         <MarkerContent
-          className="shimmer text-[13px] font-medium motion-reduce:shimmer-none"
+          className="shimmer inline-flex min-h-[1.4375rem] items-center text-[13px] font-medium leading-[1.4375rem] motion-reduce:shimmer-none"
           data-testid="turn-status-label"
+          data-current-label={label}
         >
           {label}
         </MarkerContent>
@@ -278,6 +286,7 @@ export function TurnStatus({
         <span
           className="shimmer motion-reduce:shimmer-none"
           data-testid="turn-status-label"
+          data-current-label={label}
         >
           {label}
         </span>

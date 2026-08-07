@@ -28,7 +28,6 @@ Commands:
 Benchmark options:
   --task <path>    Path to task JSON file
   --server         Keep runtime alive and accept tasks via stdin (line-delimited JSON)
-  --timeout <ms>   Timeout per task in milliseconds (default: 120000)
 `);
 }
 
@@ -76,12 +75,8 @@ export async function runAutonomousCli(
       const { installProcessCrashGuards } = await import("@elizaos/shared");
       installProcessCrashGuards({ onUncaughtException: "restart" });
     }
-    const keepAlive = setInterval(() => {}, 1 << 30);
-    const { startEliza } = await import("../runtime/index.ts");
-    const runtime = await startEliza({ serverOnly: true }).catch((error) => {
-      clearInterval(keepAlive);
-      throw error;
-    });
+    const { startElizaProcess } = await import("../runtime/index.ts");
+    const runtime = await startElizaProcess({ serverOnly: true });
     // AOSP-only post-boot wiring. The upstream `startEliza` does not
     // register local-inference handlers — that lives in the
     // `@elizaos/app-core` runtime wrapper, which the mobile agent
@@ -92,7 +87,7 @@ export async function runAutonomousCli(
     // `ELIZA_LOCAL_LLAMA !== "1"`.
     if (runtime && process.env.ELIZA_LOCAL_LLAMA?.trim() === "1") {
       const { ensureAospLocalInferenceHandlers } = await import(
-        "@elizaos/plugin-aosp-local-inference"
+        "@elizaos/plugin-native-inference"
       );
       await ensureAospLocalInferenceHandlers(runtime);
     } else if (
@@ -116,22 +111,10 @@ export async function runAutonomousCli(
   }
 
   if (command === "benchmark") {
-    const { runBenchmark } = await import("./benchmark.ts");
-    // Parse benchmark-specific flags from argv
-    const opts = {
-      task: undefined as string | undefined,
-      server: false,
-      timeout: "120000",
-    };
-    for (let i = 3; i < argv.length; i++) {
-      if (argv[i] === "--task" && argv[i + 1]) {
-        opts.task = argv[++i];
-      } else if (argv[i] === "--server") {
-        opts.server = true;
-      } else if (argv[i] === "--timeout" && argv[i + 1]) {
-        opts.timeout = argv[++i];
-      }
-    }
+    const { parseBenchmarkCommandOptions, runBenchmark } = await import(
+      "./benchmark.ts"
+    );
+    const opts = parseBenchmarkCommandOptions(argv);
     await runBenchmark(opts);
     return;
   }

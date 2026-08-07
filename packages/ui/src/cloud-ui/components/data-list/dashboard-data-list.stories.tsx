@@ -46,7 +46,7 @@ export const Default: Story = {
             <DashboardDataListCard key={row.id}>
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">{row.name}</span>
-                <span className="text-[11px] uppercase tracking-widest text-white/40">
+                <span className="text-[11px] uppercase tracking-widest text-white/70">
                   {row.status}
                 </span>
               </div>
@@ -57,7 +57,7 @@ export const Default: Story = {
         <DashboardDataListDesktop>
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-white/10 text-left text-[11px] uppercase tracking-widest text-white/40">
+              <tr className="border-b border-white/10 text-left text-[11px] uppercase tracking-widest text-white/70">
                 <th className="p-3">Name</th>
                 <th className="p-3">Status</th>
                 <th className="p-3">Region</th>

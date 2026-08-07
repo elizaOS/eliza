@@ -24,7 +24,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
-} from "../../../packages/test/helpers/real-runtime.ts";
+} from "../../../packages/app-core/test/helpers/real-runtime.ts";
 import { entityAction } from "../src/actions/entity.ts";
 import { LifeOpsRepository } from "../src/lifeops/repository.ts";
 import { LifeOpsService } from "../src/lifeops/service.ts";

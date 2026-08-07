@@ -14,11 +14,15 @@ export function formatError(error: unknown): string {
 	try {
 		return error instanceof Error ? error.message : String(error);
 	} catch {
+		// error-policy:J7 error formatting must not mask the failure being
+		// reported; continue with a primitive-conversion-free representation.
 		try {
 			// Object.prototype.toString ignores user-defined `toString` /
 			// `Symbol.toPrimitive`, so it cannot be poisoned: e.g. "[object Object]".
 			return Object.prototype.toString.call(error);
 		} catch {
+			// error-policy:J7 diagnostics must remain printable even for values
+			// whose type-tag access is itself hostile.
 			return "[unstringifiable error]";
 		}
 	}

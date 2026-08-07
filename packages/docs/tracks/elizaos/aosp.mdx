@@ -7,7 +7,7 @@ elizaOS Mobile is an AOSP-derived Android build with the elizaOS app and agent r
 
 ## Supported devices
 
-The active device list lives in `packages/os/release/`. Devices ship in supported / experimental tiers. Always confirm your exact model and revision against the manifest before flashing — bootloader behavior varies between revisions.
+The active device list lives in [`elizaOS/os`](https://github.com/elizaOS/os/tree/develop/packages/os/release). Devices ship in supported / experimental tiers. Always confirm your exact model and revision against the manifest before flashing — bootloader behavior varies between revisions.
 
 ## Flashing
 
@@ -19,7 +19,7 @@ The flashing flow uses standard Android tools (`fastboot`, optionally `adb`). Th
 4. Boot once with the verified image. Validate basic functionality.
 5. Lock the bootloader again (optional, where supported).
 
-Detailed per-device instructions ship under `packages/os/android/`.
+Detailed per-device instructions ship under [`packages/os/android/`](https://github.com/elizaOS/os/tree/develop/packages/os/android).
 
 ## OTA
 

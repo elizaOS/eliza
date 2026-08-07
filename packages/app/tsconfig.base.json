@@ -23,8 +23,7 @@
   },
   "include": [
     "src/**/*.ts",
-    "src/**/*.tsx",
-    "../../packages/app-core/src/ambient-modules.d.ts"
+    "src/**/*.tsx"
   ],
   "exclude": ["node_modules", "dist", "ios", "android", "electrobun"]
 }

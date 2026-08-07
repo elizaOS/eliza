@@ -1,6 +1,6 @@
 // null-plugin.cjs — used by the mobile bundle for optional @elizaos plugins
 // that pull in desktop-only transitive deps (e.g. plugin-cli
-// which pins old @elizaos/core, plugin-shell drags in PTY, plugin-pdf needs
+// which pins old @elizaos/core, plugin-coding-tools drags in shell/PTY, plugin-pdf needs
 // canvas, etc.).
 //
 // The agent runtime references these packages in three ways:
@@ -69,7 +69,7 @@ function makeStubProxy() {
     // plugin-x402 route helpers
     "createPaymentAwareHandler",
     "isRoutePaymentWrapped",
-    // plugin-mcp / plugin-streaming used elsewhere; safer to populate
+    // plugin-mcp used elsewhere; safer to populate
     // since some are stubbed via `optionalPluginStubs`.
     "handleMcpRoutes",
     "handleTtsRoutes",

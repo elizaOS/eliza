@@ -37,13 +37,6 @@ const APP_MENU_ENTRIES: readonly AppMenuEntry[] = [
     hasDetailsPage: false,
   },
   {
-    slug: "training",
-    name: "@elizaos/plugin-training",
-    displayName: "Fine Tuning",
-    windowPath: "/apps/fine-tuning",
-    hasDetailsPage: true,
-  },
-  {
     slug: "trajectory-viewer",
     name: "@elizaos/app-trajectory-viewer",
     displayName: "Trajectory Viewer",
@@ -110,6 +103,7 @@ export interface ViewMenuEntry {
 
 const VIEW_MENU_ENTRIES: readonly ViewMenuEntry[] = [
   { id: "chat", label: "Messages", path: "/chat" },
+  { id: "browser", label: "Browser", path: "/browser" },
   { id: "character", label: "Character", path: "/character" },
   { id: "documents", label: "Knowledge", path: "/character/documents" },
   { id: "settings", label: "Settings", path: "/settings" },

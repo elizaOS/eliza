@@ -83,7 +83,8 @@ cmake --build build-arm64 -j
 
 Requires zig 0.13+. The same `--target=aarch64-linux-android` shape
 also works for an Android NDK-style binary; the musl form is the one
-the rest of this repo uses (see `scripts/distro-android/compile-libllama.mjs`).
+the Android application build uses (see
+`packages/app-core/scripts/aosp/compile-libllama.mjs`).
 
 ## Run
 

@@ -25,9 +25,8 @@ const GATE_WORKFLOWS = [
   "app-aesthetic-audit.yml",
   "develop-exhaustive.yml",
   "ci-full-matrix-proof.yml",
-  "benchmark-tests.yml",
+  "windows-ci.yml",
   "windows-desktop-preload-smoke.yml",
-  "feed-env-audit.yml",
 ];
 
 // A gate stub that pins via a BUN_VERSION env literal and references it from the
@@ -94,9 +93,20 @@ function buildRepo({
 }): string {
   const root = mkdtempSync(join(tmpdir(), "ci-bun-version-contract-"));
   mkdirSync(join(root, ".github", "workflows"), { recursive: true });
+  mkdirSync(join(root, ".github", "actions", "setup-bun-workspace"), {
+    recursive: true,
+  });
   writeFileSync(
     join(root, ".github", "ci-bun-version.json"),
     JSON.stringify({ version }),
+  );
+  writeFileSync(
+    join(root, "package.json"),
+    JSON.stringify({ packageManager: `bun@${version}` }),
+  );
+  writeFileSync(
+    join(root, ".github", "actions", "setup-bun-workspace", "action.yml"),
+    `inputs:\n  bun-version:\n    default: "${version}"\nruns:\n  using: composite\n  steps: []\n`,
   );
   for (const name of GATE_WORKFLOWS) {
     writeFileSync(
@@ -123,7 +133,7 @@ describe("ci-bun-version-contract", () => {
   });
 
   test("fails when a concrete pin diverges from the source of truth", () => {
-    const root = buildRepo({ extra: { "drift.yml": driftWorkflow("1.3.99") } });
+    const root = buildRepo({ extra: { "drift.yml": driftWorkflow("1.4.99") } });
     try {
       expect(() => runContract(root)).toThrow(
         /canonical CI Bun version is 1\.3\.14/,
@@ -136,7 +146,7 @@ describe("ci-bun-version-contract", () => {
   test("fails when a gate workflow floats back to canary", () => {
     const root = buildRepo({ overrides: { "test.yml": GATE_FLOATING } });
     try {
-      expect(() => runContract(root)).toThrow(/wires floating Bun/);
+      expect(() => runContract(root)).toThrow(/must not float/);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -157,6 +167,21 @@ describe("ci-bun-version-contract", () => {
     const root = buildRepo({ version: "canary" });
     try {
       expect(() => runContract(root)).toThrow(/must be a concrete Bun pin/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("fails when packageManager drifts from the CI pin", () => {
+    const root = buildRepo({});
+    try {
+      writeFileSync(
+        join(root, "package.json"),
+        JSON.stringify({ packageManager: "bun@1.4.1" }),
+      );
+      expect(() => runContract(root)).toThrow(
+        /packageManager must be bun@1\.3\.14/,
+      );
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

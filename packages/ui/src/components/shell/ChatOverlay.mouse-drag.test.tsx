@@ -1,3 +1,4 @@
+/** Verifies layout-shift-intent marker (#15257) through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Adversarial MOUSE-DRAG suite for the chat sheet's follow-the-finger contract,
@@ -25,6 +26,7 @@
 // ceiling 768, halfH 353, detent magnet 64.
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -105,13 +107,16 @@ function basisPx(): number | null {
  *  thread is mounted (a gesture through the pill unmounts it). */
 async function settleFrames(n = 3): Promise<void> {
   for (let i = 0; i < n; i += 1) {
-    await new Promise<void>((resolve) => {
-      if (typeof requestAnimationFrame === "function") {
-        requestAnimationFrame(() => resolve());
-      } else {
-        resolve();
-      }
-    });
+    await act(
+      () =>
+        new Promise<void>((resolve) => {
+          if (typeof requestAnimationFrame === "function") {
+            requestAnimationFrame(() => resolve());
+          } else {
+            resolve();
+          }
+        }),
+    );
   }
 }
 
@@ -191,6 +196,37 @@ describe("layout-shift-intent marker (#15257)", () => {
     } finally {
       setAttr.mockRestore();
     }
+  });
+});
+
+describe("text-layer stability during sheet motion", () => {
+  it("does not promote the text-bearing fieldset during an open-sheet drag", async () => {
+    render(<ChatOverlay controller={makeController()} />);
+    fireEvent.focus(screen.getByLabelText("message"));
+    await waitFor(() => expect(variant()).toBe("open"));
+
+    const g = drag(grabber()).down(360);
+    await g.move(380);
+
+    // The open sheet changes height, not transform. A drag-scoped
+    // `will-change: transform` on this ancestor forces the transcript and
+    // composer glyphs onto a fresh raster layer at pointer-down, which reads as
+    // a shake even though their layout coordinates are unchanged.
+    expect(sheet().style.willChange).toBe("");
+    g.up(380);
+  });
+
+  it("keeps the transcript viewport on whole CSS pixels during a fractional drag", async () => {
+    render(<ChatOverlay controller={makeController()} />);
+    fireEvent.focus(screen.getByLabelText("message"));
+    await waitFor(() => expect(variant()).toBe("open"));
+
+    const g = drag(grabber()).down(360.5);
+    await g.move(391.25);
+
+    const basis = screen.getByTestId("chat-thread").style.flexBasis;
+    expect(basis).toMatch(/^\d+px$/);
+    g.up(391.25);
   });
 });
 

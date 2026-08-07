@@ -1,3 +1,4 @@
+/** Verifies usePermissionPriming through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // usePermissionPriming sequencing: mount-time status check skips already-granted

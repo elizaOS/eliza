@@ -191,28 +191,6 @@ describe.skipIf(SKIP_E2E)("Twitter E2E Integration Tests", () => {
       console.log(`Fetched ${posts.length} posts for user ${profile.username}`);
     });
 
-    it("should like and unlike a post", async () => {
-      // Create a post
-      const post = await postService.createPost({
-        agentId: runtime.agentId,
-        roomId: testRoomId,
-        text: `E2E Test Like ${Date.now()}`,
-      });
-      testTweetIds.push(post.id);
-
-      // Like the post
-      await postService.likePost(post.id, runtime.agentId);
-      console.log("Liked post:", post.id);
-
-      // Wait a bit
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Fetch the post to verify it was liked
-      const likedPost = await postService.getPost(post.id, runtime.agentId);
-      // Note: The like count might not update immediately due to Twitter's eventual consistency
-      console.log("Post metrics after like:", likedPost?.metrics);
-    });
-
     it("should delete a post", async () => {
       // Create a post
       const post = await postService.createPost({
@@ -333,32 +311,6 @@ describe.skipIf(SKIP_E2E)("Twitter E2E Integration Tests", () => {
         runtime.agentId,
       );
       expect(message).toBeNull();
-    });
-
-    it("should handle rate limiting gracefully", async () => {
-      // This test is commented out to avoid hitting rate limits during normal test runs
-      // Uncomment to test rate limit handling
-      /*
-      const promises = [];
-      for (let i = 0; i < 20; i++) {
-        promises.push(
-          postService.createPost({
-            agentId: runtime.agentId,
-            roomId: testRoomId,
-            text: `Rate limit test ${i} at ${Date.now()}`,
-          }).then(post => {
-            testTweetIds.push(post.id);
-            return post;
-          })
-        );
-      }
-
-      try {
-        await Promise.all(promises);
-      } catch (error) {
-        expect(error.message).toContain('rate limit');
-      }
-      */
     });
   });
 });

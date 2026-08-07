@@ -13,9 +13,6 @@
       ],
       "@elizaos/core": ["./src/type-stubs/core/index.d.ts"],
       "@elizaos/shared": ["./src/type-stubs/shared/index.d.ts"],
-      "@elizaos/plugin-feed": [
-        "../../../../../../plugins/plugin-feed/src/index.ts"
-      ],
       "@elizaos/plugin-task-coordinator": [
         "../../../../../../plugins/plugin-task-coordinator/src/index.ts"
       ]

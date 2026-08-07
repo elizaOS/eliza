@@ -1,20 +1,21 @@
 /**
  * Regression proof for the observed-running-generation CAS (#17249 fence
  * class): `agentSandboxesRepository.update(..., expectedRunningGeneration)`
- * fenced `updated_at` with a plain eq() — but the stored value may carry
- * MICROSECONDS (raw `updated_at = NOW()` writers) while the expected value
- * came through a typed read, which truncates to milliseconds. The fence
- * silently missed for every µs-stored row, so the heartbeat's observed
- * generation was never persisted after such a write. Same remedy as the
- * sleep and managed-launch CASes: date_trunc('milliseconds', column).
+ * once fenced `updated_at` — first with a plain eq() that silently missed for
+ * µs-stored rows, then with a date_trunc('milliseconds') window (#17284) that
+ * still admitted same-millisecond ABA writers. The fence is now the
+ * database-owned `lifecycle_revision`, advanced by a BEFORE UPDATE trigger on
+ * every write including raw `updated_at = NOW()` writers, so timestamp
+ * precision no longer participates in ownership at all.
  *
- * The µs row is seeded via an explicit SQL literal — PGlite's own NOW() is
- * ms-only, so a NOW()-seeded row cannot reproduce the mismatch and the
- * fail-on-base property would be false.
+ * The µs row is still seeded via an explicit SQL literal — PGlite's own NOW()
+ * is ms-only — to prove the exact row shape that defeated the eq() fence now
+ * passes the revision CAS, and that a genuinely moved generation still loses.
  *
  * Drives the REAL repository against in-process PGlite (real Drizzle schema
- * via pushSchema), NOTHING mocked. Fails LOUDLY if PGlite/pushSchema is
- * unavailable (never silently passes).
+ * via pushSchema; the revision trigger comes from ensureAgentSandboxSchema),
+ * NOTHING mocked. Fails LOUDLY if PGlite/pushSchema is unavailable (never
+ * silently passes).
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -58,6 +59,11 @@ beforeAll(async () => {
     const schema = { organizations, users, userCharacters, agentSandboxes };
     const { apply } = await pushSchema(schema as never, dbWrite as never);
     await apply();
+    // Install the lifecycle_revision trigger BEFORE any raw writer runs —
+    // pushSchema only creates columns, and the revision fence is meaningless
+    // unless raw `updated_at = NOW()` writers advance the generation too.
+    const { ensureAgentSandboxSchema } = await import("../../ensure-agent-sandbox-schema");
+    await ensureAgentSandboxSchema();
   } catch (error) {
     pgliteReady = false;
     console.error(
@@ -101,19 +107,31 @@ describe("observed-running-generation CAS vs microsecond timestamps", () => {
     return { id: rec.id, orgId: org.id };
   }
 
+  async function readLifecycleRevision(id: string): Promise<number> {
+    const [row] = await dbWrite
+      .select({ lifecycle_revision: agentSandboxes.lifecycle_revision })
+      .from(agentSandboxes)
+      .where(sql`${agentSandboxes.id} = ${id}`)
+      .limit(1);
+    if (!row) throw new Error("seeded agent row disappeared");
+    return row.lifecycle_revision;
+  }
+
   test(
-    "the fence matches a row whose updated_at carries MICROSECONDS",
+    "the fence matches a µs-stored row when the observed revision is current",
     async () => {
       expect(pgliteReady).toBe(true);
       const { id, orgId } = await seedRunningAgent();
-      // What prod's ~20 raw `updated_at = NOW()` writers store.
+      // What prod's ~20 raw `updated_at = NOW()` writers store. The trigger
+      // advances lifecycle_revision on this raw write too.
       await dbWrite.execute(
         sql`UPDATE ${agentSandboxes}
             SET updated_at = '2026-01-01 00:00:00.123456+00'::timestamptz
             WHERE id = ${id}`,
       );
-      // What the service observed through its typed read: ms-truncated.
-      const observed = new Date("2026-01-01T00:00:00.123Z");
+      const observedRevision = await readLifecycleRevision(id);
+      // The raw write must have advanced the generation past the insert value.
+      expect(observedRevision).toBeGreaterThan(0);
 
       const updated = await repo.update(
         id,
@@ -124,13 +142,16 @@ describe("observed-running-generation CAS vs microsecond timestamps", () => {
           sandboxId: "agent-hb",
           nodeId: "node-1",
           containerName: "agent-hb",
-          updatedAt: observed,
+          lifecycleRevision: observedRevision,
         },
       );
 
-      // Pre-fix the eq() fence missed and the CAS write was a silent no-op.
+      // Pre-fix the eq(updated_at) fence missed on µs rows and the CAS write
+      // was a silent no-op; the revision fence is precision-independent.
       expect(updated).toBeDefined();
       expect(updated?.last_heartbeat_at).toBeInstanceOf(Date);
+      // The CAS write itself advanced the generation again.
+      expect(updated?.lifecycle_revision).toBe(observedRevision + 1);
     },
     PGLITE_TIMEOUT,
   );
@@ -140,13 +161,14 @@ describe("observed-running-generation CAS vs microsecond timestamps", () => {
     async () => {
       expect(pgliteReady).toBe(true);
       const { id, orgId } = await seedRunningAgent();
+      const observedRevision = await readLifecycleRevision(id);
+      // Another writer intervenes after the read: the trigger advances the
+      // generation, so the earlier observed revision is now stale.
       await dbWrite.execute(
         sql`UPDATE ${agentSandboxes}
             SET updated_at = '2026-01-01 00:00:00.123456+00'::timestamptz
             WHERE id = ${id}`,
       );
-      // Observed a DIFFERENT millisecond: the row moved since the read.
-      const staleObserved = new Date("2026-01-01T00:00:00.122Z");
 
       const updated = await repo.update(
         id,
@@ -157,7 +179,7 @@ describe("observed-running-generation CAS vs microsecond timestamps", () => {
           sandboxId: "agent-hb",
           nodeId: "node-1",
           containerName: "agent-hb",
-          updatedAt: staleObserved,
+          lifecycleRevision: observedRevision,
         },
       );
 

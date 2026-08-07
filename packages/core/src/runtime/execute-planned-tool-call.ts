@@ -14,11 +14,7 @@ import {
 	PRIVACY_DENIED_TEXT,
 	revalidateOwnerExclusiveDisclosure,
 } from "../security/trusted-delivery-audience";
-import {
-	emitStreamingHook,
-	getStreamingContext,
-	runWithSuppressedModelStream,
-} from "../streaming-context";
+import { emitStreamingHook, getStreamingContext } from "../streaming-context";
 import {
 	getTrajectoryContext,
 	runWithTrajectoryContext,
@@ -380,24 +376,32 @@ export async function executePlannedToolCall(
 		action,
 		flattenUndeclaredParametersEnvelope(action, normalizeToolArgs(toolCall)),
 	);
-	const validation = validateToolArgs(
+	const argsForValidation = normalizeParamAliases(
 		action,
-		normalizeParamAliases(
+		dropEmptyOptionalArgs(
 			action,
-			dropEmptyOptionalArgs(
-				action,
-				dropUndeclaredPlannerWrapperArgs(action, normalizedArgs),
-			),
+			dropUndeclaredPlannerWrapperArgs(action, normalizedArgs),
 		),
 	);
+	const validation = validateToolArgs(action, argsForValidation);
 	if (!validation.valid) {
+		// The planner correlates a corrected retry with this failed operation by
+		// removing only arguments the schema rejected. Keeping this structural
+		// metadata at the validation boundary avoids parsing error prose and keeps
+		// unrelated calls to the same action distinct.
+		const invalidParameterNames = validation.invalidParameterNames ?? [];
 		return emitToolResult(
 			toolCall,
 			failureResult(
 				action.name,
 				validation.errors.join("; ") ||
 					`Invalid arguments for action ${action.name}`,
-				{ parameterErrors: validation.errors },
+				{
+					parameterErrors: validation.errors,
+					...(invalidParameterNames.length > 0
+						? { invalidParameterNames }
+						: {}),
+				},
 			),
 		);
 	}
@@ -434,6 +438,8 @@ export async function executePlannedToolCall(
 				handlerOptions,
 			);
 		} catch (error) {
+			// error-policy:J1 Tool validation failures are translated into the
+			// planner-visible failed tool result with the original error attached.
 			return emitToolResult(
 				toolCall,
 				failureResult(action.name, stringifyError(error), { error }),
@@ -489,6 +495,12 @@ export async function executePlannedToolCall(
 				content: actionStartContent,
 			})
 			.catch((err) => {
+				// error-policy:J7 Lifecycle events are diagnostics; a broken observer
+				// cannot block tool execution but remains visible to the runtime.
+				runtime.reportError("ExecutePlannedToolCall.emitEvent", err, {
+					action: action.name,
+					eventType: EventType.ACTION_STARTED,
+				});
 				runtime.logger.warn(
 					{
 						src: "execute-planned-tool-call",
@@ -568,15 +580,13 @@ export async function executePlannedToolCall(
 						{ actionName: action.name, modelClass: action.modelClass },
 						() =>
 							withActionStep(runtime, action.name, () =>
-								runWithSuppressedModelStream(() =>
-									action.handler(
-										runtime,
-										executorCtx.message,
-										executorCtx.state,
-										handlerOptions,
-										actionCallback,
-										executorCtx.responses,
-									),
+								action.handler(
+									runtime,
+									executorCtx.message,
+									executorCtx.state,
+									handlerOptions,
+									actionCallback,
+									executorCtx.responses,
 								),
 							),
 					);
@@ -625,6 +635,12 @@ export async function executePlannedToolCall(
 				},
 			})
 			.catch((err) => {
+				// error-policy:J7 The settled action result is authoritative; report a
+				// failed completion event without rewriting the tool outcome.
+				runtime.reportError("ExecutePlannedToolCall.emitEvent", err, {
+					action: action.name,
+					eventType: EventType.ACTION_COMPLETED,
+				});
 				runtime.logger.warn(
 					{
 						src: "execute-planned-tool-call",

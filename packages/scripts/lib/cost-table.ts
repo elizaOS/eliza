@@ -1,6 +1,6 @@
 /**
  * Cost helpers for the offline trajectory tooling (`trajectory.ts`,
- * `run-cerebras.ts`, `lib/trajectory-validate.ts`).
+ * `lib/trajectory-validate.ts`).
  *
  * The per-model price table has ONE canonical home:
  * `packages/core/src/features/trajectories/pricing.ts` (versioned via

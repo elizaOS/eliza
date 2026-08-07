@@ -17,6 +17,8 @@ import {
 } from "../events";
 import { hydrateAndroidLocalAgentTokenForUrl } from "../first-run/local-agent-token";
 import { isMobileLocalAgentIpcUrl } from "../first-run/mobile-runtime-mode";
+import { isAndroidLocalSideloadBuild } from "../platform/android-runtime";
+import { isTrustedRestoreApiBaseUrl } from "../state/runtime-url-trust";
 import { shellLocalStorage } from "../surface-realm-channel";
 import {
   clearElizaApiBase,
@@ -497,11 +499,24 @@ function getInjectedWsBase(): string | undefined {
 
 function shouldUseRestOnlyForInsecureWebSocket(
   wsProtocol: "ws:" | "wss:",
+  host: string,
 ): boolean {
   if (wsProtocol !== "ws:") return false;
   if (typeof window === "undefined") return false;
   const rendererProtocol = window.location?.protocol;
-  return rendererProtocol === "https:" || rendererProtocol === "capacitor:";
+  if (rendererProtocol !== "https:" && rendererProtocol !== "capacitor:") {
+    return false;
+  }
+
+  // Direct Android builds enable mixed content so their packaged
+  // https://localhost renderer can keep the paired runtime's backchannel
+  // alive. The same trust gate that protects persisted API bases restricts
+  // this exception to loopback/private-LAN hosts; store and public cleartext
+  // endpoints retain the browser's stricter boundary.
+  const isTrustedPairedHost = isTrustedRestoreApiBaseUrl(`http://${host}`);
+  if (isTrustedPairedHost && isAndroidLocalSideloadBuild()) return false;
+
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -1419,7 +1434,7 @@ export class ElizaClient {
     // renderer also cannot use that cleartext WebView socket even though its
     // native HTTP bridge keeps REST healthy. Both origins therefore use the
     // same REST-only state instead of reporting a dead backend (#16843).
-    if (shouldUseRestOnlyForInsecureWebSocket(wsProtocol)) {
+    if (shouldUseRestOnlyForInsecureWebSocket(wsProtocol, host)) {
       this.backoffMs = 500;
       this.reconnectAttempt = 0;
       this.disconnectedAt = null;
@@ -2018,12 +2033,12 @@ export class ElizaClient {
       }
     }
 
+    const rawReplyText = streamState.doneText ?? streamState.fullText;
     const resolvedText =
-      streamState.doneNoResponseReason === "ignored"
+      streamState.doneNoResponseReason === "ignored" ||
+      (!streamState.receivedDone && rawReplyText.trim().length === 0)
         ? ""
-        : this.normalizeAssistantText(
-            streamState.doneText ?? streamState.fullText,
-          );
+        : this.normalizeAssistantText(rawReplyText);
     return {
       text: resolvedText,
       agentName: streamState.doneAgentName ?? "Eliza",

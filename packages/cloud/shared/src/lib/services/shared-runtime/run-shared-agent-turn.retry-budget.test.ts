@@ -37,10 +37,16 @@ mock.module("ai", () => ({
   streamText: (options: Record<string, unknown>) => {
     lastStreamOptions = options;
     return {
-      fullStream: (async function* () {
-        yield { type: "text-delta", text: "ok" };
-        yield { type: "finish", totalUsage: { totalTokens: 3 } };
-      })(),
+      // Match the AI SDK's AsyncIterableStream cancellation surface. The
+      // production path takes a reader so an interrupted voice turn can cancel
+      // provider generation instead of only abandoning local iteration.
+      fullStream: new ReadableStream({
+        start(controller) {
+          controller.enqueue({ type: "text-delta", text: "ok" });
+          controller.enqueue({ type: "finish", totalUsage: { totalTokens: 3 } });
+          controller.close();
+        },
+      }),
     };
   },
 }));

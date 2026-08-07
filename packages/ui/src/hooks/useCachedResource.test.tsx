@@ -1,3 +1,4 @@
+/** Verifies useCachedResource through the package's configured test harness. */
 // @vitest-environment jsdom
 
 import { renderHook, waitFor } from "@testing-library/react";

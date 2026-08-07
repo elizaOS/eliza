@@ -1,5 +1,10 @@
 #!/usr/bin/env bun
-/** Supports app-core build, packaging, or development orchestration for build bundled orchestrator artifact mjs. */
+/**
+ * Builds the bundled dist artifact for @elizaos/plugin-agent-orchestrator:
+ * wipes the plugin's dist via the shared cleanup helper, then bundles with Bun
+ * keeping node:*, @elizaos/core, the PTY/workspace helper packages, and zod
+ * external.
+ */
 
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";

@@ -9,6 +9,7 @@
  * lookup across every member of a person's identity cluster.
  */
 import { getCloudAuthService } from "../cloud-auth-service";
+import { logger } from "../logger";
 import type {
 	Entity,
 	IAgentRuntime,
@@ -974,7 +975,7 @@ async function collectWorkspaceEntityIds(
 
 	if (rooms.length > 0) {
 		const roomEntities = await Promise.all(
-			rooms.map((room) => runtime.getEntitiesForRoom(room.id).catch(() => [])),
+			rooms.map((room) => runtime.getEntitiesForRoom(room.id)),
 		);
 		for (const entities of roomEntities) {
 			for (const entity of entities) {
@@ -2149,14 +2150,12 @@ async function buildGraphModel(
 		relationshipsService,
 		rooms,
 	);
-	const ownerEntityId = (await resolvers
-		.resolveOwnerEntityId(runtime)
-		.catch(() => null)) as UUID | null;
+	const ownerEntityId = (await resolvers.resolveOwnerEntityId(
+		runtime,
+	)) as UUID | null;
 	const cloudAuth = getCloudAuthService(runtime);
 	const cloudUserId = asString(cloudAuth?.getUserId?.()) ?? null;
-	const configuredOwnerName = await resolvers
-		.fetchConfiguredOwnerName()
-		.catch(() => null);
+	const configuredOwnerName = await resolvers.fetchConfiguredOwnerName();
 	const entityContexts = new Map<UUID, EntityContext>();
 
 	await Promise.all(
@@ -2243,8 +2242,14 @@ async function buildGraphModel(
 	};
 }
 
-/** TTL cache for the expensive graph model build. */
-const MODEL_CACHE_TTL_MS = 30_000; // 30 seconds
+/**
+ * TTL cache for the expensive graph model build. Expiry serves the stale
+ * snapshot while a single-flight rebuild refreshes it in the background (see
+ * getCachedModel), so the TTL governs snapshot staleness only, never turn
+ * latency. Five minutes matches how fast a human-scale contact graph actually
+ * changes; merge mutations still invalidate immediately.
+ */
+const MODEL_CACHE_TTL_MS = 300_000;
 
 type CachedModel = Awaited<ReturnType<typeof buildGraphModel>>;
 type ModelCache = { model: CachedModel; timestamp: number };
@@ -2287,9 +2292,29 @@ export function createNativeRelationshipsGraphService(
 					return model;
 				})
 				.catch((err) => {
+					// error-policy:J5 First-build callers await the shared promise and
+					// observe the rejection; the single observer attached below logs it
+					// for stale-serving callers. This branch only clears the
+					// single-flight slot so the next expired read retries.
 					modelBuildPromise = null;
 					throw err;
 				});
+			modelBuildPromise.catch((err) => {
+				// error-policy:J5 Observed once per build here (and by any first-build
+				// awaiter); prevents an unhandled rejection when stale-serving callers
+				// never await the background refresh. The last good snapshot stays.
+				logger.warn(
+					`[RelationshipsGraph] Graph model rebuild failed; last good snapshot retained: ${
+						err instanceof Error ? err.message : String(err)
+					}`,
+				);
+			});
+		}
+		// Stale-while-revalidate: an expired snapshot answers the turn
+		// immediately while the single-flight rebuild refreshes it in the
+		// background. Only the first-ever build (no snapshot at all) awaits.
+		if (modelCache) {
+			return modelCache.model;
 		}
 		return modelBuildPromise;
 	}
@@ -2313,7 +2338,7 @@ export function createNativeRelationshipsGraphService(
 		async getGraphSnapshot(query = {}): Promise<RelationshipsGraphSnapshot> {
 			const [model, ownerName] = await Promise.all([
 				getCachedModel(),
-				resolvers.fetchConfiguredOwnerName().catch(() => null),
+				resolvers.fetchConfiguredOwnerName(),
 			]);
 			const scopedGraph = graphViewForScope(
 				model.summaries,
@@ -2377,7 +2402,7 @@ export function createNativeRelationshipsGraphService(
 		): Promise<RelationshipsPersonDetail | null> {
 			const [model, ownerName] = await Promise.all([
 				getCachedModel(),
-				resolvers.fetchConfiguredOwnerName().catch(() => null),
+				resolvers.fetchConfiguredOwnerName(),
 			]);
 			const cluster =
 				Array.from(model.clusters.values()).find(

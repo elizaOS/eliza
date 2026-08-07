@@ -1,5 +1,10 @@
 #!/usr/bin/env -S node --import tsx
-/** Supports app-core build, packaging, or development orchestration for release check ts. */
+/**
+ * Release gate for the packaged app-core artifact: asserts required dist files
+ * exist, runs an `npm pack` dry-run (skippable via the pack-dry-run policy) to
+ * check the file list against forbidden prefixes, validates the static asset
+ * manifest, and audits Apple Store entitlements.
+ */
 
 import { execSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -83,7 +88,7 @@ function resolveOrchestratorPluginPackageJsonPath() {
   return resolveExistingPath(orchestratorPluginPackageJsonPathCandidates);
 }
 const requiredWorkflowSnippets = [
-  'BUN_VERSION: "canary"',
+  'BUN_VERSION: "1.3.14"',
   "workflow_call:",
   "name: Validate Release Inputs",
   "Manual branch dispatches must provide inputs.tag; refusing to derive a release tag from package.json.",
@@ -100,18 +105,6 @@ const requiredWorkflowSnippets = [
   "ELIZA_RELEASE_TAG: ${{ needs.prepare.outputs.tag }}",
   'ELIZA_VALIDATE_CDN: "1"',
   "bun run release:check",
-  "build-browser-companions:",
-  "name: Build Agent Browser Bridge companions",
-  "bun run browser-bridge:package:release",
-  'echo "packaged=true" >> "$GITHUB_OUTPUT"',
-  "name: Upload Agent Browser Bridge release artifacts",
-  "name: browser-bridge-store-bundles",
-  "publish-browser-companions:",
-  "name: Publish Agent Browser Bridge companions",
-  "name: Attach Agent Browser Bridge assets to GitHub release",
-  "GH_REPO: ${{ github.repository }}",
-  "gh release upload",
-  '--repo "$GH_REPO"',
   "for attempt in 1 2 3; do",
   `bun install failed on attempt \${attempt}; retrying in 15 seconds`,
   "name: Ensure avatar assets",
@@ -263,9 +256,9 @@ const requiredElectrobunPrWorkflowSnippets = [
   "workflow_dispatch:",
   "permissions:",
   "contents: read",
-  'BUN_VERSION: "canary"',
+  'BUN_VERSION: "1.3.14"',
   "name: Release Workflow Contract",
-  "bun install --ignore-scripts",
+  "bun install --frozen-lockfile --ignore-scripts",
   'run-postinstall: "true"',
   "bun run test:regression-matrix:release-contract",
   "bun run test:release:contract",
@@ -1347,10 +1340,14 @@ function assertStartApiServerCatchBlockSafety() {
       catchBlock.includes("opts?.serverOnly") ||
       catchBlock.includes("options?.serverOnly")
     ) ||
-    !catchBlock.includes("process.exit(1)")
+    !catchBlock.includes(
+      'throw new ElizaError("API server is required in server-only mode"',
+    ) ||
+    !catchBlock.includes('code: "AGENT_API_START_FAILED"') ||
+    !catchBlock.includes('severity: "fatal"')
   ) {
     console.error(
-      "release-check: eliza.ts startApiServer catch block must call process.exit(1) when opts?.serverOnly is true.",
+      "release-check: eliza.ts startApiServer catch block must throw a fatal AGENT_API_START_FAILED ElizaError in server-only mode.",
     );
     process.exit(1);
   }

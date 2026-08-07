@@ -63,8 +63,8 @@ So, in the gating lanes:
 | Onboarding (Android Capacitor device) | **REAL installed WebView + real first-run write, wired in CI dispatch** — `android-device-e2e.yml` starts a deterministic host `startApiServer`, exposes it to the emulator through `adb reverse`, then `test/android/onboarding-to-home.android.spec.ts` resets the installed app, opens the first-run remote deep link, posts `/api/first-run`, and asserts `home-launcher-surface[data-page="home"]` + chat composer. Uploads `home-landing.png`, `onboarding-to-home.mp4`, and host-agent logs. |
 | Onboarding (iOS Capacitor simulator) | **REAL installed WKWebView + real first-run write, wired in CI dispatch** — `mobile-build-smoke.yml` starts the same deterministic host `startApiServer`, installs the freshly built Simulator `.app`, clears Capacitor Preferences, then `scripts/ios-onboarding-smoke.mjs` writes an in-WebView smoke request and fires the first-run remote deep link. The app adopts the remote, posts `/api/first-run`, and returns a Preferences result asserting the home launcher + chat composer are visible. Uploads `fresh-onboarding.png`, `home-landing.png`, `onboarding-to-home.mp4`, `result.json`, and host-agent logs. WKWebView is not CDP-drivable on CI, so this uses an in-app smoke request/result instead of Playwright. |
 | Onboarding (local/remote branch) | **Reachable in the app keyless lane** — first-run paints the real chat overlay with transcript choices; `onboarding-to-home*.spec.ts` drives Local/on-device, local+Eliza Cloud inference, Other→Settings handoff, Cloud, and remote adoption without rendering the removed onboarding screen. |
-| Cloud login | In the **app** keyless lane: larp (`page.route` canned token; the stub has no `/api/cloud/login`). The **real** cloud auth contract is tested for real in `packages/test/cloud-e2e/tests/auth-errors.spec.ts` against a real cloud-api (see "Real cloud" below). |
-| Cloud provisioning | In the **app** keyless lane: `page.route` canned job, now driving a real `pending→in_progress→completed` transition. The **real, not-larp** provisioning lifecycle is tested in `packages/test/cloud-e2e/tests/provision.spec.ts` against a real cloud-api (see "Real cloud" below). |
+| Cloud login | In the **app** keyless lane: larp (`page.route` canned token; the stub has no `/api/cloud/login`). The **real** cloud auth contract is tested for real in `packages/cloud/e2e/tests/auth-errors.spec.ts` against a real cloud-api (see "Real cloud" below). |
+| Cloud provisioning | In the **app** keyless lane: `page.route` canned job, now driving a real `pending→in_progress→completed` transition. The **real, not-larp** provisioning lifecycle is tested in `packages/cloud/e2e/tests/provision.spec.ts` against a real cloud-api (see "Real cloud" below). |
 | Local provisioning (desktop) | **REAL, executed, gates every PR** — `check-real-local-provisioning.ts` boots an actual `AgentRuntime` on PGLite + the real app-core API and asserts it provisions and serves (no model/secret/stub). Wired into `scenario-pr.yml` as `app-core test:local-provisioning`. |
 | Local provisioning (android) | Real on-device GGUF smoke exists (`scripts/mobile-local-chat-smoke.mjs`) but runs in **no** workflow |
 | Local provisioning (web) | **Not a product capability** — web is cloud-only (`canRunLocal()` is false on prod web, `shared/src/config/cloud-only.ts`) |
@@ -88,7 +88,7 @@ not vitest (vitest's aliasing stubs out plugin handlers like edge-tts and breaks
 ## Real local chat in the keyless lane (deterministic model, real pipeline)
 
 Local chat does not need a provider key or llama either: registering the
-deterministic LLM proxy (`packages/test/mocks/helpers/llm-proxy-plugin.ts` — a
+deterministic model provider (`packages/core/src/testing/deterministic-model-plugin.ts` — a
 real `Plugin` with real handlers for every text model + embedding +
 `RESPONSE_HANDLER` + `ACTION_PLANNER`, priority 1000) on a real runtime gives a
 fully chat-capable agent with deterministic output.
@@ -314,7 +314,7 @@ Only two controls remain genuinely uncovered, both with proven blockers:
 ## Real cloud — the cloud-api mock-stack (real backend, no external secret)
 
 "Cloud provisioning real, not larp" is satisfied **repo-wide** by
-`packages/test/cloud-e2e` (workflow `cloud-e2e.yml`, `bun run cloud:e2e`). Its
+`packages/cloud/e2e` (workflow `cloud-e2e.yml`, `bun run cloud:e2e`). Its
 fixture (`src/fixtures/stack.ts`) boots, **in-process and with no Docker or cloud
 secret**: a PGlite TCP bridge, an ioredis mock, a Hetzner (infra) mock, a
 control-plane mock, and the **real cloud-api worker subprocess**. The tests then
@@ -369,7 +369,7 @@ deterministic: they prove Capacitor first-run mechanics, native WebView input,
 the real remote-agent first-run write, and the home landing state. They do
 **not** claim real Eliza Cloud sign-in because that requires a real cloud account
 token and live hosted provisioning capacity. The real cloud-api auth contract
-remains covered repo-wide by `packages/test/cloud-e2e/tests/auth-errors.spec.ts`
+remains covered repo-wide by `packages/cloud/e2e/tests/auth-errors.spec.ts`
 in `cloud-e2e.yml`, and the app-level real cloud
 sign-in/provisioning/chat path remains the gated `cloud-live` job in
 `app-live-e2e.yml` when `ELIZAOS_CLOUD_API_KEY` is present.

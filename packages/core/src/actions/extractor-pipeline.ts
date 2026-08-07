@@ -2,11 +2,12 @@
  * Shared extraction pipeline for LLM argument/field extractors.
  *
  * Each extractor implements the same call → parse → repair → parse loop with
- * a try/catch fallback. The differences are the prompt, the parser, and the
+ * explicit failure propagation. The differences are the prompt, the parser, and the
  * optional repair prompt. This helper owns only that orchestration — callers
  * retain full control of their schema, validators, and prompts.
  */
 
+import { ElizaError } from "../errors";
 import { runWithTrajectoryPurpose } from "../trajectory-context";
 import type { IAgentRuntime } from "../types";
 import { ModelType } from "../types";
@@ -42,14 +43,12 @@ export interface RunExtractorPipelineArgs<TParsed> {
 	modelType?: ModelTypeValue;
 }
 
-const EMPTY_RESULT_NO_MODEL: ExtractorPipelineResult<unknown> = {
-	parsed: null,
-	raw: "",
-	repaired: false,
-};
-
 function asString(value: unknown): string {
-	return typeof value === "string" ? value : "";
+	if (typeof value === "string") return value;
+	throw new ElizaError("Extractor model returned a non-text response", {
+		code: "EXTRACTOR_NON_TEXT_RESPONSE",
+		context: { responseType: typeof value },
+	});
 }
 
 /**
@@ -60,20 +59,13 @@ function asString(value: unknown): string {
  *   2. Run `parser` on the result. If it returns non-null, return that.
  *   3. Otherwise, if `buildRepairPrompt` is provided, call the model again
  *      with the repair prompt and run `parser` on that result.
- *   4. On any thrown error, log a warning and return `{parsed:null,...}`.
- *
- * Returns `{parsed:null, raw:"", repaired:false}` (with no model call) when
- * `runtime.useModel` is unavailable.
+ *   4. Model and transport failures propagate after being reported.
  */
 export async function runExtractorPipeline<TParsed>(
 	args: RunExtractorPipelineArgs<TParsed>,
 ): Promise<ExtractorPipelineResult<TParsed>> {
 	const { runtime, prompt, parser, buildRepairPrompt } = args;
 	const modelType = args.modelType ?? ModelType.TEXT_LARGE;
-
-	if (typeof runtime.useModel !== "function") {
-		return EMPTY_RESULT_NO_MODEL as ExtractorPipelineResult<TParsed>;
-	}
 
 	try {
 		const firstResult = await runWithTrajectoryPurpose(
@@ -101,6 +93,9 @@ export async function runExtractorPipeline<TParsed>(
 		const repairParsed = parser(repairRaw);
 		return { parsed: repairParsed, raw: repairRaw, repaired: true };
 	} catch (error) {
+		// error-policy:J2 Extraction cannot distinguish a model outage from a real
+		// parse miss, so preserve and surface the model failure.
+		runtime.reportError("ExtractorPipeline.model", error, { modelType });
 		runtime.logger.warn(
 			{
 				src: "lifeops:extractor-pipeline",
@@ -108,6 +103,6 @@ export async function runExtractorPipeline<TParsed>(
 			},
 			"Extractor pipeline model call failed",
 		);
-		return EMPTY_RESULT_NO_MODEL as ExtractorPipelineResult<TParsed>;
+		throw error;
 	}
 }

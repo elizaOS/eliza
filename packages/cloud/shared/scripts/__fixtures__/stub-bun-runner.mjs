@@ -1,24 +1,10 @@
-// Scripted stand-in for `bun` used by scripts/run-bun-tests.e2e.test.ts.
-//
-// The wrapper (scripts/run-bun-tests.mjs) spawns it via the ELIZA_BUN_TEST_BIN
-// seam exactly like the real bun binary: argv is ["test", ...args]. The stub
-// never runs any test files — it emits realistic `bun test` output (including
-// the verbatim #15785 panic signature) and exits with the corresponding code,
-// so the wrapper's classification/retry/capture pipeline is exercised through
-// real process spawns on any platform.
-//
-// Env contract:
-//   STUB_STATE_DIR         (required) directory for the attempt counter and
-//                          the invocation log (invocations.jsonl — one JSON
-//                          line per spawn: { argv }).
-//   STUB_QUARANTINE_PLAN   JSON array of per-attempt behaviors for quarantine
-//                          invocations, e.g. ["crash","pass"]. Attempt N uses
-//                          plan[N-1]; past the end the last entry repeats.
-//                          Behaviors: "pass" | "fail" | "crash" |
-//                          "crash-silent" | "hang". Default: ["pass"].
-//   STUB_MAIN_MODE         "pass" (default) or "fail" — behavior for main-pass
-//                          invocations (identified by a --path-ignore-patterns=
-//                          arg).
+/**
+ * Provides a scripted Bun stand-in for the test-wrapper process harness.
+ *
+ * The wrapper spawns this file through ELIZA_BUN_TEST_BIN with argv shaped as
+ * `["test", ...args]`. It records invocations and emits realistic pass,
+ * failure, dirty-exit, crash, or wedge output without executing test files.
+ */
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -77,6 +63,10 @@ function act(behavior) {
     case "fail":
       process.stdout.write(FAIL_OUTPUT);
       process.exit(1);
+      break;
+    case "status-99":
+      process.stdout.write(PASS_OUTPUT);
+      process.exit(99);
       break;
     case "crash":
       process.stderr.write(PANIC_OUTPUT);

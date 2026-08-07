@@ -4,15 +4,13 @@
  * proactive-interaction chattiness (persisted to `config.env` under
  * ELIZA_PROACTIVE_INTERACTIONS), hosts the device-location permission row (the
  * weather widget's approximate-location notification deep-links here), manages
- * auto-training config, and hosts the Capability Router connect form for
- * endpoint- or cloud-hosted capability providers.
+ * the Capability Router connect form for endpoint- or cloud-hosted capability
+ * providers.
  */
 
 import {
-  AlertTriangle,
   Cloud,
   Globe,
-  GraduationCap,
   Loader2,
   MapPin,
   MessageCircle,
@@ -20,15 +18,8 @@ import {
   PlugZap,
   Wallet,
 } from "lucide-react";
-import {
-  type FormEvent,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { client } from "../../api/client";
-import { isApiError } from "../../api/client-types-core";
 import { invalidateWeatherCache } from "../../hooks/useWeather";
 import { useAppSelector, useAppSelectorShallow } from "../../state";
 import { AdvancedToggle } from "./AdvancedToggle";
@@ -83,21 +74,6 @@ function readProactiveChattinessFromEnv(
     : null;
 }
 
-interface AutoTrainingConfig {
-  autoTrain: boolean;
-  triggerThreshold: number;
-  triggerCooldownHours: number;
-  backends: string[];
-}
-
-interface AutoTrainingConfigResponse {
-  config: AutoTrainingConfig;
-}
-
-interface AutoTrainingStatusResponse {
-  serviceRegistered?: boolean;
-}
-
 type CapabilityRouterConnectResponse = {
   success?: boolean;
   mode?:
@@ -134,18 +110,6 @@ export function CapabilitiesSection() {
   const [proactiveChattiness, setProactiveChattiness] =
     useState<ProactiveChattiness>(DEFAULT_PROACTIVE_CHATTINESS);
   const [proactiveSaving, setProactiveSaving] = useState(false);
-  const [autoTrainingConfig, setAutoTrainingConfig] =
-    useState<AutoTrainingConfig | null>(null);
-  const [autoTrainingAvailable, setAutoTrainingAvailable] = useState<
-    boolean | null
-  >(null);
-  const [autoTrainingLoading, setAutoTrainingLoading] = useState(true);
-  const [autoTrainingSaving, setAutoTrainingSaving] = useState(false);
-  // Distinguishes a broken auto-training endpoint (5xx/transport/parse →
-  // error icon) from the designed "service not hosted here" degrade
-  // (404/service-unregistered → unavailable icon). Three-state rule: a broken
-  // endpoint must not masquerade as the designed unavailable state.
-  const [autoTrainingError, setAutoTrainingError] = useState(false);
   const [capabilityConnectMode, setCapabilityConnectMode] =
     useState<CapabilityConnectMode>("endpoint");
   const [capabilityEndpointProvider, setCapabilityEndpointProvider] = useState<
@@ -166,47 +130,6 @@ export function CapabilitiesSection() {
   >(null);
   const [capabilityConnectResult, setCapabilityConnectResult] =
     useState<CapabilityRouterConnectResponse | null>(null);
-
-  // The auto-training fetch resolves after the mount effect fires; writing state
-  // once the section is gone is a browser no-op but throws under the jsdom test
-  // teardown (React's scheduler reads `window`). Guard every async write past
-  // unmount — the canonical ui-hook pattern (see useCachedResource.ts).
-  const mountedRef = useRef(true);
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  const refreshAutoTraining = useCallback(async () => {
-    setAutoTrainingLoading(true);
-    try {
-      const [configResponse, statusResponse] = await Promise.all([
-        client.fetch<AutoTrainingConfigResponse>("/api/training/auto/config"),
-        client.fetch<AutoTrainingStatusResponse>("/api/training/auto/status"),
-      ]);
-      if (!mountedRef.current) return;
-      setAutoTrainingConfig(configResponse.config);
-      setAutoTrainingAvailable(statusResponse.serviceRegistered !== false);
-      setAutoTrainingError(false);
-    } catch (err) {
-      if (!mountedRef.current) return;
-      // error-policy:J4 404 = training plugin not hosted on this runtime — the
-      // designed "unavailable" degrade. Any other failure (5xx, transport,
-      // parse) renders the explicit error icon instead of silently disabling
-      // the control as if unavailability were by design.
-      setAutoTrainingConfig(null);
-      setAutoTrainingAvailable(false);
-      setAutoTrainingError(!(isApiError(err) && err.status === 404));
-    } finally {
-      if (mountedRef.current) setAutoTrainingLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void refreshAutoTraining();
-  }, [refreshAutoTraining]);
 
   useEffect(() => {
     let cancelled = false;
@@ -246,50 +169,6 @@ export function CapabilitiesSection() {
     },
     [proactiveChattiness],
   );
-
-  const handleAutoTrainingChange = useCallback(
-    async (checked: boolean | "indeterminate") => {
-      if (!autoTrainingConfig || autoTrainingAvailable === false) return;
-      const nextConfig = { ...autoTrainingConfig, autoTrain: !!checked };
-      setAutoTrainingConfig(nextConfig);
-      setAutoTrainingSaving(true);
-      try {
-        const response = await client.fetch<AutoTrainingConfigResponse>(
-          "/api/training/auto/config",
-          {
-            method: "POST",
-            body: JSON.stringify(nextConfig),
-          },
-        );
-        setAutoTrainingConfig(response.config);
-        setAutoTrainingAvailable(true);
-        setAutoTrainingError(false);
-      } catch {
-        // error-policy:J4 revert the optimistic toggle AND flag the failed
-        // save — a silent revert previously made the click look like it never
-        // happened, hiding a broken save endpoint behind healthy UI.
-        setAutoTrainingConfig(autoTrainingConfig);
-        setAutoTrainingError(true);
-      } finally {
-        setAutoTrainingSaving(false);
-      }
-    },
-    [autoTrainingAvailable, autoTrainingConfig],
-  );
-
-  const autoTrainingDisabled =
-    autoTrainingLoading ||
-    autoTrainingSaving ||
-    !autoTrainingConfig ||
-    autoTrainingAvailable === false;
-  const autoTrainingStatus =
-    autoTrainingLoading || autoTrainingSaving
-      ? "loading"
-      : autoTrainingError
-        ? "error"
-        : autoTrainingAvailable === false
-          ? "unavailable"
-          : null;
 
   const handleCapabilityConnect = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
@@ -479,25 +358,6 @@ export function CapabilitiesSection() {
           }
           checked={computerUseEnabled}
           onCheckedChange={(checked) => setState("computerUseEnabled", checked)}
-        />
-        <SettingsSwitchRow
-          agentId="capability-auto-training"
-          icon={GraduationCap}
-          label={
-            <span className="inline-flex items-center gap-2">
-              {t("settings.sections.capabilities.autoTrainingName", {
-                defaultValue: "Auto-training",
-              })}
-              <CapabilityStatusIcon status={autoTrainingStatus} />
-            </span>
-          }
-          agentLabel={t("settings.sections.capabilities.autoTrainingLabel", {
-            defaultValue: "Enable Auto-training",
-          })}
-          group="capabilities"
-          disabled={autoTrainingDisabled}
-          checked={autoTrainingConfig?.autoTrain ?? false}
-          onCheckedChange={(checked) => handleAutoTrainingChange(checked)}
         />
         <SettingsSegmentedRow
           agentId="capability-proactive-suggestions"
@@ -963,61 +823,4 @@ function DeviceLocationGroup() {
       />
     </SettingsGroup>
   );
-}
-
-function CapabilityStatusIcon({
-  status,
-}: {
-  status?: "loading" | "unavailable" | "error" | null;
-}) {
-  const t = useAppSelector((s) => s.t);
-  if (status === "loading") {
-    const loadingLabel = t("capabilities.status.loading", {
-      defaultValue: "Loading",
-    });
-    return (
-      <span
-        className="inline-flex text-muted"
-        title={loadingLabel}
-        role="status"
-        aria-label={loadingLabel}
-      >
-        <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-      </span>
-    );
-  }
-
-  if (status === "unavailable") {
-    const unavailableLabel = t("capabilities.status.unavailable", {
-      defaultValue: "Unavailable",
-    });
-    return (
-      <span
-        className="inline-flex text-warn"
-        title={unavailableLabel}
-        role="img"
-        aria-label={unavailableLabel}
-      >
-        <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
-      </span>
-    );
-  }
-
-  if (status === "error") {
-    const errorLabel = t("capabilities.status.error", {
-      defaultValue: "Error",
-    });
-    return (
-      <span
-        className="inline-flex text-danger"
-        title={errorLabel}
-        role="img"
-        aria-label={errorLabel}
-      >
-        <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
-      </span>
-    );
-  }
-
-  return null;
 }

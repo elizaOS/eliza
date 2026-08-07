@@ -76,10 +76,10 @@ they are good:
   This is the strongest integration point in the suite. **Real.**
 - Tests: `tee-policy.test.ts`, `tee-key-release.test.ts`, `tee-signer-backend.test.ts`,
   `tee-revocation.test.ts`, `tee-release-policy.test.ts`, `tee-runtime-config.test.ts`,
-  `dstack-tee-provider.test.ts`, `remote-capability-tee-policy.test.ts` cover the
-  positive and the critical negative paths. The two harness scripts
-  (`tee-full-stack-local.ts`, `tee-local-smoke.ts`) exercise collect → policy →
-  key-release end to end against a mock KMS and write JSON evidence artifacts.
+  `tee-evidence-provider.test.ts`, and `remote-capability-tee-policy.test.ts`
+  cover the positive and critical negative paths. `tee-full-stack-local.ts`
+  exercises policy → key-release end to end against a mock KMS and writes a JSON
+  evidence artifact. Concrete evidence collection belongs to a deployment plugin.
 
 ### 1.2 What is mock, stubbed, or thin — be specific
 
@@ -93,9 +93,10 @@ they are good:
 > system hardware-trusted; they verify a signed evidence *document* and fail
 > closed when it is absent, simulated, replayed, or tampered.
 
-- **No real quote verification anywhere.** `dstack-tee-provider.ts` *fetches or
-  reads* a `TeeEvidence` JSON blob (`ELIZA_TEE_EVIDENCE_JSON/_URL/_PATH`,
-  `DSTACK_TAPPD_URL`) and normalizes it. It never parses a TDX quote, never
+- **No concrete quote verifier ships in this package.** The
+  `tee-evidence-provider.ts` registration seam accepts a deployment plugin's
+  provider, while `normalizeTeeEvidence` validates its normalized document. The
+  agent package never parses a TDX quote, never
   checks an Intel PCS/QvL signature, never validates RTMRs against `report_data`,
   never verifies the DICE/RA-TLS cert chain. **`evidence.quote` is carried but
   never cryptographically verified.** The policy verifier trusts whatever the
@@ -272,7 +273,7 @@ path for user-marked-exportable data only, not a confidential-GPU path.
 
 ```text
 device evidence (OS/silicon)                      [OS + chip lanes]
-  -> in-domain attestation agent emits TeeEvidence  [dstack-tee-provider / chip agent]
+  -> deployment plugin emits TeeEvidence            [registered provider]
   -> normalizeTeeEvidence(...)                       [tee-evidence.ts]  STRICT
   -> evaluateTeeEvidencePolicy(evidence, policy)     [tee-policy.ts]    TRUST DECISION
        policy from resolveTeeRuntimePolicy(env)      [tee-runtime-config.ts]
@@ -446,9 +447,8 @@ agent-side defenses:
    a static host-readable key (the LUKS2 advisory GHSA-jxq2-hpw3-m5wf is exactly
    this risk). Zeroize key buffers after use.
 6. **Decompression bomb / malformed evidence** — `normalizeTeeEvidence` already
-   rejects malformed shapes; add a max-size cap on the evidence/quote payload in
-   `dstack-tee-provider.ts` HTTP/file reads and a JSON-parse size guard before
-   parsing.
+   rejects malformed shapes; every deployment provider must cap evidence/quote
+   payload size before parsing.
 7. **Cert / constant-time issues** — use constant-time comparison for nonce and
    wrapped-key checks; rely on a vetted RA-TLS library for cert verification
    rather than hand-rolled parsing.

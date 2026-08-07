@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 /**
  * gpt-5.5 trajectory-training pipeline — Stage 2 harvest driver for the
- * BENCHMARK and E2E families (sibling of harvest-runner.mjs, which owns the
- * scenario family). This driver never touches the scenario code path.
+ * E2E family (sibling of harvest-runner.mjs, which owns the scenario
+ * family). This driver never touches the scenario code path. The former
+ * BENCHMARK family moved with the benchmark suites to
+ * https://github.com/elizaOS/benchmarks and is harvested from that repo.
  *
- * Both families drive a real AgentRuntime through the CLI-subscription provider
+ * The family drives a real AgentRuntime through the CLI-subscription provider
  * (plugin-cli-inference: `codex exec -m gpt-5.5`), so the runtime's
  * JsonFileTrajectoryRecorder writes RecordedTrajectory JSON to
  * ELIZA_TRAJECTORY_DIR. The driver then converts that to eliza_native_v1 JSONL
@@ -16,7 +18,6 @@
  *       native.jsonl                                eliza_native_v1 rows
  *       native.manifest.json                        scenario-runner export manifest
  *       verdict.json                               { item, status, rows, exitCode }
- *       result.json (benchmark)                    bench.ts scenario result
  *       stdout.log / stderr.log
  *
  * PROVIDER PARAMETERIZATION (consumes Stage-1 output; identical precedence to
@@ -32,12 +33,7 @@
  *     ELIZA_PLANNER_NATIVE_TOOLS=0   text-planner mode (free-text CLI serves the planner)
  *     ELIZA_TRAJECTORY_RECORDING=1   keep the recorder on (it is default-on; set explicit)
  *
- * FAMILIES
- *   benchmark  The framework TS benchmark (packages/benchmarks/framework/typescript/src/bench.ts).
- *              Its --real-llm cli/codex branch (this stage's bench.ts change) drives one real
- *              gpt-5.5 turn per scenario. Corpus = the model-driving framework scenarios; the
- *              db/startup scenarios never call the model, so they are excluded. Runs each scenario
- *              at --iterations=1 --warmup=0 (one real turn = one trajectory), minimal cost.
+ * FAMILY
  *   e2e        A live app-core vitest lane (packages/app-core/test/live-agent/*). Runs the lane
  *              through vitest.harvest-live-agent.config.ts with ELIZA_LIVE_TEST=1 + the trajectory
  *              env; verdict = vitest pass/fail. The app-core selectLiveProvider now recognizes the
@@ -47,9 +43,8 @@
  *              harvestable-vs-env-gated classification + the build precondition: BENCHMARK_E2E_README.md.
  *
  * Usage:
- *   node bench-e2e-harvest-runner.mjs --family benchmark --provider-env s1.json [--limit N]
  *   node bench-e2e-harvest-runner.mjs --family e2e --provider-env s1.json --lane <substr>
- *   node bench-e2e-harvest-runner.mjs --family benchmark --deterministic --dry-run   # self-test
+ *   node bench-e2e-harvest-runner.mjs --family e2e --deterministic --dry-run   # self-test
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -63,11 +58,6 @@ const NATIVE_EXPORT_TS = path.join(
   REPO_ROOT,
   "packages/scenario-runner/src/native-export.ts",
 );
-const BENCH_TS = path.join(
-  REPO_ROOT,
-  "packages/benchmarks/framework/typescript/src/bench.ts",
-);
-
 const CLI_BACKENDS = new Set(["claude", "claude-sdk", "codex", "codex-sdk"]);
 
 function flag(name) {
@@ -82,10 +72,9 @@ const DRY_RUN = flag("--dry-run");
 const DETERMINISTIC = flag("--deterministic");
 const RESUME = flag("--resume");
 const LIMIT = Number(opt("--limit", "0")) || 0;
-const FAMILY = opt("--family", "benchmark");
+const FAMILY = opt("--family", "e2e");
 const SHARD = opt("--shard", null);
 const [SHARD_I, SHARD_N] = SHARD ? SHARD.split("/").map(Number) : [0, 1];
-const ITEM_FILTER = opt("--item", null); // benchmark scenario id filter
 const LANE_FILTER = opt("--lane", null); // e2e lane path substring filter
 const ITEM_TIMEOUT_MS = Number(opt("--item-timeout-ms", "900000")) || 900000;
 const HARVEST_ROOT = path.resolve(
@@ -96,35 +85,6 @@ const HARVEST_ROOT = path.resolve(
 );
 
 // ── Corpus definitions ──────────────────────────────────────────────────────
-
-/**
- * The framework benchmark's model-driving scenarios (bench.ts). Ordered
- * cheapest-first (message count). The db/startup scenarios never call the model
- * and cannot emit a trajectory, so they are excluded from the harvest corpus.
- * `single-turn` scenarios send one message; the scaling/burst ones send many —
- * keep them last (expensive on a live subscription).
- */
-const BENCHMARK_SUITE = "framework";
-const BENCHMARK_SCENARIOS = [
-  "single-message",
-  "minimal-bootstrap",
-  "with-should-respond",
-  "with-should-respond-no-name",
-  "with-actions",
-  "multi-step",
-  "conversation-10",
-  "history-scaling-100",
-  "provider-scaling-10",
-  "concurrent-10",
-  "conversation-100",
-  "provider-scaling-50",
-  "provider-scaling-100",
-  "history-scaling-1000",
-  "concurrent-50",
-  "burst-100",
-  "burst-1000",
-  "history-scaling-10000",
-];
 
 /**
  * E2E lanes that exercise the model and need ONLY a live LLM provider (no
@@ -230,76 +190,6 @@ function nativeExport(runDir, outPath) {
           .split("\n")
           .filter((l) => l.trim()).length
       : 0;
-}
-
-// ── Benchmark family ─────────────────────────────────────────────────────────
-
-function runBenchmarkItem(scenarioId, runEnv) {
-  const itemDir = path.join(
-    HARVEST_ROOT,
-    "benchmark",
-    BENCHMARK_SUITE,
-    slug(scenarioId),
-  );
-  const trajDir = path.join(itemDir, "run", "trajectories");
-  mkdirSync(trajDir, { recursive: true });
-  const resultPath = path.join(itemDir, "result.json");
-  const args = [
-    "--conditions",
-    "eliza-source",
-    "--tsconfig-override",
-    TSCONFIG,
-    BENCH_TS,
-    "--real-llm",
-    `--scenarios=${scenarioId}`,
-    "--iterations=1",
-    "--warmup=0",
-    `--output=${resultPath}`,
-  ];
-  const res = spawnSync("bun", args, {
-    cwd: REPO_ROOT,
-    encoding: "utf8",
-    timeout: ITEM_TIMEOUT_MS,
-    env: {
-      ...process.env,
-      ...runEnv,
-      LOG_LEVEL: "info",
-      ELIZA_TRAJECTORY_DIR: trajDir,
-    },
-  });
-  writeFileSync(path.join(itemDir, "stdout.log"), res.stdout || "");
-  writeFileSync(path.join(itemDir, "stderr.log"), res.stderr || "");
-
-  const nativePath = path.join(itemDir, "native.jsonl");
-  const rows = nativeExport(path.join(itemDir, "run"), nativePath);
-
-  let status = "error";
-  if (existsSync(resultPath)) {
-    try {
-      const result = JSON.parse(readFileSync(resultPath, "utf8"));
-      const ran = result.scenarios?.[scenarioId];
-      status = ran && rows > 0 ? "passed" : ran ? "no-trajectory" : "error";
-    } catch {
-      status = "error";
-    }
-  }
-  const verdict = {
-    family: "benchmark",
-    suite: BENCHMARK_SUITE,
-    item: scenarioId,
-    provider: runEnv.ELIZA_CHAT_VIA_CLI
-      ? `cli:${runEnv.ELIZA_CHAT_VIA_CLI}`
-      : "api-key",
-    model: runEnv.ELIZA_CLI_CODEX_MODEL ?? null,
-    status,
-    rows,
-    exitCode: res.status,
-    trajectoryFormat: "eliza_native_v1",
-    resultPath: existsSync(resultPath) ? "result.json" : null,
-    nativePath: existsSync(nativePath) ? "native.jsonl" : null,
-  };
-  writeVerdict(itemDir, verdict);
-  return verdict;
 }
 
 // ── E2E family ───────────────────────────────────────────────────────────────
@@ -413,18 +303,14 @@ function main() {
   const runEnv = withCliRunEnv(provider.env);
   mkdirSync(HARVEST_ROOT, { recursive: true });
 
-  let corpus;
-  if (FAMILY === "benchmark") {
-    corpus = BENCHMARK_SCENARIOS.filter(
-      (id) => !ITEM_FILTER || id === ITEM_FILTER,
-    ).map((id) => ({ id }));
-  } else if (FAMILY === "e2e") {
-    corpus = E2E_HARVESTABLE_LANES.filter(
-      (lane) => !LANE_FILTER || lane.includes(LANE_FILTER),
-    ).map((lane) => ({ lane }));
-  } else {
-    throw new Error(`unknown --family ${FAMILY} (expected benchmark|e2e)`);
+  if (FAMILY !== "e2e") {
+    throw new Error(
+      `unknown --family ${FAMILY} (expected e2e; the benchmark family moved to https://github.com/elizaOS/benchmarks)`,
+    );
   }
+  const corpus = E2E_HARVESTABLE_LANES.filter(
+    (lane) => !LANE_FILTER || lane.includes(LANE_FILTER),
+  ).map((lane) => ({ lane }));
 
   const summary = {
     startedAt: new Date().toISOString(),
@@ -444,11 +330,8 @@ function main() {
     if (SHARD_N > 1 && gi % SHARD_N !== SHARD_I) continue;
     if (LIMIT && ran >= LIMIT) break;
     const item = corpus[gi];
-    const id = item.id ?? item.lane;
-    const itemDir =
-      FAMILY === "benchmark"
-        ? path.join(HARVEST_ROOT, "benchmark", BENCHMARK_SUITE, slug(id))
-        : path.join(HARVEST_ROOT, "e2e", slug(id));
+    const id = item.lane;
+    const itemDir = path.join(HARVEST_ROOT, "e2e", slug(id));
     if (RESUME && existsSync(path.join(itemDir, "verdict.json"))) {
       console.log(`[resume] skip (already harvested) ${FAMILY} :: ${id}`);
       continue;
@@ -460,10 +343,7 @@ function main() {
       continue;
     }
     console.log(`[harvest #${gi}] ${FAMILY} :: ${id}`);
-    const verdict =
-      FAMILY === "benchmark"
-        ? runBenchmarkItem(id, runEnv)
-        : runE2eItem(id, runEnv);
+    const verdict = runE2eItem(id, runEnv);
     summary.items.push(verdict);
     console.log(
       `[harvest]   → status=${verdict.status} rows=${verdict.rows} exit=${verdict.exitCode}`,

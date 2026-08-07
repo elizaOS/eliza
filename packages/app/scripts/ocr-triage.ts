@@ -31,11 +31,16 @@ import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { OVERLAY_NATIVE_OR_CANVAS_SLUGS } from "../test/ui-smoke/aesthetic-audit-rules";
 import {
   evaluateOcrContent,
+  type OcrExpectation,
   type OcrResult,
   type OcrVerdict,
 } from "../test/ui-smoke/ocr-content-rules";
-import { VIEW_EXPECTATIONS } from "../test/ui-smoke/ocr-view-expectations";
 import {
+  resolveViewOcrPolicy,
+  type ViewOcrPolicy,
+} from "../test/ui-smoke/ocr-view-expectations";
+import {
+  type AuditReportRow,
   buildAuditCaptureManifest,
   parseAuditReport,
   validateOcrRecordPaths,
@@ -59,12 +64,7 @@ const BLANK_EXEMPT_SLUGS = new Set<string>([
   "plugin-focus-gui",
 ]);
 
-export interface ReportEntry {
-  slug: string;
-  viewport: string;
-  viewType?: "gui" | "tui";
-  verdict?: string;
-}
+export type ReportEntry = AuditReportRow;
 
 interface OcrRecord extends OcrResult {
   path: string;
@@ -142,6 +142,33 @@ export interface TriageResult {
   entries: TriageEntry[];
 }
 
+interface PolicyEvaluationInput {
+  expectation: OcrExpectation;
+  semanticExemptionReason?: string;
+}
+
+function resolvePolicyEvaluationInput(
+  slug: string,
+  policy: ViewOcrPolicy,
+  report: ReportEntry,
+): PolicyEvaluationInput {
+  if (policy.kind === "expectation") {
+    return { expectation: policy.expectation };
+  }
+  if (
+    policy.applicability === "unregistered-remote-bundle" &&
+    report.bundleProvenance !== undefined
+  ) {
+    throw new Error(
+      `Semantic OCR exemption for ${slug} no longer applies: capture loaded remote bundle provenance ${report.bundleProvenance}`,
+    );
+  }
+  return {
+    expectation: policy.fallbackExpectation,
+    semanticExemptionReason: policy.reason,
+  };
+}
+
 function parseArgs(argv: string[]): Record<string, string> {
   const out: Record<string, string> = {};
   for (let i = 0; i < argv.length; i++) {
@@ -165,7 +192,10 @@ export function authorizedShots(
   return manifest;
 }
 
-async function runPackagedOcr(paths: string[]): Promise<OcrRecord[]> {
+async function runPackagedOcr(
+  paths: string[],
+  alwaysTryFallback = false,
+): Promise<OcrRecord[]> {
   const engine = await resolveOcrEngine();
   if (!engine.available) {
     throw new Error(
@@ -174,7 +204,7 @@ async function runPackagedOcr(paths: string[]): Promise<OcrRecord[]> {
   }
   const out: OcrRecord[] = [];
   for (const path of paths) {
-    const result = await ocrImage(path);
+    const result = await ocrImage(path, { alwaysTryFallback });
     if (!result.available) {
       throw new Error(`OCR failed for ${path}: ${result.reason}`);
     }
@@ -324,21 +354,51 @@ export async function runOcrTriage(argv: string[]): Promise<TriageResult> {
   );
 
   const entries: TriageEntry[] = [];
-  for (const rec of ocr) {
+  for (let rec of ocr) {
     if (rec.pixelBlank === undefined || !rec.pixelBlankReasons) {
       throw new Error(`OCR record ${rec.path} has no pixel diagnostics`);
     }
     const slug = slugOf(rec.path);
     const viewport = viewportOf(rec.path);
-    const rep = reportByKey.get(`${slug}::${viewport}`) ?? null;
+    const rep = reportByKey.get(`${slug}::${viewport}`);
+    if (!rep) {
+      throw new Error(`OCR record ${slug}::${viewport} has no report row`);
+    }
+    const policy = resolveViewOcrPolicy(slug);
+    const policyInput = resolvePolicyEvaluationInput(slug, policy, rep);
     const exemptFromBlank =
-      rep?.viewType === "tui" || BLANK_EXEMPT_SLUGS.has(slug);
-    const finding = evaluateOcrContent({
+      rep.viewType === "tui" || BLANK_EXEMPT_SLUGS.has(slug);
+    let finding = evaluateOcrContent({
       ocr: rec,
-      expectation: VIEW_EXPECTATIONS[slug],
+      ...policyInput,
       exemptFromBlank,
     });
-    const domVerdict = rep?.verdict ?? null;
+    const alreadyTriedSparseFallback = rec.attempts?.some(
+      (attempt) => attempt.mode === "sparse-high-contrast",
+    );
+    if (
+      !args.ocr &&
+      finding.missingRequired.length > 0 &&
+      !alreadyTriedSparseFallback
+    ) {
+      // A confident transcript can still omit small labels. Retry only the
+      // screenshot whose declared content failed, rather than doubling OCR work
+      // for the entire audit or accepting a false pixel regression.
+      const retried = await runPackagedOcr([rec.path], true);
+      const retryRecord = retried[0];
+      if (!retryRecord) {
+        throw new Error(
+          `OCR semantic retry produced no record for ${rec.path}`,
+        );
+      }
+      rec = retryRecord;
+      finding = evaluateOcrContent({
+        ocr: rec,
+        ...policyInput,
+        exemptFromBlank,
+      });
+    }
+    const domVerdict = rep.verdict ?? null;
     const domPassed = domVerdict === "good" || domVerdict === "needs-eyeball";
     entries.push({
       slug,

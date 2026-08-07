@@ -13,7 +13,7 @@ const src = (relative: string) => path.join(here, "../../packages", relative);
 // "@elizaos/shared/steward-session-client" into ".../index.ts/steward-…" once
 // the CloudView jsdom suite pulls the @elizaos/ui api graph in. The react pins
 // keep a single React copy so jsdom never mixes the workspace and hoisted
-// peers (mirrors plugin-birdclaw).
+// peers.
 export default defineConfig({
 	resolve: {
 		alias: [

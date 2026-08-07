@@ -108,5 +108,6 @@ export const NoPairedDevice: Story = {
 
 /** When status is null the bar renders nothing. */
 export const NullStatus: Story = {
+  tags: ["story-gate-expect-blank"],
   args: { status: null },
 };

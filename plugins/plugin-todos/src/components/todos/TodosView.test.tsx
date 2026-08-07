@@ -27,12 +27,12 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-// `@elizaos/ui` is the giant renderer barrel; TodosView only touches
+// TodosView only touches the narrow `@elizaos/ui/api` client surface:
 // `client.getBaseUrl()` (default fetcher seam, overridden in every test) and
 // `client.sendChatMessage()` (add-a-todo affordance). The spatial primitives
 // come from the separate `@elizaos/ui/spatial` subpath, which is not mocked.
 const { sendChatMessage } = vi.hoisted(() => ({ sendChatMessage: vi.fn() }));
-vi.mock("@elizaos/ui", () => ({
+vi.mock("@elizaos/ui/api", () => ({
   client: {
     getBaseUrl: () => "http://test.local",
     sendChatMessage,

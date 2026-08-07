@@ -48,18 +48,6 @@ const allowedCallsites = new Map<string, string>([
 		"skill router; attributes callbacks to routed child actions",
 	],
 	[
-		"plugins/plugin-agent-skills/src/binance/direct-dispatch.ts",
-		"Binance direct-skill dispatcher; attributes fallback/USE_SKILL callbacks and rewrites the routed action's response text for voice (rewriteFallbackActionText)",
-	],
-	[
-		"plugins/plugin-linear/src/actions/routers.ts",
-		"Linear router; attributes callbacks to routed child actions",
-	],
-	[
-		"plugins/plugin-music/src/actions/music.ts",
-		"music router; attributes callbacks to routed child actions",
-	],
-	[
 		"plugins/plugin-personal-assistant/src/actions/calendar.ts",
 		"calendar router; attributes callbacks to routed child actions",
 	],

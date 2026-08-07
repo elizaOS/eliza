@@ -1,3 +1,4 @@
+/** Verifies ErrorBoundary through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Behaviour test for ErrorBoundary: passes children through when they render

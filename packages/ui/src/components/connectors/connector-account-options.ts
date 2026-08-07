@@ -134,7 +134,7 @@ const CONNECTOR_PLUGIN_MANAGED_PRESENTATION: Readonly<
   google: {
     title: "Google accounts",
     description:
-      "Manage Google Workspace accounts through @elizaos/plugin-google OAuth account inventory.",
+      "Manage Google Workspace accounts through @elizaos/plugin-google-workspace OAuth account inventory.",
   },
   x: {
     title: "X accounts",

@@ -1,4 +1,9 @@
-/** Supports app-core build, packaging, or development orchestration for desktop preflight mjs. */
+/**
+ * Preflight predicates for the Electrobun desktop build: Bun version
+ * parsing/support checks, electrobun view-export and manifest discovery, and
+ * classification of known view-copy failures into repair steps (notably on
+ * Windows).
+ */
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";

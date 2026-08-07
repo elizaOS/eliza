@@ -2,7 +2,7 @@
 
 In-process workflow engine for elizaOS agents. Generate and deploy automation workflows from natural language using a RAG pipeline. The plugin embeds its own execution engine — workflows run in the agent process, no separate sidecar.
 
-> **Vocabulary:** a **workflow** is a stored node-graph definition; one execution is a **run**; the attachable start condition is a **trigger** (`schedule` or `event`). See [`docs/automation-glossary.md`](../../docs/automation-glossary.md) for how workflows, triggers, tasks, scheduled items, and automations differ and what fires each.
+> **Vocabulary:** a **workflow** is a stored node-graph definition; one execution is a **run**; the attachable start condition is a **trigger** (`schedule` or `event`).
 
 ## Configuration
 
@@ -72,4 +72,3 @@ bun run lint
 ```
 
 Lint/format is [Biome 2.x](https://biomejs.dev). TypeScript 6+. ESM only.
-

@@ -20,10 +20,14 @@ describe("matchViewCommand — explicit user examples", () => {
 		["settings", "settings"],
 		["go home", "chat"],
 		["home", "chat"],
+		["go back", "chat"],
 		["back to home", "chat"],
+		["go back to notes", "notes"],
 		["open the home dashboard", "chat"],
 		["return to the main screen", "chat"],
 		["open my calendar", "calendar"],
+		["open calender", "calendar"],
+		["could you switch to calender please", "calendar"],
 		["go to my inbox", "inbox"],
 		["show my wallet", "wallet"],
 		["open the todos view", "todos"],
@@ -40,6 +44,8 @@ describe("matchViewCommand — explicit user examples", () => {
 		["switch to focus mode", "focus"],
 		["open my goals", "goals"],
 		["open cloud apps", "cloud-apps"],
+		["show my cloud applications", "cloud-apps"],
+		["go to the app studio", "cloud-apps"],
 		["show my deployed apps", "cloud-apps"],
 		["go to app deployments", "cloud-apps"],
 		["open plugins", "plugins-page"],
@@ -66,11 +72,14 @@ describe("matchViewCommand — multilingual", () => {
 		// pt
 		["abrir configurações", "settings"],
 		["mostre meu calendário", "calendar"],
+		["abra aplicações na nuvem", "cloud-apps"],
 		// fr
 		["ouvre les paramètres", "settings"],
 		["montre-moi mon calendrier", "calendar"],
+		["ouvre applications cloud", "cloud-apps"],
 		// de
 		["öffne die einstellungen", "settings"],
+		["öffne cloud-apps", "cloud-apps"],
 		// zh
 		["打开设置", "settings"],
 		["打开我的钱包", "wallet"],
@@ -82,8 +91,10 @@ describe("matchViewCommand — multilingual", () => {
 		["설정 열어", "settings"],
 		["내 캘린더 보여줘", "calendar"],
 		["지갑 열어줘", "wallet"],
+		["클라우드 앱 열어줘", "cloud-apps"],
 		// vi
 		["mở cài đặt", "settings"],
+		["mở ứng dụng đám mây", "cloud-apps"],
 		// tl
 		["buksan ang settings", "settings"],
 		["abre aplicaciones en la nube", "cloud-apps"],
@@ -168,6 +179,10 @@ describe("matchViewCommand — precision (must NOT match)", () => {
 		"mahalaga ang kaalaman",
 		"remind me to call mom", // a task, not a view command
 		"how are you doing today",
+		"back",
+		"go back over the paragraph",
+		"go back and explain what changed",
+		"when I go back to school",
 		"",
 		"   ",
 	];

@@ -1,5 +1,9 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for rt mjs. */
+/**
+ * Thin Bun launcher that stamps ELIZA_PROCESS_SPAWNED_AT_MS (plus the API
+ * variant for dev-server launches) into the child env so runtime startup
+ * metrics measure from true process spawn.
+ */
 
 import { spawn } from "node:child_process";
 

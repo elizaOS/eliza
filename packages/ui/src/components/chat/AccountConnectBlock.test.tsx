@@ -1,3 +1,4 @@
+/** Verifies AccountConnectBlock through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Render test for AccountConnectBlock: a provider row + Add-account button per

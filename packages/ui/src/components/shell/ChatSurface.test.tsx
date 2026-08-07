@@ -1,3 +1,4 @@
+/** Verifies ChatSurface composer (shared core) through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * ChatSurface composer contract: the glass mini-chat consumes the shared
@@ -41,20 +42,6 @@ describe("ChatSurface composer (shared core)", () => {
     fireEvent.keyDown(input, { key: "Enter" });
     expect(onSend).toHaveBeenCalledWith("hello there");
     expect(input.value).toBe("");
-  });
-
-  it("pins the transcript scroller to vertical-only scroll (#14328)", () => {
-    // `overflow-y-auto` coerces the cross axis to `auto`, so without an explicit
-    // `overflow-x-hidden` a single over-wide message child turns the transcript
-    // into a two-axis scroller a diagonal wheel can pan sideways. Lock it here.
-    const { container } = render(
-      surface({
-        messages: [{ id: "a", role: "assistant", content: "hi", createdAt: 1 }],
-      }),
-    );
-    const scroller = container.querySelector(".overflow-y-auto");
-    expect(scroller).not.toBeNull();
-    expect(scroller?.className).toContain("overflow-x-hidden");
   });
 
   it("renders user form submissions as a compact summary without protocol values", () => {

@@ -281,6 +281,8 @@ async function persistPostMemory(
 		const id = await runtime.createMemory(memory, "messages");
 		return { ...memory, id };
 	} catch (error) {
+		// error-policy:J7 External delivery is already observable and must not be
+		// repeated; report failure to persist its local trace.
 		runtime.logger.warn(
 			{
 				src: "POST:send",
@@ -289,6 +291,9 @@ async function persistPostMemory(
 			},
 			"Post sent but target feed memory persistence failed",
 		);
+		runtime.reportError("POST.persistTargetFeedMemory", error, {
+			source: connector.source,
+		});
 		return memory;
 	}
 }
@@ -351,6 +356,8 @@ async function persistChatActionMemory(params: {
 		await runtime.upsertMemory(memory, "messages");
 		return memory;
 	} catch (error) {
+		// error-policy:J7 External delivery is already observable and must not be
+		// repeated; report failure to persist its local action trace.
 		runtime.logger.warn(
 			{
 				src: "POST:send",
@@ -359,6 +366,9 @@ async function persistChatActionMemory(params: {
 			},
 			"Post sent but current chat action memory persistence failed",
 		);
+		runtime.reportError("POST.persistActionMemory", error, {
+			source: connector.source,
+		});
 		return undefined;
 	}
 }

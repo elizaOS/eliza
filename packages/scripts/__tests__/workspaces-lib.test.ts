@@ -117,9 +117,9 @@ describe("expandWorkspaceGlobs — glob semantics", () => {
   test("negation subtracts an earlier match (exclude-wins)", () => {
     const root = makeRepo();
     fs.mkdirSync(path.join(root, "packages/keep"), { recursive: true });
-    fs.mkdirSync(path.join(root, "packages/feed"), { recursive: true });
+    fs.mkdirSync(path.join(root, "packages/omit"), { recursive: true });
 
-    const dirs = expandWorkspaceGlobs(["packages/*", "!packages/feed"], {
+    const dirs = expandWorkspaceGlobs(["packages/*", "!packages/omit"], {
       repoRoot: root,
     });
     expect(dirs).toEqual(["packages/keep"]);
@@ -127,13 +127,13 @@ describe("expandWorkspaceGlobs — glob semantics", () => {
 
   test("later positive pattern re-adds a previously negated dir (last-match-wins)", () => {
     const root = makeRepo();
-    fs.mkdirSync(path.join(root, "packages/feed"), { recursive: true });
+    fs.mkdirSync(path.join(root, "packages/omit"), { recursive: true });
 
     const dirs = expandWorkspaceGlobs(
-      ["packages/*", "!packages/feed", "packages/feed"],
+      ["packages/*", "!packages/omit", "packages/omit"],
       { repoRoot: root },
     );
-    expect(dirs).toEqual(["packages/feed"]);
+    expect(dirs).toEqual(["packages/omit"]);
   });
 });
 
@@ -164,9 +164,9 @@ describe("listWorkspaceDirs — package.json filtering", () => {
 
   test("negation excludes a workspace with a package.json", () => {
     const root = makeRepo();
-    writeRootPackage(root, ["packages/*", "!packages/feed"]);
+    writeRootPackage(root, ["packages/*", "!packages/omit"]);
     writePackage(root, "packages/core", "@x/core");
-    writePackage(root, "packages/feed", "@x/feed");
+    writePackage(root, "packages/omit", "@x/omit");
 
     expect(listWorkspaceDirs({ repoRoot: root })).toEqual(["packages/core"]);
   });
@@ -279,11 +279,6 @@ describe("live-repo parity", () => {
     );
     expect(pkg).toBeDefined();
     expect(pkg?.dir).toBe("plugins/plugin-sql");
-  });
-
-  test("packages/feed is excluded from listWorkspaceDirs", () => {
-    const dirs = listWorkspaceDirs({ repoRoot: REPO_ROOT });
-    expect(dirs).not.toContain("packages/feed");
   });
 
   test("no duplicate package names across the workspace", () => {

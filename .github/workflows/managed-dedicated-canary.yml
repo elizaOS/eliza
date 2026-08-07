@@ -114,13 +114,13 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
-          bun-version: canary
+          bun-version: "1.3.14"
 
       - name: Validate canary and failure contracts
         run: |
           bun test \
-            packages/scripts/cloud/admin/bridge-reply-verdict.test.ts \
-            packages/scripts/cloud/admin/managed-dedicated-canary.test.ts
+            packages/cloud/scripts/admin/bridge-reply-verdict.test.ts \
+            packages/cloud/scripts/admin/managed-dedicated-canary.test.ts
 
       - name: Run bounded managed dedicated canary
         id: live
@@ -128,7 +128,7 @@ jobs:
         run: |
           set +e
           mkdir -p reports
-          bun run packages/scripts/cloud/admin/managed-dedicated-canary.ts
+          bun run packages/cloud/scripts/admin/managed-dedicated-canary.ts
           status=$?
           set -e
           echo "status=$status" >> "$GITHUB_OUTPUT"
@@ -146,7 +146,7 @@ jobs:
           fi
           bun -e '
             import { readFileSync, renameSync, writeFileSync } from "node:fs";
-            import { canonicalizeManagedDedicatedCanaryArtifact } from "./packages/scripts/cloud/admin/managed-dedicated-canary.ts";
+            import { canonicalizeManagedDedicatedCanaryArtifact } from "./packages/cloud/scripts/admin/managed-dedicated-canary.ts";
             const evidencePath = process.env.CLOUD_DEDICATED_CANARY_EVIDENCE_PATH;
             if (!evidencePath) {
               console.error("::error::Canary evidence path is not configured.");
@@ -201,7 +201,7 @@ jobs:
           deployed_commit="$(
             bun -e '
               import { readFileSync } from "node:fs";
-              import { validateManagedDedicatedCanaryEvidence } from "./packages/scripts/cloud/admin/managed-dedicated-canary.ts";
+              import { validateManagedDedicatedCanaryEvidence } from "./packages/cloud/scripts/admin/managed-dedicated-canary.ts";
               const evidence = JSON.parse(readFileSync(process.env.CLOUD_DEDICATED_CANARY_EVIDENCE_PATH, "utf8"));
               const errors = validateManagedDedicatedCanaryEvidence(evidence);
               const expectedRecoveryRequested =
@@ -282,10 +282,10 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
-          bun-version: canary
+          bun-version: "1.3.14"
 
       - name: Validate diagnostic contracts
-        run: bun test packages/scripts/cloud/admin/managed-dedicated-canary-diagnostic.test.ts
+        run: bun test packages/cloud/scripts/admin/managed-dedicated-canary-diagnostic.test.ts
 
       - name: Query exact stale canary read-only
         shell: bash
@@ -317,7 +317,7 @@ jobs:
           mkdir -p reports
           umask 077
           PSQL_DATABASE_URL="$(
-            bun packages/scripts/cloud/admin/libpq-connection-url.ts
+            bun packages/cloud/scripts/admin/libpq-connection-url.ts
           )"
           echo "::add-mask::$PSQL_DATABASE_URL"
           psql "$PSQL_DATABASE_URL" \
@@ -415,7 +415,7 @@ jobs:
         run: |
           set -euo pipefail
           trap 'rm -f -- "$CANARY_DIAGNOSTIC_RAW_PATH"' EXIT
-          bun run packages/scripts/cloud/admin/managed-dedicated-canary-diagnostic.ts \
+          bun run packages/cloud/scripts/admin/managed-dedicated-canary-diagnostic.ts \
             "$CANARY_DIAGNOSTIC_SUFFIX" \
             "$CANARY_DIAGNOSTIC_RAW_PATH" \
             "$CANARY_DIAGNOSTIC_EVIDENCE_PATH"

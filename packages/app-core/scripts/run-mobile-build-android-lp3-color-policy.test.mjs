@@ -40,6 +40,10 @@ const debugManifestPath = path.join(
   androidRoot,
   "lp3-color-policy/src/debug/AndroidManifest.xml",
 );
+const usbNetworkSecurityConfigPath = path.join(
+  androidRoot,
+  "lp3-color-policy/src/debug/res/xml/lp3_usb_network_security_config.xml",
+);
 const servicePath = path.join(
   androidRoot,
   "lp3-color-policy/src/debug/java/ai/elizaos/app/Lp3ColorPolicyService.java",
@@ -50,18 +54,6 @@ const initializerPath = path.join(
 );
 const readmePath = path.join(androidRoot, "README.md");
 const repoRoot = path.resolve(scriptsDir, "../../..");
-const aospManifestPath = path.join(
-  repoRoot,
-  "packages/os/android/vendor/eliza/manifests/aosp-assistant-full-control.json",
-);
-const privappPermissionsPath = path.join(
-  repoRoot,
-  "packages/os/android/vendor/eliza/permissions/privapp-permissions-ai.elizaos.app.xml",
-);
-const distroValidatorPath = path.join(
-  repoRoot,
-  "packages/scripts/distro-android/validate.mjs",
-);
 
 function stripManifest(xml, policy) {
   let stripped = xml;
@@ -349,8 +341,30 @@ describe("LP3 direct Cloud build flag", () => {
     );
     expect(gradle).toContain("debug.java.srcDir");
     expect(gradle).toContain("debug.manifest.srcFile");
+    expect(gradle).toContain("debug.res.srcDir");
     expect(gradle).toContain("testRelease.java.srcDir");
     expect(gradle).not.toContain("release.java.srcDir");
+  });
+
+  it("limits direct-debug USB runtime cleartext to loopback", () => {
+    const manifest = fs.readFileSync(debugManifestPath, "utf8");
+    const networkConfig = fs.readFileSync(usbNetworkSecurityConfigPath, "utf8");
+    const platformManifest = fs.readFileSync(manifestPath, "utf8");
+
+    expect(manifest).toContain(
+      'android:networkSecurityConfig="@xml/lp3_usb_network_security_config"',
+    );
+    expect(networkConfig).toContain(
+      '<base-config cleartextTrafficPermitted="false" />',
+    );
+    expect(networkConfig).toContain(
+      '<domain includeSubdomains="false">127.0.0.1</domain>',
+    );
+    expect(networkConfig).toContain(
+      '<domain includeSubdomains="false">localhost</domain>',
+    );
+    expect(networkConfig).not.toContain('includeSubdomains="true"');
+    expect(platformManifest).not.toContain("lp3_usb_network_security_config");
   });
 
   it("keeps runtime opt-in private and writable only through same-UID commands", () => {
@@ -409,23 +423,4 @@ describe("LP3 direct Cloud build flag", () => {
     expect(readme).toContain("permission-prompt loop");
   });
 
-  it("does not grant the direct-only permission to generic AOSP builds", () => {
-    const aospManifest = JSON.parse(fs.readFileSync(aospManifestPath, "utf8"));
-    const privappPermissions = fs.readFileSync(privappPermissionsPath, "utf8");
-    const validator = fs.readFileSync(distroValidatorPath, "utf8");
-
-    expect(aospManifest.privilegedPermissions).not.toContain(
-      "android.permission.WRITE_SECURE_SETTINGS",
-    );
-    expect(aospManifest.playStorePolicy.mustStripPermissions).toContain(
-      "android.permission.WRITE_SECURE_SETTINGS",
-    );
-    expect(aospManifest.playStorePolicy.mustStripComponents).toEqual(
-      expect.arrayContaining(ANDROID_LP3_COLOR_POLICY_COMPONENTS),
-    );
-    expect(privappPermissions).not.toContain(
-      '<permission name="android.permission.WRITE_SECURE_SETTINGS" />',
-    );
-    expect(validator).not.toContain("android.permission.WRITE_SECURE_SETTINGS");
-  });
 });

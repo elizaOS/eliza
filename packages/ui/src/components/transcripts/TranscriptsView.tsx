@@ -512,7 +512,7 @@ export function TranscriptsView({
             ) : (
               <div
                 data-testid="transcripts-detail-empty"
-                className="grid h-full place-items-center text-sm text-muted/70"
+                className="grid h-full place-items-center text-sm text-muted"
               >
                 Select a recording.
               </div>

@@ -1,4 +1,0 @@
-[[!meta title="Translate Tails into Portuguese"]]
-
-The Portuguese translation team uses its [[own mailing
-list|https://www.autistici.org/mailman/listinfo/tails-l10n-pt-br/]].

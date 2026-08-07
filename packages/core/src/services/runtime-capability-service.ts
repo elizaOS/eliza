@@ -1,33 +1,6 @@
 /**
- * RuntimeCapabilityService — the single owner of
- * {@link CAPABILITY_ROUTER_SERVICE_TYPE}.
- *
- * P0 step 6/6 of the Plugin/mode unification (see architecture-review v3).
- *
- * This file replaces the historical trio of competing capability routers:
- *
- * - `RuntimeBrokerCapabilityRouter` (a bare class in
- *   `packages/core/src/capabilities/index.ts` — see {@link
- *   RuntimeBrokerCapabilityRouter})
- * - `RemoteCapabilityRouterService` (the `Service` subclass in
- *   `packages/agent/src/services/remote-capability-router.ts`)
- * - the parallel `E2BRemoteCapabilityRouterService` from PR #7779
- *
- * Each registered against the same {@link CAPABILITY_ROUTER_SERVICE_TYPE}
- * slot, and the routing strategy (local vs. remote vs. cloud-sandbox) was
- * encoded by *which Service got registered first* — a fragile arrangement
- * that this class collapses into a single Service whose **strategy table**
- * is the explicit routing decision.
- *
- * The strategies (`LocalPluginStrategy`, `HttpEndpointStrategy`,
- * `CompositeStrategy`, `UnavailableStrategy`) materialise in subsequent
- * P0 follow-ups; P0 ships this shell with the canonical type surface so
- * downstream consumers can begin migrating to
- * `runtime.getService(CAPABILITY_ROUTER_SERVICE_TYPE)` semantics without
- * caring whether the underlying dispatch is local-RemotePlugin or remote-HTTP.
- *
- * The router classes named above remain in the tree during P0; P1 deletes
- * them and folds their dispatch logic into the strategies declared below.
+ * Canonical runtime service for filesystem, terminal, git, model, and plugin capabilities.
+ * An ordered strategy table selects each dispatcher; an explicit fallback handles uncovered capabilities.
  */
 
 import {
@@ -48,7 +21,7 @@ import { Service } from "../types/service.js";
 /**
  * Routing strategy interface. Each strategy decides how to dispatch a
  * capability invocation: locally (via a remote-mode plugin running in the
- * host process) or remotely (via HTTPS to a `remote-plugin-host` container,
+ * host process) or remotely (via HTTPS to a capability-host container,
  * an e2b sandbox, or another paired user device).
  *
  * Strategies are an internal implementation detail of
@@ -66,34 +39,23 @@ export interface CapabilityStrategy {
 	readonly plugin?: RemotePluginCapability;
 }
 
-/**
- * Options for constructing a {@link RuntimeCapabilityService}. P0 accepts a
- * single fallback router so the service can co-exist with the existing
- * `RuntimeBrokerCapabilityRouter` and `RemoteCapabilityRouterService` while
- * P1 implements the strategy table. P1 will replace `fallback` with
- * `strategies: CapabilityStrategy[]`.
- */
+/** Options for constructing a {@link RuntimeCapabilityService}. */
 export interface RuntimeCapabilityServiceOptions {
 	/**
 	 * Strategy table keyed by capability dispatcher. The first matching
-	 * strategy wins per capability invocation. Empty in P0 (set in P1+).
+	 * strategy wins per capability invocation.
 	 */
 	strategies?: CapabilityStrategy[];
 	/**
 	 * Fallback router used when no strategy matches. Defaults to
-	 * {@link UnavailableCapabilityRouter}. Existing
-	 * `RuntimeBrokerCapabilityRouter` instances may be passed here during
-	 * the P0→P1 transition.
+	 * {@link UnavailableCapabilityRouter}.
 	 */
 	fallback?: ElizaCapabilityRouter;
 }
 
 /**
- * Service that owns the {@link CAPABILITY_ROUTER_SERVICE_TYPE} slot. P0
- * ships the canonical class with a fallback-router delegate; P1+ wires up
- * the strategy table and deletes the legacy
- * `RuntimeBrokerCapabilityRouter` standalone class plus the duplicate
- * `RemoteCapabilityRouterService` Service.
+ * Service that owns the {@link CAPABILITY_ROUTER_SERVICE_TYPE} slot and exposes
+ * the common router surface independently of where a capability executes.
  *
  * Usage:
  *
@@ -148,8 +110,6 @@ export class RuntimeCapabilityService
 	}
 
 	async availability(): Promise<CapabilityAvailability> {
-		// P0: delegate availability to the fallback router. P1 aggregates
-		// across strategies.
 		return this.fallback.availability();
 	}
 
@@ -174,9 +134,8 @@ export class RuntimeCapabilityService
 	}
 
 	/**
-	 * Replace the strategy table at runtime. Used during P1 when the
-	 * RemotePluginHost discovers a new capability-providing remote plugin
-	 * (e.g. agent-installed `eliza.fs`) and registers it as a strategy.
+	 * Replace the strategy table at runtime. Used when the host discovers a
+	 * new capability-providing remote plugin and registers it as a strategy.
 	 */
 	setStrategies(strategies: CapabilityStrategy[]): void {
 		this.strategies = strategies;

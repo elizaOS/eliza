@@ -286,7 +286,6 @@ describe("SceneBuilder reports a11y scan failures once per scan", () => {
     );
     expect(scanReports).toHaveLength(1);
     const scanReport = scanReports[0];
-    expect(scanReport).toBeDefined();
     if (!scanReport) throw new Error("Expected an accessibility scan report");
     expect(scanReport.context).toMatchObject({
       failedWindows: 4,

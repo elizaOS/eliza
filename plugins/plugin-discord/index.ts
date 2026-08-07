@@ -17,6 +17,7 @@ import { createDiscordConnectorAccountProvider } from "./connector-account-provi
 import { DISCORD_SERVICE_NAME } from "./constants";
 import * as discordCoordinationSchema from "./coordination-schema";
 import { discordDataRoutes } from "./data-routes";
+import { DiscordLocalService } from "./discord-local-service";
 import { registerDiscordTargetSource } from "./discord-target-source";
 import { DiscordOwnerPairingServiceImpl } from "./owner-pairing-service";
 import { getPermissionValues } from "./permissions";
@@ -39,8 +40,12 @@ const discordPlugin: Plugin = {
 			isPassive: true,
 		},
 	],
+	// DiscordLocalService is the desktop IPC mode: it self-gates on
+	// DISCORD_LOCAL_CLIENT_ID / DISCORD_LOCAL_CLIENT_SECRET and stays dormant
+	// otherwise, so bot-API mode and local mode coexist in one plugin.
 	services: [
 		DiscordService,
+		DiscordLocalService,
 		DiscordOwnerPairingServiceImpl,
 		DiscordUserAccountScraperImpl,
 	],
@@ -251,12 +256,10 @@ export {
 	getDiscordAvatarPublicPath,
 	isDiscordAvatarUrl,
 } from "./discord-avatar-cache";
-// Discord local IPC service + setup routes
+// Discord local IPC service (desktop / local mode)
 export {
-	DISCORD_LOCAL_PLUGIN_NAME,
 	DISCORD_LOCAL_SERVICE_NAME,
 	DiscordLocalService,
-	default as discordLocalPlugin,
 } from "./discord-local-service";
 export {
 	cacheDiscordAvatarForRuntime,

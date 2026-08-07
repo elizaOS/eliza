@@ -1,3 +1,4 @@
+/** Verifies useVoiceChat playback is decoupled from the visualizer worklet (#16102) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

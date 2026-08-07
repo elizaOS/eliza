@@ -3,14 +3,12 @@
  */
 
 import type http from "node:http";
+import { validateMcpServerConfig } from "@elizaos/core/security/mcp-server-config";
 import { readAliasedEnv } from "@elizaos/shared";
-import { validateMcpServerConfig } from "../security/mcp-server-config.ts";
 import { hasBlockedObjectKeyDeep } from "./server-helpers.ts";
 import type { TerminalRunRejection } from "./server-helpers-auth.ts";
 import { resolveTerminalRunRejection } from "./server-helpers-auth.ts";
 import { isBlockedObjectKey } from "./server-helpers-config.ts";
-
-export { validateMcpServerConfig } from "../security/mcp-server-config.ts";
 
 export async function resolveMcpServersRejection(
   servers: Record<string, unknown>,

@@ -157,15 +157,15 @@ describe("views client", () => {
 		]);
 	});
 
-	it("parses XR current-view state", async () => {
+	it("parses current-view state", async () => {
 		const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
 			expect(String(input)).toBe("http://127.0.0.1:3456/api/views/current");
 			return jsonResponse({
 				currentView: {
-					viewId: "smartglasses",
-					viewPath: "/apps/smartglasses",
-					viewLabel: "Smartglasses",
-					viewType: "xr",
+					viewId: "trajectory-logger",
+					viewPath: "/trajectory-logger",
+					viewLabel: "Trajectories",
+					viewType: "gui",
 					action: "open",
 					updatedAt: "2026-05-31T08:00:00.000Z",
 				},
@@ -174,10 +174,10 @@ describe("views client", () => {
 		vi.stubGlobal("fetch", fetchMock);
 
 		await expect(createViewsClient().getCurrentView()).resolves.toMatchObject({
-			viewId: "smartglasses",
-			viewPath: "/apps/smartglasses",
-			viewLabel: "Smartglasses",
-			viewType: "xr",
+			viewId: "trajectory-logger",
+			viewPath: "/trajectory-logger",
+			viewLabel: "Trajectories",
+			viewType: "gui",
 			action: "open",
 			justSwitched: false,
 			updatedAt: "2026-05-31T08:00:00.000Z",

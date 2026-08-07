@@ -501,8 +501,8 @@ export function buildCoverageMatrix(options?: {
 //
 // "Keyless e2e" means a scenario that runs on a PR under the deterministic LLM
 // proxy with zero credentials — i.e. a scenario in the
-// `packages/scenario-runner/test/scenarios` deterministic corpus, or one in the
-// big `packages/test/scenarios` corpus tagged `lane: "pr-deterministic"`. A
+// `packages/scenario-runner/test/scenarios` deterministic corpus, or a
+// package-owned scenario tagged `lane: "pr-deterministic"`. A
 // plugin "has keyless e2e" when at least one such scenario names it in its
 // `requires.plugins`. Detection is static (source read, no plugin import) so the
 // inventory stays cheap and works even for plugins that cannot be imported under
@@ -514,7 +514,9 @@ const PLUGINS_DIR = path.join(REPO_ROOT, "plugins");
 /** Scenario corpora that run keyless on a PR. */
 const KEYLESS_SCENARIO_ROOTS = [
   path.join(REPO_ROOT, "packages", "scenario-runner", "test", "scenarios"),
-  path.join(REPO_ROOT, "packages", "test", "scenarios"),
+  ...listDirs(PLUGINS_DIR).map((dir) =>
+    path.join(PLUGINS_DIR, dir, "test", "scenarios"),
+  ),
 ];
 
 /** The lane string a corpus scenario must declare to count as keyless. */
@@ -573,7 +575,8 @@ function readSourceFiles(srcDir: string): string[] {
         continue;
       }
       const full = path.join(dir, entry);
-      const st = statSync(full);
+      const st = statSafe(full);
+      if (!st) continue;
       if (st.isDirectory()) {
         walk(full);
       } else if (

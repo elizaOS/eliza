@@ -168,7 +168,7 @@ type LiveProviderModule = {
 };
 type ScenarioRuntimeFactoryModule = Pick<
   typeof import("./runtime-factory.ts"),
-  "createScenarioRuntime" | "shouldUseDeterministicLlmProxy"
+  "createScenarioRuntime" | "shouldUseDeterministicModel"
 >;
 
 export interface ParsedArgs {
@@ -206,7 +206,7 @@ export interface CliDependencies {
   writeReportBundle: ReporterModule["writeReportBundle"];
   writeScenarioRunViewer: ReporterModule["writeScenarioRunViewer"];
   createScenarioRuntime: ScenarioRuntimeFactoryModule["createScenarioRuntime"];
-  shouldUseDeterministicLlmProxy: ScenarioRuntimeFactoryModule["shouldUseDeterministicLlmProxy"];
+  shouldUseDeterministicModel: ScenarioRuntimeFactoryModule["shouldUseDeterministicModel"];
   exportScenarioNativeJsonl: NativeExportModule["exportScenarioNativeJsonl"];
 }
 
@@ -455,7 +455,7 @@ async function loadCliDependencies(): Promise<CliDependencies> {
       writeReportBundle,
       writeScenarioRunViewer,
     },
-    { createScenarioRuntime, shouldUseDeterministicLlmProxy },
+    { createScenarioRuntime, shouldUseDeterministicModel },
     { exportScenarioNativeJsonl },
     // Keep out-of-root imports behind widened specifiers so TypeScript does not
     // pull those modules into this package's rootDir validation graph.
@@ -481,7 +481,7 @@ async function loadCliDependencies(): Promise<CliDependencies> {
     writeReportBundle,
     writeScenarioRunViewer,
     createScenarioRuntime,
-    shouldUseDeterministicLlmProxy,
+    shouldUseDeterministicModel,
     exportScenarioNativeJsonl,
   };
 }
@@ -542,16 +542,16 @@ export async function runCli(
     writeReportBundle,
     writeScenarioRunViewer,
     createScenarioRuntime,
-    shouldUseDeterministicLlmProxy,
+    shouldUseDeterministicModel,
     exportScenarioNativeJsonl,
   } = dependencies ?? (await loadCliDependencies());
 
   if (
     availableProviderNames().length === 0 &&
-    !shouldUseDeterministicLlmProxy()
+    !shouldUseDeterministicModel()
   ) {
     process.stderr.write(
-      "[eliza-scenarios] no LLM provider API key set; refusing to run (WS7 policy: fail loudly on silent credential skips).\n  Set one of: GROQ_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY, OPENROUTER_API_KEY,\n  or on a subscription-only host set ELIZA_CHAT_VIA_CLI=claude|claude-sdk|codex|codex-sdk (requires the CLI's own on-disk credentials),\n  or enable deterministic test mode with SCENARIO_USE_LLM_PROXY=1.\n",
+      "[eliza-scenarios] no LLM provider API key set; refusing to run (WS7 policy: fail loudly on silent credential skips).\n  Set one of: GROQ_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY, OPENROUTER_API_KEY,\n  or on a subscription-only host set ELIZA_CHAT_VIA_CLI=claude|claude-sdk|codex|codex-sdk (requires the CLI's own on-disk credentials),\n  or enable deterministic test mode with SCENARIO_USE_DETERMINISTIC_MODEL=1.\n",
     );
     return 2;
   }

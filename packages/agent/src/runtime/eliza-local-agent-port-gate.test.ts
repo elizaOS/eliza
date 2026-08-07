@@ -1,35 +1,28 @@
 /**
  * Verifies the `ELIZA_API_EXPOSE_PORT` gate that keeps `startEliza`'s API port
  * closed under Android local-agent (stdio) mode unless explicitly re-exposed
- * (#12352, #12180). Deterministic and boot-free: a mirror of the gate predicate
- * driven against the real `resolveApiExposePort`, plus regex assertions over
- * `eliza.ts` source — the full agent + plugin graph is never imported.
+ * (#12352, #12180). Deterministic and boot-free: the typed boot plan is driven
+ * directly.
  */
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { resolveApiExposePort } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
+import {
+  captureAgentEnvironment,
+  resolveBootPlan,
+  resolveBootPolicy,
+} from "./boot-pipeline.ts";
 
-/**
- * Port-gate wiring for the Android local-agent stdio switch (#12352, #12180).
- *
- * The agent-package `startEliza` binds the API port in its server-only path; the
- * Android bridge boots it with `localAgentMode` so the port stays closed unless
- * `ELIZA_API_EXPOSE_PORT` re-opens it (dev/LAN/e2e). `eliza.ts` pulls the whole
- * agent + plugin graph, so it can't be imported/booted in this lane — pin the
- * gate two ways: the decision predicate against the real `resolveApiExposePort`,
- * and source-level assertions that `startEliza` forwards `skipListen` and never
- * hard-codes `localAgentMode` itself (the default boot still binds).
- */
-
-const ELIZA_SRC = readFileSync(join(import.meta.dirname, "eliza.ts"), "utf8");
-
-/** Mirror of the gate expression in eliza.ts (kept identical on purpose). */
 function shouldSkipApiListen(
   localAgentMode: boolean | undefined,
   env: Record<string, string | undefined>,
 ): boolean {
-  return localAgentMode === true && resolveApiExposePort(env) !== true;
+  const environment = captureAgentEnvironment(env);
+  const policy = resolveBootPolicy(environment);
+  return !resolveBootPlan({
+    localAgentMode,
+    configured: true,
+    cloudThinClient: false,
+    apiExposePort: policy.apiExposePort,
+  }).bindApiListener;
 }
 
 describe("agent local-agent IPC port gate (#12352)", () => {
@@ -49,27 +42,5 @@ describe("agent local-agent IPC port gate (#12352)", () => {
     expect(shouldSkipApiListen(true, { ELIZA_API_EXPOSE_PORT: "true" })).toBe(
       false,
     );
-  });
-});
-
-describe("agent eliza.ts source wiring (#12352)", () => {
-  it("declares localAgentMode on StartElizaOptions", () => {
-    expect(ELIZA_SRC).toMatch(/localAgentMode\?:\s*boolean/);
-  });
-
-  it("computes skipApiListen from localAgentMode + resolveApiExposePort", () => {
-    expect(ELIZA_SRC).toContain("resolveApiExposePort");
-    expect(ELIZA_SRC).toMatch(
-      /const skipApiListen\s*=\s*[\s\S]*opts\?\.localAgentMode === true/,
-    );
-    expect(ELIZA_SRC).toMatch(/resolveApiExposePort\(process\.env\) !== true/);
-  });
-
-  it("forwards skipApiListen as startApiServer({ skipListen })", () => {
-    expect(ELIZA_SRC).toMatch(/skipListen:\s*skipApiListen/);
-  });
-
-  it("does not hard-code localAgentMode true inside eliza.ts (the bridge sets it, not this file)", () => {
-    expect(ELIZA_SRC).not.toMatch(/localAgentMode:\s*true/);
   });
 });

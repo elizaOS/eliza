@@ -199,7 +199,7 @@ function authHeaderForKey(runtime: IAgentRuntime, key: string | undefined): Reco
 
 /**
  * Route to the wire-level mock server when one is running. `ELIZA_MOCK_OPENAI_BASE`
- * is set only by the in-process mock runner (`packages/test/mocks`) and never in
+ * is set only by the in-process mock runner (`packages/scenario-runner/test/mocks`) and never in
  * production — honoring it directly mirrors how LifeOps consumes its sibling
  * `ELIZA_MOCK_*_BASE` vars (`mockoon-redirect.ts`). It is authoritative when set
  * (a deliberate test action), so it wins over any configured base or provider

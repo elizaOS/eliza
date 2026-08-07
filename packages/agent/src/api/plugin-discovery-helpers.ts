@@ -82,8 +82,12 @@ function applyWhatsAppQrOverride(
     waPlugin.validationErrors = [];
     waPlugin.configured = true;
     waPlugin.qrConnected = true;
-  } catch {
-    /* workspace dir may not exist */
+  } catch (error) {
+    // error-policy:J4 an unavailable workspace auth directory renders this
+    // connector as unconfigured rather than failing the whole plugin catalog.
+    logger.debug(
+      `[plugin-discovery] WhatsApp auth state unavailable: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 }
 
@@ -1138,7 +1142,6 @@ export function categorizePlugin(
     "openrouter",
     "google-genai",
     "local-ai",
-    "vercel-ai-gateway",
     "deepseek",
     "together",
     "mistral",
@@ -1258,7 +1261,6 @@ const PLUGIN_SETUP_GUIDE_ANCHORS: Record<string, string> = {
   xai: "#xai-grok",
   ollama: "#ollama-local-models",
   "local-ai": "#local-ai",
-  "vercel-ai-gateway": "#vercel-ai-gateway",
   discord: "#discord",
   telegram: "#telegram",
   twitter: "#twitter--x",

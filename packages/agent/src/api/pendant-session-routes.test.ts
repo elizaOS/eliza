@@ -1,8 +1,8 @@
 /**
  * Route-level tests for pendant session sync using the repository contract.
  *
- * The runtime wrapper deliberately throws on Memory API access; pendant capture
- * state belongs to normalized session/segment/insight tables instead.
+ * Pendant capture state belongs to normalized session/segment/insight tables;
+ * recallable chat Memory is created later by the conversation delivery path.
  */
 
 import crypto from "node:crypto";
@@ -51,6 +51,18 @@ const {
 
 class TestRuntime {
   readonly agentId: UUID;
+  readonly character = { name: "Test Agent" };
+  readonly memories = new Map<string, Record<string, unknown>>();
+  readonly createMemory = vi.fn(
+    async (memory: Record<string, unknown>, tableName: string) => {
+      this.memories.set(String(memory.id), memory);
+      expect(tableName).toBe("messages");
+      return memory.id;
+    },
+  );
+  readonly updateMemory = vi.fn(async (memory: Record<string, unknown>) => {
+    this.memories.set(String(memory.id), memory);
+  });
 
   constructor(agentId: UUID) {
     this.agentId = agentId;
@@ -62,20 +74,8 @@ class TestRuntime {
     );
   }
 
-  async getMemoryById(): Promise<never> {
-    throw new Error("Pendant session routes must not read Memory records");
-  }
-
-  async createMemory(): Promise<never> {
-    throw new Error("Pendant session routes must not create Memory records");
-  }
-
-  async updateMemory(): Promise<never> {
-    throw new Error("Pendant session routes must not update Memory records");
-  }
-
-  async deleteMemory(): Promise<never> {
-    throw new Error("Pendant session routes must not delete Memory records");
+  async getMemoryById(id: string): Promise<Record<string, unknown> | null> {
+    return this.memories.get(id) ?? null;
   }
 }
 
@@ -166,6 +166,13 @@ class FailingPendantSessionRepository implements PendantSessionRepository {
     > = {},
   ) {}
 
+  async loadLatest(
+    params: Parameters<PendantSessionRepository["loadLatest"]>[0],
+  ): ReturnType<PendantSessionRepository["loadLatest"]> {
+    if (this.fail.loadLatest) throw new Error("latest load failed");
+    return this.delegate.loadLatest(params);
+  }
+
   async load(
     params: Parameters<PendantSessionRepository["load"]>[0],
   ): ReturnType<PendantSessionRepository["load"]> {
@@ -207,6 +214,26 @@ class FailingPendantSessionRepository implements PendantSessionRepository {
 }
 
 describe("handlePendantSessionRoutes", () => {
+  it("discovers the latest non-ended session within the owner and agent boundary", async () => {
+    const h = makeHarness();
+    await h.request("POST", "/api/pendant/sessions", {
+      sessionId: "sess-old",
+    });
+    await h.request("POST", "/api/pendant/sessions/sess-old/end", {});
+    await h.request("POST", "/api/pendant/sessions", {
+      sessionId: "sess-current",
+    });
+
+    const current = okBody<{
+      snapshot: { session: { id: string; state: string } };
+    }>(await h.request("GET", "/api/pendant/sessions/current"));
+
+    expect(current.snapshot.session).toMatchObject({
+      id: "sess-current",
+      state: "active",
+    });
+  });
+
   it("reloads the canonical winner after a cross-process create conflict", async () => {
     const ownerId = uuid();
     const agentId = uuid();
@@ -228,6 +255,7 @@ describe("handlePendantSessionRoutes", () => {
     };
     let loads = 0;
     const repository: PendantSessionRepository = {
+      loadLatest: vi.fn(async () => null),
       load: vi.fn(async () => (++loads === 1 ? null : winner)),
       create: vi.fn(async () => false),
       saveSession: vi.fn(async () => undefined),
@@ -365,6 +393,37 @@ describe("handlePendantSessionRoutes", () => {
     } finally {
       unsubscribe();
     }
+  });
+
+  it("does not create a second Memory before canonical conversation delivery", async () => {
+    const h = makeHarness();
+    await h.request("POST", "/api/pendant/sessions", {
+      sessionId: "sess-memory",
+    });
+    const lease = okBody<{ leaseToken: string }>(
+      await h.request("POST", "/api/pendant/sessions/sess-memory/lease", {
+        holder: "capturer",
+      }),
+    );
+
+    const mutation = await h.request(
+      "POST",
+      "/api/pendant/sessions/sess-memory/segments",
+      {
+        leaseToken: lease.leaseToken,
+        segment: segment("sess-memory", 0, 0, "private pendant fact"),
+      },
+    );
+    expect(mutation.status).toBe(200);
+    expect(h.runtime.memories).toHaveLength(0);
+    expect(h.runtime.createMemory).not.toHaveBeenCalled();
+
+    await h.request("POST", "/api/pendant/sessions/sess-memory/segments", {
+      leaseToken: lease.leaseToken,
+      segment: segment("sess-memory", 0, 0, "private pendant fact"),
+    });
+    expect(h.runtime.memories).toHaveLength(0);
+    expect(h.runtime.createMemory).not.toHaveBeenCalled();
   });
 
   it("keeps exact duplicate replay idempotent and conflicts altered same-revision content", async () => {
@@ -613,16 +672,38 @@ describe("handlePendantSessionRoutes", () => {
     );
     expect(second.leaseToken).not.toBe(first.leaseToken);
 
+    await h.request("POST", "/api/pendant/sessions/sess-c/segments", {
+      leaseToken: second.leaseToken,
+      segment: {
+        ...segment("sess-c", 0),
+        status: "pending",
+        text: "",
+        endedAt: null,
+      },
+    });
     await h.request("POST", "/api/pendant/sessions/sess-c/pause", {});
     const blocked = await h.request(
       "POST",
       "/api/pendant/sessions/sess-c/segments",
       {
         leaseToken: second.leaseToken,
-        segment: segment("sess-c", 0),
+        segment: segment("sess-c", 1),
       },
     );
     expect(blocked.status).toBe(409);
+    const lateAsr = await h.request(
+      "PATCH",
+      "/api/pendant/sessions/sess-c/segments/sess-c%3Asegment%3A0",
+      {
+        leaseToken: second.leaseToken,
+        revision: 1,
+        status: "resolved",
+        text: "must not land after pause",
+        endedAt: "2026-07-09T00:00:01.000Z",
+      },
+    );
+    expect(lateAsr.status).toBe(409);
+    expect(h.runtime.memories).toHaveLength(0);
   });
 
   it("converges polling, deletes from memory, and enforces owner and agent isolation", async () => {
@@ -730,6 +811,7 @@ describe("handlePendantSessionRoutes", () => {
   it("maps repository revision CAS conflicts to typed current-revision responses", async () => {
     const delegate = new InMemoryPendantSessionRepository();
     const repository: PendantSessionRepository = {
+      loadLatest: (params) => delegate.loadLatest(params),
       load: (params) => delegate.load(params),
       create: (value) => delegate.create(value),
       saveSession: vi.fn(async () => {

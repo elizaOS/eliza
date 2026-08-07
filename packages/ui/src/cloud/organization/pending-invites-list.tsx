@@ -68,7 +68,7 @@ export function PendingInvitesList({
 
     if (invite.status === "pending" && nowDate > expiresAt) {
       return (
-        <span className="px-2 py-0.5 border border-[#EB4335]/40 bg-[#EB4335]/20 text-[#EB4335] flex items-center gap-1 text-xs font-mono">
+        <span className="px-2 py-0.5 border border-danger/40 bg-danger/20 text-danger flex items-center gap-1 text-xs font-mono">
           <XCircle className="h-3 w-3" />
           Expired
         </span>
@@ -173,7 +173,7 @@ export function PendingInvitesList({
                       type="button"
                       className="p-2 hover:bg-surface transition-colors border border-border"
                     >
-                      <X className="h-4 w-4 text-[#EB4335]" />
+                      <X className="h-4 w-4 text-danger" />
                     </Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent className="bg-popover border border-brand-surface">
@@ -196,7 +196,7 @@ export function PendingInvitesList({
                       </AlertDialogCancel>
                       <AlertDialogAction
                         onClick={() => onRevoke(invite.id)}
-                        className="bg-[#EB4335] hover:bg-[#EB4335]/90 text-white"
+                        className="bg-danger hover:bg-danger/90 text-danger-fg"
                       >
                         Revoke
                       </AlertDialogAction>

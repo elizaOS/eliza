@@ -160,7 +160,7 @@ describe("SecretsService — fail-closed under strict", () => {
 		);
 	});
 
-	it("non-strict: unreachable broker degrades to local (soft)", async () => {
+	it("non-strict: an unreachable configured broker still fails closed", async () => {
 		const runtime = runtimeWithEnv({
 			[SECRETS_BROKER_URL_KEY]: "https://broker.example",
 			[SECRETS_BROKER_TOKEN_KEY]: "handle-abc",
@@ -176,6 +176,8 @@ describe("SecretsService — fail-closed under strict", () => {
 
 		const ctx = GLOBAL_CTX(runtime.agentId);
 		await svc.set("OPENAI_API_KEY", "local-plaintext", ctx);
-		expect(await svc.get("OPENAI_API_KEY", ctx)).toBe("local-plaintext");
+		await expect(svc.get("OPENAI_API_KEY", ctx)).rejects.toBeInstanceOf(
+			SecretsBrokerUnavailableError,
+		);
 	});
 });
