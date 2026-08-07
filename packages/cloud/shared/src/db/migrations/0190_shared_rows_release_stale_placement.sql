@@ -1,17 +1,8 @@
--- Release container placement held by legacy shared-tier rows.
+-- Release container placement held by stale shared-tier rows.
 --
--- Shared-tier agents run container-free in the hosted shared runtime: their
--- node_id / container_name are NULL by design, the heartbeat sweep excludes the
--- tier for exactly that reason, and nothing on the serving path reads a
--- container locator for them. Before that design landed, shared agents got real
--- containers, and a handful of rows from that era still carry their placement.
--- Their containers are long gone (reaped by the orphan reconciler), but the
--- rows still count toward node allocation — `running` is non-terminal — so each
--- one permanently holds a slot the allocator believes is occupied.
---
--- Measured on production 2026-08-06: exactly six such rows, every one with a
--- last heartbeat 26 days old. None created in the last 14 days, so this is a
--- remnant, not an active leak — a data fix, with no code change required.
+-- Shared-tier agents run container-free in the hosted shared runtime, but stale
+-- rows can retain locators that continue to count toward node allocation. Clear
+-- locator fields only from user-owned running rows without a recent heartbeat.
 --
 -- Scope guards, each load-bearing:
 --   * pool_status IS NULL      — warm-pool rows are shared-tier AND legitimately
@@ -24,7 +15,7 @@
 --                                design assumption is wrong somewhere; leave it
 --                                for a human rather than erase the evidence.
 --
--- Clearing the same column set as executeSleep, the canonical release shape.
+-- This is the same locator set cleared by executeSleep.
 
 UPDATE "agent_sandboxes"
 SET

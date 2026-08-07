@@ -1,6 +1,6 @@
 /**
  * Applies migration 0190 to a real PGlite table and proves its scope: it
- * releases container placement ONLY from legacy shared-tier rows whose
+ * releases container placement only from legacy shared-tier rows whose
  * heartbeat has been stale for over a week, and leaves the warm pool, the
  * deletion machinery, dedicated tiers, and any recently-alive row untouched.
  */
@@ -14,6 +14,12 @@ process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
 
 const TIMEOUT = 60_000;
+const lifecycleMigrationSql = readFileSync(
+  fileURLToPath(
+    new URL("./migrations/0189_agent_sandbox_lifecycle_revision_scope.sql", import.meta.url),
+  ),
+  "utf8",
+);
 const migrationSql = readFileSync(
   fileURLToPath(
     new URL("./migrations/0190_shared_rows_release_stale_placement.sql", import.meta.url),
@@ -33,73 +39,90 @@ const ROWS = {
 
 let dbWrite: typeof import("./client").dbWrite;
 let closeDb: typeof import("./client").closeDatabaseConnectionsForTests | undefined;
-let databaseReady = true;
 
 async function placement(id: string): Promise<{
   node_id: string | null;
   container_name: string | null;
+  sandbox_id: string | null;
+  bridge_url: string | null;
+  health_url: string | null;
+  headscale_ip: string | null;
+  bridge_port: number | null;
+  web_ui_port: number | null;
+  lifecycle_revision: number;
   status: string;
 }> {
   const result = await dbWrite.execute(
-    `SELECT node_id, container_name, status FROM agent_sandboxes WHERE id = '${id}'`,
+    `SELECT node_id, container_name, sandbox_id, bridge_url, health_url,
+            headscale_ip, bridge_port, web_ui_port, lifecycle_revision, status
+       FROM agent_sandboxes WHERE id = '${id}'`,
   );
-  return (
+  const row = (
     result as unknown as {
       rows: Array<{
         node_id: string | null;
         container_name: string | null;
+        sandbox_id: string | null;
+        bridge_url: string | null;
+        health_url: string | null;
+        headscale_ip: string | null;
+        bridge_port: number | null;
+        web_ui_port: number | null;
+        lifecycle_revision: string | number;
         status: string;
       }>;
     }
   ).rows[0];
+  if (!row) throw new Error(`Missing sandbox test row: ${id}`);
+  return {
+    ...row,
+    lifecycle_revision: Number(row.lifecycle_revision),
+  };
 }
 
 beforeAll(async () => {
-  try {
-    ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("./client"));
-    const { PROVISIONING_JOB_TEST_TABLES } = await import(
-      "../lib/services/__tests__/tier-upgrade-pglite-schema"
-    );
-    for (const ddl of PROVISIONING_JOB_TEST_TABLES) {
-      if (ddl.includes('CREATE TABLE IF NOT EXISTS "agent_sandboxes"')) {
-        await dbWrite.execute(ddl);
-      }
+  ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("./client"));
+  const { PROVISIONING_JOB_TEST_TABLES } = await import(
+    "../lib/services/__tests__/tier-upgrade-pglite-schema"
+  );
+  for (const ddl of PROVISIONING_JOB_TEST_TABLES) {
+    if (ddl.includes('CREATE TABLE IF NOT EXISTS "agent_sandboxes"')) {
+      await dbWrite.execute(ddl);
     }
+  }
 
-    const insert = (
-      id: string,
-      tier: string,
-      status: string,
-      poolStatus: string | null,
-      beat: string | null,
-    ) =>
-      dbWrite.execute(`
+  const insert = (
+    id: string,
+    tier: string,
+    status: string,
+    poolStatus: string | null,
+    beat: string | null,
+  ) =>
+    dbWrite.execute(`
         INSERT INTO agent_sandboxes
           (id, organization_id, user_id, execution_tier, status, pool_status,
            node_id, container_name, sandbox_id, bridge_url, health_url,
-           last_heartbeat_at)
+           headscale_ip, bridge_port, web_ui_port, last_heartbeat_at)
         VALUES
           ('${id}', '00000000-0000-4000-8000-000000000001',
            '00000000-0000-4000-8000-000000000002', '${tier}', '${status}',
            ${poolStatus === null ? "NULL" : `'${poolStatus}'`},
            gen_random_uuid(), 'agent-${id.slice(-4)}', 'sb-${id.slice(-4)}',
-           'http://x:2138', 'http://x:2139',
+           'http://x:2138', 'http://x:2139', '100.64.0.1', 2138, 3000,
            ${beat === null ? "NULL" : `NOW() - INTERVAL '${beat}'`});
-      `);
+    `);
 
-    await insert(ROWS.legacyShared, "shared", "running", null, "26 days");
-    await insert(ROWS.warmPool, "shared", "running", "unclaimed", "26 days");
-    await insert(ROWS.deletionPending, "shared", "deletion_pending", null, "26 days");
-    await insert(ROWS.dedicated, "dedicated-always", "running", null, "26 days");
-    await insert(ROWS.recentlyAliveShared, "shared", "running", null, "1 hour");
-    await insert(ROWS.neverBeatShared, "shared", "running", null, null);
+  await insert(ROWS.legacyShared, "shared", "running", null, "26 days");
+  await insert(ROWS.warmPool, "shared", "running", "unclaimed", "26 days");
+  await insert(ROWS.deletionPending, "shared", "deletion_pending", null, "26 days");
+  await insert(ROWS.dedicated, "dedicated-always", "running", null, "26 days");
+  await insert(ROWS.recentlyAliveShared, "shared", "running", null, "1 hour");
+  await insert(ROWS.neverBeatShared, "shared", "running", null, null);
 
-    for (const statement of migrationSql.split("--> statement-breakpoint")) {
+  for (const sql of [lifecycleMigrationSql, migrationSql]) {
+    for (const statement of sql.split("--> statement-breakpoint")) {
       if (statement.trim()) await dbWrite.execute(statement);
     }
-  } catch (error) {
-    databaseReady = false;
-    console.warn("[shared-rows-release] PGlite setup failed", error);
   }
 }, TIMEOUT);
 
@@ -111,13 +134,17 @@ describe("0190 releases stale legacy shared placement", () => {
   test(
     "the legacy shared row loses its placement and stays running",
     async () => {
-      if (!databaseReady) throw new Error("PGlite unavailable");
       const row = await placement(ROWS.legacyShared);
-      // Running with NULL locators IS the modern container-free shared shape;
-      // the row becomes an ordinary shared agent rather than a fake container.
       expect(row).toEqual({
         node_id: null,
         container_name: null,
+        sandbox_id: null,
+        bridge_url: null,
+        health_url: null,
+        headscale_ip: null,
+        bridge_port: null,
+        web_ui_port: null,
+        lifecycle_revision: 1,
         status: "running",
       });
     },
@@ -125,9 +152,8 @@ describe("0190 releases stale legacy shared placement", () => {
   );
 
   test(
-    "a shared row that never heartbeat is released too",
+    "a shared row that never sent a heartbeat is released too",
     async () => {
-      if (!databaseReady) throw new Error("PGlite unavailable");
       expect((await placement(ROWS.neverBeatShared)).node_id).toBeNull();
     },
     TIMEOUT,
@@ -136,7 +162,6 @@ describe("0190 releases stale legacy shared placement", () => {
   test(
     "a warm-pool row keeps its placement — the pool lifecycle owns it",
     async () => {
-      if (!databaseReady) throw new Error("PGlite unavailable");
       expect((await placement(ROWS.warmPool)).node_id).not.toBeNull();
     },
     TIMEOUT,
@@ -145,7 +170,6 @@ describe("0190 releases stale legacy shared placement", () => {
   test(
     "a deletion_pending row keeps its locator for the delete-retry sweep",
     async () => {
-      if (!databaseReady) throw new Error("PGlite unavailable");
       expect((await placement(ROWS.deletionPending)).node_id).not.toBeNull();
     },
     TIMEOUT,
@@ -154,7 +178,6 @@ describe("0190 releases stale legacy shared placement", () => {
   test(
     "a dedicated-tier row is untouched whatever its heartbeat says",
     async () => {
-      if (!databaseReady) throw new Error("PGlite unavailable");
       expect((await placement(ROWS.dedicated)).node_id).not.toBeNull();
     },
     TIMEOUT,
@@ -163,7 +186,6 @@ describe("0190 releases stale legacy shared placement", () => {
   test(
     "a shared row with a recent heartbeat is left as live evidence",
     async () => {
-      if (!databaseReady) throw new Error("PGlite unavailable");
       expect((await placement(ROWS.recentlyAliveShared)).node_id).not.toBeNull();
     },
     TIMEOUT,
