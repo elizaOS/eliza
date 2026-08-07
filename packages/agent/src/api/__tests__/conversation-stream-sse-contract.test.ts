@@ -1559,6 +1559,7 @@ describe("conversation stream SSE contract (#10712)", () => {
       {
         type: "token",
         fullText: "Opened Notes.",
+        provisional: true,
       },
     ]);
     const done = payloads.find((payload) => payload.type === "done");
@@ -1593,6 +1594,7 @@ describe("conversation stream SSE contract (#10712)", () => {
       {
         type: "token",
         fullText: expectedFailure,
+        provisional: true,
       },
     ]);
     expect(payloads.some((payload) => payload.type === "error")).toBe(false);
