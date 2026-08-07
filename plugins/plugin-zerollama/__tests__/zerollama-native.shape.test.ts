@@ -11,6 +11,8 @@ import {
   buildZerollamaChatBody,
   toZerollamaChatMessages,
   toZerollamaTools,
+  zerollamaChatComplete,
+  zerollamaChatStream,
   zerollamaEmbed,
 } from "../utils/zerollama-native";
 
@@ -26,14 +28,14 @@ describe("resolveOllamaHostFlavor", () => {
         distribution: "zerollama",
         version: "1cedb56-dirty",
         zerollama: { capabilities: {} },
-      }),
+      })
     );
     await expect(
-      resolveOllamaHostFlavor("http://192.168.255.164:8080/api", fetchImpl as typeof fetch),
+      resolveOllamaHostFlavor("http://192.168.255.164:8080/api", fetchImpl as typeof fetch)
     ).resolves.toBe("zerollama");
     expect(fetchImpl).toHaveBeenCalledWith(
       "http://192.168.255.164:8080/api/version",
-      expect.objectContaining({ method: "GET" }),
+      expect.objectContaining({ method: "GET" })
     );
   });
 
@@ -41,7 +43,7 @@ describe("resolveOllamaHostFlavor", () => {
     process.env.OLLAMA_HOST_FLAVOR = "zerollama";
     const fetchImpl = vi.fn();
     await expect(
-      resolveOllamaHostFlavor("http://host:11434/api", fetchImpl as typeof fetch),
+      resolveOllamaHostFlavor("http://host:11434/api", fetchImpl as typeof fetch)
     ).resolves.toBe("zerollama");
     expect(fetchImpl).not.toHaveBeenCalled();
   });
@@ -50,7 +52,7 @@ describe("resolveOllamaHostFlavor", () => {
     setOllamaHostFlavorForTest("http://host:11434", "ollama");
     const fetchImpl = vi.fn();
     await expect(
-      resolveOllamaHostFlavor("http://host:11434/api", fetchImpl as typeof fetch),
+      resolveOllamaHostFlavor("http://host:11434/api", fetchImpl as typeof fetch)
     ).resolves.toBe("ollama");
     expect(fetchImpl).not.toHaveBeenCalled();
   });
@@ -121,25 +123,76 @@ describe("zerollama native wire helpers", () => {
       toZerollamaChatMessages({
         system: "you are helpful",
         prompt: "hi",
-      }),
+      })
     ).toEqual([
       { role: "system", content: "you are helpful" },
       { role: "user", content: "hi" },
     ]);
   });
 
+  it("forwards cancellation to native complete and streaming requests", async () => {
+    const controller = new AbortController();
+    const completeFetch = vi.fn(async () =>
+      Response.json({ message: { content: "ok" }, done: true })
+    );
+    const body = buildZerollamaChatBody({
+      model: "qwen3:0.6b",
+      messages: [{ role: "user", content: "hi" }],
+      stream: false,
+    });
+
+    await zerollamaChatComplete({
+      apiBase: "http://host:11434",
+      body,
+      fetchImpl: completeFetch as typeof fetch,
+      promptForEstimate: "hi",
+      modelName: "qwen3:0.6b",
+      signal: controller.signal,
+    });
+    expect(completeFetch.mock.calls[0]?.[1]?.signal).toBe(controller.signal);
+
+    const encoder = new TextEncoder();
+    const streamFetch = vi.fn(
+      async () =>
+        new Response(
+          new ReadableStream({
+            start(streamController) {
+              streamController.enqueue(
+                encoder.encode('{"message":{"content":"ok"},"done":true}\n')
+              );
+              streamController.close();
+            },
+          })
+        )
+    );
+    const result = zerollamaChatStream({
+      apiBase: "http://host:11434",
+      body,
+      fetchImpl: streamFetch as typeof fetch,
+      promptForEstimate: "hi",
+      modelName: "qwen3:0.6b",
+      signal: controller.signal,
+    });
+    for await (const _chunk of result.textStream) {
+      // Drain the real native stream wrapper so its fetch executes.
+    }
+    expect(streamFetch.mock.calls[0]?.[1]?.signal).toBe(controller.signal);
+  });
+
   it("posts /api/embed with model+input only", async () => {
+    const controller = new AbortController();
     const fetchImpl = vi.fn(async () =>
       Response.json({
         model: "embeddinggemma:300m",
         embeddings: [[0.1, 0.2, 0.3]],
-      }),
+      })
     );
     const vector = await zerollamaEmbed({
       apiBase: "http://192.168.255.164:8080",
       model: "embeddinggemma:300m",
       input: "hello",
       fetchImpl: fetchImpl as typeof fetch,
+      signal: controller.signal,
     });
     expect(vector).toEqual([0.1, 0.2, 0.3]);
     expect(fetchImpl).toHaveBeenCalledWith(
@@ -150,7 +203,8 @@ describe("zerollama native wire helpers", () => {
           model: "embeddinggemma:300m",
           input: "hello",
         }),
-      }),
+        signal: controller.signal,
+      })
     );
   });
 
@@ -178,7 +232,7 @@ describe("zerollama native wire helpers", () => {
           model: "embeddinggemma:300m",
           input: "hello",
         }),
-      }),
+      })
     );
   });
 });

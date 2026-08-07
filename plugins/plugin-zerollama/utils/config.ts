@@ -1,5 +1,5 @@
 /**
- * Ollama-related settings resolution for `@elizaos/plugin-ollama`.
+ * Ollama-related settings resolution for `@elizaos/plugin-zerollama`.
  *
  * ## Why `getSetting` merges runtime + `process.env`
  *
@@ -33,9 +33,11 @@ export function getSetting(
 ): string | undefined {
   const value = runtime.getSetting(key);
   if (value !== undefined && value !== null) {
-    return String(value).trim();
+    const normalized = String(value).trim();
+    if (normalized.length > 0) return normalized;
   }
-  return getEnvValue(key)?.trim() ?? defaultValue;
+  const envValue = getEnvValue(key)?.trim();
+  return envValue && envValue.length > 0 ? envValue : defaultValue;
 }
 
 export function getBaseURL(runtime: SettingsProvider): string {

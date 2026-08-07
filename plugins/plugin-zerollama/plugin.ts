@@ -88,9 +88,10 @@ function resolvePrewarmModel(runtime: IAgentRuntime): string | null {
 }
 
 function scheduleOllamaPrewarm(
+  runtime: IAgentRuntime,
   apiBase: string,
   model: string,
-  fetchImpl: typeof fetch,
+  fetchImpl: typeof fetch
 ): void {
   void fetchImpl(`${apiBase}/api/generate`, {
     method: "POST",
@@ -103,8 +104,11 @@ function scheduleOllamaPrewarm(
     }),
     signal: AbortSignal.timeout(OLLAMA_PREWARM_TIMEOUT_MS),
   }).catch((err) => {
+    // error-policy:J7 optional prewarm is diagnostic optimization only; the
+    // first real model call remains the authoritative readiness check.
     const message = err instanceof Error ? err.message : String(err);
     logger.debug(`[ollama] prewarm skipped: ${message}`);
+    runtime.reportError("plugin-zerollama.prewarm", err, { apiBase, model });
   });
 }
 
@@ -124,13 +128,16 @@ const ACTION_PLANNER_MODEL_TYPE = ModelType.ACTION_PLANNER as string;
 
 export const ollamaPlugin: Plugin = {
   name: "zerollama",
-  description: "Zerollama/Ollama plugin for local LLM inference — text, embeddings, TTS, and ASR via the Ollama-compatible API with native zerollama optimizations",
+  description:
+    "Zerollama/Ollama plugin for local LLM inference — text, embeddings, TTS, and ASR via the Ollama-compatible API with native zerollama optimizations",
   autoEnable: {
-    envKeys: ["OLLAMA_BASE_URL"],
+    envKeys: ["OLLAMA_BASE_URL", "OLLAMA_API_ENDPOINT", "OLLAMA_API_URL"],
   },
 
   config: {
+    OLLAMA_BASE_URL: env.OLLAMA_BASE_URL ?? null,
     OLLAMA_API_ENDPOINT: env.OLLAMA_API_ENDPOINT ?? null,
+    OLLAMA_API_URL: env.OLLAMA_API_URL ?? null,
     OLLAMA_NANO_MODEL: env.OLLAMA_NANO_MODEL ?? null,
     OLLAMA_SMALL_MODEL: env.OLLAMA_SMALL_MODEL ?? null,
     OLLAMA_MEDIUM_MODEL: env.OLLAMA_MEDIUM_MODEL ?? null,
@@ -154,8 +161,7 @@ export const ollamaPlugin: Plugin = {
     OLLAMA_TTS_MODEL: env.OLLAMA_TTS_MODEL ?? env.OLLAMA_SPEECH_MODEL ?? null,
     OLLAMA_TTS_VOICE: env.OLLAMA_TTS_VOICE ?? env.OLLAMA_SPEECH_VOICE ?? null,
     OLLAMA_TTS_SPEED: env.OLLAMA_TTS_SPEED ?? env.OLLAMA_SPEECH_SPEED ?? null,
-    OLLAMA_TRANSCRIPTION_MODEL:
-      env.OLLAMA_TRANSCRIPTION_MODEL ?? env.OLLAMA_ASR_MODEL ?? null,
+    OLLAMA_TRANSCRIPTION_MODEL: env.OLLAMA_TRANSCRIPTION_MODEL ?? env.OLLAMA_ASR_MODEL ?? null,
   },
 
   async init(_config, runtime) {
@@ -188,8 +194,10 @@ export const ollamaPlugin: Plugin = {
         const { resolveOllamaHostFlavor } = await import("./utils/host-flavor");
         await resolveOllamaHostFlavor(apiBase, fetchImpl);
       } catch (flavorErr) {
+        // error-policy:J4 flavor detection is optional; unknown flavor keeps
+        // the stock Ollama-compatible path available.
         logger.debug(
-          `[ollama] host-flavor probe skipped: ${flavorErr instanceof Error ? flavorErr.message : String(flavorErr)}`,
+          `[ollama] host-flavor probe skipped: ${flavorErr instanceof Error ? flavorErr.message : String(flavorErr)}`
         );
       }
 
@@ -197,10 +205,10 @@ export const ollamaPlugin: Plugin = {
         const model = resolvePrewarmModel(runtime);
         if (model) {
           logger.info(`[ollama] prewarming model ${model}`);
-          scheduleOllamaPrewarm(apiBase, model, fetchImpl);
+          scheduleOllamaPrewarm(runtime, apiBase, model, fetchImpl);
         } else {
           logger.warn(
-            "[ollama] OLLAMA_PREWARM=1 but no OLLAMA_SMALL_MODEL/OLLAMA_LARGE_MODEL configured",
+            "[ollama] OLLAMA_PREWARM=1 but no OLLAMA_SMALL_MODEL/OLLAMA_LARGE_MODEL configured"
           );
         }
       }
@@ -277,12 +285,12 @@ export const ollamaPlugin: Plugin = {
     // (see tts-routes / asr-transcribe ollama-first lists).
     [ModelType.TEXT_TO_SPEECH]: async (
       runtime: IAgentRuntime,
-      params: Parameters<typeof handleTextToSpeech>[1],
+      params: Parameters<typeof handleTextToSpeech>[1]
     ) => handleTextToSpeech(runtime, params),
 
     [ModelType.TRANSCRIPTION]: async (
       runtime: IAgentRuntime,
-      params: Parameters<typeof handleTranscription>[1],
+      params: Parameters<typeof handleTranscription>[1]
     ) => handleTranscription(runtime, params),
   },
 
@@ -303,6 +311,7 @@ export const ollamaPlugin: Plugin = {
               // error-policy:J7 plugin self-test diagnostic — a probe failure is logged
               // as the test result; it must not throw out of the test harness.
               logger.error({ error }, "Error in ollama_test_url_validation");
+              runtime.reportError("plugin-zerollama.test.url-validation", error);
             }
           },
         },
@@ -318,6 +327,7 @@ export const ollamaPlugin: Plugin = {
             } catch (error) {
               // error-policy:J7 plugin self-test diagnostic — logged as the test result.
               logger.error({ error }, "Error in test_text_embedding");
+              runtime.reportError("plugin-zerollama.test.text-embedding", error);
             }
           },
         },
@@ -337,6 +347,7 @@ export const ollamaPlugin: Plugin = {
             } catch (error) {
               // error-policy:J7 plugin self-test diagnostic — logged as the test result.
               logger.error({ error }, "Error in test_text_large");
+              runtime.reportError("plugin-zerollama.test.text-large", error);
             }
           },
         },
@@ -356,6 +367,7 @@ export const ollamaPlugin: Plugin = {
             } catch (error) {
               // error-policy:J7 plugin self-test diagnostic — logged as the test result.
               logger.error({ error }, "Error in test_text_small");
+              runtime.reportError("plugin-zerollama.test.text-small", error);
             }
           },
         },
@@ -382,6 +394,7 @@ export const ollamaPlugin: Plugin = {
             } catch (error) {
               // error-policy:J7 plugin self-test diagnostic — logged as the test result.
               logger.error({ error }, "Error in test_structured_output_via_text_small");
+              runtime.reportError("plugin-zerollama.test.structured-small", error);
             }
           },
         },
@@ -400,6 +413,7 @@ export const ollamaPlugin: Plugin = {
             } catch (error) {
               // error-policy:J7 plugin self-test diagnostic — logged as the test result.
               logger.error({ error }, "Error in test_structured_output_via_text_large");
+              runtime.reportError("plugin-zerollama.test.structured-large", error);
             }
           },
         },

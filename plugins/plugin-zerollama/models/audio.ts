@@ -7,9 +7,10 @@
  * or multimodal backends on zerollama).
  */
 import type {
-  IAgentRuntime,
   TextToSpeechParams as CoreTextToSpeechParams,
   TranscriptionParams as CoreTranscriptionParams,
+  IAgentRuntime,
+  RecordLlmCallDetails,
 } from "@elizaos/core";
 import { logger, recordLlmCall } from "@elizaos/core";
 import {
@@ -26,9 +27,26 @@ type AudioInput = Blob | File | Buffer | Uint8Array | ArrayBuffer;
 type TranscriptionInput =
   | AudioInput
   | CoreTranscriptionParams
-  | { audio: AudioInput; mimeType?: string; language?: string; prompt?: string; model?: string }
+  | {
+      audio: AudioInput;
+      mimeType?: string;
+      language?: string;
+      prompt?: string;
+      model?: string;
+      signal?: AbortSignal;
+    }
   | string;
-type TtsInput = string | CoreTextToSpeechParams | { text: string; voice?: string; model?: string; speed?: number; format?: string };
+type TtsInput =
+  | string
+  | CoreTextToSpeechParams
+  | {
+      text: string;
+      voice?: string;
+      model?: string;
+      speed?: number;
+      format?: string;
+      signal?: AbortSignal;
+    };
 
 function isBuffer(value: unknown): value is Buffer {
   return typeof Buffer !== "undefined" && Buffer.isBuffer(value);
@@ -63,7 +81,8 @@ function sniffAudioMime(bytes: Uint8Array): string {
   if (bytes.length >= 3 && bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) {
     return "audio/mpeg";
   }
-  if (bytes.length >= 2 && bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0) {
+  const secondByte = bytes[1];
+  if (bytes[0] === 0xff && secondByte !== undefined && (secondByte & 0xe0) === 0xe0) {
     return "audio/mpeg";
   }
   return "audio/wav";
@@ -88,16 +107,50 @@ async function toBlob(audio: AudioInput, mimeHint?: string): Promise<Blob> {
     throw new Error("Unsupported audio input for Ollama transcription");
   }
   const mime = mimeHint ?? sniffAudioMime(bytes);
-  return new Blob([bytes], { type: mime });
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return new Blob([copy.buffer], { type: mime });
 }
 
-async function fetchAudioFromUrl(url: string): Promise<Blob> {
+async function fetchAudioFromUrl(url: string, signal?: AbortSignal): Promise<Blob> {
   // @trajectory-allow Fetches caller-provided audio bytes; no model inference happens here.
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch audio from URL: ${response.status}`);
+  const { fetchWithSsrfGuard } = await import("@elizaos/core/node");
+  const { response, release } = await fetchWithSsrfGuard({
+    url,
+    timeoutMs: 30_000,
+    signal,
+  });
+  try {
+    if (!response.ok) {
+      throw new Error(
+        `Failed to fetch Ollama transcription audio: ${response.status} ${response.statusText}`
+      );
+    }
+    const contentLength = Number(response.headers.get("content-length"));
+    if (Number.isFinite(contentLength) && contentLength > 25 * 1024 * 1024) {
+      throw new Error("Ollama transcription audio exceeds the 25 MiB limit");
+    }
+    const bytes = await response.arrayBuffer();
+    if (bytes.byteLength > 25 * 1024 * 1024) {
+      throw new Error("Ollama transcription audio exceeds the 25 MiB limit");
+    }
+    return new Blob([bytes], {
+      type: response.headers.get("content-type") ?? "audio/wav",
+    });
+  } finally {
+    await release();
   }
-  return response.blob();
+}
+
+async function readHttpErrorDetail(response: Response): Promise<string> {
+  try {
+    const detail = (await response.text()).trim();
+    return detail.length > 0 ? detail.slice(0, 500) : "empty response body";
+  } catch (error) {
+    // error-policy:J4 the status remains authoritative and the unavailable
+    // diagnostic body is represented explicitly.
+    return `response body unavailable: ${error instanceof Error ? error.message : String(error)}`;
+  }
 }
 
 function resolveFetch(runtime: IAgentRuntime): typeof fetch {
@@ -111,25 +164,37 @@ function isPiperVoiceTag(value: string): boolean {
 
 export async function handleTranscription(
   runtime: IAgentRuntime,
-  input: TranscriptionInput,
+  input: TranscriptionInput
 ): Promise<string> {
   if (!isOllamaTranscriptionEnabled(runtime)) {
     throw new Error(
-      "Ollama TRANSCRIPTION is disabled — set OLLAMA_TRANSCRIPTION_MODEL (or OLLAMA_ASR_MODEL) to a speech-capable tag",
+      "Ollama TRANSCRIPTION is disabled — set OLLAMA_TRANSCRIPTION_MODEL (or OLLAMA_ASR_MODEL) to a speech-capable tag"
     );
   }
 
   let model = getTranscriptionModel(runtime);
   let language: string | undefined;
   let prompt: string | undefined;
+  let signal: AbortSignal | undefined;
   let blob: Blob;
 
   if (typeof input === "string") {
     blob = await fetchAudioFromUrl(input);
-  } else if (isBlobOrFile(input) || isBuffer(input) || isUint8Array(input) || isArrayBuffer(input)) {
+  } else if (
+    isBlobOrFile(input) ||
+    isBuffer(input) ||
+    isUint8Array(input) ||
+    isArrayBuffer(input)
+  ) {
     blob = await toBlob(input);
-  } else if (input && typeof input === "object" && "audioUrl" in input && typeof input.audioUrl === "string") {
-    blob = await fetchAudioFromUrl(input.audioUrl);
+  } else if (
+    input &&
+    typeof input === "object" &&
+    "audioUrl" in input &&
+    typeof input.audioUrl === "string"
+  ) {
+    signal = input.signal;
+    blob = await fetchAudioFromUrl(input.audioUrl, signal);
     prompt = typeof input.prompt === "string" ? input.prompt : undefined;
   } else if (input && typeof input === "object" && "audio" in input) {
     const params = input as {
@@ -138,16 +203,18 @@ export async function handleTranscription(
       language?: string;
       prompt?: string;
       model?: string;
+      signal?: AbortSignal;
     };
     if (typeof params.model === "string" && params.model.trim()) {
       model = params.model.trim();
     }
     language = typeof params.language === "string" ? params.language : undefined;
     prompt = typeof params.prompt === "string" ? params.prompt : undefined;
+    signal = params.signal;
     blob = await toBlob(params.audio, params.mimeType);
   } else {
     throw new Error(
-      "TRANSCRIPTION expects Blob, File, Buffer, URL string, or { audio } / { audioUrl }",
+      "TRANSCRIPTION expects Blob, File, Buffer, URL string, or { audio } / { audioUrl }"
     );
   }
 
@@ -164,46 +231,44 @@ export async function handleTranscription(
   const url = `${apiBase}/v1/audio/transcriptions`;
   logger.debug(`[ollama] TRANSCRIPTION model=${model} url=${url}`);
 
-  return recordLlmCall(
-    runtime,
-    {
-      model,
-      systemPrompt: prompt ?? "",
-      userPrompt: `audio transcription request: filename=${filename} mimeType=${mimeType}`,
-      temperature: 0,
-      maxTokens: 0,
-      purpose: "external_llm",
-      actionType: "ollama.audio.transcriptions.create",
-    },
-    async (details) => {
-      const response = await resolveFetch(runtime)(url, {
-        method: "POST",
-        body: formData,
-      });
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => "Unknown error");
-        throw new Error(
-          `Ollama transcription failed: ${response.status} ${response.statusText} - ${errorText}`,
-        );
-      }
-      const result = (await response.json()) as { text?: string };
-      const text = typeof result.text === "string" ? result.text.trim() : "";
-      if (!text) {
-        throw new Error("Ollama transcription returned empty text");
-      }
-      details.response = text;
-      return text;
-    },
-  );
+  const details: RecordLlmCallDetails = {
+    model,
+    systemPrompt: prompt ?? "",
+    userPrompt: `audio transcription request: filename=${filename} mimeType=${mimeType}`,
+    temperature: 0,
+    maxTokens: 0,
+    purpose: "external_llm",
+    actionType: "ollama.audio.transcriptions.create",
+  };
+  return recordLlmCall(runtime, details, async () => {
+    const response = await resolveFetch(runtime)(url, {
+      method: "POST",
+      body: formData,
+      signal,
+    });
+    if (!response.ok) {
+      const errorText = await readHttpErrorDetail(response);
+      throw new Error(
+        `Ollama transcription failed: ${response.status} ${response.statusText} - ${errorText}`
+      );
+    }
+    const result = (await response.json()) as { text?: string };
+    const text = typeof result.text === "string" ? result.text.trim() : "";
+    if (!text) {
+      throw new Error("Ollama transcription returned empty text");
+    }
+    details.response = text;
+    return text;
+  });
 }
 
 export async function handleTextToSpeech(
   runtime: IAgentRuntime,
-  input: TtsInput,
+  input: TtsInput
 ): Promise<ArrayBuffer> {
   if (!isOllamaTtsEnabled(runtime)) {
     throw new Error(
-      "Ollama TEXT_TO_SPEECH is disabled — set OLLAMA_TTS_MODEL to a speech-capable tag (Piper)",
+      "Ollama TEXT_TO_SPEECH is disabled — set OLLAMA_TTS_MODEL to a speech-capable tag (Piper)"
     );
   }
 
@@ -212,11 +277,13 @@ export async function handleTextToSpeech(
   let model = getTtsModel(runtime);
   let speed = getTtsSpeed(runtime);
   let format = "wav";
+  let signal: AbortSignal | undefined;
 
   if (typeof input === "string") {
     text = input;
   } else {
     text = input.text;
+    signal = input.signal;
     if (typeof input.voice === "string" && input.voice.trim()) {
       voice = input.voice.trim();
     }
@@ -258,35 +325,33 @@ export async function handleTextToSpeech(
 
   logger.debug(`[ollama] TEXT_TO_SPEECH model=${model} voice=${voice ?? "(default)"} url=${url}`);
 
-  return recordLlmCall(
-    runtime,
-    {
-      model,
-      systemPrompt: "",
-      userPrompt: text,
-      temperature: 0,
-      maxTokens: 0,
-      purpose: "external_llm",
-      actionType: "ollama.audio.speech.create",
-    },
-    async (details) => {
-      const response = await resolveFetch(runtime)(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => "Unknown error");
-        throw new Error(
-          `Ollama TTS failed: ${response.status} ${response.statusText} - ${errorText}`,
-        );
-      }
-      const audioBuffer = await response.arrayBuffer();
-      if (audioBuffer.byteLength === 0) {
-        throw new Error("Ollama TTS returned empty audio");
-      }
-      details.response = `[audio bytes=${audioBuffer.byteLength}]`;
-      return audioBuffer;
-    },
-  );
+  const details: RecordLlmCallDetails = {
+    model,
+    systemPrompt: "",
+    userPrompt: text,
+    temperature: 0,
+    maxTokens: 0,
+    purpose: "external_llm",
+    actionType: "ollama.audio.speech.create",
+  };
+  return recordLlmCall(runtime, details, async () => {
+    const response = await resolveFetch(runtime)(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal,
+    });
+    if (!response.ok) {
+      const errorText = await readHttpErrorDetail(response);
+      throw new Error(
+        `Ollama TTS failed: ${response.status} ${response.statusText} - ${errorText}`
+      );
+    }
+    const audioBuffer = await response.arrayBuffer();
+    if (audioBuffer.byteLength === 0) {
+      throw new Error("Ollama TTS returned empty audio");
+    }
+    details.response = `[audio bytes=${audioBuffer.byteLength}]`;
+    return audioBuffer;
+  });
 }

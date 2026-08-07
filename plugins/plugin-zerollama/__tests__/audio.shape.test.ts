@@ -64,15 +64,11 @@ describe("Ollama audio handlers", () => {
   });
 
   it("throws when TTS model is unset", async () => {
-    await expect(handleTextToSpeech(runtime({}), "hi")).rejects.toThrow(
-      /OLLAMA_TTS_MODEL/,
-    );
+    await expect(handleTextToSpeech(runtime({}), "hi")).rejects.toThrow(/OLLAMA_TTS_MODEL/);
   });
 
   it("POSTs /v1/audio/speech and returns audio bytes", async () => {
-    const wav = new Uint8Array([
-      0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x41, 0x56, 0x45,
-    ]);
+    const wav = new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x41, 0x56, 0x45]);
     const fetchMock = vi.fn(async () => new Response(wav, { status: 200 }));
     const rt = {
       ...runtime({
@@ -87,7 +83,7 @@ describe("Ollama audio handlers", () => {
     expect(audio.byteLength).toBe(wav.byteLength);
     expect(fetchMock).toHaveBeenCalledWith(
       "http://remote:2083/v1/audio/speech",
-      expect.objectContaining({ method: "POST" }),
+      expect.objectContaining({ method: "POST" })
     );
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
     expect(JSON.parse(String(init.body))).toEqual({
@@ -99,9 +95,7 @@ describe("Ollama audio handlers", () => {
   });
 
   it("treats Piper voice tags passed as model as the voice field", async () => {
-    const wav = new Uint8Array([
-      0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x41, 0x56, 0x45,
-    ]);
+    const wav = new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x41, 0x56, 0x45]);
     const fetchMock = vi.fn(async () => new Response(wav, { status: 200 }));
     const rt = {
       ...runtime({
@@ -126,11 +120,12 @@ describe("Ollama audio handlers", () => {
   });
 
   it("POSTs multipart /v1/audio/transcriptions", async () => {
-    const fetchMock = vi.fn(async () =>
-      new Response(JSON.stringify({ text: "hello world" }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ text: "hello world" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
     );
     const rt = {
       ...runtime({
@@ -147,7 +142,7 @@ describe("Ollama audio handlers", () => {
     expect(text).toBe("hello world");
     expect(fetchMock).toHaveBeenCalledWith(
       "http://remote:2083/v1/audio/transcriptions",
-      expect.objectContaining({ method: "POST" }),
+      expect.objectContaining({ method: "POST" })
     );
     const body = fetchMock.mock.calls[0]?.[1]?.body;
     expect(body).toBeInstanceOf(FormData);

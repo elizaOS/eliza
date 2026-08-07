@@ -62,9 +62,7 @@ describe("rewriteOllamaChatBody", () => {
 describe("wrapOllamaNativeChatFetch", () => {
   it("rewrites POST /api/chat bodies before calling the base fetch", async () => {
     const baseFetch = vi.fn(async () => new Response("{}", { status: 200 }));
-    const wrapped = wrapOllamaNativeChatFetch(
-      baseFetch as unknown as typeof fetch,
-    );
+    const wrapped = wrapOllamaNativeChatFetch(baseFetch as unknown as typeof fetch);
 
     await wrapped("http://192.168.255.164:8080/api/chat", {
       method: "POST",
@@ -90,9 +88,7 @@ describe("wrapOllamaNativeChatFetch", () => {
   it("leaves non-chat requests untouched", async () => {
     const body = JSON.stringify({ model: "embeddinggemma:300m", input: "hi" });
     const baseFetch = vi.fn(async () => new Response("{}", { status: 200 }));
-    const wrapped = wrapOllamaNativeChatFetch(
-      baseFetch as unknown as typeof fetch,
-    );
+    const wrapped = wrapOllamaNativeChatFetch(baseFetch as unknown as typeof fetch);
 
     await wrapped("http://192.168.255.164:8080/api/embed", {
       method: "POST",

@@ -34,27 +34,19 @@ export function embedMaxCharsForContext(contextLength: number): number {
   }
   return Math.max(
     256,
-    Math.min(
-      EMBED_SOFT_CAP_CHARS,
-      Math.floor(contextLength * CONSERVATIVE_CHARS_PER_TOKEN),
-    ),
+    Math.min(EMBED_SOFT_CAP_CHARS, Math.floor(contextLength * CONSERVATIVE_CHARS_PER_TOKEN))
   );
 }
 
-export function truncateEmbedInput(
-  input: string | string[],
-  maxChars: number,
-): string | string[] {
+export function truncateEmbedInput(input: string | string[], maxChars: number): string | string[] {
   if (typeof input === "string") {
     if (input.length <= maxChars) return input;
     logger.warn(
-      `[Ollama] Embedding input too long (${input.length} chars), truncating to ${maxChars}`,
+      `[Ollama] Embedding input too long (${input.length} chars), truncating to ${maxChars}`
     );
     return input.slice(0, maxChars);
   }
-  return input.map((text) =>
-    text.length > maxChars ? text.slice(0, maxChars) : text,
-  );
+  return input.map((text) => (text.length > maxChars ? text.slice(0, maxChars) : text));
 }
 
 export function isEmbedContextOverflow(error: unknown): boolean {
@@ -67,9 +59,7 @@ export function isEmbedContextOverflow(error: unknown): boolean {
             : ""
         }`
       : String(error);
-  return /exceeds maximum context length|context length|too long|n_ctx/i.test(
-    message,
-  );
+  return /exceeds maximum context length|context length|too long|n_ctx/i.test(message);
 }
 
 /** Read `context_length` from `/api/tags` (cached per apiBase+model). */
@@ -104,9 +94,7 @@ export async function resolveEmbedMaxChars(options: {
       }>;
     };
     const models = Array.isArray(body.models) ? body.models : [];
-    const hit = models.find(
-      (row) => row.name === options.model || row.model === options.model,
-    );
+    const hit = models.find((row) => row.name === options.model || row.model === options.model);
     const ctx = hit?.details?.context_length;
     if (typeof ctx === "number" && ctx > 0) {
       contextCache.set(cacheKey, ctx);
@@ -120,7 +108,7 @@ export async function resolveEmbedMaxChars(options: {
         model: options.model,
         error: error instanceof Error ? error.message : String(error),
       },
-      "[Ollama] Could not probe embedding context_length; using safe default",
+      "[Ollama] Could not probe embedding context_length; using safe default"
     );
   }
 

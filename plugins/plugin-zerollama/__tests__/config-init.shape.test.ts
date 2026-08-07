@@ -3,7 +3,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { shouldEnable } from "../auto-enable";
 import { ollamaPlugin } from "../plugin";
-import { getApiBase, getBaseURL } from "../utils/config";
+import { getApiBase, getBaseURL, getSetting } from "../utils/config";
 
 function runtime(settings: Record<string, string | undefined> = {}): IAgentRuntime {
   return {
@@ -48,6 +48,23 @@ describe("Ollama config and init plumbing", () => {
     );
   });
 
+  it("falls through a blank runtime override to the environment and default", () => {
+    const previous = process.env.OLLAMA_BASE_URL;
+    try {
+      process.env.OLLAMA_BASE_URL = " http://env-host:11434 ";
+      expect(getSetting(runtime({ OLLAMA_BASE_URL: "   " }), "OLLAMA_BASE_URL", "fallback")).toBe(
+        "http://env-host:11434"
+      );
+      delete process.env.OLLAMA_BASE_URL;
+      expect(getSetting(runtime({ OLLAMA_BASE_URL: "" }), "OLLAMA_BASE_URL", "fallback")).toBe(
+        "fallback"
+      );
+    } finally {
+      if (previous === undefined) delete process.env.OLLAMA_BASE_URL;
+      else process.env.OLLAMA_BASE_URL = previous;
+    }
+  });
+
   it("does not throw when init validation fetch fails with a non-Error value", async () => {
     const fetchMock = vi.fn(async () => {
       throw "socket closed";
@@ -64,7 +81,7 @@ describe("Ollama config and init plumbing", () => {
       expect.objectContaining({
         method: "GET",
         headers: { "Content-Type": "application/json" },
-      }),
+      })
     );
   });
 
@@ -88,11 +105,11 @@ describe("Ollama config and init plumbing", () => {
       expect.objectContaining({
         method: "GET",
         headers: { "Content-Type": "application/json" },
-      }),
+      })
     );
     expect(fetchMock).toHaveBeenCalledWith(
       "http://remote:11434/api/version",
-      expect.objectContaining({ method: "GET" }),
+      expect.objectContaining({ method: "GET" })
     );
   });
 });

@@ -5,5 +5,4 @@
  * implementing the Ollama HTTP API. Auto-detects zerollama vs stock ollama
  * via GET /api/version and routes to the native zerollama client when available.
  */
-export { ollamaPlugin, ollamaPlugin as zerollamaPlugin } from "./plugin";
-export { ollamaPlugin as default } from "./plugin";
+export { ollamaPlugin, ollamaPlugin as zerollamaPlugin, ollamaPlugin as default } from "./plugin";

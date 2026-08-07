@@ -112,7 +112,7 @@ describe("Ollama embeddings", () => {
     const { runtime } = createRuntime();
     // No /api/tags probe → safe default (1200) for unknown embedding context.
     (runtime.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-      new Response("{}", { status: 500 }),
+      new Response("{}", { status: 500 })
     );
     const longText = "x".repeat(5_000);
 

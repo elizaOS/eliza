@@ -30,6 +30,8 @@ function isApiChatUrl(url: string): boolean {
     const { pathname } = new URL(url);
     return pathname === "/api/chat" || pathname.endsWith("/api/chat");
   } catch {
+    // error-policy:J3 non-standard RequestInfo strings are checked with the
+    // narrow path regex; no rewritten URL or body is fabricated.
     return /\/api\/chat(?:\?|$)/.test(url);
   }
 }
@@ -50,10 +52,7 @@ export function rewriteOllamaChatBody(body: JsonObject): JsonObject {
     options.top_p = body.top_p;
     changed = true;
   }
-  if (
-    typeof body.max_output_tokens === "number" &&
-    options.num_predict === undefined
-  ) {
+  if (typeof body.max_output_tokens === "number" && options.num_predict === undefined) {
     options.num_predict = body.max_output_tokens;
     changed = true;
   }
@@ -88,9 +87,7 @@ export function rewriteOllamaChatBody(body: JsonObject): JsonObject {
 }
 
 /** Wrap `fetch` so POST `/api/chat` JSON bodies use native Ollama field names. */
-export function wrapOllamaNativeChatFetch(
-  baseFetch: typeof fetch = fetch,
-): typeof fetch {
+export function wrapOllamaNativeChatFetch(baseFetch: typeof fetch = fetch): typeof fetch {
   return (async (input, init) => {
     const url = requestUrl(input);
     const method = (init?.method ?? "GET").toUpperCase();
@@ -115,6 +112,8 @@ export function wrapOllamaNativeChatFetch(
     try {
       parsed = JSON.parse(raw);
     } catch {
+      // error-policy:J3 non-JSON request bodies pass through unchanged; only
+      // validated JSON objects are eligible for wire normalization.
       return baseFetch(input, init);
     }
 
@@ -136,8 +135,6 @@ export function wrapOllamaNativeChatFetch(
 }
 
 /** Prefer `runtime.fetch` when present, always wrapped for `/api/chat` compat. */
-export function resolveOllamaFetch(runtime: {
-  fetch?: typeof fetch;
-}): typeof fetch {
+export function resolveOllamaFetch(runtime: { fetch?: typeof fetch | null }): typeof fetch {
   return wrapOllamaNativeChatFetch(runtime.fetch ?? fetch);
 }

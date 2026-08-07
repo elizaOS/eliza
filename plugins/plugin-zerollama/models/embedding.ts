@@ -22,10 +22,7 @@ import {
   resolveEmbedMaxChars,
   truncateEmbedInput,
 } from "../utils/embed-context";
-import {
-  isZerollamaFlavor,
-  resolveOllamaHostFlavor,
-} from "../utils/host-flavor";
+import { isZerollamaFlavor, resolveOllamaHostFlavor } from "../utils/host-flavor";
 import { emitModelUsed, estimateEmbeddingUsage, normalizeTokenUsage } from "../utils/modelUsage";
 import { resolveOllamaFetch } from "../utils/ollama-chat-compat-fetch";
 import { zerollamaEmbed, zerollamaEmbedMany } from "../utils/zerollama-native";
@@ -35,7 +32,7 @@ const INIT_PROBE_TEXT = "dimension probe";
 const MAX_OVERFLOW_RETRIES = 3;
 
 function extractText(
-  params: TextEmbeddingParams | string | null | { texts?: string[] },
+  params: TextEmbeddingParams | string | null | { texts?: string[] }
 ): string | string[] | null {
   if (params === null) {
     return null;
@@ -51,15 +48,12 @@ function extractText(
     // Document / batch callers sometimes hit TEXT_EMBEDDING with `{ texts }`
     // instead of TEXT_EMBEDDING_BATCH — accept and let the native client embed
     // the array in one /api/embed round-trip.
-    if (
-      Array.isArray(row.texts) &&
-      row.texts.every((item) => typeof item === "string")
-    ) {
+    if (Array.isArray(row.texts) && row.texts.every((item) => typeof item === "string")) {
       return row.texts as string[];
     }
   }
   throw new Error(
-    "Invalid input format for embedding: expected string, { text: string }, or { texts: string[] }",
+    "Invalid input format for embedding: expected string, { text: string }, or { texts: string[] }"
   );
 }
 
@@ -75,6 +69,7 @@ export async function handleTextEmbedding(
 ): Promise<number[]> {
   const text = extractText(params);
   const isInitProbe = text === null;
+  const signal = typeof params === "object" && params !== null ? params.signal : undefined;
 
   if (!isInitProbe) {
     const empty =
@@ -90,7 +85,7 @@ export async function handleTextEmbedding(
     const baseURL = getBaseURL(runtime);
     const customFetch = resolveOllamaFetch(runtime);
     const modelName = getEmbeddingModel(runtime);
-    await ensureModelAvailable(modelName, baseURL, customFetch);
+    await ensureModelAvailable(modelName, baseURL, customFetch, signal);
 
     const apiBase = baseURL.endsWith("/api") ? baseURL.slice(0, -4) : baseURL;
     let maxChars = await resolveEmbedMaxChars({
@@ -99,10 +94,7 @@ export async function handleTextEmbedding(
       fetchImpl: customFetch,
       envMaxChars: getSetting(runtime, "OLLAMA_EMBED_MAX_CHARS"),
     });
-    let embeddingText = truncateEmbedInput(
-      isInitProbe ? INIT_PROBE_TEXT : text,
-      maxChars,
-    );
+    let embeddingText = truncateEmbedInput(isInitProbe ? INIT_PROBE_TEXT : text, maxChars);
 
     const flavor = await resolveOllamaHostFlavor(baseURL, customFetch);
     const runZerollama = async (value: string | string[]): Promise<number[]> => {
@@ -112,13 +104,14 @@ export async function handleTextEmbedding(
           model: modelName,
           input: value,
           fetchImpl: customFetch,
+          signal,
         });
         if (!isInitProbe) {
           emitModelUsed(
             runtime,
             ModelType.TEXT_EMBEDDING,
             modelName,
-            estimateEmbeddingUsage(value.join("\n")),
+            estimateEmbeddingUsage(value.join("\n"))
           );
         }
         return vectors as unknown as number[];
@@ -128,14 +121,10 @@ export async function handleTextEmbedding(
         model: modelName,
         input: value,
         fetchImpl: customFetch,
+        signal,
       });
       if (!isInitProbe) {
-        emitModelUsed(
-          runtime,
-          ModelType.TEXT_EMBEDDING,
-          modelName,
-          estimateEmbeddingUsage(value),
-        );
+        emitModelUsed(runtime, ModelType.TEXT_EMBEDDING, modelName, estimateEmbeddingUsage(value));
       }
       return embedding;
     };
@@ -149,13 +138,14 @@ export async function handleTextEmbedding(
       const { embedding, usage } = await embed({
         model: ollama.embedding(modelName) as EmbeddingModel,
         value: embedValue,
+        ...(signal ? { abortSignal: signal } : {}),
       });
       if (!isInitProbe) {
         emitModelUsed(
           runtime,
           ModelType.TEXT_EMBEDDING,
           modelName,
-          normalizeTokenUsage(usage) ?? estimateEmbeddingUsage(embedValue),
+          normalizeTokenUsage(usage) ?? estimateEmbeddingUsage(embedValue)
         );
       }
       return embedding;
@@ -172,6 +162,8 @@ export async function handleTextEmbedding(
       try {
         return await runOnce(embeddingText);
       } catch (error) {
+        // error-policy:J3 a recognized provider context-overflow response
+        // sanitizes the explicit input size and retries; all other errors throw.
         if (!isEmbedContextOverflow(error) || attempt === MAX_OVERFLOW_RETRIES) {
           throw error;
         }
@@ -181,13 +173,10 @@ export async function handleTextEmbedding(
           throw error;
         }
         logger.warn(
-          `[Ollama] Embedding rejected as over-context (${current} chars); retrying at ${nextCap}`,
+          `[Ollama] Embedding rejected as over-context (${current} chars); retrying at ${nextCap}`
         );
         maxChars = nextCap;
-        embeddingText = truncateEmbedInput(
-          isInitProbe ? INIT_PROBE_TEXT : text,
-          maxChars,
-        );
+        embeddingText = truncateEmbedInput(isInitProbe ? INIT_PROBE_TEXT : text, maxChars);
       }
     }
 
@@ -203,10 +192,7 @@ export async function handleTextEmbedding(
       typeof (error as { responseBody?: unknown }).responseBody === "string"
         ? {
             message: error.message,
-            responseBody: (error as { responseBody: string }).responseBody.slice(
-              0,
-              400,
-            ),
+            responseBody: (error as { responseBody: string }).responseBody.slice(0, 400),
           }
         : error;
     logger.error({ error: detail }, "Error in TEXT_EMBEDDING model");

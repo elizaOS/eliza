@@ -44,6 +44,7 @@ function createRuntime() {
     character: { system: "system prompt" },
     emitEvent: vi.fn(),
     getSetting: vi.fn(() => undefined),
+    reportError: vi.fn(),
   };
 
   return runtime as IAgentRuntime;
@@ -57,6 +58,7 @@ function createRuntimeWithEvents() {
       events.push({ event, payload });
     }),
     getSetting: vi.fn(() => undefined),
+    reportError: vi.fn(),
   };
 
   return { runtime: runtime as unknown as IAgentRuntime, events };
@@ -167,6 +169,24 @@ describe("Ollama native text plumbing", () => {
 
     const callArg = generateTextMock.mock.calls[0][0] as Record<string, unknown>;
     expect(callArg.toolChoice).toBe("required");
+  });
+
+  it("forwards request cancellation to the AI SDK transport", async () => {
+    generateTextMock.mockResolvedValue({
+      text: "ok",
+      toolCalls: [],
+      finishReason: "stop",
+      usage: undefined,
+    });
+    const controller = new AbortController();
+
+    await handleTextSmall(createRuntime(), {
+      prompt: "cancel safely",
+      signal: controller.signal,
+    });
+
+    const callArg = generateTextMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(callArg.abortSignal).toBe(controller.signal);
   });
 
   it("omits structured output when tools and responseSchema are both set", async () => {

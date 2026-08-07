@@ -8,12 +8,7 @@
  * without `tool_choice`.
  */
 
-import type {
-  GenerateTextResult,
-  TextStreamResult,
-  TokenUsage,
-  ToolCall,
-} from "@elizaos/core";
+import type { GenerateTextResult, TextStreamResult, TokenUsage, ToolCall } from "@elizaos/core";
 import type { ModelMessage, ToolSet } from "ai";
 import { estimateUsage } from "./modelUsage";
 
@@ -81,20 +76,19 @@ function contentToString(content: unknown): string {
   for (const part of content) {
     const row = asRecord(part);
     if (typeof row.text === "string") parts.push(row.text);
-    else if (row.type === "text" && typeof row.text === "string") parts.push(row.text);
     else if (typeof part === "string") parts.push(part);
   }
   return parts.join("");
 }
 
-function parseToolArguments(
-  value: unknown,
-): Record<string, unknown> | string {
+function parseToolArguments(value: unknown): Record<string, unknown> | string {
   if (typeof value === "string") {
     try {
       const parsed = JSON.parse(value) as unknown;
       return asRecord(parsed);
     } catch {
+      // error-policy:J3 tool arguments may be either JSON or an explicit raw
+      // string under the public ToolCall contract.
       return value;
     }
   }
@@ -136,9 +130,7 @@ export function toZerollamaChatMessages(args: {
       const toolCallsRaw = Array.isArray(row.toolCalls)
         ? row.toolCalls
         : Array.isArray(row.content)
-          ? (row.content as unknown[]).filter(
-              (part) => asRecord(part).type === "tool-call",
-            )
+          ? (row.content as unknown[]).filter((part) => asRecord(part).type === "tool-call")
           : [];
       const tool_calls = toolCallsRaw
         .map((call) => {
@@ -162,10 +154,8 @@ export function toZerollamaChatMessages(args: {
         role: "assistant",
         content: contentToString(
           Array.isArray(row.content)
-            ? (row.content as unknown[]).filter(
-                (part) => asRecord(part).type !== "tool-call",
-              )
-            : row.content,
+            ? (row.content as unknown[]).filter((part) => asRecord(part).type !== "tool-call")
+            : row.content
         ),
         ...(tool_calls.length > 0 ? { tool_calls } : {}),
       });
@@ -195,8 +185,7 @@ export function toZerollamaTools(tools: ToolSet | undefined): unknown[] | undefi
   const out: unknown[] = [];
   for (const [name, rawTool] of Object.entries(tools)) {
     const tool = asRecord(rawTool);
-    const description =
-      typeof tool.description === "string" ? tool.description : undefined;
+    const description = typeof tool.description === "string" ? tool.description : undefined;
     const schemaHolder = tool.inputSchema ?? tool.parameters;
     let parameters: Record<string, unknown> = { type: "object", properties: {} };
     if (schemaHolder && typeof schemaHolder === "object") {
@@ -269,6 +258,8 @@ function mapWireToolCalls(raw: unknown[] | undefined): ToolCall[] {
             try {
               return JSON.parse(argsValue) as unknown;
             } catch {
+              // error-policy:J3 preserve explicitly non-JSON tool arguments as
+              // a string; callers can validate the declared schema.
               return argsValue;
             }
           })()
@@ -288,12 +279,9 @@ function usageFromCounts(
   promptTokens: number | undefined,
   completionTokens: number | undefined,
   promptForEstimate: string,
-  text: string,
+  text: string
 ): TokenUsage {
-  if (
-    typeof promptTokens === "number" ||
-    typeof completionTokens === "number"
-  ) {
+  if (typeof promptTokens === "number" || typeof completionTokens === "number") {
     return {
       promptTokens: promptTokens ?? 0,
       completionTokens: completionTokens ?? 0,
@@ -306,8 +294,15 @@ function usageFromCounts(
 async function readErrorBody(response: Response): Promise<string> {
   try {
     return await response.text();
-  } catch {
-    return "";
+  } catch (error) {
+    // error-policy:J2 response bytes are part of the provider contract; preserve
+    // the read failure instead of fabricating an empty successful body.
+    throw new ZerollamaHttpError({
+      message: `Unable to read zerollama HTTP response: ${error instanceof Error ? error.message : String(error)}`,
+      statusCode: response.status,
+      responseBody: "response body unavailable",
+      url: response.url || "unknown",
+    });
   }
 }
 
@@ -336,6 +331,7 @@ export async function zerollamaChatComplete(args: {
   fetchImpl?: typeof fetch;
   promptForEstimate: string;
   modelName: string;
+  signal?: AbortSignal;
 }): Promise<GenerateTextResult> {
   const fetchImpl = args.fetchImpl ?? fetch;
   const url = `${args.apiBase.replace(/\/+$/, "")}/api/chat`;
@@ -343,6 +339,7 @@ export async function zerollamaChatComplete(args: {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ...args.body, stream: false }),
+    signal: args.signal,
   });
   const raw = await readErrorBody(response);
   if (!response.ok) {
@@ -357,6 +354,8 @@ export async function zerollamaChatComplete(args: {
   try {
     parsed = JSON.parse(raw) as ChatStreamEvent;
   } catch {
+    // error-policy:J3 a successful chat response must be valid JSON; translate
+    // invalid provider output into a typed boundary error.
     throw new ZerollamaHttpError({
       message: "zerollama /api/chat returned non-JSON",
       statusCode: response.status,
@@ -378,7 +377,7 @@ export async function zerollamaChatComplete(args: {
     parsed.prompt_eval_count,
     parsed.eval_count,
     args.promptForEstimate,
-    text,
+    text
   );
   return {
     text,
@@ -397,6 +396,7 @@ export function zerollamaChatStream(args: {
   modelName: string;
   /** When true, suppress text deltas and yield a single planner JSON chunk at end. */
   plannerToolArgsOnly?: boolean;
+  signal?: AbortSignal;
 }): TextStreamResult & { toolCalls?: Promise<ToolCall[]> } {
   const fetchImpl = args.fetchImpl ?? fetch;
   const url = `${args.apiBase.replace(/\/+$/, "")}/api/chat`;
@@ -435,6 +435,7 @@ export function zerollamaChatStream(args: {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...args.body, stream: true }),
+        signal: args.signal,
       });
       if (!response.ok) {
         const raw = await readErrorBody(response);
@@ -470,7 +471,14 @@ export function zerollamaChatStream(args: {
           try {
             event = JSON.parse(trimmed) as ChatStreamEvent;
           } catch {
-            continue;
+            // error-policy:J3 every non-empty NDJSON line is a protocol event;
+            // malformed data is an explicit provider failure, never skipped.
+            throw new ZerollamaHttpError({
+              message: "zerollama /api/chat stream returned malformed NDJSON",
+              statusCode: response.status,
+              responseBody: trimmed,
+              url,
+            });
           }
           if (event.error) {
             throw new ZerollamaHttpError({
@@ -497,9 +505,7 @@ export function zerollamaChatStream(args: {
             completionTokens = event.eval_count;
           }
           if (event.done) {
-            finishReason =
-              event.done_reason ??
-              (toolCalls.length > 0 ? "tool-calls" : "stop");
+            finishReason = event.done_reason ?? (toolCalls.length > 0 ? "tool-calls" : "stop");
           }
         }
       }
@@ -517,19 +523,25 @@ export function zerollamaChatStream(args: {
       resolveTools(toolCalls);
       resolveFinish(finishReason);
       resolveUsage(
-        usageFromCounts(
-          promptTokens,
-          completionTokens,
-          args.promptForEstimate,
-          fullText,
-        ),
+        usageFromCounts(promptTokens, completionTokens, args.promptForEstimate, fullText)
       );
     } catch (err) {
-      rejectText(err);
+      // error-policy:J2 attach the stream endpoint to raw transport failures
+      // while preserving already-classified HTTP/protocol errors.
+      const failure =
+        err instanceof ZerollamaHttpError
+          ? err
+          : new ZerollamaHttpError({
+              message: `zerollama /api/chat stream failed: ${err instanceof Error ? err.message : String(err)}`,
+              statusCode: 0,
+              responseBody: "stream transport failed",
+              url,
+            });
+      rejectText(failure);
       resolveTools(toolCalls);
       resolveFinish(finishReason);
       resolveUsage(undefined);
-      throw err;
+      throw failure;
     }
   }
 
@@ -546,9 +558,7 @@ export function zerollamaChatStream(args: {
  * Zerollama EmbedRequest accepts only `string | string[]`. Objects / numbers
  * yield HTTP 400 `invalid input type`. Coerce common caller shapes before wire.
  */
-export function normalizeZerollamaEmbedInput(
-  input: unknown,
-): string | string[] {
+export function normalizeZerollamaEmbedInput(input: unknown): string | string[] {
   if (typeof input === "string") return input;
   if (Array.isArray(input)) {
     if (input.every((item) => typeof item === "string")) {
@@ -563,7 +573,7 @@ export function normalizeZerollamaEmbedInput(
               item !== null &&
               typeof (item as { text?: unknown }).text === "string"
             ? (item as { text: string }).text
-            : String(item),
+            : String(item)
     );
   }
   if (input && typeof input === "object") {
@@ -580,6 +590,8 @@ function parseEmbedVectors(raw: string, url: string): number[][] {
   try {
     parsed = JSON.parse(raw);
   } catch {
+    // error-policy:J3 a successful embed response must be valid JSON; translate
+    // invalid provider output into a typed boundary error.
     throw new ZerollamaHttpError({
       message: "zerollama embed returned non-JSON",
       statusCode: 502,
@@ -618,6 +630,7 @@ export async function zerollamaEmbed(args: {
   model: string;
   input: unknown;
   fetchImpl?: typeof fetch;
+  signal?: AbortSignal;
 }): Promise<number[]> {
   const vectors = await zerollamaEmbedMany(args);
   const vector = vectors[0];
@@ -633,6 +646,7 @@ export async function zerollamaEmbedMany(args: {
   model: string;
   input: unknown;
   fetchImpl?: typeof fetch;
+  signal?: AbortSignal;
 }): Promise<number[][]> {
   const fetchImpl = args.fetchImpl ?? fetch;
   const apiBase = args.apiBase.replace(/\/+$/, "");
@@ -648,6 +662,7 @@ export async function zerollamaEmbedMany(args: {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: nativeBody,
+    signal: args.signal,
   });
   const nativeRaw = await readErrorBody(nativeResponse);
   if (nativeResponse.ok) {
@@ -674,6 +689,7 @@ export async function zerollamaEmbedMany(args: {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ model, input }),
+    signal: args.signal,
   });
   const v1Raw = await readErrorBody(v1Response);
   if (!v1Response.ok) {
@@ -687,7 +703,7 @@ export async function zerollamaEmbedMany(args: {
   const v1Vectors = parseEmbedVectors(v1Raw, v1Url);
   if (v1Vectors.length === 0 || v1Vectors.some((row) => row.length === 0)) {
     throw new Error(
-      `[Ollama] zerollama embed returned an empty embedding (model=${model}; /api/embed body=${nativeRaw.slice(0, 120)})`,
+      `[Ollama] zerollama embed returned an empty embedding (model=${model}; /api/embed body=${nativeRaw.slice(0, 120)})`
     );
   }
   return v1Vectors;
@@ -695,7 +711,7 @@ export async function zerollamaEmbedMany(args: {
 
 /** Extract a JSON Schema object from Eliza/AI SDK `responseSchema` shapes. */
 export function extractFormatFromResponseSchema(
-  responseSchema: unknown,
+  responseSchema: unknown
 ): string | Record<string, unknown> | undefined {
   if (responseSchema == null) return undefined;
   if (typeof responseSchema === "string") return responseSchema;

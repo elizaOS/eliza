@@ -20,10 +20,7 @@ import {
   renderChatMessagesForPrompt,
   resolveEffectiveSystemPrompt,
 } from "@elizaos/core";
-import {
-  normalizeNativeMessages,
-  normalizeNativeTools,
-} from "../utils/ai-sdk-wire";
+import { normalizeNativeMessages, normalizeNativeTools } from "../utils/ai-sdk-wire";
 import { isOllamaStructuredOutputDisabled } from "../utils/config";
 import { emitModelUsed, estimateUsage, normalizeTokenUsage } from "../utils/modelUsage";
 import {
@@ -45,10 +42,7 @@ type GenerateTextParamsWithNativeOptions = Omit<GenerateTextParams, "responseSch
 type NativeTextModelResult = string & GenerateTextResult;
 
 function isPlannerModelType(modelType: ModelTypeName): boolean {
-  return (
-    modelType === ModelType.RESPONSE_HANDLER ||
-    modelType === ModelType.ACTION_PLANNER
-  );
+  return modelType === ModelType.RESPONSE_HANDLER || modelType === ModelType.ACTION_PLANNER;
 }
 
 export async function handleZerollamaText(args: {
@@ -73,24 +67,23 @@ export async function handleZerollamaText(args: {
   let responseSchema: unknown = extended.responseSchema;
   if (isOllamaStructuredOutputDisabled(runtime) && responseSchema) {
     logger.debug(
-      "[Ollama/zerollama] OLLAMA_DISABLE_STRUCTURED_OUTPUT is set — ignoring responseSchema",
+      "[Ollama/zerollama] OLLAMA_DISABLE_STRUCTURED_OUTPUT is set — ignoring responseSchema"
     );
     responseSchema = undefined;
   }
   if (tools && responseSchema) {
     logger.debug(
-      "[Ollama/zerollama] tools and responseSchema both present — omitting structured format",
+      "[Ollama/zerollama] tools and responseSchema both present — omitting structured format"
     );
     responseSchema = undefined;
   }
 
   const wireRaw = dropDuplicateLeadingSystemMessage(
     extended.messages as Parameters<typeof dropDuplicateLeadingSystemMessage>[0],
-    system,
+    system
   );
   const normalizedMessages = normalizeNativeMessages(wireRaw);
-  const hasChatMessages =
-    Array.isArray(normalizedMessages) && normalizedMessages.length > 0;
+  const hasChatMessages = Array.isArray(normalizedMessages) && normalizedMessages.length > 0;
 
   const renderedPrompt = hasChatMessages
     ? ""
@@ -107,17 +100,13 @@ export async function handleZerollamaText(args: {
   });
 
   const ollamaTools = toZerollamaTools(tools);
-  const format = responseSchema
-    ? extractFormatFromResponseSchema(responseSchema)
-    : undefined;
+  const format = responseSchema ? extractFormatFromResponseSchema(responseSchema) : undefined;
 
   const shouldReturnNative = Boolean(
-    hasChatMessages || tools || extended.toolChoice || format !== undefined,
+    hasChatMessages || tools || extended.toolChoice || format !== undefined
   );
 
-  const promptForEstimate = hasChatMessages
-    ? JSON.stringify(normalizedMessages)
-    : renderedPrompt;
+  const promptForEstimate = hasChatMessages ? JSON.stringify(normalizedMessages) : renderedPrompt;
 
   const resolvedApiBase = baseURL.endsWith("/api")
     ? baseURL.slice(0, -4)
@@ -147,9 +136,12 @@ export async function handleZerollamaText(args: {
       promptForEstimate,
       modelName: model,
       plannerToolArgsOnly,
+      signal: params.signal,
     });
 
     const usagePromise = Promise.resolve(streamResult.usage).then(async (usage) => {
+      // error-policy:J5 the text promise's failure is also surfaced by the
+      // native textStream; this telemetry observer alone may use no text.
       const text = await streamResult.text.catch(() => "");
       const resolved = normalizeTokenUsage(usage) ?? estimateUsage(promptForEstimate, text);
       if (resolved) emitModelUsed(runtime, modelType, model, resolved);
@@ -160,7 +152,15 @@ export async function handleZerollamaText(args: {
       for await (const chunk of streamResult.textStream) {
         yield chunk;
       }
-      await usagePromise.catch(() => undefined);
+      // error-policy:J7 usage emission must not turn a completed stream into a
+      // failed model response, but diagnostics remain observable.
+      await usagePromise.catch((error) => {
+        logger.warn({ error, model }, "[Ollama/zerollama] Stream usage unavailable");
+        runtime.reportError("plugin-zerollama.native-stream-usage", error, {
+          model,
+          modelType,
+        });
+      });
     }
 
     return {
@@ -178,11 +178,10 @@ export async function handleZerollamaText(args: {
     fetchImpl,
     promptForEstimate,
     modelName: model,
+    signal: params.signal,
   });
 
-  const usage =
-    normalizeTokenUsage(result.usage) ??
-    estimateUsage(promptForEstimate, result.text);
+  const usage = normalizeTokenUsage(result.usage) ?? estimateUsage(promptForEstimate, result.text);
   emitModelUsed(runtime, modelType, model, usage);
 
   if (shouldReturnNative) {

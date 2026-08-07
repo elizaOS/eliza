@@ -55,10 +55,7 @@ export function clearOllamaHostFlavorCache(): void {
 }
 
 /** Test seam — pin a flavor for an API base without probing. */
-export function setOllamaHostFlavorForTest(
-  baseURL: string,
-  flavor: OllamaHostFlavor,
-): void {
+export function setOllamaHostFlavorForTest(baseURL: string, flavor: OllamaHostFlavor): void {
   flavorByApiBase.set(normalizeApiBase(baseURL), {
     flavor,
     probedAtMs: Date.now(),
@@ -71,7 +68,7 @@ export function setOllamaHostFlavorForTest(
  */
 export async function resolveOllamaHostFlavor(
   baseURL: string,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = fetch
 ): Promise<OllamaHostFlavor> {
   const override = readFlavorOverride();
   if (override) return override;
@@ -91,20 +88,20 @@ export async function resolveOllamaHostFlavor(
     if (response.ok) {
       flavor = classifyVersionPayload(await response.json());
     } else {
-      logger.debug(
-        `[ollama] /api/version returned ${response.status}; host flavor unknown`,
-      );
+      logger.debug(`[ollama] /api/version returned ${response.status}; host flavor unknown`);
     }
   } catch (err) {
+    // error-policy:J4 host detection is an optional optimization; the explicit
+    // unknown flavor selects the stock-compatible path and remains visible.
     logger.debug(
-      `[ollama] /api/version probe failed: ${err instanceof Error ? err.message : String(err)}`,
+      `[ollama] /api/version probe failed: ${err instanceof Error ? err.message : String(err)}`
     );
   }
 
   flavorByApiBase.set(apiBase, { flavor, probedAtMs: Date.now() });
   if (flavor === "zerollama") {
     logger.info(
-      `[ollama] Detected zerollama at ${apiBase} — using native /api/chat + /api/embed (no AI SDK wire aliases)`,
+      `[ollama] Detected zerollama at ${apiBase} — using native /api/chat + /api/embed (no AI SDK wire aliases)`
     );
   }
   return flavor;
