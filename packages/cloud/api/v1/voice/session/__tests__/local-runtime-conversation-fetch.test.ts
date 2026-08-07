@@ -5,6 +5,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { REALTIME_VOICE_CLIENT_TRANSPORT } from "@elizaos/shared";
+import { streamElizaConversation } from "../../../../../shared/src/lib/voice-session/eliza-sse-bridge";
 import {
   createLocalRuntimeConversationFetch,
   LocalRuntimeConversationFetchError,
@@ -71,6 +72,72 @@ describe("local runtime conversation fetch", () => {
     expect(headers.has("X-Eliza-User-Id")).toBe(false);
     expect(headers.get("X-Eliza-Voice-Trace-Id")).toBe("trace-a");
     expect(headers.get("Accept")).toBe("text/event-stream");
+  });
+
+  test("preserves provisional delta-v2 authority through the loopback adapter", async () => {
+    const calls: Array<{ url: string; body: unknown }> = [];
+    const downstream = (async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      calls.push({ url: String(input), body: JSON.parse(String(init?.body)) });
+      return new Response(
+        [
+          `data: ${JSON.stringify({
+            type: "token",
+            text: "Changed ",
+            provisional: true,
+          })}\n\n`,
+          `data: ${JSON.stringify({
+            type: "token",
+            text: "to warm.",
+            fullText: "Changed to warm.",
+            provisional: true,
+          })}\n\n`,
+          `data: ${JSON.stringify({
+            type: "token",
+            fullText: "Okay, I changed my personality to warm.",
+          })}\n\n`,
+          `data: ${JSON.stringify({
+            type: "done",
+            fullText: "Okay, I changed my personality to warm.",
+          })}\n\n`,
+        ].join(""),
+        { headers: { "Content-Type": "text/event-stream" } },
+      );
+    }) as typeof fetch;
+    const deltas: string[] = [];
+
+    const result = await streamElizaConversation(
+      {
+        endpoint: "https://cloud.example",
+        authorization: "Bearer local-secret",
+        model: "m",
+        transcript: "make your personality warmer",
+        agentId: "agent-a",
+        conversationId: "11111111-1111-4111-8111-111111111111",
+        traceId: "trace-provisional-loopback",
+        signal: new AbortController().signal,
+        fetchImpl: createLocalRuntimeConversationFetch(
+          "http://127.0.0.1:31337",
+          downstream,
+        ),
+      },
+      (delta) => deltas.push(delta),
+    );
+
+    expect(result).toEqual({ completed: true, aborted: false });
+    expect(deltas).toEqual(["Okay, I changed my personality to warm."]);
+    expect(calls).toEqual([
+      {
+        url: "http://127.0.0.1:31337/api/conversations/11111111-1111-4111-8111-111111111111/messages/stream",
+        body: {
+          text: "make your personality warmer",
+          metadata: { clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT },
+          streamProtocol: "delta-v2",
+        },
+      },
+    ]);
   });
 
   test("rejects non-loopback origins and unsupported upstream paths", async () => {
