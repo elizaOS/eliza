@@ -32,12 +32,12 @@ import { ensureAgentSandboxSchema } from "../../db/ensure-agent-sandbox-schema";
 import { dbWrite } from "../../db/helpers";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import {
+  cutoverResumeWindowAllows,
   hydrateJob,
   type Job,
   type JobRecoveryFailure,
   type JobRecoverySweepResult,
   jobsRepository,
-  cutoverResumeWindowAllows,
   msWindowTimestampMatch,
   type NewJob,
   prepareJobInsertData,
@@ -4211,15 +4211,11 @@ export class ProvisioningJobService {
             // #17919 / #17284 class: ms-window fence so µs-stored NOW() rows match JS reads
             msWindowTimestampMatch(
               jobs.started_at,
-              snapshot.started_at
-                ? new Date(jobAuditTimestamp(snapshot.started_at))
-                : null,
+              snapshot.started_at ? new Date(jobAuditTimestamp(snapshot.started_at)) : null,
             ),
             msWindowTimestampMatch(
               jobs.completed_at,
-              snapshot.completed_at
-                ? new Date(jobAuditTimestamp(snapshot.completed_at))
-                : null,
+              snapshot.completed_at ? new Date(jobAuditTimestamp(snapshot.completed_at)) : null,
             ),
             msWindowTimestampMatch(
               jobs.updated_at,
@@ -4387,14 +4383,9 @@ export class ProvisioningJobService {
             ),
             msWindowTimestampMatch(
               jobs.completed_at,
-              job.completed_at
-                ? new Date(jobAuditTimestamp(job.completed_at))
-                : null,
+              job.completed_at ? new Date(jobAuditTimestamp(job.completed_at)) : null,
             ),
-            msWindowTimestampMatch(
-              jobs.updated_at,
-              new Date(jobAuditTimestamp(job.updated_at)),
-            ),
+            msWindowTimestampMatch(jobs.updated_at, new Date(jobAuditTimestamp(job.updated_at))),
             sql`${jobs.data_storage} = 'inline'`,
             sql`${jobs.data_key} IS NOT DISTINCT FROM ${job.data_key}`,
             sql`${jobs.data} IS NOT DISTINCT FROM ${JSON.stringify(job.data)}::jsonb`,
