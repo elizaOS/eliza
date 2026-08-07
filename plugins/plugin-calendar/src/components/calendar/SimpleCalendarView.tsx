@@ -1,15 +1,21 @@
 /**
- * Chat-first Calendar projection over the canonical multi-provider feed. The
- * surface is intentionally read-only: the CALENDAR action owns mutations,
- * while this view refreshes after chat actions and renders the local month and
- * today's agenda without introducing a second calendar store.
+ * Interactive Calendar projection over the canonical multi-provider feed.
+ * Month/day navigation stays client-side, while event mutations remain on the
+ * CALENDAR action and owner-approval path so the view never introduces a
+ * second calendar store or write boundary.
  */
 
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { useViewEvent, VIEW_EVENTS } from "@elizaos/ui/events";
-import { Clock3 } from "lucide-react";
-import { type CSSProperties, useMemo } from "react";
+import { ChevronLeft, ChevronRight, Clock3 } from "lucide-react";
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useCalendarWeek } from "../../hooks/useCalendarWeek.js";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -50,7 +56,7 @@ const SCROLL_STYLE: CSSProperties = {
 const PANEL_STYLE: CSSProperties = {
   boxSizing: "border-box",
   border: "none",
-  borderRadius: 22,
+  borderRadius: 24,
   background:
     "color-mix(in srgb, var(--card, rgba(16,16,16,.88)) 76%, transparent)",
   boxShadow: "inset 0 1px 0 rgba(255,255,255,.10), 0 18px 48px rgba(0,0,0,.20)",
@@ -109,6 +115,21 @@ function formatMonth(date: Date): string {
   }).format(date);
 }
 
+function monthInputValue(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function dateFromMonthInput(value: string): Date {
+  const match = /^(\d{4})-(\d{2})$/.exec(value);
+  if (!match) throw new Error("Calendar month is invalid.");
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (!Number.isSafeInteger(year) || month < 1 || month > 12) {
+    throw new Error("Calendar month is invalid.");
+  }
+  return new Date(year, month - 1, 1, 12);
+}
+
 function formatSelectedDate(value: string): string {
   return new Intl.DateTimeFormat(undefined, {
     weekday: "long",
@@ -146,21 +167,24 @@ function CalendarDay({
   cursor,
   selectedDate,
   events,
+  onSelect,
 }: {
   day: Date;
   cursor: Date;
   selectedDate: string;
   events: LifeOpsCalendarEvent[];
+  onSelect: (day: Date) => void;
 }) {
   const key = localDateKey(day);
   const dayEvents = eventsOnDate(events, key);
   const selected = key === selectedDate;
   const currentMonth = day.getMonth() === cursor.getMonth();
   const today = key === localDateKey(new Date());
-  const cell = useAgentElement<HTMLDivElement>({
+  const selectDay = useCallback(() => onSelect(day), [day, onSelect]);
+  const cell = useAgentElement<HTMLButtonElement>({
     id: `calendar-day-${key}`,
     label: formatSelectedDate(key),
-    role: "card",
+    role: "button",
     group: "calendar-grid",
     description:
       dayEvents.length === 0
@@ -171,17 +195,23 @@ function CalendarDay({
       : currentMonth
         ? "current-month"
         : "outside-month",
+    onActivate: selectDay,
   });
 
   return (
-    <div
+    <button
       ref={cell.ref}
       {...cell.agentProps}
+      type="button"
+      onClick={selectDay}
+      aria-label={formatSelectedDate(key)}
+      aria-pressed={selected}
       aria-current={today ? "date" : undefined}
       style={{
         boxSizing: "border-box",
         minWidth: 0,
         minHeight: "clamp(38px, 7vw, 62px)",
+        border: 0,
         borderRadius: 11,
         padding: "6px clamp(4px, .8vw, 8px)",
         background: selected
@@ -197,6 +227,11 @@ function CalendarDay({
         flexDirection: "column",
         justifyContent: "space-between",
         gap: 5,
+        cursor: "pointer",
+        fontFamily: "inherit",
+        textAlign: "start",
+        transition:
+          "background-color 140ms ease, box-shadow 140ms ease, color 140ms ease, transform 140ms ease",
       }}
     >
       <span
@@ -216,7 +251,7 @@ function CalendarDay({
             style={{
               width: 5,
               height: 5,
-              borderRadius: 999,
+              borderRadius: 9999,
               background: "var(--accent, #ff6a1f)",
             }}
           />
@@ -243,13 +278,138 @@ function CalendarDay({
             style={{
               width: 6,
               height: 6,
-              borderRadius: 999,
+              borderRadius: 9999,
               background: "#35df8d",
             }}
           />
           <span aria-hidden>{dayEvents.length}</span>
         </span>
       ) : null}
+    </button>
+  );
+}
+
+function MonthControls({
+  cursor,
+  onPrevious,
+  onNext,
+  onToday,
+  onMonthChange,
+}: {
+  cursor: Date;
+  onPrevious: () => void;
+  onNext: () => void;
+  onToday: () => void;
+  onMonthChange: (month: Date) => void;
+}) {
+  const month = formatMonth(cursor);
+  const navigationButton: CSSProperties = {
+    width: 44,
+    height: 44,
+    display: "grid",
+    placeItems: "center",
+    border: 0,
+    borderRadius: 13,
+    background:
+      "color-mix(in srgb, var(--surface, rgba(255,255,255,.06)) 72%, transparent)",
+    color: "var(--txt, #f5f5f5)",
+    cursor: "pointer",
+  };
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "44px minmax(0, 1fr) 44px",
+        alignItems: "center",
+        gap: 8,
+        marginBottom: 12,
+      }}
+    >
+      <button
+        type="button"
+        aria-label={`Previous month, ${month}`}
+        title="Previous month"
+        onClick={onPrevious}
+        style={navigationButton}
+      >
+        <ChevronLeft size={19} aria-hidden />
+      </button>
+      <div
+        style={{
+          position: "relative",
+          minWidth: 0,
+          textAlign: "center",
+          borderRadius: 13,
+        }}
+      >
+        <h2
+          style={{
+            margin: 0,
+            fontSize: 17,
+            lineHeight: 1.25,
+            fontWeight: 760,
+            textAlign: "center",
+          }}
+        >
+          {month}
+        </h2>
+        <span
+          aria-hidden
+          style={{
+            display: "block",
+            marginTop: 1,
+            color: "var(--muted, rgba(255,255,255,.58))",
+            fontSize: 10,
+            lineHeight: 1.3,
+          }}
+        >
+          Choose month &amp; year
+        </span>
+        <input
+          type="month"
+          aria-label="Choose calendar month and year"
+          value={monthInputValue(cursor)}
+          onChange={(event) =>
+            onMonthChange(dateFromMonthInput(event.target.value))
+          }
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            opacity: 0,
+            cursor: "pointer",
+          }}
+        />
+      </div>
+      <button
+        type="button"
+        aria-label={`Next month, ${month}`}
+        title="Next month"
+        onClick={onNext}
+        style={navigationButton}
+      >
+        <ChevronRight size={19} aria-hidden />
+      </button>
+      <button
+        type="button"
+        onClick={onToday}
+        style={{
+          gridColumn: "2",
+          justifySelf: "center",
+          border: 0,
+          borderRadius: 9999,
+          padding: "4px 10px",
+          background: "transparent",
+          color: "var(--muted-strong, rgba(255,255,255,.76))",
+          fontFamily: "inherit",
+          fontSize: 11,
+          fontWeight: 650,
+          cursor: "pointer",
+        }}
+      >
+        Today
+      </button>
     </div>
   );
 }
@@ -276,7 +436,7 @@ function EventRow({ event }: { event: LifeOpsCalendarEvent }) {
         padding: "10px 0",
       }}
     >
-      <span aria-hidden style={{ borderRadius: 999, background: "#35df8d" }} />
+      <span aria-hidden style={{ borderRadius: 9999, background: "#35df8d" }} />
       <div style={{ minWidth: 0 }}>
         <div
           style={{
@@ -327,7 +487,9 @@ export function SimpleCalendarView() {
     void calendar.refresh();
   }, [calendar.refresh]);
 
-  const selectedDate = localDateKey(calendar.baseDate);
+  const [selectedDate, setSelectedDate] = useState(() =>
+    localDateKey(calendar.baseDate),
+  );
   const cursor = useMemo(
     () => monthStart(calendar.baseDate),
     [calendar.baseDate],
@@ -336,6 +498,25 @@ export function SimpleCalendarView() {
   const selectedEvents = useMemo(
     () => eventsOnDate(calendar.events, selectedDate),
     [calendar.events, selectedDate],
+  );
+  useEffect(() => {
+    setSelectedDate(localDateKey(calendar.baseDate));
+  }, [calendar.baseDate]);
+  const selectDay = useCallback(
+    (day: Date) => {
+      setSelectedDate(localDateKey(day));
+      if (
+        day.getFullYear() !== cursor.getFullYear() ||
+        day.getMonth() !== cursor.getMonth()
+      ) {
+        calendar.goToDate(day);
+      }
+    },
+    [calendar.goToDate, cursor],
+  );
+  const chooseMonth = useCallback(
+    (month: Date) => calendar.goToDate(month),
+    [calendar.goToDate],
   );
   const loaded = calendar.feedState !== null;
   const detail = calendar.error
@@ -361,6 +542,9 @@ export function SimpleCalendarView() {
           gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
           gap: 14,
           alignItems: "start",
+          alignContent: "start",
+          maxWidth: 1040,
+          marginInline: "auto",
         }}
       >
         {calendar.error ? (
@@ -386,16 +570,13 @@ export function SimpleCalendarView() {
                 padding: "14px clamp(4px, 1.6vw, 16px)",
               }}
             >
-              <h2
-                style={{
-                  margin: "0 0 13px",
-                  fontSize: 16,
-                  lineHeight: 1.3,
-                  fontWeight: 740,
-                }}
-              >
-                {formatMonth(cursor)}
-              </h2>
+              <MonthControls
+                cursor={cursor}
+                onPrevious={calendar.goPrevious}
+                onNext={calendar.goNext}
+                onToday={calendar.goToToday}
+                onMonthChange={chooseMonth}
+              />
               <div
                 aria-hidden
                 style={{
@@ -433,6 +614,7 @@ export function SimpleCalendarView() {
                     cursor={cursor}
                     selectedDate={selectedDate}
                     events={calendar.events}
+                    onSelect={selectDay}
                   />
                 ))}
               </div>

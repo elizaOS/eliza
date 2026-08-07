@@ -50,6 +50,7 @@ import {
   parseCalendarJsonRecord,
   toActionData,
 } from "../internal/detail.js";
+import { ELIZA_CALENDAR_GRANT_ID } from "../internal/eliza-calendar.js";
 import { CalendarServiceError } from "../internal/errors.js";
 import {
   formatCalendarEventDateTime,
@@ -166,6 +167,10 @@ function requireCompleteFreshCalendarFeed(
     );
   }
   return feed;
+}
+
+function mutationGrantId(details: Record<string, unknown> | undefined): string {
+  return detailString(details, "grantId") ?? ELIZA_CALENDAR_GRANT_ID;
 }
 
 type CreateEventTravelIntent = CalendarTravelIntent;
@@ -1893,7 +1898,7 @@ async function loadCreateEventCalendarContext(
       | "cloud_managed"
       | undefined,
     side: detailString(details, "side") as "owner" | "agent" | undefined,
-    grantId: detailString(details, "grantId"),
+    grantId: mutationGrantId(details),
     calendarId: detailString(details, "calendarId"),
     timeZone: requestTimeZone,
     forceSync: true,
@@ -3998,7 +4003,7 @@ const calendarAction: CalendarHandlerAction = {
                 | "owner"
                 | "agent"
                 | undefined,
-              grantId: detailString(details, "grantId"),
+              grantId: mutationGrantId(details),
               forceSync: true,
               ...feedRequest,
             }),
@@ -4102,7 +4107,7 @@ const calendarAction: CalendarHandlerAction = {
                 | "owner"
                 | "agent"
                 | undefined,
-              grantId: detailString(details, "grantId"),
+              grantId: mutationGrantId(details),
               calendarId: resolvedCalendarId,
               eventId: resolvedEventId,
             },
@@ -4304,7 +4309,7 @@ const calendarAction: CalendarHandlerAction = {
                 | "owner"
                 | "agent"
                 | undefined,
-              grantId: detailString(details, "grantId"),
+              grantId: mutationGrantId(details),
               forceSync: true,
               ...feedRequest,
             }),
@@ -4371,7 +4376,7 @@ const calendarAction: CalendarHandlerAction = {
                 | "owner"
                 | "agent"
                 | undefined,
-              grantId: detailString(details, "grantId"),
+              grantId: mutationGrantId(details),
               calendarId: detailString(details, "calendarId"),
               eventId: explicitEventId,
             },
