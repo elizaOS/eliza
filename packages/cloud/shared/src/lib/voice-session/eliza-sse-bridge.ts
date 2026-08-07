@@ -10,9 +10,9 @@
  *     which cancels the upstream provider stream (the route's tee/abort seam);
  *   - decode canonical `chunk`, local runtime `type=token`, and OpenAI-shaped
  *     `delta.content` frames into one authoritative text stream for phrase
- *     aggregation. Local action callbacks arrive as replaceable snapshots, so
- *     they stay buffered until the terminal frame selects the one reply TTS
- *     may speak.
+ *     aggregation. Action-callback frames are explicitly provisional, so they
+ *     stay buffered until a model replacement or the terminal frame selects
+ *     the one reply TTS may speak.
  *
  * It holds no provider key; the canonical route owns auth, billing, and
  * persistence. `fetchImpl` is injectable so the
@@ -185,46 +185,44 @@ export async function streamElizaConversation(
   let buffered = "";
   let eventType = "";
   let emittedText = "";
-  let pendingSnapshot: string | null = null;
+  let pendingProvisionalText: string | null = null;
   const emitDelta = (text: string): void => {
     if (!text) return;
     emittedText += text;
     onDelta(text);
   };
+  const authorizeText = (authoritativeText: string): void => {
+    pendingProvisionalText = null;
+    if (!authoritativeText.startsWith(emittedText)) {
+      throw new ElizaSseBridgeError(
+        "Eliza agent authoritative reply diverged from text already sent to speech",
+        "protocol_error",
+      );
+    }
+    emitDelta(authoritativeText.slice(emittedText.length));
+  };
   const applyTextUpdate = (update: VoiceTextUpdate): void => {
-    if (update.kind === "delta") {
-      if (pendingSnapshot !== null && emittedText.length === 0) {
-        pendingSnapshot += update.text;
-        return;
-      }
-      emitDelta(update.text);
+    if (update.provisional) {
+      pendingProvisionalText =
+        update.kind === "snapshot"
+          ? update.text
+          : `${pendingProvisionalText ?? emittedText}${update.text}`;
       return;
     }
 
-    if (emittedText.length === 0) {
-      pendingSnapshot = update.text;
+    if (update.kind === "delta") {
+      // A delta extends the current wire buffer, so its non-provisional frame
+      // authorizes the held prefix as well. A snapshot below replaces it.
+      authorizeText(`${pendingProvisionalText ?? emittedText}${update.text}`);
       return;
     }
-    if (update.text === emittedText) return;
-    throw new ElizaSseBridgeError(
-      "Eliza agent stream replaced text that had already become speakable",
-      "protocol_error",
-    );
+    authorizeText(update.text);
   };
   const finishAuthoritativeText = (payload: string): void => {
     const terminal = extractTerminalText(payload);
-    const terminalText = terminal.present ? terminal.text : pendingSnapshot;
-    pendingSnapshot = null;
-    if (!terminalText) return;
-    if (emittedText.length === 0) {
-      emitDelta(terminalText);
-      return;
-    }
-    if (terminalText === emittedText) return;
-    throw new ElizaSseBridgeError(
-      "Eliza agent terminal reply diverged from text already sent to speech",
-      "protocol_error",
-    );
+    const terminalText = terminal.present ? terminal.text : pendingProvisionalText;
+    if (terminalText === null) return;
+    authorizeText(terminalText);
   };
   try {
     for (;;) {
@@ -423,7 +421,9 @@ function extractPayloadType(payload: string): string | null {
   }
 }
 
-type VoiceTextUpdate = { kind: "delta"; text: string } | { kind: "snapshot"; text: string };
+type VoiceTextUpdate =
+  | { kind: "delta"; text: string; provisional: boolean }
+  | { kind: "snapshot"; text: string; provisional: boolean };
 
 function extractTextUpdate(payload: string): VoiceTextUpdate | null {
   let parsed: unknown;
@@ -437,40 +437,43 @@ function extractTextUpdate(payload: string): VoiceTextUpdate | null {
     return null;
   }
   if (typeof parsed !== "object" || parsed === null) return null;
+  const provisional = (parsed as { provisional?: unknown }).provisional === true;
   // Canonical agent message streams emit event:chunk with a top-level chunk.
   const canonicalChunk = (parsed as { chunk?: unknown }).chunk;
   if (typeof canonicalChunk === "string" && canonicalChunk.length > 0) {
-    return { kind: "delta", text: canonicalChunk };
+    return { kind: "delta", text: canonicalChunk, provisional };
   }
   const localToken = parsed as {
     type?: unknown;
     text?: unknown;
     fullText?: unknown;
   };
-  if (
-    localToken.type === "token" &&
-    typeof localToken.text === "string" &&
-    localToken.text.length > 0
-  ) {
-    return { kind: "delta", text: localToken.text };
-  }
+  // Delta-v2 checkpoints may carry both the latest delta and accumulated text.
+  // The snapshot is canonical; consuming both would duplicate the latest chunk.
   if (
     localToken.type === "token" &&
     typeof localToken.fullText === "string" &&
     localToken.fullText.length > 0
   ) {
-    return { kind: "snapshot", text: localToken.fullText };
+    return { kind: "snapshot", text: localToken.fullText, provisional };
+  }
+  if (
+    localToken.type === "token" &&
+    typeof localToken.text === "string" &&
+    localToken.text.length > 0
+  ) {
+    return { kind: "delta", text: localToken.text, provisional };
   }
   const choices = (parsed as { choices?: unknown }).choices;
   if (!Array.isArray(choices) || choices.length === 0) return null;
   const first = choices[0] as { delta?: { content?: unknown }; text?: unknown };
   const content = first?.delta?.content;
   if (typeof content === "string" && content.length > 0) {
-    return { kind: "delta", text: content };
+    return { kind: "delta", text: content, provisional };
   }
   // Some providers stream `text` on legacy completions; accept it too.
   if (typeof first?.text === "string" && first.text.length > 0) {
-    return { kind: "delta", text: first.text };
+    return { kind: "delta", text: first.text, provisional };
   }
   return null;
 }
