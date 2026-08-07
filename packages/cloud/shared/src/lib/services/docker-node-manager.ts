@@ -9,7 +9,10 @@
 
 import crypto from "node:crypto";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
-import type { DockerNode, DockerNodeStatus } from "../../db/schemas/docker-nodes";
+import type {
+  DockerNode,
+  DockerNodeStatus,
+} from "../../db/schemas/docker-nodes";
 import { containersEnv } from "../config/containers-env";
 import { logger } from "../utils/logger";
 import {
@@ -29,7 +32,11 @@ import {
   shellQuote,
 } from "./docker-sandbox-utils";
 import { DockerSSHClient } from "./docker-ssh";
-import { type DiskHealthVerdict, diskHealthVerdict, probeNodeDiskUsage } from "./node-disk-manager";
+import {
+  type DiskHealthVerdict,
+  diskHealthVerdict,
+  probeNodeDiskUsage,
+} from "./node-disk-manager";
 
 // ---------------------------------------------------------------------------
 // Pre-pull self-heal bookkeeping (see recoverAfterTimedOutPrePull)
@@ -76,6 +83,124 @@ const nodeHealthFailureState = new Map<string, number>();
 
 export function __resetNodeHealthFailureStateForTests(): void {
   nodeHealthFailureState.clear();
+}
+
+// ---------------------------------------------------------------------------
+// Placement circuit breaker (docker-command timeouts feed back into selection)
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-node docker-command timeout timestamps + quarantine deadline. In-memory
+ * for the same reason as the health/pre-pull state above: the provisioning
+ * worker is a single long-lived process and a restart is a clean slate.
+ *
+ * Why this exists (#17880): capacity accounting and the `docker info`
+ * readiness probe are both blind to a node that is alive but drowning in IO —
+ * `docker info` answers from daemon memory while `docker create` needs journal
+ * flushes, so an overloaded node passes selection and then times out every
+ * provision. Timeouts recorded here quarantine the node from selection instead
+ * of letting it be re-picked for every subsequent provision.
+ */
+const placementTimeoutState = new Map<
+  string,
+  { timeoutsMs: number[]; quarantinedUntilMs: number }
+>();
+/** Docker-command timeouts on a node within the window before quarantine. */
+const PLACEMENT_TIMEOUT_THRESHOLD = 3;
+/** Sliding window in which timeouts count toward the threshold. */
+const PLACEMENT_TIMEOUT_WINDOW_MS = 10 * 60 * 1000;
+/**
+ * How long a quarantined node is excluded from selection. Longer than the
+ * window, so a node coming out of quarantine starts from a drained window and
+ * gets the full threshold of fresh attempts before re-quarantining.
+ */
+const PLACEMENT_QUARANTINE_MS = 15 * 60 * 1000;
+
+export function __resetPlacementTimeoutStateForTests(): void {
+  placementTimeoutState.clear();
+}
+
+/** Matches the docker-ssh timeout signature anywhere in a message/cause chain. */
+export function isDockerCommandTimeoutError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("Command timed out after");
+}
+
+/**
+ * Feed a container-operation failure on a node back into placement. Only
+ * docker-command timeouts count — they are the overload signature; every other
+ * failure mode (bad image, auth, node absent) has its own handling and says
+ * nothing about the node's ability to take work.
+ */
+export function notePlacementCommandFailure(
+  nodeId: string,
+  error: unknown,
+  nowMs = Date.now(),
+): void {
+  if (!isDockerCommandTimeoutError(error)) return;
+  const state = placementTimeoutState.get(nodeId) ?? {
+    timeoutsMs: [],
+    quarantinedUntilMs: 0,
+  };
+  state.timeoutsMs = state.timeoutsMs.filter(
+    (ts) => nowMs - ts < PLACEMENT_TIMEOUT_WINDOW_MS,
+  );
+  state.timeoutsMs.push(nowMs);
+  if (state.timeoutsMs.length >= PLACEMENT_TIMEOUT_THRESHOLD) {
+    state.quarantinedUntilMs = nowMs + PLACEMENT_QUARANTINE_MS;
+    state.timeoutsMs = [];
+    logger.warn(
+      "[docker-node-manager] Node quarantined from placement after docker timeouts",
+      {
+        nodeId,
+        threshold: PLACEMENT_TIMEOUT_THRESHOLD,
+        windowMs: PLACEMENT_TIMEOUT_WINDOW_MS,
+        quarantineMs: PLACEMENT_QUARANTINE_MS,
+      },
+    );
+  }
+  placementTimeoutState.set(nodeId, state);
+}
+
+/** A successful container operation proves the node can take work again. */
+export function clearPlacementCommandFailures(nodeId: string): void {
+  placementTimeoutState.delete(nodeId);
+}
+
+export function isNodePlacementQuarantined(
+  nodeId: string,
+  nowMs = Date.now(),
+): boolean {
+  const state = placementTimeoutState.get(nodeId);
+  return !!state && state.quarantinedUntilMs > nowMs;
+}
+
+// ---------------------------------------------------------------------------
+// IO-pressure readiness signal
+// ---------------------------------------------------------------------------
+
+/**
+ * Refuse placement above this /proc/pressure/io `full avg10` percentage. A
+ * healthy node sits near 0–5; the #17880 outage node measured 72–78 while
+ * `docker create` could not finish inside its 60s timeout. 40 refuses nodes
+ * already stalling on IO for most of each second while tolerating the bursts a
+ * large image extract causes on a working node.
+ */
+const PLACEMENT_MAX_IO_PRESSURE_FULL_AVG10 = 40;
+
+/** Separates docker-info output from the PSI section in the readiness probe. */
+const READINESS_PROBE_PSI_MARKER = "---IO-PRESSURE---";
+
+/**
+ * Parse `full avg10=` out of /proc/pressure/io content. Returns null when the
+ * signal is absent (pre-4.20 kernel, CONFIG_PSI off, unreadable) — absence
+ * must not block placement; the circuit breaker still protects that node.
+ */
+export function parseIoPressureFullAvg10(section: string): number | null {
+  const match = section.match(/^full\s+avg10=(\d+(?:\.\d+)?)/m);
+  if (!match) return null;
+  const value = Number.parseFloat(match[1]!);
+  return Number.isFinite(value) ? value : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -174,7 +299,11 @@ export function buildTrackedPrePullCommand(
   marker = crypto.randomUUID(),
 ): { command: string; pidFile: string } {
   const pidFile = prePullPidFile(marker);
-  const pullCommand = ["docker pull", ...dockerPlatformFlag(platform), shellQuote(image)].join(" ");
+  const pullCommand = [
+    "docker pull",
+    ...dockerPlatformFlag(platform),
+    shellQuote(image),
+  ].join(" ");
   const script = [
     `pidfile=${shellQuote(pidFile)}`,
     'rm -f "$pidfile"',
@@ -193,7 +322,10 @@ export function buildTrackedPrePullCommand(
   return { command: `sh -c ${shellQuote(script)}`, pidFile };
 }
 
-export function buildPrePullReapCommand(pidFile: string, image: string): string {
+export function buildPrePullReapCommand(
+  pidFile: string,
+  image: string,
+): string {
   const quotedImage = shellQuote(image);
   const script = [
     `pidfile=${shellQuote(pidFile)}`,
@@ -249,7 +381,9 @@ export class DockerNodeManager {
    * Find the least-loaded healthy node with available capacity.
    * Returns null if no capacity is available.
    */
-  async getAvailableNode(options: NodeSelectionOptions = {}): Promise<DockerNode | null> {
+  async getAvailableNode(
+    options: NodeSelectionOptions = {},
+  ): Promise<DockerNode | null> {
     const nodes = await dockerNodesRepository.findEnabled();
     const candidates = (
       await Promise.all(
@@ -259,7 +393,9 @@ export class DockerNodeManager {
           return {
             node,
             allocated,
-            available: canProbeForCapacity ? Math.max(0, node.capacity - allocated) : 0,
+            available: canProbeForCapacity
+              ? Math.max(0, node.capacity - allocated)
+              : 0,
           };
         }),
       )
@@ -268,13 +404,31 @@ export class DockerNodeManager {
       .filter((candidate) => candidate.node.node_id !== options.excludeNodeId)
       .sort((a, b) => b.available - a.available);
 
-    for (const candidate of candidates) {
+    const quarantined = candidates.filter((candidate) =>
+      isNodePlacementQuarantined(candidate.node.node_id),
+    );
+    if (quarantined.length > 0) {
+      logger.warn(
+        "[docker-node-manager] Skipping quarantined nodes during selection",
+        {
+          nodeIds: quarantined.map((candidate) => candidate.node.node_id),
+        },
+      );
+    }
+    const selectable = candidates.filter(
+      (candidate) => !isNodePlacementQuarantined(candidate.node.node_id),
+    );
+
+    for (const candidate of selectable) {
       if (!isNodeMetadataCompatible(candidate.node, options.requiredPlatform)) {
-        logger.warn("[docker-node-manager] Skipping node with incompatible architecture", {
-          nodeId: candidate.node.node_id,
-          requiredPlatform: options.requiredPlatform,
-          metadata: candidate.node.metadata,
-        });
+        logger.warn(
+          "[docker-node-manager] Skipping node with incompatible architecture",
+          {
+            nodeId: candidate.node.node_id,
+            requiredPlatform: options.requiredPlatform,
+            metadata: candidate.node.metadata,
+          },
+        );
         continue;
       }
       if (!(await this.ensureNodeReady(candidate.node, options))) {
@@ -286,7 +440,9 @@ export class DockerNodeManager {
       return { ...candidate.node, allocated_count: candidate.allocated };
     }
 
-    logger.warn("[docker-node-manager] No reachable healthy nodes with capacity");
+    logger.warn(
+      "[docker-node-manager] No reachable healthy nodes with capacity",
+    );
     return null;
   }
 
@@ -316,7 +472,10 @@ export class DockerNodeManager {
       node.host_key_fingerprint
         ? undefined
         : async (hostname, fingerprint) => {
-            await dockerNodesRepository.setHostKeyFingerprint(node.node_id, fingerprint);
+            await dockerNodesRepository.setHostKeyFingerprint(
+              node.node_id,
+              fingerprint,
+            );
             logger.warn(
               `[docker-node-manager] TOFU-pinned host key for node ${node.node_id} (${hostname}): SHA256:${fingerprint}`,
             );
@@ -358,7 +517,10 @@ export class DockerNodeManager {
       try {
         const ssh = this.sshClientForNode(node);
         await ssh.connect();
-        const dockerId = await ssh.exec("docker info --format '{{.ID}}'", 10_000);
+        const dockerId = await ssh.exec(
+          "docker info --format '{{.ID}}'",
+          10_000,
+        );
 
         if (dockerId.trim()) {
           // Disk-aware verdict: a node whose Docker daemon answers but whose
@@ -383,7 +545,10 @@ export class DockerNodeManager {
               logger.warn(
                 `[docker-node-manager] Node ${node.node_id} (${node.hostname}) is reachable but disk is critically full; marking degraded so it drains/replaces instead of taking new work.`,
               );
-              await dockerNodesRepository.updateStatus(node.node_id, "degraded");
+              await dockerNodesRepository.updateStatus(
+                node.node_id,
+                "degraded",
+              );
               return "degraded";
             }
             logger.warn(
@@ -420,7 +585,9 @@ export class DockerNodeManager {
     logger.warn(
       `[docker-node-manager] Health check failed for ${node.node_id} after ${MAX_RETRIES} attempts: ${lastError}`,
     );
-    const status: DockerNodeStatus = lastError.includes("empty ID") ? "degraded" : "offline";
+    const status: DockerNodeStatus = lastError.includes("empty ID")
+      ? "degraded"
+      : "offline";
 
     // A `degraded` verdict means the daemon ANSWERED but returned no ID — the
     // node is reachable, just unhealthy. Persist it and let the disk-clean /
@@ -478,13 +645,19 @@ export class DockerNodeManager {
   async diskHealthStatus(node: DockerNode): Promise<DiskHealthVerdict> {
     try {
       const usedPercent = await probeNodeDiskUsage(node);
-      return diskHealthVerdict(usedPercent, containersEnv.nodeDiskUnhealthyThresholdPct());
+      return diskHealthVerdict(
+        usedPercent,
+        containersEnv.nodeDiskUnhealthyThresholdPct(),
+      );
     } catch (error) {
-      logger.warn("[docker-node-manager] Disk health probe failed; treating as ok", {
-        nodeId: node.node_id,
-        hostname: node.hostname,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      logger.warn(
+        "[docker-node-manager] Disk health probe failed; treating as ok",
+        {
+          nodeId: node.node_id,
+          hostname: node.hostname,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
       return "ok";
     }
   }
@@ -503,21 +676,34 @@ export class DockerNodeManager {
    * of the health check: like the disk sub-probe, the sidecar never owns
    * reachability — the docker-info probe does.
    */
-  async embeddingSidecarHealth(node: DockerNode, ssh: DockerSSHClient): Promise<void> {
+  async embeddingSidecarHealth(
+    node: DockerNode,
+    ssh: DockerSSHClient,
+  ): Promise<void> {
     try {
       let status = await this.probeEmbeddingSidecar(ssh);
       if (status === null) return;
 
-      if (status !== "running" && containersEnv.embeddingSidecarSelfHealEnabled()) {
-        const lastAttempt = embeddingSidecarSelfHealState.get(node.node_id) ?? 0;
-        if (Date.now() - lastAttempt >= EMBEDDING_SIDECAR_SELF_HEAL_COOLDOWN_MS) {
+      if (
+        status !== "running" &&
+        containersEnv.embeddingSidecarSelfHealEnabled()
+      ) {
+        const lastAttempt =
+          embeddingSidecarSelfHealState.get(node.node_id) ?? 0;
+        if (
+          Date.now() - lastAttempt >=
+          EMBEDDING_SIDECAR_SELF_HEAL_COOLDOWN_MS
+        ) {
           // Stamp BEFORE the attempt so a hanging/failing ensure still honors
           // the cooldown next cycle instead of re-pulling the image every tick.
           embeddingSidecarSelfHealState.set(node.node_id, Date.now());
           logger.warn(
             `[docker-node-manager] Embedding sidecar ${status} on node ${node.node_id} (${node.hostname}); attempting self-heal install`,
           );
-          await ssh.exec(buildEnsureEmbeddingSidecarCmd(), EMBEDDING_SIDECAR_ENSURE_TIMEOUT_MS);
+          await ssh.exec(
+            buildEnsureEmbeddingSidecarCmd(),
+            EMBEDDING_SIDECAR_ENSURE_TIMEOUT_MS,
+          );
           status = (await this.probeEmbeddingSidecar(ssh)) ?? status;
         }
       }
@@ -527,19 +713,29 @@ export class DockerNodeManager {
       } else {
         logger.error(
           `[docker-node-manager] Embedding sidecar ${status} on node ${node.node_id} (${node.hostname}) — agents on this node cannot reach local embeddings. Self-heal ${containersEnv.embeddingSidecarSelfHealEnabled() ? "will retry after cooldown" : "is disabled"}.`,
-          { nodeId: node.node_id, hostname: node.hostname, embeddingSidecar: status },
+          {
+            nodeId: node.node_id,
+            hostname: node.hostname,
+            embeddingSidecar: status,
+          },
         );
       }
-      await dockerNodesRepository.setEmbeddingSidecarHealth(node.node_id, status);
+      await dockerNodesRepository.setEmbeddingSidecarHealth(
+        node.node_id,
+        status,
+      );
     } catch (error) {
       // error-policy:J7 the sidecar sub-probe/self-heal is diagnostics on the
       // health loop; a thrown SSH/exec failure is logged loudly here and must
       // not take down the reachability verdict the loop exists to produce.
-      logger.warn("[docker-node-manager] Embedding sidecar probe/self-heal failed", {
-        nodeId: node.node_id,
-        hostname: node.hostname,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      logger.warn(
+        "[docker-node-manager] Embedding sidecar probe/self-heal failed",
+        {
+          nodeId: node.node_id,
+          hostname: node.hostname,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
     }
   }
 
@@ -550,9 +746,12 @@ export class DockerNodeManager {
     const output = await ssh.exec(buildEmbeddingSidecarProbeCmd(), 20_000);
     const status = parseEmbeddingSidecarProbe(output);
     if (status === null) {
-      logger.warn("[docker-node-manager] Embedding sidecar probe returned no status token", {
-        output: output.slice(0, 200),
-      });
+      logger.warn(
+        "[docker-node-manager] Embedding sidecar probe returned no status token",
+        {
+          output: output.slice(0, 200),
+        },
+      );
     }
     return status;
   }
@@ -562,22 +761,61 @@ export class DockerNodeManager {
    * healthy rows from receiving new work when SSH credentials or the Docker
    * daemon are no longer valid.
    */
-  async ensureNodeReady(node: DockerNode, options: NodeSelectionOptions = {}): Promise<boolean> {
+  async ensureNodeReady(
+    node: DockerNode,
+    options: NodeSelectionOptions = {},
+  ): Promise<boolean> {
     try {
       const ssh = this.sshClientForNode(node);
       await ssh.connect();
-      const dockerInfo = await ssh.exec("docker info --format '{{.ID}}|{{.Architecture}}'", 10_000);
-      const { dockerId, architecture } = parseDockerInfoProbe(dockerInfo);
+      // PSI is read in the same round trip: `docker info` answers from daemon
+      // memory even on a node too IO-starved to finish a `docker create`
+      // (#17880), so daemon liveness alone cannot green-light placement. The
+      // `&&` keeps a failing `docker info` rejecting exec with its own exit
+      // code (the unreachable/catch path below), exactly as the pre-PSI probe
+      // did; the PSI read is only appended to a successful probe.
+      const probeOutput = await ssh.exec(
+        `docker info --format '{{.ID}}|{{.Architecture}}' && { echo '${READINESS_PROBE_PSI_MARKER}'; cat /proc/pressure/io 2>/dev/null || true; }`,
+        10_000,
+      );
+      const [dockerSection = "", psiSection = ""] = probeOutput.split(
+        READINESS_PROBE_PSI_MARKER,
+      );
+      const { dockerId, architecture } = parseDockerInfoProbe(dockerSection);
       if (dockerId.trim()) {
         if (
-          !isArchitectureCompatibleWithPlatform(architecture, options.requiredPlatform) &&
+          !isArchitectureCompatibleWithPlatform(
+            architecture,
+            options.requiredPlatform,
+          ) &&
           requiredArchitectureForPlatform(options.requiredPlatform)
         ) {
-          logger.warn("[docker-node-manager] Node is reachable but incompatible with image", {
-            nodeId: node.node_id,
-            architecture,
-            requiredPlatform: options.requiredPlatform,
-          });
+          logger.warn(
+            "[docker-node-manager] Node is reachable but incompatible with image",
+            {
+              nodeId: node.node_id,
+              architecture,
+              requiredPlatform: options.requiredPlatform,
+            },
+          );
+          return false;
+        }
+        const ioPressure = parseIoPressureFullAvg10(psiSection);
+        if (
+          ioPressure !== null &&
+          ioPressure >= PLACEMENT_MAX_IO_PRESSURE_FULL_AVG10
+        ) {
+          // No DB status write: IO overload is transient and node-status flips
+          // are reserved for dead/unreachable daemons (see the canonical-node
+          // protection below).
+          logger.warn(
+            "[docker-node-manager] Node refused for placement: IO-starved",
+            {
+              nodeId: node.node_id,
+              ioPressureFullAvg10: ioPressure,
+              max: PLACEMENT_MAX_IO_PRESSURE_FULL_AVG10,
+            },
+          );
           return false;
         }
         await dockerNodesRepository.updateStatus(node.node_id, "healthy");
@@ -590,25 +828,34 @@ export class DockerNodeManager {
           `[docker-node-manager] Suppressed degraded mark for canonical node ${node.node_id} (${node.hostname}); Docker probe returned empty ID`,
         );
       }
-      logger.warn(`[docker-node-manager] Node ${node.node_id} Docker probe returned empty ID`);
+      logger.warn(
+        `[docker-node-manager] Node ${node.node_id} Docker probe returned empty ID`,
+      );
       return false;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       // See healthCheckNode for rationale: canonical nodes are never marked
       // offline from a transient ssh failure during scheduling.
       if (isAutoscaledNode(node)) {
-        await dockerNodesRepository.updateStatus(node.node_id, "offline").catch((updateError) => {
-          logger.warn("[docker-node-manager] Failed to mark node offline", {
-            nodeId: node.node_id,
-            error: updateError instanceof Error ? updateError.message : String(updateError),
+        await dockerNodesRepository
+          .updateStatus(node.node_id, "offline")
+          .catch((updateError) => {
+            logger.warn("[docker-node-manager] Failed to mark node offline", {
+              nodeId: node.node_id,
+              error:
+                updateError instanceof Error
+                  ? updateError.message
+                  : String(updateError),
+            });
           });
-        });
       } else {
         logger.warn(
           `[docker-node-manager] Suppressed offline mark for canonical node ${node.node_id} (${node.hostname}): ${message}`,
         );
       }
-      logger.warn(`[docker-node-manager] Node ${node.node_id} is not reachable: ${message}`);
+      logger.warn(
+        `[docker-node-manager] Node ${node.node_id} is not reachable: ${message}`,
+      );
       return false;
     }
   }
@@ -624,7 +871,10 @@ export class DockerNodeManager {
       await Promise.all(
         nodes.map(
           async (node) =>
-            [node.node_id, await countAllocatedWorkloadsOnNode(node.node_id)] as const,
+            [
+              node.node_id,
+              await countAllocatedWorkloadsOnNode(node.node_id),
+            ] as const,
         ),
       ),
     );
@@ -636,7 +886,11 @@ export class DockerNodeManager {
       allocated: allocatedByNode.get(node.node_id) ?? node.allocated_count,
       available:
         node.enabled && node.status === "healthy"
-          ? Math.max(0, node.capacity - (allocatedByNode.get(node.node_id) ?? node.allocated_count))
+          ? Math.max(
+              0,
+              node.capacity -
+                (allocatedByNode.get(node.node_id) ?? node.allocated_count),
+            )
           : 0,
       status: node.status,
       enabled: node.enabled,
@@ -644,7 +898,9 @@ export class DockerNodeManager {
       embeddingSidecar: embeddingSidecarStatusFromMetadata(node.metadata),
     }));
 
-    const enabledNodes = nodeReports.filter((n) => n.enabled && n.status === "healthy");
+    const enabledNodes = nodeReports.filter(
+      (n) => n.enabled && n.status === "healthy",
+    );
 
     return {
       totalCapacity: enabledNodes.reduce((sum, n) => sum + n.capacity, 0),
@@ -664,7 +920,9 @@ export class DockerNodeManager {
    * `agent_sandboxes`; both must be counted or the scheduler can overfill a
    * node or drain a node that still has agent workloads.
    */
-  async syncAllocatedCounts(): Promise<Map<string, { before: number; after: number }>> {
+  async syncAllocatedCounts(): Promise<
+    Map<string, { before: number; after: number }>
+  > {
     const nodes = await dockerNodesRepository.findEnabled();
     const changes = new Map<string, { before: number; after: number }>();
 
@@ -675,7 +933,10 @@ export class DockerNodeManager {
         logger.info(
           `[docker-node-manager] Sync ${node.node_id}: allocated_count ${node.allocated_count} → ${actualCount}`,
         );
-        await dockerNodesRepository.setAllocatedCount(node.node_id, actualCount);
+        await dockerNodesRepository.setAllocatedCount(
+          node.node_id,
+          actualCount,
+        );
         changes.set(node.node_id, {
           before: node.allocated_count,
           after: actualCount,
@@ -684,7 +945,9 @@ export class DockerNodeManager {
     }
 
     if (changes.size > 0) {
-      logger.info(`[docker-node-manager] Synced allocated counts for ${changes.size} node(s)`);
+      logger.info(
+        `[docker-node-manager] Synced allocated counts for ${changes.size} node(s)`,
+      );
     }
 
     return changes;
@@ -758,7 +1021,8 @@ export class DockerNodeManager {
             status: "pulled" as const,
           };
         } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
+          const message =
+            error instanceof Error ? error.message : String(error);
           logger.warn("[docker-node-manager] Agent image pre-pull failed", {
             nodeId: node.node_id,
             image,
@@ -770,7 +1034,12 @@ export class DockerNodeManager {
             // pull` ignores), so it can keep running. The tracked wrapper leaves
             // a PID file only for this pre-pull, so recovery does not kill
             // unrelated deployment pulls on the same node.
-            await this.recoverAfterTimedOutPrePull(ssh, node, prePull.pidFile, image);
+            await this.recoverAfterTimedOutPrePull(
+              ssh,
+              node,
+              prePull.pidFile,
+              image,
+            );
           } else {
             prePullFailureState.delete(node.node_id);
           }
@@ -811,7 +1080,8 @@ export class DockerNodeManager {
         "[docker-node-manager] Failed to reap orphaned docker pull after pre-pull failure",
         {
           nodeId: node.node_id,
-          error: killError instanceof Error ? killError.message : String(killError),
+          error:
+            killError instanceof Error ? killError.message : String(killError),
         },
       );
     }
@@ -826,7 +1096,8 @@ export class DockerNodeManager {
 
     if (!containersEnv.prePullSelfHealRestartEnabled()) return;
     if (state.consecutiveFailures < PREPULL_SELF_HEAL_FAILURE_THRESHOLD) return;
-    if (Date.now() - state.lastSelfHealMs < PREPULL_SELF_HEAL_COOLDOWN_MS) return;
+    if (Date.now() - state.lastSelfHealMs < PREPULL_SELF_HEAL_COOLDOWN_MS)
+      return;
 
     logger.error(
       "[docker-node-manager] Pre-pull wedged repeatedly; auto-restarting docker to self-heal",
@@ -851,7 +1122,10 @@ export class DockerNodeManager {
       // and the cooldown/threshold state lets a later cycle retry.
       logger.error("[docker-node-manager] Self-heal docker restart failed", {
         nodeId: node.node_id,
-        error: restartError instanceof Error ? restartError.message : String(restartError),
+        error:
+          restartError instanceof Error
+            ? restartError.message
+            : String(restartError),
       });
     }
   }
@@ -864,7 +1138,9 @@ export class DockerNodeManager {
    */
   async getRuntimeContainers(
     node: DockerNode,
-  ): Promise<{ name: string; id: string; state: string; status: string }[] | null> {
+  ): Promise<
+    { name: string; id: string; state: string; status: string }[] | null
+  > {
     try {
       const ssh = this.sshClientForNode(node);
       await ssh.connect();
@@ -884,7 +1160,9 @@ export class DockerNodeManager {
         });
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
-      logger.warn(`[docker-node-manager] Failed to list containers on ${node.node_id}: ${msg}`);
+      logger.warn(
+        `[docker-node-manager] Failed to list containers on ${node.node_id}: ${msg}`,
+      );
       return null;
     }
   }
