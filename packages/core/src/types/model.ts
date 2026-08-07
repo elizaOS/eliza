@@ -716,6 +716,13 @@ export interface GenerateTextParams {
  * for v5 cache observability. Not in the protobuf today; adapters that know
  * about provider-side cache (Anthropic prompt caching, OpenAI cached input,
  * etc.) populate them. Consumers that don't care can ignore them.
+ *
+ * `reasoningTokens` is the hidden reasoning-token count that reasoning models
+ * (Cerebras zai-glm-4.7, OpenAI o-series, gpt-oss) report inside the
+ * completion budget (`completion_tokens_details.reasoning_tokens`). It is
+ * additive: adapters surface it only when the provider returns it, and
+ * consumers that don't care can ignore it. Missing stays missing — never zero
+ * — so an unattributed burst is distinguishable from a confirmed none.
  */
 export interface TokenUsage {
 	promptTokens: number;
@@ -723,6 +730,7 @@ export interface TokenUsage {
 	totalTokens: number;
 	cacheReadInputTokens?: number;
 	cacheCreationInputTokens?: number;
+	reasoningTokens?: number;
 }
 
 /**

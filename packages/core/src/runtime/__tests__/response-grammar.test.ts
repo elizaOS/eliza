@@ -139,11 +139,25 @@ describe("buildResponseGrammar — Stage-1 envelope", () => {
 		);
 	});
 
-	it("keeps shouldRespond on voice channels", () => {
+	it("treats one-to-one voice as a direct channel", () => {
 		clearResponseGrammarCache();
 		const { responseSkeleton, grammar } = buildResponseGrammar(
 			{ actions: [] },
 			{ contexts: ["general"], channelType: "VOICE_DM" },
+		);
+		expect(responseSkeleton.spans.some((s) => s.key === "shouldRespond")).toBe(
+			false,
+		);
+		expect(grammar).not.toContain(
+			'"\\"RESPOND\\"" | "\\"IGNORE\\"" | "\\"STOP\\""',
+		);
+	});
+
+	it("keeps shouldRespond on multi-party voice channels", () => {
+		clearResponseGrammarCache();
+		const { responseSkeleton, grammar } = buildResponseGrammar(
+			{ actions: [] },
+			{ contexts: ["general"], channelType: "VOICE_GROUP" },
 		);
 		expect(responseSkeleton.spans.some((s) => s.key === "shouldRespond")).toBe(
 			true,
@@ -248,7 +262,7 @@ describe("buildResponseGrammar — Stage-1 envelope", () => {
 		expect(c).not.toBe(a);
 	});
 
-	it("keeps direct-channel cache entries distinct from full voice envelopes", () => {
+	it("shares direct-channel semantics with one-to-one voice", () => {
 		clearResponseGrammarCache();
 		const direct = buildResponseGrammar(
 			{ actions: [] },
@@ -258,14 +272,14 @@ describe("buildResponseGrammar — Stage-1 envelope", () => {
 			{ actions: [] },
 			{ contexts: ["general"], channelType: "VOICE_DM" },
 		);
-		expect(direct).not.toBe(voice);
-		expect(direct.responseSkeleton.id).not.toBe(voice.responseSkeleton.id);
+		expect(direct).toBe(voice);
+		expect(direct.responseSkeleton.id).toBe(voice.responseSkeleton.id);
 		expect(
 			direct.responseSkeleton.spans.some((s) => s.key === "shouldRespond"),
 		).toBe(false);
 		expect(
 			voice.responseSkeleton.spans.some((s) => s.key === "shouldRespond"),
-		).toBe(true);
+		).toBe(false);
 	});
 });
 

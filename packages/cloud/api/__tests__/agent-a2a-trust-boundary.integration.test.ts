@@ -15,7 +15,12 @@ const CAN_USE_ISOLATED_PGLITE =
 process.env.DATABASE_URL ||= "pglite://memory";
 process.env.NODE_ENV = "test";
 process.env.MOCK_REDIS = "1";
-process.env.CACHE_ENABLED = "false";
+// The IAC v2 hot-path split (#17805) makes a Worker-lifetime request resolve
+// characters cache-only: with the cache unavailable EVERY request fail-closes
+// 503 before the parse/envelope/role boundary this suite exists to prove. The
+// MOCK_REDIS in-memory adapter keeps the run hermetic while letting the cold
+// agent hydrate in the background exactly as it does in production.
+process.env.CACHE_ENABLED = "true";
 process.env.REDIS_RATE_LIMITING = "false";
 process.env.OPENAI_API_KEY = "a2a-recording-provider-key";
 
@@ -46,6 +51,12 @@ const { apiKeys } = await import("@/db/schemas/api-keys");
 const { creditTransactions } = await import("@/db/schemas/credit-transactions");
 const { organizations } = await import("@/db/schemas/organizations");
 const { userCharacters } = await import("@/db/schemas/user-characters");
+// The IAC v2 combined identity decision (#17805) folds the moderation read
+// into API-key authorization, so the authoritative auth chain now queries
+// user_moderation_status where the old route-level auth never did.
+const { userModerationStatus, userModerationStatusEnum } = await import(
+  "@/db/schemas/moderation-violations"
+);
 const { users } = await import("@/db/schemas/users");
 const { apiKeysService } = await import("@/lib/services/api-keys");
 const { usersService } = await import("@/lib/services/users");
@@ -63,7 +74,7 @@ const AUTH_HEADERS = {
 };
 const ENV = {
   NODE_ENV: "test",
-  CACHE_ENABLED: "false",
+  CACHE_ENABLED: "true",
   REDIS_RATE_LIMITING: "false",
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
   OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
@@ -112,6 +123,8 @@ beforeAll(async () => {
       users,
       apiKeys,
       userCharacters,
+      userModerationStatus,
+      userModerationStatusEnum,
       creditTransactions,
     } as never,
     dbWrite as never,
@@ -177,6 +190,44 @@ afterAll(async () => {
 describe.skipIf(!CAN_USE_ISOLATED_PGLITE)(
   "A2A caller trust boundary integration",
   () => {
+    test("cold Worker lane fail-closes 503 without side effects, then hydration opens the trust boundary", async () => {
+      const ledgerBefore = await ledgerCount();
+
+      // IAC v2 (#17805): a Worker-lifetime request never joins Postgres to
+      // dispatch. A well-formed, fully-authorized request against a COLD
+      // character cache must get a retryable 503 — never a provider call or a
+      // credit hold — while hydration runs under waitUntil.
+      const cold = await post(
+        `/api/agents/${AGENT_ID}/a2a`,
+        JSON.stringify({
+          jsonrpc: "2.0",
+          method: "chat",
+          id: "worker-lane-cold-agent",
+          params: {
+            model: "openai/gpt-5-mini",
+            messages: [{ role: "user", content: "hello" }],
+          },
+        }),
+      );
+      expect(cold.status).toBe(503);
+      expect(await cold.json()).toMatchObject({
+        error: { code: -32004 },
+        id: null,
+      });
+      expect(await ledgerCount()).toBe(ledgerBefore);
+      expect(providerRequests).toEqual([]);
+
+      // The scheduled background hydration warms the character projection;
+      // the SAME Worker lane then reaches the JSON-RPC parse boundary.
+      await Promise.all(backgroundWork.splice(0));
+      const warm = await post(`/api/agents/${AGENT_ID}/a2a`, "{not-json");
+      expect(warm.status).toBe(400);
+      expect(await warm.json()).toMatchObject({
+        error: { code: -32700, message: "Parse error" },
+        id: null,
+      });
+    });
+
     test("rejects malformed JSON, invalid envelopes, and direct policy roles without side effects", async () => {
       const ledgerBefore = await ledgerCount();
 

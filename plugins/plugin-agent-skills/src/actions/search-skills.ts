@@ -14,8 +14,10 @@ import type {
 	Memory,
 	State,
 } from "@elizaos/core";
+import { unwrapUserMessageText } from "@elizaos/core";
 import type { AgentSkillsService } from "../services/skills";
 import type { CacheOptions, SkillSearchResult } from "../types";
+import { describeSkillReference, skillReferenceLogView } from "./parse-helpers";
 import { createAgentSkillsActionValidator } from "./validators";
 
 export type SkillResultActionKind =
@@ -107,10 +109,16 @@ export async function runSkillSearch(
 	const normalizedQuery = query.trim();
 	const results = await service.search(normalizedQuery, limit, options);
 
+	// The result text is shipped verbatim to chat by the handler's callback, so
+	// the query echo is display-clamped: quoted only when name-shaped, else a
+	// neutral noun. The full query still drives the search above; data carries a
+	// one-line 120-char log view for machine consumers.
+	const queryEcho = describeSkillReference(normalizedQuery, "that request");
+
 	if (results.length === 0) {
 		const text = [
 			"skills_search:",
-			`  query: ${normalizedQuery}`,
+			`  query: ${queryEcho}`,
 			"  resultCount: 0",
 			"results[0]:",
 		].join("\n");
@@ -121,7 +129,7 @@ export async function runSkillSearch(
 			data: {
 				actionName: "SEARCH",
 				category: "skills",
-				query: normalizedQuery,
+				query: skillReferenceLogView(normalizedQuery),
 				results: [] as SkillSearchResultWithActions[],
 			},
 		};
@@ -147,7 +155,7 @@ export async function runSkillSearch(
 
 	const lines = [
 		"skills_search:",
-		`  query: ${normalizedQuery}`,
+		`  query: ${queryEcho}`,
 		`  resultCount: ${enriched.length}`,
 		`results[${enriched.length}]{slug,displayName,state,summary,actions}:`,
 		...enriched.map((result) =>
@@ -173,7 +181,7 @@ export async function runSkillSearch(
 		data: {
 			actionName: "SEARCH",
 			category: "skills",
-			query: normalizedQuery,
+			query: skillReferenceLogView(normalizedQuery),
 			results: enriched,
 		},
 	};
@@ -217,10 +225,13 @@ export const searchSkillsAction = {
 		const opts = options as
 			| { parameters?: { query?: unknown; limit?: unknown } }
 			| undefined;
+		// The content.text fallback must be the user's actual words, not the
+		// external-content security envelope hardenIncomingUserMessage wraps
+		// around untrusted messages (live Discord leak 2026-08-02).
 		const query =
 			typeof opts?.parameters?.query === "string"
 				? opts.parameters.query
-				: message.content.text || "";
+				: unwrapUserMessageText(message);
 		const limit =
 			typeof opts?.parameters?.limit === "number" &&
 			Number.isFinite(opts.parameters.limit)

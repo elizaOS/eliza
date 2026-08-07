@@ -27,12 +27,7 @@ describe("ElizaClient.getModelsCatalog", () => {
     const result = await client.getModelsCatalog();
     // catalogOnly skips the server's all-providers model-list fan-out, which
     // exceeds the client's 10s fetch budget on a cold cache.
-    // The second argument is the RequestInit passthrough — absent here, so it
-    // arrives as undefined rather than being omitted from the call.
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/models?catalogOnly=1",
-      undefined,
-    );
+    expect(fetchMock).toHaveBeenCalledWith("/api/models?catalogOnly=1");
     expect(result.catalog).toEqual({ providers: {} });
   });
 

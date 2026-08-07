@@ -5,10 +5,10 @@
  *   bun test packages/scripts/__tests__/run-scenarios-isolated.test.ts
  */
 import { expect, test } from "bun:test";
-import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, "..", "..", "..");

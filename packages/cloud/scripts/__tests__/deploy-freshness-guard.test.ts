@@ -3,11 +3,10 @@
  * must be skipped, but every ambiguous signal must fail open and deploy.
  */
 import { describe, expect, it } from "bun:test";
-import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
+import { execFileSync } from "../../../scripts/lib/spawn-sync-captured.mjs";
 import {
   decideDeployFreshness,
   fetchServedCommit,

@@ -26,6 +26,8 @@ export {
 } from "./entity-recognizer.js";
 export {
 	buildSafeExternalPrompt,
+	containsExternalEnvelopeMarkers,
+	containsExternalEnvelopeMaterial,
 	detectSuspiciousPatterns,
 	type ExternalContentSource,
 	getHookType,
@@ -45,7 +47,12 @@ export {
 	messageHasPromptInjectionFlag,
 	registerCoreIncomingMessageSecurityHook,
 	scrubIncomingMessageTextForStorage,
+	unwrapUserMessageText,
 } from "./incoming-message-security.js";
+export {
+	ENVELOPE_LEAK_NOTICE,
+	guardOutboundEnvelopeText,
+} from "./outbound-envelope-guard.js";
 export {
 	type AssembleContextPackRequest,
 	assembleContextPack,
@@ -150,14 +157,17 @@ export {
 	disclosureGateFailure,
 	evaluateOwnerExclusiveDisclosure,
 	getTrustedDeliveryAudience,
+	INTERNAL_AGENT_TURN_DISCLOSURE_BASIS,
 	markOwnerExclusiveDisclosureUsed,
 	OWNER_EXCLUSIVE_DISCLOSURE_GATE,
+	OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
 	type OwnerExclusiveDisclosureBasis,
 	type OwnerExclusiveDisclosureDecision,
 	type OwnerExclusiveDisclosureDenial,
 	ownerExclusiveDisclosureWasUsed,
 	ownerExclusiveSuppressionNote,
 	PRIVACY_DENIED_TEXT,
+	recordOwnerExclusiveSuppression,
 	registerRuntimeManagedInternalActor,
 	revalidateOwnerExclusiveDisclosure,
 	type TrustedApiPrincipal,

@@ -14,11 +14,7 @@ import {
 	PRIVACY_DENIED_TEXT,
 	revalidateOwnerExclusiveDisclosure,
 } from "../security/trusted-delivery-audience";
-import {
-	emitStreamingHook,
-	getStreamingContext,
-	runWithSuppressedModelStream,
-} from "../streaming-context";
+import { emitStreamingHook, getStreamingContext } from "../streaming-context";
 import {
 	getTrajectoryContext,
 	runWithTrajectoryContext,
@@ -380,24 +376,32 @@ export async function executePlannedToolCall(
 		action,
 		flattenUndeclaredParametersEnvelope(action, normalizeToolArgs(toolCall)),
 	);
-	const validation = validateToolArgs(
+	const argsForValidation = normalizeParamAliases(
 		action,
-		normalizeParamAliases(
+		dropEmptyOptionalArgs(
 			action,
-			dropEmptyOptionalArgs(
-				action,
-				dropUndeclaredPlannerWrapperArgs(action, normalizedArgs),
-			),
+			dropUndeclaredPlannerWrapperArgs(action, normalizedArgs),
 		),
 	);
+	const validation = validateToolArgs(action, argsForValidation);
 	if (!validation.valid) {
+		// The planner correlates a corrected retry with this failed operation by
+		// removing only arguments the schema rejected. Keeping this structural
+		// metadata at the validation boundary avoids parsing error prose and keeps
+		// unrelated calls to the same action distinct.
+		const invalidParameterNames = validation.invalidParameterNames ?? [];
 		return emitToolResult(
 			toolCall,
 			failureResult(
 				action.name,
 				validation.errors.join("; ") ||
 					`Invalid arguments for action ${action.name}`,
-				{ parameterErrors: validation.errors },
+				{
+					parameterErrors: validation.errors,
+					...(invalidParameterNames.length > 0
+						? { invalidParameterNames }
+						: {}),
+				},
 			),
 		);
 	}
@@ -576,15 +580,13 @@ export async function executePlannedToolCall(
 						{ actionName: action.name, modelClass: action.modelClass },
 						() =>
 							withActionStep(runtime, action.name, () =>
-								runWithSuppressedModelStream(() =>
-									action.handler(
-										runtime,
-										executorCtx.message,
-										executorCtx.state,
-										handlerOptions,
-										actionCallback,
-										executorCtx.responses,
-									),
+								action.handler(
+									runtime,
+									executorCtx.message,
+									executorCtx.state,
+									handlerOptions,
+									actionCallback,
+									executorCtx.responses,
 								),
 							),
 					);

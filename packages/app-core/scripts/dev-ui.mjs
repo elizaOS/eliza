@@ -16,7 +16,13 @@
  *   node …/dev-ui.mjs --check-acp-hot-reload=31337             # one-shot reload safety probe
  */
 import { execSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  statSync,
+} from "node:fs";
 import { createConnection } from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -28,9 +34,11 @@ import { createApiSupervisor } from "./lib/api-supervisor.mjs";
 import { relativeAppDir, resolveMainAppDir } from "./lib/app-dir.mjs";
 import { getBunVersionAdvisory } from "./lib/bun-version-guard.mjs";
 import { capacitorPluginsBuildNeeded } from "./lib/capacitor-plugin-build-needed.mjs";
+import { isRedundantApiListenLine } from "./lib/dev-ui-log-filter.mjs";
 import { buildVisionDepsFailureMessage } from "./lib/dev-ui-vision.mjs";
 import { resolveViteCommand } from "./lib/dev-ui-vite.mjs";
 import { signalSpawnedProcessTree } from "./lib/kill-process-tree.mjs";
+import { resolveMacNativeEffectsDevPlan } from "./lib/macos-native-effects-dev.mjs";
 import { extendNodePathEnv } from "./lib/node-path-env.mjs";
 import { syncElizaEnvAliases } from "./lib/sync-eliza-env-aliases.mjs";
 import {
@@ -276,6 +284,43 @@ function createDevChildEnv(baseEnv) {
   return nextEnv;
 }
 
+function prepareMacNativeEffectsForDev() {
+  const plan = resolveMacNativeEffectsDevPlan({
+    cwd,
+    env: process.env,
+    platform: process.platform,
+    exists: existsSync,
+    modifiedAt: (value) => statSync(value).mtimeMs,
+  });
+  if (plan.kind === "skip") return;
+
+  if (plan.kind === "build") {
+    try {
+      console.log(
+        `  ${green(logPrefix)} ${dim("Building macOS Calendar/EventKit bridge...")}`,
+      );
+      execSync("bun run build:native-effects", {
+        cwd: plan.packageDir,
+        env: process.env,
+        stdio: "inherit",
+      });
+    } catch (error) {
+      console.warn(
+        `  ${green(logPrefix)} ${dim(`macOS native bridge unavailable; Calendar stays explicit-unavailable (${error instanceof Error ? error.message : String(error)}).`)}`,
+      );
+      return;
+    }
+    if (!existsSync(plan.dylibPath)) {
+      console.warn(
+        `  ${green(logPrefix)} ${dim("macOS native bridge build completed without its declared dylib; Calendar stays explicit-unavailable.")}`,
+      );
+      return;
+    }
+  }
+
+  process.env.ELIZA_NATIVE_PERMISSIONS_DYLIB = plan.dylibPath;
+}
+
 function shellQuoteArg(value) {
   return /^[A-Za-z0-9_./:=+-]+$/.test(value) ? value : JSON.stringify(value);
 }
@@ -454,6 +499,18 @@ function createErrorFilter(dest) {
   };
 }
 
+function createVerboseApiFilter(dest) {
+  let buf = "";
+  return (chunk) => {
+    buf += chunk.toString();
+    const lines = buf.split("\n");
+    buf = lines.pop();
+    for (const line of lines) {
+      if (!isRedundantApiListenLine(line)) dest.write(`${line}\n`);
+    }
+  };
+}
+
 function createStartupFilter(dest) {
   let buf = "";
   let lastLine = "";
@@ -465,6 +522,7 @@ function createStartupFilter(dest) {
     for (const line of lines) {
       const trimmed = line.trim();
       if (!trimmed) continue;
+      if (isRedundantApiListenLine(trimmed)) continue;
       if (SUPPRESS_UNSTRUCTURED_RE.test(trimmed)) continue;
       if (/embedding dimensions mismatch/i.test(trimmed)) continue;
 
@@ -752,29 +810,37 @@ if (acpHotReloadProbeArg) {
 killOrphanedWorkspaceProcesses();
 killPort(UI_PORT);
 
-// Ensure vision dependencies are installed (non-blocking — just probes/installs
-// an optional camera binary; nothing in the boot path depends on its result, so
-// it must not gate API/Vite startup).
-const visionDepsChild = spawn(
-  "node",
-  [visionDepsScriptPath, `--name=${cliName}`],
-  { stdio: "inherit" },
-);
-visionDepsChild.on("error", (error) => {
-  process.env.ELIZA_VISION_DEPS_STATUS = "degraded";
-  console.warn(buildVisionDepsFailureMessage(error, visionDepsRetryCommand));
-});
-visionDepsChild.on("exit", (code) => {
-  if (code !== 0) {
+let visionDepsProcess = null;
+let visionDepsCheckStarted = false;
+
+function startVisionDepsCheck() {
+  if (visionDepsCheckStarted || shuttingDown) return;
+  visionDepsCheckStarted = true;
+  visionDepsProcess = spawn(
+    "node",
+    [visionDepsScriptPath, `--name=${cliName}`],
+    { stdio: "inherit" },
+  );
+  const child = visionDepsProcess;
+  let spawnFailed = false;
+  child.on("error", (error) => {
+    spawnFailed = true;
     process.env.ELIZA_VISION_DEPS_STATUS = "degraded";
-    console.warn(
-      buildVisionDepsFailureMessage(
-        new Error(`vision deps check exited with code ${code}`),
-        visionDepsRetryCommand,
-      ),
-    );
-  }
-});
+    console.warn(buildVisionDepsFailureMessage(error, visionDepsRetryCommand));
+  });
+  child.on("exit", (code) => {
+    if (visionDepsProcess === child) visionDepsProcess = null;
+    if (!spawnFailed && code !== 0) {
+      process.env.ELIZA_VISION_DEPS_STATUS = "degraded";
+      console.warn(
+        buildVisionDepsFailureMessage(
+          new Error(`vision deps check exited with code ${code}`),
+          visionDepsRetryCommand,
+        ),
+      );
+    }
+  });
+}
 
 if (!uiOnly) {
   killPort(API_PORT);
@@ -818,6 +884,7 @@ function cleanup(exitCode = 0) {
   }
   terminateChild(viteProcess, "SIGTERM");
   terminateChild(apiProcess, "SIGTERM");
+  terminateChild(visionDepsProcess, "SIGTERM");
   if (viteRestartTimer) {
     clearTimeout(viteRestartTimer);
     viteRestartTimer = null;
@@ -830,6 +897,7 @@ function cleanup(exitCode = 0) {
   setTimeout(() => {
     terminateChild(viteProcess, "SIGKILL");
     terminateChild(apiProcess, "SIGKILL");
+    terminateChild(visionDepsProcess, "SIGKILL");
   }, 1500).unref();
 
   setTimeout(() => {
@@ -952,6 +1020,10 @@ function startVite() {
       console.log(
         `\n  ${green(logPrefix)} ${orange(`UI ready at http://localhost:${UI_PORT}/`)} ${dim(`(${elapsed}s)`)}\n  ${green(logPrefix)} ${dim("Local access: no password required on this machine")}\n  ${green(logPrefix)} ${dim(`Security settings: ${securitySettingsUrl}`)}\n`,
       );
+      // Camera tooling is optional and may invoke a package manager. Start it
+      // only after first paint is unblocked so installation work cannot contend
+      // with the API/Vite module graphs on a cold boot.
+      startVisionDepsCheck();
     })
     .catch(() => {
       // error-policy:J5 the health-check timer below observes the same stalled
@@ -1049,6 +1121,8 @@ if (uiOnly) {
       }`,
     )}`,
   );
+
+  prepareMacNativeEffectsForDev();
 
   let devServerEntry = resolveDevServerEntryRelativePath(cwd);
   // Resolve to absolute so it stays valid when we anchor the API child cwd
@@ -1184,12 +1258,8 @@ if (uiOnly) {
         child.stderr.on("data", createErrorFilter(process.stderr));
         child.stdout.on("data", () => {});
       } else if (verboseApiLogs) {
-        child.stderr.on("data", (data) => {
-          process.stderr.write(data);
-        });
-        child.stdout.on("data", (data) => {
-          process.stdout.write(data);
-        });
+        child.stderr.on("data", createVerboseApiFilter(process.stderr));
+        child.stdout.on("data", createVerboseApiFilter(process.stdout));
       } else {
         child.stderr.on("data", createStartupFilter(process.stderr));
         child.stdout.on("data", createStartupFilter(process.stdout));

@@ -1,10 +1,10 @@
 /**
- * Installs Postgres extensions (e.g. `vector`, `fuzzystrmatch`) required by
- * plugin schemas. Extension names are allowlist-validated before being
- * interpolated as an SQL identifier, since `CREATE EXTENSION` doesn't support
- * parameterized identifiers. A failed or unavailable extension only logs a
- * warning — it doesn't abort the migration, since not every deployment target
- * has every optional extension available.
+ * Installs Postgres extensions (e.g. `vector`, `fuzzystrmatch`, `pg_trgm`)
+ * required by plugin schemas. Extension names are allowlist-validated before
+ * being interpolated as an SQL identifier, since `CREATE EXTENSION` doesn't
+ * support parameterized identifiers. A failed or unavailable extension only
+ * logs a warning — it doesn't abort the migration, since not every deployment
+ * target has every optional extension available.
  */
 import { logger } from "@elizaos/core";
 import { sql } from "drizzle-orm";

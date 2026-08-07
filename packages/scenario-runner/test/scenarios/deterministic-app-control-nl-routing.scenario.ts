@@ -6,6 +6,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { ModelType } from "@elizaos/core";
+import { matchesScenarioInput } from "@elizaos/core/testing";
 import type {
   CapturedAction,
   ScenarioTurnExecution,
@@ -17,7 +18,6 @@ import {
   registerAppControlHttpHandler,
   resetAppControlHttpLoopback,
 } from "./_helpers/app-control-http-loopback";
-import { matchesScenarioInput } from "@elizaos/core/testing";
 
 type RuntimeWithScenarioModelFixtures = {
   actions?: Array<{
@@ -185,7 +185,7 @@ const views = [
 ];
 
 const appLoadDirectory = "/tmp/eliza-app-control-nl-routing/apps";
-const repoRoot = path.resolve(import.meta.dirname, "../../../..");
+const repoRoot = "/tmp/eliza-app-control-nl-routing/repo";
 const feedPluginDir = path.join(repoRoot, "plugins", "plugin-feed");
 const loadAppsInput = `Load apps from ${appLoadDirectory} directory`;
 const editFeedBoardInput = "Edit view feed-board plugin";
@@ -300,7 +300,21 @@ export default scenario({
           recursive: true,
         });
         const loadedAppDir = path.join(appLoadDirectory, "app-loaded-console");
+        await fs.mkdir(feedPluginDir, { recursive: true });
         await fs.mkdir(loadedAppDir, { recursive: true });
+        await fs.writeFile(
+          path.join(feedPluginDir, "package.json"),
+          `${JSON.stringify(
+            {
+              name: "@elizaos/plugin-feed",
+              version: "1.0.0",
+              files: ["dist"],
+            },
+            null,
+            2,
+          )}\n`,
+          "utf8",
+        );
         await fs.writeFile(
           path.join(loadedAppDir, "package.json"),
           `${JSON.stringify(
@@ -639,6 +653,18 @@ export default scenario({
         });
 
         return undefined;
+      },
+    },
+  ],
+  cleanup: [
+    {
+      type: "custom",
+      name: "remove app-control source fixtures",
+      apply: async () => {
+        await fs.rm(path.dirname(appLoadDirectory), {
+          force: true,
+          recursive: true,
+        });
       },
     },
   ],

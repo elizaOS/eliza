@@ -198,7 +198,7 @@ export interface Bindings {
   CEREBRAS_API_KEY?: string;
   /** Opt-in batch STT provider. Deepgram is never selected by key presence alone. */
   VOICE_BATCH_STT_PROVIDER?: string;
-  /** Deepgram realtime Flux and opt-in prerecorded STT key (server-held; NEVER returned to clients). */
+  /** Opt-in prerecorded Deepgram STT key (server-held; never returned to clients). */
   DEEPGRAM_API_KEY?: string;
   /** BYOK OpenRouter key — the backup for models we have no native key for. */
   OPENROUTER_API_KEY?: string;
@@ -257,6 +257,30 @@ export interface Bindings {
   STEWARD_REQUEST_SIGNING_SECRET?: string;
   STEWARD_REQUEST_SIGNING_SECRETS?: string;
   STEWARD_REQUEST_SIGNING_KEY_ID?: string;
+
+  // ---- OpenID Connect provider (Eliza Cloud as the OP for Eliza Hub) ----
+  /** Kill switch. The provider serves nothing unless this is exactly "true". */
+  OIDC_ENABLED?: string;
+  /**
+   * Issuer string, emitted VERBATIM into the discovery document and every
+   * token, and the only host the OIDC endpoints answer on. Relying parties
+   * byte-compare it, so a trailing slash or host change invalidates every
+   * existing account link. Must be a host this Worker is routed for — the
+   * apex `elizacloud.ai` is the SPA and never reaches the Worker.
+   */
+  OIDC_ISSUER_URL?: string;
+  /**
+   * Secret: JSON array of PRIVATE JWKs (optionally base64-wrapped). Element 0
+   * signs; every element is published at `jwks_uri`, which is what makes an
+   * overlapping key rotation possible.
+   */
+  OIDC_SIGNING_JWKS?: string;
+  /**
+   * Secret: JSON array of relying-party registry entries (optionally
+   * base64-wrapped). Client secrets are stored as sha256 hex only.
+   */
+  OIDC_CLIENTS?: string;
+
   RPC_URL?: string;
   CHAIN_ID?: string;
 

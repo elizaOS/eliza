@@ -14,8 +14,9 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import { createKmsClient, systemKey } from "@elizaos/core/security/kms";
+import { MAX_RESTORABLE_AGENT_BACKUP_BYTES } from "@elizaos/shared/agent-backup-limits";
 import type { ElizaConfig } from "../config/config.ts";
 import { resolveConfigPath, resolveStateDir } from "../config/paths.ts";
 
@@ -120,6 +121,172 @@ export interface LocalAgentBackupMetadata {
   stateSha256: string;
   sizeBytes: number;
 }
+
+/**
+ * A capture refused because it would exceed the source-side snapshot budget.
+ *
+ * Typed so a caller can tell "this agent's state is too large to snapshot"
+ * apart from a transport or disk failure: the former is deterministic and
+ * retrying identical state cannot help, while the latter is worth another try.
+ */
+export class AgentSnapshotBudgetExceededError extends ElizaError {
+  override readonly name = "AgentSnapshotBudgetExceededError";
+  constructor(
+    readonly stage: string,
+    readonly observedBytes: number,
+    readonly limitBytes: number,
+  ) {
+    super(`Snapshot refused during ${stage}: source budget exceeded`, {
+      code: "AGENT_SNAPSHOT_BUDGET_EXCEEDED",
+      context: { stage, observedBytes, limitBytes },
+      severity: "fatal",
+    });
+  }
+}
+
+/**
+ * Produce-side budget for a snapshot capture (#17172 §1).
+ *
+ * Cloud's restorable-size check is strictly DOWNSTREAM of this process having
+ * already assembled AND serialized the whole payload, so it bounds what Cloud
+ * retains — never what the agent's own heap burns getting there. A large agent
+ * can therefore exhaust its container (the memory watchdog force-restarts at a
+ * sustained RSS ceiling) mid-capture, and the lifecycle call sites that snapshot
+ * before upgrade/shutdown/sleep silently degrade to a stale or missing backup.
+ *
+ * Charged as bytes are produced, so an over-budget capture is refused at the
+ * first byte past the line instead of after everything is resident. `reserve`
+ * exists for the pre-allocation case: a file entry transiently costs ~2.33x its
+ * size (Buffer + base64 string), so the refusal has to happen from `stat` before
+ * the read, not after — and the reservation HOLDS that capacity until the entry
+ * is charged or released, so concurrent captures cannot all pass the same check
+ * and then collectively allocate past the limit.
+ */
+export class SnapshotBudget {
+  private chargedBytes = 0;
+  private reservedBytes = 0;
+  private fileCount = 0;
+
+  constructor(
+    private readonly maxRawBytes: number,
+    private readonly maxFiles: number,
+    private readonly signal?: AbortSignal,
+  ) {}
+
+  /** Abort between units of work so a cancelled capture stops promptly. */
+  check(): void {
+    this.signal?.throwIfAborted();
+  }
+
+  /**
+   * Hold capacity for a not-yet-read payload from its declared size. Refuses
+   * before anything is allocated, counting capacity other in-flight holds have
+   * already claimed. The returned token must be settled exactly once: `commit`
+   * converts the hold into a charged file entry, `release` frees it.
+   */
+  reserve(declaredBytes: number): SnapshotReservation {
+    this.check();
+    // base64 is the wire form, so hold what the entry will actually cost.
+    const holdBytes = base64Length(declaredBytes);
+    const projected = this.chargedBytes + this.reservedBytes + holdBytes;
+    if (projected > this.maxRawBytes) {
+      throw new AgentSnapshotBudgetExceededError(
+        "file capture",
+        projected,
+        this.maxRawBytes,
+      );
+    }
+    this.reservedBytes += holdBytes;
+
+    let settled = false;
+    const releaseHold = () => {
+      if (settled) return false;
+      settled = true;
+      this.reservedBytes -= holdBytes;
+      return true;
+    };
+    return {
+      commit: (actualBase64Bytes: number) => {
+        if (!releaseHold()) return;
+        this.chargeFileEntry(actualBase64Bytes);
+      },
+      release: () => {
+        releaseHold();
+      },
+    };
+  }
+
+  chargeRaw(bytes: number, stage: string): void {
+    this.check();
+    this.charge(bytes, stage);
+  }
+
+  assertWireSize(value: unknown): void {
+    this.check();
+    const wireBytes = Buffer.byteLength(JSON.stringify(value), "utf8");
+    if (wireBytes > this.maxRawBytes) {
+      throw new AgentSnapshotBudgetExceededError(
+        "final wire serialization",
+        wireBytes,
+        this.maxRawBytes,
+      );
+    }
+  }
+
+  private chargeFileEntry(base64Bytes: number): void {
+    this.check();
+    this.fileCount += 1;
+    if (this.fileCount > this.maxFiles) {
+      throw new AgentSnapshotBudgetExceededError(
+        "file capture",
+        this.fileCount,
+        this.maxFiles,
+      );
+    }
+    this.charge(base64Bytes, "file capture");
+  }
+
+  private charge(bytes: number, stage: string): void {
+    this.chargedBytes += bytes;
+    if (this.chargedBytes + this.reservedBytes > this.maxRawBytes) {
+      throw new AgentSnapshotBudgetExceededError(
+        stage,
+        this.chargedBytes + this.reservedBytes,
+        this.maxRawBytes,
+      );
+    }
+  }
+}
+
+/** Settle-once token returned by {@link SnapshotBudget.reserve}. */
+export interface SnapshotReservation {
+  /** Convert the hold into a charged file entry at its actual encoded size. */
+  commit(actualBase64Bytes: number): void;
+  /** Free the hold without charging (the payload was never materialized). */
+  release(): void;
+}
+
+/** Encoded length of `n` raw bytes in base64 (4 chars per 3 bytes, padded). */
+function base64Length(rawBytes: number): number {
+  return Math.ceil(rawBytes / 3) * 4;
+}
+
+/**
+ * File-count ceiling for one capture. Mirrors the hydration-side file cap so a
+ * snapshot this process is willing to PRODUCE is one the consumer is willing to
+ * expand; a pathological state dir is refused here rather than downstream.
+ */
+const DEFAULT_SNAPSHOT_MAX_FILES = 5_000;
+
+/**
+ * Rows fetched per round-trip when capturing an agent-scoped Postgres table.
+ *
+ * `pool.query` buffers whatever a statement returns, so an unbounded
+ * `SELECT * WHERE agent_id = $1` puts the entire table in this process's heap
+ * before the budget can see a single byte. Reading in keyset batches caps that
+ * peak at one batch and lets the budget refuse mid-table (#17172 §1).
+ */
+const POSTGRES_CAPTURE_BATCH_ROWS = 500;
 
 const MEDIA_DIR_NAME = "media";
 const BACKUPS_DIR_NAME = "backups";
@@ -279,18 +446,31 @@ function isWithin(root: string, target: string): boolean {
 async function readFileEntry(
   root: string,
   absolutePath: string,
+  budget?: SnapshotBudget,
 ): Promise<AgentBackupFileEntry> {
   const stat = await fs.stat(absolutePath);
-  const bytes = await fs.readFile(absolutePath);
-  const relative = normalizeRelativePath(path.relative(root, absolutePath));
-  return {
-    path: relative,
-    sha256: sha256Bytes(bytes),
-    size: bytes.length,
-    mode: stat.mode,
-    mtimeMs: stat.mtimeMs,
-    bytesBase64: bytes.toString("base64"),
-  };
+  // Refuse from the declared size BEFORE reading: the entry transiently costs
+  // ~2.33x its bytes (Buffer + base64 string), so charging after the read is
+  // charging after the damage. The hold stays claimed until the actual encoded
+  // size is committed, so concurrent siblings see it.
+  const hold = budget?.reserve(stat.size);
+  let committed = false;
+  try {
+    const bytes = await fs.readFile(absolutePath);
+    const entry = {
+      path: normalizeRelativePath(path.relative(root, absolutePath)),
+      sha256: sha256Bytes(bytes),
+      size: bytes.length,
+      mode: stat.mode,
+      mtimeMs: stat.mtimeMs,
+      bytesBase64: bytes.toString("base64"),
+    };
+    hold?.commit(Buffer.byteLength(JSON.stringify(entry), "utf8"));
+    committed = true;
+    return entry;
+  } finally {
+    if (!committed) hold?.release();
+  }
 }
 
 function fileEntryFromBytes(
@@ -310,6 +490,7 @@ async function collectFileSet(params: {
   root: string;
   rootLabel: AgentBackupFileSet["rootLabel"];
   include?: (relativePath: string) => boolean;
+  budget?: SnapshotBudget;
 }): Promise<AgentBackupFileSet> {
   const root = path.resolve(params.root);
   const files: AgentBackupFileEntry[] = [];
@@ -324,6 +505,8 @@ async function collectFileSet(params: {
   }
 
   async function visit(dir: string): Promise<void> {
+    // Stop descending promptly once the capture is cancelled or over budget.
+    params.budget?.check();
     const entries = await fs.readdir(dir, { withFileTypes: true });
     for (const entry of entries) {
       const absolute = path.join(dir, entry.name);
@@ -333,7 +516,7 @@ async function collectFileSet(params: {
       if (entry.isDirectory()) {
         await visit(absolute);
       } else if (entry.isFile()) {
-        files.push(await readFileEntry(root, absolute));
+        files.push(await readFileEntry(root, absolute, params.budget));
       }
     }
   }
@@ -505,9 +688,69 @@ function getTableColumnsBucket(
   return columns;
 }
 
+/**
+ * Read an agent-scoped table in keyset batches, charging the budget per batch.
+ *
+ * Keyset (`id > $last ORDER BY id LIMIT n`) rather than OFFSET: OFFSET re-scans
+ * from the start on every page and skips or duplicates rows as they shift under
+ * a live agent. Ordering on the primary key makes each batch disjoint and the
+ * walk resumable.
+ *
+ * What this bounds is MEMORY — the peak is one batch, not the table, and the
+ * budget is charged after each batch so an oversized table stops the capture
+ * partway. What it does NOT provide is transactional consistency: each batch
+ * runs as its own statement against its own MVCC snapshot, so rows committed
+ * mid-walk may or may not appear, and cross-table capture points differ. A
+ * capture of a live agent is a best-effort walk, not a frozen snapshot; the
+ * lifecycle call sites that need a consistent image quiesce the agent first.
+ */
+export async function fetchAgentScopedRowsBatched(
+  pool: {
+    query: (text: string, values: unknown[]) => Promise<{ rows: unknown[] }>;
+  },
+  buildSql: (keysetClause: string) => string,
+  baseParams: unknown[],
+  budget: SnapshotBudget | undefined,
+  tableName: string,
+  // Qualified for a join (`e."id"`), bare otherwise — the ORDER BY must be
+  // unambiguous or Postgres rejects the statement.
+  idExpression: string,
+): Promise<JsonRecord[]> {
+  const rows: JsonRecord[] = [];
+  let lastId: unknown = null;
+  for (;;) {
+    budget?.check();
+    const params = lastId === null ? baseParams : [...baseParams, lastId];
+    const keysetClause =
+      lastId === null
+        ? `ORDER BY ${idExpression} LIMIT ${POSTGRES_CAPTURE_BATCH_ROWS}`
+        : `AND ${idExpression} > $${baseParams.length + 1} ORDER BY ${idExpression} LIMIT ${POSTGRES_CAPTURE_BATCH_ROWS}`;
+    const batch = (await pool.query(buildSql(keysetClause), params))
+      .rows as JsonRecord[];
+    if (batch.length === 0) break;
+    budget?.chargeRaw(
+      Buffer.byteLength(JSON.stringify(batch), "utf8"),
+      `postgres table ${tableName}`,
+    );
+    rows.push(...batch);
+    if (batch.length < POSTGRES_CAPTURE_BATCH_ROWS) break;
+    const nextLastId = batch[batch.length - 1]?.id;
+    if (nextLastId === null || nextLastId === undefined) {
+      throw new ElizaError("Snapshot keyset pagination cannot advance", {
+        code: "AGENT_SNAPSHOT_KEYSET_ID_MISSING",
+        context: { tableName, idExpression },
+        severity: "fatal",
+      });
+    }
+    lastId = nextLastId;
+  }
+  return rows;
+}
+
 async function capturePostgresRows(
   postgresUrl: string,
   agentId: string,
+  budget?: SnapshotBudget,
 ): Promise<AgentBackupPostgresDump> {
   const pgModule = await import("pg");
   const pool = new pgModule.default.Pool({
@@ -535,6 +778,8 @@ async function capturePostgresRows(
     for (const [tableName, columns] of tableColumns) {
       const columnSet = new Set(columns);
       let rows: JsonRecord[] = [];
+      // Batched reads charge per batch; the single-read paths charge below.
+      let charged = false;
       if (tableName === POSTGRES_AGENT_TABLE && columnSet.has("id")) {
         const result = await pool.query(
           `SELECT * FROM ${quoteIdentifier(tableName)} WHERE ${quoteIdentifier("id")} = $1`,
@@ -545,29 +790,70 @@ async function capturePostgresRows(
         tableName === POSTGRES_EMBEDDINGS_TABLE &&
         columnSet.has("memory_id")
       ) {
-        const result = await pool.query(
-          `SELECT e.*
-           FROM ${quoteIdentifier(tableName)} e
-           INNER JOIN ${quoteIdentifier(POSTGRES_MEMORIES_TABLE)} m
-             ON e.${quoteIdentifier("memory_id")} = m.${quoteIdentifier("id")}
-           WHERE m.${quoteIdentifier("agent_id")} = $1`,
-          [agentId],
-        );
-        rows = result.rows as JsonRecord[];
+        if (columnSet.has("id")) {
+          rows = await fetchAgentScopedRowsBatched(
+            pool,
+            (keyset) =>
+              `SELECT e.*
+               FROM ${quoteIdentifier(tableName)} e
+               INNER JOIN ${quoteIdentifier(POSTGRES_MEMORIES_TABLE)} m
+                 ON e.${quoteIdentifier("memory_id")} = m.${quoteIdentifier("id")}
+               WHERE m.${quoteIdentifier("agent_id")} = $1 ${keyset}`,
+            [agentId],
+            budget,
+            tableName,
+            `e.${quoteIdentifier("id")}`,
+          );
+          charged = true;
+        } else {
+          const result = await pool.query(
+            `SELECT e.*
+             FROM ${quoteIdentifier(tableName)} e
+             INNER JOIN ${quoteIdentifier(POSTGRES_MEMORIES_TABLE)} m
+               ON e.${quoteIdentifier("memory_id")} = m.${quoteIdentifier("id")}
+             WHERE m.${quoteIdentifier("agent_id")} = $1`,
+            [agentId],
+          );
+          rows = result.rows as JsonRecord[];
+        }
       } else {
         const ownerColumn = agentIdColumn(columnSet);
         if (!ownerColumn) continue;
-        const result = await pool.query(
-          `SELECT * FROM ${quoteIdentifier(tableName)} WHERE ${quoteIdentifier(ownerColumn)} = $1`,
-          [agentId],
-        );
-        rows = result.rows as JsonRecord[];
+        if (columnSet.has("id")) {
+          rows = await fetchAgentScopedRowsBatched(
+            pool,
+            (keyset) =>
+              `SELECT * FROM ${quoteIdentifier(tableName)} WHERE ${quoteIdentifier(ownerColumn)} = $1 ${keyset}`,
+            [agentId],
+            budget,
+            tableName,
+            quoteIdentifier("id"),
+          );
+          charged = true;
+        } else {
+          // No primary key to walk: a single read is the only option, so the
+          // peak stays the table. Such tables are the small ones in practice;
+          // the post-read charge below still bounds the assembled snapshot.
+          const result = await pool.query(
+            `SELECT * FROM ${quoteIdentifier(tableName)} WHERE ${quoteIdentifier(ownerColumn)} = $1`,
+            [agentId],
+          );
+          rows = result.rows as JsonRecord[];
+        }
       }
       if (
         tableName === POSTGRES_AGENT_TABLE ||
         tableName === POSTGRES_EMBEDDINGS_TABLE ||
         agentIdColumn(columnSet)
       ) {
+        // Batched reads already charged per batch; only the single-read paths
+        // (a keyless table, or the single-row agent row) are charged here.
+        if (!charged) {
+          budget?.chargeRaw(
+            Buffer.byteLength(JSON.stringify(rows), "utf8"),
+            `postgres table ${tableName}`,
+          );
+        }
         tables.push({ name: tableName, columns, rows });
       }
     }
@@ -615,16 +901,19 @@ function withPgliteDumpHash(
 
 function isBlobLike(value: unknown): value is {
   arrayBuffer: () => Promise<ArrayBuffer>;
+  size: number;
 } {
   return (
     value !== null &&
     typeof value === "object" &&
-    typeof (value as { arrayBuffer?: unknown }).arrayBuffer === "function"
+    typeof (value as { arrayBuffer?: unknown }).arrayBuffer === "function" &&
+    typeof (value as { size?: unknown }).size === "number"
   );
 }
 
 async function capturePgliteDump(
   runtime: IAgentRuntime | AgentRuntime,
+  budget?: SnapshotBudget,
 ): Promise<AgentBackupPgliteDump | null> {
   const raw = (
     runtime.adapter as
@@ -647,21 +936,38 @@ async function capturePgliteDump(
   if (!isBlobLike(dump)) {
     throw new Error("PGlite dumpDataDir() did not return a Blob/File");
   }
-  const bytes = Buffer.from(await dump.arrayBuffer());
-  return withPgliteDumpHash({
-    kind: "pglite-dump",
-    compression: "gzip",
-    file: fileEntryFromBytes(PGLITE_DUMP_PATH, bytes),
-    sha256: "",
-  });
+  // Refuse from Blob.size BEFORE arrayBuffer(): the dump would otherwise be
+  // resident three times over (ArrayBuffer + Buffer + base64) with the budget
+  // none the wiser.
+  const hold = budget?.reserve(dump.size);
+  let committed = false;
+  try {
+    const bytes = Buffer.from(await dump.arrayBuffer());
+    const file = fileEntryFromBytes(PGLITE_DUMP_PATH, bytes);
+    hold?.commit(Buffer.byteLength(JSON.stringify(file), "utf8"));
+    committed = true;
+    return withPgliteDumpHash({
+      kind: "pglite-dump",
+      compression: "gzip",
+      file,
+      sha256: "",
+    });
+  } finally {
+    if (!committed) hold?.release();
+  }
 }
 
 async function captureDatabaseComponent(
   runtime: IAgentRuntime | AgentRuntime,
+  budget?: SnapshotBudget,
 ): Promise<AgentBackupDatabaseComponent> {
   const postgresUrl = hasPostgresUrl(runtime);
   if (postgresUrl) {
-    const postgres = await capturePostgresRows(postgresUrl, runtime.agentId);
+    const postgres = await capturePostgresRows(
+      postgresUrl,
+      runtime.agentId,
+      budget,
+    );
     return {
       kind: "postgres-rows",
       postgres,
@@ -675,7 +981,7 @@ async function captureDatabaseComponent(
     return { kind: "none", reason, sha256: sha256Json({ reason }) };
   }
 
-  const pgliteDump = await capturePgliteDump(runtime);
+  const pgliteDump = await capturePgliteDump(runtime, budget);
   if (pgliteDump) {
     return {
       kind: "pglite-dump",
@@ -688,6 +994,7 @@ async function captureDatabaseComponent(
     root: pgliteDir,
     rootLabel: "pglite-dir",
     include: pgliteFileInclude,
+    budget,
   });
   return {
     kind: "pglite-files",
@@ -698,15 +1005,20 @@ async function captureDatabaseComponent(
 
 async function captureCharacterComponent(
   runtime: IAgentRuntime | AgentRuntime,
+  budget?: SnapshotBudget,
 ): Promise<AgentBackupManifest["components"]["character"]> {
   const configPath = resolveConfigPath();
   const configFile = (await pathExists(configPath))
-    ? await readFileEntry(path.dirname(configPath), configPath)
+    ? await readFileEntry(path.dirname(configPath), configPath, budget)
     : undefined;
   const component = {
     runtimeCharacter: runtime.character ?? null,
     configFile,
   };
+  budget?.chargeRaw(
+    Buffer.byteLength(JSON.stringify(component.runtimeCharacter), "utf8"),
+    "runtime character",
+  );
   return { ...component, sha256: sha256Json(component) };
 }
 
@@ -722,7 +1034,25 @@ function legacyConfigProjection(config: ElizaConfig): Record<string, unknown> {
 export async function createAgentSnapshot(
   runtime: IAgentRuntime | AgentRuntime,
   config: ElizaConfig,
+  options?: { signal?: AbortSignal; maxRawBytes?: number; maxFiles?: number },
 ): Promise<AgentBackupStateData> {
+  // Bound what THIS process materializes. Without it the five captures below
+  // run concurrently with no size awareness at all, and the downstream Cloud
+  // check only ever sees a payload this heap already paid for (#17172 §1).
+  //
+  // The internal controller exists so a refusal in ONE component stops the
+  // OTHERS: siblings poll `budget.check()` between units of work, and a plain
+  // Promise.all rejection would leave them reading and encoding at full speed
+  // until they finish on their own.
+  const controller = new AbortController();
+  const signal = options?.signal
+    ? AbortSignal.any([options.signal, controller.signal])
+    : controller.signal;
+  const budget = new SnapshotBudget(
+    options?.maxRawBytes ?? MAX_RESTORABLE_AGENT_BACKUP_BYTES,
+    options?.maxFiles ?? DEFAULT_SNAPSHOT_MAX_FILES,
+    signal,
+  );
   const stateDir = resolveStateDir();
   const pgliteDirForStateFiles = hasPostgresUrl(runtime)
     ? null
@@ -731,24 +1061,58 @@ export async function createAgentSnapshot(
     stateDir,
     pgliteDirForStateFiles,
   );
-  const [database, media, vault, character, stateFiles] = await Promise.all([
-    captureDatabaseComponent(runtime),
-    collectFileSet({
-      root: path.join(stateDir, MEDIA_DIR_NAME),
-      rootLabel: "state-dir",
-    }),
-    collectFileSet({
-      root: stateDir,
-      rootLabel: "state-dir",
-      include: vaultFileInclude,
-    }),
-    captureCharacterComponent(runtime),
-    collectFileSet({
-      root: stateDir,
-      rootLabel: "state-dir",
-      include: stateFileInclude,
-    }),
-  ]);
+  // First failure aborts the shared signal, then allSettled drains the
+  // siblings — the failure surfaces once, with no unhandled rejections from
+  // captures that were cancelled mid-flight.
+  let firstFailure: unknown;
+  let failed = false;
+  const guarded = async <T>(work: Promise<T>): Promise<T> => {
+    try {
+      return await work;
+    } catch (error) {
+      // error-policy:J5 every rejection is rethrown and observed by the
+      // Promise.allSettled drain below; the first one also cancels siblings.
+      if (!failed) {
+        failed = true;
+        firstFailure = error;
+        controller.abort(error);
+      }
+      throw error;
+    }
+  };
+  const captures = [
+    guarded(captureDatabaseComponent(runtime, budget)),
+    guarded(
+      collectFileSet({
+        root: path.join(stateDir, MEDIA_DIR_NAME),
+        rootLabel: "state-dir",
+        budget,
+      }),
+    ),
+    guarded(
+      collectFileSet({
+        root: stateDir,
+        rootLabel: "state-dir",
+        include: vaultFileInclude,
+        budget,
+      }),
+    ),
+    guarded(captureCharacterComponent(runtime, budget)),
+    guarded(
+      collectFileSet({
+        root: stateDir,
+        rootLabel: "state-dir",
+        include: stateFileInclude,
+        budget,
+      }),
+    ),
+  ] as const;
+  await Promise.allSettled(captures);
+  if (failed) throw firstFailure;
+  // Everything settled fulfilled (a rejection would have set `failed`), so
+  // this resolves immediately with full inference.
+  const [database, media, vault, character, stateFiles] =
+    await Promise.all(captures);
 
   const componentHashes = {
     database: database.sha256,
@@ -783,12 +1147,18 @@ export async function createAgentSnapshot(
     "[agent-backup] Snapshot manifest created",
   );
 
-  return {
+  const snapshot = {
     memories: [],
     config: legacyConfigProjection(config),
     workspaceFiles: {},
     manifest,
   };
+  budget.chargeRaw(
+    Buffer.byteLength(JSON.stringify(snapshot.config), "utf8"),
+    "legacy config",
+  );
+  budget.assertWireSize(snapshot);
+  return snapshot;
 }
 
 async function encryptLocalBackupEnvelope(

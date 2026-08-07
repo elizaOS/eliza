@@ -220,13 +220,26 @@ export interface InvokePayload extends EventPayload {
 /**
  * Run event payload type
  */
+export type RunEventStatus =
+	| "started"
+	| "completed"
+	| "timeout"
+	| "error"
+	| "self"
+	| "off"
+	| "muted"
+	| "personality_gate"
+	| "bot_noise_triage"
+	| "replaced"
+	| "noMessageId";
+
 export interface RunEventPayload extends EventPayload {
 	runId: UUID;
 	messageId: UUID;
 	roomId: UUID;
 	entityId: UUID;
 	startTime: number | bigint;
-	status: "started" | "completed" | "timeout";
+	status: RunEventStatus;
 	endTime?: number | bigint;
 	duration?: number | bigint;
 	error?: string | Error;
@@ -279,6 +292,7 @@ export interface ModelEventPayload extends EventPayload {
 		total: number;
 		cacheReadInputTokens?: number;
 		cacheCreationInputTokens?: number;
+		reasoningTokens?: number;
 		cachedInputTokens?: number;
 		/** @deprecated Use `cachedInputTokens` or `cacheReadInputTokens`. */
 		cached?: number;

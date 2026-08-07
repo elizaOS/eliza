@@ -95,6 +95,7 @@ bun run --cwd packages/agent start            # bun run src/bin.ts (defaults to 
 bun run --cwd packages/agent dev              # bun --hot src/bin.ts
 bun run --cwd packages/agent typecheck        # tsc --noEmit -p tsconfig.json
 bun run --cwd packages/agent test             # deterministic Vitest batches
+bun run --cwd packages/agent test:integration # *.integration.test.ts suites (excluded from the default lane)
 bun run --cwd packages/agent lint             # biome check --write across src/
 bun run --cwd packages/agent lint:check       # biome check read-only
 bun run --cwd packages/agent format           # biome format --write
@@ -105,6 +106,11 @@ bun run --cwd packages/agent build:ios-bun    # mobile bundle, --target=ios
 bun run --cwd packages/agent test:remote-capabilities
 bun run --cwd packages/agent test:sandbox-live
 ```
+
+The package test runner keeps one file per isolated Vitest process and runs up
+to four processes concurrently by default. Set `AGENT_TEST_CONCURRENCY` to a
+positive integer to tune process parallelism, `AGENT_TEST_BATCH_SIZE` to group
+files deliberately, or `AGENT_TEST_VERBOSE=1` to print every passing child log.
 
 `build:docker-dist`, `build:ios-jsc`, `clean`, `pack:dry-run`, `test:remote-capabilities:{docker,cloud-live,provider-live,source-build}` also exist in `package.json`.
 

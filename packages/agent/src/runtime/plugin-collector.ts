@@ -24,10 +24,12 @@ import shortIdPluginMap from "@elizaos/registry/first-party/short-id-plugin-map.
   type: "json",
 };
 import {
+  getFirstRunProviderOption,
   hasExplicitCanonicalRuntimeConfig,
   isAndroidMobile,
   isMobilePlatform,
   migrateLegacyRuntimeConfig,
+  normalizeFirstRunProviderId,
   type ResolvedElizaCloudTopology,
   readAliasedEnv,
   resolveDeploymentTargetInConfig,
@@ -179,6 +181,44 @@ function packageNameFromPluginConfigId(pluginId: string): string {
     return `@elizaos/${pluginId}`;
   }
   return `@elizaos/plugin-${pluginId}`;
+}
+
+function providerPluginNameFromBackend(backend: string): string {
+  const explicitPluginName = resolvePluginPackageAlias(
+    packageNameFromPluginConfigId(backend),
+  );
+  if (
+    DIRECT_MODEL_PROVIDER_PLUGINS.has(explicitPluginName) ||
+    LOCAL_MODEL_PROVIDER_PLUGINS.has(explicitPluginName)
+  ) {
+    return explicitPluginName;
+  }
+  const providerId = normalizeFirstRunProviderId(backend);
+  if (providerId && providerId !== "elizacloud") {
+    const provider = getFirstRunProviderOption(providerId);
+    if (provider) {
+      return resolvePluginPackageAlias(provider.pluginName);
+    }
+  }
+  return explicitPluginName;
+}
+
+function isDirectlyRoutableProviderPlugin(
+  backend: string,
+  pluginName: string,
+): boolean {
+  if (
+    DIRECT_MODEL_PROVIDER_PLUGINS.has(pluginName) ||
+    LOCAL_MODEL_PROVIDER_PLUGINS.has(pluginName)
+  ) {
+    return true;
+  }
+  const provider = getFirstRunProviderOption(backend);
+  return (
+    provider !== null &&
+    provider.id !== "elizacloud" &&
+    resolvePluginPackageAlias(provider.pluginName) === pluginName
+  );
 }
 
 function isTruthyCloudEnvValue(raw: string | undefined): boolean {
@@ -618,7 +658,32 @@ export function collectPluginNames(
     }
 
     if (deploymentTarget.runtime === "cloud") {
+      // A Cloud runtime can keep its managed state/capability routes while the
+      // owner supplies the text brain directly. The canonical llmText route is
+      // the arbitration signal; stripping direct providers here would make the
+      // persisted route impossible to execute and let Cloud inference win.
+      const directlyRoutedProviderPlugins = new Set(
+        Object.values(serviceRouting ?? {}).flatMap((route) => {
+          if (route?.transport !== "direct" || !route.backend) return [];
+          const pluginName = providerPluginNameFromBackend(route.backend);
+          return isDirectlyRoutableProviderPlugin(route.backend, pluginName)
+            ? [pluginName]
+            : [];
+        }),
+      );
+      // Ambient credentials may belong to other tools or stale configuration;
+      // the canonical route matrix is the sole ownership signal in Cloud mode.
       removeDirectModelProviderSurfaces(pluginsToLoad);
+      for (const pluginName of directlyRoutedProviderPlugins) {
+        pluginsToLoad.add(pluginName);
+      }
+      for (const pluginName of LOCAL_MODEL_PROVIDER_PLUGINS) {
+        if (directlyRoutedProviderPlugins.has(pluginName)) {
+          pluginsToLoad.add(pluginName);
+        } else {
+          pluginsToLoad.delete(pluginName);
+        }
+      }
       if (cloudEffectivelyEnabled) {
         pluginsToLoad.add("@elizaos/plugin-elizacloud");
       } else {

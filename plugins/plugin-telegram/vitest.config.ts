@@ -4,8 +4,17 @@
  * real PGLite runtime and run instead under `vitest.real-runtime.config.ts`.
  */
 import { defineConfig } from "vitest/config";
+import baseConfig from "../../packages/scripts/vitest/default.config";
+
+const baseAliases = Array.isArray(baseConfig.resolve?.alias)
+  ? baseConfig.resolve.alias
+  : [];
 
 export default defineConfig({
+  resolve: {
+    ...baseConfig.resolve,
+    alias: baseAliases,
+  },
   test: {
     globals: true,
     environment: "node",

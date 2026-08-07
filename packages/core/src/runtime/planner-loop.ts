@@ -47,7 +47,6 @@ import { computePrefixHashes, stableJsonStringify } from "./context-hash";
 import { appendContextEvent } from "./context-object";
 import {
 	buildStageChatMessages,
-	cachePrefixSegments,
 	normalizePromptSegments,
 	renderContextObject,
 } from "./context-renderer";
@@ -135,7 +134,20 @@ export type {
 	PlannerTrajectory,
 } from "./planner-types";
 
-const DEFAULT_PLANNER_MAX_TOKENS = 1024;
+/**
+ * Chat-lane planner output budget. Reasoning models spend completion tokens on
+ * deliberation BEFORE the tool call, and with `toolChoice: required` a budget
+ * exhausted mid-reasoning means the required call is never emitted — Cerebras
+ * then terminates the stream with an in-stream "server error", which reads as
+ * a transient provider failure but reproduces 100% on any ask ambiguous
+ * enough to burn the budget (live 2026-08-03: nine identical failures on one
+ * build-and-host ask; wire capture showed the entire old 1024-token budget
+ * consumed by reasoning deltas with no tool call). 4096 leaves deliberation
+ * headroom while staying chat-sized; `ELIZA_PLANNER_MAX_TOKENS` overrides.
+ * The coding lane's larger budget below exists for the same failure class
+ * (#10132).
+ */
+const DEFAULT_PLANNER_MAX_TOKENS = 4096;
 
 /**
  * Coding/full-surface mode is on when the eliza-code sub-agent sets
@@ -168,7 +180,12 @@ const DEFAULT_CODING_PLANNER_MAX_TOKENS = 16384;
  * `ELIZA_CODING_PLANNER_MAX_TOKENS`).
  */
 function resolvePlannerMaxTokens(): number {
-	if (!isCodingFullSurfaceMode()) return DEFAULT_PLANNER_MAX_TOKENS;
+	if (!isCodingFullSurfaceMode()) {
+		const chatRaw = Number(process.env.ELIZA_PLANNER_MAX_TOKENS);
+		return Number.isFinite(chatRaw) && chatRaw > 0
+			? Math.floor(chatRaw)
+			: DEFAULT_PLANNER_MAX_TOKENS;
+	}
 	const raw = Number(process.env.ELIZA_CODING_PLANNER_MAX_TOKENS);
 	return Number.isFinite(raw) && raw > 0
 		? Math.floor(raw)
@@ -190,20 +207,24 @@ interface RawPlannerOutput {
 }
 
 /**
- * Public planner-loop entry: runs the iteration loop, then enforces the
- * tool-turn reply guarantee — a turn that executed real tool work must end
- * with a user-facing reply, not silence or the generic handled-step
- * placeholder. Read/list-then-summarize turns ended replyless live when the
- * evaluator emitted junk (a tool-call literal, non-JSON) after a successful
- * tool ran; the post-pass converts that into ONE forced no-tools synthesis
- * call grounded in the tool results (#16935). Deliberate silence
- * (STOP/IGNORE, suppressPlannerReply) is flagged by the loop and respected.
+ * Public planner-loop entry: runs the iteration loop, then enforces two reply
+ * guarantees. Failed turns get the honest-failure guarantee — a turn that
+ * would ship the generic failed-step sentence gets ONE forced no-tools
+ * synthesis pass whose instruction names the failed step and its scrubbed
+ * human-readable cause, so the model states what failed and why in its own
+ * voice (#17948). Successful tool turns get the tool-turn reply guarantee —
+ * real tool work must end with a user-facing reply, not silence or the
+ * generic handled-step placeholder; junk evaluator output after a successful
+ * tool converts into ONE forced no-tools synthesis call grounded in the tool
+ * results (#16935). Deliberate silence (STOP/IGNORE, suppressPlannerReply) is
+ * flagged by the loop and respected.
  */
 export async function runPlannerLoop(
 	params: PlannerLoopParams,
 ): Promise<PlannerLoopResult> {
 	const result = await runPlannerLoopIterations(params);
-	return ensureToolTurnFinalMessage(params, result);
+	const honest = await ensureFailedTurnFinalMessage(params, result);
+	return ensureToolTurnFinalMessage(params, honest);
 }
 
 async function runPlannerLoopIterations(
@@ -581,7 +602,7 @@ async function runPlannerLoopIterations(
 					if (protocolFailureRelay) {
 						params.runtime.logger?.warn?.(
 							{ iteration, protocolFailure: true },
-							"[planner-loop] evaluator violated its protocol after a successful tool; relaying the completed result without replaying work",
+							"[planner-loop] evaluator violated its protocol after a tool result; relaying the authoritative result without replaying work",
 						);
 						return {
 							status: "finished",
@@ -605,6 +626,12 @@ async function runPlannerLoopIterations(
 										trajectory,
 										evaluator.messageToUser ?? plannerOutput.messageToUser,
 									),
+									// Same structural failure acknowledgment as the post-tool
+									// FINISH path: success:false licenses the evaluator's own
+									// diagnosis over the generic failed-step sentence (#17948).
+									evaluator.success === false
+										? userSafeFailureReport(evaluator.messageToUser, trajectory)
+										: undefined,
 								),
 								trajectory,
 							),
@@ -872,7 +899,21 @@ async function runPlannerLoopIterations(
 								),
 					// STOP/IGNORE-only terminals chose silence; a textless REPLY did
 					// not (the model tried to answer and failed to carry text).
-					...(hasReplyCall ? {} : { endedWithDeliberateSilence: true }),
+					// The silent terminal's name travels with the result so the
+					// message handler can record the turn under the action the
+					// model actually chose (STOP vs IGNORE); NONE folds into
+					// IGNORE — both mean "nothing to say", only STOP carries the
+					// distinct "stand down" semantics.
+					...(hasReplyCall
+						? {}
+						: {
+								endedWithDeliberateSilence: true,
+								silentTerminalAction: plannerOutput.toolCalls.some(
+									(toolCall) => toolCall.name.toUpperCase() === "STOP",
+								)
+									? ("STOP" as const)
+									: ("IGNORE" as const),
+							}),
 				};
 			}
 
@@ -910,24 +951,46 @@ async function runPlannerLoopIterations(
 				}
 			}
 			// Loop-breaker: a non-terminal call that exactly repeats one already
-			// SUCCEEDED this turn (same name + args) cannot return new data. Execute
-			// only genuinely-fresh calls; when every call this iteration is such a
-			// repeat, count a dead round and — past `maxRepeatedToolCalls` — force a
-			// terminal synthesis instead of looping to the prompt-token budget.
-			const { fresh: validNonTerminalCalls, redundant: redundantCalls } =
-				partitionRedundantSucceededCalls(unavailable.valid, trajectory);
-			if (validNonTerminalCalls.length === 0 && redundantCalls.length > 0) {
+			// SUCCEEDED this turn (same name + args) cannot return new data, and one
+			// that already FAILED with the structural non-retryable marker cannot
+			// start succeeding mid-turn. Execute only genuinely-fresh calls; when
+			// every call this iteration is such a repeat, count a dead round and —
+			// past `maxRepeatedToolCalls` — force a terminal synthesis instead of
+			// looping to the prompt-token budget.
+			const {
+				fresh: validNonTerminalCalls,
+				redundant: redundantCalls,
+				nonRetryable: nonRetryableCalls,
+			} = partitionRedundantSucceededCalls(unavailable.valid, trajectory);
+			if (
+				validNonTerminalCalls.length === 0 &&
+				(redundantCalls.length > 0 || nonRetryableCalls.length > 0)
+			) {
 				repeatedNonTerminalToolCalls++;
+				const instructionParts: string[] = [];
+				if (redundantCalls.length > 0) {
+					instructionParts.push(
+						"You already have a successful result this turn for " +
+							`${redundantCalls.map((call) => call.name).join(", ")} with these ` +
+							"exact arguments. Re-running it cannot return new information.",
+					);
+				}
+				if (nonRetryableCalls.length > 0) {
+					instructionParts.push(
+						`${nonRetryableCalls.map((call) => call.name).join(", ")} already ` +
+							"failed this turn with these exact arguments and that failure is " +
+							"non-retryable — the identical call cannot succeed. Choose a " +
+							"different tool or different arguments.",
+					);
+				}
 				trajectory.context = appendContextEvent(trajectory.context, {
 					id: `redundant-tool-call:${iteration}`,
 					type: "instruction",
 					source: "planner-loop",
 					createdAt: Date.now(),
 					content:
-						"You already have a successful result this turn for " +
-						`${redundantCalls.map((call) => call.name).join(", ")} with these ` +
-						"exact arguments. Re-running it cannot return new information — " +
-						"answer the user now from the results already gathered.",
+						`${instructionParts.join(" ")} Answer the user now from the ` +
+						"results already gathered.",
 				});
 				if (repeatedNonTerminalToolCalls > config.maxRepeatedToolCalls) {
 					return finishWithForcedSynthesis({
@@ -941,10 +1004,14 @@ async function runPlannerLoopIterations(
 				trajectory.plannedQueue.length = 0;
 				continue;
 			}
-			if (redundantCalls.length > 0) {
+			if (redundantCalls.length > 0 || nonRetryableCalls.length > 0) {
 				params.runtime.logger?.debug?.(
-					{ iteration, skipped: redundantCalls.map((call) => call.name) },
-					"Skipping tool calls that already succeeded with identical args this turn",
+					{
+						iteration,
+						skippedSucceeded: redundantCalls.map((call) => call.name),
+						skippedNonRetryable: nonRetryableCalls.map((call) => call.name),
+					},
+					"Skipping tool calls already settled with identical args this turn (succeeded or non-retryable failure)",
 				);
 			}
 			repeatedNonTerminalToolCalls = 0;
@@ -991,6 +1058,7 @@ async function runPlannerLoopIterations(
 			iteration,
 			config,
 			failures,
+			plannerCompleted: lastPlannerExplicitCompleted,
 		});
 
 		const latestResult = trajectory.steps[trajectory.steps.length - 1]?.result;
@@ -1154,7 +1222,7 @@ async function runPlannerLoopIterations(
 		if (protocolFailureRelay) {
 			params.runtime.logger?.warn?.(
 				{ iteration, protocolFailure: true },
-				"[planner-loop] evaluator violated its protocol after a successful tool; relaying the completed result without replaying work",
+				"[planner-loop] evaluator violated its protocol after a tool result; relaying the authoritative result without replaying work",
 			);
 			return {
 				status: "finished",
@@ -1197,6 +1265,13 @@ async function runPlannerLoopIterations(
 								? failedToolFallbackMessage(trajectory)
 								: undefined,
 						),
+						// A FINISH that declares success:false is a structural failure
+						// acknowledgment; its messageToUser is the evaluator's diagnosis
+						// of the failed step (it saw the failed result in its context)
+						// and must not be discarded for the generic sentence (#17948).
+						evaluator.success === false
+							? userSafeFailureReport(evaluator.messageToUser, trajectory)
+							: undefined,
 					),
 					trajectory,
 				),
@@ -1246,6 +1321,7 @@ function renderPlannerModelInput(params: {
 }): {
 	messages: ChatMessage[];
 	promptSegments: PromptSegment[];
+	cacheKeySegments: PromptSegment[];
 } {
 	const renderedContext = renderContextObject(params.context);
 	const template = params.template ?? plannerTemplate;
@@ -1274,10 +1350,28 @@ function renderPlannerModelInput(params: {
 	// belong in the cached prefix. Marking the segment `stable: true` lets the
 	// Anthropic provider stamp `cache_control` on this block and lets the
 	// cache-key prefix extend through these instructions.
+	// `buildStageChatMessages` physically groups every stable context segment
+	// plus the planner instructions into the system message before it emits any
+	// dynamic user context. Keep the annotated segment order identical to that
+	// wire order. Otherwise `cachePrefixSegments` stops at the first dynamic
+	// provider and hashes only a small fraction of the system prefix even though
+	// the provider receives a much longer byte-stable system message.
+	const stableContextSegments = contextSegments.filter(
+		(segment) => segment.stable,
+	);
+	const dynamicContextSegments = contextSegments.filter(
+		(segment) => !segment.stable,
+	);
 	const promptSegments = normalizePromptSegments([
-		...contextSegments,
+		...stableContextSegments,
 		{ content: `planner_stage:\n${instructions}`, stable: true },
+		...dynamicContextSegments,
 	]);
+	// Planner and evaluator share the same rendered context but have different
+	// stage instructions. Cerebras uses the cache key as a routing hint, so key
+	// the pair by their shared byte-stable context prefix while retaining each
+	// stage's complete annotated wire shape in `promptSegments`.
+	const cacheKeySegments = normalizePromptSegments(stableContextSegments);
 	// Native tool-call messages: assistant (with toolCalls) + tool (result) per
 	// completed step. This grows append-only across planner iterations so the
 	// base prefix remains byte-identical and Cerebras's prompt cache can hit.
@@ -1292,7 +1386,7 @@ function renderPlannerModelInput(params: {
 		dynamicBlocks: [],
 		stepMessages,
 	});
-	return { messages, promptSegments };
+	return { messages, promptSegments, cacheKeySegments };
 }
 
 function compactionReserveForBudget(
@@ -1341,12 +1435,14 @@ const MANDATORY_PLANNER_POLICY_LINES = [
 	"TASKS_SPAWN_AGENT is for delegating coding/build/repo work",
 	"Structured chat markers are allowed in messageToUser",
 	"messageToUser and REPLY text must NEVER claim or imply",
+	"messageToUser must read like natural conversation, not a database or debug log",
 ];
 
 const MANDATORY_PLANNER_POLICY = [
 	"mandatory planner policy:",
 	'- messageToUser alone cannot save, schedule, send, update, remember, or complete anything. If an exposed tool can perform the requested side effect, call it. Never say "saved", "logged", "scheduled", "sent", "updated", or "done" unless a tool result this turn proves it.',
 	"- Structured chat markers are allowed in messageToUser when they are the actual user-visible interaction payload: [FORM]\\n{json}\\n[/FORM], [CHOICE:scope id=id]\\nvalue=Label\\n[/CHOICE], [FOLLOWUPS id=id]\\nvalue=Label\\n[/FOLLOWUPS], or [TASK:threadId]Title[/TASK]. The JSON inside [FORM] is form data, not a tool attempt; keep JSON inside the marker and do not emit unrelated JSON.",
+	"- messageToUser must read like natural conversation, not a database or debug log. Prefer concise everyday wording. Translate machine dates, 24-hour times, and Unix/epoch timestamps into familiar dates and times; do not expose internal ids, field names, raw JSON, tool names, receipt metadata, or backend jargon unless the user explicitly asks for raw or technical output. Preserve exact code and user-provided values when they are the subject of the request.",
 	"- SHELL is for filesystem/process work, not a fallback for chat-message search/recall, memory queries, or agent-history lookups. When the user wants chat-message search/recall, memory queries, or agent-history lookups and no dedicated search action (e.g. SEARCH_MESSAGES, MESSAGE_SEARCH, MEMORY_SEARCH) is exposed, do not run shell greps, echo placeholders, or simulate the search — set messageToUser explaining that the capability is not available this turn.",
 	'- candidateActions naming a tool that is not in this turn\'s exposed tools list is a dead hint — do not invent SHELL/BROWSER/TASKS workarounds to fulfill it. Either an exposed tool genuinely resolves the user\'s intent (call it), or no tool fits (set messageToUser). A dead hint does NOT mean the capability is missing: scan the exposed tools\' names, routing hints, and descriptions for one that covers the same intent (e.g. github issues -> TASKS_MANAGE_ISSUES when GITHUB_LIST_ISSUES is not exposed; reminders -> TRIGGER_CREATE when OWNER_REMINDERS is not exposed) and call it before declaring the capability unavailable. Never emit echo-placeholder SHELL commands such as: echo "<intent-name>" / echo "placeholder for <ACTION>" / echo "search <X>" as a way to "trigger" a missing capability — placeholder echoes burn cost and produce no progress.',
 	'- TASKS_SPAWN_AGENT is for delegating coding/build/repo work to a coding sub-agent (file edits, shell tooling, building/deploying apps, running tests, opening PRs). It is not a fallback for chat-message recall, memory queries, or agent-history lookups. Spawning a coding sub-agent to "search the Discord channel for messages mentioning X" routinely ends in sub-agent error/timeout and a generic "Sorry, something went wrong" reply to the user. When the user wants chat-message recall and no dedicated search action is exposed, set messageToUser explaining the capability is not available — do not spawn a sub-agent for it.',
@@ -1369,7 +1465,8 @@ function renderRoutingHintsBlock(context: ContextObject): string | null {
 	if (events && ROUTING_HINTS_MEMO.has(events)) {
 		return ROUTING_HINTS_MEMO.get(events) ?? null;
 	}
-	const seen = new Set<string>();
+	const seenOwners = new Set<string>();
+	const seenHints = new Set<string>();
 	const lines: string[] = [];
 	for (const event of events ?? []) {
 		if (event.type !== "tool" || !("tool" in event)) continue;
@@ -1386,8 +1483,10 @@ function renderRoutingHintsBlock(context: ContextObject): string | null {
 		const key = normalizePlannerToolName(
 			own ? tool.name : (promoted?.parent ?? tool.name),
 		);
-		if (seen.has(key)) continue;
-		seen.add(key);
+		const normalizedHint = hint.replace(/\s+/g, " ").trim().toLowerCase();
+		if (seenOwners.has(key) || seenHints.has(normalizedHint)) continue;
+		seenOwners.add(key);
+		seenHints.add(normalizedHint);
 		lines.push(`- ${hint}`);
 	}
 	const result =
@@ -1814,9 +1913,7 @@ async function callPlanner(params: {
 		}
 	}
 	const prefixHashes = computePrefixHashes(renderedInput.promptSegments);
-	const cachePrefixHashes = computePrefixHashes(
-		cachePrefixSegments(renderedInput.promptSegments),
-	);
+	const cachePrefixHashes = computePrefixHashes(renderedInput.cacheKeySegments);
 	const prefixHash =
 		cachePrefixHashes[cachePrefixHashes.length - 1]?.hash ??
 		"no-context-segments";
@@ -2618,11 +2715,18 @@ function appendSilentFailedFinishRecoveryEvent(args: {
 	const createdAt = Date.now();
 	const failedStep = latestFailedToolStep(args.trajectory);
 	const failedToolName = failedStep?.toolCall?.name;
+	// Naming the cause (not just the tool) lets the replan pick a genuinely
+	// different approach — and lets a blocker reply state WHY the step failed
+	// instead of degenerating to the generic failed-step sentence (#17948).
+	const failedToolCause = failedStep
+		? failedStepCauseForPrompt(failedStep)
+		: undefined;
 	const content = [
 		"planner_retry_instruction:",
 		"silent_failed_finish: true",
 		failedToolName ? `failed_tool: ${failedToolName}` : null,
-		"The latest tool step failed, and the evaluator finished without a user-visible message. Retry once with a different available approach if possible; otherwise return a concise user-visible blocker instead of ending silently.",
+		failedToolCause ? `failed_tool_cause: ${failedToolCause}` : null,
+		"The latest tool step failed, and the evaluator finished without a user-visible message. Retry once with a different available approach if possible; otherwise return a concise user-visible blocker that states plainly what failed and why, in everyday language without file paths, internal ids, or raw logs.",
 	]
 		.filter((line): line is string => line !== null)
 		.join("\n");
@@ -2637,6 +2741,7 @@ function appendSilentFailedFinishRecoveryEvent(args: {
 			evaluatorDecision: args.evaluator.decision,
 			evaluatorSuccess: args.evaluator.success,
 			failedToolName,
+			failedToolCause,
 		},
 	});
 }
@@ -2648,6 +2753,7 @@ async function executeQueuedToolCall(params: {
 	iteration: number;
 	config: ChainingLoopConfig;
 	failures: FailureLike[];
+	plannerCompleted?: boolean;
 }): Promise<void> {
 	assertTrajectoryLimit({
 		kind: "tool_calls",
@@ -2678,6 +2784,9 @@ async function executeQueuedToolCall(params: {
 		result = await params.params.executeToolCall(params.toolCall, {
 			trajectory: params.trajectory,
 			iteration: params.iteration,
+			...(params.plannerCompleted !== undefined
+				? { plannerCompleted: params.plannerCompleted }
+				: {}),
 		});
 	} catch (error) {
 		// error-policy:J1 Tool execution is the planner action boundary; preserve
@@ -3211,7 +3320,7 @@ function latestUnresolvedFailedNonTerminalToolStep(
 		) {
 			continue;
 		}
-		const operationKey = plannerToolOperationKey(step.toolCall);
+		const operationKey = plannerToolOperationKey(step.toolCall, step.result);
 		if (step.result.success === false || step.result.error != null) {
 			unresolvedByOperation.delete(operationKey);
 			unresolvedByOperation.set(operationKey, step);
@@ -3227,10 +3336,18 @@ function latestUnresolvedFailedNonTerminalToolStep(
  * failure has been retried with the same operation and succeeded. This keeps
  * unrelated VIEWS/SHELL work from laundering an unhandled failure into a
  * healthy-looking completion.
+ *
+ * `failureReport` is a model-authored diagnosis of the failure whose producing
+ * output STRUCTURALLY declared the turn failed (evaluator `success:false`, or
+ * a synthesis pass explicitly instructed about the failure). It is not
+ * laundering by construction — the deciding output admitted failure — so it
+ * may stand in for the generic fallback when the failed tool owns no
+ * user-safe text of its own (#17948).
  */
 function terminalMessageWithFailureAuthority(
 	trajectory: PlannerTrajectory,
 	candidate: string | undefined,
+	failureReport?: string,
 ): string | undefined {
 	const unresolvedFailure =
 		latestUnresolvedFailedNonTerminalToolStep(trajectory);
@@ -3253,7 +3370,7 @@ function terminalMessageWithFailureAuthority(
 		return pendingInteraction;
 	}
 
-	return groundedFailedToolMessage(unresolvedFailure);
+	return groundedFailedToolMessage(unresolvedFailure, failureReport);
 }
 
 /**
@@ -3296,7 +3413,10 @@ function isStructuredInteractionPayload(value: string | undefined): boolean {
 	return /^\s*\[(?:FORM|CHOICE)\]/i.test(value ?? "");
 }
 
-function plannerToolOperationKey(toolCall: PlannerToolCall): string {
+function plannerToolOperationKey(
+	toolCall: PlannerToolCall,
+	result?: PlannerToolResult,
+): string {
 	// A successful sibling mutation must not erase an authoritative failure for
 	// another entity; key order is irrelevant and every OPERATIVE argument
 	// matters. Free-text narration params are excluded: models re-narrate the
@@ -3306,6 +3426,19 @@ function plannerToolOperationKey(toolCall: PlannerToolCall): string {
 	// completion proof) with the generic fallback, failing verifications whose
 	// checks had all passed.
 	const params = { ...(toolCall.params ?? {}) };
+	// Schema validation can reject one optional argument while preserving the
+	// rest of the operation (for example a model supplies roomId="current", then
+	// retries the same search with that field omitted). The validator publishes
+	// the rejected top-level names as structured metadata, so the corrected retry
+	// resolves that failure without weakening correlation for any accepted
+	// identity/payload argument.
+	const parameterErrors = result?.data?.parameterErrors;
+	const invalidParameterNames = result?.data?.invalidParameterNames;
+	if (Array.isArray(parameterErrors) && Array.isArray(invalidParameterNames)) {
+		for (const name of invalidParameterNames) {
+			if (typeof name === "string") delete params[name];
+		}
+	}
 	// SHELL defines description as an execution label; other tools may use the
 	// same field as the payload itself (for example TASKS_CREATE). Keeping this
 	// allow-list tool-specific prevents unrelated mutations from sharing failure
@@ -3382,27 +3515,43 @@ function toolCallIdentity(toolCall: PlannerToolCall): string {
 
 /**
  * Split a set of planned non-terminal calls into those that are genuinely new
- * this turn and those that exactly repeat a call which already SUCCEEDED (same
- * tool name + arguments). A repeat of a successful call cannot return new
- * information, so the loop should not re-execute it.
+ * this turn and those that exactly repeat a call (same tool name + arguments)
+ * which either already SUCCEEDED — a repeat cannot return new information — or
+ * already FAILED with the structural `data.retryable === false` marker — a
+ * deterministic unavailability (e.g. PAGE_DELEGATE's PAGE_CHILD_UNAVAILABLE)
+ * that cannot change within the turn. Neither kind is re-executed. Archived
+ * (compacted) steps still count: mid-turn input-budget compaction moves steps
+ * to `archivedSteps`, and a settled call must stay settled across that move.
  */
-function partitionRedundantSucceededCalls(
+export function partitionRedundantSucceededCalls(
 	calls: PlannerToolCall[],
 	trajectory: PlannerTrajectory,
-): { fresh: PlannerToolCall[]; redundant: PlannerToolCall[] } {
+): {
+	fresh: PlannerToolCall[];
+	redundant: PlannerToolCall[];
+	nonRetryable: PlannerToolCall[];
+} {
 	const succeeded = new Set<string>();
-	for (const step of trajectory.steps) {
-		if (step.toolCall && step.result?.success === true) {
-			succeeded.add(toolCallIdentity(step.toolCall));
+	const failedNonRetryable = new Set<string>();
+	for (const step of [...trajectory.archivedSteps, ...trajectory.steps]) {
+		if (!step.toolCall || !step.result) continue;
+		const identity = toolCallIdentity(step.toolCall);
+		if (step.result.success === true) {
+			succeeded.add(identity);
+		} else if (step.result.data?.retryable === false) {
+			failedNonRetryable.add(identity);
 		}
 	}
 	const fresh: PlannerToolCall[] = [];
 	const redundant: PlannerToolCall[] = [];
+	const nonRetryable: PlannerToolCall[] = [];
 	for (const call of calls) {
-		if (succeeded.has(toolCallIdentity(call))) redundant.push(call);
+		const identity = toolCallIdentity(call);
+		if (succeeded.has(identity)) redundant.push(call);
+		else if (failedNonRetryable.has(identity)) nonRetryable.push(call);
 		else fresh.push(call);
 	}
-	return { fresh, redundant };
+	return { fresh, redundant, nonRetryable };
 }
 
 /**
@@ -3420,6 +3569,13 @@ async function finishWithForcedSynthesis(params: {
 	onUsage?: (usage: { promptTokens: number; completionTokens: number }) => void;
 	/** Overrides the repeated-call framing when a caller forces synthesis for a different reason. */
 	instruction?: string;
+	/**
+	 * Marks this synthesis as failure-instructed: the instruction told the
+	 * model the step failed, so its reply is a failure report by construction
+	 * and may stand against the failure authority instead of being replaced
+	 * with the generic failed-step sentence (#17948).
+	 */
+	failureAware?: boolean;
 }): Promise<PlannerLoopResult> {
 	const { loop, config, trajectory, iteration } = params;
 	trajectory.context = appendContextEvent(trajectory.context, {
@@ -3466,7 +3622,13 @@ async function finishWithForcedSynthesis(params: {
 		status: "finished",
 		trajectory,
 		finalMessage: userSafeFinalMessage(
-			terminalMessageWithFailureAuthority(trajectory, finalMessage),
+			terminalMessageWithFailureAuthority(
+				trajectory,
+				finalMessage,
+				params.failureAware
+					? userSafeFailureReport(synthOutput.messageToUser, trajectory)
+					: undefined,
+			),
 			trajectory,
 		),
 	};
@@ -3537,6 +3699,88 @@ function latestToolResultText(
 		}
 	}
 	return undefined;
+}
+
+/**
+ * Floor for the echo comparison, in normalized characters. Below it a match
+ * is likelier to be a coincidence than a reproduction (a distilled answer
+ * like "3" is a byte-prefix of "3 tasks found …"); at or above it a
+ * byte-exact overlap with planner-facing tool text only occurs when the
+ * model reproduced that text rather than answering in its own words.
+ */
+const RAW_TOOL_TEXT_ECHO_MIN_CHARS = 24;
+
+function normalizeForEchoComparison(text: string): string {
+	// Case-folded so a letter-case variant of the raw text cannot slip the
+	// verbatim/head-anchored comparison; still not a prose heuristic.
+	return text.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+/**
+ * Structural gate keeping typed tool data non-user-facing at the
+ * evaluator/planner boundary. `result.text` is planner-facing by contract
+ * (planner-types.ts): only the opt-in `userFacingText` — or a structural
+ * marker whose deterministic relay deliberately surfaces `text`
+ * (requiresConfirmation / awaitingUserInput / noop) — licenses tool output
+ * for the user channel. A weak model repeats the raw text verbatim after a
+ * protocol-failure replan (live tj-f730d907139bb2), and because an explicit
+ * model reply outranks tool text in the final-message precedence, that echo
+ * would promote planner-facing material into chat. The gate byte-compares
+ * the candidate against every unlicensed `result.text` in the trajectory,
+ * rejecting head-anchored reproduction: the exact text, an exact head of it
+ * (truncated echo), or the exact text plus a trailing addendum — so the
+ * caller falls through to typed user-facing data or ends the turn. Verbatim,
+ * head-anchored comparison only, never a prose heuristic: a genuine
+ * paraphrase differs bytewise, and a genuine synthesis that merely quotes a
+ * tool fragment mid-sentence does not START with the raw text; both pass
+ * untouched.
+ */
+function isEchoOfPlannerFacingToolText(
+	candidate: string,
+	trajectory: PlannerTrajectory,
+): boolean {
+	const normalizedCandidate = normalizeForEchoComparison(candidate);
+	if (normalizedCandidate.length < RAW_TOOL_TEXT_ECHO_MIN_CHARS) return false;
+	for (const step of trajectory.steps) {
+		if (!step.toolCall || isTerminalToolCall(step.toolCall)) continue;
+		const result = step.result;
+		if (!result) continue;
+		const rawText = getNonEmptyString(result.text);
+		if (!rawText) continue;
+		if (
+			hasRequiresConfirmationMarker(result) ||
+			hasAwaitingUserInputMarker(result) ||
+			hasNoopMarker(result) ||
+			// Internal-transcript results are DESIGNED to pass through the reply
+			// channel byte-exact: the delivery boundary matches the reply against
+			// the result text and stamps the outgoing message
+			// transcriptVisibility:"internal" (resolveActionResultTranscript-
+			// Visibility), so it never renders as assistant prose. Gating the
+			// echo here would break that stamping match.
+			result.transcriptVisibility === "internal"
+		) {
+			continue;
+		}
+		const normalizedRaw = normalizeForEchoComparison(rawText);
+		if (normalizedRaw.length < RAW_TOOL_TEXT_ECHO_MIN_CHARS) continue;
+		// When the tool's own userFacingText carries the raw text, the raw text
+		// IS the sanctioned user projection — repeating it is not a leak.
+		const userFacing = getNonEmptyString(result.userFacingText);
+		if (
+			userFacing &&
+			normalizeForEchoComparison(userFacing).includes(normalizedRaw)
+		) {
+			continue;
+		}
+		if (
+			normalizedCandidate === normalizedRaw ||
+			normalizedRaw.startsWith(normalizedCandidate) ||
+			normalizedCandidate.startsWith(normalizedRaw)
+		) {
+			return true;
+		}
+	}
+	return false;
 }
 
 function hasSuccessfulNonTerminalToolStep(
@@ -3614,6 +3858,81 @@ async function ensureToolTurnFinalMessage(
 }
 
 /**
+ * Honest-failure reply guarantee (post-pass of {@link runPlannerLoop}). A
+ * finished turn whose final message is the generic failed-step sentence —
+ * every model-side candidate was discarded or missing and the failed tool
+ * owned no user-safe text — gets ONE forced no-tools synthesis pass whose
+ * instruction names the failed step and its scrubbed human-readable cause.
+ * Context-in, model-out: the model writes the failure reply in its own voice
+ * from that context; the fixed sentence is never post-processed or templated.
+ * Synthesis is best-effort — a model failure here keeps the generic sentence
+ * rather than discarding the finished turn (#17948).
+ */
+async function ensureFailedTurnFinalMessage(
+	params: PlannerLoopParams,
+	result: PlannerLoopResult,
+): Promise<PlannerLoopResult> {
+	if (result.status !== "finished") return result;
+	// Coding/full-surface mode is exempt for the same reason as the tool-turn
+	// guarantee: its result feeds the orchestrator (which owns its own summary
+	// fallback), not a chat user, and an extra model call per failed build
+	// step would be pure overhead there.
+	if (isCodingFullSurfaceMode()) return result;
+	if (result.finalMessage !== FAILED_TOOL_FALLBACK_MESSAGE) return result;
+	const failedStep =
+		latestUnresolvedFailedNonTerminalToolStep(result.trajectory) ??
+		latestFailedToolStep(result.trajectory);
+	if (!failedStep?.toolCall) return result;
+	const cause = failedStepCauseForPrompt(failedStep);
+	const iteration = result.trajectory.steps.length + 1;
+	const instruction = [
+		`The ${failedStep.toolCall.name} step failed and the turn is ending without a usable result.`,
+		cause ? `Recorded failure cause: ${cause}` : null,
+		"Do not call any tool and do not claim the failed step succeeded. " +
+			"Write the final reply to the user now, in your own conversational " +
+			"voice: state plainly what was attempted and why it did not work, " +
+			"and include any genuine results from steps that did succeed. " +
+			"Summarize the cause in everyday terms; never include file paths, " +
+			"internal ids, or raw logs.",
+	]
+		.filter((line): line is string => line !== null)
+		.join(" ");
+	try {
+		const synthesized = await finishWithForcedSynthesis({
+			loop: params,
+			config: mergeChainingLoopConfig(params.config),
+			trajectory: result.trajectory,
+			iteration,
+			instruction,
+			failureAware: true,
+		});
+		const finalMessage = synthesized.finalMessage;
+		const synthesizedUsable =
+			finalMessage !== undefined &&
+			finalMessage.trim() !== "" &&
+			finalMessage !== HANDLED_STEP_FALLBACK_MESSAGE &&
+			finalMessage !== FAILED_TOOL_FALLBACK_MESSAGE;
+		params.runtime.logger?.warn?.(
+			{ iteration, failedTool: failedStep.toolCall.name, synthesizedUsable },
+			"[planner-loop] turn ended on a failed step with no user-safe failure text; forced a failure-aware synthesis pass",
+		);
+		return synthesizedUsable
+			? { ...result, trajectory: synthesized.trajectory, finalMessage }
+			: result;
+	} catch (err) {
+		// error-policy:J4 explicit user-facing degrade — the failure synthesis is
+		// a best-effort upgrade of an already-finished failed turn; a model
+		// failure here must not discard the turn, so the generic failed-step
+		// sentence ships and the synthesis failure is logged for diagnosis.
+		params.runtime.logger?.warn?.(
+			{ err: err instanceof Error ? err.message : String(err) },
+			"[planner-loop] failure-aware synthesis pass failed; keeping the generic failed-step reply",
+		);
+		return result;
+	}
+}
+
+/**
  * Deterministic (no model call) relay of the most recent SUCCESSFUL non-terminal
  * tool result. Used when a model call LATER in the turn (the post-tool evaluator
  * synthesis/decision call) fails transiently AFTER a tool already did real work:
@@ -3647,7 +3966,24 @@ function deterministicEvaluatorProtocolFailureRelay(
 	trajectory: PlannerTrajectory,
 ): string | undefined {
 	if (evaluator.protocolFailure !== true) return undefined;
-	if (latestUnresolvedFailedNonTerminalToolStep(trajectory)) return undefined;
+	const unresolvedFailure =
+		latestUnresolvedFailedNonTerminalToolStep(trajectory);
+	if (unresolvedFailure) {
+		const latestExecutedTool = [...trajectory.steps]
+			.reverse()
+			.find(
+				(step) =>
+					step.toolCall !== undefined &&
+					!isTerminalToolCall(step.toolCall) &&
+					step.result !== undefined,
+			);
+		// A malformed evaluator cannot safely invent a retry after the operation
+		// that just failed. Finish with that action-owned failure; an older failure
+		// followed by newer work still gets the normal replanning opportunity.
+		return latestExecutedTool === unresolvedFailure
+			? groundedFailedToolMessage(unresolvedFailure)
+			: undefined;
+	}
 	return deterministicSuccessfulToolRelay(trajectory);
 }
 
@@ -3940,8 +4276,16 @@ function preferredFinalMessageFromToolOrModel(
 	fallback?: unknown,
 ): string | undefined {
 	const modelText = getNonEmptyString(modelMessage);
+	// Rejecting a raw-tool-text echo HERE (not only in userSafeFinalMessage)
+	// lets the precedence chain below recover the turn from typed data — the
+	// tool's opt-in `userFacingText` or the caller's explicit fallback —
+	// instead of degrading straight to the handled-step placeholder.
 	const usableModelText =
-		modelText && !isToolMetaNarration(modelText) ? modelText : undefined;
+		modelText &&
+		!isToolMetaNarration(modelText) &&
+		!isEchoOfPlannerFacingToolText(modelText, trajectory)
+			? modelText
+			: undefined;
 	const widgetReply = userSafeWidgetReplyCandidate(usableModelText);
 	const widgetCollectsLatestMissingInput =
 		widgetReply !== undefined && latestToolResultAwaitsUserInput(trajectory);
@@ -4104,9 +4448,12 @@ function shouldRecoverSilentFailedFinish(args: {
 
 /**
  * Generic last-resort reply for a turn that ends on a failed tool with no
- * user-safe tool-owned text. Exported so the message service can recognize it
- * and drop it as redundant when the failed tool's own callback already told
- * the user what happened.
+ * user-safe tool-owned text. Since #17948 this ships only when the
+ * failure-aware synthesis pass in `ensureFailedTurnFinalMessage` itself fails
+ * or produces nothing usable — every model-reachable failed turn instead gets
+ * a model-authored reply naming what failed and why. Exported so the message
+ * service can recognize it and drop it as redundant when the failed tool's
+ * own callback already told the user what happened.
  */
 export const FAILED_TOOL_FALLBACK_MESSAGE =
 	"I tried to complete that, but the available runtime step failed before it produced a usable result.";
@@ -4184,6 +4531,58 @@ function diagnosticFailureReason(
 		return dataError.trim();
 	}
 	return undefined;
+}
+
+/** Ceiling for a scrubbed failure cause injected into a synthesis prompt —
+ * enough for a producer's human-shaped sentence, too short for a log dump. */
+const PROMPT_FAILURE_CAUSE_MAX_CHARS = 320;
+
+/**
+ * Internal-detail hygiene for failure text that is about to enter a prompt
+ * WE compose (retry instructions, failure synthesis). Producers fixed under
+ * #17923 emit human-shaped `text`, but older producers and thrown errors can
+ * still carry absolute paths, uuids, session ids, or byte dumps — none of
+ * which belong in context the reply model is told to speak from. Redaction is
+ * token-level (paths/ids/hex → placeholders), never sentence templating: the
+ * surviving prose is still the producer's own words.
+ */
+function scrubFailureCauseForPrompt(text: string): string | undefined {
+	const cleaned = text
+		.replace(
+			/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
+			"<id>",
+		)
+		.replace(/\bpty-\d+-[0-9a-z]+\b/gi, "<id>")
+		.replace(/\b[0-9a-f]{16,}\b/gi, "<id>")
+		.replace(/(^|[\s"'`(=:])(?:~\/|\/)[\w.@+-]+(?:\/[\w.@+-]+)+/g, "$1<path>")
+		.replace(/\b[A-Za-z]:\\[\w.\\ +-]+/g, "<path>")
+		.replace(/\s+/g, " ")
+		.trim();
+	if (!cleaned) return undefined;
+	return cleaned.length > PROMPT_FAILURE_CAUSE_MAX_CHARS
+		? `${cleaned.slice(0, PROMPT_FAILURE_CAUSE_MAX_CHARS)}…`
+		: cleaned;
+}
+
+/**
+ * Human-readable cause of a failed step, scrubbed for prompt injection.
+ * Prefers the producer's human-shaped `text` / structured `data.error` (the
+ * `diagnosticFailureReason` order), then the thrown error's message — the only
+ * cause available for exec failures and timeouts that reached the J1 boundary
+ * in `executeQueuedToolCall` as a bare `{ success:false, error }`.
+ */
+function failedStepCauseForPrompt(step: PlannerStep): string | undefined {
+	const result = step.result;
+	if (!result) return undefined;
+	const reason =
+		diagnosticFailureReason(result) ??
+		(typeof result.error === "string" && result.error.trim()
+			? result.error.trim()
+			: result.error instanceof Error && result.error.message.trim()
+				? result.error.message.trim()
+				: undefined);
+	if (!reason) return undefined;
+	return scrubFailureCauseForPrompt(reason);
 }
 
 /**
@@ -4340,7 +4739,10 @@ const TERMINAL_TOOL_CALL_FINISH_THOUGHT =
 const TERMINAL_AFTER_FAILED_TOOL_THOUGHT =
 	"Terminal FINISH: planner ended the loop after a failed tool; the tool-owned failure remains authoritative.";
 
-function groundedFailedToolMessage(step: PlannerStep): string {
+function groundedFailedToolMessage(
+	step: PlannerStep,
+	failureReport?: string,
+): string {
 	const result = step.result;
 	const toolOwnedText =
 		result &&
@@ -4350,7 +4752,31 @@ function groundedFailedToolMessage(step: PlannerStep): string {
 			: result?.userFacingText;
 	const candidate = sanitizePlannerMessage(toolOwnedText);
 	if (candidate && !isUnsafeUserVisibleText(candidate)) return candidate;
+	// The tool owns no user-safe text. A structurally failure-acknowledging
+	// model diagnosis beats the generic fallback: the model saw the failed
+	// result in its context, so its words describe the actual cause (#17948).
+	if (failureReport) return failureReport;
 	return FAILED_TOOL_FALLBACK_MESSAGE;
+}
+
+/**
+ * User-safe projection of a model-authored failure diagnosis. Callers must
+ * only pass messages whose producing output structurally declared failure
+ * (evaluator `success:false`, failure-instructed synthesis) — this helper
+ * enforces the text-safety half of that contract: leaked tool syntax,
+ * meta-narration, and raw-tool-text echoes are rejected so the caller falls
+ * back to the tool-owned message or the generic placeholder.
+ */
+function userSafeFailureReport(
+	message: unknown,
+	trajectory: PlannerTrajectory,
+): string | undefined {
+	const candidate = sanitizePlannerMessage(message);
+	if (!candidate) return undefined;
+	if (isUnsafeUserVisibleText(candidate)) return undefined;
+	if (isToolMetaNarration(candidate)) return undefined;
+	if (isEchoOfPlannerFacingToolText(candidate, trajectory)) return undefined;
+	return candidate;
 }
 
 function terminalToolCallFinish(
@@ -4380,7 +4806,16 @@ function userSafeFinalMessage(
 	// rejected wholesale (or worse, sent verbatim when the unsafe-text heuristic
 	// doesn't match the markup shape).
 	const candidate = sanitizePlannerMessage(message);
-	if (candidate && !isUnsafeUserVisibleText(candidate)) {
+	if (
+		candidate &&
+		!isUnsafeUserVisibleText(candidate) &&
+		// Hard boundary for the raw-tool-text echo: every finished-turn path
+		// funnels through here, so a candidate that reproduces planner-facing
+		// `result.text` (weak-model echo after a protocol failure) degrades to
+		// the tool's typed userFacingText or the placeholder — the raw text
+		// itself can never ship.
+		!isEchoOfPlannerFacingToolText(candidate, trajectory)
+	) {
 		return candidate;
 	}
 	const latest = sanitizePlannerMessage(latestToolResultText(trajectory));

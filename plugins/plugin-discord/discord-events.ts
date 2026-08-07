@@ -1194,5 +1194,54 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 		});
 	} // end if (isAuditLogEnabled)
 
+	// ── gateway shard lifecycle ────────────────────────────────────────
+	// Observability only. A live incident (2026-08-02 04:01 UTC) lost a
+	// MESSAGE_CREATE dispatch with zero process-side evidence: no ingress
+	// log, no memory, no trajectory — the connection was delivering events
+	// 39s before and 31s after. Without these handlers a silent zombie
+	// resume/re-identify that drops a dispatch is unattributable; with them,
+	// any recurrence carries a shard-lifecycle timestamp to correlate.
+	// Deliberately no recovery/backfill here — replaying missed history has
+	// duplicate-delivery risk and stays gated on an attributed recurrence.
+	service.client.on("shardDisconnect", (event, shardId) => {
+		service.runtime.logger.warn(
+			{
+				src: "plugin:discord",
+				agentId: service.runtime.agentId,
+				shardId,
+				code: event?.code,
+			},
+			"Gateway shard disconnected",
+		);
+	});
+	service.client.on("shardResume", (shardId, replayedEvents) => {
+		service.runtime.logger.warn(
+			{
+				src: "plugin:discord",
+				agentId: service.runtime.agentId,
+				shardId,
+				replayedEvents,
+			},
+			"Gateway shard resumed",
+		);
+	});
+	service.client.on("shardError", (error, shardId) => {
+		service.runtime.logger.warn(
+			{
+				src: "plugin:discord",
+				agentId: service.runtime.agentId,
+				shardId,
+				error: error instanceof Error ? error.message : String(error),
+			},
+			"Gateway shard error",
+		);
+	});
+	service.client.on("invalidated", () => {
+		service.runtime.logger.error(
+			{ src: "plugin:discord", agentId: service.runtime.agentId },
+			"Gateway session invalidated — client will not auto-reconnect",
+		);
+	});
+
 	return { channelDebouncer };
 }

@@ -52,6 +52,12 @@ export interface StewardTokenClaims {
   walletChain?: "ethereum" | "solana";
   /** Tenant/org scope, if present */
   tenantId?: string;
+  /**
+   * True when the token was minted by the cross-host SSO bridge exchange
+   * (auth/sso-bridge). Bridge-issued tokens are subject to the fail-closed
+   * logout-marker gate on the session-sync endpoint; ordinary tokens are not.
+   */
+  bridged?: boolean;
   /** Token expiration (unix timestamp) */
   expiration: number;
   /** Token issued-at (unix timestamp) */
@@ -68,6 +74,7 @@ interface CachedStewardClaims {
   walletAddress?: string;
   walletChain?: "ethereum" | "solana";
   tenantId?: string;
+  bridged?: boolean;
   expiration: number;
   issuedAt: number;
   cachedAt: number;
@@ -91,6 +98,12 @@ export interface StewardVerifyEnv {
 
 export interface StewardVerifyOptions {
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
+  /**
+   * Skip the distributed verification memo after the in-isolate check. Local
+   * signature verification is cheaper than a second Worker KV round-trip and
+   * keeps inference-session authorization to one remote cache decision.
+   */
+  skipDistributedCache?: boolean;
 }
 
 export const STEWARD_ACCESS_TOKEN_TTL_SECONDS = 60 * 60;
@@ -147,6 +160,10 @@ export async function mintStewardTokenFromClaims(
     payload.tenantId = claims.tenantId;
     payload.tenant_id = claims.tenantId;
   }
+  // The bridge stamp survives re-mints (steward-refresh re-mints from verified
+  // claims): a session that entered an origin through the bridge stays subject
+  // to the cross-host logout barrier for its whole cookie-planting lifetime.
+  if (claims.bridged) payload.bridged = true;
 
   const token = await new SignJWT(payload)
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
@@ -192,6 +209,7 @@ function extractClaims(payload: JWTPayload): StewardTokenClaims {
     walletAddress,
     walletChain,
     tenantId: (payload.tenantId ?? payload.tenant_id) as string | undefined,
+    ...(payload.bridged === true ? { bridged: true } : {}),
     expiration: payload.exp ?? 0,
     issuedAt: payload.iat ?? 0,
   };
@@ -233,8 +251,11 @@ export async function verifyStewardTokenCached(
       return inMemoryCached;
     }
 
-    // 1. Check Redis cache
-    const cached = await cache.get<CachedStewardClaims>(cacheKey);
+    // 1. Check the distributed memo unless the caller deliberately prefers
+    // local crypto to a second network lookup (the inference hot path).
+    const cached = options.skipDistributedCache
+      ? null
+      : await cache.get<CachedStewardClaims>(cacheKey);
     if (cached && cached.expiration > now) {
       logger.debug("[StewardClient] ✓ Redis cache hit", {
         tokenHash: tokenHash.substring(0, 8),
@@ -249,6 +270,7 @@ export async function verifyStewardTokenCached(
         walletAddress: cached.walletAddress,
         walletChain: cached.walletChain,
         tenantId: cached.tenantId,
+        ...(cached.bridged === true ? { bridged: true } : {}),
         expiration: cached.expiration,
         issuedAt: cached.issuedAt,
       };

@@ -1,10 +1,8 @@
 # Realtime voice UI wiring — manual test script
 
-This branch (`feat/voice-realtime-ui`) wires the realtime voice-session client
-(the WS path from PR #16062 / `feat/voice-realtime-slice`) into the EXISTING
-chat voice UI, behind the same continuous-chat toggle. It is an ADDITIVE
-enhancement: with the flag off (or no server mint), the mic runs the existing
-batch ASR path completely unchanged.
+The realtime voice-session client is wired into the persistent chat shell's
+existing Talk control. It is an additive enhancement: with the flag off (or no
+server mint), the mic runs the existing batch ASR path completely unchanged.
 
 ## What lands
 
@@ -22,15 +20,17 @@ batch ASR path completely unchanged.
 - `useContinuousVoiceSession` — composes the batch continuous-chat engine with
   the realtime session; tries realtime when eligible, else batch UNCHANGED.
   Eligibility is not proof that mint or WebSocket setup has succeeded.
-- `chat-view-hooks.tsx` — `useChatVoiceController` now creates the realtime
-  session + composed surface, drives realtime on/off from the SAME continuous-
-  chat toggle, and `disabled`s the batch passive capture while realtime owns the
-  mic (no double mic / double STT).
-- `ChatView.tsx` — the existing `ChatVoiceStatusBar` reads the composed
-  `voiceSession` (realtime status/transcript when active, batch otherwise). A
-  small "Live"/"Paused" pill + an actionable error pill are the only new
-  affordances, in the existing design tokens (lucide `Radio`/`PauseCircle`/
-  `AlertTriangle`, `bg-accent`/`bg-warn`/`bg-danger`).
+- `useShellController.ts` — the always-mounted app shell owns the realtime
+  session behind the same Talk control. It disables batch capture while
+  realtime owns the mic (no double mic / double STT) and requests canonical
+  conversation reconciliation when the gateway commits a voice turn.
+- `ChatOverlay.tsx` — realtime words and phase replace the normal textarea lane
+  inside the existing composer while Talk is active. Starting Talk opens that
+  same conversation to the reading detent; completed user and assistant turns
+  remain in the normal conversation history. There is no second floating card
+  and no separate client-only transcript store.
+- `ChatView.tsx` — legacy embedded chat surfaces retain the existing
+  `ChatVoiceStatusBar`; the persistent application surface is `ChatOverlay`.
 - `ChatVoiceStatusBar.tsx` — new optional props `realtimeActive`,
   `realtimePaused`, `realtimeErrorMessage`. When false/absent the bar is
   byte-for-byte the existing batch bar.
@@ -45,9 +45,31 @@ Both must be on AND a dedicated cloud agent UUID must resolve for the realtime
 path to arm.
 
 - Debug: `VITE_VOICE_REALTIME_FORCE` = `1|true|yes|on` (default OFF). A
-  local-verification debug affordance only — it force-arms the realtime path
-  when normal resolution would not, so a developer can exercise the client
-  wiring without a fully configured cloud. Never set it in a deployed build.
+local-verification debug affordance only — it force-arms the realtime path
+when normal resolution would not, so a developer can exercise the client
+wiring without a fully configured cloud. Never set it in a deployed build.
+
+## Local runtime + Cartesia provider loop
+
+The dev app can exercise the same server-side voice session while keeping chat
+on a local elizaOS runtime. Start the runtime on `31337`, then run:
+
+```bash
+CARTESIA_API_KEY=… \
+ELIZA_LOCAL_VOICE_GATEWAY_PORT=31338 \
+bun run --cwd packages/cloud/api voice:local-gateway
+
+VITE_VOICE_REALTIME_WS=1 \
+VITE_VOICE_REALTIME_FORCE=1 \
+ELIZA_LOCAL_VOICE_GATEWAY_PORT=31338 \
+bun run --cwd packages/app dev
+```
+
+Vite sends only `/api/v1/voice/session` HTTP and WebSocket traffic to the
+loopback gateway; all other `/api` traffic remains on `31337`. The provider
+loop is Cartesia Ink 2 STT → local runtime/model route → Cartesia Sonic 3.5 TTS.
+The Cartesia key remains in the gateway process and is never exposed to Vite or
+the browser.
 
 ## Flag retirement
 
@@ -65,7 +87,7 @@ graduates from staging to the default voice path:
 ## Manual test — desktop Chrome
 
 1. Build the PWA with the flag on and pointed at a cloud API that has the server
-   flag + provider keys (Deepgram / Cerebras / Cartesia) configured:
+   flag + Cartesia and Cerebras/Eliza bridge credentials configured:
    ```
    VITE_VOICE_REALTIME_WS=1 bun run --filter @elizaos/ui dev   # or the app build
    ```
@@ -74,12 +96,13 @@ graduates from staging to the default voice path:
    case, verify it in step 8).
 3. Open a chat. Turn the continuous-chat toggle to **vad-gated** or
    **always-on** (the same toggle as today).
-4. Grant the mic permission prompt. Expect the status bar to show a **Live**
-   pill (accent) + the status label cycling
+4. Grant the mic permission prompt. Expect the chat sheet to open and the
+   composer's text lane to cycle
    `Listening → Transcribing → Thinking → Speaking → Listening`.
 5. Speak a sentence. Watch:
    - the interim transcript update live (from `stt_partial`),
    - the status flip to `Thinking` then `Speaking`,
+   - the committed user and assistant turns appear in the same chat history,
    - the agent's voice play back (Cartesia audio via the WS downlink).
 6. **Barge-in:** while the agent is speaking, tap the mic (or start talking).
    Audio should stop IMMEDIATELY (local playback flush, before the server ack),
@@ -89,7 +112,7 @@ graduates from staging to the default voice path:
    and one WSS connection to `…/api/v1/voice/session/ws`. The first WS frame is a
    JSON `hello` carrying the token. No provider key ever appears client-side.
 8. **Fallback:** flip the SERVER flag off (or point at a build without it). The
-   mint returns 404; the **Live** pill disappears, the mic runs the existing
+   mint returns 404; the realtime composer state disappears, the mic runs the existing
    batch path (browser/cloud ASR → send → TTS) with NO error surface and NO
    behavior change. This is the critical non-regression.
 9. Turn the continuous-chat toggle **off** → the WS session sends a clean `bye`
@@ -124,5 +147,5 @@ graduates from staging to the default voice path:
   deploy that overwrites the stale value. The workflow contract fails an
   enabled production deploy when any of those values are absent.
 - Browser-level proof (screen recording + audio, both-side logs, real
-  Deepgram/Cerebras/Cartesia round-trip) is the INTEGRATION-run's job on a real
+  Cartesia Ink/Cerebras/Cartesia Sonic round-trip) is the INTEGRATION-run's job on a real
   device against the deployed server — this branch does NOT claim device-tested.

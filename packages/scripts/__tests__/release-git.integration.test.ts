@@ -6,7 +6,6 @@
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -22,6 +21,7 @@ import {
   pushReleaseTag,
   verifyReleaseSource,
 } from "../lib/release-git.mjs";
+import { execFileSync } from "../lib/spawn-sync-captured.mjs";
 
 const roots: string[] = [];
 

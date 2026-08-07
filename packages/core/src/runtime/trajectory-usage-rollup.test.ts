@@ -20,6 +20,7 @@ function metrics(
 		totalCompletionTokens: 0,
 		totalCacheReadTokens: 0,
 		totalCacheCreationTokens: 0,
+		totalReasoningTokens: 0,
 		totalCostUsd: 0,
 		plannerIterations: 0,
 		toolCallsExecuted: 0,
@@ -96,6 +97,36 @@ describe("rollUpTrajectoryUsage", () => {
 		expect(rollup.byTrace.map((b) => b.traceId)).toEqual(["trace-Z", ""]);
 		expect(rollup.promptTokens).toBe(15);
 		expect(rollup.trajectoryCount).toBe(2);
+	});
+
+	it("sums reasoning tokens into the grand total and the correct byTrace bucket", () => {
+		const rollup = rollUpTrajectoryUsage([
+			trajectory("trace-A", { totalReasoningTokens: 7 }),
+			trajectory("trace-A", { totalReasoningTokens: 13 }),
+			trajectory("trace-B", { totalReasoningTokens: 5 }),
+			// A trajectory that omits reasoning entirely (pre-rollout / no
+			// thinking) must contribute 0, not NaN or undefined.
+			trajectory("trace-B", {}),
+		]);
+
+		const a = rollup.byTrace.find((b) => b.traceId === "trace-A");
+		expect(a?.reasoningTokens).toBe(20);
+		const b = rollup.byTrace.find((b) => b.traceId === "trace-B");
+		expect(b?.reasoningTokens).toBe(5);
+		// Grand total spans both traces.
+		expect(rollup.reasoningTokens).toBe(25);
+	});
+
+	it("guards NaN/undefined reasoning tokens so a truncated file can't poison the total", () => {
+		const bad = trajectory("trace-nan", {});
+		(bad.metrics as unknown as Record<string, unknown>).totalReasoningTokens =
+			Number.NaN;
+		const rollup = rollUpTrajectoryUsage([
+			bad,
+			trajectory("trace-nan", { totalReasoningTokens: 10 }),
+		]);
+		expect(Number.isNaN(rollup.reasoningTokens)).toBe(false);
+		expect(rollup.reasoningTokens).toBe(10);
 	});
 
 	it("treats NaN/undefined metric fields as zero so a truncated file can't poison the total", () => {

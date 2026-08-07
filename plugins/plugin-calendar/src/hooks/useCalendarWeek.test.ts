@@ -266,6 +266,28 @@ describe("useCalendarWeek", () => {
     });
   });
 
+  it("jumps directly to a chosen month and rejects invalid dates", async () => {
+    const { result } = renderHook(() =>
+      useCalendarWeek({
+        baseDate: new Date(2026, 7, 4, 12),
+        viewMode: "month",
+      }),
+    );
+    await waitFor(() =>
+      expect(uiClient.getLifeOpsCalendarFeed).toHaveBeenCalled(),
+    );
+
+    act(() => result.current.goToDate(new Date(2028, 2, 1, 12)));
+    await waitFor(() => {
+      expect(result.current.baseDate.getFullYear()).toBe(2028);
+      expect(result.current.baseDate.getMonth()).toBe(2);
+    });
+
+    expect(() => result.current.goToDate(new Date(Number.NaN))).toThrow(
+      "Calendar date must be valid.",
+    );
+  });
+
   it("surfaces an error message when the feed fetch rejects", async () => {
     uiClient.getLifeOpsCalendarFeed.mockRejectedValue(
       new Error("network down"),

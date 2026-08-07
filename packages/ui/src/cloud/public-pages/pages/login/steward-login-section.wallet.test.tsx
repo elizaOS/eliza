@@ -44,6 +44,7 @@ vi.mock("../../lib/steward-session", () => ({
   consumeStewardCodeFromQuery: () => null,
   consumeStewardTokensFromHash: () => null,
   exchangeStewardCodeViaApi: () => Promise.resolve({}),
+  recoverStewardSessionViaCookie: () => Promise.resolve(null),
   refreshStewardSessionViaCookie: () => Promise.resolve({ ok: true as const }),
   syncStewardSessionCookie: () => Promise.resolve(),
 }));

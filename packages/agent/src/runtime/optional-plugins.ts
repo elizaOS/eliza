@@ -54,6 +54,8 @@ export const OPTIONAL_STATIC_PLUGIN_PACKAGES: readonly string[] = [
   "@elizaos/plugin-scheduling",
   "@elizaos/plugin-inbox",
   "@elizaos/plugin-app-control",
+  "@elizaos/plugin-notes",
+  "@elizaos/plugin-calendar",
   "@elizaos/plugin-anthropic",
   "@elizaos/plugin-openai",
 ];
@@ -130,6 +132,24 @@ export interface OptionalStaticPluginOverride {
   readonly suppressTypeResolutionReason?: string;
 }
 
+/**
+ * Whether this process explicitly requested the workspace-source export
+ * condition. Bun exposes command-line conditions through `process.execArgv`,
+ * including when the entry process was launched with `--no-install`.
+ */
+export function hasElizaSourceRuntimeCondition(
+  execArgv: readonly string[] = process.execArgv,
+): boolean {
+  for (let index = 0; index < execArgv.length; index += 1) {
+    const argument = execArgv[index];
+    if (argument === "--conditions=eliza-source") return true;
+    if (argument === "--conditions" && execArgv[index + 1] === "eliza-source") {
+      return true;
+    }
+  }
+  return false;
+}
+
 export const OPTIONAL_STATIC_PLUGIN_OVERRIDES: Readonly<
   Record<string, OptionalStaticPluginOverride>
 > = {
@@ -149,6 +169,14 @@ export const OPTIONAL_STATIC_PLUGIN_OVERRIDES: Readonly<
     importSubpath: "./plugin",
     suppressTypeResolutionReason:
       "runtime subpath export is intentional; not every package tsconfig resolves its declaration condition.",
+  },
+  "@elizaos/plugin-notes": {
+    importSubpath: "./plugin",
+  },
+  "@elizaos/plugin-calendar": {
+    importSubpath: "./plugin",
+    suppressTypeResolutionReason:
+      "calendar is peer-linked to avoid the calendar -> agent runtime dependency cycle; the deferred import runs after agent module initialization.",
   },
   // This plugin is optional and peer-linked for mobile bundleability. Sibling
   // package source typechecks import @elizaos/agent without depending on this

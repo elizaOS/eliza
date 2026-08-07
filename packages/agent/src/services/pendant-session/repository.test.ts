@@ -106,6 +106,25 @@ describe("pendant session relational persistence", () => {
     }
   });
 
+  it("discovers only the newest active session inside the owner and agent boundary", async () => {
+    const execute = vi.fn().mockResolvedValueOnce({ rows: [] });
+    const repository = new SqlPendantSessionRepository({
+      adapter: { db: { execute } },
+    });
+
+    await expect(
+      repository.loadLatest({ ownerId: "owner-1", agentId: "agent-1" }),
+    ).resolves.toBeNull();
+
+    expect(execute).toHaveBeenCalledTimes(1);
+    const text = queryText(execute.mock.calls[0]?.[0]);
+    expect(text).toContain("WHERE owner_id = 'owner-1'");
+    expect(text).toContain("AND agent_id = 'agent-1'");
+    expect(text).toContain("AND state <> 'ended'");
+    expect(text).toContain("ORDER BY started_at DESC, id DESC");
+    expect(text).toContain("LIMIT 1");
+  });
+
   it("compares revisions in the session update and returns the current revision on CAS conflict", async () => {
     const execute = vi
       .fn()

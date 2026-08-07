@@ -199,7 +199,8 @@ const CORE_VIEW_INTERACTIONS: Readonly<Record<string, CoreViewInteraction>> = {
         signals: [
           "wallet inventory interactions",
           "Hide USDC",
-          "Open RPC settings",
+          "Wallet RPC settings action",
+          'name: "RPC settings", exact: true',
         ],
       },
       {

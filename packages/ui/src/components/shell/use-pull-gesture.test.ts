@@ -158,6 +158,23 @@ describe("usePullGesture rAF coalescing (#9141)", () => {
     expect(setPointerCapture).toHaveBeenCalledWith(1);
   });
 
+  it("can suppress a touch compatibility click before a gesture-owned tap moves its target", () => {
+    const preventDefault = vi.fn();
+    const onTap = vi.fn();
+    const { result } = renderHook(() =>
+      usePullGesture({ onTap, preventTouchCompatibilityEvents: true }),
+    );
+
+    result.current.onPointerDown(
+      pointer(100, 300, 1, undefined, {
+        pointerType: "touch",
+        preventDefault,
+      }),
+    );
+
+    expect(preventDefault).toHaveBeenCalledTimes(1);
+  });
+
   it("flushes the latest coalesced drag before free-settle release", () => {
     const raf: { cb: ((t: number) => void) | null } = { cb: null };
     vi.stubGlobal(

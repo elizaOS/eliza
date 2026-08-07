@@ -45,7 +45,6 @@
  *   node packages/scripts/audit-scripts-inventory.mjs            # write + print
  *   node packages/scripts/audit-scripts-inventory.mjs --json     # print JSON
  */
-import { execFileSync } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -60,6 +59,7 @@ import {
   normalizeGitRepositoryPath,
 } from "./lib/repository-file-integrity.mjs";
 import { buildScriptTestInventory } from "./lib/script-test-inventory.mjs";
+import { execFileSync } from "./lib/spawn-sync-captured.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(SCRIPT_DIR, "..", "..");

@@ -60,6 +60,7 @@ export interface RecordedUsage {
 	completionTokens?: number;
 	cacheReadInputTokens?: number;
 	cacheCreationInputTokens?: number;
+	reasoningTokens?: number;
 	totalTokens?: number;
 }
 
@@ -305,6 +306,7 @@ export interface RecordedTrajectoryMetrics {
 	totalCompletionTokens: number;
 	totalCacheReadTokens: number;
 	totalCacheCreationTokens: number;
+	totalReasoningTokens?: number;
 	totalCostUsd: number;
 	plannerIterations: number;
 	toolCallsExecuted: number;
@@ -598,7 +600,7 @@ function renderTrajectoryMarkdown(trajectory: RecordedTrajectory): string {
 		`- total: ${formatDuration(metrics.totalLatencyMs)} · $${metrics.totalCostUsd.toFixed(6)}`,
 	);
 	lines.push(
-		`- tokens: ${metrics.totalPromptTokens} input · ${metrics.totalCompletionTokens} output · ${metrics.totalCacheReadTokens} cache-read · ${metrics.totalCacheCreationTokens} cache-created`,
+		`- tokens: ${metrics.totalPromptTokens} input · ${metrics.totalCompletionTokens} output · ${metrics.totalCacheReadTokens} cache-read · ${metrics.totalCacheCreationTokens} cache-created · ${metrics.totalReasoningTokens} reasoning`,
 	);
 	lines.push(`- root message id: \`${trajectory.rootMessage.id}\``);
 	if (trajectory.rootMessage.text) {
@@ -629,7 +631,7 @@ function renderTrajectoryMarkdown(trajectory: RecordedTrajectory): string {
 			);
 			if (stage.model.usage) {
 				lines.push(
-					`- usage: ${stage.model.usage.promptTokens ?? "n/a"} input · ${stage.model.usage.completionTokens ?? "n/a"} output · ${stage.model.usage.cacheReadInputTokens ?? "n/a"} cache-read · ${stage.model.usage.cacheCreationInputTokens ?? "n/a"} cache-created`,
+					`- usage: ${stage.model.usage.promptTokens ?? "n/a"} input · ${stage.model.usage.completionTokens ?? "n/a"} output · ${stage.model.usage.cacheReadInputTokens ?? "n/a"} cache-read · ${stage.model.usage.cacheCreationInputTokens ?? "n/a"} cache-created · ${stage.model.usage.reasoningTokens ?? "n/a"} reasoning`,
 				);
 			}
 			if (typeof stage.model.costUsd === "number") {
@@ -749,6 +751,9 @@ function applyMetricsForStage(
 		metrics.totalCacheReadTokens += stage.model.usage.cacheReadInputTokens ?? 0;
 		metrics.totalCacheCreationTokens +=
 			stage.model.usage.cacheCreationInputTokens ?? 0;
+		metrics.totalReasoningTokens =
+			(metrics.totalReasoningTokens ?? 0) +
+			(stage.model.usage.reasoningTokens ?? 0);
 	}
 	if (typeof stage.model?.costUsd === "number") {
 		metrics.totalCostUsd += stage.model.costUsd;
@@ -1253,6 +1258,7 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 				totalCompletionTokens: 0,
 				totalCacheReadTokens: 0,
 				totalCacheCreationTokens: 0,
+				totalReasoningTokens: 0,
 				totalCostUsd: 0,
 				plannerIterations: 0,
 				toolCallsExecuted: 0,
@@ -1315,6 +1321,21 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 		trajectory.endedAt = Date.now();
 		if (status === "errored" && !trajectory.metrics.finalDecision) {
 			trajectory.metrics.finalDecision = "error";
+		}
+		// Non-evaluated terminal paths (Stage-1 direct reply, deterministic
+		// fallback, structured failure reply) finish a turn without any
+		// evaluation stage, so nothing above ever set finalDecision. Stamp the
+		// clean terminal here — an absent finalDecision on a finished
+		// trajectory reads as "died mid-turn" and made delivered turns look
+		// like drops. The value must be a member of the canonical validator's
+		// closed vocabulary (packages/scripts/lib/trajectory-validate.ts) —
+		// every recorded trajectory round-trips through it, and an invented
+		// sentinel is rejected as an invalid finalDecision. "FINISH" is the
+		// accepted shape for a cleanly finished run; whether an evaluator
+		// produced it remains distinguishable from the trajectory itself (an
+		// evaluator-decided FINISH always has an evaluation stage).
+		if (status === "finished" && !trajectory.metrics.finalDecision) {
+			trajectory.metrics.finalDecision = "FINISH";
 		}
 
 		try {

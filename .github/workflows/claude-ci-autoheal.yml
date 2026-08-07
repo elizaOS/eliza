@@ -142,7 +142,7 @@ jobs:
                their passing output into the PR body. An unverified fix does not ship.
             5. Deliver on branch `${{ steps.context.outputs.branch }}` (create or
                force-update it from origin/develop), then open (or update) the pull
-               request to `develop` with `gh pr create` / `gh pr edit`:
+               request to `develop` with `gh pr create --base develop` / `gh pr edit`:
                - title: `fix(ci): autoheal ${{ steps.context.outputs.workflow_slug }} — <root cause>`
                - label: `ci-autoheal` (add with `gh pr edit --add-label`)
                - body MUST keep every `<!-- evidence-row:... -->` marker from

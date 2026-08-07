@@ -25,7 +25,7 @@ import {
 	DEFAULT_ELIGIBLE_MODEL_IDS,
 	DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
 } from "@elizaos/shared";
-import { readStringOption } from "../params.js";
+import { readStringOption, userRequestMessageText } from "../params.js";
 import { createViewsRequestHeaders } from "./views-request-auth.js";
 
 export type ModelSwitchTarget = "local" | "cloud";
@@ -235,7 +235,8 @@ export function createModelSwitchAction(
 			message: Memory,
 		): Promise<boolean> => {
 			return (
-				inferModelSwitchRequest(message.content.text ?? "", undefined) !== null
+				inferModelSwitchRequest(userRequestMessageText(message), undefined) !==
+				null
 			);
 		},
 
@@ -247,7 +248,7 @@ export function createModelSwitchAction(
 			callback?: HandlerCallback,
 		): Promise<ActionResult> => {
 			const request = inferModelSwitchRequest(
-				message.content.text ?? "",
+				userRequestMessageText(message),
 				options,
 			);
 			if (!request) {

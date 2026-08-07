@@ -4,8 +4,10 @@
   "type": "module",
   "description": "First-class calendar plugin for elizaOS agents: Google, Microsoft, Apple, and ICS feeds; scheduling; event management; and owner-facing calendar views.",
   "sideEffects": [
+    "./src/register.ts",
     "./src/api/client-calendar.ts",
     "./src/ui.ts",
+    "./dist/register.js",
     "./dist/api/client-calendar.js",
     "./dist/ui.js"
   ],
@@ -80,8 +82,6 @@
   },
   "dependencies": {
     "@capacitor/core": "8.4.0",
-    "@elizaos/agent": "workspace:*",
-    "@elizaos/app-core": "workspace:*",
     "@elizaos/capacitor-calendar": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-google-workspace": "workspace:*",
@@ -125,6 +125,7 @@
     }
   },
   "elizaos": {
+    "appRegister": "register",
     "app": {
       "permissions": [
         "calendar"
