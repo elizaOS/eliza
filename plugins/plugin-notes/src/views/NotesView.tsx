@@ -95,7 +95,7 @@ function NoteCard({ note }: { note: StickyNoteModel }) {
           style={{
             width: 28,
             height: 3,
-            borderRadius: 999,
+            borderRadius: 9999,
             background: material.dot,
             opacity: 0.78,
           }}
