@@ -90,8 +90,8 @@ const BROWSER_WORKSPACE_DEFAULT_HOME_URL = "https://www.google.com/webhp?igu=1";
 // The Browser view's isolation level, read from its builtin surface manifest
 // rather than hardcoded, so the declared `native-webview` level is what
 // actually drives which embedding each tab renders into (#14181/#13452). This
-// is the enforcement seam: the native child web-content surface (its own
-// renderer process) is selected via `resolveBrowserTabRenderPath` only because
+// is the enforcement seam: the native child web-content surface (outside the
+// host renderer) is selected via `resolveBrowserTabRenderPath` only because
 // this resolves to `native-webview`. If the registry ever dropped the browser
 // manifest, `resolveBuiltinSurfaceManifest` throws at import — a loud failure,
 // not a silent fall-back to the host-realm DOM.
@@ -1391,9 +1391,10 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   const browserWorkspaceConfirmOpen =
     walletActionModalProps.open || vaultAutofillModalProps.open;
 
-  // Mobile native tab surfaces: on the native-mobile-webview path each Browser
-  // tab is layered as its own isolated WKWebView/Android WebView (own renderer
-  // process + storage partition). Surfaces are backgrounded while the tab
+  // Mobile native tab surfaces: iOS gives each Browser tab a fresh WKProcessPool
+  // and data store; Android uses an out-of-app sandboxed renderer (which the OS
+  // may reuse across WebViews) plus a per-tab storage profile. Surfaces are
+  // backgrounded while the tab
   // switcher or any confirm dialog is open so the native layer never paints over
   // those React overlays — the mobile analogue of the desktop `masks=`.
   const nativeSurfaceTabs = useMemo(

@@ -43,10 +43,10 @@ describe("deriveSurfacePlacement", () => {
     });
   });
 
-  it("always isolates the renderer process for a native surface, grant or not", () => {
-    // A `storage` grant relaxes storage sharing but never process sharing — the
-    // whole reason to embed a native child is to keep content out of the host
-    // renderer process.
+  it("always requests the strongest native renderer boundary, grant or not", () => {
+    // A `storage` grant relaxes storage sharing but never renderer placement —
+    // iOS uses a dedicated pool and Android keeps content outside the app/host
+    // process even though the OS may reuse a renderer among sibling WebViews.
     for (const capabilities of [[], ["storage"]] as const) {
       const placement = placementFor({
         isolation: "native-webview",

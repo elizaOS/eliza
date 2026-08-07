@@ -11,10 +11,11 @@
  * Why a hook driving native layers instead of iframes: on the web the Browser
  * view falls back to a sandboxed iframe, but a mobile in-realm iframe still
  * shares the host WebView's renderer process and storage partition — the exact
- * cross-surface leak the isolation epic closes. The native surface runs the
- * page in its own process + data store (the explicit {@link NativeSurfacePolicy}
- * derived from the manifest, passed through verbatim), so nothing a page writes
- * is reachable from the host or a sibling tab.
+ * cross-surface leak the isolation epic closes. The native surface uses the
+ * platform's strongest renderer boundary plus an isolated data store (the
+ * explicit {@link NativeSurfacePolicy} derived from the manifest, passed
+ * through verbatim), so nothing a page writes is reachable from the host or a
+ * sibling tab.
  *
  * Two constraints shape the effects. (1) Native layers z-order ABOVE the host
  * WebView, so React chrome is mirrored into rounded native occlusion regions;
@@ -119,10 +120,22 @@ function surfaceIdOf(tabId: string): string {
 // lane-local and deterministic.
 const PROCESS_NATIVE_SURFACE_SHELL = new CapacitorNativeSurfaceShell();
 const HOST_VISIBILITY_COMMAND = "browser-native-host:visibility";
+
+interface SurfaceLeaseHolder {
+  readonly order: number;
+  onPromoted(): void;
+}
+
+interface SurfaceLeaseState {
+  readonly holders: Map<symbol, SurfaceLeaseHolder>;
+  authority: symbol;
+}
+
 const SURFACE_LEASES = new WeakMap<
   NativeSurfaceShell,
-  Map<string, Set<symbol>>
+  Map<string, SurfaceLeaseState>
 >();
+let surfaceLeaseOrder = 0;
 let processPresentationPaused = false;
 let processPresentationLatchInstalled = false;
 
@@ -130,18 +143,35 @@ function acquireSurfaceLease(
   shell: NativeSurfaceShell,
   id: string,
   holder: symbol,
-): void {
+  onPromoted: () => void,
+): boolean {
   let byId = SURFACE_LEASES.get(shell);
   if (!byId) {
     byId = new Map();
     SURFACE_LEASES.set(shell, byId);
   }
-  let holders = byId.get(id);
-  if (!holders) {
-    holders = new Set();
-    byId.set(id, holders);
+  let state = byId.get(id);
+  if (!state) {
+    state = { holders: new Map(), authority: holder };
+    byId.set(id, state);
   }
-  holders.add(holder);
+  const existing = state.holders.get(holder);
+  if (existing) {
+    existing.onPromoted = onPromoted;
+  } else {
+    surfaceLeaseOrder += 1;
+    state.holders.set(holder, { order: surfaceLeaseOrder, onPromoted });
+    state.authority = holder;
+  }
+  return state.authority === holder;
+}
+
+function ownsSurfaceLease(
+  shell: NativeSurfaceShell,
+  id: string,
+  holder: symbol,
+): boolean {
+  return SURFACE_LEASES.get(shell)?.get(id)?.authority === holder;
 }
 
 function releaseSurfaceLease(
@@ -150,10 +180,20 @@ function releaseSurfaceLease(
   holder: symbol,
 ): boolean {
   const byId = SURFACE_LEASES.get(shell);
-  const holders = byId?.get(id);
-  if (!holders) return true;
-  holders.delete(holder);
-  if (holders.size > 0) return false;
+  const state = byId?.get(id);
+  if (!state) return true;
+  const wasAuthority = state.authority === holder;
+  state.holders.delete(holder);
+  if (state.holders.size > 0) {
+    if (wasAuthority) {
+      const promoted = [...state.holders.entries()].reduce((latest, entry) =>
+        entry[1].order > latest[1].order ? entry : latest,
+      );
+      state.authority = promoted[0];
+      promoted[1].onPromoted();
+    }
+    return false;
+  }
   byId?.delete(id);
   if (byId?.size === 0) SURFACE_LEASES.delete(shell);
   return true;
@@ -171,6 +211,7 @@ function ensureProcessPresentationLatch(): void {
     return;
   }
   processPresentationLatchInstalled = true;
+  processPresentationPaused = document.visibilityState === "hidden";
   document.addEventListener(APP_PAUSE_EVENT, () => {
     processPresentationPaused = true;
   });
@@ -178,6 +219,8 @@ function ensureProcessPresentationLatch(): void {
     processPresentationPaused = false;
   });
 }
+
+ensureProcessPresentationLatch();
 
 function presentationIsPaused(): boolean {
   return (
@@ -369,8 +412,22 @@ export function useMobileNativeTabSurfaces(
   const observedCommands = useRef(new Map<string, ObservedSurfaceCommand>());
   const previousActive = useRef(active);
   const reloadRevision = useRef(0);
-  const [surfaceError, setSurfaceError] =
-    useState<MobileNativeSurfaceError | null>(null);
+  const [, setCommandRevision] = useState(0);
+  const failedCommands = [...observedCommands.current.entries()].filter(
+    ([, command]) =>
+      command.status === "failed" || command.status === "recovering",
+  );
+  const firstFailedCommand = failedCommands[0];
+  const surfaceError: MobileNativeSurfaceError | null = firstFailedCommand
+    ? {
+        key: firstFailedCommand[0],
+        message:
+          firstFailedCommand[1].error ??
+          "The native Browser surface is unavailable.",
+      }
+    : null;
+  const hasFailedCommands = failedCommands.length > 0;
+  const [leaseRevision, setLeaseRevision] = useState(0);
   // Latest lifecycle for the unmount cleanup, which runs with an empty dep list
   // and would otherwise close over a stale value.
   const lifecycleRef = useRef(lifecycle);
@@ -380,19 +437,32 @@ export function useMobileNativeTabSurfaces(
     ensureProcessPresentationLatch();
   }, []);
 
+  const notifyCommandStateChanged = useCallback((): void => {
+    setCommandRevision((current) => current + 1);
+  }, []);
+
+  const requestLeaseReconcile = useCallback((): void => {
+    setLeaseRevision((current) => current + 1);
+  }, []);
+
   const issueCommand = useCallback(
     (key: string, signature: string, invoke: () => Promise<void>): void => {
       const existing = observedCommands.current.get(key);
       if (existing?.signature === signature) return;
+      const replacesFailure =
+        existing?.status === "failed" || existing?.status === "recovering";
       const command: ObservedSurfaceCommand = {
         signature,
-        status: "pending",
+        status: replacesFailure ? "recovering" : "pending",
         invoke,
+        error: replacesFailure ? existing.error : null,
+        retry: () => run(true),
       };
       observedCommands.current.set(key, command);
-      const run = (): void => {
+      const run = (recovery: boolean): void => {
         if (observedCommands.current.get(key) !== command) return;
-        command.status = "pending";
+        command.status = recovery ? "recovering" : "pending";
+        if (recovery) notifyCommandStateChanged();
         let acknowledgement: Promise<void>;
         try {
           acknowledgement = invoke();
@@ -404,69 +474,74 @@ export function useMobileNativeTabSurfaces(
         acknowledgement.then(
           () => {
             if (observedCommands.current.get(key) === command) {
+              const recovered = command.status === "recovering";
               command.status = "succeeded";
-              setSurfaceError((current) =>
-                current?.key === key ? null : current,
-              );
+              command.error = null;
+              if (recovered) notifyCommandStateChanged();
             }
           },
           (error: unknown) => {
             if (observedCommands.current.get(key) !== command) return;
             command.status = "failed";
-            setSurfaceError({
-              key,
-              message:
-                error instanceof Error
-                  ? error.message
-                  : "The native Browser surface is unavailable.",
-            });
+            command.error =
+              error instanceof Error
+                ? error.message
+                : "The native Browser surface is unavailable.";
+            notifyCommandStateChanged();
           },
         );
       };
-      run();
+      run(replacesFailure);
     },
-    [],
+    [notifyCommandStateChanged],
   );
 
   const cancelSurfaceCommands = useCallback(
     (id: string, clearRenderedError = true): void => {
       const prefix = `${id}:`;
-      const removedKeys = new Set<string>();
+      let removedFailure = false;
       for (const key of observedCommands.current.keys()) {
         if (!key.startsWith(prefix)) continue;
+        const command = observedCommands.current.get(key);
+        removedFailure ||=
+          command?.status === "failed" || command?.status === "recovering";
         observedCommands.current.delete(key);
-        removedKeys.add(key);
       }
-      if (clearRenderedError) {
-        setSurfaceError((current) =>
-          current && removedKeys.has(current.key) ? null : current,
-        );
-      }
+      if (clearRenderedError && removedFailure) notifyCommandStateChanged();
     },
-    [],
+    [notifyCommandStateChanged],
   );
 
-  const cancelCommand = useCallback((key: string): void => {
-    observedCommands.current.delete(key);
-    setSurfaceError((current) => (current?.key === key ? null : current));
-  }, []);
+  const cancelCommand = useCallback(
+    (key: string): void => {
+      const command = observedCommands.current.get(key);
+      if (!command) return;
+      observedCommands.current.delete(key);
+      if (command.status === "failed" || command.status === "recovering") {
+        notifyCommandStateChanged();
+      }
+    },
+    [notifyCommandStateChanged],
+  );
 
   const retry = useCallback((): void => {
-    const failed = [...observedCommands.current.entries()].filter(
-      ([, command]) => command.status === "failed",
+    const failed = [...observedCommands.current.values()].filter(
+      (command) => command.status === "failed",
     );
-    setSurfaceError(null);
-    for (const [key, command] of failed) {
-      observedCommands.current.delete(key);
-      issueCommand(key, command.signature, command.invoke);
-    }
-  }, [issueCommand]);
+    for (const command of failed) command.retry();
+  }, []);
 
   const measure = useCallback(
     (tabId: string): void => {
       const element = elements.current.get(tabId);
       const id = surfaceIdOf(tabId);
-      if (!element || !managedTabIds.current.has(tabId)) return;
+      if (
+        !element ||
+        !managedTabIds.current.has(tabId) ||
+        !ownsSurfaceLease(activeShell, id, leaseHolder.current)
+      ) {
+        return;
+      }
       const rect = element.getBoundingClientRect();
       if (!rectHasArea(rect)) return;
       const bounds: SurfaceBounds = {
@@ -496,6 +571,7 @@ export function useMobileNativeTabSurfaces(
     (tabId: string, url: string): void => {
       if (!active) return;
       const id = surfaceIdOf(tabId);
+      if (!ownsSurfaceLease(activeShell, id, leaseHolder.current)) return;
       issueCommand(`${id}:navigate`, url, () => activeShell.navigate(id, url));
     },
     [active, activeShell, issueCommand],
@@ -505,6 +581,7 @@ export function useMobileNativeTabSurfaces(
     (tabId: string): void => {
       if (!active) return;
       const id = surfaceIdOf(tabId);
+      if (!ownsSurfaceLease(activeShell, id, leaseHolder.current)) return;
       reloadRevision.current += 1;
       issueCommand(`${id}:reload`, `${reloadRevision.current}`, () =>
         activeShell.reload(id),
@@ -525,6 +602,7 @@ export function useMobileNativeTabSurfaces(
     const rects = readOcclusions();
     for (const tabId of managedTabIds.current) {
       const id = surfaceIdOf(tabId);
+      if (!ownsSurfaceLease(activeShell, id, leaseHolder.current)) continue;
       issueCommand(`${id}:occlusions`, JSON.stringify(rects), () =>
         activeShell.setOcclusionRects(id, rects),
       );
@@ -535,12 +613,20 @@ export function useMobileNativeTabSurfaces(
     (force: boolean): void => {
       if (!active) return;
       const selected = tabs.find((tab) => tab.id === selectedTabId);
+      const selectedSurfaceId = selected ? surfaceIdOf(selected.id) : null;
+      const ownsSelected =
+        selectedSurfaceId !== null &&
+        ownsSurfaceLease(activeShell, selectedSurfaceId, leaseHolder.current);
+      const ownsAny = [...managedTabIds.current].some((tabId) =>
+        ownsSurfaceLease(activeShell, surfaceIdOf(tabId), leaseHolder.current),
+      );
+      if ((selected && !ownsSelected) || (!selected && !ownsAny)) return;
       const presentedId =
-        surfaceError === null &&
+        !hasFailedCommands &&
         !presentationIsPaused() &&
         !overlayOpen &&
-        selected
-          ? surfaceIdOf(selected.id)
+        ownsSelected
+          ? selectedSurfaceId
           : null;
       if (force) cancelCommand(HOST_VISIBILITY_COMMAND);
       issueCommand(HOST_VISIBILITY_COMMAND, presentedId ?? "host", () =>
@@ -553,7 +639,7 @@ export function useMobileNativeTabSurfaces(
       tabs,
       overlayOpen,
       selectedTabId,
-      surfaceError,
+      hasFailedCommands,
       activeShell,
       cancelCommand,
       issueCommand,
@@ -571,12 +657,22 @@ export function useMobileNativeTabSurfaces(
     for (const tab of tabs) {
       const id = surfaceIdOf(tab.id);
       if (!managedTabIds.current.has(tab.id)) {
-        acquireSurfaceLease(activeShell, id, leaseHolder.current);
         managedTabIds.current.add(tab.id);
       }
+      const ownsIntent = acquireSurfaceLease(
+        activeShell,
+        id,
+        leaseHolder.current,
+        requestLeaseReconcile,
+      );
+      if (!ownsIntent) continue;
       const request = { id, url: tab.url, policy } as const;
-      issueCommand(`${id}:lifecycle`, `create:${JSON.stringify(request)}`, () =>
-        activeShell.createSurface(request),
+      // Regaining authority after an overlapping renderer unmounts must replay
+      // this hook's intent even when its last local acknowledgement succeeded.
+      issueCommand(
+        `${id}:lifecycle`,
+        `create:${leaseRevision}:${JSON.stringify(request)}`,
+        () => activeShell.createSurface(request),
       );
       measure(tab.id);
       const rects = readOcclusions();
@@ -604,8 +700,10 @@ export function useMobileNativeTabSurfaces(
     activeShell,
     cancelSurfaceCommands,
     issueCommand,
+    leaseRevision,
     measure,
     readOcclusions,
+    requestLeaseReconcile,
   ]);
 
   // Keep React-chrome holes aligned. ResizeObserver catches layout changes;
@@ -855,6 +953,8 @@ export function useMobileNativeTabSurfaces(
           lifecycleRef.current === "retained" || !finalHolder
             ? Promise.resolve()
             : activeShell.destroySurface(id);
+        // error-policy:J5 the process-scoped shell observes and reports terminal
+        // teardown failure; this retired hook cannot render or retry it safely.
         acknowledgement.then(
           () => undefined,
           () => undefined,
@@ -885,5 +985,7 @@ export function useMobileNativeTabSurfaces(
 interface ObservedSurfaceCommand {
   readonly signature: string;
   readonly invoke: () => Promise<void>;
-  status: "pending" | "succeeded" | "failed";
+  status: "pending" | "recovering" | "succeeded" | "failed";
+  error: string | null;
+  retry(): void;
 }
