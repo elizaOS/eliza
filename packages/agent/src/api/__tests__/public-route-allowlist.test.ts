@@ -359,6 +359,8 @@ const ALLOWLIST: Record<string, string> = {
   "auth/bridge":
     "cloud public page: sso bridge leg between the dashboard and app origins; must render pre-auth to carry the one-time code, and every privileged step happens server-side behind Origin, referrer, and PKCE checks",
   "app-auth/authorize": "cloud public page: app-auth flow, pre-authentication",
+  "oidc/continue":
+    "cloud public page: resumes the OpenID Provider authorization request after login; must render before authentication so the API origin can validate the parked request",
   "terms-of-service": "cloud public page: legal page, no auth",
   "privacy-policy": "cloud public page: legal page, no auth",
   bsc: "cloud public page: BSC landing page, no auth",
