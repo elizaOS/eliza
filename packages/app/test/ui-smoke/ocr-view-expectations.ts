@@ -241,7 +241,20 @@ export const VIEW_OCR_POLICIES = {
     requireAll: ["Idle"],
   }),
   "plugin-calendar-gui": expected({
-    requireAny: ["Choose month & year", "No plans yet", "Ask Eliza in chat"],
+    requireAny: [
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December",
+    ],
   }),
   "plugin-documents-gui": exempt(
     "unregistered-remote-bundle",
