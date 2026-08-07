@@ -135,6 +135,7 @@ import {
   grabberBarOpacity,
   pillHandleCounterScale,
   pillMorphScale,
+  sheetBlackoutProgress,
 } from "./chat-overlay-motion";
 import {
   FIRST_RUN_SIGN_IN_FALLBACK_DELAY_MS,
@@ -426,6 +427,7 @@ export {
   PILL_MORPH_MIN_SCALE,
   pillHandleCounterScale,
   pillMorphScale,
+  sheetBlackoutProgress,
 } from "./chat-overlay-motion";
 
 // Glyphs (viewBox 0 0 36 36), rendered in currentColor inside a soft chip. Send
@@ -3172,10 +3174,20 @@ export function ChatOverlay({
     fullBleedT,
     (t: number) => PANEL_RADIUS_PX * (1 - t),
   );
-  // Paint follows the same continuous shape coordinate as geometry. React's
-  // boolean `fullBleed` chooses the eventual resting state, but it must never
-  // tear down the rim, bevel, or fill in the middle of a held gesture.
-  const surfaceBackgroundColor = useTransform(fullBleedT, (t: number) => {
+  // Paint follows the drag itself: the resting composer keeps the translucent
+  // glass fill, and pulling the sheet up blends the fill to the OPAQUE panel
+  // `--bg` by the time the sheet reaches the HALF detent — so the open sheet
+  // always reads BLACK, matching the app's dark view surfaces, instead of
+  // frosting whatever sits behind it (a bright web page or the warm wallpaper
+  // both washed the old translucent sheet). Composed with `fullBleedT` (the
+  // maximize shape coordinate) so full-bleed keeps its existing opaque end
+  // state, and both inputs are continuous — React's boolean `fullBleed` picks
+  // the resting state, but the fill never pops mid-gesture.
+  const surfaceBlackout = useTransform(
+    [threadHeight, fullBleedT] as MotionValue<number>[],
+    ([h, t]: number[]) => sheetBlackoutProgress(h, halfH, t),
+  );
+  const surfaceBackgroundColor = useTransform(surfaceBlackout, (t: number) => {
     const percent = (clamp01(t) * 100).toFixed(3);
     return `color-mix(in srgb, var(--bg) ${percent}%, ${GLASS_SHEET_FILL})`;
   });
@@ -5670,20 +5682,18 @@ export function ChatOverlay({
               // sheet radius squares off as it maximizes and rounds back as it
               // de-maximizes, in lockstep with the side/bottom insets.
               borderRadius: morphRadius,
-              // REAL frosted glass on the inset sheet, sourced from the glass
-              // token system (`glass/tokens.ts`) so the chat sheet is a genuine
-              // liquid-glass SYSTEM surface, not a hand-rolled recipe that drifts
-              // from the token: `GLASS_SHEET_FILL` is a mostly-translucent dark
-              // card fill so the live view behind reads as a soft, bright frost
-              // (not a gray near-opaque slab), and `GLASS_SHEET_BACKDROP_FILTER`
-              // is a heavy neutral blur with NO saturate — the blur keeps text
-              // readable while letting the backdrop's color and light through,
-              // and saturate is omitted because it muddies the warm field to
-              // brown (the whole liquid-glass system is neutral white/black
-              // only). `--card` / `--bg` are scoped by CHAT_PANEL_THEME on the
-              // fieldset, not the orange app theme behind. Full-bleed stays fully
-              // opaque (it covers the whole screen — there is nothing to see
-              // through, and the blur would be wasted battery).
+              // Frosted glass at REST, black when OPEN. The resting composer
+              // keeps the token-system glass (`GLASS_SHEET_FILL` +
+              // `GLASS_SHEET_BACKDROP_FILTER` from `glass/tokens.ts`, heavy
+              // neutral blur, no saturate — saturate muddies the warm field to
+              // brown), and the drag-up blends the fill to the opaque panel
+              // `--bg` by the HALF detent (`surfaceBlackout`): the open sheet
+              // reads BLACK over any substrate — bright web pages and the warm
+              // wallpaper both washed the old translucent open sheet. `--card`
+              // / `--bg` are scoped by CHAT_PANEL_THEME on the fieldset, not
+              // the orange app theme behind. Full-bleed stays fully opaque (it
+              // covers the whole screen — there is nothing to see through, and
+              // the blur would be wasted battery).
               backgroundColor:
                 firstRunOpen || nativeInsetSheet
                   ? "transparent"

@@ -1,6 +1,11 @@
 /**
  * The Browser workspace view (`/browser`): a tabbed embedded-browser surface
- * with a collapsible sidebar for tab management and companion-bridge status.
+ * whose tabs fold into a switcher sheet, with companion-bridge status.
+ *
+ * The builtin registry declares this view `header: "fullscreen"`, so the shell
+ * mounts it edge-to-edge and the view owns its chrome: a floating glass
+ * toolbar and a rounded web-surface panel over the opaque app background —
+ * the same fullscreen framing the Notes and Calendar views use.
  *
  * Tabs, navigation, and snapshots flow through the `client` browser API; on
  * native the tabs render via a registered renderer impl
@@ -31,7 +36,6 @@ import { MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../../events";
 import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
-import { WorkspaceLayout } from "../../layouts/workspace-layout/workspace-layout";
 import { useAppSelectorShallow } from "../../state";
 import { deriveSurfacePlacement } from "../../surface/native-surface-shell";
 import { useMobileNativeTabSurfaces } from "../../surface/use-mobile-native-tab-surfaces";
@@ -42,13 +46,11 @@ import {
   setBrowserTabsRendererImpl,
 } from "../../utils/browser-tabs-renderer-registry";
 import { PagePanel } from "../composites/page-panel";
-import { ViewHeader } from "../shared/ViewHeader";
 import { Button } from "../ui/button";
 import { ConfirmDialog } from "../ui/confirm-dialog";
 import { useConfirm } from "../ui/confirm-dialog.hooks";
 import { Input } from "../ui/input";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
-import { AppWorkspaceChrome } from "../workspace/AppWorkspaceChrome.js";
 import {
   type BrowserSwitcherTab,
   BrowserTabFoldControl,
@@ -2181,7 +2183,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   });
 
   const navNode = (
-    <div className="flex items-center gap-2 px-3 py-2">
+    <div className="flex flex-wrap items-center gap-2 px-3 py-2">
       {/* Folded tabs (#13596): one compact count control opens the switcher —
           no permanent tab strip. It names the active tab so the user always
           knows which page is live even with the rest folded away. */}
@@ -2307,7 +2309,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         })}
         data-testid="browser-workspace-address-input"
         disabled={busyAction !== null || selectedTabIsInternal}
-        className="h-11 min-w-0 flex-1 rounded-full border-border/40 bg-card/70 px-4 text-sm text-txt"
+        className="h-11 min-w-[10rem] flex-1 rounded-full border-border/40 bg-card/70 px-4 text-sm text-txt"
       />
       <BrowserNavButton
         agentId="go"
@@ -2751,36 +2753,35 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     </div>
   );
 
-  // Uniform top bar (#13451/#13596): a bare-icon ViewHeader with a centered
-  // "Browser" title sits ABOVE the browser toolbar (URL bar + folded-tab
-  // control), never replacing it. The toolbar stays inside WorkspaceLayout's
-  // contentHeader; the ViewHeader is a sibling stacked on top so back always
-  // returns to the launcher and the header reads identically to every other
-  // view. Tabs are folded into the switcher (no `sidebar` prop) so the surface
-  // is single-column and the browser never grows an unbounded tab strip.
+  // Fullscreen surface framing (parity with Notes/Calendar): the shell mounts
+  // this view edge-to-edge (`header: "fullscreen"` in the builtin registry), so
+  // the view owns its whole chrome — no host ViewHeader row, no workspace
+  // chrome. The toolbar (folded-tab control + URL bar) floats as a glass panel
+  // over the opaque app background using the same clamp gutter, safe-area
+  // padding, and glass material the Notes and Calendar views use, and the web
+  // surface fills the remaining height as a second rounded panel. Tabs stay
+  // folded into the switcher (no permanent tab strip), matching #13596.
   const mainNode = (
-    <div className="flex h-full min-h-0 w-full flex-col">
-      <ViewHeader
-        title={t("browserworkspace.ViewTitle", { defaultValue: "Browser" })}
-      />
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <WorkspaceLayout
-          contentHeader={navNode}
-          contentHeaderClassName="mb-0"
-          headerPlacement="inside"
-          contentPadding={false}
-          contentClassName="overflow-hidden"
-          contentInnerClassName="min-h-0 overflow-hidden"
-        >
-          {browserSurface}
-        </WorkspaceLayout>
+    <main
+      aria-label={t("browserworkspace.ViewTitle", { defaultValue: "Browser" })}
+      data-testid="browser-workspace-view"
+      className="relative flex h-full min-h-0 w-full min-w-0 flex-col gap-[clamp(8px,1.6vw,14px)] overflow-hidden bg-bg px-[clamp(8px,2.4vw,24px)] pt-[calc(clamp(8px,2.4vw,24px)+var(--safe-area-top,0px))] pb-[clamp(8px,2.4vw,24px)]"
+    >
+      <div
+        data-testid="browser-workspace-toolbar"
+        className="shrink-0 rounded-[22px] bg-[color-mix(in_srgb,var(--card)_76%,transparent)] shadow-[inset_0_1px_0_rgba(255,255,255,.10),0_18px_48px_rgba(0,0,0,.20)] backdrop-blur-[24px] backdrop-saturate-[1.45]"
+      >
+        {navNode}
       </div>
-    </div>
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[22px] shadow-[inset_0_1px_0_rgba(255,255,255,.06),0_18px_48px_rgba(0,0,0,.20)]">
+        {browserSurface}
+      </div>
+    </main>
   );
 
   return (
     <ShellViewAgentSurface viewId="browser">
-      <AppWorkspaceChrome testId="browser-workspace-view" main={mainNode} />
+      {mainNode}
       <BrowserTabSwitcher
         open={switcherOpen}
         onOpenChange={setSwitcherOpen}
