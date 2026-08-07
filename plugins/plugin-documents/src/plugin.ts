@@ -10,6 +10,7 @@
 import type http from "node:http";
 import type {
   AccessContext,
+  AgentRuntime,
   Plugin,
   Route,
   RouteHandlerContext,
@@ -201,10 +202,10 @@ function documentRouteHandler(): (
     await handleDocumentsRoutes({
       req: { headers: ctx.headers } as http.IncomingMessage,
       res: capturedRes,
-      method,
+      method: (ctx.method ?? "GET").toUpperCase(),
       pathname: ctx.path,
       url,
-      runtime,
+      runtime: (ctx.runtime as AgentRuntime) ?? null,
       json,
       error,
       readJsonBody: async <T extends object>(

@@ -8,11 +8,13 @@ import {
 } from "../src/routes.js";
 
 const addDocument = vi.fn();
+const searchDocuments = vi.fn(async () => []);
 
 vi.mock("@elizaos/agent/api/documents-service-loader", () => ({
   getDocumentsService: vi.fn(async () => ({
     service: {
       addDocument,
+      searchDocuments,
     },
   })),
   getDocumentsServiceTimeoutMs: vi.fn(() => 0),
@@ -405,7 +407,7 @@ describe("document routes", () => {
             index: 0,
             ok: false,
             filename: "document-1",
-            error: "Item 0 must be an object",
+            error: "content and filename must be non-empty strings",
           },
         ],
       });
