@@ -2415,110 +2415,119 @@ export function BrowserWorkspaceView(): React.JSX.Element {
             </div>
           </div>
         ) : (
-          <div className="flex h-full min-h-0 flex-col items-center justify-center overflow-y-auto pt-3 pb-[calc(var(--eliza-chat-clearance,5.25rem)+1rem)] pe-[var(--eliza-chat-side-clearance,0px)]">
-            <PagePanel.Empty
-              variant="inset"
-              className="flex-none py-1 sm:py-2"
-              icon={<Globe className="h-6 w-6" aria-hidden />}
-              title={t("browserworkspace.EmptyTitle", {
-                defaultValue: "No page open",
-              })}
-              action={
-                <Button
-                  variant="default"
-                  size="sm"
-                  className="min-h-11 gap-1.5"
-                  onClick={() =>
-                    void runBrowserWorkspaceAction("open:home", async () => {
-                      await openNewBrowserWorkspaceTab(
-                        BROWSER_WORKSPACE_DEFAULT_HOME_URL,
-                        "user",
-                      );
-                    })
-                  }
-                >
-                  <Plus className="h-4 w-4" aria-hidden />
-                  {t("browserworkspace.OpenWebsite", {
-                    defaultValue: "Open a website",
-                  })}
-                </Button>
-              }
-            />
-            {workspace.mode === "web" &&
-            browserBridgeSupported &&
-            !browserBridgeUnsupportedInNativeLocalMode ? (
-              <div className="grid w-full max-w-xl grid-cols-1 items-stretch gap-1.5 px-6 [@media(orientation:landscape)_and_(max-height:520px)]:pb-[var(--eliza-chat-clearance,5.25rem)] [@media(orientation:landscape)_and_(max-height:520px)]:pe-[var(--eliza-chat-side-clearance,0px)] sm:grid-cols-3">
-                <div className="text-center text-[11px] text-muted sm:col-span-3">
-                  {browserBridgeConnected
-                    ? t("browserworkspace.BrowserBridgeConnected", {
-                        defaultValue: "Browser Bridge connected",
+          // The designed-empty column centers with margin-auto INSIDE the
+          // scroller (not justify-center on the scroller itself) so a short
+          // viewport degrades to a scrollable top-aligned column instead of
+          // clipping the heading above the scroll origin.
+          <div className="flex h-full min-h-0 flex-col overflow-y-auto pt-3 pb-[calc(var(--eliza-chat-clearance,5.25rem)+1rem)] pe-[var(--eliza-chat-side-clearance,0px)]">
+            <div className="m-auto flex w-full min-w-0 flex-col items-center">
+              <PagePanel.Empty
+                variant="inset"
+                className="flex-none py-1 sm:py-2"
+                icon={<Globe className="h-6 w-6" aria-hidden />}
+                title={t("browserworkspace.EmptyTitle", {
+                  defaultValue: "No page open",
+                })}
+                action={
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="min-h-11 gap-1.5"
+                    onClick={() =>
+                      void runBrowserWorkspaceAction("open:home", async () => {
+                        await openNewBrowserWorkspaceTab(
+                          BROWSER_WORKSPACE_DEFAULT_HOME_URL,
+                          "user",
+                        );
                       })
-                    : browserBridgeAvailable
-                      ? t("browserworkspace.BrowserBridgeAvailable", {
-                          defaultValue: "Browser Bridge available",
+                    }
+                  >
+                    <Plus className="h-4 w-4" aria-hidden />
+                    {t("browserworkspace.OpenWebsite", {
+                      defaultValue: "Open a website",
+                    })}
+                  </Button>
+                }
+              />
+              {/* Bottom + side chat clearance is reserved once, on the scroller
+                above — repeating it on this grid double-counted the inset in
+                short landscape and squeezed the column off-canvas. */}
+              {workspace.mode === "web" &&
+              browserBridgeSupported &&
+              !browserBridgeUnsupportedInNativeLocalMode ? (
+                <div className="grid w-full max-w-xl grid-cols-1 items-stretch gap-1.5 px-6 sm:grid-cols-3">
+                  <div className="text-center text-[11px] text-muted sm:col-span-3">
+                    {browserBridgeConnected
+                      ? t("browserworkspace.BrowserBridgeConnected", {
+                          defaultValue: "Browser Bridge connected",
                         })
-                      : t("browserworkspace.BrowserBridgeNotConnected", {
-                          defaultValue:
-                            "Let the agent drive your real Chrome tabs",
-                        })}
+                      : browserBridgeAvailable
+                        ? t("browserworkspace.BrowserBridgeAvailable", {
+                            defaultValue: "Browser Bridge available",
+                          })
+                        : t("browserworkspace.BrowserBridgeNotConnected", {
+                            defaultValue:
+                              "Let the agent drive your real Chrome tabs",
+                          })}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={busyAction !== null}
+                    onClick={() => void installBrowserBridgeExtension()}
+                    className="min-h-11 sm:col-span-3"
+                  >
+                    {t("browserworkspace.InstallBrowserBridge", {
+                      defaultValue: "Install Agent Browser Bridge",
+                    })}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={
+                      busyAction !== null ||
+                      !browserBridgePackageStatus?.chromeBuildPath
+                    }
+                    onClick={() => void revealBrowserBridgeFolder()}
+                    className="min-h-11 min-w-0"
+                  >
+                    <FolderOpen className="h-4 w-4" />
+                    <span className="truncate">
+                      {t("browserworkspace.OpenBrowserBridgeFolder", {
+                        defaultValue: "Open extension folder",
+                      })}
+                    </span>
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={busyAction !== null}
+                    onClick={() => void openBrowserBridgeChromeExtensions()}
+                    className="min-h-11 min-w-0"
+                  >
+                    <span className="truncate">
+                      {t("browserworkspace.OpenChromeExtensions", {
+                        defaultValue: "Open Chrome extensions",
+                      })}
+                    </span>
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={browserBridgeLoading || busyAction !== null}
+                    onClick={() => void refreshBrowserBridgeConnection()}
+                    className="min-h-11 min-w-0"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    <span className="truncate">
+                      {t("browserworkspace.RefreshBrowserBridge", {
+                        defaultValue: "Refresh connection",
+                      })}
+                    </span>
+                  </Button>
                 </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={busyAction !== null}
-                  onClick={() => void installBrowserBridgeExtension()}
-                  className="min-h-11 sm:col-span-3"
-                >
-                  {t("browserworkspace.InstallBrowserBridge", {
-                    defaultValue: "Install Agent Browser Bridge",
-                  })}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={
-                    busyAction !== null ||
-                    !browserBridgePackageStatus?.chromeBuildPath
-                  }
-                  onClick={() => void revealBrowserBridgeFolder()}
-                  className="min-h-11 min-w-0"
-                >
-                  <FolderOpen className="h-4 w-4" />
-                  <span className="truncate">
-                    {t("browserworkspace.OpenBrowserBridgeFolder", {
-                      defaultValue: "Open extension folder",
-                    })}
-                  </span>
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={busyAction !== null}
-                  onClick={() => void openBrowserBridgeChromeExtensions()}
-                  className="min-h-11 min-w-0"
-                >
-                  <span className="truncate">
-                    {t("browserworkspace.OpenChromeExtensions", {
-                      defaultValue: "Open Chrome extensions",
-                    })}
-                  </span>
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={browserBridgeLoading || busyAction !== null}
-                  onClick={() => void refreshBrowserBridgeConnection()}
-                  className="min-h-11 min-w-0"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  <span className="truncate">
-                    {t("browserworkspace.RefreshBrowserBridge", {
-                      defaultValue: "Refresh connection",
-                    })}
-                  </span>
-                </Button>
-              </div>
-            ) : null}
+              ) : null}
+            </div>
           </div>
         )
       ) : browserTabRenderPath === "native-child-webview" ? (
