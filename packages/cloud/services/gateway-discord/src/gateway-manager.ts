@@ -21,7 +21,12 @@ import {
 } from "discord.js";
 import { reconcileDiscordConnectionReady } from "./connection-lifecycle";
 import { logger } from "./logger";
+import {
+  postManagedAgentMessageWithRetry,
+  sendReplyWithRetry,
+} from "./managed-message-egress";
 import { createMockRedis, createNativeRedis } from "./redis-adapter";
+import { buildReplyComponents } from "./reply-components";
 import {
   forwardToServer,
   refreshKedaActivity,
@@ -1971,50 +1976,64 @@ export class GatewayManager {
         await message.channel.sendTyping();
       }
 
-      const response = await fetchWithTimeout(
-        `${this.config.elizaCloudUrl}/api/internal/discord/eliza-app/messages`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...this.getAuthHeader(),
-          },
-          body: JSON.stringify({
-            ...(message.guildId ? { guildId: message.guildId } : {}),
+      // Egress health (proven dropped-turn class, E2E 2026-08-05): a single
+      // transient failure from the routing API must not consume the user's
+      // turn. The route is idempotent on `discord:<messageId>`, so bounded
+      // retry replays the SAME turn instead of dropping it.
+      const outcome = await postManagedAgentMessageWithRetry({
+        doPost: () =>
+          fetchWithTimeout(
+            `${this.config.elizaCloudUrl}/api/internal/discord/eliza-app/messages`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                ...this.getAuthHeader(),
+              },
+              body: JSON.stringify({
+                ...(message.guildId ? { guildId: message.guildId } : {}),
+                channelId: message.channelId,
+                messageId: message.id,
+                content,
+                sender: {
+                  id: message.author.id,
+                  username: message.author.username,
+                  displayName:
+                    message.member?.displayName ??
+                    message.author.globalName ??
+                    undefined,
+                  avatar: message.author.displayAvatarURL() || null,
+                },
+              }),
+              timeout: EVENT_FORWARD_TIMEOUT_MS,
+            },
+          ),
+        refreshAuth: () => this.refreshToken(),
+        onAttemptFailure: ({ attempt, status, error }) => {
+          logger.warn("Managed Agent Discord routing attempt failed", {
+            guildId: message.guildId ?? null,
             channelId: message.channelId,
             messageId: message.id,
-            content,
-            sender: {
-              id: message.author.id,
-              username: message.author.username,
-              displayName:
-                message.member?.displayName ??
-                message.author.globalName ??
-                undefined,
-              avatar: message.author.displayAvatarURL() || null,
-            },
-          }),
-          timeout: EVENT_FORWARD_TIMEOUT_MS,
+            attempt,
+            ...(status !== undefined ? { status } : {}),
+            error: sanitizeError(error),
+          });
         },
-      );
+      });
 
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => "");
-        logger.warn("Managed Agent Discord routing request failed", {
+      if (!outcome.ok) {
+        logger.error("Managed Agent Discord turn dropped after retries", {
           guildId: message.guildId ?? null,
           channelId: message.channelId,
-          status: response.status,
-          error: errorText.slice(0, 200),
+          messageId: message.id,
+          attempts: outcome.attempts,
+          ...(outcome.status !== undefined ? { status: outcome.status } : {}),
+          error: sanitizeError(outcome.error),
         });
         return;
       }
 
-      const routed = (await response.json()) as {
-        handled?: boolean;
-        replyText?: string | null;
-        reason?: string;
-        agentId?: string;
-      };
+      const routed = outcome.routed;
 
       if (!routed.handled) {
         logger.debug("Managed Agent Discord message was not handled", {
@@ -2033,10 +2052,39 @@ export class GatewayManager {
       const replyText = routed.replyText.trim();
       const truncated =
         replyText.length > 2000 ? replyText.slice(0, 2000) : replyText;
-      await message.reply({
-        content: truncated,
-        allowedMentions: { repliedUser: false },
-      });
+      // Link CTAs (for example the onboarding signup handoff) render as a
+      // style-5 Link button instead of a raw URL in the message body.
+      const components = buildReplyComponents(routed.replyCta);
+      // The routed reply is already consumed upstream, so a transient send
+      // failure retries rather than silently losing the turn's answer.
+      const sendResult = await sendReplyWithRetry(
+        () =>
+          message.reply({
+            content: truncated,
+            ...(components ? { components } : {}),
+            allowedMentions: { repliedUser: false },
+          }),
+        {
+          onAttemptFailure: ({ attempt, error }) => {
+            logger.warn("Managed Agent Discord reply send attempt failed", {
+              guildId: message.guildId ?? null,
+              channelId: message.channelId,
+              messageId: message.id,
+              attempt,
+              error: sanitizeError(error),
+            });
+          },
+        },
+      );
+      if (!sendResult.sent) {
+        logger.error("Managed Agent Discord reply dropped after retries", {
+          guildId: message.guildId ?? null,
+          channelId: message.channelId,
+          messageId: message.id,
+          attempts: sendResult.attempts,
+          error: sanitizeError(sendResult.error ?? "unknown"),
+        });
+      }
     } catch (error) {
       logger.error("Failed to route managed Eliza Discord message", {
         guildId: message.guildId ?? null,
