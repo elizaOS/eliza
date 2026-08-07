@@ -240,14 +240,25 @@ describe("AppModeEntryRoute — routing table", () => {
     expect(fetchLog).toContain("POST /api/v1/eliza/agents/fresh/pairing-token");
   });
 
-  it("dedicated agents exist but none running → the Instances view (resume from there)", async () => {
+  it("dedicated agents exist but none running → the same-origin chat app (never the console)", async () => {
     signIn();
     stubNetwork({
       agents: agentsOk([agent({ id: "agent-1", status: "stopped" })]),
     });
     renderEntry();
 
-    expect(await screen.findByTestId("instances-page")).toBeTruthy();
+    expect(await screen.findByTestId("agent-app")).toBeTruthy();
+    expect(assignedUrls).toEqual([]);
+  });
+
+  it("an errored dedicated agent (failed provision) → the same-origin chat app, not a dashboard bounce", async () => {
+    signIn();
+    stubNetwork({
+      agents: agentsOk([agent({ id: "agent-1", status: "error" })]),
+    });
+    renderEntry();
+
+    expect(await screen.findByTestId("agent-app")).toBeTruthy();
     expect(assignedUrls).toEqual([]);
   });
 
@@ -270,13 +281,13 @@ describe("AppModeEntryRoute — routing table", () => {
     expect(assignedUrls).toEqual([]);
   });
 
-  it("agents fetch failure → graceful fallback to the Instances view", async () => {
+  it("agents fetch failure → graceful fallback to the same-origin chat app", async () => {
     signIn();
     stubNetwork({
       agents: () => jsonResponse(500, { error: "backend down" }),
     });
     renderEntry();
 
-    expect(await screen.findByTestId("instances-page")).toBeTruthy();
+    expect(await screen.findByTestId("agent-app")).toBeTruthy();
   });
 });
