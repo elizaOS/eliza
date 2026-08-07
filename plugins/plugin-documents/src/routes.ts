@@ -25,6 +25,7 @@ import {
   type DocumentFilter as SharedDocumentFilter,
   trimString,
 } from "@elizaos/agent/api/document-access";
+import { actorFromAccessContext } from "@elizaos/core";
 import type {
   AccessContext,
   AgentRuntime,
@@ -173,24 +174,21 @@ export function resolveRouteActor(
     };
   }
 
-  const { requesterEntityId, role: accessRole, isOwner } = accessContext;
-  if (!requesterEntityId) return null;
+  if (!accessContext.requesterEntityId) return null;
 
-  // Map AccessContext.role (RoleName) to RouteActorRole.
-  // OWNER/ADMIN → OWNER; USER/GUEST → USER.
-  let routeRole: RouteActorRole;
-  if (isOwner || accessRole === "OWNER" || accessRole === "ADMIN") {
-    routeRole = "OWNER";
-  } else {
-    routeRole = "USER";
-  }
-
-  const entityId =
-    routeRole === "OWNER"
-      ? (requesterEntityId ?? ownerEntityId ?? agentId)
-      : requesterEntityId;
-
-  return { entityId, role: routeRole, ownerEntityId };
+  // Delegate the RoleName -> RouteActorRole mapping to core rather than
+  // restating it. The local version collapsed everything that was not
+  // OWNER/ADMIN into USER, which silently dropped AGENT: a request the agent
+  // makes about itself (requesterEntityId === agentId) came back as USER, so
+  // actorCanManageAgentDocuments — which grants on OWNER/AGENT/RUNTIME — could
+  // never be satisfied and the agent lost access to its own agent-private
+  // documents. actorFromAccessContext is the single definition of that mapping.
+  const scopeActor = actorFromAccessContext(accessContext, agentId);
+  return {
+    entityId: scopeActor.entityId,
+    role: scopeActor.role,
+    ownerEntityId,
+  };
 }
 
 function parseSearchMode(value: unknown): DocumentSearchMode | undefined {
