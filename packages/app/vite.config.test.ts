@@ -1,11 +1,11 @@
-/**
- * Verifies the dev HTML injection keeps browser sockets on the page origin so
- * Vite's proxy remains usable through local and tunneled development URLs.
- */
+/** Verifies app-shell WebSocket origins for dev proxies and native remotes. */
 
 import { describe, expect, test } from "bun:test";
 import { runInNewContext } from "node:vm";
-import { appDevWsBasePlugin, resolveLocalCspSources } from "./vite.config";
+import {
+  appDevWsBasePlugin,
+  resolveAppShellLocalCspSources,
+} from "./vite.config";
 
 describe("appDevWsBasePlugin", () => {
   test("injects same-origin ws/wss bases without a machine-local address", () => {
@@ -43,24 +43,24 @@ describe("appDevWsBasePlugin", () => {
   });
 });
 
-describe("resolveLocalCspSources", () => {
+describe("app shell local connection policy", () => {
   test("permits paired Android transports whose private-LAN host is selected at runtime", () => {
-    expect(resolveLocalCspSources("android", false)).toEqual({
+    expect(resolveAppShellLocalCspSources("android", false)).toEqual({
       localHttpSources: " http://localhost:* http://127.0.0.1:*",
       localConnectSources: " http: ws:",
     });
   });
 
-  test("keeps non-Android cleartext access limited to loopback", () => {
-    expect(resolveLocalCspSources("ios", false)).toEqual({
-      localHttpSources: " http://localhost:* http://127.0.0.1:*",
-      localConnectSources:
-        " http://localhost:* ws://localhost:* wss://localhost:* http://127.0.0.1:* ws://127.0.0.1:* wss://127.0.0.1:*",
-    });
+  test("allows an owner-selected LAN WebSocket outside iOS store builds", () => {
+    const sources = resolveAppShellLocalCspSources("ios", false);
+
+    expect(sources.localConnectSources).toContain("ws:");
+    expect(sources.localConnectSources).toContain("http://localhost:*");
+    expect(sources.localConnectSources).toContain("http://127.0.0.1:*");
   });
 
-  test("keeps iOS store builds free of all cleartext sources", () => {
-    expect(resolveLocalCspSources("ios", true)).toEqual({
+  test("keeps cleartext local transports out of iOS store builds", () => {
+    expect(resolveAppShellLocalCspSources("ios", true)).toEqual({
       localHttpSources: "",
       localConnectSources: "",
     });

@@ -1,9 +1,9 @@
 /**
  * Full realtime voice-session WS lifecycle against a mock socket factory that
- * drives the REAL merged adapters (Deepgram Flux #15950, Cartesia #15949) and
+ * drives the real Cartesia Ink STT and Cartesia Sonic TTS adapters plus
  * the REAL `VoiceSession` orchestrator + `attachVoiceWsHandler` framing.
  *
- * The fakes here are TRANSPORTS only — fake Deepgram socket, fake Cartesia
+ * The fakes here are transports only — fake Ink socket, fake Sonic
  * socket, fake client socket, fake Eliza SSE fetch. Everything under test
  * (hello-first auth, framing, uplink re-framing, phrase aggregation, TTS
  * streaming, interruption, metering, revoke-to-silence) is the real code path.
@@ -38,7 +38,7 @@ import {
 } from "../../../../../shared/src/lib/voice-session/session-registry";
 import { installVoiceSessionTestSigningKey } from "../../../../../shared/src/lib/voice-session/test-signing";
 import { attachVoiceWsHandler } from "../../../../../shared/src/lib/voice-session/ws-handler";
-import type { DeepgramFluxWebSocket } from "../../stt/providers/deepgram-flux";
+import type { CartesiaInkWebSocket } from "../../stt/providers/cartesia-ink";
 import { VoiceSession } from "../lib/session";
 
 // --- signing setup --------------------------------------------------------
@@ -51,10 +51,10 @@ afterEach(() => {
   __resetVoiceSessionRegistryForTests();
 });
 
-// --- fake Deepgram Flux socket (drives the REAL adapter) -------------------
+// --- fake Cartesia Ink socket (drives the real STT adapter) ----------------
 
-class FakeFluxSocket implements DeepgramFluxWebSocket {
-  static instances: FakeFluxSocket[] = [];
+class FakeInkSocket implements CartesiaInkWebSocket {
+  static instances: FakeInkSocket[] = [];
   readyState = 1;
   binaryType: BinaryType = "arraybuffer";
   sentChunks: (ArrayBuffer | ArrayBufferView)[] = [];
@@ -62,7 +62,7 @@ class FakeFluxSocket implements DeepgramFluxWebSocket {
   private listeners = new Map<string, Set<(e: unknown) => void>>();
 
   constructor() {
-    FakeFluxSocket.instances.push(this);
+    FakeInkSocket.instances.push(this);
     queueMicrotask(() => this.fire("open", {}));
   }
   send(data: string | ArrayBuffer | ArrayBufferView) {
@@ -82,14 +82,14 @@ class FakeFluxSocket implements DeepgramFluxWebSocket {
   removeEventListener(type: string, listener: (e: never) => void) {
     this.listeners.get(type)?.delete(listener as (e: unknown) => void);
   }
-  /** Emit a TurnInfo message as the real Deepgram socket would. */
+  /** Emit one native Ink turn event. */
   emitTurn(event: string, transcript = "") {
     this.fire("message", {
-      data: JSON.stringify({ type: "TurnInfo", event, transcript, words: [] }),
+      data: JSON.stringify({ type: event, transcript }),
     });
   }
   emitConnectedHandshake() {
-    this.fire("message", { data: JSON.stringify({ type: "Connected" }) });
+    this.fire("message", { data: JSON.stringify({ type: "connected" }) });
   }
   emitTransportError() {
     this.fire("error", new Event("error"));
@@ -332,7 +332,10 @@ function makeSseFetch(
   }) as unknown as typeof fetch;
 }
 
-function makeCanonicalChunkFetch(deltas: string[]): typeof fetch {
+function makeCanonicalChunkFetch(
+  deltas: string[],
+  donePayload: Record<string, unknown> = {},
+): typeof fetch {
   return (async () => {
     const encoder = new TextEncoder();
     const body = new ReadableStream<Uint8Array>({
@@ -344,7 +347,11 @@ function makeCanonicalChunkFetch(deltas: string[]): typeof fetch {
             ),
           );
         }
-        controller.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
+        controller.enqueue(
+          encoder.encode(
+            `event: done\ndata: ${JSON.stringify(donePayload)}\n\n`,
+          ),
+        );
         controller.close();
       },
     });
@@ -427,8 +434,7 @@ async function connectSession(opts: {
         agentId: claims.agentId,
         conversationId: claims.conversationId,
         tokenExpSeconds,
-        deepgramApiKey: "dg-key",
-        deepgramWebSocketFactory: () => new FakeFluxSocket(),
+        cartesiaInkWebSocketFactory: () => new FakeInkSocket(),
         cartesiaApiKey: "ct-key",
         cartesiaVoiceId: "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4",
         cartesiaWebSocketFactory: () => new FakeCartesiaSocket(),
@@ -467,7 +473,7 @@ async function connectSession(opts: {
   return { sessionId: CLAIMS.sessionId };
 }
 
-// The fake Flux/Cartesia sockets and the SSE mock advance the session pipeline
+// The fake Ink/Cartesia sockets and the SSE mock advance the session pipeline
 // across chained `queueMicrotask` + short `setTimeout` hops (hello -> verify ->
 // stt -> LLM SSE -> speaking -> downlink). A single fixed sleep raced that chain
 // under a loaded event loop (the sequential 80-file unit batch on a busy CI
@@ -508,11 +514,11 @@ describe("voice-session WS lifecycle", () => {
       }) as unknown as typeof fetch,
     });
 
-    const flux = FakeFluxSocket.instances.at(-1)!;
-    flux.emitTurn("StartOfTurn");
-    flux.emitTurn("Update", "hello agen");
-    flux.emitTurn("EagerEndOfTurn", "hello agent");
-    flux.emitTurn("EndOfTurn", "hello agent");
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.update", "hello agen");
+    ink.emitTurn("turn.eager_end", "hello agent");
+    ink.emitTurn("turn.end", "hello agent");
     await flush();
     await flush();
 
@@ -543,6 +549,59 @@ describe("voice-session WS lifecycle", () => {
     expect(client.controlTypes()).toContain("usage");
   });
 
+  test("coalesces provider-rate interim revisions while preserving the exact final transcript", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeCanonicalChunkFetch(["Done."]),
+    });
+
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    for (let index = 0; index < 100; index += 1) {
+      ink.emitTurn("turn.update", `long transcript revision ${index}`);
+    }
+
+    const immediatePartials = client.controlFrames.filter(
+      (frame) => frame.t === "stt_partial",
+    );
+    expect(immediatePartials).toEqual([
+      expect.objectContaining({ text: "long transcript revision 0" }),
+    ]);
+
+    await flush();
+    await flush();
+    const coalescedPartials = client.controlFrames.filter(
+      (frame) => frame.t === "stt_partial",
+    );
+    expect(coalescedPartials).toHaveLength(2);
+    expect(coalescedPartials.at(-1)).toEqual(
+      expect.objectContaining({ text: "long transcript revision 99" }),
+    );
+
+    ink.emitTurn("turn.update", "long transcript revision 99");
+    await flush();
+    expect(
+      client.controlFrames.filter((frame) => frame.t === "stt_partial"),
+    ).toHaveLength(2);
+
+    ink.emitTurn("turn.end", "the exact final transcript");
+    await flush();
+    await flush();
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({
+        t: "stt_final",
+        text: "the exact final transcript",
+      }),
+    );
+
+    ink.emitTurn("turn.update", "stale provider revision after final");
+    await flush();
+    expect(
+      client.controlFrames.filter((frame) => frame.t === "stt_partial"),
+    ).toHaveLength(2);
+  });
+
   test("duplicate final events for one semantic turn dispatch and persist exactly once", async () => {
     const requests: Array<{ body: unknown }> = [];
     const client = new FakeClientSocket();
@@ -556,10 +615,10 @@ describe("voice-session WS lifecycle", () => {
       }) as unknown as typeof fetch,
     });
 
-    const flux = FakeFluxSocket.instances.at(-1)!;
-    flux.emitTurn("StartOfTurn");
-    flux.emitTurn("EndOfTurn", "hello agent");
-    flux.emitTurn("EndOfTurn", "hello agent");
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "hello agent");
+    ink.emitTurn("turn.end", "hello agent");
     await flush();
     await flush();
 
@@ -582,13 +641,13 @@ describe("voice-session WS lifecycle", () => {
     // ready emitted after verified hello.
     expect(client.controlTypes()).toContain("ready");
 
-    const flux = FakeFluxSocket.instances.at(-1)!;
-    flux.emitConnectedHandshake(); // benign handshake, must NOT surface an error.
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitConnectedHandshake(); // benign handshake, must NOT surface an error.
     expect(client.controlFrames.find((f) => f.t === "error")).toBeUndefined();
 
     // Drive a user turn.
-    flux.emitTurn("StartOfTurn");
-    flux.emitTurn("EndOfTurn", "hello agent");
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "hello agent");
     await flush();
     await flush();
 
@@ -604,6 +663,44 @@ describe("voice-session WS lifecycle", () => {
     expect(client.audioFrames.length).toBeGreaterThan(0);
     expect(client.controlTypes()).toContain("speaking_end");
     expect(client.controlTypes()).toContain("usage");
+  });
+
+  test("forwards a successful terminal VIEWS handoff without exposing arbitrary actions", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeCanonicalChunkFetch(["Opened Notes."], {
+        actionResults: [
+          {
+            actionName: "VIEWS",
+            success: true,
+            values: { mode: "show", viewId: "notes" },
+          },
+          {
+            actionName: "UNRELATED_ACTION",
+            success: true,
+            values: { secret: "not-forwarded" },
+          },
+        ],
+      }),
+    });
+
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "open notes");
+    await flush();
+    await flush();
+
+    expect(
+      client.controlFrames.filter((frame) => frame.t === "navigate_view"),
+    ).toEqual([
+      {
+        t: "navigate_view",
+        viewId: "notes",
+        traceId: expect.any(String),
+      },
+    ]);
+    expect(JSON.stringify(client.controlFrames)).not.toContain("not-forwarded");
   });
 
   test("prewarms Eliza tenancy context when the live session starts", async () => {
@@ -626,9 +723,9 @@ describe("voice-session WS lifecycle", () => {
       client,
       fetchImpl: makeSseFetch(["A short answer."]),
     });
-    const flux = FakeFluxSocket.instances.at(-1)!;
-    flux.emitTurn("StartOfTurn");
-    flux.emitTurn("EndOfTurn", "answer briefly");
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "answer briefly");
     await flush();
     await flush();
 
@@ -662,9 +759,9 @@ describe("voice-session WS lifecycle", () => {
     });
 
     const before = FakeCartesiaSocket.instances.length;
-    const flux = FakeFluxSocket.instances.at(-1)!;
-    flux.emitTurn("StartOfTurn");
-    flux.emitTurn("EndOfTurn", "answer briefly");
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "answer briefly");
 
     // Socket creation is synchronous at turn start, before any asynchronous LLM
     // delta is consumed, so its handshake overlaps model generation.
@@ -681,9 +778,9 @@ describe("voice-session WS lifecycle", () => {
       fetchImpl: makeSseFetch(["Default voice."]),
     });
 
-    const flux = FakeFluxSocket.instances.at(-1)!;
-    flux.emitTurn("StartOfTurn");
-    flux.emitTurn("EndOfTurn", "say default");
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "say default");
     await flush();
     await flush();
 
@@ -701,9 +798,9 @@ describe("voice-session WS lifecycle", () => {
       fish: { enabled: true },
     });
 
-    const flux = FakeFluxSocket.instances.at(-1)!;
-    flux.emitTurn("StartOfTurn");
-    flux.emitTurn("EndOfTurn", "say fish");
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "say fish");
     await flush();
     await flush();
 
@@ -738,9 +835,9 @@ describe("voice-session WS lifecycle", () => {
       },
     });
 
-    const flux = FakeFluxSocket.instances.at(-1)!;
-    flux.emitTurn("StartOfTurn");
-    flux.emitTurn("EndOfTurn", "say fallback");
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "say fallback");
     await flush();
     const fish = FakeFishAudioSocket.instances.at(-1)!;
     fish.emitTransportError();
@@ -763,9 +860,9 @@ describe("voice-session WS lifecycle", () => {
       },
     });
 
-    const flux = FakeFluxSocket.instances.at(-1)!;
-    flux.emitTurn("StartOfTurn");
-    flux.emitTurn("EndOfTurn", "say timeout");
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "say timeout");
     await flush();
     await flush();
 
@@ -786,9 +883,9 @@ describe("voice-session WS lifecycle", () => {
       },
     });
 
-    const flux = FakeFluxSocket.instances.at(-1)!;
-    flux.emitTurn("StartOfTurn");
-    flux.emitTurn("EndOfTurn", "say no fallback");
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "say no fallback");
     await flush();
     const fish = FakeFishAudioSocket.instances.at(-1)!;
     fish.emitProviderError();
@@ -809,9 +906,9 @@ describe("voice-session WS lifecycle", () => {
       fish: { enabled: true },
     });
 
-    const flux = FakeFluxSocket.instances.at(-1)!;
-    flux.emitTurn("StartOfTurn");
-    flux.emitTurn("EndOfTurn", "say no switch");
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "say no switch");
     await flush();
     const fish = FakeFishAudioSocket.instances.at(-1)!;
     fish.emitTransportError("post first audio failure");
@@ -829,9 +926,9 @@ describe("voice-session WS lifecycle", () => {
       client,
       fetchImpl: makeSseFetch([]),
     });
-    const flux = FakeFluxSocket.instances.at(-1)!;
-    flux.emitTurn("StartOfTurn");
-    flux.emitTurn("EndOfTurn", "say nothing");
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "say nothing");
     await flush();
     await flush();
 
@@ -859,9 +956,9 @@ describe("voice-session WS lifecycle", () => {
         },
       ),
     });
-    const flux = FakeFluxSocket.instances.at(-1)!;
-    flux.emitTurn("StartOfTurn");
-    flux.emitTurn("EndOfTurn", "answer quickly");
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "answer quickly");
     await flush();
     await flush();
 
@@ -889,9 +986,9 @@ describe("voice-session WS lifecycle", () => {
       client,
       fetchImpl: makeSseFetch(["Sunlight reaches Earth quickly."]),
     });
-    const flux = FakeFluxSocket.instances.at(-1)!;
-    flux.emitTurn("StartOfTurn");
-    flux.emitTurn("EndOfTurn", "tell me about sunlight");
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "tell me about sunlight");
     await flush();
     await flush();
 
@@ -917,9 +1014,9 @@ describe("voice-session WS lifecycle", () => {
       fetchImpl: makeCanonicalChunkFetch(["Canonical chunk."]),
     });
 
-    const flux = FakeFluxSocket.instances.at(-1)!;
-    flux.emitTurn("StartOfTurn");
-    flux.emitTurn("EndOfTurn", "voice transcript");
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "voice transcript");
     await flush();
     await flush();
 
@@ -939,9 +1036,9 @@ describe("voice-session WS lifecycle", () => {
       fetchImpl: controlled.fetchImpl,
     });
 
-    const flux = FakeFluxSocket.instances.at(-1)!;
-    flux.emitTurn("StartOfTurn");
-    flux.emitTurn("EndOfTurn", "voice transcript");
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "voice transcript");
     await controlled.ready;
 
     const streamedChunk = "This first streamed phrase is speakable now ";
@@ -975,9 +1072,9 @@ describe("voice-session WS lifecycle", () => {
       client,
       fetchImpl: makeSseFetch(["Hello there.", " The weather is sunny."]),
     });
-    const flux = FakeFluxSocket.instances.at(-1)!;
-    flux.emitTurn("StartOfTurn");
-    flux.emitTurn("EndOfTurn", "whats the weather");
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "whats the weather");
     await flush();
     await flush();
     const cartesia = FakeCartesiaSocket.instances.at(-1)!;
@@ -1022,9 +1119,9 @@ describe("voice-session WS lifecycle", () => {
   test("empty-transcript final closes the turn (usage + clears turn id)", async () => {
     const client = new FakeClientSocket();
     await connectSession({ client, fetchImpl: makeSseFetch(["unused."]) });
-    const flux = FakeFluxSocket.instances.at(-1)!;
-    flux.emitTurn("StartOfTurn");
-    flux.emitTurn("EndOfTurn", ""); // silence/noise: empty final.
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", ""); // silence/noise: empty final.
     await flush();
     // The empty turn is closed out: a usage frame is emitted and no TTS runs.
     expect(client.controlTypes()).toContain("stt_final");
@@ -1042,23 +1139,23 @@ describe("voice-session WS lifecycle", () => {
     expect(afterInterrupt).toBe(beforeInterrupt);
   });
 
-  test("uplink is re-framed to exact 2560-byte Flux chunks", async () => {
+  test("uplink is re-framed to exact 3200-byte Ink chunks", async () => {
     const client = new FakeClientSocket();
     await connectSession({ client, fetchImpl: makeSseFetch(["ok."]) });
-    const flux = FakeFluxSocket.instances.at(-1)!;
+    const ink = FakeInkSocket.instances.at(-1)!;
 
-    // Send 3000 bytes in odd chunks; expect exactly one 2560 frame, 440 held.
+    // Send 3500 bytes in odd chunks; expect exactly one 3200 frame, 300 held.
     client.clientSend(pcmChunk(1000));
-    client.clientSend(pcmChunk(2000));
+    client.clientSend(pcmChunk(2500));
     await flush();
-    expect(flux.sentChunks.length).toBe(1);
-    expect(flux.sentChunks[0].byteLength).toBe(2560);
+    expect(ink.sentChunks.length).toBe(1);
+    expect(ink.sentChunks[0].byteLength).toBe(3200);
 
-    // Another 2560 completes a second frame.
-    client.clientSend(pcmChunk(2560));
+    // Another 3200 completes a second frame.
+    client.clientSend(pcmChunk(3200));
     await flush();
-    expect(flux.sentChunks.length).toBe(2);
-    expect(flux.sentChunks.every((c) => c.byteLength === 2560)).toBe(true);
+    expect(ink.sentChunks.length).toBe(2);
+    expect(ink.sentChunks.every((c) => c.byteLength === 3200)).toBe(true);
   });
 
   test("LLM upstream failure becomes a retryable turn error and returns to listening", async () => {
@@ -1068,9 +1165,9 @@ describe("voice-session WS lifecycle", () => {
       fetchImpl: (async () =>
         new Response("nope", { status: 503 })) as unknown as typeof fetch,
     });
-    const flux = FakeFluxSocket.instances.at(-1)!;
-    flux.emitTurn("StartOfTurn");
-    flux.emitTurn("EndOfTurn", "please answer");
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "please answer");
     await flush();
     await flush();
 
@@ -1107,9 +1204,9 @@ describe("voice-session WS lifecycle", () => {
           { status: 402 },
         )) as unknown as typeof fetch,
     });
-    const flux = FakeFluxSocket.instances.at(-1)!;
-    flux.emitTurn("StartOfTurn");
-    flux.emitTurn("EndOfTurn", "please answer");
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "please answer");
     await flush();
     await flush();
 
@@ -1137,9 +1234,9 @@ describe("voice-session WS lifecycle", () => {
           { status: 404 },
         )) as unknown as typeof fetch,
     });
-    const flux = FakeFluxSocket.instances.at(-1)!;
-    flux.emitTurn("StartOfTurn");
-    flux.emitTurn("EndOfTurn", "please answer");
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "please answer");
     await flush();
     await flush();
 
@@ -1167,9 +1264,9 @@ describe("voice-session WS lifecycle", () => {
       client,
       fetchImpl: makeCanonicalChunkFetch(["This should fail in TTS."]),
     });
-    const flux = FakeFluxSocket.instances.at(-1)!;
-    flux.emitTurn("StartOfTurn");
-    flux.emitTurn("EndOfTurn", "speak this");
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "speak this");
     await flush();
     await flush();
 
@@ -1201,10 +1298,10 @@ describe("voice-session WS lifecycle", () => {
       client,
       fetchImpl: makeSseFetch(["Speaking now."]),
     });
-    const flux = FakeFluxSocket.instances.at(-1)!;
+    const ink = FakeInkSocket.instances.at(-1)!;
 
-    flux.emitTurn("StartOfTurn");
-    flux.emitTurn("EndOfTurn", "say something");
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "say something");
     await flush();
     await flush();
     const framesBefore = client.audioFrames.length;
@@ -1243,9 +1340,9 @@ describe("voice-session WS lifecycle", () => {
         onAbort: () => (aborted = true),
       }),
     });
-    const flux = FakeFluxSocket.instances.at(-1)!;
-    flux.emitTurn("StartOfTurn");
-    flux.emitTurn("EndOfTurn", "long answer please");
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "long answer please");
     await flush();
 
     client.clientSend(JSON.stringify({ t: "barge_in" }));
@@ -1261,15 +1358,15 @@ describe("voice-session WS lifecycle", () => {
       client: source,
       fetchImpl: makeSseFetch(["still generating"], { hang: true }),
     });
-    const sourceFlux = FakeFluxSocket.instances.at(-1)!;
-    sourceFlux.emitTurn("StartOfTurn");
-    sourceFlux.emitTurn("EndOfTurn", "disconnect me");
+    const sourceInk = FakeInkSocket.instances.at(-1)!;
+    sourceInk.emitTurn("turn.start");
+    sourceInk.emitTurn("turn.end", "disconnect me");
     await flush();
     expect(getVoiceSessionRegistry().size()).toBe(1);
 
     source.clientClose();
     expect(getVoiceSessionRegistry().size()).toBe(0);
-    expect(sourceFlux.closed).toBe(true);
+    expect(sourceInk.closed).toBe(true);
 
     const replacement = new FakeClientSocket();
     await connectSession({
@@ -1297,8 +1394,7 @@ describe("voice-session WS lifecycle", () => {
           agentId: claims.agentId,
           conversationId: claims.conversationId,
           tokenExpSeconds,
-          deepgramApiKey: "dg-key",
-          deepgramWebSocketFactory: () => new FakeFluxSocket(),
+          cartesiaInkWebSocketFactory: () => new FakeInkSocket(),
           cartesiaApiKey: "ct-key",
           cartesiaVoiceId: "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4",
           cartesiaWebSocketFactory: () => new FakeCartesiaSocket(),
@@ -1329,28 +1425,28 @@ describe("voice-session WS lifecycle", () => {
       }),
     );
     await flush();
-    const flux = FakeFluxSocket.instances.at(-1)!;
+    const ink = FakeInkSocket.instances.at(-1)!;
     expect(client.controlTypes()).toContain("ready");
 
     client.clientSend(JSON.stringify({ t: "bye" }));
     await flush();
 
-    expect(flux.closed).toBe(true);
+    expect(ink.closed).toBe(true);
     expect(client.closedWith).toEqual({ code: 1000, reason: "completed" });
     expect(client.controlFrames.find((f) => f.t === "error")).toBeUndefined();
     expect(revoked).toEqual([
       { jti: minted.jti, expSeconds: minted.expSeconds },
     ]);
-    client.clientSend(pcmChunk(2560));
+    client.clientSend(pcmChunk(3200));
     await flush();
-    expect(flux.sentChunks).toHaveLength(0);
+    expect(ink.sentChunks).toHaveLength(0);
   });
 
   test("provider transport error and close surface fatal session errors", async () => {
     const errored = new FakeClientSocket();
     await connectSession({ client: errored, fetchImpl: makeSseFetch(["ok."]) });
-    const errorFlux = FakeFluxSocket.instances.at(-1)!;
-    errorFlux.emitTransportError();
+    const errorInk = FakeInkSocket.instances.at(-1)!;
+    errorInk.emitTransportError();
     await flush();
     expect(errored.controlFrames).toContainEqual(
       expect.objectContaining({
@@ -1363,8 +1459,8 @@ describe("voice-session WS lifecycle", () => {
 
     const closed = new FakeClientSocket();
     await connectSession({ client: closed, fetchImpl: makeSseFetch(["ok."]) });
-    const closeFlux = FakeFluxSocket.instances.at(-1)!;
-    closeFlux.close(1006, "provider gone");
+    const closeInk = FakeInkSocket.instances.at(-1)!;
+    closeInk.close(1006, "provider gone");
     await flush();
     expect(closed.controlFrames).toContainEqual(
       expect.objectContaining({ t: "error", code: "error", retryable: true }),
@@ -1383,7 +1479,7 @@ describe("voice-session WS lifecycle", () => {
       },
     });
     void usageStore;
-    client.clientSend(pcmChunk(2560));
+    client.clientSend(pcmChunk(3200));
     await flush();
     expect(client.closedWith).not.toBeNull();
     expect(client.controlFrames.find((f) => f.t === "error")?.code).toBe(
@@ -1395,7 +1491,7 @@ describe("voice-session WS lifecycle", () => {
     const client = new FakeClientSocket();
     const minted = await mintVoiceSessionToken(CLAIMS);
     const usageStore = new InMemoryVoiceUsageStore();
-    let flux: FakeFluxSocket | null = null;
+    let ink: FakeInkSocket | null = null;
     attachVoiceWsHandler(client, {
       requestedSessionId: CLAIMS.sessionId,
       buildSession: ({ claims, jti, tokenExpSeconds, downlink }) =>
@@ -1407,10 +1503,9 @@ describe("voice-session WS lifecycle", () => {
           agentId: claims.agentId,
           conversationId: claims.conversationId,
           tokenExpSeconds,
-          deepgramApiKey: "dg",
-          deepgramWebSocketFactory: () => {
-            flux = new FakeFluxSocket();
-            return flux;
+          cartesiaInkWebSocketFactory: () => {
+            ink = new FakeInkSocket();
+            return ink;
           },
           cartesiaApiKey: "ct",
           cartesiaVoiceId: "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4",
@@ -1434,7 +1529,7 @@ describe("voice-session WS lifecycle", () => {
         sampleRate: 16000,
       }),
     );
-    client.clientSend(new Uint8Array(2560)); // pipelined pre-verify.
+    client.clientSend(new Uint8Array(3200)); // pipelined pre-verify.
     // The session must NOT have been failed with hello_required.
     expect(client.closedWith).toBeNull();
     await flush();
@@ -1444,7 +1539,7 @@ describe("voice-session WS lifecycle", () => {
     expect(client.controlFrames.find((f) => f.t === "error")?.code).not.toBe(
       "hello_required",
     );
-    expect(flux!.sentChunks.length).toBeGreaterThan(0);
+    expect(ink!.sentChunks.length).toBeGreaterThan(0);
   });
 
   test("a non-hello first control frame is rejected", async () => {
@@ -1523,8 +1618,7 @@ describe("voice-session WS lifecycle", () => {
           agentId: claims.agentId,
           conversationId: claims.conversationId,
           tokenExpSeconds,
-          deepgramApiKey: "dg",
-          deepgramWebSocketFactory: () => new FakeFluxSocket(),
+          cartesiaInkWebSocketFactory: () => new FakeInkSocket(),
           cartesiaApiKey: "ct",
           cartesiaVoiceId: "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4",
           cartesiaWebSocketFactory: () => new FakeCartesiaSocket(),
@@ -1638,8 +1732,7 @@ describe("voice-session WS lifecycle", () => {
           agentId: claims.agentId,
           conversationId: claims.conversationId,
           tokenExpSeconds,
-          deepgramApiKey: "dg",
-          deepgramWebSocketFactory: () => new FakeFluxSocket(),
+          cartesiaInkWebSocketFactory: () => new FakeInkSocket(),
           cartesiaApiKey: "ct",
           cartesiaVoiceId: "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4",
           cartesiaWebSocketFactory: () => new FakeCartesiaSocket(),
@@ -1689,8 +1782,7 @@ describe("voice-session WS lifecycle", () => {
           agentId: claims.agentId,
           conversationId: claims.conversationId,
           tokenExpSeconds,
-          deepgramApiKey: "dg",
-          deepgramWebSocketFactory: () => new FakeFluxSocket(),
+          cartesiaInkWebSocketFactory: () => new FakeInkSocket(),
           cartesiaApiKey: "ct",
           cartesiaVoiceId: "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4",
           cartesiaWebSocketFactory: () => new FakeCartesiaSocket(),
