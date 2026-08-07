@@ -1,19 +1,18 @@
+/**
+ * Native iOS half of `ElizaSurfaceManager` (#15245): layers one `WKWebView` per
+ * Browser tab above the Capacitor host webview, each in its OWN renderer process
+ * and storage partition. Rounded occlusion holes expose host-rendered chrome
+ * without resizing or hiding the live page.
+ *
+ * An `isolated` process gets a fresh `WKProcessPool`; isolated storage gets a
+ * non-persistent `WKWebsiteDataStore`. `shared` reuses a plugin-owned pool and
+ * the default store, never an implicit policy.
+ */
 import Foundation
 import Capacitor
 import WebKit
 import UIKit
 
-/// Native iOS half of `ElizaSurfaceManager` (#15245): layers one `WKWebView` per
-/// Browser tab above the Capacitor host webview, each in its OWN renderer
-/// process and storage partition, so third-party content can never reach the
-/// host realm or a sibling tab.
-///
-/// Isolation is realised by the two WebKit primitives the JS policy maps onto:
-/// an `isolated` process gets a fresh `WKProcessPool` (a distinct content
-/// process); an `isolated` storage gets a non-persistent `WKWebsiteDataStore`
-/// (its own cookies/localStorage/IndexedDB, nothing shared). `shared` reuses a
-/// plugin-owned pool/the default store — never an implicit default, which is why
-/// `createSurface` rejects when the policy fields are absent.
 @objc(ElizaSurfaceManagerPlugin)
 public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "ElizaSurfaceManagerPlugin"
@@ -21,6 +20,7 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "createSurface", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setBounds", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setOcclusionRects", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "navigate", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "foregroundSurface", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "backgroundSurface", returnType: CAPPluginReturnPromise),
@@ -30,6 +30,7 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
     ]
 
     private struct Surface {
+        let container: OccludingSurfaceView
         let webView: WKWebView
         let process: String
         let storage: String
@@ -76,14 +77,22 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
                 ? WKWebsiteDataStore.nonPersistent()
                 : WKWebsiteDataStore.default()
 
-            let webView = WKWebView(frame: hostView.bounds, configuration: config)
-            webView.isHidden = true
-            hostView.addSubview(webView)
+            let container = OccludingSurfaceView(frame: .zero)
+            container.isHidden = true
+            let webView = WKWebView(frame: container.bounds, configuration: config)
+            webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            container.addSubview(webView)
+            hostView.addSubview(container)
 
             if let urlString = urlString, let url = URL(string: urlString) {
                 webView.load(URLRequest(url: url))
             }
-            self.surfaces[id] = Surface(webView: webView, process: process, storage: storage)
+            self.surfaces[id] = Surface(
+                container: container,
+                webView: webView,
+                process: process,
+                storage: storage
+            )
             call.resolve()
         }
     }
@@ -103,7 +112,53 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
                 return
             }
             // CSS px map 1:1 to UIKit points, so no density conversion is needed.
-            surface.webView.frame = CGRect(x: x, y: y, width: width, height: height)
+            surface.container.frame = CGRect(x: x, y: y, width: width, height: height)
+            surface.container.setSurfaceOrigin(CGPoint(x: x, y: y))
+            call.resolve()
+        }
+    }
+
+    @objc func setOcclusionRects(_ call: CAPPluginCall) {
+        guard let id = call.getString("id") else {
+            call.reject("setOcclusionRects requires an id")
+            return
+        }
+        guard let rawRects = call.getArray("rects") as? [[String: Any]] else {
+            call.reject("setOcclusionRects requires a rects array")
+            return
+        }
+        var rects: [HostOcclusionRect] = []
+        rects.reserveCapacity(rawRects.count)
+        for (index, raw) in rawRects.enumerated() {
+            guard let x = (raw["x"] as? NSNumber)?.doubleValue,
+                  let y = (raw["y"] as? NSNumber)?.doubleValue,
+                  let width = (raw["width"] as? NSNumber)?.doubleValue,
+                  let height = (raw["height"] as? NSNumber)?.doubleValue else {
+                call.reject("setOcclusionRects rect \(index) has invalid geometry")
+                return
+            }
+            let cornerRadius = (raw["cornerRadius"] as? NSNumber)?.doubleValue ?? 0
+            guard x.isFinite, y.isFinite, width.isFinite, height.isFinite,
+                  cornerRadius.isFinite, width >= 0, height >= 0, cornerRadius >= 0 else {
+                call.reject("setOcclusionRects rect \(index) has invalid geometry")
+                return
+            }
+            rects.append(
+                HostOcclusionRect(
+                    x: x,
+                    y: y,
+                    width: width,
+                    height: height,
+                    cornerRadius: cornerRadius
+                )
+            )
+        }
+        DispatchQueue.main.async {
+            guard let surface = self.surfaces[id] else {
+                call.reject("no surface \(id)")
+                return
+            }
+            surface.container.setHostOcclusions(rects)
             call.resolve()
         }
     }
@@ -134,8 +189,8 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
                 call.reject("no surface \(id)")
                 return
             }
-            surface.webView.superview?.bringSubviewToFront(surface.webView)
-            surface.webView.isHidden = false
+            surface.container.superview?.bringSubviewToFront(surface.container)
+            surface.container.isHidden = false
             call.resolve()
         }
     }
@@ -150,7 +205,7 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
                 call.reject("no surface \(id)")
                 return
             }
-            surface.webView.isHidden = true
+            surface.container.isHidden = true
             call.resolve()
         }
     }
@@ -163,7 +218,7 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
         DispatchQueue.main.async {
             if let surface = self.surfaces.removeValue(forKey: id) {
                 surface.webView.stopLoading()
-                surface.webView.removeFromSuperview()
+                surface.container.removeFromSuperview()
             }
             call.resolve()
         }
@@ -172,7 +227,7 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func foregroundHost(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
             for surface in self.surfaces.values {
-                surface.webView.isHidden = true
+                surface.container.isHidden = true
             }
             call.resolve()
         }
@@ -196,11 +251,76 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin {
             }
             call.resolve([
                 "exists": true,
-                "foregrounded": !surface.webView.isHidden,
+                "foregrounded": !surface.container.isHidden,
                 "currentUrl": surface.webView.url?.absoluteString ?? NSNull(),
                 "process": surface.process,
                 "storage": surface.storage,
             ])
         }
+    }
+}
+
+private struct HostOcclusionRect {
+    let x: Double
+    let y: Double
+    let width: Double
+    let height: Double
+    let cornerRadius: Double
+}
+
+/// Masks native page pixels around host-rendered chrome and lets UIKit continue
+/// hit-testing the Capacitor host for touches that begin inside those holes.
+private final class OccludingSurfaceView: UIView {
+    private var hostOcclusions: [HostOcclusionRect] = []
+    private var surfaceOrigin: CGPoint = .zero
+
+    func setSurfaceOrigin(_ origin: CGPoint) {
+        surfaceOrigin = origin
+        updateMask()
+    }
+
+    func setHostOcclusions(_ rects: [HostOcclusionRect]) {
+        hostOcclusions = rects
+        updateMask()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        updateMask()
+    }
+
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        guard super.point(inside: point, with: event) else { return false }
+        return !localOcclusionPaths().contains { $0.contains(point) }
+    }
+
+    private func localOcclusionPaths() -> [UIBezierPath] {
+        hostOcclusions.map { occlusion in
+            UIBezierPath(
+                roundedRect: CGRect(
+                    x: CGFloat(occlusion.x) - surfaceOrigin.x,
+                    y: CGFloat(occlusion.y) - surfaceOrigin.y,
+                    width: CGFloat(occlusion.width),
+                    height: CGFloat(occlusion.height)
+                ),
+                cornerRadius: CGFloat(occlusion.cornerRadius)
+            )
+        }
+    }
+
+    private func updateMask() {
+        guard !hostOcclusions.isEmpty else {
+            layer.mask = nil
+            return
+        }
+        let path = UIBezierPath(rect: bounds)
+        for occlusionPath in localOcclusionPaths() {
+            path.append(occlusionPath)
+        }
+        let mask = CAShapeLayer()
+        mask.frame = bounds
+        mask.path = path.cgPath
+        mask.fillRule = .evenOdd
+        layer.mask = mask
     }
 }
