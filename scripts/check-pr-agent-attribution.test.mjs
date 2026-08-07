@@ -47,17 +47,19 @@ function body({
   revision = "`elizaOS/eliza@0123456789abcdef0123456789abcdef01234567:packages/skills/skills/contribute-to-eliza`",
   status = "self-reported",
 } = {}) {
+  // Labels match .github/pull_request_template.md (#17855): they must not reuse
+  // the terminal army footer labels or the scorer drops the machine marker.
   return `<!-- contribution-attribution:v1 -->
 <!-- attribution-row:ai-assistance -->
 - AI assistance: ${assistance}
 <!-- attribution-row:models -->
 - Model(s) used: ${models}
 <!-- attribution-row:client -->
-- Client / agent tooling: ${client}
+- Agent tooling: ${client}
 <!-- attribution-row:skill-revision -->
-- Skill revision: ${revision}
+- Skill path: ${revision}
 <!-- attribution-row:status -->
-- Attribution status: ${status}`;
+- Provenance status: ${status}`;
 }
 
 function workflowSource(workflowPath) {
@@ -209,8 +211,8 @@ describe("PR agent attribution", () => {
 
     const mixed = evaluatePrAttribution(
       deterministicBody.replace(
-        "Client / agent tooling: None - deterministic workflow",
-        "Client / agent tooling: None - human-only contribution",
+        "Agent tooling: None - deterministic workflow",
+        "Agent tooling: None - human-only contribution",
       ),
     );
     assert.equal(mixed.ok, false);
@@ -386,9 +388,11 @@ describe("PR agent attribution", () => {
 
   it("still drops a human label, including one containing a slash", () => {
     // The strip exists for the documented template, so refusing to run past a
-    // value's colon must not stop it removing a genuine label. `Client / agent
-    // tooling:` is the repository's own, and it carries a slash.
-    const labelled = evaluatePrAttribution(body());
+    // value's colon must not stop it removing a genuine label. Legacy
+    // `Client / agent tooling:` still works when present and carries a slash.
+    const labelled = evaluatePrAttribution(
+      body().replace("Agent tooling:", "Client / agent tooling:"),
+    );
     assert.equal(labelled.ok, true);
     assert.equal(labelled.attribution.client, "Codex Desktop");
     assert.equal(
@@ -397,6 +401,70 @@ describe("PR agent attribution", () => {
       "a labelled status row must still reduce to the bare keyword",
     );
     assert.deepEqual(labelled.attribution.modelIds, ["openai/gpt-5.6-sol"]);
+  });
+
+  it("keeps PR template labels free of army terminal-footer collisions (#17855)", () => {
+    const templatePath = path.join(
+      repositoryRoot,
+      ".github",
+      "pull_request_template.md",
+    );
+    const template = readFileSync(templatePath, "utf8");
+    // Reserved by elizaOS/army leaderboard.ts attributionLineValues for the
+    // terminal footer — if the template reuses them, filling the template and
+    // appending the skill footer yields count=2 and drops the machine marker.
+    const reserved = [
+      /^-\s*Client \/ agent tooling\s*:/im,
+      /^-\s*Skill revision\s*:/im,
+      /^-\s*Contribution skill revision\s*:/im,
+      /^-\s*Attribution status\s*:/im,
+    ];
+    for (const pattern of reserved) {
+      assert.equal(
+        pattern.test(template),
+        false,
+        `PR template must not use reserved footer label matching ${pattern}`,
+      );
+    }
+    assert.match(template, /<!-- attribution-row:client -->/);
+    assert.match(template, /Agent tooling:/);
+    assert.match(template, /Skill path:/);
+    assert.match(template, /Provenance status:/);
+
+    // Filled template rows + full terminal footer must still pass the CI gate.
+    const filled = template
+      .replace(
+        /`yes` \/ `no - human-only contribution`/,
+        "yes",
+      )
+      .replace(
+        /`provider\/model-id` \/ `None - human-only contribution`/,
+        "`xai/grok-4.5`",
+      )
+      .replace(
+        /`client-name` \/ `None - human-only contribution`/,
+        "grok",
+      )
+      .replace(
+        /`owner\/repo@full-commit-sha:path` \/ `N\/A - no contribution skill used`/,
+        "`elizaOS/eliza@0123456789abcdef0123456789abcdef01234567:packages/skills/skills/contribute-to-eliza`",
+      )
+      .replace(/`self-reported`/, "self-reported");
+    const withFooter = `${filled}
+
+AI provider/model: xai / grok-4.5
+Client / agent tooling: grok
+Contribution skill revision: elizaOS/eliza@0123456789abcdef0123456789abcdef01234567:packages/skills/skills/contribute-to-eliza
+Attribution status: self-reported
+— [grok-krutftw]
+<!-- eliza-computer-attribution:v1 {"provider":"xai","model":"grok-4.5","client":"grok","skill_revision":"elizaOS/eliza@0123456789abcdef0123456789abcdef01234567:packages/skills/skills/contribute-to-eliza"} -->
+`;
+    const result = evaluatePrAttribution(withFooter);
+    assert.equal(
+      result.ok,
+      true,
+      result.findings.map((finding) => finding.message).join("; "),
+    );
   });
 
   it("rejects missing markers and rows even when prose names a model", () => {
