@@ -88,7 +88,10 @@ import { buildProviderCachePlan } from "./runtime/provider-cache-plan";
 import type { ResponseHandlerEvaluator } from "./runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "./runtime/response-handler-field-evaluator";
 import { ResponseHandlerFieldRegistry } from "./runtime/response-handler-field-registry";
-import { RoomHandlerQueue } from "./runtime/room-handler-queue";
+import {
+	type RoomHandlerLease,
+	RoomHandlerQueue,
+} from "./runtime/room-handler-queue";
 import { ShortcutRegistry } from "./runtime/shortcut-registry";
 import { SingleFlightMemo } from "./runtime/single-flight-memo";
 import {
@@ -1218,7 +1221,13 @@ export class AgentRuntime implements IAgentRuntime {
 	readonly chatPreHandlerRegistry = new ChatPreHandlerRegistry();
 	readonly responseHandlerFieldRegistry = new ResponseHandlerFieldRegistry();
 	readonly turnControllers = new TurnControllerRegistry();
-	readonly roomHandlerQueue = new RoomHandlerQueue();
+	readonly roomHandlerQueue = new RoomHandlerQueue({
+		onListenerError: (error, event) =>
+			this.reportError("AgentRuntime.roomHandlerQueue.listener", error, {
+				event,
+				diagnosticOnly: true,
+			}),
+	});
 	readonly plugins: Plugin[] = [];
 	/**
 	 * Per-runtime context registry seeded with first-party context definitions
@@ -2573,6 +2582,9 @@ export class AgentRuntime implements IAgentRuntime {
 			);
 			return;
 		}
+		this.roomHandlerQueue.closeAdmissions("runtime-stop");
+		this.turnControllers.abortAllTurns("runtime-stop");
+		await this.roomHandlerQueue.quiesceAll();
 		const fast = options?.fast === true;
 		if (!fast) {
 			const pending = pendingPostDeliveryTaskCount(this);
@@ -11133,7 +11145,14 @@ ${section_end}`;
 			return;
 		}
 
-		await this.adapter.deleteMemories(memoryIds);
+		const roomIds = allMemories
+			.map((memory) => memory.roomId)
+			.filter((roomId): roomId is UUID => typeof roomId === "string");
+		await this.roomHandlerQueue.withLeases(roomIds, async (leases) =>
+			this.roomHandlerQueue.withLeaseWrites(leases, () =>
+				this.adapter.deleteMemories(memoryIds),
+			),
+		);
 		this.roomMessagesMemo.invalidate();
 		this.logger.info(
 			{ src: "agent", agentId: this.agentId, count: memoryIds.length },
@@ -11141,7 +11160,15 @@ ${section_end}`;
 		);
 	}
 	async deleteAllMemories(roomIds: UUID[], tableName: string): Promise<void> {
-		await this.adapter.deleteAllMemories(roomIds, tableName);
+		if (tableName === "messages") {
+			await this.roomHandlerQueue.withLeases(roomIds, async (leases) =>
+				this.roomHandlerQueue.withLeaseWrites(leases, () =>
+					this.adapter.deleteAllMemories(roomIds, tableName),
+				),
+			);
+		} else {
+			await this.adapter.deleteAllMemories(roomIds, tableName);
+		}
 		if (tableName === "messages") {
 			for (const roomId of roomIds) this.roomMessagesMemo.invalidate(roomId);
 		}
@@ -11723,14 +11750,55 @@ ${section_end}`;
 				},
 			};
 		}
-		return this.adapter.upsertMemories([{ memory, tableName }], options);
+		return this.upsertMemories([{ memory, tableName }], options);
 	}
 
 	async upsertMemories(
 		memories: Array<{ memory: Memory; tableName: string }>,
 		options?: { entityContext?: UUID },
 	): Promise<void> {
-		return this.adapter.upsertMemories(memories, options);
+		const existingIds = memories
+			.map(({ memory }) => memory.id)
+			.filter((id): id is UUID => typeof id === "string");
+		const existing =
+			existingIds.length > 0
+				? await this.adapter.getMemoriesByIds(existingIds)
+				: [];
+		const roomIds = [
+			...memories
+				.filter(({ tableName }) => tableName === "messages")
+				.map(({ memory }) => memory.roomId),
+			...existing.map((memory) => memory.roomId),
+		].filter((roomId): roomId is UUID => typeof roomId === "string");
+		if (roomIds.length === 0) {
+			return this.adapter.upsertMemories(memories, options);
+		}
+		return this.roomHandlerQueue.withLeases(roomIds, async (leases) => {
+			for (const { memory, tableName } of memories) {
+				if (tableName !== "messages" || !memory.roomId) continue;
+				const lease = leases.get(memory.roomId);
+				if (!lease) {
+					throw new ElizaError("Message upsert has no room ownership", {
+						code: "MESSAGE_MEMORY_ROOM_OWNERSHIP_MISSING",
+						context: { roomId: memory.roomId, memoryId: memory.id },
+					});
+				}
+				await this.roomHandlerQueue.ensureProcessingClock(
+					memory.roomId,
+					lease,
+					() =>
+						this.getMemories({
+							roomId: memory.roomId,
+							tableName: "messages",
+							count: 100,
+						}),
+				);
+				this.roomHandlerQueue.stampMessage(memory.roomId, lease, memory);
+			}
+			return this.roomHandlerQueue.withLeaseWrites(leases, () =>
+				this.adapter.upsertMemories(memories, options),
+			);
+		});
 	}
 
 	// Batch relationship methods
@@ -11804,7 +11872,39 @@ ${section_end}`;
 	async createMemories(
 		memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>,
 	): Promise<UUID[]> {
-		const ids = await this.adapter.createMemories(memories);
+		const roomIds = memories
+			.filter(({ tableName }) => tableName === "messages")
+			.map(({ memory }) => memory.roomId)
+			.filter((roomId): roomId is UUID => typeof roomId === "string");
+		const ids =
+			roomIds.length === 0
+				? await this.adapter.createMemories(memories)
+				: await this.roomHandlerQueue.withLeases(roomIds, async (leases) => {
+						for (const { memory, tableName } of memories) {
+							if (tableName !== "messages" || !memory.roomId) continue;
+							const lease = leases.get(memory.roomId);
+							if (!lease) {
+								throw new ElizaError("Message create has no room ownership", {
+									code: "MESSAGE_MEMORY_ROOM_OWNERSHIP_MISSING",
+									context: { roomId: memory.roomId, memoryId: memory.id },
+								});
+							}
+							await this.roomHandlerQueue.ensureProcessingClock(
+								memory.roomId,
+								lease,
+								() =>
+									this.getMemories({
+										roomId: memory.roomId,
+										tableName: "messages",
+										count: 100,
+									}),
+							);
+							this.roomHandlerQueue.stampMessage(memory.roomId, lease, memory);
+						}
+						return this.roomHandlerQueue.withLeaseWrites(leases, () =>
+							this.adapter.createMemories(memories),
+						);
+					});
 		for (const entry of memories) {
 			if (entry.tableName === "messages" && entry.memory.roomId) {
 				this.roomMessagesMemo.invalidate(entry.memory.roomId);
@@ -11816,14 +11916,98 @@ ${section_end}`;
 	async updateMemories(
 		memories: Array<Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }>,
 	): Promise<void> {
-		await this.adapter.updateMemories(memories);
+		const current = await this.adapter.getMemoriesByIds(
+			memories.map((memory) => memory.id),
+		);
+		const requestedById = new Map(
+			memories.map((memory) => [memory.id, memory]),
+		);
+		for (const existing of current) {
+			if (!existing.id) continue;
+			const requestedRoomId = requestedById.get(existing.id)?.roomId;
+			if (requestedRoomId && requestedRoomId !== existing.roomId) {
+				throw new ElizaError("Message history rows cannot move between rooms", {
+					code: "MESSAGE_MEMORY_ROOM_MOVE_REJECTED",
+					context: {
+						memoryId: existing.id,
+						currentRoomId: existing.roomId,
+						requestedRoomId,
+					},
+				});
+			}
+		}
+		const roomIds = current
+			.map((memory) => memory.roomId)
+			.filter((roomId): roomId is UUID => typeof roomId === "string");
+		if (roomIds.length === 0) {
+			await this.adapter.updateMemories(memories);
+		} else {
+			await this.roomHandlerQueue.withLeases(roomIds, async (leases) => {
+				const refreshed = await this.adapter.getMemoriesByIds(
+					memories.map((memory) => memory.id),
+				);
+				for (const memory of refreshed) {
+					if (!memory.id) continue;
+					if (memory.roomId && !leases.has(memory.roomId)) {
+						throw new ElizaError(
+							"Memory room changed before update ownership",
+							{
+								code: "MESSAGE_MEMORY_ROOM_CHANGED",
+								context: { memoryId: memory.id, roomId: memory.roomId },
+							},
+						);
+					}
+					const requestedRoomId = requestedById.get(memory.id)?.roomId;
+					if (requestedRoomId && requestedRoomId !== memory.roomId) {
+						throw new ElizaError(
+							"Message history rows cannot move between rooms",
+							{
+								code: "MESSAGE_MEMORY_ROOM_MOVE_REJECTED",
+								context: {
+									memoryId: memory.id,
+									currentRoomId: memory.roomId,
+									requestedRoomId,
+								},
+							},
+						);
+					}
+				}
+				await this.roomHandlerQueue.withLeaseWrites(leases, () =>
+					this.adapter.updateMemories(memories),
+				);
+			});
+		}
 		// Partial updates carry no table/room; drop every cached window rather
 		// than risk serving a pre-update snapshot.
 		this.roomMessagesMemo.invalidate();
 	}
 
 	async deleteMemories(memoryIds: UUID[]): Promise<void> {
-		await this.adapter.deleteMemories(memoryIds);
+		const current = await this.adapter.getMemoriesByIds(memoryIds);
+		const roomIds = current
+			.map((memory) => memory.roomId)
+			.filter((roomId): roomId is UUID => typeof roomId === "string");
+		if (roomIds.length === 0) {
+			await this.adapter.deleteMemories(memoryIds);
+		} else {
+			await this.roomHandlerQueue.withLeases(roomIds, async (leases) => {
+				const refreshed = await this.adapter.getMemoriesByIds(memoryIds);
+				for (const memory of refreshed) {
+					if (memory.roomId && !leases.has(memory.roomId)) {
+						throw new ElizaError(
+							"Memory room changed before delete ownership",
+							{
+								code: "MESSAGE_MEMORY_ROOM_CHANGED",
+								context: { memoryId: memory.id, roomId: memory.roomId },
+							},
+						);
+					}
+				}
+				await this.roomHandlerQueue.withLeaseWrites(leases, () =>
+					this.adapter.deleteMemories(memoryIds),
+				);
+			});
+		}
 		this.roomMessagesMemo.invalidate();
 	}
 
@@ -11844,7 +12028,20 @@ ${section_end}`;
 		memory: Memory,
 		tableName: string,
 		unique?: boolean,
+		roomHandlerLease?: RoomHandlerLease,
 	): Promise<UUID> {
+		if (
+			tableName === "messages" &&
+			memory.roomId &&
+			roomHandlerLease &&
+			!this.roomHandlerQueue.currentLease(memory.roomId)
+		) {
+			return this.roomHandlerQueue.runInLease(
+				memory.roomId,
+				roomHandlerLease,
+				() => this.createMemory(memory, tableName, unique),
+			);
+		}
 		if (unique !== undefined) memory.unique = unique;
 
 		// Redact any secrets from memory content before storing
@@ -11882,9 +12079,7 @@ ${section_end}`;
 			}
 		}
 
-		const ids = await this.adapter.createMemories([
-			{ memory, tableName, unique },
-		]);
+		const ids = await this.createMemories([{ memory, tableName, unique }]);
 		// The intake path persists the user message immediately before
 		// composeState reads the room window; busting the key here makes the
 		// coalesced messages-scan self-enforcing — a stale window can never
@@ -11903,14 +12098,12 @@ ${section_end}`;
 	async updateMemory(
 		memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata },
 	): Promise<boolean> {
-		await this.adapter.updateMemories([memory]);
-		this.roomMessagesMemo.invalidate();
+		await this.updateMemories([memory]);
 		return true; // Successfully updated if no error thrown
 	}
 
 	async deleteMemory(memoryId: UUID): Promise<void> {
-		await this.adapter.deleteMemories([memoryId]);
-		this.roomMessagesMemo.invalidate();
+		await this.deleteMemories([memoryId]);
 	}
 
 	// ── Participant passthroughs & wrappers ──────────────────────────────

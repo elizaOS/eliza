@@ -14,6 +14,7 @@ import type {
   HandlerCallback,
   IAgentRuntime,
   Memory,
+  RoomHandlerLease,
   Service,
   Task,
   UUID,
@@ -60,6 +61,8 @@ export interface TriggerExecutionOptions {
     kind: string;
     payload?: Record<string, unknown>;
   };
+  /** Live outer ownership when a prompt is fired from the owning room turn. */
+  roomHandlerLease?: RoomHandlerLease;
 }
 
 export interface TriggerExecutionResult {
@@ -316,6 +319,7 @@ async function dispatchPrompt(
   runtime: IAgentRuntime,
   trigger: PromptTriggerConfig,
   originRoomId?: UUID,
+  roomHandlerLease?: RoomHandlerLease,
 ): Promise<
   { ok: true; executionId?: undefined } | { ok: false; error: string }
 > {
@@ -421,7 +425,19 @@ async function dispatchPrompt(
       entityId,
     );
     try {
-      await messageService.handleMessage(runtime, message, deliveryCallback);
+      const dispatch = () =>
+        messageService.handleMessage(runtime, message, deliveryCallback);
+      if (roomHandlerLease) {
+        await runtime.roomHandlerQueue.runInLease(
+          roomId,
+          roomHandlerLease,
+          dispatch,
+        );
+      } else {
+        await runtime.roomHandlerQueue.withLease(roomId, async () =>
+          dispatch(),
+        );
+      }
     } finally {
       releaseInternalActor();
     }
@@ -515,7 +531,12 @@ export async function executeTriggerTask(
   const result =
     trigger.kind === "workflow"
       ? await dispatchWorkflow(runtime, task, trigger, options.event)
-      : await dispatchPrompt(runtime, trigger, task.roomId);
+      : await dispatchPrompt(
+          runtime,
+          trigger,
+          task.roomId,
+          options.roomHandlerLease,
+        );
   if (result.ok === true) {
     // Only workflow dispatch carries an execution id; prompt dispatch types it
     // as `undefined`, so this reads `string | undefined` without a cast.
