@@ -1460,6 +1460,7 @@ const NO_RESPONSE_FALLBACK_REPLY =
 const NO_PROVIDER_ERROR_FRAGMENTS = [
   "No provider registered for",
   "No model registered for",
+  "No handler found for delegate type",
 ];
 function isNoProviderError(err: unknown): boolean {
   const msg =

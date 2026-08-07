@@ -17,6 +17,8 @@ import type { AgentRuntime } from "@elizaos/core";
 import {
   getSwarmCoordinatorService,
   hasTextGenerationHandler,
+  ModelType,
+  TEXT_GENERATION_MODEL_TYPES,
 } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.ts";
 import { getDeferredBootStatus } from "../runtime/deferred-boot-status.ts";
@@ -472,6 +474,54 @@ export function computeCanRespond(
 }
 
 /**
+ * Async version of computeCanRespond that also probes model readiness.
+ * Returns true only if the model handler is actually functional (not just registered).
+ * This catches cases like plugin-ollama where handlers register but fail at call time
+ * when no Ollama daemon is running.
+ */
+export async function computeCanRespondAsync(
+  runtime: AgentRuntime | null,
+  agentState: string,
+): Promise<boolean> {
+  if (!runtime || agentState !== "running") {
+    return false;
+  }
+  try {
+    if (!hasTextGenerationHandler(runtime)) return false;
+
+    // Check if any text generation handler is actually reachable
+    const handler = runtime.getModel(ModelType.TEXT_LARGE);
+    if (!handler) return false;
+
+    // Check model registrations for Ollama without configured base URL
+    const registrations = runtime.getModelRegistrations?.();
+    if (registrations) {
+      for (const reg of registrations) {
+        if (
+          TEXT_GENERATION_MODEL_TYPES.includes(
+            reg.modelType as (typeof TEXT_GENERATION_MODEL_TYPES)[number],
+          )
+        ) {
+          if (reg.provider?.toLowerCase().includes("ollama")) {
+            // No explicit Ollama config - daemon likely not running
+            if (
+              !process.env.OLLAMA_BASE_URL &&
+              !process.env.OLLAMA_API_BASE_URL
+            ) {
+              return false;
+            }
+          }
+        }
+      }
+    }
+
+    return typeof handler === "function";
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Handle health / status / runtime introspection routes.
  * Returns `true` if the request was handled.
  */
@@ -588,6 +638,7 @@ export async function handleHealthRoutes(
     }
 
     const databaseLiveness = await probeRuntimeDatabaseLiveness(runtime);
+    const modelReady = await computeCanRespondAsync(runtime, state.agentState);
     const ready =
       state.agentState !== "starting" &&
       state.agentState !== "restarting" &&
@@ -600,6 +651,7 @@ export async function handleHealthRoutes(
         canRespond: databaseLiveness.terminal
           ? false
           : computeCanRespond(runtime, state.agentState),
+        modelReady,
         runtime: runtime ? "ok" : "not_initialized",
         database: databaseLiveness.ok
           ? runtime
