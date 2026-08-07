@@ -22,7 +22,14 @@ export type SurfaceProcessSharing = "isolated" | "shared";
 /** Website-data-store sharing for a surface — its own store, or the host's. */
 export type SurfaceStorageSharing = "isolated" | "shared";
 
-export interface CreateSurfaceOptions {
+export interface SurfaceOwnerOptions {
+  /** Stable product owner across renderer reloads. */
+  owner: string;
+  /** Unique JS-realm token fencing stale commands after a renderer reload. */
+  session: string;
+}
+
+export interface CreateSurfaceOptions extends SurfaceOwnerOptions {
   /** Stable per-surface id (the Browser tab's surface id). */
   id: string;
   /** Initial URL to load, when known. */
@@ -52,7 +59,7 @@ export interface SurfaceOuterClip extends SurfaceRect {
   cornerRadii: SurfaceCornerRadii;
 }
 
-export interface SetBoundsOptions extends SurfaceRect {
+export interface SetBoundsOptions extends SurfaceRect, SurfaceOwnerOptions {
   id: string;
   /**
    * Computed host clip in CSS pixels. It travels atomically with the page rect
@@ -69,18 +76,26 @@ export interface SurfaceOcclusionRect extends SurfaceRect {
   cornerRadius: number;
 }
 
-export interface SetOcclusionRectsOptions {
+export interface SetOcclusionRectsOptions extends SurfaceOwnerOptions {
   id: string;
   rects: SurfaceOcclusionRect[];
 }
 
-export interface NavigateOptions {
+export interface NavigateOptions extends SurfaceOwnerOptions {
   id: string;
   url: string;
 }
 
-export interface SurfaceIdOptions {
+export interface SurfaceIdOptions extends SurfaceOwnerOptions {
   id: string;
+}
+
+export interface PresentSurfaceOptions extends SurfaceOwnerOptions {
+  id: string | null;
+}
+
+export interface ReconcileOwnerOptions extends SurfaceOwnerOptions {
+  desiredIds: string[];
 }
 
 /** Debug/test introspection of a single surface's live state. */
@@ -90,6 +105,16 @@ export interface SurfaceState {
   currentUrl: string | null;
   process: SurfaceProcessSharing | null;
   storage: SurfaceStorageSharing | null;
+  owner: string | null;
+  session: string | null;
+}
+
+export interface SurfaceStateWithId extends SurfaceState {
+  id: string;
+}
+
+export interface SurfaceStateList {
+  surfaces: SurfaceStateWithId[];
 }
 
 export interface ElizaSurfaceManagerPlugin {
@@ -108,14 +133,16 @@ export interface ElizaSurfaceManagerPlugin {
   setOcclusionRects(options: SetOcclusionRectsOptions): Promise<void>;
   /** Load a URL in an existing surface. */
   navigate(options: NavigateOptions): Promise<void>;
-  /** Bring a surface to the front, above the host. */
-  foregroundSurface(options: SurfaceIdOptions): Promise<void>;
-  /** Keep a surface alive but move it behind the host (warm retention). */
-  backgroundSurface(options: SurfaceIdOptions): Promise<void>;
+  /** Reload an existing surface's current page. */
+  reloadSurface(options: SurfaceIdOptions): Promise<void>;
+  /** Atomically hide all siblings, then present the requested surface or host. */
+  presentSurface(options: PresentSurfaceOptions): Promise<void>;
   /** Tear a surface down and release its process + storage. */
   destroySurface(options: SurfaceIdOptions): Promise<void>;
-  /** Foreground the host web surface (all native surfaces recede). */
-  foregroundHost(): Promise<void>;
   /** Introspect a surface's live state — for debugging and instrumented tests. */
   getSurfaceState(options: SurfaceIdOptions): Promise<SurfaceState>;
+  /** List surfaces owned by this exact JS-realm session. */
+  listSurfaceStates(options: SurfaceOwnerOptions): Promise<SurfaceStateList>;
+  /** Destroy prior-realm/orphan surfaces before this session starts issuing work. */
+  reconcileOwner(options: ReconcileOwnerOptions): Promise<void>;
 }
