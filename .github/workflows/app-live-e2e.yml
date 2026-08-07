@@ -427,25 +427,34 @@ jobs:
     permissions:
       issues: write
     steps:
-      - name: Comment red-nightly diagnostic on tracking issue #13681
+      - name: "Comment red-nightly diagnostic on tracking issue #13681"
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
         env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           R_CHAT: ${{ needs.app-live-chat.result }}
           R_WALK: ${{ needs.walkthrough-live.result }}
           R_CLOUD: ${{ needs.cloud-live.result }}
           R_DESKTOP: ${{ needs.desktop-packaged.result }}
-        run: |
-          set -euo pipefail
-          {
-            printf '## 🌙 Nightly App Live E2E failed (scheduled run)\n\n'
-            printf 'The only scheduled desktop-packaged lane went red. Per-job results:\n\n'
-            printf -- '- app live chat: `%s`\n' "$R_CHAT"
-            printf -- '- full walkthrough: `%s`\n' "$R_WALK"
-            printf -- '- cloud login+provision+chat: `%s`\n' "$R_CLOUD"
-            printf -- '- desktop packaged (build+boot+renderer): `%s`\n' "$R_DESKTOP"
-            printf '\nRun log + failure artifacts: %s\n\n' "$RUN_URL"
-            printf '_Auto-posted by app-live-e2e.yml so a red nightly notifies someone (Done-when, #13681)._\n'
-          } > "$RUNNER_TEMP/nightly-red.md"
-          gh issue comment 13681 --repo "$REPO" --body-file "$RUNNER_TEMP/nightly-red.md"
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const body = [
+              "## 🌙 Nightly App Live E2E failed (scheduled run)",
+              "",
+              "The only scheduled desktop-packaged lane went red. Per-job results:",
+              "",
+              `- app live chat: \`${process.env.R_CHAT}\``,
+              `- full walkthrough: \`${process.env.R_WALK}\``,
+              `- cloud login+provision+chat: \`${process.env.R_CLOUD}\``,
+              `- desktop packaged (build+boot+renderer): \`${process.env.R_DESKTOP}\``,
+              "",
+              `Run log + failure artifacts: ${process.env.RUN_URL}`,
+              "",
+              "_Auto-posted by app-live-e2e.yml so a red nightly notifies someone (Done-when, #13681)._",
+            ].join("\n");
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: 13681,
+              body,
+            });

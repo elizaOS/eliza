@@ -596,20 +596,14 @@ async function seedResettableState(
   >(
     `(() => {
       try {
-        localStorage.setItem("eliza:first-run-complete", "1");
-        localStorage.setItem(
-          "elizaos:active-server",
-          JSON.stringify({
-            id: "local:embedded",
-            kind: "local",
-            label: "This device",
-          }),
-        );
-        return {
-          ok: true,
-          firstRunComplete: localStorage.getItem("eliza:first-run-complete"),
-          activeServer: localStorage.getItem("elizaos:active-server"),
-        };
+        const bridge = window.__ELIZA_PACKAGED_SHELL_STORAGE_TEST__;
+        if (!bridge || typeof bridge.seedResettableState !== "function") {
+          return {
+            ok: false,
+            error: "Packaged shell storage test bridge is unavailable.",
+          };
+        }
+        return bridge.seedResettableState();
       } catch (error) {
         return {
           ok: false,
