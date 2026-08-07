@@ -26,7 +26,10 @@ export interface ResettableStateSeedResult {
 
 export interface PackagedShellStorageTestBridge {
   seedResettableState(): ResettableStateSeedResult;
-  seedReturningInstallState(apiBase: string): ReturningInstallSeedResult;
+  seedReturningInstallState(
+    apiBase: string,
+    chatOverlayHotkey?: string,
+  ): ReturningInstallSeedResult;
 }
 
 declare global {
@@ -58,12 +61,19 @@ function readSeededState(win: Window): ReturningInstallSeedResult {
 
 export function seedReturningInstallStateForPackagedTests(
   apiBase: string,
+  chatOverlayHotkey?: string,
   win = window,
 ): ReturningInstallSeedResult {
   shellLocalStorage.removeItem("elizaos:first-run:force-fresh");
   shellLocalStorage.setItem("eliza:first-run-complete", "1");
   shellLocalStorage.setItem("eliza:setup:step", "activate");
   shellLocalStorage.setItem("eliza:ui-shell-mode", "native");
+  if (chatOverlayHotkey) {
+    shellLocalStorage.setItem(
+      "eliza:chatOverlayHotkey",
+      JSON.stringify({ accelerator: chatOverlayHotkey, enabled: true }),
+    );
+  }
   shellLocalStorage.setItem(
     "elizaos:active-server",
     JSON.stringify({
@@ -102,8 +112,12 @@ export function installPackagedShellStorageTestBridge(win = window): boolean {
 
   const bridge: PackagedShellStorageTestBridge = {
     seedResettableState: () => seedResettableStateForPackagedTests(win),
-    seedReturningInstallState: (apiBase) =>
-      seedReturningInstallStateForPackagedTests(apiBase, win),
+    seedReturningInstallState: (apiBase, chatOverlayHotkey) =>
+      seedReturningInstallStateForPackagedTests(
+        apiBase,
+        chatOverlayHotkey,
+        win,
+      ),
   };
   Object.defineProperty(win, PACKAGED_SHELL_STORAGE_TEST_GLOBAL, {
     configurable: true,

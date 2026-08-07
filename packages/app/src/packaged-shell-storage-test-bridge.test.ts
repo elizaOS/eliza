@@ -78,6 +78,7 @@ describe("packaged shell storage test bridge", () => {
   it("seeds returning-install state through shellLocalStorage", () => {
     const result = seedReturningInstallStateForPackagedTests(
       "http://127.0.0.1:31337",
+      "Alt+Shift+Super+F11",
     );
 
     expect(storageBridge.removeItem).toHaveBeenCalledWith(
@@ -94,6 +95,13 @@ describe("packaged shell storage test bridge", () => {
     expect(storageBridge.setItem).toHaveBeenCalledWith(
       "eliza:ui-shell-mode",
       "native",
+    );
+    expect(storageBridge.setItem).toHaveBeenCalledWith(
+      "eliza:chatOverlayHotkey",
+      JSON.stringify({
+        accelerator: "Alt+Shift+Super+F11",
+        enabled: true,
+      }),
     );
     expect(result).toMatchObject({
       ok: true,
