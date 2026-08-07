@@ -352,6 +352,15 @@ const nftHoldings: UniversalNftHolding[] =
           : "success",
     }),
   );
+
+// No spam-NFT filter for Solana yet (see helius.ts for the two signals
+// tested and rejected, both with real false positives). Unlike EVM chains,
+// this sample and activityLevel are not filtered at all, so this is
+// disclosed unconditionally rather than only when spam is detected.
+const investigationWarnings: string[] = [
+  "This wallet's transaction sample and activity level include any NFT spam/airdrop transactions - unlike Ethereum/BSC/Base, which filter known spam patterns out of the sample, Solana has no filter applied yet. This isn't an oversight: two candidate signals were tested against real spam and real legitimate wallets and both produced false positives on genuine, wanted NFTs, so nothing was shipped rather than risk hiding real activity.",
+];
+
        const pipeline = await runWalletPipeline({
   chain,
   address: walletAddress,
@@ -463,7 +472,7 @@ skunkScore,
 summary: `Wallet found. Current balance: ${balance.sol.toFixed(
   6,
 )} SOL. Recent transaction sample: ${recentTransactions.length}.`,
-warnings: [],
+warnings: investigationWarnings,
         };
       } catch (error) {
         return {

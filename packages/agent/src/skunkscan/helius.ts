@@ -77,6 +77,42 @@ export type SolanaParsedTransaction = {
   instructions?: SolanaParsedInstruction[];
 };
 
+// Solana spam-NFT filtering: DEFERRED, not implemented. This is a known,
+// investigated gap - not an oversight. Unlike the EVM chains
+// (Ethereum/BSC/Base, see moralis.ts's isLikelySpamNftTransaction), Solana's
+// recentTransactions/transactionCountSample/activityLevel currently include
+// NFT spam uncounted, because Helius has no native spam/scam flag anywhere
+// in its API (confirmed: not in the enhanced-transactions schema above, not
+// in the DAS getAssetsByOwner schema - only an unrelated `burnt` field
+// exists there), and two candidate pattern-based signals were tested against
+// real wallets and both produced real false positives:
+//
+// 1. `feePayer !== wallet` alone (the recipient didn't pay gas, so it was
+//    pushed to them, not chosen). Correctly caught 8/8 confirmed spam
+//    entries in a real spam-heavy wallet (all COMPRESSED_NFT_MINT /
+//    BUBBLEGUM, minted directly to the victim by a bot). But it also
+//    false-positives on real, wanted, gas-sponsored distributions: the
+//    Solana Mobile "Seeker Genesis Token" (a real, non-transferable reward
+//    for real Seeker phone owners) is sponsored-gas the same way - the
+//    recipient wallet held exactly that one token and nothing else, yet the
+//    signal would flag it as spam.
+// 2. `feePayer !== wallet` AND `type === "COMPRESSED_NFT_MINT"` (narrowing
+//    to "someone else minted a brand-new disposable cNFT directly into your
+//    wallet", not just any sponsored transfer) - still false-positives.
+//    "DePunks", a real 10k-supply generative PFP collection (not a
+//    phishing lure), was minted the exact same way as confirmed spam:
+//    type=COMPRESSED_NFT_MINT, source=BUBBLEGUM, feePayer = a project
+//    deployer wallet, not the recipient. There is no field-level
+//    distinction between "a real project sponsor-minted you something you
+//    wanted" and "a spam bot sponsor-minted you something you didn't" -
+//    `creators[].verified` doesn't help either (false even on the
+//    legitimate DePunks asset).
+//
+// Do not reintroduce either signal without a validated fix for these
+// specific false positives. Phase 2 (Solana spam-NFT filtering) is a
+// deferred, open research item, not closed - see wallet.ts's Solana branch
+// for the corresponding user-facing transparency note.
+
 function getHeliusApiKey(): string {
   const apiKey = process.env.HELIUS_API_KEY?.trim();
 
