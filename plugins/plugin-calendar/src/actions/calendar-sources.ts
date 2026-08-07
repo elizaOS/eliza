@@ -863,9 +863,12 @@ function connectionEffectReceipts(
 }
 
 function connectionAwaitsUser(intent: CalendarSourceConnectionIntent): boolean {
+  // configuration_required also needs an owner next step (plugin config card),
+  // so mark it the same as OAuth/permission handoffs for planner preservation.
   return (
     intent.state === "authorization_required" ||
-    intent.state === "permission_required"
+    intent.state === "permission_required" ||
+    intent.state === "configuration_required"
   );
 }
 
@@ -873,10 +876,13 @@ async function resultWithCallback(
   result: ActionResult,
   callback: Parameters<NonNullable<Action["handler"]>>[4],
 ): Promise<ActionResult> {
+  // agentVoiced skips ACTION_CALLBACK_VOICE_REWRITE so card markers
+  // ([CONFIG:…], permission_request JSON) and OAuth URLs stay byte-exact.
   await callback?.({
     text: result.text,
     source: "action",
     action: ACTION_NAME,
+    ...(result.verifiedUserFacing === true ? { agentVoiced: true } : {}),
   });
   return result;
 }
@@ -1025,14 +1031,19 @@ export function createCalendarSourcesAction(
           appliedReceiptIds.length > 0
             ? appliedReceiptIds
             : effectReceipts.map((receipt) => receipt.receiptId);
+        // Always pin connect handoffs as verified user-facing text so the
+        // planner echoes [CONFIG:…], permission_request JSON, and OAuth URLs
+        // instead of paraphrasing them into vague "auth error" prose.
+        // Only attach effectReceipts when present — an empty array would make
+        // the verified-path proof check fail.
         return resultWithCallback(
           {
             success: connectionSucceeded(intent),
             text,
+            userFacingText: text,
+            verifiedUserFacing: true,
             ...(effectReceipts.length > 0
               ? {
-                  userFacingText: text,
-                  verifiedUserFacing: true,
                   effectReceipts,
                   userFacingEffectReceiptIds,
                 }
