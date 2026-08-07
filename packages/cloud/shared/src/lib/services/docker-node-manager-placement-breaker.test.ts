@@ -126,14 +126,10 @@ describe("parseIoPressureFullAvg10", () => {
 
   test("returns null when the signal is absent or malformed — never a fake zero", () => {
     expect(parseIoPressureFullAvg10("")).toBeNull();
-    expect(
-      parseIoPressureFullAvg10("cat: /proc/pressure/io: No such file"),
-    ).toBeNull();
+    expect(parseIoPressureFullAvg10("cat: /proc/pressure/io: No such file")).toBeNull();
     // A "some" line alone must not satisfy the "full" gate.
     expect(
-      parseIoPressureFullAvg10(
-        "some avg10=75.21 avg60=82.04 avg300=82.69 total=1",
-      ),
+      parseIoPressureFullAvg10("some avg10=75.21 avg60=82.04 avg300=82.69 total=1"),
     ).toBeNull();
   });
 });
@@ -149,9 +145,7 @@ describe("placement circuit breaker", () => {
   });
 
   test("non-timeout failures never open the breaker", () => {
-    const otherError = new Error(
-      "pull access denied for ghcr.io/elizaos/eliza",
-    );
+    const otherError = new Error("pull access denied for ghcr.io/elizaos/eliza");
     for (let attempt = 0; attempt < 5; attempt++) {
       notePlacementCommandFailure("node-a", otherError, T0 + attempt * MINUTE);
     }
@@ -171,9 +165,7 @@ describe("placement circuit breaker", () => {
       notePlacementCommandFailure("node-a", TIMEOUT_ERROR, T0);
     }
     expect(isNodePlacementQuarantined("node-a", T0 + 14 * MINUTE)).toBe(true);
-    expect(isNodePlacementQuarantined("node-a", T0 + 15 * MINUTE + 1)).toBe(
-      false,
-    );
+    expect(isNodePlacementQuarantined("node-a", T0 + 15 * MINUTE + 1)).toBe(false);
   });
 
   test("a successful container operation clears the accumulated history", () => {
@@ -233,9 +225,7 @@ describe("ensureNodeReady IO-pressure gate", () => {
     const ready = await manager.ensureNodeReady(node("node-ok"));
 
     expect(ready).toBe(true);
-    expect(repoCalls.updateStatus).toEqual([
-      { nodeId: "node-ok", status: "healthy" },
-    ]);
+    expect(repoCalls.updateStatus).toEqual([{ nodeId: "node-ok", status: "healthy" }]);
   });
 
   test("a missing PSI signal never blocks placement", async () => {
@@ -245,8 +235,6 @@ describe("ensureNodeReady IO-pressure gate", () => {
     const ready = await manager.ensureNodeReady(node("node-old-kernel"));
 
     expect(ready).toBe(true);
-    expect(repoCalls.updateStatus).toEqual([
-      { nodeId: "node-old-kernel", status: "healthy" },
-    ]);
+    expect(repoCalls.updateStatus).toEqual([{ nodeId: "node-old-kernel", status: "healthy" }]);
   });
 });

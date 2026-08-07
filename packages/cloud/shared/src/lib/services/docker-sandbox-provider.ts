@@ -13,10 +13,7 @@ import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes"
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import { WARM_POOL_ORG_ID } from "../../db/schemas/agent-sandboxes";
 import type { DockerNode } from "../../db/schemas/docker-nodes";
-import {
-  isAgentTokenSigningConfigured,
-  mintAgentToken,
-} from "../auth/agent-token";
+import { isAgentTokenSigningConfigured, mintAgentToken } from "../auth/agent-token";
 import { containersEnv } from "../config/containers-env";
 import { getAgentBaseDomain } from "../eliza-agent-web-ui";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
@@ -67,10 +64,7 @@ import {
 } from "./docker-sandbox-utils";
 import { classifyDockerSshProbeError, DockerSSHClient } from "./docker-ssh";
 import { headscaleClient } from "./headscale-client";
-import {
-  DEFAULT_REGISTRATION_TIMEOUT_MS,
-  headscaleIntegration,
-} from "./headscale-integration";
+import { DEFAULT_REGISTRATION_TIMEOUT_MS, headscaleIntegration } from "./headscale-integration";
 import { buildKeylessOpenAIContainerEnv } from "./managed-eliza-env";
 import type {
   SandboxCreateConfig,
@@ -199,10 +193,7 @@ export async function createDockerContainerAfterReplacementIntent<T>({
 }
 
 function dockerContainerIdsMatch(expected: string, actual: string): boolean {
-  if (
-    !/^[a-f0-9]{12,64}$/i.test(expected) ||
-    !/^[a-f0-9]{12,64}$/i.test(actual)
-  ) {
+  if (!/^[a-f0-9]{12,64}$/i.test(expected) || !/^[a-f0-9]{12,64}$/i.test(actual)) {
     return false;
   }
   return expected.startsWith(actual) || actual.startsWith(expected);
@@ -220,10 +211,7 @@ function resolveStewardHostUrl(): string {
 
 function resolveStewardContainerEnvUrl(): string {
   const env = getCloudAwareEnv();
-  return resolveStewardContainerUrl(
-    resolveStewardHostUrl(),
-    env.STEWARD_CONTAINER_URL,
-  );
+  return resolveStewardContainerUrl(resolveStewardHostUrl(), env.STEWARD_CONTAINER_URL);
 }
 
 const STEWARD_JWT_FILE = "/app/data/steward.jwt";
@@ -239,8 +227,7 @@ export function buildManagedElizaRuntimeConfig(
   allEnv: Record<string, string | undefined>,
 ): Record<string, unknown> {
   const apiKey = allEnv.ELIZAOS_CLOUD_API_KEY || "";
-  const agentId =
-    allEnv.ELIZA_CLOUD_AGENT_ID || allEnv.WAIFU_ELIZA_CLOUD_AGENT_ID;
+  const agentId = allEnv.ELIZA_CLOUD_AGENT_ID || allEnv.WAIFU_ELIZA_CLOUD_AGENT_ID;
 
   return {
     logging: { level: "info" },
@@ -299,10 +286,7 @@ function resolveElizaCloudPublicUrl(): string {
 
 function resolveStewardRefreshUrl(): string {
   const env = getCloudAwareEnv();
-  if (
-    typeof env.STEWARD_REFRESH_URL === "string" &&
-    env.STEWARD_REFRESH_URL.trim()
-  ) {
+  if (typeof env.STEWARD_REFRESH_URL === "string" && env.STEWARD_REFRESH_URL.trim()) {
     return env.STEWARD_REFRESH_URL.trim();
   }
   return `${resolveElizaCloudPublicUrl()}/v1/agent-tokens`;
@@ -310,12 +294,8 @@ function resolveStewardRefreshUrl(): string {
 
 function resolveStewardRefreshServiceToken(): string {
   const env = getCloudAwareEnv();
-  for (const candidate of [
-    env.ELIZA_CLOUD_SERVICE_TOKEN,
-    env.AGENT_TOKEN_SERVICE_TOKEN,
-  ]) {
-    if (typeof candidate === "string" && candidate.trim())
-      return candidate.trim();
+  for (const candidate of [env.ELIZA_CLOUD_SERVICE_TOKEN, env.AGENT_TOKEN_SERVICE_TOKEN]) {
+    if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
   }
   return "";
 }
@@ -332,14 +312,9 @@ function resolveStewardRefreshServiceToken(): string {
  * Persona + connector POLICY fields (dmPolicy, messagePrefix, enabled, etc.)
  * are preserved so the runtime still loads the right character + behaviour.
  */
-function redactCharacterSecrets(
-  character: Record<string, unknown>,
-): Record<string, unknown> {
+function redactCharacterSecrets(character: Record<string, unknown>): Record<string, unknown> {
   // Deep clone so we never mutate the caller's DB-derived object.
-  const clone = JSON.parse(JSON.stringify(character)) as Record<
-    string,
-    unknown
-  >;
+  const clone = JSON.parse(JSON.stringify(character)) as Record<string, unknown>;
   delete clone.secrets;
   if (clone.settings && typeof clone.settings === "object") {
     delete (clone.settings as Record<string, unknown>).secrets;
@@ -419,8 +394,7 @@ type HeadscaleRouteEnv = Partial<
 function currentHeadscaleRouteEnv(): HeadscaleRouteEnv {
   const cloudEnv = getCloudAwareEnv();
   return {
-    AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK:
-      cloudEnv.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK,
+    AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK: cloudEnv.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK,
     CONTAINERS_PUBLIC_BASE_DOMAIN: cloudEnv.CONTAINERS_PUBLIC_BASE_DOMAIN,
     ELIZA_CLOUD_AGENT_BASE_DOMAIN: cloudEnv.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
     ENVIRONMENT: cloudEnv.ENVIRONMENT,
@@ -480,10 +454,7 @@ export function requiresHeadscaleRoute(
  * meant to bypass on nodes that aren't on the mesh.
  */
 export function headscaleVpnEnabled(env: HeadscaleRouteEnv): boolean {
-  return (
-    hasConfiguredValue(env.HEADSCALE_API_KEY) &&
-    !isBridgeHostFallbackEnabled(env)
-  );
+  return hasConfiguredValue(env.HEADSCALE_API_KEY) && !isBridgeHostFallbackEnabled(env);
 }
 
 export function shouldCleanupHeadscaleVpn(
@@ -537,9 +508,7 @@ function buildStewardPluginInstallCommand(containerName: string): string {
  * (the proxy listens on the docker host). Returns an empty object when
  * proxy mode is disabled so callers can spread it unconditionally.
  */
-export function buildStewardProxyEnv(
-  env: NodeJS.ProcessEnv = process.env,
-): Record<string, string> {
+export function buildStewardProxyEnv(env: NodeJS.ProcessEnv = process.env): Record<string, string> {
   if (env.USE_STEWARD_PROXY !== "true") return {};
   const base = "http://host.docker.internal:8080";
   return {
@@ -610,9 +579,7 @@ const AUTOSCALED_NODE_READY_POLL_MS = 10_000;
 
 function getDockerHealthCmd(port: string, path = "/api/health"): string {
   if (!/^\d+$/.test(port)) {
-    throw new Error(
-      `[docker-sandbox] Invalid port "${port}": must be a numeric string.`,
-    );
+    throw new Error(`[docker-sandbox] Invalid port "${port}": must be a numeric string.`);
   }
   if (!/^\/[A-Za-z0-9._~/-]*$/.test(path)) {
     throw new Error(`[docker-sandbox] Invalid health check path "${path}".`);
@@ -624,8 +591,7 @@ function getDockerHealthCmd(port: string, path = "/api/health"): string {
 
 export function resolveContainerPort(config: SandboxCreateConfig): string {
   const requested =
-    typeof config.environmentVars.PORT === "string" &&
-    config.environmentVars.PORT.trim()
+    typeof config.environmentVars.PORT === "string" && config.environmentVars.PORT.trim()
       ? config.environmentVars.PORT.trim()
       : typeof config.environmentVars.HTTP_PORT === "string" &&
           config.environmentVars.HTTP_PORT.trim()
@@ -683,9 +649,7 @@ export function resolveSandboxRegistryEnv(
 function extractStewardToken(raw: string): string {
   const trimmed = raw.trim();
   if (!trimmed) {
-    throw new Error(
-      "[docker-sandbox] Steward token endpoint returned an empty response",
-    );
+    throw new Error("[docker-sandbox] Steward token endpoint returned an empty response");
   }
 
   try {
@@ -743,9 +707,7 @@ function warnMissingStewardTenantApiKey(apiKey?: string) {
   );
 }
 
-function resolveStewardRequestSigningSecret(
-  apiKey?: string,
-): string | undefined {
+function resolveStewardRequestSigningSecret(apiKey?: string): string | undefined {
   const env = getCloudAwareEnv();
   const explicit = env.STEWARD_REQUEST_SIGNING_SECRET?.trim();
   if (explicit) {
@@ -788,14 +750,10 @@ async function buildSignedDeleteAgentCurl(
   const path = buildPlatformAgentPath(stewardTenant.tenantId, agentId);
   const url = `${resolveStewardHostUrl()}${path}`;
   const platformKey = resolveStewardPlatformKey();
-  const signingSecret = resolveStewardRequestSigningSecret(
-    stewardTenant.apiKey,
-  );
+  const signingSecret = resolveStewardRequestSigningSecret(stewardTenant.apiKey);
   const flags = [
     `-H ${shellQuote(`X-Steward-Tenant: ${stewardTenant.tenantId}`)}`,
-    ...(platformKey
-      ? [`-H ${shellQuote(`X-Steward-Platform-Key: ${platformKey}`)}`]
-      : []),
+    ...(platformKey ? [`-H ${shellQuote(`X-Steward-Platform-Key: ${platformKey}`)}`] : []),
   ];
   if (signingSecret !== undefined) {
     const signed = await buildStewardSignedHeaders({
@@ -961,9 +919,7 @@ export class DockerSandboxProvider implements SandboxProvider {
    * (Docker self-hosting) it persists across requests.
    */
   private containers = new Map<string, ContainerMeta>();
-  private readonly replacementVpnSettleDelay: (
-    milliseconds: number,
-  ) => Promise<void>;
+  private readonly replacementVpnSettleDelay: (milliseconds: number) => Promise<void>;
   private readonly now: () => number;
 
   constructor(options?: {
@@ -972,8 +928,7 @@ export class DockerSandboxProvider implements SandboxProvider {
   }) {
     this.replacementVpnSettleDelay =
       options?.replacementVpnSettleDelay ??
-      ((milliseconds) =>
-        new Promise((resolve) => setTimeout(resolve, milliseconds)));
+      ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
     this.now = options?.now ?? Date.now;
   }
 
@@ -1031,10 +986,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     }
 
     // Unreachable, but satisfies the compiler
-    throw (
-      lastError ??
-      new Error("[docker-sandbox] create exhausted all retry attempts")
-    );
+    throw lastError ?? new Error("[docker-sandbox] create exhausted all retry attempts");
   }
 
   /**
@@ -1045,17 +997,9 @@ export class DockerSandboxProvider implements SandboxProvider {
    * sandboxes, so a duplicate will fail at INSERT time. The public `create()`
    * method wraps this in a retry loop to handle port collisions automatically.
    */
-  private async _createOnce(
-    config: SandboxCreateConfig,
-  ): Promise<SandboxHandle> {
-    const {
-      agentId,
-      agentName,
-      environmentVars,
-      organizationId,
-      agentConfig,
-      routeAgentId,
-    } = config;
+  private async _createOnce(config: SandboxCreateConfig): Promise<SandboxHandle> {
+    const { agentId, agentName, environmentVars, organizationId, agentConfig, routeAgentId } =
+      config;
 
     // Resolve Docker image: per-agent DB override > operator env override > hardcoded default.
     // Keep the fallback out of DOCKER_IMAGE_OVERRIDE so per-agent flavor/image
@@ -1163,11 +1107,7 @@ export class DockerSandboxProvider implements SandboxProvider {
 
     // 3. Allocate ports (check DB for existing assignments to avoid collisions)
     const usedPorts = await getUsedDockerHostPorts(nodeId);
-    const bridgePort = allocatePort(
-      BRIDGE_PORT_MIN,
-      BRIDGE_PORT_MAX,
-      usedPorts,
-    );
+    const bridgePort = allocatePort(BRIDGE_PORT_MIN, BRIDGE_PORT_MAX, usedPorts);
     // No need to add bridgePort to exclusion set — web UI port range [20000,25000)
     // never overlaps bridge range [18790,19790)
     const webUiPort = allocatePort(WEBUI_PORT_MIN, WEBUI_PORT_MAX, usedPorts);
@@ -1211,13 +1151,11 @@ export class DockerSandboxProvider implements SandboxProvider {
       } catch (err) {
         if (headscaleRouteRequired) {
           if (dbNode && providerManagesCapacity) {
-            await dockerNodesRepository
-              .decrementAllocated(nodeId)
-              .catch((rollbackErr) => {
-                logger.warn(
-                  `[docker-sandbox] Failed to decrement allocated_count after Headscale preparation failure for node ${nodeId}: ${rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr)}`,
-                );
-              });
+            await dockerNodesRepository.decrementAllocated(nodeId).catch((rollbackErr) => {
+              logger.warn(
+                `[docker-sandbox] Failed to decrement allocated_count after Headscale preparation failure for node ${nodeId}: ${rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr)}`,
+              );
+            });
           }
           throw err;
         }
@@ -1256,8 +1194,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       kmsEnv.ELIZA_KMS_BACKEND = backend;
       if (backend === "local") {
         const rootKey =
-          environmentVars.ELIZA_LOCAL_ROOT_KEY?.trim() ||
-          process.env.ELIZA_LOCAL_ROOT_KEY?.trim();
+          environmentVars.ELIZA_LOCAL_ROOT_KEY?.trim() || process.env.ELIZA_LOCAL_ROOT_KEY?.trim();
         if (rootKey) kmsEnv.ELIZA_LOCAL_ROOT_KEY = rootKey;
       }
     }
@@ -1280,9 +1217,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       // no agent_config (the runtime keeps its default-character behaviour).
       ...(agentConfig && typeof agentConfig === "object"
         ? {
-            ELIZA_AGENT_CHARACTER_JSON: JSON.stringify(
-              redactCharacterSecrets(agentConfig),
-            ),
+            ELIZA_AGENT_CHARACTER_JSON: JSON.stringify(redactCharacterSecrets(agentConfig)),
           }
         : {}),
       STEWARD_API_URL: stewardContainerUrl,
@@ -1314,12 +1249,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     // 6. SSH to node, ensure volume dir, pull image, register in Steward,
     // then create/start the container. Pass hostKeyFingerprint so pooled
     // clients pin the key when available.
-    const ssh = DockerSSHClient.getClient(
-      hostname,
-      sshPort,
-      hostKeyFingerprint,
-      sshUser,
-    );
+    const ssh = DockerSSHClient.getClient(hostname, sshPort, hostKeyFingerprint, sshUser);
     const cleanupNode: DockerNodeConnection = {
       node_id: nodeId,
       hostname,
@@ -1339,15 +1269,11 @@ export class DockerSandboxProvider implements SandboxProvider {
 
       // Pull image (may take a while on first run). Log in when registry
       // credentials are configured; otherwise rely on anonymous public pulls.
-      logger.info(
-        `[docker-sandbox] Pulling image ${resolvedImage} on ${nodeId}`,
-      );
+      logger.info(`[docker-sandbox] Pulling image ${resolvedImage} on ${nodeId}`);
       try {
         await ensureRegistryAccess(ssh, resolvedImage);
         await ssh.exec(
-          ["docker pull", ...platformFlags, shellQuote(resolvedImage)].join(
-            " ",
-          ),
+          ["docker pull", ...platformFlags, shellQuote(resolvedImage)].join(" "),
           PULL_TIMEOUT_MS,
         );
         logger.info(`[docker-sandbox] Image pulled successfully on ${nodeId}`);
@@ -1441,8 +1367,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         // (no D-Bus keychain). Generate one per container — the vault state
         // lives only in the per-container PGlite, so a unique per-launch key
         // is fine.
-        ELIZA_VAULT_PASSPHRASE:
-          environmentVars.ELIZA_VAULT_PASSPHRASE || crypto.randomUUID(),
+        ELIZA_VAULT_PASSPHRASE: environmentVars.ELIZA_VAULT_PASSPHRASE || crypto.randomUUID(),
         // Gateway service discovery — see SandboxRegistry in app-core.
         // SANDBOX_PUBLIC_URL targets the public Docker host (not the headscale
         // VPN IP set later at line ~653) because the gateways on Railway can't
@@ -1451,16 +1376,12 @@ export class DockerSandboxProvider implements SandboxProvider {
           ? {
               SANDBOX_REGISTRY_REDIS_URL: registryRedisUrl,
               // Only the REST transport needs a token; a redis:// URL omits it.
-              ...(registryRedisToken
-                ? { SANDBOX_REGISTRY_REDIS_TOKEN: registryRedisToken }
-                : {}),
+              ...(registryRedisToken ? { SANDBOX_REGISTRY_REDIS_TOKEN: registryRedisToken } : {}),
               SANDBOX_AGENT_ID: agentId,
               // The gateways route by the platform character_id, so the
               // container must register under (and answer as) that id, not
               // the sandbox id. Injected only when the caller provides it.
-              ...(routeAgentId?.trim()
-                ? { SANDBOX_ROUTE_AGENT_ID: routeAgentId.trim() }
-                : {}),
+              ...(routeAgentId?.trim() ? { SANDBOX_ROUTE_AGENT_ID: routeAgentId.trim() } : {}),
               SANDBOX_SERVER_NAME: `sandbox-${agentId}-${crypto.randomUUID()}`,
               SANDBOX_PUBLIC_URL: `http://${hostname}:${bridgePort}/api`,
             }
@@ -1496,8 +1417,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         `--label ${shellQuote(`${REPLACEMENT_ATTEMPT_LABEL}=${replacementAttemptId}`)}`,
         "--restart unless-stopped",
         `--network ${shellQuote(DOCKER_NETWORK)}`,
-        ...(requiresDockerHostGateway(stewardContainerUrl) ||
-        Object.keys(proxyEnv).length > 0
+        ...(requiresDockerHostGateway(stewardContainerUrl) || Object.keys(proxyEnv).length > 0
           ? ["--add-host host.docker.internal:host-gateway"]
           : []),
         `--health-cmd ${shellQuote(getDockerHealthCmd(allEnv.PORT || containerPort, healthCheckPath))}`,
@@ -1534,17 +1454,12 @@ export class DockerSandboxProvider implements SandboxProvider {
       // run the cloud-init bootstrap; the network can also be pruned away).
       // Without this, `docker create --network` below fails with an opaque
       // "network not found" and the provision retries forever.
-      await ssh.exec(
-        buildEnsureNetworkCmd(DOCKER_NETWORK),
-        DOCKER_CMD_TIMEOUT_MS,
-      );
+      await ssh.exec(buildEnsureNetworkCmd(DOCKER_NETWORK), DOCKER_CMD_TIMEOUT_MS);
 
       // This clock starts the durable uncertainty window. Keep it adjacent to
       // intent/create rather than tenant setup or image pull so recovery does
       // not widen correlation with unrelated old Headscale registrations.
-      vpnRegistrationStartedAt = headscaleEnabled
-        ? new Date(this.now()).toISOString()
-        : undefined;
+      vpnRegistrationStartedAt = headscaleEnabled ? new Date(this.now()).toISOString() : undefined;
       const containerId = extractDockerCreateContainerId(
         await createDockerContainerAfterReplacementIntent({
           persistIntent: persistReplacementIntent
@@ -1580,8 +1495,7 @@ export class DockerSandboxProvider implements SandboxProvider {
                 }
               }
             : undefined,
-          createContainer: () =>
-            ssh.exec(dockerCreateCmd, DOCKER_CMD_TIMEOUT_MS),
+          createContainer: () => ssh.exec(dockerCreateCmd, DOCKER_CMD_TIMEOUT_MS),
         }),
       );
       createdContainerId = containerId;
@@ -1632,37 +1546,25 @@ export class DockerSandboxProvider implements SandboxProvider {
             )} | base64 -d > ${shellQuote(`${volumePath}/eliza/eliza.json`)}`,
             DOCKER_CMD_TIMEOUT_MS,
           );
-          logger.info(
-            `[docker-sandbox] Pre-seeded eliza.json on host volume for ${containerName}`,
-          );
+          logger.info(`[docker-sandbox] Pre-seeded eliza.json on host volume for ${containerName}`);
         }
       } catch (preSeedErr) {
         logger.warn(
           `[docker-sandbox] Failed to pre-seed eliza.json (post-start write will retry): ${
-            preSeedErr instanceof Error
-              ? preSeedErr.message
-              : String(preSeedErr)
+            preSeedErr instanceof Error ? preSeedErr.message : String(preSeedErr)
           }`,
         );
       }
 
-      await ssh.exec(
-        `docker start ${shellQuote(containerName)}`,
-        DOCKER_CMD_TIMEOUT_MS,
-      );
+      await ssh.exec(`docker start ${shellQuote(containerName)}`, DOCKER_CMD_TIMEOUT_MS);
       logger.info(
         `[docker-sandbox] Container created on ${nodeId}: ${containerId} (${containerName})`,
       );
 
       if (shouldInstallStewardPlugin(agentId, environmentVars)) {
         try {
-          await ssh.exec(
-            buildStewardPluginInstallCommand(containerName),
-            PULL_TIMEOUT_MS,
-          );
-          logger.info(
-            `[docker-sandbox] Steward Eliza plugin installed in ${containerName}`,
-          );
+          await ssh.exec(buildStewardPluginInstallCommand(containerName), PULL_TIMEOUT_MS);
+          logger.info(`[docker-sandbox] Steward Eliza plugin installed in ${containerName}`);
         } catch (pluginErr) {
           logger.warn(
             `[docker-sandbox] Failed to install Steward Eliza plugin in ${containerName}: ${pluginErr instanceof Error ? pluginErr.message : String(pluginErr)}`,
@@ -1673,16 +1575,10 @@ export class DockerSandboxProvider implements SandboxProvider {
       if (stewardJwt && stewardRefreshServiceToken) {
         try {
           await ssh.exec(
-            buildStewardRefreshCommand(
-              containerName,
-              agentId,
-              stewardRefreshServiceToken,
-            ),
+            buildStewardRefreshCommand(containerName, agentId, stewardRefreshServiceToken),
             DOCKER_CMD_TIMEOUT_MS,
           );
-          logger.info(
-            `[docker-sandbox] Steward JWT refresh sidecar started in ${containerName}`,
-          );
+          logger.info(`[docker-sandbox] Steward JWT refresh sidecar started in ${containerName}`);
         } catch (refreshErr) {
           logger.warn(
             `[docker-sandbox] Failed to start Steward JWT refresh sidecar in ${containerName}: ${refreshErr instanceof Error ? refreshErr.message : String(refreshErr)}`,
@@ -1704,22 +1600,16 @@ export class DockerSandboxProvider implements SandboxProvider {
               "https://api-staging.elizacloud.ai/api/v1 for staging, https://api.elizacloud.ai/api/v1 for prod).",
           );
         }
-        const elizaConfig = JSON.stringify(
-          buildManagedElizaRuntimeConfig(allEnv),
-        );
+        const elizaConfig = JSON.stringify(buildManagedElizaRuntimeConfig(allEnv));
         // Base64-encode the JSON before passing it through the shell so an
         // apiKey/baseUrl containing single quotes can't break out of the
         // outer sh -c quoting or inject commands on the remote host.
-        const encodedConfig = Buffer.from(elizaConfig, "utf-8").toString(
-          "base64",
-        );
+        const encodedConfig = Buffer.from(elizaConfig, "utf-8").toString("base64");
         const writeCmd = `docker exec ${shellQuote(containerName)} sh -c ${shellQuote(
           `mkdir -p /root/.eliza && printf %s ${shellQuote(encodedConfig)} | base64 -d > /root/.eliza/eliza.json`,
         )}`;
         await ssh.exec(writeCmd, DOCKER_CMD_TIMEOUT_MS);
-        logger.info(
-          `[docker-sandbox] Cloud config written to eliza.json in ${containerName}`,
-        );
+        logger.info(`[docker-sandbox] Cloud config written to eliza.json in ${containerName}`);
       } catch (configErr) {
         logger.warn(
           `[docker-sandbox] Failed to write eliza.json: ${configErr instanceof Error ? configErr.message : String(configErr)}`,
@@ -1736,9 +1626,7 @@ export class DockerSandboxProvider implements SandboxProvider {
           await buildSignedDeleteAgentCurl(agentId, stewardTenant),
           DOCKER_CMD_TIMEOUT_MS,
         );
-        logger.info(
-          `[docker-sandbox] Cleaned up Steward agent ${agentId} after container failure`,
-        );
+        logger.info(`[docker-sandbox] Cleaned up Steward agent ${agentId} after container failure`);
       } catch (cleanupErr) {
         logger.warn(
           `[docker-sandbox] Failed to cleanup Steward agent ${agentId}: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
@@ -1754,9 +1642,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         vpnNodeId,
         // Before the adjacent timestamp is captured, the container has not
         // been created and therefore cannot have committed a VPN registration.
-        vpnNodeName: vpnRegistrationStartedAt
-          ? vpnEnvVars.TS_HOSTNAME
-          : undefined,
+        vpnNodeName: vpnRegistrationStartedAt ? vpnEnvVars.TS_HOSTNAME : undefined,
         previousVpnNodeId,
         vpnRegistrationStartedAt,
         allocationCounted: Boolean(dbNode),
@@ -1769,33 +1655,25 @@ export class DockerSandboxProvider implements SandboxProvider {
       }
 
       try {
-        await this.retireReplacementCandidateOnNode(
-          cleanupLocator,
-          cleanupNode,
-        );
+        await this.retireReplacementCandidateOnNode(cleanupLocator, cleanupNode);
       } catch (cleanupError) {
         // error-policy:J2 context-adding rethrow — replacement identity is retained
         // so the durable reconciler can retry the exact unresolved cleanup.
         if (cleanupError instanceof SandboxReplacementCleanupUnresolvedError) {
           throw cleanupError;
         }
-        throw new SandboxReplacementCleanupUnresolvedError(
-          cleanupLocator,
-          cleanupError,
-        );
+        throw new SandboxReplacementCleanupUnresolvedError(cleanupLocator, cleanupError);
       }
 
       // Releasing capacity is safe only after the exact candidate and its known
       // VPN identity are absent. An unresolved cleanup retains the allocation
       // and escapes above with a durable locator.
       if (dbNode && providerManagesCapacity) {
-        await dockerNodesRepository
-          .decrementAllocated(nodeId)
-          .catch((rollbackErr) => {
-            logger.error(
-              `[docker-sandbox] Failed to roll back allocation for node ${nodeId}; capacity slot leaked: ${rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr)}`,
-            );
-          });
+        await dockerNodesRepository.decrementAllocated(nodeId).catch((rollbackErr) => {
+          logger.error(
+            `[docker-sandbox] Failed to roll back allocation for node ${nodeId}; capacity slot leaked: ${rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr)}`,
+          );
+        });
       }
       throw new Error(
         `[docker-sandbox] Failed to create container on ${nodeId}: ${err instanceof Error ? err.message : String(err)}`,
@@ -1926,10 +1804,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         nodeId,
       });
       await ssh
-        .exec(
-          await buildSignedDeleteAgentCurl(agentId, stewardTenant),
-          DOCKER_CMD_TIMEOUT_MS,
-        )
+        .exec(await buildSignedDeleteAgentCurl(agentId, stewardTenant), DOCKER_CMD_TIMEOUT_MS)
         .then(() => {
           logger.info(
             `[docker-sandbox] Cleaned up Steward agent ${agentId} after missing Headscale registration`,
@@ -1979,15 +1854,13 @@ export class DockerSandboxProvider implements SandboxProvider {
       await this.retireReplacementCandidateOnNode(cleanupLocator, cleanupNode);
       this.containers.delete(containerName);
       if (dbNode && providerManagesCapacity) {
-        await dockerNodesRepository
-          .decrementAllocated(nodeId)
-          .catch((rollbackError) => {
-            // error-policy:J6 best-effort teardown — the candidate is already absent;
-            // capacity reconciliation remains observable while the original failure surfaces.
-            logger.error(
-              `[docker-sandbox] Failed to roll back allocation for node ${nodeId} after unroutable candidate cleanup: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`,
-            );
-          });
+        await dockerNodesRepository.decrementAllocated(nodeId).catch((rollbackError) => {
+          // error-policy:J6 best-effort teardown — the candidate is already absent;
+          // capacity reconciliation remains observable while the original failure surfaces.
+          logger.error(
+            `[docker-sandbox] Failed to roll back allocation for node ${nodeId} after unroutable candidate cleanup: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`,
+          );
+        });
       }
       throw new Error(errorMessage);
     }
@@ -2054,24 +1927,18 @@ export class DockerSandboxProvider implements SandboxProvider {
     const hcloudToken = containersEnv.hetznerCloudToken();
     const publicKey = env.CONTAINERS_AUTOSCALE_PUBLIC_SSH_KEY?.trim();
     if (!hcloudToken || !publicKey) {
-      logger.warn(
-        "[docker-sandbox] No Docker capacity and autoscale is not configured",
-        {
-          hasHcloudToken: Boolean(hcloudToken),
-          hasPublicKey: Boolean(publicKey),
-        },
-      );
+      logger.warn("[docker-sandbox] No Docker capacity and autoscale is not configured", {
+        hasHcloudToken: Boolean(hcloudToken),
+        hasPublicKey: Boolean(publicKey),
+      });
       return null;
     }
 
     try {
-      logger.info(
-        "[docker-sandbox] No reachable Docker capacity; provisioning autoscaled node",
-        {
-          image,
-          platform,
-        },
-      );
+      logger.info("[docker-sandbox] No reachable Docker capacity; provisioning autoscaled node", {
+        image,
+        platform,
+      });
       const provisioned = await getNodeAutoscaler().provisionNode(
         {
           prePullImages: [image],
@@ -2086,9 +1953,7 @@ export class DockerSandboxProvider implements SandboxProvider {
 
       const deadline = Date.now() + AUTOSCALED_NODE_READY_TIMEOUT_MS;
       while (Date.now() < deadline) {
-        const node = await dockerNodesRepository.findByNodeId(
-          provisioned.nodeId,
-        );
+        const node = await dockerNodesRepository.findByNodeId(provisioned.nodeId);
         if (
           node &&
           (await dockerNodeManager.ensureNodeReady(node, {
@@ -2101,26 +1966,18 @@ export class DockerSandboxProvider implements SandboxProvider {
           });
           return node;
         }
-        await new Promise((resolve) =>
-          setTimeout(resolve, AUTOSCALED_NODE_READY_POLL_MS),
-        );
+        await new Promise((resolve) => setTimeout(resolve, AUTOSCALED_NODE_READY_POLL_MS));
       }
 
-      logger.warn(
-        "[docker-sandbox] Autoscaled Docker node did not become ready before timeout",
-        {
-          nodeId: provisioned.nodeId,
-          hostname: provisioned.hostname,
-        },
-      );
+      logger.warn("[docker-sandbox] Autoscaled Docker node did not become ready before timeout", {
+        nodeId: provisioned.nodeId,
+        hostname: provisioned.hostname,
+      });
       return null;
     } catch (error) {
-      logger.warn(
-        "[docker-sandbox] Autoscaled Docker node provisioning failed",
-        {
-          error: error instanceof Error ? error.message : String(error),
-        },
-      );
+      logger.warn("[docker-sandbox] Autoscaled Docker node provisioning failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
       return null;
     }
   }
@@ -2148,13 +2005,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     containerName: string,
     gracefulSeconds = 30,
   ): Promise<void> {
-    await this.stopOnSpecificNodeWithPolicy(
-      node,
-      containerName,
-      gracefulSeconds,
-      true,
-      true,
-    );
+    await this.stopOnSpecificNodeWithPolicy(node, containerName, gracefulSeconds, true, true);
   }
 
   async stopOnSpecificNodeForReplacement(
@@ -2213,10 +2064,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       }
     }
     try {
-      await ssh.exec(
-        `docker rm -f ${shellQuote(containerName)}`,
-        DOCKER_CMD_TIMEOUT_MS,
-      );
+      await ssh.exec(`docker rm -f ${shellQuote(containerName)}`, DOCKER_CMD_TIMEOUT_MS);
     } catch (err) {
       rmErr = err;
       const msg = err instanceof Error ? err.message : String(err);
@@ -2234,18 +2082,14 @@ export class DockerSandboxProvider implements SandboxProvider {
     if (!allowUnreachableAbandon && rmErr) {
       const rmMsg = rmErr instanceof Error ? rmErr.message : String(rmErr);
       if (!isContainerAbsentMessage(rmMsg)) {
-        const stopMsg =
-          stopErr instanceof Error
-            ? stopErr.message
-            : String(stopErr ?? "succeeded");
+        const stopMsg = stopErr instanceof Error ? stopErr.message : String(stopErr ?? "succeeded");
         throw new Error(
           `[docker-sandbox] Cannot prove ${containerName} absent on ${node.node_id}: ` +
             `docker stop -> ${stopMsg}; docker rm -f -> ${rmMsg}`,
         );
       }
     } else if (stopErr && rmErr) {
-      const stopMsg =
-        stopErr instanceof Error ? stopErr.message : String(stopErr);
+      const stopMsg = stopErr instanceof Error ? stopErr.message : String(stopErr);
       const rmMsg = rmErr instanceof Error ? rmErr.message : String(rmErr);
       const stopIsGone = isAlreadyGoneMessage(stopMsg);
       const rmIsGone = isAlreadyGoneMessage(rmMsg);
@@ -2258,15 +2102,13 @@ export class DockerSandboxProvider implements SandboxProvider {
     }
 
     if (releaseCapacity) {
-      await dockerNodesRepository
-        .decrementAllocated(node.node_id)
-        .catch((err) => {
-          // error-policy:J6 best-effort teardown — remote absence is already proven,
-          // so a bookkeeping failure is logged for reconciliation rather than reviving it.
-          logger.warn(
-            `[docker-sandbox] stopOnSpecificNode: decrement allocated_count failed for ${node.node_id}: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        });
+      await dockerNodesRepository.decrementAllocated(node.node_id).catch((err) => {
+        // error-policy:J6 best-effort teardown — remote absence is already proven,
+        // so a bookkeeping failure is logged for reconciliation rather than reviving it.
+        logger.warn(
+          `[docker-sandbox] stopOnSpecificNode: decrement allocated_count failed for ${node.node_id}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
     }
   }
 
@@ -2279,13 +2121,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         ? await this.resolveReplacementContainerForCleanup(locator, node)
         : locator.containerName;
       if (cleanupTarget) {
-        await this.stopOnSpecificNodeWithPolicy(
-          node,
-          cleanupTarget,
-          10,
-          false,
-          false,
-        );
+        await this.stopOnSpecificNodeWithPolicy(node, cleanupTarget, 10, false, false);
       }
       if (locator.vpnNodeId) {
         await withTimeout(
@@ -2357,10 +2193,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         `[docker-sandbox] Replacement attempt label mismatch for ${locator.containerName}`,
       );
     }
-    if (
-      locator.containerId &&
-      !dockerContainerIdsMatch(locator.containerId, containerId)
-    ) {
+    if (locator.containerId && !dockerContainerIdsMatch(locator.containerId, containerId)) {
       throw new Error(
         `[docker-sandbox] Replacement container id mismatch for ${locator.containerName}`,
       );
@@ -2389,9 +2222,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       );
     }
     const registrationDeadline =
-      startedAt +
-      DEFAULT_REGISTRATION_TIMEOUT_MS +
-      REPLACEMENT_VPN_CLOCK_SKEW_ALLOWANCE_MS;
+      startedAt + DEFAULT_REGISTRATION_TIMEOUT_MS + REPLACEMENT_VPN_CLOCK_SKEW_ALLOWANCE_MS;
     if (this.now() < registrationDeadline) {
       throw new Error(
         `[docker-sandbox] VPN registration window remains open for ${locator.containerName} until ${new Date(registrationDeadline).toISOString()}`,
@@ -2399,11 +2230,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     }
 
     let consecutiveEmptyObservations = 0;
-    for (
-      let observation = 0;
-      observation < REPLACEMENT_VPN_SETTLE_OBSERVATIONS;
-      observation += 1
-    ) {
+    for (let observation = 0; observation < REPLACEMENT_VPN_SETTLE_OBSERVATIONS; observation += 1) {
       const nodes = await withTimeout(
         headscaleClient.listNodesStrict(),
         HEADSCALE_CLEANUP_TIMEOUT_MS,
@@ -2417,8 +2244,7 @@ export class DockerSandboxProvider implements SandboxProvider {
           ? node.name.slice(baseName.length + 1)
           : null;
         const nameMatches =
-          node.name === baseName ||
-          (suffix !== null && /^[a-z0-9]{8}$/.test(suffix));
+          node.name === baseName || (suffix !== null && /^[a-z0-9]{8}$/.test(suffix));
         if (!nameMatches) {
           return false;
         }
@@ -2452,9 +2278,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       }
 
       if (observation < REPLACEMENT_VPN_SETTLE_OBSERVATIONS - 1) {
-        await this.replacementVpnSettleDelay(
-          REPLACEMENT_VPN_SETTLE_INTERVAL_MS,
-        );
+        await this.replacementVpnSettleDelay(REPLACEMENT_VPN_SETTLE_INTERVAL_MS);
       }
     }
 
@@ -2478,10 +2302,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     await this.stopWithPolicy(sandboxId, false);
   }
 
-  private async stopWithPolicy(
-    sandboxId: string,
-    allowUnreachableAbandon: boolean,
-  ): Promise<void> {
+  private async stopWithPolicy(sandboxId: string, allowUnreachableAbandon: boolean): Promise<void> {
     const meta = await this.resolveContainer(sandboxId);
 
     logger.info(
@@ -2506,10 +2327,7 @@ export class DockerSandboxProvider implements SandboxProvider {
 
     try {
       // Graceful stop with 10s timeout, then force-remove
-      await ssh.exec(
-        `docker stop -t 10 ${shellQuote(meta.containerName)}`,
-        STOP_CMD_TIMEOUT_MS,
-      );
+      await ssh.exec(`docker stop -t 10 ${shellQuote(meta.containerName)}`, STOP_CMD_TIMEOUT_MS);
       logger.info(`[docker-sandbox] Container stopped: ${meta.containerName}`);
     } catch (err) {
       stopErr = err;
@@ -2519,10 +2337,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     }
 
     try {
-      await ssh.exec(
-        `docker rm -f ${shellQuote(meta.containerName)}`,
-        STOP_CMD_TIMEOUT_MS,
-      );
+      await ssh.exec(`docker rm -f ${shellQuote(meta.containerName)}`, STOP_CMD_TIMEOUT_MS);
       logger.info(`[docker-sandbox] Container removed: ${meta.containerName}`);
     } catch (err) {
       rmErr = err;
@@ -2532,8 +2347,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     }
 
     if (stopErr && rmErr) {
-      const stopMsg =
-        stopErr instanceof Error ? stopErr.message : String(stopErr);
+      const stopMsg = stopErr instanceof Error ? stopErr.message : String(stopErr);
       const rmMsg = rmErr instanceof Error ? rmErr.message : String(rmErr);
       // "No such container" from either call means the container was
       // already gone — that is a success, not a failure. We only escalate
@@ -2561,13 +2375,8 @@ export class DockerSandboxProvider implements SandboxProvider {
       // to keep the work cycle bounded; the lifecycle/capacity owner should add
       // a node-reconcile sweep (and revisit the allocated_count decrement below)
       // when one lands. Do NOT claim a reconciler already reclaims it.
-      const unreachable =
-        isNodeUnreachableMessage(stopMsg) && isNodeUnreachableMessage(rmMsg);
-      if (
-        !stopIsGone &&
-        !rmIsGone &&
-        (!unreachable || !allowUnreachableAbandon)
-      ) {
+      const unreachable = isNodeUnreachableMessage(stopMsg) && isNodeUnreachableMessage(rmMsg);
+      if (!stopIsGone && !rmIsGone && (!unreachable || !allowUnreachableAbandon)) {
         throw new Error(
           `Failed to stop container ${meta.containerName} on ${meta.hostname}: ` +
             `docker stop -> ${stopMsg}; docker rm -f -> ${rmMsg}`,
@@ -2614,15 +2423,13 @@ export class DockerSandboxProvider implements SandboxProvider {
             ? headscaleIntegration.cleanupContainerVPN(registeredNodeName)
             : null;
       if (cleanup) {
-        await withTimeout(
-          cleanup,
-          HEADSCALE_CLEANUP_TIMEOUT_MS,
-          "headscale cleanup",
-        ).catch((err) => {
-          logger.warn(
-            `[docker-sandbox] Headscale cleanup failed for ${meta.agentId}: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        });
+        await withTimeout(cleanup, HEADSCALE_CLEANUP_TIMEOUT_MS, "headscale cleanup").catch(
+          (err) => {
+            logger.warn(
+              `[docker-sandbox] Headscale cleanup failed for ${meta.agentId}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          },
+        );
       } else {
         logger.info(
           `[docker-sandbox] Skipping Headscale cleanup for ${meta.agentId}: preserved live node holds the hostname and this container never registered`,
@@ -2704,9 +2511,7 @@ export class DockerSandboxProvider implements SandboxProvider {
    * reached the container as RETRYABLE rather than a terminal failure. See
    * {@link SandboxHealthVerdict}.
    */
-  async checkHealthDetailed(
-    handle: SandboxHandle,
-  ): Promise<SandboxHealthOutcome> {
+  async checkHealthDetailed(handle: SandboxHandle): Promise<SandboxHealthOutcome> {
     const meta = await this.resolveContainer(handle.sandboxId);
     const deadline = Date.now() + HEALTH_CHECK_TIMEOUT_MS;
 
@@ -2718,9 +2523,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     // let the first racing tailnet fetch tear the agent down despite it being
     // healthy.
     const headscaleIp =
-      typeof handle.metadata?.headscaleIp === "string"
-        ? handle.metadata.headscaleIp
-        : undefined;
+      typeof handle.metadata?.headscaleIp === "string" ? handle.metadata.headscaleIp : undefined;
     if (headscaleIp) {
       if (await this.pollTailnetHealth(handle, meta, deadline)) {
         return { ready: true, verdict: "ready" };
@@ -2733,10 +2536,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       // provision time it is enough evidence to avoid tearing down a container
       // the node can prove is up. A container that fails BOTH probes still
       // reports unhealthy, so a dead provision still times out and self-heals.
-      return this.pollSshDockerHealth(
-        meta,
-        Date.now() + HEALTH_CHECK_SSH_FALLBACK_TIMEOUT_MS,
-      );
+      return this.pollSshDockerHealth(meta, Date.now() + HEALTH_CHECK_SSH_FALLBACK_TIMEOUT_MS);
     }
 
     return this.pollSshDockerHealth(meta, deadline);
@@ -2769,9 +2569,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     // would falsely condemn a container the probe never even reached.
     let reachedContainer = false;
 
-    const runOneProbe = async (): Promise<
-      "ready" | "not_ready" | "transport"
-    > => {
+    const runOneProbe = async (): Promise<"ready" | "not_ready" | "transport"> => {
       // Placement-affecting jobs can overlap the health wait, so each probe
       // reads the current node before dialing docker on that host.
       current = await this.refreshNodeMeta(current);
@@ -2848,14 +2646,10 @@ export class DockerSandboxProvider implements SandboxProvider {
       // Wait before retrying (but don't overshoot the deadline)
       const remaining = deadline - Date.now();
       if (remaining > HEALTH_CHECK_POLL_INTERVAL_MS) {
-        await new Promise((resolve) =>
-          setTimeout(resolve, HEALTH_CHECK_POLL_INTERVAL_MS),
-        );
+        await new Promise((resolve) => setTimeout(resolve, HEALTH_CHECK_POLL_INTERVAL_MS));
       } else if (remaining > 0) {
         // One last attempt after a short wait
-        await new Promise((resolve) =>
-          setTimeout(resolve, Math.min(remaining, 1000)),
-        );
+        await new Promise((resolve) => setTimeout(resolve, Math.min(remaining, 1000)));
       } else {
         break;
       }
@@ -2880,9 +2674,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         if (reachedContainer) break;
         const remaining = retryDeadline - Date.now();
         if (remaining <= 0) break;
-        await new Promise((resolve) =>
-          setTimeout(resolve, Math.min(backoff, remaining)),
-        );
+        await new Promise((resolve) => setTimeout(resolve, Math.min(backoff, remaining)));
         backoff = Math.min(backoff * 2, HEALTH_CHECK_TRANSPORT_RETRY_MAX_MS);
       }
 
@@ -2921,16 +2713,11 @@ export class DockerSandboxProvider implements SandboxProvider {
         diagnostics: diagnostics.slice(-12_000),
       });
     } catch (diagnosticsError) {
-      logger.warn(
-        "[docker-sandbox] Failed to collect health timeout diagnostics",
-        {
-          containerName: current.containerName,
-          error:
-            diagnosticsError instanceof Error
-              ? diagnosticsError.message
-              : String(diagnosticsError),
-        },
-      );
+      logger.warn("[docker-sandbox] Failed to collect health timeout diagnostics", {
+        containerName: current.containerName,
+        error:
+          diagnosticsError instanceof Error ? diagnosticsError.message : String(diagnosticsError),
+      });
     }
     // We reached the container at least once but it never answered healthy — a
     // genuine not-ready verdict (terminal), not a transport false-negative.
@@ -2941,19 +2728,12 @@ export class DockerSandboxProvider implements SandboxProvider {
   // runCommand
   // ------------------------------------------------------------------
 
-  async runCommand(
-    sandboxId: string,
-    cmd: string,
-    args?: string[],
-  ): Promise<string> {
+  async runCommand(sandboxId: string, cmd: string, args?: string[]): Promise<string> {
     const meta = await this.resolveContainer(sandboxId);
 
     // Shell-escape each argument to prevent command injection
-    const escapedArgs =
-      args && args.length > 0 ? args.map((a) => shellQuote(a)).join(" ") : "";
-    const fullCmd = escapedArgs
-      ? `${shellQuote(cmd)} ${escapedArgs}`
-      : shellQuote(cmd);
+    const escapedArgs = args && args.length > 0 ? args.map((a) => shellQuote(a)).join(" ") : "";
+    const fullCmd = escapedArgs ? `${shellQuote(cmd)} ${escapedArgs}` : shellQuote(cmd);
 
     logger.info(
       `[docker-sandbox] Executing command in ${meta.containerName}: ${cmd} ${(args ?? []).join(" ").slice(0, 80)}`,
@@ -3031,9 +2811,7 @@ export class DockerSandboxProvider implements SandboxProvider {
    * refresh the cache. Returns null only when there is no usable sandbox row;
    * repository and configuration failures propagate to the caller.
    */
-  private async hydrateContainerFromDb(
-    sandboxId: string,
-  ): Promise<ContainerMeta | null> {
+  private async hydrateContainerFromDb(sandboxId: string): Promise<ContainerMeta | null> {
     const sandbox = await agentSandboxesRepository.findBySandboxId(sandboxId);
     if (!sandbox || !sandbox.node_id || !sandbox.container_name) return null;
 
@@ -3044,9 +2822,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       );
     }
     if (!dbNode.hostname) {
-      throw new Error(
-        `[docker-sandbox] Docker node "${sandbox.node_id}" is missing hostname`,
-      );
+      throw new Error(`[docker-sandbox] Docker node "${sandbox.node_id}" is missing hostname`);
     }
 
     if (!sandbox.bridge_port || !sandbox.web_ui_port) {
@@ -3084,9 +2860,7 @@ export class DockerSandboxProvider implements SandboxProvider {
    * job start. Returning the last-known node on a refresh failure keeps a DB
    * blip from turning an otherwise-valid liveness probe into a failed provision.
    */
-  private async refreshNodeMeta(
-    previous: ContainerMeta,
-  ): Promise<ContainerMeta> {
+  private async refreshNodeMeta(previous: ContainerMeta): Promise<ContainerMeta> {
     let fresh: ContainerMeta | null;
     try {
       fresh = await this.hydrateContainerFromDb(previous.containerName);
@@ -3101,10 +2875,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     }
 
     if (!fresh) return previous;
-    if (
-      fresh.nodeId !== previous.nodeId ||
-      fresh.hostname !== previous.hostname
-    ) {
+    if (fresh.nodeId !== previous.nodeId || fresh.hostname !== previous.hostname) {
       logger.info(
         `[docker-sandbox] ${previous.containerName} re-placed mid health-wait: node ${previous.nodeId} (${previous.hostname}) -> ${fresh.nodeId} (${fresh.hostname}); following the new node`,
       );
