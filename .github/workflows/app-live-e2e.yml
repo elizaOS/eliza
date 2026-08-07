@@ -46,6 +46,11 @@ env:
   CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
   OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
   ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+  # The Anthropic repository credential can be present but unfunded. The App
+  # Live chat lane already validates this repository's OpenAI key, so use that
+  # funded provider for the mandatory walkthrough screenshot review too.
+  AI_QA_VISION_BACKEND: openai
+  AI_QA_VISION_MODEL: gpt-5-mini
   GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
   OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
   GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
@@ -55,6 +60,7 @@ env:
   # @napi-rs/keyring can terminate the runtime before JavaScript can report it.
   ELIZA_VAULT_DISABLE_KEYCHAIN: "1"
   ELIZA_VAULT_PASSPHRASE: app-live-e2e-headless-vault-only
+  ELIZA_UI_SMOKE_BACKEND_LOG_PATH: e2e-recordings/app-live/backend.log
 
 jobs:
   # Real LOCAL chat turn through the live stack: a real app-core runtime + a real
@@ -130,6 +136,7 @@ jobs:
           path: |
             packages/app/playwright-report/
             packages/app/test-results/
+            e2e-recordings/app-live/backend.log
           if-no-files-found: ignore
           retention-days: 7
 

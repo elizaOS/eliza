@@ -32,6 +32,13 @@ const PLUGINS_ROUTE = "/apps/plugins";
 const NAVIGATE_SETTINGS_EVENT = "eliza:navigate:settings";
 const NAVIGATE_VIEW_EVENT = "eliza:navigate:view";
 const NOTIFICATION_TEST_BRIDGE_SYMBOL = "elizaos.ui.notification-store-tests";
+// Electrobun's own Linux shortcut tests use an uncommon multi-modifier chord:
+// ordinary desktop chords can be unavailable under Xvfb even when native
+// registration works. Other platforms exercise the product default.
+const PACKAGED_CHAT_OVERLAY_ACCELERATOR =
+  process.platform === "linux"
+    ? "Alt+Shift+Super+F11"
+    : "CommandOrControl+Shift+C";
 
 test.describe.configure({ mode: "serial" });
 
@@ -714,7 +721,10 @@ async function seedReturningInstallState(
             error: "Packaged shell storage test bridge is unavailable.",
           };
         }
-        return bridge.seedReturningInstallState(apiBase);
+        return bridge.seedReturningInstallState(
+          apiBase,
+          ${JSON.stringify(PACKAGED_CHAT_OVERLAY_ACCELERATOR)},
+        );
       } catch (error) {
         return {
           ok: false,
@@ -1028,7 +1038,12 @@ test("packaged desktop shortcut bridge summons the main window", async ({
   await withPackagedHarness(async ({ harness }) => {
     const initialState = await harness.getState();
     expect(initialState.shell.shortcuts ?? []).toEqual(
-      expect.arrayContaining([expect.objectContaining({ id: "chat-overlay" })]),
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "chat-overlay",
+          accelerator: PACKAGED_CHAT_OVERLAY_ACCELERATOR,
+        }),
+      ]),
     );
 
     await harness.closeMainWindow();

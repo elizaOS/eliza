@@ -3,9 +3,28 @@ import { describe, it } from "node:test";
 import {
   classifyReviewerFailure,
   preflightReviewer,
+  resolveReviewerBackend,
 } from "./reviewer-preflight.mjs";
 
 describe("reviewer provider preflight", () => {
+  it("honors an explicit backend and otherwise selects a configured provider", () => {
+    assert.equal(
+      resolveReviewerBackend({
+        AI_QA_VISION_BACKEND: "openai",
+        ANTHROPIC_API_KEY: "anthropic-key",
+      }),
+      "openai",
+    );
+    assert.equal(
+      resolveReviewerBackend({ OPENAI_API_KEY: "openai-key" }),
+      "openai",
+    );
+    assert.equal(
+      resolveReviewerBackend({ AI_QA_VISION_BACKEND: "invalid" }),
+      null,
+    );
+  });
+
   it("classifies rejected, quota, and billing responses", () => {
     assert.equal(
       classifyReviewerFailure(401, "unauthorized"),
@@ -142,5 +161,28 @@ describe("reviewer provider preflight", () => {
     });
 
     assert.deepEqual(result, { ok: true, classification: "ready", detail: "" });
+  });
+
+  it("preflights OpenAI with its bearer credential and selected model", async () => {
+    let requestUrl = "";
+    let requestInit;
+    const result = await preflightReviewer({
+      backend: "openai",
+      apiKey: "openai-test-key",
+      model: "gpt-5-mini",
+      fetchImpl: async (url, init) => {
+        requestUrl = String(url);
+        requestInit = init;
+        return new Response("{}", { status: 200 });
+      },
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(requestUrl, "https://api.openai.com/v1/chat/completions");
+    assert.equal(requestInit.headers.authorization, "Bearer openai-test-key");
+    const requestBody = JSON.parse(requestInit.body);
+    assert.equal(requestBody.model, "gpt-5-mini");
+    assert.equal(requestBody.max_completion_tokens, 16);
+    assert.equal("max_tokens" in requestBody, false);
   });
 });
