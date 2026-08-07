@@ -1,7 +1,7 @@
-// Exercises the Blooio iMessage adapter: signature verification windows,
-// event extraction edge cases, and the reply path's auth + idempotency
-// contract. Bidirectional where a bug was fixed: the missing-sender skip and
-// the 300s tolerance both have cases that fail against the previous code.
+/**
+ * Exercises the Blooio iMessage adapter with deterministic signature,
+ * malformed-delivery, deduplication, and outbound idempotency coverage.
+ */
 import { afterEach, describe, expect, test } from "bun:test";
 import crypto from "node:crypto";
 import { blooioAdapter } from "../src/adapters/blooio";
@@ -213,11 +213,24 @@ describe("blooio extractEvent", () => {
     expect(event?.text).toBe("hey eliza");
   });
 
-  test("falls back to internal_id when message_id is absent", async () => {
-    const event = await blooioAdapter.extractEvent(
-      inboundPayload({ message_id: null, internal_id: "int_789" }),
-    );
-    expect(event?.messageId).toBe("int_789");
+  test("skips events without a stable message_id even when identity fields exist", async () => {
+    const payload = inboundPayload({
+      message_id: null,
+      internal_id: "+15550001111",
+      external_id: "+15551234567",
+    });
+
+    expect(await blooioAdapter.extractEvent(payload)).toBeNull();
+    expect(await blooioAdapter.extractEvent(payload)).toBeNull();
+  });
+
+  test("skips blank message and sender identifiers", async () => {
+    expect(
+      await blooioAdapter.extractEvent(inboundPayload({ message_id: "  " })),
+    ).toBeNull();
+    expect(
+      await blooioAdapter.extractEvent(inboundPayload({ sender: "  " })),
+    ).toBeNull();
   });
 });
 
@@ -297,7 +310,6 @@ describe("blooio sendReply", () => {
     ).rejects.toThrow("Blooio send error (429): rate limited");
   });
 });
-
 describe("blooio sendTypingIndicator", () => {
   const chatEvent: ChatEvent = {
     platform: "blooio",
