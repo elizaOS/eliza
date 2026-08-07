@@ -69,7 +69,7 @@ function assertLocalMode(mode?: LifeOpsConnectorMode): void {
   if (mode && mode !== "local") {
     fail(
       410,
-      "LifeOps no longer manages cloud or legacy Google modes. Use @elizaos/plugin-google connector accounts.",
+      "LifeOps no longer manages cloud or legacy Google modes. Use @elizaos/plugin-google-workspace connector accounts.",
     );
   }
 }
@@ -86,7 +86,7 @@ function googlePluginUnavailableStatus(
         axis: "disconnected",
         code: "google_plugin_unavailable",
         message:
-          "@elizaos/plugin-google is required for Google accounts. LifeOps no longer stores Google OAuth tokens directly.",
+          "@elizaos/plugin-google-workspace is required for Google accounts. LifeOps no longer stores Google OAuth tokens directly.",
         retryable: true,
       },
     ],
@@ -136,7 +136,7 @@ export class GoogleDomain {
   ): Promise<T> {
     fail(
       410,
-      "Cloud-managed Google operations were removed from LifeOps. Use @elizaos/plugin-google connector accounts.",
+      "Cloud-managed Google operations were removed from LifeOps. Use @elizaos/plugin-google-workspace connector accounts.",
     );
   }
 
@@ -398,7 +398,7 @@ export class GoogleDomain {
     if (!manager?.getProvider?.("google")) {
       fail(
         503,
-        "@elizaos/plugin-google is required before starting Google OAuth.",
+        "@elizaos/plugin-google-workspace is required before starting Google OAuth.",
       );
     }
 
@@ -438,7 +438,7 @@ export class GoogleDomain {
     if (!manager?.getProvider?.("google")) {
       fail(
         503,
-        "@elizaos/plugin-google is required before completing Google OAuth.",
+        "@elizaos/plugin-google-workspace is required before completing Google OAuth.",
       );
     }
     const state = callbackUrl.searchParams.get("state") ?? "";
@@ -472,7 +472,7 @@ export class GoogleDomain {
     if (!manager?.getProvider?.("google")) {
       fail(
         503,
-        "@elizaos/plugin-google is required before disconnecting Google accounts.",
+        "@elizaos/plugin-google-workspace is required before disconnecting Google accounts.",
       );
     }
     const requestedGrantId = normalizeOptionalString(request.grantId);

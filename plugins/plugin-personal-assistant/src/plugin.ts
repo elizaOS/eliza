@@ -22,7 +22,6 @@ import {
   registerDirectActionRoutingRule,
   registerLocalizedExamplesProvider,
   registerSendPolicy,
-  type ShortcutDefinition,
 } from "@elizaos/core";
 import {
   getSelfControlPermissionState,
@@ -35,10 +34,9 @@ import {
   handleMeetingJoinDispatch,
   MEETING_JOIN_CHANNEL_KEY,
 } from "@elizaos/plugin-calendar";
-import { CalendlyAdapter } from "@elizaos/plugin-calendly";
 import { financesPlugin } from "@elizaos/plugin-finances/plugin";
 import { goalsPlugin } from "@elizaos/plugin-goals/plugin";
-import { GoogleGmailAdapter } from "@elizaos/plugin-google";
+import { GoogleGmailAdapter } from "@elizaos/plugin-google-workspace";
 import {
   createDefaultCircadianInsightContract,
   healthPlugin,
@@ -50,7 +48,6 @@ import {
 } from "@elizaos/plugin-health";
 import { inboxPlugin } from "@elizaos/plugin-inbox/plugin";
 import { remindersPlugin } from "@elizaos/plugin-reminders";
-import { remoteDesktopPlugin } from "@elizaos/plugin-remote-desktop";
 import { XDmAdapter } from "@elizaos/plugin-x/lifeops-message-adapter";
 import type {
   IPermissionsRegistry,
@@ -297,44 +294,9 @@ const localConditionsAction = createLocalConditionsAction({
   authorize: hasLifeOpsAccess,
 });
 
-const GOOGLE_CONNECTOR_PLUGIN_PACKAGE = "@elizaos/plugin-google";
+const GOOGLE_CONNECTOR_PLUGIN_PACKAGE = "@elizaos/plugin-google-workspace";
 const GOOGLE_CONNECTOR_PLUGIN_NAME = "google";
 const PERMISSIONS_REGISTRY_SERVICE = "eliza_permissions_registry";
-
-export const APPROVAL_REJECT_SHORTCUT_ID = "lifeops:approval:reject";
-
-// The deterministic tier fires only on phrasings that are near-unambiguously a
-// verdict on a queued approval: a "don't send" hold, a reject/decline/deny verb
-// directly governing "approval(s)" / "(that|the|this) request", or the
-// "<verb> that/it/this for now" hold idiom. Looser rejection language
-// ("decline the meeting request", "reject the draft and rewrite it") stays
-// with the planner, which sees queue rows via the pendingApprovals provider
-// (#14665) and can weigh conversation context before picking RESOLVE_REQUEST.
-// A shortcut misfire is terminal for the targeted approval (reject cancels the
-// dispatch), so precision beats recall here.
-const APPROVAL_REJECT_REGEX =
-  /\b(?:reject|decline|deny)\b(?:\s+[\p{L}\p{N}]+){0,3}?\s+approvals?\b|\b(?:reject|decline|deny)\s+(?:(?:that|the|this)\s+)?request\b|\b(?:reject|decline|deny)\s+(?:that|it|this)\s+for\s+now\b/iu;
-const APPROVAL_DONT_SEND_REGEX =
-  /^(?=.*\b(?:don['’]?\s*t|dont|do\s+not)\s+send\b)(?=.*\b(?:that|it|approval|request|pending|message|email|draft)\b).+$/iu;
-
-const lifeOpsShortcuts: ShortcutDefinition[] = [
-  {
-    id: APPROVAL_REJECT_SHORTCUT_ID,
-    kind: "natural",
-    patterns: [
-      { regex: APPROVAL_REJECT_REGEX },
-      { regex: APPROVAL_DONT_SEND_REGEX },
-    ],
-    target: {
-      kind: "action",
-      name: "RESOLVE_REQUEST_REJECT",
-    },
-    requiresAction: "RESOLVE_REQUEST_REJECT",
-    requiresElevated: true,
-    confidence: 0.97,
-    priority: 35,
-  },
-];
 
 function isPermissionsRegistry(value: unknown): value is IPermissionsRegistry {
   return (
@@ -479,7 +441,7 @@ async function importGoogleConnectorPluginModule(): Promise<
     >;
   } catch (error) {
     const stagedDependencyUrl = new URL(
-      "../node_modules/@elizaos/plugin-google/dist/index.js",
+      "../node_modules/@elizaos/plugin-google-workspace/dist/index.js",
       import.meta.url,
     );
     try {
@@ -604,25 +566,6 @@ export async function ensureLifeOpsInboxPluginRegistered(
 }
 
 /**
- * Register `@elizaos/plugin-remote-desktop` if it is not already in the
- * runtime. The remote-desktop domain (the REMOTE_DESKTOP action, the
- * backend-detection engine, and the in-process RemoteSessionService control
- * plane) moved out of PA into the remote-desktop plugin, which now registers
- * the action. PA no longer registers REMOTE_DESKTOP itself, so the
- * remote-desktop plugin MUST be loaded whenever PA is. No DB, static import.
- */
-export async function ensureLifeOpsRemoteDesktopPluginRegistered(
-  runtime: IAgentRuntime,
-): Promise<void> {
-  if (
-    runtime.plugins.some((plugin) => plugin.name === remoteDesktopPlugin.name)
-  ) {
-    return;
-  }
-  await runtime.registerPlugin(remoteDesktopPlugin);
-}
-
-/**
  * Register `@elizaos/plugin-goals` if it is not already in the runtime. The
  * goal TABLES (life_goal_definitions / life_goal_links) were carved into
  * plugin-goals' own `app_goals` schema; PA's reminder/scheduling subsystem
@@ -742,7 +685,6 @@ const rawPersonalAssistantPlugin: Plugin = {
   // runner host is registered before PA's init injects deps + seeds.
   dependencies: [GOOGLE_CONNECTOR_PLUGIN_PACKAGE, "@elizaos/plugin-scheduling"],
   schema: lifeOpsSchema,
-  shortcuts: lifeOpsShortcuts,
   actions: [
     // Canonical owner-operation umbrellas. Each umbrella registers itself + its
     // per-action virtuals via
@@ -929,7 +871,6 @@ const rawPersonalAssistantPlugin: Plugin = {
     await ensureLifeOpsRemindersPluginRegistered(runtime);
     await ensureLifeOpsGoalsPluginRegistered(runtime);
     await ensureLifeOpsInboxPluginRegistered(runtime);
-    await ensureLifeOpsRemoteDesktopPluginRegistered(runtime);
 
     // Inject the LifeOps-backed calendar gate once the runtime has finished
     // initializing both plugins, so calendar events keep firing reminders and
@@ -1103,7 +1044,6 @@ const rawPersonalAssistantPlugin: Plugin = {
     const triage = getDefaultTriageService();
     triage.register(new GoogleGmailAdapter());
     triage.register(new XDmAdapter());
-    triage.register(new CalendlyAdapter());
     triage.register(new BrowserBridgeAdapter());
 
     // Register the activity-profile maintenance worker. One scheduler

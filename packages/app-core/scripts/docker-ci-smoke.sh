@@ -34,7 +34,7 @@ set -Eeuo pipefail
 #                        ELIZA_AGENT_CHARACTER_JSON for the boot.
 #   BOOT_KPI_ENFORCE     If "1", a cold-start readyMs budget breach (measured
 #                        boot readyMs > boot.coldReadyMs from
-#                        packages/benchmarks/loadperf/budgets.json) FAILS the
+#                        the loadperf budgets, see https://github.com/elizaOS/benchmarks) FAILS the
 #                        smoke. Default (unset/!=1) is WARN-FIRST: a breach is
 #                        reported via a ::warning:: line but does NOT fail. Flip
 #                        this to "1" in the workflow once the baseline is
@@ -43,7 +43,7 @@ set -Eeuo pipefail
 #                        failure (missing jq/budget) never fails a smoke that
 #                        otherwise passed.
 
-BUN_VERSION="${BUN_VERSION:-1.3.10}"
+BUN_VERSION="${BUN_VERSION:-1.3.14}"
 SMOKE_PORT="${SMOKE_PORT:-32138}"
 CONTAINER_PORT="${CONTAINER_PORT:-42138}"
 SMOKE_TIMEOUT_SEC="${SMOKE_TIMEOUT_SEC:-420}"
@@ -459,7 +459,8 @@ boot_verify() {
 
   # Boot-KPI cold-start budget (item 5 of #8812). Computes cold readyMs from the
   # pre-`docker run` checkpoint to the FIRST health/status success, reads the
-  # boot.coldReadyMs budget from packages/benchmarks/loadperf/budgets.json, and
+  # boot.coldReadyMs budget (default mirrors the loadperf budgets in
+  # https://github.com/elizaOS/benchmarks), and
   # reports the comparison. WARN-FIRST: a breach prints a ::warning:: line and
   # returns 0 (does not fail) UNLESS BOOT_KPI_ENFORCE=1, in which case it returns
   # 1 so the caller can fail the smoke. Every measurement step is guarded so a
@@ -482,21 +483,9 @@ boot_verify() {
       return 0
     fi
 
-    # Default budget mirrors packages/benchmarks/loadperf/budgets.json boot.coldReadyMs.
-    local budget_default=25000
-    local budget="$budget_default"
-    local budgets_file="$REPO_ROOT/packages/benchmarks/loadperf/budgets.json"
-    if command -v jq >/dev/null 2>&1 && [[ -f "$budgets_file" ]]; then
-      local parsed
-      parsed="$(jq -r '.boot.coldReadyMs // empty' "$budgets_file" 2>/dev/null || true)"
-      if [[ "$parsed" =~ ^[0-9]+$ ]]; then
-        budget="$parsed"
-      else
-        log "[boot-kpi] WARNING: could not read boot.coldReadyMs from $budgets_file; using default ${budget_default}ms"
-      fi
-    else
-      log "[boot-kpi] WARNING: jq or budgets.json unavailable; using default coldReadyMs budget ${budget_default}ms"
-    fi
+    # Budget mirrors the loadperf boot.coldReadyMs budget maintained in
+    # https://github.com/elizaOS/benchmarks.
+    local budget=25000
 
     # Record runner contention alongside readyMs (#8812 item 5). Boot is
     # single-threaded and import-bound, so a heavily loaded runner inflates
@@ -678,20 +667,6 @@ else
   node "$APP_CORE_SCRIPTS_DIR/patch-deps.mjs" || true
   node "$APP_CORE_SCRIPTS_DIR/ensure-type-package-aliases.mjs" || true
 fi
-# @elizaos/contracts must be built BEFORE @elizaos/core: core's
-# tsconfig.declarations.json maps `@elizaos/contracts` to
-# `../contracts/dist/index.d.ts`, so the declarations build aborts with
-# TS2307 if dist/ doesn't exist yet.
-if [[ -f packages/contracts/package.json ]] && jq -e '.scripts.build' packages/contracts/package.json >/dev/null; then
-  log "Building @elizaos/contracts (required by core declarations)"
-  pushd packages/contracts >/dev/null
-  "$BUN_BIN" run build
-  popd >/dev/null
-  mkdir -p node_modules/@elizaos
-  "${RM_PATH_RECURSIVE[@]}" node_modules/@elizaos/contracts
-  ln -s ../../packages/contracts node_modules/@elizaos/contracts
-fi
-
 # @elizaos/logger must also be built BEFORE @elizaos/core: core's
 # tsconfig.declarations.json maps `@elizaos/logger` to
 # `../logger/dist/index.d.ts`, so the declarations build aborts with TS2307
@@ -736,8 +711,6 @@ else
 fi
 
 log "Building shared/cloud package artifacts"
-# plugin-streaming imports @elizaos/cloud-routing during its declarations build,
-# so Docker smoke needs the local workspace package built and linked.
 for package_dir in packages/shared packages/cloud/sdk packages/cloud/routing packages/skills; do
   if [[ -f "$package_dir/package.json" ]] && jq -e '.scripts.build' "$package_dir/package.json" >/dev/null; then
     log "Building $(node -p "require('./$package_dir/package.json').name") workspace artifacts"
@@ -786,11 +759,9 @@ for plugin in \
   plugin-local-inference \
   plugin-mcp \
   plugin-signal \
-  plugin-streaming \
   plugin-telegram \
   plugin-whatsapp \
-  plugin-workflow \
-  plugin-x402; do
+  plugin-workflow; do
   plugin_dir="$PLUGINS_DIR/$plugin"
   if [[ -f "$plugin_dir/package.json" ]]; then
     if jq -e '.scripts.build' "$plugin_dir/package.json" >/dev/null; then

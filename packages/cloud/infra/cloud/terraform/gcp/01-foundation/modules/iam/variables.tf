@@ -4,6 +4,6 @@ variable "project_id" {
 }
 
 variable "github_repos" {
-  description = "GitHub repos allowed to deploy (e.g. [\"elizaOS/cloud\"])"
+  description = "GitHub repos allowed to deploy (e.g. [\"elizaOS/eliza\"])"
   type        = list(string)
 }

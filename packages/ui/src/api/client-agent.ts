@@ -1,17 +1,14 @@
 /**
  * Agent domain methods — lifecycle, auth, config, connectors, triggers,
- * training, plugins, streaming, logs, character, permissions, updates.
+ * plugins, streaming, logs, character, permissions, updates.
  */
 
 import type {
   AllPermissionsState,
   FirstRunConnectorConfig as ConnectorConfig,
   FirstRunOptions,
-  LinkedAccountConfig,
-  LinkedAccountProviderId,
   PermissionId,
   PermissionState,
-  ServiceRouteAccountStrategy,
   SubscriptionStatusResponse,
 } from "@elizaos/shared";
 import {
@@ -35,7 +32,28 @@ import {
 import { TERMINAL_STATUSES } from "../chat/coding-agent-session-state";
 import { isDedicatedCloudAgentBase } from "../utils/cloud-agent-base";
 import { openEventSource } from "../utils/event-source";
+import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
 import { androidNativeAgentLifecycleForUrl } from "./android-native-agent-transport";
+import "./client-agent-accounts";
+
+export * from "./client-agent-accounts";
+
+import {
+  type ConnectorAccountActionResult,
+  type ConnectorAccountAuditEventsQuery,
+  type ConnectorAccountAuditEventsResponse,
+  type ConnectorAccountCreateInput,
+  type ConnectorAccountOAuthStartInput,
+  type ConnectorAccountRecord,
+  type ConnectorAccountsListResponse,
+  type ConnectorAccountUpdateInput,
+  connectorAccountAuditPath,
+  connectorAccountOAuthPath,
+  connectorAccountsPath,
+  normalizeConnectorAccountActionResult,
+  normalizeConnectorAccountRecord,
+  normalizeConnectorAccountsListResponse,
+} from "./client-agent-connector-accounts";
 import { ElizaClient } from "./client-base";
 import { isDirectCloudSharedAgentBase } from "./client-cloud";
 import type {
@@ -46,8 +64,6 @@ import type {
   AgentSelfStatusSnapshot,
   AgentStatus,
   AppConfigResponse,
-  BuildTrainingAnalysisIndexOptions,
-  BuildTrainingReadinessReportOptions,
   CharacterData,
   CharacterHistoryResponse,
   CodingAgentAddAgentInput,
@@ -80,10 +96,7 @@ import type {
   ExperienceRecord,
   ExperienceUpdateInput,
   ExtensionStatus,
-  HuggingFaceDatasetIngestResponse,
-  IngestHuggingFaceDatasetOptions,
   LaunchSnapshot,
-  ListTrainingCollectionsResponse,
   LogsFilter,
   LogsResponse,
   ModelCatalog,
@@ -106,37 +119,13 @@ import type {
   RelationshipsMergeCandidate,
   RelationshipsPersonDetail,
   RelationshipsPersonSummary,
-  RunActionBenchmarkOptions,
-  RunActionBenchmarkResponse,
-  RunBenchmarkVsCerebrasOptions,
-  RunBenchmarkVsCerebrasResponse,
-  RunFeedGenerationOptions,
-  RunFeedGenerationResponse,
-  RunLocalEvalComparisonOptions,
-  RunLocalEvalComparisonResponse,
-  RunScenarioOptions,
-  RunScenarioResponse,
-  RunTrainingCollectionOptions,
-  RunTrainingCollectionPreflightResponse,
-  RunTrainingCollectionResponse,
   RuntimeDebugSnapshot,
   SecretInfo,
   SecurityAuditFilter,
   SecurityAuditResponse,
   SecurityAuditStreamEvent,
-  StageEliza1BundleOptions,
-  StageEliza1BundleResponse,
-  StartTrainingOptions,
   TradePermissionMode,
   TradePermissionModeResponse,
-  TrainingAnalysisIndexResponse,
-  TrainingDatasetRecord,
-  TrainingJobRecord,
-  TrainingModelRecord,
-  TrainingReadinessReportResponse,
-  TrainingStatus,
-  TrainingTrajectoryDetail,
-  TrainingTrajectoryList,
   TriggerEventDispatchResponse,
   TriggerHealthSnapshot,
   TriggerLastStatus,
@@ -153,6 +142,24 @@ import {
 import { isApiError } from "./client-types-core";
 import { isDesktopExternalApiBaseUrl } from "./desktop-external-api-base";
 import { workflowSurfaceClient } from "./workflow-surface-routing";
+
+export {
+  CONNECTOR_SERVER_ROLE_TO_UI_ROLE,
+  type ConnectorAccountActionResult,
+  type ConnectorAccountAuditEventRecord,
+  type ConnectorAccountAuditEventsQuery,
+  type ConnectorAccountAuditEventsResponse,
+  type ConnectorAccountCreateInput,
+  type ConnectorAccountOAuthStartInput,
+  type ConnectorAccountPrivacy,
+  type ConnectorAccountPurpose,
+  type ConnectorAccountRecord,
+  type ConnectorAccountRole,
+  type ConnectorAccountStatus,
+  type ConnectorAccountsListResponse,
+  type ConnectorAccountUpdateInput,
+  normalizeConnectorAccountRecord,
+} from "./client-agent-connector-accounts";
 
 // ---------------------------------------------------------------------------
 // Module-level helpers
@@ -306,182 +313,10 @@ export type BootstrapExchangeResult =
   | BootstrapExchangeFailure;
 
 // ---------------------------------------------------------------------------
-// Multi-account routes (WS3) — surfaced under `/api/accounts/*` and the
-// per-provider `/api/providers/:providerId/strategy` endpoint. The on-disk
-// `LinkedAccountConfig` records are joined with a `hasCredential` flag so
-// the UI can spot orphan metadata.
-// ---------------------------------------------------------------------------
-
-export type AccountStrategy = ServiceRouteAccountStrategy;
-
-export type {
-  LinkedAccountAccountSource,
-  LinkedAccountConfig,
-  LinkedAccountHealth,
-  LinkedAccountHealthDetail,
-  LinkedAccountProviderId,
-  LinkedAccountUsage,
-} from "@elizaos/shared";
-
-export interface AccountWithCredentialFlag extends LinkedAccountConfig {
-  hasCredential: boolean;
-}
-
-export interface AccountsListProvider {
-  providerId: LinkedAccountProviderId;
-  strategy: AccountStrategy;
-  accounts: AccountWithCredentialFlag[];
-}
-
-export interface AccountsListResponse {
-  providers: AccountsListProvider[];
-}
-
-export interface AccountTestResult {
-  ok: boolean;
-  latencyMs?: number;
-  status?: number;
-  error?: string;
-}
-
-export interface AccountRefreshUsageResult {
-  account: LinkedAccountConfig;
-  source: "pool" | "inline-probe";
-}
-
-export interface AccountOAuthStartResult {
-  sessionId: string;
-  authUrl: string;
-  needsCodeSubmission: boolean;
-  userCode?: string;
-}
-
-// ---------------------------------------------------------------------------
 // Connector account routes — UI-facing connector multi-account management.
 // Connector config still uses `/api/connectors`; account inventory lives under
 // `/api/connectors/:provider/accounts`.
 // ---------------------------------------------------------------------------
-
-export type ConnectorAccountRole = "OWNER" | "AGENT" | "TEAM";
-export type ConnectorAccountPurpose =
-  | "messaging"
-  | "posting"
-  | "reading"
-  | "admin"
-  | "automation"
-  | (string & {});
-
-export type ConnectorAccountPrivacy =
-  | "owner_only"
-  | "team_visible"
-  | "semi_public"
-  | "public";
-
-export type ConnectorAccountStatus =
-  | "connected"
-  | "pending"
-  | "needs-reauth"
-  | "disconnected"
-  | "error"
-  | "unknown";
-
-export interface ConnectorAccountRecord {
-  id: string;
-  provider: string;
-  connectorId: string;
-  label: string;
-  handle?: string | null;
-  externalId?: string | null;
-  avatarUrl?: string | null;
-  status?: ConnectorAccountStatus;
-  statusDetail?: string | null;
-  role?: ConnectorAccountRole;
-  purpose?: ConnectorAccountPurpose[];
-  privacy?: ConnectorAccountPrivacy;
-  isDefault?: boolean;
-  enabled?: boolean;
-  createdAt?: number;
-  updatedAt?: number;
-  lastSyncedAt?: number;
-  metadata?: Record<string, unknown>;
-}
-
-export interface ConnectorAccountsListResponse {
-  provider: string;
-  connectorId: string;
-  defaultAccountId?: string | null;
-  accounts: ConnectorAccountRecord[];
-}
-
-export interface ConnectorAccountCreateInput {
-  label?: string;
-  role?: ConnectorAccountRole;
-  purpose?: ConnectorAccountPurpose | ConnectorAccountPurpose[];
-  privacy?: ConnectorAccountPrivacy;
-  metadata?: Record<string, unknown>;
-  confirmation?: {
-    role?: string;
-    privacy?: string;
-    publicAcknowledged?: boolean;
-  };
-}
-
-export interface ConnectorAccountUpdateInput {
-  label?: string;
-  role?: ConnectorAccountRole;
-  purpose?: ConnectorAccountPurpose | ConnectorAccountPurpose[];
-  privacy?: ConnectorAccountPrivacy;
-  enabled?: boolean;
-  metadata?: Record<string, unknown>;
-  confirmation?: {
-    role?: string;
-    privacy?: string;
-    publicAcknowledged?: boolean;
-  };
-}
-
-export interface ConnectorAccountOAuthStartInput {
-  redirectUri?: string;
-  accountId?: string;
-  label?: string;
-  scopes?: string[];
-  metadata?: Record<string, unknown>;
-}
-
-export interface ConnectorAccountActionResult {
-  ok: boolean;
-  account?: ConnectorAccountRecord;
-  accounts?: ConnectorAccountRecord[];
-  defaultAccountId?: string | null;
-  authUrl?: string;
-  flow?: Record<string, unknown>;
-  status?: ConnectorAccountStatus | string;
-  error?: string;
-}
-
-export interface ConnectorAccountAuditEventRecord {
-  id: string;
-  accountId?: string | null;
-  agentId?: string;
-  provider: string;
-  actorId?: string | null;
-  action: string;
-  outcome: "success" | "failure" | string;
-  metadata?: Record<string, unknown>;
-  createdAt?: number;
-}
-
-export interface ConnectorAccountAuditEventsQuery {
-  accountId?: string;
-  action?: string;
-  outcome?: "success" | "failure";
-  limit?: number;
-}
-
-export interface ConnectorAccountAuditEventsResponse {
-  provider: string;
-  events: ConnectorAccountAuditEventRecord[];
-}
 
 // ---------------------------------------------------------------------------
 // Declaration merging
@@ -581,47 +416,6 @@ declare module "./client-base" {
     updateConfig(
       patch: Record<string, unknown>,
     ): Promise<Record<string, unknown>>;
-    listAccounts(): Promise<AccountsListResponse>;
-    createApiKeyAccount(
-      providerId: LinkedAccountProviderId,
-      body: { label: string; apiKey: string },
-    ): Promise<LinkedAccountConfig>;
-    patchAccount(
-      providerId: LinkedAccountProviderId,
-      accountId: string,
-      body: Partial<{ label: string; enabled: boolean; priority: number }>,
-    ): Promise<LinkedAccountConfig>;
-    deleteAccount(
-      providerId: LinkedAccountProviderId,
-      accountId: string,
-    ): Promise<{ deleted: boolean }>;
-    testAccount(
-      providerId: LinkedAccountProviderId,
-      accountId: string,
-    ): Promise<AccountTestResult>;
-    refreshAccountUsage(
-      providerId: LinkedAccountProviderId,
-      accountId: string,
-    ): Promise<AccountRefreshUsageResult>;
-    startAccountOAuth(
-      providerId: LinkedAccountProviderId,
-      body: { label: string; mode?: "auto" | "localhost" | "device" },
-    ): Promise<AccountOAuthStartResult>;
-    submitAccountOAuthCode(
-      providerId: LinkedAccountProviderId,
-      body: { sessionId: string; code: string },
-    ): Promise<{ accepted: boolean }>;
-    cancelAccountOAuth(
-      providerId: LinkedAccountProviderId,
-      body: { sessionId: string },
-    ): Promise<{ cancelled: boolean }>;
-    patchProviderStrategy(
-      providerId: LinkedAccountProviderId,
-      body: { strategy: AccountStrategy },
-    ): Promise<{
-      providerId: LinkedAccountProviderId;
-      strategy: AccountStrategy;
-    }>;
     getConnectors(): Promise<{
       connectors: Record<string, ConnectorConfig>;
     }>;
@@ -701,92 +495,6 @@ declare module "./client-base" {
       payload?: Record<string, unknown>,
     ): Promise<TriggerEventDispatchResponse>;
     getTriggerHealth(): Promise<TriggerHealthSnapshot>;
-    getTrainingStatus(): Promise<TrainingStatus>;
-    listTrainingTrajectories(opts?: {
-      limit?: number;
-      offset?: number;
-    }): Promise<TrainingTrajectoryList>;
-    getTrainingTrajectory(
-      trajectoryId: string,
-    ): Promise<{ trajectory: TrainingTrajectoryDetail }>;
-    listTrainingDatasets(): Promise<{ datasets: TrainingDatasetRecord[] }>;
-    buildTrainingDataset(options?: {
-      limit?: number;
-      minLlmCallsPerTrajectory?: number;
-    }): Promise<{ dataset: TrainingDatasetRecord }>;
-    writeTrainingBenchmarkMatrix(options: {
-      rows: Array<{
-        modelId: string;
-        benchmark: string;
-        score: number;
-        variant: "reference" | "base" | "trained";
-      }>;
-      outputDir?: string;
-      referenceModelId?: string;
-    }): Promise<{ outputDir: string; artifactPath: string; artifact: unknown }>;
-    listTrainingJobs(): Promise<{ jobs: TrainingJobRecord[] }>;
-    startTrainingJob(
-      options?: StartTrainingOptions,
-    ): Promise<{ job: TrainingJobRecord }>;
-    getTrainingJob(jobId: string): Promise<{ job: TrainingJobRecord }>;
-    cancelTrainingJob(jobId: string): Promise<{ job: TrainingJobRecord }>;
-    listTrainingModels(): Promise<{ models: TrainingModelRecord[] }>;
-    importTrainingModelToOllama(
-      modelId: string,
-      options?: {
-        modelName?: string;
-        baseModel?: string;
-        ollamaUrl?: string;
-      },
-    ): Promise<{ model: TrainingModelRecord }>;
-    activateTrainingModel(
-      modelId: string,
-      providerModel?: string,
-    ): Promise<{
-      modelId: string;
-      providerModel: string;
-      needsRestart: boolean;
-    }>;
-    benchmarkTrainingModel(modelId: string): Promise<{
-      status: "passed" | "failed";
-      output: string;
-    }>;
-    buildTrainingAnalysisIndex(
-      options?: BuildTrainingAnalysisIndexOptions,
-    ): Promise<TrainingAnalysisIndexResponse>;
-    buildTrainingReadinessReport(
-      options?: BuildTrainingReadinessReportOptions,
-    ): Promise<TrainingReadinessReportResponse>;
-    ingestHuggingFaceTrainingDataset(
-      options?: IngestHuggingFaceDatasetOptions,
-    ): Promise<HuggingFaceDatasetIngestResponse>;
-    stageEliza1Bundle(
-      options?: StageEliza1BundleOptions,
-    ): Promise<StageEliza1BundleResponse>;
-    runFeedTrainingGeneration(
-      options?: RunFeedGenerationOptions,
-    ): Promise<RunFeedGenerationResponse>;
-    runTrainingScenarios(
-      options?: RunScenarioOptions,
-    ): Promise<RunScenarioResponse>;
-    runTrainingLocalEvalComparison(
-      options?: RunLocalEvalComparisonOptions,
-    ): Promise<RunLocalEvalComparisonResponse>;
-    runTrainingCollection(
-      options?: RunTrainingCollectionOptions,
-    ): Promise<
-      RunTrainingCollectionResponse | RunTrainingCollectionPreflightResponse
-    >;
-    runTrainingActionBenchmark(
-      options?: RunActionBenchmarkOptions,
-    ): Promise<RunActionBenchmarkResponse>;
-    runTrainingBenchmarkVsCerebras(
-      options?: RunBenchmarkVsCerebrasOptions,
-    ): Promise<RunBenchmarkVsCerebrasResponse>;
-    listTrainingCollections(options?: {
-      limit?: number;
-      root?: string;
-    }): Promise<ListTrainingCollectionsResponse>;
     getPlugins(): Promise<{ plugins: PluginInfo[] }>;
     fetchModels(
       provider: string,
@@ -2112,269 +1820,6 @@ ElizaClient.prototype.deleteConnector = async function (
   });
 };
 
-function connectorAccountsPath(
-  provider: string,
-  _connectorId?: string,
-  accountId?: string,
-  action?: "test" | "refresh" | "default",
-): string {
-  const base = `/api/connectors/${encodeURIComponent(provider)}/accounts`;
-  if (!accountId) return base;
-  const withAccount = `${base}/${encodeURIComponent(accountId)}`;
-  return action ? `${withAccount}/${action}` : withAccount;
-}
-
-function connectorAccountOAuthPath(
-  provider: string,
-  action: "start" | "status",
-): string {
-  return `/api/connectors/${encodeURIComponent(provider)}/oauth/${action}`;
-}
-
-/**
- * Server connector-account role → UI role mapping (#12087 Item 32). Keys are the
- * uppercased server role strings; the value is the UI bucket. A server role NOT
- * in this table is genuinely unknown and maps to `undefined` — it is NOT
- * silently relabelled `OWNER` (the fail-open mislabel this replaced).
- */
-export const CONNECTOR_SERVER_ROLE_TO_UI_ROLE: Readonly<
-  Record<string, ConnectorAccountRole>
-> = {
-  OWNER: "OWNER",
-  AGENT: "AGENT",
-  SERVICE: "AGENT",
-  TEAM: "TEAM",
-  ADMIN: "TEAM",
-  MEMBER: "TEAM",
-  VIEWER: "TEAM",
-};
-
-function normalizeConnectorAccountRole(
-  value: unknown,
-): ConnectorAccountRole | undefined {
-  if (typeof value !== "string" || !value.trim()) return undefined;
-  return CONNECTOR_SERVER_ROLE_TO_UI_ROLE[value.trim().toUpperCase()];
-}
-
-function normalizeConnectorStatus(value: unknown): ConnectorAccountStatus {
-  switch (value) {
-    case "connected":
-    case "pending":
-    case "needs-reauth":
-    case "disconnected":
-    case "error":
-      return value;
-    case "disabled":
-    case "revoked":
-      return "disconnected";
-    default:
-      return "unknown";
-  }
-}
-
-function isConnectorRoleValue(value: unknown): value is ConnectorAccountRole {
-  return normalizeConnectorAccountRole(value) !== undefined;
-}
-
-function normalizeConnectorPurposeList(
-  value: unknown,
-): ConnectorAccountPurpose[] {
-  const values = Array.isArray(value)
-    ? value
-    : typeof value === "string"
-      ? [value]
-      : [];
-  return values
-    .map((item) => (typeof item === "string" ? item.trim() : ""))
-    .filter(
-      (item): item is ConnectorAccountPurpose =>
-        Boolean(item) && !isConnectorRoleValue(item),
-    );
-}
-
-function recordFromUnknown(raw: unknown): Record<string, unknown> {
-  return raw && typeof raw === "object" && !Array.isArray(raw)
-    ? (raw as Record<string, unknown>)
-    : {};
-}
-
-function nonEmptyString(value: unknown): string | null {
-  return typeof value === "string" && value.trim() ? value : null;
-}
-
-function connectorAccountLabel(record: Record<string, unknown>): string {
-  return (
-    nonEmptyString(record.label) ??
-    nonEmptyString(record.displayHandle) ??
-    nonEmptyString(record.handle) ??
-    nonEmptyString(record.externalId) ??
-    String(record.id ?? "unknown")
-  );
-}
-
-function connectorAccountHandle(
-  record: Record<string, unknown>,
-): string | null {
-  return typeof record.handle === "string"
-    ? record.handle
-    : typeof record.displayHandle === "string"
-      ? record.displayHandle
-      : null;
-}
-
-function connectorAccountMetadata(
-  record: Record<string, unknown>,
-): Record<string, unknown> | undefined {
-  return record.metadata && typeof record.metadata === "object"
-    ? (record.metadata as Record<string, unknown>)
-    : undefined;
-}
-
-export function normalizeConnectorAccountRecord(
-  provider: string,
-  connectorId: string,
-  raw: unknown,
-): ConnectorAccountRecord {
-  const record = recordFromUnknown(raw);
-  // #12087 Item 32: an unrecognized/missing server role stays `undefined` — it
-  // is NOT defaulted to OWNER. The UI renders such accounts outside the Owner
-  // section (ConnectorAccountList "UNKNOWN" bucket) rather than mislabelling
-  // them as the owner's own account.
-  const role =
-    normalizeConnectorAccountRole(record.role) ??
-    normalizeConnectorAccountRole(record.purpose);
-  return {
-    ...(record as Partial<ConnectorAccountRecord>),
-    id: String(record.id ?? ""),
-    provider:
-      typeof record.provider === "string" && record.provider
-        ? record.provider
-        : provider,
-    connectorId,
-    label: connectorAccountLabel(record),
-    handle: connectorAccountHandle(record),
-    externalId:
-      typeof record.externalId === "string" ? record.externalId : null,
-    status: normalizeConnectorStatus(record.status),
-    role,
-    purpose: normalizeConnectorPurposeList(record.purpose),
-    isDefault: record.isDefault === true,
-    enabled: record.enabled !== false,
-    metadata: connectorAccountMetadata(record),
-  };
-}
-
-function normalizeConnectorAccountsListResponse(
-  provider: string,
-  connectorId: string,
-  raw: unknown,
-): ConnectorAccountsListResponse {
-  const record =
-    raw && typeof raw === "object" && !Array.isArray(raw)
-      ? (raw as Record<string, unknown>)
-      : {};
-  const accounts = Array.isArray(record.accounts)
-    ? record.accounts.map((item) =>
-        normalizeConnectorAccountRecord(provider, connectorId, item),
-      )
-    : [];
-  const defaultAccountId =
-    typeof record.defaultAccountId === "string"
-      ? record.defaultAccountId
-      : (accounts.find(
-          (account) =>
-            account.isDefault === true &&
-            account.enabled !== false &&
-            account.status === "connected",
-        )?.id ?? null);
-  return {
-    provider:
-      typeof record.provider === "string" && record.provider
-        ? record.provider
-        : provider,
-    connectorId,
-    defaultAccountId,
-    accounts,
-  };
-}
-
-function normalizeConnectorAccountActionResult(
-  provider: string,
-  connectorId: string,
-  raw: unknown,
-): ConnectorAccountActionResult {
-  const record = recordFromUnknown(raw);
-  const account =
-    record.account ?? (typeof record.id === "string" ? record : null);
-  const flow = recordFromUnknown(record.flow);
-  return {
-    ...(record as Partial<ConnectorAccountActionResult>),
-    ok: normalizeConnectorActionOk(record, account),
-    account: account
-      ? normalizeConnectorAccountRecord(provider, connectorId, account)
-      : undefined,
-    accounts: Array.isArray(record.accounts)
-      ? record.accounts.map((item) =>
-          normalizeConnectorAccountRecord(provider, connectorId, item),
-        )
-      : undefined,
-    defaultAccountId:
-      typeof record.defaultAccountId === "string"
-        ? record.defaultAccountId
-        : null,
-    flow: Object.keys(flow).length > 0 ? flow : undefined,
-    authUrl: connectorActionAuthUrl(record, flow),
-    status: connectorActionStatus(record, flow),
-    error: typeof record.error === "string" ? record.error : undefined,
-  };
-}
-
-function normalizeConnectorActionOk(
-  record: Record<string, unknown>,
-  account: unknown,
-): boolean {
-  return typeof record.ok === "boolean"
-    ? record.ok
-    : record.deleted === true || (!("error" in record) && account !== null);
-}
-
-function connectorActionAuthUrl(
-  record: Record<string, unknown>,
-  flow: Record<string, unknown>,
-): string | undefined {
-  if (typeof record.authUrl === "string") return record.authUrl;
-  return typeof flow.authUrl === "string" ? flow.authUrl : undefined;
-}
-
-function connectorActionStatus(
-  record: Record<string, unknown>,
-  flow: Record<string, unknown>,
-): ConnectorAccountStatus | undefined {
-  if (typeof record.status === "string") {
-    return normalizeConnectorStatus(record.status);
-  }
-  return typeof flow.status === "string"
-    ? normalizeConnectorStatus(flow.status)
-    : undefined;
-}
-
-function connectorAccountAuditPath(
-  provider: string,
-  query: ConnectorAccountAuditEventsQuery = {},
-): string {
-  const params = new URLSearchParams();
-  if (query.accountId) params.set("accountId", query.accountId);
-  if (query.action) params.set("action", query.action);
-  if (query.outcome) params.set("outcome", query.outcome);
-  if (typeof query.limit === "number") {
-    params.set("limit", String(query.limit));
-  }
-  const qs = params.toString();
-  return `/api/connectors/${encodeURIComponent(provider)}/audit/events${
-    qs ? `?${qs}` : ""
-  }`;
-}
-
 ElizaClient.prototype.listConnectorAccounts = async function (
   this: ElizaClient,
   provider,
@@ -2589,311 +2034,6 @@ ElizaClient.prototype.getTriggerHealth = async function (this: ElizaClient) {
   return workflowSurfaceClient(this).fetch("/api/triggers/health");
 };
 
-ElizaClient.prototype.getTrainingStatus = async function (this: ElizaClient) {
-  return this.fetch("/api/training/status");
-};
-
-ElizaClient.prototype.listTrainingTrajectories = async function (
-  this: ElizaClient,
-  opts?,
-) {
-  const params = new URLSearchParams();
-  if (typeof opts?.limit === "number") params.set("limit", String(opts.limit));
-  if (typeof opts?.offset === "number")
-    params.set("offset", String(opts.offset));
-  const qs = params.toString();
-  return this.fetch(`/api/training/trajectories${qs ? `?${qs}` : ""}`);
-};
-
-ElizaClient.prototype.getTrainingTrajectory = async function (
-  this: ElizaClient,
-  trajectoryId,
-) {
-  return this.fetch(
-    `/api/training/trajectories/${encodeURIComponent(trajectoryId)}`,
-  );
-};
-
-ElizaClient.prototype.listTrainingDatasets = async function (
-  this: ElizaClient,
-) {
-  return this.fetch("/api/training/datasets");
-};
-
-ElizaClient.prototype.buildTrainingDataset = async function (
-  this: ElizaClient,
-  options?,
-) {
-  return this.fetch("/api/training/datasets/build", {
-    method: "POST",
-    body: JSON.stringify(options ?? {}),
-  });
-};
-
-ElizaClient.prototype.writeTrainingBenchmarkMatrix = async function (
-  this: ElizaClient,
-  options,
-) {
-  return this.fetch("/api/training/benchmarks/matrix", {
-    method: "POST",
-    body: JSON.stringify(options),
-  });
-};
-
-ElizaClient.prototype.listTrainingJobs = async function (this: ElizaClient) {
-  return this.fetch("/api/training/jobs");
-};
-
-ElizaClient.prototype.startTrainingJob = async function (
-  this: ElizaClient,
-  options?,
-) {
-  return this.fetch("/api/training/jobs", {
-    method: "POST",
-    body: JSON.stringify(options ?? {}),
-  });
-};
-
-ElizaClient.prototype.getTrainingJob = async function (
-  this: ElizaClient,
-  jobId,
-) {
-  return this.fetch(`/api/training/jobs/${encodeURIComponent(jobId)}`);
-};
-
-ElizaClient.prototype.cancelTrainingJob = async function (
-  this: ElizaClient,
-  jobId,
-) {
-  return this.fetch(`/api/training/jobs/${encodeURIComponent(jobId)}/cancel`, {
-    method: "POST",
-  });
-};
-
-type VastTrainingRegistryEntry = {
-  eliza_short_name?: string;
-  eliza_repo_id?: string;
-  gguf_repo_id?: string;
-  base_hf_id?: string;
-  tier?: string;
-  inference_max_context?: number;
-};
-
-type VastTrainingRegistryListing = {
-  short_name?: string;
-  entry?: VastTrainingRegistryEntry;
-};
-
-type VastTrainingRegistryResponse = {
-  loaded_at?: string | null;
-  entries?: VastTrainingRegistryListing[];
-};
-
-function trainingModelRecordFromVastRegistry(
-  item: VastTrainingRegistryListing,
-  loadedAt: string | null | undefined,
-): TrainingModelRecord | null {
-  const entry = item.entry;
-  const id = item.short_name ?? entry?.eliza_short_name;
-  if (!id || !entry) return null;
-  return {
-    id,
-    createdAt: loadedAt ?? "",
-    jobId: `vast-registry:${id}`,
-    outputDir: entry.gguf_repo_id ?? entry.eliza_repo_id ?? "",
-    modelPath: entry.gguf_repo_id ?? entry.eliza_repo_id ?? id,
-    adapterPath: null,
-    sourceModel: entry.base_hf_id ?? null,
-    backend: "cuda",
-    ollamaModel: null,
-    active: false,
-    benchmark: {
-      status: "not_run",
-      lastRunAt: null,
-      output: entry.tier
-        ? `Eliza-1 ${entry.tier} registry entry`
-        : "Eliza-1 registry entry",
-    },
-  };
-}
-
-ElizaClient.prototype.listTrainingModels = async function (this: ElizaClient) {
-  const listed = await this.fetch<{ models?: TrainingModelRecord[] }>(
-    "/api/training/models",
-  );
-  if (Array.isArray(listed.models) && listed.models.length > 0) {
-    return { models: listed.models };
-  }
-  try {
-    const registry = await this.fetch<VastTrainingRegistryResponse>(
-      "/api/training/vast/models",
-    );
-    const registryModels = (registry.entries ?? [])
-      .map((item) =>
-        trainingModelRecordFromVastRegistry(item, registry.loaded_at),
-      )
-      .filter((model): model is TrainingModelRecord => model !== null);
-    if (registryModels.length > 0) return { models: registryModels };
-  } catch {
-    // The legacy training service and Vast registry are optional independent
-    // surfaces; keep the legacy response when the registry is unavailable.
-  }
-  return { models: listed.models ?? [] };
-};
-
-ElizaClient.prototype.importTrainingModelToOllama = async function (
-  this: ElizaClient,
-  modelId,
-  options?,
-) {
-  return this.fetch(
-    `/api/training/models/${encodeURIComponent(modelId)}/import-ollama`,
-    {
-      method: "POST",
-      body: JSON.stringify(options ?? {}),
-    },
-  );
-};
-
-ElizaClient.prototype.activateTrainingModel = async function (
-  this: ElizaClient,
-  modelId,
-  providerModel?,
-) {
-  return this.fetch(
-    `/api/training/models/${encodeURIComponent(modelId)}/activate`,
-    {
-      method: "POST",
-      body: JSON.stringify({ providerModel }),
-    },
-  );
-};
-
-ElizaClient.prototype.benchmarkTrainingModel = async function (
-  this: ElizaClient,
-  modelId,
-) {
-  return this.fetch(
-    `/api/training/models/${encodeURIComponent(modelId)}/benchmark`,
-    { method: "POST" },
-  );
-};
-
-ElizaClient.prototype.buildTrainingAnalysisIndex = async function (
-  this: ElizaClient,
-  options?,
-) {
-  return this.fetch("/api/training/analysis/index", {
-    method: "POST",
-    body: JSON.stringify(options ?? {}),
-  });
-};
-
-ElizaClient.prototype.buildTrainingReadinessReport = async function (
-  this: ElizaClient,
-  options?,
-) {
-  return this.fetch("/api/training/analysis/readiness", {
-    method: "POST",
-    body: JSON.stringify(options ?? {}),
-  });
-};
-
-ElizaClient.prototype.ingestHuggingFaceTrainingDataset = async function (
-  this: ElizaClient,
-  options?,
-) {
-  return this.fetch("/api/training/datasets/ingest-hf", {
-    method: "POST",
-    body: JSON.stringify(options ?? {}),
-  });
-};
-
-ElizaClient.prototype.stageEliza1Bundle = async function (
-  this: ElizaClient,
-  options?,
-) {
-  return this.fetch("/api/training/models/stage-eliza1-bundle", {
-    method: "POST",
-    body: JSON.stringify(options ?? {}),
-  });
-};
-
-ElizaClient.prototype.runFeedTrainingGeneration = async function (
-  this: ElizaClient,
-  options?,
-) {
-  return this.fetch("/api/training/feed/generate", {
-    method: "POST",
-    body: JSON.stringify(options ?? {}),
-  });
-};
-
-ElizaClient.prototype.runTrainingScenarios = async function (
-  this: ElizaClient,
-  options?,
-) {
-  return this.fetch("/api/training/scenarios/run", {
-    method: "POST",
-    body: JSON.stringify(options ?? {}),
-  });
-};
-
-ElizaClient.prototype.runTrainingActionBenchmark = async function (
-  this: ElizaClient,
-  options?,
-) {
-  return this.fetch("/api/training/benchmarks/action-selection/run", {
-    method: "POST",
-    body: JSON.stringify(options ?? {}),
-  });
-};
-
-ElizaClient.prototype.runTrainingBenchmarkVsCerebras = async function (
-  this: ElizaClient,
-  options?,
-) {
-  return this.fetch("/api/training/benchmarks/run-vs-cerebras", {
-    method: "POST",
-    body: JSON.stringify(options ?? {}),
-  });
-};
-
-ElizaClient.prototype.runTrainingLocalEvalComparison = async function (
-  this: ElizaClient,
-  options?,
-) {
-  return this.fetch("/api/training/evals/run-local-comparison", {
-    method: "POST",
-    body: JSON.stringify(options ?? {}),
-  });
-};
-
-ElizaClient.prototype.runTrainingCollection = async function (
-  this: ElizaClient,
-  options?,
-) {
-  return this.fetch("/api/training/collect", {
-    method: "POST",
-    body: JSON.stringify(options ?? {}),
-  });
-};
-
-ElizaClient.prototype.listTrainingCollections = async function (
-  this: ElizaClient,
-  options?,
-) {
-  const params = new URLSearchParams();
-  if (options?.limit !== undefined) {
-    params.set("limit", String(options.limit));
-  }
-  if (options?.root) {
-    params.set("root", options.root);
-  }
-  const query = params.toString();
-  return this.fetch(`/api/training/collections${query ? `?${query}` : ""}`);
-};
-
 ElizaClient.prototype.getPlugins = async function (this: ElizaClient) {
   return this.fetch("/api/plugins");
 };
@@ -2916,7 +2056,9 @@ ElizaClient.prototype.getModelsCatalog = async function (
   // takes tens of seconds on a cold cache — far past the client's 10s fetch
   // budget. Catalog consumers (settings panel, slash completions) only need
   // the validated catalog, which is local static tables + one file read.
-  return this.fetch("/api/models?catalogOnly=1", init);
+  return init === undefined
+    ? this.fetch("/api/models?catalogOnly=1")
+    : this.fetch("/api/models?catalogOnly=1", init);
 };
 
 ElizaClient.prototype.getModelsConfig = async function (this: ElizaClient) {
@@ -3176,10 +2318,12 @@ function parseSecurityAuditPayload(
       onEvent(parsed);
     }
   } catch (error) {
-    console.warn(
-      "[client-agent] dropped malformed security audit stream frame",
-      { payload, error },
-    );
+    reportRendererDiagnostic({
+      scope: "client-agent.security-audit-frame",
+      severity: "warning",
+      error,
+      context: { payload },
+    });
   }
 }
 
@@ -4859,131 +4003,5 @@ ElizaClient.prototype.saveStreamSettings = async function (
   return this.fetch("/api/stream/settings", {
     method: "POST",
     body: JSON.stringify({ settings }),
-  });
-};
-
-// ---------------------------------------------------------------------------
-// Multi-account routes (WS3)
-// ---------------------------------------------------------------------------
-
-ElizaClient.prototype.listAccounts = async function (this: ElizaClient) {
-  return this.fetch<AccountsListResponse>("/api/accounts");
-};
-
-ElizaClient.prototype.createApiKeyAccount = async function (
-  this: ElizaClient,
-  providerId,
-  body,
-) {
-  return this.fetch<LinkedAccountConfig>(
-    `/api/accounts/${encodeURIComponent(providerId)}`,
-    {
-      method: "POST",
-      body: JSON.stringify({ source: "api-key", ...body }),
-    },
-  );
-};
-
-ElizaClient.prototype.patchAccount = async function (
-  this: ElizaClient,
-  providerId,
-  accountId,
-  body,
-) {
-  return this.fetch<LinkedAccountConfig>(
-    `/api/accounts/${encodeURIComponent(providerId)}/${encodeURIComponent(accountId)}`,
-    {
-      method: "PATCH",
-      body: JSON.stringify(body),
-    },
-  );
-};
-
-ElizaClient.prototype.deleteAccount = async function (
-  this: ElizaClient,
-  providerId,
-  accountId,
-) {
-  return this.fetch<{ deleted: boolean }>(
-    `/api/accounts/${encodeURIComponent(providerId)}/${encodeURIComponent(accountId)}`,
-    { method: "DELETE" },
-  );
-};
-
-ElizaClient.prototype.testAccount = async function (
-  this: ElizaClient,
-  providerId,
-  accountId,
-) {
-  return this.fetch<AccountTestResult>(
-    `/api/accounts/${encodeURIComponent(providerId)}/${encodeURIComponent(accountId)}/test`,
-    { method: "POST" },
-  );
-};
-
-ElizaClient.prototype.refreshAccountUsage = async function (
-  this: ElizaClient,
-  providerId,
-  accountId,
-) {
-  return this.fetch<AccountRefreshUsageResult>(
-    `/api/accounts/${encodeURIComponent(providerId)}/${encodeURIComponent(accountId)}/refresh-usage`,
-    { method: "POST" },
-  );
-};
-
-ElizaClient.prototype.startAccountOAuth = async function (
-  this: ElizaClient,
-  providerId,
-  body,
-) {
-  return this.fetch<AccountOAuthStartResult>(
-    `/api/accounts/${encodeURIComponent(providerId)}/oauth/start`,
-    {
-      method: "POST",
-      body: JSON.stringify(body),
-    },
-  );
-};
-
-ElizaClient.prototype.submitAccountOAuthCode = async function (
-  this: ElizaClient,
-  providerId,
-  body,
-) {
-  return this.fetch<{ accepted: boolean }>(
-    `/api/accounts/${encodeURIComponent(providerId)}/oauth/submit-code`,
-    {
-      method: "POST",
-      body: JSON.stringify(body),
-    },
-  );
-};
-
-ElizaClient.prototype.cancelAccountOAuth = async function (
-  this: ElizaClient,
-  providerId,
-  body,
-) {
-  return this.fetch<{ cancelled: boolean }>(
-    `/api/accounts/${encodeURIComponent(providerId)}/oauth/cancel`,
-    {
-      method: "POST",
-      body: JSON.stringify(body),
-    },
-  );
-};
-
-ElizaClient.prototype.patchProviderStrategy = async function (
-  this: ElizaClient,
-  providerId,
-  body,
-) {
-  return this.fetch<{
-    providerId: LinkedAccountProviderId;
-    strategy: AccountStrategy;
-  }>(`/api/providers/${encodeURIComponent(providerId)}/strategy`, {
-    method: "PATCH",
-    body: JSON.stringify(body),
   });
 };

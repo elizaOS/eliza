@@ -94,7 +94,7 @@ function MockView({
         ref={(el) => {
           refs.current["send.submit"] = el;
         }}
-        className="rounded bg-orange-500 px-4 py-2 text-sm text-white"
+        className="rounded bg-accent px-4 py-2 text-sm text-accent-fg"
       >
         Send
       </button>
@@ -132,5 +132,6 @@ export const Idle: Story = {
 
 /** Rendered with no surrounding AgentSurfaceProvider — no registry, renders nothing. */
 export const NoSurface: Story = {
+  tags: ["story-gate-expect-blank"],
   render: () => <AgentElementOverlay />,
 };

@@ -4,6 +4,7 @@
  * Hook wrapping MediaRecorder capture for the voice-clone surface (start/stop, level, blob).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { reportRendererDiagnostic } from "../../../utils/renderer-diagnostics";
 import {
   getSupportedMimeType,
   supportsGetUserMedia,
@@ -132,7 +133,7 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
         setRecordingTime((prev) => prev + 1);
       }, 1000);
     } catch (err) {
-      console.error("Error starting recording:", err);
+      reportRendererDiagnostic({ scope: "voice.recording.start", error: err });
 
       if (err instanceof Error) {
         if (

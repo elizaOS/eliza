@@ -23,7 +23,6 @@ describeLive(
     it("fires onStreamChunk per token from a live cloud model", async () => {
       const { runtime } = harness();
       const handler = openaiPlugin.models?.[ModelType.TEXT_SMALL];
-      expect(typeof handler).toBe("function");
       if (!handler) throw new Error("TEXT_SMALL handler is unavailable");
 
       const chunks: Array<{ atMs: number; text: string }> = [];

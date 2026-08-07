@@ -27,7 +27,16 @@ const meta = {
   },
   decorators: [
     (Story) => (
-      <div style={{ width: 360, padding: 24, background: "#111" }}>
+      <div
+        className="first-run-screen"
+        style={{
+          position: "relative",
+          width: 360,
+          height: "auto",
+          padding: 24,
+          background: "#f5f7fa",
+        }}
+      >
         <Story />
       </div>
     ),
@@ -112,6 +121,7 @@ export const NoLabel: Story = {
     children: ({ describedBy, invalid }) => (
       <Input
         id="bare"
+        aria-label="Bare field"
         defaultValue=""
         placeholder="Bare field"
         aria-describedby={describedBy}

@@ -1,3 +1,4 @@
+/** Verifies voice-session client (real framing/state/barge-in/reconnect) through the package's configured test harness. */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -349,6 +350,66 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
     const sttMark = marks.find((m) => m.name === "stt_final");
     expect(sttMark?.traceId).toBe("T1");
     await client.stop();
+  });
+
+  it("mutes the live microphone as PCM silence without ending the session", async () => {
+    const mint = makeMintFetch();
+    const ws = makeWsFactory();
+    const micCtx = new FakeMicAudioContext(16_000);
+    const clientWithMic = createVoiceSessionClient({
+      agentId: "11111111-1111-1111-1111-111111111111",
+      conversationId: "22222222-2222-2222-2222-222222222222",
+      getConsentNonce: async () => "mute",
+      fetch: mint.fetch,
+      webSocketFactory: ws.factory,
+      getUserMedia: fakeGetUserMedia(),
+      createMicAudioContext: () => micCtx,
+      createPlaybackAudioContext: () => new FakePlaybackAudioContext(16_000),
+    });
+    await clientWithMic.start();
+    await flush();
+    const socket = ws.last();
+    socket.emitOpen();
+    socket.emitControl({
+      t: "ready",
+      sessionId: "sess-mute",
+      traceId: "T-mute",
+    });
+    await flush();
+
+    const input = new Float32Array(1600).fill(0.25);
+    micCtx.scriptNode?.feed(input);
+    let frames = socket.sent.filter(
+      (value): value is ArrayBuffer => value instanceof ArrayBuffer,
+    );
+    expect(frames).toHaveLength(1);
+    expect(
+      Array.from(new Uint8Array(frames[0])).some((byte) => byte !== 0),
+    ).toBe(true);
+
+    clientWithMic.setMicrophoneMuted(true);
+    expect(clientWithMic.microphoneMuted).toBe(true);
+    micCtx.scriptNode?.feed(input);
+    frames = socket.sent.filter(
+      (value): value is ArrayBuffer => value instanceof ArrayBuffer,
+    );
+    expect(frames).toHaveLength(2);
+    expect(
+      Array.from(new Uint8Array(frames[1])).every((byte) => byte === 0),
+    ).toBe(true);
+    expect(clientWithMic.state.phase).toBe("listening");
+
+    clientWithMic.setMicrophoneMuted(false);
+    micCtx.scriptNode?.feed(input);
+    frames = socket.sent.filter(
+      (value): value is ArrayBuffer => value instanceof ArrayBuffer,
+    );
+    expect(frames).toHaveLength(3);
+    expect(
+      Array.from(new Uint8Array(frames[2])).some((byte) => byte !== 0),
+    ).toBe(true);
+    await clientWithMic.stop();
+    expect(clientWithMic.microphoneMuted).toBe(false);
   });
 
   it("an empty stt_final (noise EOT) loops straight back to listening (#16662)", async () => {

@@ -28,6 +28,7 @@ import {
   sql,
 } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
+import { ensureAgentSandboxSchema } from "../../db/ensure-agent-sandbox-schema";
 import { dbWrite } from "../../db/helpers";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import {
@@ -41,6 +42,7 @@ import {
 } from "../../db/repositories/jobs";
 import {
   type AgentExecutionTier,
+  type AgentSandboxStatus,
   agentSandboxes,
   UPGRADE_FAILURE_TARGET_MARKER_PREFIX,
 } from "../../db/schemas/agent-sandboxes";
@@ -71,6 +73,7 @@ import { appsService } from "./apps";
 import { dispatchContainerJob, getContainerExecutorDeps } from "./container-job-service";
 import { readContainerProvisionJobData } from "./container-jobs-data";
 import { dispatchContainerStopJob } from "./container-stop-job-service";
+import { holdsCountedNodeSlot, isDeletionContinuation } from "./docker-node-workload-queries";
 import {
   configureElizaLifecycleTransaction,
   elizaAdminCanaryRolloutAdvisoryLockSql,
@@ -735,7 +738,7 @@ interface LifecycleSandboxRow {
   agent_name: string | null;
   created_at: Date;
   execution_tier: AgentExecutionTier;
-  status: string;
+  status: AgentSandboxStatus;
   updated_at: Date | null;
   claimed_at: Date | null;
   warm_claim_credential_state: "pending" | "attested" | "ready" | "failed" | null;
@@ -744,6 +747,7 @@ interface LifecycleSandboxRow {
   warm_claim_key_fingerprint: string | null;
   warm_claim_attested_environment_revision: number | null;
   environment_revision: number;
+  lifecycle_revision: number;
   user_id: string;
   sandbox_id: string | null;
   node_id: string | null;
@@ -790,7 +794,7 @@ interface LifecycleJobOptions<TData extends object> {
   /**
    * Called inside the transaction after the sandbox row is fetched and
    * before the existing-job lookup. Throw to abort the enqueue (e.g.
-   * provision's `expectedUpdatedAt` race check).
+   * provision's lifecycle-revision race check).
    */
   validateSandbox?: (sandbox: LifecycleSandboxRow) => void;
   /**
@@ -1155,6 +1159,7 @@ export class ProvisioningJobService {
         warm_claim_attested_environment_revision:
           agentSandboxes.warm_claim_attested_environment_revision,
         environment_revision: agentSandboxes.environment_revision,
+        lifecycle_revision: agentSandboxes.lifecycle_revision,
         user_id: agentSandboxes.user_id,
         sandbox_id: agentSandboxes.sandbox_id,
         node_id: agentSandboxes.node_id,
@@ -1174,6 +1179,7 @@ export class ProvisioningJobService {
           eq(agentSandboxes.organization_id, opts.organizationId),
         ),
       )
+      .for("update")
       .limit(1);
 
     if (!sandbox) {
@@ -1315,7 +1321,7 @@ export class ProvisioningJobService {
     userId: string;
     agentName: string;
     webhookUrl?: string;
-    expectedUpdatedAt?: Date | string | null;
+    expectedLifecycleRevision?: number;
   }): Promise<EnqueueAgentProvisionResult> {
     return this.enqueueLifecycleJob<AgentProvisionJobData>(
       this.agentProvisionLifecycleOptions(params),
@@ -1355,9 +1361,9 @@ export class ProvisioningJobService {
     userId: string;
     agentName: string;
     webhookUrl?: string;
-    expectedUpdatedAt?: Date | string | null;
+    expectedLifecycleRevision?: number;
   }): LifecycleJobOptions<AgentProvisionJobData> {
-    const expected = params.expectedUpdatedAt;
+    const expected = params.expectedLifecycleRevision;
     return {
       jobType: JOB_TYPES.AGENT_PROVISION,
       jobData: {
@@ -1375,21 +1381,14 @@ export class ProvisioningJobService {
       // DB assignment + Docker pull/run (10-30s) + health check (up to 60s)
       estimatedDurationMs: 90_000,
       logName: "agent_provision",
-      validateSandbox: expected
-        ? (sandbox) => {
-            const expectedMs = new Date(expected).getTime();
-            const currentMs = sandbox.updated_at
-              ? new Date(sandbox.updated_at).getTime()
-              : Number.NaN;
-            if (
-              Number.isFinite(expectedMs) &&
-              Number.isFinite(currentMs) &&
-              currentMs !== expectedMs
-            ) {
-              throw new Error("Agent state changed while starting");
+      validateSandbox:
+        expected !== undefined
+          ? (sandbox) => {
+              if (sandbox.lifecycle_revision !== expected) {
+                throw new Error("Agent state changed while starting");
+              }
             }
-          }
-        : undefined,
+          : undefined,
     };
   }
 
@@ -1415,6 +1414,10 @@ export class ProvisioningJobService {
       executionTier: AgentExecutionTier;
     };
   }): Promise<EnqueueAgentDeleteResult> {
+    // Stamps `deletion_allocation_counted`, and this runs inside the
+    // provisioning worker, whose deploy does not gate on migrate-db. Ensure is
+    // memoized, so the DDL runs once per isolate rather than once per enqueue.
+    await ensureAgentSandboxSchema();
     const expectedIdentity = params.expectedIdentity;
     const expectedCreatedAt = expectedIdentity ? new Date(expectedIdentity.createdAt) : null;
     if (expectedCreatedAt && !Number.isFinite(expectedCreatedAt.getTime())) {
@@ -1564,6 +1567,16 @@ export class ProvisioningJobService {
             status: "deletion_pending" as const,
             deletion_attempt_id: deletionAttemptId,
             ...(continuesEarlierDeletion ? {} : { deletion_started_at: new Date() }),
+            // Gated on the BROADER continuation signal than the start time is.
+            // `continuesEarlierDeletion` only checks `deletion_started_at`, and
+            // nothing ties that column to `status`, so a row already sitting in
+            // deletion_pending with null intent columns would take the "fresh"
+            // branch and re-derive ownership from its OWN deletion status —
+            // reading as "still counted" and freeing a slot on every recovery
+            // sweep, the exact double-free this column exists to stop (#17185).
+            ...(isDeletionContinuation(sandbox)
+              ? {}
+              : { deletion_allocation_counted: holdsCountedNodeSlot(sandbox) }),
             billing_status: "suspended" as const,
             scheduled_shutdown_at: null,
             shutdown_warning_sent_at: null,
@@ -4901,7 +4914,7 @@ export class ProvisioningJobService {
             organizationId: r.organization_id,
             userId: r.user_id,
             agentName: r.agent_name ?? r.id,
-            expectedUpdatedAt: r.updated_at,
+            expectedLifecycleRevision: r.lifecycle_revision,
           });
           reprovisioned += 1;
         } catch (error) {

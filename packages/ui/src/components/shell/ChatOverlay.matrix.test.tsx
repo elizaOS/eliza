@@ -1,3 +1,4 @@
+/** Verifies free-rest release bands + detent magnetism (matrix: FREE / slow drag rows) through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // State-matrix gap coverage for the continuous chat sheet — the rows of
@@ -11,6 +12,7 @@
 // performance.now (jsdom otherwise reads every move as a flick).
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -96,14 +98,18 @@ const variant = () => sheet().getAttribute("data-variant");
  *  mid-gesture pointermove (release-time moves are flushed synchronously, but
  *  a sequence that must be OBSERVED in order — a reversal, a mid-drag commit —
  *  needs every critical sample delivered before the next). */
-const frame = (): Promise<void> =>
-  new Promise((resolve) => {
-    if (typeof requestAnimationFrame === "function") {
-      requestAnimationFrame(() => resolve());
-    } else {
-      resolve();
-    }
-  });
+const frame = async (): Promise<void> => {
+  await act(
+    () =>
+      new Promise<void>((resolve) => {
+        if (typeof requestAnimationFrame === "function") {
+          requestAnimationFrame(() => resolve());
+        } else {
+          resolve();
+        }
+      }),
+  );
+};
 
 /**
  * A deliberate SLOW drag: mocked monotonic clock + bridged event timestamps so
@@ -247,6 +253,29 @@ describe("free-rest release bands + detent magnetism (matrix: FREE / slow drag r
     await slowPullUpBy(MAGNET - 10); // 54: "not enough to see a full row"
     expect(chatState()).toBe("INPUT");
     expect(variant()).toBe("closed");
+  });
+
+  it("keeps a short canceled preview mounted until its return spring reaches INPUT", async () => {
+    render(<ChatOverlay controller={makeController()} />);
+    const g = grabber();
+    fireEvent.pointerDown(g, { clientY: 760, pointerId: 46 });
+    fireEvent.pointerMove(g, { clientY: 710, pointerId: 46 });
+    await frame();
+    await waitFor(() =>
+      expect(screen.queryByTestId("chat-thread")).toBeTruthy(),
+    );
+
+    fireEvent.pointerCancel(g, { clientY: 710, pointerId: 46 });
+
+    // Pointer termination must not remove the moving body. The return spring
+    // remains visible, then the collapsed-state listener unmounts it at rest.
+    expect(thread()).toBeTruthy();
+    await waitFor(
+      () => expect(screen.queryByTestId("chat-thread")).toBeNull(),
+      {
+        timeout: 4000,
+      },
+    );
   });
 
   it("snaps to FULL when released within 64px of the top", async () => {
@@ -398,6 +427,7 @@ describe("no lingering state across consecutive gestures", () => {
     // A fresh short flick up must step to FULL — the previous gesture's
     // maximize peak is that gesture's state, not this one's.
     flick(grabber(), 400, 340);
+    await frame();
     expect(detent()).toBe("full");
     expect(maximized()).toBeNull();
   });
@@ -427,7 +457,7 @@ describe("no lingering state across consecutive gestures", () => {
   });
 });
 
-describe("maximize commit hysteresis (MAXIMIZE_COMMIT_T / MAXIMIZE_RELEASE_T)", () => {
+describe("maximize commit hysteresis", () => {
   it("pointer jitter at the commit threshold cannot flap the maximize on/off", async () => {
     const impacts: string[] = [];
     (globalThis as { Capacitor?: unknown }).Capacitor = {
@@ -451,8 +481,8 @@ describe("maximize commit hysteresis (MAXIMIZE_COMMIT_T / MAXIMIZE_RELEASE_T)", 
     // the flap detection below is timing-proof.
     await waitFor(() => expect(maximized()).toBe("true"));
     const commitHaptics = impacts.length;
-    // ±6px jitter around the committed point: hysteresis (commit 0.3 / release
-    // 0.15 of the over-pull gap) must hold the state steady.
+    // ±6px jitter around the committed point must stay inside the release band
+    // and hold the state steady.
     for (const y of [34, 22, 32, 24, 30, 26]) {
       fireEvent.pointerMove(g, { clientY: y, pointerId: 46 });
       await frame();
@@ -516,13 +546,14 @@ describe("one haptic per detent change; none sub-threshold (matrix invariant)", 
 });
 
 describe("thread-less grabber tap (matrix: INPUT tap row)", () => {
-  it("focuses the composer instead of opening an empty sheet", () => {
+  it("focuses the composer instead of opening an empty sheet", async () => {
     render(
       <ChatOverlay controller={makeController({ messages: [] } as never)} />,
     );
     const input = screen.getByLabelText("message");
     fireEvent.pointerDown(grabber(), { clientY: 420, pointerId: 47 });
     fireEvent.pointerUp(grabber(), { clientY: 420, pointerId: 47 });
+    await frame();
     expect(variant()).toBe("closed");
     expect(document.activeElement).toBe(input);
   });

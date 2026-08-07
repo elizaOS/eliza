@@ -19,7 +19,9 @@ const translationValue: TranslationContextValue = {
 function TranslationDecorator({ children }: { children: ReactNode }) {
   return (
     <TranslationCtx.Provider value={translationValue}>
-      <div className="max-w-xl mx-auto p-8">{children}</div>
+      <div className="mx-auto min-h-96 max-w-xl bg-[#f5f7fa] p-8">
+        {children}
+      </div>
     </TranslationCtx.Provider>
   );
 }

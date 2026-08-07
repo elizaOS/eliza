@@ -29,10 +29,17 @@ import {
 import { resolveSharedNavIntent, type SharedNavIntent } from "./shared-nav-intent";
 
 export interface SharedTurnMessage {
+  /** Stable message id used by SSE, REST history, and storage merge paths. */
+  id?: string;
   role: "user" | "assistant";
   content: string;
   /** Epoch-ms timestamp used by REST chat clients to reconcile persisted turns. */
   createdAt?: number;
+  /**
+   * True when an assistant message is a partial prefix from a canceled or failed
+   * stream. Model history keeps the text but annotates it as incomplete.
+   */
+  interrupted?: boolean;
 }
 
 export interface SharedAgentCharacter {
@@ -52,8 +59,15 @@ export interface RunSharedAgentTurnInput {
   history: SharedTurnMessage[];
   /** The incoming user message or event text. */
   message: string;
+  /** Stable ids assigned by the transport for the persisted user/assistant pair. */
+  messageIds?: {
+    user: string;
+    assistant: string;
+  };
   /** Durable accounting transition invoked at the final provider handoff. */
   onProviderDispatch?: () => Promise<void>;
+  /** Cancels provider generation when the response consumer disconnects. */
+  abortSignal?: AbortSignal;
 }
 
 export interface RunSharedAgentTurnResult {
@@ -87,6 +101,8 @@ export interface RunSharedAgentTurnStreamResult {
   reply?: string;
   history?: SharedTurnMessage[];
   parts?: AsyncIterable<SharedAgentTurnStreamPart>;
+  /** Cancels the AI SDK response reader in addition to aborting provider I/O. */
+  cancel?: (reason?: unknown) => Promise<void>;
   /**
    * Set when the turn was an in-app navigation command handled deterministically
    * (no LLM call, so `parts` streams the canned confirmation text). The caller
@@ -183,13 +199,21 @@ function appendTurn(
   history: SharedTurnMessage[],
   userMessage: string,
   reply: string,
+  messageIds?: RunSharedAgentTurnInput["messageIds"],
 ): SharedTurnMessage[] {
   const sentAt = Date.now();
   return [
     ...history,
-    { role: "user", content: userMessage, createdAt: sentAt },
-    { role: "assistant", content: reply, createdAt: sentAt + 1 },
+    { id: messageIds?.user, role: "user", content: userMessage, createdAt: sentAt },
+    { id: messageIds?.assistant, role: "assistant", content: reply, createdAt: sentAt + 1 },
   ];
+}
+
+function modelHistoryContent(message: SharedTurnMessage): string {
+  if (message.role === "assistant" && message.interrupted) {
+    return `[interrupted assistant partial]\n${message.content}`;
+  }
+  return message.content;
 }
 
 /**
@@ -212,7 +236,7 @@ export async function runSharedAgentTurn(
   if (navIntent) {
     return {
       reply: navIntent.reply,
-      history: appendTurn(input.history, message, navIntent.reply),
+      history: appendTurn(input.history, message, navIntent.reply, input.messageIds),
       model: "nav-intent",
       degraded: false,
       navIntent,
@@ -225,7 +249,7 @@ export async function runSharedAgentTurn(
     const reply = `${input.character.name} is temporarily unavailable (no shared model configured).`;
     return {
       reply,
-      history: appendTurn(input.history, message, reply),
+      history: appendTurn(input.history, message, reply, input.messageIds),
       model: "none",
       degraded: true,
     };
@@ -235,7 +259,7 @@ export async function runSharedAgentTurn(
     const model = getInteractiveCerebrasLanguageModel(modelId);
     const system = buildSystemPrompt(input.character);
     const messages = [
-      ...input.history.map((m) => ({ role: m.role, content: m.content })),
+      ...input.history.map((m) => ({ role: m.role, content: modelHistoryContent(m) })),
       { role: "user" as const, content: message },
     ];
     await input.onProviderDispatch?.();
@@ -247,11 +271,12 @@ export async function runSharedAgentTurn(
       maxRetries: SHARED_TURN_MAX_RETRIES,
       system,
       messages,
+      ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
     });
     const reply = text.trim() || "…";
     return {
       reply,
-      history: appendTurn(input.history, message, reply),
+      history: appendTurn(input.history, message, reply, input.messageIds),
       model: modelId,
       degraded: false,
       usage,
@@ -297,7 +322,7 @@ export async function runSharedAgentTurnStream(
       model: "nav-intent",
       degraded: false,
       reply,
-      history: appendTurn(input.history, message, reply),
+      history: appendTurn(input.history, message, reply, input.messageIds),
       parts,
       navIntent,
     };
@@ -309,7 +334,7 @@ export async function runSharedAgentTurnStream(
     const reply = `${input.character.name} is temporarily unavailable (no shared model configured).`;
     return {
       reply,
-      history: appendTurn(input.history, message, reply),
+      history: appendTurn(input.history, message, reply, input.messageIds),
       model: "none",
       degraded: true,
     };
@@ -319,7 +344,7 @@ export async function runSharedAgentTurnStream(
     const model = getInteractiveCerebrasLanguageModel(modelId);
     const system = buildSystemPrompt(input.character);
     const messages = [
-      ...input.history.map((m) => ({ role: m.role, content: m.content })),
+      ...input.history.map((m) => ({ role: m.role, content: modelHistoryContent(m) })),
       { role: "user" as const, content: message },
     ];
     await input.onProviderDispatch?.();
@@ -331,12 +356,29 @@ export async function runSharedAgentTurnStream(
       maxRetries: SHARED_TURN_MAX_RETRIES,
       system,
       messages,
+      ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
     });
 
+    const providerReader = result.fullStream.getReader();
+    let providerStreamDone = false;
+    let providerCancelPromise: Promise<void> | null = null;
+    const cancel = async (reason?: unknown): Promise<void> => {
+      if (providerStreamDone) return;
+      providerCancelPromise ??= providerReader.cancel(reason).finally(() => {
+        providerStreamDone = true;
+      });
+      await providerCancelPromise;
+    };
     const parts = (async function* (): AsyncIterable<SharedAgentTurnStreamPart> {
       let reply = "";
       try {
-        for await (const part of result.fullStream) {
+        for (;;) {
+          const next = await providerReader.read();
+          if (next.done) {
+            providerStreamDone = true;
+            break;
+          }
+          const part = next.value;
           if (part.type === "text-delta") {
             reply += part.text;
             yield { type: "text-delta", text: part.text };
@@ -350,6 +392,7 @@ export async function runSharedAgentTurnStream(
           }
         }
       } catch (error) {
+        providerStreamDone = true;
         // error-policy:J2 context-adding rethrow. Stream failures happen after
         // the HTTP response may have started, so callers need this failure to
         // classify the preserved provider outcome before settling the reservation.
@@ -357,6 +400,11 @@ export async function runSharedAgentTurnStream(
           `[shared-runtime] streaming agent turn failed (agent=${input.character.name}, model=${modelId})`,
           { cause: error },
         );
+      } finally {
+        if (!providerStreamDone) {
+          await cancel("shared runtime stream consumer stopped");
+        }
+        providerReader.releaseLock();
       }
     })();
 
@@ -364,6 +412,7 @@ export async function runSharedAgentTurnStream(
       model: modelId,
       degraded: false,
       parts,
+      cancel,
     };
   } catch (error) {
     // error-policy:J2 context-adding rethrow. Preserve the setup/provider cause

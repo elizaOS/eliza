@@ -9,15 +9,7 @@
  */
 import http from "node:http";
 import { Socket } from "node:net";
-import {
-  afterAll,
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ensureRouteAuthorized,
   ensureRouteMinRole,
@@ -96,15 +88,6 @@ vi.mock("../../services/auth-store.js", () => ({
 const STATE_WITH_DB = {
   current: { adapter: { db: {} } },
 };
-
-// Under `isolate: false` app-core suites share one module registry. This file
-// installs a full-replacement `@elizaos/shared` mock plus `../auth/sessions`
-// and `../../services/auth-store` mocks; clear the registry on teardown so those
-// stripped/mocked modules cannot leak into a later real-module suite (e.g.
-// first-run-persistence, which imports the genuine `@elizaos/shared` normalizers).
-afterAll(() => {
-  vi.resetModules();
-});
 
 function makeReq(options: {
   method?: string;

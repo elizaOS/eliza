@@ -46,8 +46,10 @@ const delay = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
 /** The transport's transient "a turn is in flight" rejection (vs. a terminal
- * failure like a lost/closed session, which must not be retried). */
-function isSessionBusyError(err: unknown): boolean {
+ * failure like a lost/closed session, which must not be retried). Exported so
+ * every consumer that prompts a possibly-mid-turn session (this dispatcher,
+ * the swarm coordinator's verify-retry) classifies the error identically. */
+export function isSessionBusyError(err: unknown): boolean {
   return err instanceof Error && /already busy/i.test(err.message);
 }
 

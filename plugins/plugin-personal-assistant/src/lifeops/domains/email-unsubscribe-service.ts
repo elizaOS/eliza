@@ -3,7 +3,7 @@
  * {@link InboxUnsubscribeService}, which owns the email-unsubscribe back-end.
  * This domain keeps the `LifeOpsService` method surface stable (including the
  * `requestUrl` argument route callers pass) and forwards to the inbox service,
- * which resolves Gmail through the `@elizaos/plugin-google` runtime service and
+ * which resolves Gmail through the `@elizaos/plugin-google-workspace` runtime service and
  * persists to the `app_inbox.life_email_unsubscribes` table.
  *
  * The two-phase confirmation gate (`requireConfirmation`) stays in the PA route

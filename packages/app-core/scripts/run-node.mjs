@@ -1,5 +1,9 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for run node mjs. */
+/**
+ * Primary launcher for the app runtime: loads .env.worktree port/state
+ * overrides, syncs eliza env aliases, picks bun or node via chooseElizaRuntime,
+ * and restarts the child on the shared restart exit code.
+ */
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";

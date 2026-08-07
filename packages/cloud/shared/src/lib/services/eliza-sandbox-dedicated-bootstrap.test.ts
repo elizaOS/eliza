@@ -191,9 +191,7 @@ describe("ElizaSandboxService bridge — dedicated bootstrap window", () => {
       sandbox,
     );
     const historyGetSpy = spyOn(sharedRuntimeHistoryRepository, "get").mockResolvedValue([]);
-    const historyUpsertSpy = spyOn(sharedRuntimeHistoryRepository, "upsert").mockResolvedValue(
-      undefined,
-    );
+    const historyMergeSpy = spyOn(sharedRuntimeHistoryRepository, "merge").mockResolvedValue([]);
 
     try {
       const response = await runWithCloudBindings({ CEREBRAS_API_KEY: "test-key" }, () =>
@@ -213,7 +211,7 @@ describe("ElizaSandboxService bridge — dedicated bootstrap window", () => {
       findRunningSpy.mockRestore();
       findByIdSpy.mockRestore();
       historyGetSpy.mockRestore();
-      historyUpsertSpy.mockRestore();
+      historyMergeSpy.mockRestore();
     }
   });
 
@@ -272,9 +270,7 @@ describe("ElizaSandboxService bridge — dedicated bootstrap window", () => {
       sandbox,
     );
     const historyGetSpy = spyOn(sharedRuntimeHistoryRepository, "get").mockResolvedValue([]);
-    const historyUpsertSpy = spyOn(sharedRuntimeHistoryRepository, "upsert").mockResolvedValue(
-      undefined,
-    );
+    const historyMergeSpy = spyOn(sharedRuntimeHistoryRepository, "merge").mockResolvedValue([]);
 
     try {
       const response = await runWithCloudBindings(
@@ -299,7 +295,7 @@ describe("ElizaSandboxService bridge — dedicated bootstrap window", () => {
       findRunningSpy.mockRestore();
       findByIdSpy.mockRestore();
       historyGetSpy.mockRestore();
-      historyUpsertSpy.mockRestore();
+      historyMergeSpy.mockRestore();
     }
   });
 

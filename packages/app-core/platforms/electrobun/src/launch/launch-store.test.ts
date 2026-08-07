@@ -40,11 +40,6 @@ function snapshot(phase: LaunchSnapshot["phase"]): LaunchSnapshot {
       requiredGate: null,
       error: null,
     },
-    remotes: {
-      seeded: true,
-      requiredStarted: true,
-      errors: [],
-    },
     localModel: {
       backgroundDownloadQueued: false,
       blocking: false,

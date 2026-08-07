@@ -17,13 +17,9 @@ const nodeModulesDir = path.join(repoRoot, "node_modules");
 const cleanupHelperPath = path.join(scriptDir, "rm-path-recursive.mjs");
 
 const optionalPackages = [
-  "@elizaos/plugin-hyperliquid",
   "@elizaos/plugin-documents",
   "@elizaos/plugin-personal-assistant",
-  "@elizaos/plugin-polymarket",
-  "@elizaos/plugin-shopify",
   "@elizaos/plugin-task-coordinator",
-  "@elizaos/plugin-training",
 ];
 
 const forcedStubPackages = ["@elizaos/plugin-whatsapp"];
@@ -36,22 +32,11 @@ const stubSource = `const optionalStub = Object.freeze({
 export const LIFEOPS_CONNECTOR_DEGRADATION_AXES = Object.freeze([]);
 export const appPlugin = optionalStub;
 export const defaultPlugin = optionalStub;
-export const hyperliquidPlugin = optionalStub;
 export const documentsPlugin = optionalStub;
 export const personalAssistantPlugin = optionalStub;
-export const polymarketPlugin = optionalStub;
 export const plugin = optionalStub;
-export const shopifyPlugin = optionalStub;
 export const stewardPlugin = optionalStub;
-export const trainingPlugin = optionalStub;
-
 export const documentsRoutes = Object.freeze([]);
-export const trainingRoutes = Object.freeze([]);
-
-export function clearBackendCache() {}
-export async function detectAvailableBackends() {
-  return { available: false, backends: [] };
-}
 export function getSelfControlPermissionState() {
   return { granted: false, status: "unavailable" };
 }
@@ -64,9 +49,6 @@ export async function handleDocumentsRoutes() {
 export async function handleWhatsAppRoute() {
   return false;
 }
-export async function handleTrainingRoutes() {
-  return false;
-}
 export async function handleTrajectoryRoute() {
   return false;
 }
@@ -77,9 +59,6 @@ export async function handleWalletCoreRoutes() {
   return false;
 }
 export async function initializeOGCode() {}
-export async function loadTrainingConfig() {
-  return {};
-}
 export function normalizePreflightAuth(auth) {
   return auth ?? null;
 }
@@ -92,12 +71,9 @@ export async function openSelfControlPermissionLocation() {
 export async function requestSelfControlPermission() {
   return { granted: false, status: "unavailable" };
 }
-export async function registerTrainingRuntimeHooks() {}
 export function sanitizeAuthResult(result) {
   return result ?? null;
 }
-export async function saveTrainingConfig() {}
-export function setActiveTrainingService() {}
 export function sanitizeWhatsAppAccountId(value) {
   return typeof value === "string" ? value.trim() : "";
 }

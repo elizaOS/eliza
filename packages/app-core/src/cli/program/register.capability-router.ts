@@ -10,10 +10,15 @@
  * returning an exercised-surface report. Remaining helpers normalize/validate
  * options and parse capability-invoke responses.
  */
-import { theme } from "@elizaos/shared";
+import { readAliasedEnv, resolveDesktopApiPort, theme } from "@elizaos/shared";
 import type { Command } from "commander";
 
-const DEFAULT_AGENT_API_BASE = "http://127.0.0.1:31337";
+function resolveDefaultAgentApiBase(): string {
+  return (
+    readAliasedEnv("ELIZA_AGENT_API_BASE") ??
+    `http://127.0.0.1:${resolveDesktopApiPort(process.env)}`
+  );
+}
 
 export type CapabilityRouterEndpointProvider =
   | "direct"
@@ -112,7 +117,7 @@ export function registerCapabilityRouterCommand(program: Command) {
     .option(
       "--api-base <url>",
       "Running agent API base URL",
-      process.env.ELIZA_AGENT_API_BASE ?? DEFAULT_AGENT_API_BASE,
+      resolveDefaultAgentApiBase(),
     )
     .action(
       async (

@@ -13,9 +13,9 @@ import type {
 	Memory,
 	State,
 } from "@elizaos/core";
-import { requireConfirmation } from "@elizaos/core";
+import { requireConfirmation, unwrapUserMessageText } from "@elizaos/core";
 import type { AgentSkillsService } from "../services/skills";
-import { extractSlugFromMessage } from "./parse-helpers";
+import { describeSkillReference, extractSlugFromMessage } from "./parse-helpers";
 import { createAgentSkillsActionValidator } from "./validators";
 
 const INSTALLED_SKILL_MATCH_LIMIT = 100;
@@ -82,7 +82,9 @@ export const uninstallSkillAction = {
 			return { success: false, error: new Error(errorText) };
 		}
 
-		const text = message.content.text || "";
+		// Parse the user's actual words, not the external-content security
+		// envelope hardenIncomingUserMessage wraps around untrusted messages.
+		const text = unwrapUserMessageText(message);
 		const opts = options as UninstallSkillOptions | undefined;
 		const slug = optionString(opts, "slug") || extractSlugFromMessage(text);
 
@@ -105,7 +107,9 @@ export const uninstallSkillAction = {
 			);
 
 		if (!match) {
-			const errorText = `Skill "${slug}" not found in installed skills.`;
+			// Display-clamped echo: only a name-shaped slug is quoted back,
+			// never a planner-supplied blob.
+			const errorText = `Skill ${describeSkillReference(slug, "matching that reference")} not found in installed skills.`;
 			if (callback) await callback({ text: errorText });
 			return { success: false, error: new Error(errorText) };
 		}

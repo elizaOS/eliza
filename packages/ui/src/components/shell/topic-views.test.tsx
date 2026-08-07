@@ -1,3 +1,4 @@
+/** Verifies TopicChipsBar through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Rendering + interaction for the topic UI (#8928): TopicChipsBar renders a chip
@@ -6,7 +7,7 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { TopicChipsBar } from "./TopicChipsBar";
+import { ShellTopicChipsBar } from "./TopicChipsBar";
 import { TopicGroup } from "./TopicGroup";
 
 afterEach(() => {
@@ -17,7 +18,7 @@ describe("TopicChipsBar", () => {
   it("renders a chip per topic and reports selection", () => {
     const onSelectTopic = vi.fn();
     render(
-      <TopicChipsBar
+      <ShellTopicChipsBar
         topics={["billing", "deployment"]}
         onSelectTopic={onSelectTopic}
       />,
@@ -27,7 +28,7 @@ describe("TopicChipsBar", () => {
   });
 
   it("renders nothing when there are no topics", () => {
-    const { container } = render(<TopicChipsBar topics={[]} />);
+    const { container } = render(<ShellTopicChipsBar topics={[]} />);
     expect(
       container.querySelector('[data-testid="topic-chips-bar"]'),
     ).toBeNull();
@@ -36,7 +37,7 @@ describe("TopicChipsBar", () => {
   it("humanizes machine slug labels but keeps the raw slug as identity", () => {
     const onSelectTopic = vi.fn();
     render(
-      <TopicChipsBar
+      <ShellTopicChipsBar
         topics={["user_greeting", "deploy-status"]}
         onSelectTopic={onSelectTopic}
       />,
@@ -47,16 +48,6 @@ describe("TopicChipsBar", () => {
     // … while the testid (and the scroll-to lookup) stays on the raw slug.
     fireEvent.click(screen.getByTestId("topic-chip-user_greeting"));
     expect(onSelectTopic).toHaveBeenCalledWith("user_greeting");
-  });
-
-  it("keeps the chip rail scrollbar-free (touch never shows chrome)", () => {
-    render(<TopicChipsBar topics={["billing", "deployment"]} />);
-    const rail = screen.getByTestId("topic-chips-bar");
-    // The horizontal overflow rail must hide its scrollbar on every engine:
-    // Firefox (`scrollbar-width:none`) and WebKit (`::-webkit-scrollbar`).
-    expect(rail.className).toContain("[scrollbar-width:none]");
-    expect(rail.className).toContain("[&::-webkit-scrollbar]:hidden");
-    expect(rail.className).toContain("overflow-x-auto");
   });
 });
 

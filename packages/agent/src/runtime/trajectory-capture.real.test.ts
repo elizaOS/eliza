@@ -1,27 +1,32 @@
 /**
  * End-to-end trajectory capture verification.
  *
- * Reproduces + guards the bug where the in-memory "trajectories" service
- * captured LLM calls only into its own `trajectory_step_index` store, while the
- * viewer + collection read the SQL `trajectory_steps` tables — so on every
- * platform without the plugin-training log-backfill (mobile, cloud) a trajectory
- * showed ZERO recorded LLM calls.
+ * Reproduces and guards the dual-writer failure where the agent bridge and core
+ * service both handled one capture despite owning incompatible step/reward
+ * shapes. The installed bridge owns lifecycle, writes, and reads together;
+ * this suite proves its real PGlite row and HTTP read boundary stay coherent.
  *
- * `installDatabaseTrajectoryLogger(runtime)` is the bridge that mirrors capture
- * into `trajectory_steps`; it is now wired at boot in
- * `prepareRuntimeForTrajectoryCapture`. This test boots a real PGLite-backed
- * runtime, installs the bridge, drives the exact `logLlmCall` capture primitive
- * the runtime's `recordUseModelTrajectory` uses for BOTH a local-inference and a
- * cloud provider, then reads back through the viewer's SQL read API and asserts
- * both calls are persisted.
+ * The test drives the exact provider/LLM capture primitives used by the runtime,
+ * drains every queue, reads the active and completed metrics from SQL, exercises
+ * the real viewer read routes, and checks a clean idle diagnostic tail.
  */
 
 import fs from "node:fs";
+import type { ServerResponse } from "node:http";
 import os from "node:os";
 import path from "node:path";
-import type { Plugin } from "@elizaos/core";
-import { AgentRuntime } from "@elizaos/core";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+  AgentRuntime,
+  type Plugin,
+  tryHandleTrajectoryReadRoutes,
+} from "@elizaos/core";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  asRecord,
+  executeRawSql,
+  extractRows,
+  parseMetadata,
+} from "./trajectory-internals.ts";
 import { installDatabaseTrajectoryLogger } from "./trajectory-persistence.ts";
 import { flushTrajectoryWrites } from "./trajectory-storage.ts";
 
@@ -30,7 +35,12 @@ interface CapturedLlmCall {
   model?: string;
 }
 interface TrajectoryDetailLike {
-  steps?: Array<{ llmCalls?: CapturedLlmCall[] }>;
+  steps?: Array<{
+    llmCalls?: CapturedLlmCall[];
+    providerAccesses?: Array<{ providerName?: string }>;
+    action?: unknown;
+  }>;
+  metrics?: { episodeLength?: number; finalStatus?: string };
 }
 interface TrajLogger {
   startTrajectory: (
@@ -39,11 +49,49 @@ interface TrajLogger {
   ) => Promise<string>;
   startStep: (trajectoryId: string) => string;
   logLlmCall: (params: Record<string, unknown>) => void;
+  logProviderAccess: (params: Record<string, unknown>) => void;
+  endTrajectory: (trajectoryId: string, status?: string) => Promise<void>;
+  flushWriteQueue?: (trajectoryId: string) => Promise<void>;
   listTrajectories: (opts?: { limit?: number; offset?: number }) => Promise<{
     trajectories: Array<{ id: string; llmCallCount: number }>;
     total: number;
   }>;
   getTrajectoryDetail: (id: string) => Promise<TrajectoryDetailLike | null>;
+}
+
+async function readRoute(pathname: string): Promise<{
+  status: number;
+  body: unknown;
+}> {
+  const state = { status: 0, body: undefined as unknown };
+  const response = {
+    statusCode: 0,
+    setHeader() {},
+    end(payload?: string) {
+      state.status = response.statusCode;
+      state.body = payload ? JSON.parse(payload) : undefined;
+    },
+  } as unknown as ServerResponse;
+  const handled = await tryHandleTrajectoryReadRoutes({
+    pathname,
+    method: "GET",
+    url: new URL(`http://localhost${pathname}`),
+    runtime,
+    res: response,
+  });
+  expect(handled).toBe(true);
+  return state;
+}
+
+async function readMetrics(
+  trajectoryId: string,
+): Promise<Record<string, unknown>> {
+  const result = await executeRawSql(
+    runtime,
+    `SELECT metrics_json FROM trajectories WHERE id = '${trajectoryId.replaceAll("'", "''")}'`,
+  );
+  const row = asRecord(extractRows(result)[0]);
+  return parseMetadata(row?.metrics_json);
 }
 
 function llmCall(
@@ -130,7 +178,7 @@ afterAll(async () => {
 });
 
 describe("trajectory capture -> DB -> viewer", () => {
-  it("persists LOCAL and CLOUD LLM calls into the trajectory_steps store the viewer reads", async () => {
+  it("persists provider/LLM appends with valid active and completed metrics", async () => {
     const logger = runtime.getService(
       "trajectories",
     ) as unknown as TrajLogger | null;
@@ -145,6 +193,14 @@ describe("trajectory capture -> DB -> viewer", () => {
     expect(trajectoryId.length).toBeGreaterThan(0);
 
     const stepId = logger.startStep(trajectoryId);
+    const reportError = vi.spyOn(runtime, "reportError");
+
+    logger.logProviderAccess({
+      stepId,
+      providerName: "facts",
+      purpose: "context",
+      data: { count: 1 },
+    });
 
     // The exact capture primitive runtime.recordUseModelTrajectory invokes,
     // for a local-inference provider AND a cloud provider.
@@ -155,6 +211,30 @@ describe("trajectory capture -> DB -> viewer", () => {
 
     // Flush the async step-write queue the bridge enqueues.
     await flushTrajectoryWrites(runtime);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    await logger.flushWriteQueue?.(trajectoryId);
+
+    expect(await readMetrics(trajectoryId)).toMatchObject({
+      episodeLength: 1,
+      finalStatus: "active",
+    });
+    const activeDetail = await logger.getTrajectoryDetail(trajectoryId);
+    expect(activeDetail?.metrics?.finalStatus).toBe("active");
+    const activeProviders = (activeDetail?.steps ?? []).flatMap(
+      (step) => step.providerAccesses ?? [],
+    );
+    expect(activeProviders).toContainEqual(
+      expect.objectContaining({ providerName: "facts" }),
+    );
+
+    await logger.endTrajectory(trajectoryId, "completed");
+    await flushTrajectoryWrites(runtime);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    await logger.flushWriteQueue?.(trajectoryId);
+    expect(await readMetrics(trajectoryId)).toMatchObject({
+      episodeLength: 1,
+      finalStatus: "completed",
+    });
 
     // Read back via the SAME SQL read API the viewer + collection use.
     const list = await logger.listTrajectories({ limit: 50, offset: 0 });
@@ -170,11 +250,52 @@ describe("trajectory capture -> DB -> viewer", () => {
     ).toBeGreaterThanOrEqual(2);
 
     const detail = await logger.getTrajectoryDetail(trajectoryId);
+    expect(detail?.metrics?.finalStatus).toBe("completed");
+    expect(detail?.metrics?.episodeLength).toBeGreaterThanOrEqual(1);
     const calls = (detail?.steps ?? []).flatMap((s) => s.llmCalls ?? []);
     const providers = new Set(
       calls.map((c) => c.provider).filter((p): p is string => Boolean(p)),
     );
     expect(providers.has("local-inference"), "local call persisted").toBe(true);
     expect(providers.has("openai"), "cloud call persisted").toBe(true);
+    expect((detail?.steps ?? []).every((step) => step.action == null)).toBe(
+      true,
+    );
+
+    const listRoute = await readRoute("/api/trajectories");
+    expect(listRoute.status).toBe(200);
+    const listBody = asRecord(listRoute.body);
+    expect(listBody?.trajectories).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: trajectoryId, llmCallCount: 2 }),
+      ]),
+    );
+
+    const detailRoute = await readRoute(`/api/trajectories/${trajectoryId}`);
+    expect(detailRoute.status).toBe(200);
+    const detailBody = asRecord(detailRoute.body);
+    expect(detailBody?.toolEvents).toEqual([]);
+    expect(detailBody?.llmCalls).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ provider: "local-inference" }),
+        expect.objectContaining({ provider: "openai" }),
+      ]),
+    );
+    expect(detailBody?.providerAccesses).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ providerName: "facts" }),
+      ]),
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    await flushTrajectoryWrites(runtime);
+    await logger.flushWriteQueue?.(trajectoryId);
+    const detachedFailures = reportError.mock.calls.filter(
+      ([scope, error]) =>
+        scope === "TrajectoriesService.detachedWrite" ||
+        (error instanceof Error &&
+          error.message.includes("TRAJECTORY_ROW_INVALID")),
+    );
+    expect(detachedFailures).toEqual([]);
   });
 });

@@ -141,6 +141,8 @@ export const listInboxAction: Action = {
 				},
 			};
 		} catch (error) {
+			// error-policy:J1 The action result is the model-visible boundary for
+			// connector and inbox-read failures.
 			const message = error instanceof Error ? error.message : String(error);
 			logger.warn(`[ListInbox] failed: ${message}`);
 			return {

@@ -455,6 +455,38 @@ describe("SubAgentRouter", () => {
     );
   });
 
+  it("keeps the internal workdir out of the task_complete planner header", async () => {
+    session = makeSession({
+      metadata: {
+        label: "fix-bug-42",
+        roomId: ROOM,
+        worldId: WORLD,
+        userId: USER,
+        messageId: PARENT_MSG,
+        source: "telegram",
+      },
+    });
+    acp = makeAcpService(session);
+    const { runtime, handleMessage } = makeRuntime({ acp: acp.service });
+    await SubAgentRouter.start(runtime);
+
+    acp.emit(SESSION_ID, "task_complete", { response: "done" });
+    await new Promise((r) => setImmediate(r));
+
+    const text = String(handleMessage.mock.calls[0]?.[1]?.content?.text);
+    const [headerLine] = text.split("\n");
+    expect(headerLine).toContain("[sub-agent:");
+    expect(headerLine).toContain("task_complete");
+    // The planner echoes header instructions into its user-facing reply — an
+    // absolute internal workspace path in the header gets recited into chat
+    // (observed live). The directive must instead demand a human summary with
+    // no internal paths/ids, while keeping the anti-substitution guidance.
+    expect(headerLine).not.toContain(session.workdir);
+    expect(headerLine).toContain("never repeat absolute filesystem paths");
+    expect(headerLine).toContain("never claim a user-requested path");
+    expect(headerLine).toContain("do NOT start another sub-agent");
+  });
+
   it("dedupes task/worktree swarm rooms when both roles share one room", async () => {
     session = makeSession({
       metadata: {

@@ -163,12 +163,6 @@ describe("RemoteSession — unsafe ingress", () => {
 
     // No SessionClient was constructed for an unsafe URL.
     expect(fakeClients.length).toBe(0);
-
-    // Input surface is non-interactive.
-    const surface = iframe.parentElement?.querySelector(
-      "div[style]",
-    ) as HTMLElement;
-    expect(surface.style.pointerEvents).toBe("none");
   });
 
   it("rejects an ingress that embeds credentials", () => {

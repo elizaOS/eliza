@@ -45,7 +45,7 @@ export function ConfirmDeleteControl({
   triggerClassName,
   confirmClassName,
   cancelClassName,
-  promptClassName = "text-xs-tight text-[#e74c3c] ml-1",
+  promptClassName = "ml-1 text-xs-tight text-danger",
   triggerTitle,
   triggerVariant = "destructive",
   agentId,

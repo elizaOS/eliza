@@ -26,19 +26,12 @@ const repoRoot = resolve(
 
 const PLUGIN_VIEW_MANIFESTS = [
   "plugins/plugin-contacts/src/plugin.ts",
-  "plugins/plugin-hyperliquid/src/plugin.ts",
   "plugins/plugin-messages/src/plugin.ts",
-  "plugins/app-model-tester/src/plugin.ts",
   "plugins/plugin-phone/src/plugin.ts",
-  "plugins/plugin-polymarket/src/plugin.ts",
-  "plugins/plugin-wallet-ui/src/plugin.ts",
-  "plugins/plugin-feed/src/index.ts",
+  "plugins/plugin-wallet/src/ui/plugin.ts",
   "plugins/plugin-app-control/src/index.ts",
-  "plugins/plugin-screenshare/src/index.ts",
   "plugins/plugin-task-coordinator/src/index.ts",
   "plugins/plugin-trajectory-logger/src/index.ts",
-  "plugins/plugin-training/src/setup-routes.ts",
-  "plugins/plugin-facewear/src/index.ts",
 ] as const;
 
 function readManifest(path: string): string {

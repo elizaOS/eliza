@@ -110,6 +110,31 @@ export const agentSandboxes = pgTable(
     deletion_attempt_id: uuid("deletion_attempt_id"),
     deletion_started_at: timestamp("deletion_started_at", { withTimezone: true }),
     /**
+     * Whether THIS deletion generation still owns one counted slot in
+     * `docker_nodes.allocated_count`, so the slot is released exactly once no
+     * matter how many times the teardown runs.
+     *
+     * Remote teardown is retryable and idempotent-ish ("No such container" is a
+     * success), but the local counter is not: the row keeps its node/container
+     * locator until the row is deleted, so a retry after a post-stop failure
+     * (credential revocation, row-delete CAS, job-status persistence) would
+     * re-decrement the same slot and free a LIVE sibling's capacity —
+     * `GREATEST(count - 1, 0)` hides the underflow rather than preventing it.
+     *
+     * `true` — this generation holds a counted slot; the release CAS may run.
+     * `false` — it never held one (suspended/sleeping rows already released at
+     * suspend time), or this generation already released it.
+     * `null` — no deletion intent, or a pre-migration intent whose ownership was
+     * never recorded; reconciliation resolves those explicitly rather than
+     * guessing, because guessing either leaks capacity or double-frees it.
+     *
+     * "Ownership never outlives its generation" is structural, not a CHECK
+     * constraint: the only writers set this together with `deletion_attempt_id`
+     * in a single UPDATE, and `ADD CONSTRAINT` would full-scan `agent_sandboxes`
+     * under ACCESS EXCLUSIVE — the same trade-off migration 0185 documents.
+     */
+    deletion_allocation_counted: boolean("deletion_allocation_counted"),
+    /**
      * Execution tier (see AgentExecutionTier). New agents default to "shared"
      * (container-free); only a real need escalates to a dedicated container.
      * The migration backfills pre-existing container rows to "dedicated-lazy".
@@ -141,6 +166,13 @@ export const agentSandboxes = pgTable(
      * replacement container on stale credentials.
      */
     environment_revision: integer("environment_revision").notNull().default(0),
+    /**
+     * Database-owned generation for the complete sandbox row. A trigger
+     * advances it on every update, including raw SQL writers, so lifecycle
+     * operations can fence asynchronous work without timestamp precision or
+     * same-millisecond ABA assumptions.
+     */
+    lifecycle_revision: bigint("lifecycle_revision", { mode: "number" }).notNull().default(0),
     // Docker infrastructure columns (added by 0047_docker_nodes migration)
     node_id: text("node_id"),
     container_name: text("container_name"),

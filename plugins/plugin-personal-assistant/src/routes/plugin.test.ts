@@ -112,6 +112,7 @@ function createRuntime(options?: {
     ]),
     getEntityById: vi.fn(async () => null),
     getRelationships: vi.fn(async () => []),
+    getService: vi.fn(() => null),
   } as AgentRuntime;
 }
 

@@ -45,8 +45,6 @@ export function SkillSidebarItem({
       className="items-start gap-2"
     >
       <SidebarContent.ItemButton
-        role="option"
-        aria-selected={active}
         aria-current={active ? "page" : undefined}
         onClick={onSelect}
         {...buttonProps}

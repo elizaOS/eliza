@@ -179,7 +179,7 @@ const firstRunOptions = {
       id: "ollama",
       name: "Ollama",
       envKey: null,
-      pluginName: "@elizaos/plugin-ollama",
+      pluginName: "@elizaos/plugin-zerollama",
       keyPrefix: null,
       description: "Use local Ollama",
     },
@@ -1183,39 +1183,6 @@ export async function startMockApiServer(
         totalFailures: 0,
         totalSkipped: 0,
       });
-      return;
-    }
-
-    if (method === "GET" && pathname === "/api/training/status") {
-      json(res, 200, {
-        runningJobs: 0,
-        queuedJobs: 0,
-        completedJobs: 0,
-        failedJobs: 0,
-        modelCount: 0,
-        datasetCount: 0,
-        runtimeAvailable: true,
-      });
-      return;
-    }
-    if (method === "GET" && pathname === "/api/training/trajectories") {
-      json(res, 200, {
-        available: true,
-        total: 0,
-        trajectories: [],
-      });
-      return;
-    }
-    if (method === "GET" && pathname === "/api/training/datasets") {
-      json(res, 200, { datasets: [] });
-      return;
-    }
-    if (method === "GET" && pathname === "/api/training/jobs") {
-      json(res, 200, { jobs: [] });
-      return;
-    }
-    if (method === "GET" && pathname === "/api/training/models") {
-      json(res, 200, { models: [] });
       return;
     }
 

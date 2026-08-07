@@ -38,6 +38,7 @@ import type http from "node:http";
 
 import { logger, resolveServerOnlyPort } from "@elizaos/core";
 import {
+  createSelfApiRequestHeaders,
   DEFAULT_ELIGIBLE_MODEL_IDS,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
   FIRST_RUN_DEFAULT_MODEL_ID,
@@ -50,7 +51,7 @@ import { PendingRequestMap } from "./pending-request-map.ts";
 
 // Provider ids as registered with the routing layer. Typed against the shared
 // ProviderId union so a rename upstream fails compilation here. The string
-// values are owned by plugins/plugin-local-inference/src/provider.ts and
+// values are owned by /plugin-local-inference/provider.ts and
 // plugins/plugin-elizacloud — kept literal so this route never imports plugin
 // runtime modules.
 const LOCAL_TEXT_PROVIDER: ProviderId = "eliza-local-inference";
@@ -124,7 +125,10 @@ async function loopbackJson(
 ): Promise<LoopbackResult> {
   const response = await fetchImpl(`${loopbackBase()}${path}`, {
     method,
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...createSelfApiRequestHeaders(),
+    },
     ...(body ? { body: JSON.stringify(body) } : {}),
     signal: AbortSignal.timeout(timeoutMs),
   });

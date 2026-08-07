@@ -22,6 +22,11 @@ import type {
 
 /** Minimal interface of DocumentService used by this module, avoids circular import with service.ts. */
 interface DocumentServiceLike {
+	reportError(
+		scope: string,
+		error: unknown,
+		context?: Record<string, unknown>,
+	): void;
 	addDocument(options: AddDocumentOptions): Promise<{
 		clientDocumentId: string;
 		storedDocumentMemoryId: UUID;
@@ -125,7 +130,12 @@ export async function loadDocumentsFromPath(
 			);
 			successful++;
 		} catch (error) {
+			// error-policy:J1 Bulk loading exposes failed counts and reports each
+			// omitted file instead of presenting a complete import.
 			logger.error({ error }, `Failed to process file ${filePath}`);
+			service.reportError("DocumentsLoader.processFile", error, {
+				filePath,
+			});
 			failed++;
 		}
 	}
@@ -237,7 +247,12 @@ function getAllFiles(dirPath: string, files: string[] = []): string[] {
 			}
 		}
 	} catch (error) {
+		// error-policy:J2 Directory traversal is required for a complete import;
+		// preserve the filesystem cause instead of returning a partial list.
 		logger.error({ error }, `Error reading directory ${dirPath}`);
+		throw new Error(`Failed to read document directory ${dirPath}`, {
+			cause: error,
+		});
 	}
 
 	return files;

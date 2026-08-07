@@ -127,6 +127,18 @@ export class PromptBatcher {
 		void this._ensureAffinityDrain(affinityKey)
 			.then(() => this._syncAffinityTask(affinityKey))
 			.catch((error) => {
+				// error-policy:J1 Drain setup is the asynchronous boundary for this
+				// request; reject its pending result and report the scheduler failure.
+				this.runtime.reportError("PromptBatcher.ensureAffinityDrain", error, {
+					affinityKey,
+					sectionId: normalized.id,
+				});
+				const pending = this.pendingResults.get(normalized.id);
+				if (pending && !pending.resolved) {
+					pending.resolved = true;
+					pending.deferred.reject(error);
+					this.pendingResults.delete(normalized.id);
+				}
 				this.runtime.logger.error(
 					{
 						src: "prompt-batcher",
@@ -275,8 +287,10 @@ export class PromptBatcher {
 		this.disposed = true;
 
 		for (const [, drain] of this.affinityDrains) {
-			void drain.dispose(this.runtime).catch(() => {
-				/* task may already be gone */
+			void drain.dispose(this.runtime).catch((error) => {
+				// error-policy:J6 Dispose continues across affinity groups; failed task
+				// teardown is reported and may be retried by runtime shutdown.
+				this.runtime.reportError("PromptBatcher.disposeDrain", error);
 			});
 		}
 		this.affinityDrains.clear();
@@ -294,25 +308,18 @@ export class PromptBatcher {
 		this.affinityLocks.clear();
 	}
 
-	invalidateCache(sectionId: string): void {
+	async invalidateCache(sectionId: string): Promise<void> {
 		const cacheKey = this._cacheKey(sectionId);
 		this.inMemoryCache.delete(cacheKey);
-		// error-policy:J7 best-effort DB cache invalidation — the in-memory entry is
-		// already cleared above and a stale DB cache row is harmless, so a delete
-		// failure (deleteCache throws on DB error, #12269) must NOT become an
-		// unhandled rejection that terminates one-shot CLI / embedded hosts. Surface
-		// via reportError, never rethrow.
-		void this.runtime
-			.deleteCache(cacheKey)
-			.catch((err) =>
-				this.runtime.reportError("PromptBatcher", err, { cacheKey }),
-			);
+		await this.runtime.deleteCache(cacheKey);
 	}
 
-	invalidateAllCaches(): void {
-		for (const section of this.sections.values()) {
-			this.invalidateCache(section.id);
-		}
+	async invalidateAllCaches(): Promise<void> {
+		await Promise.all(
+			[...this.sections.values()].map((section) =>
+				this.invalidateCache(section.id),
+			),
+		);
 	}
 
 	getStats(): BatcherStats {
@@ -727,6 +734,8 @@ export class PromptBatcher {
 						continue;
 					}
 				} catch (error) {
+					// error-policy:J4 Sections are isolated; a failed eligibility
+					// check is explicitly skipped and reported.
 					this.runtime.logger.warn(
 						{
 							src: "prompt-batcher",
@@ -736,6 +745,9 @@ export class PromptBatcher {
 						},
 						"Prompt batcher shouldRun threw; skipping section",
 					);
+					this.runtime.reportError("PromptBatcher.shouldRun", error, {
+						sectionId: section.id,
+					});
 					args.sectionsSkipped.push(section.id);
 					continue;
 				}
@@ -771,7 +783,7 @@ export class PromptBatcher {
 						continue;
 					}
 				} else {
-					this.invalidateCache(section.id);
+					await this.invalidateCache(section.id);
 				}
 			}
 
@@ -984,6 +996,8 @@ export class PromptBatcher {
 					pieces.push(String(built));
 				}
 			} catch (error) {
+				// error-policy:J4 Context construction uses an explicit
+				// unavailable marker and reports the degraded section.
 				this.runtime.logger.warn(
 					{
 						src: "prompt-batcher",
@@ -993,6 +1007,9 @@ export class PromptBatcher {
 					},
 					"Prompt batcher contextBuilder failed; using unavailable-context marker",
 				);
+				this.runtime.reportError("PromptBatcher.contextBuilder", error, {
+					sectionId: section.id,
+				});
 				pieces.push("[context unavailable]");
 			}
 		}
@@ -1017,6 +1034,8 @@ export class PromptBatcher {
 				try {
 					resolvedText = String(await resolver(this.runtime, messages));
 				} catch (error) {
+					// error-policy:J4 Context resolution uses an explicit
+					// unavailable marker and reports the degraded section.
 					this.runtime.logger.warn(
 						{
 							src: "prompt-batcher",
@@ -1027,6 +1046,10 @@ export class PromptBatcher {
 						},
 						"Prompt batcher context resolver failed; using unavailable-context marker",
 					);
+					this.runtime.reportError("PromptBatcher.contextResolver", error, {
+						sectionId: section.id,
+						slug,
+					});
 					resolvedText = "[context unavailable]";
 				}
 				resolverCache.set(slug, resolvedText);
@@ -1104,6 +1127,8 @@ export class PromptBatcher {
 			try {
 				await args.section.onResult(args.fields, args.meta);
 			} catch (error) {
+				// error-policy:J1 Result delivery rejects the waiting caller and
+				// reports the failed section callback.
 				this.runtime.logger.warn(
 					{
 						src: "prompt-batcher",
@@ -1113,6 +1138,9 @@ export class PromptBatcher {
 					},
 					"Prompt batcher onResult failed",
 				);
+				this.runtime.reportError("PromptBatcher.onResult", error, {
+					sectionId: args.section.id,
+				});
 				if (pending && !pending.resolved) {
 					pending.resolved = true;
 					pending.deferred.reject(error); // WHY: Caller can .catch() for real failures.
@@ -1220,6 +1248,11 @@ export class PromptBatcher {
 				},
 				"Prompt batcher validate threw",
 			);
+			// error-policy:J3 plugin validation is an extension boundary; a thrown
+			// validator makes this section explicitly invalid.
+			this.runtime.reportError("PromptBatcher.validate", error, {
+				sectionId: section.id,
+			});
 			return null;
 		}
 	}

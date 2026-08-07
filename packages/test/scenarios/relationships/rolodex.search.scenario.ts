@@ -9,7 +9,7 @@ import {
   callPayloadBlob,
   describeCalls,
   successfulCalls,
-} from "../_helpers/effect-assertions.ts";
+} from "@elizaos/scenario-runner/scenario-assertions";
 
 function expectAcmeSearchResult(ctx: ScenarioContext): string | undefined {
   if (successfulCalls(ctx, "SEARCH_CONTACTS").length === 0) {

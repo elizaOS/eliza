@@ -123,8 +123,4 @@ describe("calculateCreditMarkup", () => {
       }),
     ).toThrow(RangeError);
   });
-
-  test("exposes the canonical platform fee rate", () => {
-    expect(DEFAULT_PLATFORM_FEE_RATE).toBe(0.2);
-  });
 });

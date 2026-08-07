@@ -3,7 +3,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   expectMemoryWrite,
   expectTurnToCallAction,
-} from "../_helpers/action-assertions.ts";
+} from "@elizaos/scenario-runner/scenario-assertions";
 
 export default scenario({
   lane: "live-only",

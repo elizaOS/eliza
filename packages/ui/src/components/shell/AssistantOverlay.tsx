@@ -139,8 +139,6 @@ export function AssistantOverlay({
         "rounded-t-3xl sm:rounded-sm",
         "bg-bg/95",
         "border border-border/40",
-        "",
-        "    ",
         // Enter motion (skipped under prefers-reduced-motion)
         "motion-safe:animate-[shell-overlay-in_220ms_ease-out]",
       ].join(" ")}
@@ -150,7 +148,7 @@ export function AssistantOverlay({
         size="icon-sm"
         aria-label="Close assistant"
         onClick={onClose}
-        className="absolute right-2 top-2 z-10 grid h-8 w-8 place-items-center rounded-full bg-card/60 text-muted transition-colors hover:bg-card/60 hover:text-txt     "
+        className="absolute right-2 top-2 z-10 grid h-8 w-8 place-items-center rounded-full bg-card/60 text-muted transition-colors hover:bg-card/60 hover:text-txt"
       >
         <X aria-hidden="true" className="h-4 w-4" />
       </Button>

@@ -1,3 +1,4 @@
+/** Verifies runRestoringSession — mobile committed-runtime existing-install probe through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Mobile committed-runtime restore: `runRestoringSession` must wait out the

@@ -214,6 +214,8 @@ export class TaskService extends Service {
 			}
 			const tick = this.checkTasks()
 				.catch((error) => {
+					// error-policy:J7 Timer-driven task processing reports failures while
+					// keeping the recurring scheduler alive for the next tick.
 					this.runtime.reportError("TaskService.timer", error, {
 						agentId: this.runtime.agentId,
 					});
@@ -311,6 +313,8 @@ export class TaskService extends Service {
 				try {
 					shouldRun = await worker.shouldRun(this.runtime, task);
 				} catch (cause) {
+					// error-policy:J1 Preflight failures are collected into the
+					// structured TASK_TICK_FAILED boundary below.
 					errors.push(
 						new ElizaError(`Task ${task.name} preflight failed`, {
 							code: "TASK_PREFLIGHT_FAILED",
@@ -399,6 +403,8 @@ export class TaskService extends Service {
 				);
 			}
 		} catch (cause) {
+			// error-policy:J1 Quarantine failures join the single structured
+			// task-validation failure reported by the tick boundary.
 			// Persistence failed: still mark quarantined so we don't renarrate every
 			// tick. Surface the heal failure ONCE (severity ephemeral so it can't push
 			// the tick to fatal on its own). Report via the collected errors list so
@@ -449,6 +455,8 @@ export class TaskService extends Service {
 				"Orphan-paused task auto-resumed (worker registered again)",
 			);
 		} catch (cause) {
+			// error-policy:J4 Resume is retried on the next tick; report the
+			// still-paused state without failing unrelated scheduled tasks.
 			// Logged only — resume is retried on the next tick; failing the whole
 			// tick over a resume write would recreate the noise this path removes.
 			this.runtime.logger.warn(
@@ -461,6 +469,10 @@ export class TaskService extends Service {
 				},
 				"Failed to auto-resume orphan-paused task; will retry next tick",
 			);
+			this.runtime.reportError("TaskService.resumeOrphan", cause, {
+				taskId: task.id,
+				taskName: task.name,
+			});
 		}
 	}
 
@@ -533,6 +545,7 @@ export class TaskService extends Service {
 				agentIds: [this.runtime.agentId],
 			});
 		} catch (error) {
+			// error-policy:J2 Re-arm the queue before rethrowing with task-query context.
 			// A transient getTasks rejection must NOT permanently disarm the tick:
 			// we already cleared tasksDirty above, so without re-arming a single DB
 			// hiccup would silence every repeat task (incl. the LifeOps heartbeat)
@@ -579,6 +592,8 @@ export class TaskService extends Service {
 				try {
 					await this.executeTask(task);
 				} catch (error) {
+					// error-policy:J1 Independent task failures are aggregated into
+					// the structured tick failure after all due tasks run.
 					failures.push(
 						error instanceof ElizaError
 							? error
@@ -669,6 +684,8 @@ export class TaskService extends Service {
 			try {
 				await this.executeTask(task);
 			} catch (error) {
+				// error-policy:J1 Independent task failures are aggregated into
+				// the structured tick failure after all due tasks run.
 				failures.push(
 					error instanceof ElizaError
 						? error
@@ -812,6 +829,8 @@ export class TaskService extends Service {
 				);
 			}
 		} catch (error) {
+			// error-policy:J2 Persist failure state and rethrow a typed task error
+			// that preserves both execution and persistence causes.
 			let persistenceError: unknown;
 			try {
 				if (task.tags?.includes("repeat")) {
@@ -872,6 +891,8 @@ export class TaskService extends Service {
 					);
 				}
 			} catch (cause) {
+				// error-policy:J2 The outer handler combines this persistence
+				// failure with the original execution failure.
 				persistenceError = cause;
 			}
 			const cause = persistenceError

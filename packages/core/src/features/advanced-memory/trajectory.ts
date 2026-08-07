@@ -3,8 +3,7 @@
  * provider-access telemetry record (name, purpose, data, query) to the
  * "trajectories" service so a captured run shows what context each memory
  * provider injected. Resolves the trajectory step id from the message metadata
- * or the ambient trajectory context, no-ops when neither is present, and
- * swallows every error so telemetry never interrupts the message path.
+ * or the ambient trajectory context and no-ops when neither is present.
  */
 
 import { getTrajectoryContext } from "../../trajectory-context.ts";
@@ -59,7 +58,15 @@ export function logAdvancedMemoryTrajectory(params: {
 			data: params.data,
 			query: params.query,
 		});
-	} catch {
-		// Trajectory logging must never interrupt the message path.
+	} catch (error) {
+		// error-policy:J7 Trajectory telemetry must not interrupt the message path,
+		// but its failure remains observable through runtime diagnostics.
+		params.runtime.reportError(
+			"AdvancedMemory.trajectoryProviderAccess",
+			error,
+			{
+				providerName: params.providerName,
+			},
+		);
 	}
 }

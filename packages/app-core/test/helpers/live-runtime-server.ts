@@ -11,7 +11,6 @@ export type StartLiveRuntimeServerOptions = {
   env?: Record<string, string | undefined>;
   plugins?: Plugin[];
   loggingLevel?: "debug" | "info" | "warn" | "error";
-  pluginsAllow?: string[];
   startupTimeoutMs?: number;
   tempPrefix: string;
 };
@@ -21,27 +20,6 @@ export type RuntimeHarness = {
   logs: () => string;
   port: number;
 };
-
-async function resolveAllowedPlugin(name: string): Promise<Plugin> {
-  switch (name) {
-    case "@elizaos/plugin-shopify": {
-      const { shopifyRoutePlugin } = await import("@elizaos/plugin-shopify");
-      return shopifyRoutePlugin;
-    }
-    default:
-      throw new Error(`Unsupported live test plugin allow entry: ${name}`);
-  }
-}
-
-async function resolvePlugins(
-  options: StartLiveRuntimeServerOptions,
-): Promise<Plugin[]> {
-  const plugins = [...(options.plugins ?? [])];
-  for (const pluginName of options.pluginsAllow ?? []) {
-    plugins.push(await resolveAllowedPlugin(pluginName));
-  }
-  return plugins;
-}
 
 export async function startLiveRuntimeServer(
   options: StartLiveRuntimeServerOptions,
@@ -59,7 +37,7 @@ export async function startLiveRuntimeServer(
   let server: Awaited<ReturnType<typeof startApiServer>> | null = null;
   try {
     runtimeResult = await createRealTestRuntime({
-      plugins: await resolvePlugins(options),
+      plugins: options.plugins ?? [],
     });
     server = await startApiServer({
       port: 0,

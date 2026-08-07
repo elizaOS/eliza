@@ -8,7 +8,12 @@
 import type { ActionResult, HandlerCallback, Memory } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type { AppControlClient } from "../client/api.js";
-import { extractLaunchTarget, readStringOption } from "../params.js";
+import {
+	describeTargetReference,
+	extractLaunchTarget,
+	readStringOption,
+	targetReferenceLogView,
+} from "../params.js";
 import { formatAppCandidates, resolveInstalledApp } from "../resolve.js";
 
 export interface RunLaunchInput {
@@ -48,13 +53,13 @@ export async function runLaunch({
 		// Same contract as the missing-name clarify: the candidate menu is the
 		// complete answer the user must pick from.
 		const candidates = resolution.candidates ?? [];
-		const text = `"${target}" matches multiple apps:\n${formatAppCandidates(
+		const text = `${describeTargetReference(target, "that app")} matches multiple apps:\n${formatAppCandidates(
 			candidates,
 		)}\nPlease specify which one.`;
 		await callback?.({ text });
 		return {
 			success: true,
-			text: `"${target}" matched multiple installed apps; asked the user to pick one`,
+			text: `"${targetReferenceLogView(target)}" matched multiple installed apps; asked the user to pick one`,
 			userFacingText: text,
 			verifiedUserFacing: true,
 			turnComplete: true,
@@ -64,9 +69,13 @@ export async function runLaunch({
 	}
 
 	if (resolution.kind === "none") {
-		const text = `No installed app matches "${target}". Try \`mode=list\` to see what's available, or \`mode=create\` to scaffold a new one.`;
+		const text = `No installed app matches ${describeTargetReference(target, "that app")}. Try \`mode=list\` to see what's available, or \`mode=create\` to scaffold a new one.`;
 		await callback?.({ text });
-		return { success: false, text, data: { target } };
+		return {
+			success: false,
+			text,
+			data: { target: targetReferenceLogView(target) },
+		};
 	}
 
 	const appName = resolution.match?.name ?? target;

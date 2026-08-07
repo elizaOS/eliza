@@ -447,6 +447,25 @@ describe("trajectory_steps dedicated table", () => {
     expect(stepsTable?.columns.has("script")).toBe(true);
   });
 
+  it("recognizes duplicate-column errors wrapped by the database adapter", async () => {
+    const trajectories = newTable();
+    trajectories.columns.add("id");
+    trajectories.columns.add("trajectory_id");
+    engine.tables.set("trajectories", trajectories);
+    const execute = engine.execute;
+    engine.execute = (sqlText: string) => {
+      if (/ALTER TABLE trajectories ADD COLUMN trajectory_id/i.test(sqlText)) {
+        throw new Error("Failed query: ALTER TABLE trajectories", {
+          cause: new Error('column "trajectory_id" already exists'),
+        });
+      }
+      return execute(sqlText);
+    };
+
+    await expect(ensureTrajectoriesTable(runtime)).resolves.toBe(true);
+    expect(engine.tables.has("trajectory_steps")).toBe(true);
+  });
+
   it("migrates legacy steps_json rows without grouping by the JSON column", async () => {
     const legacySteps = [
       {

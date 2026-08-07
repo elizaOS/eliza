@@ -328,6 +328,8 @@ function asUuidOrNull(value: unknown): UUID | null {
 	try {
 		return asUUID(value.trim());
 	} catch {
+		// error-policy:J3 reflection metadata is untrusted persisted input; an
+		// invalid UUID is an explicit parse miss.
 		return null;
 	}
 }
@@ -550,6 +552,8 @@ async function prepareReflectionContext(
 	try {
 		return await prepared;
 	} catch (error) {
+		// error-policy:J2 Clear message-scoped evaluator state before preserving the
+		// original failure for the evaluator boundary.
 		reflectionContextByMessage.delete(message);
 		throw error;
 	}

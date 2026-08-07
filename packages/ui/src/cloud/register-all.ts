@@ -24,11 +24,6 @@
 
 // Side-effecting domain modules: importing them runs their top-level
 // `registerCloudRoute(...)` calls.
-//
-// The Approvals domain (`dashboard/approvals`) now lives in the standalone
-// `@elizaos/cloud-ui` package, which self-registers it via this same
-// cloud-route registry; the app shell calls `registerCloudUiSurfaces()` from
-// that package alongside `registerAllCloudSurfaces()` here.
 import "./instances";
 import "./analytics";
 import "./home/routes";
@@ -46,6 +41,7 @@ import {
   APPLICATIONS_DETAIL_ROUTE_PATH,
   APPLICATIONS_LIST_ROUTE_PATH,
 } from "./applications";
+import { registerApprovalsCloudRoute } from "./approvals";
 import { registerJoinFlow } from "./join";
 import { registerMcpsCloudRoute } from "./mcps";
 import { registerPublicPages } from "./public-pages";
@@ -66,6 +62,7 @@ export function registerAllCloudSurfaces(): void {
   registerPublicPages();
 
   registerApiExplorerCloudRoute();
+  registerApprovalsCloudRoute();
   // The Applications module self-registers its real routes at import time (line
   // 40's `import "./applications"` chain), but the console no longer surfaces
   // Apps — management moved into the Eliza app. Override both paths (later

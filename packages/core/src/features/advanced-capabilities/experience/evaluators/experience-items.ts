@@ -13,6 +13,7 @@
  * auto-record confidence threshold.
  */
 import { logger } from "../../../../logger.ts";
+import { stringifyForDiagnostics } from "../../../../runtime/json-output.ts";
 import { EvaluatorPriority } from "../../../../services/evaluator-priorities.ts";
 import type {
 	Evaluator,
@@ -251,11 +252,7 @@ function normalizeLearningKey(text: string): string {
 function safeText(value: unknown): string {
 	if (typeof value === "string") return value;
 	if (value === null || value === undefined) return "";
-	try {
-		return JSON.stringify(value);
-	} catch {
-		return String(value);
-	}
+	return stringifyForDiagnostics(value);
 }
 
 function isSyntheticMemory(memory: Memory): boolean {

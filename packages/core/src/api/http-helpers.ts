@@ -198,7 +198,8 @@ export function writeJsonResponseSafe(
 	status = 200,
 ): void {
 	void writeJsonResponse(res, body, status).catch((err) => {
-		/* response already committed, log for diagnostics */
+		// error-policy:J1 The response is already committed; logging is the only
+		// remaining observable transport-boundary signal.
 		logger.warn(`[http] JSON response write failed: ${err}`);
 	});
 }
@@ -227,7 +228,8 @@ export function writeJsonErrorSafe(
 	status = 400,
 ): void {
 	void writeJsonError(res, message, status).catch((err) => {
-		/* response already committed, log for diagnostics */
+		// error-policy:J1 The response is already committed; logging is the only
+		// remaining observable transport-boundary signal.
 		logger.warn(`[http] JSON error response write failed: ${err}`);
 	});
 }
@@ -268,6 +270,8 @@ export async function readJsonBody<T = Record<string, unknown>>(
 		}
 		raw = body;
 	} catch {
+		// error-policy:J1 the HTTP boundary translates body-read failures into a
+		// structured client response.
 		await writeJsonError(res, readErrorMessage, readErrorStatus);
 		return null;
 	}
@@ -285,6 +289,8 @@ export async function readJsonBody<T = Record<string, unknown>>(
 		cachedRequest.body = parsed;
 		return parsed as T;
 	} catch {
+		// error-policy:J1 the HTTP boundary translates malformed JSON into a
+		// structured client response.
 		await writeJsonError(res, parseErrorMessage, parseErrorStatus);
 		return null;
 	}

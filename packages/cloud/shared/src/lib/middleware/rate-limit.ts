@@ -450,16 +450,20 @@ export async function enforceOrgRateLimit(
   options: {
     cacheOnly?: boolean;
     executionCtx?: OrgTierCacheExecutionContext;
+    /** Config carried by the combined inference decision; avoids a tier KV read. */
+    config?: OrgRateLimitConfig;
   } = {},
 ): Promise<Response | null> {
   if (options.cacheOnly) {
-    const resolution = await getOrgRpmForEndpointCacheOnly(organizationId, endpointType, {
-      executionCtx: options.executionCtx,
-    });
-    if (resolution.kind !== "ready") {
-      throw new OrgRateLimitCacheNotReadyError(resolution.kind, resolution.cacheRead);
+    const config = options.config
+      ? options.config
+      : await getOrgRpmForEndpointCacheOnly(organizationId, endpointType, {
+          executionCtx: options.executionCtx,
+        });
+    if ("kind" in config && config.kind !== "ready") {
+      throw new OrgRateLimitCacheNotReadyError(config.kind, config.cacheRead);
     }
-    const { windowMs, maxRequests } = resolution.config;
+    const { windowMs, maxRequests } = "kind" in config ? config.config : config;
     try {
       const result = await consumeInferenceRateLimit({
         organizationId,

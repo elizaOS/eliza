@@ -79,52 +79,13 @@ export const listCloudAppsAction: Action = {
       };
     }
 
+    let response: Awaited<ReturnType<typeof client.listApps>>;
+    // error-policy:J1 The action boundary translates only the Cloud request;
+    // connector delivery remains owned by the caller and must reject unchanged.
     try {
-      const { apps } = await client.listApps();
-
-      if (!apps || apps.length === 0) {
-        await callback?.({ text: EMPTY_MESSAGE, actions: ["LIST_CLOUD_APPS"] });
-        return {
-          success: true,
-          text: "User has no Eliza Cloud apps.",
-          userFacingText: EMPTY_MESSAGE,
-          data: { count: 0, apps: [] },
-        };
-      }
-
-      const header =
-        apps.length === 1
-          ? "You have 1 app on Eliza Cloud:"
-          : `You have ${apps.length} apps on Eliza Cloud:`;
-      const body = apps.map(formatAppLine).join("\n");
-      const reply = `${header}\n${body}`;
-
-      await callback?.({ text: reply, actions: ["LIST_CLOUD_APPS"] });
-      return {
-        success: true,
-        text: `Listed ${apps.length} Eliza Cloud app(s).`,
-        userFacingText: reply,
-        verifiedUserFacing: true,
-        // A single-operation read whose reply IS the complete answer: opting
-        // into the gated evaluator skip keeps a small planner model from
-        // re-rendering the already-delivered list as a second message.
-        turnComplete: true,
-        data: {
-          count: apps.length,
-          apps: apps.map((a) => ({
-            id: a.id,
-            name: a.name,
-            slug: a.slug,
-            status: a.deployment_status,
-          })),
-        },
-      };
+      response = await client.listApps();
     } catch (err) {
-      logger.warn(
-        `[LIST_CLOUD_APPS] Failed to list apps: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
+      logger.warn({ err }, "[LIST_CLOUD_APPS] Failed to list apps");
       await callback?.({ text: ERROR_MESSAGE, actions: ["LIST_CLOUD_APPS"] });
       return {
         success: false,
@@ -134,6 +95,45 @@ export const listCloudAppsAction: Action = {
         data: { reason: "error" },
       };
     }
+
+    const { apps } = response;
+    if (!apps || apps.length === 0) {
+      await callback?.({ text: EMPTY_MESSAGE, actions: ["LIST_CLOUD_APPS"] });
+      return {
+        success: true,
+        text: "User has no Eliza Cloud apps.",
+        userFacingText: EMPTY_MESSAGE,
+        data: { count: 0, apps: [] },
+      };
+    }
+
+    const header =
+      apps.length === 1
+        ? "You have 1 app on Eliza Cloud:"
+        : `You have ${apps.length} apps on Eliza Cloud:`;
+    const body = apps.map(formatAppLine).join("\n");
+    const reply = `${header}\n${body}`;
+
+    await callback?.({ text: reply, actions: ["LIST_CLOUD_APPS"] });
+    return {
+      success: true,
+      text: `Listed ${apps.length} Eliza Cloud app(s).`,
+      userFacingText: reply,
+      verifiedUserFacing: true,
+      // A single-operation read whose reply IS the complete answer: opting
+      // into the gated evaluator skip keeps a small planner model from
+      // re-rendering the already-delivered list as a second message.
+      turnComplete: true,
+      data: {
+        count: apps.length,
+        apps: apps.map((a) => ({
+          id: a.id,
+          name: a.name,
+          slug: a.slug,
+          status: a.deployment_status,
+        })),
+      },
+    };
   },
 
   examples: [

@@ -1,5 +1,10 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for setup upstreams mjs. */
+/**
+ * Initializes repo-local upstream checkouts: clones the elizaOS repo when
+ * missing, links workspace packages, and runs the upstream build steps (e.g.
+ * @elizaos/core proto generation) needed before typecheck/tests. Skippable via
+ * ELIZA_SKIP_LOCAL_UPSTREAMS.
+ */
 
 import { spawn, spawnSync } from "node:child_process";
 import {
@@ -67,38 +72,12 @@ export const ELIZA_BUILD_STEPS = [
     label: "@elizaos/vault",
   },
   {
-    check: path.join("packages", "security", "dist", "index.js"),
-    cwd: path.join("packages", "security"),
-    args: ["run", "build"],
-    label: "@elizaos/security",
-  },
-  {
-    check: path.join("packages", "plugin-remote-manifest", "dist", "index.js"),
-    cwd: path.join("packages", "plugin-remote-manifest"),
-    args: ["run", "build"],
-    label: "@elizaos/plugin-remote-manifest",
-  },
-  {
-    check: path.join("packages", "plugin-worker-runtime", "dist", "index.js"),
-    cwd: path.join("packages", "plugin-worker-runtime"),
-    args: ["run", "build"],
-    label: "@elizaos/plugin-worker-runtime",
-  },
-  {
     // plugin-elizacloud imports types from @elizaos/cloud-sdk; without dist
     // its tsup --dts pass fails with TS2307.
     check: path.join("packages", "cloud", "sdk", "dist", "index.d.ts"),
     cwd: path.join("packages", "cloud", "sdk"),
     args: ["run", "build"],
     label: "@elizaos/cloud-sdk",
-  },
-  {
-    // plugin-streaming imports isCloudConnected from @elizaos/cloud-routing;
-    // without dist its tsup --dts pass fails with TS2307.
-    check: path.join("packages", "cloud", "routing", "dist", "index.js"),
-    cwd: path.join("packages", "cloud", "routing"),
-    args: ["run", "build"],
-    label: "@elizaos/cloud-routing",
   },
 ];
 

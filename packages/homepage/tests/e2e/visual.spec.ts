@@ -8,56 +8,88 @@
  */
 
 import { expect, type Page, test } from "playwright/test";
+import { waitForLandingIntro } from "./landing-readiness";
 import { captureScreenshotWithQualityRetry } from "./screenshot-quality";
+import { VISUAL_ROUTES, VISUAL_VIEWPORTS } from "./visual-routes";
 
-const ROUTES = [
-  { path: "/", name: "landing" },
-  { path: "/downloads", name: "downloads" },
-  { path: "/login", name: "login" },
-  { path: "/connected", name: "connected" },
-  { path: "/get-started", name: "get-started" },
-  { path: "/leaderboard", name: "leaderboard" },
-] as const;
+const FIXED_TIME = new Date("2026-01-15T14:30:00.000Z");
 
-const VIEWPORTS = [
-  { name: "desktop", width: 1280, height: 720 },
-  { name: "mobile", width: 390, height: 844 },
-] as const;
+async function waitForShader(page: Page) {
+  await expect(page.locator("[data-shader-background]")).toHaveAttribute(
+    "data-shader-background",
+    "settled",
+    { timeout: 20_000 },
+  );
+}
+
+async function waitForOnboardingCards(page: Page) {
+  const lastCard = page.getByTestId("solana-signin");
+  await lastCard.waitFor({ state: "visible", timeout: 20_000 });
+  await expect
+    .poll(
+      () =>
+        lastCard.evaluate((element) => {
+          const style = getComputedStyle(element);
+          return {
+            opacity: Number(style.opacity),
+            transform: style.transform,
+          };
+        }),
+      { timeout: 20_000 },
+    )
+    .toEqual({ opacity: 1, transform: "matrix(1, 0, 0, 1, 0, 0)" });
+}
+
+async function prepareProfileAuth(page: Page) {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("eliza_app_session", "homepage-visual-token");
+  });
+  await page.route("https://www.elizacloud.ai/api/eliza-app/**", (route) =>
+    route.fulfill({
+      json: {
+        user: {
+          id: "user_homepage_visual",
+          name: "Homepage Visual",
+          organization_id: "org_homepage_visual",
+        },
+        organization: {
+          id: "org_homepage_visual",
+          name: "Homepage Visual Org",
+          credit_balance: "0",
+        },
+      },
+    }),
+  );
+}
 
 async function prepare(page: Page, routePath?: string) {
-  await page.evaluate(() => document.fonts.ready);
-  // The landing intro (SVG letter swap → spring-revealed tab bar) is
-  // react-spring/JS-driven, so `animations: "disabled"` cannot freeze it and
-  // a fixed wait races slow app-JS loads. Wait for the last spring-revealed
-  // control ("Try Now") instead, then give the springs time to reach rest.
   if (routePath === "/" || routePath === "/leaderboard") {
-    await page.waitForSelector("header", { timeout: 20_000 }).catch(() => {});
-    const tryButton = page.getByRole("button", { name: "Try Now" }).first();
-    await tryButton.waitFor({ timeout: 15_000 });
-    await expect
-      .poll(
-        async () =>
-          Number(
-            await tryButton.evaluate(
-              (element) => getComputedStyle(element).opacity,
-            ),
-          ),
-        { timeout: 20_000 },
-      )
-      .toBeGreaterThan(0.98);
-    await page.waitForTimeout(750);
+    await waitForLandingIntro(page);
     return;
   }
-  if (routePath === "/login" || routePath === "/connected") {
+  await page.evaluate(() => document.fonts.ready);
+  if (
+    routePath === "/login" ||
+    routePath === "/connected" ||
+    routePath === "/profile/edit"
+  ) {
     await page.waitForFunction(
       () =>
         window.location.pathname === "/get-started" ||
-        document.body.textContent?.includes("Connected."),
+        document.body.textContent?.includes("Connected.") ||
+        document.body.textContent?.includes("Link a public wallet."),
       undefined,
       { timeout: 20_000 },
     );
   }
-  await page.waitForTimeout(600);
+  if (
+    routePath === "/get-started" ||
+    routePath === "/login" ||
+    routePath === "/connected"
+  ) {
+    await waitForShader(page);
+    await waitForOnboardingCards(page);
+  }
 }
 
 function dynamicMask(page: Page) {
@@ -72,14 +104,21 @@ function dynamicMask(page: Page) {
   ];
 }
 
-for (const viewport of VIEWPORTS) {
+for (const viewport of VISUAL_VIEWPORTS) {
   test.describe(`visual regression — ${viewport.name}`, () => {
-    test.use({ viewport: { width: viewport.width, height: viewport.height } });
+    test.use({
+      viewport: { width: viewport.width, height: viewport.height },
+      reducedMotion: "reduce",
+      timezoneId: "UTC",
+    });
 
-    for (const route of ROUTES) {
+    for (const route of VISUAL_ROUTES) {
       test(`${route.name} (${viewport.name})`, async ({ page }) => {
         test.setTimeout(60_000);
-        await page.goto(route.path, { waitUntil: "domcontentloaded" });
+        await page.clock.setFixedTime(FIXED_TIME);
+        if ("authed" in route && route.authed) await prepareProfileAuth(page);
+        const target = "goto" in route ? route.goto : route.path;
+        await page.goto(target, { waitUntil: "domcontentloaded" });
         await prepare(page, route.path);
         await captureScreenshotWithQualityRetry(
           page,
@@ -96,10 +135,7 @@ for (const viewport of VIEWPORTS) {
             fullPage: true,
             mask: dynamicMask(page),
             animations: "disabled",
-            // Fresh Quality #16657 proved stable 6-7% Linux-renderer drift on
-            // three mobile baselines across all retries. Keep desktop at the
-            // global 5% guard and bound only mobile rendering variance at 8%.
-            maxDiffPixelRatio: viewport.name === "mobile" ? 0.08 : 0.05,
+            maxDiffPixelRatio: 0.02,
           },
         );
       });

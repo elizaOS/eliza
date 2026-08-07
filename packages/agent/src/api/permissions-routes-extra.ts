@@ -8,8 +8,13 @@
  */
 import type http from "node:http";
 import { logger } from "@elizaos/core";
-import type { AgentAutomationMode, ReadJsonBodyOptions } from "@elizaos/shared";
+import type {
+  AgentAutomationMode,
+  ReadJsonBodyOptions,
+  TradePermissionMode,
+} from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
+import type { LocalTradeExecutionOptions } from "./trade-safety.ts";
 
 // AgentAutomationMode is canonical in @elizaos/shared (imported above).
 
@@ -30,12 +35,12 @@ export interface PermissionsExtraRouteContext {
     options?: ReadJsonBodyOptions,
   ) => Promise<T | null>;
   saveElizaConfig: (config: ElizaConfig) => void;
-  resolveTradePermissionMode: (config: ElizaConfig) => string;
+  resolveTradePermissionMode: (config: ElizaConfig) => TradePermissionMode;
   canUseLocalTradeExecution: (
-    mode: string,
+    mode: TradePermissionMode,
     isAgent: boolean,
-    scope?: unknown,
-    options?: { consumeAgentQuota: boolean },
+    log?: (message: string) => void,
+    options?: LocalTradeExecutionOptions,
   ) => boolean;
   parseAgentAutomationMode: (value: unknown) => AgentAutomationMode | null;
   persistAgentAutomationMode: (

@@ -181,6 +181,7 @@ if (!turboBinOverride && !turboShim && !fs.existsSync(turboPackageBin)) {
 // Turbo cache (completed tasks skip), and the retry is announced loudly so a
 // deterministic failure can never hide behind it.
 const WINDOWS_PROCESS_INIT_CRASH = "exited (-1073741502)";
+const TURBO_OUTPUT_DRAIN_GRACE_MS = 2_000;
 // The retry is live on Windows only (the crash class is a Windows runner
 // failure); RUN_TURBO_FORCE_INIT_CRASH_RETRY lets the contract tests exercise
 // the loop on every platform, RUN_TURBO_NO_INIT_CRASH_RETRY turns it off.
@@ -233,7 +234,19 @@ function runTurboOnce() {
         process.kill(process.pid, signal);
         return;
       }
-      resolve({ code: code ?? 1, sawInitCrash });
+
+      // Turbo's final failure line can arrive after `exit`, but descendants may
+      // inherit its pipes and prevent `close` forever. Drain until closure or a
+      // bounded grace period so retry detection is reliable without hanging CI.
+      let finished = false;
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timer);
+        resolve({ code: code ?? 1, sawInitCrash });
+      };
+      const timer = setTimeout(finish, TURBO_OUTPUT_DRAIN_GRACE_MS);
+      child.once("close", finish);
     });
 
     child.on("error", (error) => {

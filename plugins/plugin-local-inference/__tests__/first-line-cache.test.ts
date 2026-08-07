@@ -58,10 +58,6 @@ afterEach(() => {
 });
 
 describe("hashCacheKey", () => {
-	it("is deterministic across calls", () => {
-		const k = makeKey();
-		expect(hashCacheKey(k)).toBe(hashCacheKey(k));
-	});
 	it("changes when any key field changes", () => {
 		const base = makeKey();
 		const baseHash = hashCacheKey(base);

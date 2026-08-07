@@ -23,6 +23,22 @@ describe("vault — set / get / has / remove", () => {
     expect(await test.vault.get("ui.theme")).toBe("dark");
   });
 
+  it("atomically preserves one setIfAbsent winner", async () => {
+    const outcomes = await Promise.all([
+      test.vault.setIfAbsent("system.integrity", "first", {
+        sensitive: true,
+      }),
+      test.vault.setIfAbsent("system.integrity", "second", {
+        sensitive: true,
+      }),
+    ]);
+
+    expect(outcomes.filter(Boolean)).toHaveLength(1);
+    expect(["first", "second"]).toContain(
+      await test.vault.get("system.integrity"),
+    );
+  });
+
   it("stores and retrieves a sensitive value (encrypted at rest)", async () => {
     await test.vault.set("openrouter.apiKey", "sk-or-v1-test", {
       sensitive: true,

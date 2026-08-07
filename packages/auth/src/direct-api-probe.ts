@@ -46,6 +46,16 @@ export interface DirectApiProbeResult {
   latencyMs: number;
 }
 
+async function readProbeFailureBody(response: Response): Promise<string> {
+  try {
+    return (await response.text()).slice(0, 200);
+  } catch (cause) {
+    // error-policy:J4 explicit diagnostic degrade — the HTTP status remains the
+    // authoritative failed probe; only the optional provider body is unavailable.
+    return `[response body unavailable: ${cause instanceof Error ? cause.message : String(cause)}]`;
+  }
+}
+
 /**
  * Verify a direct-API key against the provider with a minimal authed GET
  * (`/models`). `ok` is true only on a 2xx; a 401/403 (revoked/invalid) returns
@@ -79,16 +89,18 @@ export async function probeDirectApiKey(
           });
     const latencyMs = Date.now() - start;
     if (!response.ok) {
-      const text = await response.text().catch(() => "");
+      const text = await readProbeFailureBody(response);
       return {
         ok: false,
         status: response.status,
-        error: `${providerId} ${response.status}: ${text.slice(0, 200)}`,
+        error: `${providerId} ${response.status}: ${text}`,
         latencyMs,
       };
     }
     return { ok: true, status: response.status, latencyMs };
   } catch (err) {
+    // error-policy:J1 boundary translation — callers need a typed failed probe
+    // for transport/timeout failures, distinct from an authenticated HTTP status.
     return {
       ok: false,
       status: 0,

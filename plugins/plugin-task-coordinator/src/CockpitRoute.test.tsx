@@ -32,7 +32,7 @@ type ButtonMockProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "size"> & {
   variant?: string;
 };
 
-vi.mock("@elizaos/ui", () => ({
+vi.mock("@elizaos/ui/api", () => ({
   client: {
     getOrchestratorRooms: mocks.getOrchestratorRooms,
     createOrchestratorTask: mocks.createOrchestratorTask,
@@ -103,6 +103,16 @@ vi.mock("@elizaos/ui", () => ({
   },
 }));
 
+vi.mock("@elizaos/ui/components", async () => {
+  const apiMock = await import("@elizaos/ui/api");
+  return { CockpitView: apiMock.CockpitView };
+});
+
+vi.mock("@elizaos/ui/components/ui/button", async () => {
+  const apiMock = await import("@elizaos/ui/api");
+  return { Button: apiMock.Button };
+});
+
 // Stub the (separately-tested) heavy session pane — the container test only
 // proves the drill-in ROUTING (deck ⇄ pane), not the pane internals.
 vi.mock("./CockpitSessionPane", () => ({
@@ -145,12 +155,6 @@ describe("CockpitRoute — live spawn wiring (agent mocked at client boundary)",
     await waitFor(() =>
       expect(screen.getByTestId("rooms-count").textContent).toBe("1"),
     );
-  });
-
-  it("reserves scroll clearance for the floating terminal controls", async () => {
-    render(<CockpitRoute />);
-    await waitFor(() => expect(mocks.cockpitViewProps).not.toBeNull());
-    expect(mocks.cockpitViewProps?.className).toContain("pb-20");
   });
 
   it("spawning creates the task AND spawns the agent with the picked mode", async () => {

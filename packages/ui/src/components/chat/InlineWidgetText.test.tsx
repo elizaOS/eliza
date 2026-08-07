@@ -1,3 +1,4 @@
+/** Verifies InlineWidgetText through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Verifies the chat-overlay inline-widget renderer (#8997, #9304): assistant

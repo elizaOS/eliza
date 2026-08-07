@@ -6,7 +6,7 @@ import { index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-cor
 /**
  * Append-only audit log for authentication and authorization events.
  *
- * Mirrors the `AuditEvent` shape exported by `@elizaos/security/audit`. Rows
+ * Mirrors the `AuditEvent` shape exported by `@/services/audit`. Rows
  * are written by the `AuditEventsSink` registered on the global dispatcher in
  * `cloud/api/bootstrap-app.ts`.
  *

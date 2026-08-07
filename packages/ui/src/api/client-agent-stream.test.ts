@@ -614,4 +614,31 @@ describe("ElizaClient chat-turn status SSE (#8813)", () => {
     expect(result.text).toContain("par");
     expect(cancel).toHaveBeenCalledWith("elizaos-sse-read-failed");
   });
+
+  it("does not fabricate an assistant error when an empty stream ends before its terminal frame", async () => {
+    const read = vi.fn().mockRejectedValueOnce(new Error("socket reset"));
+    const cancel = vi.fn(async () => {});
+    const request = vi.fn(
+      async () =>
+        ({
+          ok: true,
+          status: 200,
+          body: { getReader: () => ({ read, cancel }) },
+        }) as unknown as Response,
+    );
+    const client = new ElizaClient("http://agent.example:31337", "token");
+    client.setRequestTransport({ request });
+
+    const result = await client.streamChatEndpoint(
+      "/api/conversations/conversation-id/messages/stream",
+      "go home",
+      vi.fn(),
+    );
+
+    expect(result).toMatchObject({
+      text: "",
+      completed: false,
+    });
+    expect(cancel).toHaveBeenCalledWith("elizaos-sse-read-failed");
+  });
 });

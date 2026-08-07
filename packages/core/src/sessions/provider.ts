@@ -1,10 +1,4 @@
-/**
- * Session provider for elizaOS runtime.
- *
- * Exposes session context to agents during message processing.
- *
- * @module sessions/provider
- */
+/** Exposes the active session context to agents during message processing. */
 
 import type { Provider, ProviderResult } from "../types/components.js";
 import type { Memory, MemoryMetadata } from "../types/memory.js";

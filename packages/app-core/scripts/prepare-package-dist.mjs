@@ -1,4 +1,9 @@
-/** Supports app-core build, packaging, or development orchestration for prepare package dist mjs. */
+/**
+ * Writes a publishable package.json into a package's dist/: rewrites
+ * entry/exports paths for the compiled layout, pins workspace:* deps to
+ * concrete versions, strips private/scripts/devDependencies, and defaults
+ * scoped packages to public access.
+ */
 import {
   existsSync,
   mkdirSync,

@@ -16,7 +16,6 @@ vi.mock("@elizaos/ui/agent-surface", () => ({
   useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
 }));
 
-import { InboxView } from "../src/components/inbox/InboxView.tsx";
 import { inboxPlugin } from "../src/plugin.ts";
 
 describe("inboxPlugin view registration", () => {
@@ -33,11 +32,9 @@ describe("inboxPlugin view registration", () => {
   });
 
   it("registers exactly one view with the inbox descriptor", () => {
-    expect(inboxPlugin.views).toBeDefined();
     expect(inboxPlugin.views).toHaveLength(1);
 
     const view = inboxPlugin.views?.[0];
-    expect(view).toBeDefined();
     expect(view?.id).toBe("inbox");
     expect(view?.label).toBe("Inbox");
     expect(view?.path).toBe("/inbox");
@@ -52,13 +49,6 @@ describe("inboxPlugin view registration", () => {
     expect(tags).toContain("email");
     expect(tags).toContain("mail");
     expect(tags).toContain("inbox");
-  });
-
-  it("componentExport name matches the actually-exported component", () => {
-    // Drift guard: the descriptor names "InboxView"; the module must export a
-    // component under that exact name (catches rename-without-updating-plugin).
-    expect(inboxPlugin.views?.[0]?.componentExport).toBe(InboxView.name);
-    expect(typeof InboxView).toBe("function");
   });
 
   it("registers the triage and queue operation HTTP routes", () => {

@@ -1,3 +1,4 @@
+/** Verifies useParsedSegments through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Hook smoke for useParsedSegments: it threads the streaming cache across

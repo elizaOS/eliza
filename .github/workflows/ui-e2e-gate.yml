@@ -1,4 +1,4 @@
-name: UI Fixture E2E
+name: UI Core Fixture E2E
 
 # #9954/#10722: the chat-sheet drag-detent, TopicGroup gesture, and home-screen
 # e2e runners (src/components/shell/__e2e__/run-*.mjs) esbuild-bundle a fixture
@@ -22,7 +22,7 @@ on:
         type: string
         default: standalone
   pull_request:
-    branches: [main]
+    branches: [develop, main]
     paths:
       # The fixture runners esbuild-bundle from the full packages/ui/src tree,
       # so any source change there can reach a bundled runner.
@@ -55,12 +55,12 @@ permissions:
   contents: read
 
 env:
-  BUN_VERSION: "canary"
+  BUN_VERSION: "1.3.14"
   NODE_VERSION: "24.15.0"
 
 jobs:
-  ui-fixture-e2e:
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+  ui-core-fixture-e2e:
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -76,7 +76,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install
+          install-command: bun install --frozen-lockfile
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -177,7 +177,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: ui-fixture-e2e-output
+          name: ui-core-fixture-e2e-output
           path: |
             packages/ui/src/agent-surface/__e2e__/output
             packages/ui/src/components/chat/widgets/__e2e__/output

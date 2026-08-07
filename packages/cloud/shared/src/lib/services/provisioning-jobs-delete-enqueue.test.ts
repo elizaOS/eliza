@@ -12,6 +12,12 @@
  * helpers module with chainable query builders that capture the generated SQL.
  */
 
+// These suites mock `db/helpers` with a partial `dbWrite` (no `execute`), so the
+// self-healing DDL guard cannot run here. Skipping it is the house pattern for
+// mocked-database suites; the guard itself is covered by the PGlite tests.
+const PRIOR_SKIP_ENSURE = process.env.SKIP_AGENT_SANDBOX_ENSURE;
+process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
+
 import { afterAll, afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
@@ -50,16 +56,22 @@ const select = mock(() => ({ from: selectFrom }));
 // Transaction tx: only the bits enqueueLifecycleJob + beforeInsert touch.
 const txExecute = mock(async () => ({ rows: [] }));
 // tx.select().from().where().orderBy().limit() -> [] (no existing job) for the
-// reuse lookup; tx.select().from().where().limit() -> [sandbox] for the row.
+// reuse lookup; tx.select().from().where().for("update").limit() -> [sandbox]
+// for the row. The sandbox read takes a row lock so the lifecycle revision it
+// returns cannot move before the enqueue commits, so `for` is part of the
+// chain the enqueue actually walks.
 let txSelectCall = 0;
 const txSelect = mock(() => {
   txSelectCall += 1;
   const isSandboxLookup = txSelectCall === 1;
-  const rows = isSandboxLookup ? [{ id: "agent", status: "running", updated_at: new Date() }] : [];
+  const rows = isSandboxLookup
+    ? [{ id: "agent", status: "running", lifecycle_revision: 0, updated_at: new Date() }]
+    : [];
   const chain = {
     from: () => chain,
     where: () => chain,
     orderBy: () => chain,
+    for: () => chain,
     limit: () => rows,
   } as Record<string, unknown>;
   return chain;
@@ -314,4 +326,12 @@ describe("reEnqueueFailedDeletions — recover stuck deletion_failed rows", () =
       enqueueSpy.mockRestore();
     }
   });
+});
+
+// bun shares one process across files without --isolate, so an unrestored env
+// override here would silently disable the ensure guard for whatever suite runs
+// next. Restore exactly what was there before.
+afterAll(() => {
+  if (PRIOR_SKIP_ENSURE === undefined) delete process.env.SKIP_AGENT_SANDBOX_ENSURE;
+  else process.env.SKIP_AGENT_SANDBOX_ENSURE = PRIOR_SKIP_ENSURE;
 });

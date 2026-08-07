@@ -4,7 +4,7 @@ import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
   judgeRubric,
-} from "../_helpers/action-assertions.ts";
+} from "@elizaos/scenario-runner/scenario-assertions";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const now = Date.now();

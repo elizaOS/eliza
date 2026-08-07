@@ -152,7 +152,7 @@ function FileFacetButton({
       }`}
     >
       {label}
-      <span className="ml-1.5 text-muted/70">{count}</span>
+      <span className="ml-1.5 text-muted">{count}</span>
     </Button>
   );
 }
@@ -273,7 +273,7 @@ const FileCard = memo(function FileCard({
           >
             {file.fileName}
           </div>
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-2xs font-semibold uppercase tracking-[0.14em] text-muted/75">
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-2xs font-semibold uppercase tracking-[0.14em] text-muted">
             <span className="rounded-full px-2 py-0.5 text-accent">
               {kindLabel}
             </span>

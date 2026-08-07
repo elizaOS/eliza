@@ -1,4 +1,4 @@
-import { hasOwnerAccess } from "@elizaos/agent";
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import { type IAgentRuntime, logger, type Memory } from "@elizaos/core";
 import {
   checkSenderRole,

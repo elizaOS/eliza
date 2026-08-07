@@ -1,3 +1,4 @@
+/** Verifies sandbox-policy through the package's configured test harness. */
 // Sandbox-attribute policy (#14180): the MDN foot-gun guard that a framed view
 // never gets `allow-scripts` + `allow-same-origin` together (which would make
 // the sandbox decorative). Pure logic, no DOM.

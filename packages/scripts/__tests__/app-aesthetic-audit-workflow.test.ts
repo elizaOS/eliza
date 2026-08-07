@@ -1,8 +1,7 @@
 /**
- * Static contract for the app visual-audit workflow. The audit is valuable
- * reviewer evidence, but it is deliberately advisory for develop throughput:
- * failures must stay visible in logs and artifacts without turning the
- * non-required workflow into a merge-blocking queue drain (#14051).
+ * Fail-closed contract for the app visual-audit workflow. Contributor code
+ * runs on a disposable host, and a green check certifies both the DOM verdict
+ * and pixel OCR rather than only proving that an artifact upload ran.
  */
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
@@ -29,18 +28,26 @@ function jobBlock(jobId: string): string {
 }
 
 describe("app-aesthetic-audit workflow", () => {
-  test("keeps visual audit jobs advisory at the job boundary", () => {
-    expect(jobBlock("aesthetic-audit")).toMatch(
-      /^\s{4}continue-on-error:\s*true$/m,
-    );
-    expect(jobBlock("ocr-content-audit")).toMatch(
-      /^\s{4}continue-on-error:\s*true$/m,
-    );
+  test("runs contributor code on a hosted runner with a complete-audit budget", () => {
+    const auditJob = jobBlock("aesthetic-audit");
+    expect(auditJob).toMatch(/^\s{4}runs-on:\s*ubuntu-24\.04$/m);
+    expect(auditJob).toMatch(/^\s{4}timeout-minutes:\s*75$/m);
+    expect(auditJob).not.toContain("self-hosted");
+    expect(auditJob).not.toContain("hetzner-robot");
   });
 
-  test("does not fail OCR triage when the advisory screenshot artifact is absent", () => {
-    expect(jobBlock("ocr-content-audit")).toMatch(
-      /name: Download aesthetic-audit artifacts\n\s+continue-on-error:\s*true/,
+  test("fails closed at both report boundaries", () => {
+    const auditJob = jobBlock("aesthetic-audit");
+    const ocrJob = jobBlock("ocr-content-audit");
+
+    expect(auditJob).not.toContain("continue-on-error");
+    expect(ocrJob).not.toContain("continue-on-error");
+    expect(auditJob).toContain(
+      "run: bun run --cwd packages/app audit:app:capture",
+    );
+    expect(ocrJob).toContain("run: bun run --cwd packages/app audit:ocr");
+    expect(ocrJob).toMatch(
+      /name: Download aesthetic-audit artifacts\n\s+uses:/,
     );
   });
 });

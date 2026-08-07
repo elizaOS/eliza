@@ -1,3 +1,4 @@
+/** Verifies StartupShell — delayed loading splash through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // StartupShell's view gating (loading vs failure vs pairing vs bootstrap) and

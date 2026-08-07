@@ -11,7 +11,6 @@
  * calendar assistant action.
  */
 import { createHash } from "node:crypto";
-import { renderGroundedActionReply } from "@elizaos/agent";
 import type {
   Action,
   ActionExample,
@@ -24,8 +23,11 @@ import type {
   State,
 } from "@elizaos/core";
 import {
+  describeUserReference,
   normalizeEffectReceipt,
   resolveOptimizedPromptForRuntime,
+  unwrapUserMessageText,
+  userReferenceLogView,
 } from "@elizaos/core";
 import type {
   CreateLifeOpsCalendarEventAttendee,
@@ -164,6 +166,16 @@ function requireCompleteFreshCalendarFeed(
     );
   }
   return feed;
+}
+
+// Mutation lookups must stay unscoped when the planner omits grantId: the
+// aggregated feed already includes the built-in Eliza source alongside every
+// connected provider, so defaulting the lookup to one grant would hide
+// external events (and their busy windows) from update/delete/create flows.
+function mutationGrantId(
+  details: Record<string, unknown> | undefined,
+): string | undefined {
+  return detailString(details, "grantId");
 }
 
 type CreateEventTravelIntent = CalendarTravelIntent;
@@ -1068,7 +1080,11 @@ function buildAppleCalendarPermissionRequestText(
   ].join("\n");
 }
 
-function buildCalendarEventDisambiguationFallback(args: {
+// titleHint comes from model extraction over the (possibly envelope-wrapped)
+// message, so it can be an arbitrary blob — describeUserReference quotes it
+// only when name-shaped and falls back to a neutral noun otherwise. Exported
+// for regression tests.
+export function buildCalendarEventDisambiguationFallback(args: {
   action: "update" | "delete";
   candidates: LifeOpsCalendarEvent[];
   titleHint?: string;
@@ -1080,7 +1096,7 @@ function buildCalendarEventDisambiguationFallback(args: {
     return `- ${candidate.title} (${when})`;
   });
   const intro = args.titleHint
-    ? `I found multiple events matching "${args.titleHint}".`
+    ? `I found multiple events matching ${describeUserReference(args.titleHint, "that event")}.`
     : "I found multiple matching calendar events.";
   const suffix =
     args.candidates.length > 3
@@ -1093,6 +1109,18 @@ function buildCalendarEventDisambiguationFallback(args: {
   ].join("\n");
 }
 
+// Same blob hazard as the disambiguation intro: the hint is model-extracted
+// and must never be echoed verbatim when it is not name-shaped. Exported for
+// regression tests.
+export function buildCalendarEventNotFoundFallback(
+  action: "update" | "delete",
+  titleHint: string | undefined,
+): string {
+  return titleHint
+    ? `i couldn't find an event matching ${describeUserReference(titleHint, "that event")} in that window.`
+    : `i couldn't find any events to ${action} in that window. give me a title or a date.`;
+}
+
 async function renderCalendarActionReply(args: {
   runtime: IAgentRuntime;
   message: Memory;
@@ -1103,16 +1131,16 @@ async function renderCalendarActionReply(args: {
   context?: Record<string, unknown>;
 }): Promise<string> {
   const { runtime, message, state, intent, scenario, fallback, context } = args;
-  return renderGroundedActionReply({
+  const renderGroundedReply = deps().renderGroundedReply;
+  if (!renderGroundedReply) return fallback;
+  return renderGroundedReply({
     runtime,
     message,
     state,
     intent,
-    domain: "calendar",
     scenario,
     fallback,
     context,
-    preferCharacterVoice: true,
     additionalRules: [
       "Mirror the user's phrasing for dates, times, ranges, and scheduling language when possible.",
       "Prefer phrases like tomorrow morning, next week, later, earlier, free, busy, or the user's own wording over robotic calendar language.",
@@ -1875,7 +1903,7 @@ async function loadCreateEventCalendarContext(
       | "cloud_managed"
       | undefined,
     side: detailString(details, "side") as "owner" | "agent" | undefined,
-    grantId: detailString(details, "grantId"),
+    grantId: mutationGrantId(details),
     calendarId: detailString(details, "calendarId"),
     timeZone: requestTimeZone,
     forceSync: true,
@@ -2178,6 +2206,28 @@ function eventDateSearchTerms(event: LifeOpsCalendarEvent): Set<string> {
   );
 }
 
+function formatCalendarLocalDate(parts: {
+  year: number;
+  month: number;
+  day: number;
+}): string {
+  return `${String(parts.year).padStart(4, "0")}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+}
+
+function buildCalendarLocalDateAnchors(now: Date, timeZone: string): string {
+  const localDateParts = getZonedDateParts(now, timeZone);
+  const localDate = {
+    year: localDateParts.year,
+    month: localDateParts.month,
+    day: localDateParts.day,
+  };
+  return [
+    `yesterday = ${formatCalendarLocalDate(addDaysToLocalDate(localDate, -1))}`,
+    `today = ${formatCalendarLocalDate(localDate)}`,
+    `tomorrow = ${formatCalendarLocalDate(addDaysToLocalDate(localDate, 1))}`,
+  ].join(", ");
+}
+
 export async function extractCalendarPlanWithLlm(
   runtime: IAgentRuntime,
   message: Memory,
@@ -2194,46 +2244,7 @@ export async function extractCalendarPlanWithLlm(
     dateStyle: "full",
     timeStyle: "long",
   }).format(now);
-  // Derive "today/tomorrow/yesterday" explicitly in the user's timezone so the
-  // LLM does not have to do date arithmetic across the UTC/local boundary.
-  // Without this anchor we have observed the planner shift "tomorrow" by one
-  // day whenever local-midnight crosses the UTC day line.
-  const localDateParts = getZonedDateParts(now, timeZone);
-  const todayLocal = addDaysToLocalDate(
-    {
-      year: localDateParts.year,
-      month: localDateParts.month,
-      day: localDateParts.day,
-    },
-    0,
-  );
-  const tomorrowLocal = addDaysToLocalDate(
-    {
-      year: localDateParts.year,
-      month: localDateParts.month,
-      day: localDateParts.day,
-    },
-    1,
-  );
-  const yesterdayLocal = addDaysToLocalDate(
-    {
-      year: localDateParts.year,
-      month: localDateParts.month,
-      day: localDateParts.day,
-    },
-    -1,
-  );
-  const formatLocalDate = (parts: {
-    year: number;
-    month: number;
-    day: number;
-  }) =>
-    `${String(parts.year).padStart(4, "0")}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
-  const localDateAnchors = [
-    `yesterday = ${formatLocalDate(yesterdayLocal)}`,
-    `today = ${formatLocalDate(todayLocal)}`,
-    `tomorrow = ${formatLocalDate(tomorrowLocal)}`,
-  ].join(", ");
+  const localDateAnchors = buildCalendarLocalDateAnchors(now, timeZone);
   const instructions = resolveOptimizedPromptForRuntime(
     runtime,
     "calendar_extract",
@@ -2700,6 +2711,7 @@ async function inferCreateEventDetails(
     dateStyle: "full",
     timeStyle: "long",
   }).format(now);
+  const localDateAnchors = buildCalendarLocalDateAnchors(now, timeZone);
   const prompt = [
     "Extract calendar event creation fields from the request.",
     "The user may speak in any language.",
@@ -2721,8 +2733,8 @@ async function inferCreateEventDetails(
     "title: event title",
     "description: optional description",
     "location: optional location",
-    "startAt: ISO datetime if explicit or resolvable from a date phrase",
-    "endAt: ISO datetime if explicit",
+    "startAt: RFC 3339 datetime if explicit or resolvable from a date phrase; include the numeric UTC offset that represents the requested wall-clock time in the calendar timezone",
+    "endAt: RFC 3339 datetime if explicit; use the same offset rules as startAt",
     "durationMinutes: number if implied",
     "windowPreset: tomorrow_morning|tomorrow_afternoon|tomorrow_evening",
     "timeZone: IANA timezone if stated",
@@ -2732,8 +2744,10 @@ async function inferCreateEventDetails(
     "",
     `Current timezone: ${timeZone}`,
     `Calendar timezone for scheduling: ${calendarTimeZone}`,
+    `LOCAL DATE ANCHORS (authoritative — IGNORE UTC day for date arithmetic): ${localDateAnchors}.`,
     `Current local datetime: ${nowReadable}`,
-    `Current ISO datetime: ${nowIso}`,
+    `Current ISO datetime (informational only — do NOT use for 'today/tomorrow/yesterday'): ${nowIso}`,
+    "Resolve relative dates from the LOCAL DATE ANCHORS. Preserve the requested local clock time: for 9am in America/Los_Angeles emit 09:00 with the applicable -07:00/-08:00 offset, never 09:00Z. Use Z only when the calendar timezone is UTC.",
     "",
     `Current request:\n${currentMessage}`,
     `Resolved intent:\n${intent}`,
@@ -3124,18 +3138,22 @@ function formatTripWindowResults(
   return lines.join("\n");
 }
 
-function formatCalendarSearchResults(
+// The query may be a raw user message or an LLM-extracted phrase — either can
+// be a multi-line blob, so echoes go through describeUserReference. Exported
+// for regression tests.
+export function formatCalendarSearchResults(
   events: LifeOpsCalendarEvent[],
   query: string,
   label: string,
 ): string {
+  const queryEcho = describeUserReference(query, "that request");
   if (events.length === 0) {
-    return `No calendar events matched "${query}" ${label}.`;
+    return `No calendar events matched ${queryEcho} ${label}.`;
   }
   if (events.length === 1) {
     const event = events.at(0);
     if (!event) {
-      return `No calendar events matched "${query}" ${label}.`;
+      return `No calendar events matched ${queryEcho} ${label}.`;
     }
     // The fallback wording is intentionally generic ("calendar event") so it
     // is correct in any language. The grounded LLM reply renderer is what
@@ -3144,7 +3162,7 @@ function formatCalendarSearchResults(
     return `Your matching calendar event is **${event.title}** (${formatCalendarMoment(event)}).`;
   }
   const lines = [
-    `Found ${events.length} calendar event${events.length === 1 ? "" : "s"} for "${query}" ${label}:`,
+    `Found ${events.length} calendar event${events.length === 1 ? "" : "s"} for ${queryEcho} ${label}:`,
   ];
   for (const event of events.slice(0, 8)) {
     const when = event.isAllDay
@@ -3798,6 +3816,10 @@ const calendarAction: CalendarHandlerAction = {
           explicitTitle,
           inferredTitle,
           intent,
+          // The outer planner identifies CALENDAR and supplies hints; this
+          // domain-specific extraction has the authoritative calendar context,
+          // timezone, and local-date anchors needed to normalize wall time.
+          preferExtractedDetails: true,
         });
         const { title, resolvedStartAt, resolvedWindowPreset, request } =
           createEventBuild;
@@ -3986,7 +4008,7 @@ const calendarAction: CalendarHandlerAction = {
                 | "owner"
                 | "agent"
                 | undefined,
-              grantId: detailString(details, "grantId"),
+              grantId: mutationGrantId(details),
               forceSync: true,
               ...feedRequest,
             }),
@@ -3998,18 +4020,19 @@ const calendarAction: CalendarHandlerAction = {
               )
             : feed.events;
           if (candidates.length === 0) {
-            const fallback = titleHint
-              ? `i couldn't find an event matching "${titleHint}" in that window.`
-              : "i couldn't find any events to update in that window. give me a title or a date.";
+            const fallback = buildCalendarEventNotFoundFallback(
+              "update",
+              titleHint,
+            );
             return respond({
               success: false,
               text: await renderReply("update_event_not_found", fallback, {
-                titleHint,
+                titleHint: userReferenceLogView(titleHint),
               }),
               effectReceipt: calendarRequestNoopReceipt({
                 message,
                 operation: "calendar.event.update",
-                discriminator: titleHint,
+                discriminator: userReferenceLogView(titleHint),
                 reason:
                   "No matching event was found, so no update approval was created.",
               }),
@@ -4025,13 +4048,13 @@ const calendarAction: CalendarHandlerAction = {
               success: false,
               text: await renderReply("clarify_update_event_target", fallback, {
                 candidateCount: candidates.length,
-                titleHint,
+                titleHint: userReferenceLogView(titleHint),
                 candidates,
               }),
               effectReceipt: calendarRequestNoopReceipt({
                 message,
                 operation: "calendar.event.update",
-                discriminator: titleHint,
+                discriminator: userReferenceLogView(titleHint),
                 reason:
                   "Multiple events matched the request, so no update approval was created.",
               }),
@@ -4044,12 +4067,12 @@ const calendarAction: CalendarHandlerAction = {
               text: await renderReply(
                 "update_event_not_found",
                 "i couldn't find a unique event to update.",
-                { titleHint },
+                { titleHint: userReferenceLogView(titleHint) },
               ),
               effectReceipt: calendarRequestNoopReceipt({
                 message,
                 operation: "calendar.event.update",
-                discriminator: titleHint,
+                discriminator: userReferenceLogView(titleHint),
                 reason:
                   "A unique target could not be resolved, so no update approval was created.",
               }),
@@ -4089,7 +4112,7 @@ const calendarAction: CalendarHandlerAction = {
                 | "owner"
                 | "agent"
                 | undefined,
-              grantId: detailString(details, "grantId"),
+              grantId: mutationGrantId(details),
               calendarId: resolvedCalendarId,
               eventId: resolvedEventId,
             },
@@ -4291,7 +4314,7 @@ const calendarAction: CalendarHandlerAction = {
                 | "owner"
                 | "agent"
                 | undefined,
-              grantId: detailString(details, "grantId"),
+              grantId: mutationGrantId(details),
               forceSync: true,
               ...feedRequest,
             }),
@@ -4303,18 +4326,19 @@ const calendarAction: CalendarHandlerAction = {
               )
             : feed.events;
           if (candidates.length === 0) {
-            const fallback = titleHint
-              ? `i couldn't find an event matching "${titleHint}" in that window.`
-              : "i couldn't find any events to delete in that window. give me a title or a date.";
+            const fallback = buildCalendarEventNotFoundFallback(
+              "delete",
+              titleHint,
+            );
             return respond({
               success: false,
               text: await renderReply("delete_event_not_found", fallback, {
-                titleHint,
+                titleHint: userReferenceLogView(titleHint),
               }),
               effectReceipt: calendarRequestNoopReceipt({
                 message,
                 operation: "calendar.event.delete",
-                discriminator: titleHint,
+                discriminator: userReferenceLogView(titleHint),
                 reason:
                   "No matching event was found, so no cancellation approval was created.",
               }),
@@ -4331,13 +4355,13 @@ const calendarAction: CalendarHandlerAction = {
               success: false,
               text: await renderReply("clarify_delete_event_target", fallback, {
                 candidateCount: candidates.length,
-                titleHint,
+                titleHint: userReferenceLogView(titleHint),
                 candidates,
               }),
               effectReceipt: calendarRequestNoopReceipt({
                 message,
                 operation: "calendar.event.delete",
-                discriminator: titleHint,
+                discriminator: userReferenceLogView(titleHint),
                 reason:
                   "Multiple events matched the request, so no cancellation approval was created.",
               }),
@@ -4357,7 +4381,7 @@ const calendarAction: CalendarHandlerAction = {
                 | "owner"
                 | "agent"
                 | undefined,
-              grantId: detailString(details, "grantId"),
+              grantId: mutationGrantId(details),
               calendarId: detailString(details, "calendarId"),
               eventId: explicitEventId,
             },
@@ -4575,15 +4599,21 @@ const calendarAction: CalendarHandlerAction = {
               const filteredEvents = feed.events.filter((event) =>
                 groundedIdSet.has(event.id),
               );
+              // Echo the user's actual words, not the external-content
+              // security envelope hardenIncomingUserMessage may have wrapped
+              // around content.text; the raw text stays in currentMessageText
+              // for the inference calls above/below.
+              const queryFallback =
+                unwrapUserMessageText(message) || intent || "your request";
               const fallback = formatCalendarSearchResults(
                 filteredEvents,
-                currentMessageText || intent || "your request",
+                queryFallback,
                 label,
               );
               return respond({
                 success: true,
                 text: await renderReply("search_results", fallback, {
-                  query: currentMessageText || intent,
+                  query: userReferenceLogView(queryFallback),
                   queries: [],
                   events: filteredEvents,
                   label,
@@ -4592,11 +4622,11 @@ const calendarAction: CalendarHandlerAction = {
                   feed,
                   events: filteredEvents,
                   operation: "calendar.event.search",
-                  discriminator: currentMessageText || intent,
+                  discriminator: userReferenceLogView(queryFallback),
                 }),
                 data: toActionData({
                   ...feed,
-                  query: currentMessageText || intent,
+                  query: userReferenceLogView(queryFallback),
                   queries: [],
                   events: filteredEvents,
                 }),
@@ -4736,11 +4766,16 @@ const calendarAction: CalendarHandlerAction = {
           query,
           label,
         );
+        // queriesForSearch values are LLM-extracted and can be blobs; clamp
+        // every machine-facing render while matching above kept the raw values.
+        const queryViews = queriesForSearch.map((value) =>
+          userReferenceLogView(value),
+        );
         return respond({
           success: true,
           text: await renderReply("search_results", fallback, {
-            query,
-            queries: queriesForSearch,
+            query: userReferenceLogView(query),
+            queries: queryViews,
             events: filteredEvents,
             label,
           }),
@@ -4748,12 +4783,12 @@ const calendarAction: CalendarHandlerAction = {
             feed,
             events: filteredEvents,
             operation: "calendar.event.search",
-            discriminator: JSON.stringify(queriesForSearch),
+            discriminator: userReferenceLogView(JSON.stringify(queryViews)),
           }),
           data: toActionData({
             ...feed,
-            query,
-            queries: queriesForSearch,
+            query: userReferenceLogView(query),
+            queries: queryViews,
             events: filteredEvents,
           }),
         });
@@ -4865,6 +4900,7 @@ const calendarAction: CalendarHandlerAction = {
       name: "details",
       description:
         "Optional structured calendar fields such as time bounds, timezone, calendar id, create-event timing, location, attendees, " +
+        "start/end datetimes must be RFC 3339 with a numeric offset matching timeZone (use Z only for UTC); " +
         'recurrence (RFC 5545 RRULE line(s) like "RRULE:FREQ=WEEKLY;BYDAY=MO" for repeating events), and recurrenceScope ' +
         '("instance" for one occurrence, "this_and_following" to split at the selected occurrence, "series" for the whole series).',
       required: false,

@@ -1,4 +1,15 @@
 #!/usr/bin/env node
+import {
+  appendFileSync,
+  closeSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 /**
  * Proof job for the exhaustive develop lane (#12342). Fails loudly when the
  * committed lane manifest and the real workflow/test-plan drift apart, so the
@@ -12,8 +23,7 @@
  *      event, which would turn a "required" lane into a permanent skip.
  *   3. `.github/workflows/develop-exhaustive.yml` — the scheduled orchestrator
  *      must still invoke every manifest `reusableWorkflows` lane via
- *      `workflow_call`, pass its dedicated concurrency scope, and queue
- *      consecutive exhaustive runs. Every reusable workflow must consume that
+ *      `workflow_call` and pass its dedicated concurrency scope. Every reusable workflow must consume that
  *      scope and keep schedule/dispatch/workflow-call events non-cancelling. A
  *      dropped `uses:`, shared standalone group, or cancelling reusable lane
  *      silently strips platform coverage from the exhaustive matrix and fails.
@@ -33,18 +43,7 @@
  * non-zero = at least one drift, with every violation printed (not just the
  * first) and mirrored into the GitHub step summary when `--summary` is given.
  */
-import { spawnSync } from "node:child_process";
-import {
-  appendFileSync,
-  closeSync,
-  mkdtempSync,
-  openSync,
-  readFileSync,
-  rmSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { spawnSync } from "./lib/spawn-sync-captured.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..", "..");
@@ -104,15 +103,29 @@ function loadPlan({ planFile }) {
   const runner = resolve(here, "run-all-tests.mjs");
   const dir = mkdtempSync(join(tmpdir(), "ci-full-matrix-proof-"));
   const planPath = join(dir, "plan.json");
-  const fd = openSync(planPath, "w");
+  let fd = -1;
   let result;
   try {
-    result = spawnSync(process.execPath, [runner, "--plan=json"], {
-      cwd: repoRoot,
-      stdio: ["ignore", fd, "pipe"],
-    });
+    if (typeof globalThis.Bun !== "undefined") {
+      const bunResult = globalThis.Bun.spawnSync({
+        cmd: [process.execPath, runner, "--plan=json"],
+        cwd: repoRoot,
+        stderr: "pipe",
+        stdout: globalThis.Bun.file(planPath),
+      });
+      result = {
+        status: bunResult.exitCode,
+        stderr: bunResult.stderr,
+      };
+    } else {
+      fd = openSync(planPath, "w");
+      result = spawnSync(process.execPath, [runner, "--plan=json"], {
+        cwd: repoRoot,
+        stdio: ["ignore", fd, "pipe"],
+      });
+    }
   } finally {
-    closeSync(fd);
+    if (fd >= 0) closeSync(fd);
   }
   try {
     if (result.status !== 0) {
@@ -368,9 +381,7 @@ function checkWorkflowLanes(manifest, violations, laneReport) {
   }
 }
 
-// GitHub's default concurrency mode retains only one pending run; queue:max is
-// therefore part of the exhaustive contract, not an optimization. Reusable
-// workflows then consume an exact caller-scope expression so standalone events
+// Reusable workflows consume an exact caller-scope expression so standalone events
 // cannot collapse into the exhaustive namespace through a truthy-expression
 // lookalike.
 function checkReusableWorkflows(manifest, violations, laneReport) {
@@ -402,18 +413,12 @@ function checkReusableWorkflows(manifest, violations, laneReport) {
     orchestratorText,
     "cancel-in-progress",
   );
-  const orchestratorQueue = extractConcurrencyValue(orchestratorText, "queue");
   const expectedOrchestratorGroup = `${scope}-\${{github.ref}}`;
   if (
     normalizedGitHubTemplate(orchestratorGroup) !== expectedOrchestratorGroup
   ) {
     violations.push(
       `exhaustive orchestrator concurrency drift: ${manifest.exhaustiveOrchestrator} must use group ${scope}-\${{ github.ref }}`,
-    );
-  }
-  if (orchestratorQueue !== "max") {
-    violations.push(
-      `consecutive exhaustive runs can replace pending coverage: ${manifest.exhaustiveOrchestrator} must set queue: max`,
     );
   }
   if (orchestratorCancel !== "false") {

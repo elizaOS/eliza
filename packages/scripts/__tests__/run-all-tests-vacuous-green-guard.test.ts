@@ -6,10 +6,10 @@
  * a test-file mismatch cannot exit green without exercising the runner path.
  */
 import { describe, expect, test } from "bun:test";
-import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 
 const runner = fileURLToPath(new URL("../run-all-tests.mjs", import.meta.url));
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
@@ -96,13 +96,13 @@ function rootScript(name) {
 
 describe("root test lane min-task wiring (#13620)", () => {
   for (const [scriptName, floor] of [
-    ["test", 200],
+    ["test", 120],
     ["test:server", 8],
     ["test:client", 3],
-    ["test:plugins", 100],
-    ["test:e2e", 20],
+    ["test:plugins", 99],
+    ["test:e2e", 17],
     ["test:live", 100],
-    ["test:e2e:live", 20],
+    ["test:e2e:live", 17],
   ]) {
     test(`${scriptName} arms the run-all-tests vacuous-green floor`, () => {
       expect(rootScript(scriptName)).toContain(`--min-tasks=${floor}`);

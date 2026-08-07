@@ -97,7 +97,6 @@ interface RuntimeOptions {
 }
 
 function requireActionResult(result: ActionResult | undefined): ActionResult {
-  expect(result).toBeDefined();
   if (!result) throw new Error("Expected SHELL action result");
   return result;
 }

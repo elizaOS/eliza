@@ -27,6 +27,7 @@ import type {
 import { logger } from "@elizaos/core";
 import {
   type AwarenessRegistry,
+  createSelfApiRequestHeaders,
   getValidationKeywordTerms,
   isSelfEditEnabled,
   requestRestart,
@@ -201,7 +202,16 @@ async function selfStatusOp(
   const service = runtime.getService("AWARENESS_REGISTRY");
   const registry = isAwarenessRegistry(service) ? service : null;
   if (!registry) {
-    return fail("self_status", "Self-awareness registry is not available.");
+    // error-policy:J4 designed degrade — the awareness registry is an
+    // optional enrichment; without it the live runtime status snapshot is
+    // still a real answer. Hard-failing here fed the planner's failed-tool
+    // fallback for simple self-description questions (live incident: "what
+    // are your app-build routing rules?" answered with a generic apology).
+    const snapshot = statusOp(runtime, params);
+    return {
+      ...snapshot,
+      text: `Self-awareness registry is not loaded; answering from the live runtime status snapshot instead.\n${snapshot.text ?? ""}`,
+    };
   }
 
   const rawModule = typeof params.module === "string" ? params.module : "all";
@@ -281,7 +291,10 @@ async function reloadConfigOp(): Promise<ActionResult> {
   try {
     const resp = await fetch(`${getApiBase()}/api/config/reload`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...createSelfApiRequestHeaders(),
+      },
       body: "{}",
       signal: AbortSignal.timeout(15_000),
     });

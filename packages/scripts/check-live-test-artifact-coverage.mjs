@@ -54,7 +54,7 @@ const NON_MODEL_EXCLUSION_RULES = [
     reason:
       "Playwright/browser UI or visual audit suite; capture belongs to UI screenshots/traces rather than model-call trajectory artifacts.",
     matches: (row) =>
-      /playwright|run-ui-playwright|run-e2e|aesthetic-audit|contact-sheet|web-views|cloud-wallet|homepage|os-homepage|llama-ui|packages\/test\/cloud-e2e/i.test(
+      /playwright|run-ui-playwright|run-e2e|aesthetic-audit|contact-sheet|web-views|cloud-wallet|homepage|llama-ui|packages\/test\/cloud-e2e/i.test(
         row.value,
       ),
   },
@@ -78,7 +78,7 @@ const NON_MODEL_EXCLUSION_RULES = [
     reason:
       "External device, hardware, OS, or mobile gateway validation; evidence is environment logs/device traces, not model-call artifacts.",
     matches: (row) =>
-      /bluebubbles|android-sms|riscv64|usb|virtual-usb|smartglasses|simulator|evenhub|sandbox-live|live-sandbox|mobile/i.test(
+      /bluebubbles|android-sms|riscv64|usb|virtual-usb|simulator|evenhub|sandbox-live|live-sandbox|mobile/i.test(
         row.value,
       ),
   },
@@ -147,11 +147,21 @@ function parseArgs(argv) {
 }
 
 function packageJsonPaths() {
-  const completed = spawnSync("rg", ["--files", "-g", "package.json"], {
+  // `*package.json` is a suffix match in git's pathspec, so it would also pick
+  // up a stray `foo-package.json`. The basename filter below keeps the result
+  // identical to the `rg -g package.json` this replaces.
+  const completed = spawnSync("git", ["ls-files", "*package.json"], {
     cwd: REPO_ROOT,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   });
+  if (completed.error) {
+    throw new Error(
+      completed.error.code === "ENOENT"
+        ? "git is required but was not found on PATH"
+        : `failed to list package.json files: ${completed.error.message}`,
+    );
+  }
   if (completed.status !== 0) {
     throw new Error(completed.stderr || "failed to list package.json files");
   }
@@ -159,6 +169,7 @@ function packageJsonPaths() {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
+    .filter((file) => path.posix.basename(file) === "package.json")
     .filter(
       (file) =>
         !file.includes("/node_modules/") &&

@@ -1,4 +1,3 @@
-/// <reference path="../../../packages/agent/src/external-modules.d.ts" />
 // Plugin entry point — handler dispatch, error types, plugin definition.
 // For runtime wiring (boot-time handler registration, embedding warm-up)
 // import from `@elizaos/plugin-local-inference/runtime`.
@@ -38,6 +37,16 @@ export {
 	type LocalInferenceChatResult,
 	type LocalInferenceCommandIntent,
 } from "./local-inference-routes.js";
+export {
+	buildPiiExtractionPrompt,
+	chunkText as chunkPiiText,
+	LlmEntityRecognizer,
+	type LocalPiiGenerate,
+	parseReportedEntities,
+	type ReportedEntity,
+	relocateEntities,
+} from "./pii/llm-recognizer.js";
+export { LocalPiiRecognizerService } from "./pii/service.js";
 export {
 	createLocalInferenceModelHandlers,
 	isLocalInferenceUnavailableError,

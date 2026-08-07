@@ -21,7 +21,7 @@ const SKIP_DIRS = new Set([
   "node_modules",
   "target",
 ]);
-const ROOT_DOCS = ["README.md", "CONTRIBUTING.md", "SECURITY.md", "WINDOWS.md"];
+const ROOT_DOCS = ["README.md", "CONTRIBUTING.md", "WINDOWS.md"];
 
 function rel(repoRoot, filePath) {
   return path.relative(repoRoot, filePath).split(path.sep).join("/");

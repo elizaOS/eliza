@@ -7,6 +7,10 @@
  */
 import { writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
+import {
+  awaitingApprovalMessage,
+  loadActionRequiredWorkflowPaths,
+} from "./github-actions-approval.mjs";
 
 export const GITHUB_ACTIONS_APP_ID = 15368;
 export const DEFAULT_PULL_REQUEST_ACTIONS = [
@@ -52,6 +56,11 @@ export const REQUIRED_CHECKS = Object.freeze([
   },
   {
     context: "build",
+    workflowPath: ".github/workflows/develop-pr.yml",
+    triggerActions: DEVELOP_PR_ACTIONS,
+  },
+  {
+    context: "plugin-tests",
     workflowPath: ".github/workflows/develop-pr.yml",
     triggerActions: DEVELOP_PR_ACTIONS,
   },
@@ -154,12 +163,21 @@ export function evaluateAggregate({
   nowMs,
   deadlineReached = false,
   terminalSettleMs = DEFAULT_TERMINAL_SETTLE_MS,
+  actionRequiredWorkflowPaths = [],
 }) {
   const eventUpdatedMs = parseTimestamp(eventUpdatedAt);
   const freshAfterMs =
     eventUpdatedMs === null ? null : eventUpdatedMs - FRESHNESS_SKEW_MS;
 
   const results = REQUIRED_CHECKS.map((required) => {
+    if (actionRequiredWorkflowPaths.includes(required.workflowPath)) {
+      return failedResult(
+        required,
+        "awaiting-approval",
+        awaitingApprovalMessage([required.workflowPath]),
+      );
+    }
+
     const candidates = checkRuns.filter(
       (run) =>
         run.name === required.context &&
@@ -544,6 +562,11 @@ async function runProduction(env) {
       token: env.GITHUB_TOKEN,
       workflowRunCache,
     });
+    const actionRequiredWorkflowPaths = await loadActionRequiredWorkflowPaths({
+      repository: env.GITHUB_REPOSITORY,
+      headSha: env.HEAD_SHA,
+      requestJson: (url) => requestJson(url, env.GITHUB_TOKEN),
+    });
     const deadlineReached = nowMs >= deadlineMs;
     const evaluation = evaluateAggregate({
       checkRuns,
@@ -552,6 +575,7 @@ async function runProduction(env) {
       eventUpdatedAt: env.PR_UPDATED_AT,
       nowMs,
       deadlineReached,
+      actionRequiredWorkflowPaths,
     });
     const summary = renderSummary(evaluation, {
       headSha: env.HEAD_SHA,

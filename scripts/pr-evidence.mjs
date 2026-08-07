@@ -329,13 +329,100 @@ export function renderRow(id, value) {
   );
 }
 
+// Mirrors the terminal-footer shape enforced by
+// packages/eliza-computer/src/lib/leaderboard.ts (markerFooterError /
+// terminalAttributionBlock), so this tool's own appends never land AFTER the
+// marker the validator requires to be the body's final source content.
+// Kept intentionally simpler than the validator (no fence/blockquote
+// awareness) since these patterns only need to recognize the footer shape
+// contribute-to-eliza/SKILL.md instructs contributors to append, not every
+// markdown edge case the validator defends against.
+const ATTRIBUTION_MARKER_LINE_PATTERN =
+  /^<!--\s*eliza-computer-attribution:v1\b[^\r\n]*-->\s*$/i;
+const LANE_SIGNATURE_PATTERN = /^(?:—|-)\s*\[([a-z0-9][a-z0-9-]{1,48})\]\s*$/i;
+const ATTRIBUTION_LABEL_PATTERN =
+  /^(?:AI provider\/model|Client \/ agent tooling|Contribution skill revision|Skill revision|Attribution status)\s*:/i;
+
+function bodyLineRecords(body) {
+  const records = [];
+  let offset = 0;
+  while (offset <= body.length) {
+    const newline = body.indexOf("\n", offset);
+    const end = newline === -1 ? body.length : newline;
+    records.push({
+      start: offset,
+      end,
+      trimmed: body.slice(offset, end).trim(),
+    });
+    if (newline === -1) break;
+    offset = newline + 1;
+  }
+  return records;
+}
+
+/**
+ * Find the start offset of a TRAILING `eliza-computer-attribution:v1` footer:
+ * the v1 marker is the body's final non-whitespace content, exactly one
+ * terminal lane signature line sits directly above it (only blank space
+ * between), and above that the contiguous run of attribution label lines
+ * (optionally preceded by a `---` separator). Returns `null` when the body
+ * does not end in that exact shape — never a footer elsewhere in the body,
+ * and never a bare marker with no lane signature above it — so callers fall
+ * back to their existing append behavior rather than guessing.
+ */
+export function findTrailingAttributionFooterStart(body) {
+  const records = bodyLineRecords(body);
+  let i = records.length - 1;
+  while (i >= 0 && records[i].trimmed.length === 0) i -= 1;
+  if (i < 0 || !ATTRIBUTION_MARKER_LINE_PATTERN.test(records[i].trimmed)) {
+    return null;
+  }
+  i -= 1;
+  while (i >= 0 && records[i].trimmed.length === 0) i -= 1;
+  if (i < 0 || !LANE_SIGNATURE_PATTERN.test(records[i].trimmed)) {
+    return null;
+  }
+  let footerStart = records[i].start;
+  i -= 1;
+  while (i >= 0) {
+    if (records[i].trimmed.length === 0) {
+      i -= 1;
+      continue;
+    }
+    if (!ATTRIBUTION_LABEL_PATTERN.test(records[i].trimmed)) break;
+    footerStart = records[i].start;
+    i -= 1;
+  }
+  let j = i;
+  while (j >= 0 && records[j].trimmed.length === 0) j -= 1;
+  if (j >= 0 && records[j].trimmed === "---") {
+    footerStart = records[j].start;
+  }
+  return footerStart;
+}
+
+/** Insert `insertion` immediately before the footer that starts at `footerStart`. */
+function insertBeforeFooter(body, footerStart, insertion) {
+  const before = body.slice(0, footerStart).trimEnd();
+  const footer = body.slice(footerStart);
+  return `${before}\n\n${insertion}\n\n${footer}`;
+}
+
 /** Replace the block after `<!-- evidence-row:<id> -->` with `line`. */
 export function patchRow(body, id, line) {
   const marker = `<!-- evidence-row:${id} -->`;
   const at = body.indexOf(marker);
   if (at === -1) {
-    // Row marker absent (old template) — append a fresh marker + row.
-    return `${body.trimEnd()}\n\n${marker}\n${line}\n`;
+    // Row marker absent (old template). A trailing attribution footer (the
+    // one SKILL.md instructs every contributor to append last) must stay the
+    // body's final content, so insert the fresh row before it instead of
+    // appending after — otherwise the footer's own marker would no longer be
+    // final and the repository's validator would reject it.
+    const footerStart = findTrailingAttributionFooterStart(body);
+    if (footerStart === null) {
+      return `${body.trimEnd()}\n\n${marker}\n${line}\n`;
+    }
+    return insertBeforeFooter(body, footerStart, `${marker}\n${line}`);
   }
   const afterMarker = at + marker.length;
   const rest = body.slice(afterMarker);
@@ -350,8 +437,48 @@ export function patchRow(body, id, line) {
   );
 }
 
-async function runGate(pr, body) {
-  const { evaluatePrEvidence } = await import(
+export function patchEvidenceHead(body, headSha) {
+  if (!/^[a-f0-9]{40}$/i.test(String(headSha ?? ""))) {
+    throw new Error("evidence head must be a full 40-character commit SHA");
+  }
+  const marker = `<!-- evidence-head:${headSha.toLowerCase()} -->`;
+  const pattern = /<!--\s*evidence-head:[^>]*-->/i;
+  if (pattern.test(body)) return body.replace(pattern, marker);
+  const gateHeading = body.indexOf("# Evidence Gate");
+  if (gateHeading === -1) {
+    // No heading to anchor on. Same footer-preservation rule as patchRow:
+    // insert before a trailing attribution footer rather than after it.
+    const footerStart = findTrailingAttributionFooterStart(body);
+    if (footerStart === null) return `${body.trimEnd()}\n\n${marker}\n`;
+    return insertBeforeFooter(body, footerStart, marker);
+  }
+  const headingEnd = body.indexOf("\n", gateHeading);
+  return `${body.slice(0, headingEnd + 1)}\n${marker}\n${body.slice(headingEnd + 1)}`;
+}
+
+function readPrHead(pr) {
+  const head = gh([
+    "pr",
+    "view",
+    String(pr),
+    "--json",
+    "headRefOid",
+    "-q",
+    ".headRefOid",
+  ]).trim();
+  if (!/^[a-f0-9]{40}$/i.test(head)) {
+    throw new Error(`PR #${pr} did not return a full head SHA`);
+  }
+  return head.toLowerCase();
+}
+
+async function runGate(pr, body, headSha) {
+  const {
+    artifactVerificationRows,
+    evaluatePrEvidence,
+    hasMatchingEvidenceHead,
+    verifyReferencedArtifacts,
+  } = await import(
     pathToFileURL(join(import.meta.dirname, "check-pr-evidence.mjs")).href
   );
   const labels = gh([
@@ -383,17 +510,30 @@ async function runGate(pr, body) {
   ])
     .split("\n")
     .filter(Boolean);
-  const { ok, findings } = evaluatePrEvidence(body, undefined, {
+  const evaluation = evaluatePrEvidence(body, undefined, {
     labels,
     changedFiles,
     addedFiles,
   });
-  for (const f of findings) {
+  const verification = await verifyReferencedArtifacts(
+    body,
+    artifactVerificationRows(body),
+  );
+  const headOk = hasMatchingEvidenceHead(body, headSha);
+  console.log(
+    `  [${headOk ? "ok  " : "FAIL"}] evidence-head: ${headOk ? "matches current PR head" : "does not match current PR head"}`,
+  );
+  for (const f of evaluation.findings) {
     console.log(
       `  [${f.status === "ok" ? "ok  " : "FAIL"}] ${f.id}: ${f.status}`,
     );
   }
-  return ok;
+  for (const finding of verification.findings) {
+    console.log(
+      `  [${finding.status === "ok" ? "ok  " : "FAIL"}] ${finding.id} artifact: ${finding.status} — ${finding.url}`,
+    );
+  }
+  return evaluation.ok && verification.ok && headOk;
 }
 
 async function rows(pr, args) {
@@ -431,13 +571,17 @@ async function rows(pr, args) {
     }
   }
 
-  let body = gh(["pr", "view", String(pr), "--json", "body", "-q", ".body"]);
+  const headSha = readPrHead(pr);
+  let body = patchEvidenceHead(
+    gh(["pr", "view", String(pr), "--json", "body", "-q", ".body"]),
+    headSha,
+  );
   for (const { id, value } of rowArgs) {
     body = patchRow(body, id, renderRow(id, value));
   }
 
   console.log("\nLocal gate verdict on the new body:");
-  const ok = await runGate(pr, body);
+  const ok = await runGate(pr, body, headSha);
   if (dryRun) {
     console.log(
       `\n--dry-run: PR #${pr} not edited. Gate ${ok ? "would PASS" : "would FAIL"}.`,
@@ -454,8 +598,9 @@ async function rows(pr, args) {
 }
 
 async function verify(pr) {
+  const headSha = readPrHead(pr);
   const body = gh(["pr", "view", String(pr), "--json", "body", "-q", ".body"]);
-  const ok = await runGate(pr, body);
+  const ok = await runGate(pr, body, headSha);
   console.log(ok ? "\nEvidence gate PASSES." : "\nEvidence gate FAILS.");
   if (!ok) process.exit(1);
 }

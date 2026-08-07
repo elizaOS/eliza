@@ -1,3 +1,4 @@
+/** Verifies parseChoiceBody through the package's configured test harness. */
 // Unit tests for the `[CHOICE]` marker parser: option body parsing
 // (value=label, equals-in-label) and region detection. Pure functions over
 // string fixtures — no model, no render.

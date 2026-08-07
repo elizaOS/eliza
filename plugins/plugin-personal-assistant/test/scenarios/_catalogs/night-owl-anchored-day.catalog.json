@@ -27,7 +27,7 @@
       "tier": "T3",
       "surface": "scenario-runner",
       "status": "verified",
-      "notes": "pr-deterministic (keyless). Real scheduler tick: a during_window brief fires inside her seeded noon window (12:00-14:00) and a wake-anchored reminder fires relative to the wake anchor, while a neurotypical 09:00 tick fires NOTHING; two-delivery finalCheck. Passes keyless under TZ=UTC SCENARIO_USE_LLM_PROXY=1 SCENARIO_LLM_PROXY_STRICT=1 --conditions eliza-source."
+      "notes": "pr-deterministic (keyless). Real scheduler tick: a during_window brief fires inside her seeded noon window (12:00-14:00) and a wake-anchored reminder fires relative to the wake anchor, while a neurotypical 09:00 tick fires NOTHING; two-delivery finalCheck. Passes keyless under TZ=UTC SCENARIO_USE_DETERMINISTIC_MODEL=1 --conditions eliza-source."
     },
     {
       "id": "persona.night-owl-quiet-hours-sleep-protection",

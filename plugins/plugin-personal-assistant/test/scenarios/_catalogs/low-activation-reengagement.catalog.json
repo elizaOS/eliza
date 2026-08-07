@@ -36,7 +36,7 @@
       "tier": "T3",
       "surface": "scenario-runner",
       "status": "verified",
-      "notes": "pr-deterministic (keyless). Real scheduler ticks fire+expire three check-ins so the production state-log lays down a checkin/expired streak; the fourth-day reminder times out and the quiet-streak softener (#12779/#13237) steps intensity normal->minimal \u2014 read back off the persisted task (noReplyState.quietStreakSoftened=true, quietStreakDays>=3, appliedReminderIntensity=minimal, emptied retry ladder). NOT a crisis guard. Passes keyless under TZ=UTC SCENARIO_USE_LLM_PROXY=1 SCENARIO_LLM_PROXY_STRICT=1 --conditions eliza-source."
+      "notes": "pr-deterministic (keyless). Real scheduler ticks fire+expire three check-ins so the production state-log lays down a checkin/expired streak; the fourth-day reminder times out and the quiet-streak softener (#12779/#13237) steps intensity normal->minimal \u2014 read back off the persisted task (noReplyState.quietStreakSoftened=true, quietStreakDays>=3, appliedReminderIntensity=minimal, emptied retry ladder). NOT a crisis guard. Passes keyless under TZ=UTC SCENARIO_USE_DETERMINISTIC_MODEL=1 --conditions eliza-source."
     },
     {
       "id": "lowact-morning-single-priority-fires-once",

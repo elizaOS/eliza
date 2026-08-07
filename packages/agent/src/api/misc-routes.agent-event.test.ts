@@ -1,7 +1,6 @@
 /**
- * Checks that handleMiscRoutes accepts POST /api/agent/event notification-stream
- * events — buffering the envelope and broadcasting it over WS — using a fully
- * mocked route context (vi.fn spies for json/error/readJsonBody and broadcast).
+ * Covers miscellaneous control routes through a mocked transport context:
+ * notification-stream event buffering/broadcast and process-restart ownership.
  */
 import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
@@ -27,7 +26,7 @@ function makeAgentEventContext(
       runtime: {
         agentId: "00000000-0000-0000-0000-0000000000aa",
       } as AgentRuntime,
-      agentState: "ready",
+      agentState: "running",
       agentName: "Eliza",
       shellEnabled: true,
       broadcastWs,
@@ -35,7 +34,7 @@ function makeAgentEventContext(
       nextEventId: 1,
       eventBuffer: [],
       shareIngestQueue: [],
-      startup: {},
+      startup: { phase: "running", attempt: 0 },
       broadcastStatus: vi.fn(),
       pendingRestartReasons: [],
     },
@@ -89,5 +88,30 @@ describe("handleMiscRoutes agent events", () => {
         payload,
       }),
     );
+  });
+
+  it("owns the restart route after transport-level duplication is removed", async () => {
+    vi.useFakeTimers();
+    try {
+      const ctx = makeAgentEventContext({});
+      ctx.pathname = "/api/restart";
+      ctx.url = new URL("http://localhost/api/restart");
+
+      const handled = await handleMiscRoutes(ctx);
+
+      expect(handled).toBe(true);
+      expect(ctx.state.agentState).toBe("restarting");
+      expect(ctx.state.startup).toMatchObject({ phase: "restarting" });
+      expect(ctx.state.broadcastStatus).toHaveBeenCalledOnce();
+      expect(ctx.json).toHaveBeenCalledWith(ctx.res, {
+        ok: true,
+        message: "Restarting...",
+        restarting: true,
+      });
+      expect(vi.getTimerCount()).toBe(1);
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
   });
 });

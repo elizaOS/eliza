@@ -1,5 +1,9 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for prune cdn local assets mjs. */
+/**
+ * Removes the heavy public asset dirs (animations, vrms, worlds) from the app
+ * dist after build, keeping only the bootstrap assets locally; release
+ * artifacts serve the rest from the CDN.
+ */
 
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";

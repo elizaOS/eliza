@@ -214,6 +214,6 @@ Many plugins use multiple extension points together:
 ## Related
 
 - [Create a Plugin](/plugins/create-a-plugin) -- Build a plugin from scratch
-- [Plugin Development](/plugins/development) -- Full API reference for all extension points
+- [Create a plugin](/plugins/create-a-plugin) -- Build and register extension points
 - [Skills Documentation](/plugins/skills) -- Deep dive into skills
 - [Plugin Patterns](/plugins/patterns) -- Common implementation patterns

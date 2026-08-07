@@ -100,7 +100,7 @@ export const OnDark: Story = {
 
 export const AccentTinted: Story = {
   args: {
-    color: "#f97316",
+    color: "#9a3412",
     background: "#fff7ed",
   },
 };

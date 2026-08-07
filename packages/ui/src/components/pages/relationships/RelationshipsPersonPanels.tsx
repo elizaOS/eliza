@@ -447,7 +447,7 @@ function PanelEmpty({
 }) {
   return (
     <div className="flex items-center gap-2 px-1 py-2 text-sm text-muted">
-      <Icon className="h-4 w-4 text-muted/70" />
+      <Icon className="h-4 w-4 text-muted" />
       <span>{children}</span>
     </div>
   );

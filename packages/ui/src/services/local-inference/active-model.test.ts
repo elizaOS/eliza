@@ -125,7 +125,7 @@ describe("resolveLocalInferenceLoadArgs", () => {
   });
 
   it("per-load gpuLayers/flashAttention/mmap/mlock overrides flow into args", async () => {
-    const target = makeInstalledModel("eliza-1-2b", "/tmp/eliza-1-2b.gguf");
+    const target = makeInstalledModel("custom-model", "/tmp/custom-model.gguf");
     const args = await resolveLocalInferenceLoadArgs(target, {
       gpuLayers: 16,
       flashAttention: true,
@@ -206,9 +206,8 @@ describe("resolveLocalInferenceLoadArgs", () => {
       expect(args.draftMax).toBeUndefined();
       expect(args.mobileSpeculative).toBeUndefined();
       expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining(
-          "Re-download the model to enable the MTP drafter",
-        ),
+        expect.anything(),
+        expect.stringContaining("local-inference.mtp-drafter"),
       );
     } finally {
       warnSpy.mockRestore();

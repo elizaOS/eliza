@@ -4,7 +4,7 @@
  * Subscription discovery scans the owner's recent Gmail for receipts /
  * renewals and scores them against the cancellation playbooks. It does NOT
  * need cross-channel triage — only a date-windowed Gmail search. This module
- * resolves the `@elizaos/plugin-google` runtime service
+ * resolves the `@elizaos/plugin-google-workspace` runtime service
  * (`runtime.getService("google")`), derives the owner's Gmail grant from the
  * connector-account metadata + scopes, and exposes the single search the
  * subscriptions path uses.
@@ -23,7 +23,7 @@ import {
 import type {
   GoogleMessageSummary,
   IGoogleWorkspaceService,
-} from "@elizaos/plugin-google";
+} from "@elizaos/plugin-google-workspace";
 import type {
   LifeOpsConnectorGrant,
   LifeOpsConnectorSide,
@@ -193,7 +193,7 @@ function requireGoogleWorkspaceService(
   if (!isRecord(service)) {
     fail(
       503,
-      "Google Workspace service is not registered. Enable @elizaos/plugin-google before scanning Gmail for subscriptions.",
+      "Google Workspace service is not registered. Enable @elizaos/plugin-google-workspace before scanning Gmail for subscriptions.",
     );
   }
   return service;
@@ -207,7 +207,7 @@ function requireSearchMessages(
   if (typeof searchMessages !== "function") {
     fail(
       501,
-      "@elizaos/plugin-google does not expose searchMessages for subscription discovery.",
+      "@elizaos/plugin-google-workspace does not expose searchMessages for subscription discovery.",
     );
   }
   return searchMessages.bind(

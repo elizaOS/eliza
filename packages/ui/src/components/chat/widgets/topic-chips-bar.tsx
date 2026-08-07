@@ -8,6 +8,7 @@
  * controlled, computation-free display — it never derives counts or filters.
  */
 
+import { cn } from "../../../lib/utils";
 import { Button } from "../../ui/button";
 
 export type TopicChip = {
@@ -17,11 +18,14 @@ export type TopicChip = {
 };
 
 export type TopicChipsBarProps = {
-  topics: TopicChip[];
+  topics: readonly TopicChip[];
   activeTopicId?: string;
   onSelect?: (id: string) => void;
   /** Max chips rendered before the trailing "+N" overflow chip. Default 8. */
   maxVisible?: number;
+  className?: string;
+  appearance?: "default" | "overlay";
+  hideWhenEmpty?: boolean;
 };
 
 export function TopicChipsBar({
@@ -29,8 +33,12 @@ export function TopicChipsBar({
   activeTopicId,
   onSelect,
   maxVisible = 8,
+  className,
+  appearance = "default",
+  hideWhenEmpty = false,
 }: TopicChipsBarProps) {
   if (topics.length === 0) {
+    if (hideWhenEmpty) return null;
     return (
       <div
         data-testid="topic-chips-bar"
@@ -48,7 +56,12 @@ export function TopicChipsBar({
   return (
     <div
       data-testid="topic-chips-bar"
-      className="my-2 flex min-w-0 flex-wrap items-center gap-1.5"
+      className={cn(
+        appearance === "overlay"
+          ? "flex shrink-0 items-center gap-1.5 overflow-x-auto overscroll-x-contain pb-2 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          : "my-2 flex min-w-0 flex-wrap items-center gap-1.5",
+        className,
+      )}
       role="listbox"
       aria-label="Conversation topics"
     >
@@ -58,12 +71,26 @@ export function TopicChipsBar({
           <Button
             key={topic.id}
             type="button"
-            variant={isActive ? "surfaceAccent" : "outline"}
+            variant={
+              appearance === "overlay"
+                ? "ghost"
+                : isActive
+                  ? "surfaceAccent"
+                  : "outline"
+            }
             size="sm"
             role="option"
             aria-selected={isActive}
             data-testid={`topic-chip-${topic.id}`}
-            className="h-7 gap-1.5 px-3 text-xs"
+            className={cn(
+              appearance === "overlay"
+                ? "h-auto shrink-0 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors"
+                : "h-7 gap-1.5 px-3 text-xs",
+              appearance === "overlay" &&
+                (isActive
+                  ? "border-white/40 bg-white/85 text-black"
+                  : "border-white/15 bg-white/10 text-white/70 hover:bg-white/20 hover:text-white"),
+            )}
             onClick={() => onSelect?.(topic.id)}
           >
             <span className="truncate">{topic.label}</span>
@@ -75,7 +102,7 @@ export function TopicChipsBar({
           </Button>
         );
       })}
-      {overflowCount > 0 ? (
+      {appearance === "default" && overflowCount > 0 ? (
         <span
           data-testid="topic-chips-overflow"
           className="inline-flex h-7 items-center rounded-sm bg-bg-accent px-2.5 text-xs text-muted"

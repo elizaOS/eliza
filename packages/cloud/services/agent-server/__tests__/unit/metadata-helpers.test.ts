@@ -1,6 +1,7 @@
-// Exercises the agent-server metadata helpers path with deterministic cloud service fixtures.
+/** Exercises agent-server metadata helpers with deterministic cloud fixtures. */
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import {
+  buildCanonicalMessageMetadata,
   buildConnectionMetadata,
   type MessageMetadata,
   resolveSource,
@@ -37,9 +38,50 @@ describe("resolveSource", () => {
   });
 
   test("accepts all known platforms", () => {
-    for (const p of ["telegram", "whatsapp", "twilio", "blooio"]) {
+    for (const p of ["discord", "telegram", "whatsapp", "twilio", "blooio"]) {
       expect(resolveSource({ platformName: p })).toBe(p);
     }
+  });
+
+  test("does not accept email/calendar platform names on the chat message route", () => {
+    for (const p of ["gmail", "email", "calendar", "google_calendar"]) {
+      expect(resolveSource({ platformName: p })).toBe("agent-server");
+    }
+  });
+});
+
+describe("buildCanonicalMessageMetadata", () => {
+  test("stamps provenance fields used by canonical memory recall", () => {
+    expect(
+      buildCanonicalMessageMetadata({
+        source: "telegram",
+        userId: "telegram-user-1",
+        entityId: "00000000-0000-0000-0000-000000000001",
+        metadata: {
+          platformName: "telegram",
+          senderName: "Alice",
+          accountId: "bot:main",
+          platformRecordId: "msg-123",
+          chatType: "private",
+        },
+      }),
+    ).toMatchObject({
+      type: "message",
+      scope: "private",
+      provider: "telegram",
+      accountId: "bot:main",
+      platformMessageId: "msg-123",
+      sourceId: "msg-123",
+      chatType: "private",
+      sender: { id: "telegram-user-1", name: "Alice" },
+      telegram: {
+        id: "telegram-user-1",
+        userId: "telegram-user-1",
+        entityId: "00000000-0000-0000-0000-000000000001",
+        accountId: "bot:main",
+        messageId: "msg-123",
+      },
+    });
   });
 });
 

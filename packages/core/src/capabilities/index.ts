@@ -2122,6 +2122,8 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 		try {
 			return await this.invokeRuntime(method, params);
 		} catch (error) {
+			// error-policy:J1 Capability invocation translates implementation
+			// failures into the typed capability boundary error.
 			if (error instanceof CapabilityError) throw error;
 			throw new CapabilityError({
 				code: "CAPABILITY_REQUEST_FAILED",
@@ -3289,6 +3291,8 @@ function validateRemotePluginBrowserUrl(
 			throw new Error("credentials are not allowed");
 		}
 	} catch {
+		// error-policy:J3 Capability URLs are untrusted input and produce an
+		// explicit decode error when invalid.
 		throw decodeError(
 			method,
 			`${key} must be an absolute http(s) URL without embedded credentials.`,

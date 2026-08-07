@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { ElizaConfig } from "../config/config.ts";
 import { buildCharacterFromConfig } from "./build-character-config.ts";
+import { applySandboxCharacterFromEnv } from "./sandbox-character.ts";
 
 // Locks the secret/settings boundary for Matrix connector env vars. Putting a
 // public identifier (e.g. MATRIX_VERIFY_ALLOWLIST = a user id) into
@@ -89,6 +90,57 @@ describe("Matrix connector secret/settings boundary", () => {
 });
 
 describe("agent entry character passthrough", () => {
+  it("keeps runtime capability hints idempotent across config rebuilds", () => {
+    const workflowHint =
+      "You can create, activate, deactivate, and delete workflows via natural language using the workflow actions.";
+    const taskHint =
+      "You have a persistent task manager and can create scheduled or one-off tasks when the user asks; do not claim you lack tasks, memory, persistence, or scheduling when those actions are available.";
+    const character = buildCharacterFromConfig({
+      agents: {
+        list: [
+          {
+            name: "Tester",
+            system: [
+              "You are Tester.",
+              workflowHint,
+              taskHint,
+              workflowHint,
+              taskHint,
+            ].join("\n"),
+          },
+        ],
+      },
+    } as ElizaConfig);
+
+    expect(character.system?.split(workflowHint)).toHaveLength(2);
+    expect(character.system?.split(taskHint)).toHaveLength(2);
+    expect(character.system).toContain("You are Tester.");
+  });
+
+  it("uses an injected sandbox identity when the prior default was not first", () => {
+    const config = {
+      agents: {
+        list: [
+          { name: "Secondary", system: "Secondary system.", default: false },
+          { name: "Old primary", system: "Old primary system.", default: true },
+        ],
+      },
+    } as ElizaConfig;
+
+    applySandboxCharacterFromEnv(config, {
+      ELIZA_AGENT_CHARACTER_JSON: JSON.stringify({
+        name: "Sol",
+        system: "You are Sol.",
+      }),
+      SANDBOX_ROUTE_AGENT_ID: "route-id",
+    });
+
+    const character = buildCharacterFromConfig(config);
+    expect(character.name).toBe("Sol");
+    expect(character.system).toContain("You are Sol.");
+    expect(character.system).not.toContain("Secondary system.");
+  });
+
   it("preserves injected Discord auto-reply settings", () => {
     const character = buildCharacterFromConfig({
       agents: {

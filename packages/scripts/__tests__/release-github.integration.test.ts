@@ -6,7 +6,6 @@
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import http, { type Server } from "node:http";
 import os from "node:os";
@@ -21,6 +20,7 @@ import {
   GitHubReleaseError,
   publishGitHubRelease,
 } from "../lib/release-github.mjs";
+import { execFileSync } from "../lib/spawn-sync-captured.mjs";
 
 const roots: string[] = [];
 const servers: Server[] = [];

@@ -20,7 +20,12 @@
 
 import { logger } from "@elizaos/core";
 import type { WalletChain } from "@elizaos/shared";
-import { removeEntryMeta, setEntryMeta, type Vault } from "@elizaos/vault";
+import {
+  removeEntryMeta,
+  setEntryMeta,
+  type Vault,
+  VaultDecryptionError,
+} from "@elizaos/vault";
 import { deriveEvmAddress, generateWalletForChain } from "../api/wallet.ts";
 import { teeBootGateBlocksSecrets } from "../services/tee-boot-gate-state.ts";
 
@@ -255,8 +260,11 @@ export async function generateAgentWallet(
   agentId: string,
   chain: WalletChain,
   caller?: string,
+  abortSignal?: AbortSignal,
 ): Promise<AgentWalletDescriptor> {
+  abortSignal?.throwIfAborted();
   const generated = generateWalletForChain(chain);
+  abortSignal?.throwIfAborted();
   return setAgentWallet(
     vault,
     agentId,
@@ -277,18 +285,47 @@ export async function ensureAgentWallets(
   vault: Vault,
   agentId: string,
   caller?: string,
+  abortSignal?: AbortSignal,
 ): Promise<readonly AgentWalletDescriptor[]> {
   const chains: WalletChain[] = ["evm", "solana"];
   const out: AgentWalletDescriptor[] = [];
   for (const chain of chains) {
-    const existing = await getAgentWalletDescriptor(vault, agentId, chain);
+    abortSignal?.throwIfAborted();
+    let existing: AgentWalletDescriptor | null;
+    try {
+      existing = await getAgentWalletDescriptor(vault, agentId, chain);
+    } catch (error) {
+      if (!(error instanceof VaultDecryptionError)) throw error;
+      const key = walletKey(agentId, chain);
+      const quarantined = await vault.quarantineUnreadable(
+        key,
+        "agent wallet failed authenticated decryption during bootstrap",
+        caller ?? "agent-wallets:bootstrap-repair",
+      );
+      if (!quarantined) throw error;
+      logger.warn(
+        { agentId, chain },
+        "[agent-wallets] Quarantined an undecryptable wallet entry and will generate a replacement; the opaque original remains preserved in the vault database.",
+      );
+      existing = null;
+    }
+    abortSignal?.throwIfAborted();
     if (existing) {
       out.push(existing);
       continue;
     }
-    out.push(await generateAgentWallet(vault, agentId, chain, caller));
+    out.push(
+      await generateAgentWallet(vault, agentId, chain, caller, abortSignal),
+    );
   }
-  await bridgeAgentWalletsToProcessEnv(vault, agentId, out, caller);
+  abortSignal?.throwIfAborted();
+  await bridgeAgentWalletsToProcessEnv(
+    vault,
+    agentId,
+    out,
+    caller,
+    abortSignal,
+  );
   return out;
 }
 
@@ -333,6 +370,7 @@ export async function bridgeAgentWalletsToProcessEnv(
   agentId: string,
   descriptors: readonly AgentWalletDescriptor[],
   caller?: string,
+  abortSignal?: AbortSignal,
 ): Promise<void> {
   // Default off. Skipping bridge unless explicitly opted in.
   if (process.env.ELIZA_AGENT_WALLET_AS_USER !== "1") return;
@@ -347,20 +385,17 @@ export async function bridgeAgentWalletsToProcessEnv(
     return;
   }
   for (const d of descriptors) {
+    abortSignal?.throwIfAborted();
     const envKey = CHAIN_TO_ENV_KEY[d.chain];
     if (process.env[envKey]?.trim()) continue; // user-set wins
-    try {
-      const pk = await revealAgentWalletPrivateKey(
-        vault,
-        agentId,
-        d.chain,
-        caller ?? "agent-wallets:bridge",
-      );
-      process.env[envKey] = pk;
-    } catch {
-      // Vault read failed — leave env unset; the wallet UI will show
-      // empty for that chain and the user can re-enter via Settings.
-    }
+    const pk = await revealAgentWalletPrivateKey(
+      vault,
+      agentId,
+      d.chain,
+      caller ?? "agent-wallets:bridge",
+    );
+    abortSignal?.throwIfAborted();
+    process.env[envKey] = pk;
   }
 }
 

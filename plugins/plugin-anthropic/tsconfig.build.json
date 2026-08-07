@@ -29,6 +29,6 @@
     "**/__tests__/**",
     "**/*.test.ts",
     "**/*.spec.ts",
-    "vitest.harness.config.ts"
+    "vitest.real-runtime.config.ts"
   ]
 }

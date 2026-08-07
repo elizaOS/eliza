@@ -26,7 +26,7 @@ const fullEntry = {
 	heroImageUrl: "/api/views/wallet.inventory/hero",
 	hasHeroImage: true,
 	available: true,
-	pluginName: "@elizaos/plugin-wallet-ui",
+	pluginName: "@elizaos/plugin-wallet:ui",
 	tags: ["finance", "wallet"],
 	developerOnly: false,
 	visibleInManager: true,
@@ -77,7 +77,7 @@ describe("fetchViewEntries contract (/api/views ViewRegistryEntry shape)", () =>
 		expect(wallet.viewType).toBe("gui");
 		expect(wallet.path).toBe("/apps/wallet");
 		expect(wallet.available).toBe(true);
-		expect(wallet.pluginName).toBe("@elizaos/plugin-wallet-ui");
+		expect(wallet.pluginName).toBe("@elizaos/plugin-wallet:ui");
 		expect(wallet.heroImageUrl).toBe("/api/views/wallet.inventory/hero");
 		expect(wallet.description).toBe("Inspect balances and recent transactions");
 

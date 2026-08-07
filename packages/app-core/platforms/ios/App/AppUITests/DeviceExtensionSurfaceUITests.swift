@@ -59,7 +59,7 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
 
     func testKeyboardDictationSurfaceNeedsProvisionedDeviceLane() throws {
         throw XCTSkip(
-            "Custom keyboard enablement, globe switching, Full Access/App Group round-trip, and textDocumentProxy insertion are device-lane verification items. Checklist: install signed app + ElizaKeyboard appex, enable Settings > General > Keyboard > ElizaKeyboard with Full Access, focus a text field, switch via globe, tap Dictate with Eliza, write recording/transcribing/ready/error records through the ElizaKeyboard bridge, then assert inserted/failed/needsFullAccess states."
+            "The custom keyboard requires a provisioned device lane to verify enablement, Full Access/App Group round-trip, and dictation delivery."
         )
     }
 

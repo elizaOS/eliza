@@ -6,8 +6,8 @@
  * `process.env` (the property the issue exists to guarantee — see
  * `packages/shared/src/utils/env.ts`). Drives the actual exported functions
  * (vault-id state-dir derivation, the steward sidecar factory, steward
- * credential load, edge-TTS disable) plus the startEliza port/orchestrator
- * decision expressions, not the reader in isolation.
+ * credential load) plus the startEliza port/orchestrator decision expressions,
+ * not the reader in isolation.
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -20,10 +20,6 @@ import {
   setBootConfig,
 } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  isTextToSpeechProviderDisabled,
-  type TextToSpeechProviderConfig,
-} from "./runtime/tts-provider-registry.ts";
 import {
   deriveAgentVaultId,
   resolveCanonicalStateDir,
@@ -41,7 +37,6 @@ const ALIAS_PAIRS: Array<readonly [string, string]> = [
   [`${BRAND}_NAMESPACE`, "ELIZA_NAMESPACE"],
   [`${BRAND}_AGENT_ORCHESTRATOR`, "ELIZA_AGENT_ORCHESTRATOR"],
   [`${BRAND}_API_PORT`, "ELIZA_API_PORT"],
-  [`${BRAND}_DISABLE_EDGE_TTS`, "ELIZA_DISABLE_EDGE_TTS"],
 ];
 const TRACKED = [
   ...new Set([
@@ -201,30 +196,6 @@ describe("steward credentials load (ELIZA_STATE_DIR)", () => {
       secureStore: unavailableSecureStore,
     });
     expect(creds).toBeNull();
-  });
-});
-
-describe("edge-TTS disable check (ELIZA_DISABLE_EDGE_TTS)", () => {
-  const config: TextToSpeechProviderConfig = {};
-
-  it("honors a branded MILADY_DISABLE_EDGE_TTS", () => {
-    for (const token of ["1", "true", "yes"]) {
-      process.env.MILADY_DISABLE_EDGE_TTS = token;
-      expect(isTextToSpeechProviderDisabled(config)).toBe(true);
-    }
-  });
-
-  it("stays enabled when unset, and never writes the mirror", () => {
-    expect(isTextToSpeechProviderDisabled(config)).toBe(false);
-    isTextToSpeechProviderDisabled(config);
-    expect(process.env.ELIZA_DISABLE_EDGE_TTS).toBeUndefined();
-  });
-
-  it("prefers the canonical ELIZA_DISABLE_EDGE_TTS over the branded alias", () => {
-    // Canonical "0" wins over branded "1": the feature stays enabled.
-    process.env.ELIZA_DISABLE_EDGE_TTS = "0";
-    process.env.MILADY_DISABLE_EDGE_TTS = "1";
-    expect(isTextToSpeechProviderDisabled(config)).toBe(false);
   });
 });
 

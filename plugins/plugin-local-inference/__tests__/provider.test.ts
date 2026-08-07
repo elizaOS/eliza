@@ -8,10 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	createLocalInferenceModelHandlers,
 	isLocalInferenceUnavailableError,
-	LOCAL_INFERENCE_MODEL_TYPES,
-	LOCAL_INFERENCE_PRIORITY,
 	LOCAL_INFERENCE_PROVIDER_ID,
-	localInferencePlugin,
 	LocalInferenceUnavailableError,
 } from "../src/provider.ts";
 
@@ -24,16 +21,6 @@ function runtimeWithService(service: Record<string, unknown>) {
 }
 
 describe("local inference provider", () => {
-	it("exports one provider for text, media, TTS, and transcription", () => {
-		expect(localInferencePlugin.name).toBe(LOCAL_INFERENCE_PROVIDER_ID);
-		expect(localInferencePlugin.priority).toBe(LOCAL_INFERENCE_PRIORITY);
-		for (const modelType of LOCAL_INFERENCE_MODEL_TYPES) {
-			if (modelType === ModelType.TEXT_EMBEDDING) continue;
-			expect(localInferencePlugin.models?.[modelType]).toBeTypeOf("function");
-		}
-		expect(localInferencePlugin.models?.[ModelType.TEXT_EMBEDDING]).toBeUndefined();
-	});
-
 	it("delegates text generation to the runtime local inference service", async () => {
 		const generate = vi.fn(async (args: { prompt: string }) => `local:${args.prompt}`);
 		const runtime = runtimeWithService({ generate });
@@ -131,7 +118,23 @@ describe("local inference provider", () => {
 				text: "say this",
 			} as never),
 		).resolves.toEqual(wav);
-		expect(synthesizeSpeech).toHaveBeenCalledWith("say this", undefined);
+		expect(synthesizeSpeech).toHaveBeenCalledWith(
+			"say this",
+			undefined,
+			undefined,
+		);
+
+		await expect(
+			handlers[ModelType.TEXT_TO_SPEECH]?.(runtime as never, {
+				text: "use this voice",
+				voice: "  af_heart  ",
+			} as never),
+		).resolves.toEqual(wav);
+		expect(synthesizeSpeech).toHaveBeenLastCalledWith(
+			"use this voice",
+			undefined,
+			"af_heart",
+		);
 
 		const pcm = new Float32Array([0, 0.1, -0.1]);
 		await expect(

@@ -63,33 +63,11 @@ beforeEach(async () => {
       },
       { id: "orchestrator", label: "Orchestrator", relatedActions: ["TASKS"] },
       { id: "training", label: "Training", relatedActions: ["RUNTIME"] },
-      {
-        id: "polymarket",
-        label: "Polymarket",
-        relatedActions: ["POLYMARKET_STATUS"],
-      },
-      {
-        id: "hyperliquid",
-        label: "Hyperliquid",
-        relatedActions: ["PERPETUAL_MARKET"],
-      },
-      {
-        id: "facewear",
-        label: "Facewear",
-        relatedActions: [
-          "FACEWEAR_CONNECT",
-          "FACEWEAR_DEBUG",
-          "SMARTGLASSES_CONTROL",
-          "SMARTGLASSES_STATUS",
-          "SMARTGLASSES_DISPLAY_TEXT",
-          "SMARTGLASSES_MICROPHONE",
-        ],
-      },
       { id: "steward", label: "Steward", relatedActions: ["WALLET"] },
       {
         id: "calendar",
         label: "Calendar",
-        relatedActions: ["CALENDAR", "CONFLICT_DETECT"],
+        relatedActions: ["CALENDAR"],
       },
       {
         id: "health",
@@ -107,17 +85,11 @@ beforeEach(async () => {
           "OWNER_ROUTINES",
         ],
       },
-      { id: "inbox", label: "Inbox", relatedActions: ["INBOX"] },
       { id: "finances", label: "Finances", relatedActions: ["OWNER_FINANCES"] },
       {
         id: "lifeops",
         label: "LifeOps",
         relatedActions: ["PERSONAL_ASSISTANT"],
-      },
-      {
-        id: "documents",
-        label: "Documents",
-        relatedActions: ["OWNER_DOCUMENTS"],
       },
     ],
   });
@@ -142,6 +114,59 @@ describe("view-action-affinity", () => {
     expect(getActiveViewContext()).toBeNull();
   });
 
+  it("preserves element snapshot on same-viewId re-publish without elements (#17918)", () => {
+    const elements = [
+      {
+        id: "ledger-title",
+        role: "textbox",
+        label: "Ledger title",
+        value: "Untitled",
+        focused: true,
+      },
+      { id: "save-ledger", role: "button", label: "Save ledger" },
+    ] as const;
+    setActiveViewContext({
+      viewId: "scenario-active-ledger",
+      viewLabel: "Scenario Active Ledger",
+      viewType: "gui",
+      viewPath: "/scenario/active-ledger",
+      elements,
+      clientId: "shell-1",
+    });
+    // Navigate route re-publishes the same view with no elements field.
+    setActiveViewContext({
+      viewId: "scenario-active-ledger",
+      viewLabel: "Scenario Active Ledger",
+      viewType: "gui",
+      viewPath: "/scenario/active-ledger",
+      switchedAt: new Date().toISOString(),
+      source: "user",
+    });
+    const ctx = getActiveViewContext();
+    expect(ctx?.viewId).toBe("scenario-active-ledger");
+    expect(ctx?.elements).toEqual(elements);
+    expect(ctx?.clientId).toBe("shell-1");
+    // Explicit elements on same viewId still replace the snapshot.
+    setActiveViewContext({
+      viewId: "scenario-active-ledger",
+      viewLabel: "Scenario Active Ledger",
+      viewType: "gui",
+      viewPath: "/scenario/active-ledger",
+      elements: [{ id: "only", role: "button", label: "Only" }],
+    });
+    expect(getActiveViewContext()?.elements).toEqual([
+      { id: "only", role: "button", label: "Only" },
+    ]);
+    // Different viewId drops the prior snapshot.
+    setActiveViewContext({
+      viewId: "wallet",
+      viewLabel: "Wallet",
+      viewType: "gui",
+      viewPath: "/wallet",
+    });
+    expect(getActiveViewContext()?.elements).toBeUndefined();
+  });
+
   it("resolves scoped action names from the map", () => {
     expect(viewScopedActionNames("training")).toEqual(new Set(["RUNTIME"]));
     expect(viewScopedActionNames("orchestrator")).toEqual(new Set(["TASKS"]));
@@ -151,28 +176,17 @@ describe("view-action-affinity", () => {
   });
 
   it("covers the major plugin views (expanded map)", () => {
-    // Wallet, trading, and wearable surfaces boost their plugin actions.
+    // Wallet and trading surfaces boost their plugin actions.
     expect(viewScopedActionNames("wallet").has("EVM_SWAP")).toBe(true);
     expect(viewScopedActionNames("wallet").has("SOLANA_TRANSFER")).toBe(true);
-    expect(viewScopedActionNames("polymarket").has("POLYMARKET_STATUS")).toBe(
-      true,
-    );
-    expect(viewScopedActionNames("hyperliquid").has("PERPETUAL_MARKET")).toBe(
-      true,
-    );
-    expect(viewScopedActionNames("facewear").has("SMARTGLASSES_CONTROL")).toBe(
-      true,
-    );
     expect(viewScopedActionNames("steward").has("WALLET")).toBe(true);
   });
 
   it("emphasizes each LifeOps/utility view's own domain actions", () => {
     expect(viewScopedActionNames("calendar").has("CALENDAR")).toBe(true);
-    expect(viewScopedActionNames("calendar").has("CONFLICT_DETECT")).toBe(true);
     expect(viewScopedActionNames("health").has("OWNER_HEALTH")).toBe(true);
     expect(viewScopedActionNames("todos").has("OWNER_TODOS")).toBe(true);
     expect(viewScopedActionNames("goals").has("OWNER_GOALS")).toBe(true);
-    expect(viewScopedActionNames("inbox").has("INBOX")).toBe(true);
     expect(viewScopedActionNames("finances").has("OWNER_FINANCES")).toBe(true);
     expect(viewScopedActionNames("lifeops").has("PERSONAL_ASSISTANT")).toBe(
       true,
@@ -239,13 +253,27 @@ describe("view-action-affinity", () => {
     expect(warnings).toHaveLength(0);
   });
 
-  // ── #8798: view-coverage completeness ─────────────────────────────────────
+  it("keeps missing optional alternatives at debug when a view remains actionable", () => {
+    const allMapped = new Set<string>();
+    for (const actions of Object.values(viewActionAffinityMap())) {
+      for (const action of actions) allMapped.add(action);
+    }
+    allMapped.delete("OWNER_SCREENTIME");
+    const warnings: string[] = [];
+    const debugs: string[] = [];
 
-  it("documents view has a domain-action affinity entry", () => {
-    // The documents view (a CONTEXT_VIEWS surface) maps the OWNER_DOCUMENTS
-    // domain action (#8798).
-    expect(viewActionAffinityMap().documents).toContain("OWNER_DOCUMENTS");
+    validateViewActionMap([...allMapped], {
+      warn: (message) => warnings.push(message),
+      debug: (message) => debugs.push(message),
+    });
+
+    expect(warnings).toHaveLength(0);
+    expect(debugs.some((message) => message.includes("OWNER_SCREENTIME"))).toBe(
+      true,
+    );
   });
+
+  // ── #8798: view-coverage completeness ─────────────────────────────────────
 
   it("built-in plugins-page/settings keep RUNTIME affinity via their declarations (#13589 stub migration)", () => {
     // The 2-entry HOST_VIEW_ACTION_AFFINITY stub ({plugins-page,settings}→RUNTIME)
@@ -583,10 +611,28 @@ describe("applyActiveViewAwareness", () => {
     expect(applyActiveViewAwareness(PROMPT, null)).toBe(PROMPT);
   });
 
-  it("is idempotent", () => {
+  it("is idempotent (fresh block replaces any prior block)", () => {
     const once = applyActiveViewAwareness(PROMPT, AWARE_VIEW);
     const twice = applyActiveViewAwareness(once, AWARE_VIEW);
-    expect(twice).toBe(once);
+    // Strip+reinject is content-stable for the same view snapshot.
+    expect(twice.replace(/\n+/g, "\n")).toBe(once.replace(/\n+/g, "\n"));
+    expect(twice.match(/# Active View/g)?.length).toBe(1);
+  });
+
+  it("replaces a truncated Active View header with a full element snapshot (#17918)", () => {
+    const withElements = {
+      ...AWARE_VIEW,
+      elements: [{ id: "save-ledger", role: "button", label: "Save ledger" }],
+    };
+    const truncated =
+      "intro text\n\n# Active View\nThe user is looking at a view with no elements section.\n\n# Available Actions\n- REPLY: respond\n";
+    const out = applyActiveViewAwareness(truncated, withElements);
+    expect(out).toContain("# Active View");
+    expect(out).toContain("Addressable elements currently in this view");
+    expect(out).toContain("save-ledger [button]");
+    // Only one Active View header remains.
+    expect(out.match(/# Active View/g)?.length).toBe(1);
+    expect(out).toContain("# Available Actions");
   });
 
   it("prepends when there is no actions header", () => {

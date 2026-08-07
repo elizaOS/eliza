@@ -5,4 +5,4 @@
 
 export { ThemeProvider } from "./theme-provider";
 export { useTheme } from "./theme-provider.hooks";
-export { ThemeToggle } from "./theme-toggle";
+export { CloudThemeToggle } from "./theme-toggle";

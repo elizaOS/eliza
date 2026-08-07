@@ -1,8 +1,7 @@
-// Exercises AgentManager.handleMessage fail-closed behavior on a null message
-// service and its honest empty-reply handling (fallback-slop remediation for
-// #12789 / #12268 — the previous `rt.messageService?.` + "No response
-// generated." fabricated a 200 reply that masked a structural pipeline
-// failure end-to-end at the gateway-webhook consumer).
+/**
+ * Exercises AgentManager.handleMessage fail-closed behavior and canonical
+ * connector metadata using deterministic runtime doubles.
+ */
 import { describe, expect, mock, test } from "bun:test";
 import type {
   HandlerCallback,
@@ -89,17 +88,64 @@ describe("AgentManager.handleMessage fail-closed message pipeline", () => {
         return OK_RESULT;
       },
     );
-    withRunningAgent(
-      manager,
-      "agent-1",
-      makeRuntime({
-        messageService: { handleMessage } as unknown as IMessageService,
-      }),
-    );
+    const runtime = makeRuntime({
+      messageService: { handleMessage } as unknown as IMessageService,
+    });
+    withRunningAgent(manager, "agent-1", runtime);
 
     const response = await manager.handleMessage("agent-1", "user-1", "hi");
     expect(response).toBe("hello world");
     expect(handleMessage).toHaveBeenCalledTimes(1);
+  });
+
+  test("passes canonical connector provenance to the runtime message pipeline", async () => {
+    const manager = new AgentManager();
+    let received: Memory | undefined;
+    const handleMessage = mock(
+      async (_rt: IAgentRuntime, mem: Memory, callback?: HandlerCallback) => {
+        received = mem;
+        await callback?.({ text: "ok" });
+        return OK_RESULT;
+      },
+    );
+    const runtime = makeRuntime({
+      messageService: { handleMessage } as unknown as IMessageService,
+    });
+    withRunningAgent(manager, "agent-1", runtime);
+
+    await manager.handleMessage("agent-1", "discord-user-42", "hi", {
+      platformName: "discord",
+      senderName: "Alice",
+      chatId: "channel-9",
+      accountId: "connection-1",
+      platformRecordId: "message-123",
+      chatType: "group",
+    });
+
+    expect(received?.content).toMatchObject({
+      text: "hi",
+      source: "discord",
+      channelType: "GROUP",
+    });
+    expect(received?.metadata).toMatchObject({
+      provider: "discord",
+      accountId: "connection-1",
+      platformMessageId: "message-123",
+      sourceId: "message-123",
+      scope: "private",
+      chatType: "group",
+      discord: {
+        userId: "discord-user-42",
+        accountId: "connection-1",
+        messageId: "message-123",
+      },
+    });
+    expect(runtime.ensureConnection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channelId: "channel-9",
+        type: "GROUP",
+      }),
+    );
   });
 
   test("returns empty string (not a fabricated literal) on a deliberate no-response", async () => {

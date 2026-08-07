@@ -2,7 +2,7 @@
  * InboxUnsubscribeService unit tests.
  *
  * The service is the standalone successor to PA's `service-mixin-email-unsubscribe`.
- * We inject a mock {@link InboxGmailGateway} (so no `@elizaos/plugin-google`
+ * We inject a mock {@link InboxGmailGateway} (so no `@elizaos/plugin-google-workspace`
  * runtime service or connector-account manager is needed) and a fake in-memory
  * repository, then assert: List-Unsubscribe header parsing → sender scan, the
  * two-phase authorization gate, the HTTP one-click / mailto branches, the Gmail

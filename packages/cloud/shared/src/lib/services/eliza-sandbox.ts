@@ -6,8 +6,14 @@
 import crypto from "node:crypto";
 import { isIP } from "node:net";
 import { ElizaError } from "@elizaos/core";
+import {
+  MAX_RESTORABLE_AGENT_BACKUP_BYTES,
+  resolveRetainableAgentBackupBytes,
+  SnapshotPayloadTooLargeError,
+} from "@elizaos/shared/agent-backup-limits";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
+import { ensureAgentSandboxSchema } from "../../db/ensure-agent-sandbox-schema";
 import { type Database, dbWrite } from "../../db/helpers";
 import { agentBillingRepository } from "../../db/repositories/agent-billing";
 import {
@@ -55,6 +61,7 @@ import {
   estimateDeltaBytes,
   incrementalChainDepth,
   planIncrementalBackup,
+  resolveBackupChainBytes,
 } from "./agent-backup-diff";
 import { decryptAgentEnvVars, encryptAgentEnvVarsForStorage } from "./agent-env-crypto";
 import {
@@ -70,6 +77,7 @@ import { aiBillingRecordsService } from "./ai-billing-records";
 import { apiKeysService } from "./api-keys";
 import { imageRequiresDigestPin, isCodingContainerImageAllowed } from "./coding-containers";
 import type { CreditReconciliationResult, CreditReservation } from "./credits";
+import { holdsCountedNodeSlot, isDeletionContinuation } from "./docker-node-workload-queries";
 import type { DockerSandboxMetadata } from "./docker-sandbox-provider";
 import { shellQuote } from "./docker-sandbox-utils";
 import { DockerSSHClient } from "./docker-ssh";
@@ -505,11 +513,15 @@ const SNAPSHOT_FETCH_TIMEOUT_MS = 120_000;
  * doubled it). The raw budget is enforced WHILE streaming — bytes past it are
  * never retained — and the expanded file budgets are validated before the
  * payload is persisted. Env-overridable for staging soak.
+ *
+ * The raw budget is the RETAIN side of the v1 wire contract, so it is bounded
+ * by what restore accepts: the override may lower it, never raise it past
+ * `MAX_RESTORABLE_AGENT_BACKUP_BYTES` (#17172). Retaining more than that
+ * yields a snapshot that authorizes a cutover and can never be restored.
  */
-const SNAPSHOT_MAX_RAW_BYTES = (() => {
-  const raw = Number.parseInt(process.env.ELIZA_SNAPSHOT_MAX_RAW_BYTES ?? "", 10);
-  return Number.isFinite(raw) && raw > 0 ? raw : 256 * 1024 * 1024;
-})();
+const SNAPSHOT_MAX_RAW_BYTES = resolveRetainableAgentBackupBytes(
+  process.env.ELIZA_SNAPSHOT_MAX_RAW_BYTES,
+);
 const SNAPSHOT_MAX_FILES = (() => {
   const raw = Number.parseInt(process.env.ELIZA_SNAPSHOT_MAX_FILES ?? "", 10);
   return Number.isFinite(raw) && raw > 0 ? raw : 5_000;
@@ -870,6 +882,7 @@ const UNRECOVERABLE_SNAPSHOT_HTTP_STATUSES = new Set([401, 403, 404, 410]);
 // so they must degrade-but-PRESERVE the chain: never prune a snapshot a
 // token-corrected resume could still restore (#15274).
 const PERMANENTLY_LOST_SNAPSHOT_HTTP_STATUSES = new Set([404, 410]);
+
 // Anchored on the exact `fetchSnapshotState` / `pushState` throw shapes so only
 // this file's snapshot HTTP throw sites classify — an unrelated error that
 // merely embeds one of these strings does not.
@@ -885,12 +898,12 @@ const SNAPSHOT_HTTP_ERROR_SHAPE =
  * Two shapes qualify:
  *
  * - UNDECRYPTABLE: the AEAD auth tag fails to verify (corruption / wrong key /
- *   wrong AAD, surfaced by `@elizaos/security` as `AeadError`) or the KMS key
+ *   wrong AAD, surfaced by the core KMS as `AeadError`) or the KMS key
  *   version that encrypted it no longer exists (`KeyNotFoundError` — thrown
  *   only by the ephemeral `memory` KMS backend, which derives a fresh
  *   per-process key on every restart and thus orphans everything it previously
  *   encrypted). Matched by error class NAME rather than `instanceof` because
- *   `AeadError` is internal to `@elizaos/security` (not exported) and this code
+ *   `AeadError` is internal to the core KMS submodule (not exported) and this code
  *   runs bundled, where a cross-realm `instanceof` on a dependency's error
  *   class is unreliable.
  * - UNRETRIEVABLE / UNRESTORABLE: the snapshot fetch or restore push was
@@ -915,6 +928,12 @@ const SNAPSHOT_HTTP_ERROR_SHAPE =
 export function isUnrecoverableSnapshotError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   if (error.name === "AeadError" || error.name === "KeyNotFoundError") return true;
+  // A size refusal is deliberately NOT unrecoverable-for-this-provision. It is
+  // deterministic, so retrying is pointless — but the chain is intact and
+  // restorable in principle, and the only reason it cannot be applied is a
+  // limit WE chose. Degrading it to a fresh boot would discard recoverable
+  // state; it gets its own terminal branch at each restore site instead, and
+  // the one way past it is wake's explicit `forceFreshBoot` consent.
   const match = SNAPSHOT_HTTP_ERROR_SHAPE.exec(error.message);
   return match !== null && UNRECOVERABLE_SNAPSHOT_HTTP_STATUSES.has(Number(match[1]));
 }
@@ -1614,7 +1633,7 @@ export class ElizaSandboxService {
               eq(agentSandboxes.id, rec.id),
               eq(agentSandboxes.organization_id, rec.organization_id),
               eq(agentSandboxes.environment_revision, rec.environment_revision),
-              eq(agentSandboxes.updated_at, rec.updated_at),
+              eq(agentSandboxes.lifecycle_revision, rec.lifecycle_revision),
               sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
               sql`${agentSandboxes.claimed_at} IS NULL`,
             ),
@@ -1741,6 +1760,12 @@ export class ElizaSandboxService {
     // genuine hang. A real stop failure on a REACHABLE node still escalates
     // (returns failure / retry), since the container may still be running; an
     // "already gone" failure is ignorable and we proceed.
+    // Whether the container is PROVEN gone. A bounded timeout completes the
+    // delete but abandons a container that may still be running, so it is not
+    // proof — releasing its slot would let the scheduler pack new containers
+    // onto a box still running the old ones.
+    let containerProvenGone = true;
+
     if (precheck.sandboxId) {
       const sandboxId = precheck.sandboxId;
       const stop = await this.runBoundedSandboxStop(sandboxId);
@@ -1748,6 +1773,10 @@ export class ElizaSandboxService {
       if (stop) {
         const errorMessage = stop.error instanceof Error ? stop.error.message : String(stop.error);
         if ("timedOut" in stop) {
+          // The container may still be running, so this generation keeps its
+          // node slot. The orphan reconciler releases it once it proves the
+          // container is actually absent (#17185).
+          containerProvenGone = false;
           // HONEST LIMITATION: there is currently NO automatic reclaimer — no
           // orphan-sweep / node-reconcile job that lists actual containers on a
           // node and removes ones with no DB row (see docker-sandbox-provider's
@@ -1776,6 +1805,40 @@ export class ElizaSandboxService {
           });
           return { success: false, error: "Failed to delete sandbox" };
         }
+      }
+    }
+
+    // The container is proven gone, so this generation hands its node slot back
+    // — and does so BEFORE the steps that can still fail below (credential
+    // revocation, the row-delete CAS, job-status persistence). Those failures
+    // re-run this whole path; the CAS is what makes the second run a no-op
+    // instead of a second decrement that frees a live sibling's slot (#17185).
+    //
+    // Two paths deliberately skip the release and keep ownership: a reachable
+    // stop FAILURE returns above without reaching here, and a bounded timeout
+    // abandons a container that may still be running. Both leave the slot
+    // counted until something proves absence — the retry that completes the
+    // teardown, or the orphan reconciler that reaps the container.
+    if (containerProvenGone && precheck.nodeId) {
+      const outcome = await agentSandboxesRepository.tryReleaseDeletionAllocation(
+        agentId,
+        orgId,
+        precheck.deletionAttemptId,
+        precheck.nodeId,
+      );
+      // `not-owned` is the expected retry outcome and stays at info; only a
+      // counter that failed to move while ownership WAS ours is an accounting
+      // problem worth an operator's attention.
+      const context = {
+        outcome,
+        agentId,
+        nodeId: precheck.nodeId,
+        deletionAttemptId: precheck.deletionAttemptId,
+      };
+      if (outcome === "counter-unchanged") {
+        logger.warn("[agent-sandbox] Deletion node-slot release did not move the counter", context);
+      } else {
+        logger.info("[agent-sandbox] Deletion node-slot release", context);
       }
     }
 
@@ -1832,14 +1895,20 @@ export class ElizaSandboxService {
     | {
         ok: true;
         sandboxId: string | null;
+        nodeId: string | null;
         status: AgentSandbox["status"];
         sourcePoolId: string | null;
         environmentRevision: number;
+        lifecycleRevision: number;
         deletionAttemptId: string;
-        deletionStartedAt: Date;
       }
     | { ok: false; error: string }
   > {
+    // The deletion intent this stamps includes `deletion_allocation_counted`,
+    // which the provisioning worker can reach before its migration has run
+    // (its deploy does not gate on migrate-db). Ensure is memoized, so the DDL
+    // runs once per isolate rather than once per delete.
+    await ensureAgentSandboxSchema();
     return dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, orgId);
 
@@ -1858,19 +1927,23 @@ export class ElizaSandboxService {
         return { ok: false as const, error: "Agent provisioning is in progress" };
       }
       const deletionAttemptId = rec.deletion_attempt_id ?? crypto.randomUUID();
-      // `rec` comes from a RAW `SELECT * FOR UPDATE` (getAgentForLifecycleMutation),
-      // and raw drizzle rows carry timestamptz as STRINGS, not Dates. Writing
-      // `rec.deletion_started_at` back through the typed builder therefore threw
-      // `value.toISOString is not a function` on EVERY retry of a failed
-      // deletion — the #17249 production incident (160/160 delete jobs failing,
-      // 37 agents trapped). A continuation keeps the original start time by
-      // leaving the column alone; only a fresh deletion stamps it.
+      // A retry preserves the original audit timestamp while taking a fresh
+      // database generation for the new teardown attempt.
+      //
+      // Allocation ownership rides the same rule, for the same reason: a
+      // continuation must inherit the original generation's recorded answer, not
+      // re-derive it from a row this deletion has already moved to
+      // `deletion_pending` — which would read as "still counted" forever and free
+      // a live sibling's slot on every retry (#17185).
       const [owned] = await tx
         .update(agentSandboxes)
         .set({
           status: "deletion_pending",
           deletion_attempt_id: deletionAttemptId,
           ...(rec.deletion_started_at === null ? { deletion_started_at: new Date() } : {}),
+          ...(isDeletionContinuation(rec)
+            ? {}
+            : { deletion_allocation_counted: holdsCountedNodeSlot(rec) }),
           updated_at: new Date(),
         })
         .where(
@@ -1884,6 +1957,7 @@ export class ElizaSandboxService {
           id: agentSandboxes.id,
           deletionAttemptId: agentSandboxes.deletion_attempt_id,
           deletionStartedAt: agentSandboxes.deletion_started_at,
+          lifecycleRevision: agentSandboxes.lifecycle_revision,
         });
       if (!owned) {
         return { ok: false as const, error: "Agent deletion ownership changed" };
@@ -1895,11 +1969,12 @@ export class ElizaSandboxService {
       return {
         ok: true as const,
         sandboxId: rec.sandbox_id,
+        nodeId: rec.node_id,
         status: rec.status,
         sourcePoolId: rec.warm_claim_source_pool_id,
         environmentRevision: rec.environment_revision,
+        lifecycleRevision: owned.lifecycleRevision,
         deletionAttemptId: owned.deletionAttemptId,
-        deletionStartedAt: owned.deletionStartedAt,
       };
     });
   }
@@ -1915,8 +1990,8 @@ export class ElizaSandboxService {
     ownership: {
       sandboxId: string | null;
       environmentRevision: number;
+      lifecycleRevision: number;
       deletionAttemptId: string;
-      deletionStartedAt: Date;
     },
   ): Promise<DeleteAgentResult> {
     return dbWrite.transaction(async (tx) => {
@@ -1932,18 +2007,12 @@ export class ElizaSandboxService {
       }
 
       const hasActiveProvisionJob = await this.hasActiveProvisionJobTx(tx, agentId, orgId);
-      // `rec` is a RAW row: its timestamptz fields are strings at runtime
-      // despite the Date type, so `.getTime()` on them throws. Normalize both
-      // sides to epoch through the Date constructor (which accepts either)
-      // before comparing — a mismatch must fail the fence, not crash it.
-      const recDeletionStartedAtMs =
-        rec.deletion_started_at === null ? null : new Date(rec.deletion_started_at).getTime();
       if (
         rec.status !== "deletion_pending" ||
         rec.deletion_attempt_id !== ownership.deletionAttemptId ||
-        recDeletionStartedAtMs !== ownership.deletionStartedAt.getTime() ||
         rec.sandbox_id !== ownership.sandboxId ||
         rec.environment_revision !== ownership.environmentRevision ||
+        rec.lifecycle_revision !== ownership.lifecycleRevision ||
         hasActiveProvisionJob
       ) {
         return {
@@ -1952,18 +2021,20 @@ export class ElizaSandboxService {
         } as const;
       }
 
-      const deleted = await tx.execute<AgentSandbox>(sql`
-        DELETE FROM ${agentSandboxes}
-        WHERE id = ${agentId}
-          AND organization_id = ${orgId}
-          AND status = 'deletion_pending'
-          AND deletion_attempt_id = ${ownership.deletionAttemptId}
-          AND deletion_started_at = ${ownership.deletionStartedAt}
-          AND sandbox_id IS NOT DISTINCT FROM ${ownership.sandboxId}
-          AND environment_revision = ${ownership.environmentRevision}
-        RETURNING *
-      `);
-      const deletedSandbox = deleted.rows[0];
+      const [deletedSandbox] = await tx
+        .delete(agentSandboxes)
+        .where(
+          and(
+            eq(agentSandboxes.id, agentId),
+            eq(agentSandboxes.organization_id, orgId),
+            eq(agentSandboxes.status, "deletion_pending"),
+            eq(agentSandboxes.deletion_attempt_id, ownership.deletionAttemptId),
+            sql`${agentSandboxes.sandbox_id} IS NOT DISTINCT FROM ${ownership.sandboxId}`,
+            eq(agentSandboxes.environment_revision, ownership.environmentRevision),
+            eq(agentSandboxes.lifecycle_revision, ownership.lifecycleRevision),
+          ),
+        )
+        .returning();
 
       return deletedSandbox
         ? ({ success: true, deletedSandbox } as const)
@@ -2548,6 +2619,29 @@ export class ElizaSandboxService {
             // fresh boot — the caller opted into THAT restore point, so a
             // failure here fails the provision (retryable by the wake job)
             // instead of booting empty (#15603 B6).
+            // Ordered before the from-backup rethrow: the gated wake ALWAYS
+            // passes `from-backup`, so checking that first would swallow the
+            // consent sentence on the one path where the consent mechanism
+            // exists.
+            if (error instanceof SnapshotPayloadTooLargeError) {
+              // Size refusal fails CLOSED even on an ordinary provision: the
+              // chain is intact, only too large — booting empty would silently
+              // drop every byte of it. The one consent path is wake's
+              // forceFreshBoot.
+              throw new ElizaError(
+                `Restore refused: ${error.message}. Booting empty would discard this agent's state; wake with forceFreshBoot to explicitly accept the data loss.`,
+                {
+                  code: "SNAPSHOT_RESTORE_REQUIRES_FRESH_BOOT_CONSENT",
+                  cause: error,
+                  context: {
+                    agentId: rec.id,
+                    payloadBytes: error.payloadBytes,
+                    limitBytes: error.limitBytes,
+                  },
+                  severity: "fatal",
+                },
+              );
+            }
             if (restoreOverride?.kind === "from-backup") throw error;
             if (!isUnrecoverableSnapshotError(error)) throw error;
             await this.degradeUnrecoverableSnapshot(rec.id, backup?.id, error);
@@ -2575,6 +2669,23 @@ export class ElizaSandboxService {
                 {
                   agentId: rec.id,
                   backupId: backup?.id,
+                },
+              );
+            } else if (error instanceof SnapshotPayloadTooLargeError) {
+              // Ordered before the from-backup rethrow for the same reason as
+              // the fetch branch: a gated wake would otherwise never see the
+              // consent sentence.
+              throw new ElizaError(
+                `Restore refused: ${error.message}. Booting empty would discard this agent's state; wake with forceFreshBoot to explicitly accept the data loss.`,
+                {
+                  code: "SNAPSHOT_RESTORE_REQUIRES_FRESH_BOOT_CONSENT",
+                  cause: error,
+                  context: {
+                    agentId: rec.id,
+                    payloadBytes: error.payloadBytes,
+                    limitBytes: error.limitBytes,
+                  },
+                  severity: "fatal",
                 },
               );
             } else if (restoreOverride?.kind === "from-backup") {
@@ -3130,7 +3241,12 @@ export class ElizaSandboxService {
       history.length > SHARED_RUNTIME_HISTORY_MAX_MESSAGES
         ? history.slice(history.length - SHARED_RUNTIME_HISTORY_MAX_MESSAGES)
         : history;
-    await sharedRuntimeHistoryRepository.upsert(agentId, channelId, capped);
+    await sharedRuntimeHistoryRepository.merge(
+      agentId,
+      channelId,
+      capped,
+      SHARED_RUNTIME_HISTORY_MAX_MESSAGES,
+    );
   }
 
   private sharedRuntimeBillingPrompt(
@@ -3868,6 +3984,7 @@ export class ElizaSandboxService {
           AND status IN ('running', 'provisioning', 'stopped', 'error')
           AND claimed_at IS NOT NULL
           AND warm_claim_credential_state IS NULL
+          AND lifecycle_revision = ${current.lifecycle_revision}
         RETURNING id
       `);
       if (prepared.rows.length !== 1) {
@@ -3941,6 +4058,7 @@ export class ElizaSandboxService {
           AND sandbox_id IS NOT DISTINCT FROM ${current.sandbox_id}
           AND node_id IS NOT DISTINCT FROM ${current.node_id}
           AND container_name IS NOT DISTINCT FROM ${current.container_name}
+          AND lifecycle_revision = ${current.lifecycle_revision}
         RETURNING id
       `);
       if (reset.rows.length !== 1) {
@@ -3971,6 +4089,7 @@ export class ElizaSandboxService {
       return {
         alreadyComplete: false,
         sourcePoolId: current.warm_claim_source_pool_id,
+        lifecycleRevision: current.lifecycle_revision,
       };
     });
     if (!prepared) return false;
@@ -3996,6 +4115,7 @@ export class ElizaSandboxService {
           AND warm_claim_credential_state = 'failed'
           AND warm_claim_cleanup_completed_at IS NULL
           AND warm_claim_source_pool_id IS NOT DISTINCT FROM ${prepared.sourcePoolId}
+          AND lifecycle_revision = ${prepared.lifecycleRevision}
         RETURNING id
       `);
       if (result.rows.length === 1) return true;
@@ -4043,6 +4163,8 @@ export class ElizaSandboxService {
           current.warm_claim_key_fingerprint !== persistedFingerprint ||
           current.warm_claim_attested_environment_revision !== current.environment_revision
         ) {
+          // Every raw transition carries the database generation loaded under
+          // the lifecycle lock; the trigger advances the returned generation.
           const rows = await tx.execute<AgentSandbox>(sql`
             UPDATE ${agentSandboxes}
             SET
@@ -4059,6 +4181,7 @@ export class ElizaSandboxService {
                 current.warm_claim_source_pool_id
               }
               AND environment_revision = ${current.environment_revision}
+              AND lifecycle_revision = ${current.lifecycle_revision}
             RETURNING *
           `);
           const rearmed = rows.rows[0];
@@ -4091,6 +4214,7 @@ export class ElizaSandboxService {
                 rearmed.warm_claim_source_pool_id
               }
               AND environment_revision = ${rearmed.environment_revision}
+              AND lifecycle_revision = ${rearmed.lifecycle_revision}
             RETURNING *
           `);
           const reminted = remintedRows.rows[0];
@@ -4132,6 +4256,7 @@ export class ElizaSandboxService {
                 current.warm_claim_source_pool_id
               }
               AND environment_revision = ${current.environment_revision}
+              AND lifecycle_revision = ${current.lifecycle_revision}
             RETURNING *
           `);
           const rearmed = rows.rows[0];
@@ -4164,6 +4289,7 @@ export class ElizaSandboxService {
                 rearmed.warm_claim_source_pool_id
               }
               AND environment_revision = ${rearmed.environment_revision}
+              AND lifecycle_revision = ${rearmed.lifecycle_revision}
             RETURNING *
           `);
           const reminted = remintedRows.rows[0];
@@ -4204,6 +4330,7 @@ export class ElizaSandboxService {
             warm_claim_credential_state = 'pending'
             OR warm_claim_credential_state IS NULL
           )
+          AND lifecycle_revision = ${current.lifecycle_revision}
         RETURNING *
       `);
       const updated = rows.rows[0];
@@ -4313,6 +4440,7 @@ export class ElizaSandboxService {
             prepared.current.warm_claim_source_pool_id
           }
           AND environment_revision = ${current.environment_revision}
+          AND lifecycle_revision = ${current.lifecycle_revision}
         RETURNING environment_revision
       `);
       return result.rows[0]?.environment_revision ?? null;
@@ -4341,20 +4469,23 @@ export class ElizaSandboxService {
     if (!expectedFingerprint || expectedEnvironmentRevision === null) {
       throw new Error("Warm-claim attestation metadata is incomplete");
     }
-    const readyToRevoke = await dbWrite.transaction(async (tx) => {
+    const revocationRevision = await dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, organizationId);
       const current = await this.getAgentForLifecycleMutation(tx, agentId, organizationId);
-      return Boolean(
-        current &&
-          current.status === "provisioning" &&
-          current.warm_claim_credential_state === "attested" &&
-          current.warm_claim_source_pool_id === expectedSourcePoolId &&
-          current.warm_claim_key_fingerprint === expectedFingerprint &&
-          current.environment_revision === expectedEnvironmentRevision &&
-          current.warm_claim_attested_environment_revision === expectedEnvironmentRevision,
-      );
+      if (
+        !current ||
+        current.status !== "provisioning" ||
+        current.warm_claim_credential_state !== "attested" ||
+        current.warm_claim_source_pool_id !== expectedSourcePoolId ||
+        current.warm_claim_key_fingerprint !== expectedFingerprint ||
+        current.environment_revision !== expectedEnvironmentRevision ||
+        current.warm_claim_attested_environment_revision !== expectedEnvironmentRevision
+      ) {
+        return null;
+      }
+      return current.lifecycle_revision;
     });
-    if (!readyToRevoke) {
+    if (revocationRevision === null) {
       throw new Error("Warm-claim source revocation lost its state CAS");
     }
 
@@ -4379,7 +4510,8 @@ export class ElizaSandboxService {
         current.warm_claim_source_pool_id !== expectedSourcePoolId ||
         current.warm_claim_key_fingerprint !== expectedFingerprint ||
         current.environment_revision !== expectedEnvironmentRevision ||
-        current.warm_claim_attested_environment_revision !== expectedEnvironmentRevision
+        current.warm_claim_attested_environment_revision !== expectedEnvironmentRevision ||
+        current.lifecycle_revision !== revocationRevision
       ) {
         return false;
       }
@@ -4399,6 +4531,7 @@ export class ElizaSandboxService {
           AND warm_claim_key_fingerprint = ${expectedFingerprint}
           AND environment_revision = ${expectedEnvironmentRevision}
           AND warm_claim_attested_environment_revision = ${expectedEnvironmentRevision}
+          AND lifecycle_revision = ${revocationRevision}
         RETURNING id
       `);
       return result.rows.length === 1;
@@ -5977,20 +6110,46 @@ export class ElizaSandboxService {
             backupKind: b.backup_kind,
             parentBackupId: b.parent_backup_id,
             createdAtMs: b.created_at.getTime(),
+            // Kept so the projected chain sum below needs no extra query.
+            sizeBytes: b.size_bytes ?? null,
           }));
           const chainDepth = incrementalChainDepth(nodes, latest.id);
           const plan = planIncrementalBackup({ base: baseState, next: stateData, chainDepth });
           if (plan.kind === "incremental") {
-            return {
-              sandbox_record_id: sandboxRecordId,
-              snapshot_type: type,
-              // The state_data jsonb holds a BackupDelta for incremental rows.
-              state_data: plan.delta,
-              size_bytes: estimateDeltaBytes(plan.delta),
-              backup_kind: "incremental",
-              parent_backup_id: latest.id,
-              content_hash: contentHash,
-            };
+            // retained-implies-restorable (#17172): reconstruction budgets the
+            // SUM of the chain's stored inputs, so appending a delta that
+            // pushes that sum past the ceiling would make this row canonical
+            // AND unreconstructable in the same write — the invariant this PR
+            // exists to hold. A full backup is always reconstructable, so it is
+            // the correct fail-closed outcome, both when the projection
+            // breaches and when it cannot be computed (an ancestor with an
+            // unrecorded size_bytes).
+            const deltaBytes = estimateDeltaBytes(plan.delta);
+            const existingChainBytes = resolveBackupChainBytes(nodes, latest.id);
+            if (
+              existingChainBytes !== null &&
+              existingChainBytes + deltaBytes <= MAX_RESTORABLE_AGENT_BACKUP_BYTES
+            ) {
+              return {
+                sandbox_record_id: sandboxRecordId,
+                snapshot_type: type,
+                // The state_data jsonb holds a BackupDelta for incremental rows.
+                state_data: plan.delta,
+                size_bytes: deltaBytes,
+                backup_kind: "incremental",
+                parent_backup_id: latest.id,
+                content_hash: contentHash,
+              };
+            }
+            logger.info(
+              "[agent-sandbox] Storing a full backup: an incremental would exceed the restorable chain budget",
+              {
+                sandboxRecordId,
+                existingChainBytes,
+                deltaBytes,
+                limitBytes: MAX_RESTORABLE_AGENT_BACKUP_BYTES,
+              },
+            );
           }
         }
       } catch (error) {
@@ -6076,7 +6235,7 @@ export class ElizaSandboxService {
       sandboxId: rec.sandbox_id,
       nodeId: rec.node_id,
       containerName: rec.container_name,
-      updatedAt: rec.updated_at,
+      lifecycleRevision: rec.lifecycle_revision,
     });
   }
 
@@ -6789,6 +6948,7 @@ export class ElizaSandboxService {
 
   async shutdown(agentId: string, orgId: string): Promise<{ success: boolean; error?: string }> {
     let snapshotAgentId: string | null = null;
+    let captureUnsupported = false;
     let preShutdownSnapshot: {
       stateData: AgentBackupStateData;
       sizeBytes: number;
@@ -6797,13 +6957,34 @@ export class ElizaSandboxService {
 
     const snapshotSource = await this.getAgentForWrite(agentId, orgId);
     if (snapshotSource?.status === "running" && snapshotSource.bridge_url) {
-      preShutdownSnapshot = await this.fetchSnapshotState(snapshotSource).catch((error) => {
-        logger.warn("[agent-sandbox] Pre-shutdown backup fetch failed", {
-          agentId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        return null;
-      });
+      try {
+        preShutdownSnapshot = await this.fetchSnapshotState(snapshotSource);
+      } catch (error) {
+        // error-policy:J1 the shutdown command boundary translates capture
+        // failures into an explicit refusal while leaving the agent running.
+        const message = error instanceof Error ? error.message : String(error);
+        if (message === SNAPSHOT_ENDPOINT_UNSUPPORTED) {
+          // The deployed image cannot snapshot by construction; requiring a
+          // capture it can never produce would make this agent unstoppable.
+          captureUnsupported = true;
+          logger.warn(
+            "[agent-sandbox] Shutdown proceeding without capture: image has no snapshot endpoint",
+            { agentId },
+          );
+        } else {
+          // Fail CLOSED: stopping the container without a current capture
+          // silently discards everything since the last backup. A shutdown
+          // that cannot prove a capture leaves the agent running and says so.
+          logger.error("[agent-sandbox] Shutdown refused: pre-stop capture failed", {
+            agentId,
+            error: message,
+          });
+          return {
+            success: false,
+            error: `Refusing to stop without a current backup: ${message}`,
+          };
+        }
+      }
     }
 
     const result = await dbWrite.transaction(async (tx) => {
@@ -6848,11 +7029,19 @@ export class ElizaSandboxService {
         } as const;
       }
 
-      if (
-        preShutdownSnapshot &&
-        rec.status === "running" &&
-        rec.bridge_url === preShutdownSnapshot.bridgeUrl
-      ) {
+      if (rec.status === "running" && rec.bridge_url && !captureUnsupported) {
+        // The capture must be OF THIS generation. A capture taken against a
+        // different bridge_url (the row moved between the unlocked fetch and
+        // this locked read) is some other container's state; persisting it
+        // would masquerade as current, and stopping without persisting would
+        // silently discard the delta. Both refuse.
+        if (!preShutdownSnapshot || rec.bridge_url !== preShutdownSnapshot.bridgeUrl) {
+          return {
+            success: false,
+            error:
+              "Refusing to stop: the agent's lifecycle generation moved after the pre-stop capture; retry the shutdown.",
+          } as const;
+        }
         await this.persistSnapshotWithinTransaction(
           tx,
           rec.id,
@@ -7097,10 +7286,36 @@ export class ElizaSandboxService {
       }
     }
     if (!backupId) {
-      const existing = await agentSandboxesRepository.getLatestBackup(rec.id);
-      if (existing) {
-        backupId = existing.id;
-      } else {
+      // The fallback destroys newer compute state in favor of whatever this
+      // resolves to, so "a backup row exists" is not enough: it must be PROVEN
+      // restorable (fresh verified stamp, or a live decrypt+chain+hash
+      // verification right now) before the container is stopped. The wake gate
+      // already implements exactly that proof, alternative scan included.
+      const gate = await runWakeRestoreIntegrityGate({
+        sandboxRecordId: rec.id,
+        agentName: rec.agent_name,
+      });
+      if (!gate.ok) {
+        logger.error("[agent-sandbox] Sleep aborted: no restorable backup proven", {
+          agentId,
+          sandboxRecordId: rec.id,
+          failure: gate.failure.kind,
+        });
+        return {
+          success: false,
+          containerRemoved: false,
+          error: `Refusing to deactivate on an unproven backup; agent was left running. ${formatWakeRestoreIntegrityError(gate.failure)}`,
+        };
+      }
+      if (gate.backupId) {
+        backupId = gate.backupId;
+      } else if (gate.verification === "disabled") {
+        // Kill switch: with the gate off, keep the pre-gate behavior of
+        // accepting the latest backup rather than inventing a third mode.
+        const existing = await agentSandboxesRepository.getLatestBackup(rec.id);
+        if (existing) backupId = existing.id;
+      }
+      if (!backupId) {
         logger.error("[agent-sandbox] Sleep aborted: no durable backup available", {
           agentId,
           sandboxRecordId: rec.id,
@@ -7115,10 +7330,8 @@ export class ElizaSandboxService {
     }
 
     // The backup is intentionally captured without holding a database lock.
-    // Revalidate its exact lifecycle generation under the advisory/row locks,
-    // then keep those locks through absence proof and the locator clear. A
-    // restart can reuse deterministic container ids, so the updated_at fence
-    // is part of the identity check rather than comparing locators alone.
+    // Revalidate the database-owned generation under the advisory/row locks,
+    // then keep those locks through absence proof and the locator clear.
     const sleepCommit = await dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, orgId);
       const current = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
@@ -7155,7 +7368,7 @@ export class ElizaSandboxService {
         current.bridge_url === rec.bridge_url &&
         current.health_url === rec.health_url &&
         current.environment_revision === rec.environment_revision &&
-        current.updated_at?.getTime() === rec.updated_at?.getTime();
+        current.lifecycle_revision === rec.lifecycle_revision;
       if (!unchangedLifecycleGeneration) {
         return {
           success: false as const,
@@ -7203,7 +7416,7 @@ export class ElizaSandboxService {
           AND node_id IS NOT DISTINCT FROM ${current.node_id}
           AND container_name IS NOT DISTINCT FROM ${current.container_name}
           AND environment_revision = ${current.environment_revision}
-          AND updated_at IS NOT DISTINCT FROM ${current.updated_at}
+          AND lifecycle_revision = ${current.lifecycle_revision}
         RETURNING id
       `);
       if (cleared.rows.length !== 1) {
@@ -7829,6 +8042,7 @@ export class ElizaSandboxService {
             AND organization_id = ${orgId}
             AND status = 'running'
             AND environment_revision = ${sourceEnvironmentRevision}
+            AND lifecycle_revision = ${current.lifecycle_revision}
             AND replacement_cleanup_sandbox_id = ${blueHandle.sandboxId}
             AND replacement_cleanup_node_id = ${blueMeta.nodeId}
             AND replacement_cleanup_container_name = ${blueMeta.containerName}
@@ -8337,6 +8551,7 @@ export class ElizaSandboxService {
             AND organization_id = ${orgId}
             AND status = 'running'
             AND environment_revision = ${sourceEnvironmentRevision}
+            AND lifecycle_revision = ${current.lifecycle_revision}
             AND replacement_cleanup_sandbox_id = ${blueHandle.sandboxId}
             AND replacement_cleanup_node_id = ${blueMeta.nodeId}
             AND replacement_cleanup_container_name = ${blueMeta.containerName}
@@ -8819,6 +9034,7 @@ export class ElizaSandboxService {
             AND replacement_cleanup_vpn_registration_started_at IS NOT DISTINCT FROM ${existing.vpnRegistrationStartedAt}
             AND replacement_cleanup_allocation_counted = ${existing.allocationCounted}
             AND ${this.replacementCleanupCreatedAtMatches(existing.createdAt)}
+            AND lifecycle_revision = ${current.lifecycle_revision}
           RETURNING id
         `);
         if (enriched.rows.length !== 1) {
@@ -8878,6 +9094,7 @@ export class ElizaSandboxService {
           AND container_name IS NOT DISTINCT FROM ${expected.containerName}
           AND deletion_attempt_id IS NULL
           AND replacement_cleanup_sandbox_id IS NULL
+          AND lifecycle_revision = ${current.lifecycle_revision}
         RETURNING id
       `);
       if (persisted.rows.length !== 1) {
@@ -8925,6 +9142,7 @@ export class ElizaSandboxService {
           AND replacement_cleanup_vpn_registration_started_at IS NOT DISTINCT FROM ${existing.vpnRegistrationStartedAt}
           AND replacement_cleanup_allocation_counted = ${existing.allocationCounted}
           AND ${this.replacementCleanupCreatedAtMatches(existing.createdAt)}
+          AND lifecycle_revision = ${current.lifecycle_revision}
         RETURNING id
       `);
       if (persisted.rows.length !== 1) {
@@ -9000,6 +9218,7 @@ export class ElizaSandboxService {
             eq(agentSandboxes.organization_id, orgId),
             eq(agentSandboxes.status, "provisioning"),
             eq(agentSandboxes.environment_revision, expectedEnvironmentRevision),
+            eq(agentSandboxes.lifecycle_revision, current.lifecycle_revision),
             sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
           ),
         )
@@ -9166,6 +9385,7 @@ export class ElizaSandboxService {
           AND replacement_cleanup_vpn_registration_started_at IS NOT DISTINCT FROM ${locator.vpnRegistrationStartedAt}
           AND replacement_cleanup_allocation_counted = ${locator.allocationCounted}
           AND ${this.replacementCleanupCreatedAtMatches(locator.createdAt)}
+          AND lifecycle_revision = ${current.lifecycle_revision}
         RETURNING id
       `);
       if (cleared.rows.length !== 1) {
@@ -9329,14 +9549,15 @@ export class ElizaSandboxService {
     agentId: string,
     orgId: string,
   ): Promise<AgentSandbox | undefined> {
-    const result = await tx.execute<AgentSandbox>(sql`
-      SELECT *
-      FROM ${agentSandboxes}
-      WHERE id = ${agentId}
-        AND organization_id = ${orgId}
-      FOR UPDATE
-    `);
-    return result.rows[0];
+    // The typed builder maps timestamp columns to Dates before lifecycle code
+    // consumes them; the row lock and lifecycle_revision provide ownership.
+    const [row] = await tx
+      .select()
+      .from(agentSandboxes)
+      .where(and(eq(agentSandboxes.id, agentId), eq(agentSandboxes.organization_id, orgId)))
+      .for("update")
+      .limit(1);
+    return row;
   }
 
   private async hasActiveProvisionJobTx(
@@ -9652,7 +9873,13 @@ export class ElizaSandboxService {
       normalized.includes("not found") ||
       normalized.includes("already gone") ||
       normalized.includes("no longer exists") ||
-      normalized.includes("404")
+      normalized.includes("404") ||
+      // docker-sandbox-provider's hydrateContainerFromDb throws this when the
+      // sandbox row points at a node purged from docker_nodes (decommissioned
+      // node). For stop/delete teardown the container's host no longer exists,
+      // so there is nothing left to stop — without this the delete escalates,
+      // exhausts retries, and wedges the agent in deletion_failed forever.
+      normalized.includes("missing persisted docker node metadata")
     );
   }
 
@@ -9684,9 +9911,20 @@ export class ElizaSandboxService {
       authRec?: Pick<AgentSandbox, "id" | "environment_vars">;
     },
   ) {
+    // Measure the assembled payload ONCE, before it leaves the worker (#17172).
+    // `/api/restore` caps its request body at the same canonical limit, so an
+    // oversized push is a guaranteed far-end rejection — and this runs on the
+    // blue/green ROLLBACK path, where discovering that after the request is a
+    // failed rollback rather than a clean refusal. Stringifying into a local
+    // also avoids building the payload twice.
+    const body = JSON.stringify(state);
+    const bodyBytes = Buffer.byteLength(body, "utf8");
+    if (bodyBytes > MAX_RESTORABLE_AGENT_BACKUP_BYTES) {
+      throw new SnapshotPayloadTooLargeError(bodyBytes, MAX_RESTORABLE_AGENT_BACKUP_BYTES);
+    }
     const requestInit: RequestInit = {
       method: "POST",
-      body: JSON.stringify(state),
+      body,
       signal: AbortSignal.timeout(SNAPSHOT_RESTORE_TIMEOUT_MS),
     };
     const res =

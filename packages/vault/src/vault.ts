@@ -12,7 +12,7 @@ import { PgliteVaultImpl } from "./pglite-vault.js";
 import type { CreateVaultOptions, Vault } from "./vault-types.js";
 
 export type { CreateVaultOptions, SetOptions, Vault } from "./vault-types.js";
-export { VaultMissError } from "./vault-types.js";
+export { VaultDecryptionError, VaultMissError } from "./vault-types.js";
 
 /**
  * Resolve the state-directory root the default vault lives under

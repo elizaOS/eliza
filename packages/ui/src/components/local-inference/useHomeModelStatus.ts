@@ -1,3 +1,9 @@
+/**
+ * Resolves whether the home composer actually depends on local text inference,
+ * then follows local-model readiness only for that route. Runtime placement and
+ * model placement are separate: a local agent may still send text to Cerebras.
+ */
+
 import { useEffect, useRef, useState } from "react";
 
 import { client } from "../../api";
@@ -22,6 +28,15 @@ const NOT_REQUIRED: HomeModelStatus = {
   errors: [],
 };
 
+const ROUTING_STATUS_ERROR: HomeModelStatus = {
+  kind: "error",
+  blocksSend: true,
+  percent: null,
+  etaMs: null,
+  modelName: null,
+  errors: ["Could not verify the active text model provider."],
+};
+
 function appendTokenParam(url: string): string {
   const token = getElizaApiToken()?.trim();
   if (!token) return url;
@@ -37,9 +52,9 @@ function supportsLocalInferenceStatus(): boolean {
 
 /**
  * Collapses the local-inference hub's per-slot text readiness into a single
- * home-surface status, refreshed live from the download stream. Defaults to
- * `not-required` so cloud/remote runtimes never gate send before the first
- * hub fetch resolves.
+ * home-surface status, refreshed live from the download stream. The effective
+ * model route is checked first so a local runtime backed by Cerebras or another
+ * external provider never displays or gates on an unrelated local text model.
  */
 export function useHomeModelStatus(): HomeModelStatus {
   const [status, setStatus] = useState<HomeModelStatus>(NOT_REQUIRED);
@@ -64,6 +79,7 @@ export function useHomeModelStatus(): HomeModelStatus {
     }
 
     let cancelled = false;
+    let eventSource: ReturnType<typeof openEventSource> = null;
 
     const refresh = async () => {
       if (!supportsLocalInferenceStatus()) {
@@ -78,35 +94,46 @@ export function useHomeModelStatus(): HomeModelStatus {
       }
     };
 
-    void refresh();
+    const start = async () => {
+      try {
+        const modelConfig = await client.getModelsConfig();
+        if (cancelled) return;
+        if (modelConfig.activeChat) {
+          setStatus(NOT_REQUIRED);
+          return;
+        }
+      } catch {
+        // error-policy:J4 The composer distinguishes an unavailable routing
+        // probe from both a healthy external route and local-model readiness.
+        if (!cancelled) setStatus(ROUTING_STATUS_ERROR);
+        return;
+      }
 
-    if (!supportsLocalInferenceStatus()) {
-      setStatus(NOT_REQUIRED);
-      return () => {
-        cancelled = true;
-      };
-    }
+      await refresh();
+      if (cancelled || !supportsLocalInferenceStatus()) return;
 
-    const url = appendTokenParam(
-      resolveApiUrl("/api/local-inference/downloads/stream"),
-    );
-    // On-device runtimes are addressed via the native IPC base, which
-    // EventSource cannot open — fall back to the one-shot `refresh()` above.
-    const es = openEventSource(url, { withCredentials: false });
-    if (es) {
-      es.onmessage = () => {
-        // The stream carries download/active deltas but not recomputed
-        // readiness, so debounce a hub refetch to pick up the fresh
-        // `textReadiness` rather than recomputing it client-side.
-        if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
-        refreshTimerRef.current = setTimeout(() => void refresh(), 400);
-      };
-    }
+      const url = appendTokenParam(
+        resolveApiUrl("/api/local-inference/downloads/stream"),
+      );
+      // On-device runtimes are addressed via the native IPC base, which
+      // EventSource cannot open — fall back to the one-shot `refresh()` above.
+      eventSource = openEventSource(url, { withCredentials: false });
+      if (eventSource) {
+        eventSource.onmessage = () => {
+          // The stream carries download/active deltas but not recomputed
+          // readiness, so debounce a hub refetch to pick up the fresh
+          // `textReadiness` rather than recomputing it client-side.
+          if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+          refreshTimerRef.current = setTimeout(() => void refresh(), 400);
+        };
+      }
+    };
+    void start();
 
     return () => {
       cancelled = true;
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
-      es?.close();
+      eventSource?.close();
     };
   }, [
     authenticated,

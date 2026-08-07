@@ -1,5 +1,0 @@
-alias / -> /lib/live/mount/overlay/rw/,
-alias / -> /lib/live/mount/rootfs/*.squashfs/,
-alias / -> /usr/lib/live/mount/overlay/rw/,
-alias / -> /usr/lib/live/mount/rootfs/*.squashfs/,
-alias / -> /rw/,

@@ -41,9 +41,11 @@ export default scenario({
           return `missing-input turn returned a synthetic failure: ${JSON.stringify(response)}`;
         }
 
-        const reminder = execution.actionsCalled.find(
-          (action) => action.actionName === "OWNER_REMINDERS",
-        );
+        const reminder = execution.actionsCalled.find((action) => {
+          if (action.actionName === "OWNER_REMINDERS") return true;
+          const data = record(action.result?.data);
+          return data?.actionName === "OWNER_REMINDERS";
+        });
         if (!reminder?.result) {
           return "OWNER_REMINDERS did not execute on the missing-input turn";
         }

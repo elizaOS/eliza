@@ -15,7 +15,7 @@ This plugin registers model handlers for `TEXT_SMALL`, `TEXT_LARGE`, `TEXT_EMBED
 | `IDENTIFY_SPEAKER` | Binds the most-recently-heard *unidentified* speaker voice to a named person ("that was Jill"). Emits `VOICE_TURN_OBSERVED` to drive the merge engine; the `VOICE_ENTITY_BOUND` round-trip persists `entityId` onto the profile. Inert (logs only) if no merge-engine plugin is loaded. |
 
 ### Events (voice ⇄ entity binding seam — issue #8234)
-The plugin owns the `VoiceProfileStore` (speaker centroids); a merge-engine plugin (plugin-lifeops) owns the entity graph. They communicate only through two core events — neither imports the other:
+The plugin owns the `VoiceProfileStore` (speaker centroids); a merge-engine plugin (plugin-personal-assistant) owns the entity graph. They communicate only through two core events — neither imports the other:
 - **emits** `VOICE_TURN_OBSERVED` (`emitVoiceTurnObserved`, `src/runtime/voice-entity-binding.ts`) — a recognized voice turn for the merge engine to fold into the graph.
 - **handles** `VOICE_ENTITY_BOUND` (`handleVoiceEntityBound`, registered in `provider.ts`) — persists the merge-engine's `entityId` onto every profile in the imprint cluster via `VoiceProfileStore.bindEntity` (the runtime caller that issue #8234 was missing).
 
@@ -24,9 +24,12 @@ The plugin owns the `VoiceProfileStore` (speaker centroids); a merge-engine plug
 
 `TEXT_EMBEDDING` is **not** registered on the static plugin object — it is wired at boot by `ensureLocalInferenceHandler()` in the runtime subpath to avoid claiming the embedding slot before a backend is active.
 
+### Registered elizaOS services
+- `LocalPiiRecognizerService` (`src/pii/service.ts`) — registers under core's `PII_ENTITY_RECOGNIZER_SERVICE`; supplies the `LlmEntityRecognizer` (`src/pii/llm-recognizer.ts`) that the runtime's PII pseudonymization layer composes with its regex recognizer when `ELIZA_PII_SWAP_ENABLED` is on. Detection runs as a JSON-extraction prompt on the resident local backend through the inference priority gate; only values found verbatim in the source text are emitted, and `getRecognizer()` returns `null` (regex-only degrade) while no generation-capable local backend is active.
+
 ### Services (consumed, not registered as elizaOS services)
 - `LocalInferenceService` / `localInferenceService` (`src/services/service.ts`) — singleton facade for download orchestration, active-model coordination, hardware probe, catalog, and routing preferences.
-- `LocalInferenceEngine` / `localInferenceEngine` (`src/services/engine.ts`) — fronts the in-process FFI llama.cpp backend (fused `libelizainference`, or the libllama + eliza-llama-shim fallback) via the `BackendDispatcher`; one model loaded at a time (unload-then-load for model swaps).
+- `LocalInferenceEngine` / `localInferenceEngine` (`src/services/engine.ts`) — fronts the single fused `libelizainference` FFI implementation via the `BackendDispatcher`; one model is loaded at a time, with unload-before-load swaps.
 - `MemoryArbiter` (`src/services/memory-arbiter.ts`) — single arbiter that cross-plugin consumers (vision, image-gen, ASR, TTS) call to acquire a model handle without double-allocating RAM.
 
 ### HTTP routes (mounted by app-core)
@@ -59,6 +62,10 @@ src/
   index.ts                        Public re-exports (plugin object, actions, route helpers, embedding presets)
   provider.ts                     Plugin object definition; model-handler factory; LocalInferenceUnavailableError
   local-inference-routes.ts       HTTP handler for catalog/download/status/chat-command routes
+
+  pii/
+    llm-recognizer.ts             LLM-backed PII named-entity recognizer (person/org/location) — prompt build, JSON parse, verbatim relocation, chunking
+    service.ts                    LocalPiiRecognizerService — injects the recognizer behind core's PII_ENTITY_RECOGNIZER_SERVICE seam
 
   actions/
     generate-media.ts             GENERATE_MEDIA action: keyword+classifier intent routing → IMAGE or TTS
@@ -120,7 +127,7 @@ src/
 ```bash
 bun run --cwd plugins/plugin-local-inference build        # compile with build.ts
 bun run --cwd plugins/plugin-local-inference test         # vitest run (NODE_OPTIONS=--experimental-sqlite)
-bun run --cwd plugins/plugin-local-inference typecheck    # tsgo --noEmit
+bun run --cwd plugins/plugin-local-inference typecheck    # tsc --noEmit
 bun run --cwd plugins/plugin-local-inference lint         # biome check --write --unsafe
 bun run --cwd plugins/plugin-local-inference lint:check   # biome check (read-only)
 bun run --cwd plugins/plugin-local-inference format       # biome format --write
@@ -182,7 +189,7 @@ Paths are resolved relative to `resolveStateDir()` from `@elizaos/core` (default
 ### Add a new route handler
 1. Create `src/routes/my-route.ts` exporting a handler function.
 2. Export it from `src/routes/index.ts`.
-3. Mount it in the consuming runtime (app-core `src/api/server.ts`) by importing from `@elizaos/plugin-local-inference/routes`.
+3. Mount it in the consuming runtime (currently `packages/app-core/src/api/server.ts`) by importing from `@elizaos/plugin-local-inference/routes`.
 
 ### Add a new backend capability (e.g. a new image-gen backend)
 1. Implement the capability in `src/services/imagegen/` following the `ImageGenBackend` interface.
@@ -196,7 +203,7 @@ Call `arbiter.registerCapability({ capability, residentRole, load, unload, run }
 ## Conventions / gotchas
 
 - **Text runs through the in-process FFI llama.cpp backend only** (`node-llama-cpp` has been retired). The engine checks the dispatcher's `available()`/FFI probe before using it; an absent/unsupported FFI runtime produces a clean `LocalInferenceUnavailableError` rather than a crash. There is no `node-llama-cpp` fallback.
-- **Two text runtime classes — branch on `runtimeClass`, never on the id prefix.** Every `CatalogModel` / `InstalledModel` carries a `runtimeClass: "fused-eliza1" | "generic-gguf"` discriminator (canonical helpers in `@elizaos/shared/local-inference/runtime-class.ts`; populated by the catalog factory + hub-search synthesizers, and backfilled once at the registry-read boundary in `registry.ts listInstalledModels`). The dispatcher (`backend.ts decideBackend` / `BackendDispatcher.decide`) routes `fused-eliza1` → the fused `libelizainference` (`desktop-fused-ffi-backend-runtime.ts`, full pipeline) and `generic-gguf` → the explicit-`modelPath` runtime (`generic-gguf-backend.ts`, stock f16 KV, reduced optimizations). eliza-1 stays the default/recommended path; `buildRecommendedAssignments` / `autoAssignAtBoot` stay eliza-1-only and never auto-assign a generic blob. Generic single-file GGUF needs the explicit-`modelPath` binding (`llama-cpp-capacitor` on mobile); on desktop it is not built into the shipping fused lib, so a generic load raises a typed `GenericRuntimeUnavailableError` and `setAssignment` rejects it at the boundary with `AssignmentNotServableError` (route → 422) — never a silent deferred load failure. Generic-model search/download/assignment is an Advanced/Developer-mode surface in the UI; eliza-1 is the only thing shown by default.
+- **One FFI implementation, two selectable runtimes.** `BackendDispatcher` always drives the fused `libelizainference` surface. It selects `llama-cpp` for GGUF (the default and the required path for specialized kernels) or `litert-lm` when a supported build has a `.litertlm` artifact. `ELIZA_INFERENCE_BACKEND` accepts `auto`, `llama-cpp`, or `litert-lm`; forcing an unsupported runtime fails at load rather than silently falling back. There is no separate generic-GGUF backend.
 - **`TEXT_EMBEDDING` is NOT in the static plugin `models` map.** It is wired by `ensureLocalInferenceHandler()` at boot to avoid claiming the embedding slot before an Eliza-1 bundle is active. Do not add it to the static plugin object.
 - **Native binary deps** (sd.cpp, mflux, Kokoro GGUF/fused `libelizainference`) must be present on the host or downloaded separately. The plugin does not bundle them; `probe:sd-cpp` checks for sd.cpp.
 - **MemoryArbiter (WS1)** is the coordination point for all modalities on memory-constrained devices. Cross-plugin consumers (vision, image-gen, ASR, TTS) must go through the arbiter — never load models independently.
@@ -207,44 +214,10 @@ Call `arbiter.registerCapability({ capability, residentRole, load, unload, run }
 - Voice pipeline (`services/voice/`) is large and self-contained. Entry points: `src/services/voice/index.ts`, `src/routes/voice-first-run-routes.ts`, `src/routes/voice-models-routes.ts`.
 - See `AGENTS.md` at the repo root for architecture rules, git workflow, and global coding standards.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
-## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+## Verification
 
-> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
-> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
-> works **without reading the code**, from the artifacts you attach. This applies to **every**
-> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
-
-- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
-  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
-  providers/context, the raw model output, every tool/action call, and the result. Then **open
-  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
-  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
-- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
-  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
-  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
-  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
-  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
-  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
-  them is part of your change.
-- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
-  the entire feature or view, start to finish (`bun run test:e2e:record`).
-- **Manually review every artifact the change touches** — never just the green check: client
-  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
-  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
-- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
-  blocker by the **hard path**: build the real architecture, stand up the real
-  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
-  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
-  highest-effort, production-ready version. Keep going until every possibility is exhausted.
-
-Artifacts → attached inline in the PR (MP4 video, JPG screenshots, logs in `<details>`); attach each evidence type **or**
-explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
-behavior, **re-capture** evidence; stale proof is worse than none.
-
-**Capture & manually review for this package — model provider:**
-- A trajectory from a **live** call to this provider (not the proxy, not a mock): full request, raw response, token usage, finish reason, and streamed chunks.
-- Proof of tool/function-calling and structured-output parsing against the real model.
-- The error paths exercised: bad key, model-not-found, oversized context, timeout, rate-limit, mid-stream disconnect — plus latency and cost from the real call.
-- If no key is available in CI, attach the documented live-run transcript as evidence — never a mocked client passed off as a pass.
-<!-- END: evidence-and-e2e-mandate -->
+Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+the package's relevant build, typecheck, lint, and test commands, then exercise
+the real integration boundary changed by the work. Inspect the produced domain
+artifacts and failure behavior; do not substitute mocked success for the system
+under test.

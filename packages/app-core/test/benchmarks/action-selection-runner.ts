@@ -26,7 +26,7 @@ import {
 import type { ActionBenchmarkCase } from "./action-selection-cases.ts";
 
 const seedGrantsModuleUrl = new URL(
-  "../../../../test/mocks/helpers/seed-grants.ts",
+  "../../../../plugins/plugin-personal-assistant/test/support/helpers/seed-grants.ts",
   import.meta.url,
 ).href;
 const lifeopsApprovalQueueModuleUrl = new URL(

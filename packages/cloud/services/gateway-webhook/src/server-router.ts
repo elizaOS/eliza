@@ -1,5 +1,6 @@
-// Handles webhook gateway server router behavior for authenticated connector fan-in.
+/** Routes authenticated connector traffic to cloud identities and agent servers. */
 import { readFileSync } from "node:fs";
+import { reacquireAuthHeader } from "./auth";
 import { getHashTargets, refreshHashRing } from "./hash-router";
 import { logger } from "./logger";
 import type { GatewayRedis } from "./redis";
@@ -10,6 +11,11 @@ const RETRY_ATTEMPTS = 5;
 const RETRY_BASE_DELAY_MS = 2_000;
 const RETRY_INCREMENT_MS = 1_000;
 const IDENTITY_CACHE_TTL_SECONDS = 300;
+// A linked identity with no agent yet is a transient provisioning state, and an
+// unlinked identity becomes linked the moment onboarding finishes. Both are
+// cached only long enough to blunt webhook retry storms; a long TTL would strand
+// a just-provisioned or just-linked user in onboarding for the rest of the TTL.
+const IDENTITY_TRANSIENT_CACHE_TTL_SECONDS = 15;
 
 interface ServerRoute {
   serverName: string;
@@ -24,7 +30,10 @@ export type RoutingRedis = Pick<
 export interface ResolvedIdentity {
   userId: string;
   organizationId: string;
-  agentId: string;
+  // Null when the identity is linked to a cloud user that has no provisioned
+  // agent yet. Callers must treat this as an onboarding/provisioning condition,
+  // never as an agent-server routing target.
+  agentId: string | null;
 }
 
 export async function resolveIdentity(
@@ -34,6 +43,7 @@ export async function resolveIdentity(
   platform: string,
   platformId: string,
   platformName?: string,
+  reauth: () => Promise<Record<string, string>> = reacquireAuthHeader,
 ): Promise<ResolvedIdentity | null> {
   const cacheKey = `identity:${platform}:${platformId}`;
   const cached = await redis.get<ResolvedIdentity | { notFound: true }>(
@@ -49,17 +59,34 @@ export async function resolveIdentity(
   const timeoutId = setTimeout(() => controller.abort(), FORWARD_TIMEOUT_MS);
 
   try {
-    const res = await fetch(url, {
+    const body = JSON.stringify({
+      platform,
+      platformId,
+      ...(platformName ? { platformName } : {}),
+    });
+    let res = await fetch(url, {
       method: "POST",
       headers: authHeader,
-      body: JSON.stringify({
-        platform,
-        platformId,
-        ...(platformName ? { platformName } : {}),
-      }),
+      body,
       signal: controller.signal,
     });
+    // A Worker redeploy invalidates the gateway's token until its scheduled
+    // refresh, up to ~48 minutes away — and this call runs post-ack, so every
+    // 401 in that window is a user-visible silence. Re-bootstrap and retry
+    // exactly once; a second 401 falls through to the error path below.
+    if (res.status === 401) {
+      const freshHeader = await reauth();
+      res = await fetch(url, {
+        method: "POST",
+        headers: freshHeader,
+        body,
+        signal: controller.signal,
+      });
+    }
     if (res.status === 404) {
+      await redis.set(cacheKey, JSON.stringify({ notFound: true }), {
+        ex: IDENTITY_TRANSIENT_CACHE_TTL_SECONDS,
+      });
       return null;
     }
     if (!res.ok) throw new Error(`Identity resolve failed: ${res.status}`);
@@ -68,7 +95,7 @@ export async function resolveIdentity(
       | {
           userId?: string;
           organizationId?: string;
-          agentId?: string;
+          agentId?: string | null;
           data?: {
             user?: { id?: string; organizationId?: string };
             agent?: { id?: string | null };
@@ -95,18 +122,27 @@ export async function resolveIdentity(
         : "data" in data
           ? (data.data?.agent?.id ?? undefined)
           : undefined;
-    if (!userId || !organizationId || !agentId) {
+    // agentId is legitimately null while provisioning is still in flight, so it
+    // is not part of the resolution contract. Throwing here used to abort the
+    // whole background message pass for a linked-but-unprovisioned user, which
+    // dropped their message with no reply at all.
+    if (!userId || !organizationId) {
       throw new Error(
-        "Identity resolve response missing userId, organizationId, or agentId",
+        "Identity resolve response missing userId or organizationId",
       );
     }
+    // The flat branch above passes the wire value through untouched, and the
+    // wire value for "no sandbox" is `null`. Normalise once, here, so no caller
+    // has to.
     const identity: ResolvedIdentity = {
       userId,
       organizationId,
-      agentId,
+      agentId: agentId ?? null,
     };
     await redis.set(cacheKey, JSON.stringify(identity), {
-      ex: IDENTITY_CACHE_TTL_SECONDS,
+      ex: identity.agentId
+        ? IDENTITY_CACHE_TTL_SECONDS
+        : IDENTITY_TRANSIENT_CACHE_TTL_SECONDS,
     });
     return identity;
   } finally {
@@ -114,17 +150,32 @@ export async function resolveIdentity(
   }
 }
 
+/**
+ * Why an agent could not be routed to, which is not one condition but two.
+ *
+ * `agent:<id>:server` is written by a booted container and lives 30 days, while
+ * `server:<name>:url` is refreshed by the pod's heartbeat and expires after two
+ * minutes. So a missing routing key means the agent has never come up, and a
+ * present routing key with no URL means an established agent whose pod is down
+ * or scaled to zero. Callers that treat "no route" as "not provisioned yet" —
+ * and answer with onboarding — must only do so for `unregistered`.
+ */
+export type AgentServerLookup =
+  | ({ kind: "ready" } & ServerRoute)
+  | { kind: "unregistered" }
+  | { kind: "unreachable"; serverName: string };
+
 export async function resolveAgentServer(
   redis: RoutingRedis,
   agentId: string,
-): Promise<ServerRoute | null> {
+): Promise<AgentServerLookup> {
   const serverName = await redis.get<string>(`agent:${agentId}:server`);
-  if (!serverName) return null;
+  if (!serverName) return { kind: "unregistered" };
 
   const serverUrl = await redis.get<string>(`server:${serverName}:url`);
-  if (!serverUrl) return null;
+  if (!serverUrl) return { kind: "unreachable", serverName };
 
-  return { serverName, serverUrl };
+  return { kind: "ready", serverName, serverUrl };
 }
 
 export async function refreshKedaActivity(
@@ -227,6 +278,12 @@ export interface ForwardMessageOptions {
   senderName?: string;
   /** Platform-specific chat/conversation ID for reply routing. */
   chatId?: string;
+  /** Connector account or bot identity that received the platform record. */
+  accountId?: string;
+  /** Stable platform-native message/update id used for canonical dedupe. */
+  platformRecordId?: string;
+  /** Platform-native chat type when the adapter exposes it. */
+  chatType?: string;
 }
 
 /**
@@ -249,6 +306,10 @@ export function buildForwardBody(
   if (options?.platformName) body.platformName = options.platformName;
   if (options?.senderName) body.senderName = options.senderName;
   if (options?.chatId) body.chatId = options.chatId;
+  if (options?.accountId) body.accountId = options.accountId;
+  if (options?.platformRecordId)
+    body.platformRecordId = options.platformRecordId;
+  if (options?.chatType) body.chatType = options.chatType;
   return body;
 }
 

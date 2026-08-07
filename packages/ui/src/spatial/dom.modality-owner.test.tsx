@@ -1,3 +1,4 @@
+/** Verifies shell-level modality owner (#9946) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

@@ -3,13 +3,16 @@
  */
 
 import type http from "node:http";
-import type { ReadJsonBodyOptions } from "@elizaos/core";
+import type { AgentRuntime, ReadJsonBodyOptions } from "@elizaos/core";
+import type { TradePermissionMode } from "@elizaos/shared";
 import {
   PostRegistryRegisterRequestSchema,
   PostRegistrySyncRequestSchema,
   PostRegistryUpdateUriRequestSchema,
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
+import type { LocalTradeExecutionOptions } from "./trade-safety.ts";
+import type { WalletCapabilityStatus } from "./wallet-capability.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -44,7 +47,7 @@ function getRegistryServiceIfAvailable(): AgentRegistryService | null {
   return null;
 }
 
-interface AwarenessRegistryLike {
+export interface AwarenessRegistryLike {
   composeSummary: (runtime: unknown) => Promise<string>;
 }
 
@@ -53,31 +56,22 @@ export interface AgentStatusRouteDeps {
     evmAddress: string | null;
     solanaAddress: string | null;
   };
-  resolveWalletCapabilityStatus: (state: unknown) => {
-    walletSource: string;
-    hasWallet: boolean;
-    hasEvm: boolean;
-    evmAddress: string | null;
-    localSignerAvailable: boolean;
-    rpcReady: boolean;
-    pluginEvmLoaded: boolean;
-    pluginEvmRequired: boolean;
-    executionReady: boolean;
-    executionBlockedReason: string | null;
-    automationMode: string;
-  };
+  resolveWalletCapabilityStatus: (state: {
+    config: ElizaConfig;
+    runtime: AgentRuntime | null;
+  }) => WalletCapabilityStatus;
   resolveWalletRpcReadiness: (config: ElizaConfig) => {
     managedBscRpcReady: boolean;
   };
-  resolveTradePermissionMode: (config: ElizaConfig) => string;
+  resolveTradePermissionMode: (config: ElizaConfig) => TradePermissionMode;
   canUseLocalTradeExecution: (
-    mode: string,
+    mode: TradePermissionMode,
     isAgentRequest: boolean,
-    unused?: undefined,
-    opts?: { consumeAgentQuota: boolean },
+    log?: (message: string) => void,
+    opts?: LocalTradeExecutionOptions,
   ) => boolean;
   detectRuntimeModel: (
-    runtime: unknown,
+    runtime: AgentRuntime | null,
     config: ElizaConfig,
   ) => string | undefined;
   resolveProviderFromModel: (model: string) => string | null;
@@ -87,10 +81,7 @@ export interface AgentStatusRouteDeps {
 
 export interface AgentStatusRouteState {
   config: ElizaConfig;
-  runtime: {
-    plugins: Array<{ name: string }>;
-    character: { name?: string };
-  } | null;
+  runtime: AgentRuntime | null;
   agentState: string;
   agentName: string;
   model?: string;

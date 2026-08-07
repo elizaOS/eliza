@@ -79,8 +79,8 @@ export function AgentElementOverlay() {
               width: b.width,
               height: b.height,
               border: element.focused
-                ? "2px solid var(--accent, #ff7300)"
-                : "1px dashed var(--accent, #ff7300)",
+                ? "2px solid var(--accent)"
+                : "1px dashed var(--accent)",
               borderRadius: 6,
               boxShadow: element.focused
                 ? "0 0 0 2px var(--accent-muted, rgba(255,115,0,0.35))"
@@ -97,8 +97,8 @@ export function AgentElementOverlay() {
                 lineHeight: "14px",
                 padding: "0 4px",
                 borderRadius: 4,
-                color: "var(--accent-foreground, #fff)",
-                background: "var(--accent, #ff7300)",
+                color: "var(--accent-foreground)",
+                background: "var(--accent)",
                 whiteSpace: "nowrap",
                 fontFamily: "var(--font-mono, monospace)",
               }}

@@ -1,4 +1,8 @@
-/** Supports app-core build, packaging, or development orchestration for test parallel mjs. */
+/**
+ * Parallel test orchestrator: spawns the suite entries defined in `runs`
+ * concurrently, holding forceSerial entries until the parallel groups finish
+ * (per-entry knobs documented on the table below).
+ */
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -42,7 +46,7 @@ const runs = [
       "vitest",
       "run",
       "--config",
-      "eliza/packages/test/vitest/default.config.ts",
+      "eliza/packages/scripts/vitest/default.config.ts",
     ],
     vitest: true,
     reportFile: path.join(os.tmpdir(), "eliza-vitest-unit-report.json"),

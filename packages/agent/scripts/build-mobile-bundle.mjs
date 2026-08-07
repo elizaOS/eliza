@@ -169,10 +169,8 @@ console.log("[build-mobile] output dir:", outDir);
 
 if (process.argv.includes("--verify-workspace-resolution")) {
   const requiredPackages = [
-    "@elizaos/plugin-birdclaw",
     "@elizaos/plugin-commands",
     "@elizaos/plugin-vision",
-    "@elizaos/plugin-background-runner",
     "@elizaos/plugin-wallet",
     "@elizaos/cloud-routing",
     "@elizaos/cloud-sdk",
@@ -334,7 +332,7 @@ const nativeStubs = {
   // bombs the bundle resolve:
   //   error: Could not resolve: "node:sqlite". Maybe you need to "bun install"?
   // The local-inference voice caches (e.g.
-  // `plugins/plugin-local-inference/src/services/voice/first-line-cache.ts`)
+  // `/plugin-local-inference/services/voice/first-line-cache.ts`)
   // resolve it lazily and fall back when it's missing, so the on-disk SQLite
   // caches simply stay disabled on mobile. Map it to `empty.cjs` so the bundle
   // loads; the lazy resolver then sees no `DatabaseSync` export and degrades
@@ -367,7 +365,7 @@ const nativeStubs = {
   // mobile build. The bun-side AOSP agent uses bun:ffi against libllama.so
   // directly via aosp-llama-adapter.ts, never this package — but Bun.build
   // still has to resolve the dynamic import in
-  // plugins/plugin-native-llama/src/capacitor-llama-adapter.ts.
+  // /capacitor-llama/capacitor-llama-adapter.ts.
   "llama-cpp-capacitor": path.join(stubsDir, "llama-cpp-capacitor.cjs"),
   mammoth: path.join(stubsDir, "mammoth.cjs"),
   "source-map": path.join(stubsDir, "source-map.cjs"),
@@ -482,9 +480,9 @@ if (TARGET === "ios-jsc") {
 // boot). The narrow list below is exactly the packages whose dependency
 // closure pulls in `@elizaos/core@2.0.0-alpha.3` or `2.0.0-alpha.223`.
 //
-// Other packages — including `@elizaos/plugin-task-coordinator`,
-// `@elizaos/plugin-personal-assistant`, `@elizaos/plugin-training`
-// — are imported by `api/server.ts` as named functions (e.g.
+// Other packages — including `@elizaos/plugin-task-coordinator` and
+// `@elizaos/plugin-personal-assistant` — are imported by `api/server.ts` as
+// named functions (e.g.
 // `wireCoordinatorBridgesWhenReady`). Stubbing them with a Proxy doesn't
 // satisfy Bun's `__toESM` namespace builder (it iterates `ownKeys`), so we
 // let them bundle. The mobile plugin filter still strips them out of the
@@ -492,7 +490,6 @@ if (TARGET === "ios-jsc") {
 const optionalPluginStubs = {
   "@elizaos/plugin-cli": path.join(stubsDir, "null-plugin.cjs"),
   "@elizaos/plugin-agent-orchestrator": path.join(stubsDir, "null-plugin.cjs"),
-  "@elizaos/plugin-shell": path.join(stubsDir, "null-plugin.cjs"),
   "@elizaos/plugin-coding-tools": path.join(stubsDir, "null-plugin.cjs"),
   // NOTE: @elizaos/plugin-commands is intentionally NOT stubbed. Its only
   // dependency is `@elizaos/core` (workspace:*), so it does not drag an
@@ -527,19 +524,6 @@ const optionalPluginStubs = {
   // being linked into packages/agent/node_modules.
   "@elizaos/plugin-imessage": path.join(stubsDir, "null-plugin.cjs"),
   "@elizaos/plugin-x402": path.join(stubsDir, "null-plugin.cjs"),
-  // `plugin-streaming` carries the TTS / SSE plumbing for desktop +
-  // server. Mobile never runs the streaming worker pool — the agent
-  // statically imports `streamManager` and `handleTtsRoutes`, so we
-  // stub the package with the same null-plugin proxy. The runtime
-  // log otherwise spams `[eliza-api] Failed to load
-  // @elizaos/plugin-streaming destinations: ResolveMessage: Cannot
-  // find module '@elizaos/plugin-streaming'` on every chat turn.
-  "@elizaos/plugin-streaming": path.join(stubsDir, "null-plugin.cjs"),
-  // Birdclaw shells out to the host-local birdclaw CLI and is never loaded on
-  // mobile; the runtime plugin filter strips it before registration. Stub the
-  // static optional import so fresh mobile builds do not require its desktop
-  // package output to exist.
-  "@elizaos/plugin-birdclaw": path.join(stubsDir, "null-plugin.cjs"),
   // Workflow/automation routes are desktop/cloud surface area. Mobile's
   // runtime plugin filter does not load workflow, and latest workflow source
   // keeps large generated node catalogs in dist rather than src/data. Stub the
@@ -706,7 +690,6 @@ const corePackages = [
   "@elizaos/shared-brand",
   "@elizaos/ui",
   "@elizaos/plugin-sql",
-  "@elizaos/plugin-ollama",
   "@elizaos/plugin-wallet",
 ];
 
@@ -781,12 +764,6 @@ const dedupeTargets = {
     "plugins",
     "plugin-sql",
     "src",
-    "index.node.ts",
-  ),
-  "@elizaos/plugin-ollama": path.resolve(
-    repoRoot,
-    "plugins",
-    "plugin-ollama",
     "index.node.ts",
   ),
   "@elizaos/plugin-wallet": path.resolve(
@@ -1186,7 +1163,7 @@ const stubCssPlugin = {
   },
 };
 
-// Workspace plugins like `@elizaos/plugin-wallet-ui` ship both a `.tsx` source
+// Workspace plugins like `@elizaos/plugin-wallet` ship both a `.tsx` source
 // file and a stale `.js` artifact (committed by accident from an earlier
 // build) at the same path inside `src/`. Bun's default resolver picks the
 // `.js` file when both exist, even though the `.tsx` source is the truth.
@@ -1204,8 +1181,8 @@ const stripStaleJsArtifactsPlugin = {
       // Only rewrite imports originating inside a workspace package source
       // tree. Symlinked node_modules paths (Bun's hoisted layout for
       // workspace deps) also count, so the regex covers both
-      // `<repo>/plugins/plugin-wallet-ui/src/...` and
-      // `<repo>/node_modules/@elizaos/plugin-wallet-ui/src/...`.
+      // `<repo>/plugins/plugin-wallet/src/...` and
+      // `<repo>/node_modules/@elizaos/plugin-wallet/src/...`.
       if (
         !/[/\\](packages|plugins|cloud)[/\\][^/\\]+([/\\][^/\\]+)?[/\\]src[/\\]/.test(
           importer,
@@ -1341,7 +1318,7 @@ const workspaceSrcFallbackPlugin = {
       // Two layouts to handle: packages with a `src/` directory (the
       // monorepo convention for typescript packages) and packages whose
       // .ts files sit at the package root (the elizaos-plugins convention,
-      // e.g. plugin-discord, plugin-telegram, plugin-google).
+      // e.g. plugin-discord, plugin-telegram, plugin-google-workspace).
       const srcDir = existsSync(path.join(pkgDir, "src"))
         ? path.join(pkgDir, "src")
         : pkgDir;
@@ -1505,7 +1482,7 @@ const iosJscExternals =
     : undefined;
 
 // Pin every `@elizaos/plugin-local-inference/<subpath>` import to the WORKSPACE
-// `plugins/plugin-local-inference/src/...` tree. Without this, subpath imports
+// `/plugin-local-inference/...` tree. Without this, subpath imports
 // resolve through `node_modules/@elizaos/plugin-local-inference` (a symlink Bun
 // does NOT realpath) while the plugin's own relative imports resolve to the
 // workspace path — so shared modules like `services/device-tier.ts` get bundled
@@ -2018,7 +1995,6 @@ const manifest = {
   externalsAsStubs: Object.keys(stubAliases),
   unsupportedAndroidRuntimeStubs: [
     "@elizaos/plugin-agent-orchestrator",
-    "@elizaos/plugin-shell",
     "@node-llama-cpp/linux-arm64",
     "@node-llama-cpp/linux-x64",
     "@node-llama-cpp/mac-arm64",

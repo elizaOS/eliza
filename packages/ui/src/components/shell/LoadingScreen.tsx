@@ -131,7 +131,7 @@ export function LoadingScreen({
           </div>
         </div>
 
-        <div className="font-mono text-xs-tight font-normal tracking-[0.12em] uppercase text-white/35 select-none">
+        <div className="font-mono text-xs-tight font-normal tracking-[0.12em] uppercase text-white/60 select-none">
           {label}
         </div>
       </div>

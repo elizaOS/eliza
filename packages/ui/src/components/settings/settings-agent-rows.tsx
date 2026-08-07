@@ -86,8 +86,9 @@ export function SettingsSwitchRow({
           checked={checked}
           onCheckedChange={onCheckedChange}
           disabled={disabled}
-          aria-label={resolvedLabel}
           {...agentProps}
+          aria-label={resolvedLabel}
+          aria-checked={checked}
         />
       }
     />

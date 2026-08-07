@@ -1,9 +1,4 @@
-/**
- * @module features/plugin-manager/actions/plugin-handlers/list-ejected
- *
- * `list_ejected` sub-mode of the PLUGIN action. Lists plugins
- * currently ejected to the local managed directory.
- */
+/** Lists plugins currently checked out in the managed local directory. */
 
 import type {
 	ActionResult,

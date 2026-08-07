@@ -1,7 +1,7 @@
 /**
  * Unit coverage for the Workers outbound provider-socket factories and the
  * DeferredWorkerSocket buffering proxy (transport boundary for the merged
- * Deepgram Flux + Cartesia adapters). The Workers `fetch(...).webSocket`
+ * Cartesia Ink + Sonic adapters). The Workers `fetch(...).webSocket`
  * upgrade is faked so the tests assert the buffer/bind/close/fail-open state
  * machine and the URL rewrites deterministically, with no live provider.
  */
@@ -10,7 +10,7 @@ import { afterEach, describe, expect, mock, test } from "bun:test";
 
 import {
   createWorkerCartesiaFactory,
-  createWorkerDeepgramFluxFactory,
+  createWorkerCartesiaInkFactory,
   isWorkerOutboundWsAvailable,
 } from "../lib/provider-socket-factory";
 
@@ -111,13 +111,13 @@ describe("isWorkerOutboundWsAvailable", () => {
   });
 });
 
-describe("createWorkerDeepgramFluxFactory", () => {
-  test("strips the channels param and maps wss:// to https:// for the upgrade", async () => {
+describe("createWorkerCartesiaInkFactory", () => {
+  test("maps wss:// to https:// and preserves Ink query parameters", async () => {
     stubFetch();
-    const factory = createWorkerDeepgramFluxFactory();
+    const factory = createWorkerCartesiaInkFactory();
     const _socket = factory({
-      url: "wss://api.deepgram.com/v1/listen?encoding=linear16&channels=1&model=flux&mip_opt_out=true",
-      headers: { Authorization: "Token dg" },
+      url: "wss://api.cartesia.ai/stt/turns/websocket?encoding=pcm_s16le&sample_rate=16000&model=ink-2",
+      headers: { "X-API-Key": "cartesia" },
     }) as unknown as {
       addEventListener(t: string, l: (e: unknown) => void): void;
       send(d: string): void;
@@ -127,19 +127,18 @@ describe("createWorkerDeepgramFluxFactory", () => {
     expect(upgrades.length).toBe(1);
     const upgrade = upgrades[0];
     expect(upgrade.httpUrl.startsWith("https://")).toBe(true);
-    // channels stripped; the mono-inferring params preserved.
-    expect(upgrade.httpUrl).not.toContain("channels=");
-    expect(upgrade.httpUrl).toContain("encoding=linear16");
-    expect(upgrade.httpUrl).toContain("mip_opt_out=true");
-    expect(upgrade.headers.Authorization).toBe("Token dg");
+    expect(upgrade.httpUrl).toContain("encoding=pcm_s16le");
+    expect(upgrade.httpUrl).toContain("sample_rate=16000");
+    expect(upgrade.httpUrl).toContain("model=ink-2");
+    expect(upgrade.headers["X-API-Key"]).toBe("cartesia");
     expect(upgrade.headers.Upgrade).toBe("websocket");
   });
 
   test("buffers sends before bind, then flushes and synthesizes open on bind", async () => {
     stubFetch();
-    const factory = createWorkerDeepgramFluxFactory();
+    const factory = createWorkerCartesiaInkFactory();
     const proxy = factory({
-      url: "wss://api.deepgram.com/v1/listen?encoding=linear16",
+      url: "wss://api.cartesia.ai/stt/turns/websocket?encoding=pcm_s16le",
       headers: {},
     }) as unknown as {
       readyState: number;
@@ -172,9 +171,9 @@ describe("createWorkerDeepgramFluxFactory", () => {
 
   test("close before bind drops buffered audio and closes the real socket on bind", async () => {
     stubFetch();
-    const factory = createWorkerDeepgramFluxFactory();
+    const factory = createWorkerCartesiaInkFactory();
     const proxy = factory({
-      url: "wss://api.deepgram.com/v1/listen?encoding=linear16",
+      url: "wss://api.cartesia.ai/stt/turns/websocket?encoding=pcm_s16le",
       headers: {},
     }) as unknown as {
       send(d: string): void;
@@ -197,9 +196,9 @@ describe("createWorkerDeepgramFluxFactory", () => {
 
   test("fail-open surfaces error + close(1006) when the upgrade yields no socket", async () => {
     stubFetch();
-    const factory = createWorkerDeepgramFluxFactory();
+    const factory = createWorkerCartesiaInkFactory();
     const proxy = factory({
-      url: "wss://api.deepgram.com/v1/listen?encoding=linear16",
+      url: "wss://api.cartesia.ai/stt/turns/websocket?encoding=pcm_s16le",
       headers: {},
     }) as unknown as {
       addEventListener(t: string, l: (e: unknown) => void): void;
@@ -224,9 +223,9 @@ describe("createWorkerDeepgramFluxFactory", () => {
 
   test("fail-open also fires when fetch itself rejects", async () => {
     stubFetch();
-    const factory = createWorkerDeepgramFluxFactory();
+    const factory = createWorkerCartesiaInkFactory();
     const proxy = factory({
-      url: "wss://api.deepgram.com/v1/listen?encoding=linear16",
+      url: "wss://api.cartesia.ai/stt/turns/websocket?encoding=pcm_s16le",
       headers: {},
     }) as unknown as {
       addEventListener(t: string, l: (e: unknown) => void): void;
@@ -243,9 +242,9 @@ describe("createWorkerDeepgramFluxFactory", () => {
 
   test("addEventListener/removeEventListener are honored pre-bind", async () => {
     stubFetch();
-    const factory = createWorkerDeepgramFluxFactory();
+    const factory = createWorkerCartesiaInkFactory();
     const proxy = factory({
-      url: "wss://api.deepgram.com/v1/listen?encoding=linear16",
+      url: "wss://api.cartesia.ai/stt/turns/websocket?encoding=pcm_s16le",
       headers: {},
     }) as unknown as {
       addEventListener(t: string, l: (e: unknown) => void): void;
@@ -265,9 +264,9 @@ describe("createWorkerDeepgramFluxFactory", () => {
     expect(real.listeners.some(([t]) => t === "message")).toBe(false);
   });
 
-  test("leaves a malformed URL untouched (channels-strip is best-effort)", async () => {
+  test("passes malformed adapter URLs through to the failing upgrade boundary", async () => {
     stubFetch();
-    const factory = createWorkerDeepgramFluxFactory();
+    const factory = createWorkerCartesiaInkFactory();
     factory({
       url: "not-a-valid-url",
       headers: {},

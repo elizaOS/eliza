@@ -214,14 +214,14 @@ export const VIEW_HERO_ICONS = {
     <circle cx="-66" cy="72" r="11" stroke-width="0" fill="currentColor"/>
     <circle cx="0" cy="72" r="11" stroke-width="0" fill="currentColor"/>`,
 
-  // headphones — Facewear
+  // over-ear headphones
   headphones: `    <path d="M-140 30 V-10 A140 140 0 0 1 140 -10 V30"/>
     <rect x="-160" y="26" width="58" height="110" rx="26" fill="currentColor" stroke-width="0"/>
     <rect x="102" y="26" width="58" height="110" rx="26" fill="currentColor" stroke-width="0"/>
     <rect x="-160" y="26" width="58" height="110" rx="26"/>
     <rect x="102" y="26" width="58" height="110" rx="26"/>`,
 
-  // glasses — Smartglasses
+  // eyeglasses
   glasses: `    <circle cx="-86" cy="20" r="68"/>
     <circle cx="86" cy="20" r="68"/>
     <path d="M-18 20 Q0 -2 18 20"/>
@@ -331,11 +331,8 @@ const ICON_KEYWORD_RULES: ReadonlyArray<[ViewHeroIconKind, readonly string[]]> =
       "focus",
       ["focus", "block", "shield", "guard", "screen-time", "screentime"],
     ],
-    [
-      "headphones",
-      ["headphone", "audio", "facewear", "wear", "sound", "voice"],
-    ],
-    ["glasses", ["glass", "smartglass", "xr", "spatial", "vision"]],
+    ["headphones", ["headphone", "audio", "wear", "sound", "voice"]],
+    ["glasses", ["glass", "xr", "spatial", "vision"]],
     ["modelTester", ["model", "test", "chip", "cpu", "bench", "eval", "train"]],
   ];
 

@@ -33,11 +33,14 @@ export function SegmentedControl<T extends string>({
   buttonClassName,
   activeButtonClassName,
   inactiveButtonClassName,
+  role,
   ...props
 }: SegmentedControlProps<T>) {
+  const isTabList = role === "tablist";
   return (
     <div
       data-segmented-control
+      role={role}
       className={cn(
         // Borderless segmented tabs (#10710): no outer box — the active
         // segment's accent wash is the state signal.
@@ -49,6 +52,7 @@ export function SegmentedControl<T extends string>({
       {items.map((item) => {
         const isActive = item.value === value;
         return (
+          // biome-ignore lint/a11y/useAriaPropsSupportedByRole: aria-selected is emitted only with the paired tab role
           <button
             key={item.value}
             type="button"
@@ -56,6 +60,10 @@ export function SegmentedControl<T extends string>({
             data-testid={item.testId}
             disabled={item.disabled}
             onClick={() => !item.disabled && onValueChange(item.value)}
+            role={isTabList ? "tab" : undefined}
+            aria-selected={isTabList ? isActive : undefined}
+            aria-pressed={isTabList ? undefined : isActive}
+            tabIndex={isTabList && !isActive ? -1 : undefined}
             className={cn(
               "relative inline-flex items-center gap-1.5 rounded-sm px-3.5 py-2 text-xs font-semibold transition-colors",
               isActive
@@ -64,7 +72,6 @@ export function SegmentedControl<T extends string>({
               buttonClassName,
               isActive ? activeButtonClassName : inactiveButtonClassName,
             )}
-            aria-pressed={isActive}
           >
             {item.label}
             {item.badge}

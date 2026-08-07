@@ -3,13 +3,16 @@
  * computeTranscriptBackfillMetadata adds roomId + media-format:transcript to
  * mirrors missing them, preserves transcriptId/audioUrl links, and is
  * idempotent (a fully-tagged record yields null). backfillTranscriptKnowledgeTags
- * only updates the records that need it and is a no-op on re-run.
+ * only updates the records that need it and is a no-op on re-run. The worker
+ * rejects failed sweeps so TaskService records failure instead of deleting the
+ * one-shot task as successful.
  */
-import type { Memory, UUID } from "@elizaos/core";
+import type { Memory, Task, TaskWorker, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   backfillTranscriptKnowledgeTags,
   computeTranscriptBackfillMetadata,
+  registerAttachmentKnowledgeBackfillWorker,
 } from "./attachment-knowledge-backfill.ts";
 
 const ROOM_ID = "00000000-0000-0000-0000-0000000000a1" as UUID;
@@ -128,5 +131,27 @@ describe("backfillTranscriptKnowledgeTags", () => {
     // Re-run: everything already tagged → no updates.
     const updatedAgain = await backfillTranscriptKnowledgeTags(runtime);
     expect(updatedAgain).toBe(0);
+  });
+
+  it("propagates worker failure to the TaskService boundary", async () => {
+    const workers = new Map<string, TaskWorker>();
+    const failure = new Error("documents read failed");
+    const reportError = vi.fn();
+    const runtime = {
+      registerTaskWorker: vi.fn((worker: TaskWorker) =>
+        workers.set(worker.name, worker),
+      ),
+      getMemories: vi.fn(async () => {
+        throw failure;
+      }),
+      reportError,
+    } as never;
+    registerAttachmentKnowledgeBackfillWorker(runtime);
+
+    const worker = workers.get("KNOWLEDGE_TAG_BACKFILL");
+    await expect(
+      worker?.execute(runtime, {}, undefined as unknown as Task),
+    ).rejects.toBe(failure);
+    expect(reportError).toHaveBeenCalledWith("knowledge-backfill", failure);
   });
 });

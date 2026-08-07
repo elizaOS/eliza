@@ -481,8 +481,8 @@ export type ScenarioFinalCheck =
 /**
  * Which CI lane a scenario runs in.
  *
- * - `pr-deterministic`: runs on every PR under the deterministic LLM proxy
- *   (`SCENARIO_USE_LLM_PROXY=1`) with zero credentials. A scenario may only
+ * - `pr-deterministic`: runs on every PR under the deterministic model provider
+ *   (`SCENARIO_USE_DETERMINISTIC_MODEL=1`) with zero credentials. A scenario may only
  *   claim this lane if it passes keyless — no live external service, no secret,
  *   and every LLM call is either backed by a registered proxy fixture or
  *   satisfied by the proxy's default reply.
@@ -550,7 +550,7 @@ export type ScenarioDefinition = {
   /**
    * CI lane this scenario is eligible for.
    * - `pr-deterministic`: runs keyless on every PR through the deterministic
-   *   LLM proxy + Mockoon connectors (zero external cost).
+   *   model provider + Mockoon connectors (zero external cost).
    * - `live-only`: requires real provider/connector credentials; runs only in
    *   the scheduled live lanes.
    * Declare it as a string literal — the scenario tooling reads it statically.

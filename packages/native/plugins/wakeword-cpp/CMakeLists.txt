@@ -17,7 +17,7 @@ include_directories(include src)
 # Architecture portability: every TU below is plain scalar C with no
 # x86/ARM/RVV intrinsics, so the same source list builds on x86_64,
 # aarch64, and riscv64 without any CMAKE_SYSTEM_PROCESSOR branching.
-# Cross-build verified via packages/native/cmake/toolchain-riscv64-linux-musl.cmake.
+# Cross-build verified by the OS-owned toolchain in elizaOS/os.
 set(WAKEWORD_SRCS
     src/wakeword_runtime.c
     src/wakeword_melspec.c

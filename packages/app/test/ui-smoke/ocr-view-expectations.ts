@@ -1,45 +1,126 @@
 /**
- * What each builtin view's pixels must show to count as correctly rendered.
- *
- * Seeded from the real OCR of the committed all-views capture, so every label
- * here is one the packaged engine actually reads off a healthy render. Labels are
- * chosen for OCR stability — short, high-contrast chrome text ("Ask Eliza",
- * "Settings", section headers) rather than long body copy that garbles — and kept
- * deliberately loose (`requireAny` for time-of-day/empty-vs-populated states) so a
- * legitimate state change never trips the gate. Absence of an entry means the view
- * is only checked for the universal defects (blank pixels, developer-string leak,
- * placeholder text); presence lets a matched render earn a positive `verified`.
- *
- * Keyed by the capture slug (filename without extension). Third-party `plugin-*`
- * views are intentionally absent — they own their content and are checked only for
- * the universal defects.
+ * Closed semantic OCR contracts for every view in the app aesthetic audit.
+ * Positive labels come from designed view states; universal
+ * developer-string and placeholder rejection remains in `ocr-content-rules`.
+ * Typed exemptions retain a fallback expectation, so they waive only ownership
+ * of distinct view semantics rather than pixel correctness.
  */
 import type { OcrExpectation } from "./ocr-content-rules";
 
-export const VIEW_EXPECTATIONS: Record<string, OcrExpectation> = {
-  "builtin-settings": {
-    requireAll: ["Settings"],
-    requireAny: ["Models & Providers", "Voice", "Appearance", "Basics"],
-  },
-  "builtin-help": {
-    requireAny: [
-      "What is Eliza",
-      "what do I do first",
-      "glowing pill",
-      "switch screens",
-    ],
-  },
-  "builtin-browser": {
+export interface SemanticOcrExpectationPolicy {
+  kind: "expectation";
+  expectation: OcrExpectation;
+}
+
+export interface SemanticOcrExemptionPolicy {
+  kind: "semantic-exemption";
+  applicability: "native-platform-gated" | "unregistered-remote-bundle";
+  reason: string;
+  /** Observable browser fallback that must still render without semantic drift. */
+  fallbackExpectation: OcrExpectation;
+}
+
+export type ViewOcrPolicy =
+  | SemanticOcrExpectationPolicy
+  | SemanticOcrExemptionPolicy;
+
+function expected(expectation: OcrExpectation): SemanticOcrExpectationPolicy {
+  return { kind: "expectation", expectation };
+}
+
+function exempt(
+  applicability: SemanticOcrExemptionPolicy["applicability"],
+  reason: string,
+  fallbackExpectation: OcrExpectation,
+): SemanticOcrExemptionPolicy {
+  return {
+    kind: "semantic-exemption",
+    applicability,
+    reason,
+    fallbackExpectation,
+  };
+}
+
+const LAUNCHER_FALLBACK: OcrExpectation = {
+  requireAll: ["Settings", "Wallet"],
+  requireAny: ["Projects", "Calendar", "Automations"],
+};
+
+const VIEW_REGISTRY_FALLBACK: OcrExpectation = {
+  requireAll: ["Views", "Refresh"],
+  requireAny: ["ready views", "gui ready"],
+};
+
+export const VIEW_OCR_POLICIES = {
+  "builtin-chat": expected({
+    requireAll: ["Mostly clear"],
+  }),
+  "builtin-phone": expected({
+    requireAny: ["call-blocked", "dialer", "recent"],
+  }),
+  "builtin-messages": expected({
+    requireAny: ["Set default SMS", "bridge-only", "compose"],
+  }),
+  "builtin-contacts": expected({
+    requireAll: ["Contacts"],
+    requireAny: ["address book", "phone, or email", "search"],
+  }),
+  "builtin-camera": exempt(
+    "native-platform-gated",
+    "The camera is an AOSP-native surface, so the browser audit intentionally renders the launcher fallback.",
+    LAUNCHER_FALLBACK,
+  ),
+  "builtin-tasks": expected({
+    requireAll: ["Tasks"],
+  }),
+  "builtin-browser": expected({
     requireAny: [
       "Enter a URL",
       "Open a website",
       "No browser tabs yet",
-      "Browser Bridge Available",
+      "Browser Bridge",
       "Summarize a page",
       "Search the web",
     ],
-  },
-  "builtin-automations": {
+  }),
+  "builtin-stream": expected({
+    requireAny: ["Stream Ready", "GO LIVE", "Go Live", "OFFLINE"],
+  }),
+  "builtin-pendant-transcript": expected({
+    requireAll: ["Pendant Transcript"],
+    requireAny: [
+      "No transcript segments yet",
+      "Local offline cache",
+      "Connect",
+    ],
+  }),
+  "builtin-apps": expected({
+    requireAll: ["My Apps"],
+    requireAny: [
+      "elizaOS apps",
+      "Advanced",
+      "Load",
+      "No apps installed",
+      "Create new app",
+      "Install, create",
+    ],
+  }),
+  "builtin-views": expected(LAUNCHER_FALLBACK),
+  "builtin-character": expected({
+    requireAny: ["Personality", "Relationships", "Knowledge", "Skills"],
+  }),
+  "builtin-character-select": expected({
+    requireAny: [
+      "Name",
+      "System prompt",
+      "About Me",
+      "Style Rules",
+      "Chat Examples",
+      "Post Examples",
+      "You are",
+    ],
+  }),
+  "builtin-automations": expected({
     requireAll: ["Automations"],
     requireAny: [
       "Nothing scheduled yet",
@@ -50,14 +131,52 @@ export const VIEW_EXPECTATIONS: Record<string, OcrExpectation> = {
       "Inactive",
       "New",
     ],
-  },
-  "builtin-documents": {
+  }),
+  "builtin-inventory": expected({
+    requireAny: ["Wallet", "USDC", "Tokens", "Perps"],
+  }),
+  "builtin-documents": expected({
     requireAny: ["Add Knowledge", "Search knowledge", "Knowledge"],
-  },
-  "builtin-files": {
+  }),
+  "builtin-character-skills": expected({
+    requireAll: ["Character", "Skills"],
+    requireAny: ["proposed", "active", "abilities", "Browse the catalog"],
+  }),
+  "builtin-experience": expected({
+    requireAll: ["Character"],
+    requireAny: ["Captured", "Avg importance", "need review"],
+  }),
+  "builtin-files": expected({
     requireAny: ["No files yet", "Documents", "Images", "Search files"],
-  },
-  "builtin-relationships": {
+  }),
+  "builtin-plugins": expected({
+    requireAny: ["Plugin Catalog", "Search plugins", "Providers"],
+  }),
+  "builtin-skills": expected({
+    requireAny: [
+      "Skills",
+      "Browse Marketplace",
+      "No Skills Installed",
+      "Search skills",
+    ],
+  }),
+  "builtin-trajectories": expected({
+    requireAll: ["Trajectories"],
+    requireAny: ["No trajectories yet", "Browse"],
+  }),
+  "builtin-transcripts": expected({
+    requireAll: ["Live meeting"],
+    requireAny: [
+      "Paste a Meet",
+      "Teams",
+      "Zoom link",
+      "Join meeting",
+      "No transcripts yet",
+      "transcribe",
+      "recordings",
+    ],
+  }),
+  "builtin-relationships": expected({
     requireAny: [
       "Relationships",
       "Personality",
@@ -67,20 +186,8 @@ export const VIEW_EXPECTATIONS: Record<string, OcrExpectation> = {
       "Search people",
       "Connect your platforms",
     ],
-  },
-  "builtin-skills": {
-    requireAny: [
-      "Skills",
-      "Browse Marketplace",
-      "No Skills Installed",
-      "Search skills",
-    ],
-  },
-  "builtin-memories": {
-    // Include the high-contrast chrome ("Memories" title, Feed/Import tabs,
-    // "Filter by type") — on mobile-landscape the low-contrast muted tokens
-    // ("Browse", "No memories yet") fall below pixel-OCR confidence even
-    // though the view renders correctly, which false-failed the audit.
+  }),
+  "builtin-memories": expected({
     requireAny: [
       "No memories yet",
       "Facts",
@@ -90,11 +197,12 @@ export const VIEW_EXPECTATIONS: Record<string, OcrExpectation> = {
       "Import",
       "Filter by type",
     ],
-  },
-  "builtin-stream": {
-    requireAny: ["Stream Ready", "GO LIVE", "Go Live", "OFFLINE"],
-  },
-  "builtin-database": {
+  }),
+  "builtin-rolodex": expected(LAUNCHER_FALLBACK),
+  "builtin-runtime": expected({
+    requireAny: ["Plugins", "Actions", "Providers"],
+  }),
+  "builtin-database": expected({
     requireAny: [
       "Databases",
       "Tables",
@@ -103,114 +211,116 @@ export const VIEW_EXPECTATIONS: Record<string, OcrExpectation> = {
       "Open SQL editor",
       "Filter tables",
     ],
-  },
-  "builtin-logs": {
+  }),
+  "builtin-desktop": expected({
+    requireAll: ["Desktop"],
+    requireAny: ["Desktop workspace", "Electrobun desktop runtime"],
+  }),
+  "builtin-settings": expected({
+    requireAll: ["Settings"],
+    requireAny: ["Models & Providers", "Voice", "Appearance", "Basics"],
+  }),
+  "builtin-logs": expected({
+    requireAll: ["Logs"],
+    requireAny: ["INFO", "smoke", "All levels", "Search logs", "All tags"],
+  }),
+  "builtin-background": expected({
+    requireAll: ["Misty Forest", "Desert Dusk"],
+    requireAny: ["Ocean Deep", "Alpine Dawn", "Ember Night"],
+  }),
+  "plugin-cloud-gui": exempt(
+    "unregistered-remote-bundle",
+    "The Cloud GUI has no remote bundle in the hermetic browser audit, so the view-registry fallback is the only observable surface.",
+    VIEW_REGISTRY_FALLBACK,
+  ),
+  "plugin-contacts-gui": expected({
+    requireAll: ["Contacts"],
+    requireAny: ["address book", "phone, or email", "search"],
+  }),
+  "plugin-focus-gui": expected({
+    requireAll: ["Idle"],
+  }),
+  "plugin-calendar-gui": expected({
     requireAny: [
-      "Logs",
-      "INFO",
-      "All levels",
-      "Alllevels",
-      "Search logs",
-      "searchlogs",
-      "All tags",
-      "Alltags",
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December",
     ],
-  },
-  "builtin-inventory": {
-    requireAny: ["Wallet", "USDC", "Tokens", "Perps"],
-  },
-  "builtin-plugins": {
-    requireAny: ["Plugin Catalog", "Search plugins", "Providers"],
-  },
-  "builtin-fine-tuning": {
-    requireAll: ["Fine-Tuning"],
-    requireAny: ["Status", "Trajectories", "RUNTIME", "JOBS"],
-  },
-  "builtin-skills-marketplace": {
-    requireAny: ["Marketplace", "Install", "Search skills"],
-  },
-  // The launcher grid is its own content; `builtin-views` renders the same grid.
-  "builtin-apps": {
-    requireAll: ["My Apps"],
-    requireAny: [
-      "elizaOS apps",
-      "Advanced",
-      "Load",
-      "No apps installed",
-      "Create new app",
-      "Install, create",
-    ],
-  },
-  "builtin-views": {
-    requireAny: ["Messages", "Settings", "Wallet", "Automations", "Knowledge"],
-  },
-  "builtin-character": {
-    requireAny: ["Personality", "Relationships", "Knowledge", "Skills"],
-  },
-  "builtin-character-select": {
-    requireAny: [
-      "Name",
-      "System prompt",
-      "About Me",
-      "Style Rules",
-      "Chat Examples",
-      "Post Examples",
-      "System prompt",
-      "You are",
-      "Youare",
-    ],
-  },
-  "builtin-runtime": {
-    requireAny: ["Plugins", "Actions", "Providers"],
-  },
-  "builtin-tasks": {
-    requireAll: ["Tasks"],
-    requireAny: [
-      "Tasks",
-      "No coding tasks yet",
-      "coding agent",
-      "Projects unavailable",
-    ],
-  },
-  "builtin-trajectories": {
-    requireAny: ["No trajectories yet", "trajector"],
-  },
-  "builtin-transcripts": {
-    requireAny: [
-      "Live meeting",
-      "Paste a Meet",
-      "Teams",
-      "Zoom link",
-      "Join meeting",
-      "No transcripts yet",
-      "transcri",
-      "recording",
-    ],
-  },
-  "builtin-desktop": {
-    requireAny: [
-      "Desktop workspace",
-      "Desk rkspace",
-      "Electrobun desktop runtime",
-      "Electrobun desktop runtim",
-    ],
-  },
-  // First-party MVP plugin view (#15781). Unlike third-party plugin surfaces it
-  // ships stable, OCR-legible chrome we positively verify. The audit auto-selects
-  // the first market, so the capture is the market-detail state: the "< Markets"
-  // back control (desktop/tablet) or the compact "Vol/Liq/Last" metric row
-  // (mobile, where the chat composer forces compact layout). The list state adds
-  // the "markets" label and the "reads"/"trading" readiness chips. requireAny
-  // over the union covers every viewport's layout; the universal developer-string
-  // rules independently reject the `undefined` / `Cannot read properties` crash
-  // this view once leaked, so a regressed render breaks instead of verifying.
-  "plugin-polymarket-gui": {
-    requireAny: ["markets", "reads", "trading", "vol", "liq", "last"],
-  },
-};
+  }),
+  "plugin-documents-gui": exempt(
+    "unregistered-remote-bundle",
+    "The Documents plugin GUI has no remote bundle in the hermetic browser audit, so the view-registry fallback is the only observable surface.",
+    VIEW_REGISTRY_FALLBACK,
+  ),
+  "plugin-finances-gui": expected({
+    requireAny: ["Balance", "Transactions", "Recurring"],
+  }),
+  "plugin-goals-gui": expected({
+    requireAny: ["Active", "needs a review", "paused"],
+  }),
+  "plugin-lifeops-live-test-gui": exempt(
+    "unregistered-remote-bundle",
+    "The LifeOps live-test GUI has no remote bundle in the hermetic browser audit, so the view-registry fallback is the only observable surface.",
+    VIEW_REGISTRY_FALLBACK,
+  ),
+  "plugin-health-gui": expected({
+    requireAll: ["Health"],
+    requireAny: ["Last sleep", "Regularity", "Baseline"],
+  }),
+  "plugin-inbox-gui": expected({
+    requireAny: ["needs a reply", "Email", "Discord"],
+  }),
+  "plugin-relationships-gui": expected({
+    requireAny: ["People", "Organizations", "Graph"],
+  }),
+  "plugin-todos-gui": expected({
+    requireAny: ["Today", "Upcoming", "Someday"],
+  }),
+  "plugin-messages-gui": expected({
+    requireAny: ["Set default SMS", "bridge-only", "compose"],
+  }),
+  "plugin-phone-gui": expected({
+    requireAny: ["call-blocked", "dialer", "recent"],
+  }),
+  "plugin-wallet-gui": expected({
+    requireAny: ["Tokens", "RPC", "ETH", "SOL"],
+  }),
+  "plugin-views-manager-gui": expected({
+    requireAll: ["Views", "Refresh"],
+    requireAny: ["ready views", "gui ready"],
+  }),
+  "plugin-notes-gui": expected({
+    requireAll: ["Launch checklist", "Follow up"],
+    requireAny: ["Cloud agent", "demo recording"],
+  }),
+  "plugin-task-coordinator-gui": expected({
+    requireAny: ["Dispatch a coding agent", "search tasks", "tasks"],
+  }),
+  "plugin-orchestrator-gui": expected({
+    requireAll: ["Orchestrator"],
+  }),
+  "plugin-cockpit-gui": exempt(
+    "unregistered-remote-bundle",
+    "The Cockpit GUI has no remote bundle in the hermetic browser audit, so the view-registry fallback is the only observable surface.",
+    VIEW_REGISTRY_FALLBACK,
+  ),
+  "plugin-trajectory-logger-gui": expected({
+    requireAny: ["Back to apps", "HANDLE", "PLAN"],
+  }),
+} as const satisfies Record<string, ViewOcrPolicy>;
 
-// Native/permission-gated views (camera, contacts, phone, rolodex, messages) are
-// intentionally left unexpectationed: their capture renders the launcher-grid
-// fallback rather than distinct content, so any expectation would either rubber-
-// stamp the fallback or false-fail. They stay `needs-eyeball` — correctly flagged
-// for a human to decide whether the native surface should render something.
+export function resolveViewOcrPolicy(slug: string): ViewOcrPolicy {
+  if (!Object.hasOwn(VIEW_OCR_POLICIES, slug)) {
+    throw new Error(`No semantic OCR policy declared for audited view ${slug}`);
+  }
+  return VIEW_OCR_POLICIES[slug as keyof typeof VIEW_OCR_POLICIES];
+}

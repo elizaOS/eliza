@@ -1,3 +1,4 @@
+/** Verifies ChatTranscript render count (#9141) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 // Regression lock for elizaOS/eliza issue #9141 (chat-transcript UI perf).

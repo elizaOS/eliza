@@ -267,6 +267,8 @@ export class ResponseHandlerFieldRegistry {
 						}
 						value = parsedValue;
 					} catch (error) {
+						// error-policy:J1 Field parsing appends an explicit
+						// hard-fail trace while independent fields continue.
 						trace.parseOutcome = "hard-fail";
 						const messageStr =
 							error instanceof Error ? error.message : String(error);
@@ -281,6 +283,11 @@ export class ResponseHandlerFieldRegistry {
 								err: messageStr,
 							},
 							"Response-handler field parse hard-failed",
+						);
+						args.runtime.reportError(
+							"ResponseHandlerFieldRegistry.parse",
+							error,
+							{ evaluator: evaluator.name },
 						);
 						continue;
 					}
@@ -327,6 +334,8 @@ export class ResponseHandlerFieldRegistry {
 					break;
 				}
 			} catch (error) {
+				// error-policy:J1 Field handling appends an explicit failure trace
+				// while independent fields continue.
 				const messageStr =
 					error instanceof Error ? error.message : String(error);
 				trace.errorMessage = messageStr;
@@ -340,6 +349,9 @@ export class ResponseHandlerFieldRegistry {
 					},
 					"Response-handler field handler failed",
 				);
+				args.runtime.reportError("ResponseHandlerFieldRegistry.handle", error, {
+					evaluator: evaluator.name,
+				});
 			}
 		}
 

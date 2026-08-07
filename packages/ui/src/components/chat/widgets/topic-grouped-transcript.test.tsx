@@ -1,3 +1,4 @@
+/** Verifies TopicGroupedTranscript through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Render test for TopicGroupedTranscript: empty state, per-group header with

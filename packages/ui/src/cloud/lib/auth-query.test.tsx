@@ -1,3 +1,4 @@
+/** Verifies shared cloud query gate — session from persisted JWT only (page-reload reality) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

@@ -46,10 +46,12 @@ import {
 	startTranscriptionAction,
 	stopTranscriptionAction,
 } from "./actions/transcription-control.js";
+import { LocalPiiRecognizerService } from "./pii/service.js";
 import { transcriptsRoutes } from "./routes/transcripts-routes.js";
 import { voiceProfilePluginRoutes } from "./routes/voice-profile-plugin-routes.js";
 import { handleVoiceEntityBound } from "./runtime/voice-entity-binding.js";
 import { augmentVisionRequest } from "./services/vision/augmenter.js";
+import { extractRequestedVoiceId } from "./services/voice/requested-voice.js";
 
 export const LOCAL_INFERENCE_PROVIDER_ID = "eliza-local-inference";
 export const LOCAL_INFERENCE_PRIORITY = -100;
@@ -130,9 +132,11 @@ interface LocalInferenceTextToSpeechService {
 	synthesizeSpeech?: (
 		text: string,
 		signal?: AbortSignal,
+		voiceId?: string,
 	) => Promise<Uint8Array | ArrayBuffer | Buffer>;
 	textToSpeech?: (args: {
 		text: string;
+		voice?: string;
 		signal?: AbortSignal;
 	}) => Promise<Uint8Array | ArrayBuffer | Buffer>;
 	/**
@@ -145,6 +149,7 @@ interface LocalInferenceTextToSpeechService {
 	synthesizeSpeechStream?: (
 		text: string,
 		signal?: AbortSignal,
+		voiceId?: string,
 	) => AsyncIterable<Uint8Array>;
 }
 
@@ -164,7 +169,7 @@ interface LocalInferenceTranscriptionService {
  * Optional arbiter accessor. When the local-inference plugin's runtime
  * service registers a MemoryArbiter (WS1) on the IAgentRuntime, this
  * field returns it. Cross-plugin consumers (plugin-vision, plugin-image-gen,
- * plugin-aosp-local-inference) call `service.getMemoryArbiter()` to
+ * plugin-native-inference) call `service.getMemoryArbiter()` to
  * register their capability handlers and request model swaps without
  * knowing which backend is loaded.
  *
@@ -652,6 +657,7 @@ function createTextToSpeechHandler() {
 			extractSpeechText(params),
 		);
 		const signal = extractSpeechSignal(params);
+		const voice = extractRequestedVoiceId(params);
 		// Explicit opt-in (NOT the generic `stream` useModel injects from an
 		// ambient text-streaming turn) so byte-expecting callers keep a buffer.
 		const wantsStream =
@@ -662,7 +668,7 @@ function createTextToSpeechHandler() {
 		// Real chunked streaming when the backend implements the seam.
 		if (wantsStream && typeof service.synthesizeSpeechStream === "function") {
 			return streamingAudioStreamResult(
-				service.synthesizeSpeechStream(text, signal),
+				service.synthesizeSpeechStream(text, signal, voice),
 				LOCAL_TTS_MIME,
 			);
 		}
@@ -670,12 +676,16 @@ function createTextToSpeechHandler() {
 		const synthesizeBuffered = async (): Promise<Uint8Array> => {
 			if (typeof service.synthesizeSpeech === "function") {
 				return normalizeAudioBytes(
-					await service.synthesizeSpeech(text, signal),
+					await service.synthesizeSpeech(text, signal, voice),
 				);
 			}
 			if (typeof service.textToSpeech === "function") {
 				return normalizeAudioBytes(
-					await service.textToSpeech({ text, ...(signal ? { signal } : {}) }),
+					await service.textToSpeech({
+						text,
+						...(voice ? { voice } : {}),
+						...(signal ? { signal } : {}),
+					}),
 				);
 			}
 			throw unavailable(
@@ -1139,6 +1149,9 @@ export const localInferencePlugin: Plugin = {
 	// because no server forwards these namespaces to the local-inference
 	// route dispatcher. See routes/voice-profile-plugin-routes.ts.
 	routes: [...voiceProfilePluginRoutes, ...transcriptsRoutes],
+	// PII recognizer for the core pseudonymization layer — runs NER extraction
+	// prompts on the resident local backend so PII never leaves the device.
+	services: [LocalPiiRecognizerService],
 	// TEXT_EMBEDDING is wired by ensureLocalInferenceHandler(), not the static
 	// plugin object. Runtime bootstrap probes embeddings before the user has
 	// activated an Eliza-1 bundle; registering the static handler there claims a

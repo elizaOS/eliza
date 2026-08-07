@@ -58,6 +58,6 @@
     "prettier": "3.9.6",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "5.8.3",
-    "uuid": "14.0.0"
+    "uuid": "13.0.2"
   }
 }

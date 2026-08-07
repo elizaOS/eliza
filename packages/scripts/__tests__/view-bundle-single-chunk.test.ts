@@ -1,4 +1,4 @@
-// Exercises tests view bundle single chunk.test automation behavior with deterministic script fixtures.
+/** Verifies that the shared plugin-view configuration emits one module. */
 import { describe, expect, test } from "bun:test";
 import { createViewBundleConfig } from "../view-bundle-vite.config.ts";
 

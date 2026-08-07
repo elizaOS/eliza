@@ -16,7 +16,7 @@ on:
       - "packages/cloud/services/**"
       - "packages/cloud/routing/**"
       - "packages/cloud/infra/**"
-      - "packages/scripts/cloud/**"
+      - "packages/cloud/scripts/**"
       - "packages/scripts/test-cloud-run.mjs"
       - "packages/scripts/test-cloud-run-helpers.mjs"
       - "packages/scripts/test-cloud-run-flush.self-test.mjs"
@@ -35,7 +35,7 @@ on:
       - "packages/cloud/services/**"
       - "packages/cloud/routing/**"
       - "packages/cloud/infra/**"
-      - "packages/scripts/cloud/**"
+      - "packages/cloud/scripts/**"
       - "packages/scripts/test-cloud-run.mjs"
       - "packages/scripts/test-cloud-run-helpers.mjs"
       - "packages/scripts/test-cloud-run-flush.self-test.mjs"
@@ -71,7 +71,7 @@ permissions:
 
 jobs:
   lint-and-types:
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -89,7 +89,7 @@ jobs:
   # twice per PR on the saturated runner fleet.
 
   unit-tests:
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     # Cloud unit tests can run past 25m on saturated self-hosted runners while still passing.
     timeout-minutes: 40
     env:
@@ -122,7 +122,7 @@ jobs:
         run: bun run --cwd packages/cloud/shared test:vitest
 
   integration-tests:
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 25
     env:
       NODE_ENV: test
@@ -149,11 +149,18 @@ jobs:
         with:
           setup-db: "true"
           db-backend: "postgres"
+      - name: Run PostgreSQL migration fencing and contention tests
+        env:
+          RUN_REAL_POSTGRES_MIGRATION_TESTS: "1"
+          MIGRATION_TEST_DATABASE_URL: postgresql://postgres@127.0.0.1:5432/postgres
+        run: >-
+          bun test --config=/dev/null --isolate
+          packages/cloud/scripts/admin/migrate-with-diagnostics.postgres.test.ts
       - name: Run PostgreSQL lifecycle barrier tests
         env:
           APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
         run: >-
-          bun --config=/dev/null test --isolate
+          bun test --config=/dev/null --isolate
           packages/cloud/shared/src/db/repositories/__tests__/agent-sandboxes-stuck-provisioning-lock.integration.test.ts
       - name: Run cloud e2e tests
         run: bun run test:cloud:e2e

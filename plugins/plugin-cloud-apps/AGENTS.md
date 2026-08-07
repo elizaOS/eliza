@@ -9,7 +9,7 @@ earnings, rotate keys, buy + manage custom domains, and the growth surfaces
 context provider.
 
 It is a **client of `@elizaos/cloud-sdk`** (`ElizaCloudClient`), not of the
-cloud backend directly. Read the root `AGENTS.md` for repo-wide rules; this doc
+cloud backend directly. Read the root `CLAUDE.md` for repo-wide rules; this doc
 is specific to the plugin.
 
 ## Auth
@@ -101,7 +101,7 @@ test/scenarios/          cloud-apps-structured-confirm.scenario.ts — real SDK 
 
 ```bash
 bun run --cwd plugins/plugin-cloud-apps test        # bun test __tests__ (SDK boundary faked)
-bun run --cwd plugins/plugin-cloud-apps typecheck   # tsgo --noEmit
+bun run --cwd plugins/plugin-cloud-apps typecheck   # tsc --noEmit
 bun run --cwd plugins/plugin-cloud-apps lint        # biome check --write
 bun run --cwd plugins/plugin-cloud-apps build       # bun build.ts
 ```
@@ -142,18 +142,15 @@ bun run --cwd plugins/plugin-cloud-apps build       # bun build.ts
 - **Tests fake ONLY the SDK.** `__tests__/helpers.ts` provides `FakeElizaCloudClient`
   + keyed/unkeyed/memory runtimes; the actions/formatters/confirm-machine run for
   real. Adding an SDK method means adding its `*Fn`/state/setter/fake method.
-- **Live e2e:** the app lifecycle + charges + attribution run against real staging
-  in `packages/cloud/api/test/e2e/group-i/l/n`; see that dir's live-staging runbook.
+- **Live e2e:** app lifecycle, charges, and review-gate coverage lives in
+  `packages/cloud/api/test/e2e/group-i-apps-lifecycle.test.ts`,
+  `group-l-app-charges.test.ts`, and `group-n-review-gate.test.ts`.
 
-## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+## Verification
 
-The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)** — read
-it. Nothing here is *done* until a reviewer can confirm it works **without reading
-the code**, from the artifacts you attach: real-LLM trajectories for
+Follow the root [CLAUDE.md](../../CLAUDE.md). Capture real-LLM trajectories for
 action/prompt changes (`packages/scenario-runner/bin/eliza-scenarios run …`
 against a **live** model, read by hand), the real request→response traces + the
 domain artifacts the change produced (app rows, deploy status, credit/earnings
 ledger rows, domain records), and — for anything user-exercisable — before/after
-UI proof. "Tests pass" and "CI green" are not proof. No TODOs, stubs, or
-"follow-ups"; clear blockers by the hard path. Artifacts →
-attached inline in the PR (MP4 video, JPG screenshots, logs in `<details>`), or mark a row `N/A - <reason>`.
+UI proof. Attach the relevant artifacts inline to the issue and PR.

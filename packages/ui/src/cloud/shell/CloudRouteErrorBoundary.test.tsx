@@ -1,3 +1,4 @@
+/** Verifies CloudRouteErrorBoundary — chunk-load recovery through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

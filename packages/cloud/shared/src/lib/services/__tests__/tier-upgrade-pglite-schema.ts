@@ -157,6 +157,7 @@ export const PROVISIONING_JOB_TEST_TABLES: readonly string[] = [
   "lifecycle_execution_generation" uuid,
   "deletion_attempt_id" uuid,
   "deletion_started_at" timestamptz,
+  "deletion_allocation_counted" boolean,
   "execution_tier" text NOT NULL DEFAULT 'shared'::text,
   "bridge_url" text,
   "health_url" text,
@@ -172,6 +173,7 @@ export const PROVISIONING_JOB_TEST_TABLES: readonly string[] = [
   "error_count" integer NOT NULL DEFAULT 0,
   "environment_vars" jsonb NOT NULL DEFAULT '{}'::jsonb,
   "environment_revision" integer NOT NULL DEFAULT 0,
+  "lifecycle_revision" bigint NOT NULL DEFAULT 0,
   "node_id" text,
   "container_name" text,
   "bridge_port" integer,
@@ -212,6 +214,41 @@ export const PROVISIONING_JOB_TEST_TABLES: readonly string[] = [
   "deleted_at" timestamptz,
   PRIMARY KEY ("id")
 )`,
+  `CREATE OR REPLACE FUNCTION advance_agent_sandbox_lifecycle_revision()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  NEW.lifecycle_revision := OLD.lifecycle_revision + 1;
+  RETURN NEW;
+END;
+$$`,
+  `DROP TRIGGER IF EXISTS agent_sandboxes_lifecycle_revision_trigger ON "agent_sandboxes"`,
+  `CREATE TRIGGER agent_sandboxes_lifecycle_revision_trigger
+BEFORE UPDATE ON "agent_sandboxes"
+FOR EACH ROW
+WHEN (
+  to_jsonb(OLD) - ARRAY[
+    'billing_status',
+    'last_billed_at',
+    'hourly_rate',
+    'total_billed',
+    'shutdown_warning_sent_at',
+    'scheduled_shutdown_at',
+    'updated_at'
+  ]::text[]
+  IS DISTINCT FROM
+  to_jsonb(NEW) - ARRAY[
+    'billing_status',
+    'last_billed_at',
+    'hourly_rate',
+    'total_billed',
+    'shutdown_warning_sent_at',
+    'scheduled_shutdown_at',
+    'updated_at'
+  ]::text[]
+)
+EXECUTE FUNCTION advance_agent_sandbox_lifecycle_revision()`,
   `CREATE TABLE IF NOT EXISTS "api_keys" (
   "id" uuid NOT NULL DEFAULT gen_random_uuid(),
   "name" text NOT NULL,

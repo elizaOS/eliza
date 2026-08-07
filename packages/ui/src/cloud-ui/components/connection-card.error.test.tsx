@@ -1,3 +1,4 @@
+/** Verifies ConnectionCard — error state (#12784/#13419) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**
