@@ -136,25 +136,17 @@ function readValidatedSolanaAddress(value: string | undefined): string | null {
 }
 
 function deriveLocalEvmAddress(): string | null {
-  const evmKey = process.env.EVM_PRIVATE_KEY;
+  const evmKey = process.env.EVM_PRIVATE_KEY?.trim();
   if (!evmKey || PLACEHOLDER_RE.test(evmKey)) return null;
-  try {
-    return deriveEvmAddress(evmKey);
-  } catch (e: unknown) {
-    logger.warn(`Bad EVM key: ${e}`);
-    return null;
-  }
+  const validated = validateEvmPrivateKey(evmKey);
+  return validated.valid ? validated.address : null;
 }
 
 function deriveLocalSolanaAddress(): string | null {
-  const solKey = process.env.SOLANA_PRIVATE_KEY;
+  const solKey = process.env.SOLANA_PRIVATE_KEY?.trim();
   if (!solKey || PLACEHOLDER_RE.test(solKey)) return null;
-  try {
-    return deriveSolanaAddress(solKey);
-  } catch (e: unknown) {
-    logger.warn(`Bad SOL key: ${e}`);
-    return null;
-  }
+  const validated = validateSolanaPrivateKey(solKey);
+  return validated.valid ? validated.address : null;
 }
 
 function readStewardEvmAddress(): string | null {
