@@ -1,5 +1,13 @@
+/**
+ * Proves on a real device or emulator that native Browser surfaces keep storage
+ * isolated and yield rounded paint/input regions to host-rendered chrome.
+ */
 package ai.eliza.plugins.browsersurface
 
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.view.MotionEvent
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -9,6 +17,7 @@ import androidx.webkit.Profile
 import androidx.webkit.ProfileStore
 import androidx.webkit.WebViewFeature
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -16,15 +25,6 @@ import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/**
- * Proves — on a real device/emulator — the storage-partitioning primitive the
- * plugin's `isolated` policy relies on: a cookie written into one androidx.webkit
- * [Profile] is invisible to a sibling profile and to the default (host) profile.
- * This is the cross-surface leak the isolation epic (#13452/#15245) closes,
- * exercised against the actual system WebView multi-profile store rather than a
- * mock. Gated by the MULTI_PROFILE feature (older system WebViews skip); on those
- * devices the plugin fails `createSurface` fast rather than degrading silently.
- */
 @RunWith(AndroidJUnit4::class)
 class BrowserSurfaceIsolationInstrumentedTest {
     private val urlA = "https://eliza-surface-a.example/"
@@ -92,5 +92,56 @@ class BrowserSurfaceIsolationInstrumentedTest {
         intermediate.addView(hostWebView)
 
         assertEquals(root, findNearestFrameLayoutAncestor(hostWebView))
+    }
+
+    @Test
+    fun occlusionLayoutPunchesRoundedHostChromeOutOfNativePagePaint() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val surface = OccludingSurfaceLayout(context)
+        val page = View(context).apply { setBackgroundColor(Color.RED) }
+        surface.addView(page, FrameLayout.LayoutParams(100, 100))
+        surface.setOcclusions(
+            listOf(
+                RoundedOcclusionRect(
+                    left = 20f,
+                    top = 20f,
+                    right = 80f,
+                    bottom = 80f,
+                    cornerRadius = 20f,
+                ),
+            ),
+        )
+        val exact = View.MeasureSpec.makeMeasureSpec(100, View.MeasureSpec.EXACTLY)
+        surface.measure(exact, exact)
+        surface.layout(0, 0, 100, 100)
+        val bitmap = Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888)
+        surface.draw(Canvas(bitmap))
+
+        assertEquals(Color.RED, bitmap.getPixel(10, 10))
+        assertEquals(Color.RED, bitmap.getPixel(21, 21))
+        assertEquals(Color.TRANSPARENT, bitmap.getPixel(50, 50))
+    }
+
+    @Test
+    fun occlusionLayoutRelinquishesTouchesThatStartOnHostChrome() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val surface = OccludingSurfaceLayout(context)
+        val page = View(context).apply {
+            setOnTouchListener { _, _ -> true }
+        }
+        surface.addView(page, FrameLayout.LayoutParams(100, 100))
+        surface.setOcclusions(
+            listOf(RoundedOcclusionRect(20f, 20f, 80f, 80f, 0f)),
+        )
+        val exact = View.MeasureSpec.makeMeasureSpec(100, View.MeasureSpec.EXACTLY)
+        surface.measure(exact, exact)
+        surface.layout(0, 0, 100, 100)
+        val inside = MotionEvent.obtain(0, 0, MotionEvent.ACTION_DOWN, 50f, 50f, 0)
+        val outside = MotionEvent.obtain(0, 0, MotionEvent.ACTION_DOWN, 10f, 10f, 0)
+
+        assertFalse(surface.dispatchTouchEvent(inside))
+        assertTrue(surface.dispatchTouchEvent(outside))
+        inside.recycle()
+        outside.recycle()
     }
 }

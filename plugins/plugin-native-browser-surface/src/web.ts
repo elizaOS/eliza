@@ -13,6 +13,7 @@ import type {
   ElizaSurfaceManagerPlugin,
   NavigateOptions,
   SetBoundsOptions,
+  SetOcclusionRectsOptions,
   SurfaceIdOptions,
   SurfaceState,
 } from "./definitions";
@@ -28,6 +29,9 @@ export class BrowserSurfaceWeb
     throw this.unavailable(UNAVAILABLE);
   }
   async setBounds(_options: SetBoundsOptions): Promise<void> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+  async setOcclusionRects(_options: SetOcclusionRectsOptions): Promise<void> {
     throw this.unavailable(UNAVAILABLE);
   }
   async navigate(_options: NavigateOptions): Promise<void> {

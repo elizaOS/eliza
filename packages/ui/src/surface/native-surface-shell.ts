@@ -115,6 +115,14 @@ export interface SurfaceBounds {
   readonly height: number;
 }
 
+/**
+ * Rounded host-space region where the native layer yields both paint and input
+ * to host-rendered chrome. Coordinates share {@link SurfaceBounds}' CSS pixels.
+ */
+export interface SurfaceOcclusionRect extends SurfaceBounds {
+  readonly cornerRadius: number;
+}
+
 /** Request to create one independent native web surface. */
 export interface NativeSurfaceCreateRequest {
   /** Stable per-surface id; the caller keys foreground/bounds/destroy on it. */
@@ -143,6 +151,11 @@ export interface NativeSurfaceShell {
    * the native layer tracks the placeholder rect the React tree reserves for it.
    */
   setBounds(id: string, bounds: SurfaceBounds): void;
+  /**
+   * Keep the page full-size while exposing host overlays through rounded holes
+   * in the native layer. Replaces the surface's complete occlusion set.
+   */
+  setOcclusionRects(id: string, rects: readonly SurfaceOcclusionRect[]): void;
   /** Load a URL in an existing surface (address-bar navigation on the tab). */
   navigate(id: string, url: string): void;
   /** Bring an existing surface to the front, on top of the host. */

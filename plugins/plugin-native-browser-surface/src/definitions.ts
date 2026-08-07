@@ -1,7 +1,8 @@
 /**
  * Public API of the `ElizaSurfaceManager` Capacitor plugin (#15245): the native
  * bridge that layers one isolated web surface per Browser tab on the mobile
- * shell. The renderer never imports this package directly — `@elizaos/ui`'s
+ * shell and masks it around host-rendered overlays. The renderer never imports
+ * this package directly — `@elizaos/ui`'s
  * `capacitor-native-surface-shell.ts` models the same method set structurally
  * and calls it through the Capacitor `Plugins` registry — but the shapes here
  * are the source of truth for both native implementations (iOS `WKWebView` on a
@@ -41,6 +42,23 @@ export interface SetBoundsOptions {
   height: number;
 }
 
+/**
+ * Rounded host-space region where the native page yields to React chrome.
+ * Coordinates use the same host CSS-pixel space as {@link SetBoundsOptions}.
+ */
+export interface SurfaceOcclusionRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  cornerRadius: number;
+}
+
+export interface SetOcclusionRectsOptions {
+  id: string;
+  rects: SurfaceOcclusionRect[];
+}
+
 export interface NavigateOptions {
   id: string;
   url: string;
@@ -68,6 +86,11 @@ export interface ElizaSurfaceManagerPlugin {
   createSurface(options: CreateSurfaceOptions): Promise<void>;
   /** Position a surface over the host webview, in host CSS pixels. */
   setBounds(options: SetBoundsOptions): Promise<void>;
+  /**
+   * Punch rounded regions out of the native layer so host-rendered overlays can
+   * paint and receive input without hiding or resizing the underlying page.
+   */
+  setOcclusionRects(options: SetOcclusionRectsOptions): Promise<void>;
   /** Load a URL in an existing surface. */
   navigate(options: NavigateOptions): Promise<void>;
   /** Bring a surface to the front, above the host. */

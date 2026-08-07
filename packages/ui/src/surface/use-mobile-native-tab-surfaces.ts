@@ -17,20 +17,21 @@
  * is reachable from the host or a sibling tab.
  *
  * Two constraints shape the effects. (1) Native layers z-order ABOVE the host
- * WebView, so while any React overlay is open (tab switcher, confirm dialog, or
- * expanded chat) every surface is backgrounded, or it would paint over the
- * overlay; this is the mobile equivalent of the desktop `<electrobun-webview
- * masks=…>` mechanism. (2) The layer is positioned in host CSS pixels from the
- * placeholder rect, re-measured on every layout shift (resize, orientation,
- * visual-viewport scroll from the keyboard) so it never drifts off its slot.
+ * WebView, so React chrome is mirrored into rounded native occlusion regions;
+ * the page stays full-size and live while the host paints and handles input in
+ * those holes, matching Electrobun's masks mechanism. Whole-surface overlays
+ * (the tab switcher and confirmation dialogs) still background every surface.
+ * (2) The layer and its occlusions use host CSS pixels and are re-measured on
+ * layout, viewport, and chat-motion changes so neither can drift from React.
  */
 
 import type { SurfaceLifecyclePolicy } from "@elizaos/core";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { CapacitorNativeSurfaceShell } from "./capacitor-native-surface-shell";
 import type {
   NativeSurfacePolicy,
   NativeSurfaceShell,
+  SurfaceOcclusionRect,
 } from "./native-surface-shell";
 
 /** The minimal per-tab shape the hook needs: identity plus the page to load. */
@@ -55,6 +56,11 @@ export interface UseMobileNativeTabSurfacesArgs {
    * every native surface is backgrounded so it cannot paint over the overlay.
    */
   readonly overlayOpen: boolean;
+  /**
+   * Host elements that must paint and receive input above the native page. Their
+   * live rounded bounds become native occlusion holes.
+   */
+  readonly occlusionSelector?: string;
   /**
    * The explicit process/storage policy every surface is created with — derived
    * from the Browser manifest via `deriveSurfacePlacement`, never defaulted here.
@@ -93,18 +99,107 @@ function surfaceIdOf(tabId: string): string {
   return `browser-tab:${tabId}`;
 }
 
+function roundedCssPixel(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+function parseCornerRadius(value: string): number {
+  const radius = Number.parseFloat(value);
+  return Number.isFinite(radius) && radius > 0 ? roundedCssPixel(radius) : 0;
+}
+
+/**
+ * Reads the visible rounded geometry for native-layer occlusion. Kept pure over
+ * the supplied document so the exact DOM→native contract is regression-tested.
+ */
+export function collectSurfaceOcclusionRects(
+  selector: string | undefined,
+  ownerDocument: Document,
+): SurfaceOcclusionRect[] {
+  if (!selector) return [];
+  const rects: SurfaceOcclusionRect[] = [];
+  const seen = new Set<Element>();
+  for (const element of ownerDocument.querySelectorAll<HTMLElement>(selector)) {
+    if (seen.has(element)) continue;
+    seen.add(element);
+    const style = ownerDocument.defaultView?.getComputedStyle(element);
+    if (
+      style?.display === "none" ||
+      style?.visibility === "hidden" ||
+      style?.visibility === "collapse"
+    ) {
+      continue;
+    }
+    const rect = element.getBoundingClientRect();
+    if (
+      !Number.isFinite(rect.left) ||
+      !Number.isFinite(rect.top) ||
+      !Number.isFinite(rect.width) ||
+      !Number.isFinite(rect.height) ||
+      rect.width <= 0 ||
+      rect.height <= 0
+    ) {
+      continue;
+    }
+    rects.push({
+      x: roundedCssPixel(rect.left),
+      y: roundedCssPixel(rect.top),
+      width: roundedCssPixel(rect.width),
+      height: roundedCssPixel(rect.height),
+      cornerRadius: parseCornerRadius(
+        element.style.borderTopLeftRadius ||
+          element.style.borderRadius ||
+          style?.borderTopLeftRadius ||
+          style?.borderRadius ||
+          "0",
+      ),
+    });
+  }
+  // A native mask represents the union of these regions. Nested portal/status
+  // chrome is already covered by its outer sheet; dropping contained geometry
+  // prevents even-odd native masks from toggling those pixels back on.
+  return rects
+    .sort((a, b) => b.width * b.height - a.width * a.height)
+    .reduce<SurfaceOcclusionRect[]>((outer, rect) => {
+      const contained = outer.some(
+        (candidate) =>
+          rect.x >= candidate.x &&
+          rect.y >= candidate.y &&
+          rect.x + rect.width <= candidate.x + candidate.width &&
+          rect.y + rect.height <= candidate.y + candidate.height,
+      );
+      if (!contained) outer.push(rect);
+      return outer;
+    }, []);
+}
+
+function occlusionKey(rects: readonly SurfaceOcclusionRect[]): string {
+  return rects
+    .map(
+      ({ x, y, width, height, cornerRadius }) =>
+        `${x},${y},${width},${height},${cornerRadius}`,
+    )
+    .join(";");
+}
+
 export function useMobileNativeTabSurfaces(
   args: UseMobileNativeTabSurfacesArgs,
 ): MobileNativeTabSurfaces {
-  const { active, tabs, selectedTabId, overlayOpen, policy, lifecycle, shell } =
-    args;
+  const {
+    active,
+    tabs,
+    selectedTabId,
+    overlayOpen,
+    occlusionSelector,
+    policy,
+    lifecycle,
+    shell,
+  } = args;
 
   // One shell per hosting Browser view. A caller-supplied shell (tests) wins;
   // otherwise the Capacitor driver, constructed once.
   const defaultShell = useMemo(() => new CapacitorNativeSurfaceShell(), []);
   const activeShell = shell ?? defaultShell;
-  const [chatOverlayOpen, setChatOverlayOpen] = useState(false);
-  const chatOverlayOpenRef = useRef(false);
 
   const elements = useRef(new Map<string, HTMLElement>());
   // The tab ids that currently own a live native surface. Tracked here, not read
@@ -118,6 +213,7 @@ export function useMobileNativeTabSurfaces(
   // and would otherwise close over a stale value.
   const lifecycleRef = useRef(lifecycle);
   lifecycleRef.current = lifecycle;
+  const lastOcclusionKey = useRef<string | null>(null);
 
   const measure = useCallback(
     (tabId: string): void => {
@@ -154,44 +250,23 @@ export function useMobileNativeTabSurfaces(
     [active, activeShell],
   );
 
-  // Native child views always paint above the host WebView. When the global chat
-  // sheet grows beyond its resting composer, background the child surface so the
-  // conversation remains the real top layer rather than being visually covered
-  // by third-party page pixels. Attribute observation follows the sheet's
-  // canonical state machine without coupling this hook to its React context.
-  useEffect(() => {
-    if (
-      !active ||
-      typeof document === "undefined" ||
-      typeof MutationObserver === "undefined"
-    ) {
-      if (chatOverlayOpenRef.current) {
-        chatOverlayOpenRef.current = false;
-        setChatOverlayOpen(false);
-      }
-      return;
+  const readOcclusions = useCallback(
+    (): SurfaceOcclusionRect[] =>
+      typeof document === "undefined"
+        ? []
+        : collectSurfaceOcclusionRects(occlusionSelector, document),
+    [occlusionSelector],
+  );
+
+  const syncOcclusions = useCallback((): void => {
+    const rects = readOcclusions();
+    const key = occlusionKey(rects);
+    if (lastOcclusionKey.current === key) return;
+    lastOcclusionKey.current = key;
+    for (const tabId of liveTabIds.current) {
+      activeShell.setOcclusionRects(surfaceIdOf(tabId), rects);
     }
-    const readState = () => {
-      const state = document
-        .querySelector<HTMLElement>('[data-testid="chat-sheet"]')
-        ?.getAttribute("data-chat-state");
-      const next = Boolean(
-        state && state !== "CLOSED" && state !== "INPUT",
-      );
-      if (chatOverlayOpenRef.current === next) return;
-      chatOverlayOpenRef.current = next;
-      setChatOverlayOpen(next);
-    };
-    readState();
-    const observer = new MutationObserver(readState);
-    observer.observe(document.documentElement, {
-      subtree: true,
-      childList: true,
-      attributes: true,
-      attributeFilter: ["data-chat-state"],
-    });
-    return () => observer.disconnect();
-  }, [active]);
+  }, [activeShell, readOcclusions]);
 
   // Reconcile the live surface set with `tabs`: create surfaces for new tabs
   // (explicit policy, never a default), navigate on an existing tab's URL change,
@@ -206,6 +281,7 @@ export function useMobileNativeTabSurfaces(
         liveTabIds.current.add(tab.id);
         surfaceUrls.current.set(tab.id, tab.url);
         measure(tab.id);
+        activeShell.setOcclusionRects(id, readOcclusions());
       } else if (surfaceUrls.current.get(tab.id) !== tab.url) {
         activeShell.navigate(id, tab.url);
         surfaceUrls.current.set(tab.id, tab.url);
@@ -219,7 +295,91 @@ export function useMobileNativeTabSurfaces(
         elements.current.delete(tabId);
       }
     }
-  }, [active, tabs, policy, activeShell, measure]);
+  }, [active, tabs, policy, activeShell, measure, readOcclusions]);
+
+  // Keep native holes aligned with React chrome. ResizeObserver catches layout
+  // changes; MutationObserver catches portals and Motion style writes. During a
+  // chat spring/drag, its canonical transient-layout marker keeps one rAF loop
+  // alive so transform-only frames cannot slip between discrete DOM mutations.
+  useEffect(() => {
+    if (
+      !active ||
+      !occlusionSelector ||
+      typeof document === "undefined" ||
+      typeof window === "undefined"
+    ) {
+      return;
+    }
+    let frame: number | null = null;
+    let observed = new Set<Element>();
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(() => schedule());
+
+    const refreshObservedElements = (): void => {
+      if (!resizeObserver) return;
+      const next = new Set(document.querySelectorAll(occlusionSelector));
+      for (const element of observed) {
+        if (!next.has(element)) resizeObserver.unobserve(element);
+      }
+      for (const element of next) {
+        if (!observed.has(element)) resizeObserver.observe(element);
+      }
+      observed = next;
+    };
+    const run = (): void => {
+      frame = null;
+      syncOcclusions();
+      if (
+        document.querySelector('[data-eliza-layout-shift-intent="transient"]')
+      ) {
+        schedule();
+      }
+    };
+    const schedule = (): void => {
+      if (frame !== null) return;
+      frame = window.requestAnimationFrame(run);
+    };
+
+    refreshObservedElements();
+    syncOcclusions();
+    const mutationObserver =
+      typeof MutationObserver === "undefined"
+        ? null
+        : new MutationObserver(() => {
+            refreshObservedElements();
+            schedule();
+          });
+    mutationObserver?.observe(document.documentElement, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: [
+        "class",
+        "style",
+        "hidden",
+        "data-chat-state",
+        "data-eliza-layout-shift-intent",
+      ],
+    });
+    window.addEventListener("resize", schedule);
+    window.addEventListener("orientationchange", schedule);
+    window.addEventListener("scroll", schedule, true);
+    const viewport = window.visualViewport;
+    viewport?.addEventListener("resize", schedule);
+    viewport?.addEventListener("scroll", schedule);
+    return () => {
+      mutationObserver?.disconnect();
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", schedule);
+      window.removeEventListener("orientationchange", schedule);
+      window.removeEventListener("scroll", schedule, true);
+      viewport?.removeEventListener("resize", schedule);
+      viewport?.removeEventListener("scroll", schedule);
+      if (frame !== null) window.cancelAnimationFrame(frame);
+    };
+  }, [active, occlusionSelector, syncOcclusions]);
 
   // Foreground the selected surface and background the rest — unless an overlay
   // is open, in which case every surface is backgrounded (see header).
@@ -227,22 +387,14 @@ export function useMobileNativeTabSurfaces(
     if (!active) return;
     for (const tab of tabs) {
       const id = surfaceIdOf(tab.id);
-      if (!overlayOpen && !chatOverlayOpen && tab.id === selectedTabId) {
+      if (!overlayOpen && tab.id === selectedTabId) {
         activeShell.foregroundSurface(id);
         measure(tab.id);
       } else {
         activeShell.backgroundSurface(id);
       }
     }
-  }, [
-    active,
-    tabs,
-    selectedTabId,
-    overlayOpen,
-    chatOverlayOpen,
-    activeShell,
-    measure,
-  ]);
+  }, [active, tabs, selectedTabId, overlayOpen, activeShell, measure]);
 
   // Track the placeholder rects across every layout shift so the native layer
   // never drifts off its slot: window resize, device rotation, and the
