@@ -24,6 +24,7 @@ import * as realHelpersNs from "../../db/helpers";
 import { agentBillingRepository } from "../../db/repositories/agent-billing";
 import type { AgentSandbox, AgentSandboxBackup } from "../../db/repositories/agent-sandboxes";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
+import { userCharactersRepository } from "../../db/repositories/characters";
 import type { DockerNode } from "../../db/repositories/docker-nodes";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import { sharedRuntimeHistoryRepository } from "../../db/repositories/shared-runtime-history";
@@ -3582,6 +3583,15 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
 
   type Svc = {
     deleteAgent(agentId: string, orgId: string): Promise<unknown>;
+    executeDeletion(
+      agentId: string,
+      orgId: string,
+    ): Promise<{
+      success: boolean;
+      containerStopped: boolean;
+      rowDeleted: boolean;
+      error?: string;
+    }>;
     prepareAgentDelete(
       agentId: string,
       orgId: string,
@@ -3603,6 +3613,51 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     return new ElizaSandboxService() as unknown as Svc;
   }
+
+  test("linked character cleanup waits until the reconciliation tombstone is removed", async () => {
+    const svc = await makeSvc();
+    const characterId = "44444444-4444-4444-8444-444444444444";
+    const deletedSandbox = {
+      ...customSandbox(),
+      id: AGENT,
+      organization_id: ORG,
+      character_id: characterId,
+      agent_config: {},
+    };
+    const deletion = spyOn(svc, "deleteAgent")
+      .mockResolvedValueOnce({
+        success: true,
+        rowDeleted: false,
+        reconciliationPending: true,
+        deletedSandbox,
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        rowDeleted: true,
+        deletedSandbox,
+      });
+    const deleteCharacter = spyOn(userCharactersRepository, "delete").mockResolvedValue(undefined);
+
+    try {
+      await expect(svc.executeDeletion(AGENT, ORG)).resolves.toEqual({
+        success: true,
+        containerStopped: false,
+        rowDeleted: false,
+      });
+      expect(deleteCharacter).not.toHaveBeenCalled();
+
+      await expect(svc.executeDeletion(AGENT, ORG)).resolves.toEqual({
+        success: true,
+        containerStopped: true,
+        rowDeleted: true,
+      });
+      expect(deleteCharacter).toHaveBeenCalledTimes(1);
+      expect(deleteCharacter).toHaveBeenCalledWith(characterId);
+    } finally {
+      deletion.mockRestore();
+      deleteCharacter.mockRestore();
+    }
+  });
 
   test("(a) teardown timeout completes the attempt but retains a reconciliation tombstone", async () => {
     const svc = await makeSvc();
