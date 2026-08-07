@@ -147,6 +147,9 @@ function parseArgs(argv) {
 }
 
 function packageJsonPaths() {
+  // `*package.json` is a suffix match in git's pathspec, so it would also pick
+  // up a stray `foo-package.json`. The basename filter below keeps the result
+  // identical to the `rg -g package.json` this replaces.
   const completed = spawnSync("git", ["ls-files", "*package.json"], {
     cwd: REPO_ROOT,
     encoding: "utf8",
@@ -166,6 +169,7 @@ function packageJsonPaths() {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
+    .filter((file) => path.posix.basename(file) === "package.json")
     .filter(
       (file) =>
         !file.includes("/node_modules/") &&
