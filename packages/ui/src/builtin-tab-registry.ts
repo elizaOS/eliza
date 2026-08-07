@@ -99,7 +99,8 @@ export const BUILTIN_TAB_METADATA: readonly BuiltinTabMetadata[] = [
   // the isolation catalogue (`surface-isolation.ts`): it hosts arbitrary
   // third-party pages in a native child web-content surface (desktop
   // `WebContentsView` / electrobun OOPIF, iOS `WKWebView`, Android `WebView`)
-  // with its own renderer process, so page content never shares the host realm.
+  // with the strongest platform renderer boundary, so page content never shares
+  // the host realm.
   // Declaring the manifest here makes that isolation level authoritative on the
   // view instead of only documented. `background: "opaque"` is the default made
   // explicit — the browser never paints the shared wallpaper (it owns its whole

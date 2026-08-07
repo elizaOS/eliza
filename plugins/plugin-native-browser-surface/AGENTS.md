@@ -12,6 +12,8 @@ src/index.ts         registerPlugin("ElizaSurfaceManager", { web })
 src/web.ts           Web fallback — every method REJECTS (web has no native surface)
 src/web.test.ts      Proves the web fallback rejects
 ios/Sources/BrowserSurfacePlugin/BrowserSurfacePlugin.swift   WKWebView pool + data store
+ios/Sources/BrowserSurfaceLifecycleContract/...               executable owner/presentation state
+ios/Tests/BrowserSurfaceLifecycleContractTests/main.swift      macOS lifecycle probe
 android/src/main/.../BrowserSurfacePlugin.kt                  WebView + androidx.webkit Profile
 android/src/androidTest/.../BrowserSurfaceIsolationInstrumentedTest.kt  cross-profile isolation
 ```
@@ -24,8 +26,9 @@ android/src/androidTest/.../BrowserSurfaceIsolationInstrumentedTest.kt  cross-pr
   `storage` is absent. No implicit platform default — a defaulted storage
   partition is the cross-surface leak this plugin exists to close.
 - **Fail-fast, never silent-degrade.** If the platform cannot honour `isolated`
-  (Android without multi-profile; no out-of-process renderer), `createSurface`
-  rejects. It does not fall back to shared storage.
+  (Android without multi-profile or an out-of-app renderer), `createSurface`
+  rejects. Android may reuse its sandboxed renderer across sibling WebViews;
+  per-tab isolation is guaranteed by the profile-backed storage boundary.
 
 ## Build / test
 
@@ -33,7 +36,8 @@ android/src/androidTest/.../BrowserSurfaceIsolationInstrumentedTest.kt  cross-pr
 bun run --cwd plugins/plugin-native-browser-surface build
 bun run --cwd plugins/plugin-native-browser-surface test        # web-fallback vitest
 bun run --cwd plugins/plugin-native-browser-surface typecheck
-# native: Android connectedAndroidTest; iOS XCTest on the App scheme.
+swift run --package-path plugins/plugin-native-browser-surface/ios BrowserSurfaceLifecycleContractProbe
+# native pixels/storage: Android connectedAndroidTest; iOS App scheme/device.
 ```
 
 Repo-wide rules (logger-only, error policy, comments) live in the root

@@ -5,8 +5,9 @@
  * view whose resolved {@link ResolvedSurfaceManifest} declares
  * `isolation: "native-webview"` must instead layer its arbitrary web content as
  * its OWN native child web surface with an explicit process/storage-sharing
- * policy, so heavy or untrusted content (the Browser view's third-party tabs)
- * never shares the host renderer process or the host storage partition.
+ * policy. iOS gives isolated surfaces a dedicated process pool; Android proves
+ * an out-of-app sandboxed renderer but may reuse it across sibling WebViews.
+ * Isolated storage never shares the host or a sibling partition.
  *
  * This module is the seam between the placement decision — the pure
  * {@link deriveSurfacePlacement}, which reads the manifest alone and says whether
@@ -30,13 +31,13 @@ import type { ResolvedSurfaceManifest } from "@elizaos/core";
 
 /**
  * Renderer-process sharing for an independent native surface.
- *  - `isolated` — its own renderer process (a fresh `WKProcessPool` on iOS, the
- *                 platform out-of-process renderer on Android). A crash or heavy
- *                 load cannot take down the host webview, and same-process script
- *                 reach is impossible.
- *  - `shared`   — reuses a plugin-owned shared process pool. Only for trusted
- *                 first-party native surfaces that must cooperate with each
- *                 other; never the implicit host default.
+ *  - `isolated` — the strongest native renderer boundary: a fresh
+ *                 `WKProcessPool` on iOS, and a verified out-of-app sandboxed
+ *                 renderer on Android. Android may reuse that renderer across
+ *                 sibling WebViews, but it never runs in the app/host process.
+ *  - `shared`   — requests platform-defined sharing. iOS reuses a plugin-owned
+ *                 pool; Android controls placement and may reuse its renderer
+ *                 regardless. Only trusted first-party surfaces may request it.
  */
 export type SurfaceProcessSharing = "isolated" | "shared";
 
@@ -82,10 +83,10 @@ export type SurfacePlacement =
  * `native-webview` is the only level that gets an independent native surface;
  * every other level (in-process, immersive, sandboxed-iframe) lives in the host
  * web surface — a sandboxed iframe is still a child of the host document, not a
- * native sibling. A native surface always isolates its renderer process (the
- * reason to embed a native child at all is to keep heavy/untrusted content out
- * of the host renderer). Storage is isolated by default and only shared when the
- * manifest grants `storage`, i.e. the view explicitly asked for host storage.
+ * native sibling. A native surface always requests the platform's strongest
+ * renderer separation so heavy/untrusted content stays outside the host
+ * renderer. Storage is isolated by default and only shared when the manifest
+ * grants `storage`, i.e. the view explicitly asked for host storage.
  */
 export function deriveSurfacePlacement(
   manifest: ResolvedSurfaceManifest,
@@ -197,7 +198,7 @@ export interface NativeSurfaceShell {
    * siblings before foregrounding it.
    */
   presentSurface(id: string | null): Promise<void>;
-  /** Tear a surface down and release its process + storage. */
+  /** Tear a surface down and release its native renderer and storage resources. */
   destroySurface(id: string): Promise<void>;
   /** Whether native creation for this id has been acknowledged and remains live. */
   hasSurface(id: string): boolean;
