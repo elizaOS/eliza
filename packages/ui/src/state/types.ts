@@ -512,9 +512,9 @@ export interface AppState {
    * can render a copyable "didn't open? visit this link" fallback panel
    * underneath the spinner. Cleared when polling stops.
    *
-   * See useCloudState.handleCloudLogin for the setter and the rationale —
-   * some desktop environments (notably Tails routing xdg-open to Tor
-   * Browser flatpak) open without crashing but never surface a usable
+   * See useCloudState's interactive login entry point for the setter and the
+   * rationale — some desktop environments (notably Tails routing xdg-open to
+   * Tor Browser flatpak) open without crashing but never surface a usable
    * window, leaving the user stuck.
    */
   elizaCloudLoginFallbackUrl: string | null;
@@ -921,10 +921,23 @@ export interface AppActions {
   completeFirstRun: (landingTab?: Tab) => void;
 
   // Cloud
-  handleCloudLogin: (
-    prePoppedWindow?: Window | null,
-    options?: CloudLoginOptions,
-  ) => Promise<void>;
+  /**
+   * Deliberate same-tab recovery entry point (boot-recovery conductor,
+   * native re-auth). Non-interactive by construction: it never opens a popup
+   * and never accepts a pre-popped window, so a missed interactive caller
+   * cannot compile against it. Interactive call sites MUST use
+   * `handleInteractiveCloudLogin`, which pre-opens the named popup itself —
+   * the null-window defect #17129 is unrepresentable at the type level.
+   */
+  handleCloudLoginRecovery: (options?: CloudLoginOptions) => Promise<void>;
+  /**
+   * Interactive-only Cloud login entry point. Pre-opens the named popup
+   * window itself, so interactive call sites cannot omit it (type-level
+   * contract, #17129). Use this for user-facing login buttons; keep
+   * `handleCloudLoginRecovery` for the deliberate same-tab boot-recovery
+   * path.
+   */
+  handleInteractiveCloudLogin: (options?: CloudLoginOptions) => Promise<void>;
   handleCloudDisconnect: (opts?: {
     skipConfirmation?: boolean;
   }) => Promise<void>;

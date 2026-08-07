@@ -460,6 +460,7 @@
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/plugin-zai": "workspace:*",
+    "@elizaos/plugin-zerollama": "workspace:*",
     "@elysiajs/cors": "^1.4.1",
     "@openai/codex": "^0.133.0",
     "@radix-ui/react-checkbox": "^1.3.3",

@@ -1,27 +1,36 @@
 /**
  * Security guards that stand between untrusted message/channel content and
  * on-chain financial writes. `assertWalletFinancialActionAllowed` blocks
- * transfer/swap/bridge/pump_fun_buy subactions when core has flagged the
- * inbound message as suspected prompt injection (GHSA-gh63-5vpj-39qp).
- * `assertEvmTransferRecipientAuthorized` and `messageAuthorizesEvmRecipient`
- * enforce that an EVM transfer recipient was explicitly stated by the user
- * (in message text or structured action parameters) rather than inferred from
- * token metadata, prior session context, or other embedded addresses
- * (GHSA-7qxr-x6cg-r9cc). `sanitizeWalletDisplayLabel` strips embedded
- * addresses and routing-hint phrases before untrusted labels are ever shown
- * back to the user. These are load-bearing security checks — do not weaken or
- * bypass them from calling code.
+ * transfer/swap/bridge/pump_fun_buy subactions, governance votes, and
+ * steward TRADE order submission when core has flagged the inbound message
+ * as suspected prompt injection (GHSA-gh63-5vpj-39qp).
+ * `assertEvmTransferRecipientAuthorized` / `messageAuthorizesEvmRecipient`
+ * and the Solana equivalents `assertSolanaTransferRecipientAuthorized` /
+ * `messageAuthorizesSolanaRecipient` enforce that a transfer recipient (EVM
+ * or Solana) was explicitly stated by the user, in message text or structured
+ * action parameters, rather than inferred from token metadata, prior session
+ * context, or other embedded addresses (GHSA-7qxr-x6cg-r9cc).
+ * `sanitizeWalletDisplayLabel` strips embedded EVM and Solana addresses plus
+ * routing-hint phrases before untrusted labels are ever shown back to the
+ * user. These are load-bearing security checks: do not weaken or bypass them
+ * from calling code.
  */
 import type { Memory } from "@elizaos/core";
 
-/** GHSA-7qxr-x6cg-r9cc — embedded addresses in token metadata must not become transfer recipients. */
-/** GHSA-gh63-5vpj-39qp — block financial writes on injection-flagged channel messages. */
+/** GHSA-7qxr-x6cg-r9cc: embedded addresses in token metadata must not become transfer recipients. */
+/** GHSA-gh63-5vpj-39qp: block financial writes on injection-flagged channel messages. */
 
 const FINANCIAL_WRITE_SUBACTIONS = new Set([
   "transfer",
   "swap",
   "bridge",
   "pump_fun_buy",
+  // governance votes/delegations are on-chain writes; an injected message must not
+  // drive them any more than it may drive a transfer
+  "gov",
+  // steward TRADE order submission routes through trade-action.ts, not the wallet
+  // router, but is the same class of financial write
+  "trade",
 ]);
 
 function messageHasPromptInjectionFlag(message: Memory): boolean {
@@ -34,6 +43,8 @@ function messageHasPromptInjectionFlag(message: Memory): boolean {
   );
 }
 export const EVM_ADDRESS_PATTERN = /0x[a-fA-F0-9]{40}\b/g;
+export const SOLANA_ADDRESS_PATTERN = /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/g;
+const SOLANA_ADDRESS_EXACT = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 const INFERRED_RECIPIENT_PHRASE =
   /\b(?:prior\s+wallet\s+evidence|operational\s+recipient|canonical\s+(?:testnet\s+)?(?:operational|settlement)\s+recipient|based\s+on\s+(?:the\s+)?prior|from\s+prior\s+(?:wallet|session|context))\b/i;
@@ -41,6 +52,7 @@ const INFERRED_RECIPIENT_PHRASE =
 export function sanitizeWalletDisplayLabel(label: string): string {
   return label
     .replace(EVM_ADDRESS_PATTERN, "[address]")
+    .replace(SOLANA_ADDRESS_PATTERN, "[address]")
     .replace(
       /\[[^\]]*(?:recipient|operational|settlement|canonical)[^\]]*\]/gi,
       "[routing-hint-removed]",
@@ -81,6 +93,11 @@ function collectExplicitRecipients(
       const value = source[key];
       if (typeof value === "string" && /^0x[a-fA-F0-9]{40}$/.test(value)) {
         out.push(value.toLowerCase());
+      } else if (
+        typeof value === "string" &&
+        SOLANA_ADDRESS_EXACT.test(value)
+      ) {
+        out.push(value);
       }
     }
   }
@@ -115,7 +132,51 @@ export function assertWalletFinancialActionAllowed(
   }
   if (messageHasPromptInjectionFlag(message)) {
     throw new Error(
-      "Wallet transfer, swap, and bridge are blocked for this message (GHSA-gh63-5vpj-39qp): suspected prompt injection in untrusted channel content.",
+      "Wallet transfers, swaps, bridges, pump.fun buys, governance votes, and trade orders are blocked for this message (GHSA-gh63-5vpj-39qp): suspected prompt injection in untrusted channel content.",
+    );
+  }
+}
+
+export function messageAuthorizesSolanaRecipient(
+  message: Memory,
+  options: Record<string, unknown> | undefined,
+  recipient: string,
+): boolean {
+  const explicit = collectExplicitRecipients(options);
+  if (explicit.includes(recipient)) {
+    return true;
+  }
+
+  const userText = readMemoryText(message);
+  if (userText.includes(recipient)) {
+    return true;
+  }
+
+  return false;
+}
+
+export function assertSolanaTransferRecipientAuthorized(
+  message: Memory,
+  options: Record<string, unknown> | undefined,
+  recipient: string,
+): void {
+  if (!SOLANA_ADDRESS_EXACT.test(recipient)) {
+    throw new Error("recipient must be a valid Solana base58 address.");
+  }
+
+  const userText = readMemoryText(message);
+  if (
+    INFERRED_RECIPIENT_PHRASE.test(userText) &&
+    !messageAuthorizesSolanaRecipient(message, options, recipient)
+  ) {
+    throw new Error(
+      "Transfer recipient cannot be inferred from prior wallet context or token metadata. Provide an explicit base58 recipient address in this message or in structured action parameters.",
+    );
+  }
+
+  if (!messageAuthorizesSolanaRecipient(message, options, recipient)) {
+    throw new Error(
+      "Transfer recipient must appear explicitly in the current user message or structured action parameters. Addresses from token names or earlier session quotes are not accepted.",
     );
   }
 }

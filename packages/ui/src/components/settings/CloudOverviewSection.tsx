@@ -2,7 +2,7 @@
  * Settings → Cloud overview: the marketing summary of Eliza Cloud (hosted
  * connectors, cloud agents, API keys/publishing, billing, marketplace) plus the
  * connect/open CTA. Reads connection + login-busy state from the app store and
- * drives `handleCloudLogin`; the CTA is agent-addressable via `useAgentElement`.
+ * drives `handleInteractiveCloudLogin`; the CTA is agent-addressable via `useAgentElement`.
  */
 
 import {
@@ -19,7 +19,7 @@ import {
 import { useCallback } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { useAppSelectorShallow } from "../../state";
-import { preOpenCloudLoginWindow } from "../../state/cloud-login-launch";
+import { claimCloudLoginWindow } from "../../state/cloud-login-launch";
 import { Button } from "../ui/button";
 import { CloudAgentsSection } from "./CloudAgentsSection";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
@@ -63,7 +63,7 @@ export function CloudOverviewSection() {
     elizaCloudDisconnecting,
     elizaCloudLoginBusy,
     elizaCloudUserId,
-    handleCloudLogin,
+    handleInteractiveCloudLogin,
     handleCloudSignOut,
     setActionNotice,
     t,
@@ -72,21 +72,25 @@ export function CloudOverviewSection() {
     elizaCloudDisconnecting: s.elizaCloudDisconnecting,
     elizaCloudLoginBusy: s.elizaCloudLoginBusy,
     elizaCloudUserId: s.elizaCloudUserId,
-    handleCloudLogin: s.handleCloudLogin,
+    handleInteractiveCloudLogin: s.handleInteractiveCloudLogin,
     handleCloudSignOut: s.handleCloudSignOut,
     setActionNotice: s.setActionNotice,
     t: s.t,
   }));
 
   const handleConnect = useCallback(() => {
-    void handleCloudLogin(preOpenCloudLoginWindow()).catch((error) => {
+    // Pre-open the popup synchronously while the click's user activation is
+    // still live — the login entry point is async and would otherwise lose
+    // activation to its awaits (#17064 regression guard).
+    claimCloudLoginWindow();
+    void handleInteractiveCloudLogin().catch((error) => {
       setActionNotice(
         error instanceof Error ? error.message : "Could not start Cloud login.",
         "error",
         5000,
       );
     });
-  }, [handleCloudLogin, setActionNotice]);
+  }, [handleInteractiveCloudLogin, setActionNotice]);
 
   const handleSignOut = useCallback(() => {
     void handleCloudSignOut().catch((error) => {
@@ -144,16 +148,26 @@ export function CloudOverviewSection() {
       >
         <SettingsRow
           icon={Rocket}
-          label={t("settings.cloudOverview.localModeLabel", {
-            defaultValue: elizaCloudConnected
-              ? "Cloud is connected"
-              : "Local mode is active",
-          })}
-          description={t("settings.cloudOverview.localModeDescription", {
-            defaultValue: elizaCloudConnected
-              ? "Eliza can use Cloud account features while keeping this local runtime available."
-              : "This build keeps agent runtime and local connectors on your machine unless you choose to connect Cloud.",
-          })}
+          label={
+            elizaCloudConnected
+              ? t("settings.cloudOverview.cloudConnectedLabel", {
+                  defaultValue: "Cloud is connected",
+                })
+              : t("settings.cloudOverview.localModeActiveLabel", {
+                  defaultValue: "Local mode is active",
+                })
+          }
+          description={
+            elizaCloudConnected
+              ? t("settings.cloudOverview.cloudConnectedDescription", {
+                  defaultValue:
+                    "Eliza can use Cloud account features while keeping this local runtime available.",
+                })
+              : t("settings.cloudOverview.localModeActiveDescription", {
+                  defaultValue:
+                    "This build keeps agent runtime and local connectors on your machine unless you choose to connect Cloud.",
+                })
+          }
         />
         {elizaCloudConnected ? (
           <SettingsRow

@@ -2,14 +2,15 @@
 # Multi-tenant Discord gateway for Eliza Cloud
 #
 # BUILD CONTEXT IS THE REPOSITORY ROOT, not this directory. The service depends
-# on the `@elizaos/cloud-services-common` workspace package, so a package-only
-# context cannot resolve its `workspace:*` dependency.
+# on the `@elizaos/cloud-services-common` workspace package, and `workspace:*`
+# cannot resolve from a context that contains only this package — which is why
+# every build since that dependency landed failed and the deployed image stayed
+# frozen. Matching the gateway-webhook pattern (#17841), the deps stage writes a
+# pruned workspace root containing just this service and the one package it
+# needs, so `bun install` resolves the workspace link without installing the
+# whole monorepo.
 #
 #   docker build -f packages/cloud/services/gateway-discord/Dockerfile .
-#
-# The deps stage creates a pruned workspace containing only this service and
-# the shared Cloud service package. That keeps installs small while preserving
-# Bun's workspace resolution and the runtime node_modules layout.
 
 # BUN_BASE selects the Bun base image. Default targets linux/amd64 + linux/arm64
 # via upstream oven/bun. For linux/riscv64 (no upstream image — oven-sh/bun#6266,
@@ -54,9 +55,18 @@ ENV NODE_ENV=production
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 gateway
 
-# The bundle leaves a few dependencies external at runtime. Bun's package store
-# lives at the workspace root and the member directory holds its links, so both
-# paths must retain their build-stage layout.
+# The bundle still resolves a few dependencies at runtime (ioredis reaches into
+# its own package internals), so the installed tree ships with it. bun's store
+# lives at the workspace root and the member directory holds the links, so both
+# have to keep their original paths.
+#
+# Note: only `${SERVICE_DIR}/node_modules` is copied below, not `${COMMON_DIR}`.
+# The workspace link `node_modules/@elizaos/cloud-services-common` in the
+# service tree therefore points at a directory that is absent from this stage.
+# That is intentional: `bun build` inlines the workspace package (only
+# `zlib-sync` stays external), so nothing resolves that specifier at runtime in
+# this image. Do not "fix" this by copying `${COMMON_DIR}` unless the entrypoint
+# stops bundling the workspace source.
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/${SERVICE_DIR}/node_modules ./${SERVICE_DIR}/node_modules
 COPY --from=builder /app/${SERVICE_DIR}/dist ./${SERVICE_DIR}/dist

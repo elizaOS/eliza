@@ -75,7 +75,10 @@ import {
 import { APP_RESUME_EVENT } from "../events";
 import { ACCENT_PRESETS, useAppSelectorShallow } from "../state";
 import { useConversationMessages } from "../state/ConversationMessagesContext.hooks";
-import { preOpenCloudLoginWindow } from "../state/cloud-login-launch";
+import {
+  claimCloudLoginWindow,
+  releaseClaimedCloudLoginWindow,
+} from "../state/cloud-login-launch";
 import { hasUsableStoredStewardToken } from "../state/cloud-steward-login";
 import { startTutorial } from "../tutorial/tutorial-service";
 import { clearFirstRunTranscriptMessages } from "./clear-first-run-transcript";
@@ -119,7 +122,8 @@ const GREETING = `${FIRST_RUN_GREETING} First, where should your agent run?`;
 
 // Cloud-only greetings (#13377). The sign-in button reuses the runtime:cloud
 // action value on purpose: the tap IS the user gesture that launches the real
-// login flow (handleCloudLogin inside the provision flow — popup where one can
+// login flow (handleInteractiveCloudLogin inside the provision flow — popup
+// where one can
 // open, same-tab /login navigation where popups are blocked or hostile,
 // #15143). Keep this as one obvious CTA; the Cloud flow itself owns OAuth and
 // provisioning, so there is no second in-chat "Connect" step.
@@ -420,7 +424,7 @@ export function useFirstRunConductor(): void {
     firstRunName,
     completeFirstRun,
     elizaCloudConnected,
-    handleCloudLogin,
+    handleInteractiveCloudLogin,
     setTab,
     setState,
     setUiAccent,
@@ -430,7 +434,7 @@ export function useFirstRunConductor(): void {
     firstRunName: s.firstRunName,
     completeFirstRun: s.completeFirstRun,
     elizaCloudConnected: s.elizaCloudConnected,
-    handleCloudLogin: s.handleCloudLogin,
+    handleInteractiveCloudLogin: s.handleInteractiveCloudLogin,
     setTab: s.setTab,
     setState: s.setState,
     setUiAccent: s.setUiAccent,
@@ -601,8 +605,7 @@ export function useFirstRunConductor(): void {
     () => ({
       uiLanguage,
       elizaCloudConnected,
-      handleCloudLogin,
-      preOpenWindow: preOpenCloudLoginWindow,
+      handleInteractiveCloudLogin,
       setRuntimeState: (key, value) => {
         setState(key, value as never);
       },
@@ -633,7 +636,7 @@ export function useFirstRunConductor(): void {
     [
       uiLanguage,
       elizaCloudConnected,
-      handleCloudLogin,
+      handleInteractiveCloudLogin,
       setState,
       setTab,
       seedTutorial,
@@ -791,26 +794,14 @@ export function useFirstRunConductor(): void {
   // ── Flow launchers (shared by the action handler + the auto-resume) ──────
   const startCloudProvisionFlow = React.useCallback(() => {
     busyRef.current = true;
-    const ports = portsRef.current;
-    const preOpenedAuthWindow = ports.preOpenWindow?.() ?? null;
-    let preOpenedAuthWindowClaimed = false;
-    const closePreOpenedAuthWindow = () => {
-      if (!preOpenedAuthWindow) return;
-      try {
-        preOpenedAuthWindow.close();
-      } catch (error) {
-        void error;
-        // error-policy:J6 best-effort cleanup for an auth popup we no longer need.
-      }
-    };
-    const flowPorts: FirstRunFinishPorts = {
-      ...ports,
-      preOpenWindow: () => {
-        preOpenedAuthWindowClaimed = true;
-        return preOpenedAuthWindow;
-      },
-    };
-    void listOrAutoProvisionCloudAgent(draftRef.current, flowPorts)
+    // Pre-open the cloud-login popup synchronously NOW — the action handler is
+    // still inside the user gesture, but the provision flow below awaits
+    // several network round-trips before reaching the (async) interactive login
+    // entry point. User activation does not survive those awaits, so opening the
+    // window here keeps the popup path (#15143) while entry point's named
+    // `window.open` would be blocked (#17064 regression guard).
+    claimCloudLoginWindow();
+    void listOrAutoProvisionCloudAgent(draftRef.current, portsRef.current)
       .then((outcome) => {
         if (
           outcome.kind === "done" ||
@@ -820,7 +811,6 @@ export function useFirstRunConductor(): void {
           // Login resolved + provisioning is proceeding — the resume marker has
           // served its purpose; drop it so a later relaunch doesn't re-resume.
           clearCloudLoginPending();
-          closePreOpenedAuthWindow();
         }
         handleOutcome(outcome);
       })
@@ -830,19 +820,26 @@ export function useFirstRunConductor(): void {
       // recovery action.
       .catch((err: unknown) => seedError(cloudFailureMessage(err)))
       .finally(() => {
-        if (preOpenedAuthWindow && !preOpenedAuthWindowClaimed) {
-          closePreOpenedAuthWindow();
-        }
         busyRef.current = false;
+        // Paths that never reach interactive login (already-authenticated
+        // cloud sessions short-circuit before the popup is consumed) must not
+        // leave the gesture-claimed about:blank window open.
+        releaseClaimedCloudLoginWindow();
       });
   }, [handleOutcome, seedError]);
 
   const startProviderFinish = React.useCallback(() => {
     busyRef.current = true;
+    // Same gesture-window rationale as startCloudProvisionFlow: hybrid/local
+    // finishes may await device-RAM gates and status probes before reaching the
+    // interactive login entry point — open the popup synchronously now.
+    claimCloudLoginWindow();
     void runFirstRunFinish(draftRef.current, portsRef.current)
       .then(handleOutcome)
       .finally(() => {
         busyRef.current = false;
+        // Local-runtime finishes never consume the claimed popup — close it.
+        releaseClaimedCloudLoginWindow();
       });
   }, [handleOutcome]);
 

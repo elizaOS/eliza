@@ -348,6 +348,7 @@
     "@elizaos/plugin-mcp": "workspace:*",
     "@elizaos/plugin-native-filesystem": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-zerollama": "workspace:*",
     "@elizaos/plugin-registry": "workspace:*",
     "@elizaos/plugin-pty": "workspace:*",
     "@elizaos/plugin-scheduling": "workspace:*",

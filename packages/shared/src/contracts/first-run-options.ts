@@ -480,7 +480,7 @@ export const FIRST_RUN_PROVIDER_CATALOG = [
     id: "ollama",
     name: "Ollama",
     envKey: null,
-    pluginName: "@elizaos/plugin-ollama",
+    pluginName: "@elizaos/plugin-zerollama",
     keyPrefix: null,
     description: "Local models, no API key needed.",
     family: "ollama",

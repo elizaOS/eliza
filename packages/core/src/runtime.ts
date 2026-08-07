@@ -7545,13 +7545,17 @@ export class AgentRuntime implements IAgentRuntime {
 				providerAttributions,
 			});
 		} catch (error) {
-			// error-policy:J7 Trajectory logging must never break core model flow.
+			// error-policy:J7 diagnostics-must-not-kill-the-loop — model responses
+			// remain usable when trajectory persistence fails, while reportError
+			// makes the missing telemetry observable to the agent and owner.
 			this.logger.warn(
 				{ error, modelType: args.modelType },
 				"Failed to record model-call trajectory",
 			);
 			this.reportError("AgentRuntime.recordUseModelTrajectory", error, {
 				modelType: args.modelType,
+				resolvedModelKey: args.resolvedModelKey,
+				provider: args.provider,
 			});
 		}
 	}
