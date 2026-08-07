@@ -174,12 +174,28 @@ export function injectApiBaseIntoHtml(
     );
   }
   if (trimmedToken) {
-    // Seed boot-config apiToken (single source of truth for getElizaApiToken) before
-    // React boots — same pattern as apiBase above and the Electrobun renderer.
-    // Also mirror into elizaos:active-server.accessToken so startup restore and
-    // LAN clients (e.g. iPad Safari with no DevTools) authenticate without pairing.
+    // Three sinks, because three different readers resolve the token:
+    //
+    // 1. boot-config `apiToken` — the single source of truth for
+    //    `getElizaApiToken()`, which reads ONLY the boot-config store. Seeding
+    //    it before React boots is what actually fixes first-render auth; the
+    //    bare window global below was never consulted by that accessor.
+    // 2. `window.__ELIZA_API_TOKEN__` — still the documented contract for the
+    //    native web shims (`plugin-native-agent`, `plugin-native-websiteblocker`)
+    //    and the Android WebView hydration. They read the global directly and
+    //    fall back only to `sessionStorage`, so dropping it would silently send
+    //    their API calls unauthenticated.
+    // 3. `elizaos:active-server.accessToken` — so the startup-restore phase
+    //    re-authenticates after a hard reload without re-pairing, for LAN
+    //    clients (e.g. iPad Safari) that cannot paste a token by hand.
+    //
+    // `eliza:first-run-complete` is set alongside because this token is only
+    // injected into an already-provisioned deployment (cloud container, or an
+    // explicit `ELIZA_FORCE_INJECT_TOKEN` opt-in behind the operator's own auth
+    // gate) — the character and provider are configured already, so the
+    // first-run wizard has nothing left to ask.
     parts.push(
-      `(function(){var t=${JSON.stringify(trimmedToken)},k=Symbol.for("elizaos.app.boot-config"),w=window,prev=w.__ELIZAOS_APP_BOOT_CONFIG__||(w[k]&&w[k].current)||{},next=Object.assign({},prev,{apiToken:t});w.__ELIZAOS_APP_BOOT_CONFIG__=next;w[k]={current:next};try{localStorage.setItem("eliza:first-run-complete","1");var sk="elizaos:active-server",sp={};try{sp=JSON.parse(localStorage.getItem(sk)||"{}")||{};}catch(e){}localStorage.setItem(sk,JSON.stringify(Object.assign({id:"local:embedded",kind:"local",label:"This device"},sp,{accessToken:t})));}catch(e){}})();`,
+      `(function(){var t=${JSON.stringify(trimmedToken)},k=Symbol.for("elizaos.app.boot-config"),w=window,prev=w.__ELIZAOS_APP_BOOT_CONFIG__||(w[k]&&w[k].current)||{},next=Object.assign({},prev,{apiToken:t});w.__ELIZAOS_APP_BOOT_CONFIG__=next;w[k]={current:next};w.__ELIZA_API_TOKEN__=t;try{localStorage.setItem("eliza:first-run-complete","1");var sk="elizaos:active-server",sp={};try{sp=JSON.parse(localStorage.getItem(sk)||"{}")||{};}catch(e){}localStorage.setItem(sk,JSON.stringify(Object.assign({id:"local:embedded",kind:"local",label:"This device"},sp,{accessToken:t})));}catch(e){}})();`,
     );
   }
   const injection = Buffer.from(`<script>${parts.join("")}</script>`);
