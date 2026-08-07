@@ -683,6 +683,7 @@ describe("App navigate-view event wiring", () => {
     );
     expect(loader.getAttribute("data-view-id")).toBe("remote-ledger");
     expect(loader.getAttribute("data-view-type")).toBe("gui");
+    expect(queryByTestId("view-header")).toBeNull();
     expect(
       container
         .querySelector('[data-shell-content-region="true"]')

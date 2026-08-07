@@ -9,7 +9,10 @@ import {
   AudioLines,
   FileText,
   Film,
+  House,
   Loader2,
+  Mic,
+  MicOff,
   Music,
   Paperclip,
   Search,
@@ -49,6 +52,7 @@ import {
   CHAT_OPEN_EVENT,
   CHAT_PREFILL_EVENT,
   type ChatPrefillEventDetail,
+  dispatchNavigateViewEvent,
   ELIZA_BACK_INTENT_EVENT,
   NAVIGATE_VIEW_EVENT,
   type NavigateViewDetail,
@@ -1216,6 +1220,11 @@ export function ChatOverlay({
         realtimeVoice.active ||
         realtimeVoice.connecting ||
         realtimeVoice.status !== "idle"),
+  );
+  const realtimeVoiceControlsVisible = Boolean(
+    realtimeVoice?.enabled &&
+      handsFree &&
+      (realtimeVoice.active || realtimeVoice.connecting),
   );
   // True once the server has reported no LLM/model provider is configured (a
   // `no_provider` assistant turn). Defaulted for minimal mock controllers.
@@ -5757,9 +5766,8 @@ export function ChatOverlay({
             {/* Sheet header — shown at the HALF detent and up (not just FULL).
               One infinite thread (#13531): no maximize/minimize (that's a
               vertical pull now) and no clear/new-chat (the thread never resets).
-              It carries NO buttons — search/upload/camera/transcribe moved to the
-              composer "+" menu and Home lives in the launcher — so the chat stops
-              acting like a second app nav bar. The bar remains only to reserve
+              It carries NO buttons — Home/search/upload live in the composer
+              "+" menu — so the chat stops acting like a second app nav bar. The bar remains only to reserve
               the safe-area top inset at full-bleed and host the transcribe badge. */}
             {threadPresented ? (
               <motion.div
@@ -5798,9 +5806,8 @@ export function ChatOverlay({
                   "mx-auto w-full max-w-3xl",
                 )}
               >
-                {/* The header carries no nav/search buttons — thread Search and
-                    Upload live in the composer "+" menu, while Home lives in
-                    the launcher. This bar exists only to reserve the safe-area
+                {/* The header carries no nav/search buttons — Home, Search, and
+                    Upload live in the composer "+" menu. This bar exists only to reserve the safe-area
                     top inset at full-bleed and host the transcription badge. */}
                 {transcriptionComposerActive ? (
                   <div
@@ -6262,8 +6269,8 @@ export function ChatOverlay({
                   onPick={pickSlashItem}
                 />
               ) : null}
-              {/* The "+" opens surface-local Search and Upload actions for this
-                  in-app conversation, never connector actions on a
+              {/* The "+" opens shell navigation plus surface-local Search and
+                  Upload actions for this in-app conversation, never connector actions on a
                   Discord/Telegram room. Search is agent-driveable; Upload is a
                   pure client affordance. */}
               {!transcriptionComposerActive ? (
@@ -6295,6 +6302,24 @@ export function ChatOverlay({
                     glass
                     className="min-w-[13rem]"
                   >
+                    <DropdownMenuItem
+                      className="cursor-pointer gap-2.5 data-[highlighted]:bg-bg-hover"
+                      onSelect={() => {
+                        collapseToPill();
+                        dispatchNavigateViewEvent({
+                          viewId: "views",
+                          viewPath: "/views",
+                          viewLabel: "Home",
+                          source: "user",
+                        });
+                      }}
+                    >
+                      <House
+                        className="h-4 w-4 shrink-0 text-muted"
+                        aria-hidden
+                      />
+                      Back to Home
+                    </DropdownMenuItem>
                     <DropdownMenuItem
                       className="cursor-pointer gap-2.5 data-[highlighted]:bg-bg-hover"
                       onSelect={() => openSearch()}
@@ -6437,8 +6462,35 @@ export function ChatOverlay({
               {/* Trailing controls. */}
               <div
                 data-testid="chat-composer-trailing-controls"
-                className="grid shrink-0 grid-cols-1 items-center"
+                className={cn(
+                  "grid shrink-0 items-center",
+                  realtimeVoiceControlsVisible ? "grid-cols-2" : "grid-cols-1",
+                )}
               >
+                {realtimeVoiceControlsVisible && realtimeVoice ? (
+                  <ComposerControlSlot
+                    slot="left"
+                    reduceMotion={reduce}
+                    controlKey={
+                      realtimeVoice.microphoneMuted
+                        ? "voice-microphone-muted"
+                        : "voice-microphone-live"
+                    }
+                  >
+                    <SoftButton
+                      icon={realtimeVoice.microphoneMuted ? MicOff : Mic}
+                      label={
+                        realtimeVoice.microphoneMuted
+                          ? "unmute microphone"
+                          : "mute microphone"
+                      }
+                      active={realtimeVoice.microphoneMuted}
+                      pressed={realtimeVoice.microphoneMuted}
+                      onClick={realtimeVoice.toggleMicrophoneMute}
+                      testId="chat-composer-voice-mute"
+                    />
+                  </ComposerControlSlot>
+                ) : null}
                 {/* One stable rightmost slot owns every primary action. Talk no
                     longer shares the row with an ambiguous second mic, and a
                     held pointer has exactly the same Cartesia action as a tap. */}

@@ -192,6 +192,7 @@ export type ApprovalPayload =
         | "microsoft"
         | "apple_calendar"
         | "ics"
+        | "eliza"
         | null;
       expectedEventUpdatedAt?: string | null;
       expectedEventStartAtMs?: number | null;
@@ -221,6 +222,7 @@ export type ApprovalPayload =
         | "microsoft"
         | "apple_calendar"
         | "ics"
+        | "eliza"
         | null;
       expectedEventUpdatedAt?: string | null;
       expectedEventStartAtMs?: number | null;

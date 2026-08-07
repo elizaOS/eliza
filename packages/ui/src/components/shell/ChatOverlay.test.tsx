@@ -2134,8 +2134,10 @@ describe("ChatOverlay", () => {
               active: true,
               connecting: false,
               paused: false,
+              microphoneMuted: false,
               status,
               error: null,
+              toggleMicrophoneMute: vi.fn(),
             },
           })}
         />,
@@ -2187,8 +2189,10 @@ describe("ChatOverlay", () => {
       active: true,
       connecting: false,
       paused: false,
+      microphoneMuted: false,
       status: "listening" as const,
       error: null,
+      toggleMicrophoneMute: vi.fn(),
     };
     const { rerender } = render(
       <ChatOverlay
@@ -2268,8 +2272,10 @@ describe("ChatOverlay", () => {
             active: false,
             connecting: false,
             paused: false,
+            microphoneMuted: false,
             status: "idle",
             error: "Cartesia voice could not connect. Tap Talk to retry.",
+            toggleMicrophoneMute: vi.fn(),
           },
         })}
       />,
@@ -2295,7 +2301,7 @@ describe("ChatOverlay", () => {
     expect(screen.getAllByTestId("chat-composer-textarea")).toHaveLength(1);
   });
 
-  it("keeps chat actions focused on search and upload", () => {
+  it("keeps Home above the surface-local search and upload actions", () => {
     render(<ChatOverlay controller={makeController()} />);
     const plus = screen.getByTestId("chat-composer-plus");
     expect(screen.getByLabelText("chat actions")).toBeTruthy();
@@ -2311,11 +2317,45 @@ describe("ChatOverlay", () => {
       pointerType: "mouse",
     });
 
-    expect(screen.getByText("Search chat…")).toBeTruthy();
+    const home = screen.getByText("Back to Home");
+    const search = screen.getByText("Search chat…");
+    expect(home).toBeTruthy();
+    expect(search).toBeTruthy();
     expect(screen.getByText("Upload file")).toBeTruthy();
+    expect(
+      home.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(screen.queryByText("Record long-form transcript…")).toBeNull();
     expect(screen.queryByText("Enable camera")).toBeNull();
     expect(screen.queryByText("Stop transcribing")).toBeNull();
+  });
+
+  it("returns to the launcher from the chat-actions menu", () => {
+    const onNavigate = vi.fn();
+    window.addEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
+    render(<ChatOverlay controller={makeController()} />);
+
+    const plus = screen.getByTestId("chat-composer-plus");
+    fireEvent.pointerDown(plus, {
+      button: 0,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+    fireEvent.pointerUp(plus, {
+      button: 0,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+    fireEvent.click(screen.getByText("Back to Home"));
+
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect((onNavigate.mock.calls[0][0] as CustomEvent).detail).toEqual({
+      viewId: "views",
+      viewPath: "/views",
+      viewLabel: "Home",
+      source: "user",
+    });
+    window.removeEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
   });
 
   it.each(["half", "full"] as const)(
@@ -2956,17 +2996,61 @@ describe("ChatOverlay", () => {
     expect(screen.getByTestId("chat-composer-action")).toBeTruthy();
   });
 
-  it("keeps one Talk control while realtime voice is active", () => {
-    render(
+  it("adds one microphone mute toggle immediately left of Stop during realtime voice", () => {
+    const toggleMicrophoneMute = vi.fn();
+    const realtimeVoice = {
+      enabled: true,
+      active: true,
+      connecting: false,
+      paused: false,
+      microphoneMuted: false,
+      status: "listening" as const,
+      error: null,
+      toggleMicrophoneMute,
+    };
+    const { rerender } = render(
       <ChatOverlay
         controller={makeController({
           handsFree: true,
           phase: "listening",
           recording: true,
-        } as unknown as Partial<ShellController>)}
+          realtimeVoice,
+        })}
       />,
     );
-    expect(screen.getByTestId("chat-composer-mic")).toBeTruthy();
+    const stop = screen.getByTestId("chat-composer-mic");
+    const mute = screen.getByTestId("chat-composer-voice-mute");
+    expect(
+      screen.getByTestId("chat-composer-control-slot-right").contains(stop),
+    ).toBe(true);
+    expect(
+      screen.getByTestId("chat-composer-control-slot-left").contains(mute),
+    ).toBe(true);
+    expect(mute.getAttribute("aria-label")).toBe("mute microphone");
+    expect(mute.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(mute);
+    expect(toggleMicrophoneMute).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <ChatOverlay
+        controller={makeController({
+          handsFree: true,
+          phase: "listening",
+          recording: true,
+          realtimeVoice: { ...realtimeVoice, microphoneMuted: true },
+        })}
+      />,
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "unmute microphone" })
+        .getAttribute("aria-label"),
+    ).toBe("unmute microphone");
+    expect(
+      screen
+        .getByRole("button", { name: "unmute microphone" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
     expect(screen.getAllByTestId("chat-composer-mic")).toHaveLength(1);
     expect(screen.queryByTestId("chat-composer-transcribe")).toBeNull();
   });

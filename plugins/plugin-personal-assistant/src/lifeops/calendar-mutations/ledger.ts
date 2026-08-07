@@ -212,6 +212,7 @@ function parseSnapshotProvider(value: unknown): LifeOpsCalendarProvider {
     case "microsoft":
     case "apple_calendar":
     case "ics":
+    case "eliza":
       return value;
     default:
       return receiptInvariant(

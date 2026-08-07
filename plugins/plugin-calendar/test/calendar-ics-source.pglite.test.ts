@@ -659,6 +659,11 @@ describe("CalendarService guarded ICS sources (real PGlite)", {
     expect(conflictSnapshot).toEqual({
       sources: [
         expect.objectContaining({
+          id: expect.stringContaining(":eliza:"),
+          status: "fresh",
+          events: [],
+        }),
+        expect.objectContaining({
           status: "fresh",
           events: [
             expect.objectContaining({

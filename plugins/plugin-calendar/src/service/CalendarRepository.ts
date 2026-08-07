@@ -280,6 +280,38 @@ function calendarEventValues(event: LifeOpsCalendarEvent): string {
 export class CalendarRepository {
   constructor(private readonly runtime: IAgentRuntime) {}
 
+  async insertCalendarEventIfAbsent(
+    event: LifeOpsCalendarEvent,
+  ): Promise<{ event: LifeOpsCalendarEvent; inserted: boolean }> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `INSERT INTO app_calendar.life_calendar_events (
+        id, agent_id, provider, side, calendar_id, external_event_id, title,
+        description, location, status, start_at, end_at, is_all_day,
+        timezone, html_link, conference_link, organizer_json, attendees_json,
+        connector_account_id, grant_id, metadata_json, synced_at, updated_at
+      ) VALUES ${calendarEventValues(event)}
+      ON CONFLICT DO NOTHING
+      RETURNING *`,
+    );
+    const inserted = rows[0];
+    if (inserted) {
+      return { event: parseCalendarEvent(inserted), inserted: true };
+    }
+    const existing = await this.getCalendarEventById(event.agentId, event.id);
+    if (!existing) {
+      throw new ElizaError(
+        "Calendar event idempotency conflict did not resolve to its original row.",
+        {
+          code: "CALENDAR_EVENT_IDEMPOTENCY_CONFLICT",
+          context: { agentId: event.agentId, eventId: event.id },
+          severity: "fatal",
+        },
+      );
+    }
+    return { event: existing, inserted: false };
+  }
+
   async upsertCalendarEvent(
     event: LifeOpsCalendarEvent,
     side: LifeOpsConnectorSide = event.side,
@@ -396,6 +428,22 @@ export class CalendarRepository {
     );
   }
 
+  async deleteCalendarEventByIdIfVersion(args: {
+    agentId: string;
+    eventId: string;
+    expectedVersion: string;
+  }): Promise<boolean> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `DELETE FROM app_calendar.life_calendar_events
+        WHERE agent_id = ${sqlQuote(args.agentId)}
+          AND id = ${sqlQuote(args.eventId)}
+          AND metadata_json::jsonb ->> 'etag' = ${sqlQuote(args.expectedVersion)}
+      RETURNING id`,
+    );
+    return rows.length === 1;
+  }
+
   async pruneCalendarEventsInWindow(
     agentId: string,
     provider: LifeOpsCalendarProvider,
@@ -451,6 +499,70 @@ export class CalendarRepository {
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(eventId)}
         LIMIT 1`,
+    );
+    const row = rows[0];
+    return row ? parseCalendarEvent(row) : null;
+  }
+
+  async getCalendarEventByExternalId(args: {
+    agentId: string;
+    provider: LifeOpsCalendarProvider;
+    externalEventId: string;
+    calendarId?: string | null;
+    side?: LifeOpsConnectorSide;
+    grantId?: string;
+  }): Promise<LifeOpsCalendarEvent | null> {
+    const calendarClause =
+      args.calendarId && args.calendarId !== "all"
+        ? `AND calendar_id = ${sqlQuote(args.calendarId)}`
+        : "";
+    const sideClause = args.side ? `AND side = ${sqlQuote(args.side)}` : "";
+    const grantClause = args.grantId
+      ? `AND grant_id = ${sqlQuote(args.grantId)}`
+      : "";
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_calendar.life_calendar_events
+        WHERE agent_id = ${sqlQuote(args.agentId)}
+          AND provider = ${sqlQuote(args.provider)}
+          AND external_event_id = ${sqlQuote(args.externalEventId)}
+          ${calendarClause}
+          ${sideClause}
+          ${grantClause}
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    return row ? parseCalendarEvent(row) : null;
+  }
+
+  async replaceCalendarEventIfVersion(args: {
+    event: LifeOpsCalendarEvent;
+    expectedVersion: string;
+  }): Promise<LifeOpsCalendarEvent | null> {
+    const event = args.event;
+    const rows = await executeRawSql(
+      this.runtime,
+      `UPDATE app_calendar.life_calendar_events SET
+        title = ${sqlQuote(event.title)},
+        description = ${sqlQuote(event.description)},
+        location = ${sqlQuote(event.location)},
+        status = ${sqlQuote(event.status)},
+        start_at = ${sqlQuote(event.startAt)},
+        end_at = ${sqlQuote(event.endAt)},
+        is_all_day = ${sqlBoolean(event.isAllDay)},
+        timezone = ${sqlText(event.timezone)},
+        html_link = ${sqlText(event.htmlLink)},
+        conference_link = ${sqlText(event.conferenceLink)},
+        organizer_json = ${event.organizer ? sqlJson(event.organizer) : "NULL"},
+        attendees_json = ${sqlJson(event.attendees)},
+        metadata_json = ${sqlJson(event.metadata)},
+        synced_at = ${sqlQuote(event.syncedAt)},
+        updated_at = ${sqlQuote(event.updatedAt)}
+        WHERE agent_id = ${sqlQuote(event.agentId)}
+          AND id = ${sqlQuote(event.id)}
+          AND metadata_json::jsonb ->> 'etag' = ${sqlQuote(args.expectedVersion)}
+      RETURNING *`,
     );
     const row = rows[0];
     return row ? parseCalendarEvent(row) : null;

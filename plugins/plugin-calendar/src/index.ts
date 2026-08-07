@@ -77,6 +77,14 @@ export {
   type UseCalendarWeekResult,
   useCalendarWeek,
 } from "./hooks/useCalendarWeek.js";
+export {
+  ELIZA_CALENDAR_ACCOUNT_ID,
+  ELIZA_CALENDAR_GRANT_ID,
+  ELIZA_CALENDAR_ID,
+  ELIZA_CALENDAR_PROVIDER,
+  isElizaCalendarEventId,
+  isElizaCalendarGrant,
+} from "./internal/eliza-calendar.js";
 export { CalendarServiceError } from "./internal/errors.js";
 export * from "./meetings/index.js";
 export * from "./microsoft/index.js";

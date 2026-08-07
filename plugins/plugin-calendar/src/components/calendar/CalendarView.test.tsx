@@ -122,6 +122,7 @@ function makeResult(
     windowStart: new Date("2026-06-14T00:00:00.000Z"),
     windowEnd: new Date("2026-06-21T00:00:00.000Z"),
     refresh,
+    goToDate: vi.fn(),
     goToToday,
     goPrevious,
     goNext,

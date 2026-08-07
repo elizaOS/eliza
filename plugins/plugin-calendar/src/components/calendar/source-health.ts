@@ -30,6 +30,7 @@ const PROVIDER_LABELS: Record<
   microsoft: "Outlook",
   apple_calendar: "Apple",
   ics: "Subscription",
+  eliza: "Eliza",
 };
 
 function sourceId(source: LifeOpsCalendarSourceHealth): string {
@@ -102,11 +103,16 @@ export function toCalendarSourceHealthRows(
   return sources.map((source) => {
     const provider = PROVIDER_LABELS[source.key.provider];
     const summary = source.summary.trim();
+    const presentation = sourcePresentation(source, now);
     return {
       id: sourceId(source),
       label: summary ? `${provider} · ${summary}` : provider,
       status: source.status,
-      ...sourcePresentation(source, now),
+      ...presentation,
+      freshnessLabel:
+        source.key.provider === "eliza" && source.status === "fresh"
+          ? "stored locally"
+          : presentation.freshnessLabel,
     };
   });
 }

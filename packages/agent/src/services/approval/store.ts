@@ -545,7 +545,7 @@ function assertApprovalPayload(
         record,
         "expectedProvider",
         label,
-        new Set(["google", "microsoft", "apple_calendar", "ics"]),
+        new Set(["google", "microsoft", "apple_calendar", "ics", "eliza"]),
       );
       requireOptionalNullableStringField(
         record,
@@ -601,7 +601,7 @@ function assertApprovalPayload(
         record,
         "expectedProvider",
         label,
-        new Set(["google", "microsoft", "apple_calendar", "ics"]),
+        new Set(["google", "microsoft", "apple_calendar", "ics", "eliza"]),
       );
       requireOptionalNullableStringField(
         record,

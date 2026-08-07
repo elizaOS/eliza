@@ -206,8 +206,12 @@ export interface ShellController {
     active: boolean;
     connecting: boolean;
     paused: boolean;
+    /** True when realtime mic frames are replaced with silence. */
+    microphoneMuted: boolean;
     status: VoiceContinuousStatus;
     error: string | null;
+    /** Mute/unmute the realtime microphone without ending the conversation. */
+    toggleMicrophoneMute: () => void;
   };
   /** Toggle the hands-free conversation loop (mic ↔ spoken reply ↔ mic). */
   toggleHandsFree: () => void;
@@ -2371,8 +2375,10 @@ export function useShellController(): ShellController {
       active: realtimeVoice.active,
       connecting: realtimeVoice.connecting,
       paused: realtimeVoice.paused,
+      microphoneMuted: realtimeVoice.microphoneMuted,
       status: realtimeVoice.status,
       error: realtimeVoiceErrorMessage,
+      toggleMicrophoneMute: realtimeVoice.toggleMicrophoneMute,
     },
     toggleHandsFree,
     micPermission,

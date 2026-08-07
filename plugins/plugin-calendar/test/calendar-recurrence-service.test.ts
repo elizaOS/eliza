@@ -334,6 +334,7 @@ beforeEach(async () => {
 describe("createCalendarEvent — recurrence", () => {
   it("normalizes recurrence to the provider and surfaces it on readback", async () => {
     const created = await calendar.createCalendarEvent(INTERNAL_URL, {
+      grantId: GRANT_A.id,
       title: "Morning Run",
       startAt: "2026-07-06T13:00:00.000Z",
       endAt: "2026-07-06T13:30:00.000Z",

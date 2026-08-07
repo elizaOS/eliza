@@ -59,6 +59,7 @@ const VALID_PROVIDERS = new Set<LifeOpsCalendarProvider>([
   "microsoft",
   "apple_calendar",
   "ics",
+  "eliza",
 ]);
 const VALID_SIDES = new Set<LifeOpsConnectorSide>(["owner", "agent"]);
 
