@@ -639,10 +639,11 @@ export class SolanaBlockchainConnector
           address,
         );
 
-      // FIXME: dead code — getSolanaOldestKnownSignature always returns an
-      // object, so this is never falsy. Should be `!oldestSignature.signature`.
-      // Flagged, not fixed here — out of scope for the ascending-order fix.
-      if (!oldestSignature) {
+      // getSolanaOldestKnownSignature always returns an object (never
+      // null/undefined) - the real "no oldest transaction found" signal is
+      // an empty/null .signature field, not a falsy return value itself.
+      // Previously checked `!oldestSignature`, which could never trigger.
+      if (!oldestSignature.signature) {
         return createSuccessResult({
           chainId: SOLANA_CHAIN_ID,
           address: address.trim(),
