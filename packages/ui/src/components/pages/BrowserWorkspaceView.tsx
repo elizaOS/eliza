@@ -42,11 +42,9 @@ import {
   setBrowserTabsRendererImpl,
 } from "../../utils/browser-tabs-renderer-registry";
 import { PagePanel } from "../composites/page-panel";
-import { ViewHeader } from "../shared/ViewHeader";
 import { Button } from "../ui/button";
 import { ConfirmDialog } from "../ui/confirm-dialog";
 import { useConfirm } from "../ui/confirm-dialog.hooks";
-import { Input } from "../ui/input";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { AppWorkspaceChrome } from "../workspace/AppWorkspaceChrome.js";
 import {
@@ -473,31 +471,6 @@ function BrowserNavButton({
   return <Button ref={ref} {...agentProps} {...buttonProps} />;
 }
 
-function BrowserAddressInput({
-  agentLabel,
-  agentDescription,
-  getValue,
-  onFill,
-  ...inputProps
-}: {
-  agentLabel: string;
-  agentDescription?: string;
-  getValue: () => string;
-  onFill: (value: string) => void;
-} & React.ComponentProps<typeof Input>): React.JSX.Element {
-  const { ref, agentProps } = useAgentElement<HTMLInputElement>({
-    id: "address-input",
-    role: "text-input",
-    label: agentLabel,
-    ...(agentDescription ? { description: agentDescription } : {}),
-    getValue,
-    onFill,
-  });
-  return (
-    <Input ref={ref} aria-label={agentLabel} {...agentProps} {...inputProps} />
-  );
-}
-
 export function BrowserWorkspaceView(): React.JSX.Element {
   useRenderGuard("BrowserWorkspaceView");
   const {
@@ -533,8 +506,6 @@ export function BrowserWorkspaceView(): React.JSX.Element {
       }),
     );
   const [selectedTabId, setSelectedTabId] = useState<string | null>(null);
-  const [locationInput, setLocationInput] = useState("");
-  const [locationDirty, setLocationDirty] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [snapshotError, setSnapshotError] = useState<string | null>(null);
@@ -597,7 +568,6 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   const tRef = useRef(t);
   const walletAddressesRef = useRef(walletAddresses);
   const walletConfigRef = useRef(walletConfig);
-  const previousSelectedTabIdRef = useRef<string | null>(null);
 
   if (typeof initialBrowseUrlRef.current === "undefined") {
     const browseParam = readBrowserWorkspaceQueryParam("browse");
@@ -646,7 +616,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     : false;
   const newBrowserWorkspaceTabSeedUrl = selectedTabIsInternal
     ? "about:blank"
-    : locationInput || BROWSER_WORKSPACE_DEFAULT_HOME_URL;
+    : selectedTab?.url || BROWSER_WORKSPACE_DEFAULT_HOME_URL;
   const primaryBrowserBridgeCompanion = useMemo(
     () =>
       browserBridgeCompanions.find(
@@ -893,8 +863,6 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         );
         setWorkspace((prev) => ({ ...prev, tabs: [...prev.tabs, tab] }));
         setSelectedTabId(tab.id);
-        setLocationInput(tab.url);
-        setLocationDirty(false);
         return;
       }
       const { tab } = await client.openBrowserWorkspaceTab({
@@ -905,8 +873,6 @@ export function BrowserWorkspaceView(): React.JSX.Element {
       });
       await loadWorkspace({ preferTabId: tab.id, silent: true });
       setSelectedTabId(tab.id);
-      setLocationInput(tab.url);
-      setLocationDirty(false);
     },
     [browserTabRenderPath, loadWorkspace, t],
   );
@@ -921,74 +887,6 @@ export function BrowserWorkspaceView(): React.JSX.Element {
       await loadWorkspace({ preferTabId: tab.id, silent: true });
     },
     [browserTabRenderPath, loadWorkspace],
-  );
-
-  const navigateSelectedBrowserWorkspaceTab = useCallback(
-    async (rawUrl: string) => {
-      if (selectedTab && isInternalBrowserWorkspaceTab(selectedTab)) {
-        throw new Error(
-          t("browserworkspace.InternalTabUrlManaged", {
-            defaultValue: "This internal tab manages its own URL.",
-          }),
-        );
-      }
-      const url = normalizeBrowserWorkspaceInputUrl(rawUrl, t);
-      if (!url) {
-        throw new Error(
-          t("browserworkspace.EnterUrlToNavigate", {
-            defaultValue: "Enter a URL to navigate.",
-          }),
-        );
-      }
-      if (!selectedTabId) {
-        await openNewBrowserWorkspaceTab(url);
-        return;
-      }
-      // Native mobile shell: navigation is client-side. Updating the tab's URL
-      // in state re-drives the native surface (the hook navigates the existing
-      // WKWebView/WebView on a URL change rather than recreating it).
-      if (browserTabRenderPath === "native-mobile-webview") {
-        setWorkspace((prev) => ({
-          ...prev,
-          tabs: prev.tabs.map((tab) =>
-            tab.id === selectedTabId
-              ? { ...tab, url, updatedAt: new Date().toISOString() }
-              : tab,
-          ),
-        }));
-        setLocationInput(url);
-        setLocationDirty(false);
-        return;
-      }
-      const { tab } = await client.navigateBrowserWorkspaceTab(
-        selectedTabId,
-        url,
-      );
-      if (workspace.mode === "web") {
-        // React won't re-navigate an existing iframe when only the src
-        // attribute changes (same key = same DOM element). Set the src
-        // directly via the ref in embedded web mode only.
-        const iframe = iframeRefs.current.get(selectedTabId);
-        if (iframe && iframe.src !== tab.url) {
-          iframe.src = tab.url;
-        }
-      } else if (workspace.mode === "desktop") {
-        const tag = electrobunWebviewRefs.current.get(selectedTabId);
-        tag?.loadURL(tab.url);
-      }
-      await loadWorkspace({ preferTabId: tab.id, silent: true });
-      setLocationInput(tab.url);
-      setLocationDirty(false);
-    },
-    [
-      browserTabRenderPath,
-      loadWorkspace,
-      openNewBrowserWorkspaceTab,
-      selectedTab,
-      selectedTabId,
-      t,
-      workspace.mode,
-    ],
   );
 
   const registerBrowserWorkspaceIframe = useCallback(
@@ -1843,8 +1741,6 @@ export function BrowserWorkspaceView(): React.JSX.Element {
       await client.showBrowserWorkspaceTab(nextId);
     }
     setSelectedTabId(nextId);
-    setLocationInput(snapshot.tabs.find((tab) => tab.id === nextId)?.url ?? "");
-    setLocationDirty(false);
     await loadWorkspace({ preferTabId: nextId, silent: true });
   }, [loadWorkspace, workspace.tabs]);
 
@@ -1901,19 +1797,6 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     BROWSER_BRIDGE_POLL_INTERVAL_MS,
     workspace.mode === "web" && browserBridgeSupported,
   );
-
-  useEffect(() => {
-    const currentSelectedId = selectedTab?.id ?? null;
-    if (currentSelectedId !== previousSelectedTabIdRef.current) {
-      previousSelectedTabIdRef.current = currentSelectedId;
-      setLocationInput(selectedTab?.url ?? "");
-      setLocationDirty(false);
-      return;
-    }
-    if (!locationDirty) {
-      setLocationInput(selectedTab?.url ?? "");
-    }
-  }, [locationDirty, selectedTab?.id, selectedTab?.url]);
 
   useEffect(() => {
     if (
@@ -2134,10 +2017,6 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   const closeTabLabel = t("browserworkspace.CloseTab", {
     defaultValue: "Close tab",
   });
-  const goLabel = t("browserworkspace.Go", {
-    defaultValue: "Go",
-  });
-
   const agentActiveLabel = t("browserworkspace.AgentActive", {
     defaultValue: "Agent is on this tab",
   });
@@ -2274,67 +2153,6 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         data-testid="browser-workspace-close-all-tabs"
       >
         <X className="h-4 w-4" />
-      </BrowserNavButton>
-      <BrowserAddressInput
-        agentLabel={t("browserworkspace.AddressPlaceholder", {
-          defaultValue: selectedTabIsInternal
-            ? "Internal tab URL is managed by the app"
-            : "Enter a URL",
-        })}
-        agentDescription="The browser address bar for the active tab"
-        getValue={() => locationInput}
-        onFill={(value) => {
-          setLocationInput(value);
-          setLocationDirty(true);
-        }}
-        value={locationInput}
-        onChange={(event) => {
-          setLocationInput(event.target.value);
-          setLocationDirty(true);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") {
-            event.preventDefault();
-            void runBrowserWorkspaceAction("navigate:enter", async () => {
-              await navigateSelectedBrowserWorkspaceTab(locationInput);
-            });
-          }
-        }}
-        placeholder={t("browserworkspace.AddressPlaceholder", {
-          defaultValue: selectedTabIsInternal
-            ? "Internal tab URL is managed by the app"
-            : "Enter a URL",
-        })}
-        data-testid="browser-workspace-address-input"
-        disabled={busyAction !== null || selectedTabIsInternal}
-        className="h-11 min-w-0 flex-1 rounded-full border-border/40 bg-card/70 px-4 text-sm text-txt"
-      />
-      <BrowserNavButton
-        agentId="go"
-        agentLabel={goLabel}
-        agentDescription="Navigate the active tab to the address bar URL"
-        group="browser-nav"
-        onActivate={() =>
-          void runBrowserWorkspaceAction("navigate:click", async () => {
-            await navigateSelectedBrowserWorkspaceTab(locationInput);
-          })
-        }
-        variant="outline"
-        size="sm"
-        className="h-11 shrink-0 px-3"
-        aria-label={goLabel}
-        disabled={
-          busyAction !== null ||
-          selectedTabIsInternal ||
-          locationInput.trim().length === 0
-        }
-        onClick={() =>
-          void runBrowserWorkspaceAction("navigate:click", async () => {
-            await navigateSelectedBrowserWorkspaceTab(locationInput);
-          })
-        }
-      >
-        {goLabel}
       </BrowserNavButton>
       <BrowserNavButton
         agentId="open-external"
@@ -2751,31 +2569,20 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     </div>
   );
 
-  // Uniform top bar (#13451/#13596): a bare-icon ViewHeader with a centered
-  // "Browser" title sits ABOVE the browser toolbar (URL bar + folded-tab
-  // control), never replacing it. The toolbar stays inside WorkspaceLayout's
-  // contentHeader; the ViewHeader is a sibling stacked on top so back always
-  // returns to the launcher and the header reads identically to every other
-  // view. Tabs are folded into the switcher (no `sidebar` prop) so the surface
-  // is single-column and the browser never grows an unbounded tab strip.
+  // The URL/tab toolbar is the Browser surface's own navigation chrome. A
+  // second generic view header wastes scarce mobile height and duplicates the
+  // persistent chat-actions and OS/browser back paths.
   const mainNode = (
-    <div className="flex h-full min-h-0 w-full flex-col">
-      <ViewHeader
-        title={t("browserworkspace.ViewTitle", { defaultValue: "Browser" })}
-      />
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <WorkspaceLayout
-          contentHeader={navNode}
-          contentHeaderClassName="mb-0"
-          headerPlacement="inside"
-          contentPadding={false}
-          contentClassName="overflow-hidden"
-          contentInnerClassName="min-h-0 overflow-hidden"
-        >
-          {browserSurface}
-        </WorkspaceLayout>
-      </div>
-    </div>
+    <WorkspaceLayout
+      contentHeader={navNode}
+      contentHeaderClassName="mb-0"
+      headerPlacement="inside"
+      contentPadding={false}
+      contentClassName="overflow-hidden"
+      contentInnerClassName="min-h-0 overflow-hidden"
+    >
+      {browserSurface}
+    </WorkspaceLayout>
   );
 
   return (

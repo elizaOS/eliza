@@ -50,6 +50,10 @@ import {
   parseCalendarJsonRecord,
   toActionData,
 } from "../internal/detail.js";
+import {
+  ELIZA_CALENDAR_GRANT_ID,
+  ELIZA_CALENDAR_PROVIDER,
+} from "../internal/eliza-calendar.js";
 import { CalendarServiceError } from "../internal/errors.js";
 import {
   formatCalendarEventDateTime,
@@ -321,6 +325,7 @@ const CALENDAR_DETAIL_ALIASES = {
     "google_event_id",
   ],
   newTitle: ["newtitle", "new_title", "renameto", "rename_to"],
+  oldTitle: ["oldtitle", "old_title"],
   description: ["desc", "summary", "body"],
   location: ["place", "venue"],
   recurrence: [
@@ -1248,7 +1253,16 @@ function normalizeCalendarDetails(
     return undefined;
   }
 
-  const normalized: Record<string, unknown> = { ...details };
+  const normalized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(details)) {
+    // Some tool-model providers serialize an omitted string field as the
+    // literal "unknown". Treat it as absent at this boundary so it cannot be
+    // mistaken for an event ID, grant binding, date, or other real value.
+    if (typeof value === "string" && value.trim().toLowerCase() === "unknown") {
+      continue;
+    }
+    normalized[key] = value;
+  }
   const aliasMap = new Map<string, string>();
   for (const [canonical, aliases] of Object.entries(CALENDAR_DETAIL_ALIASES)) {
     aliasMap.set(normalizeLookupKey(canonical), canonical);
@@ -1258,6 +1272,9 @@ function normalizeCalendarDetails(
   }
 
   for (const [key, value] of Object.entries(details)) {
+    if (typeof value === "string" && value.trim().toLowerCase() === "unknown") {
+      continue;
+    }
     const canonical = aliasMap.get(normalizeLookupKey(key));
     if (!canonical) {
       continue;
@@ -3523,6 +3540,61 @@ function calendarApprovalReceipt(
   );
 }
 
+function calendarEventMutationReceipt(args: {
+  event: LifeOpsCalendarEvent;
+  idempotencyKey: string;
+  operation:
+    | "calendar.event.create"
+    | "calendar.event.update"
+    | "calendar.event.delete";
+  deleted?: boolean;
+}): EffectReceipt {
+  const observedAt = latestCalendarTimestamp(
+    [args.event.updatedAt, args.event.syncedAt],
+    new Date().toISOString(),
+  );
+  const providerVersion =
+    typeof args.event.metadata.etag === "string"
+      ? args.event.metadata.etag
+      : args.event.updatedAt;
+  const version = args.deleted ? `deleted:${providerVersion}` : providerVersion;
+  return normalizeEffectReceipt({
+    receiptId: calendarEffectId("calendar-event-mutation-receipt-v1", [
+      args.operation,
+      args.event.id,
+      version,
+      args.idempotencyKey,
+    ]),
+    operation: args.operation,
+    resource: {
+      kind: "calendar.event",
+      id: args.event.id,
+      version,
+    },
+    artifacts: [],
+    idempotency: { key: args.idempotencyKey, replayed: false },
+    observedAt,
+    outcome: "applied",
+    commit: {
+      kind: "durable",
+      id: args.event.id,
+      committedAt: observedAt,
+    },
+  });
+}
+
+function localCalendarOperationKey(args: {
+  message: Memory;
+  operation: "create" | "update" | "delete";
+  payload: unknown;
+}): string {
+  return calendarEffectId("calendar-local-operation-v1", [
+    String(args.message.id),
+    args.operation,
+    JSON.stringify(args.payload),
+  ]);
+}
+
 export type CalendarHandlerAction = Action & {
   suppressPostActionContinuation?: boolean;
 };
@@ -3639,6 +3711,7 @@ const calendarAction: CalendarHandlerAction = {
         params.query ||
         (params.queries?.length ?? 0) > 0 ||
         detailString(details, "query") ||
+        detailString(details, "oldTitle") ||
         (detailArray(details, "queries")?.length ?? 0) > 0 ||
         detailString(details, "eventId") ||
         detailString(details, "startAt") ||
@@ -3656,6 +3729,7 @@ const calendarAction: CalendarHandlerAction = {
       explicitQueries: [
         params.query,
         detailString(details, "query"),
+        detailString(details, "oldTitle"),
         ...(params.queries ?? []),
         ...(detailArray(details, "queries")?.map((value) =>
           typeof value === "string" ? value : undefined,
@@ -3937,6 +4011,46 @@ const calendarAction: CalendarHandlerAction = {
             }
             throw error;
           }
+        }
+        if (requestToApprove.grantId === ELIZA_CALENDAR_GRANT_ID) {
+          const idempotencyKey = localCalendarOperationKey({
+            message,
+            operation: "create",
+            payload: requestToApprove,
+          });
+          const createdEvent = await service.createCalendarEvent(INTERNAL_URL, {
+            ...requestToApprove,
+            idempotencyKey,
+          });
+          if (travelBuffer && travel) {
+            await travel.reserveTravelBuffer({
+              runtime,
+              eventId: createdEvent.id,
+              travelBuffer,
+            });
+          }
+          const fallback = `Created “${createdEvent.title}” for ${formatCalendarEventDateTime(
+            createdEvent,
+            { includeTimeZoneName: true },
+          )}.`;
+          return respond({
+            success: true,
+            text: await renderReply("create_event_completed", fallback, {
+              event: createdEvent,
+            }),
+            effectReceipt: calendarEventMutationReceipt({
+              event: createdEvent,
+              idempotencyKey,
+              operation: "calendar.event.create",
+            }),
+            data: {
+              actionName: "CALENDAR",
+              subaction: "create_event",
+              approvalRequired: false,
+              event: createdEvent,
+              ...(travelBuffer ? { travelBuffer } : {}),
+            },
+          });
         }
         const approval = await requireCalendarMutationGateway().schedule({
           runtime,
@@ -4239,6 +4353,48 @@ const calendarAction: CalendarHandlerAction = {
           recurrenceScope: recurrenceScopeForUpdate ?? undefined,
           notifyAttendees: detailBoolean(details, "notifyAttendees") === true,
         };
+        if (targetEvent.provider === ELIZA_CALENDAR_PROVIDER) {
+          const expectedProviderVersion = targetEvent.metadata.etag;
+          if (typeof expectedProviderVersion !== "string") {
+            throw new CalendarServiceError(
+              409,
+              "The built-in calendar event is missing its version. Refresh and try again.",
+              "ELIZA_CALENDAR_VERSION_REQUIRED",
+            );
+          }
+          const idempotencyKey = localCalendarOperationKey({
+            message,
+            operation: "update",
+            payload: updateRequest,
+          });
+          const updatedEvent = await service.updateCalendarEvent(INTERNAL_URL, {
+            ...updateRequest,
+            expectedProviderVersion,
+            idempotencyKey,
+          });
+          const fallback = `Updated “${updatedEvent.title}” for ${formatCalendarEventDateTime(
+            updatedEvent,
+            { includeTimeZoneName: true },
+          )}.`;
+          return respond({
+            success: true,
+            text: await renderReply("update_event_completed", fallback, {
+              event: updatedEvent,
+            }),
+            effectReceipt: calendarEventMutationReceipt({
+              event: updatedEvent,
+              idempotencyKey,
+              operation: "calendar.event.update",
+            }),
+            data: {
+              actionName: "CALENDAR",
+              subaction: "update_event",
+              approvalRequired: false,
+              event: updatedEvent,
+              targetEvent,
+            },
+          });
+        }
         const approval = await requireCalendarMutationGateway().modify({
           runtime,
           message,
@@ -4456,6 +4612,46 @@ const calendarAction: CalendarHandlerAction = {
             : {}),
           notifyAttendees: detailBoolean(details, "notifyAttendees") === true,
         };
+        if (targetEvent.provider === ELIZA_CALENDAR_PROVIDER) {
+          const expectedProviderVersion = targetEvent.metadata.etag;
+          if (typeof expectedProviderVersion !== "string") {
+            throw new CalendarServiceError(
+              409,
+              "The built-in calendar event is missing its version. Refresh and try again.",
+              "ELIZA_CALENDAR_VERSION_REQUIRED",
+            );
+          }
+          const idempotencyKey = localCalendarOperationKey({
+            message,
+            operation: "delete",
+            payload: cancelRequest,
+          });
+          await service.deleteCalendarEvent(INTERNAL_URL, {
+            ...cancelRequest,
+            expectedProviderVersion,
+            idempotencyKey,
+          });
+          const fallback = `Deleted “${targetEvent.title}” from your calendar.`;
+          return respond({
+            success: true,
+            text: await renderReply("delete_event_completed", fallback, {
+              event: targetEvent,
+            }),
+            effectReceipt: calendarEventMutationReceipt({
+              event: targetEvent,
+              idempotencyKey,
+              operation: "calendar.event.delete",
+              deleted: true,
+            }),
+            data: {
+              actionName: "CALENDAR",
+              subaction: "delete_event",
+              approvalRequired: false,
+              deleted: true,
+              targetEvent,
+            },
+          });
+        }
         const approval = await requireCalendarMutationGateway().cancel({
           runtime,
           message,

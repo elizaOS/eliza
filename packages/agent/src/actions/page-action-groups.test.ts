@@ -273,3 +273,51 @@ describe("PAGE_DELEGATE structured child-unavailable failure", () => {
     });
   });
 });
+
+describe("PAGE_DELEGATE child parameter envelope", () => {
+  it("accepts and forwards legacy nested browser parameters", async () => {
+    const nestedParameterSchema = pageDelegateAction.parameters?.find(
+      (parameter) => parameter.name === "parameters",
+    )?.schema;
+    expect(nestedParameterSchema).toMatchObject({
+      type: "object",
+      additionalProperties: true,
+    });
+
+    let receivedOptions: HandlerOptions | undefined;
+    const browserAction = makeChildAction({
+      name: "BROWSER_OPEN",
+      contexts: ["browser"],
+      handler: async (
+        _runtime,
+        _message,
+        _state,
+        options,
+      ): Promise<ActionResult> => {
+        receivedOptions = options;
+        return { success: true, text: "Opened apple.com." };
+      },
+    });
+    const runtime = {
+      actions: [pageDelegateAction, browserAction],
+    } as IAgentRuntime;
+
+    const result = await pageDelegateAction.handler(
+      runtime,
+      makeMessage(),
+      undefined,
+      {
+        parameters: {
+          page: "browser",
+          action: "BROWSER_OPEN",
+          parameters: { url: "https://www.apple.com" },
+        },
+      } as HandlerOptions,
+    );
+
+    expect(result?.success).toBe(true);
+    expect(receivedOptions?.parameters).toEqual({
+      url: "https://www.apple.com",
+    });
+  });
+});
