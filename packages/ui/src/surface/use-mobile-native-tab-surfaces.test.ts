@@ -187,6 +187,29 @@ describe("useMobileNativeTabSurfaces", () => {
     expect(shell.commands).toContain("bg:browser-tab:a");
   });
 
+  it("backgrounds the native page while the global chat sheet is open", async () => {
+    const sheet = document.createElement("div");
+    sheet.dataset.testid = "chat-sheet";
+    sheet.dataset.chatState = "INPUT";
+    document.body.append(sheet);
+    const shell = new RecordingShell();
+    renderHook(() => useMobileNativeTabSurfaces({ ...base, shell }));
+
+    shell.commands.length = 0;
+    await act(async () => {
+      sheet.dataset.chatState = "OPEN_HALF_OR_OVER";
+      await Promise.resolve();
+    });
+    expect(shell.commands).toContain("bg:browser-tab:a");
+
+    shell.commands.length = 0;
+    await act(async () => {
+      sheet.dataset.chatState = "INPUT";
+      await Promise.resolve();
+    });
+    expect(shell.commands).toContain("fg:browser-tab:a");
+  });
+
   it("navigates the tab's surface without recreating it", () => {
     const shell = new RecordingShell();
     const { result } = renderHook(() =>
