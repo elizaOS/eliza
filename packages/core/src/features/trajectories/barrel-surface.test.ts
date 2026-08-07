@@ -31,12 +31,14 @@ function makeFakeService() {
 		startTrajectory: ReturnType<typeof vi.fn>;
 		startStep: ReturnType<typeof vi.fn>;
 		endTrajectory: ReturnType<typeof vi.fn>;
+		releaseTrajectoryOwnership: ReturnType<typeof vi.fn>;
 		flushWriteQueue: ReturnType<typeof vi.fn>;
 		stop: ReturnType<typeof vi.fn>;
 	};
 	svc.startTrajectory = vi.fn(async () => "traj-1");
 	svc.startStep = vi.fn(() => "step-1");
 	svc.endTrajectory = vi.fn(async () => {});
+	svc.releaseTrajectoryOwnership = vi.fn();
 	svc.flushWriteQueue = vi.fn(async () => {});
 	svc.stop = vi.fn(async () => {});
 	return svc;
@@ -47,6 +49,7 @@ function makeRuntime(svc: TrajectoriesService | null): IAgentRuntime {
 		agentId: "10000000-0000-0000-0000-000000000001",
 		getService: vi.fn(() => svc),
 		getServicesByType: vi.fn(() => (svc ? [svc] : [])),
+		getRoom: vi.fn(async () => null),
 		logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() },
 		reportError: vi.fn(),
 	} as unknown as IAgentRuntime;
@@ -115,6 +118,24 @@ describe("trajectories plugin event plumbing", () => {
 		expect((meta.traceId as string).length).toBeGreaterThan(0);
 	});
 
+	it("MESSAGE_RECEIVED keeps room enrichment failures diagnostic-only", async () => {
+		const svc = makeFakeService();
+		const runtime = makeRuntime(svc);
+		const roomError = new Error("room lookup failed");
+		(runtime.getRoom as ReturnType<typeof vi.fn>).mockRejectedValue(roomError);
+		const message = makeMessage("msg-room-error");
+
+		await expect(
+			handler("MESSAGE_RECEIVED")({ runtime, message, source: "chat" }),
+		).resolves.toBeUndefined();
+		expect(svc.startTrajectory).toHaveBeenCalledOnce();
+		expect(runtime.reportError).toHaveBeenCalledWith(
+			"TrajectoriesPlugin.roomMetadata",
+			roomError,
+			{ roomId: "room-1", diagnosticOnly: true },
+		);
+	});
+
 	it("MESSAGE_SENT resolves the pending step via inReplyTo and ends the trajectory as completed", async () => {
 		const svc = makeFakeService();
 		const runtime = makeRuntime(svc);
@@ -131,6 +152,80 @@ describe("trajectories plugin event plumbing", () => {
 		await handler("MESSAGE_SENT")({ runtime, message: reply });
 
 		expect(svc.endTrajectory).toHaveBeenCalledWith("traj-1", "completed");
+	});
+
+	it.each(["startStep", "flush"] as const)(
+		"MESSAGE_RECEIVED terminalizes the durable parent when %s fails after trajectory start",
+		async (failurePoint) => {
+			const svc = makeFakeService();
+			const startError = new Error(`${failurePoint} failed`);
+			if (failurePoint === "startStep") {
+				svc.startStep.mockImplementation(() => {
+					throw startError;
+				});
+			} else {
+				svc.flushWriteQueue.mockRejectedValue(startError);
+			}
+			const runtime = makeRuntime(svc);
+			const message = makeMessage(`msg-${failurePoint}-failure`);
+
+			await expect(
+				handler("MESSAGE_RECEIVED")({ runtime, message, source: "chat" }),
+			).resolves.toBeUndefined();
+			expect(svc.endTrajectory).toHaveBeenCalledOnce();
+			expect(svc.endTrajectory).toHaveBeenCalledWith("traj-1", "error");
+			expect(svc.releaseTrajectoryOwnership).not.toHaveBeenCalled();
+			expect(runtime.reportError).toHaveBeenCalledWith(
+				"TrajectoriesPlugin.start",
+				startError,
+				{ roomId: "room-1", diagnosticOnly: true },
+			);
+			expect(message.metadata).not.toHaveProperty("trajectoryId");
+			expect(message.metadata).not.toHaveProperty("trajectoryStepId");
+
+			await handler("RUN_ENDED")({
+				runtime,
+				messageId: message.id,
+				status: "completed",
+			});
+			expect(svc.endTrajectory).toHaveBeenCalledTimes(1);
+			expect(svc.releaseTrajectoryOwnership).not.toHaveBeenCalled();
+		},
+	);
+
+	it("MESSAGE_SENT reports a failed end, releases ownership, and clears its indexes", async () => {
+		const svc = makeFakeService();
+		const terminalError = new Error("terminal persistence failed");
+		svc.endTrajectory.mockRejectedValue(terminalError);
+		const runtime = makeRuntime(svc);
+		const message = makeMessage("msg-terminal-failure");
+		await handler("MESSAGE_RECEIVED")({ runtime, message, source: "chat" });
+
+		const reply = {
+			id: "msg-terminal-failure-reply",
+			roomId: "room-1",
+			entityId: "entity-1",
+			content: {
+				inReplyTo: createUniqueUuid(runtime, "msg-terminal-failure"),
+			},
+			metadata: {},
+		};
+		await handler("MESSAGE_SENT")({ runtime, message: reply });
+		expect(svc.releaseTrajectoryOwnership).toHaveBeenCalledWith("traj-1");
+		expect(runtime.reportError).toHaveBeenCalledWith(
+			"TrajectoriesPlugin.endRetry",
+			terminalError,
+			expect.objectContaining({ attempt: 1, diagnosticOnly: true }),
+		);
+		expect(runtime.reportError).toHaveBeenCalledWith(
+			"TrajectoriesPlugin.endMessage",
+			expect.objectContaining({ code: "TRAJECTORY_TERMINALIZATION_FAILED" }),
+			{ trajectoryStepId: "step-1", diagnosticOnly: true },
+		);
+
+		await handler("MESSAGE_SENT")({ runtime, message: reply });
+		expect(svc.endTrajectory).toHaveBeenCalledTimes(2);
+		expect(svc.releaseTrajectoryOwnership).toHaveBeenCalledTimes(1);
 	});
 
 	it("RUN_ENDED maps run status to the trajectory final status", async () => {

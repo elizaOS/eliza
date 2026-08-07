@@ -1,8 +1,7 @@
 /**
- * Covers trajectory-persistence observability: when the observation-buffer
- * flush or the by-source aggregation fails, the error is logged (warn carrying
- * err + subsystem "trajectory-db") before an empty result is returned.
- * Deterministic — a hand-built runtime whose adapter/model throw.
+ * Covers trajectory-persistence failure boundaries: observation extraction is
+ * diagnostic-only, while public source aggregation fails instead of returning
+ * a healthy-empty result. Deterministic hand-built collaborators drive errors.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
@@ -15,6 +14,7 @@ import {
 function createRuntime() {
   const warn = vi.fn();
   const runtime = {
+    agentId: "trajectory-observability-test",
     actions: [],
     adapter: { db: undefined },
     logger: { warn },
@@ -46,17 +46,12 @@ describe("trajectory observability", () => {
     );
   });
 
-  it("logs source aggregation failures before returning an empty result", async () => {
+  it("rejects source aggregation failures instead of fabricating an empty result", async () => {
     const { runtime, warn } = createRuntime();
 
-    await expect(computeBySource(runtime)).resolves.toEqual({});
-
-    expect(warn).toHaveBeenCalledWith(
-      expect.objectContaining({
-        err: expect.any(Error),
-        subsystem: "trajectory-db",
-      }),
-      "[trajectory-persistence] source aggregation failed",
+    await expect(computeBySource(runtime)).rejects.toThrow(
+      "runtime database adapter unavailable",
     );
+    expect(warn).not.toHaveBeenCalled();
   });
 });

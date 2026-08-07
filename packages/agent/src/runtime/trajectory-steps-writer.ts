@@ -1,110 +1,63 @@
 /**
  * Trajectory steps — write operations.
  *
- * CQRS writer for the dedicated `trajectory_steps` table. Writers return
- * `void` on success; failures throw or are swallowed by the caller's
- * write-queue.
+ * CQRS writer for the dedicated `trajectory_steps` table. Successful writes
+ * return their real result; invalid ownership and unavailable storage throw.
  *
  * Scripts are stored in a dedicated `script` TEXT column with no character
  * cap (the legacy `TRAJECTORY_STEP_SCRIPT_MAX_CHARS=4096` cap applied only
  * to inline JSON storage).
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 
 import {
-  executeRawSql,
+  executeRawSqlTransaction,
+  extractRequiredRows,
   hasRuntimeDb,
+  loadTrajectoryById,
   type PersistedStep,
-  sqlNumber,
+  saveTrajectory,
   sqlQuote,
 } from "./trajectory-internals.ts";
 
-function serializeStepPayload(step: PersistedStep): string {
-  // Strip `script` from payload because it gets a dedicated column.
-  const { script: _script, ...rest } = step;
-  return JSON.stringify(rest);
-}
-
-function resolveStepType(step: PersistedStep): string {
-  if (
-    step.kind === "llm" ||
-    step.kind === "action" ||
-    step.kind === "evaluator"
-  ) {
-    return step.kind;
-  }
-  // Legacy rows defaulted to "llm" semantics.
-  return "llm";
-}
-
-function resolveStepName(step: PersistedStep): string | null {
-  // Evaluator steps carry their evaluator name explicitly so the trajectory
-  // viewer can identify the responsible evaluator without rummaging through
-  // llmCalls. Closes M14.
-  if (step.kind === "evaluator" && step.evaluatorName) {
-    return step.evaluatorName;
-  }
-  // Use the first llm-call purpose or provider-access name as a display label.
-  const firstCall = step.llmCalls[0];
-  if (firstCall?.purpose) return firstCall.purpose;
-  const firstProvider = step.providerAccesses[0];
-  if (firstProvider?.providerName) return firstProvider.providerName;
-  return null;
-}
-
 /**
- * Upsert a single step row. Idempotent on `id` (== step.stepId).
+ * Upsert a single step row. Identity is immutable across trajectories.
  */
 export async function upsertStep(
   runtime: IAgentRuntime,
   trajectoryId: string,
   step: PersistedStep,
-  parentStepId: string | null = null,
+  parentStepId?: string | null,
 ): Promise<void> {
-  if (!hasRuntimeDb(runtime)) return;
-  const stepType = resolveStepType(step);
-  const name = resolveStepName(step);
-  const startedAt = Number.isFinite(step.timestamp) ? step.timestamp : null;
-  const endedAt = startedAt; // The legacy step shape only carried a single timestamp.
-  const payload = serializeStepPayload(step);
-  const script = typeof step.script === "string" ? step.script : null;
-
-  const sql = `INSERT INTO trajectory_steps (
-      id,
-      trajectory_id,
-      ordinal,
-      parent_step_id,
-      step_type,
-      name,
-      started_at,
-      ended_at,
-      payload,
-      script
-    ) VALUES (
-      ${sqlQuote(step.stepId)},
-      ${sqlQuote(trajectoryId)},
-      ${sqlNumber(step.stepNumber)},
-      ${parentStepId ? sqlQuote(parentStepId) : "NULL"},
-      ${sqlQuote(stepType)},
-      ${name ? sqlQuote(name) : "NULL"},
-      ${sqlNumber(startedAt)},
-      ${sqlNumber(endedAt)},
-      ${sqlQuote(payload)},
-      ${script !== null ? sqlQuote(script) : "NULL"}
-    )
-    ON CONFLICT (id) DO UPDATE SET
-      trajectory_id = EXCLUDED.trajectory_id,
-      ordinal = EXCLUDED.ordinal,
-      parent_step_id = EXCLUDED.parent_step_id,
-      step_type = EXCLUDED.step_type,
-      name = EXCLUDED.name,
-      started_at = EXCLUDED.started_at,
-      ended_at = EXCLUDED.ended_at,
-      payload = EXCLUDED.payload,
-      script = EXCLUDED.script`;
-
-  await executeRawSql(runtime, sql);
+  if (!hasRuntimeDb(runtime)) {
+    throw new ElizaError("Trajectory step storage is unavailable", {
+      code: "TRAJECTORY_DATABASE_UNAVAILABLE",
+    });
+  }
+  const trajectory = await loadTrajectoryById(runtime, trajectoryId);
+  if (!trajectory) {
+    throw new ElizaError("Trajectory parent is unavailable", {
+      code: "TRAJECTORY_PARENT_NOT_FOUND",
+      context: { trajectoryId, stepId: step.stepId },
+    });
+  }
+  const normalizedStep: PersistedStep = {
+    ...step,
+    ...(parentStepId !== undefined
+      ? { parentStepId: parentStepId ?? undefined }
+      : {}),
+  };
+  const existingIndex = trajectory.steps.findIndex(
+    (candidate) => candidate.stepId === step.stepId,
+  );
+  if (existingIndex >= 0) trajectory.steps[existingIndex] = normalizedStep;
+  else trajectory.steps.push(normalizedStep);
+  trajectory.updatedAt = new Date().toISOString();
+  await saveTrajectory(runtime, trajectory, {
+    changedStepIds: [step.stepId],
+    updateLegacySnapshot: true,
+  });
 }
 
 /**
@@ -119,50 +72,73 @@ export async function replaceStepsForTrajectory(
   trajectoryId: string,
   steps: PersistedStep[],
 ): Promise<void> {
-  if (!hasRuntimeDb(runtime)) return;
-  const safeId = sqlQuote(trajectoryId);
-  await executeRawSql(
-    runtime,
-    `DELETE FROM trajectory_steps WHERE trajectory_id = ${safeId}`,
-  );
-  for (const step of steps) {
-    await upsertStep(runtime, trajectoryId, step, null);
+  if (!hasRuntimeDb(runtime)) {
+    throw new ElizaError("Trajectory step storage is unavailable", {
+      code: "TRAJECTORY_DATABASE_UNAVAILABLE",
+    });
   }
+  const trajectory = await loadTrajectoryById(runtime, trajectoryId);
+  if (!trajectory) {
+    throw new ElizaError("Trajectory parent is unavailable", {
+      code: "TRAJECTORY_PARENT_NOT_FOUND",
+      context: { trajectoryId },
+    });
+  }
+  trajectory.steps = [...steps].sort(
+    (left, right) => left.stepNumber - right.stepNumber,
+  );
+  trajectory.updatedAt = new Date().toISOString();
+  await saveTrajectory(runtime, trajectory);
 }
 
 /**
- * Delete all step rows for the given trajectory IDs. Returns the number
- * of rows deleted, or `null` if the operation could not be performed.
+ * Delete owned step rows for the given trajectory IDs and return the real count.
  */
 export async function deleteStepsForTrajectories(
   runtime: IAgentRuntime,
   trajectoryIds: string[],
-): Promise<number | null> {
-  if (!hasRuntimeDb(runtime)) return null;
+): Promise<number> {
+  if (!hasRuntimeDb(runtime)) {
+    throw new ElizaError("Trajectory step storage is unavailable", {
+      code: "TRAJECTORY_DATABASE_UNAVAILABLE",
+    });
+  }
   const normalized = trajectoryIds
     .map((id) => id.trim())
     .filter((id) => id.length > 0);
   if (normalized.length === 0) return 0;
 
   const values = normalized.map((id) => sqlQuote(id)).join(", ");
-  const result = await executeRawSql(
-    runtime,
-    `DELETE FROM trajectory_steps WHERE trajectory_id IN (${values}) RETURNING trajectory_id`,
-  );
-  // The result row count is an estimate; we don't strictly need it for
-  // correctness, callers use `deletePersistedTrajectoryRows` for the
-  // authoritative count.
-  if (Array.isArray(result)) return result.length;
-  return normalized.length;
+  return executeRawSqlTransaction(runtime, async (execute) => {
+    const result = await execute(
+      `DELETE FROM trajectory_steps WHERE trajectory_id IN (
+         SELECT id FROM trajectories
+         WHERE agent_id = ${sqlQuote(runtime.agentId)} AND id IN (${values})
+       ) RETURNING trajectory_id`,
+    );
+    return extractRequiredRows(result, {
+      operation: "delete trajectory steps",
+    }).length;
+  });
 }
 
 /**
- * Delete all step rows. Returns null if the operation failed.
+ * Delete all step rows owned by the current runtime agent.
  */
-export async function clearAllSteps(
-  runtime: IAgentRuntime,
-): Promise<number | null> {
-  if (!hasRuntimeDb(runtime)) return null;
-  await executeRawSql(runtime, "DELETE FROM trajectory_steps");
-  return 0;
+export async function clearAllSteps(runtime: IAgentRuntime): Promise<number> {
+  if (!hasRuntimeDb(runtime)) {
+    throw new ElizaError("Trajectory step storage is unavailable", {
+      code: "TRAJECTORY_DATABASE_UNAVAILABLE",
+    });
+  }
+  return executeRawSqlTransaction(runtime, async (execute) => {
+    const result = await execute(
+      `DELETE FROM trajectory_steps WHERE trajectory_id IN (
+         SELECT id FROM trajectories WHERE agent_id = ${sqlQuote(runtime.agentId)}
+       ) RETURNING trajectory_id`,
+    );
+    return extractRequiredRows(result, {
+      operation: "clear trajectory steps",
+    }).length;
+  });
 }
