@@ -22,6 +22,7 @@
 import { spawn } from "node:child_process";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { mkdtempSync } from "node:fs";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -39,11 +40,25 @@ const outDir = join(here, "output-frontend-hosting");
 await rm(outDir, { recursive: true, force: true });
 await mkdir(outDir, { recursive: true });
 
-// Leg-3 port range (363xx).
-const API_PORT = 36313;
-const PAGE_PORT = 36314;
+async function pickFreeLoopbackPort() {
+  return new Promise((resolvePort, rejectPort) => {
+    const reservation = createServer();
+    reservation.unref();
+    reservation.once("error", rejectPort);
+    reservation.listen(0, "127.0.0.1", () => {
+      const address = reservation.address();
+      if (address === null || typeof address === "string") {
+        reservation.close();
+        rejectPort(new Error("free-port reservation returned no TCP address"));
+        return;
+      }
+      reservation.close(() => resolvePort(address.port));
+    });
+  });
+}
+
+const API_PORT = await pickFreeLoopbackPort();
 const API_BASE = `http://127.0.0.1:${API_PORT}`;
-const DEAD_API_BASE = "http://127.0.0.1:36399"; // nothing listens here
 
 let failures = 0;
 function assert(cond, msg) {
@@ -344,10 +359,13 @@ const pageHtml = (apiBase) => `<!doctype html><html><head><meta charset="utf-8">
 let proxyTarget = API_BASE;
 const pageServer = Bun.serve({
   hostname: "127.0.0.1",
-  port: PAGE_PORT,
+  port: 0,
   async fetch(request) {
     const url = new URL(request.url);
     if (url.pathname.startsWith("/api/")) {
+      if (proxyTarget === null) {
+        return new Response("upstream unavailable", { status: 502 });
+      }
       try {
         return await fetch(`${proxyTarget}${url.pathname}${url.search}`, {
           method: request.method,
@@ -365,6 +383,7 @@ const pageServer = Bun.serve({
     });
   },
 });
+const PAGE_PORT = pageServer.port;
 process.on("exit", () => {
   try {
     pageServer.stop(true);
@@ -535,7 +554,7 @@ await snap("mobile-selection", mobile);
 await mobile.close();
 
 // --- cloud-inactive (API unreachable) ----------------------------------------
-proxyTarget = DEAD_API_BASE;
+proxyTarget = null;
 await page.goto(PAGE_URL);
 await page.getByRole("button", { name: "Retry" }).waitFor({ timeout: 30_000 });
 await snap("desktop-cloud-inactive-error");
