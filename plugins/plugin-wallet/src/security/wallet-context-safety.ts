@@ -3,19 +3,21 @@
  * on-chain financial writes. `assertWalletFinancialActionAllowed` blocks
  * transfer/swap/bridge/pump_fun_buy subactions when core has flagged the
  * inbound message as suspected prompt injection (GHSA-gh63-5vpj-39qp).
- * `assertEvmTransferRecipientAuthorized` and `messageAuthorizesEvmRecipient`
- * enforce that an EVM transfer recipient was explicitly stated by the user
- * (in message text or structured action parameters) rather than inferred from
- * token metadata, prior session context, or other embedded addresses
- * (GHSA-7qxr-x6cg-r9cc). `sanitizeWalletDisplayLabel` strips embedded
- * addresses and routing-hint phrases before untrusted labels are ever shown
- * back to the user. These are load-bearing security checks — do not weaken or
- * bypass them from calling code.
+ * `assertEvmTransferRecipientAuthorized` / `messageAuthorizesEvmRecipient`
+ * and the Solana equivalents `assertSolanaTransferRecipientAuthorized` /
+ * `messageAuthorizesSolanaRecipient` enforce that a transfer recipient (EVM
+ * or Solana) was explicitly stated by the user, in message text or structured
+ * action parameters, rather than inferred from token metadata, prior session
+ * context, or other embedded addresses (GHSA-7qxr-x6cg-r9cc).
+ * `sanitizeWalletDisplayLabel` strips embedded EVM and Solana addresses plus
+ * routing-hint phrases before untrusted labels are ever shown back to the
+ * user. These are load-bearing security checks: do not weaken or bypass them
+ * from calling code.
  */
 import type { Memory } from "@elizaos/core";
 
-/** GHSA-7qxr-x6cg-r9cc — embedded addresses in token metadata must not become transfer recipients. */
-/** GHSA-gh63-5vpj-39qp — block financial writes on injection-flagged channel messages. */
+/** GHSA-7qxr-x6cg-r9cc: embedded addresses in token metadata must not become transfer recipients. */
+/** GHSA-gh63-5vpj-39qp: block financial writes on injection-flagged channel messages. */
 
 const FINANCIAL_WRITE_SUBACTIONS = new Set([
   "transfer",
@@ -43,6 +45,7 @@ const INFERRED_RECIPIENT_PHRASE =
 export function sanitizeWalletDisplayLabel(label: string): string {
   return label
     .replace(EVM_ADDRESS_PATTERN, "[address]")
+    .replace(SOLANA_ADDRESS_PATTERN, "[address]")
     .replace(
       /\[[^\]]*(?:recipient|operational|settlement|canonical)[^\]]*\]/gi,
       "[routing-hint-removed]",
@@ -83,7 +86,10 @@ function collectExplicitRecipients(
       const value = source[key];
       if (typeof value === "string" && /^0x[a-fA-F0-9]{40}$/.test(value)) {
         out.push(value.toLowerCase());
-      } else if (typeof value === "string" && SOLANA_ADDRESS_EXACT.test(value)) {
+      } else if (
+        typeof value === "string" &&
+        SOLANA_ADDRESS_EXACT.test(value)
+      ) {
         out.push(value);
       }
     }
