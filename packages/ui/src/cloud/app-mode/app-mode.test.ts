@@ -4,7 +4,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   APP_MODE_CREATE_PATH,
-  APP_MODE_INSTANCES_PATH,
   type AppModeAgent,
   appModeNavigation,
   decideAppModeRoute,
@@ -132,19 +131,24 @@ describe("decideAppModeRoute — decision table", () => {
     });
   });
 
-  it("dedicated agents exist but none running → Instances resume", () => {
+  it("dedicated agents exist but none running → chat-home (the app stays home; never the console)", () => {
     const route = decideAppModeRoute([
       agent({ id: "d1", status: "stopped" }),
       agent({ id: "d2", status: "sleeping" }),
     ]);
-    expect(route).toEqual({ kind: "resume", to: APP_MODE_INSTANCES_PATH });
+    expect(route).toEqual({ kind: "chat-home" });
   });
 
-  it("deletion_pending is not running → Instances resume", () => {
+  it("an errored dedicated agent (failed provision) → chat-home, not a dashboard bounce", () => {
+    const route = decideAppModeRoute([agent({ id: "d1", status: "error" })]);
+    expect(route).toEqual({ kind: "chat-home" });
+  });
+
+  it("deletion_pending is not running → chat-home", () => {
     const route = decideAppModeRoute([
       agent({ id: "d1", status: "deletion_pending" }),
     ]);
-    expect(route).toEqual({ kind: "resume", to: APP_MODE_INSTANCES_PATH });
+    expect(route).toEqual({ kind: "chat-home" });
   });
 
   it("shared-tier-only org → chat-home (the same-origin chat app, unchanged)", () => {

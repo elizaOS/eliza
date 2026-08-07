@@ -9,9 +9,10 @@
  * agents and routes per `decideAppModeRoute`: one running dedicated agent →
  * full-page pairing redirect into its web UI (202 "must resume" and pairing
  * failures degrade to the Instances console); several → a minimal chooser;
- * dedicated-but-stopped → Instances; shared-tier-only orgs fall through to the
- * same-origin chat app unchanged; no agents at all → the `/join`
- * deploy-first-agent flow. Unauthenticated visitors first get one shot at the
+ * no pairing target (shared-tier-only orgs AND dedicated agents that are not
+ * running) → the same-origin chat app unchanged — on the app hosts the entry
+ * must stay inside the app, never bounce to the console because an agent is
+ * stopped or errored; no agents at all → the `/join` deploy-first-agent flow. Unauthenticated visitors first get one shot at the
  * cross-host SSO bridge (`../sso-bridge/sso-bridge` — only when the
  * domain-wide session marker says the dashboard pair holds a live session and
  * the user did not explicitly sign out here), then the normal login flow, and
@@ -140,9 +141,11 @@ export function AppModeEntryRoute({
   }
 
   if (agentsQuery.isError) {
-    // Never a blank screen: the Instances console owns the failure surface
-    // (skeleton / error state / retry) for the same list.
-    return <Navigate to={APP_MODE_INSTANCES_PATH} replace />;
+    // Never a blank screen — and never the console either: the same-origin
+    // chat app is the app host's own degraded surface (its pre-app-mode
+    // behavior), so a control-plane hiccup on the agents list keeps the
+    // visitor in the product instead of evicting them to the dashboard.
+    return <>{appElement}</>;
   }
 
   if (!route) {
@@ -170,7 +173,6 @@ export function AppModeEntryRoute({
     case "choose-agent":
       return <AgentChooser running={route.running} />;
 
-    case "resume":
     case "create":
       return <Navigate to={route.to} replace />;
 

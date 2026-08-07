@@ -67,8 +67,13 @@ export interface AppModeAgent {
   updatedAt: IsoDateString;
 }
 
-/** Where the instances console lives — the resume / manage surface. A
- * registered cloud route, reachable on every host. */
+/** Where the instances console lives — the manage surface an explicit user
+ * action (the "Go to your instances" escape, the 202 wake-progress landing)
+ * may navigate to. A registered cloud route, reachable on every host. Entry
+ * routing itself never lands here: the app host is the product, and evicting
+ * a visitor to the console because their agent is stopped or errored buries
+ * the app under the dashboard (the exact app-staging regression this
+ * distinction exists for). */
 export const APP_MODE_INSTANCES_PATH = "/dashboard/agents";
 /** The deploy-first-agent flow: `/join` select-or-provisions a Cloud agent and
  * drops the user straight into chat. */
@@ -79,12 +84,14 @@ export type AppModeRoute =
   | { kind: "enter-agent"; agent: AppModeAgent }
   /** Several running dedicated agents — minimal chooser, most recent first. */
   | { kind: "choose-agent"; running: AppModeAgent[] }
-  /** Dedicated agents exist but none running — Instances, resume from there. */
-  | { kind: "resume"; to: string }
   /** No agents at all — the `/join` deploy-first-agent flow. */
   | { kind: "create"; to: string }
-  /** Only shared-tier agents (no per-agent web UI to pair into) — the existing
-   * same-origin chat app stays their home, exactly as before app-mode. */
+  /** No pairing target right now (shared-tier-only org, or dedicated agents
+   * that are stopped/errored/starting) — the existing same-origin chat app
+   * stays home, exactly as before app-mode. On the app hosts the entry must
+   * stay INSIDE the app: bouncing to the console instances page here is what
+   * made app-staging "redirect to the dashboard" whenever an org's only
+   * dedicated agent wasn't running. */
   | { kind: "chat-home" };
 
 function activityStamp(agent: AppModeAgent): number {
@@ -99,6 +106,14 @@ function activityStamp(agent: AppModeAgent): number {
  * REST adapter and have no per-agent subdomain to redirect into, so a
  * shared-only org keeps the same-origin chat app ({@link AppModeRoute}
  * `chat-home`) instead of a pairing call that cannot succeed.
+ *
+ * Dedicated agents that are NOT running (stopped, sleeping, errored,
+ * provisioning-failed) also resolve to `chat-home`: there is no web UI to
+ * pair into yet, and the same-origin chat app — the app host's pre-app-mode
+ * behavior — degrades gracefully, while a `/dashboard/agents` navigation
+ * would replace the product with the console. Managing/resuming instances
+ * remains an explicit action (the chooser, the error escape button, the
+ * dashboard origin itself), never the silent entry default.
  */
 export function decideAppModeRoute(
   agents: readonly AppModeAgent[],
@@ -110,8 +125,6 @@ export function decideAppModeRoute(
 
   if (running.length === 1) return { kind: "enter-agent", agent: running[0] };
   if (running.length > 1) return { kind: "choose-agent", running };
-  if (dedicated.length > 0)
-    return { kind: "resume", to: APP_MODE_INSTANCES_PATH };
   if (agents.length > 0) return { kind: "chat-home" };
   return { kind: "create", to: APP_MODE_CREATE_PATH };
 }
