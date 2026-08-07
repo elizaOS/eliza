@@ -2874,6 +2874,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							options: actionOptions,
 							viewType,
 							callback,
+							originatingClientId: readViewInteractionClientId(message),
 						});
 
 					case "close":

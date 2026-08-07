@@ -49,16 +49,19 @@ function makeNavigateCtx(
   json: ReturnType<typeof vi.fn>;
   error: ReturnType<typeof vi.fn>;
   broadcastWs: ReturnType<typeof vi.fn>;
+  broadcastWsToClientId: ReturnType<typeof vi.fn>;
 } {
   // `readJsonBody` reads the request as a Node stream; Readable.from yields the
   // JSON exactly as an inbound HTTP request body would.
   const req = Readable.from(
     body === null ? [] : [Buffer.from(JSON.stringify(body))],
   ) as unknown as http.IncomingMessage;
+  req.headers = {};
   const res = {} as http.ServerResponse;
   const json = vi.fn();
   const error = vi.fn();
   const broadcastWs = vi.fn();
+  const broadcastWsToClientId = vi.fn(() => 1);
   const pathname = `/api/views/${encodeURIComponent(id)}/navigate`;
   const ctx: ViewsRouteContext = {
     req,
@@ -69,8 +72,9 @@ function makeNavigateCtx(
     json,
     error,
     broadcastWs,
+    broadcastWsToClientId,
   };
-  return { ctx, json, error, broadcastWs };
+  return { ctx, json, error, broadcastWs, broadcastWsToClientId };
 }
 
 function makeInteractCtx(
@@ -161,6 +165,25 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
     expect(json).toHaveBeenCalledWith(
       ctx.res,
       expect.objectContaining({ ok: true, viewId: "notes" }),
+    );
+  });
+
+  it("delivers app-chat navigation only to its originating client", async () => {
+    const { ctx, broadcastWs, broadcastWsToClientId } = makeNavigateCtx(
+      "browser",
+      { clientId: "seeker-client" },
+    );
+
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+
+    expect(broadcastWs).not.toHaveBeenCalled();
+    expect(broadcastWsToClientId).toHaveBeenCalledWith(
+      "seeker-client",
+      expect.objectContaining({
+        type: SHELL_NAVIGATE_VIEW_WS_EVENT,
+        viewId: "browser",
+        viewPath: "/browser",
+      }),
     );
   });
 

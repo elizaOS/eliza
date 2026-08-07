@@ -966,6 +966,7 @@ export async function handleViewsRoutes(
     const payload =
       body && Object.hasOwn(body, "payload") ? body.payload : undefined;
     const originatingClientDelivery = body?.delivery === "originating-client";
+    const originatingClientId = resolveViewInteractClientId(req, body);
     const layoutPayload = {
       ...(layoutViews && layoutViews.length > 0 ? { views: layoutViews } : {}),
       ...(layout ? { layout } : {}),
@@ -1067,7 +1068,23 @@ export async function handleViewsRoutes(
         ...layoutPayload,
         ...deepLinkPayload,
       };
-      ctx.broadcastWs?.(createShellNavigateViewWsFrame(navigatePayload));
+      const frame = createShellNavigateViewWsFrame(navigatePayload);
+      if (originatingClientId) {
+        const delivered = ctx.broadcastWsToClientId?.(
+          originatingClientId,
+          frame,
+        );
+        if (delivered === undefined || delivered <= 0) {
+          error(
+            res,
+            `No connected view client "${originatingClientId}" is available for "${id}".`,
+            409,
+          );
+          return true;
+        }
+      } else {
+        ctx.broadcastWs?.(frame);
+      }
     }
 
     json(res, {
