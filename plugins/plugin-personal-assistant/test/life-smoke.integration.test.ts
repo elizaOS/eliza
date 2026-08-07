@@ -311,20 +311,21 @@ describe("LIFE action smoke tests -- BRD acceptance criteria", () => {
   }, 60_000);
 
   // -- AC-5: Calendar query --
-  // Calendar depends on Apple Calendar or Google Calendar access, neither of
-  // which is configured in this integration test. The handler should report
-  // the current calendar-access failure without relying on legacy wording.
+  // Since the built-in Eliza calendar (#17914) every agent has one writable
+  // calendar source without an external account, so an unconnected agent
+  // answers from the (empty) built-in calendar instead of reporting
+  // calendar access as unavailable.
 
-  it("AC-5: calendar reports unavailable access when calendar is not configured", async () => {
+  it("AC-5: calendar answers from the built-in calendar when no external calendar is connected", async () => {
     const result = await send({
       action: "calendar",
       intent: "what's on my calendar today",
     });
 
-    expect(result).toMatchObject({ success: false });
-    expect((result as { text: string }).text).toMatch(
-      /calendar access is not available/i,
-    );
+    expect(result).toMatchObject({
+      success: true,
+      text: expect.stringMatching(/calendar is clear|events? today/i),
+    });
   }, 60_000);
 
   // -- AC-7: Email query --
@@ -380,14 +381,16 @@ describe("LIFE action -- robustness scenarios", () => {
     });
   }, 60_000);
 
-  it("handles Google not connected for calendar gracefully", async () => {
+  it("handles Google not connected for calendar via the built-in calendar", async () => {
+    // The built-in Eliza calendar (#17914) keeps calendar queries answerable
+    // without Google; an unconnected agent reads its own (empty) calendar.
     const result = await send({
       action: "calendar",
       intent: "what's on my calendar",
     });
     expect(result).toMatchObject({
-      success: false,
-      text: expect.stringMatching(/calendar access is not available/i),
+      success: true,
+      text: expect.stringMatching(/calendar is clear|events? today/i),
     });
   }, 60_000);
 
@@ -426,11 +429,12 @@ describe("LIFE action -- robustness scenarios", () => {
       action: "calendar",
       intent: "review the calendar",
     });
-    // Calendar without access should fail with calendar unavailable,
-    // proving action param was used (not review_goal)
+    // The calendar action answers from the built-in Eliza calendar (empty for
+    // this agent), proving the action param was used: review_goal would have
+    // replied about goals, not the day's calendar.
     expect(result).toMatchObject({
-      success: false,
-      text: expect.stringMatching(/calendar access is not available/i),
+      success: true,
+      text: expect.stringMatching(/calendar is clear|events? today/i),
     });
   }, 60_000);
 });
