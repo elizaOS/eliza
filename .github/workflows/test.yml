@@ -195,7 +195,9 @@ jobs:
         run: bun run build:views
 
       - name: Views system tests
-        run: bunx vitest run packages/agent/src/__tests__/views-system-smoke.test.ts packages/agent/src/__tests__/views-registry-integration.test.ts
+        # views-registry.integration.test.ts is discovered by the agent
+        # integration lane (pattern), not hand-enumerated here (#17778 / #17838).
+        run: bunx vitest run packages/agent/src/__tests__/views-system-smoke.test.ts
 
       - name: Remote capability router tests
         run: bun run test:remote-capabilities
@@ -398,9 +400,11 @@ jobs:
   # the src-integration lane (scheduler/recurrence/global-pause real-DB
   # suites) plus the repo config over the package's named test/ files —
   # keyless. Burn down the remaining plugins/*/test integration suites from
-  # here.
+  # here. packages/agent joined the lane in #17778: its own lanes exclude the
+  # `.integration.test.` suffix, so without a step here a suite under
+  # packages/agent ran in no lane at all.
   integration-tests:
-    name: Integration Lane (personal-assistant)
+    name: Integration Lane (personal-assistant + agent)
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.plugins == 'true' || needs.changes.outputs.server == 'true'
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
@@ -436,6 +440,15 @@ jobs:
       - name: Run personal-assistant integration lanes
         timeout-minutes: 35
         run: bun run --cwd plugins/plugin-personal-assistant test:integration
+
+      # Discovery is by pattern (no file list), so a new
+      # packages/agent/**/*.integration.test.ts is picked up without editing
+      # this workflow. The renamed views-registry.integration.test.ts is discovered by pattern;
+      # packages/scripts/__tests__/vitest-integration-config-agent-subpath-alias.test.ts
+      # guards the include globs and alias.
+      - name: Run agent integration lane
+        timeout-minutes: 20
+        run: bun run --cwd packages/agent test:integration
 
   desktop-contract:
     name: Electrobun Desktop Contract
