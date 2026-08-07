@@ -2630,12 +2630,14 @@ export async function persistConversationMemory(
   memory.id ??= crypto.randomUUID() as UUID;
   const stampedMemory = stampAppConversationProvenance(runtime, memory);
   try {
-    await runtime.createMemory(
-      stampedMemory,
-      "messages",
-      undefined,
-      roomHandlerLease,
-    );
+    const write = () => runtime.createMemory(stampedMemory, "messages");
+    await (roomHandlerLease
+      ? runtime.roomHandlerQueue.runInLease(
+          stampedMemory.roomId,
+          roomHandlerLease,
+          write,
+        )
+      : write());
   } catch (err) {
     if (isDuplicateMemoryError(err)) return stampedMemory;
     throw err;
@@ -2713,12 +2715,14 @@ export async function persistExactConversationMemoryResult(
   if (existing) return { created: false, memory: assertExact(existing) };
 
   try {
-    await runtime.createMemory(
-      stampedMemory,
-      "messages",
-      undefined,
-      roomHandlerLease,
-    );
+    const write = () => runtime.createMemory(stampedMemory, "messages");
+    await (roomHandlerLease
+      ? runtime.roomHandlerQueue.runInLease(
+          stampedMemory.roomId,
+          roomHandlerLease,
+          write,
+        )
+      : write());
     return { created: true, memory: stampedMemory };
   } catch (cause) {
     const raced = await loadExisting();
@@ -3689,6 +3693,7 @@ async function generateChatResponseWithTiming(
                   },
                   {
                     abortSignal: generationAbortController.signal,
+                    roomHandlerLease: opts?.roomHandlerLease,
                     keepExistingResponses: true,
                     onSettledActionResult: (actionResult) => {
                       settledActionResults.push(actionResult);

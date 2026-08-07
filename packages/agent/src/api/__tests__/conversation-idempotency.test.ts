@@ -53,6 +53,7 @@ import type {
   ConversationRouteContext,
   ConversationRouteState,
 } from "../conversation-routes.ts";
+import { quiesceRuntimeBeforeReplacement } from "../runtime-replacement-ownership.ts";
 
 let handleConversationRoutes: typeof import("../conversation-routes.ts")["handleConversationRoutes"];
 let resetChatDedupe: () => void;
@@ -368,6 +369,40 @@ describe("conversation-route chat idempotency wiring", () => {
     vi.clearAllMocks();
   });
 
+  it("cordons and drains the old runtime before a same-room replacement turn starts", async () => {
+    const old = createHarness();
+    const replacement = createHarness();
+    const oldRuntime = old.state.runtime;
+    const newRuntime = replacement.state.runtime;
+    if (!oldRuntime || !newRuntime) throw new Error("runtime fixture missing");
+    const active = await oldRuntime.roomHandlerQueue.acquire(ROOM_ID);
+    let published = false;
+    const swap = quiesceRuntimeBeforeReplacement(oldRuntime, newRuntime).then(
+      () => {
+        old.state.runtime = newRuntime;
+        published = true;
+      },
+    );
+
+    await vi.waitFor(() =>
+      expect(oldRuntime.roomHandlerQueue.isAcceptingAdmissions()).toBe(false),
+    );
+    expect(published).toBe(false);
+    await active.release();
+    await swap;
+    expect(published).toBe(true);
+
+    const response = await runRoute("POST", SEND_PATH, old.state, {
+      text: "run on the replacement",
+      clientMessageId: "post-reload-turn",
+    });
+    expect(response.captured.payload).toMatchObject({ text: "ok" });
+    expect(old.handleMessage).not.toHaveBeenCalled();
+    expect(replacement.handleMessage).toHaveBeenCalledTimes(1);
+    expect(oldRuntime.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(0);
+    expect(newRuntime.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(0);
+  });
+
   it("SSE: first send runs the turn; a retry after delivery returns the persisted first reply", async () => {
     const { state, handleMessage, createMemory } = createHarness();
     const body = { text: "hello", clientMessageId: "sse-retry-1" };
@@ -457,35 +492,75 @@ describe("conversation-route chat idempotency wiring", () => {
     expect(createMemory).toHaveBeenCalledTimes(persistsAfterFirst);
   });
 
-  it("SSE: rejects a malformed persisted terminal outcome without executing", async () => {
-    const { state, handleMessage, storedMemories } = createHarness();
-    const body = {
-      text: "validate persisted outcome",
-      clientMessageId: "invalid-outcome-1",
-    };
-    await runRoute("POST", STREAM_PATH, state, body);
-    const userMemory = storedMemories.find(
-      (memory) => memory.entityId === USER_ID,
-    );
-    if (!userMemory) throw new Error("durable user memory was not persisted");
-    const marker = userMemory.content.chatIdempotency;
-    if (!marker || typeof marker !== "object" || Array.isArray(marker)) {
-      throw new Error("durable idempotency marker was not persisted");
-    }
-    userMemory.content.chatIdempotency = {
-      ...marker,
+  it.each([
+    {
+      label: "wrong field type",
       outcomeJson: JSON.stringify({ text: 42, agentName: "invalid" }),
-    };
-    resetChatDedupe();
-
-    const retry = await runRoute("POST", STREAM_PATH, state, body);
-    expect(parseDataFrames(retry.record)).toContainEqual(
-      expect.objectContaining({
+    },
+    {
+      label: "unknown protocol override fields",
+      outcomeJson: JSON.stringify({
+        text: "safe",
+        agentName: "invalid",
         type: "error",
-        code: "CHAT_IDEMPOTENCY_OUTCOME_INVALID",
+        fullText: "spoofed",
       }),
+    },
+    { label: "empty serialized outcome", outcomeJson: "" },
+  ])(
+    "SSE: rejects a persisted terminal with $label without executing",
+    async ({ label, outcomeJson }) => {
+      const { state, handleMessage, storedMemories } = createHarness();
+      const body = {
+        text: `validate persisted outcome ${label}`,
+        clientMessageId: `invalid-outcome-${label.replaceAll(" ", "-")}`,
+      };
+      await runRoute("POST", STREAM_PATH, state, body);
+      const userMemory = storedMemories.find(
+        (memory) => memory.entityId === USER_ID,
+      );
+      if (!userMemory) throw new Error("durable user memory was not persisted");
+      const marker = userMemory.content.chatIdempotency;
+      if (!marker || typeof marker !== "object" || Array.isArray(marker)) {
+        throw new Error("durable idempotency marker was not persisted");
+      }
+      userMemory.content.chatIdempotency = { ...marker, outcomeJson };
+      resetChatDedupe();
+
+      const retry = await runRoute("POST", STREAM_PATH, state, body);
+      expect(parseDataFrames(retry.record)).toContainEqual(
+        expect.objectContaining({
+          type: "error",
+          code: "CHAT_IDEMPOTENCY_OUTCOME_INVALID",
+        }),
+      );
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("SSE: authoritative terminal fields cannot be overridden by stored metadata", async () => {
+    const { state } = createHarness();
+    const clientMessageId = "terminal-field-override";
+    expect(markChatMessageSeen(ROUTE_IDEMPOTENCY_SCOPE, clientMessageId)).toBe(
+      false,
     );
-    expect(handleMessage).toHaveBeenCalledTimes(1);
+    setChatOutcome(ROUTE_IDEMPOTENCY_SCOPE, clientMessageId, {
+      text: "authoritative text",
+      agentName: "Stored Agent",
+      type: "error",
+      fullText: "spoofed text",
+    } as never);
+
+    const response = await runRoute("POST", STREAM_PATH, state, {
+      text: "must not execute",
+      clientMessageId,
+    });
+    expect(parseDataFrames(response.record)).toEqual([
+      expect.objectContaining({
+        type: "done",
+        fullText: "authoritative text",
+      }),
+    ]);
   });
 
   it("replays the complete terminal contract with explicit stream and JSON mappings", async () => {
@@ -659,57 +734,75 @@ describe("conversation-route chat idempotency wiring", () => {
     }
   });
 
-  it("SSE: normalizes the message-service row in place instead of inserting a duplicate", async () => {
-    const { state, handleMessage, storedMemories } = createHarness();
-    const leakedPayload =
-      '"RESPOND","contexts":["simple"],"replyText":"Normalized reply","candidateActionNames":[]';
-    const persistedId = stringToUuid("normalized-existing-assistant");
-    handleMessage.mockImplementationOnce(
-      async (
-        runtime: AgentRuntime,
-        message: Memory,
-        _callback: unknown,
-        options?: { onStreamChunk?: (chunk: string) => Promise<void> | void },
-      ) => {
-        const persisted: Memory = {
-          id: persistedId,
-          entityId: runtime.agentId,
-          agentId: runtime.agentId,
-          roomId: message.roomId,
-          content: { text: leakedPayload },
-        };
-        await runtime.createMemory(persisted, "messages");
-        await options?.onStreamChunk?.(leakedPayload);
-        return {
-          didRespond: true,
-          responseContent: { text: leakedPayload },
-          responseMessages: [persisted],
-          persistedResponseMessageIds: [persistedId],
-        };
-      },
-    );
+  it.each([
+    { label: "SSE", path: STREAM_PATH },
+    { label: "JSON", path: SEND_PATH },
+  ])(
+    "$label: normalizes the message-service row under the live room lease without inserting a duplicate",
+    async ({ label, path }) => {
+      const { state, handleMessage, storedMemories } = createHarness();
+      const leakedPayload =
+        '"RESPOND","contexts":["simple"],"replyText":"Normalized reply","candidateActionNames":[]';
+      const persistedId = stringToUuid(
+        `normalized-existing-assistant-${label}`,
+      );
+      handleMessage.mockImplementationOnce(
+        async (
+          runtime: AgentRuntime,
+          message: Memory,
+          _callback: unknown,
+          options?: {
+            onStreamChunk?: (chunk: string) => Promise<void> | void;
+          },
+        ) => {
+          const persisted: Memory = {
+            id: persistedId,
+            entityId: runtime.agentId,
+            agentId: runtime.agentId,
+            roomId: message.roomId,
+            content: { text: leakedPayload },
+          };
+          await runtime.createMemory(persisted, "messages");
+          await options?.onStreamChunk?.(leakedPayload);
+          return {
+            didRespond: true,
+            responseContent: { text: leakedPayload },
+            responseMessages: [persisted],
+            persistedResponseMessageIds: [persistedId],
+          };
+        },
+      );
 
-    const response = await runRoute("POST", STREAM_PATH, state, {
-      text: "normalize it",
-      clientMessageId: "normalize-existing-1",
-    });
-    const done = parseDataFrames(response.record).find(
-      (frame) => frame.type === "done",
-    );
-    const assistantRows = storedMemories.filter(
-      (memory) => memory.entityId === AGENT_ID,
-    );
+      const response = await runRoute("POST", path, state, {
+        text: "normalize it",
+        clientMessageId: `normalize-existing-${label}`,
+      });
+      const terminal =
+        label === "SSE"
+          ? parseDataFrames(response.record).find(
+              (frame) => frame.type === "done",
+            )
+          : (response.captured.payload as {
+              text?: string;
+              messageId?: string;
+            });
+      const terminalText =
+        label === "SSE"
+          ? (terminal as { fullText?: string })?.fullText
+          : (terminal as { text?: string })?.text;
+      const assistantRows = storedMemories.filter(
+        (memory) => memory.entityId === AGENT_ID,
+      );
 
-    expect(done).toMatchObject({
-      fullText: "Normalized reply",
-      messageId: persistedId,
-    });
-    expect(assistantRows).toHaveLength(1);
-    expect(assistantRows[0]).toMatchObject({
-      id: persistedId,
-      content: { text: "Normalized reply" },
-    });
-  });
+      expect(terminalText).toBe("Normalized reply");
+      expect(terminal?.messageId).toBe(persistedId);
+      expect(assistantRows).toHaveLength(1);
+      expect(assistantRows[0]).toMatchObject({
+        id: persistedId,
+        content: { text: "Normalized reply" },
+      });
+    },
+  );
 
   it("SSE: a retry joins the active turn and replays its durable outcome", async () => {
     const { state, handleMessage } = createHarness();

@@ -465,8 +465,20 @@ function createPersistedCallbackMessageService(
   messageId: UUID,
 ): NonNullable<AgentRuntime["messageService"]> {
   const text = "Calendar is ready.";
+  const routeUserMessageId = stringToUuid("stream-contract-user-msg-store");
   return {
-    async handleMessage(_runtime, _message, callback) {
+    async handleMessage(runtime, _message, callback) {
+      await runtime.createMemory(
+        {
+          id: messageId,
+          entityId: AGENT_ID,
+          agentId: AGENT_ID,
+          roomId: ROOM_ID,
+          content: { text, inReplyTo: routeUserMessageId },
+          createdAt: Date.now(),
+        },
+        "messages",
+      );
       await callback?.({ text, actions: ["CALENDAR"] }, "CALENDAR");
       return {
         didRespond: true,
@@ -477,7 +489,7 @@ function createPersistedCallbackMessageService(
             entityId: AGENT_ID,
             agentId: AGENT_ID,
             roomId: ROOM_ID,
-            content: { text },
+            content: { text, inReplyTo: routeUserMessageId },
             createdAt: Date.now(),
           },
         ],
@@ -507,7 +519,18 @@ function createGenericPersistedCallbackMessageService(
 ): NonNullable<AgentRuntime["messageService"]> {
   const text = "Simple delivery is ready.";
   return {
-    async handleMessage(_runtime, _message, callback) {
+    async handleMessage(runtime, message, callback) {
+      await runtime.createMemory(
+        {
+          id: messageId,
+          entityId: AGENT_ID,
+          agentId: AGENT_ID,
+          roomId: ROOM_ID,
+          content: { text, actions: ["REPLY"], inReplyTo: message.id },
+          createdAt: Date.now(),
+        },
+        "messages",
+      );
       await callback?.({ text, actions: ["REPLY"] });
       return {
         didRespond: true,
@@ -518,7 +541,7 @@ function createGenericPersistedCallbackMessageService(
             entityId: AGENT_ID,
             agentId: AGENT_ID,
             roomId: ROOM_ID,
-            content: { text, actions: ["REPLY"] },
+            content: { text, actions: ["REPLY"], inReplyTo: message.id },
             createdAt: Date.now(),
           },
         ],
@@ -541,7 +564,20 @@ function createPersistedReplyMessageService(): NonNullable<
 > {
   const id = stringToUuid("message-service-persisted-assistant");
   return {
-    async handleMessage() {
+    async handleMessage(runtime, message) {
+      await runtime.createMemory(
+        {
+          id,
+          entityId: AGENT_ID,
+          agentId: AGENT_ID,
+          roomId: ROOM_ID,
+          content: {
+            text: "Already committed by message service.",
+            inReplyTo: message.id,
+          },
+        },
+        "messages",
+      );
       return {
         didRespond: true,
         responseContent: { text: "Already committed by message service." },
@@ -551,7 +587,10 @@ function createPersistedReplyMessageService(): NonNullable<
             entityId: AGENT_ID,
             agentId: AGENT_ID,
             roomId: ROOM_ID,
-            content: { text: "Already committed by message service." },
+            content: {
+              text: "Already committed by message service.",
+              inReplyTo: message.id,
+            },
           },
         ],
         persistedResponseMessageIds: [id],
@@ -914,6 +953,25 @@ describe("conversation stream SSE contract (#10712)", () => {
     requestClientMessageId = undefined;
     requestPromptQueue.length = 0;
     userMessagePreparationHook = undefined;
+  });
+
+  it("completes an initial turn when room ownership requires explicit capability propagation", async () => {
+    const { ctx, record, state } = createCtx();
+    const runtime = state.runtime;
+    if (!runtime) throw new Error("runtime fixture missing");
+    Object.defineProperty(runtime, "roomHandlerQueue", {
+      configurable: true,
+      value: new RoomHandlerQueue({ asyncContext: "explicit" }),
+    });
+
+    await handleConversationRoutes(ctx);
+
+    expect(
+      parseSsePayloads(record.writes).filter(
+        (payload) => payload.type === "done",
+      ),
+    ).toHaveLength(1);
+    expect(runtime.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(0);
   });
 
   it("emits thinking→streaming status, ordered cumulative token frames, then a terminal done frame with thought", async () => {
@@ -1622,7 +1680,14 @@ describe("conversation stream SSE contract (#10712)", () => {
       messageId: responseId,
     });
     expect(done).not.toHaveProperty("historyRefreshRequired");
-    expect(runtime.updateMemory).not.toHaveBeenCalled();
+    expect(runtime.updateMemory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: responseId,
+        content: expect.objectContaining({
+          inReplyTo: stringToUuid("stream-contract-user-msg-store"),
+        }),
+      }),
+    );
   });
 
   it("reuses the exact message-service commit without a route read or write", async () => {
@@ -1661,7 +1726,10 @@ describe("conversation stream SSE contract (#10712)", () => {
         entityId: AGENT_ID,
         agentId: AGENT_ID,
         roomId: ROOM_ID,
-        content: { text: "Calendar is ready." },
+        content: {
+          text: "Calendar is ready.",
+          inReplyTo: stringToUuid("stream-contract-user-msg-store"),
+        },
         createdAt: Date.now(),
       },
     ]);

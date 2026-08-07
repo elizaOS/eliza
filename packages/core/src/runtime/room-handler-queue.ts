@@ -6,7 +6,6 @@
  */
 
 import { ElizaError } from "../errors";
-import type { Memory } from "../types/memory";
 
 interface QueuedItem<T> {
 	fn: () => Promise<T>;
@@ -88,6 +87,11 @@ export interface RoomHandlerQueueOptions {
 	maxActiveRooms?: number;
 	/** Diagnostic boundary for telemetry-listener failures. */
 	onListenerError?: (error: unknown, event: RoomQueueEvent) => void;
+	/**
+	 * Force explicit capability propagation when async-local context is unavailable.
+	 * Browser and edge runtimes select this mode automatically.
+	 */
+	asyncContext?: "auto" | "explicit";
 }
 
 export interface RoomHandlerLease {
@@ -105,10 +109,12 @@ interface RoomHandlerOwnershipStorage {
 	run<T>(context: RoomHandlerOwnershipContext, fn: () => T): T;
 }
 
-let roomHandlerOwnershipStorage: RoomHandlerOwnershipStorage | undefined;
+let roomHandlerOwnershipStorage: RoomHandlerOwnershipStorage | null | undefined;
 
-function getRoomHandlerOwnershipStorage(): RoomHandlerOwnershipStorage {
-	if (roomHandlerOwnershipStorage) return roomHandlerOwnershipStorage;
+function getRoomHandlerOwnershipStorage(): RoomHandlerOwnershipStorage | null {
+	if (roomHandlerOwnershipStorage !== undefined) {
+		return roomHandlerOwnershipStorage;
+	}
 	if (
 		typeof process !== "undefined" &&
 		typeof process.getBuiltinModule === "function"
@@ -120,10 +126,7 @@ function getRoomHandlerOwnershipStorage(): RoomHandlerOwnershipStorage {
 			new AsyncLocalStorage<RoomHandlerOwnershipContext>();
 		return roomHandlerOwnershipStorage;
 	}
-	roomHandlerOwnershipStorage = {
-		getStore: () => undefined,
-		run: (_context, fn) => fn(),
-	};
+	roomHandlerOwnershipStorage = null;
 	return roomHandlerOwnershipStorage;
 }
 
@@ -135,6 +138,8 @@ interface RunWithOptions {
 export interface WithRoomHandlerLeaseOptions {
 	/** Cancellation applies only while ownership is queued. */
 	signal?: AbortSignal;
+	/** Exact live capability to reuse when async-local context is unavailable. */
+	lease?: RoomHandlerLease;
 }
 
 class RoomQueue {
@@ -230,15 +235,6 @@ export class RoomHandlerQueue {
 			writerTail: Promise<void>;
 		}
 	>();
-	private roomProcessingClocks = new Map<
-		string,
-		{ timestamp: number; sequence: number }
-	>();
-	private roomProcessingClockSeeds = new Map<string, Promise<void>>();
-	private stampedMemories = new WeakMap<
-		Memory,
-		{ roomId: string; lease: RoomHandlerLease }
-	>();
 	readonly maxPendingPerRoom: number;
 	readonly maxPendingTotal: number;
 	readonly maxActiveRooms: number;
@@ -247,6 +243,7 @@ export class RoomHandlerQueue {
 		error: unknown,
 		event: RoomQueueEvent,
 	) => void;
+	private readonly ownershipStorage: RoomHandlerOwnershipStorage | null;
 
 	constructor(options: RoomHandlerQueueOptions = {}) {
 		const maxPendingPerRoom =
@@ -269,6 +266,10 @@ export class RoomHandlerQueue {
 		this.maxPendingTotal = maxPendingTotal;
 		this.maxActiveRooms = maxActiveRooms;
 		this.onListenerError = options.onListenerError;
+		this.ownershipStorage =
+			options.asyncContext === "explicit"
+				? null
+				: getRoomHandlerOwnershipStorage();
 	}
 
 	/**
@@ -277,6 +278,14 @@ export class RoomHandlerQueue {
 	 * the prior handler resolves (or rejects — failures don't block the queue).
 	 */
 	async runWith<T>(
+		roomId: string,
+		fn: () => Promise<T>,
+		options?: RunWithOptions,
+	): Promise<T> {
+		return this.runQueued(roomId, fn, options);
+	}
+
+	private async runQueued<T>(
 		roomId: string,
 		fn: () => Promise<T>,
 		options?: RunWithOptions,
@@ -371,7 +380,7 @@ export class RoomHandlerQueue {
 			releaseHold = resolve;
 		});
 
-		const heldTurn = this.runWith(
+		const heldTurn = this.runQueued(
 			roomId,
 			async () => {
 				markAcquired?.();
@@ -418,6 +427,12 @@ export class RoomHandlerQueue {
 		fn: (lease: RoomHandlerLease) => Promise<T>,
 		options?: WithRoomHandlerLeaseOptions,
 	): Promise<T> {
+		if (options?.lease) {
+			this.assertLeaseForRoom(roomId, options.lease);
+			return await this.runInLease(roomId, options.lease, () =>
+				fn(options.lease as RoomHandlerLease),
+			);
+		}
 		const lease = await this.acquire(roomId, options?.signal);
 		try {
 			return await this.runInLease(roomId, lease, () => fn(lease));
@@ -438,7 +453,7 @@ export class RoomHandlerQueue {
 	): Promise<T> {
 		const rooms = [...new Set(roomIds)].sort();
 		if (rooms.length === 0) return fn(new Map());
-		const ambient = getRoomHandlerOwnershipStorage().getStore();
+		const ambient = this.ownershipStorage?.getStore();
 		if (ambient) {
 			if (
 				rooms.length !== 1 ||
@@ -455,7 +470,28 @@ export class RoomHandlerQueue {
 			}
 			return fn(new Map([[ambient.roomId, ambient.lease]]));
 		}
-
+		if (options?.lease) {
+			const ownership = this.activeLeases.get(options.lease);
+			if (
+				!ownership ||
+				ownership.released ||
+				!ownership.accepting ||
+				rooms.length !== 1 ||
+				rooms[0] !== ownership.roomId
+			) {
+				throw new ElizaError(
+					"Nested room ownership cannot widen across rooms",
+					{
+						code: "ROOM_HANDLER_CROSS_ROOM_REENTRY",
+						context: {
+							ownerRoomId: ownership?.roomId,
+							requestedRoomIds: rooms,
+						},
+					},
+				);
+			}
+			return fn(new Map([[ownership.roomId, options.lease]]));
+		}
 		const leases = new Map<string, RoomHandlerLease>();
 		try {
 			for (const roomId of rooms) {
@@ -524,18 +560,14 @@ export class RoomHandlerQueue {
 	 * cannot manufacture or reuse it after release.
 	 */
 	runInLease<T>(roomId: string, lease: RoomHandlerLease, fn: () => T): T {
-		if (!this.ownsLease(roomId, lease)) {
-			throw new ElizaError("Room ownership capability is not live", {
-				code: "ROOM_HANDLER_LEASE_MISMATCH",
-				context: { roomId },
-			});
-		}
-		return getRoomHandlerOwnershipStorage().run({ roomId, lease }, fn);
+		this.assertLeaseForRoom(roomId, lease);
+		if (!this.ownershipStorage) return fn();
+		return this.ownershipStorage.run({ roomId, lease }, fn);
 	}
 
 	/** Return the exact live capability inherited by the current async work. */
 	currentLease(roomId: string): RoomHandlerLease | undefined {
-		const context = getRoomHandlerOwnershipStorage().getStore();
+		const context = this.ownershipStorage?.getStore();
 		if (
 			!context ||
 			context.roomId !== roomId ||
@@ -548,88 +580,11 @@ export class RoomHandlerQueue {
 
 	/** Snapshot the exact live ownership inherited by the current async work. */
 	currentOwnership(): RoomHandlerOwnershipContext | undefined {
-		const context = getRoomHandlerOwnershipStorage().getStore();
+		const context = this.ownershipStorage?.getStore();
 		if (!context || !this.ownsLease(context.roomId, context.lease)) {
 			return undefined;
 		}
 		return context;
-	}
-
-	/**
-	 * Seed the runtime-local processing clock from durable history after restart.
-	 * The room lease makes the snapshot stable against every serialized writer;
-	 * the promise map also collapses sibling writers inside one owned turn.
-	 */
-	async ensureProcessingClock(
-		roomId: string,
-		lease: RoomHandlerLease,
-		loadDurableMessages: () => Promise<Memory[]>,
-	): Promise<void> {
-		if (!this.ownsLease(roomId, lease)) {
-			throw new ElizaError("Room ownership capability is not live", {
-				code: "ROOM_HANDLER_LEASE_MISMATCH",
-				context: { roomId },
-			});
-		}
-		if (this.roomProcessingClocks.has(roomId)) return;
-		let seed = this.roomProcessingClockSeeds.get(roomId);
-		if (!seed) {
-			seed = (async () => {
-				const messages = await loadDurableMessages();
-				let timestamp = 0;
-				let sequence = 0;
-				for (const memory of messages) {
-					if (typeof memory.createdAt === "number") {
-						timestamp = Math.max(timestamp, memory.createdAt);
-					}
-					const candidate = memory.metadata?.roomProcessingSequence;
-					if (
-						typeof candidate === "number" &&
-						Number.isSafeInteger(candidate)
-					) {
-						sequence = Math.max(sequence, candidate);
-					}
-				}
-				this.roomProcessingClocks.set(roomId, { timestamp, sequence });
-			})();
-			this.roomProcessingClockSeeds.set(roomId, seed);
-		}
-		try {
-			await seed;
-		} finally {
-			this.roomProcessingClockSeeds.delete(roomId);
-		}
-	}
-
-	/**
-	 * Stamp a message at processing ownership, not provider arrival. Strictly
-	 * increasing millisecond values make adapter ordering deterministic even
-	 * when a complete turn and the next inbound message share a wall-clock tick.
-	 */
-	stampMessage(roomId: string, lease: RoomHandlerLease, memory: Memory): void {
-		if (!this.ownsLease(roomId, lease)) {
-			throw new ElizaError("Room ownership capability is not live", {
-				code: "ROOM_HANDLER_LEASE_MISMATCH",
-				context: { roomId },
-			});
-		}
-		const priorStamp = this.stampedMemories.get(memory);
-		if (priorStamp?.roomId === roomId && priorStamp.lease === lease) return;
-		const prior = this.roomProcessingClocks.get(roomId);
-		const timestamp = Math.max(Date.now(), (prior?.timestamp ?? 0) + 1);
-		const sequence = (prior?.sequence ?? 0) + 1;
-		const providerCreatedAt =
-			typeof memory.metadata?.providerCreatedAt === "number"
-				? memory.metadata.providerCreatedAt
-				: memory.createdAt;
-		memory.createdAt = timestamp;
-		memory.metadata ??= { type: "message" };
-		if (providerCreatedAt !== undefined && providerCreatedAt !== timestamp) {
-			memory.metadata.providerCreatedAt = providerCreatedAt;
-		}
-		memory.metadata.roomProcessingSequence = sequence;
-		this.roomProcessingClocks.set(roomId, { timestamp, sequence });
-		this.stampedMemories.set(memory, { roomId, lease });
 	}
 
 	/** Whether this exact live lease owns this queue and room. */
@@ -668,6 +623,11 @@ export class RoomHandlerQueue {
 		return this.admissionClosedReason === null;
 	}
 
+	/** Whether callers must propagate the opaque lease without ambient context. */
+	requiresExplicitOwnership(): boolean {
+		return this.ownershipStorage === null;
+	}
+
 	/** Wait for all queued + active work for a room to finish. */
 	async quiesce(roomId: string): Promise<void> {
 		const queue = this.rooms.get(roomId);
@@ -692,6 +652,30 @@ export class RoomHandlerQueue {
 			this.rooms.set(roomId, q);
 		}
 		return q;
+	}
+
+	private assertLeaseForRoom(roomId: string, lease: RoomHandlerLease): void {
+		const ownership = this.activeLeases.get(lease);
+		if (
+			ownership &&
+			!ownership.released &&
+			ownership.accepting &&
+			ownership.roomId !== roomId
+		) {
+			throw new ElizaError("Nested room ownership cannot widen across rooms", {
+				code: "ROOM_HANDLER_CROSS_ROOM_REENTRY",
+				context: {
+					ownerRoomId: ownership.roomId,
+					requestedRoomIds: [roomId],
+				},
+			});
+		}
+		if (!this.ownsLease(roomId, lease)) {
+			throw new ElizaError("Room ownership capability is not live", {
+				code: "ROOM_HANDLER_LEASE_MISMATCH",
+				context: { roomId },
+			});
+		}
 	}
 
 	private emit(event: RoomQueueEvent): void {

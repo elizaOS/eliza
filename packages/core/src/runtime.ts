@@ -88,10 +88,7 @@ import { buildProviderCachePlan } from "./runtime/provider-cache-plan";
 import type { ResponseHandlerEvaluator } from "./runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "./runtime/response-handler-field-evaluator";
 import { ResponseHandlerFieldRegistry } from "./runtime/response-handler-field-registry";
-import {
-	type RoomHandlerLease,
-	RoomHandlerQueue,
-} from "./runtime/room-handler-queue";
+import { RoomHandlerQueue } from "./runtime/room-handler-queue";
 import { ShortcutRegistry } from "./runtime/shortcut-registry";
 import { SingleFlightMemo } from "./runtime/single-flight-memo";
 import {
@@ -358,6 +355,7 @@ const RUNTIME_TEMPLATE_CACHE = new Map<
 const RUNTIME_TEMPLATE_CACHE_LIMIT = 256;
 const DEFAULT_SERVICE_START_SHUTDOWN_TIMEOUT_MS = 1_000;
 const DEFAULT_FAST_SERVICE_STOP_TIMEOUT_MS = 500;
+const DEFAULT_FAST_ROOM_DRAIN_TIMEOUT_MS = 500;
 // stateCache holds up to 2 entries per message (base State + `${id}_action_results`).
 // Previously it was never unconditionally evicted at end-of-turn, so a long-lived
 // runtime accumulated one State per processed message for its lifetime (~4.7 KB/msg,
@@ -1195,6 +1193,24 @@ function timeoutAfter(ms: number): Promise<"timeout"> {
 	return new Promise((resolve) => {
 		setTimeout(() => resolve("timeout"), ms);
 	});
+}
+
+async function settleBeforeTimeout(
+	work: Promise<void>,
+	timeoutMs: number,
+): Promise<boolean> {
+	if (timeoutMs <= 0) return false;
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	try {
+		return await Promise.race([
+			work.then(() => true),
+			new Promise<false>((resolve) => {
+				timer = setTimeout(() => resolve(false), timeoutMs);
+			}),
+		]);
+	} finally {
+		if (timer !== undefined) clearTimeout(timer);
+	}
 }
 
 interface ResolvedModelRegistration {
@@ -2584,8 +2600,35 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 		this.roomHandlerQueue.closeAdmissions("runtime-stop");
 		this.turnControllers.abortAllTurns("runtime-stop");
-		await this.roomHandlerQueue.quiesceAll();
 		const fast = options?.fast === true;
+		const roomDrain = this.roomHandlerQueue.quiesceAll();
+		if (fast && this.roomHandlerQueue.pendingTotal() > 0) {
+			const timeoutMs = resolveShutdownTimeoutMs(
+				"ELIZA_FAST_ROOM_DRAIN_TIMEOUT_MS",
+				DEFAULT_FAST_ROOM_DRAIN_TIMEOUT_MS,
+			);
+			if (!(await settleBeforeTimeout(roomDrain, timeoutMs))) {
+				const error = new ElizaError(
+					"Fast runtime shutdown timed out while a room owner was still active",
+					{
+						code: "RUNTIME_FAST_STOP_ROOM_DRAIN_TIMEOUT",
+						context: {
+							agentId: this.agentId,
+							pendingRooms: this.roomHandlerQueue.pendingTotal(),
+							timeoutMs,
+						},
+						severity: "ephemeral",
+					},
+				);
+				this.reportError("AgentRuntime.stop.roomDrain", error, {
+					pendingRooms: this.roomHandlerQueue.pendingTotal(),
+					timeoutMs,
+				});
+				throw error;
+			}
+		} else {
+			await roomDrain;
+		}
 		if (!fast) {
 			const pending = pendingPostDeliveryTaskCount(this);
 			if (pending > 0) {
@@ -11145,14 +11188,7 @@ ${section_end}`;
 			return;
 		}
 
-		const roomIds = allMemories
-			.map((memory) => memory.roomId)
-			.filter((roomId): roomId is UUID => typeof roomId === "string");
-		await this.roomHandlerQueue.withLeases(roomIds, async (leases) =>
-			this.roomHandlerQueue.withLeaseWrites(leases, () =>
-				this.adapter.deleteMemories(memoryIds),
-			),
-		);
+		await this.adapter.deleteMemories(memoryIds);
 		this.roomMessagesMemo.invalidate();
 		this.logger.info(
 			{ src: "agent", agentId: this.agentId, count: memoryIds.length },
@@ -11160,15 +11196,7 @@ ${section_end}`;
 		);
 	}
 	async deleteAllMemories(roomIds: UUID[], tableName: string): Promise<void> {
-		if (tableName === "messages") {
-			await this.roomHandlerQueue.withLeases(roomIds, async (leases) =>
-				this.roomHandlerQueue.withLeaseWrites(leases, () =>
-					this.adapter.deleteAllMemories(roomIds, tableName),
-				),
-			);
-		} else {
-			await this.adapter.deleteAllMemories(roomIds, tableName);
-		}
+		await this.adapter.deleteAllMemories(roomIds, tableName);
 		if (tableName === "messages") {
 			for (const roomId of roomIds) this.roomMessagesMemo.invalidate(roomId);
 		}
@@ -11750,55 +11778,14 @@ ${section_end}`;
 				},
 			};
 		}
-		return this.upsertMemories([{ memory, tableName }], options);
+		return this.adapter.upsertMemories([{ memory, tableName }], options);
 	}
 
 	async upsertMemories(
 		memories: Array<{ memory: Memory; tableName: string }>,
 		options?: { entityContext?: UUID },
 	): Promise<void> {
-		const existingIds = memories
-			.map(({ memory }) => memory.id)
-			.filter((id): id is UUID => typeof id === "string");
-		const existing =
-			existingIds.length > 0
-				? await this.adapter.getMemoriesByIds(existingIds)
-				: [];
-		const roomIds = [
-			...memories
-				.filter(({ tableName }) => tableName === "messages")
-				.map(({ memory }) => memory.roomId),
-			...existing.map((memory) => memory.roomId),
-		].filter((roomId): roomId is UUID => typeof roomId === "string");
-		if (roomIds.length === 0) {
-			return this.adapter.upsertMemories(memories, options);
-		}
-		return this.roomHandlerQueue.withLeases(roomIds, async (leases) => {
-			for (const { memory, tableName } of memories) {
-				if (tableName !== "messages" || !memory.roomId) continue;
-				const lease = leases.get(memory.roomId);
-				if (!lease) {
-					throw new ElizaError("Message upsert has no room ownership", {
-						code: "MESSAGE_MEMORY_ROOM_OWNERSHIP_MISSING",
-						context: { roomId: memory.roomId, memoryId: memory.id },
-					});
-				}
-				await this.roomHandlerQueue.ensureProcessingClock(
-					memory.roomId,
-					lease,
-					() =>
-						this.getMemories({
-							roomId: memory.roomId,
-							tableName: "messages",
-							count: 100,
-						}),
-				);
-				this.roomHandlerQueue.stampMessage(memory.roomId, lease, memory);
-			}
-			return this.roomHandlerQueue.withLeaseWrites(leases, () =>
-				this.adapter.upsertMemories(memories, options),
-			);
-		});
+		return this.adapter.upsertMemories(memories, options);
 	}
 
 	// Batch relationship methods
@@ -11872,39 +11859,7 @@ ${section_end}`;
 	async createMemories(
 		memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>,
 	): Promise<UUID[]> {
-		const roomIds = memories
-			.filter(({ tableName }) => tableName === "messages")
-			.map(({ memory }) => memory.roomId)
-			.filter((roomId): roomId is UUID => typeof roomId === "string");
-		const ids =
-			roomIds.length === 0
-				? await this.adapter.createMemories(memories)
-				: await this.roomHandlerQueue.withLeases(roomIds, async (leases) => {
-						for (const { memory, tableName } of memories) {
-							if (tableName !== "messages" || !memory.roomId) continue;
-							const lease = leases.get(memory.roomId);
-							if (!lease) {
-								throw new ElizaError("Message create has no room ownership", {
-									code: "MESSAGE_MEMORY_ROOM_OWNERSHIP_MISSING",
-									context: { roomId: memory.roomId, memoryId: memory.id },
-								});
-							}
-							await this.roomHandlerQueue.ensureProcessingClock(
-								memory.roomId,
-								lease,
-								() =>
-									this.getMemories({
-										roomId: memory.roomId,
-										tableName: "messages",
-										count: 100,
-									}),
-							);
-							this.roomHandlerQueue.stampMessage(memory.roomId, lease, memory);
-						}
-						return this.roomHandlerQueue.withLeaseWrites(leases, () =>
-							this.adapter.createMemories(memories),
-						);
-					});
+		const ids = await this.adapter.createMemories(memories);
 		for (const entry of memories) {
 			if (entry.tableName === "messages" && entry.memory.roomId) {
 				this.roomMessagesMemo.invalidate(entry.memory.roomId);
@@ -11916,98 +11871,14 @@ ${section_end}`;
 	async updateMemories(
 		memories: Array<Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }>,
 	): Promise<void> {
-		const current = await this.adapter.getMemoriesByIds(
-			memories.map((memory) => memory.id),
-		);
-		const requestedById = new Map(
-			memories.map((memory) => [memory.id, memory]),
-		);
-		for (const existing of current) {
-			if (!existing.id) continue;
-			const requestedRoomId = requestedById.get(existing.id)?.roomId;
-			if (requestedRoomId && requestedRoomId !== existing.roomId) {
-				throw new ElizaError("Message history rows cannot move between rooms", {
-					code: "MESSAGE_MEMORY_ROOM_MOVE_REJECTED",
-					context: {
-						memoryId: existing.id,
-						currentRoomId: existing.roomId,
-						requestedRoomId,
-					},
-				});
-			}
-		}
-		const roomIds = current
-			.map((memory) => memory.roomId)
-			.filter((roomId): roomId is UUID => typeof roomId === "string");
-		if (roomIds.length === 0) {
-			await this.adapter.updateMemories(memories);
-		} else {
-			await this.roomHandlerQueue.withLeases(roomIds, async (leases) => {
-				const refreshed = await this.adapter.getMemoriesByIds(
-					memories.map((memory) => memory.id),
-				);
-				for (const memory of refreshed) {
-					if (!memory.id) continue;
-					if (memory.roomId && !leases.has(memory.roomId)) {
-						throw new ElizaError(
-							"Memory room changed before update ownership",
-							{
-								code: "MESSAGE_MEMORY_ROOM_CHANGED",
-								context: { memoryId: memory.id, roomId: memory.roomId },
-							},
-						);
-					}
-					const requestedRoomId = requestedById.get(memory.id)?.roomId;
-					if (requestedRoomId && requestedRoomId !== memory.roomId) {
-						throw new ElizaError(
-							"Message history rows cannot move between rooms",
-							{
-								code: "MESSAGE_MEMORY_ROOM_MOVE_REJECTED",
-								context: {
-									memoryId: memory.id,
-									currentRoomId: memory.roomId,
-									requestedRoomId,
-								},
-							},
-						);
-					}
-				}
-				await this.roomHandlerQueue.withLeaseWrites(leases, () =>
-					this.adapter.updateMemories(memories),
-				);
-			});
-		}
+		await this.adapter.updateMemories(memories);
 		// Partial updates carry no table/room; drop every cached window rather
 		// than risk serving a pre-update snapshot.
 		this.roomMessagesMemo.invalidate();
 	}
 
 	async deleteMemories(memoryIds: UUID[]): Promise<void> {
-		const current = await this.adapter.getMemoriesByIds(memoryIds);
-		const roomIds = current
-			.map((memory) => memory.roomId)
-			.filter((roomId): roomId is UUID => typeof roomId === "string");
-		if (roomIds.length === 0) {
-			await this.adapter.deleteMemories(memoryIds);
-		} else {
-			await this.roomHandlerQueue.withLeases(roomIds, async (leases) => {
-				const refreshed = await this.adapter.getMemoriesByIds(memoryIds);
-				for (const memory of refreshed) {
-					if (memory.roomId && !leases.has(memory.roomId)) {
-						throw new ElizaError(
-							"Memory room changed before delete ownership",
-							{
-								code: "MESSAGE_MEMORY_ROOM_CHANGED",
-								context: { memoryId: memory.id, roomId: memory.roomId },
-							},
-						);
-					}
-				}
-				await this.roomHandlerQueue.withLeaseWrites(leases, () =>
-					this.adapter.deleteMemories(memoryIds),
-				);
-			});
-		}
+		await this.adapter.deleteMemories(memoryIds);
 		this.roomMessagesMemo.invalidate();
 	}
 
@@ -12028,20 +11899,7 @@ ${section_end}`;
 		memory: Memory,
 		tableName: string,
 		unique?: boolean,
-		roomHandlerLease?: RoomHandlerLease,
 	): Promise<UUID> {
-		if (
-			tableName === "messages" &&
-			memory.roomId &&
-			roomHandlerLease &&
-			!this.roomHandlerQueue.currentLease(memory.roomId)
-		) {
-			return this.roomHandlerQueue.runInLease(
-				memory.roomId,
-				roomHandlerLease,
-				() => this.createMemory(memory, tableName, unique),
-			);
-		}
 		if (unique !== undefined) memory.unique = unique;
 
 		// Redact any secrets from memory content before storing
@@ -12079,7 +11937,9 @@ ${section_end}`;
 			}
 		}
 
-		const ids = await this.createMemories([{ memory, tableName, unique }]);
+		const ids = await this.adapter.createMemories([
+			{ memory, tableName, unique },
+		]);
 		// The intake path persists the user message immediately before
 		// composeState reads the room window; busting the key here makes the
 		// coalesced messages-scan self-enforcing — a stale window can never
@@ -12098,12 +11958,14 @@ ${section_end}`;
 	async updateMemory(
 		memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata },
 	): Promise<boolean> {
-		await this.updateMemories([memory]);
+		await this.adapter.updateMemories([memory]);
+		this.roomMessagesMemo.invalidate();
 		return true; // Successfully updated if no error thrown
 	}
 
 	async deleteMemory(memoryId: UUID): Promise<void> {
-		await this.deleteMemories([memoryId]);
+		await this.adapter.deleteMemories([memoryId]);
+		this.roomMessagesMemo.invalidate();
 	}
 
 	// ── Participant passthroughs & wrappers ──────────────────────────────

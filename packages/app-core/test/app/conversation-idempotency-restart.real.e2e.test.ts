@@ -11,6 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   type AgentRuntime,
+  createUniqueUuid,
   type Memory,
   stringToUuid,
   type UUID,
@@ -406,6 +407,139 @@ describe("conversation idempotency across a real PGlite runtime restart", () => 
     );
     expect(replay).toEqual(recovered);
     expect(handledPrompts).toEqual(["commit one side effect"]);
+    expect(await readConversationMessages(activeRuntime.runtime)).toHaveLength(
+      2,
+    );
+  }, 120_000);
+
+  it("recovers a DMS-persisted equal-text assistant by its canonical user relation", async () => {
+    pgliteDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "eliza-idempotency-dms-correlation-pglite-"),
+    );
+    const handledPrompts: string[] = [];
+    const assistantId = stringToUuid("dms-equal-text-assistant") as UUID;
+    const terminalText = "The persisted DMS reply.";
+    activeRuntime = await createRealTestRuntime({
+      characterName: CHARACTER_NAME,
+      pgliteDir,
+      removePgliteDirOnCleanup: false,
+    });
+    activeRuntime.runtime.messageService = {
+      async handleMessage(runtime, message) {
+        handledPrompts.push(String(message.content.text ?? ""));
+        if (!message.id) throw new Error("user message id missing");
+        const assistant: Memory = {
+          id: assistantId,
+          entityId: runtime.agentId,
+          agentId: runtime.agentId,
+          roomId: message.roomId,
+          content: {
+            text: terminalText,
+            inReplyTo: createUniqueUuid(runtime, message.id),
+          },
+        };
+        await runtime.createMemory(assistant, "messages");
+        return {
+          didRespond: true,
+          responseContent: assistant.content,
+          responseMessages: [assistant],
+          persistedResponseMessageIds: [assistantId],
+          mode: "simple" as const,
+        };
+      },
+      shouldRespond: () => ({
+        shouldRespond: true,
+        skipEvaluation: true,
+        reason: "real-pglite-dms-correlation-proof",
+      }),
+      deleteMessage: async () => undefined,
+      clearChannel: async () => undefined,
+    };
+    const originalUpdateMemory = activeRuntime.runtime.updateMemory.bind(
+      activeRuntime.runtime,
+    );
+    let crashBeforeReconciliation = true;
+    const updateMemorySpy = vi
+      .spyOn(activeRuntime.runtime, "updateMemory")
+      .mockImplementation(async (memory) => {
+        if (crashBeforeReconciliation && memory.id === assistantId) {
+          crashBeforeReconciliation = false;
+          throw new Error(
+            "crash cut after DMS assistant persistence before reconciliation",
+          );
+        }
+        return originalUpdateMemory(memory);
+      });
+    const body = {
+      text: "persist the DMS reply",
+      clientMessageId: "dms-correlation-key",
+    };
+    const firstState = createState(activeRuntime.runtime);
+
+    const interrupted = await sendConversationMessage(
+      firstState,
+      body,
+      "principal-a",
+    );
+    expect(interrupted.status).toBe(500);
+    expect(handledPrompts).toEqual(["persist the DMS reply"]);
+    const beforeRestart = await readConversationMessages(activeRuntime.runtime);
+    expect(beforeRestart).toHaveLength(2);
+    const userMessage = beforeRestart.find(
+      (memory) => memory.entityId !== activeRuntime?.runtime.agentId,
+    );
+    expect(userMessage?.id).toBeTruthy();
+    expect(
+      beforeRestart.find((memory) => memory.id === assistantId)?.content,
+    ).toMatchObject({
+      text: terminalText,
+      inReplyTo: createUniqueUuid(
+        activeRuntime.runtime,
+        userMessage?.id as UUID,
+      ),
+    });
+    updateMemorySpy.mockRestore();
+
+    await activeRuntime.cleanup();
+    activeRuntime = null;
+    __resetChatDedupeForTests();
+    activeRuntime = await createRealTestRuntime({
+      characterName: CHARACTER_NAME,
+      pgliteDir,
+      removePgliteDirOnCleanup: false,
+    });
+    installDeterministicMessageService(activeRuntime.runtime, handledPrompts);
+    const restartedState = createState(activeRuntime.runtime);
+
+    const recovered = await sendConversationMessage(
+      restartedState,
+      body,
+      "principal-a",
+    );
+    expect(recovered).toMatchObject({
+      status: 200,
+      body: { text: terminalText, messageId: assistantId },
+    });
+    expect(handledPrompts).toEqual(["persist the DMS reply"]);
+    const recoveredRows = await readConversationMessages(activeRuntime.runtime);
+    expect(recoveredRows).toHaveLength(2);
+    expect(
+      recoveredRows.find((memory) => memory.id === assistantId)?.content,
+    ).toMatchObject({
+      text: terminalText,
+      inReplyTo: recoveredRows.find(
+        (memory) => memory.entityId !== activeRuntime?.runtime.agentId,
+      )?.id,
+    });
+
+    __resetChatDedupeForTests();
+    const replay = await sendConversationMessage(
+      restartedState,
+      body,
+      "principal-a",
+    );
+    expect(replay).toEqual(recovered);
+    expect(handledPrompts).toEqual(["persist the DMS reply"]);
     expect(await readConversationMessages(activeRuntime.runtime)).toHaveLength(
       2,
     );
