@@ -6,8 +6,8 @@
  * greeting row, which paints the doubled "Hey, I'm <agent>" bubble and leaks a
  * duplicate row into model context. Drives the real `handleConversationRoutes`
  * against a real `InMemoryDatabaseAdapter` (thin runtime shim) and asserts the
- * per-conversation coalescing holds: two concurrent requests, exactly ONE
- * greeting-sourced memory, both responses carrying the same text.
+ * room-history ownership holds: concurrent requests store exactly one greeting,
+ * and create-with-greeting cannot deadlock a direct greeting request.
  */
 
 import type { Memory, UUID } from "@elizaos/core";
@@ -29,7 +29,10 @@ const AGENT_ID = "00000000-0000-0000-0000-0000000000c1" as UUID;
 const CONV_ID = "11111111-1111-4111-8111-111111111111";
 const ROOM_ID = "22222222-2222-4222-8222-222222222222" as UUID;
 
-function makeRuntime(adapter: InMemoryDatabaseAdapter): unknown {
+function makeRuntime(
+  adapter: InMemoryDatabaseAdapter,
+  beforeGetMemories?: (roomId: UUID) => Promise<void>,
+): unknown {
   return {
     agentId: AGENT_ID,
     character: { name: "Eliza" },
@@ -54,6 +57,7 @@ function makeRuntime(adapter: InMemoryDatabaseAdapter): unknown {
       tableName: string;
       limit?: number;
     }) {
+      await beforeGetMemories?.(params.roomId);
       return adapter.getMemories({
         roomId: params.roomId,
         tableName: params.tableName,
@@ -95,7 +99,10 @@ function makeRuntime(adapter: InMemoryDatabaseAdapter): unknown {
   };
 }
 
-function makeState(adapter: InMemoryDatabaseAdapter): ConversationRouteState {
+function makeState(
+  adapter: InMemoryDatabaseAdapter,
+  beforeGetMemories?: (roomId: UUID) => Promise<void>,
+): ConversationRouteState {
   const conv: ConversationMeta = {
     id: CONV_ID,
     title: "Chat",
@@ -104,7 +111,7 @@ function makeState(adapter: InMemoryDatabaseAdapter): ConversationRouteState {
     updatedAt: new Date().toISOString(),
   } as ConversationMeta;
   return {
-    runtime: makeRuntime(adapter),
+    runtime: makeRuntime(adapter, beforeGetMemories),
     agentName: "Eliza",
     config: { ui: {} },
     conversations: new Map<string, ConversationMeta>([[CONV_ID, conv]]),
@@ -118,18 +125,21 @@ interface Captured {
   body: Record<string, unknown> & { error?: string; text?: string };
 }
 
-function greetingRequest(state: ConversationRouteState): Promise<Captured> {
+function greetingRequest(
+  state: ConversationRouteState,
+  conversationId = CONV_ID,
+): Promise<Captured> {
   return new Promise((resolve) => {
     const captured: Partial<Captured> = {};
     const ctx = {
       req: {
-        url: `/api/conversations/${CONV_ID}/greeting`,
+        url: `/api/conversations/${conversationId}/greeting`,
         headers: { host: "localhost" },
         socket: { remoteAddress: "127.0.0.1" },
       },
       res: {},
       method: "POST",
-      pathname: `/api/conversations/${CONV_ID}/greeting`,
+      pathname: `/api/conversations/${conversationId}/greeting`,
       readJsonBody: () => Promise.resolve({}),
       json: (_res: unknown, data: unknown, status = 200) => {
         captured.status = status;
@@ -147,9 +157,44 @@ function greetingRequest(state: ConversationRouteState): Promise<Captured> {
   });
 }
 
-async function greetingRows(adapter: InMemoryDatabaseAdapter) {
+function createConversationRequest(
+  state: ConversationRouteState,
+): Promise<Captured> {
+  return new Promise((resolve) => {
+    const captured: Partial<Captured> = {};
+    const ctx = {
+      req: {
+        url: "/api/conversations",
+        headers: { host: "localhost" },
+        socket: { remoteAddress: "127.0.0.1" },
+      },
+      res: {},
+      method: "POST",
+      pathname: "/api/conversations",
+      readJsonBody: () =>
+        Promise.resolve({ title: "Greeting race", includeGreeting: true }),
+      json: (_res: unknown, data: unknown, status = 200) => {
+        captured.status = status;
+        captured.body = data as Captured["body"];
+        resolve(captured as Captured);
+      },
+      error: (_res: unknown, message: string, status = 500) => {
+        captured.status = status;
+        captured.body = { error: message };
+        resolve(captured as Captured);
+      },
+      state,
+    } as unknown as ConversationRouteContext;
+    void handleConversationRoutes(ctx);
+  });
+}
+
+async function greetingRows(
+  adapter: InMemoryDatabaseAdapter,
+  roomId = ROOM_ID,
+) {
   const memories = await adapter.getMemories({
-    roomId: ROOM_ID,
+    roomId,
     tableName: "messages",
     count: 50,
   });
@@ -198,5 +243,50 @@ describe("POST /api/conversations/:id/greeting — concurrent ensure coalescing"
 
     const rows = await greetingRows(adapter);
     expect(rows).toHaveLength(1);
+  });
+
+  it("serializes create-with-greeting and the greeting route without a single-flight cycle", async () => {
+    let releaseRead: (() => void) | undefined;
+    const readGate = new Promise<void>((resolve) => {
+      releaseRead = resolve;
+    });
+    let notifyReadStarted: (() => void) | undefined;
+    const readStarted = new Promise<void>((resolve) => {
+      notifyReadStarted = resolve;
+    });
+    let blockedRoomId: UUID | undefined;
+    const state = makeState(adapter, async (roomId) => {
+      if (!blockedRoomId) {
+        blockedRoomId = roomId;
+        notifyReadStarted?.();
+        await readGate;
+      }
+    });
+
+    const create = createConversationRequest(state);
+    await readStarted;
+    const created = [...state.conversations.values()].find(
+      (conversation) => conversation.id !== CONV_ID,
+    );
+    expect(created?.roomId).toBe(blockedRoomId);
+    if (!created) throw new Error("created conversation missing");
+
+    let greetingSettled = false;
+    const greeting = greetingRequest(state, created.id).then((result) => {
+      greetingSettled = true;
+      return result;
+    });
+    await Promise.resolve();
+    expect(greetingSettled).toBe(false);
+
+    releaseRead?.();
+    const [createdResponse, greetingResponse] = await Promise.all([
+      create,
+      greeting,
+    ]);
+    expect(createdResponse.status).toBe(200);
+    expect(greetingResponse.status).toBe(200);
+    expect(greetingResponse.body.text).toBeTruthy();
+    expect(await greetingRows(adapter, created.roomId)).toHaveLength(1);
   });
 });
