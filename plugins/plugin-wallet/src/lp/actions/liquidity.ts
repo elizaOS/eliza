@@ -4,7 +4,11 @@
  * dispatched against `LpManagementService`'s registered DEX providers. Formats
  * pool and position results into human-readable summaries and resolves
  * finance/crypto/wallet-context gating the same way the top-level wallet
- * action does.
+ * action does. The open/close/reposition writes move real funds, so they
+ * pass through the same two gates as wallet router writes: the GHSA-gh63
+ * injection guard (`assertWalletFinancialActionAllowed`) and the
+ * GHSA-rqm7 confirmation gate (`gateWalletFinancialExecution`), both keyed
+ * off the single-sourced ON_CHAIN_WRITE_SUBACTIONS set.
  */
 import type {
   Action,
@@ -14,6 +18,12 @@ import type {
   State,
 } from "@elizaos/core";
 import { privateKeyToAccount } from "viem/accounts";
+import { assertWalletFinancialActionAllowed } from "../../security/wallet-context-safety.ts";
+import {
+  gateWalletFinancialExecution,
+  type WalletFinancialWriteParams,
+  walletFinancialGateActionResult,
+} from "../../security/wallet-financial-confirmation.ts";
 import {
   getLpManagementService,
   type LpManagementService,
@@ -317,6 +327,35 @@ function getRangeParam(params: LpActionParams): LpActionParams["range"] {
   );
 }
 
+function amountLabel(amount: LpActionParams["amount"]): string | undefined {
+  if (amount === undefined) return undefined;
+  if (typeof amount === "string") return amount;
+  if (typeof amount === "number") return String(amount);
+  const parts: string[] = [];
+  if (amount.value !== undefined) parts.push(String(amount.value));
+  if (amount.tokenA !== undefined) parts.push(`tokenA=${amount.tokenA}`);
+  if (amount.tokenB !== undefined) parts.push(`tokenB=${amount.tokenB}`);
+  if (amount.lpToken !== undefined) parts.push(`lpToken=${amount.lpToken}`);
+  if (amount.percentage !== undefined) parts.push(`${amount.percentage}%`);
+  return parts.length > 0 ? parts.join(" ") : undefined;
+}
+
+// Maps LP params onto the shared confirmation-gate shape. Reads never reach
+// the prompt: `requiresWalletFinancialConfirmation` fires only for the
+// single-sourced write subactions (open/close/reposition here).
+function lpGateParams(params: LpActionParams): WalletFinancialWriteParams {
+  return {
+    subaction: params.subaction as string,
+    chain: resolveChain(params).chain,
+    amount: amountLabel(getAmountParam(params)),
+    pool: getPoolParam(params),
+    position: getPositionParam(params),
+    slippageBps: params.slippageBps ?? params.maxSlippageBps,
+    mode: "execute",
+    dryRun: false,
+  };
+}
+
 function getEvmWallet(runtime: IAgentRuntime) {
   const rawPrivateKey = runtime.getSetting("EVM_PRIVATE_KEY");
   if (!rawPrivateKey || typeof rawPrivateKey !== "string") {
@@ -618,7 +657,10 @@ export const liquidityAction: Action = {
   name: "LIQUIDITY",
   contexts: ["finance", "crypto", "wallet", "automation"],
   contextGate: { anyOf: ["finance", "crypto", "wallet", "automation"] },
-  roleGate: { minRole: "USER" },
+  // ADMIN matches the WALLET umbrella: core's role gate is per-action and the
+  // promoted virtuals inherit the parent's gate, so write ops cannot be gated
+  // above reads without leaving the parent LIQUIDITY path open.
+  roleGate: { minRole: "ADMIN" },
   description:
     "Single LP/liquidity management action. action=onboard|list_pools|open|close|reposition|list_positions|get_position|set_preferences. dex=orca|raydium|meteora|uniswap|aerodrome|pancakeswap selects the protocol; chain=solana|evm is inferred from dex when omitted.",
   descriptionCompressed:
@@ -815,12 +857,27 @@ export const liquidityAction: Action = {
     return false;
   },
 
-  handler: async (runtime, message, _state, handlerParams) => {
+  handler: async (runtime, message, _state, handlerParams, callback) => {
     const params = normalizeParams(message, handlerParams);
     if (!params) {
       return {
         success: true,
         text: "Use LIQUIDITY with action=list_pools, open, close, reposition, list_positions, get_position, set_preferences, or onboard.",
+      };
+    }
+
+    // GHSA-gh63-5vpj-39qp: an injection-flagged message must not drive LP
+    // writes, same as wallet router writes. Fires on the resolved subaction,
+    // so intent parsed from raw message text is covered too.
+    try {
+      assertWalletFinancialActionAllowed(message, params.subaction);
+    } catch (error) {
+      const text = error instanceof Error ? error.message : String(error);
+      await callback?.({ text, content: { error: "INVALID_PARAMS" } });
+      return {
+        success: false,
+        text,
+        data: { error: "INVALID_PARAMS" },
       };
     }
 
@@ -840,6 +897,19 @@ export const liquidityAction: Action = {
           success: false,
           text: "LP management service is currently unavailable.",
         };
+      }
+
+      // GHSA-rqm7-f4jc-84x3: open/close/reposition pend for user confirmation
+      // before any key derivation or DEX call, through the same gate and
+      // pending-key binding as wallet router writes. Reads no-op the gate.
+      const gate = await gateWalletFinancialExecution({
+        runtime,
+        message,
+        params: lpGateParams(params),
+        callback,
+      });
+      if (!gate.proceed) {
+        return walletFinancialGateActionResult(gate);
       }
 
       return await handleLpOperation(runtime, lp, userId, params);

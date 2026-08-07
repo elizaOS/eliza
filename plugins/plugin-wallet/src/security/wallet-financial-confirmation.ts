@@ -1,7 +1,8 @@
 /**
  * Confirmation gate that every on-chain wallet write (`transfer`, `swap`,
- * `bridge`, `gov`, `pump_fun_buy`) must pass through before submission
- * (GHSA-rqm7-f4jc-84x3). `gateWalletFinancialExecution` calls core's
+ * `bridge`, `gov`, `pump_fun_buy`) and every LIQUIDITY write (`open`,
+ * `close`, `reposition` in lp/actions/liquidity.ts) must pass through before
+ * submission (GHSA-rqm7-f4jc-84x3). `gateWalletFinancialExecution` calls core's
  * `requireConfirmation` with a stable pending key derived from the request
  * params (`walletFinancialPendingKey`) and a human-readable preview of the
  * pending action (`walletFinancialPreview`); it only proceeds once the user
@@ -30,8 +31,21 @@ export const WALLET_FINANCIAL_CONFIRM_ACTION = "WALLET_FINANCIAL";
 // exactly the on-chain write subactions, so the two gates cannot diverge.
 export const ON_CHAIN_SUBACTIONS = ON_CHAIN_WRITE_SUBACTIONS;
 
+// The gate's parameter shape: the wallet router's params plus the LP write
+// identifiers (pool/position). `subaction` is widened to string so the
+// LIQUIDITY write subactions (open/close/reposition), which never route
+// through the wallet router's Zod enum, flow through the same gate.
+export type WalletFinancialWriteParams = Omit<
+  WalletRouterParams,
+  "subaction"
+> & {
+  readonly subaction: string;
+  readonly pool?: string;
+  readonly position?: string;
+};
+
 export function requiresWalletFinancialConfirmation(
-  params: Pick<WalletRouterParams, "subaction" | "dryRun">,
+  params: Pick<WalletFinancialWriteParams, "subaction" | "dryRun">,
 ): boolean {
   if (params.dryRun) {
     return false;
@@ -41,7 +55,7 @@ export function requiresWalletFinancialConfirmation(
 
 export function walletFinancialPendingKey(
   params: Pick<
-    WalletRouterParams,
+    WalletFinancialWriteParams,
     | "subaction"
     | "chain"
     | "toChain"
@@ -53,6 +67,8 @@ export function walletFinancialPendingKey(
     | "op"
     | "governor"
     | "proposalId"
+    | "pool"
+    | "position"
   >,
 ): string {
   const entries: [string, string][] = [
@@ -71,12 +87,21 @@ export function walletFinancialPendingKey(
     ["governor", (params.governor ?? "").toLowerCase()],
     ["proposalId", params.proposalId ?? ""],
   ];
+  // LP identifiers bind only when present so existing wallet pending keys
+  // keep their exact shape; pool/position stay case-sensitive because Solana
+  // mints and position ids are base58.
+  if (params.pool !== undefined) {
+    entries.push(["pool", params.pool]);
+  }
+  if (params.position !== undefined) {
+    entries.push(["position", params.position]);
+  }
   return entries.map(([key, value]) => `${key}=${value}`).join("|");
 }
 
 export function walletFinancialPreview(
   params: Pick<
-    WalletRouterParams,
+    WalletFinancialWriteParams,
     | "subaction"
     | "chain"
     | "toChain"
@@ -85,6 +110,8 @@ export function walletFinancialPreview(
     | "fromToken"
     | "toToken"
     | "op"
+    | "pool"
+    | "position"
   >,
 ): string {
   const chainLabel = params.chain ?? params.toChain ?? "the selected chain";
@@ -99,6 +126,14 @@ export function walletFinancialPreview(
       return `Governance ${params.op ?? "operation"} on ${chainLabel}? Reply yes to submit or no to cancel.`;
     case "pump_fun_buy":
       return `Buy ${params.amount ?? "?"} SOL of ${params.toToken ?? "the selected pump.fun token"} through pump.fun on ${chainLabel}? Reply yes to submit or no to cancel.`;
+    case "open":
+      return `Open a liquidity position in pool ${params.pool ?? "?"} on ${chainLabel} with ${params.amount ?? "?"}? Reply yes to submit or no to cancel.`;
+    case "close":
+    case "reposition": {
+      const poolClause = params.pool ? ` in pool ${params.pool}` : "";
+      const verb = params.subaction === "close" ? "Close" : "Reposition";
+      return `${verb} liquidity position ${params.position ?? "?"}${poolClause} on ${chainLabel}? Reply yes to submit or no to cancel.`;
+    }
     default:
       return `Submit wallet ${params.subaction} on ${chainLabel}? Reply yes to confirm or no to cancel.`;
   }
@@ -115,7 +150,7 @@ export type WalletFinancialGateResult =
 export async function gateWalletFinancialExecution(args: {
   runtime: IAgentRuntime;
   message: Memory;
-  params: WalletRouterParams;
+  params: WalletFinancialWriteParams;
   callback?: HandlerCallback;
 }): Promise<WalletFinancialGateResult> {
   if (!requiresWalletFinancialConfirmation(args.params)) {
