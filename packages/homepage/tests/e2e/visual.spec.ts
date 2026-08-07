@@ -1,9 +1,10 @@
 /**
  * Visual regression coverage for the public homepage routes.
  *
- * Every route and viewport is compared against committed baselines via
- * toHaveScreenshot, while the quality-retry pre-check rejects blank or
- * half-painted captures with a clear diagnostic before pixel diffing.
+ * Every route and viewport is compared against committed baselines using the
+ * exact capture the quality-and-stability gate validated: blank or
+ * half-painted frames are rejected, and the gate requires two consecutive
+ * visually-stable captures so a mid-composite WebGL frame is never diffed.
  * Baselines regenerate per platform through scripts/regenerate-baselines.sh.
  */
 
@@ -120,7 +121,7 @@ for (const viewport of VISUAL_VIEWPORTS) {
         const target = "goto" in route ? route.goto : route.path;
         await page.goto(target, { waitUntil: "domcontentloaded" });
         await prepare(page, route.path);
-        await captureScreenshotWithQualityRetry(
+        const screenshot = await captureScreenshotWithQualityRetry(
           page,
           `${route.name} ${viewport.name}`,
           {
@@ -129,14 +130,9 @@ for (const viewport of VISUAL_VIEWPORTS) {
             animations: "disabled",
           },
         );
-        await expect(page).toHaveScreenshot(
+        expect(screenshot).toMatchSnapshot(
           `${route.name}-${viewport.name}.png`,
-          {
-            fullPage: true,
-            mask: dynamicMask(page),
-            animations: "disabled",
-            maxDiffPixelRatio: 0.02,
-          },
+          { maxDiffPixelRatio: 0.02 },
         );
       });
     }

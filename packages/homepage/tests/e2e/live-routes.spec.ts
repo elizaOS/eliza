@@ -98,10 +98,17 @@ async function expectCleanRoute(page: Page, route: (typeof ROUTES)[number]) {
     await expect(page.locator(route.landmark).first()).toBeVisible();
   }
 
-  await captureScreenshotWithQualityRetry(page, `route ${route.path}`, {
-    fullPage: false,
-    timeout: 20_000,
-  });
+  // Live smoke capture of an animating page — the frame is a diagnostic,
+  // never diffed against a baseline, so skip the byte-stability requirement.
+  await captureScreenshotWithQualityRetry(
+    page,
+    `route ${route.path}`,
+    {
+      fullPage: false,
+      timeout: 20_000,
+    },
+    { requireStable: false },
+  );
 
   const problems: string[] = [];
   if (captured.pageErrors.length) {
