@@ -91,7 +91,7 @@ parts:
         *) echo "Unsupported arch: $ARCH"; exit 1 ;;
       esac
 
-      curl -fsSL "https://github.com/oven-sh/bun/releases/download/bun-v1.3.14/bun-linux-${BUN_ARCH}.zip" -o /tmp/bun.zip
+      curl -fsSL "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-${BUN_ARCH}.zip" -o /tmp/bun.zip
       unzip -o /tmp/bun.zip -d /tmp/bun-extract
       mkdir -p "$CRAFT_PART_INSTALL/bun/bin"
       cp /tmp/bun-extract/bun-linux-${BUN_ARCH}/bun "$CRAFT_PART_INSTALL/bun/bin/bun"

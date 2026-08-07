@@ -1211,4 +1211,111 @@ jobs:
       rmSync(root, { recursive: true, force: true });
     }
   }, 15_000);
+
+  test("scans a non-.github workflow whose setup-bun wires no version", () => {
+    // The scan precondition required a `bun-version:` key before a non-.github
+    // YAML entered the inventory — but a setup-bun step with no version has no
+    // such key, so every file invariant 2 exists to catch selected itself out.
+    // 16 plugin workflows ran the action's floating "latest" default while the
+    // gate reported a clean sweep.
+    expectViolation(
+      buildRepo({
+        files: {
+          "plugins/plugin-example/.github/workflows/npm-deploy.yml": `name: Publish
+on: [push]
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: oven-sh/setup-bun@${SHA}
+`,
+        },
+      }),
+      /wires no bun-version/,
+    );
+  });
+
+  test("flags an oven/bun image embedded in a shell heredoc", () => {
+    // scanDockerfile only inspects files NAMED Dockerfile, so a deploy script
+    // that writes one at runtime shipped `canary` past the contract.
+    expectViolation(
+      buildRepo({
+        files: {
+          "services/x/deploy.sh": `#!/usr/bin/env bash
+cat > "$STAGE/Dockerfile" <<'DOCKER'
+FROM oven/bun:canary-alpine
+DOCKER
+`,
+        },
+      }),
+      /oven\/bun:canary-alpine/,
+    );
+  });
+
+  test("accepts a canonical embedded image with a variant suffix", () => {
+    // The variant is a base-image choice, not a version — flagging -alpine
+    // would make the rule unusable for the deploy scripts that need it.
+    const inventory = inventoryOf(
+      buildRepo({
+        files: {
+          "services/x/deploy.sh": `#!/usr/bin/env bash
+FROM_LINE="FROM oven/bun:${CANONICAL}-alpine"
+`,
+        },
+      }),
+    );
+    const site = inventory.find((s) => s.surface === "embedded-bun-image");
+    expect(site?.classification).toBe("canonical");
+    expect(site?.value).toBe(`${CANONICAL}-alpine`);
+  });
+
+  test("proves a BUN_VERSION default declared in a YAML-embedded shell script", () => {
+    // A packaging manifest carries its build steps as an embedded shell script.
+    // Reading defaults only from `.sh` left the ${BUN_VERSION} use unproven,
+    // and the only way to satisfy the contract was to inline the literal at the
+    // use site — which is how the pin ended up written twice.
+    const inventory = inventoryOf(
+      buildRepo({
+        files: {
+          "packaging/snap/snapcraft.yaml": `name: eliza
+parts:
+  bun:
+    override-build: |
+      BUN_VERSION="${CANONICAL}"
+      curl -fsSL "https://github.com/oven-sh/bun/releases/download/bun-v\${BUN_VERSION}/bun-linux-x64.zip" -o /tmp/bun.zip
+`,
+        },
+      }),
+    );
+    const site = inventory.find(
+      (s) =>
+        s.file === "packaging/snap/snapcraft.yaml" && s.value === CANONICAL,
+    );
+    expect(site?.classification).toBe("canonical");
+  });
+
+  test("names the file when a tracked path cannot be read", () => {
+    // git ls-files can list a path the working tree lacks (sparse checkout,
+    // uninitialised submodule). That surfaced as a raw ENOENT naming neither
+    // the contract nor the file, so a CI operator saw a crash instead of which
+    // surface broke the inventory. Needs a REAL git checkout: a synthetic tree
+    // falls back to a directory walk, which cannot list an absent file.
+    const root = buildRepo({});
+    const git = (...args: string[]) =>
+      spawnSync("git", args, { cwd: root, encoding: "utf8" });
+    git("init", "-q");
+    git("config", "user.email", "t@example.com");
+    git("config", "user.name", "t");
+    const missing = join(root, "packages", "gone", "Dockerfile");
+    mkdirSync(dirname(missing), { recursive: true });
+    writeFileSync(missing, `FROM oven/bun:${CANONICAL}\n`);
+    git("add", "-A");
+    git("commit", "-qm", "fixture");
+    rmSync(missing);
+    try {
+      expect(() => runContract(root)).toThrow(/tracked by git but unreadable/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });

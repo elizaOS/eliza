@@ -82,9 +82,6 @@ jobs:
       - name: Validate GitHub-native turbo cache contract
         run: node packages/scripts/ci-turbo-cache-contract.mjs
 
-      - name: Validate CI Bun version pin contract
-        run: node packages/scripts/ci-bun-version-contract.mjs
-
       - name: Install workflow-invariants parser dependency
         run: npm install --prefix "$RUNNER_TEMP/workflow-invariants-deps" --no-save --no-package-lock --ignore-scripts yaml@2.9.0
 

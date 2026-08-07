@@ -515,7 +515,22 @@ export function runContract(repoRoot = DEFAULT_REPO_ROOT, overrides = {}) {
   const allowlist = overrides.floatingAllowlist ?? FLOATING_ALLOWLIST;
   const reviewedShas =
     overrides.reviewedSetupBunShas ?? REVIEWED_SETUP_BUN_SHAS;
-  const read = (rel) => readFileSync(resolve(repoRoot, rel), "utf8");
+  // A tracked path that will not open is a contract failure with a name, not a
+  // stack trace. `git ls-files` can list a file the working tree lacks — a
+  // partial checkout, a sparse cone, a submodule left uninitialised — and the
+  // raw ENOENT that produced named neither the contract nor the surface, so a
+  // CI operator saw a crash where they should have seen which file broke the
+  // inventory. The distinction matters because the two have opposite fixes.
+  const read = (rel) => {
+    try {
+      return readFileSync(resolve(repoRoot, rel), "utf8");
+    } catch (cause) {
+      throw new Error(
+        `${rel}: tracked by git but unreadable (${cause instanceof Error ? (cause.code ?? cause.message) : String(cause)}) — the Bun runtime contract cannot inspect it, so the inventory would be silently incomplete. Check for a sparse checkout or an uninitialised submodule.`,
+        { cause },
+      );
+    }
+  };
 
   const manifest = JSON.parse(read(VERSION_FILE));
   const canonical = manifest.version;
@@ -566,7 +581,18 @@ export function runContract(repoRoot = DEFAULT_REPO_ROOT, overrides = {}) {
       !excludedSurface(rel)
     ) {
       const text = read(rel);
-      if (/^\s*(?:-\s+)?(bun-version|BUN_VERSION):/m.test(text)) {
+      // A `bun-version:` key is NOT the precondition for being a runtime
+      // surface — it is one possible outcome of being one. Gating the scan on
+      // it made every already-correct file visible and every defective file
+      // invisible: a `oven-sh/setup-bun` step that wires no version is exactly
+      // what invariant 2 exists to catch, and it has no `bun-version:` line to
+      // match, so 16 plugin workflows on the action's floating "latest"
+      // default never entered the scan at all. The gate reported a clean
+      // sweep of a set chosen to exclude its own counterexamples.
+      if (
+        /^\s*(?:-\s+)?(bun-version|BUN_VERSION):/m.test(text) ||
+        /oven-sh\/setup-bun/.test(text)
+      ) {
         yamlFiles.push({ rel, kind: "workflow", text });
       }
     }
@@ -818,7 +844,43 @@ export function runContract(repoRoot = DEFAULT_REPO_ROOT, overrides = {}) {
     // the template context and are never provable here.
     const defaults = []; // {line (1-based), value}
     const lines = text.split("\n");
-    if (/\.sh$/.test(rel)) {
+
+    // An `oven/bun:` reference is a runtime declaration wherever it appears,
+    // including inside a heredoc that writes a Dockerfile at deploy time.
+    // scanDockerfile only inspects files NAMED Dockerfile, so the
+    // `FROM oven/bun:canary-alpine` emitted by deploy-railway.sh shipped a
+    // floating canary straight past a contract whose headline promise is that
+    // no floating tag survives — the surface was a shell script, so nothing
+    // looked at its Docker content (#17599 review).
+    for (const [i, line] of lines.entries()) {
+      const img = line.match(/oven\/bun:([A-Za-z0-9._-]+)/);
+      if (!img) continue;
+      const tag = img[1];
+      // A variant suffix (-alpine, -slim, -distroless) is a base-image choice,
+      // not a version; only the version part must be canonical.
+      const pinned = tag === canonical || tag.startsWith(`${canonical}-`);
+      record({
+        surface: "embedded-bun-image",
+        file: rel,
+        line: i + 1,
+        value: tag,
+        classification: pinned ? "canonical" : "divergent",
+      });
+      if (!pinned) {
+        violate(
+          `${rel}:${i + 1}: oven/bun:${tag} — an embedded Bun base image must be the canonical ${canonical}, optionally with a variant suffix such as -alpine (${VERSION_FILE}).`,
+        );
+      }
+    }
+
+    // YAML too, not only `.sh`: a packaging manifest carries its build steps as
+    // an embedded shell script in a block scalar, so `BUN_VERSION="1.3.14"`
+    // followed by `bun-v${BUN_VERSION}` is one proven declaration and one use —
+    // the same pattern this scan already accepts in a standalone script. Reading
+    // only `.sh` left the use unproven, and the way to satisfy the contract was
+    // to inline the literal at the use site, which is how snapcraft.yaml ended
+    // up with the pin written twice and two places to bump (#17599 review).
+    if (/\.(sh|ya?ml)$/.test(rel)) {
       for (const [i, line] of lines.entries()) {
         const def = line.match(
           /^\s*(?:export\s+)?BUN_VERSION=["']?\$\{BUN_VERSION:-([^}"']+)\}["']?/,
