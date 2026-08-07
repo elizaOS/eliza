@@ -50,7 +50,6 @@ import { scrubPersistedAgentProfileTokens } from "./agent-profiles";
 import {
   CLOUD_LOGIN_POPUP_NAME,
   navigateToSameTabCloudLogin,
-  preOpenCloudLoginWindow,
   shouldUseSameTabCloudLogin,
   takeClaimedCloudLoginWindow,
 } from "./cloud-login-launch";
@@ -1208,11 +1207,15 @@ export function useCloudState({
    */
   const handleInteractiveCloudLogin = useCallback(
     (options?: CloudLoginOptions): Promise<void> => {
-      // Prefer the handle claimed synchronously in the click handler; fall back
-      // to a here-and-now pre-open only for callers that reach this entry point
-      // without an explicit claim (keeps it best-effort and popup-safe).
-      const prePoppedWindow =
-        takeClaimedCloudLoginWindow() ?? preOpenCloudLoginWindow();
+      // The handle MUST be claimed synchronously in the click handler via
+      // claimCloudLoginWindow() while user activation is live. Interactive
+      // callers (ConfigPageView, ElizaCloudDashboard, CloudOverviewSection,
+      // CloudConnectorsUpsell, use-first-run-conductor) all do this.
+      // No fallback to preOpenCloudLoginWindow() here — that would run after
+      // the awaits in listOrAutoProvisionCloudAgent / runFirstRunFinish,
+      // when transient user activation has lapsed, causing the popup to be
+      // blocked and falling back to same-tab (#17064 regression).
+      const prePoppedWindow = takeClaimedCloudLoginWindow();
       return handleCloudLogin(prePoppedWindow, options);
     },
     [handleCloudLogin],
