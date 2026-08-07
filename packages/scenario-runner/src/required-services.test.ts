@@ -80,6 +80,36 @@ describe("scenario required-service contract", () => {
       } as unknown as ScenarioDefinition),
     ).toThrow("unknown requires field(s): service");
   });
+
+  it("accepts corpus credential and os requirements and rejects malformed ones", () => {
+    const definition = scenario({
+      id: "credential-os-requirements",
+      title: "credential and os requirements",
+      domain: "required-service-preflight",
+      requires: {
+        plugins: ["@elizaos/plugin-agent-skills"],
+        credentials: ["1password:eliza-e2e-autofill"],
+        os: "macos",
+      },
+      turns: [],
+    });
+    expect(resolveRequiredServiceTypes(definition)).toEqual([]);
+
+    expect(() =>
+      scenario({
+        ...definition,
+        id: "malformed-credentials",
+        requires: { credentials: ["1password:eliza-e2e-autofill", ""] },
+      } as unknown as ScenarioDefinition),
+    ).toThrow("invalid requires.credentials");
+    expect(() =>
+      scenario({
+        ...definition,
+        id: "malformed-os",
+        requires: { os: " " },
+      } as unknown as ScenarioDefinition),
+    ).toThrow("invalid requires.os");
+  });
 });
 
 describe("required-service readiness", () => {
